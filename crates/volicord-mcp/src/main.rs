@@ -4,8 +4,8 @@ use std::{fmt, process};
 
 fn main() {
     match dispatch_args(std::env::args()) {
-        Ok(McpCommand::Stdio { integration_id }) => {
-            if let Err(error) = volicord_mcp::run_stdio_from_env(&integration_id) {
+        Ok(McpCommand::Stdio { connection_id }) => {
+            if let Err(error) = volicord_mcp::run_stdio_from_env(&connection_id) {
                 eprintln!("error: {error}");
                 process::exit(1);
             }
@@ -17,10 +17,10 @@ fn main() {
             print!("{}", version());
         }
         Ok(McpCommand::Check {
-            integration_id,
+            connection_id,
             project_id,
         }) => {
-            match volicord_mcp::run_preflight_check_from_env(&integration_id, project_id.as_deref())
+            match volicord_mcp::run_preflight_check_from_env(&connection_id, project_id.as_deref())
             {
                 Ok(report) => print!("{report}"),
                 Err(error) => {
@@ -39,12 +39,12 @@ fn main() {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum McpCommand {
     Stdio {
-        integration_id: String,
+        connection_id: String,
     },
     Help,
     Version,
     Check {
-        integration_id: String,
+        connection_id: String,
         project_id: Option<String>,
     },
 }
@@ -76,7 +76,7 @@ where
 
 fn parse_operational_options(options: &[String]) -> Result<McpCommand, McpCommandError> {
     let mut check = false;
-    let mut integration_id = None;
+    let mut connection_id = None;
     let mut project_id = None;
     let mut index = 0;
 
@@ -91,20 +91,20 @@ fn parse_operational_options(options: &[String]) -> Result<McpCommand, McpComman
                 check = true;
                 index += 1;
             }
-            "--integration" => {
-                if integration_id.is_some() {
+            "--connection" => {
+                if connection_id.is_some() {
                     return Err(McpCommandError(
-                        "--integration was supplied more than once".to_owned(),
+                        "--connection was supplied more than once".to_owned(),
                     ));
                 }
                 index += 1;
                 let value = options
                     .get(index)
-                    .ok_or_else(|| McpCommandError("--integration requires a value".to_owned()))?;
+                    .ok_or_else(|| McpCommandError("--connection requires a value".to_owned()))?;
                 if value.starts_with('-') {
-                    return Err(McpCommandError("--integration requires a value".to_owned()));
+                    return Err(McpCommandError("--connection requires a value".to_owned()));
                 }
-                integration_id = Some(value.clone());
+                connection_id = Some(value.clone());
                 index += 1;
             }
             "--project" => {
@@ -140,22 +140,22 @@ fn parse_operational_options(options: &[String]) -> Result<McpCommand, McpComman
             "--project is only valid with --check".to_owned(),
         ));
     }
-    let integration_id = integration_id.ok_or_else(|| {
-        McpCommandError("--integration is required for integration-bound startup".to_owned())
+    let connection_id = connection_id.ok_or_else(|| {
+        McpCommandError("--connection is required for connection-bound startup".to_owned())
     })?;
 
     if check {
         Ok(McpCommand::Check {
-            integration_id,
+            connection_id,
             project_id,
         })
     } else {
-        Ok(McpCommand::Stdio { integration_id })
+        Ok(McpCommand::Stdio { connection_id })
     }
 }
 
 fn usage() -> String {
-    "Usage:\n  volicord-mcp --integration <integration_id>\n  volicord-mcp --check --integration <integration_id>\n  volicord-mcp --check --integration <integration_id> --project <project_id>\n  volicord-mcp --help\n  volicord-mcp --version\n\nEnvironment:\n  VOLICORD_HOME                 Optional Runtime Home path (default: $HOME/.volicord)\n\nThe selected Agent Integration Profile supplies the MCP surface binding. Project selection happens per public Volicord tool call.\n"
+    "Usage:\n  volicord-mcp --connection <connection_id>\n  volicord-mcp --check --connection <connection_id>\n  volicord-mcp --check --connection <connection_id> --project <project_id>\n  volicord-mcp --help\n  volicord-mcp --version\n\nEnvironment:\n  VOLICORD_HOME                 Optional Runtime Home path (default: $HOME/.volicord)\n\nThe selected Agent Connection supplies the MCP process binding. Project selection happens per public Volicord tool call.\n"
         .to_owned()
 }
 
@@ -173,7 +173,7 @@ mod tests {
 
         assert_eq!(
             error.to_string(),
-            "--integration is required for integration-bound startup"
+            "--connection is required for connection-bound startup"
         );
     }
 
@@ -183,7 +183,7 @@ mod tests {
             dispatch_args(["volicord-mcp", "--help"]).expect("help should dispatch"),
             McpCommand::Help
         );
-        assert!(usage().contains("--integration <integration_id>"));
+        assert!(usage().contains("--connection <connection_id>"));
         assert!(!usage().contains("VOLICORD_PROJECT_ID"));
         assert_eq!(
             version(),
@@ -196,19 +196,19 @@ mod tests {
     }
 
     #[test]
-    fn integration_startup_forms_dispatch() {
+    fn connection_startup_forms_dispatch() {
         assert_eq!(
-            dispatch_args(["volicord-mcp", "--integration", "agent_main"])
-                .expect("integration stdio should dispatch"),
+            dispatch_args(["volicord-mcp", "--connection", "agent_main"])
+                .expect("connection stdio should dispatch"),
             McpCommand::Stdio {
-                integration_id: "agent_main".to_owned()
+                connection_id: "agent_main".to_owned()
             }
         );
         assert_eq!(
-            dispatch_args(["volicord-mcp", "--check", "--integration", "agent_main"])
-                .expect("integration check should dispatch"),
+            dispatch_args(["volicord-mcp", "--check", "--connection", "agent_main"])
+                .expect("connection check should dispatch"),
             McpCommand::Check {
-                integration_id: "agent_main".to_owned(),
+                connection_id: "agent_main".to_owned(),
                 project_id: None
             }
         );
@@ -216,14 +216,14 @@ mod tests {
             dispatch_args([
                 "volicord-mcp",
                 "--check",
-                "--integration",
+                "--connection",
                 "agent_main",
                 "--project",
                 "project_a",
             ])
             .expect("project check should dispatch"),
             McpCommand::Check {
-                integration_id: "agent_main".to_owned(),
+                connection_id: "agent_main".to_owned(),
                 project_id: Some("project_a".to_owned())
             }
         );
@@ -249,27 +249,32 @@ mod tests {
     }
 
     #[test]
-    fn missing_integration_is_usage_classified() {
+    fn missing_connection_is_usage_classified() {
         let error = dispatch_args(["volicord-mcp", "--project", "project_a"])
             .expect_err("project without check should be rejected");
 
         assert_eq!(error.to_string(), "--project is only valid with --check");
 
         let error = dispatch_args(["volicord-mcp", "--check", "--project", "project_a"])
-            .expect_err("check without integration should be rejected");
+            .expect_err("check without connection should be rejected");
 
         assert_eq!(
             error.to_string(),
-            "--integration is required for integration-bound startup"
+            "--connection is required for connection-bound startup"
         );
 
         let error = dispatch_args(["volicord-mcp", "--check"])
-            .expect_err("check without integration should be rejected");
+            .expect_err("check without connection should be rejected");
 
         assert_eq!(
             error.to_string(),
-            "--integration is required for integration-bound startup"
+            "--connection is required for connection-bound startup"
         );
+
+        let error = dispatch_args(["volicord-mcp", "--connection"])
+            .expect_err("missing connection value should be rejected");
+
+        assert_eq!(error.to_string(), "--connection requires a value");
     }
 
     #[test]

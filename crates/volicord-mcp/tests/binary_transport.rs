@@ -4,7 +4,6 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     error::Error,
     io::{self, Read, Write},
-    path::PathBuf,
     process::{Child, Command, ExitStatus, Output, Stdio},
     thread::{self, JoinHandle},
     time::{Duration, Instant},
@@ -12,36 +11,9 @@ use std::{
 
 use serde_json::{json, Value};
 use volicord_mcp::PUBLIC_METHOD_TOOL_NAMES;
-use volicord_store::{
-    agent_integrations::{
-        add_integration_project, register_agent_integration, AgentIntegrationRegistration,
-        IntegrationProjectRegistration,
-    },
-    bootstrap::{
-        initialize_runtime_home, register_project, register_surface, ProjectRegistration,
-        SurfaceRegistration, ACTIVE_PROJECT_STATUS,
-    },
-    core_pipeline::{CoreProjectStore, StorageEffectCounts},
-};
-use volicord_test_support::TempRuntimeHome;
-use volicord_types::{
-    ProjectId, SurfaceInteractionRole, VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION,
-};
+use volicord_store::core_pipeline::StorageEffectCounts;
+use volicord_test_support::core_fixtures::CoreFixture;
 
-const PROJECT_ID: &str = "project_binary_mcp";
-const INTEGRATION_ID: &str = "agent_binary_mcp";
-const AGENT_SURFACE_ID: &str = "surface_binary_agent";
-const AGENT_INSTANCE_ID: &str = "surface_instance_binary_agent";
-const USER_SURFACE_ID: &str = "surface_binary_user";
-const USER_INSTANCE_ID: &str = "surface_instance_binary_user";
-const BASELINE_ACCESS_CLASSES: [&str; 5] = [
-    "read_status",
-    "core_mutation",
-    "write_authorization",
-    "artifact_registration",
-    "run_recording",
-];
-const USER_ACCESS_CLASSES: [&str; 2] = ["read_status", "core_mutation"];
 const PROCESS_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[test]
@@ -50,7 +22,7 @@ fn volicord_mcp_binary_reports_help_version_and_preflight() -> Result<(), Box<dy
 
     let help = run_without_binding(["--help"])?;
     assert_success(&help);
-    assert!(stdout(&help).contains("--integration <integration_id>"));
+    assert!(stdout(&help).contains("--connection <connection_id>"));
     assert!(!stdout(&help).contains("VOLICORD_PROJECT_ID"));
 
     let version = run_without_binding(["--version"])?;
@@ -59,73 +31,63 @@ fn volicord_mcp_binary_reports_help_version_and_preflight() -> Result<(), Box<dy
 
     let no_args = run_without_binding([])?;
     assert_eq!(no_args.status.code(), Some(2));
-    assert!(stderr(&no_args).contains("--integration is required"));
+    assert!(stderr(&no_args).contains("--connection is required"));
 
-    let check_without_integration = run_without_binding(["--check"])?;
-    assert_eq!(check_without_integration.status.code(), Some(2));
-    assert!(stderr(&check_without_integration).contains("--integration is required"));
-
-    let fixed_project_env_no_args =
-        run_child(fixture.fixed_project_env_command([]), ChildStdin::KeepOpen)?;
-    assert_eq!(fixed_project_env_no_args.status.code(), Some(2));
-    assert!(captured_stderr(&fixed_project_env_no_args).contains("--integration is required"));
-
-    let fixed_project_env_check = run_child(
-        fixture.fixed_project_env_command(["--check"]),
-        ChildStdin::KeepOpen,
-    )?;
-    assert_eq!(fixed_project_env_check.status.code(), Some(2));
-    assert!(captured_stderr(&fixed_project_env_check).contains("--integration is required"));
+    let check_without_connection = run_without_binding(["--check"])?;
+    assert_eq!(check_without_connection.status.code(), Some(2));
+    assert!(stderr(&check_without_connection).contains("--connection is required"));
 
     let before = fixture.counts()?;
-    let agent_check = run_child(
-        fixture.integration_command(["--check", "--integration", INTEGRATION_ID]),
+    let connection_check = run_child(
+        fixture.connection_command(["--check", "--connection", fixture.connection_id()]),
         ChildStdin::KeepOpen,
     )?;
-    assert_success_captured(&agent_check);
-    let report = captured_stdout(&agent_check);
+    assert_success_captured(&connection_check);
+    let report = captured_stdout(&connection_check);
     assert_report_line(&report, "configuration: valid");
     assert_report_line(&report, "transport: stdio");
     assert_report_line(
         &report,
-        &format!("runtime_home: {}", fixture.runtime_home_path.display()),
+        &format!("runtime_home: {}", fixture.runtime_home_path().display()),
     );
-    assert_report_line(&report, &format!("integration_id: {INTEGRATION_ID}"));
-    assert_report_line(&report, &format!("surface_id: {AGENT_SURFACE_ID}"));
     assert_report_line(
         &report,
-        &format!("surface_instance_id: {AGENT_INSTANCE_ID}"),
+        &format!("connection_id: {}", fixture.connection_id()),
     );
-    assert_report_line(&report, "interaction_role: agent");
+    assert_report_line(&report, "mode: workflow");
     assert_report_line(&report, "allowed_projects: 1");
     assert_report_line(&report, "available_projects: 1");
-    assert_report_line(&report, "default_project_id: ");
-    assert_report_line(&report, "project[0].project_id: project_binary_mcp");
+    assert_report_line(
+        &report,
+        &format!("project[0].project_id: {}", fixture.project_id()),
+    );
     assert_report_line(&report, "project[0].available: true");
-    assert_report_line(&report, "project[0].baseline_workflow_access: full");
     assert_eq!(fixture.counts()?, before);
 
     let project_check = run_child(
-        fixture.integration_command([
+        fixture.connection_command([
             "--check",
-            "--integration",
-            INTEGRATION_ID,
+            "--connection",
+            fixture.connection_id(),
             "--project",
-            PROJECT_ID,
+            fixture.project_id(),
         ]),
         ChildStdin::KeepOpen,
     )?;
     assert_success_captured(&project_check);
     let project_report = captured_stdout(&project_check);
     assert_report_line(&project_report, "allowed_projects: 1");
-    assert_report_line(&project_report, "project[0].project_id: project_binary_mcp");
+    assert_report_line(
+        &project_report,
+        &format!("project[0].project_id: {}", fixture.project_id()),
+    );
 
-    let missing_integration = run_child(
-        fixture.integration_command(["--check", "--integration", "missing_agent"]),
+    let missing_connection = run_child(
+        fixture.connection_command(["--check", "--connection", "missing_connection"]),
         ChildStdin::KeepOpen,
     )?;
-    assert_eq!(missing_integration.status.code(), Some(1));
-    assert!(captured_stderr(&missing_integration).contains("not registered"));
+    assert_eq!(missing_connection.status.code(), Some(1));
+    assert!(captured_stderr(&missing_connection).contains("not registered"));
 
     let unknown = run_without_binding(["--not-a-real-option"])?;
     assert_eq!(unknown.status.code(), Some(2));
@@ -147,23 +109,23 @@ fn volicord_mcp_stdio_uses_line_delimited_json_and_reconnects_state() -> Result<
         tools_call(
             4,
             "volicord.status",
-            status_arguments(PROJECT_ID, "req_binary_status"),
+            status_arguments(None, "req_binary_status"),
         ),
         tools_call(
             5,
             "volicord.intake",
-            intake_arguments(PROJECT_ID, "req_binary_intake", "idem_binary_intake"),
+            intake_arguments(None, "req_binary_intake", "idem_binary_intake"),
         ),
         tools_call(
             6,
             "volicord.status",
-            status_arguments_with_surface_id(PROJECT_ID, AGENT_SURFACE_ID, "req_binary_rejected"),
+            status_arguments_with_connection_id(None, "forged_connection", "req_binary_rejected"),
         ),
         tools_call(7, "volicord.status", json!({ "unexpected": true })),
     ])?;
 
     let first = run_child(
-        fixture.integration_command(["--integration", INTEGRATION_ID]),
+        fixture.connection_command(["--connection", fixture.connection_id()]),
         ChildStdin::WriteAndClose(first_messages),
     )?;
     assert_success_captured(&first);
@@ -199,15 +161,20 @@ fn volicord_mcp_stdio_uses_line_delimited_json_and_reconnects_state() -> Result<
         tool_names[PUBLIC_METHOD_TOOL_NAMES.len()],
         "volicord.list_projects"
     );
+    assert!(!tool_names.contains(&"volicord.record_user_judgment"));
     assert_eq!(
         tool_names.iter().copied().collect::<BTreeSet<_>>().len(),
-        10
+        PUBLIC_METHOD_TOOL_NAMES.len() + 1
     );
 
     assert_eq!(responses[&30]["result"]["isError"], json!(false));
     let project_list = adapter_tool_response(&responses[&30])?;
-    assert_eq!(project_list["integration_id"], INTEGRATION_ID);
-    assert_eq!(project_list["projects"][0]["project_id"], PROJECT_ID);
+    assert_eq!(project_list["connection_id"], fixture.connection_id());
+    assert_eq!(project_list["mode"], "workflow");
+    assert_eq!(
+        project_list["projects"][0]["project_id"],
+        fixture.project_id()
+    );
     assert_eq!(project_list["projects"][0]["available"], true);
 
     assert_eq!(responses[&4]["result"]["isError"], json!(false));
@@ -224,10 +191,10 @@ fn volicord_mcp_stdio_uses_line_delimited_json_and_reconnects_state() -> Result<
         .to_owned();
 
     assert_eq!(responses[&6]["result"]["isError"], json!(true));
-    let surface_rejection = responses[&6]["result"]["content"][0]["text"]
+    let connection_rejection = responses[&6]["result"]["content"][0]["text"]
         .as_str()
-        .expect("surface rejection should be text");
-    assert!(surface_rejection.contains("envelope.surface_id"));
+        .expect("connection rejection should be text");
+    assert!(connection_rejection.contains("connection_id"));
 
     assert!(responses[&7].get("error").is_none());
     assert_eq!(responses[&7]["result"]["isError"], json!(true));
@@ -237,7 +204,7 @@ fn volicord_mcp_stdio_uses_line_delimited_json_and_reconnects_state() -> Result<
     assert!(tool_error.contains("envelope object"));
 
     let reconnect_before_handshake = run_child(
-        fixture.integration_command(["--integration", INTEGRATION_ID]),
+        fixture.connection_command(["--connection", fixture.connection_id()]),
         ChildStdin::WriteAndClose(json_lines(&[request(10, "tools/list", json!({}))])?),
     )?;
     assert_success_captured(&reconnect_before_handshake);
@@ -253,11 +220,11 @@ fn volicord_mcp_stdio_uses_line_delimited_json_and_reconnects_state() -> Result<
         tools_call(
             12,
             "volicord.status",
-            status_arguments(PROJECT_ID, "req_binary_reconnect_status"),
+            status_arguments(Some(fixture.project_id()), "req_binary_reconnect_status"),
         ),
     ])?;
     let reconnect = run_child(
-        fixture.integration_command(["--integration", INTEGRATION_ID]),
+        fixture.connection_command(["--connection", fixture.connection_id()]),
         ChildStdin::WriteAndClose(reconnect_messages),
     )?;
     assert_success_captured(&reconnect);
@@ -299,7 +266,7 @@ fn volicord_mcp_binary_suppresses_malformed_notification_output_and_effects(
             json!({
                 "name": "volicord.intake",
                 "arguments": intake_arguments(
-                    PROJECT_ID,
+                    Some(fixture.project_id()),
                     "req_binary_notification_intake",
                     "idem_binary_notification_intake",
                 )
@@ -310,12 +277,12 @@ fn volicord_mcp_binary_suppresses_malformed_notification_output_and_effects(
         tools_call(
             4,
             "volicord.status",
-            status_arguments(PROJECT_ID, "req_binary_notification_status"),
+            status_arguments(Some(fixture.project_id()), "req_binary_notification_status"),
         ),
     ])?;
 
     let output = run_child(
-        fixture.integration_command(["--integration", INTEGRATION_ID]),
+        fixture.connection_command(["--connection", fixture.connection_id()]),
         ChildStdin::WriteAndClose(messages),
     )?;
 
@@ -345,134 +312,37 @@ fn volicord_mcp_binary_suppresses_malformed_notification_output_and_effects(
 }
 
 struct McpFixture {
-    _runtime_home: TempRuntimeHome,
-    runtime_home_path: PathBuf,
+    fixture: CoreFixture,
 }
 
 impl McpFixture {
     fn new(prefix: &str) -> Result<Self, Box<dyn Error>> {
-        let runtime_home = TempRuntimeHome::new(prefix)?;
-        let repo_root = runtime_home.create_product_repo("product-repo")?;
-
-        initialize_runtime_home(runtime_home.path(), "runtime_home_binary_mcp", "{}")?;
-        register_project(
-            runtime_home.path(),
-            ProjectRegistration {
-                project_id: PROJECT_ID.to_owned(),
-                repo_root,
-                project_home: None,
-                status: ACTIVE_PROJECT_STATUS.to_owned(),
-                metadata_json: "{}".to_owned(),
-            },
-        )?;
-        register_surface(
-            runtime_home.path(),
-            surface_registration(
-                AGENT_SURFACE_ID,
-                AGENT_INSTANCE_ID,
-                SurfaceInteractionRole::Agent,
-                &BASELINE_ACCESS_CLASSES,
-            ),
-        )?;
-        register_surface(
-            runtime_home.path(),
-            surface_registration(
-                USER_SURFACE_ID,
-                USER_INSTANCE_ID,
-                SurfaceInteractionRole::UserInteraction,
-                &USER_ACCESS_CLASSES,
-            ),
-        )?;
-        register_agent_integration(
-            runtime_home.path(),
-            AgentIntegrationRegistration {
-                integration_id: INTEGRATION_ID.to_owned(),
-                interaction_role: "agent".to_owned(),
-                surface_id: AGENT_SURFACE_ID.to_owned(),
-                surface_instance_id: AGENT_INSTANCE_ID.to_owned(),
-                metadata_json: "{}".to_owned(),
-            },
-        )?;
-        add_integration_project(
-            runtime_home.path(),
-            IntegrationProjectRegistration {
-                integration_id: INTEGRATION_ID.to_owned(),
-                project_id: PROJECT_ID.to_owned(),
-            },
-        )?;
-
         Ok(Self {
-            runtime_home_path: runtime_home.path().to_path_buf(),
-            _runtime_home: runtime_home,
+            fixture: CoreFixture::new(prefix)?,
         })
     }
 
-    fn integration_command<const N: usize>(&self, args: [&str; N]) -> Command {
-        let mut command = base_command();
-        command.env("VOLICORD_HOME", &self.runtime_home_path);
-        command.args(args);
-        command
+    fn runtime_home_path(&self) -> &std::path::Path {
+        self.fixture.runtime_home_path()
     }
 
-    fn fixed_project_env_command<const N: usize>(&self, args: [&str; N]) -> Command {
+    fn project_id(&self) -> &str {
+        self.fixture.project_id()
+    }
+
+    fn connection_id(&self) -> &str {
+        self.fixture.connection_id()
+    }
+
+    fn connection_command<const N: usize>(&self, args: [&str; N]) -> Command {
         let mut command = base_command();
-        command.env("VOLICORD_HOME", &self.runtime_home_path);
-        command.env("VOLICORD_PROJECT_ID", PROJECT_ID);
-        command.env("VOLICORD_SURFACE_ID", AGENT_SURFACE_ID);
-        command.env("VOLICORD_SURFACE_INSTANCE_ID", AGENT_INSTANCE_ID);
+        command.env("VOLICORD_HOME", self.runtime_home_path());
         command.args(args);
         command
     }
 
     fn counts(&self) -> Result<StorageEffectCounts, Box<dyn Error>> {
-        Ok(
-            CoreProjectStore::open(&self.runtime_home_path, &ProjectId::new(PROJECT_ID))?
-                .effect_counts()?,
-        )
-    }
-}
-
-fn surface_registration(
-    surface_id: &str,
-    surface_instance_id: &str,
-    interaction_role: SurfaceInteractionRole,
-    access_classes: &[&str],
-) -> SurfaceRegistration {
-    surface_registration_for_project(
-        PROJECT_ID,
-        surface_id,
-        surface_instance_id,
-        interaction_role,
-        access_classes,
-    )
-}
-
-fn surface_registration_for_project(
-    project_id: &str,
-    surface_id: &str,
-    surface_instance_id: &str,
-    interaction_role: SurfaceInteractionRole,
-    access_classes: &[&str],
-) -> SurfaceRegistration {
-    SurfaceRegistration {
-        project_id: project_id.to_owned(),
-        surface_id: surface_id.to_owned(),
-        surface_instance_id: surface_instance_id.to_owned(),
-        surface_kind: "mcp".to_owned(),
-        interaction_role,
-        display_name: Some(format!("{surface_id} test surface")),
-        capability_profile_json: json!({
-            "supported_access_classes": access_classes,
-            "write_authorization": access_classes.contains(&"write_authorization"),
-            "manual_artifact_attachment_supported": access_classes.contains(&"artifact_registration")
-        })
-        .to_string(),
-        local_access_json: json!({
-            "authorized_access_classes": access_classes,
-            "verification_basis": VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION
-        })
-        .to_string(),
-        metadata_json: "{}".to_owned(),
+        Ok(self.fixture.counts()?)
     }
 }
 
@@ -540,7 +410,7 @@ fn tools_call(id: u64, name: &str, arguments: Value) -> Value {
     )
 }
 
-fn status_arguments(project_id: &str, request_id: &str) -> Value {
+fn status_arguments(project_id: Option<&str>, request_id: &str) -> Value {
     json!({
         "envelope": envelope(
             project_id,
@@ -551,7 +421,7 @@ fn status_arguments(project_id: &str, request_id: &str) -> Value {
         "include": {
             "task": true,
             "pending_user_judgments": true,
-            "write_authority": false,
+            "write_check": false,
             "evidence": false,
             "close": true,
             "guarantees": true,
@@ -560,7 +430,7 @@ fn status_arguments(project_id: &str, request_id: &str) -> Value {
     })
 }
 
-fn intake_arguments(project_id: &str, request_id: &str, idempotency_key: &str) -> Value {
+fn intake_arguments(project_id: Option<&str>, request_id: &str, idempotency_key: &str) -> Value {
     json!({
         "envelope": envelope(project_id, request_id, json!(idempotency_key), json!(0)),
         "plain_language_request": "Exercise the compiled MCP stdio binary.",
@@ -575,28 +445,34 @@ fn intake_arguments(project_id: &str, request_id: &str, idempotency_key: &str) -
     })
 }
 
-fn status_arguments_with_surface_id(project_id: &str, surface_id: &str, request_id: &str) -> Value {
+fn status_arguments_with_connection_id(
+    project_id: Option<&str>,
+    connection_id: &str,
+    request_id: &str,
+) -> Value {
     let mut arguments = status_arguments(project_id, request_id);
-    arguments["envelope"]["surface_id"] = json!(surface_id);
+    arguments["envelope"]["connection_id"] = json!(connection_id);
     arguments
 }
 
 fn envelope(
-    project_id: &str,
+    project_id: Option<&str>,
     request_id: &str,
     idempotency_key: Value,
     expected_state_version: Value,
 ) -> Value {
-    json!({
-        "project_id": project_id,
+    let mut value = json!({
         "task_id": null,
-        "actor_kind": "agent",
         "request_id": request_id,
         "idempotency_key": idempotency_key,
         "expected_state_version": expected_state_version,
         "dry_run": false,
         "locale": "en-US"
-    })
+    });
+    if let Some(project_id) = project_id {
+        value["project_id"] = json!(project_id);
+    }
+    value
 }
 
 fn json_lines(messages: &[Value]) -> Result<String, serde_json::Error> {
