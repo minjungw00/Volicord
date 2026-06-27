@@ -2,9 +2,7 @@ use std::{error::Error, fs, path::Path};
 
 use chrono::{DateTime, Duration, Utc};
 use serde_json::{json, Value};
-use volicord_core::{
-    rejected_response, tool_error, AdapterSessionBinding, Clock, CoreService, InvocationContext,
-};
+use volicord_core::{rejected_response, tool_error, Clock, CoreService, InvocationContext};
 use volicord_test_support::core_fixtures::{
     answer_payload, artifact_input_for_handle, supported_evidence_update,
     unsupported_evidence_update, ArtifactOwnerJsonColumn, ChangeUnitOwnerJsonColumn,
@@ -12,11 +10,11 @@ use volicord_test_support::core_fixtures::{
     TaskOwnerJsonColumn, UpdateScopeFixture, UserJudgmentFixture, DEFAULT_PRODUCT_PATH,
 };
 use volicord_types::{
-    AccessClass, ArtifactInput, ArtifactInputId, ArtifactInputSourceKind, ArtifactRef,
+    ActorSource, ArtifactInput, ArtifactInputId, ArtifactInputSourceKind, ArtifactRef,
     ChangeUnitOperation, CloseAssessmentInput, CloseIntent, CloseReason, EffectKind, ErrorCode,
-    JudgmentKind, ResidualRiskInput, ResponseKind, RunId, StagedArtifactHandle, StateRecordKind,
-    StateRecordRef, StatusRequest, UtcTimestamp, WriteAuthorizationId,
-    VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+    JudgmentKind, OperationCategory, ProjectId, ResidualRiskInput, ResponseKind, RunId,
+    StagedArtifactHandle, StateRecordKind, StateRecordRef, StatusRequest, UtcTimestamp,
+    WriteCheckId, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
 
 #[test]
@@ -27,14 +25,14 @@ fn no_effect_branches_state_version_and_idempotency_are_stable() -> Result<(), B
 
     let stale = service.intake(
         fixture.intake_request("req_stale_intake", "idem_stale_intake", false, Some(99)),
-        invocation(&fixture, AccessClass::CoreMutation),
+        invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_rejected_code(&stale.response_value, "STATE_VERSION_CONFLICT");
     assert_eq!(fixture.counts()?, initial_counts);
 
     let dry_run = service.intake(
         fixture.intake_request("req_dry_intake", "idem_dry_intake", true, Some(0)),
-        invocation(&fixture, AccessClass::CoreMutation),
+        invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_eq!(dry_run.response_value["base"]["response_kind"], "dry_run");
     assert_eq!(fixture.counts()?, initial_counts);
@@ -43,7 +41,7 @@ fn no_effect_branches_state_version_and_idempotency_are_stable() -> Result<(), B
         fixture.intake_request("req_commit_intake", "idem_commit_intake", false, Some(0));
     let committed = service.intake(
         intake_request.clone(),
-        invocation(&fixture, AccessClass::CoreMutation),
+        invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
     let after_commit = fixture.counts()?;
     let task_id = committed.response_value["task_ref"]["record_id"]
@@ -64,10 +62,13 @@ fn no_effect_branches_state_version_and_idempotency_are_stable() -> Result<(), B
         after_commit.tool_invocations,
         initial_counts.tool_invocations + 1
     );
+    let intake_binding = latest_tool_invocation_binding(&fixture, "volicord.intake")?;
+    assert_eq!(intake_binding.0, fixture.actor_source());
+    assert_eq!(intake_binding.1, "agent_workflow");
 
     let replay = service.intake(
         intake_request,
-        invocation(&fixture, AccessClass::CoreMutation),
+        invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
     assert!(replay.replayed);
     assert_eq!(replay.response_json, committed.response_json);
@@ -76,13 +77,16 @@ fn no_effect_branches_state_version_and_idempotency_are_stable() -> Result<(), B
     let mut conflicting =
         fixture.intake_request("req_conflict_intake", "idem_commit_intake", false, Some(0));
     conflicting.plain_language_request = "A different request with the same key.".to_owned();
-    let conflict = service.intake(conflicting, invocation(&fixture, AccessClass::CoreMutation))?;
+    let conflict = service.intake(
+        conflicting,
+        invocation(&fixture, OperationCategory::AgentWorkflow),
+    )?;
     assert_rejected_code(&conflict.response_value, "STATE_VERSION_CONFLICT");
     assert_eq!(fixture.counts()?, after_commit);
 
     let status = service.status(
         fixture.status_request("req_status_read", Some(&task_id)),
-        invocation(&fixture, AccessClass::ReadStatus),
+        invocation(&fixture, OperationCategory::Read),
     )?;
     assert_eq!(status.response_value["base"]["effect_kind"], "read_only");
     assert_eq!(fixture.counts()?, after_commit);
@@ -98,30 +102,15 @@ fn no_effect_branches_state_version_and_idempotency_are_stable() -> Result<(), B
             close_reason: None,
             superseding_task_id: None,
         }),
-        invocation(&fixture, AccessClass::ReadStatus),
+        invocation(&fixture, OperationCategory::Read),
     )?;
     assert_eq!(check.response_value["base"]["effect_kind"], "read_only");
     assert_eq!(fixture.counts()?, after_commit);
 
-    let surface_mismatch = service.status(
-        fixture.status_request("req_status_wrong_surface", Some(&task_id)),
-        InvocationContext {
-            binding: AdapterSessionBinding::new(
-                volicord_types::ProjectId::new(fixture.project_id()),
-                volicord_types::SurfaceId::new(fixture.surface_id()),
-                volicord_types::SurfaceInstanceId::new("missing_surface_instance"),
-                VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
-            ),
-            requested_access_class: AccessClass::ReadStatus,
-        },
-    )?;
-    assert_rejected_code(&surface_mismatch.response_value, "LOCAL_ACCESS_MISMATCH");
-    assert_eq!(fixture.counts()?, after_commit);
-
     let envelope_value =
         serde_json::to_value(fixture.envelope("req_shape", None, false, None, Some(&task_id)))?;
-    assert!(envelope_value.get("access_class").is_none());
-    assert!(envelope_value.get("surface_instance_id").is_none());
+    assert!(envelope_value.get("actor_source").is_none());
+    assert!(envelope_value.get("operation_category").is_none());
 
     let stage_value = serde_json::to_value(fixture.stage_artifact_request(
         "req_stage_shape",
@@ -130,13 +119,13 @@ fn no_effect_branches_state_version_and_idempotency_are_stable() -> Result<(), B
         None,
         &task_id,
     ))?;
-    assert!(stage_value.get("access_class").is_none());
-    assert!(stage_value.get("surface_instance_id").is_none());
+    assert!(stage_value.get("actor_source").is_none());
+    assert!(stage_value.get("operation_category").is_none());
     Ok(())
 }
 
 #[test]
-fn idempotency_replay_is_bound_to_verified_access_context() -> Result<(), Box<dyn Error>> {
+fn idempotency_replay_rejects_actor_source_mismatch() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("replay_context")?;
     let service = core(&fixture);
     let (task_id, change_unit_id) =
@@ -151,20 +140,59 @@ fn idempotency_replay_is_bound_to_verified_access_context() -> Result<(), Box<dy
 
     let first = service.prepare_write(
         request.clone(),
-        invocation(&fixture, AccessClass::WriteAuthorization),
+        invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
     let after_first = fixture.counts()?;
-    let write_authorization_id = first.response_value["write_authorization_ref"]["record_id"]
+    let write_check_id = first.response_value["write_check_ref"]["record_id"]
         .as_str()
-        .expect("prepare_write should return an authorization id")
+        .expect("prepare_write should return a Write Check id")
         .to_owned();
 
-    let mismatch =
-        service.prepare_write(request, invocation(&fixture, AccessClass::CoreMutation))?;
+    let mismatch = service.prepare_write(
+        request,
+        invocation_with_actor(
+            &fixture,
+            ActorSource::agent_connection("connection_other"),
+            OperationCategory::AgentWorkflow,
+        ),
+    )?;
 
     assert!(!mismatch.replayed);
     assert_rejected_code(&mismatch.response_value, "LOCAL_ACCESS_MISMATCH");
-    assert!(!mismatch.response_json.contains(&write_authorization_id));
+    assert!(!mismatch.response_json.contains(&write_check_id));
+    assert_eq!(fixture.counts()?, after_first);
+    Ok(())
+}
+
+#[test]
+fn idempotency_replay_rejects_operation_category_mismatch() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("replay_category")?;
+    let service = core(&fixture);
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&fixture, &service, "replay_category")?;
+    let request = fixture.prepare_write_request(
+        "req_prepare_replay_category",
+        "idem_prepare_replay_category",
+        Some(2),
+        Some(&task_id),
+        Some(&change_unit_id),
+    );
+
+    let first = service.prepare_write(
+        request.clone(),
+        invocation(&fixture, OperationCategory::AgentWorkflow),
+    )?;
+    let after_first = fixture.counts()?;
+    let write_check_id = first.response_value["write_check_ref"]["record_id"]
+        .as_str()
+        .expect("prepare_write should return a Write Check id")
+        .to_owned();
+
+    let mismatch = service.prepare_write(request, invocation(&fixture, OperationCategory::Read))?;
+
+    assert!(!mismatch.replayed);
+    assert_rejected_code(&mismatch.response_value, "LOCAL_ACCESS_MISMATCH");
+    assert!(!mismatch.response_json.contains(&write_check_id));
     assert_eq!(fixture.counts()?, after_first);
     Ok(())
 }
@@ -177,13 +205,11 @@ fn direct_public_request_parsing_rejects_invocation_authority_fields() -> Result
 
     for (field_path, forged_value) in [
         ("envelope.verified", json!(true)),
-        (
-            "envelope.surface_instance_id",
-            json!("surface_instance_forged"),
-        ),
-        ("verified_surface_context", json!({ "verified": true })),
-        ("access_class", json!("core_mutation")),
-        ("capability_profile", json!({ "write_authorization": true })),
+        ("envelope.actor_source", json!("agent_connection:forged")),
+        ("envelope.connection_id", json!("connection_forged")),
+        ("operation_category", json!("agent_workflow")),
+        ("actor_source", json!("agent_connection:forged")),
+        ("verification_basis", json!("caller_supplied_basis")),
     ] {
         let mut forged = params.clone();
         if let Some(field) = field_path.strip_prefix("envelope.") {
@@ -217,7 +243,7 @@ fn structured_store_unavailability_does_not_expose_sql_or_local_paths() -> Resul
 
     let response = core(&fixture).status(
         fixture.status_request("req_missing_state_db", None),
-        invocation(&fixture, AccessClass::ReadStatus),
+        invocation(&fixture, OperationCategory::Read),
     )?;
 
     assert_rejected_code(&response.response_value, "MCP_UNAVAILABLE");
@@ -250,7 +276,7 @@ fn committed_non_allow_prepare_write_audit_and_replay_are_exact() -> Result<(), 
 
     let first = service.prepare_write(
         request.clone(),
-        invocation(&fixture, AccessClass::WriteAuthorization),
+        invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
     let after_first = fixture.counts()?;
     let event_payload =
@@ -258,14 +284,11 @@ fn committed_non_allow_prepare_write_audit_and_replay_are_exact() -> Result<(), 
 
     assert_eq!(first.response_value["decision"], "blocked");
     assert_prepare_reason(&first.response_value, "path_out_of_scope");
-    assert_eq!(first.response_value["write_authorization"], Value::Null);
+    assert_eq!(first.response_value["write_check"], Value::Null);
     assert_eq!(after_first.state_version, before.state_version + 1);
     assert_eq!(after_first.task_events, before.task_events + 1);
     assert_eq!(after_first.tool_invocations, before.tool_invocations + 1);
-    assert_eq!(
-        after_first.write_authorizations,
-        before.write_authorizations
-    );
+    assert_eq!(after_first.write_checks, before.write_checks);
     assert_eq!(after_first.artifact_staging, before.artifact_staging);
     assert_eq!(after_first.artifacts, before.artifacts);
     assert_eq!(after_first.artifact_links, before.artifact_links);
@@ -286,14 +309,20 @@ fn committed_non_allow_prepare_write_audit_and_replay_are_exact() -> Result<(), 
 
     let replay = service.prepare_write(
         request.clone(),
-        invocation(&fixture, AccessClass::WriteAuthorization),
+        invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
     assert!(replay.replayed);
     assert_eq!(replay.response_json, first.response_json);
     assert_eq!(fixture.counts()?, after_first);
 
-    let mismatch =
-        service.prepare_write(request, invocation(&fixture, AccessClass::CoreMutation))?;
+    let mismatch = service.prepare_write(
+        request,
+        invocation_with_actor(
+            &fixture,
+            ActorSource::agent_connection("connection_other"),
+            OperationCategory::AgentWorkflow,
+        ),
+    )?;
     assert!(!mismatch.replayed);
     assert_rejected_code(&mismatch.response_value, "LOCAL_ACCESS_MISMATCH");
     assert!(mismatch
@@ -306,7 +335,7 @@ fn committed_non_allow_prepare_write_audit_and_replay_are_exact() -> Result<(), 
 }
 
 #[test]
-fn write_authorization_lifecycle_is_single_use_and_state_bound() -> Result<(), Box<dyn Error>> {
+fn write_check_lifecycle_is_single_use_and_state_bound() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("write_lifecycle")?;
     let service = core(&fixture);
     let (task_id, change_unit_id) = create_task_with_change_unit(&fixture, &service, "write")?;
@@ -322,14 +351,11 @@ fn write_authorization_lifecycle_is_single_use_and_state_bound() -> Result<(), B
     path_block.intended_paths = vec!["src/other.rs".to_owned()];
     let path_blocked = service.prepare_write(
         path_block,
-        invocation(&fixture, AccessClass::WriteAuthorization),
+        invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_eq!(path_blocked.response_value["decision"], "blocked");
     assert_prepare_reason(&path_blocked.response_value, "path_out_of_scope");
-    assert_eq!(
-        fixture.counts()?.write_authorizations,
-        before_blocked.write_authorizations
-    );
+    assert_eq!(fixture.counts()?.write_checks, before_blocked.write_checks);
 
     let before_approval = fixture.counts()?;
     let mut approval_required = fixture.prepare_write_request(
@@ -342,7 +368,7 @@ fn write_authorization_lifecycle_is_single_use_and_state_bound() -> Result<(), B
     approval_required.sensitive_categories = vec!["network".to_owned()];
     let approval_blocked = service.prepare_write(
         approval_required,
-        invocation(&fixture, AccessClass::WriteAuthorization),
+        invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_eq!(
         approval_blocked.response_value["decision"],
@@ -352,10 +378,7 @@ fn write_authorization_lifecycle_is_single_use_and_state_bound() -> Result<(), B
         &approval_blocked.response_value,
         "sensitive_approval_missing",
     );
-    assert_eq!(
-        fixture.counts()?.write_authorizations,
-        before_approval.write_authorizations
-    );
+    assert_eq!(fixture.counts()?.write_checks, before_approval.write_checks);
 
     let allowed = service.prepare_write(
         fixture.prepare_write_request(
@@ -365,20 +388,17 @@ fn write_authorization_lifecycle_is_single_use_and_state_bound() -> Result<(), B
             Some(&task_id),
             Some(&change_unit_id),
         ),
-        invocation(&fixture, AccessClass::WriteAuthorization),
+        invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
-    let write_authorization_id = allowed.response_value["write_authorization_ref"]["record_id"]
+    let write_check_id = allowed.response_value["write_check_ref"]["record_id"]
         .as_str()
-        .expect("write authorization ref should be present")
+        .expect("Write Check ref should be present")
         .to_owned();
     assert_eq!(allowed.response_value["decision"], "allowed");
-    assert_eq!(allowed.response_value["authorization_effect"], "created");
+    assert_eq!(allowed.response_value["write_check_effect"], "created");
+    assert_eq!(fixture.write_check_status(&write_check_id)?, "active");
     assert_eq!(
-        fixture.write_authorization_status(&write_authorization_id)?,
-        "active"
-    );
-    assert_eq!(
-        fixture.write_authorization_basis(&write_authorization_id)?,
+        fixture.write_check_basis(&write_check_id)?,
         allowed.response_value["base"]["state_version"]
             .as_u64()
             .unwrap()
@@ -395,13 +415,11 @@ fn write_authorization_lifecycle_is_single_use_and_state_bound() -> Result<(), B
     );
     run.observed_changes.product_file_write_observed = true;
     run.observed_changes.changed_paths = vec![DEFAULT_PRODUCT_PATH.to_owned()];
-    run.write_authorization_id = Some(WriteAuthorizationId::new(&write_authorization_id)).into();
-    let consumed = service.record_run(run, invocation(&fixture, AccessClass::RunRecording))?;
+    run.write_check_id = Some(WriteCheckId::new(&write_check_id)).into();
+    let consumed =
+        service.record_run(run, invocation(&fixture, OperationCategory::AgentWorkflow))?;
     assert_eq!(consumed.response_value["base"]["state_version"], 6);
-    assert_eq!(
-        fixture.write_authorization_status(&write_authorization_id)?,
-        "consumed"
-    );
+    assert_eq!(fixture.write_check_status(&write_check_id)?, "consumed");
     let after_consume = fixture.counts()?;
     assert_eq!(
         after_consume.state_version,
@@ -420,16 +438,19 @@ fn write_authorization_lifecycle_is_single_use_and_state_bound() -> Result<(), B
     );
     reuse.observed_changes.product_file_write_observed = true;
     reuse.observed_changes.changed_paths = vec![DEFAULT_PRODUCT_PATH.to_owned()];
-    reuse.write_authorization_id = Some(WriteAuthorizationId::new(&write_authorization_id)).into();
-    let rejected = service.record_run(reuse, invocation(&fixture, AccessClass::RunRecording))?;
-    assert_rejected_code(&rejected.response_value, "WRITE_AUTHORIZATION_INVALID");
+    reuse.write_check_id = Some(WriteCheckId::new(&write_check_id)).into();
+    let rejected = service.record_run(
+        reuse,
+        invocation(&fixture, OperationCategory::AgentWorkflow),
+    )?;
+    assert_rejected_code(&rejected.response_value, "WRITE_CHECK_INVALID");
     assert_eq!(fixture.counts()?, before_reuse);
 
     let stale_fixture = CoreFixture::new("write_stale")?;
     let stale_service = core(&stale_fixture);
     let (stale_task_id, stale_change_unit_id) =
         create_task_with_change_unit(&stale_fixture, &stale_service, "stale")?;
-    let stale_auth = prepare_write_authorization(
+    let stale_auth = prepare_write_check(
         &stale_fixture,
         &stale_service,
         &stale_task_id,
@@ -447,12 +468,9 @@ fn write_authorization_lifecycle_is_single_use_and_state_bound() -> Result<(), B
             operation: ChangeUnitOperation::ReplaceCurrent,
             scope_summary: "Replacement current scope.",
         }),
-        invocation(&stale_fixture, AccessClass::CoreMutation),
+        invocation(&stale_fixture, OperationCategory::AgentWorkflow),
     )?;
-    assert_eq!(
-        stale_fixture.write_authorization_status(&stale_auth)?,
-        "stale"
-    );
+    assert_eq!(stale_fixture.write_check_status(&stale_auth)?, "stale");
     Ok(())
 }
 
@@ -476,7 +494,7 @@ fn artifact_lifecycle_promotes_valid_handles_and_rolls_back_invalid_ones(
     stage_request.safe_bytes_or_notice = "{\"fixture\":\"artifact\"}".to_owned();
     let staged = service.stage_artifact(
         stage_request,
-        invocation(&fixture, AccessClass::ArtifactRegistration),
+        invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
     let after_stage = fixture.counts()?;
     let handle: StagedArtifactHandle =
@@ -513,8 +531,10 @@ fn artifact_lifecycle_promotes_valid_handles_and_rolls_back_invalid_ones(
     );
     invalid_run.artifact_inputs = vec![invalid_input];
     invalid_run.evidence_updates = vec![supported_evidence_update("Validation passed.")];
-    let invalid =
-        service.record_run(invalid_run, invocation(&fixture, AccessClass::RunRecording))?;
+    let invalid = service.record_run(
+        invalid_run,
+        invocation(&fixture, OperationCategory::AgentWorkflow),
+    )?;
     assert_rejected_code(&invalid.response_value, "VALIDATION_FAILED");
     assert_eq!(
         invalid.response_value["errors"][0]["details"]["artifact_input_error"]["reason"],
@@ -542,7 +562,10 @@ fn artifact_lifecycle_promotes_valid_handles_and_rolls_back_invalid_ones(
         Some("Validation passed."),
     )];
     valid_run.evidence_updates = vec![supported_evidence_update("Validation passed.")];
-    let valid = service.record_run(valid_run, invocation(&fixture, AccessClass::RunRecording))?;
+    let valid = service.record_run(
+        valid_run,
+        invocation(&fixture, OperationCategory::AgentWorkflow),
+    )?;
     let after_valid = fixture.counts()?;
     let artifact_id = valid.response_value["registered_artifacts"][0]["artifact_id"]
         .as_str()
@@ -571,8 +594,7 @@ fn artifact_lifecycle_promotes_valid_handles_and_rolls_back_invalid_ones(
 }
 
 #[test]
-fn user_judgment_kinds_remain_separate_from_scope_and_write_authority() -> Result<(), Box<dyn Error>>
-{
+fn user_judgment_kinds_remain_separate_from_scope_and_write_checks() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("judgment")?;
     let service = core(&fixture);
     let (task_id, change_unit_id) = create_task_with_change_unit(&fixture, &service, "judgment")?;
@@ -589,7 +611,7 @@ fn user_judgment_kinds_remain_separate_from_scope_and_write_authority() -> Resul
             change_unit_id: Some(&change_unit_id),
             judgment_kind: JudgmentKind::ScopeDecision,
         }),
-        invocation(&fixture, AccessClass::CoreMutation),
+        invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
     let scope_judgment_id = scope_judgment.response_value["user_judgment_ref"]["record_id"]
         .as_str()
@@ -606,7 +628,7 @@ fn user_judgment_kinds_remain_separate_from_scope_and_write_authority() -> Resul
             judgment_kind: JudgmentKind::ScopeDecision,
             answer: answer_payload(JudgmentKind::ScopeDecision),
         }),
-        invocation(&fixture, AccessClass::CoreMutation),
+        invocation(&fixture, OperationCategory::UserOnly),
     )?;
     assert_eq!(
         scope_recorded.response_value["base"]["response_kind"],
@@ -629,7 +651,7 @@ fn user_judgment_kinds_remain_separate_from_scope_and_write_authority() -> Resul
             change_unit_id: Some(&change_unit_id),
             judgment_kind: JudgmentKind::SensitiveApproval,
         }),
-        invocation(&fixture, AccessClass::CoreMutation),
+        invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
     let sensitive_judgment_id = sensitive_judgment.response_value["user_judgment_ref"]["record_id"]
         .as_str()
@@ -646,12 +668,12 @@ fn user_judgment_kinds_remain_separate_from_scope_and_write_authority() -> Resul
             judgment_kind: JudgmentKind::SensitiveApproval,
             answer: answer_payload(JudgmentKind::SensitiveApproval),
         }),
-        invocation(&fixture, AccessClass::CoreMutation),
+        invocation(&fixture, OperationCategory::UserOnly),
     )?;
     assert_eq!(sensitive.response_value["base"]["response_kind"], "result");
     assert_eq!(
-        fixture.counts()?.write_authorizations,
-        before_sensitive.write_authorizations
+        fixture.counts()?.write_checks,
+        before_sensitive.write_checks
     );
 
     let mut risk_basis = fixture.record_run_request(
@@ -676,8 +698,10 @@ fn user_judgment_kinds_remain_separate_from_scope_and_write_authority() -> Resul
         recovery_constraints: Vec::new(),
     })
     .into();
-    let risk_basis =
-        service.record_run(risk_basis, invocation(&fixture, AccessClass::RunRecording))?;
+    let risk_basis = service.record_run(
+        risk_basis,
+        invocation(&fixture, OperationCategory::AgentWorkflow),
+    )?;
     let after_risk_basis = risk_basis.response_value["base"]["state_version"]
         .as_u64()
         .expect("risk basis state version should be present");
@@ -692,7 +716,7 @@ fn user_judgment_kinds_remain_separate_from_scope_and_write_authority() -> Resul
             change_unit_id: Some(&change_unit_id),
             judgment_kind: JudgmentKind::ResidualRiskAcceptance,
         }),
-        invocation(&fixture, AccessClass::CoreMutation),
+        invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
     let risk_judgment_id = risk_judgment.response_value["user_judgment_ref"]["record_id"]
         .as_str()
@@ -709,7 +733,7 @@ fn user_judgment_kinds_remain_separate_from_scope_and_write_authority() -> Resul
             judgment_kind: JudgmentKind::ResidualRiskAcceptance,
             answer: answer_payload(JudgmentKind::FinalAcceptance),
         }),
-        invocation(&fixture, AccessClass::CoreMutation),
+        invocation(&fixture, OperationCategory::UserOnly),
     )?;
     assert_rejected_code(&wrong_kind.response_value, "VALIDATION_FAILED");
     assert_eq!(fixture.counts()?, before_wrong_kind);
@@ -743,7 +767,7 @@ fn close_readiness_reports_distinct_blockers_without_substitution() -> Result<()
             close_reason: Some(CloseReason::CompletedSelfChecked),
             superseding_task_id: None,
         }),
-        invocation(&final_fixture, AccessClass::CoreMutation),
+        invocation(&final_fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_close_blocker(&final_blocked.response_value, "missing_final_acceptance");
     assert_eq!(final_fixture.counts()?, before_close);
@@ -779,7 +803,7 @@ fn close_readiness_reports_distinct_blockers_without_substitution() -> Result<()
             close_reason: Some(CloseReason::CompletedSelfChecked),
             superseding_task_id: None,
         }),
-        invocation(&evidence_fixture, AccessClass::CoreMutation),
+        invocation(&evidence_fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_close_blocker(
         &evidence_blocked.response_value,
@@ -816,7 +840,7 @@ fn close_readiness_reports_distinct_blockers_without_substitution() -> Result<()
     .into();
     let artifact_run = artifact_service.record_run(
         run,
-        invocation(&artifact_fixture, AccessClass::RunRecording),
+        invocation(&artifact_fixture, OperationCategory::AgentWorkflow),
     )?;
     let artifact_id = artifact_run.response_value["registered_artifacts"][0]["artifact_id"]
         .as_str()
@@ -842,7 +866,7 @@ fn close_readiness_reports_distinct_blockers_without_substitution() -> Result<()
             close_reason: Some(CloseReason::CompletedSelfChecked),
             superseding_task_id: None,
         }),
-        invocation(&artifact_fixture, AccessClass::CoreMutation),
+        invocation(&artifact_fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_close_blocker(&artifact_blocked.response_value, "artifact_unavailable");
 
@@ -874,7 +898,7 @@ fn close_readiness_reports_distinct_blockers_without_substitution() -> Result<()
     .into();
     let risk_run = risk_service.record_run(
         risk_run,
-        invocation(&risk_fixture, AccessClass::RunRecording),
+        invocation(&risk_fixture, OperationCategory::AgentWorkflow),
     )?;
     let after_evidence = risk_run.response_value["base"]["state_version"]
         .as_u64()
@@ -898,7 +922,7 @@ fn close_readiness_reports_distinct_blockers_without_substitution() -> Result<()
             close_reason: Some(CloseReason::CompletedWithRiskAccepted),
             superseding_task_id: None,
         }),
-        invocation(&risk_fixture, AccessClass::CoreMutation),
+        invocation(&risk_fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_close_blocker(
         &risk_blocked.response_value,
@@ -933,7 +957,7 @@ fn cancel_and_supersede_terminal_paths_commit_once() -> Result<(), Box<dyn Error
             close_reason: Some(CloseReason::Cancelled),
             superseding_task_id: None,
         }),
-        invocation(&cancel_fixture, AccessClass::CoreMutation),
+        invocation(&cancel_fixture, OperationCategory::AgentWorkflow),
     )?;
     let after_cancel = cancel_fixture.counts()?;
     let cancel_fields = cancel_fixture.task_terminal_fields(&task_id)?;
@@ -961,7 +985,7 @@ fn cancel_and_supersede_terminal_paths_commit_once() -> Result<(), Box<dyn Error
             close_reason: Some(CloseReason::Superseded),
             superseding_task_id: Some(replacement_task_id),
         }),
-        invocation(&supersede_fixture, AccessClass::CoreMutation),
+        invocation(&supersede_fixture, OperationCategory::AgentWorkflow),
     )?;
     let after_supersede = supersede_fixture.counts()?;
     let supersede_fields = supersede_fixture.task_terminal_fields(&task_id)?;
@@ -1024,7 +1048,7 @@ fn persisted_owner_state_corruption_fails_closed_without_effects() -> Result<(),
             close_reason: None,
             superseding_task_id: None,
         }),
-        invocation(&fixture, AccessClass::ReadStatus),
+        invocation(&fixture, OperationCategory::Read),
     )?;
     assert_owner_state_unavailable(&check.response_value, "tasks", "completion_policy_json");
     assert_eq!(fixture.counts()?, before);
@@ -1040,7 +1064,7 @@ fn persisted_owner_state_corruption_fails_closed_without_effects() -> Result<(),
             close_reason: Some(CloseReason::CompletedSelfChecked),
             superseding_task_id: None,
         }),
-        invocation(&fixture, AccessClass::CoreMutation),
+        invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_owner_state_unavailable(&complete.response_value, "tasks", "completion_policy_json");
     assert_eq!(fixture.counts()?, before);
@@ -1061,7 +1085,7 @@ fn persisted_owner_state_corruption_fails_closed_without_effects() -> Result<(),
             close_reason: None,
             superseding_task_id: None,
         }),
-        invocation(&fixture, AccessClass::ReadStatus),
+        invocation(&fixture, OperationCategory::Read),
     )?;
     assert_owner_state_unavailable(&check.response_value, "tasks", "close_summary_json");
     assert_eq!(fixture.counts()?, before);
@@ -1082,7 +1106,7 @@ fn persisted_owner_state_corruption_fails_closed_without_effects() -> Result<(),
             close_reason: None,
             superseding_task_id: None,
         }),
-        invocation(&fixture, AccessClass::ReadStatus),
+        invocation(&fixture, OperationCategory::Read),
     )?;
     assert_owner_state_unavailable(&check.response_value, "tasks", "close_basis_json");
     assert_eq!(fixture.counts()?, before);
@@ -1105,7 +1129,7 @@ fn persisted_owner_state_corruption_fails_closed_without_effects() -> Result<(),
             Some(&task_id),
             Some(&change_unit_id),
         ),
-        invocation(&fixture, AccessClass::WriteAuthorization),
+        invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_owner_state_unavailable(&prepare.response_value, "change_units", "write_basis_json");
     assert_eq!(fixture.counts()?, before);
@@ -1128,7 +1152,7 @@ fn persisted_owner_state_corruption_fails_closed_without_effects() -> Result<(),
             Some(&task_id),
             Some(&change_unit_id),
         ),
-        invocation(&fixture, AccessClass::WriteAuthorization),
+        invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_owner_state_unavailable(
         &prepare.response_value,
@@ -1158,7 +1182,7 @@ fn persisted_owner_state_corruption_fails_closed_without_effects() -> Result<(),
             close_reason: None,
             superseding_task_id: None,
         }),
-        invocation(&fixture, AccessClass::ReadStatus),
+        invocation(&fixture, OperationCategory::Read),
     )?;
     assert_owner_state_unavailable(&check.response_value, "change_units", "lifecycle_json");
     assert_eq!(fixture.counts()?, before);
@@ -1234,7 +1258,7 @@ fn required_resolution_json_null_is_rejected_and_malformed_text_fails_closed(
             close_reason: None,
             superseding_task_id: None,
         }),
-        invocation(&malformed_fixture, AccessClass::ReadStatus),
+        invocation(&malformed_fixture, OperationCategory::Read),
     )?;
     assert_owner_state_unavailable(&check.response_value, "user_judgments", "resolution_json");
     assert_eq!(malformed_fixture.counts()?, before);
@@ -1242,7 +1266,7 @@ fn required_resolution_json_null_is_rejected_and_malformed_text_fails_closed(
 }
 
 #[test]
-fn write_authorization_expiration_is_enforced_through_record_run() -> Result<(), Box<dyn Error>> {
+fn write_check_expiration_is_enforced_through_record_run() -> Result<(), Box<dyn Error>> {
     let t0 = fixed_time("2026-01-01T00:00:00Z")?;
 
     let usable = prepared_write_fixture("auth_usable", t0)?;
@@ -1256,18 +1280,16 @@ fn write_authorization_expiration_is_enforced_through_record_run() -> Result<(),
                 before_usable.state_version,
                 &usable.task_id,
                 &usable.change_unit_id,
-                &usable.write_authorization_id,
+                &usable.write_check_id,
             ),
-            invocation(&usable.fixture, AccessClass::RunRecording),
+            invocation(&usable.fixture, OperationCategory::AgentWorkflow),
         )?;
     assert_eq!(
         usable_response.response_value["base"]["response_kind"],
         "result"
     );
     assert_eq!(
-        usable
-            .fixture
-            .write_authorization_status(&usable.write_authorization_id)?,
+        usable.fixture.write_check_status(&usable.write_check_id)?,
         "consumed"
     );
 
@@ -1281,29 +1303,26 @@ fn write_authorization_expiration_is_enforced_through_record_run() -> Result<(),
             before_expired.state_version,
             &expired.task_id,
             &expired.change_unit_id,
-            &expired.write_authorization_id,
+            &expired.write_check_id,
         ),
-        invocation(&expired.fixture, AccessClass::RunRecording),
+        invocation(&expired.fixture, OperationCategory::AgentWorkflow),
     )?;
-    assert_rejected_code(
-        &expired_response.response_value,
-        "WRITE_AUTHORIZATION_INVALID",
-    );
+    assert_rejected_code(&expired_response.response_value, "WRITE_CHECK_INVALID");
     assert_eq!(
-        expired_response.response_value["errors"][0]["details"]["authorization_reason"],
+        expired_response.response_value["errors"][0]["details"]["write_check_reason"],
         "expired"
     );
     assert_eq!(expired.fixture.counts()?, before_expired);
     assert_eq!(
         expired
             .fixture
-            .write_authorization_status(&expired.write_authorization_id)?,
+            .write_check_status(&expired.write_check_id)?,
         "active"
     );
 
     let capped = prepared_write_fixture("auth_capped", t0)?;
-    capped.fixture.set_write_authorization_timestamps(
-        &capped.write_authorization_id,
+    capped.fixture.set_write_check_timestamps(
+        &capped.write_check_id,
         &format_time(t0),
         &format_time(t0 + Duration::days(1)),
     )?;
@@ -1316,14 +1335,11 @@ fn write_authorization_expiration_is_enforced_through_record_run() -> Result<(),
             before_capped.state_version,
             &capped.task_id,
             &capped.change_unit_id,
-            &capped.write_authorization_id,
+            &capped.write_check_id,
         ),
-        invocation(&capped.fixture, AccessClass::RunRecording),
+        invocation(&capped.fixture, OperationCategory::AgentWorkflow),
     )?;
-    assert_rejected_code(
-        &capped_response.response_value,
-        "WRITE_AUTHORIZATION_INVALID",
-    );
+    assert_rejected_code(&capped_response.response_value, "WRITE_CHECK_INVALID");
     assert_eq!(capped.fixture.counts()?, before_capped);
 
     let stale = prepared_write_fixture("auth_stale_precedence", t0)?;
@@ -1335,9 +1351,9 @@ fn write_authorization_expiration_is_enforced_through_record_run() -> Result<(),
             expected_state_version: Some(stale.fixture.counts()?.state_version),
             task_id: &stale.task_id,
             operation: ChangeUnitOperation::ReplaceCurrent,
-            scope_summary: "Replacement scope before stale authorization use.",
+            scope_summary: "Replacement scope before stale Write Check use.",
         }),
-        invocation(&stale.fixture, AccessClass::CoreMutation),
+        invocation(&stale.fixture, OperationCategory::AgentWorkflow),
     )?;
     let current_change_unit_id = stale
         .fixture
@@ -1352,16 +1368,14 @@ fn write_authorization_expiration_is_enforced_through_record_run() -> Result<(),
             before_stale.state_version,
             &stale.task_id,
             &current_change_unit_id,
-            &stale.write_authorization_id,
+            &stale.write_check_id,
         ),
-        invocation(&stale.fixture, AccessClass::RunRecording),
+        invocation(&stale.fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_rejected_code(&stale_response.response_value, "STATE_VERSION_CONFLICT");
     assert_eq!(stale.fixture.counts()?, before_stale);
     assert_eq!(
-        stale
-            .fixture
-            .write_authorization_status(&stale.write_authorization_id)?,
+        stale.fixture.write_check_status(&stale.write_check_id)?,
         "stale"
     );
 
@@ -1369,7 +1383,7 @@ fn write_authorization_expiration_is_enforced_through_record_run() -> Result<(),
 }
 
 #[test]
-fn prepare_write_allocates_authorization_only_on_committed_allowed_effect(
+fn prepare_write_allocates_write_check_only_on_committed_allowed_effect(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("auth_allocation")?;
     let service = core(&fixture);
@@ -1386,14 +1400,11 @@ fn prepare_write_allocates_authorization_only_on_committed_allowed_effect(
     let before_blocked = fixture.counts()?;
     let blocked_response = service.prepare_write(
         blocked,
-        invocation(&fixture, AccessClass::WriteAuthorization),
+        invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_eq!(blocked_response.response_value["decision"], "blocked");
-    assert!(blocked_response.response_value["write_authorization_ref"].is_null());
-    assert_eq!(
-        fixture.counts()?.write_authorizations,
-        before_blocked.write_authorizations
-    );
+    assert!(blocked_response.response_value["write_check_ref"].is_null());
+    assert_eq!(fixture.counts()?.write_checks, before_blocked.write_checks);
 
     let before_dry_run = fixture.counts()?;
     let mut dry_run = fixture.prepare_write_request(
@@ -1406,7 +1417,7 @@ fn prepare_write_allocates_authorization_only_on_committed_allowed_effect(
     dry_run.envelope.dry_run = true;
     let dry_response = service.prepare_write(
         dry_run,
-        invocation(&fixture, AccessClass::WriteAuthorization),
+        invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_eq!(
         dry_response.response_value["base"]["response_kind"],
@@ -1423,29 +1434,26 @@ fn prepare_write_allocates_authorization_only_on_committed_allowed_effect(
     );
     let allowed = service.prepare_write(
         allowed_request.clone(),
-        invocation(&fixture, AccessClass::WriteAuthorization),
+        invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
     let after_allowed = fixture.counts()?;
-    let authorization_id = allowed.response_value["write_authorization_ref"]["record_id"]
+    let write_check_id = allowed.response_value["write_check_ref"]["record_id"]
         .as_str()
-        .expect("allowed prepare_write should allocate an authorization")
+        .expect("allowed prepare_write should allocate a Write Check")
         .to_owned();
-    let timestamps = fixture.write_authorization_timestamps(&authorization_id)?;
+    let timestamps = fixture.write_check_timestamps(&write_check_id)?;
 
     let replay = service.prepare_write(
         allowed_request,
-        invocation(&fixture, AccessClass::WriteAuthorization),
+        invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
     assert!(replay.replayed);
     assert_eq!(replay.response_json, allowed.response_json);
     assert_eq!(
-        replay.response_value["write_authorization_ref"]["record_id"],
-        authorization_id
+        replay.response_value["write_check_ref"]["record_id"],
+        write_check_id
     );
-    assert_eq!(
-        fixture.write_authorization_timestamps(&authorization_id)?,
-        timestamps
-    );
+    assert_eq!(fixture.write_check_timestamps(&write_check_id)?, timestamps);
     assert_eq!(fixture.counts()?, after_allowed);
     Ok(())
 }
@@ -1480,7 +1488,7 @@ fn current_close_basis_lifecycle_is_publicly_observable() -> Result<(), Box<dyn 
     .into();
     let risk_response = risk_service.record_run(
         risk_run,
-        invocation(&risk_fixture, AccessClass::RunRecording),
+        invocation(&risk_fixture, OperationCategory::AgentWorkflow),
     )?;
     let risk_id = risk_response.response_value["current_close_basis"]["residual_risks"][0]
         ["risk_id"]
@@ -1492,7 +1500,7 @@ fn current_close_basis_lifecycle_is_publicly_observable() -> Result<(), Box<dyn 
     let before_status = risk_fixture.counts()?;
     let status = risk_service.status(
         risk_fixture.status_request("req_basis_public_status", Some(&task_id)),
-        invocation(&risk_fixture, AccessClass::ReadStatus),
+        invocation(&risk_fixture, OperationCategory::Read),
     )?;
     assert_eq!(
         status.response_value["current_close_basis"]["residual_risks"][0]["risk_id"],
@@ -1523,11 +1531,11 @@ fn current_close_basis_lifecycle_is_publicly_observable() -> Result<(), Box<dyn 
     .into();
     empty_service.record_run(
         empty_run,
-        invocation(&empty_fixture, AccessClass::RunRecording),
+        invocation(&empty_fixture, OperationCategory::AgentWorkflow),
     )?;
     let status = empty_service.status(
         empty_fixture.status_request("req_basis_public_empty_status", Some(&task_id)),
-        invocation(&empty_fixture, AccessClass::ReadStatus),
+        invocation(&empty_fixture, OperationCategory::Read),
     )?;
     assert!(status.response_value["current_close_basis"].is_object());
     assert_eq!(
@@ -1543,12 +1551,14 @@ fn current_close_basis_lifecycle_is_publicly_observable() -> Result<(), Box<dyn 
         &task_id,
         &change_unit_id,
     );
-    let clear_response =
-        empty_service.record_run(clear, invocation(&empty_fixture, AccessClass::RunRecording))?;
+    let clear_response = empty_service.record_run(
+        clear,
+        invocation(&empty_fixture, OperationCategory::AgentWorkflow),
+    )?;
     assert!(clear_response.response_value["current_close_basis"].is_null());
     let status = empty_service.status(
         empty_fixture.status_request("req_basis_public_cleared_status", Some(&task_id)),
-        invocation(&empty_fixture, AccessClass::ReadStatus),
+        invocation(&empty_fixture, OperationCategory::Read),
     )?;
     assert!(status.response_value["current_close_basis"].is_null());
     let before_final = empty_fixture.counts()?;
@@ -1562,7 +1572,7 @@ fn current_close_basis_lifecycle_is_publicly_observable() -> Result<(), Box<dyn 
             change_unit_id: Some(&change_unit_id),
             judgment_kind: JudgmentKind::FinalAcceptance,
         }),
-        invocation(&empty_fixture, AccessClass::CoreMutation),
+        invocation(&empty_fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_rejected_code(&final_without_basis.response_value, "DECISION_UNRESOLVED");
     assert_eq!(empty_fixture.counts()?, before_final);
@@ -1589,7 +1599,7 @@ fn current_close_basis_lifecycle_is_publicly_observable() -> Result<(), Box<dyn 
             operation: ChangeUnitOperation::KeepCurrent,
             scope_summary: "Material scope change invalidates close basis.",
         }),
-        invocation(&scope_fixture, AccessClass::CoreMutation),
+        invocation(&scope_fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_eq!(
         scope_change.response_value["base"]["response_kind"],
@@ -1597,7 +1607,7 @@ fn current_close_basis_lifecycle_is_publicly_observable() -> Result<(), Box<dyn 
     );
     let status = scope_service.status(
         scope_fixture.status_request("req_basis_public_scope_status", Some(&task_id)),
-        invocation(&scope_fixture, AccessClass::ReadStatus),
+        invocation(&scope_fixture, OperationCategory::Read),
     )?;
     assert!(status.response_value["current_close_basis"].is_null());
     Ok(())
@@ -1636,7 +1646,7 @@ fn judgment_compatibility_is_exact_for_close_and_write_requirements() -> Result<
             operation: ChangeUnitOperation::KeepCurrent,
             scope_summary: "Scope change makes final acceptance stale.",
         }),
-        invocation(&scope_fixture, AccessClass::CoreMutation),
+        invocation(&scope_fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_eq!(scope_fixture.user_judgment_status(&final_id)?, "stale");
     assert_eq!(
@@ -1700,7 +1710,7 @@ fn judgment_compatibility_is_exact_for_close_and_write_requirements() -> Result<
             change_unit_id: Some(&change_unit_id),
             judgment_kind: JudgmentKind::ResidualRiskAcceptance,
         }),
-        invocation(&partial_fixture, AccessClass::CoreMutation),
+        invocation(&partial_fixture, OperationCategory::AgentWorkflow),
     )?;
     let risk_judgment_id = response_record_id(&risk_judgment.response_value, "user_judgment_ref");
     let partial = partial_service.record_user_judgment(
@@ -1713,7 +1723,7 @@ fn judgment_compatibility_is_exact_for_close_and_write_requirements() -> Result<
             judgment_kind: JudgmentKind::ResidualRiskAcceptance,
             answer: residual_risk_acceptance_payload(&[risk_ids[0].clone()]),
         }),
-        invocation(&partial_fixture, AccessClass::CoreMutation),
+        invocation(&partial_fixture, OperationCategory::UserOnly),
     )?;
     let after_partial = partial.response_value["base"]["state_version"]
         .as_u64()
@@ -1737,7 +1747,7 @@ fn judgment_compatibility_is_exact_for_close_and_write_requirements() -> Result<
             close_reason: Some(CloseReason::CompletedWithRiskAccepted),
             superseding_task_id: None,
         }),
-        invocation(&partial_fixture, AccessClass::CoreMutation),
+        invocation(&partial_fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_close_blocker(&close.response_value, "missing_residual_risk_acceptance");
 
@@ -1774,7 +1784,7 @@ fn judgment_compatibility_is_exact_for_close_and_write_requirements() -> Result<
             change_unit_id: Some(&change_unit_id),
             judgment_kind: JudgmentKind::ResidualRiskAcceptance,
         }),
-        invocation(&text_fixture, AccessClass::CoreMutation),
+        invocation(&text_fixture, OperationCategory::AgentWorkflow),
     )?;
     let risk_judgment_id = response_record_id(&risk_judgment.response_value, "user_judgment_ref");
     let before_wrong = text_fixture.counts()?;
@@ -1788,7 +1798,7 @@ fn judgment_compatibility_is_exact_for_close_and_write_requirements() -> Result<
             judgment_kind: JudgmentKind::ResidualRiskAcceptance,
             answer: residual_risk_acceptance_payload(&old_ids),
         }),
-        invocation(&text_fixture, AccessClass::CoreMutation),
+        invocation(&text_fixture, OperationCategory::UserOnly),
     )?;
     assert_rejected_code(&wrong_risk.response_value, "VALIDATION_FAILED");
     assert_eq!(text_fixture.counts()?, before_wrong);
@@ -1822,7 +1832,7 @@ fn judgment_compatibility_is_exact_for_close_and_write_requirements() -> Result<
             change_unit_id: Some(&change_unit_id),
             judgment_kind: JudgmentKind::ProductDecision,
         }),
-        invocation(&pending_fixture, AccessClass::CoreMutation),
+        invocation(&pending_fixture, OperationCategory::AgentWorkflow),
     )?;
     let pending_id = response_record_id(&pending.response_value, "user_judgment_ref");
     pending_service.update_scope(
@@ -1835,7 +1845,7 @@ fn judgment_compatibility_is_exact_for_close_and_write_requirements() -> Result<
             operation: ChangeUnitOperation::KeepCurrent,
             scope_summary: "Scope change supersedes pending judgment.",
         }),
-        invocation(&pending_fixture, AccessClass::CoreMutation),
+        invocation(&pending_fixture, OperationCategory::AgentWorkflow),
     )?;
     let before_answer = pending_fixture.counts()?;
     let stale_answer = pending_service.record_user_judgment(
@@ -1848,7 +1858,7 @@ fn judgment_compatibility_is_exact_for_close_and_write_requirements() -> Result<
             judgment_kind: JudgmentKind::ProductDecision,
             answer: answer_payload(JudgmentKind::ProductDecision),
         }),
-        invocation(&pending_fixture, AccessClass::CoreMutation),
+        invocation(&pending_fixture, OperationCategory::UserOnly),
     )?;
     assert_rejected_code(&stale_answer.response_value, "DECISION_UNRESOLVED");
     assert_eq!(pending_fixture.counts()?, before_answer);
@@ -1894,7 +1904,7 @@ fn status_projection_matches_public_close_check_and_stays_read_only() -> Result<
 
     let status = service.status(
         fixture.status_request("req_status_projection", Some(&task_id)),
-        invocation(&fixture, AccessClass::ReadStatus),
+        invocation(&fixture, OperationCategory::Read),
     )?;
     let check = service.close_task(
         fixture.close_task_request(CloseTaskFixture {
@@ -1907,7 +1917,7 @@ fn status_projection_matches_public_close_check_and_stays_read_only() -> Result<
             close_reason: None,
             superseding_task_id: None,
         }),
-        invocation(&fixture, AccessClass::ReadStatus),
+        invocation(&fixture, OperationCategory::Read),
     )?;
 
     assert_eq!(status.response_value["base"]["effect_kind"], "read_only");
@@ -1937,16 +1947,16 @@ fn status_projection_matches_public_close_check_and_stays_read_only() -> Result<
         expired
             .fixture
             .status_request("req_status_expired_projection", Some(&expired.task_id)),
-        invocation(&expired.fixture, AccessClass::ReadStatus),
+        invocation(&expired.fixture, OperationCategory::Read),
     )?;
     assert_eq!(
-        expired_status.response_value["write_authority_summary"]["status"],
+        expired_status.response_value["write_check_summary"]["status"],
         "expired"
     );
     assert_eq!(
         expired
             .fixture
-            .write_authorization_status(&expired.write_authorization_id)?,
+            .write_check_status(&expired.write_check_id)?,
         "active"
     );
     assert_eq!(expired.fixture.counts()?, before_status);
@@ -1987,7 +1997,7 @@ fn public_negative_authority_option_selection_remains_non_authoritative(
             close_reason: Some(CloseReason::CompletedSelfChecked),
             superseding_task_id: None,
         }),
-        invocation(&accepted_fixture, AccessClass::CoreMutation),
+        invocation(&accepted_fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_eq!(closed.response_value["close_state"], "closed");
 
@@ -2028,7 +2038,7 @@ fn public_negative_authority_option_selection_remains_non_authoritative(
             close_reason: Some(CloseReason::CompletedSelfChecked),
             superseding_task_id: None,
         }),
-        invocation(&rejected_fixture, AccessClass::CoreMutation),
+        invocation(&rejected_fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_eq!(response.response_value["close_state"], "blocked");
     assert_close_blocker(&response.response_value, "missing_final_acceptance");
@@ -2059,11 +2069,11 @@ fn public_negative_authority_option_selection_remains_non_authoritative(
             change_unit_id: Some(&change_unit_id),
             judgment_kind: JudgmentKind::FinalAcceptance,
         }),
-        invocation(&actor_fixture, AccessClass::CoreMutation),
+        invocation(&actor_fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_current_authority_options(&judgment.response_value);
     let judgment_id = response_record_id(&judgment.response_value, "user_judgment_ref");
-    let mut agent_record = actor_fixture.record_judgment_request(RecordJudgmentFixture {
+    let agent_record = actor_fixture.record_judgment_request(RecordJudgmentFixture {
         request_id: "req_negative_actor_final_record",
         idempotency_key: "idem_negative_actor_final_record",
         expected_state_version: Some(after_basis + 1),
@@ -2072,13 +2082,12 @@ fn public_negative_authority_option_selection_remains_non_authoritative(
         judgment_kind: JudgmentKind::FinalAcceptance,
         answer: answer_payload(JudgmentKind::FinalAcceptance),
     });
-    agent_record.envelope.actor_kind = volicord_types::ActorKind::Agent;
     let before_agent_record = actor_fixture.counts()?;
     let agent_rejected = actor_service.record_user_judgment(
         agent_record,
-        invocation(&actor_fixture, AccessClass::CoreMutation),
+        invocation(&actor_fixture, OperationCategory::AgentWorkflow),
     )?;
-    assert_rejected_code(&agent_rejected.response_value, "VALIDATION_FAILED");
+    assert_rejected_code(&agent_rejected.response_value, "LOCAL_ACCESS_MISMATCH");
     assert_eq!(actor_fixture.counts()?, before_agent_record);
     assert_eq!(actor_fixture.user_judgment_status(&judgment_id)?, "pending");
     let actor_blocked = actor_service.close_task(
@@ -2092,7 +2101,7 @@ fn public_negative_authority_option_selection_remains_non_authoritative(
             close_reason: Some(CloseReason::CompletedSelfChecked),
             superseding_task_id: None,
         }),
-        invocation(&actor_fixture, AccessClass::CoreMutation),
+        invocation(&actor_fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_eq!(actor_blocked.response_value["close_state"], "blocked");
     assert_close_blocker(&actor_blocked.response_value, "missing_final_acceptance");
@@ -2125,7 +2134,7 @@ fn public_negative_authority_option_selection_remains_non_authoritative(
     )?;
     let status = service.status(
         fixture.status_request("req_negative_risk_status_rejected", Some(&task_id)),
-        invocation(&fixture, AccessClass::ReadStatus),
+        invocation(&fixture, OperationCategory::Read),
     )?;
     assert_eq!(status.response_value["base"]["state_version"], after_record);
     assert_eq!(
@@ -2168,7 +2177,7 @@ fn public_negative_authority_option_selection_remains_non_authoritative(
     prepare.sensitive_categories = vec!["network".to_owned()];
     let allowed = sensitive_service.prepare_write(
         prepare,
-        invocation(&sensitive_fixture, AccessClass::WriteAuthorization),
+        invocation(&sensitive_fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_eq!(allowed.response_value["decision"], "allowed");
     assert_eq!(
@@ -2202,7 +2211,7 @@ fn public_negative_authority_option_selection_remains_non_authoritative(
     prepare.sensitive_categories = vec!["network".to_owned()];
     let response = service.prepare_write(
         prepare,
-        invocation(&fixture, AccessClass::WriteAuthorization),
+        invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_eq!(
         fixture.user_judgment_resolution_outcome(&judgment_id)?,
@@ -2210,7 +2219,7 @@ fn public_negative_authority_option_selection_remains_non_authoritative(
     );
     assert_eq!(response.response_value["decision"], "approval_required");
     assert_prepare_reason(&response.response_value, "sensitive_approval_missing");
-    assert!(response.response_value["write_authorization"].is_null());
+    assert!(response.response_value["write_check"].is_null());
 
     let conflict_fixture = CoreFixture::new("negative_answer_conflict")?;
     let conflict_service = core(&conflict_fixture);
@@ -2226,7 +2235,7 @@ fn public_negative_authority_option_selection_remains_non_authoritative(
             change_unit_id: Some(&change_unit_id),
             judgment_kind: JudgmentKind::ScopeDecision,
         }),
-        invocation(&conflict_fixture, AccessClass::CoreMutation),
+        invocation(&conflict_fixture, OperationCategory::AgentWorkflow),
     )?;
     let judgment_id = response_record_id(&judgment.response_value, "user_judgment_ref");
     let mut request = conflict_fixture.record_judgment_request(RecordJudgmentFixture {
@@ -2242,7 +2251,7 @@ fn public_negative_authority_option_selection_remains_non_authoritative(
     let before = conflict_fixture.counts()?;
     let rejected = conflict_service.record_user_judgment(
         request,
-        invocation(&conflict_fixture, AccessClass::CoreMutation),
+        invocation(&conflict_fixture, OperationCategory::UserOnly),
     )?;
     assert_rejected_code(&rejected.response_value, "VALIDATION_FAILED");
     assert_eq!(conflict_fixture.counts()?, before);
@@ -2299,11 +2308,10 @@ fn public_sensitive_lifecycle_preserves_full_scope_through_close() -> Result<(),
     prepare.sensitive_categories = vec!["network".to_owned()];
     let prepared = service.prepare_write(
         prepare,
-        invocation(&fixture, AccessClass::WriteAuthorization),
+        invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_eq!(prepared.response_value["decision"], "allowed");
-    let write_authorization_id =
-        response_record_id(&prepared.response_value, "write_authorization_ref");
+    let write_check_id = response_record_id(&prepared.response_value, "write_check_ref");
     let after_prepare = prepared.response_value["base"]["state_version"]
         .as_u64()
         .expect("state_version should be present");
@@ -2315,7 +2323,7 @@ fn public_sensitive_lifecycle_preserves_full_scope_through_close() -> Result<(),
         after_prepare,
         &task_id,
         &change_unit_id,
-        &write_authorization_id,
+        &write_check_id,
     );
     run.observed_changes.sensitive_categories = vec!["network".to_owned()];
     run.evidence_updates = vec![supported_evidence_update("Close claim supported.")];
@@ -2327,7 +2335,8 @@ fn public_sensitive_lifecycle_preserves_full_scope_through_close() -> Result<(),
         recovery_constraints: Vec::new(),
     })
     .into();
-    let recorded = service.record_run(run, invocation(&fixture, AccessClass::RunRecording))?;
+    let recorded =
+        service.record_run(run, invocation(&fixture, OperationCategory::AgentWorkflow))?;
     let requirement =
         &recorded.response_value["current_close_basis"]["sensitive_action_requirements"][0];
     assert_eq!(requirement["action_kind"], "local_sensitive_step");
@@ -2339,8 +2348,8 @@ fn public_sensitive_lifecycle_preserves_full_scope_through_close() -> Result<(),
     assert_eq!(requirement["baseline_ref"], "baseline_fixture");
     assert_eq!(requirement["change_unit_id"], change_unit_id);
     assert_eq!(
-        requirement["source_write_authorization_ref"]["record_id"],
-        write_authorization_id
+        requirement["source_write_check_ref"]["record_id"],
+        write_check_id
     );
     let after_run = recorded.response_value["base"]["state_version"]
         .as_u64()
@@ -2348,7 +2357,7 @@ fn public_sensitive_lifecycle_preserves_full_scope_through_close() -> Result<(),
 
     let status = service.status(
         fixture.status_request("req_sensitive_public_status_after_run", Some(&task_id)),
-        invocation(&fixture, AccessClass::ReadStatus),
+        invocation(&fixture, OperationCategory::Read),
     )?;
     assert_eq!(
         status.response_value["current_close_basis"]["sensitive_action_requirements"][0],
@@ -2374,7 +2383,7 @@ fn public_sensitive_lifecycle_preserves_full_scope_through_close() -> Result<(),
             close_reason: Some(CloseReason::CompletedSelfChecked),
             superseding_task_id: None,
         }),
-        invocation(&fixture, AccessClass::CoreMutation),
+        invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_eq!(closed.response_value["close_state"], "closed");
     Ok(())
@@ -2397,7 +2406,7 @@ fn cancellation_and_pending_relevance_are_operation_specific() -> Result<(), Box
             close_reason: Some(CloseReason::Cancelled),
             superseding_task_id: None,
         }),
-        invocation(&missing_fixture, AccessClass::CoreMutation),
+        invocation(&missing_fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_eq!(missing.response_value["close_state"], "blocked");
     assert_close_blocker(&missing.response_value, "missing_cancellation_authority");
@@ -2428,7 +2437,7 @@ fn cancellation_and_pending_relevance_are_operation_specific() -> Result<(), Box
             close_reason: Some(CloseReason::Cancelled),
             superseding_task_id: None,
         }),
-        invocation(&fixture, AccessClass::CoreMutation),
+        invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_eq!(
         fixture.user_judgment_resolution_outcome(&judgment_id)?,
@@ -2459,7 +2468,7 @@ fn cancellation_and_pending_relevance_are_operation_specific() -> Result<(), Box
             operation: ChangeUnitOperation::ReplaceCurrent,
             scope_summary: "Replacement scope makes cancellation authority stale.",
         }),
-        invocation(&stale_fixture, AccessClass::CoreMutation),
+        invocation(&stale_fixture, OperationCategory::AgentWorkflow),
     )?;
     let after_scope = scope.response_value["base"]["state_version"]
         .as_u64()
@@ -2475,7 +2484,7 @@ fn cancellation_and_pending_relevance_are_operation_specific() -> Result<(), Box
             close_reason: Some(CloseReason::Cancelled),
             superseding_task_id: None,
         }),
-        invocation(&stale_fixture, AccessClass::CoreMutation),
+        invocation(&stale_fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_eq!(stale.response_value["close_state"], "blocked");
     assert_close_blocker(&stale.response_value, "cancellation_judgment_stale");
@@ -2505,7 +2514,7 @@ fn cancellation_and_pending_relevance_are_operation_specific() -> Result<(), Box
             change_unit_id: Some(&change_unit_id),
             judgment_kind: JudgmentKind::FinalAcceptance,
         }),
-        invocation(&final_pending_fixture, AccessClass::CoreMutation),
+        invocation(&final_pending_fixture, OperationCategory::AgentWorkflow),
     )?;
     let after_cancel_authority = record_cancellation_authority(
         &final_pending_fixture,
@@ -2526,7 +2535,7 @@ fn cancellation_and_pending_relevance_are_operation_specific() -> Result<(), Box
             close_reason: Some(CloseReason::Cancelled),
             superseding_task_id: None,
         }),
-        invocation(&final_pending_fixture, AccessClass::CoreMutation),
+        invocation(&final_pending_fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_eq!(cancelled.response_value["close_state"], "cancelled");
 
@@ -2550,7 +2559,7 @@ fn cancellation_and_pending_relevance_are_operation_specific() -> Result<(), Box
                 change_unit_id: Some(&change_unit_id),
                 judgment_kind: kind,
             }),
-            invocation(&fixture, AccessClass::CoreMutation),
+            invocation(&fixture, OperationCategory::AgentWorkflow),
         )?;
         let prepared = service.prepare_write(
             fixture.prepare_write_request(
@@ -2560,7 +2569,7 @@ fn cancellation_and_pending_relevance_are_operation_specific() -> Result<(), Box
                 Some(&task_id),
                 Some(&change_unit_id),
             ),
-            invocation(&fixture, AccessClass::WriteAuthorization),
+            invocation(&fixture, OperationCategory::AgentWorkflow),
         )?;
         assert_eq!(prepared.response_value["decision"], "allowed");
     }
@@ -2582,7 +2591,7 @@ fn cancellation_and_pending_relevance_are_operation_specific() -> Result<(), Box
             change_unit_id: Some(&change_unit_id),
             judgment_kind: JudgmentKind::SensitiveApproval,
         }),
-        invocation(&sensitive_pending_fixture, AccessClass::CoreMutation),
+        invocation(&sensitive_pending_fixture, OperationCategory::AgentWorkflow),
     )?;
     let mut sensitive_prepare = sensitive_pending_fixture.prepare_write_request(
         "req_pending_sensitive_prepare_write",
@@ -2595,10 +2604,10 @@ fn cancellation_and_pending_relevance_are_operation_specific() -> Result<(), Box
     sensitive_prepare.sensitive_categories = vec!["network".to_owned()];
     let sensitive_blocked = sensitive_pending_service.prepare_write(
         sensitive_prepare,
-        invocation(&sensitive_pending_fixture, AccessClass::WriteAuthorization),
+        invocation(&sensitive_pending_fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_ne!(sensitive_blocked.response_value["decision"], "allowed");
-    assert!(sensitive_blocked.response_value["write_authorization"].is_null());
+    assert!(sensitive_blocked.response_value["write_check"].is_null());
 
     let close_pending_fixture = CoreFixture::new("pending_close_complete")?;
     let close_pending_service = core(&close_pending_fixture);
@@ -2625,7 +2634,7 @@ fn cancellation_and_pending_relevance_are_operation_specific() -> Result<(), Box
             change_unit_id: Some(&change_unit_id),
             judgment_kind: JudgmentKind::FinalAcceptance,
         }),
-        invocation(&close_pending_fixture, AccessClass::CoreMutation),
+        invocation(&close_pending_fixture, OperationCategory::AgentWorkflow),
     )?;
     let close = close_pending_service.close_task(
         close_pending_fixture.close_task_request(CloseTaskFixture {
@@ -2638,7 +2647,7 @@ fn cancellation_and_pending_relevance_are_operation_specific() -> Result<(), Box
             close_reason: Some(CloseReason::CompletedSelfChecked),
             superseding_task_id: None,
         }),
-        invocation(&close_pending_fixture, AccessClass::CoreMutation),
+        invocation(&close_pending_fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_eq!(close.response_value["close_state"], "blocked");
     assert_close_blocker(&close.response_value, "pending_user_judgment");
@@ -2659,7 +2668,7 @@ fn cancellation_and_pending_relevance_are_operation_specific() -> Result<(), Box
     info_request.required_for = vec![volicord_types::JudgmentRequiredFor::Informational];
     info_service.request_user_judgment(
         info_request,
-        invocation(&info_fixture, AccessClass::CoreMutation),
+        invocation(&info_fixture, OperationCategory::AgentWorkflow),
     )?;
     let after_basis = record_close_evidence(
         &info_fixture,
@@ -2688,7 +2697,7 @@ fn cancellation_and_pending_relevance_are_operation_specific() -> Result<(), Box
             close_reason: Some(CloseReason::CompletedSelfChecked),
             superseding_task_id: None,
         }),
-        invocation(&info_fixture, AccessClass::CoreMutation),
+        invocation(&info_fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_eq!(closed.response_value["close_state"], "closed");
     Ok(())
@@ -2697,7 +2706,7 @@ fn cancellation_and_pending_relevance_are_operation_specific() -> Result<(), Box
 #[test]
 fn canonical_close_refs_and_artifact_integrity_remain_truthful() -> Result<(), Box<dyn Error>> {
     for (index, (record_kind, record_id)) in [
-        (StateRecordKind::WriteAuthorization, "wa_fabricated"),
+        (StateRecordKind::WriteCheck, "wa_fabricated"),
         (StateRecordKind::UserJudgment, "uj_fabricated"),
         (StateRecordKind::Blocker, "blocker_fabricated"),
         (StateRecordKind::TaskEvent, "evt_fabricated"),
@@ -2735,8 +2744,10 @@ fn canonical_close_refs_and_artifact_integrity_remain_truthful() -> Result<(), B
         })
         .into();
         let before = fixture.counts()?;
-        let response =
-            service.record_run(request, invocation(&fixture, AccessClass::RunRecording))?;
+        let response = service.record_run(
+            request,
+            invocation(&fixture, OperationCategory::AgentWorkflow),
+        )?;
         assert_rejected_code(&response.response_value, "VALIDATION_FAILED");
         assert_eq!(fixture.counts()?, before);
     }
@@ -2770,7 +2781,7 @@ fn canonical_close_refs_and_artifact_integrity_remain_truthful() -> Result<(), B
     let before = missing_fixture.counts()?;
     let response = missing_service.record_run(
         missing,
-        invocation(&missing_fixture, AccessClass::RunRecording),
+        invocation(&missing_fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_rejected_code(&response.response_value, "VALIDATION_FAILED");
     assert_eq!(missing_fixture.counts()?, before);
@@ -2819,7 +2830,7 @@ fn canonical_close_refs_and_artifact_integrity_remain_truthful() -> Result<(), B
         let before = cross_fixture.counts()?;
         let response = cross_service.record_run(
             request,
-            invocation(&cross_fixture, AccessClass::RunRecording),
+            invocation(&cross_fixture, OperationCategory::AgentWorkflow),
         )?;
         assert_rejected_code(&response.response_value, "VALIDATION_FAILED");
         assert_eq!(cross_fixture.counts()?, before);
@@ -2866,7 +2877,7 @@ fn canonical_close_refs_and_artifact_integrity_remain_truthful() -> Result<(), B
     .into();
     let response = canonical_service.record_run(
         request,
-        invocation(&canonical_fixture, AccessClass::RunRecording),
+        invocation(&canonical_fixture, OperationCategory::AgentWorkflow),
     )?;
     let basis = &response.response_value["current_close_basis"];
     let result_refs = basis["result_refs"]
@@ -2909,7 +2920,7 @@ fn canonical_close_refs_and_artifact_integrity_remain_truthful() -> Result<(), B
             change_unit_id: Some(&change_unit_id),
             judgment_kind: JudgmentKind::FinalAcceptance,
         }),
-        invocation(&canonical_fixture, AccessClass::CoreMutation),
+        invocation(&canonical_fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_eq!(
         final_judgment.response_value["user_judgment"]["basis"]["result_refs"],
@@ -2934,7 +2945,7 @@ fn canonical_close_refs_and_artifact_integrity_remain_truthful() -> Result<(), B
     stage.content_type = "text/plain".to_owned();
     let staged = artifact_service.stage_artifact(
         stage,
-        invocation(&artifact_fixture, AccessClass::ArtifactRegistration),
+        invocation(&artifact_fixture, OperationCategory::AgentWorkflow),
     )?;
     let handle: StagedArtifactHandle =
         serde_json::from_value(staged.response_value["staged_artifact_handle"].clone())?;
@@ -2954,7 +2965,7 @@ fn canonical_close_refs_and_artifact_integrity_remain_truthful() -> Result<(), B
     )];
     let recorded = artifact_service.record_run(
         run,
-        invocation(&artifact_fixture, AccessClass::RunRecording),
+        invocation(&artifact_fixture, OperationCategory::AgentWorkflow),
     )?;
     let artifact = &recorded.response_value["registered_artifacts"][0];
     assert_eq!(artifact["content_type"], "text/plain");
@@ -2978,7 +2989,7 @@ fn canonical_close_refs_and_artifact_integrity_remain_truthful() -> Result<(), B
     zero_stage.expected_size_bytes = Some(0).into();
     let staged = zero_service.stage_artifact(
         zero_stage,
-        invocation(&zero_fixture, AccessClass::ArtifactRegistration),
+        invocation(&zero_fixture, OperationCategory::AgentWorkflow),
     )?;
     let handle: StagedArtifactHandle =
         serde_json::from_value(staged.response_value["staged_artifact_handle"].clone())?;
@@ -2996,8 +3007,10 @@ fn canonical_close_refs_and_artifact_integrity_remain_truthful() -> Result<(), B
         Some("empty_report"),
         Some("Zero-byte artifact was registered."),
     )];
-    let zero =
-        zero_service.record_run(run, invocation(&zero_fixture, AccessClass::RunRecording))?;
+    let zero = zero_service.record_run(
+        run,
+        invocation(&zero_fixture, OperationCategory::AgentWorkflow),
+    )?;
     assert_eq!(
         zero.response_value["registered_artifacts"][0]["sha256"],
         EMPTY_SHA256
@@ -3035,8 +3048,10 @@ fn canonical_close_refs_and_artifact_integrity_remain_truthful() -> Result<(), B
         recovery_constraints: Vec::new(),
     })
     .into();
-    let response =
-        corrupt_service.record_run(run, invocation(&corrupt_fixture, AccessClass::RunRecording))?;
+    let response = corrupt_service.record_run(
+        run,
+        invocation(&corrupt_fixture, OperationCategory::AgentWorkflow),
+    )?;
     let artifact_id = response.response_value["registered_artifacts"][0]["artifact_id"]
         .as_str()
         .expect("artifact id should be present")
@@ -3044,7 +3059,7 @@ fn canonical_close_refs_and_artifact_integrity_remain_truthful() -> Result<(), B
     corrupt_fixture.set_artifact_integrity(&artifact_id, "corrupt", None, None, None)?;
     let status = corrupt_service.status(
         corrupt_fixture.status_request("req_artifact_corrupt_status", Some(&task_id)),
-        invocation(&corrupt_fixture, AccessClass::ReadStatus),
+        invocation(&corrupt_fixture, OperationCategory::Read),
     )?;
     let artifact_ref = &status.response_value["evidence_summary"]["coverage_items"][0]
         ["supporting_artifact_refs"][0];
@@ -3074,7 +3089,7 @@ fn persisted_state_corruption_public_entries_fail_closed_without_effects(
             change_unit_id: Some(&change_unit_id),
             judgment_kind: JudgmentKind::ProductDecision,
         }),
-        invocation(&request_fixture, AccessClass::CoreMutation),
+        invocation(&request_fixture, OperationCategory::AgentWorkflow),
     )?;
     let judgment_id = response_record_id(&judgment.response_value, "user_judgment_ref");
     request_fixture.set_user_judgment_request_raw(
@@ -3092,7 +3107,7 @@ fn persisted_state_corruption_public_entries_fail_closed_without_effects(
             judgment_kind: JudgmentKind::ProductDecision,
             answer: answer_payload(JudgmentKind::ProductDecision),
         }),
-        invocation(&request_fixture, AccessClass::CoreMutation),
+        invocation(&request_fixture, OperationCategory::UserOnly),
     )?;
     assert_owner_state_unavailable(&response.response_value, "user_judgments", "request_json");
     assert_eq!(request_fixture.counts()?, before);
@@ -3134,7 +3149,7 @@ fn persisted_state_corruption_public_entries_fail_closed_without_effects(
             close_reason: None,
             superseding_task_id: None,
         }),
-        invocation(&resolution_fixture, AccessClass::ReadStatus),
+        invocation(&resolution_fixture, OperationCategory::Read),
     )?;
     assert_owner_state_unavailable(
         &response.response_value,
@@ -3157,7 +3172,7 @@ fn persisted_state_corruption_public_entries_fail_closed_without_effects(
             change_unit_id: Some(&change_unit_id),
             judgment_kind: JudgmentKind::ProductDecision,
         }),
-        invocation(&basis_fixture, AccessClass::CoreMutation),
+        invocation(&basis_fixture, OperationCategory::AgentWorkflow),
     )?;
     let judgment_id = response_record_id(&judgment.response_value, "user_judgment_ref");
     basis_fixture.set_user_judgment_basis_raw(
@@ -3175,7 +3190,7 @@ fn persisted_state_corruption_public_entries_fail_closed_without_effects(
             judgment_kind: JudgmentKind::ProductDecision,
             answer: answer_payload(JudgmentKind::ProductDecision),
         }),
-        invocation(&basis_fixture, AccessClass::CoreMutation),
+        invocation(&basis_fixture, OperationCategory::UserOnly),
     )?;
     assert_owner_state_unavailable(&response.response_value, "user_judgments", "basis_json");
     assert_eq!(basis_fixture.counts()?, before);
@@ -3216,7 +3231,7 @@ fn persisted_state_corruption_public_entries_fail_closed_without_effects(
     let before = artifact_fixture.counts()?;
     let response = artifact_service.record_run(
         run,
-        invocation(&artifact_fixture, AccessClass::RunRecording),
+        invocation(&artifact_fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_owner_state_unavailable(&response.response_value, "artifacts", "producer_json");
     assert_eq!(artifact_fixture.counts()?, before);
@@ -3261,7 +3276,7 @@ fn persisted_state_corruption_public_entries_fail_closed_without_effects(
     .into();
     provenance_service.record_run(
         basis_run,
-        invocation(&provenance_fixture, AccessClass::RunRecording),
+        invocation(&provenance_fixture, OperationCategory::AgentWorkflow),
     )?;
     provenance_fixture.set_artifact_source_staging_handle_raw(&artifact_id, None)?;
     let before = provenance_fixture.counts()?;
@@ -3276,7 +3291,7 @@ fn persisted_state_corruption_public_entries_fail_closed_without_effects(
             close_reason: None,
             superseding_task_id: None,
         }),
-        invocation(&provenance_fixture, AccessClass::ReadStatus),
+        invocation(&provenance_fixture, OperationCategory::Read),
     )?;
     assert_owner_state_unavailable(
         &response.response_value,
@@ -3309,7 +3324,7 @@ fn persisted_state_corruption_public_entries_fail_closed_without_effects(
     let before = evidence_fixture.counts()?;
     let response = evidence_service.status(
         evidence_fixture.status_request("req_corrupt_public_evidence_status", Some(&task_id)),
-        invocation(&evidence_fixture, AccessClass::ReadStatus),
+        invocation(&evidence_fixture, OperationCategory::Read),
     )?;
     assert_owner_state_unavailable(
         &response.response_value,
@@ -3341,7 +3356,7 @@ fn timestamp_semantics_use_rfc3339_instants_without_sleep() -> Result<(), Box<dy
     let before = invalid_fixture.counts()?;
     let response = invalid_service.request_user_judgment(
         request,
-        invocation(&invalid_fixture, AccessClass::CoreMutation),
+        invocation(&invalid_fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_rejected_code(&response.response_value, "VALIDATION_FAILED");
     assert_eq!(invalid_fixture.counts()?, before);
@@ -3362,7 +3377,7 @@ fn timestamp_semantics_use_rfc3339_instants_without_sleep() -> Result<(), Box<dy
     request.expires_at = Some(UtcTimestamp::parse("2026-06-18T09:00:01+09:00")?).into();
     let judgment = offset_service.request_user_judgment(
         request,
-        invocation(&offset_fixture, AccessClass::CoreMutation),
+        invocation(&offset_fixture, OperationCategory::AgentWorkflow),
     )?;
     let judgment_id = response_record_id(&judgment.response_value, "user_judgment_ref");
     let recorded = offset_service.record_user_judgment(
@@ -3375,7 +3390,7 @@ fn timestamp_semantics_use_rfc3339_instants_without_sleep() -> Result<(), Box<dy
             judgment_kind: JudgmentKind::ProductDecision,
             answer: answer_payload(JudgmentKind::ProductDecision),
         }),
-        invocation(&offset_fixture, AccessClass::CoreMutation),
+        invocation(&offset_fixture, OperationCategory::UserOnly),
     )?;
     assert_eq!(recorded.response_value["base"]["response_kind"], "result");
 
@@ -3395,7 +3410,7 @@ fn timestamp_semantics_use_rfc3339_instants_without_sleep() -> Result<(), Box<dy
     request.expires_at = Some(UtcTimestamp::parse("2026-06-18T00:00:01Z")?).into();
     let judgment = boundary_service.request_user_judgment(
         request,
-        invocation(&boundary_fixture, AccessClass::CoreMutation),
+        invocation(&boundary_fixture, OperationCategory::AgentWorkflow),
     )?;
     let judgment_id = response_record_id(&judgment.response_value, "user_judgment_ref");
     let before = boundary_fixture.counts()?;
@@ -3409,7 +3424,7 @@ fn timestamp_semantics_use_rfc3339_instants_without_sleep() -> Result<(), Box<dy
             judgment_kind: JudgmentKind::ProductDecision,
             answer: answer_payload(JudgmentKind::ProductDecision),
         }),
-        invocation(&boundary_fixture, AccessClass::CoreMutation),
+        invocation(&boundary_fixture, OperationCategory::UserOnly),
     )?;
     assert_rejected_code(&expired.response_value, "DECISION_UNRESOLVED");
     assert_eq!(boundary_fixture.counts()?, before);
@@ -3439,7 +3454,10 @@ fn timestamp_semantics_use_rfc3339_instants_without_sleep() -> Result<(), Box<dy
         &stage_before,
         t0 + Duration::hours(24) - Duration::seconds(1),
     )
-    .record_run(run, invocation(&stage_before, AccessClass::RunRecording))?;
+    .record_run(
+        run,
+        invocation(&stage_before, OperationCategory::AgentWorkflow),
+    )?;
     assert_eq!(recorded.response_value["base"]["response_kind"], "result");
     assert_eq!(stage_before.counts()?.runs, before.runs + 1);
 
@@ -3463,8 +3481,10 @@ fn timestamp_semantics_use_rfc3339_instants_without_sleep() -> Result<(), Box<dy
         Some("Timestamp staged artifact exact boundary."),
     )];
     let before = stage_exact.counts()?;
-    let expired = service_at(&stage_exact, t0 + Duration::hours(24))
-        .record_run(run, invocation(&stage_exact, AccessClass::RunRecording))?;
+    let expired = service_at(&stage_exact, t0 + Duration::hours(24)).record_run(
+        run,
+        invocation(&stage_exact, OperationCategory::AgentWorkflow),
+    )?;
     assert_rejected_code(&expired.response_value, "VALIDATION_FAILED");
     assert_eq!(
         expired.response_value["errors"][0]["details"]["artifact_input_error"]["reason"],
@@ -3496,8 +3516,10 @@ fn timestamp_semantics_use_rfc3339_instants_without_sleep() -> Result<(), Box<dy
         Some("Timestamp staged artifact corrupt expiration."),
     )];
     let before = corrupt_fixture.counts()?;
-    let response =
-        corrupt_service.record_run(run, invocation(&corrupt_fixture, AccessClass::RunRecording))?;
+    let response = corrupt_service.record_run(
+        run,
+        invocation(&corrupt_fixture, OperationCategory::AgentWorkflow),
+    )?;
     assert_owner_state_unavailable(&response.response_value, "artifact_staging", "expires_at");
     assert_eq!(corrupt_fixture.counts()?, before);
     Ok(())
@@ -3507,16 +3529,53 @@ fn core(fixture: &CoreFixture) -> CoreService {
     CoreService::new(fixture.runtime_home_path())
 }
 
-fn invocation(fixture: &CoreFixture, access_class: AccessClass) -> InvocationContext {
-    InvocationContext {
-        binding: AdapterSessionBinding::new(
-            volicord_types::ProjectId::new(fixture.project_id()),
-            volicord_types::SurfaceId::new(fixture.surface_id()),
-            volicord_types::SurfaceInstanceId::new(fixture.surface_instance_id()),
-            VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
-        ),
-        requested_access_class: access_class,
+fn invocation(fixture: &CoreFixture, operation_category: OperationCategory) -> InvocationContext {
+    invocation_with_actor(
+        fixture,
+        actor_source_for_operation_category(fixture, operation_category),
+        operation_category,
+    )
+}
+
+fn actor_source_for_operation_category(
+    fixture: &CoreFixture,
+    operation_category: OperationCategory,
+) -> ActorSource {
+    match operation_category {
+        OperationCategory::Read | OperationCategory::AgentWorkflow => {
+            ActorSource::agent_connection(fixture.connection_id())
+        }
+        OperationCategory::UserOnly | OperationCategory::AdminLocal => ActorSource::LocalUser,
     }
+}
+
+fn invocation_with_actor(
+    fixture: &CoreFixture,
+    actor_source: ActorSource,
+    operation_category: OperationCategory,
+) -> InvocationContext {
+    InvocationContext::new(
+        ProjectId::new(fixture.project_id()),
+        actor_source,
+        operation_category,
+        VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+    )
+}
+
+fn latest_tool_invocation_binding(
+    fixture: &CoreFixture,
+    tool_name: &str,
+) -> Result<(String, String), Box<dyn Error>> {
+    Ok(fixture.conn()?.query_row(
+        "SELECT actor_source, operation_category
+           FROM tool_invocations
+          WHERE project_id = ?1
+            AND tool_name = ?2
+          ORDER BY created_at DESC
+          LIMIT 1",
+        [fixture.project_id(), tool_name],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?)
 }
 
 fn create_task_with_change_unit(
@@ -3531,7 +3590,7 @@ fn create_task_with_change_unit(
             false,
             Some(0),
         ),
-        invocation(fixture, AccessClass::CoreMutation),
+        invocation(fixture, OperationCategory::AgentWorkflow),
     )?;
     let task_id = intake.response_value["task_ref"]["record_id"]
         .as_str()
@@ -3547,7 +3606,7 @@ fn create_task_with_change_unit(
             operation: ChangeUnitOperation::CreateCurrent,
             scope_summary: "Initial current scope.",
         }),
-        invocation(fixture, AccessClass::CoreMutation),
+        invocation(fixture, OperationCategory::AgentWorkflow),
     )?;
     let change_unit_id = scope.response_value["change_unit_ref"]["record_id"]
         .as_str()
@@ -3556,7 +3615,7 @@ fn create_task_with_change_unit(
     Ok((task_id, change_unit_id))
 }
 
-fn prepare_write_authorization(
+fn prepare_write_check(
     fixture: &CoreFixture,
     service: &CoreService,
     task_id: &str,
@@ -3572,15 +3631,13 @@ fn prepare_write_authorization(
             Some(task_id),
             Some(change_unit_id),
         ),
-        invocation(fixture, AccessClass::WriteAuthorization),
+        invocation(fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_eq!(response.response_value["decision"], "allowed");
-    Ok(
-        response.response_value["write_authorization_ref"]["record_id"]
-            .as_str()
-            .expect("write authorization ref should be present")
-            .to_owned(),
-    )
+    Ok(response.response_value["write_check_ref"]["record_id"]
+        .as_str()
+        .expect("Write Check ref should be present")
+        .to_owned())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -3598,7 +3655,7 @@ struct PreparedWriteFixture {
     fixture: CoreFixture,
     task_id: String,
     change_unit_id: String,
-    write_authorization_id: String,
+    write_check_id: String,
 }
 
 fn fixed_time(value: &str) -> Result<DateTime<Utc>, Box<dyn Error>> {
@@ -3628,18 +3685,18 @@ fn prepared_write_fixture(
             Some(&task_id),
             Some(&change_unit_id),
         ),
-        invocation(&fixture, AccessClass::WriteAuthorization),
+        invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_eq!(response.response_value["decision"], "allowed");
-    let write_authorization_id = response.response_value["write_authorization_ref"]["record_id"]
+    let write_check_id = response.response_value["write_check_ref"]["record_id"]
         .as_str()
-        .expect("write authorization ref should be present")
+        .expect("Write Check ref should be present")
         .to_owned();
     Ok(PreparedWriteFixture {
         fixture,
         task_id,
         change_unit_id,
-        write_authorization_id,
+        write_check_id,
     })
 }
 
@@ -3650,7 +3707,7 @@ fn product_write_run(
     expected_state_version: u64,
     task_id: &str,
     change_unit_id: &str,
-    write_authorization_id: &str,
+    write_check_id: &str,
 ) -> volicord_types::RecordRunRequest {
     let mut request = fixture.record_run_request(
         request_id,
@@ -3662,7 +3719,7 @@ fn product_write_run(
     );
     request.observed_changes.product_file_write_observed = true;
     request.observed_changes.changed_paths = vec![DEFAULT_PRODUCT_PATH.to_owned()];
-    request.write_authorization_id = Some(WriteAuthorizationId::new(write_authorization_id)).into();
+    request.write_check_id = Some(WriteCheckId::new(write_check_id)).into();
     request
 }
 
@@ -3678,7 +3735,7 @@ fn stage_artifact_for_record_run(
     request.safe_bytes_or_notice = "{\"fixture\":\"close\"}".to_owned();
     let response = service.stage_artifact(
         request,
-        invocation(fixture, AccessClass::ArtifactRegistration),
+        invocation(fixture, OperationCategory::AgentWorkflow),
     )?;
     Ok(serde_json::from_value(
         response.response_value["staged_artifact_handle"].clone(),
@@ -3714,7 +3771,10 @@ fn record_close_evidence(
         recovery_constraints: Vec::new(),
     })
     .into();
-    let response = service.record_run(request, invocation(fixture, AccessClass::RunRecording))?;
+    let response = service.record_run(
+        request,
+        invocation(fixture, OperationCategory::AgentWorkflow),
+    )?;
     Ok(response.response_value["base"]["state_version"]
         .as_u64()
         .expect("state version should be present"))
@@ -3738,7 +3798,7 @@ fn record_final_acceptance(
             change_unit_id: Some(change_unit_id),
             judgment_kind: JudgmentKind::FinalAcceptance,
         }),
-        invocation(fixture, AccessClass::CoreMutation),
+        invocation(fixture, OperationCategory::AgentWorkflow),
     )?;
     let judgment_id = judgment.response_value["user_judgment_ref"]["record_id"]
         .as_str()
@@ -3754,7 +3814,7 @@ fn record_final_acceptance(
             judgment_kind: JudgmentKind::FinalAcceptance,
             answer: answer_payload(JudgmentKind::FinalAcceptance),
         }),
-        invocation(fixture, AccessClass::CoreMutation),
+        invocation(fixture, OperationCategory::UserOnly),
     )?;
     Ok(response.response_value["base"]["state_version"]
         .as_u64()
@@ -3779,7 +3839,7 @@ fn record_cancellation_authority(
             change_unit_id: Some(change_unit_id),
             judgment_kind: JudgmentKind::Cancellation,
         }),
-        invocation(fixture, AccessClass::CoreMutation),
+        invocation(fixture, OperationCategory::AgentWorkflow),
     )?;
     let judgment_id = response_record_id(&judgment.response_value, "user_judgment_ref");
     let response = service.record_user_judgment(
@@ -3792,7 +3852,7 @@ fn record_cancellation_authority(
             judgment_kind: JudgmentKind::Cancellation,
             answer: answer_payload(JudgmentKind::Cancellation),
         }),
-        invocation(fixture, AccessClass::CoreMutation),
+        invocation(fixture, OperationCategory::UserOnly),
     )?;
     Ok(response.response_value["base"]["state_version"]
         .as_u64()
@@ -3817,7 +3877,7 @@ fn record_final_acceptance_with_id(
             change_unit_id: Some(change_unit_id),
             judgment_kind: JudgmentKind::FinalAcceptance,
         }),
-        invocation(fixture, AccessClass::CoreMutation),
+        invocation(fixture, OperationCategory::AgentWorkflow),
     )?;
     let judgment_id = response_record_id(&judgment.response_value, "user_judgment_ref");
     let response = service.record_user_judgment(
@@ -3830,7 +3890,7 @@ fn record_final_acceptance_with_id(
             judgment_kind: JudgmentKind::FinalAcceptance,
             answer: answer_payload(JudgmentKind::FinalAcceptance),
         }),
-        invocation(fixture, AccessClass::CoreMutation),
+        invocation(fixture, OperationCategory::UserOnly),
     )?;
     Ok((
         response.response_value["base"]["state_version"]
@@ -3862,7 +3922,7 @@ fn record_authority_judgment_with_option(
             change_unit_id: Some(change_unit_id),
             judgment_kind,
         }),
-        invocation(fixture, AccessClass::CoreMutation),
+        invocation(fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_current_authority_options(&judgment.response_value);
     let judgment_id = response_record_id(&judgment.response_value, "user_judgment_ref");
@@ -3877,7 +3937,7 @@ fn record_authority_judgment_with_option(
     });
     request.selected_option_id = volicord_types::UserJudgmentOptionId::new(selected_option_id);
     let response =
-        service.record_user_judgment(request, invocation(fixture, AccessClass::CoreMutation))?;
+        service.record_user_judgment(request, invocation(fixture, OperationCategory::UserOnly))?;
     assert_eq!(response.response_value["base"]["response_kind"], "result");
     assert_eq!(
         response.response_value["user_judgment"]["resolution"]["selected_option_id"],
@@ -3931,7 +3991,10 @@ fn record_close_basis_with_risks(
         recovery_constraints: Vec::new(),
     })
     .into();
-    let response = service.record_run(request, invocation(fixture, AccessClass::RunRecording))?;
+    let response = service.record_run(
+        request,
+        invocation(fixture, OperationCategory::AgentWorkflow),
+    )?;
     let risk_ids = response.response_value["current_close_basis"]["residual_risks"]
         .as_array()
         .expect("residual risks should be present")
@@ -4034,11 +4097,11 @@ where
     mutate(&mut request);
     let response = service.prepare_write(
         request,
-        invocation(&fixture, AccessClass::WriteAuthorization),
+        invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_eq!(response.response_value["decision"], "approval_required");
     assert_prepare_reason(&response.response_value, "sensitive_approval_missing");
-    assert!(response.response_value["write_authorization"].is_null());
+    assert!(response.response_value["write_check"].is_null());
     Ok(())
 }
 
@@ -4065,7 +4128,7 @@ fn assert_sensitive_approval_change_unit_mismatch() -> Result<(), Box<dyn Error>
             operation: ChangeUnitOperation::ReplaceCurrent,
             scope_summary: "Replacement scope for sensitive approval.",
         }),
-        invocation(&fixture, AccessClass::CoreMutation),
+        invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
     let replacement_change_unit_id = response_record_id(&replace.response_value, "change_unit_ref");
     let after_replace = replace.response_value["base"]["state_version"]
@@ -4082,11 +4145,11 @@ fn assert_sensitive_approval_change_unit_mismatch() -> Result<(), Box<dyn Error>
     request.sensitive_categories = vec!["network".to_owned()];
     let response = service.prepare_write(
         request,
-        invocation(&fixture, AccessClass::WriteAuthorization),
+        invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_eq!(response.response_value["decision"], "approval_required");
     assert_prepare_reason(&response.response_value, "sensitive_approval_missing");
-    assert!(response.response_value["write_authorization"].is_null());
+    assert!(response.response_value["write_check"].is_null());
     Ok(())
 }
 
@@ -4108,7 +4171,7 @@ fn record_sensitive_approval(
             change_unit_id: Some(change_unit_id),
             judgment_kind: JudgmentKind::SensitiveApproval,
         }),
-        invocation(fixture, AccessClass::CoreMutation),
+        invocation(fixture, OperationCategory::AgentWorkflow),
     )?;
     let judgment_id = response_record_id(&judgment.response_value, "user_judgment_ref");
     let response = service.record_user_judgment(
@@ -4121,7 +4184,7 @@ fn record_sensitive_approval(
             judgment_kind: JudgmentKind::SensitiveApproval,
             answer: answer_payload(JudgmentKind::SensitiveApproval),
         }),
-        invocation(fixture, AccessClass::CoreMutation),
+        invocation(fixture, OperationCategory::UserOnly),
     )?;
     Ok((
         response.response_value["base"]["state_version"]
@@ -4154,7 +4217,10 @@ fn promote_artifact_for_record_run(
         Some("validation_report"),
         Some("Artifact registered for corruption coverage."),
     )];
-    let response = service.record_run(request, invocation(fixture, AccessClass::RunRecording))?;
+    let response = service.record_run(
+        request,
+        invocation(fixture, OperationCategory::AgentWorkflow),
+    )?;
     let artifact_ref =
         serde_json::from_value(response.response_value["registered_artifacts"][0].clone())?;
     Ok((
@@ -4295,7 +4361,7 @@ fn assert_latest_prepare_write_event(
             .expect("state_version should be present")
     );
     assert_eq!(event.event_payload["decision"], decision);
-    assert!(event.event_payload["write_authorization_id"].is_null());
+    assert!(event.event_payload["write_check_id"].is_null());
     assert!(event.event_payload.get("reason_codes").is_none());
     assert!(event.event_payload.get("intended_paths").is_none());
     assert!(event.event_payload.get("intended_operation").is_none());

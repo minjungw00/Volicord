@@ -431,7 +431,7 @@ fn command_connect(
     let host_kind = required_host_kind(&parsed)?;
     let host_scope = required_host_scope(&parsed)?;
     validate_host_scope(host_kind, host_scope)?;
-    validate_repository_write_authorization(&parsed, host_scope)?;
+    validate_repository_write_permission(&parsed, host_scope)?;
     let mode = parse_connection_mode(parsed.mode.as_deref().unwrap_or(CONNECTION_MODE_READ_ONLY))?;
     let server_name = parsed
         .server_name
@@ -1102,7 +1102,7 @@ fn validate_server_name(value: &str) -> Result<(), AgentCommandError> {
     }
 }
 
-fn validate_repository_write_authorization(
+fn validate_repository_write_permission(
     parsed: &ParsedAgentOptions,
     scope: HostScope,
 ) -> Result<(), AgentCommandError> {

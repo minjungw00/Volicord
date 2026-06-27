@@ -93,11 +93,7 @@ mod tests {
         envelope_value["actor_source"] = json!("agent_connection:conn_forged");
         assert_unknown::<ToolEnvelope>(envelope_value, "actor_source");
 
-        for field in [
-            "operation_category",
-            "capability_profile",
-            "verification_basis",
-        ] {
+        for field in ["operation_category", "connection_id", "verification_basis"] {
             let mut request = status_request_json();
             request[field] = json!({ "forged": true });
             assert_unknown::<StatusRequest>(request, field);
@@ -459,7 +455,7 @@ mod tests {
             for (field, value) in [
                 ("operation_category", json!("agent_workflow")),
                 ("actor_source", json!("agent_connection:conn_forged")),
-                ("capability_profile", json!({ "write_check": true })),
+                ("connection_id", json!("connection_forged")),
                 ("verification_basis", json!("caller_supplied_basis")),
             ] {
                 let mut forged = valid.clone();
