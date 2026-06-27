@@ -16,7 +16,7 @@
 - API 스키마 묶음: [API 코어 스키마](api/schema-core.md), [상태 스키마](api/schema-state.md), [아티팩트 스키마](api/schema-artifacts.md), [판단 스키마](api/schema-judgment.md), [값 집합](api/schema-value-sets.md).
 - API 오류 묶음: [API 오류](api/errors.md). 오류 코드, 우선순위, 응답 처리 경로, 차단 사유 처리 경로, 기계 판독 세부사항으로 안내합니다.
 - 저장소 묶음: [저장소](storage.md). 기록, DDL, 효과, 아티팩트, 버전 관리로 안내합니다.
-- 접점, 상태 보기, 표시 경로: [에이전트 통합](agent-integration.md), [접점별 사용 레시피](../guides/surface-recipes.md), [상태 보기와 템플릿](projection-and-templates.md), [템플릿 본문](template-bodies.md).
+- 연결, 상태 보기, 표시 경로: Agent Connection과 User Channel 경계는 [런타임 경계](runtime-boundaries.md), 작업 범주 비보장은 [보안](security.md), 상태 보기는 [상태 보기와 템플릿](projection-and-templates.md), 렌더링 문구는 [템플릿 본문](template-bodies.md)에 있습니다.
 - 품질과 검증 경로: [적합성](conformance.md), [설계 품질](design-quality.md), 그리고 질문에 맞는 메서드 또는 Core 담당 문서.
 
 ## 자주 갈리는 경로

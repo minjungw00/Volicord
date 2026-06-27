@@ -39,19 +39,21 @@ Contract detail stays in the focused owner documents. Translation and style rule
 | evidence | 증거 | Recorded support for a specific claim at a specific scope. | [Core Model](core-model.md) |
 | verification criteria | 검증 기준 | User-visible criteria for checking work. | [Core Model](core-model.md) |
 | artifact | 아티팩트 | Work material referenced or staged through Volicord artifact concepts. | [API Artifact Schemas](api/schema-artifacts.md) |
-| `Write Authorization` | 쓰기 권한 부여 | The exact Volicord product label for Core authority around one compatible product-file write attempt. | [Core Model](core-model.md) |
-| write approval | 쓰기 승인 | Ordinary user approval, or prose about approving a write. Separate from `Write Authorization`. | [Core Model](core-model.md) |
-| sensitive-action approval | 민감 동작 승인 | User approval for a named sensitive step, separate from `Write Authorization` and final acceptance. | [Core Model](core-model.md) |
+| `Write Check` | 쓰기 확인 | Durable Core-state compatibility record for one proposed product-file change. | [Core Model](core-model.md) |
+| write approval | 쓰기 승인 | Ordinary user approval, or prose about approving a write. Separate from `Write Check`. | [Core Model](core-model.md) |
+| sensitive-action approval | 민감 동작 승인 | User approval for a named sensitive step, separate from `Write Check` and final acceptance. | [Core Model](core-model.md) |
 | final acceptance | 최종 수락 | A user-owned judgment about whether the visible close basis is acceptable. | [Core Model](core-model.md) |
 | residual-risk acceptance | 잔여 위험 수락 | A user-owned judgment about a named visible residual risk. | [Core Model](core-model.md) |
 | close readiness | 닫기 준비 상태 | The Core concept for whether a `Task` is ready to close from its current state. | [Core Model](core-model.md) |
-| close-readiness blocker | 닫기 차단 사유 | A close-relevant reason surfaced when close readiness cannot proceed. | [API blocker routing](api/blocker-routing.md) |
+| close-readiness blocker | 닫기 차단 사유 | A close-relevant reason shown when close readiness cannot proceed. | [API blocker routing](api/blocker-routing.md) |
 | `Projection` | 상태 보기 | The exact product label for a read-only state view. Projection output is display, not Core authority. | [Projection Authority Reference](projection-and-templates.md) |
-| `Agent Integration Profile` | 에이전트 통합 프로필 | The durable registry identity for one agent-host integration and its bound surface context. | [Agent Integration](agent-integration.md) |
-| integration project membership | 통합 프로젝트 멤버십 | The explicit allowlist relation between an Agent Integration Profile and registered projects. | [Agent Integration](agent-integration.md) |
-| `Host Installation` | 호스트 설치 | Managed host setup inventory for an agent-host integration. Not proof that the external host trusted or loaded the server. | [Agent Integration](agent-integration.md) |
+| `Agent Connection` | 에이전트 연결 | The local MCP host connection unit, identified by `connection_id`. | [Runtime Boundaries](runtime-boundaries.md) |
+| `connection.mode` | 연결 모드 | The Agent Connection mode, either `read_only` or `workflow`. | [Runtime Boundaries](runtime-boundaries.md) |
+| `Connection Projects` | 연결 프로젝트 | The explicit `project_id` allowlist for an Agent Connection. | [Runtime Boundaries](runtime-boundaries.md) |
+| `User Channel` | 사용자 채널 | The local user path for recording authority-bearing user judgments. | [Core Model](core-model.md) |
+| `actor_source` | 행위자 출처 | Durable provenance such as `agent_connection:<connection_id>`, `local_user`, or `system`; not a registered connection or user identity proof. | [Core Model](core-model.md) |
+| `operation_category` | 작업 범주 | Internal API operation classification: `read`, `agent_workflow`, `user_only`, or `admin_local`. | [Security](security.md) |
+| `Host Installation` | 호스트 설치 | Managed host setup inventory for an Agent Connection. Not proof that the external host trusted or loaded the server. | [Administrative CLI](admin-cli.md) |
 | `volicord.list_projects` | `volicord.list_projects` | MCP adapter utility for listing projects allowed for the bound integration. Not a public Core API method. | [MCP Transport](mcp-transport.md) |
-| surface | 접점 | An integration or interaction boundary where context appears. | [Agent Integration](agent-integration.md) |
-| access class | 접근 등급 | A value category for verified surface and access context. | [API Value Sets](api/schema-value-sets.md) |
 | baseline guarantee | 기준 범위 보장 | Security wording for a guarantee supported in the baseline scope. | [Security](security.md) |
 | `ErrorCode` | 공개 오류 코드 | The public API error-code identifier. | [API error codes](api/error-codes.md) |

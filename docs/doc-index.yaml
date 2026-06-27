@@ -129,8 +129,8 @@ shared_documents:
   normative_level: maintenance
   owner_area: repository_guidance
   created_on: '2026-05-07'
-  last_updated_on: '2026-06-26'
-  last_verified_on: '2026-06-26'
+  last_updated_on: '2026-06-27'
+  last_verified_on: '2026-06-27'
   applies_to:
   - volicord_workspace_0_1
   - doc_index_schema_v3
@@ -262,9 +262,10 @@ shared_documents:
   - identifier preservation rules
   - English and Korean discouraged-expression metadata
   - Volicord product identity routing to Getting Started Overview
-  - Volicord, Core, Volicord implementation, Volicord source repository, Volicord installation, Volicord Runtime Home, and Product Repository terminology routing
-  - Write Authorization, write approval, sensitive-action approval, final-acceptance, residual-risk acceptance,
+  - Volicord, Core, Volicord implementation, Volicord source repository, Volicord installation, Volicord Runtime Home, Product Repository, Agent Connection, Connection Projects, and User Channel terminology routing
+  - Write Check, write approval, sensitive-action approval, final-acceptance, residual-risk acceptance,
     and verification-criteria terminology distinctions
+  - actor_source and operation_category terminology distinctions
   - Korean mixed-language expressions to avoid
 documents:
 - doc_id: readme.root
@@ -277,8 +278,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: onboarding
   created_on: '2026-04-23'
-  last_updated_on: '2026-06-26'
-  last_verified_on: '2026-06-26'
+  last_updated_on: '2026-06-27'
+  last_verified_on: '2026-06-27'
   applies_to:
   - volicord_workspace_0_1
   primary_audience:
@@ -314,8 +315,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: onboarding
   created_on: '2026-04-23'
-  last_updated_on: '2026-06-24'
-  last_verified_on: '2026-06-24'
+  last_updated_on: '2026-06-27'
+  last_verified_on: '2026-06-27'
   applies_to:
   - volicord_workspace_0_1
   primary_audience:
@@ -846,8 +847,8 @@ documents:
   path_en: docs/en/development/decisions/agent-integration-profile.md
   path_ko: docs/ko/development/decisions/agent-integration-profile.md
   kind: explanation
-  summary: Architecture decision explaining Agent Integration Profile, host routing, and explicit project
-    membership for agent-host integrations.
+  summary: Architecture decision explaining Agent Connection, host routing, and explicit project
+    allowlists for agent-host connections.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: developer_documentation
@@ -937,8 +938,8 @@ documents:
   - reference.runtime-boundaries
   - reference.admin-cli
   - reference.mcp-transport
-  - reference.agent-integration
   - reference.core-model
+  - reference.security
   - reference.api.methods
   - reference.storage
   - reference.storage-effects
@@ -952,8 +953,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
   created_on: '2026-06-02'
-  last_updated_on: '2026-06-24'
-  last_verified_on: '2026-06-24'
+  last_updated_on: '2026-06-27'
+  last_verified_on: '2026-06-27'
   applies_to:
   - volicord_workspace_0_1
   - doc_index_schema_v3
@@ -1015,8 +1016,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-10'
-  last_updated_on: '2026-06-26'
-  last_verified_on: '2026-06-26'
+  last_updated_on: '2026-06-27'
+  last_verified_on: '2026-06-27'
   applies_to:
   - volicord_workspace_0_1
   primary_audience:
@@ -1061,20 +1062,21 @@ documents:
   - lifecycle meaning
   - close-readiness authority concepts
   - user-owned judgment boundaries
-  - Write Authorization, approval, final-acceptance, and residual-risk non-substitution boundaries
+  - Write Check, approval, final-acceptance, and residual-risk non-substitution boundaries
+  - User Channel and actor_source boundaries for authority-bearing user judgments
   - verification criteria and evidence/acceptance authority boundaries
 - doc_id: reference.runtime-boundaries
   path_en: docs/en/reference/runtime-boundaries.md
   path_ko: docs/ko/reference/runtime-boundaries.md
   kind: reference
-  summary: Reference contract for Volicord implementation, source repository, installation, executable
-    process, runtime-location, and repository boundaries.
+  summary: Reference contract for Volicord implementation, Agent Connection, User Channel, source repository,
+    installation, executable process, runtime-location, and repository boundaries.
   normative_level: contract
   translation_policy: semantic_parity
   owner_area: runtime_security
   created_on: '2026-06-07'
-  last_updated_on: '2026-06-26'
-  last_verified_on: '2026-06-26'
+  last_updated_on: '2026-06-27'
+  last_verified_on: '2026-06-27'
   applies_to:
   - volicord_workspace_0_1
   primary_audience:
@@ -1088,6 +1090,8 @@ documents:
   - Product Repository boundary
   - Volicord Runtime Home boundary
   - Volicord implementation, source repository, installation, and executable process boundaries
+  - Agent Connection and Connection Projects boundary
+  - User Channel boundary for authority-bearing user judgments
   - runtime-location separation among source repository, installation files, Runtime Home, Product
     Repository, and external MCP host configuration
   - ordinary MCP server term versus Volicord product, implementation, CLI, and adapter labels
@@ -1120,8 +1124,8 @@ documents:
   - local `volicord user` status and judgment command behavior
   - Runtime Home path selection rules for `volicord` administrative commands
   - administrative project registration command behavior
-  - administrative surface registration command behavior
-  - agent integration install, status, verify, uninstall, and project membership commands
+  - administrative Agent Connection and User Channel registration command behavior
+  - agent connection install, status, verify, uninstall, and project allowlist commands
   - Codex, Claude Code, and generic host setup scope support
   - Host Installation setup result states and verification reporting
   - administrative dry-run, machine output, and noninteractive approval behavior
@@ -1179,13 +1183,13 @@ documents:
   path_en: docs/en/reference/security.md
   path_ko: docs/ko/reference/security.md
   kind: reference
-  summary: Reference contract for security wording, guarantees, and non-guarantees.
+  summary: Reference contract for security wording, guarantees, operation categories, and non-guarantees.
   normative_level: contract
   translation_policy: semantic_parity
   owner_area: runtime_security
   created_on: '2026-05-28'
-  last_updated_on: '2026-06-26'
-  last_verified_on: '2026-06-26'
+  last_updated_on: '2026-06-27'
+  last_verified_on: '2026-06-27'
   applies_to:
   - volicord_workspace_0_1
   primary_audience:
@@ -1200,6 +1204,8 @@ documents:
   - security guarantee wording
   - access-boundary non-claims
   - guarantee semantics
+  - operation_category security meaning and non-claims
+  - Agent Connection and actor_source authority non-inference
   - host trust, host approval, and guidance non-guarantees
 - doc_id: reference.glossary
   path_en: docs/en/reference/glossary.md
@@ -1210,8 +1216,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
   created_on: '2026-05-06'
-  last_updated_on: '2026-06-26'
-  last_verified_on: '2026-06-26'
+  last_updated_on: '2026-06-27'
+  last_verified_on: '2026-06-27'
   applies_to:
   - volicord_workspace_0_1
   - terminology_map_v1
@@ -1347,7 +1353,7 @@ documents:
   canonical_for:
   - '`volicord.prepare_write` behavior'
   - '`PrepareWriteResult` branch behavior'
-  - Write Authorization creation behavior
+  - Write Check creation behavior
   - method-specific sensitive-action approval handling
 - doc_id: reference.api.method-stage-artifact
   path_en: docs/en/reference/api/method-stage-artifact.md
@@ -1809,7 +1815,7 @@ documents:
   - table overview
   - storage-owned record values
   - storage-owned JSON placement
-  - Agent Integration Profile, integration project membership, and Host Installation record families
+  - Agent Connection, Connection Projects, and Host Installation record families
 - doc_id: reference.storage-ddl
   path_en: docs/en/reference/storage-ddl.md
   path_ko: docs/ko/reference/storage-ddl.md
@@ -1835,9 +1841,9 @@ documents:
   - baseline SQLite DDL
   - '`registry.sqlite` schema shape'
   - project `state.sqlite` schema shape
-  - Agent Integration Profile, integration project membership, and Host Installation registry tables
+  - Agent Connection, Connection Projects, and Host Installation registry tables
   - baseline SQLite indexes, foreign keys, migration tables, and constraints
-  - storage constraints for state clock columns, replay rows, current Change Unit uniqueness, Write Authorization
+  - storage constraints for state clock columns, replay rows, current Change Unit uniqueness, Write Check
     basis versions, and staged artifact provenance
 - doc_id: reference.storage-effects
   path_en: docs/en/reference/storage-effects.md
@@ -1921,7 +1927,7 @@ documents:
   path_en: docs/en/reference/agent-integration.md
   path_ko: docs/ko/reference/agent-integration.md
   kind: reference
-  summary: Reference contract for agent integration and context boundaries.
+  summary: Reference contract for Agent Connection and context boundaries.
   normative_level: contract
   translation_policy: semantic_parity
   owner_area: agent_integration
@@ -1939,14 +1945,14 @@ documents:
   - operate
   - implement
   canonical_for:
-  - surface registration
-  - current surface context
-  - currently applied surface context boundaries
-  - '`user_interaction` versus `agent` surface-role boundaries for authority-bearing judgment resolution'
-  - '`VerifiedSurfaceContext` integration boundaries'
-  - '`capability_profile` declaration boundaries'
+  - Agent Connection registration
+  - current connection context
+  - currently applied connection context boundaries
+  - User Channel versus Agent Connection boundaries for authority-bearing judgment resolution
+  - actor_source provenance boundaries
+  - operation_category declaration boundaries
   - agent context transfer boundaries
-  - Agent Integration Profile meaning and project membership rules
+  - Agent Connection meaning and Connection Projects rules
   - Host Installation meaning and host trust boundary
   - per-call MCP project selection authority
   - agent guidance and MCP server instruction boundaries

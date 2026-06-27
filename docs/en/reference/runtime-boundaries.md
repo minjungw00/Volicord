@@ -1,6 +1,6 @@
 # Runtime boundaries reference
 
-This document owns the component and location boundaries among Volicord implementation, `Product Repository`, `Volicord Runtime Home`, and external MCP host configuration. It defines local access assumptions for those locations and routes storage and security details to their owners.
+This document owns the component and location boundaries among Volicord implementation, Agent Connections, `Product Repository`, `Volicord Runtime Home`, the `User Channel`, and external MCP host configuration. It defines location and connection authority assumptions for those boundaries and routes storage and security details to their owners.
 
 Volicord implementation is the implementation set maintained by this repository. It is not Volicord as a whole, not Core, not one running process, and not the local authority record for Volicord state.
 
@@ -24,11 +24,14 @@ Volicord keeps product, implementation, executable-role, MCP host term, and auth
 |---|---|---|
 | Volicord | The broader local work-authority product/system for AI-assisted product work. | It is not Core, not a source repository, and not a single executable process. |
 | Core | The local authority record for Volicord state. | It is not the whole Volicord product/system and not an adapter or CLI executable. |
-| Volicord implementation | The implementation set maintained by this repository. At source level, it includes implementation crates, the `volicord` administrative CLI, the `volicord-mcp` local MCP adapter, tests, documentation, validation tooling, and repository configuration. | It is not every possible Volicord product surface, not Core by itself, not `Volicord Runtime Home`, not the `Product Repository`, and not one daemon, MCP server entry, or network service. |
+| Volicord implementation | The implementation set maintained by this repository. At source level, it includes implementation crates, the `volicord` administrative CLI, the `volicord-mcp` local MCP adapter, tests, documentation, validation tooling, and repository configuration. | It is not every possible Volicord product interface, not Core by itself, not `Volicord Runtime Home`, not the `Product Repository`, and not one daemon, MCP server entry, or network service. |
 | Volicord source repository | The checked-out source artifact for this repository. | It is not the same thing as a deployed installation, running process, Runtime Home, Product Repository, or MCP host configuration. |
 | Volicord installation | The deployed subset of Volicord executables and required runtime resources. | It does not imply that documentation, tests, source files, or repository metadata are present in every installation. |
 | `volicord` administrative process | The administrative CLI executable/process within Volicord implementation. | It is not a synonym for Volicord or for all of Volicord implementation. |
 | `volicord-mcp` MCP adapter process | The local stdio MCP adapter executable/process within Volicord implementation. | It is not separate from Volicord implementation and not the whole Volicord implementation by itself. |
+| `Agent Connection` | The local MCP host connection unit identified by `connection_id`. Its `connection.mode` is either `read_only` or `workflow`. | It is not an OS sandbox, filesystem ACL, network policy, secret-isolation mechanism, or user-judgment path. |
+| `Connection Projects` | The explicit allowlist of `project_id` values an Agent Connection may address. | It does not include every registered project by default and does not prove Product Repository authority. |
+| `User Channel` | The local user path for recording authority-bearing user judgments. | It is not an Agent Connection, MCP host, generated display, or Product Repository file. |
 | MCP server | An ordinary MCP protocol or host-configuration term that may name a server entry or process exposed to an MCP host, including a local stdio adapter process such as `volicord-mcp` when the host uses that label. | It does not make Volicord as a product/system, Volicord implementation, `volicord`, or `volicord-mcp` a TCP or HTTP network server, and it is not a product label for Volicord. |
 
 When a behavior is performed by one executable role, name that role. Bare Volicord implementation should be reserved for the implementation set or for statements that apply to the set as a whole.
@@ -51,7 +54,7 @@ Volicord keeps implementation files, product files, runtime data, and external h
 
 May claim:
 - Product files can be inspected as inputs to owner-defined Volicord checks or user-owned judgments.
-- Compatible product-file writes can be governed by the current scope, current Change Unit, required judgments, and `Write Authorization` owners.
+- Compatible product-file writes can be governed by the current scope, current Change Unit, required judgments, and `Write Check` compatibility.
 
 Must not claim:
 - `Product Repository` content is Volicord state.
@@ -73,7 +76,7 @@ The only baseline exceptions are explicitly requested integration files:
 Rules:
 
 - The administrative command must preview the exact target path and content before applying the write.
-- Noninteractive execution must include explicit repository-write authorization as defined by [Administrative CLI](admin-cli.md#noninteractive-approval-behavior).
+- Noninteractive execution must include explicit repository-write check as defined by [Administrative CLI](admin-cli.md#noninteractive-approval-behavior).
 - The write must use Volicord ownership markers or a managed fingerprint.
 - Existing unmanaged content must be reported as a conflict rather than overwritten.
 - Replacement may apply only to matching Volicord-managed content.
@@ -95,8 +98,8 @@ Rules:
 
 Does not imply:
 - These path rules do not provide OS sandboxing, command blocking, network blocking, secret blocking, or baseline detective enforcement.
-- `Write Authorization` compatibility applies only to a compatible product-file write attempt recorded through the Core-owned method path; it is not global filesystem interception, shell permission, command approval, or proof that a write occurred.
-- Method-specific authorization decisions stay with API method owners.
+- `Write Check` compatibility applies only to a proposed product-file change recorded through the Core-owned method path; it is not global filesystem interception, shell permission, command approval, or proof that a write occurred.
+- Method-specific compatibility decisions stay with API method owners.
 
 <a id="runtime-location-source-installation-processes"></a>
 ### Volicord source repository, installation, and processes
@@ -125,6 +128,18 @@ Must not claim:
 The current local Rust MCP adapter is the `volicord-mcp` stdio process, an executable role within Volicord implementation. An MCP host may label the configured entry an MCP server for protocol or host-configuration purposes. That label does not make Volicord a server product or make Volicord implementation a network server. An MCP host starts `volicord-mcp` as a child process, passes configuration through process environment, and exchanges line-delimited JSON-RPC through stdin/stdout. The baseline process opens no TCP, HTTP, Unix-domain socket, or other network listener.
 
 Exact executable behavior, environment variables, framing, startup validation or preflight behavior, response wrapping, shutdown, and reconnection rules belong to [MCP Transport](mcp-transport.md). This runtime-boundaries owner only keeps the process, location, and non-inference boundaries distinct.
+
+### Agent Connections and Connection Projects
+
+An Agent Connection is the local MCP host connection unit for `volicord-mcp`. The connection is identified by `connection_id`, has `connection.mode=read_only` or `connection.mode=workflow`, and can address only the explicitly allowed `project_id` values in its Connection Projects allowlist.
+
+An Agent Connection can request user judgments through supported API paths, but it cannot record authority-bearing user judgments. Those judgments are recorded through the `User Channel` with `actor_source=local_user`.
+
+Must not infer:
+- A copied `connection_id` proves authority, user identity, OS permission, host trust, or capability.
+- `connection.mode=workflow` grants filesystem, shell, network, secret, deployment, or Product Repository write permission.
+- A Connection Projects allowlist turns every registered project into an allowed project.
+- An Agent Connection can record final acceptance, residual-risk acceptance, sensitive-action approval, cancellation, or scope decisions on behalf of the user.
 
 ### External MCP host configuration
 
@@ -174,9 +189,9 @@ Permitted relationship:
 
 This separation contract is an eligibility rule. New project registration, setup reuse, project-state administrative access, Core execution entry, and MCP project-session startup must require the selected `Volicord Runtime Home` and registered `Product Repository` to satisfy it.
 
-The inspection layer may still show a raw stored project row that violates this contract so the record can be diagnosed. Operational project lookup, project listing, setup reuse, project-state administrative access, surface administration, Agent Integration Profile project access, Core execution entry, and MCP project availability must reject that row rather than returning it as a normal project record or project entry. The system does not automatically move paths, repair the registry row, or delete that record solely because inspection can report it.
+The inspection layer may still show a raw stored project row that violates this contract so the record can be diagnosed. Operational project lookup, project listing, setup reuse, project-state administrative access, Agent Connection administration, Connection Projects access, Core execution entry, and MCP project availability must reject that row rather than returning it as a normal project record or project entry. The system does not automatically move paths, repair the registry row, or delete that record solely because inspection can report it.
 
-## Local access boundaries
+## Local authority boundaries
 
 Local access to a file or directory is not the same as Volicord authority.
 
@@ -186,7 +201,7 @@ May claim:
 
 Must not claim:
 - A local path, directory name, copied identifier, rendered display, chat message, connector description, or agent memory proves Volicord authority.
-- Direct local modification outside documented Volicord contracts creates valid Volicord records, evidence, acceptance, residual-risk acceptance, `Write Authorization`, or artifact authority.
+- Direct local modification outside documented Volicord contracts creates valid Volicord records, evidence, acceptance, residual-risk acceptance, `Write Check`, or artifact authority.
 - The location of runtime data changes the security guarantee level by itself.
 
 ## Runtime location, storage, and security owners
@@ -200,8 +215,8 @@ Storage owners define:
 
 Security owns:
 - guarantee levels and non-guarantees
-- local-access assumptions and access-boundary wording
-- whether a claim may use `cooperative` or capability-gated `detective` wording
+- local connection assumptions and access-boundary wording
+- whether a claim may use `cooperative` or connection-observation `detective` wording
 - the non-claim that `Volicord Runtime Home` is not automatically a security boundary
 
 This document only keeps the locations and non-inference rules distinct.
@@ -214,7 +229,7 @@ Do not infer Volicord authority, security authority, runtime state, or isolation
 - The directory where Volicord is installed or started.
 - External MCP host configuration.
 - The directory selected as `Volicord Runtime Home`.
-- A copied `surface_id`.
+- A copied `connection_id`.
 - A displayed `ArtifactRef`.
 - A rendered `Projection`, status card, or template output.
 - Connector prose, chat text, or agent memory.
@@ -233,7 +248,7 @@ Do not infer that:
 - [Security](security.md): security claims, non-claims, trust boundaries, and guarantee levels.
 - [Storage Records](storage-records.md), [Storage Effects](storage-effects.md), [Artifact Storage](storage-artifacts.md), and [Storage Versioning](storage-versioning.md): storage record layout, effects, artifacts, migrations, versioning, and runtime data details.
 - [API Methods](api/methods.md) and method owner documents: method routing and method behavior.
-- [Core Model](core-model.md): Core authority, user-owned judgments, `Write Authorization`, acceptance, and residual risk.
-- [Agent Integration](agent-integration.md): surface context and capability-profile boundaries.
+- [Core Model](core-model.md): Core authority, User Channel judgment boundaries, `actor_source`, `Write Check`, acceptance, and residual risk.
+- [Security](security.md): `operation_category`, security non-guarantees, and Agent Connection authority non-inference.
 - [Projection Authority Reference](projection-and-templates.md): projection authority and freshness boundaries.
 - [Template Bodies](template-bodies.md): rendered template body contracts.

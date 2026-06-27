@@ -15,7 +15,7 @@ This is the English entry point for the Volicord documentation set. Start with t
 
 ## Reader Paths
 
-- Product users: [Getting Started Overview](getting-started/overview.md), then [User Guide](guides/user-workflow.md), [Judgment Examples](guides/judgment-examples.md), and [Surface Recipes](guides/surface-recipes.md)
+- Product users: [Getting Started Overview](getting-started/overview.md), then [User Guide](guides/user-workflow.md), [Judgment Examples](guides/judgment-examples.md), and [Agent Host Setup](guides/agent-host-setup.md)
 - Agent host operators: [System Requirements](reference/system-requirements.md), [Installation](getting-started/installation.md), [Quickstart](getting-started/quickstart.md), [Agent Host Setup](guides/agent-host-setup.md), then [Agent Host Troubleshooting](guides/agent-host-troubleshooting.md) when setup fails or stops
 - Multi-repository operators: [Multi-Repository Agent Setup](guides/multi-repository-agent-setup.md)
 - Agents: [Agent Guide](guides/agent-workflow.md), with repository working rules in [AGENTS.md](../../AGENTS.md)

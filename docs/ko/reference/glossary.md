@@ -39,19 +39,21 @@
 | evidence | 증거 | 특정 범위에서 특정 주장을 뒷받침하는 기록입니다. | [Core 모델](core-model.md) |
 | verification criteria | 검증 기준 | 작업을 확인하기 위해 사용자가 볼 수 있는 기준입니다. | [Core 모델](core-model.md) |
 | artifact | 아티팩트 | Volicord 아티팩트 개념으로 참조되거나 스테이징되는 작업 자료입니다. | [API 아티팩트 스키마](api/schema-artifacts.md) |
-| `Write Authorization` | 쓰기 권한 부여 | 호환되는 제품 파일 쓰기 시도 하나에 대한 `Core` 권한을 가리키는 정확한 Volicord 제품 라벨입니다. | [Core 모델](core-model.md) |
-| write approval | 쓰기 승인 | 쓰기를 승인한다는 일반 사용자 승인이나 산문 표현입니다. `Write Authorization`과 구분됩니다. | [Core 모델](core-model.md) |
-| sensitive-action approval | 민감 동작 승인 | 이름 붙은 민감 단계에 대한 사용자 승인이며, `Write Authorization`과 최종 수락과 구분됩니다. | [Core 모델](core-model.md) |
+| `Write Check` | 쓰기 확인 | 제안된 제품 파일 변경 하나에 대한 지속 Core 상태 호환성 기록입니다. | [Core 모델](core-model.md) |
+| write approval | 쓰기 승인 | 쓰기를 승인한다는 일반 사용자 승인이나 산문 표현입니다. `Write Check`와 구분됩니다. | [Core 모델](core-model.md) |
+| sensitive-action approval | 민감 동작 승인 | 이름 붙은 민감 단계에 대한 사용자 승인이며, `Write Check`와 최종 수락과 구분됩니다. | [Core 모델](core-model.md) |
 | final acceptance | 최종 수락 | 보이는 닫기 근거를 받아들일 수 있는지에 대한 사용자 소유 판단입니다. | [Core 모델](core-model.md) |
 | residual-risk acceptance | 잔여 위험 수락 | 이름 붙은 보이는 잔여 위험에 대한 사용자 소유 판단입니다. | [Core 모델](core-model.md) |
 | close readiness | 닫기 준비 상태 | 현재 상태에서 `Task`를 닫을 준비가 되었는지를 나타내는 Core 개념입니다. | [Core 모델](core-model.md) |
 | close-readiness blocker | 닫기 차단 사유 | 닫기 준비 상태가 진행되지 못할 때 드러나는 닫기 관련 사유입니다. | [API 차단 사유 처리 경로](api/blocker-routing.md) |
 | `Projection` | 상태 보기 | 읽기 전용 상태 보기를 뜻하는 정확한 제품 라벨입니다. 상태 보기 출력은 표시이지 `Core` 권한이 아닙니다. | [상태 보기 권한 참조](projection-and-templates.md) |
-| `Agent Integration Profile` | 에이전트 통합 프로필 | 에이전트 호스트 통합 하나와 묶인 접점 맥락을 위한 지속되는 레지스트리 식별 정보입니다. | [에이전트 통합](agent-integration.md) |
-| integration project membership | 통합 프로젝트 멤버십 | Agent Integration Profile과 등록된 프로젝트 사이의 명시적 허용 목록 관계입니다. | [에이전트 통합](agent-integration.md) |
-| `Host Installation` | 호스트 설치 | 에이전트 호스트 통합을 위해 관리되는 호스트 설정 인벤토리입니다. 외부 호스트가 서버를 신뢰하거나 로드했다는 증명은 아닙니다. | [에이전트 통합](agent-integration.md) |
+| `Agent Connection` | 에이전트 연결 | `connection_id`로 식별되는 로컬 MCP 호스트 연결 단위입니다. | [런타임 경계](runtime-boundaries.md) |
+| `connection.mode` | 연결 모드 | `read_only` 또는 `workflow`인 Agent Connection 모드입니다. | [런타임 경계](runtime-boundaries.md) |
+| `Connection Projects` | 연결 프로젝트 | Agent Connection에 명시적으로 허용된 `project_id` 목록입니다. | [런타임 경계](runtime-boundaries.md) |
+| `User Channel` | 사용자 채널 | 권한을 지니는 사용자 판단을 기록하는 로컬 사용자 경로입니다. | [Core 모델](core-model.md) |
+| `actor_source` | 행위자 출처 | `agent_connection:<connection_id>`, `local_user`, `system` 같은 지속 출처입니다. 등록된 연결이나 사용자 신원 증명이 아닙니다. | [Core 모델](core-model.md) |
+| `operation_category` | 작업 범주 | `read`, `agent_workflow`, `user_only`, `admin_local` 중 하나인 내부 API 작업 분류입니다. | [보안](security.md) |
+| `Host Installation` | 호스트 설치 | Agent Connection을 위해 관리되는 호스트 설정 인벤토리입니다. 외부 호스트가 서버를 신뢰하거나 로드했다는 증명은 아닙니다. | [관리 CLI](admin-cli.md) |
 | `volicord.list_projects` | `volicord.list_projects` | 묶인 통합에 허용된 프로젝트를 나열하는 MCP 어댑터 유틸리티입니다. 공개 Core API 메서드가 아닙니다. | [MCP 전송](mcp-transport.md) |
-| surface | 접점 | 맥락이 드러나는 통합 또는 상호작용 접점입니다. | [에이전트 통합](agent-integration.md) |
-| access class | 접근 등급 | 검증된 접점과 접근 맥락을 분류하는 값 범주입니다. | [API 값 집합](api/schema-value-sets.md) |
 | baseline guarantee | 기준 범위 보장 | 기준 범위에서 지원되는 보장을 말할 때 쓰는 보안 표현입니다. | [보안](security.md) |
 | `ErrorCode` | 공개 오류 코드 | 공개 API 오류 코드 식별자입니다. | [API 오류 코드](api/error-codes.md) |

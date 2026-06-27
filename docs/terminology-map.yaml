@@ -21,8 +21,9 @@ canonical_for:
   - "Terminology distinction that Volicord is the local work-authority product/system for AI-assisted product work, while Core is the local authority record for Volicord state."
   - "Terminology routing that Volicord product identity belongs in Getting Started Overview while supported and unsupported scope belongs in Scope."
   - "Terminology boundaries among Volicord, Core, Volicord implementation, Volicord source repository, Volicord installation, `volicord`, `volicord-mcp`, `Volicord Runtime Home`, `test harness`, and `Product Repository`."
-  - "Preferred current-runtime-context wording for current scope, currently applied scope, current Change Unit, and current surface context."
-  - "Terminology boundaries among `Write Authorization`, write approval, sensitive-action approval, final acceptance, residual-risk acceptance, and user-owned judgment."
+  - "Preferred current-runtime-context wording for current scope, currently applied scope, current Change Unit, and current connection context."
+  - "Terminology boundaries among Write Check, write approval, sensitive-action approval, final acceptance, residual-risk acceptance, and user-owned judgment."
+  - "Terminology boundaries among Agent Connection, Connection Projects, User Channel, `actor_source`, `operation_category`, and Write Check."
   - "Preferred verification criteria wording for user-visible criteria used to check work."
   - "Terminology routing for API error-code meanings, error precedence, API response branch routing, blocker routing, dry-run preview routing, public error as blocker wording, `ToolError.details`, and error detail helper values."
   - "Artifact and evidence terminology conventions for bilingual documentation."
@@ -174,12 +175,10 @@ identifier_preservation:
     - "ErrorCode"
     - "SensitiveActionScope"
     - "AuthorizedAttemptScope"
-    - "surface_id"
-    - "surface_instance_id"
-    - "VerifiedSurfaceContext"
-    - "VerifiedSurfaceContext.access_class"
-    - "access_class"
-    - "integration_id"
+    - "connection_id"
+    - "connection.mode"
+    - "actor_source"
+    - "operation_category"
     - "default_project_id"
     - "installation_id"
     - "host_kind"
@@ -188,8 +187,8 @@ identifier_preservation:
     - "config_target"
     - "managed_fingerprint"
     - "last_verified_status"
-    - "agent_integrations"
-    - "integration_projects"
+    - "agent_connections"
+    - "connection_projects"
     - "host_installations"
     - "active_change_unit_ref"
     - "state_version"
@@ -211,8 +210,6 @@ identifier_preservation:
     - "volicord agent install"
     - "VOLICORD_BIN"
     - "VOLICORD_PROJECT_ID"
-    - "VOLICORD_SURFACE_ID"
-    - "VOLICORD_SURFACE_INSTANCE_ID"
     - "VOLICORD_HOME"
     - "~/.volicord"
     - "volicord-artifact://{project_id}/{artifact_id}"
@@ -227,10 +224,11 @@ identifier_preservation:
     - "Volicord"
     - "Product Repository"
     - "Volicord Runtime Home"
-    - "Agent Integration Profile"
+    - "Agent Connection"
+    - "User Channel"
     - "Host Installation"
     - "Projection"
-    - "Write Authorization"
+    - "Write Check"
 avoid:
   en:
     - phrase: "Volicord is a local authority record"
@@ -238,7 +236,7 @@ avoid:
     - phrase: "local work-authority server"
       use: "local work-authority product/system for Volicord; for implementation context use Volicord implementation, Volicord source repository, Volicord Rust workspace, Volicord installation, `volicord`, or `volicord-mcp` as applicable."
     - phrase: "coding-agent integration"
-      use: "agent-host integration, Agent Integration Profile, Host Installation, or agent integration according to context."
+      use: "agent-host integration, Agent Connection, Host Installation, or agent connection according to context."
     - phrase: "Volicord-as-server product label"
       use: "Volicord, Volicord implementation, Volicord source repository, Volicord Rust workspace, Volicord installation, `volicord`, or `volicord-mcp` according to context."
     - phrase: "server implementation set"
@@ -252,7 +250,7 @@ avoid:
     - phrase: "active Change Unit"
       use: "current Change Unit or currently applied Change Unit, except when preserving an exact identifier such as `active_change_unit_ref`."
     - phrase: "active surface context"
-      use: "current surface context or currently applied surface context."
+      use: "current connection context or currently applied connection context."
     - phrase: "verification expectations"
       use: "verification criteria when the meaning is user-visible criteria for checking work."
     - phrase: "inspection expectations"
@@ -262,16 +260,10 @@ avoid:
       use: "현재 적용 범위"
     - phrase: "활성 Change Unit"
       use: "현재 적용 Change Unit"
-    - phrase: "활성 접점 맥락"
-      use: "현재 적용 접점 맥락"
-    - phrase: "활성 접점"
-      use: "현재 런타임 접점 맥락을 뜻할 때는 현재 적용 접점 맥락"
     - phrase: "확인 기대"
       use: "검증 기준"
     - phrase: "검증 기대치"
       use: "검증 기준"
-    - phrase: "쓰기 승인(`Write Authorization`)"
-      use: "정확한 제품 라벨은 `Write Authorization`으로 보존하고 한국어 설명은 쓰기 권한 부여를 사용; 일반 사용자 승인은 쓰기 승인으로 별도 설명"
     - phrase: "close 가능성 평가"
       use: "닫기 준비 상태 평가"
     - phrase: "닫기 가능성 평가"
@@ -294,8 +286,6 @@ avoid:
       use: "`ToolEnvelope` 요청 래퍼"
     - phrase: "lifecycle 의미"
       use: "생명주기 의미, 또는 산문이 더 자연스러울 때는 생명주기의 뜻"
-    - phrase: "surface 정보"
-      use: "접점 정보, 또는 필드 이름이면 `surface_id`"
     - phrase: "close blocker를 확인한다"
       use: "닫기 차단 사유를 확인한다"
     - phrase: "blocker 처리 경로"
@@ -896,7 +886,7 @@ terms:
       - en: "docs/en/reference/api/schema-judgment.md"
         ko: "docs/ko/reference/api/schema-judgment.md"
     notes:
-      - "Keep distinct from `Write Authorization`, write approval, sensitive-action approval, final acceptance, residual-risk acceptance, scope changes, evidence, and verification criteria."
+      - "Keep distinct from Write Check, write approval, sensitive-action approval, final acceptance, residual-risk acceptance, scope changes, evidence, and verification criteria."
   user_judgment_schema:
     category: "identifier"
     en: "UserJudgment"
@@ -939,7 +929,7 @@ terms:
         ko: "docs/ko/reference/api/method-close-task.md"
     notes:
       - "Final acceptance is a user-owned judgment about the visible close basis."
-      - "Keep distinct from `Write Authorization`, write approval, sensitive-action approval, residual-risk acceptance, evidence, verification criteria, and broad approval."
+      - "Keep distinct from Write Check, write approval, sensitive-action approval, residual-risk acceptance, evidence, verification criteria, and broad approval."
   residual_risk_acceptance:
     category: "product_concept"
     en: "residual-risk acceptance"
@@ -959,7 +949,7 @@ terms:
         ko: "docs/ko/reference/api/method-close-task.md"
     notes:
       - "Residual-risk acceptance is a user-owned judgment about a named visible residual risk for the requested close."
-      - "Keep distinct from final acceptance, `Write Authorization`, write approval, sensitive-action approval, evidence sufficiency, verification criteria, and proof that no risk remains."
+      - "Keep distinct from final acceptance, Write Check, write approval, sensitive-action approval, evidence sufficiency, verification criteria, and proof that no risk remains."
   close_readiness:
     category: "product_concept"
     en: "close readiness"
@@ -1368,109 +1358,166 @@ terms:
         ko: "docs/ko/reference/api/schema-state.md"
     notes:
       - "Use 상태 보기 in prose unless the exact Volicord label matters."
-  surface:
+  agent_connection:
     category: "product_concept"
-    en: "surface"
-    ko_reference: "접점"
-    ko_user: "접점"
+    en: "Agent Connection"
+    ko_reference: "Agent Connection"
+    ko_user: "에이전트 연결"
+    ko_reference_first_reference: "`Agent Connection`(에이전트 연결)"
     preserve_as_identifier:
-      - "surface_id"
-      - "surface_instance_id"
-      - "VerifiedSurfaceContext"
+      - "connection_id"
+      - "connection.mode"
+      - "agent_connections"
     primary_owner:
-      en: "docs/en/reference/agent-integration.md"
-      ko: "docs/ko/reference/agent-integration.md"
+      en: "docs/en/reference/runtime-boundaries.md"
+      ko: "docs/ko/reference/runtime-boundaries.md"
     related_references:
       - en: "docs/en/reference/security.md"
         ko: "docs/ko/reference/security.md"
+      - en: "docs/en/reference/mcp-transport.md"
+        ko: "docs/ko/reference/mcp-transport.md"
+      - en: "docs/en/reference/admin-cli.md"
+        ko: "docs/ko/reference/admin-cli.md"
     notes:
-      - "Do not make surface wording sound like proof of authority, access, binding, or capability."
-  surface_id:
+      - "Use for the local MCP host connection unit identified by `connection_id`."
+      - "`connection.mode` is either `read_only` or `workflow`."
+      - "Do not use as a synonym for Product Repository, Runtime Home, User Channel, or Host Installation."
+      - "Do not make Agent Connection wording sound like OS permission, secret isolation, filesystem ACLs, or user authority."
+  connection_id:
     category: "identifier"
-    en: "surface_id"
+    en: "connection_id"
     preserve_identifier: true
-    ko_reference: "`surface_id`"
-    ko_user: "`surface_id`"
+    ko_reference: "`connection_id`"
+    ko_user: "`connection_id`"
     preserve_as_identifier:
-      - "surface_id"
+      - "connection_id"
     primary_owner:
-      en: "docs/en/reference/agent-integration.md"
-      ko: "docs/ko/reference/agent-integration.md"
+      en: "docs/en/reference/runtime-boundaries.md"
+      ko: "docs/ko/reference/runtime-boundaries.md"
     related_references:
       - en: "docs/en/reference/api/schema-core.md"
         ko: "docs/ko/reference/api/schema-core.md"
       - en: "docs/en/reference/security.md"
         ko: "docs/ko/reference/security.md"
     notes:
-      - "Use Agent Integration for surface-identity detail."
-  current_surface_context:
+      - "Use as the identifier for an Agent Connection."
+      - "Do not describe a copied `connection_id` as user authority, OS permission, or proof of capability."
+  current_connection_context:
     category: "runtime_context"
-    en: "current surface context"
-    ko_reference: "현재 적용 접점 맥락"
-    ko_user: "현재 적용 접점 맥락"
+    en: "current connection context"
+    ko_reference: "현재 연결 맥락"
+    ko_user: "현재 연결 맥락"
     aliases_en:
-      - "currently applied surface context"
+      - "currently applied connection context"
     preserve_as_identifier:
-      - "VerifiedSurfaceContext"
-      - "VerifiedSurfaceContext.access_class"
-      - "surface_id"
-      - "surface_instance_id"
+      - "connection_id"
+      - "connection.mode"
+      - "actor_source"
+      - "operation_category"
     primary_owner:
-      en: "docs/en/reference/agent-integration.md"
-      ko: "docs/ko/reference/agent-integration.md"
+      en: "docs/en/reference/runtime-boundaries.md"
+      ko: "docs/ko/reference/runtime-boundaries.md"
     related_references:
       - en: "docs/en/reference/security.md"
         ko: "docs/ko/reference/security.md"
     notes:
-      - "Use for the current surface context for a request or interaction."
-      - "Prefer current surface context or currently applied surface context in prose."
+      - "Use for the request-time Agent Connection, project allowlist, operation category, and actor provenance context."
+      - "Prefer current connection context or currently applied connection context in prose."
       - "Do not use the discouraged active wording for this runtime-context meaning."
-      - "Do not use current surface context as proof of authority, access, binding, or capability by itself."
-      - "In Korean, use 현재 적용 접점 맥락; preserve exact surface identifiers."
-  agent_integration_profile:
-    category: "product_label"
-    en: "Agent Integration Profile"
-    ko_reference: "Agent Integration Profile"
-    ko_user: "에이전트 통합 프로필"
-    ko_reference_first_reference: "`Agent Integration Profile`(에이전트 통합 프로필)"
-    preserve_as_label:
-      - "Agent Integration Profile"
-    preserve_as_identifier:
-      - "integration_id"
-      - "agent_integrations"
-    primary_owner:
-      en: "docs/en/reference/agent-integration.md"
-      ko: "docs/ko/reference/agent-integration.md"
-    related_references:
-      - en: "docs/en/reference/admin-cli.md"
-        ko: "docs/ko/reference/admin-cli.md"
-      - en: "docs/en/reference/mcp-transport.md"
-        ko: "docs/ko/reference/mcp-transport.md"
-      - en: "docs/en/reference/storage-records.md"
-        ko: "docs/ko/reference/storage-records.md"
-    notes:
-      - "Use the exact product label when naming the durable agent-host integration profile."
-      - "Do not use as a synonym for a Product Repository, Host Installation, or MCP session."
-  integration_project_membership:
+      - "Do not use current connection context as proof of user authority, OS permission, access, binding, or capability by itself."
+      - "In Korean, use 현재 연결 맥락; preserve exact connection identifiers."
+  connection_projects:
     category: "product_concept"
-    en: "integration project membership"
-    ko_reference: "통합 프로젝트 멤버십"
-    ko_user: "통합 프로젝트 멤버십"
+    en: "Connection Projects"
+    ko_reference: "Connection Projects"
+    ko_user: "연결 프로젝트"
+    ko_reference_first_reference: "`Connection Projects`(연결 프로젝트)"
     preserve_as_identifier:
-      - "integration_id"
+      - "connection_id"
       - "project_id"
-      - "integration_projects"
+      - "connection_projects"
     primary_owner:
-      en: "docs/en/reference/agent-integration.md"
-      ko: "docs/ko/reference/agent-integration.md"
+      en: "docs/en/reference/runtime-boundaries.md"
+      ko: "docs/ko/reference/runtime-boundaries.md"
     related_references:
       - en: "docs/en/reference/storage-records.md"
         ko: "docs/ko/reference/storage-records.md"
       - en: "docs/en/reference/storage-ddl.md"
         ko: "docs/ko/reference/storage-ddl.md"
     notes:
-      - "Use for the explicit allowlist relation between an Agent Integration Profile and registered projects."
+      - "Use for the explicit allowlist of `project_id` values for an Agent Connection."
       - "Do not imply all registered projects are included unless the owner explicitly says so."
+  user_channel:
+    category: "product_concept"
+    en: "User Channel"
+    ko_reference: "User Channel"
+    ko_user: "사용자 채널"
+    ko_reference_first_reference: "`User Channel`(사용자 채널)"
+    preserve_as_label:
+      - "User Channel"
+    preserve_as_identifier:
+      - "local_user"
+      - "actor_source"
+    primary_owner:
+      en: "docs/en/reference/core-model.md"
+      ko: "docs/ko/reference/core-model.md"
+    related_references:
+      - en: "docs/en/reference/security.md"
+        ko: "docs/ko/reference/security.md"
+      - en: "docs/en/reference/admin-cli.md"
+        ko: "docs/ko/reference/admin-cli.md"
+    notes:
+      - "Use for the local user path that records authority-bearing user judgments."
+      - "Agent Connections may request user judgments but must not record authority-bearing user judgments."
+      - "User Channel records user judgments with `actor_source=local_user`."
+  actor_source:
+    category: "identifier"
+    en: "actor_source"
+    preserve_identifier: true
+    ko_reference: "`actor_source`"
+    ko_user: "`actor_source`"
+    ko_explanation: "행위자 출처"
+    preserve_as_identifier:
+      - "actor_source"
+      - "agent_connection:<connection_id>"
+      - "local_user"
+      - "system"
+    primary_owner:
+      en: "docs/en/reference/core-model.md"
+      ko: "docs/ko/reference/core-model.md"
+    related_references:
+      - en: "docs/en/reference/security.md"
+        ko: "docs/ko/reference/security.md"
+      - en: "docs/en/reference/api/schema-core.md"
+        ko: "docs/ko/reference/api/schema-core.md"
+    notes:
+      - "`actor_source` is durable provenance, not a registered surface or user-identity proof."
+      - "Supported provenance values are `agent_connection:<connection_id>`, `local_user`, and `system`."
+      - "Only User Channel provenance can satisfy authority-bearing user-judgment requirements."
+  operation_category:
+    category: "identifier"
+    en: "operation_category"
+    preserve_identifier: true
+    ko_reference: "`operation_category`"
+    ko_user: "`operation_category`"
+    ko_explanation: "작업 범주"
+    preserve_as_identifier:
+      - "operation_category"
+      - "read"
+      - "agent_workflow"
+      - "user_only"
+      - "admin_local"
+    primary_owner:
+      en: "docs/en/reference/security.md"
+      ko: "docs/ko/reference/security.md"
+    related_references:
+      - en: "docs/en/reference/core-model.md"
+        ko: "docs/ko/reference/core-model.md"
+      - en: "docs/en/reference/api/schema-value-sets.md"
+        ko: "docs/ko/reference/api/schema-value-sets.md"
+    notes:
+      - "`operation_category` is an internal API operation classification, not OS permission, host trust, or broad authority."
+      - "Supported categories are `read`, `agent_workflow`, `user_only`, and `admin_local`."
   host_installation:
     category: "product_label"
     en: "Host Installation"
@@ -1590,22 +1637,20 @@ terms:
         ko: "docs/ko/reference/api/method-prepare-write.md"
     notes:
       - "Use for ordinary user approval or prose summaries about approving a write, not for the exact Volicord product label."
-      - "When naming the exact product label, preserve `Write Authorization`."
-      - "Do not use the discouraged Korean parenthetical form as the standard expression for the exact product label."
-      - "Keep ordinary write approval distinct from `Write Authorization`, sensitive-action approval, final acceptance, residual-risk acceptance, and user-owned judgment."
-  write_authorization:
+      - "When naming Core-state compatibility for a proposed product-file change, use Write Check."
+      - "Keep ordinary write approval distinct from Write Check, sensitive-action approval, final acceptance, residual-risk acceptance, and user-owned judgment."
+  write_check:
     category: "product_label"
-    en: "write authorization"
-    en_label: "Write Authorization"
-    ko_reference: "쓰기 권한 부여"
-    ko_user: "쓰기 권한 부여"
-    ko_reference_first_reference: "`Write Authorization`(쓰기 권한 부여)"
-    ko_explanation: "호환되는 제품 파일 쓰기 시도 하나를 위한 Core 권한 부여"
+    en: "Write Check"
+    en_label: "Write Check"
+    ko_reference: "쓰기 확인"
+    ko_user: "쓰기 확인"
+    ko_reference_first_reference: "`Write Check`(쓰기 확인)"
+    ko_explanation: "현재 Core 상태에서 제안된 제품 파일 변경 하나가 호환되는지 기록하는 지속 호환성 기록"
     preserve_as_label:
-      - "Write Authorization"
+      - "Write Check"
     preserve_as_identifier:
-      - "AuthorizedAttemptScope"
-      - "WriteAuthorization.basis_state_version"
+      - "WriteCheck.basis_state_version"
     primary_owner:
       en: "docs/en/reference/core-model.md"
       ko: "docs/ko/reference/core-model.md"
@@ -1615,9 +1660,10 @@ terms:
       - en: "docs/en/reference/api/method-prepare-write.md"
         ko: "docs/ko/reference/api/method-prepare-write.md"
     notes:
-      - "Use the exact label when naming the Volicord concept."
-      - "In Korean explanatory prose, use 쓰기 권한 부여 rather than 쓰기 승인 for the exact product label."
-      - "Do not treat write approval, sensitive-action approval, final acceptance, residual-risk acceptance, or broad user-owned judgment as `Write Authorization`."
+      - "Use for the durable compatibility record for a proposed product-file change under current Core state."
+      - "In Korean explanatory prose, use 쓰기 확인 for the exact product label."
+      - "Do not describe Write Check as OS write permission, filesystem ACLs, shell approval, or broad user approval."
+      - "Do not treat write approval, sensitive-action approval, final acceptance, residual-risk acceptance, or broad user-owned judgment as Write Check."
   sensitive_approval:
     category: "product_concept"
     en: "sensitive-action approval"
@@ -1639,23 +1685,7 @@ terms:
         ko: "docs/ko/reference/security.md"
     notes:
       - "Use for user approval of a named sensitive step inside `SensitiveActionScope`."
-      - "Keep sensitive-action approval distinct from write approval, `Write Authorization`, final acceptance, residual-risk acceptance, and user-owned judgment."
-  access_class:
-    category: "product_concept"
-    en: "access class"
-    ko_reference: "접근 등급"
-    ko_user: "접근 등급"
-    preserve_as_identifier:
-      - "access_class"
-      - "VerifiedSurfaceContext.access_class"
-    primary_owner:
-      en: "docs/en/reference/api/schema-value-sets.md"
-      ko: "docs/ko/reference/api/schema-value-sets.md"
-    related_references:
-      - en: "docs/en/reference/agent-integration.md"
-        ko: "docs/ko/reference/agent-integration.md"
-      - en: "docs/en/reference/security.md"
-        ko: "docs/ko/reference/security.md"
+      - "Keep sensitive-action approval distinct from write approval, Write Check, final acceptance, residual-risk acceptance, and user-owned judgment."
   baseline_guarantee:
     category: "security_concept"
     en: "baseline guarantee"

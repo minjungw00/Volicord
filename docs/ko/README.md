@@ -15,7 +15,7 @@ Volicord(볼리코드) 한국어 문서의 진입점입니다. 하려는 일에 
 
 ## 독자별 경로
 
-- 제품 사용자: [시작하기 개요](getting-started/overview.md)를 읽은 뒤 [사용자 가이드](guides/user-workflow.md), [판단 예시](guides/judgment-examples.md), [접점별 레시피](guides/surface-recipes.md)로 이동합니다.
+- 제품 사용자: [시작하기 개요](getting-started/overview.md)를 읽은 뒤 [사용자 가이드](guides/user-workflow.md), [판단 예시](guides/judgment-examples.md), [에이전트 호스트 설정](guides/agent-host-setup.md)으로 이동합니다.
 - 에이전트 호스트 운영자: [시스템 요구사항](reference/system-requirements.md), [설치](getting-started/installation.md), [빠른 시작](getting-started/quickstart.md), [에이전트 호스트 설정](guides/agent-host-setup.md)을 보고, 설정이 실패하거나 멈추면 [에이전트 호스트 문제 해결](guides/agent-host-troubleshooting.md)을 봅니다.
 - 다중 저장소 운영자: [다중 저장소 에이전트 설정](guides/multi-repository-agent-setup.md)을 봅니다.
 - 에이전트: [에이전트 가이드](guides/agent-workflow.md)를 사용하고, 저장소 작업 규칙은 [AGENTS.md](../../AGENTS.md)에서 확인합니다.

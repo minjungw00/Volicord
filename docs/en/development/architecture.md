@@ -14,7 +14,7 @@ This checkout is the Volicord source repository and Rust workspace for the repos
 
 ```mermaid
 flowchart LR
-  host[MCP host or agent surface]
+  host[MCP host or Agent Connection]
   mcp["volicord-mcp stdio adapter"]
   core["volicord-core"]
   store["volicord-store project Store"]
@@ -50,11 +50,11 @@ The Volicord implementation in this repository has three distinct operational pa
 
 - MCP host -> `volicord-mcp` -> `volicord-core` -> Store and artifact facilities under `Volicord Runtime Home`.
 - Operator -> `volicord` administrative CLI -> bootstrap and registration facilities -> `Volicord Runtime Home` and host configuration files.
-- User at a local terminal -> `volicord user` CLI -> `volicord-core` -> Store under `Volicord Runtime Home`, using a registered `user_interaction` surface.
+- User at a local terminal -> `volicord user` CLI -> `volicord-core` -> Store under `Volicord Runtime Home`, using the `User Channel`.
 
-`volicord-mcp` also uses `volicord-store` directly during startup and request routing. That Store use checks Runtime Home, Agent Integration Profile state, integration project membership, project availability, surface, surface instance, role, and local-access registration before dispatching a public method to Core. It is not an alternate implementation path for public Volicord method semantics, which route through `volicord-core`.
+`volicord-mcp` also uses `volicord-store` directly during startup and request routing. That Store use checks Runtime Home, Agent Connection state, Connection Projects membership, project availability, `connection.mode`, `operation_category`, and `actor_source` provenance before dispatching a public method to Core. It is not an alternate implementation path for public Volicord method semantics, which route through `volicord-core`.
 
-`Product Repository` remains a separate product-file boundary. The public Volicord API records owner-defined compatibility, observations, and artifact links; product-file writes themselves happen through a connected surface or local tooling outside the public API path.
+`Product Repository` remains a separate product-file boundary. The public Volicord API records owner-defined compatibility, observations, and artifact links; product-file writes themselves happen through an Agent Connection or local tooling outside the public API path.
 
 ## Workspace shape
 
@@ -65,11 +65,11 @@ The Cargo workspace contains these members:
 | `crates/volicord-types` | `volicord-types` | Library | Shared Rust request, response, schema-shaped, value-set, identifier, and canonical-hash types. |
 | `crates/volicord-store` | `volicord-store` | Library | SQLite, Runtime Home, bootstrap, project Store, artifact storage, migration, inspection, and storage-error implementation. |
 | `crates/volicord-core` | `volicord-core` | Library | Core service, shared request pipeline, method planning, policy checks, and Store coordination. |
-| `crates/volicord-cli` | `volicord-cli` | Library and `volicord` binary | Local administrative CLI for Runtime Home setup, project and surface registration, local user interaction commands, Agent Integration Profile installation, host adapters, and repository guidance. |
+| `crates/volicord-cli` | `volicord-cli` | Library and `volicord` binary | Local administrative CLI for Runtime Home setup, project registration, User Channel commands, Agent Connection installation, host adapters, and repository guidance. |
 | `crates/volicord-mcp` | `volicord-mcp` | Library and `volicord-mcp` binary | MCP stdio adapter, startup validation, tool listing, `tools/call` dispatch, and Core invocation. |
 | `crates/volicord-test-support` | `volicord-test-support` | Library | Disposable Runtime Home, Store, Core, and fixture helpers shared by implementation tests. |
 | `tests/conformance` | `volicord-conformance-tests` | `baseline` test target | Baseline cross-method scenarios that exercise owner-defined behavior through Core-facing APIs. |
-| `tests/integration` | `volicord-integration-tests` | `mcp_surface` test target | Cross-layer MCP, Core, Store, surface-binding, and access-path verification. |
+| `tests/integration` | `volicord-integration-tests` | `mcp_surface` test target | Cross-layer MCP, Core, Store, Agent Connection binding, and operation-category verification. |
 | `xtask` | `xtask` | Library and `xtask` binary | Repository maintenance tooling for read-only documentation validation. It is not part of Volicord runtime architecture. |
 
 Internal dependency direction from the Cargo manifests:
@@ -127,8 +127,8 @@ flowchart TD
 The durable dependency boundaries are:
 
 - Core does not depend on CLI or MCP adapter crates.
-- MCP may depend on Core, Store, and shared types for distinct responsibilities: transport and dispatch, integration startup validation, request-time project routing, and typed request handling.
-- The administrative CLI uses Store and shared types for local setup and registration. Its `volicord user` command path also depends on Core to invoke selected Core-facing methods as a local `user_interaction` adapter.
+- MCP may depend on Core, Store, and shared types for distinct responsibilities: transport and dispatch, Agent Connection startup validation, request-time project routing, and typed request handling.
+- The administrative CLI uses Store and shared types for local setup and registration. Its `volicord user` command path also depends on Core to invoke selected Core-facing methods through the `User Channel`.
 - Store depends on shared types.
 - Test-support and test packages compose implementation crates only for disposable fixtures and cross-layer verification.
 - `xtask` has no internal product-crate dependencies. Documentation-tooling dependencies stay isolated in the maintenance crate.
@@ -138,10 +138,10 @@ The durable dependency boundaries are:
 | Area | Major module paths | Durable responsibility |
 |---|---|---|
 | `crates/volicord-types` | `crates/volicord-types/src/methods.rs`, `crates/volicord-types/src/schema.rs`, `crates/volicord-types/src/values.rs`, `crates/volicord-types/src/ids.rs`, `crates/volicord-types/src/canonical.rs` | `methods.rs` carries typed public request/result models and method-to-access mapping. `schema.rs` carries shared schema-shaped Rust data, response branches, Core state shapes, artifact and judgment structures, and persisted helper shapes. `values.rs` carries controlled Rust enums and constants for documented value names. `ids.rs` carries opaque identifier wrappers and durable ID generation helpers. `canonical.rs` carries deterministic canonical JSON serialization and request hashing. |
-| `crates/volicord-store` | `crates/volicord-store/src/runtime_home.rs`, `crates/volicord-store/src/bootstrap.rs`, `crates/volicord-store/src/sqlite.rs`, `crates/volicord-store/src/migrations.rs`, `crates/volicord-store/src/core_pipeline.rs`, `crates/volicord-store/src/artifacts.rs`, `crates/volicord-store/src/inspection.rs`, `crates/volicord-store/src/error.rs` | `runtime_home.rs` resolves Runtime Home paths. `bootstrap.rs` initializes Runtime Home metadata and registers projects and surfaces. `sqlite.rs` opens and validates registry/project SQLite databases. `migrations.rs` applies baseline migrations. `core_pipeline.rs` exposes `CoreProjectStore`, read helpers, replay rows, storage mutation types, and the atomic Core mutation commit boundary. `artifacts.rs` handles transient staging and persistent artifact body verification. `inspection.rs` supports read-only setup inspection. `error.rs` classifies storage failures for higher layers. |
-| `crates/volicord-core` | `crates/volicord-core/src/pipeline.rs`, `crates/volicord-core/src/methods/`, `crates/volicord-core/src/policy/` | `pipeline.rs` owns common request preflight, validated request context preparation, effect-path selection, response construction, replay handling, and Core commit orchestration. `methods/` owns method-specific validation, planning, storage mutation lists, event payloads, dry-run summaries, and result fields. `policy/` owns reusable Core policy helpers for access, replay context, product paths, write authorization, close readiness, evidence, and judgment relevance. |
-| `crates/volicord-cli` | `crates/volicord-cli/src/main.rs`, `crates/volicord-cli/src/agent_command.rs`, `crates/volicord-cli/src/user_command.rs`, `crates/volicord-cli/src/host_integration/`, `crates/volicord-cli/src/repository_guidance.rs`, `crates/volicord-cli/src/guidance_template.rs`, `crates/volicord-cli/src/registration.rs` | `main.rs` dispatches administrative commands and binary exit behavior. `agent_command.rs` parses and orchestrates `volicord agent` install, project membership, status, verification, uninstall, and guidance commands. `user_command.rs` parses and orchestrates `volicord user` setup, status, and judgment commands. `host_integration/` owns Codex, Claude Code, and generic host plans and managed host configuration. `repository_guidance.rs` and `guidance_template.rs` manage optional Product Repository guidance. `registration.rs` builds capability-profile and local-access metadata for registered surfaces. |
-| `crates/volicord-mcp` | `crates/volicord-mcp/src/main.rs`, `crates/volicord-mcp/src/lib.rs` | `main.rs` handles command modes such as stdio, `--check`, help, and version. `lib.rs` owns MCP tool metadata, integration startup inspection, request-time project routing, the adapter-owned `volicord.list_projects` utility, typed public `tools/call` decoding, invocation-context derivation, initialization instructions, JSON-RPC stdio framing, and response wrapping. |
+| `crates/volicord-store` | `crates/volicord-store/src/runtime_home.rs`, `crates/volicord-store/src/bootstrap.rs`, `crates/volicord-store/src/sqlite.rs`, `crates/volicord-store/src/migrations.rs`, `crates/volicord-store/src/core_pipeline.rs`, `crates/volicord-store/src/artifacts.rs`, `crates/volicord-store/src/inspection.rs`, `crates/volicord-store/src/error.rs` | `runtime_home.rs` resolves Runtime Home paths. `bootstrap.rs` initializes Runtime Home metadata and registers projects, Agent Connections, Connection Projects, and the User Channel. `sqlite.rs` opens and validates registry/project SQLite databases. `migrations.rs` applies baseline migrations. `core_pipeline.rs` exposes `CoreProjectStore`, read helpers, replay rows, storage mutation types, and the atomic Core mutation commit boundary. `artifacts.rs` handles transient staging and persistent artifact body verification. `inspection.rs` supports read-only setup inspection. `error.rs` classifies storage failures for higher layers. |
+| `crates/volicord-core` | `crates/volicord-core/src/pipeline.rs`, `crates/volicord-core/src/methods/`, `crates/volicord-core/src/policy/` | `pipeline.rs` owns common request preflight, validated request context preparation, effect-path selection, response construction, replay handling, and Core commit orchestration. `methods/` owns method-specific validation, planning, storage mutation lists, event payloads, dry-run summaries, and result fields. `policy/` owns reusable Core policy helpers for operation-category checks, replay context, Product Repository path normalization, Write Check compatibility, evidence status, judgment relevance, and close-readiness calculations. |
+| `crates/volicord-cli` | `crates/volicord-cli/src/main.rs`, `crates/volicord-cli/src/agent_command.rs`, `crates/volicord-cli/src/user_command.rs`, `crates/volicord-cli/src/host_integration/`, `crates/volicord-cli/src/repository_guidance.rs`, `crates/volicord-cli/src/guidance_template.rs`, `crates/volicord-cli/src/registration.rs` | `main.rs` dispatches administrative commands and binary exit behavior. `agent_command.rs` parses and orchestrates `volicord agent` install, project membership, status, verification, uninstall, and guidance commands. `user_command.rs` parses and orchestrates `volicord user` setup, status, and judgment commands. `host_integration/` owns Codex, Claude Code, and generic host plans and managed host configuration. `repository_guidance.rs` and `guidance_template.rs` manage optional Product Repository guidance. `registration.rs` builds Agent Connection, Connection Projects, and User Channel metadata. |
+| `crates/volicord-mcp` | `crates/volicord-mcp/src/main.rs`, `crates/volicord-mcp/src/lib.rs` | `main.rs` handles command modes such as stdio, `--check`, help, and version. `lib.rs` owns MCP tool metadata, Agent Connection startup inspection, request-time project routing, the adapter-owned `volicord.list_projects` utility, typed public `tools/call` decoding, `operation_category` and `actor_source` derivation, initialization instructions, JSON-RPC stdio framing, and response wrapping. |
 | `crates/volicord-test-support` | `crates/volicord-test-support/src/lib.rs` | Provides disposable Runtime Home helpers, fixture setup for Core and Store tests, shared request builders, and fixture-only helpers used by conformance and integration tests. |
 
 These module descriptions are implementation placement guidance. Exact API fields, method behavior, storage records, storage effects, security wording, and Core authority semantics stay with the Reference owners.
@@ -154,7 +154,7 @@ These module descriptions are implementation placement guidance. Exact API field
 |---|---|
 | `crates/volicord-core/src/pipeline.rs` | Runs common preflight, prepares `VerifiedRequestContext`, routes prepared requests to read, no-effect, dry-run, or committed Core paths, and builds common response bases. |
 | `crates/volicord-core/src/methods/` | Decodes already typed requests into method-specific plans: validation outcomes, dry-run summaries, event payloads, result fields, and `CoreStorageMutation` lists. |
-| `crates/volicord-core/src/policy/` | Supplies reusable checks used by method planners and preflight: registered-surface access, replay context, Product Repository path normalization, write-authorization compatibility, evidence status, judgment relevance, and close-readiness calculations. |
+| `crates/volicord-core/src/policy/` | Supplies reusable checks used by method planners and preflight: operation category, replay context, Product Repository path normalization, Write Check compatibility, evidence status, judgment relevance, and close-readiness calculations. |
 | `crates/volicord-store/src/core_pipeline.rs` | Owns project-local Store access, read helpers, replay rows, storage mutation application, and the atomic `CoreProjectStore::commit_mutation` transaction. |
 
 Method modules decide what should happen for one public method. The shared Core pipeline decides the common ordering and effect path. Store commits apply the selected storage mutations atomically; Store does not decide method policy.
@@ -169,13 +169,13 @@ sequenceDiagram
   participant Core as volicord-core
   participant Method as volicord-core methods
 
-  Host->>MCP: start process with integration binding
-  MCP->>Store: validate Runtime Home, integration, surface, instance, role, membership
+  Host->>MCP: start process with connection binding
+  MCP->>Store: validate Runtime Home, Agent Connection, mode, Connection Projects
   Host->>MCP: tools/call(name, arguments)
   MCP->>MCP: select project, inject adapter facts, decode typed request
   MCP->>Core: CoreService method(request, invocation)
   Core->>Core: common preflight in crates/volicord-core/src/pipeline.rs
-  Core->>Store: open project, read state, validate surface, replay, task, freshness
+  Core->>Store: open project, read state, validate operation category, replay, task, freshness
   Core->>Method: method-specific planning and policy checks
   Method-->>Core: branch, result fields, events, storage mutations, or direct response
   alt read, no-effect, or dry-run
@@ -193,14 +193,14 @@ sequenceDiagram
 
 Implementation flow:
 
-1. `volicord-mcp` resolves Runtime Home and one integration-bound process context from `--integration <integration_id>` and optional `VOLICORD_HOME`.
-2. `McpIntegrationStartupInspection` validates Runtime Home metadata, Agent Integration Profile state, surface and surface-instance binding, role, project membership readability, and registry JSON needed before stdio begins. It does not select one project for all calls.
+1. `volicord-mcp` resolves Runtime Home and one Agent Connection process context from `--connection <connection_id>` and optional `VOLICORD_HOME`.
+2. `McpConnectionStartupInspection` validates Runtime Home metadata, Agent Connection state, `connection.mode`, Connection Projects readability, and registry JSON needed before stdio begins. It does not select one project for all calls.
 3. The stdio loop accepts line-delimited JSON-RPC and dispatches `initialize`, `ping`, `tools/list`, and `tools/call`.
-4. `tools/list` exposes the nine public Volicord method tools plus the adapter-owned `volicord.list_projects` utility. For a public `tools/call`, the adapter reads the raw `envelope`, deterministically selects an allowed project, validates the integration surface for that project, injects adapter-managed project and surface facts, then decodes `arguments` into the matching typed request from `volicord-types`.
-5. `tools/call` derives an `InvocationContext` from the selected project, integration-bound surface instance, and method-derived access class before dispatching to Core.
+4. `tools/list` exposes the nine public Volicord method tools plus the adapter-owned `volicord.list_projects` utility. For a public `tools/call`, the adapter reads the raw `envelope`, deterministically selects an allowed project, validates that the Agent Connection allows that project, injects adapter-managed project, `operation_category`, and `actor_source` facts, then decodes `arguments` into the matching typed request from `volicord-types`.
+5. `tools/call` derives the current connection context from the selected project, `connection_id`, `connection.mode`, method-derived `operation_category`, and `actor_source` before dispatching to Core.
 6. `McpAdapter::call_tool` dispatches to the matching `CoreService` method.
 7. Each `CoreService` method selects a `MethodPolicy` and calls common preflight before method-specific planning.
-8. Common preflight validates request-envelope shape, rejects adapter binding mismatches, validates committed-effect envelope requirements, computes the canonical request hash, opens the project Store, reads `project_state`, derives the verified surface context, handles idempotency replay for committed branches, resolves the Task according to the method policy, checks `state_version` freshness where applicable, checks registered access for the method-derived access class, and prepares a validated request context.
+8. Common preflight validates request-envelope shape, rejects adapter binding mismatches, validates committed-effect envelope requirements, computes the canonical request hash, opens the project Store, reads `project_state`, verifies the current connection context, handles idempotency replay for committed branches, resolves the Task according to the method policy, checks `state_version` freshness where applicable, checks the method-derived `operation_category`, and prepares a validated request context.
 9. The method module performs method-specific validation, policy evaluation, and plan or result construction.
 10. The selected branch returns a read-only result, no-persistence result, dry-run preview, Core mutation commit, or transient artifact staging result.
 11. Core returns a `PipelineResponse`; MCP wraps the exact Volicord response JSON as MCP `tools/call` content text.
@@ -223,17 +223,17 @@ This flow is an implementation map. Exact public method contracts, error precede
 
 ## Administrative agent setup flow
 
-`volicord agent install` is implemented as local administrative orchestration, not as a public Core method. The implementation lives under `crates/volicord-cli/src/agent_command.rs` and the host adapters in `crates/volicord-cli/src/host_integration/`; exact command, Agent Integration Profile, MCP transport, and runtime-boundary contracts stay with [Administrative CLI](../reference/admin-cli.md), [Agent Integration](../reference/agent-integration.md), [MCP Transport](../reference/mcp-transport.md), and [Runtime Boundaries](../reference/runtime-boundaries.md).
+`volicord agent install` is implemented as local administrative orchestration, not as a public Core method. The implementation lives under `crates/volicord-cli/src/agent_command.rs` and the host adapters in `crates/volicord-cli/src/host_integration/`; exact command, Agent Connection, MCP transport, and runtime-boundary contracts stay with [Administrative CLI](../reference/admin-cli.md), [MCP Transport](../reference/mcp-transport.md), [Runtime Boundaries](../reference/runtime-boundaries.md), and [Security](../reference/security.md).
 
 ```mermaid
 flowchart TD
   parse["Parse and validate inputs"]
-  plan["Inspect registry and host state; derive IDs; build project, integration, host, and guidance plans; reject conflicts"]
+  plan["Inspect registry and host state; derive IDs; build project, connection, host, and guidance plans; reject conflicts"]
   dry{"--dry-run?"}
   dryout["Return plan only; no Runtime Home or SQLite writes, MCP preflight, host apply, guidance, initialization, or tool discovery"]
   runtime["Initialize or reuse Runtime Home and project state"]
-  integration["Create or reuse agent surface, Agent Integration Profile, project membership, and default-project routing"]
-  preflight["Run volicord-mcp --check --integration with the resolved Runtime Home"]
+  connection["Create or reuse Agent Connection, Connection Projects, and default-project routing"]
+  preflight["Run volicord-mcp --check --connection with the resolved Runtime Home"]
   host["Read host target snapshot and apply the planned host configuration"]
   inventory["Register or update Host Installation inventory before final verification"]
   guidance["Apply optional repository guidance when selected and explicitly authorized"]
@@ -246,11 +246,11 @@ flowchart TD
 
   parse --> plan --> dry
   dry -- yes --> dryout
-  dry -- no --> runtime --> integration --> preflight --> host --> inventory --> guidance --> readiness --> gate
+  dry -- no --> runtime --> connection --> preflight --> host --> inventory --> guidance --> readiness --> gate
   gate -- yes --> handshake --> final
   gate -- no --> hostonly --> final
   runtime -. failure after this point .-> fail
-  integration -. failure .-> fail
+  connection -. failure .-> fail
   preflight -. failure .-> fail
   host -. failure .-> fail
   inventory -. failure .-> fail
@@ -260,11 +260,11 @@ flowchart TD
   final -. failure .-> fail
 ```
 
-The setup sequence has a read-only planning phase before persistent setup. The command parses and validates host, scope, repository-write, guidance, Runtime Home, repository, integration, and executable inputs; inspects existing registry and host state; derives stable identifiers; builds the project, integration, host, and optional guidance plans; and rejects host conflicts before creating Runtime Home state or changing registry rows. Host planning therefore happens before Store-facing setup.
+The setup sequence has a read-only planning phase before persistent setup. The command parses and validates host, scope, repository-write, guidance, Runtime Home, repository, connection, and executable inputs; inspects existing registry and host state; derives stable identifiers; builds the project, connection, host, and optional guidance plans; and rejects host conflicts before creating Runtime Home state or changing registry rows. Host planning therefore happens before Store-facing setup.
 
 When `--dry-run` is selected, the command returns the plan from that planning phase. It does not create Runtime Home directories or SQLite state, run `volicord-mcp --check`, apply host configuration, apply repository guidance, initialize MCP stdio, or perform tool discovery.
 
-Non-dry-run execution then initializes or reuses Runtime Home and project state, creates or reuses the agent surface, Agent Integration Profile, project membership, and default-project routing, and only then runs `volicord-mcp --check --integration <integration_id>` with the resolved Runtime Home. That MCP startup preflight happens before host configuration is applied.
+Non-dry-run execution then initializes or reuses Runtime Home and project state, creates or reuses the Agent Connection, Connection Projects allowlist, and default-project routing, and only then runs `volicord-mcp --check --connection <connection_id>` with the resolved Runtime Home. That MCP startup preflight happens before host configuration is applied.
 
 Host configuration application follows the previously constructed host plan and is guarded by the target snapshot, stale-plan checks, ownership markers, and fingerprint checks. Host Installation inventory is registered or updated only after host configuration application, initially before the final verification state has been recorded. Optional repository guidance is applied after inventory registration and only when selected and explicitly authorized for repository writes.
 
@@ -300,9 +300,9 @@ to choose a test layer for a concrete change.
 | `crates/volicord-core/src/methods/tests.rs` | Exercises Core method planning, shared preflight behavior, effect branches, replay behavior, staging distinction, artifact promotion, close-readiness calculations, and method-owned storage mutation outcomes through `CoreService`. |
 | `crates/volicord-cli/tests/binary_admin.rs` | Runs the `volicord` binary for administrative initialization, registration, `volicord agent` install/status/verify/uninstall/guidance behavior, dry-run behavior, host integration preflight handling, host config writes, repository guidance safety, and command-line error paths. |
 | `crates/volicord-mcp/tests/binary_transport.rs` | Runs the `volicord-mcp` binary for help/version, `--check`, stdio framing, line-delimited JSON-RPC, reconnection behavior, and MCP response wrapping. |
-| `tests/integration/mcp_surface.rs` | Verifies MCP surface binding, tool schemas, public method exposure, per-method access derivation, Core/MCP parity, session rejection cases, replay context binding, and cross-layer storage effects. |
-| `tests/conformance/baseline.rs` | Exercises baseline public behavior scenarios through Core-facing APIs using shared fixtures, including replay, no-effect branches, write authorization, artifact lifecycle, judgment boundaries, close readiness, error routing, and corruption handling. |
-| `crates/volicord-test-support` | Supplies disposable Runtime Home fixtures, project and surface registration helpers, request builders, Store helpers, and shared assertions for the test packages and crate tests. |
+| `tests/integration/mcp_surface.rs` | Verifies MCP connection binding, tool schemas, public method exposure, per-method `operation_category` derivation, Core/MCP parity, session rejection cases, replay context binding, and cross-layer storage effects. |
+| `tests/conformance/baseline.rs` | Exercises baseline public behavior scenarios through Core-facing APIs using shared fixtures, including replay, no-effect branches, Write Check, artifact lifecycle, judgment boundaries, close readiness, error routing, and corruption handling. |
+| `crates/volicord-test-support` | Supplies disposable Runtime Home fixtures, project and Agent Connection helpers, request builders, Store helpers, and shared assertions for the test packages and crate tests. |
 
 Tests verify behavior that owner documents define. A test fixture, assertion, or scenario name must not become the only source for a product contract.
 
@@ -312,12 +312,12 @@ Tests verify behavior that owner documents define. A test fixture, assertion, or
 |---|---|
 | Public method implementation in `crates/volicord-core/src/methods/` | [API Methods](../reference/api/methods.md), then the linked method owner. |
 | Common Core pipeline, response branches, envelope handling, request hashing, and public error routing | [API Schema Core](../reference/api/schema-core.md), [API Error Family Index](../reference/api/errors.md), and [Storage Effects](../reference/storage-effects.md) where persistence is involved. |
-| Core policies for user-owned judgment, write authorization, evidence, close readiness, and authority boundaries | [Core Model](../reference/core-model.md), method owners, [Agent Integration](../reference/agent-integration.md), and [API Value Sets](../reference/api/schema-value-sets.md) as applicable. |
+| Core policies for user-owned judgment, Write Check, evidence, close readiness, and authority boundaries | [Core Model](../reference/core-model.md), method owners, [Runtime Boundaries](../reference/runtime-boundaries.md), [Security](../reference/security.md), and [API Value Sets](../reference/api/schema-value-sets.md) as applicable. |
 | Product Repository path normalization and product/runtime location separation | [Runtime Boundaries](../reference/runtime-boundaries.md). |
 | Shared Rust types and schema-shaped data in `crates/volicord-types/src/` | [API Schema Core](../reference/api/schema-core.md), [API State Schemas](../reference/api/schema-state.md), [API Artifact Schemas](../reference/api/schema-artifacts.md), [API Judgment Schemas](../reference/api/schema-judgment.md), and [API Value Sets](../reference/api/schema-value-sets.md). |
 | Atomic Store commit, replay rows, locking/versioning, storage records, and DDL | [Storage](../reference/storage.md), [Storage Effects](../reference/storage-effects.md), [Storage Records](../reference/storage-records.md), [Storage DDL](../reference/storage-ddl.md), and [Storage Versioning](../reference/storage-versioning.md). |
 | Artifact staging and persistent artifact body verification | [Artifact Storage](../reference/storage-artifacts.md) and the method owner that references the artifact. |
-| MCP startup, process binding, stdio framing, and `tools/call` wrapping | [MCP Transport](../reference/mcp-transport.md), with [Agent Integration](../reference/agent-integration.md) for verified surface context. |
-| Administrative agent setup and local registration | [Administrative CLI](../reference/admin-cli.md), with [Agent Integration](../reference/agent-integration.md), [Runtime Boundaries](../reference/runtime-boundaries.md), and [MCP Transport](../reference/mcp-transport.md) for adjacent host, location, and process behavior. |
+| MCP startup, process binding, stdio framing, and `tools/call` wrapping | [MCP Transport](../reference/mcp-transport.md), with [Runtime Boundaries](../reference/runtime-boundaries.md) and [Security](../reference/security.md) for Agent Connection, project allowlist, and operation-category boundaries. |
+| Administrative agent setup and local registration | [Administrative CLI](../reference/admin-cli.md), with [Runtime Boundaries](../reference/runtime-boundaries.md), [MCP Transport](../reference/mcp-transport.md), and [Security](../reference/security.md) for adjacent host, location, process, and non-guarantee behavior. |
 
 Use this page to orient code reading and preserve implementation boundaries. Use the focused owners to decide behavior.
