@@ -52,34 +52,6 @@ pub struct ProjectRecord {
     pub metadata_json: String,
 }
 
-/// Local surface registration input.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SurfaceRegistration {
-    pub project_id: String,
-    pub surface_id: String,
-    pub surface_instance_id: String,
-    pub surface_kind: String,
-    pub interaction_role: String,
-    pub display_name: Option<String>,
-    pub capability_profile_json: String,
-    pub local_access_json: String,
-    pub metadata_json: String,
-}
-
-/// Surface registration record stored in project `state.sqlite`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SurfaceRecord {
-    pub project_id: String,
-    pub surface_id: String,
-    pub surface_instance_id: String,
-    pub surface_kind: String,
-    pub interaction_role: String,
-    pub display_name: Option<String>,
-    pub capability_profile_json: String,
-    pub local_access_json: String,
-    pub metadata_json: String,
-}
-
 /// Creates or validates a Runtime Home registry and singleton metadata row.
 pub fn initialize_runtime_home(
     runtime_home: impl AsRef<Path>,
@@ -414,62 +386,6 @@ fn state_db_path_mismatch_error(
     }
 }
 
-/// Registers or updates a local surface for a project.
-pub fn register_surface(
-    runtime_home: impl AsRef<Path>,
-    registration: SurfaceRegistration,
-) -> StoreResult<SurfaceRecord> {
-    validate_project_id(&registration.project_id)?;
-    validate_identifier("surface_id", &registration.surface_id)?;
-    validate_identifier("surface_instance_id", &registration.surface_instance_id)?;
-    validate_identifier("surface_kind", &registration.surface_kind)?;
-    validate_surface_interaction_role(&registration.interaction_role)?;
-    validate_json_object(
-        "surfaces.capability_profile_json",
-        &registration.capability_profile_json,
-    )?;
-    validate_json_object(
-        "surfaces.local_access_json",
-        &registration.local_access_json,
-    )?;
-    validate_json_object("surfaces.metadata_json", &registration.metadata_json)?;
-
-    let project = project_record_for_execution(runtime_home, &registration.project_id)?
-        .ok_or_else(|| StoreError::NotFound {
-            entity: "project",
-            id: registration.project_id.clone(),
-        })?;
-    require_existing_state_database(&project)?;
-
-    Ok(SurfaceRecord {
-        project_id: registration.project_id,
-        surface_id: registration.surface_id,
-        surface_instance_id: registration.surface_instance_id,
-        surface_kind: registration.surface_kind,
-        interaction_role: registration.interaction_role,
-        display_name: registration.display_name,
-        capability_profile_json: registration.capability_profile_json,
-        local_access_json: registration.local_access_json,
-        metadata_json: registration.metadata_json,
-    })
-}
-
-/// Lists registered surfaces for one project in deterministic order.
-pub fn list_surfaces(
-    runtime_home: impl AsRef<Path>,
-    project_id: &str,
-) -> StoreResult<Vec<SurfaceRecord>> {
-    validate_project_id(project_id)?;
-    let project = project_record_for_execution(runtime_home, project_id)?.ok_or_else(|| {
-        StoreError::NotFound {
-            entity: "project",
-            id: project_id.to_owned(),
-        }
-    })?;
-    require_existing_state_database(&project)?;
-    Ok(Vec::new())
-}
-
 fn runtime_home_record_from_conn(
     conn: &Connection,
     runtime_home: PathBuf,
@@ -533,15 +449,6 @@ fn project_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ProjectR
     })
 }
 
-fn validate_surface_interaction_role(role: &str) -> StoreResult<()> {
-    match role {
-        "agent" | "user_interaction" => Ok(()),
-        _ => Err(StoreError::InvalidInput {
-            detail: "interaction_role must be agent or user_interaction".to_owned(),
-        }),
-    }
-}
-
 /// Validates a project id that may become one `projects/{project_id}` path component.
 pub fn validate_project_id(project_id: &str) -> StoreResult<()> {
     validate_identifier("project_id", project_id)?;
@@ -593,17 +500,6 @@ fn validate_json_object(field: &'static str, text: &str) -> StoreResult<()> {
     } else {
         Err(StoreError::InvalidInput {
             detail: format!("{field} must be a JSON object"),
-        })
-    }
-}
-
-fn require_existing_state_database(project: &ProjectRecord) -> StoreResult<()> {
-    if project.state_db_path.exists() {
-        Ok(())
-    } else {
-        Err(StoreError::NotFound {
-            entity: "project_state_database",
-            id: project.state_db_path.display().to_string(),
         })
     }
 }
@@ -950,7 +846,7 @@ mod tests {
     }
 
     #[test]
-    fn checked_project_record_rejects_existing_alternate_without_migration_or_surface_mutation(
+    fn checked_project_record_rejects_existing_alternate_without_mutating_alternate(
     ) -> Result<(), Box<dyn Error>> {
         let project_id = "project_state_db_mismatch_existing";
         let (runtime_home, _) = registered_project("store-state-db-existing-alt", project_id)?;
@@ -966,26 +862,13 @@ mod tests {
         let conn = open_project_state_database(&alternate_state_path)?;
         drop(conn);
         let migrations_before = migration_count(&alternate_state_path)?;
-        let surface_count_before = surface_count(&alternate_state_path)?;
 
         replace_project_state_db_path(runtime_home.path(), project_id, &alternate_state_path)?;
 
         let open_error = CoreProjectStore::open(runtime_home.path(), &ProjectId::new(project_id))
             .expect_err("Core store open should reject mismatched state_db_path");
         assert_state_db_path_mismatch(open_error, &alternate_state_path, &expected_state_path);
-        let register_error =
-            register_surface(runtime_home.path(), surface_registration(project_id))
-                .expect_err("surface registration should reject mismatched state_db_path");
-        assert_state_db_path_mismatch(register_error, &alternate_state_path, &expected_state_path);
-        let list_error = list_surfaces(runtime_home.path(), project_id)
-            .expect_err("surface listing should reject mismatched state_db_path");
-        assert_state_db_path_mismatch(list_error, &alternate_state_path, &expected_state_path);
-
-        assert_project_state_unchanged(
-            &alternate_state_path,
-            migrations_before,
-            surface_count_before,
-        )?;
+        assert_eq!(migration_count(&alternate_state_path)?, migrations_before);
         let lookup_error = project_record(runtime_home.path(), project_id)
             .expect_err("mismatched state_db_path should be rejected by project lookup");
         assert_state_db_path_mismatch(lookup_error, &alternate_state_path, &expected_state_path);
@@ -1138,152 +1021,10 @@ mod tests {
         let open_error = CoreProjectStore::open(runtime_home.path(), &ProjectId::new(project_id))
             .expect_err("Core store open should reject project_home outside Runtime Home");
         assert_invalid_project_registration(open_error, "project_home_outside_runtime_home");
-        let surface_error = register_surface(runtime_home.path(), surface_registration(project_id))
-            .expect_err("surface registration should reject invalid project_home");
-        assert_invalid_project_registration(surface_error, "project_home_outside_runtime_home");
-
         let damaged = raw_project_record(runtime_home.path(), project_id)?;
         assert_eq!(damaged.project_home, outside_project_home);
         assert_eq!(damaged.state_db_path, original.state_db_path);
         assert_registry_record_unchanged_and_visible(runtime_home.path(), project_id, &damaged)?;
-        Ok(())
-    }
-
-    #[test]
-    fn surface_management_accepts_valid_separate_project_paths() -> Result<(), Box<dyn Error>> {
-        let (runtime_home, _) = registered_project("store-surface-valid", "project_surface_valid")?;
-
-        let registered = register_surface(
-            runtime_home.path(),
-            surface_registration("project_surface_valid"),
-        )?;
-        let surfaces = list_surfaces(runtime_home.path(), "project_surface_valid")?;
-
-        assert_eq!(registered.project_id, "project_surface_valid");
-        assert_eq!(registered.surface_id, "surface_main");
-        assert!(surfaces.is_empty());
-        Ok(())
-    }
-
-    #[test]
-    fn surface_management_rejects_invalid_legacy_records_without_surface_mutation(
-    ) -> Result<(), Box<dyn Error>> {
-        for relationship in InvalidProjectRelationship::ALL {
-            let project_id = relationship.project_id("surface_existing");
-            let (runtime_home, _) =
-                registered_project(&relationship.prefix("surface-existing"), &project_id)?;
-            register_surface(runtime_home.path(), surface_registration(&project_id))?;
-            relationship.replace_repo_root(&runtime_home, &project_id)?;
-
-            let project = raw_project_record(runtime_home.path(), &project_id)?;
-            let state_path = project.state_db_path.clone();
-            let registry_before = project.clone();
-            let migrations_before = migration_count(&state_path)?;
-            let surfaces_before = surface_records_from_state(&state_path, &project_id)?;
-
-            let update_error = register_surface(
-                runtime_home.path(),
-                updated_surface_registration(&project_id),
-            )
-            .expect_err("invalid legacy registration should reject surface update");
-            assert_invalid_project_registration(update_error, relationship.expected_error());
-            let add_error = register_surface(
-                runtime_home.path(),
-                additional_surface_registration(&project_id),
-            )
-            .expect_err("invalid legacy registration should reject surface insert");
-            assert_invalid_project_registration(add_error, relationship.expected_error());
-            let list_error = list_surfaces(runtime_home.path(), &project_id)
-                .expect_err("invalid legacy registration should reject surface listing");
-            assert_invalid_project_registration(list_error, relationship.expected_error());
-
-            assert_eq!(migration_count(&state_path)?, migrations_before);
-            assert_eq!(
-                surface_records_from_state(&state_path, &project_id)?,
-                surfaces_before
-            );
-            assert_registry_record_unchanged_and_visible(
-                runtime_home.path(),
-                &project_id,
-                &registry_before,
-            )?;
-        }
-        Ok(())
-    }
-
-    #[test]
-    fn surface_management_rejects_invalid_legacy_records_before_missing_database_check(
-    ) -> Result<(), Box<dyn Error>> {
-        for relationship in InvalidProjectRelationship::ALL {
-            let project_id = relationship.project_id("surface_missing_db");
-            let (runtime_home, _) =
-                registered_project(&relationship.prefix("surface-missing-db"), &project_id)?;
-            relationship.replace_repo_root(&runtime_home, &project_id)?;
-
-            let project = raw_project_record(runtime_home.path(), &project_id)?;
-            let state_path = project.state_db_path.clone();
-            let registry_before = project.clone();
-            fs::remove_file(&state_path)?;
-            assert!(!state_path.exists());
-
-            let register_error =
-                register_surface(runtime_home.path(), surface_registration(&project_id))
-                    .expect_err(
-                        "invalid legacy registration should reject before missing state DB",
-                    );
-            assert_invalid_project_registration(register_error, relationship.expected_error());
-            assert!(!state_path.exists());
-
-            let list_error = list_surfaces(runtime_home.path(), &project_id)
-                .expect_err("invalid legacy registration should reject before missing state DB");
-            assert_invalid_project_registration(list_error, relationship.expected_error());
-            assert!(!state_path.exists());
-
-            assert_registry_record_unchanged_and_visible(
-                runtime_home.path(),
-                &project_id,
-                &registry_before,
-            )?;
-        }
-        Ok(())
-    }
-
-    #[test]
-    fn surface_management_rejects_invalid_records_without_touching_project_state(
-    ) -> Result<(), Box<dyn Error>> {
-        for relationship in InvalidProjectRelationship::ALL {
-            let project_id = relationship.project_id("surface_existing");
-            let (runtime_home, _) =
-                registered_project(&relationship.prefix("surface-existing"), &project_id)?;
-            relationship.replace_repo_root(&runtime_home, &project_id)?;
-
-            let project = raw_project_record(runtime_home.path(), &project_id)?;
-            let state_path = project.state_db_path.clone();
-            let registry_before = project.clone();
-            fs::remove_file(&state_path)?;
-            let conn = open_project_state_database(&state_path)?;
-            drop(conn);
-
-            let migrations_before = migration_count(&state_path)?;
-            let surface_count_before = surface_count(&state_path)?;
-
-            let list_error = list_surfaces(runtime_home.path(), &project_id)
-                .expect_err("invalid legacy registration should reject before state DB migration");
-            assert_invalid_project_registration(list_error, relationship.expected_error());
-            assert_project_state_unchanged(&state_path, migrations_before, surface_count_before)?;
-
-            let register_error =
-                register_surface(runtime_home.path(), surface_registration(&project_id))
-                    .expect_err("invalid legacy registration should reject before surface insert");
-            assert_invalid_project_registration(register_error, relationship.expected_error());
-            assert_project_state_unchanged(&state_path, migrations_before, surface_count_before)?;
-
-            assert_registry_record_unchanged_and_visible(
-                runtime_home.path(),
-                &project_id,
-                &registry_before,
-            )?;
-        }
         Ok(())
     }
 
@@ -1363,105 +1104,6 @@ mod tests {
         Ok(())
     }
 
-    #[derive(Clone, Copy)]
-    enum InvalidProjectRelationship {
-        SamePath,
-        RepositoryInsideRuntimeHome,
-        RuntimeHomeInsideRepository,
-    }
-
-    impl InvalidProjectRelationship {
-        const ALL: [Self; 3] = [
-            Self::SamePath,
-            Self::RepositoryInsideRuntimeHome,
-            Self::RuntimeHomeInsideRepository,
-        ];
-
-        fn name(self) -> &'static str {
-            match self {
-                Self::SamePath => "same",
-                Self::RepositoryInsideRuntimeHome => "repo_inside_runtime",
-                Self::RuntimeHomeInsideRepository => "runtime_inside_repo",
-            }
-        }
-
-        fn expected_error(self) -> &'static str {
-            match self {
-                Self::SamePath => "same_path",
-                Self::RepositoryInsideRuntimeHome => "runtime_home_contains_product_repository",
-                Self::RuntimeHomeInsideRepository => "product_repository_contains_runtime_home",
-            }
-        }
-
-        fn prefix(self, suffix: &str) -> String {
-            format!("store-{suffix}-{}", self.name())
-        }
-
-        fn project_id(self, suffix: &str) -> String {
-            format!("project_{suffix}_{}", self.name())
-        }
-
-        fn replace_repo_root(
-            self,
-            runtime_home: &TempRuntimeHome,
-            project_id: &str,
-        ) -> Result<PathBuf, Box<dyn Error>> {
-            let repo_root = match self {
-                Self::SamePath => runtime_home.path().to_path_buf(),
-                Self::RepositoryInsideRuntimeHome => {
-                    let repo_root = runtime_home.path().join("legacy-product-repo");
-                    fs::create_dir_all(&repo_root)?;
-                    repo_root
-                }
-                Self::RuntimeHomeInsideRepository => runtime_home
-                    .path()
-                    .parent()
-                    .expect("runtime home has parent")
-                    .to_path_buf(),
-            };
-            replace_project_repo_root(runtime_home.path(), project_id, &repo_root)?;
-            Ok(repo_root)
-        }
-    }
-
-    fn surface_registration(project_id: &str) -> SurfaceRegistration {
-        SurfaceRegistration {
-            project_id: project_id.to_owned(),
-            surface_id: "surface_main".to_owned(),
-            surface_instance_id: "surface_instance_main".to_owned(),
-            surface_kind: "local_test".to_owned(),
-            interaction_role: "agent".to_owned(),
-            display_name: Some("Main Surface".to_owned()),
-            capability_profile_json: "{}".to_owned(),
-            local_access_json: "{}".to_owned(),
-            metadata_json: "{}".to_owned(),
-        }
-    }
-
-    fn updated_surface_registration(project_id: &str) -> SurfaceRegistration {
-        SurfaceRegistration {
-            display_name: Some("Updated Surface".to_owned()),
-            metadata_json: "{\"changed\":true}".to_owned(),
-            ..surface_registration(project_id)
-        }
-    }
-
-    fn additional_surface_registration(project_id: &str) -> SurfaceRegistration {
-        SurfaceRegistration {
-            surface_id: "surface_extra".to_owned(),
-            surface_instance_id: "surface_instance_extra".to_owned(),
-            display_name: Some("Extra Surface".to_owned()),
-            ..surface_registration(project_id)
-        }
-    }
-
-    fn surface_records_from_state(
-        _state_path: &Path,
-        _project_id: &str,
-    ) -> StoreResult<Vec<SurfaceRecord>> {
-        Ok(Vec::new())
-    }
-
     fn migration_count(state_path: &Path) -> StoreResult<i64> {
         let conn = open_read_only_database(state_path)?;
         Ok(conn.query_row(
@@ -1471,21 +1113,6 @@ mod tests {
             [PROJECT_STATE_DATABASE_KIND],
             |row| row.get(0),
         )?)
-    }
-
-    fn surface_count(state_path: &Path) -> StoreResult<i64> {
-        let _ = open_read_only_database(state_path)?;
-        Ok(0)
-    }
-
-    fn assert_project_state_unchanged(
-        state_path: &Path,
-        expected_migration_count: i64,
-        expected_surface_count: i64,
-    ) -> StoreResult<()> {
-        assert_eq!(migration_count(state_path)?, expected_migration_count);
-        assert_eq!(surface_count(state_path)?, expected_surface_count);
-        Ok(())
     }
 
     fn assert_registry_record_unchanged_and_visible(

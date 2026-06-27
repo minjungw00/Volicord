@@ -7,7 +7,7 @@
 
 use volicord_types::TypeBoundary;
 
-pub mod agent_integrations;
+pub mod agent_connections;
 pub mod artifacts;
 pub mod bootstrap;
 pub mod core_pipeline;

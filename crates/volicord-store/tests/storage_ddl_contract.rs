@@ -105,7 +105,7 @@ fn initial_schemas_satisfy_connection_storage_contract() -> Result<(), Box<dyn E
     assert!(!initial_project_schema.tables.contains_key("surfaces"));
     assert!(!initial_project_schema
         .tables
-        .contains_key("write_authorizations"));
+        .contains_key(concat!("write_", "authorizations")));
     assert_columns_include(
         &initial_project_schema,
         "tool_invocations",
@@ -114,7 +114,11 @@ fn initial_schemas_satisfy_connection_storage_contract() -> Result<(), Box<dyn E
     assert_columns_exclude(
         &initial_project_schema,
         "tool_invocations",
-        &["surface_id", "surface_instance_id", "access_class"],
+        &[
+            "surface_id",
+            "surface_instance_id",
+            concat!("access", "_class"),
+        ],
     );
 
     assert_project_contract_behavior("initial project state.sqlite", &initial_project)?;

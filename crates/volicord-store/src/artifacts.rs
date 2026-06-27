@@ -76,8 +76,7 @@ impl StagedPayloadKind {
 pub struct ArtifactStagingInsert {
     pub handle_id: String,
     pub task_id: String,
-    pub created_by_surface_id: String,
-    pub created_by_surface_instance_id: String,
+    pub created_by_actor_source: String,
     pub display_name: String,
     pub content_type: String,
     pub sha256: String,
@@ -95,8 +94,7 @@ pub struct ArtifactStagingInsert {
 pub struct ArtifactStagingRecord {
     pub handle_id: String,
     pub task_id: String,
-    pub created_by_surface_id: String,
-    pub created_by_surface_instance_id: String,
+    pub created_by_actor_source: String,
     pub content_type: String,
     pub sha256: String,
     pub size_bytes: u64,
@@ -486,7 +484,7 @@ fn insert_artifact_staging_tx(
             project_id,
             handle_id,
             input.task_id,
-            input.created_by_surface_id,
+            input.created_by_actor_source,
             artifact_json,
             safe_metadata_json,
             relative_tmp_path,
@@ -509,8 +507,7 @@ fn insert_artifact_staging_tx(
         ArtifactStagingRecord {
             handle_id,
             task_id: input.task_id,
-            created_by_surface_id: input.created_by_surface_id,
-            created_by_surface_instance_id: input.created_by_surface_instance_id,
+            created_by_actor_source: input.created_by_actor_source,
             content_type: input.content_type,
             sha256: input.sha256,
             size_bytes: input.size_bytes,
@@ -525,11 +522,7 @@ fn insert_artifact_staging_tx(
 fn validate_insert(input: &ArtifactStagingInsert) -> StoreResult<()> {
     validate_identifier("handle_id", &input.handle_id)?;
     validate_identifier("task_id", &input.task_id)?;
-    validate_identifier("created_by_surface_id", &input.created_by_surface_id)?;
-    validate_identifier(
-        "created_by_surface_instance_id",
-        &input.created_by_surface_instance_id,
-    )?;
+    validate_identifier("created_by_actor_source", &input.created_by_actor_source)?;
     validate_nonempty_text("display_name", &input.display_name)?;
     validate_nonempty_text("content_type", &input.content_type)?;
     validate_artifact_sha256("sha256", &input.sha256)?;

@@ -25,7 +25,7 @@ use crate::{
         verify_persistent_artifact_body as verify_persistent_artifact_body_in_store,
         PersistentArtifactBodySpec, PersistentArtifactVerification,
     },
-    bootstrap::{project_record_for_execution, ProjectRecord, SurfaceRecord},
+    bootstrap::{project_record_for_execution, ProjectRecord},
     sqlite::{begin_immediate_transaction, open_project_state_database, ARTIFACTS_DIR},
     StoreError, StoreResult,
 };
@@ -62,27 +62,25 @@ pub struct ToolInvocationRecord {
     pub request_hash: String,
     pub basis_state_version: u64,
     pub committed_state_version: u64,
-    pub surface_id: String,
-    pub surface_instance_id: String,
-    pub access_class: String,
+    pub actor_source: String,
+    pub operation_category: String,
     pub verification_basis: Option<String>,
     pub response_json: String,
 }
 
-/// Verified replay identity derived from the current surface context.
+/// Verified replay identity derived from current actor provenance and operation category.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VerifiedReplayContext {
-    pub surface_id: String,
-    pub surface_instance_id: String,
-    pub access_class: String,
+    pub actor_source: String,
+    pub operation_category: String,
     pub verification_basis: Option<String>,
 }
 
 impl ToolInvocationRecord {
     /// Returns whether this replay row is eligible for the supplied verified context.
     pub fn matches_verified_replay_context(&self, context: &VerifiedReplayContext) -> bool {
-        self.surface_id == context.surface_id.as_str()
-            && self.access_class == context.access_class.as_str()
+        self.actor_source == context.actor_source.as_str()
+            && self.operation_category == context.operation_category.as_str()
     }
 }
 
@@ -108,9 +106,9 @@ pub enum CoreStorageMutation {
     UpdateTaskCloseBasis(TaskCloseBasisUpdate),
     InsertCurrentChangeUnit(ChangeUnitInsert),
     ReplaceCurrentChangeUnit(ChangeUnitInsert),
-    MarkActiveWriteAuthorizationsStale { task_id: String },
-    InsertWriteAuthorization(WriteAuthorizationInsert),
-    ConsumeWriteAuthorization(WriteAuthorizationConsumption),
+    MarkActiveWriteChecksStale { task_id: String },
+    InsertWriteCheck(WriteCheckInsert),
+    ConsumeWriteCheck(WriteCheckConsumption),
     InsertRun(RunInsert),
     PromoteStagedArtifact(ArtifactPromotion),
     LinkArtifact(ArtifactLinkInsert),
@@ -128,8 +126,7 @@ pub enum CoreStorageMutation {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TaskInsert {
     pub task_id: String,
-    pub created_by_surface_id: String,
-    pub created_by_surface_instance_id: String,
+    pub created_by_actor_source: String,
     pub mode: String,
     pub lifecycle_phase: String,
     pub result: Option<String>,
@@ -210,8 +207,7 @@ pub struct UserJudgmentInsert {
     pub sensitive_action_scope_json: String,
     pub basis_json: String,
     pub basis_status: JudgmentBasisCompatibilityStatus,
-    pub requested_by_surface_id: String,
-    pub requested_by_surface_instance_id: String,
+    pub requested_by_actor_source: String,
     pub requested_at: String,
     pub metadata_json: String,
 }
@@ -226,10 +222,7 @@ pub struct UserJudgmentResolutionUpdate {
     pub resolution_json: String,
     pub resolution_rationale_json: String,
     pub sensitive_action_scope_json: Option<String>,
-    pub resolved_by_actor_kind: String,
-    pub resolved_actor_role: String,
-    pub resolved_by_surface_id: String,
-    pub resolved_by_surface_instance_id: String,
+    pub resolved_by_actor_source: String,
     pub resolved_verification_basis: String,
     pub resolved_assurance_level: String,
     pub resolved_at: String,
@@ -279,25 +272,24 @@ pub struct UserJudgmentInvalidation {
     pub judgment_kinds: Vec<String>,
 }
 
-/// Storage input for inserting one active Write Authorization.
+/// Storage input for inserting one active Write Check.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WriteAuthorizationInsert {
-    pub write_authorization_id: String,
+pub struct WriteCheckInsert {
+    pub write_check_id: String,
     pub task_id: String,
     pub change_unit_id: String,
     pub attempt_scope_json: String,
-    pub created_by_surface_id: String,
-    pub created_by_surface_instance_id: String,
+    pub created_by_actor_source: String,
     pub created_by_judgment_id: Option<String>,
     pub expires_at: String,
     pub created_at: String,
     pub metadata_json: String,
 }
 
-/// Storage input for consuming one active Write Authorization.
+/// Storage input for consuming one active Write Check.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WriteAuthorizationConsumption {
-    pub write_authorization_id: String,
+pub struct WriteCheckConsumption {
+    pub write_check_id: String,
     pub run_id: String,
     pub expected_basis_state_version: u64,
 }
@@ -309,15 +301,14 @@ pub struct RunInsert {
     pub task_id: String,
     pub change_unit_id: Option<String>,
     pub scope_revision: u64,
-    pub write_authorization_id: Option<String>,
+    pub write_check_id: Option<String>,
     pub kind: String,
     pub status: String,
     pub summary_json: String,
     pub observed_changes_json: String,
     pub evidence_updates_json: String,
     pub authorization_effect_json: String,
-    pub created_by_surface_id: String,
-    pub created_by_surface_instance_id: String,
+    pub created_by_actor_source: String,
     pub metadata_json: String,
 }
 
@@ -340,8 +331,7 @@ pub struct ArtifactPromotion {
     pub artifact_id: String,
     pub task_id: String,
     pub run_id: String,
-    pub expected_created_by_surface_id: String,
-    pub expected_created_by_surface_instance_id: String,
+    pub expected_created_by_actor_source: String,
     pub expected_sha256: String,
     pub expected_size_bytes: u64,
     pub expected_redaction_state: String,
@@ -400,10 +390,7 @@ pub struct EvidenceObservationInsert {
     pub claim: String,
     pub source_kind: String,
     pub assurance_level: String,
-    pub observed_by_actor_kind: Option<String>,
-    pub observed_actor_role: Option<String>,
-    pub observed_by_surface_id: Option<String>,
-    pub observed_by_surface_instance_id: Option<String>,
+    pub observed_by_actor_source: Option<String>,
     pub tool_name: Option<String>,
     pub tool_invocation_id: Option<String>,
     pub tool_metadata_json: String,
@@ -426,10 +413,7 @@ pub struct EvidenceObservationRecord {
     pub claim: String,
     pub source_kind: String,
     pub assurance_level: String,
-    pub observed_by_actor_kind: Option<String>,
-    pub observed_actor_role: Option<String>,
-    pub observed_by_surface_id: Option<String>,
-    pub observed_by_surface_instance_id: Option<String>,
+    pub observed_by_actor_source: Option<String>,
     pub tool_name: Option<String>,
     pub tool_invocation_id: Option<String>,
     pub tool_metadata_json: String,
@@ -507,7 +491,7 @@ pub struct StorageEffectCounts {
     pub task_events: u64,
     pub tool_invocations: u64,
     pub user_judgments: u64,
-    pub write_authorizations: u64,
+    pub write_checks: u64,
     pub runs: u64,
     pub artifact_staging: u64,
     pub artifacts: u64,
@@ -567,11 +551,11 @@ pub struct ChangeUnitRecord {
     pub lifecycle_json: String,
 }
 
-/// Stored Write Authorization facts needed by status and stale-marking responses.
+/// Stored Write Check facts needed by status and stale-marking responses.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WriteAuthorizationRecord {
+pub struct WriteCheckRecord {
     pub project_id: String,
-    pub write_authorization_id: String,
+    pub write_check_id: String,
     pub task_id: String,
     pub change_unit_id: Option<String>,
     pub basis_state_version: u64,
@@ -589,8 +573,7 @@ pub struct StoredArtifactStagingRecord {
     pub project_id: String,
     pub handle_id: String,
     pub task_id: String,
-    pub created_by_surface_id: String,
-    pub created_by_surface_instance_id: String,
+    pub created_by_actor_source: String,
     pub artifact_json: String,
     pub tmp_path: Option<String>,
     pub sha256: Option<String>,
@@ -661,14 +644,10 @@ pub struct UserJudgmentRecord {
     pub resolution_machine_action: Option<String>,
     pub resolution_json: Option<String>,
     pub resolution_rationale_json: Option<String>,
-    pub resolved_by_actor_kind: Option<String>,
-    pub resolved_actor_role: Option<String>,
-    pub resolved_by_surface_id: Option<String>,
-    pub resolved_by_surface_instance_id: Option<String>,
+    pub resolved_by_actor_source: Option<String>,
     pub resolved_verification_basis: Option<String>,
     pub resolved_assurance_level: Option<String>,
-    pub requested_by_surface_id: String,
-    pub requested_by_surface_instance_id: String,
+    pub requested_by_actor_source: String,
     pub requested_at: String,
     pub resolved_at: Option<String>,
     pub metadata_json: String,
@@ -761,25 +740,6 @@ impl CoreProjectStore {
         project_enforcement_profile(&self.conn, &self.project.project_id)
     }
 
-    /// Reads one surface instance by exact project/surface/instance identity.
-    pub fn surface(
-        &self,
-        surface_id: &str,
-        surface_instance_id: &str,
-    ) -> StoreResult<Option<SurfaceRecord>> {
-        surface_by_instance(
-            &self.conn,
-            &self.project.project_id,
-            surface_id,
-            surface_instance_id,
-        )
-    }
-
-    /// Lists candidate surface instances for a request-level `surface_id`.
-    pub fn surface_candidates(&self, _surface_id: &str) -> StoreResult<Vec<SurfaceRecord>> {
-        Ok(Vec::new())
-    }
-
     /// Returns whether a Task exists in this project.
     pub fn task_exists(&self, task_id: &TaskId) -> StoreResult<bool> {
         self.conn
@@ -846,28 +806,22 @@ impl CoreProjectStore {
         )
     }
 
-    /// Lists active Write Authorizations for a Task.
-    pub fn active_write_authorizations(
-        &self,
-        task_id: &TaskId,
-    ) -> StoreResult<Vec<WriteAuthorizationRecord>> {
-        active_write_authorizations(&self.conn, &self.project.project_id, task_id.as_str())
+    /// Lists active Write Checks for a Task.
+    pub fn active_write_checks(&self, task_id: &TaskId) -> StoreResult<Vec<WriteCheckRecord>> {
+        active_write_checks(&self.conn, &self.project.project_id, task_id.as_str())
     }
 
-    /// Lists Write Authorizations for a Task without mutating effective status.
-    pub fn write_authorizations_for_task(
-        &self,
-        task_id: &TaskId,
-    ) -> StoreResult<Vec<WriteAuthorizationRecord>> {
-        write_authorizations_for_task(&self.conn, &self.project.project_id, task_id.as_str())
+    /// Lists Write Checks for a Task without mutating effective status.
+    pub fn write_checks_for_task(&self, task_id: &TaskId) -> StoreResult<Vec<WriteCheckRecord>> {
+        write_checks_for_task(&self.conn, &self.project.project_id, task_id.as_str())
     }
 
-    /// Reads one Write Authorization row by exact project-local identity.
-    pub fn write_authorization_record(
+    /// Reads one Write Check row by exact project-local identity.
+    pub fn write_check_record(
         &self,
-        write_authorization_id: &str,
-    ) -> StoreResult<Option<WriteAuthorizationRecord>> {
-        write_authorization_record(&self.conn, &self.project.project_id, write_authorization_id)
+        write_check_id: &str,
+    ) -> StoreResult<Option<WriteCheckRecord>> {
+        write_check_record(&self.conn, &self.project.project_id, write_check_id)
     }
 
     /// Returns whether a Run id already exists in this project.
@@ -1179,11 +1133,7 @@ impl CoreProjectStore {
                 &self.project.project_id,
             )?,
             user_judgments: table_count(&self.conn, "user_judgments", &self.project.project_id)?,
-            write_authorizations: table_count(
-                &self.conn,
-                "write_checks",
-                &self.project.project_id,
-            )?,
+            write_checks: table_count(&self.conn, "write_checks", &self.project.project_id)?,
             runs: table_count(&self.conn, "runs", &self.project.project_id)?,
             artifact_staging: table_count(
                 &self.conn,
@@ -1437,8 +1387,8 @@ impl CoreProjectStore {
                     input.request_hash,
                     current_state_i64,
                     committed_state_i64,
-                    replay_context.surface_id.as_str(),
-                    replay_context.access_class.as_str(),
+                    replay_context.actor_source.as_str(),
+                    replay_context.operation_category.as_str(),
                     replay_context.verification_basis.as_deref(),
                     response_json
                 ],
@@ -1497,13 +1447,13 @@ impl CoreStorageMutation {
             Self::ReplaceCurrentChangeUnit(input) => {
                 mutation.replace_current_change_unit(input, committed_state_version)
             }
-            Self::MarkActiveWriteAuthorizationsStale { task_id } => {
-                mutation.mark_active_write_authorizations_stale(task_id)
+            Self::MarkActiveWriteChecksStale { task_id } => {
+                mutation.mark_active_write_checks_stale(task_id)
             }
-            Self::InsertWriteAuthorization(input) => {
-                mutation.insert_write_authorization(input, committed_state_version)
+            Self::InsertWriteCheck(input) => {
+                mutation.insert_write_check(input, committed_state_version)
             }
-            Self::ConsumeWriteAuthorization(input) => mutation.consume_write_authorization(input),
+            Self::ConsumeWriteCheck(input) => mutation.consume_write_check(input),
             Self::InsertRun(input) => mutation.insert_run(input),
             Self::PromoteStagedArtifact(input) => mutation.promote_staged_artifact(input),
             Self::LinkArtifact(input) => mutation.link_artifact(input),
@@ -1528,11 +1478,7 @@ impl CoreStorageMutation {
 impl ProjectMutation<'_> {
     fn insert_task(&mut self, input: &TaskInsert) -> StoreResult<()> {
         validate_identifier("task_id", &input.task_id)?;
-        validate_identifier("created_by_surface_id", &input.created_by_surface_id)?;
-        validate_identifier(
-            "created_by_surface_instance_id",
-            &input.created_by_surface_instance_id,
-        )?;
+        validate_identifier("created_by_actor_source", &input.created_by_actor_source)?;
         validate_identifier("mode", &input.mode)?;
         validate_identifier("lifecycle_phase", &input.lifecycle_phase)?;
         validate_json_text("tasks.shaping_summary_json", &input.shaping_summary_json)?;
@@ -1587,7 +1533,7 @@ impl ProjectMutation<'_> {
             params![
                 self.project_id,
                 input.task_id,
-                input.created_by_surface_id,
+                input.created_by_actor_source,
                 input.mode,
                 input.lifecycle_phase,
                 input.result,
@@ -1886,7 +1832,7 @@ impl ProjectMutation<'_> {
         }
     }
 
-    fn mark_active_write_authorizations_stale(&mut self, task_id: &str) -> StoreResult<()> {
+    fn mark_active_write_checks_stale(&mut self, task_id: &str) -> StoreResult<()> {
         validate_identifier("task_id", task_id)?;
         self.tx.execute(
             "UPDATE write_checks
@@ -1899,20 +1845,16 @@ impl ProjectMutation<'_> {
         Ok(())
     }
 
-    fn insert_write_authorization(
+    fn insert_write_check(
         &mut self,
-        input: &WriteAuthorizationInsert,
+        input: &WriteCheckInsert,
         committed_state_version: u64,
     ) -> StoreResult<()> {
-        validate_identifier("write_authorization_id", &input.write_authorization_id)?;
+        validate_identifier("write_check_id", &input.write_check_id)?;
         validate_identifier("task_id", &input.task_id)?;
         validate_identifier("change_unit_id", &input.change_unit_id)?;
         validate_json_text("write_checks.attempt_scope_json", &input.attempt_scope_json)?;
-        validate_identifier("created_by_surface_id", &input.created_by_surface_id)?;
-        validate_identifier(
-            "created_by_surface_instance_id",
-            &input.created_by_surface_instance_id,
-        )?;
+        validate_identifier("created_by_actor_source", &input.created_by_actor_source)?;
         if let Some(created_by_judgment_id) = &input.created_by_judgment_id {
             validate_identifier("created_by_judgment_id", created_by_judgment_id)?;
         }
@@ -1958,12 +1900,12 @@ impl ProjectMutation<'_> {
             )",
             params![
                 self.project_id,
-                input.write_authorization_id,
+                input.write_check_id,
                 input.task_id,
                 input.change_unit_id,
                 basis_state_version,
                 input.attempt_scope_json,
-                input.created_by_surface_id,
+                input.created_by_actor_source,
                 input.created_by_judgment_id,
                 input.expires_at,
                 input.created_at,
@@ -1973,11 +1915,8 @@ impl ProjectMutation<'_> {
         Ok(())
     }
 
-    fn consume_write_authorization(
-        &mut self,
-        input: &WriteAuthorizationConsumption,
-    ) -> StoreResult<()> {
-        validate_identifier("write_authorization_id", &input.write_authorization_id)?;
+    fn consume_write_check(&mut self, input: &WriteCheckConsumption) -> StoreResult<()> {
+        validate_identifier("write_check_id", &input.write_check_id)?;
         validate_identifier("run_id", &input.run_id)?;
         let expected_basis = u64_to_i64(
             "write_checks.basis_state_version",
@@ -1994,7 +1933,7 @@ impl ProjectMutation<'_> {
                 AND basis_state_version = ?4",
             params![
                 self.project_id,
-                input.write_authorization_id,
+                input.write_check_id,
                 input.run_id,
                 expected_basis
             ],
@@ -2016,8 +1955,8 @@ impl ProjectMutation<'_> {
             validate_identifier("change_unit_id", change_unit_id)?;
         }
         let scope_revision = u64_to_i64("runs.scope_revision", input.scope_revision)?;
-        if let Some(write_authorization_id) = &input.write_authorization_id {
-            validate_identifier("write_authorization_id", write_authorization_id)?;
+        if let Some(write_check_id) = &input.write_check_id {
+            validate_identifier("write_check_id", write_check_id)?;
         }
         validate_identifier("runs.kind", &input.kind)?;
         validate_identifier("runs.status", &input.status)?;
@@ -2028,11 +1967,7 @@ impl ProjectMutation<'_> {
             "runs.authorization_effect_json",
             &input.authorization_effect_json,
         )?;
-        validate_identifier("created_by_surface_id", &input.created_by_surface_id)?;
-        validate_identifier(
-            "created_by_surface_instance_id",
-            &input.created_by_surface_instance_id,
-        )?;
+        validate_identifier("created_by_actor_source", &input.created_by_actor_source)?;
         validate_json_text("runs.metadata_json", &input.metadata_json)?;
 
         self.tx.execute(
@@ -2080,14 +2015,14 @@ impl ProjectMutation<'_> {
                 input.task_id,
                 input.change_unit_id,
                 scope_revision,
-                input.write_authorization_id,
+                input.write_check_id,
                 input.kind,
                 input.status,
                 input.summary_json,
                 input.observed_changes_json,
                 input.evidence_updates_json,
                 input.authorization_effect_json,
-                input.created_by_surface_id,
+                input.created_by_actor_source,
                 input.metadata_json
             ],
         )?;
@@ -2100,12 +2035,8 @@ impl ProjectMutation<'_> {
         validate_identifier("task_id", &input.task_id)?;
         validate_identifier("run_id", &input.run_id)?;
         validate_identifier(
-            "expected_created_by_surface_id",
-            &input.expected_created_by_surface_id,
-        )?;
-        validate_identifier(
-            "expected_created_by_surface_instance_id",
-            &input.expected_created_by_surface_instance_id,
+            "expected_created_by_actor_source",
+            &input.expected_created_by_actor_source,
         )?;
         validate_artifact_sha256("expected_sha256", &input.expected_sha256)?;
         validate_identifier("expected_redaction_state", &input.expected_redaction_state)?;
@@ -2124,9 +2055,7 @@ impl ProjectMutation<'_> {
                 detail: "staged artifact disappeared before promotion".to_owned(),
             })?;
         if staging.task_id != input.task_id
-            || staging.created_by_surface_id != input.expected_created_by_surface_id
-            || staging.created_by_surface_instance_id
-                != input.expected_created_by_surface_instance_id
+            || staging.created_by_actor_source != input.expected_created_by_actor_source
             || staging.status != "staged"
             || staging.sha256.as_deref() != Some(input.expected_sha256.as_str())
             || staging.size_bytes != Some(input.expected_size_bytes)
@@ -2366,7 +2295,7 @@ impl ProjectMutation<'_> {
             "evidence_observations.assurance_level",
             &input.assurance_level,
         )?;
-        if let Some(actor_source) = &input.observed_by_surface_id {
+        if let Some(actor_source) = &input.observed_by_actor_source {
             validate_identifier("observed_by_actor_source", actor_source)?;
         }
         if let Some(tool_name) = &input.tool_name {
@@ -2448,7 +2377,7 @@ impl ProjectMutation<'_> {
                 input.claim,
                 input.source_kind,
                 input.assurance_level,
-                input.observed_by_surface_id,
+                input.observed_by_actor_source,
                 input.tool_name,
                 input.tool_invocation_id,
                 input.tool_metadata_json,
@@ -2486,10 +2415,9 @@ impl ProjectMutation<'_> {
             &input.sensitive_action_scope_json,
         )?;
         validate_judgment_basis_json("user_judgments.basis_json", &input.basis_json)?;
-        validate_identifier("requested_by_surface_id", &input.requested_by_surface_id)?;
         validate_identifier(
-            "requested_by_surface_instance_id",
-            &input.requested_by_surface_instance_id,
+            "requested_by_actor_source",
+            &input.requested_by_actor_source,
         )?;
         validate_identifier("requested_at", &input.requested_at)?;
         validate_json_text("user_judgments.metadata_json", &input.metadata_json)?;
@@ -2557,7 +2485,7 @@ impl ProjectMutation<'_> {
                 input.sensitive_action_scope_json,
                 input.basis_json,
                 judgment_basis_status_as_str(input.basis_status),
-                input.requested_by_surface_id,
+                input.requested_by_actor_source,
                 input.requested_at,
                 input.metadata_json
             ],
@@ -2590,7 +2518,7 @@ impl ProjectMutation<'_> {
         if let Some(value) = &input.sensitive_action_scope_json {
             validate_json_text("user_judgments.sensitive_action_scope_json", value)?;
         }
-        validate_identifier("resolved_by_actor_source", &input.resolved_by_surface_id)?;
+        validate_identifier("resolved_by_actor_source", &input.resolved_by_actor_source)?;
         validate_identifier(
             "resolved_verification_basis",
             &input.resolved_verification_basis,
@@ -2622,7 +2550,7 @@ impl ProjectMutation<'_> {
                 input.resolution_json,
                 input.resolution_rationale_json,
                 input.sensitive_action_scope_json,
-                input.resolved_by_surface_id,
+                input.resolved_by_actor_source,
                 input.resolved_verification_basis,
                 input.resolved_assurance_level,
                 input.resolved_at
@@ -3244,11 +3172,11 @@ fn change_unit_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Chan
     })
 }
 
-fn active_write_authorizations(
+fn active_write_checks(
     conn: &Connection,
     project_id: &str,
     task_id: &str,
-) -> StoreResult<Vec<WriteAuthorizationRecord>> {
+) -> StoreResult<Vec<WriteCheckRecord>> {
     let mut stmt = conn.prepare(
         "SELECT
             project_id,
@@ -3268,10 +3196,7 @@ fn active_write_authorizations(
            AND status = 'active'
          ORDER BY write_check_id",
     )?;
-    let rows = stmt.query_map(
-        params![project_id, task_id],
-        write_authorization_record_from_row,
-    )?;
+    let rows = stmt.query_map(params![project_id, task_id], write_check_record_from_row)?;
     let mut records = Vec::new();
     for row in rows {
         records.push(row?);
@@ -3279,11 +3204,11 @@ fn active_write_authorizations(
     Ok(records)
 }
 
-fn write_authorizations_for_task(
+fn write_checks_for_task(
     conn: &Connection,
     project_id: &str,
     task_id: &str,
-) -> StoreResult<Vec<WriteAuthorizationRecord>> {
+) -> StoreResult<Vec<WriteCheckRecord>> {
     let mut stmt = conn.prepare(
         "SELECT
             project_id,
@@ -3302,10 +3227,7 @@ fn write_authorizations_for_task(
            AND task_id = ?2
          ORDER BY created_at DESC, write_check_id DESC",
     )?;
-    let rows = stmt.query_map(
-        params![project_id, task_id],
-        write_authorization_record_from_row,
-    )?;
+    let rows = stmt.query_map(params![project_id, task_id], write_check_record_from_row)?;
     let mut records = Vec::new();
     for row in rows {
         records.push(row?);
@@ -3313,11 +3235,11 @@ fn write_authorizations_for_task(
     Ok(records)
 }
 
-fn write_authorization_record(
+fn write_check_record(
     conn: &Connection,
     project_id: &str,
-    write_authorization_id: &str,
-) -> StoreResult<Option<WriteAuthorizationRecord>> {
+    write_check_id: &str,
+) -> StoreResult<Option<WriteCheckRecord>> {
     conn.query_row(
         "SELECT
             project_id,
@@ -3334,20 +3256,18 @@ fn write_authorization_record(
          FROM write_checks
          WHERE project_id = ?1
            AND write_check_id = ?2",
-        params![project_id, write_authorization_id],
-        write_authorization_record_from_row,
+        params![project_id, write_check_id],
+        write_check_record_from_row,
     )
     .optional()
     .map_err(StoreError::from)
 }
 
-fn write_authorization_record_from_row(
-    row: &rusqlite::Row<'_>,
-) -> rusqlite::Result<WriteAuthorizationRecord> {
+fn write_check_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<WriteCheckRecord> {
     let basis_state_version = row.get::<_, i64>(4)?;
-    Ok(WriteAuthorizationRecord {
+    Ok(WriteCheckRecord {
         project_id: row.get(0)?,
-        write_authorization_id: row.get(1)?,
+        write_check_id: row.get(1)?,
         task_id: row.get(2)?,
         change_unit_id: row.get(3)?,
         basis_state_version: nonnegative_i64_to_u64(
@@ -3470,7 +3390,6 @@ fn artifact_staging_record(
             handle_id,
             task_id,
             created_by_actor_source,
-            '',
             artifact_json,
             tmp_path,
             sha256,
@@ -3523,23 +3442,22 @@ fn artifact_staging_record_from_row(
     row: &rusqlite::Row<'_>,
 ) -> rusqlite::Result<StoredArtifactStagingRecord> {
     let size_bytes = row
-        .get::<_, Option<i64>>(8)?
+        .get::<_, Option<i64>>(7)?
         .map(|value| nonnegative_i64_to_u64("artifact_staging.size_bytes", value))
         .transpose()?;
     Ok(StoredArtifactStagingRecord {
         project_id: row.get(0)?,
         handle_id: row.get(1)?,
         task_id: row.get(2)?,
-        created_by_surface_id: row.get(3)?,
-        created_by_surface_instance_id: row.get(4)?,
-        artifact_json: row.get(5)?,
-        tmp_path: row.get(6)?,
-        sha256: row.get(7)?,
+        created_by_actor_source: row.get(3)?,
+        artifact_json: row.get(4)?,
+        tmp_path: row.get(5)?,
+        sha256: row.get(6)?,
         size_bytes,
-        content_type: row.get(9)?,
-        redaction_state: row.get(10)?,
-        status: row.get(11)?,
-        expires_at: row.get(12)?,
+        content_type: row.get(8)?,
+        redaction_state: row.get(9)?,
+        status: row.get(10)?,
+        expires_at: row.get(11)?,
     })
 }
 
@@ -3758,10 +3676,7 @@ fn evidence_observation_record(
             claim,
             source_kind,
             assurance_level,
-            NULL,
-            NULL,
             observed_by_actor_source,
-            NULL,
             tool_name,
             tool_invocation_id,
             tool_metadata_json,
@@ -3793,19 +3708,16 @@ fn evidence_observation_record_from_row(
         claim: row.get(5)?,
         source_kind: row.get(6)?,
         assurance_level: row.get(7)?,
-        observed_by_actor_kind: row.get(8)?,
-        observed_actor_role: row.get(9)?,
-        observed_by_surface_id: row.get(10)?,
-        observed_by_surface_instance_id: row.get(11)?,
-        tool_name: row.get(12)?,
-        tool_invocation_id: row.get(13)?,
-        tool_metadata_json: row.get(14)?,
-        input_refs_json: row.get(15)?,
-        output_artifact_refs_json: row.get(16)?,
-        limitations_json: row.get(17)?,
-        observed_at: row.get(18)?,
-        recorded_at: row.get(19)?,
-        metadata_json: row.get(20)?,
+        observed_by_actor_source: row.get(8)?,
+        tool_name: row.get(9)?,
+        tool_invocation_id: row.get(10)?,
+        tool_metadata_json: row.get(11)?,
+        input_refs_json: row.get(12)?,
+        output_artifact_refs_json: row.get(13)?,
+        limitations_json: row.get(14)?,
+        observed_at: row.get(15)?,
+        recorded_at: row.get(16)?,
+        metadata_json: row.get(17)?,
     })
 }
 
@@ -3834,14 +3746,10 @@ fn user_judgment_record(
             resolution_machine_action,
             resolution_json,
             resolution_rationale_json,
-            NULL,
-            NULL,
             resolved_by_actor_source,
-            NULL,
             resolved_verification_basis,
             resolved_assurance_level,
             requested_by_actor_source,
-            '',
             requested_at,
             resolved_at,
             metadata_json
@@ -3995,14 +3903,10 @@ fn resolved_user_judgment_records(
             resolution_machine_action,
             resolution_json,
             resolution_rationale_json,
-            NULL,
-            NULL,
             resolved_by_actor_source,
-            NULL,
             resolved_verification_basis,
             resolved_assurance_level,
             requested_by_actor_source,
-            '',
             requested_at,
             resolved_at,
             metadata_json
@@ -4049,14 +3953,10 @@ fn pending_user_judgment_records(
             resolution_machine_action,
             resolution_json,
             resolution_rationale_json,
-            NULL,
-            NULL,
             resolved_by_actor_source,
-            NULL,
             resolved_verification_basis,
             resolved_assurance_level,
             requested_by_actor_source,
-            '',
             requested_at,
             resolved_at,
             metadata_json
@@ -4094,17 +3994,13 @@ fn user_judgment_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Us
         resolution_machine_action: row.get(15)?,
         resolution_json: row.get(16)?,
         resolution_rationale_json: row.get(17)?,
-        resolved_by_actor_kind: row.get(18)?,
-        resolved_actor_role: row.get(19)?,
-        resolved_by_surface_id: row.get(20)?,
-        resolved_by_surface_instance_id: row.get(21)?,
-        resolved_verification_basis: row.get(22)?,
-        resolved_assurance_level: row.get(23)?,
-        requested_by_surface_id: row.get(24)?,
-        requested_by_surface_instance_id: row.get(25)?,
-        requested_at: row.get(26)?,
-        resolved_at: row.get(27)?,
-        metadata_json: row.get(28)?,
+        resolved_by_actor_source: row.get(18)?,
+        resolved_verification_basis: row.get(19)?,
+        resolved_assurance_level: row.get(20)?,
+        requested_by_actor_source: row.get(21)?,
+        requested_at: row.get(22)?,
+        resolved_at: row.get(23)?,
+        metadata_json: row.get(24)?,
     })
 }
 
@@ -4254,15 +4150,6 @@ fn project_state_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ProjectSt
     })
 }
 
-fn surface_by_instance(
-    _conn: &Connection,
-    _project_id: &str,
-    _surface_id: &str,
-    _surface_instance_id: &str,
-) -> StoreResult<Option<SurfaceRecord>> {
-    Ok(None)
-}
-
 fn tool_invocation_tx(
     tx: &Transaction<'_>,
     project_id: &str,
@@ -4278,7 +4165,6 @@ fn tool_invocation_tx(
             basis_state_version,
             committed_state_version,
             actor_source,
-            '',
             operation_category,
             verification_basis,
             response_json
@@ -4308,7 +4194,6 @@ fn tool_invocation(
             basis_state_version,
             committed_state_version,
             actor_source,
-            '',
             operation_category,
             verification_basis,
             response_json
@@ -4339,11 +4224,10 @@ fn tool_invocation_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ToolInv
             "tool_invocations.committed_state_version",
             committed_state_version,
         )?,
-        surface_id: row.get(6)?,
-        surface_instance_id: row.get(7)?,
-        access_class: row.get(8)?,
-        verification_basis: row.get(9)?,
-        response_json: row.get(10)?,
+        actor_source: row.get(6)?,
+        operation_category: row.get(7)?,
+        verification_basis: row.get(8)?,
+        response_json: row.get(9)?,
     })
 }
 
@@ -4426,9 +4310,8 @@ fn validate_pending_event(event: &PendingTaskEvent) -> StoreResult<()> {
 }
 
 fn validate_replay_context(context: &VerifiedReplayContext) -> StoreResult<()> {
-    validate_identifier("surface_id", &context.surface_id)?;
-    validate_identifier("surface_instance_id", &context.surface_instance_id)?;
-    validate_identifier("access_class", &context.access_class)?;
+    validate_identifier("actor_source", &context.actor_source)?;
+    validate_identifier("operation_category", &context.operation_category)?;
     if let Some(verification_basis) = &context.verification_basis {
         validate_identifier("verification_basis", verification_basis)?;
     }
@@ -4848,13 +4731,12 @@ mod tests {
 
     use super::*;
     use crate::bootstrap::{
-        initialize_runtime_home, register_project, register_surface, ProjectRegistration,
-        SurfaceRegistration, ACTIVE_PROJECT_STATUS,
+        initialize_runtime_home, register_project, ProjectRegistration, ACTIVE_PROJECT_STATUS,
     };
 
     const PROJECT_ID: &str = "project_store";
-    const SURFACE_ID: &str = "surface_store";
-    const SURFACE_INSTANCE_ID: &str = "surface_instance_store";
+    const CONNECTION_ID: &str = "conn_store";
+    const ACTOR_SOURCE: &str = "agent_connection:conn_store";
 
     struct StoreHarness {
         _runtime_home: TempRuntimeHome,
@@ -4875,24 +4757,6 @@ mod tests {
                     metadata_json: "{}".to_owned(),
                 },
             )?;
-            register_surface(
-                runtime_home.path(),
-                SurfaceRegistration {
-                    project_id: PROJECT_ID.to_owned(),
-                    surface_id: SURFACE_ID.to_owned(),
-                    surface_instance_id: SURFACE_INSTANCE_ID.to_owned(),
-                    surface_kind: "local_test".to_owned(),
-                    interaction_role: "agent".to_owned(),
-                    display_name: None,
-                    capability_profile_json: "{}".to_owned(),
-                    local_access_json: json!({
-                        "authorized_access_classes": ["core_mutation"],
-                        "verification_basis": "store_test_registration"
-                    })
-                    .to_string(),
-                    metadata_json: "{}".to_owned(),
-                },
-            )?;
 
             Ok(Self {
                 runtime_home_path: runtime_home.path().to_path_buf(),
@@ -4910,7 +4774,7 @@ mod tests {
     ) -> Result<(), Box<dyn Error>> {
         let harness = StoreHarness::new()?;
         let mut store = harness.store()?;
-        let first_context = replay_context(SURFACE_INSTANCE_ID, "core_mutation");
+        let first_context = replay_context(CONNECTION_ID, "agent_workflow");
         let first_input = commit_input(
             &ProjectId::new(PROJECT_ID),
             MethodName::UpdateScope,
@@ -4936,7 +4800,7 @@ mod tests {
             MethodName::UpdateScope,
             Some(&IdempotencyKey::new("idem_store_context")),
             &RequestHash::new("sha256:second"),
-            Some(replay_context("surface_instance_other", "core_mutation")),
+            Some(replay_context("conn_other", "agent_workflow")),
             Some(1),
             vec![pending_event("second")],
         );
@@ -4955,7 +4819,7 @@ mod tests {
     ) -> Result<(), Box<dyn Error>> {
         let harness = StoreHarness::new()?;
         let mut store = harness.store()?;
-        let context = replay_context(SURFACE_INSTANCE_ID, "core_mutation");
+        let context = replay_context(CONNECTION_ID, "agent_workflow");
         let first_input = commit_input(
             &ProjectId::new(PROJECT_ID),
             MethodName::UpdateScope,
@@ -5012,7 +4876,7 @@ mod tests {
     fn transaction_replay_hash_conflict_rejects_without_effect() -> Result<(), Box<dyn Error>> {
         let harness = StoreHarness::new()?;
         let mut store = harness.store()?;
-        let context = replay_context(SURFACE_INSTANCE_ID, "core_mutation");
+        let context = replay_context(CONNECTION_ID, "agent_workflow");
         let first_input = commit_input(
             &ProjectId::new(PROJECT_ID),
             MethodName::UpdateScope,
@@ -5076,7 +4940,7 @@ mod tests {
             MethodName::UpdateScope,
             Some(&IdempotencyKey::new("idem_store_basis_initial")),
             &RequestHash::new("sha256:basis-initial"),
-            Some(replay_context(SURFACE_INSTANCE_ID, "core_mutation")),
+            Some(replay_context(CONNECTION_ID, "agent_workflow")),
             Some(0),
             vec![pending_event_for_task("basis_initial", task_id)],
         );
@@ -5130,7 +4994,7 @@ mod tests {
             MethodName::UpdateScope,
             Some(&IdempotencyKey::new("idem_store_basis_stale")),
             &RequestHash::new("sha256:basis-stale"),
-            Some(replay_context(SURFACE_INSTANCE_ID, "core_mutation")),
+            Some(replay_context(CONNECTION_ID, "agent_workflow")),
             Some(1),
             vec![pending_event_for_task("basis_stale", task_id)],
         );
@@ -5159,7 +5023,7 @@ mod tests {
             MethodName::UpdateScope,
             Some(&IdempotencyKey::new("idem_store_basis_superseded")),
             &RequestHash::new("sha256:basis-superseded"),
-            Some(replay_context(SURFACE_INSTANCE_ID, "core_mutation")),
+            Some(replay_context(CONNECTION_ID, "agent_workflow")),
             Some(2),
             vec![pending_event_for_task("basis_superseded", task_id)],
         );
@@ -5201,7 +5065,7 @@ mod tests {
             MethodName::RecordRun,
             Some(&IdempotencyKey::new("idem_store_evidence_observation")),
             &RequestHash::new("sha256:evidence-observation"),
-            Some(replay_context(SURFACE_INSTANCE_ID, "core_mutation")),
+            Some(replay_context(CONNECTION_ID, "agent_workflow")),
             Some(0),
             vec![pending_event_for_task("evidence_observation", task_id)],
         );
@@ -5219,10 +5083,7 @@ mod tests {
                         claim: "Search result count was verified.".to_owned(),
                         source_kind: "external_tool".to_owned(),
                         assurance_level: "external_tool_result".to_owned(),
-                        observed_by_actor_kind: Some("agent".to_owned()),
-                        observed_actor_role: Some("agent".to_owned()),
-                        observed_by_surface_id: Some(SURFACE_ID.to_owned()),
-                        observed_by_surface_instance_id: Some(SURFACE_INSTANCE_ID.to_owned()),
+                        observed_by_actor_source: Some(ACTOR_SOURCE.to_owned()),
                         tool_name: Some("local-test-runner".to_owned()),
                         tool_invocation_id: Some("tool_invocation_001".to_owned()),
                         tool_metadata_json: json!({"exit_code": 0}).to_string(),
@@ -5277,7 +5138,7 @@ mod tests {
             MethodName::UpdateScope,
             Some(&IdempotencyKey::new("idem_store_effect_contract")),
             &RequestHash::new("sha256:effect-contract"),
-            Some(replay_context(SURFACE_INSTANCE_ID, "core_mutation")),
+            Some(replay_context(CONNECTION_ID, "agent_workflow")),
             Some(0),
             vec![pending_event_for_task("effect_contract", task_id)],
         );
@@ -5319,7 +5180,7 @@ mod tests {
             MethodName::UpdateScope,
             Some(&IdempotencyKey::new("idem_store_bad_effect_contract")),
             &RequestHash::new("sha256:bad-effect-contract"),
-            Some(replay_context(SURFACE_INSTANCE_ID, "core_mutation")),
+            Some(replay_context(CONNECTION_ID, "agent_workflow")),
             Some(0),
             vec![pending_event_for_task("bad_effect_contract", task_id)],
         );
@@ -5357,7 +5218,7 @@ mod tests {
             MethodName::RequestUserJudgment,
             Some(&IdempotencyKey::new("idem_store_defer_insert")),
             &RequestHash::new("sha256:defer-insert"),
-            Some(replay_context(SURFACE_INSTANCE_ID, "core_mutation")),
+            Some(replay_context(CONNECTION_ID, "agent_workflow")),
             Some(0),
             vec![pending_event_for_task("defer_insert", task_id)],
         );
@@ -5386,7 +5247,7 @@ mod tests {
             MethodName::RecordUserJudgment,
             Some(&IdempotencyKey::new("idem_store_defer_resolve")),
             &RequestHash::new("sha256:defer-resolve"),
-            Some(replay_context(SURFACE_INSTANCE_ID, "core_mutation")),
+            Some(replay_context(CONNECTION_ID, "agent_workflow")),
             Some(1),
             vec![pending_event_for_task("defer_resolve", task_id)],
         );
@@ -5443,7 +5304,7 @@ mod tests {
             MethodName::RequestUserJudgment,
             Some(&IdempotencyKey::new("idem_store_blocked_option")),
             &RequestHash::new("sha256:blocked-option"),
-            Some(replay_context(SURFACE_INSTANCE_ID, "core_mutation")),
+            Some(replay_context(CONNECTION_ID, "agent_workflow")),
             Some(0),
             vec![pending_event_for_task("blocked_option", task_id)],
         );
@@ -5495,7 +5356,7 @@ mod tests {
             MethodName::RequestUserJudgment,
             Some(&IdempotencyKey::new("idem_store_missing_action_insert")),
             &RequestHash::new("sha256:missing-action-insert"),
-            Some(replay_context(SURFACE_INSTANCE_ID, "core_mutation")),
+            Some(replay_context(CONNECTION_ID, "agent_workflow")),
             Some(0),
             vec![pending_event_for_task("missing_action_insert", task_id)],
         );
@@ -5525,7 +5386,7 @@ mod tests {
             MethodName::RecordUserJudgment,
             Some(&IdempotencyKey::new("idem_store_missing_action_resolve")),
             &RequestHash::new("sha256:missing-action-resolve"),
-            Some(replay_context(SURFACE_INSTANCE_ID, "core_mutation")),
+            Some(replay_context(CONNECTION_ID, "agent_workflow")),
             Some(1),
             vec![pending_event_for_task("missing_action_resolve", task_id)],
         );
@@ -5584,7 +5445,7 @@ mod tests {
             MethodName::RequestUserJudgment,
             Some(&IdempotencyKey::new("idem_store_blocked_resolution_insert")),
             &RequestHash::new("sha256:blocked-resolution-insert"),
-            Some(replay_context(SURFACE_INSTANCE_ID, "core_mutation")),
+            Some(replay_context(CONNECTION_ID, "agent_workflow")),
             Some(0),
             vec![pending_event_for_task("blocked_resolution_insert", task_id)],
         );
@@ -5614,7 +5475,7 @@ mod tests {
             MethodName::RecordUserJudgment,
             Some(&IdempotencyKey::new("idem_store_blocked_resolution")),
             &RequestHash::new("sha256:blocked-resolution"),
-            Some(replay_context(SURFACE_INSTANCE_ID, "core_mutation")),
+            Some(replay_context(CONNECTION_ID, "agent_workflow")),
             Some(1),
             vec![pending_event_for_task("blocked_resolution", task_id)],
         );
@@ -5674,7 +5535,7 @@ mod tests {
             MethodName::RequestUserJudgment,
             Some(&IdempotencyKey::new("idem_store_unknown_rationale_insert")),
             &RequestHash::new("sha256:unknown-rationale-insert"),
-            Some(replay_context(SURFACE_INSTANCE_ID, "core_mutation")),
+            Some(replay_context(CONNECTION_ID, "agent_workflow")),
             Some(0),
             vec![pending_event_for_task("unknown_rationale_insert", task_id)],
         );
@@ -5704,7 +5565,7 @@ mod tests {
             MethodName::RecordUserJudgment,
             Some(&IdempotencyKey::new("idem_store_unknown_rationale")),
             &RequestHash::new("sha256:unknown-rationale"),
-            Some(replay_context(SURFACE_INSTANCE_ID, "core_mutation")),
+            Some(replay_context(CONNECTION_ID, "agent_workflow")),
             Some(1),
             vec![pending_event_for_task("unknown_rationale", task_id)],
         );
@@ -5749,7 +5610,7 @@ mod tests {
             MethodName::UpdateScope,
             Some(&IdempotencyKey::new("idem_store_basis_malformed")),
             &RequestHash::new("sha256:basis-malformed"),
-            Some(replay_context(SURFACE_INSTANCE_ID, "core_mutation")),
+            Some(replay_context(CONNECTION_ID, "agent_workflow")),
             Some(0),
             vec![pending_event_for_task("basis_malformed", task_id)],
         );
@@ -5812,7 +5673,7 @@ mod tests {
             MethodName::RecordUserJudgment,
             Some(&IdempotencyKey::new("idem_store_continuity")),
             &RequestHash::new("sha256:store-continuity"),
-            Some(replay_context(SURFACE_INSTANCE_ID, "core_mutation")),
+            Some(replay_context(CONNECTION_ID, "agent_workflow")),
             Some(0),
             vec![pending_event_for_task("continuity", task_id)],
         );
@@ -5863,7 +5724,7 @@ mod tests {
             MethodName::RecordRun,
             Some(&IdempotencyKey::new("idem_store_foreign_key")),
             &RequestHash::new("sha256:foreign-key"),
-            Some(replay_context(SURFACE_INSTANCE_ID, "core_mutation")),
+            Some(replay_context(CONNECTION_ID, "agent_workflow")),
             Some(0),
             vec![pending_event("foreign_key")],
         );
@@ -5888,18 +5749,10 @@ mod tests {
         Ok(())
     }
 
-    fn replay_context(surface_instance_id: &str, access_class: &str) -> VerifiedReplayContext {
-        let operation_category = match access_class {
-            "core_mutation" | "write_authorization" | "artifact_registration" | "run_recording" => {
-                "agent_workflow"
-            }
-            "read_status" => "read",
-            other => other,
-        };
+    fn replay_context(connection_id: &str, operation_category: &str) -> VerifiedReplayContext {
         VerifiedReplayContext {
-            surface_id: format!("agent_connection:{surface_instance_id}"),
-            surface_instance_id: surface_instance_id.to_owned(),
-            access_class: operation_category.to_owned(),
+            actor_source: format!("agent_connection:{connection_id}"),
+            operation_category: operation_category.to_owned(),
             verification_basis: Some("store_test_registration".to_owned()),
         }
     }
@@ -5921,8 +5774,7 @@ mod tests {
     fn task_insert(task_id: &str) -> TaskInsert {
         TaskInsert {
             task_id: task_id.to_owned(),
-            created_by_surface_id: SURFACE_ID.to_owned(),
-            created_by_surface_instance_id: SURFACE_INSTANCE_ID.to_owned(),
+            created_by_actor_source: ACTOR_SOURCE.to_owned(),
             mode: "work".to_owned(),
             lifecycle_phase: "shaping".to_owned(),
             result: None,
@@ -6000,8 +5852,7 @@ mod tests {
             sensitive_action_scope_json: "{}".to_owned(),
             basis_json,
             basis_status,
-            requested_by_surface_id: SURFACE_ID.to_owned(),
-            requested_by_surface_instance_id: SURFACE_INSTANCE_ID.to_owned(),
+            requested_by_actor_source: ACTOR_SOURCE.to_owned(),
             requested_at: "t0".to_owned(),
             metadata_json: "{}".to_owned(),
         }
@@ -6053,10 +5904,7 @@ mod tests {
             })
             .to_string(),
             sensitive_action_scope_json: None,
-            resolved_by_actor_kind: "user".to_owned(),
-            resolved_actor_role: "user_interaction".to_owned(),
-            resolved_by_surface_id: SURFACE_ID.to_owned(),
-            resolved_by_surface_instance_id: SURFACE_INSTANCE_ID.to_owned(),
+            resolved_by_actor_source: "local_user".to_owned(),
             resolved_verification_basis: "store_test_registration".to_owned(),
             resolved_assurance_level: "registered_surface_cooperative".to_owned(),
             resolved_at: "t1".to_owned(),
@@ -6183,15 +6031,14 @@ mod tests {
             task_id: "missing_task".to_owned(),
             change_unit_id: None,
             scope_revision: 0,
-            write_authorization_id: None,
+            write_check_id: None,
             kind: "implementation".to_owned(),
             status: "completed".to_owned(),
             summary_json: "{}".to_owned(),
             observed_changes_json: "{}".to_owned(),
             evidence_updates_json: "[]".to_owned(),
             authorization_effect_json: "{}".to_owned(),
-            created_by_surface_id: SURFACE_ID.to_owned(),
-            created_by_surface_instance_id: SURFACE_INSTANCE_ID.to_owned(),
+            created_by_actor_source: ACTOR_SOURCE.to_owned(),
             metadata_json: "{}".to_owned(),
         }
     }
@@ -6202,15 +6049,14 @@ mod tests {
             task_id: task_id.to_owned(),
             change_unit_id: None,
             scope_revision: 0,
-            write_authorization_id: None,
+            write_check_id: None,
             kind: "implementation".to_owned(),
             status: "recorded".to_owned(),
             summary_json: "{}".to_owned(),
             observed_changes_json: "{}".to_owned(),
             evidence_updates_json: "[]".to_owned(),
             authorization_effect_json: "{}".to_owned(),
-            created_by_surface_id: SURFACE_ID.to_owned(),
-            created_by_surface_instance_id: SURFACE_INSTANCE_ID.to_owned(),
+            created_by_actor_source: ACTOR_SOURCE.to_owned(),
             metadata_json: "{}".to_owned(),
         }
     }

@@ -14,14 +14,18 @@ use rusqlite::Connection;
 use serde_json::{json, Map, Value};
 use tempfile::{Builder, TempDir};
 use volicord_store::{
+    agent_connections::{
+        add_connection_project, ensure_agent_connection, AgentConnectionRegistration,
+        ConnectionProjectRegistration, CONNECTION_MODE_WORKFLOW, HOST_KIND_CODEX,
+        HOST_SCOPE_PROJECT, VERIFIED_STATUS_COMPLETE,
+    },
     bootstrap::{
-        initialize_runtime_home, register_project, register_surface, ProjectRegistration,
-        SurfaceRegistration, ACTIVE_PROJECT_STATUS,
+        initialize_runtime_home, register_project, ProjectRegistration, ACTIVE_PROJECT_STATUS,
     },
     core_pipeline::{CoreProjectStore, StorageEffectCounts},
     sqlite::open_project_state_database,
 };
-use volicord_types::{TypeBoundary, VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION};
+use volicord_types::TypeBoundary;
 
 pub mod fixtures {
     /// Placement marker for future shared fixtures.
@@ -129,36 +133,32 @@ pub mod core_fixtures {
 
     /// Canonical project id used by shared disposable fixtures.
     pub const DEFAULT_PROJECT_ID: &str = "project_fixture";
-    /// Canonical surface id used by shared disposable fixtures.
-    pub const DEFAULT_SURFACE_ID: &str = "surface_fixture";
-    /// Canonical surface instance id used by shared disposable fixtures.
-    pub const DEFAULT_SURFACE_INSTANCE_ID: &str = "surface_instance_fixture";
+    /// Canonical Agent Connection id used by shared disposable fixtures.
+    pub const DEFAULT_CONNECTION_ID: &str = "connection_fixture";
     /// Baseline ref used by shared method request fixtures.
     pub const DEFAULT_BASELINE_REF: &str = "baseline_fixture";
     /// Product path allowed by the default Change Unit fixture.
     pub const DEFAULT_PRODUCT_PATH: &str = "src/export.rs";
 
-    /// Automatically cleaned Volicord Runtime Home with one registered project and surface.
+    /// Automatically cleaned Volicord Runtime Home with one registered project and Agent Connection.
     #[derive(Debug)]
     pub struct CoreFixture {
         _runtime_home: TempRuntimeHome,
         runtime_home_path: PathBuf,
         product_repo_path: PathBuf,
         project_id: String,
-        surface_id: String,
-        surface_instance_id: String,
+        connection_id: String,
     }
 
     impl CoreFixture {
-        /// Creates a disposable Runtime Home, Product Repository registration, and local surface.
+        /// Creates a disposable Runtime Home, Product Repository registration, and Agent Connection.
         pub fn new(prefix: &str) -> Result<Self, Box<dyn Error>> {
             let component = identifier_component(prefix);
             let runtime_home = TempRuntimeHome::new(&component)?;
             let repo_root = runtime_home.create_product_repo("repo")?;
 
             let project_id = DEFAULT_PROJECT_ID.to_owned();
-            let surface_id = DEFAULT_SURFACE_ID.to_owned();
-            let surface_instance_id = DEFAULT_SURFACE_INSTANCE_ID.to_owned();
+            let connection_id = DEFAULT_CONNECTION_ID.to_owned();
 
             initialize_runtime_home(
                 runtime_home.path(),
@@ -175,29 +175,31 @@ pub mod core_fixtures {
                     metadata_json: "{}".to_owned(),
                 },
             )?;
-            register_surface(
+            ensure_agent_connection(
                 runtime_home.path(),
-                SurfaceRegistration {
-                    project_id: project_id.clone(),
-                    surface_id: surface_id.clone(),
-                    surface_instance_id: surface_instance_id.clone(),
-                    surface_kind: "local_test".to_owned(),
-                    interaction_role: "user_interaction".to_owned(),
-                    display_name: Some("Shared Test Surface".to_owned()),
-                    capability_profile_json: default_capability_profile().to_string(),
-                    local_access_json: json!({
-                        "authorized_access_classes": [
-                            "read_status",
-                            "core_mutation",
-                            "write_authorization",
-                            "run_recording",
-                            "artifact_registration",
-                            "artifact_read"
-                        ],
-                        "verification_basis": VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION
-                    })
-                    .to_string(),
+                AgentConnectionRegistration {
+                    connection_id: connection_id.clone(),
+                    host_kind: HOST_KIND_CODEX.to_owned(),
+                    host_scope: HOST_SCOPE_PROJECT.to_owned(),
+                    server_name: "volicord-test".to_owned(),
+                    config_target: runtime_home
+                        .path()
+                        .join("agent-connections")
+                        .join(&component)
+                        .to_string_lossy()
+                        .into_owned(),
+                    mode: CONNECTION_MODE_WORKFLOW.to_owned(),
+                    enabled: true,
+                    managed_fingerprint: format!("fixture:{component}"),
+                    last_verified_status: VERIFIED_STATUS_COMPLETE.to_owned(),
                     metadata_json: "{}".to_owned(),
+                },
+            )?;
+            add_connection_project(
+                runtime_home.path(),
+                ConnectionProjectRegistration {
+                    connection_id: connection_id.clone(),
+                    project_id: project_id.clone(),
                 },
             )?;
 
@@ -207,8 +209,7 @@ pub mod core_fixtures {
                 runtime_home_path,
                 product_repo_path: repo_root,
                 project_id,
-                surface_id,
-                surface_instance_id,
+                connection_id,
             })
         }
 
@@ -238,14 +239,14 @@ pub mod core_fixtures {
             &self.project_id
         }
 
-        /// Returns the registered surface id.
-        pub fn surface_id(&self) -> &str {
-            &self.surface_id
+        /// Returns the registered Agent Connection id.
+        pub fn connection_id(&self) -> &str {
+            &self.connection_id
         }
 
-        /// Returns the registered surface instance id.
-        pub fn surface_instance_id(&self) -> &str {
-            &self.surface_instance_id
+        /// Returns the actor source associated with the fixture Agent Connection.
+        pub fn actor_source(&self) -> String {
+            format!("agent_connection:{}", self.connection_id)
         }
 
         /// Opens the project-local Core store.
@@ -266,34 +267,6 @@ pub mod core_fixtures {
                 .join(&self.project_id)
                 .join("state.sqlite");
             open_project_state_database(path)
-        }
-
-        /// Replaces the registered surface capability profile.
-        pub fn set_surface_capability(&self, capability_profile: Value) -> Result<(), StoreError> {
-            self.conn()?.execute(
-                "UPDATE surfaces
-                    SET capability_profile_json = ?3
-                  WHERE project_id = ?1
-                    AND surface_id = ?2",
-                rusqlite::params![
-                    self.project_id,
-                    self.surface_id,
-                    capability_profile.to_string()
-                ],
-            )?;
-            Ok(())
-        }
-
-        /// Replaces the registered surface local access metadata.
-        pub fn set_surface_local_access(&self, local_access: Value) -> Result<(), StoreError> {
-            self.conn()?.execute(
-                "UPDATE surfaces
-                    SET local_access_json = ?3
-                  WHERE project_id = ?1
-                    AND surface_id = ?2",
-                rusqlite::params![self.project_id, self.surface_id, local_access.to_string()],
-            )?;
-            Ok(())
         }
 
         /// Replaces the project-owned enforcement profile JSON for focused corruption tests.
@@ -624,32 +597,26 @@ pub mod core_fixtures {
             }
         }
 
-        /// Reads the current status of a Write Authorization row.
-        pub fn write_authorization_status(
-            &self,
-            write_authorization_id: &str,
-        ) -> Result<String, StoreError> {
+        /// Reads the current status of a Write Check row.
+        pub fn write_check_status(&self, write_check_id: &str) -> Result<String, StoreError> {
             Ok(self.conn()?.query_row(
                 "SELECT status
-                   FROM write_authorizations
+                   FROM write_checks
                   WHERE project_id = ?1
-                    AND write_authorization_id = ?2",
-                rusqlite::params![self.project_id, write_authorization_id],
+                    AND write_check_id = ?2",
+                rusqlite::params![self.project_id, write_check_id],
                 |row| row.get(0),
             )?)
         }
 
-        /// Reads the basis state version of a Write Authorization row.
-        pub fn write_authorization_basis(
-            &self,
-            write_authorization_id: &str,
-        ) -> Result<u64, Box<dyn Error>> {
+        /// Reads the basis state version of a Write Check row.
+        pub fn write_check_basis(&self, write_check_id: &str) -> Result<u64, Box<dyn Error>> {
             let basis: i64 = self.conn()?.query_row(
                 "SELECT basis_state_version
-                   FROM write_authorizations
+                   FROM write_checks
                   WHERE project_id = ?1
-                    AND write_authorization_id = ?2",
-                rusqlite::params![self.project_id, write_authorization_id],
+                    AND write_check_id = ?2",
+                rusqlite::params![self.project_id, write_check_id],
                 |row| row.get(0),
             )?;
             Ok(u64::try_from(basis)?)
@@ -814,8 +781,7 @@ pub mod core_fixtures {
                 "INSERT INTO tasks (
                     project_id,
                     task_id,
-                    created_by_surface_id,
-                    created_by_surface_instance_id,
+                    created_by_actor_source,
                     mode,
                     lifecycle_phase,
                     result,
@@ -833,7 +799,6 @@ pub mod core_fixtures {
                     ?1,
                     ?2,
                     ?3,
-                    ?4,
                     'work',
                     'ready',
                     'none',
@@ -847,12 +812,7 @@ pub mod core_fixtures {
                     't0',
                     't0'
                 )",
-                rusqlite::params![
-                    self.project_id,
-                    task_id,
-                    self.surface_id,
-                    self.surface_instance_id
-                ],
+                rusqlite::params![self.project_id, task_id, self.actor_source()],
             )?;
             Ok(())
         }
@@ -1099,18 +1059,18 @@ pub mod core_fixtures {
             Ok(())
         }
 
-        /// Replaces a Write Authorization attempt-scope JSON value with raw text.
-        pub fn set_write_authorization_attempt_scope_raw(
+        /// Replaces a Write Check attempt-scope JSON value with raw text.
+        pub fn set_write_check_attempt_scope_raw(
             &self,
-            write_authorization_id: &str,
+            write_check_id: &str,
             raw_json: &str,
         ) -> Result<(), StoreError> {
             self.conn()?.execute(
-                "UPDATE write_authorizations
+                "UPDATE write_checks
                     SET attempt_scope_json = ?3
                   WHERE project_id = ?1
-                    AND write_authorization_id = ?2",
-                rusqlite::params![self.project_id, write_authorization_id, raw_json],
+                    AND write_check_id = ?2",
+                rusqlite::params![self.project_id, write_check_id, raw_json],
             )?;
             Ok(())
         }
@@ -1189,40 +1149,35 @@ pub mod core_fixtures {
             Ok(())
         }
 
-        /// Replaces Write Authorization authority timestamps for fixed-clock tests.
-        pub fn set_write_authorization_timestamps(
+        /// Replaces Write Check authority timestamps for fixed-clock tests.
+        pub fn set_write_check_timestamps(
             &self,
-            write_authorization_id: &str,
+            write_check_id: &str,
             created_at: &str,
             expires_at: &str,
         ) -> Result<(), StoreError> {
             self.conn()?.execute(
-                "UPDATE write_authorizations
+                "UPDATE write_checks
                     SET created_at = ?3,
                         expires_at = ?4
                   WHERE project_id = ?1
-                    AND write_authorization_id = ?2",
-                rusqlite::params![
-                    self.project_id,
-                    write_authorization_id,
-                    created_at,
-                    expires_at
-                ],
+                    AND write_check_id = ?2",
+                rusqlite::params![self.project_id, write_check_id, created_at, expires_at],
             )?;
             Ok(())
         }
 
-        /// Reads Write Authorization `created_at` and `expires_at` timestamp strings.
-        pub fn write_authorization_timestamps(
+        /// Reads Write Check `created_at` and `expires_at` timestamp strings.
+        pub fn write_check_timestamps(
             &self,
-            write_authorization_id: &str,
+            write_check_id: &str,
         ) -> Result<(String, String), StoreError> {
             Ok(self.conn()?.query_row(
                 "SELECT created_at, expires_at
-                   FROM write_authorizations
+                   FROM write_checks
                   WHERE project_id = ?1
-                    AND write_authorization_id = ?2",
-                rusqlite::params![self.project_id, write_authorization_id],
+                    AND write_check_id = ?2",
+                rusqlite::params![self.project_id, write_check_id],
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )?)
         }
@@ -1625,20 +1580,6 @@ pub mod core_fixtures {
     /// Builds a `WriteCheckId` for tests that need the typed wrapper.
     pub fn write_check_id(value: &str) -> WriteCheckId {
         WriteCheckId::new(value)
-    }
-
-    fn default_capability_profile() -> Value {
-        json!({
-            "supported_access_classes": [
-                "read_status",
-                "core_mutation",
-                "write_authorization",
-                "run_recording",
-                "artifact_registration"
-            ],
-            "write_authorization": true,
-            "manual_artifact_attachment_supported": true
-        })
     }
 
     fn identifier_component(value: &str) -> String {
