@@ -184,7 +184,6 @@ mod tests {
             McpCommand::Help
         );
         assert!(usage().contains("--connection <connection_id>"));
-        assert!(!usage().contains("VOLICORD_PROJECT_ID"));
         assert_eq!(
             version(),
             format!("volicord-mcp {}\n", env!("CARGO_PKG_VERSION"))

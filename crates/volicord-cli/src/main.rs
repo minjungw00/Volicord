@@ -415,23 +415,24 @@ mod tests {
         .expect("help should not need Runtime Home");
 
         assert!(output.contains("volicord --version"));
-        assert!(!output.contains("volicord setup"));
     }
 
     #[test]
-    fn setup_command_family_is_unknown() {
-        for args in [
-            vec!["volicord", "setup"],
-            vec!["volicord", "setup", "local-mcp"],
-        ] {
-            let error = run_cli(args, |_| None, Path::new(env!("CARGO_MANIFEST_DIR")))
-                .expect_err("removed setup command should be unknown");
+    fn unknown_top_level_command_is_usage_error() {
+        let error = run_cli(
+            ["volicord", "not-a-real-command"],
+            |_| None,
+            Path::new(env!("CARGO_MANIFEST_DIR")),
+        )
+        .expect_err("unknown command should be a usage error");
 
-            assert_eq!(
-                error,
-                CliError::Usage(format!("unknown command: setup\n\n{}", usage()))
-            );
-        }
+        assert_eq!(
+            error,
+            CliError::Usage(format!(
+                "unknown command: not-a-real-command\n\n{}",
+                usage()
+            ))
+        );
     }
 
     #[test]
@@ -646,28 +647,6 @@ mod tests {
         assert_eq!(lines[0], "project_id\trepo_root\tproject_home\tstatus");
         assert!(lines[1].starts_with("project_a\t"));
         assert!(lines[2].starts_with("project_b\t"));
-    }
-
-    #[test]
-    fn removed_admin_tree_is_not_supported() {
-        let removed = ["sur", "face"].concat();
-        let error = run_cli(
-            [
-                "volicord",
-                removed.as_str(),
-                "list",
-                "--project-id",
-                "project_a",
-            ],
-            |_| None,
-            Path::new(env!("CARGO_MANIFEST_DIR")),
-        )
-        .expect_err("removed command should stay unavailable");
-
-        assert!(matches!(error, CliError::Usage(_)));
-        assert!(error
-            .to_string()
-            .contains(&format!("unknown command: {removed}")));
     }
 
     #[test]

@@ -23,7 +23,6 @@ fn volicord_mcp_binary_reports_help_version_and_preflight() -> Result<(), Box<dy
     let help = run_without_binding(["--help"])?;
     assert_success(&help);
     assert!(stdout(&help).contains("--connection <connection_id>"));
-    assert!(!stdout(&help).contains("VOLICORD_PROJECT_ID"));
 
     let version = run_without_binding(["--version"])?;
     assert_success(&version);

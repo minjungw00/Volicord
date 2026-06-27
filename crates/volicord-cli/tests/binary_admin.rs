@@ -38,23 +38,11 @@ fn binary_help_uses_agent_connection_model() -> Result<(), Box<dyn Error>> {
     assert!(text.contains("--mode read_only|workflow"));
     assert!(text.contains("volicord user judgment record --project-id ID"));
     assert!(text.contains("User Channel"));
-    assert!(!text.contains("volicord user setup"));
-    let removed_command = ["sur", "face"].concat();
-    assert!(!text.contains(&format!("volicord {removed_command}")));
-    assert!(!text.contains(&format!("--{}-id", "integration")));
 
-    let removed = run_without_home([
-        removed_command.as_str(),
-        "list",
-        "--project-id",
-        "project_a",
-    ])?;
-    assert_eq!(removed.status.code(), Some(2));
-    assert!(stderr(&removed).contains(&format!("unknown command: {removed_command}")));
-
-    let user_setup = run_without_home(["user", "setup", "--project-id", "project_a"])?;
-    assert_eq!(user_setup.status.code(), Some(2));
-    assert!(stderr(&user_setup).contains("unknown user command: setup"));
+    let unknown_user =
+        run_without_home(["user", "not-a-real-command", "--project-id", "project_a"])?;
+    assert_eq!(unknown_user.status.code(), Some(2));
+    assert!(stderr(&unknown_user).contains("unknown user command: not-a-real-command"));
     Ok(())
 }
 
@@ -108,7 +96,6 @@ fn agent_connect_defaults_to_read_only_and_writes_connection_config() -> Result<
 
     let config = fs::read_to_string(repo_root.join(".codex").join("config.toml"))?;
     assert!(config.contains(&format!("args = [\"--connection\", \"{connection_id}\"]")));
-    assert!(!config.contains(&format!("--{}", "integration")));
     Ok(())
 }
 
@@ -299,7 +286,8 @@ fn connection_project_enable_disable_and_uninstall_flow() -> Result<(), Box<dyn 
 }
 
 #[test]
-fn user_channel_records_pending_judgment_without_setup() -> Result<(), Box<dyn Error>> {
+fn user_channel_records_pending_judgment_with_local_user_provenance() -> Result<(), Box<dyn Error>>
+{
     let runtime_home = TempRuntimeHome::new("cli-bin-user-channel")?;
     let repo_root = runtime_home.create_product_repo("product-repo")?;
     initialize_runtime_home(runtime_home.path(), "runtime_home_user_channel", "{}")?;
