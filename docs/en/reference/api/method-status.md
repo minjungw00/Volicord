@@ -83,7 +83,8 @@ Include projection contract:
 
 - `include.task` returns the selected `Task` summary and current Change Unit through `active_task`.
 - `include.pending_user_judgments` returns current pending judgment refs, and relevant stale or superseded judgment state appears through existing result fields such as `blocker_refs` and `next_actions.required_refs`.
-- `include.write_check` returns effective active, expired, stale, and consumed Write Check states through `write_check_summary`.
+- `include.write_check` returns active, expired, stale, consumed, or otherwise relevant `Write Check` Core-state compatibility record state through `write_check_summary`.
+- `write_check_summary` is a compatibility summary only; it is not filesystem access, shell approval, final acceptance, or ordinary write approval.
 - `include.evidence` returns current `EvidenceSummary` and coverage when available.
 - `include.close` returns `CurrentCloseBasis | null`, close state, computed blockers, risk acceptance coverage, and relevant next actions. The blockers use the same close-readiness calculation as `volicord.close_task intent=check`.
 - `include.guarantees` returns only guarantees derived from the project enforcement profile, verified invocation context, enabled enforcement mechanisms, and supported baseline scope.
@@ -173,7 +174,7 @@ params:
   include:
     task: true
     pending_user_judgments: true
-    write_authority: false
+    write_check: false
     evidence: true
     close: true
     guarantees: true
