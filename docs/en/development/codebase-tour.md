@@ -8,6 +8,9 @@ Reference documents.
 
 Code and test paths are written relative to the repository root. Source links
 from this page use relative Markdown targets so they can be opened directly.
+For the workspace-wide Cargo dependency diagram and runtime maps, use
+[Implementation Architecture](architecture.md). For validation-layer choice
+after you identify an affected area, use [Testing Strategy](testing-strategy.md).
 
 ## First pass reading path
 
@@ -22,7 +25,7 @@ Read in this order when you are learning the public method path:
 4. `volicord-mcp` for stdio startup, tool registration, typed argument decoding,
    invocation-context derivation, dispatch, and response wrapping.
 5. `volicord-test-support`, `tests/integration`, and `tests/conformance` for
-   disposable fixtures and cross-layer proof points.
+   disposable fixtures and cross-layer verification points.
 
 For administrative setup behavior, read `volicord-cli` after `volicord-store`.
 The CLI path is local setup and registration, not public Core method behavior.
@@ -30,14 +33,15 @@ The CLI path is local setup and registration, not public Core method behavior.
 For repository documentation validation, read `xtask` after the Maintain
 policies. It is maintenance tooling and not part of the public method path.
 
-## Dependency shape
+## Cargo Dependency Shape
 
-Normal internal dependency direction from the current Cargo manifests:
+Normal internal Cargo dependency direction from the current manifests:
 
 - `volicord-types` has no internal dependencies.
 - `volicord-store` depends on `volicord-types`.
 - `volicord-core` depends on `volicord-store` and `volicord-types`.
-- `volicord-cli` depends on `volicord-store` and `volicord-types`.
+- `volicord-cli` depends on `volicord-core`, `volicord-store`, and
+  `volicord-types`.
 - `volicord-mcp` depends on `volicord-core`, `volicord-store`, and
   `volicord-types`.
 - `volicord-test-support` depends on `volicord-store` and `volicord-types`.
@@ -46,7 +50,9 @@ Normal internal dependency direction from the current Cargo manifests:
 
 Test-only composition adds `volicord-test-support` to implementation crates and
 lets `tests/conformance` and `tests/integration` compose the implementation
-crates they exercise. Core still does not depend on CLI or MCP adapters.
+crates they exercise. Core still does not depend on CLI or MCP adapters. The
+diagram version of this Cargo dependency graph lives in
+[Implementation Architecture](architecture.md).
 
 ## `crates/volicord-types`
 

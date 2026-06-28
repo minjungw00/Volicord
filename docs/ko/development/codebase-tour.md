@@ -6,7 +6,10 @@ Rust 워크스페이스를 설명합니다. 학습 가이드이며 계약 담당
 Core 권한 의미는 참조 문서에 남습니다.
 
 코드와 테스트 경로는 저장소 루트 기준으로 씁니다. 이 문서의 소스 링크는
-바로 열 수 있도록 상대 Markdown 대상으로 둡니다.
+바로 열 수 있도록 상대 Markdown 대상으로 둡니다. 워크스페이스 전체 Cargo
+의존성 그래프와 런타임 지도는 [구현 아키텍처](architecture.md)를 사용합니다.
+영향을 받는 영역을 찾은 뒤 검증 계층을 고를 때는 [테스트 전략](testing-strategy.md)을
+사용합니다.
 
 ## 첫 번째 읽기 경로
 
@@ -21,7 +24,7 @@ Core 권한 의미는 참조 문서에 남습니다.
 4. `volicord-mcp`: stdio 시작, 도구 등록, 타입 지정 인자 디코딩, 호출
    맥락 파생, 디스패치, 응답 래핑을 봅니다.
 5. `volicord-test-support`, `tests/integration`, `tests/conformance`: 폐기
-   가능한 픽스처와 계층 간 확인 지점을 봅니다.
+   가능한 픽스처와 계층 간 검증 지점을 봅니다.
 
 관리 설정 동작은 `volicord-store` 뒤에 `volicord-cli`를 읽습니다. CLI 경로는
 로컬 설정과 등록이며 공개 Core 메서드 동작이 아닙니다.
@@ -29,14 +32,14 @@ Core 권한 의미는 참조 문서에 남습니다.
 저장소 문서 검증은 Maintain 정책 뒤에 `xtask`를 읽습니다. 이 패키지는
 유지보수 도구이며 공개 메서드 경로의 일부가 아닙니다.
 
-## 의존 형태
+## Cargo 의존 형태
 
-현재 Cargo manifest에서 확인되는 일반 내부 의존 방향은 아래와 같습니다.
+현재 manifest에서 확인되는 일반 내부 Cargo 의존 방향은 아래와 같습니다.
 
 - `volicord-types`는 내부 의존성이 없습니다.
 - `volicord-store`는 `volicord-types`에 의존합니다.
 - `volicord-core`는 `volicord-store`와 `volicord-types`에 의존합니다.
-- `volicord-cli`는 `volicord-store`와 `volicord-types`에 의존합니다.
+- `volicord-cli`는 `volicord-core`, `volicord-store`, `volicord-types`에 의존합니다.
 - `volicord-mcp`는 `volicord-core`, `volicord-store`, `volicord-types`에 의존합니다.
 - `volicord-test-support`는 `volicord-store`와 `volicord-types`에 의존합니다.
 - `xtask`는 내부 제품 크레이트에 의존하지 않습니다. 문서 파서 의존성은
@@ -44,7 +47,8 @@ Core 권한 의미는 참조 문서에 남습니다.
 
 테스트 전용 조합은 구현 크레이트에 `volicord-test-support`를 더하고,
 `tests/conformance`와 `tests/integration`이 자신이 실행하는 구현 크레이트를
-조합하게 합니다. 그래도 Core는 CLI나 MCP 어댑터에 의존하지 않습니다.
+조합하게 합니다. 그래도 Core는 CLI나 MCP 어댑터에 의존하지 않습니다. 이 Cargo
+의존성 그래프의 그림 버전은 [구현 아키텍처](architecture.md)에 있습니다.
 
 ## `crates/volicord-types`
 
