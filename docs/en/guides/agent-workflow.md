@@ -32,6 +32,17 @@ Use this loop unless the user has asked only for simple advice:
 
 Keep the loop light for tiny changes. Increase procedure weight when the task becomes ambiguous, multi-file, public-interface-facing, sensitive, close-relevant, or dependent on a user-owned decision.
 
+### Agent/User authority loop
+
+Use this table to keep agent workflow and user authority paths separate. The exact authority model is owned by [Core Model](../reference/core-model.md), and MCP exposure boundaries are owned by [Agent Connection Reference](../reference/agent-connection.md).
+
+| Moment | Agent-side workflow | User-side authority path | Boundary to preserve |
+|---|---|---|---|
+| Shape and inspect | Use the Agent Connection to read status, inspect available context, and identify the next safe action. | State the goal, scope, non-goals, and any "ask me before..." limits in ordinary language. | Chat, generated Markdown, and guidance help orientation but are not Core authority. |
+| Request a judgment | When an owner supports it, request or display a focused pending judgment and Core-generated options. | Review the pending question and decide whether to answer, reject, defer, narrow, or ask for more evidence. | `volicord.request_user_judgment` creates or exposes the question; it does not record the user's answer. |
+| Record an answer | Route the human to the supported `User Channel`; continue only with work that does not depend on an unrecorded judgment. | Record one Core-generated option through the local user path when the answer must become authority-bearing state. | `volicord.record_user_judgment` is a User Channel method, not an Agent Connection MCP workflow tool. |
+| Continue, write, or close | Refresh state, run needed `Write Check` steps, record Runs and evidence, and surface blockers. | Provide final acceptance, residual-risk acceptance, or the next user decision only when the visible basis is clear. | Evidence and artifacts support claims; they do not replace user judgment, close readiness, or residual-risk decisions. |
+
 <a id="infer-use"></a>
 ## Infer Volicord use from task shape
 

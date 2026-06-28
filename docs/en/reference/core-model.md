@@ -76,6 +76,36 @@ Scope and close-basis revisions are internal current-state coordinates.
 - Recording a user-owned judgment does not increment either revision.
 - Callers do not choose these revisions, and a revision value is not authority by itself.
 
+### Concept relationship map
+
+This diagram shows the conceptual authority relationships. It is not a storage ERD or an API schema.
+
+```mermaid
+flowchart TD
+    Core["Core<br/>local authority record"] --> Task["Task<br/>user-value unit"]
+    Task --> Scope["current scope"]
+    Task --> ChangeUnit["current Change Unit"]
+    ChangeUnit --> EffectContract["Change Unit<br/>effect contract"]
+    ChangeUnit --> WriteCheck["Write Check<br/>one proposed write"]
+    WriteCheck --> Run["Run<br/>execution or observation"]
+    Run --> Evidence["Evidence<br/>claim-scoped support"]
+    ArtifactRef["ArtifactRef"] -. "eligible only when recorded as support" .-> Evidence
+    AgentConnection["Agent Connection"] -. "may request, not record" .-> Judgment["user-owned judgment"]
+    UserChannel["User Channel"] --> Judgment
+    Judgment -. "may satisfy required decision" .-> Scope
+    Judgment -. "basis-tied" .-> CloseBasis["CurrentCloseBasis"]
+    Evidence --> CloseBasis
+    Judgment --> FinalAcceptance["final acceptance<br/>judgment kind"]
+    Judgment --> RiskAcceptance["residual-risk acceptance<br/>judgment kind"]
+    CloseBasis --> ResidualRisk["residual risk visibility"]
+    ResidualRisk --> RiskAcceptance
+    FinalAcceptance --> CloseReadiness
+    RiskAcceptance --> CloseReadiness
+    CloseBasis --> CloseReadiness["close readiness"]
+```
+
+Read the arrows as authority dependency or eligibility, not automatic sufficiency. An artifact is not evidence unless the relevant owners allow and record that use. Final acceptance and residual-risk acceptance are user-owned judgments, and close readiness remains decision support rather than proof of correctness.
+
 ## 3. Core Concepts
 
 ### Core

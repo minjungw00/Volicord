@@ -73,12 +73,23 @@ A useful status summary says:
 
 The agent should not mix inspected facts with user-owned judgment, ask you to restate facts it can safely inspect, present stale status as current, or treat passing tests as final acceptance.
 
+## Agent and User loop
+
+This loop separates what an agent can do through an [Agent Connection](../reference/agent-connection.md) from what you record through the `User Channel`. The authority meanings belong to [Core Model](../reference/core-model.md).
+
+| Moment | Agent can do | You decide or record | What it does not mean |
+|---|---|---|---|
+| Shape the work | Inspect available context, propose scope, and name the next safe action. | Set the goal, scope, non-goals, and limits in ordinary language. | A helpful plan is not write approval, evidence, final acceptance, or close readiness. |
+| Ask for judgment | Request or show a focused pending judgment and Core-generated options. | Choose whether to answer, defer, reject, narrow, or ask for more evidence. | A judgment request is not a recorded answer. |
+| Record authority-bearing judgment | Route you to the local `User Channel` path and avoid depending on an unrecorded answer. | Record one Core-generated option when the answer must become Core authority. | An Agent Connection cannot call `volicord.record_user_judgment` or turn chat text into `User Channel` provenance. |
+| Continue toward close | Show evidence, artifact refs, blockers, residual risk, and the next safe action. | Decide final acceptance, residual-risk acceptance, cancellation, supersession, or the next blocker to address. | Evidence and artifacts do not automatically prove correctness or replace user-owned judgment. |
+
 <a id="record-a-core-user-judgment"></a>
 ## Record a Core user judgment
 
 When a choice must become authority-bearing Core state, use a supported
 `User Channel`. The stable local CLI path is `volicord user`; it does not
-require user setup, adapter registration, or User Channel setup or Agent Connection registration. Exact command
+require separate user setup, adapter registration, or Agent Connection registration. Exact command
 behavior belongs to [Administrative CLI](../reference/admin-cli.md#user-channel-commands);
 authority meaning belongs to [Core Model](../reference/core-model.md), and
 Agent Connection boundaries belong to

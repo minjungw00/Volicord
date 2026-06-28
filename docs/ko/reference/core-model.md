@@ -76,6 +76,36 @@ Volicord는 Volicord 기록을 다룹니다.
 - 사용자 소유 판단 기록은 어느 리비전도 증가시키지 않습니다.
 - 호출자는 이 리비전을 선택하지 않으며, 리비전 값 자체가 권한이 아닙니다.
 
+### 개념 관계 지도
+
+이 그림은 개념 수준의 권한 관계를 보여줍니다. 저장소 ERD나 API 스키마가 아닙니다.
+
+```mermaid
+flowchart TD
+    Core["Core<br/>로컬 기준 기록"] --> Task["Task<br/>사용자 가치 단위"]
+    Task --> Scope["현재 적용 범위"]
+    Task --> ChangeUnit["현재 적용 Change Unit"]
+    ChangeUnit --> EffectContract["Change Unit<br/>효과 계약"]
+    ChangeUnit --> WriteCheck["Write Check<br/>제안된 쓰기 하나"]
+    WriteCheck --> Run["실행 기록<br/>실행 또는 관찰"]
+    Run --> Evidence["증거<br/>주장 단위 뒷받침"]
+    ArtifactRef["ArtifactRef"] -. "뒷받침으로 기록될 때만 쓸 수 있음" .-> Evidence
+    AgentConnection["Agent Connection"] -. "요청할 수 있지만 기록하지 않음" .-> Judgment["사용자 소유 판단"]
+    UserChannel["User Channel"] --> Judgment
+    Judgment -. "필요한 결정 요구를 만족할 수 있음" .-> Scope
+    Judgment -. "근거에 묶임" .-> CloseBasis["CurrentCloseBasis"]
+    Evidence --> CloseBasis
+    Judgment --> FinalAcceptance["최종 수락<br/>판단 종류"]
+    Judgment --> RiskAcceptance["잔여 위험 수락<br/>판단 종류"]
+    CloseBasis --> ResidualRisk["잔여 위험 표시"]
+    ResidualRisk --> RiskAcceptance
+    FinalAcceptance --> CloseReadiness
+    RiskAcceptance --> CloseReadiness
+    CloseBasis --> CloseReadiness["닫기 준비 상태"]
+```
+
+화살표는 권한 의존성이나 사용 가능성을 뜻하며 자동 충분성을 뜻하지 않습니다. 아티팩트는 관련 담당 문서가 그 사용을 허용하고 기록할 때만 증거가 됩니다. 최종 수락과 잔여 위험 수락은 사용자 소유 판단이며, 닫기 준비 상태는 정확성 증명이 아니라 판단을 돕는 개념으로 남습니다.
+
 ## 3. Core 개념
 
 ### Core
