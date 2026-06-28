@@ -223,12 +223,12 @@ notification 분류는 MCP 메서드 파라미터 검증보다 먼저 JSON-RPC e
 
 연결이 준비 상태가 된 뒤 `tools/list`는 묶인 Agent Connection 모드에 따라 도구를 노출합니다.
 
-| 모드 | 노출 도구 |
-|---|---|
-| `read_only` | `volicord.status`, `volicord.close_task`, `volicord.list_projects` |
-| `workflow` | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.prepare_write`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.close_task`, `volicord.list_projects` |
+| 모드 | MCP 메서드 도구 | MCP 어댑터 유틸리티 도구 |
+|---|---|---|
+| `read_only` | 2개: `volicord.status`, `volicord.close_task` | `volicord.list_projects` |
+| `workflow` | 8개: `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.prepare_write`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.close_task` | `volicord.list_projects` |
 
-`volicord.list_projects`는 MCP 어댑터 유틸리티이며 공개 Volicord Core API 메서드가 아닙니다. `volicord.record_user_judgment`는 User Channel 경로를 위한 공개 메서드이지만 Agent Connection MCP 도구로 노출되지 않습니다.
+위 MCP 메서드 도구 수는 공개 Volicord Core API 메서드 목록과 같은 것이 아닙니다. `volicord.list_projects`는 MCP 어댑터 유틸리티이며 공개 Volicord Core API 메서드가 아닙니다. `volicord.record_user_judgment`는 User Channel 경로를 위한 공개 Core API 메서드이지만 Agent Connection MCP 도구로 노출되지 않습니다. 공개 메서드 담당 표는 [API 메서드](api/methods.md)를 봅니다.
 
 구조적으로 유효한 `tools/call` 요청은 객체 `params` 안에 아래 값을 둡니다.
 
@@ -237,17 +237,17 @@ notification 분류는 MCP 메서드 파라미터 검증보다 먼저 JSON-RPC e
 
 `arguments`가 없으면 빈 객체로 취급합니다. `arguments: null`과 객체가 아닌 `arguments`는 잘못된 메서드 파라미터이며 JSON-RPC `-32602`를 반환합니다. 알 수 없는 도구 이름은 프로토콜 오류이며 JSON-RPC `-32602`를 반환합니다.
 
-공개 Volicord 도구에서 `tools/list`는 공유 Volicord 요청 스키마에 Agent Connection 바인딩을 적용해 만든 MCP에 보이는 입력 스키마를 노출합니다. `envelope.project_id`는 호출자가 선택할 수 있는 선택적 선택자로 남습니다. `envelope.actor_source`, `envelope.operation_category`, `envelope.connection_id`, `envelope.verification_basis`는 MCP에 보이는 스키마에 노출되지 않으며 원시 `tools/call` `arguments`에서도 허용되지 않습니다. 원시 공개 도구 `arguments`의 최상위나 `envelope` 안에 호출자 소유 호출 필드가 들어 있으면 어댑터는 Core 실행 전에 호출을 거절합니다.
+공개 Volicord 메서드 도구에서 `tools/list`는 공유 Volicord 요청 스키마에 Agent Connection 바인딩을 적용해 만든 MCP에 보이는 입력 스키마를 노출합니다. `envelope.project_id`는 호출자가 선택할 수 있는 선택적 선택자로 남습니다. `envelope.actor_source`, `envelope.operation_category`, `envelope.connection_id`, `envelope.verification_basis`는 MCP에 보이는 스키마에 노출되지 않으며 원시 `tools/call` `arguments`에서도 허용되지 않습니다. 원시 공개 메서드 도구 `arguments`의 최상위나 `envelope` 안에 호출자 소유 호출 필드가 들어 있으면 어댑터는 Core 실행 전에 호출을 거절합니다.
 
-알려진 공개 Volicord 도구에서 객체 `arguments`가 도구 입력 스키마를 통과하지 못하면 `isError: true`와 실행 가능한 text content를 담은 `CallToolResult`를 반환합니다. 이는 JSON-RPC 프로토콜 오류가 아니라 도구 실행 오류입니다.
+알려진 공개 Volicord 메서드 도구에서 객체 `arguments`가 도구 입력 스키마를 통과하지 못하면 `isError: true`와 실행 가능한 text content를 담은 `CallToolResult`를 반환합니다. 이는 JSON-RPC 프로토콜 오류가 아니라 도구 실행 오류입니다.
 
 `volicord.list_projects`에 대해 어댑터는 묶인 Agent Connection만을 위한 읽기 전용 프로젝트 목록을 반환합니다. 이 도구는 Core에 들어가거나, 저장 효과를 만들거나, 프로젝트 멤버십을 바꾸거나, 연결 허용 목록 밖의 프로젝트를 노출하면 안 됩니다. 연결 프로젝트의 현재 등록이 유효하지 않으면 어댑터는 그 프로젝트를 정상 available 또는 unavailable 항목으로 반환하지 않고 유틸리티 호출을 실패시킵니다.
 
-공개 Volicord 도구 호출에 대해 어댑터는 먼저 [Agent Connection](agent-connection.md#current-connection-context)이 담당하는 결정적 프로젝트 선택과 프로젝트별 검증을 수행합니다. 모호한 프로젝트 선택은 Core 실행 전에 거절하고, 실행 가능한 텍스트는 에이전트에게 `volicord.list_projects`를 호출하라고 안내해야 합니다.
+공개 Volicord 메서드 도구 호출에 대해 어댑터는 먼저 [Agent Connection](agent-connection.md#current-connection-context)이 담당하는 결정적 프로젝트 선택과 프로젝트별 검증을 수행합니다. 모호한 프로젝트 선택은 Core 실행 전에 거절하고, 실행 가능한 텍스트는 에이전트에게 `volicord.list_projects`를 호출하라고 안내해야 합니다.
 
 `volicord-mcp`는 MCP 태스크 보강 도구 실행을 광고하거나 구현하지 않습니다. `tools/call` 요청은 `CreateTaskResult`를 반환하지 않으며, `task` 파라미터는 지원되는 기준 기능이 아닙니다.
 
-Volicord까지 도달한 알려진 공개 Volicord 도구 호출에서 `tools/call`은 MCP 결과 안에 Volicord 응답 JSON을 래핑합니다.
+Volicord까지 도달한 알려진 공개 Volicord 메서드 도구 호출에서 `tools/call`은 MCP 결과 안에 Volicord 응답 JSON을 래핑합니다.
 
 - Volicord 응답 JSON은 `result.content[0].text`의 문자열로 직렬화됩니다.
 - 클라이언트는 Volicord 응답을 검사하려면 그 문자열을 JSON으로 파싱해야 합니다.

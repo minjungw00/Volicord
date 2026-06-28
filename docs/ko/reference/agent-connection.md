@@ -127,12 +127,12 @@ MCP 세션은 어댑터 시작 시 정확히 하나의 `connection_id`에 묶입
 
 연결 모드와 동작 범주:
 
-| Agent Connection 모드 | MCP를 통해 허용되는 동작 범주 | MCP에 보이는 도구 |
-|---|---|---|
-| `read_only` | `read` | `volicord.status`, `volicord.close_task`, `volicord.list_projects` |
-| `workflow` | `read`, `agent_workflow` | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.prepare_write`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.close_task`, `volicord.list_projects` |
+| Agent Connection 모드 | MCP를 통해 허용되는 동작 범주 | MCP에 보이는 공개 메서드 도구 | MCP 어댑터 유틸리티 도구 |
+|---|---|---|---|
+| `read_only` | `read` | 2개: `volicord.status`, `volicord.close_task` | `volicord.list_projects` |
+| `workflow` | `read`, `agent_workflow` | 8개: `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.prepare_write`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.close_task` | `volicord.list_projects` |
 
-`volicord.record_user_judgment`는 `operation_category=user_only`입니다. Agent Connection은 이 도구를 노출하지 않습니다. 권한을 지니는 답변을 기록하는 지원 로컬 사용자 경로는 [관리 CLI](admin-cli.md#user-channel-commands)가 담당하는 `volicord user` 명령군입니다.
+`volicord.record_user_judgment`는 `operation_category=user_only`입니다. User Channel 경로를 위한 공개 Core API 메서드이지만 Agent Connection에는 노출되지 않습니다. 권한을 지니는 답변을 기록하는 지원 로컬 사용자 경로는 [관리 CLI](admin-cli.md#user-channel-commands)가 담당하는 `volicord user` 명령군입니다.
 
 내부 행위자 형태이며 공개 API 스키마가 아닙니다.
 

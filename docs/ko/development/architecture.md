@@ -196,7 +196,7 @@ sequenceDiagram
 1. `volicord-mcp`는 `--connection <connection_id>`와 선택적 `VOLICORD_HOME`에서 Runtime Home과 Agent Connection 프로세스 맥락 하나를 해석합니다.
 2. `McpConnectionStartupInspection`은 Runtime Home 메타데이터, Agent Connection 상태, `connection.mode`, Connection Projects 읽기 가능성, stdio 시작 전에 필요한 registry JSON을 검증합니다. 모든 호출에 쓸 프로젝트 하나를 시작 시점에 선택하지 않습니다.
 3. stdio 루프는 줄 단위 JSON-RPC를 받아 `initialize`, `ping`, `tools/list`, `tools/call`을 디스패치합니다.
-4. `tools/list`는 공개 Volicord 메서드 도구 아홉 개와 어댑터 소유 `volicord.list_projects` 유틸리티를 노출합니다. 공개 `tools/call`에 대해 어댑터는 원시 `envelope`를 읽고, 허용된 프로젝트를 결정적으로 선택하고, Agent Connection이 그 프로젝트를 허용하는지 검증하고, 어댑터가 관리하는 프로젝트, `operation_category`, `actor_source` 사실을 주입한 뒤, `arguments`를 `volicord-types`의 해당 타입 지정 요청으로 디코딩합니다.
+4. `tools/list`는 Agent Connection 모드에 따라 도구를 노출합니다. `workflow` 모드는 공개 Volicord 메서드 도구 8개와 어댑터 소유 `volicord.list_projects` 유틸리티를 노출하고, `read_only` 모드는 공개 메서드 도구 2개와 같은 유틸리티를 노출합니다. 공개 User Channel 메서드인 `volicord.record_user_judgment`는 노출하지 않습니다. 공개 메서드에 대한 `tools/call`에서는 어댑터가 원시 `envelope`를 읽고, 허용된 프로젝트를 결정적으로 선택하고, Agent Connection이 그 프로젝트를 허용하는지 검증하고, 어댑터가 관리하는 프로젝트, `operation_category`, `actor_source` 사실을 주입한 뒤, `arguments`를 `volicord-types`의 해당 타입 지정 요청으로 디코딩합니다.
 5. `tools/call`은 선택된 프로젝트, `connection_id`, `connection.mode`, 메서드에서 파생한 `operation_category`, `actor_source`에서 현재 연결 맥락을 만든 뒤 Core로 디스패치합니다.
 6. `McpAdapter::call_tool`은 해당 `CoreService` 메서드로 디스패치합니다.
 7. 각 `CoreService` 메서드는 `MethodPolicy`를 고르고, 메서드별 계획 전에 공통 사전 점검을 호출합니다.

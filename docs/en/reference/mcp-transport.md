@@ -221,12 +221,12 @@ The supported lifecycle notification is `notifications/initialized`.
 
 After the connection is ready, `tools/list` exposes tools according to the bound Agent Connection mode:
 
-| Mode | Exposed tools |
-|---|---|
-| `read_only` | `volicord.status`, `volicord.close_task`, `volicord.list_projects` |
-| `workflow` | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.prepare_write`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.close_task`, `volicord.list_projects` |
+| Mode | MCP method tools | MCP adapter utility tools |
+|---|---|---|
+| `read_only` | 2: `volicord.status`, `volicord.close_task` | `volicord.list_projects` |
+| `workflow` | 8: `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.prepare_write`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.close_task` | `volicord.list_projects` |
 
-`volicord.list_projects` is an MCP adapter utility, not a public Volicord Core API method. `volicord.record_user_judgment` is a public method for the User Channel path, but it is not exposed as an Agent Connection MCP tool.
+The MCP method-tool counts above are not the same as the public Volicord Core API method list. `volicord.list_projects` is an MCP adapter utility, not a public Volicord Core API method. `volicord.record_user_judgment` is a public Core API method for the User Channel path, but it is not exposed as an Agent Connection MCP tool; see [API Methods](api/methods.md) for the public method owner table.
 
 A structurally valid `tools/call` request has object `params` with:
 
@@ -235,17 +235,17 @@ A structurally valid `tools/call` request has object `params` with:
 
 Missing `arguments` are treated as an empty object. `arguments: null` and non-object `arguments` are malformed method parameters and return JSON-RPC `-32602`. Unknown tool names are protocol errors and return JSON-RPC `-32602`.
 
-For public Volicord tools, `tools/list` exposes MCP-visible input schemas derived from the shared Volicord request schemas with the Agent Connection binding applied. `envelope.project_id` remains an optional caller selector. `envelope.actor_source`, `envelope.operation_category`, `envelope.connection_id`, and `envelope.verification_basis` are not exposed in the MCP-visible schema and are not accepted in raw `tools/call` arguments. If raw public-tool arguments include caller-owned invocation fields at the top level or inside `envelope`, the adapter rejects the call before Core execution.
+For public Volicord method tools, `tools/list` exposes MCP-visible input schemas derived from the shared Volicord request schemas with the Agent Connection binding applied. `envelope.project_id` remains an optional caller selector. `envelope.actor_source`, `envelope.operation_category`, `envelope.connection_id`, and `envelope.verification_basis` are not exposed in the MCP-visible schema and are not accepted in raw `tools/call` arguments. If raw public method-tool arguments include caller-owned invocation fields at the top level or inside `envelope`, the adapter rejects the call before Core execution.
 
-For a known public Volicord tool, object `arguments` that fail the tool input schema return a `CallToolResult` with `isError: true` and actionable text content. They are tool execution errors, not JSON-RPC protocol errors.
+For a known public Volicord method tool, object `arguments` that fail the tool input schema return a `CallToolResult` with `isError: true` and actionable text content. They are tool execution errors, not JSON-RPC protocol errors.
 
 For `volicord.list_projects`, the adapter returns a read-only project list for the bound Agent Connection only. It must not enter Core, create storage effects, mutate project membership, or expose projects outside the connection allowlist. If a connected project has an invalid current registration, the adapter fails the utility call instead of returning that project as a normal available or unavailable entry.
 
-For a public Volicord tool call, the adapter first performs deterministic project selection and per-project validation owned by [Agent Connection](agent-connection.md#current-connection-context). Ambiguous project selection is rejected before Core execution and the actionable text must instruct the agent to call `volicord.list_projects`.
+For a public Volicord method-tool call, the adapter first performs deterministic project selection and per-project validation owned by [Agent Connection](agent-connection.md#current-connection-context). Ambiguous project selection is rejected before Core execution and the actionable text must instruct the agent to call `volicord.list_projects`.
 
 `volicord-mcp` does not advertise or implement MCP task-augmented tool execution. A `tools/call` request does not return `CreateTaskResult`, and a `task` parameter is not a supported baseline feature.
 
-For known public Volicord tool calls that reach Volicord, `tools/call` wraps the Volicord response JSON inside the MCP result:
+For known public Volicord method-tool calls that reach Volicord, `tools/call` wraps the Volicord response JSON inside the MCP result:
 
 - Volicord response JSON is serialized as the string in `result.content[0].text`.
 - Clients must parse that string as JSON to inspect the Volicord response.

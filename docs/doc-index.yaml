@@ -1129,8 +1129,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: agent_connection
   created_on: '2026-06-19'
-  last_updated_on: '2026-06-27'
-  last_verified_on: '2026-06-27'
+  last_updated_on: '2026-06-28'
+  last_verified_on: '2026-06-28'
   applies_to:
   - volicord_workspace_0_1
   - mcp_protocol_2025_11_25
@@ -1913,8 +1913,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: agent_connection
   created_on: '2026-05-23'
-  last_updated_on: '2026-06-26'
-  last_verified_on: '2026-06-26'
+  last_updated_on: '2026-06-28'
+  last_verified_on: '2026-06-28'
   applies_to:
   - volicord_workspace_0_1
   - mcp_protocol_2025_11_25

@@ -126,12 +126,12 @@ Before a public tool call enters Core, the MCP adapter must verify:
 
 Connection modes and operation categories:
 
-| Agent Connection mode | Allowed operation categories through MCP | MCP-visible tools |
-|---|---|---|
-| `read_only` | `read` | `volicord.status`, `volicord.close_task`, `volicord.list_projects` |
-| `workflow` | `read`, `agent_workflow` | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.prepare_write`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.close_task`, `volicord.list_projects` |
+| Agent Connection mode | Allowed operation categories through MCP | MCP-visible public method tools | MCP adapter utility tools |
+|---|---|---|---|
+| `read_only` | `read` | 2: `volicord.status`, `volicord.close_task` | `volicord.list_projects` |
+| `workflow` | `read`, `agent_workflow` | 8: `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.prepare_write`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.close_task` | `volicord.list_projects` |
 
-`volicord.record_user_judgment` has `operation_category=user_only`. It is not exposed by Agent Connections. The supported local user path for recording an authority-bearing answer is the `volicord user` command group owned by [Administrative CLI](admin-cli.md#user-channel-commands).
+`volicord.record_user_judgment` has `operation_category=user_only`. It is a public Core API method for the User Channel path, but it is not exposed by Agent Connections. The supported local user path for recording an authority-bearing answer is the `volicord user` command group owned by [Administrative CLI](admin-cli.md#user-channel-commands).
 
 Internal actor shape, not a public API schema:
 
