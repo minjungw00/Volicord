@@ -1,28 +1,18 @@
 #![forbid(unsafe_code)]
 
-use std::{
-    collections::BTreeMap,
-    env, fmt, fs,
-    path::{Path, PathBuf},
-    process,
-};
+use std::{env, fmt, path::Path, process};
 
 use volicord_cli::{
     agent_command::{agent_usage, run_agent_command, AgentCommandError, ProductionAgentProcess},
     doctor_command::{doctor_usage, run_doctor_command, DoctorCommandError},
-    registration::ADMIN_METADATA_JSON,
+    project_context::{project_usage, run_project_command, ProjectCommandError},
     setup_command::{
         run_setup_command, setup_usage, ClosureSetupProcess, CommandOutcome, SetupCommandError,
     },
     user_command::{run_user_command, user_usage, UserCommandError},
 };
-use volicord_store::bootstrap::{
-    installation_profile, list_projects, register_project, ProjectRegistration,
-    ACTIVE_PROJECT_STATUS,
-};
+use volicord_store::bootstrap::installation_profile;
 use volicord_store::runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError};
-
-type CliOptions = BTreeMap<String, Vec<String>>;
 
 fn main() {
     let args = env::args().collect::<Vec<_>>();
@@ -127,7 +117,10 @@ fn user_subcommand_requires_setup(args: &[String]) -> bool {
 }
 
 fn project_subcommand_requires_setup(args: &[String]) -> bool {
-    matches!(args.first().map(String::as_str), Some("register" | "list"))
+    matches!(
+        args.first().map(String::as_str),
+        Some("use" | "current" | "list" | "rename" | "forget")
+    )
 }
 
 fn command_outcome(outcome: CommandOutcome) -> Result<String, CliError> {
@@ -165,177 +158,10 @@ fn command_project<F>(args: &[String], env_var: F, current_dir: &Path) -> Result
 where
     F: Fn(&str) -> Option<std::ffi::OsString>,
 {
-    let Some(subcommand) = args.first().map(String::as_str) else {
-        return Err(CliError::usage(project_usage()));
-    };
-    let runtime_home = resolve_runtime_home(env_var, current_dir)?;
-
-    match subcommand {
-        "register" => {
-            let options = parse_options(&args[1..], &["project-id", "repo-root", "status"])?;
-            let project_id = required_option(&options, "project-id")?;
-            let repo_root = required_option(&options, "repo-root")?;
-            let status = options
-                .value("status")
-                .unwrap_or_else(|| ACTIVE_PROJECT_STATUS.to_owned());
-            let repo_root = canonical_existing_dir(current_dir, repo_root, "repo-root")?;
-
-            let record = register_project(
-                &runtime_home,
-                ProjectRegistration {
-                    project_id,
-                    repo_root,
-                    project_home: None,
-                    status,
-                    metadata_json: ADMIN_METADATA_JSON.to_owned(),
-                },
-            )?;
-
-            Ok(format!(
-                "project registered\nproject_id: {}\nrepo_root: {}\nproject_home: {}\nstate_db: {}\nstatus: {}\n",
-                record.project_id,
-                display_path(&record.repo_root),
-                display_path(&record.project_home),
-                display_path(&record.state_db_path),
-                record.status
-            ))
-        }
-        "list" => {
-            let options = parse_options(&args[1..], &[])?;
-            reject_options(&options)?;
-            let projects = list_projects(&runtime_home)?;
-            let mut output = String::from("project_id\trepo_root\tproject_home\tstatus\n");
-            for project in projects {
-                output.push_str(&format!(
-                    "{}\t{}\t{}\t{}\n",
-                    project.project_id,
-                    display_path(&project.repo_root),
-                    display_path(&project.project_home),
-                    project.status
-                ));
-            }
-            Ok(output)
-        }
-        "-h" | "--help" | "help" => Ok(project_usage()),
-        other => Err(CliError::usage(format!(
-            "unknown project command: {other}\n\n{}",
-            project_usage()
-        ))),
-    }
+    run_project_command(args, env_var, current_dir).map_err(CliError::from)
 }
 
-fn parse_options(args: &[String], allowed: &[&str]) -> Result<CliOptions, CliError> {
-    parse_options_with_repeatable(args, allowed, &[])
-}
-
-fn parse_options_with_repeatable(
-    args: &[String],
-    allowed: &[&str],
-    repeatable: &[&str],
-) -> Result<CliOptions, CliError> {
-    let mut options = BTreeMap::new();
-    let mut index = 0;
-
-    while index < args.len() {
-        let token = &args[index];
-        if token == "-h" || token == "--help" || token == "help" {
-            return Err(CliError::usage(usage()));
-        }
-        if !token.starts_with("--") {
-            return Err(CliError::usage(format!("unexpected argument: {token}")));
-        }
-
-        let without_prefix = &token[2..];
-        let (name, value) = if let Some((name, value)) = without_prefix.split_once('=') {
-            (name.to_owned(), value.to_owned())
-        } else {
-            index += 1;
-            let Some(value) = args.get(index) else {
-                return Err(CliError::usage(format!(
-                    "missing value for --{without_prefix}"
-                )));
-            };
-            (without_prefix.to_owned(), value.clone())
-        };
-
-        if !allowed.iter().any(|allowed_name| *allowed_name == name) {
-            return Err(CliError::usage(format!("unknown option: --{name}")));
-        }
-        let values = options.entry(name.clone()).or_insert_with(Vec::new);
-        if !values.is_empty()
-            && !repeatable
-                .iter()
-                .any(|repeatable_name| *repeatable_name == name)
-        {
-            return Err(CliError::usage(format!("duplicate option: --{name}")));
-        }
-        values.push(value);
-
-        index += 1;
-    }
-
-    Ok(options)
-}
-
-trait CliOptionsExt {
-    fn value(&self, name: &str) -> Option<String>;
-    fn value_ref(&self, name: &str) -> Option<&String>;
-}
-
-impl CliOptionsExt for CliOptions {
-    fn value(&self, name: &str) -> Option<String> {
-        self.value_ref(name).cloned()
-    }
-
-    fn value_ref(&self, name: &str) -> Option<&String> {
-        self.get(name).and_then(|values| values.first())
-    }
-}
-
-fn required_option(options: &CliOptions, name: &str) -> Result<String, CliError> {
-    options
-        .value_ref(name)
-        .filter(|value| !value.trim().is_empty())
-        .cloned()
-        .ok_or_else(|| CliError::usage(format!("missing required option: --{name}")))
-}
-
-fn reject_options(options: &CliOptions) -> Result<(), CliError> {
-    if options.is_empty() {
-        Ok(())
-    } else {
-        let names = options
-            .keys()
-            .map(|name| format!("--{name}"))
-            .collect::<Vec<_>>()
-            .join(", ");
-        Err(CliError::usage(format!("unexpected option(s): {names}")))
-    }
-}
-
-fn canonical_existing_dir(
-    current_dir: &Path,
-    value: String,
-    field: &'static str,
-) -> Result<PathBuf, CliError> {
-    let path = absolute_path(current_dir, PathBuf::from(value));
-    let path = fs::canonicalize(&path)
-        .map_err(|error| CliError::runtime(format!("{field} is not accessible: {error}")))?;
-    if path.is_dir() {
-        Ok(path)
-    } else {
-        Err(CliError::runtime(format!("{field} must be a directory")))
-    }
-}
-
-fn absolute_path(current_dir: &Path, path: PathBuf) -> PathBuf {
-    if path.is_absolute() {
-        path
-    } else {
-        current_dir.join(path)
-    }
-}
-
+#[cfg(test)]
 fn display_path(path: &Path) -> String {
     path.display().to_string()
 }
@@ -353,11 +179,6 @@ fn usage() -> String {
 
 fn version() -> String {
     format!("volicord {}\n", env!("CARGO_PKG_VERSION"))
-}
-
-fn project_usage() -> String {
-    "volicord project register --project-id ID --repo-root PATH [--status active]\nvolicord project list\n"
-        .to_owned()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -420,6 +241,15 @@ impl From<UserCommandError> for CliError {
     }
 }
 
+impl From<ProjectCommandError> for CliError {
+    fn from(error: ProjectCommandError) -> Self {
+        match error {
+            ProjectCommandError::Usage(message) => Self::Usage(message),
+            ProjectCommandError::Runtime(message) => Self::Runtime(message),
+        }
+    }
+}
+
 impl From<SetupCommandError> for CliError {
     fn from(error: SetupCommandError) -> Self {
         match error {
@@ -447,9 +277,11 @@ mod tests {
         path::{Path, PathBuf},
     };
 
-    use rusqlite::Connection;
-    use volicord_store::bootstrap::installation_profile as read_installation_profile;
-    use volicord_store::sqlite::{project_state_db_path, registry_db_path};
+    use serde_json::Value;
+    use volicord_store::bootstrap::{
+        installation_profile as read_installation_profile, list_projects,
+    };
+    use volicord_store::sqlite::registry_db_path;
     use volicord_test_support::TempRuntimeHome;
 
     use super::*;
@@ -623,60 +455,203 @@ mod tests {
     }
 
     #[test]
-    fn project_register_creates_registry_and_project_state() {
-        let runtime_home = TempRuntimeHome::new("cli-project").expect("temp runtime home");
+    fn project_current_reports_unregistered_repository_without_creating_project() {
+        let runtime_home = TempRuntimeHome::new("cli-project-current").expect("temp runtime home");
         setup_runtime_home(&runtime_home).expect("setup should succeed");
+        let repo_root = create_git_repo(&runtime_home, "current-repo");
+        let nested = repo_root.join("src/nested");
+        fs::create_dir_all(&nested).expect("nested repo fixture should be created");
 
-        let output = run_with_home(
+        let output = run_with_home_at(
             runtime_home.path(),
-            [
-                "volicord",
-                "project",
-                "register",
-                "--project-id",
-                "project_alpha",
-                "--repo-root",
-                ".",
-            ],
+            ["volicord", "project", "current"],
+            &nested,
         )
-        .expect("project register should succeed");
+        .expect("project current should report without registration");
 
-        assert!(output.contains("project registered\n"));
-        assert!(output.contains("project_id: project_alpha\n"));
-        assert!(project_state_db_path(runtime_home.path(), "project_alpha").exists());
-
-        let conn = Connection::open(project_state_db_path(runtime_home.path(), "project_alpha"))
-            .expect("state database should open");
-        let state_version: i64 = conn
-            .query_row(
-                "SELECT state_version FROM project_state WHERE project_id = 'project_alpha'",
-                [],
-                |row| row.get(0),
-            )
-            .expect("project state row should exist");
-        assert_eq!(state_version, 0);
+        assert!(output.contains("project not registered\n"));
+        assert!(output.contains(&format!("repo_root: {}\n", display_path(&repo_root))));
+        assert!(list_projects(runtime_home.path())
+            .expect("project list should read")
+            .is_empty());
     }
 
     #[test]
-    fn project_register_rejects_repository_under_runtime_home_without_project_state() {
-        let runtime_home = TempRuntimeHome::new("cli-project-boundary").expect("temp runtime home");
+    fn project_use_detects_nested_git_repository_and_hides_text_internal_id() {
+        let runtime_home = TempRuntimeHome::new("cli-project-use").expect("temp runtime home");
         setup_runtime_home(&runtime_home).expect("setup should succeed");
-        let repo_root = runtime_home.path().join("product-repo");
-        fs::create_dir_all(&repo_root).expect("repo fixture should be created");
+        let repo_root = create_git_repo(&runtime_home, "product-repo");
+        let nested = repo_root.join("src/nested");
+        fs::create_dir_all(&nested).expect("nested repo fixture should be created");
 
-        let error = run_with_home(
+        let output = run_with_home_at(
+            runtime_home.path(),
+            ["volicord", "project", "use", "--json"],
+            &nested,
+        )
+        .expect("project use should succeed from nested directory");
+        let value = json_value(&output);
+        let project = &value["project"];
+        let internal_id = project["project_internal_id"]
+            .as_str()
+            .expect("project_internal_id should be present");
+
+        assert_eq!(value["status"], "registered");
+        assert_eq!(project["project_name"], "product-repo");
+        assert_eq!(project["repo_root"], display_path(&repo_root));
+        assert!(internal_id.starts_with("prj_"));
+
+        let projects = list_projects(runtime_home.path()).expect("registered project should list");
+        assert_eq!(projects.len(), 1);
+        assert!(projects[0].state_db_path.exists());
+
+        let text = run_with_home_at(
+            runtime_home.path(),
+            ["volicord", "project", "current"],
+            &nested,
+        )
+        .expect("current project should be registered");
+        assert!(text.contains("project current\n"));
+        assert!(text.contains("name: product-repo\n"));
+        assert!(!text.contains(internal_id));
+        assert!(!text.contains("project_internal_id"));
+    }
+
+    #[test]
+    fn project_list_disambiguates_duplicate_basenames_by_path() {
+        let runtime_home =
+            TempRuntimeHome::new("cli-project-duplicates").expect("temp runtime home");
+        setup_runtime_home(&runtime_home).expect("setup should succeed");
+        let repo_a = create_git_repo(&runtime_home, "left/repo");
+        let repo_b = create_git_repo(&runtime_home, "right/repo");
+
+        let first = run_with_home_at(
             runtime_home.path(),
             [
                 "volicord",
                 "project",
-                "register",
-                "--project-id",
-                "project_boundary",
-                "--repo-root",
+                "use",
+                repo_a.to_str().expect("utf8 repo path"),
+                "--json",
+            ],
+            Path::new(env!("CARGO_MANIFEST_DIR")),
+        )
+        .expect("first same-basename repo should register");
+        let second = run_with_home_at(
+            runtime_home.path(),
+            [
+                "volicord",
+                "project",
+                "use",
+                repo_b.to_str().expect("utf8 repo path"),
+                "--json",
+            ],
+            Path::new(env!("CARGO_MANIFEST_DIR")),
+        )
+        .expect("second same-basename repo should register");
+        let first_id = json_value(&first)["project"]["project_internal_id"]
+            .as_str()
+            .expect("first id")
+            .to_owned();
+        let second_id = json_value(&second)["project"]["project_internal_id"]
+            .as_str()
+            .expect("second id")
+            .to_owned();
+
+        let text = run_with_home(runtime_home.path(), ["volicord", "project", "list"])
+            .expect("project list should succeed");
+        let lines = text.lines().collect::<Vec<_>>();
+        assert_eq!(lines[0], "name\trepo_root\tstatus");
+        assert!(text.contains(&format!("repo\t{}\tactive", display_path(&repo_a))));
+        assert!(text.contains(&format!("repo\t{}\tactive", display_path(&repo_b))));
+        assert!(!text.contains(&first_id));
+        assert!(!text.contains(&second_id));
+
+        let json = run_with_home(
+            runtime_home.path(),
+            ["volicord", "project", "list", "--json"],
+        )
+        .expect("JSON project list should succeed");
+        let value = json_value(&json);
+        assert_eq!(
+            value["projects"]
+                .as_array()
+                .expect("projects should be an array")
+                .len(),
+            2
+        );
+        assert!(json.contains("project_internal_id"));
+    }
+
+    #[test]
+    fn project_rename_and_forget_select_without_user_supplied_ids() {
+        let runtime_home = TempRuntimeHome::new("cli-project-rename").expect("temp runtime home");
+        setup_runtime_home(&runtime_home).expect("setup should succeed");
+        let repo_root = create_git_repo(&runtime_home, "rename-repo");
+
+        run_with_home_at(
+            runtime_home.path(),
+            [
+                "volicord",
+                "project",
+                "use",
+                repo_root.to_str().expect("utf8 repo path"),
+            ],
+            Path::new(env!("CARGO_MANIFEST_DIR")),
+        )
+        .expect("project use should register");
+        let state_db_path = list_projects(runtime_home.path())
+            .expect("project should list")
+            .remove(0)
+            .state_db_path;
+
+        let renamed = run_with_home_at(
+            runtime_home.path(),
+            [
+                "volicord",
+                "project",
+                "rename",
+                "Renamed Project",
+                "--repo",
+                repo_root.to_str().expect("utf8 repo path"),
+            ],
+            Path::new(env!("CARGO_MANIFEST_DIR")),
+        )
+        .expect("project rename should succeed");
+        assert!(renamed.contains("project renamed\n"));
+        assert!(renamed.contains("name: Renamed Project\n"));
+
+        let forgotten = run_with_home(
+            runtime_home.path(),
+            ["volicord", "project", "forget", "Renamed Project"],
+        )
+        .expect("project forget by name should succeed");
+        assert!(forgotten.contains("project forgotten\n"));
+        assert!(forgotten.contains("project_state_deleted: false\n"));
+        assert!(state_db_path.exists());
+        assert!(list_projects(runtime_home.path())
+            .expect("registry should remain readable")
+            .is_empty());
+    }
+
+    #[test]
+    fn project_use_rejects_repository_under_runtime_home_without_project_state() {
+        let runtime_home = TempRuntimeHome::new("cli-project-boundary").expect("temp runtime home");
+        setup_runtime_home(&runtime_home).expect("setup should succeed");
+        let repo_root = runtime_home.path().join("product-repo");
+        fs::create_dir_all(repo_root.join(".git")).expect("repo fixture should be created");
+
+        let error = run_with_home_at(
+            runtime_home.path(),
+            [
+                "volicord",
+                "project",
+                "use",
                 repo_root.to_str().expect("utf8 path"),
             ],
+            Path::new(env!("CARGO_MANIFEST_DIR")),
         )
-        .expect_err("project register should reject Product Repository inside Runtime Home");
+        .expect_err("project use should reject Product Repository inside Runtime Home");
 
         assert!(matches!(error, CliError::Runtime(_)));
         assert!(error
@@ -685,66 +660,18 @@ mod tests {
         assert!(list_projects(runtime_home.path())
             .expect("registry inspection should still work")
             .is_empty());
-        assert!(!project_state_db_path(runtime_home.path(), "project_boundary").exists());
     }
 
     #[test]
-    fn project_list_uses_deterministic_order() {
-        let runtime_home = TempRuntimeHome::new("cli-project-list").expect("temp runtime home");
-        setup_runtime_home(&runtime_home).expect("setup should succeed");
-
-        for (project_id, repo_name) in [("project_b", "repo-b"), ("project_a", "repo-a")] {
-            let repo_root = runtime_home
-                .create_product_repo(repo_name)
-                .expect("product repo should be created")
-                .to_string_lossy()
-                .into_owned();
-            run_cli(
-                [
-                    "volicord".to_owned(),
-                    "project".to_owned(),
-                    "register".to_owned(),
-                    "--project-id".to_owned(),
-                    project_id.to_owned(),
-                    "--repo-root".to_owned(),
-                    repo_root,
-                ],
-                |name| {
-                    if name == "VOLICORD_HOME" {
-                        Some(OsString::from(runtime_home.path()))
-                    } else {
-                        None
-                    }
-                },
-                Path::new(env!("CARGO_MANIFEST_DIR")),
-            )
-            .expect("project register should succeed");
-        }
-
-        let output = run_with_home(runtime_home.path(), ["volicord", "project", "list"])
-            .expect("project list should succeed");
-        let lines = output.lines().collect::<Vec<_>>();
-        assert_eq!(lines[0], "project_id\trepo_root\tproject_home\tstatus");
-        assert!(lines[1].starts_with("project_a\t"));
-        assert!(lines[2].starts_with("project_b\t"));
-    }
-
-    #[test]
-    fn project_register_requires_setup_profile() {
+    fn project_use_requires_setup_profile() {
         let runtime_home = TempRuntimeHome::new("cli-uninitialized").expect("temp runtime home");
-        let error = run_with_home(
+        let repo_root = create_git_repo(&runtime_home, "missing-setup-repo");
+        let error = run_with_home_at(
             runtime_home.path(),
-            [
-                "volicord",
-                "project",
-                "register",
-                "--project-id",
-                "project_missing_runtime",
-                "--repo-root",
-                ".",
-            ],
+            ["volicord", "project", "use"],
+            &repo_root,
         )
-        .expect_err("project register should require setup");
+        .expect_err("project use should require setup");
 
         assert!(matches!(error, CliError::Runtime(_)));
         assert!(error.to_string().contains("run `volicord setup`"));
@@ -753,6 +680,14 @@ mod tests {
     fn run_with_home<const N: usize>(
         runtime_home: &Path,
         args: [&str; N],
+    ) -> Result<String, CliError> {
+        run_with_home_at(runtime_home, args, Path::new(env!("CARGO_MANIFEST_DIR")))
+    }
+
+    fn run_with_home_at<const N: usize>(
+        runtime_home: &Path,
+        args: [&str; N],
+        current_dir: &Path,
     ) -> Result<String, CliError> {
         run_cli(
             args,
@@ -763,7 +698,7 @@ mod tests {
                     None
                 }
             },
-            Path::new(env!("CARGO_MANIFEST_DIR")),
+            current_dir,
         )
     }
 
@@ -786,6 +721,18 @@ mod tests {
             },
             Path::new(env!("CARGO_MANIFEST_DIR")),
         )
+    }
+
+    fn json_value(text: &str) -> Value {
+        serde_json::from_str(text).expect("output should be JSON")
+    }
+
+    fn create_git_repo(runtime_home: &TempRuntimeHome, name: &str) -> PathBuf {
+        let repo_root = runtime_home
+            .create_product_repo(name)
+            .expect("repo fixture should be created");
+        fs::create_dir_all(repo_root.join(".git")).expect("git marker should be created");
+        repo_root
     }
 
     fn write_fake_executable(dir: &Path, name: &str) -> std::io::Result<PathBuf> {

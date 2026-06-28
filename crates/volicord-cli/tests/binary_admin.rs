@@ -15,7 +15,7 @@ use volicord_store::agent_connections::{
 };
 use volicord_store::{
     bootstrap::{
-        initialize_runtime_home, register_project, write_installation_profile,
+        initialize_runtime_home, list_projects, register_project, write_installation_profile,
         InstallationProfileRegistration, ProjectRegistration, ACTIVE_PROJECT_STATUS,
     },
     core_pipeline::CoreProjectStore,
@@ -105,6 +105,106 @@ fn ordinary_command_before_setup_instructs_setup() -> Result<(), Box<dyn Error>>
 
     assert!(!output.status.success());
     assert!(stderr(&output).contains("run `volicord setup`"));
+    Ok(())
+}
+
+#[test]
+fn project_commands_use_current_git_repository_without_user_ids() -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-project-lifecycle")?;
+    initialize_runtime_home(runtime_home.path(), "runtime_home_project_lifecycle", "{}")?;
+    write_test_installation_profile(runtime_home.path())?;
+    let repo_root = create_git_repo(&runtime_home, "product-repo")?;
+    let nested = repo_root.join("src/nested");
+    fs::create_dir_all(&nested)?;
+
+    let current =
+        run_with_home_env_in_dir(runtime_home.path(), ["project", "current"], &[], &nested)?;
+    assert_success(&current);
+    assert!(stdout(&current).contains("project not registered"));
+    assert!(list_projects(runtime_home.path())?.is_empty());
+
+    let use_output = run_with_home_env_in_dir(
+        runtime_home.path(),
+        ["project", "use", "--json"],
+        &[],
+        &nested,
+    )?;
+    assert_success(&use_output);
+    let use_json = json_stdout(&use_output)?;
+    assert_eq!(use_json["status"], "registered");
+    assert_eq!(use_json["project"]["project_name"], "product-repo");
+    assert_eq!(use_json["project"]["repo_root"], path_text(&repo_root));
+    let project_internal_id = use_json["project"]["project_internal_id"]
+        .as_str()
+        .expect("project_internal_id should be present")
+        .to_owned();
+    assert!(project_internal_id.starts_with("prj_"));
+
+    let projects = list_projects(runtime_home.path())?;
+    assert_eq!(projects.len(), 1);
+    assert!(projects[0].state_db_path.exists());
+
+    let text_current =
+        run_with_home_env_in_dir(runtime_home.path(), ["project", "current"], &[], &nested)?;
+    assert_success(&text_current);
+    let text = stdout(&text_current);
+    assert!(text.contains("project current"));
+    assert!(text.contains("name: product-repo"));
+    assert!(!text.contains(&project_internal_id));
+    assert!(!text.contains("project_internal_id"));
+    Ok(())
+}
+
+#[test]
+fn project_list_disambiguates_same_basename_repositories() -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-project-duplicates")?;
+    initialize_runtime_home(runtime_home.path(), "runtime_home_project_duplicates", "{}")?;
+    write_test_installation_profile(runtime_home.path())?;
+    let repo_a = create_git_repo(&runtime_home, "left/repo")?;
+    let repo_b = create_git_repo(&runtime_home, "right/repo")?;
+
+    let first = run_with_home_env(
+        runtime_home.path(),
+        [
+            "project",
+            "use",
+            repo_a.to_str().expect("repo path should be utf8"),
+            "--json",
+        ],
+        &[],
+    )?;
+    assert_success(&first);
+    let second = run_with_home_env(
+        runtime_home.path(),
+        [
+            "project",
+            "use",
+            repo_b.to_str().expect("repo path should be utf8"),
+            "--json",
+        ],
+        &[],
+    )?;
+    assert_success(&second);
+    let first_id = json_stdout(&first)?["project"]["project_internal_id"]
+        .as_str()
+        .expect("first id should be present")
+        .to_owned();
+    let second_id = json_stdout(&second)?["project"]["project_internal_id"]
+        .as_str()
+        .expect("second id should be present")
+        .to_owned();
+
+    let list = run_with_home_env(runtime_home.path(), ["project", "list"], &[])?;
+    assert_success(&list);
+    let text = stdout(&list);
+    assert!(text.contains(&format!("repo\t{}\tactive", path_text(&repo_a))));
+    assert!(text.contains(&format!("repo\t{}\tactive", path_text(&repo_b))));
+    assert!(!text.contains(&first_id));
+    assert!(!text.contains(&second_id));
+
+    let json_list = run_with_home_env(runtime_home.path(), ["project", "list", "--json"], &[])?;
+    assert_success(&json_list);
+    assert!(stdout(&json_list).contains("project_internal_id"));
     Ok(())
 }
 
@@ -466,6 +566,23 @@ fn run_with_home_env<const N: usize>(
     Ok(command.output()?)
 }
 
+fn run_with_home_env_in_dir<const N: usize>(
+    runtime_home: &Path,
+    args: [&str; N],
+    envs: &[(&str, String)],
+    current_dir: &Path,
+) -> Result<Output, Box<dyn Error>> {
+    let mut command = Command::new(volicord_bin());
+    command
+        .args(args)
+        .env("VOLICORD_HOME", runtime_home)
+        .current_dir(current_dir);
+    for (name, value) in envs {
+        command.env(name, value);
+    }
+    Ok(command.output()?)
+}
+
 fn run_setup(runtime_home: &Path, mcp_command: &Path) -> Result<Output, Box<dyn Error>> {
     let mut command = Command::new(volicord_bin());
     command
@@ -527,6 +644,15 @@ fn write_test_installation_profile(runtime_home: &Path) -> Result<(), Box<dyn Er
         },
     )?;
     Ok(())
+}
+
+fn create_git_repo(
+    runtime_home: &TempRuntimeHome,
+    name: impl AsRef<Path>,
+) -> Result<PathBuf, Box<dyn Error>> {
+    let repo_root = runtime_home.create_product_repo(name)?;
+    fs::create_dir_all(repo_root.join(".git"))?;
+    Ok(repo_root)
 }
 
 #[cfg(unix)]

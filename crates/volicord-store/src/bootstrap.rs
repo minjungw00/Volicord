@@ -295,6 +295,12 @@ pub fn ensure_project_for_repo(
     let path_validation =
         validate_runtime_home_product_repository(runtime_home.as_ref(), &registration.repo_root)
             .map_err(path_boundary_input)?;
+    if let Some(existing) =
+        project_record_by_repo_root(&path_validation.runtime_home, &path_validation.repo_root)?
+    {
+        return Ok(existing);
+    }
+
     let project_internal_id = project_internal_id_for_repo(&path_validation.repo_root)?;
     let project_name = registration
         .project_name
@@ -303,7 +309,7 @@ pub fn ensure_project_for_repo(
     let project_alias = registration
         .project_alias
         .filter(|alias| !alias.trim().is_empty())
-        .unwrap_or_else(|| project_internal_id.clone());
+        .unwrap_or_else(|| default_project_alias(&project_name, &project_internal_id));
     write_project_registration_from_validated_paths(
         path_validation.runtime_home,
         path_validation.repo_root,
@@ -335,6 +341,7 @@ fn write_project_registration(
     registration: ProjectWriteRegistration,
 ) -> StoreResult<ProjectRecord> {
     validate_project_id(&registration.project_internal_id)?;
+    validate_project_name(&registration.project_name)?;
     validate_project_alias(&registration.project_alias)?;
     validate_project_status(&registration.status)?;
     validate_json_object("projects.metadata_json", &registration.metadata_json)?;
@@ -355,6 +362,7 @@ fn write_project_registration_from_validated_paths(
     registration: ProjectWriteRegistration,
 ) -> StoreResult<ProjectRecord> {
     validate_project_id(&registration.project_internal_id)?;
+    validate_project_name(&registration.project_name)?;
     validate_project_alias(&registration.project_alias)?;
     validate_project_status(&registration.status)?;
     validate_json_object("projects.metadata_json", &registration.metadata_json)?;
@@ -602,7 +610,7 @@ pub fn rename_project(
     project_alias: Option<&str>,
 ) -> StoreResult<ProjectRecord> {
     validate_project_reference(project_ref)?;
-    validate_identifier("project_name", project_name)?;
+    validate_project_name(project_name)?;
     if let Some(alias) = project_alias {
         validate_project_alias(alias)?;
     }
@@ -867,6 +875,17 @@ fn validate_project_reference(project_ref: &str) -> StoreResult<()> {
     validate_path_component("project_ref", project_ref)
 }
 
+fn validate_project_name(name: &str) -> StoreResult<()> {
+    validate_identifier("project_name", name)?;
+    if name.contains('\0') {
+        Err(StoreError::InvalidInput {
+            detail: "project_name must not contain NUL".to_owned(),
+        })
+    } else {
+        Ok(())
+    }
+}
+
 fn validate_project_alias(alias: &str) -> StoreResult<()> {
     validate_identifier("project_alias", alias)?;
     validate_path_component("project_alias", alias)
@@ -1005,6 +1024,39 @@ fn default_project_name(repo_root: &Path) -> String {
         .filter(|name| !name.trim().is_empty())
         .unwrap_or("project")
         .to_owned()
+}
+
+fn default_project_alias(project_name: &str, project_internal_id: &str) -> String {
+    let mut alias = String::new();
+    let mut previous_separator = false;
+    for character in project_name.chars() {
+        if character.is_ascii_alphanumeric() {
+            alias.push(character.to_ascii_lowercase());
+            previous_separator = false;
+        } else if matches!(character, '-' | '_') {
+            if !alias.is_empty() && !previous_separator {
+                alias.push(character);
+                previous_separator = true;
+            }
+        } else if !alias.is_empty() && !previous_separator {
+            alias.push('-');
+            previous_separator = true;
+        }
+    }
+    while alias.ends_with('-') || alias.ends_with('_') {
+        alias.pop();
+    }
+    if alias.is_empty() {
+        alias.push_str("project");
+    }
+
+    let suffix = project_internal_id
+        .strip_prefix("prj_")
+        .unwrap_or(project_internal_id)
+        .chars()
+        .take(8)
+        .collect::<String>();
+    format!("{alias}-{suffix}")
 }
 
 fn stable_internal_id(prefix: &str, input: &str) -> String {
@@ -1228,6 +1280,89 @@ mod tests {
         assert_eq!(record.repo_root, fs::canonicalize(repo_root)?);
         assert!(record.project_home.starts_with(runtime_home.path()));
         assert!(record.state_db_path.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn repo_project_registration_uses_basename_with_unique_safe_aliases(
+    ) -> Result<(), Box<dyn Error>> {
+        let runtime_home = TempRuntimeHome::new("store-repo-project-basename")?;
+        let repo_a = runtime_home.create_product_repo("left/repo")?;
+        let repo_b = runtime_home.create_product_repo("right/repo")?;
+        initialize_runtime_home(runtime_home.path(), "runtime_home_repo_project", "{}")?;
+
+        let first = ensure_project_for_repo(
+            runtime_home.path(),
+            RepoProjectRegistration {
+                project_name: None,
+                project_alias: None,
+                repo_root: repo_a,
+                project_home: None,
+                status: ACTIVE_PROJECT_STATUS.to_owned(),
+                metadata_json: "{}".to_owned(),
+            },
+        )?;
+        let second = ensure_project_for_repo(
+            runtime_home.path(),
+            RepoProjectRegistration {
+                project_name: None,
+                project_alias: None,
+                repo_root: repo_b,
+                project_home: None,
+                status: ACTIVE_PROJECT_STATUS.to_owned(),
+                metadata_json: "{}".to_owned(),
+            },
+        )?;
+
+        assert_eq!(first.project_name, "repo");
+        assert_eq!(second.project_name, "repo");
+        assert_ne!(first.project_internal_id, second.project_internal_id);
+        assert_ne!(first.project_alias, second.project_alias);
+        assert!(first.project_alias.starts_with("repo-"));
+        assert!(second.project_alias.starts_with("repo-"));
+        Ok(())
+    }
+
+    #[test]
+    fn repo_project_registration_reuses_existing_project_without_renaming(
+    ) -> Result<(), Box<dyn Error>> {
+        let runtime_home = TempRuntimeHome::new("store-repo-project-reuse")?;
+        let repo_root = runtime_home.create_product_repo("repo")?;
+        initialize_runtime_home(runtime_home.path(), "runtime_home_repo_reuse", "{}")?;
+
+        let original = ensure_project_for_repo(
+            runtime_home.path(),
+            RepoProjectRegistration {
+                project_name: None,
+                project_alias: None,
+                repo_root: repo_root.clone(),
+                project_home: None,
+                status: ACTIVE_PROJECT_STATUS.to_owned(),
+                metadata_json: "{}".to_owned(),
+            },
+        )?;
+        rename_project(
+            runtime_home.path(),
+            &original.project_internal_id,
+            "Renamed Project",
+            None,
+        )?;
+
+        let reused = ensure_project_for_repo(
+            runtime_home.path(),
+            RepoProjectRegistration {
+                project_name: None,
+                project_alias: None,
+                repo_root,
+                project_home: None,
+                status: ACTIVE_PROJECT_STATUS.to_owned(),
+                metadata_json: "{\"ignored\":true}".to_owned(),
+            },
+        )?;
+
+        assert_eq!(reused.project_internal_id, original.project_internal_id);
+        assert_eq!(reused.project_name, "Renamed Project");
+        assert_eq!(reused.metadata_json, "{}");
         Ok(())
     }
 
