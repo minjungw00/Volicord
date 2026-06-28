@@ -36,14 +36,14 @@ Non-claim: their presence in a response does not by itself prove persistence, ar
 
 Effects come from the selected method behavior and response branch. The table summarizes each branch; the detail blocks separate allowed effects from forbidden effects.
 
-| Branch | Summary | Details |
-|---|---|---|
-| Read-only `MethodResult` | Response only | [Read-only result](#read-only-result) |
-| `ToolRejectedResponse` | No storage effect | [`ToolRejectedResponse`](#toolrejectedresponse-effect) |
-| Valid `ToolDryRunResponse` | Preview only | [Valid dry-run preview](#valid-dry-run-preview) |
-| `StageArtifactResult` with `effect_kind=staging_created` | transient staging only | [Staging-created artifact result](#staging-created-artifact-result) |
-| Core committed `MethodResult` | Method-owned committed effects | [Core committed result](#core-committed-result) |
-| Committed blocked `MethodResult` | Explicitly allowed blocked effects only | [Committed blocked result](#committed-blocked-result) |
+| Effect category | Response or branch | Durable storage consequence | Details |
+|---|---|---|---|
+| Read-only | Read-only `MethodResult` | Response only; no replay row, event, artifact effect, Write Check effect, or `project_state.state_version` increment. | [Read-only result](#read-only-result) |
+| No-effect | `ToolRejectedResponse` or a valid `MethodResult` with `effect_kind=no_effect` | No ordinary requested mutation and no Core commit. The response may carry errors or blocker-shaped data, but those values are not persisted by this branch. | [`ToolRejectedResponse`](#toolrejectedresponse-effect), [No-effect branches](#no-effect-branches) |
+| Dry-run | Valid `ToolDryRunResponse` | Preview only; no persistent refs, replay row, event, staged handle, artifact effect, or `project_state.state_version` increment. | [Valid dry-run preview](#valid-dry-run-preview) |
+| Staging-created | `StageArtifactResult` with `effect_kind=staging_created` | Storage-owned transient staging only; not the regular Core commit transaction. | [Staging-created artifact result](#staging-created-artifact-result) |
+| Core commit | Core committed `MethodResult` | Method-owned effects through `CoreProjectStore::commit_mutation`, including the state-version increment, task event, optional replay row, and method-selected `CoreStorageMutation` values. | [Core committed result](#core-committed-result) |
+| Committed blocker-shaped result | Committed `MethodResult` whose method owner allows blocked or non-allow persistence | Only the explicitly allowed event, replay, state-version, and blocker-state effects. A blocker-shaped response alone is not enough. | [Committed blocked result](#committed-blocked-result) |
 
 <a id="read-only-result"></a>
 ### Read-only result
@@ -145,7 +145,11 @@ Disallowed effects:
 
 - creating the missing authority that the branch reports
 
+<a id="no-effect-branches"></a>
 ## No-effect branches
+
+No-effect branches include rejected responses and valid method results where the
+method selected no durable mutation for the requested operation.
 
 These failures return no-effect branches:
 
@@ -172,6 +176,12 @@ No-effect branches must not:
 - increment `project_state.state_version`
 
 When preflight returns `ToolRejectedResponse`, the requested committed operation does not proceed. This principle applies to `dry_run` requests too. `dry_run` does not bypass validation, access, capability, or stale-state rejection.
+
+A valid blocked method result can also be no-effect when the method owner
+selects a response-only blocked branch. For example, a baseline `volicord.close_task`
+blocked terminal attempt returns `CloseTaskResult` data without committing
+blocker rows, task events, replay rows, or a state-version increment. This is
+separate from committed non-allow `volicord.prepare_write` results.
 
 ## Dry-run preview effects
 
@@ -215,9 +225,11 @@ For `volicord.close_task intent=check`, the response branch is owned by [`volico
 
 ## Committed blocked effects
 
-Committed blocked outcomes are distinct from rejected responses.
+Committed blocker-shaped outcomes are distinct from rejected responses and from
+response-only blocked results.
 
-Condition: a committed blocked `volicord.prepare_write` or `volicord.close_task` outcome is a `MethodResult` only when the relevant method owner allows the blocked commit.
+Condition: a committed blocked or non-allow outcome is a `MethodResult` only
+when the relevant method owner selects a committed branch for that outcome.
 
 Owner links:
 - [Prepare-write method](api/method-prepare-write.md)

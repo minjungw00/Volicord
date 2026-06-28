@@ -102,21 +102,27 @@ The Store commit path lives in
 ## Branch differences
 
 `OwnerPipelineBranch` is the Core-side branch selected after common preflight
-and method-specific planning:
+and method-specific planning. Exact storage-effect contracts stay in
+[Storage Effects](../reference/storage-effects.md); this table is an
+implementation-oriented map for following the source.
 
-| Branch or response path | Where to read | Persistence consequence at guide level |
+| Branch or response path | Where to read | Durable storage consequence at guide level |
 |---|---|---|
-| Rejected response from MCP decoding or preflight | `McpAdapter::call_tool`, `CoreService::prepare_request`, `validation_rejected` | Returns a rejected response or JSON-RPC error without a Core commit. |
-| `OwnerPipelineBranch::ReadOnly` | `CoreService::execute_prepared_request` | Builds a result from current reads and does not call `CoreProjectStore::commit_mutation`. |
-| `OwnerPipelineBranch::NoEffectResult` | `CoreService::execute_prepared_request`; currently used by `close_task` blocked result paths | Builds a result with `EffectKind::NoEffect` and does not call `CoreProjectStore::commit_mutation`. |
-| `OwnerPipelineBranch::DryRunPreview` | `CoreService::execute_prepared_request` | Builds `ToolDryRunResponse` and does not persist. |
-| `OwnerPipelineBranch::CommitMutation` | `CoreService::execute_prepared_request`, Core `commit_mutation`, Store `CoreProjectStore::commit_mutation` | Runs the Store commit transaction. A method may provide zero `CoreStorageMutation` values and still commit an event and replay row when the method owner defines that branch. |
+| Rejected response from MCP decoding or preflight | `McpAdapter::call_tool`, `CoreService::prepare_request`, `validation_rejected` | Returns a rejected response or JSON-RPC error without a Core commit. No `state_version` increment, task event, replay row, artifact effect, or `Write Check` effect is created. |
+| `OwnerPipelineBranch::ReadOnly` | `CoreService::execute_prepared_request` | Builds a result with `EffectKind::ReadOnly` from current reads and does not call `CoreProjectStore::commit_mutation`. Computed close blockers or artifact observations in the response are read-time data. |
+| `OwnerPipelineBranch::NoEffectResult` | `CoreService::execute_prepared_request`; currently used by `close_task` blocked result paths | Builds a valid result with `EffectKind::NoEffect` and does not call `CoreProjectStore::commit_mutation`. A blocker-shaped result here is response data, not a committed blocker row. |
+| `OwnerPipelineBranch::DryRunPreview` | `CoreService::execute_prepared_request` | Builds `ToolDryRunResponse` preview data and does not persist generated refs, task events, replay rows, staged handles, artifacts, or `state_version` changes. |
+| `OwnerPipelineBranch::CommitMutation` | `CoreService::execute_prepared_request`, Core `commit_mutation`, Store `CoreProjectStore::commit_mutation` | Runs the Store commit transaction. The transaction increments `project_state.state_version`, appends at least one task event, stores a replay row when the committed call is idempotent, and applies method-supplied `CoreStorageMutation` values. A method may provide zero `CoreStorageMutation` values and still commit the event/replay/state-version effect when the method owner defines that branch. |
+| `volicord.stage_artifact` staging path | `crates/volicord-core/src/methods/stage_artifact.rs`, Store artifact staging helpers | Returns `StageArtifactResult` with `EffectKind::StagingCreated` and may create transient storage-owned staging plus safe bytes. It does not use the ordinary Core commit transaction, does not append task events or replay rows, does not increment `project_state.state_version`, and does not create a persistent `ArtifactRef`. See [Artifact Storage](../reference/storage-artifacts.md). |
 
 Do not treat all blocked-looking outcomes as the same implementation path. For
-example, `volicord.prepare_write` can reject before commit with no effect, return
-a dry-run preview with no effect, commit a non-allow decision event without
-creating a `Write Check`, or commit an allowed decision that inserts a
-`Write Check`.
+example, `volicord.prepare_write` can reject before commit with no effect,
+return a dry-run preview with no effect, commit a non-allow decision event
+without creating a `Write Check`, or commit an allowed decision that inserts a
+`Write Check`. `volicord.close_task` can return close blockers on a read-only
+check or on the baseline no-effect blocked path. API errors remain rejected
+responses, not close-readiness blockers; route exact blocker/API boundaries to
+[API blocker routing](../reference/api/blocker-routing.md).
 
 ## `volicord.status`: read-only path
 
