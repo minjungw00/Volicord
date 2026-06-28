@@ -47,6 +47,19 @@ Volicord는 구현 파일, 제품 파일, 런타임 데이터, 외부 호스트 
 | `Volicord Runtime Home` | 저장소/런타임 담당 문서가 정의하는 Volicord 소유 기록, 로컬 런타임 메타데이터, 아티팩트 데이터를 위한 런타임 저장 위치. | `Product Repository`, 기본적인 Volicord 설치 위치, 자동 보안 경계, 기본 격리로 보면 안 됩니다. |
 | 외부 MCP 호스트 설정 | `volicord-mcp` 명령, 프로세스 환경, 호스트별 바인딩을 지정할 수 있는 외부 MCP 호스트 소유 설정. | 정의상 Volicord 런타임 상태, `Volicord Runtime Home`, `Product Repository`, Volicord 소스 저장소 또는 설치 파일로 보면 안 됩니다. |
 
+### 런타임과 호스트 책임 표
+
+이 표는 현재 기준 로컬 Rust 구현에서 각 경계가 맡는 역할을 요약합니다. 자세한 기록 배치는 [저장소 기록](storage-records.md)이, 아티팩트 생명주기는 [아티팩트 저장소](storage-artifacts.md)가, 관리 명령 동작은 [관리 CLI](admin-cli.md)가, MCP 프로세스 동작은 [MCP 전송](mcp-transport.md)이 담당합니다.
+
+| 경계 또는 표면 | 거기에 속하는 것 | 주요 프로세스 경로 | 추론하면 안 되는 것 |
+|---|---|---|---|
+| `Volicord Runtime Home` | `registry.sqlite`, 프로젝트별 `projects/{project_id}/state.sqlite`, 아티팩트 저장소를 사용할 때의 `projects/{project_id}/artifacts/` 같은 프로젝트 아티팩트 저장소. registry는 Runtime Home 식별 정보, 프로젝트 등록, Agent Connection 기록, Connection Projects 멤버십, 설정 대상, 관리 fingerprint, 마지막 검증 상태 같은 `managed host configuration state` 인벤토리를 저장합니다. | `volicord`는 설정과 registry 상태를 초기화하고 갱신합니다. `volicord-mcp`, Core, Store는 시작, 프로젝트 라우팅, Core 상태, 아티팩트를 위해 Runtime Home 상태를 읽거나 사용합니다. | `Product Repository`, 외부 호스트 설정, 설치 디렉터리, OS 샌드박스, 네트워크 격리 계층, 악성코드 검사기, 비밀값 검사기, 호스트 신뢰 증거가 아닙니다. |
+| `Product Repository` | 사용자 제품 파일과 프로젝트 범위 호스트 설정 또는 관리 지침처럼 명시적으로 요청된 통합 파일만 여기에 속합니다. | 일반 제품 파일 편집은 사용자 또는 호스트 도구가 소유합니다. Volicord는 제품 경로를 입력으로 검사할 수 있고, 담당 문서가 정의한 관리 경로를 통해서만 명시적 통합 파일을 쓸 수 있습니다. | Runtime Home 상태, Core 저장소, 기본 아티팩트 저장소, Volicord 권한 증거가 아닙니다. |
+| Runtime Home registry 안의 `managed host configuration state` | 호스트 대상에 대한 Volicord registry 인벤토리입니다. 호스트 종류와 범위, 서버 이름, 설정 대상, 모드, 활성 상태, 관리 fingerprint, 마지막 검증 상태, 메타데이터를 포함합니다. | `volicord agent` 명령은 registry 행과 Connection Projects 멤버십을 만들고, 갱신하고, 목록 조회하고, 검증하고, 제거합니다. | 외부 호스트 설정 객체 자체가 아니며, 호스트가 `volicord-mcp`를 신뢰, 승인, 로드, 초기화, 노출했다는 증거가 아닙니다. |
+| 외부 MCP 호스트 설정 | `volicord-mcp --connection <connection_id>`와 `VOLICORD_HOME` 같은 환경 값을 지정할 수 있는 호스트 소유 설정 또는 사용자 관리 내보내기입니다. | [관리 CLI](admin-cli.md)가 그 동작을 정의할 때 `volicord`는 지원되는 직접 설정을 쓰거나 내보내기를 렌더링할 수 있습니다. 외부 호스트는 로딩과 신뢰 결정을 소유합니다. | Runtime Home registry 상태, Core 권한, Volicord 권한 증거가 아닙니다. `Product Repository`에 있다면 명시적 통합 파일일 뿐입니다. |
+| `volicord` 관리 CLI 프로세스 | Runtime Home 초기화, 프로젝트 등록, Agent Connection과 Connection Projects 관리, 호스트 설정 적용 또는 내보내기, 상태 조회, 검증, 정의된 안전 제거 같은 로컬 설정과 registry/호스트 통합 관리. | 로컬 운영자 또는 사용자가 이 프로세스를 실행합니다. | 공개 Volicord API 메서드 경로, OS 보안 강제 계층, 호스트 신뢰 결정, 포괄적 Product Repository 편집 권한이 아닙니다. |
+| `volicord-mcp` MCP 어댑터 프로세스 | 하나의 Agent Connection에 묶인 로컬 stdio 자식 프로세스입니다. Runtime Home을 해석하고, 연결 상태를 검증하고, `connection.mode`에 따라 도구를 노출하고, 허용된 프로젝트를 선택하고, 어댑터 소유 호출 사실을 파생하며, 공개 메서드 호출을 Core와 Store로 라우팅합니다. | MCP 호스트가 프로세스를 시작하고 stdin/stdout으로 통신합니다. | 그 자체로 임의 제품 파일 편집 권한을 부여하거나, 권한을 지니는 사용자 판단을 기록하거나, 호스트 신뢰를 강제하거나, 샌드박싱을 제공하거나, 네트워크 리스너를 열지 않습니다. |
+
 <a id="runtime-location-product-repository"></a>
 ### `Product Repository`
 

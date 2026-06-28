@@ -13,6 +13,18 @@ This document owns Volicord security guarantee wording, local connection assumpt
 | Non-authority rules for local files, generated displays, copied identifiers, chat text, and agent memory. | Runtime location definitions; see [Runtime Boundaries](runtime-boundaries.md). |
 | Host trust, host approval, and guidance non-guarantees for Agent Connections. | Codex or Claude Code host configuration syntax; see [Administrative CLI](admin-cli.md). |
 
+## Boundary summary
+
+Volicord security wording describes record and policy boundaries inside documented Volicord paths. It does not describe an operating-system sandbox, malware scanner, network isolation layer, full host-trust enforcement system, or general host policy engine.
+
+| Surface | Supported security meaning | Non-guarantee |
+|---|---|---|
+| `Volicord Runtime Home` | Storage/runtime owners define which Volicord operational records live there and how they are validated. | Runtime Home placement is not OS sandboxing, tamper-proof isolation, host trust, network isolation, malware scanning, or secret scanning. |
+| `Product Repository` | Product files can be inspected as inputs, and compatible product-file writes can be governed by owner-defined Core, user-judgment, and `Write Check` paths. | Product files are not Volicord state, and Volicord does not provide arbitrary product-file edit permission, malware scanning, secret scanning, or global filesystem interception. |
+| Agent Connections and host configuration | Agent Connections provide documented connection context, `actor_source` provenance, mode, and Connection Projects allowlists when the current invocation matches the registered connection. | Connection configuration is not OS permission, host trust, user identity, or proof that an external host loaded or exposed `volicord-mcp`. |
+| `volicord-mcp` | The adapter routes MCP calls through Agent Connection checks, Runtime Home state, Core, and Store. | The process does not itself grant arbitrary product-file edit authority, record authority-bearing user judgments, enforce host trust, block commands, block networks, or isolate tools. |
+| `volicord` CLI | Administrative commands manage setup, registry state, and supported host-integration state. | The CLI is not a public API security boundary, host trust controller, OS permission mechanism, or blanket write approval. |
+
 ## Supported security guarantees
 
 <a id="honest-guarantee-display"></a>
@@ -194,6 +206,7 @@ Volicord does not guarantee:
 
 - OS-level sandboxing.
 - OS permission enforcement.
+- Network isolation.
 - Tamper-proof isolation.
 - Full security isolation.
 - Isolation between local users, processes, tools, or hosts.
@@ -205,9 +218,20 @@ Volicord does not guarantee:
 - Full filesystem monitoring.
 - Command monitoring by default.
 - Network monitoring by default.
+- Network blocking by default.
 - Secret-access monitoring by default.
+- Malware scanning.
+- Secret scanning.
 - Universal pre-tool blocking.
 - Prevention of malicious agent behavior outside Volicord-owned paths.
+
+### Host trust and integration
+
+Volicord does not guarantee:
+
+- Full host trust enforcement.
+- That an external host trusted, approved, loaded, initialized, or exposed `volicord-mcp`.
+- That host instructions, repository guidance, or MCP server instructions force model or tool behavior.
 
 ### Storage and artifact authority
 
