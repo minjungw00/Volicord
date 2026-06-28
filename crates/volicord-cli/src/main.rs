@@ -625,18 +625,30 @@ mod tests {
         )
         .expect("init should succeed");
 
-        for project_id in ["project_b", "project_a"] {
-            run_with_home(
-                runtime_home.path(),
+        for (project_id, repo_name) in [("project_b", "repo-b"), ("project_a", "repo-a")] {
+            let repo_root = runtime_home
+                .create_product_repo(repo_name)
+                .expect("product repo should be created")
+                .to_string_lossy()
+                .into_owned();
+            run_cli(
                 [
-                    "volicord",
-                    "project",
-                    "register",
-                    "--project-id",
-                    project_id,
-                    "--repo-root",
-                    ".",
+                    "volicord".to_owned(),
+                    "project".to_owned(),
+                    "register".to_owned(),
+                    "--project-id".to_owned(),
+                    project_id.to_owned(),
+                    "--repo-root".to_owned(),
+                    repo_root,
                 ],
+                |name| {
+                    if name == "VOLICORD_HOME" {
+                        Some(OsString::from(runtime_home.path()))
+                    } else {
+                        None
+                    }
+                },
+                Path::new(env!("CARGO_MANIFEST_DIR")),
             )
             .expect("project register should succeed");
         }

@@ -508,8 +508,10 @@ impl McpAdapter {
                 .project
                 .ok_or_else(|| routing_error(format!("project {project_id} is not registered")))?;
             let project_record = ConnectionProjectRecord {
+                connection_internal_id: connection_id.to_owned(),
                 connection_id: connection_id.to_owned(),
-                project_id: project_id.to_owned(),
+                project_internal_id: project.project_internal_id.clone(),
+                project_id: project.project_id.clone(),
                 created_at: String::new(),
                 project,
             };

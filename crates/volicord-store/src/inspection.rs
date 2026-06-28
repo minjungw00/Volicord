@@ -8,6 +8,7 @@ use serde_json::Value;
 
 use crate::{
     agent_connections::{
+        CONNECTION_INTENT_GLOBAL, CONNECTION_INTENT_PERSONAL, CONNECTION_INTENT_SHARED,
         CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW, HOST_KIND_CLAUDE_CODE,
         HOST_KIND_CODEX, HOST_KIND_GENERIC, HOST_SCOPE_EXPORT, HOST_SCOPE_LOCAL,
         HOST_SCOPE_PROJECT, HOST_SCOPE_USER, VERIFIED_STATUS_ACTION_REQUIRED,
@@ -88,6 +89,7 @@ pub struct RegistryInspectionSnapshot {
     pub path: PathBuf,
     pub schema: InspectionSchemaState,
     pub runtime_home: RuntimeHomeInspectionRecord,
+    pub installation_profile: Option<InstallationProfileInspectionRecord>,
     pub projects: Vec<ProjectInspectionRecord>,
     pub agent_connections: Vec<AgentConnectionInspectionRecord>,
     pub connection_projects: Vec<ConnectionProjectInspectionRecord>,
@@ -97,6 +99,8 @@ pub struct RegistryInspectionSnapshot {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuntimeHomeInspectionRecord {
     pub runtime_home_id: String,
+    pub runtime_home_path: PathBuf,
+    pub registry_db_path: PathBuf,
     pub storage_profile: String,
     pub schema_version: i64,
     pub created_at: String,
@@ -107,7 +111,10 @@ pub struct RuntimeHomeInspectionRecord {
 /// Registered project row plus its project-state inspection.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProjectInspectionRecord {
+    pub project_internal_id: String,
     pub project_id: String,
+    pub project_name: String,
+    pub project_alias: String,
     pub runtime_home_id: String,
     pub repo_root: PathBuf,
     pub project_home: PathBuf,
@@ -120,15 +127,20 @@ pub struct ProjectInspectionRecord {
 /// Agent Connection row read from the current registry schema.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AgentConnectionInspectionRecord {
+    pub connection_internal_id: String,
     pub connection_id: String,
     pub host_kind: String,
+    pub intent: String,
     pub host_scope: String,
+    pub project_internal_id: Option<String>,
     pub server_name: String,
     pub config_target: String,
     pub mode: String,
     pub enabled: bool,
     pub managed_fingerprint: String,
-    pub last_verified_status: String,
+    pub last_verification_status: String,
+    pub last_verification_report_json: String,
+    pub last_user_actions_json: String,
     pub created_at: String,
     pub updated_at: String,
     pub metadata_json: String,
@@ -137,9 +149,25 @@ pub struct AgentConnectionInspectionRecord {
 /// Connection project membership row read from the current registry schema.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConnectionProjectInspectionRecord {
+    pub connection_internal_id: String,
     pub connection_id: String,
+    pub project_internal_id: String,
     pub project_id: String,
     pub created_at: String,
+}
+
+/// Installation profile row read from the current registry schema.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InstallationProfileInspectionRecord {
+    pub installation_id: String,
+    pub runtime_home_id: String,
+    pub volicord_command: String,
+    pub volicord_mcp_command: String,
+    pub bin_dir: PathBuf,
+    pub default_connection_mode: String,
+    pub metadata_json: String,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 /// Current project-state data.
@@ -180,7 +208,10 @@ struct MigrationRow {
 
 #[derive(Debug)]
 struct ProjectRegistryRow {
+    project_internal_id: String,
     project_id: String,
+    project_name: String,
+    project_alias: String,
     runtime_home_id: String,
     repo_root: PathBuf,
     project_home: PathBuf,
@@ -249,12 +280,20 @@ fn inspect_registry_database_at(path: &Path, runtime_home: &Path) -> RegistryDat
         Ok(rows) => rows,
         Err(issue) => return issue.into_database_inspection(path, REGISTRY_SCHEMA_VERSION),
     };
+    let installation_profile =
+        match read_installation_profile_row(&conn, &runtime_home_record.runtime_home_id) {
+            Ok(row) => row,
+            Err(issue) => return issue.into_database_inspection(path, REGISTRY_SCHEMA_VERSION),
+        };
 
     let projects = project_rows
         .into_iter()
         .map(|row| {
             let project = ProjectRecord {
+                project_internal_id: row.project_internal_id,
                 project_id: row.project_id,
+                project_name: row.project_name,
+                project_alias: row.project_alias,
                 runtime_home_id: row.runtime_home_id,
                 repo_root: row.repo_root,
                 project_home: row.project_home,
@@ -264,7 +303,10 @@ fn inspect_registry_database_at(path: &Path, runtime_home: &Path) -> RegistryDat
             };
             let project_state = inspect_registered_project_state(runtime_home, &project);
             ProjectInspectionRecord {
+                project_internal_id: project.project_internal_id,
                 project_id: project.project_id,
+                project_name: project.project_name,
+                project_alias: project.project_alias,
                 runtime_home_id: project.runtime_home_id,
                 repo_root: project.repo_root,
                 project_home: project.project_home,
@@ -294,6 +336,7 @@ fn inspect_registry_database_at(path: &Path, runtime_home: &Path) -> RegistryDat
         path: path.to_path_buf(),
         schema,
         runtime_home: runtime_home_record,
+        installation_profile,
         projects,
         agent_connections,
         connection_projects,
@@ -548,7 +591,9 @@ fn validate_registry_required_schema(
         REGISTRY_DATABASE_KIND,
         &[
             "runtime_home",
+            "installation_profile",
             "projects",
+            "project_aliases",
             "agent_connections",
             "connection_projects",
         ],
@@ -560,11 +605,29 @@ fn validate_registry_required_schema(
         &[
             "singleton_id",
             "runtime_home_id",
+            "runtime_home_path",
+            "registry_db_path",
             "storage_profile",
             "schema_version",
+            "metadata_json",
             "created_at",
             "updated_at",
+        ],
+    )?;
+    require_columns(
+        conn,
+        REGISTRY_DATABASE_KIND,
+        "installation_profile",
+        &[
+            "installation_id",
+            "runtime_home_id",
+            "volicord_command",
+            "volicord_mcp_command",
+            "bin_dir",
+            "default_connection_mode",
             "metadata_json",
+            "created_at",
+            "updated_at",
         ],
     )?;
     require_columns(
@@ -572,7 +635,9 @@ fn validate_registry_required_schema(
         REGISTRY_DATABASE_KIND,
         "projects",
         &[
-            "project_id",
+            "project_internal_id",
+            "project_name",
+            "project_alias",
             "runtime_home_id",
             "repo_root",
             "project_home",
@@ -584,17 +649,27 @@ fn validate_registry_required_schema(
     require_columns(
         conn,
         REGISTRY_DATABASE_KIND,
+        "project_aliases",
+        &["alias", "project_internal_id", "created_at"],
+    )?;
+    require_columns(
+        conn,
+        REGISTRY_DATABASE_KIND,
         "agent_connections",
         &[
-            "connection_id",
+            "connection_internal_id",
             "host_kind",
+            "intent",
             "host_scope",
+            "project_internal_id",
             "server_name",
             "config_target",
             "mode",
             "enabled",
             "managed_fingerprint",
-            "last_verified_status",
+            "last_verification_status",
+            "last_verification_report_json",
+            "last_user_actions_json",
             "created_at",
             "updated_at",
             "metadata_json",
@@ -604,7 +679,11 @@ fn validate_registry_required_schema(
         conn,
         REGISTRY_DATABASE_KIND,
         "connection_projects",
-        &["connection_id", "project_id", "created_at"],
+        &[
+            "connection_internal_id",
+            "project_internal_id",
+            "created_at",
+        ],
     )?;
     Ok(())
 }
@@ -777,22 +856,26 @@ fn read_runtime_home_record(
         .query_row(
             "SELECT
                 runtime_home_id,
+                runtime_home_path,
+                registry_db_path,
                 storage_profile,
                 schema_version,
+                metadata_json,
                 created_at,
-                updated_at,
-                metadata_json
+                updated_at
              FROM runtime_home
              WHERE singleton_id = 1",
             [],
             |row| {
                 Ok(RuntimeHomeInspectionRecord {
                     runtime_home_id: row.get(0)?,
-                    storage_profile: row.get(1)?,
-                    schema_version: row.get(2)?,
-                    created_at: row.get(3)?,
-                    updated_at: row.get(4)?,
+                    runtime_home_path: PathBuf::from(row.get::<_, String>(1)?),
+                    registry_db_path: PathBuf::from(row.get::<_, String>(2)?),
+                    storage_profile: row.get(3)?,
+                    schema_version: row.get(4)?,
                     metadata_json: row.get(5)?,
+                    created_at: row.get(6)?,
+                    updated_at: row.get(7)?,
                 })
             },
         )
@@ -805,6 +888,14 @@ fn read_runtime_home_record(
         })?;
 
     require_nonempty("runtime_home.runtime_home_id", &record.runtime_home_id)?;
+    require_nonempty(
+        "runtime_home.runtime_home_path",
+        &record.runtime_home_path.display().to_string(),
+    )?;
+    require_nonempty(
+        "runtime_home.registry_db_path",
+        &record.registry_db_path.display().to_string(),
+    )?;
     validate_storage_profile(
         REGISTRY_DATABASE_KIND,
         detected_version,
@@ -820,6 +911,73 @@ fn read_runtime_home_record(
     Ok(record)
 }
 
+fn read_installation_profile_row(
+    conn: &Connection,
+    runtime_home_id: &str,
+) -> Result<Option<InstallationProfileInspectionRecord>, InspectionIssue> {
+    let record = conn
+        .query_row(
+            "SELECT
+                installation_id,
+                runtime_home_id,
+                volicord_command,
+                volicord_mcp_command,
+                bin_dir,
+                default_connection_mode,
+                metadata_json,
+                created_at,
+                updated_at
+             FROM installation_profile
+             ORDER BY installation_id
+             LIMIT 1",
+            [],
+            |row| {
+                Ok(InstallationProfileInspectionRecord {
+                    installation_id: row.get(0)?,
+                    runtime_home_id: row.get(1)?,
+                    volicord_command: row.get(2)?,
+                    volicord_mcp_command: row.get(3)?,
+                    bin_dir: PathBuf::from(row.get::<_, String>(4)?),
+                    default_connection_mode: row.get(5)?,
+                    metadata_json: row.get(6)?,
+                    created_at: row.get(7)?,
+                    updated_at: row.get(8)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(registration_decode_error)?;
+    if let Some(record) = &record {
+        require_nonempty(
+            "installation_profile.installation_id",
+            &record.installation_id,
+        )?;
+        if record.runtime_home_id != runtime_home_id {
+            return Err(InspectionIssue::Malformed(format!(
+                "installation_profile references runtime_home_id {}, expected {runtime_home_id}",
+                record.runtime_home_id
+            )));
+        }
+        require_nonempty(
+            "installation_profile.volicord_command",
+            &record.volicord_command,
+        )?;
+        require_nonempty(
+            "installation_profile.volicord_mcp_command",
+            &record.volicord_mcp_command,
+        )?;
+        require_nonempty(
+            "installation_profile.bin_dir",
+            &record.bin_dir.display().to_string(),
+        )?;
+        validate_connection_mode(&record.default_connection_mode)?;
+        validate_json_object("installation_profile.metadata_json", &record.metadata_json)?;
+        require_nonempty("installation_profile.created_at", &record.created_at)?;
+        require_nonempty("installation_profile.updated_at", &record.updated_at)?;
+    }
+    Ok(record)
+}
+
 fn read_project_rows(
     conn: &Connection,
     runtime_home_id: &str,
@@ -827,7 +985,9 @@ fn read_project_rows(
     let mut stmt = conn
         .prepare(
             "SELECT
-                project_id,
+                project_internal_id,
+                project_name,
+                project_alias,
                 runtime_home_id,
                 repo_root,
                 project_home,
@@ -835,7 +995,7 @@ fn read_project_rows(
                 status,
                 metadata_json
              FROM projects
-             ORDER BY project_id",
+             ORDER BY project_name, project_internal_id",
         )
         .map_err(sqlite_unreadable)?;
     let rows = stmt
@@ -848,6 +1008,8 @@ fn read_project_rows(
                 row.get::<_, String>(4)?,
                 row.get::<_, String>(5)?,
                 row.get::<_, String>(6)?,
+                row.get::<_, String>(7)?,
+                row.get::<_, String>(8)?,
             ))
         })
         .map_err(sqlite_unreadable)?;
@@ -855,7 +1017,9 @@ fn read_project_rows(
     let mut projects = Vec::new();
     for row in rows {
         let (
-            project_id,
+            project_internal_id,
+            project_name,
+            project_alias,
             row_runtime_home_id,
             repo_root,
             project_home,
@@ -863,6 +1027,10 @@ fn read_project_rows(
             status,
             metadata_json,
         ) = row.map_err(registration_decode_error)?;
+        let project_id = project_internal_id.clone();
+        require_nonempty("projects.project_internal_id", &project_internal_id)?;
+        require_nonempty("projects.project_name", &project_name)?;
+        require_nonempty("projects.project_alias", &project_alias)?;
         require_nonempty("projects.project_id", &project_id)?;
         require_nonempty("projects.runtime_home_id", &row_runtime_home_id)?;
         require_nonempty("projects.repo_root", &repo_root)?;
@@ -878,7 +1046,10 @@ fn read_project_rows(
         validate_json_object("projects.metadata_json", &metadata_json)?;
 
         projects.push(ProjectRegistryRow {
+            project_internal_id,
             project_id,
+            project_name,
+            project_alias,
             runtime_home_id: row_runtime_home_id,
             repo_root: PathBuf::from(repo_root),
             project_home: PathBuf::from(project_home),
@@ -898,37 +1069,47 @@ fn read_agent_connection_rows(
     let mut stmt = conn
         .prepare(
             "SELECT
-                connection_id,
+                connection_internal_id,
                 host_kind,
+                intent,
                 host_scope,
+                project_internal_id,
                 server_name,
                 config_target,
                 mode,
                 enabled,
                 managed_fingerprint,
-                last_verified_status,
+                last_verification_status,
+                last_verification_report_json,
+                last_user_actions_json,
                 created_at,
                 updated_at,
                 metadata_json
              FROM agent_connections
-             ORDER BY connection_id",
+             ORDER BY host_kind, intent, host_scope, server_name, connection_internal_id",
         )
         .map_err(sqlite_unreadable)?;
     let rows = stmt
         .query_map([], |row| {
+            let connection_internal_id = row.get::<_, String>(0)?;
             Ok(AgentConnectionInspectionRecord {
-                connection_id: row.get(0)?,
+                connection_id: connection_internal_id.clone(),
+                connection_internal_id,
                 host_kind: row.get(1)?,
-                host_scope: row.get(2)?,
-                server_name: row.get(3)?,
-                config_target: row.get(4)?,
-                mode: row.get(5)?,
-                enabled: row.get::<_, i64>(6)? == 1,
-                managed_fingerprint: row.get(7)?,
-                last_verified_status: row.get(8)?,
-                created_at: row.get(9)?,
-                updated_at: row.get(10)?,
-                metadata_json: row.get(11)?,
+                intent: row.get(2)?,
+                host_scope: row.get(3)?,
+                project_internal_id: row.get(4)?,
+                server_name: row.get(5)?,
+                config_target: row.get(6)?,
+                mode: row.get(7)?,
+                enabled: row.get::<_, i64>(8)? == 1,
+                managed_fingerprint: row.get(9)?,
+                last_verification_status: row.get(10)?,
+                last_verification_report_json: row.get(11)?,
+                last_user_actions_json: row.get(12)?,
+                created_at: row.get(13)?,
+                updated_at: row.get(14)?,
+                metadata_json: row.get(15)?,
             })
         })
         .map_err(sqlite_unreadable)?;
@@ -950,25 +1131,29 @@ fn read_connection_project_rows(
 ) -> Result<Vec<ConnectionProjectInspectionRecord>, InspectionIssue> {
     let connection_ids = connections
         .iter()
-        .map(|record| record.connection_id.as_str())
+        .map(|record| record.connection_internal_id.as_str())
         .collect::<BTreeSet<_>>();
     let project_ids = projects
         .iter()
-        .map(|record| record.project_id.as_str())
+        .map(|record| record.project_internal_id.as_str())
         .collect::<BTreeSet<_>>();
 
     let mut stmt = conn
         .prepare(
-            "SELECT connection_id, project_id, created_at
+            "SELECT connection_internal_id, project_internal_id, created_at
                FROM connection_projects
-              ORDER BY connection_id, project_id",
+              ORDER BY connection_internal_id, project_internal_id",
         )
         .map_err(sqlite_unreadable)?;
     let rows = stmt
         .query_map([], |row| {
+            let connection_internal_id = row.get::<_, String>(0)?;
+            let project_internal_id = row.get::<_, String>(1)?;
             Ok(ConnectionProjectInspectionRecord {
-                connection_id: row.get(0)?,
-                project_id: row.get(1)?,
+                connection_id: connection_internal_id.clone(),
+                connection_internal_id,
+                project_id: project_internal_id.clone(),
+                project_internal_id,
                 created_at: row.get(2)?,
             })
         })
@@ -1050,8 +1235,15 @@ fn read_project_state_record(
 fn validate_agent_connection_row(
     connection: &AgentConnectionInspectionRecord,
 ) -> Result<(), InspectionIssue> {
-    require_nonempty("agent_connections.connection_id", &connection.connection_id)?;
+    require_nonempty(
+        "agent_connections.connection_internal_id",
+        &connection.connection_internal_id,
+    )?;
     validate_host_kind_scope(&connection.host_kind, &connection.host_scope)?;
+    validate_connection_intent(&connection.intent)?;
+    if let Some(project_internal_id) = &connection.project_internal_id {
+        require_nonempty("agent_connections.project_internal_id", project_internal_id)?;
+    }
     require_nonempty("agent_connections.server_name", &connection.server_name)?;
     require_nonempty("agent_connections.config_target", &connection.config_target)?;
     validate_connection_mode(&connection.mode)?;
@@ -1059,7 +1251,15 @@ fn validate_agent_connection_row(
         "agent_connections.managed_fingerprint",
         &connection.managed_fingerprint,
     )?;
-    validate_verification_status(&connection.last_verified_status)?;
+    validate_verification_status(&connection.last_verification_status)?;
+    validate_json_object(
+        "agent_connections.last_verification_report_json",
+        &connection.last_verification_report_json,
+    )?;
+    validate_json_array(
+        "agent_connections.last_user_actions_json",
+        &connection.last_user_actions_json,
+    )?;
     require_nonempty("agent_connections.created_at", &connection.created_at)?;
     require_nonempty("agent_connections.updated_at", &connection.updated_at)?;
     validate_json_object("agent_connections.metadata_json", &connection.metadata_json)?;
@@ -1072,21 +1272,24 @@ fn validate_connection_project_row(
     project_ids: &BTreeSet<&str>,
 ) -> Result<(), InspectionIssue> {
     require_nonempty(
-        "connection_projects.connection_id",
-        &membership.connection_id,
+        "connection_projects.connection_internal_id",
+        &membership.connection_internal_id,
     )?;
-    require_nonempty("connection_projects.project_id", &membership.project_id)?;
+    require_nonempty(
+        "connection_projects.project_internal_id",
+        &membership.project_internal_id,
+    )?;
     require_nonempty("connection_projects.created_at", &membership.created_at)?;
-    if !connection_ids.contains(membership.connection_id.as_str()) {
+    if !connection_ids.contains(membership.connection_internal_id.as_str()) {
         return Err(InspectionIssue::Malformed(format!(
-            "connection_projects references missing connection_id {}",
-            membership.connection_id
+            "connection_projects references missing connection_internal_id {}",
+            membership.connection_internal_id
         )));
     }
-    if !project_ids.contains(membership.project_id.as_str()) {
+    if !project_ids.contains(membership.project_internal_id.as_str()) {
         return Err(InspectionIssue::Malformed(format!(
-            "connection_projects references missing project_id {}",
-            membership.project_id
+            "connection_projects references missing project_internal_id {}",
+            membership.project_internal_id
         )));
     }
     Ok(())
@@ -1107,6 +1310,19 @@ fn validate_host_kind_scope(host_kind: &str, host_scope: &str) -> Result<(), Ins
     } else {
         Err(InspectionIssue::Malformed(format!(
             "agent_connections host_kind={host_kind} host_scope={host_scope} is not supported"
+        )))
+    }
+}
+
+fn validate_connection_intent(intent: &str) -> Result<(), InspectionIssue> {
+    if matches!(
+        intent,
+        CONNECTION_INTENT_PERSONAL | CONNECTION_INTENT_SHARED | CONNECTION_INTENT_GLOBAL
+    ) {
+        Ok(())
+    } else {
+        Err(InspectionIssue::Malformed(format!(
+            "agent_connections.intent is not supported: {intent}"
         )))
     }
 }
@@ -1191,6 +1407,19 @@ fn validate_json_object(field: &'static str, text: &str) -> Result<(), Inspectio
     } else {
         Err(InspectionIssue::Malformed(format!(
             "{field} must be a JSON object"
+        )))
+    }
+}
+
+fn validate_json_array(field: &'static str, text: &str) -> Result<(), InspectionIssue> {
+    let value = serde_json::from_str::<Value>(text).map_err(|error| {
+        InspectionIssue::Malformed(format!("{field} must be JSON array text: {error}"))
+    })?;
+    if value.is_array() {
+        Ok(())
+    } else {
+        Err(InspectionIssue::Malformed(format!(
+            "{field} must be a JSON array"
         )))
     }
 }
@@ -1327,37 +1556,50 @@ mod tests {
         let registry = Connection::open(fixture.runtime_home.registry_db_path())?;
         registry.execute(
             "INSERT INTO agent_connections (
-                connection_id,
+                connection_internal_id,
                 host_kind,
+                intent,
                 host_scope,
+                project_internal_id,
                 server_name,
                 config_target,
                 mode,
                 enabled,
                 managed_fingerprint,
-                last_verified_status,
+                last_verification_status,
+                last_verification_report_json,
+                last_user_actions_json,
+                metadata_json,
                 created_at,
-                updated_at,
-                metadata_json
+                updated_at
             )
             VALUES (
                 'agent_inspected',
                 ?1,
                 ?2,
+                ?3,
+                NULL,
                 'volicord-inspected',
                 '/tmp/volicord-inspected-config.toml',
                 'workflow',
                 1,
                 'fingerprint-inspected',
-                ?3,
+                ?4,
+                '{}',
+                '[]',
+                '{}',
                 't0',
-                't0',
-                '{}'
+                't0'
             )",
-            params![HOST_KIND_CODEX, HOST_SCOPE_USER, VERIFIED_STATUS_COMPLETE],
+            params![
+                HOST_KIND_CODEX,
+                CONNECTION_INTENT_PERSONAL,
+                HOST_SCOPE_USER,
+                VERIFIED_STATUS_COMPLETE
+            ],
         )?;
         registry.execute(
-            "INSERT INTO connection_projects (connection_id, project_id, created_at)
+            "INSERT INTO connection_projects (connection_internal_id, project_internal_id, created_at)
              VALUES ('agent_inspected', ?1, 't0')",
             [PROJECT_ID],
         )?;
@@ -1662,7 +1904,7 @@ mod tests {
     ) -> Result<(), Box<dyn Error>> {
         let conn = Connection::open(registry_db_path(runtime_home))?;
         conn.execute(
-            "UPDATE projects SET state_db_path = ?2 WHERE project_id = ?1",
+            "UPDATE projects SET state_db_path = ?2 WHERE project_internal_id = ?1",
             params![project_id, state_db_path.to_string_lossy().as_ref()],
         )?;
         Ok(())

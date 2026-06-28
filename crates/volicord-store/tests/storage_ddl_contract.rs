@@ -91,6 +91,76 @@ fn initial_schemas_satisfy_connection_storage_contract() -> Result<(), Box<dyn E
     assert!(initial_registry_schema
         .tables
         .contains_key("connection_projects"));
+    assert!(initial_registry_schema
+        .tables
+        .contains_key("installation_profile"));
+    assert!(initial_registry_schema
+        .tables
+        .contains_key("project_aliases"));
+    assert_columns_include(
+        &initial_registry_schema,
+        "runtime_home",
+        &["runtime_home_path", "registry_db_path"],
+    );
+    assert_columns_include(
+        &initial_registry_schema,
+        "installation_profile",
+        &[
+            "installation_id",
+            "volicord_command",
+            "volicord_mcp_command",
+            "default_connection_mode",
+        ],
+    );
+    assert_columns_include(
+        &initial_registry_schema,
+        "projects",
+        &["project_internal_id", "project_name", "project_alias"],
+    );
+    assert_columns_include(
+        &initial_registry_schema,
+        "agent_connections",
+        &[
+            "connection_internal_id",
+            "intent",
+            "project_internal_id",
+            "last_verification_report_json",
+            "last_user_actions_json",
+        ],
+    );
+    assert_columns_include(
+        &initial_registry_schema,
+        "connection_projects",
+        &["connection_internal_id", "project_internal_id"],
+    );
+    assert_unique_index_columns(
+        &initial_registry_schema,
+        "idx_projects_repo_root",
+        &["repo_root"],
+    );
+    assert_unique_index_columns(
+        &initial_registry_schema,
+        "idx_agent_connections_target_project",
+        &[
+            "host_kind",
+            "intent",
+            "host_scope",
+            "project_internal_id",
+            "config_target",
+            "server_name",
+        ],
+    );
+    assert_unique_index_columns(
+        &initial_registry_schema,
+        "idx_agent_connections_target_global",
+        &[
+            "host_kind",
+            "intent",
+            "host_scope",
+            "config_target",
+            "server_name",
+        ],
+    );
 
     assert!(initial_project_schema.tables.contains_key("write_checks"));
     assert_columns_include(
@@ -195,6 +265,20 @@ fn assert_columns_include(schema: &DatabaseSchema, table: &str, columns: &[&str]
             "expected {table}.{column}"
         );
     }
+}
+
+fn assert_unique_index_columns(schema: &DatabaseSchema, index: &str, columns: &[&str]) {
+    let index_schema = schema
+        .explicit_indexes
+        .get(index)
+        .unwrap_or_else(|| panic!("expected index {index}"));
+    assert!(index_schema.unique, "expected {index} to be unique");
+    let actual = index_schema
+        .columns
+        .iter()
+        .map(|column| column.name.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(actual, columns, "unexpected columns for {index}");
 }
 
 fn read_database_schema(conn: &Connection) -> rusqlite::Result<DatabaseSchema> {

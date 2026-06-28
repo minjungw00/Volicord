@@ -141,7 +141,9 @@ pub fn validate_registry_schema(conn: &Connection) -> StoreResult<()> {
         &[
             "schema_migrations",
             "runtime_home",
+            "installation_profile",
             "projects",
+            "project_aliases",
             "agent_connections",
             "connection_projects",
         ],
@@ -152,10 +154,85 @@ pub fn validate_registry_schema(conn: &Connection) -> StoreResult<()> {
         &[
             "idx_projects_repo_root",
             "idx_projects_status",
+            "idx_project_aliases_project",
             "idx_connection_projects_project",
             "idx_agent_connections_enabled",
-            "idx_agent_connections_target",
+            "idx_agent_connections_project",
+            "idx_agent_connections_target_project",
+            "idx_agent_connections_target_global",
         ],
+    )?;
+    require_column_spec(
+        conn,
+        REGISTRY_DATABASE_KIND,
+        "runtime_home",
+        ColumnSpec {
+            name: "runtime_home_path",
+            type_name: "TEXT",
+            not_null: true,
+            default_value: None,
+            primary_key_position: 0,
+        },
+    )?;
+    require_column_spec(
+        conn,
+        REGISTRY_DATABASE_KIND,
+        "runtime_home",
+        ColumnSpec {
+            name: "registry_db_path",
+            type_name: "TEXT",
+            not_null: true,
+            default_value: None,
+            primary_key_position: 0,
+        },
+    )?;
+    require_column_spec(
+        conn,
+        REGISTRY_DATABASE_KIND,
+        "projects",
+        ColumnSpec {
+            name: "project_internal_id",
+            type_name: "TEXT",
+            not_null: false,
+            default_value: None,
+            primary_key_position: 1,
+        },
+    )?;
+    require_column_spec(
+        conn,
+        REGISTRY_DATABASE_KIND,
+        "project_aliases",
+        ColumnSpec {
+            name: "alias",
+            type_name: "TEXT",
+            not_null: false,
+            default_value: None,
+            primary_key_position: 1,
+        },
+    )?;
+    require_column_spec(
+        conn,
+        REGISTRY_DATABASE_KIND,
+        "agent_connections",
+        ColumnSpec {
+            name: "connection_internal_id",
+            type_name: "TEXT",
+            not_null: false,
+            default_value: None,
+            primary_key_position: 1,
+        },
+    )?;
+    require_column_spec(
+        conn,
+        REGISTRY_DATABASE_KIND,
+        "agent_connections",
+        ColumnSpec {
+            name: "intent",
+            type_name: "TEXT",
+            not_null: true,
+            default_value: None,
+            primary_key_position: 0,
+        },
     )?;
     require_column_spec(
         conn,
@@ -198,7 +275,7 @@ pub fn validate_registry_schema(conn: &Connection) -> StoreResult<()> {
         REGISTRY_DATABASE_KIND,
         "connection_projects",
         ColumnSpec {
-            name: "connection_id",
+            name: "connection_internal_id",
             type_name: "TEXT",
             not_null: true,
             default_value: None,
@@ -210,7 +287,7 @@ pub fn validate_registry_schema(conn: &Connection) -> StoreResult<()> {
         REGISTRY_DATABASE_KIND,
         "connection_projects",
         ColumnSpec {
-            name: "project_id",
+            name: "project_internal_id",
             type_name: "TEXT",
             not_null: true,
             default_value: None,
@@ -222,7 +299,7 @@ pub fn validate_registry_schema(conn: &Connection) -> StoreResult<()> {
         REGISTRY_DATABASE_KIND,
         "agent_connections",
         ColumnSpec {
-            name: "last_verified_status",
+            name: "last_verification_status",
             type_name: "TEXT",
             not_null: true,
             default_value: Some("'not_verified'"),
@@ -234,10 +311,22 @@ pub fn validate_registry_schema(conn: &Connection) -> StoreResult<()> {
         REGISTRY_DATABASE_KIND,
         "agent_connections",
         ColumnSpec {
-            name: "metadata_json",
+            name: "last_verification_report_json",
             type_name: "TEXT",
             not_null: true,
             default_value: Some("'{}'"),
+            primary_key_position: 0,
+        },
+    )?;
+    require_column_spec(
+        conn,
+        REGISTRY_DATABASE_KIND,
+        "agent_connections",
+        ColumnSpec {
+            name: "last_user_actions_json",
+            type_name: "TEXT",
+            not_null: true,
+            default_value: Some("'[]'"),
             primary_key_position: 0,
         },
     )?;

@@ -1556,7 +1556,7 @@ mod tests {
         fn replace_project_repo_root(&self, repo_root: &Path) -> Result<(), Box<dyn Error>> {
             let conn = open_registry_database(registry_db_path(&self.runtime_home_path))?;
             conn.execute(
-                "UPDATE projects SET repo_root = ?2 WHERE project_id = ?1",
+                "UPDATE projects SET repo_root = ?2 WHERE project_internal_id = ?1",
                 rusqlite::params![PROJECT_ID, repo_root.to_string_lossy().as_ref()],
             )?;
             Ok(())
