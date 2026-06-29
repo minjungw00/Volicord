@@ -106,16 +106,23 @@ Not supported:
 verifies the selected Runtime Home and stores the command paths later
 administrative, Agent Connection, export, and MCP process flows use. Setup is
 the only baseline command that directly selects the Runtime Home path or MCP
-command location.
+command location. It can help make `volicord` and `volicord-mcp` available on
+`PATH`, but it cannot change the parent shell's current environment.
+
+In text mode, `volicord setup` may prompt only when stdin and stdout are
+interactive terminals, `--json` is absent, and `--link-bin` is absent. It
+prompts only when the selected command paths are not ready on `PATH`. In
+noninteractive conditions, JSON mode, or explicit `--link-bin` mode, setup must
+report actions instead of prompting.
 
 Arguments:
 
 | Argument | Meaning |
 |---|---|
 | `--home PATH` | Selects the `Volicord Runtime Home`. Omission uses the platform default local runtime location. The selected path must satisfy the Runtime Home/Product Repository separation contract before project state is used. |
-| `--link-bin PATH` | Installs or updates user-selected command links for both `volicord` and `volicord-mcp` when feasible. The command reports each target path and refuses unsafe replacement. |
-| `--mcp-command PATH` | Stores the command that managed host configuration and generic exports should use to start `volicord-mcp`. Discovery order is explicit `--mcp-command PATH` when supplied, then a sibling `volicord-mcp` next to the running `volicord` executable, then a command on `PATH`. |
-| `--json` | Selects machine-readable output. |
+| `--link-bin PATH` | Creates or updates command links for both `volicord` and `volicord-mcp` in the specified directory when feasible. The command reports each target path, refuses unsafe replacement, and does not by itself edit shell startup files or the parent shell `PATH`. |
+| `--mcp-command PATH` | Stores the exact command that managed host configuration and generic exports should use to start `volicord-mcp`. Discovery order is explicit `--mcp-command PATH` when supplied, then a sibling `volicord-mcp` next to the running `volicord` executable, then a command on `PATH`. |
+| `--json` | Selects machine-readable, noninteractive output. Setup does not prompt in JSON mode. |
 
 Setup effects:
 
@@ -123,12 +130,27 @@ Setup effects:
 - records Runtime Home identity and installation profile metadata
 - records the selected `volicord` and `volicord-mcp` command locations for
   later `connect`, `doctor`, export, and MCP startup flows
-- may update the command links named by `--link-bin` for both executable roles
+- inspects whether selected command paths resolve through the current process
+  `PATH`
+- may prompt in interactive text mode for safe command-availability choices:
+  create command links, write an approved shell startup `PATH` block, print a
+  shell command, or skip linking
+- may update command links named by `--link-bin` or selected through the
+  interactive prompt for both executable roles
+- may write a managed shell startup `PATH` block only after explicit
+  interactive approval
 - reports a `PATH` action when a link directory is not visible to the current
-  process; it cannot permanently modify the parent shell environment
+  process; existing shells and agent host processes may need restart or reload
 - does not register a project unless a separate project or connection command
   selects a repository
 - does not create a public Volicord API method or record a user-owned judgment
+
+On Unix, interactive shell startup updates are supported for `bash`, `zsh`, and
+`sh` when setup can identify `HOME` and `SHELL`. The target files are
+`~/.bashrc`, `~/.zshrc`, and `~/.profile` respectively. Setup writes or updates
+a Volicord-managed block in that file after the user approves the exact block.
+Unsupported shells, unsupported platforms, missing environment variables, or
+write failures leave a manual `PATH` action instead.
 
 `volicord doctor` is the read-oriented diagnostic command for the installation profile.
 It verifies Runtime Home access, registry schema, installation profile presence,

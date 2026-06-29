@@ -98,16 +98,22 @@ volicord user judgment answer INDEX_OR_ID OPTION_INDEX_OR_ID [--repo PATH] [--no
 `volicord setup`은 로컬 설치 프로필을 마련합니다. 선택된 Runtime Home을 만들거나
 검증하고, 이후 관리 명령, Agent Connection, export, MCP 프로세스 흐름이 사용할
 명령 경로를 저장합니다. Setup은 Runtime Home 경로나 MCP 명령 위치를 직접 선택하는
-유일한 기준 명령입니다.
+유일한 기준 명령입니다. `volicord`와 `volicord-mcp`를 `PATH`에서 사용할 수 있게
+돕지만 부모 셸의 현재 환경을 바꿀 수는 없습니다.
+
+텍스트 모드에서 `volicord setup`은 stdin과 stdout이 대화형 터미널이고 `--json`이
+없으며 `--link-bin`도 없을 때만 프롬프트를 표시할 수 있습니다. 선택된 명령 경로가
+`PATH`에 준비되어 있지 않을 때만 프롬프트를 표시합니다. 비대화식 조건, JSON 모드,
+명시적 `--link-bin` 모드에서는 프롬프트 대신 동작을 보고해야 합니다.
 
 인자:
 
 | 인자 | 의미 |
 |---|---|
 | `--home PATH` | `Volicord Runtime Home`을 선택합니다. 생략하면 플랫폼 기본 로컬 런타임 위치를 사용합니다. 선택한 경로는 프로젝트 상태를 사용하기 전에 Runtime Home/Product Repository 분리 계약을 만족해야 합니다. |
-| `--link-bin PATH` | 가능할 때 `volicord`와 `volicord-mcp` 둘 다에 대한 사용자 선택 명령 링크를 설치하거나 갱신합니다. 명령은 각 대상 경로를 보고하고 안전하지 않은 교체를 거절합니다. |
-| `--mcp-command PATH` | 관리 호스트 설정과 generic export가 `volicord-mcp`를 시작할 때 사용할 명령을 저장합니다. 찾기 순서는 명시적 `--mcp-command PATH`가 제공된 경우 그 값, 실행 중인 `volicord` 실행 파일 옆의 `volicord-mcp`, `PATH`의 명령 순서입니다. |
-| `--json` | 기계 판독 출력을 선택합니다. |
+| `--link-bin PATH` | 가능할 때 지정된 디렉터리에 `volicord`와 `volicord-mcp` 둘 다에 대한 명령 링크를 만들거나 갱신합니다. 명령은 각 대상 경로를 보고하고 안전하지 않은 교체를 거절하며, 이 옵션 자체가 셸 시작 파일이나 부모 셸 `PATH`를 편집하지는 않습니다. |
+| `--mcp-command PATH` | 관리 호스트 설정과 generic export가 `volicord-mcp`를 시작할 때 사용할 정확한 명령을 저장합니다. 찾기 순서는 명시적 `--mcp-command PATH`가 제공된 경우 그 값, 실행 중인 `volicord` 실행 파일 옆의 `volicord-mcp`, `PATH`의 명령 순서입니다. |
+| `--json` | 기계 판독 비대화식 출력을 선택합니다. JSON 모드에서는 setup이 프롬프트를 표시하지 않습니다. |
 
 Setup 효과:
 
@@ -115,11 +121,22 @@ Setup 효과:
 - Runtime Home 식별 정보와 설치 프로필 메타데이터를 기록합니다.
 - 이후 `connect`, `doctor`, export, MCP 시작 흐름이 사용할 `volicord`와
   `volicord-mcp` 명령 위치를 기록합니다.
-- 두 실행 파일 역할 모두에 대해 `--link-bin`으로 지정한 명령 링크를 갱신할 수 있습니다.
+- 선택된 명령 경로가 현재 프로세스의 `PATH`로 해석되는지 검사합니다.
+- 대화형 텍스트 모드에서는 명령 링크 생성, 승인된 셸 시작 `PATH` 블록 쓰기, 셸
+  명령 출력, 링크 건너뛰기 같은 안전한 명령 가용성 선택지를 물어볼 수 있습니다.
+- 두 실행 파일 역할 모두에 대해 `--link-bin`으로 지정했거나 대화형 프롬프트에서
+  선택한 명령 링크를 갱신할 수 있습니다.
+- 명시적 대화형 승인을 받은 뒤에만 관리되는 셸 시작 `PATH` 블록을 쓸 수 있습니다.
 - 링크 디렉터리가 현재 프로세스의 `PATH`에 보이지 않으면 `PATH` 동작을 보고합니다.
-  부모 셸 환경을 영구적으로 수정할 수는 없습니다.
+  기존 셸과 에이전트 호스트 프로세스에는 restart 또는 reload가 필요할 수 있습니다.
 - 별도의 프로젝트 또는 연결 명령이 저장소를 선택하기 전에는 프로젝트를 등록하지 않습니다.
 - 공개 Volicord API 메서드를 만들거나 사용자 소유 판단을 기록하지 않습니다.
+
+Unix에서 대화형 셸 시작 파일 갱신은 setup이 `HOME`과 `SHELL`을 식별할 수 있을 때
+`bash`, `zsh`, `sh`에 대해 지원됩니다. 대상 파일은 각각 `~/.bashrc`,
+`~/.zshrc`, `~/.profile`입니다. Setup은 사용자가 정확한 블록을 승인한 뒤 그 파일의
+Volicord 관리 블록을 쓰거나 갱신합니다. 지원되지 않는 셸, 지원되지 않는 플랫폼,
+누락된 환경 변수, 쓰기 실패는 수동 `PATH` 동작으로 남습니다.
 
 `volicord doctor`는 설치 프로필을 위한 읽기 중심 진단 명령입니다. Runtime Home
 접근, registry 스키마, 설치 프로필 존재 여부, 저장된 명령 준비 상태, 링크

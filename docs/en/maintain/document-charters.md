@@ -93,8 +93,10 @@ Document: [Installation](../getting-started/installation.md)
   executables.
 - Intended reader: New users, operators, and implementers preparing a local
   Volicord installation.
-- Should own: Tutorial-level prerequisites, source build flow, executable
-  discovery, installation profile preparation, and verification checkpoints.
+- Should own: Tutorial-level prerequisites, source build flow, guided setup
+  prompts and action-required guidance at onboarding depth, executable
+  discovery, installation profile preparation, deterministic setup options for
+  automation, and verification checkpoints.
 - Should not own: Environment applicability classifications, full
   administrative CLI contracts, host configuration procedures, exhaustive
   recovery guidance, MCP protocol behavior, or storage effects.
@@ -114,8 +116,9 @@ Document: [Quickstart](../getting-started/quickstart.md)
   successful supported agent-host setup.
 - Intended reader: New users, operators, and agent integrators who want a first
   working connection.
-- Should own: A focused happy path, minimal commands, expected success checks,
-  and the next document when the happy path stops.
+- Should own: A focused happy path, minimal commands, setup prompt or
+  action-required handoff at first-run depth, expected success checks, and the
+  next document when the happy path stops.
 - Should not own: Full host matrices, all setup and removal variants, complete
   CLI flag behavior, complete troubleshooting catalogs, MCP transport
   contracts, or API method references.

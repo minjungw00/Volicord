@@ -60,21 +60,22 @@ README와 나머지 문서에서 반복해서 나오는 이름들입니다.
 
 ## 빠른 시작
 
-이 Volicord 소스 체크아웃에서 로컬 바이너리를 빌드하고, 현재 셸 `PATH`에 올리고,
-Volicord를 준비한 뒤, 에이전트가 작업할 제품 저장소에서 Codex를 연결합니다.
+이 Volicord 소스 체크아웃에서 로컬 바이너리를 빌드하고, 안내형 setup을 실행한 뒤,
+에이전트가 작업할 제품 저장소에서 Codex를 연결합니다.
 
 ```sh
 cargo build --workspace --bins
-export PATH="$PWD/target/debug:$PATH"
-volicord setup
+./target/debug/volicord setup
 cd /path/to/your-product-repo
 volicord connect codex
 ```
 
-`export PATH=...` 줄은 현재 터미널 세션에만 영향을 줍니다. 이 줄은 방금 빌드한
-`volicord`와 `volicord-mcp` 명령을 그 셸에서 찾을 수 있게 합니다. 명령을 계속
-사용할 수 있게 만들려면 설치 안내를 사용합니다. 예를 들어 `--link-bin`은 설치
-문서에서 다루는 세부사항이며, 루트 README의 빠른 시작에 필요한 단계가 아닙니다.
+Setup 중 Volicord는 이후 터미널과 에이전트 호스트에서 `volicord`와
+`volicord-mcp`를 사용할 수 있는지 확인합니다. 사용할 수 없다면 setup은 명령 링크
+생성, 셸 명령 출력, 링크 단계 건너뛰기 같은 안전한 선택지를 제공합니다. 새 터미널
+또는 에이전트 호스트를 시작하거나 `volicord connect`를 실행하기 전에 setup의
+프롬프트나 `action_required` 출력을 따릅니다. Volicord는 부모 셸의 현재 `PATH`를
+바꿀 수 없습니다.
 
 `/path/to/your-product-repo`는 사용자의 제품 저장소 경로를 뜻합니다. Volicord 용어나
 필수 디렉터리 이름이 아닙니다. `volicord connect codex`는 현재 디렉터리에서 저장소

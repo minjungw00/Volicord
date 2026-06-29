@@ -20,8 +20,8 @@ Do not infer support from Rust portability alone. A Rust crate being portable in
 | Area | Status | Repository evidence | Before continuing |
 |---|---|---|---|
 | Source build toolchain | Supported and verified for Rust 1.85 or newer with Cargo. | The workspace root `Cargo.toml` sets `rust-version = "1.85"` and all workspace packages inherit that value. The Installation page uses Cargo build commands for the administrative CLI and MCP adapter source packages. | Install or select Rust 1.85+ with Cargo before using the source build path. |
-| Operating-system family | No named OS family is declared as generally supported by this checkout. POSIX-style command examples and Unix-gated tests are verified as repository evidence, not as a promise for every POSIX system. | Maintained examples use `sh` fences with Cargo commands, relative executable paths such as `./target/debug/volicord`, current-session `PATH` updates, home-relative paths such as `~/.local/bin`, slash-separated paths, and `PATH` command lookup. CLI integration tests create `#!/bin/sh` fake executables behind `#[cfg(unix)]` and set executable bits with `std::os::unix::fs::PermissionsExt`. No checked-in CI workflow matrix is present in this checkout. | Use a POSIX-style shell for maintained command examples. Treat named OSes, containers, WSL, remote shells, Windows `cmd.exe`, and PowerShell as unverified unless a future owner document adds evidence. |
-| Shell syntax | Supported for the maintained POSIX-style examples. Other shells are unverified for these examples. | Installation examples use `cargo build --workspace --bins`, `export PATH="$PWD/target/debug:$PATH"`, `volicord setup`, optional `volicord setup --link-bin ~/.local/bin`, and plain `volicord connect ...` commands after setup. | If your shell cannot run that syntax or expand those paths, translate the commands yourself and verify each resulting command before continuing. |
+| Operating-system family | No named OS family is declared as generally supported by this checkout. POSIX-style command examples and Unix-gated tests are verified as repository evidence, not as a promise for every POSIX system. | Maintained examples use `sh` fences with Cargo commands, relative executable paths such as `./target/debug/volicord`, setup-reported `PATH` actions, home-relative paths such as `~/.local/bin`, slash-separated paths, and `PATH` command lookup. CLI integration tests create `#!/bin/sh` fake executables behind `#[cfg(unix)]` and set executable bits with `std::os::unix::fs::PermissionsExt`. No checked-in CI workflow matrix is present in this checkout. | Use a POSIX-style shell for maintained command examples. Treat named OSes, containers, WSL, remote shells, Windows `cmd.exe`, and PowerShell as unverified unless a future owner document adds evidence. |
+| Shell syntax | Supported for the maintained POSIX-style examples. Other shells are unverified for these examples. | Installation examples use `cargo build --workspace --bins`, `./target/debug/volicord setup`, setup-reported `PATH` actions when needed, and plain `volicord connect ...` commands after setup. | If your shell cannot run that syntax or expand those paths, translate the commands yourself and verify each resulting command before continuing. |
 | Executable role names | Supported and verified. | Reference owners define `volicord` as the administrative CLI role and `volicord-mcp` as the local MCP adapter role. | Build or install both `volicord` and `volicord-mcp`; do not treat one executable as a substitute for the other. |
 | Package-manager installation | Out of scope. | The Installation page documents source build and separately installed executable discovery, but no package-manager procedure or release layout is defined in repository owners. | Use the source build path or an already installed executable directory that contains both executables. |
 | Host version minimums for Codex and Claude Code | No stable minimum host version is defined. Host compatibility is checked operationally, not by a documented version floor. | Codex verification looks for `codex` on `PATH` and runs `codex --version`. Claude Code verification inspects host state through `claude mcp get <server_name>`. Administrative verification owns the final result states. | Use `volicord connection verify HOST [--repo PATH] [--shared|--global]` after installation. Do not rely on an undocumented Codex or Claude Code minimum version. |
@@ -45,7 +45,7 @@ Maintained command examples assume a POSIX-style shell with:
 
 - Cargo command invocation such as `cargo build --workspace --bins`
 - relative executable paths such as `./target/debug/volicord`
-- current-session `PATH` updates such as `export PATH="$PWD/target/debug:$PATH"`
+- current-session `PATH` updates when setup prints a shell command
 - home-relative paths such as `~/.local/bin`
 - command lookup through `PATH`
 - forward-slash paths in examples
@@ -53,10 +53,12 @@ Maintained command examples assume a POSIX-style shell with:
 Current-session `PATH` examples affect only the shell where they are run. They
 do not install commands persistently for future shells or MCP hosts.
 
-The CLI cannot permanently edit the parent shell `PATH`. When `volicord setup
---link-bin PATH` prepares command links, add that directory to your shell
-configuration before starting new shells or MCP hosts if the command is not
-already visible.
+The CLI cannot permanently edit the parent shell `PATH`. During setup, Volicord
+can help make its commands available on `PATH` by offering safe choices such as
+command links, a printed shell command, or an explicitly approved managed shell
+startup block when the shell is supported. Existing shells and MCP hosts may
+need restart or reload before they see a changed startup file or command link
+directory.
 
 `VOLICORD_HOME` is different. It is a real Runtime Home selection input for `volicord` administrative commands and `volicord-mcp` process startup, as defined by their owner documents.
 
@@ -79,8 +81,8 @@ shell:
 ./target/debug/volicord-mcp --help
 ```
 
-After setup, linking, or separate installation has made the commands visible,
-verify ordinary command lookup:
+After setup guidance, linking, or separate installation has made the commands
+visible, verify ordinary command lookup:
 
 ```sh
 volicord --version

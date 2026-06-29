@@ -64,23 +64,22 @@ For exact term ownership, use the
 
 ## Quick Start
 
-From this Volicord source checkout, build the local binaries, put them on your
-current shell `PATH`, prepare Volicord, then connect Codex from the product
-repository you want the agent to work on:
+From this Volicord source checkout, build the local binaries, run guided setup,
+then connect Codex from the product repository you want the agent to work on:
 
 ```sh
 cargo build --workspace --bins
-export PATH="$PWD/target/debug:$PATH"
-volicord setup
+./target/debug/volicord setup
 cd /path/to/your-product-repo
 volicord connect codex
 ```
 
-The `export PATH=...` line affects only the current terminal session. It lets
-that shell find the freshly built `volicord` and `volicord-mcp` commands. Use
-the Installation guide when you want commands to be available persistently; for
-example, `--link-bin` is an installation detail, not a required root README
-quick-start step.
+During setup, Volicord checks whether `volicord` and `volicord-mcp` are
+available for future terminals and agent hosts. If they are not, setup offers
+safe choices such as creating command links, printing a shell command, or
+skipping the link step. Follow setup's prompt or action-required output before
+running `volicord connect`, starting a new terminal, or starting an agent host;
+Volicord cannot change the parent shell's current `PATH`.
 
 `/path/to/your-product-repo` means the path to your own product repository, not
 a Volicord term or required directory name. `volicord connect codex` detects the

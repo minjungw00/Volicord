@@ -11,14 +11,16 @@ meaning belongs to [Agent Connection Reference](../reference/agent-connection.md
 
 ```sh
 cargo build --workspace --bins
-export PATH="$PWD/target/debug:$PATH"
-volicord setup
+./target/debug/volicord setup
 cd /path/to/your-product-repo
 volicord connect codex
 ```
 
-The `export PATH=...` line affects only the current terminal session and lets
-that shell find the freshly built `volicord` and `volicord-mcp` commands.
+Setup checks whether the freshly built `volicord` and `volicord-mcp` commands
+are available for future terminals and agent hosts. If it prompts or reports
+`action_required`, follow the named command-availability step before running
+`volicord connect`, opening a new terminal, or starting the host. Volicord
+cannot change the parent shell's current `PATH`.
 `/path/to/your-product-repo` is a placeholder for the Git product repository
 you want the host to work on. Volicord detects that repository from the current
 directory and uses the normal CLI defaults for a first host connection. Exact

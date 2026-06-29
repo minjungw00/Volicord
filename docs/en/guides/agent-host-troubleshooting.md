@@ -29,21 +29,33 @@ say setup has not been completed for the selected `Volicord Runtime Home`.
 
 Bounded recovery:
 
+If `volicord` is already available:
+
 ```sh
 volicord setup
 volicord doctor
 ```
 
-If you built from source and want a command link:
+If you are working from a source checkout:
 
 ```sh
-./target/debug/volicord setup --link-bin ~/.local/bin
+cargo build --workspace --bins
+./target/debug/volicord setup
+```
+
+Follow setup's prompt or `action_required` output if it asks how to make
+`volicord` and `volicord-mcp` available. If it prints a shell command, run that
+command in the terminal that will continue the setup. If it writes or asks you
+to update a shell startup file, open a new shell or restart the MCP host before
+checking again:
+
+```sh
 volicord doctor
 ```
 
-If `volicord` is still not found, add the link directory to your shell
-configuration and start a new shell or MCP host. Setup can report the required
-`PATH` action, but it cannot permanently change the parent shell.
+Use `--link-bin PATH` only when you need a deterministic command-link directory
+for automation or a special local layout. Setup can report the required `PATH`
+action, but it cannot permanently change the parent shell.
 
 Do not create Runtime Home files by hand. Use setup so the registry and setup
 profile are created together.
@@ -141,17 +153,21 @@ Bounded recovery:
 
 ```sh
 cargo build --workspace --bins
-export PATH="$PWD/target/debug:$PATH"
-volicord setup
+./target/debug/volicord setup
+```
+
+Complete any setup prompt or `action_required` command-availability step, then
+check the installation and connection again:
+
+```sh
 volicord doctor
 volicord connection verify codex
 ```
 
-The `export PATH=...` line affects only the current terminal session. Setup is
-the place that records the MCP command used by managed host configuration and
-generic exports. Ordinary `connect` commands do not ask users to pass an MCP
-command path. If the executable is installed somewhere setup cannot discover by
-sibling lookup or `PATH`, rerun setup with
+Setup is the place that records the MCP command used by managed host
+configuration and generic exports. Ordinary `connect` commands do not ask users
+to pass an MCP command path. If the executable is installed somewhere setup
+cannot discover by sibling lookup or `PATH`, rerun setup with
 `--mcp-command PATH`.
 
 ## Shared Connection Needs Host Approval

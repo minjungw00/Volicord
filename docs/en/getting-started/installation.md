@@ -30,34 +30,57 @@ This builds both local executables:
 - `./target/debug/volicord`
 - `./target/debug/volicord-mcp`
 
-Then create the installation profile:
+Then run guided setup from the freshly built CLI:
 
 ```sh
-export PATH="$PWD/target/debug:$PATH"
-volicord setup
+./target/debug/volicord setup
 ```
 
-The `export PATH=...` line affects only the current terminal session. It lets
-that shell find the freshly built `volicord` and `volicord-mcp` commands.
 `volicord setup` creates or verifies the selected `Volicord Runtime Home` and
-saves the installation profile. Exact setup options, MCP command discovery
-order, and output behavior belong to
+saves the installation profile. It discovers the running `volicord` executable,
+looks for `volicord-mcp`, and checks whether the selected commands are available
+on `PATH` for future terminals and agent hosts. Exact setup options, MCP command
+discovery order, and output behavior belong to
 [Administrative CLI Reference](../reference/admin-cli.md#runtime-home-selection).
 
-If you want persistent command links from this source build, run setup with
-`--link-bin`:
+In an interactive terminal, setup may offer command-availability choices when
+the selected executables are not ready on `PATH`:
+
+- create command links in a suggested directory
+- create command links and, after explicit approval, add a managed `PATH` block
+  to a supported shell startup file
+- create command links and print the shell command to run yourself
+- print a shell command for manual `PATH` repair
+- skip command linking for now
+
+Shell startup file changes are never implicit. If setup can identify a
+supported shell startup file, it shows the target file and managed block and
+asks for approval before writing. The managed block is Volicord-owned and does
+not rewrite unrelated shell configuration. Unsupported shells or platforms
+require manual action.
+
+Setup cannot change the parent shell's current `PATH`. A printed
+`export PATH=...` command affects only the terminal where you run it. If setup
+writes or asks you to update a shell startup file, open a new shell or restart
+or reload existing agent host processes before expecting them to see the
+commands.
+
+For automation or deterministic local layouts, use explicit setup options:
+
+| Option | When to use it |
+|---|---|
+| `--link-bin PATH` | Create or update command links in a specific directory. This does not by itself edit shell startup files. |
+| `--mcp-command PATH` | Store a specific `volicord-mcp` executable when sibling discovery or `PATH` lookup would choose the wrong command or cannot find one. |
+| `--home PATH` | Select a non-default `Volicord Runtime Home`. |
+
+For example, a noninteractive link step can choose the link directory:
 
 ```sh
-volicord setup --link-bin ~/.local/bin
+./target/debug/volicord setup --link-bin ~/.local/bin
 ```
 
-When `--link-bin` is supplied, setup prepares both `volicord` and
-`volicord-mcp` commands in that directory when feasible. The CLI can report the
-needed `PATH` action, but it cannot permanently edit the parent shell
-environment. Add `~/.local/bin` to your shell configuration if it is not already
-there, then start new shells or MCP hosts from that environment.
-
-Check setup readiness:
+After completing any prompt or action-required command-availability step, check
+setup readiness:
 
 ```sh
 volicord doctor
@@ -80,7 +103,9 @@ Setup uses the same installation-profile contract whether the executables came
 from a source build or an installed command directory. Use
 `volicord setup --mcp-command PATH` only when the default discovery described by
 the CLI reference cannot find the `volicord-mcp` executable you intend to use.
-Ordinary `volicord connect` commands use the saved installation profile.
+If setup reports `action_required`, complete the named local action before
+starting new terminals or agent hosts. Ordinary `volicord connect` commands use
+the saved installation profile.
 
 ## What Setup Does Not Do
 

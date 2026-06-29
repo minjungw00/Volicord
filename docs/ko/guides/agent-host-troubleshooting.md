@@ -28,21 +28,32 @@ project, connection, export, user 명령에 `--repo PATH`를 추가합니다.
 
 제한된 복구:
 
+`volicord`를 이미 사용할 수 있다면:
+
 ```sh
 volicord setup
 volicord doctor
 ```
 
-소스에서 빌드했고 명령 링크가 필요하다면:
+소스 체크아웃에서 작업 중이라면:
 
 ```sh
-./target/debug/volicord setup --link-bin ~/.local/bin
+cargo build --workspace --bins
+./target/debug/volicord setup
+```
+
+Setup이 `volicord`와 `volicord-mcp`를 사용할 수 있게 만드는 방법을 묻거나
+`action_required`를 보고하면 그 안내를 따릅니다. 셸 명령을 출력했다면 setup을 계속할
+터미널에서 그 명령을 실행합니다. 셸 시작 파일을 쓰거나 갱신하라고 했다면 새 셸을
+열거나 MCP 호스트를 restart한 뒤 다시 확인합니다.
+
+```sh
 volicord doctor
 ```
 
-그래도 `volicord`를 찾지 못하면 링크 디렉터리를 셸 설정에 추가하고 새 셸이나 MCP
-호스트를 시작합니다. `volicord setup`은 필요한 `PATH` 동작을 보고할 수 있지만 부모 셸을
-영구적으로 바꿀 수는 없습니다.
+자동화나 특수한 로컬 배치 때문에 결정적인 명령 링크 디렉터리가 필요할 때만
+`--link-bin PATH`를 사용합니다. `volicord setup`은 필요한 `PATH` 동작을 보고할 수
+있지만 부모 셸을 영구적으로 바꿀 수는 없습니다.
 
 Runtime Home 파일을 직접 만들지 않습니다. Registry와 설치 프로필이 함께 만들어지도록
 `volicord setup`을 사용합니다.
@@ -137,17 +148,21 @@ volicord connection verify codex
 
 ```sh
 cargo build --workspace --bins
-export PATH="$PWD/target/debug:$PATH"
-volicord setup
+./target/debug/volicord setup
+```
+
+Setup 프롬프트나 `action_required`가 이름 붙인 명령 가용성 단계를 완료한 뒤 설치와
+연결을 다시 확인합니다.
+
+```sh
 volicord doctor
 volicord connection verify codex
 ```
 
-`export PATH=...` 줄은 현재 터미널 세션에만 영향을 줍니다. `volicord setup`은 관리
-호스트 설정과 generic export가 사용할 MCP 명령을 기록하는 위치입니다. 일반
-`connect` 명령은 사용자가 MCP 명령 경로를 전달하도록 요구하지 않습니다. 실행 파일이
-sibling 조회나 `PATH`로 찾을 수 없는 위치에 설치되어 있다면 `--mcp-command PATH`로
-setup을 다시 실행합니다.
+`volicord setup`은 관리 호스트 설정과 generic export가 사용할 MCP 명령을 기록하는
+위치입니다. 일반 `connect` 명령은 사용자가 MCP 명령 경로를 전달하도록 요구하지
+않습니다. 실행 파일이 sibling 조회나 `PATH`로 찾을 수 없는 위치에 설치되어 있다면
+`--mcp-command PATH`로 setup을 다시 실행합니다.
 
 ## Shared 연결에 호스트 승인이 필요함
 
