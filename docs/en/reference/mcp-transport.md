@@ -301,9 +301,9 @@ The first valid MCP request in a connection is `initialize`. A valid
 - `capabilities` as an object
 - `clientInfo` as an object containing string `name` and `version` fields
 
-Additional MCP `Implementation` metadata allowed by the 2025-11-25 schema, such
-as `title`, `description`, `icons`, or `websiteUrl`, may be accepted but is not
-required in examples.
+Examples use the fields listed above. `volicord-mcp` may accept additional MCP
+`Implementation` metadata allowed by the 2025-11-25 schema, such as `title`,
+`description`, `icons`, or `websiteUrl`.
 
 Protocol-version negotiation:
 

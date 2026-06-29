@@ -2,7 +2,7 @@
 
 Use these examples after the [User Guide](user-workflow.md) when a task is blocked by a choice the agent should not make alone.
 
-The examples are illustrative. They help readers recognize boundary shapes; they are not an exhaustive policy, a schema reference, a close-readiness contract, or proof that every similar case uses the same route. No scenario here is a required shared sample task. For exact owner boundaries, use [Core Model](../reference/core-model.md), [Scope](../reference/scope.md), and the relevant owners from the [Reference Index](../reference/README.md).
+The examples are illustrative. They help readers recognize boundary shapes while exact policy, schema, close-readiness, and route meanings stay with their owners. Each scenario is a standalone example for this guide. For exact owner boundaries, use [Core Model](../reference/core-model.md), [Scope](../reference/scope.md), and the relevant owners from the [Reference Index](../reference/README.md).
 
 Each example separates the user's decision from what the agent may do and what the agent must not imply. User-owned judgment, sensitive-action approval, final acceptance, residual-risk acceptance, verification criteria, evidence, close readiness, and `Write Check` stay distinct.
 
@@ -41,7 +41,7 @@ Scenario:
 
 - The agent needs to choose whether a new report-export confirmation should live in the UI flow, an existing service boundary, or a new shared helper.
 
-This scenario is only about who owns a material technical direction. It does not make report export confirmation a product policy or a required sample task.
+This scenario illustrates ownership of a material technical direction. The report-export confirmation is only the example subject.
 
 User decides:
 

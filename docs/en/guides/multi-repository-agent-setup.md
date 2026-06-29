@@ -40,7 +40,8 @@ This topology fits host-level configuration:
 
 Project-shared and host-local connections remain single-repository flows.
 
-The paths below are placeholders for your own Git product repositories.
+The paths below are example Product Repository paths for your own Git
+repositories.
 
 ## Connect The First Repository
 

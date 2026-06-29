@@ -80,9 +80,9 @@ volicord project use /path/to/your-product-repo
 volicord connect codex --repo /path/to/your-product-repo
 ```
 
-`/path/to/your-product-repo` is a placeholder for the Git product repository
-you intended to use. The user-facing project name comes from the repository
-directory. Internal project identities are not recovery inputs.
+`/path/to/your-product-repo` is an example Product Repository path for the Git
+repository you intended to use. The user-facing project name comes from the
+repository directory. Internal project identities are not recovery inputs.
 
 ## Host Cannot Be Selected
 

@@ -23,11 +23,11 @@ volicord connection status codex
 ```
 
 The `export PATH=...` line affects only the current terminal session.
-`/path/to/your-product-repo` is a placeholder for the Git product repository
-you want the host to work on. The connection command detects the repository root
-from the current directory, registers or reuses that repository project, derives
-the visible project name from the repository directory, and stores internal
-registry identities in the selected `Volicord Runtime Home`.
+`/path/to/your-product-repo` is an example Product Repository path for the Git
+repository you want the host to work on. The connection command detects the
+repository root from the current directory, registers or reuses that repository
+project, derives the visible project name from the repository directory, and
+stores internal registry identities in the selected `Volicord Runtime Home`.
 
 Use `--repo PATH` only when the process current directory is not the repository
 you intend to connect:

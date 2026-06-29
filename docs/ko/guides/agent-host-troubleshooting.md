@@ -77,9 +77,9 @@ volicord project use /path/to/your-product-repo
 volicord connect codex --repo /path/to/your-product-repo
 ```
 
-`/path/to/your-product-repo`는 사용하려던 Git 제품 저장소를 가리키는 자리표시자입니다.
-사용자에게 보이는 프로젝트 이름은 저장소 디렉터리에서 나옵니다. 내부 프로젝트
-식별 정보는 복구 입력이 아닙니다.
+`/path/to/your-product-repo`는 사용하려던 Git 저장소의 Product Repository 예시
+경로입니다. 사용자에게 보이는 프로젝트 이름은 저장소 디렉터리에서 나옵니다. 내부
+프로젝트 식별 정보는 복구 입력이 아닙니다.
 
 ## 호스트를 선택할 수 없음
 

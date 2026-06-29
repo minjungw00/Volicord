@@ -226,8 +226,9 @@ The internal host configuration key `server_name` defaults to `volicord`.
 Ordinary CLI flows do not expose a server-name option. A generated host
 configuration may contain a `connection_id` process-binding value derived from
 the stored `connection_internal_id`, server name, and command arguments so that
-the host can start `volicord-mcp`; those values are not user authority tokens
-and are not required as text-mode command inputs.
+the host can start `volicord-mcp`; those values are saved process-binding
+details, not user authority tokens. Text-mode command input uses the selected
+host, intent, and repository root instead.
 
 Ordinary `volicord connect` commands use the saved profile in the resolved
 Runtime Home instead of asking for an MCP command path or Runtime Home path.
@@ -325,8 +326,8 @@ repository root. Task selection uses the active task by default; `--task active`
 is explicit and `--task ID` selects a named task.
 
 The ordinary text-mode judgment flow uses the numbered indexes printed by
-`volicord user judgments` and `volicord user judgment show`. Stored judgment or
-option identifiers are reference and JSON details, not required ordinary inputs.
+`volicord user judgments` and `volicord user judgment show`. Stored judgment
+and option identifiers remain reference and JSON details.
 
 Commands:
 

@@ -104,6 +104,11 @@ pages without becoming baseline behavior.
 Examples should be stable, self-contained product or user scenarios. They show
 the documented shape without creating product policy.
 
+Explain example paths, placeholder values, and sample filenames affirmatively:
+say what the value represents for the reader, such as an example Product
+Repository path or an exported MCP config output path. Reserve negative wording
+for safety, authority, routing, persistence, or user-decision boundaries.
+
 API method reference examples must be method-local. Introduce every required
 ref, `state_version` fact, artifact ref, run ref, judgment ref, blocker ref, and
 file path inside the method document or state it as a method-local precondition.
