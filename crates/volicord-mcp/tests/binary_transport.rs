@@ -54,8 +54,10 @@ fn volicord_mcp_binary_reports_help_version_and_preflight() -> Result<(), Box<dy
         &format!("connection_id: {}", fixture.connection_id()),
     );
     assert_report_line(&report, "mode: workflow");
+    assert_report_line(&report, "enabled: true");
     assert_report_line(&report, "allowed_projects: 1");
     assert_report_line(&report, "available_projects: 1");
+    assert_report_line(&report, "verification_scope: startup_check_only");
     assert_report_line(
         &report,
         &format!("project[0].project_id: {}", fixture.project_id()),

@@ -46,6 +46,12 @@ fn binary_help_uses_agent_connection_model() -> Result<(), Box<dyn Error>> {
     assert!(text.contains("volicord user judgment answer INDEX_OR_ID OPTION_INDEX_OR_ID"));
     assert!(text.contains("User Channel"));
 
+    let setup_help = run_without_home(["setup", "--help"])?;
+    assert_success(&setup_help);
+    let setup_text = stdout(&setup_help);
+    assert!(setup_text.contains("volicord setup"));
+    assert!(setup_text.contains("--mcp-command PATH"));
+
     let unknown_user = run_without_home(["user", "not-a-real-command", "--repo", "."])?;
     assert_eq!(unknown_user.status.code(), Some(2));
     assert!(stderr(&unknown_user).contains("unknown user command: not-a-real-command"));
@@ -57,6 +63,7 @@ fn binary_help_uses_agent_connection_model() -> Result<(), Box<dyn Error>> {
     assert!(connect_text.contains("--repo PATH"));
     assert!(connect_text.contains("--shared|--global"));
     assert!(connect_text.contains("--read-only"));
+    assert!(!connect_text.contains("--mcp-command"));
     assert_removed_low_level_flags_absent(&connect_text);
 
     let connection_help = run_without_home(["connection", "status", "--help"])?;
@@ -340,10 +347,45 @@ fn connect_respects_explicit_read_only_and_uses_same_dry_run_plan() -> Result<()
     assert_eq!(value["target"], dry_run_json["target"]);
     assert_eq!(value["planned_change"], dry_run_json["planned_change"]);
     assert_eq!(value["status"], "action_required");
+    assert_eq!(
+        connection["verification_status"],
+        VERIFIED_STATUS_ACTION_REQUIRED
+    );
+    assert_eq!(
+        value["verification"]["status"],
+        VERIFIED_STATUS_ACTION_REQUIRED
+    );
+    assert_eq!(value["verification"]["preflight"]["status"], "passed");
+    assert_eq!(value["verification"]["mcp_handshake"]["status"], "passed");
+    assert_eq!(
+        connection["verification_report"]["status"],
+        VERIFIED_STATUS_ACTION_REQUIRED
+    );
+    assert_eq!(
+        connection["verification_report"]["preflight"]["status"],
+        "passed"
+    );
+    assert_eq!(
+        connection["verification_report"]["mcp_handshake"]["status"],
+        "passed"
+    );
+    assert!(connection["verification_report"]["tools"]
+        .as_array()
+        .expect("stored verification tools should be an array")
+        .iter()
+        .any(|tool| tool == "volicord.check_close"));
 
     let record = agent_connection_record(runtime_home.path(), connection_id)?
         .expect("connection should be stored");
     assert_eq!(record.mode, CONNECTION_MODE_READ_ONLY);
+    assert_eq!(
+        record.last_verification_status,
+        VERIFIED_STATUS_ACTION_REQUIRED
+    );
+    let stored_report: Value = serde_json::from_str(&record.last_verification_report_json)?;
+    assert_eq!(stored_report["status"], VERIFIED_STATUS_ACTION_REQUIRED);
+    assert_eq!(stored_report["preflight"]["status"], "passed");
+    assert_eq!(stored_report["mcp_handshake"]["status"], "passed");
     let projects = list_connection_projects(runtime_home.path(), connection_id)?;
     assert_eq!(projects.len(), 1);
     assert_eq!(projects[0].project.repo_root, repo_root);

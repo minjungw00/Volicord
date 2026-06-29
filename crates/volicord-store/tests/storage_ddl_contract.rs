@@ -94,6 +94,10 @@ fn initial_schemas_satisfy_connection_storage_contract() -> Result<(), Box<dyn E
     assert!(initial_registry_schema
         .tables
         .contains_key("installation_profile"));
+    assert!(
+        !initial_registry_schema.tables.contains_key("setup_profile"),
+        "setup_profile is not a current registry table"
+    );
     assert!(initial_registry_schema
         .tables
         .contains_key("project_aliases"));
