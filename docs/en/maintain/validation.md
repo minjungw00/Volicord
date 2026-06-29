@@ -131,6 +131,10 @@ maintained validation rule. A one-time audit belongs in the change process when
 it only proves that cleanup-specific text, flags, fields, or examples were
 removed.
 
+For implementation-layer placement and test-authoring examples, use
+[Testing Strategy](../development/testing-strategy.md). This validation policy
+owns the maintenance-check, review, and reporting boundaries for those checks.
+
 Do not add permanent tests whose only assertion is a cleanup-specific string
 search such as "the old option name no longer appears." Run those searches as
 audits when useful, then report them outside repository files. If the absence

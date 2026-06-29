@@ -719,6 +719,7 @@ documents:
   - build.architecture
   - reference.index
   - reference.conformance
+  - maintain.validation
 - doc_id: development.decisions.index
   path_en: docs/en/development/decisions/README.md
   path_ko: docs/ko/development/decisions/README.md
@@ -2251,3 +2252,4 @@ documents:
   - maintain.brand-guidelines
   - docs.doc-index
   - terminology.map
+  - development.testing-strategy
