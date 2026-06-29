@@ -2132,6 +2132,125 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn setup_interactive_skip_reports_action_required_without_links(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = TempRuntimeHome::new("setup-interactive-skip")?;
+        let exe_dir = fixture.path().join("exe");
+        let home = fixture.path().join("home");
+        fs::create_dir_all(&home)?;
+        let volicord = write_executable(&exe_dir, &volicord_binary_name())?;
+        write_executable(&exe_dir, &mcp_binary_name())?;
+        let process = FakeProcess {
+            exe: volicord.clone(),
+            env: BTreeMap::from([
+                ("HOME".to_owned(), home.clone().into_os_string()),
+                ("SHELL".to_owned(), OsString::from("/bin/zsh")),
+            ]),
+        };
+        let mut terminal = FakeTerminal::new(&["4"]);
+
+        let outcome = run_setup_command_interactive(
+            &["--home".to_owned(), path_text(fixture.path())],
+            fixture.path(),
+            &process,
+            &mut terminal,
+        )?;
+
+        assert_eq!(outcome.status, CommandStatus::ActionRequired);
+        assert!(terminal.output().contains("Skip command linking for now."));
+        assert!(outcome.output.contains("command linking was skipped"));
+        assert!(!home
+            .join(".local/bin")
+            .join(volicord_binary_name())
+            .exists());
+        assert!(!home.join(".zshrc").exists());
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn setup_interactive_link_only_creates_links_without_shell_startup_when_path_needs_update(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = TempRuntimeHome::new("setup-interactive-link-only")?;
+        let exe_dir = fixture.path().join("exe");
+        let home = fixture.path().join("home");
+        fs::create_dir_all(&home)?;
+        let volicord = write_executable(&exe_dir, &volicord_binary_name())?;
+        let mcp = write_executable(&exe_dir, &mcp_binary_name())?;
+        let process = FakeProcess {
+            exe: volicord.clone(),
+            env: BTreeMap::from([
+                ("HOME".to_owned(), home.clone().into_os_string()),
+                ("SHELL".to_owned(), OsString::from("/bin/zsh")),
+            ]),
+        };
+        let mut terminal = FakeTerminal::new(&["1"]);
+
+        let outcome = run_setup_command_interactive(
+            &["--home".to_owned(), path_text(fixture.path())],
+            fixture.path(),
+            &process,
+            &mut terminal,
+        )?;
+
+        assert_eq!(outcome.status, CommandStatus::ActionRequired);
+        assert!(!terminal.output().contains("Managed block to write"));
+        let link_bin = home.join(".local/bin");
+        assert_eq!(
+            fs::canonicalize(link_bin.join(volicord_binary_name()))?,
+            volicord
+        );
+        assert_eq!(fs::canonicalize(link_bin.join(mcp_binary_name()))?, mcp);
+        assert!(!home.join(".zshrc").exists());
+        assert!(outcome.output.contains("Add "));
+        assert!(outcome.output.contains(".local/bin"));
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn setup_interactive_declined_shell_startup_update_leaves_files_unchanged(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = TempRuntimeHome::new("setup-interactive-decline-shell")?;
+        let exe_dir = fixture.path().join("exe");
+        let home = fixture.path().join("home");
+        fs::create_dir_all(&home)?;
+        let zshrc = home.join(".zshrc");
+        let original_zshrc = "export PATH=\"$HOME/bin:$PATH\"\n";
+        fs::write(&zshrc, original_zshrc)?;
+        let volicord = write_executable(&exe_dir, &volicord_binary_name())?;
+        write_executable(&exe_dir, &mcp_binary_name())?;
+        let process = FakeProcess {
+            exe: volicord.clone(),
+            env: BTreeMap::from([
+                ("HOME".to_owned(), home.clone().into_os_string()),
+                ("SHELL".to_owned(), OsString::from("/bin/zsh")),
+            ]),
+        };
+        let mut terminal = FakeTerminal::new(&["2", "n"]);
+
+        let outcome = run_setup_command_interactive(
+            &["--home".to_owned(), path_text(fixture.path())],
+            fixture.path(),
+            &process,
+            &mut terminal,
+        )?;
+
+        assert_eq!(outcome.status, CommandStatus::ActionRequired);
+        assert!(terminal.output().contains("Managed block to write"));
+        assert!(outcome
+            .output
+            .contains("shell startup update was not approved"));
+        assert_eq!(fs::read_to_string(&zshrc)?, original_zshrc);
+        assert!(!home
+            .join(".local/bin")
+            .join(volicord_binary_name())
+            .exists());
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn setup_interactive_eof_cancels_command_linking() -> Result<(), Box<dyn std::error::Error>> {
         let fixture = TempRuntimeHome::new("setup-interactive-eof")?;
         let exe_dir = fixture.path().join("exe");
@@ -2338,6 +2457,12 @@ mod tests {
             volicord
         );
         assert_eq!(fs::canonicalize(link_bin.join(mcp_binary_name()))?, mcp);
+        let profile = installation_profile(fixture.path())?.expect("profile should be stored");
+        let metadata: Value = serde_json::from_str(&profile.metadata_json)?;
+        assert_eq!(metadata["link_bin"], path_text(&link_bin));
+        assert_eq!(metadata["link_bin_requested"], true);
+        assert_eq!(metadata["link_results"]["volicord"], "created");
+        assert_eq!(metadata["link_results"]["volicord_mcp"], "created");
         Ok(())
     }
 

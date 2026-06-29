@@ -197,6 +197,41 @@ fn setup_and_doctor_report_installation_profile() -> Result<(), Box<dyn Error>> 
     Ok(())
 }
 
+#[cfg(unix)]
+#[test]
+fn setup_plain_non_tty_reports_actions_without_prompting_or_shell_edits(
+) -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-setup-non-tty")?;
+    let bin_dir = runtime_home.path().join("bin");
+    let path_dir = runtime_home.path().join("path-bin");
+    let home = runtime_home.path().join("home");
+    fs::create_dir_all(&path_dir)?;
+    fs::create_dir_all(&home)?;
+    let mcp = write_fake_mcp(&bin_dir)?;
+
+    let output = run_with_home_env(
+        runtime_home.path(),
+        ["setup", "--mcp-command", path_text(&mcp).as_str()],
+        &[
+            ("PATH", path_env(&[path_dir.as_path()])),
+            ("HOME", path_text(&home)),
+            ("SHELL", "/bin/zsh".to_owned()),
+        ],
+    )?;
+
+    assert_success(&output);
+    let text = stdout(&output);
+    assert!(text.contains("Volicord setup action_required"));
+    assert!(text.contains("optional_actions:"));
+    assert!(!text.contains("Choices:"));
+    assert!(!text.contains("Choice ["));
+    assert!(!text.contains("Managed block to write"));
+    assert!(!home.join(".zshrc").exists());
+    assert!(!home.join(".local/bin/volicord").exists());
+    assert!(!home.join(".local/bin/volicord-mcp").exists());
+    Ok(())
+}
+
 #[test]
 fn doctor_without_setup_reports_action_required() -> Result<(), Box<dyn Error>> {
     let runtime_home = TempRuntimeHome::new("cli-bin-doctor-missing")?;

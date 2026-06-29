@@ -126,11 +126,25 @@ pub(crate) fn mcp_binary_name() -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::BTreeMap, fs};
+    use std::{collections::BTreeMap, fs, io::Write, path::Path};
 
     use volicord_test_support::TempRuntimeHome;
 
     use super::*;
+
+    #[test]
+    fn detect_command_on_path_finds_executable_command() -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = TempRuntimeHome::new("shell-path-detect-command")?;
+        let path_dir = fixture.path().join("path-bin");
+        let command = write_executable(&path_dir, &volicord_binary_name())?;
+        let path_env = env::join_paths([path_dir.as_path()])?;
+
+        let detected = detect_command_on_path(&volicord_binary_name(), Some(&path_env))
+            .expect("command should be found on PATH");
+
+        assert_eq!(detected, fs::canonicalize(command)?);
+        Ok(())
+    }
 
     #[test]
     fn candidate_setup_link_dirs_prefers_writable_path_dirs(
@@ -149,6 +163,51 @@ mod tests {
 
         assert_eq!(dirs.first(), Some(&path_dir));
         assert!(dirs.contains(&home.join(".local").join("bin")));
+        Ok(())
+    }
+
+    #[test]
+    fn candidate_setup_link_dirs_uses_user_bin_when_path_has_no_writable_directory(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = TempRuntimeHome::new("shell-path-user-bin")?;
+        let path_file = fixture.path().join("path-file");
+        let home = fixture.path().join("home");
+        fs::write(&path_file, "not a directory")?;
+        fs::create_dir_all(&home)?;
+        let env = BTreeMap::from([
+            (PATH_ENV.to_owned(), env::join_paths([path_file.as_path()])?),
+            ("HOME".to_owned(), home.clone().into_os_string()),
+        ]);
+
+        let dirs = candidate_setup_link_dirs(&|name| env.get(name).cloned());
+
+        assert_eq!(dirs.first(), Some(&home.join(".local").join("bin")));
+        assert!(dirs.contains(&home.join("bin")));
+        assert!(!dirs.contains(&path_file));
+        Ok(())
+    }
+
+    fn write_executable(dir: &Path, name: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
+        fs::create_dir_all(dir)?;
+        let path = dir.join(name);
+        let mut file = fs::File::create(&path)?;
+        writeln!(file, "#!/bin/sh")?;
+        make_executable(&path)?;
+        Ok(path)
+    }
+
+    #[cfg(unix)]
+    fn make_executable(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+        use std::os::unix::fs::PermissionsExt;
+
+        let mut permissions = fs::metadata(path)?.permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(path, permissions)?;
+        Ok(())
+    }
+
+    #[cfg(not(unix))]
+    fn make_executable(_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
         Ok(())
     }
 }
