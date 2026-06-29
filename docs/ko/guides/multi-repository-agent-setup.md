@@ -99,22 +99,24 @@ reload, restart, setup repair 동작을 완료한 뒤 verification을 다시 실
 
 MCP 결과는 묶인 Agent Connection에 연결된 프로젝트만 나열합니다. 둘 이상의
 프로젝트가 연결된 뒤 한 저장소를 대상으로 하는 공개 Volicord 메서드 호출은
-`volicord.list_projects`가 반환한 명시적 `project_id`를 포함해야 합니다.
+`volicord.list_projects`가 반환한 명시적 `project_selector`를 포함해야 합니다.
 
 ```json
 {
-  "project_id": "billing-api",
-  "request_id": "req_billing_status_001",
-  "include": {
-    "task": true
+  "name": "volicord.status",
+  "arguments": {
+    "project_selector": "billing-api",
+    "detail": "workflow"
   }
 }
 ```
 
 에이전트는 폴더 이름, 현재 작업 디렉터리, MCP roots, 호스트 라벨, 기억에서
-프로젝트를 지어내면 안 됩니다. `project_id` 없는 호출이 모호하다고 거부되면
-`volicord.list_projects`를 호출하고 의도한 프로젝트를 고른 뒤 명시적 값으로 다시
-시도합니다.
+프로젝트를 지어내면 안 됩니다. 저장소 라벨에서도 프로젝트 식별 정보를 추론하면 안
+됩니다. `project_selector` 없는 호출이 모호하다고 거부되면 `volicord.list_projects`를
+호출하고 의도한 프로젝트를 고른 뒤 반환된 값으로 다시 시도합니다. 공개 MCP 도구 인자는
+`request_id`, `idempotency_key`, `expected_state_version`, `dry_run`, `locale` 같은 Core
+요청 메타데이터를 요구하거나 허용하지 않습니다.
 
 ## 저장소 하나 제거하기
 
@@ -142,8 +144,8 @@ Volicord가 일치하는 관리 호스트 설정을 제거합니다.
 ## 경계
 
 - Agent Connection은 명시적으로 연결된 저장소에만 접근합니다.
-- 여러 저장소가 연결되어 있으면 `volicord.list_projects`가 아닌 MCP 메서드 호출에는
-  명시적 `project_id`가 필요합니다.
+- 여러 저장소가 연결되어 있으면 `volicord.list_projects`가 아닌 공개 MCP 도구 호출에는
+  명시적 `project_selector`가 필요합니다.
 - `Product Repository`는 제품 파일 경계이며 선택된 공유 호스트 설정을 포함할 수
   있지만 Core 권한이 아닙니다.
 - `Write Check`은 Core 상태 호환성이지 OS 권한이 아닙니다.

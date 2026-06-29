@@ -33,13 +33,13 @@ Volicord는 이런 대체를 보이게 하려고 존재합니다. 범위, 사용
 | Core | Volicord 상태의 로컬 권한 기록. | [Core 모델](../reference/core-model.md) |
 | Volicord 구현 | Core, 저장소, 타입, `volicord` CLI, `volicord-mcp`, 테스트, 문서, 검증 도구를 포함하는 이 저장소의 구현 집합. | [런타임 경계](../reference/runtime-boundaries.md) |
 | `volicord` | Runtime Home 초기화, 프로젝트 등록, Agent Connection 관리, 로컬 User Channel을 제공하는 로컬 관리 CLI. | [관리 CLI](../reference/admin-cli.md) |
-| `volicord-mcp` | MCP 호스트가 `--connection <connection_id>`로 자식 프로세스로 시작하는 stdio MCP 어댑터. | [MCP 전송](../reference/mcp-transport.md) |
+| `volicord-mcp` | 생성된 호스트 설정이 내부 `--connection <connection_id>` 바인딩으로 자식 프로세스로 시작하는 stdio MCP 어댑터. | [MCP 전송](../reference/mcp-transport.md) |
 | `Volicord Runtime Home` | 저장소/런타임 담당 문서가 정의하는 Volicord 운영 데이터의 로컬 런타임 데이터 공간. | [런타임 경계](../reference/runtime-boundaries.md) |
 | `Product Repository` | 사용자의 프로젝트 작업공간과 제품 파일. 명시적으로 선택된 프로젝트 범위 호스트 설정을 포함할 수 있지만 Core 권한도 런타임 홈도 아닙니다. | [런타임 경계](../reference/runtime-boundaries.md) |
 | Agent Connection | 로컬 MCP 호스트 connection 단위. 하나의 호스트 설정 대상, `connection_id`, 모드, 명시적으로 연결된 Project를 묶습니다. | [Agent Connection Reference](../reference/agent-connection.md) |
 | User Channel | 권한을 지니는 사용자 판단을 위한 로컬 사용자 경로. Agent Connection은 `user_only` 판단을 기록하지 않습니다. | [관리 CLI](../reference/admin-cli.md#user-channel-commands) |
 
-현재 기준 에이전트 호스트 모델은 connection 기반입니다. 하나의 `volicord-mcp` 프로세스는 하나의 Agent Connection에 묶입니다. connection은 명시적으로 연결된 Project에만 접근할 수 있습니다. 정확히 하나의 Project만 연결되어 있으면 MCP 호출에서 `project_id`를 생략할 수 있고, 여러 Project가 연결되어 있으면 MCP 호출은 명시적 `project_id`를 포함해야 합니다.
+현재 기준 에이전트 호스트 모델은 connection 기반입니다. 하나의 `volicord-mcp` 프로세스는 내부 연결 식별 정보로 하나의 Agent Connection에 묶입니다. connection은 명시적으로 연결된 Project에만 접근할 수 있습니다. 정확히 하나의 Project만 연결되어 있으면 공개 MCP 도구 호출에서 프로젝트 선택을 생략할 수 있고, 여러 Project가 연결되어 있으면 공개 MCP 도구 호출은 `volicord.list_projects`가 반환한 `project_selector`를 사용해야 합니다.
 
 ## Setup이 하는 일
 
@@ -77,7 +77,7 @@ Agent Connection은 하나의 모드를 가집니다.
 
 | 모드 | MCP 도구 노출 |
 |---|---|
-| `read_only` | 읽기와 프로젝트 발견 작업: `volicord.status`, `volicord.close_task`를 통한 닫기 준비 상태 확인, `volicord.list_projects`. |
+| `read_only` | 읽기와 프로젝트 발견 작업: `volicord.status`, `volicord.check_close`를 통한 닫기 준비 상태 확인, `volicord.list_projects`. |
 | `workflow` | 읽기 작업과 intake, scope update, prepare write, stage artifact, record run, request user judgment, close task, project discovery 같은 에이전트 워크플로 작업. `volicord.record_user_judgment`는 노출하지 않으며 사용자 판단 기록은 User Channel이 담당합니다. |
 
 ## Volicord가 아닌 것

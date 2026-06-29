@@ -101,23 +101,26 @@ When a user asks which repositories are available, the agent calls:
 
 The MCP result lists only projects connected to the bound Agent Connection. Once
 more than one project is connected, a public Volicord method call that targets
-one repository must include an explicit `project_id` returned by
+one repository must include an explicit `project_selector` returned by
 `volicord.list_projects`:
 
 ```json
 {
-  "project_id": "billing-api",
-  "request_id": "req_billing_status_001",
-  "include": {
-    "task": true
+  "name": "volicord.status",
+  "arguments": {
+    "project_selector": "billing-api",
+    "detail": "workflow"
   }
 }
 ```
 
 The agent must not invent a project from folder names, current working
-directory, MCP roots, host labels, or memory. If a call without `project_id` is
-rejected as ambiguous, call `volicord.list_projects`, choose the intended
-project, and retry with an explicit value.
+directory, MCP roots, host labels, repository labels, or memory. If a call
+without `project_selector` is rejected as ambiguous, call
+`volicord.list_projects`, choose the intended project, and retry with the
+returned value. Public MCP tool arguments do not require or accept Core request
+metadata such as `request_id`, `idempotency_key`, `expected_state_version`,
+`dry_run`, or `locale`.
 
 ## Remove One Repository
 
@@ -146,8 +149,8 @@ ownership and safety checks permit it.
 ## Boundaries
 
 - Agent Connections access only explicitly connected repositories.
-- Multiple connected repositories require explicit `project_id` in MCP method
-  calls unless the call is `volicord.list_projects`.
+- Multiple connected repositories require explicit `project_selector` in public
+  MCP tool calls unless the call is `volicord.list_projects`.
 - A `Product Repository` is a product-file boundary and may contain selected
   shared host configuration, but it is not Core authority.
 - `Write Check` is Core-state compatibility, not OS permission.

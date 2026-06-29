@@ -78,8 +78,8 @@ For public Volicord tool calls:
 
 - Use `project_selector` when the target project is known and the MCP tool schema exposes it.
 - If the target is unclear, call `volicord.list_projects` and choose one listed `project_selector`.
-- If exactly one connected project is available, omitted project selection may route to that project; otherwise use an explicit `project_selector`.
-- Never guess a project from folder names, current working directory, MCP roots, host labels, or memory.
+- If exactly one project is connected, omitted project selection may route to that project; otherwise use an explicit `project_selector`.
+- Never guess a project from folder names, current working directory, MCP roots, host labels, repository labels, or memory.
 
 `volicord.list_projects` is a read-only MCP adapter utility. It lists only projects explicitly connected to the bound Agent Connection and is not a public Core API method.
 

@@ -62,6 +62,9 @@ Baseline command-line behavior:
 - `volicord-mcp --connection <connection_id>` launches the stdio loop.
 - `volicord-mcp --check --connection <connection_id>` runs startup validation
   without reading stdin.
+- `volicord-mcp --check --connection <connection_id> --project <project_id>`
+  runs the same startup validation and limits project-detail diagnostics to
+  one allowed internal project selector.
 - `-h` and `--help` print usage and environment summary, then exit with code
   `0`.
 - `-V` and `--version` print `volicord-mcp <version>`, then exit with code `0`.
@@ -95,12 +98,13 @@ operation category, connection mode, or host trust state. The stdio process and
 version modes do not use it.
 
 Connection identity is supplied by `--connection <connection_id>` in generated
-host configuration or generic export output. The bound Agent Connection and
-Runtime Home registry state supply the connection mode, connected projects, and
-adapter-derived `actor_source` and `operation_category`. Project access is
-controlled by the selected Agent Connection's connected projects and
-repository-root resolution. No other process environment input is interpreted
-by the MCP process.
+host configuration or generic export output. This is an internal process
+binding for the selected Agent Connection, not a normal user-chosen value. The
+bound Agent Connection and Runtime Home registry state supply the connection
+mode, connected projects, and adapter-derived `actor_source` and
+`operation_category`. Project access is controlled by the selected Agent
+Connection's connected projects and repository-root resolution. No other
+process environment input is interpreted by the MCP process.
 
 Current MCP Runtime Home resolution:
 
@@ -163,8 +167,10 @@ effect through registry state; each new process reruns startup validation
 against the current registry state.
 
 MCP call arguments and other MCP request bodies cannot set connection identity,
-project identity, `actor_source`, `operation_category`, connection intent, or
-connection mode.
+internal project identity, `actor_source`, `operation_category`, connection
+intent, or connection mode. Administrative connection-status output belongs to
+the `volicord` CLI; MCP startup diagnostics belong to `volicord-mcp --check`;
+public MCP tool arguments use the `project_selector` behavior described below.
 
 <a id="configuration-preflight"></a>
 ## Configuration Preflight
@@ -181,14 +187,13 @@ project-detail block for each connected project, in this order:
 configuration: valid
 transport: stdio
 runtime_home: <absolute path>
-connection: present
-intent: personal|shared|global
+connection_id: <internal connection id>
 mode: workflow|read_only
-enabled: true
-connected_projects: <count>
+enabled: true|false
+allowed_projects: <count>
 available_projects: <count>
 verification_scope: startup_check_only
-project[0].name: <value>
+project[0].project_id: <internal project selector or diagnostic id>
 project[0].available: true|false
 project[0].unavailable_reason: <value or empty>
 project[0].repo_root: <path>
@@ -197,14 +202,19 @@ project[0].repo_root: <path>
 Project-detail rules:
 
 - The detail index begins at zero.
-- One detail block is emitted for each connected project in stable
-  repository-root order.
-- `connected_projects` describes the Agent Connection as a whole.
+- Without `--project`, one detail block is emitted for each allowed project in
+  stable repository-root order.
+- With `--project <project_id>`, the supplied value must be in the connection's
+  allowlist and only that project's detail block is emitted.
+- `connection_id` is the internal Agent Connection process binding.
+- `allowed_projects` describes the Agent Connection allowlist as a whole.
 - Unavailable projects still emit every project-detail key.
   `unavailable_reason` is populated for unavailable projects and empty for
   available projects.
 - `verification_scope: startup_check_only` is a startup and preflight statement
   only, not complete host verification.
+- `--check` output does not include administrative status fields for connection
+  presence, connected-project count, or project display name.
 
 Startup validation failure:
 
@@ -329,8 +339,8 @@ current stored Agent Connection mode:
 
 | Mode | MCP-visible tools |
 |---|---|
-| `workflow` | `volicord.list_projects`, `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.prepare_write`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.check_close`, `volicord.close_task` |
-| `read_only` | `volicord.list_projects`, `volicord.status`, `volicord.check_close` |
+| `workflow` | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.prepare_write`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.check_close`, `volicord.close_task`, `volicord.list_projects` |
+| `read_only` | `volicord.status`, `volicord.check_close`, `volicord.list_projects` |
 
 The MCP-visible tools are not the same thing as the public Volicord Core API
 method list. `volicord.check_close` is the read-only MCP tool for close
@@ -352,19 +362,21 @@ non-object `arguments` are malformed method parameters and return JSON-RPC
 
 For public Volicord method tools, `tools/list` exposes MCP-visible input schemas
 that carry workflow-domain arguments rather than the Core request envelope. The
-visible schema must hide internal request envelopes, protocol metadata,
-`project_id`, `connection_id`, `request_id`, `idempotency_key`,
-`expected_state_version`, `dry_run`, `locale`, `actor_source`,
-`operation_category`, and verification-basis fields. If raw public method-tool
-arguments include these caller-owned internal fields, the adapter rejects the
-call before Core execution.
+visible schema exposes optional `project_selector` and must hide internal
+request envelopes, protocol metadata, `project_id`, `connection_id`,
+`request_id`, `idempotency_key`, `expected_state_version`, `dry_run`, `locale`,
+`actor_source`, `operation_category`, and verification-basis fields. Those
+hidden fields are not required or accepted public MCP tool arguments. If raw
+public method-tool arguments include them, the adapter rejects the call before
+Core execution.
 
 Project selection is resolved from the Agent Connection context. When exactly
-one available project is connected, public method tools may omit project
-selection. When multiple projects are available and no host-provided repository
-root selects one project, the public arguments must include the
-`project_selector` value returned by `volicord.list_projects`; otherwise the
-adapter rejects the call with actionable ambiguity text.
+one allowed project is connected, public method tools may omit project
+selection. Multi-project connections require the `project_selector` value
+returned by `volicord.list_projects`; otherwise the adapter rejects the call
+with actionable ambiguity text. Agents must not infer project identity from
+folder names, current working directory, MCP roots, host labels, repository
+labels, or memory.
 
 The MCP adapter generates the Core envelope before dispatch. It supplies
 `request_id`, `idempotency_key` for workflow effects, `expected_state_version`

@@ -333,8 +333,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: onboarding
   created_on: '2026-06-07'
-  last_updated_on: '2026-06-26'
-  last_verified_on: '2026-06-26'
+  last_updated_on: '2026-06-29'
+  last_verified_on: '2026-06-29'
   applies_to:
   - volicord_workspace_0_1
   primary_audience:
@@ -463,8 +463,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: agent_connection
   created_on: '2026-06-22'
-  last_updated_on: '2026-06-28'
-  last_verified_on: '2026-06-28'
+  last_updated_on: '2026-06-29'
+  last_verified_on: '2026-06-29'
   applies_to:
   - volicord_workspace_0_1
   - mcp_protocol_2025_11_25
@@ -580,8 +580,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: developer_documentation
   created_on: '2026-06-20'
-  last_updated_on: '2026-06-28'
-  last_verified_on: '2026-06-28'
+  last_updated_on: '2026-06-29'
+  last_verified_on: '2026-06-29'
   applies_to:
   - volicord_workspace_0_1
   - rust_workspace_1_85
@@ -961,8 +961,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: onboarding
   created_on: '2026-06-23'
-  last_updated_on: '2026-06-24'
-  last_verified_on: '2026-06-24'
+  last_updated_on: '2026-06-29'
+  last_verified_on: '2026-06-29'
   applies_to:
   - volicord_workspace_0_1
   - rust_workspace_1_85

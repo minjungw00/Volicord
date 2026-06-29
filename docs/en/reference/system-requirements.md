@@ -125,7 +125,7 @@ Writing host configuration does not prove that the host trusted, approved, loade
 
 ## MCP Host Environment Requirements
 
-The baseline MCP host environment must be able to start `volicord-mcp --connection <connection_id>` as a local child process and communicate over stdin/stdout. It is not a network listener requirement.
+The baseline MCP host environment must be able to start `volicord-mcp --connection <connection_id>` as a local child process and communicate over stdin/stdout. The `connection_id` is the internal process binding written by generated host configuration or generic export output; it is not a public MCP tool argument. This is not a network listener requirement.
 
 The host process environment must provide:
 
@@ -133,7 +133,7 @@ The host process environment must provide:
 - `VOLICORD_HOME` when the intended Runtime Home is not the default home-derived location
 - local filesystem access to the Runtime Home and each explicitly allowed `Product Repository`
 
-`volicord-mcp --check --connection <connection_id>` is a startup validation check. It is not complete host integration verification. Complete host verification requires the administrative result gates defined by [Administrative CLI](admin-cli.md).
+`volicord-mcp --check --connection <connection_id>` is a startup validation check for that internal process binding. It is not complete host integration verification. Complete host verification requires the administrative result gates defined by [Administrative CLI](admin-cli.md).
 
 ## Stop Criteria
 

@@ -590,11 +590,11 @@ Important current symbols:
 - `read_only_tools_expose_only_read_operations_and_project_discovery`
 - `connection_invocation_is_injected_and_single_project_is_auto_selected`
 - `read_only_mode_rejects_agent_workflow_methods_before_core`
-- `multiple_allowed_projects_require_explicit_project_id`
+- `multiple_allowed_projects_require_explicit_project_selector`
 - `explicit_project_outside_allowlist_is_rejected_before_core`
 - `explicit_allowed_project_routes_to_that_project`
 - Helpers such as `adapter`, `invocation`, `set_connection_mode`, and
-  `set_project_id`
+  `add_project`
 
 Most relevant tests:
 
