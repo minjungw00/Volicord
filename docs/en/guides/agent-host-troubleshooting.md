@@ -56,7 +56,7 @@ was found.
 Bounded recovery:
 
 ```sh
-cd /work/acme-api
+cd /path/to/your-product-repo
 volicord project current
 volicord project use
 ```
@@ -64,12 +64,13 @@ volicord project use
 Or select the repository explicitly:
 
 ```sh
-volicord project use /work/acme-api
-volicord connect codex --repo /work/acme-api
+volicord project use /path/to/your-product-repo
+volicord connect codex --repo /path/to/your-product-repo
 ```
 
-The user-facing project name comes from the repository directory. Internal
-project identities are not recovery inputs.
+`/path/to/your-product-repo` is a placeholder for the Git product repository
+you intended to use. The user-facing project name comes from the repository
+directory. Internal project identities are not recovery inputs.
 
 ## Host Cannot Be Selected
 
@@ -140,15 +141,17 @@ Bounded recovery:
 
 ```sh
 cargo build --workspace --bins
-./target/debug/volicord setup --link-bin ~/.local/bin
+export PATH="$PWD/target/debug:$PATH"
+volicord setup
 volicord doctor
 volicord connection verify codex
 ```
 
-Setup is the place that records the MCP command used by managed host
-configuration and generic exports. Ordinary `connect` commands do not ask users
-to pass an MCP command path. If the executable is installed somewhere setup
-cannot discover by sibling lookup or `PATH`, rerun setup with
+The `export PATH=...` line affects only the current terminal session. Setup is
+the place that records the MCP command used by managed host configuration and
+generic exports. Ordinary `connect` commands do not ask users to pass an MCP
+command path. If the executable is installed somewhere setup cannot discover by
+sibling lookup or `PATH`, rerun setup with
 `--mcp-command PATH`.
 
 ## Shared Connection Needs Host Approval

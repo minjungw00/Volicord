@@ -12,13 +12,16 @@ Agent Connection 의미는 [Agent Connection 참조](../reference/agent-connecti
 
 ```sh
 cargo build --workspace --bins
-./target/debug/volicord setup --link-bin ~/.local/bin
+export PATH="$PWD/target/debug:$PATH"
+volicord setup
 volicord doctor
-cd /work/acme-api
+cd /path/to/your-product-repo
 volicord connect codex
 volicord connection status codex
 ```
 
+`export PATH=...` 줄은 현재 터미널 세션에만 영향을 줍니다.
+`/path/to/your-product-repo`는 호스트가 작업할 Git 제품 저장소를 가리키는 자리표시자입니다.
 연결 명령은 현재 디렉터리에서 Git 저장소 루트를 감지하고, 해당 저장소 프로젝트를
 등록하거나 재사용하며, 저장소 디렉터리에서 보이는 프로젝트 이름을 파생하고, 내부
 registry 식별 정보를 선택된 `Volicord Runtime Home`에 저장합니다.
@@ -26,7 +29,7 @@ registry 식별 정보를 선택된 `Volicord Runtime Home`에 저장합니다.
 프로세스 현재 디렉터리가 연결하려는 저장소가 아닐 때만 `--repo PATH`를 사용합니다.
 
 ```sh
-volicord connect codex --repo /work/acme-api
+volicord connect codex --repo /path/to/your-product-repo
 ```
 
 ## 연결 의도
@@ -102,7 +105,7 @@ volicord connection verify claude-code --global
 Volicord가 직접 관리하지 않는 MCP 호스트에는 아래처럼 설정을 내보냅니다.
 
 ```sh
-cd /work/acme-api
+cd /path/to/your-product-repo
 volicord export mcp-config --output /tmp/volicord.mcp.json
 ```
 

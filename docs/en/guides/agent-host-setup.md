@@ -14,23 +14,26 @@ and runtime/file boundaries belong to
 
 ```sh
 cargo build --workspace --bins
-./target/debug/volicord setup --link-bin ~/.local/bin
+export PATH="$PWD/target/debug:$PATH"
+volicord setup
 volicord doctor
-cd /work/acme-api
+cd /path/to/your-product-repo
 volicord connect codex
 volicord connection status codex
 ```
 
-The connection command detects the Git repository root from the current
-directory, registers or reuses that repository project, derives the visible
-project name from the repository directory, and stores internal registry
-identities in the selected `Volicord Runtime Home`.
+The `export PATH=...` line affects only the current terminal session.
+`/path/to/your-product-repo` is a placeholder for the Git product repository
+you want the host to work on. The connection command detects the repository root
+from the current directory, registers or reuses that repository project, derives
+the visible project name from the repository directory, and stores internal
+registry identities in the selected `Volicord Runtime Home`.
 
 Use `--repo PATH` only when the process current directory is not the repository
 you intend to connect:
 
 ```sh
-volicord connect codex --repo /work/acme-api
+volicord connect codex --repo /path/to/your-product-repo
 ```
 
 ## Connection Intents
@@ -107,7 +110,7 @@ Result states:
 For an MCP host that Volicord does not manage directly:
 
 ```sh
-cd /work/acme-api
+cd /path/to/your-product-repo
 volicord export mcp-config --output /tmp/volicord.mcp.json
 ```
 

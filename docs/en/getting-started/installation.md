@@ -33,13 +33,23 @@ This builds both local executables:
 Then create the installation profile:
 
 ```sh
-./target/debug/volicord setup --link-bin ~/.local/bin
+export PATH="$PWD/target/debug:$PATH"
+volicord setup
 ```
 
+The `export PATH=...` line affects only the current terminal session. It lets
+that shell find the freshly built `volicord` and `volicord-mcp` commands.
 `volicord setup` creates or verifies the selected `Volicord Runtime Home` and
 saves the installation profile. Exact setup options, MCP command discovery
 order, and output behavior belong to
 [Administrative CLI Reference](../reference/admin-cli.md#runtime-home-selection).
+
+If you want persistent command links from this source build, run setup with
+`--link-bin`:
+
+```sh
+volicord setup --link-bin ~/.local/bin
+```
 
 When `--link-bin` is supplied, setup prepares both `volicord` and
 `volicord-mcp` commands in that directory when feasible. The CLI can report the
@@ -87,9 +97,12 @@ Internal identities are stored by Volicord and are not first-time setup inputs.
 Move into the product repository and connect a host:
 
 ```sh
-cd /work/acme-api
+cd /path/to/your-product-repo
 volicord connect codex
 ```
+
+`/path/to/your-product-repo` is a placeholder for the Git product repository
+you want the host to work on.
 
 For the full first-run path, continue with the [Quickstart](quickstart.md). For
 host-specific details, see [Agent Host Setup](../guides/agent-host-setup.md).

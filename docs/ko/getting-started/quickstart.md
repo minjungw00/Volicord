@@ -11,14 +11,18 @@ Agent Connection 의미는 [Agent Connection 참조](../reference/agent-connecti
 
 ```sh
 cargo build --workspace --bins
-./target/debug/volicord setup --link-bin ~/.local/bin
-cd /work/acme-api
+export PATH="$PWD/target/debug:$PATH"
+volicord setup
+cd /path/to/your-product-repo
 volicord connect codex
 ```
 
-Volicord는 현재 디렉터리에서 저장소를 감지하고 첫 호스트 연결에는 일반 CLI 기본값을
-사용합니다. 정확한 프로젝트 이름, 연결 기본값, 내부 식별 정보 동작은 [관리 CLI
-참조](../reference/admin-cli.md)가 담당합니다.
+`export PATH=...` 줄은 현재 터미널 세션에만 영향을 주며, 그 셸에서 방금 빌드한
+`volicord`와 `volicord-mcp` 명령을 찾을 수 있게 합니다.
+`/path/to/your-product-repo`는 호스트가 작업할 Git 제품 저장소를 가리키는 자리표시자입니다.
+Volicord는 현재 디렉터리에서 그 저장소를 감지하고 첫 호스트 연결에는 일반 CLI
+기본값을 사용합니다. 정확한 프로젝트 이름, 연결 기본값, 내부 식별 정보 동작은
+[관리 CLI 참조](../reference/admin-cli.md)가 담당합니다.
 
 ## 설정 확인하기
 
@@ -52,7 +56,7 @@ volicord connect codex --read-only
 현재 디렉터리가 연결하려는 저장소가 아닐 때만 `--repo PATH`를 사용합니다.
 
 ```sh
-volicord connect codex --repo /work/acme-api
+volicord connect codex --repo /path/to/your-product-repo
 ```
 
 ## 연결 조회 또는 변경하기

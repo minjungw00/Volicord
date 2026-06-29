@@ -11,14 +11,18 @@ meaning belongs to [Agent Connection Reference](../reference/agent-connection.md
 
 ```sh
 cargo build --workspace --bins
-./target/debug/volicord setup --link-bin ~/.local/bin
-cd /work/acme-api
+export PATH="$PWD/target/debug:$PATH"
+volicord setup
+cd /path/to/your-product-repo
 volicord connect codex
 ```
 
-Volicord detects the repository from the current directory and uses the normal
-CLI defaults for a first host connection. Exact project naming, connection
-defaults, and internal identity behavior belong to
+The `export PATH=...` line affects only the current terminal session and lets
+that shell find the freshly built `volicord` and `volicord-mcp` commands.
+`/path/to/your-product-repo` is a placeholder for the Git product repository
+you want the host to work on. Volicord detects that repository from the current
+directory and uses the normal CLI defaults for a first host connection. Exact
+project naming, connection defaults, and internal identity behavior belong to
 [Administrative CLI Reference](../reference/admin-cli.md).
 
 ## Confirm The Setup
@@ -55,7 +59,7 @@ Use `--repo PATH` only when the current directory is not the repository you want
 to connect:
 
 ```sh
-volicord connect codex --repo /work/acme-api
+volicord connect codex --repo /path/to/your-product-repo
 ```
 
 ## Inspect Or Change The Connection

@@ -19,8 +19,8 @@ flowchart LR
   host["Host configuration\nCodex personal or Claude Code global"]
   mcp["volicord-mcp\none Agent Connection"]
   memberships["Connection Projects"]
-  a["acme-api\n/work/acme-api"]
-  b["billing-api\n/work/billing-api"]
+  a["acme-api\n/path/to/acme-api"]
+  b["billing-api\n/path/to/billing-api"]
 
   host -- "starts one adapter" --> mcp
   mcp -- "uses explicit membership" --> memberships
@@ -40,12 +40,14 @@ This topology fits host-level configuration:
 
 Project-shared and host-local connections remain single-repository flows.
 
+The paths below are placeholders for your own Git product repositories.
+
 ## Connect The First Repository
 
 From the first product repository:
 
 ```sh
-cd /work/acme-api
+cd /path/to/acme-api
 volicord connect codex
 volicord connection status codex
 ```
@@ -53,7 +55,7 @@ volicord connection status codex
 For Claude Code global configuration:
 
 ```sh
-cd /work/acme-api
+cd /path/to/acme-api
 volicord connect claude-code --global
 volicord connection status claude-code --global
 ```
@@ -67,7 +69,7 @@ stores internal registry identities in the Runtime Home.
 Run the same host and intent from the second repository:
 
 ```sh
-cd /work/billing-api
+cd /path/to/billing-api
 volicord connect codex
 volicord connection status codex
 ```
@@ -75,8 +77,8 @@ volicord connection status codex
 Or select it explicitly:
 
 ```sh
-volicord connect codex --repo /work/billing-api
-volicord connection status codex --repo /work/billing-api
+volicord connect codex --repo /path/to/billing-api
+volicord connection status codex --repo /path/to/billing-api
 ```
 
 For the same host-level target, Volicord reuses the matching Agent Connection
@@ -88,8 +90,8 @@ operator to handle the internal connection identity.
 ```sh
 volicord connections
 volicord connection verify codex
-volicord connection status codex --repo /work/acme-api
-volicord connection status codex --repo /work/billing-api
+volicord connection status codex --repo /path/to/acme-api
+volicord connection status codex --repo /path/to/billing-api
 ```
 
 If verification reports `action_required`, complete the named host-owned trust,
@@ -132,7 +134,7 @@ metadata such as `request_id`, `idempotency_key`, `expected_state_version`,
 From the repository to remove:
 
 ```sh
-cd /work/billing-api
+cd /path/to/billing-api
 volicord connection remove codex --dry-run
 volicord connection remove codex
 ```
@@ -140,8 +142,8 @@ volicord connection remove codex
 Or select it explicitly:
 
 ```sh
-volicord connection remove codex --repo /work/billing-api --dry-run
-volicord connection remove codex --repo /work/billing-api
+volicord connection remove codex --repo /path/to/billing-api --dry-run
+volicord connection remove codex --repo /path/to/billing-api
 ```
 
 Removing one repository removes that repository's Connection Projects

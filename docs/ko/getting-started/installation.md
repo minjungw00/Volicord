@@ -30,12 +30,21 @@ cargo build --workspace --bins
 그다음 설치 프로필을 만듭니다.
 
 ```sh
-./target/debug/volicord setup --link-bin ~/.local/bin
+export PATH="$PWD/target/debug:$PATH"
+volicord setup
 ```
 
+`export PATH=...` 줄은 현재 터미널 세션에만 영향을 줍니다. 이 줄은 그 셸에서 방금
+빌드한 `volicord`와 `volicord-mcp` 명령을 찾을 수 있게 합니다.
 `volicord setup`은 선택된 `Volicord Runtime Home`을 만들거나 검증하고 설치
 프로필을 저장합니다. 정확한 `volicord setup` 옵션, MCP 명령 찾기 순서, 출력 동작은
 [관리 CLI 참조](../reference/admin-cli.md#runtime-home-selection)가 담당합니다.
+
+이 소스 빌드에서 지속적인 명령 링크를 원한다면 `--link-bin`과 함께 setup을 실행합니다.
+
+```sh
+volicord setup --link-bin ~/.local/bin
+```
 
 `--link-bin`이 제공되면 setup은 가능할 때 그 디렉터리에 `volicord`와
 `volicord-mcp` 명령을 모두 준비합니다. CLI는 필요한 `PATH` 동작을 보고할 수는
@@ -80,9 +89,11 @@ Volicord가 저장하며 첫 설정 입력이 아닙니다.
 제품 저장소로 이동해 호스트를 연결합니다.
 
 ```sh
-cd /work/acme-api
+cd /path/to/your-product-repo
 volicord connect codex
 ```
+
+`/path/to/your-product-repo`는 호스트가 작업할 Git 제품 저장소를 가리키는 자리표시자입니다.
 
 전체 첫 실행 경로는 [빠른 시작](quickstart.md)을 계속 읽습니다. 호스트별
 세부사항은 [에이전트 호스트 설정](../guides/agent-host-setup.md)을 봅니다.
