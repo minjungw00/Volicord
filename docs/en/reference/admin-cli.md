@@ -102,35 +102,40 @@ Not supported:
 <a id="runtime-home-selection"></a>
 ## Setup and Runtime Home
 
-`volicord setup` establishes the local setup profile. Setup is the only
-baseline command that directly selects the Runtime Home path or MCP command
-location.
+`volicord setup` establishes the local installation profile. It creates or
+verifies the selected Runtime Home and stores the command paths later
+administrative, Agent Connection, export, and MCP process flows use. Setup is
+the only baseline command that directly selects the Runtime Home path or MCP
+command location.
 
 Arguments:
 
 | Argument | Meaning |
 |---|---|
 | `--home PATH` | Selects the `Volicord Runtime Home`. Omission uses the platform default local runtime location. The selected path must satisfy the Runtime Home/Product Repository separation contract before project state is used. |
-| `--link-bin PATH` | Installs or updates a user-selected command link for the `volicord` executable. The command reports the target path and refuses unsafe replacement. |
-| `--mcp-command PATH` | Stores the command that managed host configuration and generic exports should use to start `volicord-mcp`. Omission discovers the sibling `volicord-mcp` next to the running `volicord` executable, then a command on `PATH`. |
+| `--link-bin PATH` | Installs or updates user-selected command links for both `volicord` and `volicord-mcp` when feasible. The command reports each target path and refuses unsafe replacement. |
+| `--mcp-command PATH` | Stores the command that managed host configuration and generic exports should use to start `volicord-mcp`. Discovery order is explicit `--mcp-command PATH` when supplied, then a sibling `volicord-mcp` next to the running `volicord` executable, then a command on `PATH`. |
 | `--json` | Selects machine-readable output. |
 
 Setup effects:
 
 - creates or validates the Runtime Home registry
-- records Runtime Home identity and setup profile metadata
-- records the selected MCP command location for later `connect`, `doctor`, and
-  export flows
-- may update the command link named by `--link-bin`
+- records Runtime Home identity and installation profile metadata
+- records the selected `volicord` and `volicord-mcp` command locations for
+  later `connect`, `doctor`, export, and MCP startup flows
+- may update the command links named by `--link-bin` for both executable roles
+- reports a `PATH` action when a link directory is not visible to the current
+  process; it cannot permanently modify the parent shell environment
 - does not register a project unless a separate project or connection command
   selects a repository
 - does not create a public Volicord API method or record a user-owned judgment
 
 `volicord doctor` is the read-oriented diagnostic command for the setup profile.
-It verifies the Runtime Home registry, storage profile availability, MCP command
-readiness, command-link readiness when present, and current repository detection
-when a working directory is available. It does not create projects, install host
-configuration, change connection mode, or answer user judgments.
+It verifies Runtime Home access, registry schema, installation profile presence,
+stored command readiness, and command-link or shim readiness when link metadata
+is present. It reports supported host detection as a connection-verification
+concern. It does not create projects, install host configuration, change
+connection mode, or answer user judgments.
 
 ## Project commands
 
@@ -198,6 +203,13 @@ Ordinary CLI flows do not expose a server-name option. A generated host
 configuration may contain an internal connection id, server name, and command
 arguments so that the host can start `volicord-mcp`; those values are not user
 authority tokens and are not required as text-mode command inputs.
+
+Ordinary `volicord connect` commands use the saved profile in the resolved
+Runtime Home instead of asking for an MCP command path or Runtime Home path.
+Personal, local, or user-wide host configuration may carry that Runtime Home as
+`VOLICORD_HOME`. Shared project host configuration must not embed a personal
+Runtime Home path; it uses `volicord-mcp` as a command name that the future host
+environment must resolve through `PATH`.
 
 <a id="volicord-agent-install"></a>
 ## Agent Connection commands

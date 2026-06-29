@@ -26,8 +26,8 @@ volicord connect codex
 일어나는 일:
 
 - `volicord setup`은 기본 `Volicord Runtime Home`을 준비하고, setup 프로필을
-  기록하고, `volicord-mcp`를 찾으며, 사용자가 고른 bin 디렉터리에 `volicord`
-  링크를 만들 수 있습니다.
+  기록하고, `volicord-mcp`를 찾으며, 사용자가 고른 bin 디렉터리에 `volicord`와
+  `volicord-mcp` 명령을 준비할 수 있습니다.
 - `volicord connect codex`는 현재 디렉터리에서 Git 저장소 루트를 감지하고, 해당
   저장소 프로젝트를 등록하거나 재사용하며, 저장소 디렉터리에서 프로젝트 이름을
   파생하고, 일치하는 `Agent Connection`을 만들거나 갱신한 뒤 관리 호스트 설정을
@@ -44,6 +44,9 @@ volicord connection status codex
 volicord connection verify codex
 ```
 
+`--link-bin`으로 setup한 뒤 셸이 `volicord`를 찾지 못하면 그 링크 디렉터리를 셸
+설정에 추가하고 새 셸이나 MCP 호스트를 시작합니다.
+
 명령이 `action_required`를 보고하면 이름 붙은 호스트 소유 trust, approval,
 reload, restart, setup repair 동작을 완료한 뒤 관련 status 또는 verification
 명령을 다시 실행합니다.
@@ -52,8 +55,8 @@ reload, restart, setup repair 동작을 완료한 뒤 관련 status 또는 verif
 
 | 영역 | 사용자가 제공하는 것 | Volicord가 관리하는 것 |
 |---|---|---|
-| Setup 프로필 | 실행한 `volicord` 실행 파일, 선택적으로 링크 디렉터리. | Runtime Home 준비 상태, 저장된 MCP 명령, setup 진단. |
-| Runtime Home | 보통 없음. `VOLICORD_HOME`이나 setup 옵션이 다른 경로를 고르지 않으면 기본값을 사용합니다. | Registry 상태, 프로젝트 상태, Agent Connection 기록, 아티팩트, setup 메타데이터. |
+| Setup 프로필 | 실행한 `volicord` 실행 파일, 선택적으로 setup 때 지정하는 링크 디렉터리나 명시적 `volicord-mcp` 경로. | Runtime Home 준비 상태, 저장된 `volicord`와 `volicord-mcp` 명령, setup 진단. |
+| Runtime Home | 보통 없음. `VOLICORD_HOME`이나 `volicord setup --home`이 다른 경로를 고르지 않으면 기본값을 사용합니다. | Registry 상태, 프로젝트 상태, Agent Connection 기록, 아티팩트, setup 메타데이터. |
 | 저장소 프로젝트 | 보통 현재 디렉터리인 Git 저장소 경로. | 프로젝트 등록, 저장소 디렉터리에서 파생한 사용자 대상 프로젝트 이름, 내부 프로젝트 ID. |
 | Agent Connection | 호스트와 의도. 예: `codex`, `claude-code --shared`, `claude-code --global`. | 호스트 설정, 연결 모드, 프로젝트 멤버십, 연결 ID, 검증 상태, 필요한 사용자 동작. |
 | MCP 설정 내보내기 | Volicord가 직접 관리하지 않는 호스트를 위한 선택적 출력 경로. | 선택된 저장소와 setup 프로필에 묶인 호스트 중립 MCP 설정. |

@@ -27,8 +27,8 @@ volicord connect codex
 What happens:
 
 - `volicord setup` prepares the default `Volicord Runtime Home`, records the
-  setup profile, discovers `volicord-mcp`, and can link `volicord` into a bin
-  directory you choose.
+  setup profile, discovers `volicord-mcp`, and can prepare both `volicord` and
+  `volicord-mcp` commands in a bin directory you choose.
 - `volicord connect codex` detects the Git repository root from the current
   directory, registers or reuses that repository project, derives the project
   name from the repository directory, creates or updates the matching
@@ -46,6 +46,9 @@ volicord connection status codex
 volicord connection verify codex
 ```
 
+If your shell cannot find `volicord` after setup with `--link-bin`, add that
+link directory to your shell configuration and start a new shell or MCP host.
+
 If a command reports `action_required`, complete the named host-owned trust,
 approval, reload, restart, or setup repair action, then rerun the relevant
 status or verification command.
@@ -54,8 +57,8 @@ status or verification command.
 
 | Area | What you provide | What Volicord manages |
 |---|---|---|
-| Setup profile | The `volicord` executable you run, and optionally a link directory. | Runtime Home readiness, the stored MCP command, and setup diagnostics. |
-| Runtime Home | Usually nothing; the default is used unless `VOLICORD_HOME` or setup options select another path. | Registry state, project state, Agent Connection records, artifacts, and setup metadata. |
+| Setup profile | The `volicord` executable you run, and optionally a link directory or explicit `volicord-mcp` path during setup. | Runtime Home readiness, the stored `volicord` and `volicord-mcp` commands, and setup diagnostics. |
+| Runtime Home | Usually nothing; the default is used unless `VOLICORD_HOME` or `volicord setup --home` selects another path. | Registry state, project state, Agent Connection records, artifacts, and setup metadata. |
 | Repository project | A Git repository path, usually the current directory. | Project registration, a user-facing project name derived from the repository directory, and internal project ids. |
 | Agent Connection | Host and intent: for example `codex`, `claude-code --shared`, or `claude-code --global`. | Host configuration, connection mode, project membership, connection ids, verification state, and required user actions. |
 | MCP config export | An optional output path for hosts Volicord does not manage directly. | A host-neutral MCP config bound to the selected repository and setup profile. |

@@ -33,9 +33,15 @@ cargo build --workspace --bins
 ./target/debug/volicord setup --link-bin ~/.local/bin
 ```
 
-`volicord setup`은 기본 `Volicord Runtime Home`을 준비하고, `volicord-mcp`를
-찾고, setup 프로필을 기록하며, `--link-bin`이 제공되면 `volicord` 명령 링크를
-만듭니다. `~/.local/bin`이 아직 셸 `PATH`에 없다면 추가합니다.
+`volicord setup`은 선택된 `Volicord Runtime Home`을 만들거나 검증하고,
+`volicord-mcp`를 찾은 뒤 setup 프로필을 저장합니다. MCP 명령 찾기는 명시적
+`--mcp-command PATH`가 제공되면 그 값을 먼저 확인하고, 그다음 실행 중인
+`volicord` 옆의 `volicord-mcp`, 그다음 `PATH`를 확인합니다.
+
+`--link-bin`이 제공되면 setup은 가능할 때 그 디렉터리에 `volicord`와
+`volicord-mcp` 명령을 모두 준비합니다. CLI는 필요한 `PATH` 동작을 보고할 수는
+있지만 부모 셸 환경을 영구적으로 수정할 수 없습니다. `~/.local/bin`이 아직 셸
+설정에 없다면 추가한 뒤, 그 환경에서 새 셸이나 MCP 호스트를 시작합니다.
 
 Setup 준비 상태를 확인합니다.
 
@@ -43,9 +49,9 @@ Setup 준비 상태를 확인합니다.
 volicord doctor
 ```
 
-Runtime Home, setup 프로필, MCP 명령이 준비되면 `doctor`가 `complete`를
-보고합니다. `action_required`는 setup 재실행이나 실행 파일 경로 수정처럼 구체적인
-로컬 복구 동작을 찾았다는 뜻입니다.
+Runtime Home, setup 프로필, 저장된 명령 경로, 적용되는 명령 링크를 사용할 수 있으면
+`doctor`가 `complete`를 보고합니다. `action_required`는 setup 재실행이나 실행 파일
+경로 수정처럼 구체적인 로컬 복구 동작을 찾았다는 뜻입니다.
 
 ## 설치된 실행 파일 사용하기
 
@@ -56,9 +62,11 @@ volicord setup
 volicord doctor
 ```
 
-Setup은 실행 중인 설치에서 MCP 명령을 찾습니다. 기본값이 아닌 Runtime Home이나
-MCP 실행 파일 위치를 의도적으로 선택할 때만 setup 옵션을 사용합니다. 일반적인 첫
-연결 명령에서 내부 호스트와 registry 값은 Volicord가 관리합니다.
+Setup은 실행 중인 설치에서 sibling 조회나 `PATH` 조회로 MCP 명령을 찾습니다.
+사용하려는 `volicord-mcp` 실행 파일을 찾을 수 없을 때만
+`volicord setup --mcp-command PATH`를 사용합니다. 일반 `volicord connect` 명령은
+해석된 Runtime Home에 저장된 setup 프로필을 사용하며 MCP 명령 경로, Runtime Home
+경로, 프로젝트 ID, 내부 호스트 값, registry 값을 묻지 않습니다.
 
 ## Setup이 하지 않는 일
 

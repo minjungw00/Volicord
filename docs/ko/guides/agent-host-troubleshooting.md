@@ -40,6 +40,10 @@ volicord doctor
 volicord doctor
 ```
 
+그래도 `volicord`를 찾지 못하면 링크 디렉터리를 셸 설정에 추가하고 새 셸이나 MCP
+호스트를 시작합니다. Setup은 필요한 `PATH` 동작을 보고할 수 있지만 부모 셸을
+영구적으로 바꿀 수는 없습니다.
+
 Runtime Home 파일을 직접 만들지 않습니다. Registry와 setup 프로필이 함께 만들어지도록
 setup을 사용합니다.
 
@@ -139,6 +143,8 @@ volicord connection verify codex
 
 Setup은 관리 호스트 설정과 generic export가 사용할 MCP 명령을 기록하는 위치입니다.
 일반 `connect` 명령은 사용자가 MCP 명령 경로를 전달하도록 요구하지 않습니다.
+실행 파일이 sibling 조회나 `PATH`로 찾을 수 없는 위치에 설치되어 있다면
+`--mcp-command PATH`로 setup을 다시 실행합니다.
 
 ## Shared 연결에 호스트 승인이 필요함
 

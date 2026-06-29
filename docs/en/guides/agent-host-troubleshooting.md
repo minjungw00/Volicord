@@ -41,6 +41,10 @@ If you built from source and want a command link:
 volicord doctor
 ```
 
+If `volicord` is still not found, add the link directory to your shell
+configuration and start a new shell or MCP host. Setup can report the required
+`PATH` action, but it cannot permanently change the parent shell.
+
 Do not create Runtime Home files by hand. Use setup so the registry and setup
 profile are created together.
 
@@ -143,7 +147,9 @@ volicord connection verify codex
 
 Setup is the place that records the MCP command used by managed host
 configuration and generic exports. Ordinary `connect` commands do not ask users
-to pass an MCP command path.
+to pass an MCP command path. If the executable is installed somewhere setup
+cannot discover by sibling lookup or `PATH`, rerun setup with
+`--mcp-command PATH`.
 
 ## Shared Connection Needs Host Approval
 

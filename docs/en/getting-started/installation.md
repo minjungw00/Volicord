@@ -36,10 +36,16 @@ Then create the setup profile:
 ./target/debug/volicord setup --link-bin ~/.local/bin
 ```
 
-`volicord setup` prepares the default `Volicord Runtime Home`, discovers
-`volicord-mcp`, records the setup profile, and links the `volicord` command when
-`--link-bin` is supplied. Add `~/.local/bin` to your shell `PATH` if it is not
-already there.
+`volicord setup` creates or verifies the selected `Volicord Runtime Home`, finds
+`volicord-mcp`, and saves the setup profile. MCP command discovery checks an
+explicit `--mcp-command PATH` first when supplied, then a sibling
+`volicord-mcp` next to the running `volicord`, then `PATH`.
+
+When `--link-bin` is supplied, setup prepares both `volicord` and
+`volicord-mcp` commands in that directory when feasible. The CLI can report the
+needed `PATH` action, but it cannot permanently edit the parent shell
+environment. Add `~/.local/bin` to your shell configuration if it is not already
+there, then start new shells or MCP hosts from that environment.
 
 Check setup readiness:
 
@@ -47,9 +53,10 @@ Check setup readiness:
 volicord doctor
 ```
 
-`doctor` reports `complete` when the Runtime Home, setup profile, and MCP
-command are ready. `action_required` means the command found a specific local
-repair action, such as rerunning setup or fixing an executable path.
+`doctor` reports `complete` when the Runtime Home, setup profile, stored command
+paths, and applicable command links are usable. `action_required` means the
+command found a specific local repair action, such as rerunning setup or fixing
+an executable path.
 
 ## Use Installed Executables
 
@@ -60,10 +67,12 @@ volicord setup
 volicord doctor
 ```
 
-Setup discovers the MCP command from the running installation. Use setup options
-only when you intentionally need a non-default Runtime Home or MCP executable
-location. Ordinary first-time connection commands do not require project ids,
-internal host or registry values.
+Setup discovers the MCP command from the running installation by sibling lookup
+or `PATH` lookup. Use `volicord setup --mcp-command PATH` only when discovery
+cannot find the `volicord-mcp` executable you intend to use. Ordinary
+`volicord connect` commands use the saved setup profile in the resolved Runtime
+Home; they do not ask for an MCP command path, Runtime Home path, project id,
+internal host value, or registry value.
 
 ## What Setup Does Not Do
 
