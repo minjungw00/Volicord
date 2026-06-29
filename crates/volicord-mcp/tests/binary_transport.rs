@@ -105,20 +105,12 @@ fn volicord_mcp_stdio_uses_line_delimited_json_and_reconnects_state() -> Result<
         request(2, "ping", json!({})),
         request(3, "tools/list", json!({})),
         tools_call(30, "volicord.list_projects", json!({})),
-        tools_call(
-            4,
-            "volicord.status",
-            status_arguments(None, "req_binary_status"),
-        ),
-        tools_call(
-            5,
-            "volicord.intake",
-            intake_arguments(None, "req_binary_intake", "idem_binary_intake"),
-        ),
+        tools_call(4, "volicord.status", status_arguments(None)),
+        tools_call(5, "volicord.intake", intake_arguments(None)),
         tools_call(
             6,
             "volicord.status",
-            status_arguments_with_connection_id(None, "forged_connection", "req_binary_rejected"),
+            status_arguments_with_connection_id(None, "forged_connection"),
         ),
         tools_call(7, "volicord.status", json!({ "unexpected": true })),
     ])?;
@@ -171,7 +163,7 @@ fn volicord_mcp_stdio_uses_line_delimited_json_and_reconnects_state() -> Result<
     assert_eq!(project_list["connection_id"], fixture.connection_id());
     assert_eq!(project_list["mode"], "workflow");
     assert_eq!(
-        project_list["projects"][0]["project_id"],
+        project_list["projects"][0]["project_selector"],
         fixture.project_id()
     );
     assert_eq!(project_list["projects"][0]["available"], true);
@@ -200,7 +192,7 @@ fn volicord_mcp_stdio_uses_line_delimited_json_and_reconnects_state() -> Result<
     let tool_error = responses[&7]["result"]["content"][0]["text"]
         .as_str()
         .expect("invalid known-tool arguments should return text content");
-    assert!(tool_error.contains("envelope object"));
+    assert!(tool_error.contains("unknown field"));
 
     let reconnect_before_handshake = run_child(
         fixture.connection_command(["--connection", fixture.connection_id()]),
@@ -219,7 +211,7 @@ fn volicord_mcp_stdio_uses_line_delimited_json_and_reconnects_state() -> Result<
         tools_call(
             12,
             "volicord.status",
-            status_arguments(Some(fixture.project_id()), "req_binary_reconnect_status"),
+            status_arguments(Some(fixture.project_id())),
         ),
     ])?;
     let reconnect = run_child(
@@ -266,8 +258,6 @@ fn volicord_mcp_binary_suppresses_malformed_notification_output_and_effects(
                 "name": "volicord.intake",
                 "arguments": intake_arguments(
                     Some(fixture.project_id()),
-                    "req_binary_notification_intake",
-                    "idem_binary_notification_intake",
                 )
             }),
         ),
@@ -276,7 +266,7 @@ fn volicord_mcp_binary_suppresses_malformed_notification_output_and_effects(
         tools_call(
             4,
             "volicord.status",
-            status_arguments(Some(fixture.project_id()), "req_binary_notification_status"),
+            status_arguments(Some(fixture.project_id())),
         ),
     ])?;
 
@@ -409,29 +399,18 @@ fn tools_call(id: u64, name: &str, arguments: Value) -> Value {
     )
 }
 
-fn status_arguments(project_id: Option<&str>, request_id: &str) -> Value {
-    json!({
-        "envelope": envelope(
-            project_id,
-            request_id,
-            Value::Null,
-            Value::Null
-        ),
-        "include": {
-            "task": true,
-            "pending_user_judgments": true,
-            "write_check": false,
-            "evidence": false,
-            "close": true,
-            "guarantees": true,
-            "continuity": false
-        }
-    })
+fn status_arguments(project_selector: Option<&str>) -> Value {
+    let mut arguments = json!({
+        "detail": "workflow"
+    });
+    if let Some(project_selector) = project_selector {
+        arguments["project_selector"] = json!(project_selector);
+    }
+    arguments
 }
 
-fn intake_arguments(project_id: Option<&str>, request_id: &str, idempotency_key: &str) -> Value {
-    json!({
-        "envelope": envelope(project_id, request_id, json!(idempotency_key), json!(0)),
+fn intake_arguments(project_selector: Option<&str>) -> Value {
+    let mut arguments = json!({
         "plain_language_request": "Exercise the compiled MCP stdio binary.",
         "requested_mode": "work",
         "resume_policy": "create_new",
@@ -441,37 +420,20 @@ fn intake_arguments(project_id: Option<&str>, request_id: &str, idempotency_key:
             "acceptance_criteria": ["The stdio process records one task."]
         },
         "initial_context_refs": []
-    })
-}
-
-fn status_arguments_with_connection_id(
-    project_id: Option<&str>,
-    connection_id: &str,
-    request_id: &str,
-) -> Value {
-    let mut arguments = status_arguments(project_id, request_id);
-    arguments["envelope"]["connection_id"] = json!(connection_id);
+    });
+    if let Some(project_selector) = project_selector {
+        arguments["project_selector"] = json!(project_selector);
+    }
     arguments
 }
 
-fn envelope(
-    project_id: Option<&str>,
-    request_id: &str,
-    idempotency_key: Value,
-    expected_state_version: Value,
+fn status_arguments_with_connection_id(
+    project_selector: Option<&str>,
+    connection_id: &str,
 ) -> Value {
-    let mut value = json!({
-        "task_id": null,
-        "request_id": request_id,
-        "idempotency_key": idempotency_key,
-        "expected_state_version": expected_state_version,
-        "dry_run": false,
-        "locale": "en-US"
-    });
-    if let Some(project_id) = project_id {
-        value["project_id"] = json!(project_id);
-    }
-    value
+    let mut arguments = status_arguments(project_selector);
+    arguments["connection_id"] = json!(connection_id);
+    arguments
 }
 
 fn json_lines(messages: &[Value]) -> Result<String, serde_json::Error> {

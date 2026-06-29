@@ -324,18 +324,22 @@ The supported lifecycle notification is `notifications/initialized`.
 
 ## Tool Discovery And `tools/call` Response Wrapping
 
-After the connection is ready, `tools/list` exposes tools according to the bound
-Agent Connection mode:
+After the connection is ready, `tools/list` exposes tools according to the
+current stored Agent Connection mode:
 
-| Mode | MCP-visible public method tools |
+| Mode | MCP-visible tools |
 |---|---|
-| `workflow` | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.prepare_write`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.close_task` |
-| `read_only` | `volicord.status`, `volicord.close_task` |
+| `workflow` | `volicord.list_projects`, `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.prepare_write`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.check_close`, `volicord.close_task` |
+| `read_only` | `volicord.list_projects`, `volicord.status`, `volicord.check_close` |
 
-The MCP-visible method tools are not the same thing as the public Volicord Core
-API method list. `volicord.record_user_judgment` is a public Core API method for
-the User Channel path, but it is not exposed as an Agent Connection MCP tool;
-see [API Methods](api/methods.md) for the public method owner table.
+The MCP-visible tools are not the same thing as the public Volicord Core API
+method list. `volicord.check_close` is the read-only MCP tool for close
+readiness and internally calls the Core close-readiness check path.
+`volicord.close_task` is the workflow-only MCP mutation tool and is not listed
+for `read_only` connections. `volicord.record_user_judgment` is a public Core
+API method for the User Channel path, but it is not exposed as an Agent
+Connection MCP tool; see [API Methods](api/methods.md) for the public method
+owner table.
 
 A structurally valid `tools/call` request has object `params` with:
 
@@ -347,12 +351,30 @@ non-object `arguments` are malformed method parameters and return JSON-RPC
 `-32602`. Unknown tool names are protocol errors and return JSON-RPC `-32602`.
 
 For public Volicord method tools, `tools/list` exposes MCP-visible input schemas
-derived from the public method payload shape with the Agent Connection binding
-applied. The visible schema must hide internal request envelopes, protocol
-metadata, project ids, connection ids, `actor_source`, `operation_category`, and
-verification-basis fields. If raw public method-tool arguments include
-caller-owned invocation fields at the top level or inside an envelope-like
-object, the adapter rejects the call before Core execution.
+that carry workflow-domain arguments rather than the Core request envelope. The
+visible schema must hide internal request envelopes, protocol metadata,
+`project_id`, `connection_id`, `request_id`, `idempotency_key`,
+`expected_state_version`, `dry_run`, `locale`, `actor_source`,
+`operation_category`, and verification-basis fields. If raw public method-tool
+arguments include these caller-owned internal fields, the adapter rejects the
+call before Core execution.
+
+Project selection is resolved from the Agent Connection context. When exactly
+one available project is connected, public method tools may omit project
+selection. When multiple projects are available and no host-provided repository
+root selects one project, the public arguments must include the
+`project_selector` value returned by `volicord.list_projects`; otherwise the
+adapter rejects the call with actionable ambiguity text.
+
+The MCP adapter generates the Core envelope before dispatch. It supplies
+`request_id`, `idempotency_key` for workflow effects, `expected_state_version`
+from the selected project's current state where Core freshness requires it,
+`dry_run=false`, the default locale, the selected internal project, and the
+derived invocation context. Public MCP arguments cannot override those facts.
+
+`volicord.status` uses a compact public `detail` argument instead of exposing
+the Core include matrix. Supported values are `summary`, `workflow`, and
+`full`; omitted `detail` defaults to `workflow`.
 
 For a known public Volicord method tool, object `arguments` that fail the tool
 input schema return a `CallToolResult` with `isError: true` and actionable text

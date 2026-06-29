@@ -13,6 +13,8 @@ use std::{
     fmt,
     io::{self, BufRead, Write},
     path::{Path, PathBuf},
+    sync::atomic::{AtomicU64, Ordering},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use serde::Serialize;
@@ -34,19 +36,25 @@ use volicord_store::{
     StoreError,
 };
 use volicord_types::{
-    public_request_schema, ActorSource, AgentConnectionId, AgentConnectionMode, CloseTaskRequest,
-    IntakeRequest, MethodOperationCategory, OperationCategory, PrepareWriteRequest, ProjectId,
-    RecordRunRequest, RequestUserJudgmentRequest, StageArtifactRequest, StatusRequest,
-    ToolEnvelope, UpdateScopeRequest, VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
-    VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+    mcp_request_schema, ActorSource, AgentConnectionId, AgentConnectionMode, CloseIntent,
+    CloseTaskRequest, IdempotencyKey, IntakeRequest, McpCheckCloseArguments, McpCloseTaskArguments,
+    McpIntakeArguments, McpPrepareWriteArguments, McpRecordRunArguments,
+    McpRequestUserJudgmentArguments, McpStageArtifactArguments, McpStatusArguments,
+    McpUpdateScopeArguments, MethodOperationCategory, OperationCategory, PrepareWriteRequest,
+    ProjectId, RecordRunRequest, RequestId, RequestUserJudgmentRequest, RequiredNullable,
+    StageArtifactRequest, StatusRequest, ToolEnvelope, UpdateScopeRequest,
+    VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
 
 const SUPPORTED_PROTOCOL_VERSION: &str = "2025-11-25";
 const SERVER_NAME: &str = "volicord-mcp";
 const DEFAULT_INVOCATION_BINDING_BASIS: &str = VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING;
+const DEFAULT_LOCALE: &str = "en-US";
+const CHECK_CLOSE_TOOL_NAME: &str = "volicord.check_close";
+static REQUEST_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
-/// Agent-facing public Volicord method tools exposed through workflow MCP connections.
-pub const PUBLIC_METHOD_TOOL_NAMES: [&str; 8] = [
+/// Agent-facing Volicord tools exposed through workflow MCP connections.
+pub const PUBLIC_METHOD_TOOL_NAMES: [&str; 9] = [
     "volicord.intake",
     "volicord.update_scope",
     "volicord.status",
@@ -54,17 +62,18 @@ pub const PUBLIC_METHOD_TOOL_NAMES: [&str; 8] = [
     "volicord.stage_artifact",
     "volicord.record_run",
     "volicord.request_user_judgment",
+    CHECK_CLOSE_TOOL_NAME,
     "volicord.close_task",
 ];
 
 /// Public method tools exposed through read-only MCP connections.
-pub const READ_ONLY_METHOD_TOOL_NAMES: [&str; 2] = ["volicord.status", "volicord.close_task"];
+pub const READ_ONLY_METHOD_TOOL_NAMES: [&str; 2] = ["volicord.status", CHECK_CLOSE_TOOL_NAME];
 
 /// Adapter-owned MCP utility tools that are not public Core methods.
 pub const ADAPTER_UTILITY_TOOL_NAMES: [&str; 1] = ["volicord.list_projects"];
 
 const LIST_PROJECTS_TOOL_NAME: &str = "volicord.list_projects";
-const SERVER_INSTRUCTIONS: &str = "Volicord records task scope, write readiness, evidence, runs, user-owned judgment requests, artifacts, and close readiness for explicitly registered Product Repositories. If project selection is unclear, call volicord.list_projects and use one listed project_id; do not guess from folders, roots, labels, or memory. Volicord state management is separate from permission to edit product files: product-file edits still require the host/user path and any required Write Check. These instructions are guidance, not access control or a promise of automatic tool use.";
+const SERVER_INSTRUCTIONS: &str = "Volicord records task scope, write readiness, evidence, runs, user-owned judgment requests, artifacts, and close readiness for explicitly registered Product Repositories. If project selection is unclear, call volicord.list_projects and use one listed project_selector; do not guess from folders, roots, labels, or memory. Volicord state management is separate from permission to edit product files: product-file edits still require the host/user path and any required Write Check. These instructions are guidance, not access control or a promise of automatic tool use.";
 
 /// Minimal MCP adapter marker for validating dependency direction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -234,7 +243,7 @@ struct ListProjectsResult {
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 struct ListProjectItem {
-    project_id: String,
+    project_selector: String,
     available: bool,
     unavailable_reason: Option<String>,
     repo_root: String,
@@ -280,8 +289,19 @@ impl McpAdapter {
     }
 
     /// Returns the tools exposed by this adapter's current connection mode.
-    pub fn tools(&self) -> Vec<McpToolDefinition> {
-        mcp_tools_for_mode(self.context.mode)
+    pub fn tools(&self) -> Result<Vec<McpToolDefinition>, McpAdapterError> {
+        let connection = current_enabled_connection(
+            &self.runtime_home,
+            self.context.connection_id.as_str(),
+            "tools/list",
+        )?;
+        let mode = parse_connection_mode(&connection.mode).map_err(|error| {
+            McpAdapterError::ToolExecution {
+                tool_name: "tools/list".to_owned(),
+                message: error.to_string(),
+            }
+        })?;
+        Ok(mcp_tools_for_mode(mode))
     }
 
     /// Derives local invocation facts for one decoded request envelope.
@@ -305,68 +325,316 @@ impl McpAdapter {
         params: Value,
     ) -> Result<PipelineResponse, McpAdapterError> {
         match tool_name {
-            "volicord.intake" => {
-                self.call_core_method::<IntakeRequest, _>(tool_name, params, CoreService::intake)
-            }
-            "volicord.update_scope" => self.call_core_method::<UpdateScopeRequest, _>(
-                tool_name,
-                params,
-                CoreService::update_scope,
-            ),
-            "volicord.status" => {
-                self.call_core_method::<StatusRequest, _>(tool_name, params, CoreService::status)
-            }
-            "volicord.prepare_write" => self.call_core_method::<PrepareWriteRequest, _>(
-                tool_name,
-                params,
-                CoreService::prepare_write,
-            ),
-            "volicord.stage_artifact" => self.call_core_method::<StageArtifactRequest, _>(
-                tool_name,
-                params,
-                CoreService::stage_artifact,
-            ),
-            "volicord.record_run" => self.call_core_method::<RecordRunRequest, _>(
-                tool_name,
-                params,
-                CoreService::record_run,
-            ),
-            "volicord.request_user_judgment" => self
-                .call_core_method::<RequestUserJudgmentRequest, _>(
-                    tool_name,
-                    params,
-                    CoreService::request_user_judgment,
-                ),
-            "volicord.close_task" => self.call_core_method::<CloseTaskRequest, _>(
-                tool_name,
-                params,
-                CoreService::close_task,
-            ),
+            "volicord.intake" => self.call_intake(tool_name, params),
+            "volicord.update_scope" => self.call_update_scope(tool_name, params),
+            "volicord.status" => self.call_status(tool_name, params),
+            "volicord.prepare_write" => self.call_prepare_write(tool_name, params),
+            "volicord.stage_artifact" => self.call_stage_artifact(tool_name, params),
+            "volicord.record_run" => self.call_record_run(tool_name, params),
+            "volicord.request_user_judgment" => self.call_request_user_judgment(tool_name, params),
+            CHECK_CLOSE_TOOL_NAME => self.call_check_close(tool_name, params),
+            "volicord.close_task" => self.call_close_task(tool_name, params),
             other => Err(McpAdapterError::UnknownTool(other.to_owned())),
         }
     }
 
-    fn call_core_method<T, F>(
+    fn call_intake(
         &self,
         tool_name: &str,
         params: Value,
+    ) -> Result<PipelineResponse, McpAdapterError> {
+        let prepared: PreparedMcpArguments<McpIntakeArguments> =
+            self.prepare_mcp_arguments(tool_name, params)?;
+        let envelope = self.generated_envelope(
+            tool_name,
+            &prepared.project_id,
+            None,
+            OperationCategory::AgentWorkflow,
+        )?;
+        let args = prepared.arguments;
+        self.call_core_request(
+            tool_name,
+            IntakeRequest {
+                envelope,
+                plain_language_request: args.plain_language_request,
+                requested_mode: args.requested_mode,
+                resume_policy: args.resume_policy,
+                initial_scope: args.initial_scope,
+                initial_context_refs: args.initial_context_refs,
+            },
+            CoreService::intake,
+        )
+    }
+
+    fn call_update_scope(
+        &self,
+        tool_name: &str,
+        params: Value,
+    ) -> Result<PipelineResponse, McpAdapterError> {
+        let prepared: PreparedMcpArguments<McpUpdateScopeArguments> =
+            self.prepare_mcp_arguments(tool_name, params)?;
+        let task_id = prepared.arguments.task_id.clone();
+        let envelope = self.generated_envelope(
+            tool_name,
+            &prepared.project_id,
+            Some(&task_id),
+            OperationCategory::AgentWorkflow,
+        )?;
+        let args = prepared.arguments;
+        self.call_core_request(
+            tool_name,
+            UpdateScopeRequest {
+                envelope,
+                task_id,
+                goal_summary: args.goal_summary,
+                scope_update: args.scope_update,
+                scope_boundary: args.scope_boundary,
+                non_goals: args.non_goals,
+                acceptance_criteria: args.acceptance_criteria,
+                autonomy_boundary: args.autonomy_boundary,
+                baseline_ref: args.baseline_ref,
+                change_unit: args.change_unit,
+                related_scope_decision_refs: args.related_scope_decision_refs,
+            },
+            CoreService::update_scope,
+        )
+    }
+
+    fn call_status(
+        &self,
+        tool_name: &str,
+        params: Value,
+    ) -> Result<PipelineResponse, McpAdapterError> {
+        let prepared: PreparedMcpArguments<McpStatusArguments> =
+            self.prepare_mcp_arguments(tool_name, params)?;
+        let task_id = prepared.arguments.task_id.clone();
+        let envelope = self.generated_envelope(
+            tool_name,
+            &prepared.project_id,
+            task_id.as_ref(),
+            OperationCategory::Read,
+        )?;
+        let args = prepared.arguments;
+        self.call_core_request(
+            tool_name,
+            StatusRequest {
+                envelope,
+                include: args.detail.include(),
+            },
+            CoreService::status,
+        )
+    }
+
+    fn call_prepare_write(
+        &self,
+        tool_name: &str,
+        params: Value,
+    ) -> Result<PipelineResponse, McpAdapterError> {
+        let prepared: PreparedMcpArguments<McpPrepareWriteArguments> =
+            self.prepare_mcp_arguments(tool_name, params)?;
+        let task_id = prepared.arguments.task_id.clone();
+        let envelope = self.generated_envelope(
+            tool_name,
+            &prepared.project_id,
+            task_id.as_ref(),
+            OperationCategory::AgentWorkflow,
+        )?;
+        let args = prepared.arguments;
+        self.call_core_request(
+            tool_name,
+            PrepareWriteRequest {
+                envelope,
+                task_id,
+                change_unit_id: args.change_unit_id,
+                intended_operation: args.intended_operation,
+                intended_paths: args.intended_paths,
+                product_file_write_intended: args.product_file_write_intended,
+                sensitive_categories: args.sensitive_categories,
+                baseline_ref: args.baseline_ref,
+            },
+            CoreService::prepare_write,
+        )
+    }
+
+    fn call_stage_artifact(
+        &self,
+        tool_name: &str,
+        params: Value,
+    ) -> Result<PipelineResponse, McpAdapterError> {
+        let prepared: PreparedMcpArguments<McpStageArtifactArguments> =
+            self.prepare_mcp_arguments(tool_name, params)?;
+        let task_id = prepared.arguments.task_id.clone();
+        let envelope = self.generated_envelope(
+            tool_name,
+            &prepared.project_id,
+            Some(&task_id),
+            OperationCategory::AgentWorkflow,
+        )?;
+        let args = prepared.arguments;
+        self.call_core_request(
+            tool_name,
+            StageArtifactRequest {
+                envelope,
+                task_id,
+                display_name: args.display_name,
+                content_type: args.content_type,
+                redaction_state: args.redaction_state,
+                safe_bytes_or_notice: args.safe_bytes_or_notice,
+                expected_sha256: args.expected_sha256,
+                expected_size_bytes: args.expected_size_bytes,
+                relation_hint: args.relation_hint,
+            },
+            CoreService::stage_artifact,
+        )
+    }
+
+    fn call_record_run(
+        &self,
+        tool_name: &str,
+        params: Value,
+    ) -> Result<PipelineResponse, McpAdapterError> {
+        let prepared: PreparedMcpArguments<McpRecordRunArguments> =
+            self.prepare_mcp_arguments(tool_name, params)?;
+        let task_id = prepared.arguments.task_id.clone();
+        let envelope = self.generated_envelope(
+            tool_name,
+            &prepared.project_id,
+            Some(&task_id),
+            OperationCategory::AgentWorkflow,
+        )?;
+        let args = prepared.arguments;
+        self.call_core_request(
+            tool_name,
+            RecordRunRequest {
+                envelope,
+                task_id,
+                change_unit_id: args.change_unit_id,
+                kind: args.kind,
+                run_id: args.run_id,
+                baseline_ref: args.baseline_ref,
+                write_check_id: args.write_check_id,
+                summary: args.summary,
+                observed_changes: args.observed_changes,
+                artifact_inputs: args.artifact_inputs,
+                evidence_updates: args.evidence_updates,
+                evidence_observations: args.evidence_observations,
+                close_assessment: args.close_assessment,
+            },
+            CoreService::record_run,
+        )
+    }
+
+    fn call_request_user_judgment(
+        &self,
+        tool_name: &str,
+        params: Value,
+    ) -> Result<PipelineResponse, McpAdapterError> {
+        let prepared: PreparedMcpArguments<McpRequestUserJudgmentArguments> =
+            self.prepare_mcp_arguments(tool_name, params)?;
+        let task_id = prepared.arguments.task_id.clone();
+        let envelope = self.generated_envelope(
+            tool_name,
+            &prepared.project_id,
+            Some(&task_id),
+            OperationCategory::AgentWorkflow,
+        )?;
+        let args = prepared.arguments;
+        self.call_core_request(
+            tool_name,
+            RequestUserJudgmentRequest {
+                envelope,
+                task_id,
+                change_unit_id: args.change_unit_id,
+                sensitive_action_scope: args.sensitive_action_scope,
+                judgment_kind: args.judgment_kind,
+                presentation: args.presentation,
+                question: args.question,
+                options: args.options,
+                context: args.context,
+                affected_refs: args.affected_refs,
+                required_for: args.required_for,
+                expires_at: args.expires_at,
+            },
+            CoreService::request_user_judgment,
+        )
+    }
+
+    fn call_check_close(
+        &self,
+        tool_name: &str,
+        params: Value,
+    ) -> Result<PipelineResponse, McpAdapterError> {
+        let prepared: PreparedMcpArguments<McpCheckCloseArguments> =
+            self.prepare_mcp_arguments(tool_name, params)?;
+        let task_id = prepared.arguments.task_id.clone();
+        let envelope = self.generated_envelope(
+            tool_name,
+            &prepared.project_id,
+            Some(&task_id),
+            OperationCategory::Read,
+        )?;
+        self.call_core_request(
+            tool_name,
+            CloseTaskRequest {
+                envelope,
+                task_id,
+                intent: CloseIntent::Check,
+                close_reason: RequiredNullable::null(),
+                superseding_task_id: RequiredNullable::null(),
+                user_note: RequiredNullable::null(),
+            },
+            CoreService::close_task,
+        )
+    }
+
+    fn call_close_task(
+        &self,
+        tool_name: &str,
+        params: Value,
+    ) -> Result<PipelineResponse, McpAdapterError> {
+        let prepared: PreparedMcpArguments<McpCloseTaskArguments> =
+            self.prepare_mcp_arguments(tool_name, params)?;
+        let task_id = prepared.arguments.task_id.clone();
+        let envelope = self.generated_envelope(
+            tool_name,
+            &prepared.project_id,
+            Some(&task_id),
+            OperationCategory::AgentWorkflow,
+        )?;
+        let args = prepared.arguments;
+        self.call_core_request(
+            tool_name,
+            CloseTaskRequest {
+                envelope,
+                task_id,
+                intent: args.intent.into(),
+                close_reason: args.close_reason,
+                superseding_task_id: args.superseding_task_id,
+                user_note: args.user_note,
+            },
+            CoreService::close_task,
+        )
+    }
+
+    fn call_core_request<T, F>(
+        &self,
+        tool_name: &str,
+        request: T,
         call: F,
     ) -> Result<PipelineResponse, McpAdapterError>
     where
-        T: serde::de::DeserializeOwned + MethodOperationCategory + HasEnvelope,
+        T: MethodOperationCategory + HasEnvelope,
         F: FnOnce(
             &CoreService,
             T,
             InvocationContext,
         ) -> Result<PipelineResponse, CorePipelineError>,
     {
-        let prepared: PreparedCoreRequest<T> = self.prepare_typed_request(tool_name, params)?;
-        call(
-            &self.core,
-            prepared.request,
-            prepared.invocation.core_invocation(),
-        )
-        .map_err(McpAdapterError::Core)
+        let operation_category = request.operation_category();
+        self.ensure_mode_allows(tool_name, operation_category)?;
+        let invocation =
+            self.derive_invocation_context(request_envelope(&request), operation_category);
+        call(&self.core, request, invocation.core_invocation()).map_err(McpAdapterError::Core)
     }
 
     fn call_adapter_tool(&self, tool_name: &str, params: Value) -> Result<Value, McpAdapterError> {
@@ -404,7 +672,7 @@ impl McpAdapter {
             .iter()
             .map(|project| inspect_allowed_project(&self.runtime_home, project))
             .map(|project| ListProjectItem {
-                project_id: project.project_id,
+                project_selector: project.project_id,
                 available: project.available,
                 unavailable_reason: project.unavailable_reason,
                 repo_root: project.repo_root_display,
@@ -424,60 +692,75 @@ impl McpAdapter {
         })
     }
 
-    fn prepare_typed_request<T>(
+    fn prepare_mcp_arguments<T>(
         &self,
         tool_name: &str,
         params: Value,
-    ) -> Result<PreparedCoreRequest<T>, McpAdapterError>
+    ) -> Result<PreparedMcpArguments<T>, McpAdapterError>
     where
-        T: serde::de::DeserializeOwned + MethodOperationCategory + HasEnvelope,
+        T: serde::de::DeserializeOwned,
     {
-        let prepared_params = self.prepare_connection_arguments(tool_name, params)?;
-        let request: T = self.decode_params(tool_name, prepared_params)?;
-        if request.method_name().as_str() != tool_name {
-            return Err(McpAdapterError::ToolExecution {
+        let object = params
+            .as_object()
+            .ok_or_else(|| McpAdapterError::ToolExecution {
                 tool_name: tool_name.to_owned(),
-                message: "decoded request method does not match MCP tool name".to_owned(),
-            });
-        }
-        let operation_category = request.operation_category();
-        self.ensure_mode_allows(tool_name, operation_category)?;
-        let invocation =
-            self.derive_invocation_context(request_envelope(&request), operation_category);
-        Ok(PreparedCoreRequest {
-            request,
-            invocation,
+                message: "tool arguments must be an object".to_owned(),
+            })?;
+        reject_internal_mcp_argument_fields(object, tool_name)?;
+        let requested_project_selector =
+            optional_string_field(object, "project_selector", tool_name)?;
+        let selected_project_id = self.select_project(requested_project_selector.as_deref())?;
+        let arguments = self.decode_params(tool_name, params)?;
+        Ok(PreparedMcpArguments {
+            arguments,
+            project_id: selected_project_id,
         })
     }
 
-    fn prepare_connection_arguments(
+    fn generated_envelope(
         &self,
         tool_name: &str,
-        mut params: Value,
-    ) -> Result<Value, McpAdapterError> {
-        let object = params
-            .as_object_mut()
-            .ok_or_else(|| McpAdapterError::ToolExecution {
-                tool_name: tool_name.to_owned(),
-                message: "tool arguments must be an object containing an envelope object"
-                    .to_owned(),
-            })?;
-        reject_caller_owned_invocation_fields(object, tool_name)?;
-        let envelope = object
-            .get_mut("envelope")
-            .and_then(Value::as_object_mut)
-            .ok_or_else(|| McpAdapterError::ToolExecution {
-                tool_name: tool_name.to_owned(),
-                message: "public Volicord tool arguments require an envelope object".to_owned(),
-            })?;
-        reject_caller_owned_invocation_fields(envelope, tool_name)?;
-        let requested_project_id = optional_string_field(envelope, "project_id", tool_name)?;
-        let selected_project_id = self.select_project(requested_project_id.as_deref())?;
-        envelope.insert(
-            "project_id".to_owned(),
-            Value::String(selected_project_id.as_str().to_owned()),
-        );
-        Ok(params)
+        project_id: &ProjectId,
+        task_id: Option<&volicord_types::TaskId>,
+        operation_category: OperationCategory,
+    ) -> Result<ToolEnvelope, McpAdapterError> {
+        let state_version = if operation_category == OperationCategory::Read {
+            None
+        } else {
+            Some(self.current_state_version(project_id)?)
+        };
+        let idempotency_key = if operation_category == OperationCategory::Read {
+            RequiredNullable::null()
+        } else {
+            RequiredNullable::some(IdempotencyKey::new(generated_metadata_id(
+                "idem",
+                self.context.connection_id.as_str(),
+                tool_name,
+            )))
+        };
+
+        Ok(ToolEnvelope {
+            project_id: project_id.clone(),
+            task_id: task_id.cloned().into(),
+            request_id: RequestId::new(generated_metadata_id(
+                "req",
+                self.context.connection_id.as_str(),
+                tool_name,
+            )),
+            idempotency_key,
+            expected_state_version: state_version.into(),
+            dry_run: false,
+            locale: Some(DEFAULT_LOCALE.to_owned()).into(),
+        })
+    }
+
+    fn current_state_version(&self, project_id: &ProjectId) -> Result<u64, McpAdapterError> {
+        let store = CoreProjectStore::open(&self.runtime_home, project_id)
+            .map_err(McpAdapterError::Store)?;
+        store
+            .project_state()
+            .map(|state| state.state_version)
+            .map_err(McpAdapterError::Store)
     }
 
     fn select_project(
@@ -501,7 +784,7 @@ impl McpAdapter {
             }
             if !access.project_allowed {
                 return Err(routing_error(format!(
-                    "project {project_id} is outside this connection project allowlist"
+                    "project selector {project_id} is outside this connection project allowlist"
                 )));
             }
             let project = access
@@ -528,7 +811,7 @@ impl McpAdapter {
         }
         if projects.len() != 1 {
             return Err(routing_error(
-                "project selection is ambiguous for this connection; envelope.project_id is required when multiple projects are allowed",
+                "project selection is ambiguous for this connection; project_selector is required when multiple projects are allowed",
             ));
         }
 
@@ -554,24 +837,14 @@ impl McpAdapter {
                 message: error.to_string(),
             }
         })?;
-        if self
-            .context
-            .mode
-            .allows_operation_category(operation_category)
-            && current_mode.allows_operation_category(operation_category)
-        {
+        if current_mode.allows_operation_category(operation_category) {
             return Ok(());
         }
-        let blocking_mode = if !current_mode.allows_operation_category(operation_category) {
-            current_mode
-        } else {
-            self.context.mode
-        };
         Err(McpAdapterError::ToolExecution {
             tool_name: tool_name.to_owned(),
             message: format!(
                 "connection mode {} does not allow operation category {}",
-                blocking_mode.as_str(),
+                current_mode.as_str(),
                 operation_category.as_str()
             ),
         })
@@ -619,9 +892,9 @@ fn request_envelope<T: HasEnvelope>(request: &T) -> &ToolEnvelope {
     request.envelope()
 }
 
-struct PreparedCoreRequest<T> {
-    request: T,
-    invocation: McpDerivedInvocationContext,
+struct PreparedMcpArguments<T> {
+    arguments: T,
+    project_id: ProjectId,
 }
 
 /// Returns the workflow-mode public Volicord method tool definitions.
@@ -666,8 +939,7 @@ fn method_tools<const N: usize>(names: [&'static str; N]) -> Vec<McpToolDefiniti
         .map(|name| McpToolDefinition {
             name,
             description: tool_description(name),
-            input_schema: mcp_visible_request_schema(name)
-                .expect("public method schema should exist"),
+            input_schema: mcp_request_schema(name).expect("MCP tool schema should exist"),
         })
         .collect()
 }
@@ -1140,7 +1412,10 @@ fn handle_json_rpc_request(
             {
                 return error;
             }
-            json!({ "tools": adapter.tools() })
+            match adapter.tools() {
+                Ok(tools) => json!({ "tools": tools }),
+                Err(error) => return json_rpc_error_for_adapter(response_id, error),
+            }
         }
         "tools/call" => match call_tool_result(adapter, &response_id, request.params) {
             Ok(result) => result,
@@ -1431,7 +1706,8 @@ fn tool_description(name: &str) -> &'static str {
         "volicord.stage_artifact" => "Stage safe artifact bytes or a safe notice.",
         "volicord.record_run" => "Record shaping, direct, or implementation work.",
         "volicord.request_user_judgment" => "Create one pending focused user-owned judgment.",
-        "volicord.close_task" => "Check or perform a selected Task close path.",
+        CHECK_CLOSE_TOOL_NAME => "Check close readiness for a selected Task.",
+        "volicord.close_task" => "Perform a selected Task close path.",
         LIST_PROJECTS_TOOL_NAME => "List projects explicitly allowed for this MCP connection.",
         _ => "Unsupported Volicord method.",
     }
@@ -1447,60 +1723,23 @@ fn optional_string_field(
         Some(Value::String(value)) if !value.trim().is_empty() => Ok(Some(value.clone())),
         Some(_) => Err(McpAdapterError::ToolExecution {
             tool_name: tool_name.to_owned(),
-            message: format!("envelope.{field} must be a non-empty string when supplied"),
+            message: format!("{field} must be a non-empty string when supplied"),
         }),
     }
 }
 
-fn mcp_visible_request_schema(method_name: &str) -> Option<Value> {
-    let mut schema = public_request_schema(method_name)?;
-    apply_mcp_visible_envelope_contract(&mut schema);
-    Some(schema)
-}
-
-fn apply_mcp_visible_envelope_contract(schema: &mut Value) {
-    match schema {
-        Value::Object(object) => {
-            if is_tool_envelope_schema(object) {
-                if let Some(Value::Array(required)) = object.get_mut("required") {
-                    required.retain(|value| !matches!(value.as_str(), Some("project_id")));
-                }
-            }
-            for value in object.values_mut() {
-                apply_mcp_visible_envelope_contract(value);
-            }
-        }
-        Value::Array(values) => {
-            for value in values {
-                apply_mcp_visible_envelope_contract(value);
-            }
-        }
-        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
-    }
-}
-
-fn is_tool_envelope_schema(object: &Map<String, Value>) -> bool {
-    let Some(Value::Object(properties)) = object.get("properties") else {
-        return false;
-    };
-    [
+fn reject_internal_mcp_argument_fields(
+    object: &Map<String, Value>,
+    tool_name: &str,
+) -> Result<(), McpAdapterError> {
+    for field in [
+        "envelope",
         "project_id",
-        "task_id",
         "request_id",
         "idempotency_key",
         "expected_state_version",
         "dry_run",
         "locale",
-    ]
-    .iter()
-    .all(|field| properties.contains_key(*field))
-}
-
-fn reject_caller_owned_invocation_fields(
-    object: &Map<String, Value>,
-    tool_name: &str,
-) -> Result<(), McpAdapterError> {
-    for field in [
         "actor_source",
         "operation_category",
         "mode",
@@ -1514,6 +1753,34 @@ fn reject_caller_owned_invocation_fields(
         }
     }
     Ok(())
+}
+
+fn generated_metadata_id(prefix: &str, connection_id: &str, tool_name: &str) -> String {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    let sequence = REQUEST_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    format!(
+        "{prefix}_{}_{}_{}_{}",
+        sanitize_metadata_component(connection_id),
+        sanitize_metadata_component(tool_name),
+        nanos,
+        sequence
+    )
+}
+
+fn sanitize_metadata_component(value: &str) -> String {
+    value
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || character == '-' || character == '_' {
+                character
+            } else {
+                '_'
+            }
+        })
+        .collect()
 }
 
 fn validate_identifier_text(field: &'static str, value: &str) -> Result<(), McpAdapterError> {
@@ -1628,6 +1895,8 @@ mod tests {
             PUBLIC_METHOD_TOOL_NAMES
         );
         assert!(workflow_names.contains(&"volicord.request_user_judgment"));
+        assert!(workflow_names.contains(&CHECK_CLOSE_TOOL_NAME));
+        assert!(workflow_names.contains(&"volicord.close_task"));
         assert!(!workflow_names.contains(&"volicord.record_user_judgment"));
         assert_eq!(
             workflow_names.last().copied(),
@@ -1640,39 +1909,51 @@ mod tests {
             read_only_names,
             vec![
                 "volicord.status",
-                "volicord.close_task",
+                CHECK_CLOSE_TOOL_NAME,
                 LIST_PROJECTS_TOOL_NAME
             ]
         );
     }
 
     #[test]
-    fn mcp_visible_schemas_make_project_selector_optional() {
+    fn mcp_visible_schemas_hide_envelope_and_metadata() {
         for tool in public_method_tools() {
-            let required = envelope_required_fields(&tool.input_schema)
-                .expect("tool schema should contain ToolEnvelope schema");
+            let properties = root_properties(&tool.input_schema);
+            let required = root_required_fields(&tool.input_schema);
             assert!(
-                !required.contains(&"project_id".to_owned()),
-                "{} should not require envelope.project_id from MCP callers",
+                properties.contains(&"project_selector".to_owned()),
+                "{} should expose the public project selector",
                 tool.name
             );
             assert!(
-                schema_has_property(&tool.input_schema, "project_id"),
-                "{} should still expose envelope.project_id as an optional selector",
+                !required.contains(&"project_selector".to_owned()),
+                "{} should not require project selection for single-project connections",
                 tool.name
             );
             for forbidden in [
+                "envelope",
+                "project_id",
+                "request_id",
+                "idempotency_key",
+                "expected_state_version",
+                "dry_run",
+                "locale",
                 "actor_source",
                 "operation_category",
                 "mode",
                 "connection_id",
             ] {
                 assert!(
-                    !schema_has_property(&tool.input_schema, forbidden),
-                    "{} should not expose invocation-only field {forbidden}",
+                    !properties.contains(&forbidden.to_owned()),
+                    "{} should not expose MCP-internal field {forbidden}",
                     tool.name
                 );
             }
+            assert!(
+                !schema_has_definition(&tool.input_schema, "ToolEnvelope"),
+                "{} should not include the internal ToolEnvelope schema",
+                tool.name
+            );
         }
     }
 
@@ -1710,13 +1991,8 @@ mod tests {
     ) -> Result<(), Box<dyn Error>> {
         let fixture = CoreFixture::new("mcp-auto-select")?;
         let adapter = adapter(&fixture)?;
-        let mut params = serde_json::to_value(fixture.status_request("req_mcp_status", None))?;
-        params["envelope"]
-            .as_object_mut()
-            .expect("envelope object")
-            .remove("project_id");
 
-        let response = adapter.call_tool("volicord.status", params)?;
+        let response = adapter.call_tool("volicord.status", json!({}))?;
 
         assert_eq!(response.response_value["base"]["response_kind"], "result");
         let verified = response
@@ -1738,12 +2014,17 @@ mod tests {
         let error = adapter
             .call_tool(
                 "volicord.intake",
-                serde_json::to_value(fixture.intake_request(
-                    "req_mcp_read_only_intake",
-                    "idem_mcp_read_only_intake",
-                    false,
-                    Some(0),
-                ))?,
+                json!({
+                    "plain_language_request": "Exercise read-only rejection.",
+                    "requested_mode": "work",
+                    "resume_policy": "create_new",
+                    "initial_scope": {
+                        "boundary": "Read-only rejection.",
+                        "non_goals": [],
+                        "acceptance_criteria": ["No Core mutation occurs."]
+                    },
+                    "initial_context_refs": []
+                }),
             )
             .expect_err("read_only should reject agent workflow calls");
 
@@ -1781,7 +2062,7 @@ mod tests {
             names,
             vec![
                 "volicord.status",
-                "volicord.close_task",
+                CHECK_CLOSE_TOOL_NAME,
                 LIST_PROJECTS_TOOL_NAME
             ]
         );
@@ -1824,44 +2105,33 @@ mod tests {
         tools.iter().map(|tool| tool.name).collect::<Vec<_>>()
     }
 
-    fn schema_has_property(schema: &Value, property_name: &str) -> bool {
-        match schema {
-            Value::Object(object) => {
-                object
-                    .get("properties")
-                    .and_then(Value::as_object)
-                    .is_some_and(|properties| properties.contains_key(property_name))
-                    || object
-                        .values()
-                        .any(|child| schema_has_property(child, property_name))
-            }
-            Value::Array(items) => items
-                .iter()
-                .any(|child| schema_has_property(child, property_name)),
-            Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => false,
-        }
+    fn root_properties(schema: &Value) -> Vec<String> {
+        schema
+            .get("properties")
+            .and_then(Value::as_object)
+            .map(|properties| properties.keys().cloned().collect())
+            .unwrap_or_default()
     }
 
-    fn envelope_required_fields(schema: &Value) -> Option<Vec<String>> {
-        match schema {
-            Value::Object(object) => {
-                if is_tool_envelope_schema(object) {
-                    return object
-                        .get("required")
-                        .and_then(Value::as_array)
-                        .map(|required| {
-                            required
-                                .iter()
-                                .filter_map(Value::as_str)
-                                .map(str::to_owned)
-                                .collect::<Vec<_>>()
-                        });
-                }
-                object.values().find_map(envelope_required_fields)
-            }
-            Value::Array(items) => items.iter().find_map(envelope_required_fields),
-            Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => None,
-        }
+    fn root_required_fields(schema: &Value) -> Vec<String> {
+        schema
+            .get("required")
+            .and_then(Value::as_array)
+            .map(|required| {
+                required
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_owned)
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    fn schema_has_definition(schema: &Value, name: &str) -> bool {
+        schema
+            .get("definitions")
+            .and_then(Value::as_object)
+            .is_some_and(|definitions| definitions.contains_key(name))
     }
 
     fn stdio_responses(output: &[u8]) -> Result<Vec<Value>, Box<dyn Error>> {

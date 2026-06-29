@@ -16,9 +16,10 @@ use crate::schema::{
     WriteCheckStateSummary, WriteCheckSummary, WriteDecisionReason,
 };
 use crate::values::{
-    ChangeUnitOperation, CloseIntent, CloseReason, CloseState, JudgmentKind, JudgmentPresentation,
-    JudgmentRequiredFor, MethodName, OperationCategory, PrepareWriteDecision, RedactionState,
-    RequestedMode, ResumePolicy, RunKind, StatusCloseState, UtcTimestamp, WriteCheckEffect,
+    ChangeUnitOperation, CloseIntent, CloseMutationIntent, CloseReason, CloseState, JudgmentKind,
+    JudgmentPresentation, JudgmentRequiredFor, MethodName, OperationCategory, PrepareWriteDecision,
+    RedactionState, RequestedMode, ResumePolicy, RunKind, StatusCloseState, StatusDetailLevel,
+    UtcTimestamp, WriteCheckEffect,
 };
 
 /// Shared typed mapping from a public request to its operation category.
@@ -79,6 +80,19 @@ impl MethodOperationCategory for IntakeRequest {
     }
 }
 
+/// MCP-visible `volicord.intake` arguments.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpIntakeArguments {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_selector: Option<String>,
+    pub plain_language_request: String,
+    pub requested_mode: RequestedMode,
+    pub resume_policy: ResumePolicy,
+    pub initial_scope: InitialScope,
+    pub initial_context_refs: Vec<StateRecordRef>,
+}
+
 /// Intake initial scope object.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -123,6 +137,24 @@ impl MethodOperationCategory for UpdateScopeRequest {
     fn operation_category(&self) -> OperationCategory {
         OperationCategory::AgentWorkflow
     }
+}
+
+/// MCP-visible `volicord.update_scope` arguments.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpUpdateScopeArguments {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_selector: Option<String>,
+    pub task_id: TaskId,
+    pub goal_summary: RequiredNullable<String>,
+    pub scope_update: RequiredNullable<ScopeUpdate>,
+    pub scope_boundary: RequiredNullable<String>,
+    pub non_goals: RequiredNullable<Vec<String>>,
+    pub acceptance_criteria: RequiredNullable<Vec<String>>,
+    pub autonomy_boundary: RequiredNullable<String>,
+    pub baseline_ref: RequiredNullable<BaselineRef>,
+    pub change_unit: ChangeUnitUpdate,
+    pub related_scope_decision_refs: Vec<StateRecordRef>,
 }
 
 /// Include/exclude scope-update object.
@@ -171,6 +203,53 @@ impl MethodOperationCategory for StatusRequest {
 
     fn operation_category(&self) -> OperationCategory {
         OperationCategory::Read
+    }
+}
+
+/// MCP-visible `volicord.status` arguments.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpStatusArguments {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_selector: Option<String>,
+    #[serde(default)]
+    pub task_id: RequiredNullable<TaskId>,
+    #[serde(default)]
+    pub detail: StatusDetailLevel,
+}
+
+impl StatusDetailLevel {
+    /// Expands the MCP-visible detail level into the Core status include matrix.
+    pub const fn include(self) -> StatusInclude {
+        match self {
+            Self::Summary => StatusInclude {
+                task: true,
+                pending_user_judgments: false,
+                write_check: false,
+                evidence: false,
+                close: false,
+                guarantees: false,
+                continuity: false,
+            },
+            Self::Workflow => StatusInclude {
+                task: true,
+                pending_user_judgments: true,
+                write_check: true,
+                evidence: true,
+                close: true,
+                guarantees: true,
+                continuity: false,
+            },
+            Self::Full => StatusInclude {
+                task: true,
+                pending_user_judgments: true,
+                write_check: true,
+                evidence: true,
+                close: true,
+                guarantees: true,
+                continuity: true,
+            },
+        }
     }
 }
 
@@ -237,6 +316,21 @@ impl MethodOperationCategory for PrepareWriteRequest {
     }
 }
 
+/// MCP-visible `volicord.prepare_write` arguments.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpPrepareWriteArguments {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_selector: Option<String>,
+    pub task_id: RequiredNullable<TaskId>,
+    pub change_unit_id: RequiredNullable<ChangeUnitId>,
+    pub intended_operation: String,
+    pub intended_paths: Vec<String>,
+    pub product_file_write_intended: bool,
+    pub sensitive_categories: Vec<String>,
+    pub baseline_ref: BaselineRef,
+}
+
 /// `volicord.prepare_write` method result branch.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct PrepareWriteResult {
@@ -277,6 +371,22 @@ impl MethodOperationCategory for StageArtifactRequest {
     }
 }
 
+/// MCP-visible `volicord.stage_artifact` arguments.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpStageArtifactArguments {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_selector: Option<String>,
+    pub task_id: TaskId,
+    pub display_name: String,
+    pub content_type: String,
+    pub redaction_state: RedactionState,
+    pub safe_bytes_or_notice: String,
+    pub expected_sha256: RequiredNullable<String>,
+    pub expected_size_bytes: RequiredNullable<u64>,
+    pub relation_hint: RequiredNullable<String>,
+}
+
 /// `volicord.stage_artifact` method result branch.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct StageArtifactResult {
@@ -312,6 +422,26 @@ impl MethodOperationCategory for RecordRunRequest {
     fn operation_category(&self) -> OperationCategory {
         OperationCategory::AgentWorkflow
     }
+}
+
+/// MCP-visible `volicord.record_run` arguments.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpRecordRunArguments {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_selector: Option<String>,
+    pub task_id: TaskId,
+    pub change_unit_id: ChangeUnitId,
+    pub kind: RunKind,
+    pub run_id: RequiredNullable<RunId>,
+    pub baseline_ref: BaselineRef,
+    pub write_check_id: RequiredNullable<WriteCheckId>,
+    pub summary: String,
+    pub observed_changes: ObservedChanges,
+    pub artifact_inputs: Vec<ArtifactInput>,
+    pub evidence_updates: Vec<EvidenceCoverageItem>,
+    pub evidence_observations: Vec<EvidenceObservationInput>,
+    pub close_assessment: RequiredNullable<CloseAssessmentInput>,
 }
 
 /// `volicord.record_run` method result branch.
@@ -355,6 +485,27 @@ impl MethodOperationCategory for RequestUserJudgmentRequest {
     fn operation_category(&self) -> OperationCategory {
         OperationCategory::AgentWorkflow
     }
+}
+
+/// MCP-visible `volicord.request_user_judgment` arguments.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpRequestUserJudgmentArguments {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_selector: Option<String>,
+    pub task_id: TaskId,
+    pub change_unit_id: RequiredNullable<ChangeUnitId>,
+    #[serde(default)]
+    pub sensitive_action_scope: RequiredNullable<SensitiveActionScope>,
+    pub judgment_kind: JudgmentKind,
+    pub presentation: JudgmentPresentation,
+    pub question: String,
+    #[serde(default)]
+    pub options: RequiredNullable<Vec<UserJudgmentOptionInput>>,
+    pub context: UserJudgmentContext,
+    pub affected_refs: Vec<StateRecordRef>,
+    pub required_for: Vec<JudgmentRequiredFor>,
+    pub expires_at: RequiredNullable<UtcTimestamp>,
 }
 
 /// `volicord.request_user_judgment` method result branch.
@@ -429,6 +580,31 @@ impl MethodOperationCategory for CloseTaskRequest {
     }
 }
 
+/// MCP-visible read-only `volicord.check_close` arguments.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpCheckCloseArguments {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_selector: Option<String>,
+    pub task_id: TaskId,
+}
+
+/// MCP-visible workflow `volicord.close_task` arguments.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpCloseTaskArguments {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_selector: Option<String>,
+    pub task_id: TaskId,
+    pub intent: CloseMutationIntent,
+    #[serde(default)]
+    pub close_reason: RequiredNullable<CloseReason>,
+    #[serde(default)]
+    pub superseding_task_id: RequiredNullable<TaskId>,
+    #[serde(default)]
+    pub user_note: RequiredNullable<String>,
+}
+
 /// `volicord.close_task` method result branch.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct CloseTaskResult {
@@ -455,6 +631,24 @@ pub fn public_request_schema(method_name: &str) -> Option<Value> {
         "volicord.request_user_judgment" => Some(request_schema::<RequestUserJudgmentRequest>()),
         "volicord.record_user_judgment" => Some(request_schema::<RecordUserJudgmentRequest>()),
         "volicord.close_task" => Some(request_schema::<CloseTaskRequest>()),
+        _ => None,
+    }
+}
+
+/// Returns the generated JSON Schema for one MCP-visible tool argument shape.
+pub fn mcp_request_schema(tool_name: &str) -> Option<Value> {
+    match tool_name {
+        "volicord.intake" => Some(request_schema::<McpIntakeArguments>()),
+        "volicord.update_scope" => Some(request_schema::<McpUpdateScopeArguments>()),
+        "volicord.status" => Some(request_schema::<McpStatusArguments>()),
+        "volicord.prepare_write" => Some(request_schema::<McpPrepareWriteArguments>()),
+        "volicord.stage_artifact" => Some(request_schema::<McpStageArtifactArguments>()),
+        "volicord.record_run" => Some(request_schema::<McpRecordRunArguments>()),
+        "volicord.request_user_judgment" => {
+            Some(request_schema::<McpRequestUserJudgmentArguments>())
+        }
+        "volicord.check_close" => Some(request_schema::<McpCheckCloseArguments>()),
+        "volicord.close_task" => Some(request_schema::<McpCloseTaskArguments>()),
         _ => None,
     }
 }

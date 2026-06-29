@@ -199,6 +199,9 @@ MCP 세션은 어댑터 시작 시 정확히 하나의 내부 `connection_id`에
 3. 그 밖의 경우 호출을 모호하거나 사용할 수 없는 상태로 거절하고 상태를 고칠 저장소 루트
    setup 또는 연결 명령을 이름 붙인 실행 가능한 텍스트를 반환합니다.
 
+명시적 선택이 필요할 때 MCP에 보이는 선택자는 호출자 소유 Core 래퍼 필드가 아니라
+`volicord.list_projects`가 반환한 `project_selector` 값입니다.
+
 어댑터는 폴더 이름, 임의의 프로세스 현재 작업 디렉터리 값, 호스트 라벨, 저장소가 반환한
 첫 행에서 프로젝트를 추측하면 안 됩니다. 호스트 roots는 호스트가 제공한 저장소 루트
 근거로만 사용할 수 있습니다. 등록, Connection Projects, 경로 분리 점검을 우회하지
@@ -215,8 +218,13 @@ MCP 세션은 어댑터 시작 시 정확히 하나의 내부 `connection_id`에
 
 | Agent Connection 모드 | MCP를 통해 허용되는 동작 범주 | MCP에 보이는 공개 메서드 도구 |
 |---|---|---|
-| `workflow` | `read`, `agent_workflow` | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.prepare_write`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.close_task` |
-| `read_only` | `read` | `volicord.status`, `volicord.close_task` |
+| `workflow` | `read`, `agent_workflow` | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.prepare_write`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.check_close`, `volicord.close_task` |
+| `read_only` | `read` | `volicord.status`, `volicord.check_close` |
+
+어댑터 소유 `volicord.list_projects` 유틸리티는 `workflow`와 `read_only` 모드 모두에
+보입니다. `volicord.check_close`는 읽기 전용 MCP 닫기 준비 상태 도구입니다.
+`volicord.close_task`는 워크플로 전용 MCP 변경 도구이며 `read_only` 도구 탐색에 나타나면
+안 됩니다.
 
 `volicord.record_user_judgment`는 `operation_category=user_only`입니다. User Channel
 경로를 위한 공개 Core API 메서드이지만 Agent Connection에는 노출되지 않습니다. 권한을
@@ -244,8 +252,8 @@ InvocationContext:
 - 내부 프로젝트 선택은 Agent Connection의 연결 프로젝트로 제한됩니다. 호출자 권한이
   아니며 목록에 없거나 inactive이거나 무효인 프로젝트 접근을 부여할 수 없습니다.
 - MCP에 보이는 공개 도구 스키마는 `actor_source`, `operation_category`, `connection_id`,
-  프로토콜 래퍼 필드를 노출하지 않습니다. 원시 MCP 인자에 이 필드가 들어 있으면
-  어댑터는 Core 실행 전에 호출을 거절합니다.
+  `project_id`, 요청 메타데이터, 프로토콜 래퍼 필드를 노출하지 않습니다. 원시 MCP 인자에
+  이 필드가 들어 있으면 어댑터는 Core 실행 전에 호출을 거절합니다.
 - `ArtifactInput`이나 `StagedArtifactHandle` 같은 중첩 페이로드는 두 번째 호출 맥락을
   추가하지 않습니다.
 - 해결된 권한 판단의 권한 출처 필드는 호출자 텍스트, 라벨, 답변 본문, 복사된 참조,

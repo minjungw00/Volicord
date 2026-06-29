@@ -346,6 +346,16 @@ pub const READ_ONLY_OPERATION_CATEGORIES: [OperationCategory; 1] = [OperationCat
 pub const WORKFLOW_OPERATION_CATEGORIES: [OperationCategory; 2] =
     [OperationCategory::Read, OperationCategory::AgentWorkflow];
 
+/// MCP-visible status detail levels.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum StatusDetailLevel {
+    Summary,
+    #[default]
+    Workflow,
+    Full,
+}
+
 /// Controlled registration-basis value for local administrative registration.
 pub const VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION: &str = "local_admin_registration";
 
@@ -519,6 +529,25 @@ pub enum CloseIntent {
     Complete,
     Cancel,
     Supersede,
+}
+
+/// MCP-visible close-task intents that can mutate Task state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum CloseMutationIntent {
+    Complete,
+    Cancel,
+    Supersede,
+}
+
+impl From<CloseMutationIntent> for CloseIntent {
+    fn from(value: CloseMutationIntent) -> Self {
+        match value {
+            CloseMutationIntent::Complete => Self::Complete,
+            CloseMutationIntent::Cancel => Self::Cancel,
+            CloseMutationIntent::Supersede => Self::Supersede,
+        }
+    }
 }
 
 /// Prepare-write decision values.

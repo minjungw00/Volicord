@@ -2,7 +2,6 @@
 
 use std::error::Error;
 
-use serde::Serialize;
 use serde_json::{json, Value};
 use volicord_core::{CoreService, InvocationContext};
 use volicord_mcp::{
@@ -16,9 +15,9 @@ use volicord_store::{
     },
     bootstrap::{register_project, ProjectRegistration, ACTIVE_PROJECT_STATUS},
 };
-use volicord_test_support::core_fixtures::{CloseTaskFixture, CoreFixture};
+use volicord_test_support::core_fixtures::CoreFixture;
 use volicord_types::{
-    ActorSource, AgentConnectionMode, CloseIntent, CloseReason, OperationCategory, ProjectId,
+    ActorSource, AgentConnectionMode, OperationCategory, ProjectId,
     VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
 
@@ -34,6 +33,7 @@ fn workflow_tools_include_agent_workflow_and_read_tools_but_exclude_user_only() 
     assert!(names.contains(&"volicord.intake"));
     assert!(names.contains(&"volicord.prepare_write"));
     assert!(names.contains(&"volicord.request_user_judgment"));
+    assert!(names.contains(&"volicord.check_close"));
     assert!(names.contains(&"volicord.close_task"));
     assert!(names.contains(&"volicord.status"));
     assert!(names.contains(&"volicord.list_projects"));
@@ -49,7 +49,7 @@ fn read_only_tools_expose_only_read_operations_and_project_discovery() {
         names,
         vec![
             "volicord.status",
-            "volicord.close_task",
+            "volicord.check_close",
             "volicord.list_projects"
         ]
     );
@@ -60,10 +60,8 @@ fn connection_invocation_is_injected_and_single_project_is_auto_selected(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-integration-auto-select")?;
     let adapter = adapter(&fixture)?;
-    let mut params = request_value(fixture.status_request("req_mcp_auto_select", None))?;
-    remove_project_id(&mut params);
 
-    let response = adapter.call_tool("volicord.status", params)?;
+    let response = adapter.call_tool("volicord.status", json!({}))?;
 
     assert_eq!(response.response_value["base"]["response_kind"], "result");
     let verified = response
@@ -83,6 +81,21 @@ fn connection_invocation_is_injected_and_single_project_is_auto_selected(
 }
 
 #[test]
+fn workflow_mutation_generates_internal_request_metadata() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-integration-generated-metadata")?;
+    let adapter = adapter(&fixture)?;
+    let before = fixture.counts()?;
+
+    let response = adapter.call_tool("volicord.intake", mcp_intake_args(None))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "result");
+    assert_eq!(response.response_value["base"]["state_version"], 1);
+    let after = fixture.counts()?;
+    assert_eq!(after.tool_invocations, before.tool_invocations + 1);
+    Ok(())
+}
+
+#[test]
 fn read_only_mode_allows_read_close_check_and_rejects_state_changing_close(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-integration-read-only-close")?;
@@ -90,17 +103,10 @@ fn read_only_mode_allows_read_close_check_and_rejects_state_changing_close(
     set_connection_mode(&fixture, CONNECTION_MODE_READ_ONLY)?;
     let adapter = adapter(&fixture)?;
 
-    let check = fixture.close_task_request(CloseTaskFixture {
-        request_id: "req_mcp_close_check",
-        idempotency_key: None,
-        dry_run: false,
-        expected_state_version: None,
-        task_id: &task_id,
-        intent: CloseIntent::Check,
-        close_reason: None,
-        superseding_task_id: None,
-    });
-    let check_response = adapter.call_tool("volicord.close_task", request_value(check)?)?;
+    let check_response = adapter.call_tool(
+        "volicord.check_close",
+        json!({ "task_id": task_id.as_str() }),
+    )?;
     assert_ne!(
         check_response.response_value["base"]["response_kind"], "rejected",
         "close check should reach Core in read_only mode"
@@ -111,18 +117,15 @@ fn read_only_mode_allows_read_close_check_and_rejects_state_changing_close(
     assert_eq!(verified.operation_category, OperationCategory::Read);
 
     let before = fixture.counts()?;
-    let complete = fixture.close_task_request(CloseTaskFixture {
-        request_id: "req_mcp_close_complete_read_only",
-        idempotency_key: Some("idem_mcp_close_complete_read_only"),
-        dry_run: false,
-        expected_state_version: Some(1),
-        task_id: &task_id,
-        intent: CloseIntent::Complete,
-        close_reason: Some(CloseReason::CompletedSelfChecked),
-        superseding_task_id: None,
-    });
     let error = adapter
-        .call_tool("volicord.close_task", request_value(complete)?)
+        .call_tool(
+            "volicord.close_task",
+            json!({
+                "task_id": task_id,
+                "intent": "complete",
+                "close_reason": "completed_self_checked"
+            }),
+        )
         .expect_err("read_only should reject state-changing close intent before Core");
 
     assert!(error.to_string().contains("mode read_only"));
@@ -139,15 +142,7 @@ fn read_only_mode_rejects_agent_workflow_methods_before_core() -> Result<(), Box
     let before = fixture.counts()?;
 
     let error = adapter
-        .call_tool(
-            "volicord.intake",
-            request_value(fixture.intake_request(
-                "req_mcp_read_only_intake",
-                "idem_mcp_read_only_intake",
-                false,
-                Some(0),
-            ))?,
-        )
+        .call_tool("volicord.intake", mcp_intake_args(None))
         .expect_err("read_only should reject agent workflow tools");
 
     assert!(error.to_string().contains("mode read_only"));
@@ -157,12 +152,36 @@ fn read_only_mode_rejects_agent_workflow_methods_before_core() -> Result<(), Box
 }
 
 #[test]
+fn tool_listing_and_dispatch_use_current_connection_mode() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-integration-dynamic-mode")?;
+    let adapter = adapter(&fixture)?;
+    set_connection_mode(&fixture, CONNECTION_MODE_READ_ONLY)?;
+
+    let names = tool_names(&adapter.tools()?);
+    assert_eq!(
+        names,
+        vec![
+            "volicord.status",
+            "volicord.check_close",
+            "volicord.list_projects"
+        ]
+    );
+    let error = adapter
+        .call_tool("volicord.intake", mcp_intake_args(None))
+        .expect_err("dispatch should use the current read_only mode");
+
+    assert!(error.to_string().contains("mode read_only"));
+    assert!(error.to_string().contains("agent_workflow"));
+    Ok(())
+}
+
+#[test]
 fn user_only_record_judgment_is_not_available_to_agent_mcp() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-integration-user-only")?;
     let adapter = adapter(&fixture)?;
 
     assert!(!adapter
-        .tools()
+        .tools()?
         .iter()
         .any(|tool| tool.name == "volicord.record_user_judgment"));
     let error = adapter
@@ -173,19 +192,17 @@ fn user_only_record_judgment_is_not_available_to_agent_mcp() -> Result<(), Box<d
 }
 
 #[test]
-fn multiple_allowed_projects_require_explicit_project_id() -> Result<(), Box<dyn Error>> {
+fn multiple_allowed_projects_require_explicit_project_selector() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-integration-ambiguous")?;
     add_project(&fixture, "project_mcp_allowed_b", true)?;
     let adapter = adapter(&fixture)?;
-    let mut params = request_value(fixture.status_request("req_mcp_ambiguous", None))?;
-    remove_project_id(&mut params);
 
     let error = adapter
-        .call_tool("volicord.status", params)
-        .expect_err("multiple allowed projects without project_id should be ambiguous");
+        .call_tool("volicord.status", json!({}))
+        .expect_err("multiple allowed projects without project_selector should be ambiguous");
 
     assert!(error.to_string().contains("ambiguous"));
-    assert!(error.to_string().contains("project_id is required"));
+    assert!(error.to_string().contains("project_selector is required"));
     Ok(())
 }
 
@@ -195,13 +212,7 @@ fn explicit_project_outside_allowlist_is_rejected_before_core() -> Result<(), Bo
     let outside_project_id = "project_mcp_outside";
     add_project(&fixture, outside_project_id, false)?;
     let adapter = adapter(&fixture)?;
-    let mut params = request_value(fixture.intake_request(
-        "req_mcp_outside_allowlist",
-        "idem_mcp_outside_allowlist",
-        false,
-        Some(0),
-    ))?;
-    set_project_id(&mut params, outside_project_id);
+    let params = mcp_intake_args(Some(outside_project_id));
     let before = fixture.counts()?;
 
     let error = adapter
@@ -221,10 +232,11 @@ fn explicit_allowed_project_routes_to_that_project() -> Result<(), Box<dyn Error
     let second_project_id = "project_mcp_second";
     add_project(&fixture, second_project_id, true)?;
     let adapter = adapter(&fixture)?;
-    let mut params = request_value(fixture.status_request("req_mcp_explicit_project", None))?;
-    set_project_id(&mut params, second_project_id);
 
-    let response = adapter.call_tool("volicord.status", params)?;
+    let response = adapter.call_tool(
+        "volicord.status",
+        json!({ "project_selector": second_project_id }),
+    )?;
 
     let verified = response
         .verified_invocation
@@ -319,19 +331,22 @@ fn add_project(
     Ok(())
 }
 
-fn request_value(request: impl Serialize) -> Result<Value, serde_json::Error> {
-    serde_json::to_value(request)
-}
-
-fn remove_project_id(params: &mut Value) {
-    params["envelope"]
-        .as_object_mut()
-        .expect("envelope object")
-        .remove("project_id");
-}
-
-fn set_project_id(params: &mut Value, project_id: &str) {
-    params["envelope"]["project_id"] = json!(project_id);
+fn mcp_intake_args(project_selector: Option<&str>) -> Value {
+    let mut args = json!({
+        "plain_language_request": "Create a test export flow.",
+        "requested_mode": "work",
+        "resume_policy": "create_new",
+        "initial_scope": {
+            "boundary": "Initial test scope.",
+            "non_goals": ["Changing unrelated flows."],
+            "acceptance_criteria": ["The test export flow is represented."]
+        },
+        "initial_context_refs": []
+    });
+    if let Some(project_selector) = project_selector {
+        args["project_selector"] = json!(project_selector);
+    }
+    args
 }
 
 fn tool_names(tools: &[volicord_mcp::McpToolDefinition]) -> Vec<&'static str> {

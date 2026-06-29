@@ -224,6 +224,10 @@ Project selection for public MCP method calls is deterministic:
    that names the repository-root setup or connection command needed to repair
    the state.
 
+When explicit selection is needed, the MCP-visible selector is the
+`project_selector` value returned by `volicord.list_projects`, not a caller-owned
+Core envelope field.
+
 The adapter must not guess a project from folder names, arbitrary process
 current working directory values, host labels, or the first row returned by
 storage. Host roots may be used only as host-provided repository-root evidence;
@@ -241,8 +245,13 @@ Connection modes and operation categories:
 
 | Agent Connection mode | Allowed operation categories through MCP | MCP-visible public method tools |
 |---|---|---|
-| `workflow` | `read`, `agent_workflow` | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.prepare_write`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.close_task` |
-| `read_only` | `read` | `volicord.status`, `volicord.close_task` |
+| `workflow` | `read`, `agent_workflow` | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.prepare_write`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.check_close`, `volicord.close_task` |
+| `read_only` | `read` | `volicord.status`, `volicord.check_close` |
+
+The adapter-owned `volicord.list_projects` utility is visible in both
+`workflow` and `read_only` modes. `volicord.check_close` is the read-only MCP
+close-readiness tool. `volicord.close_task` is the workflow-only MCP mutation
+tool and must not appear in `read_only` tool discovery.
 
 `volicord.record_user_judgment` has `operation_category=user_only`. It is a
 public Core API method for the User Channel path, but it is not exposed by Agent
@@ -273,9 +282,9 @@ Conditions:
   projects. It is not caller authority and cannot grant access to an unlisted,
   inactive, or invalid project.
 - MCP-visible public tool schemas do not expose `actor_source`,
-  `operation_category`, `connection_id`, or protocol envelope fields. If raw
-  MCP arguments include those fields, the adapter rejects the call before Core
-  execution.
+  `operation_category`, `connection_id`, `project_id`, request metadata, or
+  protocol envelope fields. If raw MCP arguments include those fields, the
+  adapter rejects the call before Core execution.
 - Nested payloads such as `ArtifactInput` or `StagedArtifactHandle` do not add
   a second invocation context.
 - Authority-provenance fields for resolved authority-bearing judgments come
