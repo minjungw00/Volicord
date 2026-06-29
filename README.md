@@ -2,7 +2,7 @@
 
 **AI moves. Judgment stays yours.**
 
-**[English](README.md)** | [Korean](README.ko.md)
+**[English](README.md)** | [한국어](README.ko.md)
 
 Volicord is a local work-authority system for AI-assisted product work. It
 gives a user and an agent host a local place to keep workflow facts visible
@@ -11,12 +11,12 @@ while work moves through chat, tools, shells, tests, and repository files.
 When everything stays only in chat, it can become unclear what the agent is
 trying to do, what evidence supports a claim, whether a write is ready, which
 decision belongs to the user, and what still blocks an honest close. Volicord
-records those workflow facts in a local `Volicord Runtime Home` so they do not
-depend on memory or a polished summary.
+records those workflow facts in a local Volicord record area, called the
+`Volicord Runtime Home`, so they do not depend on memory or a polished summary.
 
-Core is the local authority record for Volicord state. Chat messages, generated
-Markdown, status summaries, and projections can describe that state, but they
-do not replace it.
+Volicord's source of truth for state stays in its local authority record. Chat
+messages, generated Markdown, status summaries, and projections can describe
+that state, but they do not replace it.
 
 ## Overview
 
@@ -54,6 +54,7 @@ These terms appear throughout the README and the rest of the documentation:
 | Agent host | The environment you chat with, such as Codex or Claude Code. The host may start local MCP tools while it works. |
 | `volicord-mcp` | The local stdio MCP adapter that an agent host uses to talk to Volicord. |
 | `Volicord Runtime Home` | The local place where Volicord stores workflow records and runtime data. It is separate from your product repository. |
+| `Core` | The local authority record for Volicord state. Chat summaries and generated documents can describe Core state, but they do not replace it. |
 | `Agent Connection` | The local connection record that lets one host use Volicord for repository work. |
 | `User Channel` | The path where the user records decisions that the agent must not invent or impersonate. The current local CLI path is `volicord user`. |
 
