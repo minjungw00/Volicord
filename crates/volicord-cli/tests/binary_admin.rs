@@ -438,6 +438,56 @@ fn connect_defaults_to_workflow_mode() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+#[test]
+fn connect_codex_global_reports_supported_intents() -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-connection-codex-global")?;
+    initialize_runtime_home(runtime_home.path(), "runtime_home_codex_global", "{}")?;
+    write_test_installation_profile(runtime_home.path())?;
+
+    let output = run_with_home_env(runtime_home.path(), ["connect", "codex", "--global"], &[])?;
+
+    assert_eq!(output.status.code(), Some(2));
+    let diagnostic = stderr(&output);
+    assert!(diagnostic.contains("codex does not support --global"));
+    assert!(diagnostic.contains("supported connection intents: personal, shared"));
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn connect_claude_code_global_is_accepted() -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-connection-claude-global")?;
+    let repo_root = create_git_repo(&runtime_home, "product-repo")?;
+    let bin_dir = runtime_home.path().join("bin");
+    write_fake_claude_code(&bin_dir)?;
+    let mcp = write_fake_mcp(&bin_dir)?;
+    assert_success(&run_setup(runtime_home.path(), &mcp)?);
+
+    let output = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connect",
+            "claude-code",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--global",
+            "--json",
+        ],
+        &[
+            ("PATH", path_env(&[bin_dir.as_path()])),
+            ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
+        ],
+    )?;
+
+    assert_success(&output);
+    let value = json_stdout(&output)?;
+    assert_eq!(value["action"], "connected");
+    assert_eq!(value["connection"]["host_kind"], "claude_code");
+    assert_eq!(value["connection"]["connection_intent"], "global");
+    assert_eq!(value["connection"]["host_scope"], "user");
+    Ok(())
+}
+
 #[cfg(unix)]
 #[test]
 fn export_mcp_config_writes_default_path_and_connection_context() -> Result<(), Box<dyn Error>> {
@@ -1087,6 +1137,51 @@ fn write_fake_codex(dir: &Path) -> Result<PathBuf, Box<dyn Error>> {
         &path,
         "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then printf 'codex 1.2.3-test\\n'; exit 0; fi\nprintf 'unexpected codex invocation\\n' >&2\nexit 2\n",
     )?;
+    make_executable(&path)?;
+    Ok(path)
+}
+
+#[cfg(unix)]
+fn write_fake_claude_code(dir: &Path) -> Result<PathBuf, Box<dyn Error>> {
+    fs::create_dir_all(dir)?;
+    let path = dir.join("claude");
+    let state_path = path.with_extension("state");
+    let state_text = state_path.display().to_string().replace('\'', "'\\''");
+    let mut script = format!("#!/bin/sh\nstate='{state_text}'\n");
+    script.push_str(
+        "if [ \"$1\" = \"mcp\" ] && [ \"$2\" = \"get\" ]; then\n\
+         if [ -f \"$state\" ]; then cat \"$state\"; exit 0; fi\n\
+         printf 'Server not found\\n' >&2\n\
+         exit 1\n\
+         fi\n\
+         if [ \"$1\" = \"mcp\" ] && [ \"$2\" = \"add\" ]; then\n\
+         shift 2\n\
+         scope=\"\"\n\
+         env_line=\"\"\n\
+         command=\"\"\n\
+         args=\"\"\n\
+         while [ \"$#\" -gt 0 ]; do\n\
+         case \"$1\" in\n\
+         --env) env_line=\"$2\"; shift 2 ;;\n\
+         --transport) shift 2 ;;\n\
+         --scope) scope=\"$2\"; shift 2 ;;\n\
+         --) shift; command=\"$1\"; shift; args=\"$*\"; break ;;\n\
+         *) shift ;;\n\
+         esac\n\
+         done\n\
+         {\n\
+         printf 'Status: Connected\\n'\n\
+         printf 'Scope: %s\\n' \"$scope\"\n\
+         printf 'Command: %s\\n' \"$command\"\n\
+         printf 'Args: %s\\n' \"$args\"\n\
+         if [ -n \"$env_line\" ]; then printf 'Environment:\\n  %s\\n' \"$env_line\"; fi\n\
+         } > \"$state\"\n\
+         exit 0\n\
+         fi\n\
+         printf 'unexpected claude invocation\\n' >&2\n\
+         exit 2\n",
+    );
+    fs::write(&path, script)?;
     make_executable(&path)?;
     Ok(path)
 }

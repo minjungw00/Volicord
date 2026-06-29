@@ -36,8 +36,9 @@ use volicord_store::{
 use crate::host_integration::{
     claude_code::{ClaudeCodeAdapter, ProductionCommandRunner},
     codex::{CodexAdapter, CodexEnvironment, CodexExistingPlanRequest},
-    export_file_name,
+    export_file_name, format_supported_connection_intents,
     generic::{GenericAdapter, GenericExportRequest},
+    supports_connection_intent,
     verification::{Verification, VerificationStatus},
     ConnectionIntent, HostAdapter, HostConfigError, HostKind, HostPlan, HostPlanRequest,
     HostRemoveRequest, HostScope, HostTarget, InstallationProfile, ManagedServerEntry,
@@ -961,18 +962,44 @@ fn host_scope_for_intent(
     host_kind: HostKind,
     intent: ConnectionIntent,
 ) -> Result<HostScope, ConnectionCommandError> {
+    if !supports_connection_intent(host_kind, intent) {
+        return Err(ConnectionCommandError::usage(
+            unsupported_connection_intent_message(host_kind, intent),
+        ));
+    }
     match (host_kind, intent) {
         (HostKind::Codex, ConnectionIntent::Personal) => Ok(HostScope::User),
         (HostKind::Codex, ConnectionIntent::Shared) => Ok(HostScope::Project),
-        (HostKind::Codex, ConnectionIntent::Global) => Err(ConnectionCommandError::usage(
-            "Codex does not support --global; use codex personal/shared or claude-code --global",
-        )),
         (HostKind::ClaudeCode, ConnectionIntent::Personal) => Ok(HostScope::Local),
         (HostKind::ClaudeCode, ConnectionIntent::Shared) => Ok(HostScope::Project),
         (HostKind::ClaudeCode, ConnectionIntent::Global) => Ok(HostScope::User),
         (HostKind::Generic, _) => Err(ConnectionCommandError::usage(
             "generic MCP export is not a host connection; use the export command",
         )),
+        (HostKind::Codex, ConnectionIntent::Global) => unreachable!("validated above"),
+    }
+}
+
+fn unsupported_connection_intent_message(host_kind: HostKind, intent: ConnectionIntent) -> String {
+    let supported = format_supported_connection_intents(host_kind);
+    if host_kind == HostKind::Generic {
+        return format!(
+            "generic MCP export is not a host connection; use `volicord export mcp-config`; supported connection intents: {supported}"
+        );
+    }
+    format!(
+        "{} does not support {}; supported connection intents: {}",
+        public_host_label(host_kind),
+        connection_intent_selector_text(intent),
+        supported
+    )
+}
+
+fn connection_intent_selector_text(intent: ConnectionIntent) -> &'static str {
+    match intent {
+        ConnectionIntent::Personal => "personal",
+        ConnectionIntent::Shared => "--shared",
+        ConnectionIntent::Global => "--global",
     }
 }
 
@@ -2723,6 +2750,27 @@ mod tests {
             CONNECTION_MODE_WORKFLOW
         );
         assert!(parse_user_connection_mode("read_only").is_err());
+    }
+
+    #[test]
+    fn host_scope_mapping_uses_connection_intent_support_matrix() {
+        assert_eq!(
+            host_scope_for_intent(HostKind::Codex, ConnectionIntent::Personal).unwrap(),
+            HostScope::User
+        );
+        assert_eq!(
+            host_scope_for_intent(HostKind::Codex, ConnectionIntent::Shared).unwrap(),
+            HostScope::Project
+        );
+        assert_eq!(
+            host_scope_for_intent(HostKind::ClaudeCode, ConnectionIntent::Global).unwrap(),
+            HostScope::User
+        );
+
+        let error = host_scope_for_intent(HostKind::Codex, ConnectionIntent::Global).unwrap_err();
+        let message = error.to_string();
+        assert!(message.contains("codex does not support --global"));
+        assert!(message.contains("supported connection intents: personal, shared"));
     }
 
     #[test]

@@ -63,6 +63,15 @@ pub enum ConnectionIntent {
     Global,
 }
 
+static CODEX_SUPPORTED_CONNECTION_INTENTS: [ConnectionIntent; 2] =
+    [ConnectionIntent::Personal, ConnectionIntent::Shared];
+static CLAUDE_CODE_SUPPORTED_CONNECTION_INTENTS: [ConnectionIntent; 3] = [
+    ConnectionIntent::Personal,
+    ConnectionIntent::Shared,
+    ConnectionIntent::Global,
+];
+static GENERIC_SUPPORTED_CONNECTION_INTENTS: [ConnectionIntent; 0] = [];
+
 impl ConnectionIntent {
     pub fn as_str(self) -> &'static str {
         match self {
@@ -71,6 +80,30 @@ impl ConnectionIntent {
             Self::Global => "global",
         }
     }
+}
+
+pub fn supported_connection_intents(host_kind: HostKind) -> &'static [ConnectionIntent] {
+    match host_kind {
+        HostKind::Codex => &CODEX_SUPPORTED_CONNECTION_INTENTS,
+        HostKind::ClaudeCode => &CLAUDE_CODE_SUPPORTED_CONNECTION_INTENTS,
+        HostKind::Generic => &GENERIC_SUPPORTED_CONNECTION_INTENTS,
+    }
+}
+
+pub fn supports_connection_intent(host_kind: HostKind, intent: ConnectionIntent) -> bool {
+    supported_connection_intents(host_kind).contains(&intent)
+}
+
+pub fn format_supported_connection_intents(host_kind: HostKind) -> String {
+    let intents = supported_connection_intents(host_kind);
+    if intents.is_empty() {
+        return "none".to_owned();
+    }
+    intents
+        .iter()
+        .map(|intent| intent.as_str())
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -546,6 +579,44 @@ mod tests {
                 "volicord-integration",
                 &changed
             )
+        );
+    }
+
+    #[test]
+    fn host_connection_intent_support_matrix_is_centralized() {
+        assert_eq!(
+            supported_connection_intents(HostKind::Codex),
+            &[ConnectionIntent::Personal, ConnectionIntent::Shared]
+        );
+        assert_eq!(
+            supported_connection_intents(HostKind::ClaudeCode),
+            &[
+                ConnectionIntent::Personal,
+                ConnectionIntent::Shared,
+                ConnectionIntent::Global
+            ]
+        );
+        assert_eq!(supported_connection_intents(HostKind::Generic), &[]);
+
+        assert!(supports_connection_intent(
+            HostKind::Codex,
+            ConnectionIntent::Personal
+        ));
+        assert!(supports_connection_intent(
+            HostKind::Codex,
+            ConnectionIntent::Shared
+        ));
+        assert!(!supports_connection_intent(
+            HostKind::Codex,
+            ConnectionIntent::Global
+        ));
+        assert!(supports_connection_intent(
+            HostKind::ClaudeCode,
+            ConnectionIntent::Global
+        ));
+        assert_eq!(
+            format_supported_connection_intents(HostKind::Codex),
+            "personal, shared"
         );
     }
 }

@@ -10,11 +10,11 @@ use toml_edit::{value, Array, DocumentMut, Item, Table};
 use super::{
     claude_code::{CommandInvocation, CommandRunner, ProductionCommandRunner},
     config_edit::{read_text_snapshot, write_if_fresh, FileSnapshot},
-    is_volicord_managed_entry, managed_fingerprint, unmanaged_fingerprint, validated_server_name,
-    ConnectionIntent, HostAdapter, HostConfigError, HostConflict, HostConflictKind, HostDetection,
-    HostEffect, HostKind, HostPlan, HostPlanRequest, HostRemoveRequest, HostScope, HostTarget,
-    InstallationProfile, ManagedServerEntry, PlannedChange, ProjectContext, UserAction,
-    UserActionKind, DEFAULT_MCP_COMMAND,
+    format_supported_connection_intents, is_volicord_managed_entry, managed_fingerprint,
+    unmanaged_fingerprint, validated_server_name, ConnectionIntent, HostAdapter, HostConfigError,
+    HostConflict, HostConflictKind, HostDetection, HostEffect, HostKind, HostPlan, HostPlanRequest,
+    HostRemoveRequest, HostScope, HostTarget, InstallationProfile, ManagedServerEntry,
+    PlannedChange, ProjectContext, UserAction, UserActionKind, DEFAULT_MCP_COMMAND,
 };
 use crate::host_integration::verification::{
     HostConfigurationStatus, HostExecutableStatus, HostGateStatus, ManagedConfigStatus,
@@ -172,7 +172,10 @@ impl<R: CommandRunner> CodexAdapter<R> {
             }
             _ => Err(HostConfigError::Conflict(HostConflict::new(
                 HostConflictKind::InvalidScope,
-                "Codex supports only personal and shared connection intents",
+                format!(
+                    "Codex supports only these connection intents: {}",
+                    format_supported_connection_intents(HostKind::Codex)
+                ),
             ))),
         }
     }
@@ -378,7 +381,10 @@ fn codex_scope_for_intent(intent: ConnectionIntent) -> Result<HostScope, HostCon
         ConnectionIntent::Shared => Ok(HostScope::Project),
         ConnectionIntent::Global => Err(HostConfigError::Conflict(HostConflict::new(
             HostConflictKind::InvalidScope,
-            "Codex does not support global connection intent",
+            format!(
+                "Codex does not support global connection intent; supported connection intents: {}",
+                format_supported_connection_intents(HostKind::Codex)
+            ),
         ))),
     }
 }
@@ -848,6 +854,9 @@ mod tests {
         assert_eq!(personal.host_scope, HostScope::User);
         assert_eq!(shared.host_scope, HostScope::Project);
         assert!(matches!(global, HostConfigError::Conflict(_)));
+        assert!(global
+            .to_string()
+            .contains("supported connection intents: personal, shared"));
         Ok(())
     }
 
