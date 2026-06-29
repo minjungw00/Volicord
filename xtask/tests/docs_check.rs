@@ -232,11 +232,82 @@ related_documents:
 related_metadata:
   doc_index: "docs/doc-index.yaml"
 terms:
-  example:
-    category: product
-    en: Example
-    ko_reference: 예시
-    ko_user: 예시
+  volicord_runtime_home:
+    category: product_label
+    roles:
+      - public_user_term
+    en: Volicord Runtime Home
+    aliases_en:
+      - Runtime Home
+    ko_reference: Volicord Runtime Home
+    ko_user: 런타임 홈
+    primary_owner:
+      en: "docs/en/example.md#overview"
+      ko: "docs/ko/example.md#overview"
+    related_references: []
+  connection_internal_id:
+    category: identifier
+    roles:
+      - storage_internal_identifier
+    en: connection_internal_id
+    ko_reference: "`connection_internal_id`"
+    ko_user: "`connection_internal_id`"
+    primary_owner:
+      en: "docs/en/example.md#overview"
+      ko: "docs/ko/example.md#overview"
+    related_references: []
+  project_internal_id:
+    category: identifier
+    roles:
+      - storage_internal_identifier
+    en: project_internal_id
+    ko_reference: "`project_internal_id`"
+    ko_user: "`project_internal_id`"
+    primary_owner:
+      en: "docs/en/example.md#overview"
+      ko: "docs/ko/example.md#overview"
+    related_references: []
+  connection_id:
+    category: identifier
+    roles:
+      - mcp_process_binding
+      - diagnostic_field
+    en: connection_id
+    ko_reference: "`connection_id`"
+    ko_user: "`connection_id`"
+    primary_owner:
+      en: "docs/en/example.md#overview"
+      ko: "docs/ko/example.md#overview"
+    related_references: []
+  project_id:
+    category: identifier
+    roles:
+      - diagnostic_field
+    en: project_id
+    ko_reference: "`project_id`"
+    ko_user: "`project_id`"
+    primary_owner:
+      en: "docs/en/example.md#overview"
+      ko: "docs/ko/example.md#overview"
+    related_references: []
+  project_selector:
+    category: identifier
+    roles:
+      - mcp_public_selector
+    en: project_selector
+    ko_reference: "`project_selector`"
+    ko_user: "`project_selector`"
+    primary_owner:
+      en: "docs/en/example.md#overview"
+      ko: "docs/ko/example.md#overview"
+    related_references: []
+  installation_profile:
+    category: storage_record
+    roles:
+      - storage_record
+    en: installation_profile
+    ko_reference: "`installation_profile`"
+    ko_user: "`installation_profile`"
     primary_owner:
       en: "docs/en/example.md#overview"
       ko: "docs/ko/example.md#overview"
@@ -959,6 +1030,69 @@ fn reports_terminology_map_path_failure() {
     let report = report(fixture.path());
 
     assert!(has_category(&report, "terminology.missing_target"));
+}
+
+#[test]
+fn reports_required_terminology_role_failure() {
+    let fixture = valid_fixture();
+    let terminology = valid_terminology_map().replace(
+        r#"  project_selector:
+    category: identifier
+    roles:
+      - mcp_public_selector
+"#,
+        r#"  project_selector:
+    category: identifier
+"#,
+    );
+    write(fixture.path(), "docs/terminology-map.yaml", &terminology);
+
+    let report = report(fixture.path());
+    let errors = category_errors(&report, "terminology.missing_role");
+
+    assert_eq!(errors.len(), 1, "{:#?}", report.errors());
+    assert!(
+        errors[0].message().contains("project_selector"),
+        "{:#?}",
+        report.errors()
+    );
+}
+
+#[test]
+fn reports_invalid_terminology_role_value() {
+    let fixture = valid_fixture();
+    let terminology =
+        valid_terminology_map().replace("      - mcp_public_selector", "      - public_id");
+    write(fixture.path(), "docs/terminology-map.yaml", &terminology);
+
+    let report = report(fixture.path());
+    let errors = category_errors(&report, "terminology.invalid_role");
+
+    assert_eq!(errors.len(), 1, "{:#?}", report.errors());
+    assert!(
+        errors[0].message().contains("public_id"),
+        "{:#?}",
+        report.errors()
+    );
+}
+
+#[test]
+fn accepts_sensitive_identifiers_in_document_prose_when_map_roles_are_valid() {
+    let fixture = valid_fixture();
+    write(
+        fixture.path(),
+        "docs/en/example.md",
+        "# Overview\n\nA diagnostic can mention `connection_id` and `project_id`, while a public MCP call can use `project_selector`.\n",
+    );
+    write(
+        fixture.path(),
+        "docs/ko/example.md",
+        "<a id=\"overview\"></a>\n# 개요\n\n진단에는 `connection_id`와 `project_id`가 나올 수 있고, 공개 MCP 호출은 `project_selector`를 사용할 수 있습니다.\n",
+    );
+
+    let report = report(fixture.path());
+
+    assert!(report.is_ok(), "{:#?}", report.errors());
 }
 
 #[test]

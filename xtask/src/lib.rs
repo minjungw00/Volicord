@@ -124,6 +124,57 @@ const RETIRED_PREFIXES: &[&str] = &[
     "docs/en/build/",
     "docs/ko/build/",
 ];
+const TERMINOLOGY_ALLOWED_ROLES: &[&str] = &[
+    "public_user_term",
+    "storage_internal_identifier",
+    "storage_record",
+    "mcp_process_binding",
+    "diagnostic_field",
+    "mcp_public_selector",
+];
+const REQUIRED_TERMINOLOGY_ROLES: &[RequiredTerminologyRoles] = &[
+    RequiredTerminologyRoles {
+        term_key: "connection_internal_id",
+        display: "connection_internal_id",
+        roles: &["storage_internal_identifier"],
+    },
+    RequiredTerminologyRoles {
+        term_key: "project_internal_id",
+        display: "project_internal_id",
+        roles: &["storage_internal_identifier"],
+    },
+    RequiredTerminologyRoles {
+        term_key: "connection_id",
+        display: "connection_id",
+        roles: &["mcp_process_binding", "diagnostic_field"],
+    },
+    RequiredTerminologyRoles {
+        term_key: "project_id",
+        display: "project_id",
+        roles: &["diagnostic_field"],
+    },
+    RequiredTerminologyRoles {
+        term_key: "project_selector",
+        display: "project_selector",
+        roles: &["mcp_public_selector"],
+    },
+    RequiredTerminologyRoles {
+        term_key: "installation_profile",
+        display: "installation_profile",
+        roles: &["storage_record"],
+    },
+    RequiredTerminologyRoles {
+        term_key: "volicord_runtime_home",
+        display: "Volicord Runtime Home",
+        roles: &["public_user_term"],
+    },
+];
+
+struct RequiredTerminologyRoles {
+    term_key: &'static str,
+    display: &'static str,
+    roles: &'static [&'static str],
+}
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ValidationError {
@@ -1722,6 +1773,8 @@ fn validate_terminology_paths(root: &Path, index: &DocIndex, errors: &mut Vec<Va
         }
     };
 
+    validate_terminology_roles(&value, errors);
+
     let mut mentions = BTreeSet::new();
     collect_yaml_path_mentions(&value, &mut mentions);
 
@@ -1733,6 +1786,132 @@ fn validate_terminology_paths(root: &Path, index: &DocIndex, errors: &mut Vec<Va
                 failure.category,
                 failure.message,
             ));
+        }
+    }
+}
+
+fn validate_terminology_roles(value: &Value, errors: &mut Vec<ValidationError>) {
+    let Some(top) = value.as_mapping() else {
+        errors.push(ValidationError::new(
+            TERMINOLOGY_MAP_PATH,
+            "terminology.shape",
+            "terminology map must be a YAML mapping",
+        ));
+        return;
+    };
+    let Some(terms) = mapping_get(top, "terms") else {
+        errors.push(ValidationError::new(
+            TERMINOLOGY_MAP_PATH,
+            "terminology.missing_terms",
+            "terminology map is missing terms",
+        ));
+        return;
+    };
+    let Some(terms) = terms.as_mapping() else {
+        errors.push(ValidationError::new(
+            TERMINOLOGY_MAP_PATH,
+            "terminology.shape",
+            "terminology map terms must be a mapping",
+        ));
+        return;
+    };
+
+    let mut role_map = BTreeMap::new();
+    for (term_key, entry) in terms {
+        let Some(term_key) = term_key.as_str() else {
+            continue;
+        };
+        let Some(entry) = entry.as_mapping() else {
+            continue;
+        };
+        let Some(roles_value) = mapping_get(entry, "roles") else {
+            continue;
+        };
+
+        let mut roles = BTreeSet::new();
+        match roles_value.as_sequence() {
+            Some(sequence) if !sequence.is_empty() => {
+                for role in sequence {
+                    let Some(role) = role.as_str() else {
+                        errors.push(ValidationError::new(
+                            TERMINOLOGY_MAP_PATH,
+                            "terminology.invalid_role",
+                            format!("{term_key} role values must be strings"),
+                        ));
+                        continue;
+                    };
+                    if !TERMINOLOGY_ALLOWED_ROLES.contains(&role) {
+                        errors.push(ValidationError::new(
+                            TERMINOLOGY_MAP_PATH,
+                            "terminology.invalid_role",
+                            format!("{term_key} uses unsupported terminology role {role}"),
+                        ));
+                    }
+                    if !roles.insert(role.to_string()) {
+                        errors.push(ValidationError::new(
+                            TERMINOLOGY_MAP_PATH,
+                            "terminology.invalid_role",
+                            format!("{term_key} repeats terminology role {role}"),
+                        ));
+                    }
+                }
+            }
+            Some(_) => errors.push(ValidationError::new(
+                TERMINOLOGY_MAP_PATH,
+                "terminology.invalid_role",
+                format!("{term_key} roles must not be empty"),
+            )),
+            None => errors.push(ValidationError::new(
+                TERMINOLOGY_MAP_PATH,
+                "terminology.invalid_role",
+                format!("{term_key} roles must be a list"),
+            )),
+        }
+        role_map.insert(term_key.to_string(), roles);
+    }
+
+    for required in REQUIRED_TERMINOLOGY_ROLES {
+        let Some(entry) = mapping_get(terms, required.term_key) else {
+            errors.push(ValidationError::new(
+                TERMINOLOGY_MAP_PATH,
+                "terminology.missing_required_term",
+                format!("required terminology term {} is missing", required.display),
+            ));
+            continue;
+        };
+        if !entry.is_mapping() {
+            errors.push(ValidationError::new(
+                TERMINOLOGY_MAP_PATH,
+                "terminology.shape",
+                format!(
+                    "required terminology term {} must be a mapping",
+                    required.display
+                ),
+            ));
+            continue;
+        }
+        let Some(roles) = role_map.get(required.term_key) else {
+            errors.push(ValidationError::new(
+                TERMINOLOGY_MAP_PATH,
+                "terminology.missing_role",
+                format!(
+                    "required terminology term {} is missing roles metadata",
+                    required.display
+                ),
+            ));
+            continue;
+        };
+        for role in required.roles {
+            if !roles.contains(*role) {
+                errors.push(ValidationError::new(
+                    TERMINOLOGY_MAP_PATH,
+                    "terminology.missing_role",
+                    format!(
+                        "required terminology term {} is missing role {}",
+                        required.display, role
+                    ),
+                ));
+            }
         }
     }
 }

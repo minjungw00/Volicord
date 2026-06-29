@@ -26,6 +26,7 @@ Contract detail stays in the focused owner documents. Translation and style rule
 | Volicord implementation | Volicord implementation | The implementation set maintained by this repository, not a synonym for Volicord as a whole. Runtime and location boundary details belong to Runtime Boundaries. | [Runtime Boundaries](runtime-boundaries.md) |
 | `Product Repository` | 제품 저장소 | The user's project workspace and product files, separate from Volicord runtime state. | [Runtime Boundaries](runtime-boundaries.md) |
 | `Volicord Runtime Home` | 런타임 홈 | The local runtime data space for Volicord operational data, as storage/runtime owners define it. | [Runtime Boundaries](runtime-boundaries.md) |
+| `installation_profile` | 설치 프로필 저장 기록 | A Runtime Home registry storage record for setup-time command paths, default connection mode, metadata, and timestamps; not host trust, user authority, or public API state. | [Storage DDL](storage-ddl.md) |
 | runtime | 런타임 | The operational Volicord execution and data context. | [Runtime Boundaries](runtime-boundaries.md) |
 | baseline scope | 기준 범위 | The stable support boundary documented for Volicord. | [Scope](scope.md) |
 | out-of-scope capability | 지원 범위 밖 기능 | A deferred capability outside the baseline support boundary. | [Scope](scope.md) |
@@ -48,6 +49,11 @@ Contract detail stays in the focused owner documents. Translation and style rule
 | close-readiness blocker | 닫기 차단 사유 | A close-relevant reason shown when close readiness cannot proceed. | [API blocker routing](api/blocker-routing.md) |
 | `Projection` | 상태 보기 | The exact product label for a read-only state view. Projection output is display, not Core authority. | [Projection Authority Reference](projection-and-templates.md) |
 | `Agent Connection` | 에이전트 연결 | The local MCP host connection unit stored with `connection_internal_id`; MCP startup uses `connection_id` as the process-binding argument spelling. | [Agent Connection Reference](agent-connection.md) |
+| `connection_internal_id` | 연결 내부 식별자 | The storage primary key for Agent Connection records and Connection Projects membership; not an ordinary user-facing selector. | [Storage DDL](storage-ddl.md) |
+| `connection_id` | 연결 프로세스 바인딩 | The MCP process-binding and startup diagnostic spelling for a stored Agent Connection; not a storage primary key or authority token. | [MCP Transport](mcp-transport.md) |
+| `project_internal_id` | 프로젝트 내부 식별자 | The storage primary key for registered project records and Connection Projects membership; user-facing flows use repository roots, names, aliases, or public selectors. | [Storage DDL](storage-ddl.md) |
+| `project_id` | 프로젝트 진단 필드 | A diagnostic or owner-defined schema field spelling in specific contexts; not the public MCP project selector. | [MCP Transport](mcp-transport.md) |
+| `project_selector` | 프로젝트 공개 선택자 | The public MCP project selector returned by `volicord.list_projects` for multi-project selection; not Runtime Home registry identity. | [MCP Transport](mcp-transport.md) |
 | connection intent | 연결 의도 | The Agent Connection placement intent: `personal`, `shared`, or `global`. | [Agent Connection Reference](agent-connection.md) |
 | `connection.mode` | 연결 모드 | The Agent Connection mode, either `workflow` or `read_only`. | [Agent Connection Reference](agent-connection.md) |
 | `Connection Projects` | 연결 프로젝트 | The explicit `project_internal_id` allowlist for an Agent Connection. | [Agent Connection Reference](agent-connection.md) |

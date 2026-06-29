@@ -7,6 +7,7 @@ canonical_for:
   - "Complete structured term inventory under `terms` for Volicord documentation; glossary pages are curated reader-facing subsets and do not need rows for every structured term."
   - "Korean term forms through `ko_reference`, `ko_user`, `ko_contextual`, `ko_explanation`, and first-reference wording fields."
   - "Term type through each entry's `category` value."
+  - "Role metadata through each entry's `roles` values for identity-sensitive public, storage, MCP, and diagnostic terminology."
   - "Identifier preservation rules for bilingual documentation."
   - "Primary owner and related-reference routing for each structured term."
   - "Preferred expressions and avoid expressions for documentation maintenance and automated checks."
@@ -63,6 +64,7 @@ term_entry_schema:
     - "primary_owner"
     - "related_references"
   optional_fields:
+    - "roles"
     - "aliases_en"
     - "en_label"
     - "en_preferred_prose"
@@ -96,6 +98,7 @@ term_entry_schema:
   avoid_expression_rule: "Use top-level `avoid.en` and `avoid.ko` for shared searchable avoid expressions; use term-level `avoid_en` or `avoid_ko` only for term-local expressions not already represented there."
   field_types:
     category: "string term type"
+    roles: "list of role strings for identity-sensitive terminology"
     en: "string preferred English term"
     aliases_en: "list of strings"
     en_label: "string exact English product label"
@@ -115,9 +118,17 @@ term_entry_schema:
     notes: "list of strings for terminology checks and maintenance routing"
   field_semantics:
     category: "Term type used by terminology and maintenance checks."
+    roles: "Small controlled role set used to distinguish public user terminology, storage internals, MCP process binding, diagnostics, public MCP selectors, and storage records without making a document-wide forbidden-word list."
     primary_owner: "Focused owner document for the term's definition, contract, or terminology rule."
     related_references: "Adjacent documents that help interpret the term; these paths are not alternate primary owners."
     notes: "Check-oriented guidance for terminology, owner routing, identifier preservation, and Korean prose."
+  role_values:
+    public_user_term: "Reader-facing product terminology that ordinary users may see or use."
+    storage_internal_identifier: "Internal storage identifier or key terminology, not an ordinary public selector."
+    storage_record: "Named storage record or table terminology."
+    mcp_process_binding: "MCP adapter process-binding terminology used to start or bind a local process."
+    diagnostic_field: "Diagnostic or implementation-owned output field terminology."
+    mcp_public_selector: "Public MCP selector terminology exposed for caller-owned selection."
   owner_path_rule: "Every `primary_owner` and `related_references` path must exist and be represented in `docs/doc-index.yaml`."
   index_owner_rule: "Use an index as `primary_owner` only for index-owned navigation terms."
 identifier_preservation:
@@ -405,7 +416,11 @@ terms:
       - "Do not treat `Product Repository` content as Volicord runtime state, `Volicord Runtime Home`, or proof of Volicord authority."
   volicord_runtime_home:
     category: "product_label"
+    roles:
+      - "public_user_term"
     en: "Volicord Runtime Home"
+    aliases_en:
+      - "Runtime Home"
     ko_reference: "Volicord Runtime Home"
     ko_user: "런타임 홈"
     ko_reference_first_reference: "`Volicord Runtime Home`(런타임 홈)"
@@ -1393,6 +1408,8 @@ terms:
       - "Do not make Agent Connection wording sound like OS permission, secret isolation, filesystem ACLs, or user authority."
   connection_internal_id:
     category: "storage_internal_identifier"
+    roles:
+      - "storage_internal_identifier"
     en: "connection_internal_id"
     preserve_identifier: true
     ko_reference: "`connection_internal_id`"
@@ -1412,6 +1429,9 @@ terms:
       - "Do not use as an ordinary user-facing selector."
   connection_id:
     category: "mcp_process_binding"
+    roles:
+      - "mcp_process_binding"
+      - "diagnostic_field"
     en: "connection_id"
     preserve_identifier: true
     ko_reference: "`connection_id`"
@@ -1435,6 +1455,8 @@ terms:
       - "Do not describe a copied `connection_id` as user authority, OS permission, or proof of capability."
   project_internal_id:
     category: "storage_internal_identifier"
+    roles:
+      - "storage_internal_identifier"
     en: "project_internal_id"
     preserve_identifier: true
     ko_reference: "`project_internal_id`"
@@ -1454,6 +1476,8 @@ terms:
       - "User-facing commands select projects by repository root, project name, alias, or a public selector returned by Volicord."
   project_id:
     category: "diagnostic_field"
+    roles:
+      - "diagnostic_field"
     en: "project_id"
     preserve_identifier: true
     ko_reference: "`project_id`"
@@ -1475,6 +1499,8 @@ terms:
       - "Do not use as the public MCP project selection value; use `project_selector` for that surface."
   project_selector:
     category: "mcp_public_selector"
+    roles:
+      - "mcp_public_selector"
     en: "project_selector"
     preserve_identifier: true
     ko_reference: "`project_selector`"
@@ -1664,6 +1690,30 @@ terms:
     notes:
       - "Use this label for managed host configuration and last-known verification state."
       - "Do not treat managed host configuration state as proof that the external host trusted, approved, loaded, or exposed the MCP server."
+  installation_profile:
+    category: "storage_record"
+    roles:
+      - "storage_record"
+    en: "installation_profile"
+    preserve_identifier: true
+    ko_reference: "`installation_profile`"
+    ko_user: "`installation_profile`"
+    ko_explanation: "설치 프로필 저장 기록"
+    preserve_as_identifier:
+      - "installation_profile"
+    primary_owner:
+      en: "docs/en/reference/storage-ddl.md"
+      ko: "docs/ko/reference/storage-ddl.md"
+    related_references:
+      - en: "docs/en/reference/storage-records.md"
+        ko: "docs/ko/reference/storage-records.md"
+      - en: "docs/en/reference/runtime-boundaries.md"
+        ko: "docs/ko/reference/runtime-boundaries.md"
+      - en: "docs/en/reference/agent-connection.md"
+        ko: "docs/ko/reference/agent-connection.md"
+    notes:
+      - "Use for the Runtime Home registry storage record that stores setup-time command paths, default connection mode, metadata, and timestamps."
+      - "Do not describe `installation_profile` as host trust, user authority, or public API state."
   state_version:
     category: "identifier"
     en: "state_version"

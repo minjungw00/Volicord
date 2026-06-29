@@ -26,6 +26,7 @@
 | Volicord 구현 | Volicord 구현 | 이 저장소가 유지하는 구현 집합이며 Volicord 전체와 같은 말은 아닙니다. 런타임과 위치 경계의 세부사항은 런타임 경계가 담당합니다. | [런타임 경계](runtime-boundaries.md) |
 | `Product Repository` | 제품 저장소 | Volicord 런타임 상태와 구분되는 사용자의 프로젝트 작업 공간과 제품 파일입니다. | [런타임 경계](runtime-boundaries.md) |
 | `Volicord Runtime Home` | 런타임 홈 | 저장소/런타임 담당 문서가 정의한 Volicord 운영 데이터의 로컬 런타임 데이터 공간입니다. | [런타임 경계](runtime-boundaries.md) |
+| `installation_profile` | 설치 프로필 저장 기록 | setup 시점의 명령 경로, 기본 연결 모드, 메타데이터, 타임스탬프를 저장하는 Runtime Home registry 기록입니다. 호스트 신뢰, 사용자 권한, 공개 API 상태가 아닙니다. | [저장소 DDL](storage-ddl.md) |
 | runtime | 런타임 | Volicord의 운영 실행과 데이터 맥락입니다. | [런타임 경계](runtime-boundaries.md) |
 | baseline scope | 기준 범위 | Volicord가 안정적으로 지원한다고 문서화한 경계입니다. | [기준 범위](scope.md) |
 | out-of-scope capability | 지원 범위 밖 기능 | 기준 지원 경계 밖에 있는 유예된 기능입니다. | [기준 범위](scope.md) |
@@ -48,6 +49,11 @@
 | close-readiness blocker | 닫기 차단 사유 | 닫기 준비 상태가 진행되지 못할 때 드러나는 닫기 관련 사유입니다. | [API 차단 사유 처리 경로](api/blocker-routing.md) |
 | `Projection` | 상태 보기 | 읽기 전용 상태 보기를 뜻하는 정확한 제품 라벨입니다. 상태 보기 출력은 표시이지 `Core` 권한이 아닙니다. | [상태 보기 권한 참조](projection-and-templates.md) |
 | `Agent Connection` | 에이전트 연결 | `connection_internal_id`와 함께 저장되는 로컬 MCP 호스트 연결 단위입니다. MCP 시작에서는 프로세스 바인딩 인자 표기로 `connection_id`를 사용합니다. | [Agent Connection 참조](agent-connection.md) |
+| `connection_internal_id` | 연결 내부 식별자 | Agent Connection 기록과 Connection Projects membership에 쓰는 저장 기본 키입니다. 일반 사용자용 선택자가 아닙니다. | [저장소 DDL](storage-ddl.md) |
+| `connection_id` | 연결 프로세스 바인딩 | 저장된 Agent Connection에 대한 MCP 프로세스 바인딩이자 시작 진단 필드 표기입니다. 저장 기본 키나 권한 토큰이 아닙니다. | [MCP 전송](mcp-transport.md) |
+| `project_internal_id` | 프로젝트 내부 식별자 | 등록된 프로젝트 기록과 Connection Projects membership에 쓰는 저장 기본 키입니다. 사용자 대상 흐름은 저장소 루트, 이름, 별칭, 공개 선택자를 사용합니다. | [저장소 DDL](storage-ddl.md) |
+| `project_id` | 프로젝트 진단 필드 | 특정 맥락의 진단 필드 또는 담당 문서가 정의한 스키마 필드 표기입니다. 공개 MCP 프로젝트 선택자가 아닙니다. | [MCP 전송](mcp-transport.md) |
+| `project_selector` | 프로젝트 공개 선택자 | 여러 프로젝트 중 선택할 때 `volicord.list_projects`가 반환하는 공개 MCP 프로젝트 선택자입니다. Runtime Home registry 식별자가 아닙니다. | [MCP 전송](mcp-transport.md) |
 | connection intent | 연결 의도 | `personal`, `shared`, `global` 중 하나인 Agent Connection 배치 의도입니다. | [Agent Connection 참조](agent-connection.md) |
 | `connection.mode` | 연결 모드 | `workflow` 또는 `read_only`인 Agent Connection 모드입니다. | [Agent Connection 참조](agent-connection.md) |
 | `Connection Projects` | 연결 프로젝트 | Agent Connection에 명시적으로 허용된 `project_internal_id` 목록입니다. | [Agent Connection 참조](agent-connection.md) |

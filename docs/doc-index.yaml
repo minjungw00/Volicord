@@ -245,8 +245,8 @@ shared_documents:
   normative_level: maintenance
   owner_area: documentation_maintenance
   created_on: '2026-06-10'
-  last_updated_on: '2026-06-29'
-  last_verified_on: '2026-06-29'
+  last_updated_on: '2026-06-30'
+  last_verified_on: '2026-06-30'
   applies_to:
   - volicord_workspace_0_1
   - terminology_map_v1
@@ -258,6 +258,7 @@ shared_documents:
   canonical_for:
   - machine-readable terminology metadata
   - complete structured term inventory
+  - identity-sensitive terminology role metadata
   - bilingual terminology controls
   - identifier preservation rules
   - English and Korean discouraged-expression metadata
@@ -1198,8 +1199,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
   created_on: '2026-05-06'
-  last_updated_on: '2026-06-27'
-  last_verified_on: '2026-06-27'
+  last_updated_on: '2026-06-30'
+  last_verified_on: '2026-06-30'
   applies_to:
   - volicord_workspace_0_1
   - terminology_map_v1
