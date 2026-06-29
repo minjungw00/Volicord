@@ -39,7 +39,11 @@ Volicord는 이런 대체를 보이게 하려고 존재합니다. 범위, 사용
 | Agent Connection | 로컬 MCP 호스트 connection 단위. 하나의 호스트 설정 대상, 관리되는 연결 식별 정보, 모드, 명시적으로 연결된 Project를 묶습니다. | [Agent Connection Reference](../reference/agent-connection.md) |
 | User Channel | 권한을 지니는 사용자 판단을 위한 로컬 사용자 경로. Agent Connection은 `user_only` 판단을 기록하지 않습니다. | [관리 CLI](../reference/admin-cli.md#user-channel-commands) |
 
-현재 기준 에이전트 호스트 모델은 connection 기반입니다. 하나의 `volicord-mcp` 프로세스는 내부 연결 식별 정보로 하나의 Agent Connection에 묶입니다. connection은 명시적으로 연결된 Project에만 접근할 수 있습니다. 정확히 하나의 Project만 연결되어 있으면 공개 MCP 도구 호출에서 프로젝트 선택을 생략할 수 있고, 여러 Project가 연결되어 있으면 공개 MCP 도구 호출은 `volicord.list_projects`가 반환한 `project_selector`를 사용해야 합니다.
+현재 기준 에이전트 호스트 모델은 connection 기반입니다. 하나의 `volicord-mcp`
+프로세스는 내부 연결 식별 정보로 하나의 Agent Connection에 묶이고, connection은
+명시적으로 연결된 Project에만 접근할 수 있습니다. 정확한 프로젝트 선택과 MCP 도구
+인자 동작은 [Agent Connection Reference](../reference/agent-connection.md)와
+[MCP 전송](../reference/mcp-transport.md)이 담당합니다.
 
 ## Setup이 하는 일
 
@@ -73,12 +77,14 @@ Volicord 문서는 첫 읽기 수준에서 아래 권한 개념을 구분하고 
 
 ## Connection Mode
 
-Agent Connection은 하나의 모드를 가집니다.
-
-| 모드 | MCP 도구 노출 |
-|---|---|
-| `read_only` | 읽기와 프로젝트 발견 작업: `volicord.status`, `volicord.check_close`를 통한 닫기 준비 상태 확인, `volicord.list_projects`. |
-| `workflow` | 읽기 작업과 intake, scope update, prepare write, stage artifact, record run, request user judgment, close task, project discovery 같은 에이전트 워크플로 작업. `volicord.record_user_judgment`는 노출하지 않으며 사용자 판단 기록은 User Channel이 담당합니다. |
+Agent Connection은 읽기 중심 모드나 workflow 가능 모드로 둘 수 있습니다. 호스트가
+상태를 조회하고, 프로젝트를 찾고, workflow 변경 도구 없이 닫기 준비 상태를 확인해야
+하면 읽기 중심 모드를 사용합니다. 일반 에이전트 workflow 작업에는 workflow 모드를
+사용합니다. 정확한 CLI 선택 동작은 [관리
+CLI](../reference/admin-cli.md#connection-intents-and-hosts)가 담당하고, MCP에 보이는
+정확한 도구 노출은 [MCP
+전송](../reference/mcp-transport.md#tool-discovery-and-toolscall-response-wrapping)이
+담당합니다.
 
 ## Volicord가 아닌 것
 

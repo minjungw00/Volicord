@@ -39,7 +39,12 @@ These names are related, but they are not interchangeable.
 | Agent Connection | A local MCP host connection unit. It binds one host configuration target to one managed connection identity, a mode, and explicitly connected Projects. | [Agent Connection Reference](../reference/agent-connection.md) |
 | User Channel | The local user path for authority-bearing user judgments. Agent Connections do not record `user_only` judgments. | [Administrative CLI](../reference/admin-cli.md#user-channel-commands) |
 
-The current baseline agent host model is connection-based. One `volicord-mcp` process binds to one Agent Connection through an internal connection identity. The connection can access only Projects explicitly connected to it. When exactly one Project is connected, public MCP tool calls may omit project selection; when multiple Projects are connected, public MCP tool calls must use a `project_selector` returned by `volicord.list_projects`.
+The current baseline agent host model is connection-based. One `volicord-mcp`
+process binds to one Agent Connection through an internal connection identity,
+and the connection can access only Projects explicitly connected to it. Exact
+project-selection and MCP tool-argument behavior belongs to
+[Agent Connection Reference](../reference/agent-connection.md) and
+[MCP Transport](../reference/mcp-transport.md).
 
 ## What Setup Does
 
@@ -74,12 +79,13 @@ At first-read level, Volicord documentation keeps these authority concepts separ
 
 ## Connection Modes
 
-Agent Connections have one mode:
-
-| Mode | MCP tool exposure |
-|---|---|
-| `read_only` | Read and project-discovery operations: `volicord.status`, close-readiness checks through `volicord.check_close`, and `volicord.list_projects`. |
-| `workflow` | Read operations plus agent workflow operations such as intake, scope update, prepare write, stage artifact, record run, request user judgment, close task, and project discovery. It does not expose `volicord.record_user_judgment`; user judgment recording belongs to the User Channel. |
+Agent Connections can be read-oriented or workflow-capable. Use read-oriented
+mode when a host should inspect state, discover projects, or check close
+readiness without workflow mutation tools. Use workflow mode for normal agent
+workflow operations. Exact CLI selection behavior belongs to
+[Administrative CLI](../reference/admin-cli.md#connection-intents-and-hosts),
+and exact MCP-visible tool exposure belongs to
+[MCP Transport](../reference/mcp-transport.md#tool-discovery-and-toolscall-response-wrapping).
 
 ## What Volicord Is Not
 

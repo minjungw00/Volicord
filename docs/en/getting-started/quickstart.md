@@ -16,11 +16,10 @@ cd /work/acme-api
 volicord connect codex
 ```
 
-The repository is detected from the current directory. The project name comes
-from the repository directory, so `/work/acme-api` becomes the visible project
-name `acme-api` unless that name needs to be made unique. The default connection
-intent is `personal`, the default mode is `workflow`, and internal identities
-are managed by Volicord.
+Volicord detects the repository from the current directory and uses the normal
+CLI defaults for a first host connection. Exact project naming, connection
+defaults, and internal identity behavior belong to
+[Administrative CLI Reference](../reference/admin-cli.md).
 
 ## Confirm The Setup
 
@@ -32,22 +31,21 @@ volicord connection verify codex
 ```
 
 Completion state: the connection is ready when status or verification reports
-`complete`. If it reports `action_required`, complete the named host-owned
-trust, approval, reload, restart, or setup repair action, then rerun
-verification.
+`complete`. If it reports `action_required`, complete the named host-owned or
+local repair action, then rerun verification. Exact result-state meaning belongs
+to [Administrative CLI Reference](../reference/admin-cli.md#agent-connection-result-states).
 
 ## Choose A Host Intent
 
-Use the shortest command that matches where the host configuration should live:
+Start with the default command when you are connecting the current user's local
+host setup. Add `--shared` only when the selected repository should carry the
+project-shared integration file, and use `--global` only for a host path that
+supports user-wide configuration. Exact intent semantics belong to
+[Administrative CLI Reference](../reference/admin-cli.md#connection-intents-and-hosts);
+host availability requirements belong to
+[System Requirements](../reference/system-requirements.md#host-configuration-requirements).
 
-| Intent | Command shape | Use when |
-|---|---|---|
-| `personal` | `volicord connect codex` or `volicord connect claude-code` | The connection is for the current user's local host setup. |
-| `shared` | `volicord connect codex --shared` or `volicord connect claude-code --shared` | The repository should carry an explicit project-shared host integration file. |
-| `global` | `volicord connect claude-code --global` | The selected host supports user-wide configuration while project access remains constrained by Volicord records. |
-
-Use `--read-only` only when the host should expose read-oriented behavior
-instead of workflow tools:
+Use `--read-only` only when the host should expose read-oriented behavior:
 
 ```sh
 volicord connect codex --read-only
@@ -89,9 +87,11 @@ config:
 volicord export mcp-config --output /tmp/volicord.mcp.json
 ```
 
-The export uses the detected repository and the installation profile. The exported file
-is user-managed after export; Volicord does not claim that an arbitrary external
-host loaded or approved it.
+The export uses the detected repository and the installation profile. Exact
+output defaults belong to
+[Administrative CLI Reference](../reference/admin-cli.md#generic-mcp-config-export).
+The exported file is user-managed after export; Volicord does not claim that an
+arbitrary external host loaded or approved it.
 
 ## Record User Judgment
 

@@ -137,6 +137,7 @@ is present. It reports supported host detection as a connection-verification
 concern. It does not create projects, install host configuration, change
 connection mode, or answer user judgments.
 
+<a id="project-commands"></a>
 ## Project commands
 
 Project commands use repository roots as the user-facing project identity.
@@ -176,6 +177,7 @@ not delete the `Product Repository`, unrelated Runtime Home data, host
 configuration, artifact storage owned by another remaining registration, or
 Core authority rows that must be preserved.
 
+<a id="connection-intents-and-hosts"></a>
 ## Connection intents and hosts
 
 Agent Connection setup uses connection intents instead of low-level host config
@@ -263,6 +265,7 @@ top-level `status`, `checks`, and `actions` fields for diagnostic consumers.
 A successful `volicord-mcp` startup check alone must not be described as a
 `complete` Agent Connection. It is startup validation for the MCP process only.
 
+<a id="generic-mcp-config-export"></a>
 ## Generic MCP config export
 
 `volicord export mcp-config [--output PATH] [--repo PATH] [--read-only] [--json]`

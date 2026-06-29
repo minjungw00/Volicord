@@ -127,6 +127,7 @@ Setup 효과:
 감지는 연결 검증이 보고할 문제로 표시합니다. 프로젝트를 만들거나, 호스트 설정을
 설치하거나, 연결 모드를 바꾸거나, 사용자 판단에 답하지 않습니다.
 
+<a id="project-commands"></a>
 ## 프로젝트 명령
 
 프로젝트 명령은 저장소 루트를 사용자 대상 프로젝트 식별자로 사용합니다. 내부 프로젝트
@@ -164,6 +165,7 @@ Setup 효과:
 관련 없는 Runtime Home 데이터, 호스트 설정, 남아 있는 다른 등록이 소유하는
 아티팩트 저장소, 보존되어야 하는 Core 권한 행을 삭제하면 안 됩니다.
 
+<a id="connection-intents-and-hosts"></a>
 ## 연결 의도와 호스트
 
 Agent Connection 설정은 낮은 수준의 호스트 설정 범위 이름 대신 연결 의도를
@@ -247,6 +249,7 @@ JSON 출력은 진단 소비자를 위해 최상위 `status`, `checks`, `actions
 성공한 `volicord-mcp` 시작 점검만으로는 Agent Connection을 `complete`로 설명하면
 안 됩니다. 이는 MCP 프로세스의 시작 검증일 뿐입니다.
 
+<a id="generic-mcp-config-export"></a>
 ## generic MCP 설정 내보내기
 
 `volicord export mcp-config [--output PATH] [--repo PATH] [--read-only] [--json]`는

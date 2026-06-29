@@ -335,6 +335,7 @@ Supported MCP request methods:
 
 The supported lifecycle notification is `notifications/initialized`.
 
+<a id="tool-discovery-and-toolscall-response-wrapping"></a>
 ## Tool Discovery And `tools/call` Response Wrapping
 
 After the connection is ready, `tools/list` exposes tools according to the

@@ -26,16 +26,16 @@ volicord connect codex
 
 What happens:
 
-- `volicord setup` prepares the default `Volicord Runtime Home`, records the
-  installation profile, discovers `volicord-mcp`, and can prepare both `volicord` and
-  `volicord-mcp` commands in a bin directory you choose.
+- `volicord setup` prepares the selected `Volicord Runtime Home` and records
+  the installation profile used by later CLI, host connection, export, and MCP
+  startup flows.
 - `volicord connect codex` detects the Git repository root from the current
   directory, registers or reuses that repository project, derives the project
   name from the repository directory, creates or updates the matching
   `Agent Connection`, and installs the managed host configuration.
-- The default connection intent is `personal`, and the default mode is
-  `workflow`. Internal project and connection identities are generated and
-  managed by Volicord.
+- Exact setup behavior, connection defaults, option semantics, and output
+  behavior belong to the
+  [Administrative CLI Reference](docs/en/reference/admin-cli.md).
 
 Check the result:
 
@@ -118,10 +118,9 @@ owned by the relevant host setup flow.
    volicord connect codex
    ```
 
-   Use `--shared` when the host configuration should be project-shared. Use
-   `--global` only for hosts that support a user-wide connection. Use
-   `--read-only` when the connection should expose read-oriented behavior
-   instead of workflow tools.
+   For project-shared, user-wide, or read-oriented variants, continue with the
+   [Quickstart](docs/en/getting-started/quickstart.md). Exact option semantics
+   belong to the [Administrative CLI Reference](docs/en/reference/admin-cli.md).
 
 4. Inspect and verify connection state.
 

@@ -86,14 +86,22 @@ volicord-mcp --version
 volicord-mcp --help
 ```
 
-Host configuration uses MCP command information established by `volicord setup`:
+Host configuration uses MCP command information established by `volicord setup`.
+For exact `--mcp-command`, discovery-order, `--link-bin`, connection, and
+generic export behavior, use
+[Administrative CLI](admin-cli.md#runtime-home-selection) and
+[Generic MCP config export](admin-cli.md#generic-mcp-config-export).
 
-- `volicord setup --mcp-command PATH` records the command that managed host configuration and generic MCP configuration export should use to start `volicord-mcp`.
-- If `--mcp-command` is omitted, setup discovery uses the sibling `volicord-mcp` next to the running `volicord` executable and then a command on `PATH`.
-- `--link-bin PATH` prepares both `volicord` and `volicord-mcp` commands in that directory when feasible.
-- Ordinary `volicord connect` commands use the saved profile in the resolved Runtime Home; they are not the place to supply an MCP command path or Runtime Home path.
-- Shared project host configuration must not embed a personal Runtime Home path. It uses `volicord-mcp` as a command name that the future host environment must resolve through `PATH`.
-- Generic export can render explicit configuration, but it remains user-managed until a host-specific owner defines an observable loadability gate.
+Requirement summary:
+
+- Setup must be able to find both `volicord` and `volicord-mcp`.
+- Future host processes must be able to start the configured `volicord-mcp`
+  command.
+- Shared project host configuration must not embed a personal Runtime Home
+  path. It uses `volicord-mcp` as a command name that the future host
+  environment must resolve through `PATH`.
+- Generic export can render explicit configuration, but it remains user-managed
+  until a host-specific owner defines an observable loadability gate.
 
 ## Runtime Home Requirements
 
@@ -119,6 +127,7 @@ Read access is required when Volicord validates or uses the registered project. 
 
 Noninteractive shared-intent host configuration or guidance writes require the explicit `--shared` command path defined by [Administrative CLI](admin-cli.md#noninteractive-approval-behavior). Runtime records, SQLite databases, generated records, logs, projections, QA results, acceptance records, close-readiness state, and residual-risk records do not belong in the `Product Repository`.
 
+<a id="host-configuration-requirements"></a>
 ## Host Configuration Requirements
 
 For direct host configuration setup, the administrative process must be able to inspect the target host configuration and write managed configuration when the selected host and connection intent require it.

@@ -36,10 +36,10 @@ Then create the installation profile:
 ./target/debug/volicord setup --link-bin ~/.local/bin
 ```
 
-`volicord setup` creates or verifies the selected `Volicord Runtime Home`, finds
-`volicord-mcp`, and saves the installation profile. MCP command discovery checks an
-explicit `--mcp-command PATH` first when supplied, then a sibling
-`volicord-mcp` next to the running `volicord`, then `PATH`.
+`volicord setup` creates or verifies the selected `Volicord Runtime Home` and
+saves the installation profile. Exact setup options, MCP command discovery
+order, and output behavior belong to
+[Administrative CLI Reference](../reference/admin-cli.md#runtime-home-selection).
 
 When `--link-bin` is supplied, setup prepares both `volicord` and
 `volicord-mcp` commands in that directory when feasible. The CLI can report the
@@ -53,10 +53,9 @@ Check setup readiness:
 volicord doctor
 ```
 
-`doctor` reports `complete` when the Runtime Home, installation profile, stored command
-paths, and applicable command links are usable. `action_required` means the
-command found a specific local repair action, such as rerunning setup or fixing
-an executable path.
+`doctor` reports `complete` when setup is usable. `action_required` names a
+specific local repair action, such as rerunning setup or fixing an executable
+path.
 
 ## Use Installed Executables
 
@@ -67,12 +66,11 @@ volicord setup
 volicord doctor
 ```
 
-Setup discovers the MCP command from the running installation by sibling lookup
-or `PATH` lookup. Use `volicord setup --mcp-command PATH` only when discovery
-cannot find the `volicord-mcp` executable you intend to use. Ordinary
-`volicord connect` commands use the saved installation profile in the resolved Runtime
-Home; they do not ask for an MCP command path, Runtime Home path, internal
-project identity, internal host value, or registry value.
+Setup uses the same installation-profile contract whether the executables came
+from a source build or an installed command directory. Use
+`volicord setup --mcp-command PATH` only when the default discovery described by
+the CLI reference cannot find the `volicord-mcp` executable you intend to use.
+Ordinary `volicord connect` commands use the saved installation profile.
 
 ## What Setup Does Not Do
 
@@ -80,9 +78,9 @@ Setup does not register a product repository and does not install host
 configuration. Project registration happens when you run `volicord project use`
 or a command such as `volicord connect` from inside a Git repository.
 
-The repository project name is derived from the repository directory and made
-unique inside the selected Runtime Home when needed. Internal identities are
-stored by Volicord and are not first-time setup inputs.
+Project naming and internal identity behavior are owned by the
+[Administrative CLI Reference](../reference/admin-cli.md#project-commands).
+Internal identities are stored by Volicord and are not first-time setup inputs.
 
 ## Next Step
 
