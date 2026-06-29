@@ -15,14 +15,13 @@ each section.
 
 ## Shared MCP to Core shape
 
-Diagram role: runtime sequence. It answers the source-code learner question,
-"what call order does a public MCP `tools/call` follow before Core returns a
-Volicord response?" Sequence arrows show representative implementation order
-and return flow for the shared path; they are not onboarding steps, exact public
-method contracts, or storage-effect definitions. Implementation exactness
-belongs to the named `volicord-mcp`, `volicord-core`, method-module, and
-`volicord-store` code areas described below; product behavior exactness remains
-with the linked Reference owners.
+This sequence follows the representative call order for a public MCP
+`tools/call` before Core returns a Volicord response. Sequence arrows show
+implementation order and return flow for the shared path; they are not
+onboarding steps, exact public method contracts, or storage-effect definitions.
+Implementation exactness belongs to the named `volicord-mcp`, `volicord-core`,
+method-module, and `volicord-store` code areas described below; product
+behavior exactness remains with the linked Reference owners.
 
 ```mermaid
 sequenceDiagram

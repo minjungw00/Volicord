@@ -107,9 +107,9 @@ volicord connect codex
 
 ## 사용자 작업 흐름
 
-그림 역할: 사용자 작업 흐름입니다. 화살표는 첫 읽기 수준의 협업 순서와 결정 인계를
-뜻합니다. 전체 API 호출 순서, 저장소 배치, 구성 요소 소유는 의도적으로 생략합니다.
-정확한 Core 권한, MCP 전송, 런타임 경계는 [Core 모델](docs/ko/reference/core-model.md),
+이 첫 읽기용 작업 흐름은 협업 순서와 결정 인계를 보여 줍니다. 전체 API 호출 순서,
+저장소 배치, 구성 요소 소유는 의도적으로 생략합니다. 정확한 Core 권한, MCP 전송,
+런타임 경계는 [Core 모델](docs/ko/reference/core-model.md),
 [MCP 전송](docs/ko/reference/mcp-transport.md),
 [런타임 경계](docs/ko/reference/runtime-boundaries.md) 참조가 담당합니다.
 
@@ -143,10 +143,10 @@ sequenceDiagram
 
 ## 로컬 구성 요소 지도
 
-그림 역할: 구성 요소 지도입니다. 화살표는 로컬 실행, 설정 로드, 기록 접근, 저장소
-맥락 사용을 뜻합니다. 위의 사용자 작업 흐름과 별개의 그림이며, 모든 런타임 호출이나
-저장 효과를 보여 주지는 않습니다. 정확한 명령, MCP, Agent Connection, 런타임 경계
-동작은 [관리 CLI](docs/ko/reference/admin-cli.md),
+이 지도는 로컬 실행, 설정 로드, 기록 접근, 저장소 맥락 사용을 보여 줍니다. 위의
+사용자 작업 흐름과 별개의 그림이며, 모든 런타임 호출이나 저장 효과를 보여 주지는
+않습니다. 정확한 명령, MCP, Agent Connection, 런타임 경계 동작은
+[관리 CLI](docs/ko/reference/admin-cli.md),
 [MCP 전송](docs/ko/reference/mcp-transport.md),
 [Agent Connection](docs/ko/reference/agent-connection.md),
 [런타임 경계](docs/ko/reference/runtime-boundaries.md) 참조가 담당합니다.

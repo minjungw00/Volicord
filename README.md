@@ -114,10 +114,10 @@ Volicord whether unresolved blockers still make the close dishonest.
 
 ## User Workflow
 
-Diagram role: user workflow. Arrows show collaboration order and decision
-handoffs at first-read level. The diagram intentionally omits full API call
-order, storage layout, and component ownership; exact Core authority, MCP
-transport, and runtime boundaries belong to the
+This first-read workflow shows collaboration order and decision handoffs.
+It intentionally omits full API call order, storage layout, and component
+ownership; exact Core authority, MCP transport, and runtime boundaries belong
+to the
 [Core Model](docs/en/reference/core-model.md),
 [MCP Transport](docs/en/reference/mcp-transport.md), and
 [Runtime Boundaries](docs/en/reference/runtime-boundaries.md) references.
@@ -152,11 +152,11 @@ test sufficiency, QA completion, deployment success, or risk-free outcomes.
 
 ## Local Component Map
 
-Diagram role: component map. Arrows show local launches, configuration loading,
-record access, and repository-context use. This is distinct from the user
-workflow above and intentionally does not show every runtime call or storage
-effect. Exact command, MCP, Agent Connection, and runtime-boundary behavior
-belongs to the [Administrative CLI](docs/en/reference/admin-cli.md),
+This map shows local launches, configuration loading, record access, and
+repository-context use. It is distinct from the user workflow above and
+intentionally does not show every runtime call or storage effect. Exact
+command, MCP, Agent Connection, and runtime-boundary behavior belongs to the
+[Administrative CLI](docs/en/reference/admin-cli.md),
 [MCP Transport](docs/en/reference/mcp-transport.md),
 [Agent Connection](docs/en/reference/agent-connection.md), and
 [Runtime Boundaries](docs/en/reference/runtime-boundaries.md) references.

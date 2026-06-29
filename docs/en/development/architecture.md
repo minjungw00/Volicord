@@ -12,10 +12,10 @@ This checkout is the Volicord source repository and Rust workspace for the repos
 
 ## Operational paths
 
-Diagram role: component map with execution orientation. It answers the
-implementer question, "which local implementation components and file
-boundaries participate in the main operational paths?" It is a guide-level map,
-not a public API contract, installation manifest, storage ERD, or user workflow.
+This guide-level map shows which local implementation components and file
+boundaries participate in the main operational paths. It orients execution
+paths for implementers; it is not a public API contract, installation manifest,
+storage ERD, or user workflow.
 
 ```mermaid
 flowchart LR
@@ -117,12 +117,11 @@ Internal dependency direction from the Cargo manifests:
 | `tests/integration` | None; the package contains only test targets | `volicord-core`, `volicord-mcp`, `volicord-store`, `volicord-test-support`, `volicord-types` |
 | `xtask` | None | None |
 
-Diagram role: dependency graph. It answers the implementer question, "which
-workspace members may depend on which other internal packages?" The next
-Mermaid diagram is Cargo dependency direction, not runtime process topology.
-Exactness belongs to the Cargo manifests. Solid arrows point from a crate or
-package to a normal internal dependency. Dashed `dev` and `test` arrows are
-development and test-only dependency edges.
+The next Mermaid diagram shows which workspace members may depend on which
+other internal packages. It uses Cargo dependency direction, not runtime
+process topology, and exactness belongs to the Cargo manifests. Solid arrows
+point from a crate or package to a normal internal dependency. Dashed `dev` and
+`test` arrows are development and test-only dependency edges.
 
 ```mermaid
 flowchart TD
@@ -199,12 +198,12 @@ Method modules decide what should happen for one public method. The shared Core 
 
 ## MCP and Core execution flow
 
-Diagram role: runtime sequence. It answers the implementer question, "what
-shared execution order connects an MCP `tools/call` to Core planning and Store
-effects?" Sequence arrows show representative implementation call order and
-return flow; they do not show onboarding, every method branch, or exact public
-method contracts. Exact source areas are named in the numbered flow below, and
-public behavior remains with the focused Reference owners.
+This sequence follows the shared execution order that connects an MCP
+`tools/call` to Core planning and Store effects. Sequence arrows show
+representative implementation call order and return flow; they do not show
+onboarding, every method branch, or exact public method contracts. Exact source
+areas are named in the numbered flow below, and public behavior remains with
+the focused Reference owners.
 
 ```mermaid
 sequenceDiagram
@@ -270,12 +269,12 @@ This flow is an implementation map. Exact public method contracts, error precede
 
 `volicord connect` and `volicord connection ...` are implemented as local administrative orchestration, not as public Core methods. The implementation lives under `crates/volicord-cli/src/connection_command.rs` and the host adapters in `crates/volicord-cli/src/host_integration/`; exact command, Agent Connection, MCP transport, and runtime-boundary contracts stay with [Administrative CLI](../reference/admin-cli.md), [MCP Transport](../reference/mcp-transport.md), [Runtime Boundaries](../reference/runtime-boundaries.md), and [Security](../reference/security.md).
 
-Diagram role: connection setup flow. It answers the implementer and operator
-question, "what order does local administrative connection setup follow?" Solid
-arrows show the main setup order, while dotted arrows point from stages to
-possible failure reporting. The diagram is not the steady-state MCP runtime
-path and does not imply cross-boundary transaction rollback; `volicord-mcp`
-appears only in the explicit preflight and optional stdio handshake stages.
+This setup flow shows the order followed by local administrative connection
+setup. Solid arrows show the main setup order, while dotted arrows point from
+stages to possible failure reporting. The diagram is not the steady-state MCP
+runtime path and does not imply cross-boundary transaction rollback;
+`volicord-mcp` appears only in the explicit preflight and optional stdio
+handshake stages.
 
 ```mermaid
 flowchart TD

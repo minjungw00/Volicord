@@ -26,13 +26,13 @@ This document does not own:
 
 Artifact storage distinguishes staging, promotion, persistent linking, and body reads. `ArtifactRef` is the public API pointer to a registered persistent artifact. Storage implements persistent artifact authority through `artifacts` plus `artifact_links`. For record-family placement, see [Storage Records](storage-records.md). For response-branch persistence effects, see [Storage Effects](storage-effects.md).
 
-Diagram role: storage lifecycle. It answers the implementer question, "when
-does staged material become a durable artifact relation that can be evidence
-eligible?" Solid arrows show storage lifecycle transitions or durable linking
-paths; the dotted arrow marks the excluded path where staging alone is not
-evidence. The diagram does not show artifact body-read checks or table layout.
-This document owns lifecycle exactness; API shapes and table overviews belong
-to [API Artifact Schemas](api/schema-artifacts.md) and
+This lifecycle view shows when staged material becomes a durable artifact
+relation that can be evidence eligible. Solid arrows show storage lifecycle
+transitions or durable linking paths; the dotted arrow marks the excluded path
+where staging alone is not evidence. The diagram does not show artifact
+body-read checks or table layout. This document owns lifecycle exactness; API
+shapes and table overviews belong to
+[API Artifact Schemas](api/schema-artifacts.md) and
 [Storage Records](storage-records.md).
 
 ```mermaid

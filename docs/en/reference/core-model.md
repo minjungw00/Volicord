@@ -78,12 +78,11 @@ Scope and close-basis revisions are internal current-state coordinates.
 
 ### Concept relationship map
 
-Diagram role: authority model. It answers the agent and implementer question,
-"which Core concepts depend on, qualify, or remain separate from each other?"
-Arrows show conceptual authority dependency, containment, or eligibility; they
-do not show execution order, storage ownership, API shape, or automatic
-sufficiency. Solid arrows mark direct concept relationships. Dotted arrows mark
-conditional eligibility or request boundaries.
+This map shows which Core concepts depend on, qualify, or remain separate from
+each other. Arrows show conceptual authority dependency, containment, or
+eligibility; they do not show execution order, storage ownership, API shape, or
+automatic sufficiency. Solid arrows mark direct concept relationships. Dotted
+arrows mark conditional eligibility or request boundaries.
 
 ```mermaid
 flowchart TD

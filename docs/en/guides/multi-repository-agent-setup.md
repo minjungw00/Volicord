@@ -9,11 +9,10 @@ and [MCP Transport](../reference/mcp-transport.md).
 
 ## Topology
 
-Diagram role: component map for a host-level Agent Connection. It answers the
-operator question, "how can one host entry reach more than one explicitly
-connected repository?" Arrows show the configured binding and allowed membership
-relationships; they are not request execution order and do not imply access to
-every project in the Runtime Home.
+This topology map shows how one host entry can reach more than one explicitly
+connected repository through a host-level Agent Connection. Arrows show the
+configured binding and allowed membership relationships; they are not request
+execution order and do not imply access to every project in the Runtime Home.
 
 ```mermaid
 flowchart LR
