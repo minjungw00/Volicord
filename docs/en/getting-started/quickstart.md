@@ -19,8 +19,8 @@ volicord connect codex
 The repository is detected from the current directory. The project name comes
 from the repository directory, so `/work/acme-api` becomes the visible project
 name `acme-api` unless that name needs to be made unique. The default connection
-intent is `personal`, the default mode is `workflow`, and internal ids are
-managed by Volicord.
+intent is `personal`, the default mode is `workflow`, and internal identities
+are managed by Volicord.
 
 ## Confirm The Setup
 

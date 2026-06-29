@@ -55,7 +55,7 @@ volicord connection status claude-code --global
 
 The command detects the Git repository root, registers or reuses the repository
 project, derives the visible project name from the repository directory, and
-stores internal ids in the Runtime Home.
+stores internal registry identities in the Runtime Home.
 
 ## Add Another Repository
 
@@ -76,7 +76,7 @@ volicord connection status codex --repo /work/billing-api
 
 For the same host-level target, Volicord reuses the matching Agent Connection
 and adds the selected repository to Connection Projects. It does not require the
-operator to handle the internal connection id.
+operator to handle the internal connection identity.
 
 ## Inspect The Connection
 

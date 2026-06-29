@@ -3,7 +3,7 @@
 Use this guide when `volicord setup`, `volicord connect`, `volicord connection
 ...`, or `volicord export mcp-config` reports a host setup problem. It assumes
 the simplified command model where Volicord detects repository projects and
-manages internal ids.
+manages internal identities.
 
 Exact result-state meaning belongs to
 [Administrative CLI Reference](../reference/admin-cli.md#agent-connection-result-states).
@@ -69,7 +69,7 @@ volicord connect codex --repo /work/acme-api
 ```
 
 The user-facing project name comes from the repository directory. Internal
-project ids are not recovery inputs.
+project identities are not recovery inputs.
 
 ## Host Cannot Be Selected
 

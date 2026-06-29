@@ -64,7 +64,7 @@ Baseline command-line behavior:
   without reading stdin.
 - `volicord-mcp --check --connection <connection_id> --project <project_id>`
   runs the same startup validation and limits project-detail diagnostics to
-  one allowed internal project selector.
+  one allowed internal project identity.
 - `-h` and `--help` print usage and environment summary, then exit with code
   `0`.
 - `-V` and `--version` print `volicord-mcp <version>`, then exit with code `0`.
@@ -187,13 +187,13 @@ project-detail block for each connected project, in this order:
 configuration: valid
 transport: stdio
 runtime_home: <absolute path>
-connection_id: <internal connection id>
+connection_id: <internal connection identity>
 mode: workflow|read_only
 enabled: true|false
 allowed_projects: <count>
 available_projects: <count>
 verification_scope: startup_check_only
-project[0].project_id: <internal project selector or diagnostic id>
+project[0].project_id: <internal project identity or diagnostic identity>
 project[0].available: true|false
 project[0].unavailable_reason: <value or empty>
 project[0].repo_root: <path>

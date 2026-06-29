@@ -177,7 +177,7 @@ RecordUserJudgmentRequest:
 
 ## 최소 유효 요청
 
-메서드 안의 전제: `uj_empty_001`은 `proj_empty_001`의 `task_empty_001`과 `cu_empty_001`에 속한 기존 대기 `product_decision`입니다. 현재 프로젝트 `state_version`은 `62`이고, `keep`은 그 선택지 ID 중 하나입니다.
+메서드 안의 전제: `uj_empty_001`은 `proj_empty_001`의 `task_empty_001`과 `cu_empty_001`에 속한 기존 대기 `product_decision`입니다. 현재 프로젝트 `state_version`은 `62`이고, `keep`은 그 선택지 식별자 중 하나입니다.
 
 ```yaml
 method: volicord.record_user_judgment

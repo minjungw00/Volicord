@@ -34,8 +34,8 @@ What happens:
   name from the repository directory, creates or updates the matching
   `Agent Connection`, and installs the managed host configuration.
 - The default connection intent is `personal`, and the default mode is
-  `workflow`. Internal project and connection ids are generated and managed by
-  Volicord.
+  `workflow`. Internal project and connection identities are generated and
+  managed by Volicord.
 
 Check the result:
 
@@ -59,8 +59,8 @@ status or verification command.
 |---|---|---|
 | Setup profile | The `volicord` executable you run, and optionally a link directory or explicit `volicord-mcp` path during setup. | Runtime Home readiness, the stored `volicord` and `volicord-mcp` commands, and setup diagnostics. |
 | Runtime Home | Usually nothing; the default is used unless `VOLICORD_HOME` or `volicord setup --home` selects another path. | Registry state, project state, Agent Connection records, artifacts, and setup metadata. |
-| Repository project | A Git repository path, usually the current directory. | Project registration, a user-facing project name derived from the repository directory, and internal project ids. |
-| Agent Connection | Host and intent: for example `codex`, `claude-code --shared`, or `claude-code --global`. | Host configuration, connection mode, project membership, connection ids, verification state, and required user actions. |
+| Repository project | A Git repository path, usually the current directory. | Project registration, a user-facing project name derived from the repository directory, and internal project identities. |
+| Agent Connection | Host and intent: for example `codex`, `claude-code --shared`, or `claude-code --global`. | Host configuration, connection mode, project membership, internal connection identities, verification state, and required user actions. |
 | MCP config export | An optional output path for hosts Volicord does not manage directly. | A host-neutral MCP config bound to the selected repository and setup profile. |
 | User Channel | A user choosing a Core-generated option. | Local user judgment commands that keep authority-bearing answers separate from Agent Connections. |
 

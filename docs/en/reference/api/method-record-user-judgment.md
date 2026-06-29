@@ -177,7 +177,7 @@ On commit, the method may persist judgment resolution, method-selected project c
 
 ## Minimal valid request
 
-Method-local precondition: `uj_empty_001` is an existing pending `product_decision` for `task_empty_001` and `cu_empty_001` in `proj_empty_001`; the current project `state_version` is `62`, and `keep` is one of its option IDs.
+Method-local precondition: `uj_empty_001` is an existing pending `product_decision` for `task_empty_001` and `cu_empty_001` in `proj_empty_001`; the current project `state_version` is `62`, and `keep` is one of its option identifiers.
 
 ```yaml
 method: volicord.record_user_judgment

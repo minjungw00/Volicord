@@ -21,7 +21,7 @@ volicord connection status codex
 
 연결 명령은 현재 디렉터리에서 Git 저장소 루트를 감지하고, 해당 저장소 프로젝트를
 등록하거나 재사용하며, 저장소 디렉터리에서 보이는 프로젝트 이름을 파생하고, 내부
-ID를 선택된 `Volicord Runtime Home`에 저장합니다.
+registry 식별 정보를 선택된 `Volicord Runtime Home`에 저장합니다.
 
 프로세스 현재 디렉터리가 연결하려는 저장소가 아닐 때만 `--repo PATH`를 사용합니다.
 

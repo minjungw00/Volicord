@@ -53,21 +53,23 @@ text-mode user flows select it by host, connection intent, and repository root
 through the commands owned by [Administrative CLI](admin-cli.md).
 
 One `volicord-mcp` process is bound to one Agent Connection. Generated host
-configuration may contain the internal connection id so the host can start that
-process, but the id is not a user authority token and is not required as a
-normal command input.
+configuration may contain the internal connection identity so the host can
+start that process, but that identity is not a user authority token and is not
+required as a normal command input.
 
 Stored Agent Connection fields include:
 
-- `connection_id`
+- `connection_internal_id`
 - `host_kind`
-- `connection_intent`
+- `intent`
+- `host_scope`
+- `project_internal_id` when the connection target is project-scoped
 - `server_name`
 - `config_target`
 - `mode`
 - `enabled`
 - `managed_fingerprint`
-- `last_verified_status`
+- `last_verification_status`
 - creation and update timestamps
 
 The internal host configuration key `server_name` defaults to `volicord`.
@@ -81,10 +83,10 @@ one surface without changing the others.
 | Surface | Stored or owned by | Changed by | Boundary |
 |---|---|---|---|
 | Setup profile | Runtime Home registry setup records, including the selected Runtime Home identity and MCP command location. | `volicord setup`. | Setup is required local configuration. It is not a host trust decision, user judgment, or public API method. |
-| Agent Connection registry state | `agent_connections` records under the `Volicord Runtime Home`, including internal identity, host kind, connection intent, internal server name, `config_target`, `connection.mode`, enabled state, managed fingerprint, and `last_verified_status`. | `volicord connect` creates or updates the record, `volicord connection mode` changes mode, `volicord connection verify` updates verification status, and `volicord connection remove` may remove the record after membership removal. | Registry state is management state. It is not the host configuration file and is not proof that the external host loaded, trusted, approved, or exposed the MCP server. |
+| Agent Connection registry state | `agent_connections` records under the `Volicord Runtime Home`, including `connection_internal_id`, host kind, connection intent, `server_name`, `config_target`, `connection.mode`, enabled state, managed fingerprint, and `last_verification_status`. | `volicord connect` creates or updates the record, `volicord connection mode` changes mode, `volicord connection verify` updates verification status, and `volicord connection remove` may remove the record after membership removal. | Registry state is management state. It is not the host configuration file and is not proof that the external host loaded, trusted, approved, or exposed the MCP server. |
 | Connection Projects membership | `connection_projects` records under the same Runtime Home. | `volicord connect`, `volicord project use`, and connection removal flows can add, validate, or remove membership according to the selected repository root. | Membership controls the Agent Connection project allowlist. It does not register every Runtime Home project and does not delete project registration, project state, or Core records. |
 | Host configuration | The MCP host configuration location named by `config_target`, or a user-managed generic export. | `volicord connect` installs or updates managed host configuration; `volicord connection remove` removes only matching managed content when safety checks permit it; `volicord export mcp-config` renders host-neutral configuration. | Host configuration starts `volicord-mcp`, but remains an external host integration surface. It is not identical to registry state. |
-| Verification state | `last_verified_status` in the Agent Connection registry record, plus command output owned by [Administrative CLI](admin-cli.md#agent-connection-result-states). | `volicord connect` and `volicord connection verify` run observable setup, host, MCP startup, MCP initialization, and `tools/list` checks where available. | Verification can inspect both Volicord-side state and host/MCP readiness. MCP startup validation alone is not a `complete` Agent Connection. |
+| Verification state | `last_verification_status` in the Agent Connection registry record, plus command output owned by [Administrative CLI](admin-cli.md#agent-connection-result-states). | `volicord connect` and `volicord connection verify` run observable setup, host, MCP startup, MCP initialization, and `tools/list` checks where available. | Verification can inspect both Volicord-side state and host/MCP readiness. MCP startup validation alone is not a `complete` Agent Connection. |
 | Invocation eligibility | Current connection context derived by the MCP adapter at startup and per public tool call. | Affected by `enabled`, connected project availability, `connection.mode`, and the method's `operation_category`. | Eligibility can become unavailable after registry or project-state changes without any host configuration rewrite. |
 | Removal | Managed host content, `connection_projects`, and sometimes `agent_connections`. | `volicord connection remove`. | Removal must not delete a `Product Repository`, project registration, project state, Core records, the Runtime Home itself, artifact storage, or unrelated host configuration. |
 
@@ -133,15 +135,16 @@ but export is not a normal connection intent for direct host installation.
 
 Connection Projects are the explicit registry relationship between an Agent
 Connection and registered projects. User-facing commands select projects by
-repository root or project name; storage still keeps internal `project_id`
+repository root or project name; registry storage keeps `project_internal_id`
 values for referential integrity and provenance.
 
 Membership fields:
 
-- `connection_id`
-- `project_id`
+- `connection_internal_id`
+- `project_internal_id`
 - creation timestamp
-- a composite primary key over `connection_id` and `project_id`
+- a composite primary key over `connection_internal_id` and
+  `project_internal_id`
 
 Rules:
 
@@ -186,11 +189,11 @@ Rules:
 - A host configuration write can be successful as a file operation while the
   result state remains `action_required` because the host has not yet trusted,
   approved, loaded, initialized, or exposed the server.
-- `last_verified_status=complete` may be stored only for an administrative
+- `last_verification_status=complete` may be stored only for an administrative
   verification result that satisfied the operational gates owned by
   [Administrative CLI](admin-cli.md#agent-connection-result-states). A direct
   Volicord-spawned MCP handshake is not enough by itself.
-- `last_verified_status=action_required` is the expected state when Volicord can
+- `last_verification_status=action_required` is the expected state when Volicord can
   manage or export configuration but a host-owned trust, approval, OAuth,
   reload, restart, command-link repair, or setup repair remains.
 - Rejected, missing, changed, unavailable, and unknown host states are not

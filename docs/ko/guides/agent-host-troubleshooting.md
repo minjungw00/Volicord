@@ -2,7 +2,7 @@
 
 `volicord setup`, `volicord connect`, `volicord connection ...`,
 `volicord export mcp-config`가 호스트 설정 문제를 보고할 때 이 가이드를
-사용합니다. 이 가이드는 Volicord가 저장소 프로젝트를 감지하고 내부 ID를 관리하는
+사용합니다. 이 가이드는 Volicord가 저장소 프로젝트를 감지하고 내부 식별 정보를 관리하는
 단순화된 명령 모델을 전제로 합니다.
 
 정확한 결과 상태 의미는
@@ -67,7 +67,7 @@ volicord connect codex --repo /work/acme-api
 ```
 
 사용자에게 보이는 프로젝트 이름은 저장소 디렉터리에서 나옵니다. 내부 프로젝트
-ID는 복구 입력이 아닙니다.
+식별 정보는 복구 입력이 아닙니다.
 
 ## 호스트를 선택할 수 없음
 

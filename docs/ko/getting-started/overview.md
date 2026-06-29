@@ -33,10 +33,10 @@ Volicord는 이런 대체를 보이게 하려고 존재합니다. 범위, 사용
 | Core | Volicord 상태의 로컬 권한 기록. | [Core 모델](../reference/core-model.md) |
 | Volicord 구현 | Core, 저장소, 타입, `volicord` CLI, `volicord-mcp`, 테스트, 문서, 검증 도구를 포함하는 이 저장소의 구현 집합. | [런타임 경계](../reference/runtime-boundaries.md) |
 | `volicord` | Runtime Home 초기화, 프로젝트 등록, Agent Connection 관리, 로컬 User Channel을 제공하는 로컬 관리 CLI. | [관리 CLI](../reference/admin-cli.md) |
-| `volicord-mcp` | 생성된 호스트 설정이 내부 `--connection <connection_id>` 바인딩으로 자식 프로세스로 시작하는 stdio MCP 어댑터. | [MCP 전송](../reference/mcp-transport.md) |
+| `volicord-mcp` | 생성된 호스트 설정이 선택된 Agent Connection을 위해 자식 프로세스로 시작하는 stdio MCP 어댑터. | [MCP 전송](../reference/mcp-transport.md) |
 | `Volicord Runtime Home` | 저장소/런타임 담당 문서가 정의하는 Volicord 운영 데이터의 로컬 런타임 데이터 공간. | [런타임 경계](../reference/runtime-boundaries.md) |
 | `Product Repository` | 사용자의 프로젝트 작업공간과 제품 파일. 명시적으로 선택된 프로젝트 범위 호스트 설정을 포함할 수 있지만 Core 권한도 런타임 홈도 아닙니다. | [런타임 경계](../reference/runtime-boundaries.md) |
-| Agent Connection | 로컬 MCP 호스트 connection 단위. 하나의 호스트 설정 대상, `connection_id`, 모드, 명시적으로 연결된 Project를 묶습니다. | [Agent Connection Reference](../reference/agent-connection.md) |
+| Agent Connection | 로컬 MCP 호스트 connection 단위. 하나의 호스트 설정 대상, 관리되는 연결 식별 정보, 모드, 명시적으로 연결된 Project를 묶습니다. | [Agent Connection Reference](../reference/agent-connection.md) |
 | User Channel | 권한을 지니는 사용자 판단을 위한 로컬 사용자 경로. Agent Connection은 `user_only` 판단을 기록하지 않습니다. | [관리 CLI](../reference/admin-cli.md#user-channel-commands) |
 
 현재 기준 에이전트 호스트 모델은 connection 기반입니다. 하나의 `volicord-mcp` 프로세스는 내부 연결 식별 정보로 하나의 Agent Connection에 묶입니다. connection은 명시적으로 연결된 Project에만 접근할 수 있습니다. 정확히 하나의 Project만 연결되어 있으면 공개 MCP 도구 호출에서 프로젝트 선택을 생략할 수 있고, 여러 Project가 연결되어 있으면 공개 MCP 도구 호출은 `volicord.list_projects`가 반환한 `project_selector`를 사용해야 합니다.
@@ -65,7 +65,7 @@ Volicord 문서는 첫 읽기 수준에서 아래 권한 개념을 구분하고 
 
 - 사용자 소유 판단은 사용자 소유로 남습니다. 에이전트는 선택지를 설명할 수 있지만 판단을 만들어 내면 안 됩니다.
 - User Channel은 `actor_source=local_user`, `operation_category=user_only`로 사용자 판단을 기록합니다.
-- Agent Connection 호출은 `actor_source=agent_connection:<connection_id>`와 connection mode가 허용한 operation category를 사용합니다.
+- Agent Connection 호출은 Agent Connection 출처와 connection mode가 허용한 operation category를 사용합니다.
 - 증거는 특정 기록된 주장을 뒷받침합니다. 최종 수락이나 잔여 위험 수락이 아닙니다.
 - 검증 기준은 무엇을 확인해야 하는지 안내합니다. 그 자체가 증거나 수락은 아닙니다.
 - `Write Check`은 제품 파일 쓰기 시도 하나에 대한 Core 상태 호환성입니다. 일반 쓰기 승인, 민감 동작 승인, 최종 수락, 잔여 위험 수락과 구분되며 OS 권한이 아닙니다.

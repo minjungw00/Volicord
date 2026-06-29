@@ -3,9 +3,9 @@
 This document owns the local `volicord` administrative and bootstrap CLI
 contract. The CLI establishes the `Volicord Runtime Home`, registers projects
 from repository roots, manages Agent Connections without requiring users to
-handle internal ids, provides the local `User Channel` command path, exports
-generic MCP configuration, and reports setup or connection diagnostics. These
-commands are not public Volicord API methods.
+handle internal identities, provides the local `User Channel` command path,
+exports generic MCP configuration, and reports setup or connection diagnostics.
+These commands are not public Volicord API methods.
 
 It does not define public API method behavior, API schemas, storage record
 layout, security guarantees, Core authority semantics, or MCP stdio transport
@@ -95,8 +95,8 @@ Not supported:
 - The CLI has no `serve`, `server`, or daemon command.
 - Administrative commands are not public Volicord API methods and must not be
   added to the public method list.
-- Text-mode user flows must not require users to type internal project ids,
-  Agent Connection ids, host config keys, protocol envelopes, or stored
+- Text-mode user flows must not require users to type internal project
+  identities, Agent Connection identities, host config keys, protocol envelopes, or stored
   registry fields.
 
 <a id="runtime-home-selection"></a>
@@ -139,9 +139,9 @@ connection mode, or answer user judgments.
 
 ## Project commands
 
-Project commands use repository roots as the user-facing project identity. The
-internal `project_id` is storage and provenance data; text-mode commands do not
-require it.
+Project commands use repository roots as the user-facing project identity.
+Internal project identity is storage and provenance data; text-mode commands do
+not require it.
 
 Repository root detection:
 
@@ -154,7 +154,7 @@ Repository root detection:
   [Runtime Home/Product Repository separation contract](runtime-boundaries.md#runtime-home-product-repository-separation).
 
 `volicord project use [PATH]` registers or reuses the detected repository root.
-Registration creates an internal project id, a user-facing project name, a
+Registration creates an internal project identity, a user-facing project name, a
 project home under the Runtime Home, and project-local state as needed. The
 default project name is derived from the repository directory and made unique
 inside the Runtime Home when needed.
@@ -166,8 +166,8 @@ directory. It does not create a project registration.
 root, status, and diagnostic availability.
 
 `volicord project rename NAME [--repo PATH]` changes the user-facing project
-name for the selected repository. It does not change the internal project id,
-repository root, project home, or Core state.
+name for the selected repository. It does not change the internal project
+identity, repository root, project home, or Core state.
 
 `volicord project forget [PATH|NAME]` removes the selected project registration
 only when doing so does not orphan active Agent Connection membership or project
@@ -200,7 +200,7 @@ Connection modes:
 
 The internal host configuration key `server_name` defaults to `volicord`.
 Ordinary CLI flows do not expose a server-name option. A generated host
-configuration may contain an internal connection id, server name, and command
+configuration may contain an internal connection identity, server name, and command
 arguments so that the host can start `volicord-mcp`; those values are not user
 authority tokens and are not required as text-mode command inputs.
 
@@ -295,6 +295,10 @@ Agent Connection eligible to act as the user.
 Project selection uses `--repo PATH` or the current working directory's
 repository root. Task selection uses the active task by default; `--task active`
 is explicit and `--task ID` selects a named task.
+
+The ordinary text-mode judgment flow uses the numbered indexes printed by
+`volicord user judgments` and `volicord user judgment show`. Stored judgment or
+option identifiers are reference and JSON details, not required ordinary inputs.
 
 Commands:
 

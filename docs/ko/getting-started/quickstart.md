@@ -19,7 +19,8 @@ volicord connect codex
 저장소는 현재 디렉터리에서 감지됩니다. 프로젝트 이름은 저장소 디렉터리에서
 나옵니다. 따라서 `/work/acme-api`는 그 이름을 고유하게 만들어야 하는 경우가
 아니라면 보이는 프로젝트 이름 `acme-api`가 됩니다. 기본 연결 의도는
-`personal`이고 기본 모드는 `workflow`이며, 내부 ID는 Volicord가 관리합니다.
+`personal`이고 기본 모드는 `workflow`이며, 내부 식별 정보는 Volicord가
+관리합니다.
 
 ## Setup 확인하기
 

@@ -53,7 +53,8 @@ volicord connection status claude-code --global
 ```
 
 명령은 Git 저장소 루트를 감지하고, 저장소 프로젝트를 등록하거나 재사용하며, 저장소
-디렉터리에서 보이는 프로젝트 이름을 파생하고, 내부 ID를 Runtime Home에 저장합니다.
+디렉터리에서 보이는 프로젝트 이름을 파생하고, 내부 registry 식별 정보를 Runtime
+Home에 저장합니다.
 
 ## 다른 저장소 추가하기
 
@@ -73,7 +74,7 @@ volicord connection status codex --repo /work/billing-api
 ```
 
 같은 호스트 수준 대상에 대해 Volicord는 일치하는 Agent Connection을 재사용하고
-선택된 저장소를 Connection Projects에 추가합니다. 운영자가 내부 연결 ID를 다룰
+선택된 저장소를 Connection Projects에 추가합니다. 운영자가 내부 연결 식별 정보를 다룰
 필요는 없습니다.
 
 ## 연결 확인하기

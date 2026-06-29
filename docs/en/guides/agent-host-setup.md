@@ -23,8 +23,8 @@ volicord connection status codex
 
 The connection command detects the Git repository root from the current
 directory, registers or reuses that repository project, derives the visible
-project name from the repository directory, and stores internal ids in the
-selected `Volicord Runtime Home`.
+project name from the repository directory, and stores internal registry
+identities in the selected `Volicord Runtime Home`.
 
 Use `--repo PATH` only when the process current directory is not the repository
 you intend to connect:

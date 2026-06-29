@@ -33,10 +33,10 @@ These names are related, but they are not interchangeable.
 | Core | The local authority record for Volicord state. | [Core Model](../reference/core-model.md) |
 | Volicord implementation | The implementation set maintained by this repository, including Core, storage, types, the `volicord` CLI, `volicord-mcp`, tests, documentation, and validation tooling. | [Runtime Boundaries](../reference/runtime-boundaries.md) |
 | `volicord` | The local administrative CLI that initializes Runtime Homes, registers projects, manages Agent Connections, and provides the local User Channel. | [Administrative CLI](../reference/admin-cli.md) |
-| `volicord-mcp` | The stdio MCP adapter process that generated host configuration starts as a child process with the internal `--connection <connection_id>` binding. | [MCP Transport](../reference/mcp-transport.md) |
+| `volicord-mcp` | The stdio MCP adapter process that generated host configuration starts as a child process for the selected Agent Connection. | [MCP Transport](../reference/mcp-transport.md) |
 | `Volicord Runtime Home` | The local runtime data space for Volicord operational data as storage/runtime owners define it. | [Runtime Boundaries](../reference/runtime-boundaries.md) |
 | `Product Repository` | The user's project workspace and product files. It may contain explicitly selected project-scoped host configuration, but it is not Core authority and is not a runtime home. | [Runtime Boundaries](../reference/runtime-boundaries.md) |
-| Agent Connection | A local MCP host connection unit. It binds one host configuration target to one `connection_id`, a mode, and explicitly connected Projects. | [Agent Connection Reference](../reference/agent-connection.md) |
+| Agent Connection | A local MCP host connection unit. It binds one host configuration target to one managed connection identity, a mode, and explicitly connected Projects. | [Agent Connection Reference](../reference/agent-connection.md) |
 | User Channel | The local user path for authority-bearing user judgments. Agent Connections do not record `user_only` judgments. | [Administrative CLI](../reference/admin-cli.md#user-channel-commands) |
 
 The current baseline agent host model is connection-based. One `volicord-mcp` process binds to one Agent Connection through an internal connection identity. The connection can access only Projects explicitly connected to it. When exactly one Project is connected, public MCP tool calls may omit project selection; when multiple Projects are connected, public MCP tool calls must use a `project_selector` returned by `volicord.list_projects`.
@@ -66,7 +66,7 @@ At first-read level, Volicord documentation keeps these authority concepts separ
 
 - User-owned judgment remains user-owned; an agent may explain options, but it must not invent the judgment.
 - The User Channel records user judgments with `actor_source=local_user` and `operation_category=user_only`.
-- Agent Connection calls use `actor_source=agent_connection:<connection_id>` and an operation category allowed by the connection mode.
+- Agent Connection calls use agent-connection provenance and an operation category allowed by the connection mode.
 - Evidence supports a specific recorded claim. It is not final acceptance or residual-risk acceptance.
 - Verification criteria guide what should be checked. They are not themselves evidence or acceptance.
 - A `Write Check` is Core-state compatibility for one product-file write attempt. It is distinct from ordinary write approval, sensitive-action approval, final acceptance, and residual-risk acceptance, and it is not OS permission.
