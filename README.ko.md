@@ -119,7 +119,7 @@ sequenceDiagram
   participant Host as 에이전트 호스트
   participant MCP as volicord-mcp
   participant Records as Volicord 로컬 기록
-  participant UserCLI as User Channel
+  participant UserCLI as volicord user
 
   You->>Host: 저장소의 제품 작업 요청
   Host->>MCP: MCP를 통해 Volicord 도구 호출
@@ -135,7 +135,8 @@ sequenceDiagram
   Host->>MCP: 갱신된 작업 상태로 계속 진행
   Host->>MCP: 작업을 닫을 준비가 되었는지 질문
   MCP->>Records: 닫기 준비 상태 확인
-  Records-->>Host: 준비 상태 또는 차단 사유 반환
+  Records-->>MCP: 준비 상태 또는 차단 사유 반환
+  MCP-->>Host: 준비 상태 또는 차단 사유 보고
 ```
 
 닫기 준비 상태는 판단을 돕는 기록입니다. 제품 정확성, 테스트 충분성, QA 완료,
@@ -157,7 +158,7 @@ flowchart LR
   cli["volicord<br/>관리 CLI"]
   host["에이전트 호스트<br/>Codex / Claude Code"]
   adapter["volicord-mcp<br/>로컬 stdio MCP 어댑터"]
-  home["Volicord Runtime Home<br/>로컬 작업 기록"]
+  home["로컬 Volicord 데이터 경계<br/>(Volicord Runtime Home)"]
   repo["Product Repository<br/>제품 파일과 명시적 통합 파일"]
   config["호스트 설정<br/>에이전트 호스트 소유"]
 

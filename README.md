@@ -128,7 +128,7 @@ sequenceDiagram
   participant Host as Agent host
   participant MCP as volicord-mcp
   participant Records as Volicord local records
-  participant UserCLI as User Channel
+  participant UserCLI as volicord user
 
   You->>Host: Ask for product work in a repository
   Host->>MCP: Call Volicord tools through MCP
@@ -144,7 +144,8 @@ sequenceDiagram
   Host->>MCP: Continue with updated workflow state
   Host->>MCP: Ask whether the task is ready to close
   MCP->>Records: Check close readiness
-  Records-->>Host: Return ready state or blockers
+  Records-->>MCP: Return ready state or blockers
+  MCP-->>Host: Report ready state or blockers
 ```
 
 Close readiness is decision support. It does not prove product correctness,
@@ -167,7 +168,7 @@ flowchart LR
   cli["volicord<br/>administrative CLI"]
   host["Agent host<br/>Codex / Claude Code"]
   adapter["volicord-mcp<br/>local stdio MCP adapter"]
-  home["Volicord Runtime Home<br/>local workflow records"]
+  home["Local Volicord data boundary<br/>(Volicord Runtime Home)"]
   repo["Product Repository<br/>product files and explicit integration files"]
   config["Host configuration<br/>owned by the agent host"]
 
