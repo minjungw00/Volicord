@@ -12,9 +12,10 @@ and runtime/file boundaries belong to
 
 ## Setup Sequence
 
+Install `volicord` first with [Installation](../getting-started/installation.md),
+then run the host setup sequence:
+
 ```sh
-cargo build --workspace --bins
-export PATH="$PWD/target/debug:$PATH"
 volicord setup
 volicord doctor
 cd /path/to/your-product-repo
@@ -22,7 +23,6 @@ volicord connect codex
 volicord connection status codex
 ```
 
-The `export PATH=...` line affects only the current terminal session.
 `/path/to/your-product-repo` is an example path for the Product Repository where
 you want the agent to work. The connection command detects the
 repository root from the current directory, registers or reuses that repository

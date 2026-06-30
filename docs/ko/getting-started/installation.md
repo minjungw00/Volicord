@@ -10,26 +10,61 @@ MCP, `User Channel` 명령이 사용할 설치 프로필을 기록합니다.
 
 ## 전제 조건
 
-- [시스템 요구사항](../reference/system-requirements.md)에 적힌 Rust 1.85 이상.
-- Cargo와 로컬 바이너리를 실행할 수 있는 셸.
+- [시스템 요구사항](../reference/system-requirements.md)에 적힌 지원 릴리스 바이너리
+  환경, 또는 아래 Docker 경로를 사용할 때의 Docker.
+- `curl` 또는 `wget`, `tar`, 쓰기 가능한 설치 디렉터리를 사용할 수 있는 POSIX 스타일 셸.
 - 호스트를 연결할 준비가 되었을 때 Product Repository로 사용할 Git 저장소.
 
-## 소스에서 빌드하기
+## 릴리스 바이너리 설치하기
 
-Volicord 소스 저장소에서 실행합니다.
+기본 사용자 경로는 릴리스 바이너리입니다. 설치 스크립트는 Linux, WSL2, macOS를
+감지하고 맞는 릴리스 tarball을 선택하며, 대응 `.sha256` 파일을 내려받을 수 있으면
+검증한 뒤 `volicord` 실행 파일 하나만 설치합니다. 셸 시작 파일은 편집하지 않습니다.
+
+Volicord 릴리스 자산을 게시하는 같은 저장소에서 `scripts/install.sh`를 내려받거나
+복사한 뒤, 릴리스 저장소를 명시해서 실행합니다.
 
 ```sh
-cargo build --workspace --bins
+VOLICORD_REPO=OWNER/REPO sh ./scripts/install.sh
 ```
 
-이 명령은 로컬 실행 파일을 빌드합니다.
-
-- `./target/debug/volicord`
-
-그다음 방금 빌드한 CLI에서 안내형 setup을 실행합니다.
+`OWNER/REPO`는 이 체크아웃의 릴리스 자산을 호스팅하는 GitHub 저장소입니다. 기본값은
+그 저장소의 latest release에서 내려받는 것입니다. 특정 태그를 설치하려면
+`VOLICORD_VERSION`을 설정합니다.
 
 ```sh
-./target/debug/volicord setup
+VOLICORD_REPO=OWNER/REPO VOLICORD_VERSION=v0.1.0 sh ./scripts/install.sh
+```
+
+GitHub가 아닌 릴리스 mirror에서는 target 이름이 붙은 tarball과 checksum이 들어 있는
+디렉터리를 제공합니다.
+
+```sh
+VOLICORD_RELEASE_BASE_URL=https://example.invalid/releases/v0.1.0 sh ./scripts/install.sh
+```
+
+기본 설치 디렉터리는 `~/.local/bin`입니다. 다른 디렉터리를 쓰려면
+`VOLICORD_INSTALL_DIR`을 사용합니다.
+
+```sh
+VOLICORD_REPO=OWNER/REPO VOLICORD_INSTALL_DIR=/usr/local/bin sh ./scripts/install.sh
+```
+
+지원되지 않는 운영체제나 CPU 아키텍처에서는 스크립트가 내려받기 전에 실패합니다.
+Checksum 파일이 있는데 검증할 수 없으면 실패합니다. Checksum 파일을 사용할 수 없으면
+경고를 출력합니다. 이 경우에도 반드시 실패해야 한다면 `VOLICORD_REQUIRE_CHECKSUM=1`을
+설정합니다.
+
+이 저장소는 그에 맞는 저장소 아티팩트가 추가되기 전까지 Homebrew tap, 패키지 관리자
+패키지, 외부 패키지 registry가 있다고 주장하지 않습니다.
+
+설치 뒤 설치된 명령을 확인하고 setup을 실행합니다.
+
+```sh
+volicord --version
+volicord --help
+volicord mcp --help
+volicord setup
 ```
 
 `volicord setup`은 선택된 `Volicord Runtime Home`을 만들거나 검증하고 설치
@@ -70,10 +105,11 @@ Setup은 부모 셸의 현재 `PATH`를 바꿀 수 없습니다. 출력된 `expo
 | `--mcp-command PATH` | 생성된 MCP 시작 항목이 실행 중인 실행 파일 대신 특정 `volicord` 명령을 사용해야 할 때 그 명령을 저장합니다. |
 | `--home PATH` | 기본값이 아닌 `Volicord Runtime Home`을 선택합니다. |
 
-예를 들어 비대화식 링크 단계에서 링크 디렉터리를 지정할 수 있습니다.
+예를 들어 비대화식 setup 단계에서 결정적인 명령 링크 디렉터리를 계속 지정할 수
+있습니다.
 
 ```sh
-./target/debug/volicord setup --link-bin ~/.local/bin
+volicord setup --link-bin ~/.local/bin
 ```
 
 프롬프트나 `action_required`가 이름 붙인 명령 가용성 단계를 완료한 뒤 설정 준비
@@ -89,7 +125,7 @@ volicord doctor
 `action_required`는 `volicord setup` 재실행이나 실행 파일 경로 수정처럼 차단하는
 로컬 복구 동작을 이름 붙입니다.
 
-## 설치된 실행 파일 사용하기
+## 기존 설치 실행 파일 사용하기
 
 `volicord`가 이미 `PATH`에 있다면 아래처럼 실행합니다.
 
@@ -98,12 +134,27 @@ volicord setup
 volicord doctor
 ```
 
-실행 파일을 소스에서 빌드했든 설치된 명령 디렉터리에서 가져왔든 setup은 같은 설치
-프로필 계약을 사용합니다. 생성된 호스트 설정이 다른 `volicord` 명령 경로로 MCP를
-시작해야 할 때만 `volicord setup --mcp-command PATH`를 사용합니다. Setup이
-`action_required`를 보고하면 새 터미널이나 에이전트 호스트를
+실행 파일을 릴리스로 설치했든, 개발용 소스 빌드에서 가져왔든, 다른 설치 명령
+디렉터리에서 가져왔든 setup은 같은 설치 프로필 계약을 사용합니다. 생성된 호스트
+설정이 다른 `volicord` 명령 경로로 MCP를 시작해야 할 때만
+`volicord setup --mcp-command PATH`를 사용합니다. Setup이 `action_required`를 보고하면 새 터미널이나 에이전트 호스트를
 시작하기 전에 이름 붙은 로컬 동작을 완료합니다. 일반 `volicord connect` 명령은
 저장된 설치 프로필을 사용합니다.
+
+## 개발용 소스 빌드
+
+소스 빌드는 구현자와 로컬 개발자를 위한 경로이며 기본 사용자 설치 경로가 아닙니다.
+Volicord 소스 저장소에서 실행합니다.
+
+```sh
+cargo build --workspace --bins
+./target/debug/volicord --version
+./target/debug/volicord setup
+```
+
+이 경로는 로컬 개발 실행 파일 `./target/debug/volicord`를 빌드하고 실행합니다.
+이 경로의 Rust 도구 체인 요구사항은
+[시스템 요구사항](../reference/system-requirements.md#toolchain-requirements)에 있습니다.
 
 ## Docker 이미지
 

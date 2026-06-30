@@ -10,9 +10,10 @@ Agent Connection 의미는 [Agent Connection 참조](../reference/agent-connecti
 
 ## 설정 순서
 
+먼저 [설치](../getting-started/installation.md)에 따라 `volicord`를 설치한 뒤 호스트
+설정 순서를 실행합니다.
+
 ```sh
-cargo build --workspace --bins
-export PATH="$PWD/target/debug:$PATH"
 volicord setup
 volicord doctor
 cd /path/to/your-product-repo
@@ -20,7 +21,6 @@ volicord connect codex
 volicord connection status codex
 ```
 
-`export PATH=...` 줄은 현재 터미널 세션에만 영향을 줍니다.
 `/path/to/your-product-repo`는 에이전트에게 작업을 요청할 Product Repository의 경로
 예시입니다. 연결 명령은 현재 디렉터리에서 Git 저장소 루트를 감지하고, 해당
 저장소 프로젝트를 등록하거나 재사용하며, 저장소 디렉터리에서 보이는 프로젝트 이름을

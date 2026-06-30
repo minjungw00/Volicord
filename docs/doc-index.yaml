@@ -280,8 +280,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: onboarding
   created_on: '2026-04-23'
-  last_updated_on: '2026-06-30'
-  last_verified_on: '2026-06-30'
+  last_updated_on: '2026-07-01'
+  last_verified_on: '2026-07-01'
   applies_to:
   - volicord_workspace_0_1
   primary_audience:
@@ -354,7 +354,8 @@ documents:
   path_en: docs/en/getting-started/installation.md
   path_ko: docs/ko/getting-started/installation.md
   kind: tutorial
-  summary: Source build, executable discovery, and installation verification tutorial.
+  summary: Release binary installation, development source build, executable discovery, and installation
+    verification tutorial.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: onboarding
@@ -383,8 +384,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: onboarding
   created_on: '2026-06-20'
-  last_updated_on: '2026-06-30'
-  last_verified_on: '2026-06-30'
+  last_updated_on: '2026-07-01'
+  last_verified_on: '2026-07-01'
   applies_to:
   - volicord_workspace_0_1
   - mcp_protocol_2025_11_25
@@ -465,8 +466,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: agent_connection
   created_on: '2026-06-22'
-  last_updated_on: '2026-06-30'
-  last_verified_on: '2026-06-30'
+  last_updated_on: '2026-07-01'
+  last_verified_on: '2026-07-01'
   applies_to:
   - volicord_workspace_0_1
   - mcp_protocol_2025_11_25
@@ -494,8 +495,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: agent_connection
   created_on: '2026-06-23'
-  last_updated_on: '2026-06-30'
-  last_verified_on: '2026-06-30'
+  last_updated_on: '2026-07-01'
+  last_verified_on: '2026-07-01'
   applies_to:
   - volicord_workspace_0_1
   - mcp_protocol_2025_11_25
@@ -965,8 +966,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: onboarding
   created_on: '2026-06-23'
-  last_updated_on: '2026-06-30'
-  last_verified_on: '2026-06-30'
+  last_updated_on: '2026-07-01'
+  last_verified_on: '2026-07-01'
   applies_to:
   - volicord_workspace_0_1
   - rust_workspace_1_85
@@ -2088,8 +2089,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
   created_on: '2026-06-30'
-  last_updated_on: '2026-06-30'
-  last_verified_on: '2026-06-30'
+  last_updated_on: '2026-07-01'
+  last_verified_on: '2026-07-01'
   applies_to:
   - volicord_workspace_0_1
   - doc_index_schema_v3

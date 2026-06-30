@@ -1,8 +1,9 @@
 # Quickstart
 
-This tutorial gets from a fresh source checkout to one working Agent Connection.
-It assumes you are connecting a local host to a normal Git repository used as
-the Product Repository.
+This tutorial starts after [Installation](installation.md) has made
+`volicord` available on `PATH` and gets to one working Agent Connection. It
+assumes you are connecting a local host to a normal Git repository used as the
+Product Repository.
 
 Exact command contracts belong to
 [Administrative CLI Reference](../reference/admin-cli.md). Agent Connection
@@ -11,16 +12,15 @@ meaning belongs to [Agent Connection Reference](../reference/agent-connection.md
 ## Fast Path
 
 ```sh
-cargo build --workspace --bins
-./target/debug/volicord setup
+volicord setup
 cd /path/to/your-product-repo
 volicord connect codex
 ```
 
-Setup checks whether the freshly built `volicord` command is available for
-future terminals and agent hosts. When command links are needed, setup may
-offer to create a conventional user command directory such as `~/.local/bin` if
-it is missing and safe to create, then verify writability before linking. If it
+Setup checks whether the installed `volicord` command is available for future
+terminals and agent hosts. When command links are needed, setup may offer to
+create a conventional user command directory such as `~/.local/bin` if it is
+missing and safe to create, then verify writability before linking. If it
 prompts or reports `action_required`, follow the named command-availability
 step before running `volicord connect`, opening a new terminal, or starting the
 host. Volicord cannot change the parent shell's current `PATH`.

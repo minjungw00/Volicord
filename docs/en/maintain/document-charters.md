@@ -89,18 +89,19 @@ Document: [Getting Started Overview](../getting-started/overview.md)
 
 Document: [Installation](../getting-started/installation.md)
 
-- Primary goal: Lead readers through building, finding, and verifying the local
-  executables.
+- Primary goal: Lead readers through installing, finding, and verifying the
+  local executable.
 - Intended reader: New users, operators, and implementers preparing a local
   Volicord installation.
-- Should own: Tutorial-level prerequisites, source build flow, guided setup
-  prompts and action-required guidance at onboarding depth, executable
-  discovery, installation profile preparation, deterministic setup options for
-  automation, and verification checkpoints.
+- Should own: Tutorial-level prerequisites, release binary install flow,
+  development source build path, guided setup prompts and action-required
+  guidance at onboarding depth, executable discovery, installation profile
+  preparation, deterministic setup options for automation, and verification
+  checkpoints.
 - Should not own: Environment applicability classifications, full
   administrative CLI contracts, host configuration procedures, exhaustive
   recovery guidance, MCP protocol behavior, or storage effects.
-- Acceptable diagrams: Usually none. A compact build-to-verify sequence is
+- Acceptable diagrams: Usually none. A compact install-to-verify sequence is
   acceptable if it makes the tutorial clearer.
 - Link deeper by: Sending environment classification to
   [System Requirements](../reference/system-requirements.md), command

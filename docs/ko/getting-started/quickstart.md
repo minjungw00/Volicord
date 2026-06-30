@@ -1,8 +1,8 @@
 # 빠른 시작
 
-이 튜토리얼은 새 소스 체크아웃에서 작동하는 Agent Connection 하나까지 가는
-경로입니다. 에이전트에게 작업을 요청할 Product Repository로 사용할 일반 Git
-저장소에 로컬 호스트를 연결한다고 가정합니다.
+이 튜토리얼은 [설치](installation.md)를 통해 `volicord`가 `PATH`에서 사용 가능해진
+뒤 작동하는 Agent Connection 하나까지 가는 경로입니다. 에이전트에게 작업을 요청할
+Product Repository로 사용할 일반 Git 저장소에 로컬 호스트를 연결한다고 가정합니다.
 
 정확한 명령 계약은 [관리 CLI 참조](../reference/admin-cli.md)가 담당합니다.
 Agent Connection 의미는 [Agent Connection 참조](../reference/agent-connection.md)가
@@ -11,13 +11,12 @@ Agent Connection 의미는 [Agent Connection 참조](../reference/agent-connecti
 ## 빠른 경로
 
 ```sh
-cargo build --workspace --bins
-./target/debug/volicord setup
+volicord setup
 cd /path/to/your-product-repo
 volicord connect codex
 ```
 
-Setup은 방금 빌드한 `volicord` 명령을 이후 터미널과 에이전트 호스트에서 사용할 수
+Setup은 설치된 `volicord` 명령을 이후 터미널과 에이전트 호스트에서 사용할 수
 있는지 확인합니다. 명령 링크가 필요하면 setup은 `~/.local/bin` 같은 관례적 사용자
 명령 디렉터리가 없고 안전하게 만들 수 있을 때 그 디렉터리를 만든 뒤 쓰기 가능 여부를
 확인하고 링크하도록 제안할 수 있습니다. 프롬프트를 표시하거나 `action_required`를

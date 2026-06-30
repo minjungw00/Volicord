@@ -42,7 +42,8 @@ volicord setup
 volicord doctor
 ```
 
-소스 체크아웃에서 작업 중이라면:
+`volicord`를 사용할 수 없다면 [설치](../getting-started/installation.md)의 릴리스
+바이너리 경로를 다시 실행합니다. 의도적으로 개발용 소스 체크아웃에서 작업 중이라면:
 
 ```sh
 cargo build --workspace --bins
@@ -183,6 +184,14 @@ volicord connection verify codex
 없다고 보고합니다.
 
 제한된 복구:
+
+설치된 릴리스 바이너리로 setup을 다시 실행합니다.
+
+```sh
+volicord setup
+```
+
+의도적으로 개발용 소스 체크아웃에서 작업 중이라면:
 
 ```sh
 cargo build --workspace --bins

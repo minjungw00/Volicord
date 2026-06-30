@@ -11,28 +11,66 @@ repository separation belong to [Runtime Boundaries](../reference/runtime-bounda
 
 ## Prerequisites
 
-- Rust 1.85 or newer, as listed in
-  [System Requirements](../reference/system-requirements.md).
-- A shell that can run Cargo and local binaries.
+- A supported release-binary environment from
+  [System Requirements](../reference/system-requirements.md), or Docker when
+  using the Docker path below.
+- A POSIX-style shell with `curl` or `wget`, `tar`, and a writable install
+  directory.
 - A Git repository to use as the Product Repository when you are ready to
   connect a host.
 
-## Build From Source
+## Install A Release Binary
 
-From the Volicord source repository:
+The primary user path is a release binary. The install script detects Linux,
+WSL2, or macOS, selects the matching release tarball, verifies the matching
+`.sha256` file when it can download one, and installs only the `volicord`
+executable. It does not edit shell startup files.
+
+Download or copy `scripts/install.sh` from the same repository that publishes
+the Volicord release assets, then run it with the release repository named
+explicitly:
 
 ```sh
-cargo build --workspace --bins
+VOLICORD_REPO=OWNER/REPO sh ./scripts/install.sh
 ```
 
-This builds the local executable:
-
-- `./target/debug/volicord`
-
-Then run guided setup from the freshly built CLI:
+`OWNER/REPO` is the GitHub repository that hosts the release assets for this
+checkout. By default the script downloads from that repository's latest
+release. To install a specific tag, set `VOLICORD_VERSION`:
 
 ```sh
-./target/debug/volicord setup
+VOLICORD_REPO=OWNER/REPO VOLICORD_VERSION=v0.1.0 sh ./scripts/install.sh
+```
+
+For a non-GitHub release mirror, provide the directory that contains the
+target-named tarball and checksum:
+
+```sh
+VOLICORD_RELEASE_BASE_URL=https://example.invalid/releases/v0.1.0 sh ./scripts/install.sh
+```
+
+The default install directory is `~/.local/bin`. Use `VOLICORD_INSTALL_DIR` to
+choose a different directory:
+
+```sh
+VOLICORD_REPO=OWNER/REPO VOLICORD_INSTALL_DIR=/usr/local/bin sh ./scripts/install.sh
+```
+
+The script fails before downloading on unsupported operating systems or CPU
+architectures. If a checksum file is present but cannot be verified, the script
+fails. If the checksum file is unavailable, the script warns; set
+`VOLICORD_REQUIRE_CHECKSUM=1` when installation must fail instead.
+
+No Homebrew tap, package-manager package, or external package registry is
+claimed by this repository unless a matching repository artifact is added.
+
+After installation, verify the installed command and run setup:
+
+```sh
+volicord --version
+volicord --help
+volicord mcp --help
+volicord setup
 ```
 
 `volicord setup` creates or verifies the selected `Volicord Runtime Home` and
@@ -78,10 +116,11 @@ For automation or deterministic local layouts, use explicit setup options:
 | `--mcp-command PATH` | Store a specific `volicord` command for generated MCP launch entries when setup should not use the running executable. |
 | `--home PATH` | Select a non-default `Volicord Runtime Home`. |
 
-For example, a noninteractive link step can choose the link directory:
+For example, a noninteractive setup step can still choose a deterministic
+command-link directory:
 
 ```sh
-./target/debug/volicord setup --link-bin ~/.local/bin
+volicord setup --link-bin ~/.local/bin
 ```
 
 After completing any prompt or action-required command-availability step, check
@@ -97,7 +136,7 @@ command-availability warnings or recommended `PATH` and command-link actions
 for future shells or agent hosts. `action_required` names a blocking local
 repair action, such as rerunning setup or fixing an executable path.
 
-## Use Installed Executables
+## Use An Existing Installed Executable
 
 If `volicord` already exists on `PATH`, run:
 
@@ -107,12 +146,28 @@ volicord doctor
 ```
 
 Setup uses the same installation-profile contract whether the executable came
-from a source build or an installed command directory. Use
-`volicord setup --mcp-command PATH` only when generated host configuration
-should start MCP through a different `volicord` command path.
+from a release install, a development source build, or another installed
+command directory. Use `volicord setup --mcp-command PATH` only when generated
+host configuration should start MCP through a different `volicord` command
+path.
 If setup reports `action_required`, complete the named local action before
 starting new terminals or agent hosts. Ordinary `volicord connect` commands use
 the saved installation profile.
+
+## Development Source Build
+
+Source builds are for implementers and local development, not the primary user
+install path. From the Volicord source repository:
+
+```sh
+cargo build --workspace --bins
+./target/debug/volicord --version
+./target/debug/volicord setup
+```
+
+This builds and runs the local development executable at
+`./target/debug/volicord`. Rust toolchain requirements for this path are listed
+in [System Requirements](../reference/system-requirements.md#toolchain-requirements).
 
 ## Docker Image
 

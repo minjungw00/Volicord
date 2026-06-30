@@ -60,24 +60,28 @@ README와 나머지 문서에서 반복해서 나오는 이름들입니다.
 
 ## 빠른 시작
 
-이 Volicord 소스 체크아웃에서 로컬 바이너리를 빌드하고 `volicord setup` 안내를
-따른 뒤, 에이전트에게 작업을 요청할 Product Repository에서 Codex를 연결합니다.
+릴리스 바이너리를 설치하고 `volicord setup` 안내를 따른 뒤, 에이전트에게 작업을
+요청할 Product Repository에서 Codex를 연결합니다. 릴리스 저장소에서
+`scripts/install.sh`를 내려받거나 복사한 뒤 실행합니다.
 
 ```sh
-cargo build --workspace --bins
-./target/debug/volicord setup
+VOLICORD_REPO=OWNER/REPO sh ./scripts/install.sh
+volicord setup
 cd /path/to/your-product-repo
 volicord connect codex
 ```
 
-`volicord setup` 실행 중 Volicord는 이후 터미널과 에이전트 호스트에서
-`volicord`와 `volicord-mcp`를 사용할 수 있는지 확인합니다. 사용할 수 없다면
-환경을 확인한 뒤 안전한 선택지를 제공합니다. 예를 들면 쓰기 가능하다고 확인한 디렉터리에
-명령 링크 만들기, `~/.local/bin` 같은 관례적 사용자 명령 디렉터리가 없고 안전하게
-만들 수 있을 때 그 디렉터리를 만들고 링크하기, 셸 명령 출력, 링크 단계 건너뛰기 같은
-선택지입니다. 새 터미널 또는 에이전트 호스트를 시작하거나 `volicord connect`를
-실행하기 전에 setup의 프롬프트나 `action_required` 출력을 따릅니다. Volicord는 부모
-셸의 현재 `PATH`를 바꿀 수 없습니다.
+`OWNER/REPO`는 이 체크아웃의 Volicord 릴리스 자산을 게시하는 GitHub 저장소입니다.
+설치 스크립트는 지원되는 Linux, WSL2, macOS 바이너리를 감지하고, 가능할 때 대응
+checksum을 검증하며, `volicord` 하나만 설치하고, 셸 시작 파일은 편집하지 않습니다.
+`volicord setup` 실행 중 Volicord는 이후 터미널과 에이전트 호스트에서 `volicord`를
+사용할 수 있는지 확인합니다. 사용할 수 없다면 환경을 확인한 뒤 안전한 선택지를
+제공합니다. 예를 들면 쓰기 가능하다고 확인한 디렉터리에 명령 링크 만들기,
+`~/.local/bin` 같은 관례적 사용자 명령 디렉터리가 없고 안전하게 만들 수 있을 때 그
+디렉터리를 만들고 링크하기, 셸 명령 출력, 링크 단계 건너뛰기 같은 선택지입니다. 새
+터미널 또는 에이전트 호스트를 시작하거나 `volicord connect`를 실행하기 전에 setup의
+프롬프트나 `action_required` 출력을 따릅니다. Volicord는 부모 셸의 현재 `PATH`를 바꿀
+수 없습니다.
 
 `/path/to/your-product-repo`는 에이전트에게 작업을 요청할 Product Repository의 경로
 예시입니다. `volicord connect codex`는 현재 디렉터리에서 저장소 루트를 감지하고,
@@ -86,7 +90,9 @@ volicord connect codex
 
 정확한 setup, 연결, 옵션, 출력 동작은
 [관리 CLI 참조](docs/ko/reference/admin-cli.md)가 담당합니다. 더 자세한 튜토리얼은
-[빠른 시작](docs/ko/getting-started/quickstart.md)을 봅니다.
+[설치](docs/ko/getting-started/installation.md)를 본 뒤
+[빠른 시작](docs/ko/getting-started/quickstart.md)을 봅니다. 소스 빌드는 설치
+가이드의 개발 경로로 계속 남아 있습니다.
 
 ## 사용자 요청의 실제 흐름
 

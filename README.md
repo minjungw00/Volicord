@@ -64,25 +64,29 @@ For exact term ownership, use the
 
 ## Quick Start
 
-From this Volicord source checkout, build the local binary, run guided setup,
-then connect Codex from the Product Repository where you want the agent to work:
+Install the release binary, run guided setup, then connect Codex from the
+Product Repository where you want the agent to work. After downloading or
+copying `scripts/install.sh` from the release repository, run:
 
 ```sh
-cargo build --workspace --bins
-./target/debug/volicord setup
+VOLICORD_REPO=OWNER/REPO sh ./scripts/install.sh
+volicord setup
 cd /path/to/your-product-repo
 volicord connect codex
 ```
 
-During setup, Volicord checks whether `volicord` is available for future
-terminals and agent hosts. If it is not, setup offers
-safe choices after checking the environment, such as creating command links in
-a verified writable directory, creating a missing conventional user command
-directory such as `~/.local/bin` and linking there when that is safe, printing
-a shell command, or skipping the link step. Follow setup's prompt or
-action-required output before running `volicord connect`, starting a new
-terminal, or starting an agent host; Volicord cannot change the parent shell's
-current `PATH`.
+`OWNER/REPO` is the GitHub repository that publishes the Volicord release
+assets for this checkout. The install script detects the supported Linux,
+WSL2, or macOS binary, verifies the matching checksum when possible, installs
+only `volicord`, and does not edit shell startup files. During setup, Volicord
+checks whether `volicord` is available for future terminals and agent hosts. If
+it is not, setup offers safe choices after checking the environment, such as
+creating command links in a verified writable directory, creating a missing
+conventional user command directory such as `~/.local/bin` and linking there
+when that is safe, printing a shell command, or skipping the link step. Follow
+setup's prompt or action-required output before running `volicord connect`,
+starting a new terminal, or starting an agent host; Volicord cannot change the
+parent shell's current `PATH`.
 
 `/path/to/your-product-repo` is an example path for the Product Repository where
 you want the agent to work. `volicord connect codex` detects the repository root
@@ -92,7 +96,9 @@ host configuration for that connection.
 
 Exact setup, connection, option, and output behavior belongs to the
 [Administrative CLI Reference](docs/en/reference/admin-cli.md). For a fuller
-tutorial, see [Quickstart](docs/en/getting-started/quickstart.md).
+tutorial, see [Installation](docs/en/getting-started/installation.md) and then
+[Quickstart](docs/en/getting-started/quickstart.md). Source builds remain
+available as a development path in the Installation guide.
 
 ## A User Request In Practice
 

@@ -45,7 +45,9 @@ volicord setup
 volicord doctor
 ```
 
-If you are working from a source checkout:
+If `volicord` is not available, rerun the release binary path in
+[Installation](../getting-started/installation.md). If you are intentionally
+working from a development source checkout:
 
 ```sh
 cargo build --workspace --bins
@@ -191,6 +193,14 @@ Observable symptom: setup or verification reports that `volicord mcp --stdio`
 cannot be found, launched, or initialized.
 
 Bounded recovery:
+
+Rerun setup with the installed release binary:
+
+```sh
+volicord setup
+```
+
+If you are intentionally working from a development source checkout:
 
 ```sh
 cargo build --workspace --bins
