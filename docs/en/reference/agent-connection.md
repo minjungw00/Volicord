@@ -339,6 +339,13 @@ Conditions:
 - The supported local CLI path for a human user to inspect pending judgments and
   record a selected Core-generated option is the `volicord user` command group
   owned by [Administrative CLI](admin-cli.md#user-channel-commands).
+- When the initialized MCP client declares `capabilities.elicitation`,
+  `volicord mcp --stdio` may use server-initiated elicitation as a User Channel
+  path for a pending judgment created by `volicord.request_user_judgment`; the
+  wire behavior is owned by [MCP Transport](mcp-transport.md#user-judgment-elicitation).
+- When MCP elicitation is unavailable, MCP fallback text may route the human
+  user to chat prompt-capture commands compatible with the prompt-submit hook
+  path, when that local path is configured.
 - Authority-bearing user-judgment resolution requires `actor_source=local_user`,
   `operation_category=user_only`, and compatible User Channel provenance.
 - `actor_source=agent_connection:<connection_id>` cannot become `local_user`
@@ -353,6 +360,7 @@ Agent may:
 Agent must not:
 
 - record an authority-bearing user decision from an Agent Connection
+- treat Agent Connection tool arguments as MCP elicitation responses
 - treat a natural-language approval, chat reply, generated Markdown status, or
   rendered projection as User Channel provenance
 - broaden one selected option into final acceptance, residual-risk acceptance,

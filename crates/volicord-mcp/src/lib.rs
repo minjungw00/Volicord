@@ -37,12 +37,15 @@ use volicord_store::{
 };
 use volicord_types::{
     mcp_request_schema, ActorSource, AgentConnectionId, AgentConnectionMode, CloseIntent,
-    CloseTaskRequest, IdempotencyKey, IntakeRequest, McpCheckCloseArguments, McpCloseTaskArguments,
-    McpIntakeArguments, McpPrepareWriteArguments, McpRecordRunArguments,
-    McpRequestUserJudgmentArguments, McpStageArtifactArguments, McpStatusArguments,
-    McpUpdateScopeArguments, MethodOperationCategory, OperationCategory, PrepareWriteRequest,
-    ProjectId, RecordRunRequest, RequestId, RequestUserJudgmentRequest, RequiredNullable,
-    StageArtifactRequest, StatusRequest, ToolEnvelope, UpdateScopeRequest,
+    CloseTaskRequest, IdempotencyKey, IntakeRequest, JsonObject, JudgmentKind, JudgmentRationale,
+    JudgmentResolutionOutcome, McpCheckCloseArguments, McpCloseTaskArguments, McpIntakeArguments,
+    McpPrepareWriteArguments, McpRecordRunArguments, McpRequestUserJudgmentArguments,
+    McpStageArtifactArguments, McpStatusArguments, McpUpdateScopeArguments,
+    MethodOperationCategory, OperationCategory, PrepareWriteRequest, ProjectId, RecordRunRequest,
+    RecordUserJudgmentPayload, RecordUserJudgmentRequest, RequestId, RequestUserJudgmentRequest,
+    RequiredNullable, StageArtifactRequest, StatusRequest, ToolEnvelope, UpdateScopeRequest,
+    UserJudgment, UserJudgmentOption, UserJudgmentOptionAction,
+    VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
     VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
 
@@ -51,6 +54,7 @@ const SERVER_NAME: &str = "volicord-mcp";
 const DEFAULT_INVOCATION_BINDING_BASIS: &str = VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING;
 const DEFAULT_LOCALE: &str = "en-US";
 const CHECK_CLOSE_TOOL_NAME: &str = "volicord.check_close";
+const ELICITATION_CREATE_METHOD: &str = "elicitation/create";
 static REQUEST_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
 /// Agent-facing Volicord tools exposed through workflow MCP connections.
@@ -959,9 +963,10 @@ where
     R: BufRead,
     W: Write,
 {
-    let mut state = ConnectionState::AwaitingInitialize;
+    let mut state = ConnectionState::default();
+    let mut lines = reader.lines();
 
-    for line in reader.lines() {
+    while let Some(line) = lines.next() {
         let line = line.map_err(McpAdapterError::Io)?;
         if line.trim().is_empty() {
             continue;
@@ -978,7 +983,9 @@ where
             }
         };
 
-        if let Some(response) = handle_json_rpc_message(&adapter, &mut state, message) {
+        if let Some(response) =
+            handle_json_rpc_message(&adapter, &mut state, message, &mut lines, &mut writer)?
+        {
             write_json_line(&mut writer, response)?;
         }
     }
@@ -1264,10 +1271,27 @@ fn controlled_invocation_binding_basis(value: &str) -> &'static str {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ConnectionState {
+enum ConnectionPhase {
     AwaitingInitialize,
     AwaitingInitialized,
     Ready,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ConnectionState {
+    phase: ConnectionPhase,
+    client_supports_elicitation: bool,
+    next_server_request_id: u64,
+}
+
+impl Default for ConnectionState {
+    fn default() -> Self {
+        Self {
+            phase: ConnectionPhase::AwaitingInitialize,
+            client_supports_elicitation: false,
+            next_server_request_id: 1,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -1301,21 +1325,23 @@ fn handle_json_rpc_message(
     adapter: &McpAdapter,
     state: &mut ConnectionState,
     message: Value,
-) -> Option<Value> {
+    lines: &mut io::Lines<impl BufRead>,
+    writer: &mut impl Write,
+) -> Result<Option<Value>, McpAdapterError> {
     match parse_client_message(message) {
         Ok(ClientMessage::Request(request)) => {
-            Some(handle_json_rpc_request(adapter, state, request))
+            handle_json_rpc_request(adapter, state, request, lines, writer).map(Some)
         }
         Ok(ClientMessage::Notification(notification)) => {
             handle_json_rpc_notification(state, notification);
-            None
+            Ok(None)
         }
-        Err(error) => Some(json_rpc_error(
+        Err(error) => Ok(Some(json_rpc_error(
             error.id,
             error.code,
             error.message,
             error.data,
-        )),
+        ))),
     }
 }
 
@@ -1380,10 +1406,10 @@ fn valid_request_id(value: &Value) -> Result<Value, JsonRpcFailure> {
 
 fn handle_json_rpc_notification(state: &mut ConnectionState, notification: JsonRpcNotification) {
     if notification.method == "notifications/initialized"
-        && *state == ConnectionState::AwaitingInitialized
+        && state.phase == ConnectionPhase::AwaitingInitialized
         && notification_params_are_object_or_absent(notification.params.as_ref())
     {
-        *state = ConnectionState::Ready;
+        state.phase = ConnectionPhase::Ready;
     }
 }
 
@@ -1391,29 +1417,38 @@ fn notification_params_are_object_or_absent(params: Option<&Value>) -> bool {
     matches!(params, None | Some(Value::Object(_)))
 }
 
-fn handle_json_rpc_request(
+fn handle_json_rpc_request<R, W>(
     adapter: &McpAdapter,
     state: &mut ConnectionState,
     request: JsonRpcRequest,
-) -> Value {
-    if let Some(error) = lifecycle_error(*state, &request) {
-        return error;
+    lines: &mut io::Lines<R>,
+    writer: &mut W,
+) -> Result<Value, McpAdapterError>
+where
+    R: BufRead,
+    W: Write,
+{
+    if let Some(error) = lifecycle_error(state.phase, &request) {
+        return Ok(error);
     }
 
     let response_id = request.id.clone();
     let result = match request.method.as_str() {
         "initialize" => {
-            if let Err(error) = validate_initialize_params(&response_id, request.params) {
-                return error;
+            match validate_initialize_params(&response_id, request.params) {
+                Ok(capabilities) => {
+                    state.client_supports_elicitation = capabilities.elicitation;
+                    state.phase = ConnectionPhase::AwaitingInitialized;
+                }
+                Err(error) => return Ok(error),
             }
-            *state = ConnectionState::AwaitingInitialized;
             initialize_result()
         }
         "ping" => {
             if let Err(error) =
                 validate_optional_object_params(&response_id, request.params, "ping")
             {
-                return error;
+                return Ok(error);
             }
             json!({})
         }
@@ -1421,41 +1456,49 @@ fn handle_json_rpc_request(
             if let Err(error) =
                 validate_optional_object_params(&response_id, request.params, "tools/list")
             {
-                return error;
+                return Ok(error);
             }
             match adapter.tools() {
                 Ok(tools) => json!({ "tools": tools }),
-                Err(error) => return json_rpc_error_for_adapter(response_id, error),
+                Err(error) => return Ok(json_rpc_error_for_adapter(response_id, error)),
             }
         }
-        "tools/call" => match call_tool_result(adapter, &response_id, request.params) {
+        "tools/call" => match call_tool_result_with_elicitation(
+            adapter,
+            &response_id,
+            request.params,
+            state.client_supports_elicitation,
+            &mut state.next_server_request_id,
+            lines,
+            writer,
+        )? {
             Ok(result) => result,
-            Err(error) => return error,
+            Err(error) => return Ok(error),
         },
         _ => {
-            return json_rpc_error(
+            return Ok(json_rpc_error(
                 response_id,
                 -32601,
                 "Method not found",
                 Some(request.method),
-            )
+            ))
         }
     };
 
-    json!({
+    Ok(json!({
         "jsonrpc": "2.0",
         "id": response_id,
         "result": result
-    })
+    }))
 }
 
-fn lifecycle_error(state: ConnectionState, request: &JsonRpcRequest) -> Option<Value> {
+fn lifecycle_error(state: ConnectionPhase, request: &JsonRpcRequest) -> Option<Value> {
     match state {
-        ConnectionState::AwaitingInitialize if request.method != "initialize" => Some(
+        ConnectionPhase::AwaitingInitialize if request.method != "initialize" => Some(
             invalid_request_response(&request.id, "initialize must be the first request"),
         ),
-        ConnectionState::AwaitingInitialize => None,
-        ConnectionState::AwaitingInitialized => match request.method.as_str() {
+        ConnectionPhase::AwaitingInitialize => None,
+        ConnectionPhase::AwaitingInitialized => match request.method.as_str() {
             "initialize" => Some(invalid_request_response(
                 &request.id,
                 "initialize has already completed",
@@ -1466,11 +1509,11 @@ fn lifecycle_error(state: ConnectionState, request: &JsonRpcRequest) -> Option<V
             )),
             _ => None,
         },
-        ConnectionState::Ready if request.method == "initialize" => Some(invalid_request_response(
+        ConnectionPhase::Ready if request.method == "initialize" => Some(invalid_request_response(
             &request.id,
             "initialize has already completed",
         )),
-        ConnectionState::Ready => None,
+        ConnectionPhase::Ready => None,
     }
 }
 
@@ -1488,7 +1531,15 @@ fn initialize_result() -> Value {
     })
 }
 
-fn validate_initialize_params(id: &Value, params: Option<Value>) -> Result<(), Value> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ClientCapabilities {
+    elicitation: bool,
+}
+
+fn validate_initialize_params(
+    id: &Value,
+    params: Option<Value>,
+) -> Result<ClientCapabilities, Value> {
     let object = required_object_params(id, params, "initialize")?;
     if !matches!(object.get("protocolVersion"), Some(Value::String(_))) {
         return Err(invalid_params_response(
@@ -1521,7 +1572,13 @@ fn validate_initialize_params(id: &Value, params: Option<Value>) -> Result<(), V
         ));
     }
 
-    Ok(())
+    let elicitation = object
+        .get("capabilities")
+        .and_then(Value::as_object)
+        .and_then(|capabilities| capabilities.get("elicitation"))
+        .is_some_and(Value::is_object);
+
+    Ok(ClientCapabilities { elicitation })
 }
 
 fn validate_optional_object_params(
@@ -1552,30 +1609,46 @@ fn required_object_params(
     }
 }
 
-fn call_tool_result(
+fn call_tool_result_with_elicitation<R, W>(
     adapter: &McpAdapter,
     id: &Value,
     params: Option<Value>,
-) -> Result<Value, Value> {
-    let object = required_object_params(id, params, "tools/call")?;
+    client_supports_elicitation: bool,
+    server_request_sequence: &mut u64,
+    lines: &mut io::Lines<R>,
+    writer: &mut W,
+) -> Result<Result<Value, Value>, McpAdapterError>
+where
+    R: BufRead,
+    W: Write,
+{
+    let object = match required_object_params(id, params, "tools/call") {
+        Ok(object) => object,
+        Err(error) => return Ok(Err(error)),
+    };
     if object.contains_key("task") {
-        return Err(invalid_params_response(
+        return Ok(Err(invalid_params_response(
             id,
             "tools/call task augmentation is not supported",
-        ));
+        )));
     }
 
-    let tool_name = object
-        .get("name")
-        .and_then(Value::as_str)
-        .ok_or_else(|| invalid_params_response(id, "tools/call params.name must be a string"))?;
+    let tool_name = match object.get("name").and_then(Value::as_str) {
+        Some(tool_name) => tool_name,
+        None => {
+            return Ok(Err(invalid_params_response(
+                id,
+                "tools/call params.name must be a string",
+            )))
+        }
+    };
     if !is_known_mcp_tool(tool_name) {
-        return Err(json_rpc_error(
+        return Ok(Err(json_rpc_error(
             id.clone(),
             -32602,
             "Invalid params",
             Some(format!("unknown MCP tool: {tool_name}")),
-        ));
+        )));
     }
 
     let arguments = match object.get("arguments") {
@@ -1585,44 +1658,644 @@ fn call_tool_result(
             .cloned()
             .expect("arguments object should be present"),
         Some(_) => {
-            return Err(invalid_params_response(
+            return Ok(Err(invalid_params_response(
                 id,
                 "tools/call params.arguments must be an object",
-            ))
+            )))
         }
     };
-    let text = if PUBLIC_METHOD_TOOL_NAMES.contains(&tool_name) {
+
+    let output = if PUBLIC_METHOD_TOOL_NAMES.contains(&tool_name) {
         match adapter.call_tool(tool_name, arguments) {
-            Ok(response) => response.response_json,
+            Ok(response) if tool_name == "volicord.request_user_judgment" => {
+                user_judgment_tool_output(
+                    adapter,
+                    response,
+                    client_supports_elicitation,
+                    server_request_sequence,
+                    lines,
+                    writer,
+                )?
+            }
+            Ok(response) => ToolCallOutput::success(response.response_json),
             Err(error @ McpAdapterError::InvalidParams { .. })
             | Err(error @ McpAdapterError::ToolExecution { .. }) => {
-                return Ok(tool_execution_error_result(&error));
+                return Ok(Ok(tool_execution_error_result(&error)));
             }
-            Err(error) => return Err(json_rpc_error_for_adapter(id.clone(), error)),
+            Err(error) => return Ok(Err(json_rpc_error_for_adapter(id.clone(), error))),
         }
     } else {
         let response = match adapter.call_adapter_tool(tool_name, arguments) {
             Ok(response) => response,
             Err(error @ McpAdapterError::InvalidParams { .. })
             | Err(error @ McpAdapterError::ToolExecution { .. }) => {
-                return Ok(tool_execution_error_result(&error));
+                return Ok(Ok(tool_execution_error_result(&error)));
             }
-            Err(error) => return Err(json_rpc_error_for_adapter(id.clone(), error)),
+            Err(error) => return Ok(Err(json_rpc_error_for_adapter(id.clone(), error))),
         };
-        serde_json::to_string(&response)
+        let text = serde_json::to_string(&response)
             .map_err(McpAdapterError::Json)
-            .map_err(|error| json_rpc_error_for_adapter(id.clone(), error))?
+            .map_err(|error| json_rpc_error_for_adapter(id.clone(), error));
+        match text {
+            Ok(text) => ToolCallOutput::success(text),
+            Err(error) => return Ok(Err(error)),
+        }
     };
 
-    Ok(json!({
-        "content": [
-            {
-                "type": "text",
-                "text": text
+    Ok(Ok(tool_call_result_from_output(output)))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ToolCallOutput {
+    primary_text: String,
+    extra_texts: Vec<String>,
+    is_error: bool,
+}
+
+impl ToolCallOutput {
+    fn success(primary_text: String) -> Self {
+        Self {
+            primary_text,
+            extra_texts: Vec::new(),
+            is_error: false,
+        }
+    }
+
+    fn with_extra(mut self, text: impl Into<String>) -> Self {
+        self.extra_texts.push(text.into());
+        self
+    }
+}
+
+fn tool_call_result_from_output(output: ToolCallOutput) -> Value {
+    let mut content = vec![json!({
+        "type": "text",
+        "text": output.primary_text
+    })];
+    content.extend(output.extra_texts.into_iter().map(|text| {
+        json!({
+            "type": "text",
+            "text": text
+        })
+    }));
+
+    json!({
+        "content": content,
+        "isError": output.is_error
+    })
+}
+
+fn user_judgment_tool_output<R, W>(
+    adapter: &McpAdapter,
+    pending_response: PipelineResponse,
+    client_supports_elicitation: bool,
+    server_request_sequence: &mut u64,
+    lines: &mut io::Lines<R>,
+    writer: &mut W,
+) -> Result<ToolCallOutput, McpAdapterError>
+where
+    R: BufRead,
+    W: Write,
+{
+    let Some(pending) = pending_judgment_from_response(&pending_response) else {
+        return Ok(ToolCallOutput::success(pending_response.response_json));
+    };
+
+    if !client_supports_elicitation {
+        return Ok(ToolCallOutput::success(pending_response.response_json)
+            .with_extra(chat_capture_fallback_instructions(adapter, &pending)?));
+    }
+
+    if let Some(reason) = elicitation_secret_request_risk(&pending) {
+        return Ok(ToolCallOutput::success(pending_response.response_json).with_extra(format!(
+            "Volicord did not open MCP elicitation for pending judgment `{}` because the prompt text appears to request or expose sensitive secret material ({reason}). Do not ask the user to enter secrets, credentials, tokens, or private keys through MCP elicitation. The judgment remains pending for a safe User Channel recovery path.",
+            pending.judgment_id.as_str()
+        )));
+    }
+
+    let request_id = next_server_request_id("elicit_user_judgment", server_request_sequence);
+    let request = elicitation_create_request(&request_id, &pending);
+    write_json_line(writer, request)?;
+    writer.flush().map_err(McpAdapterError::Io)?;
+
+    match read_elicitation_response(&request_id, lines) {
+        ElicitationReply::Accepted {
+            selected_option_id,
+            note,
+        } => match record_elicited_judgment(adapter, &pending, &selected_option_id, note)? {
+            ElicitedRecordOutcome::Recorded(recorded) => Ok(ToolCallOutput::success(
+                recorded.response_json,
+            )
+            .with_extra(format!(
+                "Volicord recorded pending judgment `{}` through MCP elicitation with User Channel basis `{}`.",
+                pending.judgment_id.as_str(),
+                VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL
+            ))),
+            ElicitedRecordOutcome::InvalidSelection(message) => Ok(ToolCallOutput::success(
+                pending_response.response_json,
+            )
+            .with_extra(format!(
+                "{message} The pending judgment remains unresolved."
+            ))),
+        },
+        ElicitationReply::Declined => match reject_option_id(&pending) {
+            Some(option_id) => match record_elicited_judgment(adapter, &pending, option_id, None)? {
+                ElicitedRecordOutcome::Recorded(recorded) => Ok(ToolCallOutput::success(
+                    recorded.response_json,
+                )
+                .with_extra(format!(
+                    "Volicord recorded pending judgment `{}` as rejected through MCP elicitation with User Channel basis `{}`.",
+                    pending.judgment_id.as_str(),
+                    VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL
+                ))),
+                ElicitedRecordOutcome::InvalidSelection(message) => Ok(ToolCallOutput::success(
+                    pending_response.response_json,
+                )
+                .with_extra(format!(
+                    "{message} The pending judgment remains unresolved."
+                ))),
+            },
+            None => Ok(ToolCallOutput::success(pending_response.response_json).with_extra(
+                "The MCP client declined the elicitation request, but this judgment has no Core reject option to record. The pending judgment remains unresolved.",
+            )),
+        },
+        ElicitationReply::Cancelled => Ok(ToolCallOutput::success(pending_response.response_json)
+            .with_extra(format!(
+                "The MCP client cancelled or dismissed elicitation for pending judgment `{}`. Volicord did not record an answer; the judgment remains pending.",
+                pending.judgment_id.as_str()
+            ))),
+        ElicitationReply::Invalid(message) => Ok(ToolCallOutput::success(
+            pending_response.response_json,
+        )
+        .with_extra(format!(
+            "Volicord rejected the MCP elicitation response: {message}. The pending judgment remains unresolved."
+        ))),
+        ElicitationReply::Unavailable(message) => Ok(ToolCallOutput::success(
+            pending_response.response_json,
+        )
+        .with_extra(format!(
+            "MCP elicitation was unavailable after the client advertised support: {message}. {}",
+            chat_capture_fallback_instructions(adapter, &pending)?
+        ))),
+    }
+}
+
+fn pending_judgment_from_response(response: &PipelineResponse) -> Option<UserJudgment> {
+    if response.response_value["base"]["response_kind"].as_str() != Some("result") {
+        return None;
+    }
+    let judgment = serde_json::from_value::<UserJudgment>(
+        response.response_value.get("user_judgment")?.clone(),
+    )
+    .ok()?;
+    (judgment.resolution.is_none()).then_some(judgment)
+}
+
+fn elicitation_create_request(id: &str, judgment: &UserJudgment) -> Value {
+    let option_ids = judgment
+        .options
+        .iter()
+        .map(|option| option.option_id.as_str())
+        .collect::<Vec<_>>();
+    let option_names = judgment
+        .options
+        .iter()
+        .map(|option| option.label.as_str())
+        .collect::<Vec<_>>();
+    let option_lines = judgment
+        .options
+        .iter()
+        .map(|option| {
+            format!(
+                "- {} (`{}`): {}",
+                option.label,
+                option.option_id.as_str(),
+                option.consequence
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let message = format!(
+        "Volicord needs a user-owned judgment for Task `{}`.\n\nQuestion: {}\n\nContext: {}\n\nOptions:\n{}\n\nSelect exactly one option. Do not enter secrets, credentials, tokens, private keys, or other private secret material.",
+        judgment.task_id.as_str(),
+        judgment.question,
+        judgment.context.summary,
+        option_lines
+    );
+
+    json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "method": ELICITATION_CREATE_METHOD,
+        "params": {
+            "message": message,
+            "requestedSchema": {
+                "type": "object",
+                "properties": {
+                    "selected_option_id": {
+                        "type": "string",
+                        "title": "Judgment option",
+                        "description": "The exact Volicord option_id selected by the user.",
+                        "enum": option_ids,
+                        "enumNames": option_names
+                    },
+                    "note": {
+                        "type": "string",
+                        "title": "Optional note",
+                        "description": "Optional user note for this judgment. Do not include secrets, credentials, tokens, or private keys.",
+                        "maxLength": 1000
+                    }
+                },
+                "required": ["selected_option_id"]
             }
-        ],
-        "isError": false
-    }))
+        }
+    })
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ElicitationReply {
+    Accepted {
+        selected_option_id: String,
+        note: Option<String>,
+    },
+    Declined,
+    Cancelled,
+    Invalid(String),
+    Unavailable(String),
+}
+
+fn read_elicitation_response<R: BufRead>(
+    request_id: &str,
+    lines: &mut io::Lines<R>,
+) -> ElicitationReply {
+    let Some(line) = lines.next() else {
+        return ElicitationReply::Unavailable(
+            "stdin closed before the client responded".to_owned(),
+        );
+    };
+    let line = match line {
+        Ok(line) => line,
+        Err(error) => {
+            return ElicitationReply::Unavailable(format!(
+                "failed to read elicitation response: {error}"
+            ))
+        }
+    };
+    let value: Value = match serde_json::from_str(&line) {
+        Ok(value) => value,
+        Err(error) => {
+            return ElicitationReply::Invalid(format!("response was not valid JSON: {error}"))
+        }
+    };
+    let Some(object) = value.as_object() else {
+        return ElicitationReply::Invalid("response must be a JSON-RPC object".to_owned());
+    };
+    if object.get("jsonrpc").and_then(Value::as_str) != Some("2.0") {
+        return ElicitationReply::Invalid("response jsonrpc must be exactly \"2.0\"".to_owned());
+    }
+    if object.get("id").and_then(Value::as_str) != Some(request_id) {
+        return ElicitationReply::Invalid(
+            "response id did not match the elicitation request".to_owned(),
+        );
+    }
+    if let Some(error) = object.get("error") {
+        return ElicitationReply::Unavailable(format!(
+            "client returned JSON-RPC error: {}",
+            concise_json(error)
+        ));
+    }
+    let Some(result) = object.get("result").and_then(Value::as_object) else {
+        return ElicitationReply::Invalid("response result must be an object".to_owned());
+    };
+    match result.get("action").and_then(Value::as_str) {
+        Some("accept") => {
+            let Some(content) = result.get("content").and_then(Value::as_object) else {
+                return ElicitationReply::Invalid(
+                    "accepted elicitation must include object content".to_owned(),
+                );
+            };
+            let Some(selected_option_id) =
+                content.get("selected_option_id").and_then(Value::as_str)
+            else {
+                return ElicitationReply::Invalid(
+                    "accepted elicitation content.selected_option_id must be a string".to_owned(),
+                );
+            };
+            if selected_option_id.trim().is_empty() {
+                return ElicitationReply::Invalid(
+                    "accepted elicitation selected_option_id must not be empty".to_owned(),
+                );
+            }
+            let note = match content.get("note") {
+                None | Some(Value::Null) => None,
+                Some(Value::String(note)) if note.len() <= 1000 => Some(note.clone()),
+                Some(Value::String(_)) => {
+                    return ElicitationReply::Invalid(
+                        "accepted elicitation note must be at most 1000 characters".to_owned(),
+                    )
+                }
+                Some(_) => {
+                    return ElicitationReply::Invalid(
+                        "accepted elicitation note must be a string when supplied".to_owned(),
+                    )
+                }
+            };
+            ElicitationReply::Accepted {
+                selected_option_id: selected_option_id.to_owned(),
+                note,
+            }
+        }
+        Some("decline") => ElicitationReply::Declined,
+        Some("cancel") => ElicitationReply::Cancelled,
+        Some(other) => {
+            ElicitationReply::Invalid(format!("unsupported elicitation action `{other}`"))
+        }
+        None => ElicitationReply::Invalid("response result.action must be a string".to_owned()),
+    }
+}
+
+enum ElicitedRecordOutcome {
+    Recorded(PipelineResponse),
+    InvalidSelection(String),
+}
+
+fn record_elicited_judgment(
+    adapter: &McpAdapter,
+    judgment: &UserJudgment,
+    selected_option_id: &str,
+    note: Option<String>,
+) -> Result<ElicitedRecordOutcome, McpAdapterError> {
+    let Some(selected_option) = judgment
+        .options
+        .iter()
+        .find(|option| option.option_id.as_str() == selected_option_id)
+    else {
+        return Ok(ElicitedRecordOutcome::InvalidSelection(format!(
+            "MCP elicitation selected unknown option_id `{selected_option_id}` for pending judgment `{}`.",
+            judgment.judgment_id.as_str()
+        )));
+    };
+    let state_version = judgment.basis.created_at_state_version + 1;
+    let request = RecordUserJudgmentRequest {
+        envelope: ToolEnvelope {
+            project_id: judgment.project_id.clone(),
+            task_id: Some(judgment.task_id.clone()).into(),
+            request_id: RequestId::new(generated_metadata_id(
+                "req_mcp_elicitation_record",
+                adapter.context.connection_internal_id.as_str(),
+                "volicord.record_user_judgment",
+            )),
+            idempotency_key: Some(IdempotencyKey::new(generated_metadata_id(
+                "idem_mcp_elicitation_record",
+                adapter.context.connection_internal_id.as_str(),
+                "volicord.record_user_judgment",
+            )))
+            .into(),
+            expected_state_version: Some(state_version).into(),
+            dry_run: false,
+            locale: Some(DEFAULT_LOCALE.to_owned()).into(),
+        },
+        user_judgment_id: judgment.judgment_id.clone(),
+        judgment_kind: judgment.judgment_kind,
+        selected_option_id: selected_option.option_id.clone(),
+        answer: answer_payload_for_judgment(judgment, selected_option)?,
+        rationale: rationale_for_selected_option(judgment.judgment_kind, selected_option),
+        note: note.into(),
+        accepted_risks: accepted_risks_for_judgment(judgment, selected_option),
+    };
+    let invocation = InvocationContext::new(
+        judgment.project_id.clone(),
+        ActorSource::LocalUser,
+        OperationCategory::UserOnly,
+        VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
+    );
+    adapter
+        .core
+        .record_user_judgment(request, invocation)
+        .map(ElicitedRecordOutcome::Recorded)
+        .map_err(McpAdapterError::Core)
+}
+
+fn answer_payload_for_judgment(
+    judgment: &UserJudgment,
+    selected_option: &UserJudgmentOption,
+) -> Result<RecordUserJudgmentPayload, McpAdapterError> {
+    let mut payload = empty_answer_payload();
+    let branch = json_object(json!({
+        "summary": format!("User selected option {}", selected_option.option_id.as_str()),
+        "selected_option": selected_option.option_id.as_str(),
+        "selected_option_label": selected_option.label,
+        "selected_option_consequence": selected_option.consequence,
+    }));
+    match judgment.judgment_kind {
+        JudgmentKind::ProductDecision => payload.product_decision = Some(branch).into(),
+        JudgmentKind::TechnicalDecision => payload.technical_decision = Some(branch).into(),
+        JudgmentKind::ScopeDecision => payload.scope_decision = Some(branch).into(),
+        JudgmentKind::SensitiveApproval => {
+            let Some(scope) = judgment.basis.sensitive_action_scope.as_ref() else {
+                return Err(McpAdapterError::ToolExecution {
+                    tool_name: "volicord.request_user_judgment".to_owned(),
+                    message: "pending sensitive approval is missing its Core-derived sensitive action scope".to_owned(),
+                });
+            };
+            payload.sensitive_action_scope = Some(scope.clone()).into();
+        }
+        JudgmentKind::FinalAcceptance => payload.final_acceptance = Some(branch).into(),
+        JudgmentKind::ResidualRiskAcceptance => {
+            payload.residual_risk_acceptance = Some(json_object(json!({
+                "summary": format!("User selected option {}", selected_option.option_id.as_str()),
+                "selected_option": selected_option.option_id.as_str(),
+                "risk_ids": accepted_risk_ids(selected_option, judgment),
+            })))
+            .into();
+        }
+        JudgmentKind::Cancellation => payload.cancellation = Some(branch).into(),
+    }
+    Ok(payload)
+}
+
+fn empty_answer_payload() -> RecordUserJudgmentPayload {
+    RecordUserJudgmentPayload {
+        product_decision: None.into(),
+        technical_decision: None.into(),
+        scope_decision: None.into(),
+        sensitive_action_scope: None.into(),
+        final_acceptance: None.into(),
+        residual_risk_acceptance: None.into(),
+        cancellation: None.into(),
+    }
+}
+
+fn rationale_for_selected_option(
+    judgment_kind: JudgmentKind,
+    selected_option: &UserJudgmentOption,
+) -> JudgmentRationale {
+    let accepted = selected_option.resolution_outcome == JudgmentResolutionOutcome::Accepted;
+    JudgmentRationale {
+        summary: format!(
+            "User selected `{}` for `{}` through MCP elicitation.",
+            selected_option.option_id.as_str(),
+            judgment_kind_value(judgment_kind)
+        ),
+        selected_reason: Some(format!(
+            "{} {}",
+            selected_option.description, selected_option.consequence
+        ))
+        .into(),
+        considered_alternatives: Vec::new(),
+        rejected_alternatives: Vec::new(),
+        assumptions: vec!["The answer covers only the addressed Core UserJudgment.".to_owned()],
+        tradeoffs: if accepted {
+            vec![selected_option.consequence.clone()]
+        } else {
+            Vec::new()
+        },
+        uncertainties: Vec::new(),
+        review_triggers: if accepted {
+            vec!["Revisit if the captured judgment basis becomes stale or superseded.".to_owned()]
+        } else {
+            Vec::new()
+        },
+        related_refs: Vec::new(),
+        artifact_refs: Vec::new(),
+    }
+}
+
+fn accepted_risks_for_judgment(
+    judgment: &UserJudgment,
+    selected_option: &UserJudgmentOption,
+) -> Vec<volicord_types::AcceptedRiskInput> {
+    if judgment.judgment_kind == JudgmentKind::ResidualRiskAcceptance
+        && selected_option.resolution_outcome == JudgmentResolutionOutcome::Accepted
+    {
+        judgment.context.visible_risks.clone()
+    } else {
+        Vec::new()
+    }
+}
+
+fn accepted_risk_ids(selected_option: &UserJudgmentOption, judgment: &UserJudgment) -> Vec<String> {
+    if selected_option.resolution_outcome == JudgmentResolutionOutcome::Accepted {
+        judgment
+            .context
+            .visible_risks
+            .iter()
+            .map(|risk| risk.risk_id.as_str().to_owned())
+            .collect()
+    } else {
+        Vec::new()
+    }
+}
+
+fn reject_option_id(judgment: &UserJudgment) -> Option<&str> {
+    judgment
+        .options
+        .iter()
+        .find(|option| option.machine_action == UserJudgmentOptionAction::Reject)
+        .map(|option| option.option_id.as_str())
+}
+
+fn chat_capture_fallback_instructions(
+    adapter: &McpAdapter,
+    judgment: &UserJudgment,
+) -> Result<String, McpAdapterError> {
+    let store = CoreProjectStore::open(&adapter.runtime_home, &judgment.project_id)
+        .map_err(McpAdapterError::Store)?;
+    let records = store
+        .user_judgment_records_for_task(&judgment.task_id)
+        .map_err(McpAdapterError::Store)?;
+    let chat_index = records
+        .iter()
+        .position(|record| record.judgment_id == judgment.judgment_id.as_str())
+        .map(|index| index + 1)
+        .unwrap_or(1);
+    let chat_id = format!("J-{chat_index}");
+    let options = judgment
+        .options
+        .iter()
+        .enumerate()
+        .map(|(index, option)| {
+            format!(
+                "`Volicord: answer {chat_id} {}` for option `{}` ({})",
+                chat_option_selector(index + 1, option),
+                option.option_id.as_str(),
+                option.label
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("; ");
+    Ok(format!(
+        "MCP elicitation is unavailable. The pending judgment `{}` remains unresolved. To use chat prompt capture, ask the user to send one exact command in chat: {options}. To defer with a note, use `Volicord: note {chat_id} \"text\"`. Do not ask the user to include secrets, credentials, tokens, or private keys.",
+        judgment.judgment_id.as_str()
+    ))
+}
+
+fn chat_option_selector(index: usize, option: &UserJudgmentOption) -> String {
+    match option.machine_action {
+        UserJudgmentOptionAction::Reject => "reject".to_owned(),
+        UserJudgmentOptionAction::Defer => "defer".to_owned(),
+        UserJudgmentOptionAction::Accept => index.to_string(),
+    }
+}
+
+fn elicitation_secret_request_risk(judgment: &UserJudgment) -> Option<&'static str> {
+    let mut text = String::new();
+    text.push_str(&judgment.question);
+    text.push('\n');
+    text.push_str(&judgment.context.summary);
+    for constraint in &judgment.context.constraints {
+        text.push('\n');
+        text.push_str(constraint);
+    }
+    for option in &judgment.options {
+        text.push('\n');
+        text.push_str(&option.label);
+        text.push('\n');
+        text.push_str(&option.description);
+        text.push('\n');
+        text.push_str(&option.consequence);
+    }
+    let normalized = text.to_ascii_lowercase();
+    [
+        "password",
+        "passphrase",
+        "private key",
+        "api key",
+        "secret",
+        "credential",
+        "token",
+    ]
+    .into_iter()
+    .find(|needle| normalized.contains(needle))
+}
+
+fn judgment_kind_value(value: JudgmentKind) -> &'static str {
+    match value {
+        JudgmentKind::ProductDecision => "product_decision",
+        JudgmentKind::TechnicalDecision => "technical_decision",
+        JudgmentKind::ScopeDecision => "scope_decision",
+        JudgmentKind::SensitiveApproval => "sensitive_approval",
+        JudgmentKind::FinalAcceptance => "final_acceptance",
+        JudgmentKind::ResidualRiskAcceptance => "residual_risk_acceptance",
+        JudgmentKind::Cancellation => "cancellation",
+    }
+}
+
+fn next_server_request_id(prefix: &str, next_server_request_id: &mut u64) -> String {
+    let sequence = *next_server_request_id;
+    *next_server_request_id = next_server_request_id.saturating_add(1);
+    format!("{prefix}_{sequence}")
+}
+
+fn concise_json(value: &Value) -> String {
+    serde_json::to_string(value).unwrap_or_else(|_| "unserializable JSON value".to_owned())
+}
+
+fn json_object(value: Value) -> JsonObject {
+    match value {
+        Value::Object(object) => object,
+        _ => JsonObject::new(),
+    }
 }
 
 fn is_known_mcp_tool(tool_name: &str) -> bool {
@@ -2083,6 +2756,228 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn stdio_elicitation_accept_records_user_judgment() -> Result<(), Box<dyn Error>> {
+        let fixture = CoreFixture::new("mcp-elicitation-accept")?;
+        let setup_adapter = adapter(&fixture)?;
+        let (task_id, state_version) = create_task(&setup_adapter)?;
+        let adapter = adapter(&fixture)?;
+        let input = Cursor::new(json_lines(&[
+            initialize_request(1, json!({ "elicitation": {} })),
+            initialized_notification(),
+            tools_call(
+                2,
+                "volicord.request_user_judgment",
+                product_judgment_args(&fixture, &task_id, state_version),
+            ),
+            elicitation_accept("keep", None),
+        ])?);
+        let mut output = Vec::new();
+
+        run_stdio(adapter, BufReader::new(input), &mut output)?;
+
+        let values = stdio_responses(&output)?;
+        assert_eq!(values.len(), 3);
+        assert_eq!(values[1]["method"], ELICITATION_CREATE_METHOD);
+        assert_eq!(values[1]["id"], "elicit_user_judgment_1");
+        assert_eq!(
+            values[1]["params"]["requestedSchema"]["properties"]["selected_option_id"]["enum"][0],
+            "keep"
+        );
+        let response = volicord_response_from_tool(&values[2])?;
+        assert_eq!(response["base"]["response_kind"], "result");
+        assert_eq!(response["user_judgment"]["status"], "resolved");
+        assert_eq!(
+            response["user_judgment"]["resolution"]["resolved_by_actor_source"],
+            "local_user"
+        );
+        assert_eq!(
+            response["user_judgment"]["resolution"]["selected_option_id"],
+            "keep"
+        );
+        assert_eq!(
+            stored_resolution_basis(&fixture, &task_id, &response)?,
+            VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn stdio_elicitation_decline_records_rejected_authority_judgment() -> Result<(), Box<dyn Error>>
+    {
+        let fixture = CoreFixture::new("mcp-elicitation-decline")?;
+        let setup_adapter = adapter(&fixture)?;
+        let (task_id, state_version) = create_task(&setup_adapter)?;
+        let adapter = adapter(&fixture)?;
+        let input = Cursor::new(json_lines(&[
+            initialize_request(1, json!({ "elicitation": {} })),
+            initialized_notification(),
+            tools_call(
+                2,
+                "volicord.request_user_judgment",
+                authority_judgment_args(&fixture, &task_id, state_version),
+            ),
+            elicitation_action("decline"),
+        ])?);
+        let mut output = Vec::new();
+
+        run_stdio(adapter, BufReader::new(input), &mut output)?;
+
+        let values = stdio_responses(&output)?;
+        assert_eq!(values[1]["method"], ELICITATION_CREATE_METHOD);
+        let response = volicord_response_from_tool(&values[2])?;
+        assert_eq!(response["user_judgment"]["status"], "resolved");
+        assert_eq!(
+            response["user_judgment"]["resolution"]["selected_option_id"],
+            "reject"
+        );
+        assert_eq!(
+            response["user_judgment"]["resolution"]["resolution_outcome"],
+            "rejected"
+        );
+        assert_eq!(
+            stored_resolution_basis(&fixture, &task_id, &response)?,
+            VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn stdio_elicitation_accept_can_record_deferred_judgment() -> Result<(), Box<dyn Error>> {
+        let fixture = CoreFixture::new("mcp-elicitation-defer")?;
+        let setup_adapter = adapter(&fixture)?;
+        let (task_id, state_version) = create_task(&setup_adapter)?;
+        let adapter = adapter(&fixture)?;
+        let input = Cursor::new(json_lines(&[
+            initialize_request(1, json!({ "elicitation": {} })),
+            initialized_notification(),
+            tools_call(
+                2,
+                "volicord.request_user_judgment",
+                authority_judgment_args(&fixture, &task_id, state_version),
+            ),
+            elicitation_accept("defer", Some("Not enough context yet.")),
+        ])?);
+        let mut output = Vec::new();
+
+        run_stdio(adapter, BufReader::new(input), &mut output)?;
+
+        let values = stdio_responses(&output)?;
+        let response = volicord_response_from_tool(&values[2])?;
+        assert_eq!(response["user_judgment"]["status"], "resolved");
+        assert_eq!(
+            response["user_judgment"]["resolution"]["selected_option_id"],
+            "defer"
+        );
+        assert_eq!(
+            response["user_judgment"]["resolution"]["resolution_outcome"],
+            "deferred"
+        );
+        assert_eq!(
+            response["user_judgment"]["resolution"]["note"],
+            "Not enough context yet."
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn stdio_elicitation_cancel_leaves_judgment_pending() -> Result<(), Box<dyn Error>> {
+        let fixture = CoreFixture::new("mcp-elicitation-cancel")?;
+        let setup_adapter = adapter(&fixture)?;
+        let (task_id, state_version) = create_task(&setup_adapter)?;
+        let adapter = adapter(&fixture)?;
+        let input = Cursor::new(json_lines(&[
+            initialize_request(1, json!({ "elicitation": {} })),
+            initialized_notification(),
+            tools_call(
+                2,
+                "volicord.request_user_judgment",
+                product_judgment_args(&fixture, &task_id, state_version),
+            ),
+            elicitation_action("cancel"),
+        ])?);
+        let mut output = Vec::new();
+
+        run_stdio(adapter, BufReader::new(input), &mut output)?;
+
+        let values = stdio_responses(&output)?;
+        let response = volicord_response_from_tool(&values[2])?;
+        assert_eq!(response["user_judgment"]["status"], "pending");
+        assert!(values[2]["result"]["content"][1]["text"]
+            .as_str()
+            .expect("extra text")
+            .contains("remains pending"));
+        let record = stored_judgment_record(&fixture, &task_id, &response)?;
+        assert_eq!(record.status, "pending");
+        assert!(record.resolved_verification_basis.is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn stdio_elicitation_invalid_response_leaves_judgment_pending() -> Result<(), Box<dyn Error>> {
+        let fixture = CoreFixture::new("mcp-elicitation-invalid")?;
+        let setup_adapter = adapter(&fixture)?;
+        let (task_id, state_version) = create_task(&setup_adapter)?;
+        let adapter = adapter(&fixture)?;
+        let input = Cursor::new(json_lines(&[
+            initialize_request(1, json!({ "elicitation": {} })),
+            initialized_notification(),
+            tools_call(
+                2,
+                "volicord.request_user_judgment",
+                product_judgment_args(&fixture, &task_id, state_version),
+            ),
+            elicitation_accept("not_an_option", None),
+        ])?);
+        let mut output = Vec::new();
+
+        run_stdio(adapter, BufReader::new(input), &mut output)?;
+
+        let values = stdio_responses(&output)?;
+        let response = volicord_response_from_tool(&values[2])?;
+        assert_eq!(response["user_judgment"]["status"], "pending");
+        assert!(values[2]["result"]["content"][1]["text"]
+            .as_str()
+            .expect("extra text")
+            .contains("unknown option_id"));
+        let record = stored_judgment_record(&fixture, &task_id, &response)?;
+        assert_eq!(record.status, "pending");
+        Ok(())
+    }
+
+    #[test]
+    fn stdio_without_elicitation_capability_returns_chat_capture_fallback(
+    ) -> Result<(), Box<dyn Error>> {
+        let fixture = CoreFixture::new("mcp-elicitation-unavailable")?;
+        let setup_adapter = adapter(&fixture)?;
+        let (task_id, state_version) = create_task(&setup_adapter)?;
+        let adapter = adapter(&fixture)?;
+        let input = Cursor::new(json_lines(&[
+            initialize_request(1, json!({})),
+            initialized_notification(),
+            tools_call(
+                2,
+                "volicord.request_user_judgment",
+                product_judgment_args(&fixture, &task_id, state_version),
+            ),
+        ])?);
+        let mut output = Vec::new();
+
+        run_stdio(adapter, BufReader::new(input), &mut output)?;
+
+        let values = stdio_responses(&output)?;
+        assert_eq!(values.len(), 2);
+        let response = volicord_response_from_tool(&values[1])?;
+        assert_eq!(response["user_judgment"]["status"], "pending");
+        let fallback = values[1]["result"]["content"][1]["text"]
+            .as_str()
+            .expect("fallback text");
+        assert!(fallback.contains("MCP elicitation is unavailable"));
+        assert!(fallback.contains("Volicord: answer J-1 1"));
+        assert!(fallback.contains("Volicord: note J-1"));
+        Ok(())
+    }
+
     fn adapter(fixture: &CoreFixture) -> Result<McpAdapter, Box<dyn Error>> {
         let context =
             McpConnectionContext::resolve(fixture.runtime_home_path(), fixture.connection_id())?
@@ -2113,6 +3008,226 @@ mod tests {
             },
         )?;
         Ok(())
+    }
+
+    fn create_task(adapter: &McpAdapter) -> Result<(String, u64), Box<dyn Error>> {
+        let response = adapter.call_tool(
+            "volicord.intake",
+            json!({
+                "plain_language_request": "Create a task for MCP elicitation tests.",
+                "requested_mode": "work",
+                "resume_policy": "create_new",
+                "initial_scope": {
+                    "boundary": "MCP elicitation test task.",
+                    "non_goals": ["Changing unrelated behavior."],
+                    "acceptance_criteria": ["A pending judgment can be requested."]
+                },
+                "initial_context_refs": []
+            }),
+        )?;
+        let task_id = response.response_value["task_ref"]["record_id"]
+            .as_str()
+            .expect("task id")
+            .to_owned();
+        let state_version = response.response_value["base"]["state_version"]
+            .as_u64()
+            .expect("state version");
+        Ok((task_id, state_version))
+    }
+
+    fn initialize_request(id: u64, capabilities: Value) -> Value {
+        request(
+            id,
+            "initialize",
+            json!({
+                "protocolVersion": SUPPORTED_PROTOCOL_VERSION,
+                "capabilities": capabilities,
+                "clientInfo": {
+                    "name": "volicord-unit-test",
+                    "version": "0.0.0"
+                }
+            }),
+        )
+    }
+
+    fn initialized_notification() -> Value {
+        notification("notifications/initialized", json!({}))
+    }
+
+    fn request(id: u64, method: &str, params: Value) -> Value {
+        json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": method,
+            "params": params
+        })
+    }
+
+    fn notification(method: &str, params: Value) -> Value {
+        json!({
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": params
+        })
+    }
+
+    fn tools_call(id: u64, name: &str, arguments: Value) -> Value {
+        request(
+            id,
+            "tools/call",
+            json!({
+                "name": name,
+                "arguments": arguments
+            }),
+        )
+    }
+
+    fn product_judgment_args(fixture: &CoreFixture, task_id: &str, state_version: u64) -> Value {
+        judgment_args(
+            fixture,
+            task_id,
+            state_version,
+            "product_decision",
+            json!([
+                {
+                    "option_id": "keep",
+                    "label": "Keep focused behavior",
+                    "description": "Record the user-owned product decision to keep the behavior.",
+                    "consequence": "Only this focused judgment is resolved.",
+                    "is_default": true
+                },
+                {
+                    "option_id": "change",
+                    "label": "Change focused behavior",
+                    "description": "Record the user-owned product decision to change the behavior.",
+                    "consequence": "Only this focused judgment is resolved with the alternate option.",
+                    "is_default": false
+                }
+            ]),
+            json!(["close_complete"]),
+        )
+    }
+
+    fn authority_judgment_args(fixture: &CoreFixture, task_id: &str, state_version: u64) -> Value {
+        judgment_args(
+            fixture,
+            task_id,
+            state_version,
+            "scope_decision",
+            Value::Null,
+            json!(["scope_update"]),
+        )
+    }
+
+    fn judgment_args(
+        fixture: &CoreFixture,
+        task_id: &str,
+        state_version: u64,
+        judgment_kind: &str,
+        options: Value,
+        required_for: Value,
+    ) -> Value {
+        json!({
+            "task_id": task_id,
+            "change_unit_id": null,
+            "judgment_kind": judgment_kind,
+            "presentation": "short",
+            "question": "Choose the focused MCP elicitation test outcome.",
+            "options": options,
+            "context": {
+                "summary": "A focused test judgment needs a user-owned answer.",
+                "related_refs": [],
+                "artifact_refs": [],
+                "visible_risks": [],
+                "constraints": ["The answer covers only this pending judgment."]
+            },
+            "affected_refs": [
+                {
+                    "record_kind": "task",
+                    "record_id": task_id,
+                    "project_id": fixture.project_id(),
+                    "task_id": task_id,
+                    "state_version": state_version
+                }
+            ],
+            "required_for": required_for,
+            "expires_at": null
+        })
+    }
+
+    fn elicitation_accept(selected_option_id: &str, note: Option<&str>) -> Value {
+        let mut content = json!({
+            "selected_option_id": selected_option_id
+        });
+        if let Some(note) = note {
+            content["note"] = json!(note);
+        }
+        json!({
+            "jsonrpc": "2.0",
+            "id": "elicit_user_judgment_1",
+            "result": {
+                "action": "accept",
+                "content": content
+            }
+        })
+    }
+
+    fn elicitation_action(action: &str) -> Value {
+        json!({
+            "jsonrpc": "2.0",
+            "id": "elicit_user_judgment_1",
+            "result": {
+                "action": action
+            }
+        })
+    }
+
+    fn json_lines(messages: &[Value]) -> Result<Vec<u8>, serde_json::Error> {
+        let mut output = Vec::new();
+        for message in messages {
+            serde_json::to_writer(&mut output, message)?;
+            output.push(b'\n');
+        }
+        Ok(output)
+    }
+
+    fn volicord_response_from_tool(response: &Value) -> Result<Value, Box<dyn Error>> {
+        assert_eq!(response["result"]["isError"], json!(false));
+        let text = response["result"]["content"][0]["text"]
+            .as_str()
+            .ok_or("tools/call response should include text content")?;
+        Ok(serde_json::from_str(text)?)
+    }
+
+    fn stored_resolution_basis(
+        fixture: &CoreFixture,
+        task_id: &str,
+        response: &Value,
+    ) -> Result<String, Box<dyn Error>> {
+        let record = stored_judgment_record(fixture, task_id, response)?;
+        record
+            .resolved_verification_basis
+            .ok_or_else(|| "stored judgment should have a resolution basis".into())
+    }
+
+    fn stored_judgment_record(
+        fixture: &CoreFixture,
+        task_id: &str,
+        response: &Value,
+    ) -> Result<volicord_store::core_pipeline::UserJudgmentRecord, Box<dyn Error>> {
+        let judgment_id = response["user_judgment_ref"]["record_id"]
+            .as_str()
+            .ok_or("response should include user_judgment_ref.record_id")?;
+        let store = CoreProjectStore::open(
+            fixture.runtime_home_path(),
+            &ProjectId::new(fixture.project_id()),
+        )?;
+        let record = store
+            .user_judgment_records_for_task(&volicord_types::TaskId::new(task_id))?
+            .into_iter()
+            .find(|record| record.judgment_id == judgment_id)
+            .ok_or("stored judgment record should exist")?;
+        Ok(record)
     }
 
     fn tool_names(tools: &[McpToolDefinition]) -> Vec<&'static str> {

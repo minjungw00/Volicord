@@ -303,6 +303,13 @@ Agent Connection은 에이전트 대상 연결입니다. 모델이 사용자의 
 - 사람이 대기 중인 판단을 확인하고 Core 생성 선택지를 골라 기록하는 지원 로컬 CLI
   경로는 [관리 CLI](admin-cli.md#user-channel-commands)가 담당하는 `volicord user`
   명령군입니다.
+- 초기화된 MCP 클라이언트가 `capabilities.elicitation`을 선언하면
+  `volicord mcp --stdio`는 `volicord.request_user_judgment`가 만든 대기 판단에 대해 서버
+  시작 elicitation을 User Channel 경로로 사용할 수 있습니다. 전송 동작은
+  [MCP 전송](mcp-transport.md#user-judgment-elicitation)이 담당합니다.
+- MCP elicitation을 사용할 수 없으면 MCP 대체 안내 텍스트는 그 로컬 경로가 설정되어 있을
+  때 prompt-submit hook 경로와 호환되는 채팅 prompt-capture 명령으로 사람 사용자를 안내할
+  수 있습니다.
 - 권한을 지니는 사용자 판단 해결에는 `actor_source=local_user`,
   `operation_category=user_only`, 호환 User Channel 출처가 필요합니다.
 - `actor_source=agent_connection:<connection_id>`는 사용자의 텍스트를 전달해도
@@ -317,6 +324,7 @@ Agent Connection은 에이전트 대상 연결입니다. 모델이 사용자의 
 에이전트가 하면 안 되는 것:
 
 - Agent Connection에서 권한을 지니는 사용자 결정을 기록하면 안 됩니다.
+- Agent Connection 도구 인자를 MCP elicitation 응답으로 취급하면 안 됩니다.
 - 자연어 승인, 채팅 답변, 생성된 Markdown 상태, 렌더링된 상태 보기를 User Channel
   출처로 취급하면 안 됩니다.
 - 선택지 하나를 최종 수락, 잔여 위험 수락, 민감 동작 승인, 범위 수락, 또는 다른 판단

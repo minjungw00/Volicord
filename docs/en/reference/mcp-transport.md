@@ -20,6 +20,7 @@ This document owns:
 - MCP Runtime Home environment resolution
 - MCP protocol-version negotiation and initialization lifecycle
 - stdio JSON-RPC framing, message validation, and supported MCP methods
+- server-initiated MCP elicitation at the stdio transport boundary
 - MCP startup validation for one internal Agent Connection binding
 - MCP `tools/list` and `tools/call` behavior at the transport boundary
 - MCP-visible tool-schema projection that hides internal envelopes and
@@ -257,8 +258,10 @@ Framing rules:
 - JSON-RPC batches are not supported. An array input receives one Invalid
   Request response, not one response per array element.
 - Messages are delimited by newlines and must not contain embedded newlines.
-- Each output line contains one JSON-RPC response object.
-  `volicord mcp --stdio` writes no readiness message before `initialize`.
+- Each output line contains one JSON-RPC response object, except that a
+  server-initiated `elicitation/create` request may be written during an
+  elicitation-capable `tools/call`. `volicord mcp --stdio` writes no readiness
+  message before `initialize`.
 - Stdin EOF ends the process after stdout is flushed.
 
 JSON-RPC validation rules:
@@ -303,6 +306,10 @@ The first valid MCP request in a connection is `initialize`. A valid
 - `capabilities` as an object
 - `clientInfo` as an object containing string `name` and `version` fields
 
+If `params.capabilities.elicitation` is an object, the adapter treats the MCP
+client as eligible for server-initiated elicitation. Other capability entries
+do not create Volicord behavior by themselves.
+
 Examples use the fields listed above. `volicord mcp --stdio` may accept additional MCP
 `Implementation` metadata allowed by the 2025-11-25 schema, such as `title`,
 `description`, `icons`, or `websiteUrl`.
@@ -334,6 +341,12 @@ Supported MCP request methods:
 - `ping`
 - `tools/list`
 - `tools/call`
+
+When the initialized client declared `capabilities.elicitation`, the server may
+send one nested `elicitation/create` request while processing
+`volicord.request_user_judgment`. That request is server-initiated MCP
+protocol traffic, not an Agent Connection tool. The client response to that
+server request is validated before any User Channel recording attempt.
 
 The supported lifecycle notification is `notifications/initialized`.
 
@@ -408,6 +421,46 @@ command needed to repair the state.
 `volicord mcp --stdio` does not advertise or implement MCP task-augmented tool
 execution. A `tools/call` request does not return `CreateTaskResult`, and a
 `task` parameter is not a supported baseline feature.
+
+<a id="user-judgment-elicitation"></a>
+### User Judgment Elicitation
+
+`volicord.request_user_judgment` remains the only Agent Connection tool for
+asking Core to create a focused pending `UserJudgment`. The MCP adapter does
+not expose `volicord.record_user_judgment` as an Agent Connection tool and does
+not accept agent-supplied answer fields as substitutes for user input.
+
+When a `workflow` connection calls `volicord.request_user_judgment` and Core
+commits a pending judgment:
+
+- If the initialized client declared `capabilities.elicitation`, the adapter
+  may send `elicitation/create` before returning the original `tools/call`
+  response. The requested schema is a flat object with required
+  `selected_option_id` drawn from the Core-created option IDs and optional
+  `note`. It does not request secrets, credentials, tokens, private keys, or
+  other private secret material.
+- If the elicitation response is `action=accept`, the adapter validates
+  `content.selected_option_id` against the pending judgment options. A valid
+  response is recorded through Core's User Channel method with
+  `actor_source=local_user`, `operation_category=user_only`, and
+  `resolved_verification_basis=mcp_elicitation_user_channel`. The returned
+  `tools/call` content contains the resulting Volicord response JSON.
+- If the elicitation response is `action=decline` and the pending judgment has
+  a Core reject option, the adapter records that reject option through the same
+  User Channel path. If no reject option exists, the judgment remains pending.
+- If the elicitation response is `action=cancel`, invalid, malformed, or cannot
+  be matched to the pending judgment, the adapter records no answer and the
+  pending judgment remains pending.
+- If elicitation is unavailable because the client did not declare the
+  capability, the adapter records no answer and returns the pending
+  `RequestUserJudgmentResult` plus additional text content with chat
+  prompt-capture commands compatible with the prompt-submit hook path.
+
+For all branches, `result.content[0].text` remains the Volicord response JSON
+string. Additional `content[]` text, when present, is adapter guidance such as
+fallback instructions or an explanation that elicitation was cancelled or
+invalid. The additional text is not Core authority, not a public API response
+field, and not a user judgment record.
 
 For known public Volicord method-tool calls that reach Volicord, `tools/call`
 wraps the Volicord response JSON inside the MCP result:

@@ -10,6 +10,7 @@ use std::{
 };
 
 use serde_json::{json, Value};
+use volicord_core::{CoreService, InvocationContext};
 use volicord_store::{
     agent_connections::{
         agent_connection_record, ensure_agent_connection, AgentConnectionRegistration,
@@ -18,6 +19,10 @@ use volicord_store::{
     core_pipeline::StorageEffectCounts,
 };
 use volicord_test_support::core_fixtures::CoreFixture;
+use volicord_types::{
+    ActorSource, OperationCategory, ProjectId, VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
+    VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+};
 
 const PROCESS_TIMEOUT: Duration = Duration::from_secs(10);
 const EXPECTED_WORKFLOW_METHOD_TOOLS: [&str; 9] = [
@@ -290,6 +295,59 @@ fn volicord_mcp_subcommand_stdio_uses_line_delimited_json_and_reconnects_state(
 }
 
 #[test]
+fn volicord_mcp_subcommand_stdio_records_judgment_with_elicitation() -> Result<(), Box<dyn Error>> {
+    let fixture = McpFixture::new("mcp-bin-elicitation")?;
+    let (task_id, state_version) = fixture.create_task("elicitation")?;
+    let messages = json_lines(&[
+        initialize_request_with_capabilities(1, json!({ "elicitation": {} })),
+        initialized_notification(),
+        tools_call(
+            2,
+            "volicord.request_user_judgment",
+            request_user_judgment_arguments(&fixture, &task_id, state_version),
+        ),
+        json!({
+            "jsonrpc": "2.0",
+            "id": "elicit_user_judgment_1",
+            "result": {
+                "action": "accept",
+                "content": {
+                    "selected_option_id": "keep"
+                }
+            }
+        }),
+    ])?;
+
+    let output = run_child(
+        fixture.connection_command(["--stdio", "--connection", fixture.connection_id()]),
+        ChildStdin::WriteAndClose(messages),
+    )?;
+
+    assert_success_captured(&output);
+    assert_eq!(captured_stderr(&output), "");
+    let values = json_rpc_values(&output.stdout)?;
+    assert_eq!(values.len(), 3);
+    assert_eq!(values[1]["method"], "elicitation/create");
+    assert_eq!(values[1]["id"], "elicit_user_judgment_1");
+    let response = volicord_response(&values[2])?;
+    assert_eq!(response["user_judgment"]["status"], "resolved");
+    assert_eq!(
+        response["user_judgment"]["resolution"]["resolved_by_actor_source"],
+        "local_user"
+    );
+    assert_eq!(
+        response["user_judgment"]["resolution"]["selected_option_id"],
+        "keep"
+    );
+    let record = fixture.stored_judgment(&task_id, &response)?;
+    assert_eq!(
+        record.resolved_verification_basis.as_deref(),
+        Some(VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL)
+    );
+    Ok(())
+}
+
+#[test]
 fn volicord_mcp_subcommand_tools_list_respects_connection_mode_and_schema_boundary(
 ) -> Result<(), Box<dyn Error>> {
     let workflow = McpFixture::new("mcp-bin-tools-workflow")?;
@@ -455,6 +513,51 @@ impl McpFixture {
         )?;
         Ok(())
     }
+
+    fn create_task(&self, suffix: &str) -> Result<(String, u64), Box<dyn Error>> {
+        let response = CoreService::new(self.runtime_home_path()).intake(
+            self.fixture.intake_request(
+                &format!("req_mcp_bin_{suffix}_task"),
+                &format!("idem_mcp_bin_{suffix}_task"),
+                false,
+                Some(0),
+            ),
+            InvocationContext::new(
+                ProjectId::new(self.project_id()),
+                ActorSource::agent_connection(self.connection_id()),
+                OperationCategory::AgentWorkflow,
+                VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+            ),
+        )?;
+        let task_id = response.response_value["task_ref"]["record_id"]
+            .as_str()
+            .expect("task id")
+            .to_owned();
+        let state_version = response.response_value["base"]["state_version"]
+            .as_u64()
+            .expect("state version");
+        Ok((task_id, state_version))
+    }
+
+    fn stored_judgment(
+        &self,
+        task_id: &str,
+        response: &Value,
+    ) -> Result<volicord_store::core_pipeline::UserJudgmentRecord, Box<dyn Error>> {
+        let judgment_id = response["user_judgment_ref"]["record_id"]
+            .as_str()
+            .ok_or("response should include user_judgment_ref.record_id")?;
+        let store = volicord_store::core_pipeline::CoreProjectStore::open(
+            self.runtime_home_path(),
+            &ProjectId::new(self.project_id()),
+        )?;
+        let record = store
+            .user_judgment_records_for_task(&volicord_types::TaskId::new(task_id))?
+            .into_iter()
+            .find(|record| record.judgment_id == judgment_id)
+            .ok_or("stored judgment record should exist")?;
+        Ok(record)
+    }
 }
 
 fn run_without_binding<const N: usize>(args: [&str; N]) -> Result<Output, Box<dyn Error>> {
@@ -481,12 +584,16 @@ fn request(id: u64, method: &str, params: Value) -> Value {
 }
 
 fn initialize_request(id: u64) -> Value {
+    initialize_request_with_capabilities(id, json!({}))
+}
+
+fn initialize_request_with_capabilities(id: u64, capabilities: Value) -> Value {
     request(
         id,
         "initialize",
         json!({
             "protocolVersion": "2025-11-25",
-            "capabilities": {},
+            "capabilities": capabilities,
             "clientInfo": {
                 "name": "volicord-binary-test",
                 "version": "0.0.0"
@@ -570,6 +677,54 @@ fn status_arguments_with_connection_id(
     arguments
 }
 
+fn request_user_judgment_arguments(
+    fixture: &McpFixture,
+    task_id: &str,
+    state_version: u64,
+) -> Value {
+    json!({
+        "task_id": task_id,
+        "change_unit_id": null,
+        "judgment_kind": "product_decision",
+        "presentation": "short",
+        "question": "Choose the focused compiled MCP elicitation outcome.",
+        "options": [
+            {
+                "option_id": "keep",
+                "label": "Keep focused behavior",
+                "description": "Record the user-owned product decision to keep the behavior.",
+                "consequence": "Only this focused judgment is resolved.",
+                "is_default": true
+            },
+            {
+                "option_id": "change",
+                "label": "Change focused behavior",
+                "description": "Record the user-owned product decision to change the behavior.",
+                "consequence": "Only this focused judgment is resolved with the alternate option.",
+                "is_default": false
+            }
+        ],
+        "context": {
+            "summary": "A compiled MCP process test judgment needs a user-owned answer.",
+            "related_refs": [],
+            "artifact_refs": [],
+            "visible_risks": [],
+            "constraints": ["The answer covers only this pending judgment."]
+        },
+        "affected_refs": [
+            {
+                "record_kind": "task",
+                "record_id": task_id,
+                "project_id": fixture.project_id(),
+                "task_id": task_id,
+                "state_version": state_version
+            }
+        ],
+        "required_for": ["close_complete"],
+        "expires_at": null
+    })
+}
+
 fn json_lines(messages: &[Value]) -> Result<String, serde_json::Error> {
     let mut output = String::new();
     for message in messages {
@@ -577,6 +732,21 @@ fn json_lines(messages: &[Value]) -> Result<String, serde_json::Error> {
         output.push('\n');
     }
     Ok(output)
+}
+
+fn json_rpc_values(output: &[u8]) -> Result<Vec<Value>, Box<dyn Error>> {
+    let text = std::str::from_utf8(output)?;
+    let mut values = Vec::new();
+    for (line_number, line) in text.lines().enumerate() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let value: Value = serde_json::from_str(line)
+            .map_err(|error| format!("invalid JSON on output line {}: {error}", line_number + 1))?;
+        assert_eq!(value["jsonrpc"], "2.0");
+        values.push(value);
+    }
+    Ok(values)
 }
 
 fn responses_by_id(output: &[u8]) -> Result<BTreeMap<u64, Value>, Box<dyn Error>> {
