@@ -265,6 +265,14 @@ fn setup_and_doctor_report_installation_profile() -> Result<(), Box<dyn Error>> 
         .expect("actions_required should be an array")
         .iter()
         .any(|action| action["id"] == "make_volicord_command_available"));
+    assert_eq!(
+        setup_json["primary_next_action"]["id"],
+        "make_volicord_command_available"
+    );
+    assert_eq!(
+        setup_json["states"]["command_availability"],
+        "action_required"
+    );
 
     let doctor = run_with_home_env(runtime_home.path(), ["doctor", "--json"], &[])?;
     assert_success(&doctor);
@@ -313,6 +321,15 @@ fn setup_and_doctor_report_installation_profile() -> Result<(), Box<dyn Error>> 
         .expect("actions_recommended should be an array")
         .iter()
         .any(|action| action["id"] == "make_profile_commands_available"));
+    assert_eq!(
+        doctor_json["primary_next_action"]["id"],
+        "make_profile_commands_available"
+    );
+    assert_eq!(
+        doctor_json["primary_next_action"]["requirement"],
+        "recommended"
+    );
+    assert_eq!(doctor_json["states"]["host_reload_required"], true);
 
     let doctor_text = run_with_home_env(runtime_home.path(), ["doctor"], &[])?;
     assert_success(&doctor_text);
@@ -321,7 +338,9 @@ fn setup_and_doctor_report_installation_profile() -> Result<(), Box<dyn Error>> 
     assert!(text.contains(
         "status_meaning: installation profile is usable; warnings name recommended follow-up actions"
     ));
-    assert!(text.contains("recommended_actions:"));
+    assert!(text.contains("command_state: action_recommended"));
+    assert!(text.contains("host_reload_required: yes"));
+    assert!(text.contains("next_action: recommended:"));
     assert!(text.contains("restart or reload existing agent hosts"));
     Ok(())
 }
@@ -354,7 +373,9 @@ fn setup_plain_non_tty_reports_actions_without_prompting_or_shell_edits(
     assert!(text.contains(
         "status_meaning: setup still needs a named user action before first-run setup is complete"
     ));
-    assert!(text.contains("optional_actions:"));
+    assert!(text.contains("command_state: action_required"));
+    assert!(text.contains("next_action:"));
+    assert!(text.contains("optional_action_count:"));
     assert!(!text.contains("Choices:"));
     assert!(!text.contains("Choice ["));
     assert!(!text.contains("Managed block to write"));
@@ -382,6 +403,14 @@ fn doctor_without_setup_reports_action_required() -> Result<(), Box<dyn Error>> 
         .expect("actions should be an array")
         .iter()
         .any(|action| action["id"] == "run_setup"));
+    assert_eq!(value["primary_next_action"]["id"], "run_setup");
+    assert_eq!(value["primary_next_action"]["requirement"], "required");
+    let doctor_text = run_with_home_env(runtime_home.path(), ["doctor"], &[])?;
+    assert_success(&doctor_text);
+    let text = stdout(&doctor_text);
+    assert!(text.contains("runtime_home_state: ready"));
+    assert!(text.contains("installation_profile_state: missing_or_invalid"));
+    assert!(text.contains("next_action: Run volicord setup"));
     assert_eq!(fs::read_dir(runtime_home.path())?.count(), 0);
     Ok(())
 }
@@ -470,6 +499,13 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     assert_eq!(value["status"], "action_required");
     assert_eq!(value["mode"], "guarded");
     assert_eq!(value["guard_mode"], "guarded");
+    assert_eq!(value["states"]["runtime_home"], "ready");
+    assert_eq!(value["states"]["project_registration"], "registered");
+    assert_eq!(value["states"]["mcp_config"], "match");
+    assert_eq!(value["states"]["guard_installation"], "action_required");
+    assert_eq!(value["states"]["prompt_capture"], "available");
+    assert_eq!(value["states"]["host_reload_required"], true);
+    assert_eq!(value["primary_next_action"]["id"], "reload_required");
     assert_eq!(value["profile"]["status"], "created");
     assert_eq!(value["connection"]["host_kind"], "codex");
     assert_eq!(value["connection"]["connection_intent"], "shared");
@@ -489,6 +525,29 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
         .expect("actions should be an array")
         .iter()
         .any(|action| action["id"] == "reload_required"));
+
+    let text_output = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--host",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+        ],
+        &[
+            ("PATH", path_env(&[bin_dir.as_path()])),
+            ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
+        ],
+    )?;
+    assert_success(&text_output);
+    let init_text = stdout(&text_output);
+    assert!(init_text.contains("Volicord init action_required"));
+    assert!(init_text.contains("connection_state: action_required"));
+    assert!(init_text.contains("mcp_config_state: match"));
+    assert!(init_text.contains("prompt_capture_state: available"));
+    assert!(init_text.contains("host_reload_required: yes"));
+    assert!(init_text.contains("next_action: Restart or reload codex"));
 
     let record = agent_connection_record(runtime_home.path(), &connection_id)?
         .expect("connection should be stored");
@@ -989,6 +1048,26 @@ fn connect_defaults_to_workflow_mode() -> Result<(), Box<dyn Error>> {
     let projects = list_connection_projects(runtime_home.path(), connection_id)?;
     assert_eq!(projects.len(), 1);
     assert_eq!(projects[0].project.repo_root, repo_root);
+
+    let status_text = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connection",
+            "status",
+            "codex",
+            "--repo",
+            path_text(&projects[0].project.repo_root).as_str(),
+        ],
+        &[("CODEX_HOME", path_text(&codex_home))],
+    )?;
+    assert_success(&status_text);
+    let status_text = stdout(&status_text);
+    assert!(status_text.contains("connection_state: complete"));
+    assert!(status_text.contains("runtime_home_state: ready"));
+    assert!(status_text.contains("project_registration_state: registered"));
+    assert!(status_text.contains("mcp_config_state: match"));
+    assert!(status_text.contains("host_reload_required: no"));
+    assert!(status_text.contains("next_action: none"));
     Ok(())
 }
 
@@ -1004,6 +1083,217 @@ fn connect_codex_global_reports_supported_intents() -> Result<(), Box<dyn Error>
     let diagnostic = stderr(&output);
     assert!(diagnostic.contains("codex does not support --global"));
     assert!(diagnostic.contains("supported connection intents: personal, shared"));
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn connection_output_prioritizes_missing_host_binary_action() -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-connection-missing-host-binary")?;
+    let repo_root = create_git_repo(&runtime_home, "product-repo")?;
+    let bin_dir = runtime_home.path().join("bin");
+    let mcp = write_fake_mcp(&bin_dir)?;
+    assert_success(&run_setup(runtime_home.path(), &mcp)?);
+
+    let output = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connect",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--shared",
+            "--json",
+        ],
+        &[("PATH", path_env(&[bin_dir.as_path()]))],
+    )?;
+
+    assert_success(&output);
+    let value = json_stdout(&output)?;
+    assert_eq!(value["primary_next_action"]["id"], "path_binary_not_found");
+    assert_eq!(value["states"]["mcp_config"], "match");
+    assert_eq!(value["states"]["host_reload_required"], false);
+    assert!(value["primary_next_action"]["instruction"]
+        .as_str()
+        .expect("instruction should be text")
+        .contains("Codex executable `codex` was not found on PATH"));
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn connection_verify_reports_missing_mcp_config_as_primary_action() -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-connection-missing-mcp")?;
+    let repo_root = create_git_repo(&runtime_home, "product-repo")?;
+    let bin_dir = runtime_home.path().join("bin");
+    let codex_home = runtime_home.path().join("codex-home");
+    write_fake_codex(&bin_dir)?;
+    let mcp = write_fake_mcp(&bin_dir)?;
+    assert_success(&run_setup(runtime_home.path(), &mcp)?);
+
+    let connect = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connect",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--json",
+        ],
+        &[
+            ("PATH", path_env(&[bin_dir.as_path()])),
+            ("CODEX_HOME", path_text(&codex_home)),
+            ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
+        ],
+    )?;
+    assert_success(&connect);
+    fs::remove_file(codex_home.join("config.toml"))?;
+
+    let verify = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connection",
+            "verify",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--json",
+        ],
+        &[
+            ("PATH", path_env(&[bin_dir.as_path()])),
+            ("CODEX_HOME", path_text(&codex_home)),
+            ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
+        ],
+    )?;
+
+    assert_success(&verify);
+    let value = json_stdout(&verify)?;
+    assert_eq!(value["states"]["mcp_config"], "missing");
+    assert_eq!(value["primary_next_action"]["id"], "mcp_config_missing");
+    assert_eq!(
+        value["primary_next_action"]["command"],
+        format!("volicord connect codex --repo {}", path_text(&repo_root))
+    );
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn connection_status_reports_missing_guard_files_as_primary_action() -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-connection-missing-guard")?;
+    let repo_root = create_git_repo(&runtime_home, "product-repo")?;
+    let bin_dir = runtime_home.path().join("bin");
+    write_fake_codex(&bin_dir)?;
+    write_fake_mcp(&bin_dir)?;
+
+    let init = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--host",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--json",
+        ],
+        &[
+            ("PATH", path_env(&[bin_dir.as_path()])),
+            ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
+        ],
+    )?;
+    assert_success(&init);
+    fs::remove_file(repo_root.join(".volicord/policy.json"))?;
+
+    let status = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connection",
+            "status",
+            "codex",
+            "--shared",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--json",
+        ],
+        &[],
+    )?;
+
+    assert_success(&status);
+    let value = json_stdout(&status)?;
+    assert_eq!(value["states"]["guard_installation"], "files_missing");
+    assert_eq!(value["states"]["prompt_capture"], "unavailable");
+    assert_eq!(value["primary_next_action"]["id"], "guard_files_missing");
+    assert!(value["guard"]["missing_files"]
+        .as_array()
+        .expect("missing_files should be an array")
+        .iter()
+        .any(|path| path == &path_text(&repo_root.join(".volicord/policy.json"))));
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn connection_selector_distinguishes_project_registration_and_allowlist(
+) -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-connection-selector-actions")?;
+    let repo_a = create_git_repo(&runtime_home, "product-a")?;
+    let repo_b = create_git_repo(&runtime_home, "product-b")?;
+    let repo_c = create_git_repo(&runtime_home, "product-c")?;
+    let bin_dir = runtime_home.path().join("bin");
+    let codex_home = runtime_home.path().join("codex-home");
+    write_fake_codex(&bin_dir)?;
+    let mcp = write_fake_mcp(&bin_dir)?;
+    assert_success(&run_setup(runtime_home.path(), &mcp)?);
+
+    let unregistered = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connection",
+            "status",
+            "codex",
+            "--repo",
+            path_text(&repo_c).as_str(),
+        ],
+        &[("CODEX_HOME", path_text(&codex_home))],
+    )?;
+    assert_eq!(unregistered.status.code(), Some(1));
+    assert!(stderr(&unregistered).contains("PROJECT_NOT_REGISTERED"));
+
+    let connect = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connect",
+            "codex",
+            "--repo",
+            path_text(&repo_a).as_str(),
+            "--json",
+        ],
+        &[
+            ("PATH", path_env(&[bin_dir.as_path()])),
+            ("CODEX_HOME", path_text(&codex_home)),
+            ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
+        ],
+    )?;
+    assert_success(&connect);
+    assert_success(&run_with_home_env(
+        runtime_home.path(),
+        ["project", "use", path_text(&repo_b).as_str(), "--json"],
+        &[],
+    )?);
+
+    let mismatch = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connection",
+            "status",
+            "codex",
+            "--repo",
+            path_text(&repo_b).as_str(),
+        ],
+        &[("CODEX_HOME", path_text(&codex_home))],
+    )?;
+    assert_eq!(mismatch.status.code(), Some(1));
+    assert!(stderr(&mismatch).contains("CONNECTION_ALLOWLIST_MISMATCH"));
     Ok(())
 }
 

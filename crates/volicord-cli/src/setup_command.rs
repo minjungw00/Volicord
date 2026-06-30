@@ -1702,6 +1702,7 @@ fn render_setup_output(
             "runtime_home": path_text(&runtime_home.runtime_home),
             "registry_db": path_text(&runtime_home.registry_db_path),
             "installation_profile": profile.map(profile_json),
+            "states": setup_states_json(report),
             "setup_report": report,
             "commands": &report.commands,
             "checks": checks,
@@ -1709,16 +1710,21 @@ fn render_setup_output(
             "actions_required": &report.actions_required,
             "actions_optional": &report.actions_optional,
             "actions_performed": &report.actions_performed,
+            "primary_next_action": primary_setup_action(report),
         }))
         .map(|text| format!("{text}\n"))
         .map_err(|error| SetupCommandError::Runtime(error.to_string())),
         OutputFormat::Text => {
             let mut text = format!(
-                "Volicord setup {}\nstatus_meaning: {}\nruntime_home: {}\nregistry_db: {}\n",
+                "Volicord setup {}\nstatus_meaning: {}\nruntime_home_state: {}\nruntime_home: {}\nregistry_db: {}\ninstallation_profile_state: {}\ncommand_state: {}\nhost_reload_required: {}\n",
                 report.status.as_str(),
                 setup_status_meaning(report.status),
+                report.runtime_home.status.as_str(),
                 runtime_home.runtime_home.display(),
                 runtime_home.registry_db_path.display(),
+                report.installation_profile.status.as_str(),
+                setup_command_state(report),
+                yes_no(setup_host_reload_required(report)),
             );
             if let Some(profile) = profile {
                 text.push_str(&format!(
@@ -1728,43 +1734,69 @@ fn render_setup_output(
                     profile.default_connection_mode
                 ));
             }
-            if !report.commands.is_empty() {
-                text.push_str("command_availability:\n");
-                for command in &report.commands {
-                    text.push_str(&format!(
-                        "- {}: {}\n",
-                        command.command_name,
-                        command_availability_summary(command)
-                    ));
-                }
-            }
             let not_passed = checks
                 .iter()
                 .filter(|check| check.status != "passed")
                 .collect::<Vec<_>>();
-            if !not_passed.is_empty() {
-                text.push_str("checks:\n");
-                for check in not_passed {
-                    text.push_str(&format!(
-                        "- {}: {} ({})\n",
-                        check.id, check.summary, check.status
-                    ));
-                }
+            if let Some(check) = not_passed.first() {
+                text.push_str(&format!(
+                    "blocking_check: {} ({})\n",
+                    check.summary, check.status
+                ));
             }
-            if !report.actions_required.is_empty() {
-                text.push_str("actions:\n");
-                for action in &report.actions_required {
-                    text.push_str(&format!("- {}\n", action.instruction));
-                }
-            }
-            if !report.actions_optional.is_empty() {
-                text.push_str("optional_actions:\n");
-                for action in &report.actions_optional {
-                    text.push_str(&format!("- {}\n", action.instruction));
-                }
-            }
+            append_setup_next_action(&mut text, report);
+            text.push_str(&format!(
+                "optional_action_count: {}\n",
+                report.actions_optional.len()
+            ));
             Ok(text)
         }
+    }
+}
+
+fn setup_states_json(report: &SetupReport) -> Value {
+    json!({
+        "runtime_home": report.runtime_home.status.as_str(),
+        "installation_profile": report.installation_profile.status.as_str(),
+        "command_availability": setup_command_state(report),
+        "host_reload_required": setup_host_reload_required(report),
+    })
+}
+
+fn setup_command_state(report: &SetupReport) -> &'static str {
+    if report.commands.iter().any(|command| !command.discovered) {
+        "not_found"
+    } else if report
+        .commands
+        .iter()
+        .any(|command| !command.selected_path_ready())
+    {
+        "action_required"
+    } else {
+        "ready"
+    }
+}
+
+fn setup_host_reload_required(report: &SetupReport) -> bool {
+    report.actions_required.iter().any(|action| {
+        matches!(
+            action.kind,
+            SetupActionKind::CommandAvailability
+                | SetupActionKind::CommandLinks
+                | SetupActionKind::PathUpdate
+                | SetupActionKind::ShellStartup
+        )
+    })
+}
+
+fn primary_setup_action(report: &SetupReport) -> Option<&SetupAction> {
+    report.actions_required.first()
+}
+
+fn append_setup_next_action(output: &mut String, report: &SetupReport) {
+    match primary_setup_action(report) {
+        Some(action) => output.push_str(&format!("next_action: {}\n", action.instruction)),
+        None => output.push_str("next_action: none\n"),
     }
 }
 
@@ -1803,6 +1835,14 @@ fn command_availability_summary(command: &CommandAvailability) -> String {
             Some(path) => format!("selected executable is {path}; not on PATH"),
             None => "not on PATH".to_owned(),
         }
+    }
+}
+
+fn yes_no(value: bool) -> &'static str {
+    if value {
+        "yes"
+    } else {
+        "no"
     }
 }
 

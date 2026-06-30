@@ -253,10 +253,17 @@ where
 }
 
 fn setup_required_message(runtime_home: &Path) -> String {
-    format!(
-        "setup has not been completed for Runtime Home {}; run `volicord setup` before project, connection, export, MCP, serve, or user workflows",
-        runtime_home.display()
-    )
+    if !runtime_home.exists() {
+        format!(
+            "RUNTIME_HOME_MISSING: Runtime Home {} is missing; run `volicord setup` before project, connection, export, MCP, serve, or user workflows",
+            runtime_home.display()
+        )
+    } else {
+        format!(
+            "SETUP_REQUIRED: installation profile is missing for Runtime Home {}; run `volicord setup` before project, connection, export, MCP, serve, or user workflows",
+            runtime_home.display()
+        )
+    }
 }
 
 fn command_serve<F>(args: &[String], env_var: F, current_dir: &Path) -> Result<String, CliError>
@@ -701,7 +708,8 @@ mod tests {
 
         assert!(output.contains("Volicord setup action_required\n"));
         assert!(output.contains("default_connection_mode: workflow\n"));
-        assert!(output.contains("command_availability:\n"));
+        assert!(output.contains("command_state: action_required\n"));
+        assert!(output.contains("next_action: "));
         assert!(registry_db_path(runtime_home.path()).exists());
         assert!(read_installation_profile(runtime_home.path())
             .expect("profile read should work")

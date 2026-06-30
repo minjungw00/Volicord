@@ -627,41 +627,165 @@ fn render_doctor_output(
                 "status": status.as_str(),
                 "status_meaning": doctor_status_meaning(status, checks),
                 "runtime_home": path_text(runtime_home),
+                "states": doctor_states_json(runtime_home, checks, actions),
                 "checks": checks,
                 "warning_count": checks.iter().filter(|check| check.status == "warning").count(),
                 "actions": actions,
                 "actions_required": actions_required,
                 "actions_recommended": actions_recommended,
+                "primary_next_action": primary_doctor_action_json(status, actions),
             }))
             .map(|text| format!("{text}\n"))
             .map_err(|error| DoctorCommandError::Runtime(error.to_string()))
         }
         OutputFormat::Text => {
             let mut text = format!(
-                "Volicord doctor {}\nstatus_meaning: {}\nruntime_home: {}\n",
+                "Volicord doctor {}\nstatus_meaning: {}\nruntime_home_state: {}\nruntime_home: {}\ninstallation_profile_state: {}\ncommand_state: {}\nproject_registration_state: {}\nconnection_state: {}\nguard_installation_state: {}\nhost_reload_required: {}\n",
                 status.as_str(),
                 doctor_status_meaning(status, checks),
-                runtime_home.display()
+                doctor_runtime_home_state(runtime_home, checks),
+                runtime_home.display(),
+                doctor_installation_profile_state(checks),
+                doctor_command_state(checks),
+                doctor_count_state(checks, "projects", "registered"),
+                doctor_count_state(checks, "connections", "stored"),
+                doctor_count_state(checks, "guard_installations", "stored"),
+                yes_no(doctor_host_reload_required(checks, actions)),
             );
-            text.push_str("checks:\n");
-            for check in checks {
-                text.push_str(&format!(
-                    "- {}: {} ({})\n",
-                    check.id, check.summary, check.status
-                ));
-            }
-            if !actions.is_empty() {
-                if status == CommandStatus::Complete {
-                    text.push_str("recommended_actions:\n");
-                } else {
-                    text.push_str("actions_required:\n");
-                }
-                for action in actions {
-                    text.push_str(&format!("- {}\n", action.instruction));
-                }
-            }
+            append_doctor_next_action(&mut text, status, actions);
             Ok(text)
         }
+    }
+}
+
+fn doctor_states_json(
+    runtime_home: &Path,
+    checks: &[DiagnosticCheck],
+    actions: &[DiagnosticAction],
+) -> Value {
+    json!({
+        "runtime_home": doctor_runtime_home_state(runtime_home, checks),
+        "installation_profile": doctor_installation_profile_state(checks),
+        "command_availability": doctor_command_state(checks),
+        "project_registration": doctor_count_state(checks, "projects", "registered"),
+        "connection": doctor_count_state(checks, "connections", "stored"),
+        "guard_installation": doctor_count_state(checks, "guard_installations", "stored"),
+        "host_reload_required": doctor_host_reload_required(checks, actions),
+    })
+}
+
+fn doctor_runtime_home_state(runtime_home: &Path, checks: &[DiagnosticCheck]) -> String {
+    if !runtime_home.exists() {
+        return "missing".to_owned();
+    }
+    match check_status(checks, "runtime_home_access") {
+        Some("passed") => "ready".to_owned(),
+        Some("failed") => "not_accessible".to_owned(),
+        _ => "unknown".to_owned(),
+    }
+}
+
+fn doctor_installation_profile_state(checks: &[DiagnosticCheck]) -> &'static str {
+    match check_status(checks, "installation_profile") {
+        Some("passed") => "present",
+        Some("failed") => "missing_or_invalid",
+        Some("skipped") => "not_checked",
+        _ => "unknown",
+    }
+}
+
+fn doctor_command_state(checks: &[DiagnosticCheck]) -> &'static str {
+    if checks.iter().any(|check| {
+        matches!(
+            check.id.as_str(),
+            "volicord_command" | "volicord_mcp_command"
+        ) && check.status == "failed"
+    }) {
+        "not_found"
+    } else if checks.iter().any(|check| {
+        matches!(
+            check.id.as_str(),
+            "volicord_command_availability" | "volicord_mcp_command_availability" | "path_or_shim"
+        ) && check.status == "warning"
+    }) {
+        "action_recommended"
+    } else if checks.iter().any(|check| {
+        matches!(
+            check.id.as_str(),
+            "volicord_command_availability" | "volicord_mcp_command_availability" | "path_or_shim"
+        ) && check.status == "skipped"
+    }) {
+        "not_checked"
+    } else {
+        "ready"
+    }
+}
+
+fn doctor_count_state(checks: &[DiagnosticCheck], key: &str, suffix: &str) -> String {
+    checks
+        .iter()
+        .find(|check| check.id == "registry_counts")
+        .and_then(|check| check.details.as_ref())
+        .and_then(|details| details.get(key))
+        .and_then(Value::as_u64)
+        .map(|count| format!("{count} {suffix}"))
+        .unwrap_or_else(|| "unknown".to_owned())
+}
+
+fn doctor_host_reload_required(checks: &[DiagnosticCheck], actions: &[DiagnosticAction]) -> bool {
+    actions.iter().any(|action| {
+        action
+            .instruction
+            .to_ascii_lowercase()
+            .contains("restart or reload")
+    }) || checks.iter().any(|check| {
+        check
+            .details
+            .as_ref()
+            .and_then(|details| details.get("agent_host_restart_or_reload_may_be_needed"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+    })
+}
+
+fn check_status<'a>(checks: &'a [DiagnosticCheck], id: &str) -> Option<&'a str> {
+    checks
+        .iter()
+        .find(|check| check.id == id)
+        .map(|check| check.status.as_str())
+}
+
+fn primary_doctor_action_json(status: CommandStatus, actions: &[DiagnosticAction]) -> Value {
+    let Some(action) = actions.first() else {
+        return Value::Null;
+    };
+    let requirement = if status == CommandStatus::Complete {
+        "recommended"
+    } else {
+        "required"
+    };
+    json!({
+        "id": &action.id,
+        "requirement": requirement,
+        "instruction": &action.instruction,
+        "command": &action.command,
+    })
+}
+
+fn append_doctor_next_action(
+    output: &mut String,
+    status: CommandStatus,
+    actions: &[DiagnosticAction],
+) {
+    match actions.first() {
+        Some(action) if status == CommandStatus::Complete => {
+            output.push_str(&format!(
+                "next_action: recommended: {}\n",
+                action.instruction
+            ));
+        }
+        Some(action) => output.push_str(&format!("next_action: {}\n", action.instruction)),
+        None => output.push_str("next_action: none\n"),
     }
 }
 
@@ -699,6 +823,14 @@ fn push_command_availability_action(actions: &mut Vec<DiagnosticAction>) {
             command: Some("volicord setup --link-bin PATH".to_owned()),
         },
     );
+}
+
+fn yes_no(value: bool) -> &'static str {
+    if value {
+        "yes"
+    } else {
+        "no"
+    }
 }
 
 fn push_unique_diagnostic_action(actions: &mut Vec<DiagnosticAction>, action: DiagnosticAction) {

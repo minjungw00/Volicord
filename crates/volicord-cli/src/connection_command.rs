@@ -30,7 +30,10 @@ use volicord_store::{
         project_record_by_repo_root, write_installation_profile, InstallationProfileRecord,
         InstallationProfileRegistration, RepoProjectRegistration, ACTIVE_PROJECT_STATUS,
     },
-    guards::{upsert_guard_installation, GuardInstallationRecord, GuardInstallationUpsert},
+    guards::{
+        list_guard_installations, upsert_guard_installation, GuardInstallationRecord,
+        GuardInstallationUpsert,
+    },
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
     StoreError,
 };
@@ -786,6 +789,7 @@ pub fn run_connect_command(
             format: connection_output_format(&parsed),
             action: "connect",
             status: AgentResultStatus::DryRun,
+            runtime_home: &runtime_home,
             connection_id: &connection_internal_id,
             host_kind,
             intent,
@@ -906,6 +910,12 @@ pub fn run_connect_command(
         format: connection_output_format(&parsed),
         action: "connected",
         status: verification.status,
+        runtime_home: &runtime_home,
+        guard_state: guard_state_for_connection(
+            &runtime_home,
+            &connection.connection_internal_id,
+            &projects,
+        )?,
         connection: &connection,
         projects: &projects,
         verification: Some(&verification),
@@ -989,6 +999,12 @@ fn command_connection_status(
         format: connection_output_format(&parsed),
         action: "status",
         status: status_from_store(&connection.last_verification_status),
+        runtime_home: &runtime_home,
+        guard_state: guard_state_for_connection(
+            &runtime_home,
+            &connection.connection_internal_id,
+            &projects,
+        )?,
         user_actions: stored_user_actions(&connection),
         connection: &connection,
         projects: &projects,
@@ -1032,6 +1048,12 @@ fn command_connection_verify(
         format: connection_output_format(&parsed),
         action: "verified",
         status: verification.status,
+        runtime_home: &runtime_home,
+        guard_state: guard_state_for_connection(
+            &runtime_home,
+            &connection.connection_internal_id,
+            &projects,
+        )?,
         user_actions: verification.host.user_actions.clone(),
         connection: &connection,
         projects: &projects,
@@ -1081,6 +1103,12 @@ fn command_connection_mode(
         format: connection_output_format(&parsed),
         action: "mode_updated",
         status: status_from_store(&connection.last_verification_status),
+        runtime_home: &runtime_home,
+        guard_state: guard_state_for_connection(
+            &runtime_home,
+            &connection.connection_internal_id,
+            &projects,
+        )?,
         user_actions: actions,
         connection: &connection,
         projects: &projects,
@@ -1119,6 +1147,7 @@ fn command_connection_remove(
             .unwrap_or(SimplifiedRemovePlan::MembershipOnly);
         return render_simplified_remove_dry_run(
             connection_output_format(&parsed),
+            &runtime_home,
             &connection,
             &projects,
             selected_project,
@@ -1144,6 +1173,12 @@ fn command_connection_remove(
         format: connection_output_format(&parsed),
         action: "removed",
         status: AgentResultStatus::Complete,
+        runtime_home: &runtime_home,
+        guard_state: guard_state_for_connection(
+            &runtime_home,
+            &connection.connection_internal_id,
+            &remaining_projects,
+        )?,
         user_actions: Vec::new(),
         connection: &connection,
         projects: &remaining_projects,
@@ -1434,11 +1469,11 @@ fn unsupported_connection_intent_message(host_kind: HostKind, intent: Connection
     let supported = format_supported_connection_intents(host_kind);
     if host_kind == HostKind::Generic {
         return format!(
-            "generic MCP export is not a host connection; use `volicord export mcp-config`; supported connection intents: {supported}"
+            "UNSUPPORTED_HOST: generic MCP export is not a host connection; use `volicord export mcp-config`; supported connection intents: {supported}"
         );
     }
     format!(
-        "{} does not support {}; supported connection intents: {}",
+        "UNSUPPORTED_HOST_INTENT: {} does not support {}; supported connection intents: {}",
         public_host_label(host_kind),
         connection_intent_selector_text(intent),
         supported
@@ -1476,10 +1511,10 @@ fn resolve_connection_host(
     match available.as_slice() {
         [host_kind] => Ok(*host_kind),
         [] => Err(ConnectionCommandError::usage(
-            "host could not be identified; choose `codex` or `claude-code`",
+            "HOST_NOT_DETECTED: host could not be identified; choose `codex` or `claude-code`",
         )),
         _ => Err(ConnectionCommandError::usage(
-            "host is ambiguous; choose `codex` or `claude-code`",
+            "HOST_AMBIGUOUS: host is ambiguous; choose `codex` or `claude-code`",
         )),
     }
 }
@@ -1531,7 +1566,7 @@ fn parse_public_host_kind(value: &str) -> Result<HostKind, ConnectionCommandErro
         HOST_KIND_CODEX => Ok(HostKind::Codex),
         "claude-code" | HOST_KIND_CLAUDE_CODE => Ok(HostKind::ClaudeCode),
         other => Err(ConnectionCommandError::usage(format!(
-            "unknown host: {other}; choose `codex` or `claude-code`"
+            "UNSUPPORTED_HOST: unknown host: {other}; choose `codex` or `claude-code`"
         ))),
     }
 }
@@ -1632,7 +1667,17 @@ fn select_connection(
     runtime_home: &Path,
     selector: &ConnectionSelector,
 ) -> Result<(AgentConnectionRecord, Vec<ConnectionProjectRecord>), ConnectionCommandError> {
+    if project_record_by_repo_root(runtime_home, &selector.repo_root)?.is_none() {
+        return Err(ConnectionCommandError::runtime(format!(
+            "PROJECT_NOT_REGISTERED: repository {} is not registered; run `volicord connect {}{} --repo {}` first",
+            selector.repo_root.display(),
+            public_host_label(selector.host_kind),
+            intent_flag_suffix(selector.intent),
+            selector.repo_root.display()
+        )));
+    }
     let mut matches = Vec::new();
+    let mut same_host_connections = Vec::new();
     for connection in list_agent_connections(runtime_home)? {
         if connection.host_kind != selector.host_kind.as_str()
             || connection.intent != selector.intent.as_str()
@@ -1641,6 +1686,7 @@ fn select_connection(
             continue;
         }
         let projects = list_connection_projects(runtime_home, &connection.connection_internal_id)?;
+        same_host_connections.push((connection.clone(), projects.clone()));
         if projects
             .iter()
             .any(|project| project.project.repo_root == selector.repo_root)
@@ -1649,10 +1695,17 @@ fn select_connection(
         }
     }
     match matches.len() {
-        0 => Err(ConnectionCommandError::runtime(format!(
-            "no Agent Connection matches host {}, intent {}, and repository {}; run `volicord connect {}{} --repo {}`",
+        0 if same_host_connections.is_empty() => Err(ConnectionCommandError::runtime(format!(
+            "CONNECTION_NOT_FOUND: no Agent Connection matches host {}, intent {}, and repository {}; run `volicord connect {}{} --repo {}`",
             public_host_label(selector.host_kind),
             selector.intent.as_str(),
+            selector.repo_root.display(),
+            public_host_label(selector.host_kind),
+            intent_flag_suffix(selector.intent),
+            selector.repo_root.display()
+        ))),
+        0 => Err(ConnectionCommandError::runtime(format!(
+            "CONNECTION_ALLOWLIST_MISMATCH: repository {} is not in the selected Agent Connection project allowlist; run `volicord connect {}{} --repo {}`",
             selector.repo_root.display(),
             public_host_label(selector.host_kind),
             intent_flag_suffix(selector.intent),
@@ -1788,7 +1841,7 @@ fn required_installation_profile(
 ) -> Result<InstallationProfileRecord, ConnectionCommandError> {
     installation_profile(runtime_home)?.ok_or_else(|| {
         ConnectionCommandError::runtime(format!(
-            "setup has not been completed for Runtime Home {}; run `volicord setup` before connection workflows",
+            "SETUP_REQUIRED: installation profile is missing for Runtime Home {}; run `volicord setup` before connection workflows",
             runtime_home.display()
         ))
     })
@@ -3085,10 +3138,91 @@ fn hex_bytes(bytes: &[u8]) -> String {
     output
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct GuardOperationalState {
+    installation_state: String,
+    prompt_capture_state: String,
+    missing_files: Vec<String>,
+}
+
+impl GuardOperationalState {
+    fn not_configured() -> Self {
+        Self {
+            installation_state: "not_configured".to_owned(),
+            prompt_capture_state: "unavailable".to_owned(),
+            missing_files: Vec::new(),
+        }
+    }
+
+    fn planned(init_mode: InitMode) -> Self {
+        Self {
+            installation_state: "planned".to_owned(),
+            prompt_capture_state: if init_mode == InitMode::McpOnly {
+                "disabled".to_owned()
+            } else {
+                "planned".to_owned()
+            },
+            missing_files: Vec::new(),
+        }
+    }
+
+    fn init(health: &str, init_mode: InitMode) -> Self {
+        Self {
+            installation_state: health.to_owned(),
+            prompt_capture_state: if init_mode == InitMode::McpOnly {
+                "disabled".to_owned()
+            } else {
+                "available".to_owned()
+            },
+            missing_files: Vec::new(),
+        }
+    }
+
+    fn to_json(&self) -> Value {
+        json!({
+            "installation": &self.installation_state,
+            "prompt_capture": &self.prompt_capture_state,
+            "missing_files": &self.missing_files,
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PrimaryNextAction {
+    id: String,
+    instruction: String,
+    command: Option<String>,
+}
+
+impl PrimaryNextAction {
+    fn new(id: impl Into<String>, instruction: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            instruction: instruction.into(),
+            command: None,
+        }
+    }
+
+    fn with_command(mut self, command: impl Into<String>) -> Self {
+        self.command = Some(command.into());
+        self
+    }
+
+    fn to_json(&self) -> Value {
+        json!({
+            "id": &self.id,
+            "instruction": &self.instruction,
+            "command": &self.command,
+        })
+    }
+}
+
 struct SimplifiedConnectionOutput<'a> {
     format: OutputFormat,
     action: &'a str,
     status: AgentResultStatus,
+    runtime_home: &'a Path,
+    guard_state: GuardOperationalState,
     connection: &'a AgentConnectionRecord,
     projects: &'a [ConnectionProjectRecord],
     verification: Option<&'a VerificationReport>,
@@ -3100,6 +3234,7 @@ struct SimplifiedPlanOutput<'a> {
     format: OutputFormat,
     action: &'a str,
     status: AgentResultStatus,
+    runtime_home: &'a Path,
     connection_id: &'a str,
     host_kind: HostKind,
     intent: ConnectionIntent,
@@ -3130,18 +3265,34 @@ fn render_simplified_connection_output(
         .map(|plan| host_target_text(&plan.target))
         .unwrap_or_else(|| data.connection.config_target.clone());
     let planned_change = data.plan.map(|plan| planned_change_text(plan.change));
+    let mcp_config_state =
+        connection_mcp_config_state(data.connection, data.verification, data.plan);
+    let primary_next_action = primary_connection_action(
+        &data.user_actions,
+        data.verification,
+        &data.guard_state,
+        Some(data.connection),
+        data.projects,
+    );
     match data.format {
         OutputFormat::Text => {
             let mut output = format!(
-                "Agent Connection {}\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nconnected_repositories: {}\nverification_status: {}\ntarget: {}\n",
+                "Agent Connection {}\nruntime_home_state: ready\nruntime_home: {}\nconnection_state: {}\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nproject_registration_state: {}\nconnected_repositories: {}\nmcp_config_state: {}\nmcp_config: {}\nguard_installation_state: {}\nprompt_capture_state: {}\nhost_reload_required: {}\n",
                 data.action,
+                data.runtime_home.display(),
+                data.status.as_str(),
                 public_host_name_text(&data.connection.host_kind),
                 data.connection.intent,
                 public_mode_text(&data.connection.mode),
                 data.connection.enabled,
+                project_registration_state(data.projects),
                 display_project_roots(data.projects),
-                data.status.as_str(),
+                mcp_config_state,
                 target
+                ,
+                data.guard_state.installation_state,
+                data.guard_state.prompt_capture_state,
+                yes_no(has_reload_action(&data.user_actions))
             );
             if let Some(planned_change) = planned_change {
                 output.push_str(&format!("planned_change: {planned_change}\n"));
@@ -3154,18 +3305,28 @@ fn render_simplified_connection_output(
                     verification.handshake.status.as_str()
                 ));
             }
-            append_user_actions_text(&mut output, &data.user_actions);
+            append_primary_next_action_text(&mut output, primary_next_action.as_ref());
             Ok(output)
         }
         OutputFormat::Json => {
             let value = json!({
                 "action": data.action,
                 "status": data.status.as_str(),
+                "runtime_home": path_text(data.runtime_home),
+                "states": connection_states_json(
+                    data.status.as_str(),
+                    project_registration_state(data.projects),
+                    mcp_config_state.as_str(),
+                    &data.guard_state,
+                    has_reload_action(&data.user_actions),
+                ),
                 "connection": connection_json(data.connection, &project_ids),
                 "target": target,
                 "planned_change": planned_change,
                 "checks": checks_json(data.connection, data.verification),
                 "actions": actions_json_values(&data.user_actions),
+                "primary_next_action": primary_next_action.map(|action| action.to_json()),
+                "guard": data.guard_state.to_json(),
                 "verification": data.verification.map(verification_json),
             });
             serde_json::to_string_pretty(&value)
@@ -3180,27 +3341,37 @@ fn render_simplified_plan_output(
 ) -> Result<String, ConnectionCommandError> {
     let target = host_target_text(&data.plan.target);
     let planned_change = planned_change_text(data.plan.change);
+    let guard_state = GuardOperationalState::not_configured();
+    let primary_next_action =
+        primary_connection_action(&data.user_actions, None, &guard_state, None, &[]);
+    let project_state = data.repo_root.map(|_| "planned").unwrap_or("not_selected");
     match data.format {
         OutputFormat::Text => {
             let mut output = format!(
-                "Agent Connection {} {}\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nconnected_repositories: {}\nverification_status: {}\ntarget: {}\nplanned_change: {}\n",
+                "Agent Connection {} {}\nruntime_home_state: ready\nruntime_home: {}\nconnection_state: {}\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nproject_registration_state: {}\nconnected_repositories: {}\nmcp_config_state: planned_{}\nmcp_config: {}\nguard_installation_state: {}\nprompt_capture_state: {}\nhost_reload_required: {}\nplanned_change: {}\n",
                 data.action,
+                data.status.as_str(),
+                data.runtime_home.display(),
                 data.status.as_str(),
                 public_host_label(data.host_kind),
                 data.intent.as_str(),
                 public_mode_text(data.mode),
                 data.enabled,
+                project_state,
                 data.repo_root
                     .map(|path| path.display().to_string())
                     .unwrap_or_default(),
-                data.status.as_str(),
+                planned_change,
                 target,
+                guard_state.installation_state,
+                guard_state.prompt_capture_state,
+                yes_no(has_reload_action(&data.user_actions)),
                 planned_change
             );
             if let Some(remaining) = data.projects_remaining {
                 output.push_str(&format!("remaining_connected_projects: {remaining}\n"));
             }
-            append_user_actions_text(&mut output, &data.user_actions);
+            append_primary_next_action_text(&mut output, primary_next_action.as_ref());
             Ok(output)
         }
         OutputFormat::Json => {
@@ -3212,6 +3383,14 @@ fn render_simplified_plan_output(
             let value = json!({
                 "action": data.action,
                 "status": data.status.as_str(),
+                "runtime_home": path_text(data.runtime_home),
+                "states": connection_states_json(
+                    data.status.as_str(),
+                    project_state,
+                    &format!("planned_{planned_change}"),
+                    &guard_state,
+                    has_reload_action(&data.user_actions),
+                ),
                 "connection": {
                     "connection_id": data.connection_id,
                     "host_kind": data.host_kind.as_str(),
@@ -3233,6 +3412,8 @@ fn render_simplified_plan_output(
                     "summary": "host plan was built"
                 }],
                 "actions": actions_json_values(&data.user_actions),
+                "primary_next_action": primary_next_action.map(|action| action.to_json()),
+                "guard": guard_state.to_json(),
             });
             serde_json::to_string_pretty(&value)
                 .map(|text| format!("{text}\n"))
@@ -3244,10 +3425,13 @@ fn render_simplified_plan_output(
 fn render_init_output(data: InitOutput<'_>) -> Result<String, ConnectionCommandError> {
     let target = host_target_text(&data.host_plan.target);
     let planned_change = planned_change_text(data.host_plan.change);
-    let actions = data
-        .verification
-        .map(|verification| init_user_actions(&verification.host.user_actions, data.host_kind))
-        .unwrap_or_else(|| init_user_actions(&data.host_plan.user_actions, data.host_kind));
+    let actions = if data.status == AgentResultStatus::DryRun {
+        data.host_plan.user_actions.clone()
+    } else {
+        data.verification
+            .map(|verification| init_user_actions(&verification.host.user_actions, data.host_kind))
+            .unwrap_or_else(|| init_user_actions(&data.host_plan.user_actions, data.host_kind))
+    };
     let guard_health = data
         .guard_installation
         .map(|guard| guard.installation_health.as_str())
@@ -3258,38 +3442,57 @@ fn render_init_output(data: InitOutput<'_>) -> Result<String, ConnectionCommandE
                 GuardInstallationHealth::ActionRequired.as_str()
             }
         });
+    let guard_state = if data.guard_installation.is_some() {
+        GuardOperationalState::init(guard_health, data.init_mode)
+    } else {
+        GuardOperationalState::planned(data.init_mode)
+    };
+    let mcp_config_state = init_mcp_config_state(data.verification, Some(data.host_plan));
+    let project_state = if data.project_id.is_some() {
+        "registered"
+    } else {
+        "planned"
+    };
+    let primary_next_action =
+        primary_connection_action(&actions, data.verification, &guard_state, None, &[]);
     match data.format {
         OutputFormat::Text => {
             let mut output = format!(
-                "Volicord init {}\nhost: {}\nmode: {}\nruntime_home: {}\nrepo: {}\nconnection_id: {}\nmcp_config: {}\nplanned_change: {}\nprofile: {}\nguard_installation: {} ({})\n",
+                "Volicord init {}\nruntime_home_state: ready\nruntime_home: {}\nproject_registration_state: {}\nrepo: {}\nconnection_state: {}\nhost: {}\nmode: {}\nconnection_id: {}\nmcp_config_state: {}\nmcp_config: {}\nplanned_change: {}\nprofile: {}\nguard_installation_state: {}\nprompt_capture_state: {}\nhost_reload_required: {}\n",
+                data.status.as_str(),
+                data.runtime_home.display(),
+                project_state,
+                data.repo_root.display(),
                 data.status.as_str(),
                 public_host_label(data.host_kind),
                 data.init_mode.cli_value(),
-                data.runtime_home.display(),
-                data.repo_root.display(),
                 data.connection_id,
+                mcp_config_state,
                 target,
                 planned_change,
                 data.profile_action,
-                data.integration.guard_installation_id,
-                guard_health
+                guard_state.installation_state,
+                guard_state.prompt_capture_state,
+                yes_no(has_reload_action(&actions))
             );
-            output.push_str("generated_files:\n");
-            for file in &data.integration.generated_files {
-                output.push_str(&format!(
-                    "- {}: {} ({})\n",
-                    file.kind,
-                    file.path.display(),
-                    file.status.as_str()
-                ));
-            }
-            append_user_actions_text(&mut output, &actions);
+            output.push_str(&format!(
+                "generated_file_count: {}\n",
+                data.integration.generated_files.len()
+            ));
+            append_primary_next_action_text(&mut output, primary_next_action.as_ref());
             Ok(output)
         }
         OutputFormat::Json => {
             let value = json!({
                 "action": "init",
                 "status": data.status.as_str(),
+                "states": connection_states_json(
+                    data.status.as_str(),
+                    project_state,
+                    mcp_config_state.as_str(),
+                    &guard_state,
+                    has_reload_action(&actions),
+                ),
                 "host": public_host_label(data.host_kind),
                 "mode": data.init_mode.cli_value(),
                 "guard_mode": data.init_mode.guard_value(),
@@ -3320,8 +3523,10 @@ fn render_init_output(data: InitOutput<'_>) -> Result<String, ConnectionCommandE
                     "installation_health": guard_health,
                     "recorded": data.guard_installation.is_some(),
                 },
+                "guard": guard_state.to_json(),
                 "checks": init_checks_json(data.verification),
                 "actions": actions_json_values(&actions),
+                "primary_next_action": primary_next_action.map(|action| action.to_json()),
             });
             serde_json::to_string_pretty(&value)
                 .map(|text| format!("{text}\n"))
@@ -3427,6 +3632,7 @@ fn render_simplified_connections_output(
 
 fn render_simplified_remove_dry_run(
     format: OutputFormat,
+    runtime_home: &Path,
     connection: &AgentConnectionRecord,
     projects: &[ConnectionProjectRecord],
     selected_project: &ConnectionProjectRecord,
@@ -3439,6 +3645,7 @@ fn render_simplified_remove_dry_run(
                 format,
                 action: "remove",
                 status: AgentResultStatus::DryRun,
+                runtime_home,
                 connection_id: &connection.connection_internal_id,
                 host_kind: parse_host_kind(&connection.host_kind)?,
                 intent: parse_connection_intent(&connection.intent)?,
@@ -3453,12 +3660,14 @@ fn render_simplified_remove_dry_run(
         }
         SimplifiedRemovePlan::MembershipOnly => match format {
             OutputFormat::Text => Ok(format!(
-                "Agent Connection remove dry_run\nhost: {}\nintent: {}\nmode: {}\nconnected_repositories: {}\nverification_status: dry_run\ntarget: {}\nplanned_change: membership\nremaining_connected_projects: {}\n",
+                "Agent Connection remove dry_run\nruntime_home_state: ready\nruntime_home: {}\nconnection_state: dry_run\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nproject_registration_state: {}\nconnected_repositories: {}\nmcp_config_state: membership\nplanned_change: membership\nguard_installation_state: not_checked\nprompt_capture_state: not_checked\nhost_reload_required: no\nremaining_connected_projects: {}\nnext_action: none\n",
+                runtime_home.display(),
                 public_host_name_text(&connection.host_kind),
                 connection.intent,
                 public_mode_text(&connection.mode),
+                connection.enabled,
+                project_registration_state(projects),
                 display_project_roots(projects),
-                connection.config_target,
                 remaining_count
             )),
             OutputFormat::Json => {
@@ -3469,6 +3678,16 @@ fn render_simplified_remove_dry_run(
                 serde_json::to_string_pretty(&json!({
                     "action": "remove",
                     "status": AgentResultStatus::DryRun.as_str(),
+                    "runtime_home": path_text(runtime_home),
+                    "states": {
+                        "runtime_home": "ready",
+                        "connection": AgentResultStatus::DryRun.as_str(),
+                        "project_registration": project_registration_state(projects),
+                        "mcp_config": "membership",
+                        "guard_installation": "not_checked",
+                        "prompt_capture": "not_checked",
+                        "host_reload_required": false,
+                    },
                     "connection": connection_json(connection, &project_ids),
                     "target": connection.config_target,
                     "planned_change": "membership",
@@ -3479,6 +3698,7 @@ fn render_simplified_remove_dry_run(
                         "summary": "selected repository membership can be removed"
                     }],
                     "actions": [],
+                    "primary_next_action": Value::Null,
                 }))
                 .map(|text| format!("{text}\n"))
                 .map_err(|error| ConnectionCommandError::runtime(error.to_string()))
@@ -3505,18 +3725,330 @@ fn display_project_roots(projects: &[ConnectionProjectRecord]) -> String {
         .join(",")
 }
 
-fn append_user_actions_text(output: &mut String, actions: &[UserAction]) {
-    if actions.is_empty() {
-        return;
+fn project_registration_state(projects: &[ConnectionProjectRecord]) -> &'static str {
+    if projects.is_empty() {
+        "not_connected"
+    } else {
+        "registered"
     }
-    output.push_str("actions:\n");
-    for action in actions {
-        output.push_str(&format!(
-            "- {}: {}\n",
-            user_action_id(action.kind),
-            action.message
+}
+
+fn connection_states_json(
+    connection_state: &str,
+    project_registration: &str,
+    mcp_config: &str,
+    guard_state: &GuardOperationalState,
+    host_reload_required: bool,
+) -> Value {
+    json!({
+        "runtime_home": "ready",
+        "connection": connection_state,
+        "project_registration": project_registration,
+        "mcp_config": mcp_config,
+        "guard_installation": &guard_state.installation_state,
+        "prompt_capture": &guard_state.prompt_capture_state,
+        "host_reload_required": host_reload_required,
+    })
+}
+
+fn connection_mcp_config_state(
+    connection: &AgentConnectionRecord,
+    verification: Option<&VerificationReport>,
+    plan: Option<&HostPlan>,
+) -> String {
+    if let Some(verification) = verification {
+        return verification.host.managed_config.as_str().to_owned();
+    }
+    if let Some(plan) = plan {
+        return planned_change_text(plan.change).to_owned();
+    }
+    json_object_text(&connection.last_verification_report_json)
+        .get("host")
+        .and_then(|host| host.get("managed_config"))
+        .and_then(Value::as_str)
+        .unwrap_or("unknown")
+        .to_owned()
+}
+
+fn init_mcp_config_state(
+    verification: Option<&VerificationReport>,
+    plan: Option<&HostPlan>,
+) -> String {
+    if let Some(verification) = verification {
+        return verification.host.managed_config.as_str().to_owned();
+    }
+    plan.map(|plan| format!("planned_{}", planned_change_text(plan.change)))
+        .unwrap_or_else(|| "unknown".to_owned())
+}
+
+fn has_reload_action(actions: &[UserAction]) -> bool {
+    actions
+        .iter()
+        .any(|action| action.kind == UserActionKind::ReloadRequired)
+}
+
+fn primary_connection_action(
+    actions: &[UserAction],
+    verification: Option<&VerificationReport>,
+    guard_state: &GuardOperationalState,
+    connection: Option<&AgentConnectionRecord>,
+    projects: &[ConnectionProjectRecord],
+) -> Option<PrimaryNextAction> {
+    if let Some(verification) = verification {
+        if verification.host.host_executable.as_str() == "unavailable" {
+            return Some(PrimaryNextAction::new(
+                "path_binary_not_found",
+                verification
+                    .host
+                    .diagnostic
+                    .clone()
+                    .unwrap_or_else(|| verification.host.details.clone()),
+            ));
+        }
+        match verification.host.managed_config.as_str() {
+            "missing" => {
+                return Some(connection_repair_action(
+                    "mcp_config_missing",
+                    "Run the connection command again to reinstall missing MCP configuration.",
+                    connection,
+                    projects,
+                ));
+            }
+            "changed" => {
+                return Some(connection_repair_action(
+                    "mcp_config_changed",
+                    "Review the changed MCP configuration, then rerun the connection command if Volicord should manage it.",
+                    connection,
+                    projects,
+                ));
+            }
+            "malformed" => {
+                return Some(connection_repair_action(
+                    "mcp_config_malformed",
+                    "Repair the malformed MCP configuration, then rerun the connection command.",
+                    connection,
+                    projects,
+                ));
+            }
+            _ => {}
+        }
+    }
+    if verification.is_none() {
+        if let Some(connection) = connection {
+            let stored_report = json_object_text(&connection.last_verification_report_json);
+            if stored_report
+                .get("host")
+                .and_then(|host| host.get("host_executable"))
+                .and_then(Value::as_str)
+                == Some("unavailable")
+            {
+                return Some(PrimaryNextAction::new(
+                    "path_binary_not_found",
+                    stored_report
+                        .get("host")
+                        .and_then(|host| host.get("diagnostic"))
+                        .and_then(Value::as_str)
+                        .or_else(|| {
+                            stored_report
+                                .get("host")
+                                .and_then(|host| host.get("details"))
+                                .and_then(Value::as_str)
+                        })
+                        .unwrap_or(
+                            "Install or repair the host executable so it is available on PATH.",
+                        ),
+                ));
+            }
+            match connection_mcp_config_state(connection, None, None).as_str() {
+                "missing" => {
+                    return Some(connection_repair_action(
+                        "mcp_config_missing",
+                        "Run the connection command again to reinstall missing MCP configuration.",
+                        Some(connection),
+                        projects,
+                    ));
+                }
+                "changed" => {
+                    return Some(connection_repair_action(
+                        "mcp_config_changed",
+                        "Review the changed MCP configuration, then rerun the connection command if Volicord should manage it.",
+                        Some(connection),
+                        projects,
+                    ));
+                }
+                "malformed" => {
+                    return Some(connection_repair_action(
+                        "mcp_config_malformed",
+                        "Repair the malformed MCP configuration, then rerun the connection command.",
+                        Some(connection),
+                        projects,
+                    ));
+                }
+                _ => {}
+            }
+        }
+    }
+    if guard_state.installation_state == "files_missing" {
+        return Some(connection_repair_action(
+            "guard_files_missing",
+            "Run init again to reinstall missing guard files.",
+            connection,
+            projects,
         ));
     }
+    if let Some(action) = actions
+        .iter()
+        .find(|action| action.kind == UserActionKind::ReloadRequired)
+    {
+        return Some(PrimaryNextAction::new(
+            user_action_id(action.kind),
+            action.message.clone(),
+        ));
+    }
+    actions
+        .first()
+        .map(|action| PrimaryNextAction::new(user_action_id(action.kind), action.message.clone()))
+}
+
+fn connection_repair_action(
+    id: &'static str,
+    fallback: &'static str,
+    connection: Option<&AgentConnectionRecord>,
+    projects: &[ConnectionProjectRecord],
+) -> PrimaryNextAction {
+    let Some(connection) = connection else {
+        return PrimaryNextAction::new(id, fallback);
+    };
+    let Some(project) = projects.first() else {
+        return PrimaryNextAction::new(id, fallback);
+    };
+    let host = public_host_name_text(&connection.host_kind);
+    let command = if connection.intent == ConnectionIntent::Shared.as_str() {
+        format!(
+            "volicord init --host {} --repo {}",
+            host,
+            project.project.repo_root.display()
+        )
+    } else {
+        format!(
+            "volicord connect {}{} --repo {}",
+            host,
+            intent_flag_suffix(
+                parse_connection_intent(&connection.intent).unwrap_or(ConnectionIntent::Personal)
+            ),
+            project.project.repo_root.display()
+        )
+    };
+    PrimaryNextAction::new(id, fallback).with_command(command)
+}
+
+fn append_primary_next_action_text(output: &mut String, action: Option<&PrimaryNextAction>) {
+    match action {
+        Some(action) => output.push_str(&format!("next_action: {}\n", action.instruction)),
+        None => output.push_str("next_action: none\n"),
+    }
+}
+
+fn yes_no(value: bool) -> &'static str {
+    if value {
+        "yes"
+    } else {
+        "no"
+    }
+}
+
+fn guard_state_for_connection(
+    runtime_home: &Path,
+    connection_id: &str,
+    projects: &[ConnectionProjectRecord],
+) -> Result<GuardOperationalState, ConnectionCommandError> {
+    let mut installations = Vec::new();
+    for project in projects {
+        installations.extend(list_guard_installations(
+            runtime_home,
+            connection_id,
+            Some(&project.project_id),
+        )?);
+    }
+    if installations.is_empty() {
+        installations = list_guard_installations(runtime_home, connection_id, None)?;
+    }
+    if installations.is_empty() {
+        return Ok(GuardOperationalState::not_configured());
+    }
+
+    let mut missing_files = Vec::new();
+    let mut prompt_capture_available = false;
+    let mut prompt_capture_disabled = false;
+    for installation in &installations {
+        missing_files.extend(guard_missing_files(&installation.host_capability_json));
+        if installation.guard_mode == GuardMode::McpOnly.as_str() {
+            prompt_capture_disabled = true;
+        } else if guard_has_prompt_capture(&installation.host_capability_json) {
+            prompt_capture_available = true;
+        }
+    }
+    missing_files.sort();
+    missing_files.dedup();
+
+    if !missing_files.is_empty() {
+        return Ok(GuardOperationalState {
+            installation_state: "files_missing".to_owned(),
+            prompt_capture_state: "unavailable".to_owned(),
+            missing_files,
+        });
+    }
+
+    let installation_state = if installations.iter().any(|installation| {
+        installation.installation_health == GuardInstallationHealth::ActionRequired.as_str()
+    }) {
+        GuardInstallationHealth::ActionRequired.as_str()
+    } else if installations.iter().all(|installation| {
+        installation.installation_health == GuardInstallationHealth::Unknown.as_str()
+    }) {
+        GuardInstallationHealth::Unknown.as_str()
+    } else {
+        installations[0].installation_health.as_str()
+    };
+    let prompt_capture_state = if prompt_capture_available {
+        "available"
+    } else if prompt_capture_disabled {
+        "disabled"
+    } else {
+        "unavailable"
+    };
+    Ok(GuardOperationalState {
+        installation_state: installation_state.to_owned(),
+        prompt_capture_state: prompt_capture_state.to_owned(),
+        missing_files,
+    })
+}
+
+fn guard_has_prompt_capture(capability_json: &str) -> bool {
+    serde_json::from_str::<Value>(capability_json)
+        .ok()
+        .and_then(|value| {
+            value
+                .get("commands")
+                .and_then(|commands| commands.get("prompt_capture"))
+                .cloned()
+        })
+        .is_some()
+}
+
+fn guard_missing_files(capability_json: &str) -> Vec<String> {
+    let Ok(value) = serde_json::from_str::<Value>(capability_json) else {
+        return Vec::new();
+    };
+    value
+        .get("files")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|file| file.get("path").and_then(Value::as_str))
+        .filter(|path| !Path::new(path).exists())
+        .map(str::to_owned)
+        .collect()
 }
 
 fn actions_json_values(actions: &[UserAction]) -> Value {
