@@ -4,21 +4,24 @@
 
 **[English](README.md)** | [한국어](README.ko.md)
 
-Volicord is a local work-authority system for AI-assisted product work. It
-gives a user and an agent host a local place to keep workflow facts visible
-while work moves through chat, tools, shells, tests, and repository files.
-
-When everything stays only in chat, it can become unclear what the agent is
-trying to do, what evidence supports a claim, whether a write is ready, which
-decision belongs to the user, and what still blocks an honest close. Volicord
-records those workflow facts in a local Volicord record area, called the
-`Volicord Runtime Home`, so they do not depend on memory or a polished summary.
-
-Volicord's source of truth for state stays in its local authority record. Chat
-messages, generated Markdown, status summaries, and projections can describe
-that state, but they do not replace it.
-
 ## Overview
+
+Volicord is a local work-authority system for AI-assisted product work. It
+gives an agent host, such as Codex or Claude Code, a local record of work facts
+that should not live only in chat: what task is active, what writes are
+compatible with the current scope, what evidence exists, what judgment still
+belongs to the user, and what blocks an honest close.
+
+Volicord is not a replacement for your editor, shell, tests, code review, or
+judgment. It is a guarded local authority layer that helps an agent use those
+things without hiding scope, evidence, user decisions, or close blockers inside
+a polished summary.
+
+Core is the local authority record for Volicord state. Chat messages, generated
+Markdown, status summaries, and projections can describe Core state, but they
+do not replace it.
+
+## Why Volicord Exists
 
 Volicord helps keep these questions explicit during agent-assisted product
 work:
@@ -31,209 +34,252 @@ work:
 - Which user-owned decision is still needed?
 - What still blocks an honest close?
 
-## Why Volicord Exists
-
-AI-assisted product work can move quickly. A user may ask an agent host to
-change behavior, investigate a failure, update tests, or prepare release notes.
-The agent may inspect files, run commands, write code, and summarize the result.
+AI agents can inspect files, run tools, edit code, and summarize results faster
+than a human can keep every boundary in working memory.
 
 That speed is useful, but it can blur boundaries if the durable record lives
 only in chat. Scope can drift. Acceptance can sound implied. Residual risk can
 disappear from the conversation. A product decision can be hidden inside an
-implementation step. Volicord exists so scope, evidence, write readiness, user
+implementation step.
+
+Volicord exists so scope, evidence, write readiness, user
 judgment, run records, and close readiness stay visible as separate workflow
 facts.
 
-## First Concepts
+## Mental Model
 
-These terms appear throughout the README and the rest of the documentation:
+Use this short model when reading the rest of the README:
 
-| Term | First-read meaning |
+| Concept | First-user meaning |
 |---|---|
-| `Product Repository` | The code repository where you want the agent to work. Volicord reference docs use this exact product label. |
-| Agent host | The environment you chat with, such as Codex or Claude Code. The host may start local MCP tools while it works. |
-| `volicord mcp --stdio` | The local stdio MCP process mode that an agent host uses to talk to Volicord. |
-| `Volicord Runtime Home` | The local place where Volicord stores workflow records and runtime data. It is separate from the Product Repository. |
-| `Core` | The local authority record for Volicord state. Chat summaries and generated documents can describe Core state, but they do not replace it. |
-| `Agent Connection` | The local connection record that lets one host use Volicord for repository work. |
-| `User Channel` | The path where the user records decisions that the agent must not invent or impersonate. The current local CLI path is `volicord user`. |
+| `Task` | The user-value unit being shaped, worked, blocked, or closed. It carries the current goal, scope, non-goals, and current work boundary. |
+| Write | A product-file change should be compatible with the current `Task` and current scope. `Write Check` is a narrow Volicord compatibility record for one proposed write, not OS permission or final approval. |
+| Evidence | Recorded support for a specific claim, such as a run, observation, or artifact reference. Evidence supports claims, but it does not become user judgment or proof of correctness. |
+| User Judgment | A decision that belongs to the user: product direction, material technical direction, scope, sensitive action, final acceptance, residual-risk acceptance, cancellation, or similar authority-bearing choices. |
+| Close | A check that the current `Task` can finish honestly without hiding unresolved owner-defined requirements. Close readiness is decision support, not proof that the product result is correct. |
 
-For exact term ownership, use the
-[Glossary](docs/en/reference/glossary.md) and
-[Reference Index](docs/en/reference/README.md).
+## Install And Initialize
 
-## Quick Start
+The normal user path is one installed `volicord` executable. Release binary
+installation is the primary path when your system matches a supported target.
+Source builds are for development.
 
-Install the release binary, run guided setup, then connect Codex from the
-Product Repository where you want the agent to work. After downloading or
-copying `scripts/install.sh` from the release repository, run:
+Download or copy `scripts/install.sh` from the repository that publishes the
+Volicord release assets, then install the release binary:
 
 ```sh
 VOLICORD_REPO=OWNER/REPO sh ./scripts/install.sh
-volicord setup
-cd /path/to/your-product-repo
-volicord connect codex
+volicord --version
 ```
 
-`OWNER/REPO` is the GitHub repository that publishes the Volicord release
-assets for this checkout. The install script detects the supported Linux,
-WSL2, or macOS binary, verifies the matching checksum when possible, installs
-only `volicord`, and does not edit shell startup files. During setup, Volicord
-checks whether `volicord` is available for future terminals and agent hosts. If
-it is not, setup offers safe choices after checking the environment, such as
-creating command links in a verified writable directory, creating a missing
-conventional user command directory such as `~/.local/bin` and linking there
-when that is safe, printing a shell command, or skipping the link step. Follow
-setup's prompt or action-required output before running `volicord connect`,
-starting a new terminal, or starting an agent host; Volicord cannot change the
-parent shell's current `PATH`.
+`OWNER/REPO` is the GitHub repository that hosts the Volicord release assets for
+this checkout. The script detects supported Linux, WSL2, and macOS targets,
+downloads the target-named tarball, verifies the `.sha256` file when available,
+and installs only `volicord`. It does not edit shell startup files. This
+checkout does not contain a Homebrew tap, Homebrew formula, Linux package, or
+external package-registry install path.
 
-`/path/to/your-product-repo` is an example path for the Product Repository where
-you want the agent to work. `volicord connect codex` detects the repository root
-from the current directory, registers or reuses that repository project, creates
-or updates the matching `Agent Connection`, and installs the supported Codex
-host configuration for that connection.
+Make sure the future agent host can run `volicord` through `PATH`, then
+initialize the Product Repository where you want the agent to work:
 
-Exact setup, connection, option, and output behavior belongs to the
-[Administrative CLI Reference](docs/en/reference/admin-cli.md). For a fuller
-tutorial, see [Installation](docs/en/getting-started/installation.md) and then
-[Quickstart](docs/en/getting-started/quickstart.md). Source builds remain
-available as a development path in the Installation guide.
-
-## A User Request In Practice
-
-After setup, the ordinary flow starts with you asking an agent host to work on a
-repository:
-
-> Add idempotency-key support for payment creation, update the tests, and tell
-> me when it is ready to close.
-
-The host remains your editor/chat agent. Volicord does not replace the editor,
-shell, test runner, or review process. Instead, the host uses Volicord tools
-through `volicord mcp --stdio` when it needs durable workflow state. Volicord
-records or reads local workflow facts: task intent, current scope, evidence,
-checks and runs, write readiness, pending user judgments, and close-readiness
-blockers.
-
-If the work needs a product decision, scope change, sensitive step, final
-acceptance, residual-risk acceptance, or cancellation, the host can ask for the
-decision. It must not invent the answer. You record authority-bearing answers
-through the `User Channel`, for example with `volicord user`, and the host can
-continue from the updated Volicord state. Before closing, the host can ask
-Volicord whether unresolved blockers still make the close dishonest.
-
-## User Workflow
-
-This first-read workflow shows collaboration order and decision handoffs.
-It intentionally omits full API call order, storage layout, and component
-ownership; exact Core authority, MCP transport, and runtime boundaries belong
-to the
-[Core Model](docs/en/reference/core-model.md),
-[MCP Transport](docs/en/reference/mcp-transport.md), and
-[Runtime Boundaries](docs/en/reference/runtime-boundaries.md) references.
-
-```mermaid
-sequenceDiagram
-  actor You as You
-  participant Host as Agent host
-  participant MCP as volicord mcp
-  participant Records as Volicord local records
-  participant UserCLI as volicord user
-
-  You->>Host: Ask for product work in a repository
-  Host->>MCP: Call Volicord tools through MCP
-  MCP->>Records: Record or read workflow facts
-  Records-->>MCP: Return task state and missing decisions
-  MCP-->>Host: Report visible workflow state
-  alt User-owned decision is needed
-    Host-->>You: Ask for the decision
-    You->>UserCLI: Record judgment with volicord user
-    UserCLI->>Records: Store User Channel judgment
-    Records-->>MCP: Make updated state available
-  end
-  Host->>MCP: Continue with updated workflow state
-  Host->>MCP: Ask whether the task is ready to close
-  MCP->>Records: Check close readiness
-  Records-->>MCP: Return ready state or blockers
-  MCP-->>Host: Report ready state or blockers
+```sh
+volicord init --host codex --repo /path/to/your-product-repo
 ```
 
-Close readiness is decision support. It does not prove product correctness,
-test sufficiency, QA completion, deployment success, or risk-free outcomes.
+Use `--host claude-code` for Claude Code:
 
-## Local Component Map
-
-This map shows local launches, configuration loading, record access, and
-repository-context use. It is distinct from the user workflow above and
-intentionally does not show every runtime call or storage effect. Exact
-command, MCP, Agent Connection, and runtime-boundary behavior belongs to the
-[Administrative CLI](docs/en/reference/admin-cli.md),
-[MCP Transport](docs/en/reference/mcp-transport.md),
-[Agent Connection](docs/en/reference/agent-connection.md), and
-[Runtime Boundaries](docs/en/reference/runtime-boundaries.md) references.
-
-```mermaid
-flowchart LR
-  terminal["User terminal"]
-  cli["volicord<br/>administrative CLI"]
-  host["Agent host<br/>Codex / Claude Code"]
-  adapter["volicord mcp --stdio<br/>local stdio MCP adapter"]
-  home["Local Volicord data boundary<br/>(Volicord Runtime Home)"]
-  repo["Product Repository<br/>product files and explicit integration files"]
-  config["Host configuration<br/>owned by the agent host"]
-
-  terminal --> cli
-  cli -- "setup, connect, user" --> home
-  cli -- "detects repository root" --> repo
-  cli -- "installs or exports config" --> config
-  config -. "loaded by host" .-> host
-  host -- "starts local adapter" --> adapter
-  adapter -- "uses Agent Connection" --> home
-  adapter -- "uses allowed repository context" --> repo
+```sh
+volicord init --host claude-code --repo /path/to/your-product-repo
 ```
 
-The `Volicord Runtime Home` is separate from the `Product Repository`. Volicord
-runtime records, SQLite files, generated records, logs, QA results, acceptance
-records, close-readiness state, and residual-risk records do not belong in your
-product files. A `Product Repository` may contain only explicit integration
-files owned by supported setup flows, such as project-scoped host configuration
-or managed guidance.
+`volicord init` is the primary first-run setup and connection command for
+chat-first use. It initializes the Runtime Home if needed, records the
+installation profile, registers or reuses the selected Product Repository,
+creates the Agent Connection, writes project-scoped MCP configuration that
+starts `volicord mcp --stdio`, writes Volicord-managed `AGENTS.md` guidance,
+writes `.volicord/policy.json`, and writes supported host rule files when the
+host has a supported project-local rule convention.
 
-## What Volicord Helps Keep Visible
+If the command reports `action_required`, follow the named host-controlled or
+local action, such as restarting or reloading the host, approving project MCP
+configuration, trusting the project, or repairing command availability. Then
+verify:
 
-Volicord is useful when the work needs more than a chat transcript. It helps
-keep these workflow facts visible:
+```sh
+volicord connection verify codex --repo /path/to/your-product-repo
+```
 
-- task intent
-- scope boundaries
-- supporting evidence
-- checks and runs
-- write readiness
-- pending user judgment
-- blockers to an honest close
+Exact command behavior lives in the
+[Administrative CLI Reference](docs/en/reference/admin-cli.md). Environment
+support lives in [System Requirements](docs/en/reference/system-requirements.md).
 
-## What Volicord Does Not Decide For You
+## Source Build For Development
 
-Volicord keeps boundaries visible, but the product judgment remains yours:
+Use the source build path when you are developing Volicord itself or need a
+local development binary:
 
-- It does not prove product correctness.
-- It does not replace tests or review.
-- It does not grant OS-level write permission.
-- It does not let the agent invent user-owned judgments.
-- It does not let MCP calls infer project identity from memory.
+```sh
+cargo build --workspace --bins
+./target/debug/volicord --version
+./target/debug/volicord init --host codex --repo /path/to/your-product-repo
+```
 
-## Where To Go Next
+This path requires the Rust toolchain named in
+[System Requirements](docs/en/reference/system-requirements.md#toolchain-requirements).
+It is not the primary first-user install path.
+
+## Normal Use Is Chat
+
+After initialization, work normally through the agent host in the Product
+Repository. You do not need to drive the workflow from the terminal.
+
+For example, ask in chat:
+
+```text
+Add idempotency-key support for payment creation, update the tests, and tell me what still blocks close.
+```
+
+The host remains your chat/editor agent. Volicord provides local MCP tools the
+host can call when durable workflow state matters:
+
+- create or update a `Task`
+- show current scope, blockers, evidence, and pending judgment
+- prepare a proposed product-file write
+- stage artifacts and record runs or observations
+- request a focused user judgment
+- check close readiness before the agent claims completion
+
+Agents should use Volicord state when it is available and say explicitly when
+it is unavailable. Volicord tools, MCP server instructions, host rules, and
+`AGENTS.md` guidance help steer the agent, but they do not absolutely force
+model behavior.
+
+## Guarded Mode
+
+`volicord init` defaults to `--mode guarded`.
+
+Guarded mode adds cooperative and detective guard surfaces around the MCP
+workflow:
+
+| Surface | What it contributes |
+|---|---|
+| MCP | Gives the host local `volicord.*` tools over `volicord mcp --stdio`, bound to the stored Agent Connection and allowed Product Repository. |
+| `AGENTS.md` | Adds a Volicord-managed guidance block telling agents to check status, start tasks, prepare writes, request user judgment, check close, and report when Volicord tools are unavailable. |
+| `.volicord/policy.json` | Records machine-readable guard command policy for supported lifecycle hooks: session start, pre-tool, post-tool, prompt capture, and stop. |
+| Host hooks and rules | When the host supports them and loads the generated configuration, hooks can inject context, classify tool attempts, warn or deny some unsafe-looking operations, record observed unrecorded changes, capture strict chat judgment commands, and block stop when close blockers remain. Host rule files, such as Claude Code rules, point the host at the policy. |
+
+Other modes are available:
+
+- `--mode mcp-only` writes MCP configuration and guidance but disables guard
+  commands in policy metadata.
+- `--mode managed` currently uses the same setup surface as `guarded` while
+  recording managed guard mode for integrations that distinguish it.
+
+Guarded mode reduces bypass when the host actually runs the configured hooks
+and respects the rules. It is still not OS-level enforcement. It does not
+sandbox tools, monitor all files, block all commands, isolate the network, or
+prove that the model followed instructions.
+
+## User Judgment Capture
+
+User judgment stays user-owned. An Agent Connection may request a judgment, but
+it must not record authority-bearing user answers as if it were the user.
+
+Supported capture paths:
+
+| Path | When it is used |
+|---|---|
+| MCP elicitation | If the initialized MCP client declares `capabilities.elicitation`, Volicord can send an `elicitation/create` request for a focused pending judgment. A valid response is recorded through the local `User Channel` with user provenance. |
+| Chat prompt capture | If elicitation is unavailable and guarded prompt capture is active, Volicord returns exact chat commands such as `Volicord: answer J-3 1`, `Volicord: answer J-3 reject`, `Volicord: answer J-3 defer`, or `Volicord: note J-3 "text"`. The prompt-capture hook records only strict valid commands. |
+| CLI fallback | If chat capture is unavailable, disabled, or needs inspection, use `volicord user` from the Product Repository. |
+
+CLI fallback example:
+
+```sh
+volicord user status
+volicord user judgments
+volicord user judgment show 1
+volicord user judgment answer 1 1
+```
+
+There is no separate local web judgment UI documented in this checkout. The
+experimental HTTP MCP serve mode also does not implement HTTP elicitation.
+
+## What Volicord Does Not Guarantee
+
+Volicord keeps work authority visible, but it is not a general security product
+or correctness oracle. Do not rely on Volicord for:
+
+- OS-level sandboxing or OS permission enforcement
+- malware defense, malware scanning, or secret scanning
+- network isolation, network monitoring, or network blocking
+- prevention of all product-file writes
+- universal pre-tool blocking or full filesystem monitoring
+- proof that code is correct
+- proof that tests are sufficient
+- replacement for human review, QA, release judgment, or risk judgment
+- proof that an external host trusted, approved, loaded, initialized, or exposed
+  `volicord mcp --stdio`
+- proof that `AGENTS.md`, host rules, or MCP instructions forced model behavior
+
+Guarded mode may return `warn` or `deny` decisions through configured hooks, and
+close/write checks may expose blockers. Those are cooperative local controls,
+not kernel-level enforcement or a guarantee that tools cannot write files
+outside Volicord-aware paths.
+
+See the [Security Reference](docs/en/reference/security.md) for exact guarantee
+wording and explicit non-guarantees.
+
+## Docker And Local HTTP MCP
+
+Docker support exists through the checked-in `Dockerfile` for local container
+layouts:
+
+```sh
+docker build -t volicord:local .
+```
+
+The local HTTP MCP mode is implemented as:
+
+```sh
+volicord serve --transport streamable-http
+```
+
+It is an explicit advanced mode for Docker and localhost MCP use, not the
+default host setup path. It defaults to loopback, requires bearer
+authentication, exposes `POST /mcp`, and does not implement server-sent event
+streams, HTTP elicitation, or full MCP Streamable HTTP compatibility. Do not
+treat it as an unauthenticated network service.
+
+Use [Installation](docs/en/getting-started/installation.md) and
+[MCP Transport](docs/en/reference/mcp-transport.md) for the detailed Docker and
+HTTP boundaries.
+
+## Troubleshooting
+
+| Symptom | What to do |
+|---|---|
+| `volicord` is not found | Put the install directory on `PATH`, or install to a directory already on `PATH`, then rerun `volicord --version`. Future agent hosts must also be able to start `volicord`. |
+| `init` reports `action_required` | Complete the named action, such as host restart or reload, project trust, MCP approval, OAuth, command-link repair, or setup repair, then rerun `volicord connection verify HOST --repo PATH`. |
+| Host cannot start MCP | Confirm the host can run `volicord mcp --help` through the same command path. Run `volicord doctor` for installation-profile health. |
+| Product Repository is not detected | Pass `--repo /path/to/your-product-repo` and make sure the path is an existing local repository separate from the Runtime Home. |
+| A judgment is pending | Prefer the host's MCP elicitation or exact chat prompt-capture command when available. Use `volicord user judgments` and `volicord user judgment answer` as the CLI fallback. |
+| Close is blocked | Ask the agent to show `volicord.check_close` results, pending user judgments, missing evidence, unresolved unrecorded changes, and residual risks. Address the named blocker instead of closing from a summary. |
+
+## Deeper Docs
 
 | Need | Read |
 |---|---|
-| Install and verify executables | [Installation](docs/en/getting-started/installation.md), then [Quickstart](docs/en/getting-started/quickstart.md) |
-| Understand the user work loop | [User Guide](docs/en/guides/user-workflow.md) |
-| Set up or repair an agent host | [Agent Host Setup](docs/en/guides/agent-host-setup.md) and [Agent Host Troubleshooting](docs/en/guides/agent-host-troubleshooting.md) |
-| Understand agent behavior boundaries | [Agent Guide](docs/en/guides/agent-workflow.md) |
-| Check exact CLI, MCP, and runtime contracts | [Administrative CLI Reference](docs/en/reference/admin-cli.md), [MCP Transport](docs/en/reference/mcp-transport.md), and [Runtime Boundaries](docs/en/reference/runtime-boundaries.md) |
-| Understand Core authority concepts | [Core Model](docs/en/reference/core-model.md) |
-| Learn the implementation | [Codebase Tour](docs/en/development/codebase-tour.md) |
+| Install details and Docker examples | [Installation](docs/en/getting-started/installation.md) |
+| Supported environments | [System Requirements](docs/en/reference/system-requirements.md) |
+| User workflow and judgment boundaries | [User Guide](docs/en/guides/user-workflow.md) |
+| Host setup and repair | [Agent Host Setup](docs/en/guides/agent-host-setup.md) and [Agent Host Troubleshooting](docs/en/guides/agent-host-troubleshooting.md) |
+| Exact CLI behavior | [Administrative CLI Reference](docs/en/reference/admin-cli.md) |
+| MCP stdio and HTTP transport | [MCP Transport](docs/en/reference/mcp-transport.md) |
+| Agent Connection and User Channel boundaries | [Agent Connection Reference](docs/en/reference/agent-connection.md) |
+| Core authority concepts | [Core Model](docs/en/reference/core-model.md) |
+| Security wording and non-guarantees | [Security Reference](docs/en/reference/security.md) |
+| Public API methods and schemas | [Reference Index](docs/en/reference/README.md) |
 
 Volicord commands are local administrative commands, not public Volicord API
-methods. Exact public API behavior is owned by the
-[Reference Index](docs/en/reference/README.md).
+methods. Exact public API behavior is owned by the Reference docs.

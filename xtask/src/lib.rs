@@ -2347,6 +2347,7 @@ fn validate_volicord_command(tokens: &[String]) -> std::result::Result<(), Strin
         "mcp" => validate_mcp_command(&args[1..]),
         "serve" => validate_serve_command(&args[1..]),
         "guard" => validate_guard_command(&args[1..]),
+        "init" => validate_init_command(&args[1..]),
         "connect" => validate_connect_command(&args[1..]),
         "connections" => validate_connections_command(&args[1..]),
         "connection" => validate_connection_command(&args[1..]),
@@ -2511,6 +2512,25 @@ fn validate_guard_command(args: &[String]) -> std::result::Result<(), String> {
     )?;
     reject_mutually_exclusive(&parsed, "json", "text")?;
     reject_positionals(&parsed, 0, &format!("`volicord guard {subcommand}`"))
+}
+
+fn validate_init_command(args: &[String]) -> std::result::Result<(), String> {
+    if is_help_only(args) {
+        return Ok(());
+    }
+    let parsed = parse_command_args(
+        args,
+        &["dry-run", "json"],
+        &["host", "repo", "mode", "home", "mcp-command"],
+    )?;
+    reject_positionals(&parsed, 0, "`volicord init`")?;
+    if !parsed.options.contains("host") {
+        return Err("`volicord init` requires --host".to_string());
+    }
+    if !parsed.options.contains("repo") {
+        return Err("`volicord init` requires --repo".to_string());
+    }
+    Ok(())
 }
 
 fn validate_connect_command(args: &[String]) -> std::result::Result<(), String> {
