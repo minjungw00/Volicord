@@ -1,8 +1,8 @@
 # 에이전트 호스트 설정
 
 이 가이드는 Codex, Claude Code, 일반 MCP 호스트를 Volicord에 연결할 때
-사용합니다. 일반 경로는 호스트, Product Repository, 연결 의도에서 시작하며, 내부 호스트와
-registry 값은 Volicord가 관리합니다.
+사용합니다. 일반적인 guarded 경로는 `volicord init`, 호스트, Product Repository에서
+시작하며, 내부 호스트와 registry 값은 Volicord가 관리합니다.
 
 정확한 CLI 동작은 [관리 CLI 참조](../reference/admin-cli.md)가 담당합니다.
 Agent Connection 의미는 [Agent Connection 참조](../reference/agent-connection.md)가,
@@ -14,19 +14,21 @@ Agent Connection 의미는 [Agent Connection 참조](../reference/agent-connecti
 설정 순서를 실행합니다.
 
 ```sh
-volicord setup
-volicord doctor
-cd /path/to/your-product-repo
-volicord connect codex
+volicord init --host codex --repo /path/to/your-product-repo
 volicord connection status codex
 ```
 
 `/path/to/your-product-repo`는 에이전트에게 작업을 요청할 Product Repository의 경로
-예시입니다. 연결 명령은 현재 디렉터리에서 Git 저장소 루트를 감지하고, 해당
-저장소 프로젝트를 등록하거나 재사용하며, 저장소 디렉터리에서 보이는 프로젝트 이름을
-파생하고, 내부 registry 식별 정보를 선택된 `Volicord Runtime Home`에 저장합니다.
+예시입니다. `volicord init`은 필요하면 Runtime Home과 설치 프로필을 만들거나
+재사용하고, 해당 저장소 프로젝트를 등록하거나 재사용하며, 저장소 디렉터리에서 보이는
+프로젝트 이름을 파생하고, 선택한 호스트의 프로젝트 범위 MCP 설정을 설치하고,
+Volicord 관리 지침과 guard 통합 파일을 쓰고, guard 설치 상태를 기록하며, 내부
+registry 식별 정보를 선택된 `Volicord Runtime Home`에 저장합니다. 생성된 호스트
+설정은 `volicord mcp --stdio`를 시작합니다.
 
-프로세스 현재 디렉터리가 대상 Product Repository가 아닐 때만 `--repo PATH`를 사용합니다.
+설치 프로필이 준비된 뒤 personal, global, read-only 동작을 직접 선택하는 등 낮은
+수준의 연결 변형이 필요할 때는 `volicord connect`를 사용합니다. 프로세스 현재
+디렉터리가 대상 Product Repository가 아닐 때만 `--repo PATH`를 사용합니다.
 
 ```sh
 volicord connect codex --repo /path/to/your-product-repo

@@ -1,7 +1,7 @@
 # 에이전트 호스트 문제 해결
 
-`volicord setup`, `volicord connect`, `volicord connection ...`,
-`volicord export mcp-config`가 호스트 설정 문제를 보고할 때 이 가이드를
+`volicord init`, `volicord setup`, `volicord connect`,
+`volicord connection ...`, `volicord export mcp-config`가 호스트 설정 문제를 보고할 때 이 가이드를
 사용합니다. 이 가이드는 Volicord가 Product Repository를 감지하고 내부 식별 정보를 관리하는
 단순화된 명령 모델을 전제로 합니다.
 
@@ -125,12 +125,17 @@ volicord connect codex --repo /path/to/your-product-repo
 관찰 증상: `volicord connect` 또는 `volicord connection ...`이 호스트를 추론하지
 못하거나 호스트 값이 지원되지 않습니다.
 
-제한된 복구: 호스트를 명시적으로 전달합니다.
+제한된 복구: 일반 guarded 설정에는 호스트와 저장소를 init에 명시적으로 전달합니다.
 
 ```sh
-volicord connect codex
-volicord connect claude-code
-volicord connection status codex
+volicord init --host codex --repo /path/to/your-product-repo
+```
+
+하위 수준 연결 복구에는 호스트와 저장소를 connect에 명시적으로 전달합니다.
+
+```sh
+volicord connect codex --repo /path/to/your-product-repo
+volicord connection status codex --repo /path/to/your-product-repo
 ```
 
 연결에 사용한 의도 선택자도 함께 사용합니다.

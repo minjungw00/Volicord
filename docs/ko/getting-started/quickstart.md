@@ -11,22 +11,21 @@ Agent Connection 의미는 [Agent Connection 참조](../reference/agent-connecti
 ## 빠른 경로
 
 ```sh
-volicord setup
-cd /path/to/your-product-repo
-volicord connect codex
+volicord init --host codex --repo /path/to/your-product-repo
 ```
 
-Setup은 설치된 `volicord` 명령을 이후 터미널과 에이전트 호스트에서 사용할 수
-있는지 확인합니다. 명령 링크가 필요하면 setup은 `~/.local/bin` 같은 관례적 사용자
-명령 디렉터리가 없고 안전하게 만들 수 있을 때 그 디렉터리를 만든 뒤 쓰기 가능 여부를
-확인하고 링크하도록 제안할 수 있습니다. 프롬프트를 표시하거나 `action_required`를
-보고하면 `volicord connect`를 실행하거나 새 터미널을 열거나 호스트를 시작하기 전에
-이름 붙은 명령 가용성 단계를 따릅니다. Volicord는 부모 셸의 현재 `PATH`를 바꿀 수
-없습니다.
 `/path/to/your-product-repo`는 에이전트에게 작업을 요청할 Product Repository의 경로
-예시입니다. Volicord는 현재 디렉터리에서 그 저장소를 감지하고 첫 호스트 연결에는
-일반 CLI 기본값을 사용합니다. 정확한 프로젝트 이름, 연결 기본값, 내부 식별 정보
-동작은 [관리 CLI 참조](../reference/admin-cli.md)가 담당합니다.
+예시입니다. `volicord init`은 첫 실행에서 저장소를 설정하고 호스트를 연결하는 기본
+명령입니다. 필요하면 Runtime Home과 설치 프로필을 만들거나 재사용하고, 선택한
+저장소를 등록하며, 선택한 호스트의 프로젝트 범위 MCP 설정을 설치하고, Volicord가
+관리하는 지침과 guard 통합 파일을 쓰고, guard 설치 상태를 기록합니다. 생성된 호스트
+설정은 단일 공개 실행 파일을 `volicord mcp --stdio`로 시작합니다.
+
+기본 `init` 모드는 `guarded`입니다. guard hook 명령 없이 MCP 설정과 지침만 원할
+때만 `--mode mcp-only`를 사용합니다. host나 향후 통합이 managed guard 모드를
+구분할 때만 `--mode managed`를 사용합니다. 정확한 프로젝트 이름, guard mode 동작,
+연결 기본값, 내부 식별 정보 동작은 [관리 CLI 참조](../reference/admin-cli.md)가
+담당합니다.
 
 ## 설정 확인하기
 
@@ -62,6 +61,10 @@ volicord connect codex --read-only
 ```sh
 volicord connect codex --repo /path/to/your-product-repo
 ```
+
+`volicord connect`는 personal, shared, global, read-only 변형을 위한 낮은 수준의
+연결 관리 명령으로 계속 지원됩니다. 일반적인 guarded 첫 실행 경로에서는
+`volicord init --host HOST --repo PATH`를 우선 사용합니다.
 
 ## 연결 조회 또는 변경하기
 
@@ -99,6 +102,11 @@ volicord export mcp-config --output /tmp/volicord.mcp.json
 
 Agent Connection은 초점이 맞춰진 판단 필요를 요청하거나 보여 줄 수 있지만,
 권한을 지니는 사용자 답변은 로컬 `User Channel`을 거칩니다.
+
+호스트와 클라이언트가 지원하면 MCP 어댑터는 대기 판단에 MCP elicitation을 사용할 수
+있습니다. guarded prompt-capture hook이 설정되어 있으면 일반 채팅 경로는
+`Volicord: answer J-3 1` 같은 엄격한 prompt 명령입니다. elicitation이나 prompt
+capture를 사용할 수 없을 때는 아래 터미널 명령을 안정적인 복구 경로로 사용합니다.
 
 ```sh
 volicord user status

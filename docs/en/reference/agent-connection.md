@@ -346,6 +346,8 @@ Conditions:
 - When MCP elicitation is unavailable, MCP fallback text may route the human
   user to chat prompt-capture commands compatible with the prompt-submit hook
   path, when that local path is configured.
+- No baseline local web User Channel is implemented. The experimental HTTP
+  serve transport is an MCP transport boundary, not a browser judgment UI.
 - Authority-bearing user-judgment resolution requires `actor_source=local_user`,
   `operation_category=user_only`, and compatible User Channel provenance.
 - `actor_source=agent_connection:<connection_id>` cannot become `local_user`

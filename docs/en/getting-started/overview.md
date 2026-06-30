@@ -48,15 +48,22 @@ connected to it. Exact project-selection and MCP tool-argument behavior belongs 
 
 ## What Setup Does
 
-Agent setup can:
+Agent setup through the ordinary `volicord init --host HOST --repo PATH` path can:
 
 - create or reuse Runtime Home records
+- create or reuse the installation profile
 - register or reuse a `Product Repository`
-- create or reuse an Agent Connection
-- connect one selected Product Repository during each `volicord connect`
-  invocation
-- install Codex or Claude Code host configuration, or export generic MCP configuration
+- create or reuse an Agent Connection and Connection Projects membership
+- install project-scoped Codex or Claude Code MCP configuration that starts
+  `volicord mcp --stdio`
+- install Volicord-managed guidance and guard integration files for guarded
+  local use
+- record guard installation state
 - run setup verification and report `complete`, `action_required`, or `failed`
+
+`volicord setup` remains the installation-profile preparation and repair path.
+`volicord connect` remains the lower-level connection-management command for
+personal, shared, global, read-only, and generic export flows.
 
 Agent setup must not:
 

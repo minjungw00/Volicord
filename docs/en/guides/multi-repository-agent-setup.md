@@ -7,6 +7,12 @@ This guide is operator workflow. Exact Agent Connection, project-selection, and
 transport behavior belongs to [Agent Connection](../reference/agent-connection.md)
 and [MCP Transport](../reference/mcp-transport.md).
 
+This is not the default first-run path for one Product Repository. For ordinary
+guarded setup, use [Agent Host Setup](agent-host-setup.md) and
+`volicord init --host HOST --repo PATH`. Use the lower-level `volicord connect`
+commands here only when one host-level or global host entry must route to more
+than one explicitly allowed repository.
+
 ## Topology
 
 This topology map shows how one host entry can reach multiple explicitly
@@ -47,20 +53,18 @@ want the agent to work.
 
 ## Connect The First Product Repository
 
-From the first Product Repository:
+Select the first Product Repository explicitly:
 
 ```sh
-cd /path/to/acme-api
-volicord connect codex
-volicord connection status codex
+volicord connect codex --repo /path/to/acme-api
+volicord connection status codex --repo /path/to/acme-api
 ```
 
 For Claude Code global configuration:
 
 ```sh
-cd /path/to/acme-api
-volicord connect claude-code --global
-volicord connection status claude-code --global
+volicord connect claude-code --global --repo /path/to/acme-api
+volicord connection status claude-code --global --repo /path/to/acme-api
 ```
 
 The command detects the Git repository root, registers or reuses the repository
@@ -69,19 +73,19 @@ stores internal registry identities in the Runtime Home.
 
 ## Add Another Product Repository
 
-Run the same host and intent from the second Product Repository:
-
-```sh
-cd /path/to/billing-api
-volicord connect codex
-volicord connection status codex
-```
-
-Or select the Product Repository explicitly:
+Run the same host and intent for the second Product Repository:
 
 ```sh
 volicord connect codex --repo /path/to/billing-api
 volicord connection status codex --repo /path/to/billing-api
+```
+
+The same rule applies when the current working directory is already inside the
+Product Repository; using `--repo` keeps the membership target unambiguous.
+
+```sh
+volicord connect codex
+volicord connection status codex
 ```
 
 For the same host-level target, Volicord reuses the matching Agent Connection

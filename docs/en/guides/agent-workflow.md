@@ -190,7 +190,10 @@ options define what the user can accept, reject, defer, or otherwise select for
 that judgment. Do not add extra authority outcomes in prose.
 
 If the user's answer must become authority-bearing Core state, route the user to
-the local `User Channel`. The stable local CLI route is:
+a supported local `User Channel`. Current supported paths are MCP elicitation
+when the initialized client declares that capability, guarded prompt-capture
+chat commands when the local hook is configured, and the stable local CLI
+recovery route:
 
 ```sh
 volicord user judgments
@@ -199,11 +202,14 @@ volicord user judgment answer 1 1
 ```
 
 An Agent Connection must not call `volicord.record_user_judgment`, supply User
-Channel provenance, or convert a chat reply into authority-bearing acceptance.
-If the answer has not been recorded through the User Channel, name the needed
-user action and continue only with work that does not depend on that judgment.
-Use `--repo PATH` only when the current directory is not the intended Product
-Repository, and `--task ID` only when the active task is not the intended task.
+Channel provenance, or convert an ordinary chat reply into authority-bearing
+acceptance. A strict prompt-capture command such as `Volicord: answer J-3 1`
+is authority-bearing only when the configured local hook validates and records
+it. If the answer has not been recorded through a supported User Channel, name
+the needed user action and continue only with work that does not depend on that
+judgment. Use `--repo PATH` only when the current directory is not the intended
+Product Repository, and `--task ID` only when the active task is not the
+intended task.
 
 Status summaries, generated Markdown, rendered projections, and chat text can
 display a pending judgment or option list. They are support context only; they

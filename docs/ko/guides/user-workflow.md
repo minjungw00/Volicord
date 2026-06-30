@@ -88,13 +88,16 @@ Volicord는 사용자가 평소 말로 일하면서도 판단 경계를 볼 수 
 ## Core 사용자 판단 기록하기
 
 어떤 선택이 권한을 지니는 Core 상태가 되어야 한다면 지원되는 `User Channel`을
-사용합니다. 안정적인 로컬 CLI 경로는 `volicord user`이며, 별도 사용자 설정,
-어댑터 등록, Agent Connection 등록을 요구하지 않습니다. 정확한 명령 동작은
+사용합니다. 현재 지원되는 경로는 호스트 클라이언트가 그 capability를 선언했을 때의
+MCP elicitation, prompt-capture hook이 설정된 guarded prompt-capture 채팅 명령,
+그리고 안정적인 로컬 CLI 복구 경로인 `volicord user`입니다. 기준 local web
+`User Channel`은 구현되어 있지 않습니다. 정확한 명령 동작은
 [관리 CLI](../reference/admin-cli.md#user-channel-commands)가 담당하고, 권한 의미는
 [Core 모델](../reference/core-model.md)이 담당하며, Agent Connection 경계는
 [Agent Connection 참조](../reference/agent-connection.md)가 담당합니다.
 
-작업에 대기 중인 판단이 있으면 선택된 Product Repository에서 아래 순서로 진행합니다.
+elicitation이나 prompt capture를 사용할 수 없고 작업에 대기 중인 판단이 있으면 선택된
+Product Repository에서 아래 순서로 진행합니다.
 
 ```sh
 volicord user status
@@ -117,9 +120,10 @@ volicord user judgment answer 1 1
 에이전트는 사용자를 이 경로로 안내하고, 대기 중인 질문을 보여 주고, 선택지를
 설명할 수 있습니다. 하지만 Agent Connection은 사용자의 권한 판단을 대신
 기록하거나, `volicord.record_user_judgment`를 호출하거나, 채팅 답변을 권한을
-지니는 Core 상태로 바꾸면 안 됩니다. 생성된 Markdown, 상태 요약, 채팅 문장,
-Product Repository 지침, 렌더링된 상태 보기는 상태를 읽는 데 도움을 줄 수 있지만
-Core 권한은 아닙니다. 상태 보기 경계는
+지니는 Core 상태로 바꾸면 안 됩니다. `Volicord: answer J-3 1` 같은 엄격한
+prompt-capture 명령은 설정된 로컬 hook이 검증하고 기록할 때만 `User Channel`
+경로입니다. 생성된 Markdown, 상태 요약, 일반 채팅 문장, Product Repository 지침,
+렌더링된 상태 보기는 상태를 읽는 데 도움을 줄 수 있지만 Core 권한은 아닙니다. 상태 보기 경계는
 [상태 보기와 템플릿 표시 경계](../reference/projection-and-templates.md)를 봅니다.
 
 ## 쓰기와 민감 동작 승인하기

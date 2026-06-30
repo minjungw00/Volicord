@@ -105,6 +105,7 @@ verify the installed executable from the same shell:
 volicord --version
 volicord --help
 volicord mcp --help
+volicord init --help
 volicord setup --help
 volicord guard --help
 volicord serve --help
@@ -124,13 +125,15 @@ command lookup:
 
 ```sh
 volicord --version
+volicord init --help
 volicord setup --help
 volicord connect --help
 volicord mcp --version
 volicord mcp --help
 ```
 
-Host configuration uses MCP command information established by `volicord setup`.
+Host configuration uses MCP command information established by `volicord init`
+or `volicord setup`.
 For exact `--mcp-command`, discovery-order, `--link-bin`, connection, and
 generic export behavior, use
 [Administrative CLI](admin-cli.md#runtime-home-selection) and
@@ -154,7 +157,7 @@ A usable `Volicord Runtime Home` must be a local filesystem location the selecte
 Before installation:
 
 - Select a Runtime Home that is not the `Product Repository` and is not inside or above the `Product Repository`.
-- Ensure the selected user can create the directory or write into it when running `volicord setup`, `volicord project use`, `volicord connect`, or `volicord connection verify`.
+- Ensure the selected user can create the directory or write into it when running `volicord init`, `volicord setup`, `volicord project use`, `volicord connect`, or `volicord connection verify`.
 - Ensure future `volicord mcp --stdio` host processes receive the same Runtime Home selection when the default `$HOME/.volicord` is not the intended location. Shared project host configuration must not carry a personal Runtime Home path, so each user must provide a non-default Runtime Home through their own local setup or environment.
 
 Runtime Home selection and exact creation behavior are owned by [Administrative CLI](admin-cli.md) and [MCP Transport](mcp-transport.md). Runtime location and separation rules are owned by [Runtime Boundaries](runtime-boundaries.md).
@@ -167,7 +170,9 @@ Read access is required when Volicord validates or uses the registered project. 
 
 - project-scoped Codex `.codex/config.toml`
 - project-scoped Claude Code `.mcp.json`
-- optional Volicord-managed guidance blocks or files
+- Volicord-managed `AGENTS.md` guidance blocks
+- `.volicord/policy.json` guard policy files
+- Volicord-managed Claude Code rule files under `.claude/rules/`
 
 Noninteractive shared-intent host configuration or guidance writes require the explicit `--shared` command path defined by [Administrative CLI](admin-cli.md#noninteractive-approval-behavior). Runtime records, SQLite databases, generated records, logs, projections, QA results, acceptance records, close-readiness state, and residual-risk records do not belong in the `Product Repository`.
 

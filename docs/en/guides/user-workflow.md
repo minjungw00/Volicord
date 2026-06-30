@@ -88,15 +88,17 @@ This loop separates what an agent can do through an [Agent Connection](../refere
 ## Record a Core user judgment
 
 When a choice must become authority-bearing Core state, use a supported
-`User Channel`. The stable local CLI path is `volicord user`; it does not
-require separate user setup, adapter registration, or Agent Connection registration. Exact command
-behavior belongs to [Administrative CLI](../reference/admin-cli.md#user-channel-commands);
+`User Channel`. Current supported paths are MCP elicitation when the host
+client declares that capability, guarded prompt-capture chat commands when the
+prompt-capture hook is configured, and the stable local CLI recovery path
+`volicord user`. No baseline local web User Channel is implemented. Exact
+command behavior belongs to [Administrative CLI](../reference/admin-cli.md#user-channel-commands);
 authority meaning belongs to [Core Model](../reference/core-model.md), and
 Agent Connection boundaries belong to
 [Agent Connection Reference](../reference/agent-connection.md).
 
-Then use this sequence from the selected Product Repository when a task has a
-pending judgment:
+When elicitation or prompt capture is unavailable, use this sequence from the
+selected Product Repository when a task has a pending judgment:
 
 ```sh
 volicord user status
@@ -122,9 +124,12 @@ selected Core option.
 An agent may help route you to this path, show the pending question, and explain
 the options. An Agent Connection must not record your authority-bearing decision
 for you, call `volicord.record_user_judgment`, or convert a chat reply into
-authority-bearing Core state. Generated Markdown, status summaries, chat text,
-Product Repository guidance, and rendered projections can help you read state,
-but they are not Core authority; for projection boundaries, see
+authority-bearing Core state outside a supported User Channel path. A strict
+prompt-capture command such as `Volicord: answer J-3 1` is a User Channel path
+only when the configured local hook validates and records it. Generated
+Markdown, status summaries, ordinary chat text, Product Repository guidance,
+and rendered projections can help you read state, but they are not Core
+authority; for projection boundaries, see
 [Projection and template display boundaries](../reference/projection-and-templates.md).
 
 ## Approve writes and sensitive actions

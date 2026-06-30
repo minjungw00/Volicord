@@ -1,9 +1,9 @@
 # Agent Host Troubleshooting
 
-Use this guide when `volicord setup`, `volicord connect`, `volicord connection
-...`, or `volicord export mcp-config` reports a host setup problem. It assumes
-the simplified command model where Volicord detects Product Repositories and
-manages internal identities.
+Use this guide when `volicord init`, `volicord setup`, `volicord connect`,
+`volicord connection ...`, or `volicord export mcp-config` reports a host setup
+problem. It assumes the simplified command model where Volicord detects Product
+Repositories and manages internal identities.
 
 Exact setup, doctor, and connection result-state meanings belong to
 [Administrative CLI Reference](../reference/admin-cli.md#runtime-home-selection)
@@ -132,12 +132,19 @@ repository directory. Internal project identities are not recovery inputs.
 Observable symptom: `volicord connect` or `volicord connection ...` cannot infer
 the host, or the host value is unsupported.
 
-Bounded recovery: pass the host explicitly:
+Bounded recovery: for ordinary guarded setup, pass the host and repository to
+init explicitly:
 
 ```sh
-volicord connect codex
-volicord connect claude-code
-volicord connection status codex
+volicord init --host codex --repo /path/to/your-product-repo
+```
+
+For lower-level connection recovery, pass the host and repository to connect
+explicitly:
+
+```sh
+volicord connect codex --repo /path/to/your-product-repo
+volicord connection status codex --repo /path/to/your-product-repo
 ```
 
 Use the same intent selector used for the connection:

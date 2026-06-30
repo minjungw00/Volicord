@@ -64,12 +64,25 @@ fails. If the checksum file is unavailable, the script warns; set
 No Homebrew tap, package-manager package, or external package registry is
 claimed by this repository unless a matching repository artifact is added.
 
-After installation, verify the installed command and run setup:
+After installation, verify the installed command:
 
 ```sh
 volicord --version
 volicord --help
 volicord mcp --help
+volicord init --help
+```
+
+For the ordinary first repository connection, continue with
+`volicord init --host HOST --repo PATH` in the
+[Quickstart](quickstart.md). `volicord init` can initialize the Runtime Home and
+installation profile while it connects the selected Product Repository and
+writes guarded host integration files.
+
+Use `volicord setup` when you want to prepare or repair only the installation
+profile before connecting a repository:
+
+```sh
 volicord setup
 ```
 
@@ -138,7 +151,8 @@ repair action, such as rerunning setup or fixing an executable path.
 
 ## Use An Existing Installed Executable
 
-If `volicord` already exists on `PATH`, run:
+If `volicord` already exists on `PATH` and you only want to prepare or inspect
+the installation profile before connecting a repository, run:
 
 ```sh
 volicord setup
@@ -151,8 +165,8 @@ command directory. Use `volicord setup --mcp-command PATH` only when generated
 host configuration should start MCP through a different `volicord` command
 path.
 If setup reports `action_required`, complete the named local action before
-starting new terminals or agent hosts. Ordinary `volicord connect` commands use
-the saved installation profile.
+starting new terminals or agent hosts. Ordinary `volicord init` and
+`volicord connect` commands use the saved installation profile.
 
 ## Development Source Build
 
@@ -179,9 +193,9 @@ docker build -t volicord:local .
 ```
 
 Use a Runtime Home volume and mount the Product Repository at the same container
-path whenever you run setup, project, connection, and serve commands. Project
-registrations store repository roots, so a Runtime Home prepared for one path
-layout should not be reused with a different container workspace path.
+path whenever you run setup, init, project, connection, and serve commands.
+Project registrations store repository roots, so a Runtime Home prepared for
+one path layout should not be reused with a different container workspace path.
 
 For example, prepare or inspect the Docker Runtime Home with the same mounts:
 
@@ -193,8 +207,9 @@ docker run --rm -it \
 ```
 
 After the Runtime Home contains the project registration and Agent Connection
-you want to serve, start the local HTTP MCP endpoint with an operator-provided
-token:
+you want to serve, for example from a matching `volicord init` or
+`volicord connect` run with the same mounts, start the local HTTP MCP endpoint
+with an operator-provided token:
 
 ```sh
 VOLICORD_HTTP_TOKEN="$(openssl rand -hex 32)"
@@ -218,7 +233,8 @@ port. The host publish address remains `127.0.0.1`, and Volicord still requires
 
 Setup does not register a Product Repository and does not install host
 configuration. Project registration happens when you run `volicord project use`
-or a command such as `volicord connect` from inside a Git repository.
+or a command such as `volicord init --host HOST --repo PATH` or
+`volicord connect` from inside a Git repository.
 
 Project naming and internal identity behavior are owned by the
 [Administrative CLI Reference](../reference/admin-cli.md#project-commands).
@@ -226,11 +242,10 @@ Internal identities are stored by Volicord and are not first-time setup inputs.
 
 ## Next Step
 
-Move into the Product Repository and connect a host:
+Connect a host to the Product Repository:
 
 ```sh
-cd /path/to/your-product-repo
-volicord connect codex
+volicord init --host codex --repo /path/to/your-product-repo
 ```
 
 `/path/to/your-product-repo` is an example path for the Product Repository where

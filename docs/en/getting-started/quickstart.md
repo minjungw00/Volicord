@@ -12,22 +12,23 @@ meaning belongs to [Agent Connection Reference](../reference/agent-connection.md
 ## Fast Path
 
 ```sh
-volicord setup
-cd /path/to/your-product-repo
-volicord connect codex
+volicord init --host codex --repo /path/to/your-product-repo
 ```
 
-Setup checks whether the installed `volicord` command is available for future
-terminals and agent hosts. When command links are needed, setup may offer to
-create a conventional user command directory such as `~/.local/bin` if it is
-missing and safe to create, then verify writability before linking. If it
-prompts or reports `action_required`, follow the named command-availability
-step before running `volicord connect`, opening a new terminal, or starting the
-host. Volicord cannot change the parent shell's current `PATH`.
 `/path/to/your-product-repo` is an example path for the Product Repository where
-you want the agent to work. Volicord detects that repository from the current
-directory and uses the normal CLI defaults for a first host connection. Exact
-project naming, connection defaults, and internal identity behavior belong to
+you want the agent to work. `volicord init` is the primary first-run repository
+setup and host-connection command. It creates or reuses the Runtime Home and
+installation profile when needed, registers the selected repository, installs
+project-scoped MCP configuration for the selected host, writes Volicord-managed
+guidance and guard integration files, and records guard installation status.
+Generated host configuration starts the single public executable as
+`volicord mcp --stdio`.
+
+The default `init` mode is `guarded`. Use `--mode mcp-only` only when you want
+MCP configuration and guidance without guard hook commands. Use
+`--mode managed` only for hosts or future integrations that distinguish managed
+guard mode. Exact project naming, guard-mode behavior, connection defaults, and
+internal identity behavior belong to
 [Administrative CLI Reference](../reference/admin-cli.md).
 
 ## Confirm The Setup
@@ -66,6 +67,10 @@ Repository:
 ```sh
 volicord connect codex --repo /path/to/your-product-repo
 ```
+
+`volicord connect` is still the lower-level connection-management command for
+personal, shared, global, and read-only variants. For the ordinary guarded
+first-run path, prefer `volicord init --host HOST --repo PATH`.
 
 ## Inspect Or Change The Connection
 
@@ -106,6 +111,12 @@ arbitrary external host loaded or approved it.
 
 Agent Connections may request or show focused judgment needs, but
 authority-bearing user answers go through the local `User Channel`:
+
+When the host and client support it, the MCP adapter may use MCP elicitation
+for the pending judgment. When a guarded prompt-capture hook is configured, the
+normal chat path is a strict prompt command such as `Volicord: answer J-3 1`.
+Use the terminal commands below as the stable recovery path when elicitation or
+prompt capture is unavailable.
 
 ```sh
 volicord user status

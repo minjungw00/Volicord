@@ -60,12 +60,13 @@ same Agent-Connection-bound MCP adapter logic as stdio where possible. It is not
 the default MCP transport, not used by generated local non-Docker host
 configuration, and not a general unauthenticated Volicord network service.
 
-The current serve transport is a secure experimental Streamable HTTP-style
-subset. It accepts JSON-RPC over HTTP `POST /mcp` with MCP session headers and
-returns JSON responses. It does not implement server-sent event streams, HTTP
-elicitation, or full MCP Streamable HTTP compatibility. Documentation and
-startup diagnostics must not claim full protocol compatibility until those
-transport features are implemented and tested.
+The current serve transport is an authenticated experimental Streamable
+HTTP-style subset. It accepts JSON-RPC over HTTP `POST /mcp` with MCP session
+headers and bearer-token checks, and returns JSON responses. It does not
+implement server-sent event streams, HTTP elicitation, or full MCP Streamable
+HTTP compatibility. Documentation and startup diagnostics must not claim full
+protocol compatibility until those transport features are implemented and
+tested.
 
 Generated host configuration and generic exports may launch the stdio loop with
 an internal connection binding:

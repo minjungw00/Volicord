@@ -1,8 +1,8 @@
 # Agent Host Setup
 
 Use this guide to connect Codex, Claude Code, or a generic MCP host to
-Volicord. The ordinary path starts with the host, Product Repository, and
-connection intent; Volicord manages the internal host and registry values.
+Volicord. The ordinary guarded path starts with `volicord init`, a host, and a
+Product Repository; Volicord manages the internal host and registry values.
 
 Exact CLI behavior belongs to
 [Administrative CLI Reference](../reference/admin-cli.md). Agent Connection
@@ -16,21 +16,24 @@ Install `volicord` first with [Installation](../getting-started/installation.md)
 then run the host setup sequence:
 
 ```sh
-volicord setup
-volicord doctor
-cd /path/to/your-product-repo
-volicord connect codex
+volicord init --host codex --repo /path/to/your-product-repo
 volicord connection status codex
 ```
 
 `/path/to/your-product-repo` is an example path for the Product Repository where
-you want the agent to work. The connection command detects the
-repository root from the current directory, registers or reuses that repository
-project, derives the visible project name from the repository directory, and
-stores internal registry identities in the selected `Volicord Runtime Home`.
+you want the agent to work. `volicord init` creates or reuses the Runtime Home
+and installation profile when needed, registers or reuses that repository
+project, derives the visible project name from the repository directory,
+installs project-scoped MCP configuration for the selected host, writes
+Volicord-managed guidance and guard integration files, records guard
+installation status, and stores internal registry identities in the selected
+`Volicord Runtime Home`. Generated host configuration starts
+`volicord mcp --stdio`.
 
-Use `--repo PATH` only when the process current directory is not the target
-Product Repository:
+Use `volicord connect` for lower-level connection variants after the
+installation profile is ready, for example when selecting personal, global, or
+read-only behavior directly. Use `--repo PATH` only when the process current
+directory is not the target Product Repository:
 
 ```sh
 volicord connect codex --repo /path/to/your-product-repo
