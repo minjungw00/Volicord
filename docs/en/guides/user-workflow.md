@@ -90,16 +90,17 @@ This loop separates what an agent can do through an [Agent Connection](../refere
 When a choice must become authority-bearing Core state, use a supported
 `User Channel`. Current supported paths are MCP elicitation when the host
 client declares that capability, guarded prompt-capture chat commands when the
-prompt-capture availability is `configured`, `observed`, or `active`, and the
-stable local CLI recovery path `volicord user`. No baseline local web User
-Channel is implemented. Exact command behavior belongs to
+prompt-capture availability is `configured`, `observed`, or `active`, local web
+consent when the adapter can safely expose a loopback one-time-token fallback,
+and the stable local CLI recovery path `volicord user`. Exact command behavior belongs to
 [Administrative CLI](../reference/admin-cli.md#user-channel-commands);
 authority meaning belongs to [Core Model](../reference/core-model.md), and
 Agent Connection boundaries belong to
 [Agent Connection Reference](../reference/agent-connection.md).
 
-When elicitation or prompt capture is unavailable, use this sequence from the
-selected Product Repository when a task has a pending judgment:
+When elicitation, prompt capture, and local web consent are unavailable or need
+manual inspection, use this sequence from the selected Product Repository when a
+task has a pending judgment:
 
 ```sh
 volicord user status
@@ -143,10 +144,12 @@ agent can waive.
 
 Unresolved findings block close. The agent should run
 `volicord.reconcile_changes` when available, show deterministic resolutions and
-any pending judgments, and route acceptance to a supported `User Channel`. CLI
-recovery is `volicord changes reconcile`; if reconciliation creates a pending
-judgment, answer it through the normal User Channel path and rerun
-reconciliation.
+any pending judgments, and route acceptance to a supported `User Channel`.
+Session watcher findings follow the same reconciliation path; the watcher
+detects changed Product Repository paths but does not prevent writes or identify
+the actor. CLI recovery is `volicord changes reconcile`; if reconciliation
+creates a pending judgment, answer it through the normal User Channel path and
+rerun reconciliation.
 
 ## Approve writes and sensitive actions
 

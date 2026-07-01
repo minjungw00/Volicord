@@ -155,9 +155,20 @@ it is unavailable. Volicord tools, MCP server instructions, host rules, and
 `AGENTS.md` guidance help steer the agent, but they do not absolutely force
 model behavior.
 
-## Guarded Mode
+## Protection Modes
 
 `volicord init` defaults to `--mode guarded`.
+
+Volicord reports guard health with a `guard_strength` label. The label is not a
+security proof; it tells you which local protection surface is currently active
+for the selected connection or session.
+
+| User-facing mode or state | Reported strength | What it means now |
+|---|---|---|
+| `--mode mcp-only` without an active watcher | `authority_record_only` | MCP tools, local authority records, setup guidance, and policy metadata are available. No host lifecycle hooks are installed for pre-tool blocking. |
+| `--mode mcp-only` with an active session watcher | `detective_watch` | The session watcher can detect Product Repository changes and create findings, but it does not prevent writes or prove who changed files. |
+| `--mode guarded` after required hooks are configured and observed | `host_hook_guarded` | Project-local host MCP config, host hook/rule config, `AGENTS.md` guidance, `.volicord/policy.json`, guard state, write checks, and close blockers work together. |
+| `--mode managed` with a verified managed distribution | `managed_guarded` | A verified host-managed plugin, bundle, or policy distribution backs the host-hook guarded path. Current Codex and Claude Code setup does not provide that managed distribution contract. |
 
 Guarded mode adds cooperative and detective guard surfaces around the MCP
 workflow:
@@ -167,14 +178,16 @@ workflow:
 | MCP | Gives the host local `volicord.*` tools over `volicord mcp --stdio`, bound to the stored Agent Connection and allowed Product Repository. |
 | `AGENTS.md` | Adds a Volicord-managed guidance block telling agents to check status, start tasks, prepare writes, request user judgment, check close, and report when Volicord tools are unavailable. |
 | `.volicord/policy.json` | Records machine-readable guard command policy for supported lifecycle hooks: session start, pre-tool, post-tool, prompt capture, and stop. |
-| Host hooks and rules | When the host supports them and loads the generated configuration, hooks can inject context, classify tool attempts, warn or deny some unsafe-looking operations, record observed unrecorded changes, capture strict chat judgment commands, and block stop when close blockers remain. Host rule files, such as Claude Code rules, point the host at the policy. |
+| Host hooks and rules | When the host supports them and loads the generated configuration, hooks can inject context, classify tool attempts, warn or deny some unsafe-looking operations, record observed unrecorded changes, capture strict chat judgment commands, and block stop when close blockers remain. Host rule files point the host at the policy. |
 
 Other modes are available:
 
 - `--mode mcp-only` writes MCP configuration and guidance but disables guard
-  commands in policy metadata.
-- `--mode managed` currently uses the same setup surface as `guarded` while
-  recording managed guard mode for integrations that distinguish it.
+  commands in policy metadata. It has no pre-tool blocking hook.
+- `--mode managed` requires a verified managed distribution source. For current
+  Codex and Claude Code contracts, `volicord init --mode managed` fails with
+  `MANAGED_MODE_UNSUPPORTED` instead of treating project-local guarded files as
+  managed mode.
 
 Guarded mode reduces bypass when the host actually runs the configured hooks
 and respects the rules. It is still not OS-level enforcement. It does not
@@ -184,17 +197,27 @@ prove that the model followed instructions.
 Guard installation has separate file and activation phases. `volicord init`
 installs or updates the host configuration, Volicord-managed `AGENTS.md`
 guidance, `.volicord/policy.json`, host hook or rule files, and guard state.
-The host may still need reload, restart, trust, or approval before it runs
-those files. The first matching observed guard hook event activates the
-installation. `volicord connection verify` and `volicord doctor` report file
-health, required host action, and observed activation separately; installed
-files alone do not prove that hooks are active.
+For Codex guarded setup, generated files include project MCP config,
+`.codex/hooks.json`, and `.codex/rules/*.rules`; the host may still require
+project trust, hook trust, restart, or reload before rules and hooks run. For
+Claude Code guarded setup, generated files include `.mcp.json`,
+`.claude/settings.json`, and `.claude/rules/*.md`; Volicord merges managed
+settings without owning unrelated settings, and the host may still require
+project MCP approval, workspace trust, or settings reload. The first matching
+observed guard hook event activates the installation. `volicord connection
+verify` and `volicord doctor` report file health, required host action, and
+observed activation separately; installed files, `AGENTS.md`, and
+`.volicord/policy.json` alone do not prove that hooks are active.
 
 ## Unrecorded Changes And Close Blockers
 
-Guarded hooks can report unrecorded Product Repository changes when a product
-file changes without a matching expected write. Those findings remain guard
-findings until reconciled, and unresolved findings block close.
+Guarded hooks and an active session watcher can report unrecorded Product
+Repository changes when a product file changes without a matching expected
+write. Session watcher findings come from bounded product-file metadata
+comparison for the selected session. They detect changed paths; they do not
+store full file contents, prove who changed a file, prove intent, or prevent
+writes. Those findings remain guard findings until reconciled, and unresolved
+findings block close.
 
 Reconciliation can resolve deterministic cases, such as a finding already
 covered by a compatible `Write Check` or recorded run. If acceptance is needed,
@@ -216,7 +239,8 @@ Supported capture paths:
 |---|---|
 | MCP elicitation | If the initialized MCP client declares `capabilities.elicitation`, Volicord can send an `elicitation/create` request for a focused pending judgment. A valid response is recorded through the local `User Channel` with user provenance. |
 | Chat prompt capture | If elicitation is unavailable and prompt-capture availability is `configured`, `observed`, or `active`, Volicord returns exact chat commands such as `Volicord: answer J-3 1 #AB7K`, `Volicord: answer J-3 reject #AB7K`, `Volicord: answer J-3 defer #AB7K`, or `Volicord: note J-3 "text" #AB7K`. The prompt-capture hook records only strict valid commands with the current verification code. |
-| CLI fallback | If chat capture is unavailable, disabled, degraded, or needs inspection, use `volicord user` from the Product Repository. |
+| Local web consent | If elicitation and prompt capture are unavailable and the adapter can safely expose the fallback, Volicord returns a loopback-only consent URL. The URL uses a short-lived one-time token tied to the project, connection, and pending judgment; a valid answer is recorded through the `User Channel` with local user provenance. |
+| CLI fallback | If elicitation, chat capture, and local web consent are unavailable, disabled, degraded, or need inspection, use `volicord user` from the Product Repository. |
 
 CLI fallback example:
 
@@ -227,8 +251,9 @@ volicord user judgment show 1
 volicord user judgment answer 1 1
 ```
 
-There is no separate local web judgment UI documented in this checkout. The
-experimental HTTP MCP serve mode also does not implement HTTP elicitation.
+Local web consent is separate from MCP elicitation. The experimental HTTP MCP
+serve mode still does not implement HTTP elicitation, and local web consent is
+available only on loopback endpoints with a valid consent token.
 
 ## What Volicord Does Not Guarantee
 
@@ -240,6 +265,7 @@ or correctness oracle. Do not rely on Volicord for:
 - network isolation, network monitoring, or network blocking
 - prevention of all product-file writes
 - universal pre-tool blocking or full filesystem monitoring
+- tamper-proof audit logging
 - proof that code is correct
 - proof that tests are sufficient
 - replacement for human review, QA, release judgment, or risk judgment

@@ -248,7 +248,7 @@ The production meanings below apply only after the method reaches close-readines
 
 These codes are method-local `CloseReadinessBlocker.code` values. They are not public `ErrorCode` values, not `WriteDecisionReason.code` values, and not global value-set entries.
 
-For `pending_user_judgment`, blocker next actions may point to available User Channel answer paths, including MCP elicitation, prompt-capture chat commands, or local user commands when those paths are available. The blocker does not authorize an Agent Connection to answer the user-owned judgment.
+For `pending_user_judgment`, blocker next actions may point to available User Channel answer paths, including MCP elicitation, prompt-capture chat commands, local web consent, or local user commands when those paths are available. The blocker does not authorize an Agent Connection to answer the user-owned judgment.
 
 ## Blocked result
 

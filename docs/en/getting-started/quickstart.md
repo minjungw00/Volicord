@@ -25,7 +25,11 @@ Generated host configuration starts the single public executable as
 `volicord mcp --stdio`.
 
 This fast path uses `--mode mcp-only`, which does not require host lifecycle
-hook installation. Default `guarded` init requires verified support for all
+hook installation and has no pre-tool blocking hook. If a session watcher
+becomes active for the selected session, guard health may report
+`detective_watch` and create unrecorded-change findings from Product Repository
+metadata changes, but the watcher does not prevent writes or identify who made
+the change. Default `guarded` init requires verified support for all
 required host hook phases; if support is missing, use `--allow-degraded` only
 when you explicitly want degraded guard files and missing-hook diagnostics.
 Managed init additionally requires a verified managed distribution contract and
@@ -119,8 +123,11 @@ authority-bearing user answers go through the local `User Channel`:
 When the host and client support it, the MCP adapter may use MCP elicitation
 for the pending judgment. When guard health reports prompt capture as
 `configured`, `observed`, or `active`, the chat path is a strict prompt command
-such as `Volicord: answer J-3 1 #AB7K`. Use the terminal commands below as the
-stable recovery path when elicitation and prompt capture are unavailable.
+such as `Volicord: answer J-3 1 #AB7K`. When elicitation and prompt capture are
+unavailable and the adapter can safely expose the fallback, Volicord may return
+a loopback local web consent URL with a short-lived one-time token. Use the
+terminal commands below as the stable recovery path when elicitation, prompt
+capture, and local web consent are unavailable or need inspection.
 
 ```sh
 volicord user status

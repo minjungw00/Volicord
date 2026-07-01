@@ -139,7 +139,7 @@ Core 소유 결정적 basis:
 
 `superseded_by_new_observation` 같은 예약 또는 향후 담당자 정의 basis와 그 밖의 나열된 basis는 담당자가 정의한 검증이 구현된 경우에만 저장할 수 있습니다. 이 메서드는 그 검증이 안전하고 담당자가 정의하지 않은 한 파일시스템 되돌리기나 파일시스템 탐색 basis를 구현하면 안 됩니다.
 
-아직 수락이 필요한 찾기에 대해 Core는 이를 수락하지 않고 대기 `UserJudgment` 행을 만듭니다. 기존 User Channel 경로는 이 판단에 답할 수 있습니다. 여기에는 초기화된 클라이언트가 지원하는 경우 MCP elicitation 흐름, prompt-capture 사용 가능 상태가 `configured`, `observed`, `active`일 때의 guarded prompt-capture 명령 처리, CLI 복구용 로컬 `volicord user` 명령이 포함됩니다. 사용자 소유 판단이 해결된 뒤 `volicord.reconcile_changes`는 연결된 찾기를 `accepted_by_user`로 해결할 수 있습니다.
+아직 수락이 필요한 찾기에 대해 Core는 이를 수락하지 않고 대기 `UserJudgment` 행을 만듭니다. 기존 User Channel 경로는 이 판단에 답할 수 있습니다. 여기에는 초기화된 클라이언트가 지원하는 경우 MCP elicitation 흐름, prompt-capture 사용 가능 상태가 `configured`, `observed`, `active`일 때의 guarded prompt-capture 명령 처리, adapter가 안전하게 노출할 수 있을 때의 loopback local web consent, CLI 복구용 로컬 `volicord user` 명령이 포함됩니다. 사용자 소유 판단이 해결된 뒤 `volicord.reconcile_changes`는 연결된 찾기를 `accepted_by_user`로 해결할 수 있습니다.
 
 ## 거절 결과
 

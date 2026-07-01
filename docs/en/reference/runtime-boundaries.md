@@ -85,7 +85,10 @@ The only baseline exceptions are explicitly requested integration files:
 - project-scoped host configuration, such as Codex `.codex/config.toml` or Claude Code `.mcp.json`
 - a Volicord-managed block in `AGENTS.md`
 - a repository-local Volicord guard policy file at `.volicord/policy.json`
-- a Volicord-managed Claude Code rule file under `.claude/rules/`
+- host hook configuration, such as Codex `.codex/hooks.json` or Claude Code
+  `.claude/settings.json`
+- Volicord-managed host rule files, such as Codex `.codex/rules/*.rules` or
+  Claude Code files under `.claude/rules/`
 
 Rules:
 

@@ -318,6 +318,16 @@ path.
   contract, init fails with `MANAGED_MODE_UNSUPPORTED` and does not generate
   project-local guarded files as a managed substitute.
 
+Guard-aware setup, status, verification, and doctor output report
+`guard_strength` as the derived current protection label:
+
+| `guard_strength` | Meaning |
+|---|---|
+| `authority_record_only` | Volicord can record authority state, but no active session watcher or observed full host hook guard is available for the selected view. |
+| `detective_watch` | A session watcher is active and can create unrecorded-change findings from Product Repository changes; it cannot pre-block writes or identify the actor. |
+| `host_hook_guarded` | The selected project-local guarded host hooks are configured and observed for all required lifecycle phases. |
+| `managed_guarded` | The host-hook guarded condition is met and the selected managed distribution metadata is verified. Current Codex and Claude Code setup does not reach this label without a future verified managed distribution contract. |
+
 Full `guarded` initialization requires the selected host adapter to declare and
 verify support for every required lifecycle hook:
 `session-start`, `pre-tool`, `post-tool`, `prompt-capture`, and `stop`.
@@ -358,7 +368,8 @@ Non-dry-run `volicord init`:
   `volicord guard`
 - writes supported host hook files such as `.codex/hooks.json` or
   `.claude/settings.json`
-- writes supported host rule files such as `.claude/rules/volicord.md`
+- writes supported host rule files such as `.codex/rules/*.rules` or
+  `.claude/rules/volicord.md`
 - records guard installation status in the Runtime Home registry
 - rejects non-`mcp-only` guarded initialization when required host hook
   configuration is missing unless `--allow-degraded` was explicitly supplied
@@ -572,9 +583,12 @@ is the preferred interactive path for pending judgments created through
 `volicord.request_user_judgment`. If elicitation is unavailable and
 prompt-capture availability is `configured`, `observed`, or `active`, fallback
 guidance may show exact chat commands such as `Volicord: answer J-3 1 #AB7K`
-with the current verification code. The terminal `volicord user` commands
-remain the local recovery and manual-inspection path when elicitation or prompt
-capture is unavailable, disabled, degraded, or inappropriate for the workflow.
+with the current verification code. If both elicitation and prompt capture are
+unavailable and the adapter can safely expose local web consent, fallback
+guidance may show a loopback consent URL backed by a short-lived one-time token.
+The terminal `volicord user` commands remain the local recovery and
+manual-inspection path when elicitation, prompt capture, or local web consent is
+unavailable, disabled, degraded, or inappropriate for the workflow.
 
 Project selection uses `--repo PATH` or the current working directory's
 repository root. Task selection uses the active task by default; `--task active`

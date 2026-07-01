@@ -90,15 +90,15 @@ Volicord는 사용자가 평소 말로 일하면서도 판단 경계를 볼 수 
 어떤 선택이 권한을 지니는 Core 상태가 되어야 한다면 지원되는 `User Channel`을
 사용합니다. 현재 지원되는 경로는 호스트 클라이언트가 그 capability를 선언했을 때의
 MCP elicitation, prompt-capture 사용 가능 상태가 `configured`, `observed`, `active`일
-때의 guarded prompt-capture 채팅 명령, 그리고 안정적인 로컬 CLI 복구 경로인
-`volicord user`입니다. 기준 local web `User Channel`은 구현되어 있지 않습니다.
-정확한 명령 동작은
+때의 guarded prompt-capture 채팅 명령, adapter가 loopback 일회성 token fallback을
+안전하게 노출할 수 있을 때의 local web consent, 그리고 안정적인 로컬 CLI 복구 경로인
+`volicord user`입니다. 정확한 명령 동작은
 [관리 CLI](../reference/admin-cli.md#user-channel-commands)가 담당하고, 권한 의미는
 [Core 모델](../reference/core-model.md)이 담당하며, Agent Connection 경계는
 [Agent Connection 참조](../reference/agent-connection.md)가 담당합니다.
 
-elicitation이나 prompt capture를 사용할 수 없고 작업에 대기 중인 판단이 있으면 선택된
-Product Repository에서 아래 순서로 진행합니다.
+elicitation, prompt capture, local web consent를 사용할 수 없거나 수동 점검이 필요하고
+작업에 대기 중인 판단이 있으면 선택된 Product Repository에서 아래 순서로 진행합니다.
 
 ```sh
 volicord user status
@@ -136,9 +136,10 @@ Product Repository 변경을 드러낼 수 있습니다. 이를 악의적 동작
 
 미해결 찾기는 닫기를 막습니다. 에이전트는 사용할 수 있으면
 `volicord.reconcile_changes`를 실행하고, 결정적 해결과 대기 판단을 보여 주며, 수락은
-지원되는 `User Channel`로 보내야 합니다. CLI 복구 경로는
-`volicord changes reconcile`입니다. 조정이 대기 판단을 만들면 일반 User Channel 경로로
-답하고 조정을 다시 실행합니다.
+지원되는 `User Channel`로 보내야 합니다. Session watcher 찾기도 같은 조정 경로를
+따릅니다. watcher는 변경된 Product Repository 경로를 감지하지만 쓰기를 막거나 행위자를
+식별하지 않습니다. CLI 복구 경로는 `volicord changes reconcile`입니다. 조정이 대기
+판단을 만들면 일반 User Channel 경로로 답하고 조정을 다시 실행합니다.
 
 ## 쓰기와 민감 동작 승인하기
 

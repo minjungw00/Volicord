@@ -61,9 +61,16 @@ Agent setup through the ordinary
 - record guard installation state
 - run setup verification and report `complete`, `action_required`, or `failed`
 
-Full guarded or managed setup is a separate `volicord init` mode. It requires
-verified support for the required host lifecycle hooks or an explicit degraded
-opt-in, as defined by [Administrative CLI](../reference/admin-cli.md).
+`mcp-only` setup records authority state and exposes MCP tools without
+pre-tool blocking. If a session watcher is active for a selected session,
+guard health may report `detective_watch` and create unrecorded-change findings
+from Product Repository metadata changes; the watcher does not prevent writes
+or identify the actor. Full `guarded` setup is a separate `volicord init` mode
+that requires verified support for the required host lifecycle hooks or an
+explicit degraded opt-in. `managed` setup additionally requires a verified
+managed distribution contract; current Codex and Claude Code setup reports
+`MANAGED_MODE_UNSUPPORTED` when that contract is absent. Exact mode behavior is
+defined by [Administrative CLI](../reference/admin-cli.md).
 
 `volicord setup` remains the installation-profile preparation and repair path.
 `volicord connect` remains the lower-level connection-management command for

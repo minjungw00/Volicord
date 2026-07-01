@@ -248,7 +248,7 @@ CloseTaskRequest:
 
 이 코드는 메서드 로컬 `CloseReadinessBlocker.code` 값입니다. 공개 `ErrorCode` 값, `WriteDecisionReason.code` 값, 전역 값 집합 항목이 아닙니다.
 
-`pending_user_judgment`의 경우 차단 사유의 다음 행동은 사용할 수 있는 User Channel 답변 경로를 가리킬 수 있습니다. 여기에는 사용할 수 있을 때 MCP elicitation, prompt-capture 채팅 명령, 로컬 사용자 명령이 포함됩니다. 이 차단 사유는 Agent Connection이 사용자 소유 판단에 답하도록 권한을 부여하지 않습니다.
+`pending_user_judgment`의 경우 차단 사유의 다음 행동은 사용할 수 있는 User Channel 답변 경로를 가리킬 수 있습니다. 여기에는 사용할 수 있을 때 MCP elicitation, prompt-capture 채팅 명령, local web consent, 로컬 사용자 명령이 포함됩니다. 이 차단 사유는 Agent Connection이 사용자 소유 판단에 답하도록 권한을 부여하지 않습니다.
 
 ## 차단 결과
 

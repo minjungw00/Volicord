@@ -41,6 +41,18 @@ directory is not the target Product Repository:
 volicord connect codex --repo /path/to/your-product-repo
 ```
 
+## Protection Levels
+
+Guard health reports the strongest active protection surface for the selected
+connection or session:
+
+| `guard_strength` | How it is reached | Operational meaning |
+|---|---|---|
+| `authority_record_only` | MCP tools and authority records are available without an active session watcher or observed full host hook guard. | No pre-tool blocking. Setup guidance and policy metadata can steer the host but cannot force it. |
+| `detective_watch` | A session watcher is active for the selected session. | Product Repository metadata changes can create findings that feed reconciliation and close readiness, but the watcher does not prevent writes or identify the actor. |
+| `host_hook_guarded` | Required project-local host hook phases are configured and observed. | Pre-tool decisions, post-tool correlation, prompt capture, guard state, and close/write blockers can participate in the workflow. |
+| `managed_guarded` | `host_hook_guarded` is active and a verified managed distribution source is recorded. | Reserved for supported host-managed plugin, bundle, or policy distribution. Current Codex and Claude Code setup does not reach this label. |
+
 ## Guard Lifecycle
 
 In guarded mode, setup and activation are separate. `volicord init` installs or
@@ -48,6 +60,16 @@ updates MCP host configuration, Volicord-managed `AGENTS.md` guidance,
 `.volicord/policy.json`, host hook or rule files, and guard installation state.
 The host may still need reload, restart, trust, project MCP approval, or another
 host-owned action before those files run.
+
+Current verified guarded adapters are host-specific:
+
+- Codex guarded setup writes project MCP configuration, `.codex/hooks.json`,
+  and `.codex/rules/*.rules`. The host may require project trust, hook trust,
+  and restart or reload before the generated rule and hook files run.
+- Claude Code guarded setup writes `.mcp.json`, `.claude/settings.json`, and
+  `.claude/rules/*.md`. Settings writes preserve unrelated settings and merge
+  Volicord-managed entries; the host may require project MCP approval, workspace
+  trust, and settings reload before the generated hook and rule files run.
 
 Default `guarded` init must be able to install and verify all required host
 lifecycle hook phases. When the selected Codex or Claude Code adapter does not
