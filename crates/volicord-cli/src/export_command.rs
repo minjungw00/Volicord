@@ -328,7 +328,7 @@ fn required_installation_profile(
 ) -> Result<InstallationProfileRecord, ExportCommandError> {
     installation_profile(runtime_home)?.ok_or_else(|| {
         ExportCommandError::runtime(format!(
-            "SETUP_REQUIRED: installation profile is missing for Runtime Home {}; run `volicord setup` before export workflows",
+            "SETUP_REQUIRED: installation profile is missing for Runtime Home {}; run `volicord init --host <host> --repo <path>` for the primary host setup. Use `volicord setup` only for installation-profile repair before export workflows.",
             runtime_home.display()
         ))
     })

@@ -92,9 +92,9 @@ stores the MCP launch command, and checks whether the selected command is
 available on `PATH` for future terminals and agent hosts. Exact setup options,
 MCP launch command behavior, and output behavior belong to
 [Administrative CLI Reference](../reference/admin-cli.md#runtime-home-selection).
-Its status answers whether the guided first-run setup experience still needs a
-named user action, so `action_required` can appear even after the installation
-profile has been saved.
+Its status answers whether installation-profile preparation still needs a named
+user action, so `action_required` can appear even after the installation profile
+has been saved.
 
 In an interactive terminal, setup may offer command-availability choices when
 the selected executable is not ready on `PATH`:
@@ -143,7 +143,7 @@ setup readiness:
 volicord doctor
 ```
 
-`doctor` reports installation-profile health, not first-run setup progress. It
+`doctor` reports installation-profile health, not primary `init` progress. It
 reports `complete` when the saved profile is usable, even if it also reports
 command-availability warnings or recommended `PATH` and command-link actions
 for future shells or agent hosts. `action_required` names a blocking local

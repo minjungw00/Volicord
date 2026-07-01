@@ -23,10 +23,10 @@ volicord connections
 확인하려는 project, connection, export, user 명령에 `--repo PATH`를 추가합니다.
 
 `volicord setup`과 `volicord doctor`는 서로 다른 상태 질문에 답합니다. setup은
-안내형 첫 실행 설정 경험에 사용자 동작이 아직 필요한지를 보고합니다. doctor는 저장된
-설치 프로필을 사용할 수 있는지를 보고합니다. 따라서 프로필을 사용할 수 있으면
-doctor가 `complete`를 보고하면서도 이후 셸이나 에이전트 호스트를 위한 명령 가용성
-경고 또는 권장 `PATH`와 명령 링크 동작을 함께 보여 줄 수 있습니다.
+설치 프로필 준비에 사용자 동작이 아직 필요한지를 보고합니다. doctor는 저장된 설치
+프로필을 사용할 수 있는지를 보고합니다. 따라서 프로필을 사용할 수 있으면 doctor가
+`complete`를 보고하면서도 이후 셸이나 에이전트 호스트를 위한 명령 가용성 경고 또는
+권장 `PATH`와 명령 링크 동작을 함께 보여 줄 수 있습니다.
 
 ## 설정이 완료되지 않음
 
@@ -112,8 +112,7 @@ volicord project use
 또는 Product Repository를 명시적으로 선택합니다.
 
 ```sh
-volicord project use /path/to/your-product-repo
-volicord connect codex --repo /path/to/your-product-repo
+volicord init --host codex --repo /path/to/your-product-repo
 ```
 
 `/path/to/your-product-repo`는 에이전트에게 작업을 요청할 Product Repository의 경로
@@ -156,13 +155,13 @@ global 연결 의도를 지원합니다.
 제한된 복구:
 
 ```sh
-volicord connection status codex
-volicord connection verify codex
+volicord connection status codex --repo /path/to/your-product-repo
+volicord connection verify codex --repo /path/to/your-product-repo
 ```
 
 보고된 동작을 읽고 그 호스트 소유 단계만 완료합니다. 흔한 동작에는 호스트 항목
 신뢰, 프로젝트 MCP 항목 승인, 호스트 로그인, 호스트 reload, 호스트 restart,
-`volicord setup` 재실행이 있습니다. 그런 다음 verification을 다시 실행합니다.
+설치 프로필 복구가 있습니다. 그런 다음 verification을 다시 실행합니다.
 
 `action_required`를 치명적 실패로 다루지 않습니다. 오래 유지되는 Volicord 쪽 상태가
 이미 있을 수 있습니다.
@@ -208,7 +207,7 @@ Setup 프롬프트나 `action_required`가 이름 붙인 명령 가용성 단계
 
 ```sh
 volicord doctor
-volicord connection verify codex
+volicord connection verify codex --repo /path/to/your-product-repo
 ```
 
 `volicord setup`은 관리 호스트 설정과 generic export가 사용할 MCP 명령을 기록하는

@@ -132,8 +132,9 @@ volicord mcp --version
 volicord mcp --help
 ```
 
-Host configuration uses MCP command information established by `volicord init`
-or `volicord setup`.
+Host configuration normally uses MCP command information established by
+`volicord init`; `volicord setup` can prepare or repair that installation
+profile directly.
 For exact `--mcp-command`, discovery-order, `--link-bin`, connection, and
 generic export behavior, use
 [Administrative CLI](admin-cli.md#runtime-home-selection) and
@@ -141,7 +142,8 @@ generic export behavior, use
 
 Requirement summary:
 
-- Setup must be able to find `volicord`.
+- The installation profile must identify a `volicord` command that can be
+  found.
 - Future host processes must be able to start the configured `volicord`
   command with `mcp --stdio --connection <connection_id>` arguments.
 - Shared project host configuration must not embed a personal Runtime Home
@@ -158,7 +160,7 @@ Before installation:
 
 - Select a Runtime Home that is not the `Product Repository` and is not inside or above the `Product Repository`.
 - Ensure the selected user can create the directory or write into it when running `volicord init`, `volicord setup`, `volicord project use`, `volicord connect`, or `volicord connection verify`.
-- Ensure future `volicord mcp --stdio` host processes receive the same Runtime Home selection when the default `$HOME/.volicord` is not the intended location. Shared project host configuration must not carry a personal Runtime Home path, so each user must provide a non-default Runtime Home through their own local setup or environment.
+- Ensure future `volicord mcp --stdio` host processes receive the same Runtime Home selection when the default `$HOME/.volicord` is not the intended location. Shared project host configuration must not carry a personal Runtime Home path, so each user must provide a non-default Runtime Home through their own local init, profile setup, or environment.
 
 Runtime Home selection and exact creation behavior are owned by [Administrative CLI](admin-cli.md) and [MCP Transport](mcp-transport.md). Runtime location and separation rules are owned by [Runtime Boundaries](runtime-boundaries.md).
 

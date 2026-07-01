@@ -184,7 +184,7 @@ Host trust and approval decisions belong to the external host and the user. Voli
 
 May claim:
 - managed host configuration state verification can distinguish `complete` from `action_required` and `failed` when the administrative CLI can observe the required checks.
-- `action_required` can name setup repair, command-link repair, host trust, approval, restart, reload, or comparable user-controlled actions when those actions are the remaining observable blocker.
+- `action_required` can name installation-profile repair, command-link repair, host trust, approval, restart, reload, or comparable user-controlled actions when those actions are the remaining observable blocker.
 - MCP server instructions and optional repository guidance can describe how an agent should select projects and tools.
 
 Must not claim:

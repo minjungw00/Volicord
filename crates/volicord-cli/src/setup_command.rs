@@ -1802,11 +1802,9 @@ fn append_setup_next_action(output: &mut String, report: &SetupReport) {
 
 fn setup_status_meaning(status: SetupStatus) -> &'static str {
     match status {
-        SetupStatus::Complete => "first-run setup experience is complete",
-        SetupStatus::ActionRequired => {
-            "setup still needs a named user action before first-run setup is complete"
-        }
-        SetupStatus::Failed => "setup could not complete the first-run setup experience",
+        SetupStatus::Complete => "installation profile setup is complete",
+        SetupStatus::ActionRequired => "installation profile setup needs a named user action",
+        SetupStatus::Failed => "installation profile setup could not complete",
     }
 }
 

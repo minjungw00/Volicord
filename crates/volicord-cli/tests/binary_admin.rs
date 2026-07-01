@@ -235,7 +235,7 @@ fn setup_and_doctor_report_installation_profile() -> Result<(), Box<dyn Error>> 
     assert_eq!(setup_json["status"], "action_required");
     assert_eq!(
         setup_json["status_meaning"],
-        "setup still needs a named user action before first-run setup is complete"
+        "installation profile setup needs a named user action"
     );
     assert_eq!(setup_json["setup_report"]["status"], "action_required");
     assert_eq!(
@@ -370,9 +370,7 @@ fn setup_plain_non_tty_reports_actions_without_prompting_or_shell_edits(
     assert_success(&output);
     let text = stdout(&output);
     assert!(text.contains("Volicord setup action_required"));
-    assert!(text.contains(
-        "status_meaning: setup still needs a named user action before first-run setup is complete"
-    ));
+    assert!(text.contains("status_meaning: installation profile setup needs a named user action"));
     assert!(text.contains("command_state: action_required"));
     assert!(text.contains("next_action:"));
     assert!(text.contains("optional_action_count:"));
@@ -396,21 +394,23 @@ fn doctor_without_setup_reports_action_required() -> Result<(), Box<dyn Error>> 
     assert_eq!(value["status"], "action_required");
     assert_eq!(
         value["status_meaning"],
-        "local setup or profile repair is required before Volicord workflows are usable"
+        "local init or profile repair is required before Volicord workflows are usable"
     );
     assert!(value["actions"]
         .as_array()
         .expect("actions should be an array")
         .iter()
-        .any(|action| action["id"] == "run_setup"));
-    assert_eq!(value["primary_next_action"]["id"], "run_setup");
+        .any(|action| action["id"] == "run_init"));
+    assert_eq!(value["primary_next_action"]["id"], "run_init");
     assert_eq!(value["primary_next_action"]["requirement"], "required");
     let doctor_text = run_with_home_env(runtime_home.path(), ["doctor"], &[])?;
     assert_success(&doctor_text);
     let text = stdout(&doctor_text);
     assert!(text.contains("runtime_home_state: ready"));
     assert!(text.contains("installation_profile_state: missing_or_invalid"));
-    assert!(text.contains("next_action: Run volicord setup"));
+    assert!(text.contains("mcp_config_state: unknown"));
+    assert!(text.contains("prompt_capture_state: not_checked"));
+    assert!(text.contains("next_action: Run volicord init --host <host> --repo <path>"));
     assert_eq!(fs::read_dir(runtime_home.path())?.count(), 0);
     Ok(())
 }
@@ -560,6 +560,33 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     let projects = list_connection_projects(runtime_home.path(), &connection_id)?;
     assert_eq!(projects.len(), 1);
     assert_eq!(projects[0].project.repo_root, repo_root);
+
+    let status_without_intent = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connection",
+            "status",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--json",
+        ],
+        &[],
+    )?;
+    assert_success(&status_without_intent);
+    let status_without_intent_json = json_stdout(&status_without_intent)?;
+    assert_eq!(
+        status_without_intent_json["connection"]["connection_id"],
+        connection_id
+    );
+    assert_eq!(
+        status_without_intent_json["connection"]["connection_intent"],
+        "shared"
+    );
+    assert_eq!(
+        status_without_intent_json["primary_next_action"]["id"],
+        "guard_capability_degraded"
+    );
 
     let config = fs::read_to_string(repo_root.join(".codex/config.toml"))?;
     assert!(config.contains(&format!(
@@ -774,7 +801,7 @@ fn ordinary_command_before_setup_instructs_setup() -> Result<(), Box<dyn Error>>
     let output = run_with_home_env(runtime_home.path(), ["project", "list"], &[])?;
 
     assert!(!output.status.success());
-    assert!(stderr(&output).contains("run `volicord setup`"));
+    assert!(stderr(&output).contains("volicord init --host <host> --repo <path>"));
     Ok(())
 }
 
@@ -1152,15 +1179,14 @@ fn connection_verify_reports_missing_mcp_config_as_primary_action() -> Result<()
     let runtime_home = TempRuntimeHome::new("cli-bin-connection-missing-mcp")?;
     let repo_root = create_git_repo(&runtime_home, "product-repo")?;
     let bin_dir = runtime_home.path().join("bin");
-    let codex_home = runtime_home.path().join("codex-home");
     write_fake_codex(&bin_dir)?;
-    let mcp = write_fake_mcp(&bin_dir)?;
-    assert_success(&run_setup(runtime_home.path(), &mcp)?);
+    write_fake_mcp(&bin_dir)?;
 
-    let connect = run_with_home_env(
+    let init = run_with_home_env(
         runtime_home.path(),
         [
-            "connect",
+            "init",
+            "--host",
             "codex",
             "--repo",
             path_text(&repo_root).as_str(),
@@ -1168,12 +1194,11 @@ fn connection_verify_reports_missing_mcp_config_as_primary_action() -> Result<()
         ],
         &[
             ("PATH", path_env(&[bin_dir.as_path()])),
-            ("CODEX_HOME", path_text(&codex_home)),
             ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
         ],
     )?;
-    assert_success(&connect);
-    fs::remove_file(codex_home.join("config.toml"))?;
+    assert_success(&init);
+    fs::remove_file(repo_root.join(".codex/config.toml"))?;
 
     let verify = run_with_home_env(
         runtime_home.path(),
@@ -1187,7 +1212,6 @@ fn connection_verify_reports_missing_mcp_config_as_primary_action() -> Result<()
         ],
         &[
             ("PATH", path_env(&[bin_dir.as_path()])),
-            ("CODEX_HOME", path_text(&codex_home)),
             ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
         ],
     )?;
@@ -1198,8 +1222,15 @@ fn connection_verify_reports_missing_mcp_config_as_primary_action() -> Result<()
     assert_eq!(value["primary_next_action"]["id"], "mcp_config_missing");
     assert_eq!(
         value["primary_next_action"]["command"],
-        format!("volicord connect codex --repo {}", path_text(&repo_root))
+        format!(
+            "volicord init --host codex --repo {}",
+            path_text(&repo_root)
+        )
     );
+    assert!(value["primary_next_action"]["instruction"]
+        .as_str()
+        .expect("instruction should be text")
+        .contains("volicord init --host codex --repo"));
     Ok(())
 }
 

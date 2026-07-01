@@ -701,8 +701,8 @@ struct ParsedInitOptions {
 #[derive(Debug, Clone)]
 struct ConnectionSelector {
     host_kind: HostKind,
-    intent: ConnectionIntent,
-    host_scope: HostScope,
+    intent: Option<ConnectionIntent>,
+    host_scope: Option<HostScope>,
     repo_root: PathBuf,
 }
 
@@ -1528,8 +1528,14 @@ fn connection_selector(
     process: &impl ConnectionProcess,
 ) -> Result<ConnectionSelector, ConnectionCommandError> {
     let host_kind = resolve_connection_host(parsed.host_kind, process)?;
-    let intent = connection_intent_from_flags(parsed)?;
-    let host_scope = host_scope_for_intent(host_kind, intent)?;
+    let intent = if parsed.shared || parsed.global {
+        Some(connection_intent_from_flags(parsed)?)
+    } else {
+        None
+    };
+    let host_scope = intent
+        .map(|intent| host_scope_for_intent(host_kind, intent))
+        .transpose()?;
     let repo_root = resolve_connection_repo_root(current_dir, parsed.repo.as_deref())?;
     Ok(ConnectionSelector {
         host_kind,
@@ -1672,19 +1678,26 @@ fn select_connection(
 ) -> Result<(AgentConnectionRecord, Vec<ConnectionProjectRecord>), ConnectionCommandError> {
     if project_record_by_repo_root(runtime_home, &selector.repo_root)?.is_none() {
         return Err(ConnectionCommandError::runtime(format!(
-            "PROJECT_NOT_REGISTERED: repository {} is not registered; run `volicord connect {}{} --repo {}` first",
+            "PROJECT_NOT_REGISTERED: repository {} is not registered; run `{}` first",
             selector.repo_root.display(),
-            public_host_label(selector.host_kind),
-            intent_flag_suffix(selector.intent),
-            selector.repo_root.display()
+            selector_repair_command(selector)
         )));
     }
     let mut matches = Vec::new();
     let mut same_host_connections = Vec::new();
     for connection in list_agent_connections(runtime_home)? {
-        if connection.host_kind != selector.host_kind.as_str()
-            || connection.intent != selector.intent.as_str()
-            || connection.host_scope != selector.host_scope.as_str()
+        if connection.host_kind != selector.host_kind.as_str() {
+            continue;
+        }
+        if selector
+            .intent
+            .is_some_and(|intent| connection.intent != intent.as_str())
+        {
+            continue;
+        }
+        if selector
+            .host_scope
+            .is_some_and(|scope| connection.host_scope != scope.as_str())
         {
             continue;
         }
@@ -1699,20 +1712,16 @@ fn select_connection(
     }
     match matches.len() {
         0 if same_host_connections.is_empty() => Err(ConnectionCommandError::runtime(format!(
-            "CONNECTION_NOT_FOUND: no Agent Connection matches host {}, intent {}, and repository {}; run `volicord connect {}{} --repo {}`",
+            "CONNECTION_NOT_FOUND: no Agent Connection matches host {}, intent {}, and repository {}; run `{}`",
             public_host_label(selector.host_kind),
-            selector.intent.as_str(),
+            selector_intent_text(selector),
             selector.repo_root.display(),
-            public_host_label(selector.host_kind),
-            intent_flag_suffix(selector.intent),
-            selector.repo_root.display()
+            selector_repair_command(selector)
         ))),
         0 => Err(ConnectionCommandError::runtime(format!(
-            "CONNECTION_ALLOWLIST_MISMATCH: repository {} is not in the selected Agent Connection project allowlist; run `volicord connect {}{} --repo {}`",
+            "CONNECTION_ALLOWLIST_MISMATCH: repository {} is not in the selected Agent Connection project allowlist; run `{}`",
             selector.repo_root.display(),
-            public_host_label(selector.host_kind),
-            intent_flag_suffix(selector.intent),
-            selector.repo_root.display()
+            selector_repair_command(selector)
         ))),
         1 => Ok(matches.remove(0)),
         _ => Err(ConnectionCommandError::runtime(ambiguous_selector_message(
@@ -1737,6 +1746,29 @@ fn intent_flag_suffix(intent: ConnectionIntent) -> &'static str {
     }
 }
 
+fn selector_intent_text(selector: &ConnectionSelector) -> &'static str {
+    selector
+        .intent
+        .map(|intent| intent.as_str())
+        .unwrap_or("any")
+}
+
+fn selector_repair_command(selector: &ConnectionSelector) -> String {
+    match selector.intent {
+        Some(intent @ (ConnectionIntent::Personal | ConnectionIntent::Global)) => format!(
+            "volicord connect {}{} --repo {}",
+            public_host_label(selector.host_kind),
+            intent_flag_suffix(intent),
+            selector.repo_root.display()
+        ),
+        Some(ConnectionIntent::Shared) | None => format!(
+            "volicord init --host {} --repo {}",
+            public_host_label(selector.host_kind),
+            selector.repo_root.display()
+        ),
+    }
+}
+
 fn ambiguous_target_message(connections: &[AgentConnectionRecord]) -> String {
     let mut message = String::from("host target matches multiple Agent Connections; choices:\n");
     for connection in connections {
@@ -1758,7 +1790,7 @@ fn ambiguous_selector_message(
     let mut message = format!(
         "connection selector is ambiguous for host {}, intent {}, repository {}; choices:\n",
         public_host_label(selector.host_kind),
-        selector.intent.as_str(),
+        selector_intent_text(selector),
         selector.repo_root.display()
     );
     for (connection, projects) in matches {
@@ -1844,7 +1876,7 @@ fn required_installation_profile(
 ) -> Result<InstallationProfileRecord, ConnectionCommandError> {
     installation_profile(runtime_home)?.ok_or_else(|| {
         ConnectionCommandError::runtime(format!(
-            "SETUP_REQUIRED: installation profile is missing for Runtime Home {}; run `volicord setup` before connection workflows",
+            "SETUP_REQUIRED: installation profile is missing for Runtime Home {}; run `volicord init --host <host> --repo <path>` for the primary host setup. Use `volicord setup` only for installation-profile repair before lower-level connection workflows.",
             runtime_home.display()
         ))
     })
@@ -4195,7 +4227,7 @@ fn primary_connection_action(
             "missing" => {
                 return Some(connection_repair_action(
                     "mcp_config_missing",
-                    "Run the connection command again to reinstall missing MCP configuration.",
+                    "Run volicord init --host <host> --repo <path> to reinstall missing MCP configuration.",
                     connection,
                     projects,
                 ));
@@ -4203,7 +4235,7 @@ fn primary_connection_action(
             "changed" => {
                 return Some(connection_repair_action(
                     "mcp_config_changed",
-                    "Review the changed MCP configuration, then rerun the connection command if Volicord should manage it.",
+                    "Review the changed MCP configuration, then run volicord init --host <host> --repo <path> if Volicord should manage it.",
                     connection,
                     projects,
                 ));
@@ -4211,7 +4243,7 @@ fn primary_connection_action(
             "malformed" => {
                 return Some(connection_repair_action(
                     "mcp_config_malformed",
-                    "Repair the malformed MCP configuration, then rerun the connection command.",
+                    "Repair the malformed MCP configuration, then run volicord init --host <host> --repo <path>.",
                     connection,
                     projects,
                 ));
@@ -4249,7 +4281,7 @@ fn primary_connection_action(
                 "missing" => {
                     return Some(connection_repair_action(
                         "mcp_config_missing",
-                        "Run the connection command again to reinstall missing MCP configuration.",
+                        "Run volicord init --host <host> --repo <path> to reinstall missing MCP configuration.",
                         Some(connection),
                         projects,
                     ));
@@ -4257,7 +4289,7 @@ fn primary_connection_action(
                 "changed" => {
                     return Some(connection_repair_action(
                         "mcp_config_changed",
-                        "Review the changed MCP configuration, then rerun the connection command if Volicord should manage it.",
+                        "Review the changed MCP configuration, then run volicord init --host <host> --repo <path> if Volicord should manage it.",
                         Some(connection),
                         projects,
                     ));
@@ -4265,7 +4297,7 @@ fn primary_connection_action(
                 "malformed" => {
                     return Some(connection_repair_action(
                         "mcp_config_malformed",
-                        "Repair the malformed MCP configuration, then rerun the connection command.",
+                        "Repair the malformed MCP configuration, then run volicord init --host <host> --repo <path>.",
                         Some(connection),
                         projects,
                     ));
@@ -4347,7 +4379,34 @@ fn connection_repair_action(
             project.project.repo_root.display()
         )
     };
-    PrimaryNextAction::new(id, fallback).with_command(command)
+    let instruction = repair_instruction(id, fallback, &command);
+    PrimaryNextAction::new(id, instruction).with_command(command)
+}
+
+fn repair_instruction(id: &str, fallback: &str, command: &str) -> String {
+    match id {
+        "mcp_config_missing" => {
+            format!("Run {command} to reinstall missing MCP configuration.")
+        }
+        "mcp_config_changed" => {
+            format!(
+                "Review the changed MCP configuration, then run {command} if Volicord should manage it."
+            )
+        }
+        "mcp_config_malformed" => {
+            format!("Repair the malformed MCP configuration, then run {command}.")
+        }
+        "guard_files_missing" => {
+            format!("Run {command} to reinstall missing guard files.")
+        }
+        "guard_files_stale" => {
+            format!("Run {command} to refresh stale guard files.")
+        }
+        "guard_files_broken" => {
+            format!("Repair broken guard files, then run {command}.")
+        }
+        _ => fallback.to_owned(),
+    }
 }
 
 fn append_primary_next_action_text(output: &mut String, action: Option<&PrimaryNextAction>) {

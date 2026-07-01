@@ -36,8 +36,8 @@ internal identity behavior belong to
 ```sh
 volicord doctor
 volicord project current
-volicord connection status codex
-volicord connection verify codex
+volicord connection status codex --repo /path/to/your-product-repo
+volicord connection verify codex --repo /path/to/your-product-repo
 ```
 
 Completion state: the connection is ready when status or verification reports
@@ -47,10 +47,11 @@ to [Administrative CLI Reference](../reference/admin-cli.md#agent-connection-res
 
 ## Choose A Host Intent
 
-Start with the default command when you are connecting the current user's local
-host setup. Add `--shared` only when the selected Product Repository should
-carry the project-shared integration file, and use `--global` only for a host path that
-supports user-wide configuration. Exact intent semantics belong to
+Use the lower-level `volicord connect` command only when you need a personal,
+global, or read-only variant directly. Add `--shared` only when using
+`volicord connect` to manage the project-shared integration file without the
+ordinary `init` flow, and use `--global` only for a host path that supports
+user-wide configuration. Exact intent semantics belong to
 [Administrative CLI Reference](../reference/admin-cli.md#connection-intents-and-hosts);
 host availability requirements belong to
 [System Requirements](../reference/system-requirements.md#host-configuration-requirements).
@@ -61,8 +62,8 @@ Use `--read-only` only when the host should expose read-oriented behavior:
 volicord connect codex --read-only
 ```
 
-Use `--repo PATH` only when the current directory is not the target Product
-Repository:
+For lower-level connection management, use `--repo PATH` when the current
+directory is not the target Product Repository:
 
 ```sh
 volicord connect codex --repo /path/to/your-product-repo
@@ -76,8 +77,8 @@ first-run path, prefer `volicord init --host HOST --repo PATH`.
 
 ```sh
 volicord connections
-volicord connection status codex
-volicord connection verify codex
+volicord connection status codex --repo /path/to/your-product-repo
+volicord connection verify codex --repo /path/to/your-product-repo
 volicord connection mode codex read-only
 volicord connection mode codex workflow
 ```

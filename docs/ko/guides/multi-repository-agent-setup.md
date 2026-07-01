@@ -98,8 +98,8 @@ volicord connection status codex --repo /path/to/billing-api
 ```
 
 Verification이 `action_required`를 보고하면 이름 붙은 호스트 소유 trust, approval,
-reload, restart, setup repair 동작을 완료한 뒤 verification을 다시 실행합니다. 증상별
-복구는 [에이전트 호스트 문제 해결](agent-host-troubleshooting.md)을 사용합니다.
+reload, restart, 설치 프로필 복구 동작을 완료한 뒤 verification을 다시 실행합니다.
+증상별 복구는 [에이전트 호스트 문제 해결](agent-host-troubleshooting.md)을 사용합니다.
 
 ## 에이전트가 해야 할 일
 

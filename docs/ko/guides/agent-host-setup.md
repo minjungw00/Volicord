@@ -15,7 +15,7 @@ Agent Connection 의미는 [Agent Connection 참조](../reference/agent-connecti
 
 ```sh
 volicord init --host codex --repo /path/to/your-product-repo
-volicord connection status codex
+volicord connection status codex --repo /path/to/your-product-repo
 ```
 
 `/path/to/your-product-repo`는 에이전트에게 작업을 요청할 Product Repository의 경로
@@ -82,11 +82,12 @@ volicord connection remove codex --dry-run
 
 ```sh
 volicord connections
-volicord connection status codex
-volicord connection verify codex
+volicord connection status codex --repo /path/to/your-product-repo
+volicord connection verify codex --repo /path/to/your-product-repo
 ```
 
-`shared` 또는 `global` 연결은 선택할 때 쓴 의도 플래그를 함께 넣습니다.
+같은 호스트와 저장소에 둘 이상의 연결이 일치하면 선택할 때 쓴 의도 플래그를 함께
+넣습니다.
 
 ```sh
 volicord connection status codex --shared

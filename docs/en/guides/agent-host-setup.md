@@ -17,7 +17,7 @@ then run the host setup sequence:
 
 ```sh
 volicord init --host codex --repo /path/to/your-product-repo
-volicord connection status codex
+volicord connection status codex --repo /path/to/your-product-repo
 ```
 
 `/path/to/your-product-repo` is an example path for the Product Repository where
@@ -87,12 +87,12 @@ connection whose host target you want to inspect first.
 
 ```sh
 volicord connections
-volicord connection status codex
-volicord connection verify codex
+volicord connection status codex --repo /path/to/your-product-repo
+volicord connection verify codex --repo /path/to/your-product-repo
 ```
 
-For a shared or global connection, include the same intent flag used to select
-it:
+If more than one connection matches the same host and repository, include the
+same intent flag used to select it:
 
 ```sh
 volicord connection status codex --shared

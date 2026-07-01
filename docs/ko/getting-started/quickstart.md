@@ -32,8 +32,8 @@ volicord init --host codex --repo /path/to/your-product-repo
 ```sh
 volicord doctor
 volicord project current
-volicord connection status codex
-volicord connection verify codex
+volicord connection status codex --repo /path/to/your-product-repo
+volicord connection verify codex --repo /path/to/your-product-repo
 ```
 
 완료 상태: status나 verification이 `complete`를 보고하면 연결 준비가 끝난 것입니다.
@@ -43,10 +43,11 @@ volicord connection verify codex
 
 ## 호스트 의도 선택하기
 
-현재 사용자의 로컬 호스트 설정을 연결할 때는 기본 명령으로 시작합니다.
-`--shared`는 선택된 Product Repository가 프로젝트 공유 통합 파일을 가져야 할 때만
-추가하고, `--global`은 사용자 전체 설정을 지원하는 호스트 경로에만 사용합니다. 정확한 의도
-의미는 [관리 CLI 참조](../reference/admin-cli.md#connection-intents-and-hosts)가 담당하고,
+personal, global, read-only 변형을 직접 써야 할 때만 낮은 수준의
+`volicord connect` 명령을 사용합니다. 일반 `init` 흐름 없이 `volicord connect`로
+프로젝트 공유 통합 파일을 관리할 때만 `--shared`를 추가하고, `--global`은 사용자
+전체 설정을 지원하는 호스트 경로에만 사용합니다. 정확한 의도 의미는
+[관리 CLI 참조](../reference/admin-cli.md#connection-intents-and-hosts)가 담당하고,
 호스트 가용성 요구사항은 [시스템
 요구사항](../reference/system-requirements.md#host-configuration-requirements)이 담당합니다.
 
@@ -56,7 +57,8 @@ volicord connection verify codex
 volicord connect codex --read-only
 ```
 
-현재 디렉터리가 연결 대상 Product Repository가 아닐 때만 `--repo PATH`를 사용합니다.
+낮은 수준의 연결 관리에서는 현재 디렉터리가 연결 대상 Product Repository가 아닐 때
+`--repo PATH`를 사용합니다.
 
 ```sh
 volicord connect codex --repo /path/to/your-product-repo
@@ -70,8 +72,8 @@ volicord connect codex --repo /path/to/your-product-repo
 
 ```sh
 volicord connections
-volicord connection status codex
-volicord connection verify codex
+volicord connection status codex --repo /path/to/your-product-repo
+volicord connection verify codex --repo /path/to/your-product-repo
 volicord connection mode codex read-only
 volicord connection mode codex workflow
 ```

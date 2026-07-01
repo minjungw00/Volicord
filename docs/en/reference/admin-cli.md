@@ -61,8 +61,8 @@ Supported baseline commands:
 ```text
 volicord --help
 volicord --version
-volicord setup [--home PATH] [--link-bin PATH] [--mcp-command PATH] [--json]
 volicord init --host codex|claude-code --repo PATH [--mode mcp-only|guarded|managed] [--home PATH] [--mcp-command PATH] [--dry-run] [--json]
+volicord setup [--home PATH] [--link-bin PATH] [--mcp-command PATH] [--json]
 volicord doctor [--json]
 volicord connect [HOST] [--repo PATH] [--shared|--global] [--read-only] [--dry-run] [--json]
 volicord connections [--repo PATH] [--json]
@@ -143,11 +143,11 @@ prompts only when the selected command paths are not ready on `PATH`. In
 noninteractive conditions, JSON mode, or explicit `--link-bin` mode, setup must
 report actions instead of prompting.
 
-The top-level setup status answers whether the guided first-run setup
-experience still needs a named user action. Setup may report `action_required`
-after saving the Runtime Home and installation profile when selected commands
-are not ready for future `PATH` lookup by shells or agent hosts. Setup output
-must keep command-availability details and required actions explicit.
+The top-level setup status answers whether installation-profile preparation
+still needs a named user action. Setup may report `action_required` after
+saving the Runtime Home and installation profile when selected commands are not
+ready for future `PATH` lookup by shells or agent hosts. Setup output must keep
+command-availability details and required actions explicit.
 
 Arguments:
 
@@ -341,13 +341,17 @@ conflict instead of overwriting it.
 <a id="volicord-agent-install"></a>
 ## Agent Connection commands
 
-Connection selection uses host, intent, and repository root. The command derives
+Connection selection uses host, intent, and repository root. When no intent
+flag is present and a repository is selected, status, verify, mode, and remove
+select the single matching connection for that host and repository across
+intents. If more than one connection matches, the command reports an ambiguous
+selector and the caller must add the matching intent flag. The command derives
 or looks up the stored `connection_internal_id`.
 
 | Command | Runtime Home registry effect | Host configuration effect | Verification effect |
 |---|---|---|---|
 | `volicord init` | Initializes Runtime Home and installation profile if needed, registers or reuses the selected repository project, creates or updates the shared project-scoped Agent Connection, ensures Connection Projects membership, and records guard installation status. | Installs or updates managed project-local MCP configuration, `AGENTS.md` guidance, `.volicord/policy.json`, and supported host rule files for `codex` or `claude-code`. | Runs host-config, MCP startup, initialization, and `tools/list` checks where observable, then reports any host reload, restart, trust, or approval action. |
-| `volicord connect` | Registers or reuses the selected repository project, creates or updates the matching Agent Connection, records the connection intent and mode, and ensures the project is in Connection Projects. | Installs or updates managed host configuration for `codex` or `claude-code` according to the selected intent. | Runs setup, host-config, MCP startup, initialization, and `tools/list` checks where observable. |
+| `volicord connect` | Registers or reuses the selected repository project, creates or updates the matching Agent Connection, records the connection intent and mode, and ensures the project is in Connection Projects. | Installs or updates managed host configuration for `codex` or `claude-code` according to the selected intent. | Runs host-config, MCP startup, initialization, and `tools/list` checks where observable. |
 | `volicord connections` | Reads matching Agent Connections and connected projects. | Does not launch the host and does not rewrite host configuration. | Reports stored and diagnostic verification state without refreshing host checks. |
 | `volicord connection status` | Reads one selected Agent Connection. | Does not launch the host and does not rewrite host configuration. | Reports full stored verification status and required user actions. |
 | `volicord connection verify` | Reads the selected Agent Connection and updates last-known verification status. | Inspects the managed target when the host integration owns an observable target. | Runs the observable checks and stores the resulting verification state. |
@@ -378,7 +382,7 @@ Agent Connection commands use these result states:
 |---|---|
 | `not_verified` | No verification result is currently recorded for the selected Agent Connection. This is not proof that the host failed. |
 | `complete` | Durable Agent Connection state exists, managed host configuration exists and matches the expected managed fingerprint, required host loadability and trust gates are satisfied, MCP startup succeeds, MCP initialization succeeds, and `tools/list` exposes the required tools for the mode. |
-| `action_required` | Durable Agent Connection state and host configuration are present, but host trust, project approval, OAuth, reload, restart, command-link repair, setup repair, or a comparable user-controlled action remains. |
+| `action_required` | Durable Agent Connection state and host configuration are present, but host trust, project approval, OAuth, reload, restart, command-link repair, installation-profile repair, or a comparable user-controlled action remains. |
 | `failed` | The requested command or verification did not establish usable durable Agent Connection state, usable host configuration, or a required local prerequisite. |
 | `dry_run` | The command reported the planned actions without persistent changes. |
 
@@ -595,7 +599,7 @@ Required diagnostic JSON values:
   and human-readable command or instruction when one is available
 
 Setup and doctor JSON must include `status_meaning` so diagnostic consumers can
-distinguish first-run setup readiness from installation-profile health.
+distinguish setup action status from installation-profile health.
 Doctor JSON must separate blocking local repairs in `actions_required[]` from
 warning-only follow-up in `actions_recommended[]` when the top-level status
 remains `complete`.

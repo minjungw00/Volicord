@@ -148,7 +148,7 @@ where
                 DiagnosticCheck::failed("registry", "Runtime Home registry is missing")
                     .with_details(json!({ "path": path_text(path) })),
             );
-            actions.push(run_setup_action());
+            actions.push(run_init_action());
         }
         DatabaseInspection::Present(snapshot) => {
             inspect_registry_snapshot(snapshot, &mut checks);
@@ -198,8 +198,8 @@ where
             DiagnosticCheck::failed("installation_profile", "installation profile is missing")
                 .with_details(json!({ "runtime_home": path_text(&runtime_home) })),
         );
-        if !actions.iter().any(|action| action.id == "run_setup") {
-            actions.push(run_setup_action());
+        if !actions.iter().any(|action| action.id == "run_init") {
+            actions.push(run_init_action());
         }
         checks.push(DiagnosticCheck::skipped(
             "volicord_command",
@@ -218,9 +218,9 @@ where
     checks.push(
         DiagnosticCheck::skipped(
             "host_detection",
-            "supported host detection is reported by connection verification after setup",
+            "supported host detection is reported by init or connection verification",
         )
-        .with_details(json!({ "supported_hosts": ["codex", "claude_code"] })),
+        .with_details(json!({ "supported_hosts": ["codex", "claude-code"] })),
     );
     if let (Some(projects), Some(connections), Some(guard_installations)) =
         (project_count, connection_count, guard_installation_count)
@@ -294,14 +294,14 @@ fn inspect_runtime_home_path(
                 )
                 .with_details(json!({ "path": path_text(runtime_home) })),
             );
-            actions.push(run_setup_action());
+            actions.push(run_init_action());
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             checks.push(
                 DiagnosticCheck::failed("runtime_home_access", "Runtime Home directory is missing")
                     .with_details(json!({ "path": path_text(runtime_home) })),
             );
-            actions.push(run_setup_action());
+            actions.push(run_init_action());
         }
         Err(error) => {
             checks.push(
@@ -365,6 +365,10 @@ fn inspect_guard_installations(
         checks.push(DiagnosticCheck::skipped(
             "guard_status_active",
             "no guard installation status is recorded",
+        ));
+        checks.push(DiagnosticCheck::skipped(
+            "prompt_capture_available",
+            "no prompt capture availability is recorded",
         ));
         return;
     }
@@ -514,6 +518,8 @@ fn inspect_guard_installations(
             .with_details(json!({ "status_counts": status_counts })),
         );
     }
+
+    inspect_prompt_capture_availability(&guarded, checks);
 }
 
 fn guard_missing_files(capability_json: &str) -> Vec<String> {
@@ -529,6 +535,59 @@ fn guard_missing_files(capability_json: &str) -> Vec<String> {
         .filter(|path| !Path::new(path).exists())
         .map(str::to_owned)
         .collect()
+}
+
+fn inspect_prompt_capture_availability(
+    guarded: &[&volicord_store::inspection::GuardInstallationInspectionRecord],
+    checks: &mut Vec<DiagnosticCheck>,
+) {
+    if guarded.is_empty() {
+        checks.push(DiagnosticCheck::skipped(
+            "prompt_capture_available",
+            "prompt capture is not applicable to mcp-only installations",
+        ));
+        return;
+    }
+    let configured = guarded
+        .iter()
+        .filter(|installation| guard_prompt_capture_configured(&installation.host_capability_json))
+        .count();
+    let observed = guarded
+        .iter()
+        .filter(|installation| {
+            installation.last_seen_at.is_some()
+                && guard_prompt_capture_configured(&installation.host_capability_json)
+        })
+        .count();
+    if observed > 0 {
+        checks.push(
+            DiagnosticCheck::passed("prompt_capture_available", "prompt capture is available")
+                .with_details(json!({ "configured": configured, "observed": observed })),
+        );
+    } else if configured > 0 {
+        checks.push(
+            DiagnosticCheck::warning(
+                "prompt_capture_available",
+                "prompt capture is configured but no guard hook observation is recorded",
+            )
+            .with_details(json!({ "configured": configured, "observed": observed })),
+        );
+    } else {
+        checks.push(
+            DiagnosticCheck::warning(
+                "prompt_capture_available",
+                "prompt capture is not configured for recorded guarded installations",
+            )
+            .with_details(json!({ "configured": configured, "observed": observed })),
+        );
+    }
+}
+
+fn guard_prompt_capture_configured(capability_json: &str) -> bool {
+    serde_json::from_str::<Value>(capability_json)
+        .ok()
+        .and_then(|value| value.get("prompt_capture").and_then(Value::as_bool))
+        .unwrap_or(false)
 }
 
 fn guard_status_counts(
@@ -578,7 +637,7 @@ fn inspect_installation_profile<F>(
                 "default_connection_mode": profile.default_connection_mode,
             })),
         );
-        actions.push(run_setup_action());
+        actions.push(run_init_action());
     }
     inspect_command_path(
         "volicord_command",
@@ -634,9 +693,9 @@ fn inspect_command_path(
         actions.push(DiagnosticAction {
             id: format!("repair_{id}"),
             instruction:
-                "Run volicord setup --mcp-command PATH again after selecting executable Volicord commands."
+                "Run volicord init --host <host> --repo <path> --mcp-command PATH after selecting an executable MCP launch command."
                     .to_owned(),
-            command: Some("volicord setup --mcp-command PATH".to_owned()),
+            command: Some("volicord init --host <host> --repo <path> --mcp-command PATH".to_owned()),
         });
     }
 }
@@ -734,7 +793,7 @@ fn inspect_path_or_shim(
             DiagnosticAction {
                 id: "repair_command_links".to_owned(),
                 instruction: format!(
-                    "Run volicord setup --link-bin {} to repair command links; restart or reload existing agent hosts after command-link changes.",
+                    "Use advanced repair command volicord setup --link-bin {} to repair command links; restart or reload existing agent hosts after command-link changes.",
                     profile.bin_dir.display()
                 ),
                 command: Some(format!(
@@ -784,7 +843,7 @@ fn inspect_path_or_shim(
             DiagnosticAction {
                 id: "create_command_links".to_owned(),
                 instruction:
-                    "Run volicord setup --link-bin PATH for a command-link directory you keep on PATH; restart or reload existing agent hosts after PATH or command-link changes."
+                    "Use advanced repair command volicord setup --link-bin PATH for a command-link directory you keep on PATH; restart or reload existing agent hosts after PATH or command-link changes."
                         .to_owned(),
                 command: Some("volicord setup --link-bin PATH".to_owned()),
             },
@@ -844,7 +903,7 @@ fn render_doctor_output(
         }
         OutputFormat::Text => {
             let mut text = format!(
-                "Volicord doctor {}\nstatus_meaning: {}\nruntime_home_state: {}\nruntime_home: {}\ninstallation_profile_state: {}\ncommand_state: {}\nproject_registration_state: {}\nconnection_state: {}\nguard_installation_state: {}\nguard_files_state: {}\nguard_hook_observed: {}\nguard_status_state: {}\nhost_reload_required: {}\n",
+                "Volicord doctor {}\nstatus_meaning: {}\nruntime_home_state: {}\nruntime_home: {}\ninstallation_profile_state: {}\ncommand_state: {}\nproject_registration_state: {}\nconnection_state: {}\nmcp_config_state: {}\nguard_installation_state: {}\nguard_files_state: {}\nguard_hook_observed: {}\nguard_status_state: {}\nprompt_capture_state: {}\nhost_reload_required: {}\n",
                 status.as_str(),
                 doctor_status_meaning(status, checks),
                 doctor_runtime_home_state(runtime_home, checks),
@@ -853,10 +912,12 @@ fn render_doctor_output(
                 doctor_command_state(checks),
                 doctor_count_state(checks, "projects", "registered"),
                 doctor_count_state(checks, "connections", "stored"),
+                doctor_mcp_config_state(checks),
                 doctor_count_state(checks, "guard_installations", "stored"),
                 doctor_check_state(checks, "guard_files_installed"),
                 doctor_check_state(checks, "guard_hook_observed"),
                 doctor_check_state(checks, "guard_status_active"),
+                doctor_prompt_capture_state(checks),
                 yes_no(doctor_host_reload_required(checks, actions)),
             );
             append_doctor_next_action(&mut text, status, actions);
@@ -876,10 +937,12 @@ fn doctor_states_json(
         "command_availability": doctor_command_state(checks),
         "project_registration": doctor_count_state(checks, "projects", "registered"),
         "connection": doctor_count_state(checks, "connections", "stored"),
+        "mcp_config": doctor_mcp_config_state(checks),
         "guard_installation": doctor_count_state(checks, "guard_installations", "stored"),
         "guard_files": doctor_check_state(checks, "guard_files_installed"),
         "guard_hook_observed": doctor_check_state(checks, "guard_hook_observed"),
         "guard_status": doctor_check_state(checks, "guard_status_active"),
+        "prompt_capture": doctor_prompt_capture_state(checks),
         "host_reload_required": doctor_host_reload_required(checks, actions),
     })
 }
@@ -941,6 +1004,14 @@ fn doctor_check_state(checks: &[DiagnosticCheck], id: &str) -> &'static str {
     }
 }
 
+fn doctor_prompt_capture_state(checks: &[DiagnosticCheck]) -> &'static str {
+    if check_status(checks, "prompt_capture_available").is_none() {
+        "not_checked"
+    } else {
+        doctor_check_state(checks, "prompt_capture_available")
+    }
+}
+
 fn doctor_count_state(checks: &[DiagnosticCheck], key: &str, suffix: &str) -> String {
     checks
         .iter()
@@ -949,6 +1020,23 @@ fn doctor_count_state(checks: &[DiagnosticCheck], key: &str, suffix: &str) -> St
         .and_then(|details| details.get(key))
         .and_then(Value::as_u64)
         .map(|count| format!("{count} {suffix}"))
+        .unwrap_or_else(|| "unknown".to_owned())
+}
+
+fn doctor_mcp_config_state(checks: &[DiagnosticCheck]) -> String {
+    checks
+        .iter()
+        .find(|check| check.id == "registry_counts")
+        .and_then(|check| check.details.as_ref())
+        .and_then(|details| details.get("connections"))
+        .and_then(Value::as_u64)
+        .map(|count| {
+            if count == 0 {
+                "not_configured".to_owned()
+            } else {
+                format!("{count} stored")
+            }
+        })
         .unwrap_or_else(|| "unknown".to_owned())
 }
 
@@ -1016,19 +1104,19 @@ fn doctor_status_meaning(status: CommandStatus, checks: &[DiagnosticCheck]) -> &
         }
         CommandStatus::Complete => "installation profile is usable",
         CommandStatus::ActionRequired => {
-            "local setup or profile repair is required before Volicord workflows are usable"
+            "local init or profile repair is required before Volicord workflows are usable"
         }
         CommandStatus::Failed => "a blocking diagnostic failed before the profile is usable",
     }
 }
 
-fn run_setup_action() -> DiagnosticAction {
+fn run_init_action() -> DiagnosticAction {
     DiagnosticAction {
-        id: "run_setup".to_owned(),
+        id: "run_init".to_owned(),
         instruction:
-            "Run volicord setup before project, connection, export, MCP, or user workflows."
+            "Run volicord init --host <host> --repo <path> from the Product Repository to initialize the primary host connection."
                 .to_owned(),
-        command: Some("volicord setup".to_owned()),
+        command: Some("volicord init --host <host> --repo <path>".to_owned()),
     }
 }
 
@@ -1038,7 +1126,7 @@ fn push_command_availability_action(actions: &mut Vec<DiagnosticAction>) {
         DiagnosticAction {
             id: "make_profile_commands_available".to_owned(),
         instruction:
-                "Run volicord setup --link-bin PATH or update PATH so volicord resolves to the installation profile command; restart or reload existing agent hosts after PATH or command-link changes."
+                "Use advanced repair command volicord setup --link-bin PATH or update PATH so volicord resolves to the installation profile command; restart or reload existing agent hosts after PATH or command-link changes."
                     .to_owned(),
             command: Some("volicord setup --link-bin PATH".to_owned()),
         },

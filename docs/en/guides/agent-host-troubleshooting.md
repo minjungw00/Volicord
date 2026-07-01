@@ -25,11 +25,11 @@ into that repository or add `--repo PATH` to the project, connection, export, or
 user command you are checking.
 
 `volicord setup` and `volicord doctor` answer different status questions. Setup
-reports whether the guided first-run setup experience still needs a user
-action. Doctor reports whether the saved installation profile is usable. A
-profile can therefore make doctor report `complete` while doctor still shows
-command-availability warnings or recommended `PATH` and command-link actions
-for future shells or agent hosts.
+reports whether installation-profile preparation still needs a user action.
+Doctor reports whether the saved installation profile is usable. A profile can
+therefore make doctor report `complete` while doctor still shows
+command-availability warnings or recommended `PATH` and command-link actions for
+future shells or agent hosts.
 
 ## Setup Has Not Been Completed
 
@@ -119,8 +119,7 @@ volicord project use
 Or select the Product Repository explicitly:
 
 ```sh
-volicord project use /path/to/your-product-repo
-volicord connect codex --repo /path/to/your-product-repo
+volicord init --host codex --repo /path/to/your-product-repo
 ```
 
 `/path/to/your-product-repo` is an example path for the Product Repository where
@@ -165,14 +164,14 @@ Observable symptom: connection status or verification reports
 Bounded recovery:
 
 ```sh
-volicord connection status codex
-volicord connection verify codex
+volicord connection status codex --repo /path/to/your-product-repo
+volicord connection verify codex --repo /path/to/your-product-repo
 ```
 
 Read the reported action and complete only that host-owned step. Common actions
 include trusting a host entry, approving a project MCP entry, signing in through
-the host, reloading the host, restarting the host, or rerunning setup. Then run
-verification again.
+the host, reloading the host, restarting the host, or completing
+installation-profile repair. Then run verification again.
 
 Do not treat `action_required` as a fatal failure. Durable Volicord-side state
 may already exist.
@@ -219,7 +218,7 @@ check the installation and connection again:
 
 ```sh
 volicord doctor
-volicord connection verify codex
+volicord connection verify codex --repo /path/to/your-product-repo
 ```
 
 Setup is the place that records the MCP command used by managed host

@@ -260,7 +260,7 @@ HTTP boundaries.
 | Symptom | What to do |
 |---|---|
 | `volicord` is not found | Put the install directory on `PATH`, or install to a directory already on `PATH`, then rerun `volicord --version`. Future agent hosts must also be able to start `volicord`. |
-| `init` reports `action_required` | Complete the named action, such as host restart or reload, project trust, MCP approval, OAuth, command-link repair, or setup repair, then rerun `volicord connection verify HOST --repo PATH`. |
+| `init` reports `action_required` | Complete the named action, such as host restart or reload, project trust, MCP approval, OAuth, command-link repair, or installation-profile repair, then rerun `volicord connection verify HOST --repo PATH`. |
 | Host cannot start MCP | Confirm the host can run `volicord mcp --help` through the same command path. Run `volicord doctor` for installation-profile health. |
 | Product Repository is not detected | Pass `--repo /path/to/your-product-repo` and make sure the path is an existing local repository separate from the Runtime Home. |
 | A judgment is pending | Prefer the host's MCP elicitation or exact chat prompt-capture command when available. Use `volicord user judgments` and `volicord user judgment answer` as the CLI fallback. |

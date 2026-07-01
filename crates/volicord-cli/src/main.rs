@@ -266,12 +266,12 @@ where
 fn setup_required_message(runtime_home: &Path) -> String {
     if !runtime_home.exists() {
         format!(
-            "RUNTIME_HOME_MISSING: Runtime Home {} is missing; run `volicord setup` before project, connection, export, MCP, serve, changes, or user workflows",
+            "RUNTIME_HOME_MISSING: Runtime Home {} is missing; run `volicord init --host <host> --repo <path>` from the Product Repository to initialize the primary host connection. Use `volicord setup` only for installation-profile repair.",
             runtime_home.display()
         )
     } else {
         format!(
-            "SETUP_REQUIRED: installation profile is missing for Runtime Home {}; run `volicord setup` before project, connection, export, MCP, serve, changes, or user workflows",
+            "SETUP_REQUIRED: installation profile is missing for Runtime Home {}; run `volicord init --host <host> --repo <path>` from the Product Repository to initialize the primary host connection. Use `volicord setup` only for installation-profile repair.",
             runtime_home.display()
         )
     }
@@ -436,8 +436,8 @@ fn display_path(path: &Path) -> String {
 fn usage() -> String {
     format!(
         "Usage:\n  volicord --help\n  volicord --version\n{}{}{}{}{}{}{}{}{}{}{}{}{}\nEnvironment:\n  VOLICORD_HOME  Override Runtime Home path (default: $HOME/.volicord)\n\nAgent Connection commands manage local MCP host connections. User Channel commands record local user judgments.\nThese are local administrative commands, not public Volicord API methods.\n",
-        indent_usage_block(&setup_usage()),
         indent_usage_block(&init_usage()),
+        indent_usage_block(&setup_usage()),
         indent_usage_block(&doctor_usage()),
         indent_usage_block(&export_usage()),
         indent_usage_block(&mcp_usage()),
@@ -1037,7 +1037,9 @@ mod tests {
         .expect_err("project use should require setup");
 
         assert!(matches!(error, CliError::Runtime(_)));
-        assert!(error.to_string().contains("run `volicord setup`"));
+        assert!(error
+            .to_string()
+            .contains("volicord init --host <host> --repo <path>"));
     }
 
     fn run_with_home<const N: usize>(

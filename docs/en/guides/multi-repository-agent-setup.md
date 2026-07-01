@@ -102,8 +102,9 @@ volicord connection status codex --repo /path/to/billing-api
 ```
 
 If verification reports `action_required`, complete the named host-owned trust,
-approval, reload, restart, or setup repair action and rerun verification. For
-symptom-specific recovery, use [Agent Host Troubleshooting](agent-host-troubleshooting.md).
+approval, reload, restart, or installation-profile repair action and rerun
+verification. For symptom-specific recovery, use
+[Agent Host Troubleshooting](agent-host-troubleshooting.md).
 
 ## What The Agent Should Do
 

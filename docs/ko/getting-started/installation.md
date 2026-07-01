@@ -84,8 +84,8 @@ volicord setup
 저장하며, 이후 터미널과 에이전트 호스트에서 선택된 명령을 `PATH`로 사용할 수 있는지
 확인합니다. 정확한 `volicord setup` 옵션, MCP 시작 명령 동작, 출력 동작은 [관리 CLI
 참조](../reference/admin-cli.md#runtime-home-selection)가 담당합니다.
-이 상태는 안내형 첫 실행 설정 경험에 이름 붙은 사용자 동작이 아직 필요한지를
-답하므로, 설치 프로필이 저장된 뒤에도 `action_required`가 나타날 수 있습니다.
+이 상태는 설치 프로필 준비에 이름 붙은 사용자 동작이 아직 필요한지를 답하므로,
+설치 프로필이 저장된 뒤에도 `action_required`가 나타날 수 있습니다.
 
 대화형 터미널에서 선택된 실행 파일이 `PATH`에 준비되어 있지 않으면 setup은 명령
 가용성 선택지를 제시할 수 있습니다.
@@ -131,11 +131,11 @@ volicord setup --link-bin ~/.local/bin
 volicord doctor
 ```
 
-`doctor`는 첫 실행 setup 진행도가 아니라 설치 프로필 상태를 보고합니다. 저장된
+`doctor`는 기본 `init` 진행도가 아니라 설치 프로필 상태를 보고합니다. 저장된
 프로필을 사용할 수 있으면, 이후 셸이나 에이전트 호스트를 위한 명령 가용성 경고 또는
 권장 `PATH`와 명령 링크 동작을 함께 보고하더라도 `complete`를 보고합니다.
-`action_required`는 `volicord setup` 재실행이나 실행 파일 경로 수정처럼 차단하는
-로컬 복구 동작을 이름 붙입니다.
+`action_required`는 설치 프로필 복구나 실행 파일 경로 수정처럼 차단하는 로컬 복구
+동작을 이름 붙입니다.
 
 ## 기존 설치 실행 파일 사용하기
 
