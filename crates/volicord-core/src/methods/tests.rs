@@ -11,7 +11,7 @@ use volicord_store::{
     agent_connections::{
         add_connection_project, ensure_agent_connection, AgentConnectionRegistration,
         ConnectionProjectRegistration, CONNECTION_MODE_WORKFLOW, HOST_KIND_CODEX,
-        HOST_SCOPE_PROJECT, VERIFIED_STATUS_COMPLETE,
+        HOST_SCOPE_PROJECT, VERIFIED_STATUS_COMPLETE, VERIFIED_STATUS_FAILED,
     },
     bootstrap::{
         initialize_runtime_home, register_project, ProjectRegistration, ACTIVE_PROJECT_STATUS,
@@ -273,6 +273,36 @@ impl MethodHarness {
     fn use_clock(&mut self, clock: ManualClock) {
         self.service = CoreService::with_clock(&self.runtime_home_path, clock);
     }
+}
+
+fn set_method_harness_connection_verification_status(
+    harness: &MethodHarness,
+    status: &str,
+) -> Result<(), Box<dyn Error>> {
+    ensure_agent_connection(
+        &harness.runtime_home_path,
+        AgentConnectionRegistration {
+            connection_internal_id: CONNECTION_ID.to_owned(),
+            host_kind: HOST_KIND_CODEX.to_owned(),
+            intent: volicord_store::agent_connections::CONNECTION_INTENT_SHARED.to_owned(),
+            host_scope: HOST_SCOPE_PROJECT.to_owned(),
+            server_name: "volicord-method-test".to_owned(),
+            config_target: harness
+                .runtime_home_path
+                .join("agent-connections")
+                .join(CONNECTION_ID)
+                .to_string_lossy()
+                .into_owned(),
+            mode: CONNECTION_MODE_WORKFLOW.to_owned(),
+            enabled: true,
+            managed_fingerprint: "fixture:methods".to_owned(),
+            last_verification_status: status.to_owned(),
+            last_verification_report_json: "{}".to_owned(),
+            last_user_actions_json: "[]".to_owned(),
+            metadata_json: "{}".to_owned(),
+        },
+    )?;
+    Ok(())
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -13803,6 +13833,104 @@ fn guarded_pending_judgment_displays_user_answer_paths() -> Result<(), Box<dyn E
 }
 
 #[test]
+fn guarded_pending_judgment_uses_prompt_capture_guidance_when_mcp_unhealthy(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    set_method_harness_connection_verification_status(&harness, VERIFIED_STATUS_FAILED)?;
+    record_guard_installation(
+        &harness,
+        "guarded_pending_prompt_capture",
+        "guarded",
+        "active",
+        "{}",
+    )?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "guarded_pending_prompt_capture")?;
+    let after_evidence = record_close_evidence(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        2,
+        "guarded_pending_prompt_capture",
+        true,
+    )?;
+    let mut product_request = user_judgment_request(
+        "req_guarded_pending_prompt_capture_judgment",
+        "idem_guarded_pending_prompt_capture_judgment",
+        false,
+        Some(after_evidence),
+        &task_id,
+        Some(&change_unit_id),
+        JudgmentKind::ProductDecision,
+    );
+    product_request.required_for = vec![volicord_types::JudgmentRequiredFor::CloseComplete];
+    harness.service.request_user_judgment(
+        product_request,
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    record_final_acceptance(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        after_evidence + 1,
+        "guarded_pending_prompt_capture",
+    )?;
+
+    let status = harness.service.status(
+        StatusRequest {
+            envelope: envelope(
+                "req_status_guarded_pending_prompt_capture",
+                None,
+                false,
+                None,
+                Some(&task_id),
+            ),
+            include: StatusInclude {
+                task: true,
+                pending_user_judgments: true,
+                write_check: false,
+                evidence: true,
+                close: true,
+                guarantees: false,
+                continuity: false,
+            },
+        },
+        invocation(OperationCategory::Read),
+    )?;
+    assert_eq!(status.response_value["close_state"], "blocked");
+    assert_pending_judgment_prompt_capture_guidance(&status.response_value);
+
+    let check = harness.service.close_task(
+        close_task_request(CloseTaskFixture {
+            request_id: "req_check_guarded_pending_prompt_capture",
+            idempotency_key: None,
+            dry_run: false,
+            expected_state_version: None,
+            task_id: &task_id,
+            intent: CloseIntent::Check,
+            close_reason: None,
+            superseding_task_id: None,
+        }),
+        invocation(OperationCategory::Read),
+    )?;
+    assert_eq!(check.response_value["close_state"], "blocked");
+    assert_pending_judgment_prompt_capture_guidance(&check.response_value);
+    assert_eq!(
+        check.response_value["guard_health"]["mcp_connection_healthy"],
+        false
+    );
+    assert_eq!(
+        check.response_value["guard_health"]["prompt_capture_available"],
+        true
+    );
+    assert_eq!(
+        check.response_value["guard_health"]["prompt_capture_status"],
+        "observed"
+    );
+    Ok(())
+}
+
+#[test]
 fn mcp_only_close_does_not_receive_guarded_unrecorded_change_blocker() -> Result<(), Box<dyn Error>>
 {
     let harness = MethodHarness::new()?;
@@ -15433,6 +15561,17 @@ fn assert_close_blocker(response_value: &Value, code: &str) {
 fn assert_close_blocker_category(response_value: &Value, code: &str, category: &str) {
     let blocker = close_blocker_by_code(response_value, code);
     assert_eq!(blocker["category"], category);
+}
+
+fn assert_pending_judgment_prompt_capture_guidance(response_value: &Value) {
+    assert_close_blocker(response_value, "pending_user_judgment");
+    let blocker = close_blocker_by_code(response_value, "pending_user_judgment");
+    let guidance = blocker["next_actions"][0]["blocking_question"]
+        .as_str()
+        .expect("pending blocker should include answer-path guidance");
+    assert!(guidance.contains("prompt-capture"), "{guidance}");
+    assert!(guidance.contains("verification code"), "{guidance}");
+    assert!(!guidance.contains("MCP elicitation"), "{guidance}");
 }
 
 fn close_blocker_by_code<'a>(response_value: &'a Value, code: &str) -> &'a Value {

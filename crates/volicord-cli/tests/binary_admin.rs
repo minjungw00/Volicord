@@ -460,6 +460,44 @@ fn init_guarded_without_degraded_opt_in_rejects_missing_hooks() -> Result<(), Bo
 
 #[cfg(unix)]
 #[test]
+fn init_claude_code_guarded_without_degraded_opt_in_rejects_missing_hooks(
+) -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-init-claude-guarded-requires-hooks")?;
+    let repo_root = create_git_repo(&runtime_home, "product-repo")?;
+    let bin_dir = runtime_home.path().join("bin");
+    write_fake_claude_code(&bin_dir)?;
+    write_fake_mcp(&bin_dir)?;
+
+    let output = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--host",
+            "claude-code",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--json",
+        ],
+        &[("PATH", path_env(&[bin_dir.as_path()]))],
+    )?;
+
+    assert_eq!(output.status.code(), Some(1));
+    let diagnostic = stderr(&output);
+    assert!(diagnostic.contains("GUARDED_HOOKS_UNSUPPORTED"));
+    assert!(
+        diagnostic.contains("AGENTS.md and .volicord/policy.json are not host hook configuration")
+    );
+    assert!(diagnostic.contains("--allow-degraded"));
+    assert!(!runtime_home.registry_db_path().exists());
+    assert!(!repo_root.join(".mcp.json").exists());
+    assert!(!repo_root.join("AGENTS.md").exists());
+    assert!(!repo_root.join(".volicord/policy.json").exists());
+    assert!(!repo_root.join(".claude/rules/volicord.md").exists());
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
 fn init_dry_run_does_not_write_runtime_or_repo_files() -> Result<(), Box<dyn Error>> {
     let runtime_home = TempRuntimeHome::new("cli-bin-init-dry-run")?;
     let repo_root = create_git_repo(&runtime_home, "product-repo")?;
@@ -673,6 +711,7 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
         serde_json::json!(["mcp", "--stdio", "--connection", connection_id])
     );
     assert_eq!(policy["guard"]["enabled"], true);
+    assert_guard_policy_invokes_required_phases(&policy, &connection_id);
     assert_eq!(
         policy["guard"]["commands"]["pre_tool"]["command"],
         "volicord"
@@ -826,6 +865,7 @@ fn init_claude_code_guarded_writes_project_mcp_policy_and_rule() -> Result<(), B
     )?)?;
     assert_eq!(policy["host"], "claude-code");
     assert_eq!(policy["guard"]["enabled"], true);
+    assert_guard_policy_invokes_required_phases(&policy, connection_id);
     assert_eq!(
         policy["guard"]["commands"]["session_start"]["command"],
         "volicord"
@@ -2272,6 +2312,45 @@ fn path_text(path: &Path) -> String {
 
 fn count_occurrences(text: &str, needle: &str) -> usize {
     text.matches(needle).count()
+}
+
+#[cfg(unix)]
+fn assert_guard_policy_invokes_required_phases(policy: &Value, connection_id: &str) {
+    let commands = policy["guard"]["commands"]
+        .as_object()
+        .expect("guard commands should be an object");
+    let phases = [
+        ("session_start", "session-start"),
+        ("pre_tool", "pre-tool"),
+        ("post_tool", "post-tool"),
+        ("prompt_capture", "prompt-capture"),
+        ("stop", "stop"),
+    ];
+    assert_eq!(
+        commands.len(),
+        phases.len(),
+        "policy should define exactly the required guard phase commands"
+    );
+
+    for (policy_key, command_name) in phases {
+        let command = commands
+            .get(policy_key)
+            .unwrap_or_else(|| panic!("missing guard command for {policy_key}"));
+        assert_eq!(command["command"], "volicord");
+        let args = command["args"]
+            .as_array()
+            .expect("guard command args should be an array");
+        assert_eq!(args.first().and_then(Value::as_str), Some("guard"));
+        assert_eq!(args.get(1).and_then(Value::as_str), Some(command_name));
+        assert!(arg_pair(args, "--connection", connection_id));
+        assert!(args.iter().any(|arg| arg == "--json"));
+    }
+}
+
+#[cfg(unix)]
+fn arg_pair(args: &[Value], key: &str, value: &str) -> bool {
+    args.windows(2)
+        .any(|pair| pair[0] == key && pair[1] == value)
 }
 
 #[cfg(unix)]

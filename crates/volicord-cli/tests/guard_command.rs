@@ -716,6 +716,7 @@ fn guard_session_start_shows_chat_judgment_instructions() -> Result<(), Box<dyn 
         value["result"]["context"]["prompt_capture_status"],
         "configured"
     );
+    assert_eq!(value["result"]["context"]["prompt_capture_enabled"], true);
     let pending = &value["result"]["context"]["pending_user_judgments"][0];
     assert_eq!(pending["chat_id"], "J-1");
     let verification_code = pending["verification_code"]
@@ -737,6 +738,43 @@ fn guard_session_start_shows_chat_judgment_instructions() -> Result<(), Box<dyn 
     assert_eq!(
         pending["options"][2]["instruction"],
         format!("Volicord: answer J-1 defer {verification_code}")
+    );
+    Ok(())
+}
+
+#[test]
+fn guard_session_start_hides_chat_judgment_instructions_without_prompt_capture(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = GuardCliFixture::new("guard-chat-instructions-not-configured")?;
+    fixture.install_guard_policy_with(true, false, "configured")?;
+    fixture.create_pending_authority_judgment("instructions_not_configured")?;
+    let event = json!({
+        "event_id": "guard_session_chat_instructions_not_configured",
+        "session_id": "guard_session_chat_instructions_not_configured",
+        "connection_id": fixture.connection_id(),
+        "host_kind": PROMPT_CAPTURE_TEST_HOST_KIND
+    });
+
+    let output = run_guard(
+        fixture.runtime_home(),
+        fixture.repo_root(),
+        ["guard", "session-start", "--repo", fixture.repo_arg()],
+        &event,
+    )?;
+    assert_success(&output);
+    let value = json_stdout(&output)?;
+    assert_eq!(
+        value["result"]["context"]["prompt_capture_status"],
+        "not_configured"
+    );
+    assert_eq!(value["result"]["context"]["prompt_capture_enabled"], false);
+    assert_eq!(value["result"]["context"]["pending_user_judgment_count"], 1);
+    assert_eq!(
+        value["result"]["context"]["pending_user_judgments"]
+            .as_array()
+            .expect("pending judgments should be an array")
+            .len(),
+        0
     );
     Ok(())
 }
