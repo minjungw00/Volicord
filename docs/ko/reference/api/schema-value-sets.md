@@ -54,6 +54,7 @@ volicord.stage_artifact
 volicord.record_run
 volicord.request_user_judgment
 volicord.record_user_judgment
+volicord.reconcile_changes
 volicord.close_task
 ```
 
@@ -86,6 +87,7 @@ volicord.close_task
 | `record_run` | `volicord.record_run` |
 | `request_user_judgment` | `volicord.request_user_judgment` |
 | `record_user_judgment` | `volicord.record_user_judgment` |
+| `reconcile_changes` | `volicord.reconcile_changes` |
 | `close_task` | `volicord.close_task` |
 
 `action_kind`는 메서드 이름 값이 아닙니다. 지원되는 공개 메서드 하나가 다음 단계를 담당할 때 `NextActionSummary.owner_method`는 [메서드 이름 값 집합](#method-name-values)을 사용하고, 단일 담당 메서드가 없으면 `null`입니다. 다음 단계의 메서드 동작은 [API 메서드](methods.md)가 안내하는 메서드 담당 문서에 둡니다. 전체 `NextActionSummary` 형태는 [API 상태 스키마](schema-state.md#current-position-display-shapes)가 담당합니다.
@@ -157,6 +159,7 @@ blocker
 task_event
 agent_connection
 project_continuity_record
+unrecorded_change
 ```
 
 이 값들은 API 참조 종류를 식별합니다. 저장소 테이블 이름, DDL, Core 권한 의미, 메서드별 담당 규칙을 대신하지 않습니다.
@@ -365,6 +368,28 @@ broken
 ```
 
 이 값들은 닫기 준비 상태와 상태 조회 보기에 쓰이는 guard 통합 상태를 보고합니다. `configured`와 `reload_required`는 active가 아닌 상태이며, `active`에는 일치하는 guard hook 관찰이 필요합니다. 이 값들은 제품 정확성, 테스트 충분성, OS 강제, 샌드박싱, 보안 격리, 최종 수락, 잔여 위험 수락을 증명하지 않습니다. `mcp_only`는 담당 문서가 정의한 설정이 guarded 또는 managed 동작을 선택하지 않는 한 협력형으로 남습니다.
+
+`UnrecordedChangeFinding.status`는 아래 값을 사용합니다.
+
+```text
+unresolved
+resolved
+```
+
+<a id="unrecorded-change-resolution-basis-values"></a>
+`UnrecordedChangeResolutionSummary.resolution_basis`와 저장된 미기록 변경 해결 메타데이터는 아래 값을 사용합니다.
+
+```text
+reverted
+covered_by_write_readiness
+recorded_as_expected_write
+accepted_by_user
+not_product_change
+superseded_by_new_observation
+invalid_observation
+```
+
+이 값들은 미기록 Product Repository 변경 찾기가 해결된 이유를 분류합니다. 제품 정확성, 증거 충분성, 리뷰 완료, 최종 수락, 잔여 위험 수락, 보안을 증명하지 않습니다. 호출자 사용은 [`volicord.reconcile_changes`](method-reconcile-changes.md)가 제한합니다. basis 이름만으로 에이전트 단독 묵살이 허용되지 않습니다.
 
 `WriteDecisionReason.category`는 제어되는 범주 값입니다. 지원되는 값은 아래 값 집합뿐입니다.
 

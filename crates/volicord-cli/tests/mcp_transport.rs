@@ -25,7 +25,7 @@ use volicord_types::{
 };
 
 const PROCESS_TIMEOUT: Duration = Duration::from_secs(10);
-const EXPECTED_WORKFLOW_METHOD_TOOLS: [&str; 9] = [
+const EXPECTED_WORKFLOW_METHOD_TOOLS: [&str; 10] = [
     "volicord.intake",
     "volicord.update_scope",
     "volicord.status",
@@ -33,6 +33,7 @@ const EXPECTED_WORKFLOW_METHOD_TOOLS: [&str; 9] = [
     "volicord.stage_artifact",
     "volicord.record_run",
     "volicord.request_user_judgment",
+    "volicord.reconcile_changes",
     "volicord.check_close",
     "volicord.close_task",
 ];
@@ -409,6 +410,7 @@ fn volicord_mcp_subcommand_tools_list_respects_connection_mode_and_schema_bounda
             "volicord.stage_artifact",
             "volicord.record_run",
             "volicord.request_user_judgment",
+            "volicord.reconcile_changes",
             "volicord.check_close",
             "volicord.close_task",
             "volicord.list_projects",

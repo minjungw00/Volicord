@@ -426,7 +426,7 @@ current stored Agent Connection mode:
 
 | Mode | MCP-visible tools |
 |---|---|
-| `workflow` | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.prepare_write`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.check_close`, `volicord.close_task`, `volicord.list_projects` |
+| `workflow` | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.prepare_write`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.reconcile_changes`, `volicord.check_close`, `volicord.close_task`, `volicord.list_projects` |
 | `read_only` | `volicord.status`, `volicord.check_close`, `volicord.list_projects` |
 
 The MCP-visible tools are not the same thing as the public Volicord Core API

@@ -33,6 +33,7 @@ fn workflow_tools_include_agent_workflow_and_read_tools_but_exclude_user_only() 
     assert!(names.contains(&"volicord.intake"));
     assert!(names.contains(&"volicord.prepare_write"));
     assert!(names.contains(&"volicord.request_user_judgment"));
+    assert!(names.contains(&"volicord.reconcile_changes"));
     assert!(names.contains(&"volicord.check_close"));
     assert!(names.contains(&"volicord.close_task"));
     assert!(names.contains(&"volicord.status"));

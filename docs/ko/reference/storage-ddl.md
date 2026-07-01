@@ -966,7 +966,7 @@ CREATE INDEX idx_expected_writes_task
 - `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unrecorded_changes`는 프로젝트별 guarded-operation 기록입니다. 연결 범위를 위해 `connection_internal_id`를 반복해 저장하고, 프로젝트별 키를 사용해 기록이 프로젝트 사이로 새지 않게 합니다.
 - `guard_events.decision`은 `allow`, `deny`, `warn`, `inject_context`로 제한됩니다. 이 값은 로컬 guard decision을 기록하며 OS 수준 집행 증명이 아닙니다.
 - `expected_writes.status`는 `pending` 또는 `matched`로 제한되고, `path_policy`는 `exact_paths`로 제한됩니다. 매칭된 행은 매칭된 post-tool guard event, matched paths JSON, `matched_at`을 가져야 하고, 대기 행은 이 매칭 필드를 가지면 안 됩니다.
-- `unrecorded_changes.status`는 `unresolved` 또는 `resolved`로 제한됩니다. 해결된 행은 resolution JSON, `resolved_at`, `resolved_by_actor_source`를 가져야 하고, 미해결 행은 이 해결 필드를 가지면 안 됩니다.
+- `unrecorded_changes.status`는 `unresolved` 또는 `resolved`로 제한됩니다. 해결된 행은 resolution JSON, `resolved_at`, `resolved_by_actor_source`를 가져야 하고, 미해결 행은 이 해결 필드를 가지면 안 됩니다. Resolution JSON은 [저장소 기록](storage-records.md)이 요구하는 간결한 resolution basis와 capture basis를 포함해야 하며, 전체 민감 명령이나 prompt 내용을 저장하면 안 됩니다.
 
 ## 관련 담당 문서
 

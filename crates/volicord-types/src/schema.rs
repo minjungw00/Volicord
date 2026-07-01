@@ -20,9 +20,10 @@ use crate::values::{
     JudgmentRequiredFor, JudgmentResolutionOutcome, MethodName, NextActionKind,
     PlannedBlockerSourceKind, ProjectContinuityKind, ProjectContinuityStatus,
     ProjectEnforcementProfileSource, ProjectEnforcementProfileStatus, RedactionState, ResponseKind,
-    RunKind, StateRecordKind, TaskLifecyclePhase, TaskMode, TaskResult, UnrecordedChangeStatus,
-    UserJudgmentOptionAction, UserJudgmentStatus, UtcTimestamp, ValidatorSeverity, ValidatorStatus,
-    WriteCheckStatus, WriteDecisionCategory,
+    RunKind, StateRecordKind, TaskLifecyclePhase, TaskMode, TaskResult,
+    UnrecordedChangeResolutionBasis, UnrecordedChangeStatus, UserJudgmentOptionAction,
+    UserJudgmentStatus, UtcTimestamp, ValidatorSeverity, ValidatorStatus, WriteCheckStatus,
+    WriteDecisionCategory,
 };
 
 /// JSON object used where an owner document defines a field as `object`.
@@ -365,6 +366,31 @@ pub struct UnrecordedChange {
     pub resolved_at: RequiredNullable<UtcTimestamp>,
     pub resolved_by_actor_source: RequiredNullable<ActorSource>,
     pub metadata: JsonObject,
+}
+
+/// Public finding summary for an unresolved unrecorded Product Repository change.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct UnrecordedChangeFinding {
+    pub unrecorded_change_ref: StateRecordRef,
+    pub status: UnrecordedChangeStatus,
+    pub summary: String,
+    pub observed_paths: Vec<String>,
+    pub detected_at: UtcTimestamp,
+    pub can_resolve_in_chat: bool,
+    pub next_action: NextActionSummary,
+}
+
+/// Public resolution summary for an unrecorded Product Repository change.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct UnrecordedChangeResolutionSummary {
+    pub unrecorded_change_ref: StateRecordRef,
+    pub resolution_basis: UnrecordedChangeResolutionBasis,
+    pub resolved_by_actor_source: ActorSource,
+    pub capture_basis: String,
+    pub user_judgment_ref: RequiredNullable<StateRecordRef>,
+    pub resolved_at: UtcTimestamp,
 }
 
 /// Compact guard-health projection for close-readiness and status views.

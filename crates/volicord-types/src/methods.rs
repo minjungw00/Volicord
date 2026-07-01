@@ -3,7 +3,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::ids::{
-    BaselineRef, ChangeUnitId, RunId, TaskId, UserJudgmentId, UserJudgmentOptionId, WriteCheckId,
+    BaselineRef, ChangeUnitId, RunId, TaskId, UnrecordedChangeId, UserJudgmentId,
+    UserJudgmentOptionId, WriteCheckId,
 };
 use crate::schema::{
     AcceptedRiskInput, ArtifactInput, ArtifactRef, ChangeUnitEffectContract, CloseAssessmentInput,
@@ -12,14 +13,15 @@ use crate::schema::{
     JudgmentRationale, NextActionSummary, ObservedChanges, ProjectContinuitySummary,
     RecordUserJudgmentPayload, RequiredNullable, RiskAcceptanceCoverage, RunSummary,
     SensitiveActionScope, StagedArtifactHandle, StateRecordRef, StateSummary, ToolEnvelope,
-    ToolResponse, ToolResultBase, UserJudgment, UserJudgmentCandidate, UserJudgmentContext,
-    UserJudgmentOptionInput, WriteCheckStateSummary, WriteCheckSummary, WriteDecisionReason,
+    ToolResponse, ToolResultBase, UnrecordedChangeFinding, UnrecordedChangeResolutionSummary,
+    UserJudgment, UserJudgmentCandidate, UserJudgmentContext, UserJudgmentOptionInput,
+    WriteCheckStateSummary, WriteCheckSummary, WriteDecisionReason,
 };
 use crate::values::{
     ChangeUnitOperation, CloseIntent, CloseMutationIntent, CloseReason, CloseState, JudgmentKind,
     JudgmentPresentation, JudgmentRequiredFor, MethodName, OperationCategory, PrepareWriteDecision,
     RedactionState, RequestedMode, ResumePolicy, RunKind, StatusCloseState, StatusDetailLevel,
-    UtcTimestamp, WriteCheckEffect,
+    UnrecordedChangeResolutionBasis, UtcTimestamp, WriteCheckEffect,
 };
 
 /// Shared typed mapping from a public request to its operation category.
@@ -54,6 +56,9 @@ pub type RequestUserJudgmentResponse = ToolResponse<RequestUserJudgmentResult>;
 
 /// Response branch type for `volicord.record_user_judgment`.
 pub type RecordUserJudgmentResponse = ToolResponse<RecordUserJudgmentResult>;
+
+/// Response branch type for `volicord.reconcile_changes`.
+pub type ReconcileChangesResponse = ToolResponse<ReconcileChangesResult>;
 
 /// Response branch type for `volicord.close_task`.
 pub type CloseTaskResponse = ToolResponse<CloseTaskResult>;
@@ -555,6 +560,72 @@ pub struct RecordUserJudgmentResult {
     pub next_actions: Vec<NextActionSummary>,
 }
 
+/// `volicord.reconcile_changes` request params.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ReconcileChangesRequest {
+    pub envelope: ToolEnvelope,
+    pub task_id: TaskId,
+    #[serde(default)]
+    pub resolution_requests: Vec<UnrecordedChangeResolutionRequest>,
+}
+
+impl MethodOperationCategory for ReconcileChangesRequest {
+    fn method_name(&self) -> MethodName {
+        MethodName::ReconcileChanges
+    }
+
+    fn operation_category(&self) -> OperationCategory {
+        OperationCategory::AgentWorkflow
+    }
+}
+
+/// MCP-visible `volicord.reconcile_changes` arguments.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpReconcileChangesArguments {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_selector: Option<String>,
+    pub task_id: TaskId,
+    #[serde(default)]
+    pub resolution_requests: Vec<UnrecordedChangeResolutionRequest>,
+}
+
+/// Optional caller-supplied reconciliation request for a specific finding.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct UnrecordedChangeResolutionRequest {
+    pub unrecorded_change_id: UnrecordedChangeId,
+    pub basis: UnrecordedChangeResolutionBasis,
+    #[serde(default)]
+    pub user_judgment_id: RequiredNullable<UserJudgmentId>,
+}
+
+/// `volicord.reconcile_changes` method result branch.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct ReconcileChangesResult {
+    pub base: ToolResultBase,
+    pub task_ref: StateRecordRef,
+    pub unresolved_changes: Vec<UnrecordedChangeFinding>,
+    pub resolved_changes: Vec<UnrecordedChangeResolutionSummary>,
+    pub pending_user_judgment_refs: Vec<StateRecordRef>,
+    pub rejected_resolution_requests: Vec<UnrecordedChangeRejection>,
+    pub state: StateSummary,
+    pub close_blockers: Vec<CloseReadinessBlocker>,
+    pub guard_health: Option<GuardHealthSummary>,
+    pub next_actions: Vec<NextActionSummary>,
+}
+
+/// Rejected requested reconciliation item.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct UnrecordedChangeRejection {
+    pub unrecorded_change_id: UnrecordedChangeId,
+    pub basis: UnrecordedChangeResolutionBasis,
+    pub code: String,
+    pub message: String,
+}
+
 /// `volicord.close_task` request params.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -633,6 +704,7 @@ pub fn public_request_schema(method_name: &str) -> Option<Value> {
         "volicord.record_run" => Some(request_schema::<RecordRunRequest>()),
         "volicord.request_user_judgment" => Some(request_schema::<RequestUserJudgmentRequest>()),
         "volicord.record_user_judgment" => Some(request_schema::<RecordUserJudgmentRequest>()),
+        "volicord.reconcile_changes" => Some(request_schema::<ReconcileChangesRequest>()),
         "volicord.close_task" => Some(request_schema::<CloseTaskRequest>()),
         _ => None,
     }
@@ -650,6 +722,7 @@ pub fn mcp_request_schema(tool_name: &str) -> Option<Value> {
         "volicord.request_user_judgment" => {
             Some(request_schema::<McpRequestUserJudgmentArguments>())
         }
+        "volicord.reconcile_changes" => Some(request_schema::<McpReconcileChangesArguments>()),
         "volicord.check_close" => Some(request_schema::<McpCheckCloseArguments>()),
         "volicord.close_task" => Some(request_schema::<McpCloseTaskArguments>()),
         _ => None,

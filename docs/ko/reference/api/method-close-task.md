@@ -228,7 +228,7 @@ CloseTaskRequest:
 | `guard_broken` | `connection_capability` | guarded 또는 managed 닫기 경로에 기록 상태가 `broken`인 guard 설치가 있습니다. |
 | `guard_degraded` | `connection_capability` | guarded 또는 managed 닫기 경로에 기록 상태가 `degraded`인 guard 설치가 있고 현재 guard policy가 degraded 상태에서 닫기를 차단합니다. |
 | `guard_connection_unhealthy` | `connection_capability` | guarded 또는 managed 닫기 경로에 건강하지 않은 Agent Connection 상태 사실이 있습니다. |
-| `unresolved_unrecorded_changes` | `connection_capability` | guard 기록에 닫기 전에 기록하거나 조정해야 하는 해결되지 않은 미기록 Product Repository 변경이 있습니다. |
+| `unresolved_unrecorded_changes` | `connection_capability` | guard 기록에 닫기 전에 조정해야 하는 해결되지 않은 미기록 Product Repository 변경이 있습니다. 이 차단 사유는 `owner_method=volicord.reconcile_changes`인 `next_actions`를 포함하며, `can_resolve_in_chat`은 현재 guarded 경로가 채팅 매개 사용자 경로로 진행할 수 있는지를 나타냅니다. |
 | `guard_write_readiness_missing_or_stale` | `write_compatibility` | guard 이벤트가 닫기 경로에 누락되었거나 오래된 쓰기 준비 상태를 감지했습니다. |
 | `evidence_claim_unsupported` | `evidence_claim` | 필요한 닫기 주장이 지원되는 증거 범위를 갖지 못했습니다. |
 | `evidence_claim_missing` | `evidence_claim` | 필요한 닫기 주장에 대한 현재 증거 범위 기록이 없습니다. |

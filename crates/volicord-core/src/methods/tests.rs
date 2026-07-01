@@ -18,9 +18,9 @@ use volicord_store::{
     },
     core_pipeline::{CoreProjectStore, StorageEffectCounts, TaskRevisionRecord},
     guards::{
-        insert_agent_session, insert_guard_event, insert_unrecorded_change,
+        insert_agent_session, insert_guard_event, insert_unrecorded_change, unrecorded_change,
         upsert_guard_installation, AgentSessionInsert, GuardEventInsert, GuardInstallationUpsert,
-        UnrecordedChangeInsert,
+        UnrecordedChangeInsert, UnrecordedChangeRecord,
     },
     sqlite::open_project_state_database,
 };
@@ -12710,6 +12710,355 @@ fn guarded_close_blocks_unresolved_unrecorded_changes_and_check_is_read_only(
 }
 
 #[test]
+fn reconcile_changes_resolves_not_product_change_and_updates_close_blocker(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    record_guard_installation(&harness, "reconcile_not_product", "guarded", "active", "{}")?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "reconcile_not_product")?;
+    let after_evidence = record_close_evidence(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        2,
+        "reconcile_not_product",
+        true,
+    )?;
+    let after_final = record_final_acceptance(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        after_evidence,
+        "reconcile_not_product",
+    )?;
+    let unrecorded_change_id = insert_guarded_unrecorded_change_with_paths(
+        &harness,
+        &task_id,
+        "reconcile_not_product",
+        "[]",
+    )?;
+
+    let before = harness.service.close_task(
+        close_task_request(CloseTaskFixture {
+            request_id: "req_reconcile_not_product_check_before",
+            idempotency_key: None,
+            dry_run: false,
+            expected_state_version: None,
+            task_id: &task_id,
+            intent: CloseIntent::Check,
+            close_reason: None,
+            superseding_task_id: None,
+        }),
+        invocation(OperationCategory::Read),
+    )?;
+    assert_close_blocker(&before.response_value, "unresolved_unrecorded_changes");
+    assert_close_blocker_resolution(
+        &before.response_value,
+        "unresolved_unrecorded_changes",
+        true,
+        false,
+    );
+    let blocker = close_blocker_by_code(&before.response_value, "unresolved_unrecorded_changes");
+    assert_eq!(
+        blocker["next_actions"][0]["owner_method"],
+        "volicord.reconcile_changes"
+    );
+    assert_eq!(
+        blocker["next_actions"][0]["action_kind"],
+        "reconcile_changes"
+    );
+
+    let response = harness.service.reconcile_changes(
+        reconcile_changes_request(
+            "req_reconcile_not_product",
+            "idem_reconcile_not_product",
+            Some(after_final),
+            &task_id,
+            Vec::new(),
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "result");
+    assert_eq!(
+        response.response_value["resolved_changes"][0]["resolution_basis"],
+        "not_product_change"
+    );
+    assert_eq!(
+        response.response_value["resolved_changes"][0]["resolved_by_actor_source"],
+        "system"
+    );
+    assert!(
+        response.response_value["next_actions"]
+            .as_array()
+            .expect("next_actions should be an array")
+            .is_empty(),
+        "deterministically resolved reconciliation should not leave stale next actions: {:?}",
+        response.response_value["next_actions"]
+    );
+    assert_no_close_blocker(&response.response_value, "unresolved_unrecorded_changes");
+    assert_eq!(
+        response.response_value["guard_health"]["unresolved_unrecorded_change_count"],
+        0
+    );
+    let row = unrecorded_change_row(&harness, PROJECT_ID, &unrecorded_change_id)?;
+    assert_eq!(row.status, "resolved");
+    let resolution = row_resolution(&row);
+    assert_eq!(resolution["resolution_basis"], "not_product_change");
+    assert_eq!(
+        resolution["capture_basis"],
+        "core_deterministic_not_product_change"
+    );
+
+    let after = harness.service.close_task(
+        close_task_request(CloseTaskFixture {
+            request_id: "req_reconcile_not_product_check_after",
+            idempotency_key: None,
+            dry_run: false,
+            expected_state_version: None,
+            task_id: &task_id,
+            intent: CloseIntent::Check,
+            close_reason: None,
+            superseding_task_id: None,
+        }),
+        invocation(OperationCategory::Read),
+    )?;
+    assert_no_close_blocker(&after.response_value, "unresolved_unrecorded_changes");
+    Ok(())
+}
+
+#[test]
+fn reconcile_changes_creates_and_consumes_user_acceptance_judgment() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    record_guard_installation(&harness, "reconcile_accept", "guarded", "active", "{}")?;
+    let (task_id, _) = create_task_with_change_unit(&harness, "reconcile_accept")?;
+    let unrecorded_change_id =
+        insert_guarded_unrecorded_change(&harness, &task_id, "reconcile_accept")?;
+
+    let first = harness.service.reconcile_changes(
+        reconcile_changes_request(
+            "req_reconcile_accept_first",
+            "idem_reconcile_accept_first",
+            Some(2),
+            &task_id,
+            Vec::new(),
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+
+    assert_eq!(
+        first.response_value["unresolved_changes"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        first.response_value["pending_user_judgment_refs"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        unrecorded_change_row(&harness, PROJECT_ID, &unrecorded_change_id)?.status,
+        "unresolved"
+    );
+    let judgment_id = first.response_value["pending_user_judgment_refs"][0]["record_id"]
+        .as_str()
+        .expect("pending judgment ref should be present")
+        .to_owned();
+    let after_first = first.response_value["base"]["state_version"]
+        .as_u64()
+        .expect("state_version should be present");
+
+    let recorded = harness.service.record_user_judgment(
+        record_judgment_request(
+            "req_reconcile_accept_record",
+            "idem_reconcile_accept_record",
+            Some(after_first),
+            &task_id,
+            &judgment_id,
+            JudgmentKind::ProductDecision,
+            answer_payload(JudgmentKind::ProductDecision),
+        ),
+        invocation(OperationCategory::UserOnly),
+    )?;
+    let after_record = recorded.response_value["base"]["state_version"]
+        .as_u64()
+        .expect("state_version should be present");
+
+    let second = harness.service.reconcile_changes(
+        reconcile_changes_request(
+            "req_reconcile_accept_second",
+            "idem_reconcile_accept_second",
+            Some(after_record),
+            &task_id,
+            Vec::new(),
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+
+    assert_eq!(
+        second.response_value["resolved_changes"][0]["resolution_basis"],
+        "accepted_by_user"
+    );
+    assert_eq!(
+        second.response_value["resolved_changes"][0]["resolved_by_actor_source"],
+        "local_user"
+    );
+    assert!(second.response_value["pending_user_judgment_refs"]
+        .as_array()
+        .expect("pending refs should be an array")
+        .is_empty());
+    let row = unrecorded_change_row(&harness, PROJECT_ID, &unrecorded_change_id)?;
+    assert_eq!(row.status, "resolved");
+    let resolution = row_resolution(&row);
+    assert_eq!(resolution["resolution_basis"], "accepted_by_user");
+    assert_eq!(
+        resolution["user_judgment_ref"]["record_id"],
+        judgment_id.as_str()
+    );
+    assert_eq!(
+        row.resolved_by_actor_source.as_deref(),
+        Some(LOCAL_USER_ACTOR_SOURCE)
+    );
+    Ok(())
+}
+
+#[test]
+fn reconcile_changes_rejects_agent_supplied_system_resolution_basis() -> Result<(), Box<dyn Error>>
+{
+    let harness = MethodHarness::new()?;
+    record_guard_installation(&harness, "reconcile_reject", "guarded", "active", "{}")?;
+    let (task_id, _) = create_task_with_change_unit(&harness, "reconcile_reject")?;
+    let unrecorded_change_id =
+        insert_guarded_unrecorded_change(&harness, &task_id, "reconcile_reject")?;
+
+    let seed = harness.service.reconcile_changes(
+        reconcile_changes_request(
+            "req_reconcile_reject_seed",
+            "idem_reconcile_reject_seed",
+            Some(2),
+            &task_id,
+            Vec::new(),
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let after_seed = seed.response_value["base"]["state_version"]
+        .as_u64()
+        .expect("state_version should be present");
+
+    let response = harness.service.reconcile_changes(
+        reconcile_changes_request(
+            "req_reconcile_reject_basis",
+            "idem_reconcile_reject_basis",
+            Some(after_seed),
+            &task_id,
+            vec![UnrecordedChangeResolutionRequest {
+                unrecorded_change_id: UnrecordedChangeId::new(unrecorded_change_id.clone()),
+                basis: UnrecordedChangeResolutionBasis::InvalidObservation,
+                user_judgment_id: RequiredNullable::null(),
+            }],
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+
+    assert_eq!(
+        response.response_value["rejected_resolution_requests"][0]["code"],
+        "system_resolution_basis_not_caller_owned"
+    );
+    assert_eq!(
+        unrecorded_change_row(&harness, PROJECT_ID, &unrecorded_change_id)?.status,
+        "unresolved"
+    );
+    Ok(())
+}
+
+#[test]
+fn reconcile_changes_resolves_invalid_observation_deterministically() -> Result<(), Box<dyn Error>>
+{
+    let harness = MethodHarness::new()?;
+    record_guard_installation(&harness, "reconcile_invalid", "guarded", "active", "{}")?;
+    let (task_id, _) = create_task_with_change_unit(&harness, "reconcile_invalid")?;
+    let unrecorded_change_id = insert_guarded_unrecorded_change_with_paths(
+        &harness,
+        &task_id,
+        "reconcile_invalid",
+        "[123]",
+    )?;
+
+    let response = harness.service.reconcile_changes(
+        reconcile_changes_request(
+            "req_reconcile_invalid",
+            "idem_reconcile_invalid",
+            Some(2),
+            &task_id,
+            Vec::new(),
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+
+    assert_eq!(
+        response.response_value["resolved_changes"][0]["resolution_basis"],
+        "invalid_observation"
+    );
+    let row = unrecorded_change_row(&harness, PROJECT_ID, &unrecorded_change_id)?;
+    assert_eq!(row.status, "resolved");
+    assert_eq!(
+        row_resolution(&row)["capture_basis"],
+        "core_deterministic_invalid_observation"
+    );
+    Ok(())
+}
+
+#[test]
+fn reconcile_changes_isolates_other_projects() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    record_guard_installation(&harness, "reconcile_cross", "guarded", "active", "{}")?;
+    let (task_id, _) = create_task_with_change_unit(&harness, "reconcile_cross")?;
+    let main_change_id = insert_guarded_unrecorded_change_with_paths(
+        &harness,
+        &task_id,
+        "reconcile_cross_main",
+        "[]",
+    )?;
+    let other_project_id = register_additional_project(&harness, "project_methods_other")?;
+    let other_change_id = insert_project_unrecorded_change(
+        &harness,
+        &other_project_id,
+        None,
+        "reconcile_cross_other",
+        "[]",
+    )?;
+
+    let response = harness.service.reconcile_changes(
+        reconcile_changes_request(
+            "req_reconcile_cross",
+            "idem_reconcile_cross",
+            Some(2),
+            &task_id,
+            Vec::new(),
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+
+    assert_eq!(
+        response.response_value["resolved_changes"][0]["unrecorded_change_ref"]["record_id"],
+        main_change_id
+    );
+    assert_eq!(
+        unrecorded_change_row(&harness, PROJECT_ID, &main_change_id)?.status,
+        "resolved"
+    );
+    assert_eq!(
+        unrecorded_change_row(&harness, &other_project_id, &other_change_id)?.status,
+        "unresolved"
+    );
+    Ok(())
+}
+
+#[test]
 fn guarded_close_blocks_write_readiness_issue_from_guard_event() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let guard_installation_id =
@@ -13633,6 +13982,26 @@ fn close_task_request(input: CloseTaskFixture<'_>) -> CloseTaskRequest {
     }
 }
 
+fn reconcile_changes_request(
+    request_id: &str,
+    idempotency_key: &str,
+    expected_state_version: Option<u64>,
+    task_id: &str,
+    resolution_requests: Vec<UnrecordedChangeResolutionRequest>,
+) -> ReconcileChangesRequest {
+    ReconcileChangesRequest {
+        envelope: envelope(
+            request_id,
+            Some(idempotency_key),
+            false,
+            expected_state_version,
+            Some(task_id),
+        ),
+        task_id: TaskId::new(task_id),
+        resolution_requests,
+    }
+}
+
 fn record_guard_installation(
     harness: &MethodHarness,
     suffix: &str,
@@ -13695,23 +14064,94 @@ fn insert_guarded_unrecorded_change(
     harness: &MethodHarness,
     task_id: &str,
     suffix: &str,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<String, Box<dyn Error>> {
+    insert_guarded_unrecorded_change_with_paths(harness, task_id, suffix, r#"["src/export.rs"]"#)
+}
+
+fn insert_guarded_unrecorded_change_with_paths(
+    harness: &MethodHarness,
+    task_id: &str,
+    suffix: &str,
+    observed_paths_json: &str,
+) -> Result<String, Box<dyn Error>> {
+    insert_project_unrecorded_change(
+        harness,
+        PROJECT_ID,
+        Some(task_id.to_owned()),
+        suffix,
+        observed_paths_json,
+    )
+}
+
+fn insert_project_unrecorded_change(
+    harness: &MethodHarness,
+    project_id: &str,
+    task_id: Option<String>,
+    suffix: &str,
+    observed_paths_json: &str,
+) -> Result<String, Box<dyn Error>> {
+    let unrecorded_change_id = format!("unrecorded_change_{suffix}");
     insert_unrecorded_change(
         &harness.runtime_home_path,
-        PROJECT_ID,
+        project_id,
         UnrecordedChangeInsert {
-            unrecorded_change_id: format!("unrecorded_change_{suffix}"),
+            unrecorded_change_id: unrecorded_change_id.clone(),
             session_id: None,
             connection_internal_id: CONNECTION_ID.to_owned(),
-            task_id: Some(task_id.to_owned()),
+            task_id,
             summary: "Product Repository change observed outside a recorded run.".to_owned(),
-            observed_paths_json: r#"["src/export.rs"]"#.to_owned(),
+            observed_paths_json: observed_paths_json.to_owned(),
             detection_json: "{}".to_owned(),
             detected_at: "2026-06-30T00:05:00Z".to_owned(),
             metadata_json: "{}".to_owned(),
         },
     )?;
-    Ok(())
+    Ok(unrecorded_change_id)
+}
+
+fn register_additional_project(
+    harness: &MethodHarness,
+    project_id: &str,
+) -> Result<String, Box<dyn Error>> {
+    let repo_root = harness
+        ._runtime_home
+        .create_product_repo(&format!("repo-{project_id}"))?;
+    register_project(
+        &harness.runtime_home_path,
+        ProjectRegistration {
+            project_id: project_id.to_owned(),
+            repo_root,
+            project_home: None,
+            status: ACTIVE_PROJECT_STATUS.to_owned(),
+            metadata_json: "{}".to_owned(),
+        },
+    )?;
+    add_connection_project(
+        &harness.runtime_home_path,
+        ConnectionProjectRegistration {
+            connection_internal_id: CONNECTION_ID.to_owned(),
+            project_id: project_id.to_owned(),
+        },
+    )?;
+    Ok(project_id.to_owned())
+}
+
+fn unrecorded_change_row(
+    harness: &MethodHarness,
+    project_id: &str,
+    unrecorded_change_id: &str,
+) -> Result<UnrecordedChangeRecord, Box<dyn Error>> {
+    unrecorded_change(&harness.runtime_home_path, project_id, unrecorded_change_id)?
+        .ok_or_else(|| format!("missing unrecorded change {unrecorded_change_id}").into())
+}
+
+fn row_resolution(row: &UnrecordedChangeRecord) -> Value {
+    serde_json::from_str(
+        row.resolution_json
+            .as_deref()
+            .expect("resolved row should carry resolution_json"),
+    )
+    .expect("resolution_json should be valid JSON")
 }
 
 fn insert_write_readiness_guard_event(
@@ -14364,17 +14804,21 @@ fn assert_close_blocker(response_value: &Value, code: &str) {
 }
 
 fn assert_close_blocker_category(response_value: &Value, code: &str, category: &str) {
+    let blocker = close_blocker_by_code(response_value, code);
+    assert_eq!(blocker["category"], category);
+}
+
+fn close_blocker_by_code<'a>(response_value: &'a Value, code: &str) -> &'a Value {
     let blockers = response_value
         .get("blockers")
         .or_else(|| response_value.get("close_blockers"))
         .expect("blockers or close_blockers should be present")
         .as_array()
         .expect("blockers should be an array");
-    let blocker = blockers
+    blockers
         .iter()
         .find(|blocker| blocker["code"] == code)
-        .unwrap_or_else(|| panic!("expected close blocker code {code}, got {blockers:?}"));
-    assert_eq!(blocker["category"], category);
+        .unwrap_or_else(|| panic!("expected close blocker code {code}, got {blockers:?}"))
 }
 
 fn assert_close_blocker_resolution(
@@ -14383,16 +14827,7 @@ fn assert_close_blocker_resolution(
     can_resolve_in_chat: bool,
     terminal_action_required: bool,
 ) {
-    let blockers = response_value
-        .get("blockers")
-        .or_else(|| response_value.get("close_blockers"))
-        .expect("blockers or close_blockers should be present")
-        .as_array()
-        .expect("blockers should be an array");
-    let blocker = blockers
-        .iter()
-        .find(|blocker| blocker["code"] == code)
-        .unwrap_or_else(|| panic!("expected close blocker code {code}, got {blockers:?}"));
+    let blocker = close_blocker_by_code(response_value, code);
     assert_eq!(blocker["can_resolve_in_chat"], can_resolve_in_chat);
     assert_eq!(
         blocker["terminal_action_required"],

@@ -228,7 +228,7 @@ The production meanings below apply only after the method reaches close-readines
 | `guard_broken` | `connection_capability` | A guarded or managed close path has a guard installation whose recorded status is `broken`. |
 | `guard_degraded` | `connection_capability` | A guarded or managed close path has a guard installation whose recorded status is `degraded` and the current guard policy blocks close on degraded health. |
 | `guard_connection_unhealthy` | `connection_capability` | A guarded or managed close path has an Agent Connection health fact that is not healthy. |
-| `unresolved_unrecorded_changes` | `connection_capability` | Guard records show unresolved unrecorded Product Repository changes that must be recorded or reconciled before close. |
+| `unresolved_unrecorded_changes` | `connection_capability` | Guard records show unresolved unrecorded Product Repository changes that must be reconciled before close. The blocker includes `next_actions` with `owner_method=volicord.reconcile_changes`, and `can_resolve_in_chat` reports whether the current guarded path can proceed through a chat-mediated user path. |
 | `guard_write_readiness_missing_or_stale` | `write_compatibility` | Guard events detected missing or stale write readiness for the close path. |
 | `evidence_claim_unsupported` | `evidence_claim` | A required close claim lacks supported evidence coverage. |
 | `evidence_claim_missing` | `evidence_claim` | A required close claim has no current evidence coverage record. |

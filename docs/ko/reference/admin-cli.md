@@ -21,6 +21,7 @@
 - generic MCP 설정 내보내기 동작
 - 로컬 serve 명령 이름, 명령줄 인자, 기본값, stdout/stderr 처리, 시작 종료 코드
 - 로컬 `volicord guard` lifecycle 명령 이름, 옵션, decision, 출력, 이벤트 기록 동작
+- 로컬 `volicord changes` 복구 명령 이름과 출력
 - 로컬 `User Channel` 명령 이름과 명령 출력
 - 진단 상태, 필요한 사용자 동작, dry-run 동작, JSON 출력, 비대화식 동작
 - 관리 명령, 로컬 `User Channel` 명령, 공개 Volicord API 메서드 사이의 경계
@@ -72,6 +73,7 @@ volicord guard pre-tool [--file PATH] [--repo PATH] [--connection ID] [--session
 volicord guard post-tool [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--guard-mode MODE] [--text]
 volicord guard prompt-capture [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--guard-mode MODE] [--text]
 volicord guard stop [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--guard-mode MODE] [--text]
+volicord changes reconcile [--repo PATH] [--task active|ID] [--json]
 volicord user status [--repo PATH] [--task active|ID] [--json]
 volicord user judgments [--repo PATH] [--task active|ID] [--json]
 volicord user judgment show INDEX_OR_ID [--repo PATH] [--json]
@@ -451,6 +453,14 @@ Lifecycle 동작:
 - `stop`은 active task를 완료로 다뤄도 되는지 점검합니다. 닫기 준비 상태 blocker가
   남아 있거나, 사용자 소유 판단이 대기 중이거나, 미해결 unrecorded change가 남아
   있으면 `deny`를 반환하고, 그렇지 않으면 `allow`를 반환합니다.
+
+## 변경 조정 명령
+
+`volicord changes reconcile [--repo PATH] [--task active|ID] [--json]`는 unresolved guarded 미기록 Product Repository 변경 찾기를 위한 로컬 복구 명령입니다.
+
+이 명령은 `--repo PATH` 또는 현재 작업 디렉터리에서 선택 프로젝트를 해석하고 기본적으로 active `Task`를 선택합니다. 로컬 복구 출처로 공개 `volicord.reconcile_changes` Core 메서드를 호출하고, 해결된 찾기 수, 대기 사용자 판단 수, 남은 미해결 찾기 수를 출력하며 일반 CLI 종료 코드 모델을 따릅니다.
+
+이 명령은 결정적 찾기를 해결하거나 대기 사용자 소유 판단을 만들 수 있습니다. 사용자 답변을 기록하지 않고, 사용자를 대신해 변경을 수락하지 않으며, 정확성, 리뷰나 테스트 충분성, 닫기 준비 완료를 증명하지 않습니다. 대기 판단이 만들어졌다면 사용자는 기존 `User Channel` 경로로 판단을 기록한 뒤 `volicord changes reconcile`을 다시 실행합니다.
 
 ## User Channel 명령
 

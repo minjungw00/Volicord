@@ -207,8 +207,8 @@ shared_documents:
   normative_level: guide
   owner_area: onboarding
   created_on: '2026-04-23'
-  last_updated_on: '2026-06-30'
-  last_verified_on: '2026-06-30'
+  last_updated_on: '2026-07-01'
+  last_verified_on: '2026-07-01'
   applies_to:
   - volicord_workspace_0_1
   primary_audience:
@@ -583,8 +583,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: developer_documentation
   created_on: '2026-06-20'
-  last_updated_on: '2026-06-29'
-  last_verified_on: '2026-06-29'
+  last_updated_on: '2026-07-01'
+  last_verified_on: '2026-07-01'
   applies_to:
   - volicord_workspace_0_1
   - rust_workspace_1_85
@@ -1234,8 +1234,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-04'
-  last_updated_on: '2026-06-24'
-  last_verified_on: '2026-06-24'
+  last_updated_on: '2026-07-01'
+  last_verified_on: '2026-07-01'
   applies_to:
   - volicord_workspace_0_1
   primary_audience:
@@ -1443,6 +1443,40 @@ documents:
   - '`volicord.record_user_judgment` behavior'
   - '`RecordUserJudgmentResult` branch behavior'
   - user-owned judgment answer recording behavior
+- doc_id: reference.api.method-reconcile-changes
+  path_en: docs/en/reference/api/method-reconcile-changes.md
+  path_ko: docs/ko/reference/api/method-reconcile-changes.md
+  kind: reference
+  summary: Reference contract for `volicord.reconcile_changes` behavior.
+  normative_level: contract
+  translation_policy: semantic_parity
+  owner_area: core_api
+  created_on: '2026-07-01'
+  last_updated_on: '2026-07-01'
+  last_verified_on: '2026-07-01'
+  applies_to:
+  - volicord_workspace_0_1
+  primary_audience:
+  - API implementers
+  - agent integrators
+  - maintainers
+  journeys:
+  - implement
+  - operate
+  canonical_for:
+  - '`volicord.reconcile_changes` behavior'
+  - '`ReconcileChangesResult` branch behavior'
+  - unrecorded Product Repository change reconciliation behavior
+  - accepted-by-user reconciliation boundary
+  depends_on:
+  - reference.api.methods
+  - reference.api.schema-state
+  - reference.api.schema-value-sets
+  - reference.api.schema-judgment
+  - reference.api.method-record-user-judgment
+  - reference.api.method-close-task
+  - reference.storage-effects
+  - reference.storage-records
 - doc_id: reference.api.method-close-task
   path_en: docs/en/reference/api/method-close-task.md
   path_ko: docs/ko/reference/api/method-close-task.md
@@ -1846,8 +1880,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-06-28'
-  last_verified_on: '2026-06-28'
+  last_updated_on: '2026-07-01'
+  last_verified_on: '2026-07-01'
   applies_to:
   - volicord_workspace_0_1
   - storage_baseline_sqlite_v3_schema_v3

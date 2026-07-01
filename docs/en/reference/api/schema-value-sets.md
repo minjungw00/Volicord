@@ -54,6 +54,7 @@ volicord.stage_artifact
 volicord.record_run
 volicord.request_user_judgment
 volicord.record_user_judgment
+volicord.reconcile_changes
 volicord.close_task
 ```
 
@@ -86,6 +87,7 @@ These values classify derived invocation or persisted actor provenance. They do 
 | `record_run` | `volicord.record_run` |
 | `request_user_judgment` | `volicord.request_user_judgment` |
 | `record_user_judgment` | `volicord.record_user_judgment` |
+| `reconcile_changes` | `volicord.reconcile_changes` |
 | `close_task` | `volicord.close_task` |
 
 `action_kind` is not a method-name value. `NextActionSummary.owner_method` uses the [method-name value set](#method-name-values) when one supported public method owns the next step, and it is `null` when no single owner method applies. Method behavior for the next step stays with the method owner document routed from [API Methods](methods.md). The full `NextActionSummary` shape is owned by [API State Schemas](schema-state.md#current-position-display-shapes).
@@ -157,6 +159,7 @@ blocker
 task_event
 agent_connection
 project_continuity_record
+unrecorded_change
 ```
 
 These values identify API reference kinds. They do not replace storage table names, DDL, Core authority meaning, or method-specific ownership rules.
@@ -363,6 +366,28 @@ broken
 ```
 
 These values report guard integration state for close-readiness and status projections. `configured` and `reload_required` are non-active states; `active` requires an observed matching guard hook. These values do not prove product correctness, test sufficiency, OS enforcement, sandboxing, security isolation, final acceptance, or residual-risk acceptance. `mcp_only` remains cooperative unless an owner-defined configuration selects guarded or managed behavior.
+
+`UnrecordedChangeFinding.status` uses:
+
+```text
+unresolved
+resolved
+```
+
+<a id="unrecorded-change-resolution-basis-values"></a>
+`UnrecordedChangeResolutionSummary.resolution_basis` and stored unrecorded-change resolution metadata use:
+
+```text
+reverted
+covered_by_write_readiness
+recorded_as_expected_write
+accepted_by_user
+not_product_change
+superseded_by_new_observation
+invalid_observation
+```
+
+These values classify why an unrecorded Product Repository change finding is resolved. They do not prove correctness, evidence sufficiency, review completion, final acceptance, residual-risk acceptance, or security. Caller use is method-gated by [`volicord.reconcile_changes`](method-reconcile-changes.md); naming a basis does not authorize an agent-only dismissal.
 
 `WriteDecisionReason.category` is a controlled category value. It uses only these supported values:
 

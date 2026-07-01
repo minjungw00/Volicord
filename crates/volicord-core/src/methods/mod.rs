@@ -14,12 +14,14 @@ use volicord_store::{
         CoreProjectStore, CoreStorageMutation, EvidenceObservationInsert,
         EvidenceObservationRecord, EvidenceSummaryRecord, EvidenceSummaryUpsert,
         ProjectContinuityRecordInsert, ProjectContinuityRecordRecord, ProjectStateHeader,
-        RunInsert, RunRecord, StoredArtifactRecord, StoredArtifactStagingRecord, StoredRecordRef,
-        TaskCloseBasisUpdate, TaskCloseUpdate, TaskInsert, TaskRecord, TaskScopeRevisionUpdate,
-        TaskScopeUpdate, UserJudgmentInsert, UserJudgmentInvalidation, UserJudgmentRecord,
-        UserJudgmentResolutionUpdate, WriteCheckConsumption, WriteCheckInsert, WriteCheckRecord,
+        RunInsert, RunObservedChangesRecord, RunRecord, StoredArtifactRecord,
+        StoredArtifactStagingRecord, StoredRecordRef, TaskCloseBasisUpdate, TaskCloseUpdate,
+        TaskInsert, TaskRecord, TaskScopeRevisionUpdate, TaskScopeUpdate,
+        UnrecordedChangeResolutionUpdate, UserJudgmentInsert, UserJudgmentInvalidation,
+        UserJudgmentRecord, UserJudgmentResolutionUpdate, WriteCheckConsumption, WriteCheckInsert,
+        WriteCheckRecord,
     },
-    guards::GuardHealthRecord,
+    guards::{GuardHealthRecord, UnrecordedChangeRecord},
     StoreError,
 };
 use volicord_types::{
@@ -32,23 +34,27 @@ use volicord_types::{
     EvidenceObservationInput, EvidenceSourceKind, EvidenceStatus, EvidenceSummary,
     EvidenceUpdateProvenance, GuaranteeDisplay, GuardHealthSummary, GuardInstallationId,
     GuardInstallationStatus, GuardMode, JsonObject, JudgmentBasis,
-    JudgmentBasisCompatibilityStatus, JudgmentKind, JudgmentRationale, JudgmentRequiredFor,
-    JudgmentResolutionOutcome, MethodName, MethodOperationCategory, NextActionKind,
-    NextActionSummary, ObservedChanges, PersistedEvidenceMetadata, PersistedJudgmentBasis,
-    PersistedUserJudgmentOptions, PersistedUserJudgmentRequest, PersistedUserJudgmentResolution,
-    PlannedEffect, PrepareWriteRequest, PrepareWriteResult, ProjectContinuityKind,
-    ProjectContinuityRecord, ProjectContinuityRecordId, ProjectContinuityStatus,
-    ProjectContinuitySummary, ProjectEnforcementProfile, ProjectId, RecordId, RecordRunRequest,
-    RecordRunResult, RecordUserJudgmentPayload, RecordUserJudgmentRequest, RedactionState,
-    RequestedMode, RequiredNullable, ResidualRisk, ResumePolicy, RiskAcceptanceCoverage, RiskId,
-    RunId, RunSummary, SensitiveActionRequirement, StageArtifactRequest, StageArtifactResult,
+    JudgmentBasisCompatibilityStatus, JudgmentKind, JudgmentPresentation, JudgmentRationale,
+    JudgmentRequiredFor, JudgmentResolutionOutcome, MethodName, MethodOperationCategory,
+    NextActionKind, NextActionSummary, ObservedChanges, PersistedEvidenceMetadata,
+    PersistedJudgmentBasis, PersistedUserJudgmentOptions, PersistedUserJudgmentRequest,
+    PersistedUserJudgmentResolution, PlannedEffect, PrepareWriteRequest, PrepareWriteResult,
+    ProjectContinuityKind, ProjectContinuityRecord, ProjectContinuityRecordId,
+    ProjectContinuityStatus, ProjectContinuitySummary, ProjectEnforcementProfile, ProjectId,
+    ReconcileChangesRequest, ReconcileChangesResult, RecordId, RecordRunRequest, RecordRunResult,
+    RecordUserJudgmentPayload, RecordUserJudgmentRequest, RedactionState, RequestedMode,
+    RequiredNullable, ResidualRisk, ResumePolicy, RiskAcceptanceCoverage, RiskId, RunId,
+    RunSummary, SensitiveActionRequirement, StageArtifactRequest, StageArtifactResult,
     StagedArtifactHandle, StagedArtifactHandleId, StateRecordKind, StateRecordRef,
     StatusCloseState, StatusInclude, StatusRequest, StorageRef, TaskId, TaskLifecyclePhase,
-    TaskLifecycleState, TaskMode, TaskResult, ToolEnvelope, ToolResultBase, UpdateScopeRequest,
-    UserJudgment, UserJudgmentContext, UserJudgmentOption, UserJudgmentOptionAction,
-    UserJudgmentOptionId, UserJudgmentOptionInput, UserJudgmentResolution, UserJudgmentStatus,
-    UtcTimestamp, WriteCheckAttemptScope, WriteCheckEffect, WriteCheckId, WriteCheckStateSummary,
-    WriteCheckStatus, WriteCheckSummary, WriteDecisionCategory, WriteDecisionReason,
+    TaskLifecycleState, TaskMode, TaskResult, ToolEnvelope, ToolResultBase,
+    UnrecordedChangeFinding, UnrecordedChangeId, UnrecordedChangeResolutionBasis,
+    UnrecordedChangeResolutionRequest, UnrecordedChangeResolutionSummary, UnrecordedChangeStatus,
+    UpdateScopeRequest, UserJudgment, UserJudgmentContext, UserJudgmentId, UserJudgmentOption,
+    UserJudgmentOptionAction, UserJudgmentOptionId, UserJudgmentOptionInput,
+    UserJudgmentResolution, UserJudgmentStatus, UtcTimestamp, WriteCheckAttemptScope,
+    WriteCheckEffect, WriteCheckId, WriteCheckStateSummary, WriteCheckStatus, WriteCheckSummary,
+    WriteDecisionCategory, WriteDecisionReason,
 };
 
 use crate::pipeline::{
@@ -88,7 +94,7 @@ use crate::policy::{
         judgment_blocks_operation, judgment_required_for, JudgmentOperation,
         JudgmentOperationContext,
     },
-    path::{normalize_product_paths, path_is_within, ProductPathError},
+    path::{normalize_product_paths, path_is_within, paths_are_authorized, ProductPathError},
     rationale::validate_judgment_rationale,
     write_check::{
         current_sensitive_approval, normalize_sensitive_action_scope, normalized_string_set,
@@ -102,6 +108,7 @@ mod close_task;
 mod intake;
 mod judgment;
 mod prepare_write;
+mod reconcile_changes;
 mod record_run;
 mod stage_artifact;
 mod status;
@@ -2454,6 +2461,7 @@ fn state_ref_from_stored(record: StoredRecordRef) -> StateRecordRef {
         "change_unit" => StateRecordKind::ChangeUnit,
         "task" => StateRecordKind::Task,
         "evidence_observation" => StateRecordKind::EvidenceObservation,
+        "unrecorded_change" => StateRecordKind::UnrecordedChange,
         "project_continuity_record" => StateRecordKind::ProjectContinuityRecord,
         _ => StateRecordKind::ProjectState,
     };

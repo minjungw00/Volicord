@@ -27,6 +27,7 @@ This document owns:
   routing, and startup exit codes
 - local `volicord guard` lifecycle command names, options, decisions, output,
   and event-recording behavior
+- local `volicord changes` recovery command names and output
 - local `User Channel` command names and command output
 - diagnostic status, required user actions, dry-run behavior, JSON output, and
   noninteractive behavior
@@ -81,6 +82,7 @@ volicord guard pre-tool [--file PATH] [--repo PATH] [--connection ID] [--session
 volicord guard post-tool [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--guard-mode MODE] [--text]
 volicord guard prompt-capture [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--guard-mode MODE] [--text]
 volicord guard stop [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--guard-mode MODE] [--text]
+volicord changes reconcile [--repo PATH] [--task active|ID] [--json]
 volicord user status [--repo PATH] [--task active|ID] [--json]
 volicord user judgments [--repo PATH] [--task active|ID] [--json]
 volicord user judgment show INDEX_OR_ID [--repo PATH] [--json]
@@ -496,6 +498,14 @@ Lifecycle behavior:
   returns `deny` when close-readiness blockers remain, user-owned judgments are
   pending, or unresolved unrecorded changes remain; otherwise it returns
   `allow`.
+
+## Change reconciliation command
+
+`volicord changes reconcile [--repo PATH] [--task active|ID] [--json]` is the local recovery command for unresolved guarded unrecorded Product Repository change findings.
+
+The command resolves the selected project from `--repo PATH` or the current working directory and selects the active Task by default. It calls the public `volicord.reconcile_changes` Core method with local recovery provenance, prints the number of resolved findings, pending user judgments, and remaining unresolved findings, and exits under the normal CLI exit-code model.
+
+The command may resolve deterministic findings or create pending user-owned judgments. It does not record a user answer, accept a change on the user's behalf, prove correctness, prove review or test sufficiency, or complete close readiness. When it creates pending judgments, the user records them through the existing `User Channel` paths, then reruns `volicord changes reconcile`.
 
 ## User Channel commands
 

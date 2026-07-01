@@ -1,6 +1,6 @@
 # API state schemas
 
-This document owns API state-shaped schemas for the baseline scope. It defines public response shapes for `StateSummary`, `StateRecordRef`, lifecycle state as API data, state-related snapshots, `ProjectContinuityRecord`, `ProjectContinuitySummary`, `ShapingReadiness`, `ChangeUnitEffectContract`, and display shapes such as `NextActionSummary`, `WriteCheckStateSummary`, `WriteCheckSummary`, `WriteCheckAttemptScope`, `EvidenceSummary`, `EvidenceObservation`, `GuardHealthSummary`, `CurrentCloseBasis`, `ResidualRisk`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`, `ValidatorResult`, and `GuaranteeDisplay`.
+This document owns API state-shaped schemas for the baseline scope. It defines public response shapes for `StateSummary`, `StateRecordRef`, lifecycle state as API data, state-related snapshots, `ProjectContinuityRecord`, `ProjectContinuitySummary`, `ShapingReadiness`, `ChangeUnitEffectContract`, and display shapes such as `NextActionSummary`, `WriteCheckStateSummary`, `WriteCheckSummary`, `WriteCheckAttemptScope`, `EvidenceSummary`, `EvidenceObservation`, `GuardHealthSummary`, `UnrecordedChangeFinding`, `UnrecordedChangeResolutionSummary`, `CurrentCloseBasis`, `ResidualRisk`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`, `ValidatorResult`, and `GuaranteeDisplay`.
 
 ## Owner boundary
 
@@ -139,6 +139,51 @@ Owner links:
 - `guard_mode` and `guard_installation_status` values: [state and blocker values](schema-value-sets.md#state-and-blocker-values)
 - Close-readiness guard blockers and method-local codes: [`volicord.close_task`](method-close-task.md)
 - Agent Connection meaning: [Agent Connection](../agent-connection.md)
+
+<a id="unrecorded-change-reconciliation-shapes"></a>
+## Unrecorded change reconciliation shapes
+
+`UnrecordedChangeFinding` is the public finding shape returned by `volicord.reconcile_changes` for unresolved unrecorded Product Repository changes.
+
+`UnrecordedChangeResolutionSummary` is the public summary shape for findings resolved by one reconciliation call.
+
+```yaml
+UnrecordedChangeFinding:
+  unrecorded_change_ref: StateRecordRef
+  status: string
+  summary: string
+  observed_paths: string[]
+  detected_at: string
+  can_resolve_in_chat: boolean
+  next_action: NextActionSummary
+
+UnrecordedChangeResolutionSummary:
+  unrecorded_change_ref: StateRecordRef
+  resolution_basis: string
+  resolved_by_actor_source: string
+  capture_basis: string
+  user_judgment_ref: StateRecordRef | null
+  resolved_at: string
+```
+
+Meaning:
+
+- `unrecorded_change_ref` uses `StateRecordRef` with `record_kind=unrecorded_change`.
+- `status` is a controlled value string.
+- `summary`, `capture_basis`, and `next_action.label` are display strings, not proof of correctness.
+- `observed_paths` contains Product Repository relative paths when Core can safely decode them. It does not include prompt text, command text, shell arguments, or full sensitive content.
+- `can_resolve_in_chat` reports whether the finding can proceed through a chat-mediated user path selected by the method owner.
+- `resolution_basis` classifies why the finding became resolved.
+- `resolved_by_actor_source=system` means Core verified a deterministic basis; `resolved_by_actor_source=local_user` means a compatible User Channel judgment supplied the authority.
+- `user_judgment_ref` is non-null only for user-owned acceptance resolution.
+
+These shapes do not prove product correctness, test sufficiency, review completion, final acceptance, residual-risk acceptance, or security. Resolution behavior and caller restrictions belong to [`volicord.reconcile_changes`](method-reconcile-changes.md).
+
+Owner links:
+
+- Resolution behavior: [`volicord.reconcile_changes`](method-reconcile-changes.md).
+- Resolution basis and status values: [API Value Sets](schema-value-sets.md#unrecorded-change-resolution-basis-values).
+- Storage record preservation: [Storage Records](../storage-records.md).
 
 <a id="project-continuity-shapes"></a>
 ## Project continuity shapes

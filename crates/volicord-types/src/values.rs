@@ -127,6 +127,8 @@ pub enum MethodName {
     RequestUserJudgment,
     #[serde(rename = "volicord.record_user_judgment")]
     RecordUserJudgment,
+    #[serde(rename = "volicord.reconcile_changes")]
+    ReconcileChanges,
     #[serde(rename = "volicord.close_task")]
     CloseTask,
 }
@@ -143,6 +145,7 @@ impl MethodName {
             Self::RecordRun => "volicord.record_run",
             Self::RequestUserJudgment => "volicord.request_user_judgment",
             Self::RecordUserJudgment => "volicord.record_user_judgment",
+            Self::ReconcileChanges => "volicord.reconcile_changes",
             Self::CloseTask => "volicord.close_task",
         }
     }
@@ -264,6 +267,7 @@ pub enum NextActionKind {
     RecordRun,
     RequestUserJudgment,
     RecordUserJudgment,
+    ReconcileChanges,
     CloseTask,
 }
 
@@ -561,6 +565,34 @@ impl UnrecordedChangeStatus {
     }
 }
 
+/// Resolution basis for an unrecorded Product Repository change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum UnrecordedChangeResolutionBasis {
+    Reverted,
+    CoveredByWriteReadiness,
+    RecordedAsExpectedWrite,
+    AcceptedByUser,
+    NotProductChange,
+    SupersededByNewObservation,
+    InvalidObservation,
+}
+
+impl UnrecordedChangeResolutionBasis {
+    /// Returns the stable value name for this unrecorded-change resolution basis.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Reverted => "reverted",
+            Self::CoveredByWriteReadiness => "covered_by_write_readiness",
+            Self::RecordedAsExpectedWrite => "recorded_as_expected_write",
+            Self::AcceptedByUser => "accepted_by_user",
+            Self::NotProductChange => "not_product_change",
+            Self::SupersededByNewObservation => "superseded_by_new_observation",
+            Self::InvalidObservation => "invalid_observation",
+        }
+    }
+}
+
 /// State reference discriminator values.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -577,6 +609,7 @@ pub enum StateRecordKind {
     Blocker,
     TaskEvent,
     AgentConnection,
+    UnrecordedChange,
     ProjectContinuityRecord,
 }
 

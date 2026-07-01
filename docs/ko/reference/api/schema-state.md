@@ -1,6 +1,6 @@
 # API 상태 스키마
 
-이 문서는 기준 범위의 상태 형태 API 스키마를 담당합니다. `StateSummary`, `StateRecordRef`, API 데이터 형태의 생명주기 상태, 상태 관련 스냅샷, `ProjectContinuityRecord`, `ProjectContinuitySummary`, `ShapingReadiness`, `ChangeUnitEffectContract`, 그리고 `NextActionSummary`, `WriteCheckStateSummary`, `WriteCheckSummary`, `WriteCheckAttemptScope`, `EvidenceSummary`, `EvidenceObservation`, `GuardHealthSummary`, `CurrentCloseBasis`, `ResidualRisk`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`, `ValidatorResult`, `GuaranteeDisplay` 같은 표시 형태를 정의합니다.
+이 문서는 기준 범위의 상태 형태 API 스키마를 담당합니다. `StateSummary`, `StateRecordRef`, API 데이터 형태의 생명주기 상태, 상태 관련 스냅샷, `ProjectContinuityRecord`, `ProjectContinuitySummary`, `ShapingReadiness`, `ChangeUnitEffectContract`, 그리고 `NextActionSummary`, `WriteCheckStateSummary`, `WriteCheckSummary`, `WriteCheckAttemptScope`, `EvidenceSummary`, `EvidenceObservation`, `GuardHealthSummary`, `UnrecordedChangeFinding`, `UnrecordedChangeResolutionSummary`, `CurrentCloseBasis`, `ResidualRisk`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`, `ValidatorResult`, `GuaranteeDisplay` 같은 표시 형태를 정의합니다.
 
 ## 담당 경계
 
@@ -139,6 +139,51 @@ GuardHealthSummary:
 - `guard_mode`와 `guard_installation_status` 값: [상태와 차단 사유 값](schema-value-sets.md#state-and-blocker-values)
 - 닫기 준비 상태 guard 차단 사유와 메서드 로컬 코드: [`volicord.close_task`](method-close-task.md)
 - Agent Connection 의미: [Agent Connection](../agent-connection.md)
+
+<a id="unrecorded-change-reconciliation-shapes"></a>
+## 미기록 변경 조정 형태
+
+`UnrecordedChangeFinding`은 `volicord.reconcile_changes`가 미해결 미기록 Product Repository 변경에 대해 반환하는 공개 찾기 형태입니다.
+
+`UnrecordedChangeResolutionSummary`는 조정 호출 하나가 해결한 찾기의 공개 요약 형태입니다.
+
+```yaml
+UnrecordedChangeFinding:
+  unrecorded_change_ref: StateRecordRef
+  status: string
+  summary: string
+  observed_paths: string[]
+  detected_at: string
+  can_resolve_in_chat: boolean
+  next_action: NextActionSummary
+
+UnrecordedChangeResolutionSummary:
+  unrecorded_change_ref: StateRecordRef
+  resolution_basis: string
+  resolved_by_actor_source: string
+  capture_basis: string
+  user_judgment_ref: StateRecordRef | null
+  resolved_at: string
+```
+
+의미:
+
+- `unrecorded_change_ref`는 `record_kind=unrecorded_change`인 `StateRecordRef`를 사용합니다.
+- `status`는 제어 값 문자열입니다.
+- `summary`, `capture_basis`, `next_action.label`은 표시 문자열이며 정확성 증명이 아닙니다.
+- `observed_paths`는 Core가 안전하게 디코딩할 수 있을 때 Product Repository 상대 경로를 담습니다. prompt text, command text, shell argument, 전체 민감 내용을 포함하지 않습니다.
+- `can_resolve_in_chat`은 메서드 담당 문서가 선택한 채팅 매개 사용자 경로로 진행할 수 있는지를 나타냅니다.
+- `resolution_basis`는 찾기가 해결된 이유를 분류합니다.
+- `resolved_by_actor_source=system`은 Core가 결정적 basis를 검증했다는 뜻입니다. `resolved_by_actor_source=local_user`는 호환 User Channel 판단이 권한을 제공했다는 뜻입니다.
+- `user_judgment_ref`는 사용자 소유 수락 해결일 때만 null이 아닙니다.
+
+이 형태들은 제품 정확성, 테스트 충분성, 리뷰 완료, 최종 수락, 잔여 위험 수락, 보안을 증명하지 않습니다. 해결 동작과 호출자 제한은 [`volicord.reconcile_changes`](method-reconcile-changes.md)가 담당합니다.
+
+담당 문서 링크:
+
+- 해결 동작: [`volicord.reconcile_changes`](method-reconcile-changes.md).
+- 해결 basis와 상태 값: [API 값 집합](schema-value-sets.md#unrecorded-change-resolution-basis-values).
+- 저장 기록 보존: [저장소 기록](../storage-records.md).
 
 <a id="project-continuity-shapes"></a>
 ## 프로젝트 연속성 형태

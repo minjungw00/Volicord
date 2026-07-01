@@ -795,7 +795,7 @@ fn projected_guard_health(
     guard_health_summary_from_record(record)
 }
 
-fn guard_health_summary_from_record(
+pub(super) fn guard_health_summary_from_record(
     record: GuardHealthRecord,
 ) -> Result<Option<GuardHealthSummary>, PlanError> {
     let guard_mode = guard_health_mode(&record)?;
@@ -1028,17 +1028,24 @@ fn guard_close_blockers(
         ));
     }
     if summary.unresolved_unrecorded_change_count > 0 {
-        blockers.push(close_blocker(
+        let can_resolve_in_chat =
+            summary.prompt_capture_available || summary.mcp_connection_healthy;
+        blockers.push(close_blocker_with_resolution(
             CloseReadinessBlockerCategory::ConnectionCapability,
             "unresolved_unrecorded_changes",
             "Observed Product Repository changes still need reconciliation.",
+            can_resolve_in_chat,
+            !can_resolve_in_chat,
             vec![task_ref.clone()],
             vec![NextActionSummary {
-                action_kind: NextActionKind::RecordRun,
-                owner_method: Some(MethodName::RecordRun),
-                label: "Record or reconcile observed Product Repository changes before close."
+                action_kind: NextActionKind::ReconcileChanges,
+                owner_method: Some(MethodName::ReconcileChanges),
+                label: "Run reconciliation for observed Product Repository changes before close."
                     .to_owned(),
-                blocking_question: None,
+                blocking_question: Some(
+                    "Does the user accept any remaining observed Product Repository change as intentional?"
+                        .to_owned(),
+                ),
                 required_refs: vec![task_ref.clone()],
             }],
         ));

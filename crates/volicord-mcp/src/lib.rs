@@ -43,13 +43,13 @@ use volicord_types::{
     mcp_request_schema, ActorSource, AgentConnectionId, AgentConnectionMode, CloseIntent,
     CloseTaskRequest, IdempotencyKey, IntakeRequest, JsonObject, JudgmentKind, JudgmentRationale,
     JudgmentResolutionOutcome, McpCheckCloseArguments, McpCloseTaskArguments, McpIntakeArguments,
-    McpPrepareWriteArguments, McpRecordRunArguments, McpRequestUserJudgmentArguments,
-    McpStageArtifactArguments, McpStatusArguments, McpUpdateScopeArguments,
-    MethodOperationCategory, OperationCategory, PrepareWriteRequest, ProjectId, RecordRunRequest,
-    RecordUserJudgmentPayload, RecordUserJudgmentRequest, RequestId, RequestUserJudgmentRequest,
-    RequiredNullable, StageArtifactRequest, StatusRequest, ToolEnvelope, UpdateScopeRequest,
-    UserJudgment, UserJudgmentOption, UserJudgmentOptionAction,
-    VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
+    McpPrepareWriteArguments, McpReconcileChangesArguments, McpRecordRunArguments,
+    McpRequestUserJudgmentArguments, McpStageArtifactArguments, McpStatusArguments,
+    McpUpdateScopeArguments, MethodOperationCategory, OperationCategory, PrepareWriteRequest,
+    ProjectId, ReconcileChangesRequest, RecordRunRequest, RecordUserJudgmentPayload,
+    RecordUserJudgmentRequest, RequestId, RequestUserJudgmentRequest, RequiredNullable,
+    StageArtifactRequest, StatusRequest, ToolEnvelope, UpdateScopeRequest, UserJudgment,
+    UserJudgmentOption, UserJudgmentOptionAction, VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
     VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
     VERIFICATION_BASIS_MCP_STREAMABLE_HTTP_CONNECTION_BINDING,
     VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
@@ -64,7 +64,7 @@ const ELICITATION_CREATE_METHOD: &str = "elicitation/create";
 static REQUEST_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
 /// Agent-facing Volicord tools exposed through workflow MCP connections.
-pub const PUBLIC_METHOD_TOOL_NAMES: [&str; 9] = [
+pub const PUBLIC_METHOD_TOOL_NAMES: [&str; 10] = [
     "volicord.intake",
     "volicord.update_scope",
     "volicord.status",
@@ -72,6 +72,7 @@ pub const PUBLIC_METHOD_TOOL_NAMES: [&str; 9] = [
     "volicord.stage_artifact",
     "volicord.record_run",
     "volicord.request_user_judgment",
+    "volicord.reconcile_changes",
     CHECK_CLOSE_TOOL_NAME,
     "volicord.close_task",
 ];
@@ -360,6 +361,7 @@ impl McpAdapter {
             "volicord.stage_artifact" => self.call_stage_artifact(tool_name, params),
             "volicord.record_run" => self.call_record_run(tool_name, params),
             "volicord.request_user_judgment" => self.call_request_user_judgment(tool_name, params),
+            "volicord.reconcile_changes" => self.call_reconcile_changes(tool_name, params),
             CHECK_CLOSE_TOOL_NAME => self.call_check_close(tool_name, params),
             "volicord.close_task" => self.call_close_task(tool_name, params),
             other => Err(McpAdapterError::UnknownTool(other.to_owned())),
@@ -584,6 +586,32 @@ impl McpAdapter {
                 expires_at: args.expires_at,
             },
             CoreService::request_user_judgment,
+        )
+    }
+
+    fn call_reconcile_changes(
+        &self,
+        tool_name: &str,
+        params: Value,
+    ) -> Result<PipelineResponse, McpAdapterError> {
+        let prepared: PreparedMcpArguments<McpReconcileChangesArguments> =
+            self.prepare_mcp_arguments(tool_name, params)?;
+        let task_id = prepared.arguments.task_id.clone();
+        let envelope = self.generated_envelope(
+            tool_name,
+            &prepared.project_id,
+            Some(&task_id),
+            OperationCategory::AgentWorkflow,
+        )?;
+        let args = prepared.arguments;
+        self.call_core_request(
+            tool_name,
+            ReconcileChangesRequest {
+                envelope,
+                task_id,
+                resolution_requests: args.resolution_requests,
+            },
+            CoreService::reconcile_changes,
         )
     }
 
@@ -936,6 +964,7 @@ impl_has_envelope!(
     StageArtifactRequest,
     RecordRunRequest,
     RequestUserJudgmentRequest,
+    ReconcileChangesRequest,
     CloseTaskRequest,
 );
 
@@ -3334,6 +3363,9 @@ fn tool_description(name: &str) -> &'static str {
         "volicord.stage_artifact" => "Stage safe artifact bytes or a safe notice.",
         "volicord.record_run" => "Record shaping, direct, or implementation work.",
         "volicord.request_user_judgment" => "Create one pending focused user-owned judgment.",
+        "volicord.reconcile_changes" => {
+            "Reconcile unresolved guarded unrecorded Product Repository changes."
+        }
         CHECK_CLOSE_TOOL_NAME => "Check close readiness for a selected Task.",
         "volicord.close_task" => "Perform a selected Task close path.",
         LIST_PROJECTS_TOOL_NAME => "List projects explicitly allowed for this MCP connection.",
@@ -3524,6 +3556,7 @@ mod tests {
             PUBLIC_METHOD_TOOL_NAMES
         );
         assert!(workflow_names.contains(&"volicord.request_user_judgment"));
+        assert!(workflow_names.contains(&"volicord.reconcile_changes"));
         assert!(workflow_names.contains(&CHECK_CLOSE_TOOL_NAME));
         assert!(workflow_names.contains(&"volicord.close_task"));
         assert!(!workflow_names.contains(&"volicord.record_user_judgment"));

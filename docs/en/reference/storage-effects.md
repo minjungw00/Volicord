@@ -315,6 +315,7 @@ This table summarizes persistence effects. Method behavior and response unions r
 | `volicord.record_run` | records run, current close-basis, evidence, and evidence-observation effects | See [`volicord.record_run`](#volicordrecord_run) |
 | `volicord.request_user_judgment` | creates pending judgment request | See [`volicord.request_user_judgment`](#volicordrequest_user_judgment) |
 | `volicord.record_user_judgment` | resolves user judgment | See [`volicord.record_user_judgment`](#volicordrecord_user_judgment) |
+| `volicord.reconcile_changes` | resolves unrecorded-change findings or creates pending user judgments | See [`volicord.reconcile_changes`](#volicordreconcile_changes) |
 | `volicord.close_task intent=check` | read-only close-readiness check | See [`volicord.close_task intent=check`](#volicordclose_task-intentcheck) |
 | `volicord.close_task intent=complete` | persists method-selected `complete` terminal or blocked effect | See [`volicord.close_task intent=complete`](#volicordclose_task-intentcomplete) |
 | `volicord.close_task intent=cancel` | persists method-selected cancellation terminal or blocked effect | See [`volicord.close_task intent=cancel`](#volicordclose_task-intentcancel) |
@@ -597,6 +598,37 @@ Recording a user judgment does not increment `tasks.scope_revision` or `tasks.cl
 Owner links:
 
 - [`volicord.record_user_judgment` method](api/method-record-user-judgment.md#volicordrecord_user_judgment)
+- [Storage Records](storage-records.md)
+
+<a id="volicordreconcile_changes"></a>
+### `volicord.reconcile_changes`
+
+Committed `dry_run=false` may:
+
+- set unresolved `unrecorded_changes` rows to `status='resolved'`
+- store resolution JSON that names the resolution basis, capture basis, resolved method, and optional linked user-judgment ref
+- store `resolved_at` and `resolved_by_actor_source`
+- create pending `user_judgments` rows for findings that require user acceptance
+- append events
+- create a replay row when an idempotency key is present
+- increment `project_state.state_version` once
+
+Read-only branches:
+
+- A valid call with no planned resolution or pending judgment creation returns response data only.
+
+No-effect branches:
+
+- rejected attempts
+- valid dry-run previews
+
+These branches do not resolve findings, create pending judgments, append events, create replay rows, or increment `project_state.state_version`.
+
+Reconciliation effects do not prove product correctness, test sufficiency, review completion, final acceptance, residual-risk acceptance, or security. They only record why the unrecorded-change finding is no longer unresolved or create a pending user-owned judgment for remaining acceptance.
+
+Owner links:
+
+- [`volicord.reconcile_changes` method](api/method-reconcile-changes.md#volicordreconcile_changes)
 - [Storage Records](storage-records.md)
 
 <a id="volicordclose_task-intentcheck"></a>

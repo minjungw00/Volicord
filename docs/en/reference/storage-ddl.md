@@ -966,7 +966,7 @@ Project-state constraints:
 - `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, and `unrecorded_changes` are project-local guarded-operation records. They repeat `connection_internal_id` for connection scoping and use project-local keys so records do not leak across projects.
 - `guard_events.decision` is constrained to `allow`, `deny`, `warn`, or `inject_context`. These values record local guard decisions; they are not OS-level enforcement proof.
 - `expected_writes.status` is constrained to `pending` or `matched`, and `path_policy` is constrained to `exact_paths`. Matched rows must carry the matched post-tool guard event, matched paths JSON, and `matched_at`; pending rows must not carry those matched fields.
-- `unrecorded_changes.status` is constrained to `unresolved` or `resolved`. Resolved rows must carry resolution JSON, `resolved_at`, and `resolved_by_actor_source`; unresolved rows must not carry those resolution fields.
+- `unrecorded_changes.status` is constrained to `unresolved` or `resolved`. Resolved rows must carry resolution JSON, `resolved_at`, and `resolved_by_actor_source`; unresolved rows must not carry those resolution fields. Resolution JSON must include the compact resolution basis and capture basis required by [Storage Records](storage-records.md), without storing full sensitive command or prompt content.
 
 ## Related Owners
 

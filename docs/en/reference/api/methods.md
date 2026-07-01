@@ -16,6 +16,7 @@ This page does not define method behavior, request or response bodies, shared sc
 <a id="volicordrecord_run"></a>
 <a id="volicordrequest_user_judgment"></a>
 <a id="volicordrecord_user_judgment"></a>
+<a id="volicordreconcile_changes"></a>
 <a id="volicordclose_task"></a>
 
 | Method | Owner |
@@ -28,6 +29,7 @@ This page does not define method behavior, request or response bodies, shared sc
 | `volicord.record_run` | [Record-run method](method-record-run.md) |
 | `volicord.request_user_judgment` | [Request-user-judgment method](method-request-user-judgment.md#volicordrequest_user_judgment) |
 | `volicord.record_user_judgment` | [Record-user-judgment method](method-record-user-judgment.md#volicordrecord_user_judgment) |
+| `volicord.reconcile_changes` | [Reconcile-changes method](method-reconcile-changes.md#volicordreconcile_changes) |
 | `volicord.close_task` | [Close-task method](method-close-task.md) |
 
 ## Nearby Routes

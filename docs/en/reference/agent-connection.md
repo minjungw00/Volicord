@@ -252,7 +252,7 @@ Connection modes and operation categories:
 
 | Agent Connection mode | Allowed operation categories through MCP | MCP-visible public method tools |
 |---|---|---|
-| `workflow` | `read`, `agent_workflow` | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.prepare_write`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.check_close`, `volicord.close_task` |
+| `workflow` | `read`, `agent_workflow` | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.prepare_write`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.reconcile_changes`, `volicord.check_close`, `volicord.close_task` |
 | `read_only` | `read` | `volicord.status`, `volicord.check_close` |
 
 The adapter-owned `volicord.list_projects` utility is visible in both

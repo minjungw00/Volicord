@@ -117,6 +117,7 @@ pub enum CoreStorageMutation {
     InsertEvidenceObservation(EvidenceObservationInsert),
     InsertUserJudgment(UserJudgmentInsert),
     ResolveUserJudgment(UserJudgmentResolutionUpdate),
+    ResolveUnrecordedChange(UnrecordedChangeResolutionUpdate),
     InsertProjectContinuityRecord(ProjectContinuityRecordInsert),
     UpdateUserJudgmentBasis(UserJudgmentBasisUpdate),
     MarkUserJudgmentBasesStatus(UserJudgmentBasisStatusMark),
@@ -229,6 +230,15 @@ pub struct UserJudgmentResolutionUpdate {
     pub resolved_at: String,
 }
 
+/// Storage input for resolving one unrecorded Product Repository change.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnrecordedChangeResolutionUpdate {
+    pub unrecorded_change_id: String,
+    pub resolution_json: String,
+    pub resolved_at: String,
+    pub resolved_by_actor_source: String,
+}
+
 /// Storage input for inserting one project-level continuity record.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProjectContinuityRecordInsert {
@@ -322,6 +332,17 @@ pub struct RunRecord {
     pub change_unit_id: Option<String>,
     pub scope_revision: u64,
     pub baseline_ref: Option<String>,
+    pub status: String,
+}
+
+/// Stored Run observed-change facts needed by reconciliation checks.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RunObservedChangesRecord {
+    pub project_id: String,
+    pub run_id: String,
+    pub task_id: String,
+    pub change_unit_id: Option<String>,
+    pub observed_changes: ObservedChanges,
     pub status: String,
 }
 
@@ -859,6 +880,14 @@ impl CoreProjectStore {
     /// Reads one committed Run row by exact project-local identity.
     pub fn run_record(&self, run_id: &str) -> StoreResult<Option<RunRecord>> {
         run_record(&self.conn, &self.project.project_id, run_id)
+    }
+
+    /// Lists committed Run rows for one Task with their observed changes.
+    pub fn run_observed_changes_for_task(
+        &self,
+        task_id: &TaskId,
+    ) -> StoreResult<Vec<RunObservedChangesRecord>> {
+        run_observed_changes_for_task(&self.conn, &self.project.project_id, task_id.as_str())
     }
 
     /// Reads one staged artifact row by exact project-local handle identity.
@@ -1478,6 +1507,7 @@ impl CoreStorageMutation {
             Self::InsertEvidenceObservation(input) => mutation.insert_evidence_observation(input),
             Self::InsertUserJudgment(input) => mutation.insert_user_judgment(input),
             Self::ResolveUserJudgment(input) => mutation.resolve_user_judgment(input),
+            Self::ResolveUnrecordedChange(input) => mutation.resolve_unrecorded_change(input),
             Self::InsertProjectContinuityRecord(input) => {
                 mutation.insert_project_continuity_record(input)
             }
@@ -2583,6 +2613,42 @@ impl ProjectMutation<'_> {
         }
     }
 
+    fn resolve_unrecorded_change(
+        &mut self,
+        input: &UnrecordedChangeResolutionUpdate,
+    ) -> StoreResult<()> {
+        validate_identifier("unrecorded_change_id", &input.unrecorded_change_id)?;
+        validate_json_text("unrecorded_changes.resolution_json", &input.resolution_json)?;
+        validate_timestamp("resolved_at", &input.resolved_at)?;
+        validate_identifier("resolved_by_actor_source", &input.resolved_by_actor_source)?;
+
+        let changed = self.tx.execute(
+            "UPDATE unrecorded_changes
+                SET status = 'resolved',
+                    resolution_json = ?3,
+                    resolved_at = ?4,
+                    resolved_by_actor_source = ?5
+              WHERE project_id = ?1
+                AND unrecorded_change_id = ?2
+                AND status = 'unresolved'",
+            params![
+                self.project_id,
+                input.unrecorded_change_id,
+                input.resolution_json,
+                input.resolved_at,
+                input.resolved_by_actor_source,
+            ],
+        )?;
+        if changed == 1 {
+            Ok(())
+        } else {
+            Err(StoreError::SchemaInvariant {
+                database_kind: "project_state",
+                detail: "unresolved unrecorded-change resolution changed no rows".to_owned(),
+            })
+        }
+    }
+
     fn insert_project_continuity_record(
         &mut self,
         input: &ProjectContinuityRecordInsert,
@@ -3394,6 +3460,56 @@ fn run_record(conn: &Connection, project_id: &str, run_id: &str) -> StoreResult<
         },
     )
     .transpose()
+}
+
+fn run_observed_changes_for_task(
+    conn: &Connection,
+    project_id: &str,
+    task_id: &str,
+) -> StoreResult<Vec<RunObservedChangesRecord>> {
+    validate_identifier("task_id", task_id)?;
+    let mut stmt = conn.prepare(
+        "SELECT
+            project_id,
+            run_id,
+            task_id,
+            change_unit_id,
+            observed_changes_json,
+            status
+         FROM runs
+         WHERE project_id = ?1
+           AND task_id = ?2
+         ORDER BY created_at DESC, run_id DESC",
+    )?;
+    let rows = stmt.query_map(params![project_id, task_id], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, Option<String>>(3)?,
+            row.get::<_, String>(4)?,
+            row.get::<_, String>(5)?,
+        ))
+    })?;
+    let mut records = Vec::new();
+    for row in rows {
+        let (project_id, run_id, task_id, change_unit_id, observed_changes_json, status) = row?;
+        let observed_changes = decode_owner_json_text::<ObservedChanges>(
+            "runs",
+            run_id.clone(),
+            "observed_changes_json",
+            &observed_changes_json,
+        )?;
+        records.push(RunObservedChangesRecord {
+            project_id,
+            run_id,
+            task_id,
+            change_unit_id,
+            observed_changes,
+            status,
+        });
+    }
+    Ok(records)
 }
 
 fn artifact_staging_record(

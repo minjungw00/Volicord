@@ -8,6 +8,7 @@ use std::{
 };
 
 use volicord_cli::{
+    changes_command::{changes_usage, run_changes_command, ChangesCommandError},
     connection_command::{
         connect_usage, connection_usage, connections_usage, init_usage, run_connect_command,
         run_connection_command, run_connections_command, run_init_command, ConnectionCommandError,
@@ -143,6 +144,12 @@ where
             run_connection_command(&args[2..], current_dir, &mut connection_process)
                 .map_err(CliError::from)
         }
+        "changes" => {
+            if changes_subcommand_requires_setup(&args[2..]) {
+                require_setup_completed(&env_var, current_dir)?;
+            }
+            run_changes_command(&args[2..], env_var, current_dir).map_err(CliError::from)
+        }
         "user" => {
             if user_subcommand_requires_setup(&args[2..]) {
                 require_setup_completed(&env_var, current_dir)?;
@@ -167,6 +174,10 @@ fn user_subcommand_requires_setup(args: &[String]) -> bool {
         args.first().map(String::as_str),
         Some("status" | "judgments" | "judgment")
     )
+}
+
+fn changes_subcommand_requires_setup(args: &[String]) -> bool {
+    matches!(args.first().map(String::as_str), Some("reconcile"))
 }
 
 fn project_subcommand_requires_setup(args: &[String]) -> bool {
@@ -255,12 +266,12 @@ where
 fn setup_required_message(runtime_home: &Path) -> String {
     if !runtime_home.exists() {
         format!(
-            "RUNTIME_HOME_MISSING: Runtime Home {} is missing; run `volicord setup` before project, connection, export, MCP, serve, or user workflows",
+            "RUNTIME_HOME_MISSING: Runtime Home {} is missing; run `volicord setup` before project, connection, export, MCP, serve, changes, or user workflows",
             runtime_home.display()
         )
     } else {
         format!(
-            "SETUP_REQUIRED: installation profile is missing for Runtime Home {}; run `volicord setup` before project, connection, export, MCP, serve, or user workflows",
+            "SETUP_REQUIRED: installation profile is missing for Runtime Home {}; run `volicord setup` before project, connection, export, MCP, serve, changes, or user workflows",
             runtime_home.display()
         )
     }
@@ -424,7 +435,7 @@ fn display_path(path: &Path) -> String {
 
 fn usage() -> String {
     format!(
-        "Usage:\n  volicord --help\n  volicord --version\n{}{}{}{}{}{}{}{}{}{}{}{}\nEnvironment:\n  VOLICORD_HOME  Override Runtime Home path (default: $HOME/.volicord)\n\nAgent Connection commands manage local MCP host connections. User Channel commands record local user judgments.\nThese are local administrative commands, not public Volicord API methods.\n",
+        "Usage:\n  volicord --help\n  volicord --version\n{}{}{}{}{}{}{}{}{}{}{}{}{}\nEnvironment:\n  VOLICORD_HOME  Override Runtime Home path (default: $HOME/.volicord)\n\nAgent Connection commands manage local MCP host connections. User Channel commands record local user judgments.\nThese are local administrative commands, not public Volicord API methods.\n",
         indent_usage_block(&setup_usage()),
         indent_usage_block(&init_usage()),
         indent_usage_block(&doctor_usage()),
@@ -435,6 +446,7 @@ fn usage() -> String {
         indent_usage_block(&connect_usage()),
         indent_usage_block(&connections_usage()),
         indent_usage_block(&connection_usage()),
+        indent_usage_block(&changes_usage()),
         indent_usage_block(&user_usage()),
         indent_usage_block(&project_usage())
     )
@@ -527,6 +539,15 @@ impl From<UserCommandError> for CliError {
         match error {
             UserCommandError::Usage(message) => Self::Usage(message),
             UserCommandError::Runtime(message) => Self::Runtime(message),
+        }
+    }
+}
+
+impl From<ChangesCommandError> for CliError {
+    fn from(error: ChangesCommandError) -> Self {
+        match error {
+            ChangesCommandError::Usage(message) => Self::Usage(message),
+            ChangesCommandError::Runtime(message) => Self::Runtime(message),
         }
     }
 }
