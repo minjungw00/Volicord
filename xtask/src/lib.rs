@@ -2520,7 +2520,7 @@ fn validate_init_command(args: &[String]) -> std::result::Result<(), String> {
     }
     let parsed = parse_command_args(
         args,
-        &["dry-run", "json"],
+        &["allow-degraded", "dry-run", "json"],
         &["host", "repo", "mode", "home", "mcp-command"],
     )?;
     reject_positionals(&parsed, 0, "`volicord init`")?;

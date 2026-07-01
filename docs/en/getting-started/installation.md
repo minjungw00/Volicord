@@ -1,10 +1,10 @@
 # Installation
 
-This tutorial prepares the local `volicord` executable. The ordinary guarded
-first-run path records the installation profile while running
-`volicord init --host HOST --repo PATH` in the [Quickstart](quickstart.md). Use
-`volicord setup` only when you need to prepare or repair the installation
-profile separately.
+This tutorial prepares the local `volicord` executable. The ordinary first-run
+path records the installation profile while running
+`volicord init --host HOST --repo PATH --mode mcp-only` in the
+[Quickstart](quickstart.md). Use `volicord setup` only when you need to prepare
+or repair the installation profile separately.
 
 Exact command behavior belongs to
 [Administrative CLI Reference](../reference/admin-cli.md). Runtime location and
@@ -75,10 +75,13 @@ volicord init --help
 ```
 
 For the ordinary first repository connection, continue with
-`volicord init --host HOST --repo PATH` in the
+`volicord init --host HOST --repo PATH --mode mcp-only` in the
 [Quickstart](quickstart.md). `volicord init` can initialize the Runtime Home and
-installation profile while it connects the selected Product Repository and
-writes guarded host integration files.
+installation profile while it connects the selected Product Repository, writes
+project-scoped MCP configuration, and records guard installation status.
+Guarded hook setup has the verified-hook or explicit degraded opt-in
+requirements described in the
+[Administrative CLI Reference](../reference/admin-cli.md#agent-host-setup-and-init).
 
 Use `volicord setup` only when you want to prepare or repair the installation
 profile without connecting a repository:
@@ -178,7 +181,7 @@ install path. From the Volicord source repository:
 ```sh
 cargo build --workspace --bins
 ./target/debug/volicord --version
-./target/debug/volicord init --host codex --repo /path/to/your-product-repo
+./target/debug/volicord init --host codex --repo /path/to/your-product-repo --mode mcp-only
 ```
 
 This builds and runs the local development executable at
@@ -212,11 +215,13 @@ docker run --rm -it \
   volicord:local setup
 ```
 
-For ordinary guarded setup in Docker, run `volicord init --host HOST --repo
-/workspace` with the same mounts. After the Runtime Home contains the project
-registration and Agent Connection you want to serve, for example from that
-matching `volicord init` run or a lower-level `volicord connect` run, start the
-local HTTP MCP endpoint with an operator-provided token:
+For MCP-only setup in Docker, run
+`volicord init --host HOST --repo /workspace --mode mcp-only` with the same
+mounts. Guarded Docker setup has the same verified-hook or explicit degraded
+opt-in requirements as non-container setup. After the Runtime Home contains the
+project registration and Agent Connection you want to serve, for example from
+that matching `volicord init` run or a lower-level `volicord connect` run, start
+the local HTTP MCP endpoint with an operator-provided token:
 
 ```sh
 VOLICORD_HTTP_TOKEN="$(openssl rand -hex 32)"
@@ -240,7 +245,7 @@ port. The host publish address remains `127.0.0.1`, and Volicord still requires
 
 Setup does not register a Product Repository and does not install host
 configuration. Project registration happens when you run `volicord project use`
-or a command such as `volicord init --host HOST --repo PATH` or
+or a command such as `volicord init --host HOST --repo PATH --mode mcp-only` or
 `volicord connect` from inside a Git repository.
 
 Project naming and internal identity behavior are owned by the
@@ -252,11 +257,13 @@ Internal identities are stored by Volicord and are not first-time setup inputs.
 Connect a host to the Product Repository:
 
 ```sh
-volicord init --host codex --repo /path/to/your-product-repo
+volicord init --host codex --repo /path/to/your-product-repo --mode mcp-only
 ```
 
 `/path/to/your-product-repo` is an example path for the Product Repository where
-you want the agent to work.
+you want the agent to work. Use guarded or managed init only when the selected
+host has verified required hook support, or when you explicitly choose degraded
+guard setup with `--allow-degraded`.
 
 For the full first-run path, continue with the [Quickstart](quickstart.md). For
 host-specific details, see [Agent Host Setup](../guides/agent-host-setup.md).

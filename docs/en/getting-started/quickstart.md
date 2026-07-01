@@ -12,7 +12,7 @@ meaning belongs to [Agent Connection Reference](../reference/agent-connection.md
 ## Fast Path
 
 ```sh
-volicord init --host codex --repo /path/to/your-product-repo
+volicord init --host codex --repo /path/to/your-product-repo --mode mcp-only
 ```
 
 `/path/to/your-product-repo` is an example path for the Product Repository where
@@ -20,15 +20,16 @@ you want the agent to work. `volicord init` is the primary first-run repository
 setup and host-connection command. It creates or reuses the Runtime Home and
 installation profile when needed, registers the selected repository, installs
 project-scoped MCP configuration for the selected host, writes Volicord-managed
-guidance and guard integration files, and records guard installation status.
+guidance and policy metadata, and records guard installation status.
 Generated host configuration starts the single public executable as
 `volicord mcp --stdio`.
 
-The default `init` mode is `guarded`. Use `--mode mcp-only` only when you want
-MCP configuration and guidance without guard hook commands. Use
-`--mode managed` only for hosts or future integrations that distinguish managed
-guard mode. Exact project naming, guard-mode behavior, connection defaults, and
-internal identity behavior belong to
+This fast path uses `--mode mcp-only`, which does not require host lifecycle
+hook installation. Default `guarded` or `managed` init requires verified support
+for all required host hook phases; if support is missing, use
+`--allow-degraded` only when you explicitly want degraded guard files and
+missing-hook diagnostics. Exact project naming, guard-mode behavior, connection
+defaults, and internal identity behavior belong to
 [Administrative CLI Reference](../reference/admin-cli.md).
 
 ## Confirm The Setup
@@ -70,8 +71,8 @@ volicord connect codex --repo /path/to/your-product-repo
 ```
 
 `volicord connect` is still the lower-level connection-management command for
-personal, shared, global, and read-only variants. For the ordinary guarded
-first-run path, prefer `volicord init --host HOST --repo PATH`.
+personal, shared, global, and read-only variants. For the ordinary first-run
+path, prefer `volicord init --host HOST --repo PATH --mode mcp-only`.
 
 ## Inspect Or Change The Connection
 

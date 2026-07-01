@@ -7,11 +7,12 @@
 동작은 [Agent Connection](../reference/agent-connection.md)과
 [MCP 전송](../reference/mcp-transport.md)이 담당합니다.
 
-이 문서는 Product Repository 하나를 위한 기본 첫 실행 경로가 아닙니다. 일반 guarded
+이 문서는 Product Repository 하나를 위한 기본 첫 실행 경로가 아닙니다. 일반 첫 실행
 설정에는 [에이전트 호스트 설정](agent-host-setup.md)과
-`volicord init --host HOST --repo PATH`를 사용합니다. 여기의 하위 수준
-`volicord connect` 명령은 호스트 수준 또는 global 호스트 항목 하나가 명시적으로
-허용된 둘 이상의 저장소로 라우팅해야 할 때만 사용합니다.
+`volicord init --host HOST --repo PATH --mode mcp-only`를 사용합니다. Guarded 설정에는
+그 문서가 설명하는 검증된 hook 지원 또는 명시적 degraded opt-in 요구사항이 적용됩니다.
+여기의 하위 수준 `volicord connect` 명령은 호스트 수준 또는 global 호스트 항목 하나가
+명시적으로 허용된 둘 이상의 저장소로 라우팅해야 할 때만 사용합니다.
 
 ## 토폴로지
 

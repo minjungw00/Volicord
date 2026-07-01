@@ -1,8 +1,9 @@
 # Agent Host Setup
 
 Use this guide to connect Codex, Claude Code, or a generic MCP host to
-Volicord. The ordinary guarded path starts with `volicord init`, a host, and a
-Product Repository; Volicord manages the internal host and registry values.
+Volicord. The ordinary first-run path starts with `volicord init`, a host, a
+Product Repository, and the integration mode that matches the host capabilities;
+Volicord manages the internal host and registry values.
 
 Exact CLI behavior belongs to
 [Administrative CLI Reference](../reference/admin-cli.md). Agent Connection
@@ -16,7 +17,7 @@ Install `volicord` first with [Installation](../getting-started/installation.md)
 then run the host setup sequence:
 
 ```sh
-volicord init --host codex --repo /path/to/your-product-repo
+volicord init --host codex --repo /path/to/your-product-repo --mode mcp-only
 volicord connection status codex --repo /path/to/your-product-repo
 ```
 
@@ -25,10 +26,11 @@ you want the agent to work. `volicord init` creates or reuses the Runtime Home
 and installation profile when needed, registers or reuses that repository
 project, derives the visible project name from the repository directory,
 installs project-scoped MCP configuration for the selected host, writes
-Volicord-managed guidance and guard integration files, records guard
-installation status, and stores internal registry identities in the selected
+Volicord-managed guidance and policy metadata, records guard installation
+status, and stores internal registry identities in the selected
 `Volicord Runtime Home`. Generated host configuration starts
-`volicord mcp --stdio`.
+`volicord mcp --stdio`. `--mode mcp-only` is the lower-guarantee setup path and
+does not require host lifecycle hook installation.
 
 Use `volicord connect` for lower-level connection variants after the
 installation profile is ready, for example when selecting personal, global, or
@@ -46,6 +48,18 @@ updates MCP host configuration, Volicord-managed `AGENTS.md` guidance,
 `.volicord/policy.json`, host hook or rule files, and guard installation state.
 The host may still need reload, restart, trust, project MCP approval, or another
 host-owned action before those files run.
+
+Default `guarded` or `managed` init must be able to install and verify all
+required host lifecycle hook phases. When the selected Codex or Claude Code
+adapter does not know a reliable project-local hook schema or path for every
+required phase, init fails instead of treating `AGENTS.md` or
+`.volicord/policy.json` as enforcement. Use `--allow-degraded` only when you
+explicitly want the degraded setup files and understand that required hook
+phases will be reported missing:
+
+```sh
+volicord init --host codex --repo /path/to/your-product-repo --allow-degraded
+```
 
 `volicord connection verify` and `volicord doctor` keep file health, required
 host action, and observed activation separate. A guard installation becomes

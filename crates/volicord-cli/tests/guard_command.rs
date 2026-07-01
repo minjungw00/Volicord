@@ -1837,17 +1837,22 @@ impl GuardedLifecycleFixture {
         write_fake_codex(&bin_dir)?;
         write_fake_mcp(&bin_dir)?;
 
+        let mut args = vec![
+            "init",
+            "--host",
+            "codex",
+            "--repo",
+            repo_arg.as_str(),
+            "--mode",
+            mode,
+        ];
+        if mode != "mcp-only" {
+            args.push("--allow-degraded");
+        }
+        args.push("--json");
+
         let output = Command::new(volicord_bin())
-            .args([
-                "init",
-                "--host",
-                "codex",
-                "--repo",
-                repo_arg.as_str(),
-                "--mode",
-                mode,
-                "--json",
-            ])
+            .args(args)
             .env("VOLICORD_HOME", runtime_home.path())
             .env("PATH", path_env(&[bin_dir.as_path()]))
             .env("VOLICORD_TEST_CONNECTION_MODE", "workflow")

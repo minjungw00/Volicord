@@ -48,7 +48,8 @@ connected to it. Exact project-selection and MCP tool-argument behavior belongs 
 
 ## What Setup Does
 
-Agent setup through the ordinary `volicord init --host HOST --repo PATH` path can:
+Agent setup through the ordinary
+`volicord init --host HOST --repo PATH --mode mcp-only` path can:
 
 - create or reuse Runtime Home records
 - create or reuse the installation profile
@@ -56,10 +57,13 @@ Agent setup through the ordinary `volicord init --host HOST --repo PATH` path ca
 - create or reuse an Agent Connection and Connection Projects membership
 - install project-scoped Codex or Claude Code MCP configuration that starts
   `volicord mcp --stdio`
-- install Volicord-managed guidance and guard integration files for guarded
-  local use
+- install Volicord-managed guidance and policy metadata
 - record guard installation state
 - run setup verification and report `complete`, `action_required`, or `failed`
+
+Full guarded or managed setup is a separate `volicord init` mode. It requires
+verified support for the required host lifecycle hooks or an explicit degraded
+opt-in, as defined by [Administrative CLI](../reference/admin-cli.md).
 
 `volicord setup` remains the installation-profile preparation and repair path.
 `volicord connect` remains the lower-level connection-management command for

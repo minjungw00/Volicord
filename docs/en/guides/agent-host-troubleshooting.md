@@ -119,7 +119,7 @@ volicord project use
 Or select the Product Repository explicitly:
 
 ```sh
-volicord init --host codex --repo /path/to/your-product-repo
+volicord init --host codex --repo /path/to/your-product-repo --mode mcp-only
 ```
 
 `/path/to/your-product-repo` is an example path for the Product Repository where
@@ -131,12 +131,16 @@ repository directory. Internal project identities are not recovery inputs.
 Observable symptom: `volicord connect` or `volicord connection ...` cannot infer
 the host, or the host value is unsupported.
 
-Bounded recovery: for ordinary guarded setup, pass the host and repository to
-init explicitly:
+Bounded recovery: for ordinary first-run setup without lifecycle hook
+installation, pass the host, repository, and `mcp-only` mode to init explicitly:
 
 ```sh
-volicord init --host codex --repo /path/to/your-product-repo
+volicord init --host codex --repo /path/to/your-product-repo --mode mcp-only
 ```
+
+For guarded or managed setup, use the full init contract in the
+[Administrative CLI Reference](../reference/admin-cli.md#agent-host-setup-and-init);
+missing verified hook support requires an explicit degraded opt-in.
 
 For lower-level connection recovery, pass the host and repository to connect
 explicitly:

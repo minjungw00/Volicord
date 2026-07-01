@@ -1,9 +1,9 @@
 # 설치
 
-이 튜토리얼은 로컬 `volicord` 실행 파일을 준비합니다. 일반적인 guarded 첫 실행 경로는
-[빠른 시작](quickstart.md)의 `volicord init --host HOST --repo PATH`를 실행하면서 설치
-프로필을 기록합니다. `volicord setup`은 설치 프로필을 따로 준비하거나 복구해야 할 때만
-사용합니다.
+이 튜토리얼은 로컬 `volicord` 실행 파일을 준비합니다. 일반적인 첫 실행 경로는
+[빠른 시작](quickstart.md)의 `volicord init --host HOST --repo PATH --mode mcp-only`를
+실행하면서 설치 프로필을 기록합니다. `volicord setup`은 설치 프로필을 따로 준비하거나
+복구해야 할 때만 사용합니다.
 
 정확한 명령 동작은 [관리 CLI 참조](../reference/admin-cli.md)가 담당합니다.
 런타임 위치와 저장소 분리는 [런타임 경계](../reference/runtime-boundaries.md)가
@@ -69,9 +69,11 @@ volicord init --help
 ```
 
 일반적인 첫 저장소 연결은 [빠른 시작](quickstart.md)의
-`volicord init --host HOST --repo PATH`로 이어갑니다. `volicord init`은 선택한
-Product Repository를 연결하고 guarded 호스트 통합 파일을 쓰는 동안 Runtime Home과
-설치 프로필을 초기화할 수 있습니다.
+`volicord init --host HOST --repo PATH --mode mcp-only`로 이어갑니다. `volicord init`은
+선택한 Product Repository를 연결하고, 프로젝트 범위 MCP 설정을 쓰며, guard 설치 상태를
+기록하는 동안 Runtime Home과 설치 프로필을 초기화할 수 있습니다. Guarded hook 설정에는
+[관리 CLI 참조](../reference/admin-cli.md#agent-host-setup-and-init)에 설명된 검증된 hook
+지원 또는 명시적 degraded opt-in 요구사항이 적용됩니다.
 
 저장소를 연결하지 않고 설치 프로필만 준비하거나 복구하려면 `volicord setup`을
 사용합니다.
@@ -163,7 +165,7 @@ Volicord 소스 저장소에서 실행합니다.
 ```sh
 cargo build --workspace --bins
 ./target/debug/volicord --version
-./target/debug/volicord init --host codex --repo /path/to/your-product-repo
+./target/debug/volicord init --host codex --repo /path/to/your-product-repo --mode mcp-only
 ```
 
 이 경로는 로컬 개발 실행 파일 `./target/debug/volicord`를 빌드하고 실행합니다. 호스트가
@@ -194,11 +196,12 @@ docker run --rm -it \
   volicord:local setup
 ```
 
-Docker에서 일반 guarded 설정을 하려면 같은 mount로 `volicord init --host HOST --repo
-/workspace`를 실행합니다. Runtime Home에 serve할 프로젝트 등록과 Agent Connection이
-들어간 뒤, 예를 들어 그와 일치하는 `volicord init` 실행이나 낮은 수준의
-`volicord connect` 실행 뒤, 운영자가 제공한 token으로 로컬 HTTP MCP endpoint를
-시작합니다.
+Docker에서 MCP-only 설정을 하려면 같은 mount로
+`volicord init --host HOST --repo /workspace --mode mcp-only`를 실행합니다. Guarded Docker
+설정에는 컨테이너를 쓰지 않을 때와 같은 검증된 hook 지원 또는 명시적 degraded opt-in
+요구사항이 적용됩니다. Runtime Home에 serve할 프로젝트 등록과 Agent Connection이 들어간
+뒤, 예를 들어 그와 일치하는 `volicord init` 실행이나 낮은 수준의 `volicord connect`
+실행 뒤, 운영자가 제공한 token으로 로컬 HTTP MCP endpoint를 시작합니다.
 
 ```sh
 VOLICORD_HTTP_TOKEN="$(openssl rand -hex 32)"
@@ -222,8 +225,8 @@ docker run --rm \
 
 `volicord setup`은 Product Repository를 등록하지 않고 호스트 설정을 설치하지도 않습니다.
 프로젝트 등록은 Git 저장소 안에서 `volicord project use`,
-`volicord init --host HOST --repo PATH`, `volicord connect` 같은 명령을 실행할 때
-이루어집니다.
+`volicord init --host HOST --repo PATH --mode mcp-only`, `volicord connect` 같은 명령을
+실행할 때 이루어집니다.
 
 프로젝트 이름과 내부 식별 정보 동작은 [관리 CLI
 참조](../reference/admin-cli.md#project-commands)가 담당합니다. 내부 식별 정보는
@@ -234,11 +237,12 @@ Volicord가 저장하며 첫 설정 입력이 아닙니다.
 Product Repository에 호스트를 연결합니다.
 
 ```sh
-volicord init --host codex --repo /path/to/your-product-repo
+volicord init --host codex --repo /path/to/your-product-repo --mode mcp-only
 ```
 
 `/path/to/your-product-repo`는 에이전트에게 작업을 요청할 Product Repository의 경로
-예시입니다.
+예시입니다. 선택한 호스트에 검증된 필수 hook 지원이 있거나 `--allow-degraded`로 degraded
+guard 설정을 명시적으로 선택할 때만 guarded 또는 managed init을 사용합니다.
 
 전체 첫 실행 경로는 [빠른 시작](quickstart.md)을 계속 읽습니다. 호스트별
 세부사항은 [에이전트 호스트 설정](../guides/agent-host-setup.md)을 봅니다.

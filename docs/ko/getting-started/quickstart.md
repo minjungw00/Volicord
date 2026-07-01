@@ -11,20 +11,21 @@ Agent Connection 의미는 [Agent Connection 참조](../reference/agent-connecti
 ## 빠른 경로
 
 ```sh
-volicord init --host codex --repo /path/to/your-product-repo
+volicord init --host codex --repo /path/to/your-product-repo --mode mcp-only
 ```
 
 `/path/to/your-product-repo`는 에이전트에게 작업을 요청할 Product Repository의 경로
 예시입니다. `volicord init`은 첫 실행에서 저장소를 설정하고 호스트를 연결하는 기본
 명령입니다. 필요하면 Runtime Home과 설치 프로필을 만들거나 재사용하고, 선택한
 저장소를 등록하며, 선택한 호스트의 프로젝트 범위 MCP 설정을 설치하고, Volicord가
-관리하는 지침과 guard 통합 파일을 쓰고, guard 설치 상태를 기록합니다. 생성된 호스트
+관리하는 지침과 policy 메타데이터를 쓰고, guard 설치 상태를 기록합니다. 생성된 호스트
 설정은 단일 공개 실행 파일을 `volicord mcp --stdio`로 시작합니다.
 
-기본 `init` 모드는 `guarded`입니다. guard hook 명령 없이 MCP 설정과 지침만 원할
-때만 `--mode mcp-only`를 사용합니다. host나 향후 통합이 managed guard 모드를
-구분할 때만 `--mode managed`를 사용합니다. 정확한 프로젝트 이름, guard mode 동작,
-연결 기본값, 내부 식별 정보 동작은 [관리 CLI 참조](../reference/admin-cli.md)가
+이 빠른 경로는 호스트 lifecycle hook 설치를 요구하지 않는 `--mode mcp-only`를
+사용합니다. 기본 `guarded` 또는 `managed` init은 모든 필수 호스트 hook phase에 대한
+검증된 지원이 필요합니다. 지원이 빠져 있으면 degraded guard 파일과 누락 hook 진단을
+명시적으로 원할 때만 `--allow-degraded`를 사용합니다. 정확한 프로젝트 이름, guard
+mode 동작, 연결 기본값, 내부 식별 정보 동작은 [관리 CLI 참조](../reference/admin-cli.md)가
 담당합니다.
 
 ## 설정 확인하기
@@ -65,8 +66,8 @@ volicord connect codex --repo /path/to/your-product-repo
 ```
 
 `volicord connect`는 personal, shared, global, read-only 변형을 위한 낮은 수준의
-연결 관리 명령으로 계속 지원됩니다. 일반적인 guarded 첫 실행 경로에서는
-`volicord init --host HOST --repo PATH`를 우선 사용합니다.
+연결 관리 명령으로 계속 지원됩니다. 일반적인 첫 실행 경로에서는
+`volicord init --host HOST --repo PATH --mode mcp-only`를 우선 사용합니다.
 
 ## 연결 조회 또는 변경하기
 

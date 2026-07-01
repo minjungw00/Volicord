@@ -83,22 +83,23 @@ Make sure the future agent host can run `volicord` through `PATH`, then
 initialize the Product Repository where you want the agent to work:
 
 ```sh
-volicord init --host codex --repo /path/to/your-product-repo
+volicord init --host codex --repo /path/to/your-product-repo --mode mcp-only
 ```
 
 Use `--host claude-code` for Claude Code:
 
 ```sh
-volicord init --host claude-code --repo /path/to/your-product-repo
+volicord init --host claude-code --repo /path/to/your-product-repo --mode mcp-only
 ```
 
 `volicord init` is the primary first-run setup and connection command for
 chat-first use. It initializes the Runtime Home if needed, records the
 installation profile, registers or reuses the selected Product Repository,
 creates the Agent Connection, writes project-scoped MCP configuration that
-starts `volicord mcp --stdio`, writes Volicord-managed `AGENTS.md` guidance,
-writes `.volicord/policy.json`, and writes supported host rule files when the
-host has a supported project-local rule convention.
+starts `volicord mcp --stdio`, writes Volicord-managed guidance and policy
+metadata, and records guard installation status. `--mode mcp-only` does not
+require host lifecycle hook installation. Guarded setup for a host with missing
+required hook support must be explicitly selected with `--allow-degraded`.
 
 If the command reports `action_required`, follow the named host-controlled or
 local action, such as restarting or reloading the host, approving project MCP
@@ -121,7 +122,7 @@ local development binary:
 ```sh
 cargo build --workspace --bins
 ./target/debug/volicord --version
-./target/debug/volicord init --host codex --repo /path/to/your-product-repo
+./target/debug/volicord init --host codex --repo /path/to/your-product-repo --mode mcp-only
 ```
 
 This path requires the Rust toolchain named in

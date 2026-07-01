@@ -61,7 +61,7 @@ Supported baseline commands:
 ```text
 volicord --help
 volicord --version
-volicord init --host codex|claude-code --repo PATH [--mode mcp-only|guarded|managed] [--home PATH] [--mcp-command PATH] [--dry-run] [--json]
+volicord init --host codex|claude-code --repo PATH [--mode mcp-only|guarded|managed] [--allow-degraded] [--home PATH] [--mcp-command PATH] [--dry-run] [--json]
 volicord setup [--home PATH] [--link-bin PATH] [--mcp-command PATH] [--json]
 volicord doctor [--json]
 volicord connect [HOST] [--repo PATH] [--shared|--global] [--read-only] [--dry-run] [--json]
@@ -133,7 +133,7 @@ Not supported:
 connecting a repository. It creates or verifies the selected Runtime Home and
 stores the command paths later administrative, Agent Connection, export, and
 MCP process flows use. Setup is the standalone installation-profile command,
-not the ordinary guarded first-run repository path. `volicord init` is the
+not the ordinary first-run repository path. `volicord init` is the
 primary first-run path and may also select the Runtime Home path or MCP launch
 command while performing repository setup and host connection. Setup can help
 make `volicord` available on `PATH`, but it cannot change the parent shell's
@@ -289,9 +289,11 @@ Runtime Home path; it uses `volicord` as the command name and
 `mcp --stdio --connection <connection_id>` as arguments that the future host
 environment must resolve through `PATH`.
 
-`volicord init --host codex --repo PATH` and
-`volicord init --host claude-code --repo PATH` are the primary first-run
-repository setup and host-connection commands for chat-first use. They use the
+<a id="agent-host-setup-and-init"></a>
+`volicord init --host codex --repo PATH --mode mcp-only` and
+`volicord init --host claude-code --repo PATH --mode mcp-only` are the primary
+lower-guarantee first-run repository setup and host-connection examples for
+chat-first use when required hook support is not being installed. Init uses the
 shared, project-scoped host layout so generated host MCP configuration starts
 `volicord mcp --stdio` through `PATH` and does not embed a personal Runtime Home
 path.
@@ -306,6 +308,17 @@ path.
   host rule files where the host has a supported project-local rule convention.
 - `managed` uses the same setup surface as `guarded` and records managed guard
   mode for hosts or future integrations that distinguish it.
+
+Full `guarded` and `managed` initialization requires the selected host adapter
+to declare and verify support for every required lifecycle hook:
+`session-start`, `pre-tool`, `post-tool`, `prompt-capture`, and `stop`.
+`AGENTS.md` and `.volicord/policy.json` are not host hook configuration. If the
+adapter does not know a reliable project-local hook schema or path for every
+required phase, init fails with `GUARDED_HOOKS_UNSUPPORTED` unless the caller
+passes `--allow-degraded`. The explicit degraded opt-in may write MCP
+configuration, guidance, policy, and supported rule files, but it records
+degraded guard status and reports missing required hook phases in human and JSON
+output. `mcp-only` does not require hook installation.
 
 For `guarded` and `managed`, init records `reload_required` when the host still
 needs restart or reload to load generated guard hooks, and `configured` when
@@ -331,6 +344,8 @@ Non-dry-run `volicord init`:
   `volicord guard`
 - writes supported host rule files such as `.claude/rules/volicord.md`
 - records guard installation status in the Runtime Home registry
+- rejects non-`mcp-only` guarded initialization when required host hook
+  configuration is missing unless `--allow-degraded` was explicitly supplied
 - reports the required host restart, reload, approval, or trust action when the
   host must load the new MCP or guard configuration
 

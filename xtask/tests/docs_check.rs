@@ -1110,8 +1110,8 @@ volicord setup --home /path/to/runtime-home
 volicord mcp --stdio --connection CONNECTION_ID
 volicord mcp --check --connection CONNECTION_ID
 volicord mcp --check --connection CONNECTION_ID --project PROJECT_ID
-volicord init --host codex --repo /path/to/repo
-volicord init --host claude-code --repo /path/to/repo --mode guarded
+volicord init --host codex --repo /path/to/repo --mode mcp-only
+volicord init --host claude-code --repo /path/to/repo --mode guarded --allow-degraded
 ./target/debug/volicord init --host codex --repo /path/to/repo --dry-run
 volicord connect codex --read-only
 volicord export mcp-config --output /tmp/volicord.mcp.json

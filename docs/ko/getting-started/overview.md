@@ -47,17 +47,21 @@ Volicord는 이런 대체를 보이게 하려고 존재합니다. 범위, 사용
 
 ## 설정이 하는 일
 
-일반적인 `volicord init --host HOST --repo PATH` 경로의 에이전트 설정은 다음을 할 수
-있습니다.
+일반적인 `volicord init --host HOST --repo PATH --mode mcp-only` 경로의 에이전트 설정은
+다음을 할 수 있습니다.
 
 - Runtime Home 기록 생성 또는 재사용
 - 설치 프로필 생성 또는 재사용
 - `Product Repository` 등록 또는 재사용
 - Agent Connection과 Connection Projects 멤버십 생성 또는 재사용
 - `volicord mcp --stdio`를 시작하는 프로젝트 범위 Codex 또는 Claude Code MCP 설정 설치
-- guarded 로컬 사용을 위한 Volicord 관리 지침과 guard 통합 파일 설치
+- Volicord 관리 지침과 policy 메타데이터 설치
 - guard 설치 상태 기록
 - 설정 검증을 실행하고 `complete`, `action_required`, `failed` 보고
+
+완전한 guarded 또는 managed 설정은 별도의 `volicord init` 모드입니다. 이 모드는
+[관리 CLI](../reference/admin-cli.md)가 정의한 대로 필수 호스트 lifecycle hook에 대한
+검증된 지원이나 명시적 degraded opt-in이 필요합니다.
 
 `volicord setup`은 설치 프로필 준비와 복구 경로로 남습니다. `volicord connect`는
 personal, shared, global, read-only, generic export 흐름을 위한 낮은 수준의 연결

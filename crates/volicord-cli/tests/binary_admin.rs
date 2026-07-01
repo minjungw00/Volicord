@@ -65,6 +65,7 @@ fn binary_help_uses_agent_connection_model() -> Result<(), Box<dyn Error>> {
     let init_text = stdout(&init_help);
     assert!(init_text.contains("volicord init --host codex|claude-code --repo PATH"));
     assert!(init_text.contains("--mode mcp-only|guarded|managed"));
+    assert!(init_text.contains("--allow-degraded"));
     assert!(init_text.contains("--home PATH"));
     assert!(init_text.contains("--mcp-command PATH"));
     assert!(init_text.contains("--dry-run"));
@@ -109,6 +110,7 @@ fn binary_help_options_match_supported_contracts() -> Result<(), Box<dyn Error>>
             "--repo",
             "--shared",
             "--global",
+            "--allow-degraded",
             "--read-only",
             "--dry-run",
             "--task",
@@ -183,6 +185,7 @@ fn binary_help_options_match_supported_contracts() -> Result<(), Box<dyn Error>>
             "--host",
             "--repo",
             "--mode",
+            "--allow-degraded",
             "--home",
             "--mcp-command",
             "--dry-run",
@@ -417,6 +420,42 @@ fn doctor_without_setup_reports_action_required() -> Result<(), Box<dyn Error>> 
 
 #[cfg(unix)]
 #[test]
+fn init_guarded_without_degraded_opt_in_rejects_missing_hooks() -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-init-guarded-requires-hooks")?;
+    let repo_root = create_git_repo(&runtime_home, "product-repo")?;
+    let bin_dir = runtime_home.path().join("bin");
+    write_fake_codex(&bin_dir)?;
+    write_fake_mcp(&bin_dir)?;
+
+    let output = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--host",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--json",
+        ],
+        &[("PATH", path_env(&[bin_dir.as_path()]))],
+    )?;
+
+    assert_eq!(output.status.code(), Some(1));
+    let diagnostic = stderr(&output);
+    assert!(diagnostic.contains("GUARDED_HOOKS_UNSUPPORTED"));
+    assert!(
+        diagnostic.contains("AGENTS.md and .volicord/policy.json are not host hook configuration")
+    );
+    assert!(diagnostic.contains("--allow-degraded"));
+    assert!(!runtime_home.registry_db_path().exists());
+    assert!(!repo_root.join(".codex/config.toml").exists());
+    assert!(!repo_root.join("AGENTS.md").exists());
+    assert!(!repo_root.join(".volicord/policy.json").exists());
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
 fn init_dry_run_does_not_write_runtime_or_repo_files() -> Result<(), Box<dyn Error>> {
     let runtime_home = TempRuntimeHome::new("cli-bin-init-dry-run")?;
     let repo_root = create_git_repo(&runtime_home, "product-repo")?;
@@ -432,6 +471,7 @@ fn init_dry_run_does_not_write_runtime_or_repo_files() -> Result<(), Box<dyn Err
             "codex",
             "--repo",
             path_text(&repo_root).as_str(),
+            "--allow-degraded",
             "--dry-run",
             "--json",
         ],
@@ -444,6 +484,12 @@ fn init_dry_run_does_not_write_runtime_or_repo_files() -> Result<(), Box<dyn Err
     assert_eq!(value["status"], "dry_run");
     assert_eq!(value["host"], "codex");
     assert_eq!(value["mode"], "guarded");
+    assert_eq!(value["degraded"]["allowed"], true);
+    assert!(value["degraded"]["missing_required_hooks"]
+        .as_array()
+        .expect("missing hooks should be an array")
+        .iter()
+        .any(|hook| hook == "pre_tool_hook"));
     assert_eq!(value["profile"]["status"], "planned");
     assert_eq!(value["mcp"]["command"], "volicord");
     assert_eq!(value["mcp"]["args"][0], "mcp");
@@ -484,6 +530,7 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
             "codex",
             "--repo",
             path_text(&repo_root).as_str(),
+            "--allow-degraded",
             "--json",
         ],
         &[
@@ -503,6 +550,8 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     assert_eq!(value["states"]["project_registration"], "registered");
     assert_eq!(value["states"]["mcp_config"], "match");
     assert_eq!(value["states"]["guard_installation"], "degraded");
+    assert_eq!(value["states"]["guard_degraded_allowed"], true);
+    assert_eq!(value["degraded"]["allowed"], true);
     assert_eq!(value["states"]["prompt_capture"], "unavailable");
     assert_eq!(value["states"]["host_reload_required"], true);
     assert_eq!(
@@ -537,6 +586,7 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
             "codex",
             "--repo",
             path_text(&repo_root).as_str(),
+            "--allow-degraded",
         ],
         &[
             ("PATH", path_env(&[bin_dir.as_path()])),
@@ -549,6 +599,7 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     assert!(init_text.contains("connection_state: action_required"));
     assert!(init_text.contains("mcp_config_state: match"));
     assert!(init_text.contains("guard_installation_state: degraded"));
+    assert!(init_text.contains("guard_degraded_allowed: yes"));
     assert!(init_text.contains("prompt_capture_state: unavailable"));
     assert!(init_text.contains("host_reload_required: yes"));
     assert!(init_text.contains("next_action: Guarded mode is degraded"));
@@ -648,6 +699,7 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
         capability["policy_hash"],
         value["guard_installation"]["policy_hash"]
     );
+    assert_eq!(capability["allow_degraded"], true);
     assert_eq!(capability["prompt_capture"], false);
     assert!(capability["missing_required_hooks"]
         .as_array()
@@ -679,6 +731,7 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
             "codex",
             "--repo",
             path_text(&repo_root).as_str(),
+            "--allow-degraded",
             "--json",
         ],
         &[
@@ -691,6 +744,7 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     assert_eq!(second_json["connection"]["connection_id"], connection_id);
     assert_eq!(second_json["profile"]["status"], "reused");
     assert_eq!(second_json["states"]["guard_installation"], "degraded");
+    assert_eq!(second_json["states"]["guard_degraded_allowed"], true);
     assert_eq!(second_json["states"]["prompt_capture"], "unavailable");
     assert_eq!(
         count_occurrences(
@@ -728,6 +782,7 @@ fn init_claude_code_guarded_writes_project_mcp_policy_and_rule() -> Result<(), B
             "claude-code",
             "--repo",
             path_text(&repo_root).as_str(),
+            "--allow-degraded",
             "--json",
         ],
         &[
@@ -742,6 +797,8 @@ fn init_claude_code_guarded_writes_project_mcp_policy_and_rule() -> Result<(), B
     assert_eq!(value["host"], "claude-code");
     assert_eq!(value["mode"], "guarded");
     assert_eq!(value["states"]["guard_installation"], "degraded");
+    assert_eq!(value["states"]["guard_degraded_allowed"], true);
+    assert_eq!(value["degraded"]["allowed"], true);
     assert_eq!(value["states"]["prompt_capture"], "unavailable");
     assert_eq!(value["mcp"]["command"], "volicord");
     let connection_id = value["connection"]["connection_id"]
@@ -786,6 +843,7 @@ fn init_claude_code_guarded_writes_project_mcp_policy_and_rule() -> Result<(), B
     assert_eq!(guard_installations[0].installation_status, "degraded");
     let capability: Value = serde_json::from_str(&guard_installations[0].host_capability_json)?;
     assert_eq!(capability["host_capabilities"]["rule_file_support"], true);
+    assert_eq!(capability["allow_degraded"], true);
     assert!(capability["missing_required_hooks"]
         .as_array()
         .expect("missing hooks should be an array")
@@ -1190,6 +1248,7 @@ fn connection_verify_reports_missing_mcp_config_as_primary_action() -> Result<()
             "codex",
             "--repo",
             path_text(&repo_root).as_str(),
+            "--allow-degraded",
             "--json",
         ],
         &[
@@ -1223,7 +1282,7 @@ fn connection_verify_reports_missing_mcp_config_as_primary_action() -> Result<()
     assert_eq!(
         value["primary_next_action"]["command"],
         format!(
-            "volicord init --host codex --repo {}",
+            "volicord init --host codex --repo {} --allow-degraded",
             path_text(&repo_root)
         )
     );
@@ -1251,6 +1310,7 @@ fn connection_status_reports_missing_guard_files_as_primary_action() -> Result<(
             "codex",
             "--repo",
             path_text(&repo_root).as_str(),
+            "--allow-degraded",
             "--json",
         ],
         &[
@@ -1305,6 +1365,7 @@ fn connection_status_reports_stale_guard_files_as_primary_action() -> Result<(),
             "codex",
             "--repo",
             path_text(&repo_root).as_str(),
+            "--allow-degraded",
             "--json",
         ],
         &[

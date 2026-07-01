@@ -112,7 +112,7 @@ volicord project use
 또는 Product Repository를 명시적으로 선택합니다.
 
 ```sh
-volicord init --host codex --repo /path/to/your-product-repo
+volicord init --host codex --repo /path/to/your-product-repo --mode mcp-only
 ```
 
 `/path/to/your-product-repo`는 에이전트에게 작업을 요청할 Product Repository의 경로
@@ -124,11 +124,16 @@ volicord init --host codex --repo /path/to/your-product-repo
 관찰 증상: `volicord connect` 또는 `volicord connection ...`이 호스트를 추론하지
 못하거나 호스트 값이 지원되지 않습니다.
 
-제한된 복구: 일반 guarded 설정에는 호스트와 저장소를 init에 명시적으로 전달합니다.
+제한된 복구: lifecycle hook 설치 없는 일반 첫 실행 설정에는 호스트, 저장소,
+`mcp-only` 모드를 init에 명시적으로 전달합니다.
 
 ```sh
-volicord init --host codex --repo /path/to/your-product-repo
+volicord init --host codex --repo /path/to/your-product-repo --mode mcp-only
 ```
+
+Guarded 또는 managed 설정에는 [관리 CLI
+참조](../reference/admin-cli.md#agent-host-setup-and-init)의 전체 init 계약을 사용합니다.
+검증된 hook 지원이 빠져 있으면 명시적인 degraded opt-in이 필요합니다.
 
 하위 수준 연결 복구에는 호스트와 저장소를 connect에 명시적으로 전달합니다.
 
