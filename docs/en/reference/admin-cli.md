@@ -306,7 +306,7 @@ path.
   installation status without requiring guard activation.
 - `guarded` is the default. It writes MCP configuration, the managed
   `AGENTS.md` guidance block, `.volicord/policy.json` guard command policy, and
-  host rule files where the host has a supported project-local rule convention.
+  supported project-local host hook and rule files.
 - `managed` uses the same setup surface as `guarded` and records managed guard
   mode for hosts or future integrations that distinguish it.
 
@@ -317,7 +317,7 @@ to declare and verify support for every required lifecycle hook:
 adapter does not know a reliable project-local hook schema or path for every
 required phase, init fails with `GUARDED_HOOKS_UNSUPPORTED` unless the caller
 passes `--allow-degraded`. The explicit degraded opt-in may write MCP
-configuration, guidance, policy, and supported rule files, but it records
+configuration, guidance, policy, and supported hook or rule files, but it records
 degraded guard status and reports missing required hook phases in human and JSON
 output. `mcp-only` does not require hook installation.
 
@@ -343,6 +343,8 @@ Non-dry-run `volicord init`:
 - writes or updates only the Volicord-managed block in `AGENTS.md`
 - writes `.volicord/policy.json` with guard commands that invoke
   `volicord guard`
+- writes supported host hook files such as `.codex/hooks.json` or
+  `.claude/settings.json`
 - writes supported host rule files such as `.claude/rules/volicord.md`
 - records guard installation status in the Runtime Home registry
 - rejects non-`mcp-only` guarded initialization when required host hook
@@ -368,7 +370,7 @@ or looks up the stored `connection_internal_id`.
 
 | Command | Runtime Home registry effect | Host configuration effect | Verification effect |
 |---|---|---|---|
-| `volicord init` | Initializes Runtime Home and installation profile if needed, registers or reuses the selected repository project, creates or updates the shared project-scoped Agent Connection, ensures Connection Projects membership, and records guard installation status. | Installs or updates managed project-local MCP configuration, `AGENTS.md` guidance, `.volicord/policy.json`, and supported host rule files for `codex` or `claude-code`. | Runs host-config, MCP startup, initialization, and `tools/list` checks where observable, then reports any host reload, restart, trust, or approval action. |
+| `volicord init` | Initializes Runtime Home and installation profile if needed, registers or reuses the selected repository project, creates or updates the shared project-scoped Agent Connection, ensures Connection Projects membership, and records guard installation status. | Installs or updates managed project-local MCP configuration, `AGENTS.md` guidance, `.volicord/policy.json`, and supported host hook and rule files for `codex` or `claude-code`. | Runs host-config, MCP startup, initialization, and `tools/list` checks where observable, then reports any host reload, restart, trust, or approval action. |
 | `volicord connect` | Registers or reuses the selected repository project, creates or updates the matching Agent Connection, records the connection intent and mode, and ensures the project is in Connection Projects. | Installs or updates managed host configuration for `codex` or `claude-code` according to the selected intent. | Runs host-config, MCP startup, initialization, and `tools/list` checks where observable. |
 | `volicord connections` | Reads matching Agent Connections and connected projects. | Does not launch the host and does not rewrite host configuration. | Reports stored and diagnostic verification state without refreshing host checks. |
 | `volicord connection status` | Reads one selected Agent Connection. | Does not launch the host and does not rewrite host configuration. | Reports full stored verification status and required user actions. |

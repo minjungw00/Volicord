@@ -174,6 +174,7 @@ Read access is required when Volicord validates or uses the registered project. 
 - project-scoped Claude Code `.mcp.json`
 - Volicord-managed `AGENTS.md` guidance blocks
 - `.volicord/policy.json` guard policy files
+- Volicord-managed Claude Code hook entries in `.claude/settings.json`
 - Volicord-managed Claude Code rule files under `.claude/rules/`
 
 Noninteractive shared-intent host configuration or guidance writes require the explicit `--shared` command path defined by [Administrative CLI](admin-cli.md#noninteractive-approval-behavior). Runtime records, SQLite databases, generated records, logs, projections, QA results, acceptance records, close-readiness state, and residual-risk records do not belong in the `Product Repository`.

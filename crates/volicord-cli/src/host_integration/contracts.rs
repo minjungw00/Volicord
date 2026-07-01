@@ -348,8 +348,7 @@ const CODEX_LIMITATIONS: [&str; 4] = [
     "AGENTS.md and .volicord/policy.json remain guidance and Volicord metadata, not host hook configuration.",
 ];
 
-const CLAUDE_CODE_LIMITATIONS: [&str; 5] = [
-    "The Volicord Claude Code adapter does not yet generate or verify Claude Code hook configuration.",
+const CLAUDE_CODE_LIMITATIONS: [&str; 4] = [
     "Project-scoped .mcp.json servers require user approval before they are available.",
     "Hook if filters and tool hooks are not a complete replacement for host permissions.",
     "Project and user settings files are rejected as a whole when strict JSON validation fails.",
@@ -449,12 +448,12 @@ pub const CLAUDE_CODE_CONTRACT: HostIntegrationContract = HostIntegrationContrac
     },
     reload_restart_trust_requirements: &CLAUDE_CODE_REQUIREMENTS,
     managed_mode_support: ContractCapability {
-        status: ContractSupportStatus::Disabled,
-        detail: "Volicord has no Claude Code adapter path that generates and verifies managed hooks.",
+        status: ContractSupportStatus::Verified,
+        detail: "Volicord generates and verifies project-local Claude Code MCP, settings hook, policy, and rule files for guarded and managed guard modes.",
     },
     full_guarded_adapter_support: ContractCapability {
-        status: ContractSupportStatus::Disabled,
-        detail: "Verified contract data exists, but the Claude Code adapter still reports guarded hook capabilities as unsupported.",
+        status: ContractSupportStatus::Verified,
+        detail: "The Claude Code adapter generates and verifies project-local settings hook commands for every required guarded lifecycle phase.",
     },
     known_limitations: &CLAUDE_CODE_LIMITATIONS,
     official_sources: &CLAUDE_CODE_SOURCES,
@@ -1124,7 +1123,7 @@ mod tests {
     }
 
     #[test]
-    fn claude_code_contract_records_verified_shapes_without_enabling_full_guarded() {
+    fn claude_code_contract_records_verified_full_guarded_shapes() {
         let contract =
             contract_for(HostKind::ClaudeCode).expect("Claude Code contract should exist");
 
@@ -1140,15 +1139,16 @@ mod tests {
         );
         assert_eq!(
             contract.managed_mode_support.status,
-            ContractSupportStatus::Disabled
+            ContractSupportStatus::Verified
         );
-        assert!(!contract_supports_full_guarded(contract));
+        assert_eq!(
+            contract.full_guarded_adapter_support.status,
+            ContractSupportStatus::Verified
+        );
+        assert!(contract_supports_full_guarded(contract));
 
         let capabilities = host_capabilities(HostKind::ClaudeCode);
-        assert_eq!(
-            capabilities.missing_required_guard_phases(),
-            REQUIRED_GUARD_PHASES
-        );
+        assert!(capabilities.missing_required_guard_phases().is_empty());
     }
 
     #[test]

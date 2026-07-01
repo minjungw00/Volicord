@@ -757,10 +757,7 @@ mod tests {
         assert!(claude.stdio_mcp);
         assert!(claude.project_local_configuration);
         assert!(claude.rule_file_support);
-        assert!(!claude.user_prompt_submit_hook);
-        assert_eq!(
-            claude.missing_required_guard_phases(),
-            REQUIRED_GUARD_PHASES
-        );
+        assert!(claude.user_prompt_submit_hook);
+        assert!(claude.missing_required_guard_phases().is_empty());
     }
 }

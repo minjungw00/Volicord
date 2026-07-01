@@ -97,14 +97,18 @@ pub fn capabilities() -> HostCapabilities {
     HostCapabilities {
         stdio_mcp: true,
         http_mcp: false,
-        session_start_hook: false,
-        pre_tool_hook: false,
-        post_tool_hook: false,
-        user_prompt_submit_hook: false,
-        stop_hook: false,
+        session_start_hook: true,
+        pre_tool_hook: true,
+        post_tool_hook: true,
+        user_prompt_submit_hook: true,
+        stop_hook: true,
         rule_file_support: true,
         project_local_configuration: true,
     }
+}
+
+pub fn project_settings_path(repo_root: &Path) -> PathBuf {
+    repo_root.join(".claude").join("settings.json")
 }
 
 pub fn project_rule_path(repo_root: &Path) -> PathBuf {

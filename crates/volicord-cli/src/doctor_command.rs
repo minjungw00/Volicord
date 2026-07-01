@@ -716,11 +716,104 @@ fn doctor_verify_guard_file(file: &Value, findings: &mut DoctorGuardFileFindings
                 findings.set_file_state(kind, "stale");
             }
         }
+        Some("managed_json_projection") => doctor_verify_managed_json_projection(
+            file,
+            kind,
+            path_text,
+            &text,
+            expected_hash,
+            findings,
+        ),
         _ => {
             findings.broken_files.push(path_text.to_owned());
             findings.set_file_state(kind, "broken");
         }
     }
+}
+
+fn doctor_verify_managed_json_projection(
+    file: &Value,
+    kind: &str,
+    path_text: &str,
+    text: &str,
+    expected_hash: &str,
+    findings: &mut DoctorGuardFileFindings,
+) {
+    let Some(expected_projection_json) =
+        file.get("managed_projection_json").and_then(Value::as_str)
+    else {
+        findings.broken_files.push(path_text.to_owned());
+        findings.set_file_state(kind, "broken");
+        return;
+    };
+    if sha256_text(expected_projection_json) != expected_hash {
+        findings.broken_files.push(path_text.to_owned());
+        findings.set_file_state(kind, "broken");
+        return;
+    }
+    let actual = match serde_json::from_str::<Value>(text) {
+        Ok(actual) => actual,
+        Err(_) => {
+            findings.broken_files.push(path_text.to_owned());
+            findings.set_file_state(kind, "broken");
+            return;
+        }
+    };
+    let desired = match serde_json::from_str::<Value>(expected_projection_json) {
+        Ok(desired) => desired,
+        Err(_) => {
+            findings.broken_files.push(path_text.to_owned());
+            findings.set_file_state(kind, "broken");
+            return;
+        }
+    };
+    if managed_projection_present(&actual, &desired) {
+        findings.set_file_state(kind, "installed");
+    } else {
+        findings.stale_files.push(path_text.to_owned());
+        findings.set_file_state(kind, "stale");
+    }
+}
+
+fn managed_projection_present(actual: &Value, desired: &Value) -> bool {
+    let Some(desired_object) = desired.as_object() else {
+        return actual == desired;
+    };
+    desired_object.iter().all(|(key, desired_value)| {
+        let Some(actual_value) = actual.get(key) else {
+            return false;
+        };
+        if key == "hooks" || key == "mcpServers" {
+            return managed_projection_object_present(actual_value, desired_value);
+        }
+        managed_projection_present(actual_value, desired_value)
+    })
+}
+
+fn managed_projection_object_present(actual: &Value, desired: &Value) -> bool {
+    let (Some(actual_object), Some(desired_object)) = (actual.as_object(), desired.as_object())
+    else {
+        return false;
+    };
+    desired_object.iter().all(|(key, desired_value)| {
+        let Some(actual_value) = actual_object.get(key) else {
+            return false;
+        };
+        match (actual_value.as_array(), desired_value.as_array()) {
+            (Some(actual_array), Some(desired_array)) => desired_array.iter().all(|desired_item| {
+                let desired_count = desired_array
+                    .iter()
+                    .filter(|item| *item == desired_item)
+                    .count();
+                let actual_count = actual_array
+                    .iter()
+                    .filter(|item| *item == desired_item)
+                    .count();
+                actual_count == desired_count
+            }),
+            _ => actual_value == desired_value,
+        }
+    })
 }
 
 fn doctor_verify_managed_block(
@@ -1612,4 +1705,60 @@ fn is_help_request(args: &[String]) -> bool {
         args.first().map(String::as_str),
         Some("-h" | "--help" | "help")
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn managed_projection_presence_allows_unmanaged_hook_groups_but_rejects_duplicate_managed() {
+        let desired = json!({
+            "hooks": {
+                "PreToolUse": [
+                    {
+                        "matcher": "Edit|Write|MultiEdit",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": "volicord guard pre-tool --host claude-code --json",
+                                "timeout": 30
+                            }
+                        ]
+                    }
+                ]
+            }
+        });
+        let actual_with_unmanaged = json!({
+            "theme": "dark",
+            "hooks": {
+                "PreToolUse": [
+                    {
+                        "matcher": "Bash",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": "echo keep"
+                            }
+                        ]
+                    },
+                    desired["hooks"]["PreToolUse"][0].clone()
+                ]
+            }
+        });
+        assert!(managed_projection_present(&actual_with_unmanaged, &desired));
+
+        let actual_with_duplicate = json!({
+            "hooks": {
+                "PreToolUse": [
+                    desired["hooks"]["PreToolUse"][0].clone(),
+                    desired["hooks"]["PreToolUse"][0].clone()
+                ]
+            }
+        });
+        assert!(!managed_projection_present(
+            &actual_with_duplicate,
+            &desired
+        ));
+    }
 }

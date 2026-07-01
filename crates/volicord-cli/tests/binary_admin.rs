@@ -475,9 +475,9 @@ fn init_codex_guarded_without_degraded_opt_in_generates_hooks() -> Result<(), Bo
 
 #[cfg(unix)]
 #[test]
-fn init_claude_code_guarded_without_degraded_opt_in_rejects_missing_hooks(
-) -> Result<(), Box<dyn Error>> {
-    let runtime_home = TempRuntimeHome::new("cli-bin-init-claude-guarded-requires-hooks")?;
+fn init_claude_code_guarded_without_degraded_opt_in_generates_hooks() -> Result<(), Box<dyn Error>>
+{
+    let runtime_home = TempRuntimeHome::new("cli-bin-init-claude-guarded-hooks")?;
     let repo_root = create_git_repo(&runtime_home, "product-repo")?;
     let bin_dir = runtime_home.path().join("bin");
     write_fake_claude_code(&bin_dir)?;
@@ -496,18 +496,29 @@ fn init_claude_code_guarded_without_degraded_opt_in_rejects_missing_hooks(
         &[("PATH", path_env(&[bin_dir.as_path()]))],
     )?;
 
-    assert_eq!(output.status.code(), Some(1));
-    let diagnostic = stderr(&output);
-    assert!(diagnostic.contains("GUARDED_HOOKS_UNSUPPORTED"));
-    assert!(
-        diagnostic.contains("AGENTS.md and .volicord/policy.json are not host hook configuration")
+    assert_success(&output);
+    let value = json_stdout(&output)?;
+    assert_eq!(value["host"], "claude-code");
+    assert_eq!(value["degraded"]["allowed"], false);
+    assert_eq!(
+        value["degraded"]["missing_required_hooks"],
+        serde_json::json!([])
     );
-    assert!(diagnostic.contains("--allow-degraded"));
-    assert!(!runtime_home.registry_db_path().exists());
-    assert!(!repo_root.join(".mcp.json").exists());
-    assert!(!repo_root.join("AGENTS.md").exists());
-    assert!(!repo_root.join(".volicord/policy.json").exists());
-    assert!(!repo_root.join(".claude/rules/volicord.md").exists());
+    assert_eq!(value["states"]["hook_config"], "created");
+    assert_eq!(value["states"]["guard_installation"], "reload_required");
+    assert_eq!(value["states"]["prompt_capture"], "reload_required");
+    assert!(repo_root.join(".mcp.json").exists());
+    assert!(repo_root.join("AGENTS.md").exists());
+    assert!(repo_root.join(".volicord/policy.json").exists());
+    let settings = fs::read_to_string(repo_root.join(".claude/settings.json"))?;
+    assert!(settings.contains("volicord guard session-start"));
+    assert!(settings.contains("volicord guard pre-tool"));
+    assert!(settings.contains("volicord guard post-tool"));
+    assert!(settings.contains("volicord guard prompt-capture"));
+    assert!(settings.contains("volicord guard stop"));
+    assert!(settings.contains("--host claude-code"));
+    assert!(settings.contains("Edit|Write|MultiEdit"));
+    assert!(repo_root.join(".claude/rules/volicord.md").exists());
     Ok(())
 }
 
@@ -938,7 +949,6 @@ fn init_claude_code_guarded_writes_project_mcp_policy_and_rule() -> Result<(), B
             "claude-code",
             "--repo",
             path_text(&repo_root).as_str(),
-            "--allow-degraded",
             "--json",
         ],
         &[
@@ -952,10 +962,10 @@ fn init_claude_code_guarded_writes_project_mcp_policy_and_rule() -> Result<(), B
     assert_eq!(value["action"], "init");
     assert_eq!(value["host"], "claude-code");
     assert_eq!(value["mode"], "guarded");
-    assert_eq!(value["states"]["guard_installation"], "degraded");
-    assert_eq!(value["states"]["guard_degraded_allowed"], true);
-    assert_eq!(value["degraded"]["allowed"], true);
-    assert_eq!(value["states"]["prompt_capture"], "unsupported_by_host");
+    assert_eq!(value["states"]["guard_installation"], "reload_required");
+    assert_eq!(value["states"]["guard_degraded_allowed"], false);
+    assert_eq!(value["degraded"]["allowed"], false);
+    assert_eq!(value["states"]["prompt_capture"], "reload_required");
     assert_eq!(value["mcp"]["command"], "volicord");
     let connection_id = value["connection"]["connection_id"]
         .as_str()
@@ -980,6 +990,16 @@ fn init_claude_code_guarded_writes_project_mcp_policy_and_rule() -> Result<(), B
         policy["guard"]["commands"]["session_start"]["command"],
         "volicord"
     );
+    let settings = fs::read_to_string(repo_root.join(".claude/settings.json"))?;
+    assert!(settings.contains("volicord guard session-start"));
+    assert!(settings.contains("volicord guard pre-tool"));
+    assert!(settings.contains("volicord guard post-tool"));
+    assert!(settings.contains("volicord guard prompt-capture"));
+    assert!(settings.contains("volicord guard stop"));
+    assert!(settings.contains(&format!("--connection {connection_id}")));
+    assert!(settings.contains("--guard-installation"));
+    assert!(settings.contains("--host claude-code"));
+    assert!(settings.contains("\"matcher\": \"Edit|Write|MultiEdit\""));
     assert!(repo_root.join(".claude/rules/volicord.md").exists());
     let rule = fs::read_to_string(repo_root.join(".claude/rules/volicord.md"))?;
     assert!(rule.contains(".volicord/policy.json"));
@@ -997,15 +1017,27 @@ fn init_claude_code_guarded_writes_project_mcp_policy_and_rule() -> Result<(), B
     assert_eq!(guard_installations.len(), 1);
     assert_eq!(guard_installations[0].host_kind, "claude_code");
     assert_eq!(guard_installations[0].guard_mode, "guarded");
-    assert_eq!(guard_installations[0].installation_status, "degraded");
+    assert_eq!(
+        guard_installations[0].installation_status,
+        "reload_required"
+    );
     let capability: Value = serde_json::from_str(&guard_installations[0].host_capability_json)?;
     assert_eq!(capability["host_capabilities"]["rule_file_support"], true);
-    assert_eq!(capability["allow_degraded"], true);
+    assert_eq!(
+        capability["host_capabilities"]["user_prompt_submit_hook"],
+        true
+    );
+    assert_eq!(capability["allow_degraded"], false);
     assert!(capability["missing_required_hooks"]
         .as_array()
         .expect("missing hooks should be an array")
+        .is_empty());
+    assert!(capability["files"]
+        .as_array()
+        .expect("files should be an array")
         .iter()
-        .any(|hook| hook == "user_prompt_submit_hook"));
+        .any(|file| file["kind"] == "host_hook_config"
+            && file["managed_projection"] == "claude_code_settings_hooks"));
     Ok(())
 }
 

@@ -2705,6 +2705,24 @@ enum GeneratedFileWriteKind {
     },
     Json,
     ExactJson,
+    JsonProjection {
+        projection: ManagedJsonProjection,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ManagedJsonProjection {
+    ClaudeCodeSettingsHooks,
+    ClaudeCodeMcpEntry,
+}
+
+impl ManagedJsonProjection {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::ClaudeCodeSettingsHooks => "claude_code_settings_hooks",
+            Self::ClaudeCodeMcpEntry => "claude_code_mcp_entry",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2803,8 +2821,19 @@ fn plan_guard_integration(
         generated_files.push(plan_codex_hook_file(repo_root, &guard_commands)?);
         generated_files.push(plan_codex_rule_file(repo_root, &guard_commands)?);
     }
+    if host_kind == HostKind::ClaudeCode {
+        generated_files.push(plan_claude_mcp_file(
+            repo_root,
+            DEFAULT_SERVER_NAME,
+            mcp_entry,
+        )?);
+    }
     if host_kind == HostKind::ClaudeCode && init_mode != InitMode::McpOnly {
         let command_lines = guard_command_lines(&guard_commands);
+        generated_files.push(plan_claude_project_settings_file(
+            repo_root,
+            &guard_commands,
+        )?);
         let rule_path = claude_code::project_rule_path(repo_root);
         let rule_block = managed_guidance_block(&claude_code::project_rule_block(
             VOLICORD_POLICY_FILE,
@@ -2865,6 +2894,9 @@ fn apply_guard_integration(
             }
             GeneratedFileWriteKind::ExactJson => {
                 write_managed_exact_json_file(&file.path, &file.policy_value()?, file.kind)?
+            }
+            GeneratedFileWriteKind::JsonProjection { projection } => {
+                write_managed_json_projection_file(&file.path, &file.policy_value()?, projection)?
             }
         };
     }
@@ -3060,6 +3092,133 @@ fn codex_hook_handler_value(phase: HostLifecyclePhase, command: &str) -> Value {
     Value::Object(handler)
 }
 
+fn plan_claude_mcp_file(
+    repo_root: &Path,
+    server_name: &str,
+    entry: &ManagedServerEntry,
+) -> Result<GeneratedFilePlan, ConnectionCommandError> {
+    let value = claude_mcp_projection(server_name, entry);
+    plan_managed_json_projection_file(
+        HostIntegrationFileKind::HostMcpConfig,
+        &repo_root.join(".mcp.json"),
+        &value,
+        ManagedJsonProjection::ClaudeCodeMcpEntry,
+    )
+}
+
+fn plan_claude_project_settings_file(
+    repo_root: &Path,
+    guard_commands: &BTreeMap<String, GuardCommandSpec>,
+) -> Result<GeneratedFilePlan, ConnectionCommandError> {
+    let value = claude_settings_hooks_projection(guard_commands)?;
+    let text = serde_json::to_string_pretty(&value)
+        .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
+    validate_contract_config(
+        HostKind::ClaudeCode,
+        HostContractConfigKind::ProjectSettings,
+        &text,
+    )
+    .map_err(|error| {
+        ConnectionCommandError::runtime(format!(
+            "generated Claude Code settings hooks do not match the verified contract: {error}"
+        ))
+    })?;
+    plan_managed_json_projection_file(
+        HostIntegrationFileKind::HostHookConfig,
+        &claude_code::project_settings_path(repo_root),
+        &value,
+        ManagedJsonProjection::ClaudeCodeSettingsHooks,
+    )
+}
+
+fn claude_mcp_projection(server_name: &str, entry: &ManagedServerEntry) -> Value {
+    let mut servers = serde_json::Map::new();
+    servers.insert(server_name.to_owned(), entry.to_json_value());
+    let mut root = serde_json::Map::new();
+    root.insert("mcpServers".to_owned(), Value::Object(servers));
+    Value::Object(root)
+}
+
+fn claude_settings_hooks_projection(
+    guard_commands: &BTreeMap<String, GuardCommandSpec>,
+) -> Result<Value, ConnectionCommandError> {
+    let contract = contract_for(HostKind::ClaudeCode).ok_or_else(|| {
+        ConnectionCommandError::runtime(
+            "GUARDED_HOOKS_UNSUPPORTED: no Claude Code host integration contract is available",
+        )
+    })?;
+    let hooks = REQUIRED_GUARD_PHASES
+        .iter()
+        .map(|phase| {
+            let event = hook_event_for_phase(contract, *phase).ok_or_else(|| {
+                ConnectionCommandError::runtime(format!(
+                    "GUARDED_HOOKS_UNSUPPORTED: Claude Code contract is missing {} hook event data",
+                    phase.capability_name()
+                ))
+            })?;
+            let guard_command = guard_commands.get(phase.policy_key()).ok_or_else(|| {
+                ConnectionCommandError::runtime(format!(
+                    "missing generated guard command for {}",
+                    phase.policy_key()
+                ))
+            })?;
+            Ok::<(String, Value), ConnectionCommandError>((
+                event.event_name.to_owned(),
+                Value::Array(vec![claude_hook_group_value(
+                    *phase,
+                    event.write_matcher_tokens,
+                    &guard_command_line(guard_command),
+                )]),
+            ))
+        })
+        .collect::<Result<serde_json::Map<_, _>, _>>()?;
+    Ok(json!({ "hooks": hooks }))
+}
+
+fn claude_hook_group_value(
+    phase: HostLifecyclePhase,
+    write_matcher_tokens: &[&str],
+    command: &str,
+) -> Value {
+    let mut group = serde_json::Map::new();
+    if !write_matcher_tokens.is_empty() {
+        group.insert(
+            "matcher".to_owned(),
+            Value::String(write_matcher_tokens.join("|")),
+        );
+    } else if phase == HostLifecyclePhase::SessionStart {
+        group.insert(
+            "matcher".to_owned(),
+            Value::String("startup|resume".to_owned()),
+        );
+    }
+    group.insert(
+        "hooks".to_owned(),
+        Value::Array(vec![claude_hook_handler_value(phase, command)]),
+    );
+    Value::Object(group)
+}
+
+fn claude_hook_handler_value(phase: HostLifecyclePhase, command: &str) -> Value {
+    let mut handler = serde_json::Map::new();
+    handler.insert("type".to_owned(), Value::String("command".to_owned()));
+    handler.insert("command".to_owned(), Value::String(command.to_owned()));
+    handler.insert("timeout".to_owned(), Value::Number(30.into()));
+    let status_message = match phase {
+        HostLifecyclePhase::SessionStart => Some("Checking Volicord session"),
+        HostLifecyclePhase::PreTool => Some("Checking Volicord write"),
+        HostLifecyclePhase::PostTool => Some("Recording Volicord write"),
+        HostLifecyclePhase::UserPromptSubmit | HostLifecyclePhase::Stop => None,
+    };
+    if let Some(status_message) = status_message {
+        handler.insert(
+            "statusMessage".to_owned(),
+            Value::String(status_message.to_owned()),
+        );
+    }
+    Value::Object(handler)
+}
+
 fn plan_codex_rule_file(
     repo_root: &Path,
     guard_commands: &BTreeMap<String, GuardCommandSpec>,
@@ -3152,6 +3311,47 @@ fn plan_managed_exact_json_file(
     })
 }
 
+fn plan_managed_json_projection_file(
+    kind: HostIntegrationFileKind,
+    path: &Path,
+    value: &Value,
+    projection: ManagedJsonProjection,
+) -> Result<GeneratedFilePlan, ConnectionCommandError> {
+    let mut content = canonical_json_text(value)?;
+    content.push('\n');
+    let status = match fs::read_to_string(path) {
+        Ok(existing) => {
+            let existing_value = serde_json::from_str::<Value>(&existing).map_err(|error| {
+                ConnectionCommandError::runtime(format!(
+                    "existing {} is not valid JSON: {} ({error})",
+                    kind.as_str(),
+                    path.display()
+                ))
+            })?;
+            let merged = managed_json_projection_merge(&existing_value, value, projection)?;
+            if merged == existing_value {
+                FilePlanStatus::Unchanged
+            } else {
+                FilePlanStatus::PlannedUpdate
+            }
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => FilePlanStatus::PlannedCreate,
+        Err(error) => {
+            return Err(ConnectionCommandError::runtime(format!(
+                "failed to read {}: {error}",
+                path.display()
+            )));
+        }
+    };
+    Ok(GeneratedFilePlan {
+        kind,
+        path: path.to_path_buf(),
+        content,
+        status,
+        write_kind: GeneratedFileWriteKind::JsonProjection { projection },
+    })
+}
+
 fn write_managed_markdown_file(
     path: &Path,
     block: &str,
@@ -3238,6 +3438,388 @@ fn write_managed_exact_json_file(
         FilePlanStatus::PlannedUpdate => FilePlanStatus::Updated,
         other => other,
     })
+}
+
+fn write_managed_json_projection_file(
+    path: &Path,
+    value: &Value,
+    projection: ManagedJsonProjection,
+) -> Result<FilePlanStatus, ConnectionCommandError> {
+    let mut existed = true;
+    let existing = match fs::read_to_string(path) {
+        Ok(text) => {
+            let value = serde_json::from_str::<Value>(&text).map_err(|error| {
+                ConnectionCommandError::runtime(format!(
+                    "existing JSON configuration is not valid JSON: {} ({error})",
+                    path.display()
+                ))
+            })?;
+            Some(value)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            existed = false;
+            None
+        }
+        Err(error) => {
+            return Err(ConnectionCommandError::runtime(format!(
+                "failed to read {}: {error}",
+                path.display()
+            )));
+        }
+    };
+    let current = existing.unwrap_or_else(|| Value::Object(serde_json::Map::new()));
+    let merged = managed_json_projection_merge(&current, value, projection)?;
+    if merged == current {
+        return Ok(FilePlanStatus::Unchanged);
+    }
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|error| {
+            ConnectionCommandError::runtime(format!(
+                "failed to create {}: {error}",
+                parent.display()
+            ))
+        })?;
+    }
+    let mut text = serde_json::to_string_pretty(&merged)
+        .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
+    text.push('\n');
+    fs::write(path, text).map_err(|error| {
+        ConnectionCommandError::runtime(format!("failed to write {}: {error}", path.display()))
+    })?;
+    Ok(if existed {
+        FilePlanStatus::Updated
+    } else {
+        FilePlanStatus::Created
+    })
+}
+
+fn canonical_json_text(value: &Value) -> Result<String, ConnectionCommandError> {
+    serde_json::to_string(value).map_err(|error| ConnectionCommandError::runtime(error.to_string()))
+}
+
+fn managed_json_projection_merge(
+    current: &Value,
+    desired: &Value,
+    projection: ManagedJsonProjection,
+) -> Result<Value, ConnectionCommandError> {
+    let merged = match projection {
+        ManagedJsonProjection::ClaudeCodeSettingsHooks => {
+            merge_claude_settings_hooks(current, desired)
+        }
+        ManagedJsonProjection::ClaudeCodeMcpEntry => merge_claude_mcp_entry(current, desired),
+    }?;
+    validate_managed_json_projection_config(projection, &merged)?;
+    Ok(merged)
+}
+
+fn validate_managed_json_projection_config(
+    projection: ManagedJsonProjection,
+    value: &Value,
+) -> Result<(), ConnectionCommandError> {
+    let text = serde_json::to_string(value)
+        .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
+    let (kind, label) = match projection {
+        ManagedJsonProjection::ClaudeCodeSettingsHooks => (
+            HostContractConfigKind::ProjectSettings,
+            "merged Claude Code project settings",
+        ),
+        ManagedJsonProjection::ClaudeCodeMcpEntry => (
+            HostContractConfigKind::McpConfig,
+            "merged Claude Code MCP config",
+        ),
+    };
+    validate_contract_config(HostKind::ClaudeCode, kind, &text).map_err(|error| {
+        ConnectionCommandError::runtime(format!(
+            "{label} do not match the verified contract: {error}"
+        ))
+    })
+}
+
+fn managed_json_projection_from_actual(
+    actual: &Value,
+    desired: &Value,
+    projection: ManagedJsonProjection,
+) -> Result<Option<Value>, ConnectionCommandError> {
+    match projection {
+        ManagedJsonProjection::ClaudeCodeSettingsHooks => {
+            claude_settings_hooks_projection_from_actual(actual, desired)
+        }
+        ManagedJsonProjection::ClaudeCodeMcpEntry => {
+            claude_mcp_projection_from_actual(actual, desired)
+        }
+    }
+}
+
+fn merge_claude_mcp_entry(
+    current: &Value,
+    desired: &Value,
+) -> Result<Value, ConnectionCommandError> {
+    let mut object = current.as_object().cloned().ok_or_else(|| {
+        ConnectionCommandError::runtime("Claude Code .mcp.json must be a JSON object")
+    })?;
+    let desired_servers = desired
+        .get("mcpServers")
+        .and_then(Value::as_object)
+        .ok_or_else(|| ConnectionCommandError::runtime("managed MCP projection is invalid"))?;
+    let servers = object
+        .entry("mcpServers".to_owned())
+        .or_insert_with(|| Value::Object(serde_json::Map::new()))
+        .as_object_mut()
+        .ok_or_else(|| {
+            ConnectionCommandError::runtime("Claude Code .mcp.json mcpServers must be an object")
+        })?;
+    for (name, entry) in desired_servers {
+        servers.insert(name.clone(), entry.clone());
+    }
+    Ok(Value::Object(object))
+}
+
+fn claude_mcp_projection_from_actual(
+    actual: &Value,
+    desired: &Value,
+) -> Result<Option<Value>, ConnectionCommandError> {
+    let actual_servers = actual
+        .get("mcpServers")
+        .and_then(Value::as_object)
+        .ok_or_else(|| {
+            ConnectionCommandError::runtime("Claude Code .mcp.json mcpServers must be an object")
+        })?;
+    let desired_servers = desired
+        .get("mcpServers")
+        .and_then(Value::as_object)
+        .ok_or_else(|| ConnectionCommandError::runtime("managed MCP projection is invalid"))?;
+    let mut projection_servers = serde_json::Map::new();
+    for name in desired_servers.keys() {
+        let Some(entry) = actual_servers.get(name) else {
+            return Ok(None);
+        };
+        projection_servers.insert(name.clone(), entry.clone());
+    }
+    Ok(Some(json!({ "mcpServers": projection_servers })))
+}
+
+fn merge_claude_settings_hooks(
+    current: &Value,
+    desired: &Value,
+) -> Result<Value, ConnectionCommandError> {
+    let mut root = current.as_object().cloned().ok_or_else(|| {
+        ConnectionCommandError::runtime("Claude Code settings must be a JSON object")
+    })?;
+    let desired_hooks = desired
+        .get("hooks")
+        .and_then(Value::as_object)
+        .ok_or_else(|| {
+            ConnectionCommandError::runtime("managed Claude Code hook projection is invalid")
+        })?;
+    let hooks = root
+        .entry("hooks".to_owned())
+        .or_insert_with(|| Value::Object(serde_json::Map::new()))
+        .as_object_mut()
+        .ok_or_else(|| {
+            ConnectionCommandError::runtime("Claude Code settings hooks must be an object")
+        })?;
+    for phase in REQUIRED_GUARD_PHASES {
+        let event_name = claude_event_name(phase)?;
+        let desired_groups = desired_hooks
+            .get(event_name)
+            .and_then(Value::as_array)
+            .ok_or_else(|| {
+                ConnectionCommandError::runtime(format!(
+                    "managed Claude Code hook projection is missing {event_name}"
+                ))
+            })?;
+        let desired_group = desired_groups.first().cloned().ok_or_else(|| {
+            ConnectionCommandError::runtime(format!(
+                "managed Claude Code hook projection has no {event_name} group"
+            ))
+        })?;
+        let desired_command = claude_managed_group_command(&desired_group, event_name)?;
+        let existing_groups = hooks
+            .remove(event_name)
+            .map(|value| {
+                value.as_array().cloned().ok_or_else(|| {
+                    ConnectionCommandError::runtime(format!(
+                        "Claude Code settings hook event {event_name} must be an array"
+                    ))
+                })
+            })
+            .transpose()?
+            .unwrap_or_default();
+        let mut preserved_groups = Vec::new();
+        for group in existing_groups {
+            if let Some(group) =
+                remove_claude_managed_handlers(phase, event_name, &desired_command, group)?
+            {
+                preserved_groups.push(group);
+            }
+        }
+        preserved_groups.push(desired_group);
+        hooks.insert(event_name.to_owned(), Value::Array(preserved_groups));
+    }
+    Ok(Value::Object(root))
+}
+
+fn claude_settings_hooks_projection_from_actual(
+    actual: &Value,
+    desired: &Value,
+) -> Result<Option<Value>, ConnectionCommandError> {
+    let actual_hooks = actual
+        .get("hooks")
+        .and_then(Value::as_object)
+        .ok_or_else(|| {
+            ConnectionCommandError::runtime("Claude Code settings hooks must be an object")
+        })?;
+    let desired_hooks = desired
+        .get("hooks")
+        .and_then(Value::as_object)
+        .ok_or_else(|| {
+            ConnectionCommandError::runtime("managed Claude Code hook projection is invalid")
+        })?;
+    let mut projected_hooks = serde_json::Map::new();
+    for phase in REQUIRED_GUARD_PHASES {
+        let event_name = claude_event_name(phase)?;
+        let desired_groups = desired_hooks
+            .get(event_name)
+            .and_then(Value::as_array)
+            .ok_or_else(|| {
+                ConnectionCommandError::runtime(format!(
+                    "managed Claude Code hook projection is missing {event_name}"
+                ))
+            })?;
+        let desired_group = desired_groups.first().ok_or_else(|| {
+            ConnectionCommandError::runtime(format!(
+                "managed Claude Code hook projection has no {event_name} group"
+            ))
+        })?;
+        let Some(actual_groups) = actual_hooks.get(event_name).and_then(Value::as_array) else {
+            return Ok(None);
+        };
+        let matches = actual_groups
+            .iter()
+            .filter(|group| **group == *desired_group)
+            .count();
+        if matches != 1 {
+            return Ok(None);
+        }
+        projected_hooks.insert(
+            event_name.to_owned(),
+            Value::Array(vec![desired_group.clone()]),
+        );
+    }
+    Ok(Some(json!({ "hooks": projected_hooks })))
+}
+
+fn remove_claude_managed_handlers(
+    phase: HostLifecyclePhase,
+    event_name: &str,
+    desired_command: &str,
+    group: Value,
+) -> Result<Option<Value>, ConnectionCommandError> {
+    let mut object = group.as_object().cloned().ok_or_else(|| {
+        ConnectionCommandError::runtime(format!(
+            "Claude Code settings hook group for {event_name} must be an object"
+        ))
+    })?;
+    let handlers = object
+        .remove("hooks")
+        .ok_or_else(|| {
+            ConnectionCommandError::runtime(format!(
+                "Claude Code settings hook group for {event_name} must contain hooks"
+            ))
+        })?
+        .as_array()
+        .cloned()
+        .ok_or_else(|| {
+            ConnectionCommandError::runtime(format!(
+                "Claude Code settings hook handlers for {event_name} must be an array"
+            ))
+        })?;
+    let mut kept = Vec::new();
+    let mut removed = 0usize;
+    for handler in handlers {
+        if is_exact_claude_managed_handler(&handler, desired_command) {
+            removed += 1;
+        } else if looks_like_conflicting_claude_managed_handler(phase, &handler, desired_command) {
+            return Err(ConnectionCommandError::runtime(format!(
+                "Claude Code settings contain a conflicting Volicord-managed {event_name} hook entry"
+            )));
+        } else {
+            kept.push(handler);
+        }
+    }
+    if removed == 0 {
+        object.insert("hooks".to_owned(), Value::Array(kept));
+        return Ok(Some(Value::Object(object)));
+    }
+    if kept.is_empty() {
+        return Ok(None);
+    }
+    object.insert("hooks".to_owned(), Value::Array(kept));
+    Ok(Some(Value::Object(object)))
+}
+
+fn claude_managed_group_command(
+    group: &Value,
+    event_name: &str,
+) -> Result<String, ConnectionCommandError> {
+    group
+        .get("hooks")
+        .and_then(Value::as_array)
+        .and_then(|handlers| handlers.first())
+        .and_then(|handler| handler.get("command"))
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+        .ok_or_else(|| {
+            ConnectionCommandError::runtime(format!(
+                "managed Claude Code hook projection is missing {event_name} command"
+            ))
+        })
+}
+
+fn is_exact_claude_managed_handler(handler: &Value, desired_command: &str) -> bool {
+    handler.as_object().is_some_and(|object| {
+        object.get("type").and_then(Value::as_str) == Some("command")
+            && object
+                .get("command")
+                .and_then(Value::as_str)
+                .is_some_and(|command| command == desired_command)
+    })
+}
+
+fn looks_like_conflicting_claude_managed_handler(
+    phase: HostLifecyclePhase,
+    handler: &Value,
+    desired_command: &str,
+) -> bool {
+    handler.as_object().is_some_and(|object| {
+        object
+            .get("command")
+            .and_then(Value::as_str)
+            .is_some_and(|command| {
+                command != desired_command
+                    && command.contains("volicord guard")
+                    && command.contains(phase.command_name())
+                    && (command.contains("--host claude-code")
+                        || command.contains("--host claude_code")
+                        || command.contains("--guard-installation"))
+            })
+    })
+}
+
+fn claude_event_name(phase: HostLifecyclePhase) -> Result<&'static str, ConnectionCommandError> {
+    let contract = contract_for(HostKind::ClaudeCode).ok_or_else(|| {
+        ConnectionCommandError::runtime(
+            "GUARDED_HOOKS_UNSUPPORTED: no Claude Code host integration contract is available",
+        )
+    })?;
+    hook_event_for_phase(contract, phase)
+        .map(|event| event.event_name)
+        .ok_or_else(|| {
+            ConnectionCommandError::runtime(format!(
+                "GUARDED_HOOKS_UNSUPPORTED: Claude Code contract is missing {} hook event data",
+                phase.capability_name()
+            ))
+        })
 }
 
 fn is_volicord_codex_hook_config(value: &Value) -> bool {
@@ -3565,6 +4147,20 @@ fn generated_files_json(files: &[GeneratedFilePlan]) -> Value {
                         object.insert(
                             "ownership".to_owned(),
                             Value::String("managed_json".to_owned()),
+                        );
+                    }
+                    GeneratedFileWriteKind::JsonProjection { projection } => {
+                        object.insert(
+                            "ownership".to_owned(),
+                            Value::String("managed_json_projection".to_owned()),
+                        );
+                        object.insert(
+                            "managed_projection".to_owned(),
+                            Value::String(projection.as_str().to_owned()),
+                        );
+                        object.insert(
+                            "managed_projection_json".to_owned(),
+                            Value::String(file.content.clone()),
                         );
                     }
                 }
@@ -5729,6 +6325,14 @@ fn verify_guard_file(file: &Value, capability: &Value, findings: &mut GuardFileF
             expected_hash,
             findings,
         ),
+        Some("managed_json_projection") => verify_managed_json_projection_file(
+            file,
+            kind,
+            path_text,
+            &text,
+            expected_hash,
+            findings,
+        ),
         _ => {
             findings.broken_files.push(path_text.to_owned());
             if let Some(kind) = kind {
@@ -5853,6 +6457,87 @@ fn verify_managed_json_file(
     }
     if let Some(kind) = kind {
         findings.set_kind_state(kind, state);
+    }
+}
+
+fn verify_managed_json_projection_file(
+    file: &Value,
+    kind: Option<HostIntegrationFileKind>,
+    path_text: &str,
+    text: &str,
+    expected_hash: &str,
+    findings: &mut GuardFileFindings,
+) {
+    let Some(projection) = file
+        .get("managed_projection")
+        .and_then(Value::as_str)
+        .and_then(managed_json_projection_from_str)
+    else {
+        findings.broken_files.push(path_text.to_owned());
+        if let Some(kind) = kind {
+            findings.set_kind_state(kind, "broken");
+        }
+        return;
+    };
+    let actual = match serde_json::from_str::<Value>(text) {
+        Ok(actual) => actual,
+        Err(_) => {
+            findings.broken_files.push(path_text.to_owned());
+            if let Some(kind) = kind {
+                findings.set_kind_state(kind, "broken");
+            }
+            return;
+        }
+    };
+    let expected_projection_json = file
+        .get("managed_projection_json")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let desired = match serde_json::from_str::<Value>(expected_projection_json) {
+        Ok(desired) => desired,
+        Err(_) => {
+            findings.broken_files.push(path_text.to_owned());
+            if let Some(kind) = kind {
+                findings.set_kind_state(kind, "broken");
+            }
+            return;
+        }
+    };
+    let actual_projection = match managed_json_projection_from_actual(&actual, &desired, projection)
+    {
+        Ok(Some(actual_projection)) => actual_projection,
+        Ok(None) => {
+            findings.stale_files.push(path_text.to_owned());
+            if let Some(kind) = kind {
+                findings.set_kind_state(kind, "stale");
+            }
+            return;
+        }
+        Err(_) => {
+            findings.broken_files.push(path_text.to_owned());
+            if let Some(kind) = kind {
+                findings.set_kind_state(kind, "broken");
+            }
+            return;
+        }
+    };
+    if actual_projection == desired && sha256_text(expected_projection_json) == expected_hash {
+        if let Some(kind) = kind {
+            findings.set_kind_state(kind, "installed");
+        }
+    } else {
+        findings.stale_files.push(path_text.to_owned());
+        if let Some(kind) = kind {
+            findings.set_kind_state(kind, "stale");
+        }
+    }
+}
+
+fn managed_json_projection_from_str(value: &str) -> Option<ManagedJsonProjection> {
+    match value {
+        "claude_code_settings_hooks" => Some(ManagedJsonProjection::ClaudeCodeSettingsHooks),
+        "claude_code_mcp_entry" => Some(ManagedJsonProjection::ClaudeCodeMcpEntry),
+        _ => None,
     }
 }
 
@@ -6373,12 +7058,12 @@ mod tests {
     }
 
     #[test]
-    fn guarded_integration_plan_rejects_missing_claude_code_hooks_without_opt_in(
+    fn guarded_integration_plan_rejects_missing_generic_hooks_without_opt_in(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let repo = temp_dir("guard-capabilities-reject")?;
         let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
         let error = plan_guard_integration(
-            HostKind::ClaudeCode,
+            HostKind::Generic,
             InitMode::Guarded,
             false,
             &repo,
@@ -6444,6 +7129,257 @@ mod tests {
     }
 
     #[test]
+    fn claude_guarded_integration_generates_hooks_mcp_and_rules(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let repo = temp_dir("claude-guarded")?;
+        let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
+        let plan = plan_guard_integration(
+            HostKind::ClaudeCode,
+            InitMode::Guarded,
+            false,
+            &repo,
+            "conn_alpha",
+            "guard_installation_alpha",
+            &entry,
+        )?;
+        let applied = apply_guard_integration(plan)?;
+
+        assert!(applied.missing_required_hooks.is_empty());
+        let capability: Value = serde_json::from_str(&guard_capability_json(&applied)?)?;
+        assert_eq!(capability["prompt_capture"], true);
+        assert_eq!(
+            capability["missing_required_hooks"]
+                .as_array()
+                .expect("missing hooks should be an array")
+                .len(),
+            0
+        );
+        let generated_files = generated_files_json(&applied.generated_files);
+        let generated_files = generated_files
+            .as_array()
+            .expect("generated files should be an array");
+        assert!(generated_files
+            .iter()
+            .any(|file| file["kind"] == "host_mcp_config"));
+        assert!(generated_files
+            .iter()
+            .any(|file| file["kind"] == "host_hook_config"));
+        assert!(generated_files.iter().any(|file| {
+            file["kind"] == "host_hook_config"
+                && file["ownership"] == "managed_json_projection"
+                && file["managed_projection"] == "claude_code_settings_hooks"
+        }));
+
+        let mcp_text = fs::read_to_string(repo.join(".mcp.json"))?;
+        assert!(mcp_text.contains("\"volicord\""));
+        assert!(mcp_text.contains("\"mcp\""));
+        assert!(mcp_text.contains("\"--stdio\""));
+        assert!(mcp_text.contains("\"--connection\""));
+        let settings_text = fs::read_to_string(repo.join(".claude/settings.json"))?;
+        for command in [
+            "volicord guard session-start",
+            "volicord guard pre-tool",
+            "volicord guard post-tool",
+            "volicord guard prompt-capture",
+            "volicord guard stop",
+        ] {
+            assert!(settings_text.contains(command), "missing {command}");
+        }
+        assert!(settings_text.contains("--host claude-code"));
+        assert!(settings_text.contains("--guard-installation guard_installation_alpha"));
+        assert!(settings_text.contains("\"matcher\": \"Edit|Write|MultiEdit\""));
+        assert!(fs::read_to_string(repo.join(".claude/rules/volicord.md"))?
+            .contains("Configured local guard commands"));
+
+        let again = plan_guard_integration(
+            HostKind::ClaudeCode,
+            InitMode::Guarded,
+            false,
+            &repo,
+            "conn_alpha",
+            "guard_installation_alpha",
+            &entry,
+        )?;
+        let applied_again = apply_guard_integration(again)?;
+        let settings_again = fs::read_to_string(repo.join(".claude/settings.json"))?;
+        assert_eq!(settings_text, settings_again);
+        assert_eq!(
+            settings_again.matches("volicord guard ").count(),
+            REQUIRED_GUARD_PHASES.len()
+        );
+        assert!(applied_again
+            .generated_files
+            .iter()
+            .any(|file| file.kind == HostIntegrationFileKind::HostHookConfig
+                && file.status == FilePlanStatus::Unchanged));
+        Ok(())
+    }
+
+    #[test]
+    fn claude_settings_merge_preserves_unmanaged_hooks_and_keys(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let repo = temp_dir("claude-settings-preserve")?;
+        fs::create_dir_all(repo.join(".claude"))?;
+        fs::write(
+            repo.join(".claude/settings.json"),
+            r#"{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "theme": "dark",
+  "permissions": {
+    "ask": ["Bash"]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo keep",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
+"#,
+        )?;
+        let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
+        let applied = apply_guard_integration(plan_guard_integration(
+            HostKind::ClaudeCode,
+            InitMode::Guarded,
+            false,
+            &repo,
+            "conn_alpha",
+            "guard_installation_alpha",
+            &entry,
+        )?)?;
+        let settings: Value =
+            serde_json::from_str(&fs::read_to_string(repo.join(".claude/settings.json"))?)?;
+
+        assert_eq!(settings["theme"], "dark");
+        assert_eq!(settings["permissions"]["ask"][0], "Bash");
+        let pre_tool = settings["hooks"]["PreToolUse"]
+            .as_array()
+            .expect("PreToolUse should be an array");
+        assert!(pre_tool.iter().any(|group| group["matcher"] == "Bash"));
+        assert!(pre_tool.iter().any(|group| {
+            group["matcher"] == "Edit|Write|MultiEdit"
+                && group["hooks"][0]["command"]
+                    .as_str()
+                    .is_some_and(|command| command.contains("volicord guard pre-tool"))
+        }));
+
+        let capability_json = guard_capability_json(&applied)?;
+        let findings = guard_file_findings(&capability_json);
+        assert!(findings.stale_files.is_empty());
+        assert!(findings.broken_files.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn claude_settings_conflicting_managed_entry_is_rejected(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let repo = temp_dir("claude-settings-conflict")?;
+        fs::create_dir_all(repo.join(".claude"))?;
+        fs::write(
+            repo.join(".claude/settings.json"),
+            r#"{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "volicord guard pre-tool --host claude-code --json",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
+"#,
+        )?;
+        let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
+        let error = plan_guard_integration(
+            HostKind::ClaudeCode,
+            InitMode::Guarded,
+            false,
+            &repo,
+            "conn_alpha",
+            "guard_installation_alpha",
+            &entry,
+        )
+        .expect_err("conflicting managed hook should be rejected");
+
+        assert!(error.to_string().contains("conflicting Volicord-managed"));
+        Ok(())
+    }
+
+    #[test]
+    fn claude_settings_merge_rejects_invalid_preserved_settings(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let repo = temp_dir("claude-settings-invalid")?;
+        fs::create_dir_all(repo.join(".claude"))?;
+        fs::write(
+            repo.join(".claude/settings.json"),
+            r#"{
+  "permissions": []
+}
+"#,
+        )?;
+        let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
+        let error = plan_guard_integration(
+            HostKind::ClaudeCode,
+            InitMode::Guarded,
+            false,
+            &repo,
+            "conn_alpha",
+            "guard_installation_alpha",
+            &entry,
+        )
+        .expect_err("invalid preserved settings should be rejected");
+
+        assert!(error
+            .to_string()
+            .contains("merged Claude Code project settings do not match the verified contract"));
+        Ok(())
+    }
+
+    #[test]
+    fn claude_guard_file_verification_ignores_unmanaged_settings_changes(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let repo = temp_dir("claude-guard-file-verify")?;
+        let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
+        let applied = apply_guard_integration(plan_guard_integration(
+            HostKind::ClaudeCode,
+            InitMode::Guarded,
+            false,
+            &repo,
+            "conn_alpha",
+            "guard_installation_alpha",
+            &entry,
+        )?)?;
+        let capability_json = guard_capability_json(&applied)?;
+
+        let settings_path = repo.join(".claude/settings.json");
+        let mut settings: Value = serde_json::from_str(&fs::read_to_string(&settings_path)?)?;
+        settings["theme"] = Value::String("light".to_owned());
+        fs::write(&settings_path, serde_json::to_string_pretty(&settings)?)?;
+        let findings = guard_file_findings(&capability_json);
+        assert!(findings.stale_files.is_empty());
+
+        settings["hooks"]["PreToolUse"] = Value::Array(Vec::new());
+        fs::write(&settings_path, serde_json::to_string_pretty(&settings)?)?;
+        let findings = guard_file_findings(&capability_json);
+        assert!(findings.stale_files.contains(&path_text(&settings_path)));
+        Ok(())
+    }
+
+    #[test]
     fn guard_file_verification_detects_stale_policy_and_duplicate_markers(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let repo = temp_dir("guard-file-verify")?;
@@ -6490,6 +7426,104 @@ mod tests {
         assert!(findings
             .broken_files
             .contains(&path_text(&repo.join(AGENTS_FILE))));
+        Ok(())
+    }
+
+    #[test]
+    fn claude_guard_state_becomes_active_after_synthetic_observation(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let runtime_home = temp_dir("claude-guard-runtime")?;
+        let repo = temp_dir("claude-guard-observed")?;
+        fs::create_dir_all(repo.join(".git"))?;
+        initialize_runtime_home(&runtime_home, "runtime_home_test", "{}")?;
+        let project = ensure_project_for_repo(
+            &runtime_home,
+            RepoProjectRegistration {
+                project_name: None,
+                project_alias: None,
+                repo_root: repo.clone(),
+                project_home: None,
+                status: ACTIVE_PROJECT_STATUS.to_owned(),
+                metadata_json: "{}".to_owned(),
+            },
+        )?;
+        let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
+        let integration = apply_guard_integration(plan_guard_integration(
+            HostKind::ClaudeCode,
+            InitMode::Guarded,
+            false,
+            &repo,
+            "conn_alpha",
+            "guard_installation_alpha",
+            &entry,
+        )?)?;
+        ensure_agent_connection(
+            &runtime_home,
+            AgentConnectionRegistration {
+                connection_internal_id: "conn_alpha".to_owned(),
+                host_kind: HostKind::ClaudeCode.as_str().to_owned(),
+                intent: ConnectionIntent::Shared.as_str().to_owned(),
+                host_scope: HostScope::Project.as_str().to_owned(),
+                server_name: DEFAULT_SERVER_NAME.to_owned(),
+                config_target: path_text(&repo.join(".mcp.json")),
+                mode: CONNECTION_MODE_WORKFLOW.to_owned(),
+                enabled: true,
+                managed_fingerprint: "fingerprint".to_owned(),
+                last_verification_status: VERIFIED_STATUS_COMPLETE.to_owned(),
+                last_verification_report_json: "{}".to_owned(),
+                last_user_actions_json: "[]".to_owned(),
+                metadata_json: "{}".to_owned(),
+            },
+        )?;
+        add_connection_project(
+            &runtime_home,
+            ConnectionProjectRegistration {
+                connection_internal_id: "conn_alpha".to_owned(),
+                project_id: project.project_id.clone(),
+            },
+        )?;
+        upsert_guard_installation(
+            &runtime_home,
+            GuardInstallationUpsert {
+                guard_installation_id: "guard_installation_alpha".to_owned(),
+                connection_internal_id: "conn_alpha".to_owned(),
+                project_id: Some(project.project_id.clone()),
+                host_kind: HostKind::ClaudeCode.as_str().to_owned(),
+                guard_mode: GuardMode::Guarded.as_str().to_owned(),
+                host_capability_json: guard_capability_json(&integration)?,
+                installation_status: GuardInstallationStatus::ReloadRequired.as_str().to_owned(),
+                installed_at: Some("2026-07-01T00:00:00Z".to_owned()),
+                last_checked_at: "2026-07-01T00:00:00Z".to_owned(),
+                first_seen_at: None,
+                last_seen_at: None,
+                last_seen_phase: None,
+                observed_host_kind: None,
+                observed_policy_hash: None,
+                observed_binary_version: None,
+                metadata_json: "{}".to_owned(),
+            },
+        )?;
+        volicord_store::guards::observe_guard_installation(
+            &runtime_home,
+            volicord_store::guards::GuardInstallationObservation {
+                guard_installation_id: "guard_installation_alpha".to_owned(),
+                connection_internal_id: "conn_alpha".to_owned(),
+                project_id: project.project_id.clone(),
+                host_kind: HostKind::ClaudeCode.as_str().to_owned(),
+                guard_mode: GuardMode::Guarded.as_str().to_owned(),
+                observed_policy_hash: integration.policy_hash.clone(),
+                observed_binary_version: Some("test".to_owned()),
+                observed_phase: "session_start".to_owned(),
+                observed_at: "2026-07-01T00:01:00Z".to_owned(),
+            },
+        )?;
+        let projects = list_connection_projects(&runtime_home, "conn_alpha")?;
+        let guard_state = guard_state_for_connection(&runtime_home, "conn_alpha", &projects)?;
+
+        assert_eq!(guard_state.installation_state, "active");
+        assert_eq!(guard_state.hook_observed_state, "observed");
+        assert_eq!(guard_state.effective_state, "active");
+        assert_eq!(guard_state.prompt_capture_state, "observed");
         Ok(())
     }
 
