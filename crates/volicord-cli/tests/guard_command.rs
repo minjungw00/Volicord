@@ -4,7 +4,7 @@ use std::{
     error::Error,
     fs,
     io::Write,
-    path::Path,
+    path::{Path, PathBuf},
     process::{Command, Output, Stdio},
 };
 
@@ -12,20 +12,33 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use volicord_core::{CoreService, InvocationContext};
 use volicord_store::agent_connections::{
-    add_connection_project, ensure_agent_connection, AgentConnectionRegistration,
-    ConnectionProjectRegistration, CONNECTION_INTENT_SHARED, CONNECTION_MODE_WORKFLOW,
-    HOST_KIND_CODEX, HOST_SCOPE_PROJECT, VERIFIED_STATUS_COMPLETE,
+    add_connection_project, agent_connection_record, ensure_agent_connection,
+    AgentConnectionRegistration, ConnectionProjectRegistration, CONNECTION_INTENT_SHARED,
+    CONNECTION_MODE_WORKFLOW, HOST_KIND_CODEX, HOST_SCOPE_PROJECT, VERIFIED_STATUS_COMPLETE,
 };
 use volicord_store::guards::{
-    expected_write, guard_event, guard_installation, list_pending_expected_writes,
-    list_unresolved_unrecorded_changes, prompt_capture, upsert_guard_installation,
-    GuardInstallationUpsert,
+    expected_write, guard_event, guard_installation, list_guard_installations,
+    list_pending_expected_writes, list_unresolved_unrecorded_changes, prompt_capture,
+    unrecorded_change, upsert_guard_installation, GuardInstallationUpsert,
 };
-use volicord_test_support::core_fixtures::{CoreFixture, UpdateScopeFixture, UserJudgmentFixture};
+use volicord_store::{bootstrap::list_projects, core_pipeline::CoreProjectStore};
+use volicord_test_support::{
+    core_fixtures::{
+        answer_payload, supported_evidence_update, CoreFixture, UpdateScopeFixture,
+        UserJudgmentFixture, DEFAULT_BASELINE_REF, DEFAULT_PRODUCT_PATH,
+    },
+    TempRuntimeHome,
+};
 use volicord_types::{
-    chat_judgment_verification_code, ActorSource, ChangeUnitOperation, JudgmentKind,
-    OperationCategory, ProjectId, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
-    VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
+    chat_judgment_verification_code, ActorSource, BaselineRef, ChangeUnitId, ChangeUnitOperation,
+    ChangeUnitUpdate, CloseAssessmentInput, CloseIntent, CloseReason, CloseTaskRequest,
+    IdempotencyKey, InitialScope, IntakeRequest, JudgmentKind, JudgmentPresentation,
+    JudgmentRationale, JudgmentRequiredFor, ObservedChanges, OperationCategory,
+    PrepareWriteRequest, ProjectId, ReconcileChangesRequest, RecordId, RecordRunRequest,
+    RecordUserJudgmentRequest, RequestId, RequestUserJudgmentRequest, RequestedMode, ResumePolicy,
+    RunKind, ScopeUpdate, StateRecordKind, StateRecordRef, TaskId, ToolEnvelope,
+    UpdateScopeRequest, UserJudgmentContext, UserJudgmentOptionId, WriteCheckId,
+    VERIFICATION_BASIS_TEST_FIXTURE_BINDING, VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
 };
 
 #[test]
@@ -1262,6 +1275,258 @@ fn guard_stop_denies_false_completion_when_close_readiness_blocks() -> Result<()
     Ok(())
 }
 
+#[cfg(unix)]
+#[test]
+fn guarded_init_hook_write_prompt_lifecycle_closes() -> Result<(), Box<dyn Error>> {
+    let fixture = GuardedLifecycleFixture::init("guarded-lifecycle-close", "guarded")?;
+    assert_guard_init_state_is_installed_or_degraded(&fixture.init_output);
+    fixture.activate_guard("guard_lifecycle_session_start")?;
+
+    let (task_id, change_unit_id) = fixture.create_task_with_change_unit("happy")?;
+    let write_check_id = fixture.prepare_write(&task_id, &change_unit_id, "happy")?;
+
+    let pre = json!({
+        "event_id": "guard_lifecycle_pre",
+        "session_id": fixture.session_id(),
+        "connection_id": fixture.connection_id(),
+        "guard_installation_id": fixture.guard_installation_id(),
+        "host_kind": "codex",
+        "tool_name": "shell",
+        "tool_call_id": "tool_lifecycle_write",
+        "command": "touch src/export.rs",
+        "paths": [DEFAULT_PRODUCT_PATH],
+        "timestamp": "2026-06-30T06:01:00Z"
+    });
+    let pre_output = fixture.run_guard_event("pre-tool", &pre)?;
+    assert_success(&pre_output);
+    let pre_value = json_stdout(&pre_output)?;
+    assert_eq!(pre_value["decision"], "allow");
+    assert!(pre_value["result"]["expected_write"]["expected_write_id"].is_string());
+
+    fixture.apply_product_change("happy path guarded write")?;
+    let post = json!({
+        "event_id": "guard_lifecycle_post",
+        "session_id": fixture.session_id(),
+        "connection_id": fixture.connection_id(),
+        "guard_installation_id": fixture.guard_installation_id(),
+        "host_kind": "codex",
+        "tool_name": "shell",
+        "tool_call_id": "tool_lifecycle_write",
+        "command": "touch src/export.rs",
+        "success": true,
+        "changed_paths": [DEFAULT_PRODUCT_PATH],
+        "timestamp": "2026-06-30T06:02:00Z"
+    });
+    let post_output = fixture.run_guard_event("post-tool", &post)?;
+    assert_success(&post_output);
+    let post_value = json_stdout(&post_output)?;
+    assert_eq!(post_value["decision"], "allow");
+    assert!(post_value["result"]["unrecorded_changes"]
+        .as_array()
+        .expect("unrecorded changes should be an array")
+        .is_empty());
+    assert!(list_unresolved_unrecorded_changes(
+        fixture.runtime_home(),
+        fixture.project_id(),
+        Some(fixture.connection_id()),
+    )?
+    .is_empty());
+
+    fixture.record_product_write_close_basis(
+        &task_id,
+        &change_unit_id,
+        &write_check_id,
+        "happy",
+    )?;
+    let final_judgment_id = fixture.request_final_acceptance(&task_id, &change_unit_id, "happy")?;
+    fixture.answer_pending_judgment_through_prompt(
+        &task_id,
+        &final_judgment_id,
+        "guard_lifecycle_final_prompt",
+        "guard_lifecycle_final_capture",
+    )?;
+
+    let check = fixture.check_close(&task_id)?;
+    assert_eq!(
+        check.response_value["close_state"], "ready",
+        "{}",
+        check.response_value
+    );
+    assert!(
+        close_blocker_codes(&check.response_value).is_empty(),
+        "expected ready close, got blockers {:?}",
+        check.response_value["blockers"]
+    );
+
+    let close = fixture.close_task(&task_id, "happy")?;
+    assert_eq!(close.response_value["close_state"], "closed");
+    assert_eq!(
+        close.response_value["guard_health"]["guard_mode"],
+        "guarded"
+    );
+    assert_eq!(
+        close.response_value["guard_health"]["unresolved_unrecorded_change_count"],
+        0
+    );
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn guarded_bypass_reconcile_prompt_acceptance_unblocks_close() -> Result<(), Box<dyn Error>> {
+    let fixture = GuardedLifecycleFixture::init("guarded-lifecycle-bypass", "guarded")?;
+    fixture.activate_guard("guard_bypass_session_start")?;
+    let (task_id, change_unit_id) = fixture.create_task_with_change_unit("bypass")?;
+    fixture.record_non_write_close_basis(&task_id, &change_unit_id, "bypass")?;
+    let final_judgment_id =
+        fixture.request_final_acceptance(&task_id, &change_unit_id, "bypass")?;
+    fixture.answer_pending_judgment_through_prompt(
+        &task_id,
+        &final_judgment_id,
+        "guard_bypass_final_prompt",
+        "guard_bypass_final_capture",
+    )?;
+
+    fixture.apply_product_change("bypass write without pre-tool readiness")?;
+    let post = json!({
+        "event_id": "guard_bypass_post",
+        "session_id": fixture.session_id(),
+        "connection_id": fixture.connection_id(),
+        "guard_installation_id": fixture.guard_installation_id(),
+        "host_kind": "codex",
+        "tool_name": "shell",
+        "tool_call_id": "tool_bypass_write",
+        "command": "touch src/export.rs",
+        "success": true,
+        "changed_paths": [DEFAULT_PRODUCT_PATH],
+        "timestamp": "2026-06-30T06:22:00Z"
+    });
+    let post_output = fixture.run_guard_event("post-tool", &post)?;
+    assert_success(&post_output);
+    assert_eq!(json_stdout(&post_output)?["decision"], "warn");
+
+    let unresolved = list_unresolved_unrecorded_changes(
+        fixture.runtime_home(),
+        fixture.project_id(),
+        Some(fixture.connection_id()),
+    )?;
+    assert_eq!(unresolved.len(), 1);
+    let unrecorded_change_id = unresolved[0].unrecorded_change_id.clone();
+
+    let blocked = fixture.check_close(&task_id)?;
+    assert_eq!(blocked.response_value["close_state"], "blocked");
+    assert_close_blocker(&blocked.response_value, "unresolved_unrecorded_changes");
+
+    let first_reconcile = fixture.reconcile_changes(&task_id, "bypass_first")?;
+    assert_eq!(
+        first_reconcile.response_value["pending_user_judgment_refs"]
+            .as_array()
+            .expect("pending refs should be an array")
+            .len(),
+        1
+    );
+    let reconciliation_judgment_id = first_reconcile.response_value["pending_user_judgment_refs"]
+        [0]["record_id"]
+        .as_str()
+        .expect("reconciliation judgment id should be present")
+        .to_owned();
+    fixture.answer_pending_judgment_through_prompt(
+        &task_id,
+        &reconciliation_judgment_id,
+        "guard_bypass_accept_prompt",
+        "guard_bypass_accept_capture",
+    )?;
+
+    let second_reconcile = fixture.reconcile_changes(&task_id, "bypass_second")?;
+    assert_eq!(
+        second_reconcile.response_value["resolved_changes"][0]["resolution_basis"],
+        "accepted_by_user"
+    );
+    let row = unrecorded_change(
+        fixture.runtime_home(),
+        fixture.project_id(),
+        &unrecorded_change_id,
+    )?
+    .expect("unrecorded change should remain inspectable");
+    assert_eq!(row.status, "resolved");
+
+    let after = fixture.check_close(&task_id)?;
+    assert_no_close_blocker(&after.response_value, "unresolved_unrecorded_changes");
+    assert_eq!(
+        after.response_value["guard_health"]["unresolved_unrecorded_change_count"],
+        0
+    );
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn guarded_close_guard_blocker_clears_after_session_start() -> Result<(), Box<dyn Error>> {
+    let fixture = GuardedLifecycleFixture::init("guarded-lifecycle-health", "guarded")?;
+    let (task_id, change_unit_id) = fixture.create_task_with_change_unit("health")?;
+    fixture.record_non_write_close_basis(&task_id, &change_unit_id, "health")?;
+    let final_judgment_id =
+        fixture.request_final_acceptance(&task_id, &change_unit_id, "health")?;
+    fixture.record_judgment_direct(&task_id, &final_judgment_id, JudgmentKind::FinalAcceptance)?;
+
+    let before = fixture.check_close(&task_id)?;
+    assert_eq!(before.response_value["close_state"], "blocked");
+    assert!(
+        close_blocker_codes(&before.response_value)
+            .iter()
+            .any(|code| matches!(
+                code.as_str(),
+                "guard_degraded" | "guard_reload_required" | "guard_not_observed"
+            )),
+        "expected a guard health blocker before session-start, got {:?}",
+        close_blocker_codes(&before.response_value)
+    );
+
+    fixture.activate_guard("guard_health_session_start")?;
+    let after = fixture.check_close(&task_id)?;
+    assert_no_close_blocker(&after.response_value, "guard_degraded");
+    assert_no_close_blocker(&after.response_value, "guard_reload_required");
+    assert_no_close_blocker(&after.response_value, "guard_not_observed");
+    assert_eq!(
+        after.response_value["close_state"], "ready",
+        "{}",
+        after.response_value
+    );
+    assert_eq!(
+        after.response_value["guard_health"]["guard_hook_observed"],
+        true
+    );
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn mcp_only_init_skips_guard_observation_but_keeps_user_judgment_blocker(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = GuardedLifecycleFixture::init("guarded-lifecycle-mcp-only", "mcp-only")?;
+    assert_eq!(
+        fixture.init_output["states"]["guard_installation"],
+        "configured"
+    );
+    let (task_id, change_unit_id) = fixture.create_task_with_change_unit("mcp_only")?;
+    fixture.record_non_write_close_basis(&task_id, &change_unit_id, "mcp_only")?;
+    fixture.request_final_acceptance(&task_id, &change_unit_id, "mcp_only")?;
+
+    let check = fixture.check_close(&task_id)?;
+    assert_eq!(check.response_value["close_state"], "blocked");
+    assert_close_blocker(&check.response_value, "pending_user_judgment");
+    assert_no_close_blocker(&check.response_value, "guard_not_observed");
+    assert_eq!(
+        check.response_value["guard_health"]["guard_mode"],
+        "mcp_only"
+    );
+    assert_eq!(
+        check.response_value["guard_health"]["guard_hook_observed"],
+        false
+    );
+    Ok(())
+}
+
 struct GuardCliFixture {
     inner: CoreFixture,
     repo_root: std::path::PathBuf,
@@ -1547,6 +1812,581 @@ impl GuardCliFixture {
     }
 }
 
+#[cfg(unix)]
+struct GuardedLifecycleFixture {
+    _runtime_home: TempRuntimeHome,
+    repo_root: PathBuf,
+    repo_arg: String,
+    project_id: String,
+    connection_id: String,
+    guard_installation_id: String,
+    init_output: Value,
+}
+
+#[cfg(unix)]
+impl GuardedLifecycleFixture {
+    fn init(prefix: &str, mode: &str) -> Result<Self, Box<dyn Error>> {
+        let runtime_home = TempRuntimeHome::new(prefix)?;
+        let repo_root = runtime_home.create_product_repo("product-repo")?;
+        fs::create_dir_all(repo_root.join(".git"))?;
+        let repo_arg = repo_root
+            .to_str()
+            .ok_or("fixture product repo path should be UTF-8")?
+            .to_owned();
+        let bin_dir = runtime_home.path().join("bin");
+        write_fake_codex(&bin_dir)?;
+        write_fake_mcp(&bin_dir)?;
+
+        let output = Command::new(volicord_bin())
+            .args([
+                "init",
+                "--host",
+                "codex",
+                "--repo",
+                repo_arg.as_str(),
+                "--mode",
+                mode,
+                "--json",
+            ])
+            .env("VOLICORD_HOME", runtime_home.path())
+            .env("PATH", path_env(&[bin_dir.as_path()]))
+            .env("VOLICORD_TEST_CONNECTION_MODE", "workflow")
+            .output()?;
+        assert_success(&output);
+        let init_output = json_stdout(&output)?;
+        let connection_id = init_output["connection"]["connection_id"]
+            .as_str()
+            .expect("init should report connection_id")
+            .to_owned();
+        let projects = list_projects(runtime_home.path())?;
+        assert_eq!(projects.len(), 1);
+        let project_id = projects[0].project_id.clone();
+        let guard_installations =
+            list_guard_installations(runtime_home.path(), &connection_id, Some(&project_id))?;
+        assert_eq!(guard_installations.len(), 1);
+        let guard_installation_id = guard_installations[0].guard_installation_id.clone();
+        mark_connection_verified(runtime_home.path(), &connection_id)?;
+
+        Ok(Self {
+            _runtime_home: runtime_home,
+            repo_root,
+            repo_arg,
+            project_id,
+            connection_id,
+            guard_installation_id,
+            init_output,
+        })
+    }
+
+    fn runtime_home(&self) -> &Path {
+        self._runtime_home.path()
+    }
+
+    fn repo_arg(&self) -> &str {
+        &self.repo_arg
+    }
+
+    fn project_id(&self) -> &str {
+        &self.project_id
+    }
+
+    fn connection_id(&self) -> &str {
+        &self.connection_id
+    }
+
+    fn guard_installation_id(&self) -> &str {
+        &self.guard_installation_id
+    }
+
+    fn session_id(&self) -> &str {
+        "guard_lifecycle_session"
+    }
+
+    fn store(&self) -> Result<CoreProjectStore, Box<dyn Error>> {
+        Ok(CoreProjectStore::open(
+            self.runtime_home(),
+            &ProjectId::new(&self.project_id),
+        )?)
+    }
+
+    fn state_version(&self) -> Result<u64, Box<dyn Error>> {
+        Ok(self.store()?.project_state()?.state_version)
+    }
+
+    fn service(&self) -> CoreService {
+        CoreService::new(self.runtime_home())
+    }
+
+    fn invocation(&self, operation_category: OperationCategory) -> InvocationContext {
+        InvocationContext::new(
+            ProjectId::new(&self.project_id),
+            ActorSource::agent_connection(self.connection_id.clone()),
+            operation_category,
+            VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+        )
+    }
+
+    fn user_invocation(&self) -> InvocationContext {
+        InvocationContext::new(
+            ProjectId::new(&self.project_id),
+            ActorSource::LocalUser,
+            OperationCategory::UserOnly,
+            VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+        )
+    }
+
+    fn envelope(
+        &self,
+        request_id: &str,
+        idempotency_key: Option<&str>,
+        expected_state_version: Option<u64>,
+        task_id: Option<&str>,
+    ) -> ToolEnvelope {
+        ToolEnvelope {
+            project_id: ProjectId::new(&self.project_id),
+            task_id: task_id.map(TaskId::new).into(),
+            request_id: RequestId::new(request_id),
+            idempotency_key: idempotency_key.map(IdempotencyKey::new).into(),
+            expected_state_version: expected_state_version.into(),
+            dry_run: false,
+            locale: Some("en-US".to_owned()).into(),
+        }
+    }
+
+    fn activate_guard(&self, event_id: &str) -> Result<(), Box<dyn Error>> {
+        let event = json!({
+            "event_id": event_id,
+            "session_id": self.session_id(),
+            "connection_id": self.connection_id(),
+            "guard_installation_id": self.guard_installation_id(),
+            "host_kind": "codex",
+            "timestamp": "2026-06-30T06:00:00Z"
+        });
+        let output = self.run_guard_event("session-start", &event)?;
+        assert_success(&output);
+        let value = json_stdout(&output)?;
+        assert_eq!(value["decision"], "inject_context");
+        let stored = guard_installation(self.runtime_home(), self.guard_installation_id())?
+            .expect("guard installation should be stored");
+        assert_eq!(stored.installation_status, "active");
+        assert_eq!(stored.last_seen_phase.as_deref(), Some("session_start"));
+        Ok(())
+    }
+
+    fn run_guard_event(&self, phase: &str, event: &Value) -> Result<Output, Box<dyn Error>> {
+        run_guard(
+            self.runtime_home(),
+            &self.repo_root,
+            ["guard", phase, "--repo", self.repo_arg()],
+            event,
+        )
+    }
+
+    fn create_task_with_change_unit(
+        &self,
+        suffix: &str,
+    ) -> Result<(String, String), Box<dyn Error>> {
+        let service = self.service();
+        let intake = service.intake(
+            IntakeRequest {
+                envelope: self.envelope(
+                    &format!("req_{suffix}_intake"),
+                    Some(&format!("idem_{suffix}_intake")),
+                    Some(0),
+                    None,
+                ),
+                plain_language_request: "Create a guarded lifecycle fixture task.".to_owned(),
+                requested_mode: RequestedMode::Work,
+                resume_policy: ResumePolicy::CreateNew,
+                initial_scope: InitialScope {
+                    boundary: "Exercise guarded lifecycle behavior in a temp repository."
+                        .to_owned(),
+                    non_goals: vec!["Changing unrelated files.".to_owned()],
+                    acceptance_criteria: vec![
+                        "The guarded lifecycle reaches the expected close state.".to_owned(),
+                    ],
+                },
+                initial_context_refs: Vec::new(),
+            },
+            self.invocation(OperationCategory::AgentWorkflow),
+        )?;
+        let task_id = record_id(&intake.response_value["task_ref"])?;
+        let after_intake = self.state_version()?;
+        let mut fields = serde_json::Map::new();
+        fields.insert(
+            "scope_summary".to_owned(),
+            Value::String("Guarded lifecycle scope for src/export.rs.".to_owned()),
+        );
+        fields.insert("affected_paths".to_owned(), json!([DEFAULT_PRODUCT_PATH]));
+        let scope = service.update_scope(
+            UpdateScopeRequest {
+                envelope: self.envelope(
+                    &format!("req_{suffix}_scope"),
+                    Some(&format!("idem_{suffix}_scope")),
+                    Some(after_intake),
+                    Some(&task_id),
+                ),
+                task_id: TaskId::new(&task_id),
+                goal_summary: Some("Guarded lifecycle task.".to_owned()).into(),
+                scope_update: Some(ScopeUpdate {
+                    include: vec!["Guarded lifecycle fixture behavior.".to_owned()],
+                    exclude: vec!["Unrelated repository behavior.".to_owned()],
+                })
+                .into(),
+                scope_boundary: Some("Stay within the temp Product Repository.".to_owned()).into(),
+                non_goals: Some(vec!["Do not touch external user files.".to_owned()]).into(),
+                acceptance_criteria: Some(vec![
+                    "The fixture close check reports the expected state.".to_owned(),
+                ])
+                .into(),
+                autonomy_boundary: Some("Use only fixture inputs.".to_owned()).into(),
+                baseline_ref: Some(BaselineRef::new(DEFAULT_BASELINE_REF)).into(),
+                change_unit: ChangeUnitUpdate {
+                    operation: ChangeUnitOperation::CreateCurrent,
+                    effect_contract: None,
+                    fields,
+                },
+                related_scope_decision_refs: Vec::new(),
+            },
+            self.invocation(OperationCategory::AgentWorkflow),
+        )?;
+        let change_unit_id = record_id(&scope.response_value["change_unit_ref"])?;
+        Ok((task_id, change_unit_id))
+    }
+
+    fn prepare_write(
+        &self,
+        task_id: &str,
+        change_unit_id: &str,
+        suffix: &str,
+    ) -> Result<String, Box<dyn Error>> {
+        let response = self.service().prepare_write(
+            PrepareWriteRequest {
+                envelope: self.envelope(
+                    &format!("req_{suffix}_prepare"),
+                    Some(&format!("idem_{suffix}_prepare")),
+                    Some(self.state_version()?),
+                    Some(task_id),
+                ),
+                task_id: Some(TaskId::new(task_id)).into(),
+                change_unit_id: Some(ChangeUnitId::new(change_unit_id)).into(),
+                intended_operation: "local_product_file_update".to_owned(),
+                intended_paths: vec![DEFAULT_PRODUCT_PATH.to_owned()],
+                product_file_write_intended: true,
+                sensitive_categories: Vec::new(),
+                baseline_ref: BaselineRef::new(DEFAULT_BASELINE_REF),
+            },
+            self.invocation(OperationCategory::AgentWorkflow),
+        )?;
+        assert_eq!(response.response_value["decision"], "allowed");
+        Ok(response.response_value["write_check_ref"]["record_id"]
+            .as_str()
+            .expect("write check id should be present")
+            .to_owned())
+    }
+
+    fn apply_product_change(&self, contents: &str) -> Result<(), Box<dyn Error>> {
+        let path = self.repo_root.join(DEFAULT_PRODUCT_PATH);
+        fs::create_dir_all(path.parent().expect("fixture path should have a parent"))?;
+        fs::write(path, format!("{contents}\n"))?;
+        Ok(())
+    }
+
+    fn record_product_write_close_basis(
+        &self,
+        task_id: &str,
+        change_unit_id: &str,
+        write_check_id: &str,
+        suffix: &str,
+    ) -> Result<u64, Box<dyn Error>> {
+        self.record_close_basis(task_id, change_unit_id, Some(write_check_id), true, suffix)
+    }
+
+    fn record_non_write_close_basis(
+        &self,
+        task_id: &str,
+        change_unit_id: &str,
+        suffix: &str,
+    ) -> Result<u64, Box<dyn Error>> {
+        self.record_close_basis(task_id, change_unit_id, None, false, suffix)
+    }
+
+    fn record_close_basis(
+        &self,
+        task_id: &str,
+        change_unit_id: &str,
+        write_check_id: Option<&str>,
+        product_write_observed: bool,
+        suffix: &str,
+    ) -> Result<u64, Box<dyn Error>> {
+        let request = RecordRunRequest {
+            envelope: self.envelope(
+                &format!("req_{suffix}_run"),
+                Some(&format!("idem_{suffix}_run")),
+                Some(self.state_version()?),
+                Some(task_id),
+            ),
+            task_id: TaskId::new(task_id),
+            change_unit_id: ChangeUnitId::new(change_unit_id),
+            kind: RunKind::Implementation,
+            run_id: None.into(),
+            baseline_ref: BaselineRef::new(DEFAULT_BASELINE_REF),
+            write_check_id: write_check_id.map(WriteCheckId::new).into(),
+            summary: "Recorded guarded lifecycle fixture run.".to_owned(),
+            observed_changes: ObservedChanges {
+                changed_paths: if product_write_observed {
+                    vec![DEFAULT_PRODUCT_PATH.to_owned()]
+                } else {
+                    Vec::new()
+                },
+                product_file_write_observed: product_write_observed,
+                sensitive_categories: Vec::new(),
+                baseline_ref: Some(BaselineRef::new(DEFAULT_BASELINE_REF)).into(),
+            },
+            artifact_inputs: Vec::new(),
+            evidence_updates: vec![supported_evidence_update(
+                "Lifecycle close claim supported.",
+            )],
+            evidence_observations: Vec::new(),
+            close_assessment: Some(CloseAssessmentInput {
+                result_summary: "Lifecycle close claim supported.".to_owned(),
+                result_refs: Vec::new(),
+                residual_risks: Vec::new(),
+                sensitive_categories: Vec::new(),
+                recovery_constraints: Vec::new(),
+            })
+            .into(),
+        };
+        let response = self
+            .service()
+            .record_run(request, self.invocation(OperationCategory::AgentWorkflow))?;
+        Ok(response.response_value["base"]["state_version"]
+            .as_u64()
+            .expect("state version should be present"))
+    }
+
+    fn request_final_acceptance(
+        &self,
+        task_id: &str,
+        change_unit_id: &str,
+        suffix: &str,
+    ) -> Result<String, Box<dyn Error>> {
+        let state_version = self.state_version()?;
+        let response = self.service().request_user_judgment(
+            RequestUserJudgmentRequest {
+                envelope: self.envelope(
+                    &format!("req_{suffix}_final"),
+                    Some(&format!("idem_{suffix}_final")),
+                    Some(state_version),
+                    Some(task_id),
+                ),
+                task_id: TaskId::new(task_id),
+                change_unit_id: Some(ChangeUnitId::new(change_unit_id)).into(),
+                judgment_kind: JudgmentKind::FinalAcceptance,
+                presentation: JudgmentPresentation::Short,
+                question: "Does the user accept the current close basis?".to_owned(),
+                options: None.into(),
+                context: UserJudgmentContext {
+                    summary: "The guarded lifecycle fixture is ready for final acceptance."
+                        .to_owned(),
+                    related_refs: Vec::new(),
+                    artifact_refs: Vec::new(),
+                    visible_risks: Vec::new(),
+                    constraints: vec![
+                        "This answer applies only to the current fixture close basis.".to_owned(),
+                    ],
+                },
+                affected_refs: vec![self.state_ref(
+                    StateRecordKind::Task,
+                    task_id,
+                    Some(task_id),
+                    Some(state_version),
+                )],
+                sensitive_action_scope: None.into(),
+                required_for: vec![JudgmentRequiredFor::CloseComplete],
+                expires_at: None.into(),
+            },
+            self.invocation(OperationCategory::AgentWorkflow),
+        )?;
+        record_id(&response.response_value["user_judgment_ref"])
+    }
+
+    fn answer_pending_judgment_through_prompt(
+        &self,
+        task_id: &str,
+        judgment_id: &str,
+        event_id: &str,
+        capture_id: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        let records = self
+            .store()?
+            .user_judgment_records_for_task(&TaskId::new(task_id))?;
+        let (index, record) = records
+            .iter()
+            .enumerate()
+            .find(|(_, record)| record.judgment_id == judgment_id)
+            .ok_or("pending judgment should be stored for task")?;
+        let verification_code = chat_judgment_verification_code(
+            &record.project_id,
+            &record.task_id,
+            &record.judgment_id,
+            &record.requested_at,
+            self.connection_id(),
+        );
+        let message = format!("Volicord: answer J-{} 1 {verification_code}", index + 1);
+        let event = json!({
+            "event_id": event_id,
+            "prompt_capture_id": capture_id,
+            "session_id": self.session_id(),
+            "connection_id": self.connection_id(),
+            "guard_installation_id": self.guard_installation_id(),
+            "host_kind": "codex",
+            "message": message,
+            "timestamp": "2026-06-30T06:10:00Z"
+        });
+        let output = self.run_guard_event("prompt-capture", &event)?;
+        assert_success(&output);
+        let value = json_stdout(&output)?;
+        assert_eq!(value["decision"], "inject_context");
+        assert_eq!(
+            value["result"]["recognized_judgment_command"]["resolution_outcome"],
+            "accepted"
+        );
+        Ok(())
+    }
+
+    fn record_judgment_direct(
+        &self,
+        task_id: &str,
+        judgment_id: &str,
+        judgment_kind: JudgmentKind,
+    ) -> Result<u64, Box<dyn Error>> {
+        let response = self.service().record_user_judgment(
+            RecordUserJudgmentRequest {
+                envelope: self.envelope(
+                    &format!("req_direct_record_{judgment_id}"),
+                    Some(&format!("idem_direct_record_{judgment_id}")),
+                    Some(self.state_version()?),
+                    Some(task_id),
+                ),
+                user_judgment_id: volicord_types::UserJudgmentId::new(judgment_id),
+                judgment_kind,
+                selected_option_id: UserJudgmentOptionId::new("accept"),
+                answer: answer_payload(judgment_kind),
+                rationale: JudgmentRationale {
+                    summary: "The local user accepted the fixture judgment.".to_owned(),
+                    selected_reason: Some(
+                        "The fixture close basis was visible to the test user channel.".to_owned(),
+                    )
+                    .into(),
+                    considered_alternatives: Vec::new(),
+                    rejected_alternatives: Vec::new(),
+                    assumptions: vec![
+                        "This direct fixture answer covers only the pending judgment.".to_owned(),
+                    ],
+                    tradeoffs: vec![
+                        "The fixture records acceptance only after the close basis is current."
+                            .to_owned(),
+                    ],
+                    uncertainties: Vec::new(),
+                    review_triggers: vec![
+                        "Review if the fixture close basis changes before close.".to_owned(),
+                    ],
+                    related_refs: Vec::new(),
+                    artifact_refs: Vec::new(),
+                },
+                note: Some("Recorded by guarded lifecycle fixture.".to_owned()).into(),
+                accepted_risks: Vec::new(),
+            },
+            self.user_invocation(),
+        )?;
+        assert_eq!(
+            response.response_value["base"]["response_kind"], "result",
+            "{}",
+            response.response_value
+        );
+        Ok(response.response_value["base"]["state_version"]
+            .as_u64()
+            .expect("state version should be present"))
+    }
+
+    fn check_close(
+        &self,
+        task_id: &str,
+    ) -> Result<volicord_core::PipelineResponse, Box<dyn Error>> {
+        Ok(self.service().close_task(
+            CloseTaskRequest {
+                envelope: self.envelope(&format!("req_check_{task_id}"), None, None, Some(task_id)),
+                task_id: TaskId::new(task_id),
+                intent: CloseIntent::Check,
+                close_reason: None.into(),
+                superseding_task_id: None.into(),
+                user_note: Some("Guarded lifecycle close check.".to_owned()).into(),
+            },
+            self.invocation(OperationCategory::Read),
+        )?)
+    }
+
+    fn close_task(
+        &self,
+        task_id: &str,
+        suffix: &str,
+    ) -> Result<volicord_core::PipelineResponse, Box<dyn Error>> {
+        Ok(self.service().close_task(
+            CloseTaskRequest {
+                envelope: self.envelope(
+                    &format!("req_close_{suffix}"),
+                    Some(&format!("idem_close_{suffix}")),
+                    Some(self.state_version()?),
+                    Some(task_id),
+                ),
+                task_id: TaskId::new(task_id),
+                intent: CloseIntent::Complete,
+                close_reason: Some(CloseReason::CompletedSelfChecked).into(),
+                superseding_task_id: None.into(),
+                user_note: Some("Guarded lifecycle close.".to_owned()).into(),
+            },
+            self.invocation(OperationCategory::AgentWorkflow),
+        )?)
+    }
+
+    fn reconcile_changes(
+        &self,
+        task_id: &str,
+        suffix: &str,
+    ) -> Result<volicord_core::PipelineResponse, Box<dyn Error>> {
+        Ok(self.service().reconcile_changes(
+            ReconcileChangesRequest {
+                envelope: self.envelope(
+                    &format!("req_reconcile_{suffix}"),
+                    Some(&format!("idem_reconcile_{suffix}")),
+                    Some(self.state_version()?),
+                    Some(task_id),
+                ),
+                task_id: TaskId::new(task_id),
+                resolution_requests: Vec::new(),
+            },
+            self.invocation(OperationCategory::AgentWorkflow),
+        )?)
+    }
+
+    fn state_ref(
+        &self,
+        record_kind: StateRecordKind,
+        record_id: &str,
+        task_id: Option<&str>,
+        state_version: Option<u64>,
+    ) -> StateRecordRef {
+        StateRecordRef {
+            record_kind,
+            record_id: RecordId::new(record_id),
+            project_id: ProjectId::new(&self.project_id),
+            task_id: task_id.map(TaskId::new).into(),
+            state_version: state_version.into(),
+        }
+    }
+}
+
 fn prompt_event(
     fixture: &GuardCliFixture,
     event_id: &str,
@@ -1627,6 +2467,120 @@ fn sha256_text(text: &str) -> String {
     format!("sha256:{digest:x}")
 }
 
+#[cfg(unix)]
+fn path_env(path_dirs: &[&Path]) -> String {
+    std::env::join_paths(path_dirs)
+        .expect("test PATH should be valid")
+        .to_string_lossy()
+        .into_owned()
+}
+
+#[cfg(unix)]
+fn write_fake_codex(dir: &Path) -> Result<PathBuf, Box<dyn Error>> {
+    fs::create_dir_all(dir)?;
+    let path = dir.join("codex");
+    fs::write(
+        &path,
+        "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then printf 'codex 1.2.3-test\\n'; exit 0; fi\nprintf 'unexpected codex invocation\\n' >&2\nexit 2\n",
+    )?;
+    make_executable(&path)?;
+    Ok(path)
+}
+
+#[cfg(unix)]
+fn write_fake_mcp(dir: &Path) -> Result<PathBuf, Box<dyn Error>> {
+    fs::create_dir_all(dir)?;
+    let path = dir.join("volicord");
+    fs::write(
+        &path,
+        "#!/bin/sh\n\
+         mode=\"${VOLICORD_TEST_CONNECTION_MODE:-read_only}\"\n\
+         if [ \"$1\" = \"mcp\" ] && [ \"$2\" = \"--check\" ]; then\n\
+         shift 2\n\
+         if [ \"$1\" != \"--connection\" ]; then printf 'missing connection\\n' >&2; exit 2; fi\n\
+         connection=\"$2\"\n\
+         printf 'configuration: valid\\n'\n\
+         printf 'transport: stdio\\n'\n\
+         printf 'runtime_home: %s\\n' \"$VOLICORD_HOME\"\n\
+         printf 'connection_id: %s\\n' \"$connection\"\n\
+         printf 'mode: %s\\n' \"$mode\"\n\
+         printf 'enabled: true\\n'\n\
+         printf 'allowed_projects: 1\\n'\n\
+         printf 'available_projects: 1\\n'\n\
+         printf 'verification_scope: startup_check_only\\n'\n\
+         exit 0\n\
+         fi\n\
+         if [ \"$1\" = \"mcp\" ] && [ \"$2\" = \"--stdio\" ] && [ \"$3\" = \"--connection\" ]; then\n\
+         while IFS= read -r line; do\n\
+         case \"$line\" in\n\
+         *'\"method\":\"initialize\"'*) printf '%s\\n' '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":\"2025-11-25\",\"capabilities\":{\"tools\":{}},\"serverInfo\":{\"name\":\"volicord-mcp\",\"version\":\"test\"},\"instructions\":\"Use Volicord.\"}}' ;;\n\
+         *'\"method\":\"tools/list\"'*)\n\
+         if [ \"$mode\" = \"workflow\" ]; then\n\
+         printf '%s\\n' '{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"tools\":[{\"name\":\"volicord.intake\"},{\"name\":\"volicord.update_scope\"},{\"name\":\"volicord.status\"},{\"name\":\"volicord.prepare_write\"},{\"name\":\"volicord.stage_artifact\"},{\"name\":\"volicord.record_run\"},{\"name\":\"volicord.request_user_judgment\"},{\"name\":\"volicord.check_close\"},{\"name\":\"volicord.close_task\"},{\"name\":\"volicord.list_projects\"}]}}'\n\
+         else\n\
+         printf '%s\\n' '{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"tools\":[{\"name\":\"volicord.status\"},{\"name\":\"volicord.check_close\"},{\"name\":\"volicord.list_projects\"}]}}'\n\
+         fi\n\
+         exit 0 ;;\n\
+         esac\n\
+         done\n\
+         exit 0\n\
+         fi\n\
+         printf 'unexpected invocation\\n' >&2\n\
+         exit 2\n",
+    )?;
+    make_executable(&path)?;
+    Ok(path)
+}
+
+#[cfg(unix)]
+fn mark_connection_verified(
+    runtime_home: &Path,
+    connection_id: &str,
+) -> Result<(), Box<dyn Error>> {
+    let existing = agent_connection_record(runtime_home, connection_id)?
+        .ok_or("initialized Agent Connection should be stored")?;
+    ensure_agent_connection(
+        runtime_home,
+        AgentConnectionRegistration {
+            connection_internal_id: existing.connection_internal_id,
+            host_kind: existing.host_kind,
+            intent: existing.intent,
+            host_scope: existing.host_scope,
+            server_name: existing.server_name,
+            config_target: existing.config_target,
+            mode: existing.mode,
+            enabled: existing.enabled,
+            managed_fingerprint: existing.managed_fingerprint,
+            last_verification_status: VERIFIED_STATUS_COMPLETE.to_owned(),
+            last_verification_report_json: existing.last_verification_report_json,
+            last_user_actions_json: existing.last_user_actions_json,
+            metadata_json: existing.metadata_json,
+        },
+    )?;
+    Ok(())
+}
+
+#[cfg(unix)]
+fn make_executable(path: &Path) -> Result<(), Box<dyn Error>> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let mut permissions = fs::metadata(path)?.permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(path, permissions)?;
+    Ok(())
+}
+
+#[cfg(unix)]
+fn assert_guard_init_state_is_installed_or_degraded(value: &Value) {
+    let state = value["states"]["guard_installation"]
+        .as_str()
+        .expect("init output should include guard installation state");
+    assert!(
+        matches!(state, "configured" | "reload_required" | "degraded"),
+        "unexpected guarded init state: {state}"
+    );
+}
+
 fn assert_reason(value: &Value, code: &str) {
     assert!(
         value["result"]["reasons"]
@@ -1637,6 +2591,33 @@ fn assert_reason(value: &Value, code: &str) {
         "expected reason {code}, got {}",
         value["result"]["reasons"]
     );
+}
+
+fn assert_close_blocker(response_value: &Value, code: &str) {
+    let codes = close_blocker_codes(response_value);
+    assert!(
+        codes.iter().any(|candidate| candidate == code),
+        "expected close blocker code {code}, got {codes:?}"
+    );
+}
+
+fn assert_no_close_blocker(response_value: &Value, code: &str) {
+    let codes = close_blocker_codes(response_value);
+    assert!(
+        codes.iter().all(|candidate| candidate != code),
+        "did not expect close blocker code {code}, got {codes:?}"
+    );
+}
+
+fn close_blocker_codes(response_value: &Value) -> Vec<String> {
+    response_value
+        .get("blockers")
+        .or_else(|| response_value.get("close_blockers"))
+        .and_then(Value::as_array)
+        .expect("blockers or close_blockers should be present")
+        .iter()
+        .filter_map(|blocker| blocker["code"].as_str().map(str::to_owned))
+        .collect()
 }
 
 fn record_id(value: &Value) -> Result<String, Box<dyn Error>> {
