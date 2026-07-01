@@ -470,6 +470,7 @@ fn init_codex_guarded_without_degraded_opt_in_generates_hooks() -> Result<(), Bo
     assert!(hooks.contains(&format!("--connection {connection_id}")));
     assert!(hooks.contains("--guard-installation"));
     assert!(hooks.contains("--host codex"));
+    assert!(hooks.contains("--host-output codex"));
     assert!(repo_root.join(".codex/rules/volicord.rules").exists());
     Ok(())
 }
@@ -518,6 +519,7 @@ fn init_claude_code_guarded_without_degraded_opt_in_generates_hooks() -> Result<
     assert!(settings.contains("volicord guard prompt-capture"));
     assert!(settings.contains("volicord guard stop"));
     assert!(settings.contains("--host claude-code"));
+    assert!(settings.contains("--host-output claude-code"));
     assert!(settings.contains("Edit|Write|MultiEdit"));
     assert!(repo_root.join(".claude/rules/volicord.md").exists());
     Ok(())

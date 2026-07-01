@@ -1,0 +1,10 @@
+{
+  "session_id": "codex-session-001",
+  "transcript_path": "/tmp/volicord-fixtures/codex-session-001.jsonl",
+  "cwd": "/repo",
+  "hook_event_name": "UserPromptSubmit",
+  "model": "gpt-5.5",
+  "permission_mode": "default",
+  "turn_id": "turn-002",
+  "prompt": "Volicord: answer J-1 1 #VOLICORD_VERIFICATION_CODE"
+}

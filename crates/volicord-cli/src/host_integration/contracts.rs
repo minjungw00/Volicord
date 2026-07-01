@@ -1010,20 +1010,24 @@ fn validate_tool_event_input(
         .ok_or_else(|| HostContractValidationError::new("tool_input must be an object"))?;
     match host_kind {
         HostKind::Codex => {
-            if tool_name != "apply_patch" {
+            if tool_name == "apply_patch" || tool_name == "Bash" {
+                require_string(tool_input.get("command"), "tool_input.command")?;
+            } else {
                 return Err(HostContractValidationError::new(
-                    "Codex write hook fixture must use apply_patch",
+                    "Codex write hook fixture must use apply_patch or Bash",
                 ));
             }
-            require_string(tool_input.get("command"), "tool_input.command")?;
         }
         HostKind::ClaudeCode => {
-            if !CLAUDE_WRITE_MATCHERS.contains(&tool_name) {
+            if CLAUDE_WRITE_MATCHERS.contains(&tool_name) {
+                require_string(tool_input.get("file_path"), "tool_input.file_path")?;
+            } else if tool_name == "Bash" {
+                require_string(tool_input.get("command"), "tool_input.command")?;
+            } else {
                 return Err(HostContractValidationError::new(
-                    "Claude Code write hook fixture must use a write tool",
+                    "Claude Code write hook fixture must use a write tool or Bash",
                 ));
             }
-            require_string(tool_input.get("file_path"), "tool_input.file_path")?;
         }
         HostKind::Generic => {
             return Err(HostContractValidationError::new(
@@ -1230,15 +1234,33 @@ mod tests {
                     ),
                 ),
                 (
+                    HostLifecyclePhase::PreTool,
+                    include_str!(
+                        "../../tests/fixtures/host_contracts/codex/events/pre_tool_bash_write.json"
+                    ),
+                ),
+                (
                     HostLifecyclePhase::PostTool,
                     include_str!(
                         "../../tests/fixtures/host_contracts/codex/events/post_tool_write.json"
                     ),
                 ),
                 (
+                    HostLifecyclePhase::PostTool,
+                    include_str!(
+                        "../../tests/fixtures/host_contracts/codex/events/post_tool_bash_write.json"
+                    ),
+                ),
+                (
                     HostLifecyclePhase::UserPromptSubmit,
                     include_str!(
                         "../../tests/fixtures/host_contracts/codex/events/user_prompt_submit.json"
+                    ),
+                ),
+                (
+                    HostLifecyclePhase::UserPromptSubmit,
+                    include_str!(
+                        "../../tests/fixtures/host_contracts/codex/events/user_prompt_submit_judgment_command.json"
                     ),
                 ),
                 (
@@ -1264,15 +1286,33 @@ mod tests {
                     ),
                 ),
                 (
+                    HostLifecyclePhase::PreTool,
+                    include_str!(
+                        "../../tests/fixtures/host_contracts/claude_code/events/pre_tool_bash_write.json"
+                    ),
+                ),
+                (
                     HostLifecyclePhase::PostTool,
                     include_str!(
                         "../../tests/fixtures/host_contracts/claude_code/events/post_tool_write.json"
                     ),
                 ),
                 (
+                    HostLifecyclePhase::PostTool,
+                    include_str!(
+                        "../../tests/fixtures/host_contracts/claude_code/events/post_tool_bash_write.json"
+                    ),
+                ),
+                (
                     HostLifecyclePhase::UserPromptSubmit,
                     include_str!(
                         "../../tests/fixtures/host_contracts/claude_code/events/user_prompt_submit.json"
+                    ),
+                ),
+                (
+                    HostLifecyclePhase::UserPromptSubmit,
+                    include_str!(
+                        "../../tests/fixtures/host_contracts/claude_code/events/user_prompt_submit_judgment_command.json"
                     ),
                 ),
                 (

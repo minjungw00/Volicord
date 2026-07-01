@@ -43,6 +43,30 @@ use volicord_types::{
 };
 
 const PROMPT_CAPTURE_TEST_HOST_KIND: &str = "prompt_capture_test_host";
+const CODEX_SESSION_START_EVENT: &str =
+    include_str!("fixtures/host_contracts/codex/events/session_start.json");
+const CODEX_PRE_TOOL_WRITE_EVENT: &str =
+    include_str!("fixtures/host_contracts/codex/events/pre_tool_write.json");
+const CODEX_PRE_TOOL_BASH_WRITE_EVENT: &str =
+    include_str!("fixtures/host_contracts/codex/events/pre_tool_bash_write.json");
+const CODEX_POST_TOOL_BASH_WRITE_EVENT: &str =
+    include_str!("fixtures/host_contracts/codex/events/post_tool_bash_write.json");
+const CODEX_USER_PROMPT_JUDGMENT_EVENT: &str =
+    include_str!("fixtures/host_contracts/codex/events/user_prompt_submit_judgment_command.json");
+const CODEX_STOP_EVENT: &str = include_str!("fixtures/host_contracts/codex/events/stop.json");
+const CLAUDE_SESSION_START_EVENT: &str =
+    include_str!("fixtures/host_contracts/claude_code/events/session_start.json");
+const CLAUDE_PRE_TOOL_WRITE_EVENT: &str =
+    include_str!("fixtures/host_contracts/claude_code/events/pre_tool_write.json");
+const CLAUDE_PRE_TOOL_BASH_WRITE_EVENT: &str =
+    include_str!("fixtures/host_contracts/claude_code/events/pre_tool_bash_write.json");
+const CLAUDE_POST_TOOL_BASH_WRITE_EVENT: &str =
+    include_str!("fixtures/host_contracts/claude_code/events/post_tool_bash_write.json");
+const CLAUDE_USER_PROMPT_JUDGMENT_EVENT: &str = include_str!(
+    "fixtures/host_contracts/claude_code/events/user_prompt_submit_judgment_command.json"
+);
+const CLAUDE_STOP_EVENT: &str =
+    include_str!("fixtures/host_contracts/claude_code/events/stop.json");
 
 #[test]
 fn guard_session_start_injects_context_and_records_event() -> Result<(), Box<dyn Error>> {
@@ -338,6 +362,255 @@ fn guard_session_start_host_output_injects_context() -> Result<(), Box<dyn Error
         .expect("context should be a string")
         .contains("Volicord context"));
     assert!(!stdout(&output).contains("schema_version"));
+    Ok(())
+}
+
+#[test]
+fn guard_codex_native_output_contract_uses_checked_in_hook_events() -> Result<(), Box<dyn Error>> {
+    let session = GuardCliFixture::new("guard-codex-native-session")?;
+    let event = host_fixture_event(
+        &session,
+        CODEX_SESSION_START_EVENT,
+        "guard_codex_native_session",
+        "codex",
+    )?;
+    let output = run_host_guard(&session, "session-start", "codex", &event, &[])?;
+    let value = assert_host_native_json_stdout(&output, 0)?;
+    assert_context_output(&value, "SessionStart", "Volicord context");
+
+    let pre_apply = GuardCliFixture::new("guard-codex-native-pre-apply")?;
+    let event = host_fixture_event(
+        &pre_apply,
+        CODEX_PRE_TOOL_WRITE_EVENT,
+        "guard_codex_native_pre_apply",
+        "codex",
+    )?;
+    let output = run_host_guard(&pre_apply, "pre-tool", "codex", &event, &[])?;
+    let value = assert_host_native_json_stdout(&output, 0)?;
+    assert_pre_tool_deny_output(&value, "no_active_task");
+
+    let pre_bash = GuardCliFixture::new("guard-codex-native-pre-bash")?;
+    let event = host_fixture_event(
+        &pre_bash,
+        CODEX_PRE_TOOL_BASH_WRITE_EVENT,
+        "guard_codex_native_pre_bash",
+        "codex",
+    )?;
+    let output = run_host_guard(&pre_bash, "pre-tool", "codex", &event, &[])?;
+    let value = assert_host_native_json_stdout(&output, 0)?;
+    assert_pre_tool_deny_output(&value, "no_active_task");
+
+    let post = GuardCliFixture::new("guard-codex-native-post-bash")?;
+    post.create_active_task()?;
+    let event = host_fixture_event(
+        &post,
+        CODEX_POST_TOOL_BASH_WRITE_EVENT,
+        "guard_codex_native_post_bash",
+        "codex",
+    )?;
+    let output = run_host_guard(&post, "post-tool", "codex", &event, &[])?;
+    let value = assert_host_native_json_stdout(&output, 0)?;
+    assert_context_output(
+        &value,
+        "PostToolUse",
+        "unresolved Product Repository change",
+    );
+
+    let prompt = GuardCliFixture::new("guard-codex-native-prompt")?;
+    prompt.install_guard_policy_for_host("codex")?;
+    let judgment_id = prompt.create_pending_authority_judgment("codex_native")?;
+    let verification_code = prompt.prompt_verification_code(&judgment_id)?;
+    let mut event = host_fixture_event(
+        &prompt,
+        CODEX_USER_PROMPT_JUDGMENT_EVENT,
+        "guard_codex_native_prompt",
+        "codex",
+    )?;
+    replace_prompt_verification_code(&mut event, &verification_code);
+    let output = run_host_guard(&prompt, "prompt-capture", "codex", &event, &[])?;
+    let value = assert_host_native_json_stdout(&output, 0)?;
+    assert_context_output(&value, "UserPromptSubmit", "Volicord recorded");
+    prompt.assert_recorded_prompt_judgment(&judgment_id, "accepted", "accept")?;
+
+    let stop = GuardCliFixture::new("guard-codex-native-stop")?;
+    stop.create_active_task()?;
+    let event = host_fixture_event(&stop, CODEX_STOP_EVENT, "guard_codex_native_stop", "codex")?;
+    let output = run_host_guard(&stop, "stop", "codex", &event, &[])?;
+    let value = assert_host_native_json_stdout(&output, 0)?;
+    assert_block_output(&value, "close_readiness_blocked");
+    Ok(())
+}
+
+#[test]
+fn guard_claude_native_output_contract_uses_checked_in_hook_events() -> Result<(), Box<dyn Error>> {
+    let session = GuardCliFixture::new("guard-claude-native-session")?;
+    let event = host_fixture_event(
+        &session,
+        CLAUDE_SESSION_START_EVENT,
+        "guard_claude_native_session",
+        "claude_code",
+    )?;
+    let output = run_host_guard(&session, "session-start", "claude-code", &event, &[])?;
+    let value = assert_host_native_json_stdout(&output, 0)?;
+    assert_context_output(&value, "SessionStart", "Volicord context");
+
+    let pre_write = GuardCliFixture::new("guard-claude-native-pre-write")?;
+    let event = host_fixture_event(
+        &pre_write,
+        CLAUDE_PRE_TOOL_WRITE_EVENT,
+        "guard_claude_native_pre_write",
+        "claude_code",
+    )?;
+    let output = run_host_guard(&pre_write, "pre-tool", "claude-code", &event, &[])?;
+    assert_ne!(output.status.code(), Some(1));
+    let value = assert_host_native_json_stdout(&output, 0)?;
+    assert_pre_tool_deny_output(&value, "no_active_task");
+
+    let pre_bash = GuardCliFixture::new("guard-claude-native-pre-bash")?;
+    let event = host_fixture_event(
+        &pre_bash,
+        CLAUDE_PRE_TOOL_BASH_WRITE_EVENT,
+        "guard_claude_native_pre_bash",
+        "claude_code",
+    )?;
+    let output = run_host_guard(&pre_bash, "pre-tool", "claude-code", &event, &[])?;
+    assert_ne!(output.status.code(), Some(1));
+    let value = assert_host_native_json_stdout(&output, 0)?;
+    assert_pre_tool_deny_output(&value, "no_active_task");
+
+    let post = GuardCliFixture::new("guard-claude-native-post-bash")?;
+    post.create_active_task()?;
+    let event = host_fixture_event(
+        &post,
+        CLAUDE_POST_TOOL_BASH_WRITE_EVENT,
+        "guard_claude_native_post_bash",
+        "claude_code",
+    )?;
+    let output = run_host_guard(&post, "post-tool", "claude-code", &event, &[])?;
+    let value = assert_host_native_json_stdout(&output, 0)?;
+    assert_context_output(
+        &value,
+        "PostToolUse",
+        "unresolved Product Repository change",
+    );
+
+    let prompt = GuardCliFixture::new("guard-claude-native-prompt")?;
+    prompt.install_guard_policy_for_host("claude_code")?;
+    let judgment_id = prompt.create_pending_authority_judgment("claude_native")?;
+    let verification_code = prompt.prompt_verification_code(&judgment_id)?;
+    let mut event = host_fixture_event(
+        &prompt,
+        CLAUDE_USER_PROMPT_JUDGMENT_EVENT,
+        "guard_claude_native_prompt",
+        "claude_code",
+    )?;
+    replace_prompt_verification_code(&mut event, &verification_code);
+    let output = run_host_guard(&prompt, "prompt-capture", "claude-code", &event, &[])?;
+    assert_ne!(output.status.code(), Some(1));
+    let value = assert_host_native_json_stdout(&output, 0)?;
+    assert_context_output(&value, "UserPromptSubmit", "Volicord recorded");
+    prompt.assert_recorded_prompt_judgment(&judgment_id, "accepted", "accept")?;
+
+    let prompt_block = GuardCliFixture::new("guard-claude-native-prompt-block")?;
+    prompt_block.install_guard_policy_for_host("claude_code")?;
+    prompt_block.create_pending_authority_judgment("claude_native_block")?;
+    let event = host_fixture_event(
+        &prompt_block,
+        CLAUDE_USER_PROMPT_JUDGMENT_EVENT,
+        "guard_claude_native_prompt_block",
+        "claude_code",
+    )?;
+    let output = run_host_guard(&prompt_block, "prompt-capture", "claude-code", &event, &[])?;
+    assert_ne!(output.status.code(), Some(1));
+    let value = assert_host_native_json_stdout(&output, 0)?;
+    assert_block_output(&value, "malformed_judgment_command");
+
+    let stop = GuardCliFixture::new("guard-claude-native-stop")?;
+    stop.create_active_task()?;
+    let event = host_fixture_event(
+        &stop,
+        CLAUDE_STOP_EVENT,
+        "guard_claude_native_stop",
+        "claude_code",
+    )?;
+    let output = run_host_guard(&stop, "stop", "claude-code", &event, &[])?;
+    assert_ne!(output.status.code(), Some(1));
+    let value = assert_host_native_json_stdout(&output, 0)?;
+    assert_block_output(&value, "close_readiness_blocked");
+    Ok(())
+}
+
+#[test]
+fn guard_volicord_json_deny_is_not_host_native_output() -> Result<(), Box<dyn Error>> {
+    let fixture = GuardCliFixture::new("guard-volicord-json-not-host-native")?;
+    let event = host_fixture_event(
+        &fixture,
+        CODEX_PRE_TOOL_WRITE_EVENT,
+        "guard_volicord_json_not_host_native",
+        "codex",
+    )?;
+
+    let output = run_guard(
+        fixture.runtime_home(),
+        fixture.repo_root(),
+        ["guard", "pre-tool", "--repo", fixture.repo_arg()],
+        &event,
+    )?;
+    assert_eq!(output.status.code(), Some(1));
+    assert!(stderr(&output).is_empty());
+    let value = json_stdout(&output)?;
+    assert_eq!(value["decision"], "deny");
+    assert!(value.get("schema_version").is_some());
+    assert!(value.get("result").is_some());
+    assert!(!is_host_native_pre_tool_deny(&value));
+    Ok(())
+}
+
+#[test]
+fn guard_host_native_debug_logging_does_not_mix_text_into_stdout() -> Result<(), Box<dyn Error>> {
+    let fixture = GuardCliFixture::new("guard-host-native-debug-stdout")?;
+    let event = host_fixture_event(
+        &fixture,
+        CLAUDE_PRE_TOOL_WRITE_EVENT,
+        "guard_host_native_debug_stdout",
+        "claude_code",
+    )?;
+
+    let output = run_host_guard(
+        &fixture,
+        "pre-tool",
+        "claude-code",
+        &event,
+        &[("RUST_LOG", "debug"), ("VOLICORD_LOG", "debug")],
+    )?;
+    let text = stdout(&output);
+    assert!(text.trim_start().starts_with('{'));
+    assert!(!text.contains("DEBUG"));
+    assert!(!text.contains("debug:"));
+    let value = assert_host_native_json_stdout(&output, 0)?;
+    assert_pre_tool_deny_output(&value, "no_active_task");
+    Ok(())
+}
+
+#[test]
+fn guard_unsupported_host_output_mode_fails_clearly() -> Result<(), Box<dyn Error>> {
+    let fixture = GuardCliFixture::new("guard-unsupported-host-output")?;
+
+    let output = run_guard_file(
+        fixture.runtime_home(),
+        fixture.repo_root(),
+        [
+            "guard",
+            "pre-tool",
+            "--repo",
+            fixture.repo_arg(),
+            "--host-output",
+            "unsupported",
+        ],
+    )?;
+    assert_eq!(output.status.code(), Some(2));
+    assert!(stdout(&output).is_empty());
+    assert!(stderr(&output).contains("--host-output must be codex or claude-code"));
     Ok(())
 }
 
@@ -2308,6 +2581,19 @@ impl GuardCliFixture {
         self.install_guard_policy_with(true, true, "configured")
     }
 
+    fn install_guard_policy_for_host(
+        &self,
+        host_kind: &str,
+    ) -> Result<(String, String), Box<dyn Error>> {
+        self.install_guard_policy_for_connection_with_host(
+            self.connection_id(),
+            host_kind,
+            true,
+            true,
+            "configured",
+        )
+    }
+
     fn install_guard_policy_with(
         &self,
         host_supports_prompt_capture: bool,
@@ -2329,11 +2615,28 @@ impl GuardCliFixture {
         prompt_capture_configured: bool,
         installation_status: &str,
     ) -> Result<(String, String), Box<dyn Error>> {
+        self.install_guard_policy_for_connection_with_host(
+            connection_id,
+            PROMPT_CAPTURE_TEST_HOST_KIND,
+            host_supports_prompt_capture,
+            prompt_capture_configured,
+            installation_status,
+        )
+    }
+
+    fn install_guard_policy_for_connection_with_host(
+        &self,
+        connection_id: &str,
+        host_kind: &str,
+        host_supports_prompt_capture: bool,
+        prompt_capture_configured: bool,
+        installation_status: &str,
+    ) -> Result<(String, String), Box<dyn Error>> {
         let guard_installation_id = format!("guard_installation_cli_activation_{connection_id}");
         let policy = json!({
             "schema": "volicord-policy-v1",
             "managed_by": "volicord",
-            "host": PROMPT_CAPTURE_TEST_HOST_KIND,
+            "host": host_kind,
             "mode": "guarded",
             "guard_mode": "guarded",
             "connection_id": connection_id,
@@ -2352,7 +2655,7 @@ impl GuardCliFixture {
                 guard_installation_id: guard_installation_id.clone(),
                 connection_internal_id: connection_id.to_owned(),
                 project_id: Some(self.project_id().to_owned()),
-                host_kind: PROMPT_CAPTURE_TEST_HOST_KIND.to_owned(),
+                host_kind: host_kind.to_owned(),
                 guard_mode: "guarded".to_owned(),
                 host_capability_json: json!({
                     "schema": "volicord-guard-capability-v1",
@@ -3082,6 +3385,192 @@ fn prompt_event(
         "host_kind": PROMPT_CAPTURE_TEST_HOST_KIND,
         "message": message
     })
+}
+
+fn host_fixture_event(
+    fixture: &GuardCliFixture,
+    text: &str,
+    event_id: &str,
+    host_kind: &str,
+) -> Result<Value, Box<dyn Error>> {
+    let mut event: Value = serde_json::from_str(text)?;
+    replace_repo_placeholder(&mut event, fixture.repo_arg());
+    event["event_id"] = json!(event_id);
+    event["connection_id"] = json!(fixture.connection_id());
+    event["host_kind"] = json!(host_kind);
+    Ok(event)
+}
+
+fn replace_repo_placeholder(value: &mut Value, repo_root: &str) {
+    match value {
+        Value::String(text) if text == "/repo" => {
+            *text = repo_root.to_owned();
+        }
+        Value::String(text) => {
+            if let Some(suffix) = text.strip_prefix("/repo/") {
+                *text = format!("{repo_root}/{suffix}");
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                replace_repo_placeholder(item, repo_root);
+            }
+        }
+        Value::Object(object) => {
+            for item in object.values_mut() {
+                replace_repo_placeholder(item, repo_root);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn replace_prompt_verification_code(event: &mut Value, verification_code: &str) {
+    if let Some(Value::String(prompt)) = event.get_mut("prompt") {
+        *prompt = prompt.replace("#VOLICORD_VERIFICATION_CODE", verification_code);
+    }
+}
+
+fn assert_host_native_json_stdout(
+    output: &Output,
+    expected_exit_code: i32,
+) -> Result<Value, Box<dyn Error>> {
+    assert_eq!(output.status.code(), Some(expected_exit_code));
+    assert!(
+        stderr(output).is_empty(),
+        "host-native policy output should not write stderr: {}",
+        stderr(output)
+    );
+    let text = stdout(output);
+    assert!(
+        text.trim_start().starts_with('{'),
+        "host-native stdout should start with a JSON object, got {text:?}"
+    );
+    assert!(
+        !text.contains("schema_version") && !text.contains("\"result\""),
+        "host-native stdout must not contain Volicord wrapper JSON: {text}"
+    );
+    let value = serde_json::from_str::<Value>(&text)?;
+    assert_no_volicord_wrapper_fields(&value);
+    Ok(value)
+}
+
+fn assert_no_volicord_wrapper_fields(value: &Value) {
+    let object = value
+        .as_object()
+        .expect("host-native stdout should be a JSON object");
+    for key in [
+        "schema_version",
+        "phase",
+        "allowed",
+        "guard_event_id",
+        "session_id",
+        "result",
+    ] {
+        assert!(
+            !object.contains_key(key),
+            "host-native stdout must not expose Volicord wrapper field `{key}`: {value}"
+        );
+    }
+}
+
+fn assert_context_output(value: &Value, event_name: &str, expected_context: &str) {
+    let object = value
+        .as_object()
+        .expect("context output should be an object");
+    assert_eq!(object.len(), 1);
+    let hook = value["hookSpecificOutput"]
+        .as_object()
+        .expect("context output should use hookSpecificOutput");
+    assert_eq!(
+        hook.get("hookEventName").and_then(Value::as_str),
+        Some(event_name)
+    );
+    let context = hook
+        .get("additionalContext")
+        .and_then(Value::as_str)
+        .expect("context output should include additionalContext");
+    assert!(
+        context.contains(expected_context),
+        "expected context to contain {expected_context:?}, got {context:?}"
+    );
+}
+
+fn assert_pre_tool_deny_output(value: &Value, expected_reason: &str) {
+    assert!(is_host_native_pre_tool_deny(value));
+    let hook = value["hookSpecificOutput"]
+        .as_object()
+        .expect("deny output should use hookSpecificOutput");
+    let reason = hook
+        .get("permissionDecisionReason")
+        .and_then(Value::as_str)
+        .expect("deny output should include permissionDecisionReason");
+    assert!(
+        reason.contains(expected_reason),
+        "expected deny reason to contain {expected_reason:?}, got {reason:?}"
+    );
+}
+
+fn is_host_native_pre_tool_deny(value: &Value) -> bool {
+    let Some(hook) = value.get("hookSpecificOutput").and_then(Value::as_object) else {
+        return false;
+    };
+    hook.get("hookEventName").and_then(Value::as_str) == Some("PreToolUse")
+        && hook.get("permissionDecision").and_then(Value::as_str) == Some("deny")
+        && hook
+            .get("permissionDecisionReason")
+            .and_then(Value::as_str)
+            .is_some()
+}
+
+fn assert_block_output(value: &Value, expected_reason: &str) {
+    let object = value.as_object().expect("block output should be an object");
+    assert_eq!(
+        object.get("decision").and_then(Value::as_str),
+        Some("block")
+    );
+    let reason = object
+        .get("reason")
+        .and_then(Value::as_str)
+        .expect("block output should include reason");
+    assert!(
+        reason.contains(expected_reason),
+        "expected block reason to contain {expected_reason:?}, got {reason:?}"
+    );
+}
+
+fn run_host_guard(
+    fixture: &GuardCliFixture,
+    phase: &str,
+    host_output: &str,
+    event: &Value,
+    extra_env: &[(&str, &str)],
+) -> Result<Output, Box<dyn Error>> {
+    let mut command = Command::new(volicord_bin());
+    command
+        .args([
+            "guard",
+            phase,
+            "--repo",
+            fixture.repo_arg(),
+            "--host-output",
+            host_output,
+        ])
+        .env("VOLICORD_HOME", fixture.runtime_home())
+        .current_dir(fixture.repo_root())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    for (key, value) in extra_env {
+        command.env(key, value);
+    }
+    let mut child = command.spawn()?;
+    child
+        .stdin
+        .as_mut()
+        .expect("stdin should be piped")
+        .write_all(event.to_string().as_bytes())?;
+    Ok(child.wait_with_output()?)
 }
 
 fn run_guard<const N: usize>(
