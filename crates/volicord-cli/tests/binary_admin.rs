@@ -524,6 +524,80 @@ fn init_claude_code_guarded_without_degraded_opt_in_generates_hooks() -> Result<
 
 #[cfg(unix)]
 #[test]
+fn init_codex_mcp_only_skips_host_hooks_and_strong_guard_labels() -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-init-mcp-only")?;
+    let repo_root = create_git_repo(&runtime_home, "product-repo")?;
+    let bin_dir = runtime_home.path().join("bin");
+    write_fake_codex(&bin_dir)?;
+    write_fake_mcp(&bin_dir)?;
+
+    let output = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--host",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--mode",
+            "mcp-only",
+            "--json",
+        ],
+        &[
+            ("PATH", path_env(&[bin_dir.as_path()])),
+            ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
+        ],
+    )?;
+
+    assert_success(&output);
+    let value = json_stdout(&output)?;
+    assert_eq!(value["mode"], "mcp-only");
+    assert_eq!(value["guard_mode"], "mcp_only");
+    assert_eq!(value["states"]["guard_profile"], "mcp_only");
+    assert_eq!(value["states"]["guard_strength"], "authority_record_only");
+    assert_eq!(value["states"]["hook_config"], "disabled");
+    assert_eq!(value["states"]["rule_instruction_config"], "not_applicable");
+    assert_eq!(value["states"]["required_guard_phases"], "disabled");
+    assert_eq!(value["states"]["prompt_capture"], "not_configured");
+    assert_eq!(value["states"]["guard_effective"], "inactive");
+    assert_eq!(value["states"]["pre_tool_blocking_available"], false);
+    assert_eq!(value["states"]["post_tool_correlation_available"], false);
+    assert_eq!(value["states"]["bypass_detection_active"], false);
+    assert_eq!(value["degraded"]["allowed"], false);
+    assert_eq!(
+        value["degraded"]["missing_required_hooks"],
+        serde_json::json!([])
+    );
+    assert!(repo_root.join(".codex/config.toml").exists());
+    assert!(repo_root.join("AGENTS.md").exists());
+    assert!(repo_root.join(".volicord/policy.json").exists());
+    assert!(!repo_root.join(".codex/hooks.json").exists());
+    assert!(!repo_root.join(".codex/rules/volicord.rules").exists());
+
+    let connection_id = value["connection"]["connection_id"]
+        .as_str()
+        .expect("connection_id should be present");
+    let projects = list_connection_projects(runtime_home.path(), connection_id)?;
+    let guard_installations = list_guard_installations(
+        runtime_home.path(),
+        connection_id,
+        Some(&projects[0].project_id),
+    )?;
+    assert_eq!(guard_installations.len(), 1);
+    assert_eq!(guard_installations[0].guard_mode, "mcp_only");
+    let capability: Value = serde_json::from_str(&guard_installations[0].host_capability_json)?;
+    assert_eq!(capability["guard_profile"], "mcp_only");
+    assert_eq!(capability["managed_source"], "not_applicable");
+    assert_eq!(capability["prompt_capture"], true);
+    assert!(capability["missing_required_hooks"]
+        .as_array()
+        .expect("missing hooks should be an array")
+        .is_empty());
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
 fn init_managed_unsupported_fails_without_guarded_artifacts() -> Result<(), Box<dyn Error>> {
     let runtime_home = TempRuntimeHome::new("cli-bin-init-managed-unsupported")?;
     let repo_root = create_git_repo(&runtime_home, "product-repo")?;
