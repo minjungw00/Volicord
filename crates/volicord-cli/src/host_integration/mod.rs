@@ -121,6 +121,119 @@ pub struct ProjectContext<'a> {
     pub repo_root: &'a Path,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct HostCapabilities {
+    pub stdio_mcp: bool,
+    pub http_mcp: bool,
+    pub session_start_hook: bool,
+    pub pre_tool_hook: bool,
+    pub post_tool_hook: bool,
+    pub user_prompt_submit_hook: bool,
+    pub stop_hook: bool,
+    pub rule_file_support: bool,
+    pub project_local_configuration: bool,
+}
+
+impl HostCapabilities {
+    pub fn supports_phase(self, phase: HostLifecyclePhase) -> bool {
+        match phase {
+            HostLifecyclePhase::SessionStart => self.session_start_hook,
+            HostLifecyclePhase::PreTool => self.pre_tool_hook,
+            HostLifecyclePhase::PostTool => self.post_tool_hook,
+            HostLifecyclePhase::UserPromptSubmit => self.user_prompt_submit_hook,
+            HostLifecyclePhase::Stop => self.stop_hook,
+        }
+    }
+
+    pub fn missing_required_guard_phases(self) -> Vec<HostLifecyclePhase> {
+        REQUIRED_GUARD_PHASES
+            .iter()
+            .copied()
+            .filter(|phase| !self.supports_phase(*phase))
+            .collect()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HostLifecyclePhase {
+    SessionStart,
+    PreTool,
+    PostTool,
+    UserPromptSubmit,
+    Stop,
+}
+
+impl HostLifecyclePhase {
+    pub fn policy_key(self) -> &'static str {
+        match self {
+            Self::SessionStart => "session_start",
+            Self::PreTool => "pre_tool",
+            Self::PostTool => "post_tool",
+            Self::UserPromptSubmit => "prompt_capture",
+            Self::Stop => "stop",
+        }
+    }
+
+    pub fn command_name(self) -> &'static str {
+        match self {
+            Self::SessionStart => "session-start",
+            Self::PreTool => "pre-tool",
+            Self::PostTool => "post-tool",
+            Self::UserPromptSubmit => "prompt-capture",
+            Self::Stop => "stop",
+        }
+    }
+
+    pub fn capability_name(self) -> &'static str {
+        match self {
+            Self::SessionStart => "session_start_hook",
+            Self::PreTool => "pre_tool_hook",
+            Self::PostTool => "post_tool_hook",
+            Self::UserPromptSubmit => "user_prompt_submit_hook",
+            Self::Stop => "stop_hook",
+        }
+    }
+}
+
+pub const REQUIRED_GUARD_PHASES: [HostLifecyclePhase; 5] = [
+    HostLifecyclePhase::SessionStart,
+    HostLifecyclePhase::PreTool,
+    HostLifecyclePhase::PostTool,
+    HostLifecyclePhase::UserPromptSubmit,
+    HostLifecyclePhase::Stop,
+];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HostIntegrationFileKind {
+    VolicordPolicy,
+    HostMcpConfig,
+    HostHookConfig,
+    HostRuleInstruction,
+    AgentsManagedBlock,
+}
+
+impl HostIntegrationFileKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::VolicordPolicy => "volicord_policy",
+            Self::HostMcpConfig => "host_mcp_config",
+            Self::HostHookConfig => "host_hook_config",
+            Self::HostRuleInstruction => "host_rule_instruction",
+            Self::AgentsManagedBlock => "agents_managed_block",
+        }
+    }
+}
+
+pub fn host_capabilities(host_kind: HostKind) -> HostCapabilities {
+    match host_kind {
+        HostKind::Codex => codex::capabilities(),
+        HostKind::ClaudeCode => claude_code::capabilities(),
+        HostKind::Generic => generic::capabilities(),
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct HostPlanRequest<'a> {
     pub host_kind: HostKind,
@@ -321,6 +434,7 @@ impl From<HostConflict> for HostConfigError {
 }
 
 pub trait HostAdapter {
+    fn capabilities(&self) -> HostCapabilities;
     fn detect(&self) -> Result<HostDetection, HostConfigError>;
     fn apply(&mut self, plan: &HostPlan) -> Result<HostEffect, HostConfigError>;
     fn verify(&mut self, plan: &HostPlan) -> Result<verification::Verification, HostConfigError>;
@@ -627,6 +741,25 @@ mod tests {
         assert_eq!(
             format_supported_connection_intents(HostKind::Codex),
             "personal, shared"
+        );
+    }
+
+    #[test]
+    fn host_capability_matrix_is_explicit() {
+        let codex = host_capabilities(HostKind::Codex);
+        assert!(codex.stdio_mcp);
+        assert!(codex.project_local_configuration);
+        assert!(!codex.rule_file_support);
+        assert_eq!(codex.missing_required_guard_phases(), REQUIRED_GUARD_PHASES);
+
+        let claude = host_capabilities(HostKind::ClaudeCode);
+        assert!(claude.stdio_mcp);
+        assert!(claude.project_local_configuration);
+        assert!(claude.rule_file_support);
+        assert!(!claude.user_prompt_submit_hook);
+        assert_eq!(
+            claude.missing_required_guard_phases(),
+            REQUIRED_GUARD_PHASES
         );
     }
 }

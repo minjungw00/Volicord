@@ -14,9 +14,12 @@ use super::{
     HostRemoveRequest, HostScope, HostTarget, InstallationProfile, ManagedServerEntry,
     PlannedChange, UserAction, UserActionKind, DEFAULT_MCP_COMMAND,
 };
-use crate::host_integration::verification::{
-    HostConfigurationStatus, HostExecutableStatus, HostGateStatus, ManagedConfigStatus,
-    Verification,
+use crate::host_integration::{
+    verification::{
+        HostConfigurationStatus, HostExecutableStatus, HostGateStatus, ManagedConfigStatus,
+        Verification,
+    },
+    HostCapabilities,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -88,6 +91,34 @@ impl CommandRunner for ProductionCommandRunner {
 pub struct ClaudeCodeAdapter<R> {
     runner: R,
     claude_command: String,
+}
+
+pub fn capabilities() -> HostCapabilities {
+    HostCapabilities {
+        stdio_mcp: true,
+        http_mcp: false,
+        session_start_hook: false,
+        pre_tool_hook: false,
+        post_tool_hook: false,
+        user_prompt_submit_hook: false,
+        stop_hook: false,
+        rule_file_support: true,
+        project_local_configuration: true,
+    }
+}
+
+pub fn project_rule_path(repo_root: &Path) -> PathBuf {
+    repo_root.join(".claude").join("rules").join("volicord.md")
+}
+
+pub fn project_rule_block(policy_path: &str, command_lines: &[(String, String)]) -> String {
+    let mut block = format!(
+        "# Volicord\n\nUse the repository-local `{policy_path}` guard policy. Do not record user-owned judgments through the Agent Connection.\n\nConfigured local guard commands:\n"
+    );
+    for (phase, command) in command_lines {
+        block.push_str(&format!("- `{phase}`: `{command}`\n"));
+    }
+    block
 }
 
 impl<R: CommandRunner> ClaudeCodeAdapter<R> {
@@ -286,6 +317,10 @@ impl<R: CommandRunner> ClaudeCodeAdapter<R> {
 }
 
 impl<R: CommandRunner> HostAdapter for ClaudeCodeAdapter<R> {
+    fn capabilities(&self) -> HostCapabilities {
+        capabilities()
+    }
+
     fn detect(&self) -> Result<HostDetection, HostConfigError> {
         Ok(HostDetection {
             host_kind: HostKind::ClaudeCode,

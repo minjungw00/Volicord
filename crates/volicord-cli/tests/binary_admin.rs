@@ -448,9 +448,9 @@ fn init_dry_run_does_not_write_runtime_or_repo_files() -> Result<(), Box<dyn Err
     assert_eq!(value["mcp"]["command"], "volicord");
     assert_eq!(value["mcp"]["args"][0], "mcp");
     assert_eq!(value["mcp"]["args"][1], "--stdio");
-    assert_eq!(value["generated_files"][0]["kind"], "agents_guidance");
+    assert_eq!(value["generated_files"][0]["kind"], "agents_managed_block");
     assert_eq!(value["generated_files"][0]["status"], "planned_create");
-    assert_eq!(value["generated_files"][1]["kind"], "policy");
+    assert_eq!(value["generated_files"][1]["kind"], "volicord_policy");
     assert_eq!(value["generated_files"][1]["status"], "planned_create");
     assert!(!runtime_home.registry_db_path().exists());
     assert!(!repo_root.join(".codex/config.toml").exists());
@@ -502,10 +502,13 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     assert_eq!(value["states"]["runtime_home"], "ready");
     assert_eq!(value["states"]["project_registration"], "registered");
     assert_eq!(value["states"]["mcp_config"], "match");
-    assert_eq!(value["states"]["guard_installation"], "reload_required");
-    assert_eq!(value["states"]["prompt_capture"], "reload_required");
+    assert_eq!(value["states"]["guard_installation"], "degraded");
+    assert_eq!(value["states"]["prompt_capture"], "unavailable");
     assert_eq!(value["states"]["host_reload_required"], true);
-    assert_eq!(value["primary_next_action"]["id"], "reload_required");
+    assert_eq!(
+        value["primary_next_action"]["id"],
+        "guard_capability_degraded"
+    );
     assert_eq!(value["profile"]["status"], "created");
     assert_eq!(value["connection"]["host_kind"], "codex");
     assert_eq!(value["connection"]["connection_intent"], "shared");
@@ -545,9 +548,10 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     assert!(init_text.contains("Volicord init action_required"));
     assert!(init_text.contains("connection_state: action_required"));
     assert!(init_text.contains("mcp_config_state: match"));
-    assert!(init_text.contains("prompt_capture_state: configured"));
+    assert!(init_text.contains("guard_installation_state: degraded"));
+    assert!(init_text.contains("prompt_capture_state: unavailable"));
     assert!(init_text.contains("host_reload_required: yes"));
-    assert!(init_text.contains("next_action: Restart or reload codex"));
+    assert!(init_text.contains("next_action: Guarded mode is degraded"));
 
     let record = agent_connection_record(runtime_home.path(), &connection_id)?
         .expect("connection should be stored");
@@ -610,13 +614,19 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     assert_eq!(guard_installations.len(), 1);
     assert_eq!(guard_installations[0].host_kind, "codex");
     assert_eq!(guard_installations[0].guard_mode, "guarded");
-    assert_eq!(guard_installations[0].installation_status, "configured");
+    assert_eq!(guard_installations[0].installation_status, "degraded");
     let capability: Value = serde_json::from_str(&guard_installations[0].host_capability_json)?;
     assert_eq!(capability["schema"], "volicord-guard-capability-v1");
     assert_eq!(
         capability["policy_hash"],
         value["guard_installation"]["policy_hash"]
     );
+    assert_eq!(capability["prompt_capture"], false);
+    assert!(capability["missing_required_hooks"]
+        .as_array()
+        .expect("missing hooks should be an array")
+        .iter()
+        .any(|hook| hook == "pre_tool_hook"));
     assert!(capability["commands"]["pre_tool"]["args"]
         .as_array()
         .expect("capability guard args should be an array")
@@ -653,8 +663,8 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     let second_json = json_stdout(&second)?;
     assert_eq!(second_json["connection"]["connection_id"], connection_id);
     assert_eq!(second_json["profile"]["status"], "reused");
-    assert_eq!(second_json["states"]["guard_installation"], "configured");
-    assert_eq!(second_json["states"]["prompt_capture"], "configured");
+    assert_eq!(second_json["states"]["guard_installation"], "degraded");
+    assert_eq!(second_json["states"]["prompt_capture"], "unavailable");
     assert_eq!(
         count_occurrences(
             &fs::read_to_string(repo_root.join("AGENTS.md"))?,
@@ -704,6 +714,8 @@ fn init_claude_code_guarded_writes_project_mcp_policy_and_rule() -> Result<(), B
     assert_eq!(value["action"], "init");
     assert_eq!(value["host"], "claude-code");
     assert_eq!(value["mode"], "guarded");
+    assert_eq!(value["states"]["guard_installation"], "degraded");
+    assert_eq!(value["states"]["prompt_capture"], "unavailable");
     assert_eq!(value["mcp"]["command"], "volicord");
     let connection_id = value["connection"]["connection_id"]
         .as_str()
@@ -730,7 +742,10 @@ fn init_claude_code_guarded_writes_project_mcp_policy_and_rule() -> Result<(), B
     assert!(repo_root.join(".claude/rules/volicord.md").exists());
     let rule = fs::read_to_string(repo_root.join(".claude/rules/volicord.md"))?;
     assert!(rule.contains(".volicord/policy.json"));
-    assert!(rule.contains("guard commands"));
+    assert!(rule.contains("Configured local guard commands"));
+    assert!(rule.contains("volicord guard session-start"));
+    assert!(rule.contains("volicord guard pre-tool"));
+    assert!(rule.contains("volicord guard prompt-capture"));
 
     let projects = list_connection_projects(runtime_home.path(), connection_id)?;
     let guard_installations = list_guard_installations(
@@ -741,6 +756,14 @@ fn init_claude_code_guarded_writes_project_mcp_policy_and_rule() -> Result<(), B
     assert_eq!(guard_installations.len(), 1);
     assert_eq!(guard_installations[0].host_kind, "claude_code");
     assert_eq!(guard_installations[0].guard_mode, "guarded");
+    assert_eq!(guard_installations[0].installation_status, "degraded");
+    let capability: Value = serde_json::from_str(&guard_installations[0].host_capability_json)?;
+    assert_eq!(capability["host_capabilities"]["rule_file_support"], true);
+    assert!(capability["missing_required_hooks"]
+        .as_array()
+        .expect("missing hooks should be an array")
+        .iter()
+        .any(|hook| hook == "user_prompt_submit_hook"));
     Ok(())
 }
 
@@ -1231,6 +1254,67 @@ fn connection_status_reports_missing_guard_files_as_primary_action() -> Result<(
         .expect("missing_files should be an array")
         .iter()
         .any(|path| path == &path_text(&repo_root.join(".volicord/policy.json"))));
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn connection_status_reports_stale_guard_files_as_primary_action() -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-connection-stale-guard")?;
+    let repo_root = create_git_repo(&runtime_home, "product-repo")?;
+    let bin_dir = runtime_home.path().join("bin");
+    write_fake_codex(&bin_dir)?;
+    write_fake_mcp(&bin_dir)?;
+
+    let init = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--host",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--json",
+        ],
+        &[
+            ("PATH", path_env(&[bin_dir.as_path()])),
+            ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
+        ],
+    )?;
+    assert_success(&init);
+    let init_json = json_stdout(&init)?;
+    let connection_id = init_json["connection"]["connection_id"]
+        .as_str()
+        .expect("connection id should be present");
+    let policy_path = repo_root.join(".volicord/policy.json");
+    fs::write(
+        &policy_path,
+        fs::read_to_string(&policy_path)?.replace(connection_id, "conn_changed"),
+    )?;
+
+    let status = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connection",
+            "status",
+            "codex",
+            "--shared",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--json",
+        ],
+        &[],
+    )?;
+
+    assert_success(&status);
+    let value = json_stdout(&status)?;
+    assert_eq!(value["states"]["guard_installation"], "stale");
+    assert_eq!(value["primary_next_action"]["id"], "guard_files_stale");
+    assert!(value["guard"]["stale_files"]
+        .as_array()
+        .expect("stale_files should be an array")
+        .iter()
+        .any(|path| path == &path_text(&policy_path)));
     Ok(())
 }
 

@@ -20,6 +20,7 @@ use crate::host_integration::verification::{
     HostConfigurationStatus, HostExecutableStatus, HostGateStatus, ManagedConfigStatus,
     Verification,
 };
+use crate::host_integration::HostCapabilities;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CodexEnvironment {
@@ -32,6 +33,20 @@ pub struct CodexEnvironment {
 pub struct CodexAdapter<R = ProductionCommandRunner> {
     env: CodexEnvironment,
     runner: RefCell<R>,
+}
+
+pub fn capabilities() -> HostCapabilities {
+    HostCapabilities {
+        stdio_mcp: true,
+        http_mcp: false,
+        session_start_hook: false,
+        pre_tool_hook: false,
+        post_tool_hook: false,
+        user_prompt_submit_hook: false,
+        stop_hook: false,
+        rule_file_support: false,
+        project_local_configuration: true,
+    }
 }
 
 impl CodexAdapter<ProductionCommandRunner> {
@@ -237,6 +252,10 @@ impl<R: CommandRunner> CodexAdapter<R> {
 }
 
 impl<R: CommandRunner> HostAdapter for CodexAdapter<R> {
+    fn capabilities(&self) -> HostCapabilities {
+        capabilities()
+    }
+
     fn detect(&self) -> Result<HostDetection, HostConfigError> {
         let path = self.codex_home()?.join("config.toml");
         let availability = self.executable_availability(&path);

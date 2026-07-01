@@ -40,15 +40,16 @@ use volicord_store::{
 use volicord_types::{GuardInstallationStatus, GuardMode};
 
 use crate::host_integration::{
-    claude_code::{ClaudeCodeAdapter, ProductionCommandRunner},
+    claude_code::{self, ClaudeCodeAdapter, ProductionCommandRunner},
     codex::{CodexAdapter, CodexEnvironment, CodexExistingPlanRequest},
     export_file_name, format_supported_connection_intents,
     generic::{GenericAdapter, GenericExportRequest},
-    supports_connection_intent,
+    host_capabilities, supports_connection_intent,
     verification::{Verification, VerificationStatus},
-    ConnectionIntent, HostAdapter, HostConfigError, HostKind, HostPlan, HostPlanRequest,
-    HostRemoveRequest, HostScope, HostTarget, InstallationProfile, ManagedServerEntry,
-    PlannedChange, ProjectContext, UserAction, UserActionKind,
+    ConnectionIntent, HostAdapter, HostCapabilities, HostConfigError, HostIntegrationFileKind,
+    HostKind, HostLifecyclePhase, HostPlan, HostPlanRequest, HostRemoveRequest, HostScope,
+    HostTarget, InstallationProfile, ManagedServerEntry, PlannedChange, ProjectContext, UserAction,
+    UserActionKind, REQUIRED_GUARD_PHASES,
 };
 use crate::{
     managed_block::{self, ManagedBlockError, ManagedBlockWrite},
@@ -67,7 +68,6 @@ const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);
 const INSTALLATION_ID: &str = "default";
 const VOLICORD_POLICY_SCHEMA: &str = "volicord-policy-v1";
 const VOLICORD_POLICY_FILE: &str = ".volicord/policy.json";
-const CLAUDE_RULE_FILE: &str = ".claude/rules/volicord.md";
 const AGENTS_FILE: &str = "AGENTS.md";
 const GUIDANCE_START_MARKER: &str = "<!-- BEGIN VOLICORD MANAGED GUIDANCE v1 -->";
 const GUIDANCE_END_MARKER: &str = "<!-- END VOLICORD MANAGED GUIDANCE v1 -->";
@@ -591,7 +591,8 @@ pub fn run_init_command(
     )?;
     apply_host_plan(host_kind, &host_plan, process)?;
     let integration_plan = apply_guard_integration(integration_plan)?;
-    let installation_status = initial_guard_installation_status(&host_plan, &integration_plan);
+    let installation_status =
+        initial_guard_installation_status(parsed.mode, &host_plan, &integration_plan);
     let guard_installation = record_guard_installation(
         &runtime_home,
         host_kind,
@@ -2631,11 +2632,13 @@ struct GuardIntegrationPlan {
     policy: Value,
     policy_hash: String,
     guard_installation_id: String,
+    capabilities: HostCapabilities,
+    missing_required_hooks: Vec<HostLifecyclePhase>,
 }
 
 #[derive(Debug, Clone)]
 struct GeneratedFilePlan {
-    kind: &'static str,
+    kind: HostIntegrationFileKind,
     path: PathBuf,
     content: String,
     status: FilePlanStatus,
@@ -2703,6 +2706,12 @@ fn plan_guard_integration(
     guard_installation_id: &str,
     mcp_entry: &ManagedServerEntry,
 ) -> Result<GuardIntegrationPlan, ConnectionCommandError> {
+    let capabilities = host_capabilities(host_kind);
+    let missing_required_hooks = if init_mode == InitMode::McpOnly {
+        Vec::new()
+    } else {
+        capabilities.missing_required_guard_phases()
+    };
     let guard_commands = guard_command_specs(
         repo_root,
         connection_id,
@@ -2722,7 +2731,7 @@ fn plan_guard_integration(
     let mut generated_files = Vec::new();
     let agents_path = repo_root.join(AGENTS_FILE);
     generated_files.push(plan_managed_block_file(
-        "agents_guidance",
+        HostIntegrationFileKind::AgentsManagedBlock,
         &agents_path,
         &agents_guidance_block(),
         GUIDANCE_START_MARKER,
@@ -2732,11 +2741,16 @@ fn plan_guard_integration(
     let policy_path = repo_root.join(VOLICORD_POLICY_FILE);
     generated_files.push(plan_policy_file(&policy_path, &policy)?);
     if host_kind == HostKind::ClaudeCode && init_mode != InitMode::McpOnly {
-        let rule_path = repo_root.join(CLAUDE_RULE_FILE);
+        let command_lines = guard_command_lines(&guard_commands);
+        let rule_path = claude_code::project_rule_path(repo_root);
+        let rule_block = managed_guidance_block(&claude_code::project_rule_block(
+            VOLICORD_POLICY_FILE,
+            &command_lines,
+        ));
         generated_files.push(plan_managed_block_file(
-            "claude_rule",
+            HostIntegrationFileKind::HostRuleInstruction,
             &rule_path,
-            &claude_rule_block(),
+            &rule_block,
             GUIDANCE_START_MARKER,
             GUIDANCE_END_MARKER,
             true,
@@ -2748,6 +2762,8 @@ fn plan_guard_integration(
         policy,
         policy_hash,
         guard_installation_id: guard_installation_id.to_owned(),
+        capabilities,
+        missing_required_hooks,
     })
 }
 
@@ -2783,7 +2799,7 @@ impl GeneratedFilePlan {
 }
 
 fn plan_managed_block_file(
-    kind: &'static str,
+    kind: HostIntegrationFileKind,
     path: &Path,
     block: &str,
     start_marker: &'static str,
@@ -2796,7 +2812,7 @@ fn plan_managed_block_file(
             if require_existing_marker && !existing.contains(start_marker) {
                 return Err(ConnectionCommandError::runtime(format!(
                     "{} already exists without a Volicord-managed block: {}",
-                    kind,
+                    kind.as_str(),
                     path.display()
                 )));
             }
@@ -2870,7 +2886,7 @@ fn plan_policy_file(
         }
     };
     Ok(GeneratedFilePlan {
-        kind: "policy",
+        kind: HostIntegrationFileKind::VolicordPolicy,
         path: path.to_path_buf(),
         content,
         status,
@@ -2958,10 +2974,8 @@ fn agents_guidance_block() -> String {
     )
 }
 
-fn claude_rule_block() -> String {
-    format!(
-        "{GUIDANCE_START_MARKER}\n# Volicord\n\nUse the repository-local `.volicord/policy.json` guard commands for session start, tool checks, prompt capture, and stop checks. Do not record user-owned judgments through the Agent Connection.\n{GUIDANCE_END_MARKER}\n"
-    )
+fn managed_guidance_block(body: &str) -> String {
+    format!("{GUIDANCE_START_MARKER}\n{body}{GUIDANCE_END_MARKER}\n")
 }
 
 fn guard_command_specs(
@@ -2971,39 +2985,56 @@ fn guard_command_specs(
     host_kind: HostKind,
     init_mode: InitMode,
 ) -> BTreeMap<String, GuardCommandSpec> {
-    [
-        "session-start",
-        "pre-tool",
-        "post-tool",
-        "prompt-capture",
-        "stop",
-    ]
-    .into_iter()
-    .map(|phase| {
-        let mut args = vec![
-            "guard".to_owned(),
-            phase.to_owned(),
-            "--repo".to_owned(),
-            path_text(repo_root),
-            "--connection".to_owned(),
-            connection_id.to_owned(),
-            "--guard-installation".to_owned(),
-            guard_installation_id.to_owned(),
-            "--host".to_owned(),
-            public_host_label(host_kind).to_owned(),
-            "--guard-mode".to_owned(),
-            init_mode.cli_value().to_owned(),
-        ];
-        args.push("--json".to_owned());
-        (
-            phase.replace('-', "_"),
-            GuardCommandSpec {
-                command: DEFAULT_MCP_COMMAND.to_owned(),
-                args,
-            },
-        )
-    })
-    .collect()
+    REQUIRED_GUARD_PHASES
+        .into_iter()
+        .map(|phase| {
+            let mut args = vec![
+                "guard".to_owned(),
+                phase.command_name().to_owned(),
+                "--repo".to_owned(),
+                path_text(repo_root),
+                "--connection".to_owned(),
+                connection_id.to_owned(),
+                "--guard-installation".to_owned(),
+                guard_installation_id.to_owned(),
+                "--host".to_owned(),
+                public_host_label(host_kind).to_owned(),
+                "--guard-mode".to_owned(),
+                init_mode.cli_value().to_owned(),
+            ];
+            args.push("--json".to_owned());
+            (
+                phase.policy_key().to_owned(),
+                GuardCommandSpec {
+                    command: DEFAULT_MCP_COMMAND.to_owned(),
+                    args,
+                },
+            )
+        })
+        .collect()
+}
+
+fn guard_command_lines(commands: &BTreeMap<String, GuardCommandSpec>) -> Vec<(String, String)> {
+    commands
+        .iter()
+        .map(|(phase, spec)| {
+            let mut words = Vec::with_capacity(spec.args.len() + 1);
+            words.push(shell_word(&spec.command));
+            words.extend(spec.args.iter().map(|arg| shell_word(arg)));
+            (phase.clone(), words.join(" "))
+        })
+        .collect()
+}
+
+fn shell_word(value: &str) -> String {
+    if !value.is_empty()
+        && value
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.' | '/' | ':' | '='))
+    {
+        return value.to_owned();
+    }
+    format!("'{}'", value.replace('\'', "'\\''"))
 }
 
 fn policy_json(
@@ -3087,10 +3118,16 @@ fn record_guard_installation(
 }
 
 fn guard_capability_json(plan: &GuardIntegrationPlan) -> Result<String, ConnectionCommandError> {
+    let capabilities = serde_json::to_value(plan.capabilities)
+        .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
     serde_json::to_string(&json!({
         "schema": "volicord-guard-capability-v1",
         "policy_hash": plan.policy_hash,
-        "prompt_capture": guard_has_prompt_capture_commands(&plan.policy),
+        "host_capabilities": capabilities,
+        "required_guard_phases": required_guard_phase_names(),
+        "missing_required_hooks": lifecycle_phase_names(&plan.missing_required_hooks),
+        "prompt_capture": plan.capabilities.user_prompt_submit_hook
+            && guard_has_prompt_capture_commands(&plan.policy),
         "files": generated_files_json(&plan.generated_files),
         "commands": plan.policy["guard"]["commands"].clone(),
     }))
@@ -3098,10 +3135,15 @@ fn guard_capability_json(plan: &GuardIntegrationPlan) -> Result<String, Connecti
 }
 
 fn initial_guard_installation_status(
+    init_mode: InitMode,
     host_plan: &HostPlan,
     integration: &GuardIntegrationPlan,
 ) -> GuardInstallationStatus {
-    if host_plan.change != PlannedChange::Noop
+    if init_mode == InitMode::McpOnly {
+        GuardInstallationStatus::Configured
+    } else if !integration.missing_required_hooks.is_empty() {
+        GuardInstallationStatus::Degraded
+    } else if host_plan.change != PlannedChange::Noop
         || integration.generated_files.iter().any(|file| {
             matches!(
                 file.status,
@@ -3113,6 +3155,17 @@ fn initial_guard_installation_status(
     } else {
         GuardInstallationStatus::Configured
     }
+}
+
+fn required_guard_phase_names() -> Vec<&'static str> {
+    REQUIRED_GUARD_PHASES
+        .iter()
+        .map(|phase| phase.capability_name())
+        .collect()
+}
+
+fn lifecycle_phase_names(phases: &[HostLifecyclePhase]) -> Vec<&'static str> {
+    phases.iter().map(|phase| phase.capability_name()).collect()
 }
 
 fn guard_has_prompt_capture_commands(policy: &Value) -> bool {
@@ -3128,11 +3181,42 @@ fn generated_files_json(files: &[GeneratedFilePlan]) -> Value {
         files
             .iter()
             .map(|file| {
-                json!({
-                    "kind": file.kind,
+                let mut value = json!({
+                    "kind": file.kind.as_str(),
                     "path": path_text(&file.path),
                     "status": file.status.as_str(),
-                })
+                    "content_hash": sha256_text(&file.content),
+                });
+                let object = value
+                    .as_object_mut()
+                    .expect("generated file JSON should be an object");
+                match file.write_kind {
+                    GeneratedFileWriteKind::ManagedBlock {
+                        start_marker,
+                        end_marker,
+                        ..
+                    } => {
+                        object.insert(
+                            "ownership".to_owned(),
+                            Value::String("managed_block".to_owned()),
+                        );
+                        object.insert(
+                            "managed_marker_start".to_owned(),
+                            Value::String(start_marker.to_owned()),
+                        );
+                        object.insert(
+                            "managed_marker_end".to_owned(),
+                            Value::String(end_marker.to_owned()),
+                        );
+                    }
+                    GeneratedFileWriteKind::ManagedJson => {
+                        object.insert(
+                            "ownership".to_owned(),
+                            Value::String("managed_json".to_owned()),
+                        );
+                    }
+                }
+                value
             })
             .collect(),
     )
@@ -3196,6 +3280,9 @@ struct GuardOperationalState {
     last_guard_event_at: Option<String>,
     prompt_capture_state: String,
     missing_files: Vec<String>,
+    stale_files: Vec<String>,
+    broken_files: Vec<String>,
+    missing_required_hooks: Vec<String>,
     unresolved_blockers: Vec<String>,
 }
 
@@ -3210,11 +3297,14 @@ impl GuardOperationalState {
             last_guard_event_at: None,
             prompt_capture_state: "unavailable".to_owned(),
             missing_files: Vec::new(),
+            stale_files: Vec::new(),
+            broken_files: Vec::new(),
+            missing_required_hooks: Vec::new(),
             unresolved_blockers: Vec::new(),
         }
     }
 
-    fn planned(init_mode: InitMode) -> Self {
+    fn planned(init_mode: InitMode, integration: &GuardIntegrationPlan) -> Self {
         Self {
             mode_state: init_mode.guard_value().to_owned(),
             installation_state: "planned".to_owned(),
@@ -3236,11 +3326,21 @@ impl GuardOperationalState {
                 "planned".to_owned()
             },
             missing_files: Vec::new(),
+            stale_files: Vec::new(),
+            broken_files: Vec::new(),
+            missing_required_hooks: lifecycle_phase_names(&integration.missing_required_hooks)
+                .into_iter()
+                .map(str::to_owned)
+                .collect(),
             unresolved_blockers: Vec::new(),
         }
     }
 
-    fn init(health: &str, init_mode: InitMode) -> Self {
+    fn init(health: &str, init_mode: InitMode, integration: &GuardIntegrationPlan) -> Self {
+        let missing_required_hooks = lifecycle_phase_names(&integration.missing_required_hooks)
+            .into_iter()
+            .map(str::to_owned)
+            .collect::<Vec<_>>();
         Self {
             mode_state: init_mode.guard_value().to_owned(),
             installation_state: health.to_owned(),
@@ -3270,6 +3370,9 @@ impl GuardOperationalState {
                 "unavailable".to_owned()
             },
             missing_files: Vec::new(),
+            stale_files: Vec::new(),
+            broken_files: Vec::new(),
+            missing_required_hooks,
             unresolved_blockers: guard_blockers_for_state(
                 init_mode.guard_value(),
                 health,
@@ -3288,6 +3391,9 @@ impl GuardOperationalState {
             "last_guard_event_at": &self.last_guard_event_at,
             "prompt_capture": &self.prompt_capture_state,
             "missing_files": &self.missing_files,
+            "stale_files": &self.stale_files,
+            "broken_files": &self.broken_files,
+            "missing_required_hooks": &self.missing_required_hooks,
             "unresolved_blockers": &self.unresolved_blockers,
         })
     }
@@ -3553,9 +3659,9 @@ fn render_init_output(data: InitOutput<'_>) -> Result<String, ConnectionCommandE
         .map(|guard| guard.installation_status.as_str())
         .unwrap_or(GuardInstallationStatus::Configured.as_str());
     let guard_state = if data.guard_installation.is_some() {
-        GuardOperationalState::init(guard_status, data.init_mode)
+        GuardOperationalState::init(guard_status, data.init_mode, data.integration)
     } else {
-        GuardOperationalState::planned(data.init_mode)
+        GuardOperationalState::planned(data.init_mode, data.integration)
     };
     let mcp_config_state = init_mcp_config_state(data.verification, Some(data.host_plan));
     let project_state = if data.project_id.is_some() {
@@ -3707,7 +3813,19 @@ fn guard_checks_json_values(guard_state: &GuardOperationalState) -> Vec<Value> {
             "id": "guard_files_installed",
             "status": "failed",
             "summary": "guard files are missing",
-            "details": { "missing_files": &guard_state.missing_files },
+            "details": guard_file_details_json(guard_state),
+        }),
+        "stale" => json!({
+            "id": "guard_files_installed",
+            "status": "failed",
+            "summary": "guard files are stale",
+            "details": guard_file_details_json(guard_state),
+        }),
+        "broken" => json!({
+            "id": "guard_files_installed",
+            "status": "failed",
+            "summary": "guard files are broken",
+            "details": guard_file_details_json(guard_state),
         }),
         "disabled" => json!({
             "id": "guard_files_installed",
@@ -3789,7 +3907,42 @@ fn guard_checks_json_values(guard_state: &GuardOperationalState) -> Vec<Value> {
             "summary": "guard active status is not applicable",
         })
     };
-    vec![files_check, reload_check, hook_check, status_check]
+    let capability_check = if guard_state.missing_required_hooks.is_empty() || !guard_selected {
+        json!({
+            "id": "guard_required_hooks_supported",
+            "status": if guard_selected { "passed" } else { "skipped" },
+            "summary": if guard_selected {
+                "required guard hook capabilities are supported"
+            } else {
+                "guard hook capabilities are not applicable"
+            },
+        })
+    } else {
+        json!({
+            "id": "guard_required_hooks_supported",
+            "status": "failed",
+            "summary": "required guard hook capabilities are missing",
+            "details": {
+                "missing_required_hooks": &guard_state.missing_required_hooks,
+            },
+        })
+    };
+    vec![
+        files_check,
+        reload_check,
+        hook_check,
+        capability_check,
+        status_check,
+    ]
+}
+
+fn guard_file_details_json(guard_state: &GuardOperationalState) -> Value {
+    json!({
+        "missing_files": &guard_state.missing_files,
+        "stale_files": &guard_state.stale_files,
+        "broken_files": &guard_state.broken_files,
+        "missing_required_hooks": &guard_state.missing_required_hooks,
+    })
 }
 
 fn render_simplified_connections_output(
@@ -4129,6 +4282,28 @@ fn primary_connection_action(
             projects,
         ));
     }
+    if guard_state.installation_state == "stale" {
+        return Some(connection_repair_action(
+            "guard_files_stale",
+            "Run init again to refresh stale guard files.",
+            connection,
+            projects,
+        ));
+    }
+    if guard_state.installation_state == "broken" {
+        return Some(connection_repair_action(
+            "guard_files_broken",
+            "Repair broken guard files, then run init again.",
+            connection,
+            projects,
+        ));
+    }
+    if guard_state.installation_state == "degraded" {
+        return Some(PrimaryNextAction::new(
+            "guard_capability_degraded",
+            "Guarded mode is degraded because this host adapter does not support every required lifecycle hook.",
+        ));
+    }
     if let Some(action) = actions
         .iter()
         .find(|action| action.kind == UserActionKind::ReloadRequired)
@@ -4222,7 +4397,7 @@ fn guard_state_for_connection(
         return Ok(GuardOperationalState::not_configured());
     }
 
-    let mut missing_files = Vec::new();
+    let mut file_findings = GuardFileFindings::default();
     let mut prompt_capture_available = false;
     let prompt_capture_disabled = installations
         .iter()
@@ -4230,7 +4405,8 @@ fn guard_state_for_connection(
     let mut observed = false;
     let mut last_observed_at = None;
     for installation in &installations {
-        missing_files.extend(guard_missing_files(&installation.host_capability_json));
+        let findings = guard_file_findings(&installation.host_capability_json);
+        file_findings.merge(findings);
         if installation.last_seen_at.is_some() {
             observed = true;
             last_observed_at = max_optional_text(
@@ -4239,15 +4415,46 @@ fn guard_state_for_connection(
             );
         }
         if installation.guard_mode != GuardMode::McpOnly.as_str()
-            && guard_has_prompt_capture(&installation.host_capability_json)
+            && file_findings.prompt_capture_available
         {
             prompt_capture_available = true;
         }
     }
-    missing_files.sort();
-    missing_files.dedup();
+    file_findings.sort_dedup();
 
-    if !missing_files.is_empty() {
+    if !file_findings.broken_files.is_empty() {
+        let mode_state = guard_mode_state(&installations);
+        return Ok(GuardOperationalState {
+            mode_state: mode_state.clone(),
+            installation_state: GuardInstallationStatus::Broken.as_str().to_owned(),
+            files_state: "broken".to_owned(),
+            hook_observed_state: if prompt_capture_disabled {
+                "disabled".to_owned()
+            } else if observed {
+                "observed".to_owned()
+            } else {
+                "not_observed".to_owned()
+            },
+            last_observed_at,
+            last_guard_event_at: last_guard_event_for_projects(
+                runtime_home,
+                connection_id,
+                projects,
+            )?,
+            prompt_capture_state: "unavailable".to_owned(),
+            missing_files: file_findings.missing_files,
+            stale_files: file_findings.stale_files,
+            broken_files: file_findings.broken_files,
+            missing_required_hooks: file_findings.missing_required_hooks,
+            unresolved_blockers: guard_blockers_for_state(
+                &mode_state,
+                GuardInstallationStatus::Broken.as_str(),
+                observed,
+            ),
+        });
+    }
+
+    if !file_findings.missing_files.is_empty() {
         return Ok(GuardOperationalState {
             mode_state: guard_mode_state(&installations),
             installation_state: "files_missing".to_owned(),
@@ -4266,8 +4473,43 @@ fn guard_state_for_connection(
                 projects,
             )?,
             prompt_capture_state: "unavailable".to_owned(),
-            missing_files,
+            missing_files: file_findings.missing_files,
+            stale_files: file_findings.stale_files,
+            broken_files: file_findings.broken_files,
+            missing_required_hooks: file_findings.missing_required_hooks,
             unresolved_blockers: vec!["guard_not_installed".to_owned()],
+        });
+    }
+
+    if !file_findings.stale_files.is_empty() {
+        let mode_state = guard_mode_state(&installations);
+        return Ok(GuardOperationalState {
+            mode_state: mode_state.clone(),
+            installation_state: GuardInstallationStatus::Stale.as_str().to_owned(),
+            files_state: "stale".to_owned(),
+            hook_observed_state: if prompt_capture_disabled {
+                "disabled".to_owned()
+            } else if observed {
+                "observed".to_owned()
+            } else {
+                "not_observed".to_owned()
+            },
+            last_observed_at,
+            last_guard_event_at: last_guard_event_for_projects(
+                runtime_home,
+                connection_id,
+                projects,
+            )?,
+            prompt_capture_state: "unavailable".to_owned(),
+            missing_files: file_findings.missing_files,
+            stale_files: file_findings.stale_files,
+            broken_files: file_findings.broken_files,
+            missing_required_hooks: file_findings.missing_required_hooks,
+            unresolved_blockers: guard_blockers_for_state(
+                &mode_state,
+                GuardInstallationStatus::Stale.as_str(),
+                observed,
+            ),
         });
     }
 
@@ -4279,6 +4521,8 @@ fn guard_state_for_connection(
         installation.installation_status == GuardInstallationStatus::Stale.as_str()
     }) {
         GuardInstallationStatus::Stale.as_str()
+    } else if !file_findings.missing_required_hooks.is_empty() {
+        GuardInstallationStatus::Degraded.as_str()
     } else if installations.iter().any(|installation| {
         installation.installation_status == GuardInstallationStatus::ReloadRequired.as_str()
     }) {
@@ -4332,7 +4576,10 @@ fn guard_state_for_connection(
         last_observed_at,
         last_guard_event_at: last_guard_event_for_projects(runtime_home, connection_id, projects)?,
         prompt_capture_state: prompt_capture_state.to_owned(),
-        missing_files,
+        missing_files: file_findings.missing_files,
+        stale_files: file_findings.stale_files,
+        broken_files: file_findings.broken_files,
+        missing_required_hooks: file_findings.missing_required_hooks,
         unresolved_blockers: guard_blockers_for_state(&mode_state, installation_state, observed),
     })
 }
@@ -4396,31 +4643,181 @@ fn max_optional_text(current: Option<String>, candidate: Option<String>) -> Opti
     }
 }
 
-fn guard_has_prompt_capture(capability_json: &str) -> bool {
-    serde_json::from_str::<Value>(capability_json)
-        .ok()
-        .and_then(|value| {
-            value
-                .get("commands")
-                .and_then(|commands| commands.get("prompt_capture"))
-                .cloned()
-        })
-        .is_some()
+#[derive(Debug, Default)]
+struct GuardFileFindings {
+    missing_files: Vec<String>,
+    stale_files: Vec<String>,
+    broken_files: Vec<String>,
+    missing_required_hooks: Vec<String>,
+    prompt_capture_available: bool,
 }
 
-fn guard_missing_files(capability_json: &str) -> Vec<String> {
+impl GuardFileFindings {
+    fn merge(&mut self, other: GuardFileFindings) {
+        self.missing_files.extend(other.missing_files);
+        self.stale_files.extend(other.stale_files);
+        self.broken_files.extend(other.broken_files);
+        self.missing_required_hooks
+            .extend(other.missing_required_hooks);
+        self.prompt_capture_available |= other.prompt_capture_available;
+    }
+
+    fn sort_dedup(&mut self) {
+        self.missing_files.sort();
+        self.missing_files.dedup();
+        self.stale_files.sort();
+        self.stale_files.dedup();
+        self.broken_files.sort();
+        self.broken_files.dedup();
+        self.missing_required_hooks.sort();
+        self.missing_required_hooks.dedup();
+    }
+}
+
+fn guard_file_findings(capability_json: &str) -> GuardFileFindings {
+    let mut findings = GuardFileFindings::default();
     let Ok(value) = serde_json::from_str::<Value>(capability_json) else {
-        return Vec::new();
+        findings
+            .broken_files
+            .push("guard_capability_json".to_owned());
+        return findings;
     };
-    value
+    findings.prompt_capture_available = value
+        .get("prompt_capture")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    findings.missing_required_hooks.extend(
+        value
+            .get("missing_required_hooks")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .map(str::to_owned),
+    );
+
+    let files = value
         .get("files")
         .and_then(Value::as_array)
         .into_iter()
-        .flatten()
-        .filter_map(|file| file.get("path").and_then(Value::as_str))
-        .filter(|path| !Path::new(path).exists())
-        .map(str::to_owned)
-        .collect()
+        .flatten();
+    for file in files {
+        verify_guard_file(file, &value, &mut findings);
+    }
+    findings
+}
+
+fn verify_guard_file(file: &Value, capability: &Value, findings: &mut GuardFileFindings) {
+    let Some(path_text) = file.get("path").and_then(Value::as_str) else {
+        findings
+            .broken_files
+            .push("guard_capability_json:files.path".to_owned());
+        return;
+    };
+    let path = Path::new(path_text);
+    let text = match fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            findings.missing_files.push(path_text.to_owned());
+            return;
+        }
+        Err(_) => {
+            findings.broken_files.push(path_text.to_owned());
+            return;
+        }
+    };
+    let expected_hash = file
+        .get("content_hash")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    match file.get("ownership").and_then(Value::as_str) {
+        Some("managed_block") => verify_managed_block_file(file, path_text, &text, findings),
+        Some("managed_json") => {
+            verify_managed_json_file(file, capability, path_text, &text, expected_hash, findings)
+        }
+        _ => findings.broken_files.push(path_text.to_owned()),
+    }
+}
+
+fn verify_managed_block_file(
+    file: &Value,
+    path_text: &str,
+    text: &str,
+    findings: &mut GuardFileFindings,
+) {
+    let Some(start_marker) = file.get("managed_marker_start").and_then(Value::as_str) else {
+        findings.broken_files.push(path_text.to_owned());
+        return;
+    };
+    let Some(end_marker) = file.get("managed_marker_end").and_then(Value::as_str) else {
+        findings.broken_files.push(path_text.to_owned());
+        return;
+    };
+    if marker_count(text, start_marker) != 1 || marker_count(text, end_marker) != 1 {
+        findings.broken_files.push(path_text.to_owned());
+        return;
+    }
+    let Some(block) = managed_block_slice(text, start_marker, end_marker) else {
+        findings.broken_files.push(path_text.to_owned());
+        return;
+    };
+    let expected_hash = file
+        .get("content_hash")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    if sha256_text(block) != expected_hash {
+        findings.stale_files.push(path_text.to_owned());
+    }
+}
+
+fn verify_managed_json_file(
+    file: &Value,
+    capability: &Value,
+    path_text: &str,
+    text: &str,
+    expected_hash: &str,
+    findings: &mut GuardFileFindings,
+) {
+    if sha256_text(text) != expected_hash {
+        findings.stale_files.push(path_text.to_owned());
+    }
+    if file.get("kind").and_then(Value::as_str) != Some("volicord_policy") {
+        return;
+    }
+    let policy = match serde_json::from_str::<Value>(text) {
+        Ok(policy) => policy,
+        Err(_) => {
+            findings.broken_files.push(path_text.to_owned());
+            return;
+        }
+    };
+    let expected_policy_hash = capability
+        .get("policy_hash")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    match policy_hash(&policy) {
+        Ok(actual) if actual == expected_policy_hash => {}
+        Ok(_) => findings.stale_files.push(path_text.to_owned()),
+        Err(_) => findings.broken_files.push(path_text.to_owned()),
+    }
+    if policy.get("guard").and_then(|guard| guard.get("commands")) != capability.get("commands") {
+        findings.stale_files.push(path_text.to_owned());
+    }
+}
+
+fn marker_count(text: &str, marker: &str) -> usize {
+    text.match_indices(marker).count()
+}
+
+fn managed_block_slice<'a>(text: &'a str, start_marker: &str, end_marker: &str) -> Option<&'a str> {
+    let start = text.find(start_marker)?;
+    let end = start + text[start..].find(end_marker)? + end_marker.len();
+    let end = if text[end..].starts_with('\n') {
+        end + 1
+    } else {
+        end
+    };
+    text.get(start..end)
 }
 
 fn actions_json_values(actions: &[UserAction]) -> Value {
@@ -4827,6 +5224,8 @@ fn compact_stream(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
     use super::*;
 
     #[test]
@@ -4909,5 +5308,111 @@ mod tests {
         let error =
             validate_tools_for_mode(CONNECTION_MODE_READ_ONLY, &stale_read_only_tools).unwrap_err();
         assert!(error.contains("volicord.check_close"));
+    }
+
+    #[test]
+    fn guarded_integration_plan_records_missing_host_hook_capabilities(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let repo = temp_dir("guard-capabilities")?;
+        let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
+        let plan = plan_guard_integration(
+            HostKind::Codex,
+            InitMode::Guarded,
+            &repo,
+            "conn_alpha",
+            "guard_installation_alpha",
+            &entry,
+        )?;
+
+        assert_eq!(plan.missing_required_hooks, REQUIRED_GUARD_PHASES.to_vec());
+        assert_eq!(
+            initial_guard_installation_status(InitMode::Guarded, &host_plan_stub(&entry), &plan),
+            GuardInstallationStatus::Degraded
+        );
+        let capability: Value = serde_json::from_str(&guard_capability_json(&plan)?)?;
+        assert_eq!(capability["prompt_capture"], false);
+        assert_eq!(
+            capability["missing_required_hooks"]
+                .as_array()
+                .expect("missing hooks should be an array")
+                .len(),
+            REQUIRED_GUARD_PHASES.len()
+        );
+        assert!(generated_files_json(&plan.generated_files)
+            .as_array()
+            .expect("generated files should be an array")
+            .iter()
+            .any(|file| file["kind"] == "volicord_policy"));
+        Ok(())
+    }
+
+    #[test]
+    fn guard_file_verification_detects_stale_policy_and_duplicate_markers(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let repo = temp_dir("guard-file-verify")?;
+        let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
+        let plan = plan_guard_integration(
+            HostKind::Codex,
+            InitMode::Guarded,
+            &repo,
+            "conn_alpha",
+            "guard_installation_alpha",
+            &entry,
+        )?;
+        let applied = apply_guard_integration(plan)?;
+        let capability_json = guard_capability_json(&applied)?;
+
+        let findings = guard_file_findings(&capability_json);
+        assert!(findings.missing_files.is_empty());
+        assert!(findings.stale_files.is_empty());
+        assert!(findings.broken_files.is_empty());
+        assert!(findings
+            .missing_required_hooks
+            .contains(&"pre_tool_hook".to_owned()));
+
+        let policy_path = repo.join(VOLICORD_POLICY_FILE);
+        let policy_text = fs::read_to_string(&policy_path)?;
+        fs::write(
+            &policy_path,
+            policy_text.replace("conn_alpha", "conn_changed"),
+        )?;
+        let findings = guard_file_findings(&capability_json);
+        assert!(findings.stale_files.contains(&path_text(&policy_path)));
+
+        fs::write(
+            repo.join(AGENTS_FILE),
+            format!(
+                "{GUIDANCE_START_MARKER}\nfirst\n{GUIDANCE_END_MARKER}\n{GUIDANCE_START_MARKER}\nsecond\n{GUIDANCE_END_MARKER}\n"
+            ),
+        )?;
+        let findings = guard_file_findings(&capability_json);
+        assert!(findings
+            .broken_files
+            .contains(&path_text(&repo.join(AGENTS_FILE))));
+        Ok(())
+    }
+
+    fn host_plan_stub(entry: &ManagedServerEntry) -> HostPlan {
+        HostPlan {
+            host_kind: HostKind::Codex,
+            connection_intent: ConnectionIntent::Shared,
+            host_scope: HostScope::Project,
+            mode: CONNECTION_MODE_WORKFLOW.to_owned(),
+            server_name: DEFAULT_SERVER_NAME.to_owned(),
+            target: HostTarget::File(PathBuf::from("/repo/.codex/config.toml")),
+            entry: entry.clone(),
+            change: PlannedChange::Noop,
+            fingerprint: "fingerprint".to_owned(),
+            conflicts: Vec::new(),
+            user_actions: Vec::new(),
+            file_snapshot: None,
+        }
+    }
+
+    fn temp_dir(prefix: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
+        let stamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
+        let path = std::env::temp_dir().join(format!("{prefix}-{}-{stamp}", std::process::id()));
+        fs::create_dir_all(&path)?;
+        Ok(path)
     }
 }

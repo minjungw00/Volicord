@@ -5,9 +5,10 @@ use serde_json::{Map, Value};
 use super::{
     config_edit::{read_json_object, remove_file_if_fresh, write_json_object_if_fresh},
     current_entry_fingerprint_from_json, managed_fingerprint, validated_server_name,
-    ConnectionIntent, HostAdapter, HostConfigError, HostConflict, HostConflictKind, HostDetection,
-    HostEffect, HostKind, HostPlan, HostPlanRequest, HostRemoveRequest, HostScope, HostTarget,
-    InstallationProfile, ManagedServerEntry, PlannedChange,
+    ConnectionIntent, HostAdapter, HostCapabilities, HostConfigError, HostConflict,
+    HostConflictKind, HostDetection, HostEffect, HostKind, HostPlan, HostPlanRequest,
+    HostRemoveRequest, HostScope, HostTarget, InstallationProfile, ManagedServerEntry,
+    PlannedChange,
 };
 use crate::host_integration::verification::{
     HostConfigurationStatus, HostExecutableStatus, HostGateStatus, ManagedConfigStatus,
@@ -16,6 +17,20 @@ use crate::host_integration::verification::{
 
 #[derive(Debug, Clone, Default)]
 pub struct GenericAdapter;
+
+pub fn capabilities() -> HostCapabilities {
+    HostCapabilities {
+        stdio_mcp: true,
+        http_mcp: false,
+        session_start_hook: false,
+        pre_tool_hook: false,
+        post_tool_hook: false,
+        user_prompt_submit_hook: false,
+        stop_hook: false,
+        rule_file_support: false,
+        project_local_configuration: false,
+    }
+}
 
 impl GenericAdapter {
     pub fn plan(&self, request: HostPlanRequest<'_>) -> Result<HostPlan, HostConfigError> {
@@ -109,6 +124,10 @@ impl GenericAdapter {
 }
 
 impl HostAdapter for GenericAdapter {
+    fn capabilities(&self) -> HostCapabilities {
+        capabilities()
+    }
+
     fn detect(&self) -> Result<HostDetection, HostConfigError> {
         Ok(HostDetection {
             host_kind: HostKind::Generic,
