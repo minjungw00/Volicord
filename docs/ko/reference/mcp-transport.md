@@ -21,6 +21,7 @@
 - stdio JSON-RPC 프레이밍, 메시지 검증, 지원되는 MCP 메서드
 - 실험적 serve 전송을 위한 로컬 HTTP JSON-RPC 요청 처리
 - stdio 전송 경계의 서버 시작 MCP elicitation
+- 대기 사용자 판단을 위한 로컬 loopback web consent fallback
 - 하나의 내부 Agent Connection 바인딩에 대한 MCP 시작 검증
 - 전송 경계에서의 MCP `tools/list`와 `tools/call` 동작
 - 내부 래퍼와 호출 메타데이터를 숨기는 MCP 표시 도구 스키마 투영
@@ -40,8 +41,9 @@
 
 `volicord mcp --stdio`는 설치된 `volicord` 실행 파일의 로컬 MCP stdio 프로세스
 모드입니다. MCP 호스트는 이를 자식 프로세스로 시작하고 stdin/stdout으로 통신합니다.
-TCP 리스너, HTTP 리스너, Unix-domain socket 리스너, 또는 그 밖의 네트워크 리스너가
-아닙니다.
+MCP TCP 리스너, HTTP MCP 리스너, Unix-domain socket 리스너, 또는 그 밖의 MCP 네트워크
+리스너가 아닙니다. MCP elicitation과 prompt capture를 사용할 수 없을 때는 대기 사용자
+판단을 위해 별도의 loopback 전용 local web consent 리스너를 시작할 수 있습니다.
 
 `volicord serve --transport streamable-http`는 Docker와 localhost MCP 사용을 위한 별도의
 명시적 프로세스 모드입니다. 이 명령은 로컬 HTTP 리스너를 시작하고, 가능한 곳에서는
@@ -125,8 +127,11 @@ HTTP serve 요청 동작:
 - `DELETE /mcp`는 bearer token과 session ID가 유효할 때 session을 삭제합니다.
 - `GET /mcp`는 `SSE_UNSUPPORTED`를 반환합니다. server-sent event 스트림은 이 실험적
   endpoint에서 구현하지 않습니다.
-- `GET /healthz`는 최소 로컬 health endpoint이지만 같은 bearer token을 요구합니다. 인증
-  없는 resource endpoint는 없습니다.
+- `GET /healthz`는 최소 로컬 health endpoint이지만 같은 bearer token을 요구합니다.
+- `GET /consent`와 `POST /consent`는 local web consent를 사용할 수 있을 때만 열리는
+  endpoint입니다. MCP endpoint가 아니며 MCP bearer token을 사용하지 않습니다. 프로젝트,
+  연결, 대기 판단에 묶인 유효한 일회성 consent token이 필요합니다.
+- 인증 없는 임의 resource endpoint는 없습니다.
 - CORS preflight는 MCP endpoint에 대해서만, Origin 허용 목록 검증 뒤에만, 그리고 허용된
   Origin이 하나 이상 설정되어 있을 때만 받습니다.
 - 구조화된 HTTP 오류는 인증, Origin, 프로젝트 허용 목록, 지원하지 않는 전송, 지원하지
@@ -139,12 +144,16 @@ HTTP serve 요청 동작:
 지원되는 선택 환경 입력:
 
 - `VOLICORD_HOME`
+- `VOLICORD_LOCAL_WEB_CONSENT`
 
 `VOLICORD_HOME`은 프로세스의 Runtime Home을 선택합니다. 일반 흐름에서 사용자가 직접
 입력하는 값이 아니라, 필요할 때 생성된 호스트 설정이 보통 기록하는 값입니다. 이 값은
 프로젝트, 연결 의도, 행위자 출처, 작업 범주, 연결 모드, 호스트 신뢰 상태를 선택하지
 않습니다. stdio 프로세스와 `--check`는 시작 검증에 들어가기 전에 `VOLICORD_HOME`을
 사용합니다. help와 version 모드는 이를 사용하지 않습니다.
+
+`VOLICORD_LOCAL_WEB_CONSENT=0`, `false`, `off`, `disabled`는 stdio local web consent
+리스너를 끕니다. 다른 값은 리스너 주소나 token 정책을 바꾸지 않습니다.
 
 연결 식별 정보는 생성된 호스트 설정이나 generic export 출력 안의
 `--connection <connection_id>`로 제공합니다. 이것은 선택된 Agent Connection에 대한 내부
@@ -474,12 +483,40 @@ Agent Connection 도구로 노출하지 않으며, 에이전트가 넣은 답변
   기록하지 않고 대기 `RequestUserJudgmentResult`와 추가 text content를 반환합니다.
   prompt-capture 사용 가능 상태가 `configured`, `observed`, `active`이면 그 text에
   prompt-submit hook 경로와 호환되고 현재 검증 코드를 포함한 정확한 채팅
-  prompt-capture 명령이 들어갈 수 있습니다. 그렇지 않으면 그 text는 `volicord user`
-  로컬 CLI 복구 경로를 안내합니다.
+  prompt-capture 명령이 들어갈 수 있습니다.
+- prompt capture를 사용할 수 없고 local web consent를 사용할 수 있으면 어댑터는 짧게
+  만료되는 일회성 token을 만들고 loopback consent URL과 구조화된 fallback JSON을
+  반환합니다. URL에는 프로젝트 selector와 token만 들어갑니다. Runtime Home 경로, 저장소
+  경로, prompt 본문, 답변, 임의 API 매개변수는 포함하지 않습니다.
+- local web consent가 비활성화되었거나, 안전하게 bind할 수 없거나, token을 만들 수 없으면
+  fallback text는 `volicord user` 로컬 CLI 복구 경로를 안내합니다.
 
 모든 분기에서 `result.content[0].text`는 Volicord 응답 JSON 문자열로 남습니다. 추가
 `content[]` text가 있으면 fallback 안내나 elicitation 취소/무효 설명 같은 어댑터
 안내입니다. 그 추가 text는 Core 권한, 공개 API 응답 필드, 사용자 판단 기록이 아닙니다.
+
+Local web consent 리스너는 기본적으로 `127.0.0.1`에 bind하며, 안전하게 bind할 수 없으면
+fail closed해야 합니다. stdio 모드에서는 임시 loopback port를 사용합니다.
+`volicord serve --transport streamable-http`에서는 실제 serve 리스너가 loopback일 때만
+local web consent를 사용할 수 있습니다. 명시적으로 non-local serve 리스너를 연 경우
+consent form을 노출하면 안 됩니다.
+
+Local web consent endpoint 동작:
+
+- `GET /consent?project=<project_id>&token=<token>`은 일회성 token을 현재 프로젝트와
+  연결에 대해 검증합니다. 만료됨, 소비됨, 유효하지 않음, wrong-project, wrong-connection
+  token은 안전한 HTML 오류 페이지로 거절하고, 그 밖에는 판단 text, 선택지, 검증 정보,
+  form을 담은 최소 HTML page를 렌더링합니다.
+- `POST /consent`는 token, 선택한 Core option ID, 선택적 note가 들어 있는
+  `application/x-www-form-urlencoded` form 제출만 받습니다. `Origin` header가 있으면
+  consent endpoint origin과 일치해야 합니다.
+- 성공한 post는 token을 정확히 한 번 소비하고 Core를 통해 `actor_source=local_user`,
+  `operation_category=user_only`, `resolved_verification_basis=local_user_local_web`으로
+  답변을 기록합니다.
+- replay, 만료, 소비된 token 재사용, wrong project, wrong connection은 다른 답변을
+  기록하기 전에 거절합니다.
+- endpoint는 Runtime Home 파일, Product Repository 파일, 정적 asset, MCP 메서드, 임의
+  API를 제공하지 않습니다.
 
 Volicord까지 도달한 알려진 공개 Volicord 메서드 도구 호출에서 `tools/call`은 MCP 결과
 안에 Volicord 응답 JSON을 래핑합니다.

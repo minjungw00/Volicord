@@ -8,7 +8,11 @@
 
 Registry 저장소와 project-state 저장소는 각각 migration ledger 행을 기록합니다. 데이터베이스는 schema version, migration name, database kind, storage profile이 컴파일된 기준과 일치할 때만 current입니다. 알 수 없는 더 최신 version, 누락된 migration 행, 부분 ledger, migration name mismatch, storage-profile mismatch는 storage/runtime unavailable 조건입니다. Store 코드는 기록 의미를 추측하거나, 데이터를 조용히 다시 쓰거나, 지원되지 않는 profile을 변환하면 안 됩니다.
 
-기준 registry 저장소는 Runtime Home 식별 정보, 설치 프로필 기록, 저장소 루트 기반 프로젝트 등록, 프로젝트 alias, Agent Connection 기록, `connection_projects`를 포함합니다. 기준 project-state 저장소는 Core 상태 기록, replay 행, staged artifact, persistent artifact, evidence, user judgment, run, blocker, `write_checks`를 포함합니다.
+기준 registry 저장소는 Runtime Home 식별 정보, 설치 프로필 기록, 저장소 루트 기반 프로젝트
+등록, 프로젝트 alias, Agent Connection 기록, `connection_projects`, `guard_installations`,
+`local_web_consent_tokens`를 포함합니다. 기준 project-state 저장소는 Core 상태 기록, replay
+행, staged artifact, persistent artifact, evidence, user judgment, run, blocker,
+`write_checks`, guarded-operation 기록, session-watch 기록을 포함합니다.
 
 ## Project State Version
 

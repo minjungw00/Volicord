@@ -310,10 +310,13 @@ Agent Connection은 에이전트 대상 연결입니다. 모델이 사용자의 
   [MCP 전송](mcp-transport.md#user-judgment-elicitation)이 담당합니다.
 - MCP elicitation을 사용할 수 없으면 MCP 대체 안내 텍스트는 prompt-capture 사용 가능
   상태가 `configured`, `observed`, `active`일 때 prompt-submit hook 경로와 호환되는
-  채팅 prompt-capture 명령으로 사람 사용자를 안내할 수 있습니다. 그렇지 않으면 대체
-  안내 텍스트는 사용자를 `volicord user` 로컬 CLI 복구 경로로 안내합니다.
-- 기준 local web `User Channel`은 구현되어 있지 않습니다. 실험적 HTTP serve 전송은 MCP
-  전송 경계이지 브라우저 판단 UI가 아닙니다.
+  채팅 prompt-capture 명령으로 사람 사용자를 안내할 수 있습니다.
+- MCP elicitation과 prompt capture를 사용할 수 없으면 MCP 대체 안내 텍스트는 사람
+  사용자를 [MCP 전송](mcp-transport.md#user-judgment-elicitation)이 담당하는 loopback
+  local web consent URL로 안내할 수 있습니다. 그 local web 답변은 여전히 `local_user`
+  User Channel 경로이지 Agent Connection 답변이 아닙니다.
+- 대체 안내 텍스트는 elicitation, prompt capture, local web consent를 모두 사용할 수
+  없을 때만 사용자를 `volicord user` 로컬 CLI 복구 경로로 안내합니다.
 - 권한을 지니는 사용자 판단 해결에는 `actor_source=local_user`,
   `operation_category=user_only`, 호환 User Channel 출처가 필요합니다.
 - `actor_source=agent_connection:<connection_id>`는 사용자의 텍스트를 전달해도

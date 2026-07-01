@@ -147,6 +147,7 @@ pub fn validate_registry_schema(conn: &Connection) -> StoreResult<()> {
             "agent_connections",
             "connection_projects",
             "guard_installations",
+            "local_web_consent_tokens",
         ],
     )?;
     require_indexes(
@@ -166,6 +167,9 @@ pub fn validate_registry_schema(conn: &Connection) -> StoreResult<()> {
             "idx_guard_installations_status",
             "idx_guard_installations_scope_project",
             "idx_guard_installations_scope_global",
+            "idx_local_web_consent_tokens_judgment",
+            "idx_local_web_consent_tokens_connection",
+            "idx_local_web_consent_tokens_expiry",
         ],
     )?;
     require_column_spec(
@@ -360,6 +364,7 @@ pub fn validate_registry_schema(conn: &Connection) -> StoreResult<()> {
         require_column(conn, REGISTRY_DATABASE_KIND, "guard_installations", column)?;
     }
     validate_guard_installations_constraints(conn)?;
+    validate_local_web_consent_tokens(conn)?;
     validate_registry_versions(conn)?;
     validate_foreign_key_check(conn, REGISTRY_DATABASE_KIND)?;
     Ok(())
@@ -1301,6 +1306,62 @@ fn validate_guard_installations_constraints(conn: &Connection) -> StoreResult<()
             REGISTRY_DATABASE_KIND,
             "guard_installations constraints are missing or malformed",
         ));
+    }
+    Ok(())
+}
+
+fn validate_local_web_consent_tokens(conn: &Connection) -> StoreResult<()> {
+    for (column, not_null) in [
+        ("token_hash", true),
+        ("project_internal_id", true),
+        ("connection_internal_id", true),
+        ("judgment_id", true),
+        ("capture_basis", true),
+        ("status", true),
+        ("created_at", true),
+        ("expires_at", true),
+        ("consumed_at", false),
+        ("completed_at", false),
+        ("created_metadata_json", true),
+        ("completion_metadata_json", true),
+    ] {
+        require_column_spec(
+            conn,
+            REGISTRY_DATABASE_KIND,
+            "local_web_consent_tokens",
+            ColumnSpec {
+                name: column,
+                type_name: "TEXT",
+                not_null,
+                default_value: match column {
+                    "status" => Some("'pending'"),
+                    "created_metadata_json" | "completion_metadata_json" => Some("'{}'"),
+                    _ => None,
+                },
+                primary_key_position: if column == "token_hash" { 1 } else { 0 },
+            },
+        )?;
+    }
+
+    let table_sql = normalized_table_sql(conn, "local_web_consent_tokens")?;
+    let required_fragments = [
+        "length(token_hash) = 64",
+        "status in ('pending', 'consumed', 'expired')",
+        "status = 'pending'",
+        "status = 'consumed'",
+        "status = 'expired'",
+        "consumed_at is null",
+        "consumed_at is not null",
+        "completed_at is null",
+        "completed_at is not null",
+    ];
+    for fragment in required_fragments {
+        if !table_sql.contains(fragment) {
+            return Err(StoreError::schema_invariant(
+                REGISTRY_DATABASE_KIND,
+                "local_web_consent_tokens constraints are missing or malformed",
+            ));
+        }
     }
     Ok(())
 }

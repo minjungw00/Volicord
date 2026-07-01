@@ -80,7 +80,11 @@ RecordUserJudgmentRequest:
 
 로컬 User Channel 실패, 읽을 수 없는 판단 식별자, 부족한 호출 출처는 커밋 전에 거절됩니다.
 
-권한을 지니는 해결에는 `verification_basis=cli_direct_user_channel` 또는 담당 문서가 정의한 호환 User Channel 근거도 필요합니다. Agent Connection 호출, 생성된 지침 파일, 생성된 Markdown, 상태 요약, projection은 사용자 답변을 주장하거나 전달하더라도 사용자 권한을 만족할 수 없습니다.
+권한을 지니는 해결에는 `cli_direct_user_channel`, `mcp_elicitation_user_channel`,
+`user_prompt_submit_hook`, `local_user_local_web` 같은 호환 User Channel
+`verification_basis`도 필요합니다. Agent Connection 호출, 생성된 지침 파일, 생성된
+Markdown, 상태 요약, projection은 사용자 답변을 주장하거나 전달하더라도 사용자 권한을
+만족할 수 없습니다.
 
 ## 상태 버전 동작
 

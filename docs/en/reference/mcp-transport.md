@@ -26,6 +26,7 @@ This document owns:
 - stdio JSON-RPC framing, message validation, and supported MCP methods
 - local HTTP JSON-RPC request handling for the experimental serve transport
 - server-initiated MCP elicitation at the stdio transport boundary
+- local loopback web consent fallback for pending user judgments
 - MCP startup validation for one internal Agent Connection binding
 - MCP `tools/list` and `tools/call` behavior at the transport boundary
 - MCP-visible tool-schema projection that hides internal envelopes and
@@ -51,8 +52,10 @@ This document does not own:
 
 `volicord mcp --stdio` is a local MCP stdio process mode of the installed
 `volicord` executable. An MCP host starts it as a child process and communicates
-through stdin/stdout. It is not a TCP listener, HTTP listener, Unix-domain
-socket listener, or other network listener.
+through stdin/stdout. It is not an MCP TCP listener, HTTP MCP listener,
+Unix-domain socket listener, or other MCP network listener. It may start a
+separate loopback-only local web consent listener for pending user judgments
+when MCP elicitation and prompt capture are unavailable.
 
 `volicord serve --transport streamable-http` is a separate explicit process mode
 for Docker and localhost MCP use. It starts a local HTTP listener and reuses the
@@ -148,7 +151,12 @@ HTTP serve request behavior:
 - `GET /mcp` returns `SSE_UNSUPPORTED`; server-sent event streams are not
   implemented by this experimental endpoint.
 - `GET /healthz` is a minimal local health endpoint, but it still requires the
-  same bearer token. There are no unauthenticated resource endpoints.
+  same bearer token.
+- `GET /consent` and `POST /consent` are local web consent endpoints only when
+  local web consent is available. They are not MCP endpoints and do not use the
+  MCP bearer token. They require a valid one-time consent token tied to the
+  project, connection, and pending judgment.
+- There are no unauthenticated arbitrary resource endpoints.
 - CORS preflight is accepted only for the MCP endpoint, only after Origin
   allowlist validation, and only when at least one allowed Origin is configured.
 - Structured HTTP errors use stable transport error codes for authentication,
@@ -161,6 +169,7 @@ HTTP serve request behavior:
 Supported optional environment input:
 
 - `VOLICORD_HOME`
+- `VOLICORD_LOCAL_WEB_CONSENT`
 
 `VOLICORD_HOME` selects the Runtime Home for the process. It is normally written
 by generated host configuration when needed, not typed by the user in ordinary
@@ -168,6 +177,10 @@ flows. It does not select a project, connection intent, actor provenance,
 operation category, connection mode, or host trust state. The stdio process and
 `--check` use `VOLICORD_HOME` before entering startup validation. Help and
 version modes do not use it.
+
+`VOLICORD_LOCAL_WEB_CONSENT=0`, `false`, `off`, or `disabled` disables the
+stdio local web consent listener. Other values do not change the listener
+address or token policy.
 
 Connection process binding is supplied by `--connection <connection_id>` in
 generated host configuration or generic export output. It names the stored
@@ -525,14 +538,46 @@ commits a pending judgment:
   `RequestUserJudgmentResult` plus additional text content. When prompt-capture
   availability is `configured`, `observed`, or `active`, that text may include
   exact chat prompt-capture commands compatible with the prompt-submit hook path
-  and the current verification code. Otherwise, that text points to the
-  `volicord user` local CLI recovery path.
+  and the current verification code.
+- If prompt capture is unavailable and local web consent is available, the
+  adapter creates a short-lived one-time token and returns a loopback consent
+  URL plus structured fallback JSON. The URL contains only the project selector
+  and token. It does not include the Runtime Home path, repository path, prompt
+  body, answer, or arbitrary API parameters.
+- If local web consent is disabled, cannot bind safely, or cannot create a
+  token, the fallback text points to the `volicord user` local CLI recovery
+  path.
 
 For all branches, `result.content[0].text` remains the Volicord response JSON
 string. Additional `content[]` text, when present, is adapter guidance such as
 fallback instructions or an explanation that elicitation was cancelled or
 invalid. The additional text is not Core authority, not a public API response
 field, and not a user judgment record.
+
+The local web consent listener binds to `127.0.0.1` by default and must fail
+closed if it cannot bind safely. In stdio mode it uses an ephemeral loopback
+port. In `volicord serve --transport streamable-http`, local web consent is
+available only when the actual serve listener is loopback; an explicitly
+non-local serve listener must not expose the consent form.
+
+Local web consent endpoint behavior:
+
+- `GET /consent?project=<project_id>&token=<token>` validates the one-time token
+  against the current project and connection, rejects expired, consumed,
+  invalid, wrong-project, and wrong-connection tokens with a safe HTML error
+  page, and otherwise renders a minimal HTML page with the judgment text,
+  options, verification facts, and a form.
+- `POST /consent` accepts only
+  `application/x-www-form-urlencoded` form submissions with the token, selected
+  Core option ID, and optional note. If an `Origin` header is present, it must
+  match the consent endpoint origin.
+- A successful post consumes the token exactly once and records the answer
+  through Core with `actor_source=local_user`, `operation_category=user_only`,
+  and `resolved_verification_basis=local_user_local_web`.
+- Replay, expiration, consumed token reuse, wrong project, and wrong connection
+  are rejected before recording another answer.
+- The endpoint serves no Runtime Home files, product repository files, static
+  assets, MCP methods, or arbitrary APIs.
 
 For known public Volicord method-tool calls that reach Volicord, `tools/call`
 wraps the Volicord response JSON inside the MCP result:

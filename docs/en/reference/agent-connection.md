@@ -347,10 +347,15 @@ Conditions:
 - When MCP elicitation is unavailable, MCP fallback text may route the human
   user to chat prompt-capture commands compatible with the prompt-submit hook
   path when prompt-capture availability is `configured`, `observed`, or
-  `active`; otherwise the fallback text routes the user to the `volicord user`
-  local CLI recovery path.
-- No baseline local web User Channel is implemented. The experimental HTTP
-  serve transport is an MCP transport boundary, not a browser judgment UI.
+  `active`.
+- When MCP elicitation and prompt capture are unavailable, MCP fallback text may
+  route the human user to a loopback local web consent URL owned by
+  [MCP Transport](mcp-transport.md#user-judgment-elicitation). That local web
+  answer is still a `local_user` User Channel path, not an Agent Connection
+  answer.
+- The fallback text routes the user to the `volicord user` local CLI recovery
+  path only when elicitation, prompt capture, and local web consent are not
+  available.
 - Authority-bearing user-judgment resolution requires `actor_source=local_user`,
   `operation_category=user_only`, and compatible User Channel provenance.
 - `actor_source=agent_connection:<connection_id>` cannot become `local_user`

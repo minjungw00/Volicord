@@ -1154,6 +1154,7 @@ documents:
   - experimental local `volicord serve --transport streamable-http` process command contract
   - MCP stdio process startup and exit behavior
   - MCP local HTTP serve startup and transport-bound security checks
+  - MCP local web consent fallback endpoint
   - MCP process environment variables and integration-bound startup
   - MCP startup validation and integration process binding
   - MCP Runtime Home environment resolution
@@ -1428,8 +1429,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-15'
-  last_updated_on: '2026-06-26'
-  last_verified_on: '2026-06-26'
+  last_updated_on: '2026-07-01'
+  last_verified_on: '2026-07-01'
   applies_to:
   - volicord_workspace_0_1
   primary_audience:
@@ -1842,6 +1843,7 @@ documents:
   - storage-owned record values
   - storage-owned JSON placement
   - Agent Connection, Connection Projects, managed host configuration state, and guarded-operation record families
+  - local web consent token record family
 - doc_id: reference.storage-ddl
   path_en: docs/en/reference/storage-ddl.md
   path_ko: docs/ko/reference/storage-ddl.md
@@ -1931,8 +1933,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-06-28'
-  last_verified_on: '2026-06-28'
+  last_updated_on: '2026-07-01'
+  last_verified_on: '2026-07-01'
   applies_to:
   - volicord_workspace_0_1
   - storage_baseline_sqlite_v3

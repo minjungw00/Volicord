@@ -80,7 +80,12 @@ The method requires:
 
 Local User Channel failures, unreadable judgment identity, and insufficient invocation provenance reject before commit.
 
-Authority-bearing resolution additionally requires `verification_basis=cli_direct_user_channel` or another owner-defined compatible User Channel basis. An Agent Connection invocation, generated guidance file, generated Markdown, status summary, or projection cannot satisfy user authority by claiming or relaying a user answer.
+Authority-bearing resolution additionally requires a compatible User Channel
+verification basis such as `cli_direct_user_channel`,
+`mcp_elicitation_user_channel`, `user_prompt_submit_hook`, or
+`local_user_local_web`. An Agent Connection invocation, generated guidance
+file, generated Markdown, status summary, or projection cannot satisfy user
+authority by claiming or relaying a user answer.
 
 ## State version behavior
 

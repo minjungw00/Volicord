@@ -14,6 +14,7 @@ pub mod core_pipeline;
 pub mod error;
 pub mod guards;
 pub mod inspection;
+pub mod local_consent;
 pub mod migrations;
 pub mod runtime_home;
 pub mod session_watch;

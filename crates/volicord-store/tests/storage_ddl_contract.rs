@@ -95,6 +95,7 @@ fn initial_schemas_satisfy_connection_storage_contract() -> Result<(), Box<dyn E
             "agent_connections",
             "connection_projects",
             "guard_installations",
+            "local_web_consent_tokens",
             "schema_migrations",
         ],
     );
@@ -152,6 +153,24 @@ fn initial_schemas_satisfy_connection_storage_contract() -> Result<(), Box<dyn E
             "observed_binary_version",
         ],
     );
+    assert_columns_include(
+        &initial_registry_schema,
+        "local_web_consent_tokens",
+        &[
+            "token_hash",
+            "project_internal_id",
+            "connection_internal_id",
+            "judgment_id",
+            "capture_basis",
+            "status",
+            "created_at",
+            "expires_at",
+            "consumed_at",
+            "completed_at",
+            "created_metadata_json",
+            "completion_metadata_json",
+        ],
+    );
     assert_primary_key_columns(
         &initial_registry_schema,
         "connection_projects",
@@ -168,6 +187,15 @@ fn initial_schemas_satisfy_connection_storage_contract() -> Result<(), Box<dyn E
         "connection_projects",
         "projects",
         &[("project_internal_id", "project_internal_id")],
+    );
+    assert_foreign_key_columns(
+        &initial_registry_schema,
+        "local_web_consent_tokens",
+        "connection_projects",
+        &[
+            ("connection_internal_id", "connection_internal_id"),
+            ("project_internal_id", "project_internal_id"),
+        ],
     );
     assert_unique_index_columns(
         &initial_registry_schema,
@@ -196,6 +224,12 @@ fn initial_schemas_satisfy_connection_storage_contract() -> Result<(), Box<dyn E
             "config_target",
             "server_name",
         ],
+    );
+    assert!(
+        initial_registry_schema
+            .explicit_indexes
+            .contains_key("idx_local_web_consent_tokens_expiry"),
+        "expected local web consent expiry index"
     );
 
     assert!(initial_project_schema.tables.contains_key("write_checks"));

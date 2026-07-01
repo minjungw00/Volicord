@@ -44,7 +44,7 @@ The tree is representative after the relevant storage features have been used; i
 
 Storage placement:
 
-- `registry.sqlite` stores Runtime Home identity, installation profile records, project registration mapping, project aliases, Agent Connection records, Connection Projects membership, guard installation records, and registry metadata. The installation profile includes the selected `volicord` command, MCP launch command, bin directory, default connection mode, metadata, and timestamps. Project registration includes `project_internal_id`, display name, CLI selection alias, Runtime Home relationship, registered `repo_root`, `project_home`, project `state.sqlite` path, status, metadata, and timestamps.
+- `registry.sqlite` stores Runtime Home identity, installation profile records, project registration mapping, project aliases, Agent Connection records, Connection Projects membership, guard installation records, local web consent token metadata, and registry metadata. The installation profile includes the selected `volicord` command, MCP launch command, bin directory, default connection mode, metadata, and timestamps. Project registration includes `project_internal_id`, display name, CLI selection alias, Runtime Home relationship, registered `repo_root`, `project_home`, project `state.sqlite` path, status, metadata, and timestamps.
 - `projects/{project_internal_id}/` is the default Volicord project home shape for one registered project. It is not the same location or authority as `repo_root`.
 - `state.sqlite` stores project-local Core state and project-scoped guarded-operation records for the registered project.
 - `artifacts/` is the project artifact store when artifact storage is used; it may be created lazily when artifact storage is first needed. `artifacts/tmp/` is transient staging space when artifact staging requires it, not evidence authority; it may be created lazily when staging occurs. These directories need not exist immediately after project registration.
@@ -84,6 +84,7 @@ Baseline storage persists only the record families defined by this baseline stor
 | `registry.sqlite` | Agent Connection | MCP host connection unit | Durable `connection_internal_id`, host kind, connection intent, host scope, optional `project_internal_id`, internal server name, config target, mode, enabled state, managed fingerprint, verification summary status, verification report JSON, user actions JSON, metadata, and timestamps. |
 | `registry.sqlite` | Connection Projects | Connection project allowlist | Explicit many-to-many membership between an Agent Connection and registered projects using `connection_internal_id` and `project_internal_id`. |
 | `registry.sqlite` | Guard installation | Guard setup and host capability record | Runtime Home, Agent Connection, optional project scope, host kind, guard mode, host capability JSON, installation health, timestamps, and metadata. |
+| `registry.sqlite` | Local web consent token | User Channel fallback token | Hash-only one-time token metadata for a pending user judgment, scoped by project, connection, judgment, capture basis, status, expiration, and creation/completion metadata. |
 | `state.sqlite` | `project_state` | Project state header | Storage profile, `state_version`, current `Task` pointer, and project enforcement profile. |
 | `state.sqlite` | `agent_sessions` | Guarded Agent Session | Project-scoped session for one Agent Connection, optional guard installation, host kind, guard mode, start/end timestamps, and metadata. |
 | `state.sqlite` | `guard_events` | Guard decision event | Project-scoped guard event tied to a connection and optional session or installation, with decision, subject JSON, result JSON, timestamp, and metadata. |
@@ -118,6 +119,7 @@ Baseline records use opaque stable ids as primary keys or equivalent unique keys
 - Agent Connection identity is unique by `connection_internal_id`.
 - Connection Projects membership is unique by `connection_internal_id` and `project_internal_id`, and is the only registry membership that lets one connection address a registered project.
 - Guard installation identity is unique by `guard_installation_id`. Project-scoped guard installations must name a registered project and an Agent Connection that has Connection Projects membership for that project.
+- Local web consent token identity is the stored token hash. The raw token must not be stored, and a pending token must name a registered project, an Agent Connection, and matching Connection Projects membership.
 - Project-scoped rows belong to a registered project.
 - Guard sessions, guard events, prompt captures, expected writes, unrecorded changes, session watch baselines, and session watch observations belong to one project-local `state.sqlite` and name the Agent Connection that observed or produced the record.
 - Task-scoped rows belong to the same project and `Task` as their owning `tasks` row.

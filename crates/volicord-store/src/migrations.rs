@@ -8,7 +8,7 @@ pub const STORAGE_PROFILE: &str = "baseline_sqlite_v3";
 pub(crate) const OLD_STORAGE_PROFILE: &str = "baseline_sqlite";
 
 /// Latest schema version for `registry.sqlite`.
-pub const REGISTRY_SCHEMA_VERSION: i64 = 3;
+pub const REGISTRY_SCHEMA_VERSION: i64 = 4;
 
 /// Latest schema version for project `state.sqlite`.
 pub const PROJECT_STATE_SCHEMA_VERSION: i64 = 5;
@@ -34,9 +34,15 @@ const REGISTRY_MIGRATIONS: &[Migration] = &[
     },
     Migration {
         database_kind: REGISTRY_DATABASE_KIND,
-        version: REGISTRY_SCHEMA_VERSION,
+        version: 3,
         name: "registry_guard_installation_lifecycle_v3",
         sql: REGISTRY_GUARD_INSTALLATION_LIFECYCLE_SQL,
+    },
+    Migration {
+        database_kind: REGISTRY_DATABASE_KIND,
+        version: REGISTRY_SCHEMA_VERSION,
+        name: "registry_local_web_consent_tokens_v4",
+        sql: REGISTRY_LOCAL_WEB_CONSENT_TOKENS_SQL,
     },
 ];
 
@@ -573,6 +579,60 @@ UPDATE runtime_home
    SET schema_version = 3,
        updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
  WHERE schema_version = 2;
+"#;
+
+const REGISTRY_LOCAL_WEB_CONSENT_TOKENS_SQL: &str = r#"
+CREATE TABLE local_web_consent_tokens (
+  token_hash TEXT NOT NULL PRIMARY KEY CHECK (length(token_hash) = 64),
+  project_internal_id TEXT NOT NULL,
+  connection_internal_id TEXT NOT NULL,
+  judgment_id TEXT NOT NULL,
+  capture_basis TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'consumed', 'expired')),
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  consumed_at TEXT,
+  completed_at TEXT,
+  created_metadata_json TEXT NOT NULL DEFAULT '{}',
+  completion_metadata_json TEXT NOT NULL DEFAULT '{}',
+  FOREIGN KEY (project_internal_id) REFERENCES projects (project_internal_id) ON DELETE RESTRICT,
+  FOREIGN KEY (connection_internal_id)
+    REFERENCES agent_connections (connection_internal_id)
+    ON DELETE RESTRICT,
+  FOREIGN KEY (connection_internal_id, project_internal_id)
+    REFERENCES connection_projects (connection_internal_id, project_internal_id)
+    ON DELETE RESTRICT,
+  CHECK (
+    (
+      status = 'pending'
+      AND consumed_at IS NULL
+      AND completed_at IS NULL
+    )
+    OR (
+      status = 'consumed'
+      AND consumed_at IS NOT NULL
+      AND completed_at IS NOT NULL
+    )
+    OR (
+      status = 'expired'
+      AND consumed_at IS NULL
+      AND completed_at IS NULL
+    )
+  )
+);
+
+CREATE INDEX idx_local_web_consent_tokens_judgment
+  ON local_web_consent_tokens (project_internal_id, judgment_id, status);
+CREATE INDEX idx_local_web_consent_tokens_connection
+  ON local_web_consent_tokens (connection_internal_id, status, expires_at);
+CREATE INDEX idx_local_web_consent_tokens_expiry
+  ON local_web_consent_tokens (status, expires_at);
+
+UPDATE runtime_home
+   SET schema_version = 4,
+       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+ WHERE schema_version = 3;
 "#;
 
 const PROJECT_STATE_INITIAL_SQL: &str = r#"
@@ -1432,7 +1492,7 @@ mod tests {
     #[test]
     fn expected_migration_catalogs_contain_ordered_rows() {
         assert_eq!(STORAGE_PROFILE, "baseline_sqlite_v3");
-        assert_eq!(REGISTRY_SCHEMA_VERSION, 3);
+        assert_eq!(REGISTRY_SCHEMA_VERSION, 4);
         assert_eq!(PROJECT_STATE_SCHEMA_VERSION, 5);
         assert_eq!(
             expected_registry_migrations(),
@@ -1451,6 +1511,11 @@ mod tests {
                     database_kind: REGISTRY_DATABASE_KIND,
                     version: 3,
                     name: "registry_guard_installation_lifecycle_v3",
+                },
+                ExpectedMigration {
+                    database_kind: REGISTRY_DATABASE_KIND,
+                    version: 4,
+                    name: "registry_local_web_consent_tokens_v4",
                 }
             ]
         );
@@ -1500,6 +1565,7 @@ mod tests {
                 "registry_initial_v1",
                 "registry_guard_records_v2",
                 "registry_guard_installation_lifecycle_v3",
+                "registry_local_web_consent_tokens_v4",
             ],
         )?;
         drop(conn);
@@ -1513,11 +1579,13 @@ mod tests {
                 "registry_initial_v1",
                 "registry_guard_records_v2",
                 "registry_guard_installation_lifecycle_v3",
+                "registry_local_web_consent_tokens_v4",
             ],
         )?;
         assert!(table_exists(&conn, "agent_connections")?);
         assert!(table_exists(&conn, "connection_projects")?);
         assert!(table_exists(&conn, "guard_installations")?);
+        assert!(table_exists(&conn, "local_web_consent_tokens")?);
         Ok(())
     }
 
@@ -1630,7 +1698,7 @@ mod tests {
         ));
         assert!(error.to_string().contains("explicitly reinitialize"));
         assert_eq!(file_hash(&path)?, hash_before);
-        assert_eq!(migration_count(&path, REGISTRY_DATABASE_KIND)?, 3);
+        assert_eq!(migration_count(&path, REGISTRY_DATABASE_KIND)?, 4);
         assert_eq!(stored_profile(&path, "runtime_home")?, OLD_STORAGE_PROFILE);
         Ok(())
     }

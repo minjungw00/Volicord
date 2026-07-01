@@ -43,7 +43,7 @@ Write Check rows record Core-state compatibility for a product-file write attemp
 
 `registry.sqlite` stores Runtime Home identity, installation profile records, project registration, project aliases, Agent Connection records, Connection Projects membership, guard installation records, and host configuration inventory. It does not store project-local Core state.
 
-Applying the current migrations produces registry schema version `3` for storage profile `baseline_sqlite_v3`. The first DDL block is the initial physical registry schema version `1`; the guard-record additions after it are schema version `2`, and the guard-installation lifecycle replacement is schema version `3`. Storage profile and migration boundary behavior are owned by [Storage Versioning](storage-versioning.md).
+Applying the current migrations produces registry schema version `4` for storage profile `baseline_sqlite_v3`. The first DDL block is the initial physical registry schema version `1`; the guard-record additions after it are schema version `2`, the guard-installation lifecycle replacement is schema version `3`, and local web consent tokens are schema version `4`. Storage profile and migration boundary behavior are owned by [Storage Versioning](storage-versioning.md).
 
 ```sql
 CREATE TABLE schema_migrations (
@@ -233,6 +233,60 @@ CREATE UNIQUE INDEX idx_guard_installations_scope_global
 
 The version `3` registry migration updates existing `runtime_home.schema_version` rows from `2` to `3`.
 
+Registry schema version `4` adds local web consent token records for pending
+user judgments:
+
+```sql
+CREATE TABLE local_web_consent_tokens (
+  token_hash TEXT NOT NULL PRIMARY KEY CHECK (length(token_hash) = 64),
+  project_internal_id TEXT NOT NULL,
+  connection_internal_id TEXT NOT NULL,
+  judgment_id TEXT NOT NULL,
+  capture_basis TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'consumed', 'expired')),
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  consumed_at TEXT,
+  completed_at TEXT,
+  created_metadata_json TEXT NOT NULL DEFAULT '{}',
+  completion_metadata_json TEXT NOT NULL DEFAULT '{}',
+  FOREIGN KEY (project_internal_id) REFERENCES projects (project_internal_id) ON DELETE RESTRICT,
+  FOREIGN KEY (connection_internal_id)
+    REFERENCES agent_connections (connection_internal_id)
+    ON DELETE RESTRICT,
+  FOREIGN KEY (connection_internal_id, project_internal_id)
+    REFERENCES connection_projects (connection_internal_id, project_internal_id)
+    ON DELETE RESTRICT,
+  CHECK (
+    (
+      status = 'pending'
+      AND consumed_at IS NULL
+      AND completed_at IS NULL
+    )
+    OR (
+      status = 'consumed'
+      AND consumed_at IS NOT NULL
+      AND completed_at IS NOT NULL
+    )
+    OR (
+      status = 'expired'
+      AND consumed_at IS NULL
+      AND completed_at IS NULL
+    )
+  )
+);
+
+CREATE INDEX idx_local_web_consent_tokens_judgment
+  ON local_web_consent_tokens (project_internal_id, judgment_id, status);
+CREATE INDEX idx_local_web_consent_tokens_connection
+  ON local_web_consent_tokens (connection_internal_id, status, expires_at);
+CREATE INDEX idx_local_web_consent_tokens_expiry
+  ON local_web_consent_tokens (status, expires_at);
+```
+
+The version `4` registry migration updates existing `runtime_home.schema_version` rows from `3` to `4`.
+
 Registry constraints:
 
 - `runtime_home` is a singleton table. It stores Runtime Home identity, the Runtime Home path, the registry database path, storage profile, schema version, metadata, and timestamps. The stored `runtime_home_id` identifies the Runtime Home record; it is not a security guarantee.
@@ -248,13 +302,14 @@ Registry constraints:
 - `agent_connections.last_verification_report_json` stores the latest verification report JSON object. `agent_connections.last_user_actions_json` stores the latest user-action JSON array.
 - `connection_projects` is the explicit project allowlist for one Agent Connection. It stores membership with `connection_internal_id` and `project_internal_id`. Deleting a project or connection that still has membership is restricted.
 - `guard_installations` stores local guard setup lifecycle state and host capability for one Runtime Home, Agent Connection, and optional project scope. Its `guard_mode` values are `mcp_only`, `guarded`, and `managed`. Its `installation_status` values are `absent`, `configured`, `reload_required`, `active`, `degraded`, `stale`, and `broken`. A valid observed guard hook for the recorded project, Agent Connection, host kind, guard mode, policy hash, and known hook phase records first-seen and last-seen metadata. It can move a row to `active` only when required hook configuration is complete and the row is not `degraded`, `stale`, or `broken`; otherwise the observation metadata is recorded without making the installation effectively active. These rows are local authority records for guarded operation; they are not OS-level enforcement proof or write-prevention proof.
+- `local_web_consent_tokens` stores hashed one-time local web consent tokens for pending user judgments. Rows are scoped to a registered project, Agent Connection, and Connection Projects membership. The raw token is not stored. `status` is `pending`, `consumed`, or `expired`; consumed rows must have completion timestamps, and pending or expired rows must not. These rows are transient User Channel capture metadata and are not Core judgment authority by themselves.
 - `schema_migrations` records applied registry schema versions. Migration execution semantics stay with [Storage Versioning](storage-versioning.md).
 
 ## Project `state.sqlite`
 
 Each registered project has one project-local `state.sqlite`. It stores Core state for that project and repeats `project_id` in project-scoped rows so foreign keys and indexes can enforce same-project relationships.
 
-Applying the current migrations produces project-state schema version `4` for storage profile `baseline_sqlite_v3`. The main DDL block below shows the current table layout after applied migrations; guarded-operation records were introduced in schema version `2`, expected-write correlation records in schema version `3`, and local-recovery replay-category support in schema version `4`. Storage profile and migration boundary behavior are owned by [Storage Versioning](storage-versioning.md).
+Applying the current migrations produces project-state schema version `5` for storage profile `baseline_sqlite_v3`. The main DDL block below shows the current table layout after applied migrations; guarded-operation records were introduced in schema version `2`, expected-write correlation records in schema version `3`, local-recovery replay-category support in schema version `4`, and session-level Product Repository watch records in schema version `5`. Storage profile and migration boundary behavior are owned by [Storage Versioning](storage-versioning.md).
 
 ```sql
 CREATE TABLE schema_migrations (

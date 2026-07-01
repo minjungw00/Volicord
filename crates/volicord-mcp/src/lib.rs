@@ -18,6 +18,7 @@ use std::{
     path::{Path, PathBuf},
     str,
     sync::atomic::{AtomicU64, Ordering},
+    thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -33,8 +34,15 @@ use volicord_store::{
         CONNECTION_MODE_WORKFLOW,
     },
     bootstrap::{require_installation_profile, runtime_home_record, ACTIVE_PROJECT_STATUS},
-    core_pipeline::CoreProjectStore,
+    core_pipeline::{CoreProjectStore, UserJudgmentRecord},
     guards::{guard_health_record, prompt_capture_availability},
+    local_consent::{
+        consume_local_web_consent_token, create_local_web_consent_token,
+        local_web_consent_current_timestamp, validate_local_web_consent_token,
+        LocalWebConsentTokenCheck, LocalWebConsentTokenConsume, LocalWebConsentTokenConsumeOutcome,
+        LocalWebConsentTokenCreate, LocalWebConsentTokenRecord, LocalWebConsentTokenRejection,
+        LocalWebConsentTokenValidation,
+    },
     runtime_home::{
         resolve_runtime_home as resolve_shared_runtime_home, RuntimeHomeResolutionError,
     },
@@ -47,11 +55,13 @@ use volicord_types::{
     McpCloseTaskArguments, McpIntakeArguments, McpPrepareWriteArguments,
     McpReconcileChangesArguments, McpRecordRunArguments, McpRequestUserJudgmentArguments,
     McpStageArtifactArguments, McpStatusArguments, McpUpdateScopeArguments,
-    MethodOperationCategory, OperationCategory, PrepareWriteRequest, ProjectId,
-    ReconcileChangesRequest, RecordRunRequest, RecordUserJudgmentPayload,
-    RecordUserJudgmentRequest, RequestId, RequestUserJudgmentRequest, RequiredNullable,
-    StageArtifactRequest, StatusRequest, ToolEnvelope, UpdateScopeRequest, UserJudgment,
-    UserJudgmentOption, UserJudgmentOptionAction, VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
+    MethodOperationCategory, OperationCategory, PersistedJudgmentBasis,
+    PersistedUserJudgmentOptions, PrepareWriteRequest, ProjectId, ReconcileChangesRequest,
+    RecordRunRequest, RecordUserJudgmentPayload, RecordUserJudgmentRequest, RequestId,
+    RequestUserJudgmentRequest, RequiredNullable, StageArtifactRequest, StateRecordRef,
+    StatusRequest, ToolEnvelope, UpdateScopeRequest, UserJudgment, UserJudgmentContext,
+    UserJudgmentOption, UserJudgmentOptionAction, UserJudgmentStatus,
+    VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB, VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
     VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
     VERIFICATION_BASIS_MCP_STREAMABLE_HTTP_CONNECTION_BINDING,
     VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
@@ -63,6 +73,8 @@ const DEFAULT_INVOCATION_BINDING_BASIS: &str = VERIFICATION_BASIS_MCP_STDIO_CONN
 const DEFAULT_LOCALE: &str = "en-US";
 const CHECK_CLOSE_TOOL_NAME: &str = "volicord.check_close";
 const ELICITATION_CREATE_METHOD: &str = "elicitation/create";
+const LOCAL_WEB_CONSENT_PATH: &str = "/consent";
+const LOCAL_WEB_CONSENT_TOKEN_TTL_SECONDS: u64 = 10 * 60;
 static REQUEST_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
 /// Agent-facing Volicord tools exposed through workflow MCP connections.
@@ -304,12 +316,19 @@ impl McpDerivedInvocationContext {
     }
 }
 
+/// Loopback consent endpoint facts available to adapter fallback selection.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LocalWebConsentContext {
+    pub base_url: String,
+}
+
 /// Local MCP adapter bound to a Core service and one Agent Connection.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct McpAdapter {
     core: CoreService,
     runtime_home: PathBuf,
     context: McpConnectionContext,
+    local_web_consent: Option<LocalWebConsentContext>,
 }
 
 impl McpAdapter {
@@ -320,7 +339,14 @@ impl McpAdapter {
             core: CoreService::new(&runtime_home),
             runtime_home,
             context,
+            local_web_consent: None,
         }
+    }
+
+    /// Enables local loopback web consent fallback for pending user judgments.
+    pub fn with_local_web_consent(mut self, context: LocalWebConsentContext) -> Self {
+        self.local_web_consent = Some(context);
+        self
     }
 
     /// Returns the tools exposed by this adapter's current connection mode.
@@ -1112,7 +1138,11 @@ pub fn run_stdio_from_env(connection_id: &str) -> Result<(), McpAdapterError> {
     let current_dir = std::env::current_dir().map_err(current_dir_environment_error)?;
     let runtime_home = resolve_runtime_home(process_env_var, &current_dir)?;
     let context = McpConnectionContext::resolve(&runtime_home, connection_id)?;
-    let adapter = McpAdapter::new(runtime_home, context);
+    let local_web_consent = start_stdio_local_web_consent_listener(&runtime_home, &context).ok();
+    let mut adapter = McpAdapter::new(runtime_home, context);
+    if let Some(local_web_consent) = local_web_consent {
+        adapter = adapter.with_local_web_consent(local_web_consent);
+    }
     let stdin = io::stdin();
     let stdout = io::stdout();
     run_stdio(adapter, stdin.lock(), stdout.lock())
@@ -1159,6 +1189,101 @@ where
     F: Fn(&str) -> Option<OsString>,
 {
     resolve_shared_runtime_home(env_var, current_dir).map_err(McpAdapterError::from)
+}
+
+fn start_stdio_local_web_consent_listener(
+    runtime_home: &Path,
+    context: &McpConnectionContext,
+) -> Result<LocalWebConsentContext, McpAdapterError> {
+    if local_web_consent_disabled_by_env() {
+        return Err(McpAdapterError::Environment(
+            "disabled by VOLICORD_LOCAL_WEB_CONSENT".to_owned(),
+        ));
+    }
+    let listen_addr: SocketAddr = "127.0.0.1:0".parse().map_err(|error| {
+        McpAdapterError::Environment(format!("invalid listen address: {error}"))
+    })?;
+    let listener = TcpListener::bind(listen_addr).map_err(McpAdapterError::Io)?;
+    let actual_addr = listener.local_addr().map_err(McpAdapterError::Io)?;
+    if !actual_addr.ip().is_loopback() {
+        return Err(McpAdapterError::Environment(format!(
+            "local web consent listener did not bind to loopback ({actual_addr})"
+        )));
+    }
+
+    let consent_context = LocalWebConsentContext {
+        base_url: format!("http://{actual_addr}"),
+    };
+    let adapter = McpAdapter::new(runtime_home, context.clone())
+        .with_local_web_consent(consent_context.clone());
+    thread::Builder::new()
+        .name("volicord-local-web-consent".to_owned())
+        .spawn(move || {
+            let mut server = LocalWebConsentServer::new(adapter);
+            for stream in listener.incoming() {
+                match stream {
+                    Ok(mut stream) => {
+                        if let Err(error) = stream.set_read_timeout(Some(HTTP_READ_TIMEOUT)) {
+                            eprintln!(
+                                "warning: failed to set local web consent read timeout: {error}"
+                            );
+                        }
+                        if let Err(error) = server.handle_stream(&mut stream) {
+                            eprintln!("warning: local web consent request failed: {error}");
+                        }
+                    }
+                    Err(error) => {
+                        eprintln!("warning: local web consent listener stopped: {error}");
+                        break;
+                    }
+                }
+            }
+        })
+        .map_err(McpAdapterError::Io)?;
+    Ok(consent_context)
+}
+
+fn local_web_consent_disabled_by_env() -> bool {
+    std::env::var("VOLICORD_LOCAL_WEB_CONSENT")
+        .ok()
+        .is_some_and(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "0" | "false" | "off" | "disabled"
+            )
+        })
+}
+
+struct LocalWebConsentServer {
+    adapter: McpAdapter,
+}
+
+impl LocalWebConsentServer {
+    fn new(adapter: McpAdapter) -> Self {
+        Self { adapter }
+    }
+
+    fn handle_stream(&mut self, stream: &mut TcpStream) -> Result<(), StreamableHttpError> {
+        let response = match read_http_request(stream) {
+            Ok(request) => self.handle_request(request),
+            Err(response) => response,
+        };
+        write_http_response(stream, response).map_err(StreamableHttpError::Io)
+    }
+
+    fn handle_request(&mut self, request: HttpRequest) -> HttpResponse {
+        let origin = request.header("origin").map(str::to_owned);
+        if http_request_path(&request.target) == LOCAL_WEB_CONSENT_PATH {
+            handle_local_web_consent_http_request(&self.adapter, request, origin.as_deref())
+        } else {
+            local_web_consent_error_page(
+                404,
+                "Not Found",
+                "NOT_FOUND",
+                "This local listener only serves Volicord consent pages.",
+            )
+        }
+    }
 }
 
 /// MCP endpoint path used by the experimental Streamable HTTP transport.
@@ -1215,9 +1340,14 @@ pub fn run_streamable_http_server(
         &config.connection_id,
         &config.project_allowlist,
     )?;
-    let adapter = McpAdapter::new(&config.runtime_home, context);
     let listener = TcpListener::bind(config.listen_addr).map_err(StreamableHttpError::Io)?;
     let actual_addr = listener.local_addr().map_err(StreamableHttpError::Io)?;
+    let mut adapter = McpAdapter::new(&config.runtime_home, context);
+    if streamable_http_listen_is_local(&actual_addr) {
+        adapter = adapter.with_local_web_consent(LocalWebConsentContext {
+            base_url: format!("http://{actual_addr}"),
+        });
+    }
 
     if !streamable_http_listen_is_local(&actual_addr) {
         eprintln!(
@@ -1389,6 +1519,13 @@ impl StreamableHttpServer {
 
     fn handle_request(&mut self, request: HttpRequest) -> HttpResponse {
         let origin = request.header("origin").map(str::to_owned);
+        if http_request_path(&request.target) == LOCAL_WEB_CONSENT_PATH {
+            return handle_local_web_consent_http_request(
+                &self.adapter,
+                request,
+                origin.as_deref(),
+            );
+        }
         if let Err(response) = self.validate_origin(origin.as_deref()) {
             return response;
         }
@@ -1671,6 +1808,673 @@ impl StreamableHttpServer {
     }
 }
 
+fn handle_local_web_consent_http_request(
+    adapter: &McpAdapter,
+    request: HttpRequest,
+    origin: Option<&str>,
+) -> HttpResponse {
+    let Some(consent_context) = adapter.local_web_consent.as_ref() else {
+        return local_web_consent_error_page(
+            503,
+            "Service Unavailable",
+            "LOCAL_WEB_CONSENT_UNAVAILABLE",
+            "Local web consent is not available for this Volicord process.",
+        );
+    };
+    if let Some(origin) = origin {
+        if origin != consent_context.base_url {
+            return local_web_consent_error_page(
+                403,
+                "Forbidden",
+                "ORIGIN_NOT_ALLOWED",
+                "This consent form only accepts same-origin submissions.",
+            );
+        }
+    }
+
+    match request.method.as_str() {
+        "GET" => handle_local_web_consent_get(adapter, request),
+        "POST" => handle_local_web_consent_post(adapter, request),
+        _ => local_web_consent_error_page(
+            405,
+            "Method Not Allowed",
+            "METHOD_NOT_ALLOWED",
+            "This consent endpoint supports only GET and POST.",
+        )
+        .with_header("Allow", "GET, POST"),
+    }
+}
+
+fn handle_local_web_consent_get(adapter: &McpAdapter, request: HttpRequest) -> HttpResponse {
+    let fields = parse_urlencoded(http_request_query(&request.target));
+    let Some(project_id) = single_param(&fields, "project") else {
+        return local_web_consent_error_page(
+            400,
+            "Bad Request",
+            "INVALID_TOKEN",
+            "The consent link is missing required token context.",
+        );
+    };
+    let Some(token) = single_param(&fields, "token") else {
+        return local_web_consent_error_page(
+            400,
+            "Bad Request",
+            "INVALID_TOKEN",
+            "The consent link is missing required token context.",
+        );
+    };
+    let now = match local_web_consent_current_timestamp(&adapter.runtime_home) {
+        Ok(now) => now,
+        Err(_) => {
+            return local_web_consent_error_page(
+                500,
+                "Internal Server Error",
+                "STORE_UNAVAILABLE",
+                "Volicord could not check this consent token.",
+            )
+        }
+    };
+    match validate_local_web_consent(adapter, project_id, token, &now) {
+        Ok(LocalWebConsentTokenValidation::Valid(record)) => {
+            match local_web_pending_judgment(adapter, &record) {
+                Ok(judgment) => local_web_consent_page(adapter, &record, &judgment, token),
+                Err(response) => response,
+            }
+        }
+        Ok(LocalWebConsentTokenValidation::Rejected(rejection)) => {
+            local_web_consent_rejection_page(rejection)
+        }
+        Err(_) => local_web_consent_error_page(
+            500,
+            "Internal Server Error",
+            "STORE_UNAVAILABLE",
+            "Volicord could not check this consent token.",
+        ),
+    }
+}
+
+fn handle_local_web_consent_post(adapter: &McpAdapter, request: HttpRequest) -> HttpResponse {
+    if !content_type_is_form(request.header("content-type")) {
+        return local_web_consent_error_page(
+            415,
+            "Unsupported Media Type",
+            "CONTENT_TYPE_UNSUPPORTED",
+            "Consent form submissions must use application/x-www-form-urlencoded.",
+        );
+    }
+    let body = match str::from_utf8(&request.body) {
+        Ok(body) => body,
+        Err(_) => {
+            return local_web_consent_error_page(
+                400,
+                "Bad Request",
+                "FORM_ENCODING_INVALID",
+                "Consent form data must be UTF-8.",
+            )
+        }
+    };
+    let fields = parse_urlencoded(body);
+    let Some(project_id) = single_param(&fields, "project") else {
+        return local_web_consent_error_page(
+            400,
+            "Bad Request",
+            "INVALID_TOKEN",
+            "The consent form is missing required token context.",
+        );
+    };
+    let Some(token) = single_param(&fields, "token") else {
+        return local_web_consent_error_page(
+            400,
+            "Bad Request",
+            "INVALID_TOKEN",
+            "The consent form is missing required token context.",
+        );
+    };
+    let Some(selected_option_id) = single_param(&fields, "selected_option_id") else {
+        return local_web_consent_error_page(
+            400,
+            "Bad Request",
+            "INVALID_SELECTION",
+            "Choose one judgment option before submitting.",
+        );
+    };
+    let note = optional_param(&fields, "note");
+    if note.as_ref().is_some_and(|value| value.len() > 1000) {
+        return local_web_consent_error_page(
+            400,
+            "Bad Request",
+            "NOTE_TOO_LONG",
+            "The optional note must be at most 1000 characters.",
+        );
+    }
+
+    let now = match local_web_consent_current_timestamp(&adapter.runtime_home) {
+        Ok(now) => now,
+        Err(_) => {
+            return local_web_consent_error_page(
+                500,
+                "Internal Server Error",
+                "STORE_UNAVAILABLE",
+                "Volicord could not check this consent token.",
+            )
+        }
+    };
+    let validation = match validate_local_web_consent(adapter, project_id, token, &now) {
+        Ok(validation) => validation,
+        Err(_) => {
+            return local_web_consent_error_page(
+                500,
+                "Internal Server Error",
+                "STORE_UNAVAILABLE",
+                "Volicord could not check this consent token.",
+            )
+        }
+    };
+    let record = match validation {
+        LocalWebConsentTokenValidation::Valid(record) => record,
+        LocalWebConsentTokenValidation::Rejected(rejection) => {
+            return local_web_consent_rejection_page(rejection)
+        }
+    };
+    let judgment = match local_web_pending_judgment(adapter, &record) {
+        Ok(judgment) => judgment,
+        Err(response) => return response,
+    };
+    let Some(selected_option) = judgment
+        .options
+        .iter()
+        .find(|option| option.option_id.as_str() == selected_option_id)
+        .cloned()
+    else {
+        return local_web_consent_error_page(
+            400,
+            "Bad Request",
+            "INVALID_SELECTION",
+            "The selected option is not valid for this pending judgment.",
+        );
+    };
+
+    let completion_metadata = json!({
+        "selection_recording": "attempted",
+        "endpoint": LOCAL_WEB_CONSENT_PATH
+    })
+    .to_string();
+    let consume = match consume_local_web_consent_token(
+        &adapter.runtime_home,
+        LocalWebConsentTokenConsume {
+            token: token.to_owned(),
+            expected_project_id: project_id.to_owned(),
+            expected_connection_internal_id: adapter.context.connection_internal_id.to_string(),
+            now: now.clone(),
+            completion_metadata_json: completion_metadata,
+        },
+    ) {
+        Ok(outcome) => outcome,
+        Err(_) => {
+            return local_web_consent_error_page(
+                500,
+                "Internal Server Error",
+                "STORE_UNAVAILABLE",
+                "Volicord could not consume this consent token.",
+            )
+        }
+    };
+    let consumed = match consume {
+        LocalWebConsentTokenConsumeOutcome::Consumed(record) => record,
+        LocalWebConsentTokenConsumeOutcome::Rejected(rejection) => {
+            return local_web_consent_rejection_page(rejection)
+        }
+    };
+
+    match record_local_web_judgment(adapter, &judgment, &selected_option, note) {
+        Ok(recorded) if recorded.response_value["base"]["response_kind"].as_str() == Some("result") => {
+            local_web_consent_success_page(&consumed, &judgment, &selected_option)
+        }
+        Ok(_) => local_web_consent_error_page(
+            409,
+            "Conflict",
+            "JUDGMENT_RECORDING_REJECTED",
+            "Volicord could not record this answer because the pending judgment is no longer current.",
+        ),
+        Err(_) => local_web_consent_error_page(
+            500,
+            "Internal Server Error",
+            "JUDGMENT_RECORDING_FAILED",
+            "Volicord could not record this answer. The token has been consumed.",
+        ),
+    }
+}
+
+fn validate_local_web_consent(
+    adapter: &McpAdapter,
+    project_id: &str,
+    token: &str,
+    now: &str,
+) -> Result<LocalWebConsentTokenValidation, McpAdapterError> {
+    validate_local_web_consent_token(
+        &adapter.runtime_home,
+        LocalWebConsentTokenCheck {
+            token: token.to_owned(),
+            expected_project_id: project_id.to_owned(),
+            expected_connection_internal_id: adapter.context.connection_internal_id.to_string(),
+            now: now.to_owned(),
+        },
+    )
+    .map_err(McpAdapterError::Store)
+}
+
+fn local_web_pending_judgment(
+    adapter: &McpAdapter,
+    token_record: &LocalWebConsentTokenRecord,
+) -> Result<UserJudgment, HttpResponse> {
+    let project_id = ProjectId::new(token_record.project_id.clone());
+    let store = CoreProjectStore::open(&adapter.runtime_home, &project_id).map_err(|_| {
+        local_web_consent_error_page(
+            404,
+            "Not Found",
+            "WRONG_PROJECT",
+            "This consent token does not match an available project.",
+        )
+    })?;
+    let record = store
+        .user_judgment_record(&token_record.judgment_id)
+        .map_err(|_| {
+            local_web_consent_error_page(
+                500,
+                "Internal Server Error",
+                "STORE_UNAVAILABLE",
+                "Volicord could not read this pending judgment.",
+            )
+        })?
+        .ok_or_else(|| {
+            local_web_consent_error_page(
+                404,
+                "Not Found",
+                "INVALID_TOKEN",
+                "This consent token does not identify an available pending judgment.",
+            )
+        })?;
+    if record.status != "pending" {
+        return Err(local_web_consent_error_page(
+            409,
+            "Conflict",
+            "TOKEN_CONSUMED",
+            "This pending judgment has already been answered or is no longer available.",
+        ));
+    }
+    user_judgment_from_record(&record).map_err(|_| {
+        local_web_consent_error_page(
+            500,
+            "Internal Server Error",
+            "STORE_UNAVAILABLE",
+            "Volicord could not render this pending judgment.",
+        )
+    })
+}
+
+fn user_judgment_from_record(record: &UserJudgmentRecord) -> Result<UserJudgment, McpAdapterError> {
+    let request_json: Value =
+        serde_json::from_str(&record.request_json).map_err(McpAdapterError::Json)?;
+    let context: UserJudgmentContext =
+        serde_json::from_str(&record.context_json).map_err(McpAdapterError::Json)?;
+    let affected_refs: Vec<StateRecordRef> =
+        serde_json::from_str(&record.affected_refs_json).map_err(McpAdapterError::Json)?;
+    let options = serde_json::from_str::<PersistedUserJudgmentOptions>(&record.options_json)
+        .map_err(McpAdapterError::Json)?
+        .into_current_options()
+        .map_err(|error| McpAdapterError::ToolExecution {
+            tool_name: LOCAL_WEB_CONSENT_PATH.to_owned(),
+            message: error.to_string(),
+        })?;
+    let basis: PersistedJudgmentBasis =
+        serde_json::from_str(&record.basis_json).map_err(McpAdapterError::Json)?;
+    let judgment_kind =
+        serde_json::from_value::<JudgmentKind>(Value::String(record.judgment_kind.clone()))
+            .map_err(McpAdapterError::Json)?;
+    let status = serde_json::from_value::<UserJudgmentStatus>(Value::String(record.status.clone()))
+        .map_err(McpAdapterError::Json)?;
+    let presentation = serde_json::from_value(
+        request_json
+            .get("presentation")
+            .cloned()
+            .unwrap_or(Value::String("short".to_owned())),
+    )
+    .map_err(McpAdapterError::Json)?;
+    let question = request_json
+        .get("question")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_owned();
+    let required_for = serde_json::from_value(
+        request_json
+            .get("required_for")
+            .cloned()
+            .unwrap_or_else(|| json!([])),
+    )
+    .map_err(McpAdapterError::Json)?;
+    let expires_at = serde_json::from_value(
+        request_json
+            .get("expires_at")
+            .cloned()
+            .unwrap_or(Value::Null),
+    )
+    .map_err(McpAdapterError::Json)?;
+    let created_at = serde_json::from_value(Value::String(record.requested_at.clone()))
+        .map_err(McpAdapterError::Json)?;
+    Ok(UserJudgment {
+        judgment_id: record.judgment_id.clone().into(),
+        project_id: record.project_id.clone().into(),
+        task_id: record.task_id.clone().into(),
+        change_unit_id: record.change_unit_id.clone().map(Into::into),
+        judgment_kind,
+        status,
+        presentation,
+        question,
+        options,
+        context,
+        affected_refs,
+        basis,
+        required_for,
+        resolution: None,
+        expires_at,
+        created_at,
+        resolved_at: None,
+    })
+}
+
+fn record_local_web_judgment(
+    adapter: &McpAdapter,
+    judgment: &UserJudgment,
+    selected_option: &UserJudgmentOption,
+    note: Option<String>,
+) -> Result<PipelineResponse, McpAdapterError> {
+    let state_version = judgment.basis.created_at_state_version + 1;
+    let request = RecordUserJudgmentRequest {
+        envelope: ToolEnvelope {
+            project_id: judgment.project_id.clone(),
+            task_id: Some(judgment.task_id.clone()).into(),
+            request_id: RequestId::new(generated_metadata_id(
+                "req_local_web_record",
+                adapter.context.connection_internal_id.as_str(),
+                "volicord.record_user_judgment",
+            )),
+            idempotency_key: Some(IdempotencyKey::new(generated_metadata_id(
+                "idem_local_web_record",
+                adapter.context.connection_internal_id.as_str(),
+                "volicord.record_user_judgment",
+            )))
+            .into(),
+            expected_state_version: Some(state_version).into(),
+            dry_run: false,
+            locale: Some(DEFAULT_LOCALE.to_owned()).into(),
+        },
+        user_judgment_id: judgment.judgment_id.clone(),
+        judgment_kind: judgment.judgment_kind,
+        selected_option_id: selected_option.option_id.clone(),
+        answer: answer_payload_for_judgment(judgment, selected_option)?,
+        rationale: rationale_for_selected_option(
+            judgment.judgment_kind,
+            selected_option,
+            "local web consent",
+        ),
+        note: note.into(),
+        accepted_risks: accepted_risks_for_judgment(judgment, selected_option),
+    };
+    let invocation = InvocationContext::new(
+        judgment.project_id.clone(),
+        ActorSource::LocalUser,
+        OperationCategory::UserOnly,
+        VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB,
+    );
+    adapter
+        .core
+        .record_user_judgment(request, invocation)
+        .map_err(McpAdapterError::Core)
+}
+
+fn local_web_consent_page(
+    adapter: &McpAdapter,
+    token_record: &LocalWebConsentTokenRecord,
+    judgment: &UserJudgment,
+    token: &str,
+) -> HttpResponse {
+    let Some(consent_context) = adapter.local_web_consent.as_ref() else {
+        return local_web_consent_error_page(
+            503,
+            "Service Unavailable",
+            "LOCAL_WEB_CONSENT_UNAVAILABLE",
+            "Local web consent is not available for this Volicord process.",
+        );
+    };
+    let action = format!("{}{}", consent_context.base_url, LOCAL_WEB_CONSENT_PATH);
+    let options = judgment
+        .options
+        .iter()
+        .map(|option| {
+            format!(
+                "<label class=\"option\"><input type=\"radio\" name=\"selected_option_id\" value=\"{}\"{}><span><strong>{}</strong><br>{}<br><small>{}</small></span></label>",
+                html_escape(option.option_id.as_str()),
+                if option.is_default { " checked" } else { "" },
+                html_escape(&option.label),
+                html_escape(&option.description),
+                html_escape(&option.consequence)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let constraints = if judgment.context.constraints.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "<h2>Constraints</h2><ul>{}</ul>",
+            judgment
+                .context
+                .constraints
+                .iter()
+                .map(|constraint| format!("<li>{}</li>", html_escape(constraint)))
+                .collect::<Vec<_>>()
+                .join("")
+        )
+    };
+    let body = format!(
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Volicord Consent</title>{}</head><body><main><h1>Volicord Consent</h1><section><h2>Question</h2><p>{}</p><h2>Context</h2><p>{}</p>{}</section><section><h2>Verification</h2><dl><dt>Project</dt><dd>{}</dd><dt>Connection</dt><dd>{}</dd><dt>Judgment</dt><dd>{}</dd><dt>Capture basis</dt><dd>{}</dd><dt>Expires</dt><dd>{}</dd></dl></section><form method=\"post\" action=\"{}\"><input type=\"hidden\" name=\"project\" value=\"{}\"><input type=\"hidden\" name=\"token\" value=\"{}\"><fieldset><legend>Answer</legend>{}</fieldset><label>Optional note<textarea name=\"note\" maxlength=\"1000\" rows=\"4\"></textarea></label><button type=\"submit\">Submit answer</button></form></main></body></html>",
+        local_web_consent_css(),
+        html_escape(&judgment.question),
+        html_escape(&judgment.context.summary),
+        constraints,
+        html_escape(token_record.project_id.as_str()),
+        html_escape(token_record.connection_internal_id.as_str()),
+        html_escape(token_record.judgment_id.as_str()),
+        html_escape(token_record.capture_basis.as_str()),
+        html_escape(token_record.expires_at.as_str()),
+        html_escape(&action),
+        html_escape(token_record.project_id.as_str()),
+        html_escape(token),
+        options
+    );
+    HttpResponse::html(200, "OK", body)
+}
+
+fn local_web_consent_success_page(
+    token_record: &LocalWebConsentTokenRecord,
+    judgment: &UserJudgment,
+    selected_option: &UserJudgmentOption,
+) -> HttpResponse {
+    let body = format!(
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Volicord Consent Recorded</title>{}</head><body><main><h1>Answer recorded</h1><p>Volicord recorded judgment <code>{}</code> with option <code>{}</code>.</p><dl><dt>Project</dt><dd>{}</dd><dt>Capture basis</dt><dd>{}</dd><dt>Completed</dt><dd>{}</dd></dl></main></body></html>",
+        local_web_consent_css(),
+        html_escape(judgment.judgment_id.as_str()),
+        html_escape(selected_option.option_id.as_str()),
+        html_escape(token_record.project_id.as_str()),
+        html_escape(token_record.capture_basis.as_str()),
+        html_escape(
+            token_record
+                .completed_at
+                .as_deref()
+                .unwrap_or(token_record.consumed_at.as_deref().unwrap_or(""))
+        )
+    );
+    HttpResponse::html(200, "OK", body)
+}
+
+fn local_web_consent_rejection_page(rejection: LocalWebConsentTokenRejection) -> HttpResponse {
+    match rejection {
+        LocalWebConsentTokenRejection::Invalid => local_web_consent_error_page(
+            404,
+            "Not Found",
+            "INVALID_TOKEN",
+            "This consent link is not valid.",
+        ),
+        LocalWebConsentTokenRejection::Expired(_) => local_web_consent_error_page(
+            410,
+            "Gone",
+            "TOKEN_EXPIRED",
+            "This consent link has expired.",
+        ),
+        LocalWebConsentTokenRejection::Consumed(_) => local_web_consent_error_page(
+            409,
+            "Conflict",
+            "TOKEN_CONSUMED",
+            "This consent link has already been used.",
+        ),
+        LocalWebConsentTokenRejection::WrongProject { .. } => local_web_consent_error_page(
+            403,
+            "Forbidden",
+            "WRONG_PROJECT",
+            "This consent link does not match the requested project.",
+        ),
+        LocalWebConsentTokenRejection::WrongConnection { .. } => local_web_consent_error_page(
+            403,
+            "Forbidden",
+            "WRONG_CONNECTION",
+            "This consent link does not match this Volicord connection.",
+        ),
+    }
+}
+
+fn local_web_consent_error_page(
+    status: u16,
+    reason: &'static str,
+    code: &'static str,
+    message: &str,
+) -> HttpResponse {
+    let body = format!(
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Volicord Consent Error</title>{}</head><body><main><h1>Consent unavailable</h1><p>{}</p><p><code>{}</code></p></main></body></html>",
+        local_web_consent_css(),
+        html_escape(message),
+        html_escape(code)
+    );
+    HttpResponse::html(status, reason, body)
+}
+
+fn local_web_consent_css() -> &'static str {
+    "<style>body{font-family:system-ui,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;margin:0;background:#f7f7f4;color:#1e2528}main{max-width:760px;margin:0 auto;padding:32px 20px}h1{font-size:1.7rem;margin:0 0 20px}h2{font-size:1rem;margin:22px 0 8px}p,dd,li{line-height:1.45}dl{display:grid;grid-template-columns:max-content 1fr;gap:8px 16px}dt{font-weight:700}dd{margin:0}fieldset{border:1px solid #c8d0d4;padding:12px;margin:18px 0}legend{font-weight:700}.option{display:grid;grid-template-columns:24px 1fr;gap:8px;margin:10px 0;padding:10px;border:1px solid #d6dcdf;background:#fff}textarea{display:block;width:100%;box-sizing:border-box;margin-top:8px}button{margin-top:16px;padding:10px 14px;font:inherit;background:#0f5f6b;color:#fff;border:0}code{background:#e9eeee;padding:2px 4px}</style>"
+}
+
+fn html_escape(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for character in value.chars() {
+        match character {
+            '&' => escaped.push_str("&amp;"),
+            '<' => escaped.push_str("&lt;"),
+            '>' => escaped.push_str("&gt;"),
+            '"' => escaped.push_str("&quot;"),
+            '\'' => escaped.push_str("&#39;"),
+            _ => escaped.push(character),
+        }
+    }
+    escaped
+}
+
+fn http_request_path(target: &str) -> &str {
+    target
+        .split_once('?')
+        .map(|(path, _)| path)
+        .unwrap_or(target)
+}
+
+fn http_request_query(target: &str) -> &str {
+    target.split_once('?').map(|(_, query)| query).unwrap_or("")
+}
+
+fn parse_urlencoded(input: &str) -> BTreeMap<String, Vec<String>> {
+    let mut fields = BTreeMap::<String, Vec<String>>::new();
+    for pair in input.split('&') {
+        if pair.is_empty() {
+            continue;
+        }
+        let (name, value) = pair.split_once('=').unwrap_or((pair, ""));
+        let Some(name) = percent_decode_form(name) else {
+            continue;
+        };
+        let Some(value) = percent_decode_form(value) else {
+            continue;
+        };
+        fields.entry(name).or_default().push(value);
+    }
+    fields
+}
+
+fn single_param<'a>(fields: &'a BTreeMap<String, Vec<String>>, name: &str) -> Option<&'a str> {
+    let values = fields.get(name)?;
+    (values.len() == 1 && !values[0].trim().is_empty()).then_some(values[0].as_str())
+}
+
+fn optional_param(fields: &BTreeMap<String, Vec<String>>, name: &str) -> Option<String> {
+    let values = fields.get(name)?;
+    if values.len() != 1 || values[0].is_empty() {
+        None
+    } else {
+        Some(values[0].clone())
+    }
+}
+
+fn percent_decode_form(value: &str) -> Option<String> {
+    let bytes = value.as_bytes();
+    let mut output = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        match bytes[index] {
+            b'+' => {
+                output.push(b' ');
+                index += 1;
+            }
+            b'%' if index + 2 < bytes.len() => {
+                let high = hex_value(bytes[index + 1])?;
+                let low = hex_value(bytes[index + 2])?;
+                output.push((high << 4) | low);
+                index += 3;
+            }
+            b'%' => return None,
+            byte => {
+                output.push(byte);
+                index += 1;
+            }
+        }
+    }
+    String::from_utf8(output).ok()
+}
+
+fn hex_value(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
+}
+
+fn content_type_is_form(header: Option<&str>) -> bool {
+    let Some(header) = header else {
+        return false;
+    };
+    header
+        .split_once(';')
+        .map(|(media_type, _)| media_type.trim())
+        .unwrap_or_else(|| header.trim())
+        == "application/x-www-form-urlencoded"
+}
+
 enum HttpMcpDispatch {
     Response(Value),
     Accepted,
@@ -1753,6 +2557,18 @@ impl HttpResponse {
             reason,
             headers,
             body: Vec::new(),
+        }
+    }
+
+    fn html(status: u16, reason: &'static str, body: String) -> Self {
+        Self {
+            status,
+            reason,
+            headers: vec![(
+                "Content-Type".to_owned(),
+                "text/html; charset=utf-8".to_owned(),
+            )],
+            body: body.into_bytes(),
         }
     }
 
@@ -2749,6 +3565,11 @@ impl ToolCallOutput {
         self.extra_texts.push(text.into());
         self
     }
+
+    fn with_extras(mut self, texts: impl IntoIterator<Item = String>) -> Self {
+        self.extra_texts.extend(texts);
+        self
+    }
 }
 
 fn tool_call_result_from_output(output: ToolCallOutput) -> Value {
@@ -2787,14 +3608,16 @@ where
 
     if !client_supports_elicitation {
         return Ok(ToolCallOutput::success(pending_response.response_json)
-            .with_extra(chat_capture_fallback_instructions(adapter, &pending)?));
+            .with_extras(user_judgment_fallback_texts(adapter, &pending)?));
     }
 
     if let Some(reason) = elicitation_secret_request_risk(&pending) {
-        return Ok(ToolCallOutput::success(pending_response.response_json).with_extra(format!(
-            "Volicord did not open MCP elicitation for pending judgment `{}` because the prompt text appears to request or expose sensitive secret material ({reason}). Do not ask the user to enter secrets, credentials, tokens, or private keys through MCP elicitation. The judgment remains pending for a safe User Channel recovery path.",
-            pending.judgment_id.as_str()
-        )));
+        return Ok(ToolCallOutput::success(pending_response.response_json)
+            .with_extra(format!(
+                "Volicord did not open MCP elicitation for pending judgment `{}` because the prompt text appears to request or expose sensitive secret material ({reason}). Do not ask the user to enter secrets, credentials, tokens, or private keys through MCP elicitation.",
+                pending.judgment_id.as_str()
+            ))
+            .with_extras(user_judgment_fallback_texts(adapter, &pending)?));
     }
 
     let request_id = next_server_request_id("elicit_user_judgment", server_request_sequence);
@@ -2858,9 +3681,9 @@ where
             pending_response.response_json,
         )
         .with_extra(format!(
-            "MCP elicitation was unavailable after the client advertised support: {message}. {}",
-            chat_capture_fallback_instructions(adapter, &pending)?
-        ))),
+            "MCP elicitation was unavailable after the client advertised support: {message}."
+        ))
+        .with_extras(user_judgment_fallback_texts(adapter, &pending)?)),
     }
 }
 
@@ -3083,7 +3906,11 @@ fn record_elicited_judgment(
         judgment_kind: judgment.judgment_kind,
         selected_option_id: selected_option.option_id.clone(),
         answer: answer_payload_for_judgment(judgment, selected_option)?,
-        rationale: rationale_for_selected_option(judgment.judgment_kind, selected_option),
+        rationale: rationale_for_selected_option(
+            judgment.judgment_kind,
+            selected_option,
+            "MCP elicitation",
+        ),
         note: note.into(),
         accepted_risks: accepted_risks_for_judgment(judgment, selected_option),
     };
@@ -3153,11 +3980,12 @@ fn empty_answer_payload() -> RecordUserJudgmentPayload {
 fn rationale_for_selected_option(
     judgment_kind: JudgmentKind,
     selected_option: &UserJudgmentOption,
+    capture_path: &str,
 ) -> JudgmentRationale {
     let accepted = selected_option.resolution_outcome == JudgmentResolutionOutcome::Accepted;
     JudgmentRationale {
         summary: format!(
-            "User selected `{}` for `{}` through MCP elicitation.",
+            "User selected `{}` for `{}` through {capture_path}.",
             selected_option.option_id.as_str(),
             judgment_kind_value(judgment_kind)
         ),
@@ -3219,10 +4047,10 @@ fn reject_option_id(judgment: &UserJudgment) -> Option<&str> {
         .map(|option| option.option_id.as_str())
 }
 
-fn chat_capture_fallback_instructions(
+fn user_judgment_fallback_texts(
     adapter: &McpAdapter,
     judgment: &UserJudgment,
-) -> Result<String, McpAdapterError> {
+) -> Result<Vec<String>, McpAdapterError> {
     let availability = guard_health_record(
         &adapter.runtime_home,
         judgment.project_id.as_str(),
@@ -3230,13 +4058,37 @@ fn chat_capture_fallback_instructions(
     )
     .and_then(|record| prompt_capture_availability(&record))
     .map_err(McpAdapterError::Store)?;
-    if !availability.can_use_chat_commands() {
-        return Ok(format!(
-            "MCP elicitation is unavailable. The pending judgment `{}` remains unresolved. Prompt-capture chat commands are not available for this connection (prompt_capture_status={}). Use `volicord user judgments` and `volicord user judgment answer` as the local CLI recovery path.",
-            judgment.judgment_id.as_str(),
-            availability.status.as_str()
-        ));
+    if availability.can_use_chat_commands() {
+        return chat_capture_fallback_texts(adapter, judgment, availability.status.as_str());
     }
+
+    if adapter.local_web_consent.is_some() {
+        match local_web_consent_fallback_texts(adapter, judgment) {
+            Ok(texts) => return Ok(texts),
+            Err(_) => {
+                return Ok(cli_recovery_fallback_texts(
+                    adapter,
+                    judgment,
+                    availability.status.as_str(),
+                    "LOCAL_WEB_CONSENT_TOKEN_UNAVAILABLE",
+                ))
+            }
+        }
+    }
+
+    Ok(cli_recovery_fallback_texts(
+        adapter,
+        judgment,
+        availability.status.as_str(),
+        "LOCAL_WEB_CONSENT_DISABLED",
+    ))
+}
+
+fn chat_capture_fallback_texts(
+    adapter: &McpAdapter,
+    judgment: &UserJudgment,
+    prompt_capture_status: &str,
+) -> Result<Vec<String>, McpAdapterError> {
     let store = CoreProjectStore::open(&adapter.runtime_home, &judgment.project_id)
         .map_err(McpAdapterError::Store)?;
     let records = store
@@ -3260,7 +4112,7 @@ fn chat_capture_fallback_instructions(
         &requested_at,
         adapter.context.connection_internal_id.as_str(),
     );
-    let options = judgment
+    let commands = judgment
         .options
         .iter()
         .enumerate()
@@ -3272,12 +4124,127 @@ fn chat_capture_fallback_instructions(
                 option.label
             )
         })
-        .collect::<Vec<_>>()
-        .join("; ");
-    Ok(format!(
+        .collect::<Vec<_>>();
+    let options = commands.join("; ");
+    let note_command = format!("Volicord: note {chat_id} \"text\" {verification_code}");
+    let human_text = format!(
         "MCP elicitation is unavailable. The pending judgment `{}` remains unresolved. To use chat prompt capture, ask the user to send one exact command in chat: {options}. To defer with a note, use `Volicord: note {chat_id} \"text\" {verification_code}`. Do not ask the user to include secrets, credentials, tokens, or private keys.",
         judgment.judgment_id.as_str()
-    ))
+    );
+    let structured_text = fallback_state_json(json!({
+        "kind": "prompt_capture",
+        "project_id": judgment.project_id.as_str(),
+        "connection_id": adapter.context.connection_internal_id.as_str(),
+        "judgment_id": judgment.judgment_id.as_str(),
+        "prompt_capture_status": prompt_capture_status,
+        "commands": commands,
+        "note_command": note_command
+    }));
+    Ok(vec![human_text, structured_text])
+}
+
+fn local_web_consent_fallback_texts(
+    adapter: &McpAdapter,
+    judgment: &UserJudgment,
+) -> Result<Vec<String>, McpAdapterError> {
+    let Some(context) = adapter.local_web_consent.as_ref() else {
+        return Err(McpAdapterError::Environment(
+            "local web consent is not available".to_owned(),
+        ));
+    };
+    let token = generate_bearer_token()?;
+    let record = create_local_web_consent_token(
+        &adapter.runtime_home,
+        LocalWebConsentTokenCreate {
+            token: token.clone(),
+            project_id: judgment.project_id.as_str().to_owned(),
+            connection_internal_id: adapter.context.connection_internal_id.to_string(),
+            judgment_id: judgment.judgment_id.as_str().to_owned(),
+            capture_basis: VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB.to_owned(),
+            ttl_seconds: LOCAL_WEB_CONSENT_TOKEN_TTL_SECONDS,
+            created_metadata_json: json!({
+                "fallback_kind": "local_web_consent",
+                "endpoint": LOCAL_WEB_CONSENT_PATH
+            })
+            .to_string(),
+        },
+    )
+    .map_err(McpAdapterError::Store)?;
+    let url = format!(
+        "{}{}?project={}&token={}",
+        context.base_url,
+        LOCAL_WEB_CONSENT_PATH,
+        percent_encode_query(judgment.project_id.as_str()),
+        percent_encode_query(&token)
+    );
+    let human_text = format!(
+        "MCP elicitation and prompt-capture chat commands are unavailable. The pending judgment `{}` remains unresolved. Open this local Volicord consent link before {}: {}",
+        judgment.judgment_id.as_str(),
+        record.expires_at,
+        url
+    );
+    let structured_text = fallback_state_json(json!({
+        "kind": "local_web_consent",
+        "url": url,
+        "expires_at": record.expires_at,
+        "project_id": record.project_id,
+        "connection_id": record.connection_internal_id,
+        "judgment_id": record.judgment_id,
+        "capture_basis": record.capture_basis,
+        "ttl_seconds": LOCAL_WEB_CONSENT_TOKEN_TTL_SECONDS,
+        "endpoint": LOCAL_WEB_CONSENT_PATH
+    }));
+    Ok(vec![human_text, structured_text])
+}
+
+fn cli_recovery_fallback_texts(
+    adapter: &McpAdapter,
+    judgment: &UserJudgment,
+    prompt_capture_status: &str,
+    local_web_reason: &'static str,
+) -> Vec<String> {
+    let human_text = format!(
+        "MCP elicitation is unavailable. The pending judgment `{}` remains unresolved. Prompt-capture chat commands are not available for this connection (prompt_capture_status={prompt_capture_status}). Local web consent is unavailable ({local_web_reason}). Use `volicord user judgments` and `volicord user judgment answer` as the local CLI recovery path.",
+        judgment.judgment_id.as_str()
+    );
+    let structured_text = fallback_state_json(json!({
+        "kind": "cli_recovery",
+        "project_id": judgment.project_id.as_str(),
+        "connection_id": adapter.context.connection_internal_id.as_str(),
+        "judgment_id": judgment.judgment_id.as_str(),
+        "prompt_capture_status": prompt_capture_status,
+        "local_web_consent": {
+            "available": false,
+            "reason": local_web_reason
+        }
+    }));
+    vec![human_text, structured_text]
+}
+
+fn fallback_state_json(state: Value) -> String {
+    json!({ "volicord_fallback": state }).to_string()
+}
+
+fn percent_encode_query(value: &str) -> String {
+    let mut encoded = String::with_capacity(value.len());
+    for byte in value.as_bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
+            encoded.push(*byte as char);
+        } else {
+            encoded.push('%');
+            encoded.push(hex_digit(byte >> 4));
+            encoded.push(hex_digit(byte & 0x0f));
+        }
+    }
+    encoded
+}
+
+fn hex_digit(value: u8) -> char {
+    match value {
+        0..=9 => (b'0' + value) as char,
+        10..=15 => (b'A' + (value - 10)) as char,
+        _ => unreachable!("hex digit input is masked to four bits"),
+    }
 }
 
 fn chat_option_selector(index: usize, option: &UserJudgmentOption) -> String {
@@ -4070,6 +5037,213 @@ mod tests {
     }
 
     #[test]
+    fn stdio_without_elicitation_uses_local_web_consent_when_prompt_capture_unavailable(
+    ) -> Result<(), Box<dyn Error>> {
+        let fixture = CoreFixture::new("mcp-local-web-fallback")?;
+        let setup_adapter = adapter(&fixture)?;
+        let (task_id, state_version) = create_task(&setup_adapter)?;
+        let adapter = adapter_with_local_web_consent(&fixture)?;
+        let input = Cursor::new(json_lines(&[
+            initialize_request(1, json!({})),
+            initialized_notification(),
+            tools_call(
+                2,
+                "volicord.request_user_judgment",
+                product_judgment_args(&fixture, &task_id, state_version),
+            ),
+        ])?);
+        let mut output = Vec::new();
+
+        run_stdio(adapter, BufReader::new(input), &mut output)?;
+
+        let values = stdio_responses(&output)?;
+        assert_eq!(values.len(), 2);
+        let response = volicord_response_from_tool(&values[1])?;
+        assert_eq!(response["user_judgment"]["status"], "pending");
+        let fallback = values[1]["result"]["content"][1]["text"]
+            .as_str()
+            .expect("fallback text");
+        assert!(fallback.contains("local Volicord consent link"));
+        assert!(!fallback.contains("volicord user judgment answer"));
+
+        let state: Value = serde_json::from_str(
+            values[1]["result"]["content"][2]["text"]
+                .as_str()
+                .expect("structured fallback text"),
+        )?;
+        let state = &state["volicord_fallback"];
+        assert_eq!(state["kind"], "local_web_consent");
+        assert_eq!(state["project_id"], fixture.project_id());
+        assert_eq!(state["connection_id"], fixture.connection_id());
+        assert_eq!(
+            state["capture_basis"],
+            VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB
+        );
+        let url = state["url"].as_str().expect("fallback URL");
+        assert!(url.starts_with(&format!(
+            "{}{}?project=",
+            consent_base_url(),
+            LOCAL_WEB_CONSENT_PATH
+        )));
+        let token = token_from_consent_url(url)?;
+        let now = local_web_consent_current_timestamp(fixture.runtime_home_path())?;
+        let validation = validate_local_web_consent_token(
+            fixture.runtime_home_path(),
+            LocalWebConsentTokenCheck {
+                token,
+                expected_project_id: fixture.project_id().to_owned(),
+                expected_connection_internal_id: fixture.connection_id().to_owned(),
+                now,
+            },
+        )?;
+        assert!(matches!(
+            validation,
+            LocalWebConsentTokenValidation::Valid(_)
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn local_web_consent_get_renders_pending_judgment_page() -> Result<(), Box<dyn Error>> {
+        let fixture = CoreFixture::new("mcp-local-web-get")?;
+        let (_task_id, response) = create_pending_product_judgment(&fixture)?;
+        let token = "1111111111111111111111111111111111111111111111111111111111111111";
+        create_consent_token_for_response(&fixture, &response, token, 60)?;
+        let mut server = consent_server(&fixture)?;
+
+        let response = server.handle_request(consent_get_request(&consent_target(
+            fixture.project_id(),
+            token,
+        )));
+
+        assert_eq!(response.status, 200);
+        let body = http_body_text(&response)?;
+        assert!(body.contains("Volicord Consent"));
+        assert!(body.contains("Choose the focused MCP elicitation test outcome."));
+        assert!(body.contains("local_user_local_web"));
+        assert!(!body.contains("Runtime Home"));
+        Ok(())
+    }
+
+    #[test]
+    fn local_web_consent_post_records_user_owned_answer() -> Result<(), Box<dyn Error>> {
+        let fixture = CoreFixture::new("mcp-local-web-post")?;
+        let (task_id, pending_response) = create_pending_product_judgment(&fixture)?;
+        let token = "2222222222222222222222222222222222222222222222222222222222222222";
+        create_consent_token_for_response(&fixture, &pending_response, token, 60)?;
+        let mut server = consent_server(&fixture)?;
+
+        let response = server.handle_request(consent_post_request(
+            Some(consent_base_url()),
+            &format!(
+                "project={}&token={}&selected_option_id=keep&note=Browser+answer",
+                percent_encode_query(fixture.project_id()),
+                token
+            ),
+        ));
+
+        assert_eq!(response.status, 200);
+        let body = http_body_text(&response)?;
+        assert!(body.contains("Answer recorded"));
+        let pending_value = pending_response.response_value;
+        let record = stored_judgment_record(&fixture, &task_id, &pending_value)?;
+        assert_eq!(record.status, "resolved");
+        assert_eq!(
+            record.resolved_by_actor_source.as_deref(),
+            Some("local_user")
+        );
+        assert_eq!(
+            record.resolved_verification_basis.as_deref(),
+            Some(VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn local_web_consent_rejects_invalid_token() -> Result<(), Box<dyn Error>> {
+        let fixture = CoreFixture::new("mcp-local-web-invalid")?;
+        let mut server = consent_server(&fixture)?;
+
+        let response = server.handle_request(consent_get_request(&consent_target(
+            fixture.project_id(),
+            "invalid-token",
+        )));
+
+        assert_eq!(response.status, 404);
+        assert!(http_body_text(&response)?.contains("INVALID_TOKEN"));
+        Ok(())
+    }
+
+    #[test]
+    fn local_web_consent_rejects_expired_token() -> Result<(), Box<dyn Error>> {
+        let fixture = CoreFixture::new("mcp-local-web-expired")?;
+        let (_task_id, pending_response) = create_pending_product_judgment(&fixture)?;
+        let token = "3333333333333333333333333333333333333333333333333333333333333333";
+        create_consent_token_for_response(&fixture, &pending_response, token, 60)?;
+        volicord_store::local_consent::expire_local_web_consent_tokens(
+            fixture.runtime_home_path(),
+            "2999-01-01T00:00:00.000Z",
+        )?;
+        let mut server = consent_server(&fixture)?;
+
+        let response = server.handle_request(consent_get_request(&consent_target(
+            fixture.project_id(),
+            token,
+        )));
+
+        assert_eq!(response.status, 410);
+        assert!(http_body_text(&response)?.contains("TOKEN_EXPIRED"));
+        Ok(())
+    }
+
+    #[test]
+    fn local_web_consent_rejects_replay() -> Result<(), Box<dyn Error>> {
+        let fixture = CoreFixture::new("mcp-local-web-replay")?;
+        let (_task_id, pending_response) = create_pending_product_judgment(&fixture)?;
+        let token = "4444444444444444444444444444444444444444444444444444444444444444";
+        create_consent_token_for_response(&fixture, &pending_response, token, 60)?;
+        let mut server = consent_server(&fixture)?;
+        let form_body = format!(
+            "project={}&token={}&selected_option_id=keep",
+            percent_encode_query(fixture.project_id()),
+            token
+        );
+
+        let first =
+            server.handle_request(consent_post_request(Some(consent_base_url()), &form_body));
+        let replay =
+            server.handle_request(consent_post_request(Some(consent_base_url()), &form_body));
+
+        assert_eq!(first.status, 200);
+        assert_eq!(replay.status, 409);
+        assert!(http_body_text(&replay)?.contains("TOKEN_CONSUMED"));
+        Ok(())
+    }
+
+    #[test]
+    fn local_web_consent_rejects_wrong_project_and_connection() -> Result<(), Box<dyn Error>> {
+        let fixture = CoreFixture::new("mcp-local-web-context")?;
+        let (_task_id, pending_response) = create_pending_product_judgment(&fixture)?;
+        let token = "5555555555555555555555555555555555555555555555555555555555555555";
+        create_consent_token_for_response(&fixture, &pending_response, token, 60)?;
+
+        let mut server = consent_server(&fixture)?;
+        let wrong_project =
+            server.handle_request(consent_get_request(&consent_target("project_other", token)));
+        assert_eq!(wrong_project.status, 403);
+        assert!(http_body_text(&wrong_project)?.contains("WRONG_PROJECT"));
+
+        let mut wrong_connection_server =
+            consent_server_for_connection(&fixture, "conn_mcp_local_web_other")?;
+        let wrong_connection = wrong_connection_server.handle_request(consent_get_request(
+            &consent_target(fixture.project_id(), token),
+        ));
+        assert_eq!(wrong_connection.status, 403);
+        assert!(http_body_text(&wrong_connection)?.contains("WRONG_CONNECTION"));
+        Ok(())
+    }
+
+    #[test]
     fn streamable_http_rejects_missing_bearer_auth() -> Result<(), Box<dyn Error>> {
         let fixture = CoreFixture::new("mcp-http-auth")?;
         let mut server = http_server(&fixture, Vec::new(), Vec::new())?;
@@ -4242,6 +5416,18 @@ mod tests {
         Ok(McpAdapter::new(fixture.runtime_home_path(), context))
     }
 
+    fn adapter_with_local_web_consent(fixture: &CoreFixture) -> Result<McpAdapter, Box<dyn Error>> {
+        Ok(
+            adapter(fixture)?.with_local_web_consent(LocalWebConsentContext {
+                base_url: consent_base_url().to_owned(),
+            }),
+        )
+    }
+
+    fn consent_base_url() -> &'static str {
+        "http://127.0.0.1:39000"
+    }
+
     fn install_prompt_capture_guard(fixture: &CoreFixture) -> Result<(), Box<dyn Error>> {
         upsert_guard_installation(
             fixture.runtime_home_path(),
@@ -4343,6 +5529,71 @@ mod tests {
         ))
     }
 
+    fn consent_server(fixture: &CoreFixture) -> Result<StreamableHttpServer, Box<dyn Error>> {
+        consent_server_with_context(
+            fixture,
+            McpConnectionContext::resolve(fixture.runtime_home_path(), fixture.connection_id())?
+                .with_invocation_binding_basis(
+                    VERIFICATION_BASIS_MCP_STREAMABLE_HTTP_CONNECTION_BINDING,
+                ),
+        )
+    }
+
+    fn consent_server_for_connection(
+        fixture: &CoreFixture,
+        connection_id: &str,
+    ) -> Result<StreamableHttpServer, Box<dyn Error>> {
+        let existing =
+            agent_connection_record(fixture.runtime_home_path(), fixture.connection_id())?
+                .expect("fixture connection should exist");
+        ensure_agent_connection(
+            fixture.runtime_home_path(),
+            AgentConnectionRegistration {
+                connection_internal_id: connection_id.to_owned(),
+                host_kind: existing.host_kind,
+                intent: existing.intent,
+                host_scope: existing.host_scope,
+                server_name: existing.server_name,
+                config_target: format!("{}_other", existing.config_target),
+                mode: existing.mode,
+                enabled: existing.enabled,
+                managed_fingerprint: format!("{}_other", existing.managed_fingerprint),
+                last_verification_status: existing.last_verification_status,
+                last_verification_report_json: existing.last_verification_report_json,
+                last_user_actions_json: existing.last_user_actions_json,
+                metadata_json: existing.metadata_json,
+            },
+        )?;
+        add_connection_project(
+            fixture.runtime_home_path(),
+            ConnectionProjectRegistration {
+                connection_internal_id: connection_id.to_owned(),
+                project_id: fixture.project_id().to_owned(),
+            },
+        )?;
+        consent_server_with_context(
+            fixture,
+            McpConnectionContext::resolve(fixture.runtime_home_path(), connection_id)?
+                .with_invocation_binding_basis(
+                    VERIFICATION_BASIS_MCP_STREAMABLE_HTTP_CONNECTION_BINDING,
+                ),
+        )
+    }
+
+    fn consent_server_with_context(
+        fixture: &CoreFixture,
+        context: McpConnectionContext,
+    ) -> Result<StreamableHttpServer, Box<dyn Error>> {
+        Ok(StreamableHttpServer::new(
+            McpAdapter::new(fixture.runtime_home_path(), context).with_local_web_consent(
+                LocalWebConsentContext {
+                    base_url: consent_base_url().to_owned(),
+                },
+            ),
+            http_config(fixture, Vec::new(), Vec::new()),
+        ))
+    }
+
     fn http_request(
         method: &str,
         target: &str,
@@ -4374,8 +5625,38 @@ mod tests {
         })
     }
 
+    fn consent_get_request(target: &str) -> HttpRequest {
+        HttpRequest {
+            method: "GET".to_owned(),
+            target: target.to_owned(),
+            headers: BTreeMap::new(),
+            body: Vec::new(),
+        }
+    }
+
+    fn consent_post_request(origin: Option<&str>, body: &str) -> HttpRequest {
+        let mut headers = BTreeMap::new();
+        headers.insert(
+            "content-type".to_owned(),
+            "application/x-www-form-urlencoded".to_owned(),
+        );
+        if let Some(origin) = origin {
+            headers.insert("origin".to_owned(), origin.to_owned());
+        }
+        HttpRequest {
+            method: "POST".to_owned(),
+            target: LOCAL_WEB_CONSENT_PATH.to_owned(),
+            headers,
+            body: body.as_bytes().to_vec(),
+        }
+    }
+
     fn http_json(response: &HttpResponse) -> Value {
         serde_json::from_slice(&response.body).expect("HTTP body should be JSON")
+    }
+
+    fn http_body_text(response: &HttpResponse) -> Result<String, Box<dyn Error>> {
+        Ok(std::str::from_utf8(&response.body)?.to_owned())
     }
 
     fn http_header<'a>(response: &'a HttpResponse, name: &str) -> Option<&'a str> {
@@ -4406,6 +5687,61 @@ mod tests {
             },
         )?;
         Ok(())
+    }
+
+    fn create_pending_product_judgment(
+        fixture: &CoreFixture,
+    ) -> Result<(String, PipelineResponse), Box<dyn Error>> {
+        let setup_adapter = adapter(fixture)?;
+        let (task_id, state_version) = create_task(&setup_adapter)?;
+        let response = setup_adapter.call_tool(
+            "volicord.request_user_judgment",
+            product_judgment_args(fixture, &task_id, state_version),
+        )?;
+        Ok((task_id, response))
+    }
+
+    fn create_consent_token_for_response(
+        fixture: &CoreFixture,
+        response: &PipelineResponse,
+        token: &str,
+        ttl_seconds: u64,
+    ) -> Result<(), Box<dyn Error>> {
+        let judgment = pending_judgment_from_response(response)
+            .ok_or("response should include a pending user judgment")?;
+        create_local_web_consent_token(
+            fixture.runtime_home_path(),
+            LocalWebConsentTokenCreate {
+                token: token.to_owned(),
+                project_id: judgment.project_id.as_str().to_owned(),
+                connection_internal_id: fixture.connection_id().to_owned(),
+                judgment_id: judgment.judgment_id.as_str().to_owned(),
+                capture_basis: VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB.to_owned(),
+                ttl_seconds,
+                created_metadata_json: json!({ "test": "local_web_consent" }).to_string(),
+            },
+        )?;
+        Ok(())
+    }
+
+    fn consent_target(project_id: &str, token: &str) -> String {
+        format!(
+            "{}?project={}&token={}",
+            LOCAL_WEB_CONSENT_PATH,
+            percent_encode_query(project_id),
+            percent_encode_query(token)
+        )
+    }
+
+    fn token_from_consent_url(url: &str) -> Result<String, Box<dyn Error>> {
+        let query = url
+            .split_once('?')
+            .map(|(_, query)| query)
+            .ok_or("consent URL should include a query string")?;
+        let fields = parse_urlencoded(query);
+        Ok(single_param(&fields, "token")
+            .ok_or("consent URL should include exactly one token")?
+            .to_owned())
     }
 
     fn create_task(adapter: &McpAdapter) -> Result<(String, u64), Box<dyn Error>> {
