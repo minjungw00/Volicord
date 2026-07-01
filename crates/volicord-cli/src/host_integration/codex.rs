@@ -88,7 +88,12 @@ impl<R: CommandRunner> CodexAdapter<R> {
 
         let server_name = validated_server_name(request.connection_id, None)?;
         let target = self.config_path(scope, request.project)?;
-        let entry = ManagedServerEntry::new(request.connection_id, mcp_command, runtime_home);
+        let entry = ManagedServerEntry::new_project_bound(
+            request.connection_id,
+            request.project.map(|project| project.project_id),
+            mcp_command,
+            runtime_home,
+        );
         let fingerprint = managed_fingerprint(HostKind::Codex, scope, &server_name, &entry);
         let (snapshot, text) = read_text_snapshot(&target)?;
         let document = parse_document(text.as_deref(), &target)?;
@@ -156,8 +161,9 @@ impl<R: CommandRunner> CodexAdapter<R> {
         }
 
         let server_name = validated_server_name(request.connection_id, Some(request.server_name))?;
-        let entry = ManagedServerEntry::new(
+        let entry = ManagedServerEntry::new_project_bound(
             request.connection_id,
+            None,
             request.mcp_command,
             request.runtime_home,
         );

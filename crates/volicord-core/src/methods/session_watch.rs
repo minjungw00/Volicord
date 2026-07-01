@@ -19,6 +19,10 @@ use super::reconcile_changes::{observed_paths, system_resolution, ResolutionCand
 use super::*;
 
 const WATCH_METADATA_SOURCE: &str = "volicord_session_watch";
+const METHOD_BOUNDARY_PARTIAL_COVERAGE_WARNING: &str =
+    "Session-watch coverage starts at a method boundary; Product Repository changes before that boundary are outside watcher coverage.";
+const UNKNOWN_BASIS_PARTIAL_COVERAGE_WARNING: &str =
+    "Session-watch coverage basis was not recorded; treat coverage as starting at a method boundary.";
 
 pub(super) fn initialize_session_watch_baseline(
     store: &CoreProjectStore,
@@ -82,7 +86,10 @@ pub(super) fn initialize_session_watch_baseline(
                 "status_detail": "active",
                 "detector_role": "detective",
                 "does_not_prevent_writes": true,
-                "does_not_identify_actor": true
+                "does_not_identify_actor": true,
+                "coverage_start_at": now.to_string(),
+                "coverage_basis": SessionWatchCoverageBasis::MethodBoundary.as_str(),
+                "partial_coverage_warning": METHOD_BOUNDARY_PARTIAL_COVERAGE_WARNING
             }))?,
         },
     )
@@ -248,6 +255,14 @@ pub(super) fn apply_session_watch_status(
             {
                 summary.session_watch_status = SessionWatchStatus::Unavailable;
                 summary.last_session_watch_checked_at = RequiredNullable::null();
+                summary.session_watch_baseline_created_at = RequiredNullable::null();
+                summary.session_watch_coverage_start_at = RequiredNullable::null();
+                summary.session_watch_coverage_basis = RequiredNullable::null();
+                summary.session_watch_partial_coverage_warning = Some(
+                    "Session-watch baseline is unavailable; Product Repository changes are outside watcher coverage until a baseline exists."
+                        .to_owned(),
+                )
+                .into();
                 summary.session_watch_detail =
                     Some("session_watch_baseline_unavailable".to_owned()).into();
             }
@@ -266,6 +281,14 @@ pub(super) fn apply_session_watch_status(
         &baseline.updated_at,
     )?)
     .into();
+    summary.session_watch_baseline_created_at = Some(parse_owner_storage_value(
+        "session_watch_baselines",
+        baseline.watch_baseline_id.clone(),
+        "created_at",
+        &baseline.created_at,
+    )?)
+    .into();
+    apply_session_watch_coverage_metadata(summary, &baseline)?;
     summary.session_watch_detail = watch_status_detail(&baseline.metadata_json).into();
     Ok(())
 }
@@ -638,14 +661,7 @@ fn update_watch_active(
         WatchStatusUpdate {
             status: volicord_store::session_watch::SessionWatchStatus::Active,
             updated_at: now.to_string(),
-            metadata_json: serde_json::to_string(&json!({
-                "schema_version": 1,
-                "source": WATCH_METADATA_SOURCE,
-                "status_detail": detail,
-                "detector_role": "detective",
-                "does_not_prevent_writes": true,
-                "does_not_identify_actor": true
-            }))?,
+            metadata_json: watch_status_metadata_json(baseline, detail, None)?,
         },
     )
     .map(|_| ())
@@ -665,15 +681,11 @@ fn update_watch_unavailable(
         WatchStatusUpdate {
             status: volicord_store::session_watch::SessionWatchStatus::Unavailable,
             updated_at: now.to_string(),
-            metadata_json: serde_json::to_string(&json!({
-                "schema_version": 1,
-                "source": WATCH_METADATA_SOURCE,
-                "status_detail": "snapshot_unavailable",
-                "error": detail,
-                "detector_role": "detective",
-                "does_not_prevent_writes": true,
-                "does_not_identify_actor": true
-            }))?,
+            metadata_json: watch_status_metadata_json(
+                baseline,
+                "snapshot_unavailable",
+                Some(detail),
+            )?,
         },
     )
     .map(|_| ())
@@ -694,6 +706,103 @@ fn parse_session_watch_status(
             ))
         })
         .map_err(PlanError::Core)
+}
+
+fn apply_session_watch_coverage_metadata(
+    summary: &mut GuardHealthSummary,
+    baseline: &WatchBaselineRecord,
+) -> Result<(), PlanError> {
+    let metadata = watch_metadata_object(baseline).map_err(PlanError::Core)?;
+    let coverage_start_raw = metadata
+        .get("coverage_start_at")
+        .and_then(Value::as_str)
+        .unwrap_or(&baseline.created_at);
+    summary.session_watch_coverage_start_at = Some(parse_owner_storage_value(
+        "session_watch_baselines",
+        baseline.watch_baseline_id.clone(),
+        "coverage_start_at",
+        coverage_start_raw,
+    )?)
+    .into();
+
+    let (coverage_basis, fallback_warning) = match metadata
+        .get("coverage_basis")
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+    {
+        Some(raw) => (
+            parse_session_watch_coverage_basis(&baseline.watch_baseline_id, raw)?,
+            None,
+        ),
+        None => (
+            SessionWatchCoverageBasis::MethodBoundary,
+            Some(UNKNOWN_BASIS_PARTIAL_COVERAGE_WARNING.to_owned()),
+        ),
+    };
+    summary.session_watch_coverage_basis = Some(coverage_basis).into();
+
+    let warning = metadata
+        .get("partial_coverage_warning")
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .map(str::to_owned)
+        .or(fallback_warning)
+        .or_else(|| {
+            (coverage_basis != SessionWatchCoverageBasis::McpStart)
+                .then(|| METHOD_BOUNDARY_PARTIAL_COVERAGE_WARNING.to_owned())
+        });
+    summary.session_watch_partial_coverage_warning = warning.into();
+    Ok(())
+}
+
+fn parse_session_watch_coverage_basis(
+    record_ref: &str,
+    value: &str,
+) -> Result<SessionWatchCoverageBasis, PlanError> {
+    serde_json::from_value(Value::String(value.to_owned()))
+        .map_err(|_| {
+            CorePipelineError::Store(StoreError::corrupt_owner_state_value(
+                "session_watch_baselines",
+                record_ref.to_owned(),
+                "coverage_basis",
+            ))
+        })
+        .map_err(PlanError::Core)
+}
+
+fn watch_status_metadata_json(
+    baseline: &WatchBaselineRecord,
+    status_detail: &str,
+    error: Option<&str>,
+) -> CoreResult<String> {
+    let mut object = watch_metadata_object(baseline)?;
+    object.insert("schema_version".to_owned(), json!(1));
+    object.insert("source".to_owned(), json!(WATCH_METADATA_SOURCE));
+    object.insert("status_detail".to_owned(), json!(status_detail));
+    if let Some(error) = error {
+        object.insert("error".to_owned(), json!(error));
+    } else {
+        object.remove("error");
+    }
+    object.insert("detector_role".to_owned(), json!("detective"));
+    object.insert("does_not_prevent_writes".to_owned(), json!(true));
+    object.insert("does_not_identify_actor".to_owned(), json!(true));
+    serde_json::to_string(&Value::Object(object)).map_err(CorePipelineError::from)
+}
+
+fn watch_metadata_object(
+    baseline: &WatchBaselineRecord,
+) -> CoreResult<serde_json::Map<String, Value>> {
+    match serde_json::from_str::<Value>(&baseline.metadata_json) {
+        Ok(Value::Object(object)) => Ok(object),
+        Ok(_) | Err(_) => Err(CorePipelineError::Store(
+            StoreError::corrupt_owner_state_json(
+                "session_watch_baselines",
+                baseline.watch_baseline_id.clone(),
+                "metadata_json",
+            ),
+        )),
+    }
 }
 
 fn watch_status_detail(metadata_json: &str) -> Option<String> {

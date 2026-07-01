@@ -6,7 +6,7 @@ Volicord는 Codex, Claude Code, generic MCP 설정을 위한 직접 coding-agent
 
 ## 결정
 
-Volicord는 Agent Connection을 로컬 MCP 호스트 connection 하나의 지속 registry identity로 사용합니다. `volicord mcp --stdio` 프로세스는 `--connection <connection_id>`로 시작합니다. Project 접근은 프로세스 시작 때 고정하지 않고 도구 호출마다 선택하고 검증합니다.
+Volicord는 Agent Connection을 로컬 MCP 호스트 connection 하나의 지속 registry identity로 사용합니다. `volicord mcp --stdio` 프로세스는 `--connection <connection_id>`로 시작하며, 생성된 호스트 항목이 연결된 Project 하나에 안전하게 묶이면 `--project <project_id>`도 담을 수 있습니다. 여러 프로젝트 connection에서는 Project 접근을 프로세스 시작 때 고정하지 않고 도구 호출마다 선택하고 검증합니다.
 
 이 설계는 아래 책임을 분리합니다.
 
@@ -18,10 +18,11 @@ Volicord는 Agent Connection을 로컬 MCP 호스트 connection 하나의 지속
 ## 결과
 
 - 사용자 범위 호스트 설정은 등록된 모든 Project를 허용하지 않고도 명시적으로 연결된 여러 Project를 다룰 수 있습니다.
-- 호스트 MCP 명령이 같은 `connection_id`를 이미 가리키면 연결된 Project 추가나 제거에 호스트 MCP 명령 재작성이 필요하지 않습니다.
+- 여러 프로젝트를 다루는 호스트 MCP 명령이 같은 `connection_id`를 이미 가리키면 연결된 Project 추가나 제거에 명령 재작성이 필요하지 않습니다. 프로젝트에 묶인 생성 항목은 선택된 Project 바인딩이 바뀔 때 다시 생성될 수 있습니다.
 - Project 선택 실패가 결정적입니다. 어댑터는 Project 선택 누락이나 모호함을 보고하고 연결된 Project 목록을 보도록 에이전트를 안내할 수 있습니다.
+- 프로젝트에 묶인 시작은 도구 처리 전에 session-watch baseline을 만들 수 있습니다. 여러 프로젝트 시작은 명시적 프로젝트 선택 전까지 watcher coverage를 pending으로 보고합니다.
 - Host setup 상태는 설정은 되었지만 호스트 동작을 기다리는 상태와 완전한 검증 완료를 구분할 수 있습니다.
-- 생성되는 호스트 설정은 `volicord mcp --stdio --connection <connection_id>`를 사용하며 Project, connection context, actor provenance 환경 변수를 요구하지 않습니다.
+- 생성되는 호스트 설정은 프로젝트 범위 항목에 `volicord mcp --stdio --connection <connection_id> --project <project_id>`를 선호하며 connection context나 actor provenance 환경 변수를 요구하지 않습니다. 여러 연결 Project를 의도적으로 다루는 흐름에는 connection-only 생성 항목이 남습니다.
 
 ## 비목표
 

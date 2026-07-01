@@ -21,10 +21,10 @@ use crate::values::{
     JudgmentRequiredFor, JudgmentResolutionOutcome, MethodName, NextActionKind,
     PlannedBlockerSourceKind, ProjectContinuityKind, ProjectContinuityStatus,
     ProjectEnforcementProfileSource, ProjectEnforcementProfileStatus, PromptCaptureStatus,
-    RedactionState, ResponseKind, RunKind, SessionWatchStatus, StateRecordKind, TaskLifecyclePhase,
-    TaskMode, TaskResult, UnrecordedChangeResolutionBasis, UnrecordedChangeStatus,
-    UserJudgmentOptionAction, UserJudgmentStatus, UtcTimestamp, ValidatorSeverity, ValidatorStatus,
-    WriteCheckStatus, WriteDecisionCategory,
+    RedactionState, ResponseKind, RunKind, SessionWatchCoverageBasis, SessionWatchStatus,
+    StateRecordKind, TaskLifecyclePhase, TaskMode, TaskResult, UnrecordedChangeResolutionBasis,
+    UnrecordedChangeStatus, UserJudgmentOptionAction, UserJudgmentStatus, UtcTimestamp,
+    ValidatorSeverity, ValidatorStatus, WriteCheckStatus, WriteDecisionCategory,
 };
 
 /// JSON object used where an owner document defines a field as `object`.
@@ -427,6 +427,10 @@ pub struct GuardHealthSummary {
     pub mcp_connection_status: RequiredNullable<String>,
     pub session_watch_status: SessionWatchStatus,
     pub last_session_watch_checked_at: RequiredNullable<UtcTimestamp>,
+    pub session_watch_baseline_created_at: RequiredNullable<UtcTimestamp>,
+    pub session_watch_coverage_start_at: RequiredNullable<UtcTimestamp>,
+    pub session_watch_coverage_basis: RequiredNullable<SessionWatchCoverageBasis>,
+    pub session_watch_partial_coverage_warning: RequiredNullable<String>,
     pub session_watch_detail: RequiredNullable<String>,
     pub unresolved_unrecorded_change_count: u64,
     pub missing_or_stale_write_readiness: bool,

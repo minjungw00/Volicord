@@ -6,7 +6,7 @@ Volicord needs direct coding-agent host support for Codex, Claude Code, and gene
 
 ## Decision
 
-Volicord uses an Agent Connection as the durable registry identity for one local MCP host connection. A `volicord mcp --stdio` process starts with `--connection <connection_id>`. Project access is selected and validated per tool call rather than fixed at process startup.
+Volicord uses an Agent Connection as the durable registry identity for one local MCP host connection. A `volicord mcp --stdio` process starts with `--connection <connection_id>` and may also carry `--project <project_id>` when the generated host entry is safely bound to one connected Project. Multi-project connections keep project access selected and validated per tool call rather than fixed at process startup.
 
 The design keeps these responsibilities separate:
 
@@ -18,10 +18,11 @@ The design keeps these responsibilities separate:
 ## Consequences
 
 - A user-scoped host configuration can serve multiple explicitly connected Projects without granting all registered Projects.
-- Adding or removing a connected Project does not require rewriting the host MCP command when the command already points at the same `connection_id`.
+- Adding or removing a connected Project does not require rewriting a multi-project host MCP command when the command already points at the same `connection_id`; project-bound generated entries may be regenerated when their selected Project binding changes.
 - Project selection failures are deterministic: the adapter can report missing or ambiguous project selection and direct the agent to list connected Projects.
+- Project-bound startup can establish a session-watch baseline before tool handling. Multi-project startup reports watcher coverage as pending until explicit project selection.
 - Host setup status can distinguish configured-but-awaiting-host-action from complete verification.
-- Generated host configuration uses `volicord mcp --stdio --connection <connection_id>` and does not require project, connection-context, or actor-provenance environment variables.
+- Generated host configuration prefers `volicord mcp --stdio --connection <connection_id> --project <project_id>` for project-scoped entries and does not require connection-context or actor-provenance environment variables. Connection-only generated entries remain for flows that intentionally serve multiple connected Projects.
 
 ## Non-Goals
 

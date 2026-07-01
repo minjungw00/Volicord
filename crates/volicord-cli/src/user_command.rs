@@ -860,7 +860,7 @@ fn render_status_response(
     }
     if let Some(guard_health) = response.response_value.get("guard_health") {
         output.push_str(&format!(
-            "guard_mode: {}\nguard_strength: {}\nguard_capabilities: {}\nguard_effective_state: {}\nguard_observed: {}\nprompt_capture_state: {}\nprompt_capture_available: {}\nunresolved_unrecorded_changes: {}\n",
+            "guard_mode: {}\nguard_strength: {}\nguard_capabilities: {}\nguard_effective_state: {}\nguard_observed: {}\nprompt_capture_state: {}\nprompt_capture_available: {}\nwatcher_status: {}\nwatcher_baseline_created_at: {}\nwatcher_coverage_start_at: {}\nwatcher_coverage_basis: {}\nwatcher_partial_coverage_warning: {}\nunresolved_unrecorded_changes: {}\n",
             text_field(guard_health, "guard_mode", "not_configured"),
             text_field(guard_health, "guard_strength", "not_checked"),
             guard_capabilities_text(guard_health),
@@ -877,6 +877,15 @@ fn render_status_response(
                     .get("prompt_capture_available")
                     .and_then(Value::as_bool)
                     .unwrap_or(false)
+            ),
+            text_field(guard_health, "session_watch_status", "not_checked"),
+            text_field(guard_health, "session_watch_baseline_created_at", "none"),
+            text_field(guard_health, "session_watch_coverage_start_at", "none"),
+            text_field(guard_health, "session_watch_coverage_basis", "none"),
+            text_field(
+                guard_health,
+                "session_watch_partial_coverage_warning",
+                "none"
             ),
             guard_health
                 .get("unresolved_unrecorded_change_count")

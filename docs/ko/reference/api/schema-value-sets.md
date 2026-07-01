@@ -371,9 +371,10 @@ managed_guarded
 ```
 
 `authority_record_only`는 Volicord가 권한 상태는 기록할 수 있지만 선택된 보기에 대해
-활성 session watcher나 활성 전체 host hook guard를 사용할 수 없다는 뜻입니다.
-`detective_watch`는 session watcher가 활성 상태라 우회 Product Repository 변경을
-감지할 수 있지만 쓰기를 사전에 차단할 수 없다는 뜻입니다. `host_hook_guarded`는 선택된
+전체 coverage를 가진 활성 session watcher나 활성 전체 host hook guard를 사용할 수
+없다는 뜻입니다. `detective_watch`는 session watcher가 부분 coverage 경고 없이 활성
+상태이고 coverage 시작 뒤의 우회 Product Repository 변경을 감지할 수 있지만 쓰기를
+사전에 차단할 수 없다는 뜻입니다. `host_hook_guarded`는 선택된
 프로젝트 로컬 guarded host hook이 필요한 lifecycle phase에 대해 설정되고 관찰되었다는
 뜻입니다. `managed_guarded`는 host-hook guarded 조건을 만족하고 선택된 managed 배포
 메타데이터가 검증되었다는 뜻입니다. 이 라벨은 제품 정확성, review 완료, 테스트 충분성,
@@ -440,9 +441,28 @@ disabled
 active
 degraded
 unavailable
+pending_project_selection
+```
+
+`GuardHealthSummary.session_watch_coverage_basis`는 아래 값을 사용합니다.
+
+```text
+mcp_start
+first_project_selection
+method_boundary
 ```
 
 이 값들은 닫기 준비 상태와 상태 조회 보기에 쓰이는 guard 통합 상태를 보고합니다. `guard_installation_status`는 저장된 생명주기 값이고, `guard_configuration_status`는 파일과 required hook 완전성을 도출하며, `guard_observation_status`는 현재 설치에 일치하는 hook 관찰이 있는지를 도출합니다. `effective_guard_status`는 guarded 또는 managed 경로의 닫기 준비 상태 건강 점검에 쓰는 값입니다. 효과적인 `active` 건강 상태에는 guarded 또는 managed 모드, 완전한 required hook 설정, 오래되거나 깨지지 않은 설치, 현재 일치하는 관찰, 일치하는 호스트와 policy 식별 정보가 필요합니다. `prompt_capture_status`는 사용자 소유 판단 채팅 명령을 위한 prompt capture 사용 가능 상태입니다. `unsupported_by_host`는 호스트 기능이 없음을 뜻하고, `not_configured`는 선택된 연결에 prompt-capture 단계가 설정되어 있지 않음을 뜻합니다. `reload_required`는 사용 전에 설치된 설정이나 policy 식별 정보를 다시 읽어야 함을 뜻합니다. `configured`는 prompt-capture 관찰 전에도 검증 코드 채팅 명령을 표시할 수 있음을 뜻하고, `observed`는 일치하는 guard hook이 관찰되었음을 뜻합니다. `active`는 일치하는 prompt-capture hook 관찰이 기록되었음을 뜻하고, `degraded`는 저하된 guard 건강 상태 때문에 prompt capture가 차단됨을 뜻합니다. `session_watch_status`는 탐지용 watcher 사용 가능 상태입니다. `disabled`는 선택된 session-watch baseline을 사용할 수 없다는 뜻이고, `active`는 한정된 스냅샷 비교를 사용할 수 있다는 뜻이며, `degraded`는 watcher 출력이 부분적이거나 운영자 조치가 필요하다는 뜻이고, `unavailable`은 watcher가 선택된 스냅샷 확인을 수행할 수 없었다는 뜻입니다. 이 값들은 제품 정확성, 테스트 충분성, OS 강제, 샌드박싱, 보안 격리, 최종 수락, 잔여 위험 수락을 증명하지 않습니다. `mcp_only`는 활성 session watch가 선택되어 있을 때 watcher가 만든 해결되지 않은 미기록 변경 찾기가 닫기를 막는 경우를 제외하고 협력형으로 남습니다.
+
+`pending_project_selection`은 MCP session에 사용할 수 있는 프로젝트가 둘 이상이고
+session-watch baseline을 만들 만큼 프로젝트가 아직 명시적으로 선택되지 않았다는
+뜻입니다. `mcp_start`는 프로젝트에 묶인 시작 또는 HTTP session 초기화에서 MCP 도구
+처리 전에 watcher coverage가 시작된다는 뜻입니다. `first_project_selection`은 여러
+프로젝트 session이 처음 명시적인 `project_selector`를 이름 붙일 때 coverage가
+시작된다는 뜻입니다. `method_boundary`는 Core 메서드 경계 fallback에서 coverage가
+시작된다는 뜻입니다. `first_project_selection`과 `method_boundary`는 부분 coverage
+basis입니다. 기록된 coverage 시작 전의 Product Repository 변경은 watcher coverage
+밖에 있습니다.
 
 `UnrecordedChangeFinding.status`는 아래 값을 사용합니다.
 

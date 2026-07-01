@@ -71,20 +71,26 @@ HTTP compatibility. Documentation and startup diagnostics must not claim full
 protocol compatibility until those transport features are implemented and
 tested.
 
-Generated host configuration and generic exports may launch the stdio loop with
-an internal connection binding:
+Generated host configuration and generic exports launch the stdio loop with an
+internal connection binding. When the generated entry is safely project-bound,
+it also carries the selected internal project binding:
 
 ```text
-volicord mcp --stdio --connection <connection_id>
+volicord mcp --stdio --connection <connection_id> [--project <project_id>]
 ```
 
 The `<connection_id>` process-binding value comes from the stored
 `connection_internal_id` created by `volicord connect` or the export flow.
-Ordinary users should not need to type it in text-mode flows.
+The optional `<project_id>` process-binding value is a stored
+`project_internal_id` already allowed for that connection. Ordinary users
+should not need to type either value in text-mode flows.
 
 Baseline command-line behavior:
 
-- `volicord mcp --stdio --connection <connection_id>` launches the stdio loop.
+- `volicord mcp --stdio --connection <connection_id> [--project <project_id>]`
+  launches the stdio loop. When `--project` is present, the supplied value must
+  be in the connection's allowlist and the stdio process is narrowed to that
+  project before serving tool requests.
 - `volicord mcp --check --connection <connection_id>` runs startup validation
   without reading stdin.
 - `volicord mcp --check --connection <connection_id> --project <project_id>`
@@ -162,6 +168,28 @@ HTTP serve request behavior:
 - Structured HTTP errors use stable transport error codes for authentication,
   Origin, project allowlist, unsupported transport, unsupported method, and
   unsupported content negotiation failures.
+
+Session-watch startup coverage:
+
+- When stdio startup is project-bound by `--project <project_id>` or by a
+  connection context with exactly one available allowed project, the process
+  creates or attaches a session-watch baseline before serving tool requests
+  whenever bounded snapshot creation is available. The coverage basis is
+  `mcp_start`.
+- When HTTP serve initialization creates an `Mcp-Session-Id` and the selected
+  serve connection/project context has exactly one available allowed project,
+  the server creates or attaches the same `mcp_start` baseline before accepting
+  later tool requests for that session.
+- When a session still has multiple available projects, watcher coverage is
+  `pending_project_selection`; no full detective coverage is claimed until a
+  tool request names an explicit `project_selector`.
+- If a project-selected method request creates the first baseline, the basis is
+  `first_project_selection` for an explicit selector and `method_boundary` for
+  the one-project method-boundary fallback. Both bases report partial coverage
+  because earlier Product Repository changes are outside watcher coverage.
+- These baseline attempts are bounded observations. They do not prevent writes,
+  identify the actor that changed a file, store raw file contents, or create
+  OS-level enforcement.
 
 <a id="process-environment"></a>
 ## Process Environment
@@ -281,6 +309,11 @@ enabled: true|false
 allowed_projects: <count>
 available_projects: <count>
 verification_scope: startup_check_only
+watcher_status: pending_mcp_start|pending_project_selection|unavailable
+watcher_baseline_created_at: <timestamp or empty>
+watcher_coverage_start_at: <timestamp or empty>
+watcher_coverage_basis: mcp_start|empty
+watcher_partial_coverage_warning: <warning or empty>
 project[0].project_id: <project_internal_id diagnostic value>
 project[0].available: true|false
 project[0].unavailable_reason: <value or empty>
@@ -301,6 +334,13 @@ Project-detail rules:
   available projects.
 - `verification_scope: startup_check_only` is a startup and preflight statement
   only, not complete host verification.
+- `--check` does not create a session-watch baseline. `watcher_status:
+  pending_mcp_start` means a future project-bound stdio or HTTP session can
+  start coverage with basis `mcp_start`; `pending_project_selection` means a
+  future session must select a project before coverage starts.
+- Empty `watcher_baseline_created_at`, `watcher_coverage_start_at`, and
+  `watcher_coverage_basis` values mean no baseline was created by this preflight
+  command.
 - `--check` output does not include administrative status fields for connection
   presence, connected-project count, or project display name.
 
@@ -478,6 +518,17 @@ returned by `volicord.list_projects`; otherwise the adapter rejects the call
 with actionable ambiguity text. Agents must not infer project identity from
 folder names, current working directory, MCP roots, host labels, repository
 labels, or memory.
+
+`volicord.list_projects` returns the selected connection binding, mode, project
+selectors, project availability, repository-root display paths, and
+session-watch coverage fields for the current MCP session:
+`watcher_status`, `watcher_baseline_created_at`,
+`watcher_coverage_start_at`, `watcher_coverage_basis`, and
+`watcher_partial_coverage_warning`. In a multi-project session with no explicit
+project selection yet, `watcher_status=pending_project_selection`, the coverage
+timestamps and basis are `null`, and the warning states that coverage has not
+started. After explicit project selection creates a baseline, later
+`volicord.list_projects` output reports the stored coverage start and basis.
 
 The MCP adapter generates the Core envelope before dispatch. It supplies
 `request_id`, `idempotency_key` for workflow effects, `expected_state_version`

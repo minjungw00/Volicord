@@ -690,6 +690,7 @@ pub enum SessionWatchStatus {
     Active,
     Degraded,
     Unavailable,
+    PendingProjectSelection,
 }
 
 impl SessionWatchStatus {
@@ -700,6 +701,27 @@ impl SessionWatchStatus {
             Self::Active => "active",
             Self::Degraded => "degraded",
             Self::Unavailable => "unavailable",
+            Self::PendingProjectSelection => "pending_project_selection",
+        }
+    }
+}
+
+/// Basis for the session-watch coverage start time.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionWatchCoverageBasis {
+    McpStart,
+    FirstProjectSelection,
+    MethodBoundary,
+}
+
+impl SessionWatchCoverageBasis {
+    /// Returns the stable value name for this session-watch coverage basis.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::McpStart => "mcp_start",
+            Self::FirstProjectSelection => "first_project_selection",
+            Self::MethodBoundary => "method_boundary",
         }
     }
 }

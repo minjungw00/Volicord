@@ -570,6 +570,15 @@ pub fn run_init_command(
     if let Some(conflict) = host_plan.conflicts.first() {
         return Err(ConnectionCommandError::runtime(conflict.message.clone()));
     }
+    let integration_plan = plan_guard_integration(
+        host_kind,
+        parsed.mode,
+        parsed.allow_degraded,
+        &project.repo_root,
+        &connection_internal_id,
+        &planned_guard_installation_id,
+        &host_plan.entry,
+    )?;
     let mcp_command = PathBuf::from(&host_plan.entry.command);
     let metadata_json = connection_metadata_json(&host_plan, &mcp_command, &runtime_home)?;
     let mut connection = ensure_agent_connection(
@@ -2245,6 +2254,9 @@ fn build_host_plan(
         }
         HostKind::Generic => {
             let adapter = GenericAdapter;
+            let project_id = request.project_id.ok_or_else(|| {
+                ConnectionCommandError::runtime("generic MCP export requires a selected project id")
+            })?;
             let output_dir = request.export_dir.unwrap_or(request.current_dir);
             let target_path = request
                 .export_target
@@ -2253,6 +2265,7 @@ fn build_host_plan(
             adapter
                 .plan_export(GenericExportRequest {
                     connection_id: request.connection_id,
+                    project_id,
                     installation_profile: request.installation_profile,
                     mode: request.mode,
                     target_path: &target_path,

@@ -84,7 +84,7 @@ API 경계 블록:
 닫기 조건:
 
 - `intent=complete`는 사전 확인이 성공하고, 현재 `CurrentCloseBasis`에 대한 닫기 준비 상태 평가가 유효하며, 현재 닫기 근거 참조가 그 아티팩트 및 실행 기록 호환성 규칙을 만족하고, 닫기 차단 사유가 남아 있지 않을 때만 닫을 수 있습니다.
-- 확인된 연결이 `guarded` 또는 `managed` 모드이면 닫기 준비 상태는 guard 상태, prompt capture 사용 가능 사실, 해결되지 않은 미기록 Product Repository 변경, guard가 감지한 쓰기 준비 상태 문제, session watch 사용 가능성도 확인합니다. `mcp_only` 모드에서 활성 session watch는 탐지 전용으로 남지만, watcher가 만든 해결되지 않은 미기록 변경 찾기는 조정으로 해결될 때까지 닫기를 막습니다.
+- 확인된 연결이 `guarded` 또는 `managed` 모드이면 닫기 준비 상태는 guard 상태, prompt capture 사용 가능 사실, 해결되지 않은 미기록 Product Repository 변경, guard가 감지한 쓰기 준비 상태 문제, session watch 사용 가능성도 확인합니다. `mcp_only` 모드에서는 watcher coverage가 없거나 부분 coverage이면 guard health로 보고하고, 활성 session watch는 탐지 전용으로 남습니다. Watcher가 만든 해결되지 않은 미기록 변경 찾기는 조정으로 해결될 때까지 닫기를 막습니다. `managed` 모드에서는 managed policy가 전체 watcher coverage를 요구할 때 watcher coverage가 없거나 watcher coverage window가 부분적이면 닫기를 막습니다. 전체 host hook이 활성인 `guarded` 모드에서는 적용되는 guard policy가 차단 사유를 요구하지 않는 한 부분 watcher coverage window가 경고로 남을 수 있습니다.
 - Session watch 관찰은 Product Repository 쓰기를 막지 않으며 파일을 바꾼 행위자를 식별하지 않습니다. Product Repository 스냅샷 변경이 expected-write 상관관계로 덮이지 않았는지만 감지합니다.
 - 필요한 닫기 증거는 현재 닫기 근거에 맞고 주장과 일치하는 증거 관찰 출처로 뒷받침되어야 합니다. 더 강한 출처가 필요한 닫기 요구사항에는 확인되지 않은 주장, 출처 없는 증거, 오래된 출처, 협력적 에이전트 보고만으로 된 증거가 충분하지 않습니다.
 - `intent=cancel`은 `machine_action=accept`, `resolution_outcome=accepted`, `resolved_by_actor_source=local_user`, 호환 User Channel 출처, `Task`, 현재 범위 리비전, 현재 적용 Change Unit에 묶인 근거를 가진 현재 수락된 취소 판단을 요구합니다. 완료 전용 증거, 최종 수락, 잔여 위험 수락은 필요하지 않습니다.
@@ -230,7 +230,7 @@ CloseTaskRequest:
 | `guard_required_hooks_missing` | `connection_capability` | guarded 또는 managed 닫기 경로에 필요한 hook 단계가 누락된 guard 설치가 있습니다. 이 차단 사유는 누락 단계, 호스트 종류, `terminal_action_required`, `can_resolve_in_chat`, `next_actions`를 보고합니다. |
 | `guard_degraded` | `connection_capability` | guarded 또는 managed 닫기 경로에 더 구체적인 guard 차단 사유로 처리되지 않는 degraded guard 설정 또는 건강 상태가 있고 현재 guard policy가 degraded 상태에서 닫기를 차단합니다. |
 | `guard_connection_unhealthy` | `connection_capability` | guarded 또는 managed 닫기 경로에 건강하지 않은 Agent Connection 상태 사실이 있습니다. |
-| `session_watch_unavailable` | `connection_capability` | managed 닫기 경로에 활성 Product Repository session watch가 필요하지만 선택된 watcher 상태가 `disabled`, `degraded`, 또는 `unavailable`입니다. |
+| `session_watch_unavailable` | `connection_capability` | managed 닫기 경로에 전체 Product Repository session-watch coverage가 필요하지만 선택된 watcher 상태가 `disabled`, `degraded`, `unavailable`이거나 활성 상태이면서 부분 coverage 경고가 있습니다. |
 | `unresolved_unrecorded_changes` | `connection_capability` | guard 기록 또는 활성 session-watch 기록에 닫기 전에 조정해야 하는 해결되지 않은 미기록 Product Repository 변경이 있습니다. 이 차단 사유는 `owner_method=volicord.reconcile_changes`인 `next_actions`를 포함하며, `can_resolve_in_chat`은 현재 경로가 채팅 매개 사용자 경로로 진행할 수 있는지를 나타냅니다. |
 | `guard_write_readiness_missing_or_stale` | `write_compatibility` | guard 이벤트가 닫기 경로에 누락되었거나 오래된 쓰기 준비 상태를 감지했습니다. |
 | `evidence_claim_unsupported` | `evidence_claim` | 필요한 닫기 주장이 지원되는 증거 범위를 갖지 못했습니다. |
@@ -271,7 +271,7 @@ CloseTaskRequest:
 | 분기 | 생성 규칙 |
 |---|---|
 | `intent=check` | 현재 닫기 준비 상태 차단 사유를 응답 관찰 데이터로 반환합니다. |
-| `intent=complete` | 완료 경로가 닫기 준비 상태 평가에 도달했고 담당 문서가 정의한 닫기 요구사항이 해결되지 않았을 때 닫기 차단 사유를 만듭니다. `guarded` 또는 `managed` 모드에서는 guard 상태, 해결되지 않은 미기록 변경, session watch, guard가 감지한 쓰기 준비 상태 차단 사유도 포함합니다. `mcp_only` 모드에서는 watcher가 만든 해결되지 않은 미기록 변경 찾기도 watcher가 활성일 때 닫기를 막습니다. |
+| `intent=complete` | 완료 경로가 닫기 준비 상태 평가에 도달했고 담당 문서가 정의한 닫기 요구사항이 해결되지 않았을 때 닫기 차단 사유를 만듭니다. `guarded` 또는 `managed` 모드에서는 guard 상태, 해결되지 않은 미기록 변경, session watch, guard가 감지한 쓰기 준비 상태 차단 사유도 포함합니다. `mcp_only` 모드에서는 watcher가 만든 해결되지 않은 미기록 변경 찾기도 watcher가 활성일 때 닫기를 막고, 부분 watcher coverage는 다른 담당 policy가 차단하지 않는 한 guard-health 경고로 남습니다. |
 | `intent=cancel` | 취소 권한 누락이나 비호환을 포함해 취소 전용 종료 제약에 대해서만 차단 사유를 만듭니다. 완료 전용 증거, 최종 수락, 잔여 위험 공백은 그 자체로 취소를 막지 않습니다. |
 | `intent=supersede` | 대체 전용 종료 제약에 대해서만 차단 사유를 만듭니다. 완료 전용 증거, 최종 수락, 잔여 위험 공백은 그 자체로 대체를 막지 않습니다. |
 

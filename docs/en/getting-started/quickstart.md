@@ -22,14 +22,15 @@ installation profile when needed, registers the selected repository, installs
 project-scoped MCP configuration for the selected host, writes Volicord-managed
 guidance and policy metadata, and records guard installation status.
 Generated host configuration starts the single public executable as
-`volicord mcp --stdio`.
+project-bound `volicord mcp --stdio`.
 
 This fast path uses `--mode mcp-only`, which does not require host lifecycle
 hook installation and has no pre-tool blocking hook. If a session watcher
-becomes active for the selected session, guard health may report
-`detective_watch` and create unrecorded-change findings from Product Repository
-metadata changes, but the watcher does not prevent writes or identify who made
-the change. Default `guarded` init requires verified support for all
+becomes active for the selected session without a partial-coverage warning,
+guard health may report `detective_watch` and create unrecorded-change findings
+from Product Repository metadata changes after watcher coverage starts, but the
+watcher does not prevent writes or identify who made the change. Default
+`guarded` init requires verified support for all
 required host hook phases; if support is missing, use `--allow-degraded` only
 when you explicitly want degraded guard files and missing-hook diagnostics.
 Managed init additionally requires a verified managed distribution contract and

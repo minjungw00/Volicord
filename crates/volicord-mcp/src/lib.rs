@@ -35,7 +35,10 @@ use volicord_store::{
     },
     bootstrap::{require_installation_profile, runtime_home_record, ACTIVE_PROJECT_STATUS},
     core_pipeline::{CoreProjectStore, UserJudgmentRecord},
-    guards::{guard_health_record, prompt_capture_availability},
+    guards::{
+        agent_session, guard_health_record, insert_agent_session, prompt_capture_availability,
+        AgentSessionInsert,
+    },
     local_consent::{
         consume_local_web_consent_token, create_local_web_consent_token,
         local_web_consent_current_timestamp, validate_local_web_consent_token,
@@ -45,6 +48,11 @@ use volicord_store::{
     },
     runtime_home::{
         resolve_runtime_home as resolve_shared_runtime_home, RuntimeHomeResolutionError,
+    },
+    session_watch::{
+        create_watch_baseline, latest_watch_baseline_for_session, snapshot_product_repository,
+        SessionWatchStatus as StoreSessionWatchStatus, WatchBaselineCreate, WatchBaselineRecord,
+        WatchSnapshotOptions,
     },
     StoreError,
 };
@@ -58,10 +66,11 @@ use volicord_types::{
     MethodOperationCategory, OperationCategory, PersistedJudgmentBasis,
     PersistedUserJudgmentOptions, PrepareWriteRequest, ProjectId, ReconcileChangesRequest,
     RecordRunRequest, RecordUserJudgmentPayload, RecordUserJudgmentRequest, RequestId,
-    RequestUserJudgmentRequest, RequiredNullable, StageArtifactRequest, StateRecordRef,
-    StatusRequest, ToolEnvelope, UpdateScopeRequest, UserJudgment, UserJudgmentContext,
-    UserJudgmentOption, UserJudgmentOptionAction, UserJudgmentStatus,
-    VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB, VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
+    RequestUserJudgmentRequest, RequiredNullable, SessionWatchCoverageBasis, SessionWatchStatus,
+    StageArtifactRequest, StateRecordRef, StatusRequest, ToolEnvelope, UpdateScopeRequest,
+    UserJudgment, UserJudgmentContext, UserJudgmentOption, UserJudgmentOptionAction,
+    UserJudgmentStatus, VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB,
+    VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
     VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
     VERIFICATION_BASIS_MCP_STREAMABLE_HTTP_CONNECTION_BINDING,
     VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
@@ -99,6 +108,11 @@ pub const ADAPTER_UTILITY_TOOL_NAMES: [&str; 1] = ["volicord.list_projects"];
 
 const LIST_PROJECTS_TOOL_NAME: &str = "volicord.list_projects";
 const SERVER_INSTRUCTIONS: &str = "Volicord records task scope, write readiness, evidence, runs, user-owned judgment requests, artifacts, and close readiness for explicitly registered Product Repositories. If project selection is unclear, call volicord.list_projects and use one listed project_selector; do not guess from folders, roots, labels, or memory. Volicord state management is separate from permission to edit product files: product-file edits still require the host/user path and any required Write Check. These instructions are guidance, not access control or a promise of automatic tool use.";
+const WATCH_METADATA_SOURCE: &str = "volicord_session_watch";
+const FIRST_PROJECT_SELECTION_PARTIAL_COVERAGE_WARNING: &str =
+    "Session-watch coverage starts at first explicit project selection; Product Repository changes before project selection are outside watcher coverage.";
+const METHOD_BOUNDARY_PARTIAL_COVERAGE_WARNING: &str =
+    "Session-watch coverage starts at a method boundary; Product Repository changes before that boundary are outside watcher coverage.";
 
 /// Minimal MCP adapter marker for validating dependency direction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -244,14 +258,33 @@ impl McpConnectionStartupInspection {
             .iter()
             .filter(|project| project.available)
             .count();
+        let (watcher_status, watcher_coverage_basis, watcher_partial_coverage_warning) =
+            if available_projects == 1 {
+                ("pending_mcp_start", "mcp_start", "")
+            } else if available_projects > 1 {
+                (
+                    "pending_project_selection",
+                    "",
+                    "project_selector is required before session-watch coverage can start",
+                )
+            } else {
+                (
+                    "unavailable",
+                    "",
+                    "no available project is ready for session-watch coverage",
+                )
+            };
         let mut report = format!(
-            "configuration: valid\ntransport: stdio\nruntime_home: {}\nconnection_id: {}\nmode: {}\nenabled: {}\nallowed_projects: {}\navailable_projects: {}\nverification_scope: startup_check_only\n",
+            "configuration: valid\ntransport: stdio\nruntime_home: {}\nconnection_id: {}\nmode: {}\nenabled: {}\nallowed_projects: {}\navailable_projects: {}\nverification_scope: startup_check_only\nwatcher_status: {}\nwatcher_baseline_created_at: \nwatcher_coverage_start_at: \nwatcher_coverage_basis: {}\nwatcher_partial_coverage_warning: {}\n",
             self.runtime_home.display(),
             self.connection_internal_id.as_str(),
             self.mode.as_str(),
             self.enabled,
             self.allowed_project_count,
-            available_projects
+            available_projects,
+            watcher_status,
+            watcher_coverage_basis,
+            watcher_partial_coverage_warning
         );
         for (index, project) in self.projects.iter().enumerate() {
             report.push_str(&format!(
@@ -279,6 +312,11 @@ pub struct McpProjectAvailability {
 struct ListProjectsResult {
     connection_id: String,
     mode: AgentConnectionMode,
+    watcher_status: SessionWatchStatus,
+    watcher_baseline_created_at: Option<String>,
+    watcher_coverage_start_at: Option<String>,
+    watcher_coverage_basis: Option<SessionWatchCoverageBasis>,
+    watcher_partial_coverage_warning: Option<String>,
     projects: Vec<ListProjectItem>,
 }
 
@@ -288,6 +326,15 @@ struct ListProjectItem {
     available: bool,
     unavailable_reason: Option<String>,
     repo_root: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct McpSessionWatchCoverage {
+    status: SessionWatchStatus,
+    baseline_created_at: Option<String>,
+    coverage_start_at: Option<String>,
+    coverage_basis: Option<SessionWatchCoverageBasis>,
+    partial_coverage_warning: Option<String>,
 }
 
 /// Invocation context derived for one tool call before entering Core.
@@ -350,6 +397,266 @@ impl McpAdapter {
     pub fn with_local_web_consent(mut self, context: LocalWebConsentContext) -> Self {
         self.local_web_consent = Some(context);
         self
+    }
+
+    /// Initializes a session-watch baseline before serving tools when startup is project-bound.
+    pub fn initialize_startup_session_watch(
+        &self,
+        session_id: &str,
+    ) -> Result<(), McpAdapterError> {
+        let Some(project_id) = self.project_bound_startup_project()? else {
+            return Ok(());
+        };
+        self.ensure_session_watch_baseline(
+            &project_id,
+            session_id,
+            SessionWatchCoverageBasis::McpStart,
+        )
+    }
+
+    fn project_bound_startup_project(&self) -> Result<Option<ProjectId>, McpAdapterError> {
+        let available_projects = self
+            .allowed_project_availabilities("session watch startup")?
+            .into_iter()
+            .filter(|project| project.available)
+            .collect::<Vec<_>>();
+        if available_projects.len() == 1 {
+            Ok(Some(ProjectId::new(&available_projects[0].project_id)))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn ensure_session_watch_baseline(
+        &self,
+        project_id: &ProjectId,
+        session_id: &str,
+        coverage_basis: SessionWatchCoverageBasis,
+    ) -> Result<(), McpAdapterError> {
+        if latest_watch_baseline_for_session(&self.runtime_home, project_id.as_str(), session_id)
+            .map_err(McpAdapterError::Store)?
+            .is_some()
+        {
+            return Ok(());
+        }
+
+        let now = local_web_consent_current_timestamp(&self.runtime_home)
+            .map_err(McpAdapterError::Store)?;
+        self.ensure_agent_session_for_watch(project_id, session_id, &now)?;
+
+        if latest_watch_baseline_for_session(&self.runtime_home, project_id.as_str(), session_id)
+            .map_err(McpAdapterError::Store)?
+            .is_some()
+        {
+            return Ok(());
+        }
+
+        let store = CoreProjectStore::open(&self.runtime_home, project_id)
+            .map_err(McpAdapterError::Store)?;
+        let snapshot = match snapshot_product_repository(
+            &self.runtime_home,
+            &store.project_record().repo_root,
+            WatchSnapshotOptions::default(),
+        ) {
+            Ok(snapshot) => snapshot,
+            Err(_) => return Ok(()),
+        };
+        let partial_coverage_warning = match coverage_basis {
+            SessionWatchCoverageBasis::McpStart => None,
+            SessionWatchCoverageBasis::FirstProjectSelection => {
+                Some(FIRST_PROJECT_SELECTION_PARTIAL_COVERAGE_WARNING)
+            }
+            SessionWatchCoverageBasis::MethodBoundary => {
+                Some(METHOD_BOUNDARY_PARTIAL_COVERAGE_WARNING)
+            }
+        };
+        let mut metadata = json!({
+            "schema_version": 1,
+            "source": WATCH_METADATA_SOURCE,
+            "status_detail": "active",
+            "detector_role": "detective",
+            "does_not_prevent_writes": true,
+            "does_not_identify_actor": true,
+            "coverage_start_at": now,
+            "coverage_basis": coverage_basis.as_str(),
+        });
+        if let Some(warning) = partial_coverage_warning {
+            metadata["partial_coverage_warning"] = json!(warning);
+        }
+        create_watch_baseline(
+            &self.runtime_home,
+            project_id.as_str(),
+            WatchBaselineCreate {
+                watch_baseline_id: generated_metadata_id(
+                    "watch_base",
+                    project_id.as_str(),
+                    session_id,
+                ),
+                session_id: session_id.to_owned(),
+                connection_internal_id: self.context.connection_internal_id.as_str().to_owned(),
+                guard_installation_id: self.selected_guard_installation_id(project_id)?,
+                status: StoreSessionWatchStatus::Active,
+                snapshot,
+                created_at: metadata["coverage_start_at"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_owned(),
+                metadata_json: serde_json::to_string(&metadata).map_err(McpAdapterError::Json)?,
+            },
+        )
+        .map_err(McpAdapterError::Store)?;
+        Ok(())
+    }
+
+    fn ensure_agent_session_for_watch(
+        &self,
+        project_id: &ProjectId,
+        session_id: &str,
+        now: &str,
+    ) -> Result<(), McpAdapterError> {
+        if agent_session(&self.runtime_home, project_id.as_str(), session_id)
+            .map_err(McpAdapterError::Store)?
+            .is_some()
+        {
+            return Ok(());
+        }
+        let record = guard_health_record(
+            &self.runtime_home,
+            project_id.as_str(),
+            self.context.connection_internal_id.as_str(),
+        )
+        .map_err(McpAdapterError::Store)?;
+        let guard_installation_id = record
+            .guard_installation
+            .as_ref()
+            .map(|installation| installation.guard_installation_id.clone());
+        let guard_mode = record
+            .guard_installation
+            .as_ref()
+            .map(|installation| installation.guard_mode.clone())
+            .or_else(|| {
+                record
+                    .latest_session
+                    .as_ref()
+                    .map(|session| session.guard_mode.clone())
+            })
+            .unwrap_or_else(|| "mcp_only".to_owned());
+        let host_kind = record
+            .guard_installation
+            .as_ref()
+            .map(|installation| installation.host_kind.clone())
+            .or_else(|| {
+                record
+                    .connection
+                    .as_ref()
+                    .map(|connection| connection.host_kind.clone())
+            })
+            .unwrap_or_else(|| "unknown".to_owned());
+
+        insert_agent_session(
+            &self.runtime_home,
+            project_id.as_str(),
+            AgentSessionInsert {
+                session_id: session_id.to_owned(),
+                connection_internal_id: self.context.connection_internal_id.as_str().to_owned(),
+                guard_installation_id,
+                host_kind,
+                guard_mode,
+                started_at: now.to_owned(),
+                metadata_json: serde_json::to_string(&json!({
+                    "schema_version": 1,
+                    "source": WATCH_METADATA_SOURCE,
+                    "session_watch_initialized": true
+                }))
+                .map_err(McpAdapterError::Json)?,
+            },
+        )
+        .map_err(McpAdapterError::Store)?;
+        Ok(())
+    }
+
+    fn selected_guard_installation_id(
+        &self,
+        project_id: &ProjectId,
+    ) -> Result<Option<String>, McpAdapterError> {
+        guard_health_record(
+            &self.runtime_home,
+            project_id.as_str(),
+            self.context.connection_internal_id.as_str(),
+        )
+        .map(|record| {
+            record
+                .guard_installation
+                .map(|installation| installation.guard_installation_id)
+        })
+        .map_err(McpAdapterError::Store)
+    }
+
+    fn allowed_project_availabilities(
+        &self,
+        tool_name: &str,
+    ) -> Result<Vec<McpProjectAvailability>, McpAdapterError> {
+        current_enabled_connection(
+            &self.runtime_home,
+            self.context.connection_internal_id.as_str(),
+            tool_name,
+        )?;
+        let projects = list_connection_projects(
+            &self.runtime_home,
+            self.context.connection_internal_id.as_str(),
+        )
+        .map_err(McpAdapterError::Store)?;
+        Ok(projects
+            .iter()
+            .filter(|project| {
+                self.context
+                    .project_allowlist_allows(project.project_id.as_str())
+            })
+            .map(|project| inspect_allowed_project(&self.runtime_home, project))
+            .collect())
+    }
+
+    fn session_watch_coverage_for_projects(
+        &self,
+        session_id: Option<&str>,
+        projects: &[McpProjectAvailability],
+    ) -> Result<McpSessionWatchCoverage, McpAdapterError> {
+        if let Some(session_id) = session_id {
+            for project in projects.iter().filter(|project| project.available) {
+                if let Some(baseline) = latest_watch_baseline_for_session(
+                    &self.runtime_home,
+                    &project.project_id,
+                    session_id,
+                )
+                .map_err(McpAdapterError::Store)?
+                {
+                    return Ok(coverage_from_watch_baseline(&baseline));
+                }
+            }
+        }
+        let available_project_count = projects.iter().filter(|project| project.available).count();
+        if available_project_count == 1 {
+            Ok(McpSessionWatchCoverage {
+                status: SessionWatchStatus::Unavailable,
+                baseline_created_at: None,
+                coverage_start_at: None,
+                coverage_basis: None,
+                partial_coverage_warning: Some(
+                    "Session-watch baseline has not been created for this MCP session.".to_owned(),
+                ),
+            })
+        } else {
+            Ok(McpSessionWatchCoverage {
+                status: SessionWatchStatus::PendingProjectSelection,
+                baseline_created_at: None,
+                coverage_start_at: None,
+                coverage_basis: None,
+                partial_coverage_warning: Some(
+                    "Session-watch coverage is pending until the MCP request names an explicit project_selector."
+                        .to_owned(),
+                ),
+            })
+        }
     }
 
     /// Returns the tools exposed by this adapter's current connection mode.
@@ -428,7 +735,7 @@ impl McpAdapter {
         session_id: Option<&str>,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpIntakeArguments> =
-            self.prepare_mcp_arguments(tool_name, params)?;
+            self.prepare_mcp_arguments(tool_name, params, session_id)?;
         let envelope = self.generated_envelope(
             tool_name,
             &prepared.project_id,
@@ -458,7 +765,7 @@ impl McpAdapter {
         session_id: Option<&str>,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpUpdateScopeArguments> =
-            self.prepare_mcp_arguments(tool_name, params)?;
+            self.prepare_mcp_arguments(tool_name, params, session_id)?;
         let task_id = prepared.arguments.task_id.clone();
         let envelope = self.generated_envelope(
             tool_name,
@@ -494,7 +801,7 @@ impl McpAdapter {
         session_id: Option<&str>,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpStatusArguments> =
-            self.prepare_mcp_arguments(tool_name, params)?;
+            self.prepare_mcp_arguments(tool_name, params, session_id)?;
         let task_id = prepared.arguments.task_id.clone();
         let envelope = self.generated_envelope(
             tool_name,
@@ -521,7 +828,7 @@ impl McpAdapter {
         session_id: Option<&str>,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpPrepareWriteArguments> =
-            self.prepare_mcp_arguments(tool_name, params)?;
+            self.prepare_mcp_arguments(tool_name, params, session_id)?;
         let task_id = prepared.arguments.task_id.clone();
         let envelope = self.generated_envelope(
             tool_name,
@@ -554,7 +861,7 @@ impl McpAdapter {
         session_id: Option<&str>,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpStageArtifactArguments> =
-            self.prepare_mcp_arguments(tool_name, params)?;
+            self.prepare_mcp_arguments(tool_name, params, session_id)?;
         let task_id = prepared.arguments.task_id.clone();
         let envelope = self.generated_envelope(
             tool_name,
@@ -588,7 +895,7 @@ impl McpAdapter {
         session_id: Option<&str>,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpRecordRunArguments> =
-            self.prepare_mcp_arguments(tool_name, params)?;
+            self.prepare_mcp_arguments(tool_name, params, session_id)?;
         let task_id = prepared.arguments.task_id.clone();
         let envelope = self.generated_envelope(
             tool_name,
@@ -626,7 +933,7 @@ impl McpAdapter {
         session_id: Option<&str>,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpRequestUserJudgmentArguments> =
-            self.prepare_mcp_arguments(tool_name, params)?;
+            self.prepare_mcp_arguments(tool_name, params, session_id)?;
         let task_id = prepared.arguments.task_id.clone();
         let envelope = self.generated_envelope(
             tool_name,
@@ -663,7 +970,7 @@ impl McpAdapter {
         session_id: Option<&str>,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpReconcileChangesArguments> =
-            self.prepare_mcp_arguments(tool_name, params)?;
+            self.prepare_mcp_arguments(tool_name, params, session_id)?;
         let task_id = prepared.arguments.task_id.clone();
         let envelope = self.generated_envelope(
             tool_name,
@@ -691,7 +998,7 @@ impl McpAdapter {
         session_id: Option<&str>,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpCheckCloseArguments> =
-            self.prepare_mcp_arguments(tool_name, params)?;
+            self.prepare_mcp_arguments(tool_name, params, session_id)?;
         let task_id = prepared.arguments.task_id.clone();
         let envelope = self.generated_envelope(
             tool_name,
@@ -721,7 +1028,7 @@ impl McpAdapter {
         session_id: Option<&str>,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpCloseTaskArguments> =
-            self.prepare_mcp_arguments(tool_name, params)?;
+            self.prepare_mcp_arguments(tool_name, params, session_id)?;
         let task_id = prepared.arguments.task_id.clone();
         let envelope = self.generated_envelope(
             tool_name,
@@ -770,7 +1077,12 @@ impl McpAdapter {
         call(&self.core, request, invocation.core_invocation()).map_err(McpAdapterError::Core)
     }
 
-    fn call_adapter_tool(&self, tool_name: &str, params: Value) -> Result<Value, McpAdapterError> {
+    fn call_adapter_tool(
+        &self,
+        tool_name: &str,
+        params: Value,
+        session_id: Option<&str>,
+    ) -> Result<Value, McpAdapterError> {
         match tool_name {
             LIST_PROJECTS_TOOL_NAME => {
                 let object = params
@@ -785,38 +1097,33 @@ impl McpAdapter {
                         message: "volicord.list_projects does not accept arguments".to_owned(),
                     });
                 }
-                let result = self.list_projects_result()?;
+                let result = self.list_projects_result(session_id)?;
                 serde_json::to_value(result).map_err(McpAdapterError::Json)
             }
             other => Err(McpAdapterError::UnknownTool(other.to_owned())),
         }
     }
 
-    fn list_projects_result(&self) -> Result<ListProjectsResult, McpAdapterError> {
+    fn list_projects_result(
+        &self,
+        session_id: Option<&str>,
+    ) -> Result<ListProjectsResult, McpAdapterError> {
         let connection = current_enabled_connection(
             &self.runtime_home,
             self.context.connection_internal_id.as_str(),
             "volicord.list_projects",
         )?;
-        let projects = list_connection_projects(
-            &self.runtime_home,
-            self.context.connection_internal_id.as_str(),
-        )
-        .map_err(McpAdapterError::Store)?;
-        let items = projects
+        let availabilities = self.allowed_project_availabilities("volicord.list_projects")?;
+        let items = availabilities
             .iter()
-            .filter(|project| {
-                self.context
-                    .project_allowlist_allows(project.project_id.as_str())
-            })
-            .map(|project| inspect_allowed_project(&self.runtime_home, project))
             .map(|project| ListProjectItem {
-                project_selector: project.project_id,
+                project_selector: project.project_id.clone(),
                 available: project.available,
-                unavailable_reason: project.unavailable_reason,
-                repo_root: project.repo_root_display,
+                unavailable_reason: project.unavailable_reason.clone(),
+                repo_root: project.repo_root_display.clone(),
             })
             .collect::<Vec<_>>();
+        let coverage = self.session_watch_coverage_for_projects(session_id, &availabilities)?;
         let mode = parse_connection_mode(&connection.mode).map_err(|error| {
             McpAdapterError::ToolExecution {
                 tool_name: "volicord.list_projects".to_owned(),
@@ -827,6 +1134,11 @@ impl McpAdapter {
         Ok(ListProjectsResult {
             connection_id: connection.connection_internal_id,
             mode,
+            watcher_status: coverage.status,
+            watcher_baseline_created_at: coverage.baseline_created_at,
+            watcher_coverage_start_at: coverage.coverage_start_at,
+            watcher_coverage_basis: coverage.coverage_basis,
+            watcher_partial_coverage_warning: coverage.partial_coverage_warning,
             projects: items,
         })
     }
@@ -835,6 +1147,7 @@ impl McpAdapter {
         &self,
         tool_name: &str,
         params: Value,
+        session_id: Option<&str>,
     ) -> Result<PreparedMcpArguments<T>, McpAdapterError>
     where
         T: serde::de::DeserializeOwned,
@@ -849,6 +1162,14 @@ impl McpAdapter {
         let requested_project_selector =
             optional_string_field(object, "project_selector", tool_name)?;
         let selected_project_id = self.select_project(requested_project_selector.as_deref())?;
+        if let Some(session_id) = session_id {
+            let coverage_basis = if requested_project_selector.is_some() {
+                SessionWatchCoverageBasis::FirstProjectSelection
+            } else {
+                SessionWatchCoverageBasis::MethodBoundary
+            };
+            self.ensure_session_watch_baseline(&selected_project_id, session_id, coverage_basis)?;
+        }
         let arguments = self.decode_params(tool_name, params)?;
         Ok(PreparedMcpArguments {
             arguments,
@@ -1108,6 +1429,7 @@ where
     W: Write,
 {
     let mut state = ConnectionState::default();
+    adapter.initialize_startup_session_watch(&state.session_id)?;
     let mut lines = reader.lines();
 
     while let Some(line) = lines.next() {
@@ -1138,10 +1460,19 @@ where
 }
 
 /// Runs the MCP stdio adapter from process environment and stdin/stdout.
-pub fn run_stdio_from_env(connection_id: &str) -> Result<(), McpAdapterError> {
+pub fn run_stdio_from_env(
+    connection_id: &str,
+    project_id: Option<&str>,
+) -> Result<(), McpAdapterError> {
     let current_dir = std::env::current_dir().map_err(current_dir_environment_error)?;
     let runtime_home = resolve_runtime_home(process_env_var, &current_dir)?;
-    let context = McpConnectionContext::resolve(&runtime_home, connection_id)?;
+    let project_allowlist = project_id
+        .map(ProjectId::new)
+        .into_iter()
+        .collect::<Vec<_>>();
+    validate_mcp_project_allowlist(&runtime_home, connection_id, &project_allowlist)?;
+    let context = McpConnectionContext::resolve(&runtime_home, connection_id)?
+        .with_project_allowlist(project_allowlist);
     let local_web_consent = start_stdio_local_web_consent_listener(&runtime_home, &context).ok();
     let mut adapter = McpAdapter::new(runtime_home, context);
     if let Some(local_web_consent) = local_web_consent {
@@ -1411,6 +1742,61 @@ fn validate_streamable_http_server_config(
     Ok(())
 }
 
+fn validate_mcp_project_allowlist(
+    runtime_home: &Path,
+    connection_id: &str,
+    project_ids: &[ProjectId],
+) -> Result<(), McpAdapterError> {
+    for project_id in project_ids {
+        let access =
+            agent_connection_project_access(runtime_home, connection_id, project_id.as_str())
+                .map_err(McpAdapterError::Store)?
+                .ok_or_else(|| {
+                    McpAdapterError::Environment(format!(
+                        "connection {connection_id} is not registered for project {}",
+                        project_id.as_str()
+                    ))
+                })?;
+        if !access.connection_enabled {
+            return Err(McpAdapterError::Environment(format!(
+                "connection {connection_id} is disabled"
+            )));
+        }
+        if !access.project_allowed {
+            return Err(McpAdapterError::Environment(format!(
+                "project {} is outside connection {connection_id} project allowlist",
+                project_id.as_str()
+            )));
+        }
+        let Some(project) = access.project else {
+            return Err(McpAdapterError::Environment(format!(
+                "project {} is not registered",
+                project_id.as_str()
+            )));
+        };
+        let availability = inspect_allowed_project(
+            runtime_home,
+            &ConnectionProjectRecord {
+                connection_internal_id: connection_id.to_owned(),
+                project_internal_id: project.project_internal_id.clone(),
+                project_id: project.project_id.clone(),
+                created_at: String::new(),
+                project,
+            },
+        );
+        if !availability.available {
+            return Err(McpAdapterError::Environment(format!(
+                "project {} is unavailable: {}",
+                availability.project_id,
+                availability
+                    .unavailable_reason
+                    .unwrap_or_else(|| "unavailable".to_owned())
+            )));
+        }
+    }
+    Ok(())
+}
+
 fn validate_streamable_http_project_allowlist(
     runtime_home: &Path,
     connection_id: &str,
@@ -1653,6 +2039,17 @@ impl StreamableHttpServer {
                         match generate_http_session_id() {
                             Ok(session_id) => {
                                 state.session_id = session_id.clone();
+                                if let Err(error) =
+                                    self.adapter.initialize_startup_session_watch(&session_id)
+                                {
+                                    return structured_http_error_with_headers(
+                                        500,
+                                        "Internal Server Error",
+                                        "SESSION_WATCH_STARTUP_FAILED",
+                                        &error.to_string(),
+                                        cors_headers,
+                                    );
+                                }
                                 self.sessions.insert(session_id.clone(), state);
                                 cors_headers.push(("Mcp-Session-Id".to_owned(), session_id));
                             }
@@ -3057,6 +3454,40 @@ fn routing_error(message: impl Into<String>) -> McpAdapterError {
     }
 }
 
+fn coverage_from_watch_baseline(baseline: &WatchBaselineRecord) -> McpSessionWatchCoverage {
+    let metadata = serde_json::from_str::<Value>(&baseline.metadata_json).unwrap_or(Value::Null);
+    let coverage_basis = metadata
+        .get("coverage_basis")
+        .and_then(Value::as_str)
+        .and_then(|value| serde_json::from_value(Value::String(value.to_owned())).ok());
+    let fallback_warning = coverage_basis.and_then(|basis| match basis {
+        SessionWatchCoverageBasis::McpStart => None,
+        SessionWatchCoverageBasis::FirstProjectSelection => {
+            Some(FIRST_PROJECT_SELECTION_PARTIAL_COVERAGE_WARNING.to_owned())
+        }
+        SessionWatchCoverageBasis::MethodBoundary => {
+            Some(METHOD_BOUNDARY_PARTIAL_COVERAGE_WARNING.to_owned())
+        }
+    });
+    McpSessionWatchCoverage {
+        status: serde_json::from_value(Value::String(baseline.status.clone()))
+            .unwrap_or(SessionWatchStatus::Unavailable),
+        baseline_created_at: Some(baseline.created_at.clone()),
+        coverage_start_at: metadata
+            .get("coverage_start_at")
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+            .or_else(|| Some(baseline.created_at.clone())),
+        coverage_basis,
+        partial_coverage_warning: metadata
+            .get("partial_coverage_warning")
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .map(str::to_owned)
+            .or(fallback_warning),
+    }
+}
+
 fn concise_store_reason(error: &StoreError) -> String {
     match error {
         StoreError::NotFound { entity, .. } => format!("{entity} not found"),
@@ -3529,7 +3960,7 @@ where
             Err(error) => return Ok(Err(json_rpc_error_for_adapter(id.clone(), error))),
         }
     } else {
-        let response = match adapter.call_adapter_tool(tool_name, arguments) {
+        let response = match adapter.call_adapter_tool(tool_name, arguments, Some(&session_id)) {
             Ok(response) => response,
             Err(error @ McpAdapterError::InvalidParams { .. })
             | Err(error @ McpAdapterError::ToolExecution { .. }) => {
@@ -4571,6 +5002,7 @@ mod tests {
     use std::{
         collections::{BTreeMap, BTreeSet},
         error::Error,
+        fs,
         io::{BufReader, Cursor},
     };
 
@@ -4580,7 +5012,10 @@ mod tests {
         AgentConnectionRegistration, ConnectionProjectRegistration, CONNECTION_MODE_READ_ONLY,
     };
     use volicord_store::bootstrap::{register_project, ProjectRegistration, ACTIVE_PROJECT_STATUS};
-    use volicord_store::guards::{upsert_guard_installation, GuardInstallationUpsert};
+    use volicord_store::guards::{
+        list_unresolved_unrecorded_changes, upsert_guard_installation, GuardInstallationUpsert,
+    };
+    use volicord_store::session_watch::latest_watch_baseline_for_connection;
     use volicord_test_support::core_fixtures::CoreFixture;
     use volicord_types::{
         AgentConnectionMode, OperationCategory, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
@@ -4697,6 +5132,32 @@ mod tests {
         assert!(report.contains("mode: workflow"));
         assert!(report.contains("allowed_projects: 1"));
         assert!(report.contains("available_projects: 1"));
+        assert!(report.contains("watcher_status: pending_mcp_start"));
+        assert!(report.contains("watcher_coverage_basis: mcp_start"));
+        Ok(())
+    }
+
+    #[test]
+    fn project_bound_stdio_startup_creates_baseline_before_tool_handling(
+    ) -> Result<(), Box<dyn Error>> {
+        let fixture = CoreFixture::new("mcp-stdio-startup-watch")?;
+        let adapter = adapter(&fixture)?;
+        let input = Cursor::new(Vec::<u8>::new());
+        let mut output = Vec::new();
+
+        run_stdio(adapter, BufReader::new(input), &mut output)?;
+
+        assert!(output.is_empty());
+        let baseline = latest_watch_baseline_for_connection(
+            fixture.runtime_home_path(),
+            fixture.project_id(),
+            fixture.connection_id(),
+        )?
+        .expect("stdio startup should create a watch baseline");
+        assert_eq!(baseline.status, "active");
+        let metadata: Value = serde_json::from_str(&baseline.metadata_json)?;
+        assert_eq!(metadata["coverage_basis"], "mcp_start");
+        assert!(metadata.get("partial_coverage_warning").is_none());
         Ok(())
     }
 
@@ -4715,6 +5176,139 @@ mod tests {
         assert_eq!(verified.project_id.as_str(), fixture.project_id());
         assert_eq!(verified.actor_source.to_string(), fixture.actor_source());
         assert_eq!(verified.operation_category, OperationCategory::Read);
+        Ok(())
+    }
+
+    #[test]
+    fn multi_project_session_reports_pending_project_selection() -> Result<(), Box<dyn Error>> {
+        let fixture = CoreFixture::new("mcp-watch-pending")?;
+        add_allowed_project(&fixture, "project_watch_pending_other")?;
+        let adapter = adapter(&fixture)?;
+
+        let result = adapter.call_adapter_tool(
+            LIST_PROJECTS_TOOL_NAME,
+            json!({}),
+            Some("session_pending"),
+        )?;
+
+        assert_eq!(result["watcher_status"], "pending_project_selection");
+        assert!(result["watcher_baseline_created_at"].is_null());
+        assert!(result["watcher_coverage_start_at"].is_null());
+        assert!(result["watcher_coverage_basis"].is_null());
+        assert!(result["watcher_partial_coverage_warning"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("project_selector"));
+        Ok(())
+    }
+
+    #[test]
+    fn first_project_selection_creates_partial_coverage_baseline() -> Result<(), Box<dyn Error>> {
+        let fixture = CoreFixture::new("mcp-watch-first-selection")?;
+        add_allowed_project(&fixture, "project_watch_first_selection_other")?;
+        let adapter = adapter(&fixture)?;
+        let session_id = "session_first_project_selection";
+
+        let response = adapter.call_tool_for_session(
+            "volicord.status",
+            json!({ "project_selector": fixture.project_id() }),
+            Some(session_id),
+        )?;
+
+        assert_eq!(response.response_value["base"]["response_kind"], "result");
+        let baseline = latest_watch_baseline_for_session(
+            fixture.runtime_home_path(),
+            fixture.project_id(),
+            session_id,
+        )?
+        .expect("first explicit project selection should create a baseline");
+        let metadata: Value = serde_json::from_str(&baseline.metadata_json)?;
+        assert_eq!(metadata["coverage_basis"], "first_project_selection");
+        assert!(metadata["partial_coverage_warning"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("project selection"));
+        Ok(())
+    }
+
+    #[test]
+    fn project_bound_early_edit_is_detected_on_first_check() -> Result<(), Box<dyn Error>> {
+        let fixture = CoreFixture::new("mcp-watch-early-edit")?;
+        let adapter = adapter(&fixture)?;
+        let (task_id, _) = create_task(&adapter)?;
+        let session_id = "session_project_bound_early_edit";
+        adapter.initialize_startup_session_watch(session_id)?;
+        write_product_file(&fixture, "src/early.txt", "changed before first method\n")?;
+
+        let response = adapter.call_tool_for_session(
+            CHECK_CLOSE_TOOL_NAME,
+            json!({ "task_id": task_id }),
+            Some(session_id),
+        )?;
+
+        assert_eq!(
+            response.response_value["guard_health"]["session_watch_coverage_basis"],
+            "mcp_start"
+        );
+        assert_eq!(
+            response.response_value["guard_health"]["session_watch_partial_coverage_warning"],
+            Value::Null
+        );
+        assert_eq!(
+            response.response_value["guard_health"]["unresolved_unrecorded_change_count"],
+            1
+        );
+        let changes = list_unresolved_unrecorded_changes(
+            fixture.runtime_home_path(),
+            fixture.project_id(),
+            Some(fixture.connection_id()),
+        )?;
+        assert_eq!(changes.len(), 1);
+        assert!(!changes[0]
+            .detection_json
+            .contains("changed before first method"));
+        Ok(())
+    }
+
+    #[test]
+    fn edit_before_project_selection_is_reported_outside_coverage() -> Result<(), Box<dyn Error>> {
+        let fixture = CoreFixture::new("mcp-watch-before-selection")?;
+        let setup_adapter = adapter(&fixture)?;
+        let (task_id, _) = create_task(&setup_adapter)?;
+        add_allowed_project(&fixture, "project_watch_before_selection_other")?;
+        let adapter = adapter(&fixture)?;
+        let session_id = "session_before_project_selection";
+        write_product_file(&fixture, "src/before-selection.txt", "before selection\n")?;
+
+        let response = adapter.call_tool_for_session(
+            CHECK_CLOSE_TOOL_NAME,
+            json!({
+                "project_selector": fixture.project_id(),
+                "task_id": task_id
+            }),
+            Some(session_id),
+        )?;
+
+        assert_eq!(
+            response.response_value["guard_health"]["session_watch_coverage_basis"],
+            "first_project_selection"
+        );
+        assert!(
+            response.response_value["guard_health"]["session_watch_partial_coverage_warning"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("project selection")
+        );
+        assert_eq!(
+            response.response_value["guard_health"]["unresolved_unrecorded_change_count"],
+            0
+        );
+        let changes = list_unresolved_unrecorded_changes(
+            fixture.runtime_home_path(),
+            fixture.project_id(),
+            Some(fixture.connection_id()),
+        )?;
+        assert!(changes.is_empty());
         Ok(())
     }
 
@@ -5338,6 +5932,38 @@ mod tests {
     }
 
     #[test]
+    fn project_bound_http_initialize_creates_baseline_before_tool_handling(
+    ) -> Result<(), Box<dyn Error>> {
+        let fixture = CoreFixture::new("mcp-http-startup-watch")?;
+        let mut server = http_server(
+            &fixture,
+            vec![ProjectId::new(fixture.project_id())],
+            Vec::new(),
+        )?;
+
+        let initialize = server.handle_request(http_request(
+            "POST",
+            STREAMABLE_HTTP_ENDPOINT_PATH,
+            Some("test_token"),
+            None,
+            None,
+            initialize_request(1, json!({})),
+        )?);
+
+        assert_eq!(initialize.status, 200);
+        assert!(http_header(&initialize, "Mcp-Session-Id").is_some());
+        let baseline = latest_watch_baseline_for_connection(
+            fixture.runtime_home_path(),
+            fixture.project_id(),
+            fixture.connection_id(),
+        )?
+        .expect("HTTP initialize should create a watch baseline");
+        let metadata: Value = serde_json::from_str(&baseline.metadata_json)?;
+        assert_eq!(metadata["coverage_basis"], "mcp_start");
+        Ok(())
+    }
+
+    #[test]
     fn streamable_http_project_allowlist_narrows_connection_projects() -> Result<(), Box<dyn Error>>
     {
         let fixture = CoreFixture::new("mcp-http-project-allowlist")?;
@@ -5771,6 +6397,19 @@ mod tests {
             .as_u64()
             .expect("state version");
         Ok((task_id, state_version))
+    }
+
+    fn write_product_file(
+        fixture: &CoreFixture,
+        path: &str,
+        contents: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        let absolute = fixture.product_repo_path().join(path);
+        if let Some(parent) = absolute.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(absolute, contents)?;
+        Ok(())
     }
 
     fn initialize_request(id: u64, capabilities: Value) -> Value {

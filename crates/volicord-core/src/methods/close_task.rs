@@ -996,6 +996,10 @@ pub(super) fn guard_health_summary_from_record(
         mcp_connection_status,
         session_watch_status: SessionWatchStatus::Disabled,
         last_session_watch_checked_at: RequiredNullable::null(),
+        session_watch_baseline_created_at: RequiredNullable::null(),
+        session_watch_coverage_start_at: RequiredNullable::null(),
+        session_watch_coverage_basis: RequiredNullable::null(),
+        session_watch_partial_coverage_warning: RequiredNullable::null(),
         session_watch_detail: RequiredNullable::null(),
         unresolved_unrecorded_change_count: record.unresolved_unrecorded_changes.len() as u64,
         missing_or_stale_write_readiness,
@@ -1079,7 +1083,8 @@ fn managed_distribution_verified(guard_mode: GuardMode, capability: &GuardCapabi
 pub(super) fn refresh_guard_strength(summary: &mut GuardHealthSummary) {
     summary.pre_tool_blocking_available = required_hook_available(summary, "pre_tool_hook");
     summary.post_tool_correlation_available = required_hook_available(summary, "post_tool_hook");
-    summary.bypass_detection_active = summary.session_watch_status == SessionWatchStatus::Active;
+    summary.bypass_detection_active = summary.session_watch_status == SessionWatchStatus::Active
+        && summary.session_watch_partial_coverage_warning.is_none();
     summary.guard_strength =
         if summary.managed_distribution_verified && host_hook_strength_available(summary) {
             GuardStrength::ManagedGuarded
@@ -1356,12 +1361,18 @@ fn guard_close_blockers(
         blockers.push(blocker);
     }
     if summary.guard_mode == GuardMode::Managed
-        && summary.session_watch_status != SessionWatchStatus::Active
+        && (summary.session_watch_status != SessionWatchStatus::Active
+            || summary.session_watch_partial_coverage_warning.is_some())
     {
+        let message = if summary.session_watch_status == SessionWatchStatus::Active {
+            "Managed close requires full Product Repository session-watch coverage."
+        } else {
+            "Managed close requires an active Product Repository session watch."
+        };
         blockers.push(close_blocker(
             CloseReadinessBlockerCategory::ConnectionCapability,
             "session_watch_unavailable",
-            "Managed close requires an active Product Repository session watch.",
+            message,
             vec![task_ref.clone()],
             vec![NextActionSummary {
                 action_kind: NextActionKind::CloseTask,

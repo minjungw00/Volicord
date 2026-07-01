@@ -179,6 +179,7 @@ where
     let adapter = GenericAdapter;
     let plan = adapter.plan_export(GenericExportRequest {
         connection_id: &connection_internal_id,
+        project_id: &project.project_id,
         installation_profile: installation_profile_context(&runtime_home, &installation_profile),
         mode,
         target_path: &output_path,

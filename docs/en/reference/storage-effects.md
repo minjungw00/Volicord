@@ -229,7 +229,10 @@ For `volicord.close_task intent=check`, the response branch is owned by [`volico
 Session-watch diagnostic records store only the bounded snapshot metadata
 described by [Storage Records](storage-records.md). They must not store raw file
 contents, sensitive prompt text, actor identity inferred from file changes, or a
-claim that Volicord prevented a filesystem write.
+claim that Volicord prevented a filesystem write. When a read or check boundary
+creates the first watcher baseline, the baseline metadata records the coverage
+start and a `method_boundary` coverage basis with a partial-coverage warning;
+Product Repository changes before that boundary are outside watcher coverage.
 
 ## Committed blocked effects
 
@@ -400,7 +403,9 @@ session-watch diagnostic context by creating an `agent_sessions` row and, when a
 bounded baseline snapshot is available, a `session_watch_baselines` row. It does
 not run a watch comparison, create `session_watch_observations`, create
 `unrecorded_changes`, append task events, create replay rows, mutate close
-state, or increment `project_state.state_version`.
+state, or increment `project_state.state_version`. A baseline first created by
+this status boundary uses `method_boundary` coverage metadata and reports
+partial coverage.
 
 `dry_run=true` remains `StatusResult` with `effect_kind=read_only`, not `ToolDryRunResponse`.
 
@@ -672,7 +677,9 @@ run a bounded session-watch check and create or update `agent_sessions`,
 `unrecorded_changes` when Product Repository changes are not covered by
 expected-write correlation. These diagnostic effects do not append task events,
 create blocker rows, mutate close state, or increment
-`project_state.state_version`.
+`project_state.state_version`. If this check creates the first watcher
+baseline, the coverage basis is `method_boundary` and earlier Product
+Repository changes are outside watcher coverage.
 
 `dry_run=true` remains `CloseTaskResult` with `effect_kind=read_only`.
 

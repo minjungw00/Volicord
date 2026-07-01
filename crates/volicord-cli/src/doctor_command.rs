@@ -1526,7 +1526,7 @@ fn render_doctor_output(
         }
         OutputFormat::Text => {
             let mut text = format!(
-                "Volicord doctor {}\nstatus_meaning: {}\nruntime_home_state: {}\nruntime_home: {}\ninstallation_profile_state: {}\ncommand_state: {}\nproject_registration_state: {}\nconnection_state: {}\nmcp_config_state: {}\nguard_installation_state: {}\nguard_strength: {}\nguard_capabilities: {}\nguard_configuration_state: {}\nguard_observation_state: {}\nguard_effective_state: {}\nguard_profile_state: {}\nmanaged_source_state: {}\nmanaged_bundle_hash: {}\nmanaged_verification_state: {}\nguard_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nrequired_guard_phases_state: {}\nrequired_guard_phases_missing: {}\nguard_hook_observed: {}\nguard_status_state: {}\nprompt_capture_state: {}\nprompt_capture_health: {}\nhost_reload_required: {}\n",
+                "Volicord doctor {}\nstatus_meaning: {}\nruntime_home_state: {}\nruntime_home: {}\ninstallation_profile_state: {}\ncommand_state: {}\nproject_registration_state: {}\nconnection_state: {}\nmcp_config_state: {}\nguard_installation_state: {}\nguard_strength: {}\nguard_capabilities: {}\nguard_configuration_state: {}\nguard_observation_state: {}\nguard_effective_state: {}\nguard_profile_state: {}\nmanaged_source_state: {}\nmanaged_bundle_hash: {}\nmanaged_verification_state: {}\nguard_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nrequired_guard_phases_state: {}\nrequired_guard_phases_missing: {}\nguard_hook_observed: {}\nguard_status_state: {}\nprompt_capture_state: {}\nprompt_capture_health: {}\nwatcher_status: not_started\nwatcher_baseline_created_at: none\nwatcher_coverage_start_at: none\nwatcher_coverage_basis: none\nwatcher_partial_coverage_warning: doctor does not initialize an MCP session watch\nhost_reload_required: {}\n",
                 status.as_str(),
                 doctor_status_meaning(status, checks),
                 doctor_runtime_home_state(runtime_home, checks),
@@ -1603,6 +1603,11 @@ fn doctor_states_json(
         "guard_status": doctor_check_state(checks, "guard_status_active"),
         "prompt_capture": doctor_prompt_capture_health(checks),
         "prompt_capture_status": doctor_prompt_capture_status(checks),
+        "watcher_status": "not_started",
+        "watcher_baseline_created_at": Value::Null,
+        "watcher_coverage_start_at": Value::Null,
+        "watcher_coverage_basis": Value::Null,
+        "watcher_partial_coverage_warning": "doctor does not initialize an MCP session watch",
         "host_reload_required": doctor_host_reload_required(checks, actions),
     })
 }

@@ -370,9 +370,10 @@ managed_guarded
 ```
 
 `authority_record_only` means Volicord can record authority state but no active
-session watcher or active full host hook guard is available for the selected
-view. `detective_watch` means a session watcher is active and can detect
-bypass Product Repository changes, but it cannot pre-block writes.
+full-coverage session watcher or active full host hook guard is available for
+the selected view. `detective_watch` means a session watcher is active without
+a partial-coverage warning and can detect bypass Product Repository changes
+after its coverage start, but it cannot pre-block writes.
 `host_hook_guarded` means the selected project-local guarded host hooks are
 configured and observed for the required lifecycle phases. `managed_guarded`
 means the host-hook guarded condition is met and the selected managed
@@ -441,9 +442,28 @@ disabled
 active
 degraded
 unavailable
+pending_project_selection
+```
+
+`GuardHealthSummary.session_watch_coverage_basis` uses:
+
+```text
+mcp_start
+first_project_selection
+method_boundary
 ```
 
 These values report guard integration state for close-readiness and status projections. `guard_installation_status` is the stored lifecycle value, `guard_configuration_status` derives file and required-hook completeness, `guard_observation_status` derives whether the current installation has a matching hook observation, and `effective_guard_status` is the close-readiness health used for guarded or managed paths. `active` effective health requires guarded or managed mode, complete required hook configuration, a non-stale and non-broken installation, a current matching observation, and matching host and policy identity. `prompt_capture_status` is the prompt-capture availability state for user-owned judgment chat commands: `unsupported_by_host` means the host capability is absent, `not_configured` means the prompt-capture phase is not configured for the selected connection, `reload_required` means installed configuration or policy identity must be reloaded before use, `configured` means verification-code chat commands may be shown before a prompt-capture observation, `observed` means a matching guard hook has been observed, `active` means a matching prompt-capture hook observation is recorded, and `degraded` means prompt capture is blocked by degraded guard health. `session_watch_status` is detective watcher availability: `disabled` means no selected session-watch baseline is available, `active` means bounded snapshot comparison is available, `degraded` means watcher output is partial or needs operator attention, and `unavailable` means the watcher could not perform the selected snapshot check. These values do not prove product correctness, test sufficiency, OS enforcement, sandboxing, security isolation, final acceptance, or residual-risk acceptance. `mcp_only` remains cooperative except that unresolved watcher-created unrecorded-change findings block close while an active session watch is selected.
+
+`pending_project_selection` means an MCP session has more than one available
+project and has not yet selected a project explicitly enough to create a
+session-watch baseline. `mcp_start` means watcher coverage starts before MCP
+tool handling for a project-bound startup or HTTP session initialization.
+`first_project_selection` means coverage starts when a multi-project session
+first names an explicit `project_selector`. `method_boundary` means coverage
+starts at the Core method-boundary fallback. `first_project_selection` and
+`method_boundary` are partial coverage bases; Product Repository changes before
+the recorded coverage start are outside watcher coverage.
 
 `UnrecordedChangeFinding.status` uses:
 

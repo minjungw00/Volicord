@@ -838,9 +838,19 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
         .as_str()
         .expect("connection_id should be present")
         .to_owned();
+    let project_id = value["connection"]["project_id"]
+        .as_str()
+        .expect("project_id should be present");
     assert_eq!(
         value["mcp"]["args"],
-        serde_json::json!(["mcp", "--stdio", "--connection", connection_id])
+        serde_json::json!([
+            "mcp",
+            "--stdio",
+            "--connection",
+            connection_id,
+            "--project",
+            project_id
+        ])
     );
     assert!(value["actions"]
         .as_array()
@@ -940,7 +950,7 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
 
     let config = fs::read_to_string(repo_root.join(".codex/config.toml"))?;
     assert!(config.contains(&format!(
-        "args = [\"mcp\", \"--stdio\", \"--connection\", \"{connection_id}\"]"
+        "args = [\"mcp\", \"--stdio\", \"--connection\", \"{connection_id}\", \"--project\", \"{project_id}\"]"
     )));
     let hooks = fs::read_to_string(repo_root.join(".codex/hooks.json"))?;
     assert!(hooks.contains("SessionStart"));
@@ -985,7 +995,14 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     assert_eq!(policy["mcp"]["command"], "volicord");
     assert_eq!(
         policy["mcp"]["args"],
-        serde_json::json!(["mcp", "--stdio", "--connection", connection_id])
+        serde_json::json!([
+            "mcp",
+            "--stdio",
+            "--connection",
+            connection_id,
+            "--project",
+            project_id
+        ])
     );
     assert_eq!(policy["guard"]["enabled"], true);
     assert_guard_policy_invokes_required_phases(&policy, &connection_id);
@@ -1191,6 +1208,9 @@ fn init_claude_code_guarded_writes_project_mcp_policy_and_rule() -> Result<(), B
     let connection_id = value["connection"]["connection_id"]
         .as_str()
         .expect("connection_id should be present");
+    let project_id = value["connection"]["project_id"]
+        .as_str()
+        .expect("project_id should be present");
 
     let mcp_config: Value =
         serde_json::from_str(&fs::read_to_string(repo_root.join(".mcp.json"))?)?;
@@ -1198,7 +1218,14 @@ fn init_claude_code_guarded_writes_project_mcp_policy_and_rule() -> Result<(), B
     assert_eq!(server["command"], "volicord");
     assert_eq!(
         server["args"],
-        serde_json::json!(["mcp", "--stdio", "--connection", connection_id])
+        serde_json::json!([
+            "mcp",
+            "--stdio",
+            "--connection",
+            connection_id,
+            "--project",
+            project_id
+        ])
     );
 
     let policy: Value = serde_json::from_str(&fs::read_to_string(
@@ -1539,7 +1566,8 @@ fn connect_respects_explicit_read_only_and_uses_same_dry_run_plan() -> Result<()
 
     let config = fs::read_to_string(repo_root.join(".codex").join("config.toml"))?;
     assert!(config.contains(&format!(
-        "args = [\"mcp\", \"--stdio\", \"--connection\", \"{connection_id}\"]"
+        "args = [\"mcp\", \"--stdio\", \"--connection\", \"{connection_id}\", \"--project\", \"{}\"]",
+        projects[0].project_id
     )));
     Ok(())
 }
@@ -2788,21 +2816,33 @@ fn assert_exported_mcp_config(
     let connection_id = server["args"]
         .as_array()
         .and_then(|args| match args.as_slice() {
-            [mcp, stdio, flag, id]
+            [mcp, stdio, flag, id, project_flag, project_id]
                 if mcp.as_str() == Some("mcp")
                     && stdio.as_str() == Some("--stdio")
-                    && flag.as_str() == Some("--connection") =>
+                    && flag.as_str() == Some("--connection")
+                    && project_flag.as_str() == Some("--project")
+                    && project_id.as_str().is_some_and(|value| !value.is_empty()) =>
             {
                 id.as_str()
             }
             _ => None,
         })
         .expect("exported MCP config should bind a connection id");
+    let project_id = server["args"][5]
+        .as_str()
+        .expect("exported MCP config should bind a project id");
 
     assert_eq!(server["command"], path_text(mcp_command));
     assert_eq!(
         server["args"],
-        serde_json::json!(["mcp", "--stdio", "--connection", connection_id])
+        serde_json::json!([
+            "mcp",
+            "--stdio",
+            "--connection",
+            connection_id,
+            "--project",
+            project_id
+        ])
     );
     assert_eq!(server["env"]["VOLICORD_HOME"], path_text(runtime_home));
     Ok(connection_id.to_owned())

@@ -48,8 +48,8 @@ connection or session:
 
 | `guard_strength` | How it is reached | Operational meaning |
 |---|---|---|
-| `authority_record_only` | MCP tools and authority records are available without an active session watcher or observed full host hook guard. | No pre-tool blocking. Setup guidance and policy metadata can steer the host but cannot force it. |
-| `detective_watch` | A session watcher is active for the selected session. | Product Repository metadata changes can create findings that feed reconciliation and close readiness, but the watcher does not prevent writes or identify the actor. |
+| `authority_record_only` | MCP tools and authority records are available without a full-coverage active session watcher or observed full host hook guard. | No pre-tool blocking. Setup guidance and policy metadata can steer the host but cannot force it. |
+| `detective_watch` | A session watcher is active for the selected session without a partial-coverage warning. | Product Repository metadata changes after the watcher coverage start can create findings that feed reconciliation and close readiness, but the watcher does not prevent writes or identify the actor. |
 | `host_hook_guarded` | Required project-local host hook phases are configured and observed. | Pre-tool decisions, post-tool correlation, prompt capture, guard state, and close/write blockers can participate in the workflow. |
 | `managed_guarded` | `host_hook_guarded` is active and a verified managed distribution source is recorded. | Reserved for supported host-managed plugin, bundle, or policy distribution. Current Codex and Claude Code setup does not reach this label. |
 

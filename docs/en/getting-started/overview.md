@@ -62,10 +62,11 @@ Agent setup through the ordinary
 - run setup verification and report `complete`, `action_required`, or `failed`
 
 `mcp-only` setup records authority state and exposes MCP tools without
-pre-tool blocking. If a session watcher is active for a selected session,
-guard health may report `detective_watch` and create unrecorded-change findings
-from Product Repository metadata changes; the watcher does not prevent writes
-or identify the actor. Full `guarded` setup is a separate `volicord init` mode
+pre-tool blocking. If a session watcher is active for a selected session
+without a partial-coverage warning, guard health may report `detective_watch`
+and create unrecorded-change findings from Product Repository metadata changes
+after watcher coverage starts; the watcher does not prevent writes or identify
+the actor. Full `guarded` setup is a separate `volicord init` mode
 that requires verified support for the required host lifecycle hooks or an
 explicit degraded opt-in. `managed` setup additionally requires a verified
 managed distribution contract; current Codex and Claude Code setup reports

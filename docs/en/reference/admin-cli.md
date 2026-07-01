@@ -164,7 +164,7 @@ Arguments:
 |---|---|
 | `--home PATH` | Selects the `Volicord Runtime Home`. Omission uses the platform default local runtime location. The selected path must satisfy the Runtime Home/Product Repository separation contract before project state is used. |
 | `--link-bin PATH` | Creates the directory if needed, verifies it is writable, then creates or updates a command link for `volicord` there when feasible. The command reports the target path, refuses unsafe replacement, and does not by itself edit shell startup files or the parent shell `PATH`. |
-| `--mcp-command PATH` | Stores the exact `volicord` command that managed host configuration and generic exports should use before the `mcp --stdio --connection <connection_id>` arguments. Omission uses the running `volicord` executable selected by setup. |
+| `--mcp-command PATH` | Stores the exact `volicord` command that managed host configuration and generic exports should use before the `mcp --stdio --connection <connection_id> [--project <project_id>]` arguments. Omission uses the running `volicord` executable selected by setup. |
 | `--json` | Selects machine-readable, noninteractive output. Setup does not prompt in JSON mode. |
 
 Setup effects:
@@ -287,19 +287,23 @@ Connection modes:
 
 The internal host configuration key `server_name` defaults to `volicord`.
 Ordinary CLI flows do not expose a server-name option. A generated host
-configuration may contain a `connection_id` process-binding value derived from
-the stored `connection_internal_id`, server name, and command arguments so that
-the host can start `volicord mcp --stdio`; those values are saved
-process-binding details, not user authority tokens. Text-mode command input
-uses the selected host, intent, and repository root instead.
+configuration may contain `connection_id` and, when safely project-bound,
+`project_id` process-binding values derived from stored internal identities,
+server name, and command arguments so that the host can start
+`volicord mcp --stdio`; those values are saved process-binding details, not
+user authority tokens. Text-mode command input uses the selected host, intent,
+and repository root instead.
 
 Ordinary `volicord connect` commands use the saved profile in the resolved
 Runtime Home instead of asking for an MCP command path or Runtime Home path.
 Personal, local, or user-wide host configuration may carry that Runtime Home as
 `VOLICORD_HOME`. Shared project host configuration must not embed a personal
-Runtime Home path; it uses `volicord` as the command name and
-`mcp --stdio --connection <connection_id>` as arguments that the future host
-environment must resolve through `PATH`.
+Runtime Home path; it uses `volicord` as the command name and project-bound
+`mcp --stdio --connection <connection_id> --project <project_id>` arguments
+when the generated entry is for one selected project. Connection-only generated
+arguments are reserved for entries that intentionally serve more than one
+connected project. The future host environment must resolve the command through
+`PATH`.
 
 <a id="agent-host-setup-and-init"></a>
 `volicord init --host codex --repo PATH --mode mcp-only` and
@@ -307,8 +311,8 @@ environment must resolve through `PATH`.
 lower-guarantee first-run repository setup and host-connection examples for
 chat-first use when required hook support is not being installed. Init uses the
 shared, project-scoped host layout so generated host MCP configuration starts
-`volicord mcp --stdio` through `PATH` and does not embed a personal Runtime Home
-path.
+`volicord mcp --stdio --connection <connection_id> --project <project_id>`
+through `PATH` and does not embed a personal Runtime Home path.
 
 `--mode` selects the guard integration level:
 
@@ -330,8 +334,8 @@ Guard-aware setup, status, verification, and doctor output report
 
 | `guard_strength` | Meaning |
 |---|---|
-| `authority_record_only` | Volicord can record authority state, but no active session watcher or observed full host hook guard is available for the selected view. |
-| `detective_watch` | A session watcher is active and can create unrecorded-change findings from Product Repository changes; it cannot pre-block writes or identify the actor. |
+| `authority_record_only` | Volicord can record authority state, but no active full-coverage session watcher or observed full host hook guard is available for the selected view. |
+| `detective_watch` | A session watcher is active without a partial-coverage warning and can create unrecorded-change findings from Product Repository changes after coverage starts; it cannot pre-block writes or identify the actor. |
 | `host_hook_guarded` | The selected project-local guarded host hooks are configured and observed for all required lifecycle phases. |
 | `managed_guarded` | The host-hook guarded condition is met and the selected managed distribution metadata is verified. Current Codex and Claude Code setup does not reach this label without a future verified managed distribution contract. |
 
@@ -369,7 +373,8 @@ Non-dry-run `volicord init`:
 - creates or updates the matching Agent Connection and Connection Projects
   membership
 - writes project-scoped Codex `.codex/config.toml` or Claude Code `.mcp.json`
-  with `volicord mcp --stdio --connection <connection_id>`
+  with `volicord mcp --stdio --connection <connection_id> --project
+  <project_id>`
 - writes or updates only the Volicord-managed block in `AGENTS.md`
 - writes `.volicord/policy.json` with guard commands that invoke
   `volicord guard`
@@ -449,9 +454,12 @@ host reload requirement, prompt-capture availability, and last guard event when
 known as separate diagnostics. They must also report `guard_strength`,
 pre-tool blocking availability, post-tool correlation availability, bypass
 detection availability, prompt-capture availability, local web consent
-availability, and managed-distribution verification as separate fields. Files
-installed or configured must not be reported as an active observed guard hook or
-as host-hook guarded strength before a matching observation exists.
+availability, managed-distribution verification, watcher status, watcher
+baseline creation time, watcher coverage start time, watcher coverage basis,
+and any watcher partial-coverage warning as separate fields. Files installed or
+configured must not be reported as an active observed guard hook or as
+host-hook guarded strength before a matching observation exists. Incomplete
+session-watch coverage must not be reported as full `detective_watch`.
 
 A successful `volicord mcp --check` startup check alone must not be described as a
 `complete` Agent Connection. It is startup validation for the MCP process only.
@@ -691,7 +699,10 @@ Required diagnostic JSON values:
   JSON must expose `guard_strength` plus `pre_tool_blocking_available`,
   `post_tool_correlation_available`, `bypass_detection_active`,
   `prompt_capture_available`, `local_web_consent_available`, and
-  `managed_distribution_verified` where guard diagnostics are reported.
+  `managed_distribution_verified` where guard diagnostics are reported. When
+  watcher diagnostics are reported, JSON must also expose `watcher_status`,
+  `watcher_baseline_created_at`, `watcher_coverage_start_at`,
+  `watcher_coverage_basis`, and `watcher_partial_coverage_warning`.
 
 Setup and doctor JSON must include `status_meaning` so diagnostic consumers can
 distinguish setup action status from installation-profile health.

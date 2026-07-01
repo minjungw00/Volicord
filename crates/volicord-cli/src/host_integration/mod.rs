@@ -261,6 +261,15 @@ impl ManagedServerEntry {
         mcp_command: &Path,
         runtime_home: Option<&Path>,
     ) -> Self {
+        Self::new_project_bound(connection_id, None, mcp_command, runtime_home)
+    }
+
+    pub fn new_project_bound(
+        connection_id: impl Into<String>,
+        project_id: Option<&str>,
+        mcp_command: &Path,
+        runtime_home: Option<&Path>,
+    ) -> Self {
         let mut env = BTreeMap::new();
         if let Some(runtime_home) = runtime_home {
             env.insert(
@@ -268,14 +277,20 @@ impl ManagedServerEntry {
                 runtime_home.display().to_string(),
             );
         }
+        let connection_id = connection_id.into();
+        let mut args = vec![
+            "mcp".to_owned(),
+            "--stdio".to_owned(),
+            "--connection".to_owned(),
+            connection_id,
+        ];
+        if let Some(project_id) = project_id {
+            args.push("--project".to_owned());
+            args.push(project_id.to_owned());
+        }
         Self {
             command: mcp_command.display().to_string(),
-            args: vec![
-                "mcp".to_owned(),
-                "--stdio".to_owned(),
-                "--connection".to_owned(),
-                connection_id.into(),
-            ],
+            args,
             env,
         }
     }
@@ -638,11 +653,13 @@ pub(crate) fn managed_entry_from_json(value: &Value) -> Option<ManagedServerEntr
 }
 
 pub(crate) fn is_volicord_managed_entry(entry: &ManagedServerEntry) -> bool {
-    if entry.args.len() != 4
+    if !(entry.args.len() == 4 || entry.args.len() == 6)
         || entry.args[0] != "mcp"
         || entry.args[1] != "--stdio"
         || entry.args[2] != "--connection"
         || entry.args[3].trim().is_empty()
+        || (entry.args.len() == 6
+            && (entry.args[4] != "--project" || entry.args[5].trim().is_empty()))
     {
         return false;
     }

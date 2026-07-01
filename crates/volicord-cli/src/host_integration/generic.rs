@@ -47,8 +47,9 @@ impl GenericAdapter {
     ) -> Result<HostPlan, HostConfigError> {
         let server_name = validated_server_name(request.connection_id, None)?;
         let target = request.target_path.to_path_buf();
-        let entry = ManagedServerEntry::new(
+        let entry = ManagedServerEntry::new_project_bound(
             request.connection_id,
+            Some(request.project_id),
             request.installation_profile.volicord_mcp_command,
             Some(request.installation_profile.runtime_home),
         );
@@ -227,6 +228,7 @@ impl HostAdapter for GenericAdapter {
 #[derive(Debug, Clone, Copy)]
 pub struct GenericExportRequest<'a> {
     pub connection_id: &'a str,
+    pub project_id: &'a str,
     pub installation_profile: InstallationProfile<'a>,
     pub mode: &'a str,
     pub target_path: &'a Path,
@@ -335,7 +337,14 @@ mod tests {
         assert_eq!(plan.entry.command, "/bin/volicord");
         assert_eq!(
             plan.entry.args,
-            ["mcp", "--stdio", "--connection", "int_alpha"]
+            [
+                "mcp",
+                "--stdio",
+                "--connection",
+                "int_alpha",
+                "--project",
+                "project_alpha"
+            ]
         );
         let expected_env =
             std::collections::BTreeMap::from([("VOLICORD_HOME".to_owned(), "/runtime".to_owned())]);
@@ -495,6 +504,7 @@ mod tests {
     fn request<'a>(target_path: &'a Path, mcp_command: &'a Path) -> GenericExportRequest<'a> {
         GenericExportRequest {
             connection_id: "int_alpha",
+            project_id: "project_alpha",
             installation_profile: InstallationProfile {
                 runtime_home: Path::new("/runtime"),
                 volicord_command: Path::new("/bin/volicord"),

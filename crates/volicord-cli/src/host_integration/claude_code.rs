@@ -158,7 +158,12 @@ impl<R: CommandRunner> ClaudeCodeAdapter<R> {
                 "Claude Code reserves the MCP server name `workspace`",
             )));
         }
-        let entry = ManagedServerEntry::new(request.connection_id, mcp_command, runtime_home);
+        let entry = ManagedServerEntry::new_project_bound(
+            request.connection_id,
+            request.project.map(|project| project.project_id),
+            mcp_command,
+            runtime_home,
+        );
         let fingerprint = managed_fingerprint(HostKind::ClaudeCode, scope, &server_name, &entry);
         match scope {
             HostScope::Project => self.plan_project_file(request, server_name, entry, fingerprint),
@@ -1244,7 +1249,7 @@ mod tests {
         let mut adapter = ClaudeCodeAdapter::new(FakeRunner::new(vec![
             missing_output(),
             ok_output(
-                "Status: ✓ Connected\nScope: local\nCommand: /bin/volicord\nArgs: mcp --stdio --connection int_alpha\nEnvironment:\n  VOLICORD_HOME=/runtime\n",
+                "Status: ✓ Connected\nScope: local\nCommand: /bin/volicord\nArgs: mcp --stdio --connection int_alpha --project project_alpha\nEnvironment:\n  VOLICORD_HOME=/runtime\n",
             ),
         ]));
         let plan = adapter.plan(request(

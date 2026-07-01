@@ -40,8 +40,13 @@ fn main() {
 
     match run_cli(args, |name| env::var_os(name), &current_dir) {
         Ok(output) => print!("{output}"),
-        Err(CliError::McpStdio { connection_id }) => {
-            if let Err(error) = volicord_mcp::run_stdio_from_env(&connection_id) {
+        Err(CliError::McpStdio {
+            connection_id,
+            project_id,
+        }) => {
+            if let Err(error) =
+                volicord_mcp::run_stdio_from_env(&connection_id, project_id.as_deref())
+            {
                 eprintln!("error: {error}");
                 process::exit(1);
             }
@@ -327,7 +332,13 @@ where
             project_id.as_deref(),
         )
         .map_err(|error| CliError::runtime(error.to_string())),
-        McpCommand::Stdio { connection_id } => Err(CliError::McpStdio { connection_id }),
+        McpCommand::Stdio {
+            connection_id,
+            project_id,
+        } => Err(CliError::McpStdio {
+            connection_id,
+            project_id,
+        }),
     }
 }
 
@@ -335,6 +346,7 @@ where
 enum McpCommand {
     Stdio {
         connection_id: String,
+        project_id: Option<String>,
     },
     Help,
     Version,
@@ -418,8 +430,10 @@ fn dispatch_mcp_args(args: &[String]) -> Result<McpCommand, CliError> {
     if stdio && check {
         return Err(CliError::usage("cannot combine --stdio and --check"));
     }
-    if project_id.is_some() && !check {
-        return Err(CliError::usage("--project is only valid with --check"));
+    if project_id.is_some() && !check && !stdio {
+        return Err(CliError::usage(
+            "--project is only valid with --stdio or --check",
+        ));
     }
     if !stdio && !check {
         return Err(CliError::usage(
@@ -437,7 +451,10 @@ fn dispatch_mcp_args(args: &[String]) -> Result<McpCommand, CliError> {
             project_id,
         })
     } else {
-        Ok(McpCommand::Stdio { connection_id })
+        Ok(McpCommand::Stdio {
+            connection_id,
+            project_id,
+        })
     }
 }
 
@@ -470,7 +487,7 @@ fn indent_usage_block(block: &str) -> String {
 }
 
 fn mcp_usage() -> String {
-    "volicord mcp --stdio --connection <connection_id>\nvolicord mcp --check --connection <connection_id>\nvolicord mcp --check --connection <connection_id> --project <project_id>\n".to_owned()
+    "volicord mcp --stdio --connection <connection_id> [--project <project_id>]\nvolicord mcp --check --connection <connection_id>\nvolicord mcp --check --connection <connection_id> --project <project_id>\n".to_owned()
 }
 
 fn version() -> String {
@@ -489,6 +506,7 @@ enum CliError {
     },
     McpStdio {
         connection_id: String,
+        project_id: Option<String>,
     },
     ServeStreamableHttp {
         config: Box<volicord_mcp::StreamableHttpServerConfig>,
@@ -512,7 +530,7 @@ impl fmt::Display for CliError {
                 formatter.write_str(message)
             }
             Self::ProcessOutput { stdout, .. } => formatter.write_str(stdout),
-            Self::McpStdio { connection_id } => {
+            Self::McpStdio { connection_id, .. } => {
                 write!(
                     formatter,
                     "MCP stdio requested for connection {connection_id}"

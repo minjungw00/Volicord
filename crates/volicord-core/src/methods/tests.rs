@@ -14271,7 +14271,7 @@ fn mcp_only_watcher_detects_bypass_file_changes() -> Result<(), Box<dyn Error>> 
     );
     assert_eq!(
         response.response_value["guard_health"]["guard_strength"],
-        "detective_watch"
+        "authority_record_only"
     );
     assert_eq!(
         response.response_value["guard_health"]["pre_tool_blocking_available"],
@@ -14283,14 +14283,24 @@ fn mcp_only_watcher_detects_bypass_file_changes() -> Result<(), Box<dyn Error>> 
     );
     assert_eq!(
         response.response_value["guard_health"]["bypass_detection_active"],
-        true
+        false
+    );
+    assert_eq!(
+        response.response_value["guard_health"]["session_watch_coverage_basis"],
+        "method_boundary"
+    );
+    assert!(
+        response.response_value["guard_health"]["session_watch_partial_coverage_warning"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("method boundary")
     );
     assert_eq!(
         response.response_value["guard_health"]["unresolved_unrecorded_change_count"],
         1
     );
     let blocker = close_blocker_by_code(&response.response_value, "unresolved_unrecorded_changes");
-    assert_eq!(blocker["guard_strength"], "detective_watch");
+    assert_eq!(blocker["guard_strength"], "authority_record_only");
     let changes = unresolved_changes_for_connection(&harness)?;
     assert_eq!(changes.len(), 1);
     let detection: Value = serde_json::from_str(&changes[0].detection_json)?;

@@ -60,9 +60,10 @@ Volicord는 이런 대체를 보이게 하려고 존재합니다. 범위, 사용
 - 설정 검증을 실행하고 `complete`, `action_required`, `failed` 보고
 
 `mcp-only` 설정은 pre-tool 차단 없이 권한 상태를 기록하고 MCP 도구를 노출합니다.
-선택된 session에 대해 session watcher가 활성 상태이면 guard health가 `detective_watch`를
-보고하고 Product Repository 메타데이터 변경에서 미기록 변경 찾기를 만들 수 있습니다.
-watcher는 쓰기를 막거나 행위자를 식별하지 않습니다. 완전한 `guarded` 설정은 별도의
+선택된 session에 대해 session watcher가 부분 coverage 경고 없이 활성 상태이면 guard
+health가 `detective_watch`를 보고하고 watcher coverage 시작 뒤의 Product Repository
+메타데이터 변경에서 미기록 변경 찾기를 만들 수 있습니다. watcher는 쓰기를 막거나
+행위자를 식별하지 않습니다. 완전한 `guarded` 설정은 별도의
 `volicord init` 모드이며 필수 호스트 lifecycle hook에 대한 검증된 지원이나 명시적
 degraded opt-in이 필요합니다. `managed` 설정은 여기에 더해 검증된 managed 배포 계약이
 필요합니다. 현재 Codex와 Claude Code 설정은 그 계약이 없으면 `MANAGED_MODE_UNSUPPORTED`를

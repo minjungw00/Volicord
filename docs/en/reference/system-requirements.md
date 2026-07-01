@@ -192,16 +192,16 @@ Baseline host and connection-intent requirements:
 | Host | Connection intent | Environment prerequisite |
 |---|---|---|
 | Codex | `personal` | `CODEX_HOME` or `HOME` must identify the user Codex configuration location; `codex` must be available on `PATH` for the availability check. |
-| Codex | `shared` | The selected `Product Repository` must be writable when applying `.codex/config.toml`; the future Codex host must be able to start `volicord mcp --stdio` through `PATH`; the shared file must not embed a personal Runtime Home path; Codex project trust may still be required. |
+| Codex | `shared` | The selected `Product Repository` must be writable when applying `.codex/config.toml`; the future Codex host must be able to start project-bound `volicord mcp --stdio` through `PATH`; the shared file must not embed a personal Runtime Home path; Codex project trust may still be required. |
 | Claude Code | `personal`, `global` | The `claude` executable must be launchable by the administrative process so Volicord can use `claude mcp` commands. |
-| Claude Code | `shared` | The selected `Product Repository` must be writable when applying `.mcp.json`; the future Claude Code host must be able to start `volicord mcp --stdio` through `PATH`; the shared file must not embed a personal Runtime Home path; project MCP approval may still be required. |
+| Claude Code | `shared` | The selected `Product Repository` must be writable when applying `.mcp.json`; the future Claude Code host must be able to start project-bound `volicord mcp --stdio` through `PATH`; the shared file must not embed a personal Runtime Home path; project MCP approval may still be required. |
 | Generic | `export` | A writable export target is needed only when writing an export file. The external host remains user-managed and unverified until loaded and checked by a host-specific mechanism. |
 
 Writing host configuration does not prove that the host trusted, approved, loaded, initialized, or exposed `volicord mcp --stdio`. `managed host configuration state` meaning and host trust boundaries are owned by [Agent Connection](agent-connection.md).
 
 ## MCP Host Environment Requirements
 
-The baseline MCP host environment must be able to start `volicord mcp --stdio --connection <connection_id>` as a local child process and communicate over stdin/stdout. The `connection_id` process argument names the stored `connection_internal_id` written by generated host configuration or generic export output; it is not a public MCP tool argument. This is not a network listener requirement.
+The baseline MCP host environment must be able to start `volicord mcp --stdio --connection <connection_id> [--project <project_id>]` as a local child process and communicate over stdin/stdout. The `connection_id` process argument names the stored `connection_internal_id` written by generated host configuration or generic export output; the optional `project_id` process argument names a stored `project_internal_id` allowed for that connection. Neither is a public MCP tool argument. This is not a network listener requirement.
 
 The host process environment must provide:
 

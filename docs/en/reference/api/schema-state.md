@@ -135,6 +135,10 @@ GuardHealthSummary:
   mcp_connection_status: string | null
   session_watch_status: string
   last_session_watch_checked_at: string | null
+  session_watch_baseline_created_at: string | null
+  session_watch_coverage_start_at: string | null
+  session_watch_coverage_basis: string | null
+  session_watch_partial_coverage_warning: string | null
   session_watch_detail: string | null
   unresolved_unrecorded_change_count: integer
   missing_or_stale_write_readiness: boolean
@@ -145,7 +149,7 @@ Meaning:
 - `guard_strength` is the derived guard-strength label for the selected connection or session. It reports the strongest currently supported guard path from recorded mode, hook health, runtime observation health, session watcher status, prompt-capture availability, local web consent availability, and managed-distribution verification.
 - `guard_installation_id`, when non-null, is an opaque guard-installation identifier.
 - `guard_configuration_status`, `guard_observation_status`, and `effective_guard_status` separate file/config health, runtime hook observation, and the effective guarded close-readiness status.
-- `pre_tool_blocking_available`, `post_tool_correlation_available`, `bypass_detection_active`, `prompt_capture_available`, `local_web_consent_available`, and `managed_distribution_verified` expose the capability facts behind the label. A setup diagnostic that cannot observe a runtime-only capability reports that capability as false.
+- `pre_tool_blocking_available`, `post_tool_correlation_available`, `bypass_detection_active`, `prompt_capture_available`, `local_web_consent_available`, and `managed_distribution_verified` expose the capability facts behind the label. `bypass_detection_active=true` requires an active session watch without a partial-coverage warning. A setup diagnostic that cannot observe a runtime-only capability reports that capability as false.
 - `guard_hook_observed` reports whether a current matching host guard hook observation is recorded for the selected guard installation.
 - `last_guard_observed_at` is the latest stored guard-installation observation timestamp, or `null` when no observation is recorded.
 - `last_guard_event_at` is the latest guard-event timestamp available to the projection, or `null` when no guard event is available.
@@ -156,8 +160,12 @@ Meaning:
 - `local_web_consent_available` reports whether the current adapter invocation can offer the loopback local web consent fallback for User Channel recovery.
 - `managed_distribution_verified` reports whether managed mode is backed by verified managed-distribution metadata. It is false for ordinary project-local guarded hook files.
 - `mcp_connection_healthy` and `mcp_connection_status` summarize the tracked Agent Connection verification state when that state is available.
-- `session_watch_status` reports whether the session-level Product Repository watcher is `disabled`, `active`, `degraded`, or `unavailable` for the selected connection or session.
+- `session_watch_status` reports whether the session-level Product Repository watcher is `disabled`, `active`, `degraded`, `unavailable`, or `pending_project_selection` for the selected connection or session.
 - `last_session_watch_checked_at` is the latest watcher baseline status update timestamp, or `null` when no session-watch baseline is available.
+- `session_watch_baseline_created_at` is the stored baseline creation timestamp, or `null` when no session-watch baseline is available.
+- `session_watch_coverage_start_at` is the timestamp from which the watcher baseline can claim coverage for the selected session, or `null` when no coverage start is available.
+- `session_watch_coverage_basis` is `mcp_start`, `first_project_selection`, `method_boundary`, or `null`.
+- `session_watch_partial_coverage_warning` is a human-readable warning when Product Repository changes before the recorded coverage start are outside watcher coverage.
 - `session_watch_detail` is a short diagnostic detail for the selected watcher state, or `null` when no detail is available.
 - `unresolved_unrecorded_change_count` is a count of unresolved unrecorded Product Repository changes. It does not expose prompt text, command text, or path lists.
 - `missing_or_stale_write_readiness` reports whether guard events detected missing or stale write readiness.
@@ -166,11 +174,12 @@ Does not imply:
 - `guard_strength` is not proof of correctness, review completion, test sufficiency, OS-level enforcement, or write prevention.
 - `GuardHealthSummary` is not evidence of product correctness, test sufficiency, OS enforcement, sandboxing, security isolation, or final acceptance.
 - An active guard summary does not replace evidence, artifact integrity, user-owned judgment, `Write Check`, final acceptance, or residual-risk acceptance requirements.
-- Session watch status does not mean Volicord prevented a write, identified the actor who changed a file, stored file contents, or provided OS-level enforcement.
+- Session watch status and coverage metadata do not mean Volicord prevented a write, identified the actor who changed a file, stored file contents, or provided OS-level enforcement.
+- When `session_watch_partial_coverage_warning` is non-null, Product Repository changes before `session_watch_coverage_start_at` remain outside session-watch coverage.
 - `mcp_only` mode remains cooperative except that unresolved watcher-created unrecorded-change findings block close while an active session watch is selected.
 
 Owner links:
-- `guard_mode`, `guard_strength`, `guard_installation_status`, `guard_configuration_status`, `guard_observation_status`, `effective_guard_status`, `prompt_capture_status`, and `session_watch_status` values: [state and blocker values](schema-value-sets.md#state-and-blocker-values)
+- `guard_mode`, `guard_strength`, `guard_installation_status`, `guard_configuration_status`, `guard_observation_status`, `effective_guard_status`, `prompt_capture_status`, `session_watch_status`, and `session_watch_coverage_basis` values: [state and blocker values](schema-value-sets.md#state-and-blocker-values)
 - Close-readiness guard blockers and method-local codes: [`volicord.close_task`](method-close-task.md)
 - Agent Connection meaning: [Agent Connection](../agent-connection.md)
 

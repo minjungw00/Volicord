@@ -83,6 +83,11 @@ fn volicord_mcp_subcommand_reports_help_version_and_preflight() -> Result<(), Bo
             "allowed_projects:",
             "available_projects:",
             "verification_scope:",
+            "watcher_status:",
+            "watcher_baseline_created_at:",
+            "watcher_coverage_start_at:",
+            "watcher_coverage_basis:",
+            "watcher_partial_coverage_warning:",
             "project[0].project_id:",
             "project[0].available:",
             "project[0].unavailable_reason:",
@@ -104,6 +109,8 @@ fn volicord_mcp_subcommand_reports_help_version_and_preflight() -> Result<(), Bo
     assert_report_line(&report, "allowed_projects: 1");
     assert_report_line(&report, "available_projects: 1");
     assert_report_line(&report, "verification_scope: startup_check_only");
+    assert_report_line(&report, "watcher_status: pending_mcp_start");
+    assert_report_line(&report, "watcher_coverage_basis: mcp_start");
     assert_report_line(
         &report,
         &format!("project[0].project_id: {}", fixture.project_id()),
