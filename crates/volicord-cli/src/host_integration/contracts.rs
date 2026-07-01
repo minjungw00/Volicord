@@ -1003,10 +1003,12 @@ fn validate_codex_volicord_hook_command(
     {
         return Ok(());
     }
-    if command.starts_with("sh -c ")
+    let safe_runtime_root_command = command.starts_with("sh -c ")
         && command.contains("git rev-parse --show-toplevel")
-        && (uses_phase_wrapper || uses_dispatch)
-    {
+        && (uses_phase_wrapper || uses_dispatch);
+    let safe_absolute_command = command.contains(&format!("/{wrapper}"))
+        || (command.contains(&format!("/{dispatch}")) && command.contains(phase.command_name()));
+    if safe_runtime_root_command || safe_absolute_command {
         Ok(())
     } else {
         Err(HostContractValidationError::new(format!(
@@ -1032,11 +1034,12 @@ fn validate_claude_volicord_hook_command(
     if !command.contains(&relative_wrapper) && !command.contains("volicord guard") {
         return Ok(());
     }
-    if command == placeholder_wrapper
-        && object
-            .get("args")
-            .and_then(Value::as_array)
-            .is_some_and(|args| args.is_empty())
+    let args_empty = object
+        .get("args")
+        .and_then(Value::as_array)
+        .is_some_and(|args| args.is_empty());
+    if args_empty
+        && (command == placeholder_wrapper || command.contains(&format!("/{relative_wrapper}")))
     {
         Ok(())
     } else {

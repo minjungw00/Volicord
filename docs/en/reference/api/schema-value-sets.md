@@ -374,13 +374,39 @@ session watcher or effective host hook guard is available for the selected
 view. `detective_watch` means a session watcher is active and can detect bypass
 Product Repository changes after its coverage start, but it cannot pre-block
 writes or identify the actor. `host_hook_guarded` means the selected
-project-local guarded host hooks have verified generated config, native host
-output, required lifecycle phases, Bash/shell and direct file-write matcher
-coverage, matching policy hash, and current runtime guard observation.
+project-local guarded host hooks have verified generated config,
+cwd-independent and subdirectory-safe hook commands, native host output,
+required lifecycle phases, Bash/shell and direct file-write matcher coverage,
+matching policy hash, and current runtime guard observation.
 `managed_guarded` means the host-hook guarded condition is met and the selected
 managed distribution metadata is verified. These labels do not prove product
 correctness, review completion, test sufficiency, OS enforcement, sandboxing,
 security isolation, final acceptance, or residual-risk acceptance.
+
+`GuardHealthSummary.hook_path_safety` uses:
+
+```text
+ok
+not_recorded
+metadata_missing
+authority_mismatch
+policy_hash_mismatch
+host_output_mismatch
+relative_path_unsafe
+absolute_path_stale
+placeholder_unsupported
+dispatch_missing
+wrapper_missing
+wrapper_not_executable
+```
+
+`ok` means every required host hook command is recorded as cwd-independent and
+subdirectory-safe and resolves to the expected managed wrapper path. Failure
+values report the primary reason that condition is not met: relative commands
+that depend on the session cwd, stale absolute project roots, unsupported
+placeholders, missing dispatch or wrapper scripts, non-executable wrapper
+scripts on supported Unix-like platforms, generated wrapper metadata mismatch,
+or missing verification metadata.
 
 `GuardHealthSummary.guard_installation_status` uses:
 

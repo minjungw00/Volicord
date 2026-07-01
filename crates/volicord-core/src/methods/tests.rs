@@ -12687,6 +12687,119 @@ fn host_hook_strength_requires_generated_config_verification() -> Result<(), Box
 }
 
 #[test]
+fn host_hook_strength_requires_hook_path_safety_and_recovers() -> Result<(), Box<dyn Error>> {
+    for (suffix, guard_mode, managed) in [
+        ("hook_path_unsafe_guarded", "guarded", false),
+        ("hook_path_unsafe_managed", "managed", true),
+    ] {
+        let harness = MethodHarness::new()?;
+        let mut capability = complete_guard_capability_value(&harness)?;
+        capability["host_hook_commands"][0]["command"] =
+            json!(".codex/hooks/volicord-dispatch.sh session-start");
+        capability["host_hook_commands"][0]["cwd_independent"] = json!(false);
+        capability["host_hook_commands"][0]["subdirectory_safe"] = json!(false);
+        capability["hook_path_safety"]["overall_status"] = json!("relative_path_unsafe");
+        capability["hook_path_safety"]["all_cwd_independent"] = json!(false);
+        capability["hook_path_safety"]["all_subdirectory_safe"] = json!(false);
+        if managed {
+            capability["guard_profile"] = json!("managed_guarded");
+            capability["managed_source"] = json!("org_policy_bundle");
+            capability["managed_bundle_hash"] = json!("sha256:managedfixture");
+            capability["managed_verification_status"] = json!("verified");
+        }
+        record_guard_installation(
+            &harness,
+            suffix,
+            guard_mode,
+            "active",
+            &capability.to_string(),
+        )?;
+        let (task_id, _, _) = create_close_ready_task(&harness, suffix)?;
+
+        let response = harness.service.close_task(
+            close_task_request(CloseTaskFixture {
+                request_id: &format!("req_check_{suffix}"),
+                idempotency_key: None,
+                dry_run: false,
+                expected_state_version: None,
+                task_id: &task_id,
+                intent: CloseIntent::Check,
+                close_reason: None,
+                superseding_task_id: None,
+            }),
+            invocation(OperationCategory::Read),
+        )?;
+
+        assert_eq!(
+            response.response_value["guard_health"]["hook_path_safety"],
+            "relative_path_unsafe"
+        );
+        assert_eq!(
+            response.response_value["guard_health"]["hook_commands_cwd_independent"],
+            false
+        );
+        assert_eq!(
+            response.response_value["guard_health"]["hook_commands_subdirectory_safe"],
+            false
+        );
+        assert_eq!(
+            response.response_value["guard_health"]["guard_strength"],
+            "authority_record_only"
+        );
+        assert_eq!(
+            response.response_value["guard_health"]["generated_config_verified"],
+            false
+        );
+
+        let mut safe_capability = complete_guard_capability_value(&harness)?;
+        if managed {
+            safe_capability["guard_profile"] = json!("managed_guarded");
+            safe_capability["managed_source"] = json!("org_policy_bundle");
+            safe_capability["managed_bundle_hash"] = json!("sha256:managedfixture");
+            safe_capability["managed_verification_status"] = json!("verified");
+        }
+        record_guard_installation(
+            &harness,
+            suffix,
+            guard_mode,
+            "active",
+            &safe_capability.to_string(),
+        )?;
+        let recovered = harness.service.close_task(
+            close_task_request(CloseTaskFixture {
+                request_id: &format!("req_check_{suffix}_recovered"),
+                idempotency_key: None,
+                dry_run: false,
+                expected_state_version: None,
+                task_id: &task_id,
+                intent: CloseIntent::Check,
+                close_reason: None,
+                superseding_task_id: None,
+            }),
+            invocation(OperationCategory::Read),
+        )?;
+        assert_eq!(
+            recovered.response_value["guard_health"]["hook_path_safety"],
+            "ok"
+        );
+        assert_eq!(
+            recovered.response_value["guard_health"]["generated_config_verified"],
+            true
+        );
+        let expected_strength = if managed {
+            "managed_guarded"
+        } else {
+            "host_hook_guarded"
+        };
+        assert_eq!(
+            recovered.response_value["guard_health"]["guard_strength"],
+            expected_strength
+        );
+    }
+    Ok(())
+}
+
+#[test]
 fn host_hook_strength_requires_shell_and_direct_write_matcher_coverage(
 ) -> Result<(), Box<dyn Error>> {
     for (suffix, field) in [
@@ -15556,26 +15669,96 @@ fn complete_guard_capability_value(harness: &MethodHarness) -> Result<Value, Box
     let repo_root = product_repo_root(harness)?;
     let policy_path = repo_root.join(".volicord").join("policy.json");
     let hook_config_path = repo_root.join(".codex").join("hooks.json");
-    let wrapper_path = repo_root
-        .join(".codex")
-        .join("hooks")
-        .join("volicord-pre-tool.sh");
+    let hooks_dir = repo_root.join(".codex").join("hooks");
     fs::create_dir_all(policy_path.parent().expect("policy path has parent"))?;
     fs::create_dir_all(
         hook_config_path
             .parent()
             .expect("hook config path has parent"),
     )?;
-    fs::create_dir_all(wrapper_path.parent().expect("wrapper path has parent"))?;
+    fs::create_dir_all(&hooks_dir)?;
     let policy_text = r#"{"managed_by":"volicord","guard":{"commands":{}}}"#;
-    let hook_config_text = r#"{"hooks":{"SessionStart":[{"matcher":"startup|resume","hooks":[{"type":"command","command":"sh -c 'root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-session-start.sh\"'"}]}],"PreToolUse":[{"matcher":"Bash|apply_patch|Edit|Write|mcp__.*__(write|edit|create|update|delete|remove|move|patch).*","hooks":[{"type":"command","command":"sh -c 'root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-pre-tool.sh\"'"}]}],"PostToolUse":[{"matcher":"Bash|apply_patch|Edit|Write|mcp__.*__(write|edit|create|update|delete|remove|move|patch).*","hooks":[{"type":"command","command":"sh -c 'root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-post-tool.sh\"'"}]}],"UserPromptSubmit":[{"hooks":[{"type":"command","command":"sh -c 'root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-prompt-capture.sh\"'"}]}],"Stop":[{"hooks":[{"type":"command","command":"sh -c 'root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-stop.sh\"'"}]}]}}"#;
-    let wrapper_command = "volicord guard pre-tool --repo /tmp/repo --connection conn_methods --guard-installation guard_installation --host codex --guard-mode guarded --policy-hash sha256:guardedfixture --host-output codex";
-    let wrapper_text = format!(
-        "#!/bin/sh\n# VOLICORD_MANAGED_HOOK_WRAPPER v1\n# host_kind=codex\n# phase=pre_tool\n# connection_id={CONNECTION_ID}\n# guard_installation_id=guard_installation\n# policy_hash=sha256:guardedfixture\n# host_output=codex\nexec {wrapper_command}\n"
-    );
+    let hook_config_text = r#"{"hooks":{"SessionStart":[{"matcher":"startup|resume","hooks":[{"type":"command","command":"sh -c 'root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-dispatch.sh\" session-start'"}]}],"PreToolUse":[{"matcher":"Bash|apply_patch|Edit|Write|mcp__.*__(write|edit|create|update|delete|remove|move|patch).*","hooks":[{"type":"command","command":"sh -c 'root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-dispatch.sh\" pre-tool'"}]}],"PostToolUse":[{"matcher":"Bash|apply_patch|Edit|Write|mcp__.*__(write|edit|create|update|delete|remove|move|patch).*","hooks":[{"type":"command","command":"sh -c 'root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-dispatch.sh\" post-tool'"}]}],"UserPromptSubmit":[{"hooks":[{"type":"command","command":"sh -c 'root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-dispatch.sh\" prompt-capture'"}]}],"Stop":[{"hooks":[{"type":"command","command":"sh -c 'root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-dispatch.sh\" stop'"}]}]}}"#;
     fs::write(&policy_path, policy_text)?;
     fs::write(&hook_config_path, hook_config_text)?;
-    fs::write(&wrapper_path, &wrapper_text)?;
+    let dispatch_path = hooks_dir.join("volicord-dispatch.sh");
+    let dispatch_text = "#!/bin/sh\n# VOLICORD_MANAGED_HOOK_WRAPPER v1\n# host_kind=codex\n# phase=dispatch\n# script_role=codex_dispatch\nwrapper=\"$(git rev-parse --show-toplevel)/.codex/hooks/volicord-$1.sh\"\nexec \"$wrapper\"\n";
+    fs::write(&dispatch_path, dispatch_text)?;
+    set_test_executable(&dispatch_path)?;
+    let phases = [
+        ("session_start_hook", "session-start", "session_start"),
+        ("pre_tool_hook", "pre-tool", "pre_tool"),
+        ("post_tool_hook", "post-tool", "post_tool"),
+        (
+            "user_prompt_submit_hook",
+            "prompt-capture",
+            "prompt_capture",
+        ),
+        ("stop_hook", "stop", "stop"),
+    ];
+    let mut wrapper_files = Vec::new();
+    let mut host_hook_commands = Vec::new();
+    for (capability_phase, command_name, policy_key) in phases {
+        let wrapper_path = hooks_dir.join(format!("volicord-{command_name}.sh"));
+        let wrapper_command = format!(
+            "volicord guard {command_name} --repo {} --connection {CONNECTION_ID} --guard-installation guard_installation --host codex --guard-mode guarded --policy-hash sha256:guardedfixture --host-output codex",
+            path_text(&repo_root),
+        );
+        let wrapper_text = format!(
+            "#!/bin/sh\n# VOLICORD_MANAGED_HOOK_WRAPPER v1\n# host_kind=codex\n# phase={policy_key}\n# connection_id={CONNECTION_ID}\n# guard_installation_id=guard_installation\n# policy_hash=sha256:guardedfixture\n# host_output=codex\nexec {wrapper_command}\n"
+        );
+        fs::write(&wrapper_path, &wrapper_text)?;
+        set_test_executable(&wrapper_path)?;
+        wrapper_files.push(json!({
+            "kind": "host_hook_wrapper",
+            "path": path_text(&wrapper_path),
+            "content_hash": sha256_text(&wrapper_text),
+            "ownership": "managed_script",
+            "managed_marker": "VOLICORD_MANAGED_HOOK_WRAPPER v1",
+            "executable_required": true,
+            "managed_script_command": wrapper_command,
+            "host_kind": "codex",
+            "phase": policy_key,
+            "connection_id": CONNECTION_ID,
+            "guard_installation_id": "guard_installation",
+            "policy_hash": "sha256:guardedfixture",
+            "host_output": "codex"
+        }));
+        host_hook_commands.push(json!({
+            "host_kind": "codex",
+            "phase": capability_phase,
+            "policy_key": policy_key,
+            "command_shape": "shell_command_string",
+            "command": format!("sh -c 'root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-dispatch.sh\" {command_name}'"),
+            "args": Value::Null,
+            "expected_wrapper_path": path_text(&dispatch_path),
+            "expected_phase_wrapper_path": path_text(&wrapper_path),
+            "root_resolution_basis": "git_work_tree",
+            "hook_command_path_basis": "git_root_runtime",
+            "cwd_independent": true,
+            "subdirectory_safe": true,
+            "wrapper_resolution_status": "ok",
+            "verification": {
+                "basis_verified_by": "repo_root_git_marker",
+                "host_contract_source": "codex_hook_command_string"
+            }
+        }));
+    }
+    let mut files = vec![
+        json!({
+            "kind": "volicord_policy",
+            "path": path_text(&policy_path),
+            "content_hash": sha256_text(policy_text),
+            "ownership": "managed_json"
+        }),
+        json!({
+            "kind": "host_hook_config",
+            "path": path_text(&hook_config_path),
+            "content_hash": sha256_text(hook_config_text),
+            "ownership": "managed_json"
+        }),
+    ];
+    files.extend(wrapper_files);
     Ok(json!({
         "schema": "volicord-guard-capability-v1",
         "policy_hash": "sha256:guardedfixture",
@@ -15595,35 +15778,13 @@ fn complete_guard_capability_value(harness: &MethodHarness) -> Result<Value, Box
         ],
         "missing_required_hooks": [],
         "prompt_capture": true,
-        "files": [
-            {
-                "kind": "volicord_policy",
-                "path": path_text(&policy_path),
-                "content_hash": sha256_text(policy_text),
-                "ownership": "managed_json"
-            },
-            {
-                "kind": "host_hook_config",
-                "path": path_text(&hook_config_path),
-                "content_hash": sha256_text(hook_config_text),
-                "ownership": "managed_json"
-            },
-            {
-                "kind": "host_hook_wrapper",
-                "path": path_text(&wrapper_path),
-                "content_hash": sha256_text(&wrapper_text),
-                "ownership": "managed_script",
-                "managed_marker": "VOLICORD_MANAGED_HOOK_WRAPPER v1",
-                "executable_required": false,
-                "managed_script_command": wrapper_command,
-                "host_kind": "codex",
-                "phase": "pre_tool",
-                "connection_id": CONNECTION_ID,
-                "guard_installation_id": "guard_installation",
-                "policy_hash": "sha256:guardedfixture",
-                "host_output": "codex"
-            }
-        ]
+        "files": files,
+        "host_hook_commands": host_hook_commands,
+        "hook_path_safety": {
+            "overall_status": "ok",
+            "all_cwd_independent": true,
+            "all_subdirectory_safe": true
+        }
     }))
 }
 
@@ -15645,6 +15806,21 @@ fn hex_bytes(bytes: &[u8]) -> String {
 
 fn path_text(path: &Path) -> String {
     path.to_string_lossy().into_owned()
+}
+
+#[cfg(unix)]
+fn set_test_executable(path: &Path) -> Result<(), Box<dyn Error>> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let mut permissions = fs::metadata(path)?.permissions();
+    permissions.set_mode(permissions.mode() | 0o755);
+    fs::set_permissions(path, permissions)?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn set_test_executable(_path: &Path) -> Result<(), Box<dyn Error>> {
+    Ok(())
 }
 
 fn insert_guarded_agent_session(

@@ -845,6 +845,9 @@ struct GuardCapabilityFacts {
     bash_shell_mutation_coverage_configured: bool,
     direct_file_write_matcher_coverage_configured: bool,
     generated_config_verified: bool,
+    hook_path_safety: String,
+    hook_commands_cwd_independent: bool,
+    hook_commands_subdirectory_safe: bool,
 }
 
 pub(super) fn guard_health_summary_from_record(
@@ -972,6 +975,9 @@ pub(super) fn guard_health_summary_from_record(
         effective_guard_status,
         generated_config_verified: capability.generated_config_verified,
         native_host_output_adapter_verified: capability.native_host_output_adapter_verified,
+        hook_path_safety: capability.hook_path_safety,
+        hook_commands_cwd_independent: capability.hook_commands_cwd_independent,
+        hook_commands_subdirectory_safe: capability.hook_commands_subdirectory_safe,
         pre_tool_blocking_available: false,
         post_tool_correlation_available: false,
         bash_shell_mutation_coverage: capability.bash_shell_mutation_coverage_configured,
@@ -1029,6 +1035,9 @@ fn default_guard_capability_facts() -> GuardCapabilityFacts {
         bash_shell_mutation_coverage_configured: false,
         direct_file_write_matcher_coverage_configured: false,
         generated_config_verified: false,
+        hook_path_safety: "not_recorded".to_owned(),
+        hook_commands_cwd_independent: false,
+        hook_commands_subdirectory_safe: false,
     }
 }
 
@@ -1052,6 +1061,8 @@ fn guard_capability_facts(
         &required_hook_phases,
         string_array_field(&capability, "missing_required_hooks").unwrap_or_default(),
     );
+    let hook_path_safety = hook_path_safety_facts(&capability, installation);
+    let generated_files_verified = generated_guard_config_verified(&capability);
     Ok(GuardCapabilityFacts {
         expected_policy_hash,
         required_hook_phases,
@@ -1074,12 +1085,384 @@ fn guard_capability_facts(
             &capability,
             "direct_file_write_matcher_coverage",
         ),
-        generated_config_verified: generated_guard_config_verified(&capability),
+        generated_config_verified: generated_files_verified && hook_path_safety.is_ok(),
+        hook_path_safety: hook_path_safety.status,
+        hook_commands_cwd_independent: hook_path_safety.cwd_independent,
+        hook_commands_subdirectory_safe: hook_path_safety.subdirectory_safe,
     })
 }
 
 fn capability_bool_field(object: &JsonObject, field: &str) -> bool {
     object.get(field).and_then(Value::as_bool).unwrap_or(false)
+}
+
+#[derive(Debug, Clone)]
+struct HookPathSafetyFacts {
+    status: String,
+    cwd_independent: bool,
+    subdirectory_safe: bool,
+}
+
+impl HookPathSafetyFacts {
+    fn ok() -> Self {
+        Self {
+            status: "ok".to_owned(),
+            cwd_independent: true,
+            subdirectory_safe: true,
+        }
+    }
+
+    fn failed(status: impl Into<String>) -> Self {
+        Self {
+            status: status.into(),
+            cwd_independent: false,
+            subdirectory_safe: false,
+        }
+    }
+
+    fn is_ok(&self) -> bool {
+        self.status == "ok" && self.cwd_independent && self.subdirectory_safe
+    }
+}
+
+fn hook_path_safety_facts(
+    capability: &JsonObject,
+    installation: &volicord_store::guards::GuardInstallationRecord,
+) -> HookPathSafetyFacts {
+    let Some(commands) = capability
+        .get("host_hook_commands")
+        .and_then(Value::as_array)
+    else {
+        return if capability_requires_hook_path_safety(capability) {
+            HookPathSafetyFacts::failed("metadata_missing")
+        } else {
+            HookPathSafetyFacts::failed("not_recorded")
+        };
+    };
+    if commands.is_empty() {
+        return if capability_requires_hook_path_safety(capability) {
+            HookPathSafetyFacts::failed("metadata_missing")
+        } else {
+            HookPathSafetyFacts::failed("not_recorded")
+        };
+    }
+    let mut status = "ok";
+    for command in commands {
+        let command_status = recorded_hook_command_path_status(command, installation);
+        if command_status != "ok" {
+            status = more_severe_hook_path_status(status, command_status);
+        }
+    }
+    if status == "ok" {
+        HookPathSafetyFacts::ok()
+    } else {
+        HookPathSafetyFacts::failed(status)
+    }
+}
+
+fn capability_requires_hook_path_safety(capability: &JsonObject) -> bool {
+    matches!(
+        capability.get("guard_profile").and_then(Value::as_str),
+        Some("host_hook_guarded" | "managed_guarded")
+    ) || capability
+        .get("required_guard_phases")
+        .and_then(Value::as_array)
+        .is_some_and(|phases| !phases.is_empty())
+}
+
+fn recorded_hook_command_path_status(
+    command: &Value,
+    installation: &volicord_store::guards::GuardInstallationRecord,
+) -> &'static str {
+    let host_kind = command
+        .get("host_kind")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let phase = command
+        .get("phase")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let command_text = command
+        .get("command")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let args = command
+        .get("args")
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    let expected_wrapper_path = command
+        .get("expected_wrapper_path")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let expected_phase_wrapper_path = command
+        .get("expected_phase_wrapper_path")
+        .and_then(Value::as_str)
+        .unwrap_or(expected_wrapper_path);
+    let phase_command = phase_command_name_from_capability(phase).unwrap_or_default();
+    if host_kind != installation.host_kind {
+        return "authority_mismatch";
+    }
+    if command.get("cwd_independent").and_then(Value::as_bool) != Some(true)
+        || command.get("subdirectory_safe").and_then(Value::as_bool) != Some(true)
+    {
+        return "relative_path_unsafe";
+    }
+    let mut status = classify_hook_command_path(
+        host_kind,
+        phase_command,
+        command_text,
+        args,
+        expected_wrapper_path,
+        expected_phase_wrapper_path,
+    );
+    if let Some(recorded_status) = command
+        .get("wrapper_resolution_status")
+        .and_then(Value::as_str)
+        .filter(|value| *value != "ok")
+    {
+        status = more_severe_hook_path_status(
+            status,
+            hook_path_status_from_str(recorded_status).unwrap_or("metadata_missing"),
+        );
+    }
+    status = more_severe_hook_path_status(
+        status,
+        verify_hook_wrapper_path(expected_phase_wrapper_path, "wrapper_missing"),
+    );
+    if host_kind == "codex" {
+        status = more_severe_hook_path_status(
+            status,
+            verify_hook_wrapper_path(expected_wrapper_path, "dispatch_missing"),
+        );
+    }
+    status
+}
+
+fn verify_hook_wrapper_path(path_text_value: &str, missing_status: &'static str) -> &'static str {
+    if path_text_value.trim().is_empty() {
+        return "metadata_missing";
+    }
+    match std::fs::metadata(Path::new(path_text_value)) {
+        Ok(metadata) if metadata.is_file() => {
+            if script_is_executable_path(path_text_value) {
+                "ok"
+            } else {
+                "wrapper_not_executable"
+            }
+        }
+        Ok(_) => "wrapper_missing",
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => missing_status,
+        Err(_) => "wrapper_missing",
+    }
+}
+
+fn classify_hook_command_path(
+    host_kind: &str,
+    phase_command: &str,
+    command_text: &str,
+    args: &[Value],
+    expected_wrapper_path: &str,
+    expected_phase_wrapper_path: &str,
+) -> &'static str {
+    if phase_command.is_empty() || command_text.trim().is_empty() {
+        return "metadata_missing";
+    }
+    match host_kind {
+        "codex" => classify_codex_hook_command_path(
+            phase_command,
+            command_text,
+            expected_wrapper_path,
+            expected_phase_wrapper_path,
+        ),
+        "claude_code" => classify_claude_hook_command_path(
+            phase_command,
+            command_text,
+            args,
+            expected_phase_wrapper_path,
+        ),
+        _ => "metadata_missing",
+    }
+}
+
+fn classify_codex_hook_command_path(
+    phase_command: &str,
+    command_text: &str,
+    expected_dispatch_path: &str,
+    expected_phase_wrapper_path: &str,
+) -> &'static str {
+    let relative_wrapper = format!(".codex/hooks/volicord-{phase_command}.sh");
+    if contains_bare_relative_hook_path(command_text, ".codex/hooks/") {
+        return "relative_path_unsafe";
+    }
+    if command_text.contains(".codex/hooks/volicord-dispatch.sh")
+        || command_text.contains(&relative_wrapper)
+    {
+        if command_text.contains("git rev-parse --show-toplevel")
+            && command_text.contains(".codex/hooks/volicord-dispatch.sh")
+            && command_text.contains(phase_command)
+        {
+            return "ok";
+        }
+        if let Some(path) =
+            absolute_path_ending_with(command_text, ".codex/hooks/volicord-dispatch.sh")
+        {
+            return if paths_equivalent_text(&path, expected_dispatch_path) {
+                "ok"
+            } else {
+                "absolute_path_stale"
+            };
+        }
+        if let Some(path) = absolute_path_ending_with(command_text, &relative_wrapper) {
+            return if paths_equivalent_text(&path, expected_phase_wrapper_path) {
+                "ok"
+            } else {
+                "absolute_path_stale"
+            };
+        }
+        return "relative_path_unsafe";
+    }
+    if command_text.contains(&format!("volicord guard {phase_command}")) {
+        return "ok";
+    }
+    "metadata_missing"
+}
+
+fn classify_claude_hook_command_path(
+    phase_command: &str,
+    command_text: &str,
+    args: &[Value],
+    expected_phase_wrapper_path: &str,
+) -> &'static str {
+    let relative_wrapper = format!(".claude/hooks/volicord-{phase_command}.sh");
+    let placeholder_wrapper = format!("${{CLAUDE_PROJECT_DIR}}/{relative_wrapper}");
+    if contains_bare_relative_hook_path(command_text, ".claude/hooks/") {
+        return "relative_path_unsafe";
+    }
+    if command_text.contains("${CLAUDE_PROJECT_DIR}") {
+        return if command_text == placeholder_wrapper && args.is_empty() {
+            "ok"
+        } else {
+            "placeholder_unsupported"
+        };
+    }
+    if command_text.contains(&relative_wrapper) {
+        if let Some(path) = absolute_path_ending_with(command_text, &relative_wrapper) {
+            return if paths_equivalent_text(&path, expected_phase_wrapper_path) {
+                "ok"
+            } else {
+                "absolute_path_stale"
+            };
+        }
+        return "relative_path_unsafe";
+    }
+    if command_text.contains(&format!("volicord guard {phase_command}")) {
+        return "ok";
+    }
+    "metadata_missing"
+}
+
+fn contains_bare_relative_hook_path(command_text: &str, prefix: &str) -> bool {
+    let trimmed = command_text.trim_start_matches([' ', '\'', '"']);
+    trimmed.starts_with(prefix)
+        || trimmed.starts_with(&format!("./{prefix}"))
+        || command_text.contains(&format!(" {prefix}"))
+        || command_text.contains(&format!(" './{prefix}"))
+        || command_text.contains(&format!(" \"./{prefix}"))
+        || command_text.contains(&format!(" '{prefix}"))
+        || command_text.contains(&format!(" \"{prefix}"))
+}
+
+fn absolute_path_ending_with(command_text: &str, suffix: &str) -> Option<String> {
+    let index = command_text.find(suffix)?;
+    let prefix = &command_text[..index];
+    let start = prefix
+        .rfind([' ', '\'', '"', '=', ';', '('])
+        .map(|position| position + 1)
+        .unwrap_or(0);
+    let path_prefix = prefix.get(start..)?;
+    if !path_prefix.starts_with('/') {
+        return None;
+    }
+    Some(format!("{path_prefix}{suffix}"))
+}
+
+fn paths_equivalent_text(left: &str, right: &str) -> bool {
+    lexical_absolute_path(left)
+        .is_some_and(|left| lexical_absolute_path(right).is_some_and(|right| left == right))
+}
+
+fn lexical_absolute_path(path_text_value: &str) -> Option<String> {
+    let path = Path::new(path_text_value);
+    if !path.is_absolute() {
+        return None;
+    }
+    let mut parts = Vec::new();
+    for component in path.components() {
+        match component {
+            std::path::Component::RootDir => {}
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                parts.pop();
+            }
+            std::path::Component::Normal(part) => parts.push(part.to_string_lossy().into_owned()),
+            std::path::Component::Prefix(_) => return None,
+        }
+    }
+    Some(format!("/{}", parts.join("/")))
+}
+
+fn phase_command_name_from_capability(phase: &str) -> Option<&'static str> {
+    match phase {
+        "session_start_hook" | "session_start" => Some("session-start"),
+        "pre_tool_hook" | "pre_tool" => Some("pre-tool"),
+        "post_tool_hook" | "post_tool" => Some("post-tool"),
+        "user_prompt_submit_hook" | "prompt_capture" => Some("prompt-capture"),
+        "stop_hook" | "stop" => Some("stop"),
+        _ => None,
+    }
+}
+
+fn more_severe_hook_path_status(left: &'static str, right: &'static str) -> &'static str {
+    if hook_path_status_rank(left) <= hook_path_status_rank(right) {
+        left
+    } else {
+        right
+    }
+}
+
+fn hook_path_status_rank(status: &str) -> u8 {
+    match status {
+        "ok" => 100,
+        "metadata_missing" => 0,
+        "authority_mismatch" => 1,
+        "policy_hash_mismatch" => 2,
+        "host_output_mismatch" => 3,
+        "relative_path_unsafe" => 4,
+        "absolute_path_stale" => 5,
+        "placeholder_unsupported" => 6,
+        "dispatch_missing" => 7,
+        "wrapper_missing" => 8,
+        "wrapper_not_executable" => 9,
+        _ => 10,
+    }
+}
+
+fn hook_path_status_from_str(status: &str) -> Option<&'static str> {
+    match status {
+        "ok" => Some("ok"),
+        "metadata_missing" => Some("metadata_missing"),
+        "authority_mismatch" => Some("authority_mismatch"),
+        "policy_hash_mismatch" => Some("policy_hash_mismatch"),
+        "host_output_mismatch" => Some("host_output_mismatch"),
+        "relative_path_unsafe" => Some("relative_path_unsafe"),
+        "absolute_path_stale" => Some("absolute_path_stale"),
+        "placeholder_unsupported" => Some("placeholder_unsupported"),
+        "dispatch_missing" => Some("dispatch_missing"),
+        "wrapper_missing" => Some("wrapper_missing"),
+        "wrapper_not_executable" => Some("wrapper_not_executable"),
+        _ => None,
+    }
 }
 
 fn generated_guard_config_verified(capability: &JsonObject) -> bool {
@@ -1293,8 +1676,22 @@ fn script_is_executable(file: &Value) -> bool {
         .unwrap_or(false)
 }
 
+#[cfg(unix)]
+fn script_is_executable_path(path_text: &str) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+
+    std::fs::metadata(Path::new(path_text))
+        .map(|metadata| metadata.permissions().mode() & 0o111 != 0)
+        .unwrap_or(false)
+}
+
 #[cfg(not(unix))]
 fn script_is_executable(_file: &Value) -> bool {
+    true
+}
+
+#[cfg(not(unix))]
+fn script_is_executable_path(_path_text: &str) -> bool {
     true
 }
 
@@ -1369,6 +1766,9 @@ fn host_hook_strength_available(summary: &GuardHealthSummary) -> bool {
         && summary.guard_hook_observed
         && summary.generated_config_verified
         && summary.native_host_output_adapter_verified
+        && summary.hook_path_safety == "ok"
+        && summary.hook_commands_cwd_independent
+        && summary.hook_commands_subdirectory_safe
         && summary
             .expected_policy_hash
             .as_ref()

@@ -115,6 +115,9 @@ GuardHealthSummary:
   effective_guard_status: string
   generated_config_verified: boolean
   native_host_output_adapter_verified: boolean
+  hook_path_safety: string
+  hook_commands_cwd_independent: boolean
+  hook_commands_subdirectory_safe: boolean
   pre_tool_blocking_available: boolean
   post_tool_correlation_available: boolean
   bash_shell_mutation_coverage: boolean
@@ -150,10 +153,10 @@ GuardHealthSummary:
 
 Meaning:
 - `guard_mode` and `guard_installation_status` are controlled value strings.
-- `guard_strength` is the derived guard-strength label for the selected connection or session. It reports the strongest currently supported guard path from recorded mode, hook health, runtime observation health, session watcher status, prompt-capture availability, local web consent availability, and managed-distribution verification.
+- `guard_strength` is the derived guard-strength label for the selected connection or session. It reports the strongest currently supported guard path from recorded mode, hook health, hook command path safety, runtime observation health, session watcher status, prompt-capture availability, local web consent availability, and managed-distribution verification.
 - `guard_installation_id`, when non-null, is an opaque guard-installation identifier.
 - `guard_configuration_status`, `guard_observation_status`, and `effective_guard_status` separate file/config health, runtime hook observation, and the effective guarded close-readiness status.
-- `generated_config_verified`, `native_host_output_adapter_verified`, `pre_tool_blocking_available`, `post_tool_correlation_available`, `bash_shell_mutation_coverage`, `direct_file_write_matcher_coverage`, `bypass_detection_active`, `prompt_capture_available`, `local_web_consent_available`, and `managed_distribution_verified` expose the capability facts behind the label. `host_hook_guarded` requires verified generated config, native host output, required lifecycle phases, Bash/shell and direct file-write matcher coverage, a matching policy hash, and a current runtime guard observation. `bypass_detection_active=true` requires an active session watch; a partial coverage warning remains visible in `session_watch_partial_coverage_warning`. A setup diagnostic that cannot observe a runtime-only capability reports that capability as false.
+- `generated_config_verified`, `native_host_output_adapter_verified`, `hook_path_safety`, `hook_commands_cwd_independent`, `hook_commands_subdirectory_safe`, `pre_tool_blocking_available`, `post_tool_correlation_available`, `bash_shell_mutation_coverage`, `direct_file_write_matcher_coverage`, `bypass_detection_active`, `prompt_capture_available`, `local_web_consent_available`, and `managed_distribution_verified` expose the capability facts behind the label. `host_hook_guarded` requires verified generated config, native host output, `hook_path_safety=ok`, cwd-independent and subdirectory-safe required hook commands, required lifecycle phases, Bash/shell and direct file-write matcher coverage, a matching policy hash, and a current runtime guard observation. `bypass_detection_active=true` requires an active session watch; a partial coverage warning remains visible in `session_watch_partial_coverage_warning`. A setup diagnostic that cannot observe a runtime-only capability reports that capability as false.
 - `guard_hook_observed` reports whether a current matching host guard hook observation is recorded for the selected guard installation.
 - `last_guard_observed_at` is the latest stored guard-installation observation timestamp, or `null` when no observation is recorded.
 - `last_guard_event_at` is the latest guard-event timestamp available to the projection, or `null` when no guard event is available.
@@ -183,7 +186,7 @@ Does not imply:
 - `mcp_only` mode remains cooperative except that unresolved watcher-created unrecorded-change findings block close while an active session watch is selected.
 
 Owner links:
-- `guard_mode`, `guard_strength`, `guard_installation_status`, `guard_configuration_status`, `guard_observation_status`, `effective_guard_status`, `prompt_capture_status`, `session_watch_status`, and `session_watch_coverage_basis` values: [state and blocker values](schema-value-sets.md#state-and-blocker-values)
+- `guard_mode`, `guard_strength`, `hook_path_safety`, `guard_installation_status`, `guard_configuration_status`, `guard_observation_status`, `effective_guard_status`, `prompt_capture_status`, `session_watch_status`, and `session_watch_coverage_basis` values: [state and blocker values](schema-value-sets.md#state-and-blocker-values)
 - Close-readiness guard blockers and method-local codes: [`volicord.close_task`](method-close-task.md)
 - Agent Connection meaning: [Agent Connection](../agent-connection.md)
 

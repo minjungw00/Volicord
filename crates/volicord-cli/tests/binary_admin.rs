@@ -462,6 +462,9 @@ fn init_codex_guarded_without_degraded_opt_in_generates_hooks() -> Result<(), Bo
     assert_eq!(value["states"]["prompt_capture"], "reload_required");
     assert_eq!(value["hook_root_resolution"]["basis"], "git_work_tree");
     assert_eq!(value["hook_root_resolution"]["all_cwd_independent"], true);
+    assert_eq!(value["states"]["hook_path_safety"], "ok");
+    assert_eq!(value["states"]["hook_commands_cwd_independent"], true);
+    assert_eq!(value["states"]["hook_commands_subdirectory_safe"], true);
     let connection_id = value["connection"]["connection_id"]
         .as_str()
         .expect("connection_id should be present");
@@ -530,6 +533,9 @@ fn init_claude_code_guarded_without_degraded_opt_in_generates_hooks() -> Result<
     assert_eq!(value["states"]["prompt_capture"], "reload_required");
     assert_eq!(value["hook_root_resolution"]["basis"], "claude_project_dir");
     assert_eq!(value["hook_root_resolution"]["all_cwd_independent"], true);
+    assert_eq!(value["states"]["hook_path_safety"], "ok");
+    assert_eq!(value["states"]["hook_commands_cwd_independent"], true);
+    assert_eq!(value["states"]["hook_commands_subdirectory_safe"], true);
     assert!(repo_root.join(".mcp.json").exists());
     assert!(repo_root.join("AGENTS.md").exists());
     assert!(repo_root.join(".volicord/policy.json").exists());

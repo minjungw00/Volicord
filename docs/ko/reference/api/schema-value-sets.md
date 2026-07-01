@@ -375,11 +375,36 @@ managed_guarded
 `detective_watch`는 session watcher가 활성 상태이고 coverage 시작 뒤의 우회 Product
 Repository 변경을 감지할 수 있지만 쓰기를 사전에 차단하거나 행위자를 식별할 수 없다는
 뜻입니다. `host_hook_guarded`는 선택된 프로젝트 로컬 guarded host hook에 검증된 생성
-설정, native host output, 필요한 lifecycle phase, Bash/shell 및 직접 파일 쓰기 matcher
-coverage, 일치하는 policy hash, 현재 런타임 guard 관찰이 있다는 뜻입니다.
+설정, cwd-independent 및 subdirectory-safe hook 명령, native host output, 필요한
+lifecycle phase, Bash/shell 및 직접 파일 쓰기 matcher coverage, 일치하는 policy hash,
+현재 런타임 guard 관찰이 있다는 뜻입니다.
 `managed_guarded`는 host-hook guarded 조건을 만족하고 선택된 managed 배포 메타데이터가
 검증되었다는 뜻입니다. 이 라벨은 제품 정확성, review 완료, 테스트 충분성,
 OS 강제, 샌드박싱, 보안 격리, 최종 수락, 잔여 위험 수락을 증명하지 않습니다.
+
+`GuardHealthSummary.hook_path_safety`는 아래 값을 사용합니다.
+
+```text
+ok
+not_recorded
+metadata_missing
+authority_mismatch
+policy_hash_mismatch
+host_output_mismatch
+relative_path_unsafe
+absolute_path_stale
+placeholder_unsupported
+dispatch_missing
+wrapper_missing
+wrapper_not_executable
+```
+
+`ok`는 모든 필수 host hook 명령이 cwd-independent 및 subdirectory-safe로 기록되어 있고
+기대하는 managed wrapper 경로로 해석된다는 뜻입니다. 실패 값은 이 조건을 만족하지 못한
+주된 이유를 보고합니다. 여기에는 session cwd에 의존하는 상대 명령, 오래된 절대 프로젝트
+루트, 지원되지 않는 placeholder, 누락된 dispatch 또는 wrapper 스크립트, 지원되는 Unix 계열
+플랫폼의 실행 불가능한 wrapper 스크립트, 생성된 wrapper 메타데이터 불일치, 누락된 검증
+메타데이터가 포함됩니다.
 
 `GuardHealthSummary.guard_installation_status`는 아래 값을 사용합니다.
 

@@ -2896,8 +2896,12 @@ struct HostHookCommand {
     phase: HostLifecyclePhase,
     generated_command_shape: HostHookCommandShape,
     expected_wrapper_path: PathBuf,
+    expected_phase_wrapper_path: PathBuf,
     root_resolution_basis: HookRootResolutionBasis,
+    hook_command_path_basis: HookCommandPathBasis,
     cwd_independent: bool,
+    subdirectory_safe: bool,
+    wrapper_resolution_status: HookWrapperResolutionStatus,
     verification: HostHookCommandVerification,
 }
 
@@ -2918,6 +2922,71 @@ impl HookRootResolutionBasis {
         match self {
             Self::GitWorkTree => "git_work_tree",
             Self::ClaudeProjectDir => "claude_project_dir",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HookCommandPathBasis {
+    GitRootRuntime,
+    ClaudeProjectDir,
+}
+
+impl HookCommandPathBasis {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::GitRootRuntime => "git_root_runtime",
+            Self::ClaudeProjectDir => "claude_project_dir",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HookWrapperResolutionStatus {
+    Ok,
+    RelativePathUnsafe,
+    WrapperMissing,
+    WrapperNotExecutable,
+    DispatchMissing,
+    PlaceholderUnsupported,
+    AbsolutePathStale,
+    PolicyHashMismatch,
+    HostOutputMismatch,
+    AuthorityMismatch,
+    MetadataMissing,
+}
+
+impl HookWrapperResolutionStatus {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Ok => "ok",
+            Self::RelativePathUnsafe => "relative_path_unsafe",
+            Self::WrapperMissing => "wrapper_missing",
+            Self::WrapperNotExecutable => "wrapper_not_executable",
+            Self::DispatchMissing => "dispatch_missing",
+            Self::PlaceholderUnsupported => "placeholder_unsupported",
+            Self::AbsolutePathStale => "absolute_path_stale",
+            Self::PolicyHashMismatch => "policy_hash_mismatch",
+            Self::HostOutputMismatch => "host_output_mismatch",
+            Self::AuthorityMismatch => "authority_mismatch",
+            Self::MetadataMissing => "metadata_missing",
+        }
+    }
+
+    fn from_str(value: &str) -> Option<Self> {
+        match value {
+            "ok" => Some(Self::Ok),
+            "relative_path_unsafe" => Some(Self::RelativePathUnsafe),
+            "wrapper_missing" => Some(Self::WrapperMissing),
+            "wrapper_not_executable" => Some(Self::WrapperNotExecutable),
+            "dispatch_missing" => Some(Self::DispatchMissing),
+            "placeholder_unsupported" => Some(Self::PlaceholderUnsupported),
+            "absolute_path_stale" => Some(Self::AbsolutePathStale),
+            "policy_hash_mismatch" => Some(Self::PolicyHashMismatch),
+            "host_output_mismatch" => Some(Self::HostOutputMismatch),
+            "authority_mismatch" => Some(Self::AuthorityMismatch),
+            "metadata_missing" => Some(Self::MetadataMissing),
+            _ => None,
         }
     }
 }
@@ -3415,6 +3484,7 @@ fn host_hook_command_spec(
             let dispatch_relative = codex_dispatch_wrapper_relative_path();
             let dispatch_relative_text = path_text(&dispatch_relative);
             let expected_wrapper_path = repo_root.join(&dispatch_relative);
+            let expected_phase_wrapper_path = repo_root.join(&relative_path);
             let script = format!(
                 "root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/{dispatch_relative_text}\" {}",
                 phase.command_name()
@@ -3427,8 +3497,12 @@ fn host_hook_command_spec(
                     shell_word(&script)
                 )),
                 expected_wrapper_path,
+                expected_phase_wrapper_path,
                 root_resolution_basis: HookRootResolutionBasis::GitWorkTree,
+                hook_command_path_basis: HookCommandPathBasis::GitRootRuntime,
                 cwd_independent: true,
+                subdirectory_safe: true,
+                wrapper_resolution_status: HookWrapperResolutionStatus::Ok,
                 verification: HostHookCommandVerification {
                     basis_verified_by: "repo_root_git_marker".to_owned(),
                     host_contract_source: "codex_hook_command_string".to_owned(),
@@ -3445,8 +3519,12 @@ fn host_hook_command_spec(
                     args: Vec::new(),
                 },
                 expected_wrapper_path,
+                expected_phase_wrapper_path: repo_root.join(&relative_path),
                 root_resolution_basis: HookRootResolutionBasis::ClaudeProjectDir,
+                hook_command_path_basis: HookCommandPathBasis::ClaudeProjectDir,
                 cwd_independent: true,
+                subdirectory_safe: true,
+                wrapper_resolution_status: HookWrapperResolutionStatus::Ok,
                 verification: HostHookCommandVerification {
                     basis_verified_by: "verified_claude_project_dir_placeholder".to_owned(),
                     host_contract_source: "claude_code_hook_exec_form".to_owned(),
@@ -4870,6 +4948,7 @@ fn guard_capability_json(plan: &GuardIntegrationPlan) -> Result<String, Connecti
         "files": generated_files_json(&plan.generated_files),
         "host_hook_commands": host_hook_commands_json(&plan.host_hook_commands),
         "hook_root_resolution": hook_root_resolution_json(&plan.host_hook_commands),
+        "hook_path_safety": hook_path_safety_json(&plan.host_hook_commands),
         "commands": plan.policy["guard"]["commands"].clone(),
     }))
     .map_err(|error| ConnectionCommandError::runtime(error.to_string()))
@@ -5036,8 +5115,12 @@ fn host_hook_commands_json(commands: &[HostHookCommand]) -> Value {
                     "command": command_text,
                     "args": args,
                     "expected_wrapper_path": path_text(&command.expected_wrapper_path),
+                    "expected_phase_wrapper_path": path_text(&command.expected_phase_wrapper_path),
                     "root_resolution_basis": command.root_resolution_basis.as_str(),
+                    "hook_command_path_basis": command.hook_command_path_basis.as_str(),
                     "cwd_independent": command.cwd_independent,
+                    "subdirectory_safe": command.subdirectory_safe,
+                    "wrapper_resolution_status": command.wrapper_resolution_status.as_str(),
                     "verification": {
                         "basis_verified_by": &command.verification.basis_verified_by,
                         "host_contract_source": &command.verification.host_contract_source,
@@ -5059,6 +5142,7 @@ fn hook_root_resolution_json(commands: &[HostHookCommand]) -> Value {
     bases.sort_unstable();
     bases.dedup();
     let cwd_independent = commands.iter().all(|command| command.cwd_independent);
+    let subdirectory_safe = commands.iter().all(|command| command.subdirectory_safe);
     let basis = if bases.len() == 1 {
         bases[0].to_owned()
     } else {
@@ -5067,13 +5151,48 @@ fn hook_root_resolution_json(commands: &[HostHookCommand]) -> Value {
     json!({
         "basis": basis,
         "all_cwd_independent": cwd_independent,
+        "all_subdirectory_safe": subdirectory_safe,
+        "overall_status": if cwd_independent && subdirectory_safe { "ok" } else { "relative_path_unsafe" },
         "phases": commands
             .iter()
             .map(|command| {
                 json!({
                     "phase": command.phase.capability_name(),
                     "root_resolution_basis": command.root_resolution_basis.as_str(),
+                    "hook_command_path_basis": command.hook_command_path_basis.as_str(),
                     "cwd_independent": command.cwd_independent,
+                    "subdirectory_safe": command.subdirectory_safe,
+                    "wrapper_resolution_status": command.wrapper_resolution_status.as_str(),
+                })
+            })
+            .collect::<Vec<_>>(),
+    })
+}
+
+fn hook_path_safety_json(commands: &[HostHookCommand]) -> Value {
+    if commands.is_empty() {
+        return Value::Null;
+    }
+    let all_cwd_independent = commands.iter().all(|command| command.cwd_independent);
+    let all_subdirectory_safe = commands.iter().all(|command| command.subdirectory_safe);
+    let all_ok = all_cwd_independent
+        && all_subdirectory_safe
+        && commands
+            .iter()
+            .all(|command| command.wrapper_resolution_status == HookWrapperResolutionStatus::Ok);
+    json!({
+        "overall_status": if all_ok { "ok" } else { "relative_path_unsafe" },
+        "all_cwd_independent": all_cwd_independent,
+        "all_subdirectory_safe": all_subdirectory_safe,
+        "commands": commands
+            .iter()
+            .map(|command| {
+                json!({
+                    "phase": command.phase.capability_name(),
+                    "hook_command_path_basis": command.hook_command_path_basis.as_str(),
+                    "cwd_independent": command.cwd_independent,
+                    "subdirectory_safe": command.subdirectory_safe,
+                    "wrapper_resolution_status": command.wrapper_resolution_status.as_str(),
                 })
             })
             .collect::<Vec<_>>(),
@@ -5096,6 +5215,10 @@ fn hook_root_resolution_text(integration: &GuardIntegrationPlan) -> String {
             .host_hook_commands
             .iter()
             .all(|command| command.cwd_independent)
+        && integration
+            .host_hook_commands
+            .iter()
+            .all(|command| command.subdirectory_safe)
     {
         bases[0].to_owned()
     } else {
@@ -5184,6 +5307,10 @@ struct GuardOperationalState {
     effective_state: String,
     generated_config_verified: bool,
     native_host_output_adapter_verified: bool,
+    hook_path_safety_state: String,
+    hook_commands_cwd_independent: bool,
+    hook_commands_subdirectory_safe: bool,
+    hook_path_safety_details: Vec<Value>,
     bash_shell_mutation_coverage: bool,
     direct_file_write_matcher_coverage: bool,
     files_state: String,
@@ -5217,6 +5344,10 @@ impl GuardOperationalState {
             effective_state: "inactive".to_owned(),
             generated_config_verified: false,
             native_host_output_adapter_verified: false,
+            hook_path_safety_state: "not_checked".to_owned(),
+            hook_commands_cwd_independent: false,
+            hook_commands_subdirectory_safe: false,
+            hook_path_safety_details: Vec::new(),
             bash_shell_mutation_coverage: false,
             direct_file_write_matcher_coverage: false,
             files_state: "not_configured".to_owned(),
@@ -5265,6 +5396,16 @@ impl GuardOperationalState {
             effective_state,
             generated_config_verified: false,
             native_host_output_adapter_verified: integration.native_host_output_adapter_verified,
+            hook_path_safety_state: planned_hook_path_safety_state(init_mode, integration),
+            hook_commands_cwd_independent: integration
+                .host_hook_commands
+                .iter()
+                .all(|command| command.cwd_independent),
+            hook_commands_subdirectory_safe: integration
+                .host_hook_commands
+                .iter()
+                .all(|command| command.subdirectory_safe),
+            hook_path_safety_details: Vec::new(),
             bash_shell_mutation_coverage: integration.bash_shell_mutation_coverage,
             direct_file_write_matcher_coverage: integration.direct_file_write_matcher_coverage,
             files_state: if init_mode == InitMode::McpOnly {
@@ -5335,6 +5476,16 @@ impl GuardOperationalState {
                     .iter()
                     .all(|file| file.status == FilePlanStatus::Unchanged),
             native_host_output_adapter_verified: integration.native_host_output_adapter_verified,
+            hook_path_safety_state: planned_hook_path_safety_state(init_mode, integration),
+            hook_commands_cwd_independent: integration
+                .host_hook_commands
+                .iter()
+                .all(|command| command.cwd_independent),
+            hook_commands_subdirectory_safe: integration
+                .host_hook_commands
+                .iter()
+                .all(|command| command.subdirectory_safe),
+            hook_path_safety_details: Vec::new(),
             bash_shell_mutation_coverage: integration.bash_shell_mutation_coverage,
             direct_file_write_matcher_coverage: integration.direct_file_write_matcher_coverage,
             files_state: if init_mode == InitMode::McpOnly {
@@ -5390,6 +5541,10 @@ impl GuardOperationalState {
             "effective_health": &self.effective_state,
             "generated_config_verified": self.generated_config_verified,
             "native_host_output_adapter_verified": self.native_host_output_adapter_verified,
+            "hook_path_safety": &self.hook_path_safety_state,
+            "hook_commands_cwd_independent": self.hook_commands_cwd_independent,
+            "hook_commands_subdirectory_safe": self.hook_commands_subdirectory_safe,
+            "hook_path_safety_details": &self.hook_path_safety_details,
             "pre_tool_blocking_available": self.pre_tool_blocking_available(),
             "post_tool_correlation_available": self.post_tool_correlation_available(),
             "bash_shell_mutation_coverage": self.bash_shell_mutation_coverage,
@@ -5441,6 +5596,9 @@ impl GuardOperationalState {
             && self.missing_required_hooks.is_empty()
             && self.generated_config_verified
             && self.native_host_output_adapter_verified
+            && self.hook_path_safety_state == HookWrapperResolutionStatus::Ok.as_str()
+            && self.hook_commands_cwd_independent
+            && self.hook_commands_subdirectory_safe
             && self.bash_shell_mutation_coverage
             && self.direct_file_write_matcher_coverage
     }
@@ -5571,6 +5729,31 @@ fn planned_hook_config_state(init_mode: InitMode, integration: &GuardIntegration
         "not_recorded".to_owned()
     } else {
         "missing_required_hooks".to_owned()
+    }
+}
+
+fn planned_hook_path_safety_state(
+    init_mode: InitMode,
+    integration: &GuardIntegrationPlan,
+) -> String {
+    if init_mode == InitMode::McpOnly {
+        return "not_applicable".to_owned();
+    }
+    if integration.host_hook_commands.is_empty() {
+        return HookWrapperResolutionStatus::MetadataMissing
+            .as_str()
+            .to_owned();
+    }
+    if integration.host_hook_commands.iter().all(|command| {
+        command.cwd_independent
+            && command.subdirectory_safe
+            && command.wrapper_resolution_status == HookWrapperResolutionStatus::Ok
+    }) {
+        HookWrapperResolutionStatus::Ok.as_str().to_owned()
+    } else {
+        HookWrapperResolutionStatus::RelativePathUnsafe
+            .as_str()
+            .to_owned()
     }
 }
 
@@ -5710,7 +5893,7 @@ fn render_simplified_connection_output(
     match data.format {
         OutputFormat::Text => {
             let mut output = format!(
-                "Agent Connection {}\nruntime_home_state: ready\nruntime_home: {}\nconnection_state: {}\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nproject_registration_state: {}\nconnected_repositories: {}\nmcp_config_state: {}\nmcp_config: {}\nguard_mode: {}\nguard_strength: {}\nguard_capabilities: {}\nguard_profile: {}\nmanaged_source: {}\nmanaged_bundle_hash: {}\nmanaged_verification_status: {}\nguard_installation_state: {}\nguard_configuration_state: {}\nguard_observation_state: {}\nguard_effective_state: {}\nguard_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nrequired_guard_phases_state: {}\nrequired_guard_phases_missing: {}\nguard_hook_observed: {}\nguard_observed: {}\nguard_degraded_allowed: {}\nlast_guard_event: {}\nprompt_capture_state: {}\nhost_reload_required: {}\nguard_blockers: {}\n",
+                "Agent Connection {}\nruntime_home_state: ready\nruntime_home: {}\nconnection_state: {}\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nproject_registration_state: {}\nconnected_repositories: {}\nmcp_config_state: {}\nmcp_config: {}\nguard_mode: {}\nguard_strength: {}\nguard_capabilities: {}\nguard_profile: {}\nmanaged_source: {}\nmanaged_bundle_hash: {}\nmanaged_verification_status: {}\nguard_installation_state: {}\nguard_configuration_state: {}\nguard_observation_state: {}\nguard_effective_state: {}\nguard_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_path_safety: {}\nrequired_guard_phases_state: {}\nrequired_guard_phases_missing: {}\nguard_hook_observed: {}\nguard_observed: {}\nguard_degraded_allowed: {}\nlast_guard_event: {}\nprompt_capture_state: {}\nhost_reload_required: {}\nguard_blockers: {}\n",
                 data.action,
                 data.runtime_home.display(),
                 data.status.as_str(),
@@ -5739,6 +5922,7 @@ fn render_simplified_connection_output(
                 data.guard_state.policy_file_state,
                 data.guard_state.rule_instruction_state,
                 data.guard_state.hook_config_state,
+                data.guard_state.hook_path_safety_state,
                 data.guard_state.required_guard_phases_state(),
                 comma_or_none(&data.guard_state.missing_required_hooks),
                 data.guard_state.hook_observed_state,
@@ -5803,7 +5987,7 @@ fn render_simplified_plan_output(
     match data.format {
         OutputFormat::Text => {
             let mut output = format!(
-                "Agent Connection {} {}\nruntime_home_state: ready\nruntime_home: {}\nconnection_state: {}\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nproject_registration_state: {}\nconnected_repositories: {}\nmcp_config_state: planned_{}\nmcp_config: {}\nguard_mode: {}\nguard_strength: {}\nguard_capabilities: {}\nguard_profile: {}\nmanaged_source: {}\nmanaged_bundle_hash: {}\nmanaged_verification_status: {}\nguard_installation_state: {}\nguard_configuration_state: {}\nguard_observation_state: {}\nguard_effective_state: {}\nguard_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nrequired_guard_phases_state: {}\nrequired_guard_phases_missing: {}\nguard_hook_observed: {}\nguard_observed: {}\nguard_degraded_allowed: {}\nlast_guard_event: {}\nprompt_capture_state: {}\nhost_reload_required: {}\nguard_blockers: {}\nplanned_change: {}\n",
+                "Agent Connection {} {}\nruntime_home_state: ready\nruntime_home: {}\nconnection_state: {}\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nproject_registration_state: {}\nconnected_repositories: {}\nmcp_config_state: planned_{}\nmcp_config: {}\nguard_mode: {}\nguard_strength: {}\nguard_capabilities: {}\nguard_profile: {}\nmanaged_source: {}\nmanaged_bundle_hash: {}\nmanaged_verification_status: {}\nguard_installation_state: {}\nguard_configuration_state: {}\nguard_observation_state: {}\nguard_effective_state: {}\nguard_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_path_safety: {}\nrequired_guard_phases_state: {}\nrequired_guard_phases_missing: {}\nguard_hook_observed: {}\nguard_observed: {}\nguard_degraded_allowed: {}\nlast_guard_event: {}\nprompt_capture_state: {}\nhost_reload_required: {}\nguard_blockers: {}\nplanned_change: {}\n",
                 data.action,
                 data.status.as_str(),
                 data.runtime_home.display(),
@@ -5834,6 +6018,7 @@ fn render_simplified_plan_output(
                 guard_state.policy_file_state,
                 guard_state.rule_instruction_state,
                 guard_state.hook_config_state,
+                guard_state.hook_path_safety_state,
                 guard_state.required_guard_phases_state(),
                 comma_or_none(&guard_state.missing_required_hooks),
                 guard_state.hook_observed_state,
@@ -5938,7 +6123,7 @@ fn render_init_output(data: InitOutput<'_>) -> Result<String, ConnectionCommandE
     match data.format {
         OutputFormat::Text => {
             let mut output = format!(
-                "Volicord init {}\nruntime_home_state: ready\nruntime_home: {}\nproject_registration_state: {}\nrepo: {}\nconnection_state: {}\nhost: {}\nmode: {}\nconnection_id: {}\nmcp_config_state: {}\nmcp_config: {}\nplanned_change: {}\nprofile: {}\nguard_mode: {}\nguard_strength: {}\nguard_capabilities: {}\nguard_profile: {}\nmanaged_source: {}\nmanaged_bundle_hash: {}\nmanaged_verification_status: {}\nguard_installation_state: {}\nguard_configuration_state: {}\nguard_observation_state: {}\nguard_effective_state: {}\nguard_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_root_resolution: {}\nrequired_guard_phases_state: {}\nrequired_guard_phases_missing: {}\nguard_hook_observed: {}\nguard_observed: {}\nguard_degraded_allowed: {}\nlast_guard_event: {}\nprompt_capture_state: {}\nhost_reload_required: {}\nguard_blockers: {}\n",
+                "Volicord init {}\nruntime_home_state: ready\nruntime_home: {}\nproject_registration_state: {}\nrepo: {}\nconnection_state: {}\nhost: {}\nmode: {}\nconnection_id: {}\nmcp_config_state: {}\nmcp_config: {}\nplanned_change: {}\nprofile: {}\nguard_mode: {}\nguard_strength: {}\nguard_capabilities: {}\nguard_profile: {}\nmanaged_source: {}\nmanaged_bundle_hash: {}\nmanaged_verification_status: {}\nguard_installation_state: {}\nguard_configuration_state: {}\nguard_observation_state: {}\nguard_effective_state: {}\nguard_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_root_resolution: {}\nhook_path_safety: {}\nrequired_guard_phases_state: {}\nrequired_guard_phases_missing: {}\nguard_hook_observed: {}\nguard_observed: {}\nguard_degraded_allowed: {}\nlast_guard_event: {}\nprompt_capture_state: {}\nhost_reload_required: {}\nguard_blockers: {}\n",
                 data.status.as_str(),
                 data.runtime_home.display(),
                 project_state,
@@ -5968,6 +6153,7 @@ fn render_init_output(data: InitOutput<'_>) -> Result<String, ConnectionCommandE
                 guard_state.rule_instruction_state,
                 guard_state.hook_config_state,
                 hook_root_resolution,
+                guard_state.hook_path_safety_state,
                 guard_state.required_guard_phases_state(),
                 comma_or_none(&guard_state.missing_required_hooks),
                 guard_state.hook_observed_state,
@@ -6265,6 +6451,8 @@ fn guard_file_details_json(guard_state: &GuardOperationalState) -> Value {
         "stale_files": &guard_state.stale_files,
         "broken_files": &guard_state.broken_files,
         "missing_required_hooks": &guard_state.missing_required_hooks,
+        "hook_path_safety": &guard_state.hook_path_safety_state,
+        "hook_path_safety_details": &guard_state.hook_path_safety_details,
     })
 }
 
@@ -6443,7 +6631,7 @@ fn connection_states_json(
     guard_state: &GuardOperationalState,
     host_reload_required: bool,
 ) -> Value {
-    json!({
+    let mut states = json!({
         "runtime_home": "ready",
         "connection": connection_state,
         "project_registration": project_registration,
@@ -6483,7 +6671,22 @@ fn connection_states_json(
         "prompt_capture": &guard_state.prompt_capture_state,
         "guard_blockers": &guard_state.unresolved_blockers,
         "host_reload_required": host_reload_required,
-    })
+    });
+    if let Some(object) = states.as_object_mut() {
+        object.insert(
+            "hook_path_safety".to_owned(),
+            Value::String(guard_state.hook_path_safety_state.clone()),
+        );
+        object.insert(
+            "hook_commands_cwd_independent".to_owned(),
+            Value::Bool(guard_state.hook_commands_cwd_independent),
+        );
+        object.insert(
+            "hook_commands_subdirectory_safe".to_owned(),
+            Value::Bool(guard_state.hook_commands_subdirectory_safe),
+        );
+    }
+    states
 }
 
 fn connection_mcp_config_state(
@@ -6638,6 +6841,20 @@ fn primary_connection_action(
             guard_state.degraded_allowed,
         ));
     }
+    if guard_state.hook_path_safety_state != HookWrapperResolutionStatus::Ok.as_str()
+        && !matches!(
+            guard_state.hook_path_safety_state.as_str(),
+            "not_checked" | "not_applicable"
+        )
+    {
+        return Some(connection_repair_action(
+            "guard_hook_path_safety",
+            "Run init again to regenerate cwd-independent guard hook commands.",
+            connection,
+            projects,
+            guard_state.degraded_allowed,
+        ));
+    }
     if guard_state.installation_state == "stale" {
         return Some(connection_repair_action(
             "guard_files_stale",
@@ -6764,6 +6981,9 @@ fn repair_instruction(id: &str, fallback: &str, command: &str) -> String {
         "guard_files_broken" => {
             format!("Repair broken guard files, then run {command}.")
         }
+        "guard_hook_path_safety" => {
+            format!("Run {command} to regenerate cwd-independent guard hook commands.")
+        }
         _ => fallback.to_owned(),
     }
 }
@@ -6789,9 +7009,10 @@ fn optional_text(value: Option<&str>) -> &str {
 
 fn guard_capabilities_text(guard_state: &GuardOperationalState) -> String {
     format!(
-        "pre_tool_blocking={}, post_tool_correlation={}, bash_shell_mutation_coverage={}, bypass_detection={}, prompt_capture={}, local_web_consent={}, managed_distribution_verified={}",
+        "pre_tool_blocking={}, post_tool_correlation={}, hook_path_safety={}, bash_shell_mutation_coverage={}, bypass_detection={}, prompt_capture={}, local_web_consent={}, managed_distribution_verified={}",
         yes_no(guard_state.pre_tool_blocking_available()),
         yes_no(guard_state.post_tool_correlation_available()),
+        &guard_state.hook_path_safety_state,
         yes_no(guard_state.bash_shell_mutation_coverage),
         yes_no(guard_state.bypass_detection_active()),
         yes_no(guard_state.prompt_capture_available()),
@@ -6838,7 +7059,7 @@ fn guard_state_for_connection(
     let mut observed = false;
     let mut last_observed_at = None;
     for installation in &installations {
-        let findings = guard_file_findings(&installation.host_capability_json);
+        let findings = guard_file_findings_for_installation(installation, projects);
         file_findings.merge(findings);
         if installation.last_seen_at.is_some() {
             observed = true;
@@ -6864,6 +7085,12 @@ fn guard_state_for_connection(
     let managed_bundle_hash = managed_bundle_hash_for_findings(&file_findings);
     let managed_verification_state =
         managed_verification_state_for_installations(&installations, &file_findings);
+    let hook_path_safety_state = file_findings.hook_path_safety_state();
+    let hook_commands_cwd_independent =
+        all_recorded_values_true(&file_findings.hook_cwd_independent_values);
+    let hook_commands_subdirectory_safe =
+        all_recorded_values_true(&file_findings.hook_subdirectory_safe_values);
+    let hook_path_safety_details = file_findings.hook_path_safety_details.clone();
 
     if !file_findings.broken_files.is_empty() {
         let mode_state = guard_mode_state(&installations);
@@ -6893,6 +7120,10 @@ fn guard_state_for_connection(
             generated_config_verified: false,
             native_host_output_adapter_verified: file_findings
                 .native_host_output_adapter_verified(),
+            hook_path_safety_state: hook_path_safety_state.clone(),
+            hook_commands_cwd_independent,
+            hook_commands_subdirectory_safe,
+            hook_path_safety_details: hook_path_safety_details.clone(),
             bash_shell_mutation_coverage: file_findings.bash_shell_mutation_coverage(),
             direct_file_write_matcher_coverage: file_findings.direct_file_write_matcher_coverage(),
             files_state: "broken".to_owned(),
@@ -6956,6 +7187,10 @@ fn guard_state_for_connection(
             generated_config_verified: false,
             native_host_output_adapter_verified: file_findings
                 .native_host_output_adapter_verified(),
+            hook_path_safety_state: hook_path_safety_state.clone(),
+            hook_commands_cwd_independent,
+            hook_commands_subdirectory_safe,
+            hook_path_safety_details: hook_path_safety_details.clone(),
             bash_shell_mutation_coverage: file_findings.bash_shell_mutation_coverage(),
             direct_file_write_matcher_coverage: file_findings.direct_file_write_matcher_coverage(),
             files_state: "missing".to_owned(),
@@ -7015,6 +7250,10 @@ fn guard_state_for_connection(
             generated_config_verified: false,
             native_host_output_adapter_verified: file_findings
                 .native_host_output_adapter_verified(),
+            hook_path_safety_state: hook_path_safety_state.clone(),
+            hook_commands_cwd_independent,
+            hook_commands_subdirectory_safe,
+            hook_path_safety_details: hook_path_safety_details.clone(),
             bash_shell_mutation_coverage: file_findings.bash_shell_mutation_coverage(),
             direct_file_write_matcher_coverage: file_findings.direct_file_write_matcher_coverage(),
             files_state: "stale".to_owned(),
@@ -7128,6 +7367,10 @@ fn guard_state_for_connection(
         effective_state,
         generated_config_verified: file_findings.generated_config_verified(),
         native_host_output_adapter_verified: file_findings.native_host_output_adapter_verified(),
+        hook_path_safety_state,
+        hook_commands_cwd_independent,
+        hook_commands_subdirectory_safe,
+        hook_path_safety_details,
         bash_shell_mutation_coverage: file_findings.bash_shell_mutation_coverage(),
         direct_file_write_matcher_coverage: file_findings.direct_file_write_matcher_coverage(),
         files_state: if prompt_capture_disabled {
@@ -7349,6 +7592,10 @@ struct GuardFileFindings {
     bash_shell_mutation_coverage_values: Vec<bool>,
     direct_file_write_matcher_coverage_values: Vec<bool>,
     missing_required_hooks: Vec<String>,
+    hook_path_safety_statuses: Vec<String>,
+    hook_path_safety_details: Vec<Value>,
+    hook_cwd_independent_values: Vec<bool>,
+    hook_subdirectory_safe_values: Vec<bool>,
     prompt_capture_configured: bool,
     prompt_capture_host_supported: bool,
     rule_file_supported: bool,
@@ -7377,6 +7624,14 @@ impl GuardFileFindings {
             .extend(other.direct_file_write_matcher_coverage_values);
         self.missing_required_hooks
             .extend(other.missing_required_hooks);
+        self.hook_path_safety_statuses
+            .extend(other.hook_path_safety_statuses);
+        self.hook_path_safety_details
+            .extend(other.hook_path_safety_details);
+        self.hook_cwd_independent_values
+            .extend(other.hook_cwd_independent_values);
+        self.hook_subdirectory_safe_values
+            .extend(other.hook_subdirectory_safe_values);
         self.prompt_capture_configured |= other.prompt_capture_configured;
         self.prompt_capture_host_supported |= other.prompt_capture_host_supported;
         self.rule_file_supported |= other.rule_file_supported;
@@ -7400,6 +7655,9 @@ impl GuardFileFindings {
         self.managed_verification_statuses.dedup();
         self.missing_required_hooks.sort();
         self.missing_required_hooks.dedup();
+        self.hook_path_safety_statuses
+            .sort_by_key(|status| hook_path_status_rank(status));
+        self.hook_path_safety_statuses.dedup();
     }
 
     fn set_kind_state(&mut self, kind: HostIntegrationFileKind, state: &str) {
@@ -7422,6 +7680,25 @@ impl GuardFileFindings {
             .get(kind.as_str())
             .map(String::as_str)
             .unwrap_or("not_configured")
+    }
+
+    fn record_hook_path_status(&mut self, status: HookWrapperResolutionStatus, detail: Value) {
+        self.hook_path_safety_statuses
+            .push(status.as_str().to_owned());
+        self.hook_path_safety_details.push(detail);
+        self.hook_cwd_independent_values
+            .push(status == HookWrapperResolutionStatus::Ok);
+        self.hook_subdirectory_safe_values
+            .push(status == HookWrapperResolutionStatus::Ok);
+        if !matches!(
+            status,
+            HookWrapperResolutionStatus::Ok
+                | HookWrapperResolutionStatus::WrapperMissing
+                | HookWrapperResolutionStatus::DispatchMissing
+        ) {
+            self.stale_files
+                .push("guard_capability_json:hook_path_safety".to_owned());
+        }
     }
 
     fn rule_instruction_state(&self, guard_disabled: bool) -> String {
@@ -7469,6 +7746,32 @@ impl GuardFileFindings {
                 "not_configured" | "installed"
             )
             && self.kind_state(HostIntegrationFileKind::HostHookWrapper) == "installed"
+            && self.hook_path_safety_ok()
+    }
+
+    fn hook_path_safety_state(&self) -> String {
+        self.hook_path_safety_statuses
+            .iter()
+            .filter(|status| status.as_str() != HookWrapperResolutionStatus::Ok.as_str())
+            .min_by_key(|status| hook_path_status_rank(status))
+            .cloned()
+            .unwrap_or_else(|| {
+                if self.hook_path_safety_statuses.is_empty() {
+                    "not_recorded".to_owned()
+                } else {
+                    HookWrapperResolutionStatus::Ok.as_str().to_owned()
+                }
+            })
+    }
+
+    fn hook_path_safety_ok(&self) -> bool {
+        !self.hook_path_safety_statuses.is_empty()
+            && self
+                .hook_path_safety_statuses
+                .iter()
+                .all(|status| status == HookWrapperResolutionStatus::Ok.as_str())
+            && all_recorded_values_true(&self.hook_cwd_independent_values)
+            && all_recorded_values_true(&self.hook_subdirectory_safe_values)
     }
 
     fn native_host_output_adapter_verified(&self) -> bool {
@@ -7487,16 +7790,77 @@ impl GuardFileFindings {
     }
 }
 
+fn hook_path_status_rank(status: &str) -> u8 {
+    match status {
+        "ok" => 100,
+        "metadata_missing" => 0,
+        "authority_mismatch" => 1,
+        "policy_hash_mismatch" => 2,
+        "host_output_mismatch" => 3,
+        "relative_path_unsafe" => 4,
+        "absolute_path_stale" => 5,
+        "placeholder_unsupported" => 6,
+        "dispatch_missing" => 7,
+        "wrapper_missing" => 8,
+        "wrapper_not_executable" => 9,
+        _ => 10,
+    }
+}
+
+fn more_severe_hook_wrapper_status(
+    left: HookWrapperResolutionStatus,
+    right: HookWrapperResolutionStatus,
+) -> HookWrapperResolutionStatus {
+    if hook_path_status_rank(left.as_str()) <= hook_path_status_rank(right.as_str()) {
+        left
+    } else {
+        right
+    }
+}
+
 fn all_recorded_values_true(values: &[bool]) -> bool {
     !values.is_empty() && values.iter().all(|value| *value)
 }
 
+#[derive(Debug, Clone, Copy)]
+struct GuardAuthorityContext<'a> {
+    host_kind: &'a str,
+    project_repo_roots: &'a [PathBuf],
+}
+
+#[cfg(test)]
 fn guard_file_findings(capability_json: &str) -> GuardFileFindings {
+    guard_file_findings_with_context(capability_json, None)
+}
+
+fn guard_file_findings_for_installation(
+    installation: &GuardInstallationRecord,
+    projects: &[ConnectionProjectRecord],
+) -> GuardFileFindings {
+    let project_repo_roots = projects
+        .iter()
+        .map(|project| project.project.repo_root.clone())
+        .collect::<Vec<_>>();
+    let context = GuardAuthorityContext {
+        host_kind: &installation.host_kind,
+        project_repo_roots: &project_repo_roots,
+    };
+    guard_file_findings_with_context(&installation.host_capability_json, Some(context))
+}
+
+fn guard_file_findings_with_context(
+    capability_json: &str,
+    context: Option<GuardAuthorityContext<'_>>,
+) -> GuardFileFindings {
     let mut findings = GuardFileFindings::default();
     let Ok(value) = serde_json::from_str::<Value>(capability_json) else {
         findings
             .broken_files
             .push("guard_capability_json".to_owned());
+        findings.record_hook_path_status(
+            HookWrapperResolutionStatus::MetadataMissing,
+            json!({ "source": "guard_capability_json" }),
+        );
         return findings;
     };
     findings.prompt_capture_configured = value
@@ -7545,6 +7909,8 @@ fn guard_file_findings(capability_json: &str) -> GuardFileFindings {
             "direct_file_write_matcher_coverage",
         ));
     findings.missing_required_hooks = missing_required_hooks_from_capability(&value);
+
+    verify_recorded_hook_path_safety(&value, context, &mut findings);
 
     let files = value
         .get("files")
@@ -7597,6 +7963,473 @@ fn missing_required_hooks_from_capability(capability: &Value) -> Vec<String> {
     missing_required_hooks
 }
 
+fn verify_recorded_hook_path_safety(
+    capability: &Value,
+    context: Option<GuardAuthorityContext<'_>>,
+    findings: &mut GuardFileFindings,
+) {
+    let requires_path_safety = capability_requires_hook_path_safety(capability);
+    let Some(commands) = capability
+        .get("host_hook_commands")
+        .and_then(Value::as_array)
+    else {
+        if requires_path_safety {
+            findings.record_hook_path_status(
+                HookWrapperResolutionStatus::MetadataMissing,
+                json!({ "source": "host_hook_commands" }),
+            );
+        }
+        return;
+    };
+    if commands.is_empty() {
+        if requires_path_safety {
+            findings.record_hook_path_status(
+                HookWrapperResolutionStatus::MetadataMissing,
+                json!({ "source": "host_hook_commands" }),
+            );
+        }
+        return;
+    }
+    for command in commands {
+        verify_recorded_hook_command_path_safety(command, context, findings);
+    }
+}
+
+fn capability_requires_hook_path_safety(capability: &Value) -> bool {
+    matches!(
+        capability.get("guard_profile").and_then(Value::as_str),
+        Some("host_hook_guarded" | "managed_guarded")
+    ) || capability
+        .get("required_guard_phases")
+        .and_then(Value::as_array)
+        .is_some_and(|phases| !phases.is_empty())
+}
+
+fn verify_recorded_hook_command_path_safety(
+    command: &Value,
+    context: Option<GuardAuthorityContext<'_>>,
+    findings: &mut GuardFileFindings,
+) {
+    let host_kind = command
+        .get("host_kind")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let phase = command
+        .get("phase")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let command_text = command
+        .get("command")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let args = command
+        .get("args")
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    let expected_wrapper_path = command
+        .get("expected_wrapper_path")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let expected_phase_wrapper_path = command
+        .get("expected_phase_wrapper_path")
+        .and_then(Value::as_str)
+        .unwrap_or(expected_wrapper_path);
+    let phase_command = phase_command_name_from_capability(phase).unwrap_or_default();
+    let mut status = classify_hook_command_path(
+        host_kind,
+        phase_command,
+        command_text,
+        args,
+        expected_wrapper_path,
+        expected_phase_wrapper_path,
+    );
+    if command.get("cwd_independent").and_then(Value::as_bool) != Some(true)
+        || command.get("subdirectory_safe").and_then(Value::as_bool) != Some(true)
+    {
+        status = HookWrapperResolutionStatus::RelativePathUnsafe;
+    }
+    if let Some(recorded_status) = command
+        .get("wrapper_resolution_status")
+        .and_then(Value::as_str)
+        .filter(|value| *value != HookWrapperResolutionStatus::Ok.as_str())
+    {
+        let recorded_status = HookWrapperResolutionStatus::from_str(recorded_status)
+            .unwrap_or(HookWrapperResolutionStatus::MetadataMissing);
+        status = more_severe_hook_wrapper_status(status, recorded_status);
+    }
+    if let Some(context) = context {
+        if !host_kind.is_empty() && host_kind != context.host_kind {
+            status = HookWrapperResolutionStatus::AuthorityMismatch;
+        }
+        if !expected_phase_wrapper_path.is_empty()
+            && !context.project_repo_roots.is_empty()
+            && !context.project_repo_roots.iter().any(|repo_root| {
+                path_starts_with_text(expected_phase_wrapper_path, &path_text(repo_root))
+            })
+        {
+            status = HookWrapperResolutionStatus::AuthorityMismatch;
+        }
+    }
+    verify_recorded_hook_wrapper_path(
+        expected_phase_wrapper_path,
+        HookWrapperResolutionStatus::WrapperMissing,
+        findings,
+    );
+    if host_kind == HostKind::Codex.as_str() {
+        verify_recorded_hook_wrapper_path(
+            expected_wrapper_path,
+            HookWrapperResolutionStatus::DispatchMissing,
+            findings,
+        );
+    }
+    findings.record_hook_path_status(
+        status,
+        json!({
+            "phase": phase,
+            "host_kind": host_kind,
+            "command": command_text,
+            "hook_command_path_basis": command.get("hook_command_path_basis").and_then(Value::as_str).unwrap_or("unknown"),
+            "cwd_independent": command.get("cwd_independent").and_then(Value::as_bool).unwrap_or(false),
+            "subdirectory_safe": command.get("subdirectory_safe").and_then(Value::as_bool).unwrap_or(false),
+            "wrapper_resolution_status": status.as_str(),
+            "expected_wrapper_path": expected_wrapper_path,
+            "expected_phase_wrapper_path": expected_phase_wrapper_path,
+        }),
+    );
+}
+
+fn verify_recorded_hook_wrapper_path(
+    path_text_value: &str,
+    missing_status: HookWrapperResolutionStatus,
+    findings: &mut GuardFileFindings,
+) {
+    if path_text_value.trim().is_empty() {
+        findings.record_hook_path_status(
+            HookWrapperResolutionStatus::MetadataMissing,
+            json!({ "source": "expected_wrapper_path" }),
+        );
+        return;
+    }
+    let path = Path::new(path_text_value);
+    match fs::metadata(path) {
+        Ok(metadata) if metadata.is_file() => {
+            if !script_is_executable(path) {
+                findings.stale_files.push(path_text_value.to_owned());
+                findings.record_hook_path_status(
+                    HookWrapperResolutionStatus::WrapperNotExecutable,
+                    json!({ "path": path_text_value }),
+                );
+            }
+        }
+        Ok(_) => {
+            findings.broken_files.push(path_text_value.to_owned());
+            findings.record_hook_path_status(
+                HookWrapperResolutionStatus::WrapperMissing,
+                json!({ "path": path_text_value }),
+            );
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            findings.missing_files.push(path_text_value.to_owned());
+            findings.record_hook_path_status(missing_status, json!({ "path": path_text_value }));
+        }
+        Err(_) => {
+            findings.broken_files.push(path_text_value.to_owned());
+            findings.record_hook_path_status(
+                HookWrapperResolutionStatus::WrapperMissing,
+                json!({ "path": path_text_value }),
+            );
+        }
+    }
+}
+
+fn verify_hook_config_commands_path_safety(
+    host_kind: HostKind,
+    config: &Value,
+    capability: &Value,
+    findings: &mut GuardFileFindings,
+) -> bool {
+    let Some(hooks) = config.get("hooks").and_then(Value::as_object) else {
+        findings.record_hook_path_status(
+            HookWrapperResolutionStatus::MetadataMissing,
+            json!({ "source": "hooks" }),
+        );
+        return false;
+    };
+    let mut ok = true;
+    for (event_name, groups) in hooks {
+        let Some(phase_name) = phase_capability_name_from_event(event_name) else {
+            continue;
+        };
+        let Some(phase_command) = phase_command_name_from_capability(phase_name) else {
+            ok = false;
+            continue;
+        };
+        let (expected_wrapper_path, expected_phase_wrapper_path) =
+            expected_hook_paths_from_capability(capability, phase_name);
+        let Some(groups) = groups.as_array() else {
+            ok = false;
+            findings.record_hook_path_status(
+                HookWrapperResolutionStatus::MetadataMissing,
+                json!({ "event": event_name }),
+            );
+            continue;
+        };
+        for group in groups {
+            let Some(handlers) = group.get("hooks").and_then(Value::as_array) else {
+                ok = false;
+                findings.record_hook_path_status(
+                    HookWrapperResolutionStatus::MetadataMissing,
+                    json!({ "event": event_name, "phase": phase_name }),
+                );
+                continue;
+            };
+            for handler in handlers {
+                let command = handler
+                    .get("command")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                let args = handler
+                    .get("args")
+                    .and_then(Value::as_array)
+                    .map(Vec::as_slice)
+                    .unwrap_or(&[]);
+                let status = classify_hook_command_path(
+                    host_kind.as_str(),
+                    phase_command,
+                    command,
+                    args,
+                    expected_wrapper_path.as_deref().unwrap_or_default(),
+                    expected_phase_wrapper_path.as_deref().unwrap_or_default(),
+                );
+                findings.record_hook_path_status(
+                    status,
+                    json!({
+                        "source": "host_hook_config",
+                        "event": event_name,
+                        "phase": phase_name,
+                        "command": command,
+                        "wrapper_resolution_status": status.as_str(),
+                    }),
+                );
+                if status != HookWrapperResolutionStatus::Ok {
+                    ok = false;
+                }
+            }
+        }
+    }
+    ok
+}
+
+fn expected_hook_paths_from_capability(
+    capability: &Value,
+    phase_name: &str,
+) -> (Option<String>, Option<String>) {
+    capability
+        .get("host_hook_commands")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .find(|command| command.get("phase").and_then(Value::as_str) == Some(phase_name))
+        .map(|command| {
+            (
+                command
+                    .get("expected_wrapper_path")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned),
+                command
+                    .get("expected_phase_wrapper_path")
+                    .and_then(Value::as_str)
+                    .or_else(|| command.get("expected_wrapper_path").and_then(Value::as_str))
+                    .map(str::to_owned),
+            )
+        })
+        .unwrap_or((None, None))
+}
+
+fn phase_capability_name_from_event(event_name: &str) -> Option<&'static str> {
+    match event_name {
+        "SessionStart" => Some("session_start_hook"),
+        "PreToolUse" => Some("pre_tool_hook"),
+        "PostToolUse" => Some("post_tool_hook"),
+        "UserPromptSubmit" => Some("user_prompt_submit_hook"),
+        "Stop" => Some("stop_hook"),
+        _ => None,
+    }
+}
+
+fn classify_hook_command_path(
+    host_kind: &str,
+    phase_command: &str,
+    command_text: &str,
+    args: &[Value],
+    expected_wrapper_path: &str,
+    expected_phase_wrapper_path: &str,
+) -> HookWrapperResolutionStatus {
+    if phase_command.is_empty() || command_text.trim().is_empty() {
+        return HookWrapperResolutionStatus::MetadataMissing;
+    }
+    match host_kind {
+        "codex" => classify_codex_hook_command_path(
+            phase_command,
+            command_text,
+            expected_wrapper_path,
+            expected_phase_wrapper_path,
+        ),
+        "claude_code" => classify_claude_hook_command_path(
+            phase_command,
+            command_text,
+            args,
+            expected_phase_wrapper_path,
+        ),
+        _ => HookWrapperResolutionStatus::MetadataMissing,
+    }
+}
+
+fn classify_codex_hook_command_path(
+    phase_command: &str,
+    command_text: &str,
+    expected_dispatch_path: &str,
+    expected_phase_wrapper_path: &str,
+) -> HookWrapperResolutionStatus {
+    let relative_wrapper = format!(".codex/hooks/volicord-{phase_command}.sh");
+    if contains_bare_relative_hook_path(command_text, ".codex/hooks/") {
+        return HookWrapperResolutionStatus::RelativePathUnsafe;
+    }
+    if command_text.contains(CODEX_DISPATCH_WRAPPER) || command_text.contains(&relative_wrapper) {
+        if command_text.contains("git rev-parse --show-toplevel")
+            && command_text.contains(CODEX_DISPATCH_WRAPPER)
+            && command_text.contains(phase_command)
+        {
+            return HookWrapperResolutionStatus::Ok;
+        }
+        if let Some(path) = absolute_path_ending_with(command_text, CODEX_DISPATCH_WRAPPER) {
+            return if paths_equivalent_text(&path, expected_dispatch_path) {
+                HookWrapperResolutionStatus::Ok
+            } else {
+                HookWrapperResolutionStatus::AbsolutePathStale
+            };
+        }
+        if let Some(path) = absolute_path_ending_with(command_text, &relative_wrapper) {
+            return if paths_equivalent_text(&path, expected_phase_wrapper_path) {
+                HookWrapperResolutionStatus::Ok
+            } else {
+                HookWrapperResolutionStatus::AbsolutePathStale
+            };
+        }
+        return HookWrapperResolutionStatus::RelativePathUnsafe;
+    }
+    if command_text.contains(&format!("volicord guard {phase_command}")) {
+        return HookWrapperResolutionStatus::Ok;
+    }
+    HookWrapperResolutionStatus::MetadataMissing
+}
+
+fn classify_claude_hook_command_path(
+    phase_command: &str,
+    command_text: &str,
+    args: &[Value],
+    expected_phase_wrapper_path: &str,
+) -> HookWrapperResolutionStatus {
+    let relative_wrapper = format!(".claude/hooks/volicord-{phase_command}.sh");
+    let placeholder_wrapper = format!("${{CLAUDE_PROJECT_DIR}}/{relative_wrapper}");
+    if contains_bare_relative_hook_path(command_text, ".claude/hooks/") {
+        return HookWrapperResolutionStatus::RelativePathUnsafe;
+    }
+    if command_text.contains("${CLAUDE_PROJECT_DIR}") {
+        return if command_text == placeholder_wrapper && args.is_empty() {
+            HookWrapperResolutionStatus::Ok
+        } else {
+            HookWrapperResolutionStatus::PlaceholderUnsupported
+        };
+    }
+    if command_text.contains(&relative_wrapper) {
+        if let Some(path) = absolute_path_ending_with(command_text, &relative_wrapper) {
+            return if paths_equivalent_text(&path, expected_phase_wrapper_path) {
+                HookWrapperResolutionStatus::Ok
+            } else {
+                HookWrapperResolutionStatus::AbsolutePathStale
+            };
+        }
+        return HookWrapperResolutionStatus::RelativePathUnsafe;
+    }
+    if command_text.contains(&format!("volicord guard {phase_command}")) {
+        return HookWrapperResolutionStatus::Ok;
+    }
+    HookWrapperResolutionStatus::MetadataMissing
+}
+
+fn contains_bare_relative_hook_path(command_text: &str, prefix: &str) -> bool {
+    let trimmed = command_text.trim_start_matches([' ', '\'', '"']);
+    trimmed.starts_with(prefix)
+        || trimmed.starts_with(&format!("./{prefix}"))
+        || command_text.contains(&format!(" {prefix}"))
+        || command_text.contains(&format!(" './{prefix}"))
+        || command_text.contains(&format!(" \"./{prefix}"))
+        || command_text.contains(&format!(" '{prefix}"))
+        || command_text.contains(&format!(" \"{prefix}"))
+}
+
+fn absolute_path_ending_with(command_text: &str, suffix: &str) -> Option<String> {
+    let index = command_text.find(suffix)?;
+    let prefix = &command_text[..index];
+    let start = prefix
+        .rfind([' ', '\'', '"', '=', ';', '('])
+        .map(|position| position + 1)
+        .unwrap_or(0);
+    let path_prefix = prefix.get(start..)?;
+    if !path_prefix.starts_with('/') {
+        return None;
+    }
+    Some(format!("{path_prefix}{suffix}"))
+}
+
+fn paths_equivalent_text(left: &str, right: &str) -> bool {
+    lexical_absolute_path(left)
+        .is_some_and(|left| lexical_absolute_path(right).is_some_and(|right| left == right))
+}
+
+fn path_starts_with_text(path: &str, prefix: &str) -> bool {
+    let Some(path) = lexical_absolute_path(path) else {
+        return false;
+    };
+    let Some(prefix) = lexical_absolute_path(prefix) else {
+        return false;
+    };
+    path == prefix || path.starts_with(&format!("{prefix}/"))
+}
+
+fn lexical_absolute_path(path_text_value: &str) -> Option<String> {
+    let path = Path::new(path_text_value);
+    if !path.is_absolute() {
+        return None;
+    }
+    let mut parts = Vec::new();
+    for component in path.components() {
+        match component {
+            std::path::Component::RootDir => {}
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                parts.pop();
+            }
+            std::path::Component::Normal(part) => parts.push(part.to_string_lossy().into_owned()),
+            std::path::Component::Prefix(_) => return None,
+        }
+    }
+    Some(format!("/{}", parts.join("/")))
+}
+
+fn phase_command_name_from_capability(phase: &str) -> Option<&'static str> {
+    match phase {
+        "session_start_hook" | "session_start" => Some("session-start"),
+        "pre_tool_hook" | "pre_tool" => Some("pre-tool"),
+        "post_tool_hook" | "post_tool" => Some("post-tool"),
+        "user_prompt_submit_hook" | "prompt_capture" => Some("prompt-capture"),
+        "stop_hook" | "stop" => Some("stop"),
+        _ => None,
+    }
+}
+
 fn verify_guard_file(file: &Value, capability: &Value, findings: &mut GuardFileFindings) {
     let kind = file
         .get("kind")
@@ -7647,6 +8480,7 @@ fn verify_guard_file(file: &Value, capability: &Value, findings: &mut GuardFileF
         Some("managed_json_projection") => verify_managed_json_projection_file(
             file,
             kind,
+            capability,
             path_text,
             &text,
             expected_hash,
@@ -7737,8 +8571,8 @@ fn verify_managed_json_file(
         state = "stale";
     }
     if file.get("kind").and_then(Value::as_str) == Some("host_hook_config") {
-        match serde_json::from_str::<Value>(text) {
-            Ok(value) if is_volicord_codex_hook_config(&value) => {}
+        let value = match serde_json::from_str::<Value>(text) {
+            Ok(value) if is_volicord_codex_hook_config(&value) => value,
             Ok(_) | Err(_) => {
                 findings.broken_files.push(path_text.to_owned());
                 if let Some(kind) = kind {
@@ -7746,10 +8580,14 @@ fn verify_managed_json_file(
                 }
                 return;
             }
-        }
+        };
         if validate_contract_config(HostKind::Codex, HostContractConfigKind::HookConfig, text)
             .is_err()
         {
+            findings.stale_files.push(path_text.to_owned());
+            state = "stale";
+        }
+        if !verify_hook_config_commands_path_safety(HostKind::Codex, &value, capability, findings) {
             findings.stale_files.push(path_text.to_owned());
             state = "stale";
         }
@@ -7877,12 +8715,20 @@ fn verify_managed_script_file(
         && hook_wrapper_comment_value(text, "policy_hash") != Some(expected_policy_hash)
     {
         findings.stale_files.push(path_text.to_owned());
+        findings.record_hook_path_status(
+            HookWrapperResolutionStatus::PolicyHashMismatch,
+            json!({ "path": path_text, "expected_policy_hash": expected_policy_hash }),
+        );
         state = "stale";
     }
     if !expected_host_output.is_empty()
         && hook_wrapper_comment_value(text, "host_output") != Some(expected_host_output)
     {
         findings.stale_files.push(path_text.to_owned());
+        findings.record_hook_path_status(
+            HookWrapperResolutionStatus::HostOutputMismatch,
+            json!({ "path": path_text, "expected_host_output": expected_host_output }),
+        );
         state = "stale";
     }
     for key in [
@@ -7900,6 +8746,10 @@ fn verify_managed_script_file(
         };
         if hook_wrapper_comment_value(text, key) != Some(expected) {
             findings.stale_files.push(path_text.to_owned());
+            findings.record_hook_path_status(
+                HookWrapperResolutionStatus::AuthorityMismatch,
+                json!({ "path": path_text, "field": key, "expected": expected }),
+            );
             state = "stale";
         }
     }
@@ -7980,6 +8830,7 @@ fn verify_managed_dispatch_script_file(
 fn verify_managed_json_projection_file(
     file: &Value,
     kind: Option<HostIntegrationFileKind>,
+    capability: &Value,
     path_text: &str,
     text: &str,
     expected_hash: &str,
@@ -8050,6 +8901,20 @@ fn verify_managed_json_projection_file(
                     )
                     .is_err()
                 })
+        {
+            findings.stale_files.push(path_text.to_owned());
+            if let Some(kind) = kind {
+                findings.set_kind_state(kind, "stale");
+            }
+            return;
+        }
+        if projection == ManagedJsonProjection::ClaudeCodeSettingsHooks
+            && !verify_hook_config_commands_path_safety(
+                HostKind::ClaudeCode,
+                &actual_projection,
+                capability,
+                findings,
+            )
         {
             findings.stale_files.push(path_text.to_owned());
             if let Some(kind) = kind {
@@ -8674,6 +9539,12 @@ mod tests {
             capability["hook_root_resolution"]["all_cwd_independent"],
             true
         );
+        assert_eq!(capability["hook_path_safety"]["overall_status"], "ok");
+        assert_eq!(capability["hook_path_safety"]["all_cwd_independent"], true);
+        assert_eq!(
+            capability["hook_path_safety"]["all_subdirectory_safe"],
+            true
+        );
         assert_eq!(
             capability["host_hook_commands"]
                 .as_array()
@@ -8681,6 +9552,19 @@ mod tests {
                 .len(),
             REQUIRED_GUARD_PHASES.len()
         );
+        let pre_tool_command = capability["host_hook_commands"]
+            .as_array()
+            .expect("host hook commands should be recorded")
+            .iter()
+            .find(|command| command["phase"] == "pre_tool_hook")
+            .expect("pre-tool command should be recorded");
+        assert_eq!(
+            pre_tool_command["hook_command_path_basis"],
+            "git_root_runtime"
+        );
+        assert_eq!(pre_tool_command["cwd_independent"], true);
+        assert_eq!(pre_tool_command["subdirectory_safe"], true);
+        assert_eq!(pre_tool_command["wrapper_resolution_status"], "ok");
         assert_eq!(
             capability["missing_required_hooks"]
                 .as_array()
@@ -8899,6 +9783,25 @@ mod tests {
             capability["hook_root_resolution"]["all_cwd_independent"],
             true
         );
+        assert_eq!(capability["hook_path_safety"]["overall_status"], "ok");
+        assert_eq!(capability["hook_path_safety"]["all_cwd_independent"], true);
+        assert_eq!(
+            capability["hook_path_safety"]["all_subdirectory_safe"],
+            true
+        );
+        let pre_tool_command = capability["host_hook_commands"]
+            .as_array()
+            .expect("host hook commands should be recorded")
+            .iter()
+            .find(|command| command["phase"] == "pre_tool_hook")
+            .expect("pre-tool command should be recorded");
+        assert_eq!(
+            pre_tool_command["hook_command_path_basis"],
+            "claude_project_dir"
+        );
+        assert_eq!(pre_tool_command["cwd_independent"], true);
+        assert_eq!(pre_tool_command["subdirectory_safe"], true);
+        assert_eq!(pre_tool_command["wrapper_resolution_status"], "ok");
         assert_eq!(
             capability["missing_required_hooks"]
                 .as_array()
@@ -9379,6 +10282,73 @@ mod tests {
     }
 
     #[test]
+    fn guard_file_verification_reports_hook_path_safety_failures(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let repo = temp_dir("hook-path-safety-verify")?;
+        fs::create_dir_all(repo.join(".git"))?;
+        let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
+        let applied = apply_guard_integration(plan_guard_integration(
+            HostKind::Codex,
+            InitMode::Guarded,
+            false,
+            &repo,
+            "conn_alpha",
+            "guard_installation_alpha",
+            &entry,
+        )?)?;
+        let capability_json = guard_capability_json(&applied)?;
+        let capability: Value = serde_json::from_str(&capability_json)?;
+        let findings = guard_file_findings(&capability_json);
+        assert_eq!(findings.hook_path_safety_state(), "ok");
+        assert!(findings.generated_config_verified());
+
+        let hooks_path = repo.join(".codex/hooks.json");
+        let hooks_text = fs::read_to_string(&hooks_path)?;
+        let mut hooks_json: Value = serde_json::from_str(&hooks_text)?;
+        hooks_json["hooks"]["SessionStart"][0]["hooks"][0]["command"] =
+            json!(".codex/hooks/volicord-dispatch.sh session-start");
+        fs::write(&hooks_path, serde_json::to_string_pretty(&hooks_json)?)?;
+        let findings = guard_file_findings(&capability_json);
+        assert_eq!(findings.hook_path_safety_state(), "relative_path_unsafe");
+        assert!(hook_path_status_recorded(&findings, "relative_path_unsafe"));
+        assert!(findings.stale_files.contains(&path_text(&hooks_path)));
+        assert!(!findings.generated_config_verified());
+        fs::write(&hooks_path, hooks_text)?;
+
+        let mut stale_absolute_capability = capability.clone();
+        let stale_command = format!(
+            "sh -c 'exec \"{}\" session-start'",
+            path_text(&repo.join("stale-root/.codex/hooks/volicord-dispatch.sh"))
+        );
+        stale_absolute_capability["host_hook_commands"][0]["command"] = json!(stale_command);
+        let findings = guard_file_findings(&stale_absolute_capability.to_string());
+        assert_eq!(findings.hook_path_safety_state(), "absolute_path_stale");
+        assert!(hook_path_status_recorded(&findings, "absolute_path_stale"));
+        assert!(!findings.generated_config_verified());
+
+        let wrapper_path = repo.join(".codex/hooks/volicord-pre-tool.sh");
+        let wrapper_text = fs::read_to_string(&wrapper_path)?;
+        fs::remove_file(&wrapper_path)?;
+        let findings = guard_file_findings(&capability_json);
+        assert_eq!(findings.hook_path_safety_state(), "wrapper_missing");
+        assert!(hook_path_status_recorded(&findings, "wrapper_missing"));
+        assert!(findings.missing_files.contains(&path_text(&wrapper_path)));
+        fs::write(&wrapper_path, &wrapper_text)?;
+        set_script_executable(&wrapper_path)?;
+
+        fs::write(
+            &wrapper_path,
+            wrapper_text.replace("# host_output=codex", "# host_output=claude-code"),
+        )?;
+        set_script_executable(&wrapper_path)?;
+        let findings = guard_file_findings(&capability_json);
+        assert_eq!(findings.hook_path_safety_state(), "host_output_mismatch");
+        assert!(hook_path_status_recorded(&findings, "host_output_mismatch"));
+        assert!(findings.stale_files.contains(&path_text(&wrapper_path)));
+        Ok(())
+    }
+
+    #[test]
     fn claude_guard_state_becomes_active_after_synthetic_observation(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let runtime_home = temp_dir("claude-guard-runtime")?;
@@ -9800,6 +10770,19 @@ mod tests {
             paths.extend(std::env::split_paths(&existing));
         }
         Ok(std::env::join_paths(paths)?)
+    }
+
+    fn hook_path_status_recorded(findings: &GuardFileFindings, status: &str) -> bool {
+        findings
+            .hook_path_safety_statuses
+            .iter()
+            .any(|recorded| recorded == status)
+            || findings.hook_path_safety_details.iter().any(|detail| {
+                detail
+                    .get("wrapper_resolution_status")
+                    .and_then(Value::as_str)
+                    == Some(status)
+            })
     }
 
     fn temp_dir(prefix: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
