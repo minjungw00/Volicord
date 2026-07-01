@@ -198,16 +198,26 @@ Guard installation has separate file and activation phases. `volicord init`
 installs or updates the host configuration, Volicord-managed `AGENTS.md`
 guidance, `.volicord/policy.json`, host hook or rule files, and guard state.
 For Codex guarded setup, generated files include project MCP config,
-`.codex/hooks.json`, and `.codex/rules/*.rules`; the host may still require
-project trust, hook trust, restart, or reload before rules and hooks run. For
-Claude Code guarded setup, generated files include `.mcp.json`,
-`.claude/settings.json`, and `.claude/rules/*.md`; Volicord merges managed
-settings without owning unrelated settings, and the host may still require
-project MCP approval, workspace trust, or settings reload. The first matching
-observed guard hook event activates the installation. `volicord connection
-verify` and `volicord doctor` report file health, required host action, and
-observed activation separately; installed files, `AGENTS.md`, and
-`.volicord/policy.json` alone do not prove that hooks are active.
+Volicord-managed POSIX `sh` wrapper scripts under `.codex/hooks/`,
+`.codex/hooks.json`, and `.codex/rules/*.rules`. Its pre-tool and post-tool
+matchers cover `Bash`, `apply_patch`, `Edit`, `Write`, and
+`mcp__.*__(write|edit|create|update|delete|remove|move|patch).*` tool names.
+For Claude Code guarded setup, generated files include `.mcp.json`,
+Volicord-managed POSIX `sh` wrapper scripts under `.claude/hooks/`,
+`.claude/settings.json`, and `.claude/rules/*.md`. Its pre-tool and post-tool
+matchers cover `Bash`, `Edit`, `Write`, `MultiEdit`, and
+`mcp__.*__(write|edit|create|update|delete|remove|move|patch).*` tool names.
+Generated hook configs call the wrapper scripts with `--host-output codex` or
+`--host-output claude-code`, so hook stdout is host-native JSON/context or empty
+output, not Volicord wrapper JSON. Codex may still require project trust, hook
+trust, restart, or reload before rules and hooks run. For Claude Code,
+Volicord merges managed settings without owning unrelated settings, and the
+host may still require project MCP approval, workspace trust, or settings
+reload. The first matching observed guard hook event activates the
+installation. `volicord connection verify` and `volicord doctor` report file
+health, required host action, and observed activation separately; installed
+files, `AGENTS.md`, and `.volicord/policy.json` alone do not prove that hooks
+are active.
 
 ## Unrecorded Changes And Close Blockers
 

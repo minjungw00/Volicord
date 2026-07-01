@@ -182,15 +182,25 @@ Guarded 모드는 호스트가 설정된 hook을 실제로 실행하고 rule을 
 Guard 설치에는 파일 설치와 활성화라는 별도 단계가 있습니다. `volicord init`은 호스트
 설정, Volicord 관리 `AGENTS.md` 안내, `.volicord/policy.json`, 호스트 hook 또는 rule
 파일, guard 상태를 설치하거나 갱신합니다. Codex guarded 설정은 프로젝트 MCP 설정,
-`.codex/hooks.json`, `.codex/rules/*.rules`를 생성하며, 호스트가 rule과 hook을 실행하려면
-프로젝트 trust, hook trust, restart 또는 reload가 필요할 수 있습니다. Claude Code
-guarded 설정은 `.mcp.json`, `.claude/settings.json`, `.claude/rules/*.md`를 생성합니다.
-Volicord는 관련 없는 settings를 소유하지 않고 관리 항목을 병합하며, 호스트에는 프로젝트
-MCP approval, workspace trust, settings reload가 필요할 수 있습니다. 처음으로 일치하는
-guard hook 이벤트가 관찰되면 설치가 활성화됩니다. `volicord connection verify`와
-`volicord doctor`는 파일 상태, 필요한 호스트 동작, 관찰된 활성화를 분리해서 보고합니다.
-파일, `AGENTS.md`, `.volicord/policy.json`이 설치되었다는 사실만으로 hook이 활성
-상태임이 증명되지는 않습니다.
+`.codex/hooks/` 아래의 Volicord 관리 POSIX `sh` wrapper script,
+`.codex/hooks.json`, `.codex/rules/*.rules`를 생성합니다. pre-tool 및 post-tool
+matcher는 `Bash`, `apply_patch`, `Edit`, `Write`,
+`mcp__.*__(write|edit|create|update|delete|remove|move|patch).*` tool 이름을
+대상으로 합니다. Claude Code guarded 설정은 `.mcp.json`, `.claude/hooks/` 아래의
+Volicord 관리 POSIX `sh` wrapper script, `.claude/settings.json`,
+`.claude/rules/*.md`를 생성합니다. pre-tool 및 post-tool matcher는 `Bash`,
+`Edit`, `Write`, `MultiEdit`,
+`mcp__.*__(write|edit|create|update|delete|remove|move|patch).*` tool 이름을
+대상으로 합니다. 생성된 hook 설정은 wrapper script를 `--host-output codex` 또는
+`--host-output claude-code`로 호출하므로 hook stdout은 host-native JSON/context이거나
+빈 출력이며 Volicord wrapper JSON이 아닙니다. Codex에서는 호스트가 rule과 hook을
+실행하려면 프로젝트 trust, hook trust, restart 또는 reload가 필요할 수 있습니다.
+Claude Code에서는 Volicord가 관련 없는 settings를 소유하지 않고 관리 항목을 병합하며,
+호스트에 프로젝트 MCP approval, workspace trust, settings reload가 필요할 수 있습니다.
+처음으로 일치하는 guard hook 이벤트가 관찰되면 설치가 활성화됩니다. `volicord
+connection verify`와 `volicord doctor`는 파일 상태, 필요한 호스트 동작, 관찰된
+활성화를 분리해서 보고합니다. 파일, `AGENTS.md`, `.volicord/policy.json`이
+설치되었다는 사실만으로 hook이 활성 상태임이 증명되지는 않습니다.
 
 ## 미기록 변경과 닫기 차단 사유
 

@@ -63,13 +63,25 @@ host-owned action before those files run.
 
 Current verified guarded adapters are host-specific:
 
-- Codex guarded setup writes project MCP configuration, `.codex/hooks.json`,
-  and `.codex/rules/*.rules`. The host may require project trust, hook trust,
-  and restart or reload before the generated rule and hook files run.
-- Claude Code guarded setup writes `.mcp.json`, `.claude/settings.json`, and
-  `.claude/rules/*.md`. Settings writes preserve unrelated settings and merge
-  Volicord-managed entries; the host may require project MCP approval, workspace
-  trust, and settings reload before the generated hook and rule files run.
+- Codex guarded setup writes project MCP configuration, Volicord-managed POSIX
+  `sh` wrapper scripts under `.codex/hooks/`, `.codex/hooks.json`, and
+  `.codex/rules/*.rules`. Pre-tool and post-tool matchers cover `Bash`,
+  `apply_patch`, `Edit`, `Write`, and
+  `mcp__.*__(write|edit|create|update|delete|remove|move|patch).*` tool names.
+  The host may require project trust, hook trust, and restart or reload before
+  the generated rule and hook files run.
+- Claude Code guarded setup writes `.mcp.json`, Volicord-managed POSIX `sh`
+  wrapper scripts under `.claude/hooks/`, `.claude/settings.json`, and
+  `.claude/rules/*.md`. Pre-tool and post-tool matchers cover `Bash`, `Edit`,
+  `Write`, `MultiEdit`, and
+  `mcp__.*__(write|edit|create|update|delete|remove|move|patch).*` tool names.
+  Settings writes preserve unrelated settings and merge Volicord-managed
+  entries; the host may require project MCP approval, workspace trust, and
+  settings reload before the generated hook and rule files run.
+
+Generated hook configs invoke the wrapper scripts with `--host-output codex` or
+`--host-output claude-code`, so hook stdout is host-native JSON/context or empty
+output, not Volicord wrapper JSON.
 
 Default `guarded` init must be able to install and verify all required host
 lifecycle hook phases. When the selected Codex or Claude Code adapter does not
