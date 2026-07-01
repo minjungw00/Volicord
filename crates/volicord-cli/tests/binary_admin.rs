@@ -4,8 +4,9 @@ use std::{
     collections::BTreeSet,
     error::Error,
     fs,
+    io::Write,
     path::{Path, PathBuf},
-    process::{Command, Output},
+    process::{Command, Output, Stdio},
 };
 
 use serde_json::Value;
@@ -18,7 +19,7 @@ use volicord_store::agent_connections::{
     VERIFIED_STATUS_COMPLETE,
 };
 use volicord_store::guards::{
-    insert_unrecorded_change, list_guard_installations, UnrecordedChangeInsert,
+    guard_event, insert_unrecorded_change, list_guard_installations, UnrecordedChangeInsert,
 };
 use volicord_store::{
     bootstrap::{
@@ -559,6 +560,271 @@ fn init_claude_code_guarded_without_degraded_opt_in_generates_hooks() -> Result<
     assert!(wrapper_text.contains("--host-output claude-code"));
     assert!(is_executable(&wrapper)?);
     assert!(repo_root.join(".claude/rules/volicord.md").exists());
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn init_codex_guarded_hook_command_runs_from_subdirectory_with_spaces() -> Result<(), Box<dyn Error>>
+{
+    let runtime_home = TempRuntimeHome::new("cli-bin-codex-hook-subdir")?;
+    let repo_root = create_real_git_repo(&runtime_home, "product repo with spaces")?;
+    let src_dir = repo_root.join("src");
+    fs::create_dir_all(&src_dir)?;
+    let bin_dir = runtime_home.path().join("bin with spaces");
+    write_fake_codex(&bin_dir)?;
+    write_fake_mcp(&bin_dir)?;
+
+    let output = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--host",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--json",
+        ],
+        &[
+            ("PATH", path_env(&[bin_dir.as_path()])),
+            ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
+        ],
+    )?;
+    assert_success(&output);
+    let init_json = json_stdout(&output)?;
+    assert_eq!(init_json["hook_root_resolution"]["basis"], "git_work_tree");
+    assert_eq!(init_json["states"]["hook_path_safety"], "ok");
+    let connection_id = init_json["connection"]["connection_id"]
+        .as_str()
+        .expect("connection_id should be present");
+    let project_id = init_json["connection"]["project_id"]
+        .as_str()
+        .expect("project_id should be present");
+
+    let hooks: Value =
+        serde_json::from_str(&fs::read_to_string(repo_root.join(".codex/hooks.json"))?)?;
+    assert_no_bare_hook_commands(&hooks, ".codex/hooks/");
+    let command = codex_pre_tool_command(&hooks);
+    assert!(command.contains("git rev-parse --show-toplevel"));
+    assert!(command.contains(".codex/hooks/volicord-dispatch.sh"));
+    assert!(command.contains("pre-tool"));
+    assert!(!command.contains("volicord guard "));
+
+    let event_id = "generated_codex_pre_tool_from_src";
+    let event = pre_tool_write_event(event_id);
+    let hook_output = run_shell_hook_command(
+        command,
+        runtime_home.path(),
+        &src_dir,
+        &event,
+        &[("PATH", hook_execution_path_env(&bin_dir)?)],
+    )?;
+    let value = assert_host_native_pre_tool_deny_output(&hook_output)?;
+    assert_eq!(value["hookSpecificOutput"]["hookEventName"], "PreToolUse");
+
+    let stored = guard_event(runtime_home.path(), project_id, event_id)?
+        .expect("generated Codex hook command should invoke volicord guard");
+    assert_eq!(stored.connection_internal_id, connection_id);
+    assert_eq!(stored.decision, "deny");
+    let installations =
+        list_guard_installations(runtime_home.path(), connection_id, Some(project_id))?;
+    assert!(installations.iter().any(|installation| {
+        installation.installation_status == "active"
+            && installation.last_seen_phase.as_deref() == Some("pre_tool")
+            && installation.observed_host_kind.as_deref() == Some("codex")
+    }));
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn init_claude_code_guarded_hook_command_runs_from_subdirectory_with_spaces(
+) -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-claude-hook-subdir")?;
+    let repo_root = create_real_git_repo(&runtime_home, "product repo with spaces")?;
+    let src_dir = repo_root.join("src");
+    fs::create_dir_all(&src_dir)?;
+    let bin_dir = runtime_home.path().join("bin with spaces");
+    write_fake_claude_code(&bin_dir)?;
+    write_fake_mcp(&bin_dir)?;
+
+    let output = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--host",
+            "claude-code",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--json",
+        ],
+        &[
+            ("PATH", path_env(&[bin_dir.as_path()])),
+            ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
+        ],
+    )?;
+    assert_success(&output);
+    let init_json = json_stdout(&output)?;
+    assert_eq!(
+        init_json["hook_root_resolution"]["basis"],
+        "claude_project_dir"
+    );
+    assert_eq!(init_json["states"]["hook_path_safety"], "ok");
+    let connection_id = init_json["connection"]["connection_id"]
+        .as_str()
+        .expect("connection_id should be present");
+    let project_id = init_json["connection"]["project_id"]
+        .as_str()
+        .expect("project_id should be present");
+
+    let settings: Value = serde_json::from_str(&fs::read_to_string(
+        repo_root.join(".claude/settings.json"),
+    )?)?;
+    assert_no_bare_hook_commands(&settings, ".claude/hooks/");
+    let (command, args) = claude_pre_tool_command(&settings);
+    assert_eq!(
+        command,
+        "${CLAUDE_PROJECT_DIR}/.claude/hooks/volicord-pre-tool.sh"
+    );
+    assert!(args.is_empty());
+    let expanded_command = expand_claude_project_command(command, &repo_root)?;
+    assert_eq!(
+        expanded_command,
+        repo_root.join(".claude/hooks/volicord-pre-tool.sh")
+    );
+
+    let event_id = "generated_claude_pre_tool_from_src";
+    let event = pre_tool_write_event(event_id);
+    let hook_output = run_executable_hook_command(
+        &expanded_command,
+        args,
+        runtime_home.path(),
+        &src_dir,
+        &event,
+        &[
+            ("PATH", hook_execution_path_env(&bin_dir)?),
+            ("CLAUDE_PROJECT_DIR", path_text(&repo_root)),
+        ],
+    )?;
+    let value = assert_host_native_pre_tool_deny_output(&hook_output)?;
+    assert_eq!(value["hookSpecificOutput"]["hookEventName"], "PreToolUse");
+
+    let stored = guard_event(runtime_home.path(), project_id, event_id)?
+        .expect("generated Claude Code hook command should invoke volicord guard");
+    assert_eq!(stored.connection_internal_id, connection_id);
+    assert_eq!(stored.decision, "deny");
+    let installations =
+        list_guard_installations(runtime_home.path(), connection_id, Some(project_id))?;
+    assert!(installations.iter().any(|installation| {
+        installation.installation_status == "active"
+            && installation.last_seen_phase.as_deref() == Some("pre_tool")
+            && installation.observed_host_kind.as_deref() == Some("claude_code")
+    }));
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn connection_status_downgrades_relative_codex_hook_command() -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-relative-hook-downgrade")?;
+    let repo_root = create_real_git_repo(&runtime_home, "product repo with spaces")?;
+    let src_dir = repo_root.join("src");
+    fs::create_dir_all(&src_dir)?;
+    let bin_dir = runtime_home.path().join("bin");
+    write_fake_codex(&bin_dir)?;
+    write_fake_mcp(&bin_dir)?;
+
+    let init = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--host",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--json",
+        ],
+        &[
+            ("PATH", path_env(&[bin_dir.as_path()])),
+            ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
+        ],
+    )?;
+    assert_success(&init);
+    let init_json = json_stdout(&init)?;
+    let connection_id = init_json["connection"]["connection_id"]
+        .as_str()
+        .expect("connection_id should be present");
+
+    let hooks_path = repo_root.join(".codex/hooks.json");
+    let hooks: Value = serde_json::from_str(&fs::read_to_string(&hooks_path)?)?;
+    let command = codex_pre_tool_command(&hooks);
+    let active_event = pre_tool_write_event("relative_hook_before_downgrade");
+    let hook_output = run_shell_hook_command(
+        command,
+        runtime_home.path(),
+        &src_dir,
+        &active_event,
+        &[("PATH", hook_execution_path_env(&bin_dir)?)],
+    )?;
+    assert_host_native_pre_tool_deny_output(&hook_output)?;
+
+    let active_status = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connection",
+            "status",
+            "codex",
+            "--shared",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--json",
+        ],
+        &[],
+    )?;
+    assert_success(&active_status);
+    let active_status_json = json_stdout(&active_status)?;
+    assert_eq!(
+        active_status_json["states"]["guard_strength"],
+        "host_hook_guarded"
+    );
+    assert_eq!(active_status_json["states"]["hook_path_safety"], "ok");
+
+    let mut hooks_json: Value = serde_json::from_str(&fs::read_to_string(&hooks_path)?)?;
+    hooks_json["hooks"]["PreToolUse"][0]["hooks"][0]["command"] =
+        serde_json::json!(".codex/hooks/volicord-pre-tool.sh");
+    fs::write(&hooks_path, serde_json::to_string_pretty(&hooks_json)?)?;
+
+    let status = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connection",
+            "status",
+            "codex",
+            "--shared",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--json",
+        ],
+        &[],
+    )?;
+    assert_success(&status);
+    let value = json_stdout(&status)?;
+    assert_eq!(value["connection"]["connection_id"], connection_id);
+    assert_eq!(value["states"]["hook_path_safety"], "relative_path_unsafe");
+    assert_eq!(value["states"]["generated_config_verified"], false);
+    assert_eq!(value["states"]["guard_strength"], "authority_record_only");
+    assert_ne!(value["states"]["guard_strength"], "host_hook_guarded");
+    assert_eq!(value["primary_next_action"]["id"], "guard_hook_path_safety");
+    assert!(value["guard"]["stale_files"]
+        .as_array()
+        .expect("stale_files should be an array")
+        .iter()
+        .any(|path| path == &path_text(&hooks_path)));
+    assert!(value["guard"]["hook_path_safety_details"]
+        .as_array()
+        .expect("hook path details should be an array")
+        .iter()
+        .any(|detail| detail["wrapper_resolution_status"] == "relative_path_unsafe"));
     Ok(())
 }
 
@@ -2816,6 +3082,189 @@ fn count_occurrences(text: &str, needle: &str) -> usize {
 }
 
 #[cfg(unix)]
+fn codex_pre_tool_command(hooks: &Value) -> &str {
+    hooks["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+        .as_str()
+        .expect("Codex PreToolUse command should be present")
+}
+
+#[cfg(unix)]
+fn claude_pre_tool_command(settings: &Value) -> (&str, Vec<String>) {
+    let command = settings["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+        .as_str()
+        .expect("Claude Code PreToolUse command should be present");
+    let args = settings["hooks"]["PreToolUse"][0]["hooks"][0]["args"]
+        .as_array()
+        .expect("Claude Code PreToolUse args should be present")
+        .iter()
+        .map(|arg| {
+            arg.as_str()
+                .expect("Claude Code hook args should be strings")
+                .to_owned()
+        })
+        .collect();
+    (command, args)
+}
+
+#[cfg(unix)]
+fn assert_no_bare_hook_commands(value: &Value, prefix: &str) {
+    match value {
+        Value::Object(object) => {
+            for (key, value) in object {
+                if key == "command" {
+                    let command = value
+                        .as_str()
+                        .expect("hook command values should be strings");
+                    assert!(
+                        !contains_bare_hook_path(command, prefix),
+                        "hook command must not use a cwd-relative wrapper path: {command}"
+                    );
+                }
+                assert_no_bare_hook_commands(value, prefix);
+            }
+        }
+        Value::Array(values) => {
+            for value in values {
+                assert_no_bare_hook_commands(value, prefix);
+            }
+        }
+        _ => {}
+    }
+}
+
+#[cfg(unix)]
+fn contains_bare_hook_path(command: &str, prefix: &str) -> bool {
+    let trimmed = command.trim_start_matches([' ', '\'', '"']);
+    trimmed.starts_with(prefix)
+        || trimmed.starts_with(&format!("./{prefix}"))
+        || command.contains(&format!(" {prefix}"))
+        || command.contains(&format!(" './{prefix}"))
+        || command.contains(&format!(" \"./{prefix}"))
+        || command.contains(&format!(" '{prefix}"))
+        || command.contains(&format!(" \"{prefix}"))
+}
+
+#[cfg(unix)]
+fn pre_tool_write_event(event_id: &str) -> Value {
+    serde_json::json!({
+        "event_id": event_id,
+        "session_id": "generated_hook_session",
+        "tool_name": "Bash",
+        "tool_call_id": format!("{event_id}_tool"),
+        "command": "touch src/lib.rs",
+        "paths": ["src/lib.rs"],
+        "timestamp": "2026-07-01T00:00:00Z"
+    })
+}
+
+#[cfg(unix)]
+fn run_shell_hook_command(
+    command_text: &str,
+    runtime_home: &Path,
+    current_dir: &Path,
+    event: &Value,
+    envs: &[(&str, String)],
+) -> Result<Output, Box<dyn Error>> {
+    let mut command = Command::new("sh");
+    command
+        .arg("-c")
+        .arg(command_text)
+        .env("VOLICORD_HOME", runtime_home)
+        .current_dir(current_dir)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    for (name, value) in envs {
+        command.env(name, value);
+    }
+    let mut child = command.spawn()?;
+    let mut stdin = child.stdin.take().expect("hook stdin should be piped");
+    stdin.write_all(event.to_string().as_bytes())?;
+    drop(stdin);
+    Ok(child.wait_with_output()?)
+}
+
+#[cfg(unix)]
+fn run_executable_hook_command(
+    executable: &Path,
+    args: Vec<String>,
+    runtime_home: &Path,
+    current_dir: &Path,
+    event: &Value,
+    envs: &[(&str, String)],
+) -> Result<Output, Box<dyn Error>> {
+    let mut command = Command::new(executable);
+    command
+        .args(args)
+        .env("VOLICORD_HOME", runtime_home)
+        .current_dir(current_dir)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    for (name, value) in envs {
+        command.env(name, value);
+    }
+    let mut child = command.spawn()?;
+    let mut stdin = child.stdin.take().expect("hook stdin should be piped");
+    stdin.write_all(event.to_string().as_bytes())?;
+    drop(stdin);
+    Ok(child.wait_with_output()?)
+}
+
+#[cfg(unix)]
+fn expand_claude_project_command(
+    command: &str,
+    repo_root: &Path,
+) -> Result<PathBuf, Box<dyn Error>> {
+    let relative = command
+        .strip_prefix("${CLAUDE_PROJECT_DIR}/")
+        .ok_or("Claude Code hook command must start with ${CLAUDE_PROJECT_DIR}/")?;
+    Ok(repo_root.join(relative))
+}
+
+#[cfg(unix)]
+fn assert_host_native_pre_tool_deny_output(output: &Output) -> Result<Value, Box<dyn Error>> {
+    assert_eq!(output.status.code(), Some(0));
+    assert!(
+        stderr(output).is_empty(),
+        "host-native hook output should keep stderr empty: {}",
+        stderr(output)
+    );
+    let text = stdout(output);
+    assert!(
+        text.trim_start().starts_with('{'),
+        "host-native hook stdout should be JSON, got {text:?}"
+    );
+    assert!(
+        !text.contains("schema_version") && !text.contains("\"result\""),
+        "host-native hook stdout must not contain Volicord wrapper JSON: {text}"
+    );
+    let value: Value = serde_json::from_str(&text)?;
+    let object = value
+        .as_object()
+        .expect("host-native hook stdout should be a JSON object");
+    for key in [
+        "schema_version",
+        "phase",
+        "allowed",
+        "guard_event_id",
+        "session_id",
+        "result",
+    ] {
+        assert!(
+            !object.contains_key(key),
+            "host-native hook stdout must not expose Volicord wrapper field `{key}`: {value}"
+        );
+    }
+    assert_eq!(value["hookSpecificOutput"]["permissionDecision"], "deny");
+    assert!(value["hookSpecificOutput"]["permissionDecisionReason"]
+        .as_str()
+        .expect("deny reason should be a string")
+        .contains("no_active_task"));
+    Ok(value)
+}
+
+#[cfg(unix)]
 fn assert_guard_policy_invokes_required_phases(policy: &Value, connection_id: &str) {
     let commands = policy["guard"]["commands"]
         .as_object()
@@ -2927,11 +3376,59 @@ fn create_git_repo(
 }
 
 #[cfg(unix)]
+fn create_real_git_repo(
+    runtime_home: &TempRuntimeHome,
+    name: impl AsRef<Path>,
+) -> Result<PathBuf, Box<dyn Error>> {
+    let repo_root = runtime_home.create_product_repo(name)?;
+    init_real_git_repo(&repo_root)?;
+    Ok(repo_root)
+}
+
+#[cfg(unix)]
+fn init_real_git_repo(repo_root: &Path) -> Result<(), Box<dyn Error>> {
+    let output = Command::new("git")
+        .arg("init")
+        .arg("-q")
+        .current_dir(repo_root)
+        .output()?;
+    if !output.status.success() {
+        return Err(format!(
+            "git init failed\nstdout:\n{}\nstderr:\n{}",
+            stdout(&output),
+            stderr(&output)
+        )
+        .into());
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
 fn path_env(path_dirs: &[&Path]) -> String {
     std::env::join_paths(path_dirs)
         .expect("test PATH should be valid")
         .to_string_lossy()
         .into_owned()
+}
+
+#[cfg(unix)]
+fn hook_execution_path_env(fake_bin_dir: &Path) -> Result<String, Box<dyn Error>> {
+    let volicord_dir = Path::new(volicord_bin())
+        .parent()
+        .ok_or("volicord test binary path should have a parent")?;
+    path_env_with_existing(&[volicord_dir, fake_bin_dir])
+}
+
+#[cfg(unix)]
+fn path_env_with_existing(path_dirs: &[&Path]) -> Result<String, Box<dyn Error>> {
+    let mut paths = path_dirs
+        .iter()
+        .map(|path| (*path).to_path_buf())
+        .collect::<Vec<_>>();
+    if let Some(existing) = std::env::var_os("PATH") {
+        paths.extend(std::env::split_paths(&existing));
+    }
+    Ok(std::env::join_paths(paths)?.to_string_lossy().into_owned())
 }
 
 #[cfg(unix)]

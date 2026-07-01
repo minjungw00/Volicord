@@ -3459,7 +3459,7 @@ fn host_hook_command_specs(
 ) -> Result<BTreeMap<String, HostHookCommand>, ConnectionCommandError> {
     if host_kind == HostKind::Codex && !repo_has_git_marker(repo_root)? {
         return Err(ConnectionCommandError::runtime(format!(
-            "GUARDED_HOOK_ROOT_UNSUPPORTED: Codex guarded hook commands require a Git work tree root for cwd-independent wrapper resolution; no .git marker was found at {}. Non-git full guarded Codex repositories are not supported by the verified host contract.",
+            "GUARDED_HOOK_ROOT_UNSUPPORTED: Codex guarded hook commands require a Git work tree root for cwd-independent wrapper resolution; no .git marker was found at {}. Non-git full guarded Codex repositories are not supported by the verified host contract. Use a Git work tree for full guarded Codex hooks or choose --mode mcp-only for MCP-only setup.",
             repo_root.display()
         )));
     }
@@ -9498,6 +9498,27 @@ mod tests {
 
         assert!(error.to_string().contains("GUARDED_HOOK_ROOT_UNSUPPORTED"));
         assert!(error.to_string().contains("Git work tree root"));
+        assert!(error.to_string().contains("Non-git full guarded Codex"));
+        assert!(error.to_string().contains("--mode mcp-only"));
+        assert!(!repo.join(".codex/hooks.json").exists());
+        assert!(!repo.join(VOLICORD_POLICY_FILE).exists());
+
+        let degraded_error = plan_guard_integration(
+            HostKind::Codex,
+            InitMode::Guarded,
+            true,
+            &repo,
+            "conn_alpha",
+            "guard_installation_alpha",
+            &entry,
+        )
+        .expect_err("degraded opt-in should not create unsupported non-git full guarded hooks");
+        assert!(degraded_error
+            .to_string()
+            .contains("GUARDED_HOOK_ROOT_UNSUPPORTED"));
+        assert!(degraded_error.to_string().contains("--mode mcp-only"));
+        assert!(!repo.join(".codex/hooks.json").exists());
+        assert!(!repo.join(VOLICORD_POLICY_FILE).exists());
         Ok(())
     }
 
