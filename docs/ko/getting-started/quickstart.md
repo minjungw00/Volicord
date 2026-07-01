@@ -22,11 +22,12 @@ volicord init --host codex --repo /path/to/your-product-repo --mode mcp-only
 설정은 단일 공개 실행 파일을 `volicord mcp --stdio`로 시작합니다.
 
 이 빠른 경로는 호스트 lifecycle hook 설치를 요구하지 않는 `--mode mcp-only`를
-사용합니다. 기본 `guarded` 또는 `managed` init은 모든 필수 호스트 hook phase에 대한
-검증된 지원이 필요합니다. 지원이 빠져 있으면 degraded guard 파일과 누락 hook 진단을
-명시적으로 원할 때만 `--allow-degraded`를 사용합니다. 정확한 프로젝트 이름, guard
-mode 동작, 연결 기본값, 내부 식별 정보 동작은 [관리 CLI 참조](../reference/admin-cli.md)가
-담당합니다.
+사용합니다. 기본 `guarded` init은 모든 필수 호스트 hook phase에 대한 검증된 지원이
+필요합니다. 지원이 빠져 있으면 degraded guard 파일과 누락 hook 진단을 명시적으로 원할
+때만 `--allow-degraded`를 사용합니다. Managed init은 여기에 더해 검증된 managed 배포
+계약이 필요하며, 선택한 호스트에 그런 계약이 없으면 `MANAGED_MODE_UNSUPPORTED`로
+실패합니다. 정확한 프로젝트 이름, guard mode 동작, 연결 기본값, 내부 식별 정보 동작은
+[관리 CLI 참조](../reference/admin-cli.md)가 담당합니다.
 
 ## 설정 확인하기
 

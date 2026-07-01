@@ -381,6 +381,16 @@ fn inspect_guard_installations(
             "no guard installation status is recorded",
         ));
         checks.push(
+            DiagnosticCheck::skipped("guard_profile", "no guard profile is recorded").with_details(
+                json!({
+                    "guard_profile": "not_checked",
+                    "managed_source": "not_checked",
+                    "managed_bundle_hash": Value::Null,
+                    "managed_verification_status": "not_checked",
+                }),
+            ),
+        );
+        checks.push(
             DiagnosticCheck::skipped(
                 "prompt_capture_available",
                 "no prompt capture availability is recorded",
@@ -406,6 +416,25 @@ fn inspect_guard_installations(
         ));
     }
     file_findings.sort_dedup();
+    let guard_profile = doctor_guard_profile_state(&snapshot.guard_installations, &file_findings);
+    let managed_source = doctor_managed_source_state(&snapshot.guard_installations, &file_findings);
+    let managed_bundle_hash = doctor_managed_bundle_hash(&file_findings);
+    let managed_verification =
+        doctor_managed_verification_state(&snapshot.guard_installations, &file_findings);
+    let guard_profile_check = if guard_profile == "mixed" || managed_verification == "mixed" {
+        DiagnosticCheck::warning(
+            "guard_profile",
+            "guard installations record mixed managed boundary metadata",
+        )
+    } else {
+        DiagnosticCheck::passed("guard_profile", format!("guard profile is {guard_profile}"))
+    };
+    checks.push(guard_profile_check.with_details(json!({
+        "guard_profile": guard_profile,
+        "managed_source": managed_source,
+        "managed_bundle_hash": managed_bundle_hash,
+        "managed_verification_status": managed_verification,
+    })));
     let guard_file_problem = !file_findings.missing_files.is_empty()
         || !file_findings.stale_files.is_empty()
         || !file_findings.broken_files.is_empty();
@@ -593,6 +622,10 @@ struct DoctorGuardFileFindings {
     stale_files: Vec<String>,
     broken_files: Vec<String>,
     file_states: BTreeMap<String, String>,
+    guard_profiles: Vec<String>,
+    managed_sources: Vec<String>,
+    managed_bundle_hashes: Vec<String>,
+    managed_verification_statuses: Vec<String>,
 }
 
 impl DoctorGuardFileFindings {
@@ -603,6 +636,12 @@ impl DoctorGuardFileFindings {
         for (kind, state) in other.file_states {
             self.set_file_state(&kind, &state);
         }
+        self.guard_profiles.extend(other.guard_profiles);
+        self.managed_sources.extend(other.managed_sources);
+        self.managed_bundle_hashes
+            .extend(other.managed_bundle_hashes);
+        self.managed_verification_statuses
+            .extend(other.managed_verification_statuses);
     }
 
     fn sort_dedup(&mut self) {
@@ -612,6 +651,14 @@ impl DoctorGuardFileFindings {
         self.stale_files.dedup();
         self.broken_files.sort();
         self.broken_files.dedup();
+        self.guard_profiles.sort();
+        self.guard_profiles.dedup();
+        self.managed_sources.sort();
+        self.managed_sources.dedup();
+        self.managed_bundle_hashes.sort();
+        self.managed_bundle_hashes.dedup();
+        self.managed_verification_statuses.sort();
+        self.managed_verification_statuses.dedup();
     }
 
     fn set_file_state(&mut self, kind: &str, state: &str) {
@@ -642,6 +689,10 @@ fn doctor_guard_file_details(findings: &DoctorGuardFileFindings) -> Value {
         "stale_files": &findings.stale_files,
         "broken_files": &findings.broken_files,
         "file_states": &findings.file_states,
+        "guard_profiles": &findings.guard_profiles,
+        "managed_sources": &findings.managed_sources,
+        "managed_bundle_hashes": &findings.managed_bundle_hashes,
+        "managed_verification_statuses": &findings.managed_verification_statuses,
     })
 }
 
@@ -661,6 +712,18 @@ fn doctor_guard_file_findings(capability_json: &str) -> DoctorGuardFileFindings 
     {
         findings.set_file_state("host_rule_instruction", "unsupported_by_host");
     }
+    if let Some(value) = nonempty_json_string(&value, "guard_profile") {
+        findings.guard_profiles.push(value);
+    }
+    if let Some(value) = nonempty_json_string(&value, "managed_source") {
+        findings.managed_sources.push(value);
+    }
+    if let Some(value) = nonempty_json_string(&value, "managed_bundle_hash") {
+        findings.managed_bundle_hashes.push(value);
+    }
+    if let Some(value) = nonempty_json_string(&value, "managed_verification_status") {
+        findings.managed_verification_statuses.push(value);
+    }
     if guard_missing_required_hooks(capability_json).is_empty() {
         findings.set_file_state("host_hook_config", "not_recorded");
     } else {
@@ -673,6 +736,91 @@ fn doctor_guard_file_findings(capability_json: &str) -> DoctorGuardFileFindings 
         .flatten()
         .for_each(|file| doctor_verify_guard_file(file, &mut findings));
     findings
+}
+
+fn doctor_guard_profile_state(
+    installations: &[volicord_store::inspection::GuardInstallationInspectionRecord],
+    findings: &DoctorGuardFileFindings,
+) -> String {
+    if let Some(value) = single_or_mixed(&findings.guard_profiles) {
+        return value;
+    }
+    match doctor_guard_mode_state(installations).as_str() {
+        "mcp_only" => "mcp_only",
+        "guarded" => "host_hook_guarded",
+        "managed" => "managed_guarded",
+        _ => "mixed",
+    }
+    .to_owned()
+}
+
+fn doctor_managed_source_state(
+    installations: &[volicord_store::inspection::GuardInstallationInspectionRecord],
+    findings: &DoctorGuardFileFindings,
+) -> String {
+    if let Some(value) = single_or_mixed(&findings.managed_sources) {
+        return value;
+    }
+    match doctor_guard_profile_state(installations, findings).as_str() {
+        "mcp_only" => "not_applicable",
+        "host_hook_guarded" => "project_local_host_hooks",
+        "managed_guarded" => "unknown",
+        "mixed" => "mixed",
+        _ => "unknown",
+    }
+    .to_owned()
+}
+
+fn doctor_managed_bundle_hash(findings: &DoctorGuardFileFindings) -> Option<String> {
+    single_or_mixed(&findings.managed_bundle_hashes)
+}
+
+fn doctor_managed_verification_state(
+    installations: &[volicord_store::inspection::GuardInstallationInspectionRecord],
+    findings: &DoctorGuardFileFindings,
+) -> String {
+    if let Some(value) = single_or_mixed(&findings.managed_verification_statuses) {
+        return value;
+    }
+    match doctor_guard_profile_state(installations, findings).as_str() {
+        "mcp_only" | "host_hook_guarded" => "not_applicable",
+        "managed_guarded" => "unverified",
+        "mixed" => "mixed",
+        _ => "unknown",
+    }
+    .to_owned()
+}
+
+fn doctor_guard_mode_state(
+    installations: &[volicord_store::inspection::GuardInstallationInspectionRecord],
+) -> String {
+    let mut modes = installations
+        .iter()
+        .map(|installation| installation.guard_mode.as_str())
+        .collect::<Vec<_>>();
+    modes.sort_unstable();
+    modes.dedup();
+    if modes.len() == 1 {
+        modes[0].to_owned()
+    } else {
+        "mixed".to_owned()
+    }
+}
+
+fn single_or_mixed(values: &[String]) -> Option<String> {
+    match values {
+        [] => None,
+        [value] => Some(value.clone()),
+        _ => Some("mixed".to_owned()),
+    }
+}
+
+fn nonempty_json_string(value: &Value, key: &str) -> Option<String> {
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .map(str::to_owned)
 }
 
 fn doctor_verify_guard_file(file: &Value, findings: &mut DoctorGuardFileFindings) {
@@ -1378,7 +1526,7 @@ fn render_doctor_output(
         }
         OutputFormat::Text => {
             let mut text = format!(
-                "Volicord doctor {}\nstatus_meaning: {}\nruntime_home_state: {}\nruntime_home: {}\ninstallation_profile_state: {}\ncommand_state: {}\nproject_registration_state: {}\nconnection_state: {}\nmcp_config_state: {}\nguard_installation_state: {}\nguard_configuration_state: {}\nguard_observation_state: {}\nguard_effective_state: {}\nguard_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nrequired_guard_phases_state: {}\nrequired_guard_phases_missing: {}\nguard_hook_observed: {}\nguard_status_state: {}\nprompt_capture_state: {}\nprompt_capture_health: {}\nhost_reload_required: {}\n",
+                "Volicord doctor {}\nstatus_meaning: {}\nruntime_home_state: {}\nruntime_home: {}\ninstallation_profile_state: {}\ncommand_state: {}\nproject_registration_state: {}\nconnection_state: {}\nmcp_config_state: {}\nguard_installation_state: {}\nguard_configuration_state: {}\nguard_observation_state: {}\nguard_effective_state: {}\nguard_profile_state: {}\nmanaged_source_state: {}\nmanaged_bundle_hash: {}\nmanaged_verification_state: {}\nguard_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nrequired_guard_phases_state: {}\nrequired_guard_phases_missing: {}\nguard_hook_observed: {}\nguard_status_state: {}\nprompt_capture_state: {}\nprompt_capture_health: {}\nhost_reload_required: {}\n",
                 status.as_str(),
                 doctor_status_meaning(status, checks),
                 doctor_runtime_home_state(runtime_home, checks),
@@ -1392,6 +1540,10 @@ fn render_doctor_output(
                 doctor_check_state(checks, "guard_required_hooks_supported"),
                 doctor_check_state(checks, "guard_hook_observed"),
                 doctor_check_state(checks, "guard_status_active"),
+                doctor_guard_metadata_state(checks, "guard_profile"),
+                doctor_guard_metadata_state(checks, "managed_source"),
+                doctor_guard_bundle_hash_text(checks),
+                doctor_guard_metadata_state(checks, "managed_verification_status"),
                 doctor_check_state(checks, "guard_files_installed"),
                 doctor_guard_file_kind_state(checks, "agents_managed_block"),
                 doctor_guard_file_kind_state(checks, "volicord_policy"),
@@ -1427,6 +1579,10 @@ fn doctor_states_json(
         "guard_configuration": doctor_check_state(checks, "guard_required_hooks_supported"),
         "guard_observation": doctor_check_state(checks, "guard_hook_observed"),
         "guard_effective": doctor_check_state(checks, "guard_status_active"),
+        "guard_profile": doctor_guard_metadata_state(checks, "guard_profile"),
+        "managed_source": doctor_guard_metadata_state(checks, "managed_source"),
+        "managed_bundle_hash": doctor_guard_bundle_hash_value(checks),
+        "managed_verification_status": doctor_guard_metadata_state(checks, "managed_verification_status"),
         "guard_files": doctor_check_state(checks, "guard_files_installed"),
         "agents_managed_block": doctor_guard_file_kind_state(checks, "agents_managed_block"),
         "volicord_policy_file": doctor_guard_file_kind_state(checks, "volicord_policy"),
@@ -1512,6 +1668,38 @@ fn doctor_guard_file_kind_state(checks: &[DiagnosticCheck], kind: &str) -> Strin
             Some("skipped") | None => "not_checked".to_owned(),
             _ => "not_configured".to_owned(),
         })
+}
+
+fn doctor_guard_metadata_state(checks: &[DiagnosticCheck], key: &str) -> String {
+    checks
+        .iter()
+        .find(|check| check.id == "guard_profile")
+        .and_then(|check| check.details.as_ref())
+        .and_then(|details| details.get(key))
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+        .unwrap_or_else(|| match check_status(checks, "guard_profile") {
+            Some("skipped") | None => "not_checked".to_owned(),
+            _ => "unknown".to_owned(),
+        })
+}
+
+fn doctor_guard_bundle_hash_value(checks: &[DiagnosticCheck]) -> Value {
+    checks
+        .iter()
+        .find(|check| check.id == "guard_profile")
+        .and_then(|check| check.details.as_ref())
+        .and_then(|details| details.get("managed_bundle_hash"))
+        .cloned()
+        .unwrap_or(Value::Null)
+}
+
+fn doctor_guard_bundle_hash_text(checks: &[DiagnosticCheck]) -> String {
+    doctor_guard_bundle_hash_value(checks)
+        .as_str()
+        .filter(|value| !value.trim().is_empty())
+        .map(str::to_owned)
+        .unwrap_or_else(|| "none".to_owned())
 }
 
 fn doctor_required_guard_phases_state(checks: &[DiagnosticCheck]) -> &'static str {

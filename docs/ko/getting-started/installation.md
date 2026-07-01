@@ -242,7 +242,8 @@ volicord init --host codex --repo /path/to/your-product-repo --mode mcp-only
 
 `/path/to/your-product-repo`는 에이전트에게 작업을 요청할 Product Repository의 경로
 예시입니다. 선택한 호스트에 검증된 필수 hook 지원이 있거나 `--allow-degraded`로 degraded
-guard 설정을 명시적으로 선택할 때만 guarded 또는 managed init을 사용합니다.
+guard 설정을 명시적으로 선택할 때만 guarded init을 사용합니다. Managed init은 선택한
+호스트에 대한 검증된 managed 배포 계약도 필요합니다.
 
 전체 첫 실행 경로는 [빠른 시작](quickstart.md)을 계속 읽습니다. 호스트별
 세부사항은 [에이전트 호스트 설정](../guides/agent-host-setup.md)을 봅니다.

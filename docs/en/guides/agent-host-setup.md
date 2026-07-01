@@ -49,17 +49,23 @@ updates MCP host configuration, Volicord-managed `AGENTS.md` guidance,
 The host may still need reload, restart, trust, project MCP approval, or another
 host-owned action before those files run.
 
-Default `guarded` or `managed` init must be able to install and verify all
-required host lifecycle hook phases. When the selected Codex or Claude Code
-adapter does not know a reliable project-local hook schema or path for every
-required phase, init fails instead of treating `AGENTS.md` or
-`.volicord/policy.json` as enforcement. Use `--allow-degraded` only when you
-explicitly want the degraded setup files and understand that required hook
-phases will be reported missing:
+Default `guarded` init must be able to install and verify all required host
+lifecycle hook phases. When the selected Codex or Claude Code adapter does not
+know a reliable project-local hook schema or path for every required phase, init
+fails instead of treating `AGENTS.md` or `.volicord/policy.json` as enforcement.
+Use `--allow-degraded` only when you explicitly want the degraded setup files
+and understand that required hook phases will be reported missing:
 
 ```sh
 volicord init --host codex --repo /path/to/your-product-repo --allow-degraded
 ```
+
+Managed mode is separate from project-local guarded mode. It requires a verified
+host-managed distribution source recorded in Volicord host contract data. The
+current Codex and Claude Code contracts do not record a verified plugin, bundle,
+or managed policy distribution source, so `volicord init --mode managed` fails
+with `MANAGED_MODE_UNSUPPORTED`; use `guarded` or `mcp-only` unless such a
+contract is added and implemented.
 
 `volicord connection verify` and `volicord doctor` keep file health, required
 host action, and observed activation separate. A guard installation becomes

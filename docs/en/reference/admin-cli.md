@@ -307,11 +307,15 @@ path.
 - `guarded` is the default. It writes MCP configuration, the managed
   `AGENTS.md` guidance block, `.volicord/policy.json` guard command policy, and
   supported project-local host hook and rule files.
-- `managed` uses the same setup surface as `guarded` and records managed guard
-  mode for hosts or future integrations that distinguish it.
+- `managed` requires a verified managed distribution source that is distinct
+  from ordinary project-local configuration, such as a host-supported plugin,
+  managed configuration bundle, or managed policy layer recorded in Volicord
+  host contract data. If the selected host has no verified managed distribution
+  contract, init fails with `MANAGED_MODE_UNSUPPORTED` and does not generate
+  project-local guarded files as a managed substitute.
 
-Full `guarded` and `managed` initialization requires the selected host adapter
-to declare and verify support for every required lifecycle hook:
+Full `guarded` initialization requires the selected host adapter to declare and
+verify support for every required lifecycle hook:
 `session-start`, `pre-tool`, `post-tool`, `prompt-capture`, and `stop`.
 `AGENTS.md` and `.volicord/policy.json` are not host hook configuration. If the
 adapter does not know a reliable project-local hook schema or path for every
@@ -321,10 +325,15 @@ configuration, guidance, policy, and supported hook or rule files, but it record
 degraded guard status and reports missing required hook phases in human and JSON
 output. `mcp-only` does not require hook installation.
 
-For `guarded` and `managed`, init records `reload_required` when the host still
-needs restart or reload to load generated guard hooks, and `configured` when
-files are installed but no matching guard hook has been observed. Init does not
-mark a guard installation `active` merely because files were written.
+Managed initialization must satisfy the guarded hook requirements and the
+separate managed distribution requirement. For hosts without a verified managed
+contract, `--allow-degraded` is reported as not applied and does not silently
+turn `managed` into `guarded` or `mcp-only`.
+
+For `guarded`, init records `reload_required` when the host still needs restart
+or reload to load generated guard hooks, and `configured` when files are
+installed but no matching guard hook has been observed. Init does not mark a
+guard installation `active` merely because files were written.
 
 `--home PATH` selects the Runtime Home for this initialization. `--mcp-command
 PATH` stores the exact command path in the installation profile when init must

@@ -139,6 +139,7 @@ pub struct HostIntegrationContract {
     pub prompt_capture: ContractCapability,
     pub reload_restart_trust_requirements: &'static [HostRequirement],
     pub managed_mode_support: ContractCapability,
+    pub managed_distribution_source: Option<&'static str>,
     pub full_guarded_adapter_support: ContractCapability,
     pub known_limitations: &'static [&'static str],
     pub official_sources: &'static [&'static str],
@@ -402,9 +403,10 @@ pub const CODEX_CONTRACT: HostIntegrationContract = HostIntegrationContract {
     },
     reload_restart_trust_requirements: &CODEX_REQUIREMENTS,
     managed_mode_support: ContractCapability {
-        status: ContractSupportStatus::Verified,
-        detail: "Volicord generates and verifies project-local Codex MCP, hook, policy, and optional rule files for guarded and managed guard modes.",
+        status: ContractSupportStatus::Unsupported,
+        detail: "No verified Codex plugin or managed configuration bundle distribution contract is recorded; project-local Codex MCP, hook, policy, and rule files are guarded setup, not managed mode.",
     },
+    managed_distribution_source: None,
     full_guarded_adapter_support: ContractCapability {
         status: ContractSupportStatus::Verified,
         detail: "The Codex adapter generates and verifies project-local hook commands for every required guarded lifecycle phase.",
@@ -448,9 +450,10 @@ pub const CLAUDE_CODE_CONTRACT: HostIntegrationContract = HostIntegrationContrac
     },
     reload_restart_trust_requirements: &CLAUDE_CODE_REQUIREMENTS,
     managed_mode_support: ContractCapability {
-        status: ContractSupportStatus::Verified,
-        detail: "Volicord generates and verifies project-local Claude Code MCP, settings hook, policy, and rule files for guarded and managed guard modes.",
+        status: ContractSupportStatus::Unsupported,
+        detail: "No verified Claude Code managed policy distribution contract is recorded; project-local Claude Code MCP, settings hook, policy, and rule files are guarded setup, not managed mode.",
     },
+    managed_distribution_source: None,
     full_guarded_adapter_support: ContractCapability {
         status: ContractSupportStatus::Verified,
         detail: "The Claude Code adapter generates and verifies project-local settings hook commands for every required guarded lifecycle phase.",
@@ -469,7 +472,11 @@ pub fn contract_for(host_kind: HostKind) -> Option<&'static HostIntegrationContr
 
 pub fn contract_supports_full_guarded(contract: &HostIntegrationContract) -> bool {
     contract.full_guarded_adapter_support.status == ContractSupportStatus::Verified
-        && contract.managed_mode_support.status == ContractSupportStatus::Verified
+}
+
+pub fn contract_supports_managed_mode(contract: &HostIntegrationContract) -> bool {
+    contract.managed_mode_support.status == ContractSupportStatus::Verified
+        && contract.managed_distribution_source.is_some()
 }
 
 pub fn hook_event_for_phase(
@@ -1110,13 +1117,15 @@ mod tests {
         );
         assert_eq!(
             contract.managed_mode_support.status,
-            ContractSupportStatus::Verified
+            ContractSupportStatus::Unsupported
         );
         assert_eq!(
             contract.full_guarded_adapter_support.status,
             ContractSupportStatus::Verified
         );
         assert!(contract_supports_full_guarded(contract));
+        assert_eq!(contract.managed_distribution_source, None);
+        assert!(!contract_supports_managed_mode(contract));
 
         let capabilities = host_capabilities(HostKind::Codex);
         assert!(capabilities.missing_required_guard_phases().is_empty());
@@ -1139,13 +1148,15 @@ mod tests {
         );
         assert_eq!(
             contract.managed_mode_support.status,
-            ContractSupportStatus::Verified
+            ContractSupportStatus::Unsupported
         );
         assert_eq!(
             contract.full_guarded_adapter_support.status,
             ContractSupportStatus::Verified
         );
         assert!(contract_supports_full_guarded(contract));
+        assert_eq!(contract.managed_distribution_source, None);
+        assert!(!contract_supports_managed_mode(contract));
 
         let capabilities = host_capabilities(HostKind::ClaudeCode);
         assert!(capabilities.missing_required_guard_phases().is_empty());

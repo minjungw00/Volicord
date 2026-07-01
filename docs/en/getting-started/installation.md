@@ -261,9 +261,10 @@ volicord init --host codex --repo /path/to/your-product-repo --mode mcp-only
 ```
 
 `/path/to/your-product-repo` is an example path for the Product Repository where
-you want the agent to work. Use guarded or managed init only when the selected
-host has verified required hook support, or when you explicitly choose degraded
-guard setup with `--allow-degraded`.
+you want the agent to work. Use guarded init only when the selected host has
+verified required hook support, or when you explicitly choose degraded guard
+setup with `--allow-degraded`. Managed init also requires a verified managed
+distribution contract for the selected host.
 
 For the full first-run path, continue with the [Quickstart](quickstart.md). For
 host-specific details, see [Agent Host Setup](../guides/agent-host-setup.md).

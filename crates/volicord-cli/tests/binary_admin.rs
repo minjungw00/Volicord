@@ -524,6 +524,45 @@ fn init_claude_code_guarded_without_degraded_opt_in_generates_hooks() -> Result<
 
 #[cfg(unix)]
 #[test]
+fn init_managed_unsupported_fails_without_guarded_artifacts() -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-init-managed-unsupported")?;
+    let repo_root = create_git_repo(&runtime_home, "product-repo")?;
+
+    let output = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--host",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--mode",
+            "managed",
+            "--allow-degraded",
+            "--json",
+        ],
+        &[],
+    )?;
+
+    assert!(!output.status.success());
+    let value = json_stdout(&output)?;
+    assert_eq!(value["status"], "failed");
+    assert_eq!(value["error_code"], "MANAGED_MODE_UNSUPPORTED");
+    assert_eq!(value["mode"], "managed");
+    assert_eq!(value["managed_mode"]["supported"], false);
+    assert_eq!(
+        value["managed_mode"]["allow_degraded_effect"],
+        "not_applied"
+    );
+    assert_eq!(value["primary_next_action"]["id"], "choose_supported_mode");
+    assert!(!repo_root.join(".codex/hooks.json").exists());
+    assert!(!repo_root.join(".volicord/policy.json").exists());
+    assert!(!repo_root.join("AGENTS.md").exists());
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
 fn init_dry_run_does_not_write_runtime_or_repo_files() -> Result<(), Box<dyn Error>> {
     let runtime_home = TempRuntimeHome::new("cli-bin-init-dry-run")?;
     let repo_root = create_git_repo(&runtime_home, "product-repo")?;
@@ -850,6 +889,10 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     );
     assert_eq!(capability["allow_degraded"], false);
     assert_eq!(capability["prompt_capture"], true);
+    assert_eq!(capability["guard_profile"], "host_hook_guarded");
+    assert_eq!(capability["managed_source"], "project_local_host_hooks");
+    assert_eq!(capability["managed_bundle_hash"], Value::Null);
+    assert_eq!(capability["managed_verification_status"], "not_applicable");
     assert_eq!(capability["missing_required_hooks"], serde_json::json!([]));
     assert_eq!(capability["host_capabilities"]["pre_tool_hook"], true);
     assert_eq!(
@@ -872,6 +915,16 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
         .find(|check| check["id"] == "registry_counts")
         .expect("doctor should report registry counts");
     assert_eq!(registry_counts["details"]["guard_installations"], 1);
+    assert_eq!(doctor_json["states"]["guard_profile"], "host_hook_guarded");
+    assert_eq!(
+        doctor_json["states"]["managed_source"],
+        "project_local_host_hooks"
+    );
+    assert_eq!(doctor_json["states"]["managed_bundle_hash"], Value::Null);
+    assert_eq!(
+        doctor_json["states"]["managed_verification_status"],
+        "not_applicable"
+    );
     assert_eq!(doctor_json["states"]["agents_managed_block"], "installed");
     assert_eq!(doctor_json["states"]["volicord_policy_file"], "installed");
     assert_eq!(

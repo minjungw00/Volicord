@@ -354,6 +354,12 @@ guarded
 managed
 ```
 
+`managed` is a recorded guard mode only for installations backed by a verified
+managed distribution contract, such as a host-supported plugin, managed
+configuration bundle, or managed policy layer. A host that lacks such a verified
+contract must report managed initialization as unsupported instead of recording
+ordinary project-local guarded files as managed mode.
+
 `GuardHealthSummary.guard_installation_status` uses:
 
 ```text

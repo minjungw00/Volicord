@@ -356,6 +356,11 @@ guarded
 managed
 ```
 
+`managed`는 호스트 지원 plugin, managed 설정 bundle, managed policy 계층처럼 검증된
+managed 배포 계약이 뒷받침하는 설치에만 기록되는 guard 모드입니다. 그런 검증된 계약이
+없는 호스트는 일반 프로젝트 로컬 guarded 파일을 managed 모드로 기록하는 대신 managed
+초기화를 지원하지 않는다고 보고해야 합니다.
+
 `GuardHealthSummary.guard_installation_status`는 아래 값을 사용합니다.
 
 ```text

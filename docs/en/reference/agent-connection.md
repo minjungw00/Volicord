@@ -92,6 +92,11 @@ one surface without changing the others.
 | Invocation eligibility | Current connection context derived by the MCP adapter at startup and per public tool call. | Affected by `enabled`, connected project availability, `connection.mode`, and the method's `operation_category`. | Eligibility can become unavailable after registry or project-state changes without any host configuration rewrite. |
 | Removal | Managed host content, `connection_projects`, and sometimes `agent_connections`. | `volicord connection remove`. | Removal must not delete a `Product Repository`, project registration, project state, Core records, the Runtime Home itself, artifact storage, or unrelated host configuration. |
 
+Volicord-managed host configuration means Volicord owns and fingerprints
+specific generated host configuration content. It is not the same as
+`managed` guard mode, which requires a separately verified managed distribution
+source recorded by the host contract.
+
 Rules:
 
 - An Agent Connection is agent-facing and cannot act as the local

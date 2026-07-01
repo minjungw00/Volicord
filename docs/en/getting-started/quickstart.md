@@ -25,11 +25,13 @@ Generated host configuration starts the single public executable as
 `volicord mcp --stdio`.
 
 This fast path uses `--mode mcp-only`, which does not require host lifecycle
-hook installation. Default `guarded` or `managed` init requires verified support
-for all required host hook phases; if support is missing, use
-`--allow-degraded` only when you explicitly want degraded guard files and
-missing-hook diagnostics. Exact project naming, guard-mode behavior, connection
-defaults, and internal identity behavior belong to
+hook installation. Default `guarded` init requires verified support for all
+required host hook phases; if support is missing, use `--allow-degraded` only
+when you explicitly want degraded guard files and missing-hook diagnostics.
+Managed init additionally requires a verified managed distribution contract and
+fails with `MANAGED_MODE_UNSUPPORTED` when the selected host has none. Exact
+project naming, guard-mode behavior, connection defaults, and internal identity
+behavior belong to
 [Administrative CLI Reference](../reference/admin-cli.md).
 
 ## Confirm The Setup
