@@ -167,6 +167,29 @@ Guarded 모드는 호스트가 설정된 hook을 실제로 실행하고 rule을 
 모든 명령을 차단하지 않고, 네트워크를 격리하지 않으며, 모델이 지침을 따랐다는 것을
 증명하지 않습니다.
 
+Guard 설치에는 파일 설치와 활성화라는 별도 단계가 있습니다. `volicord init`은 호스트
+설정, Volicord 관리 `AGENTS.md` 안내, `.volicord/policy.json`, 호스트 hook 또는 rule
+파일, guard 상태를 설치하거나 갱신합니다. 그래도 호스트가 그 파일을 실행하려면 reload,
+restart, trust, approval이 필요할 수 있습니다. 처음으로 일치하는 guard hook 이벤트가
+관찰되면 설치가 활성화됩니다. `volicord connection verify`와 `volicord doctor`는 파일
+상태, 필요한 호스트 동작, 관찰된 활성화를 분리해서 보고합니다. 파일이 설치되었다는
+사실만으로 hook이 활성 상태임이 증명되지는 않습니다.
+
+## 미기록 변경과 닫기 차단 사유
+
+Guarded hook은 제품 파일 변경이 대응되는 예상 쓰기와 맞지 않을 때 미기록
+Product Repository 변경을 보고할 수 있습니다. 이런 항목은 조정될 때까지 guard 찾기로
+남으며, 미해결 찾기는 닫기를 막습니다.
+
+조정은 호환되는 `Write Check`나 기록된 실행이 이미 다루는 찾기처럼 결정적으로 해결할
+수 있는 경우를 해결할 수 있습니다. 수락이 필요하면 Volicord는 초점이 맞춰진 사용자 소유
+판단을 만듭니다. 사용자는 MCP elicitation, 엄격한 채팅 명령, CLI 복구 경로로 답합니다.
+에이전트는 Product Repository 우회 찾기를 조용히 무시하거나 사용자를 대신해 수락한
+것으로 표시할 수 없습니다.
+
+채팅에서는 에이전트에게 `volicord.reconcile_changes` 결과와 다음 행동을 보여 달라고
+요청합니다. CLI 복구 경로는 `volicord changes reconcile`입니다.
+
 ## 사용자 판단 캡처
 
 사용자 판단은 사용자에게 남습니다. Agent Connection은 판단을 요청할 수 있지만,
@@ -177,7 +200,7 @@ Guarded 모드는 호스트가 설정된 hook을 실제로 실행하고 rule을 
 | 경로 | 쓰이는 때 |
 |---|---|
 | MCP elicitation | 초기화된 MCP client가 `capabilities.elicitation`을 선언하면 Volicord는 초점이 맞춰진 대기 판단에 대해 `elicitation/create` 요청을 보낼 수 있습니다. 유효한 응답은 사용자 출처로 로컬 `User Channel`을 통해 기록됩니다. |
-| 채팅 prompt capture | elicitation을 사용할 수 없고 guarded prompt capture가 활성화되어 있으면 Volicord는 `Volicord: answer J-3 1`, `Volicord: answer J-3 reject`, `Volicord: answer J-3 defer`, `Volicord: note J-3 "text"` 같은 정확한 채팅 명령을 반환합니다. prompt-capture hook은 엄격하게 유효한 명령만 기록합니다. |
+| 채팅 prompt capture | elicitation을 사용할 수 없고 guarded prompt capture가 활성화되어 있으면 Volicord는 `Volicord: answer J-3 1 #AB7K`, `Volicord: answer J-3 reject #AB7K`, `Volicord: answer J-3 defer #AB7K`, `Volicord: note J-3 "text" #AB7K` 같은 정확한 채팅 명령을 반환합니다. prompt-capture hook은 현재 검증 코드가 있는 엄격하게 유효한 명령만 기록합니다. |
 | CLI fallback | 채팅 캡처를 사용할 수 없거나 비활성화되어 있거나 수동 점검이 필요하면 Product Repository에서 `volicord user`를 사용합니다. |
 
 CLI fallback 예시:

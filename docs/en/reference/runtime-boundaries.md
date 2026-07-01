@@ -201,9 +201,9 @@ Permitted relationship:
 - Separate resolved paths with no ancestor-descendant relationship are permitted.
 - This rule does not prohibit intentionally selecting the Volicord source repository as a `Product Repository` when that source repository remains separate from `Volicord Runtime Home`.
 
-This separation contract is an eligibility rule. New project registration, setup reuse, project-state administrative access, Core execution entry, and MCP project-session startup must require the selected `Volicord Runtime Home` and registered `Product Repository` to satisfy it.
+This separation contract is an eligibility rule. New project registration, profile reuse, project-state administrative access, Core execution entry, and MCP project-session startup must require the selected `Volicord Runtime Home` and registered `Product Repository` to satisfy it.
 
-The inspection layer may still show a raw stored project row that violates this contract so the record can be diagnosed. Operational project lookup, project listing, setup reuse, project-state administrative access, Agent Connection administration, Connection Projects access, Core execution entry, and MCP project availability must reject that row rather than returning it as a normal project record or project entry. The system does not automatically move paths, repair the registry row, or delete that record solely because inspection can report it.
+The inspection layer may still show a raw stored project row that violates this contract so the record can be diagnosed. Operational project lookup, project listing, profile reuse, project-state administrative access, Agent Connection administration, Connection Projects access, Core execution entry, and MCP project availability must reject that row rather than returning it as a normal project record or project entry. The system does not automatically move paths, repair the registry row, or delete that record solely because inspection can report it.
 
 ## Local authority boundaries
 

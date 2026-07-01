@@ -26,7 +26,7 @@
 | Volicord 구현 | Volicord 구현 | 이 저장소가 유지하는 구현 집합이며 Volicord 전체와 같은 말은 아닙니다. 런타임과 위치 경계의 세부사항은 런타임 경계가 담당합니다. | [런타임 경계](runtime-boundaries.md) |
 | `Product Repository` | 제품 저장소 | Volicord 런타임 상태와 구분되는 사용자의 프로젝트 작업 공간과 제품 파일입니다. | [런타임 경계](runtime-boundaries.md) |
 | `Volicord Runtime Home` | 런타임 홈 | 저장소/런타임 담당 문서가 정의한 Volicord 운영 데이터의 로컬 런타임 데이터 공간입니다. | [런타임 경계](runtime-boundaries.md) |
-| `installation_profile` | 설치 프로필 저장 기록 | setup 시점의 명령 경로, 기본 연결 모드, 메타데이터, 타임스탬프를 저장하는 Runtime Home registry 기록입니다. 호스트 신뢰, 사용자 권한, 공개 API 상태가 아닙니다. | [저장소 DDL](storage-ddl.md) |
+| `installation_profile` | 설치 프로필 저장 기록 | 선택된 명령 경로, 기본 연결 모드, 메타데이터, 타임스탬프를 저장하는 Runtime Home registry 기록입니다. 호스트 신뢰, 사용자 권한, 공개 API 상태가 아닙니다. | [저장소 DDL](storage-ddl.md) |
 | runtime | 런타임 | Volicord의 운영 실행과 데이터 맥락입니다. | [런타임 경계](runtime-boundaries.md) |
 | baseline scope | 기준 범위 | Volicord가 안정적으로 지원한다고 문서화한 경계입니다. | [기준 범위](scope.md) |
 | out-of-scope capability | 지원 범위 밖 기능 | 기준 지원 경계 밖에 있는 유예된 기능입니다. | [기준 범위](scope.md) |

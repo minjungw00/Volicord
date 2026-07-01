@@ -98,8 +98,8 @@ executable under `target/release`. For separately installed executables, select
 an installation layout where setup can find `volicord` through an explicit
 setup option or `PATH`.
 
-Before setup from a release binary or another installed command directory,
-verify the installed executable from the same shell:
+Before first connection from a release binary or another installed command
+directory, verify the installed executable from the same shell:
 
 ```sh
 volicord --version
@@ -111,8 +111,8 @@ volicord guard --help
 volicord serve --help
 ```
 
-Before setup from a development source build, verify the built executable from
-the same shell:
+Before first connection from a development source build, verify the built
+executable from the same shell:
 
 ```sh
 ./target/debug/volicord --version
@@ -120,8 +120,8 @@ the same shell:
 ./target/debug/volicord mcp --help
 ```
 
-After setup guidance or linking has made the command visible, verify ordinary
-command lookup:
+After `init` or profile-repair guidance has made the command visible, verify
+ordinary command lookup:
 
 ```sh
 volicord --version

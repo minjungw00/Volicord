@@ -1,9 +1,10 @@
 # Installation
 
-This tutorial prepares the local `volicord` executable and records the
-installation profile used by later project, connection, export, MCP, and
-`User Channel` commands. It is the setup step before the
-[Quickstart](quickstart.md).
+This tutorial prepares the local `volicord` executable. The ordinary guarded
+first-run path records the installation profile while running
+`volicord init --host HOST --repo PATH` in the [Quickstart](quickstart.md). Use
+`volicord setup` only when you need to prepare or repair the installation
+profile separately.
 
 Exact command behavior belongs to
 [Administrative CLI Reference](../reference/admin-cli.md). Runtime location and
@@ -79,8 +80,8 @@ For the ordinary first repository connection, continue with
 installation profile while it connects the selected Product Repository and
 writes guarded host integration files.
 
-Use `volicord setup` when you want to prepare or repair only the installation
-profile before connecting a repository:
+Use `volicord setup` only when you want to prepare or repair the installation
+profile without connecting a repository:
 
 ```sh
 volicord setup
@@ -129,7 +130,7 @@ For automation or deterministic local layouts, use explicit setup options:
 | `--mcp-command PATH` | Store a specific `volicord` command for generated MCP launch entries when setup should not use the running executable. |
 | `--home PATH` | Select a non-default `Volicord Runtime Home`. |
 
-For example, a noninteractive setup step can still choose a deterministic
+For example, a noninteractive profile-repair step can still choose a deterministic
 command-link directory:
 
 ```sh
@@ -151,8 +152,9 @@ repair action, such as rerunning setup or fixing an executable path.
 
 ## Use An Existing Installed Executable
 
-If `volicord` already exists on `PATH` and you only want to prepare or inspect
-the installation profile before connecting a repository, run:
+If `volicord` already exists on `PATH`, you can go straight to the
+[Quickstart](quickstart.md). Run setup and doctor only when you want to inspect
+or repair the installation profile before connecting a repository:
 
 ```sh
 volicord setup
@@ -176,12 +178,15 @@ install path. From the Volicord source repository:
 ```sh
 cargo build --workspace --bins
 ./target/debug/volicord --version
-./target/debug/volicord setup
+./target/debug/volicord init --host codex --repo /path/to/your-product-repo
 ```
 
 This builds and runs the local development executable at
-`./target/debug/volicord`. Rust toolchain requirements for this path are listed
-in [System Requirements](../reference/system-requirements.md#toolchain-requirements).
+`./target/debug/volicord`. For a host to use the development executable, make
+the selected `volicord` command available to the host process or use an
+installed release binary for normal host setup. Rust toolchain requirements for
+this path are listed in
+[System Requirements](../reference/system-requirements.md#toolchain-requirements).
 
 ## Docker Image
 
@@ -197,7 +202,8 @@ path whenever you run setup, init, project, connection, and serve commands.
 Project registrations store repository roots, so a Runtime Home prepared for
 one path layout should not be reused with a different container workspace path.
 
-For example, prepare or inspect the Docker Runtime Home with the same mounts:
+For example, inspect or repair the Docker installation profile with the same
+mounts:
 
 ```sh
 docker run --rm -it \
@@ -206,10 +212,11 @@ docker run --rm -it \
   volicord:local setup
 ```
 
-After the Runtime Home contains the project registration and Agent Connection
-you want to serve, for example from a matching `volicord init` or
-`volicord connect` run with the same mounts, start the local HTTP MCP endpoint
-with an operator-provided token:
+For ordinary guarded setup in Docker, run `volicord init --host HOST --repo
+/workspace` with the same mounts. After the Runtime Home contains the project
+registration and Agent Connection you want to serve, for example from that
+matching `volicord init` run or a lower-level `volicord connect` run, start the
+local HTTP MCP endpoint with an operator-provided token:
 
 ```sh
 VOLICORD_HTTP_TOKEN="$(openssl rand -hex 32)"

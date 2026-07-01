@@ -39,6 +39,22 @@ directory is not the target Product Repository:
 volicord connect codex --repo /path/to/your-product-repo
 ```
 
+## Guard Lifecycle
+
+In guarded mode, setup and activation are separate. `volicord init` installs or
+updates MCP host configuration, Volicord-managed `AGENTS.md` guidance,
+`.volicord/policy.json`, host hook or rule files, and guard installation state.
+The host may still need reload, restart, trust, project MCP approval, or another
+host-owned action before those files run.
+
+`volicord connection verify` and `volicord doctor` keep file health, required
+host action, and observed activation separate. A guard installation becomes
+active only after Volicord observes a matching guard hook event for the recorded
+project, Agent Connection, host kind, guard mode, and policy hash. `AGENTS.md`
+is instruction support, and host hooks or rules are cooperative and detective
+guardrails; they are not OS sandboxing, command isolation, or proof that writes
+cannot happen outside Volicord-aware paths.
+
 ## Connection Intents
 
 Connection intent describes where the host configuration belongs:

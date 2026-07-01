@@ -180,6 +180,30 @@ and respects the rules. It is still not OS-level enforcement. It does not
 sandbox tools, monitor all files, block all commands, isolate the network, or
 prove that the model followed instructions.
 
+Guard installation has separate file and activation phases. `volicord init`
+installs or updates the host configuration, Volicord-managed `AGENTS.md`
+guidance, `.volicord/policy.json`, host hook or rule files, and guard state.
+The host may still need reload, restart, trust, or approval before it runs
+those files. The first matching observed guard hook event activates the
+installation. `volicord connection verify` and `volicord doctor` report file
+health, required host action, and observed activation separately; installed
+files alone do not prove that hooks are active.
+
+## Unrecorded Changes And Close Blockers
+
+Guarded hooks can report unrecorded Product Repository changes when a product
+file changes without a matching expected write. Those findings remain guard
+findings until reconciled, and unresolved findings block close.
+
+Reconciliation can resolve deterministic cases, such as a finding already
+covered by a compatible `Write Check` or recorded run. If acceptance is needed,
+Volicord creates a focused user-owned judgment. The user answers through MCP
+elicitation, a strict chat command, or CLI recovery. Agents cannot silently
+dismiss Product Repository bypass findings or mark them accepted for the user.
+
+In chat, ask the agent to show `volicord.reconcile_changes` results and next
+actions. CLI recovery is available through `volicord changes reconcile`.
+
 ## User Judgment Capture
 
 User judgment stays user-owned. An Agent Connection may request a judgment, but
@@ -190,7 +214,7 @@ Supported capture paths:
 | Path | When it is used |
 |---|---|
 | MCP elicitation | If the initialized MCP client declares `capabilities.elicitation`, Volicord can send an `elicitation/create` request for a focused pending judgment. A valid response is recorded through the local `User Channel` with user provenance. |
-| Chat prompt capture | If elicitation is unavailable and guarded prompt capture is active, Volicord returns exact chat commands such as `Volicord: answer J-3 1`, `Volicord: answer J-3 reject`, `Volicord: answer J-3 defer`, or `Volicord: note J-3 "text"`. The prompt-capture hook records only strict valid commands. |
+| Chat prompt capture | If elicitation is unavailable and guarded prompt capture is active, Volicord returns exact chat commands such as `Volicord: answer J-3 1 #AB7K`, `Volicord: answer J-3 reject #AB7K`, `Volicord: answer J-3 defer #AB7K`, or `Volicord: note J-3 "text" #AB7K`. The prompt-capture hook records only strict valid commands with the current verification code. |
 | CLI fallback | If chat capture is unavailable, disabled, or needs inspection, use `volicord user` from the Product Repository. |
 
 CLI fallback example:

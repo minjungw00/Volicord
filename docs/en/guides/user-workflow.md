@@ -132,6 +132,20 @@ and rendered projections can help you read state, but they are not Core
 authority; for projection boundaries, see
 [Projection and template display boundaries](../reference/projection-and-templates.md).
 
+## Reconcile unrecorded changes
+
+Guarded mode may surface an unrecorded Product Repository change when a hook
+observes a product-file change that does not match an expected write. Treat it
+as a guard finding, not as proof of malicious behavior and not as a change the
+agent can waive.
+
+Unresolved findings block close. The agent should run
+`volicord.reconcile_changes` when available, show deterministic resolutions and
+any pending judgments, and route acceptance to a supported `User Channel`. CLI
+recovery is `volicord changes reconcile`; if reconciliation creates a pending
+judgment, answer it through the normal User Channel path and rerun
+reconciliation.
+
 ## Approve writes and sensitive actions
 
 A user-facing write approval is bounded permission for a named write attempt. In this guide, write approval means ordinary user approval for a write flow; it is separate from the exact product label `Write Check`.

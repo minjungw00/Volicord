@@ -1,8 +1,9 @@
 # 설치
 
-이 튜토리얼은 로컬 `volicord` 실행 파일을 준비하고, 이후 프로젝트, 연결, 내보내기,
-MCP, `User Channel` 명령이 사용할 설치 프로필을 기록합니다.
-[빠른 시작](quickstart.md) 전에 수행하는 설정 단계입니다.
+이 튜토리얼은 로컬 `volicord` 실행 파일을 준비합니다. 일반적인 guarded 첫 실행 경로는
+[빠른 시작](quickstart.md)의 `volicord init --host HOST --repo PATH`를 실행하면서 설치
+프로필을 기록합니다. `volicord setup`은 설치 프로필을 따로 준비하거나 복구해야 할 때만
+사용합니다.
 
 정확한 명령 동작은 [관리 CLI 참조](../reference/admin-cli.md)가 담당합니다.
 런타임 위치와 저장소 분리는 [런타임 경계](../reference/runtime-boundaries.md)가
@@ -72,7 +73,7 @@ volicord init --help
 Product Repository를 연결하고 guarded 호스트 통합 파일을 쓰는 동안 Runtime Home과
 설치 프로필을 초기화할 수 있습니다.
 
-저장소를 연결하기 전에 설치 프로필만 준비하거나 복구하려면 `volicord setup`을
+저장소를 연결하지 않고 설치 프로필만 준비하거나 복구하려면 `volicord setup`을
 사용합니다.
 
 ```sh
@@ -117,7 +118,7 @@ Setup은 부모 셸의 현재 `PATH`를 바꿀 수 없습니다. 출력된 `expo
 | `--mcp-command PATH` | 생성된 MCP 시작 항목이 실행 중인 실행 파일 대신 특정 `volicord` 명령을 사용해야 할 때 그 명령을 저장합니다. |
 | `--home PATH` | 기본값이 아닌 `Volicord Runtime Home`을 선택합니다. |
 
-예를 들어 비대화식 setup 단계에서 결정적인 명령 링크 디렉터리를 계속 지정할 수
+예를 들어 비대화식 프로필 복구 단계에서 결정적인 명령 링크 디렉터리를 지정할 수
 있습니다.
 
 ```sh
@@ -139,8 +140,8 @@ volicord doctor
 
 ## 기존 설치 실행 파일 사용하기
 
-`volicord`가 이미 `PATH`에 있고 저장소를 연결하기 전에 설치 프로필만 준비하거나
-점검하려면 아래처럼 실행합니다.
+`volicord`가 이미 `PATH`에 있으면 바로 [빠른 시작](quickstart.md)으로 갈 수 있습니다.
+저장소를 연결하기 전에 설치 프로필을 점검하거나 복구해야 할 때만 아래처럼 실행합니다.
 
 ```sh
 volicord setup
@@ -162,11 +163,12 @@ Volicord 소스 저장소에서 실행합니다.
 ```sh
 cargo build --workspace --bins
 ./target/debug/volicord --version
-./target/debug/volicord setup
+./target/debug/volicord init --host codex --repo /path/to/your-product-repo
 ```
 
-이 경로는 로컬 개발 실행 파일 `./target/debug/volicord`를 빌드하고 실행합니다.
-이 경로의 Rust 도구 체인 요구사항은
+이 경로는 로컬 개발 실행 파일 `./target/debug/volicord`를 빌드하고 실행합니다. 호스트가
+개발 실행 파일을 사용하려면 선택한 `volicord` 명령을 호스트 프로세스에서 찾을 수 있게
+하거나, 일반 호스트 설정에는 설치된 릴리스 바이너리를 사용합니다. 이 경로의 Rust 도구 체인 요구사항은
 [시스템 요구사항](../reference/system-requirements.md#toolchain-requirements)에 있습니다.
 
 ## Docker 이미지
@@ -183,7 +185,7 @@ setup, init, project, connection, serve 명령을 실행할 때는 Runtime Home 
 저장소 루트를 저장하므로, 한 경로 배치에서 준비한 Runtime Home을 다른 컨테이너
 workspace 경로와 함께 재사용하면 안 됩니다.
 
-예를 들어 같은 마운트로 Docker Runtime Home을 준비하거나 점검합니다.
+예를 들어 같은 마운트로 Docker 설치 프로필을 점검하거나 복구합니다.
 
 ```sh
 docker run --rm -it \
@@ -192,9 +194,11 @@ docker run --rm -it \
   volicord:local setup
 ```
 
-Runtime Home에 serve할 프로젝트 등록과 Agent Connection이 들어간 뒤, 예를 들어 같은
-mount를 사용한 `volicord init` 또는 `volicord connect` 실행 뒤, 운영자가 제공한
-token으로 로컬 HTTP MCP endpoint를 시작합니다.
+Docker에서 일반 guarded 설정을 하려면 같은 mount로 `volicord init --host HOST --repo
+/workspace`를 실행합니다. Runtime Home에 serve할 프로젝트 등록과 Agent Connection이
+들어간 뒤, 예를 들어 그와 일치하는 `volicord init` 실행이나 낮은 수준의
+`volicord connect` 실행 뒤, 운영자가 제공한 token으로 로컬 HTTP MCP endpoint를
+시작합니다.
 
 ```sh
 VOLICORD_HTTP_TOKEN="$(openssl rand -hex 32)"

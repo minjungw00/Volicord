@@ -15,7 +15,7 @@
 이 문서가 담당합니다.
 
 - `volicord` 명령 이름, 명령줄 인자, 기본값, stdout/stderr 처리, 프로세스 종료 코드
-- setup 시점의 Runtime Home, 설치 프로필, 실행 파일 링크, MCP 명령 선택
+- `init` 또는 `setup` 중 Runtime Home, 설치 프로필, 실행 파일 링크, MCP 명령 선택
 - 저장소 루트 프로젝트 감지와 관리 프로젝트 명령
 - 지원 호스트 통합을 위한 Agent Connection 명령 동작
 - generic MCP 설정 내보내기 동작
@@ -118,12 +118,13 @@ volicord user judgment answer INDEX_OR_ID OPTION_INDEX_OR_ID [--repo PATH] [--no
 <a id="runtime-home-selection"></a>
 ## setup과 Runtime Home
 
-`volicord setup`은 로컬 설치 프로필을 마련합니다. 선택된 Runtime Home을 만들거나
-검증하고, 이후 관리 명령, Agent Connection, export, MCP 프로세스 흐름이 사용할
-명령 경로를 저장합니다. Setup은 독립 설치 프로필 명령입니다. `volicord init`도
-첫 실행 저장소 설정과 호스트 연결을 수행하면서 Runtime Home 경로나 MCP 시작 명령을
-선택할 수 있습니다. Setup은 `volicord`를 `PATH`에서 사용할 수 있게 돕지만 부모
-셸의 현재 환경을 바꿀 수는 없습니다.
+`volicord setup`은 저장소를 연결하지 않고 로컬 설치 프로필을 마련하거나 복구합니다.
+선택된 Runtime Home을 만들거나 검증하고, 이후 관리 명령, Agent Connection, export,
+MCP 프로세스 흐름이 사용할 명령 경로를 저장합니다. Setup은 독립 설치 프로필 명령이지
+일반적인 guarded 첫 실행 저장소 경로가 아닙니다. `volicord init`은 기본 첫 실행 경로이며
+저장소 설정과 호스트 연결을 수행하면서 Runtime Home 경로나 MCP 시작 명령도 선택할 수
+있습니다. Setup은 `volicord`를 `PATH`에서 사용할 수 있게 돕지만 부모 셸의 현재 환경을
+바꿀 수는 없습니다.
 
 텍스트 모드에서 `volicord setup`은 stdin과 stdout이 대화형 터미널이고 `--json`이
 없으며 `--link-bin`도 없을 때만 프롬프트를 표시할 수 있습니다. 선택된 명령 경로가

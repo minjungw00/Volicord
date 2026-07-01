@@ -201,9 +201,10 @@ Rules:
   reload, restart, command-link repair, or installation-profile repair remains.
 - Rejected, missing, changed, unavailable, and unknown host states are not
   `complete` Agent Connection states.
-- Product Repository guidance, generated host instructions, and MCP server
-  instructions can improve tool selection, but they are not enforcement
-  mechanisms and cannot guarantee that a model will choose Volicord tools.
+- Product Repository guidance, including Volicord-managed `AGENTS.md` blocks,
+  generated host instructions, host rule files, and MCP server instructions can
+  improve tool selection, but they are not enforcement mechanisms and cannot
+  guarantee that a model will choose Volicord tools.
 
 <a id="current-connection-context"></a>
 ## Current Connection Context
@@ -393,7 +394,7 @@ Rules:
 
 - MCP server instructions may describe cross-tool workflows, project selection
   rules, and limitations that apply across Volicord tools.
-- Optional repository guidance may add a Volicord-managed block or
+- Optional repository guidance may add a Volicord-managed `AGENTS.md` block or
   host-specific rule file inside a `Product Repository` only under the boundary
   owned by
   [Runtime Boundaries](runtime-boundaries.md#explicit-integration-files-in-product-repositories).

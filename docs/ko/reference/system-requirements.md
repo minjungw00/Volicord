@@ -99,7 +99,7 @@ CLI는 부모 셸의 `PATH`를 영구적으로 수정할 수 없습니다. Setup
 별도로 설치된 실행 파일을 사용할 때는 명시적 setup 옵션이나 `PATH`로 setup이
 `volicord`를 찾을 수 있는 설치 배치를 선택합니다.
 
-릴리스 바이너리나 다른 설치 명령 디렉터리에서 setup하기 전에는 같은 셸에서 설치된
+릴리스 바이너리나 다른 설치 명령 디렉터리에서 첫 연결을 하기 전에는 같은 셸에서 설치된
 실행 파일을 확인합니다.
 
 ```sh
@@ -112,7 +112,7 @@ volicord guard --help
 volicord serve --help
 ```
 
-개발용 소스 빌드에서 setup하기 전에는 같은 셸에서 빌드된 실행 파일을 확인합니다.
+개발용 소스 빌드에서 첫 연결을 하기 전에는 같은 셸에서 빌드된 실행 파일을 확인합니다.
 
 ```sh
 ./target/debug/volicord --version
@@ -120,7 +120,7 @@ volicord serve --help
 ./target/debug/volicord mcp --help
 ```
 
-Setup 안내나 링크로 명령이 보이게 된 뒤에는 일반 명령 찾기를 확인합니다.
+`init` 또는 프로필 복구 안내로 명령이 보이게 된 뒤에는 일반 명령 찾기를 확인합니다.
 
 ```sh
 volicord --version

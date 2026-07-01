@@ -185,7 +185,8 @@ Current MCP Runtime Home resolution:
 3. A relative `VOLICORD_HOME` is resolved against the process current working
    directory without requiring the path to exist.
 4. When `VOLICORD_HOME` is absent, use the Runtime Home established by
-   `volicord setup` or the platform default local runtime location.
+   `volicord init` or `volicord setup`, or the platform default local runtime
+   location.
 5. Do not require canonicalization before startup validation.
 
 ## Startup Validation

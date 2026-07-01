@@ -18,8 +18,8 @@ This document owns:
 
 - `volicord` command names, command-line arguments, defaults, stdout/stderr
   routing, and process exit codes
-- setup-time Runtime Home, installation profile, executable-link, and MCP
-  command selection
+- Runtime Home, installation profile, executable-link, and MCP command
+  selection during `init` or `setup`
 - repository-root project detection and administrative project commands
 - Agent Connection command behavior for supported host integrations
 - generic MCP config export behavior
@@ -129,13 +129,15 @@ Not supported:
 <a id="runtime-home-selection"></a>
 ## Setup and Runtime Home
 
-`volicord setup` establishes the local installation profile. It creates or
-verifies the selected Runtime Home and stores the command paths later
-administrative, Agent Connection, export, and MCP process flows use. Setup is
-the standalone installation-profile command. `volicord init` may also select
-the Runtime Home path or MCP launch command while performing first-run
-repository setup and host connection. Setup can help make `volicord` available
-on `PATH`, but it cannot change the parent shell's current environment.
+`volicord setup` establishes or repairs the local installation profile without
+connecting a repository. It creates or verifies the selected Runtime Home and
+stores the command paths later administrative, Agent Connection, export, and
+MCP process flows use. Setup is the standalone installation-profile command,
+not the ordinary guarded first-run repository path. `volicord init` is the
+primary first-run path and may also select the Runtime Home path or MCP launch
+command while performing repository setup and host connection. Setup can help
+make `volicord` available on `PATH`, but it cannot change the parent shell's
+current environment.
 
 In text mode, `volicord setup` may prompt only when stdin and stdout are
 interactive terminals, `--json` is absent, and `--link-bin` is absent. It

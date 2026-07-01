@@ -26,7 +26,7 @@ Contract detail stays in the focused owner documents. Translation and style rule
 | Volicord implementation | Volicord implementation | The implementation set maintained by this repository, not a synonym for Volicord as a whole. Runtime and location boundary details belong to Runtime Boundaries. | [Runtime Boundaries](runtime-boundaries.md) |
 | `Product Repository` | 제품 저장소 | The user's project workspace and product files, separate from Volicord runtime state. | [Runtime Boundaries](runtime-boundaries.md) |
 | `Volicord Runtime Home` | 런타임 홈 | The local runtime data space for Volicord operational data, as storage/runtime owners define it. | [Runtime Boundaries](runtime-boundaries.md) |
-| `installation_profile` | 설치 프로필 저장 기록 | A Runtime Home registry storage record for setup-time command paths, default connection mode, metadata, and timestamps; not host trust, user authority, or public API state. | [Storage DDL](storage-ddl.md) |
+| `installation_profile` | 설치 프로필 저장 기록 | A Runtime Home registry storage record for selected command paths, default connection mode, metadata, and timestamps; not host trust, user authority, or public API state. | [Storage DDL](storage-ddl.md) |
 | runtime | 런타임 | The operational Volicord execution and data context. | [Runtime Boundaries](runtime-boundaries.md) |
 | baseline scope | 기준 범위 | The stable support boundary documented for Volicord. | [Scope](scope.md) |
 | out-of-scope capability | 지원 범위 밖 기능 | A deferred capability outside the baseline support boundary. | [Scope](scope.md) |

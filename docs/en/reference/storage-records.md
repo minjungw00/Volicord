@@ -28,7 +28,7 @@ This document does not own:
 
 ## Storage Locations
 
-Volicord stores baseline records in one local `Volicord Runtime Home` and one project-local state database per registered project. `volicord setup` establishes the selected Runtime Home and installation profile; ordinary user flows do not need to provide the Runtime Home path again.
+Volicord stores baseline records in one local `Volicord Runtime Home` and one project-local state database per registered project. `volicord init` can establish or reuse the selected Runtime Home and installation profile during first-run repository setup; `volicord setup` prepares or repairs that profile directly. Ordinary user flows do not need to provide the Runtime Home path again.
 
 The tree is representative after the relevant storage features have been used; it is not an initial-directory checklist. Project registration creates or opens project state, while artifact-store directories may be created lazily.
 
@@ -44,7 +44,7 @@ The tree is representative after the relevant storage features have been used; i
 
 Storage placement:
 
-- `registry.sqlite` stores Runtime Home identity, installation profile records, project registration mapping, project aliases, Agent Connection records, Connection Projects membership, guard installation records, and registry metadata. The installation profile includes the setup-time `volicord` command, MCP launch command, bin directory, default connection mode, metadata, and timestamps. Project registration includes `project_internal_id`, display name, CLI selection alias, Runtime Home relationship, registered `repo_root`, `project_home`, project `state.sqlite` path, status, metadata, and timestamps.
+- `registry.sqlite` stores Runtime Home identity, installation profile records, project registration mapping, project aliases, Agent Connection records, Connection Projects membership, guard installation records, and registry metadata. The installation profile includes the selected `volicord` command, MCP launch command, bin directory, default connection mode, metadata, and timestamps. Project registration includes `project_internal_id`, display name, CLI selection alias, Runtime Home relationship, registered `repo_root`, `project_home`, project `state.sqlite` path, status, metadata, and timestamps.
 - `projects/{project_internal_id}/` is the default Volicord project home shape for one registered project. It is not the same location or authority as `repo_root`.
 - `state.sqlite` stores project-local Core state and project-scoped guarded-operation records for the registered project.
 - `artifacts/` is the project artifact store when artifact storage is used; it may be created lazily when artifact storage is first needed. `artifacts/tmp/` is transient staging space when artifact staging requires it, not evidence authority; it may be created lazily when staging occurs. These directories need not exist immediately after project registration.
@@ -79,7 +79,7 @@ Baseline storage persists only the record families defined by this baseline stor
 | Stored area | Record family | Stored category | Layout summary |
 |---|---|---|---|
 | `registry.sqlite` | Runtime Home identity | Runtime identity | One stored `runtime_home_id`, Runtime Home path, registry database path, schema/storage profile, metadata, and timestamps. |
-| `registry.sqlite` | Installation profile | Setup-time executable profile | Setup-time `volicord` command, MCP launch command, bin directory, default connection mode, metadata, and timestamps established by `volicord setup`. |
+| `registry.sqlite` | Installation profile | Executable profile | Selected `volicord` command, MCP launch command, bin directory, default connection mode, metadata, and timestamps established by `volicord init` or `volicord setup`. |
 | `registry.sqlite` | Project registration and aliases | Project mapping | `project_internal_id`, display name, CLI selection alias, Runtime Home relationship, unique `repo_root`, location-owning `project_home`, stored `state_db_path` that must match `project_home/state.sqlite` for execution, status, metadata, and alias-to-internal-identity mappings. |
 | `registry.sqlite` | Agent Connection | MCP host connection unit | Durable `connection_internal_id`, host kind, connection intent, host scope, optional `project_internal_id`, internal server name, config target, mode, enabled state, managed fingerprint, verification summary status, verification report JSON, user actions JSON, metadata, and timestamps. |
 | `registry.sqlite` | Connection Projects | Connection project allowlist | Explicit many-to-many membership between an Agent Connection and registered projects using `connection_internal_id` and `project_internal_id`. |

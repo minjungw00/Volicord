@@ -236,10 +236,10 @@ CREATE UNIQUE INDEX idx_guard_installations_scope_global
 Registry 제약:
 
 - `runtime_home`은 단일 행 테이블입니다. Runtime Home 식별 정보, Runtime Home 경로, registry 데이터베이스 경로, 저장소 프로필, 스키마 버전, 메타데이터, 타임스탬프를 저장합니다. 저장된 `runtime_home_id`는 Runtime Home 기록을 식별하며 보안 보장이 아닙니다.
-- `installation_profile`은 Runtime Home에 대해 setup 시점의 `volicord` 명령, MCP 시작 명령, bin 디렉터리, 기본 연결 모드, 메타데이터, 타임스탬프를 저장합니다. 호스트 신뢰, 사용자 권한, 공개 API 상태가 아닙니다.
+- `installation_profile`은 Runtime Home에 대해 선택된 `volicord` 명령, MCP 시작 명령, bin 디렉터리, 기본 연결 모드, 메타데이터, 타임스탬프를 저장합니다. `volicord init` 또는 `volicord setup`이 이를 마련할 수 있습니다. 호스트 신뢰, 사용자 권한, 공개 API 상태가 아닙니다.
 - `projects.project_internal_id`는 프로젝트 기록의 저장 기본 키입니다. `projects.project_name`은 표시 이름입니다. `projects.project_alias`는 CLI 선택 보조 값입니다. `projects.repo_root`는 저장소 루트 조회 키입니다. `projects.project_alias`, `projects.repo_root`, `projects.project_home`, `projects.state_db_path`는 고유합니다.
 - `project_aliases`는 alias를 `project_internal_id` 값에 매핑합니다. alias 행은 registry 선택 보조 값이지 프로젝트별 Core 권한 기록이 아닙니다.
-- `projects.state_db_path`는 저장 열로 유지됩니다. Store 애플리케이션 수준 현재 등록 검증은 운영 `ProjectRecord` 조회나 목록 조회, 프로젝트 상태 마이그레이션 또는 쓰기 가능 열기, Agent Connection 프로젝트 라우팅, Core 실행, setup 재사용, MCP 프로젝트 가용성 전에 이 값이 `project_home/state.sqlite`와 같은지 확인해야 합니다.
+- `projects.state_db_path`는 저장 열로 유지됩니다. Store 애플리케이션 수준 현재 등록 검증은 운영 `ProjectRecord` 조회나 목록 조회, 프로젝트 상태 마이그레이션 또는 쓰기 가능 열기, Agent Connection 프로젝트 라우팅, Core 실행, 프로필 재사용, MCP 프로젝트 가용성 전에 이 값이 `project_home/state.sqlite`와 같은지 확인해야 합니다.
 - `projects.status`는 저장소 소유 값이며 기준 범위에서 유효한 값은 `active`뿐입니다.
 - `agent_connections.connection_internal_id`는 Agent Connection 기록의 저장 기본 키입니다. 이 테이블은 호스트 종류, `intent`에 저장되는 연결 의도, 호스트 범위, 선택적 `project_internal_id`, 서버 이름, 설정 대상, 모드, 활성 상태, 관리 fingerprint, 검증 요약 상태, 검증 보고서 JSON, 사용자 동작 JSON, 메타데이터, 타임스탬프를 저장합니다.
 - `agent_connections.intent`는 `personal`, `shared`, `global`로 제한됩니다.

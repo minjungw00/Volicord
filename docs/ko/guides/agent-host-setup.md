@@ -34,6 +34,20 @@ registry 식별 정보를 선택된 `Volicord Runtime Home`에 저장합니다. 
 volicord connect codex --repo /path/to/your-product-repo
 ```
 
+## Guard 수명주기
+
+Guarded 모드에서는 설정과 활성화가 분리됩니다. `volicord init`은 MCP 호스트 설정,
+Volicord 관리 `AGENTS.md` 안내, `.volicord/policy.json`, 호스트 hook 또는 rule 파일,
+guard 설치 상태를 설치하거나 갱신합니다. 그래도 그 파일이 실행되려면 호스트 reload,
+restart, trust, 프로젝트 MCP 승인, 또는 다른 호스트 소유 동작이 필요할 수 있습니다.
+
+`volicord connection verify`와 `volicord doctor`는 파일 상태, 필요한 호스트 동작,
+관찰된 활성화를 분리해서 다룹니다. Volicord가 기록된 프로젝트, Agent Connection, 호스트
+종류, guard 모드, policy hash와 일치하는 guard hook 이벤트를 관찰해야 guard 설치가
+활성화됩니다. `AGENTS.md`는 지침 지원이며, 호스트 hook과 rule은 협력적이고 탐지적인
+guardrail입니다. OS 샌드박싱, 명령 격리, Volicord를 아는 경로 밖에서 쓰기가 일어날 수
+없다는 증명이 아닙니다.
+
 ## 연결 의도
 
 연결 의도는 호스트 설정이 어디에 속하는지 설명합니다.

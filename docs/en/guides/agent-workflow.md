@@ -237,6 +237,18 @@ If scope changes, update the current scope before asking for a new `Write Check`
 
 When current state includes a Change Unit effect contract, include whether the intended product-file effect and paths fit it. Treat that as Core state-compatibility context for `Write Check` evaluation, not sandboxing, security enforcement, user-owned judgment, sensitive-action approval, or evidence that a write occurred.
 
+<a id="reconcile-unrecorded-changes"></a>
+## Reconcile unrecorded changes
+
+If guard state reports unresolved unrecorded Product Repository changes, call
+`volicord.reconcile_changes` or route the user to `volicord changes reconcile`
+when MCP is unavailable. Deterministic cases may resolve through the method.
+User acceptance must become a supported `User Channel` judgment; do not mark a
+finding accepted from agent text, generated Markdown, or ordinary chat alone.
+
+Report unresolved findings as close blockers and name the next action that
+would unblock them.
+
 <a id="record-evidence"></a>
 ## Record evidence after action
 
