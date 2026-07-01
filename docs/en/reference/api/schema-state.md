@@ -109,6 +109,8 @@ GuardHealthSummary:
   guard_mode: string
   guard_installation_id: string | null
   guard_installation_status: string
+  guard_hook_observed: boolean
+  last_guard_observed_at: string | null
   last_guard_event_at: string | null
   prompt_capture_available: boolean
   mcp_connection_healthy: boolean
@@ -120,6 +122,8 @@ GuardHealthSummary:
 Meaning:
 - `guard_mode` and `guard_installation_status` are controlled value strings.
 - `guard_installation_id`, when non-null, is an opaque guard-installation identifier.
+- `guard_hook_observed` reports whether a matching host guard hook observation is recorded for the selected guard installation.
+- `last_guard_observed_at` is the latest matching guard-installation observation timestamp, or `null` when no matching observation is recorded.
 - `last_guard_event_at` is the latest guard-event timestamp available to the projection, or `null` when no guard event is available.
 - `prompt_capture_available` reports whether prompt capture is available for the selected guarded or managed connection. It does not include prompt text.
 - `mcp_connection_healthy` and `mcp_connection_status` summarize the tracked Agent Connection verification state when that state is available.
@@ -515,6 +519,8 @@ CloseReadinessBlocker:
   category: string
   code: string
   message: string
+  can_resolve_in_chat: boolean
+  terminal_action_required: boolean
   related_refs: StateRecordRef[]
   next_actions: NextActionSummary[]
 
@@ -543,6 +549,8 @@ Meaning:
 - `CloseReadinessBlocker` is a data shape for close-readiness findings.
 - `CloseReadinessBlocker.category` is a controlled value string.
 - `CloseReadinessBlocker.code` is an owner-defined blocker code. It is not an exhaustive global public enum unless the blocker or method owner publishes a narrower local list.
+- `can_resolve_in_chat` reports whether the blocker can be resolved through a chat-mediated user path when the method owner knows that path.
+- `terminal_action_required` reports whether the next action requires a terminal, host, filesystem, or setup action outside chat.
 - `CloseReadinessBlocker.message`, `ValidatorResult.message`, and `GuaranteeDisplay.basis` are free-form display strings.
 - `ValidatorResult.validator_id` is a reporting label unless the value-set owner publishes a supported stable value.
 - `ValidatorResult.status`, `ValidatorResult.severity`, and `GuaranteeDisplay.level` are controlled value strings.

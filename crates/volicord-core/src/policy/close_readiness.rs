@@ -22,10 +22,32 @@ pub(crate) fn close_blocker(
     related_refs: Vec<StateRecordRef>,
     next_actions: Vec<NextActionSummary>,
 ) -> CloseReadinessBlocker {
+    close_blocker_with_resolution(
+        category,
+        code,
+        message,
+        false,
+        false,
+        related_refs,
+        next_actions,
+    )
+}
+
+pub(crate) fn close_blocker_with_resolution(
+    category: CloseReadinessBlockerCategory,
+    code: &'static str,
+    message: &'static str,
+    can_resolve_in_chat: bool,
+    terminal_action_required: bool,
+    related_refs: Vec<StateRecordRef>,
+    next_actions: Vec<NextActionSummary>,
+) -> CloseReadinessBlocker {
     CloseReadinessBlocker {
         category,
         code: code.to_owned(),
         message: message.to_owned(),
+        can_resolve_in_chat,
+        terminal_action_required,
         related_refs,
         next_actions,
     }

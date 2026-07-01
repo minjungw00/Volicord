@@ -221,8 +221,12 @@ CloseTaskRequest:
 | `missing_cancellation_authority` | `user_judgment` | `intent=cancel`에 현재 `Task`, 범위 리비전, Change Unit에 묶이고 `resolved_by_actor_source=local_user`, 호환 User Channel 출처를 가진 현재 수락된 사용자 취소 판단이 없습니다. |
 | `write_check_stale` | `write_compatibility` | 닫기 관련 `Write Check`이 `STATE_VERSION_CONFLICT`로 처리되지 않는 최신성 사유로 사용할 수 없습니다. |
 | `baseline_stale` | `baseline` | 닫기 관련 기준선 근거가 차단 사유 생성 경로에서 오래되었습니다. |
-| `guard_installation_missing` | `connection_capability` | guarded 또는 managed 닫기 경로에 확인된 연결에 대해 사용할 수 있는 guard 설치가 기록되어 있지 않습니다. |
-| `guard_installation_unhealthy` | `connection_capability` | guarded 또는 managed 닫기 경로에 guard 설치는 있지만 기록된 상태가 `active`가 아닙니다. |
+| `guard_not_installed` | `connection_capability` | guarded 또는 managed 닫기 경로에 확인된 연결에 대해 사용할 수 있는 guard 설치가 기록되어 있지 않습니다. |
+| `guard_reload_required` | `connection_capability` | guard 파일은 설치되어 있지만, Volicord가 설정된 hook을 관찰하기 전에 호스트를 restart 또는 reload해야 합니다. |
+| `guard_not_observed` | `connection_capability` | guarded 또는 managed 닫기 경로에 guard 파일은 설정되어 있지만 일치하는 호스트 guard hook 관찰이 기록되어 있지 않습니다. |
+| `guard_stale` | `connection_capability` | guarded 또는 managed 닫기 경로에 기록 상태가 `stale`인 guard 설치가 있습니다. |
+| `guard_broken` | `connection_capability` | guarded 또는 managed 닫기 경로에 기록 상태가 `broken`인 guard 설치가 있습니다. |
+| `guard_degraded` | `connection_capability` | guarded 또는 managed 닫기 경로에 기록 상태가 `degraded`인 guard 설치가 있고 현재 guard policy가 degraded 상태에서 닫기를 차단합니다. |
 | `guard_connection_unhealthy` | `connection_capability` | guarded 또는 managed 닫기 경로에 건강하지 않은 Agent Connection 상태 사실이 있습니다. |
 | `unresolved_unrecorded_changes` | `connection_capability` | guard 기록에 닫기 전에 기록하거나 조정해야 하는 해결되지 않은 미기록 Product Repository 변경이 있습니다. |
 | `guard_write_readiness_missing_or_stale` | `write_compatibility` | guard 이벤트가 닫기 경로에 누락되었거나 오래된 쓰기 준비 상태를 감지했습니다. |
@@ -389,6 +393,8 @@ state:
     - category: final_acceptance
       code: missing_final_acceptance
       message: "Final acceptance is still required before this Task can close."
+      can_resolve_in_chat: false
+      terminal_action_required: false
       related_refs: []
       next_actions:
         - action_kind: request_user_judgment
@@ -406,6 +412,8 @@ blockers:
   - category: final_acceptance
     code: missing_final_acceptance
     message: "Final acceptance is still required before this Task can close."
+    can_resolve_in_chat: false
+    terminal_action_required: false
     related_refs: []
     next_actions:
       - action_kind: request_user_judgment

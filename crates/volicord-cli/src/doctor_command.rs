@@ -14,6 +14,7 @@ use volicord_store::{
     },
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
 };
+use volicord_types::{GuardInstallationStatus, GuardMode};
 
 use crate::{
     setup_command::{path_text, CommandOutcome, CommandStatus},
@@ -155,6 +156,7 @@ where
             project_count = Some(snapshot.projects.len());
             connection_count = Some(snapshot.agent_connections.len());
             guard_installation_count = Some(snapshot.guard_installations.len());
+            inspect_guard_installations(snapshot, &mut checks, &mut actions);
         }
         DatabaseInspection::Unsupported {
             path,
@@ -340,6 +342,208 @@ fn inspect_registry_snapshot(
                 })),
         ),
     }
+}
+
+fn inspect_guard_installations(
+    snapshot: &RegistryInspectionSnapshot,
+    checks: &mut Vec<DiagnosticCheck>,
+    actions: &mut Vec<DiagnosticAction>,
+) {
+    if snapshot.guard_installations.is_empty() {
+        checks.push(DiagnosticCheck::skipped(
+            "guard_files_installed",
+            "no guard installations are recorded",
+        ));
+        checks.push(DiagnosticCheck::skipped(
+            "guard_host_reload_required",
+            "no guard installation needs host reload",
+        ));
+        checks.push(DiagnosticCheck::skipped(
+            "guard_hook_observed",
+            "no guard hook observation is recorded",
+        ));
+        checks.push(DiagnosticCheck::skipped(
+            "guard_status_active",
+            "no guard installation status is recorded",
+        ));
+        return;
+    }
+
+    let guarded = snapshot
+        .guard_installations
+        .iter()
+        .filter(|installation| installation.guard_mode != GuardMode::McpOnly.as_str())
+        .collect::<Vec<_>>();
+    let missing_files = snapshot
+        .guard_installations
+        .iter()
+        .flat_map(|installation| guard_missing_files(&installation.host_capability_json))
+        .collect::<Vec<_>>();
+    if missing_files.is_empty() {
+        checks.push(
+            DiagnosticCheck::passed("guard_files_installed", "guard files are installed")
+                .with_details(json!({ "guard_installations": snapshot.guard_installations.len() })),
+        );
+    } else {
+        checks.push(
+            DiagnosticCheck::warning(
+                "guard_files_installed",
+                "one or more guard files are missing",
+            )
+            .with_details(json!({ "missing_files": missing_files })),
+        );
+        push_unique_diagnostic_action(
+            actions,
+            DiagnosticAction {
+                id: "repair_guard_files".to_owned(),
+                instruction:
+                    "Run volicord init again for affected guarded projects to reinstall missing guard files."
+                        .to_owned(),
+                command: Some("volicord init --host HOST --repo PATH".to_owned()),
+            },
+        );
+    }
+
+    let reload_required = guarded.iter().any(|installation| {
+        installation.installation_status == GuardInstallationStatus::ReloadRequired.as_str()
+    });
+    if reload_required {
+        checks.push(
+            DiagnosticCheck::warning(
+                "guard_host_reload_required",
+                "one or more guard installations need host reload",
+            )
+            .with_details(json!({ "reload_required": true })),
+        );
+        push_unique_diagnostic_action(
+            actions,
+            DiagnosticAction {
+                id: "reload_guard_host".to_owned(),
+                instruction:
+                    "Restart or reload affected agent hosts so they load the Volicord guard configuration."
+                        .to_owned(),
+                command: None,
+            },
+        );
+    } else {
+        checks.push(DiagnosticCheck::passed(
+            "guard_host_reload_required",
+            "no recorded guard installation requires host reload",
+        ));
+    }
+
+    let observed_count = guarded
+        .iter()
+        .filter(|installation| installation.last_seen_at.is_some())
+        .count();
+    if guarded.is_empty() {
+        checks.push(DiagnosticCheck::skipped(
+            "guard_hook_observed",
+            "guard hook observation is not applicable to mcp-only installations",
+        ));
+    } else if observed_count == guarded.len() {
+        checks.push(
+            DiagnosticCheck::passed("guard_hook_observed", "guard hooks have been observed")
+                .with_details(json!({ "observed": observed_count, "guarded": guarded.len() })),
+        );
+    } else {
+        checks.push(
+            DiagnosticCheck::warning(
+                "guard_hook_observed",
+                "one or more guarded installations have not been observed",
+            )
+            .with_details(json!({ "observed": observed_count, "guarded": guarded.len() })),
+        );
+        push_unique_diagnostic_action(
+            actions,
+            DiagnosticAction {
+                id: "observe_guard_hook".to_owned(),
+                instruction:
+                    "Start, restart, or reload affected agent hosts so the Volicord guard hook runs."
+                        .to_owned(),
+                command: None,
+            },
+        );
+    }
+
+    let status_counts = guard_status_counts(&snapshot.guard_installations);
+    let problem_status = ["broken", "stale", "degraded"].iter().find(|status| {
+        status_counts
+            .get(**status)
+            .and_then(Value::as_u64)
+            .unwrap_or(0)
+            > 0
+    });
+    if let Some(status) = problem_status {
+        checks.push(
+            DiagnosticCheck::warning(
+                "guard_status_active",
+                format!("one or more guard installations are {status}"),
+            )
+            .with_details(json!({ "status_counts": status_counts })),
+        );
+        push_unique_diagnostic_action(
+            actions,
+            DiagnosticAction {
+                id: "repair_guard_status".to_owned(),
+                instruction:
+                    "Repair or reinstall affected guard integrations before relying on guarded close readiness."
+                        .to_owned(),
+                command: Some("volicord init --host HOST --repo PATH".to_owned()),
+            },
+        );
+    } else if guarded.is_empty() {
+        checks.push(DiagnosticCheck::skipped(
+            "guard_status_active",
+            "guard active status is not applicable to mcp-only installations",
+        ));
+    } else if guarded.iter().all(|installation| {
+        installation.installation_status == GuardInstallationStatus::Active.as_str()
+            && installation.last_seen_at.is_some()
+    }) {
+        checks.push(
+            DiagnosticCheck::passed("guard_status_active", "guard status is active and observed")
+                .with_details(json!({ "status_counts": status_counts })),
+        );
+    } else {
+        checks.push(
+            DiagnosticCheck::warning(
+                "guard_status_active",
+                "guard status is not active for one or more guarded installations",
+            )
+            .with_details(json!({ "status_counts": status_counts })),
+        );
+    }
+}
+
+fn guard_missing_files(capability_json: &str) -> Vec<String> {
+    let Ok(value) = serde_json::from_str::<Value>(capability_json) else {
+        return Vec::new();
+    };
+    value
+        .get("files")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|file| file.get("path").and_then(Value::as_str))
+        .filter(|path| !Path::new(path).exists())
+        .map(str::to_owned)
+        .collect()
+}
+
+fn guard_status_counts(
+    installations: &[volicord_store::inspection::GuardInstallationInspectionRecord],
+) -> serde_json::Map<String, Value> {
+    let mut counts = serde_json::Map::new();
+    for installation in installations {
+        let count = counts
+            .get(&installation.installation_status)
+            .and_then(Value::as_u64)
+            .unwrap_or(0)
+            + 1;
+        counts.insert(installation.installation_status.clone(), json!(count));
+    }
+    counts
 }
 
 fn inspect_installation_profile<F>(
@@ -640,7 +844,7 @@ fn render_doctor_output(
         }
         OutputFormat::Text => {
             let mut text = format!(
-                "Volicord doctor {}\nstatus_meaning: {}\nruntime_home_state: {}\nruntime_home: {}\ninstallation_profile_state: {}\ncommand_state: {}\nproject_registration_state: {}\nconnection_state: {}\nguard_installation_state: {}\nhost_reload_required: {}\n",
+                "Volicord doctor {}\nstatus_meaning: {}\nruntime_home_state: {}\nruntime_home: {}\ninstallation_profile_state: {}\ncommand_state: {}\nproject_registration_state: {}\nconnection_state: {}\nguard_installation_state: {}\nguard_files_state: {}\nguard_hook_observed: {}\nguard_status_state: {}\nhost_reload_required: {}\n",
                 status.as_str(),
                 doctor_status_meaning(status, checks),
                 doctor_runtime_home_state(runtime_home, checks),
@@ -650,6 +854,9 @@ fn render_doctor_output(
                 doctor_count_state(checks, "projects", "registered"),
                 doctor_count_state(checks, "connections", "stored"),
                 doctor_count_state(checks, "guard_installations", "stored"),
+                doctor_check_state(checks, "guard_files_installed"),
+                doctor_check_state(checks, "guard_hook_observed"),
+                doctor_check_state(checks, "guard_status_active"),
                 yes_no(doctor_host_reload_required(checks, actions)),
             );
             append_doctor_next_action(&mut text, status, actions);
@@ -670,6 +877,9 @@ fn doctor_states_json(
         "project_registration": doctor_count_state(checks, "projects", "registered"),
         "connection": doctor_count_state(checks, "connections", "stored"),
         "guard_installation": doctor_count_state(checks, "guard_installations", "stored"),
+        "guard_files": doctor_check_state(checks, "guard_files_installed"),
+        "guard_hook_observed": doctor_check_state(checks, "guard_hook_observed"),
+        "guard_status": doctor_check_state(checks, "guard_status_active"),
         "host_reload_required": doctor_host_reload_required(checks, actions),
     })
 }
@@ -718,6 +928,16 @@ fn doctor_command_state(checks: &[DiagnosticCheck]) -> &'static str {
         "not_checked"
     } else {
         "ready"
+    }
+}
+
+fn doctor_check_state(checks: &[DiagnosticCheck], id: &str) -> &'static str {
+    match check_status(checks, id) {
+        Some("passed") => "ready",
+        Some("warning") => "action_recommended",
+        Some("failed") => "failed",
+        Some("skipped") => "not_checked",
+        _ => "unknown",
     }
 }
 

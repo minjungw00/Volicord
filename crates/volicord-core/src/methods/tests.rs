@@ -12314,6 +12314,14 @@ fn guarded_close_complete_success_reports_guard_health() -> Result<(), Box<dyn E
         "active"
     );
     assert_eq!(
+        status.response_value["guard_health"]["guard_hook_observed"],
+        true
+    );
+    assert_eq!(
+        status.response_value["guard_health"]["last_guard_observed_at"],
+        "2026-06-30T00:02:00Z"
+    );
+    assert_eq!(
         status.response_value["guard_health"]["prompt_capture_available"],
         true
     );
@@ -12400,16 +12408,113 @@ fn guarded_close_blocks_unhealthy_guard_installation() -> Result<(), Box<dyn Err
     )?;
 
     assert_eq!(response.response_value["close_state"], "blocked");
-    assert_close_blocker(&response.response_value, "guard_installation_unhealthy");
+    assert_close_blocker(&response.response_value, "guard_reload_required");
     assert_close_blocker_category(
         &response.response_value,
-        "guard_installation_unhealthy",
+        "guard_reload_required",
         "connection_capability",
+    );
+    assert_close_blocker_resolution(
+        &response.response_value,
+        "guard_reload_required",
+        false,
+        true,
     );
     assert_eq!(
         response.response_value["guard_health"]["guard_installation_status"],
         "reload_required"
     );
+    assert_eq!(response.response_value["base"]["effect_kind"], "no_effect");
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn guarded_close_blocks_configured_guard_before_observation() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    record_guard_installation(
+        &harness,
+        "guarded_not_observed",
+        "guarded",
+        "configured",
+        "{}",
+    )?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "guarded_not_observed")?;
+    let after_evidence = record_close_evidence(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        2,
+        "guarded_not_observed",
+        true,
+    )?;
+    let after_final = record_final_acceptance(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        after_evidence,
+        "guarded_not_observed",
+    )?;
+    let before = harness.counts()?;
+
+    let status = harness.service.status(
+        StatusRequest {
+            envelope: envelope(
+                "req_status_guarded_not_observed",
+                None,
+                false,
+                None,
+                Some(&task_id),
+            ),
+            include: StatusInclude {
+                task: true,
+                pending_user_judgments: true,
+                write_check: false,
+                evidence: true,
+                close: true,
+                guarantees: false,
+                continuity: false,
+            },
+        },
+        invocation(OperationCategory::Read),
+    )?;
+    assert_eq!(status.response_value["close_state"], "blocked");
+    assert_close_blocker(&status.response_value, "guard_not_observed");
+    assert_eq!(
+        status.response_value["guard_health"]["guard_installation_status"],
+        "configured"
+    );
+    assert_eq!(
+        status.response_value["guard_health"]["guard_hook_observed"],
+        false
+    );
+    assert_eq!(
+        status.response_value["guard_health"]["last_guard_observed_at"],
+        Value::Null
+    );
+    assert_eq!(
+        status.response_value["guard_health"]["prompt_capture_available"],
+        false
+    );
+    assert_eq!(harness.counts()?, before);
+
+    let response = harness.service.close_task(
+        close_task_request(CloseTaskFixture {
+            request_id: "req_close_guarded_not_observed",
+            idempotency_key: Some("idem_close_guarded_not_observed"),
+            dry_run: false,
+            expected_state_version: Some(after_final),
+            task_id: &task_id,
+            intent: CloseIntent::Complete,
+            close_reason: Some(CloseReason::CompletedSelfChecked),
+            superseding_task_id: None,
+        }),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+
+    assert_eq!(response.response_value["close_state"], "blocked");
+    assert_close_blocker(&response.response_value, "guard_not_observed");
+    assert_close_blocker_resolution(&response.response_value, "guard_not_observed", false, true);
     assert_eq!(response.response_value["base"]["effect_kind"], "no_effect");
     assert_eq!(harness.counts()?, before);
     Ok(())
@@ -12453,12 +12558,13 @@ fn guarded_close_blocks_missing_guard_installation() -> Result<(), Box<dyn Error
     )?;
 
     assert_eq!(response.response_value["close_state"], "blocked");
-    assert_close_blocker(&response.response_value, "guard_installation_missing");
+    assert_close_blocker(&response.response_value, "guard_not_installed");
     assert_close_blocker_category(
         &response.response_value,
-        "guard_installation_missing",
+        "guard_not_installed",
         "connection_capability",
     );
+    assert_close_blocker_resolution(&response.response_value, "guard_not_installed", false, true);
     assert_eq!(
         response.response_value["guard_health"]["guard_installation_status"],
         "absent"
@@ -12469,6 +12575,68 @@ fn guarded_close_blocks_missing_guard_installation() -> Result<(), Box<dyn Error
     );
     assert_eq!(response.response_value["base"]["effect_kind"], "no_effect");
     assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn guarded_close_blocks_stale_broken_and_degraded_guard_status() -> Result<(), Box<dyn Error>> {
+    for (status, code) in [
+        ("stale", "guard_stale"),
+        ("broken", "guard_broken"),
+        ("degraded", "guard_degraded"),
+    ] {
+        let harness = MethodHarness::new()?;
+        record_guard_installation(
+            &harness,
+            &format!("guarded_{status}"),
+            "guarded",
+            status,
+            "{}",
+        )?;
+        let (task_id, change_unit_id) =
+            create_task_with_change_unit(&harness, &format!("guarded_{status}"))?;
+        let after_evidence = record_close_evidence(
+            &harness,
+            &task_id,
+            &change_unit_id,
+            2,
+            &format!("guarded_{status}"),
+            true,
+        )?;
+        let after_final = record_final_acceptance(
+            &harness,
+            &task_id,
+            &change_unit_id,
+            after_evidence,
+            &format!("guarded_{status}"),
+        )?;
+        let before = harness.counts()?;
+
+        let response = harness.service.close_task(
+            close_task_request(CloseTaskFixture {
+                request_id: &format!("req_close_guarded_{status}"),
+                idempotency_key: Some(&format!("idem_close_guarded_{status}")),
+                dry_run: false,
+                expected_state_version: Some(after_final),
+                task_id: &task_id,
+                intent: CloseIntent::Complete,
+                close_reason: Some(CloseReason::CompletedSelfChecked),
+                superseding_task_id: None,
+            }),
+            invocation(OperationCategory::AgentWorkflow),
+        )?;
+
+        assert_eq!(response.response_value["close_state"], "blocked");
+        assert_close_blocker(&response.response_value, code);
+        assert_close_blocker_category(&response.response_value, code, "connection_capability");
+        assert_close_blocker_resolution(&response.response_value, code, false, true);
+        assert_eq!(
+            response.response_value["guard_health"]["guard_installation_status"],
+            status
+        );
+        assert_eq!(response.response_value["base"]["effect_kind"], "no_effect");
+        assert_eq!(harness.counts()?, before);
+    }
     Ok(())
 }
 
@@ -12689,7 +12857,13 @@ fn guarded_pending_judgment_displays_user_answer_paths() -> Result<(), Box<dyn E
 fn mcp_only_close_does_not_receive_guarded_unrecorded_change_blocker() -> Result<(), Box<dyn Error>>
 {
     let harness = MethodHarness::new()?;
-    record_guard_installation(&harness, "mcp_only_unrecorded", "mcp_only", "active", "{}")?;
+    record_guard_installation(
+        &harness,
+        "mcp_only_unrecorded",
+        "mcp_only",
+        "configured",
+        "{}",
+    )?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "mcp_only_unrecorded")?;
     let after_evidence = record_close_evidence(
         &harness,
@@ -12724,9 +12898,18 @@ fn mcp_only_close_does_not_receive_guarded_unrecorded_change_blocker() -> Result
 
     assert_eq!(response.response_value["close_state"], "closed");
     assert_no_close_blocker(&response.response_value, "unresolved_unrecorded_changes");
+    assert_no_close_blocker(&response.response_value, "guard_not_observed");
     assert_eq!(
         response.response_value["guard_health"]["guard_mode"],
         "mcp_only"
+    );
+    assert_eq!(
+        response.response_value["guard_health"]["guard_installation_status"],
+        "configured"
+    );
+    assert_eq!(
+        response.response_value["guard_health"]["guard_hook_observed"],
+        false
     );
     assert_eq!(
         response.response_value["guard_health"]["unresolved_unrecorded_change_count"],
@@ -13470,12 +13653,17 @@ fn record_guard_installation(
             installation_status: installation_status.to_owned(),
             installed_at: Some("2026-06-30T00:00:00Z".to_owned()),
             last_checked_at: "2026-06-30T00:01:00Z".to_owned(),
-            first_seen_at: None,
-            last_seen_at: None,
-            last_seen_phase: None,
-            observed_host_kind: None,
-            observed_policy_hash: None,
-            observed_binary_version: None,
+            first_seen_at: (installation_status == "active")
+                .then(|| "2026-06-30T00:02:00Z".to_owned()),
+            last_seen_at: (installation_status == "active")
+                .then(|| "2026-06-30T00:02:00Z".to_owned()),
+            last_seen_phase: (installation_status == "active").then(|| "session_start".to_owned()),
+            observed_host_kind: (installation_status == "active")
+                .then(|| HOST_KIND_CODEX.to_owned()),
+            observed_policy_hash: (installation_status == "active")
+                .then(|| "sha256:guardedfixture".to_owned()),
+            observed_binary_version: (installation_status == "active")
+                .then(|| "0.0.0-test".to_owned()),
             metadata_json: "{}".to_owned(),
         },
     )?;
@@ -14187,6 +14375,36 @@ fn assert_close_blocker_category(response_value: &Value, code: &str, category: &
         .find(|blocker| blocker["code"] == code)
         .unwrap_or_else(|| panic!("expected close blocker code {code}, got {blockers:?}"));
     assert_eq!(blocker["category"], category);
+}
+
+fn assert_close_blocker_resolution(
+    response_value: &Value,
+    code: &str,
+    can_resolve_in_chat: bool,
+    terminal_action_required: bool,
+) {
+    let blockers = response_value
+        .get("blockers")
+        .or_else(|| response_value.get("close_blockers"))
+        .expect("blockers or close_blockers should be present")
+        .as_array()
+        .expect("blockers should be an array");
+    let blocker = blockers
+        .iter()
+        .find(|blocker| blocker["code"] == code)
+        .unwrap_or_else(|| panic!("expected close blocker code {code}, got {blockers:?}"));
+    assert_eq!(blocker["can_resolve_in_chat"], can_resolve_in_chat);
+    assert_eq!(
+        blocker["terminal_action_required"],
+        terminal_action_required
+    );
+    assert!(
+        !blocker["next_actions"]
+            .as_array()
+            .expect("guard blocker next_actions should be an array")
+            .is_empty(),
+        "guard blocker should include a next action: {blocker:?}"
+    );
 }
 
 fn assert_no_close_blocker(response_value: &Value, code: &str) {

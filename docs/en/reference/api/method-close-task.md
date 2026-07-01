@@ -221,8 +221,12 @@ The production meanings below apply only after the method reaches close-readines
 | `missing_cancellation_authority` | `user_judgment` | `intent=cancel` lacks a current accepted user cancellation judgment with `resolved_by_actor_source=local_user`, compatible User Channel provenance, and a basis bound to the current Task, scope revision, and Change Unit. |
 | `write_check_stale` | `write_compatibility` | A close-relevant `Write Check` is unusable for a freshness reason that is not routed as `STATE_VERSION_CONFLICT`. |
 | `baseline_stale` | `baseline` | The close-relevant baseline basis is stale on a blocker-producing path. |
-| `guard_installation_missing` | `connection_capability` | A guarded or managed close path has no usable guard installation recorded for the verified connection. |
-| `guard_installation_unhealthy` | `connection_capability` | A guarded or managed close path has a guard installation, but its recorded status is not `active`. |
+| `guard_not_installed` | `connection_capability` | A guarded or managed close path has no usable guard installation recorded for the verified connection. |
+| `guard_reload_required` | `connection_capability` | Guard files are installed, but the host must restart or reload before Volicord has observed the configured hooks. |
+| `guard_not_observed` | `connection_capability` | A guarded or managed close path has configured guard files, but no matching host guard hook observation is recorded. |
+| `guard_stale` | `connection_capability` | A guarded or managed close path has a guard installation whose recorded status is `stale`. |
+| `guard_broken` | `connection_capability` | A guarded or managed close path has a guard installation whose recorded status is `broken`. |
+| `guard_degraded` | `connection_capability` | A guarded or managed close path has a guard installation whose recorded status is `degraded` and the current guard policy blocks close on degraded health. |
 | `guard_connection_unhealthy` | `connection_capability` | A guarded or managed close path has an Agent Connection health fact that is not healthy. |
 | `unresolved_unrecorded_changes` | `connection_capability` | Guard records show unresolved unrecorded Product Repository changes that must be recorded or reconciled before close. |
 | `guard_write_readiness_missing_or_stale` | `write_compatibility` | Guard events detected missing or stale write readiness for the close path. |
@@ -389,6 +393,8 @@ state:
     - category: final_acceptance
       code: missing_final_acceptance
       message: "Final acceptance is still required before this Task can close."
+      can_resolve_in_chat: false
+      terminal_action_required: false
       related_refs: []
       next_actions:
         - action_kind: request_user_judgment
@@ -406,6 +412,8 @@ blockers:
   - category: final_acceptance
     code: missing_final_acceptance
     message: "Final acceptance is still required before this Task can close."
+    can_resolve_in_chat: false
+    terminal_action_required: false
     related_refs: []
     next_actions:
       - action_kind: request_user_judgment

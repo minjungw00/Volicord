@@ -198,8 +198,13 @@ stored command paths are executable, doctor may report `complete` while
 reporting command-availability warnings and `actions_recommended` for future
 shells or agent hosts. PATH or command-link recommendations must say when
 existing agent hosts may need restart or reload. Doctor reports supported host
-detection as a connection-verification concern. It does not create projects,
-install host configuration, change connection mode, or answer user judgments.
+detection as a connection-verification concern. When guard installation records
+exist, doctor may also report guard file installation, host reload requirement,
+hook observation, and active/stale/broken guard status as diagnostics. These
+guard diagnostics are local setup and observation checks; they are not proof of
+OS enforcement, sandboxing, write prevention, product correctness, or close
+readiness. Doctor does not create projects, install host configuration, change
+connection mode, or answer user judgments.
 
 <a id="project-commands"></a>
 ## Project commands
@@ -379,6 +384,10 @@ Verification output must make checks and user actions first-class diagnostics.
 Text output must show the overall status, each check that was attempted or
 blocked, and the next user action when one is required. JSON output must include
 top-level `status`, `checks`, and `actions` fields for diagnostic consumers.
+Connection status and verification output must keep guard file installation,
+host reload requirement, hook observation, prompt-capture availability, last
+guard event when known, and guard status as separate diagnostics. Files
+installed or configured must not be reported as an active observed guard hook.
 
 A successful `volicord mcp --check` startup check alone must not be described as a
 `complete` Agent Connection. It is startup validation for the MCP process only.

@@ -826,6 +826,22 @@ fn guard_health_summary_from_record(
         })
         .transpose()?
         .into();
+    let last_guard_observed_at: RequiredNullable<UtcTimestamp> = record
+        .guard_installation
+        .as_ref()
+        .and_then(|installation| {
+            installation.last_seen_at.as_ref().map(|last_seen_at| {
+                parse_owner_storage_value(
+                    "guard_installations",
+                    installation.guard_installation_id.clone(),
+                    "last_seen_at",
+                    last_seen_at,
+                )
+            })
+        })
+        .transpose()?
+        .into();
+    let guard_hook_observed = last_guard_observed_at.is_some();
     let mcp_connection_status = record
         .connection
         .as_ref()
@@ -836,6 +852,7 @@ fn guard_health_summary_from_record(
     });
     let prompt_capture_available = guard_mode_supports_prompt_capture(guard_mode)
         && guard_installation_status == GuardInstallationStatus::Active
+        && guard_hook_observed
         && record
             .guard_installation
             .as_ref()
@@ -852,6 +869,8 @@ fn guard_health_summary_from_record(
         guard_mode,
         guard_installation_id,
         guard_installation_status,
+        guard_hook_observed,
+        last_guard_observed_at,
         last_guard_event_at,
         prompt_capture_available,
         mcp_connection_healthy,
@@ -988,31 +1007,16 @@ fn guard_close_blockers(
 
     let task_ref = task_ref_for_close(request, project_state.state_version);
     let mut blockers = Vec::new();
-    if summary.guard_installation_status != GuardInstallationStatus::Active {
-        let code = if summary.guard_installation_id.is_some() {
-            "guard_installation_unhealthy"
-        } else {
-            "guard_installation_missing"
-        };
-        blockers.push(close_blocker(
-            CloseReadinessBlockerCategory::ConnectionCapability,
-            code,
-            "Guarded close requires an active observed guard installation.",
-            vec![task_ref.clone()],
-            vec![NextActionSummary {
-                action_kind: NextActionKind::CloseTask,
-                owner_method: None,
-                label: "Repair guard setup or verification before completing the Task.".to_owned(),
-                blocking_question: None,
-                required_refs: vec![task_ref.clone()],
-            }],
-        ));
+    if let Some(blocker) = guard_installation_close_blocker(summary, &task_ref) {
+        blockers.push(blocker);
     }
     if !summary.mcp_connection_healthy {
-        blockers.push(close_blocker(
+        blockers.push(close_blocker_with_resolution(
             CloseReadinessBlockerCategory::ConnectionCapability,
             "guard_connection_unhealthy",
             "Guarded close requires the Agent Connection to be healthy.",
+            false,
+            true,
             vec![task_ref.clone()],
             vec![NextActionSummary {
                 action_kind: NextActionKind::CloseTask,
@@ -1055,6 +1059,70 @@ fn guard_close_blockers(
         ));
     }
     blockers
+}
+
+fn guard_installation_close_blocker(
+    summary: &GuardHealthSummary,
+    task_ref: &StateRecordRef,
+) -> Option<CloseReadinessBlocker> {
+    let (code, message, label) = match summary.guard_installation_status {
+        GuardInstallationStatus::Absent => (
+            "guard_not_installed",
+            "Guarded close requires a recorded guard installation.",
+            "Install the guard integration for this project before completing the Task.",
+        ),
+        GuardInstallationStatus::ReloadRequired => (
+            "guard_reload_required",
+            "Guard files are installed, but the host has not reloaded them.",
+            "Restart or reload the host so it loads the Volicord guard hooks.",
+        ),
+        GuardInstallationStatus::Configured => (
+            "guard_not_observed",
+            "Guard files are configured, but no matching guard hook has been observed.",
+            "Start or reload the host and let the Volicord guard hook run before close.",
+        ),
+        GuardInstallationStatus::Active if !summary.guard_hook_observed => (
+            "guard_not_observed",
+            "Guard status is active, but no matching guard hook observation is recorded.",
+            "Run the host guard hook or restart the host before completing the Task.",
+        ),
+        GuardInstallationStatus::Active => return None,
+        GuardInstallationStatus::Stale => (
+            "guard_stale",
+            "Guard health is stale for this guarded close path.",
+            "Refresh or reinstall the guard integration before completing the Task.",
+        ),
+        GuardInstallationStatus::Broken => (
+            "guard_broken",
+            "Guard health is broken for this guarded close path.",
+            "Repair the guard integration before completing the Task.",
+        ),
+        GuardInstallationStatus::Degraded if guard_degraded_blocks_close(summary.guard_mode) => (
+            "guard_degraded",
+            "Guard health is degraded and the current guard policy blocks close.",
+            "Repair degraded guard health before completing the Task.",
+        ),
+        GuardInstallationStatus::Degraded => return None,
+    };
+    Some(close_blocker_with_resolution(
+        CloseReadinessBlockerCategory::ConnectionCapability,
+        code,
+        message,
+        false,
+        true,
+        vec![task_ref.clone()],
+        vec![NextActionSummary {
+            action_kind: NextActionKind::CloseTask,
+            owner_method: None,
+            label: label.to_owned(),
+            blocking_question: None,
+            required_refs: vec![task_ref.clone()],
+        }],
+    ))
+}
+
+fn guard_degraded_blocks_close(guard_mode: GuardMode) -> bool {
+    matches!(guard_mode, GuardMode::Guarded | GuardMode::Managed)
 }
 
 fn terminal_close_blockers(

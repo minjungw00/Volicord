@@ -374,6 +374,8 @@ pub struct GuardHealthSummary {
     pub guard_mode: GuardMode,
     pub guard_installation_id: RequiredNullable<GuardInstallationId>,
     pub guard_installation_status: GuardInstallationStatus,
+    pub guard_hook_observed: bool,
+    pub last_guard_observed_at: RequiredNullable<UtcTimestamp>,
     pub last_guard_event_at: RequiredNullable<UtcTimestamp>,
     pub prompt_capture_available: bool,
     pub mcp_connection_healthy: bool,
@@ -780,6 +782,10 @@ pub struct CloseReadinessBlocker {
     pub category: CloseReadinessBlockerCategory,
     pub code: String,
     pub message: String,
+    #[serde(default)]
+    pub can_resolve_in_chat: bool,
+    #[serde(default)]
+    pub terminal_action_required: bool,
     pub related_refs: Vec<StateRecordRef>,
     pub next_actions: Vec<NextActionSummary>,
 }

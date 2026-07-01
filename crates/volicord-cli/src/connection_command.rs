@@ -31,8 +31,8 @@ use volicord_store::{
         InstallationProfileRegistration, RepoProjectRegistration, ACTIVE_PROJECT_STATUS,
     },
     guards::{
-        list_guard_installations, upsert_guard_installation, GuardInstallationRecord,
-        GuardInstallationUpsert,
+        guard_health_record, list_guard_installations, upsert_guard_installation,
+        GuardInstallationRecord, GuardInstallationUpsert,
     },
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
     StoreError,
@@ -3188,35 +3188,76 @@ fn hex_bytes(bytes: &[u8]) -> String {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct GuardOperationalState {
+    mode_state: String,
     installation_state: String,
+    files_state: String,
+    hook_observed_state: String,
+    last_observed_at: Option<String>,
+    last_guard_event_at: Option<String>,
     prompt_capture_state: String,
     missing_files: Vec<String>,
+    unresolved_blockers: Vec<String>,
 }
 
 impl GuardOperationalState {
     fn not_configured() -> Self {
         Self {
+            mode_state: "not_configured".to_owned(),
             installation_state: "not_configured".to_owned(),
+            files_state: "not_configured".to_owned(),
+            hook_observed_state: "not_observed".to_owned(),
+            last_observed_at: None,
+            last_guard_event_at: None,
             prompt_capture_state: "unavailable".to_owned(),
             missing_files: Vec::new(),
+            unresolved_blockers: Vec::new(),
         }
     }
 
     fn planned(init_mode: InitMode) -> Self {
         Self {
+            mode_state: init_mode.guard_value().to_owned(),
             installation_state: "planned".to_owned(),
+            files_state: if init_mode == InitMode::McpOnly {
+                "disabled".to_owned()
+            } else {
+                "planned".to_owned()
+            },
+            hook_observed_state: if init_mode == InitMode::McpOnly {
+                "disabled".to_owned()
+            } else {
+                "not_observed".to_owned()
+            },
+            last_observed_at: None,
+            last_guard_event_at: None,
             prompt_capture_state: if init_mode == InitMode::McpOnly {
                 "disabled".to_owned()
             } else {
                 "planned".to_owned()
             },
             missing_files: Vec::new(),
+            unresolved_blockers: Vec::new(),
         }
     }
 
     fn init(health: &str, init_mode: InitMode) -> Self {
         Self {
+            mode_state: init_mode.guard_value().to_owned(),
             installation_state: health.to_owned(),
+            files_state: if init_mode == InitMode::McpOnly {
+                "disabled".to_owned()
+            } else {
+                "installed".to_owned()
+            },
+            hook_observed_state: if init_mode == InitMode::McpOnly {
+                "disabled".to_owned()
+            } else if health == GuardInstallationStatus::Active.as_str() {
+                "observed".to_owned()
+            } else {
+                "not_observed".to_owned()
+            },
+            last_observed_at: None,
+            last_guard_event_at: None,
             prompt_capture_state: if init_mode == InitMode::McpOnly {
                 "disabled".to_owned()
             } else if health == GuardInstallationStatus::Active.as_str() {
@@ -3229,14 +3270,25 @@ impl GuardOperationalState {
                 "unavailable".to_owned()
             },
             missing_files: Vec::new(),
+            unresolved_blockers: guard_blockers_for_state(
+                init_mode.guard_value(),
+                health,
+                health == GuardInstallationStatus::Active.as_str(),
+            ),
         }
     }
 
     fn to_json(&self) -> Value {
         json!({
+            "mode": &self.mode_state,
             "installation": &self.installation_state,
+            "files": &self.files_state,
+            "hook_observed": &self.hook_observed_state,
+            "last_observed_at": &self.last_observed_at,
+            "last_guard_event_at": &self.last_guard_event_at,
             "prompt_capture": &self.prompt_capture_state,
             "missing_files": &self.missing_files,
+            "unresolved_blockers": &self.unresolved_blockers,
         })
     }
 }
@@ -3331,7 +3383,7 @@ fn render_simplified_connection_output(
     match data.format {
         OutputFormat::Text => {
             let mut output = format!(
-                "Agent Connection {}\nruntime_home_state: ready\nruntime_home: {}\nconnection_state: {}\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nproject_registration_state: {}\nconnected_repositories: {}\nmcp_config_state: {}\nmcp_config: {}\nguard_installation_state: {}\nprompt_capture_state: {}\nhost_reload_required: {}\n",
+                "Agent Connection {}\nruntime_home_state: ready\nruntime_home: {}\nconnection_state: {}\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nproject_registration_state: {}\nconnected_repositories: {}\nmcp_config_state: {}\nmcp_config: {}\nguard_mode: {}\nguard_installation_state: {}\nguard_files_state: {}\nguard_hook_observed: {}\nlast_guard_event: {}\nprompt_capture_state: {}\nhost_reload_required: {}\nguard_blockers: {}\n",
                 data.action,
                 data.runtime_home.display(),
                 data.status.as_str(),
@@ -3344,9 +3396,14 @@ fn render_simplified_connection_output(
                 mcp_config_state,
                 target
                 ,
+                data.guard_state.mode_state,
                 data.guard_state.installation_state,
+                data.guard_state.files_state,
+                data.guard_state.hook_observed_state,
+                optional_text(data.guard_state.last_guard_event_at.as_deref()),
                 data.guard_state.prompt_capture_state,
-                yes_no(has_reload_action(&data.user_actions))
+                yes_no(has_reload_action(&data.user_actions)),
+                comma_or_none(&data.guard_state.unresolved_blockers)
             );
             if let Some(planned_change) = planned_change {
                 output.push_str(&format!("planned_change: {planned_change}\n"));
@@ -3377,7 +3434,7 @@ fn render_simplified_connection_output(
                 "connection": connection_json(data.connection, &project_ids),
                 "target": target,
                 "planned_change": planned_change,
-                "checks": checks_json(data.connection, data.verification),
+                "checks": checks_json(data.connection, data.verification, &data.guard_state),
                 "actions": actions_json_values(&data.user_actions),
                 "primary_next_action": primary_next_action.map(|action| action.to_json()),
                 "guard": data.guard_state.to_json(),
@@ -3402,7 +3459,7 @@ fn render_simplified_plan_output(
     match data.format {
         OutputFormat::Text => {
             let mut output = format!(
-                "Agent Connection {} {}\nruntime_home_state: ready\nruntime_home: {}\nconnection_state: {}\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nproject_registration_state: {}\nconnected_repositories: {}\nmcp_config_state: planned_{}\nmcp_config: {}\nguard_installation_state: {}\nprompt_capture_state: {}\nhost_reload_required: {}\nplanned_change: {}\n",
+                "Agent Connection {} {}\nruntime_home_state: ready\nruntime_home: {}\nconnection_state: {}\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nproject_registration_state: {}\nconnected_repositories: {}\nmcp_config_state: planned_{}\nmcp_config: {}\nguard_mode: {}\nguard_installation_state: {}\nguard_files_state: {}\nguard_hook_observed: {}\nlast_guard_event: {}\nprompt_capture_state: {}\nhost_reload_required: {}\nguard_blockers: {}\nplanned_change: {}\n",
                 data.action,
                 data.status.as_str(),
                 data.runtime_home.display(),
@@ -3417,9 +3474,14 @@ fn render_simplified_plan_output(
                     .unwrap_or_default(),
                 planned_change,
                 target,
+                guard_state.mode_state,
                 guard_state.installation_state,
+                guard_state.files_state,
+                guard_state.hook_observed_state,
+                optional_text(guard_state.last_guard_event_at.as_deref()),
                 guard_state.prompt_capture_state,
                 yes_no(has_reload_action(&data.user_actions)),
+                comma_or_none(&guard_state.unresolved_blockers),
                 planned_change
             );
             if let Some(remaining) = data.projects_remaining {
@@ -3506,7 +3568,7 @@ fn render_init_output(data: InitOutput<'_>) -> Result<String, ConnectionCommandE
     match data.format {
         OutputFormat::Text => {
             let mut output = format!(
-                "Volicord init {}\nruntime_home_state: ready\nruntime_home: {}\nproject_registration_state: {}\nrepo: {}\nconnection_state: {}\nhost: {}\nmode: {}\nconnection_id: {}\nmcp_config_state: {}\nmcp_config: {}\nplanned_change: {}\nprofile: {}\nguard_installation_state: {}\nprompt_capture_state: {}\nhost_reload_required: {}\n",
+                "Volicord init {}\nruntime_home_state: ready\nruntime_home: {}\nproject_registration_state: {}\nrepo: {}\nconnection_state: {}\nhost: {}\nmode: {}\nconnection_id: {}\nmcp_config_state: {}\nmcp_config: {}\nplanned_change: {}\nprofile: {}\nguard_mode: {}\nguard_installation_state: {}\nguard_files_state: {}\nguard_hook_observed: {}\nlast_guard_event: {}\nprompt_capture_state: {}\nhost_reload_required: {}\nguard_blockers: {}\n",
                 data.status.as_str(),
                 data.runtime_home.display(),
                 project_state,
@@ -3519,9 +3581,14 @@ fn render_init_output(data: InitOutput<'_>) -> Result<String, ConnectionCommandE
                 target,
                 planned_change,
                 data.profile_action,
+                guard_state.mode_state,
                 guard_state.installation_state,
+                guard_state.files_state,
+                guard_state.hook_observed_state,
+                optional_text(guard_state.last_guard_event_at.as_deref()),
                 guard_state.prompt_capture_state,
-                yes_no(has_reload_action(&actions))
+                yes_no(has_reload_action(&actions)),
+                comma_or_none(&guard_state.unresolved_blockers)
             );
             output.push_str(&format!(
                 "generated_file_count: {}\n",
@@ -3573,7 +3640,7 @@ fn render_init_output(data: InitOutput<'_>) -> Result<String, ConnectionCommandE
                     "recorded": data.guard_installation.is_some(),
                 },
                 "guard": guard_state.to_json(),
-                "checks": init_checks_json(data.verification, guard_status),
+                "checks": init_checks_json(data.verification, guard_status, &guard_state),
                 "actions": actions_json_values(&actions),
                 "primary_next_action": primary_next_action.map(|action| action.to_json()),
             });
@@ -3584,9 +3651,13 @@ fn render_init_output(data: InitOutput<'_>) -> Result<String, ConnectionCommandE
     }
 }
 
-fn init_checks_json(verification: Option<&VerificationReport>, guard_status: &str) -> Value {
+fn init_checks_json(
+    verification: Option<&VerificationReport>,
+    guard_status: &str,
+    guard_state: &GuardOperationalState,
+) -> Value {
     if let Some(report) = verification {
-        Value::Array(vec![
+        let mut checks = vec![
             json!({
                 "id": "host",
                 "status": report.host.status.as_str(),
@@ -3607,16 +3678,118 @@ fn init_checks_json(verification: Option<&VerificationReport>, guard_status: &st
                 "status": guard_status,
                 "summary": "guard installation status was recorded",
             }),
-        ])
+        ];
+        checks.extend(guard_checks_json_values(guard_state));
+        Value::Array(checks)
     } else {
-        json!([
-            {
-                "id": "init_plan",
-                "status": "passed",
-                "summary": "init plan was built without writing files or Runtime Home records"
-            }
-        ])
+        let mut checks = vec![json!({
+            "id": "init_plan",
+            "status": "passed",
+            "summary": "init plan was built without writing files or Runtime Home records"
+        })];
+        checks.extend(guard_checks_json_values(guard_state));
+        Value::Array(checks)
     }
+}
+
+fn guard_checks_json_values(guard_state: &GuardOperationalState) -> Vec<Value> {
+    let guard_selected = matches!(
+        guard_state.mode_state.as_str(),
+        "guarded" | "managed" | "mixed"
+    );
+    let files_check = match guard_state.files_state.as_str() {
+        "installed" => json!({
+            "id": "guard_files_installed",
+            "status": "passed",
+            "summary": "guard files are installed",
+        }),
+        "missing" => json!({
+            "id": "guard_files_installed",
+            "status": "failed",
+            "summary": "guard files are missing",
+            "details": { "missing_files": &guard_state.missing_files },
+        }),
+        "disabled" => json!({
+            "id": "guard_files_installed",
+            "status": "skipped",
+            "summary": "guard files are disabled for mcp-only mode",
+        }),
+        other => json!({
+            "id": "guard_files_installed",
+            "status": "skipped",
+            "summary": format!("guard files are {other}"),
+        }),
+    };
+    let reload_check = if guard_state.installation_state == "reload_required" {
+        json!({
+            "id": "guard_host_reload_required",
+            "status": "failed",
+            "summary": "host reload is required before guard hooks are active",
+        })
+    } else if guard_selected {
+        json!({
+            "id": "guard_host_reload_required",
+            "status": "passed",
+            "summary": "host reload is not currently required by guard installation state",
+        })
+    } else {
+        json!({
+            "id": "guard_host_reload_required",
+            "status": "skipped",
+            "summary": "guard host reload is not applicable",
+        })
+    };
+    let hook_check = match guard_state.hook_observed_state.as_str() {
+        "observed" => json!({
+            "id": "guard_hook_observed",
+            "status": "passed",
+            "summary": "guard hook has been observed",
+            "details": {
+                "last_observed_at": &guard_state.last_observed_at,
+                "last_guard_event_at": &guard_state.last_guard_event_at,
+            },
+        }),
+        "not_observed" if guard_selected => json!({
+            "id": "guard_hook_observed",
+            "status": "failed",
+            "summary": "guard hook has not been observed",
+            "details": {
+                "last_observed_at": Value::Null,
+                "last_guard_event_at": &guard_state.last_guard_event_at,
+            },
+        }),
+        other => json!({
+            "id": "guard_hook_observed",
+            "status": "skipped",
+            "summary": format!("guard hook observation is {other}"),
+        }),
+    };
+    let status_check = if guard_state.installation_state == "active"
+        && guard_state.hook_observed_state == "observed"
+    {
+        json!({
+            "id": "guard_status_active",
+            "status": "passed",
+            "summary": "guard status is active and observed",
+        })
+    } else if guard_selected {
+        json!({
+            "id": "guard_status_active",
+            "status": "failed",
+            "summary": format!("guard status is {}", guard_state.installation_state),
+            "details": {
+                "installation_status": &guard_state.installation_state,
+                "unresolved_blockers": &guard_state.unresolved_blockers,
+            },
+        })
+    } else {
+        json!({
+            "id": "guard_status_active",
+            "status": "skipped",
+            "summary": "guard active status is not applicable",
+        })
+    };
+    vec![files_check, reload_check, hook_check, status_check]
 }
 
 fn render_simplified_connections_output(
@@ -3709,7 +3882,7 @@ fn render_simplified_remove_dry_run(
         }
         SimplifiedRemovePlan::MembershipOnly => match format {
             OutputFormat::Text => Ok(format!(
-                "Agent Connection remove dry_run\nruntime_home_state: ready\nruntime_home: {}\nconnection_state: dry_run\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nproject_registration_state: {}\nconnected_repositories: {}\nmcp_config_state: membership\nplanned_change: membership\nguard_installation_state: not_checked\nprompt_capture_state: not_checked\nhost_reload_required: no\nremaining_connected_projects: {}\nnext_action: none\n",
+                "Agent Connection remove dry_run\nruntime_home_state: ready\nruntime_home: {}\nconnection_state: dry_run\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nproject_registration_state: {}\nconnected_repositories: {}\nmcp_config_state: membership\nplanned_change: membership\nguard_mode: not_checked\nguard_installation_state: not_checked\nguard_files_state: not_checked\nguard_hook_observed: not_checked\nlast_guard_event: none\nprompt_capture_state: not_checked\nhost_reload_required: no\nguard_blockers: none\nremaining_connected_projects: {}\nnext_action: none\n",
                 runtime_home.display(),
                 public_host_name_text(&connection.host_kind),
                 connection.intent,
@@ -3733,9 +3906,14 @@ fn render_simplified_remove_dry_run(
                         "connection": AgentResultStatus::DryRun.as_str(),
                         "project_registration": project_registration_state(projects),
                         "mcp_config": "membership",
+                        "guard_mode": "not_checked",
                         "guard_installation": "not_checked",
+                        "guard_files": "not_checked",
+                        "guard_hook_observed": "not_checked",
+                        "last_guard_event_at": Value::Null,
                         "prompt_capture": "not_checked",
                         "host_reload_required": false,
+                        "guard_blockers": [],
                     },
                     "connection": connection_json(connection, &project_ids),
                     "target": connection.config_target,
@@ -3794,8 +3972,14 @@ fn connection_states_json(
         "connection": connection_state,
         "project_registration": project_registration,
         "mcp_config": mcp_config,
+        "guard_mode": &guard_state.mode_state,
         "guard_installation": &guard_state.installation_state,
+        "guard_files": &guard_state.files_state,
+        "guard_hook_observed": &guard_state.hook_observed_state,
+        "last_guard_observed_at": &guard_state.last_observed_at,
+        "last_guard_event_at": &guard_state.last_guard_event_at,
         "prompt_capture": &guard_state.prompt_capture_state,
+        "guard_blockers": &guard_state.unresolved_blockers,
         "host_reload_required": host_reload_required,
     })
 }
@@ -4006,6 +4190,18 @@ fn yes_no(value: bool) -> &'static str {
     }
 }
 
+fn optional_text(value: Option<&str>) -> &str {
+    value.unwrap_or("none")
+}
+
+fn comma_or_none(values: &[String]) -> String {
+    if values.is_empty() {
+        "none".to_owned()
+    } else {
+        values.join(",")
+    }
+}
+
 fn guard_state_for_connection(
     runtime_home: &Path,
     connection_id: &str,
@@ -4028,12 +4224,23 @@ fn guard_state_for_connection(
 
     let mut missing_files = Vec::new();
     let mut prompt_capture_available = false;
-    let mut prompt_capture_disabled = false;
+    let prompt_capture_disabled = installations
+        .iter()
+        .all(|installation| installation.guard_mode == GuardMode::McpOnly.as_str());
+    let mut observed = false;
+    let mut last_observed_at = None;
     for installation in &installations {
         missing_files.extend(guard_missing_files(&installation.host_capability_json));
-        if installation.guard_mode == GuardMode::McpOnly.as_str() {
-            prompt_capture_disabled = true;
-        } else if guard_has_prompt_capture(&installation.host_capability_json) {
+        if installation.last_seen_at.is_some() {
+            observed = true;
+            last_observed_at = max_optional_text(
+                last_observed_at,
+                installation.last_seen_at.as_deref().map(str::to_owned),
+            );
+        }
+        if installation.guard_mode != GuardMode::McpOnly.as_str()
+            && guard_has_prompt_capture(&installation.host_capability_json)
+        {
             prompt_capture_available = true;
         }
     }
@@ -4042,16 +4249,44 @@ fn guard_state_for_connection(
 
     if !missing_files.is_empty() {
         return Ok(GuardOperationalState {
+            mode_state: guard_mode_state(&installations),
             installation_state: "files_missing".to_owned(),
+            files_state: "missing".to_owned(),
+            hook_observed_state: if prompt_capture_disabled {
+                "disabled".to_owned()
+            } else if observed {
+                "observed".to_owned()
+            } else {
+                "not_observed".to_owned()
+            },
+            last_observed_at,
+            last_guard_event_at: last_guard_event_for_projects(
+                runtime_home,
+                connection_id,
+                projects,
+            )?,
             prompt_capture_state: "unavailable".to_owned(),
             missing_files,
+            unresolved_blockers: vec!["guard_not_installed".to_owned()],
         });
     }
 
     let installation_state = if installations.iter().any(|installation| {
+        installation.installation_status == GuardInstallationStatus::Broken.as_str()
+    }) {
+        GuardInstallationStatus::Broken.as_str()
+    } else if installations.iter().any(|installation| {
+        installation.installation_status == GuardInstallationStatus::Stale.as_str()
+    }) {
+        GuardInstallationStatus::Stale.as_str()
+    } else if installations.iter().any(|installation| {
         installation.installation_status == GuardInstallationStatus::ReloadRequired.as_str()
     }) {
         GuardInstallationStatus::ReloadRequired.as_str()
+    } else if installations.iter().any(|installation| {
+        installation.installation_status == GuardInstallationStatus::Degraded.as_str()
+    }) {
+        GuardInstallationStatus::Degraded.as_str()
     } else if installations.iter().any(|installation| {
         installation.installation_status == GuardInstallationStatus::Active.as_str()
     }) {
@@ -4065,6 +4300,7 @@ fn guard_state_for_connection(
     };
     let prompt_capture_state = if prompt_capture_available
         && installation_state == GuardInstallationStatus::Active.as_str()
+        && observed
     {
         "available"
     } else if prompt_capture_disabled {
@@ -4076,11 +4312,88 @@ fn guard_state_for_connection(
     } else {
         "unavailable"
     };
+    let mode_state = guard_mode_state(&installations);
+    let hook_observed_state = if prompt_capture_disabled {
+        "disabled"
+    } else if observed {
+        "observed"
+    } else {
+        "not_observed"
+    };
     Ok(GuardOperationalState {
+        mode_state: mode_state.clone(),
         installation_state: installation_state.to_owned(),
+        files_state: if prompt_capture_disabled {
+            "disabled".to_owned()
+        } else {
+            "installed".to_owned()
+        },
+        hook_observed_state: hook_observed_state.to_owned(),
+        last_observed_at,
+        last_guard_event_at: last_guard_event_for_projects(runtime_home, connection_id, projects)?,
         prompt_capture_state: prompt_capture_state.to_owned(),
         missing_files,
+        unresolved_blockers: guard_blockers_for_state(&mode_state, installation_state, observed),
     })
+}
+
+fn guard_mode_state(installations: &[GuardInstallationRecord]) -> String {
+    let mut modes = installations
+        .iter()
+        .map(|installation| installation.guard_mode.as_str())
+        .collect::<Vec<_>>();
+    modes.sort_unstable();
+    modes.dedup();
+    if modes.len() == 1 {
+        modes[0].to_owned()
+    } else {
+        "mixed".to_owned()
+    }
+}
+
+fn guard_blockers_for_state(
+    guard_mode: &str,
+    installation_state: &str,
+    guard_hook_observed: bool,
+) -> Vec<String> {
+    if guard_mode == GuardMode::McpOnly.as_str() {
+        return Vec::new();
+    }
+    match installation_state {
+        "not_configured" | "files_missing" => vec!["guard_not_installed".to_owned()],
+        "reload_required" => vec!["guard_reload_required".to_owned()],
+        "configured" => vec!["guard_not_observed".to_owned()],
+        "active" if !guard_hook_observed => vec!["guard_not_observed".to_owned()],
+        "stale" => vec!["guard_stale".to_owned()],
+        "broken" => vec!["guard_broken".to_owned()],
+        "degraded" => vec!["guard_degraded".to_owned()],
+        _ => Vec::new(),
+    }
+}
+
+fn last_guard_event_for_projects(
+    runtime_home: &Path,
+    connection_id: &str,
+    projects: &[ConnectionProjectRecord],
+) -> Result<Option<String>, ConnectionCommandError> {
+    let mut latest = None;
+    for project in projects {
+        if let Some(event) =
+            guard_health_record(runtime_home, &project.project_id, connection_id)?.latest_event
+        {
+            latest = max_optional_text(latest, Some(event.occurred_at));
+        }
+    }
+    Ok(latest)
+}
+
+fn max_optional_text(current: Option<String>, candidate: Option<String>) -> Option<String> {
+    match (current, candidate) {
+        (Some(current), Some(candidate)) => Some(current.max(candidate)),
+        (Some(current), None) => Some(current),
+        (None, Some(candidate)) => Some(candidate),
+        (None, None) => None,
+    }
 }
 
 fn guard_has_prompt_capture(capability_json: &str) -> bool {
@@ -4135,9 +4448,10 @@ fn user_action_id(kind: UserActionKind) -> &'static str {
 fn checks_json(
     connection: &AgentConnectionRecord,
     verification: Option<&VerificationReport>,
+    guard_state: &GuardOperationalState,
 ) -> Value {
     if let Some(verification) = verification {
-        return Value::Array(vec![
+        let mut checks = vec![
             json!({
                 "id": "host",
                 "status": verification.host.status.as_str(),
@@ -4160,15 +4474,19 @@ fn checks_json(
                 "status": verification.handshake.status.as_str(),
                 "summary": verification.handshake.details,
             }),
-        ]);
+        ];
+        checks.extend(guard_checks_json_values(guard_state));
+        return Value::Array(checks);
     }
-    stored_checks_json(connection)
+    let mut checks = stored_checks_json(connection);
+    checks.extend(guard_checks_json_values(guard_state));
+    Value::Array(checks)
 }
 
-fn stored_checks_json(connection: &AgentConnectionRecord) -> Value {
+fn stored_checks_json(connection: &AgentConnectionRecord) -> Vec<Value> {
     let report = json_object_text(&connection.last_verification_report_json);
     let Some(object) = report.as_object() else {
-        return json!([]);
+        return Vec::new();
     };
     let mut checks = Vec::new();
     if let Some(host) = object.get("host").and_then(Value::as_object) {
@@ -4202,7 +4520,7 @@ fn stored_checks_json(connection: &AgentConnectionRecord) -> Value {
                 .unwrap_or("stored MCP handshake state"),
         }));
     }
-    Value::Array(checks)
+    checks
 }
 
 fn stored_user_actions(connection: &AgentConnectionRecord) -> Vec<UserAction> {

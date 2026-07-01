@@ -109,6 +109,8 @@ GuardHealthSummary:
   guard_mode: string
   guard_installation_id: string | null
   guard_installation_status: string
+  guard_hook_observed: boolean
+  last_guard_observed_at: string | null
   last_guard_event_at: string | null
   prompt_capture_available: boolean
   mcp_connection_healthy: boolean
@@ -120,6 +122,8 @@ GuardHealthSummary:
 의미:
 - `guard_mode`와 `guard_installation_status`는 제어 값 문자열입니다.
 - `guard_installation_id`가 `null`이 아니면 불투명 guard 설치 식별자입니다.
+- `guard_hook_observed`는 선택된 guard 설치에 대해 일치하는 호스트 guard hook 관찰이 기록되어 있는지를 보고합니다.
+- `last_guard_observed_at`은 가장 최근의 일치하는 guard 설치 관찰 시각이며, 일치하는 관찰이 기록되어 있지 않으면 `null`입니다.
 - `last_guard_event_at`은 상태 보기에 사용할 수 있는 최신 guard 이벤트 타임스탬프입니다. 사용할 수 있는 guard 이벤트가 없으면 `null`입니다.
 - `prompt_capture_available`은 선택된 guarded 또는 managed 연결에서 prompt capture를 사용할 수 있는지 보고합니다. 프롬프트 텍스트는 포함하지 않습니다.
 - `mcp_connection_healthy`와 `mcp_connection_status`는 추적되는 Agent Connection 확인 상태가 있을 때 그 상태를 요약합니다.
@@ -516,6 +520,8 @@ CloseReadinessBlocker:
   category: string
   code: string
   message: string
+  can_resolve_in_chat: boolean
+  terminal_action_required: boolean
   related_refs: StateRecordRef[]
   next_actions: NextActionSummary[]
 
@@ -544,6 +550,8 @@ GuaranteeDisplay:
 - `CloseReadinessBlocker`는 닫기 차단 사유를 표현하는 데이터 형태입니다.
 - `CloseReadinessBlocker.category`는 제어 값 문자열입니다.
 - `CloseReadinessBlocker.code`는 담당 문서가 정의하는 차단 사유 코드입니다. 차단 사유 또는 메서드 담당 문서가 더 좁은 로컬 목록을 공개하지 않는 한 빠짐없는 전역 공개 enum이 아닙니다.
+- `can_resolve_in_chat`은 메서드 담당 문서가 그 경로를 알고 있을 때 차단 사유를 채팅으로 매개되는 사용자 경로에서 해소할 수 있는지를 보고합니다.
+- `terminal_action_required`는 다음 행동이 채팅 밖의 터미널, 호스트, 파일시스템, setup 동작을 필요로 하는지를 보고합니다.
 - `CloseReadinessBlocker.message`, `ValidatorResult.message`, `GuaranteeDisplay.basis`는 자유 형식 표시 문자열입니다.
 - `ValidatorResult.validator_id`는 값 집합 담당 문서가 지원되는 안정 값을 공개하기 전까지 보고용 라벨입니다.
 - `ValidatorResult.status`, `ValidatorResult.severity`, `GuaranteeDisplay.level`은 제어 값 문자열입니다.

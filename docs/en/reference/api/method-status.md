@@ -237,6 +237,8 @@ active_task:
     - category: pending_user_judgment
       code: pending_user_judgment
       message: "User-owned product decision about CSV column order is still pending."
+      can_resolve_in_chat: false
+      terminal_action_required: false
       related_refs:
         - record_kind: user_judgment
           record_id: uj_export_columns_001
@@ -284,6 +286,8 @@ close_blockers:
   - category: pending_user_judgment
     code: pending_user_judgment
     message: "User-owned product decision about CSV column order is still pending."
+    can_resolve_in_chat: false
+    terminal_action_required: false
     related_refs:
       - record_kind: user_judgment
         record_id: uj_export_columns_001
