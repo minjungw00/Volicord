@@ -2434,6 +2434,11 @@ fn validate_guard_command(args: &[String]) -> std::result::Result<(), String> {
         ],
     )?;
     reject_mutually_exclusive(&parsed, "json", "text")?;
+    validate_integration_profile_option(
+        &parsed,
+        "integration-profile",
+        &format!("`volicord guard {subcommand}`"),
+    )?;
     reject_positionals(&parsed, 0, &format!("`volicord guard {subcommand}`"))
 }
 
@@ -2453,6 +2458,7 @@ fn validate_init_command(args: &[String]) -> std::result::Result<(), String> {
     if !parsed.options.contains("repo") {
         return Err("`volicord init` requires --repo".to_string());
     }
+    validate_integration_profile_option(&parsed, "profile", "`volicord init`")?;
     Ok(())
 }
 
@@ -2921,6 +2927,21 @@ fn validate_host(host: &str) -> std::result::Result<(), String> {
             "unsupported host `{host}`; use `codex` or `claude-code`"
         ))
     }
+}
+
+fn validate_integration_profile_option(
+    parsed: &ParsedCommandArgs,
+    option: &str,
+    context: &str,
+) -> std::result::Result<(), String> {
+    for value in parsed.value_options.get(option).into_iter().flatten() {
+        if !matches!(value.as_str(), "record" | "observe") {
+            return Err(format!(
+                "{context} option `--{option}` value `{value}` is unsupported; use `record` or `observe`"
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn validate_connection_mode(mode: &str) -> std::result::Result<(), String> {

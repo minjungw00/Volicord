@@ -1170,6 +1170,26 @@ fn rejects_serve_examples_outside_public_local_http_option_surface() {
 }
 
 #[test]
+fn rejects_conflicting_local_http_bearer_token_examples() {
+    let fixture = valid_fixture();
+    write(
+        fixture.path(),
+        "docs/en/example.md",
+        "# Overview\n\n```sh\nvolicord serve --transport local-http --token TOKEN --generate-token\n```\n",
+    );
+
+    let report = report(fixture.path());
+    let errors = category_errors(&report, "command.invalid_example");
+
+    assert_eq!(errors.len(), 1, "{:#?}", report.errors());
+    assert!(
+        errors[0].message().contains("--token") && errors[0].message().contains("--generate-token"),
+        "{:#?}",
+        report.errors()
+    );
+}
+
+#[test]
 fn rejects_nonloopback_local_http_serve_listen_examples() {
     let fixture = valid_fixture();
     write(
@@ -1206,6 +1226,39 @@ fn rejects_unsupported_local_http_serve_transport_examples() {
     assert_eq!(errors.len(), 1, "{:#?}", report.errors());
     assert!(
         errors[0].message().contains("--transport streamable-http"),
+        "{:#?}",
+        report.errors()
+    );
+}
+
+#[test]
+fn rejects_invalid_public_integration_profile_examples() {
+    let fixture = valid_fixture();
+    write(
+        fixture.path(),
+        "docs/en/example.md",
+        "# Overview\n\n```sh\nvolicord init --host codex --repo /path/to/repo --profile managed\nvolicord guard session-start --repo /path/to/repo --connection CONNECTION_ID --integration-profile managed\n```\n",
+    );
+
+    let report = report(fixture.path());
+    let errors = category_errors(&report, "command.invalid_example");
+
+    assert_eq!(errors.len(), 2, "{:#?}", report.errors());
+    assert!(
+        errors
+            .iter()
+            .any(|error| error.message().contains("--profile")
+                && error.message().contains("record")
+                && error.message().contains("observe")),
+        "{:#?}",
+        report.errors()
+    );
+    assert!(
+        errors
+            .iter()
+            .any(|error| error.message().contains("--integration-profile")
+                && error.message().contains("record")
+                && error.message().contains("observe")),
         "{:#?}",
         report.errors()
     );

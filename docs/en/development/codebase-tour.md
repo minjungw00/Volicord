@@ -638,8 +638,8 @@ Owns in the implementation:
 - Bilingual maintained Markdown coverage checks for `docs/en/` and `docs/ko/`.
 - Local Markdown link and fragment validation, including hidden anchors.
 - `docs/terminology-map.yaml` repository-document path validation.
-- Retired documentation path detection in maintained Markdown and YAML route
-  metadata.
+- Executable `volicord` command-example validation, terminology role checks,
+  and public-language guarantee-claim checks.
 
 Does not own:
 
@@ -656,8 +656,8 @@ Recommended first file:
 Most relevant tests:
 
 - [`xtask/tests/docs_check.rs`](../../../xtask/tests/docs_check.rs) uses small
-  temporary fixture trees for metadata, pairing, link, fragment, retired-path,
-  and terminology-path cases.
+  temporary fixture trees for metadata, pairing, link, fragment, command-example,
+  terminology-role, terminology-path, and public-language cases.
 
 Recommended next component:
 

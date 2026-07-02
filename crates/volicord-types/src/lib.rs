@@ -87,6 +87,20 @@ mod tests {
             json!("observe")
         );
         assert_eq!(
+            serde_json::from_value::<IntegrationProfile>(json!("record"))
+                .expect("record profile deserializes"),
+            IntegrationProfile::Record
+        );
+        assert_eq!(
+            serde_json::from_value::<IntegrationProfile>(json!("observe"))
+                .expect("observe profile deserializes"),
+            IntegrationProfile::Observe
+        );
+        assert!(
+            serde_json::from_value::<IntegrationProfile>(json!("managed")).is_err(),
+            "only record and observe are public integration profiles"
+        );
+        assert_eq!(
             serde_json::to_value(GuardDecision::InjectContext).expect("guard decision serializes"),
             json!("inject_context")
         );
@@ -122,6 +136,17 @@ mod tests {
         assert_eq!(
             serde_json::to_value(host).expect("custom host serializes"),
             json!("custom_host")
+        );
+    }
+
+    #[test]
+    fn integration_profile_schema_exposes_only_public_profile_values() {
+        let schema =
+            serde_json::to_value(schema_for!(IntegrationProfile)).expect("schema should serialize");
+
+        assert_eq!(
+            schema_enum_strings(schema),
+            BTreeSet::from(["observe".to_owned(), "record".to_owned()])
         );
     }
 
