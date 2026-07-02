@@ -10,11 +10,11 @@ Registry storage and project-state storage record their own migration ledger row
 
 Baseline registry storage includes Runtime Home identity, installation profile
 records, repository-root-based project registrations, project aliases, Agent
-Connection records, `connection_projects`, `guard_installations`, and
-`local_web_consent_tokens`. Baseline project-state storage includes Core state
-projection records, `authority_events`, replay rows, staged artifacts,
-persistent artifacts, evidence, user judgments, runs, blockers, `write_checks`,
-host-observation records, and session-watch records.
+Connection records, `connection_projects`, and `guard_installations`.
+Baseline project-state storage includes Core state projection records,
+`authority_events`, replay rows, staged artifacts, persistent artifacts,
+evidence, user judgments, `local_web_consent_tokens`, runs, blockers,
+`write_checks`, host-observation records, and session-watch records.
 
 ## Project State Version
 

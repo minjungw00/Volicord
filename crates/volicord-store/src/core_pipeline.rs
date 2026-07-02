@@ -118,6 +118,7 @@ pub enum CoreStorageMutation {
     InsertEvidenceObservation(EvidenceObservationInsert),
     InsertUserJudgment(UserJudgmentInsert),
     ResolveUserJudgment(UserJudgmentResolutionUpdate),
+    ConsumeLocalWebConsentToken(LocalWebConsentTokenConsumption),
     ResolveUnrecordedChange(UnrecordedChangeResolutionUpdate),
     InsertProjectContinuityRecord(ProjectContinuityRecordInsert),
     UpdateUserJudgmentBasis(UserJudgmentBasisUpdate),
@@ -229,6 +230,16 @@ pub struct UserJudgmentResolutionUpdate {
     pub resolved_verification_basis: String,
     pub resolved_assurance_level: String,
     pub resolved_at: String,
+}
+
+/// Storage input for consuming a local web consent token with its judgment resolution.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LocalWebConsentTokenConsumption {
+    pub token_hash: String,
+    pub connection_internal_id: String,
+    pub judgment_id: String,
+    pub consumed_at: String,
+    pub completion_metadata_json: String,
 }
 
 /// Storage input for resolving one unrecorded Product Repository change.
@@ -1546,6 +1557,9 @@ impl CoreStorageMutation {
             Self::InsertEvidenceObservation(input) => mutation.insert_evidence_observation(input),
             Self::InsertUserJudgment(input) => mutation.insert_user_judgment(input),
             Self::ResolveUserJudgment(input) => mutation.resolve_user_judgment(input),
+            Self::ConsumeLocalWebConsentToken(input) => {
+                mutation.consume_local_web_consent_token(input)
+            }
             Self::ResolveUnrecordedChange(input) => mutation.resolve_unrecorded_change(input),
             Self::InsertProjectContinuityRecord(input) => {
                 mutation.insert_project_continuity_record(input)
@@ -2648,6 +2662,62 @@ impl ProjectMutation<'_> {
             Err(StoreError::SchemaInvariant {
                 database_kind: "project_state",
                 detail: "pending user judgment resolution changed no rows".to_owned(),
+            })
+        }
+    }
+
+    fn consume_local_web_consent_token(
+        &mut self,
+        input: &LocalWebConsentTokenConsumption,
+    ) -> StoreResult<()> {
+        validate_identifier("local_web_consent_tokens.token_hash", &input.token_hash)?;
+        if input.token_hash.len() != 64
+            || input
+                .token_hash
+                .chars()
+                .any(|character| !character.is_ascii_hexdigit())
+        {
+            return Err(StoreError::InvalidInput {
+                detail: "local_web_consent_tokens.token_hash must be 64 hex characters".to_owned(),
+            });
+        }
+        validate_identifier("connection_internal_id", &input.connection_internal_id)?;
+        validate_identifier("judgment_id", &input.judgment_id)?;
+        validate_identifier("consumed_at", &input.consumed_at)?;
+        validate_json_text(
+            "local_web_consent_tokens.completion_metadata_json",
+            &input.completion_metadata_json,
+        )?;
+
+        let changed = self.tx.execute(
+            "UPDATE local_web_consent_tokens
+                SET status = 'consumed',
+                    consumed_at = ?5,
+                    completed_at = ?5,
+                    completion_metadata_json = ?6
+              WHERE project_id = ?1
+                AND token_hash = ?2
+                AND connection_internal_id = ?3
+                AND judgment_id = ?4
+                AND status = 'pending'
+                AND expires_at > ?5",
+            params![
+                self.project_id,
+                input.token_hash,
+                input.connection_internal_id,
+                input.judgment_id,
+                input.consumed_at,
+                input.completion_metadata_json
+            ],
+        )?;
+        if changed == 1 {
+            Ok(())
+        } else {
+            Err(StoreError::Conflict {
+                entity: "local_web_consent_token",
+                id: input.token_hash.clone(),
+                detail: "token is not pending, is expired, or is not bound to this judgment"
+                    .to_owned(),
             })
         }
     }
@@ -5702,6 +5772,103 @@ mod tests {
     }
 
     #[test]
+    fn local_web_consent_token_consumption_rolls_back_with_judgment_record_failure(
+    ) -> Result<(), Box<dyn Error>> {
+        let harness = StoreHarness::new()?;
+        let mut store = harness.store()?;
+        let task_id = "task_local_web_atomic_rollback";
+        let judgment_id = "judgment_local_web_atomic_rollback";
+        let token_hash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+        let insert_input = commit_input(
+            &ProjectId::new(PROJECT_ID),
+            MethodName::RequestUserJudgment,
+            Some(&IdempotencyKey::new("idem_store_local_web_insert")),
+            &RequestHash::new("sha256:local-web-insert"),
+            Some(replay_context(CONNECTION_ID, "agent_workflow")),
+            Some(0),
+            vec![pending_event_for_task("local_web_insert", task_id)],
+        );
+        let inserted = store.commit_mutation(
+            insert_input,
+            |mutation, facts| {
+                for storage_mutation in [
+                    CoreStorageMutation::InsertTask(task_insert(task_id)),
+                    CoreStorageMutation::InsertUserJudgment(user_judgment_insert(
+                        judgment_id,
+                        task_id,
+                        None,
+                        JudgmentBasisCompatibilityStatus::Current,
+                    )),
+                ] {
+                    storage_mutation.apply(mutation, facts.committed_state_version)?;
+                }
+                Ok(())
+            },
+            response_json,
+        )?;
+        assert!(matches!(inserted, MutationCommitOutcome::Committed { .. }));
+
+        store.conn.execute(
+            "INSERT INTO local_web_consent_tokens (
+                project_id, token_hash, connection_internal_id, judgment_id, capture_basis,
+                status, created_at, expires_at, created_metadata_json, completion_metadata_json
+             ) VALUES (?1, ?2, ?3, ?4, 'local_user_local_web', 'pending', 't0', 't9', '{}', '{}')",
+            params![PROJECT_ID, token_hash, CONNECTION_ID, judgment_id],
+        )?;
+        let before = store.effect_counts()?;
+
+        let resolve_input = commit_input(
+            &ProjectId::new(PROJECT_ID),
+            MethodName::RecordUserJudgment,
+            Some(&IdempotencyKey::new("idem_store_local_web_rollback")),
+            &RequestHash::new("sha256:local-web-rollback"),
+            Some(replay_context(CONNECTION_ID, "agent_workflow")),
+            Some(1),
+            vec![pending_event_for_task("local_web_rollback", task_id)],
+        );
+        let error = store
+            .commit_mutation(
+                resolve_input,
+                |mutation, facts| {
+                    CoreStorageMutation::ConsumeLocalWebConsentToken(
+                        LocalWebConsentTokenConsumption {
+                            token_hash: token_hash.to_owned(),
+                            connection_internal_id: CONNECTION_ID.to_owned(),
+                            judgment_id: judgment_id.to_owned(),
+                            consumed_at: "t1".to_owned(),
+                            completion_metadata_json: "{}".to_owned(),
+                        },
+                    )
+                    .apply(mutation, facts.committed_state_version)?;
+                    CoreStorageMutation::ResolveUserJudgment(user_judgment_resolution_update(
+                        judgment_id,
+                        UserJudgmentOptionAction::Accept,
+                        JudgmentResolutionOutcome::Accepted,
+                    ))
+                    .apply(mutation, facts.committed_state_version)?;
+                    CoreStorageMutation::InsertRun(run_insert_with_missing_task())
+                        .apply(mutation, facts.committed_state_version)
+                },
+                response_json,
+            )
+            .expect_err("later write failure should roll back the whole commit");
+        assert!(matches!(error, StoreError::Sqlite(_)));
+
+        assert_eq!(store.effect_counts()?, before);
+        let record = store
+            .user_judgment_record(judgment_id)?
+            .expect("pending judgment should remain readable");
+        assert_eq!(record.status, "pending");
+        assert_eq!(record.resolution_outcome, None);
+        let (status, consumed_at, completed_at) = local_web_token_state(&store, token_hash)?;
+        assert_eq!(status, "pending");
+        assert_eq!(consumed_at, None);
+        assert_eq!(completed_at, None);
+        Ok(())
+    }
+
+    #[test]
     fn insert_user_judgment_rejects_blocked_option_outcome() -> Result<(), Box<dyn Error>> {
         let harness = StoreHarness::new()?;
         let mut store = harness.store()?;
@@ -6469,6 +6636,23 @@ mod tests {
             created_by_actor_source: ACTOR_SOURCE.to_owned(),
             metadata_json: "{}".to_owned(),
         }
+    }
+
+    fn local_web_token_state(
+        store: &CoreProjectStore,
+        token_hash: &str,
+    ) -> StoreResult<(String, Option<String>, Option<String>)> {
+        store
+            .conn
+            .query_row(
+                "SELECT status, consumed_at, completed_at
+               FROM local_web_consent_tokens
+              WHERE project_id = ?1
+                AND token_hash = ?2",
+                params![PROJECT_ID, token_hash],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .map_err(StoreError::Sqlite)
     }
 
     fn response_json(facts: CommittedMutationFacts) -> StoreResult<String> {

@@ -44,7 +44,7 @@ Volicord는 기준 범위 기록을 로컬 `Volicord Runtime Home` 하나와 등
 
 저장 위치:
 
-- `registry.sqlite`는 Runtime Home 식별 정보, 설치 프로필 기록, 프로젝트 등록 매핑, 프로젝트 alias, Agent Connection 기록, Connection Projects 멤버십, guard 설치 기록, local web consent token 메타데이터, registry 메타데이터를 저장합니다. 설치 프로필에는 선택된 `volicord` 명령, MCP 시작 명령, bin 디렉터리, 기본 연결 모드, 메타데이터, 타임스탬프가 포함됩니다. 프로젝트 등록에는 `project_internal_id`, 표시 이름, CLI 선택 alias, Runtime Home 관계, 등록된 `repo_root`, `project_home`, 프로젝트 `state.sqlite` 경로, 상태, 메타데이터, 타임스탬프가 포함됩니다.
+- `registry.sqlite`는 Runtime Home 식별 정보, 설치 프로필 기록, 프로젝트 등록 매핑, 프로젝트 alias, Agent Connection 기록, Connection Projects 멤버십, guard 설치 기록, registry 메타데이터를 저장합니다. 설치 프로필에는 선택된 `volicord` 명령, MCP 시작 명령, bin 디렉터리, 기본 연결 모드, 메타데이터, 타임스탬프가 포함됩니다. 프로젝트 등록에는 `project_internal_id`, 표시 이름, CLI 선택 alias, Runtime Home 관계, 등록된 `repo_root`, `project_home`, 프로젝트 `state.sqlite` 경로, 상태, 메타데이터, 타임스탬프가 포함됩니다.
 - `projects/{project_internal_id}/`는 등록된 프로젝트 하나에 대한 기본 Volicord 프로젝트 홈 형태입니다. `repo_root`와 같은 위치나 권한이 아닙니다.
 - `state.sqlite`는 등록된 프로젝트의 프로젝트별 로컬 Core 상태와 프로젝트 범위 host-observation 기록을 저장합니다.
 - `artifacts/`는 아티팩트 저장소를 사용할 때의 프로젝트 아티팩트 저장소이며, 아티팩트 저장소가 처음 필요할 때 늦게 만들어질 수 있습니다. `artifacts/tmp/`는 아티팩트 스테이징에 필요할 때 쓰는 임시 스테이징 공간이며 증거 권한이 아닙니다. 이 디렉터리도 스테이징이 일어날 때 늦게 만들어질 수 있습니다. 이 디렉터리들은 프로젝트 등록 직후에 반드시 존재할 필요가 없습니다.
@@ -84,7 +84,6 @@ API 스키마 형태와 저장소 기록 배치는 서로 다른 담당 문서�
 | `registry.sqlite` | Agent Connection | MCP 호스트 연결 단위 | 지속되는 `connection_internal_id`, 호스트 종류, 연결 의도, 호스트 범위, 선택적 `project_internal_id`, 내부 서버 이름, 설정 대상, 모드, 활성 상태, 관리 fingerprint, 검증 요약 상태, 검증 보고서 JSON, 사용자 동작 JSON, 메타데이터, 타임스탬프. |
 | `registry.sqlite` | Connection Projects | 연결 프로젝트 허용 목록 | `connection_internal_id`와 `project_internal_id`를 사용하는 Agent Connection과 등록된 프로젝트 사이의 명시적 다대다 멤버십. |
 | `registry.sqlite` | Guard installation | Guard 설정과 호스트 capability 기록 | Runtime Home, Agent Connection, 선택적 프로젝트 범위, 호스트 종류, guard 모드, 호스트 capability JSON, 설치 health, 타임스탬프, 메타데이터. |
-| `registry.sqlite` | Local web consent token | User Channel fallback token | 대기 사용자 판단을 위한 hash-only 일회성 token 메타데이터입니다. 프로젝트, 연결, 판단, capture basis, 상태, 만료, 생성/완료 메타데이터로 범위가 정해집니다. |
 | `state.sqlite` | `project_state` | 프로젝트 상태 헤더 | 저장 프로필, `state_version`, 현재 적용 `Task` 포인터, 프로젝트 강제 프로필. |
 | `state.sqlite` | `agent_sessions` | 관찰된 Agent Session | Agent Connection 하나에 대한 프로젝트 범위 세션, 선택적 guard 설치, 호스트 종류, 통합 프로필, 시작/종료 타임스탬프, 메타데이터. |
 | `state.sqlite` | `guard_events` | Guard decision 이벤트 | 연결 및 선택적 세션 또는 설치에 묶이는 프로젝트 범위 guard 이벤트입니다. decision, subject JSON, result JSON, 타임스탬프, 메타데이터를 포함합니다. |
@@ -96,6 +95,7 @@ API 스키마 형태와 저장소 기록 배치는 서로 다른 담당 문서�
 | `state.sqlite` | `tasks` | 작업 단위 상태 | 사용자 가치 작업 단위, 구체화 요약, 범위와 닫기 근거 리비전, nullable 현재 닫기 근거, 생명주기/결과/종료 닫기 요약, 현재 적용 `CompletionPolicy`, 현재 적용 Change Unit 포인터, 생성자 행위자 출처. |
 | `state.sqlite` | `change_units` | 범위 있는 작업 경계 | 범위 요약, 쓰기 근거, Change Unit 생명주기, 소유 `Task` 관계. |
 | `state.sqlite` | `user_judgments` | 사용자 소유 판단 상태 | 근거 스냅샷, 요청 맥락, 선택지, 민감 동작 범위, 해결 기계 동작과 결과, 판단 이유 메타데이터, User Channel 행위자 출처, 검증 근거, 보장 수준을 포함하는 대기, 해결됨, 오래됨, 대체됨, 만료됨 사용자 소유 판단. |
+| `state.sqlite` | Local web consent token | User Channel fallback token | 대기 사용자 판단을 위한 hash-only 일회성 token 메타데이터입니다. 프로젝트, 연결, 판단, capture basis, 상태, 만료, 생성/완료 메타데이터로 범위가 정해집니다. |
 | `state.sqlite` | `project_continuity_records` | 프로젝트 연속성 맥락 | 원천 `Task`가 닫힌 뒤에도 주소 지정할 수 있게 남는 프로젝트 수준 결정, 의무, 알려진 한계, 수락된 잔여 위험, 제약. |
 | `state.sqlite` | `write_checks` | 쓰기 티켓 권한 | 단일 사용 쓰기 티켓 권한 기록, 기준 버전, 시도 범위, 만료, 행위자 출처, 선택적 원천 판단, 소비 상태를 저장하는 물리 테이블입니다. 테이블 이름은 호환성 저장소 이름이며 공개 권한 개념이 아닙니다. |
 | `state.sqlite` | `runs` | 실행 또는 관찰 기록 | 커밋된 실행 또는 관찰 기록, 선택적 호환 쓰기 티켓 소비, 행위자 출처, 간결한 증거 갱신. |
@@ -119,7 +119,7 @@ API 스키마 형태와 저장소 기록 배치는 서로 다른 담당 문서�
 - Agent Connection 식별 정보는 `connection_internal_id`별로 고유합니다.
 - Connection Projects 멤버십은 `connection_internal_id`와 `project_internal_id`의 조합별로 고유하며, 하나의 연결이 등록된 프로젝트를 주소 지정할 수 있게 하는 유일한 registry 멤버십입니다.
 - Guard installation 식별 정보는 `guard_installation_id`별로 고유합니다. 프로젝트 범위 guard 설치는 등록된 프로젝트와 그 프로젝트에 대한 Connection Projects 멤버십을 가진 Agent Connection을 이름 붙여야 합니다.
-- Local web consent token 식별 정보는 저장된 token hash입니다. 원문 token은 저장하면 안 되며, 대기 token은 등록된 프로젝트, Agent Connection, 일치하는 Connection Projects 멤버십을 이름 붙여야 합니다.
+- Local web consent token 식별 정보는 하나의 project-state 데이터베이스 안에 저장된 token hash입니다. 원문 token은 저장하면 안 되며, 대기 token은 프로젝트, 선택된 Agent Connection, 대기 판단, capture basis, 만료를 이름 붙여야 합니다. Token 소비와 대응하는 사용자 판단 해결은 하나의 project-state 트랜잭션 또는 동등한 원자적 작업이어야 합니다.
 - 프로젝트 범위 행은 등록된 프로젝트에 속합니다.
 - Guard 세션, guard 이벤트, prompt capture, expected write, unrecorded change, session watch baseline, session watch observation은 프로젝트별 `state.sqlite` 하나에 속하며 그 기록을 관찰했거나 만든 Agent Connection을 이름 붙입니다.
 - `Task` 범위 행은 자신을 소유한 `tasks` 행과 같은 프로젝트와 같은 `Task`에 속합니다.

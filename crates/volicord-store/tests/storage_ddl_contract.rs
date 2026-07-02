@@ -95,7 +95,6 @@ fn initial_schemas_satisfy_connection_storage_contract() -> Result<(), Box<dyn E
             "agent_connections",
             "connection_projects",
             "guard_installations",
-            "local_web_consent_tokens",
             "schema_migrations",
         ],
     );
@@ -153,24 +152,6 @@ fn initial_schemas_satisfy_connection_storage_contract() -> Result<(), Box<dyn E
             "observed_binary_version",
         ],
     );
-    assert_columns_include(
-        &initial_registry_schema,
-        "local_web_consent_tokens",
-        &[
-            "token_hash",
-            "project_internal_id",
-            "connection_internal_id",
-            "judgment_id",
-            "capture_basis",
-            "status",
-            "created_at",
-            "expires_at",
-            "consumed_at",
-            "completed_at",
-            "created_metadata_json",
-            "completion_metadata_json",
-        ],
-    );
     assert_primary_key_columns(
         &initial_registry_schema,
         "connection_projects",
@@ -187,15 +168,6 @@ fn initial_schemas_satisfy_connection_storage_contract() -> Result<(), Box<dyn E
         "connection_projects",
         "projects",
         &[("project_internal_id", "project_internal_id")],
-    );
-    assert_foreign_key_columns(
-        &initial_registry_schema,
-        "local_web_consent_tokens",
-        "connection_projects",
-        &[
-            ("connection_internal_id", "connection_internal_id"),
-            ("project_internal_id", "project_internal_id"),
-        ],
     );
     assert_unique_index_columns(
         &initial_registry_schema,
@@ -226,10 +198,10 @@ fn initial_schemas_satisfy_connection_storage_contract() -> Result<(), Box<dyn E
         ],
     );
     assert!(
-        initial_registry_schema
-            .explicit_indexes
-            .contains_key("idx_local_web_consent_tokens_expiry"),
-        "expected local web consent expiry index"
+        !initial_registry_schema
+            .tables
+            .contains_key("local_web_consent_tokens"),
+        "local web consent tokens are project-state rows, not registry rows"
     );
 
     assert!(initial_project_schema.tables.contains_key("write_checks"));
@@ -244,6 +216,7 @@ fn initial_schemas_satisfy_connection_storage_contract() -> Result<(), Box<dyn E
             "unrecorded_changes",
             "session_watch_baselines",
             "session_watch_observations",
+            "local_web_consent_tokens",
         ],
     );
     assert_columns_include(
@@ -326,6 +299,47 @@ fn initial_schemas_satisfy_connection_storage_contract() -> Result<(), Box<dyn E
             "observation_status",
             "observed_paths_json",
         ],
+    );
+    assert_columns_include(
+        &initial_project_schema,
+        "local_web_consent_tokens",
+        &[
+            "project_id",
+            "token_hash",
+            "connection_internal_id",
+            "judgment_id",
+            "capture_basis",
+            "status",
+            "created_at",
+            "expires_at",
+            "consumed_at",
+            "completed_at",
+            "created_metadata_json",
+            "completion_metadata_json",
+        ],
+    );
+    assert_primary_key_columns(
+        &initial_project_schema,
+        "local_web_consent_tokens",
+        &["project_id", "token_hash"],
+    );
+    assert_foreign_key_columns(
+        &initial_project_schema,
+        "local_web_consent_tokens",
+        "project_state",
+        &[("project_id", "project_id")],
+    );
+    assert_foreign_key_columns(
+        &initial_project_schema,
+        "local_web_consent_tokens",
+        "user_judgments",
+        &[("project_id", "project_id"), ("judgment_id", "judgment_id")],
+    );
+    assert!(
+        initial_project_schema
+            .explicit_indexes
+            .contains_key("idx_local_web_consent_tokens_expiry"),
+        "expected local web consent expiry index"
     );
 
     assert_project_contract_behavior("initial project state.sqlite", &initial_project)?;

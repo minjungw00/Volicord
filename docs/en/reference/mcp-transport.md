@@ -167,8 +167,9 @@ HTTP serve request behavior:
   same bearer token.
 - `GET /consent` and `POST /consent` are local web consent endpoints only when
   local web consent is available. They are not MCP endpoints and do not use the
-  MCP bearer token. They require a valid one-time consent token tied to the
-  project, connection, and pending judgment.
+  MCP bearer token, and they are not authentication for a general network
+  service. They are a loopback User Channel capture path that requires a valid
+  one-time consent token tied to the project, connection, and pending judgment.
 - There are no unauthenticated arbitrary resource endpoints.
 - CORS preflight is accepted only for the MCP endpoint, only after Origin
   allowlist validation, and only when at least one allowed Origin is configured.
@@ -631,12 +632,21 @@ Local web consent endpoint behavior:
 - `POST /consent` accepts only
   `application/x-www-form-urlencoded` form submissions with the token, selected
   Core option ID, and optional note. If an `Origin` header is present, it must
-  match the consent endpoint origin.
-- A successful post consumes the token exactly once and records the answer
-  through Core with `actor_source=local_user`, `operation_category=user_only`,
-  and `resolved_verification_basis=local_user_local_web`.
-- Replay, expiration, consumed token reuse, wrong project, and wrong connection
-  are rejected before recording another answer.
+  match the consent endpoint origin. A validation failure, including an unknown
+  option ID, does not consume the token.
+- A successful post records the answer through Core with
+  `actor_source=local_user`, `operation_category=user_only`, and
+  `resolved_verification_basis=local_user_local_web`, and marks the token
+  `consumed` in the same project-state transaction or an equivalent atomic
+  operation.
+- Expiration, wrong project, wrong connection, wrong judgment binding, and
+  consumed token reuse are rejected before recording another answer. A duplicate
+  submit after a successful post returns the consumed-token result
+  deterministically and does not change the recorded judgment. A write failure
+  while recording the judgment leaves the token pending until it expires, as
+  long as the pending judgment remains current.
+- Local web consent captures a human user's answer. It must not be used to let
+  an Agent Connection answer user-owned judgments.
 - The endpoint serves no Runtime Home files, product repository files, static
   assets, MCP methods, or arbitrary APIs.
 

@@ -7,7 +7,7 @@
 //! crates.
 
 use volicord_store::{artifacts::ArtifactStoreBoundary, sqlite::SqliteStoreBoundary};
-use volicord_types::TypeBoundary;
+use volicord_types::{RecordUserJudgmentRequest, TypeBoundary};
 
 mod methods;
 pub mod pipeline;
@@ -18,6 +18,18 @@ pub use pipeline::{
     Clock, CorePipelineError, CoreResult, CoreService, InvocationContext, PipelineResponse,
     SystemClock, VerifiedInvocationContext,
 };
+
+/// Internal Core request for local web consent user capture.
+///
+/// The raw token is adapter-supplied capture context. It is validated and
+/// hashed for lookup but is not stored as public method request data.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LocalWebConsentJudgmentRequest {
+    pub request: RecordUserJudgmentRequest,
+    pub token: String,
+    pub expected_connection_internal_id: String,
+    pub completion_metadata_json: String,
+}
 
 /// Minimal Core service marker for validating crate boundaries.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]

@@ -147,7 +147,6 @@ pub fn validate_registry_schema(conn: &Connection) -> StoreResult<()> {
             "agent_connections",
             "connection_projects",
             "guard_installations",
-            "local_web_consent_tokens",
         ],
     )?;
     require_indexes(
@@ -167,9 +166,6 @@ pub fn validate_registry_schema(conn: &Connection) -> StoreResult<()> {
             "idx_guard_installations_status",
             "idx_guard_installations_scope_project",
             "idx_guard_installations_scope_global",
-            "idx_local_web_consent_tokens_judgment",
-            "idx_local_web_consent_tokens_connection",
-            "idx_local_web_consent_tokens_expiry",
         ],
     )?;
     require_column_spec(
@@ -364,7 +360,6 @@ pub fn validate_registry_schema(conn: &Connection) -> StoreResult<()> {
         require_column(conn, REGISTRY_DATABASE_KIND, "guard_installations", column)?;
     }
     validate_guard_installations_constraints(conn)?;
-    validate_local_web_consent_tokens(conn)?;
     validate_registry_versions(conn)?;
     validate_foreign_key_check(conn, REGISTRY_DATABASE_KIND)?;
     Ok(())
@@ -410,6 +405,7 @@ pub fn validate_project_state_schema(conn: &Connection) -> StoreResult<()> {
             "unrecorded_changes",
             "session_watch_baselines",
             "session_watch_observations",
+            "local_web_consent_tokens",
         ],
     )?;
     require_views(conn, PROJECT_STATE_DATABASE_KIND, &["task_events"])?;
@@ -462,6 +458,9 @@ pub fn validate_project_state_schema(conn: &Connection) -> StoreResult<()> {
             "idx_session_watch_observations_baseline",
             "idx_session_watch_observations_expected_write",
             "idx_session_watch_observations_unrecorded_change",
+            "idx_local_web_consent_tokens_judgment",
+            "idx_local_web_consent_tokens_connection",
+            "idx_local_web_consent_tokens_expiry",
         ],
     )?;
     require_column(
@@ -734,6 +733,7 @@ pub fn validate_project_state_schema(conn: &Connection) -> StoreResult<()> {
     validate_artifacts_integrity_status_constraint(conn)?;
     validate_artifacts_body_path_constraint(conn)?;
     validate_guard_project_record_tables(conn)?;
+    validate_local_web_consent_tokens(conn)?;
     validate_project_state_versions(conn)?;
     validate_foreign_key_check(conn, PROJECT_STATE_DATABASE_KIND)?;
     Ok(())
@@ -1352,8 +1352,8 @@ fn validate_guard_installations_constraints(conn: &Connection) -> StoreResult<()
 
 fn validate_local_web_consent_tokens(conn: &Connection) -> StoreResult<()> {
     for (column, not_null) in [
+        ("project_id", true),
         ("token_hash", true),
-        ("project_internal_id", true),
         ("connection_internal_id", true),
         ("judgment_id", true),
         ("capture_basis", true),
@@ -1367,7 +1367,7 @@ fn validate_local_web_consent_tokens(conn: &Connection) -> StoreResult<()> {
     ] {
         require_column_spec(
             conn,
-            REGISTRY_DATABASE_KIND,
+            PROJECT_STATE_DATABASE_KIND,
             "local_web_consent_tokens",
             ColumnSpec {
                 name: column,
@@ -1378,7 +1378,11 @@ fn validate_local_web_consent_tokens(conn: &Connection) -> StoreResult<()> {
                     "created_metadata_json" | "completion_metadata_json" => Some("'{}'"),
                     _ => None,
                 },
-                primary_key_position: if column == "token_hash" { 1 } else { 0 },
+                primary_key_position: match column {
+                    "project_id" => 1,
+                    "token_hash" => 2,
+                    _ => 0,
+                },
             },
         )?;
     }
@@ -1398,7 +1402,7 @@ fn validate_local_web_consent_tokens(conn: &Connection) -> StoreResult<()> {
     for fragment in required_fragments {
         if !table_sql.contains(fragment) {
             return Err(StoreError::schema_invariant(
-                REGISTRY_DATABASE_KIND,
+                PROJECT_STATE_DATABASE_KIND,
                 "local_web_consent_tokens constraints are missing or malformed",
             ));
         }
@@ -1788,6 +1792,11 @@ mod tests {
         assert!(sqlite_object_exists(&conn, "table", "agent_connections")?);
         assert!(sqlite_object_exists(&conn, "table", "connection_projects")?);
         assert!(sqlite_object_exists(&conn, "table", "guard_installations")?);
+        assert!(!sqlite_object_exists(
+            &conn,
+            "table",
+            "local_web_consent_tokens"
+        )?);
         Ok(())
     }
 
@@ -1807,6 +1816,12 @@ mod tests {
             PROJECT_STATE_DATABASE_KIND,
             1,
             "project_state_initial_authority_events_v1"
+        )?);
+        assert!(migration_exists(
+            &conn,
+            PROJECT_STATE_DATABASE_KIND,
+            2,
+            "project_state_local_web_consent_tokens_v2"
         )?);
         drop(conn);
 
@@ -1828,6 +1843,11 @@ mod tests {
             &conn,
             "table",
             "session_watch_observations"
+        )?);
+        assert!(sqlite_object_exists(
+            &conn,
+            "table",
+            "local_web_consent_tokens"
         )?);
         validate_tool_invocations_columns(&conn)?;
         validate_tool_invocations_operation_category_constraint(&conn)?;

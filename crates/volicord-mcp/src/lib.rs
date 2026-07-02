@@ -25,7 +25,8 @@ use std::{
 use serde::Serialize;
 use serde_json::{json, Map, Value};
 use volicord_core::{
-    CoreBoundary, CorePipelineError, CoreService, InvocationContext, PipelineResponse,
+    CoreBoundary, CorePipelineError, CoreService, InvocationContext,
+    LocalWebConsentJudgmentRequest, PipelineResponse,
 };
 use volicord_store::{
     agent_connections::{
@@ -40,11 +41,9 @@ use volicord_store::{
         AgentSessionInsert,
     },
     local_consent::{
-        consume_local_web_consent_token, create_local_web_consent_token,
-        local_web_consent_current_timestamp, validate_local_web_consent_token,
-        LocalWebConsentTokenCheck, LocalWebConsentTokenConsume, LocalWebConsentTokenConsumeOutcome,
-        LocalWebConsentTokenCreate, LocalWebConsentTokenRecord, LocalWebConsentTokenRejection,
-        LocalWebConsentTokenValidation,
+        create_local_web_consent_token, local_web_consent_current_timestamp,
+        validate_local_web_consent_token, LocalWebConsentTokenCheck, LocalWebConsentTokenCreate,
+        LocalWebConsentTokenRecord, LocalWebConsentTokenRejection, LocalWebConsentTokenValidation,
     },
     runtime_home::{
         resolve_runtime_home as resolve_shared_runtime_home, RuntimeHomeResolutionError,
@@ -442,7 +441,8 @@ impl McpAdapter {
             return Ok(());
         }
 
-        let now = local_web_consent_current_timestamp(&self.runtime_home)
+        let now = CoreProjectStore::open(&self.runtime_home, project_id)
+            .and_then(|store| store.current_timestamp())
             .map_err(McpAdapterError::Store)?;
         self.ensure_agent_session_for_watch(project_id, session_id, &now)?;
 
@@ -2270,7 +2270,7 @@ fn handle_local_web_consent_get(adapter: &McpAdapter, request: HttpRequest) -> H
             "The consent link is missing required token context.",
         );
     };
-    let now = match local_web_consent_current_timestamp(&adapter.runtime_home) {
+    let now = match local_web_consent_timestamp_for_validation(adapter, project_id) {
         Ok(now) => now,
         Err(_) => {
             return local_web_consent_error_page(
@@ -2355,7 +2355,7 @@ fn handle_local_web_consent_post(adapter: &McpAdapter, request: HttpRequest) -> 
         );
     }
 
-    let now = match local_web_consent_current_timestamp(&adapter.runtime_home) {
+    let now = match local_web_consent_timestamp_for_validation(adapter, project_id) {
         Ok(now) => now,
         Err(_) => {
             return local_web_consent_error_page(
@@ -2401,54 +2401,17 @@ fn handle_local_web_consent_post(adapter: &McpAdapter, request: HttpRequest) -> 
         );
     };
 
-    let completion_metadata = json!({
-        "selection_recording": "attempted",
-        "endpoint": LOCAL_WEB_CONSENT_PATH
-    })
-    .to_string();
-    let consume = match consume_local_web_consent_token(
-        &adapter.runtime_home,
-        LocalWebConsentTokenConsume {
-            token: token.to_owned(),
-            expected_project_id: project_id.to_owned(),
-            expected_connection_internal_id: adapter.context.connection_internal_id.to_string(),
-            now: now.clone(),
-            completion_metadata_json: completion_metadata,
-        },
-    ) {
-        Ok(outcome) => outcome,
-        Err(_) => {
-            return local_web_consent_error_page(
-                500,
-                "Internal Server Error",
-                "STORE_UNAVAILABLE",
-                "Volicord could not consume this consent token.",
-            )
-        }
-    };
-    let consumed = match consume {
-        LocalWebConsentTokenConsumeOutcome::Consumed(record) => record,
-        LocalWebConsentTokenConsumeOutcome::Rejected(rejection) => {
-            return local_web_consent_rejection_page(rejection)
-        }
-    };
-
-    match record_local_web_judgment(adapter, &judgment, &selected_option, note) {
-        Ok(recorded) if recorded.response_value["base"]["response_kind"].as_str() == Some("result") => {
+    match record_local_web_judgment(adapter, &judgment, &selected_option, token, note) {
+        Ok(recorded)
+            if recorded.response_value["base"]["response_kind"].as_str() == Some("result") =>
+        {
+            let consumed =
+                local_web_consumed_record_after_recording(adapter, project_id, token, &now)
+                    .unwrap_or(record);
             local_web_consent_success_page(&consumed, &judgment, &selected_option)
         }
-        Ok(_) => local_web_consent_error_page(
-            409,
-            "Conflict",
-            "JUDGMENT_RECORDING_REJECTED",
-            "Volicord could not record this answer because the pending judgment is no longer current.",
-        ),
-        Err(_) => local_web_consent_error_page(
-            500,
-            "Internal Server Error",
-            "JUDGMENT_RECORDING_FAILED",
-            "Volicord could not record this answer. The token has been consumed.",
-        ),
+        Ok(_) => local_web_post_recording_rejected(adapter, project_id, token, &now),
+        Err(_) => local_web_post_recording_failed(adapter, project_id, token, &now),
     }
 }
 
@@ -2468,6 +2431,84 @@ fn validate_local_web_consent(
         },
     )
     .map_err(McpAdapterError::Store)
+}
+
+fn local_web_consent_timestamp_for_validation(
+    adapter: &McpAdapter,
+    project_id: &str,
+) -> Result<String, McpAdapterError> {
+    match local_web_consent_current_timestamp(&adapter.runtime_home, project_id) {
+        Ok(now) => Ok(now),
+        Err(StoreError::NotFound { entity, id }) if entity == "project" => {
+            let projects = match adapter.allowed_project_availabilities("local web consent") {
+                Ok(projects) => projects,
+                Err(_) => return Err(McpAdapterError::Store(StoreError::NotFound { entity, id })),
+            };
+            for project in projects {
+                if project.available {
+                    return local_web_consent_current_timestamp(
+                        &adapter.runtime_home,
+                        &project.project_id,
+                    )
+                    .map_err(McpAdapterError::Store);
+                }
+            }
+            Err(McpAdapterError::Store(StoreError::NotFound { entity, id }))
+        }
+        Err(error) => Err(McpAdapterError::Store(error)),
+    }
+}
+
+fn local_web_consumed_record_after_recording(
+    adapter: &McpAdapter,
+    project_id: &str,
+    token: &str,
+    now: &str,
+) -> Option<LocalWebConsentTokenRecord> {
+    match validate_local_web_consent(adapter, project_id, token, now).ok()? {
+        LocalWebConsentTokenValidation::Rejected(LocalWebConsentTokenRejection::Consumed(
+            record,
+        )) => Some(record),
+        _ => None,
+    }
+}
+
+fn local_web_post_recording_rejected(
+    adapter: &McpAdapter,
+    project_id: &str,
+    token: &str,
+    now: &str,
+) -> HttpResponse {
+    match validate_local_web_consent(adapter, project_id, token, now) {
+        Ok(LocalWebConsentTokenValidation::Rejected(rejection)) => {
+            local_web_consent_rejection_page(rejection)
+        }
+        _ => local_web_consent_error_page(
+            409,
+            "Conflict",
+            "JUDGMENT_RECORDING_REJECTED",
+            "Volicord could not record this answer because the pending judgment is no longer current. The token remains usable until it expires.",
+        ),
+    }
+}
+
+fn local_web_post_recording_failed(
+    adapter: &McpAdapter,
+    project_id: &str,
+    token: &str,
+    now: &str,
+) -> HttpResponse {
+    match validate_local_web_consent(adapter, project_id, token, now) {
+        Ok(LocalWebConsentTokenValidation::Rejected(rejection)) => {
+            local_web_consent_rejection_page(rejection)
+        }
+        _ => local_web_consent_error_page(
+            500,
+            "Internal Server Error",
+            "JUDGMENT_RECORDING_FAILED",
+            "Volicord could not record this answer. The token remains usable until it expires if the pending judgment is still current.",
+        ),
+    }
 }
 
 fn local_web_pending_judgment(
@@ -2593,6 +2634,7 @@ fn record_local_web_judgment(
     adapter: &McpAdapter,
     judgment: &UserJudgment,
     selected_option: &UserJudgmentOption,
+    token: &str,
     note: Option<String>,
 ) -> Result<PipelineResponse, McpAdapterError> {
     let state_version = judgment.basis.created_at_state_version + 1;
@@ -2635,7 +2677,19 @@ fn record_local_web_judgment(
     );
     adapter
         .core
-        .record_user_judgment(request, invocation)
+        .record_local_web_consent_judgment(
+            LocalWebConsentJudgmentRequest {
+                request,
+                token: token.to_owned(),
+                expected_connection_internal_id: adapter.context.connection_internal_id.to_string(),
+                completion_metadata_json: json!({
+                    "selection_recording": "recorded",
+                    "endpoint": LOCAL_WEB_CONSENT_PATH
+                })
+                .to_string(),
+            },
+            invocation,
+        )
         .map_err(McpAdapterError::Core)
 }
 
@@ -5830,7 +5884,8 @@ mod tests {
             LOCAL_WEB_CONSENT_PATH
         )));
         let token = token_from_consent_url(url)?;
-        let now = local_web_consent_current_timestamp(fixture.runtime_home_path())?;
+        let now =
+            local_web_consent_current_timestamp(fixture.runtime_home_path(), fixture.project_id())?;
         let validation = validate_local_web_consent_token(
             fixture.runtime_home_path(),
             LocalWebConsentTokenCheck {
@@ -5904,6 +5959,42 @@ mod tests {
     }
 
     #[test]
+    fn local_web_consent_validation_failure_leaves_token_reusable() -> Result<(), Box<dyn Error>> {
+        let fixture = CoreFixture::new("mcp-local-web-validation-retry")?;
+        let (task_id, pending_response) = create_pending_product_judgment(&fixture)?;
+        let token = "8888888888888888888888888888888888888888888888888888888888888888";
+        create_consent_token_for_response(&fixture, &pending_response, token, 60)?;
+        let mut server = consent_server(&fixture)?;
+
+        let invalid = server.handle_request(consent_post_request(
+            Some(consent_base_url()),
+            &format!(
+                "project={}&token={}&selected_option_id=missing",
+                percent_encode_query(fixture.project_id()),
+                token
+            ),
+        ));
+        assert_eq!(invalid.status, 400);
+        assert!(http_body_text(&invalid)?.contains("INVALID_SELECTION"));
+
+        let valid = server.handle_request(consent_post_request(
+            Some(consent_base_url()),
+            &format!(
+                "project={}&token={}&selected_option_id=keep",
+                percent_encode_query(fixture.project_id()),
+                token
+            ),
+        ));
+
+        assert_eq!(valid.status, 200);
+        assert!(http_body_text(&valid)?.contains("Answer recorded"));
+        let pending_value = pending_response.response_value;
+        let record = stored_judgment_record(&fixture, &task_id, &pending_value)?;
+        assert_eq!(record.status, "resolved");
+        Ok(())
+    }
+
+    #[test]
     fn local_web_consent_rejects_invalid_token() -> Result<(), Box<dyn Error>> {
         let fixture = CoreFixture::new("mcp-local-web-invalid")?;
         let mut server = consent_server(&fixture)?;
@@ -5926,6 +6017,7 @@ mod tests {
         create_consent_token_for_response(&fixture, &pending_response, token, 60)?;
         volicord_store::local_consent::expire_local_web_consent_tokens(
             fixture.runtime_home_path(),
+            fixture.project_id(),
             "2999-01-01T00:00:00.000Z",
         )?;
         let mut server = consent_server(&fixture)?;

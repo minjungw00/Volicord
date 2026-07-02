@@ -150,6 +150,141 @@ impl CoreService {
             },
         )
     }
+
+    /// Records a local web consent answer and consumes its token in one Core commit.
+    pub fn record_local_web_consent_judgment(
+        &self,
+        consent_request: LocalWebConsentJudgmentRequest,
+        invocation: InvocationContext,
+    ) -> CoreResult<PipelineResponse> {
+        let request = consent_request.request;
+        let request_json = serde_json::to_value(&request)?;
+        let task_requirement = request
+            .envelope
+            .task_id
+            .as_ref()
+            .cloned()
+            .map(TaskRequirement::Exact)
+            .unwrap_or(TaskRequirement::None);
+        let prepared = match prepare_or_response(
+            self,
+            MethodName::RecordUserJudgment,
+            request.envelope.clone(),
+            request_json,
+            invocation,
+            mutation_method_policy(
+                request.operation_category(),
+                task_requirement,
+                request.envelope.dry_run,
+            ),
+        )? {
+            Ok(prepared) => prepared,
+            Err(response) => return Ok(response),
+        };
+        let token_now = match prepared.store.current_timestamp() {
+            Ok(now) => now,
+            Err(error) => {
+                return Ok(store_error_response(
+                    &request.envelope,
+                    &prepared.context.project_state,
+                    error,
+                ))
+            }
+        };
+        let token_record = match validate_local_web_consent_token(
+            prepared.store.runtime_home(),
+            LocalWebConsentTokenCheck {
+                token: consent_request.token,
+                expected_project_id: request.envelope.project_id.as_str().to_owned(),
+                expected_connection_internal_id: consent_request.expected_connection_internal_id,
+                now: token_now.clone(),
+            },
+        ) {
+            Ok(LocalWebConsentTokenValidation::Valid(record)) => record,
+            Ok(LocalWebConsentTokenValidation::Rejected(rejection)) => {
+                return Ok(local_web_consent_token_rejected_response(
+                    &request.envelope,
+                    Some(prepared.context.project_state.state_version),
+                    rejection,
+                ))
+            }
+            Err(error) => {
+                return Ok(store_error_response(
+                    &request.envelope,
+                    &prepared.context.project_state,
+                    error,
+                ))
+            }
+        };
+        if token_record.judgment_id != request.user_judgment_id.as_str() {
+            return Ok(decision_rejected_response(
+                &request.envelope,
+                Some(prepared.context.project_state.state_version),
+                "local web consent token is not bound to this pending judgment",
+            ));
+        }
+        if token_record.capture_basis != VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB {
+            return Ok(decision_rejected_response(
+                &request.envelope,
+                Some(prepared.context.project_state.state_version),
+                "local web consent token capture basis is not supported for this path",
+            ));
+        }
+
+        let mut plan = match plan_record_user_judgment(
+            self,
+            &prepared.store,
+            &prepared.context.project_state,
+            request.clone(),
+            &prepared.context.verified_invocation,
+            &prepared.context.verified_actor,
+        ) {
+            Ok(plan) => plan,
+            Err(error) => {
+                return plan_error_response(
+                    &request.envelope,
+                    &prepared.context.project_state,
+                    error,
+                )
+            }
+        };
+
+        if request.envelope.dry_run {
+            return self.execute_prepared_request(
+                prepared,
+                OwnerPipelineBranch::DryRunPreview {
+                    dry_run_summary: dry_run_summary(
+                        "user_judgment",
+                        "resolve_pending",
+                        "Request would record the user's answer for one pending judgment.",
+                        plan.next_actions,
+                    ),
+                },
+            );
+        }
+
+        plan.storage_mutations.insert(
+            0,
+            CoreStorageMutation::ConsumeLocalWebConsentToken(LocalWebConsentTokenConsumption {
+                token_hash: token_record.token_hash,
+                connection_internal_id: token_record.connection_internal_id,
+                judgment_id: token_record.judgment_id,
+                consumed_at: token_now,
+                completion_metadata_json: consent_request.completion_metadata_json,
+            }),
+        );
+        self.execute_prepared_request(
+            prepared,
+            OwnerPipelineBranch::CommitMutation {
+                result_fields: plan.result_fields,
+                event_kind: "user_judgment_recorded".to_owned(),
+                event_payload: plan.event_payload,
+                task_id: Some(plan.task_id),
+                change_unit_id: plan.change_unit_id,
+                storage_mutations: plan.storage_mutations,
+            },
+        )
+    }
 }
 
 fn plan_request_user_judgment(
@@ -2128,4 +2263,25 @@ fn decision_rejected_response(
         )],
     )
     .expect("rejected response serialization should succeed")
+}
+
+fn local_web_consent_token_rejected_response(
+    envelope: &ToolEnvelope,
+    state_version: Option<u64>,
+    rejection: LocalWebConsentTokenRejection,
+) -> PipelineResponse {
+    let message = match rejection {
+        LocalWebConsentTokenRejection::Invalid => "local web consent token is not valid",
+        LocalWebConsentTokenRejection::Expired(_) => "local web consent token is expired",
+        LocalWebConsentTokenRejection::Consumed(_) => {
+            "local web consent token has already been used"
+        }
+        LocalWebConsentTokenRejection::WrongProject { .. } => {
+            "local web consent token is not bound to this project"
+        }
+        LocalWebConsentTokenRejection::WrongConnection { .. } => {
+            "local web consent token is not bound to this connection"
+        }
+    };
+    decision_rejected_response(envelope, state_version, message)
 }

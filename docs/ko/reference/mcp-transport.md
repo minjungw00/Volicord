@@ -138,8 +138,9 @@ HTTP serve 요청 동작:
   endpoint에서 구현하지 않습니다.
 - `GET /healthz`는 최소 로컬 health endpoint이지만 같은 bearer token을 요구합니다.
 - `GET /consent`와 `POST /consent`는 local web consent를 사용할 수 있을 때만 열리는
-  endpoint입니다. MCP endpoint가 아니며 MCP bearer token을 사용하지 않습니다. 프로젝트,
-  연결, 대기 판단에 묶인 유효한 일회성 consent token이 필요합니다.
+  endpoint입니다. MCP endpoint가 아니며 MCP bearer token을 사용하지 않고, 일반 네트워크
+  서비스 인증도 아닙니다. 프로젝트, 연결, 대기 판단에 묶인 유효한 일회성 consent token이
+  필요한 loopback User Channel capture 경로입니다.
 - 인증 없는 임의 resource endpoint는 없습니다.
 - CORS preflight는 MCP endpoint에 대해서만, Origin 허용 목록 검증 뒤에만, 그리고 허용된
   Origin이 하나 이상 설정되어 있을 때만 받습니다.
@@ -561,12 +562,17 @@ Local web consent endpoint 동작:
   form을 담은 최소 HTML page를 렌더링합니다.
 - `POST /consent`는 token, 선택한 Core option ID, 선택적 note가 들어 있는
   `application/x-www-form-urlencoded` form 제출만 받습니다. `Origin` header가 있으면
-  consent endpoint origin과 일치해야 합니다.
-- 성공한 post는 token을 정확히 한 번 소비하고 Core를 통해 `actor_source=local_user`,
-  `operation_category=user_only`, `resolved_verification_basis=local_user_local_web`으로
-  답변을 기록합니다.
-- replay, 만료, 소비된 token 재사용, wrong project, wrong connection은 다른 답변을
-  기록하기 전에 거절합니다.
+  consent endpoint origin과 일치해야 합니다. 알 수 없는 option ID를 포함한 검증 실패는
+  token을 소비하지 않습니다.
+- 성공한 post는 Core를 통해 `actor_source=local_user`, `operation_category=user_only`,
+  `resolved_verification_basis=local_user_local_web`으로 답변을 기록하고, 같은 project-state
+  트랜잭션 또는 동등한 원자적 작업 안에서 token을 `consumed`로 표시합니다.
+- 만료, wrong project, wrong connection, wrong judgment binding, 소비된 token 재사용은 다른
+  답변을 기록하기 전에 거절합니다. 성공한 post 뒤의 duplicate submit은 결정적으로 consumed-token
+  결과를 반환하며 기록된 판단을 바꾸지 않습니다. 판단 기록 중 write failure가 발생하면 대기
+  판단이 여전히 current인 동안 token은 만료 전까지 `pending`으로 남습니다.
+- Local web consent는 사람 사용자의 답변을 capture합니다. Agent Connection이 사용자 소유
+  판단에 답하도록 하는 경로로 사용하면 안 됩니다.
 - endpoint는 Runtime Home 파일, Product Repository 파일, 정적 asset, MCP 메서드, 임의
   API를 제공하지 않습니다.
 

@@ -590,6 +590,7 @@ watch 비교를 실행하거나, `session_watch_observations`를 만들거나,
 
 - `user_judgments` 행을 `status='resolved'`로 설정합니다.
 - 선택된 선택지, `resolution_machine_action`, `resolution_outcome`, 파생된 해결 행위자 출처, 답변 본문, 설명용 판단 이유 메타데이터, 근거 상태를 메서드 담당 문서가 허용한 대로 저장합니다.
+- local web consent capture 경로로 호출된 경우, 판단 해결과 같은 project-state 커밋 안에서 일치하는 `local_web_consent_tokens` 행을 `status='consumed'`로 설정합니다.
 - 메서드 담당 문서가 선택할 때 수락된 제품, 기술, 범위 결정과 수락된 현재 잔여 위험에 대한 `project_continuity_records`를 생성합니다.
 - 종속 차단 사유 또는 다음 행동을 갱신합니다.
 - 이벤트를 추가합니다.
@@ -600,6 +601,8 @@ watch 비교를 실행하거나, `session_watch_observations`를 만들거나,
 
 - 유효한 `dry_run` 미리보기
 - 거절된 시도
+
+검증 실패, 잘못된 binding, 만료, 판단 기록 write failure를 포함한 거절된 local web consent 시도는 token을 소비하거나 판단을 해결하면 안 됩니다.
 
 유효한 `dry_run` 미리보기는 아래 항목을 만들지 않습니다.
 

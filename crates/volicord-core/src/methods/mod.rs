@@ -13,15 +13,19 @@ use volicord_store::{
         ArtifactLinkInsert, ArtifactPromotion, ChangeUnitInsert, ChangeUnitRecord,
         CoreProjectStore, CoreStorageMutation, EvidenceObservationInsert,
         EvidenceObservationRecord, EvidenceSummaryRecord, EvidenceSummaryUpsert,
-        ProjectContinuityRecordInsert, ProjectContinuityRecordRecord, ProjectStateHeader,
-        RunInsert, RunObservedChangesRecord, RunRecord, StoredArtifactRecord,
-        StoredArtifactStagingRecord, StoredRecordRef, TaskCloseBasisUpdate, TaskCloseUpdate,
-        TaskInsert, TaskRecord, TaskScopeRevisionUpdate, TaskScopeUpdate,
-        UnrecordedChangeResolutionUpdate, UserJudgmentInsert, UserJudgmentInvalidation,
-        UserJudgmentRecord, UserJudgmentResolutionUpdate, WriteCheckConsumption, WriteCheckRecord,
-        WriteTicketInsert,
+        LocalWebConsentTokenConsumption, ProjectContinuityRecordInsert,
+        ProjectContinuityRecordRecord, ProjectStateHeader, RunInsert, RunObservedChangesRecord,
+        RunRecord, StoredArtifactRecord, StoredArtifactStagingRecord, StoredRecordRef,
+        TaskCloseBasisUpdate, TaskCloseUpdate, TaskInsert, TaskRecord, TaskScopeRevisionUpdate,
+        TaskScopeUpdate, UnrecordedChangeResolutionUpdate, UserJudgmentInsert,
+        UserJudgmentInvalidation, UserJudgmentRecord, UserJudgmentResolutionUpdate,
+        WriteCheckConsumption, WriteCheckRecord, WriteTicketInsert,
     },
     guards::{GuardHealthRecord, UnrecordedChangeRecord},
+    local_consent::{
+        validate_local_web_consent_token, LocalWebConsentTokenCheck, LocalWebConsentTokenRejection,
+        LocalWebConsentTokenValidation,
+    },
     StoreError,
 };
 use volicord_types::{
@@ -108,6 +112,7 @@ use crate::policy::{
         write_decision_reason, SensitiveApprovalRequirement,
     },
 };
+use crate::LocalWebConsentJudgmentRequest;
 
 mod close_task;
 mod intake;

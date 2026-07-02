@@ -43,7 +43,7 @@ The physical `write_checks` table stores write-ticket authority records for prod
 
 `registry.sqlite` stores Runtime Home identity, installation profile records, project registration, project aliases, Agent Connection records, Connection Projects membership, guard installation records, and host configuration inventory. It does not store project-local Core state.
 
-Applying the current migrations produces registry schema version `4` for storage profile `baseline_sqlite_v3`. The first DDL block is the initial physical registry schema version `1`; the guard-record additions after it are schema version `2`, the guard-installation lifecycle replacement is schema version `3`, and local web consent tokens are schema version `4`. Storage profile and migration boundary behavior are owned by [Storage Versioning](storage-versioning.md).
+Applying the current migrations produces registry schema version `5` for storage profile `baseline_sqlite_v3`. The first DDL block is the initial physical registry schema version `1`; the guard-record additions after it are schema version `2`, the guard-installation lifecycle replacement is schema version `3`, the legacy registry local web consent token table is schema version `4`, and schema version `5` removes that legacy registry token table. Active local web consent token rows are project-state records in project-state schema version `2`. Storage profile and migration boundary behavior are owned by [Storage Versioning](storage-versioning.md).
 
 ```sql
 CREATE TABLE schema_migrations (
@@ -233,59 +233,19 @@ CREATE UNIQUE INDEX idx_guard_installations_scope_global
 
 The version `3` registry migration updates existing `runtime_home.schema_version` rows from `2` to `3`.
 
-Registry schema version `4` adds local web consent token records for pending
-user judgments:
+Registry schema version `4` added legacy registry local web consent token
+records. Registry schema version `5` removes that legacy table so active
+local web consent token state can live with `user_judgments` in project-state
+storage:
 
 ```sql
-CREATE TABLE local_web_consent_tokens (
-  token_hash TEXT NOT NULL PRIMARY KEY CHECK (length(token_hash) = 64),
-  project_internal_id TEXT NOT NULL,
-  connection_internal_id TEXT NOT NULL,
-  judgment_id TEXT NOT NULL,
-  capture_basis TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'pending'
-    CHECK (status IN ('pending', 'consumed', 'expired')),
-  created_at TEXT NOT NULL,
-  expires_at TEXT NOT NULL,
-  consumed_at TEXT,
-  completed_at TEXT,
-  created_metadata_json TEXT NOT NULL DEFAULT '{}',
-  completion_metadata_json TEXT NOT NULL DEFAULT '{}',
-  FOREIGN KEY (project_internal_id) REFERENCES projects (project_internal_id) ON DELETE RESTRICT,
-  FOREIGN KEY (connection_internal_id)
-    REFERENCES agent_connections (connection_internal_id)
-    ON DELETE RESTRICT,
-  FOREIGN KEY (connection_internal_id, project_internal_id)
-    REFERENCES connection_projects (connection_internal_id, project_internal_id)
-    ON DELETE RESTRICT,
-  CHECK (
-    (
-      status = 'pending'
-      AND consumed_at IS NULL
-      AND completed_at IS NULL
-    )
-    OR (
-      status = 'consumed'
-      AND consumed_at IS NOT NULL
-      AND completed_at IS NOT NULL
-    )
-    OR (
-      status = 'expired'
-      AND consumed_at IS NULL
-      AND completed_at IS NULL
-    )
-  )
-);
-
-CREATE INDEX idx_local_web_consent_tokens_judgment
-  ON local_web_consent_tokens (project_internal_id, judgment_id, status);
-CREATE INDEX idx_local_web_consent_tokens_connection
-  ON local_web_consent_tokens (connection_internal_id, status, expires_at);
-CREATE INDEX idx_local_web_consent_tokens_expiry
-  ON local_web_consent_tokens (status, expires_at);
+DROP INDEX IF EXISTS idx_local_web_consent_tokens_judgment;
+DROP INDEX IF EXISTS idx_local_web_consent_tokens_connection;
+DROP INDEX IF EXISTS idx_local_web_consent_tokens_expiry;
+DROP TABLE IF EXISTS local_web_consent_tokens;
 ```
 
-The version `4` registry migration updates existing `runtime_home.schema_version` rows from `3` to `4`.
+The version `5` registry migration updates existing `runtime_home.schema_version` rows from `4` to `5`.
 
 Registry constraints:
 
@@ -302,14 +262,13 @@ Registry constraints:
 - `agent_connections.last_verification_report_json` stores the latest verification report JSON object. `agent_connections.last_user_actions_json` stores the latest user-action JSON array.
 - `connection_projects` is the explicit project allowlist for one Agent Connection. It stores membership with `connection_internal_id` and `project_internal_id`. Deleting a project or connection that still has membership is restricted.
 - `guard_installations` stores local guard setup lifecycle state and host capability for one Runtime Home, Agent Connection, and optional project scope. Its internal `guard_mode` values are `record` and `observe`. Its `installation_status` values are `absent`, `configured`, `reload_required`, `active`, `degraded`, `stale`, and `broken`. A valid observed guard hook for the recorded project, Agent Connection, host kind, integration profile, policy hash, and known hook phase records first-seen and last-seen metadata. It can move a row to `active` only when the selected profile is `observe`, required hook configuration is complete, and the row is not `degraded`, `stale`, or `broken`; otherwise the observation metadata is recorded without making the installation effectively active. These rows are local authority records for host observation; they are not OS-level enforcement proof or write-prevention proof.
-- `local_web_consent_tokens` stores hashed one-time local web consent tokens for pending user judgments. Rows are scoped to a registered project, Agent Connection, and Connection Projects membership. The raw token is not stored. `status` is `pending`, `consumed`, or `expired`; consumed rows must have completion timestamps, and pending or expired rows must not. These rows are transient User Channel capture metadata and are not Core judgment authority by themselves.
 - `schema_migrations` records applied registry schema versions. Migration execution semantics stay with [Storage Versioning](storage-versioning.md).
 
 ## Project `state.sqlite`
 
 Each registered project has one project-local `state.sqlite`. It stores Core state for that project and repeats `project_id` in project-scoped rows so foreign keys and indexes can enforce same-project relationships.
 
-Applying the current initial project-state schema produces project-state schema version `1` for storage profile `baseline_sqlite_v3`. The DDL blocks below are split by record area for readability and together describe the baseline project-state layout. Storage profile and migration boundary behavior are owned by [Storage Versioning](storage-versioning.md).
+Applying the current project-state migrations produces project-state schema version `2` for storage profile `baseline_sqlite_v3`. The DDL blocks below are split by record area for readability and together describe the baseline project-state layout. Project-state schema version `2` adds local web consent token records so token lifecycle and user judgment resolution can commit in the same project-state transaction. Storage profile and migration boundary behavior are owned by [Storage Versioning](storage-versioning.md).
 
 ```sql
 CREATE TABLE schema_migrations (
@@ -483,6 +442,51 @@ CREATE TABLE user_judgments (
   FOREIGN KEY (project_id, task_id, change_unit_id)
     REFERENCES change_units (project_id, task_id, change_unit_id)
 );
+
+CREATE TABLE local_web_consent_tokens (
+  project_id TEXT NOT NULL,
+  token_hash TEXT NOT NULL CHECK (length(token_hash) = 64),
+  connection_internal_id TEXT NOT NULL,
+  judgment_id TEXT NOT NULL,
+  capture_basis TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'consumed', 'expired')),
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  consumed_at TEXT,
+  completed_at TEXT,
+  created_metadata_json TEXT NOT NULL DEFAULT '{}',
+  completion_metadata_json TEXT NOT NULL DEFAULT '{}',
+  PRIMARY KEY (project_id, token_hash),
+  FOREIGN KEY (project_id) REFERENCES project_state (project_id) ON DELETE RESTRICT,
+  FOREIGN KEY (project_id, judgment_id)
+    REFERENCES user_judgments (project_id, judgment_id)
+    ON DELETE RESTRICT,
+  CHECK (
+    (
+      status = 'pending'
+      AND consumed_at IS NULL
+      AND completed_at IS NULL
+    )
+    OR (
+      status = 'consumed'
+      AND consumed_at IS NOT NULL
+      AND completed_at IS NOT NULL
+    )
+    OR (
+      status = 'expired'
+      AND consumed_at IS NULL
+      AND completed_at IS NULL
+    )
+  )
+);
+
+CREATE INDEX idx_local_web_consent_tokens_judgment
+  ON local_web_consent_tokens (project_id, judgment_id, status);
+CREATE INDEX idx_local_web_consent_tokens_connection
+  ON local_web_consent_tokens (project_id, connection_internal_id, status, expires_at);
+CREATE INDEX idx_local_web_consent_tokens_expiry
+  ON local_web_consent_tokens (project_id, status, expires_at);
 
 CREATE TABLE project_continuity_records (
   project_id TEXT NOT NULL,
@@ -1129,6 +1133,7 @@ Project-state constraints:
 - `authority_events.operation_category` and `tool_invocations.operation_category` are constrained to `read`, `agent_workflow`, `user_only`, `admin_local`, or `local_recovery`.
 - `authority_events.request_hash` stores the request identity for the committed authority event. `previous_event_hash` and `event_hash` store a local hash chain for integrity checking and export correlation; they are not tamper-proof audit guarantees.
 - User judgment rows store User Channel provenance for authority-bearing resolution. `status='resolved'` records that an answer exists; approval meaning comes from the stored machine action, outcome, basis, provenance, and method owner.
+- `local_web_consent_tokens` stores hashed one-time local web consent tokens for pending user judgments. Rows are scoped to the project-state database, the selected Agent Connection, the pending judgment, capture basis, expiration, and creation/completion metadata. The raw token is not stored. `status` is `pending`, `consumed`, or `expired`; consumed rows must have completion timestamps, and pending or expired rows must not. Token consumption must commit in the same project-state transaction as the corresponding user judgment resolution. These rows are transient User Channel capture metadata and are not Core judgment authority by themselves.
 - `write_checks` records single-use write-ticket compatibility. The unique indexes on `write_checks.consumed_by_run_id` and `runs.write_check_id` prevent one write-ticket consumption from forking across multiple runs.
 - `artifact_staging.created_by_actor_source` records staging provenance. Staged bytes and notices remain artifact-owned and are not evidence authority by themselves.
 - `evidence_observations.source_kind` and `assurance_level` distinguish cooperative agent reports, registered connection observations, external tool results, user observations, reused evidence, and unverified claims.

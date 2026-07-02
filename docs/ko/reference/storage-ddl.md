@@ -43,7 +43,7 @@ PRAGMA foreign_keys = ON;
 
 `registry.sqlite`는 Runtime Home 식별 정보, 설치 프로필 기록, 프로젝트 등록, 프로젝트 alias, Agent Connection 기록, Connection Projects 멤버십, guard 설치 기록, 호스트 설정 인벤토리를 저장합니다. 프로젝트별 Core 상태는 저장하지 않습니다.
 
-현재 마이그레이션을 모두 적용하면 저장소 프로필 `baseline_sqlite_v3`의 registry 스키마 버전은 `4`입니다. 첫 번째 DDL 블록은 초기 물리 registry 스키마 버전 `1`이고, 그 뒤의 guard 기록 추가 블록은 스키마 버전 `2`, guard 설치 생명주기 교체는 스키마 버전 `3`, local web consent token은 스키마 버전 `4`입니다. 저장소 프로필과 마이그레이션 경계 동작은 [저장소 버전 관리](storage-versioning.md)가 담당합니다.
+현재 마이그레이션을 모두 적용하면 저장소 프로필 `baseline_sqlite_v3`의 registry 스키마 버전은 `5`입니다. 첫 번째 DDL 블록은 초기 물리 registry 스키마 버전 `1`이고, 그 뒤의 guard 기록 추가 블록은 스키마 버전 `2`, guard 설치 생명주기 교체는 스키마 버전 `3`, 기존 registry local web consent token 테이블은 스키마 버전 `4`, 그 기존 registry token 테이블 제거는 스키마 버전 `5`입니다. 활성 local web consent token 행은 project-state 스키마 버전 `2`의 project-state 기록입니다. 저장소 프로필과 마이그레이션 경계 동작은 [저장소 버전 관리](storage-versioning.md)가 담당합니다.
 
 ```sql
 CREATE TABLE schema_migrations (
@@ -233,59 +233,18 @@ CREATE UNIQUE INDEX idx_guard_installations_scope_global
 
 버전 `3` registry 마이그레이션은 기존 `runtime_home.schema_version` 행을 `2`에서 `3`으로 갱신합니다.
 
-Registry 스키마 버전 `4`는 대기 사용자 판단을 위한 local web consent token 기록을
-추가합니다.
+Registry 스키마 버전 `4`는 기존 registry local web consent token 기록을 추가했습니다.
+Registry 스키마 버전 `5`는 token 생명주기와 `user_judgments`를 project-state 저장소에서
+함께 다룰 수 있도록 그 기존 테이블을 제거합니다.
 
 ```sql
-CREATE TABLE local_web_consent_tokens (
-  token_hash TEXT NOT NULL PRIMARY KEY CHECK (length(token_hash) = 64),
-  project_internal_id TEXT NOT NULL,
-  connection_internal_id TEXT NOT NULL,
-  judgment_id TEXT NOT NULL,
-  capture_basis TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'pending'
-    CHECK (status IN ('pending', 'consumed', 'expired')),
-  created_at TEXT NOT NULL,
-  expires_at TEXT NOT NULL,
-  consumed_at TEXT,
-  completed_at TEXT,
-  created_metadata_json TEXT NOT NULL DEFAULT '{}',
-  completion_metadata_json TEXT NOT NULL DEFAULT '{}',
-  FOREIGN KEY (project_internal_id) REFERENCES projects (project_internal_id) ON DELETE RESTRICT,
-  FOREIGN KEY (connection_internal_id)
-    REFERENCES agent_connections (connection_internal_id)
-    ON DELETE RESTRICT,
-  FOREIGN KEY (connection_internal_id, project_internal_id)
-    REFERENCES connection_projects (connection_internal_id, project_internal_id)
-    ON DELETE RESTRICT,
-  CHECK (
-    (
-      status = 'pending'
-      AND consumed_at IS NULL
-      AND completed_at IS NULL
-    )
-    OR (
-      status = 'consumed'
-      AND consumed_at IS NOT NULL
-      AND completed_at IS NOT NULL
-    )
-    OR (
-      status = 'expired'
-      AND consumed_at IS NULL
-      AND completed_at IS NULL
-    )
-  )
-);
-
-CREATE INDEX idx_local_web_consent_tokens_judgment
-  ON local_web_consent_tokens (project_internal_id, judgment_id, status);
-CREATE INDEX idx_local_web_consent_tokens_connection
-  ON local_web_consent_tokens (connection_internal_id, status, expires_at);
-CREATE INDEX idx_local_web_consent_tokens_expiry
-  ON local_web_consent_tokens (status, expires_at);
+DROP INDEX IF EXISTS idx_local_web_consent_tokens_judgment;
+DROP INDEX IF EXISTS idx_local_web_consent_tokens_connection;
+DROP INDEX IF EXISTS idx_local_web_consent_tokens_expiry;
+DROP TABLE IF EXISTS local_web_consent_tokens;
 ```
 
-버전 `4` registry 마이그레이션은 기존 `runtime_home.schema_version` 행을 `3`에서 `4`로 갱신합니다.
+버전 `5` registry 마이그레이션은 기존 `runtime_home.schema_version` 행을 `4`에서 `5`로 갱신합니다.
 
 Registry 제약:
 
@@ -302,14 +261,13 @@ Registry 제약:
 - `agent_connections.last_verification_report_json`은 최신 검증 보고서 JSON 객체를 저장합니다. `agent_connections.last_user_actions_json`은 최신 사용자 동작 JSON 배열을 저장합니다.
 - `connection_projects`는 Agent Connection 하나에 대한 명시적 프로젝트 허용 목록입니다. `connection_internal_id`와 `project_internal_id`로 멤버십을 저장합니다. 아직 멤버십이 남은 프로젝트나 연결 삭제는 제한됩니다.
 - `guard_installations`는 Runtime Home 하나, Agent Connection 하나, 선택적 프로젝트 범위에 대한 로컬 guard 설정 생명주기 상태와 호스트 capability를 저장합니다. 내부 `guard_mode` 값은 `record`, `observe`입니다. `installation_status` 값은 `absent`, `configured`, `reload_required`, `active`, `degraded`, `stale`, `broken`입니다. 기록된 프로젝트, Agent Connection, 호스트 종류, 통합 프로필, policy hash, 알려진 hook 단계와 일치하는 유효한 guard hook 관찰은 first-seen 및 last-seen 메타데이터를 기록합니다. 선택된 프로필이 `observe`이고 필요한 hook 설정이 완전하며 행이 `degraded`, `stale`, `broken`이 아닐 때만 행을 `active`로 옮길 수 있습니다. 그 밖에는 관찰 메타데이터를 기록하더라도 설치를 효과적으로 active로 만들지 않습니다. 이 행은 host observation을 위한 로컬 권한 기록이며 OS 수준 집행 증명이나 쓰기 방지 증명이 아닙니다.
-- `local_web_consent_tokens`는 대기 사용자 판단을 위한 해시된 일회성 local web consent token을 저장합니다. 행은 등록된 프로젝트, Agent Connection, Connection Projects 멤버십에 범위가 묶입니다. 원문 token은 저장하지 않습니다. `status`는 `pending`, `consumed`, `expired`입니다. 소비된 행에는 완료 타임스탬프가 있어야 하며, 대기 또는 만료 행에는 없어야 합니다. 이 행은 임시 User Channel capture 메타데이터이며 그 자체로 Core 판단 권한이 아닙니다.
 - `schema_migrations`는 적용된 registry 스키마 버전을 기록합니다. 마이그레이션 실행 의미는 [저장소 버전 관리](storage-versioning.md)가 담당합니다.
 
 ## 프로젝트 `state.sqlite`
 
 등록된 프로젝트마다 프로젝트별 `state.sqlite`가 하나 있습니다. 이 데이터베이스는 그 프로젝트의 Core 상태를 저장하며, 외래 키와 인덱스가 같은 프로젝트 관계를 강제할 수 있도록 프로젝트 범위 행에 `project_id`를 반복해 저장합니다.
 
-현재 초기 프로젝트 상태 스키마를 적용하면 저장소 프로필 `baseline_sqlite_v3`의 프로젝트 상태 스키마 버전은 `1`입니다. 아래 DDL 블록들은 읽기 쉽도록 기록 영역별로 나누었으며, 함께 기준 프로젝트 상태 배치를 설명합니다. 저장소 프로필과 마이그레이션 경계 동작은 [저장소 버전 관리](storage-versioning.md)가 담당합니다.
+현재 project-state 마이그레이션을 적용하면 저장소 프로필 `baseline_sqlite_v3`의 프로젝트 상태 스키마 버전은 `2`입니다. 아래 DDL 블록들은 읽기 쉽도록 기록 영역별로 나누었으며, 함께 기준 프로젝트 상태 배치를 설명합니다. Project-state 스키마 버전 `2`는 token 생명주기와 사용자 판단 해결을 같은 project-state 트랜잭션에서 커밋할 수 있도록 local web consent token 기록을 추가합니다. 저장소 프로필과 마이그레이션 경계 동작은 [저장소 버전 관리](storage-versioning.md)가 담당합니다.
 
 ```sql
 CREATE TABLE schema_migrations (
@@ -483,6 +441,51 @@ CREATE TABLE user_judgments (
   FOREIGN KEY (project_id, task_id, change_unit_id)
     REFERENCES change_units (project_id, task_id, change_unit_id)
 );
+
+CREATE TABLE local_web_consent_tokens (
+  project_id TEXT NOT NULL,
+  token_hash TEXT NOT NULL CHECK (length(token_hash) = 64),
+  connection_internal_id TEXT NOT NULL,
+  judgment_id TEXT NOT NULL,
+  capture_basis TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'consumed', 'expired')),
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  consumed_at TEXT,
+  completed_at TEXT,
+  created_metadata_json TEXT NOT NULL DEFAULT '{}',
+  completion_metadata_json TEXT NOT NULL DEFAULT '{}',
+  PRIMARY KEY (project_id, token_hash),
+  FOREIGN KEY (project_id) REFERENCES project_state (project_id) ON DELETE RESTRICT,
+  FOREIGN KEY (project_id, judgment_id)
+    REFERENCES user_judgments (project_id, judgment_id)
+    ON DELETE RESTRICT,
+  CHECK (
+    (
+      status = 'pending'
+      AND consumed_at IS NULL
+      AND completed_at IS NULL
+    )
+    OR (
+      status = 'consumed'
+      AND consumed_at IS NOT NULL
+      AND completed_at IS NOT NULL
+    )
+    OR (
+      status = 'expired'
+      AND consumed_at IS NULL
+      AND completed_at IS NULL
+    )
+  )
+);
+
+CREATE INDEX idx_local_web_consent_tokens_judgment
+  ON local_web_consent_tokens (project_id, judgment_id, status);
+CREATE INDEX idx_local_web_consent_tokens_connection
+  ON local_web_consent_tokens (project_id, connection_internal_id, status, expires_at);
+CREATE INDEX idx_local_web_consent_tokens_expiry
+  ON local_web_consent_tokens (project_id, status, expires_at);
 
 CREATE TABLE project_continuity_records (
   project_id TEXT NOT NULL,
@@ -1129,6 +1132,7 @@ CREATE INDEX idx_session_watch_observations_unrecorded_change
 - `authority_events.operation_category`와 `tool_invocations.operation_category`는 `read`, `agent_workflow`, `user_only`, `admin_local`, `local_recovery`로 제한됩니다.
 - `authority_events.request_hash`는 커밋된 권한 이벤트의 요청 정체성을 저장합니다. `previous_event_hash`와 `event_hash`는 무결성 점검과 내보내기 상관을 위한 로컬 해시 체인을 저장하지만, 조작 방지 감사 보장을 뜻하지 않습니다.
 - 사용자 판단 행은 권한을 지니는 해결에 대한 User Channel 출처를 저장합니다. `status='resolved'`는 답변이 존재한다는 사실을 기록할 뿐이며, 승인 의미는 저장된 기계 동작, 결과, 근거, 출처, 메서드 담당 문서에서 나옵니다.
+- `local_web_consent_tokens`는 대기 사용자 판단을 위한 해시된 일회성 local web consent token을 저장합니다. 행은 project-state 데이터베이스, 선택된 Agent Connection, 대기 판단, capture basis, 만료, 생성/완료 메타데이터에 범위가 묶입니다. 원문 token은 저장하지 않습니다. `status`는 `pending`, `consumed`, `expired`입니다. 소비된 행에는 완료 타임스탬프가 있어야 하며, 대기 또는 만료 행에는 없어야 합니다. Token 소비는 대응하는 사용자 판단 해결과 같은 project-state 트랜잭션에서 커밋해야 합니다. 이 행은 임시 User Channel capture 메타데이터이며 그 자체로 Core 판단 권한이 아닙니다.
 - `write_checks`는 단일 사용 쓰기 티켓 호환성을 기록합니다. `write_checks.consumed_by_run_id`와 `runs.write_check_id`의 고유 인덱스는 쓰기 티켓 소비 하나가 여러 실행으로 갈라지는 것을 막습니다.
 - `artifact_staging.created_by_actor_source`는 스테이징 출처를 기록합니다. 스테이징된 바이트와 알림은 아티팩트 담당 상태이며 그 자체로 증거 권한이 아닙니다.
 - `evidence_observations.source_kind`와 `assurance_level`은 협력적 에이전트 보고, 등록된 연결 관찰, 외부 도구 결과, 사용자 관찰, 재사용 증거, 미확인 주장을 구분합니다.

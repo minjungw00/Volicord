@@ -25,6 +25,7 @@ use volicord_store::{
         GuardInstallationObservation, GuardInstallationUpsert, UnrecordedChangeInsert,
         UnrecordedChangeRecord,
     },
+    local_consent::{create_local_web_consent_token, LocalWebConsentTokenCreate},
     session_watch::{
         create_watch_baseline, snapshot_product_repository, SessionWatchStatus,
         WatchBaselineCreate, WatchSnapshotOptions,
@@ -37,7 +38,7 @@ use volicord_types::{
     ChangeUnitUpdate, DurableIdError, DurableIdGenerator, DurableIdKind, EvidenceAssuranceLevel,
     EvidenceSourceKind, EvidenceUpdateProvenance, IdempotencyKey, InitialScope, OperationCategory,
     RequestId, ScopeUpdate, SequenceDurableIdGenerator, BASELINE_PROJECT_ENFORCEMENT_PROFILE_JSON,
-    VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+    VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
 
 use super::*;
@@ -130,6 +131,8 @@ struct MethodHarness {
     runtime_home_path: PathBuf,
     service: CoreService,
 }
+
+type LocalWebTokenStatus = (String, Option<String>, Option<String>);
 
 #[derive(Debug, Clone)]
 struct ContinuityRecordRow {
@@ -10105,6 +10108,141 @@ fn agent_actor_cannot_record_user_only_judgment_answer() -> Result<(), Box<dyn E
 }
 
 #[test]
+fn local_web_consent_rejects_token_bound_to_different_judgment() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "local_web_wrong_judgment")?;
+    let first = harness.service.request_user_judgment(
+        user_judgment_request(
+            "req_local_web_wrong_judgment_first",
+            "idem_local_web_wrong_judgment_first",
+            false,
+            Some(2),
+            &task_id,
+            Some(&change_unit_id),
+            JudgmentKind::ProductDecision,
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let first_judgment_id = response_record_id(&first.response_value, "user_judgment_ref");
+    let second = harness.service.request_user_judgment(
+        user_judgment_request(
+            "req_local_web_wrong_judgment_second",
+            "idem_local_web_wrong_judgment_second",
+            false,
+            Some(3),
+            &task_id,
+            Some(&change_unit_id),
+            JudgmentKind::ProductDecision,
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let second_judgment_id = response_record_id(&second.response_value, "user_judgment_ref");
+    let token = "6666666666666666666666666666666666666666666666666666666666666666";
+    let token_hash = create_local_web_token_for_judgment(&harness, token, &first_judgment_id)?;
+    let before = harness.counts()?;
+
+    let response = harness.service.record_local_web_consent_judgment(
+        crate::LocalWebConsentJudgmentRequest {
+            request: record_judgment_request(
+                "req_local_web_wrong_judgment_record",
+                "idem_local_web_wrong_judgment_record",
+                Some(4),
+                &task_id,
+                &second_judgment_id,
+                JudgmentKind::ProductDecision,
+                answer_payload(JudgmentKind::ProductDecision),
+            ),
+            token: token.to_owned(),
+            expected_connection_internal_id: CONNECTION_ID.to_owned(),
+            completion_metadata_json: "{}".to_owned(),
+        },
+        local_web_invocation(ActorSource::LocalUser, OperationCategory::UserOnly),
+    )?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["code"],
+        "DECISION_UNRESOLVED"
+    );
+    assert_eq!(harness.counts()?, before);
+    assert_eq!(
+        user_judgment_status(&harness, &first_judgment_id)?,
+        "pending"
+    );
+    assert_eq!(
+        user_judgment_status(&harness, &second_judgment_id)?,
+        "pending"
+    );
+    assert_eq!(
+        local_web_token_status(&harness, &token_hash)?,
+        ("pending".to_owned(), None, None)
+    );
+    Ok(())
+}
+
+#[test]
+fn local_web_consent_rejects_agent_origin_without_consuming_token() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "local_web_agent_origin")?;
+    let pending = harness.service.request_user_judgment(
+        user_judgment_request(
+            "req_local_web_agent_origin",
+            "idem_local_web_agent_origin",
+            false,
+            Some(2),
+            &task_id,
+            Some(&change_unit_id),
+            JudgmentKind::ProductDecision,
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let judgment_id = response_record_id(&pending.response_value, "user_judgment_ref");
+    let token = "7777777777777777777777777777777777777777777777777777777777777777";
+    let token_hash = create_local_web_token_for_judgment(&harness, token, &judgment_id)?;
+    let before = harness.counts()?;
+
+    let response = harness.service.record_local_web_consent_judgment(
+        crate::LocalWebConsentJudgmentRequest {
+            request: record_judgment_request(
+                "req_local_web_agent_origin_record",
+                "idem_local_web_agent_origin_record",
+                Some(3),
+                &task_id,
+                &judgment_id,
+                JudgmentKind::ProductDecision,
+                answer_payload(JudgmentKind::ProductDecision),
+            ),
+            token: token.to_owned(),
+            expected_connection_internal_id: CONNECTION_ID.to_owned(),
+            completion_metadata_json: "{}".to_owned(),
+        },
+        local_web_invocation(
+            ActorSource::agent_connection(CONNECTION_ID),
+            OperationCategory::UserOnly,
+        ),
+    )?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["code"],
+        "INVOCATION_CONTEXT_MISMATCH"
+    );
+    assert_eq!(
+        response.response_value["errors"][0]["details"]["field"],
+        "invocation.actor_source"
+    );
+    assert_eq!(harness.counts()?, before);
+    assert_eq!(user_judgment_status(&harness, &judgment_id)?, "pending");
+    assert_eq!(
+        local_web_token_status(&harness, &token_hash)?,
+        ("pending".to_owned(), None, None)
+    );
+    Ok(())
+}
+
+#[test]
 fn accepted_authority_judgments_require_structured_rationale() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "rationale_required")?;
@@ -15499,6 +15637,18 @@ fn invocation_with_actor(
     )
 }
 
+fn local_web_invocation(
+    actor_source: ActorSource,
+    operation_category: OperationCategory,
+) -> InvocationContext {
+    InvocationContext::new(
+        ProjectId::new(PROJECT_ID),
+        actor_source,
+        operation_category,
+        VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB,
+    )
+}
+
 fn create_close_ready_task(
     harness: &MethodHarness,
     suffix: &str,
@@ -18086,6 +18236,41 @@ fn user_judgment_status(
                 AND judgment_id = ?2",
         rusqlite::params![PROJECT_ID, user_judgment_id],
         |row| row.get(0),
+    )?)
+}
+
+fn create_local_web_token_for_judgment(
+    harness: &MethodHarness,
+    token: &str,
+    judgment_id: &str,
+) -> Result<String, Box<dyn Error>> {
+    let record = create_local_web_consent_token(
+        &harness.runtime_home_path,
+        LocalWebConsentTokenCreate {
+            token: token.to_owned(),
+            project_id: PROJECT_ID.to_owned(),
+            connection_internal_id: CONNECTION_ID.to_owned(),
+            judgment_id: judgment_id.to_owned(),
+            capture_basis: VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB.to_owned(),
+            ttl_seconds: 600,
+            created_metadata_json: "{}".to_owned(),
+        },
+    )?;
+    Ok(record.token_hash)
+}
+
+fn local_web_token_status(
+    harness: &MethodHarness,
+    token_hash: &str,
+) -> Result<LocalWebTokenStatus, Box<dyn Error>> {
+    let conn = harness.conn()?;
+    Ok(conn.query_row(
+        "SELECT status, consumed_at, completed_at
+           FROM local_web_consent_tokens
+          WHERE project_id = ?1
+            AND token_hash = ?2",
+        rusqlite::params![PROJECT_ID, token_hash],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
     )?)
 }
 

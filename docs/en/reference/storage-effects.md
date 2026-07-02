@@ -591,6 +591,7 @@ Committed `dry_run=false` may:
 
 - set a `user_judgments` row to `status='resolved'`
 - store the selected option, `resolution_machine_action`, `resolution_outcome`, derived resolution actor provenance, answer payload, descriptive rationale metadata, and basis status as allowed by the method owner
+- when invoked through the local web consent capture path, set the matching `local_web_consent_tokens` row to `status='consumed'` in the same project-state commit as the judgment resolution
 - create `project_continuity_records` for accepted product, technical, or scope decisions and for accepted current residual risks when selected by the method owner
 - update dependent blockers or next actions
 - append events
@@ -601,6 +602,8 @@ No-effect branches:
 
 - valid dry-run previews
 - rejected attempts
+
+Rejected local web consent attempts, including validation failure, wrong binding, expiration, and judgment-record write failure, must not consume the token or resolve the judgment.
 
 Valid dry-run previews do not create:
 

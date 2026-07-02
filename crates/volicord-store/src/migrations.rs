@@ -8,10 +8,10 @@ pub const STORAGE_PROFILE: &str = "baseline_sqlite_v3";
 pub(crate) const OLD_STORAGE_PROFILE: &str = "baseline_sqlite";
 
 /// Latest schema version for `registry.sqlite`.
-pub const REGISTRY_SCHEMA_VERSION: i64 = 4;
+pub const REGISTRY_SCHEMA_VERSION: i64 = 5;
 
 /// Latest schema version for project `state.sqlite`.
-pub const PROJECT_STATE_SCHEMA_VERSION: i64 = 1;
+pub const PROJECT_STATE_SCHEMA_VERSION: i64 = 2;
 
 /// `schema_migrations.database_kind` for `registry.sqlite`.
 pub const REGISTRY_DATABASE_KIND: &str = "registry";
@@ -40,23 +40,37 @@ const REGISTRY_MIGRATIONS: &[Migration] = &[
     },
     Migration {
         database_kind: REGISTRY_DATABASE_KIND,
-        version: REGISTRY_SCHEMA_VERSION,
+        version: 4,
         name: "registry_local_web_consent_tokens_v4",
         sql: &[REGISTRY_LOCAL_WEB_CONSENT_TOKENS_SQL],
     },
+    Migration {
+        database_kind: REGISTRY_DATABASE_KIND,
+        version: REGISTRY_SCHEMA_VERSION,
+        name: "registry_drop_local_web_consent_tokens_v5",
+        sql: &[REGISTRY_DROP_LOCAL_WEB_CONSENT_TOKENS_SQL],
+    },
 ];
 
-const PROJECT_STATE_MIGRATIONS: &[Migration] = &[Migration {
-    database_kind: PROJECT_STATE_DATABASE_KIND,
-    version: PROJECT_STATE_SCHEMA_VERSION,
-    name: "project_state_initial_authority_events_v1",
-    sql: &[
-        PROJECT_STATE_INITIAL_SQL,
-        PROJECT_STATE_HOST_OBSERVATION_SQL,
-        PROJECT_STATE_EXPECTED_WRITES_SQL,
-        PROJECT_STATE_SESSION_WATCH_SQL,
-    ],
-}];
+const PROJECT_STATE_MIGRATIONS: &[Migration] = &[
+    Migration {
+        database_kind: PROJECT_STATE_DATABASE_KIND,
+        version: 1,
+        name: "project_state_initial_authority_events_v1",
+        sql: &[
+            PROJECT_STATE_INITIAL_SQL,
+            PROJECT_STATE_HOST_OBSERVATION_SQL,
+            PROJECT_STATE_EXPECTED_WRITES_SQL,
+            PROJECT_STATE_SESSION_WATCH_SQL,
+        ],
+    },
+    Migration {
+        database_kind: PROJECT_STATE_DATABASE_KIND,
+        version: PROJECT_STATE_SCHEMA_VERSION,
+        name: "project_state_local_web_consent_tokens_v2",
+        sql: &[PROJECT_STATE_LOCAL_WEB_CONSENT_TOKENS_SQL],
+    },
+];
 
 struct Migration {
     database_kind: &'static str,
@@ -614,6 +628,18 @@ UPDATE runtime_home
    SET schema_version = 4,
        updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
  WHERE schema_version = 3;
+"#;
+
+const REGISTRY_DROP_LOCAL_WEB_CONSENT_TOKENS_SQL: &str = r#"
+DROP INDEX IF EXISTS idx_local_web_consent_tokens_judgment;
+DROP INDEX IF EXISTS idx_local_web_consent_tokens_connection;
+DROP INDEX IF EXISTS idx_local_web_consent_tokens_expiry;
+DROP TABLE IF EXISTS local_web_consent_tokens;
+
+UPDATE runtime_home
+   SET schema_version = 5,
+       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+ WHERE schema_version = 4;
 "#;
 
 const PROJECT_STATE_INITIAL_SQL: &str = r#"
@@ -1412,6 +1438,58 @@ CREATE INDEX idx_session_watch_observations_unrecorded_change
   WHERE unrecorded_change_id IS NOT NULL;
 "#;
 
+const PROJECT_STATE_LOCAL_WEB_CONSENT_TOKENS_SQL: &str = r#"
+CREATE TABLE local_web_consent_tokens (
+  project_id TEXT NOT NULL,
+  token_hash TEXT NOT NULL CHECK (length(token_hash) = 64),
+  connection_internal_id TEXT NOT NULL,
+  judgment_id TEXT NOT NULL,
+  capture_basis TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'consumed', 'expired')),
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  consumed_at TEXT,
+  completed_at TEXT,
+  created_metadata_json TEXT NOT NULL DEFAULT '{}',
+  completion_metadata_json TEXT NOT NULL DEFAULT '{}',
+  PRIMARY KEY (project_id, token_hash),
+  FOREIGN KEY (project_id) REFERENCES project_state (project_id) ON DELETE RESTRICT,
+  FOREIGN KEY (project_id, judgment_id)
+    REFERENCES user_judgments (project_id, judgment_id)
+    ON DELETE RESTRICT,
+  CHECK (
+    (
+      status = 'pending'
+      AND consumed_at IS NULL
+      AND completed_at IS NULL
+    )
+    OR (
+      status = 'consumed'
+      AND consumed_at IS NOT NULL
+      AND completed_at IS NOT NULL
+    )
+    OR (
+      status = 'expired'
+      AND consumed_at IS NULL
+      AND completed_at IS NULL
+    )
+  )
+);
+
+CREATE INDEX idx_local_web_consent_tokens_judgment
+  ON local_web_consent_tokens (project_id, judgment_id, status);
+CREATE INDEX idx_local_web_consent_tokens_connection
+  ON local_web_consent_tokens (project_id, connection_internal_id, status, expires_at);
+CREATE INDEX idx_local_web_consent_tokens_expiry
+  ON local_web_consent_tokens (project_id, status, expires_at);
+
+UPDATE project_state
+   SET schema_version = 2,
+       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+ WHERE schema_version = 1;
+"#;
+
 #[cfg(test)]
 mod tests {
     use std::{error::Error, fs, path::Path};
@@ -1430,8 +1508,8 @@ mod tests {
     #[test]
     fn expected_migration_catalogs_contain_ordered_rows() {
         assert_eq!(STORAGE_PROFILE, "baseline_sqlite_v3");
-        assert_eq!(REGISTRY_SCHEMA_VERSION, 4);
-        assert_eq!(PROJECT_STATE_SCHEMA_VERSION, 1);
+        assert_eq!(REGISTRY_SCHEMA_VERSION, 5);
+        assert_eq!(PROJECT_STATE_SCHEMA_VERSION, 2);
         assert_eq!(
             expected_registry_migrations(),
             vec![
@@ -1454,16 +1532,28 @@ mod tests {
                     database_kind: REGISTRY_DATABASE_KIND,
                     version: 4,
                     name: "registry_local_web_consent_tokens_v4",
+                },
+                ExpectedMigration {
+                    database_kind: REGISTRY_DATABASE_KIND,
+                    version: 5,
+                    name: "registry_drop_local_web_consent_tokens_v5",
                 }
             ]
         );
         assert_eq!(
             expected_project_state_migrations(),
-            vec![ExpectedMigration {
-                database_kind: PROJECT_STATE_DATABASE_KIND,
-                version: 1,
-                name: "project_state_initial_authority_events_v1",
-            }]
+            vec![
+                ExpectedMigration {
+                    database_kind: PROJECT_STATE_DATABASE_KIND,
+                    version: 1,
+                    name: "project_state_initial_authority_events_v1",
+                },
+                ExpectedMigration {
+                    database_kind: PROJECT_STATE_DATABASE_KIND,
+                    version: 2,
+                    name: "project_state_local_web_consent_tokens_v2",
+                }
+            ]
         );
     }
 
@@ -1482,6 +1572,7 @@ mod tests {
                 "registry_guard_records_v2",
                 "registry_guard_installation_lifecycle_v3",
                 "registry_local_web_consent_tokens_v4",
+                "registry_drop_local_web_consent_tokens_v5",
             ],
         )?;
         drop(conn);
@@ -1496,12 +1587,13 @@ mod tests {
                 "registry_guard_records_v2",
                 "registry_guard_installation_lifecycle_v3",
                 "registry_local_web_consent_tokens_v4",
+                "registry_drop_local_web_consent_tokens_v5",
             ],
         )?;
         assert!(table_exists(&conn, "agent_connections")?);
         assert!(table_exists(&conn, "connection_projects")?);
         assert!(table_exists(&conn, "guard_installations")?);
-        assert!(table_exists(&conn, "local_web_consent_tokens")?);
+        assert!(!table_exists(&conn, "local_web_consent_tokens")?);
         Ok(())
     }
 
@@ -1515,7 +1607,10 @@ mod tests {
         assert_migrations(
             &conn,
             PROJECT_STATE_DATABASE_KIND,
-            &["project_state_initial_authority_events_v1"],
+            &[
+                "project_state_initial_authority_events_v1",
+                "project_state_local_web_consent_tokens_v2",
+            ],
         )?;
         drop(conn);
 
@@ -1524,7 +1619,10 @@ mod tests {
         assert_migrations(
             &conn,
             PROJECT_STATE_DATABASE_KIND,
-            &["project_state_initial_authority_events_v1"],
+            &[
+                "project_state_initial_authority_events_v1",
+                "project_state_local_web_consent_tokens_v2",
+            ],
         )?;
         assert!(table_exists(&conn, "authority_events")?);
         assert!(table_exists(&conn, "tool_invocations")?);
@@ -1535,6 +1633,7 @@ mod tests {
         assert!(table_exists(&conn, "unrecorded_changes")?);
         assert!(table_exists(&conn, "session_watch_baselines")?);
         assert!(table_exists(&conn, "session_watch_observations")?);
+        assert!(table_exists(&conn, "local_web_consent_tokens")?);
         assert!(column_exists(
             &conn,
             "project_state",
@@ -1616,7 +1715,7 @@ mod tests {
         ));
         assert!(error.to_string().contains("explicitly reinitialize"));
         assert_eq!(file_hash(&path)?, hash_before);
-        assert_eq!(migration_count(&path, REGISTRY_DATABASE_KIND)?, 4);
+        assert_eq!(migration_count(&path, REGISTRY_DATABASE_KIND)?, 5);
         assert_eq!(stored_profile(&path, "runtime_home")?, OLD_STORAGE_PROFILE);
         Ok(())
     }
@@ -1654,7 +1753,7 @@ mod tests {
         ));
         assert!(error.to_string().contains("explicitly reinitialize"));
         assert_eq!(file_hash(&path)?, hash_before);
-        assert_eq!(migration_count(&path, PROJECT_STATE_DATABASE_KIND)?, 1);
+        assert_eq!(migration_count(&path, PROJECT_STATE_DATABASE_KIND)?, 2);
         assert_eq!(stored_profile(&path, "project_state")?, OLD_STORAGE_PROFILE);
         Ok(())
     }
@@ -1685,7 +1784,7 @@ mod tests {
         assert!(matches!(error, StoreError::SchemaInvariant { .. }));
         assert!(error.to_string().contains("newer than supported"));
         assert_eq!(file_hash(&path)?, hash_before);
-        assert_eq!(migration_count(&path, PROJECT_STATE_DATABASE_KIND)?, 2);
+        assert_eq!(migration_count(&path, PROJECT_STATE_DATABASE_KIND)?, 3);
         Ok(())
     }
 
@@ -1810,7 +1909,10 @@ mod tests {
         assert_migrations(
             &conn,
             PROJECT_STATE_DATABASE_KIND,
-            &["project_state_initial_authority_events_v1"],
+            &[
+                "project_state_initial_authority_events_v1",
+                "project_state_local_web_consent_tokens_v2",
+            ],
         )?;
         Ok(())
     }
