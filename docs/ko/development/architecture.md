@@ -254,8 +254,8 @@ sequenceDiagram
 | 읽기 전용 결과 | `crates/volicord-core/src/pipeline.rs`를 통한 `OwnerPipelineBranch::ReadOnly` | 현재 Store 읽기에서 결과를 만듭니다. Core 변이 커밋은 없습니다. |
 | 지속 효과 없는 결과 | `crates/volicord-core/src/pipeline.rs`를 통한 `OwnerPipelineBranch::NoEffectResult` | 차단된 닫기 결과처럼 Core 상태 변이 없이 메서드 결과를 반환합니다. |
 | Dry-run 결과 | `crates/volicord-core/src/pipeline.rs`를 통한 `OwnerPipelineBranch::DryRunPreview` | 지속 저장 효과 없이 미리보기 데이터를 반환합니다. |
-| Core 변이 커밋 | `crates/volicord-core/src/pipeline.rs`와 `CoreProjectStore::commit_mutation`을 통한 `OwnerPipelineBranch::CommitMutation` | 하나의 Store 트랜잭션 안에서 메서드가 제공한 `CoreStorageMutation` 값을 적용하고, 이벤트를 추가하고, idempotency가 있는 경우 재실행 응답을 저장하며, 적용되는 경우 프로젝트 상태를 전진시킵니다. |
-| 일시적 아티팩트 스테이징 | `crates/volicord-core/src/methods/stage_artifact.rs`와 `crates/volicord-store/src/artifacts.rs`의 `CoreProjectStore::create_artifact_staging` | 일시적 스테이징 핸들 행과 안전한 스테이징 바이트를 만듭니다. 일반 Core 변이 커밋 경로를 따르지 않고, `project_state.state_version`을 증가시키지 않으며, `task_events`를 추가하지 않고, 재실행 기록 행을 만들지 않습니다. |
+| Core 변이 커밋 | `crates/volicord-core/src/pipeline.rs`와 `CoreProjectStore::commit_mutation`을 통한 `OwnerPipelineBranch::CommitMutation` | 하나의 Store 트랜잭션 안에서 메서드가 제공한 `CoreStorageMutation` 값을 적용하고, 권한 이벤트를 추가하고, idempotency가 있는 경우 재실행 응답을 저장하며, 적용되는 경우 프로젝트 상태를 전진시킵니다. |
+| 일시적 아티팩트 스테이징 | `crates/volicord-core/src/methods/stage_artifact.rs`와 `crates/volicord-store/src/artifacts.rs`의 `CoreProjectStore::create_artifact_staging` | 일시적 스테이징 핸들 행과 안전한 스테이징 바이트를 만듭니다. 일반 Core 변이 커밋 경로를 따르지 않고, `project_state.state_version`을 증가시키지 않으며, `authority_events`를 추가하지 않고, 재실행 기록 행을 만들지 않습니다. |
 
 `CoreProjectStore::commit_mutation`은 일반 커밋된 Core 변이의 Store 트랜잭션 경계입니다. 자세한 커밋 순서, 재실행 처리, 상태 버전 관계, 아티팩트 스테이징 구분, 실패 경계는 [저장소와 트랜잭션](storage-and-transactions.md)에서 설명합니다. 테이블 레이아웃, DDL, 저장소 기록 세부사항, 메서드별 지속 효과, 아티팩트 생명주기 규칙은 저장소 참조 담당 문서가 담당합니다.
 

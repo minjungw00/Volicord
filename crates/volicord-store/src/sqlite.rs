@@ -401,7 +401,7 @@ pub fn validate_project_state_schema(conn: &Connection) -> StoreResult<()> {
             "evidence_summaries",
             "evidence_observations",
             "blockers",
-            "task_events",
+            "authority_events",
             "tool_invocations",
             "agent_sessions",
             "guard_events",
@@ -412,6 +412,7 @@ pub fn validate_project_state_schema(conn: &Connection) -> StoreResult<()> {
             "session_watch_observations",
         ],
     )?;
+    require_views(conn, PROJECT_STATE_DATABASE_KIND, &["task_events"])?;
     require_indexes(
         conn,
         PROJECT_STATE_DATABASE_KIND,
@@ -438,7 +439,9 @@ pub fn validate_project_state_schema(conn: &Connection) -> StoreResult<()> {
             "idx_evidence_observations_task_claim",
             "idx_evidence_observations_run",
             "idx_blockers_task_status",
-            "idx_task_events_task_seq",
+            "idx_authority_events_task_seq",
+            "idx_authority_events_state_version",
+            "idx_authority_events_hash_chain",
             "idx_agent_sessions_connection",
             "idx_agent_sessions_open",
             "idx_guard_events_session",
@@ -667,6 +670,26 @@ pub fn validate_project_state_schema(conn: &Connection) -> StoreResult<()> {
     }
     validate_project_continuity_records_constraints(conn)?;
     reject_column(conn, PROJECT_STATE_DATABASE_KIND, "tasks", "state_version")?;
+    for column in [
+        "event_seq",
+        "event_id",
+        "state_version",
+        "event_type",
+        "actor_source",
+        "operation_category",
+        "payload_json",
+        "request_hash",
+        "previous_event_hash",
+        "event_hash",
+        "created_at",
+    ] {
+        require_column(
+            conn,
+            PROJECT_STATE_DATABASE_KIND,
+            "authority_events",
+            column,
+        )?;
+    }
     require_column(
         conn,
         PROJECT_STATE_DATABASE_KIND,
@@ -771,6 +794,23 @@ fn require_indexes(
             return Err(StoreError::schema_invariant(
                 database_kind,
                 format!("missing index {name}"),
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn require_views(
+    conn: &Connection,
+    database_kind: &'static str,
+    names: &[&str],
+) -> StoreResult<()> {
+    for name in names {
+        if !sqlite_object_exists(conn, "view", name)? {
+            return Err(StoreError::schema_invariant(
+                database_kind,
+                format!("missing view {name}"),
             ));
         }
     }
@@ -1766,19 +1806,15 @@ mod tests {
             &conn,
             PROJECT_STATE_DATABASE_KIND,
             1,
-            "project_state_initial_v1"
-        )?);
-        assert!(migration_exists(
-            &conn,
-            PROJECT_STATE_DATABASE_KIND,
-            PROJECT_STATE_SCHEMA_VERSION,
-            "project_state_session_watch_v5"
+            "project_state_initial_authority_events_v1"
         )?);
         drop(conn);
 
         let conn = open_project_state_database(&path)?;
         assert_eq!(migration_count(&conn)?, PROJECT_STATE_SCHEMA_VERSION);
         assert!(foreign_keys_enabled(&conn)?);
+        assert!(sqlite_object_exists(&conn, "table", "authority_events")?);
+        assert!(sqlite_object_exists(&conn, "view", "task_events")?);
         assert!(sqlite_object_exists(&conn, "table", "tool_invocations")?);
         assert!(sqlite_object_exists(&conn, "table", "agent_sessions")?);
         assert!(sqlite_object_exists(&conn, "table", "expected_writes")?);

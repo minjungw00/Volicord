@@ -236,6 +236,7 @@ fn initial_schemas_satisfy_connection_storage_contract() -> Result<(), Box<dyn E
     assert_tables_include(
         &initial_project_schema,
         &[
+            "authority_events",
             "agent_sessions",
             "guard_events",
             "prompt_captures",
@@ -243,6 +244,23 @@ fn initial_schemas_satisfy_connection_storage_contract() -> Result<(), Box<dyn E
             "unrecorded_changes",
             "session_watch_baselines",
             "session_watch_observations",
+        ],
+    );
+    assert_columns_include(
+        &initial_project_schema,
+        "authority_events",
+        &[
+            "event_id",
+            "project_id",
+            "state_version",
+            "event_type",
+            "actor_source",
+            "operation_category",
+            "payload_json",
+            "request_hash",
+            "previous_event_hash",
+            "event_hash",
+            "created_at",
         ],
     );
     assert_columns_include(

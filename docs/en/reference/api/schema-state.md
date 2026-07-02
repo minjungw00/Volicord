@@ -17,7 +17,7 @@ This document owns state-shaped API fields, nesting, references, summaries, snap
 
 ## Boundary
 
-State schemas describe API data shapes only. A state-shaped field does not choose a response branch or create persistence, Core transitions, replay rows, `task_events`, artifact effects, `Write Check` effects, or a `state_version` increment.
+State schemas describe API data shapes only. A state-shaped field does not choose a response branch or create persistence, Core transitions, replay rows, `authority_events`, artifact effects, `Write Check` effects, or a `state_version` increment.
 
 State projections must be truthful about computed state:
 - A `null` or omitted field means the method did not select a value, the value is unavailable, or the owning schema explicitly allows absence. It must not be replaced with an empty value that implies "computed and none."

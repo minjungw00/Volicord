@@ -1223,7 +1223,7 @@ pub mod core_fixtures {
             })
         }
 
-        /// Reads the most recently appended task event for this fixture project.
+        /// Reads the most recently appended authority event through the task_events view.
         pub fn latest_task_event(&self) -> Result<TaskEventFixtureRow, Box<dyn Error>> {
             let (event_kind, event_payload_text, state_version): (String, String, i64) =
                 self.conn()?.query_row(
@@ -1396,7 +1396,7 @@ pub mod core_fixtures {
         pub closed_at: Option<String>,
     }
 
-    /// Task event fields read from storage for audit assertions.
+    /// Authority event fields read from the task_events compatibility view.
     #[derive(Debug, Clone, PartialEq)]
     pub struct TaskEventFixtureRow {
         pub event_kind: String,

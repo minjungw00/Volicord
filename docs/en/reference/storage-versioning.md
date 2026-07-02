@@ -12,15 +12,17 @@ Baseline registry storage includes Runtime Home identity, installation profile
 records, repository-root-based project registrations, project aliases, Agent
 Connection records, `connection_projects`, `guard_installations`, and
 `local_web_consent_tokens`. Baseline project-state storage includes Core state
-records, replay rows, staged artifacts, persistent artifacts, evidence, user
-judgments, runs, blockers, `write_checks`, host-observation records, and
-session-watch records.
+projection records, `authority_events`, replay rows, staged artifacts,
+persistent artifacts, evidence, user judgments, runs, blockers, `write_checks`,
+host-observation records, and session-watch records.
 
 ## Project State Version
 
-`project_state.state_version` is the project-wide Core state clock for public API mutations.
+`project_state.state_version` is the project-wide Core state clock for committed authority state changes.
 
 It increments only when a complete owner-allowed state-changing transaction commits. It does not increment for rejected requests, dry-run responses, read-only results, startup checks, host verification, migration metadata, lock acquisition, status projection, rendered reports, or failed transactions.
+
+Every newly committed authority mutation appends at least one durable `authority_events` row in the same transaction as the current projection updates. A normal committed mutation appends exactly one authority event. If an owner explicitly defines an event batch, all rows in that batch share the single resulting `project_state.state_version` for that committed state transition.
 
 `tasks.state_version` is not a baseline authority field. A non-baseline `tasks.state_version` column is ignored metadata only and must not be used as a conflict, freshness, lock, or Write Check basis.
 
@@ -28,7 +30,7 @@ Related fields:
 
 - `write_checks.basis_state_version` stores the resulting `project_state.state_version` after the Write Check creation commit. Core uses it as the freshness basis for later Write Check consumption.
 - `tool_invocations.basis_state_version` stores the project-wide state version observed before the committed mutation.
-- `task_events.state_version` stores the resulting project-wide version after the committed event.
+- `authority_events.state_version` stores the resulting project-wide version after the committed authority event or event batch.
 
 ## Write Checks
 

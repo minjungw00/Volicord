@@ -107,7 +107,7 @@ impl CoreProjectStore {
     /// Creates a transient `artifact_staging` row and stores safe staged bytes.
     ///
     /// This operation is storage-owned staging. It does not update
-    /// `project_state.state_version`, append `task_events`, create
+    /// `project_state.state_version`, append `authority_events`, create
     /// `tool_invocations`, or insert persistent `artifacts` rows.
     pub fn create_artifact_staging(
         &mut self,

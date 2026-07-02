@@ -102,7 +102,7 @@ Store 커밋 경로는
 - Core는 `commit_input`으로 `CommitMutationInput`을 만듭니다.
 - `CoreProjectStore::commit_mutation`은 재실행 조회, stale state 점검,
   `project_state.state_version` 증가, 메서드가 제공한 `CoreStorageMutation`
-  적용, Task 이벤트 삽입, 응답 JSON 구성, 선택적 재실행 행 삽입,
+  적용, 권한 이벤트 삽입, 응답 JSON 구성, 선택적 재실행 행 삽입,
   트랜잭션 커밋을 수행합니다.
 - `MutationCommitOutcome`은 committed, replayed, replay-context mismatch,
   idempotency conflict, stale-state 결과를 Core로 돌려보냅니다.
@@ -116,12 +116,12 @@ Core 쪽 분기입니다. 정확한 저장 효과 계약은
 
 | 분기 또는 응답 경로 | 읽을 위치 | 가이드 수준 지속 저장 결과 |
 |---|---|---|
-| MCP 디코딩 또는 사전 점검의 rejected response | `McpAdapter::call_tool`, `CoreService::prepare_request`, `validation_rejected` | Core 커밋 없이 rejected response 또는 JSON-RPC 오류를 반환합니다. `state_version` 증가, Task 이벤트, 재실행 행, 아티팩트 효과, `Write Check` 효과를 만들지 않습니다. |
+| MCP 디코딩 또는 사전 점검의 rejected response | `McpAdapter::call_tool`, `CoreService::prepare_request`, `validation_rejected` | Core 커밋 없이 rejected response 또는 JSON-RPC 오류를 반환합니다. `state_version` 증가, 권한 이벤트, 재실행 행, 아티팩트 효과, `Write Check` 효과를 만들지 않습니다. |
 | `OwnerPipelineBranch::ReadOnly` | `CoreService::execute_prepared_request` | 현재 읽기 결과에서 `EffectKind::ReadOnly` 결과를 만들고 `CoreProjectStore::commit_mutation`을 호출하지 않습니다. 응답에 계산된 닫기 차단 사유나 아티팩트 관찰이 있더라도 읽는 시점의 데이터입니다. |
 | `OwnerPipelineBranch::NoEffectResult` | `CoreService::execute_prepared_request`; 현재는 `close_task`의 차단된 결과 경로에서 사용 | `EffectKind::NoEffect`인 유효한 결과를 만들고 `CoreProjectStore::commit_mutation`을 호출하지 않습니다. 이 경로의 차단 사유형 결과는 응답 데이터이며 커밋된 차단 사유 행이 아닙니다. |
-| `OwnerPipelineBranch::DryRunPreview` | `CoreService::execute_prepared_request` | `ToolDryRunResponse` 미리보기 데이터를 만들고 생성된 지속 참조, Task 이벤트, 재실행 행, 스테이징 핸들, 아티팩트, `state_version` 변경을 지속하지 않습니다. |
-| `OwnerPipelineBranch::CommitMutation` | `CoreService::execute_prepared_request`, Core `commit_mutation`, Store `CoreProjectStore::commit_mutation` | Store 커밋 트랜잭션을 실행합니다. 이 트랜잭션은 `project_state.state_version`을 증가시키고, Task 이벤트를 최소 하나 추가하고, 커밋 호출이 멱등이면 재실행 행을 저장하며, 메서드가 제공한 `CoreStorageMutation` 값을 적용합니다. 메서드 담당 문서가 그 분기를 정의한다면 메서드가 `CoreStorageMutation` 값을 하나도 제공하지 않아도 이벤트/재실행/상태 버전 효과를 커밋할 수 있습니다. |
-| `volicord.stage_artifact` 스테이징 경로 | `crates/volicord-core/src/methods/stage_artifact.rs`, Store 아티팩트 스테이징 도우미 | `EffectKind::StagingCreated`인 `StageArtifactResult`를 반환하고 저장소 소유 임시 스테이징과 안전한 바이트를 만들 수 있습니다. 일반 Core 커밋 트랜잭션을 사용하지 않고, Task 이벤트나 재실행 행을 추가하지 않으며, `project_state.state_version`을 증가시키지 않고, 지속 `ArtifactRef`를 만들지 않습니다. [아티팩트 저장소](../reference/storage-artifacts.md)를 봅니다. |
+| `OwnerPipelineBranch::DryRunPreview` | `CoreService::execute_prepared_request` | `ToolDryRunResponse` 미리보기 데이터를 만들고 생성된 지속 참조, 권한 이벤트, 재실행 행, 스테이징 핸들, 아티팩트, `state_version` 변경을 지속하지 않습니다. |
+| `OwnerPipelineBranch::CommitMutation` | `CoreService::execute_prepared_request`, Core `commit_mutation`, Store `CoreProjectStore::commit_mutation` | Store 커밋 트랜잭션을 실행합니다. 이 트랜잭션은 `project_state.state_version`을 증가시키고, 권한 이벤트를 최소 하나 추가하고, 커밋 호출이 멱등이면 재실행 행을 저장하며, 메서드가 제공한 `CoreStorageMutation` 값을 적용합니다. 메서드 담당 문서가 그 분기를 정의한다면 메서드가 `CoreStorageMutation` 값을 하나도 제공하지 않아도 이벤트/재실행/상태 버전 효과를 커밋할 수 있습니다. |
+| `volicord.stage_artifact` 스테이징 경로 | `crates/volicord-core/src/methods/stage_artifact.rs`, Store 아티팩트 스테이징 도우미 | `EffectKind::StagingCreated`인 `StageArtifactResult`를 반환하고 저장소 소유 임시 스테이징과 안전한 바이트를 만들 수 있습니다. 일반 Core 커밋 트랜잭션을 사용하지 않고, 권한 이벤트나 재실행 행을 추가하지 않으며, `project_state.state_version`을 증가시키지 않고, 지속 `ArtifactRef`를 만들지 않습니다. [아티팩트 저장소](../reference/storage-artifacts.md)를 봅니다. |
 
 차단된 것처럼 보이는 모든 결과를 같은 구현 경로로 다루면 안 됩니다. 예를
 들어 `volicord.prepare_write`는 커밋 전 거부되어 효과가 없을 수 있고,
@@ -187,7 +187,7 @@ API 오류는 rejected response로 남으며 닫기 차단 사유가 아닙니�
 
 - `CoreProjectStore::commit_mutation` 호출 없음.
 - 상태 버전 증가 없음.
-- Task 이벤트 없음.
+- 권한 이벤트 없음.
 - 재실행 행 없음.
 - `Write Check` 변경 없음.
 - 프로젝트 연속성 기록 생성 없음.
@@ -268,7 +268,7 @@ API 오류는 rejected response로 남으며 닫기 차단 사유가 아닙니�
    예상 상태 버전, `PendingTaskEvent`를 담은 `CommitMutationInput`을 만듭니다.
 10. `CoreProjectStore::commit_mutation`은 하나의 즉시 트랜잭션을 열고,
     재실행과 최신성을 다시 점검하고, `project_state.state_version`을 증가시키고,
-    `CoreStorageMutation` 값을 적용하고, Task 이벤트를 삽입하고, 응답 JSON을
+    `CoreStorageMutation` 값을 적용하고, 권한 이벤트를 삽입하고, 응답 JSON을
     만들고 검증하고, idempotency가 있는 커밋 호출의 재실행 행을 삽입한 뒤
     커밋합니다.
 11. 커밋된 응답은 `PipelineResponse`로 돌아오고 MCP는 이를 `tools/call`

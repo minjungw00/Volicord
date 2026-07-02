@@ -143,7 +143,7 @@ Result data:
 - `write_check` is `null`.
 - `write_check_effect` is `none`.
 - `write_decision_reasons` must be non-empty.
-- A valid committed `dry_run=false` non-allow result appends one task event containing the structured `write_decision_reasons`, creates a replay row when an idempotency key is present, and increments `project_state.state_version` exactly once.
+- A valid committed `dry_run=false` non-allow result appends one `authority_events` row containing the structured `write_decision_reasons`, creates a replay row when an idempotency key is present, and increments `project_state.state_version` exactly once.
 - It creates no consumable `Write Check`, no separate public history method, and no new public response field.
 - `volicord.status` is not required to expose historical non-allow decisions.
 - Each entry is a `WriteDecisionReason`.

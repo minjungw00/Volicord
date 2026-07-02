@@ -82,7 +82,7 @@ UnrecordedChangeResolutionRequest:
 - `project_state.state_version`을 정확히 한 번 증가시킵니다.
 - 하나 이상의 `unrecorded_changes` 행을 해결하고 resolution basis, capture basis, 행위자 출처, 타임스탬프, 선택적 연결 사용자 판단 참조를 저장합니다.
 - 그리고/또는 사용자 수락이 필요한 남은 찾기에 대해 대기 중인 `user_judgments` 행을 만듭니다.
-- task event 하나를 추가하고, idempotency key가 있으면 replay 행을 만듭니다.
+- `authority_events` 행 하나를 추가하고, idempotency key가 있으면 replay 행을 만듭니다.
 - 해결된 찾기가 더 이상 미해결로 계산되지 않도록 닫기 준비 상태 보기를 갱신합니다.
 
 저장 변경이 없는 유효한 호출은 읽기 전용 결과를 반환하며 replay 행, event, 상태 버전 증가를 만들지 않습니다.

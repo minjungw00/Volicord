@@ -1228,21 +1228,20 @@ impl CoreProjectStore {
         }
         if input.events.is_empty() {
             return Err(StoreError::InvalidInput {
-                detail: "committed Core mutations must append at least one task_event".to_owned(),
+                detail: "committed Core mutations must append at least one authority event"
+                    .to_owned(),
             });
         }
         validate_identifier("tool_name", &input.tool_name)?;
         validate_identifier("request_hash", &input.request_hash)?;
-        if input.idempotency_key.is_some() {
-            let replay_context =
-                input
-                    .replay_context
-                    .as_ref()
-                    .ok_or_else(|| StoreError::InvalidInput {
-                        detail: "idempotent commits require verified replay context".to_owned(),
-                    })?;
-            validate_replay_context(replay_context)?;
-        }
+        let replay_context =
+            input
+                .replay_context
+                .as_ref()
+                .ok_or_else(|| StoreError::InvalidInput {
+                    detail: "committed mutations require verified invocation context".to_owned(),
+                })?;
+        validate_replay_context(replay_context)?;
         for event in &input.events {
             validate_pending_event(event)?;
         }
@@ -1350,21 +1349,43 @@ impl CoreProjectStore {
         apply_mutation(&mut mutation, &facts)?;
 
         let first_event_seq = next_event_seq(&tx, &self.project.project_id)?;
+        let mut previous_event_hash = previous_event_hash_tx(&tx, &self.project.project_id)?;
         for (index, event) in input.events.iter().enumerate() {
             let event_seq = first_event_seq
                 + i64::try_from(index).map_err(|_| StoreError::InvalidInput {
                     detail: "event index does not fit in SQLite integer".to_owned(),
                 })?;
+            let created_at = transaction_timestamp(&tx)?;
+            let event_hash = authority_event_hash(AuthorityEventHashInput {
+                project_id: &self.project.project_id,
+                event_seq,
+                event_id: &event.event_id,
+                state_version: committed_state_i64,
+                event_type: &event.event_kind,
+                actor_source: replay_context.actor_source.as_str(),
+                operation_category: replay_context.operation_category.as_str(),
+                task_id: &event.task_id,
+                change_unit_id: event.change_unit_id.as_deref(),
+                payload_json: &event.event_payload_json,
+                request_hash: &input.request_hash,
+                previous_event_hash: previous_event_hash.as_deref(),
+                created_at: &created_at,
+            });
             tx.execute(
-                "INSERT INTO task_events (
+                "INSERT INTO authority_events (
                     project_id,
                     event_seq,
                     event_id,
+                    state_version,
+                    event_type,
+                    actor_source,
+                    operation_category,
                     task_id,
                     change_unit_id,
-                    state_version,
-                    event_kind,
-                    event_payload_json,
+                    payload_json,
+                    request_hash,
+                    previous_event_hash,
+                    event_hash,
                     created_at
                 )
                 VALUES (
@@ -1376,29 +1397,37 @@ impl CoreProjectStore {
                     ?6,
                     ?7,
                     ?8,
-                    strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                    ?9,
+                    ?10,
+                    ?11,
+                    ?12,
+                    ?13,
+                    ?14
                 )",
                 params![
                     self.project.project_id,
                     event_seq,
                     event.event_id,
-                    event.task_id,
-                    event.change_unit_id,
                     committed_state_i64,
                     event.event_kind,
-                    event.event_payload_json
+                    replay_context.actor_source.as_str(),
+                    replay_context.operation_category.as_str(),
+                    event.task_id,
+                    event.change_unit_id,
+                    event.event_payload_json,
+                    input.request_hash,
+                    previous_event_hash.as_deref(),
+                    event_hash,
+                    created_at
                 ],
             )?;
+            previous_event_hash = Some(event_hash);
         }
 
         let response_json = build_response_json(facts)?;
         validate_json_text("tool_invocations.response_json", &response_json)?;
 
         if let Some(idempotency_key) = &input.idempotency_key {
-            let replay_context = input
-                .replay_context
-                .as_ref()
-                .expect("validated replay_context is present");
             tx.execute(
                 "INSERT INTO tool_invocations (
                     project_id,
@@ -4411,7 +4440,7 @@ fn tool_invocation_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ToolInv
 fn next_event_seq(tx: &Transaction<'_>, project_id: &str) -> StoreResult<i64> {
     let last_seq: i64 = tx.query_row(
         "SELECT COALESCE(MAX(event_seq), 0)
-           FROM task_events
+           FROM authority_events
           WHERE project_id = ?1",
         params![project_id],
         |row| row.get(0),
@@ -4420,8 +4449,72 @@ fn next_event_seq(tx: &Transaction<'_>, project_id: &str) -> StoreResult<i64> {
         .checked_add(1)
         .ok_or_else(|| StoreError::SchemaInvariant {
             database_kind: "project_state",
-            detail: "task_events.event_seq overflow".to_owned(),
+            detail: "authority_events.event_seq overflow".to_owned(),
         })
+}
+
+fn previous_event_hash_tx(tx: &Transaction<'_>, project_id: &str) -> StoreResult<Option<String>> {
+    tx.query_row(
+        "SELECT event_hash
+           FROM authority_events
+          WHERE project_id = ?1
+          ORDER BY event_seq DESC
+          LIMIT 1",
+        params![project_id],
+        |row| row.get(0),
+    )
+    .optional()
+    .map_err(StoreError::from)
+}
+
+fn transaction_timestamp(tx: &Transaction<'_>) -> StoreResult<String> {
+    tx.query_row("SELECT strftime('%Y-%m-%dT%H:%M:%fZ', 'now')", [], |row| {
+        row.get(0)
+    })
+    .map_err(StoreError::from)
+}
+
+struct AuthorityEventHashInput<'a> {
+    project_id: &'a str,
+    event_seq: i64,
+    event_id: &'a str,
+    state_version: i64,
+    event_type: &'a str,
+    actor_source: &'a str,
+    operation_category: &'a str,
+    task_id: &'a str,
+    change_unit_id: Option<&'a str>,
+    payload_json: &'a str,
+    request_hash: &'a str,
+    previous_event_hash: Option<&'a str>,
+    created_at: &'a str,
+}
+
+fn authority_event_hash(input: AuthorityEventHashInput<'_>) -> String {
+    let mut hasher = Sha256::new();
+
+    fn update_field(hasher: &mut Sha256, field: &str) {
+        hasher.update(field.len().to_string().as_bytes());
+        hasher.update(b":");
+        hasher.update(field.as_bytes());
+        hasher.update(b"\n");
+    }
+
+    update_field(&mut hasher, input.project_id);
+    update_field(&mut hasher, &input.event_seq.to_string());
+    update_field(&mut hasher, input.event_id);
+    update_field(&mut hasher, &input.state_version.to_string());
+    update_field(&mut hasher, input.event_type);
+    update_field(&mut hasher, input.actor_source);
+    update_field(&mut hasher, input.operation_category);
+    update_field(&mut hasher, input.task_id);
+    update_field(&mut hasher, input.change_unit_id.unwrap_or(""));
+    update_field(&mut hasher, input.payload_json);
+    update_field(&mut hasher, input.request_hash);
+    update_field(&mut hasher, input.previous_event_hash.unwrap_or(""));
+    update_field(&mut hasher, input.created_at);
+
+    format!("sha256:{}", lowercase_hex_bytes(&hasher.finalize()))
 }
 
 fn table_count(conn: &Connection, table: &str, project_id: &str) -> StoreResult<u64> {
@@ -4483,7 +4576,7 @@ fn validate_pending_event(event: &PendingTaskEvent) -> StoreResult<()> {
     validate_identifier("event_id", &event.event_id)?;
     validate_identifier("task_id", &event.task_id)?;
     validate_identifier("event_kind", &event.event_kind)?;
-    validate_json_text("task_events.event_payload_json", &event.event_payload_json)
+    validate_json_text("authority_events.payload_json", &event.event_payload_json)
 }
 
 fn validate_replay_context(context: &VerifiedReplayContext) -> StoreResult<()> {
@@ -4600,9 +4693,13 @@ fn verify_staged_artifact_body(
 
 fn lowercase_sha256_hex(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
+    lowercase_hex_bytes(&digest)
+}
+
+fn lowercase_hex_bytes(bytes: &[u8]) -> String {
     const HEX: &[u8; 16] = b"0123456789abcdef";
-    let mut output = String::with_capacity(digest.len() * 2);
-    for byte in digest {
+    let mut output = String::with_capacity(bytes.len() * 2);
+    for &byte in bytes {
         output.push(HEX[(byte >> 4) as usize] as char);
         output.push(HEX[(byte & 0x0f) as usize] as char);
     }
@@ -5099,6 +5196,132 @@ mod tests {
                 && attempted_request_hash == "sha256:second"
         ));
         assert_eq!(store.effect_counts()?, before_conflict);
+        Ok(())
+    }
+
+    #[test]
+    fn committed_mutations_append_authority_events_with_context_and_hash_chain(
+    ) -> Result<(), Box<dyn Error>> {
+        let harness = StoreHarness::new()?;
+        let mut store = harness.store()?;
+        let task_id = "task_authority_events";
+
+        let first = store.commit_mutation(
+            commit_input(
+                &ProjectId::new(PROJECT_ID),
+                MethodName::Intake,
+                Some(&IdempotencyKey::new("idem_authority_event_first")),
+                &RequestHash::new("sha256:authority-first"),
+                Some(replay_context(CONNECTION_ID, "agent_workflow")),
+                Some(0),
+                vec![pending_event_for_task("authority_first", task_id)],
+            ),
+            |mutation, facts| {
+                CoreStorageMutation::InsertTask(task_insert(task_id))
+                    .apply(mutation, facts.committed_state_version)
+            },
+            response_json,
+        )?;
+        assert!(matches!(first, MutationCommitOutcome::Committed { .. }));
+
+        let user_context = VerifiedReplayContext {
+            actor_source: "user_channel:local_user".to_owned(),
+            operation_category: "user_only".to_owned(),
+            verification_basis: Some("store_test_user_channel".to_owned()),
+        };
+        let second = store.commit_mutation(
+            commit_input(
+                &ProjectId::new(PROJECT_ID),
+                MethodName::RecordUserJudgment,
+                Some(&IdempotencyKey::new("idem_authority_event_second")),
+                &RequestHash::new("sha256:authority-second"),
+                Some(user_context),
+                Some(1),
+                vec![pending_event_for_task("authority_second", task_id)],
+            ),
+            |mutation, facts| {
+                CoreStorageMutation::UpdateTaskScope(TaskScopeUpdate {
+                    task_id: task_id.to_owned(),
+                    lifecycle_phase: None,
+                    result: None,
+                    title: Some("Authority event projection".to_owned()),
+                    summary: None,
+                    shaping_summary_json: None,
+                    bounded_context_json: None,
+                    autonomy_boundary_json: None,
+                    close_summary_json: None,
+                    completion_policy_json: None,
+                })
+                .apply(mutation, facts.committed_state_version)
+            },
+            response_json,
+        )?;
+        assert!(matches!(second, MutationCommitOutcome::Committed { .. }));
+
+        let mut stmt = store.conn.prepare(
+            "SELECT
+                event_seq,
+                event_id,
+                state_version,
+                event_type,
+                actor_source,
+                operation_category,
+                payload_json,
+                request_hash,
+                previous_event_hash,
+                event_hash
+             FROM authority_events
+             WHERE project_id = ?1
+             ORDER BY event_seq",
+        )?;
+        let rows = stmt
+            .query_map([PROJECT_ID], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, String>(6)?,
+                    row.get::<_, String>(7)?,
+                    row.get::<_, Option<String>>(8)?,
+                    row.get::<_, String>(9)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].0, 1);
+        assert_eq!(rows[0].2, 1);
+        assert_eq!(rows[0].3, "store_test_event");
+        assert_eq!(rows[0].4, ACTOR_SOURCE);
+        assert_eq!(rows[0].5, "agent_workflow");
+        assert_eq!(rows[0].6, "{}");
+        assert_eq!(rows[0].7, "sha256:authority-first");
+        assert!(rows[0].8.is_none());
+        assert!(rows[0].9.starts_with("sha256:"));
+        assert_eq!(rows[0].9.len(), 71);
+
+        assert_eq!(rows[1].0, 2);
+        assert_eq!(rows[1].2, 2);
+        assert_eq!(rows[1].4, "user_channel:local_user");
+        assert_eq!(rows[1].5, "user_only");
+        assert_eq!(rows[1].7, "sha256:authority-second");
+        assert_eq!(rows[1].8.as_deref(), Some(rows[0].9.as_str()));
+        assert!(rows[1].9.starts_with("sha256:"));
+        assert_eq!(rows[1].9.len(), 71);
+        assert_ne!(rows[0].9, rows[1].9);
+
+        let view_count: i64 = store.conn.query_row(
+            "SELECT COUNT(*)
+               FROM task_events
+              WHERE project_id = ?1
+                AND event_kind = 'store_test_event'",
+            [PROJECT_ID],
+            |row| row.get(0),
+        )?;
+        assert_eq!(view_count, 2);
         Ok(())
     }
 

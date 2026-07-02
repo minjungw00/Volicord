@@ -309,7 +309,7 @@ Registry constraints:
 
 Each registered project has one project-local `state.sqlite`. It stores Core state for that project and repeats `project_id` in project-scoped rows so foreign keys and indexes can enforce same-project relationships.
 
-Applying the current migrations produces project-state schema version `5` for storage profile `baseline_sqlite_v3`. The main DDL block below shows the current table layout after applied migrations; host-observation records were introduced in schema version `2`, expected-write correlation records in schema version `3`, local-recovery replay-category support in schema version `4`, and session-level Product Repository watch records in schema version `5`. Storage profile and migration boundary behavior are owned by [Storage Versioning](storage-versioning.md).
+Applying the current initial project-state schema produces project-state schema version `1` for storage profile `baseline_sqlite_v3`. The DDL blocks below are split by record area for readability and together describe the baseline project-state layout. Storage profile and migration boundary behavior are owned by [Storage Versioning](storage-versioning.md).
 
 ```sql
 CREATE TABLE schema_migrations (
@@ -751,22 +751,47 @@ CREATE TABLE blockers (
     REFERENCES change_units (project_id, task_id, change_unit_id)
 );
 
-CREATE TABLE task_events (
+CREATE TABLE authority_events (
   project_id TEXT NOT NULL,
   event_seq INTEGER NOT NULL CHECK (event_seq > 0),
   event_id TEXT NOT NULL,
+  state_version INTEGER NOT NULL CHECK (state_version > 0),
+  event_type TEXT NOT NULL,
+  actor_source TEXT NOT NULL,
+  operation_category TEXT NOT NULL CHECK (operation_category IN ('read', 'agent_workflow', 'user_only', 'admin_local', 'local_recovery')),
   task_id TEXT NOT NULL,
   change_unit_id TEXT,
-  state_version INTEGER NOT NULL CHECK (state_version > 0),
-  event_kind TEXT NOT NULL,
-  event_payload_json TEXT NOT NULL DEFAULT '{}',
+  payload_json TEXT NOT NULL DEFAULT '{}',
+  request_hash TEXT NOT NULL,
+  previous_event_hash TEXT,
+  event_hash TEXT NOT NULL,
   created_at TEXT NOT NULL,
   PRIMARY KEY (project_id, event_seq),
   UNIQUE (project_id, event_id),
+  UNIQUE (project_id, event_hash),
+  CHECK (length(trim(event_hash)) > 0),
+  CHECK (previous_event_hash IS NULL OR length(trim(previous_event_hash)) > 0),
+  FOREIGN KEY (project_id) REFERENCES project_state (project_id),
   FOREIGN KEY (project_id, task_id) REFERENCES tasks (project_id, task_id),
   FOREIGN KEY (project_id, task_id, change_unit_id)
-    REFERENCES change_units (project_id, task_id, change_unit_id)
+    REFERENCES change_units (project_id, task_id, change_unit_id),
+  FOREIGN KEY (project_id, previous_event_hash)
+    REFERENCES authority_events (project_id, event_hash)
+    DEFERRABLE INITIALLY DEFERRED
 );
+
+CREATE VIEW task_events AS
+SELECT
+  project_id,
+  event_seq,
+  event_id,
+  task_id,
+  change_unit_id,
+  state_version,
+  event_type AS event_kind,
+  payload_json AS event_payload_json,
+  created_at
+FROM authority_events;
 
 CREATE TABLE tool_invocations (
   project_id TEXT NOT NULL,
@@ -836,11 +861,15 @@ CREATE INDEX idx_evidence_observations_run
 CREATE INDEX idx_blockers_task_status
   ON blockers (project_id, task_id, status);
 
-CREATE INDEX idx_task_events_task_seq
-  ON task_events (project_id, task_id, event_seq);
+CREATE INDEX idx_authority_events_task_seq
+  ON authority_events (project_id, task_id, event_seq);
+CREATE INDEX idx_authority_events_state_version
+  ON authority_events (project_id, state_version, event_seq);
+CREATE INDEX idx_authority_events_hash_chain
+  ON authority_events (project_id, previous_event_hash, event_hash);
 ```
 
-Project-state schema version `2` adds host-observation records:
+Host-observation project-state tables:
 
 ```sql
 CREATE TABLE agent_sessions (
@@ -947,9 +976,7 @@ CREATE INDEX idx_unrecorded_changes_task
   ON unrecorded_changes (project_id, task_id, status);
 ```
 
-The version `2` project-state migration updates existing `project_state.schema_version` rows from `1` to `2`.
-
-Project-state schema version `3` adds expected-write correlation records:
+Expected-write correlation project-state tables:
 
 ```sql
 CREATE TABLE expected_writes (
@@ -1006,11 +1033,7 @@ CREATE INDEX idx_expected_writes_task
   ON expected_writes (project_id, task_id, status);
 ```
 
-The version `3` project-state migration updates existing `project_state.schema_version` rows from `2` to `3`.
-
-Project-state schema version `4` rebuilds `tool_invocations` with `local_recovery` added to the `operation_category` constraint, preserves existing replay rows, and updates existing `project_state.schema_version` rows from `3` to `4`.
-
-Project-state schema version `5` adds session-level Product Repository watch records:
+Session-watch project-state tables:
 
 ```sql
 CREATE TABLE session_watch_baselines (
@@ -1090,13 +1113,13 @@ CREATE INDEX idx_session_watch_observations_unrecorded_change
   WHERE unrecorded_change_id IS NOT NULL;
 ```
 
-The version `5` project-state migration updates existing `project_state.schema_version` rows from `4` to `5`.
-
 Project-state constraints:
 
 - `project_state.state_version` is the only public baseline state clock and must be monotonic according to [Storage Versioning](storage-versioning.md).
-- `tasks.created_by_actor_source`, `user_judgments.requested_by_actor_source`, `user_judgments.resolved_by_actor_source`, `write_checks.created_by_actor_source`, `runs.created_by_actor_source`, `artifact_staging.created_by_actor_source`, `evidence_observations.observed_by_actor_source`, and `tool_invocations.actor_source` store actor provenance.
-- `tool_invocations.operation_category` is constrained to `read`, `agent_workflow`, `user_only`, `admin_local`, or `local_recovery`.
+- `authority_events` stores one durable event row per committed authority event. Multiple event rows with the same `state_version` are one event batch for one committed state transition.
+- `authority_events.actor_source`, `tasks.created_by_actor_source`, `user_judgments.requested_by_actor_source`, `user_judgments.resolved_by_actor_source`, `write_checks.created_by_actor_source`, `runs.created_by_actor_source`, `artifact_staging.created_by_actor_source`, `evidence_observations.observed_by_actor_source`, and `tool_invocations.actor_source` store actor provenance.
+- `authority_events.operation_category` and `tool_invocations.operation_category` are constrained to `read`, `agent_workflow`, `user_only`, `admin_local`, or `local_recovery`.
+- `authority_events.request_hash` stores the request identity for the committed authority event. `previous_event_hash` and `event_hash` store a local hash chain for integrity checking and export correlation; they are not tamper-proof audit guarantees.
 - User judgment rows store User Channel provenance for authority-bearing resolution. `status='resolved'` records that an answer exists; approval meaning comes from the stored machine action, outcome, basis, provenance, and method owner.
 - `write_checks` records single-use Core-state write compatibility. The unique indexes on `write_checks.consumed_by_run_id` and `runs.write_check_id` prevent one Write Check consumption from forking across multiple runs.
 - `artifact_staging.created_by_actor_source` records staging provenance. Staged bytes and notices remain artifact-owned and are not evidence authority by themselves.

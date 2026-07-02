@@ -102,7 +102,7 @@ verified replay context, optional expected state version, and pending events.
 5. advances `project_state.state_version` for a new committed mutation;
 6. applies method-provided `CoreStorageMutation` values through
    `ProjectMutation`;
-7. appends task events;
+7. appends authority events;
 8. builds and validates response JSON;
 9. stores an idempotency replay row when the committed call is idempotent;
 10. commits the transaction, or rolls back the whole attempt on error.
@@ -118,8 +118,10 @@ plus Core pipeline tests in
 ## State Version And Replay
 
 The normal commit path advances project state once for a newly committed Core
-mutation. Replay returns the stored original response for an eligible
-idempotent call instead of applying another mutation.
+mutation and stores the corresponding `authority_events` row or owner-defined
+event batch with that resulting state version. Replay returns the stored
+original response for an eligible idempotent call instead of applying another
+mutation.
 
 The request hash used for replay comes from `canonical_request_hash` in
 [`crates/volicord-types/src/canonical.rs`](../../../crates/volicord-types/src/canonical.rs)
@@ -140,8 +142,8 @@ commit path:
 - `create_artifact_staging` creates a transient staged-handle row and safe
   staged bytes.
 - It does not use `CoreProjectStore::commit_mutation`, increment
-  `project_state.state_version`, append task events, create replay rows, or
-  insert persistent artifact rows.
+  `project_state.state_version`, append `authority_events`, create replay rows,
+  or insert persistent artifact rows.
 
 Persistent artifact promotion happens through method-planned Core mutations,
 such as `record_run`, when the applicable owner-defined behavior allows it.

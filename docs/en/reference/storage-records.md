@@ -105,7 +105,7 @@ Baseline storage persists only the record families defined by this baseline stor
 | `state.sqlite` | `evidence_summaries` | Evidence summary | Compact evidence coverage, supporting references, and gap references. |
 | `state.sqlite` | `evidence_observations` | Evidence observation | Durable provenance record for one reported or observed evidence claim, including source kind, assurance level, observer actor source, tool metadata, input refs, output artifact refs, limitations, and timestamps. |
 | `state.sqlite` | `blockers` | Blocker state | Structured blocker state for next action, write compatibility, evidence gaps, close readiness, or recovery. |
-| `state.sqlite` | `task_events` | Event trail | Append-only ordering and audit trail for committed Core mutations. |
+| `state.sqlite` | `authority_events` | Authority event trail | Append-only ordering and local audit trail for committed Core authority mutations. |
 | `state.sqlite` | `tool_invocations` | Replay row | Replay rows for committed non-dry-run Core method results when [Storage Effects](storage-effects.md) says replay is created, including actor source and operation category. |
 
 ## Record Layout Rules
@@ -129,7 +129,7 @@ Baseline records use opaque stable ids as primary keys or equivalent unique keys
 
 ### Current, Event, And Replay Rows
 
-Current record families hold the current Core state for ordinary reads. `task_events` is an append-only ordering and audit trail for committed Core mutations. `tool_invocations` stores committed replay rows only where [Storage Effects](storage-effects.md) says replay is created.
+Current record families hold the current Core state for ordinary reads. `authority_events` is an append-only ordering and local audit trail for committed Core authority mutations. Each authority event row stores `event_id`, `project_id`, resulting `state_version`, `event_type`, `actor_source`, `operation_category`, `payload_json`, `request_hash`, `previous_event_hash`, `event_hash`, and `created_at`. The event hashes are local integrity and export-correlation fields; local SQLite storage is not a tamper-proof audit log. `tool_invocations` stores committed replay rows only where [Storage Effects](storage-effects.md) says replay is created.
 
 State-version behavior, idempotency, event meaning, replay conflict handling, locks, and migration contracts belong to [Storage Versioning](storage-versioning.md).
 
@@ -150,7 +150,7 @@ Storage must validate stored relationships before commit, including:
 
 Ordinary baseline Core operations preserve authority rows through lifecycle or status transitions. Completing, cancelling, or superseding a `Task` changes the relevant lifecycle/status meaning while keeping committed authority rows addressable for audit and recovery.
 
-This preservation applies to `tasks`, `change_units`, `user_judgments`, `project_continuity_records`, `write_checks`, `runs`, `artifacts`, `artifact_links`, `evidence_summaries`, `evidence_observations`, `blockers`, `task_events`, `tool_invocations`, `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unrecorded_changes`, `session_watch_baselines`, and `session_watch_observations`. Artifact-specific transient and durable retention rules belong to [Artifact Storage](storage-artifacts.md).
+This preservation applies to `tasks`, `change_units`, `user_judgments`, `project_continuity_records`, `write_checks`, `runs`, `artifacts`, `artifact_links`, `evidence_summaries`, `evidence_observations`, `blockers`, `authority_events`, `tool_invocations`, `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unrecorded_changes`, `session_watch_baselines`, and `session_watch_observations`. Artifact-specific transient and durable retention rules belong to [Artifact Storage](storage-artifacts.md).
 
 ### Host-Observation Records
 
@@ -258,7 +258,7 @@ Rules:
 | `evidence_summaries` | Evidence coverage, supporting refs, gap refs, and non-authority metadata. |
 | `evidence_observations` | Tool metadata, input refs, output artifact refs, limitations, and non-authority metadata for one evidence observation. |
 | `blockers` | Blocker owner references, related references, details, and non-authority metadata. |
-| `task_events` | Event payloads for committed Core mutations. |
+| `authority_events` | Event payloads for committed Core authority mutations. |
 | `tool_invocations` | Committed replay responses. |
 
 Task and Change Unit shaping JSON stores compact summaries and bounded lists only. It does not create an additional persisted record family.

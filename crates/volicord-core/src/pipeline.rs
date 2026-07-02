@@ -1092,10 +1092,9 @@ fn commit_mutation(
         method_name,
         envelope.idempotency_key.as_ref(),
         request_hash,
-        envelope
-            .idempotency_key
-            .as_ref()
-            .map(|_| replay_context_from_verified_invocation(&verified_invocation)),
+        Some(replay_context_from_verified_invocation(
+            &verified_invocation,
+        )),
         envelope.expected_state_version.as_ref().copied(),
         vec![PendingTaskEvent {
             event_id,

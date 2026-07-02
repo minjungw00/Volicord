@@ -309,7 +309,7 @@ Registry 제약:
 
 등록된 프로젝트마다 프로젝트별 `state.sqlite`가 하나 있습니다. 이 데이터베이스는 그 프로젝트의 Core 상태를 저장하며, 외래 키와 인덱스가 같은 프로젝트 관계를 강제할 수 있도록 프로젝트 범위 행에 `project_id`를 반복해 저장합니다.
 
-현재 마이그레이션을 모두 적용하면 저장소 프로필 `baseline_sqlite_v3`의 프로젝트 상태 스키마 버전은 `5`입니다. 아래의 기본 DDL 블록은 적용된 마이그레이션 뒤의 현재 테이블 배치를 보여 줍니다. host-observation 기록은 스키마 버전 `2`, expected-write 상관 기록은 스키마 버전 `3`, 로컬 복구 재실행 category 지원은 스키마 버전 `4`, 세션 수준 Product Repository watch 기록은 스키마 버전 `5`에서 도입되었습니다. 저장소 프로필과 마이그레이션 경계 동작은 [저장소 버전 관리](storage-versioning.md)가 담당합니다.
+현재 초기 프로젝트 상태 스키마를 적용하면 저장소 프로필 `baseline_sqlite_v3`의 프로젝트 상태 스키마 버전은 `1`입니다. 아래 DDL 블록들은 읽기 쉽도록 기록 영역별로 나누었으며, 함께 기준 프로젝트 상태 배치를 설명합니다. 저장소 프로필과 마이그레이션 경계 동작은 [저장소 버전 관리](storage-versioning.md)가 담당합니다.
 
 ```sql
 CREATE TABLE schema_migrations (
@@ -751,22 +751,47 @@ CREATE TABLE blockers (
     REFERENCES change_units (project_id, task_id, change_unit_id)
 );
 
-CREATE TABLE task_events (
+CREATE TABLE authority_events (
   project_id TEXT NOT NULL,
   event_seq INTEGER NOT NULL CHECK (event_seq > 0),
   event_id TEXT NOT NULL,
+  state_version INTEGER NOT NULL CHECK (state_version > 0),
+  event_type TEXT NOT NULL,
+  actor_source TEXT NOT NULL,
+  operation_category TEXT NOT NULL CHECK (operation_category IN ('read', 'agent_workflow', 'user_only', 'admin_local', 'local_recovery')),
   task_id TEXT NOT NULL,
   change_unit_id TEXT,
-  state_version INTEGER NOT NULL CHECK (state_version > 0),
-  event_kind TEXT NOT NULL,
-  event_payload_json TEXT NOT NULL DEFAULT '{}',
+  payload_json TEXT NOT NULL DEFAULT '{}',
+  request_hash TEXT NOT NULL,
+  previous_event_hash TEXT,
+  event_hash TEXT NOT NULL,
   created_at TEXT NOT NULL,
   PRIMARY KEY (project_id, event_seq),
   UNIQUE (project_id, event_id),
+  UNIQUE (project_id, event_hash),
+  CHECK (length(trim(event_hash)) > 0),
+  CHECK (previous_event_hash IS NULL OR length(trim(previous_event_hash)) > 0),
+  FOREIGN KEY (project_id) REFERENCES project_state (project_id),
   FOREIGN KEY (project_id, task_id) REFERENCES tasks (project_id, task_id),
   FOREIGN KEY (project_id, task_id, change_unit_id)
-    REFERENCES change_units (project_id, task_id, change_unit_id)
+    REFERENCES change_units (project_id, task_id, change_unit_id),
+  FOREIGN KEY (project_id, previous_event_hash)
+    REFERENCES authority_events (project_id, event_hash)
+    DEFERRABLE INITIALLY DEFERRED
 );
+
+CREATE VIEW task_events AS
+SELECT
+  project_id,
+  event_seq,
+  event_id,
+  task_id,
+  change_unit_id,
+  state_version,
+  event_type AS event_kind,
+  payload_json AS event_payload_json,
+  created_at
+FROM authority_events;
 
 CREATE TABLE tool_invocations (
   project_id TEXT NOT NULL,
@@ -836,11 +861,15 @@ CREATE INDEX idx_evidence_observations_run
 CREATE INDEX idx_blockers_task_status
   ON blockers (project_id, task_id, status);
 
-CREATE INDEX idx_task_events_task_seq
-  ON task_events (project_id, task_id, event_seq);
+CREATE INDEX idx_authority_events_task_seq
+  ON authority_events (project_id, task_id, event_seq);
+CREATE INDEX idx_authority_events_state_version
+  ON authority_events (project_id, state_version, event_seq);
+CREATE INDEX idx_authority_events_hash_chain
+  ON authority_events (project_id, previous_event_hash, event_hash);
 ```
 
-프로젝트 상태 스키마 버전 `2`는 host-observation 기록을 추가합니다.
+Host-observation 프로젝트 상태 테이블입니다.
 
 ```sql
 CREATE TABLE agent_sessions (
@@ -947,9 +976,7 @@ CREATE INDEX idx_unrecorded_changes_task
   ON unrecorded_changes (project_id, task_id, status);
 ```
 
-버전 `2` 프로젝트 상태 마이그레이션은 기존 `project_state.schema_version` 행을 `1`에서 `2`로 갱신합니다.
-
-프로젝트 상태 스키마 버전 `3`은 expected-write 상관 기록을 추가합니다.
+Expected-write 상관 프로젝트 상태 테이블입니다.
 
 ```sql
 CREATE TABLE expected_writes (
@@ -1006,11 +1033,7 @@ CREATE INDEX idx_expected_writes_task
   ON expected_writes (project_id, task_id, status);
 ```
 
-버전 `3` 프로젝트 상태 마이그레이션은 기존 `project_state.schema_version` 행을 `2`에서 `3`으로 갱신합니다.
-
-프로젝트 상태 스키마 버전 `4`는 `tool_invocations`를 다시 만들어 `operation_category` 제약에 `local_recovery`를 추가하고, 기존 재실행 행을 보존하며, 기존 `project_state.schema_version` 행을 `3`에서 `4`로 갱신합니다.
-
-프로젝트 상태 스키마 버전 `5`는 세션 수준 Product Repository watch 기록을 추가합니다.
+Session-watch 프로젝트 상태 테이블입니다.
 
 ```sql
 CREATE TABLE session_watch_baselines (
@@ -1090,13 +1113,13 @@ CREATE INDEX idx_session_watch_observations_unrecorded_change
   WHERE unrecorded_change_id IS NOT NULL;
 ```
 
-버전 `5` 프로젝트 상태 마이그레이션은 기존 `project_state.schema_version` 행을 `4`에서 `5`로 갱신합니다.
-
 프로젝트 상태 제약:
 
 - `project_state.state_version`은 기준 범위의 유일한 공개 상태 시계이며 [저장소 버전 관리](storage-versioning.md)에 따라 단조롭게 진행해야 합니다.
-- `tasks.created_by_actor_source`, `user_judgments.requested_by_actor_source`, `user_judgments.resolved_by_actor_source`, `write_checks.created_by_actor_source`, `runs.created_by_actor_source`, `artifact_staging.created_by_actor_source`, `evidence_observations.observed_by_actor_source`, `tool_invocations.actor_source`는 행위자 출처를 저장합니다.
-- `tool_invocations.operation_category`는 `read`, `agent_workflow`, `user_only`, `admin_local`, `local_recovery`로 제한됩니다.
+- `authority_events`는 커밋된 권한 이벤트마다 영속 이벤트 행 하나를 저장합니다. 같은 `state_version`을 가진 여러 이벤트 행은 하나의 커밋된 상태 전이에 속한 이벤트 배치입니다.
+- `authority_events.actor_source`, `tasks.created_by_actor_source`, `user_judgments.requested_by_actor_source`, `user_judgments.resolved_by_actor_source`, `write_checks.created_by_actor_source`, `runs.created_by_actor_source`, `artifact_staging.created_by_actor_source`, `evidence_observations.observed_by_actor_source`, `tool_invocations.actor_source`는 행위자 출처를 저장합니다.
+- `authority_events.operation_category`와 `tool_invocations.operation_category`는 `read`, `agent_workflow`, `user_only`, `admin_local`, `local_recovery`로 제한됩니다.
+- `authority_events.request_hash`는 커밋된 권한 이벤트의 요청 정체성을 저장합니다. `previous_event_hash`와 `event_hash`는 무결성 점검과 내보내기 상관을 위한 로컬 해시 체인을 저장하지만, 조작 방지 감사 보장을 뜻하지 않습니다.
 - 사용자 판단 행은 권한을 지니는 해결에 대한 User Channel 출처를 저장합니다. `status='resolved'`는 답변이 존재한다는 사실을 기록할 뿐이며, 승인 의미는 저장된 기계 동작, 결과, 근거, 출처, 메서드 담당 문서에서 나옵니다.
 - `write_checks`는 단일 사용 Core 상태 쓰기 호환성을 기록합니다. `write_checks.consumed_by_run_id`와 `runs.write_check_id`의 고유 인덱스는 Write Check 소비 하나가 여러 실행으로 갈라지는 것을 막습니다.
 - `artifact_staging.created_by_actor_source`는 스테이징 출처를 기록합니다. 스테이징된 바이트와 알림은 아티팩트 담당 상태이며 그 자체로 증거 권한이 아닙니다.

@@ -11,7 +11,7 @@ pub(crate) const OLD_STORAGE_PROFILE: &str = "baseline_sqlite";
 pub const REGISTRY_SCHEMA_VERSION: i64 = 4;
 
 /// Latest schema version for project `state.sqlite`.
-pub const PROJECT_STATE_SCHEMA_VERSION: i64 = 5;
+pub const PROJECT_STATE_SCHEMA_VERSION: i64 = 1;
 
 /// `schema_migrations.database_kind` for `registry.sqlite`.
 pub const REGISTRY_DATABASE_KIND: &str = "registry";
@@ -24,66 +24,45 @@ const REGISTRY_MIGRATIONS: &[Migration] = &[
         database_kind: REGISTRY_DATABASE_KIND,
         version: 1,
         name: "registry_initial_v1",
-        sql: REGISTRY_INITIAL_SQL,
+        sql: &[REGISTRY_INITIAL_SQL],
     },
     Migration {
         database_kind: REGISTRY_DATABASE_KIND,
         version: 2,
         name: "registry_guard_records_v2",
-        sql: REGISTRY_GUARD_RECORDS_SQL,
+        sql: &[REGISTRY_GUARD_RECORDS_SQL],
     },
     Migration {
         database_kind: REGISTRY_DATABASE_KIND,
         version: 3,
         name: "registry_guard_installation_lifecycle_v3",
-        sql: REGISTRY_GUARD_INSTALLATION_LIFECYCLE_SQL,
+        sql: &[REGISTRY_GUARD_INSTALLATION_LIFECYCLE_SQL],
     },
     Migration {
         database_kind: REGISTRY_DATABASE_KIND,
         version: REGISTRY_SCHEMA_VERSION,
         name: "registry_local_web_consent_tokens_v4",
-        sql: REGISTRY_LOCAL_WEB_CONSENT_TOKENS_SQL,
+        sql: &[REGISTRY_LOCAL_WEB_CONSENT_TOKENS_SQL],
     },
 ];
 
-const PROJECT_STATE_MIGRATIONS: &[Migration] = &[
-    Migration {
-        database_kind: PROJECT_STATE_DATABASE_KIND,
-        version: 1,
-        name: "project_state_initial_v1",
-        sql: PROJECT_STATE_INITIAL_SQL,
-    },
-    Migration {
-        database_kind: PROJECT_STATE_DATABASE_KIND,
-        version: 2,
-        name: "project_state_guard_records_v2",
-        sql: PROJECT_STATE_GUARD_RECORDS_SQL,
-    },
-    Migration {
-        database_kind: PROJECT_STATE_DATABASE_KIND,
-        version: 3,
-        name: "project_state_expected_writes_v3",
-        sql: PROJECT_STATE_EXPECTED_WRITES_SQL,
-    },
-    Migration {
-        database_kind: PROJECT_STATE_DATABASE_KIND,
-        version: 4,
-        name: "project_state_local_recovery_v4",
-        sql: PROJECT_STATE_LOCAL_RECOVERY_SQL,
-    },
-    Migration {
-        database_kind: PROJECT_STATE_DATABASE_KIND,
-        version: PROJECT_STATE_SCHEMA_VERSION,
-        name: "project_state_session_watch_v5",
-        sql: PROJECT_STATE_SESSION_WATCH_SQL,
-    },
-];
+const PROJECT_STATE_MIGRATIONS: &[Migration] = &[Migration {
+    database_kind: PROJECT_STATE_DATABASE_KIND,
+    version: PROJECT_STATE_SCHEMA_VERSION,
+    name: "project_state_initial_authority_events_v1",
+    sql: &[
+        PROJECT_STATE_INITIAL_SQL,
+        PROJECT_STATE_HOST_OBSERVATION_SQL,
+        PROJECT_STATE_EXPECTED_WRITES_SQL,
+        PROJECT_STATE_SESSION_WATCH_SQL,
+    ],
+}];
 
 struct Migration {
     database_kind: &'static str,
     version: i64,
     name: &'static str,
-    sql: &'static str,
+    sql: &'static [&'static str],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -218,7 +197,9 @@ fn validate_existing_migration_history(
 
 fn apply_sql_migration(conn: &mut Connection, migration: &Migration) -> StoreResult<()> {
     let tx = begin_immediate_transaction(conn)?;
-    tx.execute_batch(migration.sql)?;
+    for sql in migration.sql {
+        tx.execute_batch(sql)?;
+    }
     insert_schema_migration(&tx, migration)?;
     tx.commit()?;
     Ok(())
@@ -1075,22 +1056,47 @@ CREATE TABLE blockers (
     REFERENCES change_units (project_id, task_id, change_unit_id)
 );
 
-CREATE TABLE task_events (
+CREATE TABLE authority_events (
   project_id TEXT NOT NULL,
   event_seq INTEGER NOT NULL CHECK (event_seq > 0),
   event_id TEXT NOT NULL,
+  state_version INTEGER NOT NULL CHECK (state_version > 0),
+  event_type TEXT NOT NULL,
+  actor_source TEXT NOT NULL,
+  operation_category TEXT NOT NULL CHECK (operation_category IN ('read', 'agent_workflow', 'user_only', 'admin_local', 'local_recovery')),
   task_id TEXT NOT NULL,
   change_unit_id TEXT,
-  state_version INTEGER NOT NULL CHECK (state_version > 0),
-  event_kind TEXT NOT NULL,
-  event_payload_json TEXT NOT NULL DEFAULT '{}',
+  payload_json TEXT NOT NULL DEFAULT '{}',
+  request_hash TEXT NOT NULL,
+  previous_event_hash TEXT,
+  event_hash TEXT NOT NULL,
   created_at TEXT NOT NULL,
   PRIMARY KEY (project_id, event_seq),
   UNIQUE (project_id, event_id),
+  UNIQUE (project_id, event_hash),
+  CHECK (length(trim(event_hash)) > 0),
+  CHECK (previous_event_hash IS NULL OR length(trim(previous_event_hash)) > 0),
+  FOREIGN KEY (project_id) REFERENCES project_state (project_id),
   FOREIGN KEY (project_id, task_id) REFERENCES tasks (project_id, task_id),
   FOREIGN KEY (project_id, task_id, change_unit_id)
-    REFERENCES change_units (project_id, task_id, change_unit_id)
+    REFERENCES change_units (project_id, task_id, change_unit_id),
+  FOREIGN KEY (project_id, previous_event_hash)
+    REFERENCES authority_events (project_id, event_hash)
+    DEFERRABLE INITIALLY DEFERRED
 );
+
+CREATE VIEW task_events AS
+SELECT
+  project_id,
+  event_seq,
+  event_id,
+  task_id,
+  change_unit_id,
+  state_version,
+  event_type AS event_kind,
+  payload_json AS event_payload_json,
+  created_at
+FROM authority_events;
 
 CREATE TABLE tool_invocations (
   project_id TEXT NOT NULL,
@@ -1101,7 +1107,7 @@ CREATE TABLE tool_invocations (
   committed_state_version INTEGER NOT NULL CHECK (committed_state_version > basis_state_version),
   status TEXT NOT NULL DEFAULT 'committed' CHECK (status = 'committed'),
   actor_source TEXT NOT NULL,
-  operation_category TEXT NOT NULL CHECK (operation_category IN ('read', 'agent_workflow', 'user_only', 'admin_local')),
+  operation_category TEXT NOT NULL CHECK (operation_category IN ('read', 'agent_workflow', 'user_only', 'admin_local', 'local_recovery')),
   verification_basis TEXT,
   response_json TEXT NOT NULL,
   created_at TEXT NOT NULL,
@@ -1160,11 +1166,15 @@ CREATE INDEX idx_evidence_observations_run
 CREATE INDEX idx_blockers_task_status
   ON blockers (project_id, task_id, status);
 
-CREATE INDEX idx_task_events_task_seq
-  ON task_events (project_id, task_id, event_seq);
+CREATE INDEX idx_authority_events_task_seq
+  ON authority_events (project_id, task_id, event_seq);
+CREATE INDEX idx_authority_events_state_version
+  ON authority_events (project_id, state_version, event_seq);
+CREATE INDEX idx_authority_events_hash_chain
+  ON authority_events (project_id, previous_event_hash, event_hash);
 "#;
 
-const PROJECT_STATE_GUARD_RECORDS_SQL: &str = r#"
+const PROJECT_STATE_HOST_OBSERVATION_SQL: &str = r#"
 CREATE TABLE agent_sessions (
   project_id TEXT NOT NULL,
   session_id TEXT NOT NULL,
@@ -1267,11 +1277,6 @@ CREATE INDEX idx_unrecorded_changes_connection
   ON unrecorded_changes (project_id, connection_internal_id, status);
 CREATE INDEX idx_unrecorded_changes_task
   ON unrecorded_changes (project_id, task_id, status);
-
-UPDATE project_state
-   SET schema_version = 2,
-       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
- WHERE schema_version = 1;
 "#;
 
 const PROJECT_STATE_EXPECTED_WRITES_SQL: &str = r#"
@@ -1327,68 +1332,6 @@ CREATE INDEX idx_expected_writes_host_invocation
   WHERE host_invocation_id IS NOT NULL;
 CREATE INDEX idx_expected_writes_task
   ON expected_writes (project_id, task_id, status);
-
-UPDATE project_state
-   SET schema_version = 3,
-       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
- WHERE schema_version = 2;
-"#;
-
-const PROJECT_STATE_LOCAL_RECOVERY_SQL: &str = r#"
-ALTER TABLE tool_invocations RENAME TO tool_invocations_old;
-
-CREATE TABLE tool_invocations (
-  project_id TEXT NOT NULL,
-  tool_name TEXT NOT NULL,
-  idempotency_key TEXT NOT NULL,
-  request_hash TEXT NOT NULL,
-  basis_state_version INTEGER NOT NULL CHECK (basis_state_version >= 0),
-  committed_state_version INTEGER NOT NULL CHECK (committed_state_version > basis_state_version),
-  status TEXT NOT NULL DEFAULT 'committed' CHECK (status = 'committed'),
-  actor_source TEXT NOT NULL,
-  operation_category TEXT NOT NULL CHECK (operation_category IN ('read', 'agent_workflow', 'user_only', 'admin_local', 'local_recovery')),
-  verification_basis TEXT,
-  response_json TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  PRIMARY KEY (project_id, tool_name, idempotency_key),
-  FOREIGN KEY (project_id) REFERENCES project_state (project_id)
-);
-
-INSERT INTO tool_invocations (
-  project_id,
-  tool_name,
-  idempotency_key,
-  request_hash,
-  basis_state_version,
-  committed_state_version,
-  status,
-  actor_source,
-  operation_category,
-  verification_basis,
-  response_json,
-  created_at
-)
-SELECT
-  project_id,
-  tool_name,
-  idempotency_key,
-  request_hash,
-  basis_state_version,
-  committed_state_version,
-  status,
-  actor_source,
-  operation_category,
-  verification_basis,
-  response_json,
-  created_at
-FROM tool_invocations_old;
-
-DROP TABLE tool_invocations_old;
-
-UPDATE project_state
-   SET schema_version = 4,
-       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
- WHERE schema_version = 3;
 "#;
 
 const PROJECT_STATE_SESSION_WATCH_SQL: &str = r#"
@@ -1467,11 +1410,6 @@ CREATE INDEX idx_session_watch_observations_expected_write
 CREATE INDEX idx_session_watch_observations_unrecorded_change
   ON session_watch_observations (project_id, unrecorded_change_id)
   WHERE unrecorded_change_id IS NOT NULL;
-
-UPDATE project_state
-   SET schema_version = 5,
-       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
- WHERE schema_version = 4;
 "#;
 
 #[cfg(test)]
@@ -1493,7 +1431,7 @@ mod tests {
     fn expected_migration_catalogs_contain_ordered_rows() {
         assert_eq!(STORAGE_PROFILE, "baseline_sqlite_v3");
         assert_eq!(REGISTRY_SCHEMA_VERSION, 4);
-        assert_eq!(PROJECT_STATE_SCHEMA_VERSION, 5);
+        assert_eq!(PROJECT_STATE_SCHEMA_VERSION, 1);
         assert_eq!(
             expected_registry_migrations(),
             vec![
@@ -1521,33 +1459,11 @@ mod tests {
         );
         assert_eq!(
             expected_project_state_migrations(),
-            vec![
-                ExpectedMigration {
-                    database_kind: PROJECT_STATE_DATABASE_KIND,
-                    version: 1,
-                    name: "project_state_initial_v1",
-                },
-                ExpectedMigration {
-                    database_kind: PROJECT_STATE_DATABASE_KIND,
-                    version: 2,
-                    name: "project_state_guard_records_v2",
-                },
-                ExpectedMigration {
-                    database_kind: PROJECT_STATE_DATABASE_KIND,
-                    version: 3,
-                    name: "project_state_expected_writes_v3",
-                },
-                ExpectedMigration {
-                    database_kind: PROJECT_STATE_DATABASE_KIND,
-                    version: 4,
-                    name: "project_state_local_recovery_v4",
-                },
-                ExpectedMigration {
-                    database_kind: PROJECT_STATE_DATABASE_KIND,
-                    version: 5,
-                    name: "project_state_session_watch_v5",
-                }
-            ]
+            vec![ExpectedMigration {
+                database_kind: PROJECT_STATE_DATABASE_KIND,
+                version: 1,
+                name: "project_state_initial_authority_events_v1",
+            }]
         );
     }
 
@@ -1599,13 +1515,7 @@ mod tests {
         assert_migrations(
             &conn,
             PROJECT_STATE_DATABASE_KIND,
-            &[
-                "project_state_initial_v1",
-                "project_state_guard_records_v2",
-                "project_state_expected_writes_v3",
-                "project_state_local_recovery_v4",
-                "project_state_session_watch_v5",
-            ],
+            &["project_state_initial_authority_events_v1"],
         )?;
         drop(conn);
 
@@ -1614,14 +1524,9 @@ mod tests {
         assert_migrations(
             &conn,
             PROJECT_STATE_DATABASE_KIND,
-            &[
-                "project_state_initial_v1",
-                "project_state_guard_records_v2",
-                "project_state_expected_writes_v3",
-                "project_state_local_recovery_v4",
-                "project_state_session_watch_v5",
-            ],
+            &["project_state_initial_authority_events_v1"],
         )?;
+        assert!(table_exists(&conn, "authority_events")?);
         assert!(table_exists(&conn, "tool_invocations")?);
         assert!(table_exists(&conn, "agent_sessions")?);
         assert!(table_exists(&conn, "guard_events")?);
@@ -1652,6 +1557,19 @@ mod tests {
             "tool_invocations",
             "operation_category"
         )?);
+        assert!(column_exists(&conn, "authority_events", "actor_source")?);
+        assert!(column_exists(
+            &conn,
+            "authority_events",
+            "operation_category"
+        )?);
+        assert!(column_exists(&conn, "authority_events", "request_hash")?);
+        assert!(column_exists(
+            &conn,
+            "authority_events",
+            "previous_event_hash"
+        )?);
+        assert!(column_exists(&conn, "authority_events", "event_hash")?);
         assert!(table_exists(&conn, "project_continuity_records")?);
         assert!(!column_exists(&conn, "tasks", "state_version")?);
         Ok(())
@@ -1736,7 +1654,7 @@ mod tests {
         ));
         assert!(error.to_string().contains("explicitly reinitialize"));
         assert_eq!(file_hash(&path)?, hash_before);
-        assert_eq!(migration_count(&path, PROJECT_STATE_DATABASE_KIND)?, 5);
+        assert_eq!(migration_count(&path, PROJECT_STATE_DATABASE_KIND)?, 1);
         assert_eq!(stored_profile(&path, "project_state")?, OLD_STORAGE_PROFILE);
         Ok(())
     }
@@ -1767,7 +1685,7 @@ mod tests {
         assert!(matches!(error, StoreError::SchemaInvariant { .. }));
         assert!(error.to_string().contains("newer than supported"));
         assert_eq!(file_hash(&path)?, hash_before);
-        assert_eq!(migration_count(&path, PROJECT_STATE_DATABASE_KIND)?, 6);
+        assert_eq!(migration_count(&path, PROJECT_STATE_DATABASE_KIND)?, 2);
         Ok(())
     }
 
@@ -1892,13 +1810,7 @@ mod tests {
         assert_migrations(
             &conn,
             PROJECT_STATE_DATABASE_KIND,
-            &[
-                "project_state_initial_v1",
-                "project_state_guard_records_v2",
-                "project_state_expected_writes_v3",
-                "project_state_local_recovery_v4",
-                "project_state_session_watch_v5",
-            ],
+            &["project_state_initial_authority_events_v1"],
         )?;
         Ok(())
     }

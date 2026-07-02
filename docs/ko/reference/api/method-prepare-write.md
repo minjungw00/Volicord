@@ -143,7 +143,7 @@ PrepareWriteRequest:
 - `write_check`은 `null`입니다.
 - `write_check_effect`는 `none`입니다.
 - `write_decision_reasons`는 비어 있으면 안 됩니다.
-- 유효하게 커밋된 `dry_run=false` 비허용 결과는 구조화된 `write_decision_reasons`를 담은 태스크 이벤트를 하나 추가하고, 멱등성 키가 있으면 재실행 행을 만들며, `project_state.state_version`을 정확히 한 번 증가시킵니다.
+- 유효하게 커밋된 `dry_run=false` 비허용 결과는 구조화된 `write_decision_reasons`를 담은 `authority_events` 행을 하나 추가하고, 멱등성 키가 있으면 재실행 행을 만들며, `project_state.state_version`을 정확히 한 번 증가시킵니다.
 - 소비 가능한 `Write Check`, 별도 공개 이력 메서드, 새 공개 응답 필드를 만들지 않습니다.
 - `volicord.status`는 과거 비허용 판단을 노출할 필요가 없습니다.
 - 각 항목은 `WriteDecisionReason`입니다.

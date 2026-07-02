@@ -7,7 +7,7 @@ This document owns method-to-storage effect semantics for the baseline scope sou
 This document owns:
 
 - read-only, dry-run, rejected, staging-created, Core-committed, and committed-blocked storage-effect distinctions
-- whether a method branch creates replay rows, `task_events`, record changes, state-version increments, staged-handle creation or consumption, artifact promotion, or Write Check changes
+- whether a method branch creates replay rows, `authority_events`, record changes, state-version increments, staged-handle creation or consumption, artifact promotion, or Write Check changes
 - the persistence boundary for blocker-like response data
 - no-effect guarantees for rejected branches and valid dry-run preview branches
 
@@ -42,7 +42,7 @@ Effects come from the selected method behavior and response branch. The table su
 | No-effect | `ToolRejectedResponse` or a valid `MethodResult` with `effect_kind=no_effect` | No ordinary requested mutation and no Core commit. The response may carry errors or blocker-shaped data, but those values are not persisted by this branch. | [`ToolRejectedResponse`](#toolrejectedresponse-effect), [No-effect branches](#no-effect-branches) |
 | Dry-run | Valid `ToolDryRunResponse` | Preview only; no persistent refs, replay row, event, staged handle, artifact effect, or `project_state.state_version` increment. | [Valid dry-run preview](#valid-dry-run-preview) |
 | Staging-created | `StageArtifactResult` with `effect_kind=staging_created` | Storage-owned transient staging only; not the regular Core commit transaction. | [Staging-created artifact result](#staging-created-artifact-result) |
-| Core commit | Core committed `MethodResult` | Method-owned effects through `CoreProjectStore::commit_mutation`, including the state-version increment, task event, optional replay row, and method-selected `CoreStorageMutation` values. | [Core committed result](#core-committed-result) |
+| Core commit | Core committed `MethodResult` | Method-owned effects through `CoreProjectStore::commit_mutation`, including the state-version increment, authority event, optional replay row, and method-selected `CoreStorageMutation` values. | [Core committed result](#core-committed-result) |
 | Committed blocker-shaped result | Committed `MethodResult` whose method owner allows blocked or non-allow persistence | Only the explicitly allowed event, replay, state-version, and blocker-state effects. A blocker-shaped response alone is not enough. | [Committed blocked result](#committed-blocked-result) |
 
 <a id="read-only-result"></a>
@@ -121,7 +121,7 @@ Condition:
 Allowed effects:
 
 - current-row mutation
-- `task_events` append
+- `authority_events` append
 - replay row creation
 - exactly one `project_state.state_version` increment
 
@@ -164,7 +164,7 @@ These failures return no-effect branches:
 No-effect branches must not:
 
 - create current rows
-- append `task_events`
+- append `authority_events`
 - write `tool_invocations.response_json`
 - create replay rows
 - update evidence summaries or create evidence observations
@@ -180,14 +180,14 @@ When preflight returns `ToolRejectedResponse`, the requested committed operation
 A valid blocked method result can also be no-effect when the method owner
 selects a response-only blocked branch. For example, a baseline `volicord.close_task`
 blocked terminal attempt returns `CloseTaskResult` data without committing
-blocker rows, task events, replay rows, or a state-version increment. This is
+blocker rows, authority events, replay rows, or a state-version increment. This is
 separate from committed non-allow `volicord.prepare_write` results.
 
 ## Dry-run preview effects
 
 Valid dry-run previews may include `DryRunSummary.would_blockers: PlannedBlocker[]` or planned effects. Those preview entries do not create:
 
-- `task_event` or `task_events` append
+- `authority_events` append
 - replay row or `tool_invocations.response_json`
 - generated persistent ref
 - `close_state` mutation
@@ -203,7 +203,7 @@ Valid dry-run previews may include `DryRunSummary.would_blockers: PlannedBlocker
 Read-only results are response-only and not replay rows. When a method section
 below explicitly permits session-watch diagnostic records for a session-bound
 Agent Connection, those records are not Core state mutations, replay rows,
-task events, close-state mutations, or `project_state.state_version` changes.
+authority events, close-state mutations, or `project_state.state_version` changes.
 
 For response computation, `volicord.status` and `volicord.close_task intent=check` may compute `CurrentCloseBasis`, close state, risk acceptance coverage, blockers, `CloseReadinessBlocker[]`, evidence summaries, artifact refs, project continuity summaries, diagnostics, and next actions for the response when the method owner selects those projections.
 
@@ -215,7 +215,7 @@ Read-time artifact checks may compute an effective missing, unavailable, or inte
 
 `volicord.status` with `close_blockers: CloseReadinessBlocker[]` is a read-only observation. It does not create:
 
-- `task_event` or `task_events` append
+- `authority_events` append
 - replay row or `tool_invocations.response_json`
 - `close_state` mutation
 - Write Check change
@@ -256,7 +256,7 @@ Conditions:
 
 Allowed effects:
 
-- append exactly one `task_events` event containing the structured `write_decision_reasons: WriteDecisionReason[]`
+- append exactly one `authority_events` event containing the structured `write_decision_reasons: WriteDecisionReason[]`
 - create a replay row when an idempotency key is present
 - increment `project_state.state_version` exactly once
 - record the method-owned decision and `write_decision_reasons` in the response and replay payload
@@ -279,7 +279,7 @@ Persistence boundary:
 
 - Request-side `volicord.prepare_write` payload fields belong to the [`volicord.prepare_write` reference](api/method-prepare-write.md).
 - Stored `write_decision_reasons` remain `volicord.prepare_write` decision reasons.
-- The durable audit location for a valid committed non-allow decision is the committed task event and, when keyed, the replay row.
+- The durable local audit location for a valid committed non-allow decision is the committed authority event and, when keyed, the replay row.
 
 Those stored reasons are not:
 
@@ -298,7 +298,7 @@ Conditions:
 Allowed effects:
 
 - blocker state
-- `task_events`
+- `authority_events`
 - replay row
 - `project_state.state_version`
 
@@ -402,7 +402,7 @@ For a session-bound Agent Connection, `volicord.status` may initialize the
 session-watch diagnostic context by creating an `agent_sessions` row and, when a
 bounded baseline snapshot is available, a `session_watch_baselines` row. It does
 not run a watch comparison, create `session_watch_observations`, create
-`unrecorded_changes`, append task events, create replay rows, mutate close
+`unrecorded_changes`, append authority events, create replay rows, mutate close
 state, or increment `project_state.state_version`. A baseline first created by
 this status boundary uses `method_boundary` coverage metadata and reports
 partial coverage.
@@ -432,7 +432,7 @@ Idempotent replay returns the stored original response under [Storage Versioning
 Committed non-allowed decisions:
 
 - See [`volicord.prepare_write` committed non-allow decision](#volicordprepare_write-committed-non-allow-decision).
-- They append exactly one task event, create a replay row when keyed, and increment `project_state.state_version` exactly once.
+- They append exactly one `authority_events` row, create a replay row when keyed, and increment `project_state.state_version` exactly once.
 - They do not create consumable Write Check, a separate public history method, or a new public response field.
 - `volicord.status` is not required to expose historical non-allow decisions.
 
@@ -675,7 +675,7 @@ For a session-bound Agent Connection and `dry_run=false`, the check may first
 run a bounded session-watch check and create or update `agent_sessions`,
 `session_watch_baselines`, `session_watch_observations`, and watcher-created
 `unrecorded_changes` when Product Repository changes are not covered by
-expected-write correlation. These diagnostic effects do not append task events,
+expected-write correlation. These diagnostic effects do not append authority events,
 create blocker rows, mutate close state, or increment
 `project_state.state_version`. If this check creates the first watcher
 baseline, the coverage basis is `method_boundary` and earlier Product

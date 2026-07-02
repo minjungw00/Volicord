@@ -10,15 +10,18 @@ Registry 저장소와 project-state 저장소는 각각 migration ledger 행을 
 
 기준 registry 저장소는 Runtime Home 식별 정보, 설치 프로필 기록, 저장소 루트 기반 프로젝트
 등록, 프로젝트 alias, Agent Connection 기록, `connection_projects`, `guard_installations`,
-`local_web_consent_tokens`를 포함합니다. 기준 project-state 저장소는 Core 상태 기록, replay
-행, staged artifact, persistent artifact, evidence, user judgment, run, blocker,
-`write_checks`, host-observation 기록, session-watch 기록을 포함합니다.
+`local_web_consent_tokens`를 포함합니다. 기준 project-state 저장소는 Core 상태 projection
+기록, `authority_events`, replay 행, staged artifact, persistent artifact, evidence,
+user judgment, run, blocker, `write_checks`, host-observation 기록, session-watch 기록을
+포함합니다.
 
 ## Project State Version
 
-`project_state.state_version`은 공개 API mutation을 위한 project-wide Core state clock입니다.
+`project_state.state_version`은 커밋된 권한 상태 변경을 위한 project-wide Core state clock입니다.
 
 완전한 owner-allowed state-changing transaction이 commit될 때만 증가합니다. rejected request, dry-run response, read-only result, startup check, host verification, migration metadata, lock acquisition, status projection, rendered report, failed transaction에서는 증가하지 않습니다.
+
+새로 커밋된 권한 mutation은 현재 projection update와 같은 트랜잭션 안에서 영속 `authority_events` 행을 적어도 하나 추가합니다. 일반 커밋 mutation은 권한 이벤트를 정확히 하나 추가합니다. 담당 문서가 이벤트 배치를 명시적으로 정의하면, 그 배치의 모든 행은 해당 커밋 상태 전이의 단일 결과 `project_state.state_version`을 공유합니다.
 
 `tasks.state_version`은 기준 권한 필드가 아닙니다. 기준 밖 `tasks.state_version` 열은 무시되는 metadata일 뿐이며 conflict, freshness, lock, Write Check basis로 사용하면 안 됩니다.
 
@@ -26,7 +29,7 @@ Registry 저장소와 project-state 저장소는 각각 migration ledger 행을 
 
 - `write_checks.basis_state_version`은 Write Check 생성 commit 뒤 결과 `project_state.state_version`을 저장합니다. Core는 이를 나중의 Write Check 소비 freshness basis로 사용합니다.
 - `tool_invocations.basis_state_version`은 commit된 mutation 전에 관찰한 project-wide state version을 저장합니다.
-- `task_events.state_version`은 commit된 event 뒤 결과 project-wide version을 저장합니다.
+- `authority_events.state_version`은 commit된 권한 이벤트 또는 이벤트 배치 뒤 결과 project-wide version을 저장합니다.
 
 ## Write Check
 

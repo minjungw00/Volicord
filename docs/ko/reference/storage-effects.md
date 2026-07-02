@@ -7,7 +7,7 @@
 이 문서가 담당합니다.
 
 - 읽기 전용, `dry_run`, 거부 응답, 스테이징 생성, Core 커밋, 커밋된 차단 결과의 저장 효과 구분.
-- 각 분기가 담당 기록, `task_events`, 재실행 행, `project_state.state_version`, 스테이징 핸들 생성 또는 소비, 아티팩트 승격, Write Check를 바꿀 수 있는지 여부.
+- 각 분기가 담당 기록, `authority_events`, 재실행 행, `project_state.state_version`, 스테이징 핸들 생성 또는 소비, 아티팩트 승격, Write Check를 바꿀 수 있는지 여부.
 - 차단 사유형 응답 데이터가 지속 저장되는 경계.
 - 거부 응답과 유효한 `dry_run` 미리보기의 효과 없음 보장.
 
@@ -43,7 +43,7 @@ API 데이터 형태는 API 스키마 담당 문서가 담당합니다. 차단 �
 | 효과 없음 | `ToolRejectedResponse` 또는 `effect_kind=no_effect`인 유효한 `MethodResult` | 요청된 일반 변이가 없고 Core 커밋도 없습니다. 응답이 오류나 차단 사유형 데이터를 담을 수 있지만, 이 분기는 그 값을 지속하지 않습니다. | [`ToolRejectedResponse`](#toolrejectedresponse-effect), [효과가 없는 분기](#no-effect-branches) |
 | `dry_run` | 유효한 `ToolDryRunResponse` | 미리보기만 반환합니다. 지속 참조, 재실행 행, 이벤트, 스테이징 핸들, 아티팩트 효과, `project_state.state_version` 증가는 없습니다. | [유효한 `dry_run` 미리보기](#valid-dry-run-preview) |
 | 스테이징 생성 | `effect_kind=staging_created`인 `StageArtifactResult` | 저장소 소유 임시 스테이징만 생성합니다. 일반 Core 커밋 트랜잭션이 아닙니다. | [스테이징 생성 아티팩트 결과](#staging-created-artifact-result) |
-| Core 커밋 | Core 커밋 `MethodResult` | `CoreProjectStore::commit_mutation`을 통해 메서드 담당 효과를 만듭니다. 상태 버전 증가, Task 이벤트, 선택적 재실행 행, 메서드가 선택한 `CoreStorageMutation` 값이 포함됩니다. | [Core 커밋 결과](#core-committed-result) |
+| Core 커밋 | Core 커밋 `MethodResult` | `CoreProjectStore::commit_mutation`을 통해 메서드 담당 효과를 만듭니다. 상태 버전 증가, 권한 이벤트, 선택적 재실행 행, 메서드가 선택한 `CoreStorageMutation` 값이 포함됩니다. | [Core 커밋 결과](#core-committed-result) |
 | 커밋된 차단 사유형 결과 | 메서드 담당 문서가 차단 또는 비허용 지속 저장을 허용한 커밋 `MethodResult` | 명시적으로 허용된 이벤트, 재실행, 상태 버전, 차단 사유 상태 효과만 만듭니다. 차단 사유형 응답만으로는 충분하지 않습니다. | [커밋된 차단 결과](#committed-blocked-result) |
 
 <a id="read-only-result"></a>
@@ -122,7 +122,7 @@ API 데이터 형태는 API 스키마 담당 문서가 담당합니다. 차단 �
 허용될 수 있는 효과:
 
 - 담당 기록 변경
-- `task_events` 추가
+- `authority_events` 추가
 - 재실행 행 생성
 - `project_state.state_version` 정확히 한 번 증가
 
@@ -165,7 +165,7 @@ API 데이터 형태는 API 스키마 담당 문서가 담당합니다. 차단 �
 효과가 없는 분기는 아래 항목을 만들거나 바꾸면 안 됩니다.
 
 - 담당 기록.
-- `task_events` 추가.
+- `authority_events` 추가.
 - `tool_invocations.response_json`.
 - 재실행 행.
 - 증거 요약 또는 증거 관찰.
@@ -180,7 +180,7 @@ API 데이터 형태는 API 스키마 담당 문서가 담당합니다. 차단 �
 
 메서드 담당 문서가 응답 전용 차단 분기를 선택하면 유효한 차단 결과도 효과가
 없을 수 있습니다. 예를 들어 기준 `volicord.close_task`의 차단된 종료 시도는
-`CloseTaskResult` 데이터를 반환하지만 차단 사유 행, Task 이벤트, 재실행 행,
+`CloseTaskResult` 데이터를 반환하지만 차단 사유 행, 권한 이벤트, 재실행 행,
 상태 버전 증가를 커밋하지 않습니다. 이 경로는 커밋되는 비허용
 `volicord.prepare_write` 결과와 별개입니다.
 
@@ -188,7 +188,7 @@ API 데이터 형태는 API 스키마 담당 문서가 담당합니다. 차단 �
 
 유효한 `dry_run` 미리보기는 `DryRunSummary.would_blockers: PlannedBlocker[]` 또는 계획된 효과를 포함할 수 있습니다. 이런 미리보기 항목은 아래 항목을 만들지 않습니다.
 
-- `task_event` 또는 `task_events` 추가.
+- `authority_events` 추가.
 - 재실행 행 또는 `tool_invocations.response_json`.
 - 생성된 지속 참조.
 - `close_state` 변경.
@@ -203,7 +203,7 @@ API 데이터 형태는 API 스키마 담당 문서가 담당합니다. 차단 �
 
 읽기 전용 결과는 응답으로만 반환되며 재실행 행이 아닙니다. 아래 메서드
 절에서 세션에 연결된 Agent Connection의 세션 watch 진단 기록을 명시적으로
-허용하는 경우, 그 기록은 Core 상태 변경, 재실행 행, Task 이벤트, 닫기 상태
+허용하는 경우, 그 기록은 Core 상태 변경, 재실행 행, 권한 이벤트, 닫기 상태
 변경, `project_state.state_version` 변경이 아닙니다.
 
 응답 계산을 위해 `volicord.status`와 `volicord.close_task intent=check`는 메서드 담당 문서가 그 상태 보기를 선택할 때 `CurrentCloseBasis`, 닫기 상태, 위험 수락 범위, 차단 사유, `CloseReadinessBlocker[]`, 증거 요약, 아티팩트 참조, 프로젝트 연속성 요약, 진단, 다음 행동을 계산할 수 있습니다.
@@ -216,7 +216,7 @@ API 데이터 형태는 API 스키마 담당 문서가 담당합니다. 차단 �
 
 `volicord.status`의 `close_blockers: CloseReadinessBlocker[]`는 읽기 전용 관찰입니다. 이 결과는 아래 항목을 만들지 않습니다.
 
-- `task_event` 또는 `task_events` 추가
+- `authority_events` 추가
 - 재실행 행 또는 `tool_invocations.response_json`
 - `close_state` 변경
 - Write Check 변경
@@ -255,7 +255,7 @@ API 데이터 형태는 API 스키마 담당 문서가 담당합니다. 차단 �
 
 허용될 수 있는 효과:
 
-- 구조화된 `write_decision_reasons: WriteDecisionReason[]`를 담은 `task_events` 이벤트를 정확히 하나 추가합니다.
+- 구조화된 `write_decision_reasons: WriteDecisionReason[]`를 담은 `authority_events` 이벤트를 정확히 하나 추가합니다.
 - 멱등성 키가 있으면 재실행 행을 만듭니다.
 - `project_state.state_version`을 정확히 한 번 증가시킵니다.
 - 메서드가 소유한 판단과 `write_decision_reasons`를 응답과 재실행 페이로드에 기록합니다.
@@ -278,7 +278,7 @@ API 데이터 형태는 API 스키마 담당 문서가 담당합니다. 차단 �
 
 - 요청 측 `volicord.prepare_write` 페이로드 필드는 [`volicord.prepare_write` 참조](api/method-prepare-write.md)가 담당합니다.
 - 저장된 `write_decision_reasons`는 `volicord.prepare_write` 판단 사유로 남습니다.
-- 유효하게 커밋된 비허용 판단의 지속 감사 위치는 커밋된 태스크 이벤트와, 키가 있을 때의 재실행 행입니다.
+- 유효하게 커밋된 비허용 판단의 지속 로컬 감사 위치는 커밋된 권한 이벤트와, 키가 있을 때의 재실행 행입니다.
 
 저장된 사유는 아래 항목이 아닙니다.
 
@@ -297,7 +297,7 @@ API 데이터 형태는 API 스키마 담당 문서가 담당합니다. 차단 �
 허용될 수 있는 효과:
 
 - 차단 사유 상태.
-- `task_events`.
+- `authority_events`.
 - 재실행 행.
 - `project_state.state_version` 증가.
 
@@ -401,7 +401,7 @@ API 데이터 형태는 API 스키마 담당 문서가 담당합니다. 차단 �
 맥락을 초기화하기 위해 `agent_sessions` 행을 만들 수 있고, 제한된 기준선
 스냅샷을 사용할 수 있으면 `session_watch_baselines` 행을 만들 수 있습니다.
 watch 비교를 실행하거나, `session_watch_observations`를 만들거나,
-`unrecorded_changes`를 만들거나, Task 이벤트를 추가하거나, 재실행 행을
+`unrecorded_changes`를 만들거나, 권한 이벤트를 추가하거나, 재실행 행을
 만들거나, 닫기 상태를 변경하거나, `project_state.state_version`을 증가시키지는
 않습니다. 이 상태 조회 경계에서 처음 만들어진 baseline은 `method_boundary` coverage
 메타데이터를 사용하고 부분 coverage를 보고합니다.
@@ -431,7 +431,7 @@ watch 비교를 실행하거나, `session_watch_observations`를 만들거나,
 커밋되는 비허용 판단:
 
 - [`volicord.prepare_write`의 커밋된 비허용 판단](#volicordprepare_write-committed-non-allow-decision)을 따릅니다.
-- 태스크 이벤트를 정확히 하나 추가하고, 키가 있으면 재실행 행을 만들며, `project_state.state_version`을 정확히 한 번 증가시킵니다.
+- `authority_events` 행을 정확히 하나 추가하고, 키가 있으면 재실행 행을 만들며, `project_state.state_version`을 정확히 한 번 증가시킵니다.
 - 소비 가능한 Write Check, 별도 공개 이력 메서드, 새 공개 응답 필드를 만들지 않습니다.
 - `volicord.status`는 과거 비허용 판단을 노출할 필요가 없습니다.
 
@@ -674,7 +674,7 @@ watch 비교를 실행하거나, `session_watch_observations`를 만들거나,
 watch 점검을 먼저 실행하고 Product Repository 변경이 expected-write 상관 관계로
 포함되지 않을 때 `agent_sessions`, `session_watch_baselines`,
 `session_watch_observations`, watcher가 만든 `unrecorded_changes`를 만들거나
-갱신할 수 있습니다. 이러한 진단 효과는 Task 이벤트를 추가하거나, 차단 사유
+갱신할 수 있습니다. 이러한 진단 효과는 권한 이벤트를 추가하거나, 차단 사유
 행을 만들거나, 닫기 상태를 변경하거나, `project_state.state_version`을 증가시키지
 않습니다. 이 점검이 첫 watcher baseline을 만들면 coverage basis는 `method_boundary`이며
 더 이른 Product Repository 변경은 watcher coverage 밖에 있습니다.

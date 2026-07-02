@@ -105,7 +105,7 @@ API 스키마 형태와 저장소 기록 배치는 서로 다른 담당 문서�
 | `state.sqlite` | `evidence_summaries` | 증거 요약 | 간결한 증거 범위, 뒷받침 참조, 공백 참조. |
 | `state.sqlite` | `evidence_observations` | 증거 관찰 | 하나의 보고되었거나 관찰된 증거 주장에 대한 지속 출처 기록입니다. 출처 종류, 보장 수준, 관찰자 행위자 출처, 도구 메타데이터, 입력 참조, 출력 아티팩트 참조, 한계, 타임스탬프를 포함합니다. |
 | `state.sqlite` | `blockers` | 차단 사유 상태 | 다음 행동, 쓰기 호환성, 증거 공백, 닫기 준비 상태, 복구를 위한 구조화된 차단 사유 상태. |
-| `state.sqlite` | `task_events` | 이벤트 흐름 | 커밋된 Core 변경의 추가 전용 순서와 감사 흐름. |
+| `state.sqlite` | `authority_events` | 권한 이벤트 흐름 | 커밋된 Core 권한 변경의 추가 전용 순서와 로컬 감사 흐름. |
 | `state.sqlite` | `tool_invocations` | 재실행 행 | [저장 효과](storage-effects.md)가 재실행 생성을 정의한 경우의 커밋된 `dry_run=false` Core 메서드 결과 재실행 행. 행위자 출처와 작업 범주를 포함합니다. |
 
 ## 기록 배치 규칙
@@ -129,7 +129,7 @@ API 스키마 형태와 저장소 기록 배치는 서로 다른 담당 문서�
 
 ### 현재 행, 이벤트 행, 재실행 행
 
-현재 기록 계열은 일반 읽기에 쓰는 현재 Core 상태를 담습니다. `task_events`는 커밋된 Core 변경의 추가 전용 순서와 감사 흐름입니다. `tool_invocations`는 [저장 효과](storage-effects.md)가 재실행 생성을 정의한 경우에만 커밋된 재실행 행을 저장합니다.
+현재 기록 계열은 일반 읽기에 쓰는 현재 Core 상태를 담습니다. `authority_events`는 커밋된 Core 권한 변경의 추가 전용 순서와 로컬 감사 흐름입니다. 각 권한 이벤트 행은 `event_id`, `project_id`, 결과 `state_version`, `event_type`, `actor_source`, `operation_category`, `payload_json`, `request_hash`, `previous_event_hash`, `event_hash`, `created_at`을 저장합니다. 이벤트 해시는 로컬 무결성 점검과 내보내기 상관을 위한 필드이며, 로컬 SQLite 저장소는 조작 방지 감사 로그가 아닙니다. `tool_invocations`는 [저장 효과](storage-effects.md)가 재실행 생성을 정의한 경우에만 커밋된 재실행 행을 저장합니다.
 
 상태 버전 동작, 멱등성, 이벤트 의미, 재실행 충돌 처리, 잠금, 마이그레이션 계약은 [저장소 버전 관리](storage-versioning.md)가 담당합니다.
 
@@ -150,7 +150,7 @@ API 스키마 형태와 저장소 기록 배치는 서로 다른 담당 문서�
 
 일반적인 기준 범위 Core 동작은 생명주기 또는 상태 전환을 통해 권한 행을 보존합니다. `Task`를 완료, 취소, 대체하면 관련 생명주기/상태 의미가 바뀝니다. 그래도 커밋된 권한 행은 감사와 복구를 위해 계속 주소 지정 가능해야 합니다.
 
-이 보존 규칙은 `tasks`, `change_units`, `user_judgments`, `project_continuity_records`, `write_checks`, `runs`, `artifacts`, `artifact_links`, `evidence_summaries`, `evidence_observations`, `blockers`, `task_events`, `tool_invocations`, `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unrecorded_changes`, `session_watch_baselines`, `session_watch_observations`에 적용됩니다. 아티팩트별 임시/영속 보존 규칙은 [아티팩트 저장소](storage-artifacts.md)가 담당합니다.
+이 보존 규칙은 `tasks`, `change_units`, `user_judgments`, `project_continuity_records`, `write_checks`, `runs`, `artifacts`, `artifact_links`, `evidence_summaries`, `evidence_observations`, `blockers`, `authority_events`, `tool_invocations`, `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unrecorded_changes`, `session_watch_baselines`, `session_watch_observations`에 적용됩니다. 아티팩트별 임시/영속 보존 규칙은 [아티팩트 저장소](storage-artifacts.md)가 담당합니다.
 
 ### Host-Observation 기록
 
@@ -258,7 +258,7 @@ JSON을 저장하는 SQLite `TEXT` 열은 저장 표현 선택일 뿐이며 임�
 | `evidence_summaries` | 증거 범위, 뒷받침 참조, 공백 참조, 비권한 메타데이터. |
 | `evidence_observations` | 하나의 증거 관찰에 대한 도구 메타데이터, 입력 참조, 출력 아티팩트 참조, 한계, 비권한 메타데이터. |
 | `blockers` | 차단 사유 소유 참조, 관련 참조, 세부 정보, 비권한 메타데이터. |
-| `task_events` | 커밋된 Core 변경의 이벤트 페이로드. |
+| `authority_events` | 커밋된 Core 권한 변경의 이벤트 페이로드. |
 | `tool_invocations` | 커밋된 재실행 응답. |
 
 `Task`와 Change Unit 구체화 JSON은 간결한 요약과 제한된 목록만 저장합니다. 추가 영속 기록 계열을 만들지 않습니다.

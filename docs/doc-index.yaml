@@ -609,8 +609,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: developer_documentation
   created_on: '2026-06-20'
-  last_updated_on: '2026-06-29'
-  last_verified_on: '2026-06-29'
+  last_updated_on: '2026-07-02'
+  last_verified_on: '2026-07-02'
   applies_to:
   - volicord_workspace_0_1
   - rust_workspace_1_85
@@ -639,8 +639,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: developer_documentation
   created_on: '2026-06-20'
-  last_updated_on: '2026-06-24'
-  last_verified_on: '2026-06-24'
+  last_updated_on: '2026-07-02'
+  last_verified_on: '2026-07-02'
   applies_to:
   - volicord_workspace_0_1
   - rust_workspace_1_85
@@ -903,8 +903,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: developer_documentation
   created_on: '2026-06-17'
-  last_updated_on: '2026-06-29'
-  last_verified_on: '2026-06-29'
+  last_updated_on: '2026-07-02'
+  last_verified_on: '2026-07-02'
   applies_to:
   - volicord_workspace_0_1
   - rust_workspace_1_85
@@ -1825,8 +1825,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-01'
-  last_verified_on: '2026-07-01'
+  last_updated_on: '2026-07-02'
+  last_verified_on: '2026-07-02'
   applies_to:
   - volicord_workspace_0_1
   - storage_baseline_sqlite_v3
@@ -1853,8 +1853,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-17'
-  last_updated_on: '2026-07-01'
-  last_verified_on: '2026-07-01'
+  last_updated_on: '2026-07-02'
+  last_verified_on: '2026-07-02'
   applies_to:
   - volicord_workspace_0_1
   - storage_baseline_sqlite_v3
@@ -1882,8 +1882,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-01'
-  last_verified_on: '2026-07-01'
+  last_updated_on: '2026-07-02'
+  last_verified_on: '2026-07-02'
   applies_to:
   - volicord_workspace_0_1
   - storage_baseline_sqlite_v3
@@ -1933,8 +1933,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-01'
-  last_verified_on: '2026-07-01'
+  last_updated_on: '2026-07-02'
+  last_verified_on: '2026-07-02'
   applies_to:
   - volicord_workspace_0_1
   - storage_baseline_sqlite_v3

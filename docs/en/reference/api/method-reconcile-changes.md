@@ -82,7 +82,7 @@ A committed non-dry-run result that has planned storage effects:
 - increments `project_state.state_version` exactly once
 - resolves one or more `unrecorded_changes` rows and stores resolution basis, capture basis, actor source, timestamp, and optional linked user-judgment ref
 - and/or creates pending `user_judgments` rows for remaining findings that require user acceptance
-- appends one task event and creates a replay row when an idempotency key is present
+- appends one `authority_events` row and creates a replay row when an idempotency key is present
 - updates close-readiness projections so resolved findings no longer count as unresolved
 
 A valid call with no storage mutations returns a read-only result and does not create a replay row, event, or state-version increment.

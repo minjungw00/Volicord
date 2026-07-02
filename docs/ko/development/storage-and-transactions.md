@@ -111,7 +111,7 @@ idempotency key, 정규 요청 해시, 검증된 재실행 맥락, 선택적 예
 5. 새 커밋 변이에 대해 `project_state.state_version`을 전진시킵니다.
 6. 메서드가 제공한 `CoreStorageMutation` 값을 `ProjectMutation`으로
    적용합니다.
-7. Task 이벤트를 추가합니다.
+7. 권한 이벤트를 추가합니다.
 8. 응답 JSON을 만들고 검증합니다.
 9. 커밋 호출에 idempotency가 있으면 재실행 기록 행을 저장합니다.
 10. 트랜잭션을 커밋하거나 오류 시 전체 시도를 롤백합니다.
@@ -127,8 +127,9 @@ Core 파이프라인 테스트가 있습니다.
 ## 상태 버전과 재실행
 
 정상 커밋 경로는 새로 커밋되는 Core 변이에 대해 프로젝트 상태를 한 번
-전진시킵니다. 재실행은 적격 idempotency 호출에 대해 또 다른 변이를
-적용하지 않고 저장된 원래 응답을 반환합니다.
+전진시키고, 그 결과 state version을 가진 해당 `authority_events` 행이나
+담당 문서가 정의한 이벤트 배치를 저장합니다. 재실행은 적격 idempotency
+호출에 대해 또 다른 변이를 적용하지 않고 저장된 원래 응답을 반환합니다.
 
 재실행에 쓰는 요청 해시는 타입 지정 요청 디코딩 뒤
 [`crates/volicord-types/src/canonical.rs`](../../../crates/volicord-types/src/canonical.rs)의
@@ -148,7 +149,7 @@ Core 파이프라인 테스트가 있습니다.
 - `create_artifact_staging`은 일시적 스테이징 핸들 행과 안전한 스테이징
   바이트를 만듭니다.
 - 이 경로는 `CoreProjectStore::commit_mutation`을 사용하지 않고,
-  `project_state.state_version`을 증가시키지 않으며, Task 이벤트나
+  `project_state.state_version`을 증가시키지 않으며, `authority_events`나
   재실행 기록 행을 만들지 않고, 영구 `artifacts` 행도 삽입하지 않습니다.
 
 영구 아티팩트 승격은 적용되는 담당 문서가 허용하는 경우 `record_run` 같은

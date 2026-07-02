@@ -102,7 +102,7 @@ The Store commit path lives in
 - Core builds `CommitMutationInput` with `commit_input`.
 - `CoreProjectStore::commit_mutation` performs replay lookup, stale-state
   checking, `project_state.state_version` increment, method-supplied
-  `CoreStorageMutation` application, task event insertion, response JSON
+  `CoreStorageMutation` application, authority event insertion, response JSON
   construction, optional replay-row insertion, and transaction commit.
 - `MutationCommitOutcome` routes committed, replayed, replay-context mismatch,
   idempotency conflict, and stale-state results back to Core.
@@ -116,12 +116,12 @@ implementation-oriented map for following the source.
 
 | Branch or response path | Where to read | Durable storage consequence at guide level |
 |---|---|---|
-| Rejected response from MCP decoding or preflight | `McpAdapter::call_tool`, `CoreService::prepare_request`, `validation_rejected` | Returns a rejected response or JSON-RPC error without a Core commit. No `state_version` increment, task event, replay row, artifact effect, or `Write Check` effect is created. |
+| Rejected response from MCP decoding or preflight | `McpAdapter::call_tool`, `CoreService::prepare_request`, `validation_rejected` | Returns a rejected response or JSON-RPC error without a Core commit. No `state_version` increment, authority event, replay row, artifact effect, or `Write Check` effect is created. |
 | `OwnerPipelineBranch::ReadOnly` | `CoreService::execute_prepared_request` | Builds a result with `EffectKind::ReadOnly` from current reads and does not call `CoreProjectStore::commit_mutation`. Computed close blockers or artifact observations in the response are read-time data. |
 | `OwnerPipelineBranch::NoEffectResult` | `CoreService::execute_prepared_request`; currently used by `close_task` blocked result paths | Builds a valid result with `EffectKind::NoEffect` and does not call `CoreProjectStore::commit_mutation`. A blocker-shaped result here is response data, not a committed blocker row. |
-| `OwnerPipelineBranch::DryRunPreview` | `CoreService::execute_prepared_request` | Builds `ToolDryRunResponse` preview data and does not persist generated refs, task events, replay rows, staged handles, artifacts, or `state_version` changes. |
-| `OwnerPipelineBranch::CommitMutation` | `CoreService::execute_prepared_request`, Core `commit_mutation`, Store `CoreProjectStore::commit_mutation` | Runs the Store commit transaction. The transaction increments `project_state.state_version`, appends at least one task event, stores a replay row when the committed call is idempotent, and applies method-supplied `CoreStorageMutation` values. A method may provide zero `CoreStorageMutation` values and still commit the event/replay/state-version effect when the method owner defines that branch. |
-| `volicord.stage_artifact` staging path | `crates/volicord-core/src/methods/stage_artifact.rs`, Store artifact staging helpers | Returns `StageArtifactResult` with `EffectKind::StagingCreated` and may create transient storage-owned staging plus safe bytes. It does not use the ordinary Core commit transaction, does not append task events or replay rows, does not increment `project_state.state_version`, and does not create a persistent `ArtifactRef`. See [Artifact Storage](../reference/storage-artifacts.md). |
+| `OwnerPipelineBranch::DryRunPreview` | `CoreService::execute_prepared_request` | Builds `ToolDryRunResponse` preview data and does not persist generated refs, authority events, replay rows, staged handles, artifacts, or `state_version` changes. |
+| `OwnerPipelineBranch::CommitMutation` | `CoreService::execute_prepared_request`, Core `commit_mutation`, Store `CoreProjectStore::commit_mutation` | Runs the Store commit transaction. The transaction increments `project_state.state_version`, appends at least one authority event, stores a replay row when the committed call is idempotent, and applies method-supplied `CoreStorageMutation` values. A method may provide zero `CoreStorageMutation` values and still commit the event/replay/state-version effect when the method owner defines that branch. |
+| `volicord.stage_artifact` staging path | `crates/volicord-core/src/methods/stage_artifact.rs`, Store artifact staging helpers | Returns `StageArtifactResult` with `EffectKind::StagingCreated` and may create transient storage-owned staging plus safe bytes. It does not use the ordinary Core commit transaction, does not append authority events or replay rows, does not increment `project_state.state_version`, and does not create a persistent `ArtifactRef`. See [Artifact Storage](../reference/storage-artifacts.md). |
 
 Do not treat all blocked-looking outcomes as the same implementation path. For
 example, `volicord.prepare_write` can reject before commit with no effect,
@@ -188,7 +188,7 @@ What does not happen:
 
 - No `CoreProjectStore::commit_mutation` call.
 - No state-version increment.
-- No task event.
+- No authority event.
 - No replay row.
 - No `Write Check` change.
 - No project-continuity record creation.
@@ -270,7 +270,7 @@ Lifecycle:
    `PendingTaskEvent`.
 10. `CoreProjectStore::commit_mutation` opens one immediate transaction,
     rechecks replay and freshness, increments `project_state.state_version`,
-    applies `CoreStorageMutation` values, inserts the task event, builds and
+    applies `CoreStorageMutation` values, inserts the authority event, builds and
     validates response JSON, inserts the replay row for idempotent committed
     calls, and commits.
 11. The committed response returns through `PipelineResponse` and is wrapped by
