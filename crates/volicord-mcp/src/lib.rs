@@ -14,7 +14,7 @@ use std::{
     fmt,
     fs::File,
     io::{self, BufRead, Read, Write},
-    net::{SocketAddr, TcpListener, TcpStream},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, TcpListener, TcpStream},
     path::{Path, PathBuf},
     str,
     sync::atomic::{AtomicU64, Ordering},
@@ -70,9 +70,9 @@ use volicord_types::{
     UserJudgment, UserJudgmentContext, UserJudgmentOption, UserJudgmentOptionAction,
     UserJudgmentStatus, VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
     VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB, VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
-    VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
-    VERIFICATION_BASIS_MCP_STREAMABLE_HTTP_CONNECTION_BINDING,
-    VERIFICATION_BASIS_TEST_FIXTURE_BINDING, VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
+    VERIFICATION_BASIS_MCP_LOCAL_HTTP_CONNECTION_BINDING,
+    VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+    VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
 };
 
 const SUPPORTED_PROTOCOL_VERSION: &str = "2025-11-25";
@@ -1600,12 +1600,12 @@ impl LocalWebConsentServer {
         Self { adapter }
     }
 
-    fn handle_stream(&mut self, stream: &mut TcpStream) -> Result<(), StreamableHttpError> {
+    fn handle_stream(&mut self, stream: &mut TcpStream) -> Result<(), LocalHttpError> {
         let response = match read_http_request(stream) {
             Ok(request) => self.handle_request(request),
             Err(response) => response,
         };
-        write_http_response(stream, response).map_err(StreamableHttpError::Io)
+        write_http_response(stream, response).map_err(LocalHttpError::Io)
     }
 
     fn handle_request(&mut self, request: HttpRequest) -> HttpResponse {
@@ -1623,8 +1623,8 @@ impl LocalWebConsentServer {
     }
 }
 
-/// MCP endpoint path used by the experimental Streamable HTTP transport.
-pub const STREAMABLE_HTTP_ENDPOINT_PATH: &str = "/mcp";
+/// MCP endpoint path used by the loopback-only local HTTP transport.
+pub const LOCAL_HTTP_MCP_ENDPOINT_PATH: &str = "/mcp";
 
 const HTTP_HEADER_LIMIT_BYTES: usize = 16 * 1024;
 const HTTP_BODY_LIMIT_BYTES: usize = 1024 * 1024;
@@ -1632,22 +1632,21 @@ const HTTP_READ_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Source of the bearer token used for the local HTTP MCP endpoint.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StreamableHttpTokenSource {
+pub enum LocalHttpTokenSource {
     Supplied,
     Generated,
 }
 
-/// Configuration for the token-authenticated local Streamable HTTP-style MCP endpoint.
+/// Configuration for the token-authenticated MCP endpoint over local HTTP.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct StreamableHttpServerConfig {
+pub struct LocalHttpServerConfig {
     pub runtime_home: PathBuf,
     pub connection_id: String,
     pub listen_addr: SocketAddr,
     pub bearer_token: String,
-    pub token_source: StreamableHttpTokenSource,
+    pub token_source: LocalHttpTokenSource,
     pub project_allowlist: Vec<ProjectId>,
     pub allowed_origins: Vec<String>,
-    pub allow_nonlocal_listen: bool,
 }
 
 /// Generates a bearer token from operating-system randomness.
@@ -1659,49 +1658,47 @@ pub fn generate_bearer_token() -> Result<String, McpAdapterError> {
 }
 
 /// Returns whether a listen address is loopback-only.
-pub fn streamable_http_listen_is_local(addr: &SocketAddr) -> bool {
-    addr.ip().is_loopback()
+pub fn local_http_listen_is_loopback(addr: &SocketAddr) -> bool {
+    matches!(
+        addr.ip(),
+        IpAddr::V4(address) if address == Ipv4Addr::LOCALHOST
+    ) || matches!(
+        addr.ip(),
+        IpAddr::V6(address) if address == Ipv6Addr::LOCALHOST
+    )
 }
 
-/// Runs the token-authenticated local Streamable HTTP-style MCP endpoint until the process exits.
-pub fn run_streamable_http_server(
-    config: StreamableHttpServerConfig,
-) -> Result<(), StreamableHttpError> {
-    validate_streamable_http_server_config(&config)?;
+/// Runs the token-authenticated MCP endpoint over local HTTP until the process exits.
+pub fn run_local_http_server(config: LocalHttpServerConfig) -> Result<(), LocalHttpError> {
+    validate_local_http_server_config(&config)?;
     let context = McpConnectionContext::resolve(&config.runtime_home, &config.connection_id)
-        .map_err(StreamableHttpError::Adapter)?
-        .with_invocation_binding_basis(VERIFICATION_BASIS_MCP_STREAMABLE_HTTP_CONNECTION_BINDING)
+        .map_err(LocalHttpError::Adapter)?
+        .with_invocation_binding_basis(VERIFICATION_BASIS_MCP_LOCAL_HTTP_CONNECTION_BINDING)
         .with_project_allowlist(config.project_allowlist.clone());
-    validate_streamable_http_project_allowlist(
+    validate_local_http_project_allowlist(
         &config.runtime_home,
         &config.connection_id,
         &config.project_allowlist,
     )?;
-    let listener = TcpListener::bind(config.listen_addr).map_err(StreamableHttpError::Io)?;
-    let actual_addr = listener.local_addr().map_err(StreamableHttpError::Io)?;
+    let listener = TcpListener::bind(config.listen_addr).map_err(LocalHttpError::Io)?;
+    let actual_addr = listener.local_addr().map_err(LocalHttpError::Io)?;
+    validate_local_http_listen_addr(&actual_addr)?;
     let mut adapter = McpAdapter::new(&config.runtime_home, context);
-    if streamable_http_listen_is_local(&actual_addr) {
-        adapter = adapter.with_local_web_consent(LocalWebConsentContext {
-            base_url: format!("http://{actual_addr}"),
-        });
-    }
+    adapter = adapter.with_local_web_consent(LocalWebConsentContext {
+        base_url: format!("http://{actual_addr}"),
+    });
 
-    if !streamable_http_listen_is_local(&actual_addr) {
-        eprintln!(
-            "warning: volicord serve is listening on non-local address {actual_addr}; bearer-token authentication is still required"
-        );
-    }
-    eprintln!("volicord serve listening on http://{actual_addr}{STREAMABLE_HTTP_ENDPOINT_PATH}");
+    eprintln!("volicord serve listening on http://{actual_addr}{LOCAL_HTTP_MCP_ENDPOINT_PATH}");
     eprintln!(
-        "transport: streamable-http-experimental; full MCP Streamable HTTP compatibility is not claimed"
+        "transport: local-http; loopback-only MCP-over-HTTP endpoint; full MCP Streamable HTTP compatibility is not claimed"
     );
     eprintln!("authentication: bearer token required");
     eprintln!("{TRANSPORT_DISCLOSURE_TEXT}");
-    if config.token_source == StreamableHttpTokenSource::Generated {
+    if config.token_source == LocalHttpTokenSource::Generated {
         eprintln!("generated_bearer_token: {}", config.bearer_token);
     }
 
-    let mut server = StreamableHttpServer::new(adapter, config);
+    let mut server = LocalHttpServer::new(adapter, config);
     for stream in listener.incoming() {
         match stream {
             Ok(mut stream) => {
@@ -1712,37 +1709,37 @@ pub fn run_streamable_http_server(
                     eprintln!("warning: HTTP request handling failed: {error}");
                 }
             }
-            Err(error) => return Err(StreamableHttpError::Io(error)),
+            Err(error) => return Err(LocalHttpError::Io(error)),
         }
     }
     Ok(())
 }
 
-fn validate_streamable_http_server_config(
-    config: &StreamableHttpServerConfig,
-) -> Result<(), StreamableHttpError> {
-    validate_bearer_token_text(&config.bearer_token).map_err(|message| {
-        StreamableHttpError::Config {
-            code: "AUTH_TOKEN_INVALID",
-            message,
-        }
+fn validate_local_http_server_config(config: &LocalHttpServerConfig) -> Result<(), LocalHttpError> {
+    validate_bearer_token_text(&config.bearer_token).map_err(|message| LocalHttpError::Config {
+        code: "AUTH_TOKEN_INVALID",
+        message,
     })?;
-    if !config.allow_nonlocal_listen && !streamable_http_listen_is_local(&config.listen_addr) {
-        return Err(StreamableHttpError::Config {
-            code: "NONLOCAL_LISTEN_REQUIRES_UNSAFE_FLAG",
-            message: format!(
-                "listen address {} is not loopback; pass --allow-nonlocal-listen only when explicit local network controls cover the endpoint",
-                config.listen_addr
-            ),
-        });
-    }
+    validate_local_http_listen_addr(&config.listen_addr)?;
     for origin in &config.allowed_origins {
-        validate_origin_text(origin).map_err(|message| StreamableHttpError::Config {
+        validate_origin_text(origin).map_err(|message| LocalHttpError::Config {
             code: "ORIGIN_INVALID",
             message,
         })?;
     }
     Ok(())
+}
+
+fn validate_local_http_listen_addr(addr: &SocketAddr) -> Result<(), LocalHttpError> {
+    if local_http_listen_is_loopback(addr) {
+        return Ok(());
+    }
+    Err(LocalHttpError::Config {
+        code: "NONLOCAL_LISTEN_REJECTED",
+        message: format!(
+            "listen address {addr} is not allowed; local HTTP transport only supports 127.0.0.1 or [::1]"
+        ),
+    })
 }
 
 fn validate_mcp_project_allowlist(
@@ -1800,16 +1797,16 @@ fn validate_mcp_project_allowlist(
     Ok(())
 }
 
-fn validate_streamable_http_project_allowlist(
+fn validate_local_http_project_allowlist(
     runtime_home: &Path,
     connection_id: &str,
     project_ids: &[ProjectId],
-) -> Result<(), StreamableHttpError> {
+) -> Result<(), LocalHttpError> {
     for project_id in project_ids {
         let access =
             agent_connection_project_access(runtime_home, connection_id, project_id.as_str())
-                .map_err(|error| StreamableHttpError::Adapter(McpAdapterError::Store(error)))?
-                .ok_or_else(|| StreamableHttpError::Config {
+                .map_err(|error| LocalHttpError::Adapter(McpAdapterError::Store(error)))?
+                .ok_or_else(|| LocalHttpError::Config {
                     code: "PROJECT_NOT_ALLOWED",
                     message: format!(
                         "connection {connection_id} is not registered for project {}",
@@ -1817,13 +1814,13 @@ fn validate_streamable_http_project_allowlist(
                     ),
                 })?;
         if !access.connection_enabled {
-            return Err(StreamableHttpError::Config {
+            return Err(LocalHttpError::Config {
                 code: "PROJECT_NOT_ALLOWED",
                 message: format!("connection {connection_id} is disabled"),
             });
         }
         if !access.project_allowed {
-            return Err(StreamableHttpError::Config {
+            return Err(LocalHttpError::Config {
                 code: "PROJECT_NOT_ALLOWED",
                 message: format!(
                     "project {} is outside connection {connection_id} project allowlist",
@@ -1832,7 +1829,7 @@ fn validate_streamable_http_project_allowlist(
             });
         }
         let Some(project) = access.project else {
-            return Err(StreamableHttpError::Config {
+            return Err(LocalHttpError::Config {
                 code: "PROJECT_NOT_ALLOWED",
                 message: format!("project {} is not registered", project_id.as_str()),
             });
@@ -1848,7 +1845,7 @@ fn validate_streamable_http_project_allowlist(
             },
         );
         if !availability.available {
-            return Err(StreamableHttpError::Config {
+            return Err(LocalHttpError::Config {
                 code: "PROJECT_NOT_ALLOWED",
                 message: format!(
                     "project {} is unavailable: {}",
@@ -1885,15 +1882,15 @@ fn validate_origin_text(origin: &str) -> Result<(), String> {
     Ok(())
 }
 
-struct StreamableHttpServer {
+struct LocalHttpServer {
     adapter: McpAdapter,
     bearer_token: String,
     allowed_origins: Vec<String>,
     sessions: HashMap<String, ConnectionState>,
 }
 
-impl StreamableHttpServer {
-    fn new(adapter: McpAdapter, config: StreamableHttpServerConfig) -> Self {
+impl LocalHttpServer {
+    fn new(adapter: McpAdapter, config: LocalHttpServerConfig) -> Self {
         Self {
             adapter,
             bearer_token: config.bearer_token,
@@ -1902,12 +1899,12 @@ impl StreamableHttpServer {
         }
     }
 
-    fn handle_stream(&mut self, stream: &mut TcpStream) -> Result<(), StreamableHttpError> {
+    fn handle_stream(&mut self, stream: &mut TcpStream) -> Result<(), LocalHttpError> {
         let response = match read_http_request(stream) {
             Ok(request) => self.handle_request(request),
             Err(response) => response,
         };
-        write_http_response(stream, response).map_err(StreamableHttpError::Io)
+        write_http_response(stream, response).map_err(LocalHttpError::Io)
     }
 
     fn handle_request(&mut self, request: HttpRequest) -> HttpResponse {
@@ -1939,21 +1936,21 @@ impl StreamableHttpServer {
                 }),
                 self.cors_headers(origin.as_deref()),
             ),
-            ("POST", STREAMABLE_HTTP_ENDPOINT_PATH) => {
+            ("POST", LOCAL_HTTP_MCP_ENDPOINT_PATH) => {
                 self.handle_mcp_post(request, origin.as_deref())
             }
-            ("GET", STREAMABLE_HTTP_ENDPOINT_PATH) => structured_http_error_with_headers(
+            ("GET", LOCAL_HTTP_MCP_ENDPOINT_PATH) => structured_http_error_with_headers(
                 405,
                 "Method Not Allowed",
                 "SSE_UNSUPPORTED",
-                "server-sent event streams are not implemented by this local experimental endpoint",
+                "server-sent event streams are not implemented by this local HTTP endpoint",
                 self.cors_headers(origin.as_deref()),
             )
             .with_header("Allow", "POST, GET, DELETE, OPTIONS"),
-            ("DELETE", STREAMABLE_HTTP_ENDPOINT_PATH) => {
+            ("DELETE", LOCAL_HTTP_MCP_ENDPOINT_PATH) => {
                 self.handle_mcp_delete(&request, origin.as_deref())
             }
-            (_, STREAMABLE_HTTP_ENDPOINT_PATH) => structured_http_error_with_headers(
+            (_, LOCAL_HTTP_MCP_ENDPOINT_PATH) => structured_http_error_with_headers(
                 405,
                 "Method Not Allowed",
                 "METHOD_NOT_ALLOWED",
@@ -1972,7 +1969,7 @@ impl StreamableHttpServer {
     }
 
     fn handle_options(&self, request: &HttpRequest, origin: Option<&str>) -> HttpResponse {
-        if request.target != STREAMABLE_HTTP_ENDPOINT_PATH {
+        if request.target != LOCAL_HTTP_MCP_ENDPOINT_PATH {
             return structured_http_error(
                 404,
                 "Not Found",
@@ -3303,15 +3300,15 @@ fn hex_encode(bytes: &[u8]) -> String {
     output
 }
 
-/// Streamable HTTP setup and listener errors.
+/// Local HTTP setup and listener errors.
 #[derive(Debug)]
-pub enum StreamableHttpError {
+pub enum LocalHttpError {
     Config { code: &'static str, message: String },
     Adapter(McpAdapterError),
     Io(io::Error),
 }
 
-impl fmt::Display for StreamableHttpError {
+impl fmt::Display for LocalHttpError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Config { code, message } => write!(formatter, "{code}: {message}"),
@@ -3321,7 +3318,7 @@ impl fmt::Display for StreamableHttpError {
     }
 }
 
-impl Error for StreamableHttpError {
+impl Error for LocalHttpError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Adapter(error) => Some(error),
@@ -3589,8 +3586,8 @@ fn controlled_invocation_binding_basis(value: &str) -> &'static str {
         VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING => {
             VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING
         }
-        VERIFICATION_BASIS_MCP_STREAMABLE_HTTP_CONNECTION_BINDING => {
-            VERIFICATION_BASIS_MCP_STREAMABLE_HTTP_CONNECTION_BINDING
+        VERIFICATION_BASIS_MCP_LOCAL_HTTP_CONNECTION_BINDING => {
+            VERIFICATION_BASIS_MCP_LOCAL_HTTP_CONNECTION_BINDING
         }
         VERIFICATION_BASIS_TEST_FIXTURE_BINDING => VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
         _ => DEFAULT_INVOCATION_BINDING_BASIS,
@@ -5959,6 +5956,38 @@ mod tests {
     }
 
     #[test]
+    fn local_web_consent_rejects_origin_mismatch_without_consuming_token(
+    ) -> Result<(), Box<dyn Error>> {
+        let fixture = CoreFixture::new("mcp-local-web-origin")?;
+        let (task_id, pending_response) = create_pending_product_judgment(&fixture)?;
+        let token = "9999999999999999999999999999999999999999999999999999999999999999";
+        create_consent_token_for_response(&fixture, &pending_response, token, 60)?;
+        let mut server = consent_server(&fixture)?;
+        let form_body = format!(
+            "project={}&token={}&selected_option_id=keep",
+            percent_encode_query(fixture.project_id()),
+            token
+        );
+
+        let rejected = server.handle_request(consent_post_request(
+            Some("http://example.invalid"),
+            &form_body,
+        ));
+
+        assert_eq!(rejected.status, 403);
+        assert!(http_body_text(&rejected)?.contains("ORIGIN_NOT_ALLOWED"));
+
+        let valid =
+            server.handle_request(consent_post_request(Some(consent_base_url()), &form_body));
+        assert_eq!(valid.status, 200);
+        assert!(http_body_text(&valid)?.contains("Answer recorded"));
+        let pending_value = pending_response.response_value;
+        let record = stored_judgment_record(&fixture, &task_id, &pending_value)?;
+        assert_eq!(record.status, "resolved");
+        Ok(())
+    }
+
+    #[test]
     fn local_web_consent_validation_failure_leaves_token_reusable() -> Result<(), Box<dyn Error>> {
         let fixture = CoreFixture::new("mcp-local-web-validation-retry")?;
         let (task_id, pending_response) = create_pending_product_judgment(&fixture)?;
@@ -6080,13 +6109,13 @@ mod tests {
     }
 
     #[test]
-    fn streamable_http_rejects_missing_bearer_auth() -> Result<(), Box<dyn Error>> {
+    fn local_http_rejects_missing_bearer_auth() -> Result<(), Box<dyn Error>> {
         let fixture = CoreFixture::new("mcp-http-auth")?;
         let mut server = http_server(&fixture, Vec::new(), Vec::new())?;
 
         let response = server.handle_request(http_request(
             "POST",
-            STREAMABLE_HTTP_ENDPOINT_PATH,
+            LOCAL_HTTP_MCP_ENDPOINT_PATH,
             None,
             None,
             None,
@@ -6097,6 +6126,20 @@ mod tests {
         assert_eq!(http_json(&response)["error"]["code"], "AUTH_REQUIRED");
         assert_diagnostic_disclosure(&http_json(&response));
         assert_eq!(http_header(&response, "WWW-Authenticate"), Some("Bearer"));
+
+        let unauthenticated_health = server.handle_request(http_request(
+            "GET",
+            "/healthz",
+            None,
+            None,
+            None,
+            Value::Null,
+        )?);
+        assert_eq!(unauthenticated_health.status, 401);
+        assert_eq!(
+            http_json(&unauthenticated_health)["error"]["code"],
+            "AUTH_REQUIRED"
+        );
 
         let health = server.handle_request(http_request(
             "GET",
@@ -6109,17 +6152,22 @@ mod tests {
         assert_eq!(health.status, 200);
         assert_eq!(http_json(&health)["status"], "ok");
         assert_diagnostic_disclosure(&http_json(&health));
+        let health_body = serde_json::to_string(&http_json(&health))?;
+        assert!(!health_body.contains("test_token"));
+        assert!(!health_body.contains(fixture.connection_id()));
+        assert!(!health_body.contains(fixture.project_id()));
+        assert!(!health_body.contains(&fixture.runtime_home_path().display().to_string()));
         Ok(())
     }
 
     #[test]
-    fn streamable_http_rejects_origin_unless_explicitly_allowed() -> Result<(), Box<dyn Error>> {
+    fn local_http_rejects_origin_unless_explicitly_allowed() -> Result<(), Box<dyn Error>> {
         let fixture = CoreFixture::new("mcp-http-origin")?;
         let mut server = http_server(&fixture, Vec::new(), Vec::new())?;
 
         let rejected = server.handle_request(http_request(
             "POST",
-            STREAMABLE_HTTP_ENDPOINT_PATH,
+            LOCAL_HTTP_MCP_ENDPOINT_PATH,
             Some("test_token"),
             Some("https://example.invalid"),
             None,
@@ -6132,7 +6180,7 @@ mod tests {
 
         let denied_preflight = server.handle_request(http_request(
             "OPTIONS",
-            STREAMABLE_HTTP_ENDPOINT_PATH,
+            LOCAL_HTTP_MCP_ENDPOINT_PATH,
             None,
             Some("https://example.invalid"),
             None,
@@ -6151,7 +6199,7 @@ mod tests {
         )?;
         let allowed = allowed_server.handle_request(http_request(
             "POST",
-            STREAMABLE_HTTP_ENDPOINT_PATH,
+            LOCAL_HTTP_MCP_ENDPOINT_PATH,
             Some("test_token"),
             Some("https://allowed.example"),
             None,
@@ -6166,19 +6214,25 @@ mod tests {
     }
 
     #[test]
-    fn streamable_http_requires_unsafe_flag_for_nonlocal_listen() -> Result<(), Box<dyn Error>> {
+    fn local_http_rejects_nonlocal_listen_addresses() -> Result<(), Box<dyn Error>> {
         let fixture = CoreFixture::new("mcp-http-listen")?;
-        let mut config = http_config(&fixture, Vec::new(), Vec::new());
-        config.listen_addr = "0.0.0.0:8765".parse()?;
 
-        let error = validate_streamable_http_server_config(&config)
-            .expect_err("nonlocal listen should require explicit flag");
+        for listen_addr in ["0.0.0.0:8765", "[::]:8765", "192.0.2.10:8765"] {
+            let mut config = http_config(&fixture, Vec::new(), Vec::new());
+            config.listen_addr = listen_addr.parse()?;
+            let error = validate_local_http_server_config(&config)
+                .expect_err("nonlocal listen address should be rejected");
+            assert!(
+                error.to_string().contains("NONLOCAL_LISTEN_REJECTED"),
+                "unexpected error for {listen_addr}: {error}"
+            );
+        }
 
-        assert!(error
-            .to_string()
-            .contains("NONLOCAL_LISTEN_REQUIRES_UNSAFE_FLAG"));
-        config.allow_nonlocal_listen = true;
-        validate_streamable_http_server_config(&config)?;
+        for listen_addr in ["127.0.0.1:0", "[::1]:0"] {
+            let mut config = http_config(&fixture, Vec::new(), Vec::new());
+            config.listen_addr = listen_addr.parse()?;
+            validate_local_http_server_config(&config)?;
+        }
         Ok(())
     }
 
@@ -6194,7 +6248,7 @@ mod tests {
 
         let initialize = server.handle_request(http_request(
             "POST",
-            STREAMABLE_HTTP_ENDPOINT_PATH,
+            LOCAL_HTTP_MCP_ENDPOINT_PATH,
             Some("test_token"),
             None,
             None,
@@ -6215,8 +6269,7 @@ mod tests {
     }
 
     #[test]
-    fn streamable_http_project_allowlist_narrows_connection_projects() -> Result<(), Box<dyn Error>>
-    {
+    fn local_http_project_allowlist_narrows_connection_projects() -> Result<(), Box<dyn Error>> {
         let fixture = CoreFixture::new("mcp-http-project-allowlist")?;
         let outside_project_id = "project_http_allowed_by_connection";
         add_allowed_project(&fixture, outside_project_id)?;
@@ -6228,7 +6281,7 @@ mod tests {
 
         let initialize = server.handle_request(http_request(
             "POST",
-            STREAMABLE_HTTP_ENDPOINT_PATH,
+            LOCAL_HTTP_MCP_ENDPOINT_PATH,
             Some("test_token"),
             None,
             None,
@@ -6241,7 +6294,7 @@ mod tests {
 
         let initialized = server.handle_request(http_request(
             "POST",
-            STREAMABLE_HTTP_ENDPOINT_PATH,
+            LOCAL_HTTP_MCP_ENDPOINT_PATH,
             Some("test_token"),
             None,
             Some(&session_id),
@@ -6251,7 +6304,7 @@ mod tests {
 
         let listed = server.handle_request(http_request(
             "POST",
-            STREAMABLE_HTTP_ENDPOINT_PATH,
+            LOCAL_HTTP_MCP_ENDPOINT_PATH,
             Some("test_token"),
             None,
             Some(&session_id),
@@ -6267,7 +6320,7 @@ mod tests {
 
         let rejected = server.handle_request(http_request(
             "POST",
-            STREAMABLE_HTTP_ENDPOINT_PATH,
+            LOCAL_HTTP_MCP_ENDPOINT_PATH,
             Some("test_token"),
             None,
             Some(&session_id),
@@ -6379,16 +6432,15 @@ mod tests {
         fixture: &CoreFixture,
         project_allowlist: Vec<ProjectId>,
         allowed_origins: Vec<String>,
-    ) -> StreamableHttpServerConfig {
-        StreamableHttpServerConfig {
+    ) -> LocalHttpServerConfig {
+        LocalHttpServerConfig {
             runtime_home: fixture.runtime_home_path().to_path_buf(),
             connection_id: fixture.connection_id().to_owned(),
             listen_addr: "127.0.0.1:0".parse().expect("valid test listen"),
             bearer_token: "test_token".to_owned(),
-            token_source: StreamableHttpTokenSource::Supplied,
+            token_source: LocalHttpTokenSource::Supplied,
             project_allowlist,
             allowed_origins,
-            allow_nonlocal_listen: false,
         }
     }
 
@@ -6396,26 +6448,24 @@ mod tests {
         fixture: &CoreFixture,
         project_allowlist: Vec<ProjectId>,
         allowed_origins: Vec<String>,
-    ) -> Result<StreamableHttpServer, Box<dyn Error>> {
+    ) -> Result<LocalHttpServer, Box<dyn Error>> {
         let config = http_config(fixture, project_allowlist.clone(), allowed_origins);
         let context =
             McpConnectionContext::resolve(fixture.runtime_home_path(), fixture.connection_id())?
-                .with_invocation_binding_basis(
-                    VERIFICATION_BASIS_MCP_STREAMABLE_HTTP_CONNECTION_BINDING,
-                )
+                .with_invocation_binding_basis(VERIFICATION_BASIS_MCP_LOCAL_HTTP_CONNECTION_BINDING)
                 .with_project_allowlist(project_allowlist);
-        Ok(StreamableHttpServer::new(
+        Ok(LocalHttpServer::new(
             McpAdapter::new(fixture.runtime_home_path(), context),
             config,
         ))
     }
 
-    fn consent_server(fixture: &CoreFixture) -> Result<StreamableHttpServer, Box<dyn Error>> {
+    fn consent_server(fixture: &CoreFixture) -> Result<LocalHttpServer, Box<dyn Error>> {
         consent_server_with_context(
             fixture,
             McpConnectionContext::resolve(fixture.runtime_home_path(), fixture.connection_id())?
                 .with_invocation_binding_basis(
-                    VERIFICATION_BASIS_MCP_STREAMABLE_HTTP_CONNECTION_BINDING,
+                    VERIFICATION_BASIS_MCP_LOCAL_HTTP_CONNECTION_BINDING,
                 ),
         )
     }
@@ -6423,7 +6473,7 @@ mod tests {
     fn consent_server_for_connection(
         fixture: &CoreFixture,
         connection_id: &str,
-    ) -> Result<StreamableHttpServer, Box<dyn Error>> {
+    ) -> Result<LocalHttpServer, Box<dyn Error>> {
         let existing =
             agent_connection_record(fixture.runtime_home_path(), fixture.connection_id())?
                 .expect("fixture connection should exist");
@@ -6456,7 +6506,7 @@ mod tests {
             fixture,
             McpConnectionContext::resolve(fixture.runtime_home_path(), connection_id)?
                 .with_invocation_binding_basis(
-                    VERIFICATION_BASIS_MCP_STREAMABLE_HTTP_CONNECTION_BINDING,
+                    VERIFICATION_BASIS_MCP_LOCAL_HTTP_CONNECTION_BINDING,
                 ),
         )
     }
@@ -6464,8 +6514,8 @@ mod tests {
     fn consent_server_with_context(
         fixture: &CoreFixture,
         context: McpConnectionContext,
-    ) -> Result<StreamableHttpServer, Box<dyn Error>> {
-        Ok(StreamableHttpServer::new(
+    ) -> Result<LocalHttpServer, Box<dyn Error>> {
+        Ok(LocalHttpServer::new(
             McpAdapter::new(fixture.runtime_home_path(), context).with_local_web_consent(
                 LocalWebConsentContext {
                     base_url: consent_base_url().to_owned(),

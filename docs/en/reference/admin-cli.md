@@ -76,7 +76,7 @@ volicord project list [--json]
 volicord project rename NAME [--repo PATH] [--json]
 volicord project forget [PATH|NAME] [--json]
 volicord export mcp-config [--output PATH] [--repo PATH] [--read-only] [--json]
-volicord serve --transport streamable-http [--listen 127.0.0.1:8765] [--home PATH] [--connection <connection_id>] [--project PATH]... [--token TOKEN | --generate-token] [--allow-origin ORIGIN] [--allow-nonlocal-listen]
+volicord serve --transport local-http [--listen 127.0.0.1:8765] [--home PATH] [--connection <connection_id>] [--project PATH]... [--token TOKEN | --generate-token] [--allow-origin ORIGIN]
 volicord guard session-start [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|observe] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
 volicord guard pre-tool [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|observe] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
 volicord guard post-tool [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|observe] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
@@ -114,10 +114,10 @@ Exit and stream behavior:
   wrapper scripts use this mode, and Claude Code policy blocks are not
   represented as exit code `1`.
 - Errors remain stderr diagnostics under the CLI exit-code model.
-- `volicord serve --transport streamable-http` is an explicit long-running MCP
-  transport process. It keeps loopback as the default listener, requires bearer
-  authentication, and delegates HTTP wire behavior and transport security checks
-  to [MCP Transport](mcp-transport.md).
+- `volicord serve --transport local-http` is an explicit long-running MCP
+  transport process. It accepts only loopback listen addresses, requires bearer
+  authentication for the MCP local HTTP endpoint, and delegates HTTP wire
+  behavior and transport security checks to [MCP Transport](mcp-transport.md).
 
 Not supported:
 

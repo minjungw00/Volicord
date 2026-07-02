@@ -1,7 +1,7 @@
 # MCP 전송 참조
 
-이 문서는 로컬 `volicord mcp --stdio` 프로세스 계약과 실험적
-`volicord serve --transport streamable-http` 프로세스 경계 계약을 담당합니다. 여기에는
+이 문서는 로컬 `volicord mcp --stdio` 프로세스 계약과 loopback 전용
+`volicord serve --transport local-http` 프로세스 경계 계약을 담당합니다. 여기에는
 프로세스 시작, 프로세스 환경, MCP 프로토콜 버전 협상, 초기화 수명주기, stdio 전송
 프레이밍, 로컬 HTTP MCP 요청 처리, JSON-RPC 메시지 검증, Agent Connection에 묶인 시작
 검증, MCP에 보이는 도구 탐색, MCP 응답 래핑, 종료와 재연결 동작이 포함됩니다.
@@ -14,12 +14,12 @@
 이 문서가 담당합니다.
 
 - `volicord mcp --stdio` 프로세스 시작과 종료 동작
-- `volicord serve --transport streamable-http` 시작, 로컬 리스너, 전송 경계 보안 점검
+- `volicord serve --transport local-http` 시작, 로컬 리스너, 전송 경계 보안 점검
 - 생성된 호스트 설정과 내보낸 MCP 설정이 사용하는 프로세스 설정
 - MCP Runtime Home 경로 해석
 - MCP 프로토콜 버전 협상과 초기화 수명주기
 - stdio JSON-RPC 프레이밍, 메시지 검증, 지원되는 MCP 메서드
-- 실험적 serve 전송을 위한 로컬 HTTP JSON-RPC 요청 처리
+- loopback 전용 serve 전송을 위한 로컬 HTTP JSON-RPC 요청 처리
 - stdio 전송 경계의 서버 시작 MCP elicitation
 - 대기 사용자 판단을 위한 로컬 loopback web consent fallback
 - 하나의 내부 Agent Connection 바인딩에 대한 MCP 시작 검증
@@ -47,17 +47,17 @@ MCP TCP 리스너, HTTP MCP 리스너, Unix-domain socket 리스너, 또는 그 
 리스너가 아닙니다. MCP elicitation과 prompt capture를 사용할 수 없을 때는 대기 사용자
 판단을 위해 별도의 loopback 전용 local web consent 리스너를 시작할 수 있습니다.
 
-`volicord serve --transport streamable-http`는 Docker와 localhost MCP 사용을 위한 별도의
-명시적 프로세스 모드입니다. 이 명령은 로컬 HTTP 리스너를 시작하고, 가능한 곳에서는
-stdio와 같은 Agent Connection에 묶인 MCP 어댑터 로직을 재사용합니다. 기본 MCP 전송이
-아니며, Docker가 아닌 로컬 호스트 설정 생성에서 사용하지 않고, 인증 없는 일반 Volicord
+`volicord serve --transport local-http`는 Docker와 localhost MCP 사용을 위한 별도의
+명시적 프로세스 모드입니다. 이 명령은 loopback 전용 HTTP 리스너를 시작하고, 가능한
+곳에서는 stdio와 같은 Agent Connection에 묶인 MCP 어댑터 로직을 재사용합니다. 기본 MCP
+전송이 아니며, Docker가 아닌 로컬 호스트 설정 생성에서 사용하지 않고, 일반 Volicord
 네트워크 서비스도 아닙니다.
 
-현재 serve 전송은 인증을 요구하는 실험적 Streamable HTTP 스타일 부분 구현입니다. MCP
-세션 헤더와 bearer token 검사와 함께 HTTP `POST /mcp`로 JSON-RPC를 받고 JSON 응답을
-반환합니다. server-sent event 스트림, HTTP elicitation, 전체 MCP Streamable HTTP
-호환성은 구현하지 않습니다. 해당 전송 기능이 구현되고 테스트되기 전에는 문서와 시작
-진단이 전체 프로토콜 호환성을 주장하면 안 됩니다.
+현재 serve 전송은 인증을 요구하는 로컬 MCP-over-HTTP 부분 구현입니다. MCP 세션 헤더와
+bearer token 검사와 함께 HTTP `POST /mcp`로 JSON-RPC를 받고 JSON 응답을 반환합니다.
+server-sent event 스트림, HTTP elicitation, 전체 MCP Streamable HTTP 호환성은 구현하지
+않습니다. 해당 전송 기능이 구현되고 테스트되기 전에는 문서와 시작 진단이 전체 프로토콜
+호환성을 주장하면 안 됩니다.
 시작 진단, `/healthz`, 구조화된 HTTP 오류 JSON은 `detective_observation` 공개를
 포함합니다. 이는 전송 진단이며 OS 샌드박싱, 네트워크 격리, 악성 코드 방어,
 전체 쓰기 방지, 행위자 귀속 증명, 정확성 증명, 테스트 충분성 증명, 인간 검토 대체가
@@ -92,14 +92,14 @@ volicord mcp --stdio --connection <connection_id> [--project <project_id>]
   코드 `2`로 끝납니다.
 - help와 version 처리는 Runtime Home이나 Agent Connection 조회보다 먼저 일어납니다.
 
-실험적 HTTP serve 명령줄 동작:
+Local HTTP serve 명령줄 동작:
 
-- `volicord serve --transport streamable-http`만 지원되는 serve 전송 표기입니다. 다른 전송
+- `volicord serve --transport local-http`만 지원되는 serve 전송 표기입니다. 다른 전송
   값은 사용법 오류입니다.
-- `--listen 127.0.0.1:<port>`는 리스너를 선택합니다. 생략하면 `127.0.0.1:8765`를
-  사용합니다.
-- 기본 리스너는 loopback 전용입니다. `0.0.0.0`, `::`, 또는 다른 non-loopback 주소에
-  바인딩하려면 `--allow-nonlocal-listen`이 필요하며 시작할 때 명확한 경고를 씁니다.
+- `--listen 127.0.0.1:<port>` 또는 `--listen [::1]:<port>`는 리스너를 선택합니다.
+  생략하면 `127.0.0.1:8765`를 사용합니다.
+- 리스너는 loopback 전용입니다. `0.0.0.0`, `::`, 공개 인터페이스, 컨테이너 전체
+  인터페이스, 또는 다른 non-loopback 주소에 바인딩하려 하면 거절합니다.
 - `--home PATH`는 프로세스의 Runtime Home을 선택합니다. `--home`이 없으면 공통
   `VOLICORD_HOME`과 플랫폼 기본 Runtime Home 해석을 사용합니다.
 - `--connection <connection_id>`는 서버를 저장된 Agent Connection 하나에 묶습니다. 이
@@ -134,13 +134,13 @@ HTTP serve 요청 동작:
 - 성공한 `initialize`는 `Mcp-Session-Id`를 만듭니다. 이후 JSON-RPC 요청은 그 session ID를
   제공해야 합니다.
 - `DELETE /mcp`는 bearer token과 session ID가 유효할 때 session을 삭제합니다.
-- `GET /mcp`는 `SSE_UNSUPPORTED`를 반환합니다. server-sent event 스트림은 이 실험적
+- `GET /mcp`는 `SSE_UNSUPPORTED`를 반환합니다. server-sent event 스트림은 이 local HTTP
   endpoint에서 구현하지 않습니다.
 - `GET /healthz`는 최소 로컬 health endpoint이지만 같은 bearer token을 요구합니다.
 - `GET /consent`와 `POST /consent`는 local web consent를 사용할 수 있을 때만 열리는
-  endpoint입니다. MCP endpoint가 아니며 MCP bearer token을 사용하지 않고, 일반 네트워크
-  서비스 인증도 아닙니다. 프로젝트, 연결, 대기 판단에 묶인 유효한 일회성 consent token이
-  필요한 loopback User Channel capture 경로입니다.
+  endpoint입니다. MCP endpoint가 아니며 MCP bearer token을 사용하지 않습니다. 프로젝트,
+  연결, 대기 판단에 묶인 유효한 일회성 consent token이 필요한 loopback User Channel
+  capture 경로입니다.
 - 인증 없는 임의 resource endpoint는 없습니다.
 - CORS preflight는 MCP endpoint에 대해서만, Origin 허용 목록 검증 뒤에만, 그리고 허용된
   Origin이 하나 이상 설정되어 있을 때만 받습니다.
@@ -550,9 +550,8 @@ Agent Connection 도구로 노출하지 않으며, 에이전트가 넣은 답변
 
 Local web consent 리스너는 기본적으로 `127.0.0.1`에 bind하며, 안전하게 bind할 수 없으면
 fail closed해야 합니다. stdio 모드에서는 임시 loopback port를 사용합니다.
-`volicord serve --transport streamable-http`에서는 실제 serve 리스너가 loopback일 때만
-local web consent를 사용할 수 있습니다. 명시적으로 non-local serve 리스너를 연 경우
-consent form을 노출하면 안 됩니다.
+`volicord serve --transport local-http`에서는 같은 loopback 전용 local HTTP 리스너에서만
+consent route를 제공합니다.
 
 Local web consent endpoint 동작:
 

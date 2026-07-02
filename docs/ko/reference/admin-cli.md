@@ -68,7 +68,7 @@ volicord project list [--json]
 volicord project rename NAME [--repo PATH] [--json]
 volicord project forget [PATH|NAME] [--json]
 volicord export mcp-config [--output PATH] [--repo PATH] [--read-only] [--json]
-volicord serve --transport streamable-http [--listen 127.0.0.1:8765] [--home PATH] [--connection <connection_id>] [--project PATH]... [--token TOKEN | --generate-token] [--allow-origin ORIGIN] [--allow-nonlocal-listen]
+volicord serve --transport local-http [--listen 127.0.0.1:8765] [--home PATH] [--connection <connection_id>] [--project PATH]... [--token TOKEN | --generate-token] [--allow-origin ORIGIN]
 volicord guard session-start [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|observe] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
 volicord guard pre-tool [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|observe] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
 volicord guard post-tool [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|observe] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
@@ -104,9 +104,9 @@ volicord inbox open <judgment-id> [--repo PATH] [--json]
   종료 코드 규칙을 사용합니다. 생성되는 Codex와 Claude Code hook wrapper script는
   이 모드를 사용하며, Claude Code policy block은 종료 코드 `1`로 표현하지 않습니다.
 - 오류는 CLI 종료 코드 모델에 따라 stderr 진단으로 남습니다.
-- `volicord serve --transport streamable-http`는 명시적 장기 실행 MCP 전송 프로세스입니다.
-  기본 리스너는 loopback으로 유지하고 bearer 인증을 요구하며, HTTP 와이어 동작과 전송
-  보안 점검은 [MCP 전송](mcp-transport.md)에 맡깁니다.
+- `volicord serve --transport local-http`는 명시적 장기 실행 MCP 전송 프로세스입니다.
+  loopback listen 주소만 허용하고 MCP local HTTP endpoint에는 bearer 인증을 요구하며,
+  HTTP 와이어 동작과 전송 보안 점검은 [MCP 전송](mcp-transport.md)에 맡깁니다.
 
 지원하지 않는 것:
 

@@ -7,7 +7,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use volicord_mcp::{generate_bearer_token, StreamableHttpServerConfig, StreamableHttpTokenSource};
+use volicord_mcp::{generate_bearer_token, LocalHttpServerConfig, LocalHttpTokenSource};
 use volicord_store::{
     agent_connections::{list_agent_connections, list_connection_projects},
     bootstrap::project_record_by_repo_root,
@@ -18,14 +18,14 @@ use volicord_types::ProjectId;
 
 use crate::project_context::{resolve_repository_root, ProjectCommandError};
 
-const DEFAULT_STREAMABLE_HTTP_LISTEN: &str = "127.0.0.1:8765";
-const STREAMABLE_HTTP_TRANSPORT: &str = "streamable-http";
+const DEFAULT_LOCAL_HTTP_LISTEN: &str = "127.0.0.1:8765";
+const LOCAL_HTTP_TRANSPORT: &str = "local-http";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ServeCommand {
     Help,
     Version,
-    StreamableHttp { config: StreamableHttpServerConfig },
+    LocalHttp { config: LocalHttpServerConfig },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -85,7 +85,6 @@ struct ServeOptions {
     connection_id: Option<String>,
     project_paths: Vec<PathBuf>,
     allowed_origins: Vec<String>,
-    allow_nonlocal_listen: bool,
 }
 
 pub fn run_serve_command<F>(
@@ -110,9 +109,9 @@ where
         .transport
         .as_deref()
         .ok_or_else(|| ServeCommandError::usage("--transport is required"))?;
-    if transport != STREAMABLE_HTTP_TRANSPORT {
+    if transport != LOCAL_HTTP_TRANSPORT {
         return Err(ServeCommandError::usage(format!(
-            "UNSUPPORTED_TRANSPORT: --transport must be {STREAMABLE_HTTP_TRANSPORT}"
+            "UNSUPPORTED_TRANSPORT: --transport must be {LOCAL_HTTP_TRANSPORT}"
         )));
     }
 
@@ -131,7 +130,7 @@ where
         current_dir,
     )?;
     let listen_addr = options.listen.unwrap_or_else(|| {
-        DEFAULT_STREAMABLE_HTTP_LISTEN
+        DEFAULT_LOCAL_HTTP_LISTEN
             .parse()
             .expect("valid default listen")
     });
@@ -147,17 +146,17 @@ where
                     "cannot combine --token and --generate-token",
                 ));
             }
-            (token, StreamableHttpTokenSource::Supplied)
+            (token, LocalHttpTokenSource::Supplied)
         }
         None => (
             generate_bearer_token()
                 .map_err(|error| ServeCommandError::runtime(error.to_string()))?,
-            StreamableHttpTokenSource::Generated,
+            LocalHttpTokenSource::Generated,
         ),
     };
 
-    Ok(ServeCommand::StreamableHttp {
-        config: StreamableHttpServerConfig {
+    Ok(ServeCommand::LocalHttp {
+        config: LocalHttpServerConfig {
             runtime_home,
             connection_id,
             listen_addr,
@@ -165,13 +164,12 @@ where
             token_source,
             project_allowlist,
             allowed_origins: options.allowed_origins,
-            allow_nonlocal_listen: options.allow_nonlocal_listen,
         },
     })
 }
 
 pub fn serve_usage() -> String {
-    "volicord serve --transport streamable-http [--listen 127.0.0.1:8765] [--home PATH] [--connection <connection_id>] [--project PATH]... [--token TOKEN | --generate-token] [--allow-origin ORIGIN] [--allow-nonlocal-listen]\n"
+    "volicord serve --transport local-http [--listen 127.0.0.1:8765] [--home PATH] [--connection <connection_id>] [--project PATH]... [--token TOKEN | --generate-token] [--allow-origin ORIGIN]\n"
         .to_owned()
 }
 
@@ -227,15 +225,6 @@ fn parse_serve_options(args: &[String]) -> Result<ServeOptions, ServeCommandErro
                 index += 1;
                 let value = option_value(args, index, "--allow-origin")?;
                 options.allowed_origins.push(value.to_owned());
-                index += 1;
-            }
-            "--allow-nonlocal-listen" => {
-                if options.allow_nonlocal_listen {
-                    return Err(ServeCommandError::usage(
-                        "--allow-nonlocal-listen was supplied more than once",
-                    ));
-                }
-                options.allow_nonlocal_listen = true;
                 index += 1;
             }
             "-h" | "--help" | "help" | "-V" | "--version" => {
@@ -363,12 +352,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn serve_streamable_http_generates_token_and_defaults_to_localhost(
+    fn serve_local_http_generates_token_and_defaults_to_localhost(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let fixture = CoreFixture::new("serve-command-generated-token")?;
 
         let command = run_serve_command(
-            &["--transport".to_owned(), "streamable-http".to_owned()],
+            &["--transport".to_owned(), "local-http".to_owned()],
             |name| {
                 if name == "VOLICORD_HOME" {
                     Some(fixture.runtime_home_path().as_os_str().to_owned())
@@ -379,12 +368,12 @@ mod tests {
             Path::new(env!("CARGO_MANIFEST_DIR")),
         )?;
 
-        let ServeCommand::StreamableHttp { config } = command else {
+        let ServeCommand::LocalHttp { config } = command else {
             panic!("serve command should build HTTP server config");
         };
         assert_eq!(config.connection_id, fixture.connection_id());
         assert_eq!(config.listen_addr, "127.0.0.1:8765".parse()?);
-        assert_eq!(config.token_source, StreamableHttpTokenSource::Generated);
+        assert_eq!(config.token_source, LocalHttpTokenSource::Generated);
         assert!(!config.bearer_token.is_empty());
         Ok(())
     }
@@ -397,7 +386,7 @@ mod tests {
         let command = run_serve_command(
             &[
                 "--transport".to_owned(),
-                "streamable-http".to_owned(),
+                "local-http".to_owned(),
                 "--home".to_owned(),
                 home_fixture.runtime_home_path().display().to_string(),
                 "--connection".to_owned(),
@@ -415,12 +404,12 @@ mod tests {
             Path::new(env!("CARGO_MANIFEST_DIR")),
         )?;
 
-        let ServeCommand::StreamableHttp { config } = command else {
+        let ServeCommand::LocalHttp { config } = command else {
             panic!("serve command should build HTTP server config");
         };
         assert_eq!(config.runtime_home, home_fixture.runtime_home_path());
         assert_eq!(config.connection_id, home_fixture.connection_id());
-        assert_eq!(config.token_source, StreamableHttpTokenSource::Supplied);
+        assert_eq!(config.token_source, LocalHttpTokenSource::Supplied);
         Ok(())
     }
 
@@ -436,7 +425,7 @@ mod tests {
         assert_eq!(
             error,
             ServeCommandError::Usage(
-                "UNSUPPORTED_TRANSPORT: --transport must be streamable-http".to_owned()
+                "UNSUPPORTED_TRANSPORT: --transport must be local-http".to_owned()
             )
         );
     }

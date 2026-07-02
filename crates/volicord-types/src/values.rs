@@ -369,9 +369,9 @@ pub const VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION: &str = "local_admin_regis
 /// Controlled adapter-binding basis value for MCP stdio sessions.
 pub const VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING: &str = "mcp_stdio_connection_binding";
 
-/// Controlled adapter-binding basis value for MCP Streamable HTTP sessions.
-pub const VERIFICATION_BASIS_MCP_STREAMABLE_HTTP_CONNECTION_BINDING: &str =
-    "mcp_streamable_http_connection_binding";
+/// Controlled adapter-binding basis value for MCP local HTTP sessions.
+pub const VERIFICATION_BASIS_MCP_LOCAL_HTTP_CONNECTION_BINDING: &str =
+    "mcp_local_http_connection_binding";
 
 /// Controlled adapter-binding basis value for direct CLI invocation.
 pub const VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL: &str = "cli_direct_user_channel";

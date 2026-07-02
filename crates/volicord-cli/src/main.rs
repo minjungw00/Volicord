@@ -51,8 +51,8 @@ fn main() {
                 process::exit(1);
             }
         }
-        Err(CliError::ServeStreamableHttp { config }) => {
-            if let Err(error) = volicord_mcp::run_streamable_http_server(*config) {
+        Err(CliError::ServeLocalHttp { config }) => {
+            if let Err(error) = volicord_mcp::run_local_http_server(*config) {
                 eprintln!("error: {error}");
                 process::exit(1);
             }
@@ -315,7 +315,7 @@ where
     match run_serve_command(args, env_var, current_dir)? {
         ServeCommand::Help => Ok(serve_usage()),
         ServeCommand::Version => Ok(version()),
-        ServeCommand::StreamableHttp { config } => Err(CliError::ServeStreamableHttp {
+        ServeCommand::LocalHttp { config } => Err(CliError::ServeLocalHttp {
             config: Box::new(config),
         }),
     }
@@ -521,8 +521,8 @@ enum CliError {
         connection_id: String,
         project_id: Option<String>,
     },
-    ServeStreamableHttp {
-        config: Box<volicord_mcp::StreamableHttpServerConfig>,
+    ServeLocalHttp {
+        config: Box<volicord_mcp::LocalHttpServerConfig>,
     },
 }
 
@@ -549,7 +549,7 @@ impl fmt::Display for CliError {
                     "MCP stdio requested for connection {connection_id}"
                 )
             }
-            Self::ServeStreamableHttp { config } => {
+            Self::ServeLocalHttp { config } => {
                 write!(
                     formatter,
                     "MCP HTTP serve requested for connection {}",
@@ -713,7 +713,7 @@ mod tests {
         assert!(output.contains("volicord init"));
         assert!(output.contains("volicord doctor"));
         assert!(output.contains("volicord mcp --stdio --connection <connection_id>"));
-        assert!(output.contains("volicord serve --transport streamable-http"));
+        assert!(output.contains("volicord serve --transport local-http"));
         assert!(output.contains("\n  volicord connection verify"));
         assert!(output.contains("\n  volicord inbox"));
         assert!(!output.contains("\nvolicord connection verify"));

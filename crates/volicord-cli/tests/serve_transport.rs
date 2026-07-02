@@ -22,13 +22,13 @@ const PROCESS_TIMEOUT: Duration = Duration::from_secs(10);
 const TEST_TOKEN: &str = "serve_test_token";
 
 #[test]
-fn volicord_serve_streamable_http_starts_with_secure_defaults() -> Result<(), Box<dyn Error>> {
+fn volicord_serve_local_http_starts_with_secure_defaults() -> Result<(), Box<dyn Error>> {
     let fixture = ServeFixture::new("serve-bin-secure-defaults")?;
     let outside_project_id = "project_serve_outside";
     fixture.add_allowed_project(outside_project_id)?;
     let mut server = RunningServer::spawn(fixture.serve_command([
         "--transport",
-        "streamable-http",
+        "local-http",
         "--listen",
         "127.0.0.1:0",
         "--connection",

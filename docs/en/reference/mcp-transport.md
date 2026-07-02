@@ -1,7 +1,7 @@
 # MCP transport reference
 
 This document owns the local `volicord mcp --stdio` process contract and the
-experimental `volicord serve --transport streamable-http` process-boundary
+loopback-only `volicord serve --transport local-http` process-boundary
 contract: process startup, process environment, MCP protocol-version
 negotiation, initialization lifecycle, stdio transport framing, local HTTP MCP
 request handling, JSON-RPC message validation, Agent-Connection-bound startup
@@ -17,14 +17,14 @@ guarantees, or Core authority semantics.
 This document owns:
 
 - `volicord mcp --stdio` process startup and exit behavior
-- `volicord serve --transport streamable-http` startup, local listener, and
+- `volicord serve --transport local-http` startup, local listener, and
   transport-bound security checks
 - process configuration used by generated host configuration and exported MCP
   config
 - MCP Runtime Home environment resolution
 - MCP protocol-version negotiation and initialization lifecycle
 - stdio JSON-RPC framing, message validation, and supported MCP methods
-- local HTTP JSON-RPC request handling for the experimental serve transport
+- local HTTP JSON-RPC request handling for the loopback-only serve transport
 - server-initiated MCP elicitation at the stdio transport boundary
 - local loopback web consent fallback for pending user judgments
 - MCP startup validation for one internal Agent Connection binding
@@ -59,19 +59,18 @@ Unix-domain socket listener, or other MCP network listener. It may start a
 separate loopback-only local web consent listener for pending user judgments
 when MCP elicitation and prompt capture are unavailable.
 
-`volicord serve --transport streamable-http` is a separate explicit process mode
-for Docker and localhost MCP use. It starts a local HTTP listener and reuses the
-same Agent-Connection-bound MCP adapter logic as stdio where possible. It is not
-the default MCP transport, not used by generated local non-Docker host
-configuration, and not a general unauthenticated Volicord network service.
+`volicord serve --transport local-http` is a separate explicit process mode
+for Docker and localhost MCP use. It starts a loopback-only HTTP listener and
+reuses the same Agent-Connection-bound MCP adapter logic as stdio where
+possible. It is not the default MCP transport, not used by generated local
+non-Docker host configuration, and not a general Volicord network service.
 
-The current serve transport is an authenticated experimental Streamable
-HTTP-style subset. It accepts JSON-RPC over HTTP `POST /mcp` with MCP session
-headers and bearer-token checks, and returns JSON responses. It does not
-implement server-sent event streams, HTTP elicitation, or full MCP Streamable
-HTTP compatibility. Documentation and startup diagnostics must not claim full
-protocol compatibility until those transport features are implemented and
-tested.
+The current serve transport is an authenticated local MCP-over-HTTP subset. It
+accepts JSON-RPC over HTTP `POST /mcp` with MCP session headers and bearer-token
+checks, and returns JSON responses. It does not implement server-sent event
+streams, HTTP elicitation, or full MCP Streamable HTTP compatibility.
+Documentation and startup diagnostics must not claim full protocol
+compatibility until those transport features are implemented and tested.
 Startup diagnostics, `/healthz`, and structured HTTP error JSON include a
 detective-observation disclosure. They are transport diagnostics, not OS
 sandboxing, network isolation, malware defense, full write prevention, actor
@@ -113,15 +112,14 @@ Baseline command-line behavior:
 - Help and version handling happen before Runtime Home or Agent Connection
   lookup.
 
-Experimental HTTP serve command-line behavior:
+Local HTTP serve command-line behavior:
 
-- `volicord serve --transport streamable-http` is the only supported serve
+- `volicord serve --transport local-http` is the only supported serve
   transport spelling. Other transport values are usage errors.
-- `--listen 127.0.0.1:<port>` selects the listener. Omission uses
-  `127.0.0.1:8765`.
-- The default listener is loopback-only. Binding `0.0.0.0`, `::`, or another
-  non-loopback address requires `--allow-nonlocal-listen` and writes a clear
-  warning at startup.
+- `--listen 127.0.0.1:<port>` or `--listen [::1]:<port>` selects the listener.
+  Omission uses `127.0.0.1:8765`.
+- The listener is loopback-only. Binding `0.0.0.0`, `::`, public interfaces,
+  container-wide interfaces, or another non-loopback address is rejected.
 - `--home PATH` selects the Runtime Home for the process. Without `--home`, the
   shared `VOLICORD_HOME` and platform default Runtime Home resolution apply.
 - `--connection <connection_id>` binds the server to one stored Agent
@@ -162,14 +160,14 @@ HTTP serve request behavior:
 - `DELETE /mcp` deletes a session when the bearer token and session ID are
   valid.
 - `GET /mcp` returns `SSE_UNSUPPORTED`; server-sent event streams are not
-  implemented by this experimental endpoint.
+  implemented by this local HTTP endpoint.
 - `GET /healthz` is a minimal local health endpoint, but it still requires the
   same bearer token.
 - `GET /consent` and `POST /consent` are local web consent endpoints only when
   local web consent is available. They are not MCP endpoints and do not use the
-  MCP bearer token, and they are not authentication for a general network
-  service. They are a loopback User Channel capture path that requires a valid
-  one-time consent token tied to the project, connection, and pending judgment.
+  MCP bearer token. They are a loopback User Channel capture path that requires
+  a valid one-time consent token tied to the project, connection, and pending
+  judgment.
 - There are no unauthenticated arbitrary resource endpoints.
 - CORS preflight is accepted only for the MCP endpoint, only after Origin
   allowlist validation, and only when at least one allowed Origin is configured.
@@ -618,9 +616,8 @@ field, and not a user judgment record.
 
 The local web consent listener binds to `127.0.0.1` by default and must fail
 closed if it cannot bind safely. In stdio mode it uses an ephemeral loopback
-port. In `volicord serve --transport streamable-http`, local web consent is
-available only when the actual serve listener is loopback; an explicitly
-non-local serve listener must not expose the consent form.
+port. In `volicord serve --transport local-http`, the consent route is served
+only by the same loopback-only local HTTP listener.
 
 Local web consent endpoint behavior:
 

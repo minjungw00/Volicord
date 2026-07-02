@@ -267,8 +267,8 @@ volicord inbox
 volicord inbox answer JUDGMENT_ID --choice CHOICE_ID
 ```
 
-Local web consent is separate from MCP elicitation. The experimental HTTP MCP
-serve mode still does not implement HTTP elicitation, and local web consent is
+Local web consent is separate from MCP elicitation. The local HTTP MCP serve
+mode still does not implement HTTP elicitation, and local web consent is
 available only on loopback endpoints with a valid consent token.
 
 ## What Volicord Does Not Guarantee
@@ -309,14 +309,14 @@ docker build -t volicord:local .
 The local HTTP MCP mode is implemented as:
 
 ```sh
-volicord serve --transport streamable-http
+volicord serve --transport local-http
 ```
 
 It is an explicit advanced mode for Docker and localhost MCP use, not the
-default host setup path. It defaults to loopback, requires bearer
-authentication, exposes `POST /mcp`, and does not implement server-sent event
-streams, HTTP elicitation, or full MCP Streamable HTTP compatibility. Do not
-treat it as an unauthenticated network service.
+default host setup path. It accepts only loopback listen addresses, requires
+bearer authentication for the MCP local HTTP endpoint, exposes `POST /mcp`, and
+does not implement server-sent event streams, HTTP elicitation, or full MCP
+Streamable HTTP compatibility. Do not treat it as a general network service.
 
 Use [Installation](docs/en/getting-started/installation.md) and
 [MCP Transport](docs/en/reference/mcp-transport.md) for the detailed Docker and

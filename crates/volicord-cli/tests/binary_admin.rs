@@ -131,7 +131,6 @@ fn binary_help_options_match_supported_contracts() -> Result<(), Box<dyn Error>>
             "--token",
             "--generate-token",
             "--allow-origin",
-            "--allow-nonlocal-listen",
             "--file",
             "--connection",
             "--session",
@@ -158,7 +157,6 @@ fn binary_help_options_match_supported_contracts() -> Result<(), Box<dyn Error>>
             "--token",
             "--generate-token",
             "--allow-origin",
-            "--allow-nonlocal-listen",
         ],
     )?;
     assert_help_options(

@@ -247,7 +247,7 @@ volicord inbox
 volicord inbox answer JUDGMENT_ID --choice CHOICE_ID
 ```
 
-Local web consent는 MCP elicitation과 별개입니다. 실험적 HTTP MCP serve 모드는 여전히
+Local web consent는 MCP elicitation과 별개입니다. 로컬 HTTP MCP serve 모드는 여전히
 HTTP elicitation을 구현하지 않으며, local web consent는 유효한 consent token이 있는
 loopback endpoint에서만 사용할 수 있습니다.
 
@@ -285,13 +285,13 @@ docker build -t volicord:local .
 로컬 HTTP MCP 모드는 아래 명령으로 구현되어 있습니다.
 
 ```sh
-volicord serve --transport streamable-http
+volicord serve --transport local-http
 ```
 
 이 모드는 Docker와 localhost MCP 사용을 위한 명시적 고급 모드이며 기본 호스트 설정
-경로가 아닙니다. 기본값은 loopback이고, bearer 인증을 요구하며, `POST /mcp`를 노출합니다.
-server-sent event 스트림, HTTP elicitation, 전체 MCP Streamable HTTP 호환성은 구현하지
-않습니다. 인증 없는 네트워크 서비스처럼 다루면 안 됩니다.
+경로가 아닙니다. Loopback listen 주소만 허용하고 MCP local HTTP endpoint에는 bearer 인증을
+요구하며, `POST /mcp`를 노출합니다. server-sent event 스트림, HTTP elicitation, 전체 MCP
+Streamable HTTP 호환성은 구현하지 않습니다. 일반 네트워크 서비스처럼 다루면 안 됩니다.
 
 자세한 Docker와 HTTP 경계는 [설치](docs/ko/getting-started/installation.md)와
 [MCP 전송](docs/ko/reference/mcp-transport.md)을 사용합니다.
