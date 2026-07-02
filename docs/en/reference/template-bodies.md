@@ -183,7 +183,7 @@ Recovery cue:
 ### Write Ticket
 
 Label-selection input:
-- `WRITE_CHECK_REQUIRED` or `WRITE_CHECK_INVALID`.
+- `WRITE_TICKET_REQUIRED` or `WRITE_TICKET_INVALID`.
 
 Suggested label:
 - missing or unusable write ticket

@@ -151,7 +151,6 @@ project_state
 task
 change_unit
 write_ticket
-write_check
 user_judgment
 run
 evidence_summary
@@ -309,14 +308,6 @@ approval_required
 decision_required
 ```
 
-`PrepareWriteResult.write_check_effect`는 아래 값을 사용합니다.
-
-```text
-none
-would_create
-created
-```
-
 `PrepareWriteResult.write_ticket_effect`는 아래 값을 사용합니다.
 
 ```text
@@ -340,7 +331,7 @@ revoked
 
 이 상태는 Volicord 티켓 권한과 관찰 생명주기를 설명합니다. 파일시스템 ACL, OS 수준 집행, 셸 권한, 명령 승인, 쓰기가 실제로 일어났다는 증명을 뜻하지 않습니다.
 
-`WriteCheckStateSummary.status`와 `WriteCheckSummary.status`는 아래 값을 사용합니다.
+`WriteTicketStateSummary.status`와 `WriteTicketSummary.status`는 아래 값을 사용합니다.
 
 ```text
 active
@@ -511,7 +502,7 @@ resolved
 
 ```text
 reverted
-covered_by_write_readiness
+covered_by_write_ticket
 recorded_as_expected_write
 accepted_by_user
 not_product_change
@@ -815,7 +806,7 @@ superseded
 
 ## 오류 세부사항 보조 값
 
-`ToolError.details.write_check_reason`과 `ToolError.details.artifact_input_error.reason` 보조 값은 [API 오류 세부사항](error-details.md#error-detail-helper-values)이 담당합니다. 이 값 집합 문서는 기계 판독용 오류 세부사항 의미를 정의하지 않습니다.
+`ToolError.details.write_ticket_reason`과 `ToolError.details.artifact_input_error.reason` 보조 값은 [API 오류 세부사항](error-details.md#error-detail-helper-values)이 담당합니다. 이 값 집합 문서는 기계 판독용 오류 세부사항 의미를 정의하지 않습니다.
 
 ## 프로필 조건부 및 예약 값
 

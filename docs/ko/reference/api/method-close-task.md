@@ -77,8 +77,8 @@ API 경계 블록:
 상태 변경 조건:
 
 - `dry_run=false`인 상태 변경 `intent`에는 `null`이 아닌 `idempotency_key`와 현재 `expected_state_version`이 필요합니다.
-- 오래된 `expected_state_version`, 오래된 닫기 관련 `WriteCheck.basis_state_version`, 멱등 요청 해시 충돌은 닫기 준비 상태 평가 전에 거절됩니다.
-- 닫기 관련 `WriteCheck.basis_state_version`은 사전 확인 시 현재 `project_state.state_version`과 같지 않을 때 오래된 값입니다.
+- 오래된 `expected_state_version`, 오래된 닫기 관련 `WriteTicket.basis_state_version`, 멱등 요청 해시 충돌은 닫기 준비 상태 평가 전에 거절됩니다.
+- 닫기 관련 `WriteTicket.basis_state_version`은 사전 확인 시 현재 `project_state.state_version`과 같지 않을 때 오래된 값입니다.
 - 닫기 관련 쓰기 티켓 최신성 확인은 쓰기 호환성 확인일 뿐입니다. 최종 수락, 잔여 위험 수락, 사용자 소유 판단, 민감 동작 승인, 포괄적 승인을 기록하지 않습니다.
 
 닫기 조건:
@@ -158,7 +158,7 @@ CloseTaskRequest:
 
 1. 요청 래퍼, 메서드 필드, `intent` 필드 조합, 같은 프로젝트의 `Task` 식별자를 검증합니다. 형태 오류, 잘못된 프로젝트 식별자, 읽을 수 없는 `Task` 식별자는 `ToolRejectedResponse`를 반환합니다.
 2. 호출 맥락, 작업 범주, 행위자 출처, 요청한 종료 경로의 선행조건을 확인합니다.
-3. `dry_run=false`인 상태 변경 `intent`에서는 `idempotency_key`, 현재 `expected_state_version`, 멱등 요청 해시, 닫기 관련 `WriteCheck.basis_state_version`을 확인합니다. 오래되었거나 충돌하는 값은 `ToolRejectedResponse`를 반환합니다.
+3. `dry_run=false`인 상태 변경 `intent`에서는 `idempotency_key`, 현재 `expected_state_version`, 멱등 요청 해시, 닫기 관련 `WriteTicket.basis_state_version`을 확인합니다. 오래되었거나 충돌하는 값은 `ToolRejectedResponse`를 반환합니다.
 4. `intent=check`는 선택된 결정적 session-watch 확인을 실행하고, 선택된 guard 상태 사실을 포함해 [`volicord.status`](method-status.md)의 `include.close=true`와 같은 계산으로 현재 닫기 준비 상태를 계산한 뒤 `CloseTaskResult`를 반환합니다.
 5. 상태 변경 `intent`와 `dry_run=true` 조합은 유효한 사전 확인 뒤 공통 미리보기 분기를 반환합니다.
 6. `intent=complete`는 현재 `CurrentCloseBasis`에 대한 닫기 준비 상태 평가를 실행합니다. 차단 사유가 남아 있으면 차단 분기를 반환하고, 없으면 `close_state=closed`, 종료 닫기 결과, 잔여 위험 수락이 필요하지 않은 닫기 근거의 알려진 한계에 대해 메서드가 선택한 프로젝트 연속성 기록을 커밋합니다.
@@ -174,7 +174,7 @@ CloseTaskRequest:
 | 상태 변경 `intent`의 커밋된 차단 결과 | 이 메서드와 저장 효과 담당 문서가 그 커밋된 차단 결과를 허용할 때 `project_state.state_version`을 정확히 한 번 증가시킵니다. |
 | 사전 확인 거절 또는 유효한 `dry_run` 미리보기 | 아무것도 증가시키지 않습니다. |
 
-사전 확인 거절에는 오래된 `expected_state_version`, 오래된 닫기 관련 `WriteCheck.basis_state_version`, 멱등 요청 해시 충돌이 포함됩니다. 이런 충돌은 오류 담당 문서로 처리되며 닫기 차단 사유가 아닙니다.
+사전 확인 거절에는 오래된 `expected_state_version`, 오래된 닫기 관련 `WriteTicket.basis_state_version`, 멱등 요청 해시 충돌이 포함됩니다. 이런 충돌은 오류 담당 문서로 처리되며 닫기 차단 사유가 아닙니다.
 
 ## 성공 결과
 
@@ -224,7 +224,7 @@ CloseTaskRequest:
 | `missing_cancellation_authority` | `user_judgment` | `intent=cancel`에 현재 `Task`, 범위 리비전, Change Unit에 묶이고 `resolved_by_actor_source=local_user`, 호환 User Channel 출처를 가진 현재 수락된 사용자 취소 판단이 없습니다. |
 | `open_write_ticket` | `write_compatibility` | 선택된 `Task`의 쓰기 티켓이 열려 있고 아직 해결되지 않았습니다. |
 | `expired_write_ticket` | `write_compatibility` | 선택된 `Task`의 쓰기 티켓이 해결되지 않은 상태로 만료되었습니다. |
-| `write_check_stale` | `write_compatibility` | 닫기 관련 쓰기 티켓 호환성 행이 `STATE_VERSION_CONFLICT`로 처리되지 않는 최신성 사유로 사용할 수 없습니다. |
+| `write_ticket_stale` | `write_compatibility` | 닫기 관련 쓰기 티켓이 `STATE_VERSION_CONFLICT`로 처리되지 않는 최신성 사유로 사용할 수 없습니다. |
 | `baseline_stale` | `baseline` | 닫기 관련 기준선 근거가 차단 사유 생성 경로에서 오래되었습니다. |
 | `guard_not_installed` | `connection_capability` | observe 닫기 경로에 확인된 연결에 대해 사용할 수 있는 guard 설치가 기록되어 있지 않습니다. |
 | `guard_reload_required` | `connection_capability` | guard 파일은 설치되어 있지만, Volicord가 설정된 hook을 관찰하기 전에 호스트를 restart 또는 reload해야 합니다. |
@@ -236,7 +236,7 @@ CloseTaskRequest:
 | `guard_connection_unhealthy` | `connection_capability` | observe 닫기 경로에 건강하지 않은 Agent Connection 상태 사실이 있습니다. |
 | `session_watch_unavailable` | `connection_capability` | observe 닫기 경로에 Product Repository session-watch coverage가 필요하지만 선택된 watcher 상태가 `disabled`, `degraded`, `unavailable`이거나 활성 상태이면서 부분 coverage 경고가 있습니다. |
 | `unresolved_unrecorded_changes` | `connection_capability` | Guard 건강 상태가 닫기 전에 조정해야 하는 해결되지 않은 미기록 Product Repository 변경을 보고합니다. 이 차단 사유는 `owner_method=volicord.reconcile_changes`인 `next_actions`를 포함하며, `can_resolve_in_chat`은 현재 경로가 채팅 매개 사용자 경로로 진행할 수 있는지를 나타냅니다. |
-| `guard_write_readiness_missing_or_stale` | `write_compatibility` | guard 이벤트가 닫기 경로에 누락되었거나, 결정할 수 없거나, 모호하거나, 오래된 쓰기 티켓 준비 상태를 감지했습니다. |
+| `guard_write_ticket_missing_or_stale` | `write_compatibility` | guard 이벤트가 닫기 경로에 누락되었거나, 결정할 수 없거나, 모호하거나, 오래된 쓰기 티켓 준비 상태를 감지했습니다. |
 | `guard_write_ticket_path_scope_violation` | `write_compatibility` | guard 이벤트가 active 쓰기 티켓 범위 밖의 Product Repository 경로를 관찰했습니다. |
 | `evidence_claim_unsupported` | `evidence_claim` | 필요한 닫기 주장이 지원되는 증거 범위를 갖지 못했습니다. |
 | `evidence_claim_missing` | `evidence_claim` | 필요한 닫기 주장에 대한 현재 증거 범위 기록이 없습니다. |
@@ -300,7 +300,7 @@ CloseTaskRequest:
 - 검증 실패
 - 행위자 출처 또는 작업 범주 불일치
 - 오래된 `expected_state_version`
-- 오래된 닫기 관련 `WriteCheck.basis_state_version`
+- 오래된 닫기 관련 `WriteTicket.basis_state_version`
 - 멱등 요청 해시 충돌
 - 잘못된 프로젝트 또는 읽을 수 없는 `Task` 식별
 - Core 사용 불가
@@ -398,7 +398,7 @@ state:
   shaping_readiness: null
   pending_user_judgment_refs: []
   blocker_refs: []
-  write_check_summary: null
+  write_ticket_summary: null
   evidence_summary: null
   close_state: blocked
   close_blockers:

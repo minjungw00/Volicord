@@ -27,13 +27,13 @@ This document does not own:
 - a direct answer or result
 - implementation work
 
-The method may also update the current close basis, update compact evidence coverage, record evidence observations for reported or observed claims, consume a compatible write-ticket row when recording a product write, link existing artifacts, and promote eligible staged handles to persistent `ArtifactRef` records where allowed.
+The method may also update the current close basis, update compact evidence coverage, record evidence observations for reported or observed claims, consume a compatible write ticket when recording a product write, link existing artifacts, and promote eligible staged handles to persistent `ArtifactRef` records where allowed.
 
 ## Required inputs
 
 - A valid `ToolEnvelope`; committed non-dry-run requests require non-null `idempotency_key` and current `expected_state_version`.
-- `task_id`, `change_unit_id`, `kind`, `run_id`, `baseline_ref`, `write_check_id`, `summary`, `observed_changes`, `artifact_inputs`, `evidence_updates`, `evidence_observations`, and `close_assessment`.
-- Product-write runs require a compatible `status=active` write-ticket row from `volicord.prepare_write`. The request field remains `write_check_id` for the current compatibility storage lifecycle.
+- `task_id`, `change_unit_id`, `kind`, `run_id`, `baseline_ref`, `write_ticket_id`, `summary`, `observed_changes`, `artifact_inputs`, `evidence_updates`, `evidence_observations`, and `close_assessment`.
+- Product-write runs require a compatible `status=active` write ticket from `volicord.prepare_write`.
 - New artifact bytes must already be represented by a valid `StagedArtifactHandle`; `volicord.record_run` does not stage new bytes.
 - A supported evidence update must be backed by a same-claim `EvidenceObservationInput`, a usable same-claim evidence observation ref, or `EvidenceCoverageItem.provenance` from which Core can create an evidence observation with explicit `source_kind` and `assurance_level`.
 
@@ -51,7 +51,7 @@ RecordRunRequest:
   kind: string
   run_id: string | null
   baseline_ref: string
-  write_check_id: string | null
+  write_ticket_id: string | null
   summary: string
   observed_changes: ObservedChanges
   artifact_inputs: ArtifactInput[]
@@ -86,7 +86,7 @@ Path and access notes:
 
 Close-assessment ref rules:
 - Caller-supplied `close_assessment.result_refs` and `ResidualRiskInput.source_refs` are restricted to `record_kind=run`, `artifact`, `evidence_summary`, or `change_unit` unless an owner explicitly adds another kind.
-- The method rejects or excludes caller-supplied `project_state`, `write_check`, `user_judgment`, `blocker`, `task_event`, and `task` refs from the close basis unless an owner explicitly adds them.
+- The method rejects or excludes caller-supplied `project_state`, `write_ticket`, `user_judgment`, `blocker`, `task_event`, and `task` refs from the close basis unless an owner explicitly adds them.
 - Every accepted ref must exist and belong to the same project and Task. Artifact refs must be linked to the Task and pass current-byte verification with `integrity_status=verified`; evidence refs must identify the current Task evidence summary; Run refs used as current close-basis result refs must identify a recorded current Run compatible with the current Task, current Change Unit, current scope revision, compatible baseline, and recorded status.
 - Historical Run refs are audit records for close-basis purposes unless this new current Run explicitly reuses verified artifacts or evidence from history and records that reuse in its committed evidence or close assessment.
 - Core stores canonical refs in `CurrentCloseBasis` and never preserves caller-supplied `state_version` metadata as authority.
@@ -124,28 +124,28 @@ A compatible committed result increments the selected `Task.close_basis_revision
 
 An empty `close_assessment.residual_risks` list explicitly means the current result has no identified residual risks. Core generates opaque `risk_id` values only for committed non-null assessments. A dry-run never reserves persistent `risk_id` values.
 
-Sensitive action requirements in the resulting `CurrentCloseBasis` are derived by Core from the committed Run and any consumed write-ticket row. Category-only caller input in `close_assessment.sensitive_categories` can contribute display context but cannot establish, satisfy, or erase a sensitive approval requirement.
+Sensitive action requirements in the resulting `CurrentCloseBasis` are derived by Core from the committed Run and any consumed write ticket. Category-only caller input in `close_assessment.sensitive_categories` can contribute display context but cannot establish, satisfy, or erase a sensitive approval requirement.
 
 The Run, current close basis, evidence updates, evidence observations, artifact links or promotions, write-ticket consumption, and revision changes are committed atomically when the result commits.
 
-Product-write recording consumes the write-ticket compatibility row only when:
+Product-write recording consumes the write ticket only when:
 
-- the row has `status=active` and has not already been consumed or revoked
-- the current `project_state.state_version` equals `WriteCheck.basis_state_version` immediately before consumption
-- the row is not expired under the effective expiration rule: the earlier of stored `expires_at` and `created_at + 15 minutes`
-- the row and its `WriteCheckAttemptScope` identify the same `task_id` and `change_unit_id` as the Run being recorded
+- the ticket has `status=active` and has not already been consumed or revoked
+- the current `project_state.state_version` equals `WriteTicket.basis_state_version` immediately before consumption
+- the ticket is not expired under the effective expiration rule: the earlier of stored `expires_at` and `created_at + 15 minutes`
+- the ticket and its `WriteTicketAttemptScope` identify the same `task_id` and `change_unit_id` as the Run being recorded
 - the checked attempt has `product_file_write_intended=true`
 - the checked attempt `baseline_ref` matches the Run `baseline_ref`
 - observed sensitive categories match the checked attempt's normalized `sensitive_categories`
 - observed changed paths, after Product Repository path normalization, are compatible with the checked attempt
 
-A write ticket issued by `volicord.prepare_write` is not stale immediately after issuance when no intervening project state change has occurred. If `volicord.prepare_write` commits from version `19` to version `20`, `volicord.record_run` may consume that write-ticket row while the current `project_state.state_version` and `WriteCheck.basis_state_version` are both `20`.
+A write ticket issued by `volicord.prepare_write` is not stale immediately after issuance when no intervening project state change has occurred. If `volicord.prepare_write` commits from version `19` to version `20`, `volicord.record_run` may consume that write ticket while the current `project_state.state_version` and `WriteTicket.basis_state_version` are both `20`.
 
-The method rejects stale `expected_state_version` and stale write-ticket basis before consuming the row. A stale `WriteCheck.basis_state_version` retains higher-priority `STATE_VERSION_CONFLICT` routing even if the same row is also expired.
+The method rejects stale `expected_state_version` and stale write-ticket basis before consuming the ticket. A stale `WriteTicket.basis_state_version` retains higher-priority `STATE_VERSION_CONFLICT` routing even if the same ticket is also expired.
 
-Expiration is calculated using parsed UTC timestamps, not lexical string comparison. An expired write-ticket row is never consumed. Expired write-ticket use returns `WRITE_CHECK_INVALID` with `ToolError.details.write_check_reason=expired`.
+Expiration is calculated using parsed UTC timestamps, not lexical string comparison. An expired write ticket is never consumed. Expired write-ticket use returns `WRITE_TICKET_INVALID` with `ToolError.details.write_ticket_reason=expired`.
 
-Compatibility mismatch rejections use `WRITE_CHECK_INVALID` with `ToolError.details.write_check_reason` values such as `task_mismatch`, `change_unit_mismatch`, `product_write_flag_mismatch`, `baseline_mismatch`, `sensitive_category_mismatch`, or `path_mismatch`.
+Compatibility mismatch rejections use `WRITE_TICKET_INVALID` with `ToolError.details.write_ticket_reason` values such as `task_mismatch`, `change_unit_mismatch`, `product_write_flag_mismatch`, `baseline_mismatch`, `sensitive_category_mismatch`, or `path_mismatch`.
 
 ## Method result fields
 
@@ -160,7 +160,7 @@ Compatibility mismatch rejections use `WRITE_CHECK_INVALID` with `ToolError.deta
 | `evidence_observations` | `EvidenceObservation[]` for observation records committed by this run result. Empty when the request records no observations. Shape is owned by [API State Schemas](schema-state.md#evidence-and-run-snapshot-shapes); observation source and assurance values are owned by [API Value Sets](schema-value-sets.md#evidence-observation-values). |
 | `current_close_basis` | `CurrentCloseBasis | null` after this run is recorded. Non-null means this Run established the current close basis; `null` means this Run did not establish one. Shape is owned by [API State Schemas](schema-state.md#close-readiness-and-validation-shapes). |
 | `blocker_refs` | `StateRecordRef[]` for run- or evidence-related blockers committed or still relevant because of this result. |
-| `state` | Current `StateSummary` after the run is recorded. Nested state fields, including `write_check_summary` after any write-ticket compatibility consumption, are owned by [API State Schemas](schema-state.md). When a product-write Run consumes a write-ticket row, that summary can expose `status=consumed`, `consumed_by_run_ref`, and observation refs created by the consuming Run. |
+| `state` | Current `StateSummary` after the run is recorded. Nested state fields, including `write_ticket_summary` after any write-ticket consumption, are owned by [API State Schemas](schema-state.md). When a product-write Run consumes a write ticket, that summary can expose `status=consumed`, `consumed_by_run_ref`, and observation refs created by the consuming Run. |
 
 Nested `StateRecordRef`, `RunSummary`, `ObservedChanges`, `EvidenceSummary`, `EvidenceCoverageItem`, `EvidenceObservation`, `StateSummary`, and `ArtifactRef` field bodies stay with the schema owners linked above. Exact persistence effects, including staged-handle consumption, artifact promotion, evidence updates, evidence observation records, replay rows, and write-ticket consumption, stay with [Storage Effects](../storage-effects.md) and [Artifact Storage](../storage-artifacts.md).
 
@@ -184,7 +184,7 @@ The method may commit compatible run-related blocker state when the run is recor
 
 Not allowed:
 
-- A committed blocked result must not hide invalid staged handles, missing write-ticket row, stale state, stale write-ticket basis, or invocation-context failures.
+- A committed blocked result must not hide invalid staged handles, missing write ticket, stale state, stale write-ticket basis, or invocation-context failures.
 
 Those failures are rejected before commit.
 
@@ -194,8 +194,8 @@ Returns `ToolRejectedResponse` for:
 
 - stale `expected_state_version`
 - stale write-ticket basis
-- missing or invalid write-ticket row for product writes
-- expired write-ticket row
+- missing or invalid write ticket for product writes
+- expired write ticket
 - incompatible write-ticket path, baseline, product-write flag, sensitivity category, Task, or Change Unit
 - invalid staged handle
 - incompatible staged-handle provenance
@@ -213,7 +213,7 @@ Public error code meaning, precedence, details, and rejected-response routing ar
 
 For a stale write-ticket basis, rejection happens before consumption and creates no Run, evidence update, evidence observation, artifact link, artifact promotion, event, replay row, or `project_state.state_version` increment.
 
-For an expired write-ticket row, rejection happens before consumption and creates no Run, event, replay row, artifact promotion, evidence update, evidence observation, write-ticket consumption, or `project_state.state_version` increment.
+For an expired write ticket, rejection happens before consumption and creates no Run, event, replay row, artifact promotion, evidence update, evidence observation, write-ticket consumption, or `project_state.state_version` increment.
 
 ## Dry-run behavior
 
@@ -248,7 +248,7 @@ params:
   kind: implementation
   run_id: null
   baseline_ref: baseline_runprobe_001
-  write_check_id: null
+  write_ticket_id: null
   summary: "Search-result count validation passed."
   observed_changes:
     changed_paths: []
@@ -557,7 +557,7 @@ state:
   shaping_readiness: null
   pending_user_judgment_refs: []
   blocker_refs: []
-  write_check_summary: null
+  write_ticket_summary: null
   evidence_summary: null
   close_state: null
   close_blockers: []

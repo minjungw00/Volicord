@@ -51,7 +51,7 @@
 - 가능하면 `state_clock: project_state.state_version`, `current_state_version`, `expected_state_version`, `project_id`, `task_id`를 포함합니다.
 
 오래된 쓰기 티켓 근거 버전 세부사항:
-- 오래된 `WriteCheck.basis_state_version` 값과 현재 `project_state.state_version` 값을 모두 식별합니다.
+- 오래된 `WriteTicket.basis_state_version` 값과 현재 `project_state.state_version` 값을 모두 식별합니다.
 
 멱등 요청 해시 충돌 세부사항:
 - 민감한 요청 본문을 노출하지 않고 `idempotency_key`와 요청 해시 불일치를 식별합니다.
@@ -75,9 +75,9 @@
 
 <a id="authorization-reason"></a>
 
-### `write_check_reason`
+### `write_ticket_reason`
 
-`ToolError.details.write_check_reason`은 `missing`, `expired`, `stale`, `revoked`, `consumed`, `incompatible`, `task_mismatch`, `change_unit_mismatch`, `product_write_flag_mismatch`, `baseline_mismatch`, `sensitive_category_mismatch`, `path_mismatch`를 사용합니다. 불일치별 값은 공개 코드 `WRITE_CHECK_INVALID`를 유지하면서 호환되지 않는 기록 또는 범위 사실을 식별합니다. 만료된 쓰기 티켓 사용은 공개 코드 `WRITE_CHECK_INVALID`와 함께 `write_check_reason=expired`를 설정합니다. 오래된 `WriteCheck.basis_state_version`은 `WRITE_CHECK_INVALID`가 아니라 `STATE_VERSION_CONFLICT`를 사용합니다.
+`ToolError.details.write_ticket_reason`은 `missing`, `expired`, `stale`, `revoked`, `consumed`, `incompatible`, `task_mismatch`, `change_unit_mismatch`, `product_write_flag_mismatch`, `baseline_mismatch`, `sensitive_category_mismatch`, `path_mismatch`를 사용합니다. 불일치별 값은 공개 코드 `WRITE_TICKET_INVALID`를 유지하면서 호환되지 않는 기록 또는 범위 사실을 식별합니다. 만료된 쓰기 티켓 사용은 공개 코드 `WRITE_TICKET_INVALID`와 함께 `write_ticket_reason=expired`를 설정합니다. 오래된 `WriteTicket.basis_state_version`은 `WRITE_TICKET_INVALID`가 아니라 `STATE_VERSION_CONFLICT`를 사용합니다.
 
 <a id="artifact-input-error-reason"></a>
 

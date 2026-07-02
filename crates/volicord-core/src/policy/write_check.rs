@@ -5,8 +5,8 @@ use volicord_store::{core_pipeline::WriteCheckRecord, StoreError};
 use volicord_types::{
     BaselineRef, ChangeUnitId, DryRunSummary, GuaranteeDisplay, JudgmentKind, JudgmentRequiredFor,
     ObservedChanges, PlannedBlocker, PlannedBlockerSourceKind, PlannedEffect, PrepareWriteDecision,
-    SensitiveActionScope, StateRecordRef, TaskId, UtcTimestamp, WriteCheckAttemptScope,
-    WriteDecisionCategory, WriteDecisionReason,
+    SensitiveActionScope, StateRecordRef, TaskId, UtcTimestamp, WriteDecisionCategory,
+    WriteDecisionReason, WriteTicketAttemptScope,
 };
 
 use crate::policy::{
@@ -120,7 +120,7 @@ pub(crate) struct RunWriteCheckMismatch {
 
 pub(crate) fn run_write_check_mismatch(
     record: &WriteCheckRecord,
-    scope: &WriteCheckAttemptScope,
+    scope: &WriteTicketAttemptScope,
     task_id: &TaskId,
     change_unit_id: &ChangeUnitId,
     baseline_ref: &BaselineRef,
@@ -130,7 +130,7 @@ pub(crate) fn run_write_check_mismatch(
     if record.task_id != task_id.as_str() || scope.task_id != *task_id {
         return Some(run_mismatch(
             "task_mismatch",
-            "Write Check task is not compatible with the recorded run",
+            "write ticket task is not compatible with the recorded run",
         ));
     }
     if record.change_unit_id.as_deref() != Some(change_unit_id.as_str())
@@ -138,19 +138,19 @@ pub(crate) fn run_write_check_mismatch(
     {
         return Some(run_mismatch(
             "change_unit_mismatch",
-            "Write Check Change Unit is not compatible with the recorded run",
+            "write ticket Change Unit is not compatible with the recorded run",
         ));
     }
     if !scope.product_file_write_intended {
         return Some(run_mismatch(
             "product_write_flag_mismatch",
-            "Write Check does not cover a product-file write attempt",
+            "write ticket does not cover a product-file write attempt",
         ));
     }
     if scope.baseline_ref.as_ref() != Some(baseline_ref) {
         return Some(run_mismatch(
             "baseline_mismatch",
-            "Write Check baseline is not compatible with the recorded run",
+            "write ticket baseline is not compatible with the recorded run",
         ));
     }
     if category_set(&normalized_string_set(&scope.sensitive_categories))
@@ -158,13 +158,13 @@ pub(crate) fn run_write_check_mismatch(
     {
         return Some(run_mismatch(
             "sensitive_category_mismatch",
-            "Write Check sensitive categories are not compatible with the recorded run",
+            "write ticket sensitive categories are not compatible with the recorded run",
         ));
     }
     if !paths_are_authorized(&observed_changes.changed_paths, normalized_scope_paths) {
         return Some(run_mismatch(
             "path_mismatch",
-            "Write Check paths are not compatible with the recorded run",
+            "write ticket paths are not compatible with the recorded run",
         ));
     }
     None

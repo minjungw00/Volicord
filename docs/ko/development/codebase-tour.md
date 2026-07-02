@@ -62,7 +62,7 @@ Core 권한 의미는 참조 문서에 남습니다.
 
 - 지원 메서드의 공개 요청과 결과 Rust 형태.
 - `ToolEnvelope`, `ToolResultBase`, `StateRecordRef`, `StateSummary`,
-  `WriteCheckSummary`, `EvidenceSummary`, `CloseReadinessBlocker`,
+  `WriteTicketSummary`, `EvidenceSummary`, `CloseReadinessBlocker`,
   `ArtifactRef` 같은 공유 스키마 형태 구조체.
 - `MethodName`, `OperationCategory`, `EffectKind`, `ResponseKind`, `ResumePolicy`,
   `PrepareWriteDecision`, `ErrorCode` 같은 제어 값 enum.
@@ -103,7 +103,7 @@ Core 권한 의미는 참조 문서에 남습니다.
   `ToolDryRunResponse`, `ToolError`, `DryRunSummary`
 - `MethodName`, `OperationCategory`, `EffectKind`, `ResponseKind`, `ErrorCode`
 - `RequiredNullable<T>`, `StateSummary`, `StateRecordRef`,
-  `WriteCheckSummary`, `WriteCheckAttemptScope`
+  `WriteTicketSummary`, `WriteTicketAttemptScope`
 - `canonical_request_hash`, `DurableIdGenerator`, `DURABLE_ID_RETRY_LIMIT`
 
 가장 관련 있는 테스트:

@@ -185,7 +185,7 @@
 ### 쓰기 티켓
 
 라벨 선택 입력:
-- `WRITE_CHECK_REQUIRED` 또는 `WRITE_CHECK_INVALID`.
+- `WRITE_TICKET_REQUIRED` 또는 `WRITE_TICKET_INVALID`.
 
 표시 라벨:
 - 쓰기 티켓 필요 또는 사용 불가

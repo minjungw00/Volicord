@@ -99,7 +99,7 @@ State effect:
 ### State or idempotency conflict
 
 Condition:
-- `expected_state_version`, `WriteCheck.basis_state_version`, or idempotency request hash is stale or conflicting.
+- `expected_state_version`, `WriteTicket.basis_state_version`, or idempotency request hash is stale or conflicting.
 
 Route:
 - `ToolRejectedResponse.errors[]` with `STATE_VERSION_CONFLICT`.

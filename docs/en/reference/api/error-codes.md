@@ -38,8 +38,8 @@ Adjacent owners:
 | `BASELINE_STALE` | [`BASELINE_STALE`](#errorcode-baseline-stale) |
 | `SCOPE_REQUIRED` | [`SCOPE_REQUIRED`](#errorcode-scope-required) |
 | `SCOPE_VIOLATION` | [`SCOPE_VIOLATION`](#errorcode-scope-violation) |
-| `WRITE_CHECK_REQUIRED` | [`WRITE_CHECK_REQUIRED`](#errorcode-write-check-required) |
-| `WRITE_CHECK_INVALID` | [`WRITE_CHECK_INVALID`](#errorcode-write-check-invalid) |
+| `WRITE_TICKET_REQUIRED` | [`WRITE_TICKET_REQUIRED`](#errorcode-write-ticket-required) |
+| `WRITE_TICKET_INVALID` | [`WRITE_TICKET_INVALID`](#errorcode-write-ticket-invalid) |
 | `APPROVAL_DENIED` | [`APPROVAL_DENIED`](#errorcode-approval-denied) |
 | `APPROVAL_EXPIRED` | [`APPROVAL_EXPIRED`](#errorcode-approval-expired) |
 | `APPROVAL_REQUIRED` | [`APPROVAL_REQUIRED`](#errorcode-approval-required) |
@@ -81,7 +81,7 @@ Condition:
 - A public freshness or idempotency conflict is present. Stale `expected_state_version` is the request-state form.
 
 Notes:
-- Stale `WriteCheck.basis_state_version` and idempotency request-hash conflicts are covered in [State version conflict](error-precedence.md#state-conflict-behavior).
+- Stale `WriteTicket.basis_state_version` and idempotency request-hash conflicts are covered in [State version conflict](error-precedence.md#state-conflict-behavior).
 
 <a id="errorcode-mcp-unavailable"></a>
 ### `MCP_UNAVAILABLE`
@@ -150,27 +150,27 @@ Used in:
 Condition:
 - Intended or observed paths or sensitive categories exceed current scope or stored authorized scope.
 
-<a id="errorcode-write-check-required"></a>
-### `WRITE_CHECK_REQUIRED`
+<a id="errorcode-write-ticket-required"></a>
+### `WRITE_TICKET_REQUIRED`
 
 Used in:
 - `ToolRejectedResponse.errors[]`
 
 Condition:
-- A write-capable Run lacks a required write-ticket compatibility row.
+- A write-capable Run lacks a required write ticket.
 
-<a id="errorcode-write-check-invalid"></a>
-### `WRITE_CHECK_INVALID`
+<a id="errorcode-write-ticket-invalid"></a>
+### `WRITE_TICKET_INVALID`
 
 Used in:
 - `ToolRejectedResponse.errors[]`
 
 Condition:
-- Supplied write-ticket compatibility row is expired, revoked, consumed, or incompatible for a non-version reason.
+- Supplied write ticket is expired, revoked, consumed, or incompatible for a non-version reason.
 
 Notes:
-- Expired write-ticket use stays on this code with `ToolError.details.write_check_reason=expired`.
-- Stale `WriteCheck.basis_state_version` is routed through `STATE_VERSION_CONFLICT`, not this code.
+- Expired write-ticket use stays on this code with `ToolError.details.write_ticket_reason=expired`.
+- Stale `WriteTicket.basis_state_version` is routed through `STATE_VERSION_CONFLICT`, not this code.
 
 <a id="errorcode-approval-denied"></a>
 ### `APPROVAL_DENIED`

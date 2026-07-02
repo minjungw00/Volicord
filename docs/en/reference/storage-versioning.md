@@ -28,7 +28,7 @@ Every newly committed authority mutation appends at least one durable `authority
 
 Related fields:
 
-- `write_checks.basis_state_version` stores the resulting `project_state.state_version` after the write-ticket issuance commit. Core uses it as the freshness basis for later write-ticket compatibility consumption.
+- `write_checks.basis_state_version` stores the resulting `project_state.state_version` after the write-ticket issuance commit. Core uses it as the freshness basis for later write-ticket consumption.
 - `tool_invocations.basis_state_version` stores the project-wide state version observed before the committed mutation.
 - `authority_events.state_version` stores the resulting project-wide version after the committed authority event or event batch.
 
@@ -39,8 +39,8 @@ A write ticket is Volicord authority for authorized write intent for one propose
 Write-ticket issuance and compatibility consumption follow normal state-version rules:
 
 - issuance can commit only through an owner-defined method branch
-- consumption can commit only when the stored write-ticket compatibility row is active, compatible, unexpired, unconsumed, and current for the project state basis
-- stale `WriteCheck.basis_state_version` is rejected before consumption
+- consumption can commit only when the stored physical `write_checks` row for the write ticket is active, compatible, unexpired, unconsumed, and current for the project state basis
+- stale `WriteTicket.basis_state_version` is rejected before consumption
 - issuance or consumption never occurs on rejected, dry-run, or replay-only branches
 
 ## Idempotency And Replay
@@ -59,7 +59,7 @@ Replay eligibility:
 - compatible context plus the same `idempotency_key` and same `request_hash` returns the stored original committed response exactly
 - compatible context plus the same `idempotency_key` and a different `request_hash` returns `STATE_VERSION_CONFLICT`
 
-Replay uses the stored response body. It does not recompute or reclassify `write_ticket_effect`, `write_check_effect`, `base.state_version`, `base.events`, or any other response field. Replay does not append events, promote or link artifacts, issue or consume write tickets, create another replay row, or change state again.
+Replay uses the stored response body. It does not recompute or reclassify `write_ticket_effect`, `base.state_version`, `base.events`, or any other response field. Replay does not append events, promote or link artifacts, issue or consume write tickets, create another replay row, or change state again.
 
 ## Failure And Retry
 
@@ -68,7 +68,7 @@ Pre-commit failures have no storage effect. Transaction failures must leave no p
 Examples:
 
 - stale `expected_state_version`
-- stale `WriteCheck.basis_state_version`
+- stale `WriteTicket.basis_state_version`
 - validation failure
 - malformed request
 - corrupt typed owner state

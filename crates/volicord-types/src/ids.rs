@@ -69,7 +69,6 @@ opaque_string_type!(EventId, "Opaque event identifier.");
 opaque_string_type!(RecordId, "Opaque state-record identifier.");
 opaque_string_type!(BaselineRef, "Opaque baseline identifier.");
 opaque_string_type!(ChangeUnitId, "Opaque Change Unit identifier.");
-opaque_string_type!(WriteCheckId, "Opaque Write Check identifier.");
 opaque_string_type!(WriteTicketId, "Opaque write ticket identifier.");
 opaque_string_type!(RunId, "Opaque Run identifier.");
 opaque_string_type!(
@@ -110,8 +109,8 @@ pub enum DurableIdKind {
     ChangeUnit,
     /// Core-generated user-owned judgment ids.
     UserJudgment,
-    /// Core-generated Write Check ids.
-    WriteCheck,
+    /// Core-generated write ticket ids.
+    WriteTicket,
     /// Core-generated Run ids when the request does not supply one.
     Run,
     /// Core-generated committed event ids.
@@ -147,7 +146,7 @@ impl DurableIdKind {
             Self::Task => "task_",
             Self::ChangeUnit => "cu_",
             Self::UserJudgment => "uj_",
-            Self::WriteCheck => "wc_",
+            Self::WriteTicket => "wt_",
             Self::Run => "run_",
             Self::Event => "evt_",
             Self::AgentSession => "session_",
@@ -171,7 +170,7 @@ impl fmt::Display for DurableIdKind {
             Self::Task => "task",
             Self::ChangeUnit => "change_unit",
             Self::UserJudgment => "user_judgment",
-            Self::WriteCheck => "write_check",
+            Self::WriteTicket => "write_ticket",
             Self::Run => "run",
             Self::Event => "event",
             Self::AgentSession => "agent_session",

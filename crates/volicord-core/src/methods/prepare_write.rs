@@ -332,7 +332,7 @@ fn plan_prepare_write(
             reasons.push(write_decision_reason(
                 WriteDecisionCategory::SensitiveApproval,
                 "sensitive_approval_missing",
-                "A matching sensitive-action approval is required before Write Check.",
+                "A matching sensitive-action approval is required before write ticket issuance.",
                 Vec::new(),
             ));
         }
@@ -359,7 +359,7 @@ fn plan_prepare_write(
     } else {
         None
     };
-    let attempt_scope = WriteCheckAttemptScope {
+    let attempt_scope = WriteTicketAttemptScope {
         task_id: task_id.clone(),
         change_unit_id: scope_change_unit_id.clone(),
         intended_operation: normalized_operation,
@@ -372,18 +372,9 @@ fn plan_prepare_write(
     let created_at = plan_now.to_string();
     let expires_at_timestamp = utc_timestamp(write_check_expires_at(*plan_now.as_datetime()));
     let expires_at = expires_at_timestamp.to_string();
-    let write_check_ref = write_check_id.as_ref().map(|write_check_id| {
-        state_ref(
-            StateRecordKind::WriteCheck,
-            write_check_id.as_str(),
-            &request.envelope.project_id,
-            Some(&task_id),
-            Some(planned_state_version),
-        )
-    });
     let write_ticket_id = write_check_id
         .as_ref()
-        .map(|write_check_id| WriteTicketId::new(write_check_id.as_str().to_owned()));
+        .map(|write_ticket_id| WriteTicketId::new(write_ticket_id.as_str().to_owned()));
     let write_ticket_ref = write_check_id.as_ref().map(|write_check_id| {
         state_ref(
             StateRecordKind::WriteTicket,
@@ -399,15 +390,6 @@ fn plan_prepare_write(
         .filter(|path| !denied_path_patterns.iter().any(|denied| denied == *path))
         .cloned()
         .collect::<Vec<_>>();
-    let write_check = write_check_ref
-        .as_ref()
-        .map(|write_check_ref| WriteCheckSummary {
-            write_check_ref: write_check_ref.clone(),
-            status: WriteCheckStatus::Active,
-            attempt_scope: attempt_scope.clone(),
-            basis_state_version: planned_state_version,
-            expires_at: Some(expires_at_timestamp.clone()),
-        });
     let synthetic_write_check = write_check_id
         .as_ref()
         .map(|write_check_id| WriteCheckRecord {
@@ -469,7 +451,7 @@ fn plan_prepare_write(
     let mut close_state = close_plan.close_state;
     let mut close_blockers = close_plan.blockers;
     if create_write_check {
-        if let Some(write_check_ref) = write_check_ref.as_ref() {
+        if let Some(write_ticket_ref) = write_ticket_ref.as_ref() {
             let planned_task_ref = state_ref(
                 StateRecordKind::Task,
                 task_id.as_str(),
@@ -481,7 +463,7 @@ fn plan_prepare_write(
                 0,
                 close_task::open_write_ticket_close_blocker(
                     planned_task_ref,
-                    write_check_ref.clone(),
+                    write_ticket_ref.clone(),
                 ),
             );
             close_state = CloseState::Blocked;
@@ -523,7 +505,7 @@ fn plan_prepare_write(
         current_change_unit: change_unit,
         pending_user_judgment_refs,
         blocker_refs,
-        write_check_summary: synthetic_write_check
+        write_ticket_summary: synthetic_write_check
             .as_ref()
             .map(|record| {
                 write_check_summary_for_record(
@@ -557,13 +539,6 @@ fn plan_prepare_write(
         allowed_path_patterns,
         denied_path_patterns,
         control_surface,
-        write_check_ref: write_check_ref.clone(),
-        write_check,
-        write_check_effect: if create_write_check {
-            WriteCheckEffect::Created
-        } else {
-            WriteCheckEffect::None
-        },
         active_user_judgment_refs,
         write_decision_reasons: reasons.clone(),
         user_judgment_candidate: None,
@@ -599,9 +574,6 @@ fn plan_prepare_write(
         "decision": decision,
         "write_ticket_id": write_ticket_id
             .as_ref()
-            .map(|id| id.as_str().to_owned()),
-        "write_check_id": write_check_id
-            .as_ref()
             .map(|id| id.as_str().to_owned())
     }))?;
     if !allowed {
@@ -621,7 +593,7 @@ fn plan_prepare_write(
         dry_run_summary: prepare_write_dry_run_summary(
             allowed,
             &reasons,
-            write_check_ref,
+            write_ticket_ref,
             guarantee_display,
         ),
     })

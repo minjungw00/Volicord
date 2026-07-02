@@ -380,7 +380,7 @@ state:
   shaping_readiness: null
   pending_user_judgment_refs: []
   blocker_refs: []
-  write_check_summary: null
+  write_ticket_summary: null
   evidence_summary: null
   close_state: null
   close_blockers: []

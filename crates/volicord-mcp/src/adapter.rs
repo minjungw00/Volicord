@@ -600,7 +600,7 @@ impl McpAdapter {
                 kind: args.kind,
                 run_id: args.run_id,
                 baseline_ref: args.baseline_ref,
-                write_check_id: args.write_check_id,
+                write_ticket_id: args.write_ticket_id,
                 summary: args.summary,
                 observed_changes: args.observed_changes,
                 artifact_inputs: args.artifact_inputs,

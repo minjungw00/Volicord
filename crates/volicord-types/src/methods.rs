@@ -4,7 +4,7 @@ use serde_json::Value;
 
 use crate::ids::{
     BaselineRef, ChangeUnitId, RunId, TaskId, UnrecordedChangeId, UserJudgmentId,
-    UserJudgmentOptionId, WriteCheckId, WriteTicketId,
+    UserJudgmentOptionId, WriteTicketId,
 };
 use crate::schema::{
     AcceptedRiskInput, ArtifactInput, ArtifactRef, ChangeUnitEffectContract, CloseAssessmentInput,
@@ -15,14 +15,13 @@ use crate::schema::{
     RiskAcceptanceCoverage, RunSummary, SensitiveActionScope, StagedArtifactHandle, StateRecordRef,
     StateSummary, ToolEnvelope, ToolResponse, ToolResultBase, UnrecordedChangeFinding,
     UnrecordedChangeResolutionSummary, UserJudgment, UserJudgmentCandidate, UserJudgmentContext,
-    UserJudgmentOptionInput, WriteCheckStateSummary, WriteCheckSummary, WriteDecisionReason,
-    WriteTicket,
+    UserJudgmentOptionInput, WriteDecisionReason, WriteTicket, WriteTicketStateSummary,
 };
 use crate::values::{
     ChangeUnitOperation, CloseIntent, CloseMutationIntent, CloseReason, CloseState, JudgmentKind,
     JudgmentPresentation, JudgmentRequiredFor, MethodName, OperationCategory, PrepareWriteDecision,
     RedactionState, RequestedMode, ResumePolicy, RunKind, StatusCloseState, StatusDetailLevel,
-    UnrecordedChangeResolutionBasis, UtcTimestamp, WriteCheckEffect, WriteTicketEffect,
+    UnrecordedChangeResolutionBasis, UtcTimestamp, WriteTicketEffect,
 };
 
 /// Shared typed mapping from a public request to its operation category.
@@ -188,7 +187,7 @@ pub struct UpdateScopeResult {
     pub task_ref: StateRecordRef,
     pub change_unit_ref: Option<StateRecordRef>,
     pub linked_scope_decision_refs: Vec<StateRecordRef>,
-    pub stale_write_check_refs: Vec<StateRecordRef>,
+    pub stale_write_ticket_refs: Vec<StateRecordRef>,
     pub blocker_refs: Vec<StateRecordRef>,
     pub state: StateSummary,
     pub next_actions: Vec<NextActionSummary>,
@@ -231,7 +230,7 @@ impl StatusDetailLevel {
             Self::Summary => StatusInclude {
                 task: true,
                 pending_user_judgments: false,
-                write_check: false,
+                write_ticket: false,
                 evidence: false,
                 close: false,
                 guarantees: false,
@@ -240,7 +239,7 @@ impl StatusDetailLevel {
             Self::Workflow => StatusInclude {
                 task: true,
                 pending_user_judgments: true,
-                write_check: true,
+                write_ticket: true,
                 evidence: true,
                 close: true,
                 guarantees: true,
@@ -249,7 +248,7 @@ impl StatusDetailLevel {
             Self::Full => StatusInclude {
                 task: true,
                 pending_user_judgments: true,
-                write_check: true,
+                write_ticket: true,
                 evidence: true,
                 close: true,
                 guarantees: true,
@@ -265,7 +264,7 @@ impl StatusDetailLevel {
 pub struct StatusInclude {
     pub task: bool,
     pub pending_user_judgments: bool,
-    pub write_check: bool,
+    pub write_ticket: bool,
     pub evidence: bool,
     pub close: bool,
     pub guarantees: bool,
@@ -282,7 +281,7 @@ pub struct StatusResult {
     pub pending_user_judgments: Vec<StateRecordRef>,
     pub pending_judgment_inbox_items: Vec<JudgmentInboxItem>,
     pub blocker_refs: Vec<StateRecordRef>,
-    pub write_check_summary: Option<WriteCheckStateSummary>,
+    pub write_ticket_summary: Option<WriteTicketStateSummary>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub evidence_summary: Option<RequiredNullable<EvidenceSummary>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -353,9 +352,6 @@ pub struct PrepareWriteResult {
     pub allowed_path_patterns: Vec<String>,
     pub denied_path_patterns: Vec<String>,
     pub control_surface: Option<ControlSurfaceSummary>,
-    pub write_check_ref: Option<StateRecordRef>,
-    pub write_check: Option<WriteCheckSummary>,
-    pub write_check_effect: WriteCheckEffect,
     pub active_user_judgment_refs: Vec<StateRecordRef>,
     pub write_decision_reasons: Vec<WriteDecisionReason>,
     pub user_judgment_candidate: Option<UserJudgmentCandidate>,
@@ -421,7 +417,7 @@ pub struct RecordRunRequest {
     pub kind: RunKind,
     pub run_id: RequiredNullable<RunId>,
     pub baseline_ref: BaselineRef,
-    pub write_check_id: RequiredNullable<WriteCheckId>,
+    pub write_ticket_id: RequiredNullable<WriteTicketId>,
     pub summary: String,
     pub observed_changes: ObservedChanges,
     pub artifact_inputs: Vec<ArtifactInput>,
@@ -451,7 +447,7 @@ pub struct McpRecordRunArguments {
     pub kind: RunKind,
     pub run_id: RequiredNullable<RunId>,
     pub baseline_ref: BaselineRef,
-    pub write_check_id: RequiredNullable<WriteCheckId>,
+    pub write_ticket_id: RequiredNullable<WriteTicketId>,
     pub summary: String,
     pub observed_changes: ObservedChanges,
     pub artifact_inputs: Vec<ArtifactInput>,

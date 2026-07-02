@@ -432,7 +432,7 @@ state:
       task_id: task_banner_001
       state_version: 52
   blocker_refs: []
-  write_check_summary: null
+  write_ticket_summary: null
   evidence_summary: null
   close_state: null
   close_blockers: []

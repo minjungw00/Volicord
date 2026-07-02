@@ -102,7 +102,7 @@ PrepareWriteRequest:
 |---|---|
 | `base` | 공통 결과 메타데이터입니다. `disclosure`와 `events`를 포함한 `ToolResultBase` 형태는 [API 코어 스키마](schema-core.md#common-response)가 담당합니다. 커밋된 `PrepareWriteResult` 분기는 `base.response_kind=result`, `base.effect_kind=core_committed`, `base.disclosure.guarantee_class=authority_record`를 사용합니다. `base.events[].event_kind`가 있을 때 그 값은 불투명한 예시용 분류 문자열입니다. |
 | `decision` | 이 쓰기 준비 시도에 대한 메서드 결정입니다. 지원되는 값은 [API 값 집합](schema-value-sets.md#method-local-values)이 담당합니다. |
-| `state` | 이 결과가 상태 스냅샷을 포함할 때의 현재 `StateSummary`입니다. `write_check_summary`를 포함한 중첩 상태 필드는 [API 상태 스키마](schema-state.md)가 담당합니다. |
+| `state` | 이 결과가 상태 스냅샷을 포함할 때의 현재 `StateSummary`입니다. `write_ticket_summary`를 포함한 중첩 상태 필드는 [API 상태 스키마](schema-state.md)가 담당합니다. |
 | `write_ticket_id` | 허용 결정 결과에서 발급된 쓰기 티켓의 `WriteTicketId | null`입니다. 새로 커밋된 허용 결정은 이를 할당하고, 멱등 재실행은 이 필드를 바꾸지 않은 원래 커밋 응답을 반환합니다. 커밋된 비허용 결정에서는 `null`입니다. |
 | `write_ticket_ref` | 발급된 쓰기 티켓을 가리키는 `record_kind=write_ticket`의 `StateRecordRef | null`입니다. 커밋된 비허용 결정에서는 `null`입니다. |
 | `write_ticket` | 발급된 쓰기 티켓 권한 기록의 `WriteTicket | null`입니다. 커밋된 비허용 결정에서는 `null`입니다. |
@@ -110,15 +110,12 @@ PrepareWriteRequest:
 | `allowed_path_patterns` | 티켓 결정에서 허용으로 포착한 정규화된 `Product Repository` 경로 패턴입니다. 허용 결과에서는 티켓의 허용 경로 패턴 목록입니다. |
 | `denied_path_patterns` | 티켓 결정에서 거부로 포착한 정규화된 `Product Repository` 경로 패턴입니다. 경로 수준 거부가 없으면 `[]`입니다. |
 | `control_surface` | 현재 Volicord 제어 표면을 공개하는 `ControlSurfaceSummary | null`입니다. `os_enforced=false`는 티켓이 OS 수준 집행이 아니라는 뜻입니다. |
-| `write_check_ref` | 기존 생명주기 필드가 노출하는 현재 저장소 기반 쓰기 호환성 행의 호환성 `StateRecordRef | null`입니다. 새 통합은 발급된 권한 기록에 `write_ticket_ref`를 사용해야 합니다. |
-| `write_check` | 같은 저장소 기반 쓰기 호환성 행에 대한 호환성 `WriteCheckSummary | null`입니다. 새 통합은 `write_ticket`을 사용해야 합니다. |
-| `write_check_effect` | 기존 `write_check` 필드의 호환성 효과입니다. `write_ticket_effect`를 대신하지 않습니다. |
 | `active_user_judgment_refs` | 쓰기 준비 결정에 적용된 현재 `accepted` 결과의 사용자 소유 판단에 대한 `StateRecordRef[]`입니다. 일치하는 `sensitive_approval` 판단이 있으면 그 판단도 포함합니다. |
 | `write_decision_reasons` | 비허용 결정을 설명하는 `WriteDecisionReason[]`입니다. 형태는 [API 상태 스키마](schema-state.md#current-position-display-shapes)가 담당합니다. |
 | `user_judgment_candidate` | 메서드가 쓰기 티켓을 발급하지 않고 집중된 사용자 소유 판단을 제안할 때의 `UserJudgmentCandidate | null`입니다. 그 밖의 경우에는 `null`입니다. 형태는 [API 판단 스키마](schema-judgment.md#userjudgmentcandidate)가 담당합니다. |
 | `guarantee_display` | 메서드의 호환성 표시를 위한 `GuaranteeDisplay | null`입니다. 표시 형태는 [API 상태 스키마](schema-state.md#close-readiness-and-validation-shapes)가 담당하고, 보안 보장 의미는 [보안](../security.md)이 담당합니다. |
 
-중첩된 `StateRecordRef`, `StateSummary`, `WriteTicket`, `ControlSurfaceSummary`, `WriteCheckSummary`, `WriteDecisionReason`, `UserJudgmentCandidate`, `GuaranteeDisplay` 필드 본문은 위에 연결된 스키마 담당 문서에 둡니다.
+중첩된 `StateRecordRef`, `StateSummary`, `WriteTicket`, `ControlSurfaceSummary`, `WriteTicketSummary`, `WriteDecisionReason`, `UserJudgmentCandidate`, `GuaranteeDisplay` 필드 본문은 위에 연결된 스키마 담당 문서에 둡니다.
 
 ## 성공 결과
 
@@ -302,10 +299,10 @@ state:
   shaping_readiness: null
   pending_user_judgment_refs: []
   blocker_refs: []
-  write_check_summary:
+  write_ticket_summary:
     status: active
-    write_check_ref:
-      record_kind: write_check
+    write_ticket_ref:
+      record_kind: write_ticket
       record_id: wt_pref_001
       project_id: proj_pref_001
       task_id: task_pref_001
@@ -384,34 +381,6 @@ control_surface:
   unrecorded_changes_detectable: false
   actor_identity_provable: false
   os_enforced: false
-write_check_ref:
-  record_kind: write_check
-  record_id: wt_pref_001
-  project_id: proj_pref_001
-  task_id: task_pref_001
-  state_version: 20
-write_check:
-  write_check_ref:
-    record_kind: write_check
-    record_id: wt_pref_001
-    project_id: proj_pref_001
-    task_id: task_pref_001
-    state_version: 20
-  status: active
-  attempt_scope:
-    task_id: task_pref_001
-    change_unit_id: cu_pref_001
-    intended_operation: "update profile preference save flow"
-    intended_paths:
-      - src/preferences/profile-save.ts
-      - src/preferences/profile-save.test.ts
-    product_file_write_intended: true
-    sensitive_categories:
-      - account_preference_update
-    baseline_ref: baseline_pref_001
-  basis_state_version: 20
-  expires_at: "<future-expiration-timestamp>"
-write_check_effect: created
 active_user_judgment_refs:
   - record_kind: user_judgment
     record_id: uj_sensitive_pref_001
@@ -457,9 +426,6 @@ control_surface:
   unrecorded_changes_detectable: false
   actor_identity_provable: false
   os_enforced: false
-write_check_ref: null
-write_check: null
-write_check_effect: none
 write_decision_reasons:
   - category: sensitive_approval
     code: sensitive_approval_missing
@@ -476,7 +442,7 @@ guarantee_display:
 ## 담당 문서 링크
 
 - 요청 래퍼, 공통 결과 분기, `dry_run` 요약: [API 코어 스키마](schema-core.md).
-- `WriteTicket`, 호환성 `WriteCheckSummary`, 상태 요약, 참조: [API 상태 스키마](schema-state.md).
+- `WriteTicket`, 호환성 `WriteTicketSummary`, 상태 요약, 참조: [API 상태 스키마](schema-state.md).
 - `SensitiveActionScope`와 사용자 소유 승인 형태: [API 판단 스키마](schema-judgment.md).
 - 쓰기 티켓, 쓰기 승인, 민감 동작 승인, 최종 수락, 잔여 위험 경계: [Core 모델](../core-model.md).
 - `Product Repository` 경로 정규화: [런타임 경계](../runtime-boundaries.md#product-repository-api-path-normalization).

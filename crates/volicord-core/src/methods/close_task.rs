@@ -471,7 +471,7 @@ pub(super) fn plan_close_task_with_context(
         current_change_unit: context.current_change_unit.as_ref(),
         pending_user_judgment_refs: context.pending_user_judgment_refs.clone(),
         blocker_refs: context.blocker_refs.clone(),
-        write_check_summary: projected_write_check_summary(
+        write_ticket_summary: projected_write_check_summary(
             store,
             &request.task_id,
             response_state_version,
@@ -964,10 +964,10 @@ pub(super) fn guard_health_summary_from_record(
         .map_err(PlanError::Core)?;
     let prompt_capture_status = prompt_capture_availability.status;
     let prompt_capture_available = prompt_capture_availability.can_use_chat_commands();
-    let missing_or_stale_write_readiness = record
+    let missing_or_stale_write_ticket = record
         .latest_event
         .as_ref()
-        .map(latest_guard_event_has_write_readiness_issue)
+        .map(latest_guard_event_has_write_ticket_issue)
         .transpose()?
         .unwrap_or(false);
     let write_ticket_path_scope_violation = record
@@ -1028,7 +1028,7 @@ pub(super) fn guard_health_summary_from_record(
         session_watch_partial_coverage_warning: RequiredNullable::null(),
         session_watch_detail: RequiredNullable::null(),
         unresolved_unrecorded_change_count: record.unresolved_unrecorded_changes.len() as u64,
-        missing_or_stale_write_readiness,
+        missing_or_stale_write_ticket,
         write_ticket_path_scope_violation,
     };
     refresh_control_surface(&mut summary);
@@ -1965,7 +1965,7 @@ fn parse_guard_installation_status(
         .map_err(PlanError::Core)
 }
 
-fn latest_guard_event_has_write_readiness_issue(
+fn latest_guard_event_has_write_ticket_issue(
     event: &volicord_store::guards::GuardEventRecord,
 ) -> Result<bool, PlanError> {
     let result = decode_required_json_object(
@@ -1978,13 +1978,12 @@ fn latest_guard_event_has_write_readiness_issue(
     Ok(json_has_code(
         &result,
         &[
-            "write_readiness_missing",
             "write_ticket_missing",
             "write_ticket_scope_indeterminate",
             "write_ticket_ambiguous",
-            "write_check_stale",
+            "write_ticket_stale",
         ],
-    ) || json_has_non_empty_array_key(&result, "stale_write_check_ids"))
+    ) || json_has_non_empty_array_key(&result, "stale_write_ticket_ids"))
 }
 
 fn latest_guard_event_has_write_ticket_path_scope_violation(
@@ -2152,16 +2151,16 @@ fn guard_close_blockers(
             }],
         ));
     }
-    if summary.missing_or_stale_write_readiness {
+    if summary.missing_or_stale_write_ticket {
         blockers.push(close_blocker(
             CloseReadinessBlockerCategory::WriteCompatibility,
-            "guard_write_readiness_missing_or_stale",
-            "Host hook events detected missing or stale write readiness.",
+            "guard_write_ticket_missing_or_stale",
+            "Host hook events detected a missing or stale write ticket.",
             vec![task_ref.clone()],
             vec![NextActionSummary {
                 action_kind: NextActionKind::PrepareWrite,
                 owner_method: Some(MethodName::PrepareWrite),
-                label: "Refresh write readiness before completing the Task.".to_owned(),
+                label: "Refresh the write ticket before completing the Task.".to_owned(),
                 blocking_question: None,
                 required_refs: vec![task_ref.clone()],
             }],
@@ -2458,15 +2457,15 @@ fn unresolved_write_ticket_close_blockers(
         )
         .map_err(PlanError::Core)?;
         match status {
-            WriteCheckStatus::Active => blockers.push(open_write_ticket_close_blocker(
+            WriteTicketStatus::Active => blockers.push(open_write_ticket_close_blocker(
                 task_ref.clone(),
-                write_check_ref(&record, project_state.state_version),
+                write_ticket_ref(&record, project_state.state_version),
             )),
-            WriteCheckStatus::Expired => blockers.push(close_blocker(
+            WriteTicketStatus::Expired => blockers.push(close_blocker(
                 CloseReadinessBlockerCategory::WriteCompatibility,
                 "expired_write_ticket",
                 "An expired write ticket remains unresolved for this Task.",
-                vec![write_check_ref(&record, project_state.state_version)],
+                vec![write_ticket_ref(&record, project_state.state_version)],
                 vec![NextActionSummary {
                     action_kind: NextActionKind::ReconcileChanges,
                     owner_method: Some(MethodName::ReconcileChanges),
@@ -2479,9 +2478,7 @@ fn unresolved_write_ticket_close_blockers(
                     required_refs: vec![task_ref.clone()],
                 }],
             )),
-            WriteCheckStatus::Stale
-            | WriteCheckStatus::Consumed
-            | WriteCheckStatus::Revoked => {}
+            WriteTicketStatus::Stale | WriteTicketStatus::Consumed | WriteTicketStatus::Revoked => {}
         }
     }
     Ok(blockers)
@@ -2876,13 +2873,13 @@ fn completion_close_blockers(
     {
         blockers.push(close_blocker(
             CloseReadinessBlockerCategory::WriteCompatibility,
-            "write_check_stale",
-            "An active Write Check is stale against the current state version.",
-            vec![write_check_ref(record, project_state.state_version)],
+            "write_ticket_stale",
+            "An active write ticket is stale against the current state version.",
+            vec![write_ticket_ref(record, project_state.state_version)],
             vec![NextActionSummary {
                 action_kind: NextActionKind::PrepareWrite,
                 owner_method: Some(MethodName::PrepareWrite),
-                label: "Refresh write compatibility before completing the Task.".to_owned(),
+                label: "Refresh the write ticket before completing the Task.".to_owned(),
                 blocking_question: None,
                 required_refs: vec![task_ref.clone()],
             }],

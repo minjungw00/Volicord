@@ -99,7 +99,7 @@ Core 실행 전에 일어나는 전송 및 어댑터 실패는 이 분기 밖에
 ### 상태 또는 멱등성 충돌
 
 조건:
-- `expected_state_version`, `WriteCheck.basis_state_version`, 멱등 요청 해시가 오래되었거나 충돌합니다.
+- `expected_state_version`, `WriteTicket.basis_state_version`, 멱등 요청 해시가 오래되었거나 충돌합니다.
 
 라우팅:
 - `STATE_VERSION_CONFLICT`를 담은 `ToolRejectedResponse.errors[]`.

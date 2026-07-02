@@ -58,12 +58,12 @@ use volicord_types::{
     UnrecordedChangeResolutionRequest, UnrecordedChangeResolutionSummary, UnrecordedChangeStatus,
     UpdateScopeRequest, UserJudgment, UserJudgmentContext, UserJudgmentId, UserJudgmentOption,
     UserJudgmentOptionAction, UserJudgmentOptionId, UserJudgmentOptionInput,
-    UserJudgmentResolution, UserJudgmentStatus, UtcTimestamp, WriteCheckAttemptScope,
-    WriteCheckEffect, WriteCheckId, WriteCheckStateSummary, WriteCheckStatus, WriteCheckSummary,
-    WriteDecisionCategory, WriteDecisionReason, WriteTicket, WriteTicketEffect, WriteTicketId,
-    WriteTicketPathPatterns, WriteTicketScope, WriteTicketState,
-    VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL, VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB,
-    VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL, VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
+    UserJudgmentResolution, UserJudgmentStatus, UtcTimestamp, WriteDecisionCategory,
+    WriteDecisionReason, WriteTicket, WriteTicketAttemptScope, WriteTicketEffect, WriteTicketId,
+    WriteTicketPathPatterns, WriteTicketScope, WriteTicketState, WriteTicketStateSummary,
+    WriteTicketStatus, VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+    VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB, VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
+    VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
 };
 
 use crate::pipeline::{
@@ -270,15 +270,15 @@ fn allocate_user_judgment_id(
 fn allocate_write_check_id(
     service: &CoreService,
     store: &CoreProjectStore,
-) -> CoreResult<WriteCheckId> {
+) -> CoreResult<WriteTicketId> {
     service
-        .allocate_generated_id(DurableIdKind::WriteCheck, |candidate| {
+        .allocate_generated_id(DurableIdKind::WriteTicket, |candidate| {
             store
                 .write_check_record(candidate)
                 .map(|record| record.is_some())
                 .map_err(CorePipelineError::from)
         })
-        .map(WriteCheckId::new)
+        .map(WriteTicketId::new)
 }
 
 fn allocate_run_id(service: &CoreService, store: &CoreProjectStore) -> CoreResult<RunId> {
@@ -1675,15 +1675,15 @@ fn write_check_required_response(
     state_version: Option<u64>,
 ) -> PipelineResponse {
     let details = object_from_value(json!({
-        "write_check_reason": "missing"
+        "write_ticket_reason": "missing"
     }))
-    .expect("write check details should be an object");
+    .expect("write ticket details should be an object");
     infallible_rejected_pipeline_response(
         envelope.dry_run,
         state_version,
         vec![tool_error(
-            ErrorCode::WriteCheckRequired,
-            "product-file write observations require a compatible active Write Check",
+            ErrorCode::WriteTicketRequired,
+            "product-file write observations require a compatible active write ticket",
             false,
             Some(details),
         )],
@@ -1697,14 +1697,14 @@ fn write_check_invalid_response(
     message: &'static str,
 ) -> PipelineResponse {
     let details = object_from_value(json!({
-        "write_check_reason": reason
+        "write_ticket_reason": reason
     }))
-    .expect("write check details should be an object");
+    .expect("write ticket details should be an object");
     infallible_rejected_pipeline_response(
         envelope.dry_run,
         state_version,
         vec![tool_error(
-            ErrorCode::WriteCheckInvalid,
+            ErrorCode::WriteTicketInvalid,
             message,
             false,
             Some(details),
@@ -1727,11 +1727,11 @@ fn stale_write_check_basis_response(
         Value::from(current_state_version),
     );
     details.insert(
-        "write_check_basis_state_version".to_owned(),
+        "write_ticket_basis_state_version".to_owned(),
         Value::from(record.basis_state_version),
     );
     details.insert(
-        "write_check_id".to_owned(),
+        "write_ticket_id".to_owned(),
         Value::String(record.write_check_id.clone()),
     );
     details.insert(
@@ -1749,7 +1749,7 @@ fn stale_write_check_basis_response(
         Some(current_state_version),
         vec![tool_error(
             ErrorCode::StateVersionConflict,
-            "Write Check basis_state_version is stale",
+            "write ticket basis_state_version is stale",
             true,
             Some(details),
         )],
@@ -1929,7 +1929,7 @@ struct PersistedWriteCheckAttemptScope {
     baseline_ref: Option<BaselineRef>,
 }
 
-impl From<PersistedWriteCheckAttemptScope> for WriteCheckAttemptScope {
+impl From<PersistedWriteCheckAttemptScope> for WriteTicketAttemptScope {
     fn from(scope: PersistedWriteCheckAttemptScope) -> Self {
         Self {
             task_id: scope.task_id,
@@ -2043,7 +2043,7 @@ struct SummaryBuild<'a> {
     current_change_unit: Option<&'a ChangeUnitRecord>,
     pending_user_judgment_refs: Vec<StateRecordRef>,
     blocker_refs: Vec<StateRecordRef>,
-    write_check_summary: Option<WriteCheckStateSummary>,
+    write_ticket_summary: Option<WriteTicketStateSummary>,
     evidence_summary: Option<EvidenceSummary>,
     close_state: Option<CloseState>,
     close_blockers: Vec<CloseReadinessBlocker>,
@@ -2059,7 +2059,7 @@ fn build_state_summary(input: SummaryBuild<'_>) -> CoreResult<volicord_types::St
         current_change_unit,
         pending_user_judgment_refs,
         blocker_refs,
-        write_check_summary,
+        write_ticket_summary,
         evidence_summary,
         close_state,
         close_blockers,
@@ -2128,7 +2128,7 @@ fn build_state_summary(input: SummaryBuild<'_>) -> CoreResult<volicord_types::St
         shaping_readiness: None,
         pending_user_judgment_refs,
         blocker_refs,
-        write_check_summary,
+        write_ticket_summary,
         evidence_summary,
         close_state,
         close_blockers,
@@ -2144,7 +2144,7 @@ fn write_check_summary_for_record(
     now: Option<DateTime<Utc>>,
     observation_refs: Option<Vec<StateRecordRef>>,
     guarantee_display: Option<GuaranteeDisplay>,
-) -> CoreResult<WriteCheckStateSummary> {
+) -> CoreResult<WriteTicketStateSummary> {
     let attempt_scope = decode_required_json::<PersistedWriteCheckAttemptScope>(
         "write_checks",
         record.write_check_id.clone(),
@@ -2173,9 +2173,9 @@ fn write_check_summary_for_record(
         ),
         _ => Vec::new(),
     };
-    Ok(WriteCheckStateSummary {
+    Ok(WriteTicketStateSummary {
         status: effective_write_check_status(record, state_version, now)?,
-        write_check_ref: Some(write_check_ref(record, state_version)),
+        write_ticket_ref: Some(write_ticket_ref(record, state_version)),
         basis_state_version: Some(record.basis_state_version),
         intended_paths: attempt_scope.intended_paths,
         consumed_by_run_ref,
@@ -2188,13 +2188,13 @@ fn effective_write_check_status(
     record: &WriteCheckRecord,
     state_version: u64,
     now: Option<DateTime<Utc>>,
-) -> CoreResult<WriteCheckStatus> {
+) -> CoreResult<WriteTicketStatus> {
     let stored_status = parse_storage_value("write_checks.status", &record.status)?;
-    if stored_status != WriteCheckStatus::Active {
+    if stored_status != WriteTicketStatus::Active {
         return Ok(stored_status);
     }
     if record.basis_state_version != state_version {
-        return Ok(WriteCheckStatus::Stale);
+        return Ok(WriteTicketStatus::Stale);
     }
     if now
         .map(|now| write_check_is_expired(record, now))
@@ -2202,9 +2202,9 @@ fn effective_write_check_status(
         .map_err(CorePipelineError::from)?
         .unwrap_or(false)
     {
-        Ok(WriteCheckStatus::Expired)
+        Ok(WriteTicketStatus::Expired)
     } else {
-        Ok(WriteCheckStatus::Active)
+        Ok(WriteTicketStatus::Active)
     }
 }
 
@@ -2281,11 +2281,11 @@ fn selected_write_check_for_projection(
     for record in records {
         let status = effective_write_check_status(&record, state_version, Some(now))?;
         let priority = match status {
-            WriteCheckStatus::Active => 0,
-            WriteCheckStatus::Expired => 1,
-            WriteCheckStatus::Stale => 2,
-            WriteCheckStatus::Consumed => 3,
-            WriteCheckStatus::Revoked => 4,
+            WriteTicketStatus::Active => 0,
+            WriteTicketStatus::Expired => 1,
+            WriteTicketStatus::Stale => 2,
+            WriteTicketStatus::Consumed => 3,
+            WriteTicketStatus::Revoked => 4,
         };
         if priority < selected_priority {
             selected_priority = priority;
@@ -2301,7 +2301,7 @@ fn projected_write_check_summary(
     state_version: u64,
     now: DateTime<Utc>,
     guarantee_display: Option<GuaranteeDisplay>,
-) -> Result<Option<WriteCheckStateSummary>, PlanError> {
+) -> Result<Option<WriteTicketStateSummary>, PlanError> {
     Ok(
         selected_write_check_for_projection(store, task_id, state_version, now)?
             .as_ref()
@@ -2584,9 +2584,9 @@ fn state_ref(
     }
 }
 
-fn write_check_ref(record: &WriteCheckRecord, state_version: u64) -> StateRecordRef {
+fn write_ticket_ref(record: &WriteCheckRecord, state_version: u64) -> StateRecordRef {
     state_ref(
-        StateRecordKind::WriteCheck,
+        StateRecordKind::WriteTicket,
         &record.write_check_id,
         &ProjectId::new(record.project_id.clone()),
         Some(&TaskId::new(record.task_id.clone())),
@@ -2728,7 +2728,7 @@ fn state_ref_from_stored(record: StoredRecordRef) -> StateRecordRef {
     let kind = match record.record_kind.as_str() {
         "user_judgment" => StateRecordKind::UserJudgment,
         "blocker" => StateRecordKind::Blocker,
-        "write_check" => StateRecordKind::WriteCheck,
+        "write_ticket" => StateRecordKind::WriteTicket,
         "change_unit" => StateRecordKind::ChangeUnit,
         "task" => StateRecordKind::Task,
         "evidence_observation" => StateRecordKind::EvidenceObservation,

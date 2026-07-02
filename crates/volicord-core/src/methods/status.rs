@@ -93,7 +93,7 @@ fn status_result_fields(
     let mut pending_user_judgments = Vec::new();
     let mut pending_inbox_items = Vec::new();
     let mut blocker_refs = Vec::new();
-    let mut write_check_summary = None;
+    let mut write_ticket_summary = None;
     let mut evidence_summary = None;
     let mut close_state = None;
     let mut current_close_basis = None;
@@ -127,7 +127,7 @@ fn status_result_fields(
             pending_user_judgments = all_pending_user_judgments.clone();
         }
         blocker_refs = projected_blocker_refs(store, &task_id, state_version)?;
-        let projected_write_check = if include.write_check {
+        let projected_write_check = if include.write_ticket {
             projected_write_check_summary(
                 store,
                 &task_id,
@@ -138,7 +138,7 @@ fn status_result_fields(
         } else {
             None
         };
-        write_check_summary = projected_write_check.clone();
+        write_ticket_summary = projected_write_check.clone();
         let projected_evidence = if include.evidence {
             projected_evidence_summary(store, project_id, state_version, task)?
         } else {
@@ -196,7 +196,7 @@ fn status_result_fields(
                 current_change_unit: current_change_unit.as_ref(),
                 pending_user_judgment_refs: all_pending_user_judgments,
                 blocker_refs: blocker_refs.clone(),
-                write_check_summary: projected_write_check,
+                write_ticket_summary: projected_write_check,
                 evidence_summary: projected_evidence,
                 close_state: close_plan.as_ref().map(|plan| plan.close_state),
                 close_blockers: close_plan
@@ -234,7 +234,7 @@ fn status_result_fields(
         pending_user_judgments,
         pending_judgment_inbox_items: pending_inbox_items,
         blocker_refs,
-        write_check_summary,
+        write_ticket_summary,
         evidence_summary: include.evidence.then(|| evidence_summary.into()),
         close_state,
         current_close_basis: include.close.then(|| current_close_basis.into()),
@@ -327,8 +327,8 @@ fn status_state_summary_value(
         .ok_or_else(|| CorePipelineError::InvalidDispatch {
             detail: "state summary must serialize to a JSON object".to_owned(),
         })?;
-    if !include.write_check {
-        object.remove("write_check_summary");
+    if !include.write_ticket {
+        object.remove("write_ticket_summary");
     }
     if !include.evidence {
         object.remove("evidence_summary");

@@ -95,8 +95,9 @@ Apply the terminology map's distinctions, including:
   "현재 적용 범위" in Korean. Preserve exact identifiers and status values that
   contain `active`.
 - Keep write ticket distinct from ordinary write approval. In Korean
-  explanatory prose, use "쓰기 티켓" for the product concept and preserve
-  `Write Check` only for exact legacy identifiers or schema names.
+  explanatory prose, use "쓰기 티켓" for the product concept. Preserve
+  `write_check` names only for physical storage identifiers, internal source
+  paths, or source-level compatibility identifiers that have not been renamed.
 - In Korean reference prose, use "닫기 준비 상태" for close readiness.
 
 Some English words can be both code values and ordinary prose. Preserve

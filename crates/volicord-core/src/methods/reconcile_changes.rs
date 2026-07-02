@@ -417,7 +417,7 @@ fn plan_reconcile_changes(
         current_change_unit: current_change_unit.as_ref(),
         pending_user_judgment_refs: projected_pending_refs.clone(),
         blocker_refs,
-        write_check_summary,
+        write_ticket_summary: write_check_summary,
         evidence_summary,
         close_state: Some(close_plan.close_state),
         close_blockers: close_plan.blockers.clone(),
@@ -601,7 +601,7 @@ fn deterministic_resolution(
     }
     let mut active_matches = Vec::new();
     for write_check in write_checks {
-        let attempt_scope: WriteCheckAttemptScope = decode_required_json(
+        let attempt_scope: WriteTicketAttemptScope = decode_required_json(
             "write_checks",
             write_check.write_check_id.clone(),
             "attempt_scope_json",
@@ -612,8 +612,8 @@ fn deterministic_resolution(
         {
             if write_check.status == "consumed" && write_check.consumed_by_run_id.is_some() {
                 return Ok(Some(system_resolution(
-                    UnrecordedChangeResolutionBasis::CoveredByWriteReadiness,
-                    "core_deterministic_write_readiness",
+                    UnrecordedChangeResolutionBasis::CoveredByWriteTicket,
+                    "core_deterministic_write_ticket",
                 )));
             }
             if write_check.status == "active"
@@ -626,7 +626,7 @@ fn deterministic_resolution(
     }
     if active_matches.len() == 1 {
         return Ok(Some(system_resolution(
-            UnrecordedChangeResolutionBasis::CoveredByWriteReadiness,
+            UnrecordedChangeResolutionBasis::CoveredByWriteTicket,
             "core_deterministic_write_ticket",
         )));
     }

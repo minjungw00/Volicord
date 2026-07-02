@@ -760,7 +760,7 @@ impl UnrecordedChangeStatus {
 #[serde(rename_all = "snake_case")]
 pub enum UnrecordedChangeResolutionBasis {
     Reverted,
-    CoveredByWriteReadiness,
+    CoveredByWriteTicket,
     RecordedAsExpectedWrite,
     AcceptedByUser,
     NotProductChange,
@@ -773,7 +773,7 @@ impl UnrecordedChangeResolutionBasis {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Reverted => "reverted",
-            Self::CoveredByWriteReadiness => "covered_by_write_readiness",
+            Self::CoveredByWriteTicket => "covered_by_write_ticket",
             Self::RecordedAsExpectedWrite => "recorded_as_expected_write",
             Self::AcceptedByUser => "accepted_by_user",
             Self::NotProductChange => "not_product_change",
@@ -791,7 +791,6 @@ pub enum StateRecordKind {
     Task,
     ChangeUnit,
     WriteTicket,
-    WriteCheck,
     UserJudgment,
     Run,
     EvidenceSummary,
@@ -974,15 +973,6 @@ pub enum PrepareWriteDecision {
     DecisionRequired,
 }
 
-/// Prepare-write Write Check effect values.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum WriteCheckEffect {
-    None,
-    WouldCreate,
-    Created,
-}
-
 /// Prepare-write write ticket effect values.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -1004,10 +994,10 @@ pub enum WriteTicketState {
     Revoked,
 }
 
-/// Write Check status values.
+/// Write ticket status values.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum WriteCheckStatus {
+pub enum WriteTicketStatus {
     Active,
     Consumed,
     Expired,
@@ -1317,8 +1307,8 @@ pub enum ErrorCode {
     BaselineStale,
     ScopeRequired,
     ScopeViolation,
-    WriteCheckRequired,
-    WriteCheckInvalid,
+    WriteTicketRequired,
+    WriteTicketInvalid,
     ApprovalDenied,
     ApprovalExpired,
     ApprovalRequired,

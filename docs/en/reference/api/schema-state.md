@@ -1,6 +1,6 @@
 # API state schemas
 
-This document owns API state-shaped schemas for the baseline scope. It defines public response shapes for `StateSummary`, `StateRecordRef`, lifecycle state as API data, state-related snapshots, `ProjectContinuityRecord`, `ProjectContinuitySummary`, `ShapingReadiness`, `ChangeUnitEffectContract`, and display shapes such as `NextActionSummary`, `WriteTicket`, `WriteTicketScope`, `WriteTicketPathPatterns`, `WriteCheckStateSummary`, `WriteCheckSummary`, `WriteCheckAttemptScope`, `EvidenceSummary`, `EvidenceObservation`, `GuardHealthSummary`, `UnrecordedChangeFinding`, `UnrecordedChangeResolutionSummary`, `CurrentCloseBasis`, `ResidualRisk`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`, `ValidatorResult`, `GuaranteeDisplay`, and `GuaranteeDisclosure`.
+This document owns API state-shaped schemas for the baseline scope. It defines public response shapes for `StateSummary`, `StateRecordRef`, lifecycle state as API data, state-related snapshots, `ProjectContinuityRecord`, `ProjectContinuitySummary`, `ShapingReadiness`, `ChangeUnitEffectContract`, and display shapes such as `NextActionSummary`, `WriteTicket`, `WriteTicketScope`, `WriteTicketPathPatterns`, `WriteTicketStateSummary`, `WriteTicketSummary`, `WriteTicketAttemptScope`, `EvidenceSummary`, `EvidenceObservation`, `GuardHealthSummary`, `UnrecordedChangeFinding`, `UnrecordedChangeResolutionSummary`, `CurrentCloseBasis`, `ResidualRisk`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`, `ValidatorResult`, `GuaranteeDisplay`, and `GuaranteeDisclosure`.
 
 ## Owner boundary
 
@@ -17,7 +17,7 @@ This document owns state-shaped API fields, nesting, references, summaries, snap
 
 ## Boundary
 
-State schemas describe API data shapes only. A state-shaped field does not choose a response branch or create persistence, Core transitions, replay rows, `authority_events`, artifact effects, write-ticket effects, compatibility write-check effects, or a `state_version` increment.
+State schemas describe API data shapes only. A state-shaped field does not choose a response branch or create persistence, Core transitions, replay rows, `authority_events`, artifact effects, write-ticket effects, or a `state_version` increment.
 
 State projections must be truthful about computed state:
 - A `null` or omitted field means the method did not select a value, the value is unavailable, or the owning schema explicitly allows absence. It must not be replaced with an empty value that implies "computed and none."
@@ -75,7 +75,7 @@ StateSummary:
   shaping_readiness: ShapingReadiness | null
   pending_user_judgment_refs: StateRecordRef[]
   blocker_refs: StateRecordRef[]
-  write_check_summary: WriteCheckStateSummary | null
+  write_ticket_summary: WriteTicketStateSummary | null
   evidence_summary: EvidenceSummary | null
   close_state: string | null
   close_blockers: CloseReadinessBlocker[]
@@ -158,7 +158,7 @@ GuardHealthSummary:
   session_watch_partial_coverage_warning: string | null
   session_watch_detail: string | null
   unresolved_unrecorded_change_count: integer
-  missing_or_stale_write_readiness: boolean
+  missing_or_stale_write_ticket: boolean
   write_ticket_path_scope_violation: boolean
 ```
 
@@ -185,7 +185,7 @@ Meaning:
 - `session_watch_partial_coverage_warning` is a human-readable warning when Product Repository changes before the recorded coverage start are outside watcher coverage.
 - `session_watch_detail` is a short diagnostic detail for the selected watcher state, or `null` when no detail is available.
 - `unresolved_unrecorded_change_count` is a count of unresolved unrecorded Product Repository changes. It does not expose prompt text, command text, or path lists.
-- `missing_or_stale_write_readiness` reports whether guard events detected missing, indeterminate, ambiguous, or stale write-ticket readiness.
+- `missing_or_stale_write_ticket` reports whether guard events detected missing, indeterminate, ambiguous, or stale write-ticket readiness.
 - `write_ticket_path_scope_violation` reports whether guard events observed a Product Repository path outside the active write-ticket scope.
 
 Does not imply:
@@ -390,23 +390,23 @@ NextActionSummary:
   blocking_question: string | null
   required_refs: StateRecordRef[]
 
-WriteCheckStateSummary:
+WriteTicketStateSummary:
   status: string
-  write_check_ref: StateRecordRef | null
+  write_ticket_ref: StateRecordRef | null
   basis_state_version: integer | null
   intended_paths: string[]
   consumed_by_run_ref: StateRecordRef | null
   observation_refs: StateRecordRef[]
   guarantee_display: GuaranteeDisplay | null
 
-WriteCheckSummary:
-  write_check_ref: StateRecordRef
+WriteTicketSummary:
+  write_ticket_ref: StateRecordRef
   status: string
-  attempt_scope: WriteCheckAttemptScope
+  attempt_scope: WriteTicketAttemptScope
   basis_state_version: integer
   expires_at: string | null
 
-WriteCheckAttemptScope:
+WriteTicketAttemptScope:
   task_id: string
   change_unit_id: string
   intended_operation: string
@@ -449,11 +449,11 @@ WriteDecisionReason:
 Meaning:
 - `NextActionSummary` is the canonical next-action display shape. Its valid fields are `action_kind`, `owner_method`, `label`, `blocking_question`, and `required_refs`.
 - A `next_actions` entry that uses stale `action` or `reason` fields is not a valid `NextActionSummary`.
-- `WriteCheckStateSummary.status` and `WriteCheckSummary.status` are controlled value strings.
-- `WriteCheckStateSummary.consumed_by_run_ref` is non-null only when the summarized write-ticket compatibility row has been consumed by a recorded Run.
-- `WriteCheckStateSummary.observation_refs` lists evidence observation refs created by that consuming Run when those refs are available; it is empty when the compatibility row is not consumed or the consuming Run created no observations.
-- `WriteCheckAttemptScope` is the one-attempt boundary captured by the compatibility storage row.
-- `WriteCheckAttemptScope` is not ordinary write approval, sensitive-action approval, final acceptance, residual-risk acceptance, or broad user approval.
+- `WriteTicketStateSummary.status` and `WriteTicketSummary.status` are controlled value strings.
+- `WriteTicketStateSummary.consumed_by_run_ref` is non-null only when the summarized write ticket has been consumed by a recorded Run.
+- `WriteTicketStateSummary.observation_refs` lists evidence observation refs created by that consuming Run when those refs are available; it is empty when the write ticket is not consumed or the consuming Run created no observations.
+- `WriteTicketAttemptScope` is the one-attempt boundary captured by the write ticket.
+- `WriteTicketAttemptScope` is not ordinary write approval, sensitive-action approval, final acceptance, residual-risk acceptance, or broad user approval.
 - `WriteTicket` is the ticket-first authority record returned by `volicord.prepare_write` when a committed allowed decision issues a write ticket.
 - `WriteTicket.state` is a controlled value string.
 - `WriteTicket.path_patterns.allowed` and `WriteTicket.path_patterns.denied` are normalized Product Repository path patterns captured by the ticket decision.
@@ -471,7 +471,7 @@ Meaning:
 | `blocking_question` | Free-form display string or `null`. | The question to resolve before the action can proceed, or `null` when no blocking question is needed. |
 | `required_refs` | `StateRecordRef[]`. | Records required for the next action. Use `[]` when there are no required refs. |
 
-`WriteCheckAttemptScope` field classifications:
+`WriteTicketAttemptScope` field classifications:
 
 | Field | Classification | Rule |
 |---|---|---|
@@ -512,7 +512,7 @@ Meaning:
 Owner links:
 - `action_kind` values: [next-action values](schema-value-sets.md#next-action-values)
 - `owner_method` values: [method name values](schema-value-sets.md#method-name-values)
-- `WriteCheckStateSummary.status` and `WriteCheckSummary.status` values: [method-local values](schema-value-sets.md#method-local-values)
+- `WriteTicketStateSummary.status` and `WriteTicketSummary.status` values: [method-local values](schema-value-sets.md#method-local-values)
 - `WriteDecisionReason.category` values: [state and blocker values](schema-value-sets.md#state-and-blocker-values)
 - `WriteDecisionReason.code` value-set boundary: [opaque and method-scoped string fields](schema-value-sets.md#opaque-and-method-scoped-string-fields)
 - `WriteDecisionReason.code` production and local meaning: method owner documents, including [`volicord.prepare_write`](method-prepare-write.md)
@@ -651,7 +651,7 @@ SensitiveActionRequirement:
   baseline_ref: string | null
   change_unit_id: string
   source_run_ref: StateRecordRef
-  source_write_check_ref: StateRecordRef
+  source_write_ticket_ref: StateRecordRef
 
 ResidualRisk:
   risk_id: string
@@ -700,7 +700,7 @@ Meaning:
 - `ResidualRisk.risk_id` is an opaque Core-generated identifier. `ResidualRisk.summary` and `ResidualRisk.consequence` are display strings and do not authorize text matching.
 - `result_refs`, `source_run_ref`, `source_refs`, `evidence_summary_ref`, and `accepted_by_judgment_refs` use `StateRecordRef`.
 - `sensitive_categories` are opaque sensitive-category classification strings unless an affected method or profile owner publishes a narrower local list.
-- `sensitive_action_requirements` are Core-derived close requirements from committed Runs and consumed write-ticket compatibility records. Category-only caller input cannot establish or erase these requirements.
+- `sensitive_action_requirements` are Core-derived close requirements from committed Runs and consumed write tickets. Category-only caller input cannot establish or erase these requirements.
 - `recovery_constraints` and `RiskAcceptanceCoverage.missing_reason` are display strings. Current close-readiness results use `acceptance_required` when required acceptance is absent and may use `stale_acceptance` when a non-current residual-risk acceptance exists but does not cover the current residual-risk `risk_id` values.
 - `RiskAcceptanceCoverage` reports whether the current residual-risk requirements are covered by compatible judgments. It does not report evidence sufficiency or final acceptance.
 - `CloseReadinessBlocker` is a data shape for close-readiness findings.
@@ -720,7 +720,7 @@ These shapes do not define close-readiness meaning, response routing, or persist
 
 Close-basis reference rules:
 - Caller-supplied close-assessment refs accepted into `CurrentCloseBasis.result_refs` or `ResidualRisk.source_refs` are limited to result/evidence record kinds `run`, `artifact`, `evidence_summary`, and `change_unit` unless an owner document explicitly adds another kind.
-- `project_state`, `write_check`, `user_judgment`, `blocker`, `task_event`, and `task` are not caller-supplied result refs for a close basis unless an owner document explicitly adds them.
+- `project_state`, `write_ticket`, `user_judgment`, `blocker`, `task_event`, and `task` are not caller-supplied result refs for a close basis unless an owner document explicitly adds them.
 - Every accepted ref must exist, belong to the same project and Task, and be canonicalized by Core. Core never preserves caller-supplied `state_version` metadata as authority.
 - Artifact refs used for close evidence must be linked to the Task and have `integrity_status=verified` plus current-byte verification at use time under [Artifact Storage](../storage-artifacts.md).
 - Evidence refs must identify the current Task evidence summary. Run refs used as current close-basis result refs must identify a recorded current Run compatible with the current Task, current Change Unit, current scope revision, compatible baseline, and recorded status. Historical Runs are audit records unless a current Run explicitly reuses their verified artifacts or evidence and records that reuse.

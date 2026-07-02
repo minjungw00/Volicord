@@ -147,10 +147,10 @@ fn plan_update_scope(
                 error,
             )))
         })?;
-    let stale_write_check_refs = if scope_changed {
+    let stale_write_ticket_refs = if scope_changed {
         active_write_checks
             .iter()
-            .map(|record| write_check_ref(record, planned_state_version))
+            .map(|record| write_ticket_ref(record, planned_state_version))
             .collect::<Vec<_>>()
     } else {
         Vec::new()
@@ -389,7 +389,7 @@ fn plan_update_scope(
         current_change_unit: synthetic_change_unit.as_ref(),
         pending_user_judgment_refs: pending_refs,
         blocker_refs: blocker_refs.clone(),
-        write_check_summary,
+        write_ticket_summary: write_check_summary,
         evidence_summary,
         close_state: Some(close_plan.close_state),
         close_blockers: close_plan.blockers,
@@ -401,7 +401,7 @@ fn plan_update_scope(
         task_ref,
         change_unit_ref,
         linked_scope_decision_refs,
-        stale_write_check_refs,
+        stale_write_ticket_refs,
         blocker_refs,
         state,
         next_actions: next_actions.clone(),

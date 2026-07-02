@@ -396,7 +396,7 @@ fn reused_request_id_does_not_collide_for_core_generated_records() -> Result<(),
         ),
         invocation(OperationCategory::AgentWorkflow),
     )?;
-    let first_write_id = response_record_id(&first_write.response_value, "write_check_ref");
+    let first_write_id = response_record_id(&first_write.response_value, "write_ticket_ref");
     let first_write_event_id = response_event_id(&first_write.response_value);
 
     let second_write = harness.service.prepare_write(
@@ -409,7 +409,7 @@ fn reused_request_id_does_not_collide_for_core_generated_records() -> Result<(),
         ),
         invocation(OperationCategory::AgentWorkflow),
     )?;
-    let second_write_id = response_record_id(&second_write.response_value, "write_check_ref");
+    let second_write_id = response_record_id(&second_write.response_value, "write_ticket_ref");
     let second_write_event_id = response_event_id(&second_write.response_value);
     assert_ne!(first_write_id, second_write_id);
     assert_ne!(first_write_event_id, second_write_event_id);
@@ -609,7 +609,7 @@ fn status_is_read_only_including_dry_run() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
-fn status_renders_effective_write_check_expiration_without_mutating_row(
+fn status_renders_effective_write_ticket_expiration_without_mutating_row(
 ) -> Result<(), Box<dyn Error>> {
     let mut harness = MethodHarness::new()?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "status_auth_expired")?;
@@ -637,11 +637,11 @@ fn status_renders_effective_write_check_expiration_without_mutating_row(
 
     assert_eq!(response.response_value["base"]["response_kind"], "result");
     assert_eq!(
-        response.response_value["write_check_summary"]["status"],
+        response.response_value["write_ticket_summary"]["status"],
         "expired"
     );
     assert_eq!(
-        response.response_value["active_task"]["write_check_summary"]["status"],
+        response.response_value["active_task"]["write_ticket_summary"]["status"],
         "expired"
     );
     assert_eq!(write_check_status(&harness, "wa_status_future")?, "active");
@@ -669,7 +669,7 @@ fn status_include_evidence_returns_current_coverage() -> Result<(), Box<dyn Erro
             include: StatusInclude {
                 task: true,
                 pending_user_judgments: false,
-                write_check: false,
+                write_ticket: false,
                 evidence: true,
                 close: false,
                 guarantees: false,
@@ -714,7 +714,7 @@ fn status_close_include_matches_close_task_check_blockers() -> Result<(), Box<dy
             include: StatusInclude {
                 task: true,
                 pending_user_judgments: true,
-                write_check: false,
+                write_ticket: false,
                 evidence: true,
                 close: true,
                 guarantees: true,
@@ -816,7 +816,7 @@ fn status_include_false_omits_optional_sections_without_effect() -> Result<(), B
             include: StatusInclude {
                 task: false,
                 pending_user_judgments: false,
-                write_check: false,
+                write_ticket: false,
                 evidence: false,
                 close: false,
                 guarantees: false,
@@ -827,7 +827,7 @@ fn status_include_false_omits_optional_sections_without_effect() -> Result<(), B
     )?;
 
     assert!(none.response_value["active_task"].is_null());
-    assert!(none.response_value["write_check_summary"].is_null());
+    assert!(none.response_value["write_ticket_summary"].is_null());
     assert_field_absent(&none.response_value, "evidence_summary");
     assert_field_absent(&none.response_value, "close_state");
     assert_field_absent(&none.response_value, "current_close_basis");
@@ -848,7 +848,7 @@ fn status_include_false_omits_optional_sections_without_effect() -> Result<(), B
             include: StatusInclude {
                 task: false,
                 pending_user_judgments: false,
-                write_check: false,
+                write_ticket: false,
                 evidence: true,
                 close: false,
                 guarantees: false,
@@ -873,7 +873,7 @@ fn status_include_false_omits_optional_sections_without_effect() -> Result<(), B
             include: StatusInclude {
                 task: false,
                 pending_user_judgments: false,
-                write_check: false,
+                write_ticket: false,
                 evidence: false,
                 close: true,
                 guarantees: false,
@@ -899,7 +899,7 @@ fn status_include_false_omits_optional_sections_without_effect() -> Result<(), B
             include: StatusInclude {
                 task: false,
                 pending_user_judgments: false,
-                write_check: false,
+                write_ticket: false,
                 evidence: false,
                 close: false,
                 guarantees: true,
@@ -944,7 +944,7 @@ fn status_close_false_does_not_read_corrupt_close_basis() -> Result<(), Box<dyn 
             include: StatusInclude {
                 task: true,
                 pending_user_judgments: false,
-                write_check: false,
+                write_ticket: false,
                 evidence: false,
                 close: false,
                 guarantees: false,
@@ -975,7 +975,7 @@ fn status_close_false_does_not_read_corrupt_close_basis() -> Result<(), Box<dyn 
             include: StatusInclude {
                 task: false,
                 pending_user_judgments: false,
-                write_check: false,
+                write_ticket: false,
                 evidence: false,
                 close: true,
                 guarantees: false,
@@ -1037,7 +1037,7 @@ fn status_guarantee_include_false_does_not_read_corrupt_profile() -> Result<(), 
             include: StatusInclude {
                 task: true,
                 pending_user_judgments: false,
-                write_check: false,
+                write_ticket: false,
                 evidence: false,
                 close: true,
                 guarantees: false,
@@ -1064,7 +1064,7 @@ fn status_guarantee_include_false_does_not_read_corrupt_profile() -> Result<(), 
             include: StatusInclude {
                 task: false,
                 pending_user_judgments: false,
-                write_check: false,
+                write_ticket: false,
                 evidence: false,
                 close: false,
                 guarantees: true,
@@ -1106,7 +1106,7 @@ fn status_guarantee_include_true_rejects_unsupported_profile_state() -> Result<(
             include: StatusInclude {
                 task: false,
                 pending_user_judgments: false,
-                write_check: false,
+                write_ticket: false,
                 evidence: false,
                 close: false,
                 guarantees: true,
@@ -1147,7 +1147,7 @@ fn status_guarantee_include_true_rejects_missing_profile_fields() -> Result<(), 
             include: StatusInclude {
                 task: false,
                 pending_user_judgments: false,
-                write_check: false,
+                write_ticket: false,
                 evidence: false,
                 close: false,
                 guarantees: true,
@@ -1180,7 +1180,7 @@ fn guarantee_display_uses_verified_invocation_without_profile_elevation(
             include: StatusInclude {
                 task: false,
                 pending_user_judgments: false,
-                write_check: false,
+                write_ticket: false,
                 evidence: false,
                 close: false,
                 guarantees: true,
@@ -1622,7 +1622,7 @@ fn update_scope_commits_once_and_creates_one_current_change_unit() -> Result<(),
 }
 
 #[test]
-fn update_scope_replaces_current_and_marks_write_check_stale() -> Result<(), Box<dyn Error>> {
+fn update_scope_replaces_current_and_marks_write_ticket_stale() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let intake = harness.service.intake(
         intake_request(
@@ -1673,7 +1673,7 @@ fn update_scope_replaces_current_and_marks_write_check_stale() -> Result<(), Box
 
     assert_eq!(response.response_value["base"]["state_version"], 3);
     assert_eq!(
-        response.response_value["stale_write_check_refs"]
+        response.response_value["stale_write_ticket_refs"]
             .as_array()
             .expect("stale refs should be an array")
             .len(),
@@ -2437,13 +2437,13 @@ fn prepare_write_allowed_issues_one_write_ticket_with_post_commit_basis(
         false
     );
     assert_eq!(response.response_value["base"]["state_version"], 5);
-    assert_eq!(response.response_value["write_check_effect"], "created");
+    assert_eq!(response.response_value["write_ticket_effect"], "issued");
     assert_eq!(
-        response.response_value["write_check"]["basis_state_version"],
+        response.response_value["write_ticket"]["basis_state_version"],
         5
     );
     assert_eq!(
-        response.response_value["write_check"]["attempt_scope"]["intended_paths"],
+        response.response_value["write_ticket"]["path_patterns"]["allowed"],
         json!(["src/export.rs"])
     );
     assert_eq!(
@@ -2457,7 +2457,7 @@ fn prepare_write_allowed_issues_one_write_ticket_with_post_commit_basis(
     assert_eq!(after.write_checks, before.write_checks + 1);
     assert_eq!(after.task_events, before.task_events + 1);
     assert_eq!(after.tool_invocations, before.tool_invocations + 1);
-    let compat_write_check_id = response_record_id(&response.response_value, "write_check_ref");
+    let compat_write_check_id = response_record_id(&response.response_value, "write_ticket_ref");
     assert_eq!(write_ticket_id, compat_write_check_id);
     assert_eq!(write_check_basis(&harness, &compat_write_check_id)?, 5);
     let (created_at, expires_at) = write_check_timestamps(&harness, &compat_write_check_id)?;
@@ -2468,7 +2468,7 @@ fn prepare_write_allowed_issues_one_write_ticket_with_post_commit_basis(
         expires_at
     );
     assert_eq!(
-        response.response_value["write_check"]["expires_at"],
+        response.response_value["write_ticket"]["expires_at"],
         expires_at
     );
     let status = harness.service.status(
@@ -2488,10 +2488,10 @@ fn prepare_write_allowed_issues_one_write_ticket_with_post_commit_basis(
     let mut response_state = response.response_value["state"].clone();
     let status_state = status.response_value["active_task"].clone();
     response_state["guarantee_display"] = status_state["guarantee_display"].clone();
-    response_state["write_check_summary"]["guarantee_display"] =
-        status_state["write_check_summary"]["guarantee_display"].clone();
+    response_state["write_ticket_summary"]["guarantee_display"] =
+        status_state["write_ticket_summary"]["guarantee_display"].clone();
     assert_eq!(response_state, status_state);
-    assert_eq!(id_generator.count(DurableIdKind::WriteCheck), 1);
+    assert_eq!(id_generator.count(DurableIdKind::WriteTicket), 1);
     Ok(())
 }
 
@@ -2627,7 +2627,7 @@ fn prepare_write_rejects_product_write_forbidden_by_effect_contract() -> Result<
         response.response_value["write_decision_reasons"][0]["category"],
         "effect_contract"
     );
-    assert!(response.response_value["write_check"].is_null());
+    assert!(response.response_value["write_ticket"].is_null());
     assert_eq!(harness.counts()?.write_checks, before.write_checks);
     Ok(())
 }
@@ -2660,7 +2660,7 @@ fn prepare_write_rejects_paths_outside_effect_contract_allowed_paths() -> Result
 
     assert_eq!(response.response_value["decision"], "blocked");
     assert_prepare_reason(&response.response_value, "effect_contract_path_not_allowed");
-    assert!(response.response_value["write_check"].is_null());
+    assert!(response.response_value["write_ticket"].is_null());
     assert_eq!(harness.counts()?.write_checks, before.write_checks);
     Ok(())
 }
@@ -2727,7 +2727,7 @@ fn effect_contract_does_not_replace_sensitive_approval() -> Result<(), Box<dyn E
 
     assert_eq!(response.response_value["decision"], "approval_required");
     assert_prepare_reason(&response.response_value, "sensitive_approval_missing");
-    assert!(response.response_value["write_check"].is_null());
+    assert!(response.response_value["write_ticket"].is_null());
     assert_eq!(harness.counts()?.write_checks, before.write_checks);
     Ok(())
 }
@@ -2765,9 +2765,9 @@ fn prepare_write_blocked_path_issues_no_write_ticket() -> Result<(), Box<dyn Err
         response.response_value["denied_path_patterns"],
         json!(["src/other.rs"])
     );
-    assert!(response.response_value["write_check"].is_null());
-    assert!(response.response_value["write_check_ref"].is_null());
-    assert_eq!(response.response_value["write_check_effect"], "none");
+    assert!(response.response_value["write_ticket"].is_null());
+    assert!(response.response_value["write_ticket_ref"].is_null());
+    assert_eq!(response.response_value["write_ticket_effect"], "none");
     assert_eq!(after.state_version, before.state_version + 1);
     assert_eq!(after.write_checks, before.write_checks);
     assert_eq!(after.task_events, before.task_events + 1);
@@ -2778,7 +2778,7 @@ fn prepare_write_blocked_path_issues_no_write_ticket() -> Result<(), Box<dyn Err
     assert_eq!(after.evidence_summaries, before.evidence_summaries);
     assert_eq!(after.blockers, before.blockers);
     assert_eq!(after.runs, before.runs);
-    assert_eq!(id_generator.count(DurableIdKind::WriteCheck), 0);
+    assert_eq!(id_generator.count(DurableIdKind::WriteTicket), 0);
     let event_payload = assert_latest_prepare_write_event(
         &harness,
         &response.response_value,
@@ -2879,7 +2879,7 @@ fn prepare_write_unresolved_user_judgment_requires_decision() -> Result<(), Box<
     assert_eq!(after.state_version, before.state_version + 1);
     assert_eq!(after.task_events, before.task_events + 1);
     assert_eq!(after.tool_invocations, before.tool_invocations + 1);
-    assert_eq!(id_generator.count(DurableIdKind::WriteCheck), 0);
+    assert_eq!(id_generator.count(DurableIdKind::WriteTicket), 0);
     let event_payload = assert_latest_prepare_write_event(
         &harness,
         &response.response_value,
@@ -3115,7 +3115,7 @@ fn prepare_write_missing_sensitive_approval_requires_approval() -> Result<(), Bo
     assert_eq!(after.state_version, before.state_version + 1);
     assert_eq!(after.task_events, before.task_events + 1);
     assert_eq!(after.tool_invocations, before.tool_invocations + 1);
-    assert_eq!(id_generator.count(DurableIdKind::WriteCheck), 0);
+    assert_eq!(id_generator.count(DurableIdKind::WriteTicket), 0);
     let event_payload = assert_latest_prepare_write_event(
         &harness,
         &response.response_value,
@@ -3316,7 +3316,7 @@ fn prepare_write_dry_run_has_no_write_ticket_effect() -> Result<(), Box<dyn Erro
         write_decision_event_count(&harness)?,
         before_decision_events
     );
-    assert_eq!(id_generator.count(DurableIdKind::WriteCheck), 0);
+    assert_eq!(id_generator.count(DurableIdKind::WriteTicket), 0);
 
     let mut blocked_preview = prepare_write_request(
         "req_prepare_dry_blocked",
@@ -3344,7 +3344,7 @@ fn prepare_write_dry_run_has_no_write_ticket_effect() -> Result<(), Box<dyn Erro
         write_decision_event_count(&harness)?,
         before_decision_events
     );
-    assert_eq!(id_generator.count(DurableIdKind::WriteCheck), 0);
+    assert_eq!(id_generator.count(DurableIdKind::WriteTicket), 0);
     Ok(())
 }
 
@@ -3423,7 +3423,7 @@ fn prepare_write_stale_state_rejects_without_effect() -> Result<(), Box<dyn Erro
         write_decision_event_count(&harness)?,
         before_decision_events
     );
-    assert_eq!(id_generator.count(DurableIdKind::WriteCheck), 0);
+    assert_eq!(id_generator.count(DurableIdKind::WriteTicket), 0);
     Ok(())
 }
 
@@ -3463,7 +3463,7 @@ fn prepare_write_idempotency_replays_without_second_write_ticket() -> Result<(),
     assert_eq!(second.response_json, first.response_json);
     assert_eq!(harness.counts()?, after_first);
     assert_eq!(write_check_count(&harness)?, 1);
-    assert_eq!(id_generator.count(DurableIdKind::WriteCheck), 1);
+    assert_eq!(id_generator.count(DurableIdKind::WriteTicket), 1);
     assert_eq!(
         second.response_value["write_ticket"]["expires_at"],
         first.response_value["write_ticket"]["expires_at"]
@@ -4482,7 +4482,7 @@ fn record_run_generates_opaque_residual_risk_ids_on_commit() -> Result<(), Box<d
 fn record_run_rejects_unsupported_close_basis_ref_kinds_without_effect(
 ) -> Result<(), Box<dyn Error>> {
     let unsupported = [
-        (StateRecordKind::WriteCheck, "wa_fabricated"),
+        (StateRecordKind::WriteTicket, "wa_fabricated"),
         (StateRecordKind::UserJudgment, "uj_fabricated"),
         (StateRecordKind::Blocker, "blocker_fabricated"),
         (StateRecordKind::TaskEvent, "evt_fabricated"),
@@ -4966,11 +4966,11 @@ fn record_run_dry_run_allocates_no_residual_risk_ids() -> Result<(), Box<dyn Err
 }
 
 #[test]
-fn record_run_product_write_consumes_valid_write_check_once() -> Result<(), Box<dyn Error>> {
+fn record_run_product_write_consumes_valid_write_ticket_once() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     enable_record_run_capabilities(&harness)?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_write")?;
-    let write_check_id = prepare_write_check(&harness, &task_id, &change_unit_id, 2, "run_write")?;
+    let write_check_id = prepare_write_ticket(&harness, &task_id, &change_unit_id, 2, "run_write")?;
     let before = harness.counts()?;
 
     let mut request = record_run_request(
@@ -4983,7 +4983,7 @@ fn record_run_product_write_consumes_valid_write_check_once() -> Result<(), Box<
     );
     request.observed_changes.product_file_write_observed = true;
     request.observed_changes.changed_paths = vec!["src/export.rs".to_owned()];
-    request.write_check_id = Some(WriteCheckId::new(&write_check_id)).into();
+    request.write_ticket_id = Some(WriteTicketId::new(&write_check_id)).into();
     request.evidence_updates = vec![supported_evidence_update(
         "Product write was reported with external tool output.",
     )];
@@ -4996,7 +4996,7 @@ fn record_run_product_write_consumes_valid_write_check_once() -> Result<(), Box<
         .as_str()
         .expect("observation id should be present")
         .to_owned();
-    let write_summary = &response.response_value["state"]["write_check_summary"];
+    let write_summary = &response.response_value["state"]["write_ticket_summary"];
 
     assert_eq!(response.response_value["base"]["state_version"], 4);
     assert_eq!(write_check_status(&harness, &write_check_id)?, "consumed");
@@ -5022,8 +5022,8 @@ fn record_run_product_write_consumes_valid_write_check_once() -> Result<(), Box<
         invocation(OperationCategory::Read),
     )?;
     let mut response_write_summary =
-        response.response_value["state"]["write_check_summary"].clone();
-    let status_write_summary = status.response_value["write_check_summary"].clone();
+        response.response_value["state"]["write_ticket_summary"].clone();
+    let status_write_summary = status.response_value["write_ticket_summary"].clone();
     response_write_summary["guarantee_display"] = status_write_summary["guarantee_display"].clone();
     assert_eq!(status_write_summary, response_write_summary);
     assert_eq!(after.state_version, before.state_version + 1);
@@ -5035,7 +5035,7 @@ fn record_run_product_write_consumes_valid_write_check_once() -> Result<(), Box<
 }
 
 #[test]
-fn record_run_consumes_write_check_at_fourteen_minutes_fifty_nine_seconds(
+fn record_run_consumes_write_ticket_at_fourteen_minutes_fifty_nine_seconds(
 ) -> Result<(), Box<dyn Error>> {
     let mut harness = MethodHarness::new()?;
     enable_record_run_capabilities(&harness)?;
@@ -5045,7 +5045,7 @@ fn record_run_consumes_write_check_at_fourteen_minutes_fifty_nine_seconds(
     let clock = ManualClock::at("2026-06-18T00:00:00Z");
     harness.use_generator_and_clock(id_generator, clock.clone());
     let write_check_id =
-        prepare_write_check(&harness, &task_id, &change_unit_id, 2, "run_auth_1459")?;
+        prepare_write_ticket(&harness, &task_id, &change_unit_id, 2, "run_auth_1459")?;
     clock.advance(Duration::seconds(14 * 60 + 59));
     let before = harness.counts()?;
 
@@ -5072,7 +5072,7 @@ fn record_run_consumes_write_check_at_fourteen_minutes_fifty_nine_seconds(
 }
 
 #[test]
-fn record_run_rejects_write_check_at_exactly_fifteen_minutes_without_effect(
+fn record_run_rejects_write_ticket_at_exactly_fifteen_minutes_without_effect(
 ) -> Result<(), Box<dyn Error>> {
     let mut harness = MethodHarness::new()?;
     enable_record_run_capabilities(&harness)?;
@@ -5081,7 +5081,7 @@ fn record_run_rejects_write_check_at_exactly_fifteen_minutes_without_effect(
     let clock = ManualClock::at("2026-06-18T00:00:00Z");
     harness.use_generator_and_clock(id_generator, clock.clone());
     let write_check_id =
-        prepare_write_check(&harness, &task_id, &change_unit_id, 2, "run_auth_1500")?;
+        prepare_write_ticket(&harness, &task_id, &change_unit_id, 2, "run_auth_1500")?;
     clock.advance(Duration::minutes(15));
     let before = harness.counts()?;
 
@@ -5101,10 +5101,10 @@ fn record_run_rejects_write_check_at_exactly_fifteen_minutes_without_effect(
     assert_eq!(response.response_value["base"]["response_kind"], "rejected");
     assert_eq!(
         response.response_value["errors"][0]["code"],
-        "WRITE_CHECK_INVALID"
+        "WRITE_TICKET_INVALID"
     );
     assert_eq!(
-        response.response_value["errors"][0]["details"]["write_check_reason"],
+        response.response_value["errors"][0]["details"]["write_ticket_reason"],
         "expired"
     );
     assert_eq!(write_check_status(&harness, &write_check_id)?, "active");
@@ -5113,7 +5113,7 @@ fn record_run_rejects_write_check_at_exactly_fifteen_minutes_without_effect(
 }
 
 #[test]
-fn record_run_limits_historical_far_future_write_check_to_fifteen_minutes(
+fn record_run_limits_historical_far_future_write_ticket_to_fifteen_minutes(
 ) -> Result<(), Box<dyn Error>> {
     let mut harness = MethodHarness::new()?;
     enable_record_run_capabilities(&harness)?;
@@ -5147,7 +5147,7 @@ fn record_run_limits_historical_far_future_write_check_to_fifteen_minutes(
 
     assert_eq!(response.response_value["base"]["response_kind"], "rejected");
     assert_eq!(
-        response.response_value["errors"][0]["details"]["write_check_reason"],
+        response.response_value["errors"][0]["details"]["write_ticket_reason"],
         "expired"
     );
     assert_eq!(harness.counts()?, before);
@@ -5189,7 +5189,7 @@ fn record_run_honors_stored_expiration_earlier_than_fifteen_minutes() -> Result<
 
     assert_eq!(response.response_value["base"]["response_kind"], "rejected");
     assert_eq!(
-        response.response_value["errors"][0]["details"]["write_check_reason"],
+        response.response_value["errors"][0]["details"]["write_ticket_reason"],
         "expired"
     );
     assert_eq!(harness.counts()?, before);
@@ -5197,7 +5197,7 @@ fn record_run_honors_stored_expiration_earlier_than_fifteen_minutes() -> Result<
 }
 
 #[test]
-fn record_run_treats_invalid_write_check_timestamp_as_corrupt_state() -> Result<(), Box<dyn Error>>
+fn record_run_treats_invalid_write_ticket_timestamp_as_corrupt_state() -> Result<(), Box<dyn Error>>
 {
     let mut harness = MethodHarness::new()?;
     enable_record_run_capabilities(&harness)?;
@@ -5239,7 +5239,7 @@ fn record_run_treats_invalid_write_check_timestamp_as_corrupt_state() -> Result<
 }
 
 #[test]
-fn record_run_stale_basis_precedes_write_check_expiration() -> Result<(), Box<dyn Error>> {
+fn record_run_stale_basis_precedes_write_ticket_expiration() -> Result<(), Box<dyn Error>> {
     let mut harness = MethodHarness::new()?;
     enable_record_run_capabilities(&harness)?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_auth_stale_exp")?;
@@ -5292,7 +5292,7 @@ fn record_run_stale_basis_precedes_write_check_expiration() -> Result<(), Box<dy
 }
 
 #[test]
-fn record_run_missing_write_check_rejects_product_write_without_effect(
+fn record_run_missing_write_ticket_rejects_product_write_without_effect(
 ) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     enable_record_run_capabilities(&harness)?;
@@ -5316,19 +5316,19 @@ fn record_run_missing_write_check_rejects_product_write_without_effect(
     assert_eq!(response.response_value["base"]["response_kind"], "rejected");
     assert_eq!(
         response.response_value["errors"][0]["code"],
-        "WRITE_CHECK_REQUIRED"
+        "WRITE_TICKET_REQUIRED"
     );
     assert_eq!(harness.counts()?, before);
     Ok(())
 }
 
 #[test]
-fn record_run_stale_write_check_basis_rejects_before_consumption() -> Result<(), Box<dyn Error>> {
+fn record_run_stale_write_ticket_basis_rejects_before_consumption() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     enable_record_run_capabilities(&harness)?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_stale_auth")?;
     let write_check_id =
-        prepare_write_check(&harness, &task_id, &change_unit_id, 2, "run_stale_auth")?;
+        prepare_write_ticket(&harness, &task_id, &change_unit_id, 2, "run_stale_auth")?;
     harness.service.update_scope(
         update_scope_request(
             "req_run_stale_auth_touch",
@@ -5353,7 +5353,7 @@ fn record_run_stale_write_check_basis_rejects_before_consumption() -> Result<(),
     );
     request.observed_changes.product_file_write_observed = true;
     request.observed_changes.changed_paths = vec!["src/export.rs".to_owned()];
-    request.write_check_id = Some(WriteCheckId::new(&write_check_id)).into();
+    request.write_ticket_id = Some(WriteTicketId::new(&write_check_id)).into();
     let response = harness
         .service
         .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
@@ -5369,12 +5369,12 @@ fn record_run_stale_write_check_basis_rejects_before_consumption() -> Result<(),
 }
 
 #[test]
-fn record_run_consumed_write_check_reuse_rejects_without_effect() -> Result<(), Box<dyn Error>> {
+fn record_run_consumed_write_ticket_reuse_rejects_without_effect() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     enable_record_run_capabilities(&harness)?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_reuse_auth")?;
     let write_check_id =
-        prepare_write_check(&harness, &task_id, &change_unit_id, 2, "run_reuse_auth")?;
+        prepare_write_ticket(&harness, &task_id, &change_unit_id, 2, "run_reuse_auth")?;
 
     let mut first = record_run_request(
         "req_run_reuse_first",
@@ -5386,7 +5386,7 @@ fn record_run_consumed_write_check_reuse_rejects_without_effect() -> Result<(), 
     );
     first.observed_changes.product_file_write_observed = true;
     first.observed_changes.changed_paths = vec!["src/export.rs".to_owned()];
-    first.write_check_id = Some(WriteCheckId::new(&write_check_id)).into();
+    first.write_ticket_id = Some(WriteTicketId::new(&write_check_id)).into();
     harness
         .service
         .record_run(first, invocation(OperationCategory::AgentWorkflow))?;
@@ -5402,7 +5402,7 @@ fn record_run_consumed_write_check_reuse_rejects_without_effect() -> Result<(), 
     );
     second.observed_changes.product_file_write_observed = true;
     second.observed_changes.changed_paths = vec!["src/export.rs".to_owned()];
-    second.write_check_id = Some(WriteCheckId::new(&write_check_id)).into();
+    second.write_ticket_id = Some(WriteTicketId::new(&write_check_id)).into();
     let response = harness
         .service
         .record_run(second, invocation(OperationCategory::AgentWorkflow))?;
@@ -5410,10 +5410,10 @@ fn record_run_consumed_write_check_reuse_rejects_without_effect() -> Result<(), 
     assert_eq!(response.response_value["base"]["response_kind"], "rejected");
     assert_eq!(
         response.response_value["errors"][0]["code"],
-        "WRITE_CHECK_INVALID"
+        "WRITE_TICKET_INVALID"
     );
     assert_eq!(
-        response.response_value["errors"][0]["details"]["write_check_reason"],
+        response.response_value["errors"][0]["details"]["write_ticket_reason"],
         "consumed"
     );
     assert_eq!(harness.counts()?, before);
@@ -5421,12 +5421,12 @@ fn record_run_consumed_write_check_reuse_rejects_without_effect() -> Result<(), 
 }
 
 #[test]
-fn record_run_path_mismatch_rejects_without_consuming_write_check() -> Result<(), Box<dyn Error>> {
+fn record_run_path_mismatch_rejects_without_consuming_write_ticket() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     enable_record_run_capabilities(&harness)?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_path_auth")?;
     let write_check_id =
-        prepare_write_check(&harness, &task_id, &change_unit_id, 2, "run_path_auth")?;
+        prepare_write_ticket(&harness, &task_id, &change_unit_id, 2, "run_path_auth")?;
     let before = harness.counts()?;
 
     let mut request = record_run_request(
@@ -5439,7 +5439,7 @@ fn record_run_path_mismatch_rejects_without_consuming_write_check() -> Result<()
     );
     request.observed_changes.product_file_write_observed = true;
     request.observed_changes.changed_paths = vec!["tests/export.rs".to_owned()];
-    request.write_check_id = Some(WriteCheckId::new(&write_check_id)).into();
+    request.write_ticket_id = Some(WriteTicketId::new(&write_check_id)).into();
     let response = harness
         .service
         .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
@@ -5447,10 +5447,10 @@ fn record_run_path_mismatch_rejects_without_consuming_write_check() -> Result<()
     assert_eq!(response.response_value["base"]["response_kind"], "rejected");
     assert_eq!(
         response.response_value["errors"][0]["code"],
-        "WRITE_CHECK_INVALID"
+        "WRITE_TICKET_INVALID"
     );
     assert_eq!(
-        response.response_value["errors"][0]["details"]["write_check_reason"],
+        response.response_value["errors"][0]["details"]["write_ticket_reason"],
         "path_mismatch"
     );
     assert_eq!(write_check_status(&harness, &write_check_id)?, "active");
@@ -5459,13 +5459,13 @@ fn record_run_path_mismatch_rejects_without_consuming_write_check() -> Result<()
 }
 
 #[test]
-fn record_run_rejects_write_check_baseline_mismatch_without_consumption(
+fn record_run_rejects_write_ticket_baseline_mismatch_without_consumption(
 ) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     enable_record_run_capabilities(&harness)?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_baseline_auth")?;
     let write_check_id =
-        prepare_write_check(&harness, &task_id, &change_unit_id, 2, "run_baseline_auth")?;
+        prepare_write_ticket(&harness, &task_id, &change_unit_id, 2, "run_baseline_auth")?;
     mutate_write_check_scope_json(&harness, &write_check_id, |scope| {
         scope["baseline_ref"] = json!("baseline_other");
     })?;
@@ -5484,20 +5484,20 @@ fn record_run_rejects_write_check_baseline_mismatch_without_consumption(
         invocation(OperationCategory::AgentWorkflow),
     )?;
 
-    assert_write_check_invalid_reason(&response, "baseline_mismatch");
+    assert_write_ticket_invalid_reason(&response, "baseline_mismatch");
     assert_eq!(write_check_status(&harness, &write_check_id)?, "active");
     assert_eq!(harness.counts()?, before);
     Ok(())
 }
 
 #[test]
-fn record_run_rejects_write_check_task_mismatch_without_consumption() -> Result<(), Box<dyn Error>>
+fn record_run_rejects_write_ticket_task_mismatch_without_consumption() -> Result<(), Box<dyn Error>>
 {
     let harness = MethodHarness::new()?;
     enable_record_run_capabilities(&harness)?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_task_auth")?;
     let write_check_id =
-        prepare_write_check(&harness, &task_id, &change_unit_id, 2, "run_task_auth")?;
+        prepare_write_ticket(&harness, &task_id, &change_unit_id, 2, "run_task_auth")?;
     mutate_write_check_scope_json(&harness, &write_check_id, |scope| {
         scope["task_id"] = json!("task_other");
     })?;
@@ -5516,19 +5516,19 @@ fn record_run_rejects_write_check_task_mismatch_without_consumption() -> Result<
         invocation(OperationCategory::AgentWorkflow),
     )?;
 
-    assert_write_check_invalid_reason(&response, "task_mismatch");
+    assert_write_ticket_invalid_reason(&response, "task_mismatch");
     assert_eq!(write_check_status(&harness, &write_check_id)?, "active");
     assert_eq!(harness.counts()?, before);
     Ok(())
 }
 
 #[test]
-fn record_run_rejects_write_check_change_unit_mismatch_without_consumption(
+fn record_run_rejects_write_ticket_change_unit_mismatch_without_consumption(
 ) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     enable_record_run_capabilities(&harness)?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_change_unit_auth")?;
-    let write_check_id = prepare_write_check(
+    let write_check_id = prepare_write_ticket(
         &harness,
         &task_id,
         &change_unit_id,
@@ -5553,20 +5553,20 @@ fn record_run_rejects_write_check_change_unit_mismatch_without_consumption(
         invocation(OperationCategory::AgentWorkflow),
     )?;
 
-    assert_write_check_invalid_reason(&response, "change_unit_mismatch");
+    assert_write_ticket_invalid_reason(&response, "change_unit_mismatch");
     assert_eq!(write_check_status(&harness, &write_check_id)?, "active");
     assert_eq!(harness.counts()?, before);
     Ok(())
 }
 
 #[test]
-fn record_run_rejects_write_check_product_write_flag_mismatch_without_consumption(
+fn record_run_rejects_write_ticket_product_write_flag_mismatch_without_consumption(
 ) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     enable_record_run_capabilities(&harness)?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_flag_auth")?;
     let write_check_id =
-        prepare_write_check(&harness, &task_id, &change_unit_id, 2, "run_flag_auth")?;
+        prepare_write_ticket(&harness, &task_id, &change_unit_id, 2, "run_flag_auth")?;
     mutate_write_check_scope_json(&harness, &write_check_id, |scope| {
         scope["product_file_write_intended"] = json!(false);
     })?;
@@ -5585,14 +5585,14 @@ fn record_run_rejects_write_check_product_write_flag_mismatch_without_consumptio
         invocation(OperationCategory::AgentWorkflow),
     )?;
 
-    assert_write_check_invalid_reason(&response, "product_write_flag_mismatch");
+    assert_write_ticket_invalid_reason(&response, "product_write_flag_mismatch");
     assert_eq!(write_check_status(&harness, &write_check_id)?, "active");
     assert_eq!(harness.counts()?, before);
     Ok(())
 }
 
 #[test]
-fn record_run_rejects_write_check_sensitive_category_mismatch_without_consumption(
+fn record_run_rejects_write_ticket_sensitive_category_mismatch_without_consumption(
 ) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_sensitive_auth")?;
@@ -5627,7 +5627,7 @@ fn record_run_rejects_write_check_sensitive_category_mismatch_without_consumptio
         .service
         .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
 
-    assert_write_check_invalid_reason(&response, "sensitive_category_mismatch");
+    assert_write_ticket_invalid_reason(&response, "sensitive_category_mismatch");
     assert_eq!(
         write_check_status(&harness, "wa_sensitive_mismatch")?,
         "active"
@@ -6037,7 +6037,7 @@ fn corrupt_artifact_blocks_evidence_and_close() -> Result<(), Box<dyn Error>> {
             include: StatusInclude {
                 task: true,
                 pending_user_judgments: false,
-                write_check: false,
+                write_ticket: false,
                 evidence: true,
                 close: true,
                 guarantees: false,
@@ -6189,7 +6189,7 @@ fn missing_persistent_artifact_body_blocks_evidence_and_close_without_mutation(
 }
 
 #[test]
-fn modified_persistent_artifact_body_blocks_existing_link_before_write_check(
+fn modified_persistent_artifact_body_blocks_existing_link_before_write_ticket(
 ) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     enable_record_run_capabilities(&harness)?;
@@ -6202,7 +6202,7 @@ fn modified_persistent_artifact_body_blocks_existing_link_before_write_check(
         "modified_existing",
     )?;
     let artifact_id = artifact_ref.artifact_id.as_str().to_owned();
-    let write_check_id = prepare_write_check(
+    let write_check_id = prepare_write_ticket(
         &harness,
         &task_id,
         &change_unit_id,
@@ -8413,7 +8413,7 @@ fn stored_sensitive_approval_non_user_actor_does_not_authorize_write() -> Result
         response.response_value["active_user_judgment_refs"],
         json!([])
     );
-    assert!(response.response_value["write_check"].is_null());
+    assert!(response.response_value["write_ticket"].is_null());
     assert_eq!(after.write_checks, before.write_checks);
     assert_eq!(user_judgment_status(&harness, &judgment_id)?, "resolved");
     assert_eq!(
@@ -8991,7 +8991,7 @@ fn sensitive_approval_requires_exact_path_category_and_change_unit() -> Result<(
         .prepare_write(request, invocation(OperationCategory::AgentWorkflow))?;
     assert_eq!(response.response_value["decision"], "approval_required");
     assert_prepare_reason(&response.response_value, "sensitive_approval_missing");
-    assert!(response.response_value["write_check"].is_null());
+    assert!(response.response_value["write_ticket"].is_null());
 
     let category_harness = MethodHarness::new()?;
     let (task_id, change_unit_id) =
@@ -9011,7 +9011,7 @@ fn sensitive_approval_requires_exact_path_category_and_change_unit() -> Result<(
         .prepare_write(request, invocation(OperationCategory::AgentWorkflow))?;
     assert_eq!(response.response_value["decision"], "approval_required");
     assert_prepare_reason(&response.response_value, "sensitive_approval_missing");
-    assert!(response.response_value["write_check"].is_null());
+    assert!(response.response_value["write_ticket"].is_null());
 
     let cu_harness = MethodHarness::new()?;
     let (task_id, change_unit_id) =
@@ -9047,7 +9047,7 @@ fn sensitive_approval_requires_exact_path_category_and_change_unit() -> Result<(
         .prepare_write(request, invocation(OperationCategory::AgentWorkflow))?;
     assert_eq!(response.response_value["decision"], "approval_required");
     assert_prepare_reason(&response.response_value, "sensitive_approval_missing");
-    assert!(response.response_value["write_check"].is_null());
+    assert!(response.response_value["write_ticket"].is_null());
     Ok(())
 }
 
@@ -9069,7 +9069,7 @@ fn public_sensitive_lifecycle_derives_full_requirement_and_closes() -> Result<()
             include: StatusInclude {
                 task: true,
                 pending_user_judgments: true,
-                write_check: true,
+                write_ticket: true,
                 evidence: true,
                 close: true,
                 guarantees: true,
@@ -9094,7 +9094,7 @@ fn public_sensitive_lifecycle_derives_full_requirement_and_closes() -> Result<()
         .service
         .prepare_write(prepare, invocation(OperationCategory::AgentWorkflow))?;
     assert_eq!(prepared.response_value["decision"], "allowed");
-    let write_check_id = response_record_id(&prepared.response_value, "write_check_ref");
+    let write_check_id = response_record_id(&prepared.response_value, "write_ticket_ref");
     let after_prepare = prepared.response_value["base"]["state_version"]
         .as_u64()
         .expect("state_version should be present");
@@ -9142,7 +9142,7 @@ fn public_sensitive_lifecycle_derives_full_requirement_and_closes() -> Result<()
     assert_eq!(requirement["sensitive_categories"], json!(["network"]));
     assert_eq!(requirement["change_unit_id"], change_unit_id);
     assert_eq!(
-        requirement["source_write_check_ref"]["record_id"],
+        requirement["source_write_ticket_ref"]["record_id"],
         write_check_id
     );
     assert!(requirement["action_kind"]
@@ -9168,7 +9168,7 @@ fn public_sensitive_lifecycle_derives_full_requirement_and_closes() -> Result<()
             include: StatusInclude {
                 task: true,
                 pending_user_judgments: true,
-                write_check: false,
+                write_ticket: false,
                 evidence: true,
                 close: true,
                 guarantees: false,
@@ -9816,7 +9816,7 @@ fn record_user_judgment_rejects_selected_option_outside_original_request(
 }
 
 #[test]
-fn sensitive_action_scope_does_not_create_write_check() -> Result<(), Box<dyn Error>> {
+fn sensitive_action_scope_does_not_create_write_ticket() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "sensitive")?;
     let pending_judgment = harness.service.request_user_judgment(
@@ -9852,7 +9852,7 @@ fn sensitive_action_scope_does_not_create_write_check() -> Result<(), Box<dyn Er
     assert_eq!(response.response_value["base"]["response_kind"], "result");
     assert_eq!(after.write_checks, before.write_checks);
     assert_eq!(
-        response.response_value["state"]["write_check_summary"],
+        response.response_value["state"]["write_ticket_summary"],
         Value::Null
     );
     Ok(())
@@ -12617,7 +12617,7 @@ fn guarded_close_complete_success_reports_guard_health() -> Result<(), Box<dyn E
             include: StatusInclude {
                 task: true,
                 pending_user_judgments: true,
-                write_check: false,
+                write_ticket: false,
                 evidence: true,
                 close: true,
                 guarantees: false,
@@ -12737,7 +12737,7 @@ fn guarded_close_complete_success_reports_guard_health() -> Result<(), Box<dyn E
             include: StatusInclude {
                 task: true,
                 pending_user_judgments: true,
-                write_check: false,
+                write_ticket: false,
                 evidence: true,
                 close: true,
                 guarantees: false,
@@ -13147,7 +13147,7 @@ fn guarded_close_blocks_configured_guard_before_observation() -> Result<(), Box<
             include: StatusInclude {
                 task: true,
                 pending_user_judgments: true,
-                write_check: false,
+                write_ticket: false,
                 evidence: true,
                 close: true,
                 guarantees: false,
@@ -14386,7 +14386,7 @@ fn reconcile_changes_isolates_other_projects() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
-fn guarded_close_blocks_write_readiness_issue_from_guard_event() -> Result<(), Box<dyn Error>> {
+fn guarded_close_blocks_write_ticket_issue_from_guard_event() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let guard_installation_id =
         record_guard_installation(&harness, "guarded_write_ready", "observe", "active", "{}")?;
@@ -14406,7 +14406,7 @@ fn guarded_close_blocks_write_readiness_issue_from_guard_event() -> Result<(), B
         after_evidence,
         "guarded_write_ready",
     )?;
-    insert_write_readiness_guard_event(&harness, &guard_installation_id, "guarded_write_ready")?;
+    insert_write_ticket_guard_event(&harness, &guard_installation_id, "guarded_write_ready")?;
     let before = harness.counts()?;
 
     let response = harness.service.close_task(
@@ -14426,10 +14426,10 @@ fn guarded_close_blocks_write_readiness_issue_from_guard_event() -> Result<(), B
     assert_eq!(response.response_value["close_state"], "blocked");
     assert_close_blocker(
         &response.response_value,
-        "guard_write_readiness_missing_or_stale",
+        "guard_write_ticket_missing_or_stale",
     );
     assert_eq!(
-        response.response_value["guard_health"]["missing_or_stale_write_readiness"],
+        response.response_value["guard_health"]["missing_or_stale_write_ticket"],
         true
     );
     assert_eq!(
@@ -14540,7 +14540,7 @@ fn reconcile_changes_resolves_deterministic_active_write_ticket() -> Result<(), 
 
     assert_eq!(
         response.response_value["resolved_changes"][0]["resolution_basis"],
-        "covered_by_write_readiness"
+        "covered_by_write_ticket"
     );
     let row = unrecorded_change_row(&harness, PROJECT_ID, &unrecorded_change_id)?;
     assert_eq!(row.status, "resolved");
@@ -14774,7 +14774,7 @@ fn guarded_pending_judgment_uses_prompt_capture_guidance_when_mcp_unhealthy(
             include: StatusInclude {
                 task: true,
                 pending_user_judgments: true,
-                write_check: false,
+                write_ticket: false,
                 evidence: true,
                 close: true,
                 guarantees: false,
@@ -15947,14 +15947,14 @@ fn assert_authority_disclosure(value: &Value) {
     }
 }
 
-fn assert_write_check_invalid_reason(response: &PipelineResponse, reason: &str) {
+fn assert_write_ticket_invalid_reason(response: &PipelineResponse, reason: &str) {
     assert_eq!(response.response_value["base"]["response_kind"], "rejected");
     assert_eq!(
         response.response_value["errors"][0]["code"],
-        "WRITE_CHECK_INVALID"
+        "WRITE_TICKET_INVALID"
     );
     assert_eq!(
-        response.response_value["errors"][0]["details"]["write_check_reason"],
+        response.response_value["errors"][0]["details"]["write_ticket_reason"],
         reason
     );
 }
@@ -15967,7 +15967,7 @@ fn status_include() -> StatusInclude {
     StatusInclude {
         task: true,
         pending_user_judgments: true,
-        write_check: true,
+        write_ticket: true,
         evidence: true,
         close: true,
         guarantees: true,
@@ -16121,7 +16121,7 @@ fn record_run_request(
         kind: volicord_types::RunKind::Implementation,
         run_id: None.into(),
         baseline_ref: BaselineRef::new("baseline_test"),
-        write_check_id: None.into(),
+        write_ticket_id: None.into(),
         summary: "Recorded implementation run.".to_owned(),
         observed_changes: ObservedChanges {
             changed_paths: Vec::new(),
@@ -16156,7 +16156,7 @@ fn product_write_record_run_request(
     request.run_id = Some(RunId::new(run_id)).into();
     request.observed_changes.product_file_write_observed = true;
     request.observed_changes.changed_paths = vec!["src/export.rs".to_owned()];
-    request.write_check_id = Some(WriteCheckId::new(write_check_id)).into();
+    request.write_ticket_id = Some(WriteTicketId::new(write_check_id)).into();
     request
 }
 
@@ -16527,7 +16527,7 @@ fn row_resolution(row: &UnrecordedChangeRecord) -> Value {
     .expect("resolution_json should be valid JSON")
 }
 
-fn insert_write_readiness_guard_event(
+fn insert_write_ticket_guard_event(
     harness: &MethodHarness,
     guard_installation_id: &str,
     suffix: &str,
@@ -16543,7 +16543,7 @@ fn insert_write_readiness_guard_event(
             event_kind: "prepare_write".to_owned(),
             decision: "deny".to_owned(),
             subject_json: "{}".to_owned(),
-            result_json: r#"{"reasons":[{"code":"write_readiness_missing"}]}"#.to_owned(),
+            result_json: r#"{"reasons":[{"code":"write_ticket_missing"}]}"#.to_owned(),
             occurred_at: "2026-06-30T00:06:00Z".to_owned(),
             metadata_json: "{}".to_owned(),
         },
@@ -16576,7 +16576,7 @@ fn insert_write_ticket_path_scope_guard_event(
                     "status": "out_of_scope",
                     "ticket_scope_violation": true,
                     "observed_paths": ["src/other.rs"],
-                    "active_write_ticket_ids": ["write_check_scope_fixture"]
+                    "active_write_ticket_ids": ["wt_scope_fixture"]
                 },
                 "disclosure": {
                     "non_guarantees": ["NotFullWritePrevention", "NotActorAttributionProof", "NotOsSandbox"]
@@ -17049,12 +17049,12 @@ fn sensitive_scope(
         command_or_tool_summary: Some("Run a local diagnostic command.".to_owned()).into(),
         network_or_host_summary: Some("No remote host is authorized here.".to_owned()).into(),
         secret_or_credential_summary: None.into(),
-        capability_claim: "This is not Write Check.".to_owned(),
+        capability_claim: "This is not a write ticket.".to_owned(),
         expires_at: None.into(),
     }
 }
 
-fn prepare_write_check(
+fn prepare_write_ticket(
     harness: &MethodHarness,
     task_id: &str,
     change_unit_id: &str,
@@ -17074,7 +17074,7 @@ fn prepare_write_check(
         invocation(OperationCategory::AgentWorkflow),
     )?;
     assert_eq!(response.response_value["decision"], "allowed");
-    Ok(response.response_value["write_check_ref"]["record_id"]
+    Ok(response.response_value["write_ticket_ref"]["record_id"]
         .as_str()
         .expect("write check ref should be present")
         .to_owned())
@@ -17707,7 +17707,7 @@ fn sensitive_action_scope_for_kind(
             command_or_tool_summary: Some("Run a local diagnostic command.".to_owned()).into(),
             network_or_host_summary: Some("No remote host is authorized here.".to_owned()).into(),
             secret_or_credential_summary: None.into(),
-            capability_claim: "This is not Write Check.".to_owned(),
+            capability_claim: "This is not a write ticket.".to_owned(),
             expires_at: None.into(),
         }),
         _ => None,
@@ -18154,7 +18154,7 @@ fn assert_latest_prepare_write_event(
     assert_eq!(event_kind, "write_decision_recorded");
     assert_eq!(event_state_version, response_value["base"]["state_version"]);
     assert_eq!(payload["decision"], expected_decision);
-    assert!(payload["write_check_id"].is_null());
+    assert!(payload["write_ticket_id"].is_null());
     assert!(payload.get("reason_codes").is_none());
     assert!(payload.get("intended_paths").is_none());
     assert!(payload.get("intended_operation").is_none());
@@ -19102,7 +19102,7 @@ fn status_with_evidence_and_close(
             include: StatusInclude {
                 task: true,
                 pending_user_judgments: false,
-                write_check: false,
+                write_ticket: false,
                 evidence: true,
                 close: true,
                 guarantees: false,

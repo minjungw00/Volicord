@@ -674,7 +674,7 @@ fn active_write_tickets_covering_paths(
         {
             continue;
         }
-        let attempt_scope: WriteCheckAttemptScope = decode_required_json(
+        let attempt_scope: WriteTicketAttemptScope = decode_required_json(
             "write_checks",
             record.write_check_id.clone(),
             "attempt_scope_json",

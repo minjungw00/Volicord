@@ -42,7 +42,7 @@ only in chat. Scope can drift. Acceptance can sound implied. Residual risk can
 disappear from the conversation. A product decision can be hidden inside an
 implementation step.
 
-Volicord exists so scope, evidence, write readiness, user
+Volicord exists so scope, evidence, write tickets, user
 judgment, run records, and close readiness stay visible as separate workflow
 facts.
 
@@ -53,7 +53,7 @@ Use this short model when reading the rest of the README:
 | Concept | First-user meaning |
 |---|---|
 | `Task` | The user-value unit being shaped, worked, blocked, or closed. It carries the current goal, scope, non-goals, and current work boundary. |
-| Write | A product-file change should be compatible with the current `Task` and current scope. `Write Check` is a narrow Volicord compatibility record for one proposed write, not OS permission or final approval. |
+| Write | A product-file change should be compatible with the current `Task` and current scope. A write ticket records Volicord-authorized write intent for one proposed product-file change; it is not OS permission, review approval, final acceptance, or proof that a write occurred. |
 | Evidence | Recorded support for a specific claim, such as a run, observation, or artifact reference. Evidence supports claims, but it does not become user judgment or proof of correctness. |
 | User Judgment | A decision that belongs to the user: product direction, material technical direction, scope, sensitive action, final acceptance, residual-risk acceptance, cancellation, or similar authority-bearing choices. |
 | Close | A check that the current `Task` can finish honestly without hiding unresolved owner-defined requirements. Close readiness is decision support, not proof that the product result is correct. |
@@ -285,7 +285,7 @@ writes. Those findings remain unresolved observation findings until reconciled,
 and unresolved findings block close.
 
 Reconciliation can resolve deterministic cases, such as a finding already
-covered by a compatible `Write Check` or recorded run. If acceptance is needed,
+covered by a compatible write ticket or recorded run. If acceptance is needed,
 Volicord creates a focused user-owned judgment. The user answers through MCP
 elicitation, a strict chat command, or CLI recovery. Agents cannot silently
 dismiss Product Repository bypass findings or mark them accepted for the user.

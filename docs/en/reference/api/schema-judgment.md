@@ -263,7 +263,7 @@ Not allowed:
 
 ## `SensitiveActionScope`
 
-`SensitiveActionScope` is the schema shape for a named sensitive-action approval context. It is not `WriteCheckAttemptScope`, not write ticket, and not security authority; see [Security](../security.md).
+`SensitiveActionScope` is the schema shape for a named sensitive-action approval context. It is not `WriteTicketAttemptScope`, not write ticket, and not security authority; see [Security](../security.md).
 
 ```yaml
 SensitiveActionScope:

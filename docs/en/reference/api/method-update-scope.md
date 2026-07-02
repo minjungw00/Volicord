@@ -82,7 +82,7 @@ A committed non-dry-run request requires:
 
 A committed non-dry-run result increments `project_state.state_version` exactly once.
 
-Core marks a `status=active` write-ticket compatibility row `status=stale` when its basis no longer matches:
+Core marks a `status=active` write ticket `status=stale` when its basis no longer matches:
 
 - current scope
 - baseline
@@ -92,7 +92,7 @@ Core marks a `status=active` write-ticket compatibility row `status=stale` when 
 - currently applied Change Unit
 - project state
 
-Non-claim: `status=stale` does not consume, revoke, expire, or silently reuse the write-ticket compatibility row.
+Non-claim: `status=stale` does not consume, revoke, expire, or silently reuse the write ticket.
 
 ## Success result
 
@@ -118,7 +118,7 @@ Returns `UpdateScopeResult` with:
 | `task_ref` | `StateRecordRef` for the Task updated by the scope result. |
 | `change_unit_ref` | `StateRecordRef | null` for the currently applied Change Unit after the operation, or `null` when no current Change Unit applies. |
 | `linked_scope_decision_refs` | `StateRecordRef[]` for `scope_decision` user judgments applied by the update. |
-| `stale_write_check_refs` | `StateRecordRef[]` for write-ticket compatibility records made stale by the committed update. Storage effects and versioning own the persistence detail. |
+| `stale_write_ticket_refs` | `StateRecordRef[]` for write tickets made stale by the committed update. Storage effects and versioning own the persistence detail. |
 | `blocker_refs` | `StateRecordRef[]` for method-owned blockers committed or still relevant to the update. |
 | `state` | Current `StateSummary` after the scope update, including current scope and currently applied Change Unit display fields. |
 | `next_actions` | `NextActionSummary[]` describing the next safe API steps. |
@@ -245,7 +245,7 @@ change_unit_ref:
   task_id: task_filter_001
   state_version: 19
 linked_scope_decision_refs: []
-stale_write_check_refs: []
+stale_write_ticket_refs: []
 blocker_refs: []
 state:
   project_id: proj_filter_001
@@ -279,7 +279,7 @@ state:
   shaping_readiness: null
   pending_user_judgment_refs: []
   blocker_refs: []
-  write_check_summary: null
+  write_ticket_summary: null
   evidence_summary: null
   close_state: null
   close_blockers: []

@@ -27,13 +27,13 @@
 - 직접 응답 또는 결과
 - 구현 작업
 
-이 메서드는 현재 닫기 근거와 간결한 증거 범위를 갱신하고, 보고되었거나 관찰된 주장에 대한 증거 관찰을 기록하고, 제품 쓰기를 기록할 때 호환되는 쓰기 티켓 행을 소비하며, 기존 아티팩트를 연결하고, 허용되는 경우 적격 스테이징 핸들을 지속 `ArtifactRef`로 승격할 수도 있습니다.
+이 메서드는 현재 닫기 근거와 간결한 증거 범위를 갱신하고, 보고되었거나 관찰된 주장에 대한 증거 관찰을 기록하고, 제품 쓰기를 기록할 때 호환되는 쓰기 티켓을 소비하며, 기존 아티팩트를 연결하고, 허용되는 경우 적격 스테이징 핸들을 지속 `ArtifactRef`로 승격할 수도 있습니다.
 
 ## 필수 입력
 
 - 유효한 `ToolEnvelope`. 커밋되는 `dry_run`이 아닌 요청에는 `null`이 아닌 `idempotency_key`와 현재 `expected_state_version`이 필요합니다.
-- `task_id`, `change_unit_id`, `kind`, `run_id`, `baseline_ref`, `write_check_id`, `summary`, `observed_changes`, `artifact_inputs`, `evidence_updates`, `evidence_observations`, `close_assessment`.
-- 제품 쓰기 실행은 `volicord.prepare_write`가 발급한 호환되는 `status=active` 쓰기 티켓 행이 필요합니다. 현재 호환성 저장 생명주기에서는 요청 필드 이름이 `write_check_id`로 남아 있습니다.
+- `task_id`, `change_unit_id`, `kind`, `run_id`, `baseline_ref`, `write_ticket_id`, `summary`, `observed_changes`, `artifact_inputs`, `evidence_updates`, `evidence_observations`, `close_assessment`.
+- 제품 쓰기 실행은 `volicord.prepare_write`가 발급한 호환되는 `status=active` 쓰기 티켓이 필요합니다.
 - 새 아티팩트 바이트는 이미 유효한 `StagedArtifactHandle`로 표현되어 있어야 합니다. `volicord.record_run`은 새 바이트를 스테이징하지 않습니다.
 - `supported` 증거 갱신은 같은 주장에 대한 `EvidenceObservationInput`, 사용할 수 있는 같은 주장 증거 관찰 참조, 또는 Core가 명시적인 `source_kind`와 `assurance_level`을 가진 증거 관찰을 만들 수 있는 `EvidenceCoverageItem.provenance`로 뒷받침되어야 합니다.
 
@@ -51,7 +51,7 @@ RecordRunRequest:
   kind: string
   run_id: string | null
   baseline_ref: string
-  write_check_id: string | null
+  write_ticket_id: string | null
   summary: string
   observed_changes: ObservedChanges
   artifact_inputs: ArtifactInput[]
@@ -86,7 +86,7 @@ ResidualRiskInput:
 
 닫기 평가 참조 규칙:
 - 호출자가 제공한 `close_assessment.result_refs`와 `ResidualRiskInput.source_refs`는 담당 문서가 다른 종류를 명시적으로 추가하지 않는 한 `record_kind=run`, `artifact`, `evidence_summary`, `change_unit`으로 제한됩니다.
-- 담당 문서가 명시적으로 추가하지 않는 한 이 메서드는 호출자가 제공한 `project_state`, `write_check`, `user_judgment`, `blocker`, `task_event`, `task` 참조를 닫기 근거에서 거절하거나 제외합니다.
+- 담당 문서가 명시적으로 추가하지 않는 한 이 메서드는 호출자가 제공한 `project_state`, `write_ticket`, `user_judgment`, `blocker`, `task_event`, `task` 참조를 닫기 근거에서 거절하거나 제외합니다.
 - 받아들인 모든 참조는 존재해야 하고 같은 프로젝트와 `Task`에 속해야 합니다. 아티팩트 참조는 `Task`에 연결되어 있고 `integrity_status=verified`로 현재 바이트 검증을 통과해야 합니다. 증거 참조는 현재 `Task` 증거 요약을 식별해야 합니다. 현재 닫기 근거 결과 참조로 쓰이는 실행 기록 참조는 현재 `Task`, 현재 적용 Change Unit, 현재 범위 리비전, 호환되는 기준선, 기록된 상태와 호환되는 기록된 현재 실행 기록을 식별해야 합니다.
 - 이력 실행 기록 참조는 이 새 현재 실행 기록이 이력의 `verified` 아티팩트나 증거를 명시적으로 재사용하고 그 재사용을 커밋된 증거나 닫기 평가에 기록하지 않는 한 닫기 근거 용도에서는 감사 기록입니다.
 - Core는 `CurrentCloseBasis`에 기준 참조를 저장하며 호출자가 보낸 `state_version` 메타데이터를 권한으로 보존하지 않습니다.
@@ -124,28 +124,28 @@ ResidualRiskInput:
 
 빈 `close_assessment.residual_risks` 목록은 현재 결과에 식별된 잔여 위험이 없다는 명시적 의미입니다. Core는 커밋된 `null`이 아닌 평가에 대해서만 불투명 `risk_id` 값을 생성합니다. `dry_run`은 지속 `risk_id` 값을 예약하지 않습니다.
 
-결과 `CurrentCloseBasis` 안의 민감 동작 요구사항은 커밋된 실행 기록과 소비된 쓰기 티켓 행에서 Core가 파생합니다. `close_assessment.sensitive_categories` 안의 범주만 담은 호출자 입력은 표시 맥락에는 기여할 수 있지만 민감 승인 요구사항을 만들거나, 만족하거나, 지울 수 없습니다.
+결과 `CurrentCloseBasis` 안의 민감 동작 요구사항은 커밋된 실행 기록과 소비된 쓰기 티켓에서 Core가 파생합니다. `close_assessment.sensitive_categories` 안의 범주만 담은 호출자 입력은 표시 맥락에는 기여할 수 있지만 민감 승인 요구사항을 만들거나, 만족하거나, 지울 수 없습니다.
 
 실행 기록, 현재 닫기 근거, 증거 갱신, 증거 관찰, 아티팩트 연결 또는 승격, 쓰기 티켓 소비, 리비전 변경은 결과가 커밋될 때 원자적으로 커밋됩니다.
 
-제품 쓰기 기록이 쓰기 티켓 호환성 행을 소비하려면 아래 조건을 모두 만족해야 합니다.
+제품 쓰기 기록이 쓰기 티켓을 소비하려면 아래 조건을 모두 만족해야 합니다.
 
-- 행이 `status=active`이고 이미 소비되거나 철회되지 않았습니다.
-- 소비 직전 현재 `project_state.state_version`이 `WriteCheck.basis_state_version`과 같습니다.
-- 행이 유효 만료 규칙, 즉 저장된 `expires_at`과 `created_at + 15 minutes` 중 더 이른 시점에 따라 만료되지 않았습니다.
-- 행과 그 `WriteCheckAttemptScope`가 기록하려는 Run과 같은 `task_id`와 `change_unit_id`를 식별합니다.
-- `WriteCheckAttemptScope`가 포착한 시도에 `product_file_write_intended=true`가 있습니다.
-- `WriteCheckAttemptScope`가 포착한 시도의 `baseline_ref`가 Run의 `baseline_ref`와 일치합니다.
+- 티켓이 `status=active`이고 이미 소비되거나 철회되지 않았습니다.
+- 소비 직전 현재 `project_state.state_version`이 `WriteTicket.basis_state_version`과 같습니다.
+- 티켓이 유효 만료 규칙, 즉 저장된 `expires_at`과 `created_at + 15 minutes` 중 더 이른 시점에 따라 만료되지 않았습니다.
+- 티켓과 그 `WriteTicketAttemptScope`가 기록하려는 Run과 같은 `task_id`와 `change_unit_id`를 식별합니다.
+- `WriteTicketAttemptScope`가 포착한 시도에 `product_file_write_intended=true`가 있습니다.
+- `WriteTicketAttemptScope`가 포착한 시도의 `baseline_ref`가 Run의 `baseline_ref`와 일치합니다.
 - 관찰된 민감 범주가 포착한 시도의 정규화된 `sensitive_categories`와 일치합니다.
 - `Product Repository` 경로 정규화 뒤의 관찰된 변경 경로가 포착한 시도와 호환됩니다.
 
-`volicord.prepare_write`가 발급한 쓰기 티켓은 사이에 다른 프로젝트 상태 변경이 없으면 발급 직후 오래되지 않습니다. 예를 들어 `volicord.prepare_write`가 버전 `19`에서 버전 `20`으로 커밋하면 현재 `project_state.state_version`과 `WriteCheck.basis_state_version`이 모두 `20`인 동안 `volicord.record_run`이 그 쓰기 티켓 행을 소비할 수 있습니다.
+`volicord.prepare_write`가 발급한 쓰기 티켓은 사이에 다른 프로젝트 상태 변경이 없으면 발급 직후 오래되지 않습니다. 예를 들어 `volicord.prepare_write`가 버전 `19`에서 버전 `20`으로 커밋하면 현재 `project_state.state_version`과 `WriteTicket.basis_state_version`이 모두 `20`인 동안 `volicord.record_run`이 그 쓰기 티켓을 소비할 수 있습니다.
 
-오래된 `expected_state_version`과 오래된 쓰기 티켓 근거는 행을 소비하기 전에 거절됩니다. 오래된 `WriteCheck.basis_state_version`은 같은 행이 함께 만료되었더라도 더 높은 우선순위의 `STATE_VERSION_CONFLICT` 경로를 유지합니다.
+오래된 `expected_state_version`과 오래된 쓰기 티켓 근거는 티켓을 소비하기 전에 거절됩니다. 오래된 `WriteTicket.basis_state_version`은 같은 티켓이 함께 만료되었더라도 더 높은 우선순위의 `STATE_VERSION_CONFLICT` 경로를 유지합니다.
 
-만료는 문자열 사전식 비교가 아니라 파싱한 UTC 타임스탬프로 계산합니다. 만료된 쓰기 티켓 행은 절대 소비되지 않습니다. 만료된 쓰기 티켓 사용은 `ToolError.details.write_check_reason=expired`와 함께 `WRITE_CHECK_INVALID`를 반환합니다.
+만료는 문자열 사전식 비교가 아니라 파싱한 UTC 타임스탬프로 계산합니다. 만료된 쓰기 티켓은 절대 소비되지 않습니다. 만료된 쓰기 티켓 사용은 `ToolError.details.write_ticket_reason=expired`와 함께 `WRITE_TICKET_INVALID`를 반환합니다.
 
-호환성 불일치 거절은 `WRITE_CHECK_INVALID`를 사용하고 `ToolError.details.write_check_reason`에 `task_mismatch`, `change_unit_mismatch`, `product_write_flag_mismatch`, `baseline_mismatch`, `sensitive_category_mismatch`, `path_mismatch` 같은 값을 담습니다.
+호환성 불일치 거절은 `WRITE_TICKET_INVALID`를 사용하고 `ToolError.details.write_ticket_reason`에 `task_mismatch`, `change_unit_mismatch`, `product_write_flag_mismatch`, `baseline_mismatch`, `sensitive_category_mismatch`, `path_mismatch` 같은 값을 담습니다.
 
 ## 메서드 결과 필드
 
@@ -160,7 +160,7 @@ ResidualRiskInput:
 | `evidence_observations` | 이 실행 결과가 커밋한 관찰 기록의 `EvidenceObservation[]`입니다. 요청이 관찰을 기록하지 않으면 비어 있습니다. 형태는 [API 상태 스키마](schema-state.md#evidence-and-run-snapshot-shapes)가 담당하고, 관찰 출처와 보장 수준 값은 [API 값 집합](schema-value-sets.md#evidence-observation-values)이 담당합니다. |
 | `current_close_basis` | 이 실행이 기록된 뒤의 `CurrentCloseBasis | null`입니다. `null`이 아니면 이 실행이 현재 닫기 근거를 만들었다는 뜻입니다. `null`이면 이 실행이 현재 닫기 근거를 만들지 않았다는 뜻입니다. 형태는 [API 상태 스키마](schema-state.md#close-readiness-and-validation-shapes)가 담당합니다. |
 | `blocker_refs` | 이 결과 때문에 커밋되었거나 계속 관련되는 실행 또는 증거 관련 차단 사유의 `StateRecordRef[]`입니다. |
-| `state` | 실행이 기록된 뒤의 현재 `StateSummary`입니다. 쓰기 티켓 호환성 소비 뒤의 `write_check_summary`를 포함한 중첩 상태 필드는 [API 상태 스키마](schema-state.md)가 담당합니다. 제품 쓰기 Run이 쓰기 티켓 행을 소비하면 이 요약은 `status=consumed`, `consumed_by_run_ref`, 소비 Run이 만든 관찰 참조를 드러낼 수 있습니다. |
+| `state` | 실행이 기록된 뒤의 현재 `StateSummary`입니다. 쓰기 티켓 소비 뒤의 `write_ticket_summary`를 포함한 중첩 상태 필드는 [API 상태 스키마](schema-state.md)가 담당합니다. 제품 쓰기 Run이 쓰기 티켓을 소비하면 이 요약은 `status=consumed`, `consumed_by_run_ref`, 소비 Run이 만든 관찰 참조를 드러낼 수 있습니다. |
 
 중첩된 `StateRecordRef`, `RunSummary`, `ObservedChanges`, `EvidenceSummary`, `EvidenceCoverageItem`, `EvidenceObservation`, `StateSummary`, `ArtifactRef` 필드 본문은 위에 연결된 스키마 담당 문서에 둡니다. 스테이징 핸들 소비, 아티팩트 승격, 증거 갱신, 증거 관찰 기록, 재실행 행, 쓰기 티켓 소비를 포함한 정확한 지속 효과는 [저장 효과](../storage-effects.md)와 [아티팩트 저장소](../storage-artifacts.md)에 둡니다.
 
@@ -184,7 +184,7 @@ ResidualRiskInput:
 
 허용되지 않는 것:
 
-- 커밋된 차단 결과는 유효하지 않은 스테이징 핸들, 누락된 쓰기 티켓 행, 오래된 상태, 오래된 쓰기 티켓 근거, 호출 맥락 실패를 숨기면 안 됩니다.
+- 커밋된 차단 결과는 유효하지 않은 스테이징 핸들, 누락된 쓰기 티켓, 오래된 상태, 오래된 쓰기 티켓 근거, 호출 맥락 실패를 숨기면 안 됩니다.
 
 위 경우는 커밋 전에 거절됩니다.
 
@@ -194,8 +194,8 @@ ResidualRiskInput:
 
 - 오래된 `expected_state_version`
 - 오래된 쓰기 티켓 기준
-- 제품 쓰기에 필요한 쓰기 티켓 행 누락 또는 무효
-- 만료된 쓰기 티켓 행
+- 제품 쓰기에 필요한 쓰기 티켓 누락 또는 무효
+- 만료된 쓰기 티켓
 - 쓰기 티켓 경로, 기준선, 제품 쓰기 플래그, 민감 범주, Task, Change Unit 비호환
 - 유효하지 않은 스테이징 핸들
 - 스테이징 핸들 출처 불일치
@@ -213,7 +213,7 @@ ResidualRiskInput:
 
 오래된 쓰기 티켓 근거에서는 소비 전에 거절되며 Run, 증거 갱신, 증거 관찰, 아티팩트 연결, 아티팩트 승격, 이벤트, 재실행 행, `project_state.state_version` 증가를 만들지 않습니다.
 
-만료된 쓰기 티켓 행에서는 소비 전에 거절되며 Run, 이벤트, 재실행 행, 아티팩트 승격, 증거 갱신, 증거 관찰, 쓰기 티켓 소비, `project_state.state_version` 증가를 만들지 않습니다.
+만료된 쓰기 티켓에서는 소비 전에 거절되며 Run, 이벤트, 재실행 행, 아티팩트 승격, 증거 갱신, 증거 관찰, 쓰기 티켓 소비, `project_state.state_version` 증가를 만들지 않습니다.
 
 ## `dry_run` 동작
 
@@ -248,7 +248,7 @@ params:
   kind: implementation
   run_id: null
   baseline_ref: baseline_runprobe_001
-  write_check_id: null
+  write_ticket_id: null
   summary: "Search-result count validation passed."
   observed_changes:
     changed_paths: []
@@ -557,7 +557,7 @@ state:
   shaping_readiness: null
   pending_user_judgment_refs: []
   blocker_refs: []
-  write_check_summary: null
+  write_ticket_summary: null
   evidence_summary: null
   close_state: null
   close_blockers: []

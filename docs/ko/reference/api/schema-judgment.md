@@ -264,7 +264,7 @@ JudgmentRationale:
 
 ## `SensitiveActionScope`
 
-`SensitiveActionScope`는 이름 붙은 민감 동작 승인 맥락의 스키마 형태입니다. `WriteCheckAttemptScope`도 아니고, 쓰기 티켓도 아니며, 보안 권한도 아닙니다. [보안](../security.md)을 확인하세요.
+`SensitiveActionScope`는 이름 붙은 민감 동작 승인 맥락의 스키마 형태입니다. `WriteTicketAttemptScope`도 아니고, 쓰기 티켓도 아니며, 보안 권한도 아닙니다. [보안](../security.md)을 확인하세요.
 
 ```yaml
 SensitiveActionScope:

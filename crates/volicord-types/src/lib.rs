@@ -459,9 +459,9 @@ mod tests {
                     "baseline_ref": "baseline_close_basis",
                     "change_unit_id": "cu_close_basis_001",
                     "source_run_ref": state_ref_json("run", "run_close_basis_001", "task_close_basis_001"),
-                    "source_write_check_ref": state_ref_json(
-                        "write_check",
-                        "wc_close_basis_001",
+                    "source_write_ticket_ref": state_ref_json(
+                        "write_ticket",
+                        "wt_close_basis_001",
                         "task_close_basis_001"
                     )
                 }
@@ -948,7 +948,7 @@ mod tests {
             "StateRecordKind",
             &record_kinds,
             &[
-                "write_check",
+                "write_ticket",
                 "user_judgment",
                 "evidence_summary",
                 "evidence_observation",
@@ -1346,7 +1346,7 @@ mod tests {
 
         let null_hash = typed_request_hash("volicord.record_run", record_run_request_json());
         let mut changed = record_run_request_json();
-        changed["write_check_id"] = json!("wc_hash_change");
+        changed["write_ticket_id"] = json!("wt_hash_change");
         assert_ne!(
             null_hash,
             typed_request_hash("volicord.record_run", changed)
@@ -1642,7 +1642,7 @@ mod tests {
             ("volicord.stage_artifact", &["expected_sha256"]),
             ("volicord.stage_artifact", &["relation_hint"]),
             ("volicord.record_run", &["run_id"]),
-            ("volicord.record_run", &["write_check_id"]),
+            ("volicord.record_run", &["write_ticket_id"]),
             ("volicord.record_run", &["observed_changes", "baseline_ref"]),
             ("volicord.record_run", &["close_assessment"]),
             ("volicord.request_user_judgment", &["change_unit_id"]),
@@ -1795,7 +1795,7 @@ mod tests {
                 "kind",
                 "run_id",
                 "baseline_ref",
-                "write_check_id",
+                "write_ticket_id",
                 "summary",
                 "observed_changes",
                 "artifact_inputs",
@@ -1920,7 +1920,7 @@ mod tests {
             "include": {
                 "task": true,
                 "pending_user_judgments": true,
-                "write_check": false,
+                "write_ticket": false,
                 "evidence": false,
                 "close": true,
                 "guarantees": true,
@@ -1964,7 +1964,7 @@ mod tests {
             "kind": "implementation",
             "run_id": null,
             "baseline_ref": "baseline_empty_001",
-            "write_check_id": null,
+            "write_ticket_id": null,
             "summary": "Search-result count validation passed.",
             "observed_changes": {
                 "changed_paths": [],

@@ -37,8 +37,8 @@
 | `BASELINE_STALE` | [`BASELINE_STALE`](#errorcode-baseline-stale) |
 | `SCOPE_REQUIRED` | [`SCOPE_REQUIRED`](#errorcode-scope-required) |
 | `SCOPE_VIOLATION` | [`SCOPE_VIOLATION`](#errorcode-scope-violation) |
-| `WRITE_CHECK_REQUIRED` | [`WRITE_CHECK_REQUIRED`](#errorcode-write-check-required) |
-| `WRITE_CHECK_INVALID` | [`WRITE_CHECK_INVALID`](#errorcode-write-check-invalid) |
+| `WRITE_TICKET_REQUIRED` | [`WRITE_TICKET_REQUIRED`](#errorcode-write-ticket-required) |
+| `WRITE_TICKET_INVALID` | [`WRITE_TICKET_INVALID`](#errorcode-write-ticket-invalid) |
 | `APPROVAL_DENIED` | [`APPROVAL_DENIED`](#errorcode-approval-denied) |
 | `APPROVAL_EXPIRED` | [`APPROVAL_EXPIRED`](#errorcode-approval-expired) |
 | `APPROVAL_REQUIRED` | [`APPROVAL_REQUIRED`](#errorcode-approval-required) |
@@ -80,7 +80,7 @@
 - 공개 최신성 또는 멱등성 충돌이 있습니다. 오래된 `expected_state_version`은 요청 상태 형태입니다.
 
 참고:
-- 오래된 `WriteCheck.basis_state_version`과 멱등 요청 해시 충돌은 [상태 버전 충돌](error-precedence.md#state-conflict-behavior)에서 다룹니다.
+- 오래된 `WriteTicket.basis_state_version`과 멱등 요청 해시 충돌은 [상태 버전 충돌](error-precedence.md#state-conflict-behavior)에서 다룹니다.
 
 <a id="errorcode-mcp-unavailable"></a>
 ### `MCP_UNAVAILABLE`
@@ -149,27 +149,27 @@
 조건:
 - 의도했거나 관찰된 경로 또는 민감 범주가 현재 적용 범위나 저장된 승인 범위를 넘었습니다.
 
-<a id="errorcode-write-check-required"></a>
-### `WRITE_CHECK_REQUIRED`
+<a id="errorcode-write-ticket-required"></a>
+### `WRITE_TICKET_REQUIRED`
 
 사용 위치:
 - `ToolRejectedResponse.errors[]`
 
 조건:
-- 쓰기 가능한 실행 기록에 필요한 쓰기 티켓 호환성 행이 없습니다.
+- 쓰기 가능한 실행 기록에 필요한 쓰기 티켓이 없습니다.
 
-<a id="errorcode-write-check-invalid"></a>
-### `WRITE_CHECK_INVALID`
+<a id="errorcode-write-ticket-invalid"></a>
+### `WRITE_TICKET_INVALID`
 
 사용 위치:
 - `ToolRejectedResponse.errors[]`
 
 조건:
-- 제공된 쓰기 티켓 호환성 행이 만료, 철회, 소비, 또는 버전 외 사유로 비호환입니다.
+- 제공된 쓰기 티켓이 만료, 철회, 소비, 또는 버전 외 사유로 비호환입니다.
 
 참고:
-- 만료된 쓰기 티켓 사용은 `ToolError.details.write_check_reason=expired`와 함께 이 코드를 유지합니다.
-- 오래된 `WriteCheck.basis_state_version`은 이 코드가 아니라 `STATE_VERSION_CONFLICT`로 경로가 정해집니다.
+- 만료된 쓰기 티켓 사용은 `ToolError.details.write_ticket_reason=expired`와 함께 이 코드를 유지합니다.
+- 오래된 `WriteTicket.basis_state_version`은 이 코드가 아니라 `STATE_VERSION_CONFLICT`로 경로가 정해집니다.
 
 <a id="errorcode-approval-denied"></a>
 ### `APPROVAL_DENIED`

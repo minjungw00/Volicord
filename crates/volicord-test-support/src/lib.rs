@@ -127,7 +127,7 @@ pub mod core_fixtures {
         RequestUserJudgmentRequest, RequestedMode, ResumePolicy, RunKind, ScopeUpdate,
         SensitiveActionScope, StageArtifactRequest, StagedArtifactHandle, StateRecordKind,
         StateRecordRef, StatusInclude, StatusRequest, TaskId, ToolEnvelope, UpdateScopeRequest,
-        UserJudgmentId, UserJudgmentOptionId, UserJudgmentOptionInput, WriteCheckId,
+        UserJudgmentId, UserJudgmentOptionId, UserJudgmentOptionInput, WriteTicketId,
     };
 
     use super::*;
@@ -484,7 +484,7 @@ pub mod core_fixtures {
                 kind: RunKind::Implementation,
                 run_id: None.into(),
                 baseline_ref: BaselineRef::new(DEFAULT_BASELINE_REF),
-                write_check_id: None.into(),
+                write_ticket_id: None.into(),
                 summary: "Recorded implementation run.".to_owned(),
                 observed_changes: ObservedChanges {
                     changed_paths: Vec::new(),
@@ -1409,7 +1409,7 @@ pub mod core_fixtures {
         StatusInclude {
             task: true,
             pending_user_judgments: true,
-            write_check: true,
+            write_ticket: true,
             evidence: true,
             close: true,
             guarantees: true,
@@ -1592,9 +1592,9 @@ pub mod core_fixtures {
         }
     }
 
-    /// Builds a `WriteCheckId` for tests that need the typed wrapper.
-    pub fn write_check_id(value: &str) -> WriteCheckId {
-        WriteCheckId::new(value)
+    /// Builds a `WriteTicketId` for tests that need the typed wrapper.
+    pub fn write_ticket_id(value: &str) -> WriteTicketId {
+        WriteTicketId::new(value)
     }
 
     fn identifier_component(value: &str) -> String {

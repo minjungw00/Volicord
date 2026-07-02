@@ -67,7 +67,7 @@ Owns in the implementation:
 
 - Public request and result Rust shapes for supported methods.
 - Shared schema-shaped structs such as `ToolEnvelope`, `ToolResultBase`,
-  `StateRecordRef`, `StateSummary`, `WriteCheckSummary`,
+  `StateRecordRef`, `StateSummary`, `WriteTicketSummary`,
   `EvidenceSummary`, `CloseReadinessBlocker`, and `ArtifactRef`.
 - Controlled value enums such as `MethodName`, `OperationCategory`, `EffectKind`,
   `ResponseKind`, `ResumePolicy`, `PrepareWriteDecision`, and `ErrorCode`.
@@ -109,7 +109,7 @@ Important current symbols:
   `ToolDryRunResponse`, `ToolError`, `DryRunSummary`
 - `MethodName`, `OperationCategory`, `EffectKind`, `ResponseKind`, `ErrorCode`
 - `RequiredNullable<T>`, `StateSummary`, `StateRecordRef`,
-  `WriteCheckSummary`, `WriteCheckAttemptScope`
+  `WriteTicketSummary`, `WriteTicketAttemptScope`
 - `canonical_request_hash`, `DurableIdGenerator`, `DURABLE_ID_RETRY_LIMIT`
 
 Most relevant tests:

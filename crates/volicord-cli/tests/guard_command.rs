@@ -38,7 +38,7 @@ use volicord_types::{
     PrepareWriteRequest, ProjectId, ReconcileChangesRequest, RecordId, RecordRunRequest,
     RecordUserJudgmentRequest, RequestId, RequestUserJudgmentRequest, RequestedMode, ResumePolicy,
     RunKind, ScopeUpdate, StateRecordKind, StateRecordRef, TaskId, ToolEnvelope,
-    UpdateScopeRequest, UserJudgmentContext, UserJudgmentOptionId, WriteCheckId,
+    UpdateScopeRequest, UserJudgmentContext, UserJudgmentOptionId, WriteTicketId,
     VERIFICATION_BASIS_TEST_FIXTURE_BINDING, VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
 };
 
@@ -780,11 +780,11 @@ fn guard_pre_tool_rejects_paths_outside_project_allowlist() -> Result<(), Box<dy
 }
 
 #[test]
-fn guard_pre_tool_requires_current_write_readiness() -> Result<(), Box<dyn Error>> {
+fn guard_pre_tool_requires_current_write_ticket() -> Result<(), Box<dyn Error>> {
     let fixture = GuardCliFixture::new("guard-pre-write-ready")?;
     let task_id = fixture.create_active_task()?;
     let denied_event = json!({
-        "event_id": "guard_pre_missing_write_check",
+        "event_id": "guard_pre_missing_write_ticket",
         "session_id": "guard_session_write_ready",
         "connection_id": fixture.connection_id(),
         "host_kind": "codex",
@@ -813,7 +813,7 @@ fn guard_pre_tool_requires_current_write_readiness() -> Result<(), Box<dyn Error
 
     fixture.prepare_write(&task_id)?;
     let allowed_event = json!({
-        "event_id": "guard_pre_with_write_check",
+        "event_id": "guard_pre_with_write_ticket",
         "session_id": "guard_session_write_ready",
         "connection_id": fixture.connection_id(),
         "host_kind": "codex",
@@ -3337,9 +3337,9 @@ impl GuardedLifecycleFixture {
             self.invocation(OperationCategory::AgentWorkflow),
         )?;
         assert_eq!(response.response_value["decision"], "allowed");
-        Ok(response.response_value["write_check_ref"]["record_id"]
+        Ok(response.response_value["write_ticket_ref"]["record_id"]
             .as_str()
-            .expect("write check id should be present")
+            .expect("write ticket id should be present")
             .to_owned())
     }
 
@@ -3389,7 +3389,7 @@ impl GuardedLifecycleFixture {
             kind: RunKind::Implementation,
             run_id: None.into(),
             baseline_ref: BaselineRef::new(DEFAULT_BASELINE_REF),
-            write_check_id: write_check_id.map(WriteCheckId::new).into(),
+            write_ticket_id: write_check_id.map(WriteTicketId::new).into(),
             summary: "Recorded guarded lifecycle fixture run.".to_owned(),
             observed_changes: ObservedChanges {
                 changed_paths: if product_write_observed {

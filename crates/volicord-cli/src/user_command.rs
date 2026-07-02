@@ -238,7 +238,7 @@ where
             include: StatusInclude {
                 task: true,
                 pending_user_judgments: true,
-                write_check: true,
+                write_ticket: true,
                 evidence: true,
                 close: true,
                 guarantees: true,

@@ -37,7 +37,7 @@ use volicord_types::{
     JudgmentResolutionOutcome, OperationCategory, PersistedJudgmentBasis,
     PersistedUserJudgmentRequest, ProjectId, PromptCaptureStatus, RequestId,
     SessionWatchCoverageBasis, StatusInclude, StatusRequest, TaskId, ToolEnvelope,
-    UserJudgmentOption, UserJudgmentOptionAction, UtcTimestamp, WriteCheckAttemptScope,
+    UserJudgmentOption, UserJudgmentOptionAction, UtcTimestamp, WriteTicketAttemptScope,
     VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING, VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
 };
 
@@ -239,8 +239,8 @@ struct GuardStateSummary {
     active_change_unit_id: Option<String>,
     prompt_capture_status: PromptCaptureStatus,
     prompt_capture_enabled: bool,
-    current_write_check_ids: Vec<String>,
-    stale_write_check_ids: Vec<String>,
+    current_write_ticket_ids: Vec<String>,
+    stale_write_ticket_ids: Vec<String>,
     active_write_tickets: Vec<ActiveWriteTicketSummary>,
     pending_user_judgment_count: usize,
     pending_user_judgments: Vec<GuardPendingJudgmentSummary>,
@@ -1139,8 +1139,8 @@ fn guard_state_summary(
     let project_state = store.project_state()?;
     let now = event_time_or_now(&envelope.occurred_at);
     let now_timestamp = UtcTimestamp::from_datetime(now);
-    let mut current_write_check_ids = Vec::new();
-    let mut stale_write_check_ids = Vec::new();
+    let mut current_write_ticket_ids = Vec::new();
+    let mut stale_write_ticket_ids = Vec::new();
     let mut active_write_tickets = Vec::new();
     let mut active_change_unit_id = None;
     let mut pending_user_judgment_count = 0;
@@ -1162,8 +1162,8 @@ fn guard_state_summary(
                 .unwrap_or(false);
             if current_basis && not_expired {
                 let write_check_id = record.write_check_id.clone();
-                current_write_check_ids.push(write_check_id.clone());
-                let attempt_scope: WriteCheckAttemptScope =
+                current_write_ticket_ids.push(write_check_id.clone());
+                let attempt_scope: WriteTicketAttemptScope =
                     serde_json::from_str(&record.attempt_scope_json).map_err(json_error)?;
                 if attempt_scope.product_file_write_intended {
                     active_write_tickets.push(ActiveWriteTicketSummary {
@@ -1174,7 +1174,7 @@ fn guard_state_summary(
                     });
                 }
             } else {
-                stale_write_check_ids.push(record.write_check_id);
+                stale_write_ticket_ids.push(record.write_check_id);
             }
         }
         pending_user_judgment_count = store.pending_user_judgment_records(&task_id)?.len();
@@ -1201,8 +1201,8 @@ fn guard_state_summary(
         active_change_unit_id,
         prompt_capture_status,
         prompt_capture_enabled,
-        current_write_check_ids,
-        stale_write_check_ids,
+        current_write_ticket_ids,
+        stale_write_ticket_ids,
         active_write_tickets,
         pending_user_judgment_count,
         pending_user_judgments,
@@ -1814,7 +1814,7 @@ fn expected_write_candidate_json(candidate: &ExpectedWriteCandidate) -> Value {
         "change_unit_id": candidate.insert.change_unit_id,
         "ticket_backed": true,
         "write_ticket_id": candidate.write_ticket.write_ticket_id,
-        "write_check_ids": candidate.insert.write_check_ids_json
+        "write_ticket_ids": candidate.insert.write_check_ids_json
             .parse::<Value>()
             .unwrap_or_else(|_| json!([])),
         "basis_state_version": candidate.insert.basis_state_version,
@@ -2273,7 +2273,7 @@ fn matched_expected_write_json(record: &ExpectedWriteRecord, changed: &[String])
         "task_id": record.task_id,
         "change_unit_id": record.change_unit_id,
         "ticket_backed": true,
-        "write_check_ids": serde_json::from_str::<Value>(&record.write_check_ids_json)
+        "write_ticket_ids": serde_json::from_str::<Value>(&record.write_check_ids_json)
             .unwrap_or_else(|_| json!([]))
     })
 }
@@ -3195,7 +3195,7 @@ fn stop_decision(
             include: StatusInclude {
                 task: true,
                 pending_user_judgments: true,
-                write_check: true,
+                write_ticket: true,
                 evidence: true,
                 close: true,
                 guarantees: true,
@@ -3498,8 +3498,8 @@ fn guard_context_message(result: &Value) -> Option<String> {
         .get("active_task_id")
         .and_then(Value::as_str)
         .unwrap_or("none");
-    let write_checks = context
-        .get("current_write_check_ids")
+    let write_tickets = context
+        .get("current_write_ticket_ids")
         .and_then(Value::as_array)
         .map(Vec::len)
         .unwrap_or(0);
@@ -3512,7 +3512,7 @@ fn guard_context_message(result: &Value) -> Option<String> {
         .and_then(Value::as_u64)
         .unwrap_or(0);
     Some(format!(
-        "Volicord context: project `{project_name}`, state_version {state_version}, active_task {active_task}, current_write_checks {write_checks}, pending_user_judgments {pending_judgments}, unresolved_unrecorded_changes {unresolved_changes}."
+        "Volicord context: project `{project_name}`, state_version {state_version}, active_task {active_task}, current_write_tickets {write_tickets}, pending_user_judgments {pending_judgments}, unresolved_unrecorded_changes {unresolved_changes}."
     ))
 }
 
@@ -3549,8 +3549,8 @@ fn context_json(summary: &GuardStateSummary) -> Value {
         "active_change_unit_id": summary.active_change_unit_id,
         "prompt_capture_status": summary.prompt_capture_status.as_str(),
         "prompt_capture_enabled": summary.prompt_capture_enabled,
-        "current_write_check_ids": summary.current_write_check_ids,
-        "stale_write_check_ids": summary.stale_write_check_ids,
+        "current_write_ticket_ids": summary.current_write_ticket_ids,
+        "stale_write_ticket_ids": summary.stale_write_ticket_ids,
         "active_write_tickets": summary.active_write_tickets
             .iter()
             .map(active_write_ticket_json)

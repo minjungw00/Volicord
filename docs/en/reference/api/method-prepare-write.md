@@ -102,7 +102,7 @@ A newly allowed committed call receives its durable `write_ticket_id` only when 
 |---|---|
 | `base` | Common result metadata. The `ToolResultBase` shape, including `disclosure` and `events`, is owned by [API Schema Core](schema-core.md#common-response). Committed `PrepareWriteResult` branches use `base.response_kind=result`, `base.effect_kind=core_committed`, and `base.disclosure.guarantee_class=authority_record`. `base.events[].event_kind`, when present, is an opaque illustrative classification string. |
 | `decision` | The method decision for this write-preparation attempt. Supported values are owned by [API Value Sets](schema-value-sets.md#method-local-values). |
-| `state` | Current `StateSummary` when this result includes a state snapshot. Nested state fields, including `write_check_summary`, are owned by [API State Schemas](schema-state.md). |
+| `state` | Current `StateSummary` when this result includes a state snapshot. Nested state fields, including `write_ticket_summary`, are owned by [API State Schemas](schema-state.md). |
 | `write_ticket_id` | `WriteTicketId | null` for the issued write ticket in an allowed decision result. A new allowed commit allocates it; idempotent replay returns the stored original result without changing this field. It is `null` for non-allow committed decisions. |
 | `write_ticket_ref` | `StateRecordRef | null` with `record_kind=write_ticket` for the issued write ticket. It is `null` for non-allow committed decisions. |
 | `write_ticket` | `WriteTicket | null` for the issued write-ticket authority record. It is `null` for non-allow committed decisions. |
@@ -110,15 +110,12 @@ A newly allowed committed call receives its durable `write_ticket_id` only when 
 | `allowed_path_patterns` | Normalized Product Repository path patterns captured as allowed by the ticket decision. In an allowed result, this is the ticket's allowed path pattern list. |
 | `denied_path_patterns` | Normalized Product Repository path patterns captured as denied by the ticket decision, or `[]` when no path-level denial applies. |
 | `control_surface` | `ControlSurfaceSummary | null` describing the current Volicord control surface used for disclosure. `os_enforced=false` means the ticket is not OS-level enforcement. |
-| `write_check_ref` | Compatibility `StateRecordRef | null` for the current storage-backed write compatibility row when exposed by older lifecycle fields. New integrations must use `write_ticket_ref` for the issued authority record. |
-| `write_check` | Compatibility `WriteCheckSummary | null` for the same storage-backed write compatibility row. New integrations must use `write_ticket`. |
-| `write_check_effect` | Compatibility effect for legacy write-check fields. It does not replace `write_ticket_effect`. |
 | `active_user_judgment_refs` | `StateRecordRef[]` for current accepted user-owned judgments applied to the write-preparation decision, including matching `sensitive_approval` judgments when present. |
 | `write_decision_reasons` | `WriteDecisionReason[]` explaining non-allow decisions. The shape is owned by [API State Schemas](schema-state.md#current-position-display-shapes). |
 | `user_judgment_candidate` | `UserJudgmentCandidate | null` when the method proposes a focused user-owned judgment instead of issuing a write ticket; otherwise `null`. The shape is owned by [API Judgment Schemas](schema-judgment.md#userjudgmentcandidate). |
 | `guarantee_display` | `GuaranteeDisplay | null` for the method's compatibility display. The display shape is owned by [API State Schemas](schema-state.md#close-readiness-and-validation-shapes); security guarantee meaning is owned by [Security](../security.md). |
 
-Nested `StateRecordRef`, `StateSummary`, `WriteTicket`, `ControlSurfaceSummary`, `WriteCheckSummary`, `WriteDecisionReason`, `UserJudgmentCandidate`, and `GuaranteeDisplay` field bodies stay with the schema owners linked above.
+Nested `StateRecordRef`, `StateSummary`, `WriteTicket`, `ControlSurfaceSummary`, `WriteTicketSummary`, `WriteDecisionReason`, `UserJudgmentCandidate`, and `GuaranteeDisplay` field bodies stay with the schema owners linked above.
 
 ## Success result
 
@@ -302,10 +299,10 @@ state:
   shaping_readiness: null
   pending_user_judgment_refs: []
   blocker_refs: []
-  write_check_summary:
+  write_ticket_summary:
     status: active
-    write_check_ref:
-      record_kind: write_check
+    write_ticket_ref:
+      record_kind: write_ticket
       record_id: wt_pref_001
       project_id: proj_pref_001
       task_id: task_pref_001
@@ -384,34 +381,6 @@ control_surface:
   unrecorded_changes_detectable: false
   actor_identity_provable: false
   os_enforced: false
-write_check_ref:
-  record_kind: write_check
-  record_id: wt_pref_001
-  project_id: proj_pref_001
-  task_id: task_pref_001
-  state_version: 20
-write_check:
-  write_check_ref:
-    record_kind: write_check
-    record_id: wt_pref_001
-    project_id: proj_pref_001
-    task_id: task_pref_001
-    state_version: 20
-  status: active
-  attempt_scope:
-    task_id: task_pref_001
-    change_unit_id: cu_pref_001
-    intended_operation: "update profile preference save flow"
-    intended_paths:
-      - src/preferences/profile-save.ts
-      - src/preferences/profile-save.test.ts
-    product_file_write_intended: true
-    sensitive_categories:
-      - account_preference_update
-    baseline_ref: baseline_pref_001
-  basis_state_version: 20
-  expires_at: "<future-expiration-timestamp>"
-write_check_effect: created
 active_user_judgment_refs:
   - record_kind: user_judgment
     record_id: uj_sensitive_pref_001
@@ -457,9 +426,6 @@ control_surface:
   unrecorded_changes_detectable: false
   actor_identity_provable: false
   os_enforced: false
-write_check_ref: null
-write_check: null
-write_check_effect: none
 write_decision_reasons:
   - category: sensitive_approval
     code: sensitive_approval_missing
@@ -476,7 +442,7 @@ guarantee_display:
 ## Owner links
 
 - Request envelope, common result branches, and dry-run summaries: [API Schema Core](schema-core.md).
-- `WriteTicket`, compatibility `WriteCheckSummary`, state summaries, and refs: [API State Schemas](schema-state.md).
+- `WriteTicket`, compatibility `WriteTicketSummary`, state summaries, and refs: [API State Schemas](schema-state.md).
 - `SensitiveActionScope` and user-owned approval shapes: [API Judgment Schemas](schema-judgment.md).
 - Write ticket, write approval, sensitive-action approval, final-acceptance, and residual-risk boundaries: [Core Model](../core-model.md).
 - Product Repository path normalization: [Runtime Boundaries](../runtime-boundaries.md#product-repository-api-path-normalization).

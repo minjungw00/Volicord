@@ -24,7 +24,7 @@ use crate::values::{
     RedactionState, ResponseKind, RunKind, SessionWatchCoverageBasis, SessionWatchStatus,
     StateRecordKind, TaskLifecyclePhase, TaskMode, TaskResult, UnrecordedChangeResolutionBasis,
     UnrecordedChangeStatus, UserJudgmentOptionAction, UserJudgmentStatus, UtcTimestamp,
-    ValidatorSeverity, ValidatorStatus, WriteCheckStatus, WriteDecisionCategory, WriteTicketState,
+    ValidatorSeverity, ValidatorStatus, WriteDecisionCategory, WriteTicketState, WriteTicketStatus,
 };
 
 /// JSON object used where an owner document defines a field as `object`.
@@ -530,7 +530,7 @@ pub struct GuardHealthSummary {
     pub session_watch_partial_coverage_warning: RequiredNullable<String>,
     pub session_watch_detail: RequiredNullable<String>,
     pub unresolved_unrecorded_change_count: u64,
-    pub missing_or_stale_write_readiness: bool,
+    pub missing_or_stale_write_ticket: bool,
     pub write_ticket_path_scope_violation: bool,
 }
 
@@ -624,7 +624,7 @@ pub struct StateSummary {
     pub shaping_readiness: Option<ShapingReadiness>,
     pub pending_user_judgment_refs: Vec<StateRecordRef>,
     pub blocker_refs: Vec<StateRecordRef>,
-    pub write_check_summary: Option<WriteCheckStateSummary>,
+    pub write_ticket_summary: Option<WriteTicketStateSummary>,
     pub evidence_summary: Option<EvidenceSummary>,
     pub close_state: Option<CloseState>,
     pub close_blockers: Vec<CloseReadinessBlocker>,
@@ -695,26 +695,16 @@ pub struct NextActionSummary {
     pub required_refs: Vec<StateRecordRef>,
 }
 
-/// Current Write Check display summary.
+/// Current write ticket display summary.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-pub struct WriteCheckStateSummary {
-    pub status: WriteCheckStatus,
-    pub write_check_ref: Option<StateRecordRef>,
+pub struct WriteTicketStateSummary {
+    pub status: WriteTicketStatus,
+    pub write_ticket_ref: Option<StateRecordRef>,
     pub basis_state_version: Option<u64>,
     pub intended_paths: Vec<String>,
     pub consumed_by_run_ref: Option<StateRecordRef>,
     pub observation_refs: Vec<StateRecordRef>,
     pub guarantee_display: Option<GuaranteeDisplay>,
-}
-
-/// Write Check summary returned by prepare-write.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-pub struct WriteCheckSummary {
-    pub write_check_ref: StateRecordRef,
-    pub status: WriteCheckStatus,
-    pub attempt_scope: WriteCheckAttemptScope,
-    pub basis_state_version: u64,
-    pub expires_at: Option<UtcTimestamp>,
 }
 
 /// Allowed and denied Product Repository path patterns captured by a write ticket.
@@ -753,9 +743,9 @@ pub struct WriteTicket {
     pub guarantee_display: Option<GuaranteeDisplay>,
 }
 
-/// One-attempt boundary captured by a Write Check.
+/// One-attempt boundary captured by a write ticket.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-pub struct WriteCheckAttemptScope {
+pub struct WriteTicketAttemptScope {
     pub task_id: TaskId,
     pub change_unit_id: ChangeUnitId,
     pub intended_operation: String,
@@ -938,7 +928,7 @@ pub struct SensitiveActionRequirement {
     pub baseline_ref: RequiredNullable<BaselineRef>,
     pub change_unit_id: ChangeUnitId,
     pub source_run_ref: StateRecordRef,
-    pub source_write_check_ref: StateRecordRef,
+    pub source_write_ticket_ref: StateRecordRef,
 }
 
 /// Named visible residual risk in a current close basis.

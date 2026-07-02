@@ -4988,9 +4988,9 @@ mod tests {
                 baseline_ref: RequiredNullable::some(BaselineRef::new("baseline_store")),
                 change_unit_id: ChangeUnitId::new("cu_basis"),
                 source_run_ref: state_ref(StateRecordKind::Run, "run_basis", task_id, 1),
-                source_write_check_ref: state_ref(
-                    StateRecordKind::WriteCheck,
-                    "wc_basis",
+                source_write_ticket_ref: state_ref(
+                    StateRecordKind::WriteTicket,
+                    "wt_basis",
                     task_id,
                     1,
                 ),

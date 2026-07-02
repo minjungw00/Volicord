@@ -82,7 +82,7 @@ UpdateScopeRequest:
 
 커밋된 `dry_run`이 아닌 결과는 `project_state.state_version`을 정확히 한 번 올립니다.
 
-기준이 아래 항목과 더 이상 맞지 않으면 Core는 `status=active`인 쓰기 티켓 호환성 행을 `status=stale`로 표시합니다.
+기준이 아래 항목과 더 이상 맞지 않으면 Core는 `status=active`인 쓰기 티켓을 `status=stale`로 표시합니다.
 
 - 현재 적용 범위
 - 기준선
@@ -92,7 +92,7 @@ UpdateScopeRequest:
 - 현재 적용 Change Unit
 - 프로젝트 상태
 
-비주장: `status=stale` 표시는 쓰기 티켓 호환성 행을 소비, 철회, 만료하거나 조용히 재사용하지 않습니다.
+비주장: `status=stale` 표시는 쓰기 티켓을 소비, 철회, 만료하거나 조용히 재사용하지 않습니다.
 
 ## 성공 결과
 
@@ -118,7 +118,7 @@ UpdateScopeRequest:
 | `task_ref` | 범위 결과가 갱신한 `Task`의 `StateRecordRef`입니다. |
 | `change_unit_ref` | 작업 뒤 현재 적용 Change Unit의 `StateRecordRef | null`입니다. 현재 적용 Change Unit이 없으면 `null`입니다. |
 | `linked_scope_decision_refs` | 갱신에 적용된 `scope_decision` 사용자 판단의 `StateRecordRef[]`입니다. |
-| `stale_write_check_refs` | 커밋된 갱신 때문에 오래된 상태가 된 쓰기 티켓 호환성 기록의 `StateRecordRef[]`입니다. 저장 효과와 버전 관리는 지속 세부사항을 담당합니다. |
+| `stale_write_ticket_refs` | 커밋된 갱신 때문에 오래된 상태가 된 쓰기 티켓의 `StateRecordRef[]`입니다. 저장 효과와 버전 관리는 지속 세부사항을 담당합니다. |
 | `blocker_refs` | 메서드가 소유하며 갱신에서 커밋했거나 계속 관련되는 차단 사유의 `StateRecordRef[]`입니다. |
 | `state` | 범위 갱신 뒤의 현재 `StateSummary`입니다. 현재 적용 범위와 현재 적용 Change Unit 표시 필드를 포함합니다. |
 | `next_actions` | 다음 안전한 API 단계를 설명하는 `NextActionSummary[]`입니다. |
@@ -245,7 +245,7 @@ change_unit_ref:
   task_id: task_filter_001
   state_version: 19
 linked_scope_decision_refs: []
-stale_write_check_refs: []
+stale_write_ticket_refs: []
 blocker_refs: []
 state:
   project_id: proj_filter_001
@@ -279,7 +279,7 @@ state:
   shaping_readiness: null
   pending_user_judgment_refs: []
   blocker_refs: []
-  write_check_summary: null
+  write_ticket_summary: null
   evidence_summary: null
   close_state: null
   close_blockers: []

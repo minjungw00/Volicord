@@ -265,7 +265,7 @@ fn plan_intake(
         current_change_unit: current_change_unit.as_ref(),
         pending_user_judgment_refs: pending_refs,
         blocker_refs,
-        write_check_summary,
+        write_ticket_summary: write_check_summary,
         evidence_summary,
         close_state: Some(close_plan.close_state),
         close_blockers: close_plan.blockers,

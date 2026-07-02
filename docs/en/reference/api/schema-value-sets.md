@@ -151,7 +151,6 @@ project_state
 task
 change_unit
 write_ticket
-write_check
 user_judgment
 run
 evidence_summary
@@ -309,14 +308,6 @@ approval_required
 decision_required
 ```
 
-`PrepareWriteResult.write_check_effect` uses:
-
-```text
-none
-would_create
-created
-```
-
 `PrepareWriteResult.write_ticket_effect` uses:
 
 ```text
@@ -340,7 +331,7 @@ revoked
 
 These states describe Volicord ticket authority and observation lifecycle. They do not imply filesystem ACLs, OS-level enforcement, shell permission, command approval, or proof that a write occurred.
 
-`WriteCheckStateSummary.status` and `WriteCheckSummary.status` use:
+`WriteTicketStateSummary.status` and `WriteTicketSummary.status` use:
 
 ```text
 active
@@ -512,7 +503,7 @@ resolved
 
 ```text
 reverted
-covered_by_write_readiness
+covered_by_write_ticket
 recorded_as_expected_write
 accepted_by_user
 not_product_change
@@ -816,7 +807,7 @@ Pending-judgment relevance:
 
 ## Error detail helper values
 
-`ToolError.details.write_check_reason` and `ToolError.details.artifact_input_error.reason` helper values are owned by [API error details](error-details.md#error-detail-helper-values). This value-set document does not define machine-readable error detail semantics.
+`ToolError.details.write_ticket_reason` and `ToolError.details.artifact_input_error.reason` helper values are owned by [API error details](error-details.md#error-detail-helper-values). This value-set document does not define machine-readable error detail semantics.
 
 ## Profile-gated and reserved values
 

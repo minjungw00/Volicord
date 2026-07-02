@@ -77,8 +77,8 @@ Preflight conditions:
 Mutation conditions:
 
 - `dry_run=false` mutating intents require a non-null `idempotency_key` and current `expected_state_version`.
-- Stale `expected_state_version`, stale close-relevant `WriteCheck.basis_state_version`, or idempotency request-hash conflict is rejected before close readiness evaluation.
-- A close-relevant `WriteCheck.basis_state_version` is stale when it does not equal the current `project_state.state_version` at preflight.
+- Stale `expected_state_version`, stale close-relevant `WriteTicket.basis_state_version`, or idempotency request-hash conflict is rejected before close readiness evaluation.
+- A close-relevant `WriteTicket.basis_state_version` is stale when it does not equal the current `project_state.state_version` at preflight.
 - A close-relevant write-ticket freshness check does not record final acceptance, residual-risk acceptance, user-owned judgment, sensitive-action approval, or broad approval.
 
 Close condition:
@@ -158,7 +158,7 @@ Implementations evaluate `volicord.close_task` in this order:
 
 1. Validate the envelope, method fields, intent-field combination, and same-project `Task` identity. Shape failures, wrong-project identity, and unreadable `Task` identity return `ToolRejectedResponse`.
 2. Verify the invocation context, operation category, actor source, and requested terminal-path preconditions.
-3. For `dry_run=false` mutating intents, check `idempotency_key`, current `expected_state_version`, idempotency request hash, and close-relevant `WriteCheck.basis_state_version`. Stale or conflicting values return `ToolRejectedResponse`.
+3. For `dry_run=false` mutating intents, check `idempotency_key`, current `expected_state_version`, idempotency request hash, and close-relevant `WriteTicket.basis_state_version`. Stale or conflicting values return `ToolRejectedResponse`.
 4. For `intent=check`, run any selected deterministic session-watch check, compute current close readiness, including selected guard-health facts, with the same calculation used by [`volicord.status`](method-status.md) when `include.close=true`, and return `CloseTaskResult`.
 5. For mutating intents with `dry_run=true`, return the common preview branch after valid preflight.
 6. For `intent=complete`, run the close readiness evaluation over the current `CurrentCloseBasis`. If blockers remain, return the blocked branch; otherwise commit `close_state=closed`, the terminal close result, and any method-selected project continuity records for close-basis known limits that do not require residual-risk acceptance.
@@ -174,7 +174,7 @@ Implementations evaluate `volicord.close_task` in this order:
 | Committed blocked result for a mutating intent | Increments `project_state.state_version` exactly once when this method and the storage-effect owner allow the committed blocked result. |
 | Preflight rejection or valid `dry_run` preview | Increments nothing. |
 
-Preflight rejection includes stale `expected_state_version`, stale close-relevant `WriteCheck.basis_state_version`, and idempotency request-hash conflict. These conflicts route to the error owners; they are not close blockers.
+Preflight rejection includes stale `expected_state_version`, stale close-relevant `WriteTicket.basis_state_version`, and idempotency request-hash conflict. These conflicts route to the error owners; they are not close blockers.
 
 ## Success result
 
@@ -224,7 +224,7 @@ The production meanings below apply only after the method reaches close-readines
 | `missing_cancellation_authority` | `user_judgment` | `intent=cancel` lacks a current accepted user cancellation judgment with `resolved_by_actor_source=local_user`, compatible User Channel provenance, and a basis bound to the current Task, scope revision, and Change Unit. |
 | `open_write_ticket` | `write_compatibility` | A write ticket for the selected Task remains open and unresolved. |
 | `expired_write_ticket` | `write_compatibility` | A write ticket for the selected Task expired while still unresolved. |
-| `write_check_stale` | `write_compatibility` | A close-relevant write-ticket compatibility row is unusable for a freshness reason that is not routed as `STATE_VERSION_CONFLICT`. |
+| `write_ticket_stale` | `write_compatibility` | A close-relevant write ticket is unusable for a freshness reason that is not routed as `STATE_VERSION_CONFLICT`. |
 | `baseline_stale` | `baseline` | The close-relevant baseline basis is stale on a blocker-producing path. |
 | `guard_not_installed` | `connection_capability` | An observe close path has no usable guard installation recorded for the verified connection. |
 | `guard_reload_required` | `connection_capability` | Guard files are installed, but the host must restart or reload before Volicord has observed the configured hooks. |
@@ -236,7 +236,7 @@ The production meanings below apply only after the method reaches close-readines
 | `guard_connection_unhealthy` | `connection_capability` | An observe close path has an Agent Connection health fact that is not healthy. |
 | `session_watch_unavailable` | `connection_capability` | An observe close path requires Product Repository session-watch coverage, but the selected watcher state is `disabled`, `degraded`, `unavailable`, or active with a partial-coverage warning. |
 | `unresolved_unrecorded_changes` | `connection_capability` | Guard health reports unresolved unrecorded Product Repository changes that must be reconciled before close. The blocker includes `next_actions` with `owner_method=volicord.reconcile_changes`, and `can_resolve_in_chat` reports whether the current path can proceed through a chat-mediated user path. |
-| `guard_write_readiness_missing_or_stale` | `write_compatibility` | Guard events detected missing, indeterminate, ambiguous, or stale write-ticket readiness for the close path. |
+| `guard_write_ticket_missing_or_stale` | `write_compatibility` | Guard events detected missing, indeterminate, ambiguous, or stale write-ticket readiness for the close path. |
 | `guard_write_ticket_path_scope_violation` | `write_compatibility` | Guard events observed a Product Repository path outside the active write-ticket scope. |
 | `evidence_claim_unsupported` | `evidence_claim` | A required close claim lacks supported evidence coverage. |
 | `evidence_claim_missing` | `evidence_claim` | A required close claim has no current evidence coverage record. |
@@ -300,7 +300,7 @@ Common rejected cases include:
 - validation failure
 - actor-source or operation-category mismatch
 - stale `expected_state_version`
-- stale close-relevant `WriteCheck.basis_state_version`
+- stale close-relevant `WriteTicket.basis_state_version`
 - idempotency request-hash conflict
 - wrong-project or unreadable `Task` identity
 - unavailable Core
@@ -398,7 +398,7 @@ state:
   shaping_readiness: null
   pending_user_judgment_refs: []
   blocker_refs: []
-  write_check_summary: null
+  write_ticket_summary: null
   evidence_summary: null
   close_state: blocked
   close_blockers:

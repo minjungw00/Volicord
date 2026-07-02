@@ -27,7 +27,7 @@ session-watch 기록을 포함합니다.
 
 관련 필드:
 
-- `write_checks.basis_state_version`은 쓰기 티켓 발급 commit 뒤 결과 `project_state.state_version`을 저장합니다. Core는 이를 나중의 쓰기 티켓 호환성 소비 freshness basis로 사용합니다.
+- `write_checks.basis_state_version`은 쓰기 티켓 발급 commit 뒤 결과 `project_state.state_version`을 저장합니다. Core는 이를 나중의 쓰기 티켓 소비 freshness basis로 사용합니다.
 - `tool_invocations.basis_state_version`은 commit된 mutation 전에 관찰한 project-wide state version을 저장합니다.
 - `authority_events.state_version`은 commit된 권한 이벤트 또는 이벤트 배치 뒤 결과 project-wide version을 저장합니다.
 
@@ -38,8 +38,8 @@ session-watch 기록을 포함합니다.
 쓰기 티켓 발급과 호환성 소비는 일반 state-version 규칙을 따릅니다.
 
 - 발급은 owner-defined method branch를 통해서만 commit될 수 있습니다.
-- 소비는 저장된 쓰기 티켓 호환성 행이 active, compatible, unexpired, unconsumed이고 project state basis에 대해 current일 때만 commit될 수 있습니다.
-- 오래된 `WriteCheck.basis_state_version`은 소비 전에 거절됩니다.
+- 소비는 저장된 물리 `write_checks` 행이 해당 쓰기 티켓에 대해 active, compatible, unexpired, unconsumed이고 project state basis에 대해 current일 때만 commit될 수 있습니다.
+- 오래된 `WriteTicket.basis_state_version`은 소비 전에 거절됩니다.
 - rejected, dry-run, replay-only branch에서는 발급이나 소비가 일어나지 않습니다.
 
 ## Idempotency And Replay
@@ -58,7 +58,7 @@ Replay eligibility:
 - 호환되는 context와 같은 `idempotency_key`, 같은 `request_hash`는 저장된 원래 commit response를 그대로 반환합니다.
 - 호환되는 context와 같은 `idempotency_key`, 다른 `request_hash`는 `STATE_VERSION_CONFLICT`를 반환합니다.
 
-Replay는 stored response body를 사용합니다. `write_ticket_effect`, `write_check_effect`, `base.state_version`, `base.events`나 다른 response field를 다시 계산하거나 재분류하지 않습니다. Replay는 event를 추가하거나, artifact를 promote/link하거나, 쓰기 티켓을 발급하거나 소비하거나, 다른 replay row를 만들거나, state를 다시 변경하지 않습니다.
+Replay는 stored response body를 사용합니다. `write_ticket_effect`, `base.state_version`, `base.events`나 다른 response field를 다시 계산하거나 재분류하지 않습니다. Replay는 event를 추가하거나, artifact를 promote/link하거나, 쓰기 티켓을 발급하거나 소비하거나, 다른 replay row를 만들거나, state를 다시 변경하지 않습니다.
 
 ## Failure And Retry
 
@@ -67,7 +67,7 @@ Pre-commit failure에는 storage effect가 없습니다. Transaction failure는 
 예:
 
 - 오래된 `expected_state_version`
-- 오래된 `WriteCheck.basis_state_version`
+- 오래된 `WriteTicket.basis_state_version`
 - validation failure
 - malformed request
 - corrupt typed owner state

@@ -57,7 +57,7 @@ Request field notes:
 
 - `resolution_requests` defaults to `[]`.
 - `basis=accepted_by_user` requires `user_judgment_id` for an existing resolved, current, same-Task `product_decision` judgment linked to the unrecorded-change ref, recorded through a compatible User Channel with `actor_source=local_user`, `machine_action=accept`, and `resolution_outcome=accepted`.
-- Caller-supplied `reverted`, `covered_by_write_readiness`, `recorded_as_expected_write`, `not_product_change`, `superseded_by_new_observation`, or `invalid_observation` requests reject as agent-supplied system resolution bases. Core may still apply those bases itself when it can verify them deterministically.
+- Caller-supplied `reverted`, `covered_by_write_ticket`, `recorded_as_expected_write`, `not_product_change`, `superseded_by_new_observation`, or `invalid_observation` requests reject as agent-supplied system resolution bases. Core may still apply those bases itself when it can verify them deterministically.
 
 Nested owner links:
 
@@ -132,7 +132,7 @@ Core-owned deterministic bases:
 - `invalid_observation`: stored observation data is invalid for interpretation as Product Repository paths.
 - `not_product_change`: stored observation data contains no Product Repository path to reconcile.
 - `recorded_as_expected_write`: a recorded Run for the same Task already covers the observed Product Repository paths, or deterministic expected-write correlation for the same Task covers watcher-observed Product Repository paths.
-- `covered_by_write_readiness`: one compatible consumed write-ticket row or one current active unexpired write-ticket row for the same Task deterministically covers the observed Product Repository paths.
+- `covered_by_write_ticket`: one compatible consumed write ticket or one current active unexpired write ticket for the same Task deterministically covers the observed Product Repository paths.
 - `reverted`: a watcher-created finding is linked to a session-watch observation and the current Product Repository snapshot matches the stored watch baseline again.
 
 User-owned basis:
