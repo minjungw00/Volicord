@@ -64,20 +64,32 @@ The normal user path is one installed `volicord` executable. Release binary
 installation is the primary path when your system matches a supported target.
 Source builds are for development.
 
-Download or copy `scripts/install.sh` from the repository that publishes the
-Volicord release assets, then install the release binary:
+On Linux, WSL2, or macOS, download or copy `scripts/install.sh` from the
+repository that publishes the Volicord release assets, then install the release
+binary:
 
 ```sh
 VOLICORD_REPO=OWNER/REPO sh ./scripts/install.sh
 volicord --version
 ```
 
+On native Windows x86_64, download or copy `scripts/install.ps1` and run it in
+PowerShell:
+
+```powershell
+.\scripts\install.ps1 -Repo OWNER/REPO
+volicord --version
+```
+
 `OWNER/REPO` is the GitHub repository that hosts the Volicord release assets for
-this checkout. The script detects supported Linux, WSL2, and macOS targets,
-downloads the target-named tarball, verifies the `.sha256` file when available,
-and installs only `volicord`. It does not edit shell startup files. This
-checkout does not contain a Homebrew tap, Homebrew formula, Linux package, or
-external package-registry install path.
+this checkout. The POSIX script detects supported Linux, WSL2, and macOS
+targets and downloads the target-named tarball. The PowerShell script installs
+the `x86_64-pc-windows-msvc` zip artifact under a user-local directory by
+default. Both scripts verify the `.sha256` file when available and install only
+the `volicord` executable for that platform. They do not edit shell startup
+files implicitly. This checkout does not contain a Homebrew tap, Homebrew
+formula, Linux package, Windows package-manager package, or external
+package-registry install path.
 
 Make sure the future agent host can run `volicord` through `PATH`, then
 initialize the Product Repository where you want the agent to work:
@@ -98,10 +110,11 @@ installation profile, registers or reuses the selected Product Repository,
 creates the Agent Connection, writes project-scoped MCP configuration that
 starts `volicord mcp --stdio`, writes Volicord-managed guidance and policy
 metadata, and records integration status. `--profile record` does not require
-host lifecycle hook installation or a session watcher. `--profile observe`
-requires supported host hook and session watcher capabilities; when required
-hook support is missing, observe setup must be explicitly selected with
-`--allow-degraded`.
+host lifecycle hook installation or a session watcher and is the supported
+native Windows profile. `--profile observe` requires supported host hook and
+session watcher capabilities and is not supported on native Windows; when
+required hook support is missing on supported observe hosts, observe setup must
+be explicitly selected with `--allow-degraded`.
 
 If the command reports `action_required`, follow the named host-controlled or
 local action, such as restarting or reloading the host, approving project MCP

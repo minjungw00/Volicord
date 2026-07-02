@@ -119,6 +119,20 @@ volicord init --host codex --repo /path/to/your-product-repo --profile record
 예시입니다. 사용자에게 보이는 프로젝트 이름은 저장소 디렉터리에서 나옵니다. 내부
 프로젝트 식별 정보는 복구 입력이 아닙니다.
 
+## Windows 경로가 거부됨
+
+관찰 증상: native Windows 설정이 Runtime Home 또는 Product Repository 경로가 UNC 경로,
+WSL UNC 경로, WSL 스타일 `/mnt/<drive>` 경로이기 때문에 유효하지 않다고 보고합니다.
+
+제한된 복구:
+
+- `--repo`와 명시적인 `VOLICORD_HOME` 또는 `--home` 값에는
+  `C:\Users\you\product-repo` 같은 native 로컬 drive-letter 경로를 사용합니다.
+- Product Repository가 WSL2 안에 있다면 그 WSL 경로를 native Windows `volicord.exe`에
+  전달하지 말고 WSL2 환경 안에서 Linux Volicord 바이너리를 실행합니다.
+- Native Windows 설정에서 Runtime Home 또는 Product Repository로 network share를 사용하지
+  않습니다.
+
 ## 호스트를 선택할 수 없음
 
 관찰 증상: `volicord connect` 또는 `volicord connection ...`이 호스트를 추론하지
@@ -134,6 +148,16 @@ volicord init --host codex --repo /path/to/your-product-repo --profile record
 Observe 설정에는 [관리 CLI
 참조](../reference/admin-cli.md#agent-host-setup-and-init)의 전체 init 계약을 사용합니다.
 검증된 hook 지원이 빠져 있으면 명시적인 degraded opt-in이 필요합니다.
+
+Native Windows에서는 observe 설정이 지원되지 않습니다. Init이
+`OBSERVE_WINDOWS_UNSUPPORTED`를 보고하면 record 프로필로 다시 실행합니다.
+
+```powershell
+volicord init --host codex --repo C:\path\to\your-product-repo --profile record
+```
+
+Observe는 선택한 host hook 계약이 지원되고 테스트된 WSL2, Linux, macOS에서만
+사용합니다.
 
 하위 수준 연결 복구에는 호스트와 저장소를 connect에 명시적으로 전달합니다.
 

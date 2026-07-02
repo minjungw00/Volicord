@@ -9,7 +9,9 @@ on:
     paths:
       - ".github/workflows/release.yml"
       - "scripts/install.sh"
+      - "scripts/install.ps1"
       - "scripts/smoke-test-binary.sh"
+      - "scripts/smoke-test-binary.ps1"
       - "Cargo.toml"
       - "Cargo.lock"
       - "Dockerfile"
@@ -37,23 +39,41 @@ jobs:
             os: macos-15
           - target: x86_64-apple-darwin
             os: macos-15-intel
+          - target: x86_64-pc-windows-msvc
+            os: windows-2022
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
       - name: Install Rust
+        if: runner.os != 'Windows'
         run: |
           rustup toolchain install "$RUST_VERSION" --profile minimal
           rustup default "$RUST_VERSION"
+          rustup target add "${{ matrix.target }}"
+
+      - name: Install Rust (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          rustup toolchain install $env:RUST_VERSION --profile minimal
+          rustup default $env:RUST_VERSION
           rustup target add "${{ matrix.target }}"
 
       - name: Build volicord
         run: cargo build --locked --release -p volicord-cli --bin volicord --target "${{ matrix.target }}"
 
       - name: Smoke test binary
+        if: runner.os != 'Windows'
         run: scripts/smoke-test-binary.sh "target/${{ matrix.target }}/release/volicord"
 
+      - name: Smoke test binary (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/smoke-test-binary.ps1 -Bin "target/${{ matrix.target }}/release/volicord.exe"
+
       - name: Package artifact
+        if: runner.os != 'Windows'
         env:
           TARGET: ${{ matrix.target }}
         run: |
@@ -73,14 +93,45 @@ jobs:
           fi
           rm -rf "$staging"
 
+      - name: Package artifact (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $target = "${{ matrix.target }}"
+          $binary = "target/$target/release/volicord.exe"
+          $package = "volicord-$target"
+          $dist = "dist"
+          $staging = Join-Path $dist $package
+          New-Item -ItemType Directory -Force -Path $staging | Out-Null
+          Copy-Item -LiteralPath $binary -Destination (Join-Path $staging "volicord.exe") -Force
+          Compress-Archive -Path (Join-Path $staging "volicord.exe") -DestinationPath "$dist/$package.zip" -Force
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath "$dist/$package.zip").Hash.ToLowerInvariant()
+          Set-Content -LiteralPath "$dist/$package.zip.sha256" -Value "$hash  $package.zip" -Encoding ascii
+          Remove-Item -LiteralPath $staging -Recurse -Force
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: volicord-${{ matrix.target }}
           path: |
-            dist/volicord-${{ matrix.target }}.tar.gz
-            dist/volicord-${{ matrix.target }}.tar.gz.sha256
+            dist/volicord-${{ matrix.target }}.*
           if-no-files-found: error
+
+  windows-test:
+    name: Windows cargo test
+    runs-on: windows-2022
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        shell: pwsh
+        run: |
+          rustup toolchain install $env:RUST_VERSION --profile minimal
+          rustup default $env:RUST_VERSION
+
+      - name: Run workspace tests
+        run: cargo test --locked --workspace --all-targets --all-features
 
   docker-image:
     name: Docker image
@@ -100,6 +151,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     needs:
       - binary
+      - windows-test
       - docker-image
     runs-on: ubuntu-24.04
     permissions:
@@ -119,7 +171,8 @@ jobs:
         run: |
           set -eu
           cp scripts/install.sh dist/install.sh
-          chmod 0644 dist/install.sh
+          cp scripts/install.ps1 dist/install.ps1
+          chmod 0644 dist/install.sh dist/install.ps1
           (cd dist && cat *.sha256 > volicord-checksums.txt)
 
       - name: Upload assets to GitHub Release

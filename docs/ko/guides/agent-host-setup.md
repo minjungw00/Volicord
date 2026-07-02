@@ -95,7 +95,11 @@ wrapper는 phase wrapper가 존재하고 실행 가능한지 확인한 뒤 실�
 Observe init은 모든 필수 호스트 lifecycle hook phase를 설치하고 검증할 수
 있어야 합니다. 선택한 Codex 또는 Claude Code 어댑터가 모든 필수 phase에 대해 신뢰할
 수 있는 프로젝트 로컬 hook 스키마나 경로를 알지 못하면, init은 `AGENTS.md`나
-`.volicord/policy.json`을 집행으로 취급하지 않고 실패합니다. `--allow-degraded`는
+`.volicord/policy.json`을 집행으로 취급하지 않고 실패합니다. Native Windows에서는
+Windows host-hook wrapper와 session watcher 동작이 구현되고 테스트되지 않았으므로
+observe init이 `OBSERVE_WINDOWS_UNSUPPORTED`로 실패합니다. `--allow-degraded`는 이
+플랫폼 거부를 우회하지 않습니다. Native Windows에서는 `--profile record`를 사용합니다.
+`--allow-degraded`는
 degraded 설정 파일을 명시적으로 원하고 필수 hook phase가 누락된 것으로 보고됨을 이해할
 때만 사용합니다.
 

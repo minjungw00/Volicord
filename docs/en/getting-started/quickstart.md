@@ -31,7 +31,9 @@ hook support is missing, use `--allow-degraded` only when you explicitly want
 degraded observe files and missing-hook diagnostics. Observe can return
 cooperative host decisions and detect unrecorded changes after watcher coverage
 starts, but it does not provide OS enforcement, actor proof, network isolation,
-or a sandbox. Exact project naming, profile behavior, connection defaults, and
+or a sandbox. On native Windows, use this `record` fast path because observe is
+not supported until Windows host hooks and watcher behavior are implemented and
+tested. Exact project naming, profile behavior, connection defaults, and
 internal identity behavior belong to
 [Administrative CLI Reference](../reference/admin-cli.md).
 

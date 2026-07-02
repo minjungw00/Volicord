@@ -212,6 +212,14 @@ Permitted relationship:
 
 This separation contract is an eligibility rule. New project registration, profile reuse, project-state administrative access, Core execution entry, and MCP project-session startup must require the selected `Volicord Runtime Home` and registered `Product Repository` to satisfy it.
 
+On native Windows, Runtime Home/Product Repository boundary validation accepts
+local drive-letter paths and rejects UNC paths, WSL UNC paths such as
+`\\wsl$\...`, and WSL mount-style paths such as `/mnt/c/...`. Windows boundary
+comparison is component-aware and case-insensitive after path normalization.
+Symlink or junction aliases that resolve to the same path or to an
+ancestor-descendant relationship are invalid where the host filesystem exposes
+that resolution to Volicord.
+
 The inspection layer may still show a raw stored project row that violates this contract so the record can be diagnosed. Operational project lookup, project listing, profile reuse, project-state administrative access, Agent Connection administration, Connection Projects access, Core execution entry, and MCP project availability must reject that row rather than returning it as a normal project record or project entry. The system does not automatically move paths, repair the registry row, or delete that record solely because inspection can report it.
 
 ## Local authority boundaries

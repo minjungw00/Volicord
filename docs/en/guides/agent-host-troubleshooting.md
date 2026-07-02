@@ -126,6 +126,22 @@ volicord init --host codex --repo /path/to/your-product-repo --profile record
 you want the agent to work. The user-facing project name comes from the
 repository directory. Internal project identities are not recovery inputs.
 
+## Windows Path Is Rejected
+
+Observable symptom: native Windows setup reports that a Runtime Home or Product
+Repository path is invalid because it is a UNC path, a WSL UNC path, or a
+WSL-style `/mnt/<drive>` path.
+
+Bounded recovery:
+
+- Use a native local drive-letter path such as `C:\Users\you\product-repo` for
+  `--repo` and for any explicit `VOLICORD_HOME` or `--home` value.
+- If the Product Repository is inside WSL2, run the Linux Volicord binary inside
+  that WSL2 environment instead of passing the WSL path to native Windows
+  `volicord.exe`.
+- Do not use a network share as the Runtime Home or Product Repository for
+  native Windows setup.
+
 ## Host Cannot Be Selected
 
 Observable symptom: `volicord connect` or `volicord connection ...` cannot infer
@@ -141,6 +157,16 @@ volicord init --host codex --repo /path/to/your-product-repo --profile record
 For observe setup, use the full init contract in the
 [Administrative CLI Reference](../reference/admin-cli.md#agent-host-setup-and-init);
 missing verified hook support requires an explicit degraded opt-in.
+
+On native Windows, observe setup is not supported. If init reports
+`OBSERVE_WINDOWS_UNSUPPORTED`, rerun with the record profile:
+
+```powershell
+volicord init --host codex --repo C:\path\to\your-product-repo --profile record
+```
+
+Use WSL2, Linux, or macOS for observe only where the selected host hook contract
+is supported and tested.
 
 For lower-level connection recovery, pass the host and repository to connect
 explicitly:

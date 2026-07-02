@@ -16,20 +16,23 @@ repository separation belong to [Runtime Boundaries](../reference/runtime-bounda
   [System Requirements](../reference/system-requirements.md), or Docker when
   using the Docker path below.
 - A POSIX-style shell with `curl` or `wget`, `tar`, and a writable install
-  directory.
+  directory for Linux, WSL2, or macOS; or PowerShell for native Windows.
 - A Git repository to use as the Product Repository when you are ready to
   connect a host.
 
 ## Install A Release Binary
 
-The primary user path is a release binary. The install script detects Linux,
-WSL2, or macOS, selects the matching release tarball, verifies the matching
-`.sha256` file when it can download one, and installs only the `volicord`
-executable. It does not edit shell startup files.
+The primary user path is a release binary. The POSIX install script detects
+Linux, WSL2, or macOS, selects the matching release tarball, verifies the
+matching `.sha256` file when it can download one, and installs only the
+`volicord` executable. The native Windows PowerShell install script selects the
+`x86_64-pc-windows-msvc` zip archive, verifies the matching `.sha256` file when
+it can download one, and installs only `volicord.exe`. Neither script edits
+shell startup files implicitly.
 
-Download or copy `scripts/install.sh` from the same repository that publishes
-the Volicord release assets, then run it with the release repository named
-explicitly:
+For Linux, WSL2, or macOS, download or copy `scripts/install.sh` from the same
+repository that publishes the Volicord release assets, then run it with the
+release repository named explicitly:
 
 ```sh
 VOLICORD_REPO=OWNER/REPO sh ./scripts/install.sh
@@ -57,7 +60,43 @@ choose a different directory:
 VOLICORD_REPO=OWNER/REPO VOLICORD_INSTALL_DIR=/usr/local/bin sh ./scripts/install.sh
 ```
 
-The script fails before downloading on unsupported operating systems or CPU
+For native Windows x86_64, download or copy `scripts/install.ps1` from the same
+repository that publishes the Volicord release assets, then run it in
+PowerShell:
+
+```powershell
+.\scripts\install.ps1 -Repo OWNER/REPO
+```
+
+To install a specific tag:
+
+```powershell
+.\scripts\install.ps1 -Repo OWNER/REPO -Version v0.1.0
+```
+
+For a non-GitHub release mirror:
+
+```powershell
+.\scripts\install.ps1 -ReleaseBaseUrl https://example.invalid/releases/v0.1.0
+```
+
+The default native Windows install directory is
+`%LOCALAPPDATA%\Volicord\bin`. Use `-InstallDir` to choose a different
+user-local directory:
+
+```powershell
+.\scripts\install.ps1 -Repo OWNER/REPO -InstallDir "$env:LOCALAPPDATA\Volicord\bin"
+```
+
+The Windows installer prints a current-session `PATH` command when the install
+directory is not already on `PATH`. To append the install directory to the
+user-level `PATH`, rerun with `-UpdateUserPath`:
+
+```powershell
+.\scripts\install.ps1 -Repo OWNER/REPO -UpdateUserPath
+```
+
+Each script fails before downloading on unsupported operating systems or CPU
 architectures. If a checksum file is present but cannot be verified, the script
 fails. If the checksum file is unavailable, the script warns; set
 `VOLICORD_REQUIRE_CHECKSUM=1` when installation must fail instead.
@@ -82,6 +121,9 @@ project-scoped MCP configuration, and records integration status.
 Observe hook setup has the verified-hook or explicit degraded opt-in
 requirements described in the
 [Administrative CLI Reference](../reference/admin-cli.md#agent-host-setup-and-init).
+On native Windows, use `--profile record`; `--profile observe` fails with an
+unsupported-platform diagnostic until Windows host hooks and watcher behavior
+are implemented and tested.
 
 Use `volicord setup` only when you want to prepare or repair the installation
 profile without connecting a repository:
@@ -263,7 +305,8 @@ volicord init --host codex --repo /path/to/your-product-repo --profile record
 `/path/to/your-product-repo` is an example path for the Product Repository where
 you want the agent to work. Use `--profile observe` only when the selected host
 has verified required hook support, or when you explicitly choose degraded
-observe setup with `--allow-degraded`.
+observe setup with `--allow-degraded`; native Windows uses `--profile record`
+because observe is not supported there.
 
 For the full first-run path, continue with the [Quickstart](quickstart.md). For
 host-specific details, see [Agent Host Setup](../guides/agent-host-setup.md).

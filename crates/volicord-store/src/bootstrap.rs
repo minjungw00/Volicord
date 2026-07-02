@@ -8,7 +8,7 @@ use volicord_types::BASELINE_PROJECT_ENFORCEMENT_PROFILE_JSON;
 use crate::{
     migrations::{PROJECT_STATE_SCHEMA_VERSION, REGISTRY_SCHEMA_VERSION, STORAGE_PROFILE},
     runtime_home::{
-        normalize_lexical_path, validate_project_home_boundary,
+        normalize_lexical_path, paths_equal_for_boundary, validate_project_home_boundary,
         validate_runtime_home_product_repository, RuntimePathBoundaryError,
     },
     sqlite::{
@@ -715,7 +715,7 @@ pub fn validate_current_project_registration(
     let expected_state_db_path = project_home.join(PROJECT_STATE_DB_FILE);
     let stored_state_db_path = normalize_lexical_path("state_db_path", &project.state_db_path)
         .map_err(|error| registered_project_path_error(project, "state_db_path", error))?;
-    if stored_state_db_path != expected_state_db_path {
+    if !paths_equal_for_boundary(&stored_state_db_path, &expected_state_db_path) {
         return Err(state_db_path_mismatch_error(
             project,
             &stored_state_db_path,

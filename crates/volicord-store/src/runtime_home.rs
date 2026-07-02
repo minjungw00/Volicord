@@ -5,6 +5,9 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
+#[cfg(windows)]
+use std::path::Prefix;
+
 const VOLICORD_HOME: &str = "VOLICORD_HOME";
 const HOME: &str = "HOME";
 const USERPROFILE: &str = "USERPROFILE";
@@ -231,11 +234,11 @@ pub fn runtime_product_path_relation(
     runtime_home: &Path,
     repo_root: &Path,
 ) -> RuntimeProductPathRelation {
-    if runtime_home == repo_root {
+    if paths_equal_for_boundary(runtime_home, repo_root) {
         RuntimeProductPathRelation::SamePath
-    } else if repo_root.starts_with(runtime_home) {
+    } else if path_starts_with_for_boundary(repo_root, runtime_home) {
         RuntimeProductPathRelation::RuntimeHomeContainsProductRepository
-    } else if runtime_home.starts_with(repo_root) {
+    } else if path_starts_with_for_boundary(runtime_home, repo_root) {
         RuntimeProductPathRelation::ProductRepositoryContainsRuntimeHome
     } else {
         RuntimeProductPathRelation::Separate
@@ -265,7 +268,7 @@ pub fn validate_project_home_boundary(
         });
     }
 
-    if !project_home.starts_with(&runtime_home) {
+    if !path_starts_with_for_boundary(&project_home, &runtime_home) {
         return Err(RuntimePathBoundaryError::BoundaryViolation {
             violation: RuntimePathBoundaryViolation::ProjectHomeOutsideRuntimeHome,
             runtime_home,
@@ -284,6 +287,7 @@ pub(crate) fn normalize_lexical_path(
     make_absolute_without_parent_traversal(role, path)
 }
 
+#[cfg(not(windows))]
 fn default_user_home<F>(env_var: F) -> Option<PathBuf>
 where
     F: Fn(&str) -> Option<OsString>,
@@ -297,6 +301,30 @@ where
             let mut home = PathBuf::from(drive);
             home.push(path);
             Some(home)
+        })
+}
+
+#[cfg(windows)]
+fn default_user_home<F>(env_var: F) -> Option<PathBuf>
+where
+    F: Fn(&str) -> Option<OsString>,
+{
+    non_empty_env(&env_var, USERPROFILE)
+        .map(PathBuf::from)
+        .or_else(|| {
+            let drive = non_empty_env(&env_var, HOMEDRIVE)?;
+            let path = non_empty_env(&env_var, HOMEPATH)?;
+            let mut home = PathBuf::from(drive);
+            home.push(path);
+            Some(home)
+        })
+        .or_else(|| {
+            let home = non_empty_env(&env_var, HOME).map(PathBuf::from)?;
+            if looks_like_wsl_mount_path(&home) {
+                None
+            } else {
+                Some(home)
+            }
         })
 }
 
@@ -327,6 +355,7 @@ fn normalize_existing_directory(
             .map_err(|error| invalid_path(role, path, format!("failed to read cwd: {error}")))?;
         current_dir.join(path)
     };
+    validate_supported_platform_path(role, path, &absolute)?;
     let canonical = fs::canonicalize(&absolute).map_err(|error| {
         invalid_path(
             role,
@@ -334,6 +363,7 @@ fn normalize_existing_directory(
             format!("directory does not exist or is not accessible: {error}"),
         )
     })?;
+    validate_supported_platform_path(role, path, &canonical)?;
     match fs::metadata(&canonical) {
         Ok(metadata) if metadata.is_dir() => Ok(canonical),
         Ok(_) => Err(invalid_path(
@@ -365,6 +395,7 @@ fn normalize_maybe_missing_directory(
             ),
         )
     })?;
+    validate_supported_platform_path(role, path, &normalized)?;
     unresolved.reverse();
     for component in unresolved {
         normalized.push(component);
@@ -384,7 +415,9 @@ fn make_absolute_without_parent_traversal(
             .map_err(|error| invalid_path(role, path, format!("failed to read cwd: {error}")))?;
         current_dir.join(path)
     };
-    normalize_lexical_components(role, path, &absolute)
+    let normalized = normalize_lexical_components(role, path, &absolute)?;
+    validate_supported_platform_path(role, path, &normalized)?;
+    Ok(normalized)
 }
 
 fn normalize_lexical_components(
@@ -469,8 +502,142 @@ fn missing_path_error(error: &io::Error) -> bool {
     )
 }
 
+#[cfg(not(windows))]
+fn validate_supported_platform_path(
+    _role: &'static str,
+    _original: &Path,
+    _path: &Path,
+) -> Result<(), RuntimePathBoundaryError> {
+    Ok(())
+}
+
+#[cfg(windows)]
+fn validate_supported_platform_path(
+    role: &'static str,
+    original: &Path,
+    path: &Path,
+) -> Result<(), RuntimePathBoundaryError> {
+    if looks_like_wsl_mount_path(original) {
+        return Err(invalid_path(
+            role,
+            original,
+            "WSL-style /mnt/<drive> paths are ambiguous in native Windows; run Volicord inside WSL2 or use a native drive-letter path such as C:\\Users\\you\\repo",
+        ));
+    }
+
+    for component in path.components() {
+        let Component::Prefix(prefix) = component else {
+            continue;
+        };
+        return match prefix.kind() {
+            Prefix::Disk(_) | Prefix::VerbatimDisk(_) => Ok(()),
+            Prefix::UNC(server, _) | Prefix::VerbatimUNC(server, _)
+                if windows_os_str_eq_ignore_ascii_case(server, "wsl$")
+                    || windows_os_str_eq_ignore_ascii_case(server, "wsl.localhost") =>
+            {
+                Err(invalid_path(
+                    role,
+                    original,
+                    "WSL UNC paths are not valid native Windows Runtime Home or Product Repository paths; run Volicord inside WSL2 or use a native drive-letter path",
+                ))
+            }
+            Prefix::UNC(_, _) | Prefix::VerbatimUNC(_, _) => Err(invalid_path(
+                role,
+                original,
+                "UNC paths are not supported for Runtime Home or Product Repository boundaries; use a local drive-letter path",
+            )),
+            _ => Err(invalid_path(
+                role,
+                original,
+                "unsupported Windows path prefix; use a local drive-letter path",
+            )),
+        };
+    }
+
+    Err(invalid_path(
+        role,
+        original,
+        "native Windows paths must resolve to a local drive-letter path; root-relative and WSL-style paths are not supported",
+    ))
+}
+
 fn paths_overlap(left: &Path, right: &Path) -> bool {
-    left == right || left.starts_with(right) || right.starts_with(left)
+    paths_equal_for_boundary(left, right)
+        || path_starts_with_for_boundary(left, right)
+        || path_starts_with_for_boundary(right, left)
+}
+
+pub(crate) fn paths_equal_for_boundary(left: &Path, right: &Path) -> bool {
+    path_starts_with_for_boundary(left, right) && path_starts_with_for_boundary(right, left)
+}
+
+fn path_starts_with_for_boundary(path: &Path, base: &Path) -> bool {
+    #[cfg(not(windows))]
+    {
+        path.starts_with(base)
+    }
+    #[cfg(windows)]
+    {
+        let mut components = path.components();
+        for base_component in base.components() {
+            let Some(component) = components.next() else {
+                return false;
+            };
+            if !windows_components_equal(component, base_component) {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+#[cfg(windows)]
+fn windows_components_equal(left: Component<'_>, right: Component<'_>) -> bool {
+    match (left, right) {
+        (Component::Prefix(left), Component::Prefix(right)) => {
+            windows_prefixes_equal(left.kind(), right.kind())
+        }
+        (Component::RootDir, Component::RootDir) => true,
+        (Component::CurDir, Component::CurDir) => true,
+        (Component::ParentDir, Component::ParentDir) => true,
+        (Component::Normal(left), Component::Normal(right)) => {
+            windows_os_str_eq_ignore_ascii_case(left, right)
+        }
+        _ => false,
+    }
+}
+
+#[cfg(windows)]
+fn windows_prefixes_equal(left: Prefix<'_>, right: Prefix<'_>) -> bool {
+    match (left, right) {
+        (Prefix::Disk(left), Prefix::Disk(right))
+        | (Prefix::Disk(left), Prefix::VerbatimDisk(right))
+        | (Prefix::VerbatimDisk(left), Prefix::Disk(right))
+        | (Prefix::VerbatimDisk(left), Prefix::VerbatimDisk(right)) => {
+            left.eq_ignore_ascii_case(&right)
+        }
+        _ => windows_os_str_eq_ignore_ascii_case(left.as_os_str(), right.as_os_str()),
+    }
+}
+
+#[cfg(windows)]
+fn windows_os_str_eq_ignore_ascii_case(
+    left: &std::ffi::OsStr,
+    right: impl AsRef<std::ffi::OsStr>,
+) -> bool {
+    left.to_string_lossy()
+        .eq_ignore_ascii_case(&right.as_ref().to_string_lossy())
+}
+
+#[cfg(windows)]
+fn looks_like_wsl_mount_path(path: &Path) -> bool {
+    let text = path.as_os_str().to_string_lossy().replace('\\', "/");
+    let trimmed = text.trim_start_matches('/');
+    let mut parts = trimmed.split('/');
+    matches!(parts.next(), Some("mnt"))
+        && parts
+            .next()
+            .is_some_and(|drive| drive.len() == 1 && drive.as_bytes()[0].is_ascii_alphabetic())
 }
 
 fn runtime_product_violation(
@@ -605,6 +772,20 @@ mod tests {
         assert_eq!(resolved, userprofile.join(".volicord"));
     }
 
+    #[cfg(windows)]
+    #[test]
+    fn native_windows_home_sources_prefer_userprofile_over_posix_home() {
+        let userprofile = PathBuf::from(r"C:\Users\volicord");
+
+        let resolved = resolve(&[
+            ("HOME", OsString::from(r"/mnt/c/Users/volicord")),
+            ("USERPROFILE", userprofile.clone().into_os_string()),
+        ])
+        .expect("USERPROFILE should be preferred on native Windows");
+
+        assert_eq!(resolved, userprofile.join(".volicord"));
+    }
+
     #[test]
     fn relative_fallback_home_is_made_absolute() {
         let resolved = resolve(&[("HOME", OsString::from("relative-home"))])
@@ -697,6 +878,93 @@ mod tests {
         Ok(())
     }
 
+    #[cfg(windows)]
+    #[test]
+    fn runtime_product_validation_accepts_native_drive_letter_paths() -> Result<(), Box<dyn Error>>
+    {
+        use std::path::Prefix;
+
+        fn has_drive_prefix(path: &Path) -> bool {
+            path.components().any(|component| {
+                matches!(
+                    component,
+                    std::path::Component::Prefix(prefix)
+                        if matches!(prefix.kind(), Prefix::Disk(_) | Prefix::VerbatimDisk(_))
+                )
+            })
+        }
+
+        let fixture = TempRuntimeHome::new("boundary-windows-drive")?;
+        let repo_root = fixture.create_product_repo("repo")?;
+
+        let validation = validate_runtime_home_product_repository(fixture.path(), &repo_root)?;
+
+        assert_eq!(validation.relation, RuntimeProductPathRelation::Separate);
+        assert!(has_drive_prefix(&validation.runtime_home));
+        assert!(has_drive_prefix(&validation.repo_root));
+        Ok(())
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn runtime_product_relation_is_case_insensitive_for_native_windows_drive_paths() {
+        let repo_root = Path::new(r"C:\Users\Example\Product");
+        let runtime_home = Path::new(r"c:\users\example\product\.volicord");
+
+        assert_eq!(
+            super::runtime_product_path_relation(runtime_home, repo_root),
+            RuntimeProductPathRelation::ProductRepositoryContainsRuntimeHome
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn runtime_product_validation_rejects_unc_runtime_home() -> Result<(), Box<dyn Error>> {
+        let fixture = TempRuntimeHome::new("boundary-windows-unc")?;
+        let repo_root = fixture.create_product_repo("repo")?;
+
+        let error = validate_runtime_home_product_repository(
+            Path::new(r"\\server\share\Volicord"),
+            &repo_root,
+        )
+        .expect_err("UNC runtime homes should be rejected before probing the share");
+
+        assert!(error.to_string().contains("UNC paths are not supported"));
+        Ok(())
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn runtime_product_validation_rejects_wsl_unc_paths() -> Result<(), Box<dyn Error>> {
+        let fixture = TempRuntimeHome::new("boundary-windows-wsl-unc")?;
+        let repo_root = fixture.create_product_repo("repo")?;
+
+        let error = validate_runtime_home_product_repository(
+            Path::new(r"\\wsl$\Ubuntu\home\user\.volicord"),
+            &repo_root,
+        )
+        .expect_err("WSL UNC runtime homes should be rejected");
+
+        assert!(error.to_string().contains("WSL UNC paths"));
+        Ok(())
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn runtime_product_validation_rejects_wsl_mount_syntax() -> Result<(), Box<dyn Error>> {
+        let fixture = TempRuntimeHome::new("boundary-windows-wsl-mount")?;
+        let repo_root = fixture.create_product_repo("repo")?;
+
+        let error = validate_runtime_home_product_repository(
+            Path::new(r"/mnt/c/Users/me/.volicord"),
+            &repo_root,
+        )
+        .expect_err("WSL mount syntax should be rejected in native Windows");
+
+        assert!(error.to_string().contains("WSL-style"));
+        Ok(())
+    }
+
     #[test]
     fn runtime_product_validation_rejects_same_path() -> Result<(), Box<dyn Error>> {
         let fixture = TempRuntimeHome::new("boundary-same")?;
@@ -758,6 +1026,77 @@ mod tests {
             .expect_err("runtime parent traversal should be rejected");
 
         assert!(error.to_string().contains("parent traversal"));
+        Ok(())
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn runtime_product_validation_resolves_windows_directory_symlink_aliases_when_available(
+    ) -> Result<(), Box<dyn Error>> {
+        use std::os::windows::fs::symlink_dir;
+
+        let fixture = TempRuntimeHome::new("boundary-windows-symlink-same")?;
+        let repo_root = fixture.create_product_repo("repo")?;
+        let runtime_link = fixture
+            .path()
+            .parent()
+            .expect("runtime home has parent")
+            .join("runtime-link");
+
+        if let Err(error) = symlink_dir(&repo_root, &runtime_link) {
+            if error.kind() == std::io::ErrorKind::PermissionDenied {
+                eprintln!(
+                    "skipping Windows directory symlink boundary check because symlink creation is not permitted"
+                );
+                return Ok(());
+            }
+            return Err(Box::new(error));
+        }
+
+        let error = validate_runtime_home_product_repository(&runtime_link, &repo_root)
+            .expect_err("directory symlink alias should be rejected as same path");
+
+        assert_eq!(
+            error.violation(),
+            Some(RuntimePathBoundaryViolation::SamePath)
+        );
+        Ok(())
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn runtime_product_validation_resolves_windows_directory_junction_aliases_when_available(
+    ) -> Result<(), Box<dyn Error>> {
+        use std::process::Command;
+
+        let fixture = TempRuntimeHome::new("boundary-windows-junction-same")?;
+        let repo_root = fixture.create_product_repo("repo")?;
+        let runtime_junction = fixture
+            .path()
+            .parent()
+            .expect("runtime home has parent")
+            .join("runtime-junction");
+
+        let output = Command::new("cmd")
+            .args(["/C", "mklink", "/J"])
+            .arg(&runtime_junction)
+            .arg(&repo_root)
+            .output()?;
+        if !output.status.success() {
+            eprintln!(
+                "skipping Windows directory junction boundary check because junction creation failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            return Ok(());
+        }
+
+        let error = validate_runtime_home_product_repository(&runtime_junction, &repo_root)
+            .expect_err("directory junction alias should be rejected as same path");
+
+        assert_eq!(
+            error.violation(),
+            Some(RuntimePathBoundaryViolation::SamePath)
+        );
         Ok(())
     }
 

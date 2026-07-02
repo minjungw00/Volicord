@@ -108,6 +108,10 @@ Observe init must be able to install and verify all required host
 lifecycle hook phases. When the selected Codex or Claude Code adapter does not
 know a reliable project-local hook schema or path for every required phase, init
 fails instead of treating `AGENTS.md` or `.volicord/policy.json` as enforcement.
+On native Windows, observe init fails with `OBSERVE_WINDOWS_UNSUPPORTED`
+because Windows host-hook wrappers and session watcher behavior are not
+implemented and tested; `--allow-degraded` does not override that platform
+rejection. Use `--profile record` on native Windows.
 Use `--allow-degraded` only when you explicitly want the degraded setup files
 and understand that required hook phases will be reported missing:
 

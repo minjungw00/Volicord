@@ -316,6 +316,11 @@ policy, 지원되는 hook 또는 rule 파일을 쓸 수 있지만, degraded guar
 사람용 출력과 JSON 출력에 누락된 필수 hook phase를 보고합니다. `record`는 hook 설치를
 요구하지 않습니다.
 
+Native Windows에서는 init이 observe hook 파일을 계획하거나 쓰기 전에
+`--profile observe`를 `OBSERVE_WINDOWS_UNSUPPORTED`로 거부합니다. `--allow-degraded`는
+이 플랫폼 거부를 우회하지 않습니다. Native Windows는 `--profile record`를 지원합니다.
+Observe는 선택한 host hook 계약이 지원되고 테스트된 WSL2, Linux, macOS에서만 사용합니다.
+
 Codex `observe` 초기화에는 선택된 Product Repository가 하위 디렉터리 호스트
 session에서도 cwd-independent wrapper 해석을 지원하는 Git work tree root여야 한다는
 요구사항도 있습니다. 이 전제조건을 만족하지 않으면 init은 bare 상대 hook 경로를
@@ -351,6 +356,8 @@ dry-run이 아닌 `volicord init`은 다음을 수행합니다.
 - Runtime Home registry에 guard 설치 상태를 기록합니다.
 - 필수 호스트 hook 설정이 없을 때 `--allow-degraded`가 명시적으로 제공되지 않았다면
   `observe` 초기화를 거부합니다.
+- Windows host-hook wrapper와 watcher 동작이 구현되고 테스트되지 않았으므로 native
+  Windows에서 `observe` 초기화를 거부합니다.
 - 호스트가 새 MCP 또는 guard 설정을 로드해야 할 때 필요한 restart, reload, trust,
   approval 동작을 보고합니다.
 

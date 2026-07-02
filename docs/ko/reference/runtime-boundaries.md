@@ -210,6 +210,13 @@ MCP 호스트 설정은 외부 MCP 호스트가 소유합니다. [관리 CLI](ad
 
 이 분리 계약은 적격성 규칙입니다. 새 프로젝트 등록, 프로필 재사용, 프로젝트 상태 관리 접근, Core 실행 진입, MCP 프로젝트 세션 시작은 선택된 `Volicord Runtime Home`과 등록된 `Product Repository`가 이 계약을 만족해야 합니다.
 
+Native Windows에서 Runtime Home/Product Repository 경계 검증은 로컬 drive-letter 경로를
+허용하고, UNC 경로, `\\wsl$\...` 같은 WSL UNC 경로, `/mnt/c/...` 같은 WSL mount-style
+경로를 거부합니다. Windows 경계 비교는 경로 정규화 뒤 component-aware이고 대소문자를
+구분하지 않습니다. Symlink 또는 junction alias가 같은 경로나 조상-자손 관계로
+해석된다는 사실을 호스트 파일시스템이 Volicord에 노출하면 그 alias는 유효하지
+않습니다.
+
 검사 계층은 이 계약을 위반하는 원시 저장 프로젝트 행을 진단 목적으로 계속 보여 줄 수 있습니다. 운영 프로젝트 조회, 프로젝트 목록 조회, 프로필 재사용, 프로젝트 상태 관리 접근, Agent Connection 관리, Connection Projects 접근, Core 실행 진입, MCP 프로젝트 가용성은 그런 행을 정상 프로젝트 기록이나 프로젝트 항목으로 반환하지 말고 거절해야 합니다. 시스템은 검사가 그 행을 보고할 수 있다는 이유만으로 경로를 자동 이동하거나, registry 행을 복구하거나, 그 기록을 삭제하지 않습니다.
 
 ## 로컬 권한 경계

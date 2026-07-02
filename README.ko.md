@@ -59,19 +59,29 @@ README의 나머지 내용을 읽을 때는 아래 모델을 사용합니다.
 일반 사용자 경로는 설치된 `volicord` 실행 파일 하나를 사용하는 것입니다. 시스템이 지원
 target과 맞으면 릴리스 바이너리 설치가 기본 경로입니다. 소스 빌드는 개발용입니다.
 
-Volicord 릴리스 자산을 게시하는 저장소에서 `scripts/install.sh`를 내려받거나 복사한 뒤,
-릴리스 바이너리를 설치합니다.
+Linux, WSL2, macOS에서는 Volicord 릴리스 자산을 게시하는 저장소에서
+`scripts/install.sh`를 내려받거나 복사한 뒤, 릴리스 바이너리를 설치합니다.
 
 ```sh
 VOLICORD_REPO=OWNER/REPO sh ./scripts/install.sh
 volicord --version
 ```
 
+Native Windows x86_64에서는 `scripts/install.ps1`을 내려받거나 복사한 뒤 PowerShell에서
+실행합니다.
+
+```powershell
+.\scripts\install.ps1 -Repo OWNER/REPO
+volicord --version
+```
+
 `OWNER/REPO`는 이 체크아웃의 Volicord 릴리스 자산을 호스팅하는 GitHub 저장소입니다.
-스크립트는 지원되는 Linux, WSL2, macOS target을 감지하고, target 이름이 붙은 tarball을
-내려받으며, 사용할 수 있을 때 `.sha256` 파일을 검증하고, `volicord` 하나만 설치합니다.
-셸 시작 파일은 편집하지 않습니다. 이 체크아웃에는 Homebrew tap, Homebrew formula, Linux
-패키지, 외부 패키지 registry 설치 경로가 없습니다.
+POSIX 스크립트는 지원되는 Linux, WSL2, macOS target을 감지하고 target 이름이 붙은
+tarball을 내려받습니다. PowerShell 스크립트는 기본적으로 사용자 로컬 디렉터리 아래에
+`x86_64-pc-windows-msvc` zip artifact를 설치합니다. 두 스크립트 모두 사용할 수 있을 때
+`.sha256` 파일을 검증하고 해당 플랫폼의 `volicord` 실행 파일 하나만 설치합니다. 셸 시작
+파일은 암시적으로 편집하지 않습니다. 이 체크아웃에는 Homebrew tap, Homebrew formula,
+Linux 패키지, Windows 패키지 관리자 패키지, 외부 패키지 registry 설치 경로가 없습니다.
 
 미래의 에이전트 호스트가 `PATH`를 통해 `volicord`를 실행할 수 있게 한 뒤, 에이전트에게
 작업을 요청할 Product Repository를 초기화합니다.
@@ -91,9 +101,10 @@ Runtime Home을 초기화하고, 설치 프로필을 기록하며, 선택한 Pro
 재사용하고, Agent Connection을 만들며, `volicord mcp --stdio`를 시작하는 프로젝트 범위
 MCP 설정을 씁니다. 또한 Volicord 관리 지침과 policy 메타데이터를 쓰고 통합 상태를
 기록합니다. `--profile record`는 호스트 lifecycle hook 설치나 session watcher를 요구하지
-않습니다. `--profile observe`는 지원되는 host hook과 session watcher capability를 요구합니다.
-필수 hook 지원이 빠진 호스트에서 observe 설정을 사용하려면 `--allow-degraded`를 명시적으로
-선택해야 합니다.
+않으며 native Windows에서 지원되는 프로필입니다. `--profile observe`는 지원되는 host
+hook과 session watcher capability를 요구하고 native Windows에서는 지원되지 않습니다. 지원되는
+observe 호스트에서 필수 hook 지원이 빠진 경우에는 observe 설정을 사용하려면
+`--allow-degraded`를 명시적으로 선택해야 합니다.
 
 명령이 `action_required`를 보고하면 이름 붙은 호스트 통제 동작이나 로컬 동작을 따릅니다.
 예를 들면 호스트 restart 또는 reload, 프로젝트 MCP 설정 승인, 프로젝트 trust, 명령

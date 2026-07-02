@@ -2922,6 +2922,9 @@ fn plan_guard_integration(
     guard_installation_id: &str,
     mcp_entry: &ManagedServerEntry,
 ) -> Result<GuardIntegrationPlan, ConnectionCommandError> {
+    if init_mode != InitMode::Record {
+        ensure_observe_profile_supported_on_platform(host_kind)?;
+    }
     let capabilities = host_capabilities(host_kind);
     let missing_required_hooks = if init_mode == InitMode::Record {
         Vec::new()
@@ -3044,6 +3047,23 @@ fn plan_guard_integration(
         missing_required_hooks,
         allow_degraded,
     })
+}
+
+#[cfg(not(windows))]
+fn ensure_observe_profile_supported_on_platform(
+    _host_kind: HostKind,
+) -> Result<(), ConnectionCommandError> {
+    Ok(())
+}
+
+#[cfg(windows)]
+fn ensure_observe_profile_supported_on_platform(
+    host_kind: HostKind,
+) -> Result<(), ConnectionCommandError> {
+    Err(ConnectionCommandError::runtime(format!(
+        "OBSERVE_WINDOWS_UNSUPPORTED: native Windows supports the record profile for {}, but observe profile is not supported because Windows host-hook wrappers and session watcher behavior are not implemented and tested. Use --profile record on native Windows, or run Volicord in WSL2, Linux, or macOS where the selected host hook contract is supported.",
+        public_host_label(host_kind)
+    )))
 }
 
 fn guard_profile_for_init_mode(init_mode: InitMode) -> &'static str {
@@ -9345,6 +9365,32 @@ mod tests {
         assert!(error.to_string().contains("OBSERVE_HOOKS_UNSUPPORTED"));
         assert!(error.to_string().contains("--allow-degraded"));
         assert!(error.to_string().contains("AGENTS.md"));
+        Ok(())
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn observe_profile_is_rejected_on_native_windows() -> Result<(), Box<dyn std::error::Error>> {
+        let repo = temp_dir("windows-observe-reject")?;
+        fs::create_dir_all(repo.join(".git"))?;
+        let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
+
+        let error = plan_guard_integration(
+            HostKind::Codex,
+            InitMode::Observe,
+            true,
+            &repo,
+            "conn_alpha",
+            "guard_installation_alpha",
+            &entry,
+        )
+        .expect_err("native Windows observe init should fail before planning hook files");
+
+        assert!(error.to_string().contains("OBSERVE_WINDOWS_UNSUPPORTED"));
+        assert!(error.to_string().contains("--profile record"));
+        assert!(error.to_string().contains("WSL2"));
+        assert!(!repo.join(".codex/hooks.json").exists());
+        assert!(!repo.join(VOLICORD_POLICY_FILE).exists());
         Ok(())
     }
 

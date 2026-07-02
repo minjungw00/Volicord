@@ -13,17 +13,20 @@
 
 - [시스템 요구사항](../reference/system-requirements.md)에 적힌 지원 릴리스 바이너리
   환경, 또는 아래 Docker 경로를 사용할 때의 Docker.
-- `curl` 또는 `wget`, `tar`, 쓰기 가능한 설치 디렉터리를 사용할 수 있는 POSIX 스타일 셸.
+- Linux, WSL2, macOS에서는 `curl` 또는 `wget`, `tar`, 쓰기 가능한 설치 디렉터리를 사용할 수 있는 POSIX 스타일 셸. Native Windows에서는 PowerShell.
 - 호스트를 연결할 준비가 되었을 때 Product Repository로 사용할 Git 저장소.
 
 ## 릴리스 바이너리 설치하기
 
-기본 사용자 경로는 릴리스 바이너리입니다. 설치 스크립트는 Linux, WSL2, macOS를
+기본 사용자 경로는 릴리스 바이너리입니다. POSIX 설치 스크립트는 Linux, WSL2, macOS를
 감지하고 맞는 릴리스 tarball을 선택하며, 대응 `.sha256` 파일을 내려받을 수 있으면
-검증한 뒤 `volicord` 실행 파일 하나만 설치합니다. 셸 시작 파일은 편집하지 않습니다.
+검증한 뒤 `volicord` 실행 파일 하나만 설치합니다. Native Windows PowerShell 설치
+스크립트는 `x86_64-pc-windows-msvc` zip archive를 선택하고, 대응 `.sha256` 파일을
+내려받을 수 있으면 검증한 뒤 `volicord.exe` 하나만 설치합니다. 두 스크립트 모두 셸
+시작 파일을 암시적으로 편집하지 않습니다.
 
-Volicord 릴리스 자산을 게시하는 같은 저장소에서 `scripts/install.sh`를 내려받거나
-복사한 뒤, 릴리스 저장소를 명시해서 실행합니다.
+Linux, WSL2, macOS에서는 Volicord 릴리스 자산을 게시하는 같은 저장소에서
+`scripts/install.sh`를 내려받거나 복사한 뒤, 릴리스 저장소를 명시해서 실행합니다.
 
 ```sh
 VOLICORD_REPO=OWNER/REPO sh ./scripts/install.sh
@@ -51,7 +54,41 @@ VOLICORD_RELEASE_BASE_URL=https://example.invalid/releases/v0.1.0 sh ./scripts/i
 VOLICORD_REPO=OWNER/REPO VOLICORD_INSTALL_DIR=/usr/local/bin sh ./scripts/install.sh
 ```
 
-지원되지 않는 운영체제나 CPU 아키텍처에서는 스크립트가 내려받기 전에 실패합니다.
+Native Windows x86_64에서는 Volicord 릴리스 자산을 게시하는 같은 저장소에서
+`scripts/install.ps1`을 내려받거나 복사한 뒤 PowerShell에서 실행합니다.
+
+```powershell
+.\scripts\install.ps1 -Repo OWNER/REPO
+```
+
+특정 태그를 설치하려면 아래처럼 실행합니다.
+
+```powershell
+.\scripts\install.ps1 -Repo OWNER/REPO -Version v0.1.0
+```
+
+GitHub가 아닌 릴리스 mirror에서는 아래처럼 실행합니다.
+
+```powershell
+.\scripts\install.ps1 -ReleaseBaseUrl https://example.invalid/releases/v0.1.0
+```
+
+기본 native Windows 설치 디렉터리는 `%LOCALAPPDATA%\Volicord\bin`입니다. 다른
+사용자 로컬 디렉터리를 쓰려면 `-InstallDir`를 사용합니다.
+
+```powershell
+.\scripts\install.ps1 -Repo OWNER/REPO -InstallDir "$env:LOCALAPPDATA\Volicord\bin"
+```
+
+설치 디렉터리가 아직 `PATH`에 없으면 Windows 설치 스크립트는 현재 세션용 `PATH`
+명령을 출력합니다. 설치 디렉터리를 사용자 수준 `PATH`에 추가하려면 `-UpdateUserPath`로
+다시 실행합니다.
+
+```powershell
+.\scripts\install.ps1 -Repo OWNER/REPO -UpdateUserPath
+```
+
+지원되지 않는 운영체제나 CPU 아키텍처에서는 각 스크립트가 내려받기 전에 실패합니다.
 Checksum 파일이 있는데 검증할 수 없으면 실패합니다. Checksum 파일을 사용할 수 없으면
 경고를 출력합니다. 이 경우에도 반드시 실패해야 한다면 `VOLICORD_REQUIRE_CHECKSUM=1`을
 설정합니다.
@@ -74,6 +111,9 @@ volicord init --help
 기록하는 동안 Runtime Home과 설치 프로필을 초기화할 수 있습니다. Observe hook 설정에는
 [관리 CLI 참조](../reference/admin-cli.md#agent-host-setup-and-init)에 설명된 검증된 hook
 지원 또는 명시적 degraded opt-in 요구사항이 적용됩니다.
+Native Windows에서는 `--profile record`를 사용합니다. `--profile observe`는 Windows
+host hook과 watcher 동작이 구현되고 테스트되기 전까지 unsupported-platform 진단으로
+실패합니다.
 
 저장소를 연결하지 않고 설치 프로필만 준비하거나 복구하려면 `volicord setup`을
 사용합니다.
@@ -241,7 +281,8 @@ volicord init --host codex --repo /path/to/your-product-repo --profile record
 
 `/path/to/your-product-repo`는 에이전트에게 작업을 요청할 Product Repository의 경로
 예시입니다. 선택한 호스트에 검증된 필수 hook 지원이 있거나 `--allow-degraded`로 degraded
-observe 설정을 명시적으로 선택할 때만 `--profile observe`를 사용합니다.
+observe 설정을 명시적으로 선택할 때만 `--profile observe`를 사용합니다. Native
+Windows에서는 observe가 지원되지 않으므로 `--profile record`를 사용합니다.
 
 전체 첫 실행 경로는 [빠른 시작](quickstart.md)을 계속 읽습니다. 호스트별
 세부사항은 [에이전트 호스트 설정](../guides/agent-host-setup.md)을 봅니다.

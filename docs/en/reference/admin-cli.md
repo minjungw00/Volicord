@@ -348,6 +348,12 @@ configuration, guidance, policy, and supported hook or rule files, but it record
 degraded guard status and reports missing required hook phases in human and JSON
 output. `record` does not require hook installation.
 
+On native Windows, init rejects `--profile observe` with
+`OBSERVE_WINDOWS_UNSUPPORTED` before planning or writing observe hook files.
+`--allow-degraded` does not override this platform rejection. Native Windows
+supports `--profile record`; use WSL2, Linux, or macOS for observe only where
+the selected host hook contract is supported and tested.
+
 Codex observe initialization additionally requires the selected Product
 Repository to be a Git work tree root that supports cwd-independent wrapper
 resolution from subdirectory host sessions. When that prerequisite is not met,
@@ -387,6 +393,8 @@ Non-dry-run `volicord init`:
 - records guard installation status in the Runtime Home registry
 - rejects `observe` initialization when required host hook
   configuration is missing unless `--allow-degraded` was explicitly supplied
+- rejects `observe` initialization on native Windows because Windows host-hook
+  wrappers and watcher behavior are not implemented and tested
 - reports the required host restart, reload, approval, or trust action when the
   host must load the new MCP or guard configuration
 

@@ -41,7 +41,7 @@ detect_target() {
             os_part=apple-darwin
             ;;
         MINGW*|MSYS*|CYGWIN*|Windows_NT)
-            fail "native Windows is not supported; use WSL2 with the Linux binary"
+            fail "native Windows requires PowerShell installer scripts/install.ps1; use WSL2 with this POSIX installer or run PowerShell on native Windows"
             ;;
         *)
             fail "unsupported operating system: $os"
