@@ -8,9 +8,10 @@
 
 Volicord is a local work-authority system for AI-assisted product work. It
 gives an agent host, such as Codex or Claude Code, a local record of work facts
-that should not live only in chat: what task is active, what writes are
-compatible with the current scope, what evidence exists, what judgment still
-belongs to the user, and what blocks an honest close.
+that should not live only in chat: what task is active, what write tickets exist
+for proposed product-file changes under the current scope, what evidence
+exists, what judgment still belongs to the user, and what blocks an honest
+close.
 
 Volicord is not a replacement for your editor, shell, tests, code review, or
 judgment. It is a local authority-record layer that helps an agent use those
@@ -29,7 +30,8 @@ work:
 - What is the agent trying to do?
 - What is in scope and out of scope?
 - What evidence supports the current claim?
-- Is a write ready under the current scope?
+- Is a proposed product-file change compatible with the current scope and a
+  write ticket?
 - What did the agent run or record?
 - Which user-owned decision is still needed?
 - What still blocks an honest close?
@@ -215,7 +217,7 @@ host can call when durable workflow state matters:
 
 - create or update a `Task`
 - show current scope, blockers, evidence, and pending judgment
-- prepare a proposed product-file write
+- prepare a write ticket for a proposed product-file change
 - stage artifacts and record runs or observations
 - request a focused user judgment
 - check close readiness before the agent claims completion
@@ -232,8 +234,9 @@ normal first-user setup.
 
 Use `record` when you want the host to use Volicord's local MCP tools and Core
 records without depending on host lifecycle hooks or a session watcher. This is
-the profile to start with when you want the agent to record tasks, scope, write
-checks, evidence, runs, and user-judgment requests through Volicord.
+the profile to start with when you want the agent to record a `Task` and scope,
+prepare write tickets for proposed product-file changes, and record evidence,
+runs, and user-judgment requests through Volicord.
 
 Use `observe` only when the selected host, platform, and Product Repository
 support the extra observation surfaces. It keeps the `record` model and adds
