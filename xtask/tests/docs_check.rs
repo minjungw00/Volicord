@@ -1114,7 +1114,7 @@ volicord serve --transport local-http
 volicord serve --transport local-http --listen 127.0.0.1:8765 --generate-token
 volicord serve --transport local-http --listen [::1]:8765 --token TOKEN --project /path/to/repo --project /path/to/other-repo --allow-origin https://app.example --allow-origin http://127.0.0.1:3000
 volicord init --host codex --repo /path/to/repo --profile record
-volicord init --host claude-code --repo /path/to/repo --profile observe --allow-degraded
+volicord init --host claude-code --repo /path/to/repo --profile observe
 ./target/debug/volicord init --host codex --repo /path/to/repo --dry-run
 volicord guard session-start --repo /path/to/repo --connection CONNECTION_ID --integration-profile observe --output volicord-json
 volicord connect codex --read-only
@@ -1138,6 +1138,37 @@ volicord inbox answer JUDGMENT_ID --choice accept
     let report = report(fixture.path());
 
     assert!(report.is_ok(), "{:#?}", report.errors());
+}
+
+#[test]
+fn rejects_init_examples_outside_public_option_surface() {
+    let fixture = valid_fixture();
+    write(
+        fixture.path(),
+        "docs/en/example.md",
+        "# Overview\n\n```sh\nvolicord init --host claude-code --repo /path/to/repo --profile observe --allow-degraded\nvolicord init --host codex --repo /path/to/repo --connection CONNECTION_ID\n```\n",
+    );
+
+    let report = report(fixture.path());
+    let errors = category_errors(&report, "command.invalid_example");
+
+    assert_eq!(errors.len(), 2, "{:#?}", report.errors());
+    assert!(
+        errors
+            .iter()
+            .any(|error| error.message().contains("--allow-degraded")
+                && error.message().contains("not supported")),
+        "{:#?}",
+        report.errors()
+    );
+    assert!(
+        errors
+            .iter()
+            .any(|error| error.message().contains("--connection")
+                && error.message().contains("not supported")),
+        "{:#?}",
+        report.errors()
+    );
 }
 
 #[test]
