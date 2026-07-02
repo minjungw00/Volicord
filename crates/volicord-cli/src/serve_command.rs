@@ -8,8 +8,8 @@ use std::{
 };
 
 use volicord_mcp::{
-    generate_bearer_token, local_http_listen_is_loopback, LocalHttpServerConfig,
-    LocalHttpTokenSource,
+    generate_bearer_token, local_http_listen_is_container_wildcard, local_http_listen_is_loopback,
+    LocalHttpListenScope, LocalHttpServerConfig, LocalHttpTokenSource,
 };
 use volicord_store::{
     agent_connections::{list_agent_connections, list_connection_projects},
@@ -82,6 +82,7 @@ impl From<ProjectCommandError> for ServeCommandError {
 struct ServeOptions {
     transport: Option<String>,
     listen: Option<SocketAddr>,
+    container_listen: Option<SocketAddr>,
     home: Option<PathBuf>,
     token: Option<String>,
     generate_token: bool,
@@ -132,10 +133,17 @@ where
         },
         current_dir,
     )?;
+    let listen_scope = if options.container_listen.is_some() {
+        LocalHttpListenScope::ContainerPublishedHostLoopback
+    } else {
+        LocalHttpListenScope::NativeLoopback
+    };
     let listen_addr = options.listen.unwrap_or_else(|| {
-        DEFAULT_LOCAL_HTTP_LISTEN
-            .parse()
-            .expect("valid default listen")
+        options.container_listen.unwrap_or_else(|| {
+            DEFAULT_LOCAL_HTTP_LISTEN
+                .parse()
+                .expect("valid default listen")
+        })
     });
     let project_allowlist = resolve_project_allowlist(&runtime_home, current_dir, &options)?;
     let connection_id = match options.connection_id {
@@ -163,6 +171,7 @@ where
             runtime_home,
             connection_id,
             listen_addr,
+            listen_scope,
             bearer_token,
             token_source,
             project_allowlist,
@@ -172,7 +181,7 @@ where
 }
 
 pub fn serve_usage() -> String {
-    "volicord serve --transport local-http [--listen 127.0.0.1:8765] [--home PATH] [--connection <connection_id>] [--project PATH]... [--token TOKEN | --generate-token] [--allow-origin ORIGIN]\n"
+    "volicord serve --transport local-http [--listen 127.0.0.1:8765 | --container-listen 0.0.0.0:8765] [--home PATH] [--connection <connection_id>] [--project PATH]... [--token TOKEN | --generate-token] [--allow-origin ORIGIN]\nLocal HTTP transport is for Docker and localhost adapters only. It is not a public network API, SaaS endpoint, multi-user server, authentication service, remote API, or security boundary.\nUse --listen only with loopback addresses. Use --container-listen only inside a container with Docker host-loopback publishing.\n"
         .to_owned()
 }
 
@@ -185,6 +194,11 @@ fn parse_serve_options(args: &[String]) -> Result<ServeOptions, ServeCommandErro
                 set_once_string(args, &mut index, &mut options.transport, "--transport")?;
             }
             "--listen" => {
+                if options.container_listen.is_some() {
+                    return Err(ServeCommandError::usage(
+                        "cannot combine --listen and --container-listen",
+                    ));
+                }
                 index += 1;
                 let value = option_value(args, index, "--listen")?;
                 let listen = value.parse::<SocketAddr>().map_err(|error| {
@@ -196,6 +210,27 @@ fn parse_serve_options(args: &[String]) -> Result<ServeOptions, ServeCommandErro
                     )));
                 }
                 options.listen = Some(listen);
+                index += 1;
+            }
+            "--container-listen" => {
+                if options.listen.is_some() {
+                    return Err(ServeCommandError::usage(
+                        "cannot combine --listen and --container-listen",
+                    ));
+                }
+                index += 1;
+                let value = option_value(args, index, "--container-listen")?;
+                let listen = value.parse::<SocketAddr>().map_err(|error| {
+                    ServeCommandError::usage(format!(
+                        "--container-listen must be host:port: {error}"
+                    ))
+                })?;
+                if !local_http_listen_is_container_wildcard(&listen) || listen.port() == 0 {
+                    return Err(ServeCommandError::usage(format!(
+                        "CONTAINER_LISTEN_REJECTED: --container-listen {listen} is not allowed; use 0.0.0.0:<port> or [::]:<port> inside the container and publish only to host 127.0.0.1"
+                    )));
+                }
+                options.container_listen = Some(listen);
                 index += 1;
             }
             "--home" => {
@@ -382,6 +417,7 @@ mod tests {
         };
         assert_eq!(config.connection_id, fixture.connection_id());
         assert_eq!(config.listen_addr, "127.0.0.1:8765".parse()?);
+        assert_eq!(config.listen_scope, LocalHttpListenScope::NativeLoopback);
         assert_eq!(config.token_source, LocalHttpTokenSource::Generated);
         assert!(!config.bearer_token.is_empty());
         Ok(())
@@ -423,6 +459,19 @@ mod tests {
     }
 
     #[test]
+    fn serve_help_describes_local_http_boundary() {
+        let usage = serve_usage();
+
+        assert!(usage.contains("volicord serve --transport local-http"));
+        assert!(usage.contains("--container-listen 0.0.0.0:8765"));
+        assert!(usage.contains("Docker and localhost adapters only"));
+        assert!(usage.contains("not a public network API"));
+        assert!(usage.contains("not a public network API, SaaS endpoint, multi-user server, authentication service, remote API, or security boundary"));
+        assert!(usage.contains("Docker host-loopback publishing"));
+        assert!(!usage.contains("-p 127.0.0.1:8765:8765"));
+    }
+
+    #[test]
     fn serve_rejects_unsupported_transport() {
         let error = run_serve_command(
             &["--transport".to_owned(), "stdio".to_owned()],
@@ -456,6 +505,61 @@ mod tests {
 
             assert!(
                 error.to_string().contains("NONLOCAL_LISTEN_REJECTED"),
+                "unexpected error for {listen_addr}: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn serve_container_listen_requires_explicit_container_scope(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = CoreFixture::new("serve-command-container-listen")?;
+
+        let command = run_serve_command(
+            &[
+                "--transport".to_owned(),
+                "local-http".to_owned(),
+                "--container-listen".to_owned(),
+                "0.0.0.0:8765".to_owned(),
+            ],
+            |name| {
+                if name == "VOLICORD_HOME" {
+                    Some(fixture.runtime_home_path().as_os_str().to_owned())
+                } else {
+                    None
+                }
+            },
+            Path::new(env!("CARGO_MANIFEST_DIR")),
+        )?;
+
+        let ServeCommand::LocalHttp { config } = command else {
+            panic!("serve command should build HTTP server config");
+        };
+        assert_eq!(config.listen_addr, "0.0.0.0:8765".parse()?);
+        assert_eq!(
+            config.listen_scope,
+            LocalHttpListenScope::ContainerPublishedHostLoopback
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn serve_container_listen_rejects_arbitrary_or_ephemeral_addresses() {
+        for listen_addr in ["127.0.0.1:8765", "192.0.2.10:8765", "0.0.0.0:0"] {
+            let error = run_serve_command(
+                &[
+                    "--transport".to_owned(),
+                    "local-http".to_owned(),
+                    "--container-listen".to_owned(),
+                    listen_addr.to_owned(),
+                ],
+                |_| None,
+                Path::new(env!("CARGO_MANIFEST_DIR")),
+            )
+            .expect_err("unsupported container listen address should be a usage error");
+
+            assert!(
+                error.to_string().contains("CONTAINER_LISTEN_REJECTED"),
                 "unexpected error for {listen_addr}: {error}"
             );
         }

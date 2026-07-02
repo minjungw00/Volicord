@@ -1151,7 +1151,7 @@ documents:
   - implement
   canonical_for:
   - local `volicord mcp --stdio` process command contract
-  - loopback-only local `volicord serve --transport local-http` process command contract
+  - local/Docker `volicord serve --transport local-http` process command contract
   - MCP stdio process startup and exit behavior
   - MCP local HTTP serve startup and transport-bound authentication and Origin checks
   - MCP local web consent fallback endpoint

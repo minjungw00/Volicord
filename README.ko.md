@@ -318,6 +318,21 @@ Volicord는 작업 권한을 보이게 하지만 권한 시스템, 보안 경계
 docker build -t volicord:local .
 ```
 
+컨테이너에서 Local HTTP를 제공할 때는 컨테이너 포트를 호스트 loopback에만 노출하고,
+명시적인 `--container-listen` 모드를 사용합니다.
+
+```sh
+VOLICORD_HTTP_TOKEN="$(openssl rand -hex 32)"
+docker run --rm \
+  -p 127.0.0.1:8765:8765 \
+  -v volicord-home:/var/lib/volicord \
+  -v "$PWD:/workspace" \
+  volicord:local serve --transport local-http \
+    --container-listen 0.0.0.0:8765 \
+    --token "$VOLICORD_HTTP_TOKEN" \
+    --project /workspace
+```
+
 Local HTTP transport는 아래 명령으로 구현되어 있습니다.
 
 ```sh
@@ -326,12 +341,13 @@ volicord serve --transport local-http
 
 이 transport는 Docker와 localhost MCP 사용을 위한 명시적 고급 모드이며 기본 호스트 설정
 경로가 아닙니다. 로컬/Docker 전송일 뿐 공개 네트워크 API, SaaS endpoint, 다중 사용자
-서버, 보안 경계가 아닙니다. Loopback listen 주소만 허용하고 MCP local HTTP endpoint에는
-bearer 인증을 요구하며, token을 제공하지 않으면 프로세스 로컬 token을 생성하고, 브라우저
-요청 Origin은 설정된 `--allow-origin` 값과 대조합니다. `POST /mcp`를 노출하지만
-server-sent event 스트림, HTTP elicitation, 전체 MCP Streamable HTTP 호환성은 구현하지
-않습니다. 일반 네트워크 서비스처럼 다루면 안 되며, 지원되는 nonlocal listen 옵션은
-없습니다.
+서버, 보안 경계가 아닙니다. 네이티브 로컬 실행에는 loopback listen 주소만 허용합니다.
+별도의 `--container-listen` 옵션은 `-p 127.0.0.1:8765:8765` 같은 Docker host-loopback
+노출에만 사용합니다. MCP local HTTP endpoint에는 bearer 인증을 요구하며, token을 제공하지
+않으면 프로세스 로컬 token을 생성하고, 브라우저 요청 Origin은 설정된 `--allow-origin`
+값과 대조합니다. `POST /mcp`를 노출하지만 server-sent event 스트림, HTTP elicitation,
+전체 MCP Streamable HTTP 호환성은 구현하지 않습니다. 일반 네트워크 서비스처럼 다루거나
+공개 호스트 인터페이스에 노출하면 안 됩니다.
 
 자세한 Docker와 HTTP 경계는 [설치](docs/ko/getting-started/installation.md)와
 [MCP 전송](docs/ko/reference/mcp-transport.md)을 사용합니다.

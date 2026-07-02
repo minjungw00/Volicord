@@ -1,6 +1,6 @@
 # MCP 전송 참조
 
-이 문서는 로컬 `volicord mcp --stdio` 프로세스 계약과 loopback 전용
+이 문서는 로컬 `volicord mcp --stdio` 프로세스 계약과 로컬/Docker
 `volicord serve --transport local-http` 프로세스 경계 계약을 담당합니다. 여기에는
 프로세스 시작, 프로세스 환경, MCP 프로토콜 버전 협상, 초기화 수명주기, stdio 전송
 프레이밍, 로컬 HTTP MCP 요청 처리, JSON-RPC 메시지 검증, Agent Connection에 묶인 시작
@@ -48,12 +48,13 @@ MCP TCP 리스너, HTTP MCP 리스너, Unix-domain socket 리스너, 또는 그 
 사용자 판단을 위해 별도의 loopback 전용 local consent 리스너를 시작할 수 있습니다.
 
 `volicord serve --transport local-http`는 Docker와 localhost MCP 사용을 위한 별도의
-명시적 프로세스 모드입니다. 이 명령은 loopback 전용 HTTP 리스너를 시작하고, 가능한
-곳에서는 stdio와 같은 Agent Connection에 묶인 MCP 어댑터 로직을 재사용합니다. 기본 MCP
-전송이 아니며, Docker가 아닌 로컬 호스트 설정 생성에서 사용하지 않고, 일반 Volicord
-네트워크 서비스도 아닙니다. 로컬/Docker 전송일 뿐 공개 네트워크 API, SaaS endpoint,
-다중 사용자 서버, 보안 경계가 아닙니다. 이 프로세스를 nonlocal HTTP listener로 바꾸는
-serve 옵션은 없습니다.
+명시적 프로세스 모드입니다. 네이티브 로컬 실행은 loopback 전용 HTTP 리스너를
+시작합니다. Docker 실행은 host-loopback 포트 노출과 함께 명시적 `--container-listen`
+모드만 사용할 수 있습니다. 가능한 곳에서는 stdio와 같은 Agent Connection에 묶인 MCP
+어댑터 로직을 재사용합니다. 기본 MCP 전송이 아니며, Docker가 아닌 로컬 호스트 설정
+생성에서 사용하지 않고, 일반 Volicord 네트워크 서비스도 아닙니다. 로컬/Docker 전송일 뿐
+공개 네트워크 API, SaaS endpoint, 다중 사용자 서버, 보안 경계가 아닙니다. 이 프로세스를
+공개 호스트 인터페이스나 원격 HTTP 서비스로 바꾸는 serve 옵션은 없습니다.
 
 현재 serve 전송은 인증을 요구하는 로컬 MCP-over-HTTP 부분 구현입니다. MCP 세션 헤더와
 bearer token 검사와 함께 HTTP `POST /mcp`로 JSON-RPC를 받고 JSON 응답을 반환합니다.
@@ -100,9 +101,15 @@ Local HTTP serve 명령줄 동작:
   값은 사용법 오류입니다.
 - `--listen 127.0.0.1:<port>` 또는 `--listen [::1]:<port>`는 리스너를 선택합니다.
   생략하면 `127.0.0.1:8765`를 사용합니다.
-- 리스너는 loopback 전용입니다. `0.0.0.0`, `::`, 공개 인터페이스, 컨테이너 전체
-  인터페이스, 또는 다른 non-loopback 주소에 바인딩하려 하면 거절합니다.
-  nonlocal listen 주소를 허용하는 지원 명령줄 옵션은 없습니다.
+- 네이티브 `--listen`은 loopback 전용입니다. `--listen`으로 `0.0.0.0`, `::`, 공개
+  인터페이스, 컨테이너 전체 인터페이스, 또는 다른 non-loopback 주소에 바인딩하려 하면
+  거절합니다.
+- `--container-listen 0.0.0.0:<port>` 또는 `--container-listen [::]:<port>`는 명시적
+  Docker host-loopback 노출 모드입니다. 고정된 0이 아닌 컨테이너 포트가 필요하며
+  `-p 127.0.0.1:8765:8765` 같은 host loopback 노출 규칙과 함께 사용해야 합니다.
+  네이티브 로컬 실행에는 유효하지 않으며 공개 호스트 인터페이스나 원격 제공 옵션이
+  아닙니다.
+- `--listen`과 `--container-listen`은 함께 사용할 수 없습니다.
 - `--home PATH`는 프로세스의 Runtime Home을 선택합니다. `--home`이 없으면 공통
   `VOLICORD_HOME`과 플랫폼 기본 Runtime Home 해석을 사용합니다.
 - `--connection <connection_id>`는 서버를 저장된 Agent Connection 하나에 묶습니다. 이
@@ -155,6 +162,17 @@ HTTP serve 요청 동작:
 - 구조화된 HTTP 오류는 인증, Origin, 프로젝트 허용 목록, 지원하지 않는 전송, 지원하지
   않는 메서드, 지원하지 않는 content negotiation 실패에 안정적인 전송 오류 코드를
   사용합니다.
+
+Docker 노출 동작:
+
+- 지원되는 Docker 노출 형태는 host loopback을 컨테이너 포트에 매핑합니다. 예:
+  `-p 127.0.0.1:8765:8765`.
+- 이 형태에서 컨테이너 프로세스는 Docker가 host-loopback으로 노출된 포트를 컨테이너로
+  전달할 수 있도록 `--container-listen 0.0.0.0:8765`를 사용합니다.
+- 컨테이너 포트를 `0.0.0.0`, 공개 호스트 인터페이스, 원격 호스트에 노출하는 것은 Local
+  HTTP transport 계약 밖입니다.
+- Docker 노출은 위의 전송 경계 bearer token과 Origin 점검을 넘어서는 인증, 인가,
+  다중 사용자 격리, 호스트 신뢰, 더 넓은 보안 경계를 추가하지 않습니다.
 
 Session-watch 시작 coverage:
 

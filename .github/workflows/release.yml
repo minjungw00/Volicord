@@ -144,7 +144,9 @@ jobs:
         run: docker build -t volicord:${{ github.sha }} .
 
       - name: Smoke test image
-        run: docker run --rm volicord:${{ github.sha }} --help
+        run: |
+          docker run --rm volicord:${{ github.sha }} --help
+          docker run --rm volicord:${{ github.sha }} serve --help
 
   publish-release:
     name: Publish release assets

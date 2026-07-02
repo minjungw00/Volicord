@@ -213,21 +213,21 @@ Docker에서 record 프로필 설정을 하려면 같은 mount로
 ```sh
 VOLICORD_HTTP_TOKEN="$(openssl rand -hex 32)"
 docker run --rm \
-  --network host \
+  -p 127.0.0.1:8765:8765 \
   -v volicord-home:/var/lib/volicord \
   -v "$PWD:/workspace" \
   volicord:local serve --transport local-http \
-    --listen 127.0.0.1:8765 \
+    --container-listen 0.0.0.0:8765 \
     --token "$VOLICORD_HTTP_TOKEN" \
     --project /workspace
 ```
 
-Local HTTP 전송은 loopback 전용입니다. 로컬 Docker 환경이 host networking을 지원할 때만
-이를 사용하고, Volicord는 `127.0.0.1`에 계속 bind합니다. Host networking을 사용할 수
-없으면 nonlocal HTTP listener를 publish하려 하지 말고 컨테이너 안에서 stdio 또는 CLI
-흐름을 사용합니다. `VOLICORD_HTTP_TOKEN`을 저장소 파일에 저장하지 마세요. 이것은
-로컬/Docker 전송일 뿐 공개 네트워크 API, SaaS endpoint, 다중 사용자 서버, 보안 경계가
-아닙니다.
+`-p 127.0.0.1:8765:8765`는 컨테이너 포트를 호스트 loopback 인터페이스에만 노출합니다.
+`--container-listen 0.0.0.0:8765`는 이 Docker 노출 형태를 위한 옵션입니다. 네이티브 로컬
+실행은 대신 기본 loopback `--listen` 동작을 사용해야 합니다. 컨테이너 포트를 `0.0.0.0`,
+공개 호스트 인터페이스, 원격 호스트에 노출하지 말고, `VOLICORD_HTTP_TOKEN`을 저장소 파일에
+저장하지 마세요. 이것은 로컬/Docker 전송일 뿐 공개 네트워크 API, SaaS endpoint, 다중
+사용자 서버, 보안 경계가 아닙니다.
 
 ## 설치가 하지 않는 일
 

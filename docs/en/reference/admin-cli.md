@@ -74,7 +74,7 @@ volicord project list [--json]
 volicord project rename NAME [--repo PATH] [--json]
 volicord project forget [PATH|NAME] [--json]
 volicord mcp --stdio --connection <connection_id> [--project <project_id>]
-volicord serve --transport local-http [--listen 127.0.0.1:8765] [--home PATH] [--connection <connection_id>] [--project PATH]... [--token TOKEN | --generate-token] [--allow-origin ORIGIN]
+volicord serve --transport local-http [--listen 127.0.0.1:8765 | --container-listen 0.0.0.0:8765] [--home PATH] [--connection <connection_id>] [--project PATH]... [--token TOKEN | --generate-token] [--allow-origin ORIGIN]
 volicord changes reconcile [--repo PATH] [--task active|ID] [--json]
 volicord inbox [--repo PATH] [--task active|ID] [--json]
 volicord inbox answer <judgment-id> --choice <choice> [--repo PATH] [--note TEXT] [--json]
@@ -108,21 +108,22 @@ Exit and stream behavior:
   represented as exit code `1`.
 - Errors remain stderr diagnostics under the CLI exit-code model.
 - `volicord serve --transport local-http` is an explicit long-running MCP
-  transport process. It accepts only loopback listen addresses, requires bearer
-  authentication for the MCP local HTTP endpoint, generates a process-local
-  token when no token is supplied, applies Origin checks to browser-facing
-  requests, and delegates HTTP wire behavior and transport-bound authentication
-  and Origin checks to [MCP Transport](mcp-transport.md). It is local/Docker
-  transport only, not a public network API, SaaS endpoint, multi-user server, or
-  security boundary.
+  transport process. Native local runs accept only loopback listen addresses.
+  The explicit `--container-listen` mode is limited to Docker host-loopback
+  publishing. The MCP local HTTP endpoint requires bearer authentication,
+  generates a process-local token when no token is supplied, applies Origin
+  checks to browser-facing requests, and delegates HTTP wire behavior and
+  transport-bound authentication and Origin checks to
+  [MCP Transport](mcp-transport.md). It is local/Docker transport only, not a
+  public network API, SaaS endpoint, multi-user server, or security boundary.
 
 Not supported:
 
 - The CLI has no general-purpose `server` or daemon command.
 - `volicord serve` must not be treated as a public Volicord API service, SaaS
   endpoint, multi-user server, security boundary, or unauthenticated network
-  service, and it has no supported option that changes the local HTTP listener
-  into a nonlocal listener.
+  service. `--container-listen` exists only for Docker host-loopback publishing;
+  it is not a public host-interface or remote serving option.
 - Administrative commands are not public Volicord API methods and must not be
   added to the public method list.
 - Hidden hook commands are cooperative detective signal commands, not OS-level

@@ -1,7 +1,7 @@
 # MCP transport reference
 
 This document owns the local `volicord mcp --stdio` process contract and the
-loopback-only `volicord serve --transport local-http` process-boundary
+local/Docker `volicord serve --transport local-http` process-boundary
 contract: process startup, process environment, MCP protocol-version
 negotiation, initialization lifecycle, stdio transport framing, local HTTP MCP
 request handling, JSON-RPC message validation, Agent-Connection-bound startup
@@ -60,13 +60,15 @@ separate loopback-only local web consent listener for pending user judgments
 when host prompt input and chat command capture are unavailable.
 
 `volicord serve --transport local-http` is a separate explicit process mode
-for Docker and localhost MCP use. It starts a loopback-only HTTP listener and
-reuses the same Agent-Connection-bound MCP adapter logic as stdio where
-possible. It is not the default MCP transport, not used by generated local
-non-Docker host configuration, and not a general Volicord network service. It
-is local/Docker transport only: not a public network API, SaaS endpoint,
-multi-user server, or security boundary. No serve option changes this process
-into a nonlocal HTTP listener.
+for Docker and localhost MCP use. Native local runs start a loopback-only HTTP
+listener. Docker runs may use the explicit `--container-listen` mode only with
+host-loopback port publishing. The process reuses the same
+Agent-Connection-bound MCP adapter logic as stdio where possible. It is not
+the default MCP transport, not used by generated local non-Docker host
+configuration, and not a general Volicord network service. It is local/Docker
+transport only: not a public network API, SaaS endpoint, multi-user server, or
+security boundary. No serve option changes this process into a public
+host-interface or remote HTTP service.
 
 The current serve transport is an authenticated local MCP-over-HTTP subset. It
 accepts JSON-RPC over HTTP `POST /mcp` with MCP session headers and bearer-token
@@ -121,10 +123,15 @@ Local HTTP serve command-line behavior:
   transport spelling. Other transport values are usage errors.
 - `--listen 127.0.0.1:<port>` or `--listen [::1]:<port>` selects the listener.
   Omission uses `127.0.0.1:8765`.
-- The listener is loopback-only. Binding `0.0.0.0`, `::`, public interfaces,
-  container-wide interfaces, or another non-loopback address is rejected.
-  There is no supported command-line option that allows a nonlocal listen
-  address.
+- Native `--listen` is loopback-only. Binding `0.0.0.0`, `::`, public
+  interfaces, container-wide interfaces, or another non-loopback address through
+  `--listen` is rejected.
+- `--container-listen 0.0.0.0:<port>` or `--container-listen [::]:<port>` is
+  the explicit Docker host-loopback publishing mode. It requires a fixed
+  nonzero container port and must be paired with a host loopback publish rule
+  such as `-p 127.0.0.1:8765:8765`. It is not valid for native local runs and
+  is not a public host-interface or remote serving option.
+- `--listen` and `--container-listen` are mutually exclusive.
 - `--home PATH` selects the Runtime Home for the process. Without `--home`, the
   shared `VOLICORD_HOME` and platform default Runtime Home resolution apply.
 - `--connection <connection_id>` binds the server to one stored Agent
@@ -185,6 +192,18 @@ HTTP serve request behavior:
 - Structured HTTP errors use stable transport error codes for authentication,
   Origin, project allowlist, unsupported transport, unsupported method, and
   unsupported content negotiation failures.
+
+Docker publishing behavior:
+
+- The supported Docker publishing shape maps host loopback to the container
+  port, for example `-p 127.0.0.1:8765:8765`.
+- In that shape the container process uses `--container-listen 0.0.0.0:8765`
+  so Docker can forward the published host-loopback port to the container.
+- Publishing the container port on `0.0.0.0`, a public host interface, or a
+  remote host is outside the Local HTTP transport contract.
+- Docker publishing does not add authentication, authorization, multi-user
+  isolation, host trust, or any broader security boundary beyond the
+  transport-bound bearer-token and Origin checks above.
 
 Session-watch startup coverage:
 

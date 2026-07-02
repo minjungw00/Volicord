@@ -230,22 +230,22 @@ start the local HTTP MCP endpoint with an operator-provided token:
 ```sh
 VOLICORD_HTTP_TOKEN="$(openssl rand -hex 32)"
 docker run --rm \
-  --network host \
+  -p 127.0.0.1:8765:8765 \
   -v volicord-home:/var/lib/volicord \
   -v "$PWD:/workspace" \
   volicord:local serve --transport local-http \
-    --listen 127.0.0.1:8765 \
+    --container-listen 0.0.0.0:8765 \
     --token "$VOLICORD_HTTP_TOKEN" \
     --project /workspace
 ```
 
-The local HTTP transport is loopback-only. Use host networking only where the
-local Docker environment supports it, and keep Volicord bound to
-`127.0.0.1`. If host networking is unavailable, use stdio or CLI flows inside
-the container rather than publishing a nonlocal HTTP listener. Do not store
-`VOLICORD_HTTP_TOKEN` in repository files. Treat this as local/Docker transport
-only, not a public network API, SaaS endpoint, multi-user server, or security
-boundary.
+The `-p 127.0.0.1:8765:8765` mapping publishes the container port only on the
+host loopback interface. `--container-listen 0.0.0.0:8765` is for this Docker
+publishing shape; native local runs should use the default loopback `--listen`
+behavior instead. Do not publish the container port on `0.0.0.0`, a public host
+interface, or a remote host, and do not store `VOLICORD_HTTP_TOKEN` in
+repository files. Treat this as local/Docker transport only, not a public
+network API, SaaS endpoint, multi-user server, or security boundary.
 
 ## What Installation Does Not Do
 

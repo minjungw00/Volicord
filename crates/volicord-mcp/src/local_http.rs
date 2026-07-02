@@ -15,12 +15,20 @@ pub enum LocalHttpTokenSource {
     Generated,
 }
 
+/// Listener policy for the local HTTP transport process.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LocalHttpListenScope {
+    NativeLoopback,
+    ContainerPublishedHostLoopback,
+}
+
 /// Configuration for the token-authenticated MCP endpoint over local HTTP.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LocalHttpServerConfig {
     pub runtime_home: PathBuf,
     pub connection_id: String,
     pub listen_addr: SocketAddr,
+    pub listen_scope: LocalHttpListenScope,
     pub bearer_token: String,
     pub token_source: LocalHttpTokenSource,
     pub project_allowlist: Vec<ProjectId>,
@@ -49,6 +57,12 @@ pub fn local_http_listen_is_loopback(addr: &SocketAddr) -> bool {
     )
 }
 
+/// Returns whether a listen address is a container wildcard bind.
+pub fn local_http_listen_is_container_wildcard(addr: &SocketAddr) -> bool {
+    matches!(addr.ip(), IpAddr::V4(address) if address == Ipv4Addr::UNSPECIFIED)
+        || matches!(addr.ip(), IpAddr::V6(address) if address == Ipv6Addr::UNSPECIFIED)
+}
+
 /// Runs the token-authenticated MCP endpoint over local HTTP until the process exits.
 pub fn run_local_http_server(config: LocalHttpServerConfig) -> Result<(), LocalHttpError> {
     validate_local_http_server_config(&config)?;
@@ -61,18 +75,17 @@ pub fn run_local_http_server(config: LocalHttpServerConfig) -> Result<(), LocalH
         &config.connection_id,
         &config.project_allowlist,
     )?;
+    let listen_scope = config.listen_scope;
     let listener = TcpListener::bind(config.listen_addr).map_err(LocalHttpError::Io)?;
     let actual_addr = listener.local_addr().map_err(LocalHttpError::Io)?;
-    validate_local_http_listen_addr(&actual_addr)?;
+    validate_local_http_listen_addr(&actual_addr, listen_scope)?;
     let mut adapter = McpAdapter::new(&config.runtime_home, context);
     adapter = adapter.with_local_web_consent(LocalWebConsentContext {
-        base_url: format!("http://{actual_addr}"),
+        base_url: local_web_consent_base_url(actual_addr, listen_scope),
     });
 
     eprintln!("volicord serve listening on http://{actual_addr}{LOCAL_HTTP_MCP_ENDPOINT_PATH}");
-    eprintln!(
-        "transport: local-http; loopback-only MCP-over-HTTP endpoint; full MCP Streamable HTTP compatibility is not claimed"
-    );
+    eprintln!("{}", local_http_transport_summary(listen_scope));
     eprintln!("authentication: bearer token required");
     eprintln!("{TRANSPORT_DISCLOSURE_TEXT}");
     if config.token_source == LocalHttpTokenSource::Generated {
@@ -103,7 +116,7 @@ pub(crate) fn validate_local_http_server_config(
         code: "AUTH_TOKEN_INVALID",
         message,
     })?;
-    validate_local_http_listen_addr(&config.listen_addr)?;
+    validate_local_http_listen_addr(&config.listen_addr, config.listen_scope)?;
     for origin in &config.allowed_origins {
         validate_origin_text(origin).map_err(|message| LocalHttpError::Config {
             code: "ORIGIN_INVALID",
@@ -113,16 +126,62 @@ pub(crate) fn validate_local_http_server_config(
     Ok(())
 }
 
-pub(crate) fn validate_local_http_listen_addr(addr: &SocketAddr) -> Result<(), LocalHttpError> {
-    if local_http_listen_is_loopback(addr) {
-        return Ok(());
+pub(crate) fn validate_local_http_listen_addr(
+    addr: &SocketAddr,
+    scope: LocalHttpListenScope,
+) -> Result<(), LocalHttpError> {
+    match scope {
+        LocalHttpListenScope::NativeLoopback => {
+            if local_http_listen_is_loopback(addr) {
+                return Ok(());
+            }
+            Err(LocalHttpError::Config {
+                code: "NONLOCAL_LISTEN_REJECTED",
+                message: format!(
+                    "listen address {addr} is not allowed; native local HTTP transport only supports 127.0.0.1 or [::1]"
+                ),
+            })
+        }
+        LocalHttpListenScope::ContainerPublishedHostLoopback => {
+            if !local_http_listen_is_container_wildcard(addr) {
+                return Err(LocalHttpError::Config {
+                    code: "CONTAINER_LISTEN_REJECTED",
+                    message: format!(
+                        "container listen address {addr} is not allowed; use 0.0.0.0:<port> or [::]:<port> and publish only to host loopback"
+                    ),
+                });
+            }
+            if addr.port() == 0 {
+                return Err(LocalHttpError::Config {
+                    code: "CONTAINER_LISTEN_REJECTED",
+                    message: "container listen address must use a fixed port for host-loopback publishing"
+                        .to_owned(),
+                });
+            }
+            Ok(())
+        }
     }
-    Err(LocalHttpError::Config {
-        code: "NONLOCAL_LISTEN_REJECTED",
-        message: format!(
-            "listen address {addr} is not allowed; local HTTP transport only supports 127.0.0.1 or [::1]"
-        ),
-    })
+}
+
+fn local_http_transport_summary(scope: LocalHttpListenScope) -> &'static str {
+    match scope {
+        LocalHttpListenScope::NativeLoopback => {
+            "transport: local-http; loopback-only MCP-over-HTTP endpoint; full MCP Streamable HTTP compatibility is not claimed"
+        }
+        LocalHttpListenScope::ContainerPublishedHostLoopback => {
+            "transport: local-http; Docker/container MCP-over-HTTP endpoint for host-loopback publishing only; full MCP Streamable HTTP compatibility is not claimed"
+        }
+    }
+}
+
+fn local_web_consent_base_url(addr: SocketAddr, scope: LocalHttpListenScope) -> String {
+    match scope {
+        LocalHttpListenScope::NativeLoopback => format!("http://{addr}"),
+        LocalHttpListenScope::ContainerPublishedHostLoopback => match addr {
+            SocketAddr::V4(address) => format!("http://127.0.0.1:{}", address.port()),
+            SocketAddr::V6(address) => format!("http://[::1]:{}", address.port()),
+        },
+    }
 }
 
 pub(crate) fn validate_local_http_project_allowlist(

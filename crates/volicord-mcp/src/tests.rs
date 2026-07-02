@@ -1096,6 +1096,32 @@ fn local_http_rejects_nonlocal_listen_addresses() -> Result<(), Box<dyn Error>> 
 }
 
 #[test]
+fn local_http_container_listen_scope_allows_only_container_wildcard() -> Result<(), Box<dyn Error>>
+{
+    let fixture = CoreFixture::new("mcp-http-container-listen")?;
+
+    for listen_addr in ["0.0.0.0:8765", "[::]:8765"] {
+        let mut config = http_config(&fixture, Vec::new(), Vec::new());
+        config.listen_addr = listen_addr.parse()?;
+        config.listen_scope = LocalHttpListenScope::ContainerPublishedHostLoopback;
+        validate_local_http_server_config(&config)?;
+    }
+
+    for listen_addr in ["127.0.0.1:8765", "192.0.2.10:8765", "0.0.0.0:0"] {
+        let mut config = http_config(&fixture, Vec::new(), Vec::new());
+        config.listen_addr = listen_addr.parse()?;
+        config.listen_scope = LocalHttpListenScope::ContainerPublishedHostLoopback;
+        let error = validate_local_http_server_config(&config)
+            .expect_err("unsupported container listen address should be rejected");
+        assert!(
+            error.to_string().contains("CONTAINER_LISTEN_REJECTED"),
+            "unexpected error for {listen_addr}: {error}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
 fn project_bound_http_initialize_creates_baseline_before_tool_handling(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-http-startup-watch")?;
@@ -1295,6 +1321,7 @@ fn http_config(
         runtime_home: fixture.runtime_home_path().to_path_buf(),
         connection_id: fixture.connection_id().to_owned(),
         listen_addr: "127.0.0.1:0".parse().expect("valid test listen"),
+        listen_scope: LocalHttpListenScope::NativeLoopback,
         bearer_token: "test_token".to_owned(),
         token_source: LocalHttpTokenSource::Supplied,
         project_allowlist,

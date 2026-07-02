@@ -29,8 +29,9 @@ pub use constants::{
 };
 pub use errors::{LocalHttpError, McpAdapterError};
 pub use local_http::{
-    generate_bearer_token, local_http_listen_is_loopback, run_local_http_server,
-    LocalHttpServerConfig, LocalHttpTokenSource, LOCAL_HTTP_MCP_ENDPOINT_PATH,
+    generate_bearer_token, local_http_listen_is_container_wildcard, local_http_listen_is_loopback,
+    run_local_http_server, LocalHttpListenScope, LocalHttpServerConfig, LocalHttpTokenSource,
+    LOCAL_HTTP_MCP_ENDPOINT_PATH,
 };
 pub use routing::{McpConnectionContext, McpConnectionStartupInspection, McpProjectAvailability};
 pub use stdio::{

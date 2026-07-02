@@ -779,7 +779,7 @@ terms:
       - "local HTTP MCP mode"
       - "local HTTP serve mode"
     notes:
-      - "Use Local HTTP transport as the public label for loopback-only local HTTP operation."
+      - "Use Local HTTP transport as the public label for localhost and Docker host-loopback local HTTP operation."
       - "Preserve `local-http` and `volicord serve --transport local-http` as exact identifiers."
   documentation:
     category: "general_prose"

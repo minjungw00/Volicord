@@ -103,6 +103,7 @@ fn binary_help_options_match_supported_contracts() -> Result<(), Box<dyn Error>>
             "--project",
             "--transport",
             "--listen",
+            "--container-listen",
             "--token",
             "--generate-token",
             "--allow-origin",
@@ -119,6 +120,7 @@ fn binary_help_options_match_supported_contracts() -> Result<(), Box<dyn Error>>
         &[
             "--transport",
             "--listen",
+            "--container-listen",
             "--home",
             "--connection",
             "--project",

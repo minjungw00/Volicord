@@ -347,6 +347,21 @@ layouts:
 docker build -t volicord:local .
 ```
 
+When serving Local HTTP from the container, publish the container port only to
+host loopback and use the explicit container listen mode:
+
+```sh
+VOLICORD_HTTP_TOKEN="$(openssl rand -hex 32)"
+docker run --rm \
+  -p 127.0.0.1:8765:8765 \
+  -v volicord-home:/var/lib/volicord \
+  -v "$PWD:/workspace" \
+  volicord:local serve --transport local-http \
+    --container-listen 0.0.0.0:8765 \
+    --token "$VOLICORD_HTTP_TOKEN" \
+    --project /workspace
+```
+
 The Local HTTP transport is implemented as:
 
 ```sh
@@ -356,12 +371,14 @@ volicord serve --transport local-http
 It is an explicit advanced transport for Docker and localhost MCP use, not the
 default host setup path. It is local/Docker transport only: not a public network
 API, SaaS endpoint, multi-user server, or security boundary. It accepts only
-loopback listen addresses, requires bearer authentication for the MCP local HTTP
-endpoint, generates a process-local token when no token is supplied, checks
-browser request Origins against configured `--allow-origin` values, exposes
-`POST /mcp`, and does not implement server-sent event streams, HTTP
+loopback listen addresses for native local runs; the separate
+`--container-listen` option is only for Docker host-loopback publishing such as
+`-p 127.0.0.1:8765:8765`. It requires bearer authentication for the MCP local
+HTTP endpoint, generates a process-local token when no token is supplied,
+checks browser request Origins against configured `--allow-origin` values,
+exposes `POST /mcp`, and does not implement server-sent event streams, HTTP
 elicitation, or full MCP Streamable HTTP compatibility. Do not treat it as a
-general network service; there is no supported nonlocal listen option.
+general network service or publish it on a public host interface.
 
 Use [Installation](docs/en/getting-started/installation.md) and
 [MCP Transport](docs/en/reference/mcp-transport.md) for the detailed Docker and

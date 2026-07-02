@@ -28,4 +28,4 @@ Change Unit, expected write, host-hook installation, `actor_source`, `operation_
 | User Channel | 사용자 채널 | 권한을 지니는 User Judgment를 기록하는 로컬 경로입니다. | [Core 모델](core-model.md) |
 | Record profile | 기록 프로필 | detective host hook을 요구하지 않고 일반 기록 기반 workflow를 쓰는 Agent Connection profile입니다. | [관리 CLI](admin-cli.md) |
 | Detective profile | 탐지 프로필 | 지원되는 host hook과 watcher 관찰을 더하는 Agent Connection profile입니다. | [Agent Connection 참조](agent-connection.md) |
-| Local HTTP transport | 로컬 HTTP 전송 | 로컬 HTTP 동작에 쓰는 loopback 전용 MCP 전송입니다. | [MCP 전송](mcp-transport.md) |
+| Local HTTP transport | 로컬 HTTP 전송 | localhost와 Docker host-loopback 동작에 쓰는 로컬 MCP HTTP 전송입니다. | [MCP 전송](mcp-transport.md) |
