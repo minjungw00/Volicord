@@ -3,7 +3,6 @@ pub(crate) use std::{
     error::Error,
     ffi::OsString,
     fmt,
-    fs::File,
     io::{self, BufRead, Read, Write},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, TcpListener, TcpStream},
     path::{Path, PathBuf},

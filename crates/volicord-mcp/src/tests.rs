@@ -5,7 +5,7 @@ use std::{
     io::{BufReader, Cursor},
 };
 
-use crate::local_http::validate_local_http_server_config;
+use crate::local_http::{validate_bearer_token_text, validate_local_http_server_config};
 use crate::local_web_consent::{parse_urlencoded, single_param};
 use crate::prelude::*;
 use crate::stdio::{pending_judgment_from_response, percent_encode_query};
@@ -106,6 +106,32 @@ fn mcp_visible_schemas_hide_envelope_and_metadata() {
             tool.name
         );
     }
+}
+
+#[test]
+fn generated_bearer_token_is_visible_ascii_hex() -> Result<(), Box<dyn Error>> {
+    let token = generate_bearer_token()?;
+
+    assert_eq!(token.len(), 64);
+    assert!(validate_bearer_token_text(&token).is_ok());
+    assert!(token
+        .chars()
+        .all(|character| matches!(character, '0'..='9' | 'a'..='f')));
+    assert!(!token.chars().any(char::is_whitespace));
+    Ok(())
+}
+
+#[test]
+fn generated_bearer_tokens_are_unique_in_small_sample() -> Result<(), Box<dyn Error>> {
+    let mut tokens = BTreeSet::new();
+    for _ in 0..8 {
+        let token = generate_bearer_token()?;
+        assert!(
+            tokens.insert(token),
+            "generated bearer token repeated in a small sanity sample"
+        );
+    }
+    Ok(())
 }
 
 #[test]

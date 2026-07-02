@@ -30,8 +30,11 @@ pub struct LocalHttpServerConfig {
 /// Generates a bearer token from operating-system randomness.
 pub fn generate_bearer_token() -> Result<String, McpAdapterError> {
     let mut bytes = [0_u8; 32];
-    let mut random = File::open("/dev/urandom").map_err(McpAdapterError::Io)?;
-    random.read_exact(&mut bytes).map_err(McpAdapterError::Io)?;
+    getrandom::fill(&mut bytes).map_err(|error| {
+        McpAdapterError::Environment(format!(
+            "local HTTP bearer token random source unavailable: {error}"
+        ))
+    })?;
     Ok(hex_encode(&bytes))
 }
 
