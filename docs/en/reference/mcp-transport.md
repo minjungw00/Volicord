@@ -72,6 +72,11 @@ implement server-sent event streams, HTTP elicitation, or full MCP Streamable
 HTTP compatibility. Documentation and startup diagnostics must not claim full
 protocol compatibility until those transport features are implemented and
 tested.
+Startup diagnostics, `/healthz`, and structured HTTP error JSON include a
+detective-observation disclosure. They are transport diagnostics, not OS
+sandboxing, network isolation, malware defense, full write prevention, actor
+attribution proof, correctness proof, test sufficiency proof, or human review
+replacement.
 
 Generated host configuration and generic exports launch the stdio loop with an
 internal connection binding. When the generated entry is safely project-bound,
@@ -304,6 +309,7 @@ project-detail block for each connected project, in this order:
 ```text
 configuration: valid
 transport: stdio
+disclosure: transport diagnostics only; not OS sandboxing, network isolation, malware defense, full write prevention, actor identity proof, correctness proof, test sufficiency proof, or human review replacement
 runtime_home: <absolute path>
 connection_id: <connection_internal_id process-binding value>
 mode: workflow|read_only
@@ -330,6 +336,8 @@ Project-detail rules:
 - With `--project <project_id>`, the supplied value must be in the connection's
   allowlist and only that project's detail block is emitted.
 - `connection_id` is the process binding for the stored Agent Connection.
+- `disclosure` summarizes the startup diagnostic non-guarantees and does not
+  change the machine-readable Core response disclosure used by method calls.
 - `allowed_projects` describes the Agent Connection allowlist as a whole.
 - Unavailable projects still emit every project-detail key.
   `unavailable_reason` is populated for unavailable projects and empty for
@@ -642,6 +650,8 @@ wraps the Volicord response JSON inside the MCP result:
   domain-level rejected responses.
 - Volicord domain success or rejection is determined from the parsed Volicord
   response, especially `base.response_kind` and `errors`.
+- Parsed public method responses include `base.disclosure` with stable
+  `guarantee_class` and `non_guarantees` values from the API schema owners.
 - JSON-RPC `error` is reserved for protocol, invalid-parameter, or
   adapter/internal failures; it is not used for Volicord domain-level rejection.
 

@@ -55,6 +55,7 @@ use crate::host_integration::{
     UserActionKind, REQUIRED_GUARD_PHASES,
 };
 use crate::{
+    disclosure::{detective_observation_disclosure_json, DETECTIVE_OBSERVATION_DISCLOSURE_TEXT},
     managed_block::{self, ManagedBlockError, ManagedBlockWrite},
     registration::ADMIN_METADATA_JSON,
     setup_command::{is_executable_file, path_text as setup_path_text, runtime_home_id_for_path},
@@ -5758,8 +5759,9 @@ fn render_simplified_connection_output(
     match data.format {
         OutputFormat::Text => {
             let mut output = format!(
-                "Agent Connection {}\nruntime_home_state: ready\nruntime_home: {}\nconnection_state: {}\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nproject_registration_state: {}\nconnected_repositories: {}\nmcp_config_state: {}\nmcp_config: {}\nselected_profile: {}\ncontrol_surface: {}\ncontrol_capabilities: {}\nhost_hooks_active: {}\nsession_watcher_active: {}\nactor_identity_provable: {}\nos_enforced: {}\nguard_installation_state: {}\nguard_configuration_state: {}\nguard_observation_state: {}\nguard_effective_state: {}\nguard_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_path_safety: {}\nrequired_guard_phases_state: {}\nrequired_guard_phases_missing: {}\nguard_hook_observed: {}\nguard_observed: {}\nguard_degraded_allowed: {}\nlast_guard_event: {}\nprompt_capture_state: {}\nhost_reload_required: {}\nguard_blockers: {}\n",
+                "Agent Connection {}\n{}\nruntime_home_state: ready\nruntime_home: {}\nconnection_state: {}\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nproject_registration_state: {}\nconnected_repositories: {}\nmcp_config_state: {}\nmcp_config: {}\nselected_profile: {}\ncontrol_surface: {}\ncontrol_capabilities: {}\nhost_hooks_active: {}\nsession_watcher_active: {}\nactor_identity_provable: {}\nos_enforced: {}\nguard_installation_state: {}\nguard_configuration_state: {}\nguard_observation_state: {}\nguard_effective_state: {}\nguard_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_path_safety: {}\nrequired_guard_phases_state: {}\nrequired_guard_phases_missing: {}\nguard_hook_observed: {}\nguard_observed: {}\nguard_degraded_allowed: {}\nlast_guard_event: {}\nprompt_capture_state: {}\nhost_reload_required: {}\nguard_blockers: {}\n",
                 data.action,
+                DETECTIVE_OBSERVATION_DISCLOSURE_TEXT,
                 data.runtime_home.display(),
                 data.status.as_str(),
                 public_host_name_text(&data.connection.host_kind),
@@ -5816,6 +5818,7 @@ fn render_simplified_connection_output(
             let value = json!({
                 "action": data.action,
                 "status": data.status.as_str(),
+                "disclosure": detective_observation_disclosure_json(),
                 "runtime_home": path_text(data.runtime_home),
                 "states": connection_states_json(
                     data.status.as_str(),
@@ -5852,9 +5855,10 @@ fn render_simplified_plan_output(
     match data.format {
         OutputFormat::Text => {
             let mut output = format!(
-                "Agent Connection {} {}\nruntime_home_state: ready\nruntime_home: {}\nconnection_state: {}\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nproject_registration_state: {}\nconnected_repositories: {}\nmcp_config_state: planned_{}\nmcp_config: {}\nselected_profile: {}\ncontrol_surface: {}\ncontrol_capabilities: {}\nhost_hooks_active: {}\nsession_watcher_active: {}\nactor_identity_provable: {}\nos_enforced: {}\nguard_installation_state: {}\nguard_configuration_state: {}\nguard_observation_state: {}\nguard_effective_state: {}\nguard_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_path_safety: {}\nrequired_guard_phases_state: {}\nrequired_guard_phases_missing: {}\nguard_hook_observed: {}\nguard_observed: {}\nguard_degraded_allowed: {}\nlast_guard_event: {}\nprompt_capture_state: {}\nhost_reload_required: {}\nguard_blockers: {}\nplanned_change: {}\n",
+                "Agent Connection {} {}\n{}\nruntime_home_state: ready\nruntime_home: {}\nconnection_state: {}\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nproject_registration_state: {}\nconnected_repositories: {}\nmcp_config_state: planned_{}\nmcp_config: {}\nselected_profile: {}\ncontrol_surface: {}\ncontrol_capabilities: {}\nhost_hooks_active: {}\nsession_watcher_active: {}\nactor_identity_provable: {}\nos_enforced: {}\nguard_installation_state: {}\nguard_configuration_state: {}\nguard_observation_state: {}\nguard_effective_state: {}\nguard_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_path_safety: {}\nrequired_guard_phases_state: {}\nrequired_guard_phases_missing: {}\nguard_hook_observed: {}\nguard_observed: {}\nguard_degraded_allowed: {}\nlast_guard_event: {}\nprompt_capture_state: {}\nhost_reload_required: {}\nguard_blockers: {}\nplanned_change: {}\n",
                 data.action,
                 data.status.as_str(),
+                DETECTIVE_OBSERVATION_DISCLOSURE_TEXT,
                 data.runtime_home.display(),
                 data.status.as_str(),
                 public_host_label(data.host_kind),
@@ -5910,6 +5914,7 @@ fn render_simplified_plan_output(
             let value = json!({
                 "action": data.action,
                 "status": data.status.as_str(),
+                "disclosure": detective_observation_disclosure_json(),
                 "runtime_home": path_text(data.runtime_home),
                 "states": connection_states_json(
                     data.status.as_str(),
@@ -5988,8 +5993,9 @@ fn render_init_output(data: InitOutput<'_>) -> Result<String, ConnectionCommandE
     match data.format {
         OutputFormat::Text => {
             let mut output = format!(
-                "Volicord init {}\nruntime_home_state: ready\nruntime_home: {}\nproject_registration_state: {}\nrepo: {}\nconnection_state: {}\nhost: {}\nselected_profile: {}\nconnection_id: {}\nmcp_config_state: {}\nmcp_config: {}\nplanned_change: {}\nprofile: {}\ncontrol_surface: {}\ncontrol_capabilities: {}\nhost_hooks_active: {}\nsession_watcher_active: {}\nactor_identity_provable: {}\nos_enforced: {}\nguard_installation_state: {}\nguard_configuration_state: {}\nguard_observation_state: {}\nguard_effective_state: {}\nguard_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_root_resolution: {}\nhook_path_safety: {}\nrequired_guard_phases_state: {}\nrequired_guard_phases_missing: {}\nguard_hook_observed: {}\nguard_observed: {}\nguard_degraded_allowed: {}\nlast_guard_event: {}\nprompt_capture_state: {}\nhost_reload_required: {}\nguard_blockers: {}\n",
+                "Volicord init {}\n{}\nruntime_home_state: ready\nruntime_home: {}\nproject_registration_state: {}\nrepo: {}\nconnection_state: {}\nhost: {}\nselected_profile: {}\nconnection_id: {}\nmcp_config_state: {}\nmcp_config: {}\nplanned_change: {}\nprofile: {}\ncontrol_surface: {}\ncontrol_capabilities: {}\nhost_hooks_active: {}\nsession_watcher_active: {}\nactor_identity_provable: {}\nos_enforced: {}\nguard_installation_state: {}\nguard_configuration_state: {}\nguard_observation_state: {}\nguard_effective_state: {}\nguard_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_root_resolution: {}\nhook_path_safety: {}\nrequired_guard_phases_state: {}\nrequired_guard_phases_missing: {}\nguard_hook_observed: {}\nguard_observed: {}\nguard_degraded_allowed: {}\nlast_guard_event: {}\nprompt_capture_state: {}\nhost_reload_required: {}\nguard_blockers: {}\n",
                 data.status.as_str(),
+                DETECTIVE_OBSERVATION_DISCLOSURE_TEXT,
                 data.runtime_home.display(),
                 project_state,
                 data.repo_root.display(),
@@ -6039,6 +6045,7 @@ fn render_init_output(data: InitOutput<'_>) -> Result<String, ConnectionCommandE
             let value = json!({
                 "action": "init",
                 "status": data.status.as_str(),
+                "disclosure": detective_observation_disclosure_json(),
                 "states": connection_states_json(
                     data.status.as_str(),
                     project_state,
@@ -6367,6 +6374,7 @@ fn render_simplified_connections_output(
                 .collect::<Vec<_>>();
             serde_json::to_string_pretty(&json!({
                 "status": "complete",
+                "disclosure": detective_observation_disclosure_json(),
                 "connections": values,
                 "checks": [],
                 "actions": [],
@@ -6407,7 +6415,8 @@ fn render_simplified_remove_dry_run(
         }
         SimplifiedRemovePlan::MembershipOnly => match format {
             OutputFormat::Text => Ok(format!(
-                "Agent Connection remove dry_run\nruntime_home_state: ready\nruntime_home: {}\nconnection_state: dry_run\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nproject_registration_state: {}\nconnected_repositories: {}\nmcp_config_state: membership\nplanned_change: membership\nselected_profile: not_checked\nguard_installation_state: not_checked\nguard_files_state: not_checked\nguard_hook_observed: not_checked\nlast_guard_event: none\nprompt_capture_state: not_checked\nhost_reload_required: no\nguard_blockers: none\nremaining_connected_projects: {}\nnext_action: none\n",
+                "Agent Connection remove dry_run\n{}\nruntime_home_state: ready\nruntime_home: {}\nconnection_state: dry_run\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nproject_registration_state: {}\nconnected_repositories: {}\nmcp_config_state: membership\nplanned_change: membership\nselected_profile: not_checked\nguard_installation_state: not_checked\nguard_files_state: not_checked\nguard_hook_observed: not_checked\nlast_guard_event: none\nprompt_capture_state: not_checked\nhost_reload_required: no\nguard_blockers: none\nremaining_connected_projects: {}\nnext_action: none\n",
+                DETECTIVE_OBSERVATION_DISCLOSURE_TEXT,
                 runtime_home.display(),
                 public_host_name_text(&connection.host_kind),
                 connection.intent,
@@ -6425,6 +6434,7 @@ fn render_simplified_remove_dry_run(
                 serde_json::to_string_pretty(&json!({
                     "action": "remove",
                     "status": AgentResultStatus::DryRun.as_str(),
+                    "disclosure": detective_observation_disclosure_json(),
                     "runtime_home": path_text(runtime_home),
                     "states": {
                         "runtime_home": "ready",
@@ -8978,6 +8988,7 @@ fn json_array_text(text: &str) -> Value {
 fn verification_json(report: &VerificationReport) -> Value {
     json!({
         "status": report.status.as_str(),
+        "disclosure": detective_observation_disclosure_json(),
         "host": {
             "status": report.host.status.as_str(),
             "host_state": report.host.host_state.as_str(),

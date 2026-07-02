@@ -74,10 +74,11 @@ StatusRequest:
 
 - `base.response_kind=result`
 - `base.effect_kind=read_only`
+- `base.disclosure.guarantee_class=authority_record`
 
 `include.close=true`일 때 `StatusResult.close_blockers`는 읽기 전용 관찰인 `CloseReadinessBlocker[]`입니다.
 
-비주장: `StatusResult.close_blockers`는 저장된 `close_task` 결과가 아닙니다.
+비주장: `StatusResult.close_blockers`는 저장된 `close_task` 결과, 정확성 증명, 테스트 충분성 증명, 인간 검토 대체가 아닙니다. `base.disclosure.non_guarantees`가 안정적인 기계 판독 가능 값을 담습니다.
 
 `include` 상태 보기 계약:
 
@@ -108,7 +109,7 @@ StatusRequest:
 
 | 필드 | 결과 필드 의미 |
 |---|---|
-| `base` | 공통 결과 메타데이터입니다. `ToolResultBase` 형태는 [API 코어 스키마](schema-core.md#common-response)가 담당합니다. 읽기 전용 상태 조회 결과는 `events: []`를 사용합니다. 공통 응답 분기에 `EventRef.event_kind`가 있을 때 그 값은 불투명한 예시용 분류 문자열로 남습니다. |
+| `base` | 공통 결과 메타데이터입니다. `ToolResultBase` 형태는 [API 코어 스키마](schema-core.md#common-response)가 담당합니다. 읽기 전용 상태 조회 결과는 `events: []`와 권한 기록 공개를 사용합니다. 공통 응답 분기에 `EventRef.event_kind`가 있을 때 그 값은 불투명한 예시용 분류 문자열로 남습니다. |
 | `active_task` | 현재 선택된 `Task` 요약의 `StateSummary | null`입니다. |
 | `status_summary` | 현재 상태 조회 보기를 요약하는 자유 형식 표시 문자열입니다. 닫기 준비 상태 보기가 선택되면 현재 닫기 준비 상태나 첫 번째 닫기 차단 사유 코드를 요약할 수 있습니다. 구조화된 권한 사실은 다른 결과 필드에 남습니다. |
 | `next_actions` | 다음 안전한 API 단계를 설명하는 `NextActionSummary[]`입니다. |

@@ -112,7 +112,7 @@ Dry run은 계획된 해결이나 대기 판단을 미리 보여 줄 뿐 ref, ev
 
 | 필드 | 결과 필드 의미 |
 |---|---|
-| `base` | 공통 결과 메타데이터입니다. `ToolResultBase` 형태는 [API 코어 스키마](schema-core.md#common-response)가 담당합니다. |
+| `base` | 공통 결과 메타데이터입니다. `disclosure`를 포함한 `ToolResultBase` 형태는 [API 코어 스키마](schema-core.md#common-response)가 담당합니다. `ReconcileChangesResult`는 `base.disclosure.guarantee_class=authority_record`를 사용합니다. |
 | `task_ref` | 조정한 `Task`의 `StateRecordRef`입니다. |
 | `unresolved_changes` | 이 호출이 선택한 결정적 해결과 사용자 수락 해결을 적용한 뒤에도 남은 미해결 찾기입니다. |
 | `resolved_changes` | 이 호출이 해결한 찾기입니다. basis, 행위자 출처, capture basis, 타임스탬프, 선택적 연결 사용자 판단을 포함합니다. |
@@ -122,6 +122,8 @@ Dry run은 계획된 해결이나 대기 판단을 미리 보여 줄 뿐 ref, ev
 | `close_blockers` | 계획된 조정 효과 뒤의 닫기 차단 사유 보기입니다. |
 | `guard_health` | 검증된 연결에 대해 guard 상태를 사용할 수 있을 때의 guard 상태 보기입니다. |
 | `next_actions` | 만들어진 사용자 소유 판단을 기록하거나 조정을 다시 실행하는 등 다음 안전 단계입니다. |
+
+결과 공개는 정확성 증명, 테스트 충분성 증명, 인간 검토 대체, OS 샌드박싱, 네트워크 격리, 악성 코드 방어, 전체 쓰기 방지, 행위자 귀속 증명이 아닙니다.
 
 ## 해결 동작
 

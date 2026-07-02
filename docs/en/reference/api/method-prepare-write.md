@@ -100,7 +100,7 @@ A newly allowed committed Write Check receives its durable `write_check_id` only
 
 | Field | Result-field meaning |
 |---|---|
-| `base` | Common result metadata. The `ToolResultBase` shape, including `events`, is owned by [API Schema Core](schema-core.md#common-response). Committed `PrepareWriteResult` branches use `base.response_kind=result` and `base.effect_kind=core_committed`. `base.events[].event_kind`, when present, is an opaque illustrative classification string. |
+| `base` | Common result metadata. The `ToolResultBase` shape, including `disclosure` and `events`, is owned by [API Schema Core](schema-core.md#common-response). Committed `PrepareWriteResult` branches use `base.response_kind=result`, `base.effect_kind=core_committed`, and `base.disclosure.guarantee_class=authority_record`. `base.events[].event_kind`, when present, is an opaque illustrative classification string. |
 | `decision` | The method decision for this write-preparation attempt. Supported values are owned by [API Value Sets](schema-value-sets.md#method-local-values). |
 | `state` | Current `StateSummary` when this result includes a state snapshot. Nested state fields, including `write_check_summary`, are owned by [API State Schemas](schema-state.md). |
 | `write_check_ref` | `StateRecordRef | null` for the consumable `Write Check` in an allowed decision result. A new allowed commit creates it; idempotent replay returns the stored original result without changing this field. It is `null` for non-allow decisions. |
@@ -177,6 +177,7 @@ Non-claims:
 - `write_decision_reasons` do not evaluate close readiness.
 - Effect contract decision reasons do not replace sensitive-action approval, user-owned judgment, evidence, final acceptance, close readiness, residual-risk acceptance, or the separate `Write Check` that this method creates only on `decision=allowed`.
 - No consumable `Write Check` is created.
+- The result disclosure is not OS sandboxing, network isolation, malware defense, full write prevention, correctness proof, test sufficiency proof, human review replacement, or actor attribution proof.
 
 ## Rejected result
 

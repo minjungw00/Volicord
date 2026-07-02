@@ -211,6 +211,8 @@ fn guard_pre_tool_denies_product_write_without_active_task() -> Result<(), Box<d
     assert_eq!(output.status.code(), Some(1));
     let value = json_stdout(&output)?;
     assert_eq!(value["decision"], "deny");
+    assert_cooperative_disclosure(&value);
+    assert_cooperative_disclosure(&value["result"]);
     assert_reason(&value, "no_active_task");
 
     let stored = guard_event(
@@ -3594,6 +3596,10 @@ fn assert_pre_tool_deny_output(value: &Value, expected_reason: &str) {
         reason.contains(expected_reason),
         "expected deny reason to contain {expected_reason:?}, got {reason:?}"
     );
+    assert!(
+        reason.contains("not OS sandboxing") && reason.contains("actor identity proof"),
+        "expected deny reason to disclose cooperative decision limits, got {reason:?}"
+    );
 }
 
 fn is_host_native_pre_tool_deny(value: &Value) -> bool {
@@ -3606,6 +3612,35 @@ fn is_host_native_pre_tool_deny(value: &Value) -> bool {
             .get("permissionDecisionReason")
             .and_then(Value::as_str)
             .is_some()
+}
+
+fn assert_cooperative_disclosure(value: &Value) {
+    let disclosure = value
+        .get("disclosure")
+        .expect("guard output should include disclosure");
+    assert_eq!(disclosure["guarantee_class"], "cooperative_host_decision");
+    assert_non_guarantees(
+        disclosure,
+        &[
+            "NotOsSandbox",
+            "NotActorAttributionProof",
+            "NotFullWritePrevention",
+        ],
+    );
+}
+
+fn assert_non_guarantees(disclosure: &Value, expected: &[&str]) {
+    let values = disclosure["non_guarantees"]
+        .as_array()
+        .expect("disclosure should include non_guarantees");
+    for expected_value in expected {
+        assert!(
+            values
+                .iter()
+                .any(|value| value.as_str() == Some(expected_value)),
+            "missing non-guarantee {expected_value}: {disclosure}"
+        );
+    }
 }
 
 fn assert_block_output(value: &Value, expected_reason: &str) {

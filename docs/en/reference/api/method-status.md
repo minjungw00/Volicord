@@ -74,10 +74,11 @@ Returns `StatusResult` with:
 
 - `base.response_kind=result`
 - `base.effect_kind=read_only`
+- `base.disclosure.guarantee_class=authority_record`
 
 When `include.close=true`, `StatusResult.close_blockers` are read-only `CloseReadinessBlocker[]` observations.
 
-Non-claim: `StatusResult.close_blockers` are not stored close results.
+Non-claim: `StatusResult.close_blockers` are not stored close results, correctness proof, test sufficiency proof, or human review replacement. `base.disclosure.non_guarantees` carries the stable machine-readable values.
 
 Include projection contract:
 
@@ -108,7 +109,7 @@ Truthful projection rules:
 
 | Field | Result-field meaning |
 |---|---|
-| `base` | Common result metadata. The `ToolResultBase` shape is owned by [API Schema Core](schema-core.md#common-response). Read-only status results use `events: []`; `EventRef.event_kind`, when present in a common response branch, remains an opaque illustrative classification string. |
+| `base` | Common result metadata. The `ToolResultBase` shape is owned by [API Schema Core](schema-core.md#common-response). Read-only status results use `events: []` and an authority-record disclosure; `EventRef.event_kind`, when present in a common response branch, remains an opaque illustrative classification string. |
 | `active_task` | `StateSummary | null` for the currently selected Task summary. |
 | `status_summary` | Free-form display string summarizing the current status view. When close-readiness is selected, it may summarize the current close-readiness state or the first close blocker code; the structured authority facts remain in the other result fields. |
 | `next_actions` | `NextActionSummary[]` describing the next safe API steps. |

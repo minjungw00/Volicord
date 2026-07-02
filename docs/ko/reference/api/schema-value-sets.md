@@ -624,6 +624,37 @@ detective
 
 `cooperative`는 기준 대체값입니다. `detective`는 보안 담당 문서가 그 주장을 지원하고, 프로젝트 강제 사실, 확인된 Agent Connection 또는 User Channel 출처, 활성화된 강제 메커니즘, 관찰 범위 사실이 이를 뒷받침할 때만 표시할 수 있습니다. 선언된 connection capability만으로 표시 보장을 높일 수 없습니다.
 
+`GuaranteeDisclosure.guarantee_class`는 아래 값을 사용합니다.
+
+```text
+authority_record
+cooperative_host_decision
+detective_observation
+user_judgment_record
+```
+
+값 의미:
+- `authority_record`는 결과가 문서화된 메서드 계약 안에서 Core 권한 상태, 응답 분기 메타데이터, 메서드 소유 결과 필드를 보고한다는 뜻입니다.
+- `cooperative_host_decision`은 결과가 관찰된 호스트 event에 대해 협력형 host hook으로 반환한 결정을 보고한다는 뜻입니다.
+- `detective_observation`은 결과가 Volicord가 검사할 수 있었던 로컬 진단, 검증, 관찰, transport 상태 사실을 보고한다는 뜻입니다.
+- `user_judgment_record`는 결과가 지원되는 `User Channel` 경로로 받은 사용자 소유 판단을 기록한다는 뜻입니다.
+
+`GuaranteeDisclosure.non_guarantees`는 아래 값을 사용합니다.
+
+```text
+NotOsSandbox
+NotNetworkIsolation
+NotMalwareDefense
+NotTamperProofAuditLog
+NotCorrectnessProof
+NotTestSufficiencyProof
+NotHumanReviewReplacement
+NotFullWritePrevention
+NotActorAttributionProof
+```
+
+이 값들은 안정적인 비주장입니다. 결과를 OS 샌드박싱, 네트워크 격리, 악성 코드 방어, 변조 불가능 감사 로그, 제품 정확성 증명, 테스트 충분성 증명, 인간 검토 대체, 전체 쓰기 방지, 행위자 귀속 증명으로 해석하면 안 된다는 뜻입니다.
+
 <a id="artifact-values"></a>
 ## 아티팩트 값
 

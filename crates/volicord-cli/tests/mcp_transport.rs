@@ -76,6 +76,7 @@ fn volicord_mcp_subcommand_reports_help_version_and_preflight() -> Result<(), Bo
         &[
             "configuration:",
             "transport:",
+            "disclosure:",
             "runtime_home:",
             "connection_id:",
             "mode:",
@@ -233,6 +234,7 @@ fn volicord_mcp_subcommand_stdio_uses_line_delimited_json_and_reconnects_state(
     let status = volicord_response(&responses[&4])?;
     assert_eq!(status["base"]["response_kind"], "result");
     assert_eq!(status["base"]["state_version"], 0);
+    assert_authority_disclosure(&status);
 
     let intake = volicord_response(&responses[&5])?;
     assert_eq!(intake["base"]["response_kind"], "result");
@@ -1063,6 +1065,24 @@ fn assert_report_line_names(report: &str, expected: &[&str]) {
         })
         .collect::<Vec<_>>();
     assert_eq!(actual, expected, "unexpected preflight report line names");
+}
+
+fn assert_authority_disclosure(value: &Value) {
+    let disclosure = &value["base"]["disclosure"];
+    assert_eq!(disclosure["guarantee_class"], "authority_record");
+    let values = disclosure["non_guarantees"]
+        .as_array()
+        .expect("authority disclosure should include non_guarantees");
+    for expected in [
+        "NotCorrectnessProof",
+        "NotTestSufficiencyProof",
+        "NotHumanReviewReplacement",
+    ] {
+        assert!(
+            values.iter().any(|value| value.as_str() == Some(expected)),
+            "missing non-guarantee {expected}: {disclosure}"
+        );
+    }
 }
 
 fn stdout(output: &Output) -> String {

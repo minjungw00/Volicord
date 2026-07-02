@@ -42,12 +42,32 @@ impl TypeBoundary {
 mod tests {
     use std::collections::BTreeSet;
 
+    use schemars::schema_for;
     use serde_json::{json, Value};
 
     use super::*;
 
     fn timestamp(value: &str) -> UtcTimestamp {
         UtcTimestamp::parse(value).expect("test timestamp should be RFC 3339")
+    }
+
+    fn assert_non_guarantees(disclosure: &Value, expected: &[&str]) {
+        let values = disclosure["non_guarantees"]
+            .as_array()
+            .expect("non_guarantees should be an array")
+            .iter()
+            .map(|value| {
+                value
+                    .as_str()
+                    .expect("non_guarantees should contain strings")
+            })
+            .collect::<BTreeSet<_>>();
+        for expected_value in expected {
+            assert!(
+                values.contains(expected_value),
+                "missing non-guarantee {expected_value}: {disclosure}"
+            );
+        }
     }
 
     #[test]
@@ -102,6 +122,41 @@ mod tests {
         assert_eq!(
             serde_json::to_value(host).expect("custom host serializes"),
             json!("custom_host")
+        );
+    }
+
+    #[test]
+    fn guarantee_disclosure_serializes_stable_machine_values() {
+        let disclosure = serde_json::to_value(GuaranteeDisclosure::authority_record())
+            .expect("disclosure should serialize");
+
+        assert_eq!(disclosure["guarantee_class"], "authority_record");
+        assert_non_guarantees(
+            &disclosure,
+            &[
+                "NotOsSandbox",
+                "NotActorAttributionProof",
+                "NotCorrectnessProof",
+                "NotTestSufficiencyProof",
+                "NotHumanReviewReplacement",
+            ],
+        );
+    }
+
+    #[test]
+    fn tool_result_base_schema_requires_guarantee_disclosure() {
+        let schema =
+            serde_json::to_value(schema_for!(ToolResultBase)).expect("schema should serialize");
+        let required = schema["required"]
+            .as_array()
+            .expect("ToolResultBase schema should have required fields");
+        assert!(
+            required.iter().any(|field| field == "disclosure"),
+            "ToolResultBase schema should require disclosure: {schema}"
+        );
+        assert!(
+            schema["properties"]["disclosure"].is_object(),
+            "ToolResultBase schema should expose disclosure property: {schema}"
         );
     }
 
@@ -296,6 +351,7 @@ mod tests {
                 effect_kind: EffectKind::StagingCreated,
                 dry_run: false,
                 state_version: Some(42),
+                disclosure: GuaranteeDisclosure::authority_record(),
                 events: vec![],
             },
             staged_artifact_handle: StagedArtifactHandle {

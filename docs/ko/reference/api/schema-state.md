@@ -1,6 +1,6 @@
 # API 상태 스키마
 
-이 문서는 기준 범위의 상태 형태 API 스키마를 담당합니다. `StateSummary`, `StateRecordRef`, API 데이터 형태의 생명주기 상태, 상태 관련 스냅샷, `ProjectContinuityRecord`, `ProjectContinuitySummary`, `ShapingReadiness`, `ChangeUnitEffectContract`, 그리고 `NextActionSummary`, `WriteCheckStateSummary`, `WriteCheckSummary`, `WriteCheckAttemptScope`, `EvidenceSummary`, `EvidenceObservation`, `GuardHealthSummary`, `UnrecordedChangeFinding`, `UnrecordedChangeResolutionSummary`, `CurrentCloseBasis`, `ResidualRisk`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`, `ValidatorResult`, `GuaranteeDisplay` 같은 표시 형태를 정의합니다.
+이 문서는 기준 범위의 상태 형태 API 스키마를 담당합니다. `StateSummary`, `StateRecordRef`, API 데이터 형태의 생명주기 상태, 상태 관련 스냅샷, `ProjectContinuityRecord`, `ProjectContinuitySummary`, `ShapingReadiness`, `ChangeUnitEffectContract`, 그리고 `NextActionSummary`, `WriteCheckStateSummary`, `WriteCheckSummary`, `WriteCheckAttemptScope`, `EvidenceSummary`, `EvidenceObservation`, `GuardHealthSummary`, `UnrecordedChangeFinding`, `UnrecordedChangeResolutionSummary`, `CurrentCloseBasis`, `ResidualRisk`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`, `ValidatorResult`, `GuaranteeDisplay`, `GuaranteeDisclosure` 같은 표시 형태를 정의합니다.
 
 ## 담당 경계
 
@@ -642,6 +642,11 @@ GuaranteeDisplay:
   level: string
   basis: string
   capability_refs: StateRecordRef[]
+
+GuaranteeDisclosure:
+  guarantee_class: string
+  guarantees: string[]
+  non_guarantees: string[]
 ```
 
 의미:
@@ -662,6 +667,9 @@ GuaranteeDisplay:
 - `CloseReadinessBlocker.message`, `ValidatorResult.message`, `GuaranteeDisplay.basis`는 자유 형식 표시 문자열입니다.
 - `ValidatorResult.validator_id`는 값 집합 담당 문서가 지원되는 안정 값을 공개하기 전까지 보고용 라벨입니다.
 - `ValidatorResult.status`, `ValidatorResult.severity`, `GuaranteeDisplay.level`은 제어 값 문자열입니다.
+- `GuaranteeDisclosure`는 독자가 결과를 과대 해석할 수 있는 공개 결과 base와 진단 출력에 반환되는 결과 해석 공개입니다.
+- `GuaranteeDisclosure.guarantee_class`와 `GuaranteeDisclosure.non_guarantees`는 제어 값 문자열입니다. `GuaranteeDisclosure.guarantees`는 짧은 표시 문장입니다.
+- `GuaranteeDisplay`는 상태 또는 호환성 보기의 현재 기능 표시를 설명합니다. `GuaranteeDisclosure`를 대체하지 않습니다.
 
 이 형태들은 닫기 준비 상태 의미, 응답 처리 경로, 지속 동작을 정의하지 않습니다.
 

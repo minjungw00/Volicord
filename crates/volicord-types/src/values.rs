@@ -1119,6 +1119,30 @@ pub enum GuaranteeLevel {
     Detective,
 }
 
+/// Public disclosure classes for result interpretation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum GuaranteeClass {
+    AuthorityRecord,
+    CooperativeHostDecision,
+    DetectiveObservation,
+    UserJudgmentRecord,
+}
+
+/// Stable public non-guarantee values for result interpretation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+pub enum NonGuarantee {
+    NotOsSandbox,
+    NotNetworkIsolation,
+    NotMalwareDefense,
+    NotTamperProofAuditLog,
+    NotCorrectnessProof,
+    NotTestSufficiencyProof,
+    NotHumanReviewReplacement,
+    NotFullWritePrevention,
+    NotActorAttributionProof,
+}
+
 /// Controlled source value for a project enforcement profile.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]

@@ -194,7 +194,7 @@ Returns `CloseTaskResult` with `base.response_kind=result`.
 
 | Field | Result-field meaning |
 |---|---|
-| `base` | Common result metadata. The `ToolResultBase` shape, including `events`, is owned by [API Schema Core](schema-core.md#common-response). Valid `CloseTaskResult` branches use `base.response_kind=result`; this method selects `base.effect_kind=read_only` for `intent=check` and `base.effect_kind=core_committed` for committed terminal or owner-allowed committed blocked outcomes. |
+| `base` | Common result metadata. The `ToolResultBase` shape, including `disclosure` and `events`, is owned by [API Schema Core](schema-core.md#common-response). Valid `CloseTaskResult` branches use `base.response_kind=result` and `base.disclosure.guarantee_class=authority_record`; this method selects `base.effect_kind=read_only` for `intent=check` and `base.effect_kind=core_committed` for committed terminal or owner-allowed committed blocked outcomes. |
 | `close_state` | Method result close state for the requested path. Supported values are owned by [API Value Sets](schema-value-sets.md#task-lifecycle-values). `close_state=blocked` is a method result after valid close or terminal-path evaluation, not `ToolRejectedResponse`. |
 | `state` | `StateSummary` for the selected Task after the check, terminal mutation, or owner-allowed blocked outcome. Nested state fields, including `close_blockers`, are owned by [API State Schemas](schema-state.md). |
 | `current_close_basis` | `CurrentCloseBasis | null` used for close readiness when selected into the result. `null` means no current close basis is available for this result. Shape is owned by [API State Schemas](schema-state.md#close-readiness-and-validation-shapes). |
@@ -281,6 +281,7 @@ Non-claims:
 - `STATE_VERSION_CONFLICT` is never a `CloseReadinessBlocker.code`.
 - `STATE_VERSION_CONFLICT` is a rejected-response `ErrorCode`, not a method-local blocker or decision code.
 - A blocker category does not create the underlying user judgment, approval, evidence, artifact availability, final acceptance, residual-risk acceptance, or recovery state.
+- Close readiness is not correctness proof, test sufficiency proof, or human review replacement. `CloseTaskResult.base.disclosure.non_guarantees` must include `NotCorrectnessProof`, `NotTestSufficiencyProof`, and `NotHumanReviewReplacement`.
 - Unverified claims, provenance-missing evidence, stale observation provenance, and cooperative agent reports may be recorded as evidence history, but they do not satisfy required close evidence when the close path requires stronger provenance.
 - Rejected, deferred, stale, superseded, expired, invalid-basis, agent-recorded, provenance-missing, or outcome-absent cancellation judgments do not permit cancellation.
 

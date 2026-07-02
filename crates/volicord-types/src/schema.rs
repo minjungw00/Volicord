@@ -15,10 +15,10 @@ use crate::values::{
     ActorSource, ArtifactAvailability, ArtifactInputSourceKind, ArtifactIntegrityStatus,
     ChangeUnitEffectKind, CloseReadinessBlockerCategory, CloseReason, CloseState, EffectKind,
     EnabledEnforcementMechanism, ErrorCode, EvidenceAssuranceLevel, EvidenceCoverageState,
-    EvidenceSourceKind, EvidenceStatus, GuaranteeLevel, GuardConfigurationStatus, GuardDecision,
-    GuardEffectiveStatus, GuardInstallationStatus, GuardObservationStatus, HostKind,
+    EvidenceSourceKind, EvidenceStatus, GuaranteeClass, GuaranteeLevel, GuardConfigurationStatus,
+    GuardDecision, GuardEffectiveStatus, GuardInstallationStatus, GuardObservationStatus, HostKind,
     IntegrationProfile, JudgmentBasisCompatibilityStatus, JudgmentKind, JudgmentPresentation,
-    JudgmentRequiredFor, JudgmentResolutionOutcome, MethodName, NextActionKind,
+    JudgmentRequiredFor, JudgmentResolutionOutcome, MethodName, NextActionKind, NonGuarantee,
     PlannedBlockerSourceKind, ProjectContinuityKind, ProjectContinuityStatus,
     ProjectEnforcementProfileSource, ProjectEnforcementProfileStatus, PromptCaptureStatus,
     RedactionState, ResponseKind, RunKind, SessionWatchCoverageBasis, SessionWatchStatus,
@@ -204,6 +204,7 @@ pub struct ToolResultBase {
     pub effect_kind: EffectKind,
     pub dry_run: bool,
     pub state_version: Option<u64>,
+    pub disclosure: GuaranteeDisclosure,
     pub events: Vec<EventRef>,
 }
 
@@ -244,6 +245,81 @@ pub struct ToolError {
 pub struct EventRef {
     pub event_id: EventId,
     pub event_kind: String,
+}
+
+/// Shared public disclosure for what a result means and does not prove.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GuaranteeDisclosure {
+    pub guarantee_class: GuaranteeClass,
+    pub guarantees: Vec<String>,
+    pub non_guarantees: Vec<NonGuarantee>,
+}
+
+impl GuaranteeDisclosure {
+    /// Disclosure for public Core method responses and persisted authority-state views.
+    pub fn authority_record() -> Self {
+        Self {
+            guarantee_class: GuaranteeClass::AuthorityRecord,
+            guarantees: vec![
+                "Reports Core authority state, response branch metadata, and method-owned result fields for the selected project.".to_owned(),
+                "Reports close-readiness and write-compatibility results only within the documented method contract.".to_owned(),
+            ],
+            non_guarantees: broad_non_guarantees(),
+        }
+    }
+
+    /// Disclosure for cooperative host-hook decisions returned to an external host.
+    pub fn cooperative_host_decision() -> Self {
+        Self {
+            guarantee_class: GuaranteeClass::CooperativeHostDecision,
+            guarantees: vec![
+                "Reports the decision Volicord returned to a cooperative host hook for one observed event.".to_owned(),
+                "May record the host event and Volicord decision when the guard command reaches the storage path.".to_owned(),
+            ],
+            non_guarantees: broad_non_guarantees(),
+        }
+    }
+
+    /// Disclosure for local diagnostic, verification, observation, or transport-status results.
+    pub fn detective_observation() -> Self {
+        Self {
+            guarantee_class: GuaranteeClass::DetectiveObservation,
+            guarantees: vec![
+                "Reports local diagnostic observations from accessible Runtime Home, host configuration, transport, or hook state.".to_owned(),
+                "Records what Volicord could inspect at the time of the check.".to_owned(),
+            ],
+            non_guarantees: broad_non_guarantees(),
+        }
+    }
+
+    /// Disclosure for user-owned judgment records.
+    pub fn user_judgment_record() -> Self {
+        Self {
+            guarantee_class: GuaranteeClass::UserJudgmentRecord,
+            guarantees: vec![
+                "Records a user-owned judgment received through a supported User Channel path."
+                    .to_owned(),
+                "Preserves the judgment payload and compatibility basis used by the owning method."
+                    .to_owned(),
+            ],
+            non_guarantees: broad_non_guarantees(),
+        }
+    }
+}
+
+fn broad_non_guarantees() -> Vec<NonGuarantee> {
+    vec![
+        NonGuarantee::NotOsSandbox,
+        NonGuarantee::NotNetworkIsolation,
+        NonGuarantee::NotMalwareDefense,
+        NonGuarantee::NotTamperProofAuditLog,
+        NonGuarantee::NotCorrectnessProof,
+        NonGuarantee::NotTestSufficiencyProof,
+        NonGuarantee::NotHumanReviewReplacement,
+        NonGuarantee::NotFullWritePrevention,
+        NonGuarantee::NotActorAttributionProof,
+    ]
 }
 
 /// Common dry-run summary shape.

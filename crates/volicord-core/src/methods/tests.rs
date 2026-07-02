@@ -735,6 +735,8 @@ fn status_close_include_matches_close_task_check_blockers() -> Result<(), Box<dy
     )?;
 
     assert_eq!(status.response_value["close_state"], "blocked");
+    assert_authority_disclosure(&status.response_value);
+    assert_authority_disclosure(&check.response_value);
     assert!(status.response_value["current_close_basis"].is_object());
     assert_eq!(
         status.response_value["current_close_basis"],
@@ -2400,6 +2402,7 @@ fn prepare_write_allowed_creates_one_write_check_with_post_commit_basis(
     let after = harness.counts()?;
 
     assert_eq!(response.response_value["decision"], "allowed");
+    assert_authority_disclosure(&response.response_value);
     assert_eq!(response.response_value["write_check_effect"], "created");
     assert_eq!(response.response_value["base"]["state_version"], 5);
     assert_eq!(
@@ -12270,6 +12273,7 @@ fn close_task_complete_success() -> Result<(), Box<dyn Error>> {
     let fields = task_terminal_fields(&harness, &task_id)?;
 
     assert_eq!(response.response_value["close_state"], "closed");
+    assert_authority_disclosure(&response.response_value);
     assert_eq!(response.response_value["blockers"], json!([]));
     assert_eq!(
         response.response_value["base"]["effect_kind"],
@@ -13509,6 +13513,7 @@ fn reconcile_changes_resolves_not_product_change_and_updates_close_blocker(
     )?;
 
     assert_eq!(response.response_value["base"]["response_kind"], "result");
+    assert_authority_disclosure(&response.response_value);
     assert_eq!(
         response.response_value["resolved_changes"][0]["resolution_basis"],
         "not_product_change"
@@ -15361,6 +15366,34 @@ fn assert_public_response_has_no_internal_leak(
         assert!(
             !body.contains(fragment),
             "public response leaked internal fragment {fragment}: {body}"
+        );
+    }
+}
+
+fn assert_authority_disclosure(value: &Value) {
+    let disclosure = &value["base"]["disclosure"];
+    assert_eq!(disclosure["guarantee_class"], "authority_record");
+    let values = disclosure["non_guarantees"]
+        .as_array()
+        .expect("authority disclosure should include non_guarantees")
+        .iter()
+        .map(|value| {
+            value
+                .as_str()
+                .expect("non_guarantees should contain strings")
+        })
+        .collect::<BTreeSet<_>>();
+    for expected in [
+        "NotCorrectnessProof",
+        "NotTestSufficiencyProof",
+        "NotHumanReviewReplacement",
+        "NotFullWritePrevention",
+        "NotActorAttributionProof",
+        "NotOsSandbox",
+    ] {
+        assert!(
+            values.contains(expected),
+            "missing non-guarantee {expected}: {disclosure}"
         );
     }
 }

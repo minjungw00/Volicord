@@ -20,6 +20,7 @@ use volicord_types::{
     VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
 };
 
+use crate::disclosure::AUTHORITY_DISCLOSURE_TEXT;
 use crate::project_context::{
     registered_project_for_repo, resolve_repository_root, ProjectCommandError,
 };
@@ -827,6 +828,8 @@ fn render_status_response(
     }
     let mut output = String::new();
     output.push_str("User Channel status\n");
+    output.push_str(AUTHORITY_DISCLOSURE_TEXT);
+    output.push('\n');
     if let Some(summary) = response.response_value["status_summary"].as_str() {
         output.push_str(&format!("summary: {summary}\n"));
     }

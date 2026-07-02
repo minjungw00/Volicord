@@ -198,6 +198,12 @@ sandboxing, 쓰기 방지, 제품 정확성,
 consent 같은 런타임 전용 기능은 보고 프로세스가 실제로 그 런타임 상태를 소유하지 않는 한
 사용할 수 없음으로 보고합니다. 프로젝트를 만들거나, 호스트 설정을 설치하거나, 연결 모드를 바꾸거나,
 사용자 판단에 답하지 않습니다.
+doctor의 text와 JSON 출력은 진단 공개를 포함합니다. JSON 출력은
+`disclosure.guarantee_class=detective_observation`을 사용하고,
+`NotOsSandbox`, `NotNetworkIsolation`, `NotFullWritePrevention`,
+`NotActorAttributionProof`, `NotCorrectnessProof`,
+`NotTestSufficiencyProof`, `NotHumanReviewReplacement` 같은
+`non_guarantees` 값을 담습니다.
 
 <a id="project-commands"></a>
 ## 프로젝트 명령
@@ -412,6 +418,10 @@ basis, watcher 부분 coverage 경고를 별도 필드로 보고해야 합니다
 설정되었다는 사실을 일치하는 관찰 전의 활성 관찰된 guard hook이나 활성 host-hook 관찰로
 보고하면 안 됩니다. 불완전한 session-watch coverage를 전체 미기록 변경 탐지로 보고하면
 안 됩니다.
+Agent Connection의 text와 JSON 출력은 진단 출력입니다. JSON 출력은
+`disclosure.guarantee_class=detective_observation`을 사용하고, OS 샌드박싱,
+네트워크 격리, 악성 코드 방어, 전체 쓰기 방지, 행위자 귀속 증명, 정확성 증명,
+테스트 충분성 증명, 인간 검토 대체에 대한 안정적인 `non_guarantees` 값을 담습니다.
 
 성공한 `volicord mcp --check` 시작 점검만으로는 Agent Connection을 `complete`로 설명하면
 안 됩니다. 이는 MCP 프로세스의 시작 검증일 뿐입니다.
@@ -459,6 +469,11 @@ Core 메서드, 사용자 소유 판단, `Write Check`, 닫기 준비 상태 점
 context만 포함하거나, 호스트가 출력을 기대하지 않는 경우 비어 있습니다. stdout에는
 Volicord wrapper JSON을 쓰지 않습니다. 저장되는 guard event에는 Volicord가 사용하는
 내부 decision과 result 세부 정보가 계속 남습니다.
+Volicord wrapper JSON은 `disclosure.guarantee_class=cooperative_host_decision`을
+포함합니다. Host-native 출력은 context나 deny reason에 짧은 협력형 결정 공개를
+포함해야 합니다. Guard 결정은 OS 수준 집행, 네트워크 격리, 악성 코드 방어,
+행위자 귀속 증명, 전체 쓰기 방지, 정확성 증명, 테스트 충분성 증명, 인간 검토 대체가
+아닙니다.
 
 프로젝트 선택은 `--repo PATH`, event에 있는 프로젝트나 저장소 필드, 또는 현재 작업
 디렉터리를 사용합니다. Hook event에 `connection_id`가 없으면 `--connection ID`로

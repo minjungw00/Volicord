@@ -121,6 +121,7 @@ ToolResultBase:
   effect_kind: string
   dry_run: boolean
   state_version: integer | null
+  disclosure: GuaranteeDisclosure
   events: EventRef[]
 
 ToolRejectedResponse:
@@ -134,12 +135,16 @@ ToolDryRunResponse:
 
 Meaning:
 - Method-specific result fields belong only to the method result branch.
+- `ToolResultBase.disclosure` is the public machine-readable guarantee and non-guarantee disclosure for interpreting the response branch.
 
 Does not imply:
 - `ToolRejectedResponse` and `ToolDryRunResponse` do not carry result-only fields such as `task_ref`, `run_summary`, `staged_artifact_handle`, `write_check_ref`, `user_judgment_ref`, `decision`, or `close_state`.
+- `ToolResultBase.disclosure` does not create OS sandboxing, network isolation, malware defense, tamper-proof audit logging, full write prevention, actor attribution proof, correctness proof, test sufficiency proof, or a replacement for human review.
 
 Owner links:
 - supported `response_kind` and `effect_kind` values: [response and effect values](schema-value-sets.md#response-and-effect-values)
+- disclosure shape: [API State Schemas](schema-state.md#close-readiness-and-validation-shapes)
+- disclosure value sets: [API Value Sets](schema-value-sets.md#state-and-blocker-values)
 - shared branch reading: [common response branches](#common-response)
 - method-specific state effects: method owner documents
 - public error precedence: [API error precedence](error-precedence.md)

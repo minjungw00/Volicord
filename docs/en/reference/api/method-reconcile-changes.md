@@ -112,7 +112,7 @@ Returns `ReconcileChangesResult` with:
 
 | Field | Result-field meaning |
 |---|---|
-| `base` | Common result metadata. The `ToolResultBase` shape is owned by [API Schema Core](schema-core.md#common-response). |
+| `base` | Common result metadata. The `ToolResultBase` shape, including `disclosure`, is owned by [API Schema Core](schema-core.md#common-response). `ReconcileChangesResult` uses `base.disclosure.guarantee_class=authority_record`. |
 | `task_ref` | `StateRecordRef` for the reconciled Task. |
 | `unresolved_changes` | Remaining unresolved findings after applying deterministic and accepted-user resolutions selected by this call. |
 | `resolved_changes` | Findings that this call resolved, including basis, actor source, capture basis, timestamp, and optional linked user judgment. |
@@ -122,6 +122,8 @@ Returns `ReconcileChangesResult` with:
 | `close_blockers` | Projected close blockers after planned reconciliation effects. |
 | `guard_health` | Projected guard-health summary when guard health is available for the verified connection. |
 | `next_actions` | Next safe steps, such as recording the created user-owned judgment or rerunning reconciliation. |
+
+The result disclosure is not correctness proof, test sufficiency proof, human review replacement, OS sandboxing, network isolation, malware defense, full write prevention, or actor attribution proof.
 
 ## Resolution behavior
 

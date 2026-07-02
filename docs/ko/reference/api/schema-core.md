@@ -121,6 +121,7 @@ ToolResultBase:
   effect_kind: string
   dry_run: boolean
   state_version: integer | null
+  disclosure: GuaranteeDisclosure
   events: EventRef[]
 
 ToolRejectedResponse:
@@ -134,12 +135,16 @@ ToolDryRunResponse:
 
 의미:
 - 메서드별 결과 필드는 그 메서드 결과 분기에만 둡니다.
+- `ToolResultBase.disclosure`는 응답 분기를 해석하기 위한 공개 기계 판독 가능 보장/비보장 공개입니다.
 
 의미하지 않는 것:
 - `ToolRejectedResponse`와 `ToolDryRunResponse`는 `task_ref`, `run_summary`, `staged_artifact_handle`, `write_check_ref`, `user_judgment_ref`, `decision`, `close_state` 같은 결과 전용 필드를 담지 않습니다.
+- `ToolResultBase.disclosure`는 OS 샌드박싱, 네트워크 격리, 악성 코드 방어, 변조 불가능 감사 로그, 전체 쓰기 방지, 행위자 귀속 증명, 정확성 증명, 테스트 충분성 증명, 인간 검토 대체를 만들지 않습니다.
 
 담당 문서 링크:
 - 지원되는 `response_kind`와 `effect_kind` 값: [응답과 효과 값](schema-value-sets.md#response-and-effect-values)
+- 공개 형태: [API 상태 스키마](schema-state.md#close-readiness-and-validation-shapes)
+- 공개 값 집합: [API 값 집합](schema-value-sets.md#state-and-blocker-values)
 - 공통 분기 읽기 규칙: [공통 응답 분기](#common-response)
 - 메서드별 상태 효과: 메서드 담당 문서
 - 공개 오류 우선순위: [API 오류 우선순위](error-precedence.md)

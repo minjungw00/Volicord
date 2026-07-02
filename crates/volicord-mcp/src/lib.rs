@@ -58,12 +58,12 @@ use volicord_store::{
 };
 use volicord_types::{
     chat_judgment_verification_code, mcp_request_schema, ActorSource, AgentConnectionId,
-    AgentConnectionMode, CloseIntent, CloseTaskRequest, IdempotencyKey, IntakeRequest,
-    IntegrationProfile, JsonObject, JudgmentKind, JudgmentRationale, JudgmentResolutionOutcome,
-    McpCheckCloseArguments, McpCloseTaskArguments, McpIntakeArguments, McpPrepareWriteArguments,
-    McpReconcileChangesArguments, McpRecordRunArguments, McpRequestUserJudgmentArguments,
-    McpStageArtifactArguments, McpStatusArguments, McpUpdateScopeArguments,
-    MethodOperationCategory, OperationCategory, PersistedJudgmentBasis,
+    AgentConnectionMode, CloseIntent, CloseTaskRequest, GuaranteeDisclosure, IdempotencyKey,
+    IntakeRequest, IntegrationProfile, JsonObject, JudgmentKind, JudgmentRationale,
+    JudgmentResolutionOutcome, McpCheckCloseArguments, McpCloseTaskArguments, McpIntakeArguments,
+    McpPrepareWriteArguments, McpReconcileChangesArguments, McpRecordRunArguments,
+    McpRequestUserJudgmentArguments, McpStageArtifactArguments, McpStatusArguments,
+    McpUpdateScopeArguments, MethodOperationCategory, OperationCategory, PersistedJudgmentBasis,
     PersistedUserJudgmentOptions, PrepareWriteRequest, ProjectId, ReconcileChangesRequest,
     RecordRunRequest, RecordUserJudgmentPayload, RecordUserJudgmentRequest, RequestId,
     RequestUserJudgmentRequest, RequiredNullable, SessionWatchCoverageBasis, SessionWatchStatus,
@@ -109,6 +109,7 @@ pub const ADAPTER_UTILITY_TOOL_NAMES: [&str; 1] = ["volicord.list_projects"];
 const LIST_PROJECTS_TOOL_NAME: &str = "volicord.list_projects";
 const SERVER_INSTRUCTIONS: &str = "Volicord records task scope, write readiness, evidence, runs, user-owned judgment requests, artifacts, and close readiness for explicitly registered Product Repositories. If project selection is unclear, call volicord.list_projects and use one listed project_selector; do not guess from folders, roots, labels, or memory. Volicord state management is separate from permission to edit product files: product-file edits still require the host/user path and any required Write Check. These instructions are guidance, not access control or a promise of automatic tool use.";
 const WATCH_METADATA_SOURCE: &str = "volicord_session_watch";
+const TRANSPORT_DISCLOSURE_TEXT: &str = "disclosure: transport diagnostics only; not OS sandboxing, network isolation, malware defense, full write prevention, actor identity proof, correctness proof, test sufficiency proof, or human review replacement";
 const FIRST_PROJECT_SELECTION_PARTIAL_COVERAGE_WARNING: &str =
     "Session-watch coverage starts at first explicit project selection; Product Repository changes before project selection are outside watcher coverage.";
 const METHOD_BOUNDARY_PARTIAL_COVERAGE_WARNING: &str =
@@ -275,7 +276,8 @@ impl McpConnectionStartupInspection {
                 )
             };
         let mut report = format!(
-            "configuration: valid\ntransport: stdio\nruntime_home: {}\nconnection_id: {}\nmode: {}\nenabled: {}\nallowed_projects: {}\navailable_projects: {}\nverification_scope: startup_check_only\nwatcher_status: {}\nwatcher_baseline_created_at: \nwatcher_coverage_start_at: \nwatcher_coverage_basis: {}\nwatcher_partial_coverage_warning: {}\n",
+            "configuration: valid\ntransport: stdio\n{}\nruntime_home: {}\nconnection_id: {}\nmode: {}\nenabled: {}\nallowed_projects: {}\navailable_projects: {}\nverification_scope: startup_check_only\nwatcher_status: {}\nwatcher_baseline_created_at: \nwatcher_coverage_start_at: \nwatcher_coverage_basis: {}\nwatcher_partial_coverage_warning: {}\n",
+            TRANSPORT_DISCLOSURE_TEXT,
             self.runtime_home.display(),
             self.connection_internal_id.as_str(),
             self.mode.as_str(),
@@ -1635,7 +1637,7 @@ pub enum StreamableHttpTokenSource {
     Generated,
 }
 
-/// Configuration for the secure local Streamable HTTP-style MCP endpoint.
+/// Configuration for the token-authenticated local Streamable HTTP-style MCP endpoint.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StreamableHttpServerConfig {
     pub runtime_home: PathBuf,
@@ -1661,7 +1663,7 @@ pub fn streamable_http_listen_is_local(addr: &SocketAddr) -> bool {
     addr.ip().is_loopback()
 }
 
-/// Runs the secure local Streamable HTTP-style MCP endpoint until the process exits.
+/// Runs the token-authenticated local Streamable HTTP-style MCP endpoint until the process exits.
 pub fn run_streamable_http_server(
     config: StreamableHttpServerConfig,
 ) -> Result<(), StreamableHttpError> {
@@ -1694,6 +1696,7 @@ pub fn run_streamable_http_server(
         "transport: streamable-http-experimental; full MCP Streamable HTTP compatibility is not claimed"
     );
     eprintln!("authentication: bearer token required");
+    eprintln!("{TRANSPORT_DISCLOSURE_TEXT}");
     if config.token_source == StreamableHttpTokenSource::Generated {
         eprintln!("generated_bearer_token: {}", config.bearer_token);
     }
@@ -1728,7 +1731,7 @@ fn validate_streamable_http_server_config(
         return Err(StreamableHttpError::Config {
             code: "NONLOCAL_LISTEN_REQUIRES_UNSAFE_FLAG",
             message: format!(
-                "listen address {} is not loopback; pass --allow-nonlocal-listen only when the endpoint is protected by local network controls",
+                "listen address {} is not loopback; pass --allow-nonlocal-listen only when explicit local network controls cover the endpoint",
                 config.listen_addr
             ),
         });
@@ -1930,7 +1933,10 @@ impl StreamableHttpServer {
             ("GET", "/healthz") => HttpResponse::json(
                 200,
                 "OK",
-                json!({ "status": "ok" }),
+                json!({
+                    "status": "ok",
+                    "disclosure": detective_observation_disclosure_json()
+                }),
                 self.cors_headers(origin.as_deref()),
             ),
             ("POST", STREAMABLE_HTTP_ENDPOINT_PATH) => {
@@ -1940,7 +1946,7 @@ impl StreamableHttpServer {
                 405,
                 "Method Not Allowed",
                 "SSE_UNSUPPORTED",
-                "server-sent event streams are not implemented by this secure experimental endpoint",
+                "server-sent event streams are not implemented by this local experimental endpoint",
                 self.cors_headers(origin.as_deref()),
             )
             .with_header("Allow", "POST, GET, DELETE, OPTIONS"),
@@ -2999,6 +3005,7 @@ fn structured_http_error_with_headers(
         status,
         reason,
         json!({
+            "disclosure": detective_observation_disclosure_json(),
             "error": {
                 "code": code,
                 "message": message
@@ -3006,6 +3013,11 @@ fn structured_http_error_with_headers(
         }),
         headers,
     )
+}
+
+fn detective_observation_disclosure_json() -> Value {
+    serde_json::to_value(GuaranteeDisclosure::detective_observation())
+        .expect("guarantee disclosure should serialize")
 }
 
 fn with_content_type(
@@ -4839,7 +4851,7 @@ fn tool_description(name: &str) -> &'static str {
         "volicord.update_scope" => "Update current Task scope and Change Unit state.",
         "volicord.status" => "Read the current Core status view.",
         "volicord.prepare_write" => "Check one proposed product-file write against Core state.",
-        "volicord.stage_artifact" => "Stage safe artifact bytes or a safe notice.",
+        "volicord.stage_artifact" => "Stage artifact bytes or an artifact notice.",
         "volicord.record_run" => "Record shaping, direct, or implementation work.",
         "volicord.request_user_judgment" => "Create one pending focused user-owned judgment.",
         "volicord.reconcile_changes" => {
@@ -5857,7 +5869,20 @@ mod tests {
 
         assert_eq!(response.status, 401);
         assert_eq!(http_json(&response)["error"]["code"], "AUTH_REQUIRED");
+        assert_diagnostic_disclosure(&http_json(&response));
         assert_eq!(http_header(&response, "WWW-Authenticate"), Some("Bearer"));
+
+        let health = server.handle_request(http_request(
+            "GET",
+            "/healthz",
+            Some("test_token"),
+            None,
+            None,
+            Value::Null,
+        )?);
+        assert_eq!(health.status, 200);
+        assert_eq!(http_json(&health)["status"], "ok");
+        assert_diagnostic_disclosure(&http_json(&health));
         Ok(())
     }
 
@@ -6283,6 +6308,26 @@ mod tests {
 
     fn http_json(response: &HttpResponse) -> Value {
         serde_json::from_slice(&response.body).expect("HTTP body should be JSON")
+    }
+
+    fn assert_diagnostic_disclosure(value: &Value) {
+        let disclosure = value
+            .get("disclosure")
+            .expect("HTTP status or error should include disclosure");
+        assert_eq!(disclosure["guarantee_class"], "detective_observation");
+        let values = disclosure["non_guarantees"]
+            .as_array()
+            .expect("disclosure should include non_guarantees");
+        for expected in [
+            "NotOsSandbox",
+            "NotActorAttributionProof",
+            "NotNetworkIsolation",
+        ] {
+            assert!(
+                values.iter().any(|value| value.as_str() == Some(expected)),
+                "missing non-guarantee {expected}: {disclosure}"
+            );
+        }
     }
 
     fn http_body_text(response: &HttpResponse) -> Result<String, Box<dyn Error>> {

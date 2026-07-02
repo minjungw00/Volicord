@@ -222,6 +222,11 @@ observation and local web consent are reported as unavailable unless the
 reporting process actually owns that runtime state. Doctor does not create
 projects, install host configuration, change
 connection mode, or answer user judgments.
+Text and JSON doctor output include a diagnostic disclosure. JSON output uses
+`disclosure.guarantee_class=detective_observation` and `non_guarantees` values
+such as `NotOsSandbox`, `NotNetworkIsolation`, `NotFullWritePrevention`,
+`NotActorAttributionProof`, `NotCorrectnessProof`, `NotTestSufficiencyProof`,
+and `NotHumanReviewReplacement`.
 
 <a id="project-commands"></a>
 ## Project commands
@@ -458,6 +463,11 @@ partial-coverage warning as separate fields. Files installed or configured must
 not be reported as an active observed guard hook or as active host-hook
 observation before a matching observation exists. Incomplete session-watch
 coverage must not be reported as full unrecorded-change detection.
+Text and JSON Agent Connection outputs are diagnostic outputs. JSON output uses
+`disclosure.guarantee_class=detective_observation` with stable
+`non_guarantees` for OS sandboxing, network isolation, malware defense, full
+write prevention, actor attribution proof, correctness proof, test sufficiency
+proof, and human review replacement.
 
 A successful `volicord mcp --check` startup check alone must not be described as a
 `complete` Agent Connection. It is startup validation for the MCP process only.
@@ -507,6 +517,11 @@ installed host hooks. In this mode stdout contains only host-recognized response
 JSON or context, or is empty when the host expects no output; stdout does not
 contain the Volicord wrapper JSON. Stored guard events keep the internal
 decision and result details used by Volicord.
+Volicord wrapper JSON includes `disclosure.guarantee_class=cooperative_host_decision`.
+Host-native output must include a concise cooperative-decision disclosure in the
+context or denial reason. Guard decisions are not OS-level enforcement, network
+isolation, malware defense, actor attribution proof, full write prevention,
+correctness proof, test sufficiency proof, or human review replacement.
 
 Project selection uses `--repo PATH`, an event project or repository field when
 present, or the current working directory. `--connection ID` supplies the

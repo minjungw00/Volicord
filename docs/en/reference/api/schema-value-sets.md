@@ -625,6 +625,37 @@ detective
 
 `cooperative` is the baseline fallback. `detective` may be displayed only when the security owner supports the claim and project enforcement facts, verified Agent Connection or User Channel provenance, enabled enforcement mechanism, and observed-scope facts support it. Declared connection capability alone cannot raise the displayed guarantee.
 
+`GuaranteeDisclosure.guarantee_class` uses:
+
+```text
+authority_record
+cooperative_host_decision
+detective_observation
+user_judgment_record
+```
+
+Value meanings:
+- `authority_record` means the result reports Core authority state, response branch metadata, and method-owned result fields within the documented method contract.
+- `cooperative_host_decision` means the result reports a decision returned to a cooperative host hook for an observed host event.
+- `detective_observation` means the result reports local diagnostic, verification, observation, or transport-status facts that Volicord could inspect.
+- `user_judgment_record` means the result records a user-owned judgment received through a supported `User Channel` path.
+
+`GuaranteeDisclosure.non_guarantees` uses:
+
+```text
+NotOsSandbox
+NotNetworkIsolation
+NotMalwareDefense
+NotTamperProofAuditLog
+NotCorrectnessProof
+NotTestSufficiencyProof
+NotHumanReviewReplacement
+NotFullWritePrevention
+NotActorAttributionProof
+```
+
+These values are stable non-claims. They state that a result must not be interpreted as OS sandboxing, network isolation, malware defense, tamper-proof audit logging, product correctness proof, test sufficiency proof, human-review replacement, full write prevention, or actor attribution proof.
+
 <a id="artifact-values"></a>
 ## Artifact values
 

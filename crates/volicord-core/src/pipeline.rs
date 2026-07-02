@@ -17,10 +17,10 @@ use volicord_store::{
 };
 use volicord_types::{
     canonical_request_hash, ActorSource, ChangeUnitId, DryRunSummary, DurableIdError,
-    DurableIdGenerator, DurableIdKind, EffectKind, ErrorCode, EventId, EventRef, IdempotencyKey,
-    JsonObject, MethodName, OperationCategory, ProjectId, RandomDurableIdGenerator, RequestHash,
-    ResponseKind, TaskId, ToolDryRunResponse, ToolEnvelope, ToolError, ToolRejectedResponse,
-    ToolResultBase, DURABLE_ID_RETRY_LIMIT,
+    DurableIdGenerator, DurableIdKind, EffectKind, ErrorCode, EventId, EventRef,
+    GuaranteeDisclosure, IdempotencyKey, JsonObject, MethodName, OperationCategory, ProjectId,
+    RandomDurableIdGenerator, RequestHash, ResponseKind, TaskId, ToolDryRunResponse, ToolEnvelope,
+    ToolError, ToolRejectedResponse, ToolResultBase, DURABLE_ID_RETRY_LIMIT,
 };
 
 use crate::policy::{
@@ -754,6 +754,7 @@ pub fn method_result_base(
         effect_kind,
         dry_run,
         state_version,
+        disclosure: GuaranteeDisclosure::authority_record(),
         events,
     }
 }
@@ -785,6 +786,7 @@ pub fn rejected_response(
             effect_kind: EffectKind::NoEffect,
             dry_run,
             state_version,
+            disclosure: GuaranteeDisclosure::authority_record(),
             events: Vec::new(),
         },
         errors,
@@ -802,6 +804,7 @@ pub fn dry_run_response(
             effect_kind: EffectKind::NoEffect,
             dry_run: true,
             state_version,
+            disclosure: GuaranteeDisclosure::authority_record(),
             events: Vec::new(),
         },
         dry_run_summary,

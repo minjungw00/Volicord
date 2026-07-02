@@ -124,6 +124,14 @@ const RETIRED_PREFIXES: &[&str] = &[
     "docs/en/build/",
     "docs/ko/build/",
 ];
+const PUBLIC_LANGUAGE_SOURCE_PATHS: &[&str] = &[
+    "crates/volicord-cli/src/connection_command.rs",
+    "crates/volicord-cli/src/doctor_command.rs",
+    "crates/volicord-cli/src/guard_command.rs",
+    "crates/volicord-cli/src/user_command.rs",
+    "crates/volicord-mcp/src/lib.rs",
+];
+const PUBLIC_UNQUALIFIED_SECURITY_WORDS: &[&str] = &["safe", "secure", "protected"];
 const TERMINOLOGY_ALLOWED_ROLES: &[&str] = &[
     "public_user_term",
     "storage_internal_identifier",
@@ -351,6 +359,7 @@ pub fn run_docs_check(root: &Path) -> Result<CheckReport> {
         validate_retired_paths(&root, index, &mut errors);
         validate_volicord_command_examples(&root, index, &mut errors);
     }
+    validate_public_language_claims(&root, &mut errors);
 
     errors.sort();
     errors.dedup();
@@ -2699,6 +2708,71 @@ fn validate_user_judgment_command(args: &[String]) -> std::result::Result<(), St
             "unknown `volicord user judgment` subcommand `{other}`; use show or answer"
         )),
     }
+}
+
+fn validate_public_language_claims(root: &Path, errors: &mut Vec<ValidationError>) {
+    if !PUBLIC_LANGUAGE_SOURCE_PATHS
+        .iter()
+        .any(|relative| root.join(relative).exists())
+    {
+        return;
+    }
+    for relative in PUBLIC_LANGUAGE_SOURCE_PATHS {
+        let path = root.join(relative);
+        let contents = match fs::read_to_string(&path) {
+            Ok(contents) => contents,
+            Err(error) => {
+                errors.push(ValidationError::new(
+                    *relative,
+                    "public_language.read",
+                    format!("failed to read public output source: {error}"),
+                ));
+                continue;
+            }
+        };
+        for (index, line) in contents.lines().enumerate() {
+            for word in PUBLIC_UNQUALIFIED_SECURITY_WORDS {
+                if contains_ascii_word_ignore_case(line, word) {
+                    errors.push(ValidationError::new(
+                        *relative,
+                        "public_language.security_claim",
+                        format!(
+                            "line {} uses unqualified `{word}` in public output source; use explicit guarantee disclosure wording",
+                            index + 1
+                        ),
+                    ));
+                }
+            }
+        }
+    }
+}
+
+fn contains_ascii_word_ignore_case(line: &str, word: &str) -> bool {
+    let lower = line.to_ascii_lowercase();
+    let word = word.to_ascii_lowercase();
+    let bytes = lower.as_bytes();
+    let needle = word.as_bytes();
+    if needle.is_empty() || bytes.len() < needle.len() {
+        return false;
+    }
+    for start in 0..=bytes.len() - needle.len() {
+        if &bytes[start..start + needle.len()] != needle {
+            continue;
+        }
+        let before = start
+            .checked_sub(1)
+            .and_then(|index| bytes.get(index))
+            .copied();
+        let after = bytes.get(start + needle.len()).copied();
+        if !is_ascii_word_byte(before) && !is_ascii_word_byte(after) {
+            return true;
+        }
+    }
+    false
+}
+
+fn is_ascii_word_byte(byte: Option<u8>) -> bool {
+    matches!(byte, Some(b'a'..=b'z' | b'0'..=b'9' | b'_'))
 }
 
 fn is_help_only(args: &[String]) -> bool {

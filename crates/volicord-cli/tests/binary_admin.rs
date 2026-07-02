@@ -289,6 +289,7 @@ fn setup_and_doctor_report_installation_profile() -> Result<(), Box<dyn Error>> 
     assert_success(&doctor);
     let doctor_json = json_stdout(&doctor)?;
     assert_eq!(doctor_json["status"], "complete");
+    assert_diagnostic_disclosure(&doctor_json);
     assert_eq!(
         doctor_json["status_meaning"],
         "installation profile is usable; warnings name recommended follow-up actions"
@@ -346,6 +347,7 @@ fn setup_and_doctor_report_installation_profile() -> Result<(), Box<dyn Error>> 
     assert_success(&doctor_text);
     let text = stdout(&doctor_text);
     assert!(text.contains("Volicord doctor complete"));
+    assert!(text.contains("not OS sandboxing"));
     assert!(text.contains(
         "status_meaning: installation profile is usable; warnings name recommended follow-up actions"
     ));
@@ -2490,6 +2492,7 @@ fn connection_status_mode_and_remove_use_natural_selectors() -> Result<(), Box<d
         .expect("connection_id should be present")
         .to_owned();
     assert_eq!(connect_json["status"], "complete");
+    assert_diagnostic_disclosure(&connect_json);
 
     let connect_second = run_with_home_env(
         runtime_home.path(),
@@ -2541,10 +2544,9 @@ fn connection_status_mode_and_remove_use_natural_selectors() -> Result<(), Box<d
         &[("CODEX_HOME", path_text(&codex_home))],
     )?;
     assert_success(&status);
-    assert_eq!(
-        json_stdout(&status)?["connection"]["connection_id"],
-        connection_id
-    );
+    let status_json = json_stdout(&status)?;
+    assert_eq!(status_json["connection"]["connection_id"], connection_id);
+    assert_diagnostic_disclosure(&status_json);
 
     let verify = run_with_home_env(
         runtime_home.path(),
@@ -2565,6 +2567,7 @@ fn connection_status_mode_and_remove_use_natural_selectors() -> Result<(), Box<d
     assert_success(&verify);
     let verify_json = json_stdout(&verify)?;
     assert_eq!(verify_json["status"], "complete");
+    assert_diagnostic_disclosure(&verify_json);
     assert!(verify_json["verification"]["tools"]
         .as_array()
         .expect("verified tools should be an array")
@@ -3112,6 +3115,35 @@ fn stderr(output: &Output) -> String {
 
 fn json_stdout(output: &Output) -> Result<Value, Box<dyn Error>> {
     Ok(serde_json::from_str(&stdout(output))?)
+}
+
+fn assert_diagnostic_disclosure(value: &Value) {
+    let disclosure = value
+        .get("disclosure")
+        .expect("diagnostic output should include disclosure");
+    assert_eq!(disclosure["guarantee_class"], "detective_observation");
+    assert_non_guarantees(
+        disclosure,
+        &[
+            "NotOsSandbox",
+            "NotActorAttributionProof",
+            "NotCorrectnessProof",
+        ],
+    );
+}
+
+fn assert_non_guarantees(disclosure: &Value, expected: &[&str]) {
+    let values = disclosure["non_guarantees"]
+        .as_array()
+        .expect("disclosure should include non_guarantees");
+    for expected_value in expected {
+        assert!(
+            values
+                .iter()
+                .any(|value| value.as_str() == Some(expected_value)),
+            "missing non-guarantee {expected_value}: {disclosure}"
+        );
+    }
 }
 
 fn path_text(path: &Path) -> String {

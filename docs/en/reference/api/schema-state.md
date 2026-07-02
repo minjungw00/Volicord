@@ -1,6 +1,6 @@
 # API state schemas
 
-This document owns API state-shaped schemas for the baseline scope. It defines public response shapes for `StateSummary`, `StateRecordRef`, lifecycle state as API data, state-related snapshots, `ProjectContinuityRecord`, `ProjectContinuitySummary`, `ShapingReadiness`, `ChangeUnitEffectContract`, and display shapes such as `NextActionSummary`, `WriteCheckStateSummary`, `WriteCheckSummary`, `WriteCheckAttemptScope`, `EvidenceSummary`, `EvidenceObservation`, `GuardHealthSummary`, `UnrecordedChangeFinding`, `UnrecordedChangeResolutionSummary`, `CurrentCloseBasis`, `ResidualRisk`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`, `ValidatorResult`, and `GuaranteeDisplay`.
+This document owns API state-shaped schemas for the baseline scope. It defines public response shapes for `StateSummary`, `StateRecordRef`, lifecycle state as API data, state-related snapshots, `ProjectContinuityRecord`, `ProjectContinuitySummary`, `ShapingReadiness`, `ChangeUnitEffectContract`, and display shapes such as `NextActionSummary`, `WriteCheckStateSummary`, `WriteCheckSummary`, `WriteCheckAttemptScope`, `EvidenceSummary`, `EvidenceObservation`, `GuardHealthSummary`, `UnrecordedChangeFinding`, `UnrecordedChangeResolutionSummary`, `CurrentCloseBasis`, `ResidualRisk`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`, `ValidatorResult`, `GuaranteeDisplay`, and `GuaranteeDisclosure`.
 
 ## Owner boundary
 
@@ -641,6 +641,11 @@ GuaranteeDisplay:
   level: string
   basis: string
   capability_refs: StateRecordRef[]
+
+GuaranteeDisclosure:
+  guarantee_class: string
+  guarantees: string[]
+  non_guarantees: string[]
 ```
 
 Meaning:
@@ -661,6 +666,9 @@ Meaning:
 - `CloseReadinessBlocker.message`, `ValidatorResult.message`, and `GuaranteeDisplay.basis` are free-form display strings.
 - `ValidatorResult.validator_id` is a reporting label unless the value-set owner publishes a supported stable value.
 - `ValidatorResult.status`, `ValidatorResult.severity`, and `GuaranteeDisplay.level` are controlled value strings.
+- `GuaranteeDisclosure` is the result-interpretation disclosure returned by public result bases and diagnostic outputs when a reader might otherwise overinterpret the result.
+- `GuaranteeDisclosure.guarantee_class` and `GuaranteeDisclosure.non_guarantees` are controlled value strings. `GuaranteeDisclosure.guarantees` are concise display statements.
+- `GuaranteeDisplay` describes the current capability display for a status or compatibility view. It does not replace `GuaranteeDisclosure`.
 
 These shapes do not define close-readiness meaning, response routing, or persistence behavior.
 

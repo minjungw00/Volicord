@@ -7,6 +7,7 @@
 
 pub mod changes_command;
 pub mod connection_command;
+mod disclosure;
 pub mod doctor_command;
 pub mod export_command;
 pub mod guard_command;

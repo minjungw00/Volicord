@@ -100,7 +100,7 @@ PrepareWriteRequest:
 
 | 필드 | 결과 필드 의미 |
 |---|---|
-| `base` | 공통 결과 메타데이터입니다. `events`를 포함한 `ToolResultBase` 형태는 [API 코어 스키마](schema-core.md#common-response)가 담당합니다. 커밋된 `PrepareWriteResult` 분기는 `base.response_kind=result`와 `base.effect_kind=core_committed`를 사용합니다. `base.events[].event_kind`가 있을 때 그 값은 불투명한 예시용 분류 문자열입니다. |
+| `base` | 공통 결과 메타데이터입니다. `disclosure`와 `events`를 포함한 `ToolResultBase` 형태는 [API 코어 스키마](schema-core.md#common-response)가 담당합니다. 커밋된 `PrepareWriteResult` 분기는 `base.response_kind=result`, `base.effect_kind=core_committed`, `base.disclosure.guarantee_class=authority_record`를 사용합니다. `base.events[].event_kind`가 있을 때 그 값은 불투명한 예시용 분류 문자열입니다. |
 | `decision` | 이 쓰기 준비 시도에 대한 메서드 결정입니다. 지원되는 값은 [API 값 집합](schema-value-sets.md#method-local-values)이 담당합니다. |
 | `state` | 이 결과가 상태 스냅샷을 포함할 때의 현재 `StateSummary`입니다. `write_check_summary`를 포함한 중첩 상태 필드는 [API 상태 스키마](schema-state.md)가 담당합니다. |
 | `write_check_ref` | 허용 결정 결과에 포함되는 소비 가능한 `Write Check`의 `StateRecordRef | null`입니다. 새로 커밋된 허용 결정은 이를 만들고, 멱등 재실행은 이 필드를 바꾸지 않은 원래 커밋 응답을 반환합니다. 비허용 결정에서는 `null`입니다. |
@@ -177,6 +177,7 @@ PrepareWriteRequest:
 - 쓰기 결정 이유는 닫기 준비 상태를 평가하지 않습니다.
 - 효과 계약 결정 사유는 민감 동작 승인, 사용자 소유 판단, 증거, 최종 수락, 닫기 준비 상태, 잔여 위험 수락, 또는 이 메서드가 `decision=allowed`일 때만 만드는 별도 `Write Check`을 대신하지 않습니다.
 - 소비 가능한 `Write Check`은 만들어지지 않습니다.
+- 결과 공개는 OS 샌드박싱, 네트워크 격리, 악성 코드 방어, 전체 쓰기 방지, 정확성 증명, 테스트 충분성 증명, 인간 검토 대체, 행위자 귀속 증명이 아닙니다.
 
 ## 거절 결과
 

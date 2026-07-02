@@ -58,6 +58,10 @@ stdio와 같은 Agent Connection에 묶인 MCP 어댑터 로직을 재사용합�
 반환합니다. server-sent event 스트림, HTTP elicitation, 전체 MCP Streamable HTTP
 호환성은 구현하지 않습니다. 해당 전송 기능이 구현되고 테스트되기 전에는 문서와 시작
 진단이 전체 프로토콜 호환성을 주장하면 안 됩니다.
+시작 진단, `/healthz`, 구조화된 HTTP 오류 JSON은 `detective_observation` 공개를
+포함합니다. 이는 전송 진단이며 OS 샌드박싱, 네트워크 격리, 악성 코드 방어,
+전체 쓰기 방지, 행위자 귀속 증명, 정확성 증명, 테스트 충분성 증명, 인간 검토 대체가
+아닙니다.
 
 생성된 호스트 설정과 generic export는 내부 연결 바인딩으로 stdio 루프를 시작합니다.
 생성된 항목이 안전하게 프로젝트에 묶이면 선택된 내부 프로젝트 바인딩도 함께 담습니다.
@@ -263,6 +267,7 @@ MCP 호출 인자와 다른 MCP 요청 본문은 `connection_internal_id`, `proj
 ```text
 configuration: valid
 transport: stdio
+disclosure: transport diagnostics only; not OS sandboxing, network isolation, malware defense, full write prevention, actor identity proof, correctness proof, test sufficiency proof, or human review replacement
 runtime_home: <absolute path>
 connection_id: <connection_internal_id process-binding value>
 mode: workflow|read_only
@@ -289,6 +294,8 @@ project[0].repo_root: <path>
 - `--project <project_id>`를 사용하면 제공한 값은 연결 허용 목록 안에 있어야 하며, 그
   프로젝트의 세부 블록만 출력합니다.
 - `connection_id`는 저장된 Agent Connection을 위한 프로세스 바인딩입니다.
+- `disclosure`는 시작 진단의 비보장을 요약하며, 메서드 호출에 쓰이는 기계 판독 가능
+  Core 응답 공개를 바꾸지 않습니다.
 - `allowed_projects`는 Agent Connection 허용 목록 전체를 설명합니다.
 - 사용할 수 없는 프로젝트도 모든 프로젝트 세부 키를 출력합니다. `unavailable_reason`은
   사용할 수 없는 프로젝트에서 채워지고 사용할 수 있는 프로젝트에서는 비어 있습니다.
@@ -572,6 +579,8 @@ Volicord까지 도달한 알려진 공개 Volicord 메서드 도구 호출에서
   반환합니다.
 - Volicord 도메인 성공 또는 거절은 파싱한 Volicord 응답, 특히 `base.response_kind`와
   `errors`에서 판단합니다.
+- 파싱한 공개 메서드 응답은 API 스키마 담당 문서가 정의한 안정적인
+  `guarantee_class`와 `non_guarantees` 값을 담은 `base.disclosure`를 포함합니다.
 - JSON-RPC `error`는 프로토콜, 잘못된 파라미터, 어댑터/내부 실패에만 사용합니다.
   Volicord 도메인 수준 거절에는 사용하지 않습니다.
 

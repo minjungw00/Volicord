@@ -41,6 +41,9 @@ use volicord_types::{
     VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING, VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
 };
 
+use crate::disclosure::{
+    cooperative_host_decision_disclosure_json, COOPERATIVE_DECISION_DISCLOSURE_TEXT,
+};
 use crate::project_context::{
     registered_project_for_repo, resolve_repository_root, ProjectCommandError,
 };
@@ -408,7 +411,7 @@ where
         observe_guard_installation_activation(&runtime_home, &project, &envelope, phase, &options)?;
     initialize_observe_session_watch(&runtime_home, &project, &envelope, phase)?;
 
-    let (decision, result, expected_write) = match phase {
+    let (decision, mut result, expected_write) = match phase {
         GuardPhase::SessionStart => {
             let summary = guard_state_summary(&runtime_home, &project, &envelope, &input)?;
             (
@@ -504,6 +507,7 @@ where
             )
         }
     };
+    attach_guard_disclosure(&mut result);
 
     let subject = guard_subject(phase, &input, &envelope, &project);
     persist_guard_event(
@@ -524,6 +528,15 @@ where
         stderr: rendered.stderr,
         exit_code: rendered.exit_code,
     })
+}
+
+fn attach_guard_disclosure(result: &mut Value) {
+    if let Some(object) = result.as_object_mut() {
+        object.insert(
+            "disclosure".to_owned(),
+            cooperative_host_decision_disclosure_json(),
+        );
+    }
 }
 
 fn parse_guard_options(args: &[String]) -> Result<GuardOptions, GuardCommandError> {
@@ -3056,6 +3069,7 @@ fn render_guard_output(
                     "phase": phase.event_kind(),
                     "decision": decision.as_str(),
                     "allowed": decision != GuardDecision::Deny,
+                    "disclosure": cooperative_host_decision_disclosure_json(),
                     "guard_event_id": envelope.event_id,
                     "session_id": envelope.session_id,
                     "result": result
@@ -3077,10 +3091,11 @@ fn render_guard_output(
             };
             Ok(RenderedGuardOutput {
                 stdout: format!(
-                    "Volicord guard {}: {} ({})\n",
+                    "Volicord guard {}: {} ({})\n{}\n",
                     phase.command_name(),
                     decision.as_str(),
-                    allowed
+                    allowed,
+                    COOPERATIVE_DECISION_DISCLOSURE_TEXT
                 ),
                 stderr: String::new(),
                 exit_code: if decision == GuardDecision::Deny {
@@ -3178,19 +3193,24 @@ fn context_output(event_name: &str, message: Option<String>) -> Option<Value> {
     Some(json!({
         "hookSpecificOutput": {
             "hookEventName": event_name,
-            "additionalContext": message
+            "additionalContext": host_native_message_with_disclosure(&message)
         }
     }))
 }
 
 fn blocking_reason(phase: GuardPhase, result: &Value) -> String {
-    first_reason_message(result).unwrap_or_else(|| match phase {
+    let reason = first_reason_message(result).unwrap_or_else(|| match phase {
         GuardPhase::SessionStart => "Volicord session context could not be prepared.".to_owned(),
         GuardPhase::PreTool => "Volicord blocked this tool call.".to_owned(),
         GuardPhase::PostTool => "Volicord blocked normal handling of this tool result.".to_owned(),
         GuardPhase::PromptCapture => "Volicord blocked this user prompt.".to_owned(),
         GuardPhase::Stop => "Volicord needs more work before this session stops.".to_owned(),
-    })
+    });
+    host_native_message_with_disclosure(&reason)
+}
+
+fn host_native_message_with_disclosure(message: &str) -> String {
+    format!("{message} {COOPERATIVE_DECISION_DISCLOSURE_TEXT}.")
 }
 
 fn first_reason_message(result: &Value) -> Option<String> {
