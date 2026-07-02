@@ -18,8 +18,8 @@ behavior matters, route to the Reference owners listed in [Owner routes](#owner-
 | Brand mnemonic | `Volition, recorded.` |
 | English tagline | `AI moves. Judgment stays yours.` |
 | Korean tagline | `AI가 움직여도, 판단은 사용자에게.` |
-| English product descriptor | `A local work-authority system for AI-assisted product work.` |
-| Korean product descriptor | `AI 지원 제품 작업을 위한 로컬 작업 권한 시스템` |
+| English product descriptor | `A local work authority record for AI-assisted product work.` |
+| Korean product descriptor | `AI 지원 제품 작업을 위한 로컬 작업 권한 기록` |
 
 Core messages:
 
@@ -56,8 +56,8 @@ into operational Reference contracts, error messages, or routine CLI output.
   transport, and response-wrapping behavior belongs to [MCP Transport](../reference/mcp-transport.md).
 - `Volicord Runtime Home` is a product label. Exact runtime location and
   repository-boundary behavior belongs to [Runtime Boundaries](../reference/runtime-boundaries.md).
-- Domain concepts such as `Task`, Change Unit, write ticket, final
-  acceptance, residual-risk acceptance, and close readiness must not be given
+- Domain concepts such as `Task`, Write Ticket, User Judgment, Evidence,
+  Close Status, final acceptance, and residual-risk acceptance must not be given
   decorative Volicord-derived names.
 
 When a Reference owner uses an exact identifier or product label, preserve that
@@ -131,7 +131,7 @@ their contracts into brand material:
 | Question | Owner |
 |---|---|
 | Product scope and supported baseline boundaries | [Scope](../reference/scope.md) |
-| Core authority concepts, user-owned judgment, evidence, write ticket, acceptance, residual risk, and close readiness | [Core Model](../reference/core-model.md) |
+| Work authority, User Judgment, Evidence, Write Ticket, acceptance, residual risk, and Close Status | [Core Model](../reference/core-model.md) |
 | Runtime locations, product repository boundaries, Runtime Home boundaries, and component/location separation | [Runtime Boundaries](../reference/runtime-boundaries.md) |
 | Security wording, guarantee levels, invocation-context assumptions, and explicit non-guarantees | [Security](../reference/security.md) |
 | Administrative CLI commands, arguments, output, host setup, and command/API boundary | [Administrative CLI](../reference/admin-cli.md) |

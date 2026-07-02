@@ -7,6 +7,7 @@ canonical_for:
   - "Complete structured term inventory under `terms` for Volicord documentation; glossary pages are curated reader-facing subsets and do not need rows for every structured term."
   - "Korean term forms through `ko_reference`, `ko_user`, `ko_contextual`, `ko_explanation`, and first-reference wording fields."
   - "Term type through each entry's `category` value."
+  - "Term visibility through each entry's `visibility` value and allowed public-language document layers through `allowed_document_layers`."
   - "Role metadata through each entry's `roles` values for identity-sensitive public, storage, MCP, and diagnostic terminology."
   - "Identifier preservation rules for bilingual documentation."
   - "Primary owner and related-reference routing for each structured term."
@@ -19,9 +20,10 @@ canonical_for:
   - "Terminology boundaries for reserved/profile-gated value presence versus supported behavior."
   - "Terminology boundaries between stable supported documentation contracts and runtime-active or currently applied context."
   - "Terminology boundaries between documentation owner routing and product behavior or storage persistence conditions."
-  - "Terminology distinction that Volicord is the local work-authority product/system for AI-assisted product work, while Core is the local authority record for Volicord state."
+  - "Terminology distinction that Volicord is the local work authority record for AI-assisted product work, while Core is restricted to architecture/reference structure."
   - "Terminology routing that Volicord product identity belongs in Getting Started Overview while supported and unsupported scope belongs in Scope."
   - "Terminology boundaries among Volicord, Core, Volicord implementation, Volicord source repository, Volicord installation, `volicord`, `volicord mcp --stdio`, `Volicord Runtime Home`, `test harness`, and `Product Repository`."
+  - "Public-language replacements for work-authority system/layer/ledger, permission-system wording, close-readiness variants, artifact variants, finding variants, and User Channel input-method names."
   - "Preferred current-runtime-context wording for current scope, currently applied scope, current Change Unit, and current connection context."
   - "Terminology boundaries among write ticket, write approval, sensitive-action approval, final acceptance, residual-risk acceptance, and user-owned judgment."
   - "Terminology boundaries among Agent Connection, Connection Projects, User Channel, `actor_source`, `operation_category`, and write ticket."
@@ -77,6 +79,10 @@ term_entry_schema:
     - "avoid_en"
     - "avoid_ko"
     - "notes"
+    - "visibility"
+    - "allowed_document_layers"
+    - "disallowed_synonyms"
+    - "replacement_for"
   preferred_expression_fields:
     - "en"
     - "en_label"
@@ -116,12 +122,34 @@ term_entry_schema:
     avoid_en: "term-local list of searchable English expressions to avoid; use only when the expression is not already represented in top-level `avoid.en`"
     avoid_ko: "term-local list of searchable Korean expressions to avoid; use only when the expression is not already represented in top-level `avoid.ko`"
     notes: "list of strings for terminology checks and maintenance routing"
+    visibility: "one of public, architecture, or internal"
+    allowed_document_layers: "list of layer strings where the preferred term may appear without being an exact identifier or owner title"
+    disallowed_synonyms: "list of public-language synonyms that should not replace the canonical term"
+    replacement_for: "list of older or ambiguous terms this term replaces in public-facing wording"
   field_semantics:
     category: "Term type used by terminology and maintenance checks."
     roles: "Small controlled role set used to distinguish public user terminology, storage internals, MCP process binding, diagnostics, public MCP selectors, and storage records without making a document-wide forbidden-word list."
     primary_owner: "Focused owner document for the term's definition, contract, or terminology rule."
     related_references: "Adjacent documents that help interpret the term; these paths are not alternate primary owners."
     notes: "Check-oriented guidance for terminology, owner routing, identifier preservation, and Korean prose."
+    visibility: "`public` is for terms suitable for README/getting-started/guides; `architecture` is for reference/development/maintain technical structure; `internal` is for implementation/schema/storage identifiers."
+    allowed_document_layers: "Document-layer routing for prose use. Exact identifiers, paths, anchors, and owner titles can still appear where identifier preservation requires them."
+    disallowed_synonyms: "Searchable avoid-list input for editors; it is not a product contract."
+    replacement_for: "Searchable migration note for older wording; it is not a legacy alias."
+  visibility_values:
+    public: "Reader-facing terminology suitable for README, getting-started, and guides."
+    architecture: "Technical terminology suitable for Reference, Development, Maintain, API, schema, and storage documents."
+    internal: "Implementation or exact identifier terminology that should not be introduced as public prose."
+  document_layer_values:
+    - "readme"
+    - "getting_started"
+    - "guide"
+    - "reference"
+    - "development"
+    - "maintain"
+    - "api_schema"
+    - "storage"
+    - "implementation_output"
   role_values:
     public_user_term: "Reader-facing product terminology that ordinary users may see or use."
     storage_internal_identifier: "Internal storage identifier or key terminology, not an ordinary public selector."
@@ -265,15 +293,63 @@ identifier_preservation:
     - "Volicord Runtime Home"
     - "Agent Connection"
     - "User Channel"
+    - "Task"
+    - "Write Ticket"
+    - "Evidence"
+    - "User Judgment"
+    - "Close Status"
+    - "Record profile"
+    - "Detective profile"
+    - "Local HTTP transport"
     - "managed host configuration state"
     - "Projection"
     - "write ticket"
 avoid:
   en:
     - phrase: "Volicord is a local authority record"
-      use: "Volicord is the local work-authority product/system for AI-assisted product work; Core is the local authority record for Volicord state."
+      use: "Volicord is the local work authority record for AI-assisted product work; route exact internal authority structure to Core Model."
+    - phrase: "work-authority system"
+      use: "work authority record"
+    - phrase: "work authority system"
+      use: "work authority record"
+    - phrase: "authority layer"
+      use: "work authority record in public prose; use exact reference-owner terms only in Reference or Development documents."
+    - phrase: "authority ledger"
+      use: "work authority record"
+    - phrase: "authority-record layer"
+      use: "work authority record in public prose; use exact architecture terms only in Reference or Development documents."
+    - phrase: "permission system"
+      use: "work authority record; do not describe Volicord as a permission or enforcement system."
+    - phrase: "Close Readiness"
+      use: "Close Status in README, getting-started, guides, and user-facing output; preserve exact close-readiness identifiers only where reference or schema precision requires them."
+    - phrase: "Close Basis"
+      use: "Close Status in user-facing prose, or visible close facts when naming the displayed support."
+    - phrase: "Close Result"
+      use: "Close Status"
+    - phrase: "Close Outcome"
+      use: "Close Status"
+    - phrase: "ArtifactRef"
+      use: "Evidence input or Evidence attachment in user-facing prose; preserve `ArtifactRef` only as an exact schema identifier."
+    - phrase: "artifact ref"
+      use: "Evidence input or Evidence attachment"
+    - phrase: "staged artifact"
+      use: "Evidence input or Evidence attachment in user-facing prose; preserve exact staged-artifact identifiers only in schema/reference contexts."
+    - phrase: "Change Finding"
+      use: "Unrecorded Change when user-visible."
+    - phrase: "Finding"
+      use: "Unrecorded Change when user-visible."
+    - phrase: "Prompt Capture"
+      use: "User Channel input method, chat command capture, or exact `prompt-capture` command identifier as applicable."
+    - phrase: "Local Web Consent"
+      use: "User Channel input method or local consent URL."
+    - phrase: "MCP Elicitation"
+      use: "User Channel input method or host prompt input."
+    - phrase: "CLI Answer"
+      use: "User Channel input method or CLI inbox."
+    - phrase: "Control Surface"
+      use: "observation summary in user-facing prose; preserve exact schema/internal names only in reference or implementation contexts."
     - phrase: "local work-authority server"
-      use: "local work-authority product/system for Volicord; for implementation context use Volicord implementation, Volicord source repository, Volicord Rust workspace, Volicord installation, `volicord`, or `volicord mcp --stdio` as applicable."
+      use: "local work authority record for Volicord; for implementation context use Volicord implementation, Volicord source repository, Volicord Rust workspace, Volicord installation, `volicord`, or `volicord mcp --stdio` as applicable."
     - phrase: "coding-agent integration"
       use: "agent-host integration, Agent Connection, managed host configuration state, or agent connection according to context."
     - phrase: "Volicord-as-server product label"
@@ -355,14 +431,60 @@ avoid:
       use: "맥락에 따라 구현 파일, 소스 저장소 파일, 설치 파일, 설치 위치"
     - phrase: "서버 설치 저장소"
       use: "`Volicord Runtime Home`의 기본 의미가 아니라, 맥락에 따라 Volicord 설치 위치 또는 실행 파일 설치"
+    - phrase: "권한 시스템"
+      use: "작업 권한 기록"
+    - phrase: "권한 기록 계층"
+      use: "작업 권한 기록, 또는 참조/개발 문서의 정확한 아키텍처 용어"
+    - phrase: "권한 제어 평면"
+      use: "작업 권한 기록"
+    - phrase: "닫기 준비 상태"
+      use: "README, 시작하기, 가이드, 사용자 대상 출력에서는 닫기 상태; 참조나 스키마 정밀도가 필요할 때만 정확한 close-readiness 식별자"
+    - phrase: "닫기 근거"
+      use: "사용자 대상 산문에서는 닫기 상태 또는 보이는 닫기 사실"
+    - phrase: "닫기 결과"
+      use: "닫기 상태"
+    - phrase: "아티팩트 참조"
+      use: "사용자 대상 산문에서는 증거 입력 또는 증거 첨부; 스키마 식별자는 `ArtifactRef`"
+    - phrase: "스테이징된 아티팩트"
+      use: "사용자 대상 산문에서는 증거 입력 또는 증거 첨부; 스키마 식별자는 `StagedArtifactHandle`"
+    - phrase: "찾기"
+      use: "사용자에게 보이는 finding 의미라면 미기록 변경"
+    - phrase: "MCP elicitation"
+      use: "User Channel 입력 방법 또는 호스트 프롬프트 입력"
+    - phrase: "local web consent"
+      use: "User Channel 입력 방법 또는 로컬 consent URL"
+    - phrase: "CLI answer"
+      use: "User Channel 입력 방법 또는 CLI inbox"
+    - phrase: "control-surface"
+      use: "사용자 대상 산문에서는 관찰 요약"
 terms:
   volicord:
     category: "product_concept"
     en: "Volicord"
-    en_preferred_prose: "local work-authority control plane"
+    visibility: "public"
+    allowed_document_layers:
+      - "readme"
+      - "getting_started"
+      - "guide"
+      - "reference"
+      - "development"
+      - "maintain"
+      - "implementation_output"
+    en_preferred_prose: "local work authority record"
     ko_reference: "Volicord"
     ko_user: "Volicord"
     ko_reference_first_reference: "Volicord(볼리코드)"
+    disallowed_synonyms:
+      - "permission system"
+      - "work-authority system"
+      - "authority layer"
+      - "authority ledger"
+      - "authority control plane"
+    replacement_for:
+      - "work-authority system"
+      - "authority layer"
+      - "authority ledger"
+      - "permission system"
     preserve_as_label:
       - "Volicord"
     primary_owner:
@@ -376,8 +498,9 @@ terms:
       - en: "docs/en/reference/runtime-boundaries.md"
         ko: "docs/ko/reference/runtime-boundaries.md"
     notes:
-      - "Volicord is the local work-authority product/system for AI-assisted product work, presented publicly as a local authority control plane."
-      - "Do not describe Volicord itself as the authority record; Core is the local authority record for Volicord state."
+      - "Volicord is the local work authority record for AI-assisted product work."
+      - "Do not describe Volicord as a permission system, enforcement system, sandbox, or OS-level control plane."
+      - "Route exact internal authority structure to Core Model instead of using Core as first-read public terminology."
       - "Do not describe Volicord as the coding agent, workflow engine, test runner, technical-debt analyzer, security sandbox, or full agent harness."
       - "Do not create or use a product label that combines `Volicord` with `Server`; use Volicord implementation, Volicord source repository, Volicord Rust workspace, Volicord installation, `volicord`, or `volicord mcp --stdio` according to context."
   test_harness:
@@ -395,6 +518,13 @@ terms:
   core:
     category: "product_concept"
     en: "Core"
+    visibility: "architecture"
+    allowed_document_layers:
+      - "reference"
+      - "development"
+      - "maintain"
+      - "api_schema"
+      - "storage"
     ko_reference: "Core"
     ko_user: "Core"
     preserve_as_identifier:
@@ -410,10 +540,15 @@ terms:
     notes:
       - "Core is the local authority record for Volicord state."
       - "Core authority applies to Volicord records and Volicord state transitions, not to OS-level security control by itself."
-      - "Use Core when discussing the authority record; use Volicord for the broader product/system."
+      - "Use Core when discussing architecture or exact reference structure; avoid introducing it in README, Getting Started, and Guides unless it is the owner title in a link."
   local_authority_record:
     category: "product_concept"
     en: "local authority record"
+    visibility: "architecture"
+    allowed_document_layers:
+      - "reference"
+      - "development"
+      - "maintain"
     ko_reference: "로컬 기준 기록"
     ko_user: "로컬 기준 기록"
     primary_owner:
@@ -425,9 +560,55 @@ terms:
     notes:
       - "Use this concept for Core, not Volicord as a whole."
       - "A location, rendered view, chat answer, documentation route, or product repository file is not the local authority record."
+  work_authority_record:
+    category: "product_concept"
+    en: "work authority record"
+    visibility: "public"
+    allowed_document_layers:
+      - "readme"
+      - "getting_started"
+      - "guide"
+      - "reference"
+      - "maintain"
+      - "implementation_output"
+    ko_reference: "작업 권한 기록"
+    ko_user: "작업 권한 기록"
+    primary_owner:
+      en: "docs/en/getting-started/overview.md"
+      ko: "docs/ko/getting-started/overview.md"
+    related_references:
+      - en: "docs/en/reference/core-model.md"
+        ko: "docs/ko/reference/core-model.md"
+      - en: "docs/en/maintain/brand-guidelines.md"
+        ko: "docs/ko/maintain/brand-guidelines.md"
+    disallowed_synonyms:
+      - "work-authority system"
+      - "work authority system"
+      - "authority layer"
+      - "authority ledger"
+      - "permission system"
+      - "권한 시스템"
+    replacement_for:
+      - "work-authority system"
+      - "authority layer"
+      - "authority ledger"
+      - "permission system"
+      - "권한 시스템"
+    notes:
+      - "Use this expression for Volicord's public product identity."
+      - "It names a local record and workflow boundary, not OS-level permission or enforcement."
   product_repository:
     category: "product_label"
     en: "Product Repository"
+    visibility: "public"
+    allowed_document_layers:
+      - "readme"
+      - "getting_started"
+      - "guide"
+      - "reference"
+      - "development"
+      - "maintain"
+      - "implementation_output"
     ko_reference: "Product Repository"
     ko_user: "제품 저장소"
     ko_reference_first_reference: "`Product Repository`(제품 저장소)"
@@ -445,6 +626,15 @@ terms:
     roles:
       - "public_user_term"
     en: "Volicord Runtime Home"
+    visibility: "public"
+    allowed_document_layers:
+      - "readme"
+      - "getting_started"
+      - "guide"
+      - "reference"
+      - "development"
+      - "maintain"
+      - "implementation_output"
     aliases_en:
       - "Runtime Home"
     ko_reference: "Volicord Runtime Home"
@@ -540,6 +730,12 @@ terms:
   volicord_mcp_process:
     category: "identifier"
     en: "`volicord mcp --stdio` MCP adapter process"
+    visibility: "architecture"
+    allowed_document_layers:
+      - "reference"
+      - "development"
+      - "maintain"
+      - "implementation_output"
     ko_reference: "`volicord mcp --stdio` MCP 어댑터 프로세스"
     ko_user: "`volicord mcp --stdio` MCP 어댑터 프로세스"
     preserve_identifier: true
@@ -556,6 +752,35 @@ terms:
     notes:
       - "`volicord mcp --stdio` is the local stdio MCP adapter process mode within the Volicord implementation."
       - "Do not describe `volicord mcp --stdio` as an actor separate from the Volicord implementation or as the whole Volicord implementation."
+  local_http_transport:
+    category: "product_concept"
+    en: "Local HTTP transport"
+    visibility: "public"
+    allowed_document_layers:
+      - "readme"
+      - "getting_started"
+      - "guide"
+      - "reference"
+      - "maintain"
+      - "implementation_output"
+    ko_reference: "Local HTTP transport"
+    ko_user: "로컬 HTTP 전송"
+    preserve_as_identifier:
+      - "local-http"
+      - "volicord serve --transport local-http"
+    primary_owner:
+      en: "docs/en/reference/mcp-transport.md"
+      ko: "docs/ko/reference/mcp-transport.md"
+    related_references:
+      - en: "docs/en/reference/security.md"
+        ko: "docs/ko/reference/security.md"
+    replacement_for:
+      - "local HTTP MCP"
+      - "local HTTP MCP mode"
+      - "local HTTP serve mode"
+    notes:
+      - "Use Local HTTP transport as the public label for loopback-only local HTTP operation."
+      - "Preserve `local-http` and `volicord serve --transport local-http` as exact identifiers."
   documentation:
     category: "general_prose"
     en: "documentation"
@@ -836,6 +1061,15 @@ terms:
   task:
     category: "product_concept"
     en: "Task"
+    visibility: "public"
+    allowed_document_layers:
+      - "readme"
+      - "getting_started"
+      - "guide"
+      - "reference"
+      - "development"
+      - "maintain"
+      - "implementation_output"
     ko_reference: "`Task`"
     ko_user: "작업"
     preserve_as_identifier:
@@ -893,6 +1127,13 @@ terms:
   current_change_unit:
     category: "runtime_context"
     en: "current Change Unit"
+    visibility: "architecture"
+    allowed_document_layers:
+      - "reference"
+      - "development"
+      - "maintain"
+      - "api_schema"
+      - "storage"
     ko_reference: "현재 적용 Change Unit"
     ko_user: "현재 적용 Change Unit"
     aliases_en:
@@ -916,6 +1157,15 @@ terms:
   user_owned_judgment:
     category: "product_concept"
     en: "user-owned judgment"
+    visibility: "public"
+    allowed_document_layers:
+      - "readme"
+      - "getting_started"
+      - "guide"
+      - "reference"
+      - "maintain"
+      - "implementation_output"
+    en_label: "User Judgment"
     ko_reference: "사용자 소유 판단"
     ko_user: "사용자 판단"
     preserve_as_identifier:
@@ -993,9 +1243,57 @@ terms:
     notes:
       - "Residual-risk acceptance is a user-owned judgment about a named visible residual risk for the requested close."
       - "Keep distinct from final acceptance, write ticket, write approval, sensitive-action approval, evidence sufficiency, verification criteria, and proof that no risk remains."
+  close_status:
+    category: "product_concept"
+    en: "Close Status"
+    visibility: "public"
+    allowed_document_layers:
+      - "readme"
+      - "getting_started"
+      - "guide"
+      - "reference"
+      - "maintain"
+      - "implementation_output"
+    ko_reference: "닫기 상태"
+    ko_user: "닫기 상태"
+    primary_owner:
+      en: "docs/en/reference/core-model.md"
+      ko: "docs/ko/reference/core-model.md"
+    related_references:
+      - en: "docs/en/reference/api/method-close-task.md"
+        ko: "docs/ko/reference/api/method-close-task.md"
+      - en: "docs/en/reference/api/blocker-routing.md"
+        ko: "docs/ko/reference/api/blocker-routing.md"
+    disallowed_synonyms:
+      - "Close Readiness"
+      - "Close Basis"
+      - "Close Result"
+      - "Close Outcome"
+      - "close readiness"
+      - "닫기 준비 상태"
+      - "닫기 근거"
+      - "닫기 결과"
+    replacement_for:
+      - "Close Readiness"
+      - "Close Basis"
+      - "Close Result"
+      - "Close Outcome"
+      - "close readiness"
+      - "닫기 준비 상태"
+    notes:
+      - "Use Close Status in README, Getting Started, Guides, glossary, and user-facing output."
+      - "Use visible close facts when prose specifically names displayed support for Close Status."
+      - "Preserve exact close-readiness identifiers only in reference, schema, storage, or code contexts."
   close_readiness:
     category: "product_concept"
     en: "close readiness"
+    visibility: "architecture"
+    allowed_document_layers:
+      - "reference"
+      - "development"
+      - "maintain"
+      - "api_schema"
+      - "storage"
     ko_reference: "닫기 준비 상태"
     ko_user: "닫기 가능 여부"
     preserve_as_identifier:
@@ -1016,7 +1314,8 @@ terms:
         ko: "docs/ko/reference/template-bodies.md"
     notes:
       - "`close readiness` is the evaluation concept, not the blocker schema."
-      - "Use 닫기 준비 상태 in reference-facing Korean and 닫기 가능 여부 in user-facing Korean."
+      - "Use Close Status / 닫기 상태 for README, Getting Started, Guides, glossary, and user-facing output."
+      - "Use 닫기 준비 상태 only in reference-facing Korean or exact close-readiness identifier contexts."
       - "Close-task method behavior belongs to `api/method-close-task.md`."
       - "Close-readiness blocker routing belongs to `api/blocker-routing.md`."
       - "Korean terminology control routes through this map, the glossary, and the translation guide."
@@ -1259,6 +1558,13 @@ terms:
   artifact:
     category: "product_concept"
     en: "artifact"
+    visibility: "architecture"
+    allowed_document_layers:
+      - "reference"
+      - "development"
+      - "maintain"
+      - "api_schema"
+      - "storage"
     ko_reference: "아티팩트"
     ko_user: "아티팩트"
     preserve_as_identifier:
@@ -1273,12 +1579,22 @@ terms:
       - en: "docs/en/reference/storage-artifacts.md"
         ko: "docs/ko/reference/storage-artifacts.md"
     notes:
-      - "Use 아티팩트 in Korean prose."
+      - "Use Evidence input or Evidence attachment in README, Getting Started, Guides, glossary, and user-facing output."
+      - "Use 아티팩트 in Korean reference/API prose when naming the artifact schema area."
       - "Preserve artifact schema identifiers exactly."
       - "Do not use artifact availability alone as evidence sufficiency."
   evidence:
     category: "product_concept"
     en: "evidence"
+    visibility: "public"
+    allowed_document_layers:
+      - "readme"
+      - "getting_started"
+      - "guide"
+      - "reference"
+      - "maintain"
+      - "implementation_output"
+    en_label: "Evidence"
     ko_reference: "증거"
     ko_user: "증거"
     preserve_as_identifier:
@@ -1299,6 +1615,7 @@ terms:
         ko: "docs/ko/reference/storage-records.md"
     notes:
       - "Use 증거 in Korean prose."
+      - "Use Evidence input or Evidence attachment in user-facing prose instead of ArtifactRef, ArtifactInput, artifact ref, or staged artifact."
       - "Preserve evidence schema and storage identifiers exactly."
       - "Evidence supports recorded claims; it is not final acceptance, residual-risk acceptance, broad verification, or artifact availability by itself."
   verification_criteria:
@@ -1324,6 +1641,12 @@ terms:
   artifact_ref:
     category: "identifier"
     en: "ArtifactRef"
+    visibility: "internal"
+    allowed_document_layers:
+      - "reference"
+      - "api_schema"
+      - "storage"
+      - "development"
     preserve_identifier: true
     ko_reference: "`ArtifactRef`"
     ko_user: "아티팩트 참조"
@@ -1337,9 +1660,21 @@ terms:
     related_references:
       - en: "docs/en/reference/storage-artifacts.md"
         ko: "docs/ko/reference/storage-artifacts.md"
+    replacement_for:
+      - "artifact ref"
+      - "artifact reference"
+    notes:
+      - "Use Evidence input or Evidence attachment in user-facing prose."
+      - "Preserve `ArtifactRef` only as an exact schema identifier."
   artifact_input:
     category: "identifier"
     en: "ArtifactInput"
+    visibility: "internal"
+    allowed_document_layers:
+      - "reference"
+      - "api_schema"
+      - "storage"
+      - "development"
     preserve_identifier: true
     ko_reference: "`ArtifactInput`"
     ko_user: "아티팩트 입력"
@@ -1348,9 +1683,17 @@ terms:
       en: "docs/en/reference/api/schema-artifacts.md"
       ko: "docs/ko/reference/api/schema-artifacts.md"
     related_references: []
+    notes:
+      - "Use Evidence input in user-facing prose."
   staged_artifact_handle:
     category: "identifier"
     en: "StagedArtifactHandle"
+    visibility: "internal"
+    allowed_document_layers:
+      - "reference"
+      - "api_schema"
+      - "storage"
+      - "development"
     preserve_identifier: true
     ko_reference: "`StagedArtifactHandle`"
     ko_user: "스테이징된 아티팩트 핸들"
@@ -1364,6 +1707,8 @@ terms:
     related_references:
       - en: "docs/en/reference/storage-artifacts.md"
         ko: "docs/ko/reference/storage-artifacts.md"
+    notes:
+      - "Use Evidence input or Evidence attachment in user-facing prose."
   projection:
     category: "product_concept"
     en: "projection"
@@ -1404,6 +1749,14 @@ terms:
   agent_connection:
     category: "product_concept"
     en: "Agent Connection"
+    visibility: "public"
+    allowed_document_layers:
+      - "readme"
+      - "getting_started"
+      - "guide"
+      - "reference"
+      - "maintain"
+      - "implementation_output"
     ko_reference: "Agent Connection"
     ko_user: "에이전트 연결"
     ko_reference_first_reference: "`Agent Connection`(에이전트 연결)"
@@ -1432,6 +1785,63 @@ terms:
       - "`connection_intent` is `personal`, `shared`, or `global`; generic MCP config export is a separate administrative export flow, not a connection intent."
       - "Do not use as a synonym for Product Repository, Runtime Home, User Channel, or managed host configuration state."
       - "Do not make Agent Connection wording sound like OS permission, secret isolation, filesystem ACLs, or user authority."
+  record_profile:
+    category: "product_concept"
+    en: "Record profile"
+    visibility: "public"
+    allowed_document_layers:
+      - "readme"
+      - "getting_started"
+      - "guide"
+      - "reference"
+      - "maintain"
+      - "implementation_output"
+    ko_reference: "Record profile"
+    ko_user: "기록 프로필"
+    preserve_as_identifier:
+      - "record"
+      - "--profile record"
+      - "installation_profile"
+    primary_owner:
+      en: "docs/en/reference/admin-cli.md"
+      ko: "docs/ko/reference/admin-cli.md"
+    related_references:
+      - en: "docs/en/reference/agent-connection.md"
+        ko: "docs/ko/reference/agent-connection.md"
+    replacement_for:
+      - "record profile"
+      - "`record` profile"
+    notes:
+      - "Use Record profile as the public label; preserve `record` only as an exact value or command argument."
+  detective_profile:
+    category: "product_concept"
+    en: "Detective profile"
+    visibility: "public"
+    allowed_document_layers:
+      - "readme"
+      - "getting_started"
+      - "guide"
+      - "reference"
+      - "maintain"
+      - "implementation_output"
+    ko_reference: "Detective profile"
+    ko_user: "탐지 프로필"
+    preserve_as_identifier:
+      - "observe"
+      - "--profile observe"
+      - "installation_profile"
+    primary_owner:
+      en: "docs/en/reference/agent-connection.md"
+      ko: "docs/ko/reference/agent-connection.md"
+    related_references:
+      - en: "docs/en/reference/admin-cli.md"
+        ko: "docs/ko/reference/admin-cli.md"
+    replacement_for:
+      - "observe profile"
+      - "`observe` profile"
+      - "guard profile"
+    notes:
+      - "Use Detective profile as the public label for the observation-focused profile; preserve `observe` only as an exact value or command argument."
   connection_internal_id:
     category: "storage_internal_identifier"
     roles:
@@ -1570,6 +1980,13 @@ terms:
   current_connection_context:
     category: "runtime_context"
     en: "current connection context"
+    visibility: "architecture"
+    allowed_document_layers:
+      - "reference"
+      - "development"
+      - "maintain"
+      - "api_schema"
+      - "storage"
     ko_reference: "현재 연결 맥락"
     ko_user: "현재 연결 맥락"
     aliases_en:
@@ -1594,6 +2011,124 @@ terms:
       - "Do not use the discouraged active wording for this runtime-context meaning."
       - "Do not use current connection context as proof of user authority, OS permission, access, binding, or capability by itself."
       - "In Korean, use 현재 연결 맥락; preserve exact connection identifiers."
+  invocation_context:
+    category: "internal_concept"
+    en: "invocation context"
+    visibility: "internal"
+    allowed_document_layers:
+      - "reference"
+      - "development"
+      - "maintain"
+      - "api_schema"
+      - "storage"
+      - "implementation_output"
+    ko_reference: "호출 맥락"
+    ko_user: "호출 맥락"
+    preserve_as_identifier:
+      - "InvocationContext"
+      - "INVOCATION_CONTEXT_MISMATCH"
+    primary_owner:
+      en: "docs/en/reference/security.md"
+      ko: "docs/ko/reference/security.md"
+    related_references:
+      - en: "docs/en/reference/api/error-codes.md"
+        ko: "docs/ko/reference/api/error-codes.md"
+      - en: "docs/en/reference/runtime-boundaries.md"
+        ko: "docs/ko/reference/runtime-boundaries.md"
+    notes:
+      - "Use in reference, API, security, and development contexts for adapter-derived request facts."
+      - "Do not introduce invocation context in first-read user docs; use Agent Connection, User Channel, Product Repository, or method-compatible request wording as applicable."
+  control_surface:
+    category: "internal_concept"
+    en: "Control Surface"
+    visibility: "internal"
+    allowed_document_layers:
+      - "reference"
+      - "development"
+      - "maintain"
+      - "api_schema"
+      - "storage"
+      - "implementation_output"
+    ko_reference: "Control Surface"
+    ko_user: "관찰 요약"
+    preserve_as_identifier:
+      - "control_surface"
+      - "ControlSurfaceSummary"
+    primary_owner:
+      en: "docs/en/reference/api/schema-state.md"
+      ko: "docs/ko/reference/api/schema-state.md"
+    related_references:
+      - en: "docs/en/reference/api/method-prepare-write.md"
+        ko: "docs/ko/reference/api/method-prepare-write.md"
+    disallowed_synonyms:
+      - "control surface"
+      - "Control Surface"
+      - "control-surface"
+    replacement_for:
+      - "control surface"
+      - "Control Surface"
+      - "control-surface"
+    notes:
+      - "Use observation summary or observation capabilities in user-facing prose and text output."
+      - "Preserve exact schema identifiers such as `control_surface` and `ControlSurfaceSummary` in API/schema contexts."
+  guard:
+    category: "internal_concept"
+    en: "guard"
+    visibility: "internal"
+    allowed_document_layers:
+      - "reference"
+      - "development"
+      - "maintain"
+      - "api_schema"
+      - "storage"
+      - "implementation_output"
+    ko_reference: "guard"
+    ko_user: "관찰 hook"
+    preserve_as_identifier:
+      - "guard"
+      - "volicord guard"
+      - "guard_installations"
+      - "guard_events"
+      - "GuardHealthSummary"
+    primary_owner:
+      en: "docs/en/reference/admin-cli.md"
+      ko: "docs/ko/reference/admin-cli.md"
+    related_references:
+      - en: "docs/en/reference/storage-ddl.md"
+        ko: "docs/ko/reference/storage-ddl.md"
+      - en: "docs/en/reference/api/schema-state.md"
+        ko: "docs/ko/reference/api/schema-state.md"
+    notes:
+      - "Use Detective profile, observation, host hook, or chat command capture in public guides when those terms describe the user-visible behavior."
+      - "Preserve `guard` only as an exact command, schema, storage, or implementation identifier."
+  expected_write:
+    category: "internal_concept"
+    en: "Expected Write"
+    visibility: "internal"
+    allowed_document_layers:
+      - "reference"
+      - "development"
+      - "maintain"
+      - "api_schema"
+      - "storage"
+      - "implementation_output"
+    ko_reference: "expected write"
+    ko_user: "예상 쓰기"
+    preserve_as_identifier:
+      - "expected_writes"
+      - "expected_write_id"
+      - "recorded_as_expected_write"
+    primary_owner:
+      en: "docs/en/reference/storage-ddl.md"
+      ko: "docs/ko/reference/storage-ddl.md"
+    related_references:
+      - en: "docs/en/reference/storage-records.md"
+        ko: "docs/ko/reference/storage-records.md"
+      - en: "docs/en/reference/api/schema-state.md"
+        ko: "docs/ko/reference/api/schema-state.md"
+    notes:
+      - "Use only for observe/storage correlation records and exact identifiers."
+      - "Use Write Ticket or observed write/change wording in user-facing docs, depending on meaning."
   connection_projects:
     category: "product_concept"
     en: "Connection Projects"
@@ -1621,6 +2156,14 @@ terms:
   user_channel:
     category: "product_concept"
     en: "User Channel"
+    visibility: "public"
+    allowed_document_layers:
+      - "readme"
+      - "getting_started"
+      - "guide"
+      - "reference"
+      - "maintain"
+      - "implementation_output"
     ko_reference: "User Channel"
     ko_user: "사용자 채널"
     ko_reference_first_reference: "`User Channel`(사용자 채널)"
@@ -1641,9 +2184,55 @@ terms:
       - "Use for the local user path that records authority-bearing user judgments."
       - "Agent Connections may request user judgments but must not record authority-bearing user judgments."
       - "User Channel records user judgments with `actor_source=local_user`."
+      - "Use User Channel input method for host prompt input, chat command capture, local consent URL, and CLI inbox when grouping user answer paths."
+  unrecorded_change:
+    category: "product_concept"
+    en: "Unrecorded Change"
+    visibility: "public"
+    allowed_document_layers:
+      - "readme"
+      - "getting_started"
+      - "guide"
+      - "reference"
+      - "maintain"
+      - "implementation_output"
+    ko_reference: "미기록 변경"
+    ko_user: "미기록 변경"
+    preserve_as_identifier:
+      - "unrecorded_change"
+      - "unrecorded_changes"
+      - "UnrecordedChangeFinding"
+    primary_owner:
+      en: "docs/en/reference/api/method-reconcile-changes.md"
+      ko: "docs/ko/reference/api/method-reconcile-changes.md"
+    related_references:
+      - en: "docs/en/reference/storage-records.md"
+        ko: "docs/ko/reference/storage-records.md"
+      - en: "docs/en/reference/storage-ddl.md"
+        ko: "docs/ko/reference/storage-ddl.md"
+    disallowed_synonyms:
+      - "Finding"
+      - "Change Finding"
+      - "unrecorded-change finding"
+      - "찾기"
+    replacement_for:
+      - "Finding"
+      - "Change Finding"
+      - "unrecorded-change finding"
+    notes:
+      - "Use Unrecorded Change when the concept is user-visible."
+      - "Preserve exact schema/storage identifiers such as `UnrecordedChangeFinding` and `unrecorded_changes` in reference/API/storage contexts."
   actor_source:
     category: "identifier"
     en: "actor_source"
+    visibility: "internal"
+    allowed_document_layers:
+      - "reference"
+      - "development"
+      - "maintain"
+      - "api_schema"
+      - "storage"
+      - "implementation_output"
     preserve_identifier: true
     ko_reference: "`actor_source`"
     ko_user: "`actor_source`"
@@ -1668,6 +2257,14 @@ terms:
   operation_category:
     category: "identifier"
     en: "operation_category"
+    visibility: "internal"
+    allowed_document_layers:
+      - "reference"
+      - "development"
+      - "maintain"
+      - "api_schema"
+      - "storage"
+      - "implementation_output"
     preserve_identifier: true
     ko_reference: "`operation_category`"
     ko_user: "`operation_category`"
@@ -1816,15 +2413,24 @@ terms:
   write_ticket:
     category: "product_label"
     en: "write ticket"
-    en_label: "write ticket"
+    visibility: "public"
+    allowed_document_layers:
+      - "readme"
+      - "getting_started"
+      - "guide"
+      - "reference"
+      - "maintain"
+      - "implementation_output"
+    en_label: "Write Ticket"
     aliases_en:
       - "Write Ticket"
     ko_reference: "쓰기 티켓"
     ko_user: "쓰기 티켓"
     ko_reference_first_reference: "쓰기 티켓(`write ticket`)"
-    ko_explanation: "현재 Core 상태에서 제안된 제품 파일 변경 하나에 대한 권한 있는 쓰기 의도를 기록하는 지속 Core 권한 기록"
+    ko_explanation: "현재 작업과 범위에 맞는 제안된 제품 파일 변경 하나를 위한 Volicord 기록"
     preserve_as_label:
       - "write ticket"
+      - "Write Ticket"
     preserve_as_identifier:
       - "WriteTicket"
       - "WriteTicketId"
@@ -1862,7 +2468,8 @@ terms:
       - en: "docs/en/reference/api/method-prepare-write.md"
         ko: "docs/ko/reference/api/method-prepare-write.md"
     notes:
-      - "Use for the durable Volicord authority record for authorized write intent for a proposed product-file change under current Core state."
+      - "Use Write Ticket as the public label in README, Getting Started, Guides, glossary, and user-facing output."
+      - "Reference documents may retain the exact durable-authority meaning defined by Core Model."
       - "In Korean explanatory prose, use 쓰기 티켓 for the product concept."
       - "Do not describe write ticket as OS write permission, filesystem ACLs, shell approval, broad user approval, or proof that a write occurred."
       - "Do not treat write approval, sensitive-action approval, final acceptance, residual-risk acceptance, or broad user-owned judgment as write ticket."

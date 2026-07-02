@@ -313,15 +313,15 @@ Agent Connection은 에이전트 대상 연결입니다. 모델이 사용자의 
   `volicord mcp --stdio`는 `volicord.request_user_judgment`가 만든 대기 판단에 대해 서버
   시작 elicitation을 User Channel 경로로 사용할 수 있습니다. 전송 동작은
   [MCP 전송](mcp-transport.md#user-judgment-elicitation)이 담당합니다.
-- MCP elicitation을 사용할 수 없으면 MCP 대체 안내 텍스트는 prompt-capture 사용 가능
-  상태가 `configured`, `observed`, `active`일 때 prompt-submit hook 경로와 호환되는
-  채팅 prompt-capture 명령으로 사람 사용자를 안내할 수 있습니다.
-- MCP elicitation과 prompt capture를 사용할 수 없으면 MCP 대체 안내 텍스트는 사람
-  사용자를 [MCP 전송](mcp-transport.md#user-judgment-elicitation)이 담당하는 loopback
-  local web consent URL로 안내할 수 있습니다. 그 local web 답변은 여전히 `local_user`
+- 호스트 프롬프트 입력을 사용할 수 없으면 MCP 대체 안내 텍스트는 명령 캡처가
+  `configured`, `observed`, `active`일 때 prompt-submit hook 경로와 호환되는 채팅
+  명령으로 사람 사용자를 안내할 수 있습니다.
+- 호스트 프롬프트 입력과 채팅 명령 캡처를 사용할 수 없으면 MCP 대체 안내 텍스트는
+  사람 사용자를 [MCP 전송](mcp-transport.md#user-judgment-elicitation)이 담당하는
+  loopback 로컬 consent URL로 안내할 수 있습니다. 그 local web 답변은 여전히 `local_user`
   User Channel 경로이지 Agent Connection 답변이 아닙니다.
-- 대체 안내 텍스트는 elicitation, prompt capture, local web consent를 모두 사용할 수
-  없을 때만 사용자를 `volicord inbox` 로컬 CLI 복구 경로로 안내합니다.
+- 대체 안내 텍스트는 호스트 프롬프트 입력, 채팅 명령 캡처, 로컬 consent URL을 모두
+  사용할 수 없을 때만 사용자를 `volicord inbox` CLI inbox 경로로 안내합니다.
 - 권한을 지니는 사용자 판단 해결에는 `actor_source=local_user`,
   `operation_category=user_only`, 호환 User Channel 출처가 필요합니다.
 - `actor_source=agent_connection:<connection_id>`는 사용자의 텍스트를 전달해도

@@ -66,7 +66,7 @@ pub(crate) fn tool_description(name: &str) -> &'static str {
         RECONCILE_CHANGES_TOOL_NAME => {
             "Reconcile unresolved unrecorded Product Repository changes."
         }
-        CHECK_CLOSE_TOOL_NAME => "Check close readiness for a selected Task.",
+        CHECK_CLOSE_TOOL_NAME => "Check Close Status for a selected Task.",
         CLOSE_TASK_TOOL_NAME => "Perform a selected Task close path.",
         LIST_PROJECTS_TOOL_NAME => "List projects explicitly allowed for this MCP connection.",
         _ => "Unsupported Volicord method.",

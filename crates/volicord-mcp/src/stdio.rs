@@ -627,7 +627,7 @@ where
             &fallback,
         )?)
             .with_extra(format!(
-                "Volicord did not open MCP elicitation for pending judgment `{}` because the prompt text appears to request or expose sensitive secret material ({reason}). Do not ask the user to enter secrets, credentials, tokens, or private keys through MCP elicitation.",
+                "Volicord did not open host prompt input for pending judgment `{}` because the prompt text appears to request or expose sensitive secret material ({reason}). Do not ask the user to enter secrets, credentials, tokens, or private keys through host prompt input.",
                 pending.judgment_id.as_str()
             ))
             .with_extras(fallback.texts));
@@ -647,7 +647,7 @@ where
                 recorded.response_json,
             )
             .with_extra(format!(
-                "Volicord recorded pending judgment `{}` through MCP elicitation with User Channel basis `{}`.",
+                "Volicord recorded pending judgment `{}` through host prompt input with User Channel basis `{}`.",
                 pending.judgment_id.as_str(),
                 VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL
             ))),
@@ -664,7 +664,7 @@ where
                     recorded.response_json,
                 )
                 .with_extra(format!(
-                    "Volicord recorded pending judgment `{}` as rejected through MCP elicitation with User Channel basis `{}`.",
+                    "Volicord recorded pending judgment `{}` as rejected through host prompt input with User Channel basis `{}`.",
                     pending.judgment_id.as_str(),
                     VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL
                 ))),
@@ -676,19 +676,19 @@ where
                 ))),
             },
             None => Ok(ToolCallOutput::success(pending_response.response_json).with_extra(
-                "The MCP client declined the elicitation request, but this judgment has no Core reject option to record. The pending judgment remains unresolved.",
+                "The MCP client declined the host prompt request, but this judgment has no reject option to record. The pending judgment remains unresolved.",
             )),
         },
         ElicitationReply::Cancelled => Ok(ToolCallOutput::success(pending_response.response_json)
             .with_extra(format!(
-                "The MCP client cancelled or dismissed elicitation for pending judgment `{}`. Volicord did not record an answer; the judgment remains pending.",
+                "The MCP client cancelled or dismissed host prompt input for pending judgment `{}`. Volicord did not record an answer; the judgment remains pending.",
                 pending.judgment_id.as_str()
             ))),
         ElicitationReply::Invalid(message) => Ok(ToolCallOutput::success(
             pending_response.response_json,
         )
         .with_extra(format!(
-            "Volicord rejected the MCP elicitation response: {message}. The pending judgment remains unresolved."
+            "Volicord rejected the host prompt response: {message}. The pending judgment remains unresolved."
         ))),
         ElicitationReply::Unavailable(message) => {
             let fallback = user_judgment_fallback(adapter, &pending)?;
@@ -697,7 +697,7 @@ where
                 &fallback,
             )?)
             .with_extra(format!(
-                "MCP elicitation was unavailable after the client advertised support: {message}."
+                "Host prompt input was unavailable after the client advertised support: {message}."
             ))
             .with_extras(fallback.texts))
         }
@@ -895,7 +895,7 @@ pub(crate) fn record_elicited_judgment(
         .find(|option| option.option_id.as_str() == selected_option_id)
     else {
         return Ok(ElicitedRecordOutcome::InvalidSelection(format!(
-            "MCP elicitation selected unknown option_id `{selected_option_id}` for pending judgment `{}`.",
+            "Host prompt input selected unknown option_id `{selected_option_id}` for pending judgment `{}`.",
             judgment.judgment_id.as_str()
         )));
     };
@@ -926,7 +926,7 @@ pub(crate) fn record_elicited_judgment(
         rationale: rationale_for_selected_option(
             judgment.judgment_kind,
             selected_option,
-            "MCP elicitation",
+            "host prompt input",
         ),
         note: note.into(),
         accepted_risks: accepted_risks_for_judgment(judgment, selected_option),
@@ -1173,7 +1173,7 @@ pub(crate) fn chat_capture_fallback(
     let options = commands.join("; ");
     let note_command = format!("Volicord: note {chat_id} \"text\" {verification_code}");
     let human_text = format!(
-        "MCP elicitation is unavailable. The pending judgment `{}` remains unresolved. To use chat prompt capture, ask the user to send one exact command in chat: {options}. To defer with a note, use `Volicord: note {chat_id} \"text\" {verification_code}`. Do not ask the user to include secrets, credentials, tokens, or private keys.",
+        "Host prompt input is unavailable. The pending judgment `{}` remains unresolved. To use chat command capture, ask the user to send one exact command in chat: {options}. To defer with a note, use `Volicord: note {chat_id} \"text\" {verification_code}`. Do not ask the user to include secrets, credentials, tokens, or private keys.",
         judgment.judgment_id.as_str()
     );
     let structured_text = fallback_state_json(json!({
@@ -1198,7 +1198,7 @@ pub(crate) fn local_web_consent_fallback(
 ) -> Result<UserJudgmentFallback, McpAdapterError> {
     let Some(context) = adapter.local_web_consent.as_ref() else {
         return Err(McpAdapterError::Environment(
-            "local web consent is not available".to_owned(),
+            "local consent URL is not available".to_owned(),
         ));
     };
     let token = generate_bearer_token()?;
@@ -1227,7 +1227,7 @@ pub(crate) fn local_web_consent_fallback(
         percent_encode_query(&token)
     );
     let human_text = format!(
-        "MCP elicitation and prompt-capture chat commands are unavailable. The pending judgment `{}` remains unresolved. Open this local Volicord consent link before {}: {}",
+        "Host prompt input and chat command capture are unavailable. The pending judgment `{}` remains unresolved. Open this local Volicord consent link before {}: {}",
         judgment.judgment_id.as_str(),
         record.expires_at,
         url
@@ -1262,7 +1262,7 @@ pub(crate) fn cli_recovery_fallback(
     local_web_reason: &'static str,
 ) -> UserJudgmentFallback {
     let human_text = format!(
-        "MCP elicitation is unavailable. The pending judgment `{}` remains unresolved. Prompt-capture chat commands are not available for this connection (prompt_capture_status={prompt_capture_status}). Local web consent is unavailable ({local_web_reason}). Use `volicord inbox` and `volicord inbox answer` as the local CLI recovery path.",
+        "Host prompt input is unavailable. The pending judgment `{}` remains unresolved. Chat command capture is not available for this connection (prompt_capture_status={prompt_capture_status}). Local consent URL is unavailable ({local_web_reason}). Use `volicord inbox` and `volicord inbox answer` as the CLI inbox path.",
         judgment.judgment_id.as_str()
     );
     let structured_text = fallback_state_json(json!({
@@ -1287,13 +1287,13 @@ pub(crate) fn cli_recovery_fallback(
 pub(crate) fn prompt_capture_path_json() -> Value {
     json!({
         "kind": "prompt_capture",
-        "label": "Prompt capture",
+        "label": "Chat command capture",
         "available": true,
         "command": null,
         "url": null,
         "capture_basis": VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
         "expires_at": null,
-        "detail": "Use the displayed prompt-capture answer command with the current verification code."
+        "detail": "Use the displayed chat command with the current verification code."
     })
 }
 
@@ -1305,14 +1305,14 @@ pub(crate) fn local_web_consent_path_json(
 ) -> Value {
     json!({
         "kind": "local_web_consent",
-        "label": "Local web consent",
+        "label": "Local consent URL",
         "available": true,
         "command": null,
         "url": url,
         "capture_basis": capture_basis,
         "expires_at": expires_at,
         "detail": format!(
-            "Open the loopback consent link to answer pending judgment {}.",
+            "Open the local consent URL to answer pending judgment {}.",
             judgment.judgment_id.as_str()
         )
     })

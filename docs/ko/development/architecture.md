@@ -4,7 +4,7 @@
 
 이 문서는 공개 API 동작, 요청 또는 응답 필드, 스키마 의미, 저장 효과, DDL이나 테이블 컬럼, 보안 보장, 런타임 집행, Core 권한 의미, 제품 계약을 정의하거나 덮어쓰지 않습니다. 소스 코드 학습 경로는 [개발자 문서](README.md) 진입점을 사용하고, 크레이트별 첫 파일과 심볼은 [코드베이스 둘러보기](codebase-tour.md)를, 대표 메서드 흐름은 [요청 생명주기](request-lifecycle.md)를, 반복 구현 구조는 [구현 설계 패턴](design-patterns.md)을, Store 커밋과 아티팩트 경계는 [저장소와 트랜잭션](storage-and-transactions.md)을, 테스트 계층 선택은 [테스트 전략](testing-strategy.md)을, 집중 결정 기록은 [아키텍처 결정](decisions/README.md)을, 변경 작업 흐름은 [구현 가이드](change-guide.md)를 사용합니다. 정확한 동작은 집중 참조 담당 문서를 사용합니다.
 
-Volicord는 AI 지원 제품 작업을 위한 로컬 작업 권한 제품이자 시스템입니다. Core는 Volicord 상태를 위한 로컬 기준 기록입니다.
+Volicord는 AI 지원 제품 작업을 위한 로컬 작업 권한 기록입니다. Core는 Volicord 상태를 위한 로컬 기준 기록입니다.
 
 이 가이드에서 직접 열 수 있는 코드와 테스트 경로는 저장소 루트 기준으로 씁니다.
 

@@ -24,17 +24,18 @@ guidance and policy metadata, and records integration status.
 Generated host configuration starts the single public executable as
 project-bound `volicord mcp --stdio`.
 
-This fast path uses `--profile record`, which does not require host lifecycle
-hook installation or a session watcher. `--profile observe` requires verified
-support for all required host hook phases and session watcher observation. If
-those prerequisites are unavailable, use `--profile record` or prepare a
-supported host, platform, and repository configuration for observe before
-rerunning init. Observe can return cooperative host decisions and detect
-unrecorded changes after watcher coverage starts, but it does not provide OS
-enforcement, actor proof, network isolation, or a sandbox. On native Windows,
-use this `record` fast path because observe is not supported until Windows host
-hooks and watcher behavior are implemented and tested. Exact project naming,
-profile behavior, connection defaults, and internal identity behavior belong to
+This fast path uses the Record profile (`--profile record`), which does not
+require host lifecycle hook installation or a session watcher. The Detective
+profile (`--profile observe`) requires verified support for all required host
+hook phases and session watcher observation. If those prerequisites are
+unavailable, use `--profile record` or prepare a supported host, platform, and
+repository configuration for observe before rerunning init. The Detective
+profile can return cooperative host decisions and detect unrecorded changes
+after watcher coverage starts, but it does not provide OS enforcement, actor
+proof, network isolation, or a sandbox. On native Windows, use this Record
+profile fast path because observe is not supported until Windows host hooks and
+watcher behavior are implemented and tested. Exact project naming, profile
+behavior, connection defaults, and internal identity behavior belong to
 [Administrative CLI Reference](../reference/admin-cli.md).
 
 If you choose observe setup instead of this `record` fast path, generated
@@ -128,14 +129,14 @@ arbitrary external host loaded or approved it.
 Agent Connections may request or show focused judgment needs, but
 authority-bearing user answers go through the local `User Channel`:
 
-When the host and client support it, the MCP adapter may use MCP elicitation
-for the pending judgment. When observe status reports prompt capture as
+When the host and client support it, the MCP adapter may use a host prompt for
+the pending judgment. When observe status reports chat command capture as
 `configured`, `observed`, or `active`, the chat path is a strict prompt command
-such as `Volicord: answer J-3 1 #AB7K`. When elicitation and prompt capture are
-unavailable and the adapter can safely expose the fallback, Volicord may return
-a loopback local web consent URL with a short-lived one-time token. Use the
-terminal commands below as the stable recovery path when elicitation, prompt
-capture, and local web consent are unavailable or need inspection.
+such as `Volicord: answer J-3 1 #AB7K`. When host prompt input and chat command
+capture are unavailable and the adapter can safely expose the fallback,
+Volicord may return a loopback local consent URL with a short-lived one-time
+token. Use the terminal commands below as the stable CLI inbox path when the
+other User Channel input methods are unavailable or need inspection.
 
 ```sh
 volicord inbox

@@ -449,7 +449,7 @@ where
         .map_err(|error| UserCommandError::Runtime(error.to_string()));
     }
     Ok(format!(
-        "No local web consent URL is available from this CLI process.\nUse the URL shown in the MCP Judgment Inbox item, or run:\nvolicord inbox answer {judgment_id} --choice <choice>\n"
+        "No local consent URL is available from this CLI process.\nUse the URL shown in the MCP Judgment Inbox item, or run:\nvolicord inbox answer {judgment_id} --choice <choice>\n"
     ))
 }
 
@@ -1107,7 +1107,7 @@ fn render_status_response(
         output.push_str(&format!("summary: {summary}\n"));
     }
     output.push_str(&format!(
-        "close_readiness: {}\n",
+        "close_status: {}\n",
         response
             .response_value
             .get("close_state")
@@ -1136,7 +1136,7 @@ fn render_status_response(
     }
     if let Some(guard_health) = response.response_value.get("guard_health") {
         output.push_str(&format!(
-            "selected_profile: {}\ncontrol_surface: {}\ncontrol_capabilities: {}\nobserve_effective_state: {}\nhook_path_safety: {}\nhost_hook_observed: {}\nprompt_capture_state: {}\nprompt_capture_available: {}\nwatcher_status: {}\nwatcher_baseline_created_at: {}\nwatcher_coverage_start_at: {}\nwatcher_coverage_basis: {}\nwatcher_partial_coverage_warning: {}\nunresolved_unrecorded_changes: {}\n",
+            "selected_profile: {}\nobservation_summary: {}\nobservation_capabilities: {}\nobserve_effective_state: {}\nhook_path_safety: {}\nhost_hook_observed: {}\nprompt_capture_state: {}\nprompt_capture_available: {}\nwatcher_status: {}\nwatcher_baseline_created_at: {}\nwatcher_coverage_start_at: {}\nwatcher_coverage_basis: {}\nwatcher_partial_coverage_warning: {}\nunresolved_unrecorded_changes: {}\n",
             text_field(guard_health, "selected_profile", "not_configured"),
             control_surface_text(guard_health),
             guard_capabilities_text(guard_health),
@@ -1260,15 +1260,15 @@ fn judgment_path_text(guard_health: Option<&Value>) -> &'static str {
         .and_then(Value::as_bool)
         .unwrap_or(false)
     {
-        "use MCP elicitation; terminal user commands are the local recovery path"
+        "use host prompt input; terminal user commands are the CLI inbox path"
     } else if guard_health
         .and_then(|value| value.get("prompt_capture_available"))
         .and_then(Value::as_bool)
         .unwrap_or(false)
     {
-        "use the prompt-capture chat command; terminal user commands are the local recovery path"
+        "use the chat command input method; terminal user commands are the CLI inbox path"
     } else {
-        "use `volicord inbox` and `volicord inbox answer` as the local recovery path"
+        "use `volicord inbox` and `volicord inbox answer` as the CLI inbox path"
     }
 }
 

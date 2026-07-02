@@ -22,7 +22,7 @@ Volicord keeps product, implementation, executable-role, MCP host term, and auth
 
 | Term | Definition | Must not infer |
 |---|---|---|
-| Volicord | The broader local work-authority product/system for AI-assisted product work. | It is not Core, not a source repository, and not a single executable process. |
+| Volicord | The local work authority record for AI-assisted product work. | It is not Core, not a source repository, and not a single executable process. |
 | Core | The local authority record for Volicord state. | It is not the whole Volicord product/system and not an adapter or CLI executable. |
 | Volicord implementation | The implementation set maintained by this repository. At source level, it includes implementation crates, the `volicord` administrative CLI, the `volicord mcp --stdio` local MCP adapter, tests, documentation, validation tooling, and repository configuration. | It is not every possible Volicord product interface, not Core by itself, not `Volicord Runtime Home`, not the `Product Repository`, and not one daemon, MCP server entry, or network service. |
 | Volicord source repository | The checked-out source artifact for this repository. | It is not the same thing as a deployed installation, running process, Runtime Home, Product Repository, or MCP host configuration. |

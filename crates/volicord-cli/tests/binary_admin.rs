@@ -2863,7 +2863,7 @@ fn user_channel_records_pending_judgment_with_local_user_provenance() -> Result<
     assert_success(&status);
     let status_text = stdout(&status);
     assert!(status_text.contains("User Channel status"));
-    assert!(status_text.contains("close_readiness: blocked"));
+    assert!(status_text.contains("close_status: blocked"));
     assert!(status_text.contains("close_blockers:"));
     assert!(status_text.contains("next_action:"));
     assert!(status_text.contains("pending judgments: 1"));

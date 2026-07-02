@@ -2206,13 +2206,11 @@ pub(super) fn user_channel_pending_judgment_instruction(
     guard_health: Option<&GuardHealthSummary>,
 ) -> String {
     if guard_health.is_some_and(|summary| summary.mcp_connection_healthy) {
-        "Use MCP elicitation for the pending user-owned judgment.".to_owned()
+        "Use host prompt input for the pending user-owned judgment.".to_owned()
     } else if guard_health.is_some_and(|summary| summary.prompt_capture_available) {
-        "Use the displayed prompt-capture chat command with the current verification code."
-            .to_owned()
+        "Use the displayed chat command with the current verification code.".to_owned()
     } else if guard_health.is_some_and(|summary| summary.local_web_consent_available) {
-        "Use the local web consent fallback if the adapter offers a loopback consent link."
-            .to_owned()
+        "Use the local consent URL if the adapter offers one.".to_owned()
     } else {
         "Use `volicord inbox` to list and answer pending user-owned judgments.".to_owned()
     }

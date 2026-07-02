@@ -2,11 +2,11 @@
 
 Use these examples after the [User Guide](user-workflow.md) when a task is blocked by a choice the agent should not make alone.
 
-The examples are illustrative. They help readers recognize boundary shapes while exact policy, schema, close-readiness, and route meanings stay with their owners. Each scenario is a standalone example for this guide. For exact owner boundaries, use [Core Model](../reference/core-model.md), [Scope](../reference/scope.md), and the relevant owners from the [Reference Index](../reference/README.md).
+The examples are illustrative. They help readers recognize boundary shapes while exact policy, schema, close, and route meanings stay with their owners. Each scenario is a standalone example for this guide. For exact owner boundaries, use [Core Model](../reference/core-model.md), [Scope](../reference/scope.md), and the relevant owners from the [Reference Index](../reference/README.md).
 
-Each example separates the user's decision from what the agent may do and what the agent must not imply. User-owned judgment, sensitive-action approval, final acceptance, residual-risk acceptance, verification criteria, evidence, close readiness, and write ticket stay distinct.
+Each example separates the user's decision from what the agent may do and what the agent must not imply. User Judgment, sensitive-action approval, final acceptance, residual-risk acceptance, verification criteria, Evidence, Close Status, and Write Ticket stay distinct.
 
-For recorded important judgments, structured rationale should preserve the selected reason, considered alternatives, trade-offs, assumptions, uncertainties, and review triggers. Rationale preserves intent and context; it does not create authority, evidence, acceptance, close readiness, or residual-risk acceptance.
+For recorded important judgments, structured rationale should preserve the selected reason, considered alternatives, trade-offs, assumptions, uncertainties, and review triggers. Rationale preserves intent and context; it does not create authority, Evidence, acceptance, Close Status, or residual-risk acceptance.
 
 ## Product choice
 
@@ -160,12 +160,12 @@ Agent may do:
 
 - Identify missing or stale evidence.
 - Explain what claim cannot be supported yet.
-- Follow the artifact and evidence owners when attaching or referencing eligible artifacts.
+- Follow the evidence and attachment owners when attaching or referencing eligible evidence inputs.
 
 Agent must not imply:
 
 - Agent confidence, passing tests alone, a chat summary, or broad approval proves evidence sufficiency.
-- Artifact availability by itself creates evidence, verification criteria, final acceptance, residual-risk acceptance, QA, or close readiness.
+- Evidence attachment availability by itself creates Evidence, verification criteria, final acceptance, residual-risk acceptance, QA, or Close Status.
 
 Owner links:
 
@@ -225,7 +225,7 @@ Owner links:
 - [Core Model](../reference/core-model.md)
 - [API Judgment Schemas](../reference/api/schema-judgment.md)
 
-## Close readiness
+## Close Status
 
 Scenario:
 
@@ -238,12 +238,12 @@ User decides:
 Agent may do:
 
 - Summarize current scope, evidence, checks, known blockers, visible residual risk, and next safe action.
-- Ask only the missing judgment that changes close readiness.
+- Ask only the missing judgment that changes Close Status.
 
 Agent must not imply:
 
 - A status summary, passing checks, final acceptance alone, residual-risk acceptance alone, or chat text closes the task.
-- A read-only close-readiness review creates evidence, final acceptance, residual-risk acceptance, or task state.
+- A read-only Close Status review creates Evidence, final acceptance, residual-risk acceptance, or task state.
 
 Owner links:
 

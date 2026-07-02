@@ -5,9 +5,9 @@ This is the first-read overview for Volicord. It explains the product thesis in 
 <a id="what-volicord-is"></a>
 ## What Volicord Is
 
-Volicord is the local work-authority product/system for AI-assisted product work: a local authority control plane for a user, an AI host, and an agent. Its thesis is simple: AI-assisted work should keep the user's authority basis visible while the work moves.
+Volicord is a local work authority record for AI-assisted product work. Its thesis is simple: AI-assisted work should keep the user's authority basis visible while the work moves.
 
-Core is the local authority record for Volicord state. Volicord is the broader product/system around that record, including its local runtime components, Agent Connections, supported host configuration, and documentation routes.
+Volicord includes local runtime components, Agent Connections, supported host configuration, and documentation routes. Exact authority-record structure belongs to [Core Model](../reference/core-model.md), but first-read user paths do not require that internal term.
 
 Volicord is not an OS security product. It does not provide OS sandboxing, filesystem ACLs, network policy, or secret isolation.
 
@@ -21,7 +21,7 @@ A user might ask an agent to change product behavior, investigate a failure, or 
 - A passing test is treated as final acceptance.
 - A user's casual approval is treated as every unresolved judgment being settled.
 
-Volicord exists to make those substitutions visible. It gives the agent and user a local place to keep scope, user-owned judgment, evidence, verification criteria, acceptance, residual risk, and close readiness distinct.
+Volicord exists to make those substitutions visible. It gives the agent and user a local place to keep scope, User Judgment, Evidence, verification criteria, acceptance, residual risk, and Close Status distinct.
 
 ## Local Pieces
 
@@ -29,13 +29,11 @@ These names are related, but they are not interchangeable.
 
 | Name | First-read meaning | Exact owner |
 |---|---|---|
-| Volicord | The local work-authority product/system and authority control plane for AI-assisted product work. | [What Volicord Is](#what-volicord-is) |
-| Core | The local authority record for Volicord state. | [Core Model](../reference/core-model.md) |
-| Volicord implementation | The implementation set maintained by this repository, including Core, storage, types, the `volicord` executable, MCP adapter code, tests, documentation, and validation tooling. | [Runtime Boundaries](../reference/runtime-boundaries.md) |
+| Volicord | The local work authority record for AI-assisted product work. | [What Volicord Is](#what-volicord-is) |
 | `volicord` | The installed executable that provides local administrative CLI commands, the local User Channel, and the `mcp` subcommand used by generated MCP host configuration. | [Administrative CLI](../reference/admin-cli.md) |
 | `volicord mcp --stdio` | The stdio MCP process mode that generated host configuration starts as a child process for the selected Agent Connection. | [MCP Transport](../reference/mcp-transport.md) |
 | `Volicord Runtime Home` | The local runtime data space for Volicord operational data as storage/runtime owners define it. | [Runtime Boundaries](../reference/runtime-boundaries.md) |
-| `Product Repository` | The user's project workspace and product files. It may contain explicitly selected project-scoped host configuration, but it is not Core authority and is not a runtime home. | [Runtime Boundaries](../reference/runtime-boundaries.md) |
+| `Product Repository` | The user's project workspace and product files. It may contain explicitly selected project-scoped host configuration, but it is not Volicord runtime state. | [Runtime Boundaries](../reference/runtime-boundaries.md) |
 | Agent Connection | A local MCP host connection unit. It binds one host configuration target to one managed connection identity, a mode, and explicitly connected Projects. | [Agent Connection Reference](../reference/agent-connection.md) |
 | User Channel | The local user path for authority-bearing user judgments. Agent Connections do not record `user_only` judgments. | [Administrative CLI](../reference/admin-cli.md#user-channel-commands) |
 
@@ -61,12 +59,13 @@ Agent setup through the ordinary
 - record integration state
 - run setup verification and report `complete`, `action_required`, or `failed`
 
-`record` setup records authority state and exposes MCP tools without requiring
-host lifecycle hooks or a session watcher. `observe` setup adds supported host
-hooks and session watcher observation. Host hooks can return cooperative
-pre-tool warnings or denials, and the watcher can create unrecorded-change
-findings after coverage starts; neither surface prevents all writes, proves who
-changed a file, provides a sandbox, or adds OS-level enforcement. Exact profile
+The Record profile (`--profile record`) records authority state and exposes MCP
+tools without requiring host lifecycle hooks or a session watcher. The Detective
+profile (`--profile observe`) adds supported host hooks and session watcher
+observation. Host hooks can return cooperative pre-tool warnings or denials, and
+the watcher can report Unrecorded Changes after coverage starts; neither
+surface prevents all writes, proves who changed a file, provides a sandbox, or
+adds OS-level enforcement. Exact profile
 behavior is defined by [Administrative CLI](../reference/admin-cli.md).
 
 `volicord setup` remains the installation-profile preparation and repair path.
@@ -85,18 +84,16 @@ Agent setup must not:
 At first-read level, Volicord documentation keeps these authority concepts separate and routes their exact meaning to [Core Model](../reference/core-model.md):
 
 - User-owned judgment remains user-owned; an agent may explain options, but it must not invent the judgment.
-- The User Channel records user judgments with `actor_source=local_user` and `operation_category=user_only`.
-- Agent Connection calls use agent-connection provenance and an operation category allowed by the connection mode.
 - Evidence supports a specific recorded claim. It is not final acceptance or residual-risk acceptance.
 - Verification criteria guide what should be checked. They are not themselves evidence or acceptance.
-- A write ticket is Volicord authority for authorized write intent for one product-file write attempt. It is distinct from ordinary write approval, sensitive-action approval, final acceptance, and residual-risk acceptance, and it is not OS permission or proof that a write occurred.
-- Close readiness is a Core authority concept, not a proof of product correctness.
+- A Write Ticket records authorized write intent for one product-file write attempt. It is distinct from ordinary write approval, sensitive-action approval, final acceptance, and residual-risk acceptance, and it is not OS permission or proof that a write occurred.
+- Close Status is not a proof of product correctness.
 
 ## Connection Modes
 
 Agent Connections can be read-oriented or workflow-capable. Use read-oriented
-mode when a host should inspect state, discover projects, or check close
-readiness without workflow mutation tools. Use workflow mode for normal agent
+mode when a host should inspect state, discover projects, or check Close Status
+without workflow mutation tools. Use workflow mode for normal agent
 workflow operations. Exact CLI selection behavior belongs to
 [Administrative CLI](../reference/admin-cli.md#connection-intents-and-hosts),
 and exact MCP-visible tool exposure belongs to

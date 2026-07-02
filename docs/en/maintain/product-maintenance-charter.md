@@ -14,7 +14,7 @@ close-readiness state, or residual-risk decisions.
 
 ## Product Identity
 
-- Volicord is a local work-authority system for AI-assisted product work.
+- Volicord is a local work authority record for AI-assisted product work.
 - Core is the local authority record for Volicord state. Do not describe
   Volicord itself as the authority record.
 - User judgment remains distinct from agent action. Volicord may record,
@@ -25,17 +25,17 @@ close-readiness state, or residual-risk decisions.
   layer, network isolation layer, security proof, or guarantee that an agent
   followed instructions.
 - Scope, evidence, write ticket, write approval, final acceptance,
-  residual-risk acceptance, and close readiness stay separate in planning,
+  residual-risk acceptance, and Close Status stay separate in planning,
   documentation, code, tests, and reports.
 
 ## Service Planning Principles
 
 Plan service work around explicit scope, visible evidence, user-owned judgment,
-recorded state transitions, and honest close-readiness checks. Features should
+recorded state transitions, and honest Close Status checks. Features should
 make those boundaries easier for users and agents to see, not hide them behind
 a polished summary.
 
-Host integrations and guard surfaces are cooperative and detective unless a
+Host integrations and observation surfaces are cooperative and detective unless a
 focused Reference owner defines a stronger guarantee. Product language,
 implementation comments, tests, CLI help, generated guidance, and examples must
 not imply stronger protection than the relevant Reference owner supports.
@@ -114,7 +114,7 @@ public CLI option set, current storage schema, current MCP-visible schema, or
 current terminology role metadata.
 
 Test results are implementation or maintenance checks. They do not define
-product contracts, prove security, complete QA, establish close readiness,
+product contracts, prove security, complete QA, establish Close Status,
 record final acceptance, or accept residual risk. Use [Validation](validation.md)
 and [Testing Strategy](../development/testing-strategy.md) for placement and
 reporting boundaries.

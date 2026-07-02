@@ -87,8 +87,8 @@ language, including ordinary dialogue or explanatory sentences inside fenced
 
 Apply the terminology map's distinctions, including:
 
-- Volicord is the local work-authority product/system for AI-assisted product
-  work; Core is the local authority record for Volicord state.
+- Volicord is the local work authority record for AI-assisted product work.
+  Core names the exact reference owner for internal authority structure.
 - Use "verification criteria" for user-visible criteria used to check work, and
   "검증 기준" in Korean.
 - Use "current scope" or "currently applied scope" in prose context, and
@@ -98,7 +98,9 @@ Apply the terminology map's distinctions, including:
   explanatory prose, use "쓰기 티켓" for the product concept. Preserve
   exact `write_ticket` identifiers for physical storage identifiers and
   internal source paths.
-- In Korean reference prose, use "닫기 준비 상태" for close readiness.
+- In user-facing Korean prose, use "닫기 상태" for Close Status. Preserve
+  exact close-readiness identifiers only where reference or schema precision
+  requires them.
 
 Some English words can be both code values and ordinary prose. Preserve
 `complete` in backticks only when it is an identifier, such as

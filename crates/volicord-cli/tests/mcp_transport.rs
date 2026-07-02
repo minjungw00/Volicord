@@ -367,9 +367,9 @@ fn volicord_mcp_subcommand_stdio_without_elicitation_returns_cli_recovery_fallba
     let fallback = responses[&2]["result"]["content"][1]["text"]
         .as_str()
         .expect("fallback text should be present");
-    assert!(fallback.contains("MCP elicitation is unavailable"));
+    assert!(fallback.contains("Host prompt input is unavailable"));
     assert!(fallback.contains("prompt_capture_status=unavailable"));
-    assert!(fallback.contains("local CLI recovery path"));
+    assert!(fallback.contains("CLI inbox path"));
     assert!(!fallback.contains("Volicord: answer J-1 1 #"));
     assert!(!fallback.contains("Volicord: note J-1 \"text\" #"));
 
@@ -714,7 +714,7 @@ fn request_user_judgment_arguments(
         "change_unit_id": null,
         "judgment_kind": "product_decision",
         "presentation": "short",
-        "question": "Choose the focused compiled MCP elicitation outcome.",
+        "question": "Choose the focused User Channel outcome.",
         "options": [
             {
                 "option_id": "keep",

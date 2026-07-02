@@ -350,17 +350,16 @@ Conditions:
   `volicord mcp --stdio` may use server-initiated elicitation as a User Channel
   path for a pending judgment created by `volicord.request_user_judgment`; the
   wire behavior is owned by [MCP Transport](mcp-transport.md#user-judgment-elicitation).
-- When MCP elicitation is unavailable, MCP fallback text may route the human
-  user to chat prompt-capture commands compatible with the prompt-submit hook
-  path when prompt-capture availability is `configured`, `observed`, or
-  `active`.
-- When MCP elicitation and prompt capture are unavailable, MCP fallback text may
-  route the human user to a loopback local web consent URL owned by
+- When host prompt input is unavailable, MCP fallback text may route the human
+  user to chat commands compatible with the prompt-submit hook path when command
+  capture is `configured`, `observed`, or `active`.
+- When host prompt input and chat command capture are unavailable, MCP fallback
+  text may route the human user to a loopback local consent URL owned by
   [MCP Transport](mcp-transport.md#user-judgment-elicitation). That local web
   answer is still a `local_user` User Channel path, not an Agent Connection
   answer.
-- The fallback text routes the user to the `volicord inbox` local CLI recovery
-  path only when elicitation, prompt capture, and local web consent are not
+- The fallback text routes the user to the `volicord inbox` CLI inbox path only
+  when host prompt input, chat command capture, and local consent URL are not
   available.
 - Authority-bearing user-judgment resolution requires `actor_source=local_user`,
   `operation_category=user_only`, and compatible User Channel provenance.

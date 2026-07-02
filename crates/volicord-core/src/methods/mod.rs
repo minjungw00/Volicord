@@ -1224,29 +1224,27 @@ fn judgment_capture_paths(
 fn judgment_mcp_elicitation_capture_path() -> JudgmentCapturePath {
     JudgmentCapturePath {
         kind: "mcp_elicitation".to_owned(),
-        label: "MCP elicitation".to_owned(),
+        label: "Host prompt input".to_owned(),
         available: true,
         command: RequiredNullable::null(),
         url: RequiredNullable::null(),
         capture_basis: Some(VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL.to_owned()).into(),
         expires_at: RequiredNullable::null(),
-        detail: Some("Answer through the MCP client's user-facing elicitation prompt.".to_owned())
-            .into(),
+        detail: Some("Answer through the MCP client's user-facing host prompt.".to_owned()).into(),
     }
 }
 
 fn judgment_prompt_capture_path() -> JudgmentCapturePath {
     JudgmentCapturePath {
         kind: "prompt_capture".to_owned(),
-        label: "Prompt capture".to_owned(),
+        label: "Chat command capture".to_owned(),
         available: true,
         command: RequiredNullable::null(),
         url: RequiredNullable::null(),
         capture_basis: Some(VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK.to_owned()).into(),
         expires_at: RequiredNullable::null(),
         detail: Some(
-            "Use the displayed prompt-capture answer command with the current verification code."
-                .to_owned(),
+            "Use the displayed chat command with the current verification code.".to_owned(),
         )
         .into(),
     }
@@ -1255,14 +1253,14 @@ fn judgment_prompt_capture_path() -> JudgmentCapturePath {
 fn judgment_local_web_capture_path(available: bool) -> JudgmentCapturePath {
     JudgmentCapturePath {
         kind: "local_web_consent".to_owned(),
-        label: "Local web consent".to_owned(),
+        label: "Local consent URL".to_owned(),
         available,
         command: RequiredNullable::null(),
         url: RequiredNullable::null(),
         capture_basis: Some(VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB.to_owned()).into(),
         expires_at: RequiredNullable::null(),
         detail: Some(
-            "Use the loopback consent link if the active MCP adapter provides one.".to_owned(),
+            "Use the local consent URL if the active MCP adapter provides one.".to_owned(),
         )
         .into(),
     }

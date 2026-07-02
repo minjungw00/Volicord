@@ -194,8 +194,8 @@ Volicord 관리 블록을 쓰거나 갱신합니다. 지원되지 않는 셸, �
 건강 상태, 런타임 hook 관찰 건강 상태, 효과적인 observe 건강 상태, 호스트 reload
 필요도 진단으로 보고할 수 있습니다. 이 진단은 로컬 setup 및 관찰 점검이며 OS 강제,
 sandboxing, 쓰기 방지, 제품 정확성,
-닫기 준비 상태의 증명이 아닙니다. Doctor는 `selected_profile`과 `control_surface`
-요약도 보고합니다. 이 요약에는 host hook, session watcher, 협력형 결정, 미기록 변경
+닫기 상태의 증명이 아닙니다. Doctor는 `selected_profile`과 관찰 요약도 보고합니다. 이
+요약에는 host hook, session watcher, 협력형 결정, 미기록 변경
 탐지, 행위자 증명, OS 집행 사실이 포함됩니다. session watcher 관찰이나 local web
 consent 같은 런타임 전용 기능은 보고 프로세스가 실제로 그 런타임 상태를 소유하지 않는 한
 사용할 수 없음으로 보고합니다. 프로젝트를 만들거나, 호스트 설정을 설치하거나, 연결 모드를 바꾸거나,
@@ -301,8 +301,8 @@ watcher 관찰을 설치하지 않는 chat-first 사용을 위한 첫 실행 저
   policy, 지원되는 프로젝트 로컬 host hook 및 rule 파일을 쓰고 host-hook/session-watcher
   관찰 상태를 기록합니다.
 
-observe를 인식하는 setup, status, verification, doctor 출력은 `selected_profile`과
-`control_surface` 요약을 보고합니다. 이 요약에는 `host_hooks_active`,
+observe를 인식하는 setup, status, verification, doctor text 출력은 `selected_profile`과
+`observation_summary`를 보고합니다. 대응 JSON 필드는 `control_surface`입니다. 이 요약에는 `host_hooks_active`,
 `session_watcher_active`, `cooperative_pre_tool_warning_available`,
 `cooperative_pre_tool_denial_available`, `unrecorded_changes_detectable`,
 `actor_identity_provable`, `os_enforced`가 포함됩니다. 현재 Volicord 출력은
@@ -420,8 +420,8 @@ Agent Connection 명령은 아래 결과 상태를 사용합니다.
 JSON 출력은 진단 소비자를 위해 최상위 `status`, `checks`, `actions` 필드를 포함해야
 합니다. 연결 상태 및 검증 출력은 observe hook 파일 설치, 설정 건강 상태, 런타임 hook 관찰
 건강 상태, 효과적인 observe 건강 상태, 호스트 reload 필요, prompt-capture 가용성, 알 수
-있을 때의 최근 host-hook event를 별도 진단으로 유지해야 합니다. 또한 `selected_profile`,
-`control_surface` 요약, 협력형 pre-tool warning 가용성, 협력형 pre-tool denial 가용성,
+있을 때의 최근 host-hook event를 별도 진단으로 유지해야 합니다. Text 출력은 `selected_profile`,
+`observation_summary`, 협력형 pre-tool warning 가용성, 협력형 pre-tool denial 가용성,
 post-tool 상관 가용성, 미기록 변경 탐지 가용성, prompt-capture 가용성, local web consent
 가용성, hook path safety, hook 명령 cwd independence, hook 명령 subdirectory safety,
 watcher 상태, watcher baseline 생성 시각, watcher coverage 시작 시각, watcher coverage
@@ -614,16 +614,16 @@ Lifecycle 동작:
 Connection을 만들거나, MCP 호스트 설정을 설치하거나, Agent Connection이 사용자처럼
 동작할 수 있게 하지 않습니다.
 
-초기화된 MCP 클라이언트가 elicitation 지원을 선언하면 MCP elicitation은
+초기화된 MCP 클라이언트가 호스트 프롬프트 지원을 선언하면 호스트 프롬프트 입력은
 `volicord.request_user_judgment`로 만들어진 대기 판단의 선호 대화형 경로입니다.
-elicitation을 사용할 수 없고 prompt-capture 사용 가능 상태가 `configured`, `observed`,
+호스트 프롬프트 입력을 사용할 수 없고 채팅 명령 캡처가 `configured`, `observed`,
 `active`이면 fallback 안내가 현재 검증 코드가 포함된
 `Volicord: answer J-3 1 #AB7K` 같은 정확한 채팅 명령을 보여 줄 수 있습니다.
-elicitation과 prompt capture를 모두 사용할 수 없고 adapter가 local web consent를 안전하게
-노출할 수 있으면 fallback 안내가 짧게 만료되는 일회성 token을 쓰는 loopback consent
-URL을 보여 줄 수 있습니다. 터미널의 `volicord inbox` 명령은 elicitation, prompt capture,
-local web consent를 사용할 수 없거나, 비활성화, 저하, 또는 작업 흐름에 부적합할 때 쓰는
-로컬 복구와 수동 점검 경로로 남습니다.
+호스트 프롬프트 입력과 채팅 명령 캡처를 모두 사용할 수 없고 adapter가 로컬 consent
+URL을 안전하게 노출할 수 있으면 fallback 안내가 짧게 만료되는 일회성 token을 쓰는
+loopback consent URL을 보여 줄 수 있습니다. 터미널의 `volicord inbox` 명령은 호스트
+프롬프트 입력, 채팅 명령 캡처, 로컬 consent URL을 사용할 수 없거나, 비활성화, 저하,
+또는 작업 흐름에 부적합할 때 쓰는 CLI inbox와 수동 점검 경로로 남습니다.
 
 프로젝트 선택은 `--repo PATH` 또는 현재 작업 디렉터리의 저장소 루트를 사용합니다.
 작업 선택은 기본적으로 active 작업을 사용합니다. `--task active`는 이를 명시하고,

@@ -22,14 +22,15 @@ volicord init --host codex --repo /path/to/your-product-repo --profile record
 설정은 단일 공개 실행 파일을 프로젝트에 묶인 `volicord mcp --stdio`로 시작합니다.
 
 이 빠른 경로는 host lifecycle hook 설치나 session watcher를 요구하지 않는
-`--profile record`를 사용합니다. `--profile observe`는 모든 필수 host hook phase와
-session watcher 관찰에 대한 검증된 지원을 요구합니다. 이 전제조건을 사용할 수 없으면
-`--profile record`를 사용하거나, observe를 다시 실행하기 전에 지원되는 호스트, 플랫폼,
-저장소 설정을 준비합니다. Observe는 협력형 host decision을 반환하고 watcher coverage
-시작 뒤의 미기록 변경을 탐지할 수 있지만 OS 집행, 행위자 증명, 네트워크 격리, sandbox를
-제공하지 않습니다. Native Windows에서는 Windows host hook과 watcher 동작이 구현되고
-테스트되기 전까지 observe가 지원되지 않으므로 이 `record` 빠른 경로를 사용합니다. 정확한
-프로젝트 이름, 프로필 동작, 연결 기본값, 내부 식별 정보 동작은
+Record profile(`--profile record`)을 사용합니다. Detective profile(`--profile observe`)은
+모든 필수 host hook phase와 session watcher 관찰에 대한 검증된 지원을 요구합니다. 이
+전제조건을 사용할 수 없으면 `--profile record`를 사용하거나, observe를 다시 실행하기 전에
+지원되는 호스트, 플랫폼, 저장소 설정을 준비합니다. Detective profile은 협력형 host
+decision을 반환하고 watcher coverage 시작 뒤의 미기록 변경을 탐지할 수 있지만 OS 집행,
+행위자 증명, 네트워크 격리, sandbox를 제공하지 않습니다. Native Windows에서는 Windows
+host hook과 watcher 동작이 구현되고 테스트되기 전까지 observe가 지원되지 않으므로 이
+Record profile 빠른 경로를 사용합니다. 정확한 프로젝트 이름, 프로필 동작, 연결 기본값,
+내부 식별 정보 동작은
 [관리 CLI 참조](../reference/admin-cli.md)가 담당합니다.
 
 이 `record` 빠른 경로 대신 observe 설정을 선택하면, 생성된 hook 명령은 호스트
@@ -119,13 +120,13 @@ volicord export mcp-config --output /tmp/volicord.mcp.json
 Agent Connection은 초점이 맞춰진 판단 필요를 요청하거나 보여 줄 수 있지만,
 권한을 지니는 사용자 답변은 로컬 `User Channel`을 거칩니다.
 
-호스트와 클라이언트가 지원하면 MCP 어댑터는 대기 판단에 MCP elicitation을 사용할 수
-있습니다. observe 상태가 prompt capture를 `configured`, `observed`, `active`로
-보고할 때 채팅 경로는 `Volicord: answer J-3 1 #AB7K` 같은 엄격한 prompt 명령입니다.
-elicitation과 prompt capture를 사용할 수 없고 adapter가 fallback을 안전하게 노출할 수
-있으면 Volicord는 짧게 만료되는 일회성 token이 있는 loopback local web consent URL을
-반환할 수 있습니다. elicitation, prompt capture, local web consent를 사용할 수 없거나
-수동 점검이 필요할 때는 아래 터미널 명령을 안정적인 복구 경로로 사용합니다.
+호스트와 클라이언트가 지원하면 MCP 어댑터는 대기 판단에 호스트 프롬프트를 사용할 수
+있습니다. observe 상태가 채팅 명령 캡처를 `configured`, `observed`, `active`로 보고할 때
+채팅 경로는 `Volicord: answer J-3 1 #AB7K` 같은 엄격한 prompt 명령입니다. 호스트
+프롬프트 입력과 채팅 명령 캡처를 사용할 수 없고 adapter가 fallback을 안전하게 노출할 수
+있으면 Volicord는 짧게 만료되는 일회성 token이 있는 loopback local consent URL을 반환할
+수 있습니다. 다른 User Channel 입력 방법을 사용할 수 없거나 수동 점검이 필요할 때는
+아래 터미널 명령을 안정적인 CLI inbox 경로로 사용합니다.
 
 ```sh
 volicord inbox

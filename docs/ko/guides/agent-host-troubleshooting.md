@@ -246,7 +246,7 @@ volicord connection verify codex --repo /path/to/your-product-repo
 `--mcp-command PATH`로 setup을 다시 실행합니다.
 
 <a id="guard-hook-path-or-wrapper-is-unsafe"></a>
-## Guard hook 경로 또는 wrapper가 안전하지 않음
+## Hook 경로 또는 wrapper가 안전하지 않음
 
 관찰 증상: `volicord doctor`, 연결 status, 연결 verification이 `hook_path_safety`를
 `ok`가 아닌 값으로 보고합니다. 예를 들면 `relative_path_unsafe`,
@@ -280,7 +280,7 @@ volicord connection verify codex --repo /path/to/your-product-repo
   Repository를 옮긴 뒤 흔히 발생합니다. 현재 `--repo PATH`로 init을 다시 실행하고,
   필요하면 호스트를 reload 또는 restart합니다.
 - `host_output_mismatch`, `policy_hash_mismatch`, `authority_mismatch`: 생성된 wrapper
-  메타데이터가 기대하는 host-output mode, policy hash, 연결, guard 설치와 맞지 않습니다.
+  메타데이터가 기대하는 host-output mode, policy hash, 연결, observe 설치와 맞지 않습니다.
   관리 파일과 registry 상태가 일치하도록 init을 다시 실행합니다.
 - `metadata_missing` 또는 `placeholder_unsupported`: 생성된 설정이 현재 검증되는 형태가
   아닙니다. Init을 다시 실행하고 생성 명령을 지원되지 않는 placeholder로 바꾸지
@@ -295,7 +295,7 @@ Claude Code observe hook 명령은 `${CLAUDE_PROJECT_DIR}`를 기준으로 합�
 호스트 설정을 reload하거나 복구합니다.
 
 안전하지 않은 hook 경로는 observe host hook을 inactive로 유지합니다. Watcher 사용 가능
-여부는 control-surface 요약에서 별도로 보고됩니다. 경로 복구는 여전히 호스트 trust,
+여부는 관찰 요약에서 별도로 보고됩니다. 경로 복구는 여전히 호스트 trust,
 approval, restart, reload와 별개입니다. 보고된 호스트 소유 동작을 완료하고 복구 뒤
 verification을 다시 실행합니다.
 
@@ -312,7 +312,7 @@ volicord connection verify codex --shared
 ```
 
 명령이 이름 붙인 호스트 소유 프로젝트 승인 또는 reload 동작을 완료합니다.
-`Product Repository` 통합 파일은 Core 권한이 아니며, 호스트가 MCP 서버를 로드,
+`Product Repository` 통합 파일은 Volicord 권한이 아니며, 호스트가 MCP 서버를 로드,
 신뢰, 노출했다는 증거도 아닙니다.
 
 ## Generic Export가 호스트에 나타나지 않음
@@ -345,7 +345,7 @@ volicord connections
 
 제거는 먼저 선택된 Product Repository 멤버십을 제거합니다. 소유 멤버십이 남지 않고 안전 점검이
 허용할 때만 Agent Connection과 관리 호스트 설정을 제거합니다. `Product Repository`,
-프로젝트 상태, Core 기록, 아티팩트 저장소, 관련 없는 호스트 항목을 제거하면 안
+프로젝트 상태, Volicord 기록, 증거 첨부 저장소, 관련 없는 호스트 항목을 제거하면 안
 됩니다.
 
 ## 보안 경계

@@ -134,7 +134,7 @@ The agent must not invent a project from folder names, current working
 directory, MCP roots, host labels, Product Repository labels, or memory. If a call
 without `project_selector` is rejected as ambiguous, call
 `volicord.list_projects`, choose the intended project, and retry with the
-returned value. Public MCP tool arguments do not require or accept Core request
+returned value. Public MCP tool arguments do not require or accept internal request
 metadata such as `request_id`, `idempotency_key`, `expected_state_version`,
 `dry_run`, or `locale`.
 
@@ -157,7 +157,7 @@ volicord connection remove codex --repo /path/to/billing-api
 
 Removing one Product Repository removes that Product Repository's Connection
 Projects membership. It does not delete the `Product Repository`, project registration,
-project state, Core task/evidence/run/artifact records, or unrelated host
+project state, Volicord task/evidence/run records, evidence attachment storage, or unrelated host
 configuration. If other connected Product Repositories remain, the host entry
 remains. If none remain, Volicord removes the matching managed host
 configuration when ownership and safety checks permit it.
@@ -168,7 +168,7 @@ configuration when ownership and safety checks permit it.
 - Multiple connected Product Repositories require explicit `project_selector`
   in public MCP tool calls unless the call is `volicord.list_projects`.
 - A `Product Repository` is a product-file boundary and may contain selected
-  shared host configuration, but it is not Core authority.
+  shared host configuration, but it is not Volicord authority.
 - Write ticket is Volicord write-intent authority, not OS permission or proof that a write occurred.
 - Volicord does not provide OS sandboxing, filesystem ACLs, network policy, or
   secret isolation.

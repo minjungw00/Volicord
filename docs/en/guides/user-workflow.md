@@ -1,8 +1,8 @@
 # User Guide
 
-Volicord lets you work in ordinary language while keeping decision boundaries visible. Volicord is the local work-authority product/system; Core is the local authority record for Volicord state. You decide the work and the risky calls. The agent should keep scope, judgment, evidence, approvals, and close basis separate instead of presenting inference as your decision.
+Volicord lets you work in ordinary language while keeping decision boundaries visible. Volicord is a local work authority record for AI-assisted product work. You decide the work and the risky calls. The agent should keep scope, User Judgment, Evidence, approvals, and Close Status separate instead of presenting inference as your decision.
 
-This guide is the user workflow path. Exact API behavior, schemas, storage effects, security wording, and reference-level close readiness rules live in the owners linked from the [Reference Index](../reference/README.md).
+This guide is the user workflow path. Exact API behavior, schemas, storage effects, security wording, and reference-level close rules live in the owners linked from the [Reference Index](../reference/README.md).
 
 ## Daily workflow
 
@@ -16,7 +16,7 @@ flowchart TD
   action["Agent inspects, prepares writes,<br/>records runs or observations"]
   status["Review status:<br/>evidence, blockers, pending judgment"]
   judgment{"Judgment Inbox<br/>item pending?"}
-  answer["Answer through elicitation,<br/>prompt capture, local web consent,<br/>or volicord inbox"]
+  answer["Answer through a<br/>User Channel input method"]
   changes{"Unrecorded<br/>changes unresolved?"}
   reconcile["Ask the agent to reconcile;<br/>answer any acceptance judgment"]
   close{"Close blockers<br/>remain?"}
@@ -33,7 +33,7 @@ flowchart TD
 
 The useful habit is to ask for status before large writes, after meaningful
 changes, and before close. Treat every pending Judgment Inbox item,
-unrecorded-change finding, and close blocker as a named next action rather than
+Unrecorded Change, and close blocker as a named next action rather than
 as background text in a summary.
 
 ## Start a task
@@ -107,32 +107,32 @@ The agent should not mix inspected facts with user-owned judgment, ask you to re
 
 ## Agent and User loop
 
-This loop separates what an agent can do through an [Agent Connection](../reference/agent-connection.md) from what you record through the `User Channel`. The authority meanings belong to [Core Model](../reference/core-model.md).
+This loop separates what an agent can do through an [Agent Connection](../reference/agent-connection.md) from what you record through the `User Channel`. Exact authority meanings belong to [Core Model](../reference/core-model.md).
 
 | Moment | Agent can do | You decide or record | What it does not mean |
 |---|---|---|---|
-| Shape the work | Inspect available context, propose scope, and name the next safe action. | Set the goal, scope, non-goals, and limits in ordinary language. | A helpful plan is not write approval, evidence, final acceptance, or close readiness. |
-| Ask for judgment | Request or show a focused pending judgment and Core-generated options. | Choose whether to answer, defer, reject, narrow, or ask for more evidence. | A judgment request is not a recorded answer. |
-| Record authority-bearing judgment | Route you to the local `User Channel` path and avoid depending on an unrecorded answer. | Record one Core-generated option when the answer must become Core authority. | An Agent Connection cannot call `volicord.record_user_judgment` or turn chat text into `User Channel` provenance. |
-| Continue toward close | Show evidence, artifact refs, blockers, residual risk, and the next safe action. | Decide final acceptance, residual-risk acceptance, cancellation, supersession, or the next blocker to address. | Evidence and artifacts do not automatically prove correctness or replace user-owned judgment. |
+| Shape the work | Inspect available context, propose scope, and name the next safe action. | Set the goal, scope, non-goals, and limits in ordinary language. | A helpful plan is not write approval, evidence, final acceptance, or Close Status. |
+| Ask for judgment | Request or show a focused pending judgment and Volicord-provided options. | Choose whether to answer, defer, reject, narrow, or ask for more evidence. | A judgment request is not a recorded answer. |
+| Record authority-bearing judgment | Route you to the local `User Channel` path and avoid depending on an unrecorded answer. | Record one shown option when the answer must become part of Volicord state. | An Agent Connection cannot call `volicord.record_user_judgment` or turn chat text into `User Channel` provenance. |
+| Continue toward close | Show evidence, evidence attachments, blockers, residual risk, and the next safe action. | Decide final acceptance, residual-risk acceptance, cancellation, supersession, or the next blocker to address. | Evidence attachments do not automatically prove correctness or replace User Judgment. |
 
 <a id="record-a-core-user-judgment"></a>
-## Record a Core user judgment
+## Record a User Judgment
 
-When a choice must become authority-bearing Core state, use a supported
-`User Channel`. Current supported paths are MCP elicitation when the host
-client declares that capability, observe prompt-capture chat commands when the
-prompt-capture availability is `configured`, `observed`, or `active`, local web
-consent when the adapter can safely expose a loopback one-time-token fallback,
-and the stable local CLI recovery path `volicord inbox`. Exact command behavior belongs to
+When a choice must become recorded Volicord state, use a supported
+`User Channel`. Current supported input methods are host prompt input when the
+host client declares that capability, chat commands when command capture is
+`configured`, `observed`, or `active`, local consent URL when the adapter can
+safely expose a loopback one-time-token fallback, and the stable CLI inbox path
+`volicord inbox`. Exact command behavior belongs to
 [Administrative CLI](../reference/admin-cli.md#user-channel-commands);
 authority meaning belongs to [Core Model](../reference/core-model.md), and
 Agent Connection boundaries belong to
 [Agent Connection Reference](../reference/agent-connection.md).
 
-When elicitation, prompt capture, and local web consent are unavailable or need
-manual inspection, use this sequence from the selected Product Repository when a
-task has a pending judgment:
+When the other User Channel input methods are unavailable or need manual
+inspection, use this sequence from the selected Product Repository when a task
+has a pending judgment:
 
 ```sh
 volicord inbox
@@ -141,25 +141,26 @@ volicord inbox answer JUDGMENT_ID --choice CHOICE_ID
 
 Use `volicord inbox` to see pending judgments for the active or selected task,
 including the judgment id, question, choices, required/optional status, and
-available capture paths. Use `volicord inbox answer` to record only an option
-shown by Core for that judgment. Use `--repo PATH` only when the current
+available User Channel input methods. Use `volicord inbox answer` to record only an option
+shown by Volicord for that judgment. Use `--repo PATH` only when the current
 directory is not the intended Product Repository, and `--task ID` only when the
 active task is not the intended task.
 
 Recording one option resolves only that addressed judgment. Broad natural
 language such as "approved", "looks good", or "go ahead" does not imply every
 pending authority outcome, and an explanatory `--note` does not change the
-selected Core option.
+selected option.
 
 An agent may help route you to this path, show the pending question, and explain
 the options. An Agent Connection must not record your authority-bearing decision
 for you, call `volicord.record_user_judgment`, or convert a chat reply into
-authority-bearing Core state outside a supported User Channel path. A strict
-prompt-capture command such as `Volicord: answer J-3 1 #AB7K` is a User Channel path
-only when the local prompt-capture path is available and the current
-verification code is validated and recorded by the observe host hook. Generated
+recorded Volicord state outside a supported User Channel path. A strict
+chat command such as `Volicord: answer J-3 1 #AB7K` is a User Channel path
+only when command capture is available and the current verification code is
+validated and recorded by the observe host hook. Generated
 Markdown, status summaries, ordinary chat text, Product Repository guidance, and
-rendered projections can help you read state, but they are not Core authority;
+rendered projections can help you read state, but they are not the Volicord
+record;
 for projection boundaries, see
 [Projection and template display boundaries](../reference/projection-and-templates.md).
 
@@ -171,41 +172,41 @@ and the judgment method and schema owners.
 ```mermaid
 sequenceDiagram
   participant Agent as Agent Connection
-  participant Core as Core
+  participant Volicord as Volicord
   participant User as User
   participant Channel as User Channel
 
-  Agent->>Core: request focused user judgment
-  Core-->>Agent: pending JudgmentInboxItem and capture paths
+  Agent->>Volicord: request focused user judgment
+  Volicord-->>Agent: pending JudgmentInboxItem and input methods
   Agent-->>User: show question, choices, consequence, and fallback path
-  alt MCP elicitation, prompt capture, or local web consent
-    User->>Channel: choose a Core-generated option
-  else CLI fallback
+  alt User Channel input method
+    User->>Channel: choose a shown option
+  else CLI inbox
     User->>Channel: volicord inbox answer JUDGMENT_ID --choice CHOICE_ID
   end
-  Channel->>Core: record user judgment with local_user provenance
-  Core-->>Agent: later status or close reflects the resolved judgment
+  Channel->>Volicord: record user judgment with local_user provenance
+  Volicord-->>Agent: later status or close reflects the resolved judgment
 ```
 
 ## Reconcile unrecorded changes
 
-The `observe` profile may surface an unrecorded Product Repository change when
+The Detective profile may surface an unrecorded Product Repository change when
 a host hook observes a product-file change that does not match an expected
-write. Treat it as an observation finding, not as proof of malicious behavior
+write. Treat it as an Unrecorded Change, not as proof of malicious behavior
 and not as a change the agent can waive.
 
-Unresolved findings block close. The agent should run
+Unresolved Unrecorded Changes block close. The agent should run
 `volicord.reconcile_changes` when available, show deterministic resolutions and
 any pending judgments, and route acceptance to a supported `User Channel`.
-Session watcher findings follow the same reconciliation path; the watcher
+Session watcher observations follow the same reconciliation path; the watcher
 detects changed Product Repository paths but does not prevent writes or identify
 the actor. CLI recovery is `volicord changes reconcile`; if reconciliation
 creates a pending judgment, answer it through the normal User Channel path and
 rerun reconciliation.
 
 If observe status reports `hook_path_safety` as anything other than `ok`, treat
-hook-based cooperative pre-tool warning or denial, prompt capture, and
-unrecorded-change observation as unavailable or degraded until the setup is
+hook-based cooperative pre-tool warning or denial, chat command capture, and
+Unrecorded Change observation as unavailable or degraded until the setup is
 repaired. Exact repair guidance belongs to
 [Agent Host Troubleshooting](agent-host-troubleshooting.md#guard-hook-path-or-wrapper-is-unsafe).
 
@@ -255,9 +256,9 @@ You decide:
 
 The agent should show what ran or changed, which claim each evidence item supports, what passed or failed, what is missing or stale, and which claim remains unsupported.
 
-The agent should not treat a staged artifact, raw local path, copied log location, screenshot alone, generated summary, or test pass as broader proof than it is. It also should not expose raw secrets, tokens, or full sensitive logs.
+The agent should not treat an evidence attachment, raw local path, copied log location, screenshot alone, generated summary, or test pass as broader proof than it is. It also should not expose raw secrets, tokens, or full sensitive logs.
 
-## Review close readiness
+## Review Close Status
 
 Before larger work is called done, ask in ordinary language:
 
@@ -265,21 +266,21 @@ Before larger work is called done, ask in ordinary language:
 Show what changed, what was checked, what residual risk is visible, and what still blocks close.
 ```
 
-For users, close readiness means whether the task can honestly finish now from the current Core records. It is not proof that the product result is objectively correct. In reference terms, close readiness meaning belongs to [Core Model](../reference/core-model.md), and close method behavior belongs to [Close-task Method](../reference/api/method-close-task.md).
+For users, Close Status means whether the task can honestly finish now from the current Volicord records. It is not proof that the product result is objectively correct. Exact close meaning belongs to [Core Model](../reference/core-model.md), and close method behavior belongs to [Close-task Method](../reference/api/method-close-task.md).
 
 This decision tree shows the user-facing order for interpreting a close
-readiness result. It is not the exact `volicord.close_task` algorithm.
+status result. It is not the exact `volicord.close_task` algorithm.
 
 ```mermaid
 flowchart TD
-  ask["Ask for close readiness"]
-  basis{"Current close basis<br/>is visible?"}
+  ask["Ask for Close Status"]
+  basis{"Visible close facts<br/>are available?"}
   gather["Gather or record the missing<br/>run, observation, or evidence"]
   pending{"Pending required<br/>user judgment?"}
   inbox["Answer through the<br/>Judgment Inbox / User Channel"]
   unrecorded{"Unresolved<br/>unrecorded changes?"}
   reconcile["Reconcile changes;<br/>answer acceptance only if needed"]
-  evidence{"Required evidence<br/>or artifact unavailable?"}
+  evidence{"Required evidence input<br/>unavailable?"}
   evidenceAction["Collect evidence or keep<br/>the blocker visible"]
   risk{"Named residual risk<br/>needs acceptance?"}
   riskDecision["Accept the named risk<br/>or ask for more work"]
@@ -306,7 +307,7 @@ flowchart TD
 You decide:
 
 - which blocker to address next
-- whether to provide final acceptance when the close basis is visible
+- whether to provide final acceptance when the close facts are visible
 - whether to accept a named residual risk when the applicable close path requires that judgment
 - whether the task should complete, cancel, or be superseded
 
@@ -334,7 +335,7 @@ Use guide pages for workflow. Use owner reference docs for exact contracts:
 | Need | Owner Route |
 |---|---|
 | Baseline and out-of-scope boundary | [Scope](../reference/scope.md) |
-| Core authority, user-owned judgment, close readiness meaning | [Core Model](../reference/core-model.md) |
+| Work authority, User Judgment, and Close Status meaning | [Core Model](../reference/core-model.md) |
 | Security wording and guarantee levels | [Security](../reference/security.md) |
 | API methods and schemas | [Reference Index](../reference/README.md) |
 | Agent Connection and User Channel behavior | [Agent Connection Reference](../reference/agent-connection.md) |

@@ -22,7 +22,7 @@ Volicord는 제품, 구현, 실행 파일 역할, MCP 호스트 용어, 기준 �
 
 | 용어 | 정의 | 추론하면 안 되는 것 |
 |---|---|---|
-| Volicord | AI 지원 제품 작업을 위한 더 넓은 로컬 작업 권한 제품이자 시스템. | Core, 소스 저장소, 실행 파일 프로세스 하나로 보면 안 됩니다. |
+| Volicord | AI 지원 제품 작업을 위한 로컬 작업 권한 기록. | Core, 소스 저장소, 실행 파일 프로세스 하나로 보면 안 됩니다. |
 | Core | Volicord 상태를 위한 로컬 기준 기록. | Volicord 제품/시스템 전체나 어댑터 또는 CLI 실행 파일로 보면 안 됩니다. |
 | Volicord 구현 | 이 저장소가 유지하는 구현 집합. 소스 수준에서는 구현 크레이트, `volicord` 관리 CLI, `volicord mcp --stdio` 로컬 MCP 어댑터, 테스트, 문서, 검증 도구, 저장소 설정을 포함합니다. | 모든 가능한 Volicord 제품 노출 경로, Core 자체, `Volicord Runtime Home`, `Product Repository`, 단일 데몬, MCP 서버 항목, 네트워크 서비스로 보면 안 됩니다. |
 | Volicord 소스 저장소 | 이 저장소를 체크아웃한 소스 아티팩트. | 배포된 설치, 실행 중인 프로세스, Runtime Home, Product Repository, MCP 호스트 설정과 같은 것으로 보면 안 됩니다. |

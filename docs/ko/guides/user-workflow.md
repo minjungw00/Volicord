@@ -1,8 +1,8 @@
 # 사용자 가이드
 
-Volicord는 사용자가 평소 말로 일하면서도 판단 경계를 볼 수 있게 합니다. Volicord는 로컬 작업 권한을 다루는 제품이자 시스템이고, Core는 Volicord 상태의 로컬 기준 기록입니다. 사용자는 작업과 위험한 결정을 정합니다. 에이전트는 범위, 판단, 증거, 승인, 닫기 근거를 서로 섞지 않고 보여줘야 하며, 자기 추론을 사용자 결정처럼 말하면 안 됩니다.
+Volicord는 사용자가 평소 말로 일하면서도 판단 경계를 볼 수 있게 합니다. Volicord는 AI 지원 제품 작업을 위한 로컬 작업 권한 기록입니다. 사용자는 작업과 위험한 결정을 정합니다. 에이전트는 범위, 사용자 판단, 증거, 승인, 닫기 상태를 서로 섞지 않고 보여줘야 하며, 자기 추론을 사용자 결정처럼 말하면 안 됩니다.
 
-이 가이드는 사용자 작업 흐름입니다. 정확한 API 동작, 스키마, 저장 효과, 보안 표현, 참조 수준의 닫기 준비 상태 규칙은 [참조 색인](../reference/README.md)이 연결하는 담당 문서에 있습니다.
+이 가이드는 사용자 작업 흐름입니다. 정확한 API 동작, 스키마, 저장 효과, 보안 표현, 참조 수준의 닫기 규칙은 [참조 색인](../reference/README.md)이 연결하는 담당 문서에 있습니다.
 
 ## 일상 작업 흐름
 
@@ -16,7 +16,7 @@ flowchart TD
   action["에이전트가 확인하고, 쓰기를 준비하고,<br/>실행이나 관찰을 기록"]
   status["상태 검토:<br/>증거, 차단 사유, 대기 판단"]
   judgment{"Judgment Inbox<br/>항목이 대기 중?"}
-  answer["elicitation, prompt capture,<br/>local web consent, volicord inbox로 답변"]
+  answer["User Channel 입력 방법으로 답변"]
   changes{"미기록 변경이<br/>미해결 상태?"}
   reconcile["에이전트에게 조정 요청,<br/>필요하면 수락 판단에 답변"]
   close{"닫기 차단 사유가<br/>남아 있음?"}
@@ -32,7 +32,7 @@ flowchart TD
 ```
 
 큰 쓰기 전, 의미 있는 변경 뒤, 닫기 전에는 상태를 묻는 습관이 유용합니다. 대기 중인
-Judgment Inbox 항목, 미기록 변경 찾기, 닫기 차단 사유는 요약의 배경 문구가 아니라 이름
+Judgment Inbox 항목, 미기록 변경, 닫기 차단 사유는 요약의 배경 문구가 아니라 이름
 붙은 다음 행동으로 다룹니다.
 
 ## 작업 시작하기
@@ -110,26 +110,25 @@ Judgment Inbox 항목, 미기록 변경 찾기, 닫기 차단 사유는 요약�
 
 | 시점 | 에이전트가 할 수 있는 일 | 사용자가 결정하거나 기록하는 일 | 뜻하지 않는 것 |
 |---|---|---|---|
-| 작업 구체화 | 사용할 수 있는 맥락을 확인하고, 범위를 제안하고, 다음 안전한 행동을 이름 붙입니다. | 평소 말로 목표, 범위, 범위 밖 항목, 제한을 정합니다. | 도움이 되는 계획은 쓰기 승인, 증거, 최종 수락, 닫기 준비 상태가 아닙니다. |
-| 판단 요청 | 초점이 맞춰진 대기 판단과 Core 생성 선택지를 요청하거나 보여 줍니다. | 답할지, 미룰지, 거절할지, 범위를 줄일지, 증거를 더 요구할지 고릅니다. | 판단 요청은 기록된 답변이 아닙니다. |
-| 권한 판단 기록 | 사용자를 로컬 `User Channel` 경로로 안내하고, 기록되지 않은 답변에 의존하지 않습니다. | 답변이 Core 권한이 되어야 하면 Core 생성 선택지 하나를 기록합니다. | Agent Connection은 `volicord.record_user_judgment`를 호출하거나 채팅 문장을 `User Channel` 출처로 바꿀 수 없습니다. |
-| 닫기로 계속 진행 | 증거, 아티팩트 참조, 차단 사유, 잔여 위험, 다음 안전한 행동을 보여 줍니다. | 최종 수락, 잔여 위험 수락, 취소, 대체, 다음에 처리할 차단 사유를 결정합니다. | 증거와 아티팩트가 자동으로 정확성을 증명하거나 사용자 소유 판단을 대신하지 않습니다. |
+| 작업 구체화 | 사용할 수 있는 맥락을 확인하고, 범위를 제안하고, 다음 안전한 행동을 이름 붙입니다. | 평소 말로 목표, 범위, 범위 밖 항목, 제한을 정합니다. | 도움이 되는 계획은 쓰기 승인, 증거, 최종 수락, 닫기 상태가 아닙니다. |
+| 판단 요청 | 초점이 맞춰진 대기 판단과 Volicord가 보여 준 선택지를 요청하거나 보여 줍니다. | 답할지, 미룰지, 거절할지, 범위를 줄일지, 증거를 더 요구할지 고릅니다. | 판단 요청은 기록된 답변이 아닙니다. |
+| 권한 판단 기록 | 사용자를 로컬 `User Channel` 경로로 안내하고, 기록되지 않은 답변에 의존하지 않습니다. | 답변이 Volicord 상태가 되어야 하면 표시된 선택지 하나를 기록합니다. | Agent Connection은 `volicord.record_user_judgment`를 호출하거나 채팅 문장을 `User Channel` 출처로 바꿀 수 없습니다. |
+| 닫기로 계속 진행 | 증거, 증거 첨부, 차단 사유, 잔여 위험, 다음 안전한 행동을 보여 줍니다. | 최종 수락, 잔여 위험 수락, 취소, 대체, 다음에 처리할 차단 사유를 결정합니다. | 증거 첨부가 자동으로 정확성을 증명하거나 사용자 판단을 대신하지 않습니다. |
 
 <a id="record-a-core-user-judgment"></a>
-## Core 사용자 판단 기록하기
+## 사용자 판단 기록하기
 
-어떤 선택이 권한을 지니는 Core 상태가 되어야 한다면 지원되는 `User Channel`을
-사용합니다. 현재 지원되는 경로는 호스트 클라이언트가 그 capability를 선언했을 때의
-MCP elicitation, prompt-capture 사용 가능 상태가 `configured`, `observed`, `active`일
-때의 observe prompt-capture 채팅 명령, adapter가 loopback 일회성 token fallback을
-안전하게 노출할 수 있을 때의 local web consent, 그리고 안정적인 로컬 CLI 복구 경로인
+어떤 선택이 기록된 Volicord 상태가 되어야 한다면 지원되는 `User Channel`을 사용합니다.
+현재 지원되는 입력 방법은 호스트 클라이언트가 capability를 선언했을 때의 호스트
+프롬프트 입력, 명령 캡처가 `configured`, `observed`, `active`일 때의 채팅 명령,
+adapter가 loopback 일회성 token fallback을 안전하게 노출할 수 있을 때의 local consent URL, 그리고 안정적인 CLI inbox 경로인
 `volicord inbox`입니다. 정확한 명령 동작은
 [관리 CLI](../reference/admin-cli.md#user-channel-commands)가 담당하고, 권한 의미는
 [Core 모델](../reference/core-model.md)이 담당하며, Agent Connection 경계는
 [Agent Connection 참조](../reference/agent-connection.md)가 담당합니다.
 
-elicitation, prompt capture, local web consent를 사용할 수 없거나 수동 점검이 필요하고
-작업에 대기 중인 판단이 있으면 선택된 Product Repository에서 아래 순서로 진행합니다.
+다른 User Channel 입력 방법을 사용할 수 없거나 수동 점검이 필요하고 작업에 대기 중인
+판단이 있으면 선택된 Product Repository에서 아래 순서로 진행합니다.
 
 ```sh
 volicord inbox
@@ -137,23 +136,23 @@ volicord inbox answer JUDGMENT_ID --choice CHOICE_ID
 ```
 
 활성 작업 또는 선택된 작업의 대기 판단은 `volicord inbox`로 봅니다. 이 출력에는
-판단 id, 질문, 선택지, 필수/선택 상태, 사용할 수 있는 capture 경로가 포함됩니다.
-기록할 때는 `volicord inbox answer`로 그 판단에 대해 Core가 보여 준 선택지만
+판단 id, 질문, 선택지, 필수/선택 상태, 사용할 수 있는 User Channel 입력 방법이 포함됩니다.
+기록할 때는 `volicord inbox answer`로 그 판단에 대해 Volicord가 보여 준 선택지만
 기록합니다. 현재 디렉터리가 의도한 Product Repository가 아닐 때만 `--repo PATH`를
 사용하고, 활성 작업이 의도한 작업이 아닐 때만 `--task ID`를 사용합니다.
 
 선택지 하나를 기록하면 그 판단 하나만 해결됩니다. "승인", "좋아 보여",
 "진행해" 같은 넓은 자연어가 모든 대기 권한 결과를 뜻하지는 않습니다. 설명용
-`--note`도 선택된 Core 선택지를 바꾸지 않습니다.
+`--note`도 선택된 선택지를 바꾸지 않습니다.
 
 에이전트는 사용자를 이 경로로 안내하고, 대기 중인 질문을 보여 주고, 선택지를
 설명할 수 있습니다. 하지만 Agent Connection은 사용자의 권한 판단을 대신
-기록하거나, `volicord.record_user_judgment`를 호출하거나, 채팅 답변을 권한을
-지니는 Core 상태로 바꾸면 안 됩니다. `Volicord: answer J-3 1 #AB7K` 같은 엄격한
-prompt-capture 명령은 로컬 prompt-capture 경로를 사용할 수 있고 현재 검증 코드를 guard
-observe host hook이 검증해 기록할 때만 `User Channel` 경로입니다. 생성된 Markdown, 상태 요약,
+기록하거나, `volicord.record_user_judgment`를 호출하거나, 채팅 답변을 기록된
+Volicord 상태로 바꾸면 안 됩니다. `Volicord: answer J-3 1 #AB7K` 같은 엄격한
+채팅 명령은 명령 캡처를 사용할 수 있고 현재 검증 코드를 observe host hook이 검증해
+기록할 때만 `User Channel` 경로입니다. 생성된 Markdown, 상태 요약,
 일반 채팅 문장, Product Repository 지침, 렌더링된 상태 보기는 상태를 읽는 데 도움을 줄 수
-있지만 Core 권한은 아닙니다. 상태 보기 경계는
+있지만 Volicord 기록은 아닙니다. 상태 보기 경계는
 [상태 보기와 템플릿 표시 경계](../reference/projection-and-templates.md)를 봅니다.
 
 이 순서는 Judgment Inbox 항목이 기록된 사용자 답변이 되는 방식을 보여 줍니다.
@@ -164,37 +163,37 @@ observe host hook이 검증해 기록할 때만 `User Channel` 경로입니다. 
 ```mermaid
 sequenceDiagram
   participant Agent as Agent Connection
-  participant Core as Core
+  participant Volicord as Volicord
   participant User as 사용자
   participant Channel as User Channel
 
-  Agent->>Core: 초점이 맞춰진 사용자 판단 요청
-  Core-->>Agent: 대기 JudgmentInboxItem과 capture 경로 반환
+  Agent->>Volicord: 초점이 맞춰진 사용자 판단 요청
+  Volicord-->>Agent: 대기 JudgmentInboxItem과 입력 방법 반환
   Agent-->>User: 질문, 선택지, 결과, fallback 경로 표시
-  alt MCP elicitation, prompt capture, local web consent
-    User->>Channel: Core가 만든 선택지 하나 선택
-  else CLI fallback
+  alt User Channel 입력 방법
+    User->>Channel: 표시된 선택지 하나 선택
+  else CLI inbox
     User->>Channel: volicord inbox answer JUDGMENT_ID --choice CHOICE_ID
   end
-  Channel->>Core: local_user 출처로 사용자 판단 기록
-  Core-->>Agent: 이후 상태나 닫기에 해결된 판단 반영
+  Channel->>Volicord: local_user 출처로 사용자 판단 기록
+  Volicord-->>Agent: 이후 상태나 닫기에 해결된 판단 반영
 ```
 
 ## 미기록 변경 조정하기
 
-`observe` 프로필은 hook이 예상 쓰기와 맞지 않는 제품 파일 변경을 관찰했을 때 미기록
+Detective profile은 hook이 예상 쓰기와 맞지 않는 제품 파일 변경을 관찰했을 때 미기록
 Product Repository 변경을 드러낼 수 있습니다. 이를 악의적 동작의 증명으로 보거나
-에이전트가 면제할 수 있는 변경으로 보지 말고 관찰 찾기로 다룹니다.
+에이전트가 면제할 수 있는 변경으로 보지 말고 미기록 변경으로 다룹니다.
 
-미해결 찾기는 닫기를 막습니다. 에이전트는 사용할 수 있으면
+미해결 미기록 변경은 닫기를 막습니다. 에이전트는 사용할 수 있으면
 `volicord.reconcile_changes`를 실행하고, 결정적 해결과 대기 판단을 보여 주며, 수락은
-지원되는 `User Channel`로 보내야 합니다. Session watcher 찾기도 같은 조정 경로를
+지원되는 `User Channel`로 보내야 합니다. Session watcher 관찰도 같은 조정 경로를
 따릅니다. watcher는 변경된 Product Repository 경로를 감지하지만 쓰기를 막거나 행위자를
 식별하지 않습니다. CLI 복구 경로는 `volicord changes reconcile`입니다. 조정이 대기
 판단을 만들면 일반 User Channel 경로로 답하고 조정을 다시 실행합니다.
 
 Observe 상태가 `hook_path_safety`를 `ok`가 아닌 값으로 보고하면, 설정을 복구하기 전까지
-hook 기반 협력형 pre-tool warning 또는 denial, prompt capture, 미기록 변경 관찰을 사용할
+hook 기반 협력형 pre-tool warning 또는 denial, 채팅 명령 캡처, 미기록 변경 관찰을 사용할
 수 없거나 degraded된 상태로 봅니다. 정확한 복구 안내는 [에이전트 호스트 문제 해결](agent-host-troubleshooting.md#guard-hook-path-or-wrapper-is-unsafe)이
 담당합니다.
 
@@ -244,9 +243,9 @@ hook 기반 협력형 pre-tool warning 또는 denial, prompt capture, 미기록 
 
 에이전트는 무엇을 실행했거나 바꿨는지, 각 증거가 어떤 주장을 뒷받침하는지, 무엇이 통과하거나 실패했는지, 무엇이 빠졌거나 오래됐는지, 어떤 주장이 아직 뒷받침되지 않는지 보여줘야 합니다.
 
-에이전트는 스테이징된 아티팩트, 원시 로컬 경로, 복사한 로그 위치, 화면 캡처만 있는 상태, 생성 요약, 테스트 통과를 실제보다 넓은 증명으로 다루면 안 됩니다. 원문 비밀값, 토큰, 전체 민감 로그도 노출하면 안 됩니다.
+에이전트는 증거 첨부, 원시 로컬 경로, 복사한 로그 위치, 화면 캡처만 있는 상태, 생성 요약, 테스트 통과를 실제보다 넓은 증명으로 다루면 안 됩니다. 원문 비밀값, 토큰, 전체 민감 로그도 노출하면 안 됩니다.
 
-## 닫기 준비 상태 검토하기
+## 닫기 상태 검토하기
 
 큰 작업을 완료라고 부르기 전에는 평소 말로 물을 수 있습니다.
 
@@ -254,21 +253,23 @@ hook 기반 협력형 pre-tool warning 또는 denial, prompt capture, 미기록 
 무엇이 바뀌었고, 무엇을 확인했으며, 어떤 잔여 위험이 보이고, 아직 무엇이 닫기를 막는지 보여줘.
 ```
 
-사용자에게는 현재 Core 기록을 기준으로 지금 작업을 정직하게 닫을 수 있는지 확인하는 일입니다. 제품 결과가 객관적으로 옳다는 증명이 아닙니다. 이 질문을 참조 용어로는 닫기 준비 상태라고 부릅니다. 닫기 준비 상태 의미는 [Core 모델](../reference/core-model.md)이, 닫기 메서드 동작은 [`Task` 닫기 메서드](../reference/api/method-close-task.md)가 담당합니다.
+사용자에게 닫기 상태는 현재 Volicord 기록을 기준으로 지금 작업을 정직하게 닫을 수
+있는지 확인하는 일입니다. 제품 결과가 객관적으로 옳다는 증명이 아닙니다. 정확한 닫기
+의미는 [Core 모델](../reference/core-model.md)이, 닫기 메서드 동작은 [`Task` 닫기 메서드](../reference/api/method-close-task.md)가 담당합니다.
 
-이 결정 트리는 닫기 준비 상태 결과를 사용자가 해석하는 순서를 보여 줍니다. 정확한
+이 결정 트리는 닫기 상태 결과를 사용자가 해석하는 순서를 보여 줍니다. 정확한
 `volicord.close_task` 알고리즘은 아닙니다.
 
 ```mermaid
 flowchart TD
-  ask["닫기 준비 상태 요청"]
-  basis{"현재 닫기 근거가<br/>보임?"}
+  ask["닫기 상태 요청"]
+  basis{"보이는 닫기 사실이<br/>있음?"}
   gather["빠진 실행, 관찰,<br/>증거를 수집하거나 기록"]
   pending{"필수 사용자 판단이<br/>대기 중?"}
   inbox["Judgment Inbox / User Channel로 답변"]
   unrecorded{"미해결 미기록<br/>변경이 있음?"}
   reconcile["변경을 조정하고,<br/>필요할 때만 수락에 답변"]
-  evidence{"필수 증거 또는<br/>아티팩트가 없음?"}
+  evidence{"필수 증거 입력이<br/>없음?"}
   evidenceAction["증거를 모으거나<br/>차단 사유를 보이게 유지"]
   risk{"이름 붙은 잔여 위험에<br/>수락이 필요함?"}
   riskDecision["이름 붙은 위험을 수락하거나<br/>추가 작업 요청"]
@@ -295,7 +296,7 @@ flowchart TD
 사용자가 결정하는 것:
 
 - 어떤 차단 사유를 다음에 다룰지
-- 닫기 근거가 보일 때 최종 수락을 제공할지
+- 닫기 사실이 보일 때 최종 수락을 제공할지
 - 적용되는 닫기 경로가 요구할 때 이름 붙은 잔여 위험을 받아들일지
 - 작업을 완료, 취소, 대체 중 무엇으로 끝낼지
 
@@ -323,7 +324,7 @@ flowchart TD
 | 필요 | 담당 경로 |
 |---|---|
 | 기준 범위와 지원 범위 밖 경계 | [기준 범위](../reference/scope.md) |
-| Core 권한, 사용자 소유 판단, 닫기 준비 상태 의미 | [Core 모델](../reference/core-model.md) |
+| 작업 권한, 사용자 판단, 닫기 상태 의미 | [Core 모델](../reference/core-model.md) |
 | 보안 표현과 보장 수준 | [보안](../reference/security.md) |
 | API 메서드와 스키마 | [참조 색인](../reference/README.md) |
 | Agent Connection과 User Channel 동작 | [Agent Connection 참조](../reference/agent-connection.md) |

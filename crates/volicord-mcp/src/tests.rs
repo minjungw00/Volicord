@@ -628,8 +628,8 @@ fn stdio_without_elicitation_capability_returns_cli_recovery_when_prompt_capture
     let fallback = values[1]["result"]["content"][1]["text"]
         .as_str()
         .expect("fallback text");
-    assert!(fallback.contains("MCP elicitation is unavailable"));
-    assert!(fallback.contains("local CLI recovery path"));
+    assert!(fallback.contains("Host prompt input is unavailable"));
+    assert!(fallback.contains("CLI inbox path"));
     assert!(fallback.contains("volicord inbox answer"));
     assert!(!fallback.contains("Volicord: answer J-1 1 #"));
     Ok(())
@@ -667,7 +667,7 @@ fn stdio_without_elicitation_capability_returns_chat_capture_when_configured(
     let fallback = values[1]["result"]["content"][1]["text"]
         .as_str()
         .expect("fallback text");
-    assert!(fallback.contains("MCP elicitation is unavailable"));
+    assert!(fallback.contains("Host prompt input is unavailable"));
     assert!(fallback.contains("Volicord: answer J-1 1 #"));
     assert!(fallback.contains("Volicord: note J-1 \"text\" #"));
     Ok(())
@@ -777,7 +777,7 @@ fn local_web_consent_get_renders_pending_judgment_page() -> Result<(), Box<dyn E
     assert_eq!(response.status, 200);
     let body = http_body_text(&response)?;
     assert!(body.contains("Volicord Consent"));
-    assert!(body.contains("Choose the focused MCP elicitation test outcome."));
+    assert!(body.contains("Choose the focused User Channel test outcome."));
     assert!(body.contains("local_user_local_web"));
     assert!(!body.contains("Runtime Home"));
     Ok(())
@@ -1552,11 +1552,11 @@ fn create_task(adapter: &McpAdapter) -> Result<(String, u64), Box<dyn Error>> {
     let response = adapter.call_tool(
         "volicord.intake",
         json!({
-            "plain_language_request": "Create a task for MCP elicitation tests.",
+            "plain_language_request": "Create a task for User Channel tests.",
             "requested_mode": "work",
             "resume_policy": "create_new",
             "initial_scope": {
-                "boundary": "MCP elicitation test task.",
+                "boundary": "User Channel test task.",
                 "non_goals": ["Changing unrelated behavior."],
                 "acceptance_criteria": ["A pending judgment can be requested."]
             },
@@ -1683,7 +1683,7 @@ fn judgment_args(
         "change_unit_id": null,
         "judgment_kind": judgment_kind,
         "presentation": "short",
-        "question": "Choose the focused MCP elicitation test outcome.",
+        "question": "Choose the focused User Channel test outcome.",
         "options": options,
         "context": {
             "summary": "A focused test judgment needs a user-owned answer.",

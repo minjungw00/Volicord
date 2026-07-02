@@ -9,7 +9,7 @@ public API behavior, request or response schemas, storage effects, security
 guarantees, runtime boundaries, Core authority semantics, or product contracts.
 For exact behavior, follow the links to the focused Reference owners.
 
-Volicord is the local work-authority product/system for AI-assisted product
+Volicord is the local work authority record for AI-assisted product
 work. Core is the local authority record for Volicord state.
 
 ## Reading order

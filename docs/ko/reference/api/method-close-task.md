@@ -253,7 +253,7 @@ CloseTaskRequest:
 
 이 코드는 메서드 로컬 `CloseReadinessBlocker.code` 값입니다. 공개 `ErrorCode` 값, `WriteDecisionReason.code` 값, 전역 값 집합 항목이 아닙니다.
 
-`pending_user_judgment`의 경우 차단 사유의 다음 행동은 사용할 수 있는 User Channel 답변 경로를 가리킬 수 있으며, `pending_judgment_inbox_items`는 사용자가 행동할 수 있는 inbox item 형태를 담습니다. capture 경로에는 사용할 수 있을 때 MCP elicitation, prompt-capture 채팅 명령, local web consent, `volicord inbox answer <judgment-id> --choice <choice>`가 포함될 수 있습니다. 이 차단 사유는 Agent Connection이 사용자 소유 판단에 답하도록 권한을 부여하지 않습니다.
+`pending_user_judgment`의 경우 차단 사유의 다음 행동은 사용할 수 있는 User Channel 입력 방법을 가리킬 수 있으며, `pending_judgment_inbox_items`는 사용자가 행동할 수 있는 inbox item 형태를 담습니다. capture 경로에는 사용할 수 있을 때 호스트 프롬프트 입력, 채팅 명령 캡처, 로컬 consent URL, CLI inbox 명령 `volicord inbox answer <judgment-id> --choice <choice>`가 포함될 수 있습니다. 이 차단 사유는 Agent Connection이 사용자 소유 판단에 답하도록 권한을 부여하지 않습니다.
 
 ## 차단 결과
 

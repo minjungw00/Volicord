@@ -14,7 +14,7 @@ Store 경계는 [저장소와 트랜잭션](storage-and-transactions.md), 테스
 경로는 [`docs/doc-index.yaml`](../../doc-index.yaml)을 사용하고, 사람이 읽는
 담당 문서 안내는 [참조 색인](../reference/README.md)을 사용합니다.
 
-Volicord는 AI 지원 제품 작업을 위한 로컬 작업 권한 제품이자 시스템입니다.
+Volicord는 AI 지원 제품 작업을 위한 로컬 작업 권한 기록입니다.
 Core는 Volicord 상태를 위한 로컬 기준 기록입니다.
 
 ## 실용 순서

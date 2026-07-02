@@ -117,7 +117,7 @@ Returns `RequestUserJudgmentResult` with:
 | `base` | Common result metadata. The `ToolResultBase` shape, including `events`, is owned by [API Schema Core](schema-core.md#common-response). Committed `RequestUserJudgmentResult` branches use `base.response_kind=result` and `base.effect_kind=core_committed`. `base.events[].event_kind`, when present, is an opaque illustrative classification string. |
 | `user_judgment_ref` | `StateRecordRef` for the pending `UserJudgment` created by this request. |
 | `user_judgment` | The created pending `UserJudgment`. The nested shape, including `options`, `context`, `affected_refs`, `required_for`, and `resolution`, is owned by [API Judgment Schemas](schema-judgment.md#userjudgment). |
-| `inbox_item` | User-facing `JudgmentInboxItem` for the same pending judgment. It includes the judgment id, question, choices or answer constraints, required/optional status, preferred capture path when available, and fallback paths such as local web consent or `volicord inbox answer <judgment-id> --choice <choice>`. The shape is owned by [API Judgment Schemas](schema-judgment.md#judgmentinboxitem). |
+| `inbox_item` | User-facing `JudgmentInboxItem` for the same pending judgment. It includes the judgment id, question, choices or answer constraints, required/optional status, preferred capture path when available, and fallback paths such as a local consent URL or `volicord inbox answer <judgment-id> --choice <choice>`. The shape is owned by [API Judgment Schemas](schema-judgment.md#judgmentinboxitem). |
 | `blocker_refs` | `StateRecordRef[]` for blocker records affected by or still relevant to the pending judgment request. |
 | `state` | Current `StateSummary` after the pending judgment is created. Nested state fields are owned by [API State Schemas](schema-state.md). |
 
@@ -376,7 +376,7 @@ inbox_item:
   requirement_status: required
   preferred_capture_path:
     kind: mcp_elicitation
-    label: "MCP elicitation"
+    label: "Host prompt input"
     available: true
   fallbacks:
     - kind: cli

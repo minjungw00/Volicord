@@ -44,8 +44,8 @@
 `volicord mcp --stdio`는 설치된 `volicord` 실행 파일의 로컬 MCP stdio 프로세스
 모드입니다. MCP 호스트는 이를 자식 프로세스로 시작하고 stdin/stdout으로 통신합니다.
 MCP TCP 리스너, HTTP MCP 리스너, Unix-domain socket 리스너, 또는 그 밖의 MCP 네트워크
-리스너가 아닙니다. MCP elicitation과 prompt capture를 사용할 수 없을 때는 대기 사용자
-판단을 위해 별도의 loopback 전용 local web consent 리스너를 시작할 수 있습니다.
+리스너가 아닙니다. 호스트 프롬프트 입력과 채팅 명령 캡처를 사용할 수 없을 때는 대기
+사용자 판단을 위해 별도의 loopback 전용 local consent 리스너를 시작할 수 있습니다.
 
 `volicord serve --transport local-http`는 Docker와 localhost MCP 사용을 위한 별도의
 명시적 프로세스 모드입니다. 이 명령은 loopback 전용 HTTP 리스너를 시작하고, 가능한
@@ -539,17 +539,17 @@ Agent Connection 도구로 노출하지 않으며, 에이전트가 넣은 답변
   판단은 대기 상태로 남습니다.
 - elicitation 응답이 `action=cancel`이거나, 유효하지 않거나, 형식이 잘못되었거나, 대기
   판단과 맞출 수 없으면 어댑터는 답변을 기록하지 않으며 대기 판단은 대기 상태로 남습니다.
-- 클라이언트가 capability를 선언하지 않아 elicitation을 사용할 수 없으면 어댑터는 답변을
-  기록하지 않고 대기 `RequestUserJudgmentResult`와 추가 text content를 반환합니다.
-  prompt-capture 사용 가능 상태가 `configured`, `observed`, `active`이면 그 text에
-  prompt-submit hook 경로와 호환되고 현재 검증 코드를 포함한 정확한 채팅
-  prompt-capture 명령이 들어갈 수 있습니다.
-- prompt capture를 사용할 수 없고 local web consent를 사용할 수 있으면 어댑터는 짧게
+- 클라이언트가 capability를 선언하지 않아 host prompt input을 사용할 수 없으면 어댑터는
+  답변을 기록하지 않고 대기 `RequestUserJudgmentResult`와 추가 text content를 반환합니다.
+  채팅 명령 capture 사용 가능 상태가 `configured`, `observed`, `active`이면 그 text에
+  prompt-submit hook 경로와 호환되고 현재 검증 코드를 포함한 정확한 채팅 명령이 들어갈 수
+  있습니다.
+- 채팅 명령 capture를 사용할 수 없고 로컬 동의 URL을 사용할 수 있으면 어댑터는 짧게
   만료되는 일회성 token을 만들고 loopback consent URL과 구조화된 fallback JSON을
   반환합니다. URL에는 프로젝트 selector와 token만 들어갑니다. Runtime Home 경로, 저장소
   경로, prompt 본문, 답변, 임의 API 매개변수는 포함하지 않습니다.
-- local web consent가 비활성화되었거나, 안전하게 bind할 수 없거나, token을 만들 수 없으면
-  fallback text는 `volicord inbox` 로컬 CLI 복구 경로를 안내합니다.
+- 로컬 동의 URL 경로가 비활성화되었거나, 안전하게 bind할 수 없거나, token을 만들 수
+  없으면 fallback text는 `volicord inbox` CLI inbox 경로를 안내합니다.
 
 모든 분기에서 `result.content[0].text`는 Volicord 응답 JSON 문자열로 남습니다. 추가
 `content[]` text가 있으면 fallback 안내나 elicitation 취소/무효 설명 같은 어댑터

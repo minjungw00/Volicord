@@ -17,7 +17,7 @@ and [Testing Strategy](testing-strategy.md) for test-layer choice. Use
 routing and the [Reference Index](../reference/README.md) for reader-facing
 owner navigation.
 
-Volicord is the local work-authority product/system for AI-assisted product
+Volicord is the local work authority record for AI-assisted product
 work. Core is the local authority record for Volicord state.
 
 ## Practical Sequence

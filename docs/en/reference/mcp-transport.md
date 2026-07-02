@@ -57,7 +57,7 @@ This document does not own:
 through stdin/stdout. It is not an MCP TCP listener, HTTP MCP listener,
 Unix-domain socket listener, or other MCP network listener. It may start a
 separate loopback-only local web consent listener for pending user judgments
-when MCP elicitation and prompt capture are unavailable.
+when host prompt input and chat command capture are unavailable.
 
 `volicord serve --transport local-http` is a separate explicit process mode
 for Docker and localhost MCP use. It starts a loopback-only HTTP listener and
@@ -602,19 +602,19 @@ commits a pending judgment:
 - If the elicitation response is `action=cancel`, invalid, malformed, or cannot
   be matched to the pending judgment, the adapter records no answer and the
   pending judgment remains pending.
-- If elicitation is unavailable because the client did not declare the
+- If host prompt input is unavailable because the client did not declare the
   capability, the adapter records no answer and returns the pending
-  `RequestUserJudgmentResult` plus additional text content. When prompt-capture
-  availability is `configured`, `observed`, or `active`, that text may include
-  exact chat prompt-capture commands compatible with the prompt-submit hook path
-  and the current verification code.
-- If prompt capture is unavailable and local web consent is available, the
-  adapter creates a short-lived one-time token and returns a loopback consent
-  URL plus structured fallback JSON. The URL contains only the project selector
-  and token. It does not include the Runtime Home path, repository path, prompt
-  body, answer, or arbitrary API parameters.
-- If local web consent is disabled, cannot bind safely, or cannot create a
-  token, the fallback text points to the `volicord inbox` local CLI recovery
+  `RequestUserJudgmentResult` plus additional text content. When chat command
+  capture availability is `configured`, `observed`, or `active`, that text may
+  include exact verification-code chat commands compatible with the
+  prompt-submit hook path and the current verification code.
+- If chat command capture is unavailable and a local consent URL is available,
+  the adapter creates a short-lived one-time token and returns a loopback
+  consent URL plus structured fallback JSON. The URL contains only the project
+  selector and token. It does not include the Runtime Home path, repository
+  path, prompt body, answer, or arbitrary API parameters.
+- If the local consent URL path is disabled, cannot bind safely, or cannot
+  create a token, the fallback text points to the `volicord inbox` CLI inbox
   path.
 
 For all branches, `result.content[0].text` remains the Volicord response JSON

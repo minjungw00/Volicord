@@ -7,7 +7,7 @@ Use this guide when writing or reviewing agent behavior for a Volicord-connected
 
 A good Volicord-connected agent turns ordinary user requests into careful work, keeps context small, preserves user-owned judgment, checks before writes, records evidence after meaningful action, reports status for the user's next decision, and closes honestly.
 
-In this guide, Volicord names the local work-authority product/system. Core names the local authority record for Volicord state. Keep those roles separate when summarizing state, approvals, evidence, and close basis.
+In this guide, Volicord is the local work authority record for AI-assisted product work. Exact authority-record structure belongs to [Core Model](../reference/core-model.md); keep that owner route separate from user-facing status, approvals, Evidence, and Close Status summaries.
 
 This guide is workflow guidance. It is not a connector contract, API schema, template catalog, conformance fixture, storage contract, or security guarantee.
 
@@ -15,7 +15,7 @@ Owner links:
 
 - Exact Agent Connection behavior: [Agent Connection Reference](../reference/agent-connection.md)
 - Host setup and multi-repository operation: [Agent Host Setup](agent-host-setup.md) and [Multi-Repository Agent Setup](multi-repository-agent-setup.md)
-- Exact API, schema, storage, security, and close readiness contracts: [Reference Index](../reference/README.md)
+- Exact API, schema, storage, security, and close contracts: [Reference Index](../reference/README.md)
 
 <a id="operating-loop"></a>
 ## Operating loop
@@ -38,10 +38,10 @@ Use this table to keep agent workflow and user authority paths separate. The exa
 
 | Moment | Agent-side workflow | User-side authority path | Boundary to preserve |
 |---|---|---|---|
-| Shape and inspect | Use the Agent Connection to read status, inspect available context, and identify the next safe action. | State the goal, scope, non-goals, and any "ask me before..." limits in ordinary language. | Chat, generated Markdown, and guidance help orientation but are not Core authority. |
-| Request a judgment | When an owner supports it, request or display a focused pending judgment and Core-generated options. | Review the pending question and decide whether to answer, reject, defer, narrow, or ask for more evidence. | `volicord.request_user_judgment` creates or exposes the question; it does not record the user's answer. |
-| Record an answer | Route the human to the supported `User Channel`; continue only with work that does not depend on an unrecorded judgment. | Record one Core-generated option through the local user path when the answer must become authority-bearing state. | `volicord.record_user_judgment` is a User Channel method, not an Agent Connection MCP workflow tool. |
-| Continue, write, or close | Refresh state, prepare needed write tickets, record Runs and evidence, and surface blockers. | Provide final acceptance, residual-risk acceptance, or the next user decision only when the visible basis is clear. | Evidence and artifacts support claims; they do not replace user judgment, close readiness, or residual-risk decisions. |
+| Shape and inspect | Use the Agent Connection to read status, inspect available context, and identify the next safe action. | State the goal, scope, non-goals, and any "ask me before..." limits in ordinary language. | Chat, generated Markdown, and guidance help orientation but are not the Volicord record. |
+| Request a judgment | When an owner supports it, request or display a focused pending judgment and Volicord-provided options. | Review the pending question and decide whether to answer, reject, defer, narrow, or ask for more evidence. | `volicord.request_user_judgment` creates or exposes the question; it does not record the user's answer. |
+| Record an answer | Route the human to the supported `User Channel`; continue only with work that does not depend on an unrecorded judgment. | Record one shown option through the local user path when the answer must become part of Volicord state. | `volicord.record_user_judgment` is a User Channel method, not an Agent Connection MCP workflow tool. |
+| Continue, write, or close | Refresh state, prepare needed write tickets, record Runs and evidence, and surface blockers. | Provide final acceptance, residual-risk acceptance, or the next user decision only when the visible basis is clear. | Evidence attachments support claims; they do not replace User Judgment, Close Status, or residual-risk decisions. |
 
 <a id="infer-use"></a>
 ## Infer Volicord use from task shape
@@ -59,13 +59,13 @@ Use the Volicord path when the work involves:
 - user-visible verification criteria
 - final acceptance
 - residual risk
-- close readiness
+- Close Status
 
 Choose procedure weight from the work shape:
 
 - Advice or inspection: inspect available sources, cite uncertainty, and avoid write or close ceremony.
 - Small change: confirm narrow scope, edit inside that scope, run a focused check, and report briefly.
-- Tracked work: clarify scope, preserve judgment, check writes, record evidence, and report close readiness.
+- Tracked work: clarify scope, preserve judgment, check writes, record evidence, and report Close Status.
 
 Escalate from small change to tracked work when you find scope drift, a new public interface, security or privacy impact, destructive risk, a dependency or migration choice, user-visible verification criteria, an evidence limit, final acceptance need, residual risk, or another user-owned judgment.
 
@@ -81,9 +81,9 @@ For public Volicord tool calls:
 - If exactly one project is connected, omitted project selection may route to that project; otherwise use an explicit `project_selector`.
 - Never guess a project from folder names, current working directory, MCP roots, host labels, Product Repository labels, or memory.
 
-`volicord.list_projects` is a read-only MCP adapter utility. It lists only projects explicitly connected to the bound Agent Connection and is not a public Core API method.
+`volicord.list_projects` is a read-only MCP adapter utility. It lists only projects explicitly connected to the bound Agent Connection and is not a public workflow API method.
 
-When multiple projects are available and no explicit project is supplied, the adapter rejects the call before Core execution and tells the agent to call `volicord.list_projects`. Treat that as an agent-resolvable routing issue: list projects, select the intended project, and retry with the returned `project_selector`. MCP-visible public schemas hide Core envelope fields.
+When multiple projects are available and no explicit project is supplied, the adapter rejects the call before method execution and tells the agent to call `volicord.list_projects`. Treat that as an agent-resolvable routing issue: list projects, select the intended project, and retry with the returned `project_selector`. MCP-visible public schemas hide internal envelope fields.
 
 <a id="instructions-and-guidance"></a>
 ## Treat instructions and guidance as advisory
@@ -93,9 +93,9 @@ Volicord guidance can reach agents through:
 - MCP server instructions returned during MCP initialization.
 - `Product Repository` guidance files or host-specific instructions, when present.
 
-These instructions can help tool selection, project routing, and workflow consistency. They are not access control, security enforcement, User Channel authority, user-owned judgment, write ticket, evidence, acceptance, close readiness, or proof that a model will choose Volicord tools.
+These instructions can help tool selection, project routing, and workflow consistency. They are not access control, security enforcement, User Channel authority, User Judgment, Write Ticket, Evidence, acceptance, Close Status, or proof that a model will choose Volicord tools.
 
-Core authority and external filesystem permission remain distinct. A Volicord record or issued write ticket does not independently grant the host permission to edit product files, and host filesystem permission does not create Volicord authority.
+Volicord authority and external filesystem permission remain distinct. A Volicord record or issued Write Ticket does not independently grant the host permission to edit product files, and host filesystem permission does not create Volicord authority.
 
 <a id="keep-context-small"></a>
 ## Keep context small
@@ -107,22 +107,22 @@ Include only what is currently useful:
 - Agent Connection mode and capability limits
 - current `Task` or work boundary
 - current scope, non-goals, and relevant paths or operation class
-- current Change Unit effect contract when it affects the next action
+- current work-slice effect boundary when it affects the next action
 - pending user-owned judgment
 - sensitive-action approval or write-approval summary when relevant
-- artifact and evidence summaries when they support a claim
+- evidence attachment summaries when they support a claim
 - current blockers and stale-state warnings
 - evidence gaps, residual-risk status, and close blockers when relevant
 - guarantee level supported by the current Agent Connection context and [Security](../reference/security.md)
 - source freshness
 - one next safe action
 
-Do not inject full schemas, DDL, template bodies, logs, artifact bodies, paired bilingual docs, unrelated contract material, out-of-scope catalogs, or generated readable views into every prompt.
+Do not inject full schemas, DDL, template bodies, logs, evidence attachment bodies, paired bilingual docs, unrelated contract material, out-of-scope catalogs, or generated readable views into every prompt.
 
 <a id="clarify-focused"></a>
 ## Clarify with focused questions
 
-Inspect first. Before asking the user, check relevant files, docs, tests, current Volicord state, accepted judgments, and artifacts when they are available.
+Inspect first. Before asking the user, check relevant files, docs, tests, current Volicord state, accepted judgments, and evidence attachments when they are available.
 
 Ask only the question that changes the next safe action or resolves a user-owned judgment. Prefer one blocking question at a time. Save useful but non-blocking curiosity questions until they affect the work.
 
@@ -184,16 +184,16 @@ Keep product judgment, technical judgment, scope judgment, sensitive-action appr
 <a id="route-user-interaction"></a>
 ### Route authority-bearing answers to the User Channel
 
-When Core needs a user-owned judgment, the agent may request or present the
-focused judgment need and show the owner-returned options. Core-generated
+When Volicord needs a User Judgment, the agent may request or present the
+focused judgment need and show the owner-returned options. Volicord-provided
 options define what the user can accept, reject, defer, or otherwise select for
 that judgment. Do not add extra authority outcomes in prose.
 
-If the user's answer must become authority-bearing Core state, route the user to
-a supported local `User Channel`. Current supported paths are MCP elicitation
-when the initialized client declares that capability, observe prompt-capture
-chat commands when prompt-capture availability is `configured`, `observed`, or
-`active`, and the stable local CLI recovery route:
+If the user's answer must become recorded Volicord state, route the user to
+a supported local `User Channel`. Current supported input methods are host
+prompt input when the initialized client declares that capability, chat commands
+when command capture is `configured`, `observed`, or `active`, and the stable
+CLI inbox route:
 
 ```sh
 volicord inbox
@@ -202,9 +202,9 @@ volicord inbox answer JUDGMENT_ID --choice CHOICE_ID
 
 An Agent Connection must not call `volicord.record_user_judgment`, supply User
 Channel provenance, or convert an ordinary chat reply into authority-bearing
-acceptance. A strict prompt-capture command such as `Volicord: answer J-3 1 #AB7K`
-is authority-bearing only when the local prompt-capture path is available and
-the current verification code is validated and recorded by the observe host hook. If
+acceptance. A strict chat command such as `Volicord: answer J-3 1 #AB7K`
+is authority-bearing only when command capture is available and the current
+verification code is validated and recorded by the observe host hook. If
 the answer has not been recorded through a supported User Channel, name the
 needed user action and continue only with work that does not depend on that
 judgment. Use `--repo PATH` only when the current directory is not the intended
@@ -235,7 +235,7 @@ Show the user:
 
 If scope changes, update the current scope before asking for a new write ticket. Treat any old write result that no longer matches the updated scope as stale.
 
-When current state includes a Change Unit effect contract, include whether the intended product-file effect and paths fit it. Treat that as Core state-compatibility context for write-ticket evaluation, not sandboxing, security enforcement, user-owned judgment, sensitive-action approval, or evidence that a write occurred.
+When current state includes a work-slice effect boundary, include whether the intended product-file effect and paths fit it. Treat that as Volicord state-compatibility context for write-ticket evaluation, not sandboxing, security enforcement, User Judgment, sensitive-action approval, or evidence that a write occurred.
 
 <a id="reconcile-unrecorded-changes"></a>
 ## Reconcile unrecorded changes
@@ -243,28 +243,28 @@ When current state includes a Change Unit effect contract, include whether the i
 If observe status reports unresolved unrecorded Product Repository changes, call
 `volicord.reconcile_changes` or route the user to `volicord changes reconcile`
 when MCP is unavailable. Deterministic cases may resolve through the method.
-User acceptance must become a supported `User Channel` judgment; do not mark a
-finding accepted from agent text, generated Markdown, or ordinary chat alone.
+User acceptance must become a supported `User Channel` judgment; do not mark an
+Unrecorded Change accepted from agent text, generated Markdown, or ordinary chat alone.
 
-Report unresolved findings as close blockers and name the next action that
+Report unresolved Unrecorded Changes as close blockers and name the next action that
 would unblock them.
 
 <a id="record-evidence"></a>
 ## Record evidence after action
 
-After meaningful execution, checks, reviews, or artifact-producing work, summarize what happened and what supports each claim. Exact run/evidence behavior belongs to [Record-run Method](../reference/api/method-record-run.md), with artifact details owned by [API Artifact Schemas](../reference/api/schema-artifacts.md) and [Artifact Storage](../reference/storage-artifacts.md).
+After meaningful execution, checks, reviews, or evidence-attachment-producing work, summarize what happened and what supports each claim. Exact run/evidence behavior belongs to [Record-run Method](../reference/api/method-record-run.md), with attachment details owned by [API Artifact Schemas](../reference/api/schema-artifacts.md) and [Artifact Storage](../reference/storage-artifacts.md).
 
 Evidence display should say:
 
 - what ran or changed
 - which claim it supports
-- which refs or artifacts support it
+- which refs or evidence attachments support it
 - what passed or failed
 - what is missing, stale, redacted, omitted, blocked, or insufficient
 
 Do not treat arbitrary absolute paths, raw secrets, tokens, full sensitive logs, screenshots alone, generated summaries, or chat text as sufficient evidence by themselves.
 
-Keep evidence sufficiency, artifact availability, close readiness, final acceptance, and residual-risk acceptance separate.
+Keep evidence sufficiency, evidence attachment availability, Close Status, final acceptance, and residual-risk acceptance separate.
 
 <a id="report-status"></a>
 ## Report status for the next decision
@@ -282,7 +282,7 @@ A compact status summary should include the current `Task` or work boundary, cur
 <a id="handle-close"></a>
 ## Handle close honestly
 
-Close only when the applicable path can support the close claim. In user-facing terms, close readiness asks whether the task can honestly finish now. Exact close meaning belongs to [Core Model](../reference/core-model.md); method behavior belongs to [Close-task Method](../reference/api/method-close-task.md); state shapes belong to [API State Schemas](../reference/api/schema-state.md).
+Close only when the applicable path can support the close claim. In user-facing terms, Close Status asks whether the task can honestly finish now. Exact close meaning belongs to [Core Model](../reference/core-model.md); method behavior belongs to [Close-task Method](../reference/api/method-close-task.md); state shapes belong to [API State Schemas](../reference/api/schema-state.md).
 
 For small work, a close-like result can be brief:
 
@@ -292,7 +292,7 @@ For small work, a close-like result can be brief:
 - checks
 - known residual risk
 
-For tracked work, show the close basis before asking for final acceptance or attempting close:
+For tracked work, show the visible close facts before asking for final acceptance or attempting close:
 
 - scope
 - evidence
@@ -302,7 +302,7 @@ For tracked work, show the close basis before asking for final acceptance or att
 - blockers
 - next close-unblocking action
 
-Use a read-only close review when the user only asks whether close would be blocked. Use state-changing close only when the close-task method and close readiness contracts show no relevant blockers.
+Use a read-only close review when the user only asks whether close would be blocked. Use state-changing close only when the close-task method and close contracts show no relevant blockers.
 
 Do not close from prose, tests alone, broad acceptance-like language, residual-risk acceptance, generated readable views, or stale status summaries. Final acceptance and residual-risk acceptance cannot override missing required evidence.
 
@@ -324,7 +324,7 @@ Do not make these appear required for ordinary baseline work:
 
 Quality concerns should route to the applicable owner when one applies, such as scope, user-owned judgment, evidence, residual-risk visibility, Agent Connection capability, or another applicable blocker. Do not invent a separate quality gate or waiver path in the use guide.
 
-Use compact user-facing shapes first: status, focused judgment request, what was checked, and close result. Reference exact contracts only when the next action depends on the owner.
+Use compact user-facing shapes first: status, focused judgment request, what was checked, and Close Status. Reference exact contracts only when the next action depends on the owner.
 
 <a id="language-context"></a>
 ## Choose language context deliberately

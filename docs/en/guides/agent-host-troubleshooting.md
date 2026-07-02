@@ -259,7 +259,7 @@ cannot discover by sibling lookup or `PATH`, rerun setup with
 `--mcp-command PATH`.
 
 <a id="guard-hook-path-or-wrapper-is-unsafe"></a>
-## Guard Hook Path Or Wrapper Is Unsafe
+## Hook Path Or Wrapper Is Unsafe
 
 Observable symptom: `volicord doctor`, connection status, or connection
 verification reports `hook_path_safety` as a value other than `ok`, such as
@@ -311,7 +311,7 @@ that project directory, reload or repair the host configuration through the
 host's own trust and project-selection flow.
 
 Unsafe hook paths keep observe host hooks inactive. Watcher availability is
-reported separately in the control-surface summary. Path repair is still
+reported separately in the observation summary. Path repair is still
 separate from host trust, approval, restart, and reload; complete any reported
 host-owned action and rerun verification after repair.
 
@@ -328,7 +328,7 @@ volicord connection verify codex --shared
 ```
 
 Complete the host-owned project approval or reload action named by the command.
-The `Product Repository` integration file is not Core authority and does not
+The `Product Repository` integration file is not Volicord authority and does not
 prove that the host loaded, trusted, or exposed the MCP server.
 
 ## Generic Export Does Not Appear In The Host
@@ -363,7 +363,8 @@ volicord connections
 Removal first removes the selected Product Repository membership. It removes the Agent
 Connection and managed host configuration only when no owned membership remains
 and safety checks permit it. It must not remove the `Product Repository`,
-project state, Core records, artifact storage, or unrelated host entries.
+project state, Volicord records, evidence attachment storage, or unrelated host
+entries.
 
 ## Security Boundary
 

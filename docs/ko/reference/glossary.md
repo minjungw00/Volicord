@@ -1,65 +1,31 @@
 # 용어집
 
-이 용어집은 선별된 Volicord 핵심 용어를 사람이 읽기 쉽게 설명하는 간결한 안내입니다. 주요 개념을 이해하고, 포함된 각 용어의 주 담당 문서를 찾을 때 사용합니다.
+이 용어집은 공개 용어를 간결하게 안내합니다. 일반적인 Volicord 작업 흐름에서
+사용자가 무엇을 할지 결정하는 데 필요한 용어만 싣습니다.
 
-완전한 구조화 용어 메타데이터는 [`docs/terminology-map.yaml`](../../terminology-map.yaml)에 있습니다. 이 용어집은 독자를 위한 선별 부분집합일 뿐입니다.
+완전한 구조화 용어 메타데이터는
+[`docs/terminology-map.yaml`](../../terminology-map.yaml)에 있습니다. 용어 지도는
+visibility, 허용 문서 계층, 피할 동의어, 식별자 보존, 담당 경로도 기록합니다.
+정확한 계약은 아래 집중 담당 문서나 [참조 색인](README.md)을 봅니다.
 
-이 용어집은 일부 항목만 반복합니다.
+아키텍처와 참조 문서는 정밀성이 필요할 때 기술 용어를 사용할 수 있습니다. Core,
+Change Unit, expected write, guard, `actor_source`, `operation_category`,
+`ArtifactRef`, `StagedArtifactHandle` 같은 용어는 의도적으로 공개 용어집 항목에
+넣지 않습니다.
 
-- 용어 라벨
-- 한국어 용어
-- 간결한 뜻
-- 주 담당 문서
-
-선호 표현, 피할 표현, 식별자 보존 통제, 주변 참조는 용어 지도에 남깁니다.
-
-주제별 담당 문서 찾기는 [참조 색인](README.md)을 사용합니다. `doc_id` 기준의 정확한 기계 판독 경로는 [`docs/doc-index.yaml`](../../doc-index.yaml)을 사용합니다.
-
-계약 세부사항은 각각의 집중 담당 문서에서 확인합니다. 번역과 문체 규칙은 [번역 정책](../maintain/translation-policy.md)에 둡니다.
-
-## 용어
+## 공개 용어
 
 | 용어 | 한국어 용어 | 짧은 의미 | 주 담당 문서 |
 |---|---|---|---|
-| Volicord | Volicord | AI 지원 제품 작업을 위한 로컬 작업 권한 제품이자 시스템이며 권한 제어 평면입니다. | [시작하기 개요](../getting-started/overview.md) |
-| Core | Core | Volicord 상태를 위한 로컬 기준 기록입니다. | [Core 모델](core-model.md) |
-| Volicord 구현 | Volicord 구현 | 이 저장소가 유지하는 구현 집합이며 Volicord 전체와 같은 말은 아닙니다. 런타임과 위치 경계의 세부사항은 런타임 경계가 담당합니다. | [런타임 경계](runtime-boundaries.md) |
-| `Product Repository` | 제품 저장소 | Volicord 런타임 상태와 구분되는 사용자의 프로젝트 작업 공간과 제품 파일입니다. | [런타임 경계](runtime-boundaries.md) |
-| `Volicord Runtime Home` | 런타임 홈 | 저장소/런타임 담당 문서가 정의한 Volicord 운영 데이터의 로컬 런타임 데이터 공간입니다. | [런타임 경계](runtime-boundaries.md) |
-| `installation_profile` | 설치 프로필 저장 기록 | 선택된 명령 경로, 기본 연결 모드, 메타데이터, 타임스탬프를 저장하는 Runtime Home registry 기록입니다. 호스트 신뢰, 사용자 권한, 공개 API 상태가 아닙니다. | [저장소 DDL](storage-ddl.md) |
-| runtime | 런타임 | Volicord의 운영 실행과 데이터 맥락입니다. | [런타임 경계](runtime-boundaries.md) |
-| baseline scope | 기준 범위 | Volicord가 안정적으로 지원한다고 문서화한 경계입니다. | [기준 범위](scope.md) |
-| out-of-scope capability | 지원 범위 밖 기능 | 기준 지원 경계 밖에 있는 유예된 기능입니다. | [기준 범위](scope.md) |
-| owner document | 담당 문서 | 용어, 제품 개념, 계약을 정의하는 기준 문서입니다. | [문서 정책](../maintain/documentation-policy.md) |
-| applicable owner path | 적용되는 담당 경로 | 질문이나 개념에 맞는 집중 담당 문서로 가는 문서 경로입니다. | [문서 정책](../maintain/documentation-policy.md) |
-| `Task` | `Task` | 범위, 권한 맥락, 판단, 증거, 닫기 준비 상태를 묶는 Volicord 개체입니다. | [Core 모델](core-model.md) |
-| scope | 범위 | `Task` 또는 Change Unit 맥락에 붙는 작업 또는 권한 경계입니다. | [Core 모델](core-model.md) |
-| current scope | 현재 적용 범위 | `Task` 또는 Change Unit 맥락 안에서 현재 적용되는 범위입니다. | [Core 모델](core-model.md) |
-| current Change Unit | 현재 적용 Change Unit | 권한 모델 안에서 현재 적용되는 Change Unit입니다. | [Core 모델](core-model.md) |
-| user-owned judgment | 사용자 소유 판단 | 기록되지만 Core 소유 사실이 되지 않는 사용자 결정이나 평가입니다. | [Core 모델](core-model.md) |
-| evidence | 증거 | 특정 범위에서 특정 주장을 뒷받침하는 기록입니다. | [Core 모델](core-model.md) |
-| verification criteria | 검증 기준 | 작업을 확인하기 위해 사용자가 볼 수 있는 기준입니다. | [Core 모델](core-model.md) |
-| artifact | 아티팩트 | Volicord 아티팩트 개념으로 참조되거나 스테이징되는 작업 자료입니다. | [API 아티팩트 스키마](api/schema-artifacts.md) |
-| write ticket | 쓰기 티켓 | 제안된 제품 파일 변경 하나에 대한 권한 있는 쓰기 의도를 기록하는 지속 Core 권한 기록입니다. | [Core 모델](core-model.md) |
-| write approval | 쓰기 승인 | 쓰기를 승인한다는 일반 사용자 승인이나 산문 표현입니다. 쓰기 티켓과 구분됩니다. | [Core 모델](core-model.md) |
-| sensitive-action approval | 민감 동작 승인 | 이름 붙은 민감 단계에 대한 사용자 승인이며, 쓰기 티켓과 최종 수락과 구분됩니다. | [Core 모델](core-model.md) |
-| final acceptance | 최종 수락 | 보이는 닫기 근거를 받아들일 수 있는지에 대한 사용자 소유 판단입니다. | [Core 모델](core-model.md) |
-| residual-risk acceptance | 잔여 위험 수락 | 이름 붙은 보이는 잔여 위험에 대한 사용자 소유 판단입니다. | [Core 모델](core-model.md) |
-| close readiness | 닫기 준비 상태 | 현재 상태에서 `Task`를 닫을 준비가 되었는지를 나타내는 Core 개념입니다. | [Core 모델](core-model.md) |
-| close-readiness blocker | 닫기 차단 사유 | 닫기 준비 상태가 진행되지 못할 때 드러나는 닫기 관련 사유입니다. | [API 차단 사유 처리 경로](api/blocker-routing.md) |
-| `Projection` | 상태 보기 | 읽기 전용 상태 보기를 뜻하는 정확한 제품 라벨입니다. 상태 보기 출력은 표시이지 `Core` 권한이 아닙니다. | [상태 보기 권한 참조](projection-and-templates.md) |
-| `Agent Connection` | 에이전트 연결 | `connection_internal_id`와 함께 저장되는 로컬 MCP 호스트 연결 단위입니다. MCP 시작에서는 프로세스 바인딩 인자 표기로 `connection_id`를 사용합니다. | [Agent Connection 참조](agent-connection.md) |
-| `connection_internal_id` | 연결 내부 식별자 | Agent Connection 기록과 Connection Projects membership에 쓰는 저장 기본 키입니다. 일반 사용자용 선택자가 아닙니다. | [저장소 DDL](storage-ddl.md) |
-| `connection_id` | 연결 프로세스 바인딩 | 저장된 Agent Connection에 대한 MCP 프로세스 바인딩이자 시작 진단 필드 표기입니다. 저장 기본 키나 권한 토큰이 아닙니다. | [MCP 전송](mcp-transport.md) |
-| `project_internal_id` | 프로젝트 내부 식별자 | 등록된 프로젝트 기록과 Connection Projects membership에 쓰는 저장 기본 키입니다. 사용자 대상 흐름은 저장소 루트, 이름, 별칭, 공개 선택자를 사용합니다. | [저장소 DDL](storage-ddl.md) |
-| `project_id` | 프로젝트 진단 필드 | 특정 맥락의 진단 필드 또는 담당 문서가 정의한 스키마 필드 표기입니다. 공개 MCP 프로젝트 선택자가 아닙니다. | [MCP 전송](mcp-transport.md) |
-| `project_selector` | 프로젝트 공개 선택자 | 여러 프로젝트 중 선택할 때 `volicord.list_projects`가 반환하는 공개 MCP 프로젝트 선택자입니다. Runtime Home registry 식별자가 아닙니다. | [MCP 전송](mcp-transport.md) |
-| connection intent | 연결 의도 | `personal`, `shared`, `global` 중 하나인 Agent Connection 배치 의도입니다. | [Agent Connection 참조](agent-connection.md) |
-| `connection.mode` | 연결 모드 | `workflow` 또는 `read_only`인 Agent Connection 모드입니다. | [Agent Connection 참조](agent-connection.md) |
-| `Connection Projects` | 연결 프로젝트 | Agent Connection에 명시적으로 허용된 `project_internal_id` 목록입니다. | [Agent Connection 참조](agent-connection.md) |
-| `User Channel` | 사용자 채널 | 권한을 지니는 사용자 판단을 기록하는 로컬 사용자 경로입니다. | [Core 모델](core-model.md) |
-| `actor_source` | 행위자 출처 | `agent_connection:<connection_id>`, `local_user`, `system` 같은 지속 출처입니다. 등록된 연결이나 사용자 신원 증명이 아닙니다. | [Core 모델](core-model.md) |
-| `operation_category` | 작업 범주 | `read`, `agent_workflow`, `user_only`, `admin_local`, `local_recovery` 중 하나인 내부 API 작업 분류입니다. | [보안](security.md) |
-| `managed host configuration state` | 관리 호스트 설정 상태 | Agent Connection을 위해 관리되는 호스트 설정 인벤토리입니다. 외부 호스트가 서버를 신뢰하거나 로드했다는 증명은 아닙니다. | [Agent Connection 참조](agent-connection.md) |
-| baseline guarantee | 기준 범위 보장 | 기준 범위에서 지원되는 보장을 말할 때 쓰는 보안 표현입니다. | [보안](security.md) |
-| `ErrorCode` | 공개 오류 코드 | 공개 API 오류 코드 식별자입니다. | [API 오류 코드](api/error-codes.md) |
+| Runtime Home | 런타임 홈 | 운영 기록과 설정을 위한 로컬 Volicord 데이터 공간입니다. | [런타임 경계](runtime-boundaries.md) |
+| Product Repository | 제품 저장소 | Volicord 런타임 상태와 구분되는 사용자의 프로젝트 작업 공간과 제품 파일입니다. | [런타임 경계](runtime-boundaries.md) |
+| Task | 작업 | 구체화되거나, 진행되거나, 막히거나, 닫히는 사용자 가치 단위입니다. | [Core 모델](core-model.md) |
+| Write Ticket | 쓰기 티켓 | 제안된 제품 파일 변경이 현재 작업과 범위에 맞는다는 Volicord 기록입니다. | [Core 모델](core-model.md) |
+| Evidence | 증거 | 실행, 관찰, 증거 첨부를 포함해 특정 주장을 뒷받침하는 기록입니다. | [Core 모델](core-model.md) |
+| User Judgment | 사용자 판단 | 사용자에게 속한 결정이며 Volicord 상태가 되어야 할 때 User Channel을 통해 기록합니다. | [Core 모델](core-model.md) |
+| Close Status | 닫기 상태 | 현재 Volicord 기록에서 현재 작업을 정직하게 끝낼 수 있는지 판단하도록 돕는 상태입니다. | [Core 모델](core-model.md) |
+| Agent Connection | 에이전트 연결 | 에이전트가 지원되는 Volicord workflow를 읽거나 참여할 수 있는 로컬 MCP 호스트 연결입니다. | [Agent Connection 참조](agent-connection.md) |
+| User Channel | 사용자 채널 | 권한을 지니는 User Judgment를 기록하는 로컬 경로입니다. | [Core 모델](core-model.md) |
+| Record profile | 기록 프로필 | observe hook을 요구하지 않고 일반 기록 기반 workflow를 쓰는 Agent Connection profile입니다. | [관리 CLI](admin-cli.md) |
+| Detective profile | 탐지 프로필 | 지원되는 host hook과 watcher 관찰을 더하는 Agent Connection profile입니다. | [Agent Connection 참조](agent-connection.md) |
+| Local HTTP transport | 로컬 HTTP 전송 | 로컬 HTTP 동작에 쓰는 loopback 전용 MCP 전송입니다. | [MCP 전송](mcp-transport.md) |

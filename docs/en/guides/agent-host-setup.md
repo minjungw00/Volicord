@@ -43,20 +43,20 @@ volicord connect codex --repo /path/to/your-product-repo
 
 ## Integration Profiles
 
-Observe status reports the selected profile and a control-surface summary for the
+Observe status reports the selected profile and an observation summary for the
 selected connection or session:
 
 | Profile | How it is reached | Operational meaning |
 |---|---|---|
-| `record` | MCP tools and authority records are available without requiring host hooks or a session watcher. | Setup guidance and policy metadata can steer the host but cannot force it. |
-| `observe` | Project-local host hooks have verified generated config, cwd-independent and subdirectory-safe hook commands, native host output, required phases, write matchers, matching policy hash, runtime observation, and session watcher observation. | Cooperative pre-tool warnings or denials, post-tool correlation, prompt capture, observe status, unrecorded-change findings, and close/write blockers can participate in the workflow. |
+| Record profile (`record`) | MCP tools and authority records are available without requiring host hooks or a session watcher. | Setup guidance and policy metadata can steer the host but cannot force it. |
+| Detective profile (`observe`) | Project-local host hooks have verified generated config, cwd-independent and subdirectory-safe hook commands, native host output, required phases, write matchers, matching policy hash, runtime observation, and session watcher observation. | Cooperative pre-tool warnings or denials, post-tool correlation, chat command capture, observe status, Unrecorded Changes, and close/write blockers can participate in the workflow. |
 
-`record` can issue Volicord authority write tickets through the Core method
-workflow. `observe` does not make write tickets into filesystem enforcement; it
+The Record profile can issue Volicord Write Tickets through the prepare-write
+workflow. The Detective profile does not make Write Tickets into filesystem enforcement; it
 adds supported hook and watcher observations that can later be correlated with
-ticket-scoped writes and unrecorded-change findings.
+ticket-scoped writes and Unrecorded Changes.
 
-The control-surface summary reports whether host hooks and the session watcher
+The observation summary reports whether host hooks and the session watcher
 are active, whether cooperative pre-tool warning or denial is available, whether
 unrecorded changes can be detected, whether actor identity can be proven, and
 whether OS enforcement is provided. Current Volicord output reports no actor
@@ -120,7 +120,7 @@ volicord init --host codex --repo /path/to/your-product-repo --profile record
 ```
 
 `volicord connection verify` and `volicord doctor` keep file health, required
-host action, observed activation, and control-surface facts separate. The
+host action, observed activation, and observation facts separate. The
 observe installation state becomes active only after Volicord observes a
 matching host-hook event for the recorded project, Agent Connection, host kind,
 integration profile, and policy hash. Hook path safety does not replace host
@@ -215,7 +215,7 @@ exported file remains user-managed after export.
 
 Agent Connections can request or display focused judgment needs. They do not
 record authority-bearing user answers. Use the local `User Channel` commands
-when a Core-generated option must become the user's recorded judgment:
+when a shown option must become the user's recorded judgment:
 
 ```sh
 volicord inbox
@@ -233,8 +233,8 @@ volicord connection remove codex
 
 Removal deletes only matching managed host configuration when ownership and
 safety checks permit it. It does not delete the `Product Repository`, Runtime
-Home, project registration, project state, Core records, artifact storage, or
-unrelated host configuration.
+Home, project registration, project state, Volicord records, evidence attachment
+storage, or unrelated host configuration.
 
 ## Troubleshooting Routes
 

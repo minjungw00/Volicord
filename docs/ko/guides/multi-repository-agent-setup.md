@@ -128,7 +128,7 @@ MCP 결과는 묶인 Agent Connection에 연결된 프로젝트만 나열합니�
 프로젝트를 지어내면 안 됩니다. Product Repository 라벨에서도 프로젝트 식별 정보를 추론하면 안
 됩니다. `project_selector` 없는 호출이 모호하다고 거부되면 `volicord.list_projects`를
 호출하고 의도한 프로젝트를 고른 뒤 반환된 값으로 다시 시도합니다. 공개 MCP 도구 인자는
-`request_id`, `idempotency_key`, `expected_state_version`, `dry_run`, `locale` 같은 Core
+`request_id`, `idempotency_key`, `expected_state_version`, `dry_run`, `locale` 같은 내부
 요청 메타데이터를 요구하거나 허용하지 않습니다.
 
 ## Product Repository 하나 제거하기
@@ -149,8 +149,8 @@ volicord connection remove codex --repo /path/to/billing-api
 ```
 
 Product Repository 하나를 제거하면 해당 Product Repository의 Connection Projects 멤버십이 제거됩니다.
-`Product Repository`, 프로젝트 등록, 프로젝트 상태, Core task/evidence/run/artifact
-기록, 관련 없는 호스트 설정은 삭제하지 않습니다. 다른 Product Repository가 연결되어
+`Product Repository`, 프로젝트 등록, 프로젝트 상태, Volicord task/evidence/run 기록,
+증거 첨부 저장소, 관련 없는 호스트 설정은 삭제하지 않습니다. 다른 Product Repository가 연결되어
 있으면 호스트 항목도 남습니다. 아무 Product Repository도 남지 않으면 소유권과 안전
 점검이 허용할 때 Volicord가 일치하는 관리 호스트 설정을 제거합니다.
 
@@ -160,7 +160,7 @@ Product Repository 하나를 제거하면 해당 Product Repository의 Connectio
 - 여러 Product Repository가 연결되어 있으면 `volicord.list_projects`가 아닌 공개 MCP
   도구 호출에는 명시적 `project_selector`가 필요합니다.
 - `Product Repository`는 제품 파일 경계이며 선택된 공유 호스트 설정을 포함할 수
-  있지만 Core 권한이 아닙니다.
+  있지만 Volicord 권한이 아닙니다.
 - 쓰기 티켓은 Volicord 쓰기 의도 권한이지 OS 권한이나 쓰기가 실제로 일어났다는 증명이 아닙니다.
 - Volicord는 OS 샌드박싱, 파일시스템 ACL, 네트워크 정책, 비밀 격리를 제공하지
   않습니다.

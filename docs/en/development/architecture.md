@@ -4,7 +4,7 @@ This guide owns guide-level implementation structure and execution-flow explanat
 
 It does not define or override public API behavior, request or response fields, schema meaning, storage effects, DDL or table columns, security guarantees, runtime enforcement, Core authority semantics, or product contracts. Use the [Developer Documentation](README.md) entry point for the source-code learning path, the [Codebase Tour](codebase-tour.md) for crate-by-crate first files and symbols, the [Request Lifecycle](request-lifecycle.md) for representative method traces, [Implementation Design Patterns](design-patterns.md) for recurring implementation structures, [Storage and Transactions](storage-and-transactions.md) for Store commit and artifact boundaries, [Testing Strategy](testing-strategy.md) for test-layer choice, [Architecture Decisions](decisions/README.md) for focused decision records, the [Implementation Guide](change-guide.md) for change workflow, and the focused Reference owners for exact behavior.
 
-Volicord is the local work-authority product/system for AI-assisted product work. Core is the local authority record for Volicord state.
+Volicord is the local work authority record for AI-assisted product work. Core is the local authority record for Volicord state.
 
 Code and test paths that are meant to be opened directly are written relative to the repository root.
 

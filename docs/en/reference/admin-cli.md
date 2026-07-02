@@ -216,8 +216,8 @@ installation records exist, doctor may also report observe hook file
 installation, configuration health, runtime hook observation health, effective
 observe health, and host reload requirement as diagnostics. These diagnostics
 are local setup and observation checks; they are not proof of OS enforcement,
-sandboxing, write prevention, product correctness, or close readiness. Doctor also reports
-`selected_profile` and a `control_surface` summary that includes host-hook,
+sandboxing, write prevention, product correctness, or Close Status. Doctor also reports
+`selected_profile` and an observation summary that includes host-hook,
 session-watcher, cooperative decision, unrecorded-change detection, actor-proof,
 and OS-enforcement facts. Runtime-only capabilities such as session watcher
 observation and local web consent are reported as unavailable unless the
@@ -331,8 +331,9 @@ through `PATH` and does not embed a personal Runtime Home path.
   `.volicord/policy.json` hook command policy, supported project-local host hook
   and rule files, and records the host-hook/session-watcher observation state.
 
-Observe-aware setup, status, verification, and doctor output report
-`selected_profile` and a `control_surface` summary. The summary includes
+Observe-aware setup, status, verification, and doctor text output report
+`selected_profile` and an `observation_summary`. The corresponding JSON field is
+`control_surface`. The summary includes
 `host_hooks_active`, `session_watcher_active`,
 `cooperative_pre_tool_warning_available`,
 `cooperative_pre_tool_denial_available`,
@@ -465,8 +466,8 @@ top-level `status`, `checks`, and `actions` fields for diagnostic consumers.
 Connection status and verification output must keep observe hook file installation,
 configuration health, runtime hook observation health, effective observe health,
 host reload requirement, prompt-capture availability, and last host-hook event when
-known as separate diagnostics. They must also report `selected_profile`, a
-`control_surface` summary, cooperative pre-tool warning availability,
+known as separate diagnostics. Text output reports `selected_profile`, an
+`observation_summary`, cooperative pre-tool warning availability,
 cooperative pre-tool denial availability, post-tool correlation availability,
 unrecorded-change detection availability, prompt-capture availability, local web
 consent availability, hook path safety, hook command cwd independence, hook
@@ -680,16 +681,16 @@ answer pending user judgments through the `User Channel`. They
 do not create an Agent Connection, install MCP host configuration, or make an
 Agent Connection eligible to act as the user.
 
-When the initialized MCP client declares elicitation support, MCP elicitation
+When the initialized MCP client declares host prompt support, host prompt input
 is the preferred interactive path for pending judgments created through
-`volicord.request_user_judgment`. If elicitation is unavailable and
-prompt-capture availability is `configured`, `observed`, or `active`, fallback
-guidance may show exact chat commands such as `Volicord: answer J-3 1 #AB7K`
-with the current verification code. If both elicitation and prompt capture are
-unavailable and the adapter can safely expose local web consent, fallback
+`volicord.request_user_judgment`. If host prompt input is unavailable and
+chat command capture is `configured`, `observed`, or `active`, fallback guidance
+may show exact chat commands such as `Volicord: answer J-3 1 #AB7K`
+with the current verification code. If both host prompt input and chat command capture are
+unavailable and the adapter can safely expose a local consent URL, fallback
 guidance may show a loopback consent URL backed by a short-lived one-time token.
-The terminal `volicord inbox` commands remain the local recovery and
-manual-inspection path when elicitation, prompt capture, or local web consent is
+The terminal `volicord inbox` commands remain the CLI inbox and
+manual-inspection path when host prompt input, chat command capture, or local consent URL is
 unavailable, disabled, degraded, or inappropriate for the workflow.
 
 Project selection uses `--repo PATH` or the current working directory's

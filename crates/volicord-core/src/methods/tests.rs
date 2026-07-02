@@ -14708,7 +14708,7 @@ fn guarded_pending_judgment_displays_user_answer_paths() -> Result<(), Box<dyn E
     let guidance = pending["next_actions"][0]["blocking_question"]
         .as_str()
         .expect("pending blocker should include answer-path guidance");
-    assert!(guidance.contains("MCP elicitation"), "{guidance}");
+    assert!(guidance.contains("host prompt input"), "{guidance}");
     assert!(!guidance.contains("prompt-capture"), "{guidance}");
     assert!(!guidance.contains("volicord user"), "{guidance}");
     assert_eq!(
@@ -17226,7 +17226,7 @@ fn assert_pending_judgment_prompt_capture_guidance(response_value: &Value) {
     let guidance = blocker["next_actions"][0]["blocking_question"]
         .as_str()
         .expect("pending blocker should include answer-path guidance");
-    assert!(guidance.contains("prompt-capture"), "{guidance}");
+    assert!(guidance.contains("chat command"), "{guidance}");
     assert!(guidance.contains("verification code"), "{guidance}");
     assert!(!guidance.contains("MCP elicitation"), "{guidance}");
 }

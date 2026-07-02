@@ -253,7 +253,7 @@ The production meanings below apply only after the method reaches close-readines
 
 These codes are method-local `CloseReadinessBlocker.code` values. They are not public `ErrorCode` values, not `WriteDecisionReason.code` values, and not global value-set entries.
 
-For `pending_user_judgment`, blocker next actions may point to available User Channel answer paths, and `pending_judgment_inbox_items` carries the actionable inbox item shape. Capture paths can include MCP elicitation, prompt-capture chat commands, local web consent, or `volicord inbox answer <judgment-id> --choice <choice>` when those paths are available. The blocker does not authorize an Agent Connection to answer the user-owned judgment.
+For `pending_user_judgment`, blocker next actions may point to available User Channel input methods, and `pending_judgment_inbox_items` carries the actionable inbox item shape. Capture paths can include host prompt input, chat command capture, local consent URL, or the CLI inbox command `volicord inbox answer <judgment-id> --choice <choice>` when those paths are available. The blocker does not authorize an Agent Connection to answer the user-owned judgment.
 
 ## Blocked result
 

@@ -38,19 +38,19 @@ volicord connect codex --repo /path/to/your-product-repo
 
 ## 통합 프로필
 
-Observe 상태는 선택된 연결 또는 session에 대해 선택된 프로필과 control-surface 요약을
+Observe 상태는 선택된 연결 또는 session에 대해 선택된 프로필과 관찰 요약을
 보고합니다.
 
 | 프로필 | 도달 조건 | 운영상 의미 |
 |---|---|---|
-| `record` | Host hook이나 session watcher를 요구하지 않고 MCP 도구와 권한 기록을 사용할 수 있습니다. | 설정 안내와 policy 메타데이터가 호스트를 유도할 수 있지만 강제하지는 못합니다. |
-| `observe` | 프로젝트 로컬 host hook에 검증된 생성 설정, cwd-independent 및 subdirectory-safe hook 명령, native host output, 필수 phase, 쓰기 matcher, 일치하는 policy hash, 런타임 관찰, session watcher 관찰이 있습니다. | 협력형 pre-tool warning 또는 denial, post-tool 상관, prompt capture, observe 상태, 미기록 변경 찾기, 닫기/쓰기 차단 사유가 workflow에 참여할 수 있습니다. |
+| Record profile(`record`) | Host hook이나 session watcher를 요구하지 않고 MCP 도구와 권한 기록을 사용할 수 있습니다. | 설정 안내와 policy 메타데이터가 호스트를 유도할 수 있지만 강제하지는 못합니다. |
+| Detective profile(`observe`) | 프로젝트 로컬 host hook에 검증된 생성 설정, cwd-independent 및 subdirectory-safe hook 명령, native host output, 필수 phase, 쓰기 matcher, 일치하는 policy hash, 런타임 관찰, session watcher 관찰이 있습니다. | 협력형 pre-tool warning 또는 denial, post-tool 상관, 채팅 명령 캡처, observe 상태, 미기록 변경, 닫기/쓰기 차단 사유가 workflow에 참여할 수 있습니다. |
 
-`record`는 Core 메서드 workflow를 통해 Volicord 권한 쓰기 티켓을 발급할 수 있습니다.
-`observe`는 쓰기 티켓을 파일시스템 집행으로 바꾸지 않습니다. 대신 지원되는 hook과
-watcher 관찰을 더해 나중에 티켓 범위 쓰기 및 미기록 변경 찾기와 연결할 수 있습니다.
+Record profile은 prepare-write workflow를 통해 Volicord 쓰기 티켓을 발급할 수 있습니다.
+Detective profile은 쓰기 티켓을 파일시스템 집행으로 바꾸지 않습니다. 대신 지원되는 hook과
+watcher 관찰을 더해 나중에 티켓 범위 쓰기 및 미기록 변경과 연결할 수 있습니다.
 
-Control-surface 요약은 host hook과 session watcher가 활성인지, 협력형 pre-tool warning이나
+관찰 요약은 host hook과 session watcher가 활성인지, 협력형 pre-tool warning이나
 denial이 사용 가능한지, 미기록 변경을 탐지할 수 있는지, 행위자 identity를 증명할 수 있는지,
 OS 집행이 제공되는지를 보고합니다. 현재 Volicord 출력은 행위자 identity 증명과 OS 집행을
 제공하지 않는다고 보고합니다.
@@ -108,7 +108,7 @@ volicord init --host codex --repo /path/to/your-product-repo --profile record
 ```
 
 `volicord connection verify`와 `volicord doctor`는 파일 상태, 필요한 호스트 동작,
-관찰된 활성화, control-surface 사실을 분리해서 다룹니다. Volicord가 기록된 프로젝트,
+관찰된 활성화, 관찰 사실을 분리해서 다룹니다. Volicord가 기록된 프로젝트,
 Agent Connection, 호스트 종류, 통합 프로필, policy hash와 일치하는 host-hook event를
 관찰해야 observe 설치 상태가 활성화됩니다. Hook 경로 안전성은 호스트 trust, reload,
 restart, approval을 대신하지 않습니다. `AGENTS.md`는 지침 지원이며, 호스트 hook과 rule은
@@ -200,7 +200,7 @@ read-only 연결에 묶여야 하면 `--read-only`를 추가합니다. 내보낸
 ## User Channel 경계
 
 Agent Connection은 초점이 맞춰진 판단 필요를 요청하거나 표시할 수 있습니다. 권한을
-지니는 사용자 답변은 기록하지 않습니다. Core가 생성한 선택지가 사용자의 기록된
+지니는 사용자 답변은 기록하지 않습니다. 표시된 선택지가 사용자의 기록된
 판단이 되어야 하면 로컬 `User Channel` 명령을 사용합니다.
 
 ```sh
@@ -218,8 +218,8 @@ volicord connection remove codex
 ```
 
 제거는 소유권과 안전 점검이 허용할 때 일치하는 관리 호스트 설정만 삭제합니다.
-`Product Repository`, Runtime Home, 프로젝트 등록, 프로젝트 상태, Core 기록,
-아티팩트 저장소, 관련 없는 호스트 설정은 삭제하지 않습니다.
+`Product Repository`, Runtime Home, 프로젝트 등록, 프로젝트 상태, Volicord 기록,
+증거 첨부 저장소, 관련 없는 호스트 설정은 삭제하지 않습니다.
 
 ## 문제 해결 경로
 
