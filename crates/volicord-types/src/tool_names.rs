@@ -27,8 +27,8 @@ pub const RECORD_USER_JUDGMENT_TOOL_NAME: &str = MethodName::RecordUserJudgment.
 /// MCP-visible tool name for `volicord.reconcile_changes`.
 pub const RECONCILE_CHANGES_TOOL_NAME: &str = MethodName::ReconcileChanges.as_str();
 
-/// MCP-visible read-only close-readiness tool name.
-pub const CHECK_CLOSE_TOOL_NAME: &str = "volicord.check_close";
+/// MCP-visible tool name for `volicord.check_close`.
+pub const CHECK_CLOSE_TOOL_NAME: &str = MethodName::CheckClose.as_str();
 
 /// MCP-visible tool name for `volicord.close_task`.
 pub const CLOSE_TASK_TOOL_NAME: &str = MethodName::CloseTask.as_str();

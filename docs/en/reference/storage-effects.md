@@ -205,7 +205,7 @@ below explicitly permits session-watch diagnostic records for a session-bound
 Agent Connection, those records are not Core state mutations, replay rows,
 authority events, close-state mutations, or `project_state.state_version` changes.
 
-For response computation, `volicord.status` and `volicord.close_task intent=check` may compute `CurrentCloseBasis`, close state, risk acceptance coverage, blockers, `CloseReadinessBlocker[]`, evidence summaries, artifact refs, project continuity summaries, diagnostics, and next actions for the response when the method owner selects those projections.
+For response computation, `volicord.status` and `volicord.check_close` may compute `CurrentCloseBasis`, close state, risk acceptance coverage, blockers, `CloseReadinessBlocker[]`, evidence summaries, artifact refs, project continuity summaries, diagnostics, and next actions for the response when the method owner selects those projections.
 
 Storage must not persist those computed values merely because the read occurred.
 
@@ -224,7 +224,7 @@ Read-time artifact checks may compute an effective missing, unavailable, or inte
 - evidence update or evidence observation
 - `project_state.state_version` increment
 
-For `volicord.close_task intent=check`, the response branch is owned by [`volicord.close_task`](api/method-close-task.md). This storage page only asserts that the check remains read-only, including with `dry_run=true` and with `blockers: CloseReadinessBlocker[]`.
+For `volicord.check_close`, the response branch is owned by [`volicord.check_close`](api/method-close-task.md#volicordcheck_close). This storage page only asserts that the check remains read-only, including with `dry_run=true` and with `blockers: CloseReadinessBlocker[]`.
 
 Session-watch diagnostic records store only the bounded snapshot metadata
 described by [Storage Records](storage-records.md). They must not store raw file
@@ -327,7 +327,7 @@ This table summarizes persistence effects. Method behavior and response unions r
 | `volicord.request_user_judgment` | creates pending judgment request | See [`volicord.request_user_judgment`](#volicordrequest_user_judgment) |
 | `volicord.record_user_judgment` | resolves user judgment | See [`volicord.record_user_judgment`](#volicordrecord_user_judgment) |
 | `volicord.reconcile_changes` | resolves unrecorded-change findings, creates pending user judgments, and may record session-watch diagnostics | See [`volicord.reconcile_changes`](#volicordreconcile_changes) |
-| `volicord.close_task intent=check` | close-readiness check with optional session-watch diagnostics | See [`volicord.close_task intent=check`](#volicordclose_task-intentcheck) |
+| `volicord.check_close` | close-readiness check with optional session-watch diagnostics | See [`volicord.check_close`](#volicordcheck_close) |
 | `volicord.close_task intent=complete` | persists method-selected `complete` terminal or blocked effect | See [`volicord.close_task intent=complete`](#volicordclose_task-intentcomplete) |
 | `volicord.close_task intent=cancel` | persists method-selected cancellation terminal or blocked effect | See [`volicord.close_task intent=cancel`](#volicordclose_task-intentcancel) |
 | `volicord.close_task intent=supersede` | persists method-selected supersession terminal or blocked effect | See [`volicord.close_task intent=supersede`](#volicordclose_task-intentsupersede) |
@@ -661,8 +661,8 @@ Owner links:
 - [`volicord.reconcile_changes` method](api/method-reconcile-changes.md#volicordreconcile_changes)
 - [Storage Records](storage-records.md)
 
-<a id="volicordclose_task-intentcheck"></a>
-### `volicord.close_task intent=check`
+<a id="volicordcheck_close"></a>
+### `volicord.check_close`
 
 Read-only calls:
 
@@ -693,7 +693,7 @@ No-effect branches:
 
 Owner links:
 
-- [`volicord.close_task` method](api/method-close-task.md)
+- [`volicord.check_close` method](api/method-close-task.md#volicordcheck_close)
 
 <a id="volicordclose_task-intentcomplete"></a>
 ### `volicord.close_task intent=complete`
@@ -702,7 +702,7 @@ Committed `dry_run=false` may:
 
 - first run a bounded session-watch check for a session-bound Agent Connection
   and create or update the same session-watch diagnostic records permitted for
-  `volicord.close_task intent=check`
+  `volicord.check_close`
 - persist the method-selected terminal completion effect
 - persist a terminal close summary distinct from `tasks.close_basis_json` when the method-selected completion effect succeeds
 - create `project_continuity_records` with `kind='known_limit'` for current close-basis residual risks that are visible and do not require residual-risk acceptance when the method-selected completion effect succeeds

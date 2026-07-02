@@ -33,6 +33,7 @@ use volicord_store::{
     sqlite::open_project_state_database,
 };
 use volicord_test_support::TempRuntimeHome;
+use volicord_types::CloseMutationIntent;
 use volicord_types::{
     prefixed_durable_id, ActorSource, ChangeUnitEffectContract, ChangeUnitEffectKind,
     ChangeUnitUpdate, DurableIdError, DurableIdGenerator, DurableIdKind, EvidenceAssuranceLevel,
@@ -702,7 +703,7 @@ fn status_include_evidence_returns_current_coverage() -> Result<(), Box<dyn Erro
 }
 
 #[test]
-fn status_close_include_matches_close_task_check_blockers() -> Result<(), Box<dyn Error>> {
+fn status_close_include_matches_check_close_blockers() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "status_close")?;
     record_close_evidence(&harness, &task_id, &change_unit_id, 2, "status_close", true)?;
@@ -723,8 +724,8 @@ fn status_close_include_matches_close_task_check_blockers() -> Result<(), Box<dy
         },
         invocation(OperationCategory::Read),
     )?;
-    let check = harness.service.close_task(
-        close_task_request(CloseTaskFixture {
+    let check = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
             request_id: "req_status_close_check",
             idempotency_key: None,
             dry_run: false,
@@ -1495,8 +1496,8 @@ fn public_methods_use_same_verified_invocation_context() -> Result<(), Box<dyn E
         .record_user_judgment(record_judgment, invocation(OperationCategory::UserOnly))?;
     assert_verified_invocation(&record_judgment, OperationCategory::UserOnly);
 
-    let close_check = harness.service.close_task(
-        close_task_request(CloseTaskFixture {
+    let close_check = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
             request_id: "req_verified_close",
             idempotency_key: None,
             dry_run: false,
@@ -2678,8 +2679,8 @@ fn effect_contract_does_not_create_final_acceptance() -> Result<(), Box<dyn Erro
         },
     )?;
 
-    let response = harness.service.close_task(
-        close_task_request(CloseTaskFixture {
+    let response = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
             request_id: "req_contract_no_final_close",
             idempotency_key: None,
             dry_run: false,
@@ -2979,8 +2980,8 @@ fn informational_judgment_does_not_block_prepare_write_or_close_check() -> Resul
     )?;
     assert_eq!(prepare.response_value["decision"], "allowed");
 
-    let close = harness.service.close_task(
-        close_task_request(CloseTaskFixture {
+    let close = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
             request_id: "req_info_close_check",
             idempotency_key: None,
             dry_run: false,
@@ -6061,8 +6062,8 @@ fn corrupt_artifact_blocks_evidence_and_close() -> Result<(), Box<dyn Error>> {
     assert!(artifact_ref["size_bytes"].is_null());
     assert_close_blocker(&status.response_value, "artifact_unavailable");
 
-    let check = harness.service.close_task(
-        close_task_request(CloseTaskFixture {
+    let check = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
             request_id: "req_close_corrupt_evidence_artifact",
             idempotency_key: None,
             dry_run: false,
@@ -7680,8 +7681,8 @@ fn resolved_judgment_without_machine_action_is_owner_state_corruption() -> Resul
     )?;
     let before = harness.counts()?;
 
-    let response = harness.service.close_task(
-        close_task_request(CloseTaskFixture {
+    let response = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
             request_id: "req_missing_action_close",
             idempotency_key: None,
             dry_run: false,
@@ -9568,8 +9569,8 @@ fn category_only_close_basis_is_corrupt_owner_state() -> Result<(), Box<dyn Erro
     )?;
     let before = harness.counts()?;
 
-    let check = harness.service.close_task(
-        close_task_request(CloseTaskFixture {
+    let check = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
             request_id: "req_category_only_basis_check",
             idempotency_key: None,
             dry_run: false,
@@ -10592,13 +10593,13 @@ fn record_user_judgment_idempotency_replays_without_effect() -> Result<(), Box<d
 }
 
 #[test]
-fn close_task_check_is_read_only() -> Result<(), Box<dyn Error>> {
+fn check_close_is_read_only() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, _) = create_task_with_change_unit(&harness, "close_check")?;
     let before = harness.counts()?;
 
-    let response = harness.service.close_task(
-        close_task_request(CloseTaskFixture {
+    let response = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
             request_id: "req_close_check",
             idempotency_key: None,
             dry_run: false,
@@ -10620,13 +10621,13 @@ fn close_task_check_is_read_only() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
-fn close_task_check_dry_run_is_read_only() -> Result<(), Box<dyn Error>> {
+fn check_close_dry_run_is_read_only() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, _) = create_task_with_change_unit(&harness, "close_check_dry")?;
     let before = harness.counts()?;
 
-    let response = harness.service.close_task(
-        close_task_request(CloseTaskFixture {
+    let response = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
             request_id: "req_close_check_dry",
             idempotency_key: Some("idem_close_check_dry"),
             dry_run: true,
@@ -10661,8 +10662,8 @@ fn close_task_does_not_use_terminal_summary_as_current_basis() -> Result<(), Box
     )?;
     let before = harness.counts()?;
 
-    let response = harness.service.close_task(
-        close_task_request(CloseTaskFixture {
+    let response = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
             request_id: "req_terminal_summary_not_basis",
             idempotency_key: None,
             dry_run: false,
@@ -10695,8 +10696,8 @@ fn malformed_completion_policy_rejects_close_check_without_effect() -> Result<()
     )?;
     let before = harness.counts()?;
 
-    let response = harness.service.close_task(
-        close_task_request(CloseTaskFixture {
+    let response = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
             request_id: "req_bad_policy_check",
             idempotency_key: None,
             dry_run: false,
@@ -10771,8 +10772,8 @@ fn schema_invalid_close_summary_rejects_instead_of_hiding_residual_risk(
     )?;
     let before = harness.counts()?;
 
-    let response = harness.service.close_task(
-        close_task_request(CloseTaskFixture {
+    let response = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
             request_id: "req_bad_close_summary",
             idempotency_key: None,
             dry_run: false,
@@ -10808,8 +10809,8 @@ fn malformed_close_basis_stops_close_readiness_without_effect() -> Result<(), Bo
     )?;
     let before = harness.counts()?;
 
-    let response = harness.service.close_task(
-        close_task_request(CloseTaskFixture {
+    let response = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
             request_id: "req_bad_close_basis",
             idempotency_key: None,
             dry_run: false,
@@ -10845,8 +10846,8 @@ fn malformed_lifecycle_state_does_not_default_close_phase() -> Result<(), Box<dy
     )?;
     let before = harness.counts()?;
 
-    let response = harness.service.close_task(
-        close_task_request(CloseTaskFixture {
+    let response = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
             request_id: "req_bad_lifecycle",
             idempotency_key: None,
             dry_run: false,
@@ -11040,8 +11041,8 @@ fn resolved_judgment_null_resolution_json_is_owner_state_corruption() -> Result<
     set_user_judgment_resolution_json(&harness, &judgment_id, None)?;
     let before = harness.counts()?;
 
-    let response = harness.service.close_task(
-        close_task_request(CloseTaskFixture {
+    let response = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
             request_id: "req_null_resolution_close",
             idempotency_key: None,
             dry_run: false,
@@ -11093,8 +11094,8 @@ fn malformed_optional_resolution_json_rejects_close_readiness() -> Result<(), Bo
     set_user_judgment_resolution_json(&harness, &judgment_id, Some(corrupt_owner_json()))?;
     let before = harness.counts()?;
 
-    let response = harness.service.close_task(
-        close_task_request(CloseTaskFixture {
+    let response = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
             request_id: "req_bad_resolution_close",
             idempotency_key: None,
             dry_run: false,
@@ -11452,8 +11453,8 @@ fn stored_judgment_resolution_incompatible_branches_rejects_close_without_effect
     )?;
     let before = harness.counts()?;
 
-    let response = harness.service.close_task(
-        close_task_request(CloseTaskFixture {
+    let response = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
             request_id: "req_close_bad_resolution_branch",
             idempotency_key: None,
             dry_run: false,
@@ -11599,8 +11600,8 @@ fn stored_accepted_risk_missing_risk_id_rejects_close_without_effect() -> Result
     )?;
     let before = harness.counts()?;
 
-    let response = harness.service.close_task(
-        close_task_request(CloseTaskFixture {
+    let response = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
             request_id: "req_close_bad_accepted_risk",
             idempotency_key: None,
             dry_run: false,
@@ -11712,8 +11713,8 @@ fn artifact_provenance_missing_source_ref_rejects_close_without_effect(
     clear_artifact_source_staging_handle(&harness, &artifact_id)?;
     let before = harness.counts()?;
 
-    let response = harness.service.close_task(
-        close_task_request(CloseTaskFixture {
+    let response = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
             request_id: "req_close_bad_provenance",
             idempotency_key: None,
             dry_run: false,
@@ -11808,8 +11809,8 @@ fn malformed_evidence_source_refs_rejects_close_without_effect() -> Result<(), B
     )?;
     let before = harness.counts()?;
 
-    let response = harness.service.close_task(
-        close_task_request(CloseTaskFixture {
+    let response = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
             request_id: "req_close_bad_evidence_refs",
             idempotency_key: None,
             dry_run: false,
@@ -12801,8 +12802,8 @@ fn host_hook_strength_requires_native_output_adapter() -> Result<(), Box<dyn Err
     )?;
     let (task_id, _, _) = create_close_ready_task(&harness, "native_output_unverified")?;
 
-    let response = harness.service.close_task(
-        close_task_request(CloseTaskFixture {
+    let response = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
             request_id: "req_check_native_output_unverified",
             idempotency_key: None,
             dry_run: false,
@@ -12858,8 +12859,8 @@ fn host_hook_strength_requires_generated_config_verification() -> Result<(), Box
     )?;
     let (task_id, _, _) = create_close_ready_task(&harness, "generated_config_missing")?;
 
-    let response = harness.service.close_task(
-        close_task_request(CloseTaskFixture {
+    let response = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
             request_id: "req_check_generated_config_missing",
             idempotency_key: None,
             dry_run: false,
@@ -12912,8 +12913,8 @@ fn host_hook_strength_requires_hook_path_safety_and_recovers() -> Result<(), Box
     )?;
     let (task_id, _, _) = create_close_ready_task(&harness, suffix)?;
 
-    let response = harness.service.close_task(
-        close_task_request(CloseTaskFixture {
+    let response = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
             request_id: &format!("req_check_{suffix}"),
             idempotency_key: None,
             dry_run: false,
@@ -12959,8 +12960,8 @@ fn host_hook_strength_requires_hook_path_safety_and_recovers() -> Result<(), Box
         "active",
         &safe_capability.to_string(),
     )?;
-    let recovered = harness.service.close_task(
-        close_task_request(CloseTaskFixture {
+    let recovered = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
             request_id: &format!("req_check_{suffix}_recovered"),
             idempotency_key: None,
             dry_run: false,
@@ -13013,8 +13014,8 @@ fn host_hook_strength_requires_shell_and_direct_write_matcher_coverage(
         )?;
         let (task_id, _, _) = create_close_ready_task(&harness, suffix)?;
 
-        let response = harness.service.close_task(
-            close_task_request(CloseTaskFixture {
+        let response = harness.service.check_close(
+            check_close_request(CloseTaskFixture {
                 request_id: &format!("req_check_{suffix}"),
                 idempotency_key: None,
                 dry_run: false,
@@ -13279,8 +13280,8 @@ fn guarded_configured_guard_becomes_effectively_active_after_valid_observation(
         "guarded_configured_observed",
     )?;
 
-    let response = harness.service.close_task(
-        close_task_request(CloseTaskFixture {
+    let response = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
             request_id: "req_check_guarded_configured_observed",
             idempotency_key: None,
             dry_run: false,
@@ -13374,8 +13375,8 @@ fn guarded_degraded_installation_with_valid_event_still_blocks_missing_required_
         "guarded_degraded_observed",
     )?;
 
-    let response = harness.service.close_task(
-        close_task_request(CloseTaskFixture {
+    let response = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
             request_id: "req_check_guarded_degraded_observed",
             idempotency_key: None,
             dry_run: false,
@@ -13486,8 +13487,8 @@ fn guarded_partial_required_phase_configuration_with_event_still_blocks_missing_
         "guarded_partial_observed",
     )?;
 
-    let response = harness.service.close_task(
-        close_task_request(CloseTaskFixture {
+    let response = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
             request_id: "req_check_guarded_partial_observed",
             idempotency_key: None,
             dry_run: false,
@@ -13675,8 +13676,8 @@ fn guarded_close_blocks_unresolved_unrecorded_changes_and_check_is_read_only(
     insert_guarded_unrecorded_change(&harness, &task_id, "guarded_unrecorded")?;
     let before = harness.counts()?;
 
-    let check = harness.service.close_task(
-        close_task_request(CloseTaskFixture {
+    let check = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
             request_id: "req_check_guarded_unrecorded",
             idempotency_key: None,
             dry_run: false,
@@ -13755,8 +13756,8 @@ fn reconcile_changes_resolves_not_product_change_and_updates_close_blocker(
         "[]",
     )?;
 
-    let before = harness.service.close_task(
-        close_task_request(CloseTaskFixture {
+    let before = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
             request_id: "req_reconcile_not_product_check_before",
             idempotency_key: None,
             dry_run: false,
@@ -13828,8 +13829,8 @@ fn reconcile_changes_resolves_not_product_change_and_updates_close_blocker(
         "core_deterministic_not_product_change"
     );
 
-    let after = harness.service.close_task(
-        close_task_request(CloseTaskFixture {
+    let after = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
             request_id: "req_reconcile_not_product_check_after",
             idempotency_key: None,
             dry_run: false,
@@ -14083,8 +14084,8 @@ fn reconcile_changes_local_recovery_consumes_user_acceptance_and_removes_close_b
     let unrecorded_change_id =
         insert_guarded_unrecorded_change(&harness, &task_id, "reconcile_local_accept")?;
 
-    let before = harness.service.close_task(
-        close_task_request(CloseTaskFixture {
+    let before = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
             request_id: "req_reconcile_local_accept_before",
             idempotency_key: None,
             dry_run: false,
@@ -14163,8 +14164,8 @@ fn reconcile_changes_local_recovery_consumes_user_acceptance_and_removes_close_b
         VERIFICATION_BASIS_TEST_FIXTURE_BINDING
     );
 
-    let after = harness.service.close_task(
-        close_task_request(CloseTaskFixture {
+    let after = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
             request_id: "req_reconcile_local_accept_after",
             idempotency_key: None,
             dry_run: false,
@@ -14416,8 +14417,8 @@ fn guarded_close_blocks_write_ticket_issue_from_guard_event() -> Result<(), Box<
     insert_write_ticket_guard_event(&harness, &guard_installation_id, "guarded_write_ready")?;
     let before = harness.counts()?;
 
-    let response = harness.service.close_task(
-        close_task_request(CloseTaskFixture {
+    let response = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
             request_id: "req_check_guarded_write_ready",
             idempotency_key: None,
             dry_run: false,
@@ -14480,8 +14481,8 @@ fn guarded_close_blocks_write_ticket_path_scope_guard_event() -> Result<(), Box<
     )?;
     insert_write_ticket_path_scope_guard_event(&harness, &guard_installation_id, "path_scope")?;
 
-    let response = harness.service.close_task(
-        close_task_request(CloseTaskFixture {
+    let response = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
             request_id: "req_check_guarded_path_scope",
             idempotency_key: None,
             dry_run: false,
@@ -14575,8 +14576,8 @@ fn close_check_blocks_open_and_expired_write_tickets() -> Result<(), Box<dyn Err
         invocation(OperationCategory::AgentWorkflow),
     )?;
 
-    let open = open_harness.service.close_task(
-        close_task_request(CloseTaskFixture {
+    let open = open_harness.service.check_close(
+        check_close_request(CloseTaskFixture {
             request_id: "req_open_ticket_close_check",
             idempotency_key: None,
             dry_run: false,
@@ -14608,8 +14609,8 @@ fn close_check_blocks_open_and_expired_write_tickets() -> Result<(), Box<dyn Err
     )?;
     clock.advance(Duration::minutes(15));
 
-    let expired = expired_harness.service.close_task(
-        close_task_request(CloseTaskFixture {
+    let expired = expired_harness.service.check_close(
+        check_close_request(CloseTaskFixture {
             request_id: "req_expired_ticket_close_check",
             idempotency_key: None,
             dry_run: false,
@@ -14804,8 +14805,8 @@ fn guarded_pending_judgment_uses_prompt_capture_guidance_when_mcp_unhealthy(
             .any(|fallback| fallback["kind"] == "cli")
     );
 
-    let check = harness.service.close_task(
-        close_task_request(CloseTaskFixture {
+    let check = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
             request_id: "req_check_guarded_pending_prompt_capture",
             idempotency_key: None,
             dry_run: false,
@@ -14935,8 +14936,8 @@ fn mcp_only_watcher_detects_bypass_file_changes() -> Result<(), Box<dyn Error>> 
     initialize_watch_baseline(&harness, &task_id, session_id, "mcp_only_seed")?;
 
     write_product_file(&harness, "src/watch.txt", "changed outside guard\n")?;
-    let response = harness.service.close_task(
-        close_task_request(CloseTaskFixture {
+    let response = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
             request_id: "req_watch_mcp_only_detect",
             idempotency_key: None,
             dry_run: false,
@@ -15039,8 +15040,8 @@ fn guarded_expected_write_does_not_create_duplicate_watcher_blocker() -> Result<
     )?;
 
     write_product_file(&harness, "src/watch.txt", "covered guarded write\n")?;
-    let response = harness.service.close_task(
-        close_task_request(CloseTaskFixture {
+    let response = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
             request_id: "req_watch_expected_check",
             idempotency_key: None,
             dry_run: false,
@@ -15085,8 +15086,8 @@ fn guarded_watcher_links_deterministic_active_write_ticket() -> Result<(), Box<d
     initialize_full_watch_baseline(&harness, session_id, &guard_installation_id, "ticket_seed")?;
 
     write_product_file(&harness, "src/export.rs", "ticket-backed watcher change\n")?;
-    let response = harness.service.close_task(
-        close_task_request(CloseTaskFixture {
+    let response = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
             request_id: "req_watch_ticket_check",
             idempotency_key: None,
             dry_run: false,
@@ -15135,8 +15136,8 @@ fn guarded_hook_missing_write_is_detected_by_watcher() -> Result<(), Box<dyn Err
     initialize_watch_baseline(&harness, &task_id, session_id, "guarded_fallback_seed")?;
 
     write_product_file(&harness, "src/watch.txt", "guard hook skipped this write\n")?;
-    let response = harness.service.close_task(
-        close_task_request(CloseTaskFixture {
+    let response = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
             request_id: "req_watch_guarded_fallback",
             idempotency_key: None,
             dry_run: false,
@@ -15168,8 +15169,8 @@ fn watcher_reverted_change_auto_resolves() -> Result<(), Box<dyn Error>> {
     write_product_file(&harness, "src/watch.txt", "original\n")?;
     initialize_watch_baseline(&harness, &task_id, session_id, "revert_seed")?;
     write_product_file(&harness, "src/watch.txt", "changed\n")?;
-    let blocked = harness.service.close_task(
-        close_task_request(CloseTaskFixture {
+    let blocked = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
             request_id: "req_watch_revert_detect",
             idempotency_key: None,
             dry_run: false,
@@ -15647,8 +15648,8 @@ fn initialize_watch_baseline(
     suffix: &str,
 ) -> Result<(), Box<dyn Error>> {
     let request_id = format!("req_watch_baseline_{suffix}");
-    let response = harness.service.close_task(
-        close_task_request(CloseTaskFixture {
+    let response = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
             request_id: &request_id,
             idempotency_key: None,
             dry_run: false,
@@ -16179,6 +16180,12 @@ struct CloseTaskFixture<'a> {
 }
 
 fn close_task_request(input: CloseTaskFixture<'_>) -> CloseTaskRequest {
+    let intent = match input.intent {
+        CloseIntent::Complete => CloseMutationIntent::Complete,
+        CloseIntent::Cancel => CloseMutationIntent::Cancel,
+        CloseIntent::Supersede => CloseMutationIntent::Supersede,
+        CloseIntent::Check => panic!("use check_close_request for close-readiness checks"),
+    };
     CloseTaskRequest {
         envelope: envelope(
             input.request_id,
@@ -16188,10 +16195,23 @@ fn close_task_request(input: CloseTaskFixture<'_>) -> CloseTaskRequest {
             Some(input.task_id),
         ),
         task_id: TaskId::new(input.task_id),
-        intent: input.intent,
+        intent,
         close_reason: input.close_reason.into(),
         superseding_task_id: input.superseding_task_id.map(TaskId::new).into(),
         user_note: Some("Focused close-task test.".to_owned()).into(),
+    }
+}
+
+fn check_close_request(input: CloseTaskFixture<'_>) -> CheckCloseRequest {
+    CheckCloseRequest {
+        envelope: envelope(
+            input.request_id,
+            input.idempotency_key,
+            input.dry_run,
+            input.expected_state_version,
+            Some(input.task_id),
+        ),
+        task_id: TaskId::new(input.task_id),
     }
 }
 
@@ -16809,8 +16829,8 @@ where
     mutate(&harness, &judgment_id)?;
     let before = harness.counts()?;
 
-    let response = harness.service.close_task(
-        close_task_request(CloseTaskFixture {
+    let response = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
             request_id: &format!("req_close_bad_action_{suffix}"),
             idempotency_key: None,
             dry_run: false,
@@ -19124,8 +19144,8 @@ fn status_with_evidence_and_close(
 }
 
 fn close_check(harness: &MethodHarness, task_id: &str) -> CoreResult<PipelineResponse> {
-    harness.service.close_task(
-        close_task_request(CloseTaskFixture {
+    harness.service.check_close(
+        check_close_request(CloseTaskFixture {
             request_id: &format!("req_close_check_artifact_authority_{task_id}"),
             idempotency_key: None,
             dry_run: false,

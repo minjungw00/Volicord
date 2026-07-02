@@ -1482,7 +1482,7 @@ documents:
   path_en: docs/en/reference/api/method-close-task.md
   path_ko: docs/ko/reference/api/method-close-task.md
   kind: reference
-  summary: Reference contract for `volicord.close_task` behavior.
+  summary: Reference contract for `volicord.check_close` and `volicord.close_task` behavior.
   normative_level: contract
   translation_policy: semantic_parity
   owner_area: core_api
@@ -1499,9 +1499,11 @@ documents:
   - implement
   - operate
   canonical_for:
-  - close task API method term
+  - close API method terms
+  - '`volicord.check_close` public method identifier'
+  - '`volicord.check_close` method-specific read-only behavior'
   - '`volicord.close_task` public method identifier'
-  - '`volicord.close_task` method-specific behavior'
+  - '`volicord.close_task` method-specific mutation behavior'
   - '`CloseTaskResult` method result branch behavior'
   - method-specific close-readiness evaluation order
   - method-specific blocker-producing branches

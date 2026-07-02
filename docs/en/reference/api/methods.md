@@ -17,6 +17,7 @@ This page does not define method behavior, request or response bodies, shared sc
 <a id="volicordrequest_user_judgment"></a>
 <a id="volicordrecord_user_judgment"></a>
 <a id="volicordreconcile_changes"></a>
+<a id="volicordcheck_close"></a>
 <a id="volicordclose_task"></a>
 
 | Method | Owner |
@@ -30,7 +31,8 @@ This page does not define method behavior, request or response bodies, shared sc
 | `volicord.request_user_judgment` | [Request-user-judgment method](method-request-user-judgment.md#volicordrequest_user_judgment) |
 | `volicord.record_user_judgment` | [Record-user-judgment method](method-record-user-judgment.md#volicordrecord_user_judgment) |
 | `volicord.reconcile_changes` | [Reconcile-changes method](method-reconcile-changes.md#volicordreconcile_changes) |
-| `volicord.close_task` | [Close-task method](method-close-task.md) |
+| `volicord.check_close` | [Close method](method-close-task.md#volicordcheck_close) |
+| `volicord.close_task` | [Close method](method-close-task.md#volicordclose_task) |
 
 ## Nearby Routes
 

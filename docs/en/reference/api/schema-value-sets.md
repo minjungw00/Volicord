@@ -290,10 +290,9 @@ secret_access
 
 These values classify effects as Core state. They do not by themselves create a runtime sandbox, command interception, network blocking, secret isolation, user judgment, sensitive-action approval, evidence, write ticket, final acceptance, close readiness, or residual-risk acceptance.
 
-`volicord.close_task.intent` uses:
+`volicord.check_close` has no `intent` field. `volicord.close_task.intent` uses:
 
 ```text
-check
 complete
 cancel
 supersede

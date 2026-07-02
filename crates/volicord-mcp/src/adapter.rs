@@ -695,15 +695,8 @@ impl McpAdapter {
         )?;
         self.call_core_request(
             tool_name,
-            CloseTaskRequest {
-                envelope,
-                task_id,
-                intent: CloseIntent::Check,
-                close_reason: RequiredNullable::null(),
-                superseding_task_id: RequiredNullable::null(),
-                user_note: RequiredNullable::null(),
-            },
-            CoreService::close_task,
+            CheckCloseRequest { envelope, task_id },
+            CoreService::check_close,
             session_id,
         )
     }
@@ -729,7 +722,7 @@ impl McpAdapter {
             CloseTaskRequest {
                 envelope,
                 task_id,
-                intent: args.intent.into(),
+                intent: args.intent,
                 close_reason: args.close_reason,
                 superseding_task_id: args.superseding_task_id,
                 user_note: args.user_note,
@@ -1050,6 +1043,7 @@ impl_has_envelope!(
     RecordRunRequest,
     RequestUserJudgmentRequest,
     ReconcileChangesRequest,
+    CheckCloseRequest,
     CloseTaskRequest,
 );
 

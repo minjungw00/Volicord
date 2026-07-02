@@ -87,7 +87,7 @@ StatusRequest:
 - `include.write_ticket`는 활성, 만료, 오래됨, 소비됨 또는 그 밖의 관련 쓰기 티켓 상태를 `write_ticket_summary`로 반환합니다.
 - `write_ticket_summary`는 호환성 요약일 뿐이며 파일시스템 접근, 셸 승인, 최종 수락, 일반 쓰기 승인, 쓰기가 실제로 일어났다는 증명이 아닙니다.
 - `include.evidence`는 사용할 수 있을 때 현재 `EvidenceSummary`와 범위를 반환합니다.
-- `include.close`는 `CurrentCloseBasis | null`, 닫기 상태, 계산된 차단 사유, 위험 수락 범위, 사용할 수 있을 때 hook 경로 안전성을 포함한 `GuardHealthSummary` hook-state 사실, 관련 다음 행동을 반환합니다. 차단 사유는 `volicord.close_task intent=check`와 같은 닫기 준비 상태 계산을 사용합니다.
+- `include.close`는 `CurrentCloseBasis | null`, 닫기 상태, 계산된 차단 사유, 위험 수락 범위, 사용할 수 있을 때 hook 경로 안전성을 포함한 `GuardHealthSummary` hook-state 사실, 관련 다음 행동을 반환합니다. 차단 사유는 `volicord.check_close`와 같은 닫기 준비 상태 계산을 사용합니다.
 - `include.guarantees`는 프로젝트 강제 프로필, 확인된 호출 맥락, 활성화된 강제 메커니즘, 지원되는 기준 범위에서 파생된 보장만 반환합니다.
 - `include.continuity`는 오래 유지하는 프로젝트 수준 맥락의 활성 `ProjectContinuitySummary[]` 항목을 반환합니다.
 - `include.evidence=false`는 증거 요약, 범위, 아티팩트 증거 참조, 증거 전용 다음 행동을 계산하지도 반환하지도 않는다는 뜻입니다.
@@ -101,7 +101,7 @@ StatusRequest:
 - 호스트 지침, 연결 모드, 생성된 텍스트만으로는 보장이 생기지 않습니다. 협력형 전용 배포는 `detective`를 주장하면 안 됩니다.
 - `GuaranteeDisplay.capability_refs`는 해당 참조를 사용할 수 있을 때 호출 바인딩, Agent Connection, 관찰 사실을 식별해야 합니다.
 
-`include.close=true`와 [`volicord.close_task`](method-close-task.md)의 `intent=check`는 같은 닫기 준비 상태 계산을 사용합니다. `volicord.status`는 replay 행, event, Core 상태 변경, 닫기 변경, 상태 버전 증가를 만들지 않습니다. Session에 묶인 Agent Connection으로 호출되면 런타임은 이후 메서드 경계 확인에서 Product Repository 스냅샷을 비교할 수 있도록 session-watch 진단 기록을 초기화할 수 있습니다.
+`include.close=true`와 [`volicord.check_close`](method-close-task.md#volicordcheck_close)는 같은 닫기 준비 상태 계산을 사용합니다. `volicord.status`는 replay 행, event, Core 상태 변경, 닫기 변경, 상태 버전 증가를 만들지 않습니다. Session에 묶인 Agent Connection으로 호출되면 런타임은 이후 메서드 경계 확인에서 Product Repository 스냅샷을 비교할 수 있도록 session-watch 진단 기록을 초기화할 수 있습니다.
 
 ## 메서드 결과 필드
 

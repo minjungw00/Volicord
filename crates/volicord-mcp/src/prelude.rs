@@ -47,7 +47,7 @@ pub(crate) use volicord_store::{
 };
 pub(crate) use volicord_types::{
     chat_judgment_verification_code, mcp_request_schema, ActorSource, AgentConnectionId,
-    AgentConnectionMode, CloseIntent, CloseTaskRequest, GuaranteeDisclosure, IdempotencyKey,
+    AgentConnectionMode, CheckCloseRequest, CloseTaskRequest, GuaranteeDisclosure, IdempotencyKey,
     IntakeRequest, IntegrationProfile, JsonObject, JudgmentKind, JudgmentRationale,
     JudgmentResolutionOutcome, McpCheckCloseArguments, McpCloseTaskArguments, McpIntakeArguments,
     McpPrepareWriteArguments, McpReconcileChangesArguments, McpRecordRunArguments,

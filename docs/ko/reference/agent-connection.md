@@ -234,9 +234,9 @@ MCP 세션은 어댑터 시작 시 저장된 `connection_internal_id`를 가리�
 | `read_only` | `read` | `volicord.status`, `volicord.check_close` |
 
 어댑터 소유 `volicord.list_projects` 유틸리티는 `workflow`와 `read_only` 모드 모두에
-보입니다. `volicord.check_close`는 읽기 전용 MCP 닫기 준비 상태 도구입니다.
-`volicord.close_task`는 워크플로 전용 MCP 변경 도구이며 `read_only` 도구 탐색에 나타나면
-안 됩니다.
+보입니다. `volicord.check_close`는 일급 Core 읽기 메서드에 매핑되는 읽기 전용 MCP
+닫기 준비 상태 도구입니다. `volicord.close_task`는 워크플로 전용 MCP 변경 도구이며
+`read_only` 도구 탐색에 나타나면 안 됩니다.
 
 `volicord.record_user_judgment`는 `operation_category=user_only`입니다. User Channel
 경로를 위한 공개 Core API 메서드이지만 Agent Connection에는 노출되지 않습니다. 권한을

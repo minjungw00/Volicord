@@ -206,7 +206,7 @@ API 데이터 형태는 API 스키마 담당 문서가 담당합니다. 차단 �
 허용하는 경우, 그 기록은 Core 상태 변경, 재실행 행, 권한 이벤트, 닫기 상태
 변경, `project_state.state_version` 변경이 아닙니다.
 
-응답 계산을 위해 `volicord.status`와 `volicord.close_task intent=check`는 메서드 담당 문서가 그 상태 보기를 선택할 때 `CurrentCloseBasis`, 닫기 상태, 위험 수락 범위, 차단 사유, `CloseReadinessBlocker[]`, 증거 요약, 아티팩트 참조, 프로젝트 연속성 요약, 진단, 다음 행동을 계산할 수 있습니다.
+응답 계산을 위해 `volicord.status`와 `volicord.check_close`는 메서드 담당 문서가 그 상태 보기를 선택할 때 `CurrentCloseBasis`, 닫기 상태, 위험 수락 범위, 차단 사유, `CloseReadinessBlocker[]`, 증거 요약, 아티팩트 참조, 프로젝트 연속성 요약, 진단, 다음 행동을 계산할 수 있습니다.
 
 저장소는 읽기가 일어났다는 이유만으로 그 계산값을 지속 저장하면 안 됩니다.
 
@@ -225,7 +225,7 @@ API 데이터 형태는 API 스키마 담당 문서가 담당합니다. 차단 �
 - 증거 업데이트 또는 증거 관찰
 - `project_state.state_version` 증가
 
-`volicord.close_task intent=check`의 응답 분기는 [`volicord.close_task`](api/method-close-task.md)가 담당합니다. 이 저장 효과 문서는 `dry_run=true`이거나 `blockers: CloseReadinessBlocker[]`를 포함하더라도 그 점검이 읽기 전용이라는 점만 담당합니다.
+`volicord.check_close`의 응답 분기는 [`volicord.check_close`](api/method-close-task.md#volicordcheck_close)가 담당합니다. 이 저장 효과 문서는 `dry_run=true`이거나 `blockers: CloseReadinessBlocker[]`를 포함하더라도 그 점검이 읽기 전용이라는 점만 담당합니다.
 
 세션 watch 진단 기록은 [저장소 기록](storage-records.md)이 설명하는 제한된
 스냅샷 메타데이터만 저장합니다. 원본 파일 내용, 민감한 prompt 텍스트, 파일
@@ -326,7 +326,7 @@ API 데이터 형태는 API 스키마 담당 문서가 담당합니다. 차단 �
 | `volicord.request_user_judgment` | 대기 중인 판단 요청 생성 | [`volicord.request_user_judgment`](#volicordrequest_user_judgment) |
 | `volicord.record_user_judgment` | 사용자 판단 해결 | [`volicord.record_user_judgment`](#volicordrecord_user_judgment) |
 | `volicord.reconcile_changes` | 미기록 변경 찾기 해결, 대기 사용자 판단 생성, 선택적 세션 watch 진단 기록 | [`volicord.reconcile_changes`](#volicordreconcile_changes) |
-| `volicord.close_task intent=check` | 선택적 세션 watch 진단을 포함하는 닫기 준비 상태 점검 | [`volicord.close_task intent=check`](#volicordclose_task-intentcheck) |
+| `volicord.check_close` | 선택적 세션 watch 진단을 포함하는 닫기 준비 상태 점검 | [`volicord.check_close`](#volicordcheck_close) |
 | `volicord.close_task intent=complete` | 메서드가 선택한 `complete` 종료 또는 차단 효과 지속 | [`volicord.close_task intent=complete`](#volicordclose_task-intentcomplete) |
 | `volicord.close_task intent=cancel` | 메서드가 선택한 취소 종료 또는 차단 효과 지속 | [`volicord.close_task intent=cancel`](#volicordclose_task-intentcancel) |
 | `volicord.close_task intent=supersede` | 메서드가 선택한 대체 종료 또는 차단 효과 지속 | [`volicord.close_task intent=supersede`](#volicordclose_task-intentsupersede) |
@@ -660,8 +660,8 @@ watch 비교를 실행하거나, `session_watch_observations`를 만들거나,
 - [`volicord.reconcile_changes` 메서드](api/method-reconcile-changes.md#volicordreconcile_changes)
 - [저장소 기록](storage-records.md)
 
-<a id="volicordclose_task-intentcheck"></a>
-### `volicord.close_task intent=check`
+<a id="volicordcheck_close"></a>
+### `volicord.check_close`
 
 읽기 전용 호출은 다음 특성을 가집니다.
 
@@ -691,7 +691,7 @@ watch 점검을 먼저 실행하고 Product Repository 변경이 expected-write 
 
 담당 문서:
 
-- [`volicord.close_task` 메서드](api/method-close-task.md)
+- [`volicord.check_close` 메서드](api/method-close-task.md#volicordcheck_close)
 
 <a id="volicordclose_task-intentcomplete"></a>
 ### `volicord.close_task intent=complete`
@@ -699,7 +699,7 @@ watch 점검을 먼저 실행하고 Product Repository 변경이 expected-write 
 커밋되는 `dry_run=false` 호출은 다음을 수행할 수 있습니다.
 
 - 세션에 연결된 Agent Connection에 대해 제한된 세션 watch 점검을 먼저 실행하고
-  `volicord.close_task intent=check`에서 허용한 것과 같은 세션 watch 진단 기록을
+  `volicord.check_close`에서 허용한 것과 같은 세션 watch 진단 기록을
   만들거나 갱신할 수 있습니다.
 - 메서드가 선택한 완료 종료 효과를 지속합니다.
 - 메서드가 선택한 완료 효과가 성공하면 `tasks.close_basis_json`과 별개인 종료 닫기 요약을 지속할 수 있습니다.

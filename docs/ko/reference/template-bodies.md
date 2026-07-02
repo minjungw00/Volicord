@@ -448,17 +448,17 @@
 
 ### 입력 상태
 
-- `volicord.close_task`가 반환한 `CloseTaskResult` 또는 닫기 준비 상태 관찰.
+- `volicord.check_close` 또는 `volicord.close_task`가 반환한 `CloseTaskResult`.
 - `CloseReadinessBlocker[]`, 증거 요약, 대기 중인 사용자 판단.
 - 최종 수락 상태, 잔여 위험 상태, 아티팩트 가용성.
 - 닫기 결과가 반환한 프로젝트 연속성 기록.
-- 출처 참조, 최신성 단서, 요청한 닫기 의도.
+- 출처 참조, 최신성 단서, 요청한 메서드 또는 닫기 의도.
 - 읽기 전용 닫기 확인과 상태를 바꾸는 닫기 시도를 구분하는 담당 결과.
 
 ### 반드시 표시할 것
 
 - 본문이 읽기 전용 확인, 차단된 닫기 시도, 담당 기록으로 남은 닫기 결과 중 무엇을 표시하는지 분명히 밝힙니다.
-- 닫기 의도와 담당 결과가 읽기 전용인지 상태 변경인지.
+- 닫기 의도가 있을 때 그 의도와 담당 결과가 읽기 전용인지 상태 변경인지.
 - 반환된 모든 닫기 차단 사유와 그 책임 차단 사유 범주 또는 다음 행동.
 - 남은 증거, 사용자 판단, 최종 수락, 잔여 위험, 아티팩트 가용성 공백.
 - 사용할 수 있으면 원천 상태 버전 또는 그에 준하는 최신성 단서.
@@ -488,7 +488,7 @@
 ### 담당 문서 링크
 
 - [Core 모델](core-model.md): 닫기 준비 상태, 정직한 닫기, 최종 수락, 잔여 위험 경계.
-- [Task 닫기 메서드](api/method-close-task.md): `volicord.close_task` 동작.
+- [닫기 메서드](api/method-close-task.md): `volicord.check_close`와 `volicord.close_task` 동작.
 - [API 상태 스키마](api/schema-state.md): `CloseReadinessBlocker`.
 - [API 판단 스키마](api/schema-judgment.md): 최종 수락과 수락된 위험 입력 형태.
 - [API 오류 처리 경로](api/error-routing.md): 닫기 거부 응답 분기 경로.

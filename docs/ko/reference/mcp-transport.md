@@ -468,9 +468,9 @@ elicitation을 사용할 수 있다고 봅니다. 다른 capability 항목은 �
 | `read_only` | `volicord.status`, `volicord.check_close`, `volicord.list_projects` |
 
 MCP에 보이는 도구는 공개 Volicord Core API 메서드 목록과 같은 것이 아닙니다.
-`volicord.check_close`는 닫기 준비 상태를 확인하는 읽기 전용 MCP 도구이며 내부적으로
-Core 닫기 준비 상태 확인 경로를 호출합니다. `volicord.close_task`는 워크플로 전용
-MCP 변경 도구이며 `read_only` 연결에는 나열되지 않습니다.
+`volicord.check_close`는 닫기 준비 상태를 확인하는 일급 읽기 전용 Core 메서드에
+매핑됩니다. `volicord.close_task`는 워크플로 전용 Core 변경 메서드에 매핑되며
+`read_only` 연결에는 나열되지 않습니다.
 `volicord.record_user_judgment`는 User Channel 경로를 위한 공개 Core API 메서드이지만
 Agent Connection MCP 도구로 노출되지 않습니다. 공개 메서드 담당 표는 [API
 메서드](api/methods.md)를 봅니다.

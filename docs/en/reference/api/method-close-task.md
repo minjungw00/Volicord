@@ -1,13 +1,14 @@
 <a id="volicordclose_task"></a>
+<a id="volicordcheck_close"></a>
 
-# `volicord.close_task` reference
+# `volicord.check_close` and `volicord.close_task` reference
 
 ## What this document owns
 
-This document owns baseline method behavior for `volicord.close_task`:
+This document owns baseline method behavior for the close method family:
 
-- method-specific request conditions, intent handling, access requirements, state-version behavior, result branches, and `dry_run` behavior
-- method-specific evaluation order for the `volicord.close_task` request
+- method-specific request conditions, intent handling, access requirements, state-version behavior, result branches, and `dry_run` behavior for `volicord.check_close` and `volicord.close_task`
+- method-specific evaluation order for the `volicord.check_close` and `volicord.close_task` requests
 - method-specific blocker-producing branches for `CloseTaskResult.blockers`
 - method-specific `CloseReadinessBlocker.code` production behavior
 - close-task examples
@@ -25,24 +26,25 @@ This document does not own:
 
 ## Purpose
 
-`volicord.close_task` evaluates close readiness for a selected `Task` and, when the selected close intent permits it, performs the requested terminal path.
+`volicord.check_close` evaluates close readiness for a selected `Task` as a read-only method. `volicord.close_task` performs supported terminal close mutations after the requested terminal path passes its checks.
 
-The method can:
+The methods can:
 
-- return a read-only close readiness observation
+- return a read-only close readiness observation through `volicord.check_close`
 - commit `intent=complete`, `intent=cancel`, or `intent=supersede`
 - return `CloseTaskResult(close_state=blocked)` with `CloseTaskResult.blockers`
 - reject the request before close readiness evaluation
 - return a common `dry_run` preview for valid mutating previews
 
-Close is a Core state transition, not a report. This method evaluates the current close basis for `intent=complete`; it does not infer close from chat, status text, a terminal close summary, final acceptance alone, residual-risk acceptance alone, evidence alone, a write ticket, or a rendered view.
+Close is a Core state transition, not a report. `volicord.close_task` evaluates the current close basis for `intent=complete`; it does not infer close from chat, status text, a terminal close summary, final acceptance alone, residual-risk acceptance alone, evidence alone, a write ticket, or a rendered view.
 
 ## Owner boundary
 
 Method-owned block:
 
+- request validation for `volicord.check_close`
 - request validation and intent-field combinations for `volicord.close_task`
-- the order in which this method reaches check, mutation, blocked, rejected, and dry-run branches
+- the order in which these methods reach read-only check, mutation, blocked, rejected, and dry-run branches
 - whether a valid mutating branch may commit a terminal result or committed blocked result
 - which method-specific blocker codes may be produced in `CloseTaskResult.blockers`
 
@@ -71,8 +73,12 @@ Preflight conditions:
 
 - The envelope and method fields must be valid.
 - `params.task_id` must identify the same-project `Task` selected by the request.
-- The requested `intent`, `close_reason`, and `superseding_task_id` combination must be valid.
+- For `volicord.close_task`, the requested `intent`, `close_reason`, and `superseding_task_id` combination must be valid.
 - The verified invocation context, operation category, compatible actor source, and terminal-path preconditions must allow the requested path.
+
+Read-only check condition:
+
+- `volicord.check_close` has no `intent`, `close_reason`, `superseding_task_id`, or terminal mutation path. It returns the current close-readiness observation and must not commit close state.
 
 Mutation conditions:
 
@@ -95,18 +101,22 @@ The terminal close summary produced by a successful terminal close is not the cu
 
 ## Close intents
 
-Supported `intent` values are owned by [API Value Sets method-local values](schema-value-sets.md#method-local-values). Supported `close_reason` and `close_state` values are owned by [API Value Sets task lifecycle values](schema-value-sets.md#task-lifecycle-values).
+`volicord.check_close` has no `intent` field. Supported `volicord.close_task.intent` values are owned by [API Value Sets method-local values](schema-value-sets.md#method-local-values). Supported `close_reason` and `close_state` values are owned by [API Value Sets task lifecycle values](schema-value-sets.md#task-lifecycle-values).
 
 | `intent` | `close_reason` | `superseding_task_id` | Method rule |
 |---|---|---|---|
-| `check` | `null` | `null` | Read-only close readiness observation. |
 | `complete` | `completed_self_checked` or `completed_with_risk_accepted` | `null` | Completion path; runs close readiness evaluation. |
 | `cancel` | `cancelled` | `null` | Cancellation path; requires compatible accepted cancellation authority and evaluates cancellation-specific terminal constraints. |
 | `supersede` | `superseded` | Non-null same-project replacement `Task` reference | Supersession path; evaluates supersession-specific terminal constraints. |
 
 ## Required inputs
 
-All calls require:
+All `volicord.check_close` calls require:
+
+- `ToolEnvelope` with method-required envelope fields, including `project_id`, `request_id`, and `dry_run`
+- matching `task_id` in the envelope-selected request context and method params
+
+All `volicord.close_task` calls require:
 
 - `ToolEnvelope` with method-required envelope fields, including `project_id`, `request_id`, and `dry_run`
 - matching `task_id` in the envelope-selected request context and method params
@@ -119,17 +129,21 @@ Additional requirements:
 
 | Case | Required input rule |
 |---|---|
-| `intent=check` | `idempotency_key` and `expected_state_version` may be `null`; `close_reason` and `superseding_task_id` must be `null`. |
+| `volicord.check_close` | `idempotency_key` and `expected_state_version` may be `null`; no close intent fields are accepted. |
 | `intent=complete`, `intent=cancel`, or `intent=supersede` with `dry_run=false` | `idempotency_key` and `expected_state_version` must be non-null and current. |
 | `intent=supersede` | `superseding_task_id` must identify a compatible same-project replacement `Task`. |
 
 ## Request schema
 
-This method owns the top-level `params` request shape below. `envelope` is the shared [`ToolEnvelope`](schema-core.md#tool-envelope); this block does not redefine `ToolEnvelope` fields.
+This document owns the top-level `params` request shapes below. `envelope` is the shared [`ToolEnvelope`](schema-core.md#tool-envelope); this block does not redefine `ToolEnvelope` fields.
 
 All fields shown in this method-owned request block are required members of `params` unless a field note explicitly marks a member optional; `T | null` means the member must be present and may contain JSON `null`.
 
 ```yaml
+CheckCloseRequest:
+  envelope: ToolEnvelope
+  task_id: string
+
 CloseTaskRequest:
   envelope: ToolEnvelope
   task_id: string
@@ -147,29 +161,34 @@ Nested owner links:
 
 | Request kind | Method access rule |
 |---|---|
-| `intent=check` | Requires verified invocation context with `operation_category=read` for protected close readiness detail. |
+| `volicord.check_close` | Requires verified invocation context with `operation_category=read` for protected close readiness detail. |
 | Mutating intents | Require verified invocation context with `operation_category=agent_workflow`, compatible `Task` state, and close-relevant owner records. |
 
 Access to call this method is separate from user-owned judgment, final acceptance, residual-risk acceptance, sensitive-action approval, and write ticket.
 
 ## Method flow
 
+Implementations evaluate `volicord.check_close` in this order:
+
+1. Validate the envelope, method fields, and same-project `Task` identity. Shape failures, wrong-project identity, and unreadable `Task` identity return `ToolRejectedResponse`.
+2. Verify the invocation context, operation category, and actor source.
+3. Run any selected deterministic session-watch check, compute current close readiness, including selected host-hook health facts, with the same calculation used by [`volicord.status`](method-status.md) when `include.close=true`, and return `CloseTaskResult`.
+
 Implementations evaluate `volicord.close_task` in this order:
 
 1. Validate the envelope, method fields, intent-field combination, and same-project `Task` identity. Shape failures, wrong-project identity, and unreadable `Task` identity return `ToolRejectedResponse`.
 2. Verify the invocation context, operation category, actor source, and requested terminal-path preconditions.
 3. For `dry_run=false` mutating intents, check `idempotency_key`, current `expected_state_version`, idempotency request hash, and close-relevant `WriteTicket.basis_state_version`. Stale or conflicting values return `ToolRejectedResponse`.
-4. For `intent=check`, run any selected deterministic session-watch check, compute current close readiness, including selected host-hook health facts, with the same calculation used by [`volicord.status`](method-status.md) when `include.close=true`, and return `CloseTaskResult`.
-5. For mutating intents with `dry_run=true`, return the common preview branch after valid preflight.
-6. For `intent=complete`, run the close readiness evaluation over the current `CurrentCloseBasis`. If blockers remain, return the blocked branch; otherwise commit `close_state=closed`, the terminal close result, and any method-selected project continuity records for close-basis known limits that do not require residual-risk acceptance.
-7. For `intent=cancel`, require a current accepted `judgment_kind=cancellation` with `machine_action=accept`, `resolution_outcome=accepted`, `resolved_by_actor_source=local_user`, compatible User Channel provenance, and compatibility with the current Task, scope revision, and Change Unit. Missing or incompatible cancellation authority returns the blocked branch.
-8. For `intent=cancel` or `intent=supersede`, evaluate only the requested terminal path. If terminal-path blockers remain, return the blocked branch; otherwise commit `close_state=cancelled` or `close_state=superseded`.
+4. For mutating intents with `dry_run=true`, return the common preview branch after valid preflight.
+5. For `intent=complete`, run the close readiness evaluation over the current `CurrentCloseBasis`. If blockers remain, return the blocked branch; otherwise commit `close_state=closed`, the terminal close result, and any method-selected project continuity records for close-basis known limits that do not require residual-risk acceptance.
+6. For `intent=cancel`, require a current accepted `judgment_kind=cancellation` with `machine_action=accept`, `resolution_outcome=accepted`, `resolved_by_actor_source=local_user`, compatible User Channel provenance, and compatibility with the current Task, scope revision, and Change Unit. Missing or incompatible cancellation authority returns the blocked branch.
+7. For `intent=cancel` or `intent=supersede`, evaluate only the requested terminal path. If terminal-path blockers remain, return the blocked branch; otherwise commit `close_state=cancelled` or `close_state=superseded`.
 
 ## State-version behavior
 
 | Case | State-version effect |
 |---|---|
-| `intent=check` | Never increments `project_state.state_version`, including when `dry_run=true`. A session-bound watcher may record bounded diagnostic session-watch observations or watcher-created unrecorded-change findings before returning the readiness observation. |
+| `volicord.check_close` | Never increments `project_state.state_version`, including when `dry_run=true`. A session-bound watcher may record bounded diagnostic session-watch observations or watcher-created unrecorded-change findings before returning the readiness observation. |
 | Successful terminal mutation | Increments `project_state.state_version` exactly once. |
 | Committed blocked result for a mutating intent | Increments `project_state.state_version` exactly once when this method and the storage-effect owner allow the committed blocked result. |
 | Preflight rejection or valid `dry_run` preview | Increments nothing. |
@@ -184,18 +203,18 @@ Returns `CloseTaskResult` with `base.response_kind=result`.
 
 | Case | Effect | `close_state` |
 |---|---|---|
-| `intent=check` and no current blocker | `base.effect_kind=read_only` | `ready` |
+| `volicord.check_close` and no current blocker | `base.effect_kind=read_only` | `ready` |
 | Successful `intent=complete` | `base.effect_kind=core_committed` | `closed` |
 | Successful `intent=cancel` | `base.effect_kind=core_committed` | `cancelled` |
 | Successful `intent=supersede` | `base.effect_kind=core_committed` | `superseded` |
 
 ## Method result fields
 
-`CloseTaskResult` is the method-specific result branch for a valid close check or terminal close attempt. It carries `base: ToolResultBase` and these method-owned top-level fields:
+`CloseTaskResult` is the method-specific result branch for a valid `volicord.check_close` observation or `volicord.close_task` terminal close attempt. It carries `base: ToolResultBase` and these method-owned top-level fields:
 
 | Field | Result-field meaning |
 |---|---|
-| `base` | Common result metadata. The `ToolResultBase` shape, including `disclosure` and `events`, is owned by [API Schema Core](schema-core.md#common-response). Valid `CloseTaskResult` branches use `base.response_kind=result` and `base.disclosure.guarantee_class=authority_record`; this method selects `base.effect_kind=read_only` for `intent=check` and `base.effect_kind=core_committed` for committed terminal or owner-allowed committed blocked outcomes. |
+| `base` | Common result metadata. The `ToolResultBase` shape, including `disclosure` and `events`, is owned by [API Schema Core](schema-core.md#common-response). Valid `CloseTaskResult` branches use `base.response_kind=result` and `base.disclosure.guarantee_class=authority_record`; this document selects `base.effect_kind=read_only` for `volicord.check_close` and `base.effect_kind=core_committed` for committed terminal or owner-allowed committed blocked outcomes. |
 | `close_state` | Method result close state for the requested path. Supported values are owned by [API Value Sets](schema-value-sets.md#task-lifecycle-values). `close_state=blocked` is a method result after valid close or terminal-path evaluation, not `ToolRejectedResponse`. |
 | `state` | `StateSummary` for the selected Task after the check, terminal mutation, or owner-allowed blocked outcome. Nested state fields, including `close_blockers`, are owned by [API State Schemas](schema-state.md). |
 | `current_close_basis` | `CurrentCloseBasis | null` used for close readiness when selected into the result. `null` means no current close basis is available for this result. Shape is owned by [API State Schemas](schema-state.md#close-readiness-and-validation-shapes). |
@@ -266,7 +285,7 @@ Conditions:
 Result:
 
 - The method may return `CloseTaskResult(close_state=blocked)` with `blockers: CloseReadinessBlocker[]`.
-- `intent=check` returns blockers as response observation data and never creates blocker rows.
+- `volicord.check_close` returns blockers as response observation data and never creates blocker rows.
   Session-watch diagnostic storage effects, when present, are separate from
   blocker-row persistence and are owned by [Storage Effects](../storage-effects.md).
 - `dry_run=false` mutating intents may commit a blocked result only when this method and [Storage Effects](../storage-effects.md) allow that effect.
@@ -275,7 +294,7 @@ Method-specific blocker branches:
 
 | Branch | Production rule |
 |---|---|
-| `intent=check` | Returns current close readiness blockers as response observation data. |
+| `volicord.check_close` | Returns current close readiness blockers as response observation data. |
 | `intent=complete` | Produces close readiness blockers when the completion path reaches close readiness evaluation and owner-defined close requirements remain unresolved. This includes open or expired unresolved write tickets, unresolved unrecorded-change findings, host-hook health, session-watch, and host-hook-detected write-ticket blockers. Partial watcher coverage remains a host-hook health warning unless another owner-defined policy blocks it. |
 | `intent=cancel` | Produces blockers only for cancellation-specific terminal constraints, including missing or incompatible cancellation authority. Completion-only evidence, final acceptance, or residual-risk gaps do not block cancellation by themselves. |
 | `intent=supersede` | Produces blockers only for supersession-specific terminal constraints. Completion-only evidence, final acceptance, or residual-risk gaps do not block supersession by themselves. |
@@ -316,7 +335,7 @@ Public error meaning, precedence, and response-branch routing are owned by the A
 
 ## Dry-run behavior
 
-`intent=check` with `dry_run=true` remains the read-only `CloseTaskResult` branch with `base.effect_kind=read_only`.
+`volicord.check_close` with `dry_run=true` remains the read-only `CloseTaskResult` branch with `base.effect_kind=read_only`.
 
 Mutating intents with `dry_run=true` use `ToolDryRunResponse` after valid preflight. Preview blockers are `PlannedBlocker` data, not stored `CloseReadinessBlocker` objects.
 
@@ -326,7 +345,7 @@ Branch shapes are owned by [API Schema Core](schema-core.md). Response-branch ro
 
 ## Storage effect
 
-`intent=check` has no storage effect, including when it returns blockers or uses `dry_run=true`.
+`volicord.check_close` has no storage effect, including when it returns blockers or uses `dry_run=true`.
 
 Committed `dry_run=false` mutating intents may persist terminal or blocked outcomes according to the method result. A successful terminal close may persist a terminal close summary, distinct from the current close basis used for pre-close readiness. Successful `intent=complete` may also persist project continuity records with `kind=known_limit` for current close-basis residual risks that are visible but do not require residual-risk acceptance. Exact storage effects, replay rows, events, state-version increments, project continuity persistence, and blocker persistence rules are owned by [Storage Effects](../storage-effects.md) and [Storage Versioning](../storage-versioning.md).
 
@@ -339,7 +358,7 @@ The examples are intentionally compact. They illustrate the method branch and ke
 ### Minimal valid request
 
 ```yaml
-method: volicord.close_task
+method: volicord.check_close
 params:
   envelope:
     project_id: proj_close_001
@@ -350,10 +369,6 @@ params:
     dry_run: false
     locale: en-US
   task_id: task_close_001
-  intent: check
-  close_reason: null
-  superseding_task_id: null
-  user_note: null
 ```
 
 ### Representative blocked check response

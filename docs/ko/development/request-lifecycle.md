@@ -129,8 +129,9 @@ Core 쪽 분기입니다. 정확한 저장 효과 계약은
 들어 `volicord.prepare_write`는 커밋 전 거부되어 효과가 없을 수 있고,
 dry-run 미리보기로 효과가 없을 수 있고, 쓰기 티켓을 발급하지
 않는 non-allow 결정 이벤트를 커밋할 수 있으며, 허용 결정에서는
-쓰기 티켓 호환성 행을 삽입할 수 있습니다. `volicord.close_task`는 읽기 전용
-확인에서나 기준 효과 없음 차단 경로에서 닫기 차단 사유를 반환할 수 있습니다.
+쓰기 티켓 호환성 행을 삽입할 수 있습니다. `volicord.check_close`는 읽기 전용
+확인에서 닫기 차단 사유를 반환할 수 있고, `volicord.close_task`는 기준 효과 없음
+차단 경로에서 닫기 차단 사유를 반환할 수 있습니다.
 API 오류는 rejected response로 남으며 닫기 차단 사유가 아닙니다. 차단
 사유와 API 사이의 정확한 경계는 [API 차단 사유 처리 경로](../reference/api/blocker-routing.md)가
 담당합니다.

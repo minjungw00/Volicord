@@ -235,8 +235,8 @@ These scenario IDs are compact reference criteria. They are not examples, tutori
   See [final acceptance blocker](#scenario-baseline-close-task-blocks-final-acceptance-missing).
 - `BASELINE-close-task-blocks-visible-unaccepted-residual-risk`
   See [residual risk blocker](#scenario-baseline-close-task-blocks-visible-unaccepted-residual-risk).
-- `BASELINE-close-task-check-read-only`
-  See [read-only close check](#scenario-baseline-close-task-check-read-only).
+- `BASELINE-check-close-read-only`
+  See [read-only close check](#scenario-baseline-check-close-read-only).
 - `BASELINE-close-task-state-effecting-dry-run-preview`
   See [state-effecting close dry-run](#scenario-baseline-close-task-state-effecting-dry-run-preview).
 - `BASELINE-close-task-supersede-one-state-version`
@@ -523,11 +523,11 @@ Owner links:
 - [API Judgment Schemas](api/schema-judgment.md)
 - [API State Schemas](api/schema-state.md)
 
-<a id="scenario-baseline-close-task-check-read-only"></a>
-### `BASELINE-close-task-check-read-only`
+<a id="scenario-baseline-check-close-read-only"></a>
+### `BASELINE-check-close-read-only`
 
 Expected behavior:
-- `volicord.close_task intent=check` is read-only.
+- `volicord.check_close` is read-only.
 
 Owner links:
 - [Close-task method](api/method-close-task.md)

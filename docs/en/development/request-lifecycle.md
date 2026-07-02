@@ -131,8 +131,9 @@ Do not treat all blocked-looking outcomes as the same implementation path. For
 example, `volicord.prepare_write` can reject before commit with no effect,
 return a dry-run preview with no effect, commit a non-allow decision event
 without issuing a write ticket, or commit an allowed decision that inserts a
-write-ticket compatibility row. `volicord.close_task` can return close blockers on a read-only
-check or on the baseline no-effect blocked path. API errors remain rejected
+write-ticket compatibility row. `volicord.check_close` can return close
+blockers on a read-only check, while `volicord.close_task` can return them on
+the baseline no-effect blocked path. API errors remain rejected
 responses, not close-readiness blockers; route exact blocker/API boundaries to
 [API blocker routing](../reference/api/blocker-routing.md).
 

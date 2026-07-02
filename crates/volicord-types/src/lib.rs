@@ -321,9 +321,16 @@ mod tests {
             OperationCategory::UserOnly
         );
 
-        let check = serde_json::from_value::<CloseTaskRequest>(close_task_request_json())
-            .expect("close check request");
+        let check = serde_json::from_value::<CheckCloseRequest>(check_close_request_json())
+            .expect("check_close request");
         assert_eq!(check.operation_category(), OperationCategory::Read);
+
+        let mut old_check = close_task_request_json();
+        old_check["intent"] = json!("check");
+        assert!(
+            serde_json::from_value::<CloseTaskRequest>(old_check).is_err(),
+            "close_task must not accept the read-only check intent"
+        );
 
         for intent in ["complete", "cancel", "supersede"] {
             let mut request = close_task_request_json();
@@ -1411,6 +1418,7 @@ mod tests {
             ("volicord.intake", intake_request_json()),
             ("volicord.update_scope", update_scope_request_json()),
             ("volicord.status", status_request_json()),
+            ("volicord.check_close", check_close_request_json()),
             ("volicord.prepare_write", prepare_write_request_json()),
             ("volicord.stage_artifact", stage_artifact_request_json()),
             ("volicord.record_run", record_run_request_json()),
@@ -1745,6 +1753,9 @@ mod tests {
             "volicord.status" => canonical_request_hash(
                 &serde_json::from_value::<StatusRequest>(value).expect("status request"),
             ),
+            "volicord.check_close" => canonical_request_hash(
+                &serde_json::from_value::<CheckCloseRequest>(value).expect("check request"),
+            ),
             "volicord.prepare_write" => canonical_request_hash(
                 &serde_json::from_value::<PrepareWriteRequest>(value).expect("prepare request"),
             ),
@@ -1798,6 +1809,7 @@ mod tests {
                 "related_scope_decision_refs",
             ],
             "volicord.status" => &["envelope", "include"],
+            "volicord.check_close" => &["envelope", "task_id"],
             "volicord.prepare_write" => &[
                 "envelope",
                 "task_id",
@@ -1878,6 +1890,7 @@ mod tests {
                 serde_json::from_value::<UpdateScopeRequest>(value).map(drop)
             }
             "volicord.status" => serde_json::from_value::<StatusRequest>(value).map(drop),
+            "volicord.check_close" => serde_json::from_value::<CheckCloseRequest>(value).map(drop),
             "volicord.prepare_write" => {
                 serde_json::from_value::<PrepareWriteRequest>(value).map(drop)
             }
@@ -2242,10 +2255,17 @@ mod tests {
         json!({
             "envelope": envelope_json(),
             "task_id": "task_empty_001",
-            "intent": "check",
-            "close_reason": null,
+            "intent": "complete",
+            "close_reason": "completed_self_checked",
             "superseding_task_id": null,
             "user_note": null
+        })
+    }
+
+    fn check_close_request_json() -> Value {
+        json!({
+            "envelope": envelope_json(),
+            "task_id": "task_empty_001"
         })
     }
 }

@@ -235,8 +235,8 @@ API 메서드 예시는 자신이 설명하는 개념을 밝히기 위해 적합
   [최종 수락 차단](#scenario-baseline-close-task-blocks-final-acceptance-missing)을 참고합니다.
 - `BASELINE-close-task-blocks-visible-unaccepted-residual-risk`
   [잔여 위험 차단](#scenario-baseline-close-task-blocks-visible-unaccepted-residual-risk)을 참고합니다.
-- `BASELINE-close-task-check-read-only`
-  [읽기 전용 닫기 확인](#scenario-baseline-close-task-check-read-only)을 참고합니다.
+- `BASELINE-check-close-read-only`
+  [읽기 전용 닫기 확인](#scenario-baseline-check-close-read-only)을 참고합니다.
 - `BASELINE-close-task-state-effecting-dry-run-preview`
   [상태 효과가 있는 닫기 `dry_run`](#scenario-baseline-close-task-state-effecting-dry-run-preview)을 참고합니다.
 - `BASELINE-close-task-supersede-one-state-version`
@@ -523,11 +523,11 @@ API 메서드 예시는 자신이 설명하는 개념을 밝히기 위해 적합
 - [API 판단 스키마](api/schema-judgment.md)
 - [API 상태 스키마](api/schema-state.md)
 
-<a id="scenario-baseline-close-task-check-read-only"></a>
-### `BASELINE-close-task-check-read-only`
+<a id="scenario-baseline-check-close-read-only"></a>
+### `BASELINE-check-close-read-only`
 
 기대 동작:
-- `volicord.close_task intent=check`는 읽기 전용입니다.
+- `volicord.check_close`는 읽기 전용입니다.
 
 담당 문서 링크:
 - [Task 닫기 메서드](api/method-close-task.md)

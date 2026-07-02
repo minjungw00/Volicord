@@ -1,13 +1,14 @@
 <a id="volicordclose_task"></a>
+<a id="volicordcheck_close"></a>
 
-# `volicord.close_task` 참조
+# `volicord.check_close`와 `volicord.close_task` 참조
 
 ## 담당하는 것
 
-이 문서는 기준 범위의 `volicord.close_task` 메서드 동작을 담당합니다.
+이 문서는 닫기 메서드 묶음의 기준 동작을 담당합니다.
 
-- 메서드별 요청 조건, `intent` 처리, 접근 요구사항, 상태 버전 동작, 결과 분기, `dry_run` 동작
-- `volicord.close_task` 요청에 적용되는 메서드별 평가 순서
+- `volicord.check_close`와 `volicord.close_task`의 메서드별 요청 조건, `intent` 처리, 접근 요구사항, 상태 버전 동작, 결과 분기, `dry_run` 동작
+- `volicord.check_close`와 `volicord.close_task` 요청에 적용되는 메서드별 평가 순서
 - `CloseTaskResult.blockers`를 만드는 메서드별 차단 사유 분기
 - 메서드별 `CloseReadinessBlocker.code` 생성 동작
 - Task 닫기 예시
@@ -25,24 +26,25 @@
 
 ## 목적
 
-`volicord.close_task`는 선택된 `Task`의 닫기 준비 상태를 평가하고, 선택한 닫기 의도가 허용할 때 요청된 종료 경로를 수행합니다.
+`volicord.check_close`는 선택된 `Task`의 닫기 준비 상태를 읽기 전용 메서드로 평가합니다. `volicord.close_task`는 요청한 종료 경로가 그 검사를 통과한 뒤 지원되는 종료 상태 변경을 수행합니다.
 
-이 메서드는 다음 결과를 낼 수 있습니다.
+이 메서드들은 다음 결과를 낼 수 있습니다.
 
-- 읽기 전용 닫기 준비 상태 관찰 반환
+- `volicord.check_close`를 통한 읽기 전용 닫기 준비 상태 관찰 반환
 - `intent=complete`, `intent=cancel`, `intent=supersede` 커밋
 - `CloseTaskResult.blockers`를 담은 `CloseTaskResult(close_state=blocked)` 반환
 - 닫기 준비 상태 평가 전 요청 거절
 - 유효한 상태 변경 미리보기에 대한 공통 `dry_run` 미리보기 반환
 
-닫기는 보고서가 아니라 Core 상태 전이입니다. 이 메서드는 `intent=complete`에서 현재 닫기 근거를 평가합니다. 대화, 상태 텍스트, 종료 닫기 요약, 최종 수락만, 잔여 위험 수락만, 증거만, 쓰기 티켓, 렌더링된 보기에서 닫기를 추론하지 않습니다.
+닫기는 보고서가 아니라 Core 상태 전이입니다. `volicord.close_task`는 `intent=complete`에서 현재 닫기 근거를 평가합니다. 대화, 상태 텍스트, 종료 닫기 요약, 최종 수락만, 잔여 위험 수락만, 증거만, 쓰기 티켓, 렌더링된 보기에서 닫기를 추론하지 않습니다.
 
 ## 담당 경계
 
 메서드 담당 블록:
 
+- `volicord.check_close`의 요청 검증
 - `volicord.close_task`의 요청 검증과 `intent` 필드 조합
-- 이 메서드가 확인, 상태 변경, 차단, 거절, `dry_run` 분기에 도달하는 순서
+- 이 메서드들이 읽기 전용 확인, 상태 변경, 차단, 거절, `dry_run` 분기에 도달하는 순서
 - 유효한 상태 변경 분기가 종료 결과나 커밋된 차단 결과를 커밋할 수 있는지 여부
 - `CloseTaskResult.blockers`에서 생성할 수 있는 메서드별 차단 사유 코드
 
@@ -71,8 +73,12 @@ API 경계 블록:
 
 - 요청 래퍼와 메서드 필드가 유효해야 합니다.
 - `params.task_id`는 요청이 선택한 같은 프로젝트의 `Task`를 가리켜야 합니다.
-- 요청한 `intent`, `close_reason`, `superseding_task_id` 조합이 유효해야 합니다.
+- `volicord.close_task`에서는 요청한 `intent`, `close_reason`, `superseding_task_id` 조합이 유효해야 합니다.
 - 확인된 호출 맥락, 작업 범주, 호환 행위자 출처, 종료 경로 선행조건이 요청한 경로를 허용해야 합니다.
+
+읽기 전용 확인 조건:
+
+- `volicord.check_close`에는 `intent`, `close_reason`, `superseding_task_id`, 종료 상태 변경 경로가 없습니다. 현재 닫기 준비 상태 관찰을 반환하며 닫기 상태를 커밋하면 안 됩니다.
 
 상태 변경 조건:
 
@@ -95,18 +101,22 @@ API 경계 블록:
 
 ## 닫기 의도
 
-지원되는 `intent` 값은 [API 값 집합의 메서드 내부 값](schema-value-sets.md#method-local-values)이 담당합니다. 지원되는 `close_reason`과 `close_state` 값은 [API 값 집합의 Task 생명주기 값](schema-value-sets.md#task-lifecycle-values)이 담당합니다.
+`volicord.check_close`에는 `intent` 필드가 없습니다. 지원되는 `volicord.close_task.intent` 값은 [API 값 집합의 메서드 내부 값](schema-value-sets.md#method-local-values)이 담당합니다. 지원되는 `close_reason`과 `close_state` 값은 [API 값 집합의 Task 생명주기 값](schema-value-sets.md#task-lifecycle-values)이 담당합니다.
 
 | `intent` | `close_reason` | `superseding_task_id` | 메서드 규칙 |
 |---|---|---|---|
-| `check` | `null` | `null` | 읽기 전용 닫기 준비 상태 관찰입니다. |
 | `complete` | `completed_self_checked` 또는 `completed_with_risk_accepted` | `null` | 완료 경로이며 닫기 준비 상태 평가를 실행합니다. |
 | `cancel` | `cancelled` | `null` | 취소 경로이며 호환되는 `accepted` 취소 권한을 요구하고 취소 전용 종료 제약을 평가합니다. |
 | `supersede` | `superseded` | `null`이 아닌 같은 프로젝트의 대체 `Task` 참조 | 대체 경로이며 대체 전용 종료 제약을 평가합니다. |
 
 ## 필수 입력
 
-모든 호출에는 아래 입력이 필요합니다.
+모든 `volicord.check_close` 호출에는 아래 입력이 필요합니다.
+
+- `project_id`, `request_id`, `dry_run`을 포함한 메서드 필수 요청 래퍼 필드를 가진 `ToolEnvelope`
+- 요청 래퍼가 선택한 요청 맥락과 메서드 params에서 일치하는 `task_id`
+
+모든 `volicord.close_task` 호출에는 아래 입력이 필요합니다.
 
 - `project_id`, `request_id`, `dry_run`을 포함한 메서드 필수 요청 래퍼 필드를 가진 `ToolEnvelope`
 - 요청 래퍼가 선택한 요청 맥락과 메서드 params에서 일치하는 `task_id`
@@ -119,17 +129,21 @@ API 경계 블록:
 
 | 경우 | 필수 입력 규칙 |
 |---|---|
-| `intent=check` | `idempotency_key`와 `expected_state_version`은 `null`일 수 있습니다. `close_reason`과 `superseding_task_id`는 `null`이어야 합니다. |
+| `volicord.check_close` | `idempotency_key`와 `expected_state_version`은 `null`일 수 있습니다. 닫기 의도 필드는 허용되지 않습니다. |
 | `intent=complete`, `intent=cancel`, `intent=supersede`와 `dry_run=false` | `idempotency_key`와 `expected_state_version`은 `null`이 아니어야 하며 현재 값이어야 합니다. |
 | `intent=supersede` | `superseding_task_id`는 호환되는 같은 프로젝트의 대체 `Task`를 가리켜야 합니다. |
 
 ## 요청 스키마
 
-이 메서드는 아래 최상위 `params` 요청 형태를 담당합니다. `envelope`는 [API 코어 스키마](schema-core.md#tool-envelope)의 공통 `ToolEnvelope`이며, 이 블록은 `ToolEnvelope` 필드를 다시 정의하지 않습니다.
+이 문서는 아래 최상위 `params` 요청 형태를 담당합니다. `envelope`는 [API 코어 스키마](schema-core.md#tool-envelope)의 공통 `ToolEnvelope`이며, 이 블록은 `ToolEnvelope` 필드를 다시 정의하지 않습니다.
 
 이 메서드 소유 요청 블록에 표시된 모든 필드는 필드 참고가 명시적으로 선택 필드라고 표시하지 않는 한 `params`의 필수 멤버입니다. `T | null`은 멤버가 반드시 있어야 하며 JSON `null`을 담을 수 있다는 뜻입니다.
 
 ```yaml
+CheckCloseRequest:
+  envelope: ToolEnvelope
+  task_id: string
+
 CloseTaskRequest:
   envelope: ToolEnvelope
   task_id: string
@@ -147,29 +161,34 @@ CloseTaskRequest:
 
 | 요청 종류 | 메서드 접근 규칙 |
 |---|---|
-| `intent=check` | 보호된 닫기 준비 상태 세부정보에는 `operation_category=read`인 확인된 호출 맥락이 필요합니다. |
+| `volicord.check_close` | 보호된 닫기 준비 상태 세부정보에는 `operation_category=read`인 확인된 호출 맥락이 필요합니다. |
 | 상태 변경 `intent` | `operation_category=agent_workflow`인 확인된 호출 맥락, 호환되는 `Task` 상태, 닫기 관련 담당 기록이 필요합니다. |
 
 이 메서드를 호출할 접근 권한은 사용자 소유 판단, 최종 수락, 잔여 위험 수락, 민감 동작 승인, 쓰기 티켓과 별개입니다.
 
 ## 메서드 흐름
 
+구현은 `volicord.check_close`를 아래 순서로 평가합니다.
+
+1. 요청 래퍼, 메서드 필드, 같은 프로젝트의 `Task` 식별자를 검증합니다. 형태 오류, 잘못된 프로젝트 식별자, 읽을 수 없는 `Task` 식별자는 `ToolRejectedResponse`를 반환합니다.
+2. 호출 맥락, 작업 범주, 행위자 출처를 확인합니다.
+3. 선택된 결정적 session-watch 확인을 실행하고, 선택된 host-hook 상태 사실을 포함해 [`volicord.status`](method-status.md)의 `include.close=true`와 같은 계산으로 현재 닫기 준비 상태를 계산한 뒤 `CloseTaskResult`를 반환합니다.
+
 구현은 `volicord.close_task`를 아래 순서로 평가합니다.
 
 1. 요청 래퍼, 메서드 필드, `intent` 필드 조합, 같은 프로젝트의 `Task` 식별자를 검증합니다. 형태 오류, 잘못된 프로젝트 식별자, 읽을 수 없는 `Task` 식별자는 `ToolRejectedResponse`를 반환합니다.
 2. 호출 맥락, 작업 범주, 행위자 출처, 요청한 종료 경로의 선행조건을 확인합니다.
 3. `dry_run=false`인 상태 변경 `intent`에서는 `idempotency_key`, 현재 `expected_state_version`, 멱등 요청 해시, 닫기 관련 `WriteTicket.basis_state_version`을 확인합니다. 오래되었거나 충돌하는 값은 `ToolRejectedResponse`를 반환합니다.
-4. `intent=check`는 선택된 결정적 session-watch 확인을 실행하고, 선택된 host-hook 상태 사실을 포함해 [`volicord.status`](method-status.md)의 `include.close=true`와 같은 계산으로 현재 닫기 준비 상태를 계산한 뒤 `CloseTaskResult`를 반환합니다.
-5. 상태 변경 `intent`와 `dry_run=true` 조합은 유효한 사전 확인 뒤 공통 미리보기 분기를 반환합니다.
-6. `intent=complete`는 현재 `CurrentCloseBasis`에 대한 닫기 준비 상태 평가를 실행합니다. 차단 사유가 남아 있으면 차단 분기를 반환하고, 없으면 `close_state=closed`, 종료 닫기 결과, 잔여 위험 수락이 필요하지 않은 닫기 근거의 알려진 한계에 대해 메서드가 선택한 프로젝트 연속성 기록을 커밋합니다.
-7. `intent=cancel`은 `machine_action=accept`, `resolution_outcome=accepted`, `resolved_by_actor_source=local_user`, 호환 User Channel 출처를 가지며 현재 `Task`, 범위 리비전, Change Unit과 호환되는 현재 수락된 `judgment_kind=cancellation`을 요구합니다. 취소 권한이 없거나 호환되지 않으면 차단 분기를 반환합니다.
-8. `intent=cancel` 또는 `intent=supersede`는 요청한 종료 경로만 평가합니다. 종료 경로 차단 사유가 남아 있으면 차단 분기를 반환하고, 없으면 `close_state=cancelled` 또는 `close_state=superseded`를 커밋합니다.
+4. 상태 변경 `intent`와 `dry_run=true` 조합은 유효한 사전 확인 뒤 공통 미리보기 분기를 반환합니다.
+5. `intent=complete`는 현재 `CurrentCloseBasis`에 대한 닫기 준비 상태 평가를 실행합니다. 차단 사유가 남아 있으면 차단 분기를 반환하고, 없으면 `close_state=closed`, 종료 닫기 결과, 잔여 위험 수락이 필요하지 않은 닫기 근거의 알려진 한계에 대해 메서드가 선택한 프로젝트 연속성 기록을 커밋합니다.
+6. `intent=cancel`은 `machine_action=accept`, `resolution_outcome=accepted`, `resolved_by_actor_source=local_user`, 호환 User Channel 출처를 가지며 현재 `Task`, 범위 리비전, Change Unit과 호환되는 현재 수락된 `judgment_kind=cancellation`을 요구합니다. 취소 권한이 없거나 호환되지 않으면 차단 분기를 반환합니다.
+7. `intent=cancel` 또는 `intent=supersede`는 요청한 종료 경로만 평가합니다. 종료 경로 차단 사유가 남아 있으면 차단 분기를 반환하고, 없으면 `close_state=cancelled` 또는 `close_state=superseded`를 커밋합니다.
 
 ## 상태 버전 동작
 
 | 경우 | 상태 버전 효과 |
 |---|---|
-| `intent=check` | `dry_run=true`여도 `project_state.state_version`을 증가시키지 않습니다. Session에 묶인 watcher는 준비 상태 관찰을 반환하기 전에 한정된 진단용 session-watch 관찰이나 watcher가 만든 미기록 변경 찾기를 기록할 수 있습니다. |
+| `volicord.check_close` | `dry_run=true`여도 `project_state.state_version`을 증가시키지 않습니다. Session에 묶인 watcher는 준비 상태 관찰을 반환하기 전에 한정된 진단용 session-watch 관찰이나 watcher가 만든 미기록 변경 찾기를 기록할 수 있습니다. |
 | 성공한 종료 상태 변경 | `project_state.state_version`을 정확히 한 번 증가시킵니다. |
 | 상태 변경 `intent`의 커밋된 차단 결과 | 이 메서드와 저장 효과 담당 문서가 그 커밋된 차단 결과를 허용할 때 `project_state.state_version`을 정확히 한 번 증가시킵니다. |
 | 사전 확인 거절 또는 유효한 `dry_run` 미리보기 | 아무것도 증가시키지 않습니다. |
@@ -184,18 +203,18 @@ CloseTaskRequest:
 
 | 경우 | 효과 | `close_state` |
 |---|---|---|
-| `intent=check`이고 현재 차단 사유가 없음 | `base.effect_kind=read_only` | `ready` |
+| `volicord.check_close`이고 현재 차단 사유가 없음 | `base.effect_kind=read_only` | `ready` |
 | 성공한 `intent=complete` | `base.effect_kind=core_committed` | `closed` |
 | 성공한 `intent=cancel` | `base.effect_kind=core_committed` | `cancelled` |
 | 성공한 `intent=supersede` | `base.effect_kind=core_committed` | `superseded` |
 
 ## 메서드 결과 필드
 
-`CloseTaskResult`는 유효한 닫기 확인 또는 종료 닫기 시도를 위한 메서드별 결과 분기입니다. 이 결과는 `base: ToolResultBase`와 아래 메서드 담당 최상위 필드를 담습니다.
+`CloseTaskResult`는 유효한 `volicord.check_close` 관찰 또는 `volicord.close_task` 종료 닫기 시도를 위한 메서드별 결과 분기입니다. 이 결과는 `base: ToolResultBase`와 아래 메서드 담당 최상위 필드를 담습니다.
 
 | 필드 | 결과 필드 의미 |
 |---|---|
-| `base` | 공통 결과 메타데이터입니다. `disclosure`와 `events`를 포함한 `ToolResultBase` 형태는 [API 코어 스키마](schema-core.md#common-response)가 담당합니다. 유효한 `CloseTaskResult` 분기는 `base.response_kind=result`와 `base.disclosure.guarantee_class=authority_record`를 사용합니다. 이 메서드는 `intent=check`에는 `base.effect_kind=read_only`를, 커밋된 종료 결과 또는 담당 문서가 허용한 커밋된 차단 결과에는 `base.effect_kind=core_committed`를 선택합니다. |
+| `base` | 공통 결과 메타데이터입니다. `disclosure`와 `events`를 포함한 `ToolResultBase` 형태는 [API 코어 스키마](schema-core.md#common-response)가 담당합니다. 유효한 `CloseTaskResult` 분기는 `base.response_kind=result`와 `base.disclosure.guarantee_class=authority_record`를 사용합니다. 이 문서는 `volicord.check_close`에는 `base.effect_kind=read_only`를, 커밋된 종료 결과 또는 담당 문서가 허용한 커밋된 차단 결과에는 `base.effect_kind=core_committed`를 선택합니다. |
 | `close_state` | 요청한 경로에 대한 메서드 결과 닫기 상태입니다. 지원 값은 [API 값 집합](schema-value-sets.md#task-lifecycle-values)이 담당합니다. `close_state=blocked`는 유효한 닫기 또는 종료 경로 평가 뒤의 메서드 결과이지 `ToolRejectedResponse`가 아닙니다. |
 | `state` | 확인, 종료 상태 변경, 또는 담당 문서가 허용한 차단 결과 뒤 선택된 Task의 `StateSummary`입니다. `close_blockers`를 포함한 중첩 상태 필드는 [API 상태 스키마](schema-state.md)가 담당합니다. |
 | `current_close_basis` | 결과에 선택된 닫기 준비 상태에 사용한 `CurrentCloseBasis | null`입니다. `null`은 이 결과에 사용할 현재 닫기 근거가 없다는 뜻입니다. 형태는 [API 상태 스키마](schema-state.md#close-readiness-and-validation-shapes)가 담당합니다. |
@@ -266,7 +285,7 @@ CloseTaskRequest:
 결과:
 
 - `blockers: CloseReadinessBlocker[]`를 담은 `CloseTaskResult(close_state=blocked)`를 반환할 수 있습니다.
-- `intent=check`는 차단 사유를 응답 관찰 데이터로 반환하며 차단 사유 행을 만들지
+- `volicord.check_close`는 차단 사유를 응답 관찰 데이터로 반환하며 차단 사유 행을 만들지
   않습니다. 세션 watch 진단 저장 효과가 있는 경우, 그 효과는 차단 사유 행 지속과
   별개이며 [저장 효과](../storage-effects.md)가 담당합니다.
 - `dry_run=false`인 상태 변경 `intent`는 이 메서드와 [저장 효과](../storage-effects.md)가 그 효과를 허용할 때만 차단 결과를 커밋할 수 있습니다.
@@ -275,7 +294,7 @@ CloseTaskRequest:
 
 | 분기 | 생성 규칙 |
 |---|---|
-| `intent=check` | 현재 닫기 준비 상태 차단 사유를 응답 관찰 데이터로 반환합니다. |
+| `volicord.check_close` | 현재 닫기 준비 상태 차단 사유를 응답 관찰 데이터로 반환합니다. |
 | `intent=complete` | 완료 경로가 닫기 준비 상태 평가에 도달했고 담당 문서가 정의한 닫기 요구사항이 해결되지 않았을 때 닫기 차단 사유를 만듭니다. 여기에는 열려 있거나 만료된 미해결 쓰기 티켓, 해결되지 않은 미기록 변경 찾기, host-hook 상태, session watch, host-hook이 감지한 쓰기 티켓 차단 사유가 포함됩니다. 부분 watcher coverage는 다른 담당 policy가 차단하지 않는 한 host-hook health 경고로 남습니다. |
 | `intent=cancel` | 취소 권한 누락이나 비호환을 포함해 취소 전용 종료 제약에 대해서만 차단 사유를 만듭니다. 완료 전용 증거, 최종 수락, 잔여 위험 공백은 그 자체로 취소를 막지 않습니다. |
 | `intent=supersede` | 대체 전용 종료 제약에 대해서만 차단 사유를 만듭니다. 완료 전용 증거, 최종 수락, 잔여 위험 공백은 그 자체로 대체를 막지 않습니다. |
@@ -316,7 +335,7 @@ CloseTaskRequest:
 
 ## `dry_run` 동작
 
-`intent=check`와 `dry_run=true`는 `base.effect_kind=read_only`인 읽기 전용 `CloseTaskResult` 분기에 남습니다.
+`volicord.check_close`와 `dry_run=true`는 `base.effect_kind=read_only`인 읽기 전용 `CloseTaskResult` 분기에 남습니다.
 
 상태 변경 `intent`와 `dry_run=true` 조합은 유효한 사전 확인 뒤 `ToolDryRunResponse`를 사용합니다. 미리보기 차단 사유는 `PlannedBlocker` 데이터이며 저장된 `CloseReadinessBlocker` 객체가 아닙니다.
 
@@ -326,7 +345,7 @@ CloseTaskRequest:
 
 ## 저장 효과
 
-`intent=check`에는 저장 효과가 없습니다. 차단 사유를 반환하거나 `dry_run=true`를 사용해도 마찬가지입니다.
+`volicord.check_close`에는 저장 효과가 없습니다. 차단 사유를 반환하거나 `dry_run=true`를 사용해도 마찬가지입니다.
 
 커밋되는 `dry_run=false` 상태 변경 `intent`는 메서드 결과에 따라 종료 결과나 차단 결과를 지속 저장할 수 있습니다. 성공한 종료 닫기는 닫기 전 준비 상태에 사용한 현재 닫기 근거와 별개인 종료 닫기 요약을 지속 저장할 수 있습니다. 성공한 `intent=complete`는 현재 닫기 근거의 잔여 위험 중 보이지만 잔여 위험 수락이 필요하지 않은 항목에 대해 `kind=known_limit` 프로젝트 연속성 기록도 지속 저장할 수 있습니다. 정확한 저장 효과, 재실행 행, 이벤트, 상태 버전 증가, 프로젝트 연속성 지속 저장, 차단 사유 지속 저장 규칙은 [저장 효과](../storage-effects.md)와 [저장소 버전 관리](../storage-versioning.md)가 담당합니다.
 
@@ -339,7 +358,7 @@ CloseTaskRequest:
 ### 최소 유효 요청
 
 ```yaml
-method: volicord.close_task
+method: volicord.check_close
 params:
   envelope:
     project_id: proj_close_001
@@ -350,10 +369,6 @@ params:
     dry_run: false
     locale: en-US
   task_id: task_close_001
-  intent: check
-  close_reason: null
-  superseding_task_id: null
-  user_note: null
 ```
 
 ### 대표 차단 확인 응답

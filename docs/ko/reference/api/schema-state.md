@@ -199,7 +199,7 @@ GuardHealthSummary:
 
 담당 문서 링크:
 - `selected_profile`, `hook_path_safety`, `guard_installation_status`, `guard_configuration_status`, `guard_observation_status`, `effective_guard_status`, `prompt_capture_status`, `session_watch_status`, `session_watch_coverage_basis` 값: [상태와 차단 사유 값](schema-value-sets.md#state-and-blocker-values)
-- 닫기 준비 상태 `guard_*` 차단 사유와 메서드 로컬 코드: [`volicord.close_task`](method-close-task.md)
+- 닫기 준비 상태 `guard_*` 차단 사유와 메서드 로컬 코드: [`volicord.check_close`와 `volicord.close_task`](method-close-task.md)
 - Agent Connection 의미: [Agent Connection](../agent-connection.md)
 
 <a id="unrecorded-change-reconciliation-shapes"></a>
@@ -738,7 +738,7 @@ GuaranteeDisclosure:
 - 닫기 준비 상태 의미와 대체 금지 규칙: [Core 모델의 닫기 준비 상태](../core-model.md#close_task)
 - 현재 닫기 근거 생성: [`volicord.record_run`](method-record-run.md)
 - 판단 호환성과 수락된 위험 입력: [API 판단 스키마](schema-judgment.md)
-- 응답 분기 동작, 닫기 준비 상태 평가 순서, 커밋된 차단 결과: [`volicord.close_task`](method-close-task.md)
+- 응답 분기 동작, 닫기 준비 상태 평가 순서, 커밋된 차단 결과: [`volicord.check_close`와 `volicord.close_task`](method-close-task.md)
 - 닫기 차단 사유와 API 응답 분기 사이의 차단 사유 처리 경로: [API 차단 사유 처리 경로](blocker-routing.md)
 - 차단 사유 범주 값(`CloseReadinessBlocker.category`), 지원되는 `ValidatorResult.status`, `ValidatorResult.severity`, `GuaranteeDisplay.level` 값: [API 값 집합](schema-value-sets.md#state-and-blocker-values)
 - 보안 보장 의미: [보안](../security.md)

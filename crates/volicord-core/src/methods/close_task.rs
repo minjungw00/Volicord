@@ -1,30 +1,101 @@
 use super::*;
 
 impl CoreService {
-    /// Executes `volicord.close_task` through close-readiness and terminal transition rules.
+    /// Executes `volicord.check_close` through read-only close-readiness rules.
+    pub fn check_close(
+        &self,
+        request: CheckCloseRequest,
+        invocation: InvocationContext,
+    ) -> CoreResult<PipelineResponse> {
+        let request_json = serde_json::to_value(&request)?;
+        if let Some(response) = validate_close_task_identity(
+            &request.envelope,
+            &request.task_id,
+            "envelope.task_id must match CheckCloseRequest.task_id",
+            "check_close requires envelope.task_id to identify the Task",
+        )? {
+            return Ok(response);
+        }
+        let request = CloseTaskPlanRequest::check(request);
+        let close_policy = check_close_policy(&request);
+        let prepared = match prepare_or_response(
+            self,
+            MethodName::CheckClose,
+            request.envelope.clone(),
+            request_json,
+            invocation,
+            close_policy,
+        )? {
+            Ok(prepared) => prepared,
+            Err(response) => return Ok(response),
+        };
+        let plan_now = utc_timestamp(self.now());
+        if !request.envelope.dry_run {
+            if let Err(error) = session_watch::run_session_watch_check(
+                &prepared.store,
+                &prepared.context.verified_invocation,
+                Some(&request.task_id),
+                &plan_now,
+            ) {
+                return plan_error_response(
+                    &request.envelope,
+                    &prepared.context.project_state,
+                    PlanError::Core(error),
+                );
+            }
+        }
+
+        let guarantee_profile = match prepared.store.project_enforcement_profile() {
+            Ok(record) => record.profile,
+            Err(error) => {
+                return plan_error_response(
+                    &request.envelope,
+                    &prepared.context.project_state,
+                    PlanError::Core(CorePipelineError::from(error)),
+                )
+            }
+        };
+        let plan = match plan_close_task(
+            &prepared.store,
+            &prepared.context.project_state,
+            Some(&prepared.context.verified_invocation),
+            Some(&guarantee_profile),
+            request.clone(),
+            &plan_now,
+        ) {
+            Ok(plan) => plan,
+            Err(error) => {
+                return plan_error_response(
+                    &request.envelope,
+                    &prepared.context.project_state,
+                    error,
+                )
+            }
+        };
+        self.execute_prepared_request(
+            prepared,
+            OwnerPipelineBranch::ReadOnly {
+                result_fields: plan.result_fields,
+            },
+        )
+    }
+
+    /// Executes `volicord.close_task` through terminal transition rules.
     pub fn close_task(
         &self,
         request: CloseTaskRequest,
         invocation: InvocationContext,
     ) -> CoreResult<PipelineResponse> {
         let request_json = serde_json::to_value(&request)?;
-        if let Some(envelope_task_id) = request.envelope.task_id.as_ref() {
-            if envelope_task_id != &request.task_id {
-                return validation_rejected(
-                    request.envelope.dry_run,
-                    None,
-                    "task_id",
-                    "envelope.task_id must match CloseTaskRequest.task_id",
-                );
-            }
-        } else {
-            return validation_rejected(
-                request.envelope.dry_run,
-                None,
-                "envelope.task_id",
-                "close_task requires envelope.task_id to identify the Task being closed",
-            );
+        if let Some(response) = validate_close_task_identity(
+            &request.envelope,
+            &request.task_id,
+            "envelope.task_id must match CloseTaskRequest.task_id",
+            "close_task requires envelope.task_id to identify the Task being closed",
+        )? {
+            return Ok(response);
         }
+        let request = CloseTaskPlanRequest::from(request);
         if let Some(response) = validate_close_intent_fields(&request)? {
             return Ok(response);
         }
@@ -40,19 +111,15 @@ impl CoreService {
             Ok(prepared) => prepared,
             Err(response) => return Ok(response),
         };
-        if request.intent != CloseIntent::Check {
-            if let Some(response) = reject_stale_close_write_ticket(
-                &prepared.store,
-                &prepared.context.project_state,
-                &request,
-            )? {
-                return Ok(response);
-            }
+        if let Some(response) = reject_stale_close_write_ticket(
+            &prepared.store,
+            &prepared.context.project_state,
+            &request,
+        )? {
+            return Ok(response);
         }
         let plan_now = utc_timestamp(self.now());
-        if matches!(request.intent, CloseIntent::Check | CloseIntent::Complete)
-            && !request.envelope.dry_run
-        {
+        if request.intent == CloseIntent::Complete && !request.envelope.dry_run {
             if let Err(error) = session_watch::run_session_watch_check(
                 &prepared.store,
                 &prepared.context.verified_invocation,
@@ -65,42 +132,6 @@ impl CoreService {
                     PlanError::Core(error),
                 );
             }
-        }
-
-        if request.intent == CloseIntent::Check {
-            let guarantee_profile = match prepared.store.project_enforcement_profile() {
-                Ok(record) => record.profile,
-                Err(error) => {
-                    return plan_error_response(
-                        &request.envelope,
-                        &prepared.context.project_state,
-                        PlanError::Core(CorePipelineError::from(error)),
-                    )
-                }
-            };
-            let plan = match plan_close_task(
-                &prepared.store,
-                &prepared.context.project_state,
-                Some(&prepared.context.verified_invocation),
-                Some(&guarantee_profile),
-                request.clone(),
-                &plan_now,
-            ) {
-                Ok(plan) => plan,
-                Err(error) => {
-                    return plan_error_response(
-                        &request.envelope,
-                        &prepared.context.project_state,
-                        error,
-                    )
-                }
-            };
-            return self.execute_prepared_request(
-                prepared,
-                OwnerPipelineBranch::ReadOnly {
-                    result_fields: plan.result_fields,
-                },
-            );
         }
 
         if request.envelope.dry_run {
@@ -201,23 +232,86 @@ impl CoreService {
     }
 }
 
-fn close_task_policy(request: &CloseTaskRequest) -> MethodPolicy {
-    let task = TaskRequirement::Exact(request.task_id.clone());
-    if request.intent == CloseIntent::Check {
-        MethodPolicy::exact(
-            request.operation_category(),
-            task,
-            ReplayPolicy::None,
-            FreshnessPolicy::None,
-            MethodEffectPolicy::ReadOnly,
-        )
-    } else {
-        mutation_method_policy(request.operation_category(), task, request.envelope.dry_run)
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct CloseTaskPlanRequest {
+    envelope: ToolEnvelope,
+    task_id: TaskId,
+    intent: CloseIntent,
+    close_reason: RequiredNullable<CloseReason>,
+    superseding_task_id: RequiredNullable<TaskId>,
+    user_note: RequiredNullable<String>,
+}
+
+impl CloseTaskPlanRequest {
+    pub(super) fn check(request: CheckCloseRequest) -> Self {
+        Self {
+            envelope: request.envelope,
+            task_id: request.task_id,
+            intent: CloseIntent::Check,
+            close_reason: RequiredNullable::null(),
+            superseding_task_id: RequiredNullable::null(),
+            user_note: RequiredNullable::null(),
+        }
+    }
+
+    fn operation_category(&self) -> OperationCategory {
+        match self.intent {
+            CloseIntent::Check => OperationCategory::Read,
+            CloseIntent::Complete | CloseIntent::Cancel | CloseIntent::Supersede => {
+                OperationCategory::AgentWorkflow
+            }
+        }
     }
 }
 
+impl From<CloseTaskRequest> for CloseTaskPlanRequest {
+    fn from(request: CloseTaskRequest) -> Self {
+        Self {
+            envelope: request.envelope,
+            task_id: request.task_id,
+            intent: request.intent.into(),
+            close_reason: request.close_reason,
+            superseding_task_id: request.superseding_task_id,
+            user_note: request.user_note,
+        }
+    }
+}
+
+fn validate_close_task_identity(
+    envelope: &ToolEnvelope,
+    task_id: &TaskId,
+    mismatch_message: &'static str,
+    missing_message: &'static str,
+) -> CoreResult<Option<PipelineResponse>> {
+    if let Some(envelope_task_id) = envelope.task_id.as_ref() {
+        if envelope_task_id == task_id {
+            return Ok(None);
+        }
+        return validation_rejected(envelope.dry_run, None, "task_id", mismatch_message).map(Some);
+    }
+    validation_rejected(envelope.dry_run, None, "envelope.task_id", missing_message).map(Some)
+}
+
+fn check_close_policy(request: &CloseTaskPlanRequest) -> MethodPolicy {
+    MethodPolicy::exact(
+        OperationCategory::Read,
+        TaskRequirement::Exact(request.task_id.clone()),
+        ReplayPolicy::None,
+        FreshnessPolicy::None,
+        MethodEffectPolicy::ReadOnly,
+    )
+}
+
+fn close_task_policy(request: &CloseTaskPlanRequest) -> MethodPolicy {
+    mutation_method_policy(
+        request.operation_category(),
+        TaskRequirement::Exact(request.task_id.clone()),
+        request.envelope.dry_run,
+    )
+}
+
 fn validate_close_intent_fields(
-    request: &CloseTaskRequest,
+    request: &CloseTaskPlanRequest,
 ) -> CoreResult<Option<PipelineResponse>> {
     let invalid = |field, message| {
         validation_rejected(request.envelope.dry_run, None, field, message).map(Some)
@@ -225,12 +319,15 @@ fn validate_close_intent_fields(
     match request.intent {
         CloseIntent::Check => {
             if request.close_reason.is_some() {
-                return invalid("close_reason", "intent=check must not include close_reason");
+                return invalid(
+                    "close_reason",
+                    "volicord.check_close must not include close_reason",
+                );
             }
             if request.superseding_task_id.is_some() {
                 return invalid(
                     "superseding_task_id",
-                    "intent=check must not include superseding_task_id",
+                    "volicord.check_close must not include superseding_task_id",
                 );
             }
         }
@@ -292,7 +389,7 @@ fn validate_close_intent_fields(
 fn reject_stale_close_write_ticket(
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
-    request: &CloseTaskRequest,
+    request: &CloseTaskPlanRequest,
 ) -> CoreResult<Option<PipelineResponse>> {
     let active_write_tickets = store
         .active_write_tickets(&request.task_id)
@@ -336,7 +433,7 @@ pub(super) fn plan_close_task(
     project_state: &ProjectStateHeader,
     verified_invocation: Option<&VerifiedInvocationContext>,
     guarantee_profile: Option<&ProjectEnforcementProfile>,
-    request: CloseTaskRequest,
+    request: CloseTaskPlanRequest,
     now: &UtcTimestamp,
 ) -> Result<CloseTaskPlan, PlanError> {
     let context = load_close_task_context(store, project_state, verified_invocation, &request)?;
@@ -356,7 +453,7 @@ pub(super) fn plan_close_task_with_context(
     project_state: &ProjectStateHeader,
     verified_invocation: Option<&VerifiedInvocationContext>,
     guarantee_profile: Option<&ProjectEnforcementProfile>,
-    request: CloseTaskRequest,
+    request: CloseTaskPlanRequest,
     now: &UtcTimestamp,
     context: CloseTaskContext,
 ) -> Result<CloseTaskPlan, PlanError> {
@@ -537,7 +634,7 @@ pub(super) fn plan_close_task_with_context(
 fn plan_close_completion_continuity_records(
     service: &CoreService,
     store: &CoreProjectStore,
-    request: &CloseTaskRequest,
+    request: &CloseTaskPlanRequest,
     close_basis: Option<&CurrentCloseBasis>,
     planned_state_version: u64,
     now: &UtcTimestamp,
@@ -645,7 +742,7 @@ fn close_terminal_storage(intent: CloseIntent) -> CloseTerminalStorage {
 
 fn terminal_close_summary_json(
     task: &TaskRecord,
-    request: &CloseTaskRequest,
+    request: &CloseTaskPlanRequest,
     closed_at: &UtcTimestamp,
 ) -> CoreResult<String> {
     let mut close_summary = decode_required_json_object(
@@ -688,7 +785,7 @@ fn load_close_task_context(
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
     verified_invocation: Option<&VerifiedInvocationContext>,
-    request: &CloseTaskRequest,
+    request: &CloseTaskPlanRequest,
 ) -> Result<CloseTaskContext, PlanError> {
     let task = store
         .task_record(&request.task_id)
@@ -801,7 +898,7 @@ fn projected_guard_health(
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
     verified_invocation: Option<&VerifiedInvocationContext>,
-    request: &CloseTaskRequest,
+    request: &CloseTaskPlanRequest,
 ) -> Result<Option<GuardHealthSummary>, PlanError> {
     let Some(invocation) = verified_invocation else {
         return Ok(None);
@@ -2051,7 +2148,7 @@ fn json_has_non_empty_array_key(value: &Value, key: &str) -> bool {
 
 fn guard_close_blockers(
     project_state: &ProjectStateHeader,
-    request: &CloseTaskRequest,
+    request: &CloseTaskPlanRequest,
     context: &CloseTaskContext,
 ) -> Vec<CloseReadinessBlocker> {
     let Some(summary) = context.guard_health.as_ref() else {
@@ -2309,7 +2406,7 @@ fn guard_installation_close_blocker(
 fn terminal_close_blockers(
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
-    request: &CloseTaskRequest,
+    request: &CloseTaskPlanRequest,
     context: &CloseTaskContext,
     now: &UtcTimestamp,
 ) -> Result<Vec<CloseReadinessBlocker>, PlanError> {
@@ -2437,7 +2534,7 @@ fn terminal_close_blockers(
 fn unresolved_write_ticket_close_blockers(
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
-    request: &CloseTaskRequest,
+    request: &CloseTaskPlanRequest,
     now: &UtcTimestamp,
 ) -> Result<Vec<CloseReadinessBlocker>, PlanError> {
     let mut blockers = Vec::new();
@@ -2509,7 +2606,7 @@ pub(super) fn open_write_ticket_close_blocker(
 fn pending_judgment_refs_for_close_operation(
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
-    request: &CloseTaskRequest,
+    request: &CloseTaskPlanRequest,
     context: &CloseTaskContext,
     operation: JudgmentOperation,
     now: &UtcTimestamp,
@@ -2563,7 +2660,7 @@ fn pending_judgment_refs_for_close_operation(
 fn pending_judgment_authorities_for_context(
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
-    request: &CloseTaskRequest,
+    request: &CloseTaskPlanRequest,
     context: &CloseTaskContext,
 ) -> Result<Vec<JudgmentAuthority>, PlanError> {
     if let Some(authorities) = &context.pending_judgment_authorities {
@@ -2575,7 +2672,7 @@ fn pending_judgment_authorities_for_context(
 fn resolved_judgment_authorities_for_context(
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
-    request: &CloseTaskRequest,
+    request: &CloseTaskPlanRequest,
     context: &CloseTaskContext,
     judgment_kind: JudgmentKind,
 ) -> Result<Vec<JudgmentAuthority>, PlanError> {
@@ -2597,7 +2694,7 @@ fn resolved_judgment_authorities_for_context(
 
 fn pending_sensitive_judgment_blocks_close(
     store: &CoreProjectStore,
-    request: &CloseTaskRequest,
+    request: &CloseTaskPlanRequest,
     context: &CloseTaskContext,
     authority: &JudgmentAuthority,
     current_change_unit_id: Option<&ChangeUnitId>,
@@ -2637,7 +2734,7 @@ fn pending_sensitive_judgment_blocks_close(
 }
 
 fn close_operation_refs(
-    request: &CloseTaskRequest,
+    request: &CloseTaskPlanRequest,
     project_state: &ProjectStateHeader,
     context: &CloseTaskContext,
 ) -> Vec<StateRecordRef> {
@@ -2665,7 +2762,7 @@ fn close_operation_refs(
 fn cancellation_authority_blocker(
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
-    request: &CloseTaskRequest,
+    request: &CloseTaskPlanRequest,
     context: &CloseTaskContext,
 ) -> Result<Option<CloseReadinessBlocker>, PlanError> {
     let current_change_unit_id = context
@@ -2767,7 +2864,7 @@ fn cancellation_authority_blocker(
 fn completion_close_blockers(
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
-    request: &CloseTaskRequest,
+    request: &CloseTaskPlanRequest,
     context: &CloseTaskContext,
     risk_acceptance_coverage: &[RiskAcceptanceCoverage],
     now: &UtcTimestamp,
@@ -3199,7 +3296,7 @@ fn unavailable_artifact_ref_from_raw(
 
 fn current_close_basis_blocker(
     store: &CoreProjectStore,
-    request: &CloseTaskRequest,
+    request: &CloseTaskPlanRequest,
     project_state: &ProjectStateHeader,
     context: &CloseTaskContext,
 ) -> Result<Option<CloseReadinessBlocker>, PlanError> {
@@ -3261,7 +3358,7 @@ fn current_close_basis_blocker(
 
 fn incompatible_close_basis_run_refs_blocker(
     store: &CoreProjectStore,
-    request: &CloseTaskRequest,
+    request: &CloseTaskPlanRequest,
     project_state: &ProjectStateHeader,
     context: &CloseTaskContext,
     basis: &CurrentCloseBasis,
@@ -3355,7 +3452,7 @@ struct CloseEvidenceIssue {
 fn close_evidence_blockers(
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
-    request: &CloseTaskRequest,
+    request: &CloseTaskPlanRequest,
     context: &CloseTaskContext,
     change_unit_ref: Option<StateRecordRef>,
 ) -> Result<Vec<CloseReadinessBlocker>, PlanError> {
@@ -3438,7 +3535,7 @@ fn close_evidence_blockers(
 fn close_evidence_issue_for_item(
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
-    request: &CloseTaskRequest,
+    request: &CloseTaskPlanRequest,
     context: &CloseTaskContext,
     item: &EvidenceCoverageItem,
 ) -> Result<Option<CloseEvidenceIssue>, PlanError> {
@@ -3536,7 +3633,7 @@ fn close_evidence_issue_for_item(
 
 fn evidence_observation_is_stale_for_close_basis(
     record: &EvidenceObservationRecord,
-    request: &CloseTaskRequest,
+    request: &CloseTaskPlanRequest,
     basis: &CurrentCloseBasis,
     item: &EvidenceCoverageItem,
 ) -> bool {
@@ -3568,7 +3665,7 @@ fn evidence_observation_provenance_class(
 fn unavailable_close_artifact_refs(
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
-    request: &CloseTaskRequest,
+    request: &CloseTaskPlanRequest,
     context: &CloseTaskContext,
 ) -> Result<Vec<StateRecordRef>, PlanError> {
     let mut seen = BTreeSet::new();
@@ -3666,7 +3763,7 @@ fn unavailable_close_artifact_refs(
 
 fn close_basis_artifact_ref_unavailable(
     store: &CoreProjectStore,
-    request: &CloseTaskRequest,
+    request: &CloseTaskPlanRequest,
     record_ref: &StateRecordRef,
     project_state: &ProjectStateHeader,
 ) -> Result<bool, PlanError> {
@@ -3705,7 +3802,7 @@ fn close_basis_artifact_ref_unavailable(
 fn final_acceptance_blocker(
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
-    request: &CloseTaskRequest,
+    request: &CloseTaskPlanRequest,
     context: &CloseTaskContext,
 ) -> Result<Option<CloseReadinessBlocker>, PlanError> {
     let task_ref = task_ref_for_close(request, project_state.state_version);
@@ -3776,7 +3873,7 @@ fn final_acceptance_blocker(
 fn has_current_sensitive_approval_for_close(
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
-    request: &CloseTaskRequest,
+    request: &CloseTaskPlanRequest,
     context: &CloseTaskContext,
     now: &UtcTimestamp,
 ) -> Result<bool, PlanError> {
@@ -3821,7 +3918,7 @@ fn has_current_sensitive_approval_for_close(
 fn risk_acceptance_coverage(
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
-    request: &CloseTaskRequest,
+    request: &CloseTaskPlanRequest,
     context: &CloseTaskContext,
 ) -> Result<Vec<RiskAcceptanceCoverage>, PlanError> {
     let Some(basis) = context.current_close_basis.as_ref() else {
@@ -3858,7 +3955,7 @@ fn risk_acceptance_coverage(
 fn non_current_judgment_refs_for_plan(
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
-    request: &CloseTaskRequest,
+    request: &CloseTaskPlanRequest,
     judgment_kind: JudgmentKind,
 ) -> Result<Vec<StateRecordRef>, PlanError> {
     let kind = storage_value(judgment_kind)?;
@@ -3936,7 +4033,7 @@ fn residual_risk_state(context: &CloseTaskContext) -> ResidualRiskState {
     }
 }
 
-fn task_ref_for_close(request: &CloseTaskRequest, state_version: u64) -> StateRecordRef {
+fn task_ref_for_close(request: &CloseTaskPlanRequest, state_version: u64) -> StateRecordRef {
     state_ref(
         StateRecordKind::Task,
         request.task_id.as_str(),

@@ -444,17 +444,17 @@ Otherwise, avoid those words.
 
 ### Input state
 
-- `CloseTaskResult` or close-readiness observations returned by `volicord.close_task`.
+- `CloseTaskResult` returned by `volicord.check_close` or `volicord.close_task`.
 - `CloseReadinessBlocker[]`, evidence summary, and pending user judgments.
 - Final-acceptance state, residual-risk state, and artifact availability.
 - Project continuity records returned by the close result.
-- Source refs, freshness cues, and the requested close intent.
+- Source refs, freshness cues, and the requested method or close intent.
 - The owner result that distinguishes a read-only close check from a state-changing close attempt.
 
 ### Must show
 
 - Whether the body is showing a read-only close check, blocked close attempt, or owner-recorded close result.
-- The close intent and whether the owner result was read-only or state-changing.
+- The close intent when present, and whether the owner result was read-only or state-changing.
 - Every returned close blocker and its responsible blocker category or next action.
 - Remaining evidence, user judgment, final acceptance, residual-risk, or artifact availability gaps.
 - Source state version or equivalent freshness cue when available.
@@ -484,7 +484,7 @@ Use `Closed by owner result` only when `volicord.close_task` returned an actual 
 ### Owner links
 
 - [Core Model](core-model.md) for close readiness, close honesty, final acceptance, and residual-risk boundaries.
-- [Close-task method](api/method-close-task.md) for `volicord.close_task` behavior.
+- [Close method](api/method-close-task.md) for `volicord.check_close` and `volicord.close_task` behavior.
 - [API State Schemas](api/schema-state.md) for `CloseReadinessBlocker`.
 - [API Judgment Schemas](api/schema-judgment.md) for final acceptance and accepted-risk input shapes.
 - [API error routing](api/error-routing.md) for close rejection response branch routing.

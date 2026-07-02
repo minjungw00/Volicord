@@ -290,10 +290,9 @@ secret_access
 
 이 값들은 효과를 Core 상태로 분류합니다. 값 자체가 런타임 샌드박스, 명령 가로채기, 네트워크 차단, 비밀 격리, 사용자 판단, 민감 동작 승인, 증거, 쓰기 티켓, 최종 수락, 닫기 준비 상태, 잔여 위험 수락을 만들지는 않습니다.
 
-`volicord.close_task.intent`는 아래 값을 사용합니다.
+`volicord.check_close`에는 `intent` 필드가 없습니다. `volicord.close_task.intent`는 아래 값을 사용합니다.
 
 ```text
-check
 complete
 cancel
 supersede

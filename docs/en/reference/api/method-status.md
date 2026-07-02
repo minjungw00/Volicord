@@ -87,7 +87,7 @@ Include projection contract:
 - `include.write_ticket` returns active, expired, stale, consumed, or otherwise relevant write-ticket state through `write_ticket_summary`.
 - `write_ticket_summary` is a compatibility summary only; it is not filesystem access, shell approval, final acceptance, ordinary write approval, or proof that a write occurred.
 - `include.evidence` returns current `EvidenceSummary` and coverage when available.
-- `include.close` returns `CurrentCloseBasis | null`, close state, computed blockers, risk acceptance coverage, `GuardHealthSummary` hook-state facts including hook path safety when available, and relevant next actions. The blockers use the same close-readiness calculation as `volicord.close_task intent=check`.
+- `include.close` returns `CurrentCloseBasis | null`, close state, computed blockers, risk acceptance coverage, `GuardHealthSummary` hook-state facts including hook path safety when available, and relevant next actions. The blockers use the same close-readiness calculation as `volicord.check_close`.
 - `include.guarantees` returns only guarantees derived from the project enforcement profile, verified invocation context, enabled enforcement mechanisms, and supported baseline scope.
 - `include.continuity` returns active `ProjectContinuitySummary[]` entries for durable project-level context.
 - `include.evidence=false` means evidence summaries, coverage, artifact evidence refs, and evidence-only next actions are not computed and not returned.
@@ -101,7 +101,7 @@ Truthful projection rules:
 - Capability declarations alone do not create guarantees. A cooperative-only deployment must not claim `detective`.
 - `GuaranteeDisplay.capability_refs` should identify invocation binding, Agent Connection, or observation facts when those refs are available.
 
-`include.close=true` and [`volicord.close_task`](method-close-task.md) with `intent=check` use the same close-readiness calculation. `volicord.status` creates no replay row, event, Core state mutation, close mutation, or state-version increment. When called through a session-bound Agent Connection, the runtime may initialize session-watch diagnostic records so later method-boundary checks can compare Product Repository snapshots.
+`include.close=true` and [`volicord.check_close`](method-close-task.md#volicordcheck_close) use the same close-readiness calculation. `volicord.status` creates no replay row, event, Core state mutation, close mutation, or state-version increment. When called through a session-bound Agent Connection, the runtime may initialize session-watch diagnostic records so later method-boundary checks can compare Product Repository snapshots.
 
 ## Method result fields
 

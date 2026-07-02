@@ -522,12 +522,12 @@ current stored Agent Connection mode:
 | `read_only` | `volicord.status`, `volicord.check_close`, `volicord.list_projects` |
 
 The MCP-visible tools are not the same thing as the public Volicord Core API
-method list. `volicord.check_close` is the read-only MCP tool for close
-readiness and internally calls the Core close-readiness check path.
-`volicord.close_task` is the workflow-only MCP mutation tool and is not listed
-for `read_only` connections. `volicord.record_user_judgment` is a public Core
-API method for the User Channel path, but it is not exposed as an Agent
-Connection MCP tool; see [API Methods](api/methods.md) for the public method
+method list. `volicord.check_close` maps to the first-class read-only Core
+method for close readiness. `volicord.close_task` maps to the workflow-only
+Core mutation method and is not listed for `read_only` connections.
+`volicord.record_user_judgment` is a public Core API method for the User
+Channel path, but it is not exposed as an Agent Connection MCP tool; see
+[API Methods](api/methods.md) for the public method
 owner table.
 
 A structurally valid `tools/call` request has object `params` with:

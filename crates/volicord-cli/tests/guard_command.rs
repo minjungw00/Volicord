@@ -32,13 +32,13 @@ use volicord_test_support::{
 };
 use volicord_types::{
     chat_judgment_verification_code, ActorSource, BaselineRef, ChangeUnitId, ChangeUnitOperation,
-    ChangeUnitUpdate, CloseAssessmentInput, CloseIntent, CloseReason, CloseTaskRequest,
-    IdempotencyKey, InitialScope, IntakeRequest, JudgmentKind, JudgmentPresentation,
-    JudgmentRationale, JudgmentRequiredFor, ObservedChanges, OperationCategory,
-    PrepareWriteRequest, ProjectId, ReconcileChangesRequest, RecordId, RecordRunRequest,
-    RecordUserJudgmentRequest, RequestId, RequestUserJudgmentRequest, RequestedMode, ResumePolicy,
-    RunKind, ScopeUpdate, StateRecordKind, StateRecordRef, TaskId, ToolEnvelope,
-    UpdateScopeRequest, UserJudgmentContext, UserJudgmentOptionId, WriteTicketId,
+    ChangeUnitUpdate, CheckCloseRequest, CloseAssessmentInput, CloseMutationIntent, CloseReason,
+    CloseTaskRequest, IdempotencyKey, InitialScope, IntakeRequest, JudgmentKind,
+    JudgmentPresentation, JudgmentRationale, JudgmentRequiredFor, ObservedChanges,
+    OperationCategory, PrepareWriteRequest, ProjectId, ReconcileChangesRequest, RecordId,
+    RecordRunRequest, RecordUserJudgmentRequest, RequestId, RequestUserJudgmentRequest,
+    RequestedMode, ResumePolicy, RunKind, ScopeUpdate, StateRecordKind, StateRecordRef, TaskId,
+    ToolEnvelope, UpdateScopeRequest, UserJudgmentContext, UserJudgmentOptionId, WriteTicketId,
     VERIFICATION_BASIS_TEST_FIXTURE_BINDING, VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
 };
 
@@ -3572,14 +3572,10 @@ impl GuardedLifecycleFixture {
         &self,
         task_id: &str,
     ) -> Result<volicord_core::PipelineResponse, Box<dyn Error>> {
-        Ok(self.service().close_task(
-            CloseTaskRequest {
+        Ok(self.service().check_close(
+            CheckCloseRequest {
                 envelope: self.envelope(&format!("req_check_{task_id}"), None, None, Some(task_id)),
                 task_id: TaskId::new(task_id),
-                intent: CloseIntent::Check,
-                close_reason: None.into(),
-                superseding_task_id: None.into(),
-                user_note: Some("Guarded lifecycle close check.".to_owned()).into(),
             },
             self.invocation(OperationCategory::Read),
         )?)
@@ -3599,7 +3595,7 @@ impl GuardedLifecycleFixture {
                     Some(task_id),
                 ),
                 task_id: TaskId::new(task_id),
-                intent: CloseIntent::Complete,
+                intent: CloseMutationIntent::Complete,
                 close_reason: Some(CloseReason::CompletedSelfChecked).into(),
                 superseding_task_id: None.into(),
                 user_note: Some("Guarded lifecycle close.".to_owned()).into(),

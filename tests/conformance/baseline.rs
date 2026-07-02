@@ -98,8 +98,8 @@ fn no_effect_branches_state_version_and_idempotency_are_stable() -> Result<(), B
     assert_eq!(status.response_value["base"]["effect_kind"], "read_only");
     assert_eq!(fixture.counts()?, after_commit);
 
-    let check = service.close_task(
-        fixture.close_task_request(CloseTaskFixture {
+    let check = service.check_close(
+        fixture.check_close_request(CloseTaskFixture {
             request_id: "req_close_check",
             idempotency_key: None,
             dry_run: false,
@@ -984,8 +984,8 @@ fn guarded_unresolved_unrecorded_changes_block_close_without_mutation() -> Resul
     insert_guarded_unrecorded_change(&fixture, &task_id, "guarded_unrecorded_close")?;
     let before = fixture.counts()?;
 
-    let check = service.close_task(
-        fixture.close_task_request(CloseTaskFixture {
+    let check = service.check_close(
+        fixture.check_close_request(CloseTaskFixture {
             request_id: "req_guarded_unrecorded_check",
             idempotency_key: None,
             dry_run: false,
@@ -1133,8 +1133,8 @@ fn persisted_owner_state_corruption_fails_closed_without_effects() -> Result<(),
     )?;
     let before = fixture.counts()?;
 
-    let check = service.close_task(
-        fixture.close_task_request(CloseTaskFixture {
+    let check = service.check_close(
+        fixture.check_close_request(CloseTaskFixture {
             request_id: "req_corrupt_completion_check",
             idempotency_key: None,
             dry_run: false,
@@ -1170,8 +1170,8 @@ fn persisted_owner_state_corruption_fails_closed_without_effects() -> Result<(),
     let (task_id, _) = create_task_with_change_unit(&fixture, &service, "corrupt_close_summary")?;
     fixture.set_task_owner_json_raw(&task_id, TaskOwnerJsonColumn::CloseSummary, "[")?;
     let before = fixture.counts()?;
-    let check = service.close_task(
-        fixture.close_task_request(CloseTaskFixture {
+    let check = service.check_close(
+        fixture.check_close_request(CloseTaskFixture {
             request_id: "req_corrupt_close_summary",
             idempotency_key: None,
             dry_run: false,
@@ -1191,8 +1191,8 @@ fn persisted_owner_state_corruption_fails_closed_without_effects() -> Result<(),
     let (task_id, _) = create_task_with_change_unit(&fixture, &service, "corrupt_close_basis")?;
     fixture.set_task_owner_json_raw(&task_id, TaskOwnerJsonColumn::CurrentCloseBasis, "{")?;
     let before = fixture.counts()?;
-    let check = service.close_task(
-        fixture.close_task_request(CloseTaskFixture {
+    let check = service.check_close(
+        fixture.check_close_request(CloseTaskFixture {
             request_id: "req_corrupt_close_basis",
             idempotency_key: None,
             dry_run: false,
@@ -1267,8 +1267,8 @@ fn persisted_owner_state_corruption_fails_closed_without_effects() -> Result<(),
         "{",
     )?;
     let before = fixture.counts()?;
-    let check = service.close_task(
-        fixture.close_task_request(CloseTaskFixture {
+    let check = service.check_close(
+        fixture.check_close_request(CloseTaskFixture {
             request_id: "req_corrupt_lifecycle",
             idempotency_key: None,
             dry_run: false,
@@ -1343,8 +1343,8 @@ fn required_resolution_json_null_is_rejected_and_malformed_text_fails_closed(
     let final_judgment_id = latest_judgment_id(&malformed_fixture)?;
     malformed_fixture.set_user_judgment_resolution_raw(&final_judgment_id, Some("{"))?;
     let before = malformed_fixture.counts()?;
-    let check = malformed_service.close_task(
-        malformed_fixture.close_task_request(CloseTaskFixture {
+    let check = malformed_service.check_close(
+        malformed_fixture.check_close_request(CloseTaskFixture {
             request_id: "req_optional_bad_check",
             idempotency_key: None,
             dry_run: false,
@@ -2038,8 +2038,8 @@ fn status_projection_matches_public_close_check_and_stays_read_only() -> Result<
         fixture.status_request("req_status_projection", Some(&task_id)),
         invocation(&fixture, OperationCategory::Read),
     )?;
-    let check = service.close_task(
-        fixture.close_task_request(CloseTaskFixture {
+    let check = service.check_close(
+        fixture.check_close_request(CloseTaskFixture {
             request_id: "req_status_projection_check",
             idempotency_key: None,
             dry_run: false,
@@ -3273,8 +3273,8 @@ fn persisted_state_corruption_public_entries_fail_closed_without_effects(
     let judgment_id = latest_judgment_id(&resolution_fixture)?;
     resolution_fixture.set_user_judgment_resolution_raw(&judgment_id, Some("{"))?;
     let before = resolution_fixture.counts()?;
-    let response = resolution_service.close_task(
-        resolution_fixture.close_task_request(CloseTaskFixture {
+    let response = resolution_service.check_close(
+        resolution_fixture.check_close_request(CloseTaskFixture {
             request_id: "req_corrupt_public_resolution_check",
             idempotency_key: None,
             dry_run: false,
@@ -3415,8 +3415,8 @@ fn persisted_state_corruption_public_entries_fail_closed_without_effects(
     )?;
     provenance_fixture.set_artifact_source_staging_handle_raw(&artifact_id, None)?;
     let before = provenance_fixture.counts()?;
-    let response = provenance_service.close_task(
-        provenance_fixture.close_task_request(CloseTaskFixture {
+    let response = provenance_service.check_close(
+        provenance_fixture.check_close_request(CloseTaskFixture {
             request_id: "req_corrupt_public_provenance_check",
             idempotency_key: None,
             dry_run: false,

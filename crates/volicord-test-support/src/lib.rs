@@ -118,16 +118,17 @@ pub mod core_fixtures {
     use volicord_store::StoreError;
     use volicord_types::{
         AcceptedRiskInput, ArtifactInput, ArtifactInputId, ArtifactInputSourceKind, BaselineRef,
-        ChangeUnitId, ChangeUnitOperation, ChangeUnitUpdate, CloseIntent, CloseReason,
-        CloseTaskRequest, EvidenceAssuranceLevel, EvidenceCoverageItem, EvidenceCoverageState,
-        EvidenceSourceKind, EvidenceUpdateProvenance, IdempotencyKey, InitialScope, IntakeRequest,
-        JsonObject, JudgmentKind, JudgmentPresentation, JudgmentRationale, JudgmentRequiredFor,
-        ObservedChanges, PrepareWriteRequest, ProjectId, RecordId, RecordRunRequest,
-        RecordUserJudgmentPayload, RecordUserJudgmentRequest, RedactionState, RequestId,
-        RequestUserJudgmentRequest, RequestedMode, ResumePolicy, RunKind, ScopeUpdate,
-        SensitiveActionScope, StageArtifactRequest, StagedArtifactHandle, StateRecordKind,
-        StateRecordRef, StatusInclude, StatusRequest, TaskId, ToolEnvelope, UpdateScopeRequest,
-        UserJudgmentId, UserJudgmentOptionId, UserJudgmentOptionInput, WriteTicketId,
+        ChangeUnitId, ChangeUnitOperation, ChangeUnitUpdate, CheckCloseRequest, CloseIntent,
+        CloseMutationIntent, CloseReason, CloseTaskRequest, EvidenceAssuranceLevel,
+        EvidenceCoverageItem, EvidenceCoverageState, EvidenceSourceKind, EvidenceUpdateProvenance,
+        IdempotencyKey, InitialScope, IntakeRequest, JsonObject, JudgmentKind,
+        JudgmentPresentation, JudgmentRationale, JudgmentRequiredFor, ObservedChanges,
+        PrepareWriteRequest, ProjectId, RecordId, RecordRunRequest, RecordUserJudgmentPayload,
+        RecordUserJudgmentRequest, RedactionState, RequestId, RequestUserJudgmentRequest,
+        RequestedMode, ResumePolicy, RunKind, ScopeUpdate, SensitiveActionScope,
+        StageArtifactRequest, StagedArtifactHandle, StateRecordKind, StateRecordRef, StatusInclude,
+        StatusRequest, TaskId, ToolEnvelope, UpdateScopeRequest, UserJudgmentId,
+        UserJudgmentOptionId, UserJudgmentOptionInput, WriteTicketId,
     };
 
     use super::*;
@@ -585,6 +586,14 @@ pub mod core_fixtures {
 
         /// Builds a default `volicord.close_task` request.
         pub fn close_task_request(&self, input: CloseTaskFixture<'_>) -> CloseTaskRequest {
+            let intent = match input.intent {
+                CloseIntent::Complete => CloseMutationIntent::Complete,
+                CloseIntent::Cancel => CloseMutationIntent::Cancel,
+                CloseIntent::Supersede => CloseMutationIntent::Supersede,
+                CloseIntent::Check => {
+                    panic!("use check_close_request for close-readiness checks")
+                }
+            };
             CloseTaskRequest {
                 envelope: self.envelope(
                     input.request_id,
@@ -594,10 +603,24 @@ pub mod core_fixtures {
                     Some(input.task_id),
                 ),
                 task_id: TaskId::new(input.task_id),
-                intent: input.intent,
+                intent,
                 close_reason: input.close_reason.into(),
                 superseding_task_id: input.superseding_task_id.map(TaskId::new).into(),
                 user_note: Some("Focused close-task fixture.".to_owned()).into(),
+            }
+        }
+
+        /// Builds a default `volicord.check_close` request.
+        pub fn check_close_request(&self, input: CloseTaskFixture<'_>) -> CheckCloseRequest {
+            CheckCloseRequest {
+                envelope: self.envelope(
+                    input.request_id,
+                    input.idempotency_key,
+                    input.dry_run,
+                    input.expected_state_version,
+                    Some(input.task_id),
+                ),
+                task_id: TaskId::new(input.task_id),
             }
         }
 

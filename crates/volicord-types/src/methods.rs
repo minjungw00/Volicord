@@ -18,7 +18,7 @@ use crate::schema::{
     UserJudgmentOptionInput, WriteDecisionReason, WriteTicket, WriteTicketStateSummary,
 };
 use crate::values::{
-    ChangeUnitOperation, CloseIntent, CloseMutationIntent, CloseReason, CloseState, JudgmentKind,
+    ChangeUnitOperation, CloseMutationIntent, CloseReason, CloseState, JudgmentKind,
     JudgmentPresentation, JudgmentRequiredFor, MethodName, OperationCategory, PrepareWriteDecision,
     RedactionState, RequestedMode, ResumePolicy, RunKind, StatusCloseState, StatusDetailLevel,
     UnrecordedChangeResolutionBasis, UtcTimestamp, WriteTicketEffect,
@@ -41,6 +41,9 @@ pub type UpdateScopeResponse = ToolResponse<UpdateScopeResult>;
 
 /// Response branch type for `volicord.status`.
 pub type StatusResponse = ToolResponse<StatusResult>;
+
+/// Response branch type for `volicord.check_close`.
+pub type CheckCloseResponse = ToolResponse<CloseTaskResult>;
 
 /// Response branch type for `volicord.prepare_write`.
 pub type PrepareWriteResponse = ToolResponse<PrepareWriteResult>;
@@ -632,13 +635,31 @@ pub struct UnrecordedChangeRejection {
     pub message: String,
 }
 
+/// `volicord.check_close` request params.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CheckCloseRequest {
+    pub envelope: ToolEnvelope,
+    pub task_id: TaskId,
+}
+
+impl MethodOperationCategory for CheckCloseRequest {
+    fn method_name(&self) -> MethodName {
+        MethodName::CheckClose
+    }
+
+    fn operation_category(&self) -> OperationCategory {
+        OperationCategory::Read
+    }
+}
+
 /// `volicord.close_task` request params.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CloseTaskRequest {
     pub envelope: ToolEnvelope,
     pub task_id: TaskId,
-    pub intent: CloseIntent,
+    pub intent: CloseMutationIntent,
     pub close_reason: RequiredNullable<CloseReason>,
     pub superseding_task_id: RequiredNullable<TaskId>,
     pub user_note: RequiredNullable<String>,
@@ -650,12 +671,7 @@ impl MethodOperationCategory for CloseTaskRequest {
     }
 
     fn operation_category(&self) -> OperationCategory {
-        match self.intent {
-            CloseIntent::Check => OperationCategory::Read,
-            CloseIntent::Complete | CloseIntent::Cancel | CloseIntent::Supersede => {
-                OperationCategory::AgentWorkflow
-            }
-        }
+        OperationCategory::AgentWorkflow
     }
 }
 
@@ -706,6 +722,7 @@ pub fn public_request_schema(method_name: &str) -> Option<Value> {
         "volicord.intake" => Some(request_schema::<IntakeRequest>()),
         "volicord.update_scope" => Some(request_schema::<UpdateScopeRequest>()),
         "volicord.status" => Some(request_schema::<StatusRequest>()),
+        "volicord.check_close" => Some(request_schema::<CheckCloseRequest>()),
         "volicord.prepare_write" => Some(request_schema::<PrepareWriteRequest>()),
         "volicord.stage_artifact" => Some(request_schema::<StageArtifactRequest>()),
         "volicord.record_run" => Some(request_schema::<RecordRunRequest>()),

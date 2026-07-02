@@ -118,6 +118,8 @@ pub enum MethodName {
     UpdateScope,
     #[serde(rename = "volicord.status")]
     Status,
+    #[serde(rename = "volicord.check_close")]
+    CheckClose,
     #[serde(rename = "volicord.prepare_write")]
     PrepareWrite,
     #[serde(rename = "volicord.stage_artifact")]
@@ -141,6 +143,7 @@ impl MethodName {
             Self::Intake => "volicord.intake",
             Self::UpdateScope => "volicord.update_scope",
             Self::Status => "volicord.status",
+            Self::CheckClose => "volicord.check_close",
             Self::PrepareWrite => "volicord.prepare_write",
             Self::StageArtifact => "volicord.stage_artifact",
             Self::RecordRun => "volicord.record_run",

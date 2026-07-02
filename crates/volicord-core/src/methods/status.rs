@@ -153,17 +153,13 @@ fn status_result_fields(
                 project_state,
                 Some(verified_invocation),
                 guarantee_profile.as_ref(),
-                CloseTaskRequest {
+                close_task::CloseTaskPlanRequest::check(CheckCloseRequest {
                     envelope: ToolEnvelope {
                         task_id: Some(task_id.clone()).into(),
                         ..envelope.clone()
                     },
                     task_id: task_id.clone(),
-                    intent: CloseIntent::Check,
-                    close_reason: RequiredNullable::null(),
-                    superseding_task_id: RequiredNullable::null(),
-                    user_note: RequiredNullable::null(),
-                },
+                }),
                 &utc_timestamp(now),
             )?;
             close_state = Some(status_close_state(plan.close_state));

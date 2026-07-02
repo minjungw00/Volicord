@@ -264,8 +264,9 @@ Connection modes and operation categories:
 
 The adapter-owned `volicord.list_projects` utility is visible in both
 `workflow` and `read_only` modes. `volicord.check_close` is the read-only MCP
-close-readiness tool. `volicord.close_task` is the workflow-only MCP mutation
-tool and must not appear in `read_only` tool discovery.
+close-readiness tool mapped to the first-class Core read method.
+`volicord.close_task` is the workflow-only MCP mutation tool and must not
+appear in `read_only` tool discovery.
 
 `volicord.record_user_judgment` has `operation_category=user_only`. It is a
 public Core API method for the User Channel path, but it is not exposed by Agent
