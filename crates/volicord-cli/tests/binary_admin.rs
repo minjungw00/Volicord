@@ -2562,8 +2562,8 @@ fn user_channel_records_pending_judgment_with_local_user_provenance() -> Result<
     assert!(status_text.contains("close_status: blocked"));
     assert!(status_text.contains("close_blockers:"));
     assert!(status_text.contains("next_action:"));
-    assert!(status_text.contains("pending judgments: 1"));
-    assert!(status_text.contains("judgment_path:"));
+    assert!(status_text.contains("pending_user_judgments: 1"));
+    assert!(status_text.contains("pending_user_judgment_path:"));
 
     let list = run_with_home_env_in_dir(runtime_home.path(), ["inbox"], &[], &repo_root)?;
     assert_success(&list);

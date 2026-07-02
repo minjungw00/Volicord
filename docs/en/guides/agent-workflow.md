@@ -199,8 +199,9 @@ that judgment. Do not add extra authority outcomes in prose.
 If the user's answer must become recorded Volicord state, route the user to
 a supported local `User Channel`. Current supported input methods are host
 prompt input when the initialized client declares that capability, chat commands
-when command capture is `configured`, `observed`, or `active`, and the stable
-CLI inbox route:
+when command capture is `configured`, `observed`, or `active`, local consent
+URL when the adapter can safely expose a loopback one-time-token fallback, and
+the stable CLI inbox route:
 
 ```sh
 volicord inbox

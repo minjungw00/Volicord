@@ -265,7 +265,8 @@ Volicord가 사용자 판단을 필요로 하면, 에이전트는 초점이 맞�
 사용자 답변이 기록된 Volicord 상태가 되어야 한다면 지원되는 로컬 `User Channel`로
 사용자를 안내합니다. 현재 지원되는 입력 방법은 초기화된 클라이언트가 capability를
 선언했을 때의 호스트 프롬프트 입력, 명령 캡처가 `configured`, `observed`,
-`active`일 때의 채팅 명령, 그리고 안정적인 CLI inbox 경로입니다.
+`active`일 때의 채팅 명령, adapter가 loopback 일회성 token fallback을 안전하게
+노출할 수 있을 때의 local consent URL, 그리고 안정적인 CLI inbox 경로입니다.
 
 ```sh
 volicord inbox

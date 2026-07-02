@@ -644,20 +644,20 @@ The command may resolve deterministic findings or create pending user-owned judg
 <a id="user-channel-commands"></a>
 <a id="user-interaction-commands"></a>
 
-`volicord inbox` commands provide a local CLI path for a human user to list and
+`volicord inbox` commands provide the local CLI path for a human user to list and
 answer pending user judgments through the `User Channel`. They
 do not create an Agent Connection, install MCP host configuration, or make an
 Agent Connection eligible to act as the user.
 
 When the initialized MCP client declares host prompt support, host prompt input
-is the preferred interactive path for pending judgments created through
+is the preferred User Channel input method for pending judgments created through
 `volicord.request_user_judgment`. If host prompt input is unavailable and
 chat command capture is `configured`, `observed`, or `active`, fallback guidance
 may show exact chat commands such as `Volicord: answer J-3 1 #AB7K`
 with the current verification code. If both host prompt input and chat command capture are
 unavailable and the adapter can safely expose a local consent URL, fallback
 guidance may show a loopback consent URL backed by a short-lived one-time token.
-The terminal `volicord inbox` commands remain the CLI inbox and
+The terminal `volicord inbox` commands remain the CLI inbox input method and
 manual-inspection path when host prompt input, chat command capture, or local consent URL is
 unavailable, disabled, degraded, or inappropriate for the workflow.
 
@@ -688,9 +688,9 @@ Recording one judgment records only the addressed judgment. Final acceptance and
 residual-risk acceptance remain separate judgment kinds and actions; this
 command must not collapse one into the other.
 
-Status, judgment list, and show output expose selected owner state for the
-user's next action. They do not create evidence, final acceptance,
-residual-risk acceptance, or close readiness. Only
+Status and inbox list/open output expose selected owner state for the user's
+next action. They do not create evidence, final acceptance, residual-risk
+acceptance, or close readiness. Only
 `volicord inbox answer` mutates the addressed pending judgment, and it
 does so only through the selected Core-generated option.
 

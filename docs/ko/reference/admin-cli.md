@@ -589,7 +589,7 @@ Connection을 만들거나, MCP 호스트 설정을 설치하거나, Agent Conne
 동작할 수 있게 하지 않습니다.
 
 초기화된 MCP 클라이언트가 호스트 프롬프트 지원을 선언하면 호스트 프롬프트 입력은
-`volicord.request_user_judgment`로 만들어진 대기 판단의 선호 대화형 경로입니다.
+`volicord.request_user_judgment`로 만들어진 대기 판단의 선호 User Channel 입력 방법입니다.
 호스트 프롬프트 입력을 사용할 수 없고 채팅 명령 캡처가 `configured`, `observed`,
 `active`이면 fallback 안내가 현재 검증 코드가 포함된
 `Volicord: answer J-3 1 #AB7K` 같은 정확한 채팅 명령을 보여 줄 수 있습니다.
@@ -597,7 +597,7 @@ Connection을 만들거나, MCP 호스트 설정을 설치하거나, Agent Conne
 URL을 안전하게 노출할 수 있으면 fallback 안내가 짧게 만료되는 일회성 token을 쓰는
 loopback consent URL을 보여 줄 수 있습니다. 터미널의 `volicord inbox` 명령은 호스트
 프롬프트 입력, 채팅 명령 캡처, 로컬 consent URL을 사용할 수 없거나, 비활성화, 저하,
-또는 작업 흐름에 부적합할 때 쓰는 CLI inbox와 수동 점검 경로로 남습니다.
+또는 작업 흐름에 부적합할 때 쓰는 CLI inbox 입력 방법과 수동 점검 경로로 남습니다.
 
 프로젝트 선택은 `--repo PATH` 또는 현재 작업 디렉터리의 저장소 루트를 사용합니다.
 작업 선택은 기본적으로 active 작업을 사용합니다. `--task active`는 이를 명시하고,
@@ -623,7 +623,7 @@ JSON 출력에서 확인할 수 있습니다.
 판단 하나를 기록하는 것은 그 판단만 기록합니다. 최종 수락과 잔여 위험 수락은 별개의
 판단 종류와 동작으로 남아야 하며, 이 명령이 둘을 하나로 합치면 안 됩니다.
 
-상태, 판단 목록, show 출력은 사용자의 다음 행동을 위해 선택된 담당 상태를 보여
+상태와 inbox 목록/open 출력은 사용자의 다음 행동을 위해 선택된 담당 상태를 보여
 줍니다. 이 출력은 증거, 최종 수락, 잔여 위험 수락, 닫기 준비 상태를 만들지 않습니다.
 `volicord inbox answer`만 대기 중인 해당 판단을 변경하며, 그것도 선택된 Core
 생성 선택지를 통해서만 변경합니다.

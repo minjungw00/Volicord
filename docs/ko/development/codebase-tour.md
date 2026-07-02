@@ -340,7 +340,7 @@ config export, 로컬 `User Channel` 명령, 사전 점검 실행을 처리합�
 - [`crates/volicord-cli/src/registration.rs`](../../../crates/volicord-cli/src/registration.rs):
   Agent Connection, Connection Project, User Channel 레지스트리 도우미.
 - [`crates/volicord-cli/src/user_command.rs`](../../../crates/volicord-cli/src/user_command.rs):
-  로컬 User Channel 상태와 판단 명령.
+  로컬 User Channel 상태와 `volicord inbox` 명령.
 
 중요한 현재 심볼:
 
@@ -349,7 +349,7 @@ config export, 로컬 `User Channel` 명령, 사전 점검 실행을 처리합�
 - `run_project_command`, `resolve_repository_root`
 - `run_connect_command`, `run_connections_command`, `run_connection_command`,
   `connect_usage`, `connections_usage`, `connection_usage`
-- `run_status_command`, `run_user_command`
+- `run_status_command`, `run_inbox_command`
 - `AgentCommandError`, `AgentProcessOutput`
 - `HostKind`, `HostScope`, `HostPlan`, `HostAdapter`, `Verification`
 - `AgentConnectionRegistration`, `ConnectionProjectRegistration`,

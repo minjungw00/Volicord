@@ -100,7 +100,7 @@ flowchart TD
   run["record_run records<br/>execution or observation"]
   evidence["Evidence and Close Status<br/>stay visible"]
   close{"Close blockers<br/>remain?"}
-  status["Status shows blockers,<br/>pending judgment, and next action"]
+  status["Status shows blockers,<br/>pending User Judgment, and next action"]
   finish["User decides final acceptance,<br/>residual risk, or terminal outcome"]
 
   request --> task --> agent --> judgment
@@ -214,7 +214,7 @@ The host remains your chat/editor agent. Volicord provides local MCP tools the
 host can call when durable workflow state matters:
 
 - create or update a `Task`
-- show current scope, blockers, evidence, and pending judgment
+- show current scope, blockers, evidence, and pending User Judgment
 - prepare a write ticket for a proposed product-file change
 - attach evidence inputs and record runs or observations
 - request a focused user judgment
@@ -290,8 +290,9 @@ and unresolved Unrecorded Changes block close.
 Reconciliation can resolve deterministic cases, such as a change already
 covered by a compatible write ticket or recorded run. If acceptance is needed,
 Volicord creates a focused user-owned judgment. The user answers through MCP
-elicitation, a strict chat command, or CLI recovery. Agents cannot silently
-dismiss Unrecorded Changes or mark them accepted for the user.
+elicitation, a strict chat command, local consent URL, or CLI inbox as User
+Channel input methods. Agents cannot silently dismiss Unrecorded Changes or
+mark them accepted for the user.
 
 In chat, ask the agent to show `volicord.reconcile_changes` results and next
 actions. CLI recovery is available through `volicord changes reconcile`.
@@ -394,7 +395,7 @@ HTTP boundaries.
 | Host cannot start MCP | Confirm the host can run `volicord mcp --help` through the same command path. Run `volicord doctor` for installation-profile health. |
 | Product Repository is not detected | Pass `--repo /path/to/your-product-repo` and make sure the path is an existing local repository separate from the Runtime Home. |
 | A judgment is pending | Prefer the host prompt or exact chat command when available. Use `volicord inbox` and `volicord inbox answer` as the CLI inbox path. |
-| Close has blockers | Ask the agent to show `volicord.check_close` results, pending user judgments, missing evidence, unresolved unrecorded changes, and residual risks. Address the named blocker instead of closing from a summary. |
+| Close has blockers | Ask the agent to show `volicord.check_close` results, pending User Judgment, missing evidence, unresolved unrecorded changes, and residual risks. Address the named blocker instead of closing from a summary. |
 
 ## Deeper Docs
 

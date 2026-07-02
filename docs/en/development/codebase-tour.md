@@ -354,7 +354,7 @@ Important modules:
 - [`crates/volicord-cli/src/registration.rs`](../../../crates/volicord-cli/src/registration.rs)
   for Agent Connection, Connection Project, and User Channel registry helpers.
 - [`crates/volicord-cli/src/user_command.rs`](../../../crates/volicord-cli/src/user_command.rs)
-  for local User Channel status and judgment commands.
+  for local User Channel status and `volicord inbox` commands.
 
 Important current symbols:
 
@@ -363,7 +363,7 @@ Important current symbols:
 - `run_project_command`, `resolve_repository_root`
 - `run_connect_command`, `run_connections_command`, `run_connection_command`,
   `connect_usage`, `connections_usage`, `connection_usage`
-- `run_status_command`, `run_user_command`
+- `run_status_command`, `run_inbox_command`
 - `AgentCommandError`, `AgentProcessOutput`
 - `HostKind`, `HostScope`, `HostPlan`, `HostAdapter`, `Verification`
 - `AgentConnectionRegistration`, `ConnectionProjectRegistration`,
@@ -376,7 +376,8 @@ Most relevant tests:
 - [`crates/volicord-cli/tests/binary_admin.rs`](../../../crates/volicord-cli/tests/binary_admin.rs)
   exercises the `volicord` binary for init, doctor, project detection,
   dry-run behavior, `volicord connection add`, connection status/verification/mode/removal,
-  User Channel commands, preflight handling, and config-file safety.
+  `volicord inbox` User Channel commands, preflight handling, and
+  config-file safety.
 - Colocated unit tests in CLI modules cover parsing, planning, rendering,
   registration metadata, and host-configuration behavior.
 
