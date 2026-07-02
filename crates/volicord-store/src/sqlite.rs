@@ -1815,13 +1815,7 @@ mod tests {
             &conn,
             PROJECT_STATE_DATABASE_KIND,
             1,
-            "project_state_initial_authority_events_v1"
-        )?);
-        assert!(migration_exists(
-            &conn,
-            PROJECT_STATE_DATABASE_KIND,
-            2,
-            "project_state_local_web_consent_tokens_v2"
+            "project_state_initial_v1"
         )?);
         drop(conn);
 

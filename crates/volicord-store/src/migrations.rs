@@ -8,10 +8,10 @@ pub const STORAGE_PROFILE: &str = "baseline_sqlite_v3";
 pub(crate) const OLD_STORAGE_PROFILE: &str = "baseline_sqlite";
 
 /// Latest schema version for `registry.sqlite`.
-pub const REGISTRY_SCHEMA_VERSION: i64 = 5;
+pub const REGISTRY_SCHEMA_VERSION: i64 = 1;
 
 /// Latest schema version for project `state.sqlite`.
-pub const PROJECT_STATE_SCHEMA_VERSION: i64 = 2;
+pub const PROJECT_STATE_SCHEMA_VERSION: i64 = 1;
 
 /// `schema_migrations.database_kind` for `registry.sqlite`.
 pub const REGISTRY_DATABASE_KIND: &str = "registry";
@@ -19,58 +19,25 @@ pub const REGISTRY_DATABASE_KIND: &str = "registry";
 /// `schema_migrations.database_kind` for project `state.sqlite`.
 pub const PROJECT_STATE_DATABASE_KIND: &str = "project_state";
 
-const REGISTRY_MIGRATIONS: &[Migration] = &[
-    Migration {
-        database_kind: REGISTRY_DATABASE_KIND,
-        version: 1,
-        name: "registry_initial_v1",
-        sql: &[REGISTRY_INITIAL_SQL],
-    },
-    Migration {
-        database_kind: REGISTRY_DATABASE_KIND,
-        version: 2,
-        name: "registry_guard_records_v2",
-        sql: &[REGISTRY_GUARD_RECORDS_SQL],
-    },
-    Migration {
-        database_kind: REGISTRY_DATABASE_KIND,
-        version: 3,
-        name: "registry_guard_installation_lifecycle_v3",
-        sql: &[REGISTRY_GUARD_INSTALLATION_LIFECYCLE_SQL],
-    },
-    Migration {
-        database_kind: REGISTRY_DATABASE_KIND,
-        version: 4,
-        name: "registry_local_web_consent_tokens_v4",
-        sql: &[REGISTRY_LOCAL_WEB_CONSENT_TOKENS_SQL],
-    },
-    Migration {
-        database_kind: REGISTRY_DATABASE_KIND,
-        version: REGISTRY_SCHEMA_VERSION,
-        name: "registry_drop_local_web_consent_tokens_v5",
-        sql: &[REGISTRY_DROP_LOCAL_WEB_CONSENT_TOKENS_SQL],
-    },
-];
+const REGISTRY_MIGRATIONS: &[Migration] = &[Migration {
+    database_kind: REGISTRY_DATABASE_KIND,
+    version: REGISTRY_SCHEMA_VERSION,
+    name: "registry_initial_v1",
+    sql: &[REGISTRY_INITIAL_SQL],
+}];
 
-const PROJECT_STATE_MIGRATIONS: &[Migration] = &[
-    Migration {
-        database_kind: PROJECT_STATE_DATABASE_KIND,
-        version: 1,
-        name: "project_state_initial_authority_events_v1",
-        sql: &[
-            PROJECT_STATE_INITIAL_SQL,
-            PROJECT_STATE_HOST_OBSERVATION_SQL,
-            PROJECT_STATE_EXPECTED_WRITES_SQL,
-            PROJECT_STATE_SESSION_WATCH_SQL,
-        ],
-    },
-    Migration {
-        database_kind: PROJECT_STATE_DATABASE_KIND,
-        version: PROJECT_STATE_SCHEMA_VERSION,
-        name: "project_state_local_web_consent_tokens_v2",
-        sql: &[PROJECT_STATE_LOCAL_WEB_CONSENT_TOKENS_SQL],
-    },
-];
+const PROJECT_STATE_MIGRATIONS: &[Migration] = &[Migration {
+    database_kind: PROJECT_STATE_DATABASE_KIND,
+    version: PROJECT_STATE_SCHEMA_VERSION,
+    name: "project_state_initial_v1",
+    sql: &[
+        PROJECT_STATE_INITIAL_SQL,
+        PROJECT_STATE_HOST_OBSERVATION_SQL,
+        PROJECT_STATE_EXPECTED_WRITES_SQL,
+        PROJECT_STATE_SESSION_WATCH_SQL,
+        PROJECT_STATE_LOCAL_WEB_CONSENT_TOKENS_SQL,
+    ],
+}];
 
 struct Migration {
     database_kind: &'static str,
@@ -436,52 +403,6 @@ CREATE UNIQUE INDEX idx_agent_connections_target_global
     server_name
   )
   WHERE project_internal_id IS NULL;
-"#;
-
-const REGISTRY_GUARD_RECORDS_SQL: &str = r#"
-CREATE TABLE guard_installations (
-  guard_installation_id TEXT PRIMARY KEY,
-  runtime_home_id TEXT NOT NULL,
-  connection_internal_id TEXT NOT NULL,
-  project_internal_id TEXT,
-  host_kind TEXT NOT NULL CHECK (length(trim(host_kind)) > 0),
-  guard_mode TEXT NOT NULL CHECK (guard_mode IN ('record', 'observe')),
-  host_capability_json TEXT NOT NULL DEFAULT '{}',
-  installation_health TEXT NOT NULL
-    CHECK (installation_health IN ('unknown', 'healthy', 'action_required', 'failed')),
-  installed_at TEXT,
-  last_checked_at TEXT NOT NULL,
-  metadata_json TEXT NOT NULL DEFAULT '{}',
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  FOREIGN KEY (runtime_home_id) REFERENCES runtime_home (runtime_home_id) ON DELETE RESTRICT,
-  FOREIGN KEY (connection_internal_id)
-    REFERENCES agent_connections (connection_internal_id)
-    ON DELETE RESTRICT,
-  FOREIGN KEY (project_internal_id) REFERENCES projects (project_internal_id) ON DELETE RESTRICT
-);
-
-CREATE INDEX idx_guard_installations_connection
-  ON guard_installations (connection_internal_id);
-CREATE INDEX idx_guard_installations_project
-  ON guard_installations (project_internal_id);
-CREATE INDEX idx_guard_installations_health
-  ON guard_installations (installation_health);
-CREATE UNIQUE INDEX idx_guard_installations_scope_project
-  ON guard_installations (connection_internal_id, project_internal_id, guard_mode)
-  WHERE project_internal_id IS NOT NULL;
-CREATE UNIQUE INDEX idx_guard_installations_scope_global
-  ON guard_installations (connection_internal_id, guard_mode)
-  WHERE project_internal_id IS NULL;
-
-UPDATE runtime_home
-   SET schema_version = 2,
-       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
- WHERE schema_version = 1;
-"#;
-
-const REGISTRY_GUARD_INSTALLATION_LIFECYCLE_SQL: &str = r#"
-ALTER TABLE guard_installations RENAME TO guard_installations_v2;
 
 CREATE TABLE guard_installations (
   guard_installation_id TEXT PRIMARY KEY,
@@ -519,44 +440,6 @@ CREATE TABLE guard_installations (
   FOREIGN KEY (project_internal_id) REFERENCES projects (project_internal_id) ON DELETE RESTRICT
 );
 
-INSERT INTO guard_installations (
-  guard_installation_id,
-  runtime_home_id,
-  connection_internal_id,
-  project_internal_id,
-  host_kind,
-  guard_mode,
-  host_capability_json,
-  installation_status,
-  installed_at,
-  last_checked_at,
-  metadata_json,
-  created_at,
-  updated_at
-)
-SELECT
-  guard_installation_id,
-  runtime_home_id,
-  connection_internal_id,
-  project_internal_id,
-  host_kind,
-  guard_mode,
-  host_capability_json,
-  CASE installation_health
-    WHEN 'unknown' THEN 'configured'
-    WHEN 'healthy' THEN 'active'
-    WHEN 'action_required' THEN 'reload_required'
-    WHEN 'failed' THEN 'broken'
-  END,
-  installed_at,
-  last_checked_at,
-  metadata_json,
-  created_at,
-  updated_at
-FROM guard_installations_v2;
-
-DROP TABLE guard_installations_v2;
-
 CREATE INDEX idx_guard_installations_connection
   ON guard_installations (connection_internal_id);
 CREATE INDEX idx_guard_installations_project
@@ -569,77 +452,6 @@ CREATE UNIQUE INDEX idx_guard_installations_scope_project
 CREATE UNIQUE INDEX idx_guard_installations_scope_global
   ON guard_installations (connection_internal_id, guard_mode)
   WHERE project_internal_id IS NULL;
-
-UPDATE runtime_home
-   SET schema_version = 3,
-       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
- WHERE schema_version = 2;
-"#;
-
-const REGISTRY_LOCAL_WEB_CONSENT_TOKENS_SQL: &str = r#"
-CREATE TABLE local_web_consent_tokens (
-  token_hash TEXT NOT NULL PRIMARY KEY CHECK (length(token_hash) = 64),
-  project_internal_id TEXT NOT NULL,
-  connection_internal_id TEXT NOT NULL,
-  judgment_id TEXT NOT NULL,
-  capture_basis TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'pending'
-    CHECK (status IN ('pending', 'consumed', 'expired')),
-  created_at TEXT NOT NULL,
-  expires_at TEXT NOT NULL,
-  consumed_at TEXT,
-  completed_at TEXT,
-  created_metadata_json TEXT NOT NULL DEFAULT '{}',
-  completion_metadata_json TEXT NOT NULL DEFAULT '{}',
-  FOREIGN KEY (project_internal_id) REFERENCES projects (project_internal_id) ON DELETE RESTRICT,
-  FOREIGN KEY (connection_internal_id)
-    REFERENCES agent_connections (connection_internal_id)
-    ON DELETE RESTRICT,
-  FOREIGN KEY (connection_internal_id, project_internal_id)
-    REFERENCES connection_projects (connection_internal_id, project_internal_id)
-    ON DELETE RESTRICT,
-  CHECK (
-    (
-      status = 'pending'
-      AND consumed_at IS NULL
-      AND completed_at IS NULL
-    )
-    OR (
-      status = 'consumed'
-      AND consumed_at IS NOT NULL
-      AND completed_at IS NOT NULL
-    )
-    OR (
-      status = 'expired'
-      AND consumed_at IS NULL
-      AND completed_at IS NULL
-    )
-  )
-);
-
-CREATE INDEX idx_local_web_consent_tokens_judgment
-  ON local_web_consent_tokens (project_internal_id, judgment_id, status);
-CREATE INDEX idx_local_web_consent_tokens_connection
-  ON local_web_consent_tokens (connection_internal_id, status, expires_at);
-CREATE INDEX idx_local_web_consent_tokens_expiry
-  ON local_web_consent_tokens (status, expires_at);
-
-UPDATE runtime_home
-   SET schema_version = 4,
-       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
- WHERE schema_version = 3;
-"#;
-
-const REGISTRY_DROP_LOCAL_WEB_CONSENT_TOKENS_SQL: &str = r#"
-DROP INDEX IF EXISTS idx_local_web_consent_tokens_judgment;
-DROP INDEX IF EXISTS idx_local_web_consent_tokens_connection;
-DROP INDEX IF EXISTS idx_local_web_consent_tokens_expiry;
-DROP TABLE IF EXISTS local_web_consent_tokens;
-
-UPDATE runtime_home
-   SET schema_version = 5,
-       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
- WHERE schema_version = 4;
 "#;
 
 const PROJECT_STATE_INITIAL_SQL: &str = r#"
@@ -1483,11 +1295,6 @@ CREATE INDEX idx_local_web_consent_tokens_connection
   ON local_web_consent_tokens (project_id, connection_internal_id, status, expires_at);
 CREATE INDEX idx_local_web_consent_tokens_expiry
   ON local_web_consent_tokens (project_id, status, expires_at);
-
-UPDATE project_state
-   SET schema_version = 2,
-       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
- WHERE schema_version = 1;
 "#;
 
 #[cfg(test)]
@@ -1508,52 +1315,23 @@ mod tests {
     #[test]
     fn expected_migration_catalogs_contain_ordered_rows() {
         assert_eq!(STORAGE_PROFILE, "baseline_sqlite_v3");
-        assert_eq!(REGISTRY_SCHEMA_VERSION, 5);
-        assert_eq!(PROJECT_STATE_SCHEMA_VERSION, 2);
+        assert_eq!(REGISTRY_SCHEMA_VERSION, 1);
+        assert_eq!(PROJECT_STATE_SCHEMA_VERSION, 1);
         assert_eq!(
             expected_registry_migrations(),
-            vec![
-                ExpectedMigration {
-                    database_kind: REGISTRY_DATABASE_KIND,
-                    version: 1,
-                    name: "registry_initial_v1",
-                },
-                ExpectedMigration {
-                    database_kind: REGISTRY_DATABASE_KIND,
-                    version: 2,
-                    name: "registry_guard_records_v2",
-                },
-                ExpectedMigration {
-                    database_kind: REGISTRY_DATABASE_KIND,
-                    version: 3,
-                    name: "registry_guard_installation_lifecycle_v3",
-                },
-                ExpectedMigration {
-                    database_kind: REGISTRY_DATABASE_KIND,
-                    version: 4,
-                    name: "registry_local_web_consent_tokens_v4",
-                },
-                ExpectedMigration {
-                    database_kind: REGISTRY_DATABASE_KIND,
-                    version: 5,
-                    name: "registry_drop_local_web_consent_tokens_v5",
-                }
-            ]
+            vec![ExpectedMigration {
+                database_kind: REGISTRY_DATABASE_KIND,
+                version: 1,
+                name: "registry_initial_v1",
+            }]
         );
         assert_eq!(
             expected_project_state_migrations(),
-            vec![
-                ExpectedMigration {
-                    database_kind: PROJECT_STATE_DATABASE_KIND,
-                    version: 1,
-                    name: "project_state_initial_authority_events_v1",
-                },
-                ExpectedMigration {
-                    database_kind: PROJECT_STATE_DATABASE_KIND,
-                    version: 2,
-                    name: "project_state_local_web_consent_tokens_v2",
-                }
-            ]
+            vec![ExpectedMigration {
+                database_kind: PROJECT_STATE_DATABASE_KIND,
+                version: 1,
+                name: "project_state_initial_v1",
+            }]
         );
     }
 
@@ -1564,32 +1342,12 @@ mod tests {
 
         let conn = open_registry_database(&path)?;
         validate_registry_schema(&conn)?;
-        assert_migrations(
-            &conn,
-            REGISTRY_DATABASE_KIND,
-            &[
-                "registry_initial_v1",
-                "registry_guard_records_v2",
-                "registry_guard_installation_lifecycle_v3",
-                "registry_local_web_consent_tokens_v4",
-                "registry_drop_local_web_consent_tokens_v5",
-            ],
-        )?;
+        assert_migrations(&conn, REGISTRY_DATABASE_KIND, &["registry_initial_v1"])?;
         drop(conn);
 
         let conn = open_registry_database(&path)?;
         validate_registry_schema(&conn)?;
-        assert_migrations(
-            &conn,
-            REGISTRY_DATABASE_KIND,
-            &[
-                "registry_initial_v1",
-                "registry_guard_records_v2",
-                "registry_guard_installation_lifecycle_v3",
-                "registry_local_web_consent_tokens_v4",
-                "registry_drop_local_web_consent_tokens_v5",
-            ],
-        )?;
+        assert_migrations(&conn, REGISTRY_DATABASE_KIND, &["registry_initial_v1"])?;
         assert!(table_exists(&conn, "agent_connections")?);
         assert!(table_exists(&conn, "connection_projects")?);
         assert!(table_exists(&conn, "guard_installations")?);
@@ -1607,10 +1365,7 @@ mod tests {
         assert_migrations(
             &conn,
             PROJECT_STATE_DATABASE_KIND,
-            &[
-                "project_state_initial_authority_events_v1",
-                "project_state_local_web_consent_tokens_v2",
-            ],
+            &["project_state_initial_v1"],
         )?;
         drop(conn);
 
@@ -1619,10 +1374,7 @@ mod tests {
         assert_migrations(
             &conn,
             PROJECT_STATE_DATABASE_KIND,
-            &[
-                "project_state_initial_authority_events_v1",
-                "project_state_local_web_consent_tokens_v2",
-            ],
+            &["project_state_initial_v1"],
         )?;
         assert!(table_exists(&conn, "authority_events")?);
         assert!(table_exists(&conn, "tool_invocations")?);
@@ -1715,7 +1467,7 @@ mod tests {
         ));
         assert!(error.to_string().contains("explicitly reinitialize"));
         assert_eq!(file_hash(&path)?, hash_before);
-        assert_eq!(migration_count(&path, REGISTRY_DATABASE_KIND)?, 5);
+        assert_eq!(migration_count(&path, REGISTRY_DATABASE_KIND)?, 1);
         assert_eq!(stored_profile(&path, "runtime_home")?, OLD_STORAGE_PROFILE);
         Ok(())
     }
@@ -1753,7 +1505,7 @@ mod tests {
         ));
         assert!(error.to_string().contains("explicitly reinitialize"));
         assert_eq!(file_hash(&path)?, hash_before);
-        assert_eq!(migration_count(&path, PROJECT_STATE_DATABASE_KIND)?, 2);
+        assert_eq!(migration_count(&path, PROJECT_STATE_DATABASE_KIND)?, 1);
         assert_eq!(stored_profile(&path, "project_state")?, OLD_STORAGE_PROFILE);
         Ok(())
     }
@@ -1784,7 +1536,7 @@ mod tests {
         assert!(matches!(error, StoreError::SchemaInvariant { .. }));
         assert!(error.to_string().contains("newer than supported"));
         assert_eq!(file_hash(&path)?, hash_before);
-        assert_eq!(migration_count(&path, PROJECT_STATE_DATABASE_KIND)?, 3);
+        assert_eq!(migration_count(&path, PROJECT_STATE_DATABASE_KIND)?, 2);
         Ok(())
     }
 
@@ -1909,10 +1661,7 @@ mod tests {
         assert_migrations(
             &conn,
             PROJECT_STATE_DATABASE_KIND,
-            &[
-                "project_state_initial_authority_events_v1",
-                "project_state_local_web_consent_tokens_v2",
-            ],
+            &["project_state_initial_v1"],
         )?;
         Ok(())
     }

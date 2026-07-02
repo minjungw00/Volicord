@@ -43,7 +43,13 @@ The physical `write_tickets` table stores write-ticket authority records for pro
 
 `registry.sqlite` stores Runtime Home identity, installation profile records, project registration, project aliases, Agent Connection records, Connection Projects membership, guard installation records, and host configuration inventory. It does not store project-local Core state.
 
-Applying the current migrations produces registry schema version `5` for storage profile `baseline_sqlite_v3`. The first DDL block is the initial physical registry schema version `1`; the guard-record additions after it are schema version `2`, the guard-installation lifecycle replacement is schema version `3`, the legacy registry local web consent token table is schema version `4`, and schema version `5` removes that legacy registry token table. Active local web consent token rows are project-state records in project-state schema version `2`. Storage profile and migration boundary behavior are owned by [Storage Versioning](storage-versioning.md).
+Applying the current baseline migration produces registry schema version `1`
+for storage profile `baseline_sqlite_v3`. The DDL blocks below are split by
+record area for readability and together describe the baseline registry layout.
+Active local web consent token rows are not registry records; they are
+project-state records so token lifecycle and user judgment resolution can share
+one project-state transaction. Storage profile and migration boundary behavior
+are owned by [Storage Versioning](storage-versioning.md).
 
 ```sql
 CREATE TABLE schema_migrations (
@@ -176,9 +182,7 @@ CREATE UNIQUE INDEX idx_agent_connections_target_global
   WHERE project_internal_id IS NULL;
 ```
 
-Registry schema version `2` adds host-observation setup records. Registry
-schema version `3` replaces the earlier guard installation state column with
-the explicit lifecycle and observation fields shown here:
+Registry guard-installation records:
 
 ```sql
 CREATE TABLE guard_installations (
@@ -231,22 +235,6 @@ CREATE UNIQUE INDEX idx_guard_installations_scope_global
   WHERE project_internal_id IS NULL;
 ```
 
-The version `3` registry migration updates existing `runtime_home.schema_version` rows from `2` to `3`.
-
-Registry schema version `4` added legacy registry local web consent token
-records. Registry schema version `5` removes that legacy table so active
-local web consent token state can live with `user_judgments` in project-state
-storage:
-
-```sql
-DROP INDEX IF EXISTS idx_local_web_consent_tokens_judgment;
-DROP INDEX IF EXISTS idx_local_web_consent_tokens_connection;
-DROP INDEX IF EXISTS idx_local_web_consent_tokens_expiry;
-DROP TABLE IF EXISTS local_web_consent_tokens;
-```
-
-The version `5` registry migration updates existing `runtime_home.schema_version` rows from `4` to `5`.
-
 Registry constraints:
 
 - `runtime_home` is a singleton table. It stores Runtime Home identity, the Runtime Home path, the registry database path, storage profile, schema version, metadata, and timestamps. The stored `runtime_home_id` identifies the Runtime Home record; it is not a security guarantee.
@@ -268,7 +256,13 @@ Registry constraints:
 
 Each registered project has one project-local `state.sqlite`. It stores Core state for that project and repeats `project_id` in project-scoped rows so foreign keys and indexes can enforce same-project relationships.
 
-Applying the current project-state migrations produces project-state schema version `2` for storage profile `baseline_sqlite_v3`. The DDL blocks below are split by record area for readability and together describe the baseline project-state layout. Project-state schema version `2` adds local web consent token records so token lifecycle and user judgment resolution can commit in the same project-state transaction. Storage profile and migration boundary behavior are owned by [Storage Versioning](storage-versioning.md).
+Applying the current baseline migration produces project-state schema version
+`1` for storage profile `baseline_sqlite_v3`. The DDL blocks below are split by
+record area for readability and together describe the baseline project-state
+layout, including local web consent token records. Token lifecycle and user
+judgment resolution can therefore commit in the same project-state transaction.
+Storage profile and migration boundary behavior are owned by
+[Storage Versioning](storage-versioning.md).
 
 ```sql
 CREATE TABLE schema_migrations (

@@ -43,7 +43,13 @@ PRAGMA foreign_keys = ON;
 
 `registry.sqlite`는 Runtime Home 식별 정보, 설치 프로필 기록, 프로젝트 등록, 프로젝트 alias, Agent Connection 기록, Connection Projects 멤버십, guard 설치 기록, 호스트 설정 인벤토리를 저장합니다. 프로젝트별 Core 상태는 저장하지 않습니다.
 
-현재 마이그레이션을 모두 적용하면 저장소 프로필 `baseline_sqlite_v3`의 registry 스키마 버전은 `5`입니다. 첫 번째 DDL 블록은 초기 물리 registry 스키마 버전 `1`이고, 그 뒤의 guard 기록 추가 블록은 스키마 버전 `2`, guard 설치 생명주기 교체는 스키마 버전 `3`, 기존 registry local web consent token 테이블은 스키마 버전 `4`, 그 기존 registry token 테이블 제거는 스키마 버전 `5`입니다. 활성 local web consent token 행은 project-state 스키마 버전 `2`의 project-state 기록입니다. 저장소 프로필과 마이그레이션 경계 동작은 [저장소 버전 관리](storage-versioning.md)가 담당합니다.
+현재 기준 마이그레이션을 적용하면 저장소 프로필 `baseline_sqlite_v3`의
+registry 스키마 버전은 `1`입니다. 아래 DDL 블록들은 읽기 쉽도록 기록
+영역별로 나누었으며, 함께 기준 registry 배치를 설명합니다. 활성 local web
+consent token 행은 registry 기록이 아닙니다. Token 생명주기와 사용자 판단
+해결이 하나의 project-state 트랜잭션을 공유할 수 있도록 project-state 기록으로
+둡니다. 저장소 프로필과 마이그레이션 경계 동작은
+[저장소 버전 관리](storage-versioning.md)가 담당합니다.
 
 ```sql
 CREATE TABLE schema_migrations (
@@ -176,9 +182,7 @@ CREATE UNIQUE INDEX idx_agent_connections_target_global
   WHERE project_internal_id IS NULL;
 ```
 
-Registry 스키마 버전 `2`는 host-observation 설정 기록을 추가합니다.
-Registry 스키마 버전 `3`은 이전 guard 설치 상태 열을 아래의 명시적
-생명주기와 관찰 필드로 대체합니다.
+Registry guard-installation 기록입니다.
 
 ```sql
 CREATE TABLE guard_installations (
@@ -231,21 +235,6 @@ CREATE UNIQUE INDEX idx_guard_installations_scope_global
   WHERE project_internal_id IS NULL;
 ```
 
-버전 `3` registry 마이그레이션은 기존 `runtime_home.schema_version` 행을 `2`에서 `3`으로 갱신합니다.
-
-Registry 스키마 버전 `4`는 기존 registry local web consent token 기록을 추가했습니다.
-Registry 스키마 버전 `5`는 token 생명주기와 `user_judgments`를 project-state 저장소에서
-함께 다룰 수 있도록 그 기존 테이블을 제거합니다.
-
-```sql
-DROP INDEX IF EXISTS idx_local_web_consent_tokens_judgment;
-DROP INDEX IF EXISTS idx_local_web_consent_tokens_connection;
-DROP INDEX IF EXISTS idx_local_web_consent_tokens_expiry;
-DROP TABLE IF EXISTS local_web_consent_tokens;
-```
-
-버전 `5` registry 마이그레이션은 기존 `runtime_home.schema_version` 행을 `4`에서 `5`로 갱신합니다.
-
 Registry 제약:
 
 - `runtime_home`은 단일 행 테이블입니다. Runtime Home 식별 정보, Runtime Home 경로, registry 데이터베이스 경로, 저장소 프로필, 스키마 버전, 메타데이터, 타임스탬프를 저장합니다. 저장된 `runtime_home_id`는 Runtime Home 기록을 식별하며 보안 보장이 아닙니다.
@@ -267,7 +256,12 @@ Registry 제약:
 
 등록된 프로젝트마다 프로젝트별 `state.sqlite`가 하나 있습니다. 이 데이터베이스는 그 프로젝트의 Core 상태를 저장하며, 외래 키와 인덱스가 같은 프로젝트 관계를 강제할 수 있도록 프로젝트 범위 행에 `project_id`를 반복해 저장합니다.
 
-현재 project-state 마이그레이션을 적용하면 저장소 프로필 `baseline_sqlite_v3`의 프로젝트 상태 스키마 버전은 `2`입니다. 아래 DDL 블록들은 읽기 쉽도록 기록 영역별로 나누었으며, 함께 기준 프로젝트 상태 배치를 설명합니다. Project-state 스키마 버전 `2`는 token 생명주기와 사용자 판단 해결을 같은 project-state 트랜잭션에서 커밋할 수 있도록 local web consent token 기록을 추가합니다. 저장소 프로필과 마이그레이션 경계 동작은 [저장소 버전 관리](storage-versioning.md)가 담당합니다.
+현재 기준 마이그레이션을 적용하면 저장소 프로필 `baseline_sqlite_v3`의
+project-state 스키마 버전은 `1`입니다. 아래 DDL 블록들은 읽기 쉽도록 기록
+영역별로 나누었으며, local web consent token 기록을 포함해 기준 project-state
+배치를 설명합니다. 따라서 token 생명주기와 사용자 판단 해결은 같은
+project-state 트랜잭션에서 커밋할 수 있습니다. 저장소 프로필과 마이그레이션
+경계 동작은 [저장소 버전 관리](storage-versioning.md)가 담당합니다.
 
 ```sql
 CREATE TABLE schema_migrations (

@@ -8,7 +8,7 @@ use serde_json::Value;
 use volicord_store::{
     migrations::{
         apply_project_state_migrations, apply_registry_migrations, PROJECT_STATE_SCHEMA_VERSION,
-        STORAGE_PROFILE,
+        REGISTRY_SCHEMA_VERSION, STORAGE_PROFILE,
     },
     sqlite::{enable_foreign_keys, validate_project_state_schema, validate_registry_schema},
 };
@@ -84,6 +84,19 @@ fn initial_schemas_satisfy_connection_storage_contract() -> Result<(), Box<dyn E
     let initial_registry_schema = read_database_schema(&initial_registry)?;
     let initial_project = initial_project_state_schema()?;
     let initial_project_schema = read_database_schema(&initial_project)?;
+
+    assert_current_migration_rows(
+        &initial_registry,
+        "registry",
+        REGISTRY_SCHEMA_VERSION,
+        &["registry_initial_v1"],
+    )?;
+    assert_current_migration_rows(
+        &initial_project,
+        "project_state",
+        PROJECT_STATE_SCHEMA_VERSION,
+        &["project_state_initial_v1"],
+    )?;
 
     assert_tables_include(
         &initial_registry_schema,
@@ -506,6 +519,49 @@ fn assert_unique_index_columns(schema: &DatabaseSchema, index: &str, columns: &[
         .map(|column| column.name.as_str())
         .collect::<Vec<_>>();
     assert_eq!(actual, columns, "unexpected columns for {index}");
+}
+
+fn assert_current_migration_rows(
+    conn: &Connection,
+    database_kind: &str,
+    latest_version: i64,
+    expected_names: &[&str],
+) -> rusqlite::Result<()> {
+    let mut stmt = conn.prepare(
+        "SELECT version, name, storage_profile
+           FROM schema_migrations
+          WHERE database_kind = ?1
+          ORDER BY version",
+    )?;
+    let rows = stmt.query_map([database_kind], |row| {
+        Ok((
+            row.get::<_, i64>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+        ))
+    })?;
+    let mut actual = Vec::new();
+    for row in rows {
+        actual.push(row?);
+    }
+    let expected = expected_names
+        .iter()
+        .enumerate()
+        .map(|(index, name)| {
+            (
+                i64::try_from(index + 1).expect("migration index fits"),
+                (*name).to_owned(),
+                STORAGE_PROFILE.to_owned(),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(actual, expected, "unexpected {database_kind} ledger rows");
+    assert_eq!(
+        actual.last().map(|(version, _, _)| *version),
+        Some(latest_version),
+        "unexpected latest {database_kind} migration version"
+    );
+    Ok(())
 }
 
 fn read_database_schema(conn: &Connection) -> rusqlite::Result<DatabaseSchema> {

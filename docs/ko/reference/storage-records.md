@@ -83,7 +83,7 @@ API 스키마 형태와 저장소 기록 배치는 서로 다른 담당 문서�
 | `registry.sqlite` | 프로젝트 등록과 alias | 프로젝트 매핑 | `project_internal_id`, 표시 이름, CLI 선택 alias, Runtime Home 관계, 고유한 `repo_root`, 위치를 담당하는 `project_home`, 실행 시 `project_home/state.sqlite`와 일치해야 하는 저장된 `state_db_path`, 상태, 메타데이터, alias에서 내부 식별 정보로 가는 매핑. |
 | `registry.sqlite` | Agent Connection | MCP 호스트 연결 단위 | 지속되는 `connection_internal_id`, 호스트 종류, 연결 의도, 호스트 범위, 선택적 `project_internal_id`, 내부 서버 이름, 설정 대상, 모드, 활성 상태, 관리 fingerprint, 검증 요약 상태, 검증 보고서 JSON, 사용자 동작 JSON, 메타데이터, 타임스탬프. |
 | `registry.sqlite` | Connection Projects | 연결 프로젝트 허용 목록 | `connection_internal_id`와 `project_internal_id`를 사용하는 Agent Connection과 등록된 프로젝트 사이의 명시적 다대다 멤버십. |
-| `registry.sqlite` | Guard installation | Guard 설정과 호스트 capability 기록 | Runtime Home, Agent Connection, 선택적 프로젝트 범위, 호스트 종류, guard 모드, 호스트 capability JSON, 설치 health, 타임스탬프, 메타데이터. |
+| `registry.sqlite` | Guard installation | Guard 설정과 호스트 capability 기록 | Runtime Home, Agent Connection, 선택적 프로젝트 범위, 호스트 종류, guard 모드, 호스트 capability JSON, 설치 생명주기 상태, 관찰된 hook 메타데이터, 타임스탬프, 메타데이터. |
 | `state.sqlite` | `project_state` | 프로젝트 상태 헤더 | 저장 프로필, `state_version`, 현재 적용 `Task` 포인터, 프로젝트 강제 프로필. |
 | `state.sqlite` | `agent_sessions` | 관찰된 Agent Session | Agent Connection 하나에 대한 프로젝트 범위 세션, 선택적 guard 설치, 호스트 종류, 통합 프로필, 시작/종료 타임스탬프, 메타데이터. |
 | `state.sqlite` | `guard_events` | Guard decision 이벤트 | 연결 및 선택적 세션 또는 설치에 묶이는 프로젝트 범위 guard 이벤트입니다. decision, subject JSON, result JSON, 타임스탬프, 메타데이터를 포함합니다. |
