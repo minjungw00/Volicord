@@ -159,6 +159,7 @@ GuardHealthSummary:
   session_watch_detail: string | null
   unresolved_unrecorded_change_count: integer
   missing_or_stale_write_readiness: boolean
+  write_ticket_path_scope_violation: boolean
 ```
 
 의미:
@@ -184,7 +185,8 @@ GuardHealthSummary:
 - `session_watch_partial_coverage_warning`은 기록된 coverage 시작 전의 Product Repository 변경이 watcher coverage 밖에 있을 때 사람이 읽을 수 있는 경고입니다.
 - `session_watch_detail`은 선택된 watcher 상태에 대한 짧은 진단 세부정보이며, 사용할 수 있는 세부정보가 없으면 `null`입니다.
 - `unresolved_unrecorded_change_count`는 해결되지 않은 미기록 Product Repository 변경 수입니다. 프롬프트 텍스트, 명령 텍스트, 경로 목록은 노출하지 않습니다.
-- `missing_or_stale_write_readiness`는 guard 이벤트가 누락되었거나 오래된 쓰기 준비 상태를 감지했는지 보고합니다.
+- `missing_or_stale_write_readiness`는 guard 이벤트가 누락되었거나, 결정할 수 없거나, 모호하거나, 오래된 쓰기 티켓 준비 상태를 감지했는지 보고합니다.
+- `write_ticket_path_scope_violation`은 guard 이벤트가 active 쓰기 티켓 범위 밖의 Product Repository 경로를 관찰했는지 보고합니다.
 
 의미하지 않는 것:
 - `control_surface`는 정확성, review 완료, 테스트 충분성, OS 수준 강제, 쓰기 차단을 증명하지 않습니다.
@@ -192,7 +194,7 @@ GuardHealthSummary:
 - `active` guard 요약은 증거, 아티팩트 무결성, 사용자 소유 판단, 쓰기 티켓, 최종 수락, 잔여 위험 수락 요구사항을 대체하지 않습니다.
 - Session watch 상태와 coverage 메타데이터는 Volicord가 쓰기를 막았거나, 파일을 바꾼 행위자를 식별했거나, 파일 내용을 저장했거나, OS 수준 강제를 제공했다는 뜻이 아닙니다.
 - `session_watch_partial_coverage_warning`이 `null`이 아니면 `session_watch_coverage_start_at` 전의 Product Repository 변경은 session-watch coverage 밖에 남습니다.
-- `record` 프로필은 활성 session watch가 선택되어 있을 때 watcher가 만든 해결되지 않은 미기록 변경 찾기가 닫기를 막는 경우를 제외하고 협력형으로 남습니다.
+- `record` 프로필은 협력형으로 남습니다. Guard 건강 상태가 해결되지 않은 미기록 변경 찾기를 보고하면 그 찾기는 닫기를 막습니다.
 - `observe` 프로필은 모든 쓰기를 막거나, 파일을 바꾼 행위자를 식별하거나, 네트워크를 격리하거나, sandbox를 제공하지 않습니다.
 
 담당 문서 링크:

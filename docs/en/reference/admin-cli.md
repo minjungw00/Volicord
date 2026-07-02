@@ -602,24 +602,30 @@ Lifecycle behavior:
   attempts. Read and status commands are allowed without creating blockers. A
   product-file write attempt may return `deny` or `warn` when there is no active
   task, no current active write-ticket row, an attempted target is outside the
-  selected Product Repository, or policy blocks a clearly mutating shell
-  command. Uncertain shell commands default to `warn` unless guard policy asks
-  for `deny`. When pre-tool allows a clearly mutating product-file write with a
-  concrete in-repository path set, active task, current write readiness, and
-  compatible project scope, it records an expected-write correlation row with
-  project, connection, session, optional host invocation identity, tool kind,
-  exact path policy, task/change-unit/write-check basis, and timestamp
-  metadata. Read-only and uncertain commands do not create expected-write rows.
+  selected Product Repository, an observed path is outside active write-ticket
+  scope, the active ticket match is ambiguous, or policy blocks a clearly
+  mutating shell command. These decisions are cooperative host decisions, not
+  OS-level enforcement. Uncertain shell commands default to `warn` unless guard
+  policy asks for `deny`. When pre-tool allows a clearly mutating product-file
+  write with a concrete in-repository path set, active task, exactly one current
+  active matching write ticket, and compatible project scope, it records an
+  expected-write correlation row with project, connection, session, optional
+  host invocation identity, tool kind, exact path policy,
+  task/change-unit/write-ticket basis, and timestamp metadata. Read-only,
+  uncertain, ambiguous, and ticket-out-of-scope commands do not create
+  expected-write rows.
 - `post-tool` records the observed tool outcome. When the event supplies
   changed Product Repository paths, post-tool first tries to match them to a
   prior expected-write row from the same project, connection, session, bounded
   time window, and exact path policy, using host invocation identity when the
-  host supplies it. Matched in-scope writes do not create unresolved
-  unrecorded-change rows. Unmatched, out-of-scope, or ambiguous observed
-  Product Repository changes record an unresolved unrecorded-change row and
-  return `warn`. Post-tool observation and matching are host-observation
-  records, not proof of product correctness. It does not execute untrusted
-  commands to discover changes.
+  host supplies it. If no expected-write row matches, post-tool may correlate
+  the changed paths to exactly one current active matching write ticket.
+  Matched in-scope writes do not create unresolved unrecorded-change rows.
+  Unmatched, ticket-out-of-scope, or ambiguous observed Product Repository
+  changes record an unresolved unrecorded-change row and return `warn`.
+  Post-tool observation and matching are host-observation records, not proof of
+  product correctness, actor identity, or write prevention. It does not execute
+  untrusted commands to discover changes.
 - `prompt-capture` records prompt-capture metadata and recognizes strict
   chat judgment commands only when prompt-capture availability for the current
   host, project, and connection is `configured`, `observed`, or `active`, and

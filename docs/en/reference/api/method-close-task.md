@@ -84,8 +84,9 @@ Mutation conditions:
 Close condition:
 
 - `intent=complete` can close only after preflight succeeds, the close readiness evaluation over the current `CurrentCloseBasis` is valid, current close-basis refs satisfy their artifact and Run compatibility rules, and no close blocker remains.
-- In `observe` profile, close readiness also checks guard health, including hook path safety, prompt-capture availability facts, unresolved unrecorded Product Repository changes, guard-detected write-readiness issues, and session-watch availability. In `record` profile, host hooks are not required; an active session watch remains detective-only, and unresolved watcher-created unrecorded-change findings block close until reconciliation resolves them.
-- Session watch observations do not prevent Product Repository writes and do not identify the actor that made a file change. They only detect Product Repository snapshot changes that are not covered by expected-write correlation.
+- Close readiness blocks when any write ticket for the Task remains open, any active write ticket has expired without resolution, or any guard or watcher observation reports unresolved out-of-scope Product Repository paths for the ticket scope.
+- In `observe` profile, close readiness also checks guard health, including hook path safety, prompt-capture availability facts, unresolved unrecorded Product Repository changes, guard-detected write-ticket issues, and session-watch availability. In `record` profile, host hooks are not required; unresolved unrecorded Product Repository changes still block close until reconciliation resolves them.
+- Host hook and session watch observations do not prevent Product Repository writes and do not identify the actor that made a file change. They only support cooperative detection and correlation to expected-write or write-ticket records.
 - Required close evidence must be supported by current claim-matching evidence observation provenance. Unverified, provenance-free, stale, or cooperative-agent-only evidence does not satisfy a close requirement when stronger provenance is required.
 - `intent=cancel` requires a current accepted cancellation judgment with `machine_action=accept`, `resolution_outcome=accepted`, `resolved_by_actor_source=local_user`, compatible User Channel provenance, and a basis bound to the Task, current scope revision, and current Change Unit. It does not require completion-only evidence, final acceptance, or residual-risk acceptance.
 - `intent=supersede` evaluates the requested terminal path. It is not evidence sufficiency, final acceptance, or residual-risk acceptance.
@@ -220,6 +221,8 @@ The production meanings below apply only after the method reaches close-readines
 | `pending_user_judgment` | `pending_user_judgment` | A required user-owned judgment remains pending or unresolved. |
 | `missing_sensitive_approval` | `sensitive_approval` | A required separate sensitive-action approval is absent. |
 | `missing_cancellation_authority` | `user_judgment` | `intent=cancel` lacks a current accepted user cancellation judgment with `resolved_by_actor_source=local_user`, compatible User Channel provenance, and a basis bound to the current Task, scope revision, and Change Unit. |
+| `open_write_ticket` | `write_compatibility` | A write ticket for the selected Task remains open and unresolved. |
+| `expired_write_ticket` | `write_compatibility` | A write ticket for the selected Task expired while still unresolved. |
 | `write_check_stale` | `write_compatibility` | A close-relevant write-ticket compatibility row is unusable for a freshness reason that is not routed as `STATE_VERSION_CONFLICT`. |
 | `baseline_stale` | `baseline` | The close-relevant baseline basis is stale on a blocker-producing path. |
 | `guard_not_installed` | `connection_capability` | An observe close path has no usable guard installation recorded for the verified connection. |
@@ -231,8 +234,9 @@ The production meanings below apply only after the method reaches close-readines
 | `guard_degraded` | `connection_capability` | An observe close path has degraded guard configuration or health not covered by a more specific guard blocker, and the current guard policy blocks close on degraded health. |
 | `guard_connection_unhealthy` | `connection_capability` | An observe close path has an Agent Connection health fact that is not healthy. |
 | `session_watch_unavailable` | `connection_capability` | An observe close path requires Product Repository session-watch coverage, but the selected watcher state is `disabled`, `degraded`, `unavailable`, or active with a partial-coverage warning. |
-| `unresolved_unrecorded_changes` | `connection_capability` | Guard records or active session-watch records show unresolved unrecorded Product Repository changes that must be reconciled before close. The blocker includes `next_actions` with `owner_method=volicord.reconcile_changes`, and `can_resolve_in_chat` reports whether the current path can proceed through a chat-mediated user path. |
-| `guard_write_readiness_missing_or_stale` | `write_compatibility` | Guard events detected missing or stale write readiness for the close path. |
+| `unresolved_unrecorded_changes` | `connection_capability` | Guard health reports unresolved unrecorded Product Repository changes that must be reconciled before close. The blocker includes `next_actions` with `owner_method=volicord.reconcile_changes`, and `can_resolve_in_chat` reports whether the current path can proceed through a chat-mediated user path. |
+| `guard_write_readiness_missing_or_stale` | `write_compatibility` | Guard events detected missing, indeterminate, ambiguous, or stale write-ticket readiness for the close path. |
+| `guard_write_ticket_path_scope_violation` | `write_compatibility` | Guard events observed a Product Repository path outside the active write-ticket scope. |
 | `evidence_claim_unsupported` | `evidence_claim` | A required close claim lacks supported evidence coverage. |
 | `evidence_claim_missing` | `evidence_claim` | A required close claim has no current evidence coverage record. |
 | `evidence_provenance_insufficient` | `evidence_provenance` | Required close evidence exists but lacks sufficient current source and assurance provenance. |
@@ -271,7 +275,7 @@ Method-specific blocker branches:
 | Branch | Production rule |
 |---|---|
 | `intent=check` | Returns current close readiness blockers as response observation data. |
-| `intent=complete` | Produces close readiness blockers when the completion path reaches close readiness evaluation and owner-defined close requirements remain unresolved. In `observe` profile this includes guard-health, unresolved unrecorded-change, session-watch, and guard-detected write-readiness blockers. In `record` profile, unresolved watcher-created unrecorded-change findings also block close while the watcher is active, while partial watcher coverage remains a guard-health warning unless another owner-defined policy blocks it. |
+| `intent=complete` | Produces close readiness blockers when the completion path reaches close readiness evaluation and owner-defined close requirements remain unresolved. This includes open or expired unresolved write tickets, unresolved unrecorded-change findings, guard-health, session-watch, and guard-detected write-ticket blockers. Partial watcher coverage remains a guard-health warning unless another owner-defined policy blocks it. |
 | `intent=cancel` | Produces blockers only for cancellation-specific terminal constraints, including missing or incompatible cancellation authority. Completion-only evidence, final acceptance, or residual-risk gaps do not block cancellation by themselves. |
 | `intent=supersede` | Produces blockers only for supersession-specific terminal constraints. Completion-only evidence, final acceptance, or residual-risk gaps do not block supersession by themselves. |
 
@@ -282,6 +286,7 @@ Non-claims:
 - `STATE_VERSION_CONFLICT` is a rejected-response `ErrorCode`, not a method-local blocker or decision code.
 - A blocker category does not create the underlying user judgment, approval, evidence, artifact availability, final acceptance, residual-risk acceptance, or recovery state.
 - Close readiness is not correctness proof, test sufficiency proof, or human review replacement. `CloseTaskResult.base.disclosure.non_guarantees` must include `NotCorrectnessProof`, `NotTestSufficiencyProof`, and `NotHumanReviewReplacement`.
+- Guard and watcher blockers do not claim full write prevention, actor attribution, OS sandboxing, or OS-level filesystem enforcement.
 - Unverified claims, provenance-missing evidence, stale observation provenance, and cooperative agent reports may be recorded as evidence history, but they do not satisfy required close evidence when the close path requires stronger provenance.
 - Rejected, deferred, stale, superseded, expired, invalid-basis, agent-recorded, provenance-missing, or outcome-absent cancellation judgments do not permit cancellation.
 

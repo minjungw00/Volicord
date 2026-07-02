@@ -466,6 +466,27 @@ fn plan_prepare_write(
         ),
         *plan_now.as_datetime(),
     )?;
+    let mut close_state = close_plan.close_state;
+    let mut close_blockers = close_plan.blockers;
+    if create_write_check {
+        if let Some(write_check_ref) = write_check_ref.as_ref() {
+            let planned_task_ref = state_ref(
+                StateRecordKind::Task,
+                task_id.as_str(),
+                &request.envelope.project_id,
+                Some(&task_id),
+                Some(planned_state_version),
+            );
+            close_blockers.insert(
+                0,
+                close_task::open_write_ticket_close_blocker(
+                    planned_task_ref,
+                    write_check_ref.clone(),
+                ),
+            );
+            close_state = CloseState::Blocked;
+        }
+    }
     let control_surface = close_plan
         .guard_health
         .as_ref()
@@ -516,8 +537,8 @@ fn plan_prepare_write(
             })
             .transpose()?,
         evidence_summary,
-        close_state: Some(close_plan.close_state),
-        close_blockers: close_plan.blockers,
+        close_state: Some(close_state),
+        close_blockers,
         guard_health: close_plan.guard_health,
         guarantee_display: guarantee_display.clone(),
     })?;

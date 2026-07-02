@@ -531,6 +531,7 @@ pub struct GuardHealthSummary {
     pub session_watch_detail: RequiredNullable<String>,
     pub unresolved_unrecorded_change_count: u64,
     pub missing_or_stale_write_readiness: bool,
+    pub write_ticket_path_scope_violation: bool,
 }
 
 /// Project-level continuity record that preserves durable context after Task close.

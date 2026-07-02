@@ -544,22 +544,26 @@ Lifecycle 동작:
 - `pre-tool`은 읽기 전용, 명확한 변경, 불확실한 도구 시도를 분류합니다. 읽기와 상태
   명령은 blocker를 만들지 않고 허용됩니다. 제품 파일 쓰기 시도는 active task가
   없거나, 현재 active 쓰기 티켓 행이 없거나, 시도 대상이 선택된 `Product Repository`
-  밖에 있거나, policy가 명확한 변경 shell 명령을 차단할 때 `deny` 또는 `warn`을
-  반환할 수 있습니다. 불확실한 shell 명령은 guard policy가 `deny`를 요구하지 않으면
-  기본적으로 `warn`입니다. Pre-tool이 구체적인 저장소 내부 경로 집합, active task,
-  현재 쓰기 준비 상태, 호환되는 프로젝트 범위를 가진 명확한 제품 파일 쓰기를 허용하면
-  expected-write 상관 행을 기록합니다. 이 행은 프로젝트, 연결, 세션, 선택적 호스트
-  invocation 식별 정보, 도구 종류, 정확한 경로 정책, Task/Change Unit/쓰기 티켓
-  근거, 타임스탬프 메타데이터를 담습니다. 읽기 전용 명령과 불확실한 명령은
-  expected-write 행을 만들지 않습니다.
+  밖에 있거나, 관찰된 경로가 active 쓰기 티켓 범위 밖에 있거나, active 티켓 매칭이
+  모호하거나, policy가 명확한 변경 shell 명령을 차단할 때 `deny` 또는 `warn`을
+  반환할 수 있습니다. 이러한 결정은 협력형 host 결정이며 OS 수준 집행이 아닙니다.
+  불확실한 shell 명령은 guard policy가 `deny`를 요구하지 않으면 기본적으로
+  `warn`입니다. Pre-tool이 구체적인 저장소 내부 경로 집합, active task, 정확히 하나의
+  현재 active matching 쓰기 티켓, 호환되는 프로젝트 범위를 가진 명확한 제품 파일 쓰기를
+  허용하면 expected-write 상관 행을 기록합니다. 이 행은 프로젝트, 연결, 세션, 선택적
+  호스트 invocation 식별 정보, 도구 종류, 정확한 경로 정책, Task/Change Unit/쓰기 티켓
+  근거, 타임스탬프 메타데이터를 담습니다. 읽기 전용, 불확실한, 모호한, 티켓 범위 밖
+  명령은 expected-write 행을 만들지 않습니다.
 - `post-tool`은 관찰된 도구 결과를 기록합니다. Event가 변경된 `Product Repository`
   경로를 제공하면 먼저 같은 프로젝트, 연결, 세션, 제한된 시간 창, 정확한 경로 정책의
   이전 expected-write 행과 맞춰 봅니다. 호스트가 invocation 식별 정보를 제공하면 그
-  식별 정보를 사용합니다. 매칭된 범위 안 쓰기는 미해결 unrecorded-change 행을 만들지
-  않습니다. 매칭되지 않았거나, 범위 밖이거나, 모호한 관찰된 Product Repository 변경은
-	  미해결 unrecorded-change 행을 기록하고 `warn`을 반환합니다. Post-tool 관찰과 매칭은
-	  host-observation 기록이지 제품 정확성 증명이 아닙니다. 변경을 찾기 위해 신뢰할 수
-  없는 명령을 실행하지 않습니다.
+  식별 정보를 사용합니다. Expected-write 행이 매칭되지 않으면 post-tool은 변경 경로를
+  정확히 하나의 현재 active matching 쓰기 티켓에 상관시킬 수 있습니다. 매칭된 범위 안
+  쓰기는 미해결 unrecorded-change 행을 만들지 않습니다. 매칭되지 않았거나, 티켓 범위
+  밖이거나, 모호한 관찰된 Product Repository 변경은 미해결 unrecorded-change 행을
+  기록하고 `warn`을 반환합니다. Post-tool 관찰과 매칭은 host-observation 기록이지 제품
+  정확성, 행위자 identity, 쓰기 방지 증명이 아닙니다. 변경을 찾기 위해 신뢰할 수 없는
+  명령을 실행하지 않습니다.
 - `prompt-capture`는 현재 host, project, connection의 prompt-capture 사용 가능
   상태가 `configured`, `observed`, `active`일 때만 prompt-capture 메타데이터를
   기록하고 엄격한 chat judgment 명령을 인식합니다. prompt에는

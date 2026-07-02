@@ -961,6 +961,12 @@ pub(super) fn guard_health_summary_from_record(
         .map(latest_guard_event_has_write_readiness_issue)
         .transpose()?
         .unwrap_or(false);
+    let write_ticket_path_scope_violation = record
+        .latest_event
+        .as_ref()
+        .map(latest_guard_event_has_write_ticket_path_scope_violation)
+        .transpose()?
+        .unwrap_or(false);
     let mut summary = GuardHealthSummary {
         selected_profile,
         control_surface: inactive_control_surface(selected_profile),
@@ -1014,6 +1020,7 @@ pub(super) fn guard_health_summary_from_record(
         session_watch_detail: RequiredNullable::null(),
         unresolved_unrecorded_change_count: record.unresolved_unrecorded_changes.len() as u64,
         missing_or_stale_write_readiness,
+        write_ticket_path_scope_violation,
     };
     refresh_control_surface(&mut summary);
     Ok(Some(summary))
@@ -1959,9 +1966,31 @@ fn latest_guard_event_has_write_readiness_issue(
         Some(&event.result_json),
     )?;
     let result = Value::Object(result);
+    Ok(json_has_code(
+        &result,
+        &[
+            "write_readiness_missing",
+            "write_ticket_missing",
+            "write_ticket_scope_indeterminate",
+            "write_ticket_ambiguous",
+            "write_check_stale",
+        ],
+    ) || json_has_non_empty_array_key(&result, "stale_write_check_ids"))
+}
+
+fn latest_guard_event_has_write_ticket_path_scope_violation(
+    event: &volicord_store::guards::GuardEventRecord,
+) -> Result<bool, PlanError> {
+    let result = decode_required_json_object(
+        "guard_events",
+        event.guard_event_id.clone(),
+        "result_json",
+        Some(&event.result_json),
+    )?;
+    let result = Value::Object(result);
     Ok(
-        json_has_code(&result, &["write_readiness_missing", "write_check_stale"])
-            || json_has_non_empty_array_key(&result, "stale_write_check_ids"),
+        json_has_code(&result, &["write_ticket_path_scope_violation"])
+            || json_has_truthy_key(&result, "ticket_scope_violation"),
     )
 }
 
@@ -1975,6 +2004,17 @@ fn json_has_code(value: &Value, codes: &[&str]) -> bool {
                 || object.values().any(|value| json_has_code(value, codes))
         }
         Value::Array(values) => values.iter().any(|value| json_has_code(value, codes)),
+        _ => false,
+    }
+}
+
+fn json_has_truthy_key(value: &Value, key: &str) -> bool {
+    match value {
+        Value::Object(object) => {
+            object.get(key).and_then(Value::as_bool).unwrap_or(false)
+                || object.values().any(|value| json_has_truthy_key(value, key))
+        }
+        Value::Array(values) => values.iter().any(|value| json_has_truthy_key(value, key)),
         _ => false,
     }
 }
@@ -2005,10 +2045,9 @@ fn guard_close_blockers(
     let Some(summary) = context.guard_health.as_ref() else {
         return Vec::new();
     };
-    let record_watch_blocks = summary.selected_profile == IntegrationProfile::Record
-        && summary.session_watch_status == SessionWatchStatus::Active
+    let record_unrecorded_blocks = summary.selected_profile == IntegrationProfile::Record
         && summary.unresolved_unrecorded_change_count > 0;
-    if summary.selected_profile != IntegrationProfile::Observe && !record_watch_blocks {
+    if summary.selected_profile != IntegrationProfile::Observe && !record_unrecorded_blocks {
         return Vec::new();
     }
 
@@ -2115,6 +2154,25 @@ fn guard_close_blockers(
                 owner_method: Some(MethodName::PrepareWrite),
                 label: "Refresh write readiness before completing the Task.".to_owned(),
                 blocking_question: None,
+                required_refs: vec![task_ref.clone()],
+            }],
+        ));
+    }
+    if summary.write_ticket_path_scope_violation {
+        blockers.push(close_blocker(
+            CloseReadinessBlockerCategory::WriteCompatibility,
+            "guard_write_ticket_path_scope_violation",
+            "Host hook events observed a Product Repository path outside the active write ticket scope.",
+            vec![task_ref.clone()],
+            vec![NextActionSummary {
+                action_kind: NextActionKind::ReconcileChanges,
+                owner_method: Some(MethodName::ReconcileChanges),
+                label: "Reconcile the out-of-scope observed Product Repository change before completing the Task."
+                    .to_owned(),
+                blocking_question: Some(
+                    "Does the user accept the out-of-scope observed Product Repository change as intentional?"
+                        .to_owned(),
+                ),
                 required_refs: vec![task_ref],
             }],
         ));
@@ -2317,6 +2375,13 @@ fn terminal_close_blockers(
         ));
     }
 
+    blockers.extend(unresolved_write_ticket_close_blockers(
+        store,
+        project_state,
+        request,
+        now,
+    )?);
+
     match request.intent {
         CloseIntent::Cancel => {
             if let Some(blocker) =
@@ -2357,6 +2422,80 @@ fn terminal_close_blockers(
     }
 
     Ok(blockers)
+}
+
+fn unresolved_write_ticket_close_blockers(
+    store: &CoreProjectStore,
+    project_state: &ProjectStateHeader,
+    request: &CloseTaskRequest,
+    now: &UtcTimestamp,
+) -> Result<Vec<CloseReadinessBlocker>, PlanError> {
+    let mut blockers = Vec::new();
+    let task_ref = task_ref_for_close(request, project_state.state_version);
+    for record in store
+        .write_checks_for_task(&request.task_id)
+        .map_err(|error| {
+            PlanError::Response(Box::new(store_error_response(
+                &request.envelope,
+                project_state,
+                error,
+            )))
+        })?
+    {
+        let status = effective_write_check_status(
+            &record,
+            project_state.state_version,
+            Some(*now.as_datetime()),
+        )
+        .map_err(PlanError::Core)?;
+        match status {
+            WriteCheckStatus::Active => blockers.push(open_write_ticket_close_blocker(
+                task_ref.clone(),
+                write_check_ref(&record, project_state.state_version),
+            )),
+            WriteCheckStatus::Expired => blockers.push(close_blocker(
+                CloseReadinessBlockerCategory::WriteCompatibility,
+                "expired_write_ticket",
+                "An expired write ticket remains unresolved for this Task.",
+                vec![write_check_ref(&record, project_state.state_version)],
+                vec![NextActionSummary {
+                    action_kind: NextActionKind::ReconcileChanges,
+                    owner_method: Some(MethodName::ReconcileChanges),
+                    label: "Reconcile observed changes for the expired write ticket before close."
+                        .to_owned(),
+                    blocking_question: Some(
+                        "Does the user accept any observed Product Repository change after the expired write ticket?"
+                            .to_owned(),
+                    ),
+                    required_refs: vec![task_ref.clone()],
+                }],
+            )),
+            WriteCheckStatus::Stale
+            | WriteCheckStatus::Consumed
+            | WriteCheckStatus::Revoked => {}
+        }
+    }
+    Ok(blockers)
+}
+
+pub(super) fn open_write_ticket_close_blocker(
+    task_ref: StateRecordRef,
+    write_ticket_ref: StateRecordRef,
+) -> CloseReadinessBlocker {
+    close_blocker(
+        CloseReadinessBlockerCategory::WriteCompatibility,
+        "open_write_ticket",
+        "An open write ticket remains unresolved for this Task.",
+        vec![write_ticket_ref],
+        vec![NextActionSummary {
+            action_kind: NextActionKind::RecordRun,
+            owner_method: Some(MethodName::RecordRun),
+            label: "Record the ticket-backed run or reconcile observed changes before close."
+                .to_owned(),
+            blocking_question: None,
+            required_refs: vec![task_ref],
+        }],
+    )
 }
 
 fn pending_judgment_refs_for_close_operation(

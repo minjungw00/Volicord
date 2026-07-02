@@ -87,7 +87,7 @@ A committed non-dry-run result that has planned storage effects:
 
 A valid call with no storage mutations returns a read-only result and does not create a replay row, event, or state-version increment.
 
-At a session-bound method boundary, the runtime may run a bounded session-watch check before reconciliation planning. That diagnostic check can create a new unresolved unrecorded-change finding when an unexpected Product Repository snapshot change is not covered by expected-write correlation.
+At a session-bound method boundary, the runtime may run a bounded session-watch check before reconciliation planning. That diagnostic check can link an observation to one deterministic expected-write or active write-ticket match. It creates a new unresolved unrecorded-change finding when a Product Repository snapshot change is unmatched, out of ticket scope, or ambiguous.
 
 Dry run previews planned resolutions or pending judgments without creating refs, events, replay rows, user judgments, or resolution rows. Rejected attempts create no effects.
 
@@ -131,8 +131,8 @@ Core-owned deterministic bases:
 
 - `invalid_observation`: stored observation data is invalid for interpretation as Product Repository paths.
 - `not_product_change`: stored observation data contains no Product Repository path to reconcile.
-- `recorded_as_expected_write`: a recorded Run for the same Task already covers the observed Product Repository paths, or expected-write correlation for the same Task covers watcher-observed Product Repository paths.
-- `covered_by_write_readiness`: a consumed compatible write-ticket row for the same Task covers the observed Product Repository paths.
+- `recorded_as_expected_write`: a recorded Run for the same Task already covers the observed Product Repository paths, or deterministic expected-write correlation for the same Task covers watcher-observed Product Repository paths.
+- `covered_by_write_readiness`: one compatible consumed write-ticket row or one current active unexpired write-ticket row for the same Task deterministically covers the observed Product Repository paths.
 - `reverted`: a watcher-created finding is linked to a session-watch observation and the current Product Repository snapshot matches the stored watch baseline again.
 
 User-owned basis:
@@ -142,6 +142,8 @@ User-owned basis:
 Reserved or future owner-defined bases such as `superseded_by_new_observation` and any other listed basis may be stored only when their owner-defined verification is implemented. This method must not implement a filesystem-reverting or filesystem-probing basis unless that verification is safe and owner-defined.
 
 For findings that still require acceptance, Core creates pending `UserJudgment` rows rather than accepting them. Existing User Channel paths can answer those judgments, including MCP elicitation flows where the initialized client supports them, observe prompt-capture command handling when prompt-capture availability is `configured`, `observed`, or `active`, loopback local web consent when the adapter can safely expose it, and local `volicord user` commands for CLI recovery. After the user-owned judgment is resolved, `volicord.reconcile_changes` can resolve the linked finding with `accepted_by_user`.
+
+Core does not resolve ambiguous or unauthorized Product Repository changes through an agent-only dismissal. If more than one active write ticket could cover the paths, no active ticket covers the paths, the paths are outside ticket scope, or the stored finding needs user acceptance, reconciliation leaves the finding unresolved or creates a pending user-owned judgment.
 
 ## Rejected result
 

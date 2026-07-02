@@ -14277,6 +14277,169 @@ fn guarded_close_blocks_write_readiness_issue_from_guard_event() -> Result<(), B
 }
 
 #[test]
+fn guarded_close_blocks_write_ticket_path_scope_guard_event() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let guard_installation_id =
+        record_guard_installation(&harness, "guarded_path_scope", "observe", "active", "{}")?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "guarded_path_scope")?;
+    record_close_evidence(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        2,
+        "guarded_path_scope",
+        true,
+    )?;
+    insert_write_ticket_path_scope_guard_event(&harness, &guard_installation_id, "path_scope")?;
+
+    let response = harness.service.close_task(
+        close_task_request(CloseTaskFixture {
+            request_id: "req_check_guarded_path_scope",
+            idempotency_key: None,
+            dry_run: false,
+            expected_state_version: None,
+            task_id: &task_id,
+            intent: CloseIntent::Check,
+            close_reason: None,
+            superseding_task_id: None,
+        }),
+        invocation(OperationCategory::Read),
+    )?;
+
+    assert_eq!(response.response_value["close_state"], "blocked");
+    assert_close_blocker(
+        &response.response_value,
+        "guard_write_ticket_path_scope_violation",
+    );
+    assert_eq!(
+        response.response_value["guard_health"]["write_ticket_path_scope_violation"],
+        true
+    );
+    assert_eq!(
+        close_blocker_by_code(
+            &response.response_value,
+            "guard_write_ticket_path_scope_violation"
+        )["control_surface"]["os_enforced"],
+        false
+    );
+    Ok(())
+}
+
+#[test]
+fn reconcile_changes_resolves_deterministic_active_write_ticket() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    record_guard_installation(&harness, "reconcile_ticket", "observe", "active", "{}")?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "reconcile_ticket")?;
+    let prepare = harness.service.prepare_write(
+        prepare_write_request(
+            "req_reconcile_ticket_prepare",
+            "idem_reconcile_ticket_prepare",
+            Some(2),
+            Some(&task_id),
+            Some(&change_unit_id),
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let after_prepare = prepare.response_value["base"]["state_version"]
+        .as_u64()
+        .expect("prepare_write should report state_version");
+    let unrecorded_change_id =
+        insert_guarded_unrecorded_change(&harness, &task_id, "reconcile_ticket")?;
+
+    let response = harness.service.reconcile_changes(
+        reconcile_changes_request(
+            "req_reconcile_ticket",
+            "idem_reconcile_ticket",
+            Some(after_prepare),
+            &task_id,
+            Vec::new(),
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+
+    assert_eq!(
+        response.response_value["resolved_changes"][0]["resolution_basis"],
+        "covered_by_write_readiness"
+    );
+    let row = unrecorded_change_row(&harness, PROJECT_ID, &unrecorded_change_id)?;
+    assert_eq!(row.status, "resolved");
+    assert_eq!(
+        row_resolution(&row)["capture_basis"],
+        "core_deterministic_write_ticket"
+    );
+    Ok(())
+}
+
+#[test]
+fn close_check_blocks_open_and_expired_write_tickets() -> Result<(), Box<dyn Error>> {
+    let mut open_harness = MethodHarness::new()?;
+    open_harness.use_clock(ManualClock::at("2026-06-18T00:00:00Z"));
+    let (open_task_id, open_change_unit_id) =
+        create_task_with_change_unit(&open_harness, "open_ticket_close")?;
+    open_harness.service.prepare_write(
+        prepare_write_request(
+            "req_open_ticket_prepare",
+            "idem_open_ticket_prepare",
+            Some(2),
+            Some(&open_task_id),
+            Some(&open_change_unit_id),
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+
+    let open = open_harness.service.close_task(
+        close_task_request(CloseTaskFixture {
+            request_id: "req_open_ticket_close_check",
+            idempotency_key: None,
+            dry_run: false,
+            expected_state_version: None,
+            task_id: &open_task_id,
+            intent: CloseIntent::Check,
+            close_reason: None,
+            superseding_task_id: None,
+        }),
+        invocation(OperationCategory::Read),
+    )?;
+    assert_eq!(open.response_value["close_state"], "blocked");
+    assert_close_blocker(&open.response_value, "open_write_ticket");
+
+    let mut expired_harness = MethodHarness::new()?;
+    let clock = ManualClock::at("2026-06-18T00:00:00Z");
+    expired_harness.use_clock(clock.clone());
+    let (expired_task_id, expired_change_unit_id) =
+        create_task_with_change_unit(&expired_harness, "expired_ticket_close")?;
+    expired_harness.service.prepare_write(
+        prepare_write_request(
+            "req_expired_ticket_prepare",
+            "idem_expired_ticket_prepare",
+            Some(2),
+            Some(&expired_task_id),
+            Some(&expired_change_unit_id),
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    clock.advance(Duration::minutes(15));
+
+    let expired = expired_harness.service.close_task(
+        close_task_request(CloseTaskFixture {
+            request_id: "req_expired_ticket_close_check",
+            idempotency_key: None,
+            dry_run: false,
+            expected_state_version: None,
+            task_id: &expired_task_id,
+            intent: CloseIntent::Check,
+            close_reason: None,
+            superseding_task_id: None,
+        }),
+        invocation(OperationCategory::Read),
+    )?;
+    assert_eq!(expired.response_value["close_state"], "blocked");
+    assert_close_blocker(&expired.response_value, "expired_write_ticket");
+    assert_no_close_blocker(&expired.response_value, "open_write_ticket");
+    Ok(())
+}
+
+#[test]
 fn guarded_pending_judgment_displays_user_answer_paths() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     record_guard_installation(&harness, "guarded_pending", "observe", "active", "{}")?;
@@ -14447,8 +14610,7 @@ fn guarded_pending_judgment_uses_prompt_capture_guidance_when_mcp_unhealthy(
 }
 
 #[test]
-fn mcp_only_close_does_not_receive_guarded_unrecorded_change_blocker() -> Result<(), Box<dyn Error>>
-{
+fn mcp_only_close_blocks_unresolved_unrecorded_change() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     record_guard_installation(
         &harness,
@@ -14489,8 +14651,8 @@ fn mcp_only_close_does_not_receive_guarded_unrecorded_change_blocker() -> Result
         invocation(OperationCategory::AgentWorkflow),
     )?;
 
-    assert_eq!(response.response_value["close_state"], "closed");
-    assert_no_close_blocker(&response.response_value, "unresolved_unrecorded_changes");
+    assert_eq!(response.response_value["close_state"], "blocked");
+    assert_close_blocker(&response.response_value, "unresolved_unrecorded_changes");
     assert_no_close_blocker(&response.response_value, "guard_not_observed");
     assert_eq!(
         response.response_value["guard_health"]["selected_profile"],
@@ -14669,6 +14831,63 @@ fn guarded_expected_write_does_not_create_duplicate_watcher_blocker() -> Result<
         "active"
     );
     assert!(unresolved_changes_for_connection(&harness)?.is_empty());
+    Ok(())
+}
+
+#[test]
+fn guarded_watcher_links_deterministic_active_write_ticket() -> Result<(), Box<dyn Error>> {
+    let mut harness = MethodHarness::new()?;
+    harness.use_clock(ManualClock::at("2026-06-18T00:00:00Z"));
+    let guard_installation_id =
+        record_guard_installation(&harness, "watch_ticket", "observe", "active", "{}")?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "watch_ticket")?;
+    let prepare = harness.service.prepare_write(
+        prepare_write_request(
+            "req_watch_ticket_prepare",
+            "idem_watch_ticket_prepare",
+            Some(2),
+            Some(&task_id),
+            Some(&change_unit_id),
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let write_ticket_id = response_record_id(&prepare.response_value, "write_ticket_ref");
+    let session_id = "session_watch_ticket";
+    initialize_full_watch_baseline(&harness, session_id, &guard_installation_id, "ticket_seed")?;
+
+    write_product_file(&harness, "src/export.rs", "ticket-backed watcher change\n")?;
+    let response = harness.service.close_task(
+        close_task_request(CloseTaskFixture {
+            request_id: "req_watch_ticket_check",
+            idempotency_key: None,
+            dry_run: false,
+            expected_state_version: None,
+            task_id: &task_id,
+            intent: CloseIntent::Check,
+            close_reason: None,
+            superseding_task_id: None,
+        }),
+        invocation_with_session(OperationCategory::Read, session_id),
+    )?;
+
+    assert_eq!(response.response_value["close_state"], "blocked");
+    assert_close_blocker(&response.response_value, "open_write_ticket");
+    assert_no_close_blocker(&response.response_value, "unresolved_unrecorded_changes");
+    assert!(unresolved_changes_for_connection(&harness)?.is_empty());
+    let metadata: String = harness.conn()?.query_row(
+        "SELECT metadata_json
+           FROM session_watch_observations
+          WHERE project_id = ?1
+          ORDER BY observed_at DESC, watch_observation_id DESC
+          LIMIT 1",
+        [PROJECT_ID],
+        |row| row.get(0),
+    )?;
+    let metadata: Value = serde_json::from_str(&metadata)?;
+    assert_eq!(metadata["correlation_status"], "write_ticket");
+    assert_eq!(metadata["write_ticket_ids"], json!([write_ticket_id]));
+    assert_eq!(metadata["does_not_prevent_writes"], true);
+    assert_eq!(metadata["does_not_identify_actor"], true);
     Ok(())
 }
 
@@ -16091,6 +16310,44 @@ fn insert_write_readiness_guard_event(
             decision: "deny".to_owned(),
             subject_json: "{}".to_owned(),
             result_json: r#"{"reasons":[{"code":"write_readiness_missing"}]}"#.to_owned(),
+            occurred_at: "2026-06-30T00:06:00Z".to_owned(),
+            metadata_json: "{}".to_owned(),
+        },
+    )?;
+    Ok(())
+}
+
+fn insert_write_ticket_path_scope_guard_event(
+    harness: &MethodHarness,
+    guard_installation_id: &str,
+    suffix: &str,
+) -> Result<(), Box<dyn Error>> {
+    insert_guard_event(
+        &harness.runtime_home_path,
+        PROJECT_ID,
+        GuardEventInsert {
+            guard_event_id: format!("guard_event_{suffix}"),
+            session_id: None,
+            connection_internal_id: CONNECTION_ID.to_owned(),
+            guard_installation_id: Some(guard_installation_id.to_owned()),
+            event_kind: "pre_tool".to_owned(),
+            decision: "deny".to_owned(),
+            subject_json: "{}".to_owned(),
+            result_json: serde_json::to_string(&json!({
+                "reasons": [{
+                    "code": "write_ticket_path_scope_violation",
+                    "severity": "deny"
+                }],
+                "write_ticket_backing": {
+                    "status": "out_of_scope",
+                    "ticket_scope_violation": true,
+                    "observed_paths": ["src/other.rs"],
+                    "active_write_ticket_ids": ["write_check_scope_fixture"]
+                },
+                "disclosure": {
+                    "non_guarantees": ["NotFullWritePrevention", "NotActorAttributionProof", "NotOsSandbox"]
+                }
+            }))?,
             occurred_at: "2026-06-30T00:06:00Z".to_owned(),
             metadata_json: "{}".to_owned(),
         },

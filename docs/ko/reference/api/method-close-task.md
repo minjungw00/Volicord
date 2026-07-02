@@ -84,8 +84,9 @@ API 경계 블록:
 닫기 조건:
 
 - `intent=complete`는 사전 확인이 성공하고, 현재 `CurrentCloseBasis`에 대한 닫기 준비 상태 평가가 유효하며, 현재 닫기 근거 참조가 그 아티팩트 및 실행 기록 호환성 규칙을 만족하고, 닫기 차단 사유가 남아 있지 않을 때만 닫을 수 있습니다.
-- `observe` 프로필에서는 닫기 준비 상태가 hook 경로 안전성, prompt capture 사용 가능 사실, 해결되지 않은 미기록 Product Repository 변경, guard가 감지한 쓰기 준비 상태 문제, session watch 사용 가능성을 포함한 guard 상태도 확인합니다. `record` 프로필에서는 host hook이 요구되지 않습니다. 활성 session watch는 탐지 전용으로 남으며, watcher가 만든 해결되지 않은 미기록 변경 찾기는 조정으로 해결될 때까지 닫기를 막습니다.
-- Session watch 관찰은 Product Repository 쓰기를 막지 않으며 파일을 바꾼 행위자를 식별하지 않습니다. Product Repository 스냅샷 변경이 expected-write 상관관계로 덮이지 않았는지만 감지합니다.
+- 해당 `Task`의 쓰기 티켓이 아직 열려 있거나, active 쓰기 티켓이 해결 없이 만료되었거나, guard 또는 watcher 관찰이 티켓 범위 밖의 미해결 Product Repository 경로를 보고하면 닫기 준비 상태는 차단됩니다.
+- `observe` 프로필에서는 닫기 준비 상태가 hook 경로 안전성, prompt capture 사용 가능 사실, 해결되지 않은 미기록 Product Repository 변경, guard가 감지한 쓰기 티켓 문제, session watch 사용 가능성을 포함한 guard 상태도 확인합니다. `record` 프로필에서는 host hook이 요구되지 않습니다. 해결되지 않은 미기록 Product Repository 변경은 조정으로 해결될 때까지 닫기를 막습니다.
+- Host hook과 session watch 관찰은 Product Repository 쓰기를 막지 않으며 파일을 바꾼 행위자를 식별하지 않습니다. 협력형 탐지와 expected-write 또는 쓰기 티켓 기록에 대한 상관 관계만 지원합니다.
 - 필요한 닫기 증거는 현재 닫기 근거에 맞고 주장과 일치하는 증거 관찰 출처로 뒷받침되어야 합니다. 더 강한 출처가 필요한 닫기 요구사항에는 확인되지 않은 주장, 출처 없는 증거, 오래된 출처, 협력적 에이전트 보고만으로 된 증거가 충분하지 않습니다.
 - `intent=cancel`은 `machine_action=accept`, `resolution_outcome=accepted`, `resolved_by_actor_source=local_user`, 호환 User Channel 출처, `Task`, 현재 범위 리비전, 현재 적용 Change Unit에 묶인 근거를 가진 현재 수락된 취소 판단을 요구합니다. 완료 전용 증거, 최종 수락, 잔여 위험 수락은 필요하지 않습니다.
 - `intent=supersede`는 요청한 종료 경로를 평가합니다. 증거 충분성, 최종 수락, 잔여 위험 수락이 아닙니다.
@@ -220,6 +221,8 @@ CloseTaskRequest:
 | `pending_user_judgment` | `pending_user_judgment` | 필요한 사용자 소유 판단이 아직 대기 중이거나 해결되지 않았습니다. |
 | `missing_sensitive_approval` | `sensitive_approval` | 필요한 별도 민감 동작 승인이 없습니다. |
 | `missing_cancellation_authority` | `user_judgment` | `intent=cancel`에 현재 `Task`, 범위 리비전, Change Unit에 묶이고 `resolved_by_actor_source=local_user`, 호환 User Channel 출처를 가진 현재 수락된 사용자 취소 판단이 없습니다. |
+| `open_write_ticket` | `write_compatibility` | 선택된 `Task`의 쓰기 티켓이 열려 있고 아직 해결되지 않았습니다. |
+| `expired_write_ticket` | `write_compatibility` | 선택된 `Task`의 쓰기 티켓이 해결되지 않은 상태로 만료되었습니다. |
 | `write_check_stale` | `write_compatibility` | 닫기 관련 쓰기 티켓 호환성 행이 `STATE_VERSION_CONFLICT`로 처리되지 않는 최신성 사유로 사용할 수 없습니다. |
 | `baseline_stale` | `baseline` | 닫기 관련 기준선 근거가 차단 사유 생성 경로에서 오래되었습니다. |
 | `guard_not_installed` | `connection_capability` | observe 닫기 경로에 확인된 연결에 대해 사용할 수 있는 guard 설치가 기록되어 있지 않습니다. |
@@ -231,8 +234,9 @@ CloseTaskRequest:
 | `guard_degraded` | `connection_capability` | observe 닫기 경로에 더 구체적인 guard 차단 사유로 처리되지 않는 degraded guard 설정 또는 건강 상태가 있고 현재 guard policy가 degraded 상태에서 닫기를 차단합니다. |
 | `guard_connection_unhealthy` | `connection_capability` | observe 닫기 경로에 건강하지 않은 Agent Connection 상태 사실이 있습니다. |
 | `session_watch_unavailable` | `connection_capability` | observe 닫기 경로에 Product Repository session-watch coverage가 필요하지만 선택된 watcher 상태가 `disabled`, `degraded`, `unavailable`이거나 활성 상태이면서 부분 coverage 경고가 있습니다. |
-| `unresolved_unrecorded_changes` | `connection_capability` | guard 기록 또는 활성 session-watch 기록에 닫기 전에 조정해야 하는 해결되지 않은 미기록 Product Repository 변경이 있습니다. 이 차단 사유는 `owner_method=volicord.reconcile_changes`인 `next_actions`를 포함하며, `can_resolve_in_chat`은 현재 경로가 채팅 매개 사용자 경로로 진행할 수 있는지를 나타냅니다. |
-| `guard_write_readiness_missing_or_stale` | `write_compatibility` | guard 이벤트가 닫기 경로에 누락되었거나 오래된 쓰기 준비 상태를 감지했습니다. |
+| `unresolved_unrecorded_changes` | `connection_capability` | Guard 건강 상태가 닫기 전에 조정해야 하는 해결되지 않은 미기록 Product Repository 변경을 보고합니다. 이 차단 사유는 `owner_method=volicord.reconcile_changes`인 `next_actions`를 포함하며, `can_resolve_in_chat`은 현재 경로가 채팅 매개 사용자 경로로 진행할 수 있는지를 나타냅니다. |
+| `guard_write_readiness_missing_or_stale` | `write_compatibility` | guard 이벤트가 닫기 경로에 누락되었거나, 결정할 수 없거나, 모호하거나, 오래된 쓰기 티켓 준비 상태를 감지했습니다. |
+| `guard_write_ticket_path_scope_violation` | `write_compatibility` | guard 이벤트가 active 쓰기 티켓 범위 밖의 Product Repository 경로를 관찰했습니다. |
 | `evidence_claim_unsupported` | `evidence_claim` | 필요한 닫기 주장이 지원되는 증거 범위를 갖지 못했습니다. |
 | `evidence_claim_missing` | `evidence_claim` | 필요한 닫기 주장에 대한 현재 증거 범위 기록이 없습니다. |
 | `evidence_provenance_insufficient` | `evidence_provenance` | 필요한 닫기 증거는 있지만 충분한 현재 출처와 보장 수준 출처가 없습니다. |
@@ -271,7 +275,7 @@ CloseTaskRequest:
 | 분기 | 생성 규칙 |
 |---|---|
 | `intent=check` | 현재 닫기 준비 상태 차단 사유를 응답 관찰 데이터로 반환합니다. |
-| `intent=complete` | 완료 경로가 닫기 준비 상태 평가에 도달했고 담당 문서가 정의한 닫기 요구사항이 해결되지 않았을 때 닫기 차단 사유를 만듭니다. `observe` 프로필에서는 guard 상태, 해결되지 않은 미기록 변경, session watch, guard가 감지한 쓰기 준비 상태 차단 사유도 포함합니다. `record` 프로필에서는 watcher가 만든 해결되지 않은 미기록 변경 찾기도 watcher가 활성일 때 닫기를 막고, 부분 watcher coverage는 다른 담당 policy가 차단하지 않는 한 guard-health 경고로 남습니다. |
+| `intent=complete` | 완료 경로가 닫기 준비 상태 평가에 도달했고 담당 문서가 정의한 닫기 요구사항이 해결되지 않았을 때 닫기 차단 사유를 만듭니다. 여기에는 열려 있거나 만료된 미해결 쓰기 티켓, 해결되지 않은 미기록 변경 찾기, guard 상태, session watch, guard가 감지한 쓰기 티켓 차단 사유가 포함됩니다. 부분 watcher coverage는 다른 담당 policy가 차단하지 않는 한 guard-health 경고로 남습니다. |
 | `intent=cancel` | 취소 권한 누락이나 비호환을 포함해 취소 전용 종료 제약에 대해서만 차단 사유를 만듭니다. 완료 전용 증거, 최종 수락, 잔여 위험 공백은 그 자체로 취소를 막지 않습니다. |
 | `intent=supersede` | 대체 전용 종료 제약에 대해서만 차단 사유를 만듭니다. 완료 전용 증거, 최종 수락, 잔여 위험 공백은 그 자체로 대체를 막지 않습니다. |
 
@@ -282,6 +286,7 @@ CloseTaskRequest:
 - `STATE_VERSION_CONFLICT`는 거절 응답 `ErrorCode`이며 메서드 로컬 차단 사유 코드나 결정 코드가 아닙니다.
 - 차단 사유 범주는 사용자 판단, 승인, 증거, 아티팩트 가용성, 최종 수락, 잔여 위험 수락, 복구 상태 자체를 만들지 않습니다.
 - 닫기 준비 상태는 정확성 증명, 테스트 충분성 증명, 인간 검토 대체가 아닙니다. `CloseTaskResult.base.disclosure.non_guarantees`는 `NotCorrectnessProof`, `NotTestSufficiencyProof`, `NotHumanReviewReplacement`를 포함해야 합니다.
+- Guard와 watcher 차단 사유는 완전한 쓰기 방지, 행위자 귀속, OS 샌드박싱, OS 수준 파일시스템 집행을 주장하지 않습니다.
 - 확인되지 않은 주장, 출처가 빠진 증거, 오래된 관찰 출처, 협력적 에이전트 보고는 증거 이력으로 기록될 수 있지만, 닫기 경로가 더 강한 출처를 요구할 때 필요한 닫기 증거를 만족하지 않습니다.
 - 거절, 연기, 오래됨, 대체됨, 만료됨, 유효하지 않은 근거, 에이전트가 기록함, 출처 누락, 결과 없음 취소 판단은 취소를 허용하지 않습니다.
 

@@ -159,6 +159,7 @@ GuardHealthSummary:
   session_watch_detail: string | null
   unresolved_unrecorded_change_count: integer
   missing_or_stale_write_readiness: boolean
+  write_ticket_path_scope_violation: boolean
 ```
 
 Meaning:
@@ -184,7 +185,8 @@ Meaning:
 - `session_watch_partial_coverage_warning` is a human-readable warning when Product Repository changes before the recorded coverage start are outside watcher coverage.
 - `session_watch_detail` is a short diagnostic detail for the selected watcher state, or `null` when no detail is available.
 - `unresolved_unrecorded_change_count` is a count of unresolved unrecorded Product Repository changes. It does not expose prompt text, command text, or path lists.
-- `missing_or_stale_write_readiness` reports whether guard events detected missing or stale write readiness.
+- `missing_or_stale_write_readiness` reports whether guard events detected missing, indeterminate, ambiguous, or stale write-ticket readiness.
+- `write_ticket_path_scope_violation` reports whether guard events observed a Product Repository path outside the active write-ticket scope.
 
 Does not imply:
 - `control_surface` is not proof of correctness, review completion, test sufficiency, OS-level enforcement, or write prevention.
@@ -192,7 +194,7 @@ Does not imply:
 - An active guard summary does not replace evidence, artifact integrity, user-owned judgment, write-ticket, final acceptance, or residual-risk acceptance requirements.
 - Session watch status and coverage metadata do not mean Volicord prevented a write, identified the actor who changed a file, stored file contents, or provided OS-level enforcement.
 - When `session_watch_partial_coverage_warning` is non-null, Product Repository changes before `session_watch_coverage_start_at` remain outside session-watch coverage.
-- `record` profile remains cooperative except that unresolved watcher-created unrecorded-change findings block close while an active session watch is selected.
+- `record` profile remains cooperative. Unresolved unrecorded-change findings still block close when guard health reports them.
 - `observe` profile does not prevent all writes, identify the actor who changed a file, isolate the network, or provide a sandbox.
 
 Owner links:

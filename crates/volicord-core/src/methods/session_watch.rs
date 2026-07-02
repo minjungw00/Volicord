@@ -1,5 +1,6 @@
-use std::path::PathBuf;
+use std::{collections::BTreeSet, path::PathBuf};
 
+use chrono::{DateTime, Utc};
 use volicord_store::{
     guards::{
         list_expected_writes_for_connection, list_unresolved_unrecorded_changes,
@@ -161,13 +162,14 @@ pub(super) fn run_session_watch_check(
         .iter()
         .map(|change| change.path.clone())
         .collect::<Vec<_>>();
-    let expected_write = expected_write_covering_paths(
+    let correlation = watch_write_correlation(
         store,
         verified_invocation.project_id.as_str(),
         connection_id.as_str(),
         Some(session_id),
         task_id,
         &observed_paths,
+        *now.as_datetime(),
     )?;
     let observation_id = stable_watch_id(
         "watch_obs",
@@ -183,7 +185,8 @@ pub(super) fn run_session_watch_check(
         WatchObservationInsert {
             watch_observation_id: observation_id,
             watch_baseline_id: baseline.watch_baseline_id.clone(),
-            expected_write_id: expected_write
+            expected_write_id: correlation
+                .expected_write
                 .as_ref()
                 .map(|write| write.expected_write_id.clone()),
             snapshot: current.clone(),
@@ -192,11 +195,8 @@ pub(super) fn run_session_watch_check(
             metadata_json: serde_json::to_string(&json!({
                 "schema_version": 1,
                 "source": WATCH_METADATA_SOURCE,
-                "correlation_status": if expected_write.is_some() {
-                    "expected_write"
-                } else {
-                    "unexpected_product_file_change"
-                },
+                "correlation_status": correlation.status.clone(),
+                "write_ticket_ids": correlation.write_ticket_ids.clone(),
                 "detector_role": "detective",
                 "does_not_prevent_writes": true,
                 "does_not_identify_actor": true
@@ -204,7 +204,7 @@ pub(super) fn run_session_watch_check(
         },
     )
     .map_err(CorePipelineError::from)?;
-    if expected_write.is_none() {
+    if !correlation.deterministically_linked {
         if let Some(existing_change) = existing_unrecorded_change_covering_paths(
             store,
             verified_invocation.project_id.as_str(),
@@ -230,6 +230,8 @@ pub(super) fn run_session_watch_check(
                 &observation,
                 &current,
                 &observed_paths,
+                &correlation.status,
+                &correlation.write_ticket_ids,
                 now,
             )?;
         }
@@ -511,6 +513,8 @@ fn insert_unrecorded_change_for_observation(
     observation: &WatchObservationRecord,
     snapshot: &WatchSnapshot,
     observed_paths: &[String],
+    correlation_status: &str,
+    write_ticket_ids: &[String],
     now: &UtcTimestamp,
 ) -> CoreResult<()> {
     let change_id = stable_watch_id(
@@ -540,7 +544,8 @@ fn insert_unrecorded_change_for_observation(
                 "baseline_snapshot_digest": baseline.snapshot_digest,
                 "snapshot_algorithm": snapshot.algorithm,
                 "snapshot_digest": snapshot.digest,
-                "correlation_status": "unexpected_product_file_change",
+                "correlation_status": correlation_status,
+                "write_ticket_ids": write_ticket_ids,
                 "detector_role": "detective",
                 "does_not_prevent_writes": true,
                 "does_not_identify_actor": true
@@ -566,6 +571,124 @@ fn insert_unrecorded_change_for_observation(
     Ok(())
 }
 
+struct WatchWriteCorrelation {
+    status: String,
+    expected_write: Option<ExpectedWriteRecord>,
+    write_ticket_ids: Vec<String>,
+    deterministically_linked: bool,
+}
+
+fn watch_write_correlation(
+    store: &CoreProjectStore,
+    project_id: &str,
+    connection_internal_id: &str,
+    session_id: Option<&str>,
+    task_id: Option<&TaskId>,
+    observed_paths: &[String],
+    now: DateTime<Utc>,
+) -> CoreResult<WatchWriteCorrelation> {
+    let expected_matches = expected_writes_covering_paths(
+        store,
+        project_id,
+        connection_internal_id,
+        session_id,
+        task_id,
+        observed_paths,
+    )?;
+    if expected_matches.len() == 1 {
+        let expected_write = expected_matches.into_iter().next().expect("length checked");
+        return Ok(WatchWriteCorrelation {
+            status: "expected_write".to_owned(),
+            write_ticket_ids: decode_json_string_array(
+                "expected_writes",
+                &expected_write.expected_write_id,
+                "write_check_ids_json",
+                &expected_write.write_check_ids_json,
+            )?,
+            expected_write: Some(expected_write),
+            deterministically_linked: true,
+        });
+    }
+    if expected_matches.len() > 1 {
+        let mut write_ticket_ids = BTreeSet::new();
+        for write in &expected_matches {
+            write_ticket_ids.extend(decode_json_string_array(
+                "expected_writes",
+                &write.expected_write_id,
+                "write_check_ids_json",
+                &write.write_check_ids_json,
+            )?);
+        }
+        return Ok(WatchWriteCorrelation {
+            status: "ambiguous_expected_write".to_owned(),
+            expected_write: None,
+            write_ticket_ids: write_ticket_ids.into_iter().collect(),
+            deterministically_linked: false,
+        });
+    }
+
+    let active_ticket_matches =
+        active_write_tickets_covering_paths(store, task_id, observed_paths, now)?;
+    if active_ticket_matches.len() == 1 {
+        return Ok(WatchWriteCorrelation {
+            status: "write_ticket".to_owned(),
+            expected_write: None,
+            write_ticket_ids: vec![active_ticket_matches[0].write_check_id.clone()],
+            deterministically_linked: true,
+        });
+    }
+    if active_ticket_matches.len() > 1 {
+        return Ok(WatchWriteCorrelation {
+            status: "ambiguous_write_ticket".to_owned(),
+            expected_write: None,
+            write_ticket_ids: active_ticket_matches
+                .iter()
+                .map(|record| record.write_check_id.clone())
+                .collect(),
+            deterministically_linked: false,
+        });
+    }
+
+    Ok(WatchWriteCorrelation {
+        status: "unexpected_product_file_change".to_owned(),
+        expected_write: None,
+        write_ticket_ids: Vec::new(),
+        deterministically_linked: false,
+    })
+}
+
+fn active_write_tickets_covering_paths(
+    store: &CoreProjectStore,
+    task_id: Option<&TaskId>,
+    observed_paths: &[String],
+    now: DateTime<Utc>,
+) -> CoreResult<Vec<WriteCheckRecord>> {
+    let Some(task_id) = task_id else {
+        return Ok(Vec::new());
+    };
+    let project_state = store.project_state()?;
+    let mut matches = Vec::new();
+    for record in store.active_write_checks(task_id)? {
+        if record.basis_state_version != project_state.state_version
+            || write_check_is_expired(&record, now)?
+        {
+            continue;
+        }
+        let attempt_scope: WriteCheckAttemptScope = decode_required_json(
+            "write_checks",
+            record.write_check_id.clone(),
+            "attempt_scope_json",
+            Some(&record.attempt_scope_json),
+        )?;
+        if attempt_scope.product_file_write_intended
+            && paths_are_authorized(observed_paths, &attempt_scope.intended_paths)
+        {
+            matches.push(record);
+        }
+    }
+    Ok(matches)
+}
+
 fn expected_write_covering_paths(
     store: &CoreProjectStore,
     project_id: &str,
@@ -574,12 +697,35 @@ fn expected_write_covering_paths(
     task_id: Option<&TaskId>,
     observed_paths: &[String],
 ) -> CoreResult<Option<ExpectedWriteRecord>> {
+    let matches = expected_writes_covering_paths(
+        store,
+        project_id,
+        connection_internal_id,
+        session_id,
+        task_id,
+        observed_paths,
+    )?;
+    Ok(match matches.as_slice() {
+        [write] => Some(write.clone()),
+        _ => None,
+    })
+}
+
+fn expected_writes_covering_paths(
+    store: &CoreProjectStore,
+    project_id: &str,
+    connection_internal_id: &str,
+    session_id: Option<&str>,
+    task_id: Option<&TaskId>,
+    observed_paths: &[String],
+) -> CoreResult<Vec<ExpectedWriteRecord>> {
     let writes = list_expected_writes_for_connection(
         store.runtime_home(),
         project_id,
         connection_internal_id,
     )
     .map_err(CorePipelineError::from)?;
+    let mut matches = Vec::new();
     for write in writes {
         if let Some(write_session_id) = write.session_id.as_deref() {
             if Some(write_session_id) != session_id {
@@ -591,10 +737,10 @@ fn expected_write_covering_paths(
         }
         let authorized_paths = expected_write_paths(&write)?;
         if paths_are_authorized(observed_paths, &authorized_paths) {
-            return Ok(Some(write));
+            matches.push(write);
         }
     }
-    Ok(None)
+    Ok(matches)
 }
 
 fn expected_write_paths(write: &ExpectedWriteRecord) -> CoreResult<Vec<String>> {

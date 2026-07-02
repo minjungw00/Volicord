@@ -628,7 +628,8 @@ Committed `dry_run=false` may:
 - first run a bounded session-watch check for a session-bound Agent Connection
   and create or update `agent_sessions`, `session_watch_baselines`,
   `session_watch_observations`, and watcher-created `unrecorded_changes` when
-  Product Repository changes are not covered by expected-write correlation
+  Product Repository changes are not deterministically covered by expected-write
+  or active write-ticket correlation
 - set unresolved `unrecorded_changes` rows to `status='resolved'`
 - store resolution JSON that names the resolution basis, capture basis, resolved method, and optional linked user-judgment ref
 - store `resolved_at` and `resolved_by_actor_source`
@@ -674,8 +675,8 @@ Read-only calls:
 For a session-bound Agent Connection and `dry_run=false`, the check may first
 run a bounded session-watch check and create or update `agent_sessions`,
 `session_watch_baselines`, `session_watch_observations`, and watcher-created
-`unrecorded_changes` when Product Repository changes are not covered by
-expected-write correlation. These diagnostic effects do not append authority events,
+`unrecorded_changes` when Product Repository changes are not deterministically
+covered by expected-write or active write-ticket correlation. These diagnostic effects do not append authority events,
 create blocker rows, mutate close state, or increment
 `project_state.state_version`. If this check creates the first watcher
 baseline, the coverage basis is `method_boundary` and earlier Product

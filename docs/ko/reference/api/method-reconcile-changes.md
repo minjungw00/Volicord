@@ -87,7 +87,7 @@ UnrecordedChangeResolutionRequest:
 
 저장 변경이 없는 유효한 호출은 읽기 전용 결과를 반환하며 replay 행, event, 상태 버전 증가를 만들지 않습니다.
 
-Session에 묶인 메서드 경계에서는 조정 계획 전에 런타임이 한정된 session-watch 확인을 실행할 수 있습니다. 이 진단 확인은 예기치 않은 Product Repository 스냅샷 변경이 expected-write 상관관계로 덮이지 않으면 새로운 해결되지 않은 미기록 변경 찾기를 만들 수 있습니다.
+Session에 묶인 메서드 경계에서는 조정 계획 전에 런타임이 한정된 session-watch 확인을 실행할 수 있습니다. 이 진단 확인은 관찰을 하나의 결정적 expected-write 또는 active 쓰기 티켓 매칭에 연결할 수 있습니다. Product Repository 스냅샷 변경이 매칭되지 않았거나, 티켓 범위 밖이거나, 모호하면 새로운 해결되지 않은 미기록 변경 찾기를 만듭니다.
 
 Dry run은 계획된 해결이나 대기 판단을 미리 보여 줄 뿐 ref, event, replay 행, 사용자 판단, 해결 행을 만들지 않습니다. 거절된 시도는 효과를 만들지 않습니다.
 
@@ -131,8 +131,8 @@ Core 소유 결정적 basis:
 
 - `invalid_observation`: 저장된 관찰 데이터를 Product Repository 경로로 해석할 수 없습니다.
 - `not_product_change`: 저장된 관찰 데이터에 조정할 Product Repository 경로가 없습니다.
-- `recorded_as_expected_write`: 같은 `Task`의 기록된 Run이 관찰된 Product Repository 경로를 이미 덮거나, 같은 `Task`의 expected-write 상관관계가 watcher가 관찰한 Product Repository 경로를 덮습니다.
-- `covered_by_write_readiness`: 같은 `Task`의 소비된 호환 쓰기 티켓 행이 관찰된 Product Repository 경로를 덮습니다.
+- `recorded_as_expected_write`: 같은 `Task`의 기록된 Run이 관찰된 Product Repository 경로를 이미 덮거나, 같은 `Task`의 결정적 expected-write 상관관계가 watcher가 관찰한 Product Repository 경로를 덮습니다.
+- `covered_by_write_readiness`: 같은 `Task`의 호환되는 소비된 쓰기 티켓 행 하나 또는 현재 active이고 만료되지 않은 쓰기 티켓 행 하나가 관찰된 Product Repository 경로를 결정적으로 덮습니다.
 - `reverted`: watcher가 만든 찾기가 session-watch 관찰에 연결되어 있고 현재 Product Repository 스냅샷이 저장된 watch baseline과 다시 일치합니다.
 
 사용자 소유 basis:
@@ -142,6 +142,8 @@ Core 소유 결정적 basis:
 `superseded_by_new_observation` 같은 예약 또는 향후 담당자 정의 basis와 그 밖의 나열된 basis는 담당자가 정의한 검증이 구현된 경우에만 저장할 수 있습니다. 이 메서드는 그 검증이 안전하고 담당자가 정의하지 않은 한 파일시스템 되돌리기나 파일시스템 탐색 basis를 구현하면 안 됩니다.
 
 아직 수락이 필요한 찾기에 대해 Core는 이를 수락하지 않고 대기 `UserJudgment` 행을 만듭니다. 기존 User Channel 경로는 이 판단에 답할 수 있습니다. 여기에는 초기화된 클라이언트가 지원하는 경우 MCP elicitation 흐름, prompt-capture 사용 가능 상태가 `configured`, `observed`, `active`일 때의 observe prompt-capture 명령 처리, adapter가 안전하게 노출할 수 있을 때의 loopback local web consent, CLI 복구용 로컬 `volicord user` 명령이 포함됩니다. 사용자 소유 판단이 해결된 뒤 `volicord.reconcile_changes`는 연결된 찾기를 `accepted_by_user`로 해결할 수 있습니다.
+
+Core는 모호하거나 허가되지 않은 Product Repository 변경을 에이전트만의 dismissal로 해결하지 않습니다. 둘 이상의 active 쓰기 티켓이 경로를 덮을 수 있거나, active 티켓이 경로를 덮지 않거나, 경로가 티켓 범위 밖이거나, 저장된 찾기에 사용자 수락이 필요하면 조정은 찾기를 미해결로 남기거나 대기 사용자 소유 판단을 만듭니다.
 
 ## 거절 결과
 

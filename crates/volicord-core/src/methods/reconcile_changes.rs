@@ -275,16 +275,18 @@ fn plan_reconcile_changes(
             }
         }
 
-        if let Some(candidate) =
-            deterministic_resolution(store, record, &request.task_id, &runs, &write_checks)?
-                .or_else(|| {
-                    accepted_resolution_candidate(
-                        &unrecorded_ref,
-                        &resolved_authorities,
-                        &request.task_id,
-                    )
-                })
-        {
+        if let Some(candidate) = deterministic_resolution(
+            store,
+            record,
+            &request.task_id,
+            &runs,
+            &write_checks,
+            project_state.state_version,
+            *now.as_datetime(),
+        )?
+        .or_else(|| {
+            accepted_resolution_candidate(&unrecorded_ref, &resolved_authorities, &request.task_id)
+        }) {
             planned_resolutions.push(PlannedResolution {
                 record: record.clone(),
                 basis: candidate.basis,
@@ -561,6 +563,8 @@ fn deterministic_resolution(
     task_id: &TaskId,
     runs: &[RunObservedChangesRecord],
     write_checks: &[WriteCheckRecord],
+    state_version: u64,
+    now: DateTime<Utc>,
 ) -> CoreResult<Option<ResolutionCandidate>> {
     let observed_paths = match observed_paths(record) {
         Ok(paths) => paths,
@@ -595,10 +599,8 @@ fn deterministic_resolution(
     {
         return Ok(Some(candidate));
     }
+    let mut active_matches = Vec::new();
     for write_check in write_checks {
-        if write_check.status != "consumed" || write_check.consumed_by_run_id.is_none() {
-            continue;
-        }
         let attempt_scope: WriteCheckAttemptScope = decode_required_json(
             "write_checks",
             write_check.write_check_id.clone(),
@@ -608,11 +610,25 @@ fn deterministic_resolution(
         if attempt_scope.product_file_write_intended
             && paths_are_authorized(&observed_paths, &attempt_scope.intended_paths)
         {
-            return Ok(Some(system_resolution(
-                UnrecordedChangeResolutionBasis::CoveredByWriteReadiness,
-                "core_deterministic_write_readiness",
-            )));
+            if write_check.status == "consumed" && write_check.consumed_by_run_id.is_some() {
+                return Ok(Some(system_resolution(
+                    UnrecordedChangeResolutionBasis::CoveredByWriteReadiness,
+                    "core_deterministic_write_readiness",
+                )));
+            }
+            if write_check.status == "active"
+                && write_check.basis_state_version == state_version
+                && !write_check_is_expired(write_check, now)?
+            {
+                active_matches.push(write_check.write_check_id.clone());
+            }
         }
+    }
+    if active_matches.len() == 1 {
+        return Ok(Some(system_resolution(
+            UnrecordedChangeResolutionBasis::CoveredByWriteReadiness,
+            "core_deterministic_write_ticket",
+        )));
     }
     Ok(None)
 }

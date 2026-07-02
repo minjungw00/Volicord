@@ -625,7 +625,8 @@ watch 비교를 실행하거나, `session_watch_observations`를 만들거나,
 커밋되는 `dry_run=false` 호출은 다음을 수행할 수 있습니다.
 
 - 세션에 연결된 Agent Connection에 대해 제한된 세션 watch 점검을 먼저 실행하고,
-  Product Repository 변경이 expected-write 상관 관계로 포함되지 않을 때
+  Product Repository 변경이 expected-write 또는 active 쓰기 티켓 상관 관계로
+  결정적으로 포함되지 않을 때
   `agent_sessions`, `session_watch_baselines`, `session_watch_observations`,
   watcher가 만든 `unrecorded_changes`를 만들거나 갱신할 수 있습니다.
 - 미해결 `unrecorded_changes` 행을 `status='resolved'`로 설정합니다.
@@ -671,8 +672,8 @@ watch 비교를 실행하거나, `session_watch_observations`를 만들거나,
 - `project_state.state_version`을 증가시키지 않습니다.
 
 세션에 연결된 Agent Connection이고 `dry_run=false`이면, 이 점검은 제한된 세션
-watch 점검을 먼저 실행하고 Product Repository 변경이 expected-write 상관 관계로
-포함되지 않을 때 `agent_sessions`, `session_watch_baselines`,
+watch 점검을 먼저 실행하고 Product Repository 변경이 expected-write 또는 active
+쓰기 티켓 상관 관계로 결정적으로 포함되지 않을 때 `agent_sessions`, `session_watch_baselines`,
 `session_watch_observations`, watcher가 만든 `unrecorded_changes`를 만들거나
 갱신할 수 있습니다. 이러한 진단 효과는 권한 이벤트를 추가하거나, 차단 사유
 행을 만들거나, 닫기 상태를 변경하거나, `project_state.state_version`을 증가시키지

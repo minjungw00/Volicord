@@ -37,7 +37,7 @@ use volicord_types::{
     JudgmentResolutionOutcome, OperationCategory, PersistedJudgmentBasis,
     PersistedUserJudgmentRequest, ProjectId, PromptCaptureStatus, RequestId,
     SessionWatchCoverageBasis, StatusInclude, StatusRequest, TaskId, ToolEnvelope,
-    UserJudgmentOption, UserJudgmentOptionAction, UtcTimestamp,
+    UserJudgmentOption, UserJudgmentOptionAction, UtcTimestamp, WriteCheckAttemptScope,
     VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING, VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
 };
 
@@ -241,6 +241,7 @@ struct GuardStateSummary {
     prompt_capture_enabled: bool,
     current_write_check_ids: Vec<String>,
     stale_write_check_ids: Vec<String>,
+    active_write_tickets: Vec<ActiveWriteTicketSummary>,
     pending_user_judgment_count: usize,
     pending_user_judgments: Vec<GuardPendingJudgmentSummary>,
     active_blocker_count: usize,
@@ -266,6 +267,14 @@ struct GuardPendingJudgmentOptionSummary {
     machine_action: String,
     resolution_outcome: String,
     instruction: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ActiveWriteTicketSummary {
+    write_ticket_id: String,
+    change_unit_id: Option<String>,
+    intended_paths: Vec<String>,
+    expires_at: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -319,11 +328,13 @@ struct GuardReason {
 struct ExpectedWriteCandidate {
     insert: ExpectedWriteInsert,
     expected_paths: Vec<String>,
+    write_ticket: ActiveWriteTicketSummary,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct PostToolCorrelation {
     matched_expected_writes: Vec<Value>,
+    ticket_backed_observations: Vec<Value>,
     unrecorded_changes: Vec<Value>,
 }
 
@@ -345,6 +356,35 @@ enum ExpectedWriteMatchOutcome {
     NoCandidates,
     OutOfScope(Vec<String>),
     Ambiguous(Vec<String>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ActiveWriteTicketMatchOutcome {
+    Matched(ActiveWriteTicketSummary),
+    NoActiveTickets,
+    OutOfScope(Vec<String>),
+    Ambiguous(Vec<String>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum WriteTicketCoverage {
+    NotWriteLike,
+    TicketBacked {
+        ticket: ActiveWriteTicketSummary,
+        observed_paths: Vec<String>,
+    },
+    NoObservedPaths,
+    NoActiveTickets {
+        observed_paths: Vec<String>,
+    },
+    OutOfScope {
+        observed_paths: Vec<String>,
+        active_ticket_ids: Vec<String>,
+    },
+    Ambiguous {
+        observed_paths: Vec<String>,
+        matching_ticket_ids: Vec<String>,
+    },
 }
 
 pub fn guard_usage() -> String {
@@ -429,6 +469,11 @@ where
             let summary = guard_state_summary(&runtime_home, &project, &envelope, &input)?;
             let observation = tool_observation(&input.raw_value, &project.repo_root);
             let (decision, reasons) = pre_tool_decision(&summary, &observation, &input.raw_value);
+            let write_ticket_backing = if tool_attempts_product_write(&observation) {
+                write_ticket_backing_json(write_ticket_coverage(&summary, &observation))
+            } else {
+                write_ticket_backing_json(WriteTicketCoverage::NotWriteLike)
+            };
             let expected_write = expected_write_candidate(
                 &project,
                 &envelope,
@@ -448,6 +493,7 @@ where
                     "allowed": decision != GuardDecision::Deny,
                     "reasons": reasons_json(&reasons),
                     "tool": tool_observation_json(&observation),
+                    "write_ticket_backing": write_ticket_backing,
                     "expected_write": expected_write_json,
                     "context": context_json(&summary),
                     "enforcement_level": "cooperative_detective"
@@ -477,6 +523,7 @@ where
                     "allowed": true,
                     "tool": tool_observation_json(&observation),
                     "matched_expected_writes": correlation.matched_expected_writes,
+                    "ticket_backed_observations": correlation.ticket_backed_observations,
                     "unrecorded_changes": correlation.unrecorded_changes,
                     "context": context_json(&summary),
                     "enforcement_level": "cooperative_detective"
@@ -1094,6 +1141,7 @@ fn guard_state_summary(
     let now_timestamp = UtcTimestamp::from_datetime(now);
     let mut current_write_check_ids = Vec::new();
     let mut stale_write_check_ids = Vec::new();
+    let mut active_write_tickets = Vec::new();
     let mut active_change_unit_id = None;
     let mut pending_user_judgment_count = 0;
     let mut pending_user_judgments = Vec::new();
@@ -1113,7 +1161,18 @@ fn guard_state_summary(
                 .map(|expires_at| now_timestamp < expires_at)
                 .unwrap_or(false);
             if current_basis && not_expired {
-                current_write_check_ids.push(record.write_check_id);
+                let write_check_id = record.write_check_id.clone();
+                current_write_check_ids.push(write_check_id.clone());
+                let attempt_scope: WriteCheckAttemptScope =
+                    serde_json::from_str(&record.attempt_scope_json).map_err(json_error)?;
+                if attempt_scope.product_file_write_intended {
+                    active_write_tickets.push(ActiveWriteTicketSummary {
+                        write_ticket_id: write_check_id,
+                        change_unit_id: record.change_unit_id.clone(),
+                        intended_paths: attempt_scope.intended_paths,
+                        expires_at: record.expires_at,
+                    });
+                }
             } else {
                 stale_write_check_ids.push(record.write_check_id);
             }
@@ -1144,6 +1203,7 @@ fn guard_state_summary(
         prompt_capture_enabled,
         current_write_check_ids,
         stale_write_check_ids,
+        active_write_tickets,
         pending_user_judgment_count,
         pending_user_judgments,
         active_blocker_count,
@@ -1512,12 +1572,31 @@ fn pre_tool_decision(
                 message: "Product-file writes require an active Volicord task.".to_owned(),
                 severity: "deny",
             });
-        } else if summary.current_write_check_ids.is_empty() {
-            reasons.push(GuardReason {
-                code: "write_readiness_missing",
-                message: "The current task does not have a current active Write Check.".to_owned(),
-                severity: "deny",
-            });
+        } else {
+            match write_ticket_coverage(summary, observation) {
+                WriteTicketCoverage::NotWriteLike => {}
+                WriteTicketCoverage::TicketBacked { .. } => {}
+                WriteTicketCoverage::NoObservedPaths => reasons.push(GuardReason {
+                    code: "write_ticket_scope_indeterminate",
+                    message: "The host hook did not expose a deterministic Product Repository path for this write-like operation. This is a cooperative Volicord host decision, not OS-level enforcement.".to_owned(),
+                    severity: "deny",
+                }),
+                WriteTicketCoverage::NoActiveTickets { .. } => reasons.push(GuardReason {
+                    code: "write_ticket_missing",
+                    message: "No active write ticket covers this Product Repository write-like operation. This is a cooperative Volicord host decision, not OS-level enforcement.".to_owned(),
+                    severity: "deny",
+                }),
+                WriteTicketCoverage::OutOfScope { .. } => reasons.push(GuardReason {
+                    code: "write_ticket_path_scope_violation",
+                    message: "The observed Product Repository path is outside the active write ticket scope. This is a cooperative Volicord host decision, not OS-level enforcement.".to_owned(),
+                    severity: "deny",
+                }),
+                WriteTicketCoverage::Ambiguous { .. } => reasons.push(GuardReason {
+                    code: "write_ticket_ambiguous",
+                    message: "More than one active write ticket could cover this Product Repository path, so Volicord cannot deterministically link the operation. This is a cooperative Volicord host decision, not OS-level enforcement.".to_owned(),
+                    severity: "deny",
+                }),
+            }
         }
     }
     if observation.classification == ToolClassification::UnknownMutationRisk {
@@ -1562,6 +1641,53 @@ fn pre_tool_decision(
     (decision, reasons)
 }
 
+fn write_ticket_coverage(
+    summary: &GuardStateSummary,
+    observation: &ToolObservation,
+) -> WriteTicketCoverage {
+    let observed_paths = normalized_observed_paths(
+        observation
+            .paths
+            .iter()
+            .chain(observation.changed_paths.iter()),
+    );
+    if observed_paths.is_empty() {
+        return WriteTicketCoverage::NoObservedPaths;
+    }
+    if summary.active_write_tickets.is_empty() {
+        return WriteTicketCoverage::NoActiveTickets { observed_paths };
+    }
+    let matching = summary
+        .active_write_tickets
+        .iter()
+        .filter(|ticket| paths_are_authorized(&observed_paths, &ticket.intended_paths))
+        .cloned()
+        .collect::<Vec<_>>();
+    if matching.len() == 1 {
+        return WriteTicketCoverage::TicketBacked {
+            ticket: matching.into_iter().next().expect("length checked"),
+            observed_paths,
+        };
+    }
+    if matching.len() > 1 {
+        return WriteTicketCoverage::Ambiguous {
+            observed_paths,
+            matching_ticket_ids: matching
+                .into_iter()
+                .map(|ticket| ticket.write_ticket_id)
+                .collect(),
+        };
+    }
+    WriteTicketCoverage::OutOfScope {
+        observed_paths,
+        active_ticket_ids: summary
+            .active_write_tickets
+            .iter()
+            .map(|ticket| ticket.write_ticket_id.clone())
+            .collect(),
+    }
+}
+
 fn tool_attempts_product_write(observation: &ToolObservation) -> bool {
     observation.explicit_write_attempt
         || observation.classification == ToolClassification::Mutating
@@ -1598,9 +1724,6 @@ fn expected_write_candidate(
     let Some(task_id) = summary.active_task_id.clone() else {
         return Ok(None);
     };
-    if summary.current_write_check_ids.is_empty() {
-        return Ok(None);
-    }
     if observation
         .paths
         .iter()
@@ -1618,6 +1741,10 @@ fn expected_write_candidate(
     if expected_paths.is_empty() {
         return Ok(None);
     }
+    let write_ticket = match write_ticket_coverage(summary, observation) {
+        WriteTicketCoverage::TicketBacked { ticket, .. } => ticket,
+        _ => return Ok(None),
+    };
     let created_at = event_time_or_now(&envelope.occurred_at);
     let expires_at = created_at + ChronoDuration::minutes(EXPECTED_WRITE_TTL_MINUTES);
     let host_invocation_id = host_invocation_id(&input.raw_value);
@@ -1630,9 +1757,10 @@ fn expected_write_candidate(
             &envelope.event_id,
             host_invocation_id.as_deref().unwrap_or(""),
             &expected_paths.join("|"),
-            &summary.current_write_check_ids.join("|"),
+            &write_ticket.write_ticket_id,
         ],
     );
+    let write_ticket_ids = vec![write_ticket.write_ticket_id.clone()];
     Ok(Some(ExpectedWriteCandidate {
         insert: ExpectedWriteInsert {
             expected_write_id,
@@ -1647,19 +1775,21 @@ fn expected_write_candidate(
             expected_paths_json: serde_json::to_string(&expected_paths).map_err(json_error)?,
             task_id,
             change_unit_id: summary.active_change_unit_id.clone(),
-            write_check_ids_json: serde_json::to_string(&summary.current_write_check_ids)
-                .map_err(json_error)?,
+            write_check_ids_json: serde_json::to_string(&write_ticket_ids).map_err(json_error)?,
             basis_state_version: summary.state_version,
             created_at: format_timestamp(created_at),
             expires_at: format_timestamp(expires_at),
             metadata_json: json!({
                 "source": "volicord_guard_pre_tool",
                 "schema_version": GUARD_SCHEMA_VERSION,
-                "raw_event_sha256": input.raw_sha256
+                "raw_event_sha256": input.raw_sha256,
+                "ticket_backed": true,
+                "write_ticket_ids": write_ticket_ids
             })
             .to_string(),
         },
         expected_paths,
+        write_ticket,
     }))
 }
 
@@ -1682,6 +1812,8 @@ fn expected_write_candidate_json(candidate: &ExpectedWriteCandidate) -> Value {
         "expected_paths": candidate.expected_paths,
         "task_id": candidate.insert.task_id,
         "change_unit_id": candidate.insert.change_unit_id,
+        "ticket_backed": true,
+        "write_ticket_id": candidate.write_ticket.write_ticket_id,
         "write_check_ids": candidate.insert.write_check_ids_json
             .parse::<Value>()
             .unwrap_or_else(|_| json!([])),
@@ -1727,6 +1859,7 @@ fn record_post_tool_correlation(
     if observation.tool_name.as_deref() == Some("volicord.record_run") {
         return Ok(PostToolCorrelation {
             matched_expected_writes: Vec::new(),
+            ticket_backed_observations: Vec::new(),
             unrecorded_changes: Vec::new(),
         });
     }
@@ -1734,6 +1867,7 @@ fn record_post_tool_correlation(
     if changed.is_empty() {
         return Ok(PostToolCorrelation {
             matched_expected_writes: Vec::new(),
+            ticket_backed_observations: Vec::new(),
             unrecorded_changes: Vec::new(),
         });
     }
@@ -1753,28 +1887,71 @@ fn record_post_tool_correlation(
             )?;
             Ok(PostToolCorrelation {
                 matched_expected_writes: vec![matched_expected_write_json(&record, &changed)],
+                ticket_backed_observations: Vec::new(),
                 unrecorded_changes: Vec::new(),
             })
         }
         ExpectedWriteMatchOutcome::AlreadyMatched(record) => Ok(PostToolCorrelation {
             matched_expected_writes: vec![matched_expected_write_json(&record, &changed)],
+            ticket_backed_observations: Vec::new(),
             unrecorded_changes: Vec::new(),
         }),
-        ExpectedWriteMatchOutcome::NoCandidates => Ok(PostToolCorrelation {
-            matched_expected_writes: Vec::new(),
-            unrecorded_changes: record_unrecorded_changes(UnrecordedChangeContext {
-                runtime_home,
-                project,
-                envelope,
-                summary,
-                observation,
-                changed,
-                correlation_status: "unmatched_expected_write",
-                candidate_expected_write_ids: Vec::new(),
-            })?,
-        }),
+        ExpectedWriteMatchOutcome::NoCandidates => {
+            match active_write_ticket_match(summary, &changed) {
+                ActiveWriteTicketMatchOutcome::Matched(ticket) => Ok(PostToolCorrelation {
+                    matched_expected_writes: Vec::new(),
+                    ticket_backed_observations: vec![ticket_backed_observation_json(
+                        &ticket, &changed,
+                    )],
+                    unrecorded_changes: Vec::new(),
+                }),
+                ActiveWriteTicketMatchOutcome::NoActiveTickets => Ok(PostToolCorrelation {
+                    matched_expected_writes: Vec::new(),
+                    ticket_backed_observations: Vec::new(),
+                    unrecorded_changes: record_unrecorded_changes(UnrecordedChangeContext {
+                        runtime_home,
+                        project,
+                        envelope,
+                        summary,
+                        observation,
+                        changed,
+                        correlation_status: "unmatched_expected_write",
+                        candidate_expected_write_ids: Vec::new(),
+                    })?,
+                }),
+                ActiveWriteTicketMatchOutcome::OutOfScope(ticket_ids) => Ok(PostToolCorrelation {
+                    matched_expected_writes: Vec::new(),
+                    ticket_backed_observations: Vec::new(),
+                    unrecorded_changes: record_unrecorded_changes(UnrecordedChangeContext {
+                        runtime_home,
+                        project,
+                        envelope,
+                        summary,
+                        observation,
+                        changed,
+                        correlation_status: "out_of_scope_write_ticket",
+                        candidate_expected_write_ids: ticket_ids,
+                    })?,
+                }),
+                ActiveWriteTicketMatchOutcome::Ambiguous(ticket_ids) => Ok(PostToolCorrelation {
+                    matched_expected_writes: Vec::new(),
+                    ticket_backed_observations: Vec::new(),
+                    unrecorded_changes: record_unrecorded_changes(UnrecordedChangeContext {
+                        runtime_home,
+                        project,
+                        envelope,
+                        summary,
+                        observation,
+                        changed,
+                        correlation_status: "ambiguous_write_ticket",
+                        candidate_expected_write_ids: ticket_ids,
+                    })?,
+                }),
+            }
+        }
         ExpectedWriteMatchOutcome::OutOfScope(candidate_ids) => Ok(PostToolCorrelation {
             matched_expected_writes: Vec::new(),
+            ticket_backed_observations: Vec::new(),
             unrecorded_changes: record_unrecorded_changes(UnrecordedChangeContext {
                 runtime_home,
                 project,
@@ -1788,6 +1965,7 @@ fn record_post_tool_correlation(
         }),
         ExpectedWriteMatchOutcome::Ambiguous(candidate_ids) => Ok(PostToolCorrelation {
             matched_expected_writes: Vec::new(),
+            ticket_backed_observations: Vec::new(),
             unrecorded_changes: record_unrecorded_changes(UnrecordedChangeContext {
                 runtime_home,
                 project,
@@ -1846,7 +2024,18 @@ fn record_unrecorded_changes(
                 "success": context.observation.success,
                 "status": context.observation.status,
                 "correlation_status": context.correlation_status,
-                "candidate_expected_write_ids": context.candidate_expected_write_ids
+                "candidate_expected_write_ids": context.candidate_expected_write_ids,
+                "active_write_ticket_ids": context.summary.active_write_tickets
+                    .iter()
+                    .map(|ticket| ticket.write_ticket_id.clone())
+                    .collect::<Vec<_>>(),
+                "ticket_scope_violation": matches!(
+                    context.correlation_status,
+                    "out_of_scope_expected_write" | "out_of_scope_write_ticket"
+                ),
+                "detector_role": "detective",
+                "does_not_prevent_writes": true,
+                "does_not_identify_actor": true
             })
             .to_string(),
             detected_at: context.envelope.occurred_at.clone(),
@@ -1954,6 +2143,41 @@ fn match_expected_write(
     }
 }
 
+fn active_write_ticket_match(
+    summary: &GuardStateSummary,
+    changed: &[String],
+) -> ActiveWriteTicketMatchOutcome {
+    if summary.active_write_tickets.is_empty() {
+        return ActiveWriteTicketMatchOutcome::NoActiveTickets;
+    }
+    let matching = summary
+        .active_write_tickets
+        .iter()
+        .filter(|ticket| paths_are_authorized(changed, &ticket.intended_paths))
+        .cloned()
+        .collect::<Vec<_>>();
+    if matching.len() == 1 {
+        return ActiveWriteTicketMatchOutcome::Matched(
+            matching.into_iter().next().expect("length checked"),
+        );
+    }
+    if matching.len() > 1 {
+        return ActiveWriteTicketMatchOutcome::Ambiguous(
+            matching
+                .into_iter()
+                .map(|ticket| ticket.write_ticket_id)
+                .collect(),
+        );
+    }
+    ActiveWriteTicketMatchOutcome::OutOfScope(
+        summary
+            .active_write_tickets
+            .iter()
+            .map(|ticket| ticket.write_ticket_id.clone())
+            .collect(),
+    )
+}
+
 fn fallback_expected_write_candidates(
     records: &[ExpectedWriteRecord],
     envelope: &GuardEnvelope,
@@ -2021,6 +2245,23 @@ fn json_string_set(text: &str) -> BTreeSet<String> {
         .collect()
 }
 
+fn paths_are_authorized(observed_paths: &[String], authorized_paths: &[String]) -> bool {
+    !observed_paths.is_empty()
+        && !authorized_paths.is_empty()
+        && observed_paths.iter().all(|path| {
+            authorized_paths
+                .iter()
+                .any(|authorized| path_is_within(path, authorized))
+        })
+}
+
+fn path_is_within(path: &str, scope: &str) -> bool {
+    path == scope
+        || path
+            .strip_prefix(scope)
+            .is_some_and(|rest| rest.starts_with('/'))
+}
+
 fn matched_expected_write_json(record: &ExpectedWriteRecord, changed: &[String]) -> Value {
     json!({
         "expected_write_id": record.expected_write_id,
@@ -2031,8 +2272,22 @@ fn matched_expected_write_json(record: &ExpectedWriteRecord, changed: &[String])
         "observed_paths": changed,
         "task_id": record.task_id,
         "change_unit_id": record.change_unit_id,
+        "ticket_backed": true,
         "write_check_ids": serde_json::from_str::<Value>(&record.write_check_ids_json)
             .unwrap_or_else(|_| json!([]))
+    })
+}
+
+fn ticket_backed_observation_json(ticket: &ActiveWriteTicketSummary, changed: &[String]) -> Value {
+    json!({
+        "status": "ticket_backed",
+        "ticket_backed": true,
+        "write_ticket_id": ticket.write_ticket_id.clone(),
+        "write_ticket_ids": [ticket.write_ticket_id.clone()],
+        "observed_paths": changed,
+        "change_unit_id": ticket.change_unit_id.clone(),
+        "intended_paths": ticket.intended_paths.clone(),
+        "expires_at": ticket.expires_at.clone()
     })
 }
 
@@ -3296,6 +3551,10 @@ fn context_json(summary: &GuardStateSummary) -> Value {
         "prompt_capture_enabled": summary.prompt_capture_enabled,
         "current_write_check_ids": summary.current_write_check_ids,
         "stale_write_check_ids": summary.stale_write_check_ids,
+        "active_write_tickets": summary.active_write_tickets
+            .iter()
+            .map(active_write_ticket_json)
+            .collect::<Vec<_>>(),
         "pending_user_judgment_count": summary.pending_user_judgment_count,
         "pending_user_judgments": summary.pending_user_judgments
             .iter()
@@ -3304,6 +3563,73 @@ fn context_json(summary: &GuardStateSummary) -> Value {
         "active_blocker_count": summary.active_blocker_count,
         "unresolved_unrecorded_change_count": summary.unresolved_unrecorded_change_count
     })
+}
+
+fn active_write_ticket_json(ticket: &ActiveWriteTicketSummary) -> Value {
+    json!({
+        "write_ticket_id": ticket.write_ticket_id,
+        "change_unit_id": ticket.change_unit_id,
+        "intended_paths": ticket.intended_paths,
+        "expires_at": ticket.expires_at
+    })
+}
+
+fn write_ticket_backing_json(coverage: WriteTicketCoverage) -> Value {
+    match coverage {
+        WriteTicketCoverage::NotWriteLike => json!({
+            "status": "not_write_like",
+            "ticket_backed": false,
+            "observed_paths": []
+        }),
+        WriteTicketCoverage::TicketBacked {
+            ticket,
+            observed_paths,
+        } => json!({
+            "status": "ticket_backed",
+            "ticket_backed": true,
+            "write_ticket_id": ticket.write_ticket_id.clone(),
+            "write_ticket_ids": [ticket.write_ticket_id.clone()],
+            "observed_paths": observed_paths,
+            "scope": {
+                "change_unit_id": ticket.change_unit_id,
+                "intended_paths": ticket.intended_paths,
+                "expires_at": ticket.expires_at
+            },
+            "disclosure": "Volicord reports cooperative host-hook detection only; this is not OS-level enforcement and does not prove who changed a file."
+        }),
+        WriteTicketCoverage::NoObservedPaths => json!({
+            "status": "scope_indeterminate",
+            "ticket_backed": false,
+            "observed_paths": [],
+            "disclosure": "Volicord reports cooperative host-hook detection only; this is not OS-level enforcement and does not prove who changed a file."
+        }),
+        WriteTicketCoverage::NoActiveTickets { observed_paths } => json!({
+            "status": "missing_ticket",
+            "ticket_backed": false,
+            "observed_paths": observed_paths,
+            "disclosure": "Volicord reports cooperative host-hook detection only; this is not OS-level enforcement and does not prove who changed a file."
+        }),
+        WriteTicketCoverage::OutOfScope {
+            observed_paths,
+            active_ticket_ids,
+        } => json!({
+            "status": "out_of_scope",
+            "ticket_backed": false,
+            "observed_paths": observed_paths,
+            "active_write_ticket_ids": active_ticket_ids,
+            "disclosure": "Volicord reports cooperative host-hook detection only; this is not OS-level enforcement and does not prove who changed a file."
+        }),
+        WriteTicketCoverage::Ambiguous {
+            observed_paths,
+            matching_ticket_ids,
+        } => json!({
+            "status": "ambiguous",
+            "ticket_backed": false,
+            "observed_paths": observed_paths,
+            "matching_write_ticket_ids": matching_ticket_ids,
+            "disclosure": "Volicord reports cooperative host-hook detection only; this is not OS-level enforcement and does not prove who changed a file."
+        }),
+    }
 }
 
 fn pending_judgment_summary_json(summary: &GuardPendingJudgmentSummary) -> Value {

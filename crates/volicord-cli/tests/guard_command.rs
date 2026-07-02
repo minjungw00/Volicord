@@ -739,7 +739,16 @@ fn guard_pre_tool_requires_current_write_readiness() -> Result<(), Box<dyn Error
         &denied_event,
     )?;
     assert_eq!(denied.status.code(), Some(1));
-    assert_reason(&json_stdout(&denied)?, "write_readiness_missing");
+    let denied_value = json_stdout(&denied)?;
+    assert_reason(&denied_value, "write_ticket_missing");
+    assert_eq!(
+        denied_value["result"]["write_ticket_backing"]["status"],
+        "missing_ticket"
+    );
+    assert!(denied_value["result"]["write_ticket_backing"]["disclosure"]
+        .as_str()
+        .expect("write-ticket disclosure should be present")
+        .contains("not OS-level enforcement"));
 
     fixture.prepare_write(&task_id)?;
     let allowed_event = json!({
@@ -762,7 +771,39 @@ fn guard_pre_tool_requires_current_write_readiness() -> Result<(), Box<dyn Error
     assert_eq!(value["decision"], "allow");
     assert_eq!(value["allowed"], true);
     assert_eq!(value["result"]["tool"]["classification"], "mutating");
+    assert_eq!(
+        value["result"]["write_ticket_backing"]["status"],
+        "ticket_backed"
+    );
+    assert_eq!(
+        value["result"]["write_ticket_backing"]["ticket_backed"],
+        true
+    );
+    assert_eq!(value["result"]["expected_write"]["ticket_backed"], true);
     assert!(value["result"]["expected_write"]["expected_write_id"].is_string());
+
+    let out_of_scope_event = json!({
+        "event_id": "guard_pre_write_ticket_out_of_scope",
+        "session_id": "guard_session_write_ready",
+        "connection_id": fixture.connection_id(),
+        "host_kind": "codex",
+        "tool_name": "Bash",
+        "command": "touch src/other.rs",
+        "paths": ["src/other.rs"]
+    });
+    let out_of_scope = run_guard(
+        fixture.runtime_home(),
+        fixture.repo_root(),
+        ["guard", "pre-tool", "--repo", fixture.repo_arg()],
+        &out_of_scope_event,
+    )?;
+    assert_eq!(out_of_scope.status.code(), Some(1));
+    let out_of_scope_value = json_stdout(&out_of_scope)?;
+    assert_reason(&out_of_scope_value, "write_ticket_path_scope_violation");
+    assert_eq!(
+        out_of_scope_value["result"]["write_ticket_backing"]["status"],
+        "out_of_scope"
+    );
     Ok(())
 }
 
@@ -809,6 +850,57 @@ fn guard_post_tool_records_unrecorded_product_file_changes() -> Result<(), Box<d
     .expect("post-tool guard event should be stored");
     assert_eq!(stored.decision, "warn");
     assert_eq!(stored.event_kind, "post_tool");
+    Ok(())
+}
+
+#[test]
+fn guard_post_tool_links_active_write_ticket_without_expected_write() -> Result<(), Box<dyn Error>>
+{
+    let fixture = GuardCliFixture::new("guard-post-ticket-backed")?;
+    let task_id = fixture.create_active_task()?;
+    fixture.prepare_write(&task_id)?;
+    let event = json!({
+        "event_id": "guard_post_ticket_backed",
+        "session_id": "guard_session_ticket_backed",
+        "connection_id": fixture.connection_id(),
+        "host_kind": "codex",
+        "tool_name": "Bash",
+        "command": "touch src/export.rs",
+        "success": true,
+        "changed_paths": ["src/export.rs"]
+    });
+
+    let output = run_guard(
+        fixture.runtime_home(),
+        fixture.repo_root(),
+        ["guard", "post-tool", "--repo", fixture.repo_arg()],
+        &event,
+    )?;
+    assert_success(&output);
+    let value = json_stdout(&output)?;
+    assert_eq!(value["decision"], "allow");
+    assert_eq!(
+        value["result"]["ticket_backed_observations"][0]["status"],
+        "ticket_backed"
+    );
+    assert_eq!(
+        value["result"]["ticket_backed_observations"][0]["observed_paths"],
+        json!(["src/export.rs"])
+    );
+    assert!(value["result"]["matched_expected_writes"]
+        .as_array()
+        .expect("matched expected writes should be an array")
+        .is_empty());
+    assert!(value["result"]["unrecorded_changes"]
+        .as_array()
+        .expect("unrecorded changes should be an array")
+        .is_empty());
+    assert!(list_unresolved_unrecorded_changes(
+        fixture.runtime_home(),
+        fixture.project_id(),
+        Some(fixture.connection_id()),
+    )?
+    .is_empty());
     Ok(())
 }
 
@@ -927,6 +1019,10 @@ fn guard_post_tool_matches_expected_allowed_write() -> Result<(), Box<dyn Error>
         post_value["result"]["matched_expected_writes"][0]["expected_write_id"],
         expected_id
     );
+    assert_eq!(
+        post_value["result"]["matched_expected_writes"][0]["ticket_backed"],
+        true
+    );
     assert!(post_value["result"]["unrecorded_changes"]
         .as_array()
         .expect("unrecorded changes should be an array")
@@ -997,6 +1093,19 @@ fn guard_post_tool_records_out_of_scope_expected_write() -> Result<(), Box<dyn E
         value["result"]["unrecorded_changes"][0]["observed_paths"][0],
         "src/other.rs"
     );
+    let change_id = value["result"]["unrecorded_changes"][0]["unrecorded_change_id"]
+        .as_str()
+        .expect("unrecorded change id should be present");
+    let change = unrecorded_change(fixture.runtime_home(), fixture.project_id(), change_id)?
+        .expect("unrecorded change should be stored");
+    let detection: Value = serde_json::from_str(&change.detection_json)?;
+    assert_eq!(
+        detection["correlation_status"],
+        "out_of_scope_expected_write"
+    );
+    assert_eq!(detection["ticket_scope_violation"], true);
+    assert_eq!(detection["does_not_prevent_writes"], true);
+    assert_eq!(detection["does_not_identify_actor"], true);
     assert_eq!(
         list_pending_expected_writes(
             fixture.runtime_home(),
@@ -1091,16 +1200,18 @@ fn guard_pre_tool_ambiguous_shell_does_not_create_expected_write() -> Result<(),
         &post,
     )?;
     assert_success(&post_output);
-    assert_eq!(json_stdout(&post_output)?["decision"], "warn");
+    let post_value = json_stdout(&post_output)?;
+    assert_eq!(post_value["decision"], "allow");
     assert_eq!(
-        list_unresolved_unrecorded_changes(
-            fixture.runtime_home(),
-            fixture.project_id(),
-            Some(fixture.connection_id()),
-        )?
-        .len(),
-        1
+        post_value["result"]["ticket_backed_observations"][0]["status"],
+        "ticket_backed"
     );
+    assert!(list_unresolved_unrecorded_changes(
+        fixture.runtime_home(),
+        fixture.project_id(),
+        Some(fixture.connection_id()),
+    )?
+    .is_empty());
     Ok(())
 }
 
@@ -1146,7 +1257,16 @@ fn guard_expected_write_does_not_leak_between_sessions() -> Result<(), Box<dyn E
         &post_other_session,
     )?;
     assert_success(&output);
-    assert_eq!(json_stdout(&output)?["decision"], "warn");
+    let value = json_stdout(&output)?;
+    assert_eq!(value["decision"], "allow");
+    assert_eq!(
+        value["result"]["ticket_backed_observations"][0]["status"],
+        "ticket_backed"
+    );
+    assert!(value["result"]["matched_expected_writes"]
+        .as_array()
+        .expect("matched expected writes should be an array")
+        .is_empty());
     assert_eq!(
         list_pending_expected_writes(
             fixture.runtime_home(),
@@ -1156,6 +1276,12 @@ fn guard_expected_write_does_not_leak_between_sessions() -> Result<(), Box<dyn E
         .len(),
         1
     );
+    assert!(list_unresolved_unrecorded_changes(
+        fixture.runtime_home(),
+        fixture.project_id(),
+        Some(fixture.connection_id()),
+    )?
+    .is_empty());
     Ok(())
 }
 
