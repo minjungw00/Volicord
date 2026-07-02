@@ -91,7 +91,7 @@ flowchart TD
     Task --> ChangeUnit["현재 적용 Change Unit"]
     ChangeUnit --> EffectContract["Change Unit<br/>효과 계약"]
     ChangeUnit --> WriteTicket["쓰기 티켓<br/>제안된 쓰기 하나"]
-    WriteCheck --> Run["실행 기록<br/>실행 또는 관찰"]
+    WriteTicket --> Run["실행 기록<br/>실행 또는 관찰"]
     Run --> Evidence["증거<br/>주장 단위 뒷받침"]
     ArtifactRef["ArtifactRef"] -. "뒷받침으로 기록될 때만 쓸 수 있음" .-> Evidence
     AgentConnection["Agent Connection"] -. "요청할 수 있지만 기록하지 않음" .-> Judgment["사용자 소유 판단"]
@@ -356,6 +356,31 @@ Change Unit 효과 계약은 권한 기록을 대신하지 않습니다.
 - 효과 계약 결합: 값이 있으면 제안된 제품 파일 변경이 현재 적용 Change Unit 효과 계약에 맞을 때만 만들어집니다.
 - 1회용: 호환되는 제품 쓰기 실행 기록 하나가 한 번 소비합니다.
 - 협력형: Agent Connection에 Volicord 상태 안에서 권한 있는 것을 알려 줍니다. OS 수준 예방, 파일시스템 가로채기, 샌드박싱을 주장하지 않습니다.
+
+이 생명주기 그림은 쓰기 티켓의 권한 사용 가능성을 보여 줍니다. 화살표는 개념적
+전이와 무효화 경로를 뜻하며, 정확한 API 응답 분기, 저장소 행, hook 동작,
+파일시스템 강제를 뜻하지 않습니다.
+
+```mermaid
+flowchart LR
+  proposed["제안된 제품 파일 쓰기"]
+  prepare["prepare_write가 현재 Task,<br/>범위, Change Unit, 효과 계약,<br/>필요한 판단 확인"]
+  compatible{"현재 Core 상태와<br/>호환됨?"}
+  blocked["차단된 쓰기 판단,<br/>쓰기 티켓 없음"]
+  open["열린 쓰기 티켓<br/>제안된 쓰기 하나"]
+  still{"아직 현재 상태이고<br/>소비되지 않음?"}
+  invalid["오래됨, 만료됨,<br/>취소됨, 비호환"]
+  attempt["제품 파일 쓰기<br/>시도 하나"]
+  run["record_run이 호환되는<br/>제품 쓰기 실행 기록"]
+  consumed["쓰기 티켓<br/>한 번 소비"]
+  evidence["실행 기록과 증거가<br/>닫기 근거를 뒷받침할 수 있음"]
+
+  proposed --> prepare --> compatible
+  compatible -- 아니오 --> blocked
+  compatible -- 예 --> open --> still
+  still -- 아니오 --> invalid
+  still -- 예 --> attempt --> run --> consumed --> evidence
+```
 
 아래와 같은 것이 아닙니다.
 

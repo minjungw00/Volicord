@@ -91,7 +91,7 @@ flowchart TD
     Task --> ChangeUnit["current Change Unit"]
     ChangeUnit --> EffectContract["Change Unit<br/>effect contract"]
     ChangeUnit --> WriteTicket["write ticket<br/>one proposed write"]
-    WriteCheck --> Run["Run<br/>execution or observation"]
+    WriteTicket --> Run["Run<br/>execution or observation"]
     Run --> Evidence["Evidence<br/>claim-scoped support"]
     ArtifactRef["ArtifactRef"] -. "eligible only when recorded as support" .-> Evidence
     AgentConnection["Agent Connection"] -. "may request, not record" .-> Judgment["user-owned judgment"]
@@ -358,6 +358,31 @@ It has these compatibility properties:
 - Effect-contract-bound when present: it is created only when the proposed product-file change fits the current Change Unit effect contract.
 - Single-use: one compatible product-write Run consumes it once.
 - Cooperative: it tells an Agent Connection what is authorized inside Volicord state; it does not claim OS-level prevention, filesystem interception, or sandboxing.
+
+This lifecycle diagram shows authority eligibility for a write ticket. Arrows
+are conceptual transitions and invalidation paths, not exact API response
+branches, storage rows, hook behavior, or filesystem enforcement.
+
+```mermaid
+flowchart LR
+  proposed["Proposed product-file write"]
+  prepare["prepare_write checks current Task,<br/>scope, Change Unit, effect contract,<br/>and required judgments"]
+  compatible{"Compatible with<br/>current Core state?"}
+  blocked["Blocked write decision;<br/>no write ticket"]
+  open["Open write ticket<br/>for one proposed write"]
+  still{"Still current<br/>and unconsumed?"}
+  invalid["Stale, expired,<br/>revoked, or incompatible"]
+  attempt["One product-file<br/>write attempt"]
+  run["record_run records<br/>compatible product-write Run"]
+  consumed["Write ticket<br/>consumed once"]
+  evidence["Run and evidence may<br/>support close basis"]
+
+  proposed --> prepare --> compatible
+  compatible -- no --> blocked
+  compatible -- yes --> open --> still
+  still -- no --> invalid
+  still -- yes --> attempt --> run --> consumed --> evidence
+```
 
 It is not:
 

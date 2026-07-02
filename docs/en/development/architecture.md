@@ -183,6 +183,28 @@ The durable dependency boundaries are:
 
 These module descriptions are implementation placement guidance. Exact API fields, method behavior, storage records, storage effects, security wording, and Core authority semantics stay with the Reference owners.
 
+## Design responsibility map
+
+Use this map when you need the implementer view of a product area. It names the
+durable source area or development page to read first, then the contract owner
+that keeps public behavior precise.
+
+| Design topic | Implementer orientation | Contract owner route |
+|---|---|---|
+| Architecture overview | This page's operational paths, workspace shape, source module map, and setup flow. | [Runtime Boundaries](../reference/runtime-boundaries.md), [Scope](../reference/scope.md), and [Security](../reference/security.md). |
+| Core pipeline | [Request Lifecycle](request-lifecycle.md), this page's Core pipeline section, `crates/volicord-core/src/pipeline.rs`, `crates/volicord-core/src/methods/`, and `crates/volicord-core/src/policy/`. | [API Methods](../reference/api/methods.md), [API Schema Core](../reference/api/schema-core.md), and [Storage Effects](../reference/storage-effects.md). |
+| Store, events, and projections | [Storage and Transactions](storage-and-transactions.md), `crates/volicord-store/src/core_pipeline.rs`, and `crates/volicord-core/src/methods/mod.rs` projection helpers. | [Storage Records](../reference/storage-records.md), [Storage Versioning](../reference/storage-versioning.md), and [Projection and Templates](../reference/projection-and-templates.md). |
+| MCP adapter | `crates/volicord-mcp/src/adapter.rs`, `routing.rs`, `tool_registry.rs`, `stdio.rs`, `local_http.rs`, `local_web_consent.rs`, and `http.rs`. | [MCP Transport](../reference/mcp-transport.md), [Agent Connection](../reference/agent-connection.md), and [API Methods](../reference/api/methods.md). |
+| CLI architecture | This page's administrative setup flow, `crates/volicord-cli/src/main.rs`, `setup_command.rs`, `doctor_command.rs`, `connection_command.rs`, `project_context.rs`, `user_command.rs`, and `host_integration/`. | [Administrative CLI](../reference/admin-cli.md), [Runtime Boundaries](../reference/runtime-boundaries.md), and [Agent Connection](../reference/agent-connection.md). |
+| Write ticket design | `crates/volicord-core/src/policy/write_check.rs`, `crates/volicord-core/src/methods/prepare_write.rs`, `crates/volicord-core/src/methods/record_run.rs`, and write-ticket tests in Core and conformance suites. | [Core Model](../reference/core-model.md), [Prepare-write Method](../reference/api/method-prepare-write.md), [Record-run Method](../reference/api/method-record-run.md), and [Storage Effects](../reference/storage-effects.md). |
+| Judgment Inbox design | `crates/volicord-core/src/methods/judgment.rs`, pending-inbox projection helpers in `crates/volicord-core/src/methods/mod.rs`, `crates/volicord-cli/src/user_command.rs`, and MCP elicitation or local web consent modules. | [Administrative CLI](../reference/admin-cli.md#user-channel-commands), [Agent Connection](../reference/agent-connection.md), [Judgment Schemas](../reference/api/schema-judgment.md#judgmentinboxitem), [Request-user-judgment Method](../reference/api/method-request-user-judgment.md#volicordrequest_user_judgment), and [Record-user-judgment Method](../reference/api/method-record-user-judgment.md#volicordrecord_user_judgment). |
+| Observe and session-watch design | `crates/volicord-cli/src/host_integration/`, `crates/volicord-cli/src/guard_command.rs`, session-watch storage helpers, and close-readiness policy tests. | [Administrative CLI](../reference/admin-cli.md#guard-hook-commands), [Storage Records](../reference/storage-records.md), [MCP Transport](../reference/mcp-transport.md), and [Security](../reference/security.md). |
+| Local HTTP design | `crates/volicord-mcp/src/local_http.rs`, `local_web_consent.rs`, and `http.rs`. | [MCP Transport](../reference/mcp-transport.md), [Administrative CLI](../reference/admin-cli.md), and [Security](../reference/security.md). |
+
+This map is for source navigation. If source and Reference disagree, treat that
+as an owner-routing or implementation gap rather than inferring a new product
+contract from the code.
+
 ## Core pipeline and Store boundary
 
 `crates/volicord-core/src/pipeline.rs`, `crates/volicord-core/src/methods/`, `crates/volicord-core/src/policy/`, and `crates/volicord-store/src/core_pipeline.rs` have separate jobs:

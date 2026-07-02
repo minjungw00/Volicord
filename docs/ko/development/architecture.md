@@ -181,6 +181,27 @@ flowchart TD
 
 이 모듈 설명은 구현 배치 지침입니다. 정확한 API 필드, 메서드 동작, 저장소 기록, 저장 효과, 보안 표현, Core 권한 의미는 참조 담당 문서에 둡니다.
 
+## 설계 책임 지도
+
+제품 영역의 구현 관점을 찾아야 할 때 이 지도를 사용합니다. 먼저 읽을 오래 유지되는
+소스 영역이나 개발 문서를 이름 붙이고, 공개 동작을 정확하게 유지하는 계약 담당 문서를
+함께 둡니다.
+
+| 설계 주제 | 구현자용 방향 | 계약 담당 경로 |
+|---|---|---|
+| 아키텍처 개요 | 이 페이지의 운영 경로, 워크스페이스 형태, 소스 모듈 지도, 설정 흐름. | [런타임 경계](../reference/runtime-boundaries.md), [범위](../reference/scope.md), [보안](../reference/security.md). |
+| Core 파이프라인 | [요청 생명주기](request-lifecycle.md), 이 페이지의 Core 파이프라인 절, `crates/volicord-core/src/pipeline.rs`, `crates/volicord-core/src/methods/`, `crates/volicord-core/src/policy/`. | [API 메서드](../reference/api/methods.md), [API 코어 스키마](../reference/api/schema-core.md), [저장 효과](../reference/storage-effects.md). |
+| Store, 이벤트, 상태 보기 모델 | [저장소와 트랜잭션](storage-and-transactions.md), `crates/volicord-store/src/core_pipeline.rs`, `crates/volicord-core/src/methods/mod.rs`의 상태 보기 도우미. | [저장소 기록](../reference/storage-records.md), [저장소 버전 관리](../reference/storage-versioning.md), [상태 보기와 템플릿](../reference/projection-and-templates.md). |
+| MCP 어댑터 | `crates/volicord-mcp/src/adapter.rs`, `routing.rs`, `tool_registry.rs`, `stdio.rs`, `local_http.rs`, `local_web_consent.rs`, `http.rs`. | [MCP 전송](../reference/mcp-transport.md), [Agent Connection](../reference/agent-connection.md), [API 메서드](../reference/api/methods.md). |
+| CLI 아키텍처 | 이 페이지의 관리 설정 흐름, `crates/volicord-cli/src/main.rs`, `setup_command.rs`, `doctor_command.rs`, `connection_command.rs`, `project_context.rs`, `user_command.rs`, `host_integration/`. | [관리 CLI](../reference/admin-cli.md), [런타임 경계](../reference/runtime-boundaries.md), [Agent Connection](../reference/agent-connection.md). |
+| 쓰기 티켓 설계 | `crates/volicord-core/src/policy/write_check.rs`, `crates/volicord-core/src/methods/prepare_write.rs`, `crates/volicord-core/src/methods/record_run.rs`, Core와 conformance 묶음의 쓰기 티켓 테스트. | [Core 모델](../reference/core-model.md), [쓰기 준비 메서드](../reference/api/method-prepare-write.md), [실행 기록 메서드](../reference/api/method-record-run.md), [저장 효과](../reference/storage-effects.md). |
+| Judgment Inbox 설계 | `crates/volicord-core/src/methods/judgment.rs`, `crates/volicord-core/src/methods/mod.rs`의 대기 inbox 상태 보기 도우미, `crates/volicord-cli/src/user_command.rs`, MCP elicitation 또는 local web consent 모듈. | [관리 CLI](../reference/admin-cli.md#user-channel-commands), [Agent Connection](../reference/agent-connection.md), [판단 스키마](../reference/api/schema-judgment.md#judgmentinboxitem), [사용자 판단 요청 메서드](../reference/api/method-request-user-judgment.md#volicordrequest_user_judgment), [사용자 판단 기록 메서드](../reference/api/method-record-user-judgment.md#volicordrecord_user_judgment). |
+| Observe와 session-watch 설계 | `crates/volicord-cli/src/host_integration/`, `crates/volicord-cli/src/guard_command.rs`, session-watch 저장소 도우미, 닫기 준비 상태 policy 테스트. | [관리 CLI](../reference/admin-cli.md#guard-hook-commands), [저장소 기록](../reference/storage-records.md), [MCP 전송](../reference/mcp-transport.md), [보안](../reference/security.md). |
+| 로컬 HTTP 설계 | `crates/volicord-mcp/src/local_http.rs`, `local_web_consent.rs`, `http.rs`. | [MCP 전송](../reference/mcp-transport.md), [관리 CLI](../reference/admin-cli.md), [보안](../reference/security.md). |
+
+이 지도는 소스 탐색을 위한 것입니다. 소스와 참조 문서가 어긋나 보이면 코드에서 새 제품
+계약을 추론하지 말고 담당 경로 공백이나 구현 공백으로 다룹니다.
+
 ## Core 파이프라인과 Store 경계
 
 `crates/volicord-core/src/pipeline.rs`, `crates/volicord-core/src/methods/`, `crates/volicord-core/src/policy/`, `crates/volicord-store/src/core_pipeline.rs`는 서로 다른 일을 합니다.

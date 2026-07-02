@@ -42,6 +42,43 @@ registry 데이터베이스는 Runtime Home 수준 등록을 추적합니다. �
 컬럼 정의를 다시 쓰지 않습니다. 그런 세부사항은 저장소 참조 담당 문서를
 사용합니다.
 
+## Store, 이벤트, 상태 보기
+
+이 구현 지도는 메서드 계획이 현재 Store 기록, 이벤트, 재실행 행, 읽기 시점의 상태
+보기로 이어지는 방식을 보여 줍니다. 실선 화살표는 구현 안의 일반 데이터 흐름입니다.
+점선 화살표는 순서나 재실행 관계를 보여 줍니다. 이 그림은 저장소 계약, 상태 보기 권한
+계약, 테이블 관계도가 아닙니다. 정확한 의미는 [저장소 기록](../reference/storage-records.md),
+[저장 효과](../reference/storage-effects.md), [저장소 버전 관리](../reference/storage-versioning.md),
+[상태 보기와 템플릿 표시 경계](../reference/projection-and-templates.md)가 담당합니다.
+
+```mermaid
+flowchart LR
+  planner["Core 메서드 계획"]
+  mutations["CoreStorageMutation 값과<br/>대기 이벤트"]
+  commit["CoreProjectStore::commit_mutation<br/>SQLite 트랜잭션"]
+  current["현재 Store 기록<br/>tasks, judgments, 쓰기 티켓,<br/>runs, evidence, blockers"]
+  events["authority_events<br/>순서 있는 로컬 이벤트 기록"]
+  replay["tool_invocations<br/>메서드 효과가 허용할 때의<br/>idempotent 재실행 행"]
+  reads["Store 읽기 도우미와<br/>project_state_projection"]
+  projection["상태, 닫기 준비 상태,<br/>템플릿 상태 보기"]
+  display["MCP, CLI, 대화 대상<br/>파생 표시"]
+  stored["저장된 재실행 응답"]
+
+  planner --> mutations --> commit
+  commit --> current
+  commit --> events
+  commit --> replay
+  current --> reads --> projection --> display
+  events -. state_version과 순서 .-> reads
+  replay -. 적격 idempotent 호출 .-> stored
+```
+
+현재 Store 기록은 일반 읽기의 출처입니다. `authority_events`는 커밋된 Core 변이 순서와
+로컬 이벤트 사실을 보존합니다. `tool_invocations`는 저장 효과가 그 재실행을 정의하는
+메서드 분기에 대해서만 idempotent 재실행을 지원합니다. 읽기 시점 상태 보기와 렌더링된
+표시는 호출자가 상태를 보는 데 도움을 주지만, 표시만으로 권한, 쓰기 티켓, 증거, 수락,
+닫기 준비 상태를 만들지 않습니다.
+
 ## 부트스트랩과 마이그레이션 경계
 
 관리 설정은 공개 메서드 실행이 가능해지기 전에 Store 부트스트랩과 검사

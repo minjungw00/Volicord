@@ -58,6 +58,61 @@ Use this short model when reading the rest of the README:
 | User Judgment | A decision that belongs to the user: product direction, material technical direction, scope, sensitive action, final acceptance, residual-risk acceptance, cancellation, or similar authority-bearing choices. |
 | Close | A check that the current `Task` can finish honestly without hiding unresolved owner-defined requirements. Close readiness is decision support, not proof that the product result is correct. |
 
+## How The Pieces Fit
+
+This map shows the local pieces a first user needs to recognize. Solid arrows
+are ordinary local call or record paths. Dotted arrows show product-file work
+or compatibility relationships outside the public Volicord API. The map omits
+storage tables, complete API behavior, and host-specific setup detail.
+
+```mermaid
+flowchart LR
+  user["User"]
+  host["Agent host<br/>Codex or Claude Code"]
+  mcp["volicord mcp --stdio<br/>local MCP tools"]
+  core["Core<br/>authority record"]
+  runtime["Volicord Runtime Home<br/>records and artifacts"]
+  repo["Product Repository<br/>your product files"]
+  cli["volicord CLI<br/>setup and Judgment Inbox"]
+
+  user --> host
+  host --> mcp
+  mcp --> core
+  core --> runtime
+  user --> cli
+  cli --> core
+  host -. edits and runs tools .-> repo
+  core -. checks scope, write tickets,<br/>evidence, judgments, and close .-> repo
+```
+
+The authority loop keeps user decisions, agent work, and Core records separate.
+Arrows show workflow handoff at overview depth, not exact API call order.
+
+```mermaid
+flowchart TD
+  request["User asks for work"]
+  task["Core records the Task,<br/>scope, and current work boundary"]
+  agent["Agent inspects, proposes,<br/>or performs the next action"]
+  judgment{"User-owned<br/>judgment needed?"}
+  inbox["Judgment Inbox / User Channel<br/>records the user's answer"]
+  write{"Product-file<br/>write needed?"}
+  ticket["prepare_write issues or<br/>blocks a write ticket"]
+  run["record_run records<br/>execution or observation"]
+  evidence["Evidence and current<br/>close basis stay visible"]
+  close{"Close blockers<br/>remain?"}
+  status["Status shows blockers,<br/>pending judgment, and next action"]
+  finish["User decides final acceptance,<br/>residual risk, or terminal outcome"]
+
+  request --> task --> agent --> judgment
+  judgment -- yes --> inbox --> task
+  judgment -- no --> write
+  write -- yes --> ticket --> run
+  write -- no --> run
+  run --> evidence --> close
+  close -- yes --> status --> agent
+  close -- no --> finish
+```
+
 ## Install And Initialize
 
 The normal user path is one installed `volicord` executable. Release binary

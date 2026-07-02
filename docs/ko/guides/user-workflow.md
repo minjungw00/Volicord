@@ -4,6 +4,37 @@ Volicord는 사용자가 평소 말로 일하면서도 판단 경계를 볼 수 
 
 이 가이드는 사용자 작업 흐름입니다. 정확한 API 동작, 스키마, 저장 효과, 보안 표현, 참조 수준의 닫기 준비 상태 규칙은 [참조 색인](../reference/README.md)이 연결하는 담당 문서에 있습니다.
 
+## 일상 작업 흐름
+
+평소 작업에서는 이 순환을 사용합니다. 이 그림은 사용자에게 보이는 전달 지점을 보여
+주며, API 호출 순서, 저장 효과, 호스트 설정 동작을 뜻하지 않습니다.
+
+```mermaid
+flowchart TD
+  ask["평소 말로 요청"]
+  boundary["에이전트가 Task, 범위,<br/>모르는 점, 다음 안전한 행동 표시"]
+  action["에이전트가 확인하고, 쓰기를 준비하고,<br/>실행이나 관찰을 기록"]
+  status["상태 검토:<br/>증거, 차단 사유, 대기 판단"]
+  judgment{"Judgment Inbox<br/>항목이 대기 중?"}
+  answer["elicitation, prompt capture,<br/>local web consent, volicord inbox로 답변"]
+  changes{"미기록 변경이<br/>미해결 상태?"}
+  reconcile["에이전트에게 조정 요청,<br/>필요하면 수락 판단에 답변"]
+  close{"닫기 차단 사유가<br/>남아 있음?"}
+  finish["최종 수락, 잔여 위험,<br/>완료, 취소, 대체 결정"]
+
+  ask --> boundary --> action --> status --> judgment
+  judgment -- 예 --> answer --> status
+  judgment -- 아니오 --> changes
+  changes -- 예 --> reconcile --> status
+  changes -- 아니오 --> close
+  close -- 예 --> action
+  close -- 아니오 --> finish
+```
+
+큰 쓰기 전, 의미 있는 변경 뒤, 닫기 전에는 상태를 묻는 습관이 유용합니다. 대기 중인
+Judgment Inbox 항목, 미기록 변경 찾기, 닫기 차단 사유는 요약의 배경 문구가 아니라 이름
+붙은 다음 행동으로 다룹니다.
+
 ## 작업 시작하기
 
 평소 말로 시작하면 됩니다.
@@ -125,6 +156,30 @@ hook이 검증해 기록할 때만 `User Channel` 경로입니다. 생성된 Mar
 있지만 Core 권한은 아닙니다. 상태 보기 경계는
 [상태 보기와 템플릿 표시 경계](../reference/projection-and-templates.md)를 봅니다.
 
+이 순서는 Judgment Inbox 항목이 기록된 사용자 답변이 되는 방식을 보여 줍니다.
+정확한 요청 필드와 전송 세부사항은 생략합니다. 그런 내용은
+[관리 CLI](../reference/admin-cli.md), [MCP 전송](../reference/mcp-transport.md),
+판단 메서드와 스키마 담당 문서가 맡습니다.
+
+```mermaid
+sequenceDiagram
+  participant Agent as Agent Connection
+  participant Core as Core
+  participant User as 사용자
+  participant Channel as User Channel
+
+  Agent->>Core: 초점이 맞춰진 사용자 판단 요청
+  Core-->>Agent: 대기 JudgmentInboxItem과 capture 경로 반환
+  Agent-->>User: 질문, 선택지, 결과, fallback 경로 표시
+  alt MCP elicitation, prompt capture, local web consent
+    User->>Channel: Core가 만든 선택지 하나 선택
+  else CLI fallback
+    User->>Channel: volicord inbox answer JUDGMENT_ID --choice CHOICE_ID
+  end
+  Channel->>Core: local_user 출처로 사용자 판단 기록
+  Core-->>Agent: 이후 상태나 닫기에 해결된 판단 반영
+```
+
 ## 미기록 변경 조정하기
 
 Guarded 모드는 hook이 예상 쓰기와 맞지 않는 제품 파일 변경을 관찰했을 때 미기록
@@ -200,6 +255,42 @@ hook 기반 pre-tool 차단, prompt capture, 미기록 변경 관찰을 사용�
 ```
 
 사용자에게는 현재 Core 기록을 기준으로 지금 작업을 정직하게 닫을 수 있는지 확인하는 일입니다. 제품 결과가 객관적으로 옳다는 증명이 아닙니다. 이 질문을 참조 용어로는 닫기 준비 상태라고 부릅니다. 닫기 준비 상태 의미는 [Core 모델](../reference/core-model.md)이, 닫기 메서드 동작은 [`Task` 닫기 메서드](../reference/api/method-close-task.md)가 담당합니다.
+
+이 결정 트리는 닫기 준비 상태 결과를 사용자가 해석하는 순서를 보여 줍니다. 정확한
+`volicord.close_task` 알고리즘은 아닙니다.
+
+```mermaid
+flowchart TD
+  ask["닫기 준비 상태 요청"]
+  basis{"현재 닫기 근거가<br/>보임?"}
+  gather["빠진 실행, 관찰,<br/>증거를 수집하거나 기록"]
+  pending{"필수 사용자 판단이<br/>대기 중?"}
+  inbox["Judgment Inbox / User Channel로 답변"]
+  unrecorded{"미해결 미기록<br/>변경이 있음?"}
+  reconcile["변경을 조정하고,<br/>필요할 때만 수락에 답변"]
+  evidence{"필수 증거 또는<br/>아티팩트가 없음?"}
+  evidenceAction["증거를 모으거나<br/>차단 사유를 보이게 유지"]
+  risk{"이름 붙은 잔여 위험에<br/>수락이 필요함?"}
+  riskDecision["이름 붙은 위험을 수락하거나<br/>추가 작업 요청"]
+  final{"최종 수락이<br/>필요함?"}
+  accept["보이는 결과를 수락하거나<br/>작업을 열린 상태로 유지"]
+  ready["닫기 차단 사유 없음,<br/>완료, 취소, 대체 중 선택"]
+
+  ask --> basis
+  basis -- 아니오 --> gather
+  basis -- 예 --> pending
+  gather --> ask
+  pending -- 예 --> inbox --> ask
+  pending -- 아니오 --> unrecorded
+  unrecorded -- 예 --> reconcile --> ask
+  unrecorded -- 아니오 --> evidence
+  evidence -- 예 --> evidenceAction --> ask
+  evidence -- 아니오 --> risk
+  risk -- 예 --> riskDecision --> ask
+  risk -- 아니오 --> final
+  final -- 예 --> accept --> ask
+  final -- 아니오 --> ready
+```
 
 사용자가 결정하는 것:
 

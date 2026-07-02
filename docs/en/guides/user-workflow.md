@@ -4,6 +4,38 @@ Volicord lets you work in ordinary language while keeping decision boundaries vi
 
 This guide is the user workflow path. Exact API behavior, schemas, storage effects, security wording, and reference-level close readiness rules live in the owners linked from the [Reference Index](../reference/README.md).
 
+## Daily workflow
+
+Use this loop during normal work. It shows user-visible handoffs, not API call
+order, storage effects, or host setup behavior.
+
+```mermaid
+flowchart TD
+  ask["Ask in ordinary language"]
+  boundary["Agent shows Task, scope,<br/>unknowns, and next safe action"]
+  action["Agent inspects, prepares writes,<br/>records runs or observations"]
+  status["Review status:<br/>evidence, blockers, pending judgment"]
+  judgment{"Judgment Inbox<br/>item pending?"}
+  answer["Answer through elicitation,<br/>prompt capture, local web consent,<br/>or volicord inbox"]
+  changes{"Unrecorded<br/>changes unresolved?"}
+  reconcile["Ask the agent to reconcile;<br/>answer any acceptance judgment"]
+  close{"Close blockers<br/>remain?"}
+  finish["Decide final acceptance,<br/>residual risk, complete,<br/>cancel, or supersede"]
+
+  ask --> boundary --> action --> status --> judgment
+  judgment -- yes --> answer --> status
+  judgment -- no --> changes
+  changes -- yes --> reconcile --> status
+  changes -- no --> close
+  close -- yes --> action
+  close -- no --> finish
+```
+
+The useful habit is to ask for status before large writes, after meaningful
+changes, and before close. Treat every pending Judgment Inbox item,
+unrecorded-change finding, and close blocker as a named next action rather than
+as background text in a summary.
+
 ## Start a task
 
 Start the way you normally would:
@@ -131,6 +163,30 @@ rendered projections can help you read state, but they are not Core authority;
 for projection boundaries, see
 [Projection and template display boundaries](../reference/projection-and-templates.md).
 
+This sequence shows how a Judgment Inbox item becomes a recorded user answer.
+It omits exact request fields and transport details; those stay with
+[Administrative CLI](../reference/admin-cli.md), [MCP Transport](../reference/mcp-transport.md),
+and the judgment method and schema owners.
+
+```mermaid
+sequenceDiagram
+  participant Agent as Agent Connection
+  participant Core as Core
+  participant User as User
+  participant Channel as User Channel
+
+  Agent->>Core: request focused user judgment
+  Core-->>Agent: pending JudgmentInboxItem and capture paths
+  Agent-->>User: show question, choices, consequence, and fallback path
+  alt MCP elicitation, prompt capture, or local web consent
+    User->>Channel: choose a Core-generated option
+  else CLI fallback
+    User->>Channel: volicord inbox answer JUDGMENT_ID --choice CHOICE_ID
+  end
+  Channel->>Core: record user judgment with local_user provenance
+  Core-->>Agent: later status or close reflects the resolved judgment
+```
+
 ## Reconcile unrecorded changes
 
 Guarded mode may surface an unrecorded Product Repository change when a hook
@@ -209,6 +265,42 @@ Show what changed, what was checked, what residual risk is visible, and what sti
 ```
 
 For users, close readiness means whether the task can honestly finish now from the current Core records. It is not proof that the product result is objectively correct. In reference terms, close readiness meaning belongs to [Core Model](../reference/core-model.md), and close method behavior belongs to [Close-task Method](../reference/api/method-close-task.md).
+
+This decision tree shows the user-facing order for interpreting a close
+readiness result. It is not the exact `volicord.close_task` algorithm.
+
+```mermaid
+flowchart TD
+  ask["Ask for close readiness"]
+  basis{"Current close basis<br/>is visible?"}
+  gather["Gather or record the missing<br/>run, observation, or evidence"]
+  pending{"Pending required<br/>user judgment?"}
+  inbox["Answer through the<br/>Judgment Inbox / User Channel"]
+  unrecorded{"Unresolved<br/>unrecorded changes?"}
+  reconcile["Reconcile changes;<br/>answer acceptance only if needed"]
+  evidence{"Required evidence<br/>or artifact unavailable?"}
+  evidenceAction["Collect evidence or keep<br/>the blocker visible"]
+  risk{"Named residual risk<br/>needs acceptance?"}
+  riskDecision["Accept the named risk<br/>or ask for more work"]
+  final{"Final acceptance<br/>needed?"}
+  accept["Accept the visible result<br/>or keep the task open"]
+  ready["No close blocker remains;<br/>choose complete, cancel, or supersede"]
+
+  ask --> basis
+  basis -- no --> gather
+  basis -- yes --> pending
+  gather --> ask
+  pending -- yes --> inbox --> ask
+  pending -- no --> unrecorded
+  unrecorded -- yes --> reconcile --> ask
+  unrecorded -- no --> evidence
+  evidence -- yes --> evidenceAction --> ask
+  evidence -- no --> risk
+  risk -- yes --> riskDecision --> ask
+  risk -- no --> final
+  final -- yes --> accept --> ask
+  final -- no --> ready
+```
 
 You decide:
 

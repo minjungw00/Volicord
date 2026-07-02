@@ -54,6 +54,61 @@ README의 나머지 내용을 읽을 때는 아래 모델을 사용합니다.
 | 사용자 판단 | 제품 방향, 중요한 기술 방향, 범위, 민감 동작, 최종 수락, 잔여 위험 수락, 취소처럼 사용자에게 속한 결정입니다. |
 | 닫기 | 현재 `Task`를 미해결 요구사항을 숨기지 않고 정직하게 끝낼 수 있는지 확인하는 일입니다. 닫기 준비 상태는 판단을 돕는 자료이지 제품 결과가 옳다는 증명이 아닙니다. |
 
+## 구성 요소가 맞물리는 방식
+
+이 지도는 처음 사용하는 독자가 알아야 할 로컬 구성 요소를 보여 줍니다. 실선 화살표는
+일반적인 로컬 호출 또는 기록 경로입니다. 점선 화살표는 공개 Volicord API 밖의 제품
+파일 작업이나 호환성 관계를 뜻합니다. 저장소 테이블, 완전한 API 동작, 호스트별 설정
+세부사항은 생략합니다.
+
+```mermaid
+flowchart LR
+  user["사용자"]
+  host["에이전트 호스트<br/>Codex 또는 Claude Code"]
+  mcp["volicord mcp --stdio<br/>로컬 MCP 도구"]
+  core["Core<br/>권한 기록"]
+  runtime["Volicord Runtime Home<br/>기록과 아티팩트"]
+  repo["Product Repository<br/>사용자 제품 파일"]
+  cli["volicord CLI<br/>설정과 Judgment Inbox"]
+
+  user --> host
+  host --> mcp
+  mcp --> core
+  core --> runtime
+  user --> cli
+  cli --> core
+  host -. 파일 편집과 도구 실행 .-> repo
+  core -. 범위, 쓰기 티켓,<br/>증거, 판단, 닫기 확인 .-> repo
+```
+
+권한 순환은 사용자 결정, 에이전트 작업, Core 기록을 분리해 둡니다. 화살표는 개요 수준의
+작업 전달을 보여 주며, 정확한 API 호출 순서를 뜻하지 않습니다.
+
+```mermaid
+flowchart TD
+  request["사용자가 작업 요청"]
+  task["Core가 Task,<br/>범위, 현재 작업 경계 기록"]
+  agent["에이전트가 확인, 제안,<br/>다음 행동 수행"]
+  judgment{"사용자 소유<br/>판단 필요?"}
+  inbox["Judgment Inbox / User Channel<br/>사용자 답변 기록"]
+  write{"제품 파일<br/>쓰기 필요?"}
+  ticket["prepare_write가 쓰기 티켓을<br/>발급하거나 차단"]
+  run["record_run이 실행 또는<br/>관찰 기록"]
+  evidence["증거와 현재 닫기 근거를<br/>보이게 유지"]
+  close{"닫기 차단 사유가<br/>남아 있음?"}
+  status["상태가 차단 사유,<br/>대기 판단, 다음 행동 표시"]
+  finish["사용자가 최종 수락,<br/>잔여 위험, 종료 결과 결정"]
+
+  request --> task --> agent --> judgment
+  judgment -- 예 --> inbox --> task
+  judgment -- 아니오 --> write
+  write -- 예 --> ticket --> run
+  write -- 아니오 --> run
+  run --> evidence --> close
+  close -- 예 --> status --> agent
+  close -- 아니오 --> finish
+```
+
 ## 설치와 초기화
 
 일반 사용자 경로는 설치된 `volicord` 실행 파일 하나를 사용하는 것입니다. 시스템이 지원

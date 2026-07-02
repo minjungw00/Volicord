@@ -37,6 +37,46 @@ The registry database tracks Runtime Home-level registration. Project
 databases hold project-local state. This page avoids reproducing table layouts
 or column definitions; use the storage Reference owners for those details.
 
+## Store, Events, And Projections
+
+This implementation map shows how method plans become current Store records,
+events, replay rows, and read-time projections. Solid arrows show normal data
+flow inside the implementation. Dotted arrows show ordering or replay
+relationships. The diagram is not a storage contract, projection authority
+contract, or table relationship diagram; exact meanings stay with
+[Storage Records](../reference/storage-records.md), [Storage Effects](../reference/storage-effects.md),
+[Storage Versioning](../reference/storage-versioning.md), and
+[Projection and template display boundaries](../reference/projection-and-templates.md).
+
+```mermaid
+flowchart LR
+  planner["Core method planner"]
+  mutations["CoreStorageMutation values<br/>and pending events"]
+  commit["CoreProjectStore::commit_mutation<br/>SQLite transaction"]
+  current["Current Store records<br/>tasks, judgments, write tickets,<br/>runs, evidence, blockers"]
+  events["authority_events<br/>ordered local event trail"]
+  replay["tool_invocations<br/>idempotent replay rows<br/>where method effects allow"]
+  reads["Store read helpers and<br/>project_state_projection"]
+  projection["Status, close-readiness,<br/>and template projections"]
+  display["MCP, CLI, or chat-facing<br/>derived display"]
+  stored["Stored replay response"]
+
+  planner --> mutations --> commit
+  commit --> current
+  commit --> events
+  commit --> replay
+  current --> reads --> projection --> display
+  events -. state_version and ordering .-> reads
+  replay -. eligible idempotent call .-> stored
+```
+
+Current Store records are the source for ordinary reads. `authority_events`
+preserve committed Core mutation order and local event facts. `tool_invocations`
+support idempotent replay only for method branches whose storage effects define
+that replay. Read-time projections and rendered displays help callers see
+state, but they do not create authority, write tickets, evidence, acceptance,
+or close readiness by display alone.
+
 ## Bootstrap And Migration Boundary
 
 Administrative setup uses Store bootstrap and inspection paths before public
