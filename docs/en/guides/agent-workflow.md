@@ -41,7 +41,7 @@ Use this table to keep agent workflow and user authority paths separate. The exa
 | Shape and inspect | Use the Agent Connection to read status, inspect available context, and identify the next safe action. | State the goal, scope, non-goals, and any "ask me before..." limits in ordinary language. | Chat, generated Markdown, and guidance help orientation but are not Core authority. |
 | Request a judgment | When an owner supports it, request or display a focused pending judgment and Core-generated options. | Review the pending question and decide whether to answer, reject, defer, narrow, or ask for more evidence. | `volicord.request_user_judgment` creates or exposes the question; it does not record the user's answer. |
 | Record an answer | Route the human to the supported `User Channel`; continue only with work that does not depend on an unrecorded judgment. | Record one Core-generated option through the local user path when the answer must become authority-bearing state. | `volicord.record_user_judgment` is a User Channel method, not an Agent Connection MCP workflow tool. |
-| Continue, write, or close | Refresh state, run needed `Write Check` steps, record Runs and evidence, and surface blockers. | Provide final acceptance, residual-risk acceptance, or the next user decision only when the visible basis is clear. | Evidence and artifacts support claims; they do not replace user judgment, close readiness, or residual-risk decisions. |
+| Continue, write, or close | Refresh state, prepare needed write tickets, record Runs and evidence, and surface blockers. | Provide final acceptance, residual-risk acceptance, or the next user decision only when the visible basis is clear. | Evidence and artifacts support claims; they do not replace user judgment, close readiness, or residual-risk decisions. |
 
 <a id="infer-use"></a>
 ## Infer Volicord use from task shape
@@ -93,9 +93,9 @@ Volicord guidance can reach agents through:
 - MCP server instructions returned during MCP initialization.
 - `Product Repository` guidance files or host-specific instructions, when present.
 
-These instructions can help tool selection, project routing, and workflow consistency. They are not access control, security enforcement, User Channel authority, user-owned judgment, `Write Check`, evidence, acceptance, close readiness, or proof that a model will choose Volicord tools.
+These instructions can help tool selection, project routing, and workflow consistency. They are not access control, security enforcement, User Channel authority, user-owned judgment, write ticket, evidence, acceptance, close readiness, or proof that a model will choose Volicord tools.
 
-Core authority and external filesystem permission remain distinct. A Volicord record or passed `Write Check` does not independently grant the host permission to edit product files, and host filesystem permission does not create Volicord authority.
+Core authority and external filesystem permission remain distinct. A Volicord record or issued write ticket does not independently grant the host permission to edit product files, and host filesystem permission does not create Volicord authority.
 
 <a id="keep-context-small"></a>
 ## Keep context small
@@ -220,7 +220,7 @@ user-owned judgment.
 <a id="check-before-writes"></a>
 ## Check before writes
 
-Before product, code, or file writes in Volicord-connected work, run a `Write Check` through the owner write path only after the intended operation is specific enough to evaluate. Exact prepare-write behavior belongs to [Prepare-write Method](../reference/api/method-prepare-write.md).
+Before product, code, or file writes in Volicord-connected work, request a write ticket through the owner write path only after the intended operation is specific enough to evaluate. Exact prepare-write behavior belongs to [Prepare-write Method](../reference/api/method-prepare-write.md).
 
 Do not claim write compatibility from a plan, stale chat context, broad enthusiasm, stale status, generated summary, or rendered view.
 
@@ -232,11 +232,11 @@ Show the user:
 - pending user judgments or sensitive approvals
 - stale state or unavailable compatibility context
 - what Volicord can verify, or the capability limit
-- next action that would unblock the `Write Check`
+- next action that would unblock write-ticket issuance
 
-If scope changes, update the current scope before asking for a new `Write Check`. Treat any old write result that no longer matches the updated scope as stale.
+If scope changes, update the current scope before asking for a new write ticket. Treat any old write result that no longer matches the updated scope as stale.
 
-When current state includes a Change Unit effect contract, include whether the intended product-file effect and paths fit it. Treat that as Core state-compatibility context for `Write Check` evaluation, not sandboxing, security enforcement, user-owned judgment, sensitive-action approval, or evidence that a write occurred.
+When current state includes a Change Unit effect contract, include whether the intended product-file effect and paths fit it. Treat that as Core state-compatibility context for write-ticket evaluation, not sandboxing, security enforcement, user-owned judgment, sensitive-action approval, or evidence that a write occurred.
 
 <a id="reconcile-unrecorded-changes"></a>
 ## Reconcile unrecorded changes

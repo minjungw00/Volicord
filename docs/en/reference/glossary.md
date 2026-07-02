@@ -40,9 +40,9 @@ Contract detail stays in the focused owner documents. Translation and style rule
 | evidence | 증거 | Recorded support for a specific claim at a specific scope. | [Core Model](core-model.md) |
 | verification criteria | 검증 기준 | User-visible criteria for checking work. | [Core Model](core-model.md) |
 | artifact | 아티팩트 | Work material referenced or staged through Volicord artifact concepts. | [API Artifact Schemas](api/schema-artifacts.md) |
-| `Write Check` | 쓰기 확인 | Durable Core-state compatibility record for one proposed product-file change. | [Core Model](core-model.md) |
-| write approval | 쓰기 승인 | Ordinary user approval, or prose about approving a write. Separate from `Write Check`. | [Core Model](core-model.md) |
-| sensitive-action approval | 민감 동작 승인 | User approval for a named sensitive step, separate from `Write Check` and final acceptance. | [Core Model](core-model.md) |
+| write ticket | 쓰기 티켓 | Durable Core authority record for authorized write intent for one proposed product-file change. | [Core Model](core-model.md) |
+| write approval | 쓰기 승인 | Ordinary user approval, or prose about approving a write. Separate from a write ticket. | [Core Model](core-model.md) |
+| sensitive-action approval | 민감 동작 승인 | User approval for a named sensitive step, separate from a write ticket and final acceptance. | [Core Model](core-model.md) |
 | final acceptance | 최종 수락 | A user-owned judgment about whether the visible close basis is acceptable. | [Core Model](core-model.md) |
 | residual-risk acceptance | 잔여 위험 수락 | A user-owned judgment about a named visible residual risk. | [Core Model](core-model.md) |
 | close readiness | 닫기 준비 상태 | The Core concept for whether a `Task` is ready to close from its current state. | [Core Model](core-model.md) |

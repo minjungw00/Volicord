@@ -132,7 +132,7 @@ Core 소유 결정적 basis:
 - `invalid_observation`: 저장된 관찰 데이터를 Product Repository 경로로 해석할 수 없습니다.
 - `not_product_change`: 저장된 관찰 데이터에 조정할 Product Repository 경로가 없습니다.
 - `recorded_as_expected_write`: 같은 `Task`의 기록된 Run이 관찰된 Product Repository 경로를 이미 덮거나, 같은 `Task`의 expected-write 상관관계가 watcher가 관찰한 Product Repository 경로를 덮습니다.
-- `covered_by_write_readiness`: 같은 `Task`의 소비된 호환 `Write Check`가 관찰된 Product Repository 경로를 덮습니다.
+- `covered_by_write_readiness`: 같은 `Task`의 소비된 호환 쓰기 티켓 행이 관찰된 Product Repository 경로를 덮습니다.
 - `reverted`: watcher가 만든 찾기가 session-watch 관찰에 연결되어 있고 현재 Product Repository 스냅샷이 저장된 watch baseline과 다시 일치합니다.
 
 사용자 소유 basis:

@@ -381,6 +381,24 @@ fn plan_prepare_write(
             Some(planned_state_version),
         )
     });
+    let write_ticket_id = write_check_id
+        .as_ref()
+        .map(|write_check_id| WriteTicketId::new(write_check_id.as_str().to_owned()));
+    let write_ticket_ref = write_check_id.as_ref().map(|write_check_id| {
+        state_ref(
+            StateRecordKind::WriteTicket,
+            write_check_id.as_str(),
+            &request.envelope.project_id,
+            Some(&task_id),
+            Some(planned_state_version),
+        )
+    });
+    let denied_path_patterns = denied_write_ticket_paths(&reasons, &normalized_paths);
+    let allowed_path_patterns = normalized_paths
+        .iter()
+        .filter(|path| !denied_path_patterns.iter().any(|denied| denied == *path))
+        .cloned()
+        .collect::<Vec<_>>();
     let write_check = write_check_ref
         .as_ref()
         .map(|write_check_ref| WriteCheckSummary {
@@ -448,6 +466,35 @@ fn plan_prepare_write(
         ),
         *plan_now.as_datetime(),
     )?;
+    let control_surface = close_plan
+        .guard_health
+        .as_ref()
+        .map(|guard_health| guard_health.control_surface.clone());
+    let write_ticket = match (write_ticket_id.as_ref(), write_ticket_ref.as_ref()) {
+        (Some(write_ticket_id), Some(write_ticket_ref)) => Some(WriteTicket {
+            write_ticket_id: write_ticket_id.clone(),
+            write_ticket_ref: write_ticket_ref.clone(),
+            state: WriteTicketState::Open,
+            scope: WriteTicketScope {
+                task_id: task_id.clone(),
+                change_unit_id: scope_change_unit_id.clone(),
+                intended_operation: attempt_scope.intended_operation.clone(),
+                product_file_write_intended: attempt_scope.product_file_write_intended,
+                sensitive_categories: attempt_scope.sensitive_categories.clone(),
+                baseline_ref: attempt_scope.baseline_ref.clone(),
+            },
+            path_patterns: WriteTicketPathPatterns {
+                allowed: allowed_path_patterns.clone(),
+                denied: denied_path_patterns.clone(),
+            },
+            observed_paths: Vec::new(),
+            basis_state_version: planned_state_version,
+            expires_at: Some(expires_at_timestamp.clone()),
+            control_surface: control_surface.clone(),
+            guarantee_display: guarantee_display.clone(),
+        }),
+        _ => None,
+    };
     let state = build_state_summary(SummaryBuild {
         project_id: &request.envelope.project_id,
         state_version: planned_state_version,
@@ -478,6 +525,17 @@ fn plan_prepare_write(
         base: placeholder_base(),
         decision,
         state: Some(state),
+        write_ticket_id: write_ticket_id.clone(),
+        write_ticket_ref: write_ticket_ref.clone(),
+        write_ticket,
+        write_ticket_effect: if create_write_check {
+            WriteTicketEffect::Issued
+        } else {
+            WriteTicketEffect::None
+        },
+        allowed_path_patterns,
+        denied_path_patterns,
+        control_surface,
         write_check_ref: write_check_ref.clone(),
         write_check,
         write_check_effect: if create_write_check {
@@ -492,7 +550,7 @@ fn plan_prepare_write(
     };
 
     let storage_mutations = if let Some(write_check_id) = &write_check_id {
-        vec![CoreStorageMutation::InsertWriteCheck(WriteCheckInsert {
+        vec![CoreStorageMutation::InsertWriteTicket(WriteTicketInsert {
             write_check_id: write_check_id.as_str().to_owned(),
             task_id: task_id.as_str().to_owned(),
             change_unit_id: scope_change_unit_id.as_str().to_owned(),
@@ -509,7 +567,7 @@ fn plan_prepare_write(
         Vec::new()
     };
     let event_kind = if allowed {
-        "write_check_created"
+        "write_ticket_issued"
     } else {
         "write_decision_recorded"
     }
@@ -518,6 +576,9 @@ fn plan_prepare_write(
         "task_id": task_id.clone(),
         "change_unit_id": branch_change_unit_id.clone(),
         "decision": decision,
+        "write_ticket_id": write_ticket_id
+            .as_ref()
+            .map(|id| id.as_str().to_owned()),
         "write_check_id": write_check_id
             .as_ref()
             .map(|id| id.as_str().to_owned())
@@ -568,5 +629,25 @@ fn effect_contract_reason(
             "One or more intended paths are outside the current Change Unit effect contract allowed paths.",
             vec![change_unit_ref],
         ),
+    }
+}
+
+fn denied_write_ticket_paths(
+    reasons: &[WriteDecisionReason],
+    normalized_paths: &[String],
+) -> Vec<String> {
+    let path_denied = reasons.iter().any(|reason| {
+        matches!(
+            reason.code.as_str(),
+            "path_out_of_scope"
+                | "effect_contract_path_not_allowed"
+                | "effect_contract_forbids_product_file_write"
+                | "effect_contract_effect_not_allowed"
+        )
+    });
+    if path_denied {
+        normalized_paths.to_vec()
+    } else {
+        Vec::new()
     }
 }

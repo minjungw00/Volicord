@@ -20,7 +20,7 @@ Volicord 보안 표현은 문서화된 Volicord 경로 안의 기록과 정책 �
 | 표면 | 지원되는 보안 의미 | 보장하지 않는 것 |
 |---|---|---|
 | `Volicord Runtime Home` | 저장소/런타임 담당 문서는 어떤 Volicord 운영 기록이 그 안에 있고 어떻게 검증되는지 정의합니다. | Runtime Home 배치는 OS 샌드박싱, 변조 방지 격리, 호스트 신뢰, 네트워크 격리, 악성코드 검사, 비밀값 검사가 아닙니다. |
-| `Product Repository` | 제품 파일은 입력으로 검사될 수 있고, 호환되는 제품 파일 쓰기는 담당 문서가 정의한 Core, 사용자 판단, `Write Check` 경로의 지배를 받을 수 있습니다. | 제품 파일은 Volicord 상태가 아니며, Volicord는 임의 제품 파일 편집 권한, 악성코드 검사, 비밀값 검사, 전역 파일시스템 가로채기를 제공하지 않습니다. |
+| `Product Repository` | 제품 파일은 입력으로 검사될 수 있고, 호환되는 제품 파일 쓰기는 담당 문서가 정의한 Core, 사용자 판단, 쓰기 티켓 경로의 지배를 받을 수 있습니다. | 제품 파일은 Volicord 상태가 아니며, Volicord는 임의 제품 파일 편집 권한, 악성코드 검사, 비밀값 검사, 전역 파일시스템 가로채기를 제공하지 않습니다. |
 | Agent Connection과 호스트 설정 | 현재 호출이 등록된 연결과 맞을 때 Agent Connection은 문서화된 연결 맥락, `actor_source` 출처, 연결 의도, 모드, Connection Projects 허용 목록을 제공합니다. | 연결 설정은 OS 권한, 호스트 신뢰, 사용자 신원, 외부 호스트가 `volicord mcp --stdio`를 로드하거나 노출했다는 증거가 아닙니다. |
 | `volicord mcp --stdio` | 어댑터는 MCP 호출을 Agent Connection 점검, Runtime Home 상태, Core, Store를 통해 라우팅합니다. | 이 프로세스 자체는 임의 제품 파일 편집 권한을 부여하거나, 권한을 지니는 사용자 판단을 기록하거나, 호스트 신뢰를 강제하거나, 명령을 차단하거나, 네트워크를 차단하거나, 도구를 격리하지 않습니다. |
 | `volicord` CLI | 관리 명령은 설정, registry 상태, 지원되는 호스트 통합 상태를 관리합니다. | CLI는 공개 API 보안 경계, 호스트 신뢰 제어기, OS 권한 메커니즘, 포괄적 쓰기 승인이 아닙니다. |
@@ -91,9 +91,9 @@ Volicord가 어떤 보장을 설명하려면 [범위](scope.md)와 이 보안 �
 - 승인된 민감 단계는 사용자가 판단하도록 질문받은 프롬프트, `SensitiveActionScope`, 영향받는 대상, 보이는 결과에 묶입니다.
 
 주장하면 안 되는 것:
-- 민감 동작 승인이 `Write Check`, `WriteCheckAttemptScope`, OS 권한, 셸 권한, 명령 승인, 배포 승인, 최종 수락, 잔여 위험 수락, 제품 정확성이라는 주장.
+- 민감 동작 승인이 쓰기 티켓, `WriteTicketScope`, OS 권한, 셸 권한, 명령 승인, 배포 승인, 최종 수락, 잔여 위험 수락, 제품 정확성이라는 주장.
 - 민감 동작 승인이 제품 파일 쓰기, 명령, 호스트, 네트워크, 비밀값, 배포, 파괴적 동작, 포괄적인 활동을 승인한다는 주장.
-- 포괄적 승인이 필요한 민감 동작 승인, 최종 수락, 잔여 위험 수락, 범위 결정, `Write Check`을 대신한다는 주장.
+- 포괄적 승인이 필요한 민감 동작 승인, 최종 수락, 잔여 위험 수락, 범위 결정, 쓰기 티켓을 대신한다는 주장.
 
 담당 문서 링크:
 - [Core 모델](core-model.md): 사용자 소유 판단과 비대체 규칙.
@@ -116,7 +116,7 @@ Volicord 보안 주장은 로컬 행위자가 Volicord 상태, 기록, 아티팩
 주장하면 안 되는 것:
 - 로컬 파일시스템 접근이 Volicord 권한을 증명한다는 주장.
 - 로컬 경로, 디렉터리 이름, 복사된 식별자, 표시된 식별자, 렌더링된 텍스트가 보안 토큰이라는 주장.
-- 문서화된 Volicord 계약 밖의 직접 로컬 수정이 유효한 Volicord 기록, 증거, 수락, 잔여 위험 수락, `Write Check`, 아티팩트 권한을 만든다는 주장.
+- 문서화된 Volicord 계약 밖의 직접 로컬 수정이 유효한 Volicord 기록, 증거, 수락, 잔여 위험 수락, 쓰기 티켓, 아티팩트 권한을 만든다는 주장.
 - `Volicord Runtime Home`이 자동으로 OS 보안 경계, 샌드박스, 격리 계층이라는 주장.
 - 호출자가 제공한 `verified` 플래그, 요청된 `operation_category`, 복사된 `actor_source`, 공개 요청 필드, 환경 변수가 Volicord 권한을 부여하거나 신뢰된 출처를 제공한다는 주장.
 - `actor_source=agent_connection:<connection_id>`가 인간 신원을 증명하거나 사용자 권한을 제공한다는 주장.
@@ -139,7 +139,7 @@ Volicord 기록은 그 기록을 만들고, 검증하고, 갱신하는 담당 �
 
 주장할 수 있는 것:
 - 제품 파일은 입력으로 검사될 수 있습니다.
-- 호환되는 제품 파일 쓰기는 현재 적용 범위, 현재 적용 Change Unit 호환성, 사용자 소유 판단, 그리고 쓰기 담당 문서가 요구하는 `Write Check`의 지배를 받을 수 있습니다.
+- 호환되는 제품 파일 쓰기는 현재 적용 범위, 현재 적용 Change Unit 호환성, 사용자 소유 판단, 그리고 쓰기 담당 문서가 요구하는 쓰기 티켓의 지배를 받을 수 있습니다.
 
 주장하면 안 되는 것:
 - 제품 파일이 Volicord 상태라는 주장.
@@ -192,7 +192,7 @@ Volicord 기록은 그 기록을 만들고, 검증하고, 갱신하는 담당 �
 - Codex 또는 Claude Code 설정 설치가 프로젝트 신뢰, 프로젝트 MCP 승인, OAuth, 재시작, 다시 로드, 그 밖의 호스트 통제 동작을 우회한다는 주장.
 - 설정은 설치되었지만 호스트가 여전히 사용자 통제 신뢰나 승인을 요구하는 경우 `action_required`가 실패한 설치라는 주장.
 - Cwd-independent hook 경로, wrapper 검증, `hook_path_safety=ok`가 OS sandboxing, 전역 파일시스템 가로채기, 포괄적 명령 차단, 네트워크 차단, 비밀값 차단, 또는 구현된 호스트 hook 밖에서 쓰기가 일어나지 않는다는 증거라는 주장.
-- 에이전트 instructions, `AGENTS.md` 블록, `CLAUDE.md`, `.claude/rules/` 파일, MCP 서버 instructions가 접근 제어, 보안 강제, 사용자 판단, `Write Check`, 또는 모델이 이를 따랐다는 증명이라는 주장.
+- 에이전트 instructions, `AGENTS.md` 블록, `CLAUDE.md`, `.claude/rules/` 파일, MCP 서버 instructions가 접근 제어, 보안 강제, 사용자 판단, 쓰기 티켓, 또는 모델이 이를 따랐다는 증명이라는 주장.
 
 ### 생성된 표시와 텍스트
 
@@ -200,7 +200,7 @@ Volicord 기록은 그 기록을 만들고, 검증하고, 갱신하는 담당 �
 
 주장하면 안 되는 것:
 - 렌더링된 표시, `Projection`, 상태 카드, 템플릿 출력, 대화 메시지, 커넥터 설명, 에이전트 기억이 새로운 권한 원천이라는 주장.
-- 표시된 `ArtifactRef`, `UserJudgment`, `Write Check`, `connection_id` 텍스트가 그 식별자가 가리키는 권한을 만든다는 주장.
+- 표시된 `ArtifactRef`, `UserJudgment`, 쓰기 티켓, `connection_id` 텍스트가 그 식별자가 가리키는 권한을 만든다는 주장.
 
 ## 명시적 비보장
 
@@ -266,6 +266,6 @@ Volicord는 독자나 에이전트가 아래에서 권한을 추론하도록 허
 - [런타임 경계](runtime-boundaries.md): User Channel 위치, Volicord 소스 저장소/설치 파일, 실행 파일 프로세스, `Product Repository`, `Volicord Runtime Home`, 외부 MCP 호스트 설정 경계.
 - [API 값 집합](api/schema-value-sets.md): `GuaranteeDisplay.level`, `operation_category`, 그 밖의 값 이름.
 - [API 오류 처리 경로](api/error-routing.md): 공개 오류 처리 경로.
-- [Core 모델](core-model.md): 사용자 소유 판단, `Write Check`, 수락, 잔여 위험, 비대체 규칙.
+- [Core 모델](core-model.md): 사용자 소유 판단, 쓰기 티켓, 수락, 잔여 위험, 비대체 규칙.
 - [API 판단 스키마](api/schema-judgment.md): `SensitiveActionScope`와 사용자 소유 판단 스키마 형태.
 - [저장 효과](storage-effects.md), [저장소 기록](storage-records.md), [아티팩트 저장소](storage-artifacts.md): 저장 효과, 기록 배치, 아티팩트 권한 세부사항.

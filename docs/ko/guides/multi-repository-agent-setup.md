@@ -161,6 +161,6 @@ Product Repository 하나를 제거하면 해당 Product Repository의 Connectio
   도구 호출에는 명시적 `project_selector`가 필요합니다.
 - `Product Repository`는 제품 파일 경계이며 선택된 공유 호스트 설정을 포함할 수
   있지만 Core 권한이 아닙니다.
-- `Write Check`은 Core 상태 호환성이지 OS 권한이 아닙니다.
+- 쓰기 티켓은 Volicord 쓰기 의도 권한이지 OS 권한이나 쓰기가 실제로 일어났다는 증명이 아닙니다.
 - Volicord는 OS 샌드박싱, 파일시스템 ACL, 네트워크 정책, 비밀 격리를 제공하지
   않습니다.

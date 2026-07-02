@@ -93,7 +93,7 @@ Route:
 - `ToolRejectedResponse.errors[]`.
 
 State effect:
-- No records, replay rows, artifacts, events, `Write Check` consumption, close-state mutation, or state-version increment.
+- No records, replay rows, artifacts, events, write-ticket consumption, close-state mutation, or state-version increment.
 
 <a id="rejected-state-or-idempotency-conflict"></a>
 ### State or idempotency conflict

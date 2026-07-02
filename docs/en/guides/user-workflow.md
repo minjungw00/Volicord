@@ -158,7 +158,7 @@ belongs to [Agent Host Troubleshooting](agent-host-troubleshooting.md#guard-hook
 
 ## Approve writes and sensitive actions
 
-A user-facing write approval is bounded permission for a named write attempt. In this guide, write approval means ordinary user approval for a write flow; it is separate from the exact product label `Write Check`.
+A user-facing write approval is bounded permission for a named write attempt. In this guide, write approval means ordinary user approval for a write flow; it is separate from a Volicord write ticket.
 
 Write approval is not whole-plan approval, final acceptance, residual-risk acceptance, sensitive-action approval, or a guarantee that Volicord can prevent every unsafe action.
 

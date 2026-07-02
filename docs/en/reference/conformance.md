@@ -208,7 +208,7 @@ These scenario IDs are compact reference criteria. They are not examples, tutori
 - `BASELINE-write-check-attempt-scope-product-file-write-only`
   See [`WriteCheckAttemptScope`](#scenario-baseline-write-check-attempt-scope-product-file-write-only).
 - `BASELINE-record-run-consumes-write-check-once`
-  See [single-use `Write Check`](#scenario-baseline-record-run-consumes-write-check-once).
+  See [single-use write-ticket compatibility](#scenario-baseline-record-run-consumes-write-check-once).
 - `BASELINE-stage-artifact-transient-handle-only`
   See [transient staged handle](#scenario-baseline-stage-artifact-transient-handle-only).
 - `BASELINE-record-run-artifact-input-validation-order`
@@ -224,7 +224,7 @@ These scenario IDs are compact reference criteria. They are not examples, tutori
 - `BASELINE-close-task-complete-stale-state-version-rejected`
   See [stale close state](#scenario-baseline-close-task-complete-stale-state-version-rejected).
 - `BASELINE-close-task-complete-stale-write-check-basis-rejected`
-  See [stale `Write Check` basis](#scenario-baseline-close-task-complete-stale-write-check-basis-rejected).
+  See [stale write-ticket basis](#scenario-baseline-close-task-complete-stale-write-check-basis-rejected).
 - `BASELINE-close-task-blocks-current-write-compatibility`
   See [write compatibility blocker](#scenario-baseline-close-task-blocks-current-write-compatibility).
 - `BASELINE-close-task-blocks-evidence-insufficient`
@@ -337,7 +337,7 @@ Owner links:
 ### `BASELINE-sensitive-approval-records-sensitive-action-scope`
 
 Expected behavior:
-- Sensitive-action approval is separate from `Write Check` and final acceptance.
+- Sensitive-action approval is separate from write ticket and final acceptance.
 
 Owner links:
 - [Core Model](core-model.md)
@@ -370,7 +370,7 @@ Owner links:
 ### `BASELINE-record-run-consumes-write-check-once`
 
 Expected behavior:
-- Compatible Run recording consumes a matching `Write Check` once.
+- Compatible Run recording consumes a matching write-ticket row once.
 
 Owner links:
 - [Record-run method](api/method-record-run.md)
@@ -458,7 +458,7 @@ Owner links:
 ### `BASELINE-close-task-complete-stale-write-check-basis-rejected`
 
 Expected behavior:
-- Stale close-relevant `Write Check` basis fails before close commit.
+- Stale close-relevant write-ticket basis fails before close commit.
 
 Owner links:
 - [Close-task method](api/method-close-task.md)

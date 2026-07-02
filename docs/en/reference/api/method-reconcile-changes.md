@@ -132,7 +132,7 @@ Core-owned deterministic bases:
 - `invalid_observation`: stored observation data is invalid for interpretation as Product Repository paths.
 - `not_product_change`: stored observation data contains no Product Repository path to reconcile.
 - `recorded_as_expected_write`: a recorded Run for the same Task already covers the observed Product Repository paths, or expected-write correlation for the same Task covers watcher-observed Product Repository paths.
-- `covered_by_write_readiness`: a consumed compatible `Write Check` for the same Task covers the observed Product Repository paths.
+- `covered_by_write_readiness`: a consumed compatible write-ticket row for the same Task covers the observed Product Repository paths.
 - `reverted`: a watcher-created finding is linked to a session-watch observation and the current Product Repository snapshot matches the stored watch baseline again.
 
 User-owned basis:

@@ -8,7 +8,7 @@ This document owns baseline method behavior for `volicord.prepare_write`:
 
 - method-specific required inputs, invocation requirements, state version behavior, result branches, and `dry_run` behavior
 - `PrepareWriteResult` decision behavior
-- method-specific handling for creating one consumable `Write Check`
+- method-specific handling for issuing one open write ticket authority record
 - method-specific `WriteDecisionReason.code` production behavior
 - prepare-write examples
 
@@ -18,7 +18,7 @@ This document does not own:
 
 - common request envelope, response branch, dry-run, or rejected-response schema bodies
 - nested state, judgment, value-set, or error schema definitions
-- Core meaning of `Write Check`, ordinary write approval, sensitive-action approval, final acceptance, residual-risk acceptance, or user-owned judgment
+- Core meaning of write tickets, ordinary write approval, sensitive-action approval, final acceptance, residual-risk acceptance, or user-owned judgment
 - storage DDL, storage record layouts, exact storage effects, artifact lifecycle, or security guarantees
 - public error code meaning, public error precedence, or shared response-branch routing
 
@@ -34,7 +34,7 @@ This document does not own:
 - required separate sensitive-action approval
 - verified invocation context
 
-When the check is allowed, the method creates a consumable single-use `Write Check`. When the check is not allowed, the method denies or defers that `Write Check` path.
+When the check is allowed, the method issues one open write ticket. The ticket is a Volicord authority record for authorized write intent within the current Task and Change Unit. It is not filesystem enforcement, OS permission, shell permission, or proof that a write occurred. When the check is not allowed, the method denies or defers the ticket path.
 
 Security non-claims belong to [Security](../security.md).
 
@@ -63,7 +63,7 @@ PrepareWriteRequest:
 ```
 
 Field notes:
-- `intended_paths` entries are `Product Repository` API product paths. Product Repository path normalization is owned by [Runtime Boundaries](../runtime-boundaries.md#product-repository-api-path-normalization); this method uses normalized repo-relative paths when forming and comparing the path-level `WriteCheckAttemptScope`.
+- `intended_paths` entries are `Product Repository` API product paths. Product Repository path normalization is owned by [Runtime Boundaries](../runtime-boundaries.md#product-repository-api-path-normalization); this method uses normalized repo-relative paths when forming and comparing the path-level `WriteTicketScope` and compatibility storage scope.
 - `sensitive_categories` entries are opaque sensitive-category classification strings unless this method or a profile owner publishes a narrower local list.
 
 ## Access requirements
@@ -82,17 +82,17 @@ A separate sensitive-action approval satisfies this method only when the judgmen
 
 ## State version behavior
 
-| Result | State-version effect | `Write Check` effect |
+| Result | State-version effect | Write-ticket effect |
 |---|---|---|
-| Committed `decision=allowed` | Increments `project_state.state_version` exactly once. | Creates one `status=active` `Write Check`. |
-| Committed non-allow decision | Increments `project_state.state_version` exactly once. | Creates no consumable `Write Check`. |
+| Committed `decision=allowed` | Increments `project_state.state_version` exactly once. | Issues one open write ticket. |
+| Committed non-allow decision | Increments `project_state.state_version` exactly once. | Issues no write ticket. |
 | Pre-commit rejection or dry run | Increments nothing. | Creates nothing. |
 
-## Write Check lifetime and ID allocation
+## Write ticket lifetime and ID allocation
 
-Newly created `Write Check` records have a default lifetime of 15 minutes. `expires_at` is an enforced compatibility condition, not display-only metadata. The effective expiration is the earlier of stored `expires_at` and `created_at + 15 minutes`; this same effective rule limits historical rows with far-future expiration timestamps. Expiration is calculated using parsed UTC timestamps, not lexical string comparison.
+Newly issued write tickets have a default lifetime of 15 minutes. `expires_at` is an enforced Volicord compatibility condition, not display-only metadata and not an OS-level write deadline. The effective expiration is the earlier of stored `expires_at` and `created_at + 15 minutes`; this same effective rule limits historical rows with far-future expiration timestamps. Expiration is calculated using parsed UTC timestamps, not lexical string comparison.
 
-A newly allowed committed Write Check receives its durable `write_check_id` only when the allowed mutation is committed. Blocked, approval-required, decision-required, rejected, and `dry_run` paths do not allocate a durable `Write Check` ID.
+A newly allowed committed call receives its durable `write_ticket_id` only when the allowed mutation is committed. Blocked, approval-required, decision-required, rejected, and `dry_run` paths do not allocate a durable write ticket ID.
 
 ## Method result fields
 
@@ -103,15 +103,22 @@ A newly allowed committed Write Check receives its durable `write_check_id` only
 | `base` | Common result metadata. The `ToolResultBase` shape, including `disclosure` and `events`, is owned by [API Schema Core](schema-core.md#common-response). Committed `PrepareWriteResult` branches use `base.response_kind=result`, `base.effect_kind=core_committed`, and `base.disclosure.guarantee_class=authority_record`. `base.events[].event_kind`, when present, is an opaque illustrative classification string. |
 | `decision` | The method decision for this write-preparation attempt. Supported values are owned by [API Value Sets](schema-value-sets.md#method-local-values). |
 | `state` | Current `StateSummary` when this result includes a state snapshot. Nested state fields, including `write_check_summary`, are owned by [API State Schemas](schema-state.md). |
-| `write_check_ref` | `StateRecordRef | null` for the consumable `Write Check` in an allowed decision result. A new allowed commit creates it; idempotent replay returns the stored original result without changing this field. It is `null` for non-allow decisions. |
-| `write_check` | `WriteCheckSummary | null` for the `Write Check` in an allowed decision result. A new allowed commit creates it; idempotent replay returns the stored original result without changing this field. It is `null` for non-allow decisions. |
-| `write_check_effect` | Method result effect for the `Write Check` path. Supported values are owned by [API Value Sets](schema-value-sets.md#method-local-values). |
+| `write_ticket_id` | `WriteTicketId | null` for the issued write ticket in an allowed decision result. A new allowed commit allocates it; idempotent replay returns the stored original result without changing this field. It is `null` for non-allow committed decisions. |
+| `write_ticket_ref` | `StateRecordRef | null` with `record_kind=write_ticket` for the issued write ticket. It is `null` for non-allow committed decisions. |
+| `write_ticket` | `WriteTicket | null` for the issued write-ticket authority record. It is `null` for non-allow committed decisions. |
+| `write_ticket_effect` | Method result effect for the write-ticket path. `issued` means this committed result created the open ticket. `none` means no ticket was issued. Supported values are owned by [API Value Sets](schema-value-sets.md#method-local-values). |
+| `allowed_path_patterns` | Normalized Product Repository path patterns captured as allowed by the ticket decision. In an allowed result, this is the ticket's allowed path pattern list. |
+| `denied_path_patterns` | Normalized Product Repository path patterns captured as denied by the ticket decision, or `[]` when no path-level denial applies. |
+| `control_surface` | `ControlSurfaceSummary | null` describing the current Volicord control surface used for disclosure. `os_enforced=false` means the ticket is not OS-level enforcement. |
+| `write_check_ref` | Compatibility `StateRecordRef | null` for the current storage-backed write compatibility row when exposed by older lifecycle fields. New integrations must use `write_ticket_ref` for the issued authority record. |
+| `write_check` | Compatibility `WriteCheckSummary | null` for the same storage-backed write compatibility row. New integrations must use `write_ticket`. |
+| `write_check_effect` | Compatibility effect for legacy write-check fields. It does not replace `write_ticket_effect`. |
 | `active_user_judgment_refs` | `StateRecordRef[]` for current accepted user-owned judgments applied to the write-preparation decision, including matching `sensitive_approval` judgments when present. |
 | `write_decision_reasons` | `WriteDecisionReason[]` explaining non-allow decisions. The shape is owned by [API State Schemas](schema-state.md#current-position-display-shapes). |
-| `user_judgment_candidate` | `UserJudgmentCandidate | null` when the method proposes a focused user-owned judgment instead of creating `Write Check`; otherwise `null`. The shape is owned by [API Judgment Schemas](schema-judgment.md#userjudgmentcandidate). |
+| `user_judgment_candidate` | `UserJudgmentCandidate | null` when the method proposes a focused user-owned judgment instead of issuing a write ticket; otherwise `null`. The shape is owned by [API Judgment Schemas](schema-judgment.md#userjudgmentcandidate). |
 | `guarantee_display` | `GuaranteeDisplay | null` for the method's compatibility display. The display shape is owned by [API State Schemas](schema-state.md#close-readiness-and-validation-shapes); security guarantee meaning is owned by [Security](../security.md). |
 
-Nested `StateRecordRef`, `StateSummary`, `WriteCheckSummary`, `WriteDecisionReason`, `UserJudgmentCandidate`, and `GuaranteeDisplay` field bodies stay with the schema owners linked above.
+Nested `StateRecordRef`, `StateSummary`, `WriteTicket`, `ControlSurfaceSummary`, `WriteCheckSummary`, `WriteDecisionReason`, `UserJudgmentCandidate`, and `GuaranteeDisplay` field bodies stay with the schema owners linked above.
 
 ## Success result
 
@@ -122,11 +129,16 @@ Returns `PrepareWriteResult` with:
 
 For `decision=allowed`:
 
-- `write_check_ref` is non-null
-- `write_check` is non-null
-- `write_check_effect` is `created` for a new committed `decision=allowed` response
-- idempotent replay returns the stored original committed `PrepareWriteResult` exactly; it does not recompute or reclassify `write_check_effect`, `base.state_version`, `base.events`, or any other response field, and it does not create another `Write Check` or repeat the storage effect
-- the Write Check is scoped to the path-level `WriteCheckAttemptScope` using normalized repo-relative `intended_paths`
+- `write_ticket_id`, `write_ticket_ref`, and `write_ticket` are non-null
+- `write_ticket_ref.record_kind` is `write_ticket`
+- `write_ticket.state` is `open`
+- `write_ticket_effect` is `issued` for a new committed `decision=allowed` response
+- `write_ticket.path_patterns.allowed` and top-level `allowed_path_patterns` contain the normalized repo-relative `intended_paths` allowed for this ticket
+- `write_ticket.path_patterns.denied` and top-level `denied_path_patterns` are `[]` for an allowed result
+- `write_ticket.observed_paths` is `[]` until an observe-profile hook, watcher, or later owner-defined observation path connects observations to the ticket
+- `control_surface` and `write_ticket.control_surface` disclose the current Volicord control surface, including `os_enforced=false` in the baseline non-enforcement model
+- idempotent replay returns the stored original committed `PrepareWriteResult` exactly; it does not recompute or reclassify `write_ticket_effect`, `base.state_version`, `base.events`, or any other response field, and it does not create another write ticket or repeat the storage effect
+- the write ticket is scoped to `WriteTicketScope` using normalized repo-relative `intended_paths`
 - `active_user_judgment_refs` may cite current accepted user-owned judgments that satisfy write preconditions, including a separate `sensitive_approval`
 
 ## Blocked result
@@ -139,12 +151,11 @@ Committed blocked decisions are `PrepareWriteResult` values with one of these de
 
 Result data:
 
-- `write_check_ref` is `null`.
-- `write_check` is `null`.
-- `write_check_effect` is `none`.
+- `write_ticket_id`, `write_ticket_ref`, and `write_ticket` are `null`.
+- `write_ticket_effect` is `none`.
 - `write_decision_reasons` must be non-empty.
 - A valid committed `dry_run=false` non-allow result appends one `authority_events` row containing the structured `write_decision_reasons`, creates a replay row when an idempotency key is present, and increments `project_state.state_version` exactly once.
-- It creates no consumable `Write Check`, no separate public history method, and no new public response field.
+- It issues no write ticket, creates no separate public history method, and does not create a product-file write authority record.
 - `volicord.status` is not required to expose historical non-allow decisions.
 - Each entry is a `WriteDecisionReason`.
 - `category` uses the controlled `WriteDecisionReason.category` value set.
@@ -175,8 +186,8 @@ Non-claims:
 - `STATE_VERSION_CONFLICT` is a rejected-response `ErrorCode`; it must not be represented as a method-local write decision reason.
 - `write_decision_reasons` are not `CloseReadinessBlocker` values.
 - `write_decision_reasons` do not evaluate close readiness.
-- Effect contract decision reasons do not replace sensitive-action approval, user-owned judgment, evidence, final acceptance, close readiness, residual-risk acceptance, or the separate `Write Check` that this method creates only on `decision=allowed`.
-- No consumable `Write Check` is created.
+- Effect contract decision reasons do not replace sensitive-action approval, user-owned judgment, evidence, final acceptance, close readiness, residual-risk acceptance, or the separate write ticket that this method creates only on `decision=allowed`.
+- No write ticket is issued.
 - The result disclosure is not OS sandboxing, network isolation, malware defense, full write prevention, correctness proof, test sufficiency proof, human review replacement, or actor attribution proof.
 
 ## Rejected result
@@ -202,12 +213,13 @@ Public error code meaning, precedence, and rejected-response routing are owned b
 For `dry_run=true`, a valid preview:
 
 - returns `ToolDryRunResponse`
-- creates no `Write Check`
+- issues no committed write ticket
+- may describe a planned `write_ticket` effect such as `would_issue` in the dry-run summary when the preview would otherwise be allowed
 - persists no write-decision state
 
 ## Storage effect
 
-On commit, the method may persist `Write Check` or write-decision state according to the method result. Exact storage effects are owned by the storage documents linked below.
+On commit, the method may persist a write ticket or write-decision state according to the method result. Exact storage effects, including the physical table backing the ticket record, are owned by the storage documents linked below.
 
 The examples are intentionally compact and method-local. Representative responses show fields needed for the relevant `PrepareWriteResult` branch; nested schema bodies are illustrated only where they clarify the method result.
 
@@ -244,9 +256,9 @@ params:
 
 This branch applies after the separate sensitive-action approval is already present.
 
-`uj_sensitive_pref_001` represents an existing current `judgment_kind=sensitive_approval` resolved by the user with `resolution_outcome=accepted` and a `SensitiveActionScope` that matches the profile preference update. It is not ordinary write approval, final acceptance, residual-risk acceptance, or `Write Check`.
+`uj_sensitive_pref_001` represents an existing current `judgment_kind=sensitive_approval` resolved by the user with `resolution_outcome=accepted` and a `SensitiveActionScope` that matches the profile preference update. It is not ordinary write approval, final acceptance, residual-risk acceptance, or a write ticket.
 
-In this example, the request carries `expected_state_version: 19`; the allowed commit advances the project to `state_version: 20` and creates an active `Write Check` with `basis_state_version: 20`.
+In this example, the request carries `expected_state_version: 19`; the allowed commit advances the project to `state_version: 20` and issues an open write ticket with `basis_state_version: 20`.
 
 ```yaml
 base:
@@ -256,7 +268,7 @@ base:
   state_version: 20
   events:
     - event_id: evt_pref_001
-      event_kind: write_check_created
+      event_kind: write_ticket_issued
 decision: allowed
 state:
   project_id: proj_pref_001
@@ -294,7 +306,7 @@ state:
     status: active
     write_check_ref:
       record_kind: write_check
-      record_id: wa_pref_001
+      record_id: wt_pref_001
       project_id: proj_pref_001
       task_id: task_pref_001
       state_version: 20
@@ -304,25 +316,84 @@ state:
       - src/preferences/profile-save.test.ts
     guarantee_display:
       level: cooperative
-      basis: "Write Check is a Volicord compatibility record, not OS permission."
+      basis: "Write ticket is a Volicord authority record, not OS permission."
       capability_refs: []
   evidence_summary: null
   close_state: null
   close_blockers: []
   guarantee_display:
     level: cooperative
-    basis: "Write Check is a Volicord compatibility record, not OS permission."
+    basis: "Write ticket is a Volicord authority record, not OS permission."
     capability_refs: []
+write_ticket_id: wt_pref_001
+write_ticket_ref:
+  record_kind: write_ticket
+  record_id: wt_pref_001
+  project_id: proj_pref_001
+  task_id: task_pref_001
+  state_version: 20
+write_ticket:
+  write_ticket_id: wt_pref_001
+  write_ticket_ref:
+    record_kind: write_ticket
+    record_id: wt_pref_001
+    project_id: proj_pref_001
+    task_id: task_pref_001
+    state_version: 20
+  state: open
+  scope:
+    task_id: task_pref_001
+    change_unit_id: cu_pref_001
+    intended_operation: "update profile preference save flow"
+    product_file_write_intended: true
+    sensitive_categories:
+      - account_preference_update
+    baseline_ref: baseline_pref_001
+  path_patterns:
+    allowed:
+      - src/preferences/profile-save.ts
+      - src/preferences/profile-save.test.ts
+    denied: []
+  observed_paths: []
+  basis_state_version: 20
+  expires_at: "<future-expiration-timestamp>"
+  control_surface:
+    selected_profile: record
+    host_hooks_active: false
+    session_watcher_active: false
+    cooperative_pre_tool_warning_available: false
+    cooperative_pre_tool_denial_available: false
+    unrecorded_changes_detectable: false
+    actor_identity_provable: false
+    os_enforced: false
+  guarantee_display:
+    level: cooperative
+    basis: "Write ticket is a Volicord authority record, not OS permission."
+    capability_refs: []
+write_ticket_effect: issued
+allowed_path_patterns:
+  - src/preferences/profile-save.ts
+  - src/preferences/profile-save.test.ts
+denied_path_patterns: []
+control_surface:
+  selected_profile: record
+  host_hooks_active: false
+  session_watcher_active: false
+  cooperative_pre_tool_warning_available: false
+  cooperative_pre_tool_denial_available: false
+  unrecorded_changes_detectable: false
+  actor_identity_provable: false
+  os_enforced: false
 write_check_ref:
   record_kind: write_check
-  record_id: wa_pref_001
+  record_id: wt_pref_001
   project_id: proj_pref_001
   task_id: task_pref_001
   state_version: 20
 write_check:
   write_check_ref:
     record_kind: write_check
-    record_id: wa_pref_001
+    record_id: wt_pref_001
     project_id: proj_pref_001
     task_id: task_pref_001
     state_version: 20
@@ -351,7 +422,7 @@ write_decision_reasons: []
 user_judgment_candidate: null
 guarantee_display:
   level: cooperative
-  basis: "Write Check is a Volicord compatibility record, not OS permission."
+  basis: "Write ticket is a Volicord authority record, not OS permission."
   capability_refs: []
 ```
 
@@ -369,28 +440,45 @@ base:
   state_version: 20
   events: []
 decision: approval_required
+write_ticket_id: null
+write_ticket_ref: null
+write_ticket: null
+write_ticket_effect: none
+allowed_path_patterns:
+  - src/preferences/profile-save.ts
+  - src/preferences/profile-save.test.ts
+denied_path_patterns: []
+control_surface:
+  selected_profile: record
+  host_hooks_active: false
+  session_watcher_active: false
+  cooperative_pre_tool_warning_available: false
+  cooperative_pre_tool_denial_available: false
+  unrecorded_changes_detectable: false
+  actor_identity_provable: false
+  os_enforced: false
 write_check_ref: null
 write_check: null
 write_check_effect: none
 write_decision_reasons:
   - category: sensitive_approval
     code: sensitive_approval_missing
-    message: "Profile preference updates require separate sensitive-action approval before Write Check."
+    message: "Profile preference updates require separate sensitive-action approval before write ticket issuance."
     related_refs: []
 active_user_judgment_refs: []
 user_judgment_candidate: null
 guarantee_display:
   level: cooperative
-  basis: "Write Check is a Volicord compatibility record, not OS permission."
+  basis: "Write ticket is a Volicord authority record, not OS permission."
   capability_refs: []
 ```
 
 ## Owner links
 
 - Request envelope, common result branches, and dry-run summaries: [API Schema Core](schema-core.md).
-- `WriteCheckSummary`, state summaries, and refs: [API State Schemas](schema-state.md).
+- `WriteTicket`, compatibility `WriteCheckSummary`, state summaries, and refs: [API State Schemas](schema-state.md).
 - `SensitiveActionScope` and user-owned approval shapes: [API Judgment Schemas](schema-judgment.md).
-- `Write Check`, write approval, sensitive-action approval, final-acceptance, and residual-risk boundaries: [Core Model](../core-model.md).
+- Write ticket, write approval, sensitive-action approval, final-acceptance, and residual-risk boundaries: [Core Model](../core-model.md).
 - Product Repository path normalization: [Runtime Boundaries](../runtime-boundaries.md#product-repository-api-path-normalization).
 - Supported values and operation categories: [API Value Sets](schema-value-sets.md#operation-category-values).
 - Public errors, `STATE_VERSION_CONFLICT`, branch routing, and blocked/dry-run behavior: [API error codes](error-codes.md), [API error precedence](error-precedence.md), and [API error routing](error-routing.md).

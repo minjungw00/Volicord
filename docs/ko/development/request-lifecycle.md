@@ -4,7 +4,7 @@
 
 - 읽기 전용 경로인 `volicord.status`
 - 커밋된 상태 변이 경로인 `volicord.intake`
-- 정책과 `Write Check`에 민감한 경로인 `volicord.prepare_write`
+- 정책과 쓰기 티켓에 민감한 경로인 `volicord.prepare_write`
 
 개발자가 코드를 따라갈 수 있도록 소스 파일과 심볼을 이름으로 가리킵니다.
 정확한 공개 메서드 동작, 요청이나 응답 스키마, 저장 효과, 보안 보장,
@@ -116,7 +116,7 @@ Core 쪽 분기입니다. 정확한 저장 효과 계약은
 
 | 분기 또는 응답 경로 | 읽을 위치 | 가이드 수준 지속 저장 결과 |
 |---|---|---|
-| MCP 디코딩 또는 사전 점검의 rejected response | `McpAdapter::call_tool`, `CoreService::prepare_request`, `validation_rejected` | Core 커밋 없이 rejected response 또는 JSON-RPC 오류를 반환합니다. `state_version` 증가, 권한 이벤트, 재실행 행, 아티팩트 효과, `Write Check` 효과를 만들지 않습니다. |
+| MCP 디코딩 또는 사전 점검의 rejected response | `McpAdapter::call_tool`, `CoreService::prepare_request`, `validation_rejected` | Core 커밋 없이 rejected response 또는 JSON-RPC 오류를 반환합니다. `state_version` 증가, 권한 이벤트, 재실행 행, 아티팩트 효과, 쓰기 티켓 효과를 만들지 않습니다. |
 | `OwnerPipelineBranch::ReadOnly` | `CoreService::execute_prepared_request` | 현재 읽기 결과에서 `EffectKind::ReadOnly` 결과를 만들고 `CoreProjectStore::commit_mutation`을 호출하지 않습니다. 응답에 계산된 닫기 차단 사유나 아티팩트 관찰이 있더라도 읽는 시점의 데이터입니다. |
 | `OwnerPipelineBranch::NoEffectResult` | `CoreService::execute_prepared_request`; 현재는 `close_task`의 차단된 결과 경로에서 사용 | `EffectKind::NoEffect`인 유효한 결과를 만들고 `CoreProjectStore::commit_mutation`을 호출하지 않습니다. 이 경로의 차단 사유형 결과는 응답 데이터이며 커밋된 차단 사유 행이 아닙니다. |
 | `OwnerPipelineBranch::DryRunPreview` | `CoreService::execute_prepared_request` | `ToolDryRunResponse` 미리보기 데이터를 만들고 생성된 지속 참조, 권한 이벤트, 재실행 행, 스테이징 핸들, 아티팩트, `state_version` 변경을 지속하지 않습니다. |
@@ -125,9 +125,9 @@ Core 쪽 분기입니다. 정확한 저장 효과 계약은
 
 차단된 것처럼 보이는 모든 결과를 같은 구현 경로로 다루면 안 됩니다. 예를
 들어 `volicord.prepare_write`는 커밋 전 거부되어 효과가 없을 수 있고,
-dry-run 미리보기로 효과가 없을 수 있고, `Write Check`을 만들지
+dry-run 미리보기로 효과가 없을 수 있고, 쓰기 티켓을 발급하지
 않는 non-allow 결정 이벤트를 커밋할 수 있으며, 허용 결정에서는
-`Write Check`을 삽입할 수 있습니다. `volicord.close_task`는 읽기 전용
+쓰기 티켓 호환성 행을 삽입할 수 있습니다. `volicord.close_task`는 읽기 전용
 확인에서나 기준 효과 없음 차단 경로에서 닫기 차단 사유를 반환할 수 있습니다.
 API 오류는 rejected response로 남으며 닫기 차단 사유가 아닙니다. 차단
 사유와 API 사이의 정확한 경계는 [API 차단 사유 처리 경로](../reference/api/blocker-routing.md)가
@@ -189,7 +189,7 @@ API 오류는 rejected response로 남으며 닫기 차단 사유가 아닙니�
 - 상태 버전 증가 없음.
 - 권한 이벤트 없음.
 - 재실행 행 없음.
-- `Write Check` 변경 없음.
+- 쓰기 티켓 변경 없음.
 - 프로젝트 연속성 기록 생성 없음.
 
 대표 테스트:
@@ -305,7 +305,7 @@ API 오류는 rejected response로 남으며 닫기 차단 사유가 아닙니�
 - 저장 효과: [저장 효과](../reference/storage-effects.md)
 - 재실행과 오류 동작: [API 오류](../reference/api/errors.md)와 메서드 담당 문서
 
-## `volicord.prepare_write`: 정책과 `Write Check` 경로
+## `volicord.prepare_write`: 정책과 쓰기 티켓 경로
 
 참조 담당 문서:
 
@@ -326,14 +326,14 @@ API 오류는 rejected response로 남으며 닫기 차단 사유가 아닙니�
    `plan_prepare_write`를 구현합니다.
 4. [`crates/volicord-core/src/policy/write_check.rs`](../../../crates/volicord-core/src/policy/write_check.rs)는
    `prepare_write_decision`, `prepare_write_dry_run_summary`,
-   Write Check 호환성 도우미, `write_decision_reason`을 제공합니다.
+   쓰기 티켓 호환성 도우미, `write_decision_reason`을 제공합니다.
 5. [`crates/volicord-core/src/policy/path.rs`](../../../crates/volicord-core/src/policy/path.rs)는
    `Product Repository` 경로 정규화 도우미를 제공합니다.
 6. [`crates/volicord-core/src/policy/judgment_relevance.rs`](../../../crates/volicord-core/src/policy/judgment_relevance.rs)는
    계획기가 사용하는 판단 관련성 점검을 제공합니다.
 7. [`crates/volicord-store/src/core_pipeline.rs`](../../../crates/volicord-store/src/core_pipeline.rs)는
-   커밋된 allowed 분기가 `Write Check`을 만들 때
-   `CoreStorageMutation::InsertWriteCheck`을 적용합니다.
+   커밋된 allowed 분기가 쓰기 티켓을 발급할 때
+   `CoreStorageMutation::InsertWriteTicket`을 적용합니다.
 
 생명주기:
 
@@ -358,15 +358,15 @@ API 오류는 rejected response로 남으며 닫기 차단 사유가 아닙니�
    reason이 없으면 allowed 계획입니다. reason이 있으면 non-allow 결정입니다.
 8. 요청이 dry run이면 `CoreService::execute_prepared_request`는
    `prepare_write_dry_run_summary`가 담긴 `OwnerPipelineBranch::DryRunPreview`를
-   받습니다. `Write Check` ID는 할당되지 않고 Store 커밋은 실행되지
+   받습니다. 쓰기 티켓 ID는 할당되지 않고 Store 커밋은 실행되지
    않습니다.
 9. 커밋된 allowed 계획이면 `OwnerPipelineBranch::CommitMutation`은
-   `CoreStorageMutation::InsertWriteCheck`,
-   `event_kind="write_check_created"`, 새 `write_check_ref`를
+   `CoreStorageMutation::InsertWriteTicket`,
+   `event_kind="write_ticket_issued"`, 새 `write_ticket_ref`를
    담은 결과 필드를 운반합니다.
 10. 커밋된 non-allow 계획이면 `OwnerPipelineBranch::CommitMutation`은
     `event_kind="write_decision_recorded"`를 운반하고
-    `InsertWriteCheck` 변이는 없습니다. 그래도 Store 트랜잭션은 결정
+    `InsertWriteTicket` 변이는 없습니다. 그래도 Store 트랜잭션은 결정
     이벤트를 기록하고, 상태 버전을 전진시키며, 커밋 호출이 idempotent이면
     재실행 데이터를 저장합니다.
 11. `CoreProjectStore::commit_mutation`은 트랜잭션을 실행하고
@@ -376,38 +376,38 @@ API 오류는 rejected response로 남으며 닫기 차단 사유가 아닙니�
 
 분기별 차이:
 
-- 사전 점검 또는 초기 검증 거부는 Core 커밋이 없고 `Write Check`을
-  만들지 않습니다.
+- 사전 점검 또는 초기 검증 거부는 Core 커밋이 없고 쓰기 티켓을
+  발급하지 않습니다.
 - Dry-run은 `ToolDryRunResponse`를 반환하고, Core 커밋이 없으며, durable
-  `Write Check` ID를 할당하지 않습니다.
+  쓰기 티켓 ID를 할당하지 않습니다.
 - 커밋된 non-allow 결정은 감사/결과 이벤트를 커밋하지만 소비 가능한
-  `Write Check`을 만들지 않습니다.
+  쓰기 티켓을 만들지 않습니다.
 - 커밋된 allowed 결정은 이벤트와
-  `CoreStorageMutation::InsertWriteCheck`을 커밋합니다.
-- Idempotent replay는 다른 `Write Check`를 만들지 않고 재실행 처리에서 저장된
+  `CoreStorageMutation::InsertWriteTicket`을 커밋합니다.
+- Idempotent replay는 다른 쓰기 티켓을 만들지 않고 재실행 처리에서 저장된
   원래 응답을 반환합니다.
 
 대표 테스트:
 
 - [`crates/volicord-core/src/methods/tests.rs`](../../../crates/volicord-core/src/methods/tests.rs)의
-  `prepare_write_allowed_creates_one_write_check_with_post_commit_basis`
+  `prepare_write_allowed_issues_one_write_ticket_with_post_commit_basis`
 - [`crates/volicord-core/src/methods/tests.rs`](../../../crates/volicord-core/src/methods/tests.rs)의
-  `prepare_write_blocked_path_creates_no_write_check`
+  `prepare_write_blocked_path_issues_no_write_ticket`
 - [`crates/volicord-core/src/methods/tests.rs`](../../../crates/volicord-core/src/methods/tests.rs)의
-  `prepare_write_dry_run_has_no_write_check_effect`
+  `prepare_write_dry_run_has_no_write_ticket_effect`
 - [`crates/volicord-core/src/methods/tests.rs`](../../../crates/volicord-core/src/methods/tests.rs)의
   `prepare_write_user_only_category_is_invocation_context_rejection`
 - [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs)의
   `read_only_mode_rejects_agent_workflow_methods_before_core`
 - [`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs)의
   `committed_non_allow_prepare_write_audit_and_replay_are_exact` 및
-  `prepare_write_allocates_write_check_only_on_committed_allowed_effect`
+  `prepare_write_issues_write_ticket_only_on_committed_allowed_effect`
 
 정확한 동작 질문:
 
 - 메서드 동작과 결정 분기:
   [쓰기 준비 메서드 담당 문서](../reference/api/method-prepare-write.md)
-- `Write Check`, 쓰기 승인, 민감 동작 승인, 최종 수락, 잔여 위험
+- 쓰기 티켓, 쓰기 승인, 민감 동작 승인, 최종 수락, 잔여 위험
   수락 같은 Core 권한 용어: [Core 모델](../reference/core-model.md)
 - `Product Repository` 경로 정규화:
   [런타임 경계](../reference/runtime-boundaries.md)

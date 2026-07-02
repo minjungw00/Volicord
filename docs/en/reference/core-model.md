@@ -1,6 +1,6 @@
 # Core model reference
 
-This reference owns the Core authority model for Volicord state. It defines how Core, a `Task`, a Change Unit, a Change Unit effect contract, user-owned judgment, evidence, artifact references, `Write Check`, close readiness, blockers, acceptance, and residual risk relate to each other.
+This reference owns the Core authority model for Volicord state. It defines how Core, a `Task`, a Change Unit, a Change Unit effect contract, user-owned judgment, evidence, artifact references, write ticket, close readiness, blockers, acceptance, and residual risk relate to each other.
 
 Core is the local authority record for Volicord state. It is not chat memory, generated Markdown, a status report, a tutorial, a storage layout, or an API response shape.
 
@@ -9,8 +9,8 @@ Core is the local authority record for Volicord state. It is not chat memory, ge
 This document owns:
 
 - authority relationships among Core concepts
-- non-substitution rules for judgment, evidence, acceptance, risk, write check, and close
-- the product meaning of `Task`, Change Unit, Change Unit effect contract, user-owned judgment, evidence, close readiness, blockers, `Write Check`, final acceptance, and residual-risk acceptance
+- non-substitution rules for judgment, evidence, acceptance, risk, write ticket, and close
+- the product meaning of `Task`, Change Unit, Change Unit effect contract, user-owned judgment, evidence, close readiness, blockers, write ticket, final acceptance, and residual-risk acceptance
 - conceptual lifecycle and authority-check boundaries
 
 This document does not own:
@@ -47,15 +47,15 @@ User-owned judgment stays user-owned.
 - One user answer can satisfy multiple authority needs only when those distinct questions were made visible and the recorded judgment remains compatible with each affected object, scope, consequence, and close or write impact.
 - A recorded response is not automatically approval. Judgment lifecycle status and resolution outcome are separate: `status=resolved` means an answer was recorded, while only `resolution_outcome=accepted` can satisfy an authority-bearing requirement.
 
-`Write Check` is narrow.
+Write ticket is narrow.
 
-- `Write Check` records that one proposed product-file change is compatible with current Volicord state.
+- A write ticket records authorized write intent for one proposed product-file change within current Volicord state.
 - It is not reusable scope, ordinary write approval, command approval, shell permission, sensitive-action approval, user-owned judgment, OS permission, deployment approval, final acceptance, residual-risk acceptance, evidence, or proof that the write occurred.
 
 Runs and evidence record support, not authority substitutes.
 
 - A Run records execution or observation. Evidence records support only the claims, scope, and context they actually record.
-- A Run, log, screenshot, artifact, or `ArtifactRef` does not retroactively create missing scope, missing judgment, missing approval, or missing `Write Check`.
+- A Run, log, screenshot, artifact, or `ArtifactRef` does not retroactively create missing scope, missing judgment, missing approval, or missing write ticket.
 
 Close must stay honest.
 
@@ -90,7 +90,7 @@ flowchart TD
     Task --> Scope["current scope"]
     Task --> ChangeUnit["current Change Unit"]
     ChangeUnit --> EffectContract["Change Unit<br/>effect contract"]
-    ChangeUnit --> WriteCheck["Write Check<br/>one proposed write"]
+    ChangeUnit --> WriteTicket["write ticket<br/>one proposed write"]
     WriteCheck --> Run["Run<br/>execution or observation"]
     Run --> Evidence["Evidence<br/>claim-scoped support"]
     ArtifactRef["ArtifactRef"] -. "eligible only when recorded as support" .-> Evidence
@@ -137,13 +137,13 @@ It defines what the current work may change and what must stay outside the curre
 
 A Change Unit effect contract is optional Core state attached to a current Change Unit. It expresses additional allowed effects, forbidden effects, allowed paths, expected outputs, invariants, evidence expectations, and sensitive-action expectations.
 
-For product-file writes, the effect contract can narrow what `prepare_write` may mark compatible when it restricts product-file effects or paths. It is not a workflow engine, methodology phase, command interceptor, network blocker, OS sandbox, secret guard, user-owned judgment, sensitive-action approval, evidence, `Write Check`, final acceptance, close readiness, or residual-risk acceptance.
+For product-file writes, the effect contract can narrow what `prepare_write` may mark compatible when it restricts product-file effects or paths. It is not a workflow engine, methodology phase, command interceptor, network blocker, OS sandbox, secret guard, user-owned judgment, sensitive-action approval, evidence, write ticket, final acceptance, close readiness, or residual-risk acceptance.
 
 ### Autonomy Boundary
 
 An Autonomy Boundary is the agent latitude inside the current Change Unit.
 
-It does not allow scope expansion, sensitive-action approval, user-owned judgment, or write check by inference.
+It does not allow scope expansion, sensitive-action approval, user-owned judgment, or write-ticket authority by inference.
 
 ### User-owned judgment
 
@@ -169,11 +169,11 @@ Evidence can show that a named test ran, a named output was observed, or a recor
 
 Core may treat an artifact reference as evidence-eligible only when the artifact owners allow that use. The reference itself does not prove readable bytes, content sufficiency, safety, or integrity beyond the facts recorded by artifact owners.
 
-### `Write Check`
+### Write ticket
 
-`Write Check` is the named durable Core-state compatibility record for one proposed product-file change.
+Write ticket is the named durable Core authority record for authorized write intent for one proposed product-file change.
 
-It depends on current Core state, current scope, current Change Unit compatibility, required user-owned judgments, and `Write Check` compatibility rules.
+It depends on current Core state, current scope, current Change Unit compatibility, required user-owned judgments, and write-ticket compatibility rules.
 
 Its exact method behavior, API shape, storage effect, and stale-state handling belong to their owners.
 
@@ -213,7 +213,7 @@ Residual-risk acceptance applies only to the named visible risk for the requeste
 
 A project continuity record is durable project-level context that can preserve an important decision, obligation, known limit, accepted residual risk, or constraint after the source `Task` closes.
 
-It helps future work notice prior commitments and limits. It does not make a previous `Task`, Change Unit, close basis, acceptance, residual-risk acceptance, evidence set, or `Write Check` current again.
+It helps future work notice prior commitments and limits. It does not make a previous `Task`, Change Unit, close basis, acceptance, residual-risk acceptance, evidence set, or write ticket current again.
 
 Current authority for a future operation still comes from the current `Task`, current Change Unit, current scope and close-basis revisions, compatible user-owned judgments, current evidence and artifact facts, current blockers, and method-specific owner rules.
 
@@ -234,7 +234,7 @@ Technical decisions include architecture, dependency or external service introdu
 
 Scope decisions include scope expansion, non-goal removal, Change Unit boundary changes, and Autonomy Boundary changes.
 
-Sensitive-action approval is permission for a named sensitive step inside a bounded `SensitiveActionScope`. It is not `Write Check`, security authority, product correctness, or final acceptance.
+Sensitive-action approval is permission for a named sensitive step inside a bounded `SensitiveActionScope`. It is not write ticket, security authority, product correctness, or final acceptance.
 
 Final acceptance is the user's result judgment for the visible close basis.
 
@@ -293,17 +293,17 @@ Recorded judgment status does not substitute for accepted outcome.
 
 - `status=resolved` records that an answer exists. It does not by itself create final acceptance, residual-risk acceptance, sensitive approval, cancellation authority, or any other approval.
 
-Sensitive-action approval does not substitute for `Write Check`.
+Sensitive-action approval does not substitute for write ticket.
 
 - Sensitive-action approval authorizes the named sensitive step the user was asked about. It does not authorize product-file writes, commands, hosts, network, secrets, deployments, destructive operations, or final acceptance.
 
 Change Unit effect contracts do not substitute for authority records.
 
-- An effect contract can constrain compatible Core write-check decisions for the current Change Unit. It does not create user-owned judgment, sensitive-action approval, evidence, `Write Check`, final acceptance, close readiness, residual-risk acceptance, command interception, network blocking, OS sandboxing, or secret isolation.
+- An effect contract can constrain compatible Core write-ticket decisions for the current Change Unit. It does not create user-owned judgment, sensitive-action approval, evidence, write ticket, final acceptance, close readiness, residual-risk acceptance, command interception, network blocking, OS sandboxing, or secret isolation.
 
-`Write Check` does not substitute for acceptance.
+Write ticket does not substitute for acceptance.
 
-- `Write Check` makes one product-file write attempt compatible with Volicord state. It does not prove the write occurred, record evidence, accept the result, accept risk, close the `Task`, or grant system access.
+- A write ticket records authorized write intent for one product-file write attempt inside Volicord state. It does not prove the write occurred, record evidence, accept the result, accept risk, close the `Task`, grant system access, or prevent filesystem writes.
 
 Blocker data does not substitute across authority questions.
 
@@ -324,7 +324,7 @@ The lifecycle here is conceptual authority meaning, not an API state table.
 |---|---|
 | Intake and shaping | User intent becomes a concrete goal, scope boundary, non-goals, acceptance criteria, Autonomy Boundary, and first safe Change Unit when the relevant owners define support. |
 | Scope update | Accepted scope or Change Unit changes become currently applied only through the scope owner-defined transition. A judgment record alone does not mutate current scope. |
-| Execution and observation | Runs record actions and observations. Product-file writes must be compatible with current scope and `Write Check`; read-only work does not create compatibility for subsequent writes. |
+| Execution and observation | Runs record actions and observations. Product-file writes must be compatible with current scope and a write ticket; read-only work does not create compatibility for subsequent writes. |
 | Waiting or blocked | If required owner-defined authority data is missing, stale, incompatible, or unsafe to bypass, Core exposes the blocker and the next required step instead of hiding the gap. |
 | Close attempt | Core evaluates whether the current state can close honestly. A final chat summary or generated report is not enough by itself. |
 | Terminal outcome | Completion, cancellation, or supersession ends the `Task` path. Cancellation and supersession are terminal, but they are not successful completion and do not satisfy completion evidence, acceptance, or risk requirements. |
@@ -336,10 +336,10 @@ Authority checks summarize whether a Core action or close claim can proceed hone
 | Check area | Authority meaning |
 |---|---|
 | Scope | The requested work, write, evidence claim, or close claim must fit the current `Task` scope and current Change Unit. |
-| Change Unit effect contract | When present, requested product-file write effects and paths must fit the current Change Unit effect contract before a `Write Check` can be created. |
+| Change Unit effect contract | When present, requested product-file write effects and paths must fit the current Change Unit effect contract before a write ticket can be issued. |
 | User-owned judgment | Required product, technical, scope, sensitive-action, final-acceptance, residual-risk, or cancellation judgment must be resolved by the user with the required stored outcome and compatible with the affected object and consequence. |
 | Sensitive action | A named sensitive step must have its own compatible user approval when that approval is required. |
-| Write compatibility | A product-file write attempt must be compatible with current scope and a consumable `Write Check`. |
+| Write compatibility | A product-file write attempt must be compatible with current scope and an open write ticket. |
 | Run and evidence | Recorded Runs, evidence summaries, and evidence-eligible artifacts must support the claims they are used for. |
 | Final acceptance | Required final acceptance must be tied to the visible close basis. |
 | Residual risk | Known close-relevant residual risk must be visible, and required risk acceptance must be compatible with the requested close. |
@@ -347,9 +347,9 @@ Authority checks summarize whether a Core action or close claim can proceed hone
 
 Separate QA and external verification workflows are not separate baseline authority records unless [Scope](scope.md) and the affected owners define them as supported.
 
-## 8. `Write Check`
+## 8. Write ticket
 
-`Write Check` is a durable Core-state compatibility record for one proposed product-file change.
+A write ticket is a durable Core authority record for authorized write intent for one proposed product-file change.
 
 It has these compatibility properties:
 
@@ -357,7 +357,7 @@ It has these compatibility properties:
 - State-bound: it is based on current Volicord state and can become stale when relevant state changes.
 - Effect-contract-bound when present: it is created only when the proposed product-file change fits the current Change Unit effect contract.
 - Single-use: one compatible product-write Run consumes it once.
-- Cooperative: it tells an Agent Connection what is compatible with Volicord state; it does not claim OS-level prevention or sandboxing.
+- Cooperative: it tells an Agent Connection what is authorized inside Volicord state; it does not claim OS-level prevention, filesystem interception, or sandboxing.
 
 It is not:
 
@@ -388,7 +388,7 @@ Evidence authority is scoped to recorded claims.
 Run authority:
 
 - A Run can establish that an execution or observation was recorded with the available context and references.
-- A Run cannot establish that a missing compatibility record, missing judgment, missing approval, or missing `Write Check` existed retroactively.
+- A Run cannot establish that a missing write ticket, missing judgment, missing approval, or missing compatibility record existed retroactively.
 
 Evidence authority:
 
@@ -433,11 +433,11 @@ Close-basis authority:
 
 - Caller-supplied close-basis result and risk refs must be accepted only from owner-allowed result/evidence kinds and must exist, belong to the same project and `Task`, and be canonicalized by Core.
 - Baseline allowed caller-supplied result/evidence kinds are Run, Artifact, EvidenceSummary, and ChangeUnit unless an owner explicitly adds another kind.
-- ProjectState, `Write Check`, UserJudgment, Blocker, TaskEvent, AgentConnection, and Task are not caller-supplied result refs unless an owner explicitly adds them.
+- ProjectState, write ticket, UserJudgment, Blocker, TaskEvent, AgentConnection, and Task are not caller-supplied result refs unless an owner explicitly adds them.
 - Artifact refs used for close evidence must be linked to the `Task` and have current-byte verified integrity at use time. Evidence refs must identify the current `Task` evidence summary. Run refs must identify a recorded current Run compatible with the current `Task`, current Change Unit, current scope revision, and compatible baseline. Historical Runs are audit records unless a current Run explicitly reuses their verified artifacts or evidence and records that reuse.
 - Evidence observation refs used for close evidence must match the required claim and remain current for the `Task`, Change Unit, source Run, and close-basis evidence summary. Stale, provenance-free, or weak-provenance coverage does not satisfy close readiness by coverage label alone.
 - Core stores canonical refs and never treats caller-supplied state-version metadata as authority. Core may add the current Run, current Change Unit, and current EvidenceSummary refs.
-- Sensitive action requirements in the current close basis are derived by Core from committed Runs and consumed `Write Check` records. Category-only caller input cannot establish or erase a requirement.
+- Sensitive action requirements in the current close basis are derived by Core from committed Runs and consumed write-ticket compatibility records. Category-only caller input cannot establish or erase a requirement.
 
 The current close basis changes through owner-defined transitions:
 

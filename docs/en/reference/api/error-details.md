@@ -50,7 +50,7 @@ Detail data must stay limited to stable diagnostic facts. It must not expose sen
 Stale `expected_state_version` details:
 - Include `state_clock: project_state.state_version`, `current_state_version`, `expected_state_version`, `project_id`, and `task_id` when available.
 
-Stale Write Check basis details:
+Stale write-ticket basis details:
 - Identify both the stale `WriteCheck.basis_state_version` value and the current `project_state.state_version` value.
 
 Idempotency request-hash conflict details:
@@ -77,7 +77,7 @@ These diagnostics must not include raw stored JSON, secrets, SQL text, or sensit
 
 ### `write_check_reason`
 
-`ToolError.details.write_check_reason` uses `missing`, `expired`, `stale`, `revoked`, `consumed`, `incompatible`, `task_mismatch`, `change_unit_mismatch`, `product_write_flag_mismatch`, `baseline_mismatch`, `sensitive_category_mismatch`, or `path_mismatch`. The mismatch-specific values identify the incompatible record or scope fact while keeping public code `WRITE_CHECK_INVALID`. Expired `Write Check` use sets `write_check_reason=expired` with public code `WRITE_CHECK_INVALID`. A stale `WriteCheck.basis_state_version` uses `STATE_VERSION_CONFLICT`, not `WRITE_CHECK_INVALID`.
+`ToolError.details.write_check_reason` uses `missing`, `expired`, `stale`, `revoked`, `consumed`, `incompatible`, `task_mismatch`, `change_unit_mismatch`, `product_write_flag_mismatch`, `baseline_mismatch`, `sensitive_category_mismatch`, or `path_mismatch`. The mismatch-specific values identify the incompatible record or scope fact while keeping public code `WRITE_CHECK_INVALID`. Expired write-ticket use sets `write_check_reason=expired` with public code `WRITE_CHECK_INVALID`. A stale `WriteCheck.basis_state_version` uses `STATE_VERSION_CONFLICT`, not `WRITE_CHECK_INVALID`.
 
 <a id="artifact-input-error-reason"></a>
 

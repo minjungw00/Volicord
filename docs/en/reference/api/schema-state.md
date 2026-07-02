@@ -1,6 +1,6 @@
 # API state schemas
 
-This document owns API state-shaped schemas for the baseline scope. It defines public response shapes for `StateSummary`, `StateRecordRef`, lifecycle state as API data, state-related snapshots, `ProjectContinuityRecord`, `ProjectContinuitySummary`, `ShapingReadiness`, `ChangeUnitEffectContract`, and display shapes such as `NextActionSummary`, `WriteCheckStateSummary`, `WriteCheckSummary`, `WriteCheckAttemptScope`, `EvidenceSummary`, `EvidenceObservation`, `GuardHealthSummary`, `UnrecordedChangeFinding`, `UnrecordedChangeResolutionSummary`, `CurrentCloseBasis`, `ResidualRisk`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`, `ValidatorResult`, `GuaranteeDisplay`, and `GuaranteeDisclosure`.
+This document owns API state-shaped schemas for the baseline scope. It defines public response shapes for `StateSummary`, `StateRecordRef`, lifecycle state as API data, state-related snapshots, `ProjectContinuityRecord`, `ProjectContinuitySummary`, `ShapingReadiness`, `ChangeUnitEffectContract`, and display shapes such as `NextActionSummary`, `WriteTicket`, `WriteTicketScope`, `WriteTicketPathPatterns`, `WriteCheckStateSummary`, `WriteCheckSummary`, `WriteCheckAttemptScope`, `EvidenceSummary`, `EvidenceObservation`, `GuardHealthSummary`, `UnrecordedChangeFinding`, `UnrecordedChangeResolutionSummary`, `CurrentCloseBasis`, `ResidualRisk`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`, `ValidatorResult`, `GuaranteeDisplay`, and `GuaranteeDisclosure`.
 
 ## Owner boundary
 
@@ -17,7 +17,7 @@ This document owns state-shaped API fields, nesting, references, summaries, snap
 
 ## Boundary
 
-State schemas describe API data shapes only. A state-shaped field does not choose a response branch or create persistence, Core transitions, replay rows, `authority_events`, artifact effects, `Write Check` effects, or a `state_version` increment.
+State schemas describe API data shapes only. A state-shaped field does not choose a response branch or create persistence, Core transitions, replay rows, `authority_events`, artifact effects, write-ticket effects, compatibility write-check effects, or a `state_version` increment.
 
 State projections must be truthful about computed state:
 - A `null` or omitted field means the method did not select a value, the value is unavailable, or the owning schema explicitly allows absence. It must not be replaced with an empty value that implies "computed and none."
@@ -189,7 +189,7 @@ Meaning:
 Does not imply:
 - `control_surface` is not proof of correctness, review completion, test sufficiency, OS-level enforcement, or write prevention.
 - `GuardHealthSummary` is not evidence of product correctness, test sufficiency, OS enforcement, sandboxing, security isolation, or final acceptance.
-- An active guard summary does not replace evidence, artifact integrity, user-owned judgment, `Write Check`, final acceptance, or residual-risk acceptance requirements.
+- An active guard summary does not replace evidence, artifact integrity, user-owned judgment, write-ticket, final acceptance, or residual-risk acceptance requirements.
 - Session watch status and coverage metadata do not mean Volicord prevented a write, identified the actor who changed a file, stored file contents, or provided OS-level enforcement.
 - When `session_watch_partial_coverage_warning` is non-null, Product Repository changes before `session_watch_coverage_start_at` remain outside session-watch coverage.
 - `record` profile remains cooperative except that unresolved watcher-created unrecorded-change findings block close while an active session watch is selected.
@@ -288,7 +288,7 @@ Meaning:
 - `ProjectContinuitySummary` is selected by method owners as a read view; it is not the full persisted record.
 
 Does not imply:
-- A project continuity record is not current Task authority, evidence, `Write Check`, final acceptance, close readiness, residual-risk acceptance for a future close basis, or a blocker waiver.
+- A project continuity record is not current Task authority, evidence, write ticket, final acceptance, close readiness, residual-risk acceptance for a future close basis, or a blocker waiver.
 - `status=active` means the continuity record is live project context. It does not mean the record is currently applicable to every Task or that its source decision remains sufficient for a new authority check.
 
 Owner links:
@@ -319,7 +319,7 @@ Meaning:
 
 Does not imply:
 - `ChangeUnitEffectContract` is not a runtime sandbox, command interceptor, network blocker, operating-system permission system, or development-methodology state machine.
-- It does not replace user-owned judgment, sensitive-action approval, evidence, `Write Check`, final acceptance, close readiness, or residual-risk acceptance.
+- It does not replace user-owned judgment, sensitive-action approval, evidence, write ticket, final acceptance, close readiness, or residual-risk acceptance.
 
 Owner links:
 - Effect value strings: [method-local values](schema-value-sets.md#method-local-values)
@@ -413,6 +413,30 @@ WriteCheckAttemptScope:
   sensitive_categories: string[]
   baseline_ref: string | null
 
+WriteTicketPathPatterns:
+  allowed: string[]
+  denied: string[]
+
+WriteTicketScope:
+  task_id: string
+  change_unit_id: string
+  intended_operation: string
+  product_file_write_intended: boolean
+  sensitive_categories: string[]
+  baseline_ref: string | null
+
+WriteTicket:
+  write_ticket_id: string
+  write_ticket_ref: StateRecordRef
+  state: string
+  scope: WriteTicketScope
+  path_patterns: WriteTicketPathPatterns
+  observed_paths: string[]
+  basis_state_version: integer
+  expires_at: string | null
+  control_surface: ControlSurfaceSummary | null
+  guarantee_display: GuaranteeDisplay | null
+
 WriteDecisionReason:
   category: string
   code: string
@@ -424,10 +448,15 @@ Meaning:
 - `NextActionSummary` is the canonical next-action display shape. Its valid fields are `action_kind`, `owner_method`, `label`, `blocking_question`, and `required_refs`.
 - A `next_actions` entry that uses stale `action` or `reason` fields is not a valid `NextActionSummary`.
 - `WriteCheckStateSummary.status` and `WriteCheckSummary.status` are controlled value strings.
-- `WriteCheckStateSummary.consumed_by_run_ref` is non-null only when the summarized `Write Check` has been consumed by a recorded Run.
-- `WriteCheckStateSummary.observation_refs` lists evidence observation refs created by that consuming Run when those refs are available; it is empty when the `Write Check` is not consumed or the consuming Run created no observations.
-- `WriteCheckAttemptScope` is the one-attempt boundary captured by a `Write Check`.
+- `WriteCheckStateSummary.consumed_by_run_ref` is non-null only when the summarized write-ticket compatibility row has been consumed by a recorded Run.
+- `WriteCheckStateSummary.observation_refs` lists evidence observation refs created by that consuming Run when those refs are available; it is empty when the compatibility row is not consumed or the consuming Run created no observations.
+- `WriteCheckAttemptScope` is the one-attempt boundary captured by the compatibility storage row.
 - `WriteCheckAttemptScope` is not ordinary write approval, sensitive-action approval, final acceptance, residual-risk acceptance, or broad user approval.
+- `WriteTicket` is the ticket-first authority record returned by `volicord.prepare_write` when a committed allowed decision issues a write ticket.
+- `WriteTicket.state` is a controlled value string.
+- `WriteTicket.path_patterns.allowed` and `WriteTicket.path_patterns.denied` are normalized Product Repository path patterns captured by the ticket decision.
+- `WriteTicket.observed_paths` is empty until an observe-profile hook, watcher, or later owner-defined observation path connects observed product paths to the ticket.
+- `WriteTicket.control_surface` and `WriteTicket.guarantee_display` disclose the current Volicord control surface and guarantee wording. They do not claim OS-level filesystem enforcement.
 - `WriteDecisionReason` is used by `PrepareWriteResult.write_decision_reasons`.
 
 `NextActionSummary` field classifications:
@@ -452,6 +481,21 @@ Meaning:
 | `sensitive_categories` | Opaque sensitive-category classification strings. | Not an exhaustive public enum unless an affected method or profile owner publishes a narrower local list. |
 | `baseline_ref` | Opaque baseline identifier or `null`. | Names the baseline identifier captured for the attempt boundary when present. |
 
+`WriteTicket` field classifications:
+
+| Field | Classification | Rule |
+|---|---|---|
+| `write_ticket_id` | Opaque identifier. | Identifies the write ticket authority record. |
+| `write_ticket_ref` | `StateRecordRef`. | References the same write ticket with `record_kind=write_ticket`. |
+| `state` | Controlled state value. | Uses the [method-local values](schema-value-sets.md#method-local-values) owned for `WriteTicket.state`. |
+| `scope` | `WriteTicketScope`. | Captures the Task, Change Unit, operation, sensitive categories, product-write flag, and baseline used for ticket issuance. |
+| `path_patterns` | `WriteTicketPathPatterns`. | Captures allowed and denied normalized Product Repository path patterns for the ticket decision. |
+| `observed_paths` | Normalized Product Repository path strings. | Lists observed paths only when an owner-defined observe path has connected observations to the ticket. Use `[]` when no observations are connected. |
+| `basis_state_version` | State-clock value. | The `project_state.state_version` basis committed with the ticket. |
+| `expires_at` | UTC timestamp or `null`. | Ticket expiration used as a Volicord compatibility condition, not as OS-level enforcement. |
+| `control_surface` | `ControlSurfaceSummary | null`. | Disclosure of the current Volicord control surface. |
+| `guarantee_display` | `GuaranteeDisplay | null`. | Human-display guarantee wording scoped by [Security](../security.md). |
+
 `WriteDecisionReason` field classifications:
 
 | Field | Classification | Rule |
@@ -470,8 +514,8 @@ Owner links:
 - `WriteDecisionReason.category` values: [state and blocker values](schema-value-sets.md#state-and-blocker-values)
 - `WriteDecisionReason.code` value-set boundary: [opaque and method-scoped string fields](schema-value-sets.md#opaque-and-method-scoped-string-fields)
 - `WriteDecisionReason.code` production and local meaning: method owner documents, including [`volicord.prepare_write`](method-prepare-write.md)
-- `Write Check` creation behavior: [`volicord.prepare_write`](method-prepare-write.md)
-- `Write Check` product meaning and approval boundaries: [Core Model](../core-model.md)
+- Write-ticket issuance behavior: [`volicord.prepare_write`](method-prepare-write.md)
+- Write-ticket product meaning and approval boundaries: [Core Model](../core-model.md)
 - Public `ErrorCode` values are separate: [API error codes](error-codes.md)
 
 ## Evidence and run snapshot shapes
@@ -654,7 +698,7 @@ Meaning:
 - `ResidualRisk.risk_id` is an opaque Core-generated identifier. `ResidualRisk.summary` and `ResidualRisk.consequence` are display strings and do not authorize text matching.
 - `result_refs`, `source_run_ref`, `source_refs`, `evidence_summary_ref`, and `accepted_by_judgment_refs` use `StateRecordRef`.
 - `sensitive_categories` are opaque sensitive-category classification strings unless an affected method or profile owner publishes a narrower local list.
-- `sensitive_action_requirements` are Core-derived close requirements from committed Runs and consumed `Write Check` records. Category-only caller input cannot establish or erase these requirements.
+- `sensitive_action_requirements` are Core-derived close requirements from committed Runs and consumed write-ticket compatibility records. Category-only caller input cannot establish or erase these requirements.
 - `recovery_constraints` and `RiskAcceptanceCoverage.missing_reason` are display strings. Current close-readiness results use `acceptance_required` when required acceptance is absent and may use `stale_acceptance` when a non-current residual-risk acceptance exists but does not cover the current residual-risk `risk_id` values.
 - `RiskAcceptanceCoverage` reports whether the current residual-risk requirements are covered by compatible judgments. It does not report evidence sufficiency or final acceptance.
 - `CloseReadinessBlocker` is a data shape for close-readiness findings.

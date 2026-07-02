@@ -156,7 +156,7 @@
 - `ToolRejectedResponse.errors[]`
 
 조건:
-- 쓰기 가능한 실행 기록에 필요한 `Write Check`이 없습니다.
+- 쓰기 가능한 실행 기록에 필요한 쓰기 티켓 호환성 행이 없습니다.
 
 <a id="errorcode-write-check-invalid"></a>
 ### `WRITE_CHECK_INVALID`
@@ -165,10 +165,10 @@
 - `ToolRejectedResponse.errors[]`
 
 조건:
-- 제공된 `Write Check`이 만료, 철회, 소비, 또는 버전 외 사유로 비호환입니다.
+- 제공된 쓰기 티켓 호환성 행이 만료, 철회, 소비, 또는 버전 외 사유로 비호환입니다.
 
 참고:
-- 만료된 `Write Check` 사용은 `ToolError.details.write_check_reason=expired`와 함께 이 코드를 유지합니다.
+- 만료된 쓰기 티켓 사용은 `ToolError.details.write_check_reason=expired`와 함께 이 코드를 유지합니다.
 - 오래된 `WriteCheck.basis_state_version`은 이 코드가 아니라 `STATE_VERSION_CONFLICT`로 경로가 정해집니다.
 
 <a id="errorcode-approval-denied"></a>

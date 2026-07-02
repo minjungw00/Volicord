@@ -208,7 +208,7 @@ API 메서드 예시는 자신이 설명하는 개념을 밝히기 위해 적합
 - `BASELINE-write-check-attempt-scope-product-file-write-only`
   [`WriteCheckAttemptScope`](#scenario-baseline-write-check-attempt-scope-product-file-write-only)를 참고합니다.
 - `BASELINE-record-run-consumes-write-check-once`
-  [1회용 `Write Check`](#scenario-baseline-record-run-consumes-write-check-once)을 참고합니다.
+  [1회용 쓰기 티켓 호환성](#scenario-baseline-record-run-consumes-write-check-once)을 참고합니다.
 - `BASELINE-stage-artifact-transient-handle-only`
   [임시 스테이징 핸들](#scenario-baseline-stage-artifact-transient-handle-only)을 참고합니다.
 - `BASELINE-record-run-artifact-input-validation-order`
@@ -224,7 +224,7 @@ API 메서드 예시는 자신이 설명하는 개념을 밝히기 위해 적합
 - `BASELINE-close-task-complete-stale-state-version-rejected`
   [오래된 닫기 상태](#scenario-baseline-close-task-complete-stale-state-version-rejected)를 참고합니다.
 - `BASELINE-close-task-complete-stale-write-check-basis-rejected`
-  [오래된 `Write Check` 근거](#scenario-baseline-close-task-complete-stale-write-check-basis-rejected)를 참고합니다.
+  [오래된 쓰기 티켓 근거](#scenario-baseline-close-task-complete-stale-write-check-basis-rejected)를 참고합니다.
 - `BASELINE-close-task-blocks-current-write-compatibility`
   [쓰기 호환성 차단](#scenario-baseline-close-task-blocks-current-write-compatibility)을 참고합니다.
 - `BASELINE-close-task-blocks-evidence-insufficient`
@@ -337,7 +337,7 @@ API 메서드 예시는 자신이 설명하는 개념을 밝히기 위해 적합
 ### `BASELINE-sensitive-approval-records-sensitive-action-scope`
 
 기대 동작:
-- 민감 동작 승인은 `Write Check`, 최종 수락과 분리됩니다.
+- 민감 동작 승인은 쓰기 티켓, 최종 수락과 분리됩니다.
 
 담당 문서 링크:
 - [Core 모델](core-model.md)
@@ -370,7 +370,7 @@ API 메서드 예시는 자신이 설명하는 개념을 밝히기 위해 적합
 ### `BASELINE-record-run-consumes-write-check-once`
 
 기대 동작:
-- 호환되는 실행 기록은 맞는 `Write Check`을 한 번 소비합니다.
+- 호환되는 실행 기록은 맞는 쓰기 티켓 행을 한 번 소비합니다.
 
 담당 문서 링크:
 - [실행 기록 메서드](api/method-record-run.md)
@@ -458,7 +458,7 @@ API 메서드 예시는 자신이 설명하는 개념을 밝히기 위해 적합
 ### `BASELINE-close-task-complete-stale-write-check-basis-rejected`
 
 기대 동작:
-- 닫기 관련 `Write Check` 근거가 오래됐으면 닫기 커밋 전에 실패합니다.
+- 닫기 관련 쓰기 티켓 근거가 오래됐으면 닫기 커밋 전에 실패합니다.
 
 담당 문서 링크:
 - [Task 닫기 메서드](api/method-close-task.md)

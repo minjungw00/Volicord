@@ -23,8 +23,8 @@ canonical_for:
   - "Terminology routing that Volicord product identity belongs in Getting Started Overview while supported and unsupported scope belongs in Scope."
   - "Terminology boundaries among Volicord, Core, Volicord implementation, Volicord source repository, Volicord installation, `volicord`, `volicord mcp --stdio`, `Volicord Runtime Home`, `test harness`, and `Product Repository`."
   - "Preferred current-runtime-context wording for current scope, currently applied scope, current Change Unit, and current connection context."
-  - "Terminology boundaries among Write Check, write approval, sensitive-action approval, final acceptance, residual-risk acceptance, and user-owned judgment."
-  - "Terminology boundaries among Agent Connection, Connection Projects, User Channel, `actor_source`, `operation_category`, and Write Check."
+  - "Terminology boundaries among write ticket, write approval, sensitive-action approval, final acceptance, residual-risk acceptance, and user-owned judgment."
+  - "Terminology boundaries among Agent Connection, Connection Projects, User Channel, `actor_source`, `operation_category`, and write ticket."
   - "Preferred verification criteria wording for user-visible criteria used to check work."
   - "Terminology routing for API error-code meanings, error precedence, API response branch routing, blocker routing, dry-run preview routing, public error as blocker wording, `ToolError.details`, and error detail helper values."
   - "Artifact and evidence terminology conventions for bilingual documentation."
@@ -267,7 +267,7 @@ identifier_preservation:
     - "User Channel"
     - "managed host configuration state"
     - "Projection"
-    - "Write Check"
+    - "write ticket"
 avoid:
   en:
     - phrase: "Volicord is a local authority record"
@@ -929,7 +929,7 @@ terms:
       - en: "docs/en/reference/api/schema-judgment.md"
         ko: "docs/ko/reference/api/schema-judgment.md"
     notes:
-      - "Keep distinct from Write Check, write approval, sensitive-action approval, final acceptance, residual-risk acceptance, scope changes, evidence, and verification criteria."
+      - "Keep distinct from write ticket, write approval, sensitive-action approval, final acceptance, residual-risk acceptance, scope changes, evidence, and verification criteria."
   user_judgment_schema:
     category: "identifier"
     en: "UserJudgment"
@@ -972,7 +972,7 @@ terms:
         ko: "docs/ko/reference/api/method-close-task.md"
     notes:
       - "Final acceptance is a user-owned judgment about the visible close basis."
-      - "Keep distinct from Write Check, write approval, sensitive-action approval, residual-risk acceptance, evidence, verification criteria, and broad approval."
+      - "Keep distinct from write ticket, write approval, sensitive-action approval, residual-risk acceptance, evidence, verification criteria, and broad approval."
   residual_risk_acceptance:
     category: "product_concept"
     en: "residual-risk acceptance"
@@ -992,7 +992,7 @@ terms:
         ko: "docs/ko/reference/api/method-close-task.md"
     notes:
       - "Residual-risk acceptance is a user-owned judgment about a named visible residual risk for the requested close."
-      - "Keep distinct from final acceptance, Write Check, write approval, sensitive-action approval, evidence sufficiency, verification criteria, and proof that no risk remains."
+      - "Keep distinct from final acceptance, write ticket, write approval, sensitive-action approval, evidence sufficiency, verification criteria, and proof that no risk remains."
   close_readiness:
     category: "product_concept"
     en: "close readiness"
@@ -1811,20 +1811,31 @@ terms:
         ko: "docs/ko/reference/api/method-prepare-write.md"
     notes:
       - "Use for ordinary user approval or prose summaries about approving a write, not for the exact Volicord product label."
-      - "When naming Core-state compatibility for a proposed product-file change, use Write Check."
-      - "Keep ordinary write approval distinct from Write Check, sensitive-action approval, final acceptance, residual-risk acceptance, and user-owned judgment."
-  write_check:
+      - "When naming Core authority for authorized write intent for a proposed product-file change, use write ticket."
+      - "Keep ordinary write approval distinct from write ticket, sensitive-action approval, final acceptance, residual-risk acceptance, and user-owned judgment."
+  write_ticket:
     category: "product_label"
-    en: "Write Check"
-    en_label: "Write Check"
-    ko_reference: "쓰기 확인"
-    ko_user: "쓰기 확인"
-    ko_reference_first_reference: "`Write Check`(쓰기 확인)"
-    ko_explanation: "현재 Core 상태에서 제안된 제품 파일 변경 하나가 호환되는지 기록하는 지속 호환성 기록"
+    en: "write ticket"
+    en_label: "write ticket"
+    aliases_en:
+      - "Write Ticket"
+    ko_reference: "쓰기 티켓"
+    ko_user: "쓰기 티켓"
+    ko_reference_first_reference: "쓰기 티켓(`write ticket`)"
+    ko_explanation: "현재 Core 상태에서 제안된 제품 파일 변경 하나에 대한 권한 있는 쓰기 의도를 기록하는 지속 Core 권한 기록"
     preserve_as_label:
-      - "Write Check"
+      - "write ticket"
     preserve_as_identifier:
-      - "WriteCheck.basis_state_version"
+      - "WriteTicket"
+      - "WriteTicketId"
+      - "WriteTicketState"
+      - "WriteTicketScope"
+      - "WriteTicketPathPatterns"
+      - "write_ticket"
+      - "write_ticket_id"
+      - "write_ticket_ref"
+      - "write_ticket_effect"
+      - "WriteTicket.basis_state_version"
     primary_owner:
       en: "docs/en/reference/core-model.md"
       ko: "docs/ko/reference/core-model.md"
@@ -1834,10 +1845,44 @@ terms:
       - en: "docs/en/reference/api/method-prepare-write.md"
         ko: "docs/ko/reference/api/method-prepare-write.md"
     notes:
-      - "Use for the durable compatibility record for a proposed product-file change under current Core state."
-      - "In Korean explanatory prose, use 쓰기 확인 for the exact product label."
-      - "Do not describe Write Check as OS write permission, filesystem ACLs, shell approval, or broad user approval."
-      - "Do not treat write approval, sensitive-action approval, final acceptance, residual-risk acceptance, or broad user-owned judgment as Write Check."
+      - "Use for the durable Volicord authority record for authorized write intent for a proposed product-file change under current Core state."
+      - "In Korean explanatory prose, use 쓰기 티켓 for the product concept."
+      - "Do not describe write ticket as OS write permission, filesystem ACLs, shell approval, broad user approval, or proof that a write occurred."
+      - "Do not treat write approval, sensitive-action approval, final acceptance, residual-risk acceptance, or broad user-owned judgment as write ticket."
+  write_check:
+    category: "identifier"
+    en: "Write Check"
+    en_label: "Write Check"
+    ko_reference: "`Write Check`"
+    ko_user: "`Write Check`"
+    ko_reference_first_reference: "`Write Check`"
+    ko_explanation: "호환성 목적의 기존 API·저장소 식별자와 필드명에만 쓰는 이름"
+    preserve_as_label:
+      - "Write Check"
+    preserve_as_identifier:
+      - "WriteCheck"
+      - "WriteCheckId"
+      - "WriteCheckSummary"
+      - "WriteCheckStateSummary"
+      - "WriteCheckAttemptScope"
+      - "WriteCheck.basis_state_version"
+      - "write_check"
+      - "write_check_id"
+      - "write_check_ref"
+      - "write_check_effect"
+      - "write_checks"
+    primary_owner:
+      en: "docs/en/reference/api/schema-state.md"
+      ko: "docs/ko/reference/api/schema-state.md"
+    related_references:
+      - en: "docs/en/reference/storage-records.md"
+        ko: "docs/ko/reference/storage-records.md"
+      - en: "docs/en/reference/storage-ddl.md"
+        ko: "docs/ko/reference/storage-ddl.md"
+    notes:
+      - "Use only when preserving exact compatibility identifiers, schema names, field names, storage table names, or legacy labels."
+      - "For the product authority concept, use write ticket."
+      - "Do not describe Write Check identifiers as OS write permission, filesystem ACLs, shell approval, broad user approval, or proof that a write occurred."
   sensitive_approval:
     category: "product_concept"
     en: "sensitive-action approval"
@@ -1859,7 +1904,7 @@ terms:
         ko: "docs/ko/reference/security.md"
     notes:
       - "Use for user approval of a named sensitive step inside `SensitiveActionScope`."
-      - "Keep sensitive-action approval distinct from write approval, Write Check, final acceptance, residual-risk acceptance, and user-owned judgment."
+      - "Keep sensitive-action approval distinct from write approval, write ticket, final acceptance, residual-risk acceptance, and user-owned judgment."
   baseline_guarantee:
     category: "security_concept"
     en: "baseline guarantee"

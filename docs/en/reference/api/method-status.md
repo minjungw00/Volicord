@@ -21,7 +21,7 @@ This document does not own:
 
 ## Purpose
 
-`volicord.status` returns a current-position view over Core state. The view can include current Task summary, blockers, pending user judgments, `Write Check` summary, evidence summary, close state, close-readiness findings, guard health, project continuity summaries, guarantee display, and next safe actions.
+`volicord.status` returns a current-position view over Core state. The view can include current Task summary, blockers, pending user judgments, write-ticket compatibility summary, evidence summary, close state, close-readiness findings, guard health, project continuity summaries, guarantee display, and next safe actions.
 
 ## Required inputs
 
@@ -66,7 +66,7 @@ The method creates no:
 - artifact effect
 - staged-handle consumption
 - evidence update
-- `Write Check` change
+- write-ticket change
 
 ## Success result
 
@@ -84,8 +84,8 @@ Include projection contract:
 
 - `include.task` returns the selected `Task` summary and current Change Unit through `active_task`.
 - `include.pending_user_judgments` returns current pending judgment refs, and relevant stale or superseded judgment state appears through existing result fields such as `blocker_refs` and `next_actions.required_refs`.
-- `include.write_check` returns active, expired, stale, consumed, or otherwise relevant `Write Check` Core-state compatibility record state through `write_check_summary`.
-- `write_check_summary` is a compatibility summary only; it is not filesystem access, shell approval, final acceptance, or ordinary write approval.
+- `include.write_check` returns active, expired, stale, consumed, or otherwise relevant write-ticket compatibility state through `write_check_summary`.
+- `write_check_summary` is a compatibility summary only; it is not filesystem access, shell approval, final acceptance, ordinary write approval, or proof that a write occurred.
 - `include.evidence` returns current `EvidenceSummary` and coverage when available.
 - `include.close` returns `CurrentCloseBasis | null`, close state, computed blockers, risk acceptance coverage, guard health including hook path safety when available, and relevant next actions. The blockers use the same close-readiness calculation as `volicord.close_task intent=check`.
 - `include.guarantees` returns only guarantees derived from the project enforcement profile, verified invocation context, enabled enforcement mechanisms, and supported baseline scope.

@@ -150,9 +150,9 @@ fn idempotency_replay_rejects_actor_source_mismatch() -> Result<(), Box<dyn Erro
         invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
     let after_first = fixture.counts()?;
-    let write_check_id = first.response_value["write_check_ref"]["record_id"]
+    let write_ticket_id = first.response_value["write_ticket_ref"]["record_id"]
         .as_str()
-        .expect("prepare_write should return a Write Check id")
+        .expect("prepare_write should return a write ticket id")
         .to_owned();
 
     let mismatch = service.prepare_write(
@@ -166,7 +166,7 @@ fn idempotency_replay_rejects_actor_source_mismatch() -> Result<(), Box<dyn Erro
 
     assert!(!mismatch.replayed);
     assert_rejected_code(&mismatch.response_value, "INVOCATION_CONTEXT_MISMATCH");
-    assert!(!mismatch.response_json.contains(&write_check_id));
+    assert!(!mismatch.response_json.contains(&write_ticket_id));
     assert_eq!(fixture.counts()?, after_first);
     Ok(())
 }
@@ -190,16 +190,16 @@ fn idempotency_replay_rejects_operation_category_mismatch() -> Result<(), Box<dy
         invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
     let after_first = fixture.counts()?;
-    let write_check_id = first.response_value["write_check_ref"]["record_id"]
+    let write_ticket_id = first.response_value["write_ticket_ref"]["record_id"]
         .as_str()
-        .expect("prepare_write should return a Write Check id")
+        .expect("prepare_write should return a write ticket id")
         .to_owned();
 
     let mismatch = service.prepare_write(request, invocation(&fixture, OperationCategory::Read))?;
 
     assert!(!mismatch.replayed);
     assert_rejected_code(&mismatch.response_value, "INVOCATION_CONTEXT_MISMATCH");
-    assert!(!mismatch.response_json.contains(&write_check_id));
+    assert!(!mismatch.response_json.contains(&write_ticket_id));
     assert_eq!(fixture.counts()?, after_first);
     Ok(())
 }
@@ -397,15 +397,33 @@ fn write_check_lifecycle_is_single_use_and_state_bound() -> Result<(), Box<dyn E
         ),
         invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
-    let write_check_id = allowed.response_value["write_check_ref"]["record_id"]
+    let write_ticket_id = allowed.response_value["write_ticket_ref"]["record_id"]
         .as_str()
-        .expect("Write Check ref should be present")
+        .expect("write ticket ref should be present")
+        .to_owned();
+    let compat_write_check_id = allowed.response_value["write_check_ref"]["record_id"]
+        .as_str()
+        .expect("compatibility write check ref should be present")
         .to_owned();
     assert_eq!(allowed.response_value["decision"], "allowed");
-    assert_eq!(allowed.response_value["write_check_effect"], "created");
-    assert_eq!(fixture.write_check_status(&write_check_id)?, "active");
+    assert_eq!(allowed.response_value["write_ticket_effect"], "issued");
     assert_eq!(
-        fixture.write_check_basis(&write_check_id)?,
+        allowed.response_value["write_ticket"]["write_ticket_id"],
+        write_ticket_id
+    );
+    assert_eq!(allowed.response_value["write_ticket"]["state"], "open");
+    assert_eq!(
+        allowed.response_value["write_ticket"]["control_surface"]["os_enforced"],
+        false
+    );
+    assert_eq!(allowed.response_value["write_check_effect"], "created");
+    assert_eq!(write_ticket_id, compat_write_check_id);
+    assert_eq!(
+        fixture.write_check_status(&compat_write_check_id)?,
+        "active"
+    );
+    assert_eq!(
+        fixture.write_check_basis(&compat_write_check_id)?,
         allowed.response_value["base"]["state_version"]
             .as_u64()
             .unwrap()
@@ -422,11 +440,14 @@ fn write_check_lifecycle_is_single_use_and_state_bound() -> Result<(), Box<dyn E
     );
     run.observed_changes.product_file_write_observed = true;
     run.observed_changes.changed_paths = vec![DEFAULT_PRODUCT_PATH.to_owned()];
-    run.write_check_id = Some(WriteCheckId::new(&write_check_id)).into();
+    run.write_check_id = Some(WriteCheckId::new(&compat_write_check_id)).into();
     let consumed =
         service.record_run(run, invocation(&fixture, OperationCategory::AgentWorkflow))?;
     assert_eq!(consumed.response_value["base"]["state_version"], 6);
-    assert_eq!(fixture.write_check_status(&write_check_id)?, "consumed");
+    assert_eq!(
+        fixture.write_check_status(&compat_write_check_id)?,
+        "consumed"
+    );
     let after_consume = fixture.counts()?;
     assert_eq!(
         after_consume.state_version,
@@ -445,7 +466,7 @@ fn write_check_lifecycle_is_single_use_and_state_bound() -> Result<(), Box<dyn E
     );
     reuse.observed_changes.product_file_write_observed = true;
     reuse.observed_changes.changed_paths = vec![DEFAULT_PRODUCT_PATH.to_owned()];
-    reuse.write_check_id = Some(WriteCheckId::new(&write_check_id)).into();
+    reuse.write_check_id = Some(WriteCheckId::new(&compat_write_check_id)).into();
     let rejected = service.record_run(
         reuse,
         invocation(&fixture, OperationCategory::AgentWorkflow),
@@ -1422,7 +1443,7 @@ fn write_check_expiration_is_enforced_through_record_run() -> Result<(), Box<dyn
             expected_state_version: Some(stale.fixture.counts()?.state_version),
             task_id: &stale.task_id,
             operation: ChangeUnitOperation::ReplaceCurrent,
-            scope_summary: "Replacement scope before stale Write Check use.",
+            scope_summary: "Replacement scope before stale write-ticket use.",
         }),
         invocation(&stale.fixture, OperationCategory::AgentWorkflow),
     )?;
@@ -1454,8 +1475,8 @@ fn write_check_expiration_is_enforced_through_record_run() -> Result<(), Box<dyn
 }
 
 #[test]
-fn prepare_write_allocates_write_check_only_on_committed_allowed_effect(
-) -> Result<(), Box<dyn Error>> {
+fn prepare_write_issues_write_ticket_only_on_committed_allowed_effect() -> Result<(), Box<dyn Error>>
+{
     let fixture = CoreFixture::new("auth_allocation")?;
     let service = core(&fixture);
     let (task_id, change_unit_id) = create_task_with_change_unit(&fixture, &service, "auth_alloc")?;
@@ -1474,6 +1495,11 @@ fn prepare_write_allocates_write_check_only_on_committed_allowed_effect(
         invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_eq!(blocked_response.response_value["decision"], "blocked");
+    assert!(blocked_response.response_value["write_ticket_ref"].is_null());
+    assert_eq!(
+        blocked_response.response_value["write_ticket_effect"],
+        "none"
+    );
     assert!(blocked_response.response_value["write_check_ref"].is_null());
     assert_eq!(fixture.counts()?.write_checks, before_blocked.write_checks);
 
@@ -1494,6 +1520,11 @@ fn prepare_write_allocates_write_check_only_on_committed_allowed_effect(
         dry_response.response_value["base"]["response_kind"],
         "dry_run"
     );
+    assert!(dry_response
+        .response_value
+        .get("write_ticket_ref")
+        .is_none());
+    assert!(!dry_response.response_json.contains("write_ticket_id"));
     assert_eq!(fixture.counts()?, before_dry_run);
 
     let allowed_request = fixture.prepare_write_request(
@@ -1508,11 +1539,25 @@ fn prepare_write_allocates_write_check_only_on_committed_allowed_effect(
         invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
     let after_allowed = fixture.counts()?;
-    let write_check_id = allowed.response_value["write_check_ref"]["record_id"]
+    let write_ticket_id = allowed.response_value["write_ticket_ref"]["record_id"]
         .as_str()
-        .expect("allowed prepare_write should allocate a Write Check")
+        .expect("allowed prepare_write should issue a write ticket")
         .to_owned();
-    let timestamps = fixture.write_check_timestamps(&write_check_id)?;
+    let compat_write_check_id = allowed.response_value["write_check_ref"]["record_id"]
+        .as_str()
+        .expect("allowed prepare_write should include a compatibility Write Check id")
+        .to_owned();
+    assert_eq!(allowed.response_value["write_ticket_effect"], "issued");
+    assert_eq!(
+        allowed.response_value["write_ticket"]["write_ticket_id"],
+        write_ticket_id
+    );
+    assert_eq!(
+        allowed.response_value["write_ticket"]["control_surface"]["os_enforced"],
+        false
+    );
+    assert_eq!(write_ticket_id, compat_write_check_id);
+    let timestamps = fixture.write_check_timestamps(&compat_write_check_id)?;
 
     let replay = service.prepare_write(
         allowed_request,
@@ -1521,10 +1566,17 @@ fn prepare_write_allocates_write_check_only_on_committed_allowed_effect(
     assert!(replay.replayed);
     assert_eq!(replay.response_json, allowed.response_json);
     assert_eq!(
-        replay.response_value["write_check_ref"]["record_id"],
-        write_check_id
+        replay.response_value["write_ticket_ref"]["record_id"],
+        write_ticket_id
     );
-    assert_eq!(fixture.write_check_timestamps(&write_check_id)?, timestamps);
+    assert_eq!(
+        replay.response_value["write_ticket"]["write_ticket_id"],
+        write_ticket_id
+    );
+    assert_eq!(
+        fixture.write_check_timestamps(&compat_write_check_id)?,
+        timestamps
+    );
     assert_eq!(fixture.counts()?, after_allowed);
     Ok(())
 }
@@ -3787,7 +3839,7 @@ fn prepare_write_check(
     assert_eq!(response.response_value["decision"], "allowed");
     Ok(response.response_value["write_check_ref"]["record_id"]
         .as_str()
-        .expect("Write Check ref should be present")
+        .expect("compatibility write check ref should be present")
         .to_owned())
 }
 
@@ -3841,7 +3893,7 @@ fn prepared_write_fixture(
     assert_eq!(response.response_value["decision"], "allowed");
     let write_check_id = response.response_value["write_check_ref"]["record_id"]
         .as_str()
-        .expect("Write Check ref should be present")
+        .expect("compatibility write check ref should be present")
         .to_owned();
     Ok(PreparedWriteFixture {
         fixture,

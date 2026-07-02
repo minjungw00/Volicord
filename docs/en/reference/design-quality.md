@@ -39,7 +39,7 @@ This reference does not define neighboring authority:
 - API, storage, and schemas: API method behavior, method-specific blocker production, storage effects, SQLite DDL, persisted tables, or supported validator families
 - evidence and reporting: evidence authority, QA results, operations reports, conformance catalogs, projection authority, rendered reports, or template bodies
 
-Reference text documents the design-quality boundary and owner routing. It does not create Volicord runtime state, user-owned judgment, `Write Check`, sensitive-action approval, evidence, QA, final acceptance, residual-risk acceptance, or close-readiness state.
+Reference text documents the design-quality boundary and owner routing. It does not create Volicord runtime state, user-owned judgment, write ticket, sensitive-action approval, evidence, QA, final acceptance, residual-risk acceptance, or close-readiness state.
 
 ## 2. Baseline design-quality role
 
@@ -65,7 +65,7 @@ Baseline owner-boundary rules:
 |---|---|
 | Independent close authority | A design-quality finding does not automatically become a close-readiness blocker, close category, product acceptance gate, scope override, evidence rule, or guarantee. |
 | Evidence and risk | Evidence requirements, final acceptance, residual-risk visibility, and residual-risk acceptance affect close only when the Core evidence authority or another relevant reference contract defines that requirement or effect. |
-| Judgment boundaries | A finding does not replace user-owned judgment, `Write Check`, sensitive-action approval, final acceptance, residual-risk acceptance, or required evidence. |
+| Judgment boundaries | A finding does not replace user-owned judgment, write ticket, sensitive-action approval, final acceptance, residual-risk acceptance, or required evidence. |
 | Severity | Severity labels are advisory triage; they do not override API, storage, security, scope, or close-readiness owners. |
 | Focused action | A next action must stay limited to what the relevant owner contract requires; documentation-routing convenience cannot expand it. |
 | Owner gap | An owner gap means the required owner document or contract is absent or unclear. It does not make a route or document path a product authority. |
@@ -478,7 +478,7 @@ Close effect:
 
 ## 7. Validator ID boundary
 
-Validator IDs are reporting labels. They do not create Core invariants, product gates, close blockers, waivers, evidence records, user judgments, `Write Check`, final acceptance, or residual-risk acceptance.
+Validator IDs are reporting labels. They do not create Core invariants, product gates, close blockers, waivers, evidence records, user judgments, write ticket, final acceptance, or residual-risk acceptance.
 
 `ValidatorResult` shape is owned by [API State Schemas](api/schema-state.md). Severity-like values and the boundary for any supported stable `ValidatorResult.validator_id` value are owned by [API Value Sets](api/schema-value-sets.md).
 

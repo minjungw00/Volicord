@@ -173,6 +173,25 @@ fn read_only_mode_allows_read_close_check_and_rejects_state_changing_close(
     assert!(error.to_string().contains("mode read_only"));
     assert!(error.to_string().contains("agent_workflow"));
     assert_eq!(fixture.counts()?, before);
+
+    let error = adapter
+        .call_tool(
+            "volicord.prepare_write",
+            json!({
+                "task_id": null,
+                "change_unit_id": null,
+                "intended_operation": "read-only transport write-ticket rejection",
+                "intended_paths": ["src/lib.rs"],
+                "product_file_write_intended": true,
+                "sensitive_categories": [],
+                "baseline_ref": "baseline_test"
+            }),
+        )
+        .expect_err("read_only should reject write-ticket issuance before Core");
+
+    assert!(error.to_string().contains("mode read_only"));
+    assert!(error.to_string().contains("agent_workflow"));
+    assert_eq!(fixture.counts()?, before);
     Ok(())
 }
 

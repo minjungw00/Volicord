@@ -56,7 +56,7 @@ into operational Reference contracts, error messages, or routine CLI output.
   transport, and response-wrapping behavior belongs to [MCP Transport](../reference/mcp-transport.md).
 - `Volicord Runtime Home` is a product label. Exact runtime location and
   repository-boundary behavior belongs to [Runtime Boundaries](../reference/runtime-boundaries.md).
-- Domain concepts such as `Task`, Change Unit, `Write Check`, final
+- Domain concepts such as `Task`, Change Unit, write ticket, final
   acceptance, residual-risk acceptance, and close readiness must not be given
   decorative Volicord-derived names.
 
@@ -131,7 +131,7 @@ their contracts into brand material:
 | Question | Owner |
 |---|---|
 | Product scope and supported baseline boundaries | [Scope](../reference/scope.md) |
-| Core authority concepts, user-owned judgment, evidence, `Write Check`, acceptance, residual risk, and close readiness | [Core Model](../reference/core-model.md) |
+| Core authority concepts, user-owned judgment, evidence, write ticket, acceptance, residual risk, and close readiness | [Core Model](../reference/core-model.md) |
 | Runtime locations, product repository boundaries, Runtime Home boundaries, and component/location separation | [Runtime Boundaries](../reference/runtime-boundaries.md) |
 | Security wording, guarantee levels, invocation-context assumptions, and explicit non-guarantees | [Security](../reference/security.md) |
 | Administrative CLI commands, arguments, output, host setup, and command/API boundary | [Administrative CLI](../reference/admin-cli.md) |

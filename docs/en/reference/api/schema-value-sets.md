@@ -72,7 +72,7 @@ Actor provenance fields such as `EvidenceObservation.observed_by_actor_source`, 
 | `agent_connection:<connection_id>` | Agent Connection invocation provenance and agent-created or agent-observed state. | Invocation meaning: [Agent Connection](../agent-connection.md); nested shape owners define where the value appears. |
 | `system` | Internal system provenance where an owner explicitly allows it. | Method and storage owners define where the value appears. |
 
-These values classify derived invocation or persisted actor provenance. They do not by themselves create user-owned judgment, approval, scope-decision authority, final acceptance, residual-risk acceptance, or `Write Check`. Authority-bearing user-judgment resolution requires `resolved_by_actor_source=local_user` with compatible User Channel provenance as defined by [Agent Connection](../agent-connection.md) and the method owner.
+These values classify derived invocation or persisted actor provenance. They do not by themselves create user-owned judgment, approval, scope-decision authority, final acceptance, residual-risk acceptance, or write ticket. Authority-bearing user-judgment resolution requires `resolved_by_actor_source=local_user` with compatible User Channel provenance as defined by [Agent Connection](../agent-connection.md) and the method owner.
 
 <a id="next-action-values"></a>
 ## Next-action values
@@ -150,6 +150,7 @@ Operation categories are Volicord API compatibility categories, not OS permissio
 project_state
 task
 change_unit
+write_ticket
 write_check
 user_judgment
 run
@@ -186,7 +187,7 @@ superseded
 closed
 ```
 
-These values classify durable project-level context. They do not by themselves create current Task authority, satisfy pending user judgments, prove evidence, grant `Write Check`, satisfy close readiness, or accept residual risk for a future close basis.
+These values classify durable project-level context. They do not by themselves create current Task authority, satisfy pending user judgments, prove evidence, grant write-ticket authority, satisfy close readiness, or accept residual risk for a future close basis.
 
 <a id="task-lifecycle-values"></a>
 ## Task lifecycle values
@@ -288,7 +289,7 @@ external_network
 secret_access
 ```
 
-These values classify effects as Core state. They do not by themselves create a runtime sandbox, command interception, network blocking, secret isolation, user judgment, sensitive-action approval, evidence, `Write Check`, final acceptance, close readiness, or residual-risk acceptance.
+These values classify effects as Core state. They do not by themselves create a runtime sandbox, command interception, network blocking, secret isolation, user judgment, sensitive-action approval, evidence, write ticket, final acceptance, close readiness, or residual-risk acceptance.
 
 `volicord.close_task.intent` uses:
 
@@ -315,6 +316,29 @@ none
 would_create
 created
 ```
+
+`PrepareWriteResult.write_ticket_effect` uses:
+
+```text
+none
+would_issue
+issued
+```
+
+`issued` means a committed `decision=allowed` result issued one open write-ticket authority record. `would_issue` is used only for preview/planning descriptions and does not create a committed ticket.
+
+`WriteTicket.state` uses:
+
+```text
+open
+observed
+reconciled
+closed
+expired
+revoked
+```
+
+These states describe Volicord ticket authority and observation lifecycle. They do not imply filesystem ACLs, OS-level enforcement, shell permission, command approval, or proof that a write occurred.
 
 `WriteCheckStateSummary.status` and `WriteCheckSummary.status` use:
 
@@ -354,12 +378,13 @@ observe
 ```
 
 `record` means Volicord records authority state and exposes MCP/tool workflow
-without requiring host hooks or session watcher observation. `observe` means
-Volicord records authority state and uses supported host hooks plus session
-watcher observation. Observe may return cooperative host warnings or denials and
-may detect unrecorded Product Repository changes after watcher coverage starts,
-but it does not prove actor identity, provide OS enforcement, isolate the
-network, or sandbox tools.
+without requiring host hooks or session watcher observation; this includes
+Core-issued authority write tickets. `observe` means Volicord records authority
+state and uses supported host hooks plus session watcher observation that can be
+correlated to write-ticket scope. Observe may return cooperative host warnings
+or denials and may detect unrecorded Product Repository changes after watcher
+coverage starts, but it does not prove actor identity, provide OS enforcement,
+isolate the network, or sandbox tools.
 
 `GuardHealthSummary.hook_path_safety` uses:
 

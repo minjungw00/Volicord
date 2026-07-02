@@ -7,7 +7,7 @@
 이 문서가 담당합니다.
 
 - 읽기 전용, `dry_run`, 거부 응답, 스테이징 생성, Core 커밋, 커밋된 차단 결과의 저장 효과 구분.
-- 각 분기가 담당 기록, `authority_events`, 재실행 행, `project_state.state_version`, 스테이징 핸들 생성 또는 소비, 아티팩트 승격, Write Check를 바꿀 수 있는지 여부.
+- 각 분기가 담당 기록, `authority_events`, 재실행 행, `project_state.state_version`, 스테이징 핸들 생성 또는 소비, 아티팩트 승격, 쓰기 티켓 호환성을 바꿀 수 있는지 여부.
 - 차단 사유형 응답 데이터가 지속 저장되는 경계.
 - 거부 응답과 유효한 `dry_run` 미리보기의 효과 없음 보장.
 
@@ -39,7 +39,7 @@ API 데이터 형태는 API 스키마 담당 문서가 담당합니다. 차단 �
 
 | 효과 범주 | 응답 또는 분기 | 지속 저장 결과 | 세부사항 |
 |---|---|---|---|
-| 읽기 전용 | 읽기 전용 `MethodResult` | 응답만 반환합니다. 재실행 행, 이벤트, 아티팩트 효과, Write Check 효과, `project_state.state_version` 증가는 없습니다. | [읽기 전용 결과](#read-only-result) |
+| 읽기 전용 | 읽기 전용 `MethodResult` | 응답만 반환합니다. 재실행 행, 이벤트, 아티팩트 효과, 쓰기 티켓 효과, `project_state.state_version` 증가는 없습니다. | [읽기 전용 결과](#read-only-result) |
 | 효과 없음 | `ToolRejectedResponse` 또는 `effect_kind=no_effect`인 유효한 `MethodResult` | 요청된 일반 변이가 없고 Core 커밋도 없습니다. 응답이 오류나 차단 사유형 데이터를 담을 수 있지만, 이 분기는 그 값을 지속하지 않습니다. | [`ToolRejectedResponse`](#toolrejectedresponse-effect), [효과가 없는 분기](#no-effect-branches) |
 | `dry_run` | 유효한 `ToolDryRunResponse` | 미리보기만 반환합니다. 지속 참조, 재실행 행, 이벤트, 스테이징 핸들, 아티팩트 효과, `project_state.state_version` 증가는 없습니다. | [유효한 `dry_run` 미리보기](#valid-dry-run-preview) |
 | 스테이징 생성 | `effect_kind=staging_created`인 `StageArtifactResult` | 저장소 소유 임시 스테이징만 생성합니다. 일반 Core 커밋 트랜잭션이 아닙니다. | [스테이징 생성 아티팩트 결과](#staging-created-artifact-result) |
@@ -59,7 +59,7 @@ API 데이터 형태는 API 스키마 담당 문서가 담당합니다. 차단 �
 - 이벤트
 - 담당 기록 변경
 - 아티팩트 효과
-- Write Check 효과
+- 쓰기 티켓 효과
 - `project_state.state_version` 증가
 
 <a id="toolrejectedresponse-effect"></a>
@@ -75,7 +75,7 @@ API 데이터 형태는 API 스키마 담당 문서가 담당합니다. 차단 �
 - 재실행 행
 - 이벤트
 - 아티팩트 효과
-- Write Check 생성 또는 소비
+- 쓰기 티켓 생성 또는 소비
 - `project_state.state_version` 증가
 
 <a id="valid-dry-run-preview"></a>
@@ -170,7 +170,7 @@ API 데이터 형태는 API 스키마 담당 문서가 담당합니다. 차단 �
 - 재실행 행.
 - 증거 요약 또는 증거 관찰.
 - `close_state`.
-- Write Check 생성 또는 소비.
+- 쓰기 티켓 호환성 행 생성 또는 소비.
 - `artifact_staging.status`.
 - `consumed_by_run_id` 또는 `promoted_artifact_id`.
 - 아티팩트 승격 또는 연결.
@@ -192,7 +192,7 @@ API 데이터 형태는 API 스키마 담당 문서가 담당합니다. 차단 �
 - 재실행 행 또는 `tool_invocations.response_json`.
 - 생성된 지속 참조.
 - `close_state` 변경.
-- Write Check 변경.
+- 쓰기 티켓 변경.
 - 스테이징 핸들 생성 또는 소비.
 - 아티팩트 효과.
 - 증거 업데이트 또는 증거 관찰.
@@ -219,7 +219,7 @@ API 데이터 형태는 API 스키마 담당 문서가 담당합니다. 차단 �
 - `authority_events` 추가
 - 재실행 행 또는 `tool_invocations.response_json`
 - `close_state` 변경
-- Write Check 변경
+- 쓰기 티켓 변경
 - 스테이징 핸들 소비
 - 아티팩트 효과
 - 증거 업데이트 또는 증거 관찰
@@ -262,7 +262,7 @@ API 데이터 형태는 API 스키마 담당 문서가 담당합니다. 차단 �
 
 허용되지 않는 효과:
 
-- 소비 가능한 Write Check 생성
+- 쓰기 티켓 발급
 - 별도 공개 이력 메서드 생성
 - 과거 비허용 판단용 새 공개 응답 필드 추가
 - `volicord.status`가 과거 비허용 판단을 노출해야 한다는 요구
@@ -366,7 +366,7 @@ API 데이터 형태는 API 스키마 담당 문서가 담당합니다. 차단 �
 - 현재 적용 범위나 현재 적용 Change Unit의 실질적 변경에 대해 `tasks.scope_revision`을 증가시킵니다.
 - 실질적 범위 변경에 대해 `tasks.close_basis_json`을 무효화하고 `tasks.close_basis_revision`을 증가시킵니다.
 - 담당 문서가 정의한 호환성에 따라 호환되지 않는 판단 근거 행을 오래됨 또는 대체됨으로 표시합니다.
-- 메서드 담당 문서가 허용한 차단 사유 또는 오래된 Write Check 참조를 갱신합니다.
+- 메서드 담당 문서가 허용한 차단 사유 또는 오래된 쓰기 티켓 참조를 갱신합니다.
 - 이벤트를 추가합니다.
 - 재실행 행을 생성합니다.
 - `project_state.state_version`을 한 번 증가시킵니다.
@@ -376,7 +376,7 @@ API 데이터 형태는 API 스키마 담당 문서가 담당합니다. 차단 �
 - 유효한 `dry_run` 미리보기
 - 거절된 시도
 
-유효한 `dry_run` 미리보기는 범위, Change Unit, 차단 사유, 오래된 `Write Check` 효과만 미리 설명합니다.
+유효한 `dry_run` 미리보기는 범위, Change Unit, 차단 사유, 오래된 쓰기 티켓 효과만 미리 설명합니다.
 
 의미가 같은 정규화된 갱신은 `tasks.scope_revision`을 증가시키거나 현재 닫기 근거를 무효화하지 않습니다.
 
@@ -421,7 +421,7 @@ watch 비교를 실행하거나, `session_watch_observations`를 만들거나,
 
 `decision=allowed`인 재실행이 아닌 원래 커밋된 `dry_run=false` 호출은 다음을 수행할 수 있습니다.
 
-- 호환되는 `status=active` Write Check를 만듭니다.
+- 물리 `write_checks` 호환성 테이블에 저장되는 열린 쓰기 티켓 하나를 발급합니다.
 - 이벤트를 추가합니다.
 - 재실행 행을 생성합니다.
 - `project_state.state_version`을 한 번 증가시킵니다.
@@ -432,7 +432,7 @@ watch 비교를 실행하거나, `session_watch_observations`를 만들거나,
 
 - [`volicord.prepare_write`의 커밋된 비허용 판단](#volicordprepare_write-committed-non-allow-decision)을 따릅니다.
 - `authority_events` 행을 정확히 하나 추가하고, 키가 있으면 재실행 행을 만들며, `project_state.state_version`을 정확히 한 번 증가시킵니다.
-- 소비 가능한 Write Check, 별도 공개 이력 메서드, 새 공개 응답 필드를 만들지 않습니다.
+- 쓰기 티켓, 별도 공개 이력 메서드, 제품 파일 쓰기 권한 기록을 만들지 않습니다.
 - `volicord.status`는 과거 비허용 판단을 노출할 필요가 없습니다.
 
 효과가 없는 분기:
@@ -443,7 +443,7 @@ watch 비교를 실행하거나, `session_watch_observations`를 만들거나,
 이 분기들은 아래 항목을 만들지 않습니다.
 
 - 재실행 행.
-- Write Check.
+- 쓰기 티켓.
 - 이벤트.
 - `close_state` 변경.
 - 아티팩트 또는 증거 효과.
@@ -523,7 +523,7 @@ watch 비교를 실행하거나, `session_watch_observations`를 만들거나,
 - 이벤트.
 - 재실행 행.
 - 스테이징 핸들 소비.
-- Write Check 소비.
+- 쓰기 티켓 호환성 소비.
 - `project_state.state_version` 증가.
 
 거절된 시도는 아래 항목을 바꾸지 않습니다.
@@ -541,10 +541,10 @@ watch 비교를 실행하거나, `session_watch_observations`를 만들거나,
 
 - 커밋된 `volicord.record_run`은 `tasks.close_basis_revision`을 정확히 한 번 증가시킵니다.
 - `close_assessment`가 `null`이 아니면 `tasks.close_basis_json`에 새 현재 `CurrentCloseBasis`를 쓰고 Core가 생성한 불투명 잔여 위험 ID를 저장합니다.
-- 그 `CurrentCloseBasis`에 저장되는 민감 동작 요구사항은 커밋된 실행 기록과 소비된 Write Check에서 Core가 파생하며, 동작, 정규화된 경로, 민감 범주, 기준선, Change Unit, 출처 실행 기록 참조, 출처 Write Check 참조를 닫기까지 보존합니다.
+- 그 `CurrentCloseBasis`에 저장되는 민감 동작 요구사항은 커밋된 실행 기록과 소비된 쓰기 티켓 호환성 행에서 Core가 파생하며, 동작, 정규화된 경로, 민감 범주, 기준선, Change Unit, 출처 실행 기록 참조, 출처 쓰기 티켓 참조를 닫기까지 보존합니다.
 - 범주만 담은 호출자 입력은 민감 동작 요구사항을 만들거나, 만족하거나, 지울 수 없습니다.
 - `close_assessment=null`은 커밋된 실행 기록이 현재 닫기 근거를 만들지 않음을 기록합니다. 기존 현재 근거는 오래되거나 없어집니다.
-- 실행 기록, 현재 닫기 근거, 증거 요약, 증거 관찰, 아티팩트, `Write Check` 소비, 재실행, 이벤트, 리비전 효과는 원자적으로 커밋됩니다.
+- 실행 기록, 현재 닫기 근거, 증거 요약, 증거 관찰, 아티팩트, 쓰기 티켓 호환성 소비, 재실행, 이벤트, 리비전 효과는 원자적으로 커밋됩니다.
 
 담당 문서:
 

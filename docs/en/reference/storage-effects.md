@@ -7,7 +7,7 @@ This document owns method-to-storage effect semantics for the baseline scope sou
 This document owns:
 
 - read-only, dry-run, rejected, staging-created, Core-committed, and committed-blocked storage-effect distinctions
-- whether a method branch creates replay rows, `authority_events`, record changes, state-version increments, staged-handle creation or consumption, artifact promotion, or Write Check changes
+- whether a method branch creates replay rows, `authority_events`, record changes, state-version increments, staged-handle creation or consumption, artifact promotion, or write-ticket compatibility changes
 - the persistence boundary for blocker-like response data
 - no-effect guarantees for rejected branches and valid dry-run preview branches
 
@@ -38,7 +38,7 @@ Effects come from the selected method behavior and response branch. The table su
 
 | Effect category | Response or branch | Durable storage consequence | Details |
 |---|---|---|---|
-| Read-only | Read-only `MethodResult` | Response only; no replay row, event, artifact effect, Write Check effect, or `project_state.state_version` increment. | [Read-only result](#read-only-result) |
+| Read-only | Read-only `MethodResult` | Response only; no replay row, event, artifact effect, write-ticket effect, or `project_state.state_version` increment. | [Read-only result](#read-only-result) |
 | No-effect | `ToolRejectedResponse` or a valid `MethodResult` with `effect_kind=no_effect` | No ordinary requested mutation and no Core commit. The response may carry errors or blocker-shaped data, but those values are not persisted by this branch. | [`ToolRejectedResponse`](#toolrejectedresponse-effect), [No-effect branches](#no-effect-branches) |
 | Dry-run | Valid `ToolDryRunResponse` | Preview only; no persistent refs, replay row, event, staged handle, artifact effect, or `project_state.state_version` increment. | [Valid dry-run preview](#valid-dry-run-preview) |
 | Staging-created | `StageArtifactResult` with `effect_kind=staging_created` | Storage-owned transient staging only; not the regular Core commit transaction. | [Staging-created artifact result](#staging-created-artifact-result) |
@@ -58,7 +58,7 @@ Disallowed effects:
 - event
 - current-row mutation
 - artifact effect
-- Write Check effect
+- write-ticket effect
 - `project_state.state_version` increment
 
 <a id="toolrejectedresponse-effect"></a>
@@ -74,7 +74,7 @@ Disallowed effects:
 - replay row
 - event
 - artifact effect
-- Write Check creation or consumption
+- write-ticket creation or consumption
 - `project_state.state_version` increment
 
 <a id="valid-dry-run-preview"></a>
@@ -169,7 +169,7 @@ No-effect branches must not:
 - create replay rows
 - update evidence summaries or create evidence observations
 - mutate close state
-- create or consume Write Check
+- create or consume write-ticket compatibility rows
 - change `artifact_staging.status`
 - set `consumed_by_run_id` or `promoted_artifact_id`
 - promote or link artifacts
@@ -191,7 +191,7 @@ Valid dry-run previews may include `DryRunSummary.would_blockers: PlannedBlocker
 - replay row or `tool_invocations.response_json`
 - generated persistent ref
 - `close_state` mutation
-- Write Check change
+- write-ticket change
 - staged-handle creation or consumption
 - artifact effect
 - evidence update or evidence observation
@@ -218,7 +218,7 @@ Read-time artifact checks may compute an effective missing, unavailable, or inte
 - `authority_events` append
 - replay row or `tool_invocations.response_json`
 - `close_state` mutation
-- Write Check change
+- write-ticket change
 - staged-handle consumption
 - artifact effect
 - evidence update or evidence observation
@@ -263,7 +263,7 @@ Allowed effects:
 
 Disallowed effects:
 
-- creating consumable Write Check
+- issuing a write ticket
 - creating a separate public history method
 - adding a new public response field for historical non-allow decisions
 - requiring `volicord.status` to expose historical non-allow decisions
@@ -367,7 +367,7 @@ Committed `dry_run=false` may:
 - increment `tasks.scope_revision` for material current-scope or current Change Unit changes
 - invalidate `tasks.close_basis_json` and increment `tasks.close_basis_revision` for material scope changes
 - mark incompatible judgment basis rows stale or superseded as owner-defined compatibility requires
-- update blockers or stale Write Check refs as the method owner allows
+- update blockers or stale write-ticket refs as the method owner allows
 - append events
 - create a replay row
 - increment `project_state.state_version` once
@@ -377,7 +377,7 @@ No-effect branches:
 - valid dry-run previews
 - rejected attempts
 
-Valid dry-run previews only describe scope, Change Unit, blocker, and stale `Write Check` effects.
+Valid dry-run previews only describe scope, Change Unit, blocker, and stale write-ticket effects.
 
 Semantically identical normalized updates do not increment `tasks.scope_revision` or invalidate the current close basis.
 
@@ -422,7 +422,7 @@ Owner links:
 
 An original committed `dry_run=false` call with `decision=allowed` may:
 
-- create a compatible `status=active` Write Check
+- issue one open write ticket stored in the physical `write_checks` compatibility table
 - append events
 - create a replay row
 - increment `project_state.state_version` once
@@ -433,7 +433,7 @@ Committed non-allowed decisions:
 
 - See [`volicord.prepare_write` committed non-allow decision](#volicordprepare_write-committed-non-allow-decision).
 - They append exactly one `authority_events` row, create a replay row when keyed, and increment `project_state.state_version` exactly once.
-- They do not create consumable Write Check, a separate public history method, or a new public response field.
+- They do not issue a write ticket, create a separate public history method, or create a product-file write authority record.
 - `volicord.status` is not required to expose historical non-allow decisions.
 
 No-effect branches:
@@ -444,7 +444,7 @@ No-effect branches:
 Those branches do not create:
 
 - replay row
-- Write Check
+- write ticket
 - event
 - `close_state` mutation
 - artifact or evidence effect
@@ -524,7 +524,7 @@ Valid dry-run previews do not create:
 - event
 - replay row
 - staged-handle consumption
-- Write Check consumption
+- write-ticket compatibility consumption
 - `project_state.state_version` increment
 
 Rejected attempts do not change:
@@ -542,10 +542,10 @@ Current close-basis persistence boundary:
 
 - A committed `volicord.record_run` increments `tasks.close_basis_revision` exactly once.
 - A non-null `close_assessment` writes a new current `CurrentCloseBasis` in `tasks.close_basis_json` and stores Core-generated opaque residual-risk IDs.
-- Sensitive action requirements stored in that `CurrentCloseBasis` are derived by Core from the committed Run and any consumed Write Check, preserving operation, normalized paths, sensitive categories, baseline, Change Unit, source Run ref, and source Write Check ref through close.
+- Sensitive action requirements stored in that `CurrentCloseBasis` are derived by Core from the committed Run and any consumed write-ticket compatibility row, preserving operation, normalized paths, sensitive categories, baseline, Change Unit, source Run ref, and source write-ticket ref through close.
 - Category-only caller input cannot establish, satisfy, or erase a sensitive action requirement.
 - `close_assessment=null` records that the committed Run does not establish a current close basis; any existing current basis becomes stale or absent.
-- Run, current close basis, evidence summary, evidence observation, artifact, `Write Check` consumption, replay, event, and revision effects commit atomically.
+- Run, current close basis, evidence summary, evidence observation, artifact, write-ticket compatibility consumption, replay, event, and revision effects commit atomically.
 
 Owner links:
 

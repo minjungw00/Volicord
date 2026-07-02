@@ -4,24 +4,25 @@ use serde_json::Value;
 
 use crate::ids::{
     BaselineRef, ChangeUnitId, RunId, TaskId, UnrecordedChangeId, UserJudgmentId,
-    UserJudgmentOptionId, WriteCheckId,
+    UserJudgmentOptionId, WriteCheckId, WriteTicketId,
 };
 use crate::schema::{
     AcceptedRiskInput, ArtifactInput, ArtifactRef, ChangeUnitEffectContract, CloseAssessmentInput,
-    CloseReadinessBlocker, CurrentCloseBasis, EvidenceCoverageItem, EvidenceObservation,
-    EvidenceObservationInput, EvidenceSummary, GuaranteeDisplay, GuardHealthSummary, JsonObject,
-    JudgmentRationale, NextActionSummary, ObservedChanges, ProjectContinuitySummary,
-    RecordUserJudgmentPayload, RequiredNullable, RiskAcceptanceCoverage, RunSummary,
-    SensitiveActionScope, StagedArtifactHandle, StateRecordRef, StateSummary, ToolEnvelope,
-    ToolResponse, ToolResultBase, UnrecordedChangeFinding, UnrecordedChangeResolutionSummary,
-    UserJudgment, UserJudgmentCandidate, UserJudgmentContext, UserJudgmentOptionInput,
-    WriteCheckStateSummary, WriteCheckSummary, WriteDecisionReason,
+    CloseReadinessBlocker, ControlSurfaceSummary, CurrentCloseBasis, EvidenceCoverageItem,
+    EvidenceObservation, EvidenceObservationInput, EvidenceSummary, GuaranteeDisplay,
+    GuardHealthSummary, JsonObject, JudgmentRationale, NextActionSummary, ObservedChanges,
+    ProjectContinuitySummary, RecordUserJudgmentPayload, RequiredNullable, RiskAcceptanceCoverage,
+    RunSummary, SensitiveActionScope, StagedArtifactHandle, StateRecordRef, StateSummary,
+    ToolEnvelope, ToolResponse, ToolResultBase, UnrecordedChangeFinding,
+    UnrecordedChangeResolutionSummary, UserJudgment, UserJudgmentCandidate, UserJudgmentContext,
+    UserJudgmentOptionInput, WriteCheckStateSummary, WriteCheckSummary, WriteDecisionReason,
+    WriteTicket,
 };
 use crate::values::{
     ChangeUnitOperation, CloseIntent, CloseMutationIntent, CloseReason, CloseState, JudgmentKind,
     JudgmentPresentation, JudgmentRequiredFor, MethodName, OperationCategory, PrepareWriteDecision,
     RedactionState, RequestedMode, ResumePolicy, RunKind, StatusCloseState, StatusDetailLevel,
-    UnrecordedChangeResolutionBasis, UtcTimestamp, WriteCheckEffect,
+    UnrecordedChangeResolutionBasis, UtcTimestamp, WriteCheckEffect, WriteTicketEffect,
 };
 
 /// Shared typed mapping from a public request to its operation category.
@@ -344,6 +345,13 @@ pub struct PrepareWriteResult {
     pub base: ToolResultBase,
     pub decision: PrepareWriteDecision,
     pub state: Option<StateSummary>,
+    pub write_ticket_id: Option<WriteTicketId>,
+    pub write_ticket_ref: Option<StateRecordRef>,
+    pub write_ticket: Option<WriteTicket>,
+    pub write_ticket_effect: WriteTicketEffect,
+    pub allowed_path_patterns: Vec<String>,
+    pub denied_path_patterns: Vec<String>,
+    pub control_surface: Option<ControlSurfaceSummary>,
     pub write_check_ref: Option<StateRecordRef>,
     pub write_check: Option<WriteCheckSummary>,
     pub write_check_effect: WriteCheckEffect,

@@ -4,7 +4,7 @@ Use these examples after the [User Guide](user-workflow.md) when a task is block
 
 The examples are illustrative. They help readers recognize boundary shapes while exact policy, schema, close-readiness, and route meanings stay with their owners. Each scenario is a standalone example for this guide. For exact owner boundaries, use [Core Model](../reference/core-model.md), [Scope](../reference/scope.md), and the relevant owners from the [Reference Index](../reference/README.md).
 
-Each example separates the user's decision from what the agent may do and what the agent must not imply. User-owned judgment, sensitive-action approval, final acceptance, residual-risk acceptance, verification criteria, evidence, close readiness, and `Write Check` stay distinct.
+Each example separates the user's decision from what the agent may do and what the agent must not imply. User-owned judgment, sensitive-action approval, final acceptance, residual-risk acceptance, verification criteria, evidence, close readiness, and write ticket stay distinct.
 
 For recorded important judgments, structured rationale should preserve the selected reason, considered alternatives, trade-offs, assumptions, uncertainties, and review triggers. Rationale preserves intent and context; it does not create authority, evidence, acceptance, close readiness, or residual-risk acceptance.
 
@@ -28,7 +28,7 @@ Agent may do:
 Agent must not imply:
 
 - Surrounding code is enough to infer product intent.
-- This product choice also grants final acceptance, residual-risk acceptance, sensitive-action approval, scope expansion, evidence sufficiency, or `Write Check`.
+- This product choice also grants final acceptance, residual-risk acceptance, sensitive-action approval, scope expansion, evidence sufficiency, or write ticket.
 
 Owner links:
 
@@ -57,7 +57,7 @@ Agent may do:
 Agent must not imply:
 
 - A strong recommendation is the same thing as user-owned technical judgment.
-- A technical choice approves dependency installation, product-file writes, data-shape changes, sensitive-action approval, final acceptance, residual-risk acceptance, or `Write Check` by itself.
+- A technical choice approves dependency installation, product-file writes, data-shape changes, sensitive-action approval, final acceptance, residual-risk acceptance, or write ticket by itself.
 
 Owner links:
 
@@ -84,7 +84,7 @@ Agent may do:
 Agent must not imply:
 
 - Scope expansion can be inferred from implementation convenience.
-- Scope change also creates sensitive-action approval, final acceptance, residual-risk acceptance, evidence sufficiency, or `Write Check`.
+- Scope change also creates sensitive-action approval, final acceptance, residual-risk acceptance, evidence sufficiency, or write ticket.
 
 Owner links:
 
@@ -110,7 +110,7 @@ Agent may do:
 
 Agent must not imply:
 
-- Verification criteria are evidence, QA completion, final acceptance, residual-risk acceptance, sensitive-action approval, scope expansion, or `Write Check`.
+- Verification criteria are evidence, QA completion, final acceptance, residual-risk acceptance, sensitive-action approval, scope expansion, or write ticket.
 - Meeting criteria in an agent summary alone makes the task close-ready.
 
 Owner links:
@@ -137,7 +137,7 @@ Agent may do:
 
 Agent must not imply:
 
-- Sensitive-action approval is write approval, `Write Check`, final acceptance, residual-risk acceptance, verification criteria, or security authority.
+- Sensitive-action approval is write approval, a write ticket, final acceptance, residual-risk acceptance, verification criteria, or security authority.
 - A broad "go ahead" approves unrelated installs, upgrades, deploys, secret printing, product decisions, or product-file writes.
 
 Owner links:
@@ -192,7 +192,7 @@ Agent may do:
 Agent must not imply:
 
 - "Looks good" is final acceptance unless that exact question was pending.
-- Final acceptance supplies missing evidence, changes verification criteria, accepts residual risk, expands current scope, creates sensitive-action approval or `Write Check`, or accepts unrelated files.
+- Final acceptance supplies missing evidence, changes verification criteria, accepts residual risk, expands current scope, creates sensitive-action approval or a write ticket, or accepts unrelated files.
 
 Owner links:
 

@@ -57,7 +57,7 @@ Supported does not mean:
 | Plain-language intake and `Task` creation | A local `Task` can be started from plain-language user intent through the supported intake path. | [Intake method](api/method-intake.md), [Core Model](core-model.md) |
 | Scope updates | `Task` and Change Unit scope can be updated through the supported scope-update path. | [Update-scope method](api/method-update-scope.md), [Core Model](core-model.md) |
 | Status and close-readiness review | Status, evidence sufficiency, known blockers, and close-readiness state can be read through supported read paths. | [Status method](api/method-status.md), [Close-task method](api/method-close-task.md), [API State Schemas](api/schema-state.md), [Core Model](core-model.md) |
-| Write Check | `volicord.prepare_write` can create owner-scoped Core-state compatibility for one compatible product-file write attempt. | [Prepare-write method](api/method-prepare-write.md), [Storage Effects](storage-effects.md), [Security](security.md) |
+| Write ticket | `volicord.prepare_write` can issue owner-scoped Volicord authority for one compatible product-file write intent. | [Prepare-write method](api/method-prepare-write.md), [Storage Effects](storage-effects.md), [Security](security.md) |
 | Agent Connection context | Registered Agent Connections identify connection provenance, mode, and explicitly connected Projects for scope checks. | [Agent Connection Reference](agent-connection.md), [Security](security.md) |
 | Artifact staging and compatible artifact linking | New artifact bytes can enter the baseline through the supported staging path; compatible persisted artifact references can be linked when artifact owners allow it. | See [Artifact staging owners](#artifact-staging-owners). |
 | Run and evidence recording | Runs, compact evidence summaries, and claim-scoped evidence observations with provenance can be recorded for baseline work. | [Record-run method](api/method-record-run.md), [Storage Effects](storage-effects.md), [Core Model](core-model.md) |
@@ -186,7 +186,7 @@ Baseline scope uses the guarantee level defined by [Security](security.md). Scop
 Supported boundary:
 
 - The baseline guarantee boundary is `cooperative` unless this page and [Security](security.md) define another supported guarantee.
-- `volicord.prepare_write` and `Write Check` are product-file write compatibility mechanisms, not isolation or sandboxing guarantees.
+- `volicord.prepare_write` and write tickets are product-file write authority mechanisms inside Volicord, not isolation or sandboxing guarantees.
 
 Not included:
 

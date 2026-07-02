@@ -257,7 +257,7 @@ Important modules:
   for `CoreService::prepare_write`, `prepare_write_policy`, and
   `plan_prepare_write`.
 - [`crates/volicord-core/src/policy/`](../../../crates/volicord-core/src/policy/)
-  for access, replay, path, Write Check, evidence, judgment relevance,
+  for access, replay, path, write-ticket, evidence, judgment relevance,
   and close-readiness helpers.
 
 Important current symbols:
@@ -283,8 +283,8 @@ Most relevant tests:
   exercises method plans and effects. Start with
   `status_is_read_only_including_dry_run`,
   `intake_commits_once_and_replays_without_effect`,
-  `prepare_write_allowed_creates_one_write_check_with_post_commit_basis`,
-  `prepare_write_dry_run_has_no_write_check_effect`, and
+  `prepare_write_allowed_issues_one_write_ticket_with_post_commit_basis`,
+  `prepare_write_dry_run_has_no_write_ticket_effect`, and
   `status_read_only_rejects_corrupt_owner_state_without_effect`.
 - Cross-layer confirmation lives in
   [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs)
@@ -521,7 +521,7 @@ baseline cross-method scenarios through Core-facing APIs and shared fixtures.
 Owns in the implementation:
 
 - Baseline scenario coverage that composes Core-facing public methods.
-- Cross-method checks for effect branches, idempotency, Write Check,
+- Cross-method checks for effect branches, idempotency, write tickets,
   artifact lifecycle, judgment boundaries, close readiness, error routing, and
   corruption handling.
 
@@ -542,7 +542,7 @@ Important current symbols:
 - `idempotency_replay_rejects_actor_source_mismatch`
 - `idempotency_replay_rejects_operation_category_mismatch`
 - `committed_non_allow_prepare_write_audit_and_replay_are_exact`
-- `prepare_write_allocates_write_check_only_on_committed_allowed_effect`
+- `prepare_write_issues_write_ticket_only_on_committed_allowed_effect`
 - `status_projection_matches_public_close_check_and_stays_read_only`
 - Shared helpers such as `core`, `invocation`,
   `create_task_with_change_unit`, and `prepare_write_check`

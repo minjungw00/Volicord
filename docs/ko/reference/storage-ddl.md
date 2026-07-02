@@ -8,7 +8,7 @@
 
 - `registry.sqlite`와 프로젝트 `state.sqlite`의 기준 SQLite 테이블 형태
 - 기준 인덱스, 외래 키, 마이그레이션 테이블, 물리 제약
-- `project_state.state_version`, 재실행 행, 현재 적용 Change Unit 고유성, Write Check 기준 버전, 스테이징된 아티팩트 출처, host-observation 기록에 대한 SQLite 제약
+- `project_state.state_version`, 재실행 행, 현재 적용 Change Unit 고유성, 쓰기 티켓 기준 버전, 스테이징된 아티팩트 출처, host-observation 기록에 대한 SQLite 제약
 - Runtime Home 등록 데이터와 프로젝트별 Core 상태 사이의 DDL 수준 분리
 
 이 문서는 담당하지 않습니다.
@@ -29,7 +29,7 @@ SQLite 외래 키는 이 DDL 계약의 일부입니다. 이 데이터베이스�
 PRAGMA foreign_keys = ON;
 ```
 
-상태 변경 커밋을 위해 최신성, Write Check, 스테이징, 재실행 행을 읽는 변경 트랜잭션은 `BEGIN IMMEDIATE` 또는 동등한 직렬화된 쓰기 경계를 사용해야 합니다.
+상태 변경 커밋을 위해 최신성, 쓰기 티켓 호환성 행, 스테이징, 재실행 행을 읽는 변경 트랜잭션은 `BEGIN IMMEDIATE` 또는 동등한 직렬화된 쓰기 경계를 사용해야 합니다.
 
 담당 저장소 또는 마이그레이션 계약이 복구나 보존 경로를 정의하지 않는 한 권한을 지닌 행은 계속 주소 지정 가능해야 합니다. registry는 잊힌 프로젝트 등록이 소유한 비권한 alias 행을 cascade로 지울 수 있습니다. 이 alias 정리가 프로젝트별 Core 권한 기록 삭제를 뜻하면 안 됩니다.
 
@@ -37,7 +37,7 @@ PRAGMA foreign_keys = ON;
 
 `project_state.state_version`은 기준 범위의 유일한 공개 상태 시계입니다. 기준 SQLite DDL은 `tasks.state_version`을 만들면 안 됩니다.
 
-Write Check 행은 제품 파일 쓰기 시도에 대한 Core 상태 호환성을 기록합니다. OS 권한, 파일시스템 ACL, sandboxing, 네트워크 정책, 비밀 격리가 아닙니다.
+물리 `write_checks` 테이블은 제품 파일 쓰기 시도에 대한 쓰기 티켓 권한 기록을 저장합니다. 이 행은 Volicord 안에서 권한 있는 쓰기 의도와 호환성 상태를 기록합니다. OS 권한, 파일시스템 ACL, sandboxing, 네트워크 정책, 비밀 격리, 전역 파일시스템 가로채기, 쓰기가 실제로 일어났다는 증명이 아닙니다.
 
 ## `registry.sqlite`
 
@@ -540,6 +540,14 @@ CREATE TABLE write_checks (
 CREATE UNIQUE INDEX idx_write_checks_consumed_run
   ON write_checks (project_id, consumed_by_run_id)
   WHERE consumed_by_run_id IS NOT NULL;
+
+저장 상태 값은 공개 쓰기 티켓 생명주기에 이렇게 대응됩니다.
+`status=active`는 열린 티켓을 드러내고, `status=consumed`는 담당 API가
+그 보기를 선택할 때 소비되어 닫힌 티켓 경로를 드러내며, `status=expired`는
+만료를 드러냅니다. `status=stale` 또는 `status=revoked`는 현재 호환성을
+제거하며 담당 메서드가 오래됨/철회된 호환성으로 드러낼 수 있습니다.
+Observe 프로필 host hook과 session watcher는 별도 관찰 기록을 만들 수
+있지만, 이 테이블 자체는 host-hook 집행이 아닙니다.
 
 CREATE TABLE runs (
   project_id TEXT NOT NULL,
@@ -1121,7 +1129,7 @@ CREATE INDEX idx_session_watch_observations_unrecorded_change
 - `authority_events.operation_category`와 `tool_invocations.operation_category`는 `read`, `agent_workflow`, `user_only`, `admin_local`, `local_recovery`로 제한됩니다.
 - `authority_events.request_hash`는 커밋된 권한 이벤트의 요청 정체성을 저장합니다. `previous_event_hash`와 `event_hash`는 무결성 점검과 내보내기 상관을 위한 로컬 해시 체인을 저장하지만, 조작 방지 감사 보장을 뜻하지 않습니다.
 - 사용자 판단 행은 권한을 지니는 해결에 대한 User Channel 출처를 저장합니다. `status='resolved'`는 답변이 존재한다는 사실을 기록할 뿐이며, 승인 의미는 저장된 기계 동작, 결과, 근거, 출처, 메서드 담당 문서에서 나옵니다.
-- `write_checks`는 단일 사용 Core 상태 쓰기 호환성을 기록합니다. `write_checks.consumed_by_run_id`와 `runs.write_check_id`의 고유 인덱스는 Write Check 소비 하나가 여러 실행으로 갈라지는 것을 막습니다.
+- `write_checks`는 단일 사용 쓰기 티켓 호환성을 기록합니다. `write_checks.consumed_by_run_id`와 `runs.write_check_id`의 고유 인덱스는 쓰기 티켓 소비 하나가 여러 실행으로 갈라지는 것을 막습니다.
 - `artifact_staging.created_by_actor_source`는 스테이징 출처를 기록합니다. 스테이징된 바이트와 알림은 아티팩트 담당 상태이며 그 자체로 증거 권한이 아닙니다.
 - `evidence_observations.source_kind`와 `assurance_level`은 협력적 에이전트 보고, 등록된 연결 관찰, 외부 도구 결과, 사용자 관찰, 재사용 증거, 미확인 주장을 구분합니다.
 - `tool_invocations`는 행위자 출처와 작업 범주를 포함해 재실행 행을 저장합니다. 재실행 행은 호출자 권한이 아니며 현재 연결 맥락이나 User Channel 요구사항을 우회하지 않습니다.

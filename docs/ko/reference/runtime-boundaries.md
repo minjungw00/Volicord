@@ -67,7 +67,7 @@ Volicord는 구현 파일, 제품 파일, 런타임 데이터, 외부 호스트 
 
 주장할 수 있는 것:
 - 제품 파일은 담당 문서가 정한 Volicord 확인이나 사용자 소유 판단의 입력으로 검사될 수 있습니다.
-- 호환되는 제품 파일 쓰기는 현재 적용 범위, 현재 적용 Change Unit, 필요한 판단, `Write Check` 호환성의 지배를 받을 수 있습니다.
+- 호환되는 제품 파일 쓰기는 현재 적용 범위, 현재 적용 Change Unit, 필요한 판단, 쓰기 티켓 호환성의 지배를 받을 수 있습니다.
 
 주장하면 안 되는 것:
 - `Product Repository` 내용이 Volicord 상태라는 주장.
@@ -119,7 +119,7 @@ Volicord 런타임 상태, SQLite 데이터베이스, 생성 기록, 런타임 �
 
 의미하지 않는 것:
 - 이 경로 규칙은 OS 샌드박싱, 명령 차단, 네트워크 차단, 비밀값 차단, 또는 기준 범위의 `detective` 강제를 제공하지 않습니다.
-- `Write Check` 호환성은 Core 담당 메서드 경로로 기록되는 제안된 제품 파일 변경에만 적용됩니다. 전역 파일시스템 가로채기, 셸 권한, 명령 승인, 쓰기가 실제로 일어났다는 증명이 아닙니다.
+- 쓰기 티켓 호환성은 Core 담당 메서드 경로로 기록되는 제안된 제품 파일 변경에만 적용됩니다. 전역 파일시스템 가로채기, 셸 권한, 명령 승인, 쓰기가 실제로 일어났다는 증명이 아닙니다.
 - 메서드별 호환성 결정은 API 메서드 담당 문서에 둡니다.
 
 <a id="runtime-location-source-installation-processes"></a>
@@ -222,7 +222,7 @@ MCP 호스트 설정은 외부 MCP 호스트가 소유합니다. [관리 CLI](ad
 
 주장하면 안 되는 것:
 - 로컬 경로, 디렉터리 이름, 복사된 식별자, 렌더링된 표시, 대화 메시지, 커넥터 설명, 에이전트 기억이 Volicord 권한을 증명한다는 주장.
-- 문서화된 Volicord 계약 밖의 직접 로컬 수정이 유효한 Volicord 기록, 증거, 수락, 잔여 위험 수락, `Write Check`, 아티팩트 권한을 만든다는 주장.
+- 문서화된 Volicord 계약 밖의 직접 로컬 수정이 유효한 Volicord 기록, 증거, 수락, 잔여 위험 수락, 쓰기 티켓, 아티팩트 권한을 만든다는 주장.
 - 런타임 데이터 위치만으로 보안 보장 수준이 달라진다는 주장.
 
 ## 런타임 위치, 저장소, 보안 담당 문서
@@ -269,7 +269,7 @@ MCP 호스트 설정은 외부 MCP 호스트가 소유합니다. [관리 CLI](ad
 - [보안](security.md): 보안 주장, 비주장, 신뢰 경계, 보장 수준.
 - [저장소 기록](storage-records.md), [저장 효과](storage-effects.md), [아티팩트 저장소](storage-artifacts.md), [저장소 버전 관리](storage-versioning.md): 저장소 기록 배치, 효과, 아티팩트, 마이그레이션, 버전 관리, 런타임 데이터 세부사항.
 - [API 메서드](api/methods.md)와 메서드 담당 문서: 메서드 경로와 메서드 동작.
-- [Core 모델](core-model.md): Core 권한, User Channel 판단 경계, `actor_source`, `Write Check`, 수락, 잔여 위험.
+- [Core 모델](core-model.md): Core 권한, User Channel 판단 경계, `actor_source`, 쓰기 티켓, 수락, 잔여 위험.
 - [보안](security.md): `operation_category`, 보안 비보장, Agent Connection 권한 추론 금지.
 - [상태 보기 권한 참조](projection-and-templates.md): 상태 보기 권한과 최신성 경계.
 - [템플릿 본문](template-bodies.md): 렌더링된 템플릿 본문 계약.

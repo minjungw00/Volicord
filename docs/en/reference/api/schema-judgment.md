@@ -39,7 +39,7 @@ Judgment schemas preserve the field structure of a user-owned choice. They are n
 
 `UserJudgmentOptionInput` and `UserJudgmentOption` are distinct shapes. `UserJudgmentOptionInput` is caller request input only where a method allows caller-authored options; `UserJudgmentOption` is Core-owned state or output.
 
-A `RecordUserJudgmentPayload` is not the schema for current scope, evidence, `Write Check`, a close result, or a broad approval.
+A `RecordUserJudgmentPayload` is not the schema for current scope, evidence, write ticket, a close result, or a broad approval.
 
 `JudgmentRationale` is descriptive metadata. It preserves the user's visible reason and review context, but it is not an authority source and cannot override the selected option, outcome, actor provenance, or basis compatibility.
 
@@ -213,7 +213,7 @@ Not allowed:
 
 ## `SensitiveActionScope`
 
-`SensitiveActionScope` is the schema shape for a named sensitive-action approval context. It is not `WriteCheckAttemptScope`, not `Write Check`, and not security authority; see [Security](../security.md).
+`SensitiveActionScope` is the schema shape for a named sensitive-action approval context. It is not `WriteCheckAttemptScope`, not write ticket, and not security authority; see [Security](../security.md).
 
 ```yaml
 SensitiveActionScope:

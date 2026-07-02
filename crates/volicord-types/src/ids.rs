@@ -70,6 +70,7 @@ opaque_string_type!(RecordId, "Opaque state-record identifier.");
 opaque_string_type!(BaselineRef, "Opaque baseline identifier.");
 opaque_string_type!(ChangeUnitId, "Opaque Change Unit identifier.");
 opaque_string_type!(WriteCheckId, "Opaque Write Check identifier.");
+opaque_string_type!(WriteTicketId, "Opaque write ticket identifier.");
 opaque_string_type!(RunId, "Opaque Run identifier.");
 opaque_string_type!(
     EvidenceObservationId,

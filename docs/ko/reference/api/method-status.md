@@ -21,7 +21,7 @@
 
 ## 목적
 
-`volicord.status`는 Core 상태의 현재 위치 보기를 반환합니다. 현재 `Task` 요약, 차단 사유, 대기 중인 사용자 판단, `Write Check` 요약, 증거 요약, 닫기 상태, 닫기 준비 상태 발견 사항, guard 상태, 프로젝트 연속성 요약, 보장 표시, 다음 안전한 행동을 포함할 수 있습니다.
+`volicord.status`는 Core 상태의 현재 위치 보기를 반환합니다. 현재 `Task` 요약, 차단 사유, 대기 중인 사용자 판단, 쓰기 티켓 호환성 요약, 증거 요약, 닫기 상태, 닫기 준비 상태 발견 사항, guard 상태, 프로젝트 연속성 요약, 보장 표시, 다음 안전한 행동을 포함할 수 있습니다.
 
 ## 필수 입력
 
@@ -66,7 +66,7 @@ StatusRequest:
 - 아티팩트 효과
 - 스테이징 핸들 소비
 - 증거 갱신
-- `Write Check` 변경
+- 쓰기 티켓 변경
 
 ## 성공 결과
 
@@ -84,8 +84,8 @@ StatusRequest:
 
 - `include.task`는 선택된 `Task` 요약과 현재 Change Unit을 `active_task`로 반환합니다.
 - `include.pending_user_judgments`는 현재 대기 판단 참조를 반환하며, 관련 있는 오래됨 또는 대체됨 판단 상태는 `blocker_refs`, `next_actions.required_refs` 같은 기존 결과 필드로 나타납니다.
-- `include.write_check`는 `Write Check`(쓰기 확인)의 Core 상태 호환성 기록에서 활성, 만료, 오래됨, 소비됨 또는 그 밖의 관련 상태를 `write_check_summary`로 반환합니다.
-- `write_check_summary`는 호환성 요약일 뿐이며 파일시스템 접근, 셸 승인, 최종 수락, 일반 쓰기 승인이 아닙니다.
+- `include.write_check`는 활성, 만료, 오래됨, 소비됨 또는 그 밖의 관련 쓰기 티켓 호환성 상태를 `write_check_summary`로 반환합니다.
+- `write_check_summary`는 호환성 요약일 뿐이며 파일시스템 접근, 셸 승인, 최종 수락, 일반 쓰기 승인, 쓰기가 실제로 일어났다는 증명이 아닙니다.
 - `include.evidence`는 사용할 수 있을 때 현재 `EvidenceSummary`와 범위를 반환합니다.
 - `include.close`는 `CurrentCloseBasis | null`, 닫기 상태, 계산된 차단 사유, 위험 수락 범위, 사용할 수 있을 때 hook 경로 안전성을 포함한 guard 상태, 관련 다음 행동을 반환합니다. 차단 사유는 `volicord.close_task intent=check`와 같은 닫기 준비 상태 계산을 사용합니다.
 - `include.guarantees`는 프로젝트 강제 프로필, 확인된 호출 맥락, 활성화된 강제 메커니즘, 지원되는 기준 범위에서 파생된 보장만 반환합니다.

@@ -89,9 +89,9 @@ pub(crate) fn prepare_write_dry_run_summary(
     DryRunSummary {
         planned_effects: if allowed {
             vec![PlannedEffect {
-                target_kind: "write_check".to_owned(),
-                action: "would_create".to_owned(),
-                description: "Prepare write would create one active Write Check.".to_owned(),
+                target_kind: "write_ticket".to_owned(),
+                action: "would_issue".to_owned(),
+                description: "Prepare write would issue one open write ticket.".to_owned(),
             }]
         } else {
             Vec::new()

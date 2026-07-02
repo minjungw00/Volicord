@@ -248,7 +248,7 @@ Core 변이 원자 커밋이 여기에 속합니다.
 - [`crates/volicord-core/src/methods/prepare_write.rs`](../../../crates/volicord-core/src/methods/prepare_write.rs):
   `CoreService::prepare_write`, `prepare_write_policy`, `plan_prepare_write`.
 - [`crates/volicord-core/src/policy/`](../../../crates/volicord-core/src/policy/):
-  접근, 재실행, 경로, `Write Check`, 증거, 판단 관련성, 닫기 준비 상태
+  접근, 재실행, 경로, 쓰기 티켓, 증거, 판단 관련성, 닫기 준비 상태
   도우미.
 
 중요한 현재 심볼:
@@ -274,8 +274,8 @@ Core 변이 원자 커밋이 여기에 속합니다.
   메서드 계획과 효과를 실행합니다. 먼저
   `status_is_read_only_including_dry_run`,
   `intake_commits_once_and_replays_without_effect`,
-  `prepare_write_allowed_creates_one_write_check_with_post_commit_basis`,
-  `prepare_write_dry_run_has_no_write_check_effect`,
+  `prepare_write_allowed_issues_one_write_ticket_with_post_commit_basis`,
+  `prepare_write_dry_run_has_no_write_ticket_effect`,
   `status_read_only_rejects_corrupt_owner_state_without_effect`를 봅니다.
 - 계층 간 확인은
   [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs)와
@@ -509,7 +509,7 @@ Agent Connection 등록, 요청 빌더, 직접 Store 검사 도우미를 프로�
 구현에서 담당하는 것:
 
 - Core 쪽 공개 메서드를 조합하는 기준 시나리오 범위.
-- 효과 분기, idempotency, `Write Check`, 아티팩트 생명주기, 판단 경계,
+- 효과 분기, idempotency, 쓰기 티켓, 아티팩트 생명주기, 판단 경계,
   닫기 준비 상태, 오류 처리 경로, 손상 처리의 교차 메서드 확인.
 
 담당하지 않는 것:
@@ -529,7 +529,7 @@ Agent Connection 등록, 요청 빌더, 직접 Store 검사 도우미를 프로�
 - `idempotency_replay_rejects_actor_source_mismatch`
 - `idempotency_replay_rejects_operation_category_mismatch`
 - `committed_non_allow_prepare_write_audit_and_replay_are_exact`
-- `prepare_write_allocates_write_check_only_on_committed_allowed_effect`
+- `prepare_write_issues_write_ticket_only_on_committed_allowed_effect`
 - `status_projection_matches_public_close_check_and_stays_read_only`
 - `core`, `invocation`, `create_task_with_change_unit`,
   `prepare_write_check` 같은 공유 도우미

@@ -27,13 +27,13 @@ This document does not own:
 - a direct answer or result
 - implementation work
 
-The method may also update the current close basis, update compact evidence coverage, record evidence observations for reported or observed claims, consume a compatible `Write Check` when recording a product write, link existing artifacts, and promote eligible staged handles to persistent `ArtifactRef` records where allowed.
+The method may also update the current close basis, update compact evidence coverage, record evidence observations for reported or observed claims, consume a compatible write-ticket row when recording a product write, link existing artifacts, and promote eligible staged handles to persistent `ArtifactRef` records where allowed.
 
 ## Required inputs
 
 - A valid `ToolEnvelope`; committed non-dry-run requests require non-null `idempotency_key` and current `expected_state_version`.
 - `task_id`, `change_unit_id`, `kind`, `run_id`, `baseline_ref`, `write_check_id`, `summary`, `observed_changes`, `artifact_inputs`, `evidence_updates`, `evidence_observations`, and `close_assessment`.
-- Product-write runs require a compatible `status=active` `Write Check` from `volicord.prepare_write`.
+- Product-write runs require a compatible `status=active` write-ticket row from `volicord.prepare_write`. The request field remains `write_check_id` for the current compatibility storage lifecycle.
 - New artifact bytes must already be represented by a valid `StagedArtifactHandle`; `volicord.record_run` does not stage new bytes.
 - A supported evidence update must be backed by a same-claim `EvidenceObservationInput`, a usable same-claim evidence observation ref, or `EvidenceCoverageItem.provenance` from which Core can create an evidence observation with explicit `source_kind` and `assurance_level`.
 
@@ -124,26 +124,26 @@ A compatible committed result increments the selected `Task.close_basis_revision
 
 An empty `close_assessment.residual_risks` list explicitly means the current result has no identified residual risks. Core generates opaque `risk_id` values only for committed non-null assessments. A dry-run never reserves persistent `risk_id` values.
 
-Sensitive action requirements in the resulting `CurrentCloseBasis` are derived by Core from the committed Run and any consumed `Write Check`. Category-only caller input in `close_assessment.sensitive_categories` can contribute display context but cannot establish, satisfy, or erase a sensitive approval requirement.
+Sensitive action requirements in the resulting `CurrentCloseBasis` are derived by Core from the committed Run and any consumed write-ticket row. Category-only caller input in `close_assessment.sensitive_categories` can contribute display context but cannot establish, satisfy, or erase a sensitive approval requirement.
 
-The Run, current close basis, evidence updates, evidence observations, artifact links or promotions, `Write Check` consumption, and revision changes are committed atomically when the result commits.
+The Run, current close basis, evidence updates, evidence observations, artifact links or promotions, write-ticket consumption, and revision changes are committed atomically when the result commits.
 
-Product-write recording consumes the `Write Check` only when:
+Product-write recording consumes the write-ticket compatibility row only when:
 
-- the `Write Check` has `status=active` and has not already been consumed or revoked
+- the row has `status=active` and has not already been consumed or revoked
 - the current `project_state.state_version` equals `WriteCheck.basis_state_version` immediately before consumption
-- the `Write Check` is not expired under the effective expiration rule: the earlier of stored `expires_at` and `created_at + 15 minutes`
-- the `Write Check` and its `WriteCheckAttemptScope` identify the same `task_id` and `change_unit_id` as the Run being recorded
+- the row is not expired under the effective expiration rule: the earlier of stored `expires_at` and `created_at + 15 minutes`
+- the row and its `WriteCheckAttemptScope` identify the same `task_id` and `change_unit_id` as the Run being recorded
 - the checked attempt has `product_file_write_intended=true`
 - the checked attempt `baseline_ref` matches the Run `baseline_ref`
 - observed sensitive categories match the checked attempt's normalized `sensitive_categories`
 - observed changed paths, after Product Repository path normalization, are compatible with the checked attempt
 
-A `Write Check` created by `volicord.prepare_write` is not stale immediately after creation when no intervening project state change has occurred. If `volicord.prepare_write` commits from version `19` to version `20`, `volicord.record_run` may consume that `Write Check` while the current `project_state.state_version` and `WriteCheck.basis_state_version` are both `20`.
+A write ticket issued by `volicord.prepare_write` is not stale immediately after issuance when no intervening project state change has occurred. If `volicord.prepare_write` commits from version `19` to version `20`, `volicord.record_run` may consume that write-ticket row while the current `project_state.state_version` and `WriteCheck.basis_state_version` are both `20`.
 
-The method rejects stale `expected_state_version` and stale `Write Check` basis before consuming the `Write Check`. A stale `WriteCheck.basis_state_version` retains higher-priority `STATE_VERSION_CONFLICT` routing even if the same `Write Check` is also expired.
+The method rejects stale `expected_state_version` and stale write-ticket basis before consuming the row. A stale `WriteCheck.basis_state_version` retains higher-priority `STATE_VERSION_CONFLICT` routing even if the same row is also expired.
 
-Expiration is calculated using parsed UTC timestamps, not lexical string comparison. An expired `Write Check` is never consumed. Expired `Write Check` use returns `WRITE_CHECK_INVALID` with `ToolError.details.write_check_reason=expired`.
+Expiration is calculated using parsed UTC timestamps, not lexical string comparison. An expired write-ticket row is never consumed. Expired write-ticket use returns `WRITE_CHECK_INVALID` with `ToolError.details.write_check_reason=expired`.
 
 Compatibility mismatch rejections use `WRITE_CHECK_INVALID` with `ToolError.details.write_check_reason` values such as `task_mismatch`, `change_unit_mismatch`, `product_write_flag_mismatch`, `baseline_mismatch`, `sensitive_category_mismatch`, or `path_mismatch`.
 
@@ -160,9 +160,9 @@ Compatibility mismatch rejections use `WRITE_CHECK_INVALID` with `ToolError.deta
 | `evidence_observations` | `EvidenceObservation[]` for observation records committed by this run result. Empty when the request records no observations. Shape is owned by [API State Schemas](schema-state.md#evidence-and-run-snapshot-shapes); observation source and assurance values are owned by [API Value Sets](schema-value-sets.md#evidence-observation-values). |
 | `current_close_basis` | `CurrentCloseBasis | null` after this run is recorded. Non-null means this Run established the current close basis; `null` means this Run did not establish one. Shape is owned by [API State Schemas](schema-state.md#close-readiness-and-validation-shapes). |
 | `blocker_refs` | `StateRecordRef[]` for run- or evidence-related blockers committed or still relevant because of this result. |
-| `state` | Current `StateSummary` after the run is recorded. Nested state fields, including `write_check_summary` after any `Write Check` consumption, are owned by [API State Schemas](schema-state.md). When a product-write Run consumes a Write Check, that summary can expose `status=consumed`, `consumed_by_run_ref`, and observation refs created by the consuming Run. |
+| `state` | Current `StateSummary` after the run is recorded. Nested state fields, including `write_check_summary` after any write-ticket compatibility consumption, are owned by [API State Schemas](schema-state.md). When a product-write Run consumes a write-ticket row, that summary can expose `status=consumed`, `consumed_by_run_ref`, and observation refs created by the consuming Run. |
 
-Nested `StateRecordRef`, `RunSummary`, `ObservedChanges`, `EvidenceSummary`, `EvidenceCoverageItem`, `EvidenceObservation`, `StateSummary`, and `ArtifactRef` field bodies stay with the schema owners linked above. Exact persistence effects, including staged-handle consumption, artifact promotion, evidence updates, evidence observation records, replay rows, and `Write Check` consumption, stay with [Storage Effects](../storage-effects.md) and [Artifact Storage](../storage-artifacts.md).
+Nested `StateRecordRef`, `RunSummary`, `ObservedChanges`, `EvidenceSummary`, `EvidenceCoverageItem`, `EvidenceObservation`, `StateSummary`, and `ArtifactRef` field bodies stay with the schema owners linked above. Exact persistence effects, including staged-handle consumption, artifact promotion, evidence updates, evidence observation records, replay rows, and write-ticket consumption, stay with [Storage Effects](../storage-effects.md) and [Artifact Storage](../storage-artifacts.md).
 
 ## Success result
 
@@ -184,7 +184,7 @@ The method may commit compatible run-related blocker state when the run is recor
 
 Not allowed:
 
-- A committed blocked result must not hide invalid staged handles, missing `Write Check`, stale state, stale Write Check basis, or invocation-context failures.
+- A committed blocked result must not hide invalid staged handles, missing write-ticket row, stale state, stale write-ticket basis, or invocation-context failures.
 
 Those failures are rejected before commit.
 
@@ -193,10 +193,10 @@ Those failures are rejected before commit.
 Returns `ToolRejectedResponse` for:
 
 - stale `expected_state_version`
-- stale `Write Check` basis
-- missing or invalid `Write Check` for product writes
-- expired `Write Check`
-- incompatible `Write Check` path, baseline, product-write flag, sensitivity category, Task, or Change Unit
+- stale write-ticket basis
+- missing or invalid write-ticket row for product writes
+- expired write-ticket row
+- incompatible write-ticket path, baseline, product-write flag, sensitivity category, Task, or Change Unit
 - invalid staged handle
 - incompatible staged-handle provenance
 - supported evidence update without required observation provenance
@@ -211,20 +211,20 @@ Non-claim: invalid staged handles are validation failures with artifact-input de
 
 Public error code meaning, precedence, details, and rejected-response routing are owned by the error documents linked below.
 
-For a stale `Write Check` basis, rejection happens before consumption and creates no Run, evidence update, evidence observation, artifact link, artifact promotion, event, replay row, or `project_state.state_version` increment.
+For a stale write-ticket basis, rejection happens before consumption and creates no Run, evidence update, evidence observation, artifact link, artifact promotion, event, replay row, or `project_state.state_version` increment.
 
-For an expired `Write Check`, rejection happens before consumption and creates no Run, event, replay row, artifact promotion, evidence update, evidence observation, Write Check consumption, or `project_state.state_version` increment.
+For an expired write-ticket row, rejection happens before consumption and creates no Run, event, replay row, artifact promotion, evidence update, evidence observation, write-ticket consumption, or `project_state.state_version` increment.
 
 ## Dry-run behavior
 
 For `dry_run=true`, a valid preview:
 
 - returns `ToolDryRunResponse`
-- creates no Run, current close basis, residual-risk IDs, evidence update, evidence observation, blocker update, artifact link, artifact promotion, or `Write Check` consumption
+- creates no Run, current close basis, residual-risk IDs, evidence update, evidence observation, blocker update, artifact link, artifact promotion, or write-ticket consumption
 
 ## Storage effect
 
-On commit, the method may persist run, current close-basis, evidence summary, evidence observation, blocker, `Write Check` consumption, and artifact-linking results. Exact storage effects and artifact promotion details are owned by the storage documents linked below.
+On commit, the method may persist run, current close-basis, evidence summary, evidence observation, blocker, write-ticket consumption, and artifact-linking results. Exact storage effects and artifact promotion details are owned by the storage documents linked below.
 
 The examples are intentionally compact and method-local. The representative response is abbreviated to the fields needed to show the committed run, promoted artifact ref, updated evidence summary, evidence observation, blocker refs, state version, and current state snapshot.
 
@@ -569,7 +569,7 @@ state:
 - Request envelope, response branches, and dry-run summaries: [API Schema Core](schema-core.md).
 - `RunSummary`, `EvidenceSummary`, `EvidenceCoverageItem`, `EvidenceObservation`, `CurrentCloseBasis`, `ResidualRisk`, `StateSummary`, and refs: [API State Schemas](schema-state.md).
 - `ArtifactInput`, `StagedArtifactHandle`, and `ArtifactRef`: [API Artifact Schemas](schema-artifacts.md).
-- `Write Check` and close-relevant evidence boundaries: [Core Model](../core-model.md).
+- Write-ticket and close-relevant evidence boundaries: [Core Model](../core-model.md).
 - Product Repository path normalization: [Runtime Boundaries](../runtime-boundaries.md#product-repository-api-path-normalization).
 - Supported values and operation categories: [API Value Sets](schema-value-sets.md#operation-category-values).
 - Public errors, precedence, response routing, and artifact-input detail values: [API error codes](error-codes.md), [API error precedence](error-precedence.md), [API error routing](error-routing.md), and [artifact-input error details](error-details.md#artifact-input-error-reason).

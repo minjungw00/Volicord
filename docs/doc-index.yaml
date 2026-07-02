@@ -265,7 +265,7 @@ shared_documents:
   - English and Korean discouraged-expression metadata
   - Volicord product identity routing to Getting Started Overview
   - Volicord, Core, Volicord implementation, Volicord source repository, Volicord installation, Volicord Runtime Home, Product Repository, Agent Connection, Connection Projects, and User Channel terminology routing
-  - Write Check, write approval, sensitive-action approval, final-acceptance, residual-risk acceptance,
+  - write ticket, write approval, sensitive-action approval, final-acceptance, residual-risk acceptance,
     and verification-criteria terminology distinctions
   - actor_source and operation_category terminology distinctions
   - Korean mixed-language expressions to avoid
@@ -1049,7 +1049,7 @@ documents:
   - lifecycle meaning
   - close-readiness authority concepts
   - user-owned judgment boundaries
-  - Write Check, approval, final-acceptance, and residual-risk non-substitution boundaries
+  - write ticket, approval, final-acceptance, and residual-risk non-substitution boundaries
   - User Channel and actor_source boundaries for authority-bearing user judgments
   - verification criteria and evidence/acceptance authority boundaries
 - doc_id: reference.runtime-boundaries
@@ -1345,7 +1345,7 @@ documents:
   canonical_for:
   - '`volicord.prepare_write` behavior'
   - '`PrepareWriteResult` branch behavior'
-  - Write Check creation behavior
+  - write-ticket issuance behavior
   - method-specific sensitive-action approval handling
 - doc_id: reference.api.method-stage-artifact
   path_en: docs/en/reference/api/method-stage-artifact.md
@@ -1871,7 +1871,7 @@ documents:
   - project `state.sqlite` schema shape
   - Agent Connection, Connection Projects, managed host configuration state, and host-observation tables
   - baseline SQLite indexes, foreign keys, migration tables, and constraints
-  - storage constraints for state clock columns, replay rows, current Change Unit uniqueness, Write Check
+  - storage constraints for state clock columns, replay rows, current Change Unit uniqueness, write-ticket
     basis versions, staged artifact provenance, and host-observation records
 - doc_id: reference.storage-effects
   path_en: docs/en/reference/storage-effects.md

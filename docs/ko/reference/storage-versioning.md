@@ -23,24 +23,24 @@ user judgment, run, blocker, `write_checks`, host-observation 기록, session-wa
 
 새로 커밋된 권한 mutation은 현재 projection update와 같은 트랜잭션 안에서 영속 `authority_events` 행을 적어도 하나 추가합니다. 일반 커밋 mutation은 권한 이벤트를 정확히 하나 추가합니다. 담당 문서가 이벤트 배치를 명시적으로 정의하면, 그 배치의 모든 행은 해당 커밋 상태 전이의 단일 결과 `project_state.state_version`을 공유합니다.
 
-`tasks.state_version`은 기준 권한 필드가 아닙니다. 기준 밖 `tasks.state_version` 열은 무시되는 metadata일 뿐이며 conflict, freshness, lock, Write Check basis로 사용하면 안 됩니다.
+`tasks.state_version`은 기준 권한 필드가 아닙니다. 기준 밖 `tasks.state_version` 열은 무시되는 metadata일 뿐이며 conflict, freshness, lock, 쓰기 티켓 basis로 사용하면 안 됩니다.
 
 관련 필드:
 
-- `write_checks.basis_state_version`은 Write Check 생성 commit 뒤 결과 `project_state.state_version`을 저장합니다. Core는 이를 나중의 Write Check 소비 freshness basis로 사용합니다.
+- `write_checks.basis_state_version`은 쓰기 티켓 발급 commit 뒤 결과 `project_state.state_version`을 저장합니다. Core는 이를 나중의 쓰기 티켓 호환성 소비 freshness basis로 사용합니다.
 - `tool_invocations.basis_state_version`은 commit된 mutation 전에 관찰한 project-wide state version을 저장합니다.
 - `authority_events.state_version`은 commit된 권한 이벤트 또는 이벤트 배치 뒤 결과 project-wide version을 저장합니다.
 
-## Write Check
+## 쓰기 티켓
 
-`Write Check`은 제안된 제품 파일 쓰기 시도 하나에 대한 Core 상태 호환성입니다. OS 권한, OS 샌드박싱, 파일시스템 ACL, 네트워크 정책, 비밀 격리가 아닙니다.
+쓰기 티켓은 제안된 제품 파일 쓰기 시도 하나에 대한 권한 있는 쓰기 의도를 나타내는 Volicord 권한입니다. OS 권한, OS 샌드박싱, 파일시스템 ACL, 네트워크 정책, 비밀 격리, 전역 파일시스템 가로채기, 쓰기가 실제로 일어났다는 증명이 아닙니다.
 
-Write Check 생성과 소비는 일반 state-version 규칙을 따릅니다.
+쓰기 티켓 발급과 호환성 소비는 일반 state-version 규칙을 따릅니다.
 
-- 생성은 owner-defined method branch를 통해서만 commit될 수 있습니다.
-- 소비는 저장된 Write Check가 active, compatible, unexpired, unconsumed이고 project state basis에 대해 current일 때만 commit될 수 있습니다.
+- 발급은 owner-defined method branch를 통해서만 commit될 수 있습니다.
+- 소비는 저장된 쓰기 티켓 호환성 행이 active, compatible, unexpired, unconsumed이고 project state basis에 대해 current일 때만 commit될 수 있습니다.
 - 오래된 `WriteCheck.basis_state_version`은 소비 전에 거절됩니다.
-- rejected, dry-run, replay-only branch에서는 생성이나 소비가 일어나지 않습니다.
+- rejected, dry-run, replay-only branch에서는 발급이나 소비가 일어나지 않습니다.
 
 ## Idempotency And Replay
 
@@ -58,11 +58,11 @@ Replay eligibility:
 - 호환되는 context와 같은 `idempotency_key`, 같은 `request_hash`는 저장된 원래 commit response를 그대로 반환합니다.
 - 호환되는 context와 같은 `idempotency_key`, 다른 `request_hash`는 `STATE_VERSION_CONFLICT`를 반환합니다.
 
-Replay는 stored response body를 사용합니다. `write_check_effect`, `base.state_version`, `base.events`나 다른 response field를 다시 계산하거나 재분류하지 않습니다. Replay는 event를 추가하거나, artifact를 promote/link하거나, Write Check를 만들거나 소비하거나, 다른 replay row를 만들거나, state를 다시 변경하지 않습니다.
+Replay는 stored response body를 사용합니다. `write_ticket_effect`, `write_check_effect`, `base.state_version`, `base.events`나 다른 response field를 다시 계산하거나 재분류하지 않습니다. Replay는 event를 추가하거나, artifact를 promote/link하거나, 쓰기 티켓을 발급하거나 소비하거나, 다른 replay row를 만들거나, state를 다시 변경하지 않습니다.
 
 ## Failure And Retry
 
-Pre-commit failure에는 storage effect가 없습니다. Transaction failure는 state-version increment, event, replay row, Write Check change, artifact effect, evidence update, judgment effect, close effect, lifecycle effect, staged-handle consumption의 부분 상태를 남기면 안 됩니다.
+Pre-commit failure에는 storage effect가 없습니다. Transaction failure는 state-version increment, event, replay row, 쓰기 티켓 change, artifact effect, evidence update, judgment effect, close effect, lifecycle effect, staged-handle consumption의 부분 상태를 남기면 안 됩니다.
 
 예:
 
@@ -74,7 +74,7 @@ Pre-commit failure에는 storage effect가 없습니다. Transaction failure는 
 - idempotency request-hash conflict
 - invocation-context mismatch
 
-Retry는 rejected reason을 따릅니다. 오래된 version conflict는 state를 refresh하고, validation failure는 input을 고치며, 빠진 user judgment는 User Channel을 사용하고, write compatibility가 여전히 필요하면 필요한 Write Check 흐름을 사용합니다.
+Retry는 rejected reason을 따릅니다. 오래된 version conflict는 state를 refresh하고, validation failure는 input을 고치며, 빠진 user judgment는 User Channel을 사용하고, write compatibility가 여전히 필요하면 필요한 쓰기 티켓 흐름을 사용합니다.
 
 ## Migration Boundary
 

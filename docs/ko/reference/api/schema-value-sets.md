@@ -72,7 +72,7 @@ volicord.close_task
 | `agent_connection:<connection_id>` | Agent Connection 호출 출처와 에이전트가 만들거나 관찰한 상태. | 호출 의미: [Agent Connection](../agent-connection.md). 중첩 형태 담당 문서가 값이 나타나는 위치를 정의합니다. |
 | `system` | 담당 문서가 명시적으로 허용하는 내부 시스템 출처. | 메서드와 저장소 담당 문서가 값이 나타나는 위치를 정의합니다. |
 
-이 값들은 파생된 호출 출처 또는 지속 행위자 출처를 분류합니다. 이 값만으로 사용자 소유 판단, 승인, 범위 결정 권한, 최종 수락, 잔여 위험 수락, `Write Check`이 생기지는 않습니다. 권한을 지니는 사용자 판단 해결은 [Agent Connection](../agent-connection.md)과 메서드 담당 문서가 정의하는 호환 User Channel 출처와 함께 `resolved_by_actor_source=local_user`를 요구합니다.
+이 값들은 파생된 호출 출처 또는 지속 행위자 출처를 분류합니다. 이 값만으로 사용자 소유 판단, 승인, 범위 결정 권한, 최종 수락, 잔여 위험 수락, 쓰기 티켓이 생기지는 않습니다. 권한을 지니는 사용자 판단 해결은 [Agent Connection](../agent-connection.md)과 메서드 담당 문서가 정의하는 호환 User Channel 출처와 함께 `resolved_by_actor_source=local_user`를 요구합니다.
 
 <a id="next-action-values"></a>
 ## 다음 행동 값
@@ -150,6 +150,7 @@ Operation category는 Volicord API 호환성 분류이지 OS 권한, 파일시�
 project_state
 task
 change_unit
+write_ticket
 write_check
 user_judgment
 run
@@ -186,7 +187,7 @@ superseded
 closed
 ```
 
-이 값들은 오래 유지하는 프로젝트 수준 맥락을 분류합니다. 그 자체로 현재 `Task` 권한을 만들거나, 대기 중인 사용자 판단을 만족하거나, 증거를 증명하거나, `Write Check`을 부여하거나, 닫기 준비 상태를 만족하거나, 미래 닫기 근거의 잔여 위험을 수락하지 않습니다.
+이 값들은 오래 유지하는 프로젝트 수준 맥락을 분류합니다. 그 자체로 현재 `Task` 권한을 만들거나, 대기 중인 사용자 판단을 만족하거나, 증거를 증명하거나, 쓰기 티켓 권한을 부여하거나, 닫기 준비 상태를 만족하거나, 미래 닫기 근거의 잔여 위험을 수락하지 않습니다.
 
 <a id="task-lifecycle-values"></a>
 ## `Task` 생명주기 값
@@ -288,7 +289,7 @@ external_network
 secret_access
 ```
 
-이 값들은 효과를 Core 상태로 분류합니다. 값 자체가 런타임 샌드박스, 명령 가로채기, 네트워크 차단, 비밀 격리, 사용자 판단, 민감 동작 승인, 증거, `Write Check`, 최종 수락, 닫기 준비 상태, 잔여 위험 수락을 만들지는 않습니다.
+이 값들은 효과를 Core 상태로 분류합니다. 값 자체가 런타임 샌드박스, 명령 가로채기, 네트워크 차단, 비밀 격리, 사용자 판단, 민감 동작 승인, 증거, 쓰기 티켓, 최종 수락, 닫기 준비 상태, 잔여 위험 수락을 만들지는 않습니다.
 
 `volicord.close_task.intent`는 아래 값을 사용합니다.
 
@@ -315,6 +316,29 @@ none
 would_create
 created
 ```
+
+`PrepareWriteResult.write_ticket_effect`는 아래 값을 사용합니다.
+
+```text
+none
+would_issue
+issued
+```
+
+`issued`는 커밋된 `decision=allowed` 결과가 열린 쓰기 티켓 권한 기록 하나를 발급했다는 뜻입니다. `would_issue`는 미리보기나 계획 설명에서만 쓰이며 커밋된 티켓을 만들지 않습니다.
+
+`WriteTicket.state`는 아래 값을 사용합니다.
+
+```text
+open
+observed
+reconciled
+closed
+expired
+revoked
+```
+
+이 상태는 Volicord 티켓 권한과 관찰 생명주기를 설명합니다. 파일시스템 ACL, OS 수준 집행, 셸 권한, 명령 승인, 쓰기가 실제로 일어났다는 증명을 뜻하지 않습니다.
 
 `WriteCheckStateSummary.status`와 `WriteCheckSummary.status`는 아래 값을 사용합니다.
 
@@ -356,11 +380,12 @@ observe
 ```
 
 `record`는 host hook이나 session watcher 관찰을 요구하지 않고 권한 상태를 기록하고
-MCP/tool workflow를 노출한다는 뜻입니다. `observe`는 권한 상태를 기록하고 지원되는 host
-hook과 session watcher 관찰을 사용한다는 뜻입니다. Observe는 협력형 host warning 또는
-denial을 반환하고 watcher coverage 시작 뒤의 미기록 Product Repository 변경을 탐지할 수
-있지만, 행위자 identity를 증명하거나, OS 집행을 제공하거나, 네트워크를 격리하거나,
-tool을 sandbox하지 않습니다.
+MCP/tool workflow를 노출한다는 뜻이며, 여기에는 Core가 발급한 권한 쓰기 티켓이
+포함됩니다. `observe`는 권한 상태를 기록하고 쓰기 티켓 범위와 연결할 수 있는 지원
+host hook 및 session watcher 관찰을 사용한다는 뜻입니다. Observe는 협력형 host
+warning 또는 denial을 반환하고 watcher coverage 시작 뒤의 미기록 Product Repository
+변경을 탐지할 수 있지만, 행위자 identity를 증명하거나, OS 집행을 제공하거나,
+네트워크를 격리하거나, tool을 sandbox하지 않습니다.
 
 `GuardHealthSummary.hook_path_safety`는 아래 값을 사용합니다.
 

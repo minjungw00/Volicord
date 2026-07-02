@@ -89,7 +89,7 @@ At first-read level, Volicord documentation keeps these authority concepts separ
 - Agent Connection calls use agent-connection provenance and an operation category allowed by the connection mode.
 - Evidence supports a specific recorded claim. It is not final acceptance or residual-risk acceptance.
 - Verification criteria guide what should be checked. They are not themselves evidence or acceptance.
-- A `Write Check` is Core-state compatibility for one product-file write attempt. It is distinct from ordinary write approval, sensitive-action approval, final acceptance, and residual-risk acceptance, and it is not OS permission.
+- A write ticket is Volicord authority for authorized write intent for one product-file write attempt. It is distinct from ordinary write approval, sensitive-action approval, final acceptance, and residual-risk acceptance, and it is not OS permission or proof that a write occurred.
 - Close readiness is a Core authority concept, not a proof of product correctness.
 
 ## Connection Modes

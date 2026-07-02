@@ -51,6 +51,11 @@ selected connection or session:
 | `record` | MCP tools and authority records are available without requiring host hooks or a session watcher. | Setup guidance and policy metadata can steer the host but cannot force it. |
 | `observe` | Project-local host hooks have verified generated config, cwd-independent and subdirectory-safe hook commands, native host output, required phases, write matchers, matching policy hash, runtime observation, and session watcher observation. | Cooperative pre-tool warnings or denials, post-tool correlation, prompt capture, guard state, unrecorded-change findings, and close/write blockers can participate in the workflow. |
 
+`record` can issue Volicord authority write tickets through the Core method
+workflow. `observe` does not make write tickets into filesystem enforcement; it
+adds supported hook and watcher observations that can later be correlated with
+ticket-scoped writes and unrecorded-change findings.
+
 The control-surface summary reports whether host hooks and the session watcher
 are active, whether cooperative pre-tool warning or denial is available, whether
 unrecorded changes can be detected, whether actor identity can be proven, and

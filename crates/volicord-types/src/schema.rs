@@ -9,7 +9,7 @@ use crate::ids::{
     EventId, EvidenceObservationId, GuardEventId, GuardInstallationId, IdempotencyKey,
     ProjectContinuityRecordId, ProjectId, PromptCaptureId, RecordId, RequestId, RiskId, RunId,
     StagedArtifactHandleId, StorageRef, TaskId, UnrecordedChangeId, UserJudgmentId,
-    UserJudgmentOptionId,
+    UserJudgmentOptionId, WriteTicketId,
 };
 use crate::values::{
     ActorSource, ArtifactAvailability, ArtifactInputSourceKind, ArtifactIntegrityStatus,
@@ -24,7 +24,7 @@ use crate::values::{
     RedactionState, ResponseKind, RunKind, SessionWatchCoverageBasis, SessionWatchStatus,
     StateRecordKind, TaskLifecyclePhase, TaskMode, TaskResult, UnrecordedChangeResolutionBasis,
     UnrecordedChangeStatus, UserJudgmentOptionAction, UserJudgmentStatus, UtcTimestamp,
-    ValidatorSeverity, ValidatorStatus, WriteCheckStatus, WriteDecisionCategory,
+    ValidatorSeverity, ValidatorStatus, WriteCheckStatus, WriteDecisionCategory, WriteTicketState,
 };
 
 /// JSON object used where an owner document defines a field as `object`.
@@ -714,6 +714,42 @@ pub struct WriteCheckSummary {
     pub attempt_scope: WriteCheckAttemptScope,
     pub basis_state_version: u64,
     pub expires_at: Option<UtcTimestamp>,
+}
+
+/// Allowed and denied Product Repository path patterns captured by a write ticket.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WriteTicketPathPatterns {
+    pub allowed: Vec<String>,
+    pub denied: Vec<String>,
+}
+
+/// One-attempt boundary captured by a write ticket.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WriteTicketScope {
+    pub task_id: TaskId,
+    pub change_unit_id: ChangeUnitId,
+    pub intended_operation: String,
+    pub product_file_write_intended: bool,
+    pub sensitive_categories: Vec<String>,
+    pub baseline_ref: Option<BaselineRef>,
+}
+
+/// Write ticket authority record returned by prepare-write.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WriteTicket {
+    pub write_ticket_id: WriteTicketId,
+    pub write_ticket_ref: StateRecordRef,
+    pub state: WriteTicketState,
+    pub scope: WriteTicketScope,
+    pub path_patterns: WriteTicketPathPatterns,
+    pub observed_paths: Vec<String>,
+    pub basis_state_version: u64,
+    pub expires_at: Option<UtcTimestamp>,
+    pub control_surface: Option<ControlSurfaceSummary>,
+    pub guarantee_display: Option<GuaranteeDisplay>,
 }
 
 /// One-attempt boundary captured by a Write Check.

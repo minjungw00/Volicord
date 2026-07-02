@@ -108,6 +108,7 @@ pub enum CoreStorageMutation {
     InsertCurrentChangeUnit(ChangeUnitInsert),
     ReplaceCurrentChangeUnit(ChangeUnitInsert),
     MarkActiveWriteChecksStale { task_id: String },
+    InsertWriteTicket(WriteTicketInsert),
     InsertWriteCheck(WriteCheckInsert),
     ConsumeWriteCheck(WriteCheckConsumption),
     InsertRun(RunInsert),
@@ -283,7 +284,7 @@ pub struct UserJudgmentInvalidation {
     pub judgment_kinds: Vec<String>,
 }
 
-/// Storage input for inserting one active Write Check.
+/// Storage input for inserting one open write ticket.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WriteCheckInsert {
     pub write_check_id: String,
@@ -297,7 +298,7 @@ pub struct WriteCheckInsert {
     pub metadata_json: String,
 }
 
-/// Storage input for consuming one active Write Check.
+/// Storage input for closing one open write ticket through a compatible Run.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WriteCheckConsumption {
     pub write_check_id: String,
@@ -573,7 +574,7 @@ pub struct ChangeUnitRecord {
     pub lifecycle_json: String,
 }
 
-/// Stored Write Check facts needed by status and stale-marking responses.
+/// Stored write ticket facts needed by status and stale-marking responses.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WriteCheckRecord {
     pub project_id: String,
@@ -588,6 +589,15 @@ pub struct WriteCheckRecord {
     pub consumed_by_run_id: Option<String>,
     pub consumed_at: Option<String>,
 }
+
+/// Storage input for inserting one open write ticket.
+pub type WriteTicketInsert = WriteCheckInsert;
+
+/// Storage input for closing one open write ticket.
+pub type WriteTicketConsumption = WriteCheckConsumption;
+
+/// Stored write ticket facts.
+pub type WriteTicketRecord = WriteCheckRecord;
 
 /// Stored staged artifact facts needed by `volicord.record_run`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1525,7 +1535,7 @@ impl CoreStorageMutation {
             Self::MarkActiveWriteChecksStale { task_id } => {
                 mutation.mark_active_write_checks_stale(task_id)
             }
-            Self::InsertWriteCheck(input) => {
+            Self::InsertWriteTicket(input) | Self::InsertWriteCheck(input) => {
                 mutation.insert_write_check(input, committed_state_version)
             }
             Self::ConsumeWriteCheck(input) => mutation.consume_write_check(input),

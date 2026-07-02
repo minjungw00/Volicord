@@ -20,7 +20,7 @@ Volicord security wording describes record and policy boundaries inside document
 | Surface | Supported security meaning | Non-guarantee |
 |---|---|---|
 | `Volicord Runtime Home` | Storage/runtime owners define which Volicord operational records live there and how they are validated. | Runtime Home placement is not OS sandboxing, tamper-proof isolation, host trust, network isolation, malware scanning, or secret scanning. |
-| `Product Repository` | Product files can be inspected as inputs, and compatible product-file writes can be governed by owner-defined Core, user-judgment, and `Write Check` paths. | Product files are not Volicord state, and Volicord does not provide arbitrary product-file edit permission, malware scanning, secret scanning, or global filesystem interception. |
+| `Product Repository` | Product files can be inspected as inputs, and compatible product-file writes can be governed by owner-defined Core, user-judgment, and write-ticket paths. | Product files are not Volicord state, and Volicord does not provide arbitrary product-file edit permission, malware scanning, secret scanning, or global filesystem interception. |
 | Agent Connections and host configuration | Agent Connections provide documented connection context, `actor_source` provenance, connection intent, mode, and Connection Projects allowlists when the current invocation matches the registered connection. | Connection configuration is not OS permission, host trust, user identity, or proof that an external host loaded or exposed `volicord mcp --stdio`. |
 | `volicord mcp --stdio` | The adapter routes MCP calls through Agent Connection checks, Runtime Home state, Core, and Store. | The process does not itself grant arbitrary product-file edit authority, record authority-bearing user judgments, enforce host trust, block commands, block networks, or isolate tools. |
 | `volicord` CLI | Administrative commands manage setup, registry state, and supported host-integration state. | The CLI is not a public API security boundary, host trust controller, OS permission mechanism, or blanket write approval. |
@@ -91,9 +91,9 @@ May claim:
 - The approved sensitive step remains scoped to the prompt, `SensitiveActionScope`, affected object, and visible consequence that the user was asked to judge.
 
 Must not claim:
-- Sensitive-action approval is `Write Check`, `WriteCheckAttemptScope`, OS permission, shell permission, command approval, deployment approval, final acceptance, residual-risk acceptance, or product correctness.
+- Sensitive-action approval is a write ticket, `WriteTicketScope`, OS permission, shell permission, command approval, deployment approval, final acceptance, residual-risk acceptance, or product correctness.
 - Sensitive-action approval authorizes product-file writes, commands, hosts, networks, secrets, destructive operations, or unbounded activity.
-- Broad approval substitutes for a required sensitive-action approval, final acceptance, residual-risk acceptance, scope decision, or `Write Check`.
+- Broad approval substitutes for a required sensitive-action approval, final acceptance, residual-risk acceptance, scope decision, or write ticket.
 
 Owner links:
 - [Core Model](core-model.md) owns user-owned judgment and non-substitution rules.
@@ -116,7 +116,7 @@ May claim:
 Must not claim:
 - Local filesystem access proves Volicord authority.
 - A local path, directory name, copied identifier, displayed identifier, or rendered text is a security token.
-- Direct local modification outside those documented Volicord contracts creates valid Volicord records, evidence, acceptance, residual-risk acceptance, `Write Check`, or artifact authority.
+- Direct local modification outside those documented Volicord contracts creates valid Volicord records, evidence, acceptance, residual-risk acceptance, a write ticket, or artifact authority.
 - `Volicord Runtime Home` is automatically an OS security boundary, sandbox, or isolation layer.
 - A caller-supplied `verified` flag, requested `operation_category`, copied `actor_source`, public request field, or environment variable supplies trusted provenance.
 - `actor_source=agent_connection:<connection_id>` proves human identity or supplies user authority.
@@ -139,7 +139,7 @@ Must not claim:
 
 May claim:
 - Product files can be inspected as inputs.
-- Compatible product-file writes can be governed by current scope, current Change Unit compatibility, user-owned judgments, and `Write Check` when the write owner requires them.
+- Compatible product-file writes can be governed by current scope, current Change Unit compatibility, user-owned judgments, and write tickets when the write owner requires them.
 
 Must not claim:
 - Product files are Volicord state.
@@ -192,7 +192,7 @@ Must not claim:
 - Installing Codex or Claude Code configuration bypasses project trust, project MCP approval, OAuth, restart, reload, or comparable host-controlled actions.
 - `action_required` is a failed installation when configuration was installed but the host still requires user-controlled trust or approval.
 - Cwd-independent hook paths, wrapper verification, or `hook_path_safety=ok` provide OS sandboxing, global filesystem interception, broad command blocking, network blocking, secret blocking, or proof that no write can occur outside implemented host hooks.
-- Agent instructions, `AGENTS.md` blocks, `CLAUDE.md`, `.claude/rules/` files, or MCP server instructions are access control, security enforcement, user judgment, `Write Check`, or proof that a model will follow them.
+- Agent instructions, `AGENTS.md` blocks, `CLAUDE.md`, `.claude/rules/` files, or MCP server instructions are access control, security enforcement, user judgment, a write ticket, or proof that a model will follow them.
 
 ### Generated displays and text
 
@@ -200,7 +200,7 @@ Generated displays, rendered templates, chat text, connector prose, and agent me
 
 Must not claim:
 - A rendered display, `Projection`, status card, template output, chat message, connector description, or agent memory is a new authority source.
-- Displayed `ArtifactRef`, `UserJudgment`, `Write Check`, or `connection_id` text creates the authority named by those identifiers.
+- Displayed `ArtifactRef`, `UserJudgment`, write-ticket identifier, or `connection_id` text creates the authority named by those identifiers.
 
 ## Explicit non-guarantees
 
@@ -266,6 +266,6 @@ Volicord does not allow readers or agents to infer authority from:
 - [Runtime Boundaries](runtime-boundaries.md): User Channel location, Volicord source repository/installation files, executable processes, `Product Repository`, `Volicord Runtime Home`, and external MCP host configuration boundaries.
 - [API Value Sets](api/schema-value-sets.md): `GuaranteeDisplay.level`, `operation_category`, and other value names.
 - [API error routing](api/error-routing.md): public error routing.
-- [Core Model](core-model.md): user-owned judgment, `Write Check`, acceptance, residual risk, and non-substitution rules.
+- [Core Model](core-model.md): user-owned judgment, write ticket, acceptance, residual risk, and non-substitution rules.
 - [API Judgment Schemas](api/schema-judgment.md): `SensitiveActionScope` and user-owned judgment schema shapes.
 - [Storage Effects](storage-effects.md), [Storage Records](storage-records.md), and [Artifact Storage](storage-artifacts.md): storage effects, record layout, and artifact authority details.

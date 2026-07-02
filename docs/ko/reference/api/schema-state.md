@@ -1,6 +1,6 @@
 # API 상태 스키마
 
-이 문서는 기준 범위의 상태 형태 API 스키마를 담당합니다. `StateSummary`, `StateRecordRef`, API 데이터 형태의 생명주기 상태, 상태 관련 스냅샷, `ProjectContinuityRecord`, `ProjectContinuitySummary`, `ShapingReadiness`, `ChangeUnitEffectContract`, 그리고 `NextActionSummary`, `WriteCheckStateSummary`, `WriteCheckSummary`, `WriteCheckAttemptScope`, `EvidenceSummary`, `EvidenceObservation`, `GuardHealthSummary`, `UnrecordedChangeFinding`, `UnrecordedChangeResolutionSummary`, `CurrentCloseBasis`, `ResidualRisk`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`, `ValidatorResult`, `GuaranteeDisplay`, `GuaranteeDisclosure` 같은 표시 형태를 정의합니다.
+이 문서는 기준 범위의 상태 형태 API 스키마를 담당합니다. `StateSummary`, `StateRecordRef`, API 데이터 형태의 생명주기 상태, 상태 관련 스냅샷, `ProjectContinuityRecord`, `ProjectContinuitySummary`, `ShapingReadiness`, `ChangeUnitEffectContract`, 그리고 `NextActionSummary`, `WriteTicket`, `WriteTicketScope`, `WriteTicketPathPatterns`, `WriteCheckStateSummary`, `WriteCheckSummary`, `WriteCheckAttemptScope`, `EvidenceSummary`, `EvidenceObservation`, `GuardHealthSummary`, `UnrecordedChangeFinding`, `UnrecordedChangeResolutionSummary`, `CurrentCloseBasis`, `ResidualRisk`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`, `ValidatorResult`, `GuaranteeDisplay`, `GuaranteeDisclosure` 같은 표시 형태를 정의합니다.
 
 ## 담당 경계
 
@@ -17,7 +17,7 @@
 
 ## 경계
 
-상태 스키마는 API 데이터 형태만 설명합니다. 상태처럼 보이는 필드가 있다고 해서 응답 분기가 선택되거나 지속 저장, Core 전이, 재실행 행, `authority_events`, 아티팩트 효과, `Write Check` 효과, `state_version` 증가가 생기지는 않습니다.
+상태 스키마는 API 데이터 형태만 설명합니다. 상태처럼 보이는 필드가 있다고 해서 응답 분기가 선택되거나 지속 저장, Core 전이, 재실행 행, `authority_events`, 아티팩트 효과, 쓰기 티켓 효과, 호환성 `Write Check` 효과, `state_version` 증가가 생기지는 않습니다.
 
 상태 보기는 계산된 상태를 정직하게 드러내야 합니다.
 - `null` 또는 생략된 필드는 메서드가 값을 선택하지 않았거나, 값을 사용할 수 없거나, 담당 스키마가 부재를 명시적으로 허용한다는 뜻입니다. "계산했고 없음"을 암시하는 빈 값으로 바꾸면 안 됩니다.
@@ -189,7 +189,7 @@ GuardHealthSummary:
 의미하지 않는 것:
 - `control_surface`는 정확성, review 완료, 테스트 충분성, OS 수준 강제, 쓰기 차단을 증명하지 않습니다.
 - `GuardHealthSummary`는 제품 정확성, 테스트 충분성, OS 강제, 샌드박싱, 보안 격리, 최종 수락의 증거가 아닙니다.
-- `active` guard 요약은 증거, 아티팩트 무결성, 사용자 소유 판단, `Write Check`, 최종 수락, 잔여 위험 수락 요구사항을 대체하지 않습니다.
+- `active` guard 요약은 증거, 아티팩트 무결성, 사용자 소유 판단, 쓰기 티켓, 최종 수락, 잔여 위험 수락 요구사항을 대체하지 않습니다.
 - Session watch 상태와 coverage 메타데이터는 Volicord가 쓰기를 막았거나, 파일을 바꾼 행위자를 식별했거나, 파일 내용을 저장했거나, OS 수준 강제를 제공했다는 뜻이 아닙니다.
 - `session_watch_partial_coverage_warning`이 `null`이 아니면 `session_watch_coverage_start_at` 전의 Product Repository 변경은 session-watch coverage 밖에 남습니다.
 - `record` 프로필은 활성 session watch가 선택되어 있을 때 watcher가 만든 해결되지 않은 미기록 변경 찾기가 닫기를 막는 경우를 제외하고 협력형으로 남습니다.
@@ -288,7 +288,7 @@ ProjectContinuitySummary:
 - `ProjectContinuitySummary`는 메서드 담당 문서가 선택하는 읽기 보기이며, 전체 지속 기록이 아닙니다.
 
 의미하지 않는 것:
-- 프로젝트 연속성 기록은 현재 `Task` 권한, 증거, `Write Check`, 최종 수락, 닫기 준비 상태, 미래 닫기 근거의 잔여 위험 수락, 차단 사유 면제가 아닙니다.
+- 프로젝트 연속성 기록은 현재 `Task` 권한, 증거, 쓰기 티켓, 최종 수락, 닫기 준비 상태, 미래 닫기 근거의 잔여 위험 수락, 차단 사유 면제가 아닙니다.
 - `status=active`는 그 연속성 기록이 살아 있는 프로젝트 맥락이라는 뜻입니다. 모든 `Task`에 현재 적용된다거나 원천 결정이 새 권한 확인에 충분하다는 뜻은 아닙니다.
 
 담당 문서 링크:
@@ -319,7 +319,7 @@ ChangeUnitEffectContract:
 
 의미하지 않는 것:
 - `ChangeUnitEffectContract`는 런타임 샌드박스, 명령 가로채기 장치, 네트워크 차단 장치, 운영체제 권한 체계, 개발 방법론 상태 기계가 아닙니다.
-- 사용자 소유 판단, 민감 동작 승인, 증거, `Write Check`, 최종 수락, 닫기 준비 상태, 잔여 위험 수락을 대신하지 않습니다.
+- 사용자 소유 판단, 민감 동작 승인, 증거, 쓰기 티켓, 최종 수락, 닫기 준비 상태, 잔여 위험 수락을 대신하지 않습니다.
 
 담당 문서 링크:
 - 효과 값 문자열: [메서드 내부 값](schema-value-sets.md#method-local-values)
@@ -413,6 +413,30 @@ WriteCheckAttemptScope:
   sensitive_categories: string[]
   baseline_ref: string | null
 
+WriteTicketPathPatterns:
+  allowed: string[]
+  denied: string[]
+
+WriteTicketScope:
+  task_id: string
+  change_unit_id: string
+  intended_operation: string
+  product_file_write_intended: boolean
+  sensitive_categories: string[]
+  baseline_ref: string | null
+
+WriteTicket:
+  write_ticket_id: string
+  write_ticket_ref: StateRecordRef
+  state: string
+  scope: WriteTicketScope
+  path_patterns: WriteTicketPathPatterns
+  observed_paths: string[]
+  basis_state_version: integer
+  expires_at: string | null
+  control_surface: ControlSurfaceSummary | null
+  guarantee_display: GuaranteeDisplay | null
+
 WriteDecisionReason:
   category: string
   code: string
@@ -424,10 +448,15 @@ WriteDecisionReason:
 - `NextActionSummary`는 기준 다음 행동 표시 형태입니다. 유효한 필드는 `action_kind`, `owner_method`, `label`, `blocking_question`, `required_refs`입니다.
 - 오래된 `action` 또는 `reason` 필드를 쓰는 `next_actions` 항목은 유효한 `NextActionSummary`가 아닙니다.
 - `WriteCheckStateSummary.status`와 `WriteCheckSummary.status`는 제어 값 문자열입니다.
-- `WriteCheckStateSummary.consumed_by_run_ref`는 요약된 `Write Check`이 기록된 Run에 의해 소비되었을 때만 `null`이 아닙니다.
-- `WriteCheckStateSummary.observation_refs`는 사용할 수 있을 때 그 소비 Run이 만든 증거 관찰 참조를 나열합니다. `Write Check`이 소비되지 않았거나 소비 Run이 관찰을 만들지 않았다면 비어 있습니다.
-- `WriteCheckAttemptScope`는 `Write Check`이 포착하는 한 번의 시도 경계입니다.
+- `WriteCheckStateSummary.consumed_by_run_ref`는 요약된 쓰기 티켓 호환성 행이 기록된 Run에 의해 소비되었을 때만 `null`이 아닙니다.
+- `WriteCheckStateSummary.observation_refs`는 사용할 수 있을 때 그 소비 Run이 만든 증거 관찰 참조를 나열합니다. 호환성 행이 소비되지 않았거나 소비 Run이 관찰을 만들지 않았다면 비어 있습니다.
+- `WriteCheckAttemptScope`는 호환성 저장 행이 포착하는 한 번의 시도 경계입니다.
 - `WriteCheckAttemptScope`는 일반 쓰기 승인, 민감 동작 승인, 최종 수락, 잔여 위험 수락, 포괄적 사용자 승인이 아닙니다.
+- `WriteTicket`은 커밋된 허용 결정이 쓰기 티켓을 발급할 때 `volicord.prepare_write`가 반환하는 티켓 우선 권한 기록입니다.
+- `WriteTicket.state`는 제어되는 값 문자열입니다.
+- `WriteTicket.path_patterns.allowed`와 `WriteTicket.path_patterns.denied`는 티켓 결정이 포착한 정규화된 `Product Repository` 경로 패턴입니다.
+- `WriteTicket.observed_paths`는 observe 프로필 hook, watcher 또는 이후 담당 문서가 정의한 관찰 경로가 관찰된 제품 경로를 티켓에 연결하기 전까지 비어 있습니다.
+- `WriteTicket.control_surface`와 `WriteTicket.guarantee_display`는 현재 Volicord 제어 표면과 보장 문구를 공개합니다. OS 수준 파일시스템 집행을 주장하지 않습니다.
 - `WriteDecisionReason`은 `PrepareWriteResult.write_decision_reasons`에서 사용합니다.
 
 `NextActionSummary` 필드 분류:
@@ -452,6 +481,21 @@ WriteDecisionReason:
 | `sensitive_categories` | 불투명 민감 범주 분류 문자열. | 영향받는 메서드나 프로필 담당 문서가 더 좁은 로컬 목록을 공개하지 않는 한 빠짐없는 공개 enum이 아닙니다. |
 | `baseline_ref` | 불투명 기준선 식별자 또는 `null`. | 값이 있을 때 시도 경계에 포착된 기준선 식별자입니다. |
 
+`WriteTicket` 필드 분류:
+
+| 필드 | 분류 | 규칙 |
+|---|---|---|
+| `write_ticket_id` | 불투명 식별자. | 쓰기 티켓 권한 기록을 식별합니다. |
+| `write_ticket_ref` | `StateRecordRef`. | 같은 쓰기 티켓을 `record_kind=write_ticket`으로 참조합니다. |
+| `state` | 제어되는 상태 값. | `WriteTicket.state`에 대해 [메서드 로컬 값](schema-value-sets.md#method-local-values)이 담당하는 값을 사용합니다. |
+| `scope` | `WriteTicketScope`. | 티켓 발급에 사용된 Task, Change Unit, 작업, 민감 범주, 제품 쓰기 플래그, 기준선을 포착합니다. |
+| `path_patterns` | `WriteTicketPathPatterns`. | 티켓 결정에 대한 허용·거부 정규화 `Product Repository` 경로 패턴을 포착합니다. |
+| `observed_paths` | 정규화된 `Product Repository` 경로 문자열. | 담당 문서가 정의한 observe 경로가 관찰을 티켓에 연결했을 때만 관찰된 경로를 나열합니다. 연결된 관찰이 없으면 `[]`를 사용합니다. |
+| `basis_state_version` | 상태 시계 값. | 티켓과 함께 커밋된 `project_state.state_version` 근거입니다. |
+| `expires_at` | UTC 타임스탬프 또는 `null`. | Volicord 호환성 조건으로 쓰이는 티켓 만료입니다. OS 수준 집행이 아닙니다. |
+| `control_surface` | `ControlSurfaceSummary | null`. | 현재 Volicord 제어 표면 공개입니다. |
+| `guarantee_display` | `GuaranteeDisplay | null`. | [보안](../security.md)이 범위를 정하는 사람이 읽는 보장 문구입니다. |
+
 `WriteDecisionReason` 필드 분류:
 
 | 필드 | 분류 | 규칙 |
@@ -466,12 +510,12 @@ WriteDecisionReason:
 담당 문서 링크:
 - `action_kind` 값: [다음 행동 값](schema-value-sets.md#next-action-values)
 - `owner_method` 값: [메서드 이름 값](schema-value-sets.md#method-name-values)
-- `WriteCheckStateSummary.status`와 `WriteCheckSummary.status` 값: [메서드 내부 값](schema-value-sets.md#method-local-values)
+- `WriteTicket.state`, `WriteCheckStateSummary.status`, `WriteCheckSummary.status` 값: [메서드 내부 값](schema-value-sets.md#method-local-values)
 - `WriteDecisionReason.category` 값: [상태와 차단 사유 값](schema-value-sets.md#state-and-blocker-values)
 - `WriteDecisionReason.code` 값 집합 경계: [불투명 문자열과 메서드 범위 문자열 필드](schema-value-sets.md#opaque-and-method-scoped-string-fields)
 - `WriteDecisionReason.code` 생성과 로컬 의미: [`volicord.prepare_write`](method-prepare-write.md)를 포함한 메서드 담당 문서
-- `Write Check` 생성 동작: [`volicord.prepare_write`](method-prepare-write.md)
-- `Write Check`의 제품 의미와 승인 경계: [Core 모델](../core-model.md)
+- 쓰기 티켓 발급 동작: [`volicord.prepare_write`](method-prepare-write.md)
+- 쓰기 티켓의 제품 의미와 승인 경계: [Core 모델](../core-model.md)
 - 공개 `ErrorCode` 값은 별도입니다: [API 오류 코드](error-codes.md)
 
 <a id="evidence-and-run-snapshot-shapes"></a>
@@ -655,7 +699,7 @@ GuaranteeDisclosure:
 - `ResidualRisk.risk_id`는 Core가 생성한 불투명 식별자입니다. `ResidualRisk.summary`와 `ResidualRisk.consequence`는 표시 문자열이며 텍스트 일치를 권한으로 만들지 않습니다.
 - `result_refs`, `source_run_ref`, `source_refs`, `evidence_summary_ref`, `accepted_by_judgment_refs`는 `StateRecordRef`를 사용합니다.
 - `sensitive_categories`는 영향받는 메서드나 프로필 담당 문서가 더 좁은 로컬 목록을 공개하지 않는 한 불투명 민감 범주 분류 문자열입니다.
-- `sensitive_action_requirements`는 커밋된 실행 기록과 소비된 `Write Check` 기록에서 Core가 파생한 닫기 요구사항입니다. 범주만 담은 호출자 입력은 이 요구사항을 만들거나 지울 수 없습니다.
+- `sensitive_action_requirements`는 커밋된 실행 기록과 소비된 쓰기 티켓 호환성 기록에서 Core가 파생한 닫기 요구사항입니다. 범주만 담은 호출자 입력은 이 요구사항을 만들거나 지울 수 없습니다.
 - `recovery_constraints`와 `RiskAcceptanceCoverage.missing_reason`은 표시 문자열입니다. 현재 닫기 준비 상태 결과는 필요한 수락이 없으면 `acceptance_required`를 사용하고, 현재 잔여 위험 `risk_id` 값을 덮지 못하는 오래된 잔여 위험 수락이 있으면 `stale_acceptance`를 사용할 수 있습니다.
 - `RiskAcceptanceCoverage`는 현재 잔여 위험 요구사항이 호환되는 판단으로 덮였는지를 보고합니다. 증거 충분성이나 최종 수락을 보고하지 않습니다.
 - `CloseReadinessBlocker`는 닫기 차단 사유를 표현하는 데이터 형태입니다.

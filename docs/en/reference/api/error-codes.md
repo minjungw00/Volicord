@@ -157,7 +157,7 @@ Used in:
 - `ToolRejectedResponse.errors[]`
 
 Condition:
-- A write-capable Run lacks a required `Write Check`.
+- A write-capable Run lacks a required write-ticket compatibility row.
 
 <a id="errorcode-write-check-invalid"></a>
 ### `WRITE_CHECK_INVALID`
@@ -166,10 +166,10 @@ Used in:
 - `ToolRejectedResponse.errors[]`
 
 Condition:
-- Supplied `Write Check` is expired, revoked, consumed, or incompatible for a non-version reason.
+- Supplied write-ticket compatibility row is expired, revoked, consumed, or incompatible for a non-version reason.
 
 Notes:
-- Expired `Write Check` use stays on this code with `ToolError.details.write_check_reason=expired`.
+- Expired write-ticket use stays on this code with `ToolError.details.write_check_reason=expired`.
 - Stale `WriteCheck.basis_state_version` is routed through `STATE_VERSION_CONFLICT`, not this code.
 
 <a id="errorcode-approval-denied"></a>

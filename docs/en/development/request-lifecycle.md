@@ -5,7 +5,7 @@ Rust implementation:
 
 - `volicord.status` as a read-only path
 - `volicord.intake` as a committed state-mutation path
-- `volicord.prepare_write` as a policy- and Write Check-sensitive path
+- `volicord.prepare_write` as a policy- and write-ticket-sensitive path
 
 It names source files and symbols so developers can follow the code. It does
 not define exact public method behavior, request or response schemas, storage
@@ -116,7 +116,7 @@ implementation-oriented map for following the source.
 
 | Branch or response path | Where to read | Durable storage consequence at guide level |
 |---|---|---|
-| Rejected response from MCP decoding or preflight | `McpAdapter::call_tool`, `CoreService::prepare_request`, `validation_rejected` | Returns a rejected response or JSON-RPC error without a Core commit. No `state_version` increment, authority event, replay row, artifact effect, or `Write Check` effect is created. |
+| Rejected response from MCP decoding or preflight | `McpAdapter::call_tool`, `CoreService::prepare_request`, `validation_rejected` | Returns a rejected response or JSON-RPC error without a Core commit. No `state_version` increment, authority event, replay row, artifact effect, or write-ticket effect is created. |
 | `OwnerPipelineBranch::ReadOnly` | `CoreService::execute_prepared_request` | Builds a result with `EffectKind::ReadOnly` from current reads and does not call `CoreProjectStore::commit_mutation`. Computed close blockers or artifact observations in the response are read-time data. |
 | `OwnerPipelineBranch::NoEffectResult` | `CoreService::execute_prepared_request`; currently used by `close_task` blocked result paths | Builds a valid result with `EffectKind::NoEffect` and does not call `CoreProjectStore::commit_mutation`. A blocker-shaped result here is response data, not a committed blocker row. |
 | `OwnerPipelineBranch::DryRunPreview` | `CoreService::execute_prepared_request` | Builds `ToolDryRunResponse` preview data and does not persist generated refs, authority events, replay rows, staged handles, artifacts, or `state_version` changes. |
@@ -126,8 +126,8 @@ implementation-oriented map for following the source.
 Do not treat all blocked-looking outcomes as the same implementation path. For
 example, `volicord.prepare_write` can reject before commit with no effect,
 return a dry-run preview with no effect, commit a non-allow decision event
-without creating a `Write Check`, or commit an allowed decision that inserts a
-`Write Check`. `volicord.close_task` can return close blockers on a read-only
+without issuing a write ticket, or commit an allowed decision that inserts a
+write-ticket compatibility row. `volicord.close_task` can return close blockers on a read-only
 check or on the baseline no-effect blocked path. API errors remain rejected
 responses, not close-readiness blockers; route exact blocker/API boundaries to
 [API blocker routing](../reference/api/blocker-routing.md).
@@ -190,7 +190,7 @@ What does not happen:
 - No state-version increment.
 - No authority event.
 - No replay row.
-- No `Write Check` change.
+- No write-ticket change.
 - No project-continuity record creation.
 
 Representative tests:
@@ -309,7 +309,7 @@ Exact behavior questions:
 - Replay and error behavior: [API Errors](../reference/api/errors.md) and the
   method owner
 
-## `volicord.prepare_write`: policy and Write Check path
+## `volicord.prepare_write`: policy and write-ticket path
 
 Reference owner:
 
@@ -330,14 +330,14 @@ Primary source path:
    `plan_prepare_write`.
 4. [`crates/volicord-core/src/policy/write_check.rs`](../../../crates/volicord-core/src/policy/write_check.rs)
    supplies `prepare_write_decision`, `prepare_write_dry_run_summary`,
-   Write Check compatibility helpers, and `write_decision_reason`.
+   write-ticket compatibility helpers, and `write_decision_reason`.
 5. [`crates/volicord-core/src/policy/path.rs`](../../../crates/volicord-core/src/policy/path.rs)
    supplies Product Repository path normalization helpers.
 6. [`crates/volicord-core/src/policy/judgment_relevance.rs`](../../../crates/volicord-core/src/policy/judgment_relevance.rs)
    supplies judgment relevance checks used by the planner.
 7. [`crates/volicord-store/src/core_pipeline.rs`](../../../crates/volicord-store/src/core_pipeline.rs)
-   applies `CoreStorageMutation::InsertWriteCheck` when the committed
-   allowed branch creates a Write Check.
+   applies `CoreStorageMutation::InsertWriteTicket` when the committed
+   allowed branch issues a write ticket.
 
 Lifecycle:
 
@@ -364,14 +364,14 @@ Lifecycle:
    reasons, the plan is a non-allow decision.
 8. If the request is a dry run, `CoreService::execute_prepared_request` receives
    `OwnerPipelineBranch::DryRunPreview` with `prepare_write_dry_run_summary`.
-   No `Write Check` ID is allocated and no Store commit runs.
+   No write ticket ID is allocated and no Store commit runs.
 9. For a committed allowed plan, `OwnerPipelineBranch::CommitMutation` carries
-   `CoreStorageMutation::InsertWriteCheck`,
-   `event_kind="write_check_created"`, and result fields containing
-   the new `write_check_ref`.
+   `CoreStorageMutation::InsertWriteTicket`,
+   `event_kind="write_ticket_issued"`, and result fields containing
+   the new `write_ticket_ref`.
 10. For a committed non-allow plan, `OwnerPipelineBranch::CommitMutation`
     carries `event_kind="write_decision_recorded"` and no
-    `InsertWriteCheck` mutation. The Store transaction still records
+    `InsertWriteTicket` mutation. The Store transaction still records
     the decision event, advances state version, and stores replay data when the
     committed call is idempotent.
 11. `CoreProjectStore::commit_mutation` executes the transaction and returns a
@@ -380,38 +380,38 @@ Lifecycle:
 
 What changes by branch:
 
-- Preflight or early validation rejection has no Core commit and creates no
-  `Write Check`.
+- Preflight or early validation rejection has no Core commit and issues no
+  write ticket.
 - Dry-run returns `ToolDryRunResponse`, has no Core commit, and allocates no
-  durable `Write Check` ID.
+  durable write ticket ID.
 - Committed non-allow decisions commit an audit/result event but create no
-  consumable `Write Check`.
+  write ticket.
 - Committed allowed decisions commit an event and
-  `CoreStorageMutation::InsertWriteCheck`.
+  `CoreStorageMutation::InsertWriteTicket`.
 - Idempotent replay returns the stored original response through replay
-  handling instead of creating another Write Check.
+  handling instead of creating another write ticket.
 
 Representative tests:
 
-- `prepare_write_allowed_creates_one_write_check_with_post_commit_basis` in
+- `prepare_write_allowed_issues_one_write_ticket_with_post_commit_basis` in
   [`crates/volicord-core/src/methods/tests.rs`](../../../crates/volicord-core/src/methods/tests.rs)
-- `prepare_write_blocked_path_creates_no_write_check` in
+- `prepare_write_blocked_path_issues_no_write_ticket` in
   [`crates/volicord-core/src/methods/tests.rs`](../../../crates/volicord-core/src/methods/tests.rs)
-- `prepare_write_dry_run_has_no_write_check_effect` in
+- `prepare_write_dry_run_has_no_write_ticket_effect` in
   [`crates/volicord-core/src/methods/tests.rs`](../../../crates/volicord-core/src/methods/tests.rs)
 - `prepare_write_user_only_category_is_invocation_context_rejection` in
   [`crates/volicord-core/src/methods/tests.rs`](../../../crates/volicord-core/src/methods/tests.rs)
 - `read_only_mode_rejects_agent_workflow_methods_before_core` in
   [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs)
 - `committed_non_allow_prepare_write_audit_and_replay_are_exact` and
-  `prepare_write_allocates_write_check_only_on_committed_allowed_effect` in
+  `prepare_write_issues_write_ticket_only_on_committed_allowed_effect` in
   [`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs)
 
 Exact behavior questions:
 
 - Method behavior and decision branches:
   [Prepare-write method](../reference/api/method-prepare-write.md)
-- Core authority terms such as `Write Check`, write approval,
+- Core authority terms such as write ticket, write approval,
   sensitive-action approval, final acceptance, and residual-risk acceptance:
   [Core Model](../reference/core-model.md)
 - Product Repository path normalization:

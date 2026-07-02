@@ -790,6 +790,7 @@ pub enum StateRecordKind {
     ProjectState,
     Task,
     ChangeUnit,
+    WriteTicket,
     WriteCheck,
     UserJudgment,
     Run,
@@ -980,6 +981,27 @@ pub enum WriteCheckEffect {
     None,
     WouldCreate,
     Created,
+}
+
+/// Prepare-write write ticket effect values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum WriteTicketEffect {
+    None,
+    WouldIssue,
+    Issued,
+}
+
+/// Write ticket state values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum WriteTicketState {
+    Open,
+    Observed,
+    Reconciled,
+    Closed,
+    Expired,
+    Revoked,
 }
 
 /// Write Check status values.

@@ -24,24 +24,24 @@ It increments only when a complete owner-allowed state-changing transaction comm
 
 Every newly committed authority mutation appends at least one durable `authority_events` row in the same transaction as the current projection updates. A normal committed mutation appends exactly one authority event. If an owner explicitly defines an event batch, all rows in that batch share the single resulting `project_state.state_version` for that committed state transition.
 
-`tasks.state_version` is not a baseline authority field. A non-baseline `tasks.state_version` column is ignored metadata only and must not be used as a conflict, freshness, lock, or Write Check basis.
+`tasks.state_version` is not a baseline authority field. A non-baseline `tasks.state_version` column is ignored metadata only and must not be used as a conflict, freshness, lock, or write-ticket basis.
 
 Related fields:
 
-- `write_checks.basis_state_version` stores the resulting `project_state.state_version` after the Write Check creation commit. Core uses it as the freshness basis for later Write Check consumption.
+- `write_checks.basis_state_version` stores the resulting `project_state.state_version` after the write-ticket issuance commit. Core uses it as the freshness basis for later write-ticket compatibility consumption.
 - `tool_invocations.basis_state_version` stores the project-wide state version observed before the committed mutation.
 - `authority_events.state_version` stores the resulting project-wide version after the committed authority event or event batch.
 
-## Write Checks
+## Write Tickets
 
-`Write Check` is Core-state compatibility for one proposed product-file write attempt. It is not OS permission, OS sandboxing, a filesystem ACL, network policy, or secret isolation.
+A write ticket is Volicord authority for authorized write intent for one proposed product-file write attempt. It is not OS permission, OS sandboxing, a filesystem ACL, network policy, secret isolation, global filesystem interception, or proof that a write occurred.
 
-Write Check creation and consumption follow normal state-version rules:
+Write-ticket issuance and compatibility consumption follow normal state-version rules:
 
-- creation can commit only through an owner-defined method branch
-- consumption can commit only when the stored Write Check is active, compatible, unexpired, unconsumed, and current for the project state basis
+- issuance can commit only through an owner-defined method branch
+- consumption can commit only when the stored write-ticket compatibility row is active, compatible, unexpired, unconsumed, and current for the project state basis
 - stale `WriteCheck.basis_state_version` is rejected before consumption
-- creation or consumption never occurs on rejected, dry-run, or replay-only branches
+- issuance or consumption never occurs on rejected, dry-run, or replay-only branches
 
 ## Idempotency And Replay
 
@@ -59,11 +59,11 @@ Replay eligibility:
 - compatible context plus the same `idempotency_key` and same `request_hash` returns the stored original committed response exactly
 - compatible context plus the same `idempotency_key` and a different `request_hash` returns `STATE_VERSION_CONFLICT`
 
-Replay uses the stored response body. It does not recompute or reclassify `write_check_effect`, `base.state_version`, `base.events`, or any other response field. Replay does not append events, promote or link artifacts, create or consume Write Checks, create another replay row, or change state again.
+Replay uses the stored response body. It does not recompute or reclassify `write_ticket_effect`, `write_check_effect`, `base.state_version`, `base.events`, or any other response field. Replay does not append events, promote or link artifacts, issue or consume write tickets, create another replay row, or change state again.
 
 ## Failure And Retry
 
-Pre-commit failures have no storage effect. Transaction failures must leave no partial state-version increment, event, replay row, Write Check change, artifact effect, evidence update, judgment effect, close effect, lifecycle effect, or staged-handle consumption.
+Pre-commit failures have no storage effect. Transaction failures must leave no partial state-version increment, event, replay row, write-ticket change, artifact effect, evidence update, judgment effect, close effect, lifecycle effect, or staged-handle consumption.
 
 Examples:
 
@@ -75,7 +75,7 @@ Examples:
 - idempotency request-hash conflict
 - invocation-context mismatch
 
-Retry follows the rejected reason: refresh state for stale version conflicts, fix invalid input for validation failures, use the User Channel for missing user judgments, or use the required Write Check flow when write compatibility is still needed.
+Retry follows the rejected reason: refresh state for stale version conflicts, fix invalid input for validation failures, use the User Channel for missing user judgments, or use the required write-ticket flow when write compatibility is still needed.
 
 ## Migration Boundary
 

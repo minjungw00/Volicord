@@ -30,7 +30,7 @@ Projected, status, and template views are read-only display. They may quote owne
 
 A rendered label, status badge, Markdown section, projection, template body, chat summary, rendered output, or agent context packet cannot by itself:
 
-- create `Write Check`
+- create write tickets
 - create evidence or a persistent `ArtifactRef`
 - satisfy verification, QA, evidence, acceptance, or other gates
 - create final acceptance or accept residual risk

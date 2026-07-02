@@ -93,7 +93,7 @@ Core 실행 전에 일어나는 전송 및 어댑터 실패는 이 분기 밖에
 - `ToolRejectedResponse.errors[]`.
 
 상태 영향:
-- 기록, 재실행 행, 아티팩트, 이벤트, `Write Check` 소비, 닫기 상태 변경, 상태 버전 증가가 없습니다.
+- 기록, 재실행 행, 아티팩트, 이벤트, 쓰기 티켓 소비, 닫기 상태 변경, 상태 버전 증가가 없습니다.
 
 <a id="rejected-state-or-idempotency-conflict"></a>
 ### 상태 또는 멱등성 충돌

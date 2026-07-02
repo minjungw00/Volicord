@@ -35,7 +35,7 @@ The method can:
 - reject the request before close readiness evaluation
 - return a common `dry_run` preview for valid mutating previews
 
-Close is a Core state transition, not a report. This method evaluates the current close basis for `intent=complete`; it does not infer close from chat, status text, a terminal close summary, final acceptance alone, residual-risk acceptance alone, evidence alone, a `Write Check`, or a rendered view.
+Close is a Core state transition, not a report. This method evaluates the current close basis for `intent=complete`; it does not infer close from chat, status text, a terminal close summary, final acceptance alone, residual-risk acceptance alone, evidence alone, a write ticket, or a rendered view.
 
 ## Owner boundary
 
@@ -79,7 +79,7 @@ Mutation conditions:
 - `dry_run=false` mutating intents require a non-null `idempotency_key` and current `expected_state_version`.
 - Stale `expected_state_version`, stale close-relevant `WriteCheck.basis_state_version`, or idempotency request-hash conflict is rejected before close readiness evaluation.
 - A close-relevant `WriteCheck.basis_state_version` is stale when it does not equal the current `project_state.state_version` at preflight.
-- A close-relevant `Write Check` freshness check does not record final acceptance, residual-risk acceptance, user-owned judgment, sensitive-action approval, or broad approval.
+- A close-relevant write-ticket freshness check does not record final acceptance, residual-risk acceptance, user-owned judgment, sensitive-action approval, or broad approval.
 
 Close condition:
 
@@ -149,7 +149,7 @@ Nested owner links:
 | `intent=check` | Requires verified invocation context with `operation_category=read` for protected close readiness detail. |
 | Mutating intents | Require verified invocation context with `operation_category=agent_workflow`, compatible `Task` state, and close-relevant owner records. |
 
-Access to call this method is separate from user-owned judgment, final acceptance, residual-risk acceptance, sensitive-action approval, and `Write Check`.
+Access to call this method is separate from user-owned judgment, final acceptance, residual-risk acceptance, sensitive-action approval, and write ticket.
 
 ## Method flow
 
@@ -220,7 +220,7 @@ The production meanings below apply only after the method reaches close-readines
 | `pending_user_judgment` | `pending_user_judgment` | A required user-owned judgment remains pending or unresolved. |
 | `missing_sensitive_approval` | `sensitive_approval` | A required separate sensitive-action approval is absent. |
 | `missing_cancellation_authority` | `user_judgment` | `intent=cancel` lacks a current accepted user cancellation judgment with `resolved_by_actor_source=local_user`, compatible User Channel provenance, and a basis bound to the current Task, scope revision, and Change Unit. |
-| `write_check_stale` | `write_compatibility` | A close-relevant `Write Check` is unusable for a freshness reason that is not routed as `STATE_VERSION_CONFLICT`. |
+| `write_check_stale` | `write_compatibility` | A close-relevant write-ticket compatibility row is unusable for a freshness reason that is not routed as `STATE_VERSION_CONFLICT`. |
 | `baseline_stale` | `baseline` | The close-relevant baseline basis is stale on a blocker-producing path. |
 | `guard_not_installed` | `connection_capability` | An observe close path has no usable guard installation recorded for the verified connection. |
 | `guard_reload_required` | `connection_capability` | Guard files are installed, but the host must restart or reload before Volicord has observed the configured hooks. |
@@ -304,7 +304,7 @@ Rejected responses:
 
 - return no `CloseTaskResult.blockers`
 - create no close effect
-- create no `Write Check`, final acceptance, residual-risk acceptance, evidence, or artifact state
+- create no write ticket, final acceptance, residual-risk acceptance, evidence, or artifact state
 
 Public error meaning, precedence, and response-branch routing are owned by the API error documents linked below.
 

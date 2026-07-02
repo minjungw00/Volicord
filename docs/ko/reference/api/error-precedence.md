@@ -95,7 +95,7 @@ MCP `tools/call`에서 MCP 전송이 성공하면 Volicord 도메인 수준 `Too
 | 충돌 경우 | 세부 항목 |
 |---|---|
 | 오래된 `expected_state_version` | [오래된 `expected_state_version`](#state-conflict-expected-state-version) |
-| 오래된 `WriteCheck.basis_state_version` | [오래된 `Write Check` 근거 버전](#state-conflict-write-check-basis) |
+| 오래된 `WriteCheck.basis_state_version` | [오래된 쓰기 티켓 근거 버전](#state-conflict-write-check-basis) |
 | 멱등 요청 해시 충돌 | [멱등 요청 해시 충돌](#state-conflict-idempotency-hash) |
 
 우선순위에서 아래 충돌 경우는 프로젝트 전체의 커밋 전 최신성 또는 멱등성 충돌로 `STATE_VERSION_CONFLICT`를 선택합니다.
@@ -125,7 +125,7 @@ MCP `tools/call`에서 MCP 전송이 성공하면 Volicord 도메인 수준 `Too
 - [상태 충돌 세부 필드](error-details.md#state-conflict-detail-fields)를 사용합니다.
 
 <a id="state-conflict-write-check-basis"></a>
-### 오래된 `Write Check` 근거 버전
+### 오래된 쓰기 티켓 근거 버전
 
 조건:
 - 소비 전에 `WriteCheck.basis_state_version`이 현재 `project_state.state_version`과 같지 않습니다.
@@ -137,16 +137,16 @@ MCP `tools/call`에서 MCP 전송이 성공하면 Volicord 도메인 수준 `Too
 - `ToolRejectedResponse.errors[]`
 
 소비 경계:
-- 오래된 `Write Check`은 소비되지 않습니다.
+- 오래된 쓰기 티켓 행은 소비되지 않습니다.
 - 거절된 시도는 소비 쪽 상태 변경을 만들지 않습니다.
 
 세부 필드:
 - [상태 충돌 세부 필드](error-details.md#state-conflict-detail-fields)를 사용합니다.
 
-### 만료된 `Write Check`
+### 만료된 쓰기 티켓 행
 
 조건:
-- 소비 전에 `Write Check`이 [`volicord.record_run`](method-record-run.md)과 [`volicord.prepare_write`](method-prepare-write.md)가 담당하는 유효 만료 규칙에 따라 만료되었고, `WriteCheck.basis_state_version`은 오래되지 않았습니다.
+- 소비 전에 쓰기 티켓 행이 [`volicord.record_run`](method-record-run.md)과 [`volicord.prepare_write`](method-prepare-write.md)가 담당하는 유효 만료 규칙에 따라 만료되었고, `WriteCheck.basis_state_version`은 오래되지 않았습니다.
 
 공개 오류 코드:
 - `WRITE_CHECK_INVALID`

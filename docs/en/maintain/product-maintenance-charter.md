@@ -24,7 +24,7 @@ close-readiness state, or residual-risk decisions.
   workflow controls, not a sandbox, command monitor, file-system isolation
   layer, network isolation layer, security proof, or guarantee that an agent
   followed instructions.
-- Scope, evidence, `Write Check`, write approval, final acceptance,
+- Scope, evidence, write ticket, write approval, final acceptance,
   residual-risk acceptance, and close readiness stay separate in planning,
   documentation, code, tests, and reports.
 

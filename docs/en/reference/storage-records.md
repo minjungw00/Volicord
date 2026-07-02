@@ -56,7 +56,7 @@ Artifact path bases:
 
 For operational project records, `project_home` is the location owner for project-local runtime state. The executable project state database path is derived from the validated project home as `project_home/state.sqlite`. The stored `state_db_path` remains in `registry.sqlite` for persistence and diagnostics, but it must match that derived path before Store returns a normal `ProjectRecord`, opens or migrates project-local state, resolves Agent Connection project access, enters Core execution, or reports MCP project availability. A mismatching registration remains inspectable as raw registry content for diagnosis, but operational lookup and listing must reject it rather than omit it or return it as a normal project. Inspection must not open, create, migrate, or repair the alternate `state_db_path`.
 
-The `Product Repository` is the user product-file boundary registered by `repo_root`. It is not a Volicord runtime home, not Core authority storage, and not where runtime records, replay rows, judgments, Write Checks, guard records, or Agent Connection registry state are stored.
+The `Product Repository` is the user product-file boundary registered by `repo_root`. It is not a Volicord runtime home, not Core authority storage, and not where runtime records, replay rows, judgments, write tickets, guard records, or Agent Connection registry state are stored.
 
 Baseline SQLite table shape, indexes, foreign keys, migration tables, and constraints belong to [Storage DDL](storage-ddl.md). The current baseline SQLite storage profile for these records is `baseline_sqlite_v3`; profile/version boundary behavior belongs to [Storage Versioning](storage-versioning.md).
 
@@ -97,8 +97,8 @@ Baseline storage persists only the record families defined by this baseline stor
 | `state.sqlite` | `change_units` | Scoped work boundary | Scope summaries, write basis, Change Unit lifecycle, and owning `Task` relation. |
 | `state.sqlite` | `user_judgments` | User-owned judgment state | Pending, resolved, stale, superseded, and expired user-owned judgments, including basis snapshot, request context, options, sensitive-action scope, resolution machine action and outcome, rationale metadata, User Channel actor source, verification basis, and assurance level. |
 | `state.sqlite` | `project_continuity_records` | Project continuity context | Durable project-level decisions, obligations, known limits, accepted residual risks, and constraints that remain addressable after the source `Task` closes. |
-| `state.sqlite` | `write_checks` | Core-state write compatibility | Single-use Write Check, basis version, attempt scope, expiration, actor source, optional originating judgment, and consumption state. |
-| `state.sqlite` | `runs` | Execution or observation record | Committed execution or observation record, optional compatible Write Check consumption, actor source, and compact evidence updates. |
+| `state.sqlite` | `write_checks` | Write-ticket authority | Physical storage table for single-use write ticket authority records, basis version, attempt scope, expiration, actor source, optional originating judgment, and consumption state. The table name is compatibility storage naming, not the public authority concept. |
+| `state.sqlite` | `runs` | Execution or observation record | Committed execution or observation record, optional compatible write-ticket consumption, actor source, and compact evidence updates. |
 | `state.sqlite` plus `artifacts/tmp/` | `artifact_staging` | Transient artifact staging | Staged handle metadata, creator actor source, safe staging facts, and transient bytes or notices. |
 | `state.sqlite` plus artifact store | `artifacts` | Persistent artifact record | Durable artifact metadata or body location, content type, SHA-256, size, integrity status, redaction, retention, producer, and availability facts. |
 | `state.sqlite` | `artifact_links` | Artifact owner relation | Owner relation between an artifact and a baseline Core/API record family. |
@@ -125,7 +125,7 @@ Baseline records use opaque stable ids as primary keys or equivalent unique keys
 - Task-scoped rows belong to the same project and `Task` as their owning `tasks` row.
 - Current pointers and owner references must point to same-project records.
 - A `Task` has at most one current Change Unit.
-- Single-use relations such as consumed Write Check rows, consumed staging handles, promoted staged artifacts, artifact owner links, and replay keys must not fork into multiple committed meanings.
+- Single-use relations such as consumed write-ticket rows, consumed staging handles, promoted staged artifacts, artifact owner links, and replay keys must not fork into multiple committed meanings.
 
 ### Current, Event, And Replay Rows
 
@@ -139,7 +139,7 @@ Storage must validate stored relationships before commit, including:
 
 - same-project and same-`Task` ownership
 - active pointer targets
-- compatible Write Check consumption
+- compatible write-ticket consumption
 - artifact staging consumption and promotion targets
 - artifact owner relations
 - Connection Projects membership and enabled-state consistency for Agent Connection routing
@@ -156,7 +156,7 @@ This preservation applies to `tasks`, `change_units`, `user_judgments`, `project
 
 Host-observation records preserve local authority facts about host integration state. They can help Core and Store code determine whether work can honestly proceed or close, but they are not OS-level sandboxing, filesystem ACLs, external policy enforcement, anti-forgery proof, actor identity proof, or proof that a write was prevented.
 
-`guard_installations` records setup lifecycle state, observed hook metadata, and host capability by Runtime Home, Agent Connection, and optional project scope. `configured` and `reload_required` mean files or metadata are installed but no matching guard hook has yet been observed. `active` means Volicord observed a valid guard hook for the recorded project, Agent Connection, host kind, integration profile, and policy hash; it does not prove OS-level enforcement or sandboxing. `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unrecorded_changes`, `session_watch_baselines`, and `session_watch_observations` are project-local rows and must not leak across project `state.sqlite` databases. A pending `expected_writes` row means observe pre-tool allowed a concrete expected write for bounded project, connection, session, time, path, task, Change Unit, and Write Check coordinates. A matched row means post-tool observation was correlated to that expected write; it is not proof of product correctness. An unresolved `unrecorded_changes` row means an observed Product Repository change still needs owner-defined reconciliation. Resolving the row records the local resolution basis, actor source, capture basis, resolution timestamp, and optional linked user judgment while preserving the row.
+`guard_installations` records setup lifecycle state, observed hook metadata, and host capability by Runtime Home, Agent Connection, and optional project scope. `configured` and `reload_required` mean files or metadata are installed but no matching guard hook has yet been observed. `active` means Volicord observed a valid guard hook for the recorded project, Agent Connection, host kind, integration profile, and policy hash; it does not prove OS-level enforcement or sandboxing. `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unrecorded_changes`, `session_watch_baselines`, and `session_watch_observations` are project-local rows and must not leak across project `state.sqlite` databases. A pending `expected_writes` row means observe pre-tool allowed a concrete expected write for bounded project, connection, session, time, path, task, Change Unit, and write-ticket coordinates. A matched row means post-tool observation was correlated to that expected write; it is not proof of product correctness. An unresolved `unrecorded_changes` row means an observed Product Repository change still needs owner-defined reconciliation. Resolving the row records the local resolution basis, actor source, capture basis, resolution timestamp, and optional linked user judgment while preserving the row.
 
 `session_watch_baselines` and `session_watch_observations` support detective session-level Product Repository watching. They are not a sandbox, filesystem permission boundary, pre-write block, proof of who changed a file, or proof of why a file changed. A baseline stores watch availability, the registered repository root or watched path set, effective exclusions, and deterministic snapshot digest metadata. An observation stores changed product paths found by comparing a later safe snapshot with the baseline, plus optional expected-write and unrecorded-change correlation refs. Linking an observation to an unrecorded-change row records local reconciliation context; it does not create close blockers by itself.
 
@@ -242,7 +242,7 @@ Rules:
 | `agent_sessions` | Non-authority metadata for a project-scoped Agent Session. |
 | `guard_events` | Guard subject JSON, result JSON, and metadata for a local guard decision event. |
 | `prompt_captures` | Non-authority metadata for a captured prompt record; prompt text is a direct nullable text column. |
-| `expected_writes` | Expected path arrays, Write Check id arrays, matched path arrays, and metadata for observe expected-write correlation. |
+| `expected_writes` | Expected path arrays, write-ticket id arrays, matched path arrays, and metadata for observe expected-write correlation. |
 | `unrecorded_changes` | Observed path arrays, detection JSON, resolution JSON, and metadata for unrecorded Product Repository changes. Resolution JSON stores compact resolution basis, capture basis, resolved method, and optional linked user-judgment reference; it must not store full sensitive command or prompt content. |
 | `session_watch_baselines` | Watched path arrays, effective exclusion arrays, snapshot entry arrays, and metadata for a session watch baseline. Snapshot entries store path, kind, size, hash, or skip reason metadata only; they do not store file contents. |
 | `session_watch_observations` | Observed changed path arrays, compact change-summary JSON, snapshot entry arrays, and metadata for a session watch observation. Snapshot and change summaries do not prove actor identity, intent, product correctness, or close readiness. |
@@ -250,8 +250,8 @@ Rules:
 | `change_units` | Scope summaries, bounded lists, write basis summaries, optional effect contract data, and lifecycle support data. |
 | `user_judgments` | Judgment request, context, options, affected refs, artifact refs, basis snapshot, sensitive-action scope, machine-readable resolution, and descriptive rationale metadata. |
 | `project_continuity_records` | Applies-to paths, applies-to refs, source refs, artifact refs, superseded refs, review triggers, and non-authority metadata for durable project context. |
-| `write_checks` | Write Check attempt scope and non-authority metadata. |
-| `runs` | Summary, observed changes, evidence updates, Write Check effect data, and non-authority metadata. |
+| `write_checks` | Write-ticket attempt scope and non-authority metadata. |
+| `runs` | Summary, observed changes, evidence updates, write-ticket effect data, and non-authority metadata. |
 | `artifact_staging` | Staged artifact data, safe metadata, and non-authority metadata. |
 | `artifacts` | Retention, producer, and non-authority metadata. |
 | `artifact_links` | Non-authority metadata. |

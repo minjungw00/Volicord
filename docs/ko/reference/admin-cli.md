@@ -453,7 +453,7 @@ Agent Connection의 text와 JSON 출력은 진단 출력입니다. JSON 출력�
 `volicord guard` 명령은 agent lifecycle event 때 명령을 실행할 수 있는 호스트를
 위한 로컬 hook 진입점입니다. 이 명령은 등록된 프로젝트 상태를 검사하고 host-observation
 이벤트를 기록하며 기계 판독 가능한 로컬 decision을 반환합니다.
-Core 메서드, 사용자 소유 판단, `Write Check`, 닫기 준비 상태 점검, 호스트 신뢰,
+Core 메서드, 사용자 소유 판단, 쓰기 티켓, 닫기 준비 상태 점검, 호스트 신뢰,
 셸 승인, OS 수준 sandboxing을 대체하지 않습니다.
 
 각 guard 명령은 기본적으로 stdin에서 JSON hook event 하나를 읽습니다. `--file PATH`는
@@ -539,17 +539,17 @@ degraded, stale, broken 상태가 아닐 때만 그 관찰이 guard 설치를 `a
 Lifecycle 동작:
 
 - `session-start`는 Agent Session을 기록하거나 재사용하고, 호스트 세션 주입용으로
-  간결한 프로젝트, active task, `Write Check`, 대기 판단, blocker, 미해결 변경
+  간결한 프로젝트, active task, 쓰기 티켓, 대기 판단, blocker, 미해결 변경
   맥락과 함께 `inject_context`를 반환합니다.
 - `pre-tool`은 읽기 전용, 명확한 변경, 불확실한 도구 시도를 분류합니다. 읽기와 상태
   명령은 blocker를 만들지 않고 허용됩니다. 제품 파일 쓰기 시도는 active task가
-  없거나, 현재 active `Write Check`가 없거나, 시도 대상이 선택된 `Product Repository`
+  없거나, 현재 active 쓰기 티켓 행이 없거나, 시도 대상이 선택된 `Product Repository`
   밖에 있거나, policy가 명확한 변경 shell 명령을 차단할 때 `deny` 또는 `warn`을
   반환할 수 있습니다. 불확실한 shell 명령은 guard policy가 `deny`를 요구하지 않으면
   기본적으로 `warn`입니다. Pre-tool이 구체적인 저장소 내부 경로 집합, active task,
   현재 쓰기 준비 상태, 호환되는 프로젝트 범위를 가진 명확한 제품 파일 쓰기를 허용하면
   expected-write 상관 행을 기록합니다. 이 행은 프로젝트, 연결, 세션, 선택적 호스트
-  invocation 식별 정보, 도구 종류, 정확한 경로 정책, Task/Change Unit/Write Check
+  invocation 식별 정보, 도구 종류, 정확한 경로 정책, Task/Change Unit/쓰기 티켓
   근거, 타임스탬프 메타데이터를 담습니다. 읽기 전용 명령과 불확실한 명령은
   expected-write 행을 만들지 않습니다.
 - `post-tool`은 관찰된 도구 결과를 기록합니다. Event가 변경된 `Product Repository`
@@ -705,7 +705,7 @@ setup과 doctor JSON은 진단 소비자가 setup 동작 상태와 설치 프로
   명령이 미리 보여 주는 관리 통합 파일로 제한됩니다.
 - 기존 비관리 내용은 충돌입니다. CLI는 관련 없는 호스트 설정이나 제품 파일을 조용히
   교체하면 안 됩니다.
-- 포괄적 셸 승인, 쓰기 승인, 호스트 신뢰 결정, 민감 동작 승인, `Write Check`는 이
+- 포괄적 셸 승인, 쓰기 승인, 호스트 신뢰 결정, 민감 동작 승인, 쓰기 티켓은 이
   관리 계약이 요구하는 명시적 CLI 명령 경로를 대신하지 않습니다.
 - 호스트 신뢰, 프로젝트 신뢰, 프로젝트 MCP 승인, OAuth, restart, reload 동작은 계속
   사용자 통제 호스트 동작이며 CLI가 대신 제공할 수 없습니다.
@@ -713,7 +713,7 @@ setup과 doctor JSON은 진단 소비자가 setup 동작 상태와 설치 프로
 ## 관리 경계
 
 관리 CLI는 로컬 리소스를 초기화, 등록, 연결, 내보내기, 진단할 수 있습니다. 그 자체로
-공개 Volicord API 메서드를 만들지 않으며 Core 권한, Write Check 호환성, 증거 충분성,
+공개 Volicord API 메서드를 만들지 않으며 Core 권한, 쓰기 티켓 호환성, 증거 충분성,
 닫기 준비 상태, 사용자 소유 판단, 수락, 잔여 위험 수락, 아티팩트 권한, 보안 보장을
 만들지 않습니다.
 

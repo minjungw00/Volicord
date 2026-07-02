@@ -46,6 +46,10 @@ Guard health는 선택된 연결 또는 session에 대해 선택된 프로필과
 | `record` | Host hook이나 session watcher를 요구하지 않고 MCP 도구와 권한 기록을 사용할 수 있습니다. | 설정 안내와 policy 메타데이터가 호스트를 유도할 수 있지만 강제하지는 못합니다. |
 | `observe` | 프로젝트 로컬 host hook에 검증된 생성 설정, cwd-independent 및 subdirectory-safe hook 명령, native host output, 필수 phase, 쓰기 matcher, 일치하는 policy hash, 런타임 관찰, session watcher 관찰이 있습니다. | 협력형 pre-tool warning 또는 denial, post-tool 상관, prompt capture, guard 상태, 미기록 변경 찾기, 닫기/쓰기 차단 사유가 workflow에 참여할 수 있습니다. |
 
+`record`는 Core 메서드 workflow를 통해 Volicord 권한 쓰기 티켓을 발급할 수 있습니다.
+`observe`는 쓰기 티켓을 파일시스템 집행으로 바꾸지 않습니다. 대신 지원되는 hook과
+watcher 관찰을 더해 나중에 티켓 범위 쓰기 및 미기록 변경 찾기와 연결할 수 있습니다.
+
 Control-surface 요약은 host hook과 session watcher가 활성인지, 협력형 pre-tool warning이나
 denial이 사용 가능한지, 미기록 변경을 탐지할 수 있는지, 행위자 identity를 증명할 수 있는지,
 OS 집행이 제공되는지를 보고합니다. 현재 Volicord 출력은 행위자 identity 증명과 OS 집행을

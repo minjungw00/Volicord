@@ -67,7 +67,7 @@ This table summarizes the boundary roles in the baseline local Rust implementati
 
 May claim:
 - Product files can be inspected as inputs to owner-defined Volicord checks or user-owned judgments.
-- Compatible product-file writes can be governed by the current scope, current Change Unit, required judgments, and `Write Check` compatibility.
+- Compatible product-file writes can be governed by the current scope, current Change Unit, required judgments, and write-ticket compatibility.
 
 Must not claim:
 - `Product Repository` content is Volicord state.
@@ -121,7 +121,7 @@ Rules:
 
 Does not imply:
 - These path rules do not provide OS sandboxing, command blocking, network blocking, secret blocking, or baseline detective enforcement.
-- `Write Check` compatibility applies only to a proposed product-file change recorded through the Core-owned method path; it is not global filesystem interception, shell permission, command approval, or proof that a write occurred.
+- Write-ticket compatibility applies only to a proposed product-file change recorded through the Core-owned method path; it is not global filesystem interception, shell permission, command approval, or proof that a write occurred.
 - Method-specific compatibility decisions stay with API method owners.
 
 <a id="runtime-location-source-installation-processes"></a>
@@ -224,7 +224,7 @@ May claim:
 
 Must not claim:
 - A local path, directory name, copied identifier, rendered display, chat message, connector description, or agent memory proves Volicord authority.
-- Direct local modification outside documented Volicord contracts creates valid Volicord records, evidence, acceptance, residual-risk acceptance, `Write Check`, or artifact authority.
+- Direct local modification outside documented Volicord contracts creates valid Volicord records, evidence, acceptance, residual-risk acceptance, write ticket, or artifact authority.
 - The location of runtime data changes the security guarantee level by itself.
 
 ## Runtime location, storage, and security owners
@@ -271,7 +271,7 @@ Do not infer that:
 - [Security](security.md): security claims, non-claims, trust boundaries, and guarantee levels.
 - [Storage Records](storage-records.md), [Storage Effects](storage-effects.md), [Artifact Storage](storage-artifacts.md), and [Storage Versioning](storage-versioning.md): storage record layout, effects, artifacts, migrations, versioning, and runtime data details.
 - [API Methods](api/methods.md) and method owner documents: method routing and method behavior.
-- [Core Model](core-model.md): Core authority, User Channel judgment boundaries, `actor_source`, `Write Check`, acceptance, and residual risk.
+- [Core Model](core-model.md): Core authority, User Channel judgment boundaries, `actor_source`, write ticket, acceptance, and residual risk.
 - [Security](security.md): `operation_category`, security non-guarantees, and Agent Connection authority non-inference.
 - [Projection Authority Reference](projection-and-templates.md): projection authority and freshness boundaries.
 - [Template Bodies](template-bodies.md): rendered template body contracts.

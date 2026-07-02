@@ -35,7 +35,7 @@
 - 닫기 준비 상태 평가 전 요청 거절
 - 유효한 상태 변경 미리보기에 대한 공통 `dry_run` 미리보기 반환
 
-닫기는 보고서가 아니라 Core 상태 전이입니다. 이 메서드는 `intent=complete`에서 현재 닫기 근거를 평가합니다. 대화, 상태 텍스트, 종료 닫기 요약, 최종 수락만, 잔여 위험 수락만, 증거만, `Write Check`, 렌더링된 보기에서 닫기를 추론하지 않습니다.
+닫기는 보고서가 아니라 Core 상태 전이입니다. 이 메서드는 `intent=complete`에서 현재 닫기 근거를 평가합니다. 대화, 상태 텍스트, 종료 닫기 요약, 최종 수락만, 잔여 위험 수락만, 증거만, 쓰기 티켓, 렌더링된 보기에서 닫기를 추론하지 않습니다.
 
 ## 담당 경계
 
@@ -79,7 +79,7 @@ API 경계 블록:
 - `dry_run=false`인 상태 변경 `intent`에는 `null`이 아닌 `idempotency_key`와 현재 `expected_state_version`이 필요합니다.
 - 오래된 `expected_state_version`, 오래된 닫기 관련 `WriteCheck.basis_state_version`, 멱등 요청 해시 충돌은 닫기 준비 상태 평가 전에 거절됩니다.
 - 닫기 관련 `WriteCheck.basis_state_version`은 사전 확인 시 현재 `project_state.state_version`과 같지 않을 때 오래된 값입니다.
-- 닫기 관련 `Write Check` 최신성 확인은 쓰기 호환성 확인일 뿐입니다. 최종 수락, 잔여 위험 수락, 사용자 소유 판단, 민감 동작 승인, 포괄적 승인을 기록하지 않습니다.
+- 닫기 관련 쓰기 티켓 최신성 확인은 쓰기 호환성 확인일 뿐입니다. 최종 수락, 잔여 위험 수락, 사용자 소유 판단, 민감 동작 승인, 포괄적 승인을 기록하지 않습니다.
 
 닫기 조건:
 
@@ -149,7 +149,7 @@ CloseTaskRequest:
 | `intent=check` | 보호된 닫기 준비 상태 세부정보에는 `operation_category=read`인 확인된 호출 맥락이 필요합니다. |
 | 상태 변경 `intent` | `operation_category=agent_workflow`인 확인된 호출 맥락, 호환되는 `Task` 상태, 닫기 관련 담당 기록이 필요합니다. |
 
-이 메서드를 호출할 접근 권한은 사용자 소유 판단, 최종 수락, 잔여 위험 수락, 민감 동작 승인, `Write Check`과 별개입니다.
+이 메서드를 호출할 접근 권한은 사용자 소유 판단, 최종 수락, 잔여 위험 수락, 민감 동작 승인, 쓰기 티켓과 별개입니다.
 
 ## 메서드 흐름
 
@@ -220,7 +220,7 @@ CloseTaskRequest:
 | `pending_user_judgment` | `pending_user_judgment` | 필요한 사용자 소유 판단이 아직 대기 중이거나 해결되지 않았습니다. |
 | `missing_sensitive_approval` | `sensitive_approval` | 필요한 별도 민감 동작 승인이 없습니다. |
 | `missing_cancellation_authority` | `user_judgment` | `intent=cancel`에 현재 `Task`, 범위 리비전, Change Unit에 묶이고 `resolved_by_actor_source=local_user`, 호환 User Channel 출처를 가진 현재 수락된 사용자 취소 판단이 없습니다. |
-| `write_check_stale` | `write_compatibility` | 닫기 관련 `Write Check`이 `STATE_VERSION_CONFLICT`로 처리되지 않는 최신성 사유로 사용할 수 없습니다. |
+| `write_check_stale` | `write_compatibility` | 닫기 관련 쓰기 티켓 호환성 행이 `STATE_VERSION_CONFLICT`로 처리되지 않는 최신성 사유로 사용할 수 없습니다. |
 | `baseline_stale` | `baseline` | 닫기 관련 기준선 근거가 차단 사유 생성 경로에서 오래되었습니다. |
 | `guard_not_installed` | `connection_capability` | observe 닫기 경로에 확인된 연결에 대해 사용할 수 있는 guard 설치가 기록되어 있지 않습니다. |
 | `guard_reload_required` | `connection_capability` | guard 파일은 설치되어 있지만, Volicord가 설정된 hook을 관찰하기 전에 호스트를 restart 또는 reload해야 합니다. |
@@ -304,7 +304,7 @@ CloseTaskRequest:
 
 - `CloseTaskResult.blockers`를 반환하지 않습니다.
 - 닫기 효과를 만들지 않습니다.
-- `Write Check`, 최종 수락, 잔여 위험 수락, 증거, 아티팩트 상태를 만들지 않습니다.
+- 쓰기 티켓, 최종 수락, 잔여 위험 수락, 증거, 아티팩트 상태를 만들지 않습니다.
 
 공개 오류 의미, 우선순위, 응답 분기 처리 경로는 아래 오류 담당 문서가 담당합니다.
 

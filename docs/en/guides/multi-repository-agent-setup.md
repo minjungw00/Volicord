@@ -169,6 +169,6 @@ configuration when ownership and safety checks permit it.
   in public MCP tool calls unless the call is `volicord.list_projects`.
 - A `Product Repository` is a product-file boundary and may contain selected
   shared host configuration, but it is not Core authority.
-- `Write Check` is Core-state compatibility, not OS permission.
+- Write ticket is Volicord write-intent authority, not OS permission or proof that a write occurred.
 - Volicord does not provide OS sandboxing, filesystem ACLs, network policy, or
   secret isolation.

@@ -501,7 +501,7 @@ Rules:
 `volicord guard` commands are local hook entry points for hosts that can run a
 command during agent lifecycle events. They inspect registered project state,
 record host-observation events, and return a machine-readable local decision.
-They do not replace Core methods, user-owned judgments, `Write Check`,
+They do not replace Core methods, user-owned judgments, write tickets,
 close-readiness checks, host trust, shell approval, or OS-level sandboxing.
 
 Each guard command reads one JSON hook event from stdin by default. `--file PATH`
@@ -596,12 +596,12 @@ owner-defined policy says otherwise.
 Lifecycle behavior:
 
 - `session-start` records or reuses the Agent Session and returns
-  `inject_context` with concise project, active task, Write Check, pending
+  `inject_context` with concise project, active task, write-ticket, pending
   judgment, blocker, and unresolved-change context for host-session injection.
 - `pre-tool` classifies read-only, clearly mutating, and uncertain tool
   attempts. Read and status commands are allowed without creating blockers. A
   product-file write attempt may return `deny` or `warn` when there is no active
-  task, no current active `Write Check`, an attempted target is outside the
+  task, no current active write-ticket row, an attempted target is outside the
   selected Product Repository, or policy blocks a clearly mutating shell
   command. Uncertain shell commands default to `warn` unless guard policy asks
   for `deny`. When pre-tool allows a clearly mutating product-file write with a
@@ -783,7 +783,7 @@ Rules:
 - Existing unmanaged content is a conflict. The CLI must not silently replace
   unrelated host configuration or product files.
 - A broad shell approval, write approval, host trust decision, sensitive-action
-  approval, or `Write Check` does not substitute for the explicit CLI command
+  approval, or write ticket does not substitute for the explicit CLI command
   path required by this administrative contract.
 - Host trust, project trust, project MCP approval, OAuth, restart, and reload
   actions remain user-controlled host actions and cannot be supplied by the CLI.
@@ -792,7 +792,7 @@ Rules:
 
 The administrative CLI can initialize, register, connect, export, and diagnose
 local resources. It does not create public Volicord API methods and does not by
-itself create Core authority, Write Check compatibility, evidence sufficiency,
+itself create Core authority, write-ticket compatibility, evidence sufficiency,
 close readiness, user-owned judgment, acceptance, residual-risk acceptance,
 artifact authority, or security guarantees.
 

@@ -82,7 +82,7 @@ A committed non-dry-run request requires:
 
 A committed non-dry-run result increments `project_state.state_version` exactly once.
 
-Core marks a `status=active` `Write Check` `status=stale` when its basis no longer matches:
+Core marks a `status=active` write-ticket compatibility row `status=stale` when its basis no longer matches:
 
 - current scope
 - baseline
@@ -92,7 +92,7 @@ Core marks a `status=active` `Write Check` `status=stale` when its basis no long
 - currently applied Change Unit
 - project state
 
-Non-claim: `status=stale` does not consume, revoke, expire, or silently reuse the `Write Check`.
+Non-claim: `status=stale` does not consume, revoke, expire, or silently reuse the write-ticket compatibility row.
 
 ## Success result
 
@@ -103,7 +103,7 @@ Returns `UpdateScopeResult` with:
 - `task_ref`
 - optional `change_unit_ref`
 - linked scope-decision refs
-- stale `Write Check` refs
+- stale write-ticket refs
 - blocker refs
 - current `state`
 - `next_actions`
@@ -118,12 +118,12 @@ Returns `UpdateScopeResult` with:
 | `task_ref` | `StateRecordRef` for the Task updated by the scope result. |
 | `change_unit_ref` | `StateRecordRef | null` for the currently applied Change Unit after the operation, or `null` when no current Change Unit applies. |
 | `linked_scope_decision_refs` | `StateRecordRef[]` for `scope_decision` user judgments applied by the update. |
-| `stale_write_check_refs` | `StateRecordRef[]` for `Write Check` records made stale by the committed update. Storage effects and versioning own the persistence detail. |
+| `stale_write_check_refs` | `StateRecordRef[]` for write-ticket compatibility records made stale by the committed update. Storage effects and versioning own the persistence detail. |
 | `blocker_refs` | `StateRecordRef[]` for method-owned blockers committed or still relevant to the update. |
 | `state` | Current `StateSummary` after the scope update, including current scope and currently applied Change Unit display fields. |
 | `next_actions` | `NextActionSummary[]` describing the next safe API steps. |
 
-The supported `change_unit.operation` values are owned by [API Value Sets](schema-value-sets.md#method-local-values). This method owns how each operation is reflected in `change_unit_ref`, `state.active_change_unit_ref`, stale `Write Check` refs, blocker refs, and `next_actions`.
+The supported `change_unit.operation` values are owned by [API Value Sets](schema-value-sets.md#method-local-values). This method owns how each operation is reflected in `change_unit_ref`, `state.active_change_unit_ref`, stale write-ticket refs, blocker refs, and `next_actions`.
 
 When `change_unit.operation=create_current` or `change_unit.operation=replace_current`, `change_unit.effect_contract` may be recorded on the new current Change Unit. The effect contract is optional Core state. It can express allowed effects, forbidden effects, allowed Product Repository paths, expected outputs, invariants, evidence expectations, and sensitive-action expectations without creating a workflow engine or replacing user-owned authority records.
 
@@ -166,11 +166,11 @@ Public error code meaning, precedence, and rejected-response routing are owned b
 For `dry_run=true`, a valid state-effecting preview:
 
 - returns `ToolDryRunResponse`
-- creates no scope, Change Unit, blocker, or `Write Check` state
+- creates no scope, Change Unit, blocker, or write-ticket state
 
 ## Storage effect
 
-On commit, the method may persist scope-owned current state and stale `Write Check` consequences. Exact storage effects are owned by the storage documents linked below.
+On commit, the method may persist scope-owned current state and stale write-ticket consequences. Exact storage effects are owned by the storage documents linked below.
 
 The examples are intentionally compact and method-local. The representative response is abbreviated to the fields needed to show the update-scope branch, refs, state version, current scope, current Change Unit, lifecycle, and next action.
 
@@ -309,4 +309,4 @@ next_actions:
 - Scope-related user judgment shapes: [API Judgment Schemas](schema-judgment.md).
 - Supported value sets, `change_unit.operation` meanings, and operation categories: [API Value Sets](schema-value-sets.md#operation-category-values).
 - Public errors, precedence, and rejected-response routing: [API error codes](error-codes.md), [API error precedence](error-precedence.md), and [API error routing](error-routing.md).
-- Persistence effects and stale Write Check behavior: [Storage Effects](../storage-effects.md) and [Storage Versioning](../storage-versioning.md).
+- Persistence effects and stale write-ticket behavior: [Storage Effects](../storage-effects.md) and [Storage Versioning](../storage-versioning.md).

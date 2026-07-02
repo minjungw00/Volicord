@@ -16,14 +16,14 @@ This document does not own:
 
 - common request envelope, response branch, dry-run, or rejected-response schema bodies
 - `UserJudgment`, option, context, answer payload, value-set, or status field definitions
-- Core user-owned judgment meaning, final acceptance meaning, residual-risk meaning, sensitive-action approval meaning, or `Write Check` meaning
+- Core user-owned judgment meaning, final acceptance meaning, residual-risk meaning, sensitive-action approval meaning, or write-ticket meaning
 - storage record layouts, exact storage effects, public error code meaning, public error precedence, or shared response-branch routing
 
 ## Purpose
 
 `volicord.request_user_judgment` creates one pending `UserJudgment` for a focused user-owned judgment. It asks the user; the agent must not answer, infer, broaden, or decide the judgment for the user.
 
-The pending judgment is a request for a decision. It is not the decision itself, does not create evidence, does not change current scope, does not create `Write Check`, and does not close a `Task`.
+The pending judgment is a request for a decision. It is not the decision itself, does not create evidence, does not change current scope, does not create a write ticket, and does not close a `Task`.
 
 When this method creates a pending judgment, Core derives a `JudgmentBasis` from current state. Callers do not submit `basis`, `scope_revision`, `close_basis_revision`, session-binding fields, adapter-derived invocation context such as `actor_source`, `operation_category`, or `connection.mode`, verified actor context, machine action, resolution outcome, or current close-basis authority fields.
 

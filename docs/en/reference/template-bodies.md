@@ -50,7 +50,7 @@ Their meanings, precedence, routing, storage effects, and schema authority remai
 
 Template wording must not, by itself:
 
-- create `Write Check` or mutate owner records
+- create write tickets or mutate owner records
 - create evidence, persistent artifacts, final acceptance, or residual-risk acceptance
 - satisfy evidence, QA, verification, acceptance, close-readiness, or close gates
 - define storage layout, storage effects, or make a rendered body the storage authority
@@ -180,13 +180,13 @@ Recovery cue:
 - Request the needed user judgment.
 
 <a id="label-write-check"></a>
-### Write Check
+### Write Ticket
 
 Label-selection input:
 - `WRITE_CHECK_REQUIRED` or `WRITE_CHECK_INVALID`.
 
 Suggested label:
-- missing or unusable pre-write check
+- missing or unusable write ticket
 
 Recovery cue:
 - Call or retry `volicord.prepare_write` for the exact operation, current scope, and current state.
@@ -314,7 +314,7 @@ Recovery cue:
 
 ### Must not imply
 
-- The card creates `Write Check`, records evidence, accepts risk, or closes the Task.
+- The card creates write tickets, records evidence, accepts risk, or closes the Task.
 - A green or positive label is a canonical enum value without support from [API Value Sets](api/schema-value-sets.md).
 - Artifact availability alone proves evidence sufficiency.
 - Missing source data can be replaced by optimistic wording.
@@ -354,7 +354,7 @@ Otherwise, avoid those words.
 
 ### Must show
 
-- One focused decision request that separates the user's answer from evidence, acceptance, residual-risk acceptance, and `Write Check`.
+- One focused decision request that separates the user's answer from evidence, acceptance, residual-risk acceptance, and write ticket.
 - The exact question the user is being asked to decide.
 - Why this is a user-owned judgment rather than an agent inference.
 - Options that are short, distinct, and compatible with the current facts.
@@ -518,7 +518,7 @@ Use `Closed by owner result` only when `volicord.close_task` returned an actual 
 
 - The packet is Core state, storage state, evidence, acceptance, residual-risk acceptance, or close output.
 - A stale packet overrides newer state returned by an owner method.
-- The agent may bypass user judgment, `Write Check`, artifact rules, or close blockers.
+- The agent may bypass user judgment, write-ticket, artifact rules, or close blockers.
 - The packet should include full schemas, DDL, logs, artifact bodies, or unrelated contract material by default.
 - The packet should include out-of-scope capability catalogs or paired bilingual docs by default.
 

@@ -94,9 +94,9 @@ Apply the terminology map's distinctions, including:
 - Use "current scope" or "currently applied scope" in prose context, and
   "현재 적용 범위" in Korean. Preserve exact identifiers and status values that
   contain `active`.
-- Keep the exact label `Write Check` distinct from ordinary write
-  approval. In Korean explanatory prose, use "쓰기 확인" for
-  `Write Check` and "쓰기 승인" for ordinary write approval.
+- Keep write ticket distinct from ordinary write approval. In Korean
+  explanatory prose, use "쓰기 티켓" for the product concept and preserve
+  `Write Check` only for exact legacy identifiers or schema names.
 - In Korean reference prose, use "닫기 준비 상태" for close readiness.
 
 Some English words can be both code values and ordinary prose. Preserve

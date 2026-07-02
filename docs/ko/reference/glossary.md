@@ -40,9 +40,9 @@
 | evidence | 증거 | 특정 범위에서 특정 주장을 뒷받침하는 기록입니다. | [Core 모델](core-model.md) |
 | verification criteria | 검증 기준 | 작업을 확인하기 위해 사용자가 볼 수 있는 기준입니다. | [Core 모델](core-model.md) |
 | artifact | 아티팩트 | Volicord 아티팩트 개념으로 참조되거나 스테이징되는 작업 자료입니다. | [API 아티팩트 스키마](api/schema-artifacts.md) |
-| `Write Check` | 쓰기 확인 | 제안된 제품 파일 변경 하나에 대한 지속 Core 상태 호환성 기록입니다. | [Core 모델](core-model.md) |
-| write approval | 쓰기 승인 | 쓰기를 승인한다는 일반 사용자 승인이나 산문 표현입니다. `Write Check`와 구분됩니다. | [Core 모델](core-model.md) |
-| sensitive-action approval | 민감 동작 승인 | 이름 붙은 민감 단계에 대한 사용자 승인이며, `Write Check`와 최종 수락과 구분됩니다. | [Core 모델](core-model.md) |
+| write ticket | 쓰기 티켓 | 제안된 제품 파일 변경 하나에 대한 권한 있는 쓰기 의도를 기록하는 지속 Core 권한 기록입니다. | [Core 모델](core-model.md) |
+| write approval | 쓰기 승인 | 쓰기를 승인한다는 일반 사용자 승인이나 산문 표현입니다. 쓰기 티켓과 구분됩니다. | [Core 모델](core-model.md) |
+| sensitive-action approval | 민감 동작 승인 | 이름 붙은 민감 단계에 대한 사용자 승인이며, 쓰기 티켓과 최종 수락과 구분됩니다. | [Core 모델](core-model.md) |
 | final acceptance | 최종 수락 | 보이는 닫기 근거를 받아들일 수 있는지에 대한 사용자 소유 판단입니다. | [Core 모델](core-model.md) |
 | residual-risk acceptance | 잔여 위험 수락 | 이름 붙은 보이는 잔여 위험에 대한 사용자 소유 판단입니다. | [Core 모델](core-model.md) |
 | close readiness | 닫기 준비 상태 | 현재 상태에서 `Task`를 닫을 준비가 되었는지를 나타내는 Core 개념입니다. | [Core 모델](core-model.md) |

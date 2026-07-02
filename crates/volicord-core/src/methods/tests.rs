@@ -2352,7 +2352,7 @@ fn material_scope_update_invalidates_scope_decisions_atomically() -> Result<(), 
 }
 
 #[test]
-fn prepare_write_allowed_creates_one_write_check_with_post_commit_basis(
+fn prepare_write_allowed_issues_one_write_ticket_with_post_commit_basis(
 ) -> Result<(), Box<dyn Error>> {
     let mut harness = MethodHarness::new()?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "prepare_allowed")?;
@@ -2403,8 +2403,67 @@ fn prepare_write_allowed_creates_one_write_check_with_post_commit_basis(
 
     assert_eq!(response.response_value["decision"], "allowed");
     assert_authority_disclosure(&response.response_value);
-    assert_eq!(response.response_value["write_check_effect"], "created");
+    assert_eq!(response.response_value["write_ticket_effect"], "issued");
+    let write_ticket_id = response.response_value["write_ticket_id"]
+        .as_str()
+        .expect("prepare_write should return a write ticket id")
+        .to_owned();
+    assert_eq!(
+        response.response_value["write_ticket_ref"]["record_kind"],
+        "write_ticket"
+    );
+    assert_eq!(
+        response.response_value["write_ticket_ref"]["record_id"],
+        write_ticket_id
+    );
+    assert_eq!(
+        response.response_value["write_ticket"]["write_ticket_id"],
+        write_ticket_id
+    );
+    assert_eq!(
+        response.response_value["write_ticket"]["write_ticket_ref"],
+        response.response_value["write_ticket_ref"]
+    );
+    assert_eq!(response.response_value["write_ticket"]["state"], "open");
+    assert_eq!(
+        response.response_value["write_ticket"]["scope"]["task_id"],
+        task_id
+    );
+    assert_eq!(
+        response.response_value["write_ticket"]["scope"]["change_unit_id"],
+        change_unit_id
+    );
+    assert_eq!(
+        response.response_value["write_ticket"]["path_patterns"]["allowed"],
+        json!(["src/export.rs"])
+    );
+    assert_eq!(
+        response.response_value["write_ticket"]["path_patterns"]["denied"],
+        json!([])
+    );
+    assert_eq!(
+        response.response_value["allowed_path_patterns"],
+        json!(["src/export.rs"])
+    );
+    assert_eq!(response.response_value["denied_path_patterns"], json!([]));
+    assert_eq!(
+        response.response_value["write_ticket"]["observed_paths"],
+        json!([])
+    );
+    assert_eq!(
+        response.response_value["write_ticket"]["basis_state_version"],
+        5
+    );
+    assert_eq!(
+        response.response_value["write_ticket"]["control_surface"],
+        response.response_value["control_surface"]
+    );
+    assert_eq!(
+        response.response_value["control_surface"]["os_enforced"],
+        false
+    );
     assert_eq!(response.response_value["base"]["state_version"], 5);
+    assert_eq!(response.response_value["write_check_effect"], "created");
     assert_eq!(
         response.response_value["write_check"]["basis_state_version"],
         5
@@ -2424,11 +2483,16 @@ fn prepare_write_allowed_creates_one_write_check_with_post_commit_basis(
     assert_eq!(after.write_checks, before.write_checks + 1);
     assert_eq!(after.task_events, before.task_events + 1);
     assert_eq!(after.tool_invocations, before.tool_invocations + 1);
-    let write_check_id = response_record_id(&response.response_value, "write_check_ref");
-    assert_eq!(write_check_basis(&harness, &write_check_id)?, 5);
-    let (created_at, expires_at) = write_check_timestamps(&harness, &write_check_id)?;
+    let compat_write_check_id = response_record_id(&response.response_value, "write_check_ref");
+    assert_eq!(write_ticket_id, compat_write_check_id);
+    assert_eq!(write_check_basis(&harness, &compat_write_check_id)?, 5);
+    let (created_at, expires_at) = write_check_timestamps(&harness, &compat_write_check_id)?;
     assert_eq!(created_at, "2026-06-18T00:00:00Z");
     assert_eq!(expires_at, "2026-06-18T00:15:00Z");
+    assert_eq!(
+        response.response_value["write_ticket"]["expires_at"],
+        expires_at
+    );
     assert_eq!(
         response.response_value["write_check"]["expires_at"],
         expires_at
@@ -2695,7 +2759,7 @@ fn effect_contract_does_not_replace_sensitive_approval() -> Result<(), Box<dyn E
 }
 
 #[test]
-fn prepare_write_blocked_path_creates_no_write_check() -> Result<(), Box<dyn Error>> {
+fn prepare_write_blocked_path_issues_no_write_ticket() -> Result<(), Box<dyn Error>> {
     let mut harness = MethodHarness::new()?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "prepare_path")?;
     let id_generator = CountingDurableIdGenerator::new(["prepare_blocked_event"]);
@@ -2718,6 +2782,15 @@ fn prepare_write_blocked_path_creates_no_write_check() -> Result<(), Box<dyn Err
 
     assert_eq!(response.response_value["decision"], "blocked");
     assert_prepare_reason(&response.response_value, "path_out_of_scope");
+    assert!(response.response_value["write_ticket_id"].is_null());
+    assert!(response.response_value["write_ticket"].is_null());
+    assert!(response.response_value["write_ticket_ref"].is_null());
+    assert_eq!(response.response_value["write_ticket_effect"], "none");
+    assert_eq!(response.response_value["allowed_path_patterns"], json!([]));
+    assert_eq!(
+        response.response_value["denied_path_patterns"],
+        json!(["src/other.rs"])
+    );
     assert!(response.response_value["write_check"].is_null());
     assert!(response.response_value["write_check_ref"].is_null());
     assert_eq!(response.response_value["write_check_effect"], "none");
@@ -3090,7 +3163,7 @@ fn prepare_write_missing_sensitive_approval_requires_approval() -> Result<(), Bo
 }
 
 #[test]
-fn prepare_write_baseline_mismatch_blocks_write_check() -> Result<(), Box<dyn Error>> {
+fn prepare_write_baseline_mismatch_blocks_write_ticket() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "prepare_baseline")?;
     let before = harness.counts()?;
@@ -3110,6 +3183,9 @@ fn prepare_write_baseline_mismatch_blocks_write_check() -> Result<(), Box<dyn Er
 
     assert_eq!(response.response_value["decision"], "blocked");
     assert_prepare_reason(&response.response_value, "baseline_mismatch");
+    assert!(response.response_value["write_ticket_id"].is_null());
+    assert!(response.response_value["write_ticket"].is_null());
+    assert_eq!(response.response_value["write_ticket_effect"], "none");
     assert_eq!(after.write_checks, before.write_checks);
     Ok(())
 }
@@ -3195,7 +3271,7 @@ fn prepare_write_uses_agent_workflow_invocation_without_extra_profile() -> Resul
 }
 
 #[test]
-fn prepare_write_product_write_flag_mismatch_blocks_write_check() -> Result<(), Box<dyn Error>> {
+fn prepare_write_product_write_flag_mismatch_blocks_write_ticket() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "prepare_flag")?;
     let before = harness.counts()?;
@@ -3215,12 +3291,15 @@ fn prepare_write_product_write_flag_mismatch_blocks_write_check() -> Result<(), 
 
     assert_eq!(response.response_value["decision"], "blocked");
     assert_prepare_reason(&response.response_value, "product_write_flag_mismatch");
+    assert!(response.response_value["write_ticket_id"].is_null());
+    assert!(response.response_value["write_ticket"].is_null());
+    assert_eq!(response.response_value["write_ticket_effect"], "none");
     assert_eq!(after.write_checks, before.write_checks);
     Ok(())
 }
 
 #[test]
-fn prepare_write_dry_run_has_no_write_check_effect() -> Result<(), Box<dyn Error>> {
+fn prepare_write_dry_run_has_no_write_ticket_effect() -> Result<(), Box<dyn Error>> {
     let mut harness = MethodHarness::new()?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "prepare_dry")?;
     let id_generator = CountingDurableIdGenerator::new(Vec::<&str>::new());
@@ -3242,9 +3321,21 @@ fn prepare_write_dry_run_has_no_write_check_effect() -> Result<(), Box<dyn Error
         .prepare_write(request, invocation(OperationCategory::AgentWorkflow))?;
 
     assert_eq!(response.response_value["base"]["response_kind"], "dry_run");
+    assert!(
+        response.response_value.get("write_ticket_id").is_none(),
+        "dry-run response must not include a committed write ticket id"
+    );
+    assert!(
+        !response.response_json.contains("write_ticket_id"),
+        "dry-run response must not serialize committed write ticket fields"
+    );
     assert_eq!(
         response.response_value["dry_run_summary"]["planned_effects"][0]["action"],
-        "would_create"
+        "would_issue"
+    );
+    assert_eq!(
+        response.response_value["dry_run_summary"]["planned_effects"][0]["target_kind"],
+        "write_ticket"
     );
     assert_eq!(harness.counts()?, before);
     assert_eq!(
@@ -3363,7 +3454,7 @@ fn prepare_write_stale_state_rejects_without_effect() -> Result<(), Box<dyn Erro
 }
 
 #[test]
-fn prepare_write_idempotency_replays_without_second_write_check() -> Result<(), Box<dyn Error>> {
+fn prepare_write_idempotency_replays_without_second_write_ticket() -> Result<(), Box<dyn Error>> {
     let mut harness = MethodHarness::new()?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "prepare_replay")?;
     let id_generator =
@@ -3389,14 +3480,19 @@ fn prepare_write_idempotency_replays_without_second_write_check() -> Result<(), 
         .prepare_write(request, invocation(OperationCategory::AgentWorkflow))?;
 
     assert_eq!(first.response_value["decision"], "allowed");
+    assert_eq!(first.response_value["write_ticket_effect"], "issued");
+    assert_eq!(
+        second.response_value["write_ticket_id"],
+        first.response_value["write_ticket_id"]
+    );
     assert!(second.replayed);
     assert_eq!(second.response_json, first.response_json);
     assert_eq!(harness.counts()?, after_first);
     assert_eq!(write_check_count(&harness)?, 1);
     assert_eq!(id_generator.count(DurableIdKind::WriteCheck), 1);
     assert_eq!(
-        second.response_value["write_check"]["expires_at"],
-        first.response_value["write_check"]["expires_at"]
+        second.response_value["write_ticket"]["expires_at"],
+        first.response_value["write_ticket"]["expires_at"]
     );
     Ok(())
 }

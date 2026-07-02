@@ -96,7 +96,7 @@ Related owner:
 | Conflict case | Detail section |
 |---|---|
 | stale `expected_state_version` | [Stale `expected_state_version`](#state-conflict-expected-state-version) |
-| stale `WriteCheck.basis_state_version` | [Stale `Write Check` basis](#state-conflict-write-check-basis) |
+| stale `WriteCheck.basis_state_version` | [Stale write-ticket basis](#state-conflict-write-check-basis) |
 | idempotency request-hash conflict | [Idempotency request-hash conflict](#state-conflict-idempotency-hash) |
 
 For precedence, these conflict cases select `STATE_VERSION_CONFLICT` as a project-wide pre-commit freshness or idempotency conflict.
@@ -126,7 +126,7 @@ Detail fields:
 - Use [State conflict detail fields](error-details.md#state-conflict-detail-fields).
 
 <a id="state-conflict-write-check-basis"></a>
-### Stale `Write Check` basis
+### Stale write-ticket basis
 
 Condition:
 - Before consumption, `WriteCheck.basis_state_version` does not equal the current `project_state.state_version`.
@@ -138,16 +138,16 @@ Response path:
 - `ToolRejectedResponse.errors[]`
 
 Consumption boundary:
-- The stale `Write Check` is not consumed.
+- The stale write-ticket row is not consumed.
 - The rejected attempt creates no consumption-side state changes.
 
 Detail fields:
 - Use [State conflict detail fields](error-details.md#state-conflict-detail-fields).
 
-### Expired `Write Check`
+### Expired write-ticket row
 
 Condition:
-- Before consumption, the `Write Check` is expired under the effective expiration rule owned by [`volicord.record_run`](method-record-run.md) and [`volicord.prepare_write`](method-prepare-write.md), and `WriteCheck.basis_state_version` is not stale.
+- Before consumption, the write-ticket row is expired under the effective expiration rule owned by [`volicord.record_run`](method-record-run.md) and [`volicord.prepare_write`](method-prepare-write.md), and `WriteCheck.basis_state_version` is not stale.
 
 Public code:
 - `WRITE_CHECK_INVALID`

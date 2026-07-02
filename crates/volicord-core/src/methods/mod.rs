@@ -18,8 +18,8 @@ use volicord_store::{
         StoredArtifactStagingRecord, StoredRecordRef, TaskCloseBasisUpdate, TaskCloseUpdate,
         TaskInsert, TaskRecord, TaskScopeRevisionUpdate, TaskScopeUpdate,
         UnrecordedChangeResolutionUpdate, UserJudgmentInsert, UserJudgmentInvalidation,
-        UserJudgmentRecord, UserJudgmentResolutionUpdate, WriteCheckConsumption, WriteCheckInsert,
-        WriteCheckRecord,
+        UserJudgmentRecord, UserJudgmentResolutionUpdate, WriteCheckConsumption, WriteCheckRecord,
+        WriteTicketInsert,
     },
     guards::{GuardHealthRecord, UnrecordedChangeRecord},
     StoreError,
@@ -55,7 +55,8 @@ use volicord_types::{
     UserJudgmentOptionAction, UserJudgmentOptionId, UserJudgmentOptionInput,
     UserJudgmentResolution, UserJudgmentStatus, UtcTimestamp, WriteCheckAttemptScope,
     WriteCheckEffect, WriteCheckId, WriteCheckStateSummary, WriteCheckStatus, WriteCheckSummary,
-    WriteDecisionCategory, WriteDecisionReason,
+    WriteDecisionCategory, WriteDecisionReason, WriteTicket, WriteTicketEffect, WriteTicketId,
+    WriteTicketPathPatterns, WriteTicketScope, WriteTicketState,
 };
 
 use crate::pipeline::{

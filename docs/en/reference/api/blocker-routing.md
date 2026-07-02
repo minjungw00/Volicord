@@ -80,7 +80,7 @@ This document only defines the boundary between the blocker data returned by tha
 Blocker routing classifies close-readiness blocker data. It does not create or replace:
 
 - final acceptance or residual-risk acceptance
-- user-owned judgment, sensitive-action approval, or `Write Check`
+- user-owned judgment, sensitive-action approval, or write ticket
 - evidence sufficiency or artifact availability
 - close completion or terminal `Task` state
 - blocker persistence or state-version increments

@@ -8,7 +8,7 @@ This document owns:
 
 - baseline SQLite table shape for `registry.sqlite` and project `state.sqlite`
 - baseline indexes, foreign keys, migration tables, and physical constraints
-- SQLite constraints for `project_state.state_version`, replay rows, current Change Unit uniqueness, Write Check basis versions, staged artifact provenance, and host-observation records
+- SQLite constraints for `project_state.state_version`, replay rows, current Change Unit uniqueness, write-ticket basis versions, staged artifact provenance, and host-observation records
 - the DDL-level split between Runtime Home registration data and project-local Core state
 
 This document does not own:
@@ -29,7 +29,7 @@ SQLite foreign keys are part of this DDL contract. Every connection that reads o
 PRAGMA foreign_keys = ON;
 ```
 
-Mutating transactions must use `BEGIN IMMEDIATE` or an equivalent serialized write boundary before reading freshness, Write Check, staging, or replay rows for a state-changing commit.
+Mutating transactions must use `BEGIN IMMEDIATE` or an equivalent serialized write boundary before reading freshness, write-ticket compatibility rows, staging, or replay rows for a state-changing commit.
 
 Baseline authority rows remain addressable unless an owning storage or migration contract defines a repair or retention path. The registry may cascade-delete non-authority alias rows that are owned by a forgotten project registration; it must not use alias cleanup to imply deletion of project-local Core authority records.
 
@@ -37,7 +37,7 @@ SQLite `TEXT` columns ending in `_json` store JSON as a representation choice. J
 
 `project_state.state_version` is the only public baseline state clock. Baseline SQLite DDL must not create `tasks.state_version`.
 
-Write Check rows record Core-state compatibility for a product-file write attempt. They are not OS permissions, filesystem ACLs, sandboxing, network policy, or secret isolation.
+The physical `write_checks` table stores write-ticket authority records for product-file write attempts. These rows record Volicord-authorized write intent and compatibility state; they are not OS permissions, filesystem ACLs, sandboxing, network policy, secret isolation, global filesystem interception, or proof that a write occurred.
 
 ## `registry.sqlite`
 
@@ -540,6 +540,14 @@ CREATE TABLE write_checks (
 CREATE UNIQUE INDEX idx_write_checks_consumed_run
   ON write_checks (project_id, consumed_by_run_id)
   WHERE consumed_by_run_id IS NOT NULL;
+
+Storage status values map to the public write-ticket lifecycle as follows:
+`status=active` exposes an open ticket, `status=consumed` exposes a closed
+consumed ticket path where the owning API selects that view, `status=expired`
+exposes expiration, and `status=stale` or `status=revoked` removes current
+compatibility and may be surfaced as revoked/stale compatibility by the owning
+method. Observe-profile host hooks and session watchers may create separate
+observation records; this table by itself is not host-hook enforcement.
 
 CREATE TABLE runs (
   project_id TEXT NOT NULL,
@@ -1121,7 +1129,7 @@ Project-state constraints:
 - `authority_events.operation_category` and `tool_invocations.operation_category` are constrained to `read`, `agent_workflow`, `user_only`, `admin_local`, or `local_recovery`.
 - `authority_events.request_hash` stores the request identity for the committed authority event. `previous_event_hash` and `event_hash` store a local hash chain for integrity checking and export correlation; they are not tamper-proof audit guarantees.
 - User judgment rows store User Channel provenance for authority-bearing resolution. `status='resolved'` records that an answer exists; approval meaning comes from the stored machine action, outcome, basis, provenance, and method owner.
-- `write_checks` records single-use Core-state write compatibility. The unique indexes on `write_checks.consumed_by_run_id` and `runs.write_check_id` prevent one Write Check consumption from forking across multiple runs.
+- `write_checks` records single-use write-ticket compatibility. The unique indexes on `write_checks.consumed_by_run_id` and `runs.write_check_id` prevent one write-ticket consumption from forking across multiple runs.
 - `artifact_staging.created_by_actor_source` records staging provenance. Staged bytes and notices remain artifact-owned and are not evidence authority by themselves.
 - `evidence_observations.source_kind` and `assurance_level` distinguish cooperative agent reports, registered connection observations, external tool results, user observations, reused evidence, and unverified claims.
 - `tool_invocations` stores replay rows with actor provenance and operation category. Replay rows are not caller authority and do not bypass current connection context or User Channel requirements.

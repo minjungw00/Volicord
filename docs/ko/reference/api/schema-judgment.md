@@ -39,7 +39,7 @@
 
 `UserJudgmentOptionInput`과 `UserJudgmentOption`은 서로 다른 형태입니다. `UserJudgmentOptionInput`은 메서드가 호출자 작성 선택지를 허용하는 곳에서만 쓰는 호출자 요청 입력입니다. `UserJudgmentOption`은 Core가 소유한 상태 또는 출력입니다.
 
-`RecordUserJudgmentPayload`는 현재 적용 범위, 증거, `Write Check`, 닫기 결과, 넓은 승인에 대한 스키마가 아닙니다.
+`RecordUserJudgmentPayload`는 현재 적용 범위, 증거, 쓰기 티켓, 닫기 결과, 넓은 승인에 대한 스키마가 아닙니다.
 
 `JudgmentRationale`은 설명 메타데이터입니다. 사용자가 볼 수 있는 이유와 검토 맥락을 보존하지만 권한 출처가 아니며, 선택된 선택지, 결과, 행위자 출처, 근거 호환성을 덮어쓸 수 없습니다.
 
@@ -192,7 +192,7 @@ JudgmentRationale:
 
 `machine_action`과 `resolution_outcome`은 선택된 `UserJudgmentOption`에서 복사됩니다. 선택된 선택지의 저장 동작과 결과가 기준이며 동작/결과 매핑과 일치해야 합니다. `answer` 안의 결과, 결정, 수락 필드는 선택된 선택지와 일치해야 합니다. 자유 형식 답변 텍스트는 권한을 부여할 수 없습니다.
 
-판단 이유 텍스트는 권한을 부여하거나, `Write Check`을 만들거나, 증거 요구사항을 만족하거나, 최종 수락을 성립시키거나, 잔여 위험을 수락하거나, 오래된 판단을 현재 것으로 만들거나, 어떤 선택지가 선택되었는지를 바꿀 수 없습니다.
+판단 이유 텍스트는 권한을 부여하거나, 쓰기 티켓을 만들거나, 증거 요구사항을 만족하거나, 최종 수락을 성립시키거나, 잔여 위험을 수락하거나, 오래된 판단을 현재 것으로 만들거나, 어떤 선택지가 선택되었는지를 바꿀 수 없습니다.
 
 `resolved_by_actor_source`는 `ActorSource` 값 집합을 사용합니다. [행위자 출처 값](schema-value-sets.md#actor-source-values)을 보세요. 이는 자유 형식 호출자 귀속이 아니라 파생된 출처를 기록합니다. 권한을 지니는 사용자 판단 해결에는 호환 User Channel 출처와 함께 `resolved_by_actor_source=local_user`가 필요합니다.
 
@@ -214,7 +214,7 @@ JudgmentRationale:
 
 ## `SensitiveActionScope`
 
-`SensitiveActionScope`는 이름 붙은 민감 동작 승인 맥락의 스키마 형태입니다. `WriteCheckAttemptScope`도 아니고, `Write Check`도 아니며, 보안 권한도 아닙니다. [보안](../security.md)을 확인하세요.
+`SensitiveActionScope`는 이름 붙은 민감 동작 승인 맥락의 스키마 형태입니다. `WriteCheckAttemptScope`도 아니고, 쓰기 티켓도 아니며, 보안 권한도 아닙니다. [보안](../security.md)을 확인하세요.
 
 ```yaml
 SensitiveActionScope:
