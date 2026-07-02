@@ -61,7 +61,8 @@ Why it exists:
 `volicord-types` is the shared Rust type boundary for public API and
 domain-shaped values. It gives adapters, Core, Store, and tests one place to
 use the same serde models, JsonSchema generation, controlled value types,
-opaque identifiers, and canonical request hashing.
+MCP-visible tool-name constants, opaque identifiers, and canonical request
+hashing.
 
 Owns in the implementation:
 
@@ -71,6 +72,8 @@ Owns in the implementation:
   `EvidenceSummary`, `CloseReadinessBlocker`, and `ArtifactRef`.
 - Controlled value enums such as `MethodName`, `OperationCategory`, `EffectKind`,
   `ResponseKind`, `ResumePolicy`, `PrepareWriteDecision`, and `ErrorCode`.
+- Shared MCP-visible tool-name constants for method and adapter utility tool
+  sets.
 - Opaque identifier wrappers and durable ID generation helpers.
 - Deterministic canonical JSON and request hashing.
 
@@ -94,6 +97,9 @@ Important modules:
   for shared envelope, response, state, artifact, judgment, and display shapes.
 - [`crates/volicord-types/src/values.rs`](../../../crates/volicord-types/src/values.rs)
   for controlled enums and constants.
+- [`crates/volicord-types/src/tool_names.rs`](../../../crates/volicord-types/src/tool_names.rs)
+  for MCP-visible tool-name constants shared by MCP registration and
+  administrative CLI verification.
 - [`crates/volicord-types/src/ids.rs`](../../../crates/volicord-types/src/ids.rs)
   for ID wrappers, `DurableIdKind`, `DurableIdGenerator`,
   `RandomDurableIdGenerator`, and `SequenceDurableIdGenerator`.

@@ -56,7 +56,8 @@ Core 권한 의미는 참조 문서에 남습니다.
 
 `volicord-types`는 공개 API와 도메인 형태 값을 위한 공유 Rust 타입
 경계입니다. 어댑터, Core, Store, 테스트가 같은 serde 모델, JsonSchema 생성,
-제어 값 타입, 불투명 식별자, 정규 요청 해시를 사용하게 합니다.
+제어 값 타입, MCP 노출 도구 이름 상수, 불투명 식별자, 정규 요청 해시를
+사용하게 합니다.
 
 구현에서 담당하는 것:
 
@@ -66,6 +67,7 @@ Core 권한 의미는 참조 문서에 남습니다.
   `ArtifactRef` 같은 공유 스키마 형태 구조체.
 - `MethodName`, `OperationCategory`, `EffectKind`, `ResponseKind`, `ResumePolicy`,
   `PrepareWriteDecision`, `ErrorCode` 같은 제어 값 enum.
+- 메서드와 어댑터 유틸리티 도구 집합을 위한 공유 MCP 노출 도구 이름 상수.
 - 불투명 식별자 래퍼와 durable ID 생성 도우미.
 - 결정적 정규 JSON과 요청 해시.
 
@@ -89,6 +91,8 @@ Core 권한 의미는 참조 문서에 남습니다.
   공유 요청 래퍼, 응답, 상태, 아티팩트, 판단, 표시 형태.
 - [`crates/volicord-types/src/values.rs`](../../../crates/volicord-types/src/values.rs):
   제어 enum과 상수.
+- [`crates/volicord-types/src/tool_names.rs`](../../../crates/volicord-types/src/tool_names.rs):
+  MCP 등록과 관리 CLI 검증이 공유하는 MCP 노출 도구 이름 상수.
 - [`crates/volicord-types/src/ids.rs`](../../../crates/volicord-types/src/ids.rs):
   ID 래퍼, `DurableIdKind`, `DurableIdGenerator`,
   `RandomDurableIdGenerator`, `SequenceDurableIdGenerator`.

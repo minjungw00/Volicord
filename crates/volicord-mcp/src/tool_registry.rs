@@ -56,18 +56,18 @@ pub(crate) fn method_tools<const N: usize>(names: [&'static str; N]) -> Vec<McpT
 
 pub(crate) fn tool_description(name: &str) -> &'static str {
     match name {
-        "volicord.intake" => "Start, resume, supersede, or reject an ordinary user work loop.",
-        "volicord.update_scope" => "Update current Task scope and Change Unit state.",
-        "volicord.status" => "Read the current Core status view.",
-        "volicord.prepare_write" => "Check one proposed product-file write against Core state.",
-        "volicord.stage_artifact" => "Stage artifact bytes or an artifact notice.",
-        "volicord.record_run" => "Record shaping, direct, or implementation work.",
-        "volicord.request_user_judgment" => "Create one pending focused user-owned judgment.",
-        "volicord.reconcile_changes" => {
+        INTAKE_TOOL_NAME => "Start, resume, supersede, or reject an ordinary user work loop.",
+        UPDATE_SCOPE_TOOL_NAME => "Update current Task scope and Change Unit state.",
+        STATUS_TOOL_NAME => "Read the current Core status view.",
+        PREPARE_WRITE_TOOL_NAME => "Check one proposed product-file write against Core state.",
+        STAGE_ARTIFACT_TOOL_NAME => "Stage artifact bytes or an artifact notice.",
+        RECORD_RUN_TOOL_NAME => "Record shaping, direct, or implementation work.",
+        REQUEST_USER_JUDGMENT_TOOL_NAME => "Create one pending focused user-owned judgment.",
+        RECONCILE_CHANGES_TOOL_NAME => {
             "Reconcile unresolved unrecorded Product Repository changes."
         }
         CHECK_CLOSE_TOOL_NAME => "Check close readiness for a selected Task.",
-        "volicord.close_task" => "Perform a selected Task close path.",
+        CLOSE_TASK_TOOL_NAME => "Perform a selected Task close path.",
         LIST_PROJECTS_TOOL_NAME => "List projects explicitly allowed for this MCP connection.",
         _ => "Unsupported Volicord method.",
     }

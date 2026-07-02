@@ -11,12 +11,14 @@ pub mod canonical;
 pub mod ids;
 pub mod methods;
 pub mod schema;
+pub mod tool_names;
 pub mod values;
 
 pub use canonical::*;
 pub use ids::*;
 pub use methods::*;
 pub use schema::*;
+pub use tool_names::*;
 pub use values::*;
 
 /// High-level placement marker for shared type groups.

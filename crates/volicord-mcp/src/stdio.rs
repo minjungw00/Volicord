@@ -512,7 +512,7 @@ where
     let session_id = state.session_id.clone();
     let output = if PUBLIC_METHOD_TOOL_NAMES.contains(&tool_name) {
         match adapter.call_tool_for_session(tool_name, arguments, Some(&session_id)) {
-            Ok(response) if tool_name == "volicord.request_user_judgment" => {
+            Ok(response) if tool_name == REQUEST_USER_JUDGMENT_TOOL_NAME => {
                 user_judgment_tool_output(
                     adapter,
                     response,

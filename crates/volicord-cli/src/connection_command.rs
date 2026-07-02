@@ -38,7 +38,10 @@ use volicord_store::{
     session_watch::{snapshot_product_repository, WatchSnapshotOptions},
     StoreError,
 };
-use volicord_types::{GuardInstallationStatus, IntegrationProfile, PromptCaptureStatus};
+use volicord_types::{
+    GuardInstallationStatus, IntegrationProfile, PromptCaptureStatus, ADAPTER_UTILITY_TOOL_NAMES,
+    READ_ONLY_METHOD_TOOL_NAMES, WORKFLOW_METHOD_TOOL_NAMES,
+};
 
 use crate::host_integration::{
     claude_code::{self, ClaudeCodeAdapter, ProductionCommandRunner},
@@ -80,24 +83,6 @@ const CODEX_RULE_START_MARKER: &str = "# BEGIN VOLICORD MANAGED CODEX RULES v1";
 const CODEX_RULE_END_MARKER: &str = "# END VOLICORD MANAGED CODEX RULES v1";
 const HOOK_WRAPPER_MARKER: &str = "VOLICORD_MANAGED_HOOK_WRAPPER v1";
 const CODEX_DISPATCH_WRAPPER: &str = ".codex/hooks/volicord-dispatch.sh";
-
-const WORKFLOW_TOOL_NAMES: [&str; 10] = [
-    "volicord.intake",
-    "volicord.update_scope",
-    "volicord.status",
-    "volicord.prepare_write",
-    "volicord.stage_artifact",
-    "volicord.record_run",
-    "volicord.request_user_judgment",
-    "volicord.check_close",
-    "volicord.close_task",
-    "volicord.list_projects",
-];
-const READ_ONLY_TOOL_NAMES: [&str; 3] = [
-    "volicord.status",
-    "volicord.check_close",
-    "volicord.list_projects",
-];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConnectionCommandError {
@@ -2677,21 +2662,41 @@ fn validate_tools_response(value: &Value) -> Result<Vec<String>, String> {
 }
 
 fn validate_tools_for_mode(mode: &str, tools: &[String]) -> Result<(), String> {
-    let expected = match mode {
-        CONNECTION_MODE_READ_ONLY => READ_ONLY_TOOL_NAMES.as_slice(),
-        CONNECTION_MODE_WORKFLOW => WORKFLOW_TOOL_NAMES.as_slice(),
-        other => {
-            return Err(format!(
-                "unsupported connection mode for tool validation: {other}"
-            ))
+    match mode {
+        CONNECTION_MODE_READ_ONLY => {
+            validate_required_tools(tools, read_only_required_tool_names())
         }
-    };
+        CONNECTION_MODE_WORKFLOW => validate_required_tools(tools, workflow_required_tool_names()),
+        other => Err(format!(
+            "unsupported connection mode for tool validation: {other}"
+        )),
+    }
+}
+
+fn validate_required_tools(
+    tools: &[String],
+    expected: impl IntoIterator<Item = &'static str>,
+) -> Result<(), String> {
     for name in expected {
         if !tools.iter().any(|tool| tool == name) {
             return Err(format!("MCP tools/list missing required tool: {name}"));
         }
     }
     Ok(())
+}
+
+fn workflow_required_tool_names() -> impl Iterator<Item = &'static str> {
+    WORKFLOW_METHOD_TOOL_NAMES
+        .iter()
+        .chain(ADAPTER_UTILITY_TOOL_NAMES.iter())
+        .copied()
+}
+
+fn read_only_required_tool_names() -> impl Iterator<Item = &'static str> {
+    READ_ONLY_METHOD_TOOL_NAMES
+        .iter()
+        .chain(ADAPTER_UTILITY_TOOL_NAMES.iter())
+        .copied()
 }
 
 #[derive(Debug, Clone)]
@@ -9255,6 +9260,7 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::*;
+    use volicord_types::RECONCILE_CHANGES_TOOL_NAME;
 
     fn plan_guard_integration_for_test(
         host_kind: HostKind,
@@ -9339,20 +9345,30 @@ mod tests {
 
     #[test]
     fn mcp_tool_validation_matches_public_connection_modes() {
-        let workflow_tools = WORKFLOW_TOOL_NAMES
-            .iter()
-            .map(|tool| (*tool).to_owned())
+        let workflow_tools = workflow_required_tool_names()
+            .map(str::to_owned)
             .collect::<Vec<_>>();
         assert!(validate_tools_for_mode(CONNECTION_MODE_WORKFLOW, &workflow_tools).is_ok());
-
-        let read_only_tools = READ_ONLY_TOOL_NAMES
+        assert!(workflow_tools
             .iter()
-            .map(|tool| (*tool).to_owned())
+            .any(|tool| tool == RECONCILE_CHANGES_TOOL_NAME));
+
+        let read_only_tools = read_only_required_tool_names()
+            .map(str::to_owned)
             .collect::<Vec<_>>();
         assert!(validate_tools_for_mode(CONNECTION_MODE_READ_ONLY, &read_only_tools).is_ok());
         assert!(!read_only_tools
             .iter()
-            .any(|tool| tool == "volicord.close_task"));
+            .any(|tool| tool == RECONCILE_CHANGES_TOOL_NAME));
+
+        let missing_reconcile_workflow_tools = workflow_required_tool_names()
+            .filter(|tool| *tool != RECONCILE_CHANGES_TOOL_NAME)
+            .map(str::to_owned)
+            .collect::<Vec<_>>();
+        let error =
+            validate_tools_for_mode(CONNECTION_MODE_WORKFLOW, &missing_reconcile_workflow_tools)
+                .unwrap_err();
+        assert!(error.contains(RECONCILE_CHANGES_TOOL_NAME));
 
         let stale_read_only_tools = vec![
             "volicord.status".to_owned(),

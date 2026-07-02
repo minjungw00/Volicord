@@ -9,7 +9,7 @@ use std::{
     process::{Command, Output, Stdio},
 };
 
-use serde_json::Value;
+use serde_json::{json, Value};
 use volicord_core::{CoreService, InvocationContext};
 use volicord_store::agent_connections::{
     add_connection_project, agent_connection_record, ensure_agent_connection,
@@ -33,7 +33,9 @@ use volicord_types::{
     ActorSource, IdempotencyKey, InitialScope, JudgmentKind, JudgmentPresentation,
     JudgmentRequiredFor, OperationCategory, ProjectId, RequestId, RequestedMode, RequiredNullable,
     ResumePolicy, StateRecordKind, StateRecordRef, TaskId, ToolEnvelope, UserJudgmentContext,
-    UserJudgmentOptionId, UserJudgmentOptionInput, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+    UserJudgmentOptionId, UserJudgmentOptionInput, ADAPTER_UTILITY_TOOL_NAMES,
+    READ_ONLY_METHOD_TOOL_NAMES, RECONCILE_CHANGES_TOOL_NAME,
+    VERIFICATION_BASIS_TEST_FIXTURE_BINDING, WORKFLOW_METHOD_TOOL_NAMES,
 };
 
 const SETUP_HELP_OPTIONS: &[&str] = &["--home", "--link-bin", "--mcp-command", "--json"];
@@ -2152,6 +2154,70 @@ fn connection_verify_reports_missing_mcp_config_as_primary_action() -> Result<()
 
 #[cfg(unix)]
 #[test]
+fn connection_verify_fails_when_workflow_reconcile_changes_tool_is_missing(
+) -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-connection-missing-reconcile")?;
+    let repo_root = create_git_repo(&runtime_home, "product-repo")?;
+    let bin_dir = runtime_home.path().join("bin");
+    write_fake_codex(&bin_dir)?;
+    write_fake_mcp(&bin_dir)?;
+
+    let init = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--host",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--profile",
+            "observe",
+            "--json",
+        ],
+        &[
+            ("PATH", path_env(&[bin_dir.as_path()])),
+            ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
+        ],
+    )?;
+    assert_success(&init);
+
+    write_fake_mcp_missing_workflow_reconcile(&bin_dir)?;
+    let verify = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connection",
+            "verify",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--json",
+        ],
+        &[
+            ("PATH", path_env(&[bin_dir.as_path()])),
+            ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
+        ],
+    )?;
+
+    assert_success(&verify);
+    let value = json_stdout(&verify)?;
+    assert_eq!(value["status"], "failed");
+    assert_eq!(value["connection"]["verification_status"], "failed");
+    assert_eq!(value["verification"]["preflight"]["status"], "passed");
+    assert_eq!(value["verification"]["mcp_handshake"]["status"], "failed");
+    assert!(value["verification"]["mcp_handshake"]["details"]
+        .as_str()
+        .expect("handshake details should be text")
+        .contains(RECONCILE_CHANGES_TOOL_NAME));
+    assert!(!value["verification"]["tools"]
+        .as_array()
+        .expect("failed handshake should still report a tools array")
+        .iter()
+        .any(|tool| tool == RECONCILE_CHANGES_TOOL_NAME));
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
 fn connection_status_reports_missing_guard_files_as_primary_action() -> Result<(), Box<dyn Error>> {
     let runtime_home = TempRuntimeHome::new("cli-bin-connection-missing-guard")?;
     let repo_root = create_git_repo(&runtime_home, "product-repo")?;
@@ -3593,11 +3659,29 @@ fn write_fake_claude_code(dir: &Path) -> Result<PathBuf, Box<dyn Error>> {
 
 #[cfg(unix)]
 fn write_fake_mcp(dir: &Path) -> Result<PathBuf, Box<dyn Error>> {
+    let workflow_tools = workflow_mcp_tool_names().collect::<Vec<_>>();
+    write_fake_mcp_with_workflow_tools(dir, &workflow_tools)
+}
+
+#[cfg(unix)]
+fn write_fake_mcp_missing_workflow_reconcile(dir: &Path) -> Result<PathBuf, Box<dyn Error>> {
+    let workflow_tools = workflow_mcp_tool_names()
+        .filter(|tool| *tool != RECONCILE_CHANGES_TOOL_NAME)
+        .collect::<Vec<_>>();
+    write_fake_mcp_with_workflow_tools(dir, &workflow_tools)
+}
+
+#[cfg(unix)]
+fn write_fake_mcp_with_workflow_tools(
+    dir: &Path,
+    workflow_tools: &[&str],
+) -> Result<PathBuf, Box<dyn Error>> {
     fs::create_dir_all(dir)?;
     let path = dir.join("volicord");
-    fs::write(
-        &path,
-        "#!/bin/sh\n\
+    let read_only_tools = read_only_mcp_tool_names().collect::<Vec<_>>();
+    let workflow_response = shell_single_quoted(&fake_tools_list_response(workflow_tools));
+    let read_only_response = shell_single_quoted(&fake_tools_list_response(&read_only_tools));
+    let mut script = "#!/bin/sh\n\
          mode=\"${VOLICORD_TEST_CONNECTION_MODE:-read_only}\"\n\
          if [ \"$1\" = \"mcp\" ] && [ \"$2\" = \"--check\" ]; then\n\
          shift 2\n\
@@ -3619,10 +3703,18 @@ fn write_fake_mcp(dir: &Path) -> Result<PathBuf, Box<dyn Error>> {
          case \"$line\" in\n\
          *'\"method\":\"initialize\"'*) printf '%s\\n' '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":\"2025-11-25\",\"capabilities\":{\"tools\":{}},\"serverInfo\":{\"name\":\"volicord-mcp\",\"version\":\"test\"},\"instructions\":\"Use Volicord.\"}}' ;;\n\
          *'\"method\":\"tools/list\"'*)\n\
-         if [ \"$mode\" = \"workflow\" ]; then\n\
-         printf '%s\\n' '{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"tools\":[{\"name\":\"volicord.intake\"},{\"name\":\"volicord.update_scope\"},{\"name\":\"volicord.status\"},{\"name\":\"volicord.prepare_write\"},{\"name\":\"volicord.stage_artifact\"},{\"name\":\"volicord.record_run\"},{\"name\":\"volicord.request_user_judgment\"},{\"name\":\"volicord.check_close\"},{\"name\":\"volicord.close_task\"},{\"name\":\"volicord.list_projects\"}]}}'\n\
-         else\n\
-         printf '%s\\n' '{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"tools\":[{\"name\":\"volicord.status\"},{\"name\":\"volicord.check_close\"},{\"name\":\"volicord.list_projects\"}]}}'\n\
+         if [ \"$mode\" = \"workflow\" ]; then\n"
+        .to_owned();
+    script.push_str("         printf '%s\\n' ");
+    script.push_str(&workflow_response);
+    script.push_str(
+        "\n\
+         else\n",
+    );
+    script.push_str("         printf '%s\\n' ");
+    script.push_str(&read_only_response);
+    script.push_str(
+        "\n\
          fi\n\
          exit 0 ;;\n\
          esac\n\
@@ -3631,9 +3723,45 @@ fn write_fake_mcp(dir: &Path) -> Result<PathBuf, Box<dyn Error>> {
          fi\n\
          printf 'unexpected invocation\\n' >&2\n\
          exit 2\n",
-    )?;
+    );
+    fs::write(&path, script)?;
     make_executable(&path)?;
     Ok(path)
+}
+
+#[cfg(unix)]
+fn workflow_mcp_tool_names() -> impl Iterator<Item = &'static str> {
+    WORKFLOW_METHOD_TOOL_NAMES
+        .iter()
+        .chain(ADAPTER_UTILITY_TOOL_NAMES.iter())
+        .copied()
+}
+
+#[cfg(unix)]
+fn read_only_mcp_tool_names() -> impl Iterator<Item = &'static str> {
+    READ_ONLY_METHOD_TOOL_NAMES
+        .iter()
+        .chain(ADAPTER_UTILITY_TOOL_NAMES.iter())
+        .copied()
+}
+
+#[cfg(unix)]
+fn fake_tools_list_response(tool_names: &[&str]) -> String {
+    let tools = tool_names
+        .iter()
+        .map(|name| json!({ "name": name }))
+        .collect::<Vec<_>>();
+    json!({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "result": { "tools": tools },
+    })
+    .to_string()
+}
+
+#[cfg(unix)]
+fn shell_single_quoted(text: &str) -> String {
+    format!("'{}'", text.replace('\'', "'\\''"))
 }
 
 #[cfg(unix)]

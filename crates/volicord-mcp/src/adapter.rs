@@ -397,20 +397,20 @@ impl McpAdapter {
         session_id: Option<&str>,
     ) -> Result<PipelineResponse, McpAdapterError> {
         match tool_name {
-            "volicord.intake" => self.call_intake(tool_name, params, session_id),
-            "volicord.update_scope" => self.call_update_scope(tool_name, params, session_id),
-            "volicord.status" => self.call_status(tool_name, params, session_id),
-            "volicord.prepare_write" => self.call_prepare_write(tool_name, params, session_id),
-            "volicord.stage_artifact" => self.call_stage_artifact(tool_name, params, session_id),
-            "volicord.record_run" => self.call_record_run(tool_name, params, session_id),
-            "volicord.request_user_judgment" => {
+            INTAKE_TOOL_NAME => self.call_intake(tool_name, params, session_id),
+            UPDATE_SCOPE_TOOL_NAME => self.call_update_scope(tool_name, params, session_id),
+            STATUS_TOOL_NAME => self.call_status(tool_name, params, session_id),
+            PREPARE_WRITE_TOOL_NAME => self.call_prepare_write(tool_name, params, session_id),
+            STAGE_ARTIFACT_TOOL_NAME => self.call_stage_artifact(tool_name, params, session_id),
+            RECORD_RUN_TOOL_NAME => self.call_record_run(tool_name, params, session_id),
+            REQUEST_USER_JUDGMENT_TOOL_NAME => {
                 self.call_request_user_judgment(tool_name, params, session_id)
             }
-            "volicord.reconcile_changes" => {
+            RECONCILE_CHANGES_TOOL_NAME => {
                 self.call_reconcile_changes(tool_name, params, session_id)
             }
             CHECK_CLOSE_TOOL_NAME => self.call_check_close(tool_name, params, session_id),
-            "volicord.close_task" => self.call_close_task(tool_name, params, session_id),
+            CLOSE_TASK_TOOL_NAME => self.call_close_task(tool_name, params, session_id),
             other => Err(McpAdapterError::UnknownTool(other.to_owned())),
         }
     }
