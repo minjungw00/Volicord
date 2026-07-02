@@ -334,8 +334,10 @@ volicord serve --transport local-http
 
 이 모드는 Docker와 localhost MCP 사용을 위한 명시적 고급 모드이며 기본 호스트 설정
 경로가 아닙니다. Loopback listen 주소만 허용하고 MCP local HTTP endpoint에는 bearer 인증을
-요구하며, `POST /mcp`를 노출합니다. server-sent event 스트림, HTTP elicitation, 전체 MCP
-Streamable HTTP 호환성은 구현하지 않습니다. 일반 네트워크 서비스처럼 다루면 안 됩니다.
+요구하며, token을 제공하지 않으면 프로세스 로컬 token을 생성하고, 브라우저 요청 Origin은
+설정된 `--allow-origin` 값과 대조합니다. `POST /mcp`를 노출하지만 server-sent event
+스트림, HTTP elicitation, 전체 MCP Streamable HTTP 호환성은 구현하지 않습니다. 일반
+네트워크 서비스처럼 다루면 안 되며, 지원되는 nonlocal listen 옵션은 없습니다.
 
 자세한 Docker와 HTTP 경계는 [설치](docs/ko/getting-started/installation.md)와
 [MCP 전송](docs/ko/reference/mcp-transport.md)을 사용합니다.

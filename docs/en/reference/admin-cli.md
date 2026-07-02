@@ -116,14 +116,17 @@ Exit and stream behavior:
 - Errors remain stderr diagnostics under the CLI exit-code model.
 - `volicord serve --transport local-http` is an explicit long-running MCP
   transport process. It accepts only loopback listen addresses, requires bearer
-  authentication for the MCP local HTTP endpoint, and delegates HTTP wire
-  behavior and transport security checks to [MCP Transport](mcp-transport.md).
+  authentication for the MCP local HTTP endpoint, generates a process-local
+  token when no token is supplied, applies Origin checks to browser-facing
+  requests, and delegates HTTP wire behavior and transport security checks to
+  [MCP Transport](mcp-transport.md).
 
 Not supported:
 
 - The CLI has no general-purpose `server` or daemon command.
 - `volicord serve` must not be treated as a public Volicord API service or an
-  unauthenticated network service.
+  unauthenticated network service, and it has no supported option that changes
+  the local HTTP listener into a nonlocal listener.
 - Administrative commands are not public Volicord API methods and must not be
   added to the public method list.
 - Guard commands are cooperative and detective hook commands, not OS-level

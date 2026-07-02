@@ -1110,6 +1110,9 @@ volicord setup --home /path/to/runtime-home
 volicord mcp --stdio --connection CONNECTION_ID
 volicord mcp --check --connection CONNECTION_ID
 volicord mcp --check --connection CONNECTION_ID --project PROJECT_ID
+volicord serve --transport local-http
+volicord serve --transport local-http --listen 127.0.0.1:8765 --generate-token
+volicord serve --transport local-http --listen [::1]:8765 --token TOKEN --project /path/to/repo --project /path/to/other-repo --allow-origin https://app.example --allow-origin http://127.0.0.1:3000
 volicord init --host codex --repo /path/to/repo --profile record
 volicord init --host claude-code --repo /path/to/repo --profile observe --allow-degraded
 ./target/debug/volicord init --host codex --repo /path/to/repo --dry-run
@@ -1135,6 +1138,77 @@ volicord inbox answer JUDGMENT_ID --choice accept
     let report = report(fixture.path());
 
     assert!(report.is_ok(), "{:#?}", report.errors());
+}
+
+#[test]
+fn rejects_serve_examples_outside_public_local_http_option_surface() {
+    let fixture = valid_fixture();
+    write(
+        fixture.path(),
+        "docs/en/example.md",
+        "# Overview\n\n```sh\nvolicord serve --transport local-http --allow-nonlocal-listen\nvolicord serve --transport local-http --host 0.0.0.0\n```\n",
+    );
+
+    let report = report(fixture.path());
+    let errors = category_errors(&report, "command.invalid_example");
+
+    assert_eq!(errors.len(), 2, "{:#?}", report.errors());
+    assert!(
+        errors
+            .iter()
+            .any(|error| error.message().contains("--allow-nonlocal-listen")),
+        "{:#?}",
+        report.errors()
+    );
+    assert!(
+        errors
+            .iter()
+            .any(|error| error.message().contains("--host")),
+        "{:#?}",
+        report.errors()
+    );
+}
+
+#[test]
+fn rejects_nonloopback_local_http_serve_listen_examples() {
+    let fixture = valid_fixture();
+    write(
+        fixture.path(),
+        "docs/en/example.md",
+        "# Overview\n\n```sh\nvolicord serve --transport local-http --listen 0.0.0.0:8765\nvolicord serve --transport local-http --listen [::]:8765\nvolicord serve --transport local-http --listen 192.0.2.10:8765\n```\n",
+    );
+
+    let report = report(fixture.path());
+    let errors = category_errors(&report, "command.invalid_example");
+
+    assert_eq!(errors.len(), 3, "{:#?}", report.errors());
+    for listen in ["0.0.0.0:8765", "[::]:8765", "192.0.2.10:8765"] {
+        assert!(
+            errors.iter().any(|error| error.message().contains(listen)),
+            "{:#?}",
+            report.errors()
+        );
+    }
+}
+
+#[test]
+fn rejects_unsupported_local_http_serve_transport_examples() {
+    let fixture = valid_fixture();
+    write(
+        fixture.path(),
+        "docs/en/example.md",
+        "# Overview\n\n```sh\nvolicord serve --transport streamable-http\n```\n",
+    );
+
+    let report = report(fixture.path());
+    let errors = category_errors(&report, "command.invalid_example");
+
+    assert_eq!(errors.len(), 1, "{:#?}", report.errors());
+    assert!(
+        errors[0].message().contains("--transport streamable-http"),
+        "{:#?}",
+        report.errors()
+    );
 }
 
 #[test]

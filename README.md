@@ -361,9 +361,12 @@ volicord serve --transport local-http
 
 It is an explicit advanced mode for Docker and localhost MCP use, not the
 default host setup path. It accepts only loopback listen addresses, requires
-bearer authentication for the MCP local HTTP endpoint, exposes `POST /mcp`, and
-does not implement server-sent event streams, HTTP elicitation, or full MCP
-Streamable HTTP compatibility. Do not treat it as a general network service.
+bearer authentication for the MCP local HTTP endpoint, generates a process-local
+token when no token is supplied, checks browser request Origins against
+configured `--allow-origin` values, exposes `POST /mcp`, and does not implement
+server-sent event streams, HTTP elicitation, or full MCP Streamable HTTP
+compatibility. Do not treat it as a general network service; there is no
+supported nonlocal listen option.
 
 Use [Installation](docs/en/getting-started/installation.md) and
 [MCP Transport](docs/en/reference/mcp-transport.md) for the detailed Docker and

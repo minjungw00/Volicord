@@ -106,13 +106,15 @@ volicord inbox open <judgment-id> [--repo PATH] [--json]
 - 오류는 CLI 종료 코드 모델에 따라 stderr 진단으로 남습니다.
 - `volicord serve --transport local-http`는 명시적 장기 실행 MCP 전송 프로세스입니다.
   loopback listen 주소만 허용하고 MCP local HTTP endpoint에는 bearer 인증을 요구하며,
-  HTTP 와이어 동작과 전송 보안 점검은 [MCP 전송](mcp-transport.md)에 맡깁니다.
+  token을 제공하지 않으면 프로세스 로컬 token을 생성하고, 브라우저 대상 요청에는
+  Origin 점검을 적용하며, HTTP 와이어 동작과 전송 보안 점검은
+  [MCP 전송](mcp-transport.md)에 맡깁니다.
 
 지원하지 않는 것:
 
 - CLI에는 일반 목적의 `server` 또는 daemon 명령이 없습니다.
 - `volicord serve`는 공개 Volicord API 서비스나 인증 없는 네트워크 서비스로 취급하면
-  안 됩니다.
+  안 되며, local HTTP listener를 nonlocal listener로 바꾸는 지원 옵션은 없습니다.
 - 관리 명령은 공개 Volicord API 메서드가 아니며 공개 메서드 목록에 추가되면
   안 됩니다.
 - Guard 명령은 협력적이고 탐지적인 hook 명령이며 OS 수준 sandboxing이나 보안 집행

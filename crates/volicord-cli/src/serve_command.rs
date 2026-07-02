@@ -7,7 +7,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use volicord_mcp::{generate_bearer_token, LocalHttpServerConfig, LocalHttpTokenSource};
+use volicord_mcp::{
+    generate_bearer_token, local_http_listen_is_loopback, LocalHttpServerConfig,
+    LocalHttpTokenSource,
+};
 use volicord_store::{
     agent_connections::{list_agent_connections, list_connection_projects},
     bootstrap::project_record_by_repo_root,
@@ -184,9 +187,15 @@ fn parse_serve_options(args: &[String]) -> Result<ServeOptions, ServeCommandErro
             "--listen" => {
                 index += 1;
                 let value = option_value(args, index, "--listen")?;
-                options.listen = Some(value.parse::<SocketAddr>().map_err(|error| {
+                let listen = value.parse::<SocketAddr>().map_err(|error| {
                     ServeCommandError::usage(format!("--listen must be host:port: {error}"))
-                })?);
+                })?;
+                if !local_http_listen_is_loopback(&listen) {
+                    return Err(ServeCommandError::usage(format!(
+                        "NONLOCAL_LISTEN_REJECTED: --listen {listen} is not allowed; local HTTP transport only supports 127.0.0.1 or [::1]"
+                    )));
+                }
+                options.listen = Some(listen);
                 index += 1;
             }
             "--home" => {
@@ -428,5 +437,48 @@ mod tests {
                 "UNSUPPORTED_TRANSPORT: --transport must be local-http".to_owned()
             )
         );
+    }
+
+    #[test]
+    fn serve_rejects_nonloopback_listen_addresses() {
+        for listen_addr in ["0.0.0.0:8765", "[::]:8765", "192.0.2.10:8765"] {
+            let error = run_serve_command(
+                &[
+                    "--transport".to_owned(),
+                    "local-http".to_owned(),
+                    "--listen".to_owned(),
+                    listen_addr.to_owned(),
+                ],
+                |_| None,
+                Path::new(env!("CARGO_MANIFEST_DIR")),
+            )
+            .expect_err("non-loopback listen address should be a usage error");
+
+            assert!(
+                error.to_string().contains("NONLOCAL_LISTEN_REJECTED"),
+                "unexpected error for {listen_addr}: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn serve_rejects_options_outside_public_local_http_surface() {
+        for option in ["--allow-nonlocal-listen", "--host"] {
+            let error = run_serve_command(
+                &[
+                    "--transport".to_owned(),
+                    "local-http".to_owned(),
+                    option.to_owned(),
+                ],
+                |_| None,
+                Path::new(env!("CARGO_MANIFEST_DIR")),
+            )
+            .expect_err("unsupported serve option should be a usage error");
+
+            assert!(
+                error.to_string().contains("unknown option"),
+                "unexpected error for {option}: {error}"
+            );
+        }
     }
 }

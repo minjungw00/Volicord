@@ -51,7 +51,8 @@ MCP TCP 리스너, HTTP MCP 리스너, Unix-domain socket 리스너, 또는 그 
 명시적 프로세스 모드입니다. 이 명령은 loopback 전용 HTTP 리스너를 시작하고, 가능한
 곳에서는 stdio와 같은 Agent Connection에 묶인 MCP 어댑터 로직을 재사용합니다. 기본 MCP
 전송이 아니며, Docker가 아닌 로컬 호스트 설정 생성에서 사용하지 않고, 일반 Volicord
-네트워크 서비스도 아닙니다.
+네트워크 서비스도 아닙니다. 이 프로세스를 nonlocal HTTP listener로 바꾸는 serve 옵션은
+없습니다.
 
 현재 serve 전송은 인증을 요구하는 로컬 MCP-over-HTTP 부분 구현입니다. MCP 세션 헤더와
 bearer token 검사와 함께 HTTP `POST /mcp`로 JSON-RPC를 받고 JSON 응답을 반환합니다.
@@ -100,6 +101,7 @@ Local HTTP serve 명령줄 동작:
   생략하면 `127.0.0.1:8765`를 사용합니다.
 - 리스너는 loopback 전용입니다. `0.0.0.0`, `::`, 공개 인터페이스, 컨테이너 전체
   인터페이스, 또는 다른 non-loopback 주소에 바인딩하려 하면 거절합니다.
+  nonlocal listen 주소를 허용하는 지원 명령줄 옵션은 없습니다.
 - `--home PATH`는 프로세스의 Runtime Home을 선택합니다. `--home`이 없으면 공통
   `VOLICORD_HOME`과 플랫폼 기본 Runtime Home 해석을 사용합니다.
 - `--connection <connection_id>`는 서버를 저장된 Agent Connection 하나에 묶습니다. 이
@@ -111,6 +113,8 @@ Local HTTP serve 명령줄 동작:
 - `--token TOKEN`은 이 프로세스의 bearer token을 제공합니다. 생략하면 Volicord가 프로세스
   로컬 token을 생성하고 시작 중 stderr에 씁니다. token은 저장소 파일에 저장하지
   않습니다.
+- `--generate-token`은 생성 token 경로를 명시적으로 선택하며 `--token`과 함께 사용할 수
+  없습니다.
 - `--allow-origin ORIGIN`은 반복할 수 있으며 정확히 일치하는 Origin 값의 브라우저 가능
   요청을 허용합니다. 이 옵션이 없으면 `Origin` 헤더가 있는 요청은 거절되고 CORS 응답
   헤더를 내지 않습니다.
@@ -142,6 +146,9 @@ HTTP serve 요청 동작:
   연결, 대기 판단에 묶인 유효한 일회성 consent token이 필요한 loopback User Channel
   capture 경로입니다.
 - 인증 없는 임의 resource endpoint는 없습니다.
+- 브라우저 대상 요청은 `Origin` header가 있는지로 식별합니다. `Origin`이 있는 MCP
+  endpoint 요청은 정확한 `--allow-origin` 값과 일치해야 하며, `Origin`이 있는 local web
+  consent form 제출은 consent endpoint 자신의 origin과 일치해야 합니다.
 - CORS preflight는 MCP endpoint에 대해서만, Origin 허용 목록 검증 뒤에만, 그리고 허용된
   Origin이 하나 이상 설정되어 있을 때만 받습니다.
 - 구조화된 HTTP 오류는 인증, Origin, 프로젝트 허용 목록, 지원하지 않는 전송, 지원하지

@@ -63,7 +63,8 @@ when MCP elicitation and prompt capture are unavailable.
 for Docker and localhost MCP use. It starts a loopback-only HTTP listener and
 reuses the same Agent-Connection-bound MCP adapter logic as stdio where
 possible. It is not the default MCP transport, not used by generated local
-non-Docker host configuration, and not a general Volicord network service.
+non-Docker host configuration, and not a general Volicord network service. No
+serve option changes this process into a nonlocal HTTP listener.
 
 The current serve transport is an authenticated local MCP-over-HTTP subset. It
 accepts JSON-RPC over HTTP `POST /mcp` with MCP session headers and bearer-token
@@ -120,6 +121,8 @@ Local HTTP serve command-line behavior:
   Omission uses `127.0.0.1:8765`.
 - The listener is loopback-only. Binding `0.0.0.0`, `::`, public interfaces,
   container-wide interfaces, or another non-loopback address is rejected.
+  There is no supported command-line option that allows a nonlocal listen
+  address.
 - `--home PATH` selects the Runtime Home for the process. Without `--home`, the
   shared `VOLICORD_HOME` and platform default Runtime Home resolution apply.
 - `--connection <connection_id>` binds the server to one stored Agent
@@ -133,6 +136,8 @@ Local HTTP serve command-line behavior:
 - `--token TOKEN` supplies the bearer token for this process. If omitted,
   Volicord generates a process-local token and writes it to stderr during
   startup. Tokens are not stored in repository files.
+- `--generate-token` explicitly selects the generated-token path and is
+  mutually exclusive with `--token`.
 - `--allow-origin ORIGIN` may be repeated to permit browser-capable requests
   from exact Origin values. Without it, requests carrying an `Origin` header are
   rejected and CORS response headers are not emitted.
@@ -169,6 +174,10 @@ HTTP serve request behavior:
   a valid one-time consent token tied to the project, connection, and pending
   judgment.
 - There are no unauthenticated arbitrary resource endpoints.
+- Browser-facing requests are identified by the presence of an `Origin` header.
+  MCP endpoint requests with `Origin` must match an exact `--allow-origin`
+  value, and local web consent form submissions with `Origin` must match the
+  consent endpoint's own origin.
 - CORS preflight is accepted only for the MCP endpoint, only after Origin
   allowlist validation, and only when at least one allowed Origin is configured.
 - Structured HTTP errors use stable transport error codes for authentication,

@@ -4,6 +4,7 @@ use serde_yaml::{Mapping, Value};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::fs;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::path::{Component, Path, PathBuf};
 
 const DOC_INDEX_PATH: &str = "docs/doc-index.yaml";
@@ -336,6 +337,7 @@ struct ActiveFence {
 #[derive(Debug, Clone, Default)]
 struct ParsedCommandArgs {
     options: BTreeSet<String>,
+    value_options: BTreeMap<String, Vec<String>>,
     positionals: Vec<String>,
 }
 
@@ -2373,9 +2375,9 @@ fn validate_serve_command(args: &[String]) -> std::result::Result<(), String> {
         return Ok(());
     }
 
-    let parsed = parse_command_args(
+    let parsed = parse_command_args_with_repeatable_values(
         args,
-        &["generate-token", "allow-nonlocal-listen"],
+        &["generate-token"],
         &[
             "transport",
             "listen",
@@ -2385,12 +2387,15 @@ fn validate_serve_command(args: &[String]) -> std::result::Result<(), String> {
             "token",
             "allow-origin",
         ],
+        &["project", "allow-origin"],
     )?;
     reject_mutually_exclusive(&parsed, "token", "generate-token")?;
     reject_positionals(&parsed, 0, "`volicord serve`")?;
     if !parsed.options.contains("transport") {
         return Err("`volicord serve` requires --transport".to_string());
     }
+    validate_serve_transport(&parsed)?;
+    validate_serve_listen(&parsed)?;
     Ok(())
 }
 
@@ -2725,6 +2730,15 @@ fn parse_command_args(
     flags: &[&str],
     values: &[&str],
 ) -> std::result::Result<ParsedCommandArgs, String> {
+    parse_command_args_with_repeatable_values(args, flags, values, &[])
+}
+
+fn parse_command_args_with_repeatable_values(
+    args: &[String],
+    flags: &[&str],
+    values: &[&str],
+    repeatable_values: &[&str],
+) -> std::result::Result<ParsedCommandArgs, String> {
     let mut parsed = ParsedCommandArgs::default();
     let mut index = 0;
     while index < args.len() {
@@ -2746,16 +2760,17 @@ fn parse_command_args(
             }
             insert_option(&mut parsed, name)?;
         } else if values.contains(&name) {
-            insert_option(&mut parsed, name)?;
-            if let Some(value) = inline_value {
-                reject_empty_option_value(name, value)?;
+            let value = if let Some(value) = inline_value {
+                value.to_owned()
             } else {
                 index += 1;
                 let Some(value) = args.get(index) else {
                     return Err(format!("missing value for option `--{name}`"));
                 };
-                reject_empty_option_value(name, value)?;
-            }
+                value.clone()
+            };
+            reject_empty_option_value(name, &value)?;
+            insert_value_option(&mut parsed, name, value, repeatable_values.contains(&name))?;
         } else {
             return Err(format!(
                 "option `--{name}` is not supported in this command context"
@@ -2770,6 +2785,24 @@ fn insert_option(parsed: &mut ParsedCommandArgs, name: &str) -> std::result::Res
     if !parsed.options.insert(name.to_string()) {
         return Err(format!("duplicate option `--{name}`"));
     }
+    Ok(())
+}
+
+fn insert_value_option(
+    parsed: &mut ParsedCommandArgs,
+    name: &str,
+    value: String,
+    repeatable: bool,
+) -> std::result::Result<(), String> {
+    if !repeatable && parsed.options.contains(name) {
+        return Err(format!("duplicate option `--{name}`"));
+    }
+    parsed.options.insert(name.to_string());
+    parsed
+        .value_options
+        .entry(name.to_string())
+        .or_default()
+        .push(value);
     Ok(())
 }
 
@@ -2793,6 +2826,40 @@ fn reject_mutually_exclusive(
     } else {
         Ok(())
     }
+}
+
+fn validate_serve_transport(parsed: &ParsedCommandArgs) -> std::result::Result<(), String> {
+    let transport = parsed
+        .value_options
+        .get("transport")
+        .and_then(|values| values.first())
+        .expect("transport presence already checked");
+    if transport == "local-http" {
+        Ok(())
+    } else {
+        Err(format!(
+            "unsupported `volicord serve --transport {transport}`; use `local-http`"
+        ))
+    }
+}
+
+fn validate_serve_listen(parsed: &ParsedCommandArgs) -> std::result::Result<(), String> {
+    for listen in parsed.value_options.get("listen").into_iter().flatten() {
+        let addr = listen
+            .parse::<SocketAddr>()
+            .map_err(|error| format!("`volicord serve --listen` must be host:port: {error}"))?;
+        if !serve_listen_is_supported_loopback(&addr) {
+            return Err(format!(
+                "`volicord serve --listen {listen}` is not supported; use 127.0.0.1 or [::1]"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn serve_listen_is_supported_loopback(addr: &SocketAddr) -> bool {
+    matches!(addr.ip(), IpAddr::V4(address) if address == Ipv4Addr::LOCALHOST)
+        || matches!(addr.ip(), IpAddr::V6(address) if address == Ipv6Addr::LOCALHOST)
 }
 
 fn reject_positionals(
