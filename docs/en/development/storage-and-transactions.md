@@ -116,7 +116,7 @@ Committed branches provide result fields, event data, and a list of
 
 `CoreStorageMutation` functions as a command-like value between method planning
 and Store persistence. Method planners create values such as `InsertTask`,
-`InsertWriteCheck`, `InsertRun`, `PromoteStagedArtifact`,
+`InsertWriteTicket`, `InsertRun`, `PromoteStagedArtifact`,
 `LinkArtifact`, and judgment updates. Store applies those values through
 `ProjectMutation` inside the active commit transaction.
 

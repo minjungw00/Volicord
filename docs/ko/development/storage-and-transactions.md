@@ -119,7 +119,7 @@ flowchart LR
 ## 변이 값
 
 `CoreStorageMutation`은 메서드 계획과 Store 지속 처리 사이의 명령값처럼
-기능합니다. 메서드 계획 코드는 `InsertTask`, `InsertWriteCheck`,
+기능합니다. 메서드 계획 코드는 `InsertTask`, `InsertWriteTicket`,
 `InsertRun`, `PromoteStagedArtifact`, `LinkArtifact`, 판단 업데이트 같은 값을
 만듭니다. Store는 활성 커밋 트랜잭션 안에서 `ProjectMutation`을 통해 그
 값을 적용합니다.

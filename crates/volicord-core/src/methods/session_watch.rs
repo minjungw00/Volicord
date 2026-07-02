@@ -602,8 +602,8 @@ fn watch_write_correlation(
             write_ticket_ids: decode_json_string_array(
                 "expected_writes",
                 &expected_write.expected_write_id,
-                "write_check_ids_json",
-                &expected_write.write_check_ids_json,
+                "write_ticket_ids_json",
+                &expected_write.write_ticket_ids_json,
             )?,
             expected_write: Some(expected_write),
             deterministically_linked: true,
@@ -615,8 +615,8 @@ fn watch_write_correlation(
             write_ticket_ids.extend(decode_json_string_array(
                 "expected_writes",
                 &write.expected_write_id,
-                "write_check_ids_json",
-                &write.write_check_ids_json,
+                "write_ticket_ids_json",
+                &write.write_ticket_ids_json,
             )?);
         }
         return Ok(WatchWriteCorrelation {
@@ -633,7 +633,7 @@ fn watch_write_correlation(
         return Ok(WatchWriteCorrelation {
             status: "write_ticket".to_owned(),
             expected_write: None,
-            write_ticket_ids: vec![active_ticket_matches[0].write_check_id.clone()],
+            write_ticket_ids: vec![active_ticket_matches[0].write_ticket_id.clone()],
             deterministically_linked: true,
         });
     }
@@ -643,7 +643,7 @@ fn watch_write_correlation(
             expected_write: None,
             write_ticket_ids: active_ticket_matches
                 .iter()
-                .map(|record| record.write_check_id.clone())
+                .map(|record| record.write_ticket_id.clone())
                 .collect(),
             deterministically_linked: false,
         });
@@ -662,21 +662,21 @@ fn active_write_tickets_covering_paths(
     task_id: Option<&TaskId>,
     observed_paths: &[String],
     now: DateTime<Utc>,
-) -> CoreResult<Vec<WriteCheckRecord>> {
+) -> CoreResult<Vec<WriteTicketRecord>> {
     let Some(task_id) = task_id else {
         return Ok(Vec::new());
     };
     let project_state = store.project_state()?;
     let mut matches = Vec::new();
-    for record in store.active_write_checks(task_id)? {
+    for record in store.active_write_tickets(task_id)? {
         if record.basis_state_version != project_state.state_version
-            || write_check_is_expired(&record, now)?
+            || write_ticket_is_expired(&record, now)?
         {
             continue;
         }
         let attempt_scope: WriteTicketAttemptScope = decode_required_json(
-            "write_checks",
-            record.write_check_id.clone(),
+            "write_tickets",
+            record.write_ticket_id.clone(),
             "attempt_scope_json",
             Some(&record.attempt_scope_json),
         )?;

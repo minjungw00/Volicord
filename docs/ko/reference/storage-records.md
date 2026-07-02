@@ -97,7 +97,7 @@ API 스키마 형태와 저장소 기록 배치는 서로 다른 담당 문서�
 | `state.sqlite` | `user_judgments` | 사용자 소유 판단 상태 | 근거 스냅샷, 요청 맥락, 선택지, 민감 동작 범위, 해결 기계 동작과 결과, 판단 이유 메타데이터, User Channel 행위자 출처, 검증 근거, 보장 수준을 포함하는 대기, 해결됨, 오래됨, 대체됨, 만료됨 사용자 소유 판단. |
 | `state.sqlite` | Local web consent token | User Channel fallback token | 대기 사용자 판단을 위한 hash-only 일회성 token 메타데이터입니다. 프로젝트, 연결, 판단, capture basis, 상태, 만료, 생성/완료 메타데이터로 범위가 정해집니다. |
 | `state.sqlite` | `project_continuity_records` | 프로젝트 연속성 맥락 | 원천 `Task`가 닫힌 뒤에도 주소 지정할 수 있게 남는 프로젝트 수준 결정, 의무, 알려진 한계, 수락된 잔여 위험, 제약. |
-| `state.sqlite` | `write_checks` | 쓰기 티켓 권한 | 단일 사용 쓰기 티켓 권한 기록, 기준 버전, 시도 범위, 만료, 행위자 출처, 선택적 원천 판단, 소비 상태를 저장하는 물리 테이블입니다. 테이블 이름은 호환성 저장소 이름이며 공개 권한 개념이 아닙니다. |
+| `state.sqlite` | `write_tickets` | 쓰기 티켓 권한 | 단일 사용 쓰기 티켓 권한 기록, 기준 버전, 시도 범위, 만료, 행위자 출처, 선택적 원천 판단, 소비 상태를 저장하는 물리 테이블입니다. |
 | `state.sqlite` | `runs` | 실행 또는 관찰 기록 | 커밋된 실행 또는 관찰 기록, 선택적 호환 쓰기 티켓 소비, 행위자 출처, 간결한 증거 갱신. |
 | `state.sqlite`와 `artifacts/tmp/` | `artifact_staging` | 임시 아티팩트 스테이징 | 스테이징된 핸들 메타데이터, 생성자 행위자 출처, 안전한 스테이징 사실, 임시 바이트 또는 알림. |
 | `state.sqlite`와 아티팩트 저장소 | `artifacts` | 영속 아티팩트 기록 | 영속 아티팩트 메타데이터 또는 본문 위치, 콘텐츠 타입, SHA-256, 크기, 무결성 상태, 가림 처리, 보존, 생산자, 가용성 사실. |
@@ -150,7 +150,7 @@ API 스키마 형태와 저장소 기록 배치는 서로 다른 담당 문서�
 
 일반적인 기준 범위 Core 동작은 생명주기 또는 상태 전환을 통해 권한 행을 보존합니다. `Task`를 완료, 취소, 대체하면 관련 생명주기/상태 의미가 바뀝니다. 그래도 커밋된 권한 행은 감사와 복구를 위해 계속 주소 지정 가능해야 합니다.
 
-이 보존 규칙은 `tasks`, `change_units`, `user_judgments`, `project_continuity_records`, `write_checks`, `runs`, `artifacts`, `artifact_links`, `evidence_summaries`, `evidence_observations`, `blockers`, `authority_events`, `tool_invocations`, `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unrecorded_changes`, `session_watch_baselines`, `session_watch_observations`에 적용됩니다. 아티팩트별 임시/영속 보존 규칙은 [아티팩트 저장소](storage-artifacts.md)가 담당합니다.
+이 보존 규칙은 `tasks`, `change_units`, `user_judgments`, `project_continuity_records`, `write_tickets`, `runs`, `artifacts`, `artifact_links`, `evidence_summaries`, `evidence_observations`, `blockers`, `authority_events`, `tool_invocations`, `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unrecorded_changes`, `session_watch_baselines`, `session_watch_observations`에 적용됩니다. 아티팩트별 임시/영속 보존 규칙은 [아티팩트 저장소](storage-artifacts.md)가 담당합니다.
 
 ### Host-Observation 기록
 
@@ -204,7 +204,7 @@ Host-observation 기록은 호스트 통합 상태에 대한 로컬 권한 사�
 | `session_watch_baselines.scope_kind` | `repository`, `path_set` |
 | `session_watch_observations.observation_status` | `unresolved`, `linked` |
 | `change_units.status` | `proposed`, `active`, `replaced`, `closed` |
-| `write_checks.status` | `active`, `consumed`, `expired`, `stale`, `revoked` |
+| `write_tickets.status` | `active`, `consumed`, `expired`, `stale`, `revoked` |
 | `user_judgments.status` | `pending`, `resolved`, `stale`, `superseded`, `expired` |
 | `user_judgments.basis_status` | `current`, `stale`, `superseded` |
 | `user_judgments.resolution_machine_action` | 완전한 해결 그룹의 `accept`, `reject`, `defer` |
@@ -250,7 +250,7 @@ JSON을 저장하는 SQLite `TEXT` 열은 저장 표현 선택일 뿐이며 임�
 | `change_units` | 범위 요약, 제한된 목록, 쓰기 근거 요약, 선택적 효과 계약 데이터, 생명주기 지원 데이터. |
 | `user_judgments` | 판단 요청, 맥락, 선택지, 영향 참조, 아티팩트 참조, 근거 스냅샷, 민감 동작 범위, 기계 판독 가능 해결, 설명용 판단 이유 메타데이터. |
 | `project_continuity_records` | 오래 유지하는 프로젝트 맥락을 위한 적용 대상 경로, 적용 대상 참조, 원천 참조, 아티팩트 참조, 대체된 참조, 검토 트리거, 비권한 메타데이터. |
-| `write_checks` | 쓰기 티켓 시도 범위와 비권한 메타데이터. |
+| `write_tickets` | 쓰기 티켓 시도 범위와 비권한 메타데이터. |
 | `runs` | 요약, 관찰된 변경, 증거 갱신, 쓰기 티켓 효과 데이터, 비권한 메타데이터. |
 | `artifact_staging` | 스테이징된 아티팩트 데이터, 안전 메타데이터, 비권한 메타데이터. |
 | `artifacts` | 보존, 생산자, 비권한 메타데이터. |

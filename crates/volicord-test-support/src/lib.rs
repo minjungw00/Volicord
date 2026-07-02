@@ -612,26 +612,26 @@ pub mod core_fixtures {
             }
         }
 
-        /// Reads the current status of a Write Check row.
-        pub fn write_check_status(&self, write_check_id: &str) -> Result<String, StoreError> {
+        /// Reads the current status of a Write Ticket row.
+        pub fn write_ticket_status(&self, write_ticket_id: &str) -> Result<String, StoreError> {
             Ok(self.conn()?.query_row(
                 "SELECT status
-                   FROM write_checks
+                   FROM write_tickets
                   WHERE project_id = ?1
-                    AND write_check_id = ?2",
-                rusqlite::params![self.project_id, write_check_id],
+                    AND write_ticket_id = ?2",
+                rusqlite::params![self.project_id, write_ticket_id],
                 |row| row.get(0),
             )?)
         }
 
-        /// Reads the basis state version of a Write Check row.
-        pub fn write_check_basis(&self, write_check_id: &str) -> Result<u64, Box<dyn Error>> {
+        /// Reads the basis state version of a Write Ticket row.
+        pub fn write_ticket_basis(&self, write_ticket_id: &str) -> Result<u64, Box<dyn Error>> {
             let basis: i64 = self.conn()?.query_row(
                 "SELECT basis_state_version
-                   FROM write_checks
+                   FROM write_tickets
                   WHERE project_id = ?1
-                    AND write_check_id = ?2",
-                rusqlite::params![self.project_id, write_check_id],
+                    AND write_ticket_id = ?2",
+                rusqlite::params![self.project_id, write_ticket_id],
                 |row| row.get(0),
             )?;
             Ok(u64::try_from(basis)?)
@@ -1074,18 +1074,18 @@ pub mod core_fixtures {
             Ok(())
         }
 
-        /// Replaces a Write Check attempt-scope JSON value with raw text.
-        pub fn set_write_check_attempt_scope_raw(
+        /// Replaces a Write Ticket attempt-scope JSON value with raw text.
+        pub fn set_write_ticket_attempt_scope_raw(
             &self,
-            write_check_id: &str,
+            write_ticket_id: &str,
             raw_json: &str,
         ) -> Result<(), StoreError> {
             self.conn()?.execute(
-                "UPDATE write_checks
+                "UPDATE write_tickets
                     SET attempt_scope_json = ?3
                   WHERE project_id = ?1
-                    AND write_check_id = ?2",
-                rusqlite::params![self.project_id, write_check_id, raw_json],
+                    AND write_ticket_id = ?2",
+                rusqlite::params![self.project_id, write_ticket_id, raw_json],
             )?;
             Ok(())
         }
@@ -1164,35 +1164,35 @@ pub mod core_fixtures {
             Ok(())
         }
 
-        /// Replaces Write Check timestamps for fixed-clock tests.
-        pub fn set_write_check_timestamps(
+        /// Replaces Write Ticket timestamps for fixed-clock tests.
+        pub fn set_write_ticket_timestamps(
             &self,
-            write_check_id: &str,
+            write_ticket_id: &str,
             created_at: &str,
             expires_at: &str,
         ) -> Result<(), StoreError> {
             self.conn()?.execute(
-                "UPDATE write_checks
+                "UPDATE write_tickets
                     SET created_at = ?3,
                         expires_at = ?4
                   WHERE project_id = ?1
-                    AND write_check_id = ?2",
-                rusqlite::params![self.project_id, write_check_id, created_at, expires_at],
+                    AND write_ticket_id = ?2",
+                rusqlite::params![self.project_id, write_ticket_id, created_at, expires_at],
             )?;
             Ok(())
         }
 
-        /// Reads Write Check `created_at` and `expires_at` timestamp strings.
-        pub fn write_check_timestamps(
+        /// Reads Write Ticket `created_at` and `expires_at` timestamp strings.
+        pub fn write_ticket_timestamps(
             &self,
-            write_check_id: &str,
+            write_ticket_id: &str,
         ) -> Result<(String, String), StoreError> {
             Ok(self.conn()?.query_row(
                 "SELECT created_at, expires_at
-                   FROM write_checks
+                   FROM write_tickets
                   WHERE project_id = ?1
-                    AND write_check_id = ?2",
-                rusqlite::params![self.project_id, write_check_id],
+                    AND write_ticket_id = ?2",
+                rusqlite::params![self.project_id, write_ticket_id],
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )?)
         }
@@ -1486,7 +1486,7 @@ pub mod core_fixtures {
                 network_or_host_summary: Some("No remote host is authorized here.".to_owned())
                     .into(),
                 secret_or_credential_summary: None.into(),
-                capability_claim: "This is not a Write Check result.".to_owned(),
+                capability_claim: "This is not a Write Ticket result.".to_owned(),
                 expires_at: None.into(),
             }),
             _ => None,

@@ -335,7 +335,7 @@ Primary source path:
 3. [`crates/volicord-core/src/methods/prepare_write.rs`](../../../crates/volicord-core/src/methods/prepare_write.rs)
    implements `CoreService::prepare_write`, `prepare_write_policy`, and
    `plan_prepare_write`.
-4. [`crates/volicord-core/src/policy/write_check.rs`](../../../crates/volicord-core/src/policy/write_check.rs)
+4. [`crates/volicord-core/src/policy/write_ticket.rs`](../../../crates/volicord-core/src/policy/write_ticket.rs)
    supplies `prepare_write_decision`, `prepare_write_dry_run_summary`,
    write-ticket compatibility helpers, and `write_decision_reason`.
 5. [`crates/volicord-core/src/policy/path.rs`](../../../crates/volicord-core/src/policy/path.rs)

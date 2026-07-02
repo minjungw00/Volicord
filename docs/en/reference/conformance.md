@@ -205,10 +205,10 @@ These scenario IDs are compact reference criteria. They are not examples, tutori
   See [sensitive approval scope](#scenario-baseline-sensitive-approval-records-sensitive-action-scope).
 - `BASELINE-prepare-write-requires-compatible-scope-and-approval`
   See [`prepare_write` compatibility](#scenario-baseline-prepare-write-requires-compatible-scope-and-approval).
-- `BASELINE-write-check-attempt-scope-product-file-write-only`
-  See [`WriteCheckAttemptScope`](#scenario-baseline-write-check-attempt-scope-product-file-write-only).
-- `BASELINE-record-run-consumes-write-check-once`
-  See [single-use write-ticket compatibility](#scenario-baseline-record-run-consumes-write-check-once).
+- `BASELINE-write-ticket-attempt-scope-product-file-write-only`
+  See [`WriteTicketAttemptScope`](#scenario-baseline-write-ticket-attempt-scope-product-file-write-only).
+- `BASELINE-record-run-consumes-write-ticket-once`
+  See [single-use write-ticket compatibility](#scenario-baseline-record-run-consumes-write-ticket-once).
 - `BASELINE-stage-artifact-transient-handle-only`
   See [transient staged handle](#scenario-baseline-stage-artifact-transient-handle-only).
 - `BASELINE-record-run-artifact-input-validation-order`
@@ -223,8 +223,8 @@ These scenario IDs are compact reference criteria. They are not examples, tutori
   See [captured artifact rejection](#scenario-baseline-captured-artifact-rejected-in-baseline-scope).
 - `BASELINE-close-task-complete-stale-state-version-rejected`
   See [stale close state](#scenario-baseline-close-task-complete-stale-state-version-rejected).
-- `BASELINE-close-task-complete-stale-write-check-basis-rejected`
-  See [stale write-ticket basis](#scenario-baseline-close-task-complete-stale-write-check-basis-rejected).
+- `BASELINE-close-task-complete-stale-write-ticket-basis-rejected`
+  See [stale write-ticket basis](#scenario-baseline-close-task-complete-stale-write-ticket-basis-rejected).
 - `BASELINE-close-task-blocks-current-write-compatibility`
   See [write compatibility blocker](#scenario-baseline-close-task-blocks-current-write-compatibility).
 - `BASELINE-close-task-blocks-evidence-insufficient`
@@ -355,19 +355,19 @@ Owner links:
 - [Core Model](core-model.md)
 - [Security](security.md)
 
-<a id="scenario-baseline-write-check-attempt-scope-product-file-write-only"></a>
-### `BASELINE-write-check-attempt-scope-product-file-write-only`
+<a id="scenario-baseline-write-ticket-attempt-scope-product-file-write-only"></a>
+### `BASELINE-write-ticket-attempt-scope-product-file-write-only`
 
 Expected behavior:
-- `WriteCheckAttemptScope` is product-file write scope only.
+- `WriteTicketAttemptScope` is product-file write scope only.
 
 Owner links:
 - [Core Model](core-model.md)
 - [Prepare-write method](api/method-prepare-write.md)
 - [API Judgment Schemas](api/schema-judgment.md)
 
-<a id="scenario-baseline-record-run-consumes-write-check-once"></a>
-### `BASELINE-record-run-consumes-write-check-once`
+<a id="scenario-baseline-record-run-consumes-write-ticket-once"></a>
+### `BASELINE-record-run-consumes-write-ticket-once`
 
 Expected behavior:
 - Compatible Run recording consumes a matching write-ticket row once.
@@ -454,8 +454,8 @@ Owner links:
 - [State version conflict](api/error-precedence.md#state-conflict-behavior)
 - [Storage Effects](storage-effects.md)
 
-<a id="scenario-baseline-close-task-complete-stale-write-check-basis-rejected"></a>
-### `BASELINE-close-task-complete-stale-write-check-basis-rejected`
+<a id="scenario-baseline-close-task-complete-stale-write-ticket-basis-rejected"></a>
+### `BASELINE-close-task-complete-stale-write-ticket-basis-rejected`
 
 Expected behavior:
 - Stale close-relevant write-ticket basis fails before close commit.

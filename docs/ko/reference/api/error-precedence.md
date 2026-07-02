@@ -95,7 +95,7 @@ MCP `tools/call`에서 MCP 전송이 성공하면 Volicord 도메인 수준 `Too
 | 충돌 경우 | 세부 항목 |
 |---|---|
 | 오래된 `expected_state_version` | [오래된 `expected_state_version`](#state-conflict-expected-state-version) |
-| 오래된 `WriteTicket.basis_state_version` | [오래된 쓰기 티켓 근거 버전](#state-conflict-write-check-basis) |
+| 오래된 `WriteTicket.basis_state_version` | [오래된 쓰기 티켓 근거 버전](#state-conflict-write-ticket-basis) |
 | 멱등 요청 해시 충돌 | [멱등 요청 해시 충돌](#state-conflict-idempotency-hash) |
 
 우선순위에서 아래 충돌 경우는 프로젝트 전체의 커밋 전 최신성 또는 멱등성 충돌로 `STATE_VERSION_CONFLICT`를 선택합니다.
@@ -124,7 +124,7 @@ MCP `tools/call`에서 MCP 전송이 성공하면 Volicord 도메인 수준 `Too
 세부 필드:
 - [상태 충돌 세부 필드](error-details.md#state-conflict-detail-fields)를 사용합니다.
 
-<a id="state-conflict-write-check-basis"></a>
+<a id="state-conflict-write-ticket-basis"></a>
 ### 오래된 쓰기 티켓 근거 버전
 
 조건:

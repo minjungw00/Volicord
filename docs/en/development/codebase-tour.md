@@ -561,7 +561,7 @@ Important current symbols:
 - `prepare_write_issues_write_ticket_only_on_committed_allowed_effect`
 - `status_projection_matches_public_close_check_and_stays_read_only`
 - Shared helpers such as `core`, `invocation`,
-  `create_task_with_change_unit`, and `prepare_write_check`
+  `create_task_with_change_unit`, and `prepare_write_ticket`
 
 Most relevant tests:
 

@@ -127,8 +127,8 @@ fn status_result_fields(
             pending_user_judgments = all_pending_user_judgments.clone();
         }
         blocker_refs = projected_blocker_refs(store, &task_id, state_version)?;
-        let projected_write_check = if include.write_ticket {
-            projected_write_check_summary(
+        let projected_write_ticket = if include.write_ticket {
+            projected_write_ticket_summary(
                 store,
                 &task_id,
                 state_version,
@@ -138,7 +138,7 @@ fn status_result_fields(
         } else {
             None
         };
-        write_ticket_summary = projected_write_check.clone();
+        write_ticket_summary = projected_write_ticket.clone();
         let projected_evidence = if include.evidence {
             projected_evidence_summary(store, project_id, state_version, task)?
         } else {
@@ -196,7 +196,7 @@ fn status_result_fields(
                 current_change_unit: current_change_unit.as_ref(),
                 pending_user_judgment_refs: all_pending_user_judgments,
                 blocker_refs: blocker_refs.clone(),
-                write_ticket_summary: projected_write_check,
+                write_ticket_summary: projected_write_ticket,
                 evidence_summary: projected_evidence,
                 close_state: close_plan.as_ref().map(|plan| plan.close_state),
                 close_blockers: close_plan

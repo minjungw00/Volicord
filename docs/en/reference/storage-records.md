@@ -97,7 +97,7 @@ Baseline storage persists only the record families defined by this baseline stor
 | `state.sqlite` | `user_judgments` | User-owned judgment state | Pending, resolved, stale, superseded, and expired user-owned judgments, including basis snapshot, request context, options, sensitive-action scope, resolution machine action and outcome, rationale metadata, User Channel actor source, verification basis, and assurance level. |
 | `state.sqlite` | Local web consent token | User Channel fallback token | Hash-only one-time token metadata for a pending user judgment, scoped by project, connection, judgment, capture basis, status, expiration, and creation/completion metadata. |
 | `state.sqlite` | `project_continuity_records` | Project continuity context | Durable project-level decisions, obligations, known limits, accepted residual risks, and constraints that remain addressable after the source `Task` closes. |
-| `state.sqlite` | `write_checks` | Write-ticket authority | Physical storage table for single-use write ticket authority records, basis version, attempt scope, expiration, actor source, optional originating judgment, and consumption state. The table name is compatibility storage naming, not the public authority concept. |
+| `state.sqlite` | `write_tickets` | Write-ticket authority | Physical storage table for single-use write ticket authority records, basis version, attempt scope, expiration, actor source, optional originating judgment, and consumption state. |
 | `state.sqlite` | `runs` | Execution or observation record | Committed execution or observation record, optional compatible write-ticket consumption, actor source, and compact evidence updates. |
 | `state.sqlite` plus `artifacts/tmp/` | `artifact_staging` | Transient artifact staging | Staged handle metadata, creator actor source, safe staging facts, and transient bytes or notices. |
 | `state.sqlite` plus artifact store | `artifacts` | Persistent artifact record | Durable artifact metadata or body location, content type, SHA-256, size, integrity status, redaction, retention, producer, and availability facts. |
@@ -150,7 +150,7 @@ Storage must validate stored relationships before commit, including:
 
 Ordinary baseline Core operations preserve authority rows through lifecycle or status transitions. Completing, cancelling, or superseding a `Task` changes the relevant lifecycle/status meaning while keeping committed authority rows addressable for audit and recovery.
 
-This preservation applies to `tasks`, `change_units`, `user_judgments`, `project_continuity_records`, `write_checks`, `runs`, `artifacts`, `artifact_links`, `evidence_summaries`, `evidence_observations`, `blockers`, `authority_events`, `tool_invocations`, `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unrecorded_changes`, `session_watch_baselines`, and `session_watch_observations`. Artifact-specific transient and durable retention rules belong to [Artifact Storage](storage-artifacts.md).
+This preservation applies to `tasks`, `change_units`, `user_judgments`, `project_continuity_records`, `write_tickets`, `runs`, `artifacts`, `artifact_links`, `evidence_summaries`, `evidence_observations`, `blockers`, `authority_events`, `tool_invocations`, `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unrecorded_changes`, `session_watch_baselines`, and `session_watch_observations`. Artifact-specific transient and durable retention rules belong to [Artifact Storage](storage-artifacts.md).
 
 ### Host-Observation Records
 
@@ -204,7 +204,7 @@ Closed storage-owned value sets are persistence constraints. Unknown values must
 | `session_watch_baselines.scope_kind` | `repository`, `path_set` |
 | `session_watch_observations.observation_status` | `unresolved`, `linked` |
 | `change_units.status` | `proposed`, `active`, `replaced`, `closed` |
-| `write_checks.status` | `active`, `consumed`, `expired`, `stale`, `revoked` |
+| `write_tickets.status` | `active`, `consumed`, `expired`, `stale`, `revoked` |
 | `user_judgments.status` | `pending`, `resolved`, `stale`, `superseded`, `expired` |
 | `user_judgments.basis_status` | `current`, `stale`, `superseded` |
 | `user_judgments.resolution_machine_action` | `accept`, `reject`, `defer` in complete resolution groups |
@@ -250,7 +250,7 @@ Rules:
 | `change_units` | Scope summaries, bounded lists, write basis summaries, optional effect contract data, and lifecycle support data. |
 | `user_judgments` | Judgment request, context, options, affected refs, artifact refs, basis snapshot, sensitive-action scope, machine-readable resolution, and descriptive rationale metadata. |
 | `project_continuity_records` | Applies-to paths, applies-to refs, source refs, artifact refs, superseded refs, review triggers, and non-authority metadata for durable project context. |
-| `write_checks` | Write-ticket attempt scope and non-authority metadata. |
+| `write_tickets` | Write-ticket attempt scope and non-authority metadata. |
 | `runs` | Summary, observed changes, evidence updates, write-ticket effect data, and non-authority metadata. |
 | `artifact_staging` | Staged artifact data, safe metadata, and non-authority metadata. |
 | `artifacts` | Retention, producer, and non-authority metadata. |

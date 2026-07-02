@@ -313,14 +313,17 @@ fn plan_record_run(
         .collect::<Vec<_>>();
     let observation_refs_by_claim = observation_refs_by_claim(&observation_plans);
 
-    let write_check_scope = if request.observed_changes.product_file_write_observed {
+    let write_ticket_scope = if request.observed_changes.product_file_write_observed {
         let Some(write_ticket_id) = request.write_ticket_id.as_ref() else {
             return Err(PlanError::Response(Box::new(
-                write_check_required_response(&request.envelope, Some(project_state.state_version)),
+                write_ticket_required_response(
+                    &request.envelope,
+                    Some(project_state.state_version),
+                ),
             )));
         };
         let record = store
-            .write_check_record(write_ticket_id.as_str())
+            .write_ticket_record(write_ticket_id.as_str())
             .map_err(|error| {
                 PlanError::Response(Box::new(store_error_response(
                     &request.envelope,
@@ -329,14 +332,14 @@ fn plan_record_run(
                 )))
             })?
             .ok_or_else(|| {
-                PlanError::Response(Box::new(write_check_invalid_response(
+                PlanError::Response(Box::new(write_ticket_invalid_response(
                     &request.envelope,
                     Some(project_state.state_version),
                     "missing",
                     "write_ticket_id does not identify a write ticket",
                 )))
             })?;
-        let scope = validate_write_check_for_run(
+        let scope = validate_write_ticket_for_run(
             store,
             project_state,
             &request,
@@ -347,12 +350,14 @@ fn plan_record_run(
         Some((record, scope))
     } else {
         if request.write_ticket_id.is_some() {
-            return Err(PlanError::Response(Box::new(write_check_invalid_response(
-                &request.envelope,
-                Some(project_state.state_version),
-                "incompatible",
-                "write_ticket_id is only consumed for observed product-file writes",
-            ))));
+            return Err(PlanError::Response(Box::new(
+                write_ticket_invalid_response(
+                    &request.envelope,
+                    Some(project_state.state_version),
+                    "incompatible",
+                    "write_ticket_id is only consumed for observed product-file writes",
+                ),
+            )));
         }
         None
     };
@@ -386,7 +391,7 @@ fn plan_record_run(
         request: &request,
         task: &task,
         run_ref: &run_ref,
-        write_check_scope: write_check_scope.as_ref(),
+        write_ticket_scope: write_ticket_scope.as_ref(),
         evidence_summary_ref: evidence_summary_ref.clone(),
         registered_artifacts: &registered_artifacts,
         close_basis_revision,
@@ -418,7 +423,7 @@ fn plan_record_run(
     )?;
     let guarantee_display =
         guarantee_display_for_invocation(store, verified_invocation, planned_state_version)?;
-    let write_check_summary = if let Some((record, _scope)) = &write_check_scope {
+    let write_ticket_summary = if let Some((record, _scope)) = &write_ticket_scope {
         let mut consumed_record = record.clone();
         consumed_record.status = storage_value(WriteTicketStatus::Consumed)?;
         consumed_record.consumed_by_run_id = Some(run_id.as_str().to_owned());
@@ -427,7 +432,7 @@ fn plan_record_run(
             .iter()
             .map(|plan| plan.observation_ref.clone())
             .collect::<Vec<_>>();
-        Some(write_check_summary_for_record(
+        Some(write_ticket_summary_for_record(
             None,
             &consumed_record,
             planned_state_version,
@@ -436,7 +441,7 @@ fn plan_record_run(
             Some(guarantee_display.clone()),
         )?)
     } else {
-        projected_write_check_summary(
+        projected_write_ticket_summary(
             store,
             &request.task_id,
             planned_state_version,
@@ -475,7 +480,7 @@ fn plan_record_run(
         current_change_unit: Some(&change_unit),
         pending_user_judgment_refs,
         blocker_refs: blocker_refs.clone(),
-        write_ticket_summary: write_check_summary,
+        write_ticket_summary,
         evidence_summary: evidence_summary.clone(),
         close_state: Some(close_plan.close_state),
         close_blockers: close_plan.blockers,
@@ -506,7 +511,7 @@ fn plan_record_run(
         task_id: request.task_id.as_str().to_owned(),
         change_unit_id: Some(request.change_unit_id.as_str().to_owned()),
         scope_revision: task.scope_revision,
-        write_check_id: request
+        write_ticket_id: request
             .write_ticket_id
             .as_ref()
             .map(|id| id.as_str().to_owned()),
@@ -517,9 +522,9 @@ fn plan_record_run(
         }))?,
         observed_changes_json: serde_json::to_string(&normalized_observed_changes)?,
         evidence_updates_json: serde_json::to_string(&request.evidence_updates)?,
-        write_check_effect_json: serde_json::to_string(&json!({
+        write_ticket_effect_json: serde_json::to_string(&json!({
             "write_ticket_id": request.write_ticket_id,
-            "effect": if write_check_scope.is_some() { "consumed" } else { "none" }
+            "effect": if write_ticket_scope.is_some() { "consumed" } else { "none" }
         }))?,
         created_by_actor_source: verified_invocation.actor_source.to_canonical_string(),
         metadata_json: serde_json::to_string(&json!({
@@ -542,10 +547,10 @@ fn plan_record_run(
             ],
         },
     ));
-    if let Some((record, _scope)) = &write_check_scope {
-        storage_mutations.push(CoreStorageMutation::ConsumeWriteCheck(
-            WriteCheckConsumption {
-                write_check_id: record.write_check_id.clone(),
+    if let Some((record, _scope)) = &write_ticket_scope {
+        storage_mutations.push(CoreStorageMutation::ConsumeWriteTicket(
+            WriteTicketConsumption {
+                write_ticket_id: record.write_ticket_id.clone(),
                 run_id: run_id.as_str().to_owned(),
                 expected_basis_state_version: record.basis_state_version,
             },
@@ -635,9 +640,9 @@ fn plan_record_run(
         "residual_risk_ids": residual_risk_ids,
         "kind": request.kind,
         "product_file_write_observed": normalized_observed_changes.product_file_write_observed,
-        "write_ticket_id": write_check_scope
+        "write_ticket_id": write_ticket_scope
             .as_ref()
-            .map(|(record, _scope)| record.write_check_id.clone()),
+            .map(|(record, _scope)| record.write_ticket_id.clone()),
         "artifact_ids": registered_artifacts
             .iter()
             .map(|artifact| artifact.artifact_id.as_str().to_owned())
@@ -1105,7 +1110,7 @@ struct RecordRunCloseBasisContext<'a> {
     request: &'a RecordRunRequest,
     task: &'a TaskRecord,
     run_ref: &'a StateRecordRef,
-    write_check_scope: Option<&'a (WriteCheckRecord, WriteTicketAttemptScope)>,
+    write_ticket_scope: Option<&'a (WriteTicketRecord, WriteTicketAttemptScope)>,
     evidence_summary_ref: Option<StateRecordRef>,
     registered_artifacts: &'a [ArtifactRef],
     close_basis_revision: u64,
@@ -1135,7 +1140,7 @@ fn build_record_run_close_basis(
         request,
         task,
         run_ref,
-        write_check_scope,
+        write_ticket_scope,
         evidence_summary_ref,
         registered_artifacts,
         close_basis_revision,
@@ -1234,7 +1239,7 @@ fn build_record_run_close_basis(
         request,
         task,
         run_ref,
-        write_check_scope,
+        write_ticket_scope,
     )?;
     let derived_sensitive_categories = sensitive_category_summary(&sensitive_action_requirements);
     let caller_sensitive_categories = normalize_string_list(&assessment.sensitive_categories);
@@ -1272,13 +1277,13 @@ fn current_sensitive_action_requirements(
     request: &RecordRunRequest,
     task: &TaskRecord,
     run_ref: &StateRecordRef,
-    write_check_scope: Option<&(WriteCheckRecord, WriteTicketAttemptScope)>,
+    write_ticket_scope: Option<&(WriteTicketRecord, WriteTicketAttemptScope)>,
 ) -> Result<Vec<SensitiveActionRequirement>, PlanError> {
     let mut requirements =
         previous_current_sensitive_action_requirements(store, project_state, request, task)?;
-    if let Some((record, scope)) = write_check_scope {
+    if let Some((record, scope)) = write_ticket_scope {
         if let Some(requirement) =
-            sensitive_action_requirement_from_write_check(store, run_ref, record, scope)?
+            sensitive_action_requirement_from_write_ticket(store, run_ref, record, scope)?
         {
             requirements.push(requirement);
         }
@@ -1316,10 +1321,10 @@ fn previous_current_sensitive_action_requirements(
     }
 }
 
-fn sensitive_action_requirement_from_write_check(
+fn sensitive_action_requirement_from_write_ticket(
     store: &CoreProjectStore,
     run_ref: &StateRecordRef,
-    record: &WriteCheckRecord,
+    record: &WriteTicketRecord,
     scope: &WriteTicketAttemptScope,
 ) -> Result<Option<SensitiveActionRequirement>, PlanError> {
     let sensitive_categories = normalized_string_set(&scope.sensitive_categories);
@@ -1330,8 +1335,8 @@ fn sensitive_action_requirement_from_write_check(
     if action_kind.is_empty() {
         return Err(PlanError::Core(CorePipelineError::Store(
             StoreError::corrupt_owner_state_json(
-                "write_checks",
-                record.write_check_id.clone(),
+                "write_tickets",
+                record.write_ticket_id.clone(),
                 "attempt_scope_json",
             ),
         )));
@@ -1341,8 +1346,8 @@ fn sensitive_action_requirement_from_write_check(
             |_| {
                 PlanError::Core(CorePipelineError::Store(
                     StoreError::corrupt_owner_state_json(
-                        "write_checks",
-                        record.write_check_id.clone(),
+                        "write_tickets",
+                        record.write_ticket_id.clone(),
                         "attempt_scope_json",
                     ),
                 ))
@@ -1351,8 +1356,8 @@ fn sensitive_action_requirement_from_write_check(
     if normalized_paths.is_empty() {
         return Err(PlanError::Core(CorePipelineError::Store(
             StoreError::corrupt_owner_state_json(
-                "write_checks",
-                record.write_check_id.clone(),
+                "write_tickets",
+                record.write_ticket_id.clone(),
                 "attempt_scope_json",
             ),
         )));
@@ -2351,11 +2356,11 @@ fn plan_existing_artifact_input(
     })
 }
 
-fn validate_write_check_for_run(
+fn validate_write_ticket_for_run(
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
     request: &RecordRunRequest,
-    record: &WriteCheckRecord,
+    record: &WriteTicketRecord,
     observed_changes: &ObservedChanges,
     now: DateTime<Utc>,
 ) -> Result<WriteTicketAttemptScope, PlanError> {
@@ -2365,16 +2370,18 @@ fn validate_write_check_for_run(
         } else {
             "revoked"
         };
-        return Err(PlanError::Response(Box::new(write_check_invalid_response(
-            &request.envelope,
-            Some(project_state.state_version),
-            reason,
-            "write ticket is not active",
-        ))));
+        return Err(PlanError::Response(Box::new(
+            write_ticket_invalid_response(
+                &request.envelope,
+                Some(project_state.state_version),
+                reason,
+                "write ticket is not active",
+            ),
+        )));
     }
     if record.basis_state_version != project_state.state_version {
         return Err(PlanError::Response(Box::new(
-            stale_write_check_basis_response(
+            stale_write_ticket_basis_response(
                 &request.envelope,
                 record,
                 project_state.state_version,
@@ -2389,24 +2396,28 @@ fn validate_write_check_for_run(
             "revoked" => "revoked",
             _ => "incompatible",
         };
-        return Err(PlanError::Response(Box::new(write_check_invalid_response(
-            &request.envelope,
-            Some(project_state.state_version),
-            reason,
-            "write ticket is not active",
-        ))));
+        return Err(PlanError::Response(Box::new(
+            write_ticket_invalid_response(
+                &request.envelope,
+                Some(project_state.state_version),
+                reason,
+                "write ticket is not active",
+            ),
+        )));
     }
-    if write_check_is_expired(record, now).map_err(CorePipelineError::from)? {
-        return Err(PlanError::Response(Box::new(write_check_invalid_response(
-            &request.envelope,
-            Some(project_state.state_version),
-            "expired",
-            "write ticket is expired",
-        ))));
+    if write_ticket_is_expired(record, now).map_err(CorePipelineError::from)? {
+        return Err(PlanError::Response(Box::new(
+            write_ticket_invalid_response(
+                &request.envelope,
+                Some(project_state.state_version),
+                "expired",
+                "write ticket is expired",
+            ),
+        )));
     }
-    let scope: WriteTicketAttemptScope = decode_required_json::<PersistedWriteCheckAttemptScope>(
-        "write_checks",
-        record.write_check_id.clone(),
+    let scope: WriteTicketAttemptScope = decode_required_json::<PersistedWriteTicketAttemptScope>(
+        "write_tickets",
+        record.write_ticket_id.clone(),
         "attempt_scope_json",
         Some(&record.attempt_scope_json),
     )?
@@ -2416,14 +2427,14 @@ fn validate_write_check_for_run(
             |_| {
                 PlanError::Core(CorePipelineError::Store(
                     StoreError::corrupt_owner_state_json(
-                        "write_checks",
-                        record.write_check_id.clone(),
+                        "write_tickets",
+                        record.write_ticket_id.clone(),
                         "attempt_scope_json",
                     ),
                 ))
             },
         )?;
-    if let Some(mismatch) = run_write_check_mismatch(
+    if let Some(mismatch) = run_write_ticket_mismatch(
         record,
         &scope,
         &request.task_id,
@@ -2432,23 +2443,25 @@ fn validate_write_check_for_run(
         observed_changes,
         &scope_paths,
     ) {
-        return write_check_mismatch(request, project_state, mismatch.reason, mismatch.message);
+        return write_ticket_mismatch(request, project_state, mismatch.reason, mismatch.message);
     }
     Ok(scope)
 }
 
-fn write_check_mismatch(
+fn write_ticket_mismatch(
     request: &RecordRunRequest,
     project_state: &ProjectStateHeader,
     reason: &'static str,
     message: &'static str,
 ) -> Result<WriteTicketAttemptScope, PlanError> {
-    Err(PlanError::Response(Box::new(write_check_invalid_response(
-        &request.envelope,
-        Some(project_state.state_version),
-        reason,
-        message,
-    ))))
+    Err(PlanError::Response(Box::new(
+        write_ticket_invalid_response(
+            &request.envelope,
+            Some(project_state.state_version),
+            reason,
+            message,
+        ),
+    )))
 }
 
 fn build_record_run_evidence_summary(

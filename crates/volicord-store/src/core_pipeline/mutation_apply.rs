@@ -21,13 +21,13 @@ impl CoreStorageMutation {
             Self::ReplaceCurrentChangeUnit(input) => {
                 mutation.replace_current_change_unit(input, committed_state_version)
             }
-            Self::MarkActiveWriteChecksStale { task_id } => {
-                mutation.mark_active_write_checks_stale(task_id)
+            Self::MarkActiveWriteTicketsStale { task_id } => {
+                mutation.mark_active_write_tickets_stale(task_id)
             }
-            Self::InsertWriteTicket(input) | Self::InsertWriteCheck(input) => {
-                mutation.insert_write_check(input, committed_state_version)
+            Self::InsertWriteTicket(input) => {
+                mutation.insert_write_ticket(input, committed_state_version)
             }
-            Self::ConsumeWriteCheck(input) => mutation.consume_write_check(input),
+            Self::ConsumeWriteTicket(input) => mutation.consume_write_ticket(input),
             Self::InsertRun(input) => mutation.insert_run(input),
             Self::PromoteStagedArtifact(input) => mutation.promote_staged_artifact(input),
             Self::LinkArtifact(input) => mutation.link_artifact(input),
@@ -410,10 +410,10 @@ impl ProjectMutation<'_> {
         }
     }
 
-    fn mark_active_write_checks_stale(&mut self, task_id: &str) -> StoreResult<()> {
+    fn mark_active_write_tickets_stale(&mut self, task_id: &str) -> StoreResult<()> {
         validate_identifier("task_id", task_id)?;
         self.tx.execute(
-            "UPDATE write_checks
+            "UPDATE write_tickets
                 SET status = 'stale'
               WHERE project_id = ?1
                 AND task_id = ?2
@@ -423,28 +423,31 @@ impl ProjectMutation<'_> {
         Ok(())
     }
 
-    fn insert_write_check(
+    fn insert_write_ticket(
         &mut self,
-        input: &WriteCheckInsert,
+        input: &WriteTicketInsert,
         committed_state_version: u64,
     ) -> StoreResult<()> {
-        validate_identifier("write_check_id", &input.write_check_id)?;
+        validate_identifier("write_ticket_id", &input.write_ticket_id)?;
         validate_identifier("task_id", &input.task_id)?;
         validate_identifier("change_unit_id", &input.change_unit_id)?;
-        validate_json_text("write_checks.attempt_scope_json", &input.attempt_scope_json)?;
+        validate_json_text(
+            "write_tickets.attempt_scope_json",
+            &input.attempt_scope_json,
+        )?;
         validate_identifier("created_by_actor_source", &input.created_by_actor_source)?;
         if let Some(created_by_judgment_id) = &input.created_by_judgment_id {
             validate_identifier("created_by_judgment_id", created_by_judgment_id)?;
         }
         validate_identifier("expires_at", &input.expires_at)?;
         validate_identifier("created_at", &input.created_at)?;
-        validate_json_text("write_checks.metadata_json", &input.metadata_json)?;
+        validate_json_text("write_tickets.metadata_json", &input.metadata_json)?;
         let basis_state_version = u64_to_i64("basis_state_version", committed_state_version)?;
 
         self.tx.execute(
-            "INSERT INTO write_checks (
+            "INSERT INTO write_tickets (
                 project_id,
-                write_check_id,
+                write_ticket_id,
                 task_id,
                 change_unit_id,
                 basis_state_version,
@@ -478,7 +481,7 @@ impl ProjectMutation<'_> {
             )",
             params![
                 self.project_id,
-                input.write_check_id,
+                input.write_ticket_id,
                 input.task_id,
                 input.change_unit_id,
                 basis_state_version,
@@ -493,25 +496,25 @@ impl ProjectMutation<'_> {
         Ok(())
     }
 
-    fn consume_write_check(&mut self, input: &WriteCheckConsumption) -> StoreResult<()> {
-        validate_identifier("write_check_id", &input.write_check_id)?;
+    fn consume_write_ticket(&mut self, input: &WriteTicketConsumption) -> StoreResult<()> {
+        validate_identifier("write_ticket_id", &input.write_ticket_id)?;
         validate_identifier("run_id", &input.run_id)?;
         let expected_basis = u64_to_i64(
-            "write_checks.basis_state_version",
+            "write_tickets.basis_state_version",
             input.expected_basis_state_version,
         )?;
         let changed = self.tx.execute(
-            "UPDATE write_checks
+            "UPDATE write_tickets
                 SET status = 'consumed',
                     consumed_by_run_id = ?3,
                     consumed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
               WHERE project_id = ?1
-                AND write_check_id = ?2
+                AND write_ticket_id = ?2
                 AND status = 'active'
                 AND basis_state_version = ?4",
             params![
                 self.project_id,
-                input.write_check_id,
+                input.write_ticket_id,
                 input.run_id,
                 expected_basis
             ],
@@ -521,7 +524,7 @@ impl ProjectMutation<'_> {
         } else {
             Err(StoreError::SchemaInvariant {
                 database_kind: "project_state",
-                detail: "active Write Check consumption changed no rows".to_owned(),
+                detail: "active Write Ticket consumption changed no rows".to_owned(),
             })
         }
     }
@@ -533,8 +536,8 @@ impl ProjectMutation<'_> {
             validate_identifier("change_unit_id", change_unit_id)?;
         }
         let scope_revision = u64_to_i64("runs.scope_revision", input.scope_revision)?;
-        if let Some(write_check_id) = &input.write_check_id {
-            validate_identifier("write_check_id", write_check_id)?;
+        if let Some(write_ticket_id) = &input.write_ticket_id {
+            validate_identifier("write_ticket_id", write_ticket_id)?;
         }
         validate_identifier("runs.kind", &input.kind)?;
         validate_identifier("runs.status", &input.status)?;
@@ -542,8 +545,8 @@ impl ProjectMutation<'_> {
         validate_json_text("runs.observed_changes_json", &input.observed_changes_json)?;
         validate_json_text("runs.evidence_updates_json", &input.evidence_updates_json)?;
         validate_json_text(
-            "runs.write_check_effect_json",
-            &input.write_check_effect_json,
+            "runs.write_ticket_effect_json",
+            &input.write_ticket_effect_json,
         )?;
         validate_identifier("created_by_actor_source", &input.created_by_actor_source)?;
         validate_json_text("runs.metadata_json", &input.metadata_json)?;
@@ -555,13 +558,13 @@ impl ProjectMutation<'_> {
                 task_id,
                 change_unit_id,
                 scope_revision,
-                write_check_id,
+                write_ticket_id,
                 kind,
                 status,
                 summary_json,
                 observed_changes_json,
                 evidence_updates_json,
-                write_check_effect_json,
+                write_ticket_effect_json,
                 created_by_actor_source,
                 started_at,
                 completed_at,
@@ -593,13 +596,13 @@ impl ProjectMutation<'_> {
                 input.task_id,
                 input.change_unit_id,
                 scope_revision,
-                input.write_check_id,
+                input.write_ticket_id,
                 input.kind,
                 input.status,
                 input.summary_json,
                 input.observed_changes_json,
                 input.evidence_updates_json,
-                input.write_check_effect_json,
+                input.write_ticket_effect_json,
                 input.created_by_actor_source,
                 input.metadata_json
             ],

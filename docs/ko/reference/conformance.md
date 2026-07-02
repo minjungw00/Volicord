@@ -205,10 +205,10 @@ API 메서드 예시는 자신이 설명하는 개념을 밝히기 위해 적합
   [민감 동작 승인 범위](#scenario-baseline-sensitive-approval-records-sensitive-action-scope)를 참고합니다.
 - `BASELINE-prepare-write-requires-compatible-scope-and-approval`
   [`prepare_write` 호환성](#scenario-baseline-prepare-write-requires-compatible-scope-and-approval)을 참고합니다.
-- `BASELINE-write-check-attempt-scope-product-file-write-only`
-  [`WriteCheckAttemptScope`](#scenario-baseline-write-check-attempt-scope-product-file-write-only)를 참고합니다.
-- `BASELINE-record-run-consumes-write-check-once`
-  [1회용 쓰기 티켓 호환성](#scenario-baseline-record-run-consumes-write-check-once)을 참고합니다.
+- `BASELINE-write-ticket-attempt-scope-product-file-write-only`
+  [`WriteTicketAttemptScope`](#scenario-baseline-write-ticket-attempt-scope-product-file-write-only)를 참고합니다.
+- `BASELINE-record-run-consumes-write-ticket-once`
+  [1회용 쓰기 티켓 호환성](#scenario-baseline-record-run-consumes-write-ticket-once)을 참고합니다.
 - `BASELINE-stage-artifact-transient-handle-only`
   [임시 스테이징 핸들](#scenario-baseline-stage-artifact-transient-handle-only)을 참고합니다.
 - `BASELINE-record-run-artifact-input-validation-order`
@@ -223,8 +223,8 @@ API 메서드 예시는 자신이 설명하는 개념을 밝히기 위해 적합
   [캡처 아티팩트 거절](#scenario-baseline-captured-artifact-rejected-in-baseline-scope)을 참고합니다.
 - `BASELINE-close-task-complete-stale-state-version-rejected`
   [오래된 닫기 상태](#scenario-baseline-close-task-complete-stale-state-version-rejected)를 참고합니다.
-- `BASELINE-close-task-complete-stale-write-check-basis-rejected`
-  [오래된 쓰기 티켓 근거](#scenario-baseline-close-task-complete-stale-write-check-basis-rejected)를 참고합니다.
+- `BASELINE-close-task-complete-stale-write-ticket-basis-rejected`
+  [오래된 쓰기 티켓 근거](#scenario-baseline-close-task-complete-stale-write-ticket-basis-rejected)를 참고합니다.
 - `BASELINE-close-task-blocks-current-write-compatibility`
   [쓰기 호환성 차단](#scenario-baseline-close-task-blocks-current-write-compatibility)을 참고합니다.
 - `BASELINE-close-task-blocks-evidence-insufficient`
@@ -355,19 +355,19 @@ API 메서드 예시는 자신이 설명하는 개념을 밝히기 위해 적합
 - [Core 모델](core-model.md)
 - [보안](security.md)
 
-<a id="scenario-baseline-write-check-attempt-scope-product-file-write-only"></a>
-### `BASELINE-write-check-attempt-scope-product-file-write-only`
+<a id="scenario-baseline-write-ticket-attempt-scope-product-file-write-only"></a>
+### `BASELINE-write-ticket-attempt-scope-product-file-write-only`
 
 기대 동작:
-- `WriteCheckAttemptScope`는 제품 파일 쓰기 범위만 다룹니다.
+- `WriteTicketAttemptScope`는 제품 파일 쓰기 범위만 다룹니다.
 
 담당 문서 링크:
 - [Core 모델](core-model.md)
 - [쓰기 준비 메서드](api/method-prepare-write.md)
 - [API 판단 스키마](api/schema-judgment.md)
 
-<a id="scenario-baseline-record-run-consumes-write-check-once"></a>
-### `BASELINE-record-run-consumes-write-check-once`
+<a id="scenario-baseline-record-run-consumes-write-ticket-once"></a>
+### `BASELINE-record-run-consumes-write-ticket-once`
 
 기대 동작:
 - 호환되는 실행 기록은 맞는 쓰기 티켓 행을 한 번 소비합니다.
@@ -454,8 +454,8 @@ API 메서드 예시는 자신이 설명하는 개념을 밝히기 위해 적합
 - [상태 버전 충돌](api/error-precedence.md#state-conflict-behavior)
 - [저장 효과](storage-effects.md)
 
-<a id="scenario-baseline-close-task-complete-stale-write-check-basis-rejected"></a>
-### `BASELINE-close-task-complete-stale-write-check-basis-rejected`
+<a id="scenario-baseline-close-task-complete-stale-write-ticket-basis-rejected"></a>
+### `BASELINE-close-task-complete-stale-write-ticket-basis-rejected`
 
 기대 동작:
 - 닫기 관련 쓰기 티켓 근거가 오래됐으면 닫기 커밋 전에 실패합니다.

@@ -337,9 +337,9 @@ or correctness oracle. Do not rely on Volicord for:
 - proof that `AGENTS.md`, host rules, or MCP instructions forced model behavior
 
 Observe hooks may return `warn` or `deny` decisions when supported and active,
-and close/write checks may expose blockers. Those are cooperative local
-controls, not kernel-level enforcement or a guarantee that tools cannot write
-files outside Volicord-aware paths.
+and close checks or write-ticket blockers may expose follow-up work. Those are
+cooperative local controls, not kernel-level enforcement or a guarantee that
+tools cannot write files outside Volicord-aware paths.
 
 See the [Security Reference](docs/en/reference/security.md) for exact guarantee
 wording and explicit non-guarantees.

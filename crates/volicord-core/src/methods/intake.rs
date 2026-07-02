@@ -247,10 +247,10 @@ fn plan_intake(
     )?;
     let guarantee_display =
         guarantee_display_for_invocation(store, verified_invocation, planned_state_version)?;
-    let write_check_summary = if create_new {
+    let write_ticket_summary = if create_new {
         None
     } else {
-        projected_write_check_summary(
+        projected_write_ticket_summary(
             store,
             &task_id,
             planned_state_version,
@@ -265,7 +265,7 @@ fn plan_intake(
         current_change_unit: current_change_unit.as_ref(),
         pending_user_judgment_refs: pending_refs,
         blocker_refs,
-        write_ticket_summary: write_check_summary,
+        write_ticket_summary,
         evidence_summary,
         close_state: Some(close_plan.close_state),
         close_blockers: close_plan.blockers,

@@ -204,7 +204,7 @@ fn initial_schemas_satisfy_connection_storage_contract() -> Result<(), Box<dyn E
         "local web consent tokens are project-state rows, not registry rows"
     );
 
-    assert!(initial_project_schema.tables.contains_key("write_checks"));
+    assert!(initial_project_schema.tables.contains_key("write_tickets"));
     assert_tables_include(
         &initial_project_schema,
         &[
@@ -265,7 +265,7 @@ fn initial_schemas_satisfy_connection_storage_contract() -> Result<(), Box<dyn E
             "host_invocation_id",
             "path_policy",
             "expected_paths_json",
-            "write_check_ids_json",
+            "write_ticket_ids_json",
             "matched_post_tool_guard_event_id",
         ],
     );
@@ -372,12 +372,12 @@ fn schema_comparison_detects_contract_critical_drift() -> Result<(), Box<dyn Err
         &read_database_schema(&missing_actor_source)?,
     );
 
-    let weakened_write_check = initial_project_state_schema()?;
-    weakened_write_check.execute("DROP INDEX idx_write_checks_consumed_run", [])?;
+    let weakened_write_ticket = initial_project_state_schema()?;
+    weakened_write_ticket.execute("DROP INDEX idx_write_tickets_consumed_run", [])?;
     assert_schema_differs(
-        "removing write check consumed-run uniqueness",
+        "removing write ticket consumed-run uniqueness",
         &expected,
-        &read_database_schema(&weakened_write_check)?,
+        &read_database_schema(&weakened_write_ticket)?,
     );
 
     Ok(())
@@ -1012,7 +1012,7 @@ fn assert_project_contract_behavior(label: &str, conn: &Connection) -> Result<()
     assert_user_judgments_require_basis(label, conn);
     assert_resolved_user_judgments_require_complete_resolution(label, conn);
     assert_project_continuity_value_sets_are_closed(label, conn);
-    assert_write_check_status_is_closed(label, conn);
+    assert_write_ticket_status_is_closed(label, conn);
     assert_evidence_observation_value_sets_are_closed(label, conn);
     assert_tool_invocation_requires_identity(label, conn);
     assert_one_active_current_change_unit(label, conn);
@@ -1293,12 +1293,12 @@ fn assert_project_continuity_value_sets_are_closed(label: &str, conn: &Connectio
     assert_constraint_error(label, bad_status);
 }
 
-fn assert_write_check_status_is_closed(label: &str, conn: &Connection) {
+fn assert_write_ticket_status_is_closed(label: &str, conn: &Connection) {
     let error = conn
         .execute(
-            "INSERT INTO write_checks (
+            "INSERT INTO write_tickets (
                 project_id,
-                write_check_id,
+                write_ticket_id,
                 task_id,
                 basis_state_version,
                 status,
@@ -1308,7 +1308,7 @@ fn assert_write_check_status_is_closed(label: &str, conn: &Connection) {
             )
             VALUES (
                 'project_a',
-                'write_check_bad_status',
+                'write_ticket_bad_status',
                 'task_a',
                 1,
                 'accepted',

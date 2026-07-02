@@ -544,7 +544,7 @@ Agent Connection 등록, 요청 빌더, 직접 Store 검사 도우미를 프로�
 - `prepare_write_issues_write_ticket_only_on_committed_allowed_effect`
 - `status_projection_matches_public_close_check_and_stays_read_only`
 - `core`, `invocation`, `create_task_with_change_unit`,
-  `prepare_write_check` 같은 공유 도우미
+  `prepare_write_ticket` 같은 공유 도우미
 
 가장 관련 있는 테스트:
 

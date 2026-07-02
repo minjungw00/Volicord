@@ -63,7 +63,7 @@ decisions.
 ## Judgment And Authority Boundaries
 
 - Keep user-owned judgment, evidence, verification criteria, ordinary approval,
-  write approval, sensitive-action approval, `Write Check`, final
+  write approval, sensitive-action approval, `Write Ticket`, final
   acceptance, close readiness, and residual-risk acceptance distinct in code,
   tests, fixtures, and API examples.
 - Keep Agent Connections and `User Channel` paths distinct when implementation

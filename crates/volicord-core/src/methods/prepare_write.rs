@@ -353,9 +353,9 @@ fn plan_prepare_write(
     });
     let decision = prepare_write_decision(&reasons);
     let allowed = reasons.is_empty();
-    let create_write_check = allowed && !request.envelope.dry_run;
-    let write_check_id = if create_write_check {
-        Some(allocate_write_check_id(service, store).map_err(PlanError::Core)?)
+    let create_write_ticket = allowed && !request.envelope.dry_run;
+    let write_ticket_id = if create_write_ticket {
+        Some(allocate_write_ticket_id(service, store).map_err(PlanError::Core)?)
     } else {
         None
     };
@@ -370,15 +370,15 @@ fn plan_prepare_write(
     };
     let attempt_scope_json = serde_json::to_string(&attempt_scope)?;
     let created_at = plan_now.to_string();
-    let expires_at_timestamp = utc_timestamp(write_check_expires_at(*plan_now.as_datetime()));
+    let expires_at_timestamp = utc_timestamp(write_ticket_expires_at(*plan_now.as_datetime()));
     let expires_at = expires_at_timestamp.to_string();
-    let write_ticket_id = write_check_id
+    let write_ticket_id = write_ticket_id
         .as_ref()
         .map(|write_ticket_id| WriteTicketId::new(write_ticket_id.as_str().to_owned()));
-    let write_ticket_ref = write_check_id.as_ref().map(|write_check_id| {
+    let write_ticket_ref = write_ticket_id.as_ref().map(|write_ticket_id| {
         state_ref(
             StateRecordKind::WriteTicket,
-            write_check_id.as_str(),
+            write_ticket_id.as_str(),
             &request.envelope.project_id,
             Some(&task_id),
             Some(planned_state_version),
@@ -390,21 +390,22 @@ fn plan_prepare_write(
         .filter(|path| !denied_path_patterns.iter().any(|denied| denied == *path))
         .cloned()
         .collect::<Vec<_>>();
-    let synthetic_write_check = write_check_id
-        .as_ref()
-        .map(|write_check_id| WriteCheckRecord {
-            project_id: request.envelope.project_id.as_str().to_owned(),
-            write_check_id: write_check_id.as_str().to_owned(),
-            task_id: task_id.as_str().to_owned(),
-            change_unit_id: Some(scope_change_unit_id.as_str().to_owned()),
-            basis_state_version: planned_state_version,
-            status: "active".to_owned(),
-            attempt_scope_json: attempt_scope_json.clone(),
-            expires_at: expires_at.clone(),
-            created_at: created_at.clone(),
-            consumed_by_run_id: None,
-            consumed_at: None,
-        });
+    let synthetic_write_ticket =
+        write_ticket_id
+            .as_ref()
+            .map(|write_ticket_id| WriteTicketRecord {
+                project_id: request.envelope.project_id.as_str().to_owned(),
+                write_ticket_id: write_ticket_id.as_str().to_owned(),
+                task_id: task_id.as_str().to_owned(),
+                change_unit_id: Some(scope_change_unit_id.as_str().to_owned()),
+                basis_state_version: planned_state_version,
+                status: "active".to_owned(),
+                attempt_scope_json: attempt_scope_json.clone(),
+                expires_at: expires_at.clone(),
+                created_at: created_at.clone(),
+                consumed_by_run_id: None,
+                consumed_at: None,
+            });
 
     let blocker_refs = store
         .active_blocker_refs(&task_id, planned_state_version)
@@ -450,7 +451,7 @@ fn plan_prepare_write(
     )?;
     let mut close_state = close_plan.close_state;
     let mut close_blockers = close_plan.blockers;
-    if create_write_check {
+    if create_write_ticket {
         if let Some(write_ticket_ref) = write_ticket_ref.as_ref() {
             let planned_task_ref = state_ref(
                 StateRecordKind::Task,
@@ -505,10 +506,10 @@ fn plan_prepare_write(
         current_change_unit: change_unit,
         pending_user_judgment_refs,
         blocker_refs,
-        write_ticket_summary: synthetic_write_check
+        write_ticket_summary: synthetic_write_ticket
             .as_ref()
             .map(|record| {
-                write_check_summary_for_record(
+                write_ticket_summary_for_record(
                     None,
                     record,
                     planned_state_version,
@@ -531,7 +532,7 @@ fn plan_prepare_write(
         write_ticket_id: write_ticket_id.clone(),
         write_ticket_ref: write_ticket_ref.clone(),
         write_ticket,
-        write_ticket_effect: if create_write_check {
+        write_ticket_effect: if create_write_ticket {
             WriteTicketEffect::Issued
         } else {
             WriteTicketEffect::None
@@ -545,9 +546,9 @@ fn plan_prepare_write(
         guarantee_display: guarantee_display.clone(),
     };
 
-    let storage_mutations = if let Some(write_check_id) = &write_check_id {
+    let storage_mutations = if let Some(write_ticket_id) = &write_ticket_id {
         vec![CoreStorageMutation::InsertWriteTicket(WriteTicketInsert {
-            write_check_id: write_check_id.as_str().to_owned(),
+            write_ticket_id: write_ticket_id.as_str().to_owned(),
             task_id: task_id.as_str().to_owned(),
             change_unit_id: scope_change_unit_id.as_str().to_owned(),
             attempt_scope_json,

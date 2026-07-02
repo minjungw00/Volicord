@@ -158,7 +158,7 @@ API 데이터 형태는 API 스키마 담당 문서가 담당합니다. 차단 �
 - 커밋 전 검증 실패.
 - 보호된 동작이 진행되기 전의 연결 라우팅 또는 모드 게이트 실패.
 - 오래된 `expected_state_version`.
-- 오래된 `WriteCheck.basis_state_version`.
+- 오래된 `WriteTicket.basis_state_version`.
 - 멱등 요청 해시 충돌.
 - 거절된 아티팩트 입력.
 
@@ -421,7 +421,7 @@ watch 비교를 실행하거나, `session_watch_observations`를 만들거나,
 
 `decision=allowed`인 재실행이 아닌 원래 커밋된 `dry_run=false` 호출은 다음을 수행할 수 있습니다.
 
-- 물리 `write_checks` 호환성 테이블에 저장되는 열린 쓰기 티켓 하나를 발급합니다.
+- 물리 `write_tickets` 테이블에 저장되는 열린 쓰기 티켓 하나를 발급합니다.
 - 이벤트를 추가합니다.
 - 재실행 행을 생성합니다.
 - `project_state.state_version`을 한 번 증가시킵니다.
@@ -496,7 +496,7 @@ watch 비교를 실행하거나, `session_watch_observations`를 만들거나,
 커밋되는 `dry_run=false` 호출은 다음을 수행할 수 있습니다.
 
 - `runs`를 생성합니다.
-- 호환되는 `write_checks`를 소비합니다.
+- 호환되는 `write_tickets` 행을 소비합니다.
 - 사용할 수 있는 `artifact_staging`을 소비합니다.
 - `artifacts`를 승격하거나 연결합니다.
 - `evidence_summaries`를 갱신하거나, `evidence_observations`를 생성하거나, 허용된 `blockers`를 갱신합니다.
@@ -533,7 +533,7 @@ watch 비교를 실행하거나, `session_watch_observations`를 만들거나,
 
 제품 파일 쓰기 지속 저장 경계:
 
-- 메서드 담당 문서가 제품 파일 쓰기를 기록하는 커밋된 실행을 허용할 때, 저장소는 같은 커밋에서 호환되는 `write_checks` 행을 소비할 수 있습니다.
+- 메서드 담당 문서가 제품 파일 쓰기를 기록하는 커밋된 실행을 허용할 때, 저장소는 같은 커밋에서 호환되는 `write_tickets` 행을 소비할 수 있습니다.
 - 테스트 증거 지속 저장은 제품 파일 쓰기 관찰을 뜻하지 않으면서도 스테이징된 아티팩트를 승격하고 증거를 갱신하며 증거 관찰을 기록할 수 있습니다.
 - 정확한 실행 분류는 [`volicord.record_run` 메서드](api/method-record-run.md)가 담당합니다.
 

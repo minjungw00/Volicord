@@ -1,7 +1,7 @@
 use std::{collections::BTreeSet, path::Path};
 
 use chrono::{DateTime, Duration, Utc};
-use volicord_store::{core_pipeline::WriteCheckRecord, StoreError};
+use volicord_store::{core_pipeline::WriteTicketRecord, StoreError};
 use volicord_types::{
     BaselineRef, ChangeUnitId, DryRunSummary, GuaranteeDisplay, JudgmentKind, JudgmentRequiredFor,
     ObservedChanges, PlannedBlocker, PlannedBlockerSourceKind, PlannedEffect, PrepareWriteDecision,
@@ -14,32 +14,32 @@ use crate::policy::{
     path::{normalize_product_paths, path_is_within, paths_are_authorized, ProductPathError},
 };
 
-const WRITE_CHECK_LIFETIME_MINUTES: i64 = 15;
+const WRITE_TICKET_LIFETIME_MINUTES: i64 = 15;
 
-pub(crate) fn write_check_expires_at(created_at: DateTime<Utc>) -> DateTime<Utc> {
-    created_at + Duration::minutes(WRITE_CHECK_LIFETIME_MINUTES)
+pub(crate) fn write_ticket_expires_at(created_at: DateTime<Utc>) -> DateTime<Utc> {
+    created_at + Duration::minutes(WRITE_TICKET_LIFETIME_MINUTES)
 }
 
-pub(crate) fn write_check_is_expired(
-    record: &WriteCheckRecord,
+pub(crate) fn write_ticket_is_expired(
+    record: &WriteTicketRecord,
     now: DateTime<Utc>,
 ) -> Result<bool, StoreError> {
-    Ok(UtcTimestamp::from_datetime(now) >= effective_write_check_expiration(record)?)
+    Ok(UtcTimestamp::from_datetime(now) >= effective_write_ticket_expiration(record)?)
 }
 
-pub(crate) fn effective_write_check_expiration(
-    record: &WriteCheckRecord,
+pub(crate) fn effective_write_ticket_expiration(
+    record: &WriteTicketRecord,
 ) -> Result<UtcTimestamp, StoreError> {
-    let stored_expires_at = parse_write_check_timestamp(record, "expires_at")?;
-    let created_at = parse_write_check_timestamp(record, "created_at")?;
+    let stored_expires_at = parse_write_ticket_timestamp(record, "expires_at")?;
+    let created_at = parse_write_ticket_timestamp(record, "created_at")?;
     Ok(std::cmp::min(
         stored_expires_at,
-        UtcTimestamp::from_datetime(write_check_expires_at(*created_at.as_datetime())),
+        UtcTimestamp::from_datetime(write_ticket_expires_at(*created_at.as_datetime())),
     ))
 }
 
-fn parse_write_check_timestamp(
-    record: &WriteCheckRecord,
+fn parse_write_ticket_timestamp(
+    record: &WriteTicketRecord,
     logical_column: &'static str,
 ) -> Result<UtcTimestamp, StoreError> {
     let raw = match logical_column {
@@ -47,16 +47,16 @@ fn parse_write_check_timestamp(
         "expires_at" => &record.expires_at,
         _ => {
             return Err(StoreError::corrupt_owner_state_value(
-                "write_checks",
-                record.write_check_id.clone(),
+                "write_tickets",
+                record.write_ticket_id.clone(),
                 logical_column,
             ));
         }
     };
     UtcTimestamp::parse(raw).map_err(|_| {
         StoreError::corrupt_owner_state_value(
-            "write_checks",
-            record.write_check_id.clone(),
+            "write_tickets",
+            record.write_ticket_id.clone(),
             logical_column,
         )
     })
@@ -83,7 +83,7 @@ pub(crate) fn prepare_write_decision(reasons: &[WriteDecisionReason]) -> Prepare
 pub(crate) fn prepare_write_dry_run_summary(
     allowed: bool,
     reasons: &[WriteDecisionReason],
-    _write_check_ref: Option<StateRecordRef>,
+    _write_ticket_ref: Option<StateRecordRef>,
     _guarantee_display: Option<GuaranteeDisplay>,
 ) -> DryRunSummary {
     DryRunSummary {
@@ -113,20 +113,20 @@ pub(crate) fn prepare_write_dry_run_summary(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct RunWriteCheckMismatch {
+pub(crate) struct RunWriteTicketMismatch {
     pub(crate) reason: &'static str,
     pub(crate) message: &'static str,
 }
 
-pub(crate) fn run_write_check_mismatch(
-    record: &WriteCheckRecord,
+pub(crate) fn run_write_ticket_mismatch(
+    record: &WriteTicketRecord,
     scope: &WriteTicketAttemptScope,
     task_id: &TaskId,
     change_unit_id: &ChangeUnitId,
     baseline_ref: &BaselineRef,
     observed_changes: &ObservedChanges,
     normalized_scope_paths: &[String],
-) -> Option<RunWriteCheckMismatch> {
+) -> Option<RunWriteTicketMismatch> {
     if record.task_id != task_id.as_str() || scope.task_id != *task_id {
         return Some(run_mismatch(
             "task_mismatch",
@@ -170,8 +170,8 @@ pub(crate) fn run_write_check_mismatch(
     None
 }
 
-fn run_mismatch(reason: &'static str, message: &'static str) -> RunWriteCheckMismatch {
-    RunWriteCheckMismatch { reason, message }
+fn run_mismatch(reason: &'static str, message: &'static str) -> RunWriteTicketMismatch {
+    RunWriteTicketMismatch { reason, message }
 }
 
 pub(crate) fn write_decision_reason(

@@ -138,8 +138,8 @@ fn plan_update_scope(
         task.close_basis_revision
     };
 
-    let active_write_checks = store
-        .active_write_checks(&request.task_id)
+    let active_write_tickets = store
+        .active_write_tickets(&request.task_id)
         .map_err(|error| {
             PlanError::Response(Box::new(store_error_response(
                 &request.envelope,
@@ -148,7 +148,7 @@ fn plan_update_scope(
             )))
         })?;
     let stale_write_ticket_refs = if scope_changed {
-        active_write_checks
+        active_write_tickets
             .iter()
             .map(|record| write_ticket_ref(record, planned_state_version))
             .collect::<Vec<_>>()
@@ -289,8 +289,8 @@ fn plan_update_scope(
             }
         };
 
-    if scope_changed && !active_write_checks.is_empty() {
-        storage_mutations.push(CoreStorageMutation::MarkActiveWriteChecksStale {
+    if scope_changed && !active_write_tickets.is_empty() {
+        storage_mutations.push(CoreStorageMutation::MarkActiveWriteTicketsStale {
             task_id: request.task_id.as_str().to_owned(),
         });
     }
@@ -341,7 +341,7 @@ fn plan_update_scope(
     let next_actions = next_actions_for_state(&task_ref, change_unit_ref.as_ref());
     let guarantee_display =
         guarantee_display_for_invocation(store, verified_invocation, planned_state_version)?;
-    let write_check_summary = projected_write_check_summary(
+    let write_ticket_summary = projected_write_ticket_summary(
         store,
         &request.task_id,
         planned_state_version,
@@ -389,7 +389,7 @@ fn plan_update_scope(
         current_change_unit: synthetic_change_unit.as_ref(),
         pending_user_judgment_refs: pending_refs,
         blocker_refs: blocker_refs.clone(),
-        write_ticket_summary: write_check_summary,
+        write_ticket_summary,
         evidence_summary,
         close_state: Some(close_plan.close_state),
         close_blockers: close_plan.blockers,

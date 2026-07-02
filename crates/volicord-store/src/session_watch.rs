@@ -1889,7 +1889,7 @@ mod tests {
                 expected_paths_json: r#"["src/lib.rs"]"#.to_owned(),
                 task_id: "task_watch_a".to_owned(),
                 change_unit_id: None,
-                write_check_ids_json: "[]".to_owned(),
+                write_ticket_ids_json: "[]".to_owned(),
                 basis_state_version: 1,
                 created_at: "2026-07-01T00:00:00Z".to_owned(),
                 expires_at: "2026-07-01T00:15:00Z".to_owned(),

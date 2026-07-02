@@ -841,9 +841,9 @@ CREATE TABLE project_continuity_records (
     REFERENCES change_units (project_id, task_id, change_unit_id)
 );
 
-CREATE TABLE write_checks (
+CREATE TABLE write_tickets (
   project_id TEXT NOT NULL,
-  write_check_id TEXT NOT NULL,
+  write_ticket_id TEXT NOT NULL,
   task_id TEXT NOT NULL,
   change_unit_id TEXT,
   basis_state_version INTEGER NOT NULL CHECK (basis_state_version > 0),
@@ -857,7 +857,7 @@ CREATE TABLE write_checks (
   revoked_at TEXT,
   created_at TEXT NOT NULL,
   metadata_json TEXT NOT NULL DEFAULT '{}',
-  PRIMARY KEY (project_id, write_check_id),
+  PRIMARY KEY (project_id, write_ticket_id),
   FOREIGN KEY (project_id, task_id) REFERENCES tasks (project_id, task_id),
   FOREIGN KEY (project_id, task_id, change_unit_id)
     REFERENCES change_units (project_id, task_id, change_unit_id),
@@ -868,8 +868,8 @@ CREATE TABLE write_checks (
     DEFERRABLE INITIALLY DEFERRED
 );
 
-CREATE UNIQUE INDEX idx_write_checks_consumed_run
-  ON write_checks (project_id, consumed_by_run_id)
+CREATE UNIQUE INDEX idx_write_tickets_consumed_run
+  ON write_tickets (project_id, consumed_by_run_id)
   WHERE consumed_by_run_id IS NOT NULL;
 
 CREATE TABLE runs (
@@ -877,13 +877,13 @@ CREATE TABLE runs (
   run_id TEXT NOT NULL,
   task_id TEXT NOT NULL,
   change_unit_id TEXT,
-  write_check_id TEXT,
+  write_ticket_id TEXT,
   kind TEXT NOT NULL,
   status TEXT NOT NULL,
   summary_json TEXT NOT NULL DEFAULT '{}',
   observed_changes_json TEXT NOT NULL DEFAULT '{}',
   evidence_updates_json TEXT NOT NULL DEFAULT '[]',
-  write_check_effect_json TEXT NOT NULL DEFAULT '{}',
+  write_ticket_effect_json TEXT NOT NULL DEFAULT '{}',
   scope_revision INTEGER NOT NULL CHECK (scope_revision >= 0),
   created_by_actor_source TEXT NOT NULL,
   started_at TEXT,
@@ -894,14 +894,14 @@ CREATE TABLE runs (
   FOREIGN KEY (project_id, task_id) REFERENCES tasks (project_id, task_id),
   FOREIGN KEY (project_id, task_id, change_unit_id)
     REFERENCES change_units (project_id, task_id, change_unit_id),
-  FOREIGN KEY (project_id, write_check_id)
-    REFERENCES write_checks (project_id, write_check_id)
+  FOREIGN KEY (project_id, write_ticket_id)
+    REFERENCES write_tickets (project_id, write_ticket_id)
     DEFERRABLE INITIALLY DEFERRED
 );
 
-CREATE UNIQUE INDEX idx_runs_write_check
-  ON runs (project_id, write_check_id)
-  WHERE write_check_id IS NOT NULL;
+CREATE UNIQUE INDEX idx_runs_write_ticket
+  ON runs (project_id, write_ticket_id)
+  WHERE write_ticket_id IS NOT NULL;
 
 CREATE TABLE artifact_staging (
   project_id TEXT NOT NULL,
@@ -1162,8 +1162,8 @@ CREATE INDEX idx_project_continuity_records_status
 CREATE INDEX idx_project_continuity_records_source_task
   ON project_continuity_records (project_id, source_task_id);
 
-CREATE INDEX idx_write_checks_task_status
-  ON write_checks (project_id, task_id, status);
+CREATE INDEX idx_write_tickets_task_status
+  ON write_tickets (project_id, task_id, status);
 
 CREATE INDEX idx_runs_task_created
   ON runs (project_id, task_id, created_at);
@@ -1320,7 +1320,7 @@ CREATE TABLE expected_writes (
   expected_paths_json TEXT NOT NULL DEFAULT '[]',
   task_id TEXT NOT NULL,
   change_unit_id TEXT,
-  write_check_ids_json TEXT NOT NULL DEFAULT '[]',
+  write_ticket_ids_json TEXT NOT NULL DEFAULT '[]',
   basis_state_version INTEGER NOT NULL CHECK (basis_state_version >= 0),
   status TEXT NOT NULL CHECK (status IN ('pending', 'matched')),
   matched_post_tool_guard_event_id TEXT,
@@ -1639,7 +1639,7 @@ mod tests {
             "project_state",
             "enforcement_profile_json"
         )?);
-        assert!(table_exists(&conn, "write_checks")?);
+        assert!(table_exists(&conn, "write_tickets")?);
         assert!(column_exists(&conn, "tasks", "created_by_actor_source")?);
         assert!(column_exists(
             &conn,

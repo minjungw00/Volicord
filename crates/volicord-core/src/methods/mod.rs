@@ -19,7 +19,7 @@ use volicord_store::{
         TaskCloseBasisUpdate, TaskCloseUpdate, TaskInsert, TaskRecord, TaskScopeRevisionUpdate,
         TaskScopeUpdate, UnrecordedChangeResolutionUpdate, UserJudgmentInsert,
         UserJudgmentInvalidation, UserJudgmentRecord, UserJudgmentResolutionUpdate,
-        WriteCheckConsumption, WriteCheckRecord, WriteTicketInsert,
+        WriteTicketConsumption, WriteTicketInsert, WriteTicketRecord,
     },
     guards::{GuardHealthRecord, UnrecordedChangeRecord},
     local_consent::{
@@ -105,11 +105,11 @@ use crate::policy::{
     },
     path::{normalize_product_paths, path_is_within, paths_are_authorized, ProductPathError},
     rationale::validate_judgment_rationale,
-    write_check::{
+    write_ticket::{
         current_sensitive_approval, normalize_sensitive_action_scope, normalized_string_set,
-        prepare_write_decision, prepare_write_dry_run_summary, run_write_check_mismatch,
-        sensitive_action_scope_matches_requirement, write_check_expires_at, write_check_is_expired,
-        write_decision_reason, SensitiveApprovalRequirement,
+        prepare_write_decision, prepare_write_dry_run_summary, run_write_ticket_mismatch,
+        sensitive_action_scope_matches_requirement, write_decision_reason, write_ticket_expires_at,
+        write_ticket_is_expired, SensitiveApprovalRequirement,
     },
 };
 use crate::LocalWebConsentJudgmentRequest;
@@ -267,14 +267,14 @@ fn allocate_user_judgment_id(
         .map(volicord_types::UserJudgmentId::new)
 }
 
-fn allocate_write_check_id(
+fn allocate_write_ticket_id(
     service: &CoreService,
     store: &CoreProjectStore,
 ) -> CoreResult<WriteTicketId> {
     service
         .allocate_generated_id(DurableIdKind::WriteTicket, |candidate| {
             store
-                .write_check_record(candidate)
+                .write_ticket_record(candidate)
                 .map(|record| record.is_some())
                 .map_err(CorePipelineError::from)
         })
@@ -1670,7 +1670,7 @@ fn artifact_missing_response(
     )
 }
 
-fn write_check_required_response(
+fn write_ticket_required_response(
     envelope: &ToolEnvelope,
     state_version: Option<u64>,
 ) -> PipelineResponse {
@@ -1690,7 +1690,7 @@ fn write_check_required_response(
     )
 }
 
-fn write_check_invalid_response(
+fn write_ticket_invalid_response(
     envelope: &ToolEnvelope,
     state_version: Option<u64>,
     reason: &'static str,
@@ -1712,9 +1712,9 @@ fn write_check_invalid_response(
     )
 }
 
-fn stale_write_check_basis_response(
+fn stale_write_ticket_basis_response(
     envelope: &ToolEnvelope,
-    record: &WriteCheckRecord,
+    record: &WriteTicketRecord,
     current_state_version: u64,
 ) -> PipelineResponse {
     let mut details = Map::new();
@@ -1732,7 +1732,7 @@ fn stale_write_check_basis_response(
     );
     details.insert(
         "write_ticket_id".to_owned(),
-        Value::String(record.write_check_id.clone()),
+        Value::String(record.write_ticket_id.clone()),
     );
     details.insert(
         "project_id".to_owned(),
@@ -1919,7 +1919,7 @@ struct PersistedCompletionPolicy {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct PersistedWriteCheckAttemptScope {
+struct PersistedWriteTicketAttemptScope {
     task_id: TaskId,
     change_unit_id: ChangeUnitId,
     intended_operation: String,
@@ -1929,8 +1929,8 @@ struct PersistedWriteCheckAttemptScope {
     baseline_ref: Option<BaselineRef>,
 }
 
-impl From<PersistedWriteCheckAttemptScope> for WriteTicketAttemptScope {
-    fn from(scope: PersistedWriteCheckAttemptScope) -> Self {
+impl From<PersistedWriteTicketAttemptScope> for WriteTicketAttemptScope {
+    fn from(scope: PersistedWriteTicketAttemptScope) -> Self {
         Self {
             task_id: scope.task_id,
             change_unit_id: scope.change_unit_id,
@@ -2137,17 +2137,17 @@ fn build_state_summary(input: SummaryBuild<'_>) -> CoreResult<volicord_types::St
     })
 }
 
-fn write_check_summary_for_record(
+fn write_ticket_summary_for_record(
     store: Option<&CoreProjectStore>,
-    record: &WriteCheckRecord,
+    record: &WriteTicketRecord,
     state_version: u64,
     now: Option<DateTime<Utc>>,
     observation_refs: Option<Vec<StateRecordRef>>,
     guarantee_display: Option<GuaranteeDisplay>,
 ) -> CoreResult<WriteTicketStateSummary> {
-    let attempt_scope = decode_required_json::<PersistedWriteCheckAttemptScope>(
-        "write_checks",
-        record.write_check_id.clone(),
+    let attempt_scope = decode_required_json::<PersistedWriteTicketAttemptScope>(
+        "write_tickets",
+        record.write_ticket_id.clone(),
         "attempt_scope_json",
         Some(&record.attempt_scope_json),
     )?;
@@ -2174,7 +2174,7 @@ fn write_check_summary_for_record(
         _ => Vec::new(),
     };
     Ok(WriteTicketStateSummary {
-        status: effective_write_check_status(record, state_version, now)?,
+        status: effective_write_ticket_status(record, state_version, now)?,
         write_ticket_ref: Some(write_ticket_ref(record, state_version)),
         basis_state_version: Some(record.basis_state_version),
         intended_paths: attempt_scope.intended_paths,
@@ -2184,12 +2184,12 @@ fn write_check_summary_for_record(
     })
 }
 
-fn effective_write_check_status(
-    record: &WriteCheckRecord,
+fn effective_write_ticket_status(
+    record: &WriteTicketRecord,
     state_version: u64,
     now: Option<DateTime<Utc>>,
 ) -> CoreResult<WriteTicketStatus> {
-    let stored_status = parse_storage_value("write_checks.status", &record.status)?;
+    let stored_status = parse_storage_value("write_tickets.status", &record.status)?;
     if stored_status != WriteTicketStatus::Active {
         return Ok(stored_status);
     }
@@ -2197,7 +2197,7 @@ fn effective_write_check_status(
         return Ok(WriteTicketStatus::Stale);
     }
     if now
-        .map(|now| write_check_is_expired(record, now))
+        .map(|now| write_ticket_is_expired(record, now))
         .transpose()
         .map_err(CorePipelineError::from)?
         .unwrap_or(false)
@@ -2267,19 +2267,19 @@ fn invocation_binding_ref(
     }
 }
 
-fn selected_write_check_for_projection(
+fn selected_write_ticket_for_projection(
     store: &CoreProjectStore,
     task_id: &TaskId,
     state_version: u64,
     now: DateTime<Utc>,
-) -> Result<Option<WriteCheckRecord>, PlanError> {
+) -> Result<Option<WriteTicketRecord>, PlanError> {
     let records = store
-        .write_checks_for_task(task_id)
+        .write_tickets_for_task(task_id)
         .map_err(CorePipelineError::from)?;
     let mut selected = None;
     let mut selected_priority = u8::MAX;
     for record in records {
-        let status = effective_write_check_status(&record, state_version, Some(now))?;
+        let status = effective_write_ticket_status(&record, state_version, Some(now))?;
         let priority = match status {
             WriteTicketStatus::Active => 0,
             WriteTicketStatus::Expired => 1,
@@ -2295,7 +2295,7 @@ fn selected_write_check_for_projection(
     Ok(selected)
 }
 
-fn projected_write_check_summary(
+fn projected_write_ticket_summary(
     store: &CoreProjectStore,
     task_id: &TaskId,
     state_version: u64,
@@ -2303,10 +2303,10 @@ fn projected_write_check_summary(
     guarantee_display: Option<GuaranteeDisplay>,
 ) -> Result<Option<WriteTicketStateSummary>, PlanError> {
     Ok(
-        selected_write_check_for_projection(store, task_id, state_version, now)?
+        selected_write_ticket_for_projection(store, task_id, state_version, now)?
             .as_ref()
             .map(|record| {
-                write_check_summary_for_record(
+                write_ticket_summary_for_record(
                     Some(store),
                     record,
                     state_version,
@@ -2541,8 +2541,9 @@ fn next_actions_for_state(
         None => vec![NextActionSummary {
             action_kind: NextActionKind::UpdateScope,
             owner_method: Some(MethodName::UpdateScope),
-            label: "Create the first currently applied Change Unit before write checking."
-                .to_owned(),
+            label:
+                "Create the first currently applied Change Unit before write-ticket preparation."
+                    .to_owned(),
             blocking_question: None,
             required_refs: vec![task_ref.clone()],
         }],
@@ -2584,10 +2585,10 @@ fn state_ref(
     }
 }
 
-fn write_ticket_ref(record: &WriteCheckRecord, state_version: u64) -> StateRecordRef {
+fn write_ticket_ref(record: &WriteTicketRecord, state_version: u64) -> StateRecordRef {
     state_ref(
         StateRecordKind::WriteTicket,
-        &record.write_check_id,
+        &record.write_ticket_id,
         &ProjectId::new(record.project_id.clone()),
         Some(&TaskId::new(record.task_id.clone())),
         Some(state_version),

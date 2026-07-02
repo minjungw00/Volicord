@@ -459,7 +459,7 @@ fn plan_request_user_judgment(
     let next_actions = next_actions_for_state(&task_ref, change_unit_ref.as_ref());
     let guarantee_display =
         guarantee_display_for_invocation(store, verified_invocation, planned_state_version)?;
-    let write_check_summary = projected_write_check_summary(
+    let write_ticket_summary = projected_write_ticket_summary(
         store,
         &request.task_id,
         planned_state_version,
@@ -518,7 +518,7 @@ fn plan_request_user_judgment(
         current_change_unit: current_change_unit.as_ref(),
         pending_user_judgment_refs: pending_refs,
         blocker_refs: blocker_refs.clone(),
-        write_ticket_summary: write_check_summary,
+        write_ticket_summary,
         evidence_summary,
         close_state: Some(close_plan.close_state),
         close_blockers: close_plan.blockers,
@@ -1337,7 +1337,7 @@ fn plan_record_user_judgment(
     let next_actions = next_actions_for_state(&task_ref, change_unit_ref.as_ref());
     let guarantee_display =
         guarantee_display_for_invocation(store, verified_invocation, planned_state_version)?;
-    let write_check_summary = projected_write_check_summary(
+    let write_ticket_summary = projected_write_ticket_summary(
         store,
         &task_id,
         planned_state_version,
@@ -1402,7 +1402,7 @@ fn plan_record_user_judgment(
         current_change_unit: current_change_unit.as_ref(),
         pending_user_judgment_refs: pending_refs,
         blocker_refs,
-        write_ticket_summary: write_check_summary,
+        write_ticket_summary,
         evidence_summary,
         close_state: Some(close_plan.close_state),
         close_blockers: close_plan.blockers,

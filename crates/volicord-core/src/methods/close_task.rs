@@ -41,7 +41,7 @@ impl CoreService {
             Err(response) => return Ok(response),
         };
         if request.intent != CloseIntent::Check {
-            if let Some(response) = reject_stale_close_write_check(
+            if let Some(response) = reject_stale_close_write_ticket(
                 &prepared.store,
                 &prepared.context.project_state,
                 &request,
@@ -289,19 +289,23 @@ fn validate_close_intent_fields(
     Ok(None)
 }
 
-fn reject_stale_close_write_check(
+fn reject_stale_close_write_ticket(
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
     request: &CloseTaskRequest,
 ) -> CoreResult<Option<PipelineResponse>> {
-    let active_write_checks = store
-        .active_write_checks(&request.task_id)
+    let active_write_tickets = store
+        .active_write_tickets(&request.task_id)
         .map_err(CorePipelineError::from)?;
-    Ok(active_write_checks
+    Ok(active_write_tickets
         .iter()
         .find(|record| record.basis_state_version != project_state.state_version)
         .map(|record| {
-            stale_write_check_basis_response(&request.envelope, record, project_state.state_version)
+            stale_write_ticket_basis_response(
+                &request.envelope,
+                record,
+                project_state.state_version,
+            )
         }))
 }
 
@@ -471,7 +475,7 @@ pub(super) fn plan_close_task_with_context(
         current_change_unit: context.current_change_unit.as_ref(),
         pending_user_judgment_refs: context.pending_user_judgment_refs.clone(),
         blocker_refs: context.blocker_refs.clone(),
-        write_ticket_summary: projected_write_check_summary(
+        write_ticket_summary: projected_write_ticket_summary(
             store,
             &request.task_id,
             response_state_version,
@@ -2441,7 +2445,7 @@ fn unresolved_write_ticket_close_blockers(
     let mut blockers = Vec::new();
     let task_ref = task_ref_for_close(request, project_state.state_version);
     for record in store
-        .write_checks_for_task(&request.task_id)
+        .write_tickets_for_task(&request.task_id)
         .map_err(|error| {
             PlanError::Response(Box::new(store_error_response(
                 &request.envelope,
@@ -2450,7 +2454,7 @@ fn unresolved_write_ticket_close_blockers(
             )))
         })?
     {
-        let status = effective_write_check_status(
+        let status = effective_write_ticket_status(
             &record,
             project_state.state_version,
             Some(*now.as_datetime()),
@@ -2860,7 +2864,7 @@ fn completion_close_blockers(
     }
 
     for record in store
-        .active_write_checks(&request.task_id)
+        .active_write_tickets(&request.task_id)
         .map_err(|error| {
             PlanError::Response(Box::new(store_error_response(
                 &request.envelope,

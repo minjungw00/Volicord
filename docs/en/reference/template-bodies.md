@@ -179,7 +179,7 @@ Recovery cue:
 - Use the appropriate scope or baseline owner-defined action.
 - Request the needed user judgment.
 
-<a id="label-write-check"></a>
+<a id="label-write-ticket"></a>
 ### Write Ticket
 
 Label-selection input:

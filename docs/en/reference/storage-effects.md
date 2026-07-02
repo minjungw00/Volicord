@@ -157,7 +157,7 @@ These failures return no-effect branches:
 - validation failures before commit
 - connection routing or mode-gating failures before a protected operation can proceed
 - stale `expected_state_version`
-- stale `WriteCheck.basis_state_version`
+- stale `WriteTicket.basis_state_version`
 - idempotency request-hash conflicts
 - rejected artifact inputs
 
@@ -422,7 +422,7 @@ Owner links:
 
 An original committed `dry_run=false` call with `decision=allowed` may:
 
-- issue one open write ticket stored in the physical `write_checks` compatibility table
+- issue one open write ticket stored in the physical `write_tickets` table
 - append events
 - create a replay row
 - increment `project_state.state_version` once
@@ -497,7 +497,7 @@ Owner links:
 Committed `dry_run=false` may:
 
 - create `runs`
-- consume compatible `write_checks`
+- consume a compatible `write_tickets` row
 - consume eligible `artifact_staging`
 - promote or link `artifacts`
 - update `evidence_summaries`, create `evidence_observations`, or update allowed blockers
@@ -534,7 +534,7 @@ Rejected attempts do not change:
 
 Product file write persistence boundary:
 
-- When the method owner allows a committed run that records a product file write, storage may consume a compatible `write_checks` row in the same commit.
+- When the method owner allows a committed run that records a product file write, storage may consume a compatible `write_tickets` row in the same commit.
 - Test evidence persistence can promote staged artifacts, update evidence, and record evidence observations without implying a product file write observation.
 - Exact run classification belongs to the [`volicord.record_run` method](api/method-record-run.md).
 

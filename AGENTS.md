@@ -88,7 +88,7 @@ implementation workflow all matter:
   in `docs/*/reference/api/methods.md`. Admin CLI commands are not public API
   methods.
 - Keep user-owned judgment, evidence, verification criteria, ordinary approval,
-  write approval, sensitive-action approval, `Write Check`, final
+  write approval, sensitive-action approval, `Write Ticket`, final
   acceptance, close readiness, and residual-risk acceptance distinct in
   documentation, code, tests, and reports.
 - When repository guidance, examples, or reports mention user decisions, route

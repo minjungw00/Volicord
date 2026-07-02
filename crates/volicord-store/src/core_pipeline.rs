@@ -107,10 +107,9 @@ pub enum CoreStorageMutation {
     UpdateTaskCloseBasis(TaskCloseBasisUpdate),
     InsertCurrentChangeUnit(ChangeUnitInsert),
     ReplaceCurrentChangeUnit(ChangeUnitInsert),
-    MarkActiveWriteChecksStale { task_id: String },
+    MarkActiveWriteTicketsStale { task_id: String },
     InsertWriteTicket(WriteTicketInsert),
-    InsertWriteCheck(WriteCheckInsert),
-    ConsumeWriteCheck(WriteCheckConsumption),
+    ConsumeWriteTicket(WriteTicketConsumption),
     InsertRun(RunInsert),
     PromoteStagedArtifact(ArtifactPromotion),
     LinkArtifact(ArtifactLinkInsert),
@@ -297,8 +296,8 @@ pub struct UserJudgmentInvalidation {
 
 /// Storage input for inserting one open write ticket.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WriteCheckInsert {
-    pub write_check_id: String,
+pub struct WriteTicketInsert {
+    pub write_ticket_id: String,
     pub task_id: String,
     pub change_unit_id: String,
     pub attempt_scope_json: String,
@@ -311,8 +310,8 @@ pub struct WriteCheckInsert {
 
 /// Storage input for closing one open write ticket through a compatible Run.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WriteCheckConsumption {
-    pub write_check_id: String,
+pub struct WriteTicketConsumption {
+    pub write_ticket_id: String,
     pub run_id: String,
     pub expected_basis_state_version: u64,
 }
@@ -324,13 +323,13 @@ pub struct RunInsert {
     pub task_id: String,
     pub change_unit_id: Option<String>,
     pub scope_revision: u64,
-    pub write_check_id: Option<String>,
+    pub write_ticket_id: Option<String>,
     pub kind: String,
     pub status: String,
     pub summary_json: String,
     pub observed_changes_json: String,
     pub evidence_updates_json: String,
-    pub write_check_effect_json: String,
+    pub write_ticket_effect_json: String,
     pub created_by_actor_source: String,
     pub metadata_json: String,
 }
@@ -525,7 +524,7 @@ pub struct StorageEffectCounts {
     pub task_events: u64,
     pub tool_invocations: u64,
     pub user_judgments: u64,
-    pub write_checks: u64,
+    pub write_tickets: u64,
     pub runs: u64,
     pub artifact_staging: u64,
     pub artifacts: u64,
@@ -587,9 +586,9 @@ pub struct ChangeUnitRecord {
 
 /// Stored write ticket facts needed by status and stale-marking responses.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WriteCheckRecord {
+pub struct WriteTicketRecord {
     pub project_id: String,
-    pub write_check_id: String,
+    pub write_ticket_id: String,
     pub task_id: String,
     pub change_unit_id: Option<String>,
     pub basis_state_version: u64,
@@ -600,15 +599,6 @@ pub struct WriteCheckRecord {
     pub consumed_by_run_id: Option<String>,
     pub consumed_at: Option<String>,
 }
-
-/// Storage input for inserting one open write ticket.
-pub type WriteTicketInsert = WriteCheckInsert;
-
-/// Storage input for closing one open write ticket.
-pub type WriteTicketConsumption = WriteCheckConsumption;
-
-/// Stored write ticket facts.
-pub type WriteTicketRecord = WriteCheckRecord;
 
 /// Stored staged artifact facts needed by `volicord.record_run`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -857,22 +847,22 @@ impl CoreProjectStore {
         )
     }
 
-    /// Lists active Write Checks for a Task.
-    pub fn active_write_checks(&self, task_id: &TaskId) -> StoreResult<Vec<WriteCheckRecord>> {
-        active_write_checks(&self.conn, &self.project.project_id, task_id.as_str())
+    /// Lists active Write Tickets for a Task.
+    pub fn active_write_tickets(&self, task_id: &TaskId) -> StoreResult<Vec<WriteTicketRecord>> {
+        active_write_tickets(&self.conn, &self.project.project_id, task_id.as_str())
     }
 
-    /// Lists Write Checks for a Task without mutating effective status.
-    pub fn write_checks_for_task(&self, task_id: &TaskId) -> StoreResult<Vec<WriteCheckRecord>> {
-        write_checks_for_task(&self.conn, &self.project.project_id, task_id.as_str())
+    /// Lists Write Tickets for a Task without mutating effective status.
+    pub fn write_tickets_for_task(&self, task_id: &TaskId) -> StoreResult<Vec<WriteTicketRecord>> {
+        write_tickets_for_task(&self.conn, &self.project.project_id, task_id.as_str())
     }
 
-    /// Reads one Write Check row by exact project-local identity.
-    pub fn write_check_record(
+    /// Reads one Write Ticket row by exact project-local identity.
+    pub fn write_ticket_record(
         &self,
-        write_check_id: &str,
-    ) -> StoreResult<Option<WriteCheckRecord>> {
-        write_check_record(&self.conn, &self.project.project_id, write_check_id)
+        write_ticket_id: &str,
+    ) -> StoreResult<Option<WriteTicketRecord>> {
+        write_ticket_record(&self.conn, &self.project.project_id, write_ticket_id)
     }
 
     /// Returns whether a Run id already exists in this project.
@@ -1200,7 +1190,7 @@ impl CoreProjectStore {
                 &self.project.project_id,
             )?,
             user_judgments: table_count(&self.conn, "user_judgments", &self.project.project_id)?,
-            write_checks: table_count(&self.conn, "write_checks", &self.project.project_id)?,
+            write_tickets: table_count(&self.conn, "write_tickets", &self.project.project_id)?,
             runs: table_count(&self.conn, "runs", &self.project.project_id)?,
             artifact_staging: table_count(
                 &self.conn,
@@ -1798,15 +1788,15 @@ fn change_unit_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Chan
     })
 }
 
-fn active_write_checks(
+fn active_write_tickets(
     conn: &Connection,
     project_id: &str,
     task_id: &str,
-) -> StoreResult<Vec<WriteCheckRecord>> {
+) -> StoreResult<Vec<WriteTicketRecord>> {
     let mut stmt = conn.prepare(
         "SELECT
             project_id,
-            write_check_id,
+            write_ticket_id,
             task_id,
             change_unit_id,
             basis_state_version,
@@ -1816,13 +1806,13 @@ fn active_write_checks(
             created_at,
             consumed_by_run_id,
             consumed_at
-         FROM write_checks
+         FROM write_tickets
          WHERE project_id = ?1
            AND task_id = ?2
            AND status = 'active'
-         ORDER BY write_check_id",
+         ORDER BY write_ticket_id",
     )?;
-    let rows = stmt.query_map(params![project_id, task_id], write_check_record_from_row)?;
+    let rows = stmt.query_map(params![project_id, task_id], write_ticket_record_from_row)?;
     let mut records = Vec::new();
     for row in rows {
         records.push(row?);
@@ -1830,15 +1820,15 @@ fn active_write_checks(
     Ok(records)
 }
 
-fn write_checks_for_task(
+fn write_tickets_for_task(
     conn: &Connection,
     project_id: &str,
     task_id: &str,
-) -> StoreResult<Vec<WriteCheckRecord>> {
+) -> StoreResult<Vec<WriteTicketRecord>> {
     let mut stmt = conn.prepare(
         "SELECT
             project_id,
-            write_check_id,
+            write_ticket_id,
             task_id,
             change_unit_id,
             basis_state_version,
@@ -1848,12 +1838,12 @@ fn write_checks_for_task(
             created_at,
             consumed_by_run_id,
             consumed_at
-         FROM write_checks
+         FROM write_tickets
          WHERE project_id = ?1
            AND task_id = ?2
-         ORDER BY created_at DESC, write_check_id DESC",
+         ORDER BY created_at DESC, write_ticket_id DESC",
     )?;
-    let rows = stmt.query_map(params![project_id, task_id], write_check_record_from_row)?;
+    let rows = stmt.query_map(params![project_id, task_id], write_ticket_record_from_row)?;
     let mut records = Vec::new();
     for row in rows {
         records.push(row?);
@@ -1861,15 +1851,15 @@ fn write_checks_for_task(
     Ok(records)
 }
 
-fn write_check_record(
+fn write_ticket_record(
     conn: &Connection,
     project_id: &str,
-    write_check_id: &str,
-) -> StoreResult<Option<WriteCheckRecord>> {
+    write_ticket_id: &str,
+) -> StoreResult<Option<WriteTicketRecord>> {
     conn.query_row(
         "SELECT
             project_id,
-            write_check_id,
+            write_ticket_id,
             task_id,
             change_unit_id,
             basis_state_version,
@@ -1879,25 +1869,25 @@ fn write_check_record(
             created_at,
             consumed_by_run_id,
             consumed_at
-         FROM write_checks
+         FROM write_tickets
          WHERE project_id = ?1
-           AND write_check_id = ?2",
-        params![project_id, write_check_id],
-        write_check_record_from_row,
+           AND write_ticket_id = ?2",
+        params![project_id, write_ticket_id],
+        write_ticket_record_from_row,
     )
     .optional()
     .map_err(StoreError::from)
 }
 
-fn write_check_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<WriteCheckRecord> {
+fn write_ticket_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<WriteTicketRecord> {
     let basis_state_version = row.get::<_, i64>(4)?;
-    Ok(WriteCheckRecord {
+    Ok(WriteTicketRecord {
         project_id: row.get(0)?,
-        write_check_id: row.get(1)?,
+        write_ticket_id: row.get(1)?,
         task_id: row.get(2)?,
         change_unit_id: row.get(3)?,
         basis_state_version: nonnegative_i64_to_u64(
-            "write_checks.basis_state_version",
+            "write_tickets.basis_state_version",
             basis_state_version,
         )?,
         status: row.get(5)?,
@@ -5042,13 +5032,13 @@ mod tests {
             task_id: "missing_task".to_owned(),
             change_unit_id: None,
             scope_revision: 0,
-            write_check_id: None,
+            write_ticket_id: None,
             kind: "implementation".to_owned(),
             status: "completed".to_owned(),
             summary_json: "{}".to_owned(),
             observed_changes_json: "{}".to_owned(),
             evidence_updates_json: "[]".to_owned(),
-            write_check_effect_json: "{}".to_owned(),
+            write_ticket_effect_json: "{}".to_owned(),
             created_by_actor_source: ACTOR_SOURCE.to_owned(),
             metadata_json: "{}".to_owned(),
         }
@@ -5060,13 +5050,13 @@ mod tests {
             task_id: task_id.to_owned(),
             change_unit_id: None,
             scope_revision: 0,
-            write_check_id: None,
+            write_ticket_id: None,
             kind: "implementation".to_owned(),
             status: "recorded".to_owned(),
             summary_json: "{}".to_owned(),
             observed_changes_json: "{}".to_owned(),
             evidence_updates_json: "[]".to_owned(),
-            write_check_effect_json: "{}".to_owned(),
+            write_ticket_effect_json: "{}".to_owned(),
             created_by_actor_source: ACTOR_SOURCE.to_owned(),
             metadata_json: "{}".to_owned(),
         }

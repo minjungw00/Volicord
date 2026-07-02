@@ -211,8 +211,8 @@ fn plan_reconcile_changes(
                 error,
             )))
         })?;
-    let write_checks = store
-        .write_checks_for_task(&request.task_id)
+    let write_tickets = store
+        .write_tickets_for_task(&request.task_id)
         .map_err(|error| {
             PlanError::Response(Box::new(store_error_response(
                 &request.envelope,
@@ -280,7 +280,7 @@ fn plan_reconcile_changes(
             record,
             &request.task_id,
             &runs,
-            &write_checks,
+            &write_tickets,
             project_state.state_version,
             *now.as_datetime(),
         )?
@@ -376,7 +376,7 @@ fn plan_reconcile_changes(
         .collect::<Vec<_>>();
     let guarantee_display =
         guarantee_display_for_invocation(store, verified_invocation, planned_state_version)?;
-    let write_check_summary = projected_write_check_summary(
+    let write_ticket_summary = projected_write_ticket_summary(
         store,
         &request.task_id,
         planned_state_version,
@@ -417,7 +417,7 @@ fn plan_reconcile_changes(
         current_change_unit: current_change_unit.as_ref(),
         pending_user_judgment_refs: projected_pending_refs.clone(),
         blocker_refs,
-        write_ticket_summary: write_check_summary,
+        write_ticket_summary,
         evidence_summary,
         close_state: Some(close_plan.close_state),
         close_blockers: close_plan.blockers.clone(),
@@ -562,7 +562,7 @@ fn deterministic_resolution(
     record: &UnrecordedChangeRecord,
     task_id: &TaskId,
     runs: &[RunObservedChangesRecord],
-    write_checks: &[WriteCheckRecord],
+    write_tickets: &[WriteTicketRecord],
     state_version: u64,
     now: DateTime<Utc>,
 ) -> CoreResult<Option<ResolutionCandidate>> {
@@ -600,27 +600,27 @@ fn deterministic_resolution(
         return Ok(Some(candidate));
     }
     let mut active_matches = Vec::new();
-    for write_check in write_checks {
+    for write_ticket in write_tickets {
         let attempt_scope: WriteTicketAttemptScope = decode_required_json(
-            "write_checks",
-            write_check.write_check_id.clone(),
+            "write_tickets",
+            write_ticket.write_ticket_id.clone(),
             "attempt_scope_json",
-            Some(&write_check.attempt_scope_json),
+            Some(&write_ticket.attempt_scope_json),
         )?;
         if attempt_scope.product_file_write_intended
             && paths_are_authorized(&observed_paths, &attempt_scope.intended_paths)
         {
-            if write_check.status == "consumed" && write_check.consumed_by_run_id.is_some() {
+            if write_ticket.status == "consumed" && write_ticket.consumed_by_run_id.is_some() {
                 return Ok(Some(system_resolution(
                     UnrecordedChangeResolutionBasis::CoveredByWriteTicket,
                     "core_deterministic_write_ticket",
                 )));
             }
-            if write_check.status == "active"
-                && write_check.basis_state_version == state_version
-                && !write_check_is_expired(write_check, now)?
+            if write_ticket.status == "active"
+                && write_ticket.basis_state_version == state_version
+                && !write_ticket_is_expired(write_ticket, now)?
             {
-                active_matches.push(write_check.write_check_id.clone());
+                active_matches.push(write_ticket.write_ticket_id.clone());
             }
         }
     }

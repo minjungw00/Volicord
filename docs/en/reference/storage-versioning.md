@@ -14,7 +14,7 @@ Connection records, `connection_projects`, and `guard_installations`.
 Baseline project-state storage includes Core state projection records,
 `authority_events`, replay rows, staged artifacts, persistent artifacts,
 evidence, user judgments, `local_web_consent_tokens`, runs, blockers,
-`write_checks`, host-observation records, and session-watch records.
+`write_tickets`, host-observation records, and session-watch records.
 
 ## Project State Version
 
@@ -28,7 +28,7 @@ Every newly committed authority mutation appends at least one durable `authority
 
 Related fields:
 
-- `write_checks.basis_state_version` stores the resulting `project_state.state_version` after the write-ticket issuance commit. Core uses it as the freshness basis for later write-ticket consumption.
+- `write_tickets.basis_state_version` stores the resulting `project_state.state_version` after the write-ticket issuance commit. Core uses it as the freshness basis for later write-ticket consumption.
 - `tool_invocations.basis_state_version` stores the project-wide state version observed before the committed mutation.
 - `authority_events.state_version` stores the resulting project-wide version after the committed authority event or event batch.
 
@@ -39,7 +39,7 @@ A write ticket is Volicord authority for authorized write intent for one propose
 Write-ticket issuance and compatibility consumption follow normal state-version rules:
 
 - issuance can commit only through an owner-defined method branch
-- consumption can commit only when the stored physical `write_checks` row for the write ticket is active, compatible, unexpired, unconsumed, and current for the project state basis
+- consumption can commit only when the stored physical `write_tickets` row for the write ticket is active, compatible, unexpired, unconsumed, and current for the project state basis
 - stale `WriteTicket.basis_state_version` is rejected before consumption
 - issuance or consumption never occurs on rejected, dry-run, or replay-only branches
 

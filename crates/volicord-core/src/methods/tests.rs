@@ -613,7 +613,7 @@ fn status_renders_effective_write_ticket_expiration_without_mutating_row(
 ) -> Result<(), Box<dyn Error>> {
     let mut harness = MethodHarness::new()?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "status_auth_expired")?;
-    insert_active_write_check_with_timestamps(
+    insert_active_write_ticket_with_timestamps(
         &harness,
         &task_id,
         &change_unit_id,
@@ -644,7 +644,7 @@ fn status_renders_effective_write_ticket_expiration_without_mutating_row(
         response.response_value["active_task"]["write_ticket_summary"]["status"],
         "expired"
     );
-    assert_eq!(write_check_status(&harness, "wa_status_future")?, "active");
+    assert_eq!(write_ticket_status(&harness, "wa_status_future")?, "active");
     assert_eq!(harness.counts()?, before);
     Ok(())
 }
@@ -1654,7 +1654,7 @@ fn update_scope_replaces_current_and_marks_write_ticket_stale() -> Result<(), Bo
         .as_str()
         .expect("change unit ref should be present")
         .to_owned();
-    insert_active_write_check(&harness, &task_id, &change_unit_id)?;
+    insert_active_write_ticket(&harness, &task_id, &change_unit_id)?;
     let before = harness.counts()?;
 
     let response = harness.service.update_scope(
@@ -1682,7 +1682,7 @@ fn update_scope_replaces_current_and_marks_write_ticket_stale() -> Result<(), Bo
     assert_eq!(after.state_version, before.state_version + 1);
     assert_eq!(after.change_units, before.change_units + 1);
     assert_eq!(active_current_change_units(&harness, &task_id)?, 1);
-    assert_eq!(write_check_status(&harness, "wa_replace")?, "stale");
+    assert_eq!(write_ticket_status(&harness, "wa_replace")?, "stale");
     Ok(())
 }
 
@@ -2454,13 +2454,13 @@ fn prepare_write_allowed_issues_one_write_ticket_with_post_commit_basis(
         1
     );
     assert_eq!(after.state_version, before.state_version + 1);
-    assert_eq!(after.write_checks, before.write_checks + 1);
+    assert_eq!(after.write_tickets, before.write_tickets + 1);
     assert_eq!(after.task_events, before.task_events + 1);
     assert_eq!(after.tool_invocations, before.tool_invocations + 1);
-    let compat_write_check_id = response_record_id(&response.response_value, "write_ticket_ref");
-    assert_eq!(write_ticket_id, compat_write_check_id);
-    assert_eq!(write_check_basis(&harness, &compat_write_check_id)?, 5);
-    let (created_at, expires_at) = write_check_timestamps(&harness, &compat_write_check_id)?;
+    let ref_write_ticket_id = response_record_id(&response.response_value, "write_ticket_ref");
+    assert_eq!(write_ticket_id, ref_write_ticket_id);
+    assert_eq!(write_ticket_basis(&harness, &ref_write_ticket_id)?, 5);
+    let (created_at, expires_at) = write_ticket_timestamps(&harness, &ref_write_ticket_id)?;
     assert_eq!(created_at, "2026-06-18T00:00:00Z");
     assert_eq!(expires_at, "2026-06-18T00:15:00Z");
     assert_eq!(
@@ -2628,7 +2628,7 @@ fn prepare_write_rejects_product_write_forbidden_by_effect_contract() -> Result<
         "effect_contract"
     );
     assert!(response.response_value["write_ticket"].is_null());
-    assert_eq!(harness.counts()?.write_checks, before.write_checks);
+    assert_eq!(harness.counts()?.write_tickets, before.write_tickets);
     Ok(())
 }
 
@@ -2661,7 +2661,7 @@ fn prepare_write_rejects_paths_outside_effect_contract_allowed_paths() -> Result
     assert_eq!(response.response_value["decision"], "blocked");
     assert_prepare_reason(&response.response_value, "effect_contract_path_not_allowed");
     assert!(response.response_value["write_ticket"].is_null());
-    assert_eq!(harness.counts()?.write_checks, before.write_checks);
+    assert_eq!(harness.counts()?.write_tickets, before.write_tickets);
     Ok(())
 }
 
@@ -2728,7 +2728,7 @@ fn effect_contract_does_not_replace_sensitive_approval() -> Result<(), Box<dyn E
     assert_eq!(response.response_value["decision"], "approval_required");
     assert_prepare_reason(&response.response_value, "sensitive_approval_missing");
     assert!(response.response_value["write_ticket"].is_null());
-    assert_eq!(harness.counts()?.write_checks, before.write_checks);
+    assert_eq!(harness.counts()?.write_tickets, before.write_tickets);
     Ok(())
 }
 
@@ -2769,7 +2769,7 @@ fn prepare_write_blocked_path_issues_no_write_ticket() -> Result<(), Box<dyn Err
     assert!(response.response_value["write_ticket_ref"].is_null());
     assert_eq!(response.response_value["write_ticket_effect"], "none");
     assert_eq!(after.state_version, before.state_version + 1);
-    assert_eq!(after.write_checks, before.write_checks);
+    assert_eq!(after.write_tickets, before.write_tickets);
     assert_eq!(after.task_events, before.task_events + 1);
     assert_eq!(after.tool_invocations, before.tool_invocations + 1);
     assert_eq!(after.artifact_staging, before.artifact_staging);
@@ -2834,7 +2834,7 @@ fn prepare_write_missing_change_unit_returns_decision_reason() -> Result<(), Box
 
     assert_eq!(response.response_value["decision"], "blocked");
     assert_prepare_reason(&response.response_value, "no_current_change_unit");
-    assert_eq!(after.write_checks, before.write_checks);
+    assert_eq!(after.write_tickets, before.write_tickets);
     Ok(())
 }
 
@@ -2875,7 +2875,7 @@ fn prepare_write_unresolved_user_judgment_requires_decision() -> Result<(), Box<
 
     assert_eq!(response.response_value["decision"], "decision_required");
     assert_prepare_reason(&response.response_value, "user_judgment_unresolved");
-    assert_eq!(after.write_checks, before.write_checks);
+    assert_eq!(after.write_tickets, before.write_tickets);
     assert_eq!(after.state_version, before.state_version + 1);
     assert_eq!(after.task_events, before.task_events + 1);
     assert_eq!(after.tool_invocations, before.tool_invocations + 1);
@@ -2942,7 +2942,7 @@ fn prepare_write_ignores_pending_final_acceptance() -> Result<(), Box<dyn Error>
         .as_array()
         .expect("write_decision_reasons should be an array")
         .is_empty());
-    assert_eq!(harness.counts()?.write_checks, before.write_checks + 1);
+    assert_eq!(harness.counts()?.write_tickets, before.write_tickets + 1);
     Ok(())
 }
 
@@ -3033,7 +3033,7 @@ fn prepare_write_ignores_another_change_unit_pending_judgment() -> Result<(), Bo
 
     assert_eq!(response.response_value["decision"], "allowed");
     assert_no_prepare_reason(&response.response_value, "user_judgment_unresolved");
-    assert_eq!(harness.counts()?.write_checks, before.write_checks + 1);
+    assert_eq!(harness.counts()?.write_tickets, before.write_tickets + 1);
     Ok(())
 }
 
@@ -3111,7 +3111,7 @@ fn prepare_write_missing_sensitive_approval_requires_approval() -> Result<(), Bo
 
     assert_eq!(response.response_value["decision"], "approval_required");
     assert_prepare_reason(&response.response_value, "sensitive_approval_missing");
-    assert_eq!(after.write_checks, before.write_checks);
+    assert_eq!(after.write_tickets, before.write_tickets);
     assert_eq!(after.state_version, before.state_version + 1);
     assert_eq!(after.task_events, before.task_events + 1);
     assert_eq!(after.tool_invocations, before.tool_invocations + 1);
@@ -3160,7 +3160,7 @@ fn prepare_write_baseline_mismatch_blocks_write_ticket() -> Result<(), Box<dyn E
     assert!(response.response_value["write_ticket_id"].is_null());
     assert!(response.response_value["write_ticket"].is_null());
     assert_eq!(response.response_value["write_ticket_effect"], "none");
-    assert_eq!(after.write_checks, before.write_checks);
+    assert_eq!(after.write_tickets, before.write_tickets);
     Ok(())
 }
 
@@ -3192,7 +3192,7 @@ fn prepare_write_user_only_category_is_invocation_context_rejection() -> Result<
         .response_value
         .get("write_decision_reasons")
         .is_none());
-    assert_eq!(after.write_checks, before.write_checks);
+    assert_eq!(after.write_tickets, before.write_tickets);
     Ok(())
 }
 
@@ -3216,7 +3216,7 @@ fn prepare_write_uses_agent_workflow_invocation_without_extra_binding() -> Resul
 
     assert_eq!(response.response_value["base"]["response_kind"], "result");
     assert_eq!(response.response_value["decision"], "allowed");
-    assert_eq!(harness.counts()?.write_checks, before.write_checks + 1);
+    assert_eq!(harness.counts()?.write_tickets, before.write_tickets + 1);
     Ok(())
 }
 
@@ -3240,7 +3240,7 @@ fn prepare_write_uses_agent_workflow_invocation_without_extra_profile() -> Resul
     let after = harness.counts()?;
 
     assert_eq!(response.response_value["decision"], "allowed");
-    assert_eq!(after.write_checks, before.write_checks + 1);
+    assert_eq!(after.write_tickets, before.write_tickets + 1);
     Ok(())
 }
 
@@ -3268,7 +3268,7 @@ fn prepare_write_product_write_flag_mismatch_blocks_write_ticket() -> Result<(),
     assert!(response.response_value["write_ticket_id"].is_null());
     assert!(response.response_value["write_ticket"].is_null());
     assert_eq!(response.response_value["write_ticket_effect"], "none");
-    assert_eq!(after.write_checks, before.write_checks);
+    assert_eq!(after.write_tickets, before.write_tickets);
     Ok(())
 }
 
@@ -3462,7 +3462,7 @@ fn prepare_write_idempotency_replays_without_second_write_ticket() -> Result<(),
     assert!(second.replayed);
     assert_eq!(second.response_json, first.response_json);
     assert_eq!(harness.counts()?, after_first);
-    assert_eq!(write_check_count(&harness)?, 1);
+    assert_eq!(write_ticket_count(&harness)?, 1);
     assert_eq!(id_generator.count(DurableIdKind::WriteTicket), 1);
     assert_eq!(
         second.response_value["write_ticket"]["expires_at"],
@@ -3509,7 +3509,7 @@ fn prepare_write_non_allow_replay_returns_original_response_without_effect(
     assert_eq!(after_first.state_version, before.state_version + 1);
     assert_eq!(after_first.task_events, before.task_events + 1);
     assert_eq!(after_first.tool_invocations, before.tool_invocations + 1);
-    assert_eq!(after_first.write_checks, before.write_checks);
+    assert_eq!(after_first.write_tickets, before.write_tickets);
     assert_latest_prepare_write_event(
         &harness,
         &first.response_value,
@@ -3977,7 +3977,7 @@ fn record_run_without_product_write_commits_run_only() -> Result<(), Box<dyn Err
     assert_eq!(run_scope_revision(&harness, &run_id)?, 1);
     assert_eq!(after.state_version, before.state_version + 1);
     assert_eq!(after.runs, before.runs + 1);
-    assert_eq!(after.write_checks, before.write_checks);
+    assert_eq!(after.write_tickets, before.write_tickets);
     assert_eq!(after.artifacts, before.artifacts);
     assert_eq!(after.task_events, before.task_events + 1);
     assert_eq!(after.tool_invocations, before.tool_invocations + 1);
@@ -4970,7 +4970,8 @@ fn record_run_product_write_consumes_valid_write_ticket_once() -> Result<(), Box
     let harness = MethodHarness::new()?;
     enable_record_run_capabilities(&harness)?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_write")?;
-    let write_check_id = prepare_write_ticket(&harness, &task_id, &change_unit_id, 2, "run_write")?;
+    let write_ticket_id =
+        prepare_write_ticket(&harness, &task_id, &change_unit_id, 2, "run_write")?;
     let before = harness.counts()?;
 
     let mut request = record_run_request(
@@ -4983,7 +4984,7 @@ fn record_run_product_write_consumes_valid_write_ticket_once() -> Result<(), Box
     );
     request.observed_changes.product_file_write_observed = true;
     request.observed_changes.changed_paths = vec!["src/export.rs".to_owned()];
-    request.write_ticket_id = Some(WriteTicketId::new(&write_check_id)).into();
+    request.write_ticket_id = Some(WriteTicketId::new(&write_ticket_id)).into();
     request.evidence_updates = vec![supported_evidence_update(
         "Product write was reported with external tool output.",
     )];
@@ -4999,7 +5000,7 @@ fn record_run_product_write_consumes_valid_write_ticket_once() -> Result<(), Box
     let write_summary = &response.response_value["state"]["write_ticket_summary"];
 
     assert_eq!(response.response_value["base"]["state_version"], 4);
-    assert_eq!(write_check_status(&harness, &write_check_id)?, "consumed");
+    assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "consumed");
     assert_eq!(write_summary["status"], "consumed");
     assert_eq!(write_summary["consumed_by_run_ref"]["record_id"], run_id);
     assert_eq!(
@@ -5028,7 +5029,7 @@ fn record_run_product_write_consumes_valid_write_ticket_once() -> Result<(), Box
     assert_eq!(status_write_summary, response_write_summary);
     assert_eq!(after.state_version, before.state_version + 1);
     assert_eq!(after.runs, before.runs + 1);
-    assert_eq!(after.write_checks, before.write_checks);
+    assert_eq!(after.write_tickets, before.write_tickets);
     assert_eq!(after.task_events, before.task_events + 1);
     assert_eq!(after.tool_invocations, before.tool_invocations + 1);
     Ok(())
@@ -5044,7 +5045,7 @@ fn record_run_consumes_write_ticket_at_fourteen_minutes_fifty_nine_seconds(
         CountingDurableIdGenerator::new(["auth_1459", "prepare_event_1459", "record_event_1459"]);
     let clock = ManualClock::at("2026-06-18T00:00:00Z");
     harness.use_generator_and_clock(id_generator, clock.clone());
-    let write_check_id =
+    let write_ticket_id =
         prepare_write_ticket(&harness, &task_id, &change_unit_id, 2, "run_auth_1459")?;
     clock.advance(Duration::seconds(14 * 60 + 59));
     let before = harness.counts()?;
@@ -5056,7 +5057,7 @@ fn record_run_consumes_write_ticket_at_fourteen_minutes_fifty_nine_seconds(
             3,
             &task_id,
             &change_unit_id,
-            &write_check_id,
+            &write_ticket_id,
             "run_auth_1459",
         ),
         invocation(OperationCategory::AgentWorkflow),
@@ -5064,7 +5065,7 @@ fn record_run_consumes_write_ticket_at_fourteen_minutes_fifty_nine_seconds(
     let after = harness.counts()?;
 
     assert_eq!(response.response_value["base"]["response_kind"], "result");
-    assert_eq!(write_check_status(&harness, &write_check_id)?, "consumed");
+    assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "consumed");
     assert_eq!(after.state_version, before.state_version + 1);
     assert_eq!(after.runs, before.runs + 1);
     assert_eq!(after.task_events, before.task_events + 1);
@@ -5080,7 +5081,7 @@ fn record_run_rejects_write_ticket_at_exactly_fifteen_minutes_without_effect(
     let id_generator = CountingDurableIdGenerator::new(["auth_1500", "prepare_event_1500"]);
     let clock = ManualClock::at("2026-06-18T00:00:00Z");
     harness.use_generator_and_clock(id_generator, clock.clone());
-    let write_check_id =
+    let write_ticket_id =
         prepare_write_ticket(&harness, &task_id, &change_unit_id, 2, "run_auth_1500")?;
     clock.advance(Duration::minutes(15));
     let before = harness.counts()?;
@@ -5092,7 +5093,7 @@ fn record_run_rejects_write_ticket_at_exactly_fifteen_minutes_without_effect(
             3,
             &task_id,
             &change_unit_id,
-            &write_check_id,
+            &write_ticket_id,
             "run_auth_1500",
         ),
         invocation(OperationCategory::AgentWorkflow),
@@ -5107,7 +5108,7 @@ fn record_run_rejects_write_ticket_at_exactly_fifteen_minutes_without_effect(
         response.response_value["errors"][0]["details"]["write_ticket_reason"],
         "expired"
     );
-    assert_eq!(write_check_status(&harness, &write_check_id)?, "active");
+    assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "active");
     assert_eq!(harness.counts()?, before);
     Ok(())
 }
@@ -5118,7 +5119,7 @@ fn record_run_limits_historical_far_future_write_ticket_to_fifteen_minutes(
     let mut harness = MethodHarness::new()?;
     enable_record_run_capabilities(&harness)?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_auth_far_future")?;
-    insert_active_write_check_with_timestamps(
+    insert_active_write_ticket_with_timestamps(
         &harness,
         &task_id,
         &change_unit_id,
@@ -5160,7 +5161,7 @@ fn record_run_honors_stored_expiration_earlier_than_fifteen_minutes() -> Result<
     let mut harness = MethodHarness::new()?;
     enable_record_run_capabilities(&harness)?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_auth_early_exp")?;
-    insert_active_write_check_with_timestamps(
+    insert_active_write_ticket_with_timestamps(
         &harness,
         &task_id,
         &change_unit_id,
@@ -5202,7 +5203,7 @@ fn record_run_treats_invalid_write_ticket_timestamp_as_corrupt_state() -> Result
     let mut harness = MethodHarness::new()?;
     enable_record_run_capabilities(&harness)?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_auth_bad_time")?;
-    insert_active_write_check_with_timestamps(
+    insert_active_write_ticket_with_timestamps(
         &harness,
         &task_id,
         &change_unit_id,
@@ -5231,7 +5232,7 @@ fn record_run_treats_invalid_write_ticket_timestamp_as_corrupt_state() -> Result
 
     assert_store_rejection(&response, "MCP_UNAVAILABLE", "corrupt_stored_value");
     let details = &response.response_value["errors"][0]["details"]["owner_state_error"];
-    assert_eq!(details["table"], "write_checks");
+    assert_eq!(details["table"], "write_tickets");
     assert_eq!(details["record_ref"], "wa_bad_timestamp");
     assert_eq!(details["logical_column"], "created_at");
     assert_eq!(harness.counts()?, before);
@@ -5243,7 +5244,7 @@ fn record_run_stale_basis_precedes_write_ticket_expiration() -> Result<(), Box<d
     let mut harness = MethodHarness::new()?;
     enable_record_run_capabilities(&harness)?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_auth_stale_exp")?;
-    insert_active_write_check_with_timestamps(
+    insert_active_write_ticket_with_timestamps(
         &harness,
         &task_id,
         &change_unit_id,
@@ -5327,7 +5328,7 @@ fn record_run_stale_write_ticket_basis_rejects_before_consumption() -> Result<()
     let harness = MethodHarness::new()?;
     enable_record_run_capabilities(&harness)?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_stale_auth")?;
-    let write_check_id =
+    let write_ticket_id =
         prepare_write_ticket(&harness, &task_id, &change_unit_id, 2, "run_stale_auth")?;
     harness.service.update_scope(
         update_scope_request(
@@ -5353,7 +5354,7 @@ fn record_run_stale_write_ticket_basis_rejects_before_consumption() -> Result<()
     );
     request.observed_changes.product_file_write_observed = true;
     request.observed_changes.changed_paths = vec!["src/export.rs".to_owned()];
-    request.write_ticket_id = Some(WriteTicketId::new(&write_check_id)).into();
+    request.write_ticket_id = Some(WriteTicketId::new(&write_ticket_id)).into();
     let response = harness
         .service
         .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
@@ -5363,7 +5364,7 @@ fn record_run_stale_write_ticket_basis_rejects_before_consumption() -> Result<()
         response.response_value["errors"][0]["code"],
         "STATE_VERSION_CONFLICT"
     );
-    assert_eq!(write_check_status(&harness, &write_check_id)?, "active");
+    assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "active");
     assert_eq!(harness.counts()?, before);
     Ok(())
 }
@@ -5373,7 +5374,7 @@ fn record_run_consumed_write_ticket_reuse_rejects_without_effect() -> Result<(),
     let harness = MethodHarness::new()?;
     enable_record_run_capabilities(&harness)?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_reuse_auth")?;
-    let write_check_id =
+    let write_ticket_id =
         prepare_write_ticket(&harness, &task_id, &change_unit_id, 2, "run_reuse_auth")?;
 
     let mut first = record_run_request(
@@ -5386,7 +5387,7 @@ fn record_run_consumed_write_ticket_reuse_rejects_without_effect() -> Result<(),
     );
     first.observed_changes.product_file_write_observed = true;
     first.observed_changes.changed_paths = vec!["src/export.rs".to_owned()];
-    first.write_ticket_id = Some(WriteTicketId::new(&write_check_id)).into();
+    first.write_ticket_id = Some(WriteTicketId::new(&write_ticket_id)).into();
     harness
         .service
         .record_run(first, invocation(OperationCategory::AgentWorkflow))?;
@@ -5402,7 +5403,7 @@ fn record_run_consumed_write_ticket_reuse_rejects_without_effect() -> Result<(),
     );
     second.observed_changes.product_file_write_observed = true;
     second.observed_changes.changed_paths = vec!["src/export.rs".to_owned()];
-    second.write_ticket_id = Some(WriteTicketId::new(&write_check_id)).into();
+    second.write_ticket_id = Some(WriteTicketId::new(&write_ticket_id)).into();
     let response = harness
         .service
         .record_run(second, invocation(OperationCategory::AgentWorkflow))?;
@@ -5425,7 +5426,7 @@ fn record_run_path_mismatch_rejects_without_consuming_write_ticket() -> Result<(
     let harness = MethodHarness::new()?;
     enable_record_run_capabilities(&harness)?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_path_auth")?;
-    let write_check_id =
+    let write_ticket_id =
         prepare_write_ticket(&harness, &task_id, &change_unit_id, 2, "run_path_auth")?;
     let before = harness.counts()?;
 
@@ -5439,7 +5440,7 @@ fn record_run_path_mismatch_rejects_without_consuming_write_ticket() -> Result<(
     );
     request.observed_changes.product_file_write_observed = true;
     request.observed_changes.changed_paths = vec!["tests/export.rs".to_owned()];
-    request.write_ticket_id = Some(WriteTicketId::new(&write_check_id)).into();
+    request.write_ticket_id = Some(WriteTicketId::new(&write_ticket_id)).into();
     let response = harness
         .service
         .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
@@ -5453,7 +5454,7 @@ fn record_run_path_mismatch_rejects_without_consuming_write_ticket() -> Result<(
         response.response_value["errors"][0]["details"]["write_ticket_reason"],
         "path_mismatch"
     );
-    assert_eq!(write_check_status(&harness, &write_check_id)?, "active");
+    assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "active");
     assert_eq!(harness.counts()?, before);
     Ok(())
 }
@@ -5464,9 +5465,9 @@ fn record_run_rejects_write_ticket_baseline_mismatch_without_consumption(
     let harness = MethodHarness::new()?;
     enable_record_run_capabilities(&harness)?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_baseline_auth")?;
-    let write_check_id =
+    let write_ticket_id =
         prepare_write_ticket(&harness, &task_id, &change_unit_id, 2, "run_baseline_auth")?;
-    mutate_write_check_scope_json(&harness, &write_check_id, |scope| {
+    mutate_write_ticket_scope_json(&harness, &write_ticket_id, |scope| {
         scope["baseline_ref"] = json!("baseline_other");
     })?;
     let before = harness.counts()?;
@@ -5478,14 +5479,14 @@ fn record_run_rejects_write_ticket_baseline_mismatch_without_consumption(
             3,
             &task_id,
             &change_unit_id,
-            &write_check_id,
+            &write_ticket_id,
             "run_baseline_auth",
         ),
         invocation(OperationCategory::AgentWorkflow),
     )?;
 
     assert_write_ticket_invalid_reason(&response, "baseline_mismatch");
-    assert_eq!(write_check_status(&harness, &write_check_id)?, "active");
+    assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "active");
     assert_eq!(harness.counts()?, before);
     Ok(())
 }
@@ -5496,9 +5497,9 @@ fn record_run_rejects_write_ticket_task_mismatch_without_consumption() -> Result
     let harness = MethodHarness::new()?;
     enable_record_run_capabilities(&harness)?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_task_auth")?;
-    let write_check_id =
+    let write_ticket_id =
         prepare_write_ticket(&harness, &task_id, &change_unit_id, 2, "run_task_auth")?;
-    mutate_write_check_scope_json(&harness, &write_check_id, |scope| {
+    mutate_write_ticket_scope_json(&harness, &write_ticket_id, |scope| {
         scope["task_id"] = json!("task_other");
     })?;
     let before = harness.counts()?;
@@ -5510,14 +5511,14 @@ fn record_run_rejects_write_ticket_task_mismatch_without_consumption() -> Result
             3,
             &task_id,
             &change_unit_id,
-            &write_check_id,
+            &write_ticket_id,
             "run_task_auth",
         ),
         invocation(OperationCategory::AgentWorkflow),
     )?;
 
     assert_write_ticket_invalid_reason(&response, "task_mismatch");
-    assert_eq!(write_check_status(&harness, &write_check_id)?, "active");
+    assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "active");
     assert_eq!(harness.counts()?, before);
     Ok(())
 }
@@ -5528,14 +5529,14 @@ fn record_run_rejects_write_ticket_change_unit_mismatch_without_consumption(
     let harness = MethodHarness::new()?;
     enable_record_run_capabilities(&harness)?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_change_unit_auth")?;
-    let write_check_id = prepare_write_ticket(
+    let write_ticket_id = prepare_write_ticket(
         &harness,
         &task_id,
         &change_unit_id,
         2,
         "run_change_unit_auth",
     )?;
-    mutate_write_check_scope_json(&harness, &write_check_id, |scope| {
+    mutate_write_ticket_scope_json(&harness, &write_ticket_id, |scope| {
         scope["change_unit_id"] = json!("cu_other");
     })?;
     let before = harness.counts()?;
@@ -5547,14 +5548,14 @@ fn record_run_rejects_write_ticket_change_unit_mismatch_without_consumption(
             3,
             &task_id,
             &change_unit_id,
-            &write_check_id,
+            &write_ticket_id,
             "run_change_unit_auth",
         ),
         invocation(OperationCategory::AgentWorkflow),
     )?;
 
     assert_write_ticket_invalid_reason(&response, "change_unit_mismatch");
-    assert_eq!(write_check_status(&harness, &write_check_id)?, "active");
+    assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "active");
     assert_eq!(harness.counts()?, before);
     Ok(())
 }
@@ -5565,9 +5566,9 @@ fn record_run_rejects_write_ticket_product_write_flag_mismatch_without_consumpti
     let harness = MethodHarness::new()?;
     enable_record_run_capabilities(&harness)?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_flag_auth")?;
-    let write_check_id =
+    let write_ticket_id =
         prepare_write_ticket(&harness, &task_id, &change_unit_id, 2, "run_flag_auth")?;
-    mutate_write_check_scope_json(&harness, &write_check_id, |scope| {
+    mutate_write_ticket_scope_json(&harness, &write_ticket_id, |scope| {
         scope["product_file_write_intended"] = json!(false);
     })?;
     let before = harness.counts()?;
@@ -5579,14 +5580,14 @@ fn record_run_rejects_write_ticket_product_write_flag_mismatch_without_consumpti
             3,
             &task_id,
             &change_unit_id,
-            &write_check_id,
+            &write_ticket_id,
             "run_flag_auth",
         ),
         invocation(OperationCategory::AgentWorkflow),
     )?;
 
     assert_write_ticket_invalid_reason(&response, "product_write_flag_mismatch");
-    assert_eq!(write_check_status(&harness, &write_check_id)?, "active");
+    assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "active");
     assert_eq!(harness.counts()?, before);
     Ok(())
 }
@@ -5596,12 +5597,12 @@ fn record_run_rejects_write_ticket_sensitive_category_mismatch_without_consumpti
 ) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_sensitive_auth")?;
-    insert_active_write_check_with_scope(
+    insert_active_write_ticket_with_scope(
         &harness,
-        WriteCheckScopeFixture {
+        WriteTicketScopeFixture {
             task_id: &task_id,
             change_unit_id: &change_unit_id,
-            write_check_id: "wa_sensitive_mismatch",
+            write_ticket_id: "wa_sensitive_mismatch",
             basis_state_version: 2,
             created_at: "2999-01-01T00:00:00.000Z",
             expires_at: "2999-01-01T00:15:00.000Z",
@@ -5629,7 +5630,7 @@ fn record_run_rejects_write_ticket_sensitive_category_mismatch_without_consumpti
 
     assert_write_ticket_invalid_reason(&response, "sensitive_category_mismatch");
     assert_eq!(
-        write_check_status(&harness, "wa_sensitive_mismatch")?,
+        write_ticket_status(&harness, "wa_sensitive_mismatch")?,
         "active"
     );
     assert_eq!(harness.counts()?, before);
@@ -6202,7 +6203,7 @@ fn modified_persistent_artifact_body_blocks_existing_link_before_write_ticket(
         "modified_existing",
     )?;
     let artifact_id = artifact_ref.artifact_id.as_str().to_owned();
-    let write_check_id = prepare_write_ticket(
+    let write_ticket_id = prepare_write_ticket(
         &harness,
         &task_id,
         &change_unit_id,
@@ -6220,7 +6221,7 @@ fn modified_persistent_artifact_body_blocks_existing_link_before_write_ticket(
         state_version + 1,
         &task_id,
         &change_unit_id,
-        &write_check_id,
+        &write_ticket_id,
         "run_modified_existing",
     );
     request.artifact_inputs = vec![existing_artifact_input(
@@ -6236,7 +6237,7 @@ fn modified_persistent_artifact_body_blocks_existing_link_before_write_ticket(
         response.response_value["errors"][0]["code"],
         "ARTIFACT_MISSING"
     );
-    assert_eq!(write_check_status(&harness, &write_check_id)?, "active");
+    assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "active");
     assert_eq!(harness.counts()?, before);
     assert_eq!(persistent_artifact_row(&harness, &artifact_id)?, before_row);
     assert_public_response_has_no_internal_leak(&response, &harness.runtime_home_path);
@@ -8414,7 +8415,7 @@ fn stored_sensitive_approval_non_user_actor_does_not_authorize_write() -> Result
         json!([])
     );
     assert!(response.response_value["write_ticket"].is_null());
-    assert_eq!(after.write_checks, before.write_checks);
+    assert_eq!(after.write_tickets, before.write_tickets);
     assert_eq!(user_judgment_status(&harness, &judgment_id)?, "resolved");
     assert_eq!(
         user_judgment_resolution_outcome(&harness, &judgment_id)?,
@@ -9094,7 +9095,7 @@ fn public_sensitive_lifecycle_derives_full_requirement_and_closes() -> Result<()
         .service
         .prepare_write(prepare, invocation(OperationCategory::AgentWorkflow))?;
     assert_eq!(prepared.response_value["decision"], "allowed");
-    let write_check_id = response_record_id(&prepared.response_value, "write_ticket_ref");
+    let write_ticket_id = response_record_id(&prepared.response_value, "write_ticket_ref");
     let after_prepare = prepared.response_value["base"]["state_version"]
         .as_u64()
         .expect("state_version should be present");
@@ -9112,7 +9113,7 @@ fn public_sensitive_lifecycle_derives_full_requirement_and_closes() -> Result<()
         after_prepare,
         &task_id,
         &change_unit_id,
-        &write_check_id,
+        &write_ticket_id,
         "run_sensitive_public",
     );
     run.observed_changes.sensitive_categories = vec!["network".to_owned()];
@@ -9143,7 +9144,7 @@ fn public_sensitive_lifecycle_derives_full_requirement_and_closes() -> Result<()
     assert_eq!(requirement["change_unit_id"], change_unit_id);
     assert_eq!(
         requirement["source_write_ticket_ref"]["record_id"],
-        write_check_id
+        write_ticket_id
     );
     assert!(requirement["action_kind"]
         .as_str()
@@ -9219,7 +9220,7 @@ fn close_sensitive_approval_coverage_rejects_mismatched_approvals() -> Result<()
     ) -> Result<(), Box<dyn Error>> {
         let harness = MethodHarness::new()?;
         let (task_id, change_unit_id) = create_task_with_change_unit(&harness, suffix)?;
-        let write_check_id = format!("wa_sensitive_{suffix}");
+        let write_ticket_id = format!("wa_sensitive_{suffix}");
         let recorded = record_sensitive_product_write_close_basis(
             &harness,
             SensitiveProductWriteBasisFixture {
@@ -9227,7 +9228,7 @@ fn close_sensitive_approval_coverage_rejects_mismatched_approvals() -> Result<()
                 change_unit_id: &change_unit_id,
                 expected_state_version: 2,
                 suffix,
-                write_check_id: &write_check_id,
+                write_ticket_id: &write_ticket_id,
                 intended_operation: "local_sensitive_step",
                 intended_paths: &["src/export.rs"],
                 observed_categories: requirement_categories,
@@ -9352,7 +9353,7 @@ fn multiple_sensitive_requirements_require_complete_coverage() -> Result<(), Box
             change_unit_id: &change_unit_id,
             expected_state_version: 2,
             suffix: "multiple_network",
-            write_check_id: "wa_sensitive_multiple_network",
+            write_ticket_id: "wa_sensitive_multiple_network",
             intended_operation: "local_sensitive_step",
             intended_paths: &["src/export.rs"],
             observed_categories: &["network"],
@@ -9369,7 +9370,7 @@ fn multiple_sensitive_requirements_require_complete_coverage() -> Result<(), Box
             change_unit_id: &change_unit_id,
             expected_state_version: after_first,
             suffix: "multiple_credential",
-            write_check_id: "wa_sensitive_multiple_credential",
+            write_ticket_id: "wa_sensitive_multiple_credential",
             intended_operation: "local_sensitive_step",
             intended_paths: &["src/export.rs"],
             observed_categories: &["credential"],
@@ -9495,7 +9496,7 @@ fn close_assessment_cannot_invent_or_erase_sensitive_requirements() -> Result<()
             change_unit_id: &change_unit_id,
             expected_state_version: 2,
             suffix: "erase_initial",
-            write_check_id: "wa_sensitive_erase_initial",
+            write_ticket_id: "wa_sensitive_erase_initial",
             intended_operation: "local_sensitive_step",
             intended_paths: &["src/export.rs"],
             observed_categories: &["network"],
@@ -9850,7 +9851,7 @@ fn sensitive_action_scope_does_not_create_write_ticket() -> Result<(), Box<dyn E
     let after = harness.counts()?;
 
     assert_eq!(response.response_value["base"]["response_kind"], "result");
-    assert_eq!(after.write_checks, before.write_checks);
+    assert_eq!(after.write_tickets, before.write_tickets);
     assert_eq!(
         response.response_value["state"]["write_ticket_summary"],
         Value::Null
@@ -15774,7 +15775,7 @@ fn insert_expected_write_for_paths(
             expected_paths_json: serde_json::to_string(&expected_paths)?,
             task_id: task_id.to_owned(),
             change_unit_id: Some(change_unit_id.to_owned()),
-            write_check_ids_json: "[]".to_owned(),
+            write_ticket_ids_json: "[]".to_owned(),
             basis_state_version: 2,
             created_at: "2026-06-30T00:07:00Z".to_owned(),
             expires_at: "2026-06-30T01:07:00Z".to_owned(),
@@ -16142,7 +16143,7 @@ fn product_write_record_run_request(
     expected_state_version: u64,
     task_id: &str,
     change_unit_id: &str,
-    write_check_id: &str,
+    write_ticket_id: &str,
     run_id: &str,
 ) -> RecordRunRequest {
     let mut request = record_run_request(
@@ -16156,7 +16157,7 @@ fn product_write_record_run_request(
     request.run_id = Some(RunId::new(run_id)).into();
     request.observed_changes.product_file_write_observed = true;
     request.observed_changes.changed_paths = vec!["src/export.rs".to_owned()];
-    request.write_ticket_id = Some(WriteTicketId::new(write_check_id)).into();
+    request.write_ticket_id = Some(WriteTicketId::new(write_ticket_id)).into();
     request
 }
 
@@ -17076,7 +17077,7 @@ fn prepare_write_ticket(
     assert_eq!(response.response_value["decision"], "allowed");
     Ok(response.response_value["write_ticket_ref"]["record_id"]
         .as_str()
-        .expect("write check ref should be present")
+        .expect("write ticket ref should be present")
         .to_owned())
 }
 
@@ -17899,12 +17900,12 @@ fn json_object(value: Value) -> JsonObject {
     }
 }
 
-fn insert_active_write_check(
+fn insert_active_write_ticket(
     harness: &MethodHarness,
     task_id: &str,
     change_unit_id: &str,
 ) -> Result<(), Box<dyn Error>> {
-    insert_active_write_check_with_timestamps(
+    insert_active_write_ticket_with_timestamps(
         harness,
         task_id,
         change_unit_id,
@@ -17915,21 +17916,21 @@ fn insert_active_write_check(
     )
 }
 
-fn insert_active_write_check_with_timestamps(
+fn insert_active_write_ticket_with_timestamps(
     harness: &MethodHarness,
     task_id: &str,
     change_unit_id: &str,
-    write_check_id: &str,
+    write_ticket_id: &str,
     basis_state_version: u64,
     created_at: &str,
     expires_at: &str,
 ) -> Result<(), Box<dyn Error>> {
-    insert_active_write_check_with_scope(
+    insert_active_write_ticket_with_scope(
         harness,
-        WriteCheckScopeFixture {
+        WriteTicketScopeFixture {
             task_id,
             change_unit_id,
-            write_check_id,
+            write_ticket_id,
             basis_state_version,
             created_at,
             expires_at,
@@ -17940,10 +17941,10 @@ fn insert_active_write_check_with_timestamps(
     )
 }
 
-struct WriteCheckScopeFixture<'a> {
+struct WriteTicketScopeFixture<'a> {
     task_id: &'a str,
     change_unit_id: &'a str,
-    write_check_id: &'a str,
+    write_ticket_id: &'a str,
     basis_state_version: u64,
     created_at: &'a str,
     expires_at: &'a str,
@@ -17952,9 +17953,9 @@ struct WriteCheckScopeFixture<'a> {
     sensitive_categories: &'a [&'a str],
 }
 
-fn insert_active_write_check_with_scope(
+fn insert_active_write_ticket_with_scope(
     harness: &MethodHarness,
-    input: WriteCheckScopeFixture<'_>,
+    input: WriteTicketScopeFixture<'_>,
 ) -> Result<(), Box<dyn Error>> {
     let conn = harness.conn()?;
     let attempt_scope_json = json!({
@@ -17968,9 +17969,9 @@ fn insert_active_write_check_with_scope(
     })
     .to_string();
     conn.execute(
-        "INSERT INTO write_checks (
+        "INSERT INTO write_tickets (
                 project_id,
-                write_check_id,
+                write_ticket_id,
                 task_id,
                 change_unit_id,
                 basis_state_version,
@@ -17994,7 +17995,7 @@ fn insert_active_write_check_with_scope(
             )",
         rusqlite::params![
             PROJECT_ID,
-            input.write_check_id,
+            input.write_ticket_id,
             input.task_id,
             input.change_unit_id,
             i64::try_from(input.basis_state_version)?,
@@ -18007,28 +18008,28 @@ fn insert_active_write_check_with_scope(
     Ok(())
 }
 
-fn mutate_write_check_scope_json(
+fn mutate_write_ticket_scope_json(
     harness: &MethodHarness,
-    write_check_id: &str,
+    write_ticket_id: &str,
     mutate: impl FnOnce(&mut Value),
 ) -> Result<(), Box<dyn Error>> {
     let conn = harness.conn()?;
     let text: String = conn.query_row(
         "SELECT attempt_scope_json
-           FROM write_checks
+           FROM write_tickets
           WHERE project_id = ?1
-            AND write_check_id = ?2",
-        rusqlite::params![PROJECT_ID, write_check_id],
+            AND write_ticket_id = ?2",
+        rusqlite::params![PROJECT_ID, write_ticket_id],
         |row| row.get(0),
     )?;
     let mut value: Value = serde_json::from_str(&text)?;
     mutate(&mut value);
     conn.execute(
-        "UPDATE write_checks
+        "UPDATE write_tickets
             SET attempt_scope_json = ?3
           WHERE project_id = ?1
-            AND write_check_id = ?2",
-        rusqlite::params![PROJECT_ID, write_check_id, value.to_string()],
+            AND write_ticket_id = ?2",
+        rusqlite::params![PROJECT_ID, write_ticket_id, value.to_string()],
     )?;
     Ok(())
 }
@@ -18038,7 +18039,7 @@ struct SensitiveProductWriteBasisFixture<'a> {
     change_unit_id: &'a str,
     expected_state_version: u64,
     suffix: &'a str,
-    write_check_id: &'a str,
+    write_ticket_id: &'a str,
     intended_operation: &'a str,
     intended_paths: &'a [&'a str],
     observed_categories: &'a [&'a str],
@@ -18050,12 +18051,12 @@ fn record_sensitive_product_write_close_basis(
     input: SensitiveProductWriteBasisFixture<'_>,
 ) -> Result<PipelineResponse, Box<dyn Error>> {
     enable_record_run_capabilities(harness)?;
-    insert_active_write_check_with_scope(
+    insert_active_write_ticket_with_scope(
         harness,
-        WriteCheckScopeFixture {
+        WriteTicketScopeFixture {
             task_id: input.task_id,
             change_unit_id: input.change_unit_id,
-            write_check_id: input.write_check_id,
+            write_ticket_id: input.write_ticket_id,
             basis_state_version: input.expected_state_version,
             created_at: "2999-01-01T00:00:00.000Z",
             expires_at: "2999-01-01T00:15:00.000Z",
@@ -18070,7 +18071,7 @@ fn record_sensitive_product_write_close_basis(
         input.expected_state_version,
         input.task_id,
         input.change_unit_id,
-        input.write_check_id,
+        input.write_ticket_id,
         &format!("run_sensitive_{}", input.suffix),
     );
     request.observed_changes.changed_paths = input
@@ -18101,11 +18102,11 @@ fn record_sensitive_product_write_close_basis(
         .record_run(request, invocation(OperationCategory::AgentWorkflow))?)
 }
 
-fn write_check_count(harness: &MethodHarness) -> Result<u64, Box<dyn Error>> {
+fn write_ticket_count(harness: &MethodHarness) -> Result<u64, Box<dyn Error>> {
     let conn = harness.conn()?;
     let count: i64 = conn.query_row(
         "SELECT COUNT(*)
-               FROM write_checks
+               FROM write_tickets
               WHERE project_id = ?1",
         rusqlite::params![PROJECT_ID],
         |row| row.get(0),
@@ -18168,30 +18169,33 @@ fn assert_latest_prepare_write_event(
     Ok(payload)
 }
 
-fn write_check_basis(harness: &MethodHarness, write_check_id: &str) -> Result<u64, Box<dyn Error>> {
+fn write_ticket_basis(
+    harness: &MethodHarness,
+    write_ticket_id: &str,
+) -> Result<u64, Box<dyn Error>> {
     let conn = harness.conn()?;
     let basis: i64 = conn.query_row(
         "SELECT basis_state_version
-               FROM write_checks
+               FROM write_tickets
               WHERE project_id = ?1
-                AND write_check_id = ?2",
-        rusqlite::params![PROJECT_ID, write_check_id],
+                AND write_ticket_id = ?2",
+        rusqlite::params![PROJECT_ID, write_ticket_id],
         |row| row.get(0),
     )?;
     Ok(u64::try_from(basis)?)
 }
 
-fn write_check_timestamps(
+fn write_ticket_timestamps(
     harness: &MethodHarness,
-    write_check_id: &str,
+    write_ticket_id: &str,
 ) -> Result<(String, String), Box<dyn Error>> {
     let conn = harness.conn()?;
     Ok(conn.query_row(
         "SELECT created_at, expires_at
-               FROM write_checks
+               FROM write_tickets
               WHERE project_id = ?1
-                AND write_check_id = ?2",
-        rusqlite::params![PROJECT_ID, write_check_id],
+                AND write_ticket_id = ?2",
+        rusqlite::params![PROJECT_ID, write_ticket_id],
         |row| Ok((row.get(0)?, row.get(1)?)),
     )?)
 }
@@ -19150,17 +19154,17 @@ fn active_current_change_units(
     )?)
 }
 
-fn write_check_status(
+fn write_ticket_status(
     harness: &MethodHarness,
-    write_check_id: &str,
+    write_ticket_id: &str,
 ) -> Result<String, Box<dyn Error>> {
     let conn = harness.conn()?;
     Ok(conn.query_row(
         "SELECT status
-               FROM write_checks
+               FROM write_tickets
               WHERE project_id = ?1
-                AND write_check_id = ?2",
-        rusqlite::params![PROJECT_ID, write_check_id],
+                AND write_ticket_id = ?2",
+        rusqlite::params![PROJECT_ID, write_ticket_id],
         |row| row.get(0),
     )?)
 }

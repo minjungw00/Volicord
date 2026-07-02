@@ -96,7 +96,7 @@ Related owner:
 | Conflict case | Detail section |
 |---|---|
 | stale `expected_state_version` | [Stale `expected_state_version`](#state-conflict-expected-state-version) |
-| stale `WriteTicket.basis_state_version` | [Stale write-ticket basis](#state-conflict-write-check-basis) |
+| stale `WriteTicket.basis_state_version` | [Stale write-ticket basis](#state-conflict-write-ticket-basis) |
 | idempotency request-hash conflict | [Idempotency request-hash conflict](#state-conflict-idempotency-hash) |
 
 For precedence, these conflict cases select `STATE_VERSION_CONFLICT` as a project-wide pre-commit freshness or idempotency conflict.
@@ -125,7 +125,7 @@ Response path:
 Detail fields:
 - Use [State conflict detail fields](error-details.md#state-conflict-detail-fields).
 
-<a id="state-conflict-write-check-basis"></a>
+<a id="state-conflict-write-ticket-basis"></a>
 ### Stale write-ticket basis
 
 Condition:

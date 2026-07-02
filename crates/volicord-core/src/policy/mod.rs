@@ -8,4 +8,4 @@ pub(crate) mod judgment_relevance;
 pub(crate) mod path;
 pub(crate) mod rationale;
 pub(crate) mod replay;
-pub(crate) mod write_check;
+pub(crate) mod write_ticket;

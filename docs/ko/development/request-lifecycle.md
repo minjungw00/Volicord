@@ -329,7 +329,7 @@ API 오류는 rejected response로 남으며 닫기 차단 사유가 아닙니�
 3. [`crates/volicord-core/src/methods/prepare_write.rs`](../../../crates/volicord-core/src/methods/prepare_write.rs)는
    `CoreService::prepare_write`, `prepare_write_policy`,
    `plan_prepare_write`를 구현합니다.
-4. [`crates/volicord-core/src/policy/write_check.rs`](../../../crates/volicord-core/src/policy/write_check.rs)는
+4. [`crates/volicord-core/src/policy/write_ticket.rs`](../../../crates/volicord-core/src/policy/write_ticket.rs)는
    `prepare_write_decision`, `prepare_write_dry_run_summary`,
    쓰기 티켓 호환성 도우미, `write_decision_reason`을 제공합니다.
 5. [`crates/volicord-core/src/policy/path.rs`](../../../crates/volicord-core/src/policy/path.rs)는

@@ -37,7 +37,7 @@ SQLite `TEXT` columns ending in `_json` store JSON as a representation choice. J
 
 `project_state.state_version` is the only public baseline state clock. Baseline SQLite DDL must not create `tasks.state_version`.
 
-The physical `write_checks` table stores write-ticket authority records for product-file write attempts. These rows record Volicord-authorized write intent and compatibility state; they are not OS permissions, filesystem ACLs, sandboxing, network policy, secret isolation, global filesystem interception, or proof that a write occurred.
+The physical `write_tickets` table stores write-ticket authority records for product-file write attempts. These rows record Volicord-authorized write intent and compatibility state; they are not OS permissions, filesystem ACLs, sandboxing, network policy, secret isolation, global filesystem interception, or proof that a write occurred.
 
 ## `registry.sqlite`
 
@@ -514,9 +514,9 @@ CREATE TABLE project_continuity_records (
     REFERENCES change_units (project_id, task_id, change_unit_id)
 );
 
-CREATE TABLE write_checks (
+CREATE TABLE write_tickets (
   project_id TEXT NOT NULL,
-  write_check_id TEXT NOT NULL,
+  write_ticket_id TEXT NOT NULL,
   task_id TEXT NOT NULL,
   change_unit_id TEXT,
   basis_state_version INTEGER NOT NULL CHECK (basis_state_version > 0),
@@ -530,7 +530,7 @@ CREATE TABLE write_checks (
   revoked_at TEXT,
   created_at TEXT NOT NULL,
   metadata_json TEXT NOT NULL DEFAULT '{}',
-  PRIMARY KEY (project_id, write_check_id),
+  PRIMARY KEY (project_id, write_ticket_id),
   FOREIGN KEY (project_id, task_id) REFERENCES tasks (project_id, task_id),
   FOREIGN KEY (project_id, task_id, change_unit_id)
     REFERENCES change_units (project_id, task_id, change_unit_id),
@@ -541,8 +541,8 @@ CREATE TABLE write_checks (
     DEFERRABLE INITIALLY DEFERRED
 );
 
-CREATE UNIQUE INDEX idx_write_checks_consumed_run
-  ON write_checks (project_id, consumed_by_run_id)
+CREATE UNIQUE INDEX idx_write_tickets_consumed_run
+  ON write_tickets (project_id, consumed_by_run_id)
   WHERE consumed_by_run_id IS NOT NULL;
 
 Storage status values map to the public write-ticket lifecycle as follows:
@@ -558,13 +558,13 @@ CREATE TABLE runs (
   run_id TEXT NOT NULL,
   task_id TEXT NOT NULL,
   change_unit_id TEXT,
-  write_check_id TEXT,
+  write_ticket_id TEXT,
   kind TEXT NOT NULL,
   status TEXT NOT NULL,
   summary_json TEXT NOT NULL DEFAULT '{}',
   observed_changes_json TEXT NOT NULL DEFAULT '{}',
   evidence_updates_json TEXT NOT NULL DEFAULT '[]',
-  write_check_effect_json TEXT NOT NULL DEFAULT '{}',
+  write_ticket_effect_json TEXT NOT NULL DEFAULT '{}',
   scope_revision INTEGER NOT NULL CHECK (scope_revision >= 0),
   created_by_actor_source TEXT NOT NULL,
   started_at TEXT,
@@ -575,14 +575,14 @@ CREATE TABLE runs (
   FOREIGN KEY (project_id, task_id) REFERENCES tasks (project_id, task_id),
   FOREIGN KEY (project_id, task_id, change_unit_id)
     REFERENCES change_units (project_id, task_id, change_unit_id),
-  FOREIGN KEY (project_id, write_check_id)
-    REFERENCES write_checks (project_id, write_check_id)
+  FOREIGN KEY (project_id, write_ticket_id)
+    REFERENCES write_tickets (project_id, write_ticket_id)
     DEFERRABLE INITIALLY DEFERRED
 );
 
-CREATE UNIQUE INDEX idx_runs_write_check
-  ON runs (project_id, write_check_id)
-  WHERE write_check_id IS NOT NULL;
+CREATE UNIQUE INDEX idx_runs_write_ticket
+  ON runs (project_id, write_ticket_id)
+  WHERE write_ticket_id IS NOT NULL;
 
 CREATE TABLE artifact_staging (
   project_id TEXT NOT NULL,
@@ -843,8 +843,8 @@ CREATE INDEX idx_project_continuity_records_status
 CREATE INDEX idx_project_continuity_records_source_task
   ON project_continuity_records (project_id, source_task_id);
 
-CREATE INDEX idx_write_checks_task_status
-  ON write_checks (project_id, task_id, status);
+CREATE INDEX idx_write_tickets_task_status
+  ON write_tickets (project_id, task_id, status);
 
 CREATE INDEX idx_runs_task_created
   ON runs (project_id, task_id, created_at);
@@ -1005,7 +1005,7 @@ CREATE TABLE expected_writes (
   expected_paths_json TEXT NOT NULL DEFAULT '[]',
   task_id TEXT NOT NULL,
   change_unit_id TEXT,
-  write_check_ids_json TEXT NOT NULL DEFAULT '[]',
+  write_ticket_ids_json TEXT NOT NULL DEFAULT '[]',
   basis_state_version INTEGER NOT NULL CHECK (basis_state_version >= 0),
   status TEXT NOT NULL CHECK (status IN ('pending', 'matched')),
   matched_post_tool_guard_event_id TEXT,
@@ -1129,12 +1129,12 @@ Project-state constraints:
 
 - `project_state.state_version` is the only public baseline state clock and must be monotonic according to [Storage Versioning](storage-versioning.md).
 - `authority_events` stores one durable event row per committed authority event. Multiple event rows with the same `state_version` are one event batch for one committed state transition.
-- `authority_events.actor_source`, `tasks.created_by_actor_source`, `user_judgments.requested_by_actor_source`, `user_judgments.resolved_by_actor_source`, `write_checks.created_by_actor_source`, `runs.created_by_actor_source`, `artifact_staging.created_by_actor_source`, `evidence_observations.observed_by_actor_source`, and `tool_invocations.actor_source` store actor provenance.
+- `authority_events.actor_source`, `tasks.created_by_actor_source`, `user_judgments.requested_by_actor_source`, `user_judgments.resolved_by_actor_source`, `write_tickets.created_by_actor_source`, `runs.created_by_actor_source`, `artifact_staging.created_by_actor_source`, `evidence_observations.observed_by_actor_source`, and `tool_invocations.actor_source` store actor provenance.
 - `authority_events.operation_category` and `tool_invocations.operation_category` are constrained to `read`, `agent_workflow`, `user_only`, `admin_local`, or `local_recovery`.
 - `authority_events.request_hash` stores the request identity for the committed authority event. `previous_event_hash` and `event_hash` store a local hash chain for integrity checking and export correlation; they are not tamper-proof audit guarantees.
 - User judgment rows store User Channel provenance for authority-bearing resolution. `status='resolved'` records that an answer exists; approval meaning comes from the stored machine action, outcome, basis, provenance, and method owner.
 - `local_web_consent_tokens` stores hashed one-time local web consent tokens for pending user judgments. Rows are scoped to the project-state database, the selected Agent Connection, the pending judgment, capture basis, expiration, and creation/completion metadata. The raw token is not stored. `status` is `pending`, `consumed`, or `expired`; consumed rows must have completion timestamps, and pending or expired rows must not. Token consumption must commit in the same project-state transaction as the corresponding user judgment resolution. These rows are transient User Channel capture metadata and are not Core judgment authority by themselves.
-- `write_checks` records single-use write-ticket compatibility. The unique indexes on `write_checks.consumed_by_run_id` and `runs.write_check_id` prevent one write-ticket consumption from forking across multiple runs.
+- `write_tickets` records single-use write-ticket compatibility. The unique indexes on `write_tickets.consumed_by_run_id` and `runs.write_ticket_id` prevent one write-ticket consumption from forking across multiple runs.
 - `artifact_staging.created_by_actor_source` records staging provenance. Staged bytes and notices remain artifact-owned and are not evidence authority by themselves.
 - `evidence_observations.source_kind` and `assurance_level` distinguish cooperative agent reports, registered connection observations, external tool results, user observations, reused evidence, and unverified claims.
 - `tool_invocations` stores replay rows with actor provenance and operation category. Replay rows are not caller authority and do not bypass current connection context or User Channel requirements.

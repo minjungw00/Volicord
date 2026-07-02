@@ -1155,26 +1155,26 @@ fn guard_state_summary(
         active_change_unit_id = store
             .task_record(&task_id)?
             .and_then(|task| task.current_change_unit_id);
-        for record in store.active_write_checks(&task_id)? {
+        for record in store.active_write_tickets(&task_id)? {
             let current_basis = record.basis_state_version == project_state.state_version;
             let not_expired = UtcTimestamp::parse(&record.expires_at)
                 .map(|expires_at| now_timestamp < expires_at)
                 .unwrap_or(false);
             if current_basis && not_expired {
-                let write_check_id = record.write_check_id.clone();
-                current_write_ticket_ids.push(write_check_id.clone());
+                let write_ticket_id = record.write_ticket_id.clone();
+                current_write_ticket_ids.push(write_ticket_id.clone());
                 let attempt_scope: WriteTicketAttemptScope =
                     serde_json::from_str(&record.attempt_scope_json).map_err(json_error)?;
                 if attempt_scope.product_file_write_intended {
                     active_write_tickets.push(ActiveWriteTicketSummary {
-                        write_ticket_id: write_check_id,
+                        write_ticket_id,
                         change_unit_id: record.change_unit_id.clone(),
                         intended_paths: attempt_scope.intended_paths,
                         expires_at: record.expires_at,
                     });
                 }
             } else {
-                stale_write_ticket_ids.push(record.write_check_id);
+                stale_write_ticket_ids.push(record.write_ticket_id);
             }
         }
         pending_user_judgment_count = store.pending_user_judgment_records(&task_id)?.len();
@@ -1775,7 +1775,7 @@ fn expected_write_candidate(
             expected_paths_json: serde_json::to_string(&expected_paths).map_err(json_error)?,
             task_id,
             change_unit_id: summary.active_change_unit_id.clone(),
-            write_check_ids_json: serde_json::to_string(&write_ticket_ids).map_err(json_error)?,
+            write_ticket_ids_json: serde_json::to_string(&write_ticket_ids).map_err(json_error)?,
             basis_state_version: summary.state_version,
             created_at: format_timestamp(created_at),
             expires_at: format_timestamp(expires_at),
@@ -1814,7 +1814,7 @@ fn expected_write_candidate_json(candidate: &ExpectedWriteCandidate) -> Value {
         "change_unit_id": candidate.insert.change_unit_id,
         "ticket_backed": true,
         "write_ticket_id": candidate.write_ticket.write_ticket_id,
-        "write_ticket_ids": candidate.insert.write_check_ids_json
+        "write_ticket_ids": candidate.insert.write_ticket_ids_json
             .parse::<Value>()
             .unwrap_or_else(|_| json!([])),
         "basis_state_version": candidate.insert.basis_state_version,
@@ -2273,7 +2273,7 @@ fn matched_expected_write_json(record: &ExpectedWriteRecord, changed: &[String])
         "task_id": record.task_id,
         "change_unit_id": record.change_unit_id,
         "ticket_backed": true,
-        "write_ticket_ids": serde_json::from_str::<Value>(&record.write_check_ids_json)
+        "write_ticket_ids": serde_json::from_str::<Value>(&record.write_ticket_ids_json)
             .unwrap_or_else(|_| json!([]))
     })
 }

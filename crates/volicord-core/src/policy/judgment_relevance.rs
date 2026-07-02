@@ -7,7 +7,7 @@ use crate::policy::{
     close_readiness::JudgmentAuthority,
     close_readiness::{final_acceptance_basis_matches_current, final_acceptance_requirement},
     close_readiness::{judgment_has_current_basis, residual_risk_basis_matches_current},
-    write_check::{sensitive_action_scope_matches_requirement, SensitiveApprovalRequirement},
+    write_ticket::{sensitive_action_scope_matches_requirement, SensitiveApprovalRequirement},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

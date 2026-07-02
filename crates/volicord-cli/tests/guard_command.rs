@@ -2352,7 +2352,7 @@ fn guarded_init_hook_write_prompt_lifecycle_closes() -> Result<(), Box<dyn Error
     fixture.activate_guard("guard_lifecycle_session_start")?;
 
     let (task_id, change_unit_id) = fixture.create_task_with_change_unit("happy")?;
-    let write_check_id = fixture.prepare_write(&task_id, &change_unit_id, "happy")?;
+    let write_ticket_id = fixture.prepare_write(&task_id, &change_unit_id, "happy")?;
 
     let pre = json!({
         "event_id": "guard_lifecycle_pre",
@@ -2404,7 +2404,7 @@ fn guarded_init_hook_write_prompt_lifecycle_closes() -> Result<(), Box<dyn Error
     fixture.record_product_write_close_basis(
         &task_id,
         &change_unit_id,
-        &write_check_id,
+        &write_ticket_id,
         "happy",
     )?;
     let final_judgment_id = fixture.request_final_acceptance(&task_id, &change_unit_id, "happy")?;
@@ -3354,10 +3354,10 @@ impl GuardedLifecycleFixture {
         &self,
         task_id: &str,
         change_unit_id: &str,
-        write_check_id: &str,
+        write_ticket_id: &str,
         suffix: &str,
     ) -> Result<u64, Box<dyn Error>> {
-        self.record_close_basis(task_id, change_unit_id, Some(write_check_id), true, suffix)
+        self.record_close_basis(task_id, change_unit_id, Some(write_ticket_id), true, suffix)
     }
 
     fn record_non_write_close_basis(
@@ -3373,7 +3373,7 @@ impl GuardedLifecycleFixture {
         &self,
         task_id: &str,
         change_unit_id: &str,
-        write_check_id: Option<&str>,
+        write_ticket_id: Option<&str>,
         product_write_observed: bool,
         suffix: &str,
     ) -> Result<u64, Box<dyn Error>> {
@@ -3389,7 +3389,7 @@ impl GuardedLifecycleFixture {
             kind: RunKind::Implementation,
             run_id: None.into(),
             baseline_ref: BaselineRef::new(DEFAULT_BASELINE_REF),
-            write_ticket_id: write_check_id.map(WriteTicketId::new).into(),
+            write_ticket_id: write_ticket_id.map(WriteTicketId::new).into(),
             summary: "Recorded guarded lifecycle fixture run.".to_owned(),
             observed_changes: ObservedChanges {
                 changed_paths: if product_write_observed {

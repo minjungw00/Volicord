@@ -295,7 +295,7 @@ fn committed_non_allow_prepare_write_audit_and_replay_are_exact() -> Result<(), 
     assert_eq!(after_first.state_version, before.state_version + 1);
     assert_eq!(after_first.task_events, before.task_events + 1);
     assert_eq!(after_first.tool_invocations, before.tool_invocations + 1);
-    assert_eq!(after_first.write_checks, before.write_checks);
+    assert_eq!(after_first.write_tickets, before.write_tickets);
     assert_eq!(after_first.artifact_staging, before.artifact_staging);
     assert_eq!(after_first.artifacts, before.artifacts);
     assert_eq!(after_first.artifact_links, before.artifact_links);
@@ -362,7 +362,10 @@ fn write_ticket_lifecycle_is_single_use_and_state_bound() -> Result<(), Box<dyn 
     )?;
     assert_eq!(path_blocked.response_value["decision"], "blocked");
     assert_prepare_reason(&path_blocked.response_value, "path_out_of_scope");
-    assert_eq!(fixture.counts()?.write_checks, before_blocked.write_checks);
+    assert_eq!(
+        fixture.counts()?.write_tickets,
+        before_blocked.write_tickets
+    );
 
     let before_approval = fixture.counts()?;
     let mut approval_required = fixture.prepare_write_request(
@@ -385,7 +388,10 @@ fn write_ticket_lifecycle_is_single_use_and_state_bound() -> Result<(), Box<dyn 
         &approval_blocked.response_value,
         "sensitive_approval_missing",
     );
-    assert_eq!(fixture.counts()?.write_checks, before_approval.write_checks);
+    assert_eq!(
+        fixture.counts()?.write_tickets,
+        before_approval.write_tickets
+    );
 
     let allowed = service.prepare_write(
         fixture.prepare_write_request(
@@ -401,7 +407,7 @@ fn write_ticket_lifecycle_is_single_use_and_state_bound() -> Result<(), Box<dyn 
         .as_str()
         .expect("write ticket ref should be present")
         .to_owned();
-    let compat_write_check_id = allowed.response_value["write_ticket_ref"]["record_id"]
+    let ref_write_ticket_id = allowed.response_value["write_ticket_ref"]["record_id"]
         .as_str()
         .expect("write ticket ref should be present")
         .to_owned();
@@ -417,13 +423,10 @@ fn write_ticket_lifecycle_is_single_use_and_state_bound() -> Result<(), Box<dyn 
         false
     );
     assert_eq!(allowed.response_value["write_ticket_effect"], "issued");
-    assert_eq!(write_ticket_id, compat_write_check_id);
+    assert_eq!(write_ticket_id, ref_write_ticket_id);
+    assert_eq!(fixture.write_ticket_status(&ref_write_ticket_id)?, "active");
     assert_eq!(
-        fixture.write_check_status(&compat_write_check_id)?,
-        "active"
-    );
-    assert_eq!(
-        fixture.write_check_basis(&compat_write_check_id)?,
+        fixture.write_ticket_basis(&ref_write_ticket_id)?,
         allowed.response_value["base"]["state_version"]
             .as_u64()
             .unwrap()
@@ -440,12 +443,12 @@ fn write_ticket_lifecycle_is_single_use_and_state_bound() -> Result<(), Box<dyn 
     );
     run.observed_changes.product_file_write_observed = true;
     run.observed_changes.changed_paths = vec![DEFAULT_PRODUCT_PATH.to_owned()];
-    run.write_ticket_id = Some(WriteTicketId::new(&compat_write_check_id)).into();
+    run.write_ticket_id = Some(WriteTicketId::new(&ref_write_ticket_id)).into();
     let consumed =
         service.record_run(run, invocation(&fixture, OperationCategory::AgentWorkflow))?;
     assert_eq!(consumed.response_value["base"]["state_version"], 6);
     assert_eq!(
-        fixture.write_check_status(&compat_write_check_id)?,
+        fixture.write_ticket_status(&ref_write_ticket_id)?,
         "consumed"
     );
     let after_consume = fixture.counts()?;
@@ -466,7 +469,7 @@ fn write_ticket_lifecycle_is_single_use_and_state_bound() -> Result<(), Box<dyn 
     );
     reuse.observed_changes.product_file_write_observed = true;
     reuse.observed_changes.changed_paths = vec![DEFAULT_PRODUCT_PATH.to_owned()];
-    reuse.write_ticket_id = Some(WriteTicketId::new(&compat_write_check_id)).into();
+    reuse.write_ticket_id = Some(WriteTicketId::new(&ref_write_ticket_id)).into();
     let rejected = service.record_run(
         reuse,
         invocation(&fixture, OperationCategory::AgentWorkflow),
@@ -498,7 +501,7 @@ fn write_ticket_lifecycle_is_single_use_and_state_bound() -> Result<(), Box<dyn 
         }),
         invocation(&stale_fixture, OperationCategory::AgentWorkflow),
     )?;
-    assert_eq!(stale_fixture.write_check_status(&stale_auth)?, "stale");
+    assert_eq!(stale_fixture.write_ticket_status(&stale_auth)?, "stale");
     Ok(())
 }
 
@@ -701,8 +704,8 @@ fn user_judgment_kinds_remain_separate_from_scope_and_write_tickets() -> Result<
     )?;
     assert_eq!(sensitive.response_value["base"]["response_kind"], "result");
     assert_eq!(
-        fixture.counts()?.write_checks,
-        before_sensitive.write_checks
+        fixture.counts()?.write_tickets,
+        before_sensitive.write_tickets
     );
 
     let mut risk_basis = fixture.record_run_request(
@@ -1382,7 +1385,9 @@ fn write_ticket_expiration_is_enforced_through_record_run() -> Result<(), Box<dy
         "result"
     );
     assert_eq!(
-        usable.fixture.write_check_status(&usable.write_ticket_id)?,
+        usable
+            .fixture
+            .write_ticket_status(&usable.write_ticket_id)?,
         "consumed"
     );
 
@@ -1409,12 +1414,12 @@ fn write_ticket_expiration_is_enforced_through_record_run() -> Result<(), Box<dy
     assert_eq!(
         expired
             .fixture
-            .write_check_status(&expired.write_ticket_id)?,
+            .write_ticket_status(&expired.write_ticket_id)?,
         "active"
     );
 
     let capped = prepared_write_fixture("auth_capped", t0)?;
-    capped.fixture.set_write_check_timestamps(
+    capped.fixture.set_write_ticket_timestamps(
         &capped.write_ticket_id,
         &format_time(t0),
         &format_time(t0 + Duration::days(1)),
@@ -1468,7 +1473,7 @@ fn write_ticket_expiration_is_enforced_through_record_run() -> Result<(), Box<dy
     assert_rejected_code(&stale_response.response_value, "STATE_VERSION_CONFLICT");
     assert_eq!(stale.fixture.counts()?, before_stale);
     assert_eq!(
-        stale.fixture.write_check_status(&stale.write_ticket_id)?,
+        stale.fixture.write_ticket_status(&stale.write_ticket_id)?,
         "stale"
     );
 
@@ -1502,7 +1507,10 @@ fn prepare_write_issues_write_ticket_only_on_committed_allowed_effect() -> Resul
         "none"
     );
     assert!(blocked_response.response_value["write_ticket_ref"].is_null());
-    assert_eq!(fixture.counts()?.write_checks, before_blocked.write_checks);
+    assert_eq!(
+        fixture.counts()?.write_tickets,
+        before_blocked.write_tickets
+    );
 
     let before_dry_run = fixture.counts()?;
     let mut dry_run = fixture.prepare_write_request(
@@ -1544,7 +1552,7 @@ fn prepare_write_issues_write_ticket_only_on_committed_allowed_effect() -> Resul
         .as_str()
         .expect("allowed prepare_write should issue a write ticket")
         .to_owned();
-    let compat_write_check_id = allowed.response_value["write_ticket_ref"]["record_id"]
+    let ref_write_ticket_id = allowed.response_value["write_ticket_ref"]["record_id"]
         .as_str()
         .expect("allowed prepare_write should include a write ticket id")
         .to_owned();
@@ -1557,8 +1565,8 @@ fn prepare_write_issues_write_ticket_only_on_committed_allowed_effect() -> Resul
         allowed.response_value["write_ticket"]["control_surface"]["os_enforced"],
         false
     );
-    assert_eq!(write_ticket_id, compat_write_check_id);
-    let timestamps = fixture.write_check_timestamps(&compat_write_check_id)?;
+    assert_eq!(write_ticket_id, ref_write_ticket_id);
+    let timestamps = fixture.write_ticket_timestamps(&ref_write_ticket_id)?;
 
     let replay = service.prepare_write(
         allowed_request,
@@ -1575,7 +1583,7 @@ fn prepare_write_issues_write_ticket_only_on_committed_allowed_effect() -> Resul
         write_ticket_id
     );
     assert_eq!(
-        fixture.write_check_timestamps(&compat_write_check_id)?,
+        fixture.write_ticket_timestamps(&ref_write_ticket_id)?,
         timestamps
     );
     assert_eq!(fixture.counts()?, after_allowed);
@@ -2080,7 +2088,7 @@ fn status_projection_matches_public_close_check_and_stays_read_only() -> Result<
     assert_eq!(
         expired
             .fixture
-            .write_check_status(&expired.write_ticket_id)?,
+            .write_ticket_status(&expired.write_ticket_id)?,
         "active"
     );
     assert_eq!(expired.fixture.counts()?, before_status);
@@ -2438,7 +2446,7 @@ fn public_sensitive_lifecycle_preserves_full_scope_through_close() -> Result<(),
         invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_eq!(prepared.response_value["decision"], "allowed");
-    let write_check_id = response_record_id(&prepared.response_value, "write_ticket_ref");
+    let write_ticket_id = response_record_id(&prepared.response_value, "write_ticket_ref");
     let after_prepare = prepared.response_value["base"]["state_version"]
         .as_u64()
         .expect("state_version should be present");
@@ -2450,7 +2458,7 @@ fn public_sensitive_lifecycle_preserves_full_scope_through_close() -> Result<(),
         after_prepare,
         &task_id,
         &change_unit_id,
-        &write_check_id,
+        &write_ticket_id,
     );
     run.observed_changes.sensitive_categories = vec!["network".to_owned()];
     run.evidence_updates = vec![supported_evidence_update("Close claim supported.")];
@@ -2476,7 +2484,7 @@ fn public_sensitive_lifecycle_preserves_full_scope_through_close() -> Result<(),
     assert_eq!(requirement["change_unit_id"], change_unit_id);
     assert_eq!(
         requirement["source_write_ticket_ref"]["record_id"],
-        write_check_id
+        write_ticket_id
     );
     let after_run = recorded.response_value["base"]["state_version"]
         .as_u64()
@@ -3892,7 +3900,7 @@ fn prepared_write_fixture(
         invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_eq!(response.response_value["decision"], "allowed");
-    let write_check_id = response.response_value["write_ticket_ref"]["record_id"]
+    let write_ticket_id = response.response_value["write_ticket_ref"]["record_id"]
         .as_str()
         .expect("write ticket ref should be present")
         .to_owned();
@@ -3900,7 +3908,7 @@ fn prepared_write_fixture(
         fixture,
         task_id,
         change_unit_id,
-        write_ticket_id: write_check_id,
+        write_ticket_id,
     })
 }
 
@@ -3911,7 +3919,7 @@ fn product_write_run(
     expected_state_version: u64,
     task_id: &str,
     change_unit_id: &str,
-    write_check_id: &str,
+    write_ticket_id: &str,
 ) -> volicord_types::RecordRunRequest {
     let mut request = fixture.record_run_request(
         request_id,
@@ -3923,7 +3931,7 @@ fn product_write_run(
     );
     request.observed_changes.product_file_write_observed = true;
     request.observed_changes.changed_paths = vec![DEFAULT_PRODUCT_PATH.to_owned()];
-    request.write_ticket_id = Some(WriteTicketId::new(write_check_id)).into();
+    request.write_ticket_id = Some(WriteTicketId::new(write_ticket_id)).into();
     request
 }
 

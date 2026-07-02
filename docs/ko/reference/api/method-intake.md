@@ -229,7 +229,7 @@ state:
 next_actions:
   - action_kind: update_scope
     owner_method: volicord.update_scope
-    label: "Create the first currently applied Change Unit before write checking."
+    label: "Create the first currently applied Change Unit before write-ticket preparation."
     blocking_question: null
     required_refs:
       - record_kind: task
