@@ -1,0 +1,363 @@
+{
+  "_generated": {
+    "check_command": "cargo test -p volicord-integration-tests --test public_contract_snapshots",
+    "contract": "api_request_schemas",
+    "notice": "Generated public contract snapshot. Do not edit by hand.",
+    "source_paths": [
+      "crates/volicord-types/src/ids.rs",
+      "crates/volicord-types/src/methods.rs",
+      "crates/volicord-types/src/schema.rs",
+      "crates/volicord-types/src/values.rs"
+    ],
+    "update_command": "VOLICORD_UPDATE_CONTRACT_SNAPSHOTS=1 cargo test -p volicord-integration-tests --test public_contract_snapshots"
+  },
+  "method_order": [
+    "volicord.intake",
+    "volicord.update_scope",
+    "volicord.status",
+    "volicord.check_close",
+    "volicord.prepare_write",
+    "volicord.stage_artifact",
+    "volicord.record_run",
+    "volicord.request_user_judgment",
+    "volicord.record_user_judgment",
+    "volicord.reconcile_changes",
+    "volicord.close_task"
+  ],
+  "schemas": {
+    "volicord.check_close": {
+      "definitions": [
+        "ToolEnvelope"
+      ],
+      "root_properties": [
+        "envelope",
+        "task_id"
+      ],
+      "root_required": [
+        "envelope",
+        "task_id"
+      ],
+      "sha256": "sha256:88b354baf97f041c75202bfc8fdc5f61e0f112db6084fce1d12857ad21e540ed"
+    },
+    "volicord.close_task": {
+      "definitions": [
+        "CloseMutationIntent",
+        "CloseReason",
+        "ToolEnvelope"
+      ],
+      "root_properties": [
+        "close_reason",
+        "envelope",
+        "intent",
+        "superseding_task_id",
+        "task_id",
+        "user_note"
+      ],
+      "root_required": [
+        "close_reason",
+        "envelope",
+        "intent",
+        "superseding_task_id",
+        "task_id",
+        "user_note"
+      ],
+      "sha256": "sha256:f74a10db3729a6f5d2f4b9954900e44391fa2fc2fb4ef101325378959efddf5f"
+    },
+    "volicord.intake": {
+      "definitions": [
+        "InitialScope",
+        "RequestedMode",
+        "ResumePolicy",
+        "StateRecordKind",
+        "StateRecordRef",
+        "ToolEnvelope"
+      ],
+      "root_properties": [
+        "envelope",
+        "initial_context_refs",
+        "initial_scope",
+        "plain_language_request",
+        "requested_mode",
+        "resume_policy"
+      ],
+      "root_required": [
+        "envelope",
+        "initial_context_refs",
+        "initial_scope",
+        "plain_language_request",
+        "requested_mode",
+        "resume_policy"
+      ],
+      "sha256": "sha256:17c5ca3037c27dc7d3d7796f7baa9203f596ba1bdfaf82d793d2eb16080bd9ae"
+    },
+    "volicord.prepare_write": {
+      "definitions": [
+        "ToolEnvelope"
+      ],
+      "root_properties": [
+        "baseline_ref",
+        "change_unit_id",
+        "envelope",
+        "intended_operation",
+        "intended_paths",
+        "product_file_write_intended",
+        "sensitive_categories",
+        "task_id"
+      ],
+      "root_required": [
+        "baseline_ref",
+        "change_unit_id",
+        "envelope",
+        "intended_operation",
+        "intended_paths",
+        "product_file_write_intended",
+        "sensitive_categories",
+        "task_id"
+      ],
+      "sha256": "sha256:6a5fceba4028eaddffe2b4f480e541c992354b5366d58f4a703393a479573134"
+    },
+    "volicord.reconcile_changes": {
+      "definitions": [
+        "ToolEnvelope",
+        "UnrecordedChangeResolutionBasis",
+        "UnrecordedChangeResolutionRequest"
+      ],
+      "root_properties": [
+        "envelope",
+        "resolution_requests",
+        "task_id"
+      ],
+      "root_required": [
+        "envelope",
+        "task_id"
+      ],
+      "sha256": "sha256:98a05e12212db0dd6fd1e8c4a94133231b2e648b39b6b0c0f3cca1075f5dc92c"
+    },
+    "volicord.record_run": {
+      "definitions": [
+        "ActorSource",
+        "ArtifactAvailability",
+        "ArtifactInput",
+        "ArtifactInputSourceKind",
+        "ArtifactIntegrityStatus",
+        "ArtifactRef",
+        "CloseAssessmentInput",
+        "EvidenceAssuranceLevel",
+        "EvidenceCoverageItem",
+        "EvidenceCoverageState",
+        "EvidenceObservationInput",
+        "EvidenceSourceKind",
+        "EvidenceUpdateProvenance",
+        "ObservedChanges",
+        "RedactionState",
+        "ResidualRiskInput",
+        "RunKind",
+        "StagedArtifactHandle",
+        "StateRecordKind",
+        "StateRecordRef",
+        "ToolEnvelope",
+        "UtcTimestamp"
+      ],
+      "root_properties": [
+        "artifact_inputs",
+        "baseline_ref",
+        "change_unit_id",
+        "close_assessment",
+        "envelope",
+        "evidence_observations",
+        "evidence_updates",
+        "kind",
+        "observed_changes",
+        "run_id",
+        "summary",
+        "task_id",
+        "write_ticket_id"
+      ],
+      "root_required": [
+        "artifact_inputs",
+        "baseline_ref",
+        "change_unit_id",
+        "close_assessment",
+        "envelope",
+        "evidence_observations",
+        "evidence_updates",
+        "kind",
+        "observed_changes",
+        "run_id",
+        "summary",
+        "task_id",
+        "write_ticket_id"
+      ],
+      "sha256": "sha256:b40124ca300a90725eac774b58723a9387b140da8da68b70ccc341e3c5caca56"
+    },
+    "volicord.record_user_judgment": {
+      "definitions": [
+        "AcceptedRiskInput",
+        "ActorSource",
+        "ArtifactAvailability",
+        "ArtifactIntegrityStatus",
+        "ArtifactRef",
+        "JudgmentKind",
+        "JudgmentRationale",
+        "RecordUserJudgmentPayload",
+        "RedactionState",
+        "SensitiveActionScope",
+        "StateRecordKind",
+        "StateRecordRef",
+        "ToolEnvelope",
+        "UtcTimestamp"
+      ],
+      "root_properties": [
+        "accepted_risks",
+        "answer",
+        "envelope",
+        "judgment_kind",
+        "note",
+        "rationale",
+        "selected_option_id",
+        "user_judgment_id"
+      ],
+      "root_required": [
+        "accepted_risks",
+        "answer",
+        "envelope",
+        "judgment_kind",
+        "note",
+        "rationale",
+        "selected_option_id",
+        "user_judgment_id"
+      ],
+      "sha256": "sha256:c76f8f0764171b59b38ef418fa4e5b826f4d678b656fa0b56d3c3c70ecf66ca2"
+    },
+    "volicord.request_user_judgment": {
+      "definitions": [
+        "AcceptedRiskInput",
+        "ActorSource",
+        "ArtifactAvailability",
+        "ArtifactIntegrityStatus",
+        "ArtifactRef",
+        "JudgmentKind",
+        "JudgmentPresentation",
+        "JudgmentRequiredFor",
+        "RedactionState",
+        "SensitiveActionScope",
+        "StateRecordKind",
+        "StateRecordRef",
+        "ToolEnvelope",
+        "UserJudgmentContext",
+        "UserJudgmentOptionInput",
+        "UtcTimestamp"
+      ],
+      "root_properties": [
+        "affected_refs",
+        "change_unit_id",
+        "context",
+        "envelope",
+        "expires_at",
+        "judgment_kind",
+        "options",
+        "presentation",
+        "question",
+        "required_for",
+        "sensitive_action_scope",
+        "task_id"
+      ],
+      "root_required": [
+        "affected_refs",
+        "change_unit_id",
+        "context",
+        "envelope",
+        "expires_at",
+        "judgment_kind",
+        "presentation",
+        "question",
+        "required_for",
+        "task_id"
+      ],
+      "sha256": "sha256:cb21e899812f36cd643b1a11ab3acbdfc2f2982e0871b19c31b367bbb4fef13e"
+    },
+    "volicord.stage_artifact": {
+      "definitions": [
+        "RedactionState",
+        "ToolEnvelope"
+      ],
+      "root_properties": [
+        "content_type",
+        "display_name",
+        "envelope",
+        "expected_sha256",
+        "expected_size_bytes",
+        "redaction_state",
+        "relation_hint",
+        "safe_bytes_or_notice",
+        "task_id"
+      ],
+      "root_required": [
+        "content_type",
+        "display_name",
+        "envelope",
+        "expected_sha256",
+        "expected_size_bytes",
+        "redaction_state",
+        "relation_hint",
+        "safe_bytes_or_notice",
+        "task_id"
+      ],
+      "sha256": "sha256:e5b133235936224e7184a4fa5f82bd7a47df28d2e0293145ff3d0a7341758290"
+    },
+    "volicord.status": {
+      "definitions": [
+        "StatusInclude",
+        "ToolEnvelope"
+      ],
+      "root_properties": [
+        "envelope",
+        "include"
+      ],
+      "root_required": [
+        "envelope",
+        "include"
+      ],
+      "sha256": "sha256:b67e3f3022b4297fdcde2a78897c84e8d4a6402b209343ac0f6da43f756d8232"
+    },
+    "volicord.update_scope": {
+      "definitions": [
+        "ChangeUnitEffectContract",
+        "ChangeUnitEffectKind",
+        "ChangeUnitOperation",
+        "ChangeUnitUpdate",
+        "ScopeUpdate",
+        "StateRecordKind",
+        "StateRecordRef",
+        "ToolEnvelope"
+      ],
+      "root_properties": [
+        "acceptance_criteria",
+        "autonomy_boundary",
+        "baseline_ref",
+        "change_unit",
+        "envelope",
+        "goal_summary",
+        "non_goals",
+        "related_scope_decision_refs",
+        "scope_boundary",
+        "scope_update",
+        "task_id"
+      ],
+      "root_required": [
+        "acceptance_criteria",
+        "autonomy_boundary",
+        "baseline_ref",
+        "change_unit",
+        "envelope",
+        "goal_summary",
+        "non_goals",
+        "related_scope_decision_refs",
+        "scope_boundary",
+        "scope_update",
+        "task_id"
+      ],
+      "sha256": "sha256:7a1d8f01f28a89aa3d520d00273e1597633f59197b1fb90817e177e14655d4f0"
+    }
+  }
+}

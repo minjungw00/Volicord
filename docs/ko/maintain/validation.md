@@ -219,6 +219,28 @@ Rust 구현을 편집한 뒤에는 워크스페이스나 변경된 크레이트�
 더 좁은 Cargo 명령은 저장소 구조나 작업 범위가 분명히 요구할 때만 사용하고 그
 이유를 보고합니다.
 
+## 생성 참조와 계약 드리프트 점검
+
+생성되었거나 원본에서 파생되는 참조 표면은 안정적인 점검 명령을 사용합니다.
+
+- `cargo run -p xtask -- docs-check`는 유지 문서 구조, 생성 또는 원본 파생 문서
+  표면, 실행 가능한 `volicord` 명령 예시, 용어 메타데이터 담당 경로와 역할, 그리고
+  `crates/volicord-store/src/schema/registry.sql` 및
+  `crates/volicord-store/src/schema/project.sql`에 대한 canonical Storage DDL SQL
+  블록을 점검합니다.
+- `cargo test -p volicord-integration-tests --test public_contract_snapshots`는 API 요청
+  스키마 투영과 MCP `workflow`/`read_only` 도구 투영의 생성 공개 계약 스냅샷이
+  Rust 원본과 일치하는지 점검합니다.
+- 의도적인 원본 변경 뒤 공개 계약 스냅샷을 다시 생성하려면
+  `VOLICORD_UPDATE_CONTRACT_SNAPSHOTS=1 cargo test -p volicord-integration-tests --test public_contract_snapshots`
+  를 실행하고 `tests/integration/snapshots/` 아래의 생성 파일을 검토합니다.
+
+공개 계약 스냅샷 파일은 `_generated`로 표시된 생성 테스트 산출물입니다. 손으로
+편집하지 말고 먼저 스키마 또는 MCP 원본을 바꾼 뒤 다시 생성합니다. CLI 공개 명령
+드리프트는 별도의 CLI JSON 스키마를 새로 만들지 않고 실행 가능한 문서 예시와
+`volicord-cli`의 `binary_admin`, `mcp_transport` 같은 CLI 도움말/출력 테스트
+대상으로 계속 다룹니다.
+
 ## 저장소 DDL 계약 점검
 
 저장소 DDL, `volicord-store` canonical SQL, 스키마 검증 코드를 편집했다면 담당

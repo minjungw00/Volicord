@@ -1,0 +1,60 @@
+{
+  "_generated": {
+    "check_command": "cargo test -p volicord-integration-tests --test public_contract_snapshots",
+    "contract": "mcp_read_only_tools",
+    "notice": "Generated public contract snapshot. Do not edit by hand.",
+    "source_paths": [
+      "crates/volicord-types/src/ids.rs",
+      "crates/volicord-types/src/methods.rs",
+      "crates/volicord-types/src/schema.rs",
+      "crates/volicord-types/src/tool_names.rs",
+      "crates/volicord-types/src/values.rs",
+      "crates/volicord-mcp/src/tool_registry.rs"
+    ],
+    "update_command": "VOLICORD_UPDATE_CONTRACT_SNAPSHOTS=1 cargo test -p volicord-integration-tests --test public_contract_snapshots"
+  },
+  "connection_mode": "read_only",
+  "tools": [
+    {
+      "description": "Read the current Core status view.",
+      "input_schema": {
+        "definitions": [
+          "StatusDetailLevel"
+        ],
+        "root_properties": [
+          "detail",
+          "project_selector",
+          "task_id"
+        ],
+        "root_required": [],
+        "sha256": "sha256:edb7cc6bcc5b45f91d26194a047cda755f2840b19703bb7e8b03fa5fdc494c1d"
+      },
+      "name": "volicord.status"
+    },
+    {
+      "description": "Check Close Status for a selected Task.",
+      "input_schema": {
+        "definitions": [],
+        "root_properties": [
+          "project_selector",
+          "task_id"
+        ],
+        "root_required": [
+          "task_id"
+        ],
+        "sha256": "sha256:d851799cc1f08d047d4527a12279640e489c48f81abfd2b270a369452aa35916"
+      },
+      "name": "volicord.check_close"
+    },
+    {
+      "description": "List projects explicitly allowed for this MCP connection.",
+      "input_schema": {
+        "definitions": [],
+        "root_properties": [],
+        "root_required": [],
+        "sha256": "sha256:99334726611ccf58a148b0814696bfa6fe08c1b2d027e946beccf5a74331c9aa"
+      },
+      "name": "volicord.list_projects"
+    }
+  ]
+}

@@ -18,3 +18,7 @@ serde_json = "1"
 [[test]]
 name = "mcp_connection"
 path = "mcp_connection.rs"
+
+[[test]]
+name = "public_contract_snapshots"
+path = "public_contract_snapshots.rs"

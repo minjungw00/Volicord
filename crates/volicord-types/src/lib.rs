@@ -1430,6 +1430,10 @@ mod tests {
                 "volicord.record_user_judgment",
                 record_user_judgment_request_json(),
             ),
+            (
+                "volicord.reconcile_changes",
+                reconcile_changes_request_json(),
+            ),
             ("volicord.close_task", close_task_request_json()),
         ]
     }
@@ -1773,6 +1777,10 @@ mod tests {
                 &serde_json::from_value::<RecordUserJudgmentRequest>(value)
                     .expect("record judgment request"),
             ),
+            "volicord.reconcile_changes" => canonical_request_hash(
+                &serde_json::from_value::<ReconcileChangesRequest>(value)
+                    .expect("reconcile changes request"),
+            ),
             "volicord.close_task" => canonical_request_hash(
                 &serde_json::from_value::<CloseTaskRequest>(value).expect("close request"),
             ),
@@ -1868,6 +1876,7 @@ mod tests {
                 "note",
                 "accepted_risks",
             ],
+            "volicord.reconcile_changes" => &["envelope", "task_id"],
             "volicord.close_task" => &[
                 "envelope",
                 "task_id",
@@ -1903,6 +1912,9 @@ mod tests {
             }
             "volicord.record_user_judgment" => {
                 serde_json::from_value::<RecordUserJudgmentRequest>(value).map(drop)
+            }
+            "volicord.reconcile_changes" => {
+                serde_json::from_value::<ReconcileChangesRequest>(value).map(drop)
             }
             "volicord.close_task" => serde_json::from_value::<CloseTaskRequest>(value).map(drop),
             other => panic!("unsupported method sample: {other}"),
@@ -2233,6 +2245,13 @@ mod tests {
             "rationale": judgment_rationale_json(),
             "note": null,
             "accepted_risks": []
+        })
+    }
+
+    fn reconcile_changes_request_json() -> Value {
+        json!({
+            "envelope": envelope_json(),
+            "task_id": "task_empty_001"
         })
     }
 

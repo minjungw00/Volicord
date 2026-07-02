@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/ci.yml"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/**"
+      - "docs/**"
+      - "tests/**"
+      - "xtask/**"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/ci.yml"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/**"
+      - "docs/**"
+      - "tests/**"
+      - "xtask/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  RUST_VERSION: "1.85.0"
+
+jobs:
+  checks:
+    name: Workspace Checks
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install "$RUST_VERSION" --profile minimal
+          rustup default "$RUST_VERSION"
+          rustup component add rustfmt
+
+      - name: Check formatting
+        run: cargo fmt --check
+
+      - name: Run documentation checks
+        run: cargo run --locked -p xtask -- docs-check
+
+      - name: Check public contract snapshots
+        run: cargo test --locked -p volicord-integration-tests --test public_contract_snapshots
+
+      - name: Run workspace tests
+        run: cargo test --locked --workspace --all-targets

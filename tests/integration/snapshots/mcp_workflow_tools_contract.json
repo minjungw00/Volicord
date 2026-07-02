@@ -1,0 +1,338 @@
+{
+  "_generated": {
+    "check_command": "cargo test -p volicord-integration-tests --test public_contract_snapshots",
+    "contract": "mcp_workflow_tools",
+    "notice": "Generated public contract snapshot. Do not edit by hand.",
+    "source_paths": [
+      "crates/volicord-types/src/ids.rs",
+      "crates/volicord-types/src/methods.rs",
+      "crates/volicord-types/src/schema.rs",
+      "crates/volicord-types/src/tool_names.rs",
+      "crates/volicord-types/src/values.rs",
+      "crates/volicord-mcp/src/tool_registry.rs"
+    ],
+    "update_command": "VOLICORD_UPDATE_CONTRACT_SNAPSHOTS=1 cargo test -p volicord-integration-tests --test public_contract_snapshots"
+  },
+  "connection_mode": "workflow",
+  "tools": [
+    {
+      "description": "Start, resume, supersede, or reject an ordinary user work loop.",
+      "input_schema": {
+        "definitions": [
+          "InitialScope",
+          "RequestedMode",
+          "ResumePolicy",
+          "StateRecordKind",
+          "StateRecordRef"
+        ],
+        "root_properties": [
+          "initial_context_refs",
+          "initial_scope",
+          "plain_language_request",
+          "project_selector",
+          "requested_mode",
+          "resume_policy"
+        ],
+        "root_required": [
+          "initial_context_refs",
+          "initial_scope",
+          "plain_language_request",
+          "requested_mode",
+          "resume_policy"
+        ],
+        "sha256": "sha256:d22b5e200da845f0ea861b6e72d9e51b4f9d6a49fc2564c70bfca410389f0db4"
+      },
+      "name": "volicord.intake"
+    },
+    {
+      "description": "Update current Task scope and Change Unit state.",
+      "input_schema": {
+        "definitions": [
+          "ChangeUnitEffectContract",
+          "ChangeUnitEffectKind",
+          "ChangeUnitOperation",
+          "ChangeUnitUpdate",
+          "ScopeUpdate",
+          "StateRecordKind",
+          "StateRecordRef"
+        ],
+        "root_properties": [
+          "acceptance_criteria",
+          "autonomy_boundary",
+          "baseline_ref",
+          "change_unit",
+          "goal_summary",
+          "non_goals",
+          "project_selector",
+          "related_scope_decision_refs",
+          "scope_boundary",
+          "scope_update",
+          "task_id"
+        ],
+        "root_required": [
+          "acceptance_criteria",
+          "autonomy_boundary",
+          "baseline_ref",
+          "change_unit",
+          "goal_summary",
+          "non_goals",
+          "related_scope_decision_refs",
+          "scope_boundary",
+          "scope_update",
+          "task_id"
+        ],
+        "sha256": "sha256:66238cc115a959216c1a806b4a15518fc01f041205628b3880d10bc2dad3152f"
+      },
+      "name": "volicord.update_scope"
+    },
+    {
+      "description": "Read the current Core status view.",
+      "input_schema": {
+        "definitions": [
+          "StatusDetailLevel"
+        ],
+        "root_properties": [
+          "detail",
+          "project_selector",
+          "task_id"
+        ],
+        "root_required": [],
+        "sha256": "sha256:edb7cc6bcc5b45f91d26194a047cda755f2840b19703bb7e8b03fa5fdc494c1d"
+      },
+      "name": "volicord.status"
+    },
+    {
+      "description": "Check one proposed product-file write against Core state.",
+      "input_schema": {
+        "definitions": [],
+        "root_properties": [
+          "baseline_ref",
+          "change_unit_id",
+          "intended_operation",
+          "intended_paths",
+          "product_file_write_intended",
+          "project_selector",
+          "sensitive_categories",
+          "task_id"
+        ],
+        "root_required": [
+          "baseline_ref",
+          "change_unit_id",
+          "intended_operation",
+          "intended_paths",
+          "product_file_write_intended",
+          "sensitive_categories",
+          "task_id"
+        ],
+        "sha256": "sha256:4443d975c5101d6660a9438a294027502b56ff12b4f2c0791160d630a3827baf"
+      },
+      "name": "volicord.prepare_write"
+    },
+    {
+      "description": "Prepare an Evidence attachment input; staging alone is not recorded Evidence.",
+      "input_schema": {
+        "definitions": [
+          "RedactionState"
+        ],
+        "root_properties": [
+          "content_type",
+          "display_name",
+          "expected_sha256",
+          "expected_size_bytes",
+          "project_selector",
+          "redaction_state",
+          "relation_hint",
+          "safe_bytes_or_notice",
+          "task_id"
+        ],
+        "root_required": [
+          "content_type",
+          "display_name",
+          "expected_sha256",
+          "expected_size_bytes",
+          "redaction_state",
+          "relation_hint",
+          "safe_bytes_or_notice",
+          "task_id"
+        ],
+        "sha256": "sha256:3169725cedaa0069c1aac5e0ce8db301f4ae0bd481a9f2ac3bbb8c94b5a09af1"
+      },
+      "name": "volicord.stage_artifact"
+    },
+    {
+      "description": "Record Evidence for a run, observation, or result, linking attachments when supplied.",
+      "input_schema": {
+        "definitions": [
+          "ActorSource",
+          "ArtifactAvailability",
+          "ArtifactInput",
+          "ArtifactInputSourceKind",
+          "ArtifactIntegrityStatus",
+          "ArtifactRef",
+          "CloseAssessmentInput",
+          "EvidenceAssuranceLevel",
+          "EvidenceCoverageItem",
+          "EvidenceCoverageState",
+          "EvidenceObservationInput",
+          "EvidenceSourceKind",
+          "EvidenceUpdateProvenance",
+          "ObservedChanges",
+          "RedactionState",
+          "ResidualRiskInput",
+          "RunKind",
+          "StagedArtifactHandle",
+          "StateRecordKind",
+          "StateRecordRef",
+          "UtcTimestamp"
+        ],
+        "root_properties": [
+          "artifact_inputs",
+          "baseline_ref",
+          "change_unit_id",
+          "close_assessment",
+          "evidence_observations",
+          "evidence_updates",
+          "kind",
+          "observed_changes",
+          "project_selector",
+          "run_id",
+          "summary",
+          "task_id",
+          "write_ticket_id"
+        ],
+        "root_required": [
+          "artifact_inputs",
+          "baseline_ref",
+          "change_unit_id",
+          "close_assessment",
+          "evidence_observations",
+          "evidence_updates",
+          "kind",
+          "observed_changes",
+          "run_id",
+          "summary",
+          "task_id",
+          "write_ticket_id"
+        ],
+        "sha256": "sha256:8a8167e74ffa81837177b3ebae97188edf1cf95a00410781d1872e616f549e09"
+      },
+      "name": "volicord.record_run"
+    },
+    {
+      "description": "Create one pending focused user-owned judgment.",
+      "input_schema": {
+        "definitions": [
+          "AcceptedRiskInput",
+          "ActorSource",
+          "ArtifactAvailability",
+          "ArtifactIntegrityStatus",
+          "ArtifactRef",
+          "JudgmentKind",
+          "JudgmentPresentation",
+          "JudgmentRequiredFor",
+          "RedactionState",
+          "SensitiveActionScope",
+          "StateRecordKind",
+          "StateRecordRef",
+          "UserJudgmentContext",
+          "UserJudgmentOptionInput",
+          "UtcTimestamp"
+        ],
+        "root_properties": [
+          "affected_refs",
+          "change_unit_id",
+          "context",
+          "expires_at",
+          "judgment_kind",
+          "options",
+          "presentation",
+          "project_selector",
+          "question",
+          "required_for",
+          "sensitive_action_scope",
+          "task_id"
+        ],
+        "root_required": [
+          "affected_refs",
+          "change_unit_id",
+          "context",
+          "expires_at",
+          "judgment_kind",
+          "presentation",
+          "question",
+          "required_for",
+          "task_id"
+        ],
+        "sha256": "sha256:4f8e7d294075f4ee4361c7c235376ab55bb4a673f986f2942f22a166d778dc9a"
+      },
+      "name": "volicord.request_user_judgment"
+    },
+    {
+      "description": "Reconcile unresolved unrecorded Product Repository changes.",
+      "input_schema": {
+        "definitions": [
+          "UnrecordedChangeResolutionBasis",
+          "UnrecordedChangeResolutionRequest"
+        ],
+        "root_properties": [
+          "project_selector",
+          "resolution_requests",
+          "task_id"
+        ],
+        "root_required": [
+          "task_id"
+        ],
+        "sha256": "sha256:b71102846b25f93fb6a7a1b97371eaddbb1bd8feef2d4f4f06baf1ffe064cce4"
+      },
+      "name": "volicord.reconcile_changes"
+    },
+    {
+      "description": "Check Close Status for a selected Task.",
+      "input_schema": {
+        "definitions": [],
+        "root_properties": [
+          "project_selector",
+          "task_id"
+        ],
+        "root_required": [
+          "task_id"
+        ],
+        "sha256": "sha256:d851799cc1f08d047d4527a12279640e489c48f81abfd2b270a369452aa35916"
+      },
+      "name": "volicord.check_close"
+    },
+    {
+      "description": "Perform a selected Task close path.",
+      "input_schema": {
+        "definitions": [
+          "CloseMutationIntent",
+          "CloseReason"
+        ],
+        "root_properties": [
+          "close_reason",
+          "intent",
+          "project_selector",
+          "superseding_task_id",
+          "task_id",
+          "user_note"
+        ],
+        "root_required": [
+          "intent",
+          "task_id"
+        ],
+        "sha256": "sha256:d2bb032dbe56817be2b6b6dd5b701df40deb23f71f96106aa41932c1e625d157"
+      },
+      "name": "volicord.close_task"
+    },
+    {
+      "description": "List projects explicitly allowed for this MCP connection.",
+      "input_schema": {
+        "definitions": [],
+        "root_properties": [],
+        "root_required": [],
+        "sha256": "sha256:99334726611ccf58a148b0814696bfa6fe08c1b2d027e946beccf5a74331c9aa"
+      },
+      "name": "volicord.list_projects"
+    }
+  ]
+}

@@ -241,6 +241,30 @@ workspace or changed crate:
 Use narrower Cargo commands only when the repository structure or task scope
 clearly calls for them, and report the reason.
 
+## Generated Reference And Contract Drift Checks
+
+Generated or source-derived reference surfaces use stable check commands:
+
+- `cargo run -p xtask -- docs-check` checks maintained documentation structure,
+  generated/source-derived documentation surfaces, executable `volicord`
+  command examples, terminology metadata owner paths and roles, and canonical
+  Storage DDL SQL blocks against `crates/volicord-store/src/schema/registry.sql`
+  and `crates/volicord-store/src/schema/project.sql`.
+- `cargo test -p volicord-integration-tests --test public_contract_snapshots`
+  checks generated public contract snapshots for API request schema projections
+  and MCP workflow/read-only tool projections against their Rust sources.
+- To regenerate those public contract snapshots after an intentional source
+  change, run
+  `VOLICORD_UPDATE_CONTRACT_SNAPSHOTS=1 cargo test -p volicord-integration-tests --test public_contract_snapshots`
+  and review the generated files under `tests/integration/snapshots/`.
+
+The public contract snapshot files are generated test artifacts marked with
+`_generated`. Do not edit them by hand; update the schema or MCP source first,
+then regenerate. CLI public command drift remains covered by executable
+documentation examples and CLI help/output tests such as the `volicord-cli`
+`binary_admin` and `mcp_transport` test targets rather than by a separate CLI
+JSON schema.
+
 ## Storage DDL Contract Check
 
 When editing Storage DDL, `volicord-store` canonical SQL, or schema validation
