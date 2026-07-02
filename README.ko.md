@@ -92,7 +92,7 @@ flowchart TD
   inbox["Judgment Inbox / User Channel<br/>사용자 답변 기록"]
   write{"제품 파일<br/>쓰기 필요?"}
   ticket["Volicord가 쓰기 티켓<br/>결과 기록"]
-  run["record_run이 실행 또는<br/>관찰 기록"]
+  run["record_run이 실행 또는<br/>관찰의 증거 기록"]
   evidence["증거와 닫기 상태를<br/>보이게 유지"]
   close{"닫기 차단 사유가<br/>남아 있음?"}
   status["상태가 차단 사유,<br/>대기 중인 사용자 판단, 다음 행동 표시"]
@@ -201,7 +201,7 @@ cargo build --workspace --bins
 - `Task` 만들기 또는 갱신
 - 현재 범위, 차단 사유, 증거, 대기 중인 사용자 판단 보여 주기
 - 제안된 제품 파일 변경을 위한 쓰기 티켓 준비
-- 증거 입력 첨부와 실행 또는 관찰 기록
+- 필요할 때 증거 첨부 입력을 준비한 뒤 실행 또는 관찰을 통해 증거 기록
 - 초점이 맞춰진 사용자 판단 요청
 - 에이전트가 완료를 주장하기 전에 닫기 상태 확인
 
@@ -217,7 +217,7 @@ cargo build --workspace --bins
 Record profile(`--profile record`)은 host lifecycle hook이나 session watcher에 의존하지
 않고 호스트가 Volicord의 로컬 MCP 도구와 기록을 사용하게 할 때 선택합니다. 에이전트가
 Volicord를 통해 `Task`와 범위를 기록하고, 제안된 제품 파일 변경을 위한 쓰기 티켓을
-준비하며, 증거, 실행, 사용자 판단 요청을 기록하게 하려는 첫 경로입니다.
+준비하며, 실행 또는 관찰을 통해 증거를 기록하고 사용자 판단을 요청하게 하려는 첫 경로입니다.
 
 Detective profile(`--profile detective`)은 선택한 호스트, 플랫폼, Product Repository가 추가
 관찰 표면을 지원할 때만 사용합니다. Record profile 모델은 그대로 유지하면서 지원되는

@@ -262,6 +262,8 @@ would unblock them.
 
 After meaningful execution, checks, reviews, or evidence-attachment-producing work, summarize what happened and what supports each claim. Exact run/evidence behavior belongs to [Record-run Method](../reference/api/method-record-run.md), with attachment details owned by [API Artifact Schemas](../reference/api/schema-artifacts.md) and [Artifact Storage](../reference/storage-artifacts.md).
 
+Use `volicord.stage_artifact` only when bytes or a safe notice must be prepared as an Evidence attachment input. The public evidence step is still `volicord.record_run`, which records the claim, provenance, and any linked attachment. A staged handle, copied file path, or attachment input is input-only until a committed record-run result links it to claim-scoped Evidence.
+
 Evidence display should say:
 
 - what ran or changed

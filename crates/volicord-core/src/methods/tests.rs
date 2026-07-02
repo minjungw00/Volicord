@@ -3639,6 +3639,132 @@ fn stage_artifact_creates_transient_handle_without_core_commit() -> Result<(), B
 }
 
 #[test]
+fn staged_evidence_input_is_not_close_evidence_until_recorded() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_stage_artifact_capability(&harness)?;
+    let (task_id, _) = create_task_with_change_unit(&harness, "stage_input_only_evidence")?;
+    let required_claim = "Staged trace supports close.";
+    set_task_owner_json(
+        &harness,
+        &task_id,
+        "completion_policy_json",
+        Some(r#"{"evidence_required":true,"required_claims":["Staged trace supports close."]}"#),
+    )?;
+    let before = harness.counts()?;
+
+    let mut request = stage_artifact_request(
+        "req_stage_input_only_evidence",
+        Some("idem_stage_input_only_evidence"),
+        false,
+        Some(2),
+        &task_id,
+    );
+    request.display_name = "close-trace.log".to_owned();
+    request.safe_bytes_or_notice = "Trace captured before evidence was recorded.".to_owned();
+    request.relation_hint = Some("close_evidence_input".to_owned()).into();
+    let response = harness
+        .service
+        .stage_artifact(request, invocation(OperationCategory::AgentWorkflow))?;
+    let after_stage = harness.counts()?;
+    let handle_id = response.response_value["staged_artifact_handle"]["handle_id"]
+        .as_str()
+        .expect("handle id should be present")
+        .to_owned();
+    let row = staged_artifact_row(&harness, &handle_id)?;
+    let staged_path = harness
+        .runtime_home_path
+        .join("projects")
+        .join(PROJECT_ID)
+        .join(&row.tmp_path);
+    let repo_root = product_repo_root(&harness)?;
+
+    assert_eq!(after_stage.state_version, before.state_version);
+    assert_eq!(after_stage.artifact_staging, before.artifact_staging + 1);
+    assert_eq!(after_stage.artifacts, before.artifacts);
+    assert_eq!(after_stage.artifact_links, before.artifact_links);
+    assert_eq!(after_stage.evidence_summaries, before.evidence_summaries);
+    assert_eq!(
+        after_stage.evidence_observations,
+        before.evidence_observations
+    );
+    assert!(staged_path.exists());
+    assert!(
+        staged_path.starts_with(&harness.runtime_home_path),
+        "staged input should live under Runtime Home: {}",
+        staged_path.display()
+    );
+    assert!(
+        !staged_path.starts_with(&repo_root),
+        "staged input must not be stored in Product Repository: {}",
+        staged_path.display()
+    );
+
+    let status = harness.service.status(
+        StatusRequest {
+            envelope: envelope(
+                "req_status_stage_input_only_evidence",
+                None,
+                false,
+                None,
+                Some(&task_id),
+            ),
+            include: StatusInclude {
+                task: true,
+                pending_user_judgments: false,
+                write_ticket: false,
+                evidence: true,
+                close: true,
+                guarantees: false,
+                continuity: false,
+            },
+        },
+        invocation(OperationCategory::Read),
+    )?;
+    let check = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
+            request_id: "req_check_stage_input_only_evidence",
+            idempotency_key: None,
+            dry_run: false,
+            expected_state_version: None,
+            task_id: &task_id,
+            intent: CloseIntent::Check,
+            close_reason: None,
+            superseding_task_id: None,
+        }),
+        invocation(OperationCategory::Read),
+    )?;
+
+    assert_eq!(status.response_value["close_state"], "blocked");
+    assert_eq!(
+        status.response_value["evidence_summary"]["status"],
+        "insufficient"
+    );
+    let coverage_items = status.response_value["evidence_summary"]["coverage_items"]
+        .as_array()
+        .expect("coverage_items should be an array");
+    let required_item = coverage_items
+        .iter()
+        .find(|item| item["claim"].as_str() == Some(required_claim))
+        .expect("required claim should be present");
+    assert_eq!(required_item["coverage_state"], "unsupported");
+    assert_eq!(required_item["required_for_close"], true);
+    assert_eq!(required_item["supporting_artifact_refs"], json!([]));
+    assert_eq!(required_item["observation_refs"], json!([]));
+    assert_eq!(
+        status.response_value["evidence_summary"]["artifact_refs"],
+        json!([])
+    );
+    assert_close_blocker(&status.response_value, "missing_current_close_basis");
+    assert_close_blocker(&status.response_value, "evidence_claim_missing");
+    assert_eq!(check.response_value["close_state"], "blocked");
+    assert_close_blocker(&check.response_value, "missing_current_close_basis");
+    assert_close_blocker(&check.response_value, "evidence_claim_missing");
+    assert_eq!(artifact_staging_status(&harness, &handle_id)?, "staged");
+    assert_eq!(harness.counts()?, after_stage);
+    Ok(())
+}
+
+#[test]
 fn stage_artifact_rejects_checksum_mismatch_without_effect() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     enable_stage_artifact_capability(&harness)?;

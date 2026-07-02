@@ -97,7 +97,7 @@ flowchart TD
   inbox["Judgment Inbox / User Channel<br/>records the user's answer"]
   write{"Product-file<br/>write needed?"}
   ticket["Volicord records a<br/>Write Ticket result"]
-  run["record_run records<br/>execution or observation"]
+  run["record_run records<br/>Evidence for a run or observation"]
   evidence["Evidence and Close Status<br/>stay visible"]
   close{"Close blockers<br/>remain?"}
   status["Status shows blockers,<br/>pending User Judgment, and next action"]
@@ -216,7 +216,7 @@ host can call when durable workflow state matters:
 - create or update a `Task`
 - show current scope, blockers, evidence, and pending User Judgment
 - prepare a write ticket for a proposed product-file change
-- attach evidence inputs and record runs or observations
+- prepare Evidence attachment inputs when needed, then record Evidence through runs or observations
 - request a focused user judgment
 - check Close Status before the agent claims completion
 
@@ -234,8 +234,8 @@ Use the Record profile (`--profile record`) when you want the host to use
 Volicord's local MCP tools and records without depending on host lifecycle hooks
 or a session watcher. This is the profile to start with when you want the agent
 to record a `Task` and scope, prepare write tickets for proposed product-file
-changes, and record evidence, runs, and User Judgment requests through
-Volicord.
+changes, record Evidence through runs or observations, and request User
+Judgment through Volicord.
 
 Use the Detective profile (`--profile detective`) only when the selected host,
 platform, and Product Repository support the extra observation surfaces. It

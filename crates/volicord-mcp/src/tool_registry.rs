@@ -60,8 +60,12 @@ pub(crate) fn tool_description(name: &str) -> &'static str {
         UPDATE_SCOPE_TOOL_NAME => "Update current Task scope and Change Unit state.",
         STATUS_TOOL_NAME => "Read the current Core status view.",
         PREPARE_WRITE_TOOL_NAME => "Check one proposed product-file write against Core state.",
-        STAGE_ARTIFACT_TOOL_NAME => "Stage artifact bytes or an artifact notice.",
-        RECORD_RUN_TOOL_NAME => "Record shaping, direct, or implementation work.",
+        STAGE_ARTIFACT_TOOL_NAME => {
+            "Prepare an Evidence attachment input; staging alone is not recorded Evidence."
+        }
+        RECORD_RUN_TOOL_NAME => {
+            "Record Evidence for a run, observation, or result, linking attachments when supplied."
+        }
         REQUEST_USER_JUDGMENT_TOOL_NAME => "Create one pending focused user-owned judgment.",
         RECONCILE_CHANGES_TOOL_NAME => {
             "Reconcile unresolved unrecorded Product Repository changes."

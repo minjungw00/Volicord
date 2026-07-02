@@ -21,9 +21,9 @@ This document does not own:
 
 ## Purpose
 
-`volicord.stage_artifact` stages caller-provided safe artifact bytes or a safe notice into a transient `StagedArtifactHandle` for the same project and Task.
+`volicord.stage_artifact` prepares an Evidence attachment input by staging caller-provided safe bytes or a safe notice into a transient `StagedArtifactHandle` for the same project and Task.
 
-Staging is input preparation only. Evidence, persistent artifact links, acceptance, residual-risk, and close-readiness effects are owned by the relevant method and storage owners.
+Staging is input preparation only. A staged handle is not recorded Evidence, does not prove the related claim, and does not satisfy close readiness by itself. Evidence recording, persistent artifact links, acceptance, residual-risk, and close-readiness effects are owned by the relevant method and storage owners.
 
 ## Required inputs
 

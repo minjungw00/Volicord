@@ -21,20 +21,20 @@ This document does not own:
 
 ## Purpose
 
-`volicord.record_run` records:
+`volicord.record_run` is the baseline public method for recording Evidence after meaningful work. It records a Run for:
 
 - shaping work
 - a direct answer or result
 - implementation work
 
-The method may also update the current close basis, update compact evidence coverage, record evidence observations for reported or observed claims, consume a compatible write ticket when recording a product write, link existing artifacts, and promote eligible staged handles to persistent `ArtifactRef` records where allowed.
+The method may also update the current close basis, update compact claim-scoped evidence coverage, record evidence observations for reported or observed claims, consume a compatible write ticket when recording a product write, link existing Evidence attachments, and promote eligible staged attachment inputs to persistent `ArtifactRef` records where allowed. Input-only or staged-only items are not accepted Evidence and do not establish close readiness until this method records the claim, provenance, and any attachment link or promotion according to the evidence rules below.
 
 ## Required inputs
 
 - A valid `ToolEnvelope`; committed non-dry-run requests require non-null `idempotency_key` and current `expected_state_version`.
 - `task_id`, `change_unit_id`, `kind`, `run_id`, `baseline_ref`, `write_ticket_id`, `summary`, `observed_changes`, `artifact_inputs`, `evidence_updates`, `evidence_observations`, and `close_assessment`.
 - Product-write runs require a compatible `status=active` write ticket from `volicord.prepare_write`.
-- New artifact bytes must already be represented by a valid `StagedArtifactHandle`; `volicord.record_run` does not stage new bytes.
+- New artifact bytes must already be represented by a valid `StagedArtifactHandle`; `volicord.record_run` does not stage new bytes. The handle remains an Evidence attachment input until accepted in a committed run result.
 - A supported evidence update must be backed by a same-claim `EvidenceObservationInput`, a usable same-claim evidence observation ref, or `EvidenceCoverageItem.provenance` from which Core can create an evidence observation with explicit `source_kind` and `assurance_level`.
 
 ## Request schema
@@ -83,6 +83,7 @@ Nested owner links:
 Path and access notes:
 - `observed_changes.changed_paths` entries are `Product Repository` API product paths. Product Repository path normalization is owned by [Runtime Boundaries](../runtime-boundaries.md#product-repository-api-path-normalization).
 - `ArtifactInput[]` and staged handles do not create a second request-level operation category or actor source; the invocation remains the one in the verified invocation context.
+- `ArtifactInput[]` members are Evidence attachment inputs. They support Evidence only when this method links them to recorded claim-scoped evidence or observations; their presence in the request is not evidence sufficiency.
 
 Close-assessment ref rules:
 - Caller-supplied `close_assessment.result_refs` and `ResidualRiskInput.source_refs` are restricted to `record_kind=run`, `artifact`, `evidence_summary`, or `change_unit` unless an owner explicitly adds another kind.
@@ -155,7 +156,7 @@ Compatibility mismatch rejections use `WRITE_TICKET_INVALID` with `ToolError.det
 |---|---|
 | `base` | Common result metadata. The `ToolResultBase` shape, including `events`, is owned by [API Schema Core](schema-core.md#common-response). Committed `RecordRunResult` branches use `base.response_kind=result` and `base.effect_kind=core_committed`. `base.events[].event_kind`, when present, is an opaque illustrative classification string. |
 | `run_summary` | `RunSummary` for the recorded Run. `RunSummary.kind` mirrors the request `kind`; supported run-kind values are owned by [API Value Sets](schema-value-sets.md#method-local-values). |
-| `registered_artifacts` | `ArtifactRef[]` for persistent artifact refs produced or linked for this run result. `ArtifactRef` shape is owned by [API Artifact Schemas](schema-artifacts.md#artifactref); promotion and linking lifecycle details are owned by [Artifact Storage](../storage-artifacts.md). |
+| `registered_artifacts` | `ArtifactRef[]` for persistent artifact refs produced or linked for this run result. These refs are Evidence attachments only when the committed evidence summary or observations link them to claims; their existence alone is not evidence sufficiency. `ArtifactRef` shape is owned by [API Artifact Schemas](schema-artifacts.md#artifactref); promotion and linking lifecycle details are owned by [Artifact Storage](../storage-artifacts.md). |
 | `evidence_summary` | `EvidenceSummary | null` for evidence coverage updated by this run result, or `null` when the run records no evidence update. Shape is owned by [API State Schemas](schema-state.md#evidence-and-run-snapshot-shapes); evidence authority meaning is owned by [Core Model](../core-model.md#9-evidence-and-run-authority). |
 | `evidence_observations` | `EvidenceObservation[]` for observation records committed by this run result. Empty when the request records no observations. Shape is owned by [API State Schemas](schema-state.md#evidence-and-run-snapshot-shapes); observation source and assurance values are owned by [API Value Sets](schema-value-sets.md#evidence-observation-values). |
 | `current_close_basis` | `CurrentCloseBasis | null` after this run is recorded. Non-null means this Run established the current close basis; `null` means this Run did not establish one. Shape is owned by [API State Schemas](schema-state.md#close-readiness-and-validation-shapes). |

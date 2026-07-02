@@ -521,6 +521,8 @@ current stored Agent Connection mode:
 | `workflow` | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.prepare_write`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.reconcile_changes`, `volicord.check_close`, `volicord.close_task`, `volicord.list_projects` |
 | `read_only` | `volicord.status`, `volicord.check_close`, `volicord.list_projects` |
 
+In `workflow` mode, the Evidence path is: use `volicord.stage_artifact` only to prepare an Evidence attachment input when bytes or a safe notice are needed, then use `volicord.record_run` to record the Run or observation, claim-scoped evidence update, evidence observation provenance, and any attachment link or promotion. A staged handle alone is not accepted Evidence and does not satisfy Close Status.
+
 The MCP-visible tools are not the same thing as the public Volicord Core API
 method list. `volicord.check_close` maps to the first-class read-only Core
 method for close readiness. `volicord.close_task` maps to the workflow-only

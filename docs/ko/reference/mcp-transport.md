@@ -467,6 +467,8 @@ elicitation을 사용할 수 있다고 봅니다. 다른 capability 항목은 �
 | `workflow` | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.prepare_write`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.reconcile_changes`, `volicord.check_close`, `volicord.close_task`, `volicord.list_projects` |
 | `read_only` | `volicord.status`, `volicord.check_close`, `volicord.list_projects` |
 
+`workflow` 모드의 증거 경로는 이렇습니다. 바이트나 안전한 알림이 필요할 때만 `volicord.stage_artifact`로 증거 첨부 입력을 준비하고, 그다음 `volicord.record_run`으로 Run 또는 관찰, 주장별 증거 갱신, 증거 관찰 출처, 필요한 첨부 연결 또는 승격을 기록합니다. 스테이징 핸들만으로는 받아들여진 증거가 아니며 닫기 상태를 만족하지 않습니다.
+
 MCP에 보이는 도구는 공개 Volicord Core API 메서드 목록과 같은 것이 아닙니다.
 `volicord.check_close`는 닫기 준비 상태를 확인하는 일급 읽기 전용 Core 메서드에
 매핑됩니다. `volicord.close_task`는 워크플로 전용 Core 변경 메서드에 매핑되며
