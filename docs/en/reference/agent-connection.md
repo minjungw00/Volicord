@@ -269,7 +269,7 @@ tool and must not appear in `read_only` tool discovery.
 `volicord.record_user_judgment` has `operation_category=user_only`. It is a
 public Core API method for the User Channel path, but it is not exposed by Agent
 Connections. The supported local user path for recording an authority-bearing
-answer is the `volicord user` command group owned by
+answer is the `volicord inbox` command group owned by
 [Administrative CLI](admin-cli.md#user-channel-commands).
 
 Internal actor shape, not a public API schema:
@@ -343,7 +343,7 @@ Agent Connections are agent-facing connections. They are not the
 Conditions:
 
 - The supported local CLI path for a human user to inspect pending judgments and
-  record a selected Core-generated option is the `volicord user` command group
+  record a selected Core-generated option is the `volicord inbox` command group
   owned by [Administrative CLI](admin-cli.md#user-channel-commands).
 - When the initialized MCP client declares `capabilities.elicitation`,
   `volicord mcp --stdio` may use server-initiated elicitation as a User Channel
@@ -358,7 +358,7 @@ Conditions:
   [MCP Transport](mcp-transport.md#user-judgment-elicitation). That local web
   answer is still a `local_user` User Channel path, not an Agent Connection
   answer.
-- The fallback text routes the user to the `volicord user` local CLI recovery
+- The fallback text routes the user to the `volicord inbox` local CLI recovery
   path only when elicitation, prompt capture, and local web consent are not
   available.
 - Authority-bearing user-judgment resolution requires `actor_source=local_user`,

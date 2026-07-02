@@ -606,7 +606,7 @@ commits a pending judgment:
   and token. It does not include the Runtime Home path, repository path, prompt
   body, answer, or arbitrary API parameters.
 - If local web consent is disabled, cannot bind safely, or cannot create a
-  token, the fallback text points to the `volicord user` local CLI recovery
+  token, the fallback text points to the `volicord inbox` local CLI recovery
   path.
 
 For all branches, `result.content[0].text` remains the Volicord response JSON

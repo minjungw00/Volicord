@@ -136,10 +136,8 @@ terminal commands below as the stable recovery path when elicitation, prompt
 capture, and local web consent are unavailable or need inspection.
 
 ```sh
-volicord user status
-volicord user judgments
-volicord user judgment show 1
-volicord user judgment answer 1 1
+volicord inbox
+volicord inbox answer JUDGMENT_ID --choice CHOICE_ID
 ```
 
 Use `--repo PATH` only when you need to answer for a Product Repository other

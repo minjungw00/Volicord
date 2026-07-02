@@ -258,15 +258,13 @@ Supported capture paths:
 | MCP elicitation | If the initialized MCP client declares `capabilities.elicitation`, Volicord can send an `elicitation/create` request for a focused pending judgment. A valid response is recorded through the local `User Channel` with user provenance. |
 | Chat prompt capture | If elicitation is unavailable and prompt-capture availability is `configured`, `observed`, or `active`, Volicord returns exact chat commands such as `Volicord: answer J-3 1 #AB7K`, `Volicord: answer J-3 reject #AB7K`, `Volicord: answer J-3 defer #AB7K`, or `Volicord: note J-3 "text" #AB7K`. The prompt-capture hook records only strict valid commands with the current verification code. |
 | Local web consent | If elicitation and prompt capture are unavailable and the adapter can safely expose the fallback, Volicord returns a loopback-only consent URL. The URL uses a short-lived one-time token tied to the project, connection, and pending judgment; a valid answer is recorded through the `User Channel` with local user provenance. |
-| CLI fallback | If elicitation, chat capture, and local web consent are unavailable, disabled, degraded, or need inspection, use `volicord user` from the Product Repository. |
+| CLI fallback | If elicitation, chat capture, and local web consent are unavailable, disabled, degraded, or need inspection, use `volicord inbox` from the Product Repository. |
 
 CLI fallback example:
 
 ```sh
-volicord user status
-volicord user judgments
-volicord user judgment show 1
-volicord user judgment answer 1 1
+volicord inbox
+volicord inbox answer JUDGMENT_ID --choice CHOICE_ID
 ```
 
 Local web consent is separate from MCP elicitation. The experimental HTTP MCP
@@ -333,7 +331,7 @@ HTTP boundaries.
 | Guarded setup reports unsafe hook paths | Rerun `volicord init --host HOST --repo PATH` to regenerate cwd-independent managed hook commands, then complete any host trust, restart, or reload action and rerun `volicord connection verify HOST --repo PATH`. |
 | Host cannot start MCP | Confirm the host can run `volicord mcp --help` through the same command path. Run `volicord doctor` for installation-profile health. |
 | Product Repository is not detected | Pass `--repo /path/to/your-product-repo` and make sure the path is an existing local repository separate from the Runtime Home. |
-| A judgment is pending | Prefer the host's MCP elicitation or exact chat prompt-capture command when available. Use `volicord user judgments` and `volicord user judgment answer` as the CLI fallback. |
+| A judgment is pending | Prefer the host's MCP elicitation or exact chat prompt-capture command when available. Use `volicord inbox` and `volicord inbox answer` as the CLI fallback. |
 | Close is blocked | Ask the agent to show `volicord.check_close` results, pending user judgments, missing evidence, unresolved unrecorded changes, and residual risks. Address the named blocker instead of closing from a summary. |
 
 ## Deeper Docs

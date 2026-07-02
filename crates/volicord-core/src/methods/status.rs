@@ -91,6 +91,7 @@ fn status_result_fields(
     let project_id = &envelope.project_id;
     let mut active_task = None;
     let mut pending_user_judgments = Vec::new();
+    let mut pending_inbox_items = Vec::new();
     let mut blocker_refs = Vec::new();
     let mut write_check_summary = None;
     let mut evidence_summary = None;
@@ -175,6 +176,18 @@ fn status_result_fields(
         } else {
             None
         };
+        if include.pending_user_judgments {
+            pending_inbox_items = pending_judgment_inbox_items(
+                store,
+                project_state,
+                envelope,
+                &task_id,
+                state_version,
+                close_plan
+                    .as_ref()
+                    .and_then(|plan| plan.guard_health.as_ref()),
+            )?;
+        }
         if include.task {
             let state = build_state_summary(SummaryBuild {
                 project_id,
@@ -219,6 +232,7 @@ fn status_result_fields(
         status_summary: status_summary_for(task, close_state, close_blockers.as_deref()),
         next_actions,
         pending_user_judgments,
+        pending_judgment_inbox_items: pending_inbox_items,
         blocker_refs,
         write_check_summary,
         evidence_summary: include.evidence.then(|| evidence_summary.into()),

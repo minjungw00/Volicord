@@ -92,7 +92,7 @@ When a choice must become authority-bearing Core state, use a supported
 client declares that capability, observe prompt-capture chat commands when the
 prompt-capture availability is `configured`, `observed`, or `active`, local web
 consent when the adapter can safely expose a loopback one-time-token fallback,
-and the stable local CLI recovery path `volicord user`. Exact command behavior belongs to
+and the stable local CLI recovery path `volicord inbox`. Exact command behavior belongs to
 [Administrative CLI](../reference/admin-cli.md#user-channel-commands);
 authority meaning belongs to [Core Model](../reference/core-model.md), and
 Agent Connection boundaries belong to
@@ -103,20 +103,16 @@ manual inspection, use this sequence from the selected Product Repository when a
 task has a pending judgment:
 
 ```sh
-volicord user status
-volicord user judgments
-volicord user judgment show 1
-volicord user judgment answer 1 1
+volicord inbox
+volicord inbox answer JUDGMENT_ID --choice CHOICE_ID
 ```
 
-Use `volicord user status` to check the current task status and pending
-judgment count. Use `volicord user judgments` to see pending judgments for the
-active or selected task. Use `volicord user judgment show` to inspect the stored
-request, context summary, and Core-generated options. Use
-`volicord user judgment answer` to record only an option shown by Core for that
-judgment. Use `--repo PATH` only when the current directory is not the intended
-Product Repository, and `--task ID` only when the active task is not the
-intended task.
+Use `volicord inbox` to see pending judgments for the active or selected task,
+including the judgment id, question, choices, required/optional status, and
+available capture paths. Use `volicord inbox answer` to record only an option
+shown by Core for that judgment. Use `--repo PATH` only when the current
+directory is not the intended Product Repository, and `--task ID` only when the
+active task is not the intended task.
 
 Recording one option resolves only that addressed judgment. Broad natural
 language such as "approved", "looks good", or "go ahead" does not imply every

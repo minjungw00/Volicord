@@ -541,7 +541,7 @@ Agent Connection 도구로 노출하지 않으며, 에이전트가 넣은 답변
   반환합니다. URL에는 프로젝트 selector와 token만 들어갑니다. Runtime Home 경로, 저장소
   경로, prompt 본문, 답변, 임의 API 매개변수는 포함하지 않습니다.
 - local web consent가 비활성화되었거나, 안전하게 bind할 수 없거나, token을 만들 수 없으면
-  fallback text는 `volicord user` 로컬 CLI 복구 경로를 안내합니다.
+  fallback text는 `volicord inbox` 로컬 CLI 복구 경로를 안내합니다.
 
 모든 분기에서 `result.content[0].text`는 Volicord 응답 JSON 문자열로 남습니다. 추가
 `content[]` text가 있으면 fallback 안내나 elicitation 취소/무효 설명 같은 어댑터

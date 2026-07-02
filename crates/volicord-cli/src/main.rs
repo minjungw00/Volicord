@@ -23,7 +23,7 @@ use volicord_cli::{
         run_setup_command, run_setup_command_interactive, setup_usage, ClosureSetupProcess,
         CommandOutcome, SetupCommandError, StdioSetupTerminal,
     },
-    user_command::{run_user_command, user_usage, UserCommandError},
+    user_command::{inbox_usage, run_inbox_command, run_user_command, UserCommandError},
 };
 use volicord_store::bootstrap::installation_profile;
 use volicord_store::runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError};
@@ -170,6 +170,12 @@ where
             }
             run_user_command(&args[2..], env_var, current_dir).map_err(CliError::from)
         }
+        "inbox" => {
+            if inbox_subcommand_requires_setup(&args[2..]) {
+                require_setup_completed(&env_var, current_dir)?;
+            }
+            run_inbox_command(&args[2..], env_var, current_dir).map_err(CliError::from)
+        }
         "project" => {
             if project_subcommand_requires_setup(&args[2..]) {
                 require_setup_completed(&env_var, current_dir)?;
@@ -187,6 +193,13 @@ fn user_subcommand_requires_setup(args: &[String]) -> bool {
     matches!(
         args.first().map(String::as_str),
         Some("status" | "judgments" | "judgment")
+    )
+}
+
+fn inbox_subcommand_requires_setup(args: &[String]) -> bool {
+    !matches!(
+        args.first().map(String::as_str),
+        Some("-h" | "--help" | "help")
     )
 }
 
@@ -477,7 +490,7 @@ fn usage() -> String {
         indent_usage_block(&connections_usage()),
         indent_usage_block(&connection_usage()),
         indent_usage_block(&changes_usage()),
-        indent_usage_block(&user_usage()),
+        indent_usage_block(&inbox_usage()),
         indent_usage_block(&project_usage())
     )
 }
@@ -702,9 +715,9 @@ mod tests {
         assert!(output.contains("volicord mcp --stdio --connection <connection_id>"));
         assert!(output.contains("volicord serve --transport streamable-http"));
         assert!(output.contains("\n  volicord connection verify"));
-        assert!(output.contains("\n  volicord user judgments"));
+        assert!(output.contains("\n  volicord inbox"));
         assert!(!output.contains("\nvolicord connection verify"));
-        assert!(!output.contains("\nvolicord user judgments"));
+        assert!(!output.contains("\nvolicord inbox"));
     }
 
     #[test]

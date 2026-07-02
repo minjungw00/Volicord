@@ -7,6 +7,7 @@
 이 문서가 담당합니다.
 
 - `UserJudgment`
+- `JudgmentInboxItem`
 - `UserJudgmentCandidate`
 - `UserJudgmentOptionInput`
 - `UserJudgmentOption`
@@ -74,6 +75,55 @@ UserJudgment:
 `judgment_id`, `project_id`, `task_id`, `change_unit_id`는 불투명 식별자입니다. `question`은 자유 형식 표시 문자열입니다.
 
 저장되고 반환되는 판단에는 `basis`가 필요합니다. 근거가 없는 저장 판단은 유효하지 않은 소유자 상태입니다.
+
+<a id="judgmentinboxitem"></a>
+## `JudgmentInboxItem`
+
+`JudgmentInboxItem`은 사용자 행동이 필요한 대기 판단을 사용자에게 보여 주기 위한 projection입니다. 이 형태는 답변을 기록하지 않으며 지속되는 `UserJudgment`를 대체하지 않습니다.
+
+```yaml
+JudgmentInboxItem:
+  judgment_id: string
+  judgment_ref: StateRecordRef
+  project_id: string
+  task_id: string
+  change_unit_id: string | null
+  question: string
+  context_summary: string
+  choices: JudgmentInboxChoice[]
+  answer_constraints:
+    choice_required: boolean
+    note_allowed: boolean
+    note_max_chars: integer
+  required: boolean
+  requirement_status: "required" | "optional"
+  required_for: string[]
+  status: string
+  preferred_capture_path: JudgmentCapturePath | null
+  fallbacks: JudgmentCapturePath[]
+  expires_at: string | null
+
+JudgmentInboxChoice:
+  choice_id: string
+  label: string
+  description: string
+  consequence: string
+  is_default: boolean
+
+JudgmentCapturePath:
+  kind: string
+  label: string
+  available: boolean
+  command: string | null
+  url: string | null
+  capture_basis: string | null
+  expires_at: string | null
+  detail: string | null
+```
+
+`choices`는 사용자에게 보이는 선택지 식별자와 라벨을 노출하며 내부 `machine_action`이나 `resolution_outcome` 필드는 노출하지 않습니다. 기계 동작과 결과는 지속되는 `UserJudgmentOption`과 기록된 해결에 남습니다.
+
+`preferred_capture_path`는 현재 adapter 맥락에서 가장 적합한 User Channel capture 경로를 이름 붙입니다. 현재 경로 kind에는 `mcp_elicitation`, `prompt_capture`, `local_web_consent`, `cli`가 있습니다. `fallbacks`는 사용할 수 있는 다른 경로를 나열하며, 사용할 수 있을 때 로컬 `volicord inbox answer <judgment-id> --choice <choice>` 명령을 포함합니다.
 
 ## `JudgmentBasis`
 

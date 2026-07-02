@@ -202,6 +202,7 @@ CloseTaskRequest:
 | `risk_acceptance_coverage` | 닫기 준비 상태 결과에서 현재 잔여 위험 수락 범위를 나타내는 `RiskAcceptanceCoverage[]`입니다. 형태는 [API 상태 스키마](schema-state.md#close-readiness-and-validation-shapes)가 담당합니다. |
 | `continuity_summary` | 이 닫기 결과로 관련성이 생긴 프로젝트 연속성 기록의 `ProjectContinuitySummary[]`입니다. 성공한 `intent=complete`에서는 잔여 위험 수락이 필요하지 않은 닫기 근거의 알려진 한계를 Core가 이어 가는 연속성 기록이 여기에 포함됩니다. 빈 배열은 이 결과에 대해 계산이 실행됐고 이어 갈 기록이 없었다는 뜻입니다. 형태는 [API 상태 스키마](schema-state.md#project-continuity-shapes)가 담당합니다. |
 | `blockers` | 요청한 경로에 닫기 차단 사유 또는 종료 차단 사유가 있을 때 반환되는 `CloseReadinessBlocker[]`입니다. 형태와 중첩은 [API 상태 스키마](schema-state.md#close-readiness-and-validation-shapes)가 담당하며, `category` 값은 [API 값 집합](schema-value-sets.md#state-and-blocker-values)이 담당합니다. |
+| `pending_judgment_inbox_items` | 현재 닫기 준비 상태 결과에서 사용자 행동이 필요한 필수 미답변 대기 판단의 `JudgmentInboxItem[]`입니다. 형태는 [API 판단 스키마](schema-judgment.md#judgmentinboxitem)가 담당합니다. |
 | `guard_health` | 닫기 준비 상태 결과에 선택된 guard 상태 사실의 `GuardHealthSummary | null`입니다. 형태는 [API 상태 스키마](schema-state.md#guard-health-summary)가 담당합니다. |
 | `evidence_summary` | 결과에 선택된 닫기 근거의 `EvidenceSummary | null`입니다. 결과에 증거 요약이 선택되지 않으면 `null`입니다. 형태는 [API 상태 스키마](schema-state.md#evidence-and-run-snapshot-shapes)가 담당합니다. |
 | `artifact_refs` | 결과에 선택된 닫기 관련 아티팩트의 `ArtifactRef[]`입니다. `ArtifactRef` 형태는 [API 아티팩트 스키마](schema-artifacts.md#artifactref)가 담당합니다. |
@@ -252,7 +253,7 @@ CloseTaskRequest:
 
 이 코드는 메서드 로컬 `CloseReadinessBlocker.code` 값입니다. 공개 `ErrorCode` 값, `WriteDecisionReason.code` 값, 전역 값 집합 항목이 아닙니다.
 
-`pending_user_judgment`의 경우 차단 사유의 다음 행동은 사용할 수 있는 User Channel 답변 경로를 가리킬 수 있습니다. 여기에는 사용할 수 있을 때 MCP elicitation, prompt-capture 채팅 명령, local web consent, 로컬 사용자 명령이 포함됩니다. 이 차단 사유는 Agent Connection이 사용자 소유 판단에 답하도록 권한을 부여하지 않습니다.
+`pending_user_judgment`의 경우 차단 사유의 다음 행동은 사용할 수 있는 User Channel 답변 경로를 가리킬 수 있으며, `pending_judgment_inbox_items`는 사용자가 행동할 수 있는 inbox item 형태를 담습니다. capture 경로에는 사용할 수 있을 때 MCP elicitation, prompt-capture 채팅 명령, local web consent, `volicord inbox answer <judgment-id> --choice <choice>`가 포함될 수 있습니다. 이 차단 사유는 Agent Connection이 사용자 소유 판단에 답하도록 권한을 부여하지 않습니다.
 
 ## 차단 결과
 

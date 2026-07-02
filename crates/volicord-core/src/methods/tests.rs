@@ -10051,6 +10051,60 @@ fn agent_connection_cannot_record_authority_judgment() -> Result<(), Box<dyn Err
 }
 
 #[test]
+fn agent_actor_cannot_record_user_only_judgment_answer() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "agent_user_only_actor")?;
+    let pending_judgment = harness.service.request_user_judgment(
+        user_judgment_request(
+            "req_agent_actor_user_only_judgment",
+            "idem_agent_actor_user_only_judgment",
+            false,
+            Some(2),
+            &task_id,
+            Some(&change_unit_id),
+            JudgmentKind::ScopeDecision,
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let pending_judgment_id =
+        response_record_id(&pending_judgment.response_value, "user_judgment_ref");
+    let before = harness.counts()?;
+
+    let response = harness.service.record_user_judgment(
+        record_judgment_request(
+            "req_agent_actor_user_only_record",
+            "idem_agent_actor_user_only_record",
+            Some(3),
+            &task_id,
+            &pending_judgment_id,
+            JudgmentKind::ScopeDecision,
+            answer_payload(JudgmentKind::ScopeDecision),
+        ),
+        invocation_with_actor(
+            ActorSource::agent_connection("connection_agent_user_only_answer"),
+            OperationCategory::UserOnly,
+        ),
+    )?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["code"],
+        "INVOCATION_CONTEXT_MISMATCH"
+    );
+    assert_eq!(
+        response.response_value["errors"][0]["details"]["field"],
+        "invocation.actor_source"
+    );
+    assert_eq!(harness.counts()?, before);
+    assert_eq!(
+        user_judgment_status(&harness, &pending_judgment_id)?,
+        "pending"
+    );
+    Ok(())
+}
+
+#[test]
 fn accepted_authority_judgments_require_structured_rationale() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "rationale_required")?;
@@ -11800,10 +11854,28 @@ fn close_complete_blocks_only_relevant_pending_judgments() -> Result<(), Box<dyn
         JudgmentKind::ProductDecision,
     );
     product_request.required_for = vec![volicord_types::JudgmentRequiredFor::CloseComplete];
-    harness.service.request_user_judgment(
+    let requested = harness.service.request_user_judgment(
         product_request,
         invocation(OperationCategory::AgentWorkflow),
     )?;
+    let requested_judgment_id = response_record_id(&requested.response_value, "user_judgment_ref");
+    assert_eq!(
+        requested.response_value["inbox_item"]["judgment_id"],
+        requested_judgment_id.as_str()
+    );
+    assert_eq!(
+        requested.response_value["inbox_item"]["choices"][0]["choice_id"],
+        "accept"
+    );
+    assert_eq!(
+        requested.response_value["inbox_item"]["preferred_capture_path"]["kind"],
+        "mcp_elicitation"
+    );
+    assert!(requested.response_value["inbox_item"]["fallbacks"]
+        .as_array()
+        .expect("fallbacks should be an array")
+        .iter()
+        .any(|fallback| fallback["kind"] == "cli"));
     let after_final = record_final_acceptance(
         &harness,
         &task_id,
@@ -12710,102 +12782,101 @@ fn host_hook_strength_requires_generated_config_verification() -> Result<(), Box
 
 #[test]
 fn host_hook_strength_requires_hook_path_safety_and_recovers() -> Result<(), Box<dyn Error>> {
-    for suffix in ["hook_path_unsafe_observe"] {
-        let harness = MethodHarness::new()?;
-        let mut capability = complete_guard_capability_value(&harness)?;
-        capability["host_hook_commands"][0]["command"] =
-            json!(".codex/hooks/volicord-dispatch.sh session-start");
-        capability["host_hook_commands"][0]["cwd_independent"] = json!(false);
-        capability["host_hook_commands"][0]["subdirectory_safe"] = json!(false);
-        capability["hook_path_safety"]["overall_status"] = json!("relative_path_unsafe");
-        capability["hook_path_safety"]["all_cwd_independent"] = json!(false);
-        capability["hook_path_safety"]["all_subdirectory_safe"] = json!(false);
-        record_guard_installation(
-            &harness,
-            suffix,
-            "observe",
-            "active",
-            &capability.to_string(),
-        )?;
-        let (task_id, _, _) = create_close_ready_task(&harness, suffix)?;
+    let suffix = "hook_path_unsafe_observe";
+    let harness = MethodHarness::new()?;
+    let mut capability = complete_guard_capability_value(&harness)?;
+    capability["host_hook_commands"][0]["command"] =
+        json!(".codex/hooks/volicord-dispatch.sh session-start");
+    capability["host_hook_commands"][0]["cwd_independent"] = json!(false);
+    capability["host_hook_commands"][0]["subdirectory_safe"] = json!(false);
+    capability["hook_path_safety"]["overall_status"] = json!("relative_path_unsafe");
+    capability["hook_path_safety"]["all_cwd_independent"] = json!(false);
+    capability["hook_path_safety"]["all_subdirectory_safe"] = json!(false);
+    record_guard_installation(
+        &harness,
+        suffix,
+        "observe",
+        "active",
+        &capability.to_string(),
+    )?;
+    let (task_id, _, _) = create_close_ready_task(&harness, suffix)?;
 
-        let response = harness.service.close_task(
-            close_task_request(CloseTaskFixture {
-                request_id: &format!("req_check_{suffix}"),
-                idempotency_key: None,
-                dry_run: false,
-                expected_state_version: None,
-                task_id: &task_id,
-                intent: CloseIntent::Check,
-                close_reason: None,
-                superseding_task_id: None,
-            }),
-            invocation(OperationCategory::Read),
-        )?;
+    let response = harness.service.close_task(
+        close_task_request(CloseTaskFixture {
+            request_id: &format!("req_check_{suffix}"),
+            idempotency_key: None,
+            dry_run: false,
+            expected_state_version: None,
+            task_id: &task_id,
+            intent: CloseIntent::Check,
+            close_reason: None,
+            superseding_task_id: None,
+        }),
+        invocation(OperationCategory::Read),
+    )?;
 
-        assert_eq!(
-            response.response_value["guard_health"]["hook_path_safety"],
-            "relative_path_unsafe"
-        );
-        assert_eq!(
-            response.response_value["guard_health"]["hook_commands_cwd_independent"],
-            false
-        );
-        assert_eq!(
-            response.response_value["guard_health"]["hook_commands_subdirectory_safe"],
-            false
-        );
-        assert_eq!(
-            response.response_value["guard_health"]["control_surface"]["host_hooks_active"],
-            false
-        );
-        assert_eq!(
-            response.response_value["guard_health"]["control_surface"]["os_enforced"],
-            false
-        );
-        assert_eq!(
-            response.response_value["guard_health"]["generated_config_verified"],
-            false
-        );
+    assert_eq!(
+        response.response_value["guard_health"]["hook_path_safety"],
+        "relative_path_unsafe"
+    );
+    assert_eq!(
+        response.response_value["guard_health"]["hook_commands_cwd_independent"],
+        false
+    );
+    assert_eq!(
+        response.response_value["guard_health"]["hook_commands_subdirectory_safe"],
+        false
+    );
+    assert_eq!(
+        response.response_value["guard_health"]["control_surface"]["host_hooks_active"],
+        false
+    );
+    assert_eq!(
+        response.response_value["guard_health"]["control_surface"]["os_enforced"],
+        false
+    );
+    assert_eq!(
+        response.response_value["guard_health"]["generated_config_verified"],
+        false
+    );
 
-        let safe_capability = complete_guard_capability_value(&harness)?;
-        record_guard_installation(
-            &harness,
-            suffix,
-            "observe",
-            "active",
-            &safe_capability.to_string(),
-        )?;
-        let recovered = harness.service.close_task(
-            close_task_request(CloseTaskFixture {
-                request_id: &format!("req_check_{suffix}_recovered"),
-                idempotency_key: None,
-                dry_run: false,
-                expected_state_version: None,
-                task_id: &task_id,
-                intent: CloseIntent::Check,
-                close_reason: None,
-                superseding_task_id: None,
-            }),
-            invocation(OperationCategory::Read),
-        )?;
-        assert_eq!(
-            recovered.response_value["guard_health"]["hook_path_safety"],
-            "ok"
-        );
-        assert_eq!(
-            recovered.response_value["guard_health"]["generated_config_verified"],
-            true
-        );
-        assert_eq!(
-            recovered.response_value["guard_health"]["control_surface"]["host_hooks_active"],
-            true
-        );
-        assert_eq!(
-            recovered.response_value["guard_health"]["control_surface"]["os_enforced"],
-            false
-        );
-    }
+    let safe_capability = complete_guard_capability_value(&harness)?;
+    record_guard_installation(
+        &harness,
+        suffix,
+        "observe",
+        "active",
+        &safe_capability.to_string(),
+    )?;
+    let recovered = harness.service.close_task(
+        close_task_request(CloseTaskFixture {
+            request_id: &format!("req_check_{suffix}_recovered"),
+            idempotency_key: None,
+            dry_run: false,
+            expected_state_version: None,
+            task_id: &task_id,
+            intent: CloseIntent::Check,
+            close_reason: None,
+            superseding_task_id: None,
+        }),
+        invocation(OperationCategory::Read),
+    )?;
+    assert_eq!(
+        recovered.response_value["guard_health"]["hook_path_safety"],
+        "ok"
+    );
+    assert_eq!(
+        recovered.response_value["guard_health"]["generated_config_verified"],
+        true
+    );
+    assert_eq!(
+        recovered.response_value["guard_health"]["control_surface"]["host_hooks_active"],
+        true
+    );
+    assert_eq!(
+        recovered.response_value["guard_health"]["control_surface"]["os_enforced"],
+        false
+    );
     Ok(())
 }
 
@@ -14462,10 +14533,28 @@ fn guarded_pending_judgment_displays_user_answer_paths() -> Result<(), Box<dyn E
         JudgmentKind::ProductDecision,
     );
     product_request.required_for = vec![volicord_types::JudgmentRequiredFor::CloseComplete];
-    harness.service.request_user_judgment(
+    let requested = harness.service.request_user_judgment(
         product_request,
         invocation(OperationCategory::AgentWorkflow),
     )?;
+    let requested_judgment_id = response_record_id(&requested.response_value, "user_judgment_ref");
+    assert_eq!(
+        requested.response_value["inbox_item"]["judgment_id"],
+        requested_judgment_id.as_str()
+    );
+    assert_eq!(
+        requested.response_value["inbox_item"]["choices"][0]["choice_id"],
+        "accept"
+    );
+    assert_eq!(
+        requested.response_value["inbox_item"]["preferred_capture_path"]["kind"],
+        "mcp_elicitation"
+    );
+    assert!(requested.response_value["inbox_item"]["fallbacks"]
+        .as_array()
+        .expect("fallbacks should be an array")
+        .iter()
+        .any(|fallback| fallback["kind"] == "cli"));
     let after_final = record_final_acceptance(
         &harness,
         &task_id,
@@ -14491,6 +14580,14 @@ fn guarded_pending_judgment_displays_user_answer_paths() -> Result<(), Box<dyn E
 
     assert_eq!(response.response_value["close_state"], "blocked");
     assert_close_blocker(&response.response_value, "pending_user_judgment");
+    assert_eq!(
+        response.response_value["pending_judgment_inbox_items"][0]["judgment_id"],
+        requested_judgment_id.as_str()
+    );
+    assert_eq!(
+        response.response_value["pending_judgment_inbox_items"][0]["requirement_status"],
+        "required"
+    );
     let pending = response.response_value["blockers"]
         .as_array()
         .expect("blockers should be an array")
@@ -14578,6 +14675,17 @@ fn guarded_pending_judgment_uses_prompt_capture_guidance_when_mcp_unhealthy(
     )?;
     assert_eq!(status.response_value["close_state"], "blocked");
     assert_pending_judgment_prompt_capture_guidance(&status.response_value);
+    assert_eq!(
+        status.response_value["pending_judgment_inbox_items"][0]["preferred_capture_path"]["kind"],
+        "prompt_capture"
+    );
+    assert!(
+        status.response_value["pending_judgment_inbox_items"][0]["fallbacks"]
+            .as_array()
+            .expect("status inbox fallbacks should be an array")
+            .iter()
+            .any(|fallback| fallback["kind"] == "cli")
+    );
 
     let check = harness.service.close_task(
         close_task_request(CloseTaskFixture {
@@ -14594,6 +14702,10 @@ fn guarded_pending_judgment_uses_prompt_capture_guidance_when_mcp_unhealthy(
     )?;
     assert_eq!(check.response_value["close_state"], "blocked");
     assert_pending_judgment_prompt_capture_guidance(&check.response_value);
+    assert_eq!(
+        check.response_value["pending_judgment_inbox_items"][0]["preferred_capture_path"]["kind"],
+        "prompt_capture"
+    );
     assert_eq!(
         check.response_value["guard_health"]["mcp_connection_healthy"],
         false

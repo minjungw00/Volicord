@@ -240,7 +240,7 @@ MCP 세션은 어댑터 시작 시 저장된 `connection_internal_id`를 가리�
 `volicord.record_user_judgment`는 `operation_category=user_only`입니다. User Channel
 경로를 위한 공개 Core API 메서드이지만 Agent Connection에는 노출되지 않습니다. 권한을
 지니는 답변을 기록하는 지원 로컬 사용자 경로는
-[관리 CLI](admin-cli.md#user-channel-commands)가 담당하는 `volicord user` 명령군입니다.
+[관리 CLI](admin-cli.md#user-channel-commands)가 담당하는 `volicord inbox` 명령군입니다.
 
 내부 행위자 형태이며 공개 API 스키마가 아닙니다.
 
@@ -306,7 +306,7 @@ Agent Connection은 에이전트 대상 연결입니다. 모델이 사용자의 
 조건:
 
 - 사람이 대기 중인 판단을 확인하고 Core 생성 선택지를 골라 기록하는 지원 로컬 CLI
-  경로는 [관리 CLI](admin-cli.md#user-channel-commands)가 담당하는 `volicord user`
+  경로는 [관리 CLI](admin-cli.md#user-channel-commands)가 담당하는 `volicord inbox`
   명령군입니다.
 - 초기화된 MCP 클라이언트가 `capabilities.elicitation`을 선언하면
   `volicord mcp --stdio`는 `volicord.request_user_judgment`가 만든 대기 판단에 대해 서버
@@ -320,7 +320,7 @@ Agent Connection은 에이전트 대상 연결입니다. 모델이 사용자의 
   local web consent URL로 안내할 수 있습니다. 그 local web 답변은 여전히 `local_user`
   User Channel 경로이지 Agent Connection 답변이 아닙니다.
 - 대체 안내 텍스트는 elicitation, prompt capture, local web consent를 모두 사용할 수
-  없을 때만 사용자를 `volicord user` 로컬 CLI 복구 경로로 안내합니다.
+  없을 때만 사용자를 `volicord inbox` 로컬 CLI 복구 경로로 안내합니다.
 - 권한을 지니는 사용자 판단 해결에는 `actor_source=local_user`,
   `operation_category=user_only`, 호환 User Channel 출처가 필요합니다.
 - `actor_source=agent_connection:<connection_id>`는 사용자의 텍스트를 전달해도

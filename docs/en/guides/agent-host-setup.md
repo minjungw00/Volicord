@@ -213,9 +213,8 @@ record authority-bearing user answers. Use the local `User Channel` commands
 when a Core-generated option must become the user's recorded judgment:
 
 ```sh
-volicord user judgments
-volicord user judgment show 1
-volicord user judgment answer 1 1
+volicord inbox
+volicord inbox answer JUDGMENT_ID --choice CHOICE_ID
 ```
 
 ## Removal

@@ -83,7 +83,7 @@ StatusRequest:
 `include` 상태 보기 계약:
 
 - `include.task`는 선택된 `Task` 요약과 현재 Change Unit을 `active_task`로 반환합니다.
-- `include.pending_user_judgments`는 현재 대기 판단 참조를 반환하며, 관련 있는 오래됨 또는 대체됨 판단 상태는 `blocker_refs`, `next_actions.required_refs` 같은 기존 결과 필드로 나타납니다.
+- `include.pending_user_judgments`는 현재 대기 판단 참조와 사용자 행동을 위한 `pending_judgment_inbox_items`를 반환합니다. 관련 있는 오래됨 또는 대체됨 판단 상태는 `blocker_refs`, `next_actions.required_refs` 같은 기존 결과 필드로 나타납니다.
 - `include.write_check`는 활성, 만료, 오래됨, 소비됨 또는 그 밖의 관련 쓰기 티켓 호환성 상태를 `write_check_summary`로 반환합니다.
 - `write_check_summary`는 호환성 요약일 뿐이며 파일시스템 접근, 셸 승인, 최종 수락, 일반 쓰기 승인, 쓰기가 실제로 일어났다는 증명이 아닙니다.
 - `include.evidence`는 사용할 수 있을 때 현재 `EvidenceSummary`와 범위를 반환합니다.
@@ -114,6 +114,7 @@ StatusRequest:
 | `status_summary` | 현재 상태 조회 보기를 요약하는 자유 형식 표시 문자열입니다. 닫기 준비 상태 보기가 선택되면 현재 닫기 준비 상태나 첫 번째 닫기 차단 사유 코드를 요약할 수 있습니다. 구조화된 권한 사실은 다른 결과 필드에 남습니다. |
 | `next_actions` | 다음 안전한 API 단계를 설명하는 `NextActionSummary[]`입니다. |
 | `pending_user_judgments` | 상태 조회 보기에 선택된 대기 중 사용자 판단 기록의 `StateRecordRef[]`입니다. |
+| `pending_judgment_inbox_items` | `include.pending_user_judgments=true`일 때 사용자 행동이 필요한 대기 판단의 `JudgmentInboxItem[]`입니다. 형태는 [API 판단 스키마](schema-judgment.md#judgmentinboxitem)가 담당합니다. |
 | `blocker_refs` | 현재 상태 조회 보기에 보이는 차단 사유 기록의 `StateRecordRef[]`입니다. |
 | `close_state` | 현재 보기의 닫기 상태 값입니다. 현재 닫기 상태가 없을 때의 `none`을 포함한 지원 값은 [API 값 집합](schema-value-sets.md#task-lifecycle-values)이 담당합니다. |
 | `current_close_basis` | 닫기 상태 조회 보기에 선택된 `CurrentCloseBasis | null`입니다. 형태는 [API 상태 스키마](schema-state.md#close-readiness-and-validation-shapes)가 담당합니다. |
@@ -279,6 +280,18 @@ pending_user_judgments:
     project_id: proj_export_001
     task_id: task_export_001
     state_version: 42
+pending_judgment_inbox_items:
+  - judgment_id: uj_export_columns_001
+    question: "어떤 CSV 열 순서를 사용할까요?"
+    requirement_status: required
+    choices:
+      - choice_id: accept
+        label: "제안된 CSV 열 순서 사용"
+    preferred_capture_path:
+      kind: cli
+      label: "CLI inbox"
+      available: true
+      command: "volicord inbox answer uj_export_columns_001 --choice <choice>"
 blocker_refs: []
 close_state: blocked
 current_close_basis: null

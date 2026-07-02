@@ -36,7 +36,7 @@ flowchart LR
 
   subgraph UserAuthority["User Channel authority flow"]
     user["User at local terminal"]
-    usercli["volicord user CLI"]
+    usercli["volicord inbox CLI"]
     channel["User Channel"]
   end
 
@@ -81,7 +81,7 @@ The Volicord implementation in this repository has three distinct operational pa
 
 - MCP host -> `volicord mcp --stdio` -> `volicord-mcp` adapter library -> `volicord-core` -> Store and artifact facilities under `Volicord Runtime Home`.
 - Operator -> `volicord` administrative CLI -> bootstrap and registration facilities -> `Volicord Runtime Home` and host configuration files.
-- User at a local terminal -> `volicord user` CLI -> `volicord-core` -> Store under `Volicord Runtime Home`, using the `User Channel`.
+- User at a local terminal -> `volicord inbox` CLI -> `volicord-core` -> Store under `Volicord Runtime Home`, using the `User Channel`.
 
 The `volicord-mcp` adapter library also uses `volicord-store` directly during startup and request routing. That Store use checks Runtime Home, Agent Connection state, Connection Projects membership, project availability, `connection.mode`, `operation_category`, and `actor_source` provenance before dispatching a public method to Core. It is not an alternate implementation path for public Volicord method semantics, which route through `volicord-core`.
 
@@ -165,7 +165,7 @@ The durable dependency boundaries are:
 
 - Core does not depend on CLI or MCP adapter crates.
 - MCP may depend on Core, Store, and shared types for distinct responsibilities: transport and dispatch, Agent Connection startup validation, request-time project routing, and typed request handling.
-- The administrative CLI uses Store and shared types for local setup and registration. Its `volicord user` command path also depends on Core to invoke selected Core-facing methods through the `User Channel`.
+- The administrative CLI uses Store and shared types for local setup and registration. Its `volicord inbox` command path also depends on Core to invoke selected Core-facing methods through the `User Channel`.
 - Store depends on shared types.
 - Test-support and test packages compose implementation crates only for disposable fixtures and cross-layer verification.
 - `xtask` has no internal product-crate dependencies. Documentation-tooling dependencies stay isolated in the maintenance crate.
@@ -352,7 +352,7 @@ to choose a test layer for a concrete change.
 |---|---|
 | Colocated unit tests in implementation modules | Check local helpers, parsing, serialization, migration, Store, policy, and edge behavior close to the code under test. |
 | `crates/volicord-core/src/methods/tests.rs` | Exercises Core method planning, shared preflight behavior, effect branches, replay behavior, staging distinction, artifact promotion, close-readiness calculations, and method-owned storage mutation outcomes through `CoreService`. |
-| `crates/volicord-cli/tests/binary_admin.rs` | Runs the `volicord` binary for setup, project registration, `volicord init`, `volicord connect`, `volicord connections`, `volicord connection status/verify/mode/remove`, `volicord export mcp-config`, `volicord user ...`, dry-run behavior, host integration preflight handling, host config writes, repository detection, and command-line error paths. |
+| `crates/volicord-cli/tests/binary_admin.rs` | Runs the `volicord` binary for setup, project registration, `volicord init`, `volicord connect`, `volicord connections`, `volicord connection status/verify/mode/remove`, `volicord export mcp-config`, `volicord inbox ...`, dry-run behavior, host integration preflight handling, host config writes, repository detection, and command-line error paths. |
 | `crates/volicord-cli/tests/mcp_transport.rs` | Runs the `volicord mcp` subcommand for help/version, `--check`, stdio framing, line-delimited JSON-RPC, reconnection behavior, and MCP response wrapping. |
 | `tests/integration/mcp_connection.rs` | Verifies MCP connection binding, tool schemas, public method exposure, per-method `operation_category` derivation, Core/MCP parity, session rejection cases, replay context binding, and cross-layer storage effects. |
 | `tests/conformance/baseline.rs` | Exercises baseline public behavior scenarios through Core-facing APIs using shared fixtures, including replay, no-effect branches, write tickets, artifact lifecycle, judgment boundaries, close readiness, error routing, and corruption handling. |

@@ -202,6 +202,7 @@ Returns `CloseTaskResult` with `base.response_kind=result`.
 | `risk_acceptance_coverage` | `RiskAcceptanceCoverage[]` for current residual-risk acceptance coverage in the close-readiness result. Shape is owned by [API State Schemas](schema-state.md#close-readiness-and-validation-shapes). |
 | `continuity_summary` | `ProjectContinuitySummary[]` for project continuity records made relevant by this close result. For successful `intent=complete`, this includes continuity records Core carries forward for close-basis known limits that do not require residual-risk acceptance. Empty means the computation ran and found no carry-forward records for this result. Shape is owned by [API State Schemas](schema-state.md#project-continuity-shapes). |
 | `blockers` | `CloseReadinessBlocker[]` returned when the requested path has close or terminal blockers. Shape and nesting are owned by [API State Schemas](schema-state.md#close-readiness-and-validation-shapes); `category` values are owned by [API Value Sets](schema-value-sets.md#state-and-blocker-values). |
+| `pending_judgment_inbox_items` | `JudgmentInboxItem[]` for required unanswered pending judgments that need user action in the current close-readiness result. Shape is owned by [API Judgment Schemas](schema-judgment.md#judgmentinboxitem). |
 | `guard_health` | `GuardHealthSummary | null` for guard-health facts selected into the close-readiness result. Shape is owned by [API State Schemas](schema-state.md#guard-health-summary). |
 | `evidence_summary` | `EvidenceSummary | null` for the close basis visible in the result, or `null` when no evidence summary is selected into the result. Shape is owned by [API State Schemas](schema-state.md#evidence-and-run-snapshot-shapes). |
 | `artifact_refs` | `ArtifactRef[]` for close-relevant artifacts selected into the result. `ArtifactRef` shape is owned by [API Artifact Schemas](schema-artifacts.md#artifactref). |
@@ -252,7 +253,7 @@ The production meanings below apply only after the method reaches close-readines
 
 These codes are method-local `CloseReadinessBlocker.code` values. They are not public `ErrorCode` values, not `WriteDecisionReason.code` values, and not global value-set entries.
 
-For `pending_user_judgment`, blocker next actions may point to available User Channel answer paths, including MCP elicitation, prompt-capture chat commands, local web consent, or local user commands when those paths are available. The blocker does not authorize an Agent Connection to answer the user-owned judgment.
+For `pending_user_judgment`, blocker next actions may point to available User Channel answer paths, and `pending_judgment_inbox_items` carries the actionable inbox item shape. Capture paths can include MCP elicitation, prompt-capture chat commands, local web consent, or `volicord inbox answer <judgment-id> --choice <choice>` when those paths are available. The blocker does not authorize an Agent Connection to answer the user-owned judgment.
 
 ## Blocked result
 

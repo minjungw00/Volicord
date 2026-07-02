@@ -104,6 +104,7 @@ Returns `RequestUserJudgmentResult` with:
 - `base.effect_kind=core_committed`
 - `user_judgment_ref`
 - pending `user_judgment`
+- `inbox_item`
 - affected `blocker_refs`
 - current `state`
 
@@ -116,10 +117,11 @@ Returns `RequestUserJudgmentResult` with:
 | `base` | Common result metadata. The `ToolResultBase` shape, including `events`, is owned by [API Schema Core](schema-core.md#common-response). Committed `RequestUserJudgmentResult` branches use `base.response_kind=result` and `base.effect_kind=core_committed`. `base.events[].event_kind`, when present, is an opaque illustrative classification string. |
 | `user_judgment_ref` | `StateRecordRef` for the pending `UserJudgment` created by this request. |
 | `user_judgment` | The created pending `UserJudgment`. The nested shape, including `options`, `context`, `affected_refs`, `required_for`, and `resolution`, is owned by [API Judgment Schemas](schema-judgment.md#userjudgment). |
+| `inbox_item` | User-facing `JudgmentInboxItem` for the same pending judgment. It includes the judgment id, question, choices or answer constraints, required/optional status, preferred capture path when available, and fallback paths such as local web consent or `volicord inbox answer <judgment-id> --choice <choice>`. The shape is owned by [API Judgment Schemas](schema-judgment.md#judgmentinboxitem). |
 | `blocker_refs` | `StateRecordRef[]` for blocker records affected by or still relevant to the pending judgment request. |
 | `state` | Current `StateSummary` after the pending judgment is created. Nested state fields are owned by [API State Schemas](schema-state.md). |
 
-The method owns that the committed `user_judgment` is pending and that `resolution` is `null`. The full judgment field body and judgment value sets stay with [API Judgment Schemas](schema-judgment.md) and [API Value Sets](schema-value-sets.md#judgment-values).
+The method owns that the committed `user_judgment` is pending, that `resolution` is `null`, and that `inbox_item.judgment_id` identifies the same pending judgment. The full judgment field body and judgment value sets stay with [API Judgment Schemas](schema-judgment.md) and [API Value Sets](schema-value-sets.md#judgment-values).
 
 ## Blocked result
 
@@ -361,6 +363,26 @@ user_judgment:
   expires_at: null
   created_at: "<example-created-at>"
   resolved_at: null
+inbox_item:
+  judgment_id: uj_banner_001
+  question: "Should the dashboard banner use concise copy?"
+  choices:
+    - choice_id: concise
+      label: "Use concise copy"
+      description: "Record the user-owned product decision to keep the shorter banner copy."
+      consequence: "If selected, Core records the concise-copy product decision."
+      is_default: true
+  required: true
+  requirement_status: required
+  preferred_capture_path:
+    kind: mcp_elicitation
+    label: "MCP elicitation"
+    available: true
+  fallbacks:
+    - kind: cli
+      label: "CLI inbox"
+      available: true
+      command: "volicord inbox answer uj_banner_001 --choice <choice>"
 blocker_refs: []
 state:
   project_id: proj_banner_001

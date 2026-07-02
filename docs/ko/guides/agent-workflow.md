@@ -261,9 +261,8 @@ capability를 선언했을 때의 MCP elicitation, prompt-capture 사용 가능 
 안정적인 로컬 CLI 복구 경로입니다.
 
 ```sh
-volicord user judgments
-volicord user judgment show 1
-volicord user judgment answer 1 1
+volicord inbox
+volicord inbox answer JUDGMENT_ID --choice CHOICE_ID
 ```
 
 Agent Connection은 `volicord.record_user_judgment`를 호출하거나, User Channel

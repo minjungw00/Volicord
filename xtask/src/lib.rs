@@ -2362,6 +2362,7 @@ fn validate_volicord_command(tokens: &[String]) -> std::result::Result<(), Strin
         "connection" => validate_connection_command(&args[1..]),
         "project" => validate_project_command(&args[1..]),
         "export" => validate_export_command(&args[1..]),
+        "inbox" => validate_inbox_command(&args[1..]),
         "user" => validate_user_command(&args[1..]),
         other => Err(format!(
             "unknown `volicord` command `{other}`; use a supported administrative command"
@@ -2680,6 +2681,38 @@ fn validate_user_command(args: &[String]) -> std::result::Result<(), String> {
         "judgment" => validate_user_judgment_command(&args[1..]),
         other => Err(format!(
             "unknown `volicord user` subcommand `{other}`; use status, judgments, or judgment"
+        )),
+    }
+}
+
+fn validate_inbox_command(args: &[String]) -> std::result::Result<(), String> {
+    match args.first().map(String::as_str) {
+        None => Ok(()),
+        Some("-h" | "--help" | "help") => validate_no_more_args(args, "`volicord inbox` help"),
+        Some("answer") => {
+            if is_help_only(&args[1..]) {
+                return Ok(());
+            }
+            let parsed = parse_command_args(&args[1..], &["json"], &["repo", "note", "choice"])?;
+            require_positionals(&parsed, 1, 1, "`volicord inbox answer`")?;
+            if !parsed.options.contains("choice") {
+                return Err("`volicord inbox answer` requires --choice".to_string());
+            }
+            Ok(())
+        }
+        Some("open") => {
+            if is_help_only(&args[1..]) {
+                return Ok(());
+            }
+            let parsed = parse_command_args(&args[1..], &["json"], &["repo"])?;
+            require_positionals(&parsed, 1, 1, "`volicord inbox open`")
+        }
+        Some(token) if token.starts_with('-') => {
+            let parsed = parse_command_args(args, &["json"], &["repo", "task"])?;
+            reject_positionals(&parsed, 0, "`volicord inbox`")
+        }
+        Some(other) => Err(format!(
+            "unknown `volicord inbox` subcommand `{other}`; use answer or open"
         )),
     }
 }

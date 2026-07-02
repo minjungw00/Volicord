@@ -104,6 +104,7 @@ RequestUserJudgmentRequest:
 - `base.effect_kind=core_committed`
 - `user_judgment_ref`
 - 대기 중인 `user_judgment`
+- `inbox_item`
 - 영향받은 `blocker_refs`
 - 현재 `state`
 
@@ -116,10 +117,11 @@ RequestUserJudgmentRequest:
 | `base` | 공통 결과 메타데이터입니다. `events`를 포함한 `ToolResultBase` 형태는 [API 코어 스키마](schema-core.md#common-response)가 담당합니다. 커밋된 `RequestUserJudgmentResult` 분기는 `base.response_kind=result`와 `base.effect_kind=core_committed`를 사용합니다. `base.events[].event_kind`가 있으면 불투명한 예시 분류 문자열입니다. |
 | `user_judgment_ref` | 이 요청으로 생성된 대기 중인 `UserJudgment`의 `StateRecordRef`입니다. |
 | `user_judgment` | 생성된 대기 중인 `UserJudgment`입니다. `options`, `context`, `affected_refs`, `required_for`, `resolution`을 포함한 중첩 형태는 [API 판단 스키마](schema-judgment.md#userjudgment)가 담당합니다. |
+| `inbox_item` | 같은 대기 판단을 사용자에게 보여 주는 `JudgmentInboxItem`입니다. 판단 id, 질문, 선택지 또는 답변 제약, 필수/선택 상태, 사용할 수 있을 때의 선호 capture 경로, local web consent나 `volicord inbox answer <judgment-id> --choice <choice>` 같은 fallback 경로를 포함합니다. 형태는 [API 판단 스키마](schema-judgment.md#judgmentinboxitem)가 담당합니다. |
 | `blocker_refs` | 대기 판단 요청의 영향을 받았거나 계속 관련 있는 차단 사유 기록의 `StateRecordRef[]`입니다. |
 | `state` | 대기 판단이 생성된 뒤의 현재 `StateSummary`입니다. 중첩 상태 필드는 [API 상태 스키마](schema-state.md)가 담당합니다. |
 
-커밋된 `user_judgment`가 대기 상태이고 `resolution`이 `null`이라는 점은 이 메서드가 담당합니다. 판단 필드 본문 전체와 판단 값 집합은 [API 판단 스키마](schema-judgment.md)와 [API 값 집합](schema-value-sets.md#judgment-values)에 남습니다.
+커밋된 `user_judgment`가 대기 상태이고 `resolution`이 `null`이며 `inbox_item.judgment_id`가 같은 대기 판단을 식별한다는 점은 이 메서드가 담당합니다. 판단 필드 본문 전체와 판단 값 집합은 [API 판단 스키마](schema-judgment.md)와 [API 값 집합](schema-value-sets.md#judgment-values)에 남습니다.
 
 ## 차단 결과
 
@@ -372,6 +374,26 @@ user_judgment:
   expires_at: null
   created_at: "<example-created-at>"
   resolved_at: null
+inbox_item:
+  judgment_id: uj_banner_001
+  question: "대시보드 배너에 간결한 문구를 사용할까요?"
+  choices:
+    - choice_id: concise
+      label: "간결한 문구 사용"
+      description: "더 짧은 배너 문구를 유지한다는 사용자 소유 제품 결정을 기록합니다."
+      consequence: "선택되면 Core는 간결한 문구 제품 결정을 기록합니다."
+      is_default: true
+  required: true
+  requirement_status: required
+  preferred_capture_path:
+    kind: mcp_elicitation
+    label: "MCP elicitation"
+    available: true
+  fallbacks:
+    - kind: cli
+      label: "CLI inbox"
+      available: true
+      command: "volicord inbox answer uj_banner_001 --choice <choice>"
 blocker_refs: []
 state:
   project_id: proj_banner_001

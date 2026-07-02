@@ -53,7 +53,8 @@ fn binary_help_uses_agent_connection_model() -> Result<(), Box<dyn Error>> {
     assert!(text.contains("volicord connections [--repo PATH]"));
     assert!(text.contains("volicord connection status [HOST]"));
     assert!(!text.contains("volicord agent connect"));
-    assert!(text.contains("volicord user judgment answer INDEX_OR_ID OPTION_INDEX_OR_ID"));
+    assert!(text.contains("volicord inbox answer <judgment-id> --choice <choice>"));
+    assert!(!text.contains("volicord user judgment answer INDEX_OR_ID OPTION_INDEX_OR_ID"));
     assert!(text.contains("User Channel"));
 
     let setup_help = run_without_home(["setup", "--help"])?;
@@ -119,6 +120,7 @@ fn binary_help_options_match_supported_contracts() -> Result<(), Box<dyn Error>>
             "--read-only",
             "--dry-run",
             "--task",
+            "--choice",
             "--note",
             "--stdio",
             "--check",
@@ -2760,53 +2762,41 @@ fn user_channel_records_pending_judgment_with_local_user_provenance() -> Result<
     assert!(status_text.contains("pending judgments: 1"));
     assert!(status_text.contains("judgment_path:"));
 
-    let list =
-        run_with_home_env_in_dir(runtime_home.path(), ["user", "judgments"], &[], &repo_root)?;
+    let list = run_with_home_env_in_dir(runtime_home.path(), ["inbox"], &[], &repo_root)?;
     assert_success(&list);
     let list_text = stdout(&list);
-    assert!(list_text.contains("Pending judgments"));
+    assert!(list_text.contains("Judgment Inbox"));
     assert!(list_text.contains("1. Should the focused CLI user-channel choice be accepted?"));
-    assert!(list_text.contains("1. Accept focused choice (accepted)"));
+    assert!(list_text.contains("id: "));
+    assert!(list_text.contains("accept: Accept focused choice"));
+    assert!(list_text.contains("volicord inbox answer"));
     assert!(!list_text.contains("project_user_channel"));
-    assert!(!list_text.contains(judgment_id.as_str()));
 
-    let list_json = run_with_home_env_in_dir(
-        runtime_home.path(),
-        ["user", "judgments", "--json"],
-        &[],
-        &repo_root,
-    )?;
+    let list_json =
+        run_with_home_env_in_dir(runtime_home.path(), ["inbox", "--json"], &[], &repo_root)?;
     assert_success(&list_json);
     let list_value = json_stdout(&list_json)?;
-    let first = &list_value["pending_user_judgments"][0];
-    assert_eq!(first["index"], 1);
-    assert_eq!(first["project_internal_id"], "project_user_channel");
+    let first = &list_value["pending_judgment_inbox_items"][0];
     assert_eq!(first["judgment_id"], judgment_id.as_str());
-    assert_eq!(first["options"][0]["index"], 1);
-    assert_eq!(first["options"][0]["option_id"], "accept");
+    assert_eq!(first["requirement_status"], "required");
+    assert_eq!(first["choices"][0]["choice_id"], "accept");
+    assert_eq!(first["preferred_capture_path"]["kind"], "cli");
+    assert!(first["preferred_capture_path"]["command"]
+        .as_str()
+        .expect("CLI command should be present")
+        .contains("volicord inbox answer"));
+    assert!(first["choices"][0].get("machine_action").is_none());
+    assert!(first["choices"][0].get("resolution_outcome").is_none());
 
-    let show = run_with_home_env_in_dir(
-        runtime_home.path(),
-        ["user", "judgment", "show", "1"],
-        &[],
-        &repo_root,
-    )?;
-    assert_success(&show);
-    let show_text = stdout(&show);
-    assert!(show_text.contains("User judgment 1"));
-    assert!(show_text.contains("1. Accept focused choice (accepted)"));
-    assert!(!show_text.contains("project_user_channel"));
-    assert!(!show_text.contains(judgment_id.as_str()));
-
-    let record_note = "Recorded from numbered CLI";
+    let record_note = "Recorded from inbox CLI";
     let record = run_with_home_env_in_dir(
         runtime_home.path(),
         [
-            "user",
-            "judgment",
+            "inbox",
             "answer",
-            "1",
-            "1",
+            judgment_id.as_str(),
+            "--choice",
+            "accept",
             "--note",
             record_note,
         ],
@@ -2815,9 +2805,8 @@ fn user_channel_records_pending_judgment_with_local_user_provenance() -> Result<
     )?;
     assert_success(&record);
     let text = stdout(&record);
-    assert!(text.contains("User Channel judgment recorded"));
+    assert!(text.contains("Judgment Inbox answer recorded"));
     assert!(text.contains("selected: Accept focused choice"));
-    assert!(text.contains("outcome: accepted"));
     assert!(!text.contains("project_user_channel"));
     assert!(!text.contains(judgment_id.as_str()));
     assert!(!text.contains("operation_category"));

@@ -7,6 +7,7 @@ This document owns API schemas for user-owned judgment in the baseline scope. Th
 This document owns:
 
 - `UserJudgment`
+- `JudgmentInboxItem`
 - `UserJudgmentCandidate`
 - `UserJudgmentOptionInput`
 - `UserJudgmentOption`
@@ -74,6 +75,55 @@ UserJudgment:
 `judgment_id`, `project_id`, `task_id`, and `change_unit_id` are opaque identifiers. `question` is a free-form display string.
 
 `basis` is required for stored and returned judgments. A stored judgment without a basis is invalid owner state.
+
+<a id="judgmentinboxitem"></a>
+## `JudgmentInboxItem`
+
+`JudgmentInboxItem` is the user-facing projection for a pending judgment that needs user action. It does not record an answer and does not replace the durable `UserJudgment`.
+
+```yaml
+JudgmentInboxItem:
+  judgment_id: string
+  judgment_ref: StateRecordRef
+  project_id: string
+  task_id: string
+  change_unit_id: string | null
+  question: string
+  context_summary: string
+  choices: JudgmentInboxChoice[]
+  answer_constraints:
+    choice_required: boolean
+    note_allowed: boolean
+    note_max_chars: integer
+  required: boolean
+  requirement_status: "required" | "optional"
+  required_for: string[]
+  status: string
+  preferred_capture_path: JudgmentCapturePath | null
+  fallbacks: JudgmentCapturePath[]
+  expires_at: string | null
+
+JudgmentInboxChoice:
+  choice_id: string
+  label: string
+  description: string
+  consequence: string
+  is_default: boolean
+
+JudgmentCapturePath:
+  kind: string
+  label: string
+  available: boolean
+  command: string | null
+  url: string | null
+  capture_basis: string | null
+  expires_at: string | null
+  detail: string | null
+```
+
+`choices` exposes user-facing choice identifiers and labels, not the internal `machine_action` or `resolution_outcome` fields. Machine action and outcome remain on the durable `UserJudgmentOption` and the recorded resolution.
+
+`preferred_capture_path` names the best available User Channel capture path for the current adapter context. Current path kinds include `mcp_elicitation`, `prompt_capture`, `local_web_consent`, and `cli`. `fallbacks` lists other available paths, including the local `volicord inbox answer <judgment-id> --choice <choice>` command when available.
 
 ## `JudgmentBasis`
 

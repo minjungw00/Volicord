@@ -238,15 +238,13 @@ session에 대한 한정된 제품 파일 메타데이터 비교에서 나옵니
 | MCP elicitation | 초기화된 MCP client가 `capabilities.elicitation`을 선언하면 Volicord는 초점이 맞춰진 대기 판단에 대해 `elicitation/create` 요청을 보낼 수 있습니다. 유효한 응답은 사용자 출처로 로컬 `User Channel`을 통해 기록됩니다. |
 | 채팅 prompt capture | elicitation을 사용할 수 없고 prompt-capture 사용 가능 상태가 `configured`, `observed`, `active`이면 Volicord는 `Volicord: answer J-3 1 #AB7K`, `Volicord: answer J-3 reject #AB7K`, `Volicord: answer J-3 defer #AB7K`, `Volicord: note J-3 "text" #AB7K` 같은 정확한 채팅 명령을 반환합니다. prompt-capture hook은 현재 검증 코드가 있는 엄격하게 유효한 명령만 기록합니다. |
 | Local web consent | elicitation과 prompt capture를 사용할 수 없고 adapter가 fallback을 안전하게 노출할 수 있으면 Volicord는 loopback 전용 consent URL을 반환합니다. URL은 프로젝트, 연결, 대기 판단에 묶인 짧게 만료되는 일회성 token을 사용하며, 유효한 답변은 로컬 사용자 출처로 `User Channel`을 통해 기록됩니다. |
-| CLI fallback | elicitation, 채팅 캡처, local web consent를 사용할 수 없거나 비활성화, 저하 상태이거나 수동 점검이 필요하면 Product Repository에서 `volicord user`를 사용합니다. |
+| CLI fallback | elicitation, 채팅 캡처, local web consent를 사용할 수 없거나 비활성화, 저하 상태이거나 수동 점검이 필요하면 Product Repository에서 `volicord inbox`를 사용합니다. |
 
 CLI fallback 예시:
 
 ```sh
-volicord user status
-volicord user judgments
-volicord user judgment show 1
-volicord user judgment answer 1 1
+volicord inbox
+volicord inbox answer JUDGMENT_ID --choice CHOICE_ID
 ```
 
 Local web consent는 MCP elicitation과 별개입니다. 실험적 HTTP MCP serve 모드는 여전히
@@ -307,7 +305,7 @@ server-sent event 스트림, HTTP elicitation, 전체 MCP Streamable HTTP 호환
 | Guarded 설정이 안전하지 않은 hook 경로를 보고함 | `volicord init --host HOST --repo PATH`를 다시 실행해 cwd-independent 관리 hook 명령을 재생성한 뒤, 필요한 host trust, restart, reload 동작을 완료하고 `volicord connection verify HOST --repo PATH`를 다시 실행합니다. |
 | 호스트가 MCP를 시작하지 못함 | 같은 명령 경로로 호스트가 `volicord mcp --help`를 실행할 수 있는지 확인합니다. 설치 프로필 상태는 `volicord doctor`로 확인합니다. |
 | Product Repository가 감지되지 않음 | `--repo /path/to/your-product-repo`를 넘기고, 그 경로가 Runtime Home과 분리된 기존 로컬 저장소인지 확인합니다. |
-| 판단이 대기 중임 | 가능하면 호스트의 MCP elicitation이나 정확한 채팅 prompt-capture 명령을 우선 사용합니다. CLI fallback으로 `volicord user judgments`와 `volicord user judgment answer`를 사용합니다. |
+| 판단이 대기 중임 | 가능하면 호스트의 MCP elicitation이나 정확한 채팅 prompt-capture 명령을 우선 사용합니다. CLI fallback으로 `volicord inbox`와 `volicord inbox answer`를 사용합니다. |
 | 닫기가 막힘 | 에이전트에게 `volicord.check_close` 결과, 대기 중인 사용자 판단, 빠진 증거, 미해결 미기록 변경, 잔여 위험을 보여 달라고 합니다. 요약으로 닫지 말고 이름 붙은 차단 사유를 처리합니다. |
 
 ## 더 읽을 문서

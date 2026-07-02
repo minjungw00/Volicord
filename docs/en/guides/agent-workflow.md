@@ -196,9 +196,8 @@ chat commands when prompt-capture availability is `configured`, `observed`, or
 `active`, and the stable local CLI recovery route:
 
 ```sh
-volicord user judgments
-volicord user judgment show 1
-volicord user judgment answer 1 1
+volicord inbox
+volicord inbox answer JUDGMENT_ID --choice CHOICE_ID
 ```
 
 An Agent Connection must not call `volicord.record_user_judgment`, supply User

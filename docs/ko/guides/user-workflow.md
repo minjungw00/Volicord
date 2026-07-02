@@ -92,7 +92,7 @@ Volicord는 사용자가 평소 말로 일하면서도 판단 경계를 볼 수 
 MCP elicitation, prompt-capture 사용 가능 상태가 `configured`, `observed`, `active`일
 때의 observe prompt-capture 채팅 명령, adapter가 loopback 일회성 token fallback을
 안전하게 노출할 수 있을 때의 local web consent, 그리고 안정적인 로컬 CLI 복구 경로인
-`volicord user`입니다. 정확한 명령 동작은
+`volicord inbox`입니다. 정확한 명령 동작은
 [관리 CLI](../reference/admin-cli.md#user-channel-commands)가 담당하고, 권한 의미는
 [Core 모델](../reference/core-model.md)이 담당하며, Agent Connection 경계는
 [Agent Connection 참조](../reference/agent-connection.md)가 담당합니다.
@@ -101,18 +101,15 @@ elicitation, prompt capture, local web consent를 사용할 수 없거나 수동
 작업에 대기 중인 판단이 있으면 선택된 Product Repository에서 아래 순서로 진행합니다.
 
 ```sh
-volicord user status
-volicord user judgments
-volicord user judgment show 1
-volicord user judgment answer 1 1
+volicord inbox
+volicord inbox answer JUDGMENT_ID --choice CHOICE_ID
 ```
 
-현재 작업 상태와 대기 중인 판단 수는 `volicord user status`로 확인합니다.
-활성 작업 또는 선택된 작업의 대기 판단은 `volicord user judgments`로 봅니다.
-저장된 판단 요청, 맥락 요약, Core 생성 선택지는 `volicord user judgment show`로
-확인합니다. 기록할 때는 `volicord user judgment answer`로 그 판단에 대해 Core가
-보여 준 선택지만 기록합니다. 현재 디렉터리가 의도한 Product Repository가 아닐 때만
-`--repo PATH`를 사용하고, 활성 작업이 의도한 작업이 아닐 때만 `--task ID`를 사용합니다.
+활성 작업 또는 선택된 작업의 대기 판단은 `volicord inbox`로 봅니다. 이 출력에는
+판단 id, 질문, 선택지, 필수/선택 상태, 사용할 수 있는 capture 경로가 포함됩니다.
+기록할 때는 `volicord inbox answer`로 그 판단에 대해 Core가 보여 준 선택지만
+기록합니다. 현재 디렉터리가 의도한 Product Repository가 아닐 때만 `--repo PATH`를
+사용하고, 활성 작업이 의도한 작업이 아닐 때만 `--task ID`를 사용합니다.
 
 선택지 하나를 기록하면 그 판단 하나만 해결됩니다. "승인", "좋아 보여",
 "진행해" 같은 넓은 자연어가 모든 대기 권한 결과를 뜻하지는 않습니다. 설명용

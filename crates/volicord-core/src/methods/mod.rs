@@ -34,22 +34,23 @@ use volicord_types::{
     EvidenceObservationId, EvidenceObservationInput, EvidenceSourceKind, EvidenceStatus,
     EvidenceSummary, EvidenceUpdateProvenance, GuaranteeDisplay, GuardConfigurationStatus,
     GuardEffectiveStatus, GuardHealthSummary, GuardInstallationId, GuardInstallationStatus,
-    GuardObservationStatus, IntegrationProfile, JsonObject, JudgmentBasis,
-    JudgmentBasisCompatibilityStatus, JudgmentKind, JudgmentPresentation, JudgmentRationale,
-    JudgmentRequiredFor, JudgmentResolutionOutcome, MethodName, MethodOperationCategory,
-    NextActionKind, NextActionSummary, ObservedChanges, PersistedEvidenceMetadata,
-    PersistedJudgmentBasis, PersistedUserJudgmentOptions, PersistedUserJudgmentRequest,
-    PersistedUserJudgmentResolution, PlannedEffect, PrepareWriteRequest, PrepareWriteResult,
-    ProjectContinuityKind, ProjectContinuityRecord, ProjectContinuityRecordId,
-    ProjectContinuityStatus, ProjectContinuitySummary, ProjectEnforcementProfile, ProjectId,
-    ReconcileChangesRequest, ReconcileChangesResult, RecordId, RecordRunRequest, RecordRunResult,
-    RecordUserJudgmentPayload, RecordUserJudgmentRequest, RedactionState, RequestedMode,
-    RequiredNullable, ResidualRisk, ResumePolicy, RiskAcceptanceCoverage, RiskId, RunId,
-    RunSummary, SensitiveActionRequirement, SessionWatchCoverageBasis, SessionWatchStatus,
-    StageArtifactRequest, StageArtifactResult, StagedArtifactHandle, StagedArtifactHandleId,
-    StateRecordKind, StateRecordRef, StatusCloseState, StatusInclude, StatusRequest, StorageRef,
-    TaskId, TaskLifecyclePhase, TaskLifecycleState, TaskMode, TaskResult, ToolEnvelope,
-    ToolResultBase, UnrecordedChangeFinding, UnrecordedChangeId, UnrecordedChangeResolutionBasis,
+    GuardObservationStatus, IntegrationProfile, JsonObject, JudgmentAnswerConstraints,
+    JudgmentBasis, JudgmentBasisCompatibilityStatus, JudgmentCapturePath, JudgmentInboxChoice,
+    JudgmentInboxItem, JudgmentKind, JudgmentPresentation, JudgmentRationale, JudgmentRequiredFor,
+    JudgmentResolutionOutcome, MethodName, MethodOperationCategory, NextActionKind,
+    NextActionSummary, ObservedChanges, PersistedEvidenceMetadata, PersistedJudgmentBasis,
+    PersistedUserJudgmentOptions, PersistedUserJudgmentRequest, PersistedUserJudgmentResolution,
+    PlannedEffect, PrepareWriteRequest, PrepareWriteResult, ProjectContinuityKind,
+    ProjectContinuityRecord, ProjectContinuityRecordId, ProjectContinuityStatus,
+    ProjectContinuitySummary, ProjectEnforcementProfile, ProjectId, ReconcileChangesRequest,
+    ReconcileChangesResult, RecordId, RecordRunRequest, RecordRunResult, RecordUserJudgmentPayload,
+    RecordUserJudgmentRequest, RedactionState, RequestedMode, RequiredNullable, ResidualRisk,
+    ResumePolicy, RiskAcceptanceCoverage, RiskId, RunId, RunSummary, SensitiveActionRequirement,
+    SessionWatchCoverageBasis, SessionWatchStatus, StageArtifactRequest, StageArtifactResult,
+    StagedArtifactHandle, StagedArtifactHandleId, StateRecordKind, StateRecordRef,
+    StatusCloseState, StatusInclude, StatusRequest, StorageRef, TaskId, TaskLifecyclePhase,
+    TaskLifecycleState, TaskMode, TaskResult, ToolEnvelope, ToolResultBase,
+    UnrecordedChangeFinding, UnrecordedChangeId, UnrecordedChangeResolutionBasis,
     UnrecordedChangeResolutionRequest, UnrecordedChangeResolutionSummary, UnrecordedChangeStatus,
     UpdateScopeRequest, UserJudgment, UserJudgmentContext, UserJudgmentId, UserJudgmentOption,
     UserJudgmentOptionAction, UserJudgmentOptionId, UserJudgmentOptionInput,
@@ -57,6 +58,8 @@ use volicord_types::{
     WriteCheckEffect, WriteCheckId, WriteCheckStateSummary, WriteCheckStatus, WriteCheckSummary,
     WriteDecisionCategory, WriteDecisionReason, WriteTicket, WriteTicketEffect, WriteTicketId,
     WriteTicketPathPatterns, WriteTicketScope, WriteTicketState,
+    VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL, VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB,
+    VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL, VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
 };
 
 use crate::pipeline::{
@@ -981,6 +984,88 @@ fn user_judgment_authority_from_state(
     }
 }
 
+fn user_judgment_from_record(record: &UserJudgmentRecord) -> CoreResult<UserJudgment> {
+    let request: PersistedUserJudgmentRequest = decode_required_json(
+        "user_judgments",
+        record.judgment_id.clone(),
+        "request_json",
+        Some(&record.request_json),
+    )?;
+    let _artifact_refs: Vec<ArtifactRef> = decode_required_json(
+        "user_judgments",
+        record.judgment_id.clone(),
+        "artifact_refs_json",
+        Some(&record.artifact_refs_json),
+    )?;
+    let authority = user_judgment_authority_from_record(record)?;
+    let created_at = parse_owner_storage_value(
+        "user_judgments",
+        record.judgment_id.clone(),
+        "requested_at",
+        &record.requested_at,
+    )?;
+    let resolved_at = record
+        .resolved_at
+        .as_ref()
+        .map(|resolved_at| {
+            parse_owner_storage_value(
+                "user_judgments",
+                record.judgment_id.clone(),
+                "resolved_at",
+                resolved_at,
+            )
+        })
+        .transpose()?;
+    Ok(UserJudgment {
+        judgment_id: UserJudgmentId::new(record.judgment_id.clone()),
+        project_id: ProjectId::new(record.project_id.clone()),
+        task_id: TaskId::new(record.task_id.clone()),
+        change_unit_id: record.change_unit_id.clone().map(ChangeUnitId::new),
+        judgment_kind: authority.judgment_kind,
+        status: authority.status,
+        presentation: request.presentation,
+        question: request.question,
+        options: decode_required_json::<PersistedUserJudgmentOptions>(
+            "user_judgments",
+            record.judgment_id.clone(),
+            "options_json",
+            Some(&record.options_json),
+        )?
+        .into_current_options()
+        .map_err(|_| {
+            CorePipelineError::Store(StoreError::corrupt_owner_state_value(
+                "user_judgments",
+                record.judgment_id.clone(),
+                "options_json",
+            ))
+        })?,
+        context: decode_required_json(
+            "user_judgments",
+            record.judgment_id.clone(),
+            "context_json",
+            Some(&record.context_json),
+        )?,
+        affected_refs: decode_required_json(
+            "user_judgments",
+            record.judgment_id.clone(),
+            "affected_refs_json",
+            Some(&record.affected_refs_json),
+        )?,
+        basis: authority.basis.ok_or_else(|| {
+            CorePipelineError::Store(StoreError::corrupt_owner_state_json(
+                "user_judgments",
+                record.judgment_id.clone(),
+                "basis_json",
+            ))
+        })?,
+        required_for: request.required_for,
+        resolution: authority.resolution,
+        expires_at: request.expires_at.into_option(),
+        created_at,
+        resolved_at,
+    })
+}
+
 fn resolved_judgment_authorities_for_plan(
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
@@ -1023,6 +1108,176 @@ fn pending_judgment_authorities_for_plan(
         .map(user_judgment_authority_from_record)
         .collect::<CoreResult<Vec<_>>>()
         .map_err(PlanError::Core)
+}
+
+fn pending_judgment_inbox_items(
+    store: &CoreProjectStore,
+    project_state: &ProjectStateHeader,
+    envelope: &ToolEnvelope,
+    task_id: &TaskId,
+    state_version: u64,
+    guard_health: Option<&GuardHealthSummary>,
+) -> Result<Vec<JudgmentInboxItem>, PlanError> {
+    store
+        .pending_user_judgment_records(task_id)
+        .map_err(|error| {
+            PlanError::Response(Box::new(store_error_response(
+                envelope,
+                project_state,
+                error,
+            )))
+        })?
+        .iter()
+        .map(|record| {
+            let judgment = user_judgment_from_record(record)?;
+            judgment_inbox_item_from_judgment(&judgment, state_version, guard_health)
+        })
+        .collect::<CoreResult<Vec<_>>>()
+        .map_err(PlanError::Core)
+}
+
+fn judgment_inbox_item_from_judgment(
+    judgment: &UserJudgment,
+    state_version: u64,
+    guard_health: Option<&GuardHealthSummary>,
+) -> CoreResult<JudgmentInboxItem> {
+    let (preferred_capture_path, fallbacks) =
+        judgment_capture_paths(&judgment.judgment_id, guard_health);
+    Ok(JudgmentInboxItem {
+        judgment_id: judgment.judgment_id.clone(),
+        judgment_ref: state_ref(
+            StateRecordKind::UserJudgment,
+            judgment.judgment_id.as_str(),
+            &judgment.project_id,
+            Some(&judgment.task_id),
+            Some(state_version),
+        ),
+        project_id: judgment.project_id.clone(),
+        task_id: judgment.task_id.clone(),
+        change_unit_id: judgment.change_unit_id.clone().into(),
+        question: judgment.question.clone(),
+        context_summary: judgment.context.summary.clone(),
+        choices: judgment
+            .options
+            .iter()
+            .map(|option| JudgmentInboxChoice {
+                choice_id: option.option_id.clone(),
+                label: option.label.clone(),
+                description: option.description.clone(),
+                consequence: option.consequence.clone(),
+                is_default: option.is_default,
+            })
+            .collect(),
+        answer_constraints: JudgmentAnswerConstraints {
+            choice_required: true,
+            note_allowed: true,
+            note_max_chars: 4000,
+        },
+        required: !judgment.required_for.is_empty(),
+        requirement_status: if judgment.required_for.is_empty() {
+            "optional".to_owned()
+        } else {
+            "required".to_owned()
+        },
+        required_for: judgment.required_for.clone(),
+        status: judgment.status,
+        preferred_capture_path: preferred_capture_path.into(),
+        fallbacks,
+        expires_at: judgment.expires_at.clone().into(),
+    })
+}
+
+fn judgment_capture_paths(
+    judgment_id: &UserJudgmentId,
+    guard_health: Option<&GuardHealthSummary>,
+) -> (Option<JudgmentCapturePath>, Vec<JudgmentCapturePath>) {
+    let cli = judgment_cli_capture_path(judgment_id);
+    let local_web = guard_health
+        .is_some_and(|summary| summary.local_web_consent_available)
+        .then(|| judgment_local_web_capture_path(true));
+    let prompt_capture = guard_health
+        .is_some_and(|summary| summary.prompt_capture_available)
+        .then(judgment_prompt_capture_path);
+    let mcp_elicitation = guard_health
+        .is_some_and(|summary| summary.mcp_connection_healthy)
+        .then(judgment_mcp_elicitation_capture_path);
+
+    let preferred = mcp_elicitation
+        .clone()
+        .or_else(|| prompt_capture.clone())
+        .or_else(|| local_web.clone())
+        .unwrap_or_else(|| cli.clone());
+    let mut fallbacks = Vec::new();
+    for path in [prompt_capture, local_web, Some(cli)].into_iter().flatten() {
+        if path.kind != preferred.kind {
+            fallbacks.push(path);
+        }
+    }
+    (Some(preferred), fallbacks)
+}
+
+fn judgment_mcp_elicitation_capture_path() -> JudgmentCapturePath {
+    JudgmentCapturePath {
+        kind: "mcp_elicitation".to_owned(),
+        label: "MCP elicitation".to_owned(),
+        available: true,
+        command: RequiredNullable::null(),
+        url: RequiredNullable::null(),
+        capture_basis: Some(VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL.to_owned()).into(),
+        expires_at: RequiredNullable::null(),
+        detail: Some("Answer through the MCP client's user-facing elicitation prompt.".to_owned())
+            .into(),
+    }
+}
+
+fn judgment_prompt_capture_path() -> JudgmentCapturePath {
+    JudgmentCapturePath {
+        kind: "prompt_capture".to_owned(),
+        label: "Prompt capture".to_owned(),
+        available: true,
+        command: RequiredNullable::null(),
+        url: RequiredNullable::null(),
+        capture_basis: Some(VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK.to_owned()).into(),
+        expires_at: RequiredNullable::null(),
+        detail: Some(
+            "Use the displayed prompt-capture answer command with the current verification code."
+                .to_owned(),
+        )
+        .into(),
+    }
+}
+
+fn judgment_local_web_capture_path(available: bool) -> JudgmentCapturePath {
+    JudgmentCapturePath {
+        kind: "local_web_consent".to_owned(),
+        label: "Local web consent".to_owned(),
+        available,
+        command: RequiredNullable::null(),
+        url: RequiredNullable::null(),
+        capture_basis: Some(VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB.to_owned()).into(),
+        expires_at: RequiredNullable::null(),
+        detail: Some(
+            "Use the loopback consent link if the active MCP adapter provides one.".to_owned(),
+        )
+        .into(),
+    }
+}
+
+fn judgment_cli_capture_path(judgment_id: &UserJudgmentId) -> JudgmentCapturePath {
+    JudgmentCapturePath {
+        kind: "cli".to_owned(),
+        label: "CLI inbox".to_owned(),
+        available: true,
+        command: Some(format!(
+            "volicord inbox answer {} --choice <choice>",
+            judgment_id.as_str()
+        ))
+        .into(),
+        url: RequiredNullable::null(),
+        capture_basis: Some(VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL.to_owned()).into(),
+        expires_at: RequiredNullable::null(),
+        detail: Some("Answer from the local terminal as the user.".to_owned()).into(),
+    }
 }
 
 fn resolved_judgment_authorities_for_all_kinds(

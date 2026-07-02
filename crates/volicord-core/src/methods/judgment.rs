@@ -371,6 +371,11 @@ fn plan_request_user_judgment(
         ),
         *requested_at.as_datetime(),
     )?;
+    let inbox_item = judgment_inbox_item_from_judgment(
+        &user_judgment,
+        planned_state_version,
+        close_plan.guard_health.as_ref(),
+    )?;
     let state = build_state_summary(SummaryBuild {
         project_id: &request.envelope.project_id,
         state_version: planned_state_version,
@@ -389,6 +394,7 @@ fn plan_request_user_judgment(
         base: placeholder_base(),
         user_judgment_ref: user_judgment_ref.clone(),
         user_judgment,
+        inbox_item,
         blocker_refs,
         state,
     };
@@ -2104,88 +2110,6 @@ fn validate_answer_outcome_agrees_with_option(
             "answer outcome fields must agree with the selected option resolution_outcome",
         ),
     }
-}
-
-fn user_judgment_from_record(record: &UserJudgmentRecord) -> CoreResult<UserJudgment> {
-    let request: PersistedUserJudgmentRequest = decode_required_json(
-        "user_judgments",
-        record.judgment_id.clone(),
-        "request_json",
-        Some(&record.request_json),
-    )?;
-    let _artifact_refs: Vec<ArtifactRef> = decode_required_json(
-        "user_judgments",
-        record.judgment_id.clone(),
-        "artifact_refs_json",
-        Some(&record.artifact_refs_json),
-    )?;
-    let authority = user_judgment_authority_from_record(record)?;
-    let created_at = parse_owner_storage_value(
-        "user_judgments",
-        record.judgment_id.clone(),
-        "requested_at",
-        &record.requested_at,
-    )?;
-    let resolved_at = record
-        .resolved_at
-        .as_ref()
-        .map(|resolved_at| {
-            parse_owner_storage_value(
-                "user_judgments",
-                record.judgment_id.clone(),
-                "resolved_at",
-                resolved_at,
-            )
-        })
-        .transpose()?;
-    Ok(UserJudgment {
-        judgment_id: volicord_types::UserJudgmentId::new(record.judgment_id.clone()),
-        project_id: ProjectId::new(record.project_id.clone()),
-        task_id: TaskId::new(record.task_id.clone()),
-        change_unit_id: record.change_unit_id.clone().map(ChangeUnitId::new),
-        judgment_kind: authority.judgment_kind,
-        status: authority.status,
-        presentation: request.presentation,
-        question: request.question,
-        options: decode_required_json::<PersistedUserJudgmentOptions>(
-            "user_judgments",
-            record.judgment_id.clone(),
-            "options_json",
-            Some(&record.options_json),
-        )?
-        .into_current_options()
-        .map_err(|_| {
-            CorePipelineError::Store(StoreError::corrupt_owner_state_value(
-                "user_judgments",
-                record.judgment_id.clone(),
-                "options_json",
-            ))
-        })?,
-        context: decode_required_json(
-            "user_judgments",
-            record.judgment_id.clone(),
-            "context_json",
-            Some(&record.context_json),
-        )?,
-        affected_refs: decode_required_json(
-            "user_judgments",
-            record.judgment_id.clone(),
-            "affected_refs_json",
-            Some(&record.affected_refs_json),
-        )?,
-        basis: authority.basis.ok_or_else(|| {
-            CorePipelineError::Store(StoreError::corrupt_owner_state_json(
-                "user_judgments",
-                record.judgment_id.clone(),
-                "basis_json",
-            ))
-        })?,
-        required_for: request.required_for,
-        resolution: authority.resolution,
-        expires_at: request.expires_at.into_option(),
-        created_at,
-        resolved_at,
-    })
 }
 
 fn decision_rejected_response(

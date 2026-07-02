@@ -1100,6 +1100,62 @@ pub struct UserJudgment {
     pub resolved_at: Option<UtcTimestamp>,
 }
 
+/// User-facing inbox item for a pending judgment that requires user action.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct JudgmentInboxItem {
+    pub judgment_id: UserJudgmentId,
+    pub judgment_ref: StateRecordRef,
+    pub project_id: ProjectId,
+    pub task_id: TaskId,
+    pub change_unit_id: RequiredNullable<ChangeUnitId>,
+    pub question: String,
+    pub context_summary: String,
+    pub choices: Vec<JudgmentInboxChoice>,
+    pub answer_constraints: JudgmentAnswerConstraints,
+    pub required: bool,
+    pub requirement_status: String,
+    pub required_for: Vec<JudgmentRequiredFor>,
+    pub status: UserJudgmentStatus,
+    pub preferred_capture_path: RequiredNullable<JudgmentCapturePath>,
+    pub fallbacks: Vec<JudgmentCapturePath>,
+    pub expires_at: RequiredNullable<UtcTimestamp>,
+}
+
+/// User-facing answer choice for a judgment inbox item.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct JudgmentInboxChoice {
+    pub choice_id: UserJudgmentOptionId,
+    pub label: String,
+    pub description: String,
+    pub consequence: String,
+    pub is_default: bool,
+}
+
+/// User-facing answer constraints for a judgment inbox item.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct JudgmentAnswerConstraints {
+    pub choice_required: bool,
+    pub note_allowed: bool,
+    pub note_max_chars: u64,
+}
+
+/// User-facing capture path for answering a judgment inbox item.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct JudgmentCapturePath {
+    pub kind: String,
+    pub label: String,
+    pub available: bool,
+    pub command: RequiredNullable<String>,
+    pub url: RequiredNullable<String>,
+    pub capture_basis: RequiredNullable<String>,
+    pub expires_at: RequiredNullable<UtcTimestamp>,
+    pub detail: RequiredNullable<String>,
+}
+
 /// Core-derived state snapshot used to decide whether a judgment is compatible.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]

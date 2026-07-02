@@ -52,7 +52,7 @@ This document does not own:
 `volicord` is a local administrative/bootstrap executable. It is not a general
 long-running server. The explicit `volicord serve` command is limited to the
 local MCP transport process described in [MCP Transport](mcp-transport.md). The
-`volicord user` command group is the local
+`volicord inbox` command group is the user-facing `Judgment Inbox` and local
 `User Channel` CLI adapter over selected Core methods; its command names remain
 administrative CLI commands, not public Volicord API methods.
 
@@ -83,10 +83,9 @@ volicord guard post-tool [--file PATH] [--repo PATH] [--connection ID] [--sessio
 volicord guard prompt-capture [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|observe] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
 volicord guard stop [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|observe] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
 volicord changes reconcile [--repo PATH] [--task active|ID] [--json]
-volicord user status [--repo PATH] [--task active|ID] [--json]
-volicord user judgments [--repo PATH] [--task active|ID] [--json]
-volicord user judgment show INDEX_OR_ID [--repo PATH] [--json]
-volicord user judgment answer INDEX_OR_ID OPTION_INDEX_OR_ID [--repo PATH] [--note TEXT] [--json]
+volicord inbox [--repo PATH] [--task active|ID] [--json]
+volicord inbox answer <judgment-id> --choice <choice> [--repo PATH] [--note TEXT] [--json]
+volicord inbox open <judgment-id> [--repo PATH] [--json]
 ```
 
 Supported `HOST` values are `codex` and `claude-code`. When `HOST` is omitted,
@@ -655,15 +654,15 @@ Lifecycle behavior:
 
 The command resolves the selected project from `--repo PATH` or the current working directory and selects the active Task by default. It calls the public `volicord.reconcile_changes` Core method with `actor_source=local_user` and `operation_category=local_recovery`, prints the number of resolved findings, pending user judgments, and remaining unresolved findings, and exits under the normal CLI exit-code model. Rejected Core responses remain rejected CLI results rather than successful reconciliation summaries.
 
-The command may resolve deterministic findings or create pending user-owned judgments. It does not record a user answer, accept a change on the user's behalf, prove correctness, prove review or test sufficiency, or complete close readiness. When it creates pending judgments, the user records them through the existing `User Channel` paths, then reruns `volicord changes reconcile`.
+The command may resolve deterministic findings or create pending user-owned judgments. It does not record a user answer, accept a change on the user's behalf, prove correctness, prove review or test sufficiency, or complete close readiness. When it creates pending judgments, the user answers them through the `Judgment Inbox`, then reruns `volicord changes reconcile`.
 
 ## User Channel commands
 
 <a id="user-channel-commands"></a>
 <a id="user-interaction-commands"></a>
 
-`volicord user` commands provide a local CLI path for a human user to inspect
-task status and answer pending user judgments through the `User Channel`. They
+`volicord inbox` commands provide a local CLI path for a human user to list and
+answer pending user judgments through the `User Channel`. They
 do not create an Agent Connection, install MCP host configuration, or make an
 Agent Connection eligible to act as the user.
 
@@ -675,7 +674,7 @@ guidance may show exact chat commands such as `Volicord: answer J-3 1 #AB7K`
 with the current verification code. If both elicitation and prompt capture are
 unavailable and the adapter can safely expose local web consent, fallback
 guidance may show a loopback consent URL backed by a short-lived one-time token.
-The terminal `volicord user` commands remain the local recovery and
+The terminal `volicord inbox` commands remain the local recovery and
 manual-inspection path when elicitation, prompt capture, or local web consent is
 unavailable, disabled, degraded, or inappropriate for the workflow.
 
@@ -683,24 +682,24 @@ Project selection uses `--repo PATH` or the current working directory's
 repository root. Task selection uses the active task by default; `--task active`
 is explicit and `--task ID` selects a named task.
 
-The ordinary text-mode judgment flow uses the numbered indexes printed by
-`volicord user judgments` and `volicord user judgment show`. Stored judgment
-and option identifiers remain reference and JSON details.
+The ordinary text-mode judgment flow centers on stable judgment identifiers and
+choice identifiers printed by `volicord inbox`. Stored judgment references and
+additional capture-path details remain available in JSON output.
 
 Commands:
 
-- `volicord user status` shows user-oriented task status through
-  `volicord.status` with `actor_source=local_user`, `operation_category=read`,
-  and User Channel provenance.
-- `volicord user judgments` lists pending judgments for the selected task, with
-  stable display indexes for the current output.
-- `volicord user judgment show INDEX_OR_ID` displays one pending or historical
-  judgment, its context summary, and Core-generated options.
-- `volicord user judgment answer INDEX_OR_ID OPTION_INDEX_OR_ID` records one
-  selected Core-generated option through `volicord.record_user_judgment` with
+- `volicord inbox` lists pending `JudgmentInboxItem` entries for the selected
+  task, including the judgment id, question, choices or answer constraints,
+  required/optional status, preferred capture path, and fallbacks such as local
+  web consent or the CLI answer command when available.
+- `volicord inbox answer <judgment-id> --choice <choice>` records one selected
+  Core-generated option through `volicord.record_user_judgment` with
   `actor_source=local_user`, `operation_category=user_only`, compatible User
   Channel provenance, and the selected option's stored machine action and
   outcome. `--note` is stored only as a note.
+- `volicord inbox open <judgment-id>` attempts the local web consent/browser
+  path when the CLI process has a usable consent URL. If no URL is available
+  from the CLI process, it reports the CLI answer command instead.
 
 Recording one judgment records only the addressed judgment. Final acceptance and
 residual-risk acceptance remain separate judgment kinds and actions; this
@@ -709,7 +708,7 @@ command must not collapse one into the other.
 Status, judgment list, and show output expose selected owner state for the
 user's next action. They do not create evidence, final acceptance,
 residual-risk acceptance, or close readiness. Only
-`volicord user judgment answer` mutates the addressed pending judgment, and it
+`volicord inbox answer` mutates the addressed pending judgment, and it
 does so only through the selected Core-generated option.
 
 <a id="dry-run"></a>

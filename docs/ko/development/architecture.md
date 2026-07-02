@@ -35,7 +35,7 @@ flowchart LR
 
   subgraph UserAuthority["User Channel 권한 흐름"]
     user["로컬 터미널 사용자"]
-    usercli["volicord user CLI"]
+    usercli["volicord inbox CLI"]
     channel["User Channel"]
   end
 
@@ -79,7 +79,7 @@ Product Repository는 Runtime Home 밖에 남습니다. 정확한 동작은 주�
 
 - MCP 호스트 -> `volicord mcp --stdio` -> `volicord-mcp` 어댑터 라이브러리 -> `volicord-core` -> `Volicord Runtime Home` 아래의 Store와 아티팩트 기능.
 - 운영자 -> `volicord` 관리 CLI -> 부트스트랩과 등록 시설 -> `Volicord Runtime Home`과 호스트 설정 파일.
-- 로컬 터미널 사용자 -> `volicord user` CLI -> `volicord-core` -> `Volicord Runtime Home` 아래의 Store. 이 경로는 `User Channel`을 사용합니다.
+- 로컬 터미널 사용자 -> `volicord inbox` CLI -> `volicord-core` -> `Volicord Runtime Home` 아래의 Store. 이 경로는 `User Channel`을 사용합니다.
 
 `volicord-mcp` 어댑터 라이브러리는 시작과 요청 라우팅 중에도 `volicord-store`를 직접 사용합니다. 이 Store 사용은 공개 메서드를 Core로 디스패치하기 전에 Runtime Home, Agent Connection 상태, Connection Projects 멤버십, 프로젝트 사용 가능 여부, `connection.mode`, `operation_category`, `actor_source` 출처를 확인합니다. 공개 Volicord 메서드 의미를 구현하는 다른 경로가 아니며, 공개 메서드 실행은 `volicord-core`를 통과합니다.
 
@@ -163,7 +163,7 @@ flowchart TD
 
 - Core는 CLI나 MCP 어댑터 크레이트에 의존하지 않습니다.
 - MCP는 서로 다른 책임을 위해 Core, Store, 공유 타입에 의존할 수 있습니다. 각각 전송과 디스패치, Agent Connection 시작 검증, 요청 시점 프로젝트 라우팅, 타입 지정 요청 처리를 위한 의존입니다.
-- 관리 CLI는 Store와 공유 타입으로 로컬 설정과 등록을 수행합니다. 또한 `volicord user` 명령 경로는 `User Channel`을 통해 선택된 Core 쪽 메서드를 호출하기 위해 Core에 의존합니다.
+- 관리 CLI는 Store와 공유 타입으로 로컬 설정과 등록을 수행합니다. 또한 `volicord inbox` 명령 경로는 `User Channel`을 통해 선택된 Core 쪽 메서드를 호출하기 위해 Core에 의존합니다.
 - Store는 공유 타입에 의존합니다.
 - 테스트 지원 크레이트와 테스트 패키지는 폐기 가능한 픽스처와 계층 간 검증을 위해서만 구현 크레이트를 조합합니다.
 - `xtask`는 내부 제품 크레이트에 의존하지 않습니다. 문서 도구 의존성은 유지보수 크레이트 안에 격리됩니다.
@@ -346,7 +346,7 @@ dry-run이 아닌 실행은 먼저 선택된 Runtime Home을 초기화하거나 
 |---|---|
 | 구현 모듈에 함께 있는 단위 테스트 | 로컬 도우미, 파싱, 직렬화, 마이그레이션, Store, 정책, 경계 동작을 테스트 대상 코드 가까이에서 확인합니다. |
 | `crates/volicord-core/src/methods/tests.rs` | `CoreService`를 통해 Core 메서드 계획, 공유 사전 점검 동작, 효과 분기, 재실행 동작, 스테이징 구분, 아티팩트 승격, 닫기 준비 상태 계산, 메서드 소유 저장소 변이 결과를 실행합니다. |
-| `crates/volicord-cli/tests/binary_admin.rs` | `volicord` 바이너리로 setup, 프로젝트 등록, `volicord init`, `volicord connect`, `volicord connections`, `volicord connection status/verify/mode/remove`, `volicord export mcp-config`, `volicord user ...`, dry-run 동작, 호스트 통합 사전 점검 처리, 호스트 설정 쓰기, 저장소 감지, 명령줄 오류 경로를 실행합니다. |
+| `crates/volicord-cli/tests/binary_admin.rs` | `volicord` 바이너리로 setup, 프로젝트 등록, `volicord init`, `volicord connect`, `volicord connections`, `volicord connection status/verify/mode/remove`, `volicord export mcp-config`, `volicord inbox ...`, dry-run 동작, 호스트 통합 사전 점검 처리, 호스트 설정 쓰기, 저장소 감지, 명령줄 오류 경로를 실행합니다. |
 | `crates/volicord-cli/tests/mcp_transport.rs` | `volicord mcp` 하위 명령으로 help/version, `--check`, stdio 프레이밍, 줄 단위 JSON-RPC, 재연결 동작, MCP 응답 래핑을 실행합니다. |
 | `tests/integration/mcp_connection.rs` | MCP 연결 바인딩, 도구 스키마, 공개 메서드 노출, 메서드별 `operation_category` 파생, Core/MCP 일치, 세션 거부 사례, 재실행 맥락 바인딩, 계층 간 저장 효과를 검증합니다. |
 | `tests/conformance/baseline.rs` | 공유 픽스처를 사용해 Core 쪽 API로 기준 범위 공개 동작 시나리오를 실행합니다. 재실행, 효과 없는 분기, 쓰기 티켓, 아티팩트 생명주기, 판단 경계, 닫기 준비 상태, 오류 처리 경로, 손상 처리 등이 포함됩니다. |

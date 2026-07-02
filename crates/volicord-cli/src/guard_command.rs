@@ -2374,12 +2374,12 @@ fn prompt_capture_unavailable_reason(
         PromptCaptureStatus::UnsupportedByHost => (
             "prompt_capture_unsupported",
             "This host does not support user prompt-submit hooks.".to_owned(),
-            "Use MCP elicitation if available; otherwise use the local volicord user command as the recovery path.",
+            "Use MCP elicitation if available; otherwise use the local volicord inbox command as the recovery path.",
         ),
         PromptCaptureStatus::NotConfigured => (
             "prompt_capture_not_configured",
             "Prompt capture is not configured for this host, project, and connection.".to_owned(),
-            "Configure a host prompt-capture hook, or use the local volicord user command as the recovery path.",
+            "Configure a host prompt-capture hook, or use the local volicord inbox command as the recovery path.",
         ),
         PromptCaptureStatus::ReloadRequired => (
             "prompt_capture_reload_required",
@@ -2394,7 +2394,7 @@ fn prompt_capture_unavailable_reason(
         _ => (
             "prompt_capture_unavailable",
             "Prompt capture is unavailable for this host, project, and connection.".to_owned(),
-            "Use MCP elicitation if available; otherwise use the local volicord user command as the recovery path.",
+            "Use MCP elicitation if available; otherwise use the local volicord inbox command as the recovery path.",
         ),
     }
 }

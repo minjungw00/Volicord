@@ -295,7 +295,7 @@ fn render_reconcile_response(
         {
             output.push_str(&format!("next_action: {label}\n"));
         }
-        output.push_str("recovery_path: use `volicord user judgments` and `volicord user judgment answer` when chat or MCP elicitation is unavailable or manual recovery is needed; then rerun `volicord changes reconcile`\n");
+        output.push_str("recovery_path: use `volicord inbox` and `volicord inbox answer` when chat or MCP elicitation is unavailable or manual recovery is needed; then rerun `volicord changes reconcile`\n");
     } else if unresolved > 0 {
         output.push_str("next_action: rerun `volicord changes reconcile` after required recovery input is available\n");
     }

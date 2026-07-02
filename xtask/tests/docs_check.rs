@@ -1117,7 +1117,8 @@ volicord guard session-start --repo /path/to/repo --connection CONNECTION_ID --i
 volicord connect codex --read-only
 volicord export mcp-config --output /tmp/volicord.mcp.json
 volicord connection mode codex workflow
-volicord user status --task active
+volicord inbox --task active
+volicord inbox answer JUDGMENT_ID --choice accept
 ```
 "#;
     write(

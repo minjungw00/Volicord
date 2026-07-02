@@ -43,9 +43,10 @@
 
 `volicord`는 로컬 관리/부트스트랩 실행 파일입니다. 일반 목적의 장기 실행 서버가
 아닙니다. 명시적 `volicord serve` 명령은 [MCP 전송](mcp-transport.md)이 설명하는 로컬
-MCP 전송 프로세스로 제한됩니다. `volicord user` 명령군은 선택된 Core 메서드 위에 있는
-로컬 `User Channel` CLI 어댑터입니다. 이 명령 이름은 공개 Volicord API 메서드가 아니라
-관리 CLI 명령으로 남습니다.
+MCP 전송 프로세스로 제한됩니다. `volicord inbox` 명령군은 사용자에게 보이는
+`Judgment Inbox`이자 선택된 Core 메서드 위에 있는 로컬 `User Channel` CLI
+어댑터입니다. 이 명령 이름은 공개 Volicord API 메서드가 아니라 관리 CLI 명령으로
+남습니다.
 
 지원되는 기준 명령은 아래와 같습니다.
 
@@ -74,10 +75,9 @@ volicord guard post-tool [--file PATH] [--repo PATH] [--connection ID] [--sessio
 volicord guard prompt-capture [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|observe] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
 volicord guard stop [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|observe] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
 volicord changes reconcile [--repo PATH] [--task active|ID] [--json]
-volicord user status [--repo PATH] [--task active|ID] [--json]
-volicord user judgments [--repo PATH] [--task active|ID] [--json]
-volicord user judgment show INDEX_OR_ID [--repo PATH] [--json]
-volicord user judgment answer INDEX_OR_ID OPTION_INDEX_OR_ID [--repo PATH] [--note TEXT] [--json]
+volicord inbox [--repo PATH] [--task active|ID] [--json]
+volicord inbox answer <judgment-id> --choice <choice> [--repo PATH] [--note TEXT] [--json]
+volicord inbox open <judgment-id> [--repo PATH] [--json]
 ```
 
 지원되는 `HOST` 값은 `codex`와 `claude-code`입니다. `HOST`를 생략하면 명령은
@@ -591,15 +591,15 @@ Lifecycle 동작:
 
 이 명령은 `--repo PATH` 또는 현재 작업 디렉터리에서 선택 프로젝트를 해석하고 기본적으로 active `Task`를 선택합니다. `actor_source=local_user`, `operation_category=local_recovery`로 공개 `volicord.reconcile_changes` Core 메서드를 호출하고, 해결된 찾기 수, 대기 사용자 판단 수, 남은 미해결 찾기 수를 출력하며 일반 CLI 종료 코드 모델을 따릅니다. 거절된 Core 응답은 성공한 조정 요약으로 바꾸지 않고 거절된 CLI 결과로 유지합니다.
 
-이 명령은 결정적 찾기를 해결하거나 대기 사용자 소유 판단을 만들 수 있습니다. 사용자 답변을 기록하지 않고, 사용자를 대신해 변경을 수락하지 않으며, 정확성, 리뷰나 테스트 충분성, 닫기 준비 완료를 증명하지 않습니다. 대기 판단이 만들어졌다면 사용자는 기존 `User Channel` 경로로 판단을 기록한 뒤 `volicord changes reconcile`을 다시 실행합니다.
+이 명령은 결정적 찾기를 해결하거나 대기 사용자 소유 판단을 만들 수 있습니다. 사용자 답변을 기록하지 않고, 사용자를 대신해 변경을 수락하지 않으며, 정확성, 리뷰나 테스트 충분성, 닫기 준비 완료를 증명하지 않습니다. 대기 판단이 만들어졌다면 사용자는 `Judgment Inbox`로 판단에 답한 뒤 `volicord changes reconcile`을 다시 실행합니다.
 
 ## User Channel 명령
 
 <a id="user-channel-commands"></a>
 <a id="user-interaction-commands"></a>
 
-`volicord user` 명령은 사람이 로컬 CLI에서 `User Channel`을 통해 작업 상태를
-확인하고 대기 중인 사용자 판단에 답할 수 있는 경로를 제공합니다. 이 명령은 Agent
+`volicord inbox` 명령은 사람이 로컬 CLI에서 `User Channel`을 통해 대기 중인 사용자
+판단을 나열하고 답할 수 있는 경로를 제공합니다. 이 명령은 Agent
 Connection을 만들거나, MCP 호스트 설정을 설치하거나, Agent Connection이 사용자처럼
 동작할 수 있게 하지 않습니다.
 
@@ -610,7 +610,7 @@ elicitation을 사용할 수 없고 prompt-capture 사용 가능 상태가 `conf
 `Volicord: answer J-3 1 #AB7K` 같은 정확한 채팅 명령을 보여 줄 수 있습니다.
 elicitation과 prompt capture를 모두 사용할 수 없고 adapter가 local web consent를 안전하게
 노출할 수 있으면 fallback 안내가 짧게 만료되는 일회성 token을 쓰는 loopback consent
-URL을 보여 줄 수 있습니다. 터미널의 `volicord user` 명령은 elicitation, prompt capture,
+URL을 보여 줄 수 있습니다. 터미널의 `volicord inbox` 명령은 elicitation, prompt capture,
 local web consent를 사용할 수 없거나, 비활성화, 저하, 또는 작업 흐름에 부적합할 때 쓰는
 로컬 복구와 수동 점검 경로로 남습니다.
 
@@ -618,29 +618,29 @@ local web consent를 사용할 수 없거나, 비활성화, 저하, 또는 작�
 작업 선택은 기본적으로 active 작업을 사용합니다. `--task active`는 이를 명시하고,
 `--task ID`는 이름 붙은 작업을 선택합니다.
 
-일반 텍스트 모드 판단 흐름은 `volicord user judgments`와
-`volicord user judgment show`가 출력하는 번호 인덱스를 사용합니다. 저장된 판단
-식별자와 선택지 식별자는 참조와 JSON 세부사항입니다.
+일반 텍스트 모드 판단 흐름은 `volicord inbox`가 출력하는 안정적인 판단 식별자와
+선택지 식별자를 중심으로 합니다. 저장된 판단 참조와 추가 capture-path 세부사항은
+JSON 출력에서 확인할 수 있습니다.
 
 명령:
 
-- `volicord user status`는 `actor_source=local_user`, `operation_category=read`,
-  User Channel 출처로 `volicord.status`를 통해 사용자 중심 작업 상태를 보여 줍니다.
-- `volicord user judgments`는 선택된 작업의 대기 판단을 나열하고 현재 출력에 안정적인
-  표시 인덱스를 제공합니다.
-- `volicord user judgment show INDEX_OR_ID`는 대기 중이거나 과거의 판단 하나, 맥락
-  요약, Core 생성 선택지를 표시합니다.
-- `volicord user judgment answer INDEX_OR_ID OPTION_INDEX_OR_ID`는 `actor_source=local_user`,
+- `volicord inbox`는 선택된 작업의 대기 `JudgmentInboxItem` 항목을 나열합니다.
+  항목에는 판단 id, 질문, 선택지 또는 답변 제약, 필수/선택 상태, 선호 capture 경로,
+  사용할 수 있을 때의 local web consent 또는 CLI 답변 명령 같은 fallback이 들어갑니다.
+- `volicord inbox answer <judgment-id> --choice <choice>`는 `actor_source=local_user`,
   `operation_category=user_only`, 호환 User Channel 출처, 선택된 선택지의 저장된 기계
   동작과 결과로 `volicord.record_user_judgment`를 통해 Core 생성 선택지 하나를
   기록합니다. `--note`는 메모로만 저장됩니다.
+- `volicord inbox open <judgment-id>`는 CLI 프로세스에 사용할 수 있는 consent URL이
+  있을 때 local web consent/browser 경로를 시도합니다. CLI 프로세스에서 URL을 알 수
+  없으면 대신 CLI 답변 명령을 보고합니다.
 
 판단 하나를 기록하는 것은 그 판단만 기록합니다. 최종 수락과 잔여 위험 수락은 별개의
 판단 종류와 동작으로 남아야 하며, 이 명령이 둘을 하나로 합치면 안 됩니다.
 
 상태, 판단 목록, show 출력은 사용자의 다음 행동을 위해 선택된 담당 상태를 보여
 줍니다. 이 출력은 증거, 최종 수락, 잔여 위험 수락, 닫기 준비 상태를 만들지 않습니다.
-`volicord user judgment answer`만 대기 중인 해당 판단을 변경하며, 그것도 선택된 Core
+`volicord inbox answer`만 대기 중인 해당 판단을 변경하며, 그것도 선택된 Core
 생성 선택지를 통해서만 변경합니다.
 
 <a id="dry-run"></a>

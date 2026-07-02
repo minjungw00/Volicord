@@ -490,6 +490,14 @@ pub(super) fn plan_close_task_with_context(
     let result_risk_acceptance_coverage = risk_acceptance_coverage.clone();
     let result_evidence_summary = context.evidence_summary.clone();
     let result_artifact_refs = context.artifact_refs.clone();
+    let result_pending_judgment_inbox_items = pending_judgment_inbox_items(
+        store,
+        project_state,
+        &request.envelope,
+        &request.task_id,
+        response_state_version,
+        context.guard_health.as_ref(),
+    )?;
     let result = CloseTaskResult {
         base: placeholder_base(),
         close_state,
@@ -498,6 +506,7 @@ pub(super) fn plan_close_task_with_context(
         continuity_summary: Vec::new(),
         state: result_state.clone(),
         blockers: blockers.clone(),
+        pending_judgment_inbox_items: result_pending_judgment_inbox_items,
         guard_health: context.guard_health.clone(),
         evidence_summary: result_evidence_summary.clone(),
         artifact_refs: result_artifact_refs.clone(),
@@ -2202,7 +2211,7 @@ pub(super) fn user_channel_pending_judgment_instruction(
         "Use the local web consent fallback if the adapter offers a loopback consent link."
             .to_owned()
     } else {
-        "Use the local volicord user command as the recovery path.".to_owned()
+        "Use `volicord inbox` to list and answer pending user-owned judgments.".to_owned()
     }
 }
 

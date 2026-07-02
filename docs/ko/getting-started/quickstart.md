@@ -126,10 +126,8 @@ elicitation과 prompt capture를 사용할 수 없고 adapter가 fallback을 안
 수동 점검이 필요할 때는 아래 터미널 명령을 안정적인 복구 경로로 사용합니다.
 
 ```sh
-volicord user status
-volicord user judgments
-volicord user judgment show 1
-volicord user judgment answer 1 1
+volicord inbox
+volicord inbox answer JUDGMENT_ID --choice CHOICE_ID
 ```
 
 현재 Product Repository와 다른 Product Repository에 답해야 할 때만 `--repo PATH`를

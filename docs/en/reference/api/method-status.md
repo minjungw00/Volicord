@@ -83,7 +83,7 @@ Non-claim: `StatusResult.close_blockers` are not stored close results, correctne
 Include projection contract:
 
 - `include.task` returns the selected `Task` summary and current Change Unit through `active_task`.
-- `include.pending_user_judgments` returns current pending judgment refs, and relevant stale or superseded judgment state appears through existing result fields such as `blocker_refs` and `next_actions.required_refs`.
+- `include.pending_user_judgments` returns current pending judgment refs plus `pending_judgment_inbox_items` for user action. Relevant stale or superseded judgment state appears through existing result fields such as `blocker_refs` and `next_actions.required_refs`.
 - `include.write_check` returns active, expired, stale, consumed, or otherwise relevant write-ticket compatibility state through `write_check_summary`.
 - `write_check_summary` is a compatibility summary only; it is not filesystem access, shell approval, final acceptance, ordinary write approval, or proof that a write occurred.
 - `include.evidence` returns current `EvidenceSummary` and coverage when available.
@@ -114,6 +114,7 @@ Truthful projection rules:
 | `status_summary` | Free-form display string summarizing the current status view. When close-readiness is selected, it may summarize the current close-readiness state or the first close blocker code; the structured authority facts remain in the other result fields. |
 | `next_actions` | `NextActionSummary[]` describing the next safe API steps. |
 | `pending_user_judgments` | `StateRecordRef[]` for pending user-judgment records selected into the status view. |
+| `pending_judgment_inbox_items` | `JudgmentInboxItem[]` for pending judgments needing user action when `include.pending_user_judgments=true`. Shape is owned by [API Judgment Schemas](schema-judgment.md#judgmentinboxitem). |
 | `blocker_refs` | `StateRecordRef[]` for blocker records visible in the current status view. |
 | `close_state` | Status close-state value for the current view. Supported values, including `none` when no current close state is available, are owned by [API Value Sets](schema-value-sets.md#task-lifecycle-values). |
 | `current_close_basis` | `CurrentCloseBasis | null` selected into the close status view. Shape is owned by [API State Schemas](schema-state.md#close-readiness-and-validation-shapes). |
@@ -279,6 +280,18 @@ pending_user_judgments:
     project_id: proj_export_001
     task_id: task_export_001
     state_version: 42
+pending_judgment_inbox_items:
+  - judgment_id: uj_export_columns_001
+    question: "Which CSV column order should be used?"
+    requirement_status: required
+    choices:
+      - choice_id: accept
+        label: "Use the proposed CSV column order"
+    preferred_capture_path:
+      kind: cli
+      label: "CLI inbox"
+      available: true
+      command: "volicord inbox answer uj_export_columns_001 --choice <choice>"
 blocker_refs: []
 close_state: blocked
 current_close_basis: null

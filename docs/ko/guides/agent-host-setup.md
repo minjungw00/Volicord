@@ -200,9 +200,8 @@ Agent Connection은 초점이 맞춰진 판단 필요를 요청하거나 표시�
 판단이 되어야 하면 로컬 `User Channel` 명령을 사용합니다.
 
 ```sh
-volicord user judgments
-volicord user judgment show 1
-volicord user judgment answer 1 1
+volicord inbox
+volicord inbox answer JUDGMENT_ID --choice CHOICE_ID
 ```
 
 ## 제거

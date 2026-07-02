@@ -69,11 +69,11 @@ use volicord_types::{
     RequestUserJudgmentRequest, RequiredNullable, SessionWatchCoverageBasis, SessionWatchStatus,
     StageArtifactRequest, StateRecordRef, StatusRequest, ToolEnvelope, UpdateScopeRequest,
     UserJudgment, UserJudgmentContext, UserJudgmentOption, UserJudgmentOptionAction,
-    UserJudgmentStatus, VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB,
-    VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
+    UserJudgmentStatus, VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+    VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB, VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
     VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
     VERIFICATION_BASIS_MCP_STREAMABLE_HTTP_CONNECTION_BINDING,
-    VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+    VERIFICATION_BASIS_TEST_FIXTURE_BINDING, VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
 };
 
 const SUPPORTED_PROTOCOL_VERSION: &str = "2025-11-25";
@@ -4054,17 +4054,25 @@ where
     };
 
     if !client_supports_elicitation {
-        return Ok(ToolCallOutput::success(pending_response.response_json)
-            .with_extras(user_judgment_fallback_texts(adapter, &pending)?));
+        let fallback = user_judgment_fallback(adapter, &pending)?;
+        return Ok(ToolCallOutput::success(response_json_with_inbox_capture(
+            &pending_response,
+            &fallback,
+        )?)
+        .with_extras(fallback.texts));
     }
 
     if let Some(reason) = elicitation_secret_request_risk(&pending) {
-        return Ok(ToolCallOutput::success(pending_response.response_json)
+        let fallback = user_judgment_fallback(adapter, &pending)?;
+        return Ok(ToolCallOutput::success(response_json_with_inbox_capture(
+            &pending_response,
+            &fallback,
+        )?)
             .with_extra(format!(
                 "Volicord did not open MCP elicitation for pending judgment `{}` because the prompt text appears to request or expose sensitive secret material ({reason}). Do not ask the user to enter secrets, credentials, tokens, or private keys through MCP elicitation.",
                 pending.judgment_id.as_str()
             ))
-            .with_extras(user_judgment_fallback_texts(adapter, &pending)?));
+            .with_extras(fallback.texts));
     }
 
     let request_id = next_server_request_id("elicit_user_judgment", server_request_sequence);
@@ -4124,13 +4132,17 @@ where
         .with_extra(format!(
             "Volicord rejected the MCP elicitation response: {message}. The pending judgment remains unresolved."
         ))),
-        ElicitationReply::Unavailable(message) => Ok(ToolCallOutput::success(
-            pending_response.response_json,
-        )
-        .with_extra(format!(
-            "MCP elicitation was unavailable after the client advertised support: {message}."
-        ))
-        .with_extras(user_judgment_fallback_texts(adapter, &pending)?)),
+        ElicitationReply::Unavailable(message) => {
+            let fallback = user_judgment_fallback(adapter, &pending)?;
+            Ok(ToolCallOutput::success(response_json_with_inbox_capture(
+                &pending_response,
+                &fallback,
+            )?)
+            .with_extra(format!(
+                "MCP elicitation was unavailable after the client advertised support: {message}."
+            ))
+            .with_extras(fallback.texts))
+        }
     }
 }
 
@@ -4494,10 +4506,16 @@ fn reject_option_id(judgment: &UserJudgment) -> Option<&str> {
         .map(|option| option.option_id.as_str())
 }
 
-fn user_judgment_fallback_texts(
+struct UserJudgmentFallback {
+    texts: Vec<String>,
+    preferred_capture_path: Option<Value>,
+    fallbacks: Vec<Value>,
+}
+
+fn user_judgment_fallback(
     adapter: &McpAdapter,
     judgment: &UserJudgment,
-) -> Result<Vec<String>, McpAdapterError> {
+) -> Result<UserJudgmentFallback, McpAdapterError> {
     let availability = guard_health_record(
         &adapter.runtime_home,
         judgment.project_id.as_str(),
@@ -4506,14 +4524,14 @@ fn user_judgment_fallback_texts(
     .and_then(|record| prompt_capture_availability(&record))
     .map_err(McpAdapterError::Store)?;
     if availability.can_use_chat_commands() {
-        return chat_capture_fallback_texts(adapter, judgment, availability.status.as_str());
+        return chat_capture_fallback(adapter, judgment, availability.status.as_str());
     }
 
     if adapter.local_web_consent.is_some() {
-        match local_web_consent_fallback_texts(adapter, judgment) {
-            Ok(texts) => return Ok(texts),
+        match local_web_consent_fallback(adapter, judgment) {
+            Ok(fallback) => return Ok(fallback),
             Err(_) => {
-                return Ok(cli_recovery_fallback_texts(
+                return Ok(cli_recovery_fallback(
                     adapter,
                     judgment,
                     availability.status.as_str(),
@@ -4523,7 +4541,7 @@ fn user_judgment_fallback_texts(
         }
     }
 
-    Ok(cli_recovery_fallback_texts(
+    Ok(cli_recovery_fallback(
         adapter,
         judgment,
         availability.status.as_str(),
@@ -4531,11 +4549,30 @@ fn user_judgment_fallback_texts(
     ))
 }
 
-fn chat_capture_fallback_texts(
+fn response_json_with_inbox_capture(
+    response: &PipelineResponse,
+    fallback: &UserJudgmentFallback,
+) -> Result<String, McpAdapterError> {
+    let mut value = response.response_value.clone();
+    if let Some(inbox_item) = value.get_mut("inbox_item").and_then(Value::as_object_mut) {
+        if let Some(preferred_capture_path) = fallback.preferred_capture_path.clone() {
+            inbox_item.insert("preferred_capture_path".to_owned(), preferred_capture_path);
+        }
+        if !fallback.fallbacks.is_empty() {
+            inbox_item.insert(
+                "fallbacks".to_owned(),
+                Value::Array(fallback.fallbacks.clone()),
+            );
+        }
+    }
+    serde_json::to_string(&value).map_err(McpAdapterError::Json)
+}
+
+fn chat_capture_fallback(
     adapter: &McpAdapter,
     judgment: &UserJudgment,
     prompt_capture_status: &str,
-) -> Result<Vec<String>, McpAdapterError> {
+) -> Result<UserJudgmentFallback, McpAdapterError> {
     let store = CoreProjectStore::open(&adapter.runtime_home, &judgment.project_id)
         .map_err(McpAdapterError::Store)?;
     let records = store
@@ -4587,13 +4624,17 @@ fn chat_capture_fallback_texts(
         "commands": commands,
         "note_command": note_command
     }));
-    Ok(vec![human_text, structured_text])
+    Ok(UserJudgmentFallback {
+        texts: vec![human_text, structured_text],
+        preferred_capture_path: Some(prompt_capture_path_json()),
+        fallbacks: vec![cli_inbox_capture_path_json(judgment)],
+    })
 }
 
-fn local_web_consent_fallback_texts(
+fn local_web_consent_fallback(
     adapter: &McpAdapter,
     judgment: &UserJudgment,
-) -> Result<Vec<String>, McpAdapterError> {
+) -> Result<UserJudgmentFallback, McpAdapterError> {
     let Some(context) = adapter.local_web_consent.as_ref() else {
         return Err(McpAdapterError::Environment(
             "local web consent is not available".to_owned(),
@@ -4641,17 +4682,26 @@ fn local_web_consent_fallback_texts(
         "ttl_seconds": LOCAL_WEB_CONSENT_TOKEN_TTL_SECONDS,
         "endpoint": LOCAL_WEB_CONSENT_PATH
     }));
-    Ok(vec![human_text, structured_text])
+    Ok(UserJudgmentFallback {
+        texts: vec![human_text, structured_text],
+        preferred_capture_path: Some(local_web_consent_path_json(
+            judgment,
+            &record.capture_basis,
+            &record.expires_at,
+            &url,
+        )),
+        fallbacks: vec![cli_inbox_capture_path_json(judgment)],
+    })
 }
 
-fn cli_recovery_fallback_texts(
+fn cli_recovery_fallback(
     adapter: &McpAdapter,
     judgment: &UserJudgment,
     prompt_capture_status: &str,
     local_web_reason: &'static str,
-) -> Vec<String> {
+) -> UserJudgmentFallback {
     let human_text = format!(
-        "MCP elicitation is unavailable. The pending judgment `{}` remains unresolved. Prompt-capture chat commands are not available for this connection (prompt_capture_status={prompt_capture_status}). Local web consent is unavailable ({local_web_reason}). Use `volicord user judgments` and `volicord user judgment answer` as the local CLI recovery path.",
+        "MCP elicitation is unavailable. The pending judgment `{}` remains unresolved. Prompt-capture chat commands are not available for this connection (prompt_capture_status={prompt_capture_status}). Local web consent is unavailable ({local_web_reason}). Use `volicord inbox` and `volicord inbox answer` as the local CLI recovery path.",
         judgment.judgment_id.as_str()
     );
     let structured_text = fallback_state_json(json!({
@@ -4659,13 +4709,65 @@ fn cli_recovery_fallback_texts(
         "project_id": judgment.project_id.as_str(),
         "connection_id": adapter.context.connection_internal_id.as_str(),
         "judgment_id": judgment.judgment_id.as_str(),
+        "command": format!("volicord inbox answer {} --choice <choice>", judgment.judgment_id.as_str()),
         "prompt_capture_status": prompt_capture_status,
         "local_web_consent": {
             "available": false,
             "reason": local_web_reason
         }
     }));
-    vec![human_text, structured_text]
+    UserJudgmentFallback {
+        texts: vec![human_text, structured_text],
+        preferred_capture_path: Some(cli_inbox_capture_path_json(judgment)),
+        fallbacks: Vec::new(),
+    }
+}
+
+fn prompt_capture_path_json() -> Value {
+    json!({
+        "kind": "prompt_capture",
+        "label": "Prompt capture",
+        "available": true,
+        "command": null,
+        "url": null,
+        "capture_basis": VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
+        "expires_at": null,
+        "detail": "Use the displayed prompt-capture answer command with the current verification code."
+    })
+}
+
+fn local_web_consent_path_json(
+    judgment: &UserJudgment,
+    capture_basis: &str,
+    expires_at: &str,
+    url: &str,
+) -> Value {
+    json!({
+        "kind": "local_web_consent",
+        "label": "Local web consent",
+        "available": true,
+        "command": null,
+        "url": url,
+        "capture_basis": capture_basis,
+        "expires_at": expires_at,
+        "detail": format!(
+            "Open the loopback consent link to answer pending judgment {}.",
+            judgment.judgment_id.as_str()
+        )
+    })
+}
+
+fn cli_inbox_capture_path_json(judgment: &UserJudgment) -> Value {
+    json!({
+        "kind": "cli",
+        "label": "CLI inbox",
+        "available": true,
+        "command": format!("volicord inbox answer {} --choice <choice>", judgment.judgment_id.as_str()),
+        "url": null,
+        "capture_basis": VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+        "expires_at": null,
+        "detail": "Answer from the local terminal as the user."
+    })
 }
 
 fn fallback_state_json(state: Value) -> String {
@@ -5602,12 +5704,20 @@ mod tests {
         assert_eq!(values.len(), 2);
         let response = volicord_response_from_tool(&values[1])?;
         assert_eq!(response["user_judgment"]["status"], "pending");
+        assert_eq!(
+            response["inbox_item"]["preferred_capture_path"]["kind"],
+            "cli"
+        );
+        assert!(response["inbox_item"]["preferred_capture_path"]["command"]
+            .as_str()
+            .expect("CLI fallback command should be present")
+            .contains("volicord inbox answer"));
         let fallback = values[1]["result"]["content"][1]["text"]
             .as_str()
             .expect("fallback text");
         assert!(fallback.contains("MCP elicitation is unavailable"));
         assert!(fallback.contains("local CLI recovery path"));
-        assert!(fallback.contains("volicord user judgment answer"));
+        assert!(fallback.contains("volicord inbox answer"));
         assert!(!fallback.contains("Volicord: answer J-1 1 #"));
         Ok(())
     }
@@ -5637,6 +5747,10 @@ mod tests {
         assert_eq!(values.len(), 2);
         let response = volicord_response_from_tool(&values[1])?;
         assert_eq!(response["user_judgment"]["status"], "pending");
+        assert_eq!(
+            response["inbox_item"]["preferred_capture_path"]["kind"],
+            "prompt_capture"
+        );
         let fallback = values[1]["result"]["content"][1]["text"]
             .as_str()
             .expect("fallback text");
@@ -5670,6 +5784,26 @@ mod tests {
         assert_eq!(values.len(), 2);
         let response = volicord_response_from_tool(&values[1])?;
         assert_eq!(response["user_judgment"]["status"], "pending");
+        assert_eq!(
+            response["inbox_item"]["preferred_capture_path"]["kind"],
+            "local_web_consent"
+        );
+        assert!(response["inbox_item"]["preferred_capture_path"]["url"]
+            .as_str()
+            .expect("local web URL should be present")
+            .starts_with(&format!(
+                "{}{}?project=",
+                consent_base_url(),
+                LOCAL_WEB_CONSENT_PATH
+            )));
+        assert!(response["inbox_item"]["fallbacks"]
+            .as_array()
+            .expect("inbox fallbacks should be an array")
+            .iter()
+            .any(|fallback| fallback["kind"] == "cli"
+                && fallback["command"]
+                    .as_str()
+                    .is_some_and(|command| command.contains("volicord inbox answer"))));
         let fallback = values[1]["result"]["content"][1]["text"]
             .as_str()
             .expect("fallback text");
