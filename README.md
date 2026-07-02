@@ -13,7 +13,7 @@ compatible with the current scope, what evidence exists, what judgment still
 belongs to the user, and what blocks an honest close.
 
 Volicord is not a replacement for your editor, shell, tests, code review, or
-judgment. It is a guarded local authority layer that helps an agent use those
+judgment. It is a local authority-record layer that helps an agent use those
 things without hiding scope, evidence, user decisions, or close blockers inside
 a polished summary.
 
@@ -83,13 +83,13 @@ Make sure the future agent host can run `volicord` through `PATH`, then
 initialize the Product Repository where you want the agent to work:
 
 ```sh
-volicord init --host codex --repo /path/to/your-product-repo --mode mcp-only
+volicord init --host codex --repo /path/to/your-product-repo --profile record
 ```
 
 Use `--host claude-code` for Claude Code:
 
 ```sh
-volicord init --host claude-code --repo /path/to/your-product-repo --mode mcp-only
+volicord init --host claude-code --repo /path/to/your-product-repo --profile record
 ```
 
 `volicord init` is the primary first-run setup and connection command for
@@ -97,9 +97,11 @@ chat-first use. It initializes the Runtime Home if needed, records the
 installation profile, registers or reuses the selected Product Repository,
 creates the Agent Connection, writes project-scoped MCP configuration that
 starts `volicord mcp --stdio`, writes Volicord-managed guidance and policy
-metadata, and records guard installation status. `--mode mcp-only` does not
-require host lifecycle hook installation. Guarded setup for a host with missing
-required hook support must be explicitly selected with `--allow-degraded`.
+metadata, and records integration status. `--profile record` does not require
+host lifecycle hook installation or a session watcher. `--profile observe`
+requires supported host hook and session watcher capabilities; when required
+hook support is missing, observe setup must be explicitly selected with
+`--allow-degraded`.
 
 If the command reports `action_required`, follow the named host-controlled or
 local action, such as restarting or reloading the host, approving project MCP
@@ -122,7 +124,7 @@ local development binary:
 ```sh
 cargo build --workspace --bins
 ./target/debug/volicord --version
-./target/debug/volicord init --host codex --repo /path/to/your-product-repo --mode mcp-only
+./target/debug/volicord init --host codex --repo /path/to/your-product-repo --profile record
 ```
 
 This path requires the Rust toolchain named in
@@ -155,41 +157,39 @@ it is unavailable. Volicord tools, MCP server instructions, host rules, and
 `AGENTS.md` guidance help steer the agent, but they do not absolutely force
 model behavior.
 
-## Protection Modes
+## Integration Profiles
 
-`volicord init` defaults to `--mode guarded`.
+`volicord init` defaults to `--profile record`.
 
-Volicord reports guard health with a `guard_strength` label. The label is not a
-security proof; it tells you which local protection surface is currently active
-for the selected connection or session.
+Volicord reports a control-surface summary for the selected connection or
+session. The summary is not a security proof; it states which cooperative and
+detective surfaces are active.
 
-| User-facing mode or state | Reported strength | What it means now |
-|---|---|---|
-| `--mode mcp-only` without an active watcher | `authority_record_only` | MCP tools, local authority records, setup guidance, and policy metadata are available. No host lifecycle hooks are installed for pre-tool blocking. |
-| `--mode mcp-only` with an active session watcher | `detective_watch` | The session watcher can detect Product Repository changes and create findings, but it does not prevent writes or prove who changed files. |
-| `--mode guarded` after required hooks are configured and observed | `host_hook_guarded` | Project-local host MCP config, host hook/rule config, `AGENTS.md` guidance, `.volicord/policy.json`, guard state, write checks, and close blockers work together. |
-| `--mode managed` with a verified managed distribution | `managed_guarded` | A verified host-managed plugin, bundle, or policy distribution backs the host-hook guarded path. Current Codex and Claude Code setup does not provide that managed distribution contract. |
+| Profile | What it means now |
+|---|---|
+| `record` | MCP tools, local authority records, setup guidance, and policy metadata are available. Host lifecycle hooks and session watcher observation are not required. |
+| `observe` | Authority records are combined with supported host hooks and session watcher observation. Host hooks may return cooperative pre-tool warnings or denials, and the watcher may detect unrecorded Product Repository changes after coverage starts. |
 
-Guarded mode adds cooperative and detective guard surfaces around the MCP
+The control-surface summary reports `selected_profile`,
+`host_hooks_active`, `session_watcher_active`,
+`cooperative_pre_tool_warning_available`,
+`cooperative_pre_tool_denial_available`,
+`unrecorded_changes_detectable`, `actor_identity_provable`, and
+`os_enforced`. Current Volicord output reports `actor_identity_provable=false`
+and `os_enforced=false`; observe profile does not prevent all writes, identify
+the actor who changed a file, isolate the network, or provide a sandbox.
+
+Observe profile adds cooperative and detective guard surfaces around the MCP
 workflow:
 
 | Surface | What it contributes |
 |---|---|
 | MCP | Gives the host local `volicord.*` tools over `volicord mcp --stdio`, bound to the stored Agent Connection and allowed Product Repository. |
 | `AGENTS.md` | Adds a Volicord-managed guidance block telling agents to check status, start tasks, prepare writes, request user judgment, check close, and report when Volicord tools are unavailable. |
-| `.volicord/policy.json` | Records machine-readable guard command policy for supported lifecycle hooks: session start, pre-tool, post-tool, prompt capture, and stop. |
+| `.volicord/policy.json` | Records machine-readable hook command policy for supported lifecycle hooks: session start, pre-tool, post-tool, prompt capture, and stop. |
 | Host hooks and rules | When the host supports them and loads the generated configuration, hooks can inject context, classify tool attempts, warn or deny some unsafe-looking operations, record observed unrecorded changes, capture strict chat judgment commands, and block stop when close blockers remain. Host rule files point the host at the policy. |
 
-Other modes are available:
-
-- `--mode mcp-only` writes MCP configuration and guidance but disables guard
-  commands in policy metadata. It has no pre-tool blocking hook.
-- `--mode managed` requires a verified managed distribution source. For current
-  Codex and Claude Code contracts, `volicord init --mode managed` fails with
-  `MANAGED_MODE_UNSUPPORTED` instead of treating project-local guarded files as
-  managed mode.
-
-Guarded mode reduces bypass when the host actually runs the configured hooks
+Observe profile reduces bypass when the host actually runs the configured hooks
 and respects the rules. It is still not OS-level enforcement. It does not
 sandbox tools, monitor all files, block all commands, isolate the network, or
 prove that the model followed instructions.
@@ -197,12 +197,12 @@ prove that the model followed instructions.
 Guard installation has separate file and activation phases. `volicord init`
 installs or updates the host configuration, Volicord-managed `AGENTS.md`
 guidance, `.volicord/policy.json`, host hook or rule files, and guard state.
-For Codex guarded setup, generated files include project MCP config,
+For Codex observe setup, generated files include project MCP config,
 Volicord-managed POSIX `sh` wrapper scripts under `.codex/hooks/`,
 `.codex/hooks.json`, and `.codex/rules/*.rules`. Its pre-tool and post-tool
 matchers cover `Bash`, `apply_patch`, `Edit`, `Write`, and
 `mcp__.*__(write|edit|create|update|delete|remove|move|patch).*` tool names.
-For Claude Code guarded setup, generated files include `.mcp.json`,
+For Claude Code observe setup, generated files include `.mcp.json`,
 Volicord-managed POSIX `sh` wrapper scripts under `.claude/hooks/`,
 `.claude/settings.json`, and `.claude/rules/*.md`. Its pre-tool and post-tool
 matchers cover `Bash`, `Edit`, `Write`, `MultiEdit`, and
@@ -215,17 +215,17 @@ work-tree root at hook runtime and dispatches to the Volicord-managed wrapper
 under that root, while Claude Code uses `${CLAUDE_PROJECT_DIR}`-rooted wrapper
 commands. Do not replace generated commands with bare `.codex/hooks/...` or
 `.claude/hooks/...` relative paths. Verification reports those as
-`relative_path_unsafe`, and unsafe hook paths prevent full `host_hook_guarded`
-strength until `volicord init --host HOST --repo PATH` regenerates safe hook
-commands and the host reloads or trusts them when required. Codex may still
+`relative_path_unsafe`, and unsafe hook paths keep observe host hooks inactive
+until `volicord init --host HOST --repo PATH --profile observe` regenerates safe
+hook commands and the host reloads or trusts them when required. Codex may still
 require project trust, hook trust, restart, or reload before rules and hooks
 run. For Claude Code, Volicord merges managed settings without owning unrelated
 settings, and the host may still require project MCP approval, workspace trust,
 or settings reload. The first matching observed guard hook event activates the
 installation. `volicord connection verify` and `volicord doctor` report file
-health, required host action, and observed activation separately; installed
-files, `AGENTS.md`, and `.volicord/policy.json` alone do not prove that hooks
-are active.
+health, required host action, observed activation, and control-surface facts
+separately; installed files, `AGENTS.md`, and `.volicord/policy.json` alone do
+not prove that hooks are active.
 
 ## Unrecorded Changes And Close Blockers
 

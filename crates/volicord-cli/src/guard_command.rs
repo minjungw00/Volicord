@@ -26,15 +26,19 @@ use volicord_store::{
         PromptCaptureInsert, UnrecordedChangeInsert,
     },
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
+    session_watch::{
+        create_watch_baseline, latest_watch_baseline_for_session, snapshot_product_repository,
+        SessionWatchStatus, WatchBaselineCreate, WatchSnapshotOptions,
+    },
     StoreError,
 };
 use volicord_types::{
-    chat_judgment_verification_code, ActorSource, GuardDecision, HostKind,
+    chat_judgment_verification_code, ActorSource, GuardDecision, HostKind, IntegrationProfile,
     JudgmentResolutionOutcome, OperationCategory, PersistedJudgmentBasis,
-    PersistedUserJudgmentRequest, ProjectId, PromptCaptureStatus, RequestId, StatusInclude,
-    StatusRequest, TaskId, ToolEnvelope, UserJudgmentOption, UserJudgmentOptionAction,
-    UtcTimestamp, VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
-    VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
+    PersistedUserJudgmentRequest, ProjectId, PromptCaptureStatus, RequestId,
+    SessionWatchCoverageBasis, StatusInclude, StatusRequest, TaskId, ToolEnvelope,
+    UserJudgmentOption, UserJudgmentOptionAction, UtcTimestamp,
+    VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING, VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
 };
 
 use crate::project_context::{
@@ -46,9 +50,10 @@ use crate::user_command::{
 };
 
 const GUARD_SCHEMA_VERSION: u64 = 1;
-const DEFAULT_GUARD_MODE: &str = "guarded";
+const DEFAULT_INTEGRATION_PROFILE: &str = "observe";
 const VOLICORD_POLICY_FILE: &str = ".volicord/policy.json";
 const EXPECTED_WRITE_TTL_MINUTES: i64 = 15;
+const SESSION_WATCH_METADATA_SOURCE: &str = "volicord_session_watch";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GuardCommandOutcome {
@@ -341,11 +346,11 @@ enum ExpectedWriteMatchOutcome {
 
 pub fn guard_usage() -> String {
     concat!(
-        "volicord guard session-start [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--guard-mode MODE] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]\n",
-        "volicord guard pre-tool [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--guard-mode MODE] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]\n",
-        "volicord guard post-tool [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--guard-mode MODE] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]\n",
-        "volicord guard prompt-capture [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--guard-mode MODE] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]\n",
-        "volicord guard stop [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--guard-mode MODE] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]\n",
+        "volicord guard session-start [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|observe] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]\n",
+        "volicord guard pre-tool [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|observe] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]\n",
+        "volicord guard post-tool [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|observe] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]\n",
+        "volicord guard prompt-capture [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|observe] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]\n",
+        "volicord guard stop [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|observe] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]\n",
     )
     .to_owned()
 }
@@ -401,6 +406,7 @@ where
     ensure_required_session(&runtime_home, &project, &envelope, phase)?;
     let _activation =
         observe_guard_installation_activation(&runtime_home, &project, &envelope, phase, &options)?;
+    initialize_observe_session_watch(&runtime_home, &project, &envelope, phase)?;
 
     let (decision, result, expected_write) = match phase {
         GuardPhase::SessionStart => {
@@ -584,14 +590,14 @@ fn parse_guard_options(args: &[String]) -> Result<GuardOptions, GuardCommandErro
                 .get(index)
                 .ok_or_else(|| GuardCommandError::Usage("--host requires a value".to_owned()))?;
             set_string_option(&mut options.host_kind, "--host", value)?;
-        } else if let Some(value) = token.strip_prefix("--guard-mode=") {
-            set_string_option(&mut options.guard_mode, "--guard-mode", value)?;
-        } else if token == "--guard-mode" {
+        } else if let Some(value) = token.strip_prefix("--integration-profile=") {
+            set_string_option(&mut options.guard_mode, "--integration-profile", value)?;
+        } else if token == "--integration-profile" {
             index += 1;
             let value = args.get(index).ok_or_else(|| {
-                GuardCommandError::Usage("--guard-mode requires a value".to_owned())
+                GuardCommandError::Usage("--integration-profile requires a value".to_owned())
             })?;
-            set_string_option(&mut options.guard_mode, "--guard-mode", value)?;
+            set_string_option(&mut options.guard_mode, "--integration-profile", value)?;
         } else if let Some(value) = token.strip_prefix("--policy-hash=") {
             set_string_option(&mut options.policy_hash, "--policy-hash", value)?;
         } else if token == "--policy-hash" {
@@ -793,8 +799,17 @@ fn guard_envelope(
         options
             .guard_mode
             .clone()
-            .or_else(|| event_string(&input.raw_value, &[&["guard_mode"], &["guard", "mode"]]))
-            .unwrap_or_else(|| DEFAULT_GUARD_MODE.to_owned()),
+            .or_else(|| {
+                event_string(
+                    &input.raw_value,
+                    &[
+                        &["integration_profile"],
+                        &["profile"],
+                        &["guard", "profile"],
+                    ],
+                )
+            })
+            .unwrap_or_else(|| DEFAULT_INTEGRATION_PROFILE.to_owned()),
     )?;
     let session_id = options.session_id.clone().or_else(|| {
         event_string(
@@ -876,15 +891,15 @@ fn normalize_host_kind(value: String) -> Result<String, GuardCommandError> {
 }
 
 fn normalize_guard_mode(value: String) -> Result<String, GuardCommandError> {
-    let normalized = match value.as_str() {
-        "mcp-only" => "mcp_only".to_owned(),
-        other => other.to_owned(),
-    };
-    if matches!(normalized.as_str(), "mcp_only" | "guarded" | "managed") {
-        Ok(normalized)
+    if matches!(
+        value.as_str(),
+        profile if profile == IntegrationProfile::Record.as_str()
+            || profile == IntegrationProfile::Observe.as_str()
+    ) {
+        Ok(value)
     } else {
         Err(GuardCommandError::Usage(
-            "guard mode must be mcp_only, guarded, or managed".to_owned(),
+            "integration profile must be record or observe".to_owned(),
         ))
     }
 }
@@ -925,6 +940,72 @@ fn ensure_required_session(
     Ok(())
 }
 
+fn initialize_observe_session_watch(
+    runtime_home: &Path,
+    project: &ProjectRecord,
+    envelope: &GuardEnvelope,
+    phase: GuardPhase,
+) -> Result<(), GuardCommandError> {
+    if phase != GuardPhase::SessionStart
+        || envelope.guard_mode != IntegrationProfile::Observe.as_str()
+    {
+        return Ok(());
+    }
+    let Some(session_id) = envelope.session_id.as_deref() else {
+        return Ok(());
+    };
+    if latest_watch_baseline_for_session(runtime_home, &project.project_id, session_id)?.is_some() {
+        return Ok(());
+    }
+    let snapshot = snapshot_product_repository(
+        runtime_home,
+        &project.repo_root,
+        WatchSnapshotOptions::default(),
+    )
+    .map_err(|error| {
+        GuardCommandError::Runtime(format!(
+            "failed to start observe session watcher for {}: {error}",
+            project.repo_root.display()
+        ))
+    })?;
+    let started_at = format_timestamp(event_time_or_now(&envelope.occurred_at));
+    let watch_baseline_id = stable_id(
+        "watch_base",
+        &[
+            &project.project_id,
+            session_id,
+            &envelope.connection_id,
+            &snapshot.digest,
+        ],
+    );
+    create_watch_baseline(
+        runtime_home,
+        &project.project_id,
+        WatchBaselineCreate {
+            watch_baseline_id,
+            session_id: session_id.to_owned(),
+            connection_internal_id: envelope.connection_id.clone(),
+            guard_installation_id: envelope.guard_installation_id.clone(),
+            status: SessionWatchStatus::Active,
+            snapshot,
+            created_at: started_at.clone(),
+            metadata_json: json!({
+                "schema_version": 1,
+                "source": SESSION_WATCH_METADATA_SOURCE,
+                "status_detail": "active",
+                "detector_role": "detective",
+                "does_not_prevent_writes": true,
+                "does_not_identify_actor": true,
+                "coverage_start_at": started_at,
+                "coverage_basis": SessionWatchCoverageBasis::McpStart.as_str(),
+                "coverage_started_by": "session_start_hook"
+            })
+            .to_string(),
+        },
+    )?;
+    Ok(())
+}
+
 fn observe_guard_installation_activation(
     runtime_home: &Path,
     project: &ProjectRecord,
@@ -932,7 +1013,7 @@ fn observe_guard_installation_activation(
     phase: GuardPhase,
     options: &GuardOptions,
 ) -> Result<Option<volicord_store::guards::GuardInstallationRecord>, GuardCommandError> {
-    if envelope.guard_mode == "mcp_only" {
+    if envelope.guard_mode == IntegrationProfile::Record.as_str() {
         return Ok(None);
     }
     let Some(guard_installation_id) = envelope.guard_installation_id.clone() else {

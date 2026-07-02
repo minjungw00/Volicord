@@ -49,7 +49,7 @@ connected to it. Exact project-selection and MCP tool-argument behavior belongs 
 ## What Setup Does
 
 Agent setup through the ordinary
-`volicord init --host HOST --repo PATH --mode mcp-only` path can:
+`volicord init --host HOST --repo PATH --profile record` path can:
 
 - create or reuse Runtime Home records
 - create or reuse the installation profile
@@ -58,20 +58,16 @@ Agent setup through the ordinary
 - install project-scoped Codex or Claude Code MCP configuration that starts
   `volicord mcp --stdio`
 - install Volicord-managed guidance and policy metadata
-- record guard installation state
+- record integration state
 - run setup verification and report `complete`, `action_required`, or `failed`
 
-`mcp-only` setup records authority state and exposes MCP tools without
-pre-tool blocking. If a session watcher is active for a selected session, guard
-health may report `detective_watch` and create unrecorded-change findings from
-Product Repository metadata changes after watcher coverage starts; the watcher
-does not prevent writes or identify the actor, and partial coverage is reported
-separately. Full `guarded` setup is a separate `volicord init` mode
-that requires verified support for the required host lifecycle hooks or an
-explicit degraded opt-in. `managed` setup additionally requires a verified
-managed distribution contract; current Codex and Claude Code setup reports
-`MANAGED_MODE_UNSUPPORTED` when that contract is absent. Exact mode behavior is
-defined by [Administrative CLI](../reference/admin-cli.md).
+`record` setup records authority state and exposes MCP tools without requiring
+host lifecycle hooks or a session watcher. `observe` setup adds supported host
+hooks and session watcher observation. Host hooks can return cooperative
+pre-tool warnings or denials, and the watcher can create unrecorded-change
+findings after coverage starts; neither surface prevents all writes, proves who
+changed a file, provides a sandbox, or adds OS-level enforcement. Exact profile
+behavior is defined by [Administrative CLI](../reference/admin-cli.md).
 
 `volicord setup` remains the installation-profile preparation and repair path.
 `volicord connect` remains the lower-level connection-management command for

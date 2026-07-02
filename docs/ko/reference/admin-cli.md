@@ -52,7 +52,7 @@ MCP 전송 프로세스로 제한됩니다. `volicord user` 명령군은 선택�
 ```text
 volicord --help
 volicord --version
-volicord init --host codex|claude-code --repo PATH [--mode mcp-only|guarded|managed] [--allow-degraded] [--home PATH] [--mcp-command PATH] [--dry-run] [--json]
+volicord init --host codex|claude-code --repo PATH [--profile record|observe] [--allow-degraded] [--home PATH] [--mcp-command PATH] [--dry-run] [--json]
 volicord setup [--home PATH] [--link-bin PATH] [--mcp-command PATH] [--json]
 volicord doctor [--json]
 volicord connect [HOST] [--repo PATH] [--shared|--global] [--read-only] [--dry-run] [--json]
@@ -68,11 +68,11 @@ volicord project rename NAME [--repo PATH] [--json]
 volicord project forget [PATH|NAME] [--json]
 volicord export mcp-config [--output PATH] [--repo PATH] [--read-only] [--json]
 volicord serve --transport streamable-http [--listen 127.0.0.1:8765] [--home PATH] [--connection <connection_id>] [--project PATH]... [--token TOKEN | --generate-token] [--allow-origin ORIGIN] [--allow-nonlocal-listen]
-volicord guard session-start [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--guard-mode MODE] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
-volicord guard pre-tool [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--guard-mode MODE] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
-volicord guard post-tool [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--guard-mode MODE] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
-volicord guard prompt-capture [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--guard-mode MODE] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
-volicord guard stop [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--guard-mode MODE] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
+volicord guard session-start [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|observe] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
+volicord guard pre-tool [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|observe] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
+volicord guard post-tool [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|observe] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
+volicord guard prompt-capture [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|observe] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
+volicord guard stop [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|observe] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
 volicord changes reconcile [--repo PATH] [--task active|ID] [--json]
 volicord user status [--repo PATH] [--task active|ID] [--json]
 volicord user judgments [--repo PATH] [--task active|ID] [--json]
@@ -127,7 +127,7 @@ volicord user judgment answer INDEX_OR_ID OPTION_INDEX_OR_ID [--repo PATH] [--no
 `volicord setup`은 저장소를 연결하지 않고 로컬 설치 프로필을 마련하거나 복구합니다.
 선택된 Runtime Home을 만들거나 검증하고, 이후 관리 명령, Agent Connection, export,
 MCP 프로세스 흐름이 사용할 명령 경로를 저장합니다. Setup은 독립 설치 프로필 명령이지
-일반적인 guarded 첫 실행 저장소 경로가 아닙니다. `volicord init`은 기본 첫 실행 경로이며
+일반적인 첫 실행 저장소 경로가 아닙니다. `volicord init`은 기본 첫 실행 경로이며
 저장소 설정과 호스트 연결을 수행하면서 Runtime Home 경로나 MCP 시작 명령도 선택할 수
 있습니다. Setup은 `volicord`를 `PATH`에서 사용할 수 있게 돕지만 부모 셸의 현재 환경을
 바꿀 수는 없습니다.
@@ -192,10 +192,11 @@ Volicord 관리 블록을 쓰거나 갱신합니다. 지원되지 않는 셸, �
 런타임 hook 관찰 건강 상태, 효과적인 guard 건강 상태, 호스트 reload 필요도 진단으로
 보고할 수 있습니다. 이 guard 진단은 로컬 setup 및 관찰 점검이며 OS 강제,
 sandboxing, 쓰기 방지, 제품 정확성,
-닫기 준비 상태의 증명이 아닙니다. Doctor는 `guard_strength`와 그 라벨의 근거가 되는
-기능 boolean도 보고합니다. session watcher 우회 감지나 local web consent 같은 런타임
-전용 기능은 보고 프로세스가 실제로 그 런타임 상태를 소유하지 않는 한 사용할 수 없음으로
-보고합니다. 프로젝트를 만들거나, 호스트 설정을 설치하거나, 연결 모드를 바꾸거나,
+닫기 준비 상태의 증명이 아닙니다. Doctor는 `selected_profile`과 `control_surface`
+요약도 보고합니다. 이 요약에는 host hook, session watcher, 협력형 결정, 미기록 변경
+탐지, 행위자 증명, OS 집행 사실이 포함됩니다. session watcher 관찰이나 local web
+consent 같은 런타임 전용 기능은 보고 프로세스가 실제로 그 런타임 상태를 소유하지 않는 한
+사용할 수 없음으로 보고합니다. 프로젝트를 만들거나, 호스트 설정을 설치하거나, 연결 모드를 바꾸거나,
 사용자 판단에 답하지 않습니다.
 
 <a id="project-commands"></a>
@@ -277,60 +278,46 @@ Agent Connection 설정은 낮은 수준의 호스트 설정 범위 이름 대�
 미래의 호스트 환경은 명령을 `PATH`로 해석해야 합니다.
 
 <a id="agent-host-setup-and-init"></a>
-`volicord init --host codex --repo PATH --mode mcp-only`와
-`volicord init --host claude-code --repo PATH --mode mcp-only`는 필수 hook 지원을 설치하지
-않는 chat-first 사용을 위한 더 낮은 보장의 첫 실행 저장소 설정 및 호스트 연결
-예시입니다. Init은 shared 프로젝트 범위 호스트 레이아웃을 사용하므로 생성된 호스트 MCP
-설정은 `PATH`를 통해
+`volicord init --host codex --repo PATH --profile record`와
+`volicord init --host claude-code --repo PATH --profile record`는 host hook과 session
+watcher 관찰을 설치하지 않는 chat-first 사용을 위한 첫 실행 저장소 설정 및 호스트 연결
+예시입니다. Init은 shared 프로젝트 범위 호스트 레이아웃을 사용하므로 생성된 호스트 MCP 설정은 `PATH`를 통해
 `volicord mcp --stdio --connection <connection_id> --project <project_id>`를 시작하고
 개인 Runtime Home 경로를 포함하지 않습니다.
 
-`--mode`는 guard 통합 수준을 선택합니다.
+`--profile`은 공개 통합 프로필을 선택합니다.
 
-- `mcp-only`는 MCP 설정, 관리되는 `AGENTS.md` 안내 블록, guard 명령이 비활성화된
-  policy 메타데이터를 씁니다. Guard 활성화를 요구하지 않는 guard 설치 상태를
-  기록합니다.
-- `guarded`가 기본값입니다. MCP 설정, 관리되는 `AGENTS.md` 안내 블록,
-  `.volicord/policy.json` guard 명령 policy, 그리고 지원되는 프로젝트 로컬 호스트
-  hook 파일과 rule 파일을 씁니다.
-- `managed`는 일반 프로젝트 로컬 설정과 구별되는 검증된 managed 배포 출처를
-  요구합니다. 예를 들어 Volicord 호스트 계약 데이터에 기록된 호스트 지원 plugin,
-  managed 설정 bundle, managed policy 계층이어야 합니다. 선택한 호스트에 검증된
-  managed 배포 계약이 없으면 init은 `MANAGED_MODE_UNSUPPORTED`로 실패하며 프로젝트
-  로컬 guarded 파일을 managed 대체물로 생성하지 않습니다.
+- `record`가 기본값입니다. MCP 설정, 관리되는 `AGENTS.md` 안내 블록, policy 메타데이터를
+  쓰며 host lifecycle hook이나 session watcher를 요구하지 않습니다.
+- `observe`는 MCP 설정, 관리되는 `AGENTS.md` 안내 블록, `.volicord/policy.json` hook 명령
+  policy, 지원되는 프로젝트 로컬 host hook 및 rule 파일을 쓰고 host-hook/session-watcher
+  관찰 상태를 기록합니다.
 
-guard를 인식하는 setup, status, verification, doctor 출력은 도출된 현재 보호 라벨인
-`guard_strength`를 보고합니다.
+guard를 인식하는 setup, status, verification, doctor 출력은 `selected_profile`과
+`control_surface` 요약을 보고합니다. 이 요약에는 `host_hooks_active`,
+`session_watcher_active`, `cooperative_pre_tool_warning_available`,
+`cooperative_pre_tool_denial_available`, `unrecorded_changes_detectable`,
+`actor_identity_provable`, `os_enforced`가 포함됩니다. 현재 Volicord 출력은
+`os_enforced=false`와 `actor_identity_provable=false`를 보고해야 합니다.
 
-| `guard_strength` | 의미 |
-|---|---|
-| `authority_record_only` | Volicord가 권한 상태는 기록할 수 있지만 선택된 보기에 대해 활성 session watcher나 효과적인 host hook guard를 사용할 수 없습니다. |
-| `detective_watch` | session watcher가 활성 상태라 coverage 시작 뒤의 Product Repository 변경에서 미기록 변경 찾기를 만들 수 있습니다. 쓰기를 사전에 차단하거나 행위자를 식별할 수는 없으며, 부분 coverage는 별도로 보고됩니다. |
-| `host_hook_guarded` | 선택된 프로젝트 로컬 guarded host hook에 검증된 생성 설정, cwd-independent 및 subdirectory-safe hook 명령 경로, native host output, 필수 lifecycle phase, Bash/shell 및 직접 파일 쓰기 matcher coverage, 일치하는 policy hash, 현재 런타임 guard 관찰이 있습니다. |
-| `managed_guarded` | host-hook guarded 조건을 만족하고 선택된 managed 배포 메타데이터가 검증되었습니다. 현재 Codex와 Claude Code 설정은 향후 검증된 managed 배포 계약 없이는 이 라벨에 도달하지 않습니다. |
-
-완전한 `guarded` 초기화에는 선택한 호스트 어댑터가 모든 필수 lifecycle hook인
+`observe` 초기화에는 선택한 호스트 어댑터가 모든 필수 lifecycle hook인
 `session-start`, `pre-tool`, `post-tool`, `prompt-capture`, `stop` 지원을 선언하고
 검증할 수 있어야 합니다. `AGENTS.md`와 `.volicord/policy.json`은 호스트 hook 설정이
 아닙니다. 어댑터가 모든 필수 phase에 대해 신뢰할 수 있는 프로젝트 로컬 hook 스키마나
 경로를 알지 못하면 init은 호출자가 `--allow-degraded`를 전달하지 않는 한
-`GUARDED_HOOKS_UNSUPPORTED`로 실패합니다. 명시적인 degraded opt-in은 MCP 설정, 안내,
+`OBSERVE_HOOKS_UNSUPPORTED`로 실패합니다. 명시적인 degraded opt-in은 MCP 설정, 안내,
 policy, 지원되는 hook 또는 rule 파일을 쓸 수 있지만, degraded guard 상태를 기록하고
-사람용 출력과 JSON 출력에 누락된 필수 hook phase를 보고합니다. `mcp-only`는 hook 설치를
+사람용 출력과 JSON 출력에 누락된 필수 hook phase를 보고합니다. `record`는 hook 설치를
 요구하지 않습니다.
 
-완전한 Codex guarded 초기화에는 선택된 Product Repository가 하위 디렉터리 호스트
+Codex `observe` 초기화에는 선택된 Product Repository가 하위 디렉터리 호스트
 session에서도 cwd-independent wrapper 해석을 지원하는 Git work tree root여야 한다는
 요구사항도 있습니다. 이 전제조건을 만족하지 않으면 init은 bare 상대 hook 경로를
-생성하지 않고 실패합니다. Claude Code guarded 초기화는
+생성하지 않고 실패합니다. Claude Code `observe` 초기화는
 [Guard hook 명령](#guard-hook-commands)에서 설명한 호스트 프로젝트 디렉터리 placeholder를
 사용합니다.
 
-Managed 초기화는 guarded hook 요구사항과 별도의 managed 배포 요구사항을 모두 만족해야
-합니다. 검증된 managed 계약이 없는 호스트에서 `--allow-degraded`는 적용되지 않았다고
-보고되며, `managed`를 조용히 `guarded`나 `mcp-only`로 바꾸지 않습니다.
-
-`guarded`에서 init은 생성된 guard hook을 로드하려면 호스트 restart 또는 reload가 아직
+`observe`에서 init은 생성된 guard hook을 로드하려면 호스트 restart 또는 reload가 아직
 필요할 때 `reload_required`를 기록하고, 파일은 설치되었지만 일치하는 guard hook이 아직
 관찰되지 않았을 때 `configured`를 기록합니다. 파일을 썼다는 이유만으로 guard 설치를
 `active`로 표시하지 않습니다.
@@ -349,7 +336,7 @@ dry-run이 아닌 `volicord init`은 다음을 수행합니다.
   프로젝트 범위 Codex `.codex/config.toml` 또는 Claude Code `.mcp.json`을 씁니다.
 - `AGENTS.md` 안의 Volicord 관리 블록만 쓰거나 갱신합니다.
 - `volicord guard`를 호출하는 guard 명령을 담은 `.volicord/policy.json`을 씁니다.
-- 필수 guarded lifecycle phase를 위한 Volicord 관리 hook wrapper script를
+- 필수 observe lifecycle phase를 위한 Volicord 관리 hook wrapper script를
   `.codex/hooks/` 또는 `.claude/hooks/` 아래에 씁니다.
 - `.codex/hooks.json` 또는 `.claude/settings.json` 같은 지원 호스트 hook 파일을
   쓰며, 이 파일은 해당 wrapper script를 호출합니다.
@@ -357,7 +344,7 @@ dry-run이 아닌 `volicord init`은 다음을 수행합니다.
   씁니다.
 - Runtime Home registry에 guard 설치 상태를 기록합니다.
 - 필수 호스트 hook 설정이 없을 때 `--allow-degraded`가 명시적으로 제공되지 않았다면
-  `mcp-only`가 아닌 guarded 초기화를 거부합니다.
+  `observe` 초기화를 거부합니다.
 - 호스트가 새 MCP 또는 guard 설정을 로드해야 할 때 필요한 restart, reload, trust,
   approval 동작을 보고합니다.
 
@@ -415,15 +402,16 @@ Agent Connection 명령은 아래 결과 상태를 사용합니다.
 상태, 시도되었거나 차단된 각 점검, 필요한 경우 다음 사용자 동작을 보여 줘야 합니다.
 JSON 출력은 진단 소비자를 위해 최상위 `status`, `checks`, `actions` 필드를 포함해야
 합니다. 연결 상태 및 검증 출력은 guard 파일 설치, 설정 건강 상태, 런타임 hook 관찰
-건강 상태, 효과적인 guard 건강 상태, 호스트 reload 필요, prompt-capture 가용성, 알
-수 있을 때의 최근 guard event를 별도 진단으로 유지해야 합니다. 또한 `guard_strength`,
-pre-tool 차단 가용성, post-tool 상관 가용성, 우회 감지 가용성, prompt-capture 가용성,
-local web consent 가용성, hook path safety, hook 명령 cwd independence, hook 명령
-subdirectory safety, managed 배포 검증, watcher 상태, watcher baseline 생성 시각, watcher
-coverage 시작 시각, watcher coverage basis, watcher 부분 coverage 경고를 별도 필드로
-보고해야 합니다. 파일이 설치되었거나 설정되었다는 사실을 활성 관찰된 guard hook이나
-일치하는 관찰 전의 host-hook guarded 강도로 보고하면 안 됩니다. 불완전한 session-watch
-coverage를 전체 `detective_watch`로 보고하면 안 됩니다.
+건강 상태, 효과적인 guard 건강 상태, 호스트 reload 필요, prompt-capture 가용성, 알 수
+있을 때의 최근 guard event를 별도 진단으로 유지해야 합니다. 또한 `selected_profile`,
+`control_surface` 요약, 협력형 pre-tool warning 가용성, 협력형 pre-tool denial 가용성,
+post-tool 상관 가용성, 미기록 변경 탐지 가용성, prompt-capture 가용성, local web consent
+가용성, hook path safety, hook 명령 cwd independence, hook 명령 subdirectory safety,
+watcher 상태, watcher baseline 생성 시각, watcher coverage 시작 시각, watcher coverage
+basis, watcher 부분 coverage 경고를 별도 필드로 보고해야 합니다. 파일이 설치되었거나
+설정되었다는 사실을 일치하는 관찰 전의 활성 관찰된 guard hook이나 활성 host-hook 관찰로
+보고하면 안 됩니다. 불완전한 session-watch coverage를 전체 미기록 변경 탐지로 보고하면
+안 됩니다.
 
 성공한 `volicord mcp --check` 시작 점검만으로는 Agent Connection을 `complete`로 설명하면
 안 됩니다. 이는 MCP 프로세스의 시작 검증일 뿐입니다.
@@ -453,8 +441,8 @@ coverage를 전체 `detective_watch`로 보고하면 안 됩니다.
 ## Guard hook 명령
 
 `volicord guard` 명령은 agent lifecycle event 때 명령을 실행할 수 있는 호스트를
-위한 로컬 hook 진입점입니다. 이 명령은 등록된 프로젝트 상태를 검사하고
-guarded-operation 이벤트를 기록하며 기계 판독 가능한 로컬 decision을 반환합니다.
+위한 로컬 hook 진입점입니다. 이 명령은 등록된 프로젝트 상태를 검사하고 host-observation
+이벤트를 기록하며 기계 판독 가능한 로컬 decision을 반환합니다.
 Core 메서드, 사용자 소유 판단, `Write Check`, 닫기 준비 상태 점검, 호스트 신뢰,
 셸 승인, OS 수준 sandboxing을 대체하지 않습니다.
 
@@ -475,9 +463,9 @@ Volicord wrapper JSON을 쓰지 않습니다. 저장되는 guard event에는 Vol
 프로젝트 선택은 `--repo PATH`, event에 있는 프로젝트나 저장소 필드, 또는 현재 작업
 디렉터리를 사용합니다. Hook event에 `connection_id`가 없으면 `--connection ID`로
 Agent Connection 식별 정보를 제공합니다. `--session ID`, `--guard-installation ID`,
-`--host HOST`, `--guard-mode MODE`로 기록되는 세션, 설치, 호스트 종류, guard 모드를
-고정할 수 있습니다. 호스트 종류는 `codex`, `claude_code`, `generic` 같은 저장소 값을
-사용합니다. Guard 모드는 `mcp_only`, `guarded`, `managed`입니다.
+`--host HOST`, `--integration-profile record|observe`로 기록되는 세션, 설치, 호스트 종류,
+통합 프로필을 고정할 수 있습니다. 호스트 종류는 `codex`, `claude_code`, `generic` 같은
+저장소 값을 사용합니다. 공개 통합 프로필은 `record`와 `observe`입니다.
 `--policy-hash HASH`는 생성된 hook wrapper script가 기대하는
 `.volicord/policy.json` hash를 고정합니다. hash가 맞지 않으면 그 hook event는 guard
 설치를 활성화할 수 없지만, 테스트나 디버깅에 쓰는 직접 guard 명령은 이 옵션을
@@ -514,19 +502,18 @@ Guard-aware status, verification, doctor 진단은 `hook_path_safety`,
 `absolute_path_stale`, `placeholder_unsupported`, `host_output_mismatch`,
 `policy_hash_mismatch` 같은 값을 보고할 수 있으며, 전체 값 집합은
 [API 값 집합](api/schema-value-sets.md#state-and-blocker-values)이 담당합니다. `ok`가 아닌
-hook path safety 값은 해당 보기에서 완전한 `host_hook_guarded` 또는 `managed_guarded`
-strength를 막습니다. 복구 동작은 `volicord init --host HOST --repo PATH`로 안전한 관리
-명령을 다시 생성한 뒤, 계속 보고되는 host trust, approval, reload, restart 동작을
-완료하는 것입니다.
+hook path safety 값은 해당 보기에서 observe host hook을 inactive로 유지합니다. 복구 동작은
+`volicord init --host HOST --repo PATH --profile observe`로 안전한 관리 명령을 다시 생성한
+뒤, 계속 보고되는 host trust, approval, reload, restart 동작을 완료하는 것입니다.
 
-`mcp_only`가 아닌 guard 명령이 기록된 프로젝트, Agent Connection, guard 설치,
-호스트 종류, guard 모드, policy hash, 알려진 hook 단계와 일치하는 유효한 event를
+`observe` guard 명령이 기록된 프로젝트, Agent Connection, guard 설치,
+호스트 종류, 통합 프로필, policy hash, 알려진 hook 단계와 일치하는 유효한 event를
 받으면 Volicord는 관찰 메타데이터를 기록합니다. 필요한 hook 설정이 완전하고 설치가
 degraded, stale, broken 상태가 아닐 때만 그 관찰이 guard 설치를 `active`로 승격할 수
-있습니다. 프로젝트, 연결, 호스트 종류, guard 모드, policy hash, hook 단계 데이터가
-맞지 않으면 설치를 활성화하지 않습니다. `active`는 Volicord가 현재 사용할 수 있는
-guard 설정에 대해 일치하는 hook event를 관찰했다는 뜻입니다. OS 수준 집행,
-sandboxing, 쓰기 방지를 주장하지 않습니다.
+있습니다. 프로젝트, 연결, 호스트 종류, 통합 프로필, policy hash, hook 단계 데이터가 맞지
+않으면 설치를 활성화하지 않습니다. `active`는 Volicord가 현재 사용할 수 있는 observe
+설정에 대해 일치하는 hook event를 관찰했다는 뜻입니다. OS 수준 집행, sandboxing, 행위자
+증명, 쓰기 방지를 주장하지 않습니다.
 
 입력 event 계약은 호스트 중립입니다. Guard 파서는 호스트 종류, 세션, 도구 이름,
 명령, prompt, 결과, 변경 경로의 일반적인 필드 위치를 관대하게 읽고, 알 수 없는
@@ -555,8 +542,8 @@ Lifecycle 동작:
   이전 expected-write 행과 맞춰 봅니다. 호스트가 invocation 식별 정보를 제공하면 그
   식별 정보를 사용합니다. 매칭된 범위 안 쓰기는 미해결 unrecorded-change 행을 만들지
   않습니다. 매칭되지 않았거나, 범위 밖이거나, 모호한 관찰된 Product Repository 변경은
-  미해결 unrecorded-change 행을 기록하고 `warn`을 반환합니다. Post-tool 관찰과 매칭은
-  guarded-operation 기록이지 제품 정확성 증명이 아닙니다. 변경을 찾기 위해 신뢰할 수
+	  미해결 unrecorded-change 행을 기록하고 `warn`을 반환합니다. Post-tool 관찰과 매칭은
+	  host-observation 기록이지 제품 정확성 증명이 아닙니다. 변경을 찾기 위해 신뢰할 수
   없는 명령을 실행하지 않습니다.
 - `prompt-capture`는 현재 host, project, connection의 prompt-capture 사용 가능
   상태가 `configured`, `observed`, `active`일 때만 prompt-capture 메타데이터를
@@ -581,7 +568,7 @@ Lifecycle 동작:
 
 ## 변경 조정 명령
 
-`volicord changes reconcile [--repo PATH] [--task active|ID] [--json]`는 unresolved guarded 미기록 Product Repository 변경 찾기를 위한 로컬 복구 명령입니다.
+`volicord changes reconcile [--repo PATH] [--task active|ID] [--json]`는 unresolved 미기록 Product Repository 변경 찾기를 위한 로컬 복구 명령입니다.
 
 이 명령은 `--repo PATH` 또는 현재 작업 디렉터리에서 선택 프로젝트를 해석하고 기본적으로 active `Task`를 선택합니다. `actor_source=local_user`, `operation_category=local_recovery`로 공개 `volicord.reconcile_changes` Core 메서드를 호출하고, 해결된 찾기 수, 대기 사용자 판단 수, 남은 미해결 찾기 수를 출력하며 일반 CLI 종료 코드 모델을 따릅니다. 거절된 Core 응답은 성공한 조정 요약으로 바꾸지 않고 거절된 CLI 결과로 유지합니다.
 
@@ -671,15 +658,17 @@ setup과 필요한 사용자 동작을 구분할 수 있을 만큼 구조화된 
 - `actions[]`: 필요하거나 제안되는 사용자 동작. 사용할 수 있을 때 안정적인 동작 ID와
   사람이 읽을 수 있는 명령 또는 안내를 포함합니다.
 - guard를 인식하는 setup, doctor, 연결 상태, 연결 검증 JSON은 guard 진단을 보고하는
-  곳에서 `guard_strength`와 `pre_tool_blocking_available`,
-  `post_tool_correlation_available`, `bash_shell_mutation_coverage`,
-  `hook_path_safety`, `hook_commands_cwd_independent`,
-  `hook_commands_subdirectory_safe`, `bypass_detection_active`, `prompt_capture_available`,
-  `local_web_consent_available`, `managed_distribution_verified`를 노출해야 합니다.
-  Guard-health JSON은 더 엄격한 host-hook 전제조건을 보여 주기 위해
+  곳에서 `selected_profile`, `control_surface`,
+  `cooperative_pre_tool_warning_available`,
+  `cooperative_pre_tool_denial_available`, `post_tool_correlation_available`,
+  `bash_shell_mutation_coverage`, `hook_path_safety`,
+  `hook_commands_cwd_independent`, `hook_commands_subdirectory_safe`,
+  `prompt_capture_available`, `local_web_consent_available`를 노출해야 합니다.
+  `control_surface.os_enforced`는 Volicord가 OS 수준 집행을 구현하지 않는 한 `false`여야
+  합니다. Guard-health JSON은 더 엄격한 host-hook 전제조건을 보여 주기 위해
   `generated_config_verified`, `native_host_output_adapter_verified`,
-  `direct_file_write_matcher_coverage`도 노출할 수 있습니다. Watcher 진단을 보고하는 경우 JSON은
-  `watcher_status`, `watcher_baseline_created_at`, `watcher_coverage_start_at`,
+  `direct_file_write_matcher_coverage`도 노출할 수 있습니다. Watcher 진단을 보고하는 경우
+  JSON은 `watcher_status`, `watcher_baseline_created_at`, `watcher_coverage_start_at`,
   `watcher_coverage_basis`, `watcher_partial_coverage_warning`도 노출해야 합니다.
 
 setup과 doctor JSON은 진단 소비자가 setup 동작 상태와 설치 프로필 상태를 구분할 수

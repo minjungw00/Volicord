@@ -2,8 +2,8 @@ use std::path::PathBuf;
 
 use volicord_store::{
     guards::{
-        list_expected_writes_for_connection, AgentSessionInsert, ExpectedWriteRecord,
-        UnrecordedChangeInsert,
+        list_expected_writes_for_connection, list_unresolved_unrecorded_changes,
+        AgentSessionInsert, ExpectedWriteRecord, UnrecordedChangeInsert, UnrecordedChangeRecord,
     },
     session_watch::{
         compare_watch_snapshots, create_watch_baseline, latest_watch_baseline_for_connection,
@@ -205,16 +205,34 @@ pub(super) fn run_session_watch_check(
     )
     .map_err(CorePipelineError::from)?;
     if expected_write.is_none() {
-        insert_unrecorded_change_for_observation(
+        if let Some(existing_change) = existing_unrecorded_change_covering_paths(
             store,
-            verified_invocation,
+            verified_invocation.project_id.as_str(),
+            connection_id.as_str(),
+            session_id,
             task_id,
-            &baseline,
-            &observation,
-            &current,
             &observed_paths,
-            now,
-        )?;
+        )? {
+            link_watch_observation_to_unrecorded_change(
+                store.runtime_home(),
+                verified_invocation.project_id.as_str(),
+                &observation.watch_observation_id,
+                &existing_change.unrecorded_change_id,
+                &now.to_string(),
+            )
+            .map_err(CorePipelineError::from)?;
+        } else {
+            insert_unrecorded_change_for_observation(
+                store,
+                verified_invocation,
+                task_id,
+                &baseline,
+                &observation,
+                &current,
+                &observed_paths,
+                now,
+            )?;
+        }
     }
     Ok(())
 }
@@ -399,7 +417,7 @@ fn ensure_agent_session(
                 .as_ref()
                 .map(|session| session.guard_mode.clone())
         })
-        .unwrap_or_else(|| GuardMode::McpOnly.as_str().to_owned());
+        .unwrap_or_else(|| IntegrationProfile::Record.as_str().to_owned());
     let host_kind = record
         .guard_installation
         .as_ref()
@@ -448,6 +466,40 @@ fn selected_guard_installation_id(
     Ok(record
         .guard_installation
         .map(|installation| installation.guard_installation_id))
+}
+
+fn existing_unrecorded_change_covering_paths(
+    store: &CoreProjectStore,
+    project_id: &str,
+    connection_internal_id: &str,
+    session_id: &str,
+    task_id: Option<&TaskId>,
+    observed_paths: &[String],
+) -> CoreResult<Option<UnrecordedChangeRecord>> {
+    let records = list_unresolved_unrecorded_changes(
+        store.runtime_home(),
+        project_id,
+        Some(connection_internal_id),
+    )
+    .map_err(CorePipelineError::from)?;
+    for record in records {
+        if record.session_id.as_deref() != Some(session_id) {
+            continue;
+        }
+        if task_id.is_some_and(|task_id| record.task_id.as_deref() != Some(task_id.as_str())) {
+            continue;
+        }
+        let recorded_paths = decode_json_string_array(
+            "unrecorded_changes",
+            &record.unrecorded_change_id,
+            "observed_paths_json",
+            &record.observed_paths_json,
+        )?;
+        if paths_are_authorized(observed_paths, &recorded_paths) {
+            return Ok(Some(record));
+        }
+    }
+    Ok(None)
 }
 
 #[allow(clippy::too_many_arguments)]

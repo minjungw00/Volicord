@@ -32,7 +32,7 @@ Do not infer support from Rust portability alone. A Rust crate being portable in
 | Executable role names | Supported and verified. | Reference owners define `volicord` as the installed executable for administrative CLI commands and the `mcp` subcommand used by the local MCP stdio adapter. | Build or install `volicord`; host configuration should start MCP with `volicord mcp --stdio ...`. |
 | Package-manager installation | Out of scope unless a matching repository artifact is added. | No Homebrew tap, Homebrew formula, Linux package-manager package, or external package registry is represented in this checkout. The supported first-run path is the release tarball plus install script. | Use the release binary install script, Docker, an existing `volicord` executable, or the development source-build path. |
 | Host version minimums for Codex and Claude Code | No stable minimum host version is defined. Host compatibility is checked operationally, not by a documented version floor. | Codex verification looks for `codex` on `PATH` and runs `codex --version`. Claude Code verification inspects host state through `claude mcp get <server_name>`. Administrative verification owns the final result states. | Use `volicord connection verify HOST [--repo PATH] [--shared|--global]` after installation. Do not rely on an undocumented Codex or Claude Code minimum version. |
-| Codex guarded hook root resolution | Supported for local Git work trees. | Generated Codex guarded hook commands resolve the Git work-tree root with `git rev-parse --show-toplevel` before dispatching to Volicord-managed wrappers, and initialization rejects full guarded setup when that root strategy cannot be supported. | For full Codex guarded mode, use a Product Repository with a `.git` work-tree root and ensure the future Codex hook environment can run `git` from repository subdirectories. Use `--mode mcp-only` when this prerequisite is not available. |
+| Codex observe hook root resolution | Supported for local Git work trees. | Generated Codex observe hook commands resolve the Git work-tree root with `git rev-parse --show-toplevel` before dispatching to Volicord-managed wrappers, and initialization rejects observe setup when that root strategy cannot be supported. | For Codex observe profile, use a Product Repository with a `.git` work-tree root and ensure the future Codex hook environment can run `git` from repository subdirectories. Use `--profile record` when this prerequisite is not available. |
 
 ## Toolchain Requirements
 
@@ -181,11 +181,11 @@ Read access is required when Volicord validates or uses the registered project. 
 - Volicord-managed Claude Code hook wrapper scripts under `.claude/hooks/`
 - Volicord-managed Claude Code rule files under `.claude/rules/`
 
-Full Codex guarded setup requires the selected Product Repository to be a Git
+Codex observe setup requires the selected Product Repository to be a Git
 work tree so generated hooks can resolve the project root without depending on
-the host session cwd. This Git-root requirement is for Codex guarded hook path
+the host session cwd. This Git-root requirement is for Codex observe hook path
 safety only; it does not make integration files Volicord runtime state or add
-OS-level sandboxing. `mcp-only` setup does not require Codex guarded hook
+OS-level sandboxing. `record` setup does not require Codex observe hook
 installation.
 
 Noninteractive shared-intent host configuration or guidance writes require the explicit `--shared` command path defined by [Administrative CLI](admin-cli.md#noninteractive-approval-behavior). Runtime records, SQLite databases, generated records, logs, projections, QA results, acceptance records, close-readiness state, and residual-risk records do not belong in the `Product Repository`.

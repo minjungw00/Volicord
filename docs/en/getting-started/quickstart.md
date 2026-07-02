@@ -12,7 +12,7 @@ meaning belongs to [Agent Connection Reference](../reference/agent-connection.md
 ## Fast Path
 
 ```sh
-volicord init --host codex --repo /path/to/your-product-repo --mode mcp-only
+volicord init --host codex --repo /path/to/your-product-repo --profile record
 ```
 
 `/path/to/your-product-repo` is an example path for the Product Repository where
@@ -20,31 +20,27 @@ you want the agent to work. `volicord init` is the primary first-run repository
 setup and host-connection command. It creates or reuses the Runtime Home and
 installation profile when needed, registers the selected repository, installs
 project-scoped MCP configuration for the selected host, writes Volicord-managed
-guidance and policy metadata, and records guard installation status.
+guidance and policy metadata, and records integration status.
 Generated host configuration starts the single public executable as
 project-bound `volicord mcp --stdio`.
 
-This fast path uses `--mode mcp-only`, which does not require host lifecycle
-hook installation and has no pre-tool blocking hook. If a session watcher
-becomes active for the selected session, guard health may report
-`detective_watch` and create unrecorded-change findings
-from Product Repository metadata changes after watcher coverage starts, but the
-watcher does not prevent writes or identify who made the change. Default
-`guarded` init requires verified support for all
-required host hook phases; if support is missing, use `--allow-degraded` only
-when you explicitly want degraded guard files and missing-hook diagnostics.
-Managed init additionally requires a verified managed distribution contract and
-fails with `MANAGED_MODE_UNSUPPORTED` when the selected host has none. Exact
-project naming, guard-mode behavior, connection defaults, and internal identity
-behavior belong to
+This fast path uses `--profile record`, which does not require host lifecycle
+hook installation or a session watcher. `--profile observe` requires verified
+support for all required host hook phases and session watcher observation; if
+hook support is missing, use `--allow-degraded` only when you explicitly want
+degraded observe files and missing-hook diagnostics. Observe can return
+cooperative host decisions and detect unrecorded changes after watcher coverage
+starts, but it does not provide OS enforcement, actor proof, network isolation,
+or a sandbox. Exact project naming, profile behavior, connection defaults, and
+internal identity behavior belong to
 [Administrative CLI Reference](../reference/admin-cli.md).
 
-If you choose guarded setup instead of this `mcp-only` fast path, generated
+If you choose observe setup instead of this `record` fast path, generated
 hook commands are designed to work when the host session starts from a
 repository subdirectory. Status, verification, and doctor diagnostics report
 `hook_path_safety`; a value such as `relative_path_unsafe`, `wrapper_missing`,
-or `wrapper_not_executable` means full host-hook guarded strength is not active
-until the generated hook commands or wrappers are repaired.
+or `wrapper_not_executable` means observe host hooks are not active until the
+generated hook commands or wrappers are repaired.
 
 ## Confirm The Setup
 
@@ -59,7 +55,7 @@ Completion state: the connection is ready when status or verification reports
 `complete`. If it reports `action_required`, complete the named host-owned or
 local repair action, then rerun verification. Exact result-state meaning belongs
 to [Administrative CLI Reference](../reference/admin-cli.md#agent-connection-result-states).
-Guarded hook path repair guidance belongs to
+Observe hook path repair guidance belongs to
 [Agent Host Troubleshooting](../guides/agent-host-troubleshooting.md#guard-hook-path-or-wrapper-is-unsafe).
 
 ## Choose A Host Intent
@@ -88,7 +84,7 @@ volicord connect codex --repo /path/to/your-product-repo
 
 `volicord connect` is still the lower-level connection-management command for
 personal, shared, global, and read-only variants. For the ordinary first-run
-path, prefer `volicord init --host HOST --repo PATH --mode mcp-only`.
+path, prefer `volicord init --host HOST --repo PATH --profile record`.
 
 ## Inspect Or Change The Connection
 

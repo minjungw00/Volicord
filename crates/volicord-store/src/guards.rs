@@ -3,7 +3,7 @@ use std::{path::Path, str::FromStr};
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde_json::Value;
 use volicord_types::{
-    GuardDecision, GuardInstallationStatus, GuardMode, HostKind, PromptCaptureStatus,
+    GuardDecision, GuardInstallationStatus, HostKind, IntegrationProfile, PromptCaptureStatus,
     UnrecordedChangeStatus,
 };
 
@@ -1275,7 +1275,7 @@ pub fn prompt_capture_availability(
         .as_deref()
         .zip(facts.expected_policy_hash.as_deref())
         .is_some_and(|(observed, expected)| observed == expected);
-    let status = if installation.guard_mode == GuardMode::McpOnly.as_str() {
+    let status = if installation.guard_mode == IntegrationProfile::Record.as_str() {
         PromptCaptureStatus::NotConfigured
     } else if !facts.host_supports_prompt_capture {
         PromptCaptureStatus::UnsupportedByHost
@@ -1375,9 +1375,8 @@ fn selected_guard_installation(
 
 fn guard_mode_priority(value: &str) -> u8 {
     match value {
-        "managed" => 3,
-        "guarded" => 2,
-        "mcp_only" => 1,
+        "observe" => 2,
+        "record" => 1,
         _ => 0,
     }
 }
@@ -1671,9 +1670,9 @@ fn validate_guard_installation_observation(
     validate_identifier("project_id", &input.project_id)?;
     validate_host_kind(&input.host_kind)?;
     validate_guard_mode(&input.guard_mode)?;
-    if input.guard_mode == GuardMode::McpOnly.as_str() {
+    if input.guard_mode == IntegrationProfile::Record.as_str() {
         return Err(StoreError::InvalidInput {
-            detail: "guard observation requires guarded or managed guard_mode".to_owned(),
+            detail: "host hook observation requires observe integration profile".to_owned(),
         });
     }
     validate_identifier("observed_policy_hash", &input.observed_policy_hash)?;
@@ -1851,16 +1850,15 @@ fn validate_host_kind(value: &str) -> StoreResult<()> {
 
 fn validate_guard_mode(value: &str) -> StoreResult<()> {
     if [
-        GuardMode::McpOnly.as_str(),
-        GuardMode::Guarded.as_str(),
-        GuardMode::Managed.as_str(),
+        IntegrationProfile::Record.as_str(),
+        IntegrationProfile::Observe.as_str(),
     ]
     .contains(&value)
     {
         Ok(())
     } else {
         Err(StoreError::InvalidInput {
-            detail: "guard_mode must be mcp_only, guarded, or managed".to_owned(),
+            detail: "integration profile must be record or observe".to_owned(),
         })
     }
 }
@@ -2459,7 +2457,7 @@ mod tests {
                 connection_internal_id: "conn_guard_a".to_owned(),
                 project_id: Some("project_guard_a".to_owned()),
                 host_kind: "codex".to_owned(),
-                guard_mode: "guarded".to_owned(),
+                guard_mode: "observe".to_owned(),
                 host_capability_json: r#"{"prompt_capture":true}"#.to_owned(),
                 installation_status: "active".to_owned(),
                 installed_at: Some("2026-06-30T00:00:00Z".to_owned()),
@@ -2474,7 +2472,7 @@ mod tests {
             },
         )?;
         assert_eq!(installation.project_id.as_deref(), Some("project_guard_a"));
-        assert_eq!(installation.guard_mode, "guarded");
+        assert_eq!(installation.guard_mode, "observe");
 
         let session = insert_agent_session(
             fixture.runtime_home.path(),
@@ -2484,7 +2482,7 @@ mod tests {
                 connection_internal_id: "conn_guard_a".to_owned(),
                 guard_installation_id: Some("guard_installation_a".to_owned()),
                 host_kind: "codex".to_owned(),
-                guard_mode: "guarded".to_owned(),
+                guard_mode: "observe".to_owned(),
                 started_at: "2026-06-30T00:02:00Z".to_owned(),
                 metadata_json: "{}".to_owned(),
             },
@@ -2650,7 +2648,7 @@ mod tests {
                 connection_internal_id: "conn_guard_a".to_owned(),
                 guard_installation_id: None,
                 host_kind: "codex".to_owned(),
-                guard_mode: "managed".to_owned(),
+                guard_mode: "observe".to_owned(),
                 started_at: "2026-06-30T01:00:00Z".to_owned(),
                 metadata_json: "{}".to_owned(),
             },
@@ -2716,7 +2714,7 @@ mod tests {
                 connection_internal_id: "conn_guard_a".to_owned(),
                 project_id: Some("project_guard_b".to_owned()),
                 host_kind: "codex".to_owned(),
-                guard_mode: "guarded".to_owned(),
+                guard_mode: "observe".to_owned(),
                 host_capability_json: "{}".to_owned(),
                 installation_status: "active".to_owned(),
                 installed_at: None,
@@ -2755,7 +2753,7 @@ mod tests {
                 connection_internal_id: "conn_guard_a".to_owned(),
                 project_id: "project_guard_a".to_owned(),
                 host_kind: "codex".to_owned(),
-                guard_mode: "guarded".to_owned(),
+                guard_mode: "observe".to_owned(),
                 observed_policy_hash: "sha256:policy-a".to_owned(),
                 observed_binary_version: Some("1.2.3".to_owned()),
                 observed_phase: "session_start".to_owned(),
@@ -2788,7 +2786,7 @@ mod tests {
                 connection_internal_id: "conn_guard_a".to_owned(),
                 project_id: "project_guard_a".to_owned(),
                 host_kind: "codex".to_owned(),
-                guard_mode: "guarded".to_owned(),
+                guard_mode: "observe".to_owned(),
                 observed_policy_hash: "sha256:policy-a".to_owned(),
                 observed_binary_version: Some("1.2.4".to_owned()),
                 observed_phase: "pre_tool".to_owned(),
@@ -2817,7 +2815,7 @@ mod tests {
                 connection_internal_id: "conn_guard_a".to_owned(),
                 project_id: Some("project_guard_a".to_owned()),
                 host_kind: "codex".to_owned(),
-                guard_mode: "guarded".to_owned(),
+                guard_mode: "observe".to_owned(),
                 host_capability_json: r#"{"policy_hash":"sha256:policy-a","required_guard_phases":["session_start_hook","pre_tool_hook","post_tool_hook","user_prompt_submit_hook","stop_hook"],"missing_required_hooks":[],"prompt_capture":true}"#.to_owned(),
                 installation_status: "configured".to_owned(),
                 installed_at: Some("2026-06-30T02:06:00Z".to_owned()),
@@ -2851,7 +2849,7 @@ mod tests {
                 connection_internal_id: "conn_guard_a".to_owned(),
                 project_id: Some("project_guard_a".to_owned()),
                 host_kind: "codex".to_owned(),
-                guard_mode: "guarded".to_owned(),
+                guard_mode: "observe".to_owned(),
                 host_capability_json: r#"{"policy_hash":"sha256:policy-a","required_guard_phases":["session_start_hook","pre_tool_hook"],"missing_required_hooks":["pre_tool_hook"],"prompt_capture":true}"#.to_owned(),
                 installation_status: "degraded".to_owned(),
                 installed_at: Some("2026-06-30T01:59:00Z".to_owned()),
@@ -2873,7 +2871,7 @@ mod tests {
                 connection_internal_id: "conn_guard_a".to_owned(),
                 project_id: "project_guard_a".to_owned(),
                 host_kind: "codex".to_owned(),
-                guard_mode: "guarded".to_owned(),
+                guard_mode: "observe".to_owned(),
                 observed_policy_hash: "sha256:policy-a".to_owned(),
                 observed_binary_version: Some("1.2.3".to_owned()),
                 observed_phase: "session_start".to_owned(),
@@ -2911,7 +2909,7 @@ mod tests {
                 connection_internal_id: "conn_guard_a".to_owned(),
                 project_id: Some("project_guard_a".to_owned()),
                 host_kind: "codex".to_owned(),
-                guard_mode: "guarded".to_owned(),
+                guard_mode: "observe".to_owned(),
                 host_capability_json: r#"{"policy_hash":"sha256:policy-a","required_guard_phases":["session_start_hook"],"missing_required_hooks":[],"prompt_capture":true}"#.to_owned(),
                 installation_status: "configured".to_owned(),
                 installed_at: Some("2026-06-30T01:59:00Z".to_owned()),
@@ -2933,7 +2931,7 @@ mod tests {
                 connection_internal_id: "conn_guard_a".to_owned(),
                 project_id: "project_guard_a".to_owned(),
                 host_kind: "codex".to_owned(),
-                guard_mode: "guarded".to_owned(),
+                guard_mode: "observe".to_owned(),
                 observed_policy_hash: "sha256:policy-a".to_owned(),
                 observed_binary_version: Some("1.2.3".to_owned()),
                 observed_phase: "session_start".to_owned(),
@@ -2966,7 +2964,7 @@ mod tests {
                 connection_internal_id: "conn_guard_other".to_owned(),
                 project_id: "project_guard_a".to_owned(),
                 host_kind: "codex".to_owned(),
-                guard_mode: "guarded".to_owned(),
+                guard_mode: "observe".to_owned(),
                 observed_policy_hash: "sha256:policy-a".to_owned(),
                 observed_binary_version: Some("1.2.3".to_owned()),
                 observed_phase: "session_start".to_owned(),
@@ -2977,7 +2975,7 @@ mod tests {
                 connection_internal_id: "conn_guard_a".to_owned(),
                 project_id: "project_guard_b".to_owned(),
                 host_kind: "codex".to_owned(),
-                guard_mode: "guarded".to_owned(),
+                guard_mode: "observe".to_owned(),
                 observed_policy_hash: "sha256:policy-a".to_owned(),
                 observed_binary_version: Some("1.2.3".to_owned()),
                 observed_phase: "pre_tool".to_owned(),
@@ -2988,7 +2986,7 @@ mod tests {
                 connection_internal_id: "conn_guard_a".to_owned(),
                 project_id: "project_guard_a".to_owned(),
                 host_kind: "claude_code".to_owned(),
-                guard_mode: "guarded".to_owned(),
+                guard_mode: "observe".to_owned(),
                 observed_policy_hash: "sha256:policy-a".to_owned(),
                 observed_binary_version: Some("1.2.3".to_owned()),
                 observed_phase: "post_tool".to_owned(),
@@ -2999,7 +2997,7 @@ mod tests {
                 connection_internal_id: "conn_guard_a".to_owned(),
                 project_id: "project_guard_a".to_owned(),
                 host_kind: "codex".to_owned(),
-                guard_mode: "guarded".to_owned(),
+                guard_mode: "observe".to_owned(),
                 observed_policy_hash: "sha256:other-policy".to_owned(),
                 observed_binary_version: Some("1.2.3".to_owned()),
                 observed_phase: "stop".to_owned(),
@@ -3035,7 +3033,7 @@ mod tests {
                 connection_internal_id: "conn_guard_a".to_owned(),
                 project_id: "project_guard_a".to_owned(),
                 host_kind: "codex".to_owned(),
-                guard_mode: "guarded".to_owned(),
+                guard_mode: "observe".to_owned(),
                 observed_policy_hash: "sha256:policy-a".to_owned(),
                 observed_binary_version: Some("1.2.3".to_owned()),
                 observed_phase: "unknown_phase".to_owned(),
@@ -3141,7 +3139,7 @@ mod tests {
                     connection_internal_id: connection_id.to_owned(),
                     project_id: Some("project_guard_a".to_owned()),
                     host_kind: "codex".to_owned(),
-                    guard_mode: "guarded".to_owned(),
+                    guard_mode: "observe".to_owned(),
                     host_capability_json: r#"{"policy_hash":"sha256:policy-a","required_guard_phases":["session_start_hook","pre_tool_hook","post_tool_hook","user_prompt_submit_hook","stop_hook"],"missing_required_hooks":[],"prompt_capture":true}"#.to_owned(),
                     installation_status: "reload_required".to_owned(),
                     installed_at: Some("2026-06-30T01:59:00Z".to_owned()),

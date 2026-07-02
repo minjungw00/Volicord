@@ -520,27 +520,25 @@ impl fmt::Display for HostKindParseError {
 
 impl Error for HostKindParseError {}
 
-/// Guard integration mode recorded for a connection or session.
+/// Public integration profile selected for host integration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum GuardMode {
-    McpOnly,
-    Guarded,
-    Managed,
+pub enum IntegrationProfile {
+    Record,
+    Observe,
 }
 
-impl GuardMode {
-    /// Returns the stable value name for this guard mode.
+impl IntegrationProfile {
+    /// Returns the stable value name for this integration profile.
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::McpOnly => "mcp_only",
-            Self::Guarded => "guarded",
-            Self::Managed => "managed",
+            Self::Record => "record",
+            Self::Observe => "observe",
         }
     }
 }
 
-/// Guard decision recorded for a guarded operation.
+/// Guard decision recorded for a host-observed operation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum GuardDecision {
@@ -660,28 +658,6 @@ impl GuardEffectiveStatus {
     }
 }
 
-/// Derived guard strength label for the selected connection or session.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum GuardStrength {
-    AuthorityRecordOnly,
-    DetectiveWatch,
-    HostHookGuarded,
-    ManagedGuarded,
-}
-
-impl GuardStrength {
-    /// Returns the stable value name for this guard strength.
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::AuthorityRecordOnly => "authority_record_only",
-            Self::DetectiveWatch => "detective_watch",
-            Self::HostHookGuarded => "host_hook_guarded",
-            Self::ManagedGuarded => "managed_guarded",
-        }
-    }
-}
-
 /// Session-level Product Repository watch availability.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -726,7 +702,7 @@ impl SessionWatchCoverageBasis {
     }
 }
 
-/// Derived prompt-capture availability for guarded User Channel chat commands.
+/// Derived prompt-capture availability for host-observed User Channel chat commands.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum PromptCaptureStatus {

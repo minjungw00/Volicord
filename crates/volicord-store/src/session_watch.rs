@@ -2141,7 +2141,7 @@ mod tests {
                     connection_internal_id: connection_id.to_owned(),
                     guard_installation_id: None,
                     host_kind: "codex".to_owned(),
-                    guard_mode: "mcp_only".to_owned(),
+                    guard_mode: "record".to_owned(),
                     started_at: "2026-07-01T00:00:00Z".to_owned(),
                     metadata_json: "{}".to_owned(),
                 },

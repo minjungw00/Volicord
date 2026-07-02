@@ -36,7 +36,7 @@ pub(super) struct ResolutionCandidate {
 }
 
 impl CoreService {
-    /// Executes `volicord.reconcile_changes` for guarded unrecorded-change findings.
+    /// Executes `volicord.reconcile_changes` for unrecorded-change findings.
     pub fn reconcile_changes(
         &self,
         request: ReconcileChangesRequest,
@@ -940,7 +940,7 @@ fn adjusted_guard_health(
         summary.unresolved_unrecorded_change_count = summary
             .unresolved_unrecorded_change_count
             .saturating_sub(resolved_for_connection);
-        close_task::refresh_guard_strength(summary);
+        close_task::refresh_control_surface(summary);
     }
     Ok(guard_health)
 }

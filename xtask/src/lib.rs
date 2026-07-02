@@ -2507,7 +2507,10 @@ fn validate_guard_command(args: &[String]) -> std::result::Result<(), String> {
             "session",
             "guard-installation",
             "host",
-            "guard-mode",
+            "integration-profile",
+            "policy-hash",
+            "output",
+            "host-output",
         ],
     )?;
     reject_mutually_exclusive(&parsed, "json", "text")?;
@@ -2521,7 +2524,7 @@ fn validate_init_command(args: &[String]) -> std::result::Result<(), String> {
     let parsed = parse_command_args(
         args,
         &["allow-degraded", "dry-run", "json"],
-        &["host", "repo", "mode", "home", "mcp-command"],
+        &["host", "repo", "profile", "home", "mcp-command"],
     )?;
     reject_positionals(&parsed, 0, "`volicord init`")?;
     if !parsed.options.contains("host") {

@@ -37,14 +37,13 @@ use volicord_store::{
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
     StoreError,
 };
-use volicord_types::{GuardInstallationStatus, GuardMode, GuardStrength, PromptCaptureStatus};
+use volicord_types::{GuardInstallationStatus, IntegrationProfile, PromptCaptureStatus};
 
 use crate::host_integration::{
     claude_code::{self, ClaudeCodeAdapter, ProductionCommandRunner},
     codex::{self, CodexAdapter, CodexEnvironment, CodexExistingPlanRequest},
     contracts::{
-        contract_for, contract_supports_managed_mode, hook_event_for_phase,
-        validate_contract_config, ContractSupportStatus, HostContractConfigKind,
+        contract_for, hook_event_for_phase, validate_contract_config, HostContractConfigKind,
     },
     export_file_name, format_supported_connection_intents,
     generic::{GenericAdapter, GenericExportRequest},
@@ -350,7 +349,7 @@ struct VerificationReport {
 }
 
 pub fn init_usage() -> String {
-    "volicord init --host codex|claude-code --repo PATH [--mode mcp-only|guarded|managed] [--allow-degraded] [--home PATH] [--mcp-command PATH] [--dry-run] [--json]\n"
+    "volicord init --host codex|claude-code --repo PATH [--profile record|observe] [--allow-degraded] [--home PATH] [--mcp-command PATH] [--dry-run] [--json]\n"
         .to_owned()
 }
 
@@ -408,13 +407,6 @@ pub fn run_init_command(
         .as_deref()
         .ok_or_else(|| ConnectionCommandError::usage("--repo is required"))?;
     let repo_root = resolve_connection_repo_root(current_dir, Some(repo))?;
-    if parsed.mode == InitMode::Managed {
-        ensure_managed_mode_supported(
-            host_kind,
-            parsed.allow_degraded,
-            init_output_format(&parsed),
-        )?;
-    }
     let runtime_home = init_runtime_home_path(&parsed, current_dir, process)?;
     let existing_profile = installation_profile(&runtime_home)?;
     let profile_plan =
@@ -688,27 +680,21 @@ struct ParsedConnectionOptions {
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 enum InitMode {
-    McpOnly,
     #[default]
-    Guarded,
-    Managed,
+    Record,
+    Observe,
 }
 
 impl InitMode {
-    fn cli_value(self) -> &'static str {
+    fn profile_value(self) -> &'static str {
         match self {
-            Self::McpOnly => "mcp-only",
-            Self::Guarded => "guarded",
-            Self::Managed => "managed",
+            Self::Record => IntegrationProfile::Record.as_str(),
+            Self::Observe => IntegrationProfile::Observe.as_str(),
         }
     }
 
     fn guard_value(self) -> &'static str {
-        match self {
-            Self::McpOnly => GuardMode::McpOnly.as_str(),
-            Self::Guarded => GuardMode::Guarded.as_str(),
-            Self::Managed => GuardMode::Managed.as_str(),
-        }
+        self.profile_value()
     }
 }
 
@@ -1295,7 +1281,7 @@ fn parse_init_options(
     current_dir: &Path,
 ) -> Result<ParsedInitOptions, ConnectionCommandError> {
     let mut parsed = ParsedInitOptions {
-        mode: InitMode::Guarded,
+        mode: InitMode::Record,
         ..ParsedInitOptions::default()
     };
     let mut seen = BTreeSet::new();
@@ -1328,7 +1314,7 @@ fn parse_init_options(
             name.as_str(),
             "host"
                 | "repo"
-                | "mode"
+                | "profile"
                 | "allow-degraded"
                 | "home"
                 | "mcp-command"
@@ -1357,7 +1343,7 @@ fn parse_init_options(
                     value_path(&name, value.as_deref())?,
                 ))
             }
-            "mode" => parsed.mode = parse_init_mode(&value_text(&name, value.as_deref())?)?,
+            "profile" => parsed.mode = parse_init_profile(&value_text(&name, value.as_deref())?)?,
             "allow-degraded" => {
                 reject_boolean_value(&name, value.as_deref())?;
                 parsed.allow_degraded = true;
@@ -1389,13 +1375,12 @@ fn parse_init_options(
     Ok(parsed)
 }
 
-fn parse_init_mode(value: &str) -> Result<InitMode, ConnectionCommandError> {
+fn parse_init_profile(value: &str) -> Result<InitMode, ConnectionCommandError> {
     match value {
-        "mcp-only" | "mcp_only" => Ok(InitMode::McpOnly),
-        "guarded" => Ok(InitMode::Guarded),
-        "managed" => Ok(InitMode::Managed),
+        "record" => Ok(InitMode::Record),
+        "observe" => Ok(InitMode::Observe),
         other => Err(ConnectionCommandError::usage(format!(
-            "unknown init mode: {other}; use mcp-only, guarded, or managed"
+            "unknown integration profile: {other}; use record or observe"
         ))),
     }
 }
@@ -1405,111 +1390,6 @@ fn init_output_format(parsed: &ParsedInitOptions) -> OutputFormat {
         OutputFormat::Json
     } else {
         OutputFormat::Text
-    }
-}
-
-fn ensure_managed_mode_supported(
-    host_kind: HostKind,
-    allow_degraded: bool,
-    format: OutputFormat,
-) -> Result<(), ConnectionCommandError> {
-    let Some(contract) = contract_for(host_kind) else {
-        return Err(managed_mode_unsupported_error(
-            format,
-            host_kind,
-            ContractSupportStatus::Unsupported,
-            "no host integration contract is available for managed mode",
-            allow_degraded,
-        ));
-    };
-    if contract_supports_managed_mode(contract) {
-        return Ok(());
-    }
-    Err(managed_mode_unsupported_error(
-        format,
-        host_kind,
-        contract.managed_mode_support.status,
-        contract.managed_mode_support.detail,
-        allow_degraded,
-    ))
-}
-
-fn managed_mode_unsupported_error(
-    format: OutputFormat,
-    host_kind: HostKind,
-    support_status: ContractSupportStatus,
-    detail: &str,
-    allow_degraded: bool,
-) -> ConnectionCommandError {
-    let host = public_host_label(host_kind);
-    let next_action = format!(
-        "{host} managed mode is unsupported because Volicord has no verified managed distribution source for this host. Use --mode guarded for project-local guarded hooks, use --mode mcp-only for MCP-only setup, or add a verified host-managed plugin/policy contract before using --mode managed."
-    );
-    let required_phases = required_guard_phase_names();
-    match format {
-        OutputFormat::Text => ConnectionCommandError::FailureOutput(format!(
-            "Volicord init failed\nstatus: failed\nerror_code: MANAGED_MODE_UNSUPPORTED\nhost: {host}\nmode: managed\nmanaged_mode_support: {}\nmanaged_source: unsupported\nmanaged_bundle_hash: none\nmanaged_verification_status: unsupported\nrequired_guard_phases: {}\nallow_degraded: {}\nallow_degraded_effect: not_applied\nverification_result: unsupported\ndetail: {detail}\nnext_action: {next_action}\n",
-            support_status.as_str(),
-            required_phases.join(","),
-            yes_no(allow_degraded),
-        )),
-        OutputFormat::Json => {
-            let value = json!({
-                "action": "init",
-                "status": "failed",
-                "error_code": "MANAGED_MODE_UNSUPPORTED",
-                "host": host,
-                "mode": "managed",
-                "managed_mode": {
-                    "supported": false,
-                    "support_status": support_status.as_str(),
-                    "source": "unsupported",
-                    "bundle_hash": Value::Null,
-                    "verification_status": "unsupported",
-                    "required_phases": required_phases,
-                    "observation_status": "not_applicable",
-                    "allow_degraded": allow_degraded,
-                    "allow_degraded_effect": "not_applied",
-                    "detail": detail,
-                },
-                "checks": [
-                    {
-                        "id": "managed_mode_support",
-                        "status": "failed",
-                        "summary": format!("{host} managed mode is unsupported"),
-                        "details": {
-                            "support_status": support_status.as_str(),
-                            "detail": detail,
-                        }
-                    },
-                    {
-                        "id": "managed_distribution_source",
-                        "status": "failed",
-                        "summary": "no verified plugin, managed configuration bundle, or managed policy distribution source is recorded for this host"
-                    },
-                    {
-                        "id": "guard_required_hooks_supported",
-                        "status": "skipped",
-                        "summary": "managed mode did not proceed to guarded hook generation"
-                    }
-                ],
-                "actions": [
-                    {
-                        "id": "choose_supported_mode",
-                        "instruction": next_action,
-                    }
-                ],
-                "primary_next_action": {
-                    "id": "choose_supported_mode",
-                    "instruction": next_action,
-                    "command": Value::Null,
-                }
-            });
-            match serde_json::to_string_pretty(&value) {
-                Ok(text) => ConnectionCommandError::FailureOutput(format!("{text}\n")),
-                Err(error) => ConnectionCommandError::runtime(error.to_string()),
-            }
-        }
     }
 }
 
@@ -3041,21 +2921,18 @@ fn plan_guard_integration(
     guard_installation_id: &str,
     mcp_entry: &ManagedServerEntry,
 ) -> Result<GuardIntegrationPlan, ConnectionCommandError> {
-    if init_mode == InitMode::Managed {
-        ensure_managed_mode_supported(host_kind, allow_degraded, OutputFormat::Text)?;
-    }
     let capabilities = host_capabilities(host_kind);
-    let missing_required_hooks = if init_mode == InitMode::McpOnly {
+    let missing_required_hooks = if init_mode == InitMode::Record {
         Vec::new()
     } else {
         capabilities.missing_required_guard_phases()
     };
-    if init_mode != InitMode::McpOnly && !missing_required_hooks.is_empty() && !allow_degraded {
+    if init_mode != InitMode::Record && !missing_required_hooks.is_empty() && !allow_degraded {
         return Err(ConnectionCommandError::runtime(
-            guarded_hooks_unsupported_message(host_kind, init_mode, &missing_required_hooks),
+            observe_hooks_unsupported_message(host_kind, &missing_required_hooks),
         ));
     }
-    let allow_degraded = allow_degraded && init_mode != InitMode::McpOnly;
+    let allow_degraded = allow_degraded && init_mode != InitMode::Record;
     let policy_guard_commands = guard_command_specs(
         repo_root,
         connection_id,
@@ -3082,7 +2959,7 @@ fn plan_guard_integration(
         init_mode,
         Some(&policy_hash),
     );
-    let host_hook_commands = if init_mode != InitMode::McpOnly
+    let host_hook_commands = if init_mode != InitMode::Record
         && matches!(host_kind, HostKind::Codex | HostKind::ClaudeCode)
     {
         host_hook_command_specs(host_kind, repo_root)?
@@ -3101,7 +2978,7 @@ fn plan_guard_integration(
     )?);
     let policy_path = repo_root.join(VOLICORD_POLICY_FILE);
     generated_files.push(plan_policy_file(&policy_path, &policy)?);
-    if host_kind == HostKind::Codex && init_mode != InitMode::McpOnly {
+    if host_kind == HostKind::Codex && init_mode != InitMode::Record {
         generated_files.push(plan_codex_dispatch_wrapper_file(repo_root)?);
         generated_files.extend(plan_hook_wrapper_files(
             repo_root,
@@ -3118,7 +2995,7 @@ fn plan_guard_integration(
             mcp_entry,
         )?);
     }
-    if host_kind == HostKind::ClaudeCode && init_mode != InitMode::McpOnly {
+    if host_kind == HostKind::ClaudeCode && init_mode != InitMode::Record {
         generated_files.extend(plan_hook_wrapper_files(
             repo_root,
             host_kind,
@@ -3170,31 +3047,28 @@ fn plan_guard_integration(
 
 fn guard_profile_for_init_mode(init_mode: InitMode) -> &'static str {
     match init_mode {
-        InitMode::McpOnly => "mcp_only",
-        InitMode::Guarded => "host_hook_guarded",
-        InitMode::Managed => "managed_guarded",
+        InitMode::Record => "record",
+        InitMode::Observe => "observe",
     }
 }
 
 fn managed_source_for_init_mode(init_mode: InitMode) -> &'static str {
     match init_mode {
-        InitMode::McpOnly => "not_applicable",
-        InitMode::Guarded => "project_local_host_hooks",
-        InitMode::Managed => "managed_distribution",
+        InitMode::Record => "not_applicable",
+        InitMode::Observe => "host_hooks",
     }
 }
 
 fn managed_status_for_init_mode(init_mode: InitMode) -> &'static str {
     match init_mode {
-        InitMode::McpOnly | InitMode::Guarded => "not_applicable",
-        InitMode::Managed => "verified",
+        InitMode::Record | InitMode::Observe => "not_applicable",
     }
 }
 
 fn native_host_output_adapter(host_kind: HostKind, init_mode: InitMode) -> &'static str {
     match (host_kind, init_mode) {
-        (HostKind::Codex, InitMode::Guarded | InitMode::Managed) => "codex",
-        (HostKind::ClaudeCode, InitMode::Guarded | InitMode::Managed) => "claude-code",
+        (HostKind::Codex, InitMode::Observe) => "codex",
+        (HostKind::ClaudeCode, InitMode::Observe) => "claude-code",
         _ => "none",
     }
 }
@@ -3204,24 +3078,22 @@ fn native_host_output_adapter_verified(host_kind: HostKind, init_mode: InitMode)
 }
 
 fn bash_shell_mutation_coverage(host_kind: HostKind, init_mode: InitMode) -> bool {
-    matches!(init_mode, InitMode::Guarded | InitMode::Managed)
+    matches!(init_mode, InitMode::Observe)
         && matches!(host_kind, HostKind::Codex | HostKind::ClaudeCode)
 }
 
 fn direct_file_write_matcher_coverage(host_kind: HostKind, init_mode: InitMode) -> bool {
-    matches!(init_mode, InitMode::Guarded | InitMode::Managed)
+    matches!(init_mode, InitMode::Observe)
         && matches!(host_kind, HostKind::Codex | HostKind::ClaudeCode)
 }
 
-fn guarded_hooks_unsupported_message(
+fn observe_hooks_unsupported_message(
     host_kind: HostKind,
-    init_mode: InitMode,
     missing_required_hooks: &[HostLifecyclePhase],
 ) -> String {
     format!(
-        "GUARDED_HOOKS_UNSUPPORTED: {} {} init requires host lifecycle hook configuration, but this adapter does not know verified project-local hook support for: {}. AGENTS.md and {VOLICORD_POLICY_FILE} are not host hook configuration. Install a compatible guarded host configuration and re-run init, choose --mode mcp-only for MCP-only setup, or add --allow-degraded to explicitly install degraded guarded files.",
+        "OBSERVE_HOOKS_UNSUPPORTED: {} observe init requires host lifecycle hook configuration, but this adapter does not know verified project-local hook support for: {}. AGENTS.md and {VOLICORD_POLICY_FILE} are not host hook configuration. Install compatible observe profile host hooks and re-run init, choose --profile record for record-only setup, or add --allow-degraded to explicitly install degraded observe files.",
         public_host_label(host_kind),
-        init_mode.cli_value(),
         lifecycle_phase_names(missing_required_hooks).join(", ")
     )
 }
@@ -3459,7 +3331,7 @@ fn host_hook_command_specs(
 ) -> Result<BTreeMap<String, HostHookCommand>, ConnectionCommandError> {
     if host_kind == HostKind::Codex && !repo_has_git_marker(repo_root)? {
         return Err(ConnectionCommandError::runtime(format!(
-            "GUARDED_HOOK_ROOT_UNSUPPORTED: Codex guarded hook commands require a Git work tree root for cwd-independent wrapper resolution; no .git marker was found at {}. Non-git full guarded Codex repositories are not supported by the verified host contract. Use a Git work tree for full guarded Codex hooks or choose --mode mcp-only for MCP-only setup.",
+            "OBSERVE_HOOK_ROOT_UNSUPPORTED: Codex observe profile hook commands require a Git work tree root for cwd-independent wrapper resolution; no .git marker was found at {}. Non-git observe Codex repositories are not supported by the verified host contract. Use a Git work tree for observe hooks or choose --profile record for record-only setup.",
             repo_root.display()
         )));
     }
@@ -3639,7 +3511,7 @@ fn plan_codex_hook_file(
 ) -> Result<GeneratedFilePlan, ConnectionCommandError> {
     let contract = contract_for(HostKind::Codex).ok_or_else(|| {
         ConnectionCommandError::runtime(
-            "GUARDED_HOOKS_UNSUPPORTED: no Codex host integration contract is available",
+            "OBSERVE_HOOKS_UNSUPPORTED: no Codex host integration contract is available",
         )
     })?;
     let hooks = REQUIRED_GUARD_PHASES
@@ -3647,7 +3519,7 @@ fn plan_codex_hook_file(
         .map(|phase| {
             let event = hook_event_for_phase(contract, *phase).ok_or_else(|| {
                 ConnectionCommandError::runtime(format!(
-                    "GUARDED_HOOKS_UNSUPPORTED: Codex contract is missing {} hook event data",
+                    "OBSERVE_HOOKS_UNSUPPORTED: Codex contract is missing {} hook event data",
                     phase.capability_name()
                 ))
             })?;
@@ -3777,7 +3649,7 @@ fn claude_settings_hooks_projection(
 ) -> Result<Value, ConnectionCommandError> {
     let contract = contract_for(HostKind::ClaudeCode).ok_or_else(|| {
         ConnectionCommandError::runtime(
-            "GUARDED_HOOKS_UNSUPPORTED: no Claude Code host integration contract is available",
+            "OBSERVE_HOOKS_UNSUPPORTED: no Claude Code host integration contract is available",
         )
     })?;
     let hooks = REQUIRED_GUARD_PHASES
@@ -3785,7 +3657,7 @@ fn claude_settings_hooks_projection(
         .map(|phase| {
             let event = hook_event_for_phase(contract, *phase).ok_or_else(|| {
                 ConnectionCommandError::runtime(format!(
-                    "GUARDED_HOOKS_UNSUPPORTED: Claude Code contract is missing {} hook event data",
+                    "OBSERVE_HOOKS_UNSUPPORTED: Claude Code contract is missing {} hook event data",
                     phase.capability_name()
                 ))
             })?;
@@ -4649,14 +4521,14 @@ fn hook_handler_args(object: &serde_json::Map<String, Value>) -> Option<Vec<Stri
 fn claude_event_name(phase: HostLifecyclePhase) -> Result<&'static str, ConnectionCommandError> {
     let contract = contract_for(HostKind::ClaudeCode).ok_or_else(|| {
         ConnectionCommandError::runtime(
-            "GUARDED_HOOKS_UNSUPPORTED: no Claude Code host integration contract is available",
+            "OBSERVE_HOOKS_UNSUPPORTED: no Claude Code host integration contract is available",
         )
     })?;
     hook_event_for_phase(contract, phase)
         .map(|event| event.event_name)
         .ok_or_else(|| {
             ConnectionCommandError::runtime(format!(
-                "GUARDED_HOOKS_UNSUPPORTED: Claude Code contract is missing {} hook event data",
+                "OBSERVE_HOOKS_UNSUPPORTED: Claude Code contract is missing {} hook event data",
                 phase.capability_name()
             ))
         })
@@ -4777,19 +4649,19 @@ fn guard_command_specs(
                 guard_installation_id.to_owned(),
                 "--host".to_owned(),
                 public_host_label(host_kind).to_owned(),
-                "--guard-mode".to_owned(),
-                init_mode.cli_value().to_owned(),
+                "--integration-profile".to_owned(),
+                init_mode.profile_value().to_owned(),
             ];
             if let Some(policy_hash) = policy_hash {
                 args.push("--policy-hash".to_owned());
                 args.push(policy_hash.to_owned());
             }
             match (host_kind, init_mode) {
-                (HostKind::Codex, InitMode::Guarded | InitMode::Managed) => {
+                (HostKind::Codex, InitMode::Observe) => {
                     args.push("--host-output".to_owned());
                     args.push("codex".to_owned());
                 }
-                (HostKind::ClaudeCode, InitMode::Guarded | InitMode::Managed) => {
+                (HostKind::ClaudeCode, InitMode::Observe) => {
                     args.push("--host-output".to_owned());
                     args.push("claude-code".to_owned());
                 }
@@ -4862,15 +4734,14 @@ fn policy_json(
         "repo_root": path_text(repo_root),
         "connection_id": connection_id,
         "guard_installation_id": guard_installation_id,
-        "mode": init_mode.cli_value(),
-        "guard_mode": init_mode.guard_value(),
+        "selected_profile": init_mode.profile_value(),
         "mcp": {
             "command": &mcp_entry.command,
             "args": &mcp_entry.args,
             "env": &mcp_entry.env,
         },
         "guard": {
-            "enabled": init_mode != InitMode::McpOnly,
+            "enabled": init_mode != InitMode::Record,
             "commands": commands,
         },
     })
@@ -4896,7 +4767,7 @@ fn record_guard_installation(
             guard_mode: init_mode.guard_value().to_owned(),
             host_capability_json: guard_capability_json(integration)?,
             installation_status: installation_status.as_str().to_owned(),
-            installed_at: (init_mode != InitMode::McpOnly).then_some(now.clone()),
+            installed_at: (init_mode != InitMode::Record).then_some(now.clone()),
             last_checked_at: now,
             first_seen_at: None,
             last_seen_at: None,
@@ -4908,12 +4779,9 @@ fn record_guard_installation(
                 "created_by": INIT_METADATA_CREATED_BY,
                 "policy_file": VOLICORD_POLICY_FILE,
                 "allow_degraded": integration.allow_degraded,
-                "guard_profile": integration.guard_profile,
-                "managed_source": integration.managed_source,
-                "managed_bundle_hash": integration.managed_bundle_hash,
-                "managed_verification_status": integration.managed_verification_status,
+                "selected_profile": integration.guard_profile,
                 "required_phases": required_guard_phase_names(),
-                "observation_status": if init_mode == InitMode::McpOnly {
+                "observation_status": if init_mode == InitMode::Record {
                     "disabled"
                 } else {
                     "not_observed"
@@ -4931,10 +4799,7 @@ fn guard_capability_json(plan: &GuardIntegrationPlan) -> Result<String, Connecti
     serde_json::to_string(&json!({
         "schema": "volicord-guard-capability-v1",
         "policy_hash": plan.policy_hash,
-        "guard_profile": plan.guard_profile,
-        "managed_source": plan.managed_source,
-        "managed_bundle_hash": plan.managed_bundle_hash,
-        "managed_verification_status": plan.managed_verification_status,
+        "selected_profile": plan.guard_profile,
         "native_host_output_adapter": plan.native_host_output_adapter,
         "native_host_output_adapter_verified": plan.native_host_output_adapter_verified,
         "bash_shell_mutation_coverage": plan.bash_shell_mutation_coverage,
@@ -4959,7 +4824,7 @@ fn initial_guard_installation_status(
     host_plan: &HostPlan,
     integration: &GuardIntegrationPlan,
 ) -> GuardInstallationStatus {
-    if init_mode == InitMode::McpOnly {
+    if init_mode == InitMode::Record {
         GuardInstallationStatus::Configured
     } else if !integration.missing_required_hooks.is_empty() {
         GuardInstallationStatus::Degraded
@@ -5242,7 +5107,7 @@ fn init_user_actions(
     init_mode: InitMode,
 ) -> Vec<UserAction> {
     let mut actions = existing.to_vec();
-    if host_kind == HostKind::Codex && init_mode != InitMode::McpOnly {
+    if host_kind == HostKind::Codex && init_mode != InitMode::Record {
         let hook_trust_action = UserAction::new(
             UserActionKind::HostTrustRequired,
             "Review and trust Codex project hook commands before relying on Volicord guard hooks",
@@ -5373,7 +5238,7 @@ impl GuardOperationalState {
 
     fn planned(init_mode: InitMode, integration: &GuardIntegrationPlan) -> Self {
         let installation_state = "planned".to_owned();
-        let observation_state = if init_mode == InitMode::McpOnly {
+        let observation_state = if init_mode == InitMode::Record {
             "disabled".to_owned()
         } else {
             "not_observed".to_owned()
@@ -5408,7 +5273,7 @@ impl GuardOperationalState {
             hook_path_safety_details: Vec::new(),
             bash_shell_mutation_coverage: integration.bash_shell_mutation_coverage,
             direct_file_write_matcher_coverage: integration.direct_file_write_matcher_coverage,
-            files_state: if init_mode == InitMode::McpOnly {
+            files_state: if init_mode == InitMode::Record {
                 "disabled".to_owned()
             } else {
                 "planned".to_owned()
@@ -5447,7 +5312,7 @@ impl GuardOperationalState {
             .into_iter()
             .map(str::to_owned)
             .collect::<Vec<_>>();
-        let hook_observed_state = if init_mode == InitMode::McpOnly {
+        let hook_observed_state = if init_mode == InitMode::Record {
             "disabled".to_owned()
         } else if health == GuardInstallationStatus::Active.as_str() {
             "observed".to_owned()
@@ -5470,7 +5335,7 @@ impl GuardOperationalState {
             configuration_state,
             observation_state,
             effective_state,
-            generated_config_verified: init_mode != InitMode::McpOnly
+            generated_config_verified: init_mode != InitMode::Record
                 && integration
                     .generated_files
                     .iter()
@@ -5488,7 +5353,7 @@ impl GuardOperationalState {
             hook_path_safety_details: Vec::new(),
             bash_shell_mutation_coverage: integration.bash_shell_mutation_coverage,
             direct_file_write_matcher_coverage: integration.direct_file_write_matcher_coverage,
-            files_state: if init_mode == InitMode::McpOnly {
+            files_state: if init_mode == InitMode::Record {
                 "disabled".to_owned()
             } else {
                 "installed".to_owned()
@@ -5532,9 +5397,8 @@ impl GuardOperationalState {
 
     fn to_json(&self) -> Value {
         json!({
-            "mode": &self.mode_state,
-            "guard_strength": self.guard_strength(),
-            "profile": &self.guard_profile_state,
+            "selected_profile": &self.guard_profile_state,
+            "control_surface": self.control_surface_json(),
             "installation": &self.installation_state,
             "configuration_health": &self.configuration_state,
             "observation_health": &self.observation_state,
@@ -5545,16 +5409,13 @@ impl GuardOperationalState {
             "hook_commands_cwd_independent": self.hook_commands_cwd_independent,
             "hook_commands_subdirectory_safe": self.hook_commands_subdirectory_safe,
             "hook_path_safety_details": &self.hook_path_safety_details,
-            "pre_tool_blocking_available": self.pre_tool_blocking_available(),
+            "cooperative_pre_tool_warning_available": self.cooperative_pre_tool_warning_available(),
+            "cooperative_pre_tool_denial_available": self.cooperative_pre_tool_denial_available(),
             "post_tool_correlation_available": self.post_tool_correlation_available(),
             "bash_shell_mutation_coverage": self.bash_shell_mutation_coverage,
             "direct_file_write_matcher_coverage": self.direct_file_write_matcher_coverage,
             "bypass_detection_active": self.bypass_detection_active(),
             "files": &self.files_state,
-            "managed_source": &self.managed_source_state,
-            "managed_bundle_hash": &self.managed_bundle_hash,
-            "managed_verification_status": &self.managed_verification_state,
-            "managed_distribution_verified": self.managed_distribution_verified(),
             "agents_managed_block": &self.agents_block_state,
             "volicord_policy_file": &self.policy_file_state,
             "rule_instruction_config": &self.rule_instruction_state,
@@ -5580,18 +5441,28 @@ impl GuardOperationalState {
         self.hook_observed_state == "observed"
     }
 
-    fn guard_strength(&self) -> &'static str {
-        if self.managed_distribution_verified() && self.host_hook_guard_available() {
-            GuardStrength::ManagedGuarded.as_str()
-        } else if self.host_hook_guard_available() {
-            GuardStrength::HostHookGuarded.as_str()
-        } else {
-            GuardStrength::AuthorityRecordOnly.as_str()
+    fn control_surface_json(&self) -> Value {
+        json!({
+            "selected_profile": self.selected_profile(),
+            "host_hooks_active": self.host_hook_guard_available(),
+            "session_watcher_active": false,
+            "cooperative_pre_tool_warning_available": self.cooperative_pre_tool_warning_available(),
+            "cooperative_pre_tool_denial_available": self.cooperative_pre_tool_denial_available(),
+            "unrecorded_changes_detectable": false,
+            "actor_identity_provable": false,
+            "os_enforced": false,
+        })
+    }
+
+    fn selected_profile(&self) -> &str {
+        match self.guard_profile_state.as_str() {
+            "observe" => "observe",
+            _ => "record",
         }
     }
 
     fn host_hook_guard_available(&self) -> bool {
-        matches!(self.mode_state.as_str(), "guarded" | "managed")
+        self.mode_state == IntegrationProfile::Observe.as_str()
             && self.effective_state == "active"
             && self.missing_required_hooks.is_empty()
             && self.generated_config_verified
@@ -5603,7 +5474,11 @@ impl GuardOperationalState {
             && self.direct_file_write_matcher_coverage
     }
 
-    fn pre_tool_blocking_available(&self) -> bool {
+    fn cooperative_pre_tool_warning_available(&self) -> bool {
+        self.host_hook_guard_available()
+    }
+
+    fn cooperative_pre_tool_denial_available(&self) -> bool {
         self.host_hook_guard_available()
     }
 
@@ -5622,18 +5497,8 @@ impl GuardOperationalState {
         )
     }
 
-    fn managed_distribution_verified(&self) -> bool {
-        self.mode_state == GuardMode::Managed.as_str()
-            && self.guard_profile_state == GuardStrength::ManagedGuarded.as_str()
-            && self.managed_verification_state == "verified"
-            && self
-                .managed_bundle_hash
-                .as_deref()
-                .is_some_and(|value| !value.trim().is_empty())
-    }
-
     fn required_guard_phases_state(&self) -> &'static str {
-        if self.mode_state == GuardMode::McpOnly.as_str() {
+        if self.mode_state == IntegrationProfile::Record.as_str() {
             "disabled"
         } else if self.missing_required_hooks.is_empty() {
             "configured"
@@ -5687,7 +5552,7 @@ fn planned_rule_instruction_state(
     init_mode: InitMode,
     integration: &GuardIntegrationPlan,
 ) -> String {
-    if init_mode == InitMode::McpOnly {
+    if init_mode == InitMode::Record {
         return "not_applicable".to_owned();
     }
     let state = generated_file_kind_state(
@@ -5704,7 +5569,7 @@ fn planned_rule_instruction_state(
 }
 
 fn planned_hook_config_state(init_mode: InitMode, integration: &GuardIntegrationPlan) -> String {
-    if init_mode == InitMode::McpOnly {
+    if init_mode == InitMode::Record {
         return "disabled".to_owned();
     }
     let config_state = generated_file_kind_state(
@@ -5736,7 +5601,7 @@ fn planned_hook_path_safety_state(
     init_mode: InitMode,
     integration: &GuardIntegrationPlan,
 ) -> String {
-    if init_mode == InitMode::McpOnly {
+    if init_mode == InitMode::Record {
         return "not_applicable".to_owned();
     }
     if integration.host_hook_commands.is_empty() {
@@ -5761,7 +5626,7 @@ fn planned_prompt_capture_state(
     init_mode: InitMode,
     integration: &GuardIntegrationPlan,
 ) -> &'static str {
-    if init_mode == InitMode::McpOnly {
+    if init_mode == InitMode::Record {
         return PromptCaptureStatus::NotConfigured.as_str();
     }
     if !integration.capabilities.user_prompt_submit_hook {
@@ -5893,7 +5758,7 @@ fn render_simplified_connection_output(
     match data.format {
         OutputFormat::Text => {
             let mut output = format!(
-                "Agent Connection {}\nruntime_home_state: ready\nruntime_home: {}\nconnection_state: {}\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nproject_registration_state: {}\nconnected_repositories: {}\nmcp_config_state: {}\nmcp_config: {}\nguard_mode: {}\nguard_strength: {}\nguard_capabilities: {}\nguard_profile: {}\nmanaged_source: {}\nmanaged_bundle_hash: {}\nmanaged_verification_status: {}\nguard_installation_state: {}\nguard_configuration_state: {}\nguard_observation_state: {}\nguard_effective_state: {}\nguard_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_path_safety: {}\nrequired_guard_phases_state: {}\nrequired_guard_phases_missing: {}\nguard_hook_observed: {}\nguard_observed: {}\nguard_degraded_allowed: {}\nlast_guard_event: {}\nprompt_capture_state: {}\nhost_reload_required: {}\nguard_blockers: {}\n",
+                "Agent Connection {}\nruntime_home_state: ready\nruntime_home: {}\nconnection_state: {}\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nproject_registration_state: {}\nconnected_repositories: {}\nmcp_config_state: {}\nmcp_config: {}\nselected_profile: {}\ncontrol_surface: {}\ncontrol_capabilities: {}\nhost_hooks_active: {}\nsession_watcher_active: {}\nactor_identity_provable: {}\nos_enforced: {}\nguard_installation_state: {}\nguard_configuration_state: {}\nguard_observation_state: {}\nguard_effective_state: {}\nguard_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_path_safety: {}\nrequired_guard_phases_state: {}\nrequired_guard_phases_missing: {}\nguard_hook_observed: {}\nguard_observed: {}\nguard_degraded_allowed: {}\nlast_guard_event: {}\nprompt_capture_state: {}\nhost_reload_required: {}\nguard_blockers: {}\n",
                 data.action,
                 data.runtime_home.display(),
                 data.status.as_str(),
@@ -5906,13 +5771,13 @@ fn render_simplified_connection_output(
                 mcp_config_state,
                 target
                 ,
-                data.guard_state.mode_state,
-                data.guard_state.guard_strength(),
+                data.guard_state.selected_profile(),
+                control_surface_text(&data.guard_state),
                 guard_capabilities_text(&data.guard_state),
-                data.guard_state.guard_profile_state,
-                data.guard_state.managed_source_state,
-                optional_text(data.guard_state.managed_bundle_hash.as_deref()),
-                data.guard_state.managed_verification_state,
+                yes_no(data.guard_state.host_hook_guard_available()),
+                "no",
+                "no",
+                "no",
                 data.guard_state.installation_state,
                 data.guard_state.configuration_state,
                 data.guard_state.observation_state,
@@ -5987,7 +5852,7 @@ fn render_simplified_plan_output(
     match data.format {
         OutputFormat::Text => {
             let mut output = format!(
-                "Agent Connection {} {}\nruntime_home_state: ready\nruntime_home: {}\nconnection_state: {}\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nproject_registration_state: {}\nconnected_repositories: {}\nmcp_config_state: planned_{}\nmcp_config: {}\nguard_mode: {}\nguard_strength: {}\nguard_capabilities: {}\nguard_profile: {}\nmanaged_source: {}\nmanaged_bundle_hash: {}\nmanaged_verification_status: {}\nguard_installation_state: {}\nguard_configuration_state: {}\nguard_observation_state: {}\nguard_effective_state: {}\nguard_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_path_safety: {}\nrequired_guard_phases_state: {}\nrequired_guard_phases_missing: {}\nguard_hook_observed: {}\nguard_observed: {}\nguard_degraded_allowed: {}\nlast_guard_event: {}\nprompt_capture_state: {}\nhost_reload_required: {}\nguard_blockers: {}\nplanned_change: {}\n",
+                "Agent Connection {} {}\nruntime_home_state: ready\nruntime_home: {}\nconnection_state: {}\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nproject_registration_state: {}\nconnected_repositories: {}\nmcp_config_state: planned_{}\nmcp_config: {}\nselected_profile: {}\ncontrol_surface: {}\ncontrol_capabilities: {}\nhost_hooks_active: {}\nsession_watcher_active: {}\nactor_identity_provable: {}\nos_enforced: {}\nguard_installation_state: {}\nguard_configuration_state: {}\nguard_observation_state: {}\nguard_effective_state: {}\nguard_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_path_safety: {}\nrequired_guard_phases_state: {}\nrequired_guard_phases_missing: {}\nguard_hook_observed: {}\nguard_observed: {}\nguard_degraded_allowed: {}\nlast_guard_event: {}\nprompt_capture_state: {}\nhost_reload_required: {}\nguard_blockers: {}\nplanned_change: {}\n",
                 data.action,
                 data.status.as_str(),
                 data.runtime_home.display(),
@@ -6002,13 +5867,13 @@ fn render_simplified_plan_output(
                     .unwrap_or_default(),
                 planned_change,
                 target,
-                guard_state.mode_state,
-                guard_state.guard_strength(),
+                guard_state.selected_profile(),
+                control_surface_text(&guard_state),
                 guard_capabilities_text(&guard_state),
-                guard_state.guard_profile_state,
-                guard_state.managed_source_state,
-                optional_text(guard_state.managed_bundle_hash.as_deref()),
-                guard_state.managed_verification_state,
+                yes_no(guard_state.host_hook_guard_available()),
+                "no",
+                "no",
+                "no",
                 guard_state.installation_state,
                 guard_state.configuration_state,
                 guard_state.observation_state,
@@ -6123,26 +5988,25 @@ fn render_init_output(data: InitOutput<'_>) -> Result<String, ConnectionCommandE
     match data.format {
         OutputFormat::Text => {
             let mut output = format!(
-                "Volicord init {}\nruntime_home_state: ready\nruntime_home: {}\nproject_registration_state: {}\nrepo: {}\nconnection_state: {}\nhost: {}\nmode: {}\nconnection_id: {}\nmcp_config_state: {}\nmcp_config: {}\nplanned_change: {}\nprofile: {}\nguard_mode: {}\nguard_strength: {}\nguard_capabilities: {}\nguard_profile: {}\nmanaged_source: {}\nmanaged_bundle_hash: {}\nmanaged_verification_status: {}\nguard_installation_state: {}\nguard_configuration_state: {}\nguard_observation_state: {}\nguard_effective_state: {}\nguard_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_root_resolution: {}\nhook_path_safety: {}\nrequired_guard_phases_state: {}\nrequired_guard_phases_missing: {}\nguard_hook_observed: {}\nguard_observed: {}\nguard_degraded_allowed: {}\nlast_guard_event: {}\nprompt_capture_state: {}\nhost_reload_required: {}\nguard_blockers: {}\n",
+                "Volicord init {}\nruntime_home_state: ready\nruntime_home: {}\nproject_registration_state: {}\nrepo: {}\nconnection_state: {}\nhost: {}\nselected_profile: {}\nconnection_id: {}\nmcp_config_state: {}\nmcp_config: {}\nplanned_change: {}\nprofile: {}\ncontrol_surface: {}\ncontrol_capabilities: {}\nhost_hooks_active: {}\nsession_watcher_active: {}\nactor_identity_provable: {}\nos_enforced: {}\nguard_installation_state: {}\nguard_configuration_state: {}\nguard_observation_state: {}\nguard_effective_state: {}\nguard_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_root_resolution: {}\nhook_path_safety: {}\nrequired_guard_phases_state: {}\nrequired_guard_phases_missing: {}\nguard_hook_observed: {}\nguard_observed: {}\nguard_degraded_allowed: {}\nlast_guard_event: {}\nprompt_capture_state: {}\nhost_reload_required: {}\nguard_blockers: {}\n",
                 data.status.as_str(),
                 data.runtime_home.display(),
                 project_state,
                 data.repo_root.display(),
                 data.status.as_str(),
                 public_host_label(data.host_kind),
-                data.init_mode.cli_value(),
+                data.init_mode.profile_value(),
                 data.connection_id,
                 mcp_config_state,
                 target,
                 planned_change,
                 data.profile_action,
-                guard_state.mode_state,
-                guard_state.guard_strength(),
+                control_surface_text(&guard_state),
                 guard_capabilities_text(&guard_state),
-                guard_state.guard_profile_state,
-                guard_state.managed_source_state,
-                optional_text(guard_state.managed_bundle_hash.as_deref()),
-                guard_state.managed_verification_state,
+                yes_no(guard_state.host_hook_guard_available()),
+                "no",
+                "no",
+                "no",
                 guard_state.installation_state,
                 guard_state.configuration_state,
                 guard_state.observation_state,
@@ -6183,8 +6047,8 @@ fn render_init_output(data: InitOutput<'_>) -> Result<String, ConnectionCommandE
                     has_reload_action(&actions),
                 ),
                 "host": public_host_label(data.host_kind),
-                "mode": data.init_mode.cli_value(),
-                "guard_mode": data.init_mode.guard_value(),
+                "selected_profile": data.init_mode.profile_value(),
+                "control_surface": guard_state.control_surface_json(),
                 "runtime_home": path_text(data.runtime_home),
                 "repo_root": path_text(data.repo_root),
                 "profile": {
@@ -6273,10 +6137,7 @@ fn init_checks_json(
 }
 
 fn guard_checks_json_values(guard_state: &GuardOperationalState) -> Vec<Value> {
-    let guard_selected = matches!(
-        guard_state.mode_state.as_str(),
-        "guarded" | "managed" | "mixed"
-    );
+    let guard_selected = matches!(guard_state.mode_state.as_str(), "observe" | "mixed");
     let files_check = match guard_state.files_state.as_str() {
         "installed" => json!({
             "id": "guard_files_installed",
@@ -6304,7 +6165,7 @@ fn guard_checks_json_values(guard_state: &GuardOperationalState) -> Vec<Value> {
         "disabled" => json!({
             "id": "guard_files_installed",
             "status": "skipped",
-            "summary": "guard files are disabled for mcp-only mode",
+            "summary": "host hook files are disabled for record profile",
         }),
         other => json!({
             "id": "guard_files_installed",
@@ -6546,7 +6407,7 @@ fn render_simplified_remove_dry_run(
         }
         SimplifiedRemovePlan::MembershipOnly => match format {
             OutputFormat::Text => Ok(format!(
-                "Agent Connection remove dry_run\nruntime_home_state: ready\nruntime_home: {}\nconnection_state: dry_run\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nproject_registration_state: {}\nconnected_repositories: {}\nmcp_config_state: membership\nplanned_change: membership\nguard_mode: not_checked\nguard_installation_state: not_checked\nguard_files_state: not_checked\nguard_hook_observed: not_checked\nlast_guard_event: none\nprompt_capture_state: not_checked\nhost_reload_required: no\nguard_blockers: none\nremaining_connected_projects: {}\nnext_action: none\n",
+                "Agent Connection remove dry_run\nruntime_home_state: ready\nruntime_home: {}\nconnection_state: dry_run\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nproject_registration_state: {}\nconnected_repositories: {}\nmcp_config_state: membership\nplanned_change: membership\nselected_profile: not_checked\nguard_installation_state: not_checked\nguard_files_state: not_checked\nguard_hook_observed: not_checked\nlast_guard_event: none\nprompt_capture_state: not_checked\nhost_reload_required: no\nguard_blockers: none\nremaining_connected_projects: {}\nnext_action: none\n",
                 runtime_home.display(),
                 public_host_name_text(&connection.host_kind),
                 connection.intent,
@@ -6570,7 +6431,7 @@ fn render_simplified_remove_dry_run(
                         "connection": AgentResultStatus::DryRun.as_str(),
                         "project_registration": project_registration_state(projects),
                         "mcp_config": "membership",
-                        "guard_mode": "not_checked",
+                        "selected_profile": "not_checked",
                         "guard_installation": "not_checked",
                         "guard_files": "not_checked",
                         "guard_hook_observed": "not_checked",
@@ -6636,22 +6497,18 @@ fn connection_states_json(
         "connection": connection_state,
         "project_registration": project_registration,
         "mcp_config": mcp_config,
-        "guard_mode": &guard_state.mode_state,
-        "guard_strength": guard_state.guard_strength(),
-        "guard_profile": &guard_state.guard_profile_state,
-        "managed_source": &guard_state.managed_source_state,
-        "managed_bundle_hash": &guard_state.managed_bundle_hash,
-        "managed_verification_status": &guard_state.managed_verification_state,
+        "selected_profile": guard_state.selected_profile(),
+        "control_surface": guard_state.control_surface_json(),
         "generated_config_verified": guard_state.generated_config_verified,
         "native_host_output_adapter_verified": guard_state.native_host_output_adapter_verified,
-        "pre_tool_blocking_available": guard_state.pre_tool_blocking_available(),
+        "cooperative_pre_tool_warning_available": guard_state.cooperative_pre_tool_warning_available(),
+        "cooperative_pre_tool_denial_available": guard_state.cooperative_pre_tool_denial_available(),
         "post_tool_correlation_available": guard_state.post_tool_correlation_available(),
         "bash_shell_mutation_coverage": guard_state.bash_shell_mutation_coverage,
         "direct_file_write_matcher_coverage": guard_state.direct_file_write_matcher_coverage,
         "bypass_detection_active": guard_state.bypass_detection_active(),
         "prompt_capture_available": guard_state.prompt_capture_available(),
         "local_web_consent_available": false,
-        "managed_distribution_verified": guard_state.managed_distribution_verified(),
         "guard_installation": &guard_state.installation_state,
         "guard_configuration": &guard_state.configuration_state,
         "guard_observation": &guard_state.observation_state,
@@ -6897,13 +6754,13 @@ fn guard_degraded_action(
     let Some(connection) = connection else {
         return PrimaryNextAction::new(
             "guard_capability_degraded",
-            "Use a supported guarded host configuration, then rerun init without --allow-degraded; choose --mode mcp-only if guarded hooks are not needed.",
+            "Use a supported observe profile host configuration, then rerun init without --allow-degraded; choose --profile record if host hooks are not needed.",
         );
     };
     let Some(project) = projects.first() else {
         return PrimaryNextAction::new(
             "guard_capability_degraded",
-            "Use a supported guarded host configuration, then rerun init without --allow-degraded; choose --mode mcp-only if guarded hooks are not needed.",
+            "Use a supported observe profile host configuration, then rerun init without --allow-degraded; choose --profile record if host hooks are not needed.",
         );
     };
     let host = public_host_name_text(&connection.host_kind);
@@ -6915,7 +6772,7 @@ fn guard_degraded_action(
     PrimaryNextAction::new(
         "guard_capability_degraded",
         format!(
-            "Use a supported guarded host configuration, then run {command} without --allow-degraded; choose --mode mcp-only if guarded hooks are not needed."
+            "Use a supported observe profile host configuration, then run {command} without --allow-degraded; choose --profile record if host hooks are not needed."
         ),
     )
     .with_command(command)
@@ -7009,15 +6866,26 @@ fn optional_text(value: Option<&str>) -> &str {
 
 fn guard_capabilities_text(guard_state: &GuardOperationalState) -> String {
     format!(
-        "pre_tool_blocking={}, post_tool_correlation={}, hook_path_safety={}, bash_shell_mutation_coverage={}, bypass_detection={}, prompt_capture={}, local_web_consent={}, managed_distribution_verified={}",
-        yes_no(guard_state.pre_tool_blocking_available()),
+        "host_hooks_active={}, cooperative_pre_tool_warning={}, cooperative_pre_tool_denial={}, post_tool_correlation={}, hook_path_safety={}, bash_shell_mutation_coverage={}, unrecorded_changes_detectable={}, prompt_capture={}, local_web_consent={}, actor_identity_provable=no, os_enforced=no",
+        yes_no(guard_state.host_hook_guard_available()),
+        yes_no(guard_state.cooperative_pre_tool_warning_available()),
+        yes_no(guard_state.cooperative_pre_tool_denial_available()),
         yes_no(guard_state.post_tool_correlation_available()),
         &guard_state.hook_path_safety_state,
         yes_no(guard_state.bash_shell_mutation_coverage),
         yes_no(guard_state.bypass_detection_active()),
         yes_no(guard_state.prompt_capture_available()),
         yes_no(false),
-        yes_no(guard_state.managed_distribution_verified()),
+    )
+}
+
+fn control_surface_text(guard_state: &GuardOperationalState) -> String {
+    format!(
+        "selected_profile={}, host_hooks_active={}, session_watcher_active=no, cooperative_pre_tool_warning={}, cooperative_pre_tool_denial={}, unrecorded_changes_detectable=no, actor_identity_provable=no, os_enforced=no",
+        guard_state.selected_profile(),
+        yes_no(guard_state.host_hook_guard_available()),
+        yes_no(guard_state.cooperative_pre_tool_warning_available()),
+        yes_no(guard_state.cooperative_pre_tool_denial_available()),
     )
 }
 
@@ -7055,7 +6923,7 @@ fn guard_state_for_connection(
     let mut prompt_capture_observed = false;
     let prompt_capture_disabled = installations
         .iter()
-        .all(|installation| installation.guard_mode == GuardMode::McpOnly.as_str());
+        .all(|installation| installation.guard_mode == IntegrationProfile::Record.as_str());
     let mut observed = false;
     let mut last_observed_at = None;
     for installation in &installations {
@@ -7071,7 +6939,7 @@ fn guard_state_for_connection(
         if installation.last_seen_phase.as_deref() == Some("prompt_capture") {
             prompt_capture_observed = true;
         }
-        if installation.guard_mode != GuardMode::McpOnly.as_str()
+        if installation.guard_mode != IntegrationProfile::Record.as_str()
             && file_findings.prompt_capture_configured
         {
             prompt_capture_configured = true;
@@ -7429,9 +7297,8 @@ fn guard_profile_state_for_installations(
         return value;
     }
     match guard_mode_state(installations).as_str() {
-        "mcp_only" => "mcp_only",
-        "guarded" => "host_hook_guarded",
-        "managed" => "managed_guarded",
+        "record" => "record",
+        "observe" => "observe",
         _ => "mixed",
     }
     .to_owned()
@@ -7445,9 +7312,8 @@ fn managed_source_state_for_installations(
         return value;
     }
     match guard_profile_state_for_installations(installations, findings).as_str() {
-        "mcp_only" => "not_applicable",
-        "host_hook_guarded" => "project_local_host_hooks",
-        "managed_guarded" => "unknown",
+        "record" => "not_applicable",
+        "observe" => "host_hooks",
         "mixed" => "mixed",
         _ => "unknown",
     }
@@ -7466,8 +7332,7 @@ fn managed_verification_state_for_installations(
         return value;
     }
     match guard_profile_state_for_installations(installations, findings).as_str() {
-        "mcp_only" | "host_hook_guarded" => "not_applicable",
-        "managed_guarded" => "unverified",
+        "record" | "observe" => "not_applicable",
         "mixed" => "mixed",
         _ => "unknown",
     }
@@ -7517,7 +7382,7 @@ fn guard_effective_state(
     configuration_state: &str,
     observation_state: &str,
 ) -> String {
-    if guard_mode == GuardMode::McpOnly.as_str() {
+    if guard_mode == IntegrationProfile::Record.as_str() {
         return "inactive".to_owned();
     }
     match configuration_state {
@@ -7537,7 +7402,7 @@ fn guard_blockers_for_state(
     guard_hook_observed: bool,
     required_hooks_missing: bool,
 ) -> Vec<String> {
-    if guard_mode == GuardMode::McpOnly.as_str() {
+    if guard_mode == IntegrationProfile::Record.as_str() {
         return Vec::new();
     }
     match installation_state {
@@ -7881,17 +7746,8 @@ fn guard_file_findings_with_context(
         .get("allow_degraded")
         .and_then(Value::as_bool)
         .unwrap_or(false);
-    if let Some(value) = nonempty_json_string(&value, "guard_profile") {
+    if let Some(value) = nonempty_json_string(&value, "selected_profile") {
         findings.guard_profiles.push(value);
-    }
-    if let Some(value) = nonempty_json_string(&value, "managed_source") {
-        findings.managed_sources.push(value);
-    }
-    if let Some(value) = nonempty_json_string(&value, "managed_bundle_hash") {
-        findings.managed_bundle_hashes.push(value);
-    }
-    if let Some(value) = nonempty_json_string(&value, "managed_verification_status") {
-        findings.managed_verification_statuses.push(value);
     }
     findings
         .native_host_output_adapter_verified_values
@@ -7997,8 +7853,8 @@ fn verify_recorded_hook_path_safety(
 
 fn capability_requires_hook_path_safety(capability: &Value) -> bool {
     matches!(
-        capability.get("guard_profile").and_then(Value::as_str),
-        Some("host_hook_guarded" | "managed_guarded")
+        capability.get("selected_profile").and_then(Value::as_str),
+        Some("observe")
     ) || capability
         .get("required_guard_phases")
         .and_then(Value::as_array)
@@ -8699,7 +8555,7 @@ fn verify_managed_script_file(
         "--connection ",
         "--guard-installation ",
         "--host ",
-        "--guard-mode ",
+        "--integration-profile ",
         "--policy-hash ",
         "--host-output ",
     ] {
@@ -9466,16 +9322,16 @@ mod tests {
         let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
         let error = plan_guard_integration(
             HostKind::Generic,
-            InitMode::Guarded,
+            InitMode::Observe,
             false,
             &repo,
             "conn_alpha",
             "guard_installation_alpha",
             &entry,
         )
-        .expect_err("default guarded init should reject missing host hook support");
+        .expect_err("default observe init should reject missing host hook support");
 
-        assert!(error.to_string().contains("GUARDED_HOOKS_UNSUPPORTED"));
+        assert!(error.to_string().contains("OBSERVE_HOOKS_UNSUPPORTED"));
         assert!(error.to_string().contains("--allow-degraded"));
         assert!(error.to_string().contains("AGENTS.md"));
         Ok(())
@@ -9487,36 +9343,36 @@ mod tests {
         let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
         let error = plan_guard_integration(
             HostKind::Codex,
-            InitMode::Guarded,
+            InitMode::Observe,
             false,
             &repo,
             "conn_alpha",
             "guard_installation_alpha",
             &entry,
         )
-        .expect_err("Codex guarded hooks should require a Git root strategy");
+        .expect_err("Codex observe hooks should require a Git root strategy");
 
-        assert!(error.to_string().contains("GUARDED_HOOK_ROOT_UNSUPPORTED"));
+        assert!(error.to_string().contains("OBSERVE_HOOK_ROOT_UNSUPPORTED"));
         assert!(error.to_string().contains("Git work tree root"));
-        assert!(error.to_string().contains("Non-git full guarded Codex"));
-        assert!(error.to_string().contains("--mode mcp-only"));
+        assert!(error.to_string().contains("Non-git observe Codex"));
+        assert!(error.to_string().contains("--profile record"));
         assert!(!repo.join(".codex/hooks.json").exists());
         assert!(!repo.join(VOLICORD_POLICY_FILE).exists());
 
         let degraded_error = plan_guard_integration(
             HostKind::Codex,
-            InitMode::Guarded,
+            InitMode::Observe,
             true,
             &repo,
             "conn_alpha",
             "guard_installation_alpha",
             &entry,
         )
-        .expect_err("degraded opt-in should not create unsupported non-git full guarded hooks");
+        .expect_err("degraded opt-in should not create unsupported non-git observe hooks");
         assert!(degraded_error
             .to_string()
-            .contains("GUARDED_HOOK_ROOT_UNSUPPORTED"));
-        assert!(degraded_error.to_string().contains("--mode mcp-only"));
+            .contains("OBSERVE_HOOK_ROOT_UNSUPPORTED"));
+        assert!(degraded_error.to_string().contains("--profile record"));
         assert!(!repo.join(".codex/hooks.json").exists());
         assert!(!repo.join(VOLICORD_POLICY_FILE).exists());
         Ok(())
@@ -9530,7 +9386,7 @@ mod tests {
         let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
         let plan = plan_guard_integration(
             HostKind::Codex,
-            InitMode::Guarded,
+            InitMode::Observe,
             false,
             &repo,
             "conn_alpha",
@@ -9541,16 +9397,13 @@ mod tests {
 
         assert!(applied.missing_required_hooks.is_empty());
         assert_eq!(
-            initial_guard_installation_status(InitMode::Guarded, &host_plan_stub(&entry), &applied),
+            initial_guard_installation_status(InitMode::Observe, &host_plan_stub(&entry), &applied),
             GuardInstallationStatus::ReloadRequired
         );
         let capability: Value = serde_json::from_str(&guard_capability_json(&applied)?)?;
         assert_eq!(capability["allow_degraded"], false);
         assert_eq!(capability["prompt_capture"], true);
-        assert_eq!(capability["guard_profile"], "host_hook_guarded");
-        assert_eq!(capability["managed_source"], "project_local_host_hooks");
-        assert_eq!(capability["managed_bundle_hash"], Value::Null);
-        assert_eq!(capability["managed_verification_status"], "not_applicable");
+        assert_eq!(capability["selected_profile"], "observe");
         assert_eq!(capability["native_host_output_adapter"], "codex");
         assert_eq!(capability["native_host_output_adapter_verified"], true);
         assert_eq!(capability["bash_shell_mutation_coverage"], true);
@@ -9670,7 +9523,7 @@ mod tests {
         let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
         apply_guard_integration(plan_guard_integration(
             HostKind::Codex,
-            InitMode::Guarded,
+            InitMode::Observe,
             false,
             &repo,
             "conn_alpha",
@@ -9724,67 +9577,13 @@ mod tests {
     }
 
     #[test]
-    fn managed_integration_plan_fails_without_verified_distribution_contract(
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let repo = temp_dir("managed-unsupported")?;
-        let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
-        let error = plan_guard_integration(
-            HostKind::Codex,
-            InitMode::Managed,
-            true,
-            &repo,
-            "conn_alpha",
-            "guard_installation_alpha",
-            &entry,
-        )
-        .expect_err("managed mode should require a verified distribution contract");
-        let message = error.to_string();
-
-        assert!(message.contains("MANAGED_MODE_UNSUPPORTED"));
-        assert!(message.contains("allow_degraded_effect: not_applied"));
-        assert!(message.contains("mode: managed"));
-        assert!(!repo.join(".codex/hooks.json").exists());
-        assert!(!repo.join(VOLICORD_POLICY_FILE).exists());
-        Ok(())
-    }
-
-    #[test]
-    fn managed_unsupported_json_reports_no_degradation() -> Result<(), Box<dyn std::error::Error>> {
-        let error = managed_mode_unsupported_error(
-            OutputFormat::Json,
-            HostKind::ClaudeCode,
-            ContractSupportStatus::Unsupported,
-            "no verified managed policy distribution contract is recorded",
-            true,
-        );
-        let ConnectionCommandError::FailureOutput(output) = error else {
-            panic!("managed mode should return structured failure output");
-        };
-        let value: Value = serde_json::from_str(&output)?;
-
-        assert_eq!(value["status"], "failed");
-        assert_eq!(value["error_code"], "MANAGED_MODE_UNSUPPORTED");
-        assert_eq!(value["mode"], "managed");
-        assert_eq!(value["managed_mode"]["supported"], false);
-        assert_eq!(value["managed_mode"]["source"], "unsupported");
-        assert_eq!(value["managed_mode"]["bundle_hash"], Value::Null);
-        assert_eq!(value["managed_mode"]["verification_status"], "unsupported");
-        assert_eq!(value["managed_mode"]["allow_degraded"], true);
-        assert_eq!(
-            value["managed_mode"]["allow_degraded_effect"],
-            "not_applied"
-        );
-        Ok(())
-    }
-
-    #[test]
     fn claude_guarded_integration_generates_hooks_mcp_and_rules(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let repo = temp_dir("claude-guarded")?;
         let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
         let plan = plan_guard_integration(
             HostKind::ClaudeCode,
-            InitMode::Guarded,
+            InitMode::Observe,
             false,
             &repo,
             "conn_alpha",
@@ -9893,7 +9692,7 @@ mod tests {
 
         let again = plan_guard_integration(
             HostKind::ClaudeCode,
-            InitMode::Guarded,
+            InitMode::Observe,
             false,
             &repo,
             "conn_alpha",
@@ -9959,7 +9758,7 @@ mod tests {
         let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
         let applied = apply_guard_integration(plan_guard_integration(
             HostKind::ClaudeCode,
-            InitMode::Guarded,
+            InitMode::Observe,
             false,
             &repo,
             "conn_alpha",
@@ -10022,7 +9821,7 @@ mod tests {
         let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
         let error = plan_guard_integration(
             HostKind::ClaudeCode,
-            InitMode::Guarded,
+            InitMode::Observe,
             false,
             &repo,
             "conn_alpha",
@@ -10047,7 +9846,7 @@ mod tests {
 
         let error = plan_guard_integration(
             HostKind::Codex,
-            InitMode::Guarded,
+            InitMode::Observe,
             false,
             &repo,
             "conn_alpha",
@@ -10075,7 +9874,7 @@ mod tests {
 
         let error = plan_guard_integration(
             HostKind::Codex,
-            InitMode::Guarded,
+            InitMode::Observe,
             false,
             &repo,
             "conn_alpha",
@@ -10102,7 +9901,7 @@ mod tests {
         let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
         let applied = apply_guard_integration(plan_guard_integration(
             HostKind::Codex,
-            InitMode::Guarded,
+            InitMode::Observe,
             false,
             &repo,
             "conn_alpha",
@@ -10129,7 +9928,7 @@ mod tests {
 
         let repaired = apply_guard_integration(plan_guard_integration(
             HostKind::Codex,
-            InitMode::Guarded,
+            InitMode::Observe,
             false,
             &repo,
             "conn_alpha",
@@ -10166,7 +9965,7 @@ mod tests {
         let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
         let error = plan_guard_integration(
             HostKind::ClaudeCode,
-            InitMode::Guarded,
+            InitMode::Observe,
             false,
             &repo,
             "conn_alpha",
@@ -10188,7 +9987,7 @@ mod tests {
         let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
         let applied = apply_guard_integration(plan_guard_integration(
             HostKind::ClaudeCode,
-            InitMode::Guarded,
+            InitMode::Observe,
             false,
             &repo,
             "conn_alpha",
@@ -10219,7 +10018,7 @@ mod tests {
         let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
         let plan = plan_guard_integration(
             HostKind::Codex,
-            InitMode::Guarded,
+            InitMode::Observe,
             false,
             &repo,
             "conn_alpha",
@@ -10310,7 +10109,7 @@ mod tests {
         let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
         let applied = apply_guard_integration(plan_guard_integration(
             HostKind::Codex,
-            InitMode::Guarded,
+            InitMode::Observe,
             false,
             &repo,
             "conn_alpha",
@@ -10390,7 +10189,7 @@ mod tests {
         let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
         let integration = apply_guard_integration(plan_guard_integration(
             HostKind::ClaudeCode,
-            InitMode::Guarded,
+            InitMode::Observe,
             false,
             &repo,
             "conn_alpha",
@@ -10429,7 +10228,7 @@ mod tests {
                 connection_internal_id: "conn_alpha".to_owned(),
                 project_id: Some(project.project_id.clone()),
                 host_kind: HostKind::ClaudeCode.as_str().to_owned(),
-                guard_mode: GuardMode::Guarded.as_str().to_owned(),
+                guard_mode: IntegrationProfile::Observe.as_str().to_owned(),
                 host_capability_json: guard_capability_json(&integration)?,
                 installation_status: GuardInstallationStatus::ReloadRequired.as_str().to_owned(),
                 installed_at: Some("2026-07-01T00:00:00Z".to_owned()),
@@ -10450,7 +10249,7 @@ mod tests {
                 connection_internal_id: "conn_alpha".to_owned(),
                 project_id: project.project_id.clone(),
                 host_kind: HostKind::ClaudeCode.as_str().to_owned(),
-                guard_mode: GuardMode::Guarded.as_str().to_owned(),
+                guard_mode: IntegrationProfile::Observe.as_str().to_owned(),
                 observed_policy_hash: integration.policy_hash.clone(),
                 observed_binary_version: Some("test".to_owned()),
                 observed_phase: "session_start".to_owned(),
@@ -10463,20 +10262,29 @@ mod tests {
         assert_eq!(guard_state.installation_state, "active");
         assert_eq!(guard_state.hook_observed_state, "observed");
         assert_eq!(guard_state.effective_state, "active");
-        assert_eq!(guard_state.guard_profile_state, "host_hook_guarded");
+        assert_eq!(guard_state.selected_profile(), "observe");
+        let control_surface = guard_state.control_surface_json();
+        assert_eq!(control_surface["selected_profile"], "observe");
+        assert_eq!(control_surface["host_hooks_active"], true);
         assert_eq!(
-            guard_state.guard_strength(),
-            GuardStrength::HostHookGuarded.as_str()
+            control_surface["cooperative_pre_tool_warning_available"],
+            true
         );
-        assert!(guard_state.pre_tool_blocking_available());
+        assert_eq!(
+            control_surface["cooperative_pre_tool_denial_available"],
+            true
+        );
+        assert_eq!(control_surface["actor_identity_provable"], false);
+        assert_eq!(control_surface["os_enforced"], false);
+        assert!(guard_state.cooperative_pre_tool_warning_available());
+        assert!(guard_state.cooperative_pre_tool_denial_available());
         assert!(guard_state.post_tool_correlation_available());
         assert!(guard_state.generated_config_verified);
         assert!(guard_state.native_host_output_adapter_verified);
         assert!(guard_state.bash_shell_mutation_coverage);
         assert!(guard_state.direct_file_write_matcher_coverage);
         assert!(!guard_state.bypass_detection_active());
-        assert!(!guard_state.managed_distribution_verified());
-        assert_eq!(guard_state.managed_source_state, "project_local_host_hooks");
+        assert_eq!(guard_state.managed_source_state, "host_hooks");
         assert_eq!(guard_state.managed_bundle_hash, None);
         assert_eq!(guard_state.managed_verification_state, "not_applicable");
         assert_eq!(guard_state.prompt_capture_state, "observed");
@@ -10504,7 +10312,7 @@ mod tests {
         let entry = ManagedServerEntry::new("conn_codex_missing_bash", Path::new("volicord"), None);
         let integration = apply_guard_integration(plan_guard_integration(
             HostKind::Codex,
-            InitMode::Guarded,
+            InitMode::Observe,
             false,
             &repo,
             "conn_codex_missing_bash",
@@ -10558,7 +10366,7 @@ mod tests {
                 connection_internal_id: "conn_codex_missing_bash".to_owned(),
                 project_id: Some(project.project_id.clone()),
                 host_kind: HostKind::Codex.as_str().to_owned(),
-                guard_mode: GuardMode::Guarded.as_str().to_owned(),
+                guard_mode: IntegrationProfile::Observe.as_str().to_owned(),
                 host_capability_json: serde_json::to_string(&capability)?,
                 installation_status: GuardInstallationStatus::ReloadRequired.as_str().to_owned(),
                 installed_at: Some("2026-07-01T00:00:00Z".to_owned()),
@@ -10579,7 +10387,7 @@ mod tests {
                 connection_internal_id: "conn_codex_missing_bash".to_owned(),
                 project_id: project.project_id.clone(),
                 host_kind: HostKind::Codex.as_str().to_owned(),
-                guard_mode: GuardMode::Guarded.as_str().to_owned(),
+                guard_mode: IntegrationProfile::Observe.as_str().to_owned(),
                 observed_policy_hash: integration.policy_hash.clone(),
                 observed_binary_version: Some("test".to_owned()),
                 observed_phase: "session_start".to_owned(),
@@ -10594,146 +10402,21 @@ mod tests {
         assert_eq!(guard_state.hook_config_state, "stale");
         assert_eq!(guard_state.effective_state, "degraded");
         assert!(guard_state.stale_files.contains(&path_text(&hooks_path)));
+        assert_eq!(guard_state.selected_profile(), "observe");
+        let control_surface = guard_state.control_surface_json();
+        assert_eq!(control_surface["host_hooks_active"], false);
         assert_eq!(
-            guard_state.guard_strength(),
-            GuardStrength::AuthorityRecordOnly.as_str()
+            control_surface["cooperative_pre_tool_warning_available"],
+            false
         );
-        assert_ne!(
-            guard_state.guard_strength(),
-            GuardStrength::HostHookGuarded.as_str()
+        assert_eq!(
+            control_surface["cooperative_pre_tool_denial_available"],
+            false
         );
-        assert!(!guard_state.pre_tool_blocking_available());
+        assert_eq!(control_surface["os_enforced"], false);
         assert!(!guard_state.post_tool_correlation_available());
         assert!(!guard_state.generated_config_verified);
         assert!(!guard_state.bash_shell_mutation_coverage);
-        Ok(())
-    }
-
-    #[test]
-    fn guard_state_distinguishes_recorded_managed_profile() -> Result<(), Box<dyn std::error::Error>>
-    {
-        let runtime_home = temp_dir("managed-profile-runtime")?;
-        let repo = temp_dir("managed-profile-repo")?;
-        fs::create_dir_all(repo.join(".git"))?;
-        initialize_runtime_home(&runtime_home, "runtime_home_test", "{}")?;
-        let project = ensure_project_for_repo(
-            &runtime_home,
-            RepoProjectRegistration {
-                project_name: None,
-                project_alias: None,
-                repo_root: repo.clone(),
-                project_home: None,
-                status: ACTIVE_PROJECT_STATUS.to_owned(),
-                metadata_json: "{}".to_owned(),
-            },
-        )?;
-        ensure_agent_connection(
-            &runtime_home,
-            AgentConnectionRegistration {
-                connection_internal_id: "conn_managed".to_owned(),
-                host_kind: HostKind::Codex.as_str().to_owned(),
-                intent: ConnectionIntent::Shared.as_str().to_owned(),
-                host_scope: HostScope::Project.as_str().to_owned(),
-                server_name: DEFAULT_SERVER_NAME.to_owned(),
-                config_target: path_text(&repo.join(".codex/config.toml")),
-                mode: CONNECTION_MODE_WORKFLOW.to_owned(),
-                enabled: true,
-                managed_fingerprint: "fingerprint".to_owned(),
-                last_verification_status: VERIFIED_STATUS_COMPLETE.to_owned(),
-                last_verification_report_json: "{}".to_owned(),
-                last_user_actions_json: "[]".to_owned(),
-                metadata_json: "{}".to_owned(),
-            },
-        )?;
-        add_connection_project(
-            &runtime_home,
-            ConnectionProjectRegistration {
-                connection_internal_id: "conn_managed".to_owned(),
-                project_id: project.project_id.clone(),
-            },
-        )?;
-        upsert_guard_installation(
-            &runtime_home,
-            GuardInstallationUpsert {
-                guard_installation_id: "guard_installation_managed".to_owned(),
-                connection_internal_id: "conn_managed".to_owned(),
-                project_id: Some(project.project_id.clone()),
-                host_kind: HostKind::Codex.as_str().to_owned(),
-                guard_mode: GuardMode::Managed.as_str().to_owned(),
-                host_capability_json: serde_json::to_string(&json!({
-                    "schema": "volicord-guard-capability-v1",
-                    "policy_hash": "sha256:managedpolicy",
-                    "guard_profile": "managed_guarded",
-                    "managed_source": "org_policy_bundle",
-                    "managed_bundle_hash": "sha256:managedtest",
-                    "managed_verification_status": "verified",
-                    "host_capabilities": {
-                        "user_prompt_submit_hook": true,
-                        "rule_file_support": true,
-                    },
-                    "required_guard_phases": required_guard_phase_names(),
-                    "missing_required_hooks": [],
-                    "allow_degraded": false,
-                    "prompt_capture": true,
-                    "files": [],
-                    "commands": {},
-                }))?,
-                installation_status: GuardInstallationStatus::Configured.as_str().to_owned(),
-                installed_at: Some("2026-07-01T00:00:00Z".to_owned()),
-                last_checked_at: "2026-07-01T00:00:00Z".to_owned(),
-                first_seen_at: None,
-                last_seen_at: None,
-                last_seen_phase: None,
-                observed_host_kind: None,
-                observed_policy_hash: None,
-                observed_binary_version: None,
-                metadata_json: "{}".to_owned(),
-            },
-        )?;
-        let projects = list_connection_projects(&runtime_home, "conn_managed")?;
-        let guard_state = guard_state_for_connection(&runtime_home, "conn_managed", &projects)?;
-
-        assert_eq!(guard_state.mode_state, "managed");
-        assert_eq!(guard_state.guard_profile_state, "managed_guarded");
-        assert_eq!(
-            guard_state.guard_strength(),
-            GuardStrength::AuthorityRecordOnly.as_str()
-        );
-        assert_eq!(guard_state.managed_source_state, "org_policy_bundle");
-        assert_eq!(
-            guard_state.managed_bundle_hash,
-            Some("sha256:managedtest".to_owned())
-        );
-        assert_eq!(guard_state.managed_verification_state, "verified");
-        assert!(guard_state.managed_distribution_verified());
-        assert!(!guard_state.pre_tool_blocking_available());
-        assert_ne!(guard_state.guard_profile_state, "host_hook_guarded");
-
-        volicord_store::guards::observe_guard_installation(
-            &runtime_home,
-            volicord_store::guards::GuardInstallationObservation {
-                guard_installation_id: "guard_installation_managed".to_owned(),
-                connection_internal_id: "conn_managed".to_owned(),
-                project_id: project.project_id,
-                host_kind: HostKind::Codex.as_str().to_owned(),
-                guard_mode: GuardMode::Managed.as_str().to_owned(),
-                observed_policy_hash: "sha256:managedpolicy".to_owned(),
-                observed_binary_version: Some("test".to_owned()),
-                observed_phase: "session_start".to_owned(),
-                observed_at: "2026-07-01T00:01:00Z".to_owned(),
-            },
-        )?;
-        let projects = list_connection_projects(&runtime_home, "conn_managed")?;
-        let active_guard_state =
-            guard_state_for_connection(&runtime_home, "conn_managed", &projects)?;
-        assert_eq!(
-            active_guard_state.guard_strength(),
-            GuardStrength::AuthorityRecordOnly.as_str()
-        );
-        assert!(!active_guard_state.pre_tool_blocking_available());
-        assert!(!active_guard_state.post_tool_correlation_available());
-        assert!(!active_guard_state.generated_config_verified);
-        assert!(active_guard_state.managed_distribution_verified());
         Ok(())
     }
 

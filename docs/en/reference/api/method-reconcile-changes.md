@@ -23,7 +23,7 @@ This document does not own:
 
 ## Purpose
 
-`volicord.reconcile_changes` is the public recovery path for guarded and session-watch-created unrecorded Product Repository change findings.
+`volicord.reconcile_changes` is the public recovery path for observe-hook and session-watch-created unrecorded Product Repository change findings.
 
 The method lists unresolved findings for the selected Task, resolves findings that Core can verify from stored Core, guard, expected-write, or session-watch records, and creates ordinary pending `UserJudgment` rows when a remaining finding requires a user-owned acceptance decision. It must not silently dismiss a bypass finding. It must not let an Agent Connection mark an unrecorded Product Repository change accepted without a compatible resolved User Channel judgment.
 
@@ -139,7 +139,7 @@ User-owned basis:
 
 Reserved or future owner-defined bases such as `superseded_by_new_observation` and any other listed basis may be stored only when their owner-defined verification is implemented. This method must not implement a filesystem-reverting or filesystem-probing basis unless that verification is safe and owner-defined.
 
-For findings that still require acceptance, Core creates pending `UserJudgment` rows rather than accepting them. Existing User Channel paths can answer those judgments, including MCP elicitation flows where the initialized client supports them, guarded prompt-capture command handling when prompt-capture availability is `configured`, `observed`, or `active`, loopback local web consent when the adapter can safely expose it, and local `volicord user` commands for CLI recovery. After the user-owned judgment is resolved, `volicord.reconcile_changes` can resolve the linked finding with `accepted_by_user`.
+For findings that still require acceptance, Core creates pending `UserJudgment` rows rather than accepting them. Existing User Channel paths can answer those judgments, including MCP elicitation flows where the initialized client supports them, observe prompt-capture command handling when prompt-capture availability is `configured`, `observed`, or `active`, loopback local web consent when the adapter can safely expose it, and local `volicord user` commands for CLI recovery. After the user-owned judgment is resolved, `volicord.reconcile_changes` can resolve the linked finding with `accepted_by_user`.
 
 ## Rejected result
 

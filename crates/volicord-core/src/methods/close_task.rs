@@ -812,7 +812,7 @@ fn projected_guard_health(
     if let Some(summary) = summary.as_mut() {
         summary.local_web_consent_available = invocation.local_web_consent_available;
         session_watch::apply_session_watch_status(store, invocation, summary)?;
-        refresh_guard_strength(summary);
+        refresh_control_surface(summary);
     }
     Ok(summary)
 }
@@ -838,9 +838,6 @@ struct GuardCapabilityFacts {
     expected_policy_hash: Option<String>,
     required_hook_phases: Vec<String>,
     missing_required_hook_phases: Vec<String>,
-    guard_profile: Option<String>,
-    managed_bundle_hash: Option<String>,
-    managed_verification_status: Option<String>,
     native_host_output_adapter_verified: bool,
     bash_shell_mutation_coverage_configured: bool,
     direct_file_write_matcher_coverage_configured: bool,
@@ -853,7 +850,7 @@ struct GuardCapabilityFacts {
 pub(super) fn guard_health_summary_from_record(
     record: GuardHealthRecord,
 ) -> Result<Option<GuardHealthSummary>, PlanError> {
-    let guard_mode = guard_health_mode(&record)?;
+    let selected_profile = guard_health_profile(&record)?;
     let guard_installation_status = if let Some(installation) = record.guard_installation.as_ref() {
         parse_guard_installation_status(
             "guard_installations",
@@ -874,7 +871,7 @@ pub(super) fn guard_health_summary_from_record(
     let guard_observation_status =
         guard_observation_status(record.guard_installation.as_ref(), &capability)?;
     let effective_guard_status = effective_guard_status(
-        guard_mode,
+        selected_profile,
         guard_configuration_status,
         guard_observation_status,
     );
@@ -958,7 +955,6 @@ pub(super) fn guard_health_summary_from_record(
         .map_err(PlanError::Core)?;
     let prompt_capture_status = prompt_capture_availability.status;
     let prompt_capture_available = prompt_capture_availability.can_use_chat_commands();
-    let managed_distribution_verified = managed_distribution_verified(guard_mode, &capability);
     let missing_or_stale_write_readiness = record
         .latest_event
         .as_ref()
@@ -966,8 +962,8 @@ pub(super) fn guard_health_summary_from_record(
         .transpose()?
         .unwrap_or(false);
     let mut summary = GuardHealthSummary {
-        guard_mode,
-        guard_strength: GuardStrength::AuthorityRecordOnly,
+        selected_profile,
+        control_surface: inactive_control_surface(selected_profile),
         guard_installation_id,
         guard_installation_status,
         guard_configuration_status,
@@ -978,7 +974,8 @@ pub(super) fn guard_health_summary_from_record(
         hook_path_safety: capability.hook_path_safety,
         hook_commands_cwd_independent: capability.hook_commands_cwd_independent,
         hook_commands_subdirectory_safe: capability.hook_commands_subdirectory_safe,
-        pre_tool_blocking_available: false,
+        cooperative_pre_tool_warning_available: false,
+        cooperative_pre_tool_denial_available: false,
         post_tool_correlation_available: false,
         bash_shell_mutation_coverage: capability.bash_shell_mutation_coverage_configured,
         direct_file_write_matcher_coverage: capability
@@ -1006,7 +1003,6 @@ pub(super) fn guard_health_summary_from_record(
         prompt_capture_status,
         prompt_capture_available,
         local_web_consent_available: false,
-        managed_distribution_verified,
         mcp_connection_healthy,
         mcp_connection_status,
         session_watch_status: SessionWatchStatus::Disabled,
@@ -1019,7 +1015,7 @@ pub(super) fn guard_health_summary_from_record(
         unresolved_unrecorded_change_count: record.unresolved_unrecorded_changes.len() as u64,
         missing_or_stale_write_readiness,
     };
-    refresh_guard_strength(&mut summary);
+    refresh_control_surface(&mut summary);
     Ok(Some(summary))
 }
 
@@ -1028,9 +1024,6 @@ fn default_guard_capability_facts() -> GuardCapabilityFacts {
         expected_policy_hash: None,
         required_hook_phases: Vec::new(),
         missing_required_hook_phases: Vec::new(),
-        guard_profile: None,
-        managed_bundle_hash: None,
-        managed_verification_status: None,
         native_host_output_adapter_verified: false,
         bash_shell_mutation_coverage_configured: false,
         direct_file_write_matcher_coverage_configured: false,
@@ -1067,12 +1060,6 @@ fn guard_capability_facts(
         expected_policy_hash,
         required_hook_phases,
         missing_required_hook_phases,
-        guard_profile: nonempty_string_field(&capability, "guard_profile"),
-        managed_bundle_hash: nonempty_string_field(&capability, "managed_bundle_hash"),
-        managed_verification_status: nonempty_string_field(
-            &capability,
-            "managed_verification_status",
-        ),
         native_host_output_adapter_verified: capability_bool_field(
             &capability,
             "native_host_output_adapter_verified",
@@ -1161,10 +1148,7 @@ fn hook_path_safety_facts(
 }
 
 fn capability_requires_hook_path_safety(capability: &JsonObject) -> bool {
-    matches!(
-        capability.get("guard_profile").and_then(Value::as_str),
-        Some("host_hook_guarded" | "managed_guarded")
-    ) || capability
+    capability
         .get("required_guard_phases")
         .and_then(Value::as_array)
         .is_some_and(|phases| !phases.is_empty())
@@ -1711,14 +1695,6 @@ fn hex_bytes(bytes: &[u8]) -> String {
     output
 }
 
-fn nonempty_string_field(object: &JsonObject, field: &str) -> Option<String> {
-    object
-        .get(field)
-        .and_then(Value::as_str)
-        .filter(|value| !value.trim().is_empty())
-        .map(str::to_owned)
-}
-
 fn string_array_field(object: &JsonObject, field: &str) -> Option<Vec<String>> {
     Some(
         object
@@ -1732,34 +1708,41 @@ fn string_array_field(object: &JsonObject, field: &str) -> Option<Vec<String>> {
     )
 }
 
-fn managed_distribution_verified(guard_mode: GuardMode, capability: &GuardCapabilityFacts) -> bool {
-    guard_mode == GuardMode::Managed
-        && capability.guard_profile.as_deref() == Some("managed_guarded")
-        && capability.managed_verification_status.as_deref() == Some("verified")
-        && capability.managed_bundle_hash.is_some()
+fn inactive_control_surface(selected_profile: IntegrationProfile) -> ControlSurfaceSummary {
+    ControlSurfaceSummary {
+        selected_profile,
+        host_hooks_active: false,
+        session_watcher_active: false,
+        cooperative_pre_tool_warning_available: false,
+        cooperative_pre_tool_denial_available: false,
+        unrecorded_changes_detectable: false,
+        actor_identity_provable: false,
+        os_enforced: false,
+    }
 }
 
-pub(super) fn refresh_guard_strength(summary: &mut GuardHealthSummary) {
-    let host_hook_strength_available = host_hook_strength_available(summary);
-    summary.pre_tool_blocking_available =
-        host_hook_strength_available && required_hook_available(summary, "pre_tool_hook");
+pub(super) fn refresh_control_surface(summary: &mut GuardHealthSummary) {
+    let host_hooks_active = host_hooks_active(summary);
+    let pre_tool_available = host_hooks_active && required_hook_available(summary, "pre_tool_hook");
+    summary.cooperative_pre_tool_warning_available = pre_tool_available;
+    summary.cooperative_pre_tool_denial_available = pre_tool_available;
     summary.post_tool_correlation_available =
-        host_hook_strength_available && required_hook_available(summary, "post_tool_hook");
+        host_hooks_active && required_hook_available(summary, "post_tool_hook");
     summary.bypass_detection_active = summary.session_watch_status == SessionWatchStatus::Active;
-    summary.guard_strength =
-        if summary.managed_distribution_verified && host_hook_strength_available {
-            GuardStrength::ManagedGuarded
-        } else if host_hook_strength_available {
-            GuardStrength::HostHookGuarded
-        } else if summary.bypass_detection_active {
-            GuardStrength::DetectiveWatch
-        } else {
-            GuardStrength::AuthorityRecordOnly
-        };
+    summary.control_surface = ControlSurfaceSummary {
+        selected_profile: summary.selected_profile,
+        host_hooks_active,
+        session_watcher_active: summary.session_watch_status == SessionWatchStatus::Active,
+        cooperative_pre_tool_warning_available: summary.cooperative_pre_tool_warning_available,
+        cooperative_pre_tool_denial_available: summary.cooperative_pre_tool_denial_available,
+        unrecorded_changes_detectable: summary.session_watch_status == SessionWatchStatus::Active,
+        actor_identity_provable: false,
+        os_enforced: false,
+    };
 }
 
-fn host_hook_strength_available(summary: &GuardHealthSummary) -> bool {
-    matches!(summary.guard_mode, GuardMode::Guarded | GuardMode::Managed)
+fn host_hooks_active(summary: &GuardHealthSummary) -> bool {
+    summary.selected_profile == IntegrationProfile::Observe
         && summary.effective_guard_status == GuardEffectiveStatus::Active
         && summary.guard_configuration_status == GuardConfigurationStatus::Configured
         && summary.guard_observation_status == GuardObservationStatus::Observed
@@ -1892,11 +1875,11 @@ fn guard_observation_status(
 }
 
 fn effective_guard_status(
-    guard_mode: GuardMode,
+    selected_profile: IntegrationProfile,
     configuration_status: GuardConfigurationStatus,
     observation_status: GuardObservationStatus,
 ) -> GuardEffectiveStatus {
-    if guard_mode == GuardMode::McpOnly {
+    if selected_profile == IntegrationProfile::Record {
         return GuardEffectiveStatus::Inactive;
     }
     match configuration_status {
@@ -1916,31 +1899,35 @@ fn effective_guard_status(
     }
 }
 
-fn guard_health_mode(record: &GuardHealthRecord) -> Result<GuardMode, PlanError> {
+fn guard_health_profile(record: &GuardHealthRecord) -> Result<IntegrationProfile, PlanError> {
     if let Some(installation) = record.guard_installation.as_ref() {
-        return parse_guard_mode(
+        return parse_integration_profile(
             "guard_installations",
             &installation.guard_installation_id,
             &installation.guard_mode,
         );
     }
     if let Some(session) = record.latest_session.as_ref() {
-        return parse_guard_mode("agent_sessions", &session.session_id, &session.guard_mode);
+        return parse_integration_profile(
+            "agent_sessions",
+            &session.session_id,
+            &session.guard_mode,
+        );
     }
-    Ok(GuardMode::McpOnly)
+    Ok(IntegrationProfile::Record)
 }
 
-fn parse_guard_mode(
+fn parse_integration_profile(
     table: &'static str,
     record_ref: &str,
     value: &str,
-) -> Result<GuardMode, PlanError> {
+) -> Result<IntegrationProfile, PlanError> {
     serde_json::from_value(Value::String(value.to_owned()))
         .map_err(|_| {
             CorePipelineError::Store(StoreError::corrupt_owner_state_value(
                 table,
                 record_ref.to_owned(),
-                "guard_mode",
+                "integration_profile",
             ))
         })
         .map_err(PlanError::Core)
@@ -2018,18 +2005,16 @@ fn guard_close_blockers(
     let Some(summary) = context.guard_health.as_ref() else {
         return Vec::new();
     };
-    let mcp_only_watch_blocks = summary.guard_mode == GuardMode::McpOnly
+    let record_watch_blocks = summary.selected_profile == IntegrationProfile::Record
         && summary.session_watch_status == SessionWatchStatus::Active
         && summary.unresolved_unrecorded_change_count > 0;
-    if !matches!(summary.guard_mode, GuardMode::Guarded | GuardMode::Managed)
-        && !mcp_only_watch_blocks
-    {
+    if summary.selected_profile != IntegrationProfile::Observe && !record_watch_blocks {
         return Vec::new();
     }
 
     let task_ref = task_ref_for_close(request, project_state.state_version);
     let mut blockers = Vec::new();
-    if summary.guard_mode == GuardMode::McpOnly {
+    if summary.selected_profile == IntegrationProfile::Record {
         if summary.unresolved_unrecorded_change_count > 0 {
             let can_resolve_in_chat = user_channel_can_resolve_in_chat(Some(summary));
             blockers.push(close_blocker_with_resolution(
@@ -2053,19 +2038,18 @@ fn guard_close_blockers(
                 }],
             ));
         }
-        return guard_blockers_with_strength(blockers, summary.guard_strength);
+        return guard_blockers_with_control_surface(blockers, &summary.control_surface);
     }
     if let Some(blocker) = guard_installation_close_blocker(summary, &task_ref) {
         blockers.push(blocker);
     }
-    if summary.guard_mode == GuardMode::Managed
-        && (summary.session_watch_status != SessionWatchStatus::Active
-            || summary.session_watch_partial_coverage_warning.is_some())
+    if summary.session_watch_status != SessionWatchStatus::Active
+        || summary.session_watch_partial_coverage_warning.is_some()
     {
         let message = if summary.session_watch_status == SessionWatchStatus::Active {
-            "Managed close requires full Product Repository session-watch coverage."
+            "Observe profile requires full Product Repository session-watch coverage."
         } else {
-            "Managed close requires an active Product Repository session watch."
+            "Observe profile requires an active Product Repository session watch."
         };
         blockers.push(close_blocker(
             CloseReadinessBlockerCategory::ConnectionCapability,
@@ -2085,7 +2069,7 @@ fn guard_close_blockers(
         blockers.push(close_blocker_with_resolution(
             CloseReadinessBlockerCategory::ConnectionCapability,
             "guard_connection_unhealthy",
-            "Guarded close requires the Agent Connection to be healthy.",
+            "Observe profile requires the Agent Connection to be healthy.",
             false,
             true,
             vec![task_ref.clone()],
@@ -2124,7 +2108,7 @@ fn guard_close_blockers(
         blockers.push(close_blocker(
             CloseReadinessBlockerCategory::WriteCompatibility,
             "guard_write_readiness_missing_or_stale",
-            "Guard events detected missing or stale write readiness.",
+            "Host hook events detected missing or stale write readiness.",
             vec![task_ref.clone()],
             vec![NextActionSummary {
                 action_kind: NextActionKind::PrepareWrite,
@@ -2135,15 +2119,15 @@ fn guard_close_blockers(
             }],
         ));
     }
-    guard_blockers_with_strength(blockers, summary.guard_strength)
+    guard_blockers_with_control_surface(blockers, &summary.control_surface)
 }
 
-fn guard_blockers_with_strength(
+fn guard_blockers_with_control_surface(
     mut blockers: Vec<CloseReadinessBlocker>,
-    guard_strength: GuardStrength,
+    control_surface: &ControlSurfaceSummary,
 ) -> Vec<CloseReadinessBlocker> {
     for blocker in &mut blockers {
-        blocker.guard_strength = Some(guard_strength);
+        blocker.control_surface = Some(control_surface.clone());
     }
     blockers
 }
@@ -2194,49 +2178,48 @@ fn guard_installation_close_blocker(
     let (code, message, label) = match summary.guard_configuration_status {
         GuardConfigurationStatus::Absent => (
             "guard_not_installed",
-            format!("Guarded close requires a recorded guard installation ({observation_detail})."),
-            format!("Install the guard integration for host {host_kind} before completing the Task."),
+            format!("Observe profile requires a recorded host-hook installation ({observation_detail})."),
+            format!("Install the observe profile hook integration for host {host_kind} before completing the Task."),
         ),
         GuardConfigurationStatus::ReloadRequired => (
             "guard_reload_required",
-            format!("Guard files are installed, but the host has not reloaded them ({observation_detail})."),
-            format!("Restart or reload host {host_kind} so it loads the Volicord guard hooks."),
+            format!("Host-hook files are installed, but the host has not reloaded them ({observation_detail})."),
+            format!("Restart or reload host {host_kind} so it loads the Volicord host hooks."),
         ),
         GuardConfigurationStatus::Configured
             if summary.guard_observation_status == GuardObservationStatus::StaleObservation =>
         {
             (
                 "guard_not_observed",
-                format!("Guard files are configured, but the latest observation does not match the current installation ({observation_detail})."),
-                format!("Run a current guard hook for host {host_kind} before completing the Task."),
+                format!("Host-hook files are configured, but the latest observation does not match the current installation ({observation_detail})."),
+                format!("Run a current host hook for host {host_kind} before completing the Task."),
             )
         }
         GuardConfigurationStatus::Configured => (
             "guard_not_observed",
-            format!("Guard files are configured, but no matching guard hook has been observed ({observation_detail})."),
-            format!("Start or reload host {host_kind} and let the Volicord guard hook run before close."),
+            format!("Host-hook files are configured, but no matching host hook has been observed ({observation_detail})."),
+            format!("Start or reload host {host_kind} and let the Volicord host hook run before close."),
         ),
         GuardConfigurationStatus::Stale => (
             "guard_stale",
-            format!("Guard health is stale for this guarded close path ({observation_detail})."),
-            format!("Refresh or reinstall the guard integration for host {host_kind} before completing the Task."),
+            format!("Observe profile health is stale for this close path ({observation_detail})."),
+            format!("Refresh or reinstall the observe profile hook integration for host {host_kind} before completing the Task."),
         ),
         GuardConfigurationStatus::Broken => (
             "guard_broken",
-            format!("Guard health is broken for this guarded close path ({observation_detail})."),
-            format!("Repair the guard integration for host {host_kind} before completing the Task."),
+            format!("Observe profile health is broken for this close path ({observation_detail})."),
+            format!("Repair the observe profile hook integration for host {host_kind} before completing the Task."),
         ),
         GuardConfigurationStatus::Degraded if !summary.missing_required_hook_phases.is_empty() => (
             "guard_required_hooks_missing",
-            format!("Guard configuration is missing required hook phases for this guarded close path ({observation_detail})."),
-            format!("Install required guard hook phases for host {host_kind}: {missing_phases}."),
+            format!("Observe profile configuration is missing required hook phases for this close path ({observation_detail})."),
+            format!("Install required host hook phases for host {host_kind}: {missing_phases}."),
         ),
-        GuardConfigurationStatus::Degraded if guard_degraded_blocks_close(summary.guard_mode) => (
+        GuardConfigurationStatus::Degraded => (
             "guard_degraded",
-            format!("Guard health is degraded and the current guard policy blocks close ({observation_detail})."),
-            format!("Repair degraded guard health for host {host_kind} before completing the Task."),
+            format!("Observe profile health is degraded and blocks close ({observation_detail})."),
+            format!("Repair degraded observe profile health for host {host_kind} before completing the Task."),
         ),
-        GuardConfigurationStatus::Degraded => return None,
     };
     Some(close_blocker_with_resolution(
         CloseReadinessBlockerCategory::ConnectionCapability,
@@ -2253,10 +2236,6 @@ fn guard_installation_close_blocker(
             required_refs: vec![task_ref.clone()],
         }],
     ))
-}
-
-fn guard_degraded_blocks_close(guard_mode: GuardMode) -> bool {
-    matches!(guard_mode, GuardMode::Guarded | GuardMode::Managed)
 }
 
 fn terminal_close_blockers(

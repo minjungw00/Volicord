@@ -112,7 +112,7 @@ volicord project use
 또는 Product Repository를 명시적으로 선택합니다.
 
 ```sh
-volicord init --host codex --repo /path/to/your-product-repo --mode mcp-only
+volicord init --host codex --repo /path/to/your-product-repo --profile record
 ```
 
 `/path/to/your-product-repo`는 에이전트에게 작업을 요청할 Product Repository의 경로
@@ -125,13 +125,13 @@ volicord init --host codex --repo /path/to/your-product-repo --mode mcp-only
 못하거나 호스트 값이 지원되지 않습니다.
 
 제한된 복구: lifecycle hook 설치 없는 일반 첫 실행 설정에는 호스트, 저장소,
-`mcp-only` 모드를 init에 명시적으로 전달합니다.
+`record` 프로필을 init에 명시적으로 전달합니다.
 
 ```sh
-volicord init --host codex --repo /path/to/your-product-repo --mode mcp-only
+volicord init --host codex --repo /path/to/your-product-repo --profile record
 ```
 
-Guarded 또는 managed 설정에는 [관리 CLI
+Observe 설정에는 [관리 CLI
 참조](../reference/admin-cli.md#agent-host-setup-and-init)의 전체 init 계약을 사용합니다.
 검증된 hook 지원이 빠져 있으면 명시적인 degraded opt-in이 필요합니다.
 
@@ -261,19 +261,18 @@ volicord connection verify codex --repo /path/to/your-product-repo
   아닙니다. Init을 다시 실행하고 생성 명령을 지원되지 않는 placeholder로 바꾸지
   않습니다.
 
-Codex guarded hook 명령에는 선택된 Product Repository가 Git work tree여야 합니다. Wrapper
+Codex observe hook 명령에는 선택된 Product Repository가 Git work tree여야 합니다. Wrapper
 stderr가 Git root를 해석할 수 없다고 말하거나, 호스트 session이 하위 디렉터리에서
 시작할 때만 hook이 실패한다면, session이 의도한 Git work tree 안에 있고 호스트
 프로세스가 `git`을 사용할 수 있는지 확인한 뒤 그 저장소에 대해 init을 다시 실행합니다.
-Claude Code guarded hook 명령은 `${CLAUDE_PROJECT_DIR}`를 기준으로 합니다. 호스트가 그
+Claude Code observe hook 명령은 `${CLAUDE_PROJECT_DIR}`를 기준으로 합니다. 호스트가 그
 프로젝트 디렉터리를 제공하지 않는다면 호스트 자체의 trust와 project-selection 흐름으로
 호스트 설정을 reload하거나 복구합니다.
 
-안전하지 않은 hook 경로는 완전한 `host_hook_guarded` 또는 `managed_guarded` guard
-strength를 막습니다. Watcher 사용 가능 여부에 따라 보기는 `authority_record_only` 또는
-`detective_watch`에 머물 수 있습니다. 경로 복구는 여전히 호스트 trust, approval,
-restart, reload와 별개입니다. 보고된 호스트 소유 동작을 완료하고 복구 뒤 verification을
-다시 실행합니다.
+안전하지 않은 hook 경로는 observe host hook을 inactive로 유지합니다. Watcher 사용 가능
+여부는 control-surface 요약에서 별도로 보고됩니다. 경로 복구는 여전히 호스트 trust,
+approval, restart, reload와 별개입니다. 보고된 호스트 소유 동작을 완료하고 복구 뒤
+verification을 다시 실행합니다.
 
 ## Shared 연결에 호스트 승인이 필요함
 

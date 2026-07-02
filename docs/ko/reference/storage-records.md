@@ -46,7 +46,7 @@ Volicord는 기준 범위 기록을 로컬 `Volicord Runtime Home` 하나와 등
 
 - `registry.sqlite`는 Runtime Home 식별 정보, 설치 프로필 기록, 프로젝트 등록 매핑, 프로젝트 alias, Agent Connection 기록, Connection Projects 멤버십, guard 설치 기록, local web consent token 메타데이터, registry 메타데이터를 저장합니다. 설치 프로필에는 선택된 `volicord` 명령, MCP 시작 명령, bin 디렉터리, 기본 연결 모드, 메타데이터, 타임스탬프가 포함됩니다. 프로젝트 등록에는 `project_internal_id`, 표시 이름, CLI 선택 alias, Runtime Home 관계, 등록된 `repo_root`, `project_home`, 프로젝트 `state.sqlite` 경로, 상태, 메타데이터, 타임스탬프가 포함됩니다.
 - `projects/{project_internal_id}/`는 등록된 프로젝트 하나에 대한 기본 Volicord 프로젝트 홈 형태입니다. `repo_root`와 같은 위치나 권한이 아닙니다.
-- `state.sqlite`는 등록된 프로젝트의 프로젝트별 로컬 Core 상태와 프로젝트 범위 guarded-operation 기록을 저장합니다.
+- `state.sqlite`는 등록된 프로젝트의 프로젝트별 로컬 Core 상태와 프로젝트 범위 host-observation 기록을 저장합니다.
 - `artifacts/`는 아티팩트 저장소를 사용할 때의 프로젝트 아티팩트 저장소이며, 아티팩트 저장소가 처음 필요할 때 늦게 만들어질 수 있습니다. `artifacts/tmp/`는 아티팩트 스테이징에 필요할 때 쓰는 임시 스테이징 공간이며 증거 권한이 아닙니다. 이 디렉터리도 스테이징이 일어날 때 늦게 만들어질 수 있습니다. 이 디렉터리들은 프로젝트 등록 직후에 반드시 존재할 필요가 없습니다.
 
 아티팩트 경로 기준:
@@ -86,10 +86,10 @@ API 스키마 형태와 저장소 기록 배치는 서로 다른 담당 문서�
 | `registry.sqlite` | Guard installation | Guard 설정과 호스트 capability 기록 | Runtime Home, Agent Connection, 선택적 프로젝트 범위, 호스트 종류, guard 모드, 호스트 capability JSON, 설치 health, 타임스탬프, 메타데이터. |
 | `registry.sqlite` | Local web consent token | User Channel fallback token | 대기 사용자 판단을 위한 hash-only 일회성 token 메타데이터입니다. 프로젝트, 연결, 판단, capture basis, 상태, 만료, 생성/완료 메타데이터로 범위가 정해집니다. |
 | `state.sqlite` | `project_state` | 프로젝트 상태 헤더 | 저장 프로필, `state_version`, 현재 적용 `Task` 포인터, 프로젝트 강제 프로필. |
-| `state.sqlite` | `agent_sessions` | Guarded Agent Session | Agent Connection 하나에 대한 프로젝트 범위 세션, 선택적 guard 설치, 호스트 종류, guard 모드, 시작/종료 타임스탬프, 메타데이터. |
+| `state.sqlite` | `agent_sessions` | 관찰된 Agent Session | Agent Connection 하나에 대한 프로젝트 범위 세션, 선택적 guard 설치, 호스트 종류, 통합 프로필, 시작/종료 타임스탬프, 메타데이터. |
 | `state.sqlite` | `guard_events` | Guard decision 이벤트 | 연결 및 선택적 세션 또는 설치에 묶이는 프로젝트 범위 guard 이벤트입니다. decision, subject JSON, result JSON, 타임스탬프, 메타데이터를 포함합니다. |
 | `state.sqlite` | `prompt_captures` | Prompt capture | 세션에 대한 프로젝트 범위 prompt capture입니다. 연결, capture kind, prompt hash, 선택적 prompt text, 타임스탬프, 메타데이터를 포함합니다. |
-| `state.sqlite` | `expected_writes` | 예상 Product Repository 쓰기 | 허용된 guarded pre-tool 쓰기가 만드는 프로젝트 범위 expected-write 상관 기록입니다. 연결/세션 식별 정보, 선택적 호스트 invocation 식별 정보, 정확한 경로 정책, active task/Change Unit/Write Check 근거, 타임스탬프, 매칭된 post-tool 메타데이터를 포함합니다. |
+| `state.sqlite` | `expected_writes` | 예상 Product Repository 쓰기 | 허용된 observe pre-tool 쓰기가 만드는 프로젝트 범위 expected-write 상관 기록입니다. 연결/세션 식별 정보, 선택적 호스트 invocation 식별 정보, 정확한 경로 정책, active task/Change Unit/Write Check 근거, 타임스탬프, 매칭된 post-tool 메타데이터를 포함합니다. |
 | `state.sqlite` | `unrecorded_changes` | 기록되지 않은 Product Repository 변경 | Core run 또는 담당자가 정의한 다른 기록과 아직 연결되지 않은 관찰된 Product Repository 변경에 대한 프로젝트 범위 미해결 또는 해결 기록. |
 | `state.sqlite` | `session_watch_baselines` | 세션 watch 기준선 | 등록된 Product Repository 또는 watch path set에 대한 프로젝트 범위 세션 watch 상태와 기준선 스냅샷입니다. 유효한 제외 항목, 스냅샷 digest 메타데이터, 간결한 스냅샷 entry를 포함합니다. |
 | `state.sqlite` | `session_watch_observations` | 세션 watch 관찰 | 이후의 안전한 스냅샷을 기준선과 비교해 얻은 프로젝트 범위 detective 관찰입니다. 관찰된 변경 경로, 선택적 expected-write 상관 관계, 기존 unrecorded-change 행에 대한 선택적 연결을 포함합니다. |
@@ -152,11 +152,11 @@ API 스키마 형태와 저장소 기록 배치는 서로 다른 담당 문서�
 
 이 보존 규칙은 `tasks`, `change_units`, `user_judgments`, `project_continuity_records`, `write_checks`, `runs`, `artifacts`, `artifact_links`, `evidence_summaries`, `evidence_observations`, `blockers`, `task_events`, `tool_invocations`, `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unrecorded_changes`, `session_watch_baselines`, `session_watch_observations`에 적용됩니다. 아티팩트별 임시/영속 보존 규칙은 [아티팩트 저장소](storage-artifacts.md)가 담당합니다.
 
-### Guarded Operation 기록
+### Host-Observation 기록
 
-Guarded-operation 기록은 호스트 통합 상태에 대한 로컬 권한 사실을 보존합니다. 이 기록은 Core와 Store 코드가 작업을 정직하게 진행하거나 닫을 수 있는지 판단하는 데 도움이 될 수 있습니다. 그러나 OS 수준 sandboxing, 파일시스템 ACL, 외부 정책 집행, 위조 방지 증명, 쓰기 방지 증명이 아닙니다.
+Host-observation 기록은 호스트 통합 상태에 대한 로컬 권한 사실을 보존합니다. 이 기록은 Core와 Store 코드가 작업을 정직하게 진행하거나 닫을 수 있는지 판단하는 데 도움이 될 수 있습니다. 그러나 OS 수준 sandboxing, 파일시스템 ACL, 외부 정책 집행, 위조 방지 증명, 행위자 identity 증명, 쓰기 방지 증명이 아닙니다.
 
-`guard_installations`는 Runtime Home, Agent Connection, 선택적 프로젝트 범위별 설정 생명주기 상태, 관찰된 hook 메타데이터, 호스트 capability를 기록합니다. `configured`와 `reload_required`는 파일 또는 메타데이터가 설치되었지만 일치하는 guard hook이 아직 관찰되지 않았다는 뜻입니다. `active`는 기록된 프로젝트, Agent Connection, 호스트 종류, guard 모드, policy hash와 일치하는 유효한 guard hook을 Volicord가 관찰했다는 뜻입니다. OS 수준 집행이나 sandboxing을 증명하지 않습니다. `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unrecorded_changes`, `session_watch_baselines`, `session_watch_observations`는 프로젝트별 로컬 행이며 프로젝트 `state.sqlite` 데이터베이스 사이로 새면 안 됩니다. 대기 중인 `expected_writes` 행은 guarded pre-tool이 프로젝트, 연결, 세션, 시간, 경로, Task, Change Unit, Write Check 좌표로 제한된 구체적 예상 쓰기를 허용했다는 뜻입니다. 매칭된 행은 post-tool 관찰이 그 예상 쓰기와 상관되었다는 뜻이며 제품 정확성 증명이 아닙니다. 미해결 `unrecorded_changes` 행은 관찰된 Product Repository 변경이 아직 담당자가 정의한 조정을 필요로 한다는 뜻입니다. 그 행을 해결하면 로컬 resolution basis, 행위자 출처, capture basis, 해결 타임스탬프, 선택적 연결 사용자 판단을 기록하고 행은 보존됩니다.
+`guard_installations`는 Runtime Home, Agent Connection, 선택적 프로젝트 범위별 설정 생명주기 상태, 관찰된 hook 메타데이터, 호스트 capability를 기록합니다. `configured`와 `reload_required`는 파일 또는 메타데이터가 설치되었지만 일치하는 guard hook이 아직 관찰되지 않았다는 뜻입니다. `active`는 기록된 프로젝트, Agent Connection, 호스트 종류, 통합 프로필, policy hash와 일치하는 유효한 guard hook을 Volicord가 관찰했다는 뜻입니다. OS 수준 집행이나 sandboxing을 증명하지 않습니다. `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unrecorded_changes`, `session_watch_baselines`, `session_watch_observations`는 프로젝트별 로컬 행이며 프로젝트 `state.sqlite` 데이터베이스 사이로 새면 안 됩니다. 대기 중인 `expected_writes` 행은 observe pre-tool이 프로젝트, 연결, 세션, 시간, 경로, Task, Change Unit, Write Check 좌표로 제한된 구체적 예상 쓰기를 허용했다는 뜻입니다. 매칭된 행은 post-tool 관찰이 그 예상 쓰기와 상관되었다는 뜻이며 제품 정확성 증명이 아닙니다. 미해결 `unrecorded_changes` 행은 관찰된 Product Repository 변경이 아직 담당자가 정의한 조정을 필요로 한다는 뜻입니다. 그 행을 해결하면 로컬 resolution basis, 행위자 출처, capture basis, 해결 타임스탬프, 선택적 연결 사용자 판단을 기록하고 행은 보존됩니다.
 
 `session_watch_baselines`와 `session_watch_observations`는 세션 수준 Product Repository watch의 detective fallback을 지원합니다. 이 기록은 sandbox, 파일시스템 권한 경계, 쓰기 전 차단, 누가 파일을 바꿨는지에 대한 증명, 왜 파일이 바뀌었는지에 대한 증명이 아닙니다. 기준선은 watch 가용성, 등록된 저장소 루트 또는 watched path set, 유효한 제외 항목, 결정적 스냅샷 digest 메타데이터를 저장합니다. 관찰은 이후의 안전한 스냅샷을 기준선과 비교해 찾은 변경 product path와 선택적 expected-write 및 unrecorded-change 상관 참조를 저장합니다. 관찰을 unrecorded-change 행에 연결하면 로컬 조정 맥락을 기록하지만, 그 자체로 닫기 차단 사유를 만들지는 않습니다.
 
@@ -193,9 +193,9 @@ Guarded-operation 기록은 호스트 통합 상태에 대한 로컬 권한 사�
 | Agent Connection `mode` | `workflow`, `read_only` |
 | Agent Connection `enabled` | `0`, `1` |
 | Agent Connection `last_verification_status` | `not_verified`, `complete`, `action_required`, `failed` |
-| Guard installation `guard_mode` | `mcp_only`, `guarded`, `managed` |
+| Guard installation `guard_mode` | `record`, `observe` |
 | Guard installation `installation_status` | `absent`, `configured`, `reload_required`, `active`, `degraded`, `stale`, `broken` |
-| `agent_sessions.guard_mode` | `mcp_only`, `guarded`, `managed` |
+| `agent_sessions.guard_mode` | `record`, `observe` |
 | `guard_events.decision` | `allow`, `deny`, `warn`, `inject_context` |
 | `expected_writes.path_policy` | `exact_paths` |
 | `expected_writes.status` | `pending`, `matched` |
@@ -242,7 +242,7 @@ JSON을 저장하는 SQLite `TEXT` 열은 저장 표현 선택일 뿐이며 임�
 | `agent_sessions` | 프로젝트 범위 Agent Session에 대한 비권한 메타데이터. |
 | `guard_events` | 로컬 guard decision 이벤트의 guard subject JSON, result JSON, 메타데이터. |
 | `prompt_captures` | 캡처된 prompt 기록의 비권한 메타데이터. Prompt text는 직접 nullable text 열입니다. |
-| `expected_writes` | Guarded expected-write 상관 관계를 위한 expected path 배열, Write Check id 배열, matched path 배열, 메타데이터. |
+| `expected_writes` | Observe expected-write 상관 관계를 위한 expected path 배열, Write Check id 배열, matched path 배열, 메타데이터. |
 | `unrecorded_changes` | 기록되지 않은 Product Repository 변경의 관찰 경로 배열, detection JSON, resolution JSON, 메타데이터. Resolution JSON은 간결한 resolution basis, capture basis, 해결 메서드, 선택적 연결 사용자 판단 참조를 저장하며, 전체 민감 명령이나 prompt 내용을 저장하면 안 됩니다. |
 | `session_watch_baselines` | 세션 watch 기준선을 위한 watched path 배열, 유효한 제외 배열, 스냅샷 entry 배열, 메타데이터. 스냅샷 entry는 경로, 종류, 크기, hash 또는 skip reason 메타데이터만 저장하며 파일 내용을 저장하지 않습니다. |
 | `session_watch_observations` | 세션 watch 관찰을 위한 관찰된 변경 경로 배열, 간결한 change-summary JSON, 스냅샷 entry 배열, 메타데이터. 스냅샷과 변경 요약은 행위자 식별, 의도, 제품 정확성, 닫기 준비 상태를 증명하지 않습니다. |

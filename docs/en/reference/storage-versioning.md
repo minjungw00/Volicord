@@ -13,7 +13,7 @@ records, repository-root-based project registrations, project aliases, Agent
 Connection records, `connection_projects`, `guard_installations`, and
 `local_web_consent_tokens`. Baseline project-state storage includes Core state
 records, replay rows, staged artifacts, persistent artifacts, evidence, user
-judgments, runs, blockers, `write_checks`, guarded-operation records, and
+judgments, runs, blockers, `write_checks`, host-observation records, and
 session-watch records.
 
 ## Project State Version

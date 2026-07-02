@@ -42,13 +42,13 @@ mod unix {
             "codex",
             "--repo",
             fixture.repo_arg(),
-            "--mode",
-            "guarded",
+            "--profile",
+            "observe",
             "--home",
             fixture.runtime_home_arg(),
             "--json",
         ])?;
-        assert_success("volicord init --host codex --mode guarded", &init);
+        assert_success("volicord init --host codex --profile observe", &init);
         let init_json = json_stdout(&init)?;
         assert_guarded_init_reported_action_required(&init_json, "codex", "host_trust_required");
         assert_eq!(init_json["states"]["hook_config"], "created");
@@ -127,13 +127,13 @@ mod unix {
             "claude-code",
             "--repo",
             fixture.repo_arg(),
-            "--mode",
-            "guarded",
+            "--profile",
+            "observe",
             "--home",
             fixture.runtime_home_arg(),
             "--json",
         ])?;
-        assert_success("volicord init --host claude-code --mode guarded", &init);
+        assert_success("volicord init --host claude-code --profile observe", &init);
         let init_json = json_stdout(&init)?;
         assert_guarded_init_reported_action_required(
             &init_json,
@@ -368,7 +368,7 @@ mod unix {
 
     fn assert_guarded_init_reported_action_required(value: &Value, host: &str, host_action: &str) {
         assert_eq!(value["host"], host);
-        assert_eq!(value["mode"], "guarded");
+        assert_eq!(value["selected_profile"], "observe");
         assert_eq!(value["status"], "action_required");
         assert_eq!(value["states"]["host_reload_required"], true);
         assert_eq!(value["states"]["guard_installation"], "reload_required");

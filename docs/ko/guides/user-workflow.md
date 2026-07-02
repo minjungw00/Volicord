@@ -90,7 +90,7 @@ Volicord는 사용자가 평소 말로 일하면서도 판단 경계를 볼 수 
 어떤 선택이 권한을 지니는 Core 상태가 되어야 한다면 지원되는 `User Channel`을
 사용합니다. 현재 지원되는 경로는 호스트 클라이언트가 그 capability를 선언했을 때의
 MCP elicitation, prompt-capture 사용 가능 상태가 `configured`, `observed`, `active`일
-때의 guarded prompt-capture 채팅 명령, adapter가 loopback 일회성 token fallback을
+때의 observe prompt-capture 채팅 명령, adapter가 loopback 일회성 token fallback을
 안전하게 노출할 수 있을 때의 local web consent, 그리고 안정적인 로컬 CLI 복구 경로인
 `volicord user`입니다. 정확한 명령 동작은
 [관리 CLI](../reference/admin-cli.md#user-channel-commands)가 담당하고, 권한 의미는

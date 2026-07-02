@@ -1654,8 +1654,7 @@ fn guard_prompt_capture_rejects_policy_mismatch_without_recording() -> Result<()
             "schema": "volicord-policy-v1",
             "managed_by": "volicord",
             "host": PROMPT_CAPTURE_TEST_HOST_KIND,
-            "mode": "guarded",
-            "guard_mode": "guarded",
+            "selected_profile": "observe",
             "connection_id": fixture.connection_id(),
             "guard_installation_id": "guard_installation_cli_activation",
             "changed": true
@@ -2158,7 +2157,7 @@ fn guard_stop_host_output_blocks_and_allows_continue() -> Result<(), Box<dyn Err
 #[cfg(unix)]
 #[test]
 fn guarded_init_hook_write_prompt_lifecycle_closes() -> Result<(), Box<dyn Error>> {
-    let fixture = GuardedLifecycleFixture::init("guarded-lifecycle-close", "guarded")?;
+    let fixture = GuardedLifecycleFixture::init("guarded-lifecycle-close", "observe")?;
     assert_guard_init_state_is_installed_or_degraded(&fixture.init_output);
     fixture.mark_required_hooks_supported()?;
     fixture.activate_guard("guard_lifecycle_session_start")?;
@@ -2242,12 +2241,20 @@ fn guarded_init_hook_write_prompt_lifecycle_closes() -> Result<(), Box<dyn Error
     let close = fixture.close_task(&task_id, "happy")?;
     assert_eq!(close.response_value["close_state"], "closed");
     assert_eq!(
-        close.response_value["guard_health"]["guard_mode"],
-        "guarded"
+        close.response_value["guard_health"]["selected_profile"],
+        "observe"
     );
     assert_eq!(
         close.response_value["guard_health"]["unresolved_unrecorded_change_count"],
         0
+    );
+    assert_eq!(
+        close.response_value["guard_health"]["session_watch_coverage_basis"],
+        "mcp_start"
+    );
+    assert_eq!(
+        close.response_value["guard_health"]["session_watch_partial_coverage_warning"],
+        Value::Null
     );
     Ok(())
 }
@@ -2255,7 +2262,7 @@ fn guarded_init_hook_write_prompt_lifecycle_closes() -> Result<(), Box<dyn Error
 #[cfg(unix)]
 #[test]
 fn guarded_bypass_reconcile_prompt_acceptance_unblocks_close() -> Result<(), Box<dyn Error>> {
-    let fixture = GuardedLifecycleFixture::init("guarded-lifecycle-bypass", "guarded")?;
+    let fixture = GuardedLifecycleFixture::init("guarded-lifecycle-bypass", "observe")?;
     fixture.mark_required_hooks_supported()?;
     fixture.activate_guard("guard_bypass_session_start")?;
     let (task_id, change_unit_id) = fixture.create_task_with_change_unit("bypass")?;
@@ -2344,7 +2351,7 @@ fn guarded_bypass_reconcile_prompt_acceptance_unblocks_close() -> Result<(), Box
 #[cfg(unix)]
 #[test]
 fn guarded_close_missing_required_hooks_remain_after_session_start() -> Result<(), Box<dyn Error>> {
-    let fixture = GuardedLifecycleFixture::init("guarded-lifecycle-health", "guarded")?;
+    let fixture = GuardedLifecycleFixture::init("guarded-lifecycle-health", "observe")?;
     fixture.mark_required_hooks_missing()?;
     let (task_id, change_unit_id) = fixture.create_task_with_change_unit("health")?;
     fixture.record_non_write_close_basis(&task_id, &change_unit_id, "health")?;
@@ -2393,22 +2400,22 @@ fn guarded_close_missing_required_hooks_remain_after_session_start() -> Result<(
 #[test]
 fn mcp_only_init_skips_guard_observation_but_keeps_user_judgment_blocker(
 ) -> Result<(), Box<dyn Error>> {
-    let fixture = GuardedLifecycleFixture::init("guarded-lifecycle-mcp-only", "mcp-only")?;
+    let fixture = GuardedLifecycleFixture::init("guarded-lifecycle-mcp-only", "record")?;
     assert_eq!(
         fixture.init_output["states"]["guard_installation"],
         "configured"
     );
-    let (task_id, change_unit_id) = fixture.create_task_with_change_unit("mcp_only")?;
-    fixture.record_non_write_close_basis(&task_id, &change_unit_id, "mcp_only")?;
-    fixture.request_final_acceptance(&task_id, &change_unit_id, "mcp_only")?;
+    let (task_id, change_unit_id) = fixture.create_task_with_change_unit("record")?;
+    fixture.record_non_write_close_basis(&task_id, &change_unit_id, "record")?;
+    fixture.request_final_acceptance(&task_id, &change_unit_id, "record")?;
 
     let check = fixture.check_close(&task_id)?;
     assert_eq!(check.response_value["close_state"], "blocked");
     assert_close_blocker(&check.response_value, "pending_user_judgment");
     assert_no_close_blocker(&check.response_value, "guard_not_observed");
     assert_eq!(
-        check.response_value["guard_health"]["guard_mode"],
-        "mcp_only"
+        check.response_value["guard_health"]["selected_profile"],
+        "record"
     );
     assert_eq!(
         check.response_value["guard_health"]["guard_hook_observed"],
@@ -2715,8 +2722,7 @@ impl GuardCliFixture {
             "schema": "volicord-policy-v1",
             "managed_by": "volicord",
             "host": host_kind,
-            "mode": "guarded",
-            "guard_mode": "guarded",
+            "selected_profile": "observe",
             "connection_id": connection_id,
             "guard_installation_id": guard_installation_id
         });
@@ -2734,7 +2740,7 @@ impl GuardCliFixture {
                 connection_internal_id: connection_id.to_owned(),
                 project_id: Some(self.project_id().to_owned()),
                 host_kind: host_kind.to_owned(),
-                guard_mode: "guarded".to_owned(),
+                guard_mode: "observe".to_owned(),
                 host_capability_json: json!({
                     "schema": "volicord-guard-capability-v1",
                     "policy_hash": policy_hash.clone(),
@@ -2808,7 +2814,7 @@ impl GuardedLifecycleFixture {
             "codex",
             "--repo",
             repo_arg.as_str(),
-            "--mode",
+            "--profile",
             mode,
         ];
         args.push("--json");
@@ -2891,6 +2897,7 @@ impl GuardedLifecycleFixture {
             operation_category,
             VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
         )
+        .with_session_id(self.session_id().to_owned())
     }
 
     fn user_invocation(&self) -> InvocationContext {

@@ -58,9 +58,9 @@ use volicord_store::{
 };
 use volicord_types::{
     chat_judgment_verification_code, mcp_request_schema, ActorSource, AgentConnectionId,
-    AgentConnectionMode, CloseIntent, CloseTaskRequest, IdempotencyKey, IntakeRequest, JsonObject,
-    JudgmentKind, JudgmentRationale, JudgmentResolutionOutcome, McpCheckCloseArguments,
-    McpCloseTaskArguments, McpIntakeArguments, McpPrepareWriteArguments,
+    AgentConnectionMode, CloseIntent, CloseTaskRequest, IdempotencyKey, IntakeRequest,
+    IntegrationProfile, JsonObject, JudgmentKind, JudgmentRationale, JudgmentResolutionOutcome,
+    McpCheckCloseArguments, McpCloseTaskArguments, McpIntakeArguments, McpPrepareWriteArguments,
     McpReconcileChangesArguments, McpRecordRunArguments, McpRequestUserJudgmentArguments,
     McpStageArtifactArguments, McpStatusArguments, McpUpdateScopeArguments,
     MethodOperationCategory, OperationCategory, PersistedJudgmentBasis,
@@ -540,7 +540,7 @@ impl McpAdapter {
                     .as_ref()
                     .map(|session| session.guard_mode.clone())
             })
-            .unwrap_or_else(|| "mcp_only".to_owned());
+            .unwrap_or_else(|| IntegrationProfile::Record.as_str().to_owned());
         let host_kind = record
             .guard_installation
             .as_ref()
@@ -4843,7 +4843,7 @@ fn tool_description(name: &str) -> &'static str {
         "volicord.record_run" => "Record shaping, direct, or implementation work.",
         "volicord.request_user_judgment" => "Create one pending focused user-owned judgment.",
         "volicord.reconcile_changes" => {
-            "Reconcile unresolved guarded unrecorded Product Repository changes."
+            "Reconcile unresolved unrecorded Product Repository changes."
         }
         CHECK_CLOSE_TOOL_NAME => "Check close readiness for a selected Task.",
         "volicord.close_task" => "Perform a selected Task close path.",
@@ -6066,7 +6066,7 @@ mod tests {
                 connection_internal_id: fixture.connection_id().to_owned(),
                 project_id: Some(fixture.project_id().to_owned()),
                 host_kind: "prompt_capture_test_host".to_owned(),
-                guard_mode: "guarded".to_owned(),
+                guard_mode: IntegrationProfile::Observe.as_str().to_owned(),
                 host_capability_json: json!({
                     "schema": "volicord-guard-capability-v1",
                     "policy_hash": "sha256:mcp-prompt-capture",

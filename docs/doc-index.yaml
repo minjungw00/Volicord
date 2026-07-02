@@ -1842,7 +1842,7 @@ documents:
   - table overview
   - storage-owned record values
   - storage-owned JSON placement
-  - Agent Connection, Connection Projects, managed host configuration state, and guarded-operation record families
+  - Agent Connection, Connection Projects, managed host configuration state, and host-observation record families
   - local web consent token record family
 - doc_id: reference.storage-ddl
   path_en: docs/en/reference/storage-ddl.md
@@ -1869,10 +1869,10 @@ documents:
   - baseline SQLite DDL
   - '`registry.sqlite` schema shape'
   - project `state.sqlite` schema shape
-  - Agent Connection, Connection Projects, managed host configuration state, and guarded-operation tables
+  - Agent Connection, Connection Projects, managed host configuration state, and host-observation tables
   - baseline SQLite indexes, foreign keys, migration tables, and constraints
   - storage constraints for state clock columns, replay rows, current Change Unit uniqueness, Write Check
-    basis versions, staged artifact provenance, and guarded-operation records
+    basis versions, staged artifact provenance, and host-observation records
 - doc_id: reference.storage-effects
   path_en: docs/en/reference/storage-effects.md
   path_ko: docs/ko/reference/storage-effects.md

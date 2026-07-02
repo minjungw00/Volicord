@@ -89,7 +89,7 @@ This loop separates what an agent can do through an [Agent Connection](../refere
 
 When a choice must become authority-bearing Core state, use a supported
 `User Channel`. Current supported paths are MCP elicitation when the host
-client declares that capability, guarded prompt-capture chat commands when the
+client declares that capability, observe prompt-capture chat commands when the
 prompt-capture availability is `configured`, `observed`, or `active`, local web
 consent when the adapter can safely expose a loopback one-time-token fallback,
 and the stable local CLI recovery path `volicord user`. Exact command behavior belongs to

@@ -61,7 +61,7 @@ Supported baseline commands:
 ```text
 volicord --help
 volicord --version
-volicord init --host codex|claude-code --repo PATH [--mode mcp-only|guarded|managed] [--allow-degraded] [--home PATH] [--mcp-command PATH] [--dry-run] [--json]
+volicord init --host codex|claude-code --repo PATH [--profile record|observe] [--allow-degraded] [--home PATH] [--mcp-command PATH] [--dry-run] [--json]
 volicord setup [--home PATH] [--link-bin PATH] [--mcp-command PATH] [--json]
 volicord doctor [--json]
 volicord connect [HOST] [--repo PATH] [--shared|--global] [--read-only] [--dry-run] [--json]
@@ -77,11 +77,11 @@ volicord project rename NAME [--repo PATH] [--json]
 volicord project forget [PATH|NAME] [--json]
 volicord export mcp-config [--output PATH] [--repo PATH] [--read-only] [--json]
 volicord serve --transport streamable-http [--listen 127.0.0.1:8765] [--home PATH] [--connection <connection_id>] [--project PATH]... [--token TOKEN | --generate-token] [--allow-origin ORIGIN] [--allow-nonlocal-listen]
-volicord guard session-start [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--guard-mode MODE] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
-volicord guard pre-tool [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--guard-mode MODE] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
-volicord guard post-tool [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--guard-mode MODE] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
-volicord guard prompt-capture [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--guard-mode MODE] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
-volicord guard stop [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--guard-mode MODE] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
+volicord guard session-start [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|observe] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
+volicord guard pre-tool [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|observe] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
+volicord guard post-tool [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|observe] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
+volicord guard prompt-capture [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|observe] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
+volicord guard stop [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|observe] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
 volicord changes reconcile [--repo PATH] [--task active|ID] [--json]
 volicord user status [--repo PATH] [--task active|ID] [--json]
 volicord user judgments [--repo PATH] [--task active|ID] [--json]
@@ -214,10 +214,11 @@ exist, doctor may also report guard file installation, configuration health,
 runtime hook observation health, effective guard health, and host reload
 requirement as diagnostics. These guard diagnostics are local setup and
 observation checks; they are not proof of OS enforcement, sandboxing, write
-prevention, product correctness, or close
-readiness. Doctor also reports `guard_strength` and the capability booleans
-behind that label. Runtime-only capabilities such as session watcher bypass
-detection and local web consent are reported as unavailable unless the
+prevention, product correctness, or close readiness. Doctor also reports
+`selected_profile` and a `control_surface` summary that includes host-hook,
+session-watcher, cooperative decision, unrecorded-change detection, actor-proof,
+and OS-enforcement facts. Runtime-only capabilities such as session watcher
+observation and local web consent are reported as unavailable unless the
 reporting process actually owns that runtime state. Doctor does not create
 projects, install host configuration, change
 connection mode, or answer user judgments.
@@ -306,63 +307,51 @@ connected project. The future host environment must resolve the command through
 `PATH`.
 
 <a id="agent-host-setup-and-init"></a>
-`volicord init --host codex --repo PATH --mode mcp-only` and
-`volicord init --host claude-code --repo PATH --mode mcp-only` are the primary
-lower-guarantee first-run repository setup and host-connection examples for
-chat-first use when required hook support is not being installed. Init uses the
+`volicord init --host codex --repo PATH --profile record` and
+`volicord init --host claude-code --repo PATH --profile record` are the primary
+first-run repository setup and host-connection examples for chat-first use when
+host hook and session watcher observation is not being installed. Init uses the
 shared, project-scoped host layout so generated host MCP configuration starts
 `volicord mcp --stdio --connection <connection_id> --project <project_id>`
 through `PATH` and does not embed a personal Runtime Home path.
 
-`--mode` selects the guard integration level:
+`--profile` selects the public integration profile:
 
-- `mcp-only` writes MCP configuration, the managed `AGENTS.md` guidance block,
-  and policy metadata with guard commands disabled. It records guard
-  installation status without requiring guard activation.
-- `guarded` is the default. It writes MCP configuration, the managed
-  `AGENTS.md` guidance block, `.volicord/policy.json` guard command policy, and
-  supported project-local host hook and rule files.
-- `managed` requires a verified managed distribution source that is distinct
-  from ordinary project-local configuration, such as a host-supported plugin,
-  managed configuration bundle, or managed policy layer recorded in Volicord
-  host contract data. If the selected host has no verified managed distribution
-  contract, init fails with `MANAGED_MODE_UNSUPPORTED` and does not generate
-  project-local guarded files as a managed substitute.
+- `record` is the default. It writes MCP configuration, the managed `AGENTS.md`
+  guidance block, and policy metadata without requiring host lifecycle hooks or
+  a session watcher.
+- `observe` writes MCP configuration, the managed `AGENTS.md` guidance block,
+  `.volicord/policy.json` hook command policy, supported project-local host hook
+  and rule files, and records the host-hook/session-watcher observation state.
 
 Guard-aware setup, status, verification, and doctor output report
-`guard_strength` as the derived current protection label:
+`selected_profile` and a `control_surface` summary. The summary includes
+`host_hooks_active`, `session_watcher_active`,
+`cooperative_pre_tool_warning_available`,
+`cooperative_pre_tool_denial_available`,
+`unrecorded_changes_detectable`, `actor_identity_provable`, and
+`os_enforced`. Current Volicord output must report `os_enforced=false` and
+`actor_identity_provable=false`.
 
-| `guard_strength` | Meaning |
-|---|---|
-| `authority_record_only` | Volicord can record authority state, but no active session watcher or effective host hook guard is available for the selected view. |
-| `detective_watch` | A session watcher is active and can create unrecorded-change findings from Product Repository changes after coverage starts; it cannot pre-block writes or identify the actor. Partial coverage remains reported separately. |
-| `host_hook_guarded` | The selected project-local guarded host hooks have verified generated config, cwd-independent and subdirectory-safe hook command paths, native host output, required lifecycle phases, Bash/shell and direct file-write matcher coverage, matching policy hash, and current runtime guard observation. |
-| `managed_guarded` | The host-hook guarded condition is met and the selected managed distribution metadata is verified. Current Codex and Claude Code setup does not reach this label without a future verified managed distribution contract. |
-
-Full `guarded` initialization requires the selected host adapter to declare and
-verify support for every required lifecycle hook:
+Observe initialization requires the selected host adapter to declare and verify
+support for every required lifecycle hook:
 `session-start`, `pre-tool`, `post-tool`, `prompt-capture`, and `stop`.
 `AGENTS.md` and `.volicord/policy.json` are not host hook configuration. If the
 adapter does not know a reliable project-local hook schema or path for every
-required phase, init fails with `GUARDED_HOOKS_UNSUPPORTED` unless the caller
+required phase, init fails with `OBSERVE_HOOKS_UNSUPPORTED` unless the caller
 passes `--allow-degraded`. The explicit degraded opt-in may write MCP
 configuration, guidance, policy, and supported hook or rule files, but it records
 degraded guard status and reports missing required hook phases in human and JSON
-output. `mcp-only` does not require hook installation.
+output. `record` does not require hook installation.
 
-Full Codex guarded initialization additionally requires the selected Product
+Codex observe initialization additionally requires the selected Product
 Repository to be a Git work tree root that supports cwd-independent wrapper
 resolution from subdirectory host sessions. When that prerequisite is not met,
-init fails instead of generating a bare relative hook path. Claude Code guarded
+init fails instead of generating a bare relative hook path. Claude Code observe
 initialization uses the host project-directory placeholder described under
 [Guard hook commands](#guard-hook-commands).
 
-Managed initialization must satisfy the guarded hook requirements and the
-separate managed distribution requirement. For hosts without a verified managed
-contract, `--allow-degraded` is reported as not applied and does not silently
-turn `managed` into `guarded` or `mcp-only`.
-
-For `guarded`, init records `reload_required` when the host still needs restart
+For `observe`, init records `reload_required` when the host still needs restart
 or reload to load generated guard hooks, and `configured` when files are
 installed but no matching guard hook has been observed. Init does not mark a
 guard installation `active` merely because files were written.
@@ -386,13 +375,13 @@ Non-dry-run `volicord init`:
 - writes `.volicord/policy.json` with guard commands that invoke
   `volicord guard`
 - writes Volicord-managed hook wrapper scripts under `.codex/hooks/` or
-  `.claude/hooks/` for required guarded lifecycle phases
+  `.claude/hooks/` for required observe lifecycle phases
 - writes supported host hook files such as `.codex/hooks.json` or
   `.claude/settings.json` that invoke those wrapper scripts
 - writes supported host rule files such as `.codex/rules/*.rules` or
   `.claude/rules/volicord.md`
 - records guard installation status in the Runtime Home registry
-- rejects non-`mcp-only` guarded initialization when required host hook
+- rejects `observe` initialization when required host hook
   configuration is missing unless `--allow-degraded` was explicitly supplied
 - reports the required host restart, reload, approval, or trust action when the
   host must load the new MCP or guard configuration
@@ -458,16 +447,17 @@ top-level `status`, `checks`, and `actions` fields for diagnostic consumers.
 Connection status and verification output must keep guard file installation,
 configuration health, runtime hook observation health, effective guard health,
 host reload requirement, prompt-capture availability, and last guard event when
-known as separate diagnostics. They must also report `guard_strength`,
-pre-tool blocking availability, post-tool correlation availability, bypass
-detection availability, prompt-capture availability, local web consent
-availability, hook path safety, hook command cwd independence, hook command
-subdirectory safety, managed-distribution verification, watcher status, watcher
-baseline creation time, watcher coverage start time, watcher coverage basis,
-and any watcher partial-coverage warning as separate fields. Files installed or
-configured must not be reported as an active observed guard hook or as
-host-hook guarded strength before a matching observation exists. Incomplete
-session-watch coverage must not be reported as full `detective_watch`.
+known as separate diagnostics. They must also report `selected_profile`, a
+`control_surface` summary, cooperative pre-tool warning availability,
+cooperative pre-tool denial availability, post-tool correlation availability,
+unrecorded-change detection availability, prompt-capture availability, local web
+consent availability, hook path safety, hook command cwd independence, hook
+command subdirectory safety, watcher status, watcher baseline creation time,
+watcher coverage start time, watcher coverage basis, and any watcher
+partial-coverage warning as separate fields. Files installed or configured must
+not be reported as an active observed guard hook or as active host-hook
+observation before a matching observation exists. Incomplete session-watch
+coverage must not be reported as full unrecorded-change detection.
 
 A successful `volicord mcp --check` startup check alone must not be described as a
 `complete` Agent Connection. It is startup validation for the MCP process only.
@@ -500,7 +490,7 @@ Rules:
 
 `volicord guard` commands are local hook entry points for hosts that can run a
 command during agent lifecycle events. They inspect registered project state,
-record guarded-operation events, and return a machine-readable local decision.
+record host-observation events, and return a machine-readable local decision.
 They do not replace Core methods, user-owned judgments, `Write Check`,
 close-readiness checks, host trust, shell approval, or OS-level sandboxing.
 
@@ -522,9 +512,10 @@ Project selection uses `--repo PATH`, an event project or repository field when
 present, or the current working directory. `--connection ID` supplies the
 Agent Connection identity when the hook event does not contain `connection_id`.
 `--session ID`, `--guard-installation ID`, `--host HOST`, and
-`--guard-mode MODE` can pin the recorded session, installation, host kind, and
-guard mode. Host kinds use storage values such as `codex`, `claude_code`, or
-`generic`. Guard modes are `mcp_only`, `guarded`, or `managed`.
+`--integration-profile record|observe` can pin the recorded session,
+installation, host kind, and integration profile. Host kinds use storage values
+such as `codex`, `claude_code`, or `generic`. Public integration profiles are
+`record` and `observe`.
 `--policy-hash HASH` pins the expected `.volicord/policy.json` hash for
 generated hook wrapper scripts; a mismatch prevents that hook event from
 activating the guard installation, while direct guard commands used for tests
@@ -564,20 +555,21 @@ safety can report values including `relative_path_unsafe`, `wrapper_missing`,
 `wrapper_not_executable`, `absolute_path_stale`, `placeholder_unsupported`,
 `host_output_mismatch`, and `policy_hash_mismatch`; the complete value set is
 owned by [API Value Sets](api/schema-value-sets.md#state-and-blocker-values).
-Any non-`ok` hook path safety value prevents full `host_hook_guarded` or
-`managed_guarded` strength for that view. The repair action is to regenerate
-the safe managed commands with `volicord init --host HOST --repo PATH`, then
-complete any host trust, approval, reload, or restart action still reported.
+Any non-`ok` hook path safety value keeps observe host hooks inactive for that
+view. The repair action is to regenerate the safe managed commands with
+`volicord init --host HOST --repo PATH --profile observe`, then complete any
+host trust, approval, reload, or restart action still reported.
 
-When a non-`mcp_only` guard command receives a valid event for the recorded
-project, Agent Connection, guard installation, host kind, guard mode, policy
-hash, and known hook phase, Volicord records observation metadata. The
+When an `observe` guard command receives a valid event for the recorded
+project, Agent Connection, guard installation, host kind, integration profile,
+policy hash, and known hook phase, Volicord records observation metadata. The
 observation can promote the guard installation to `active` only when required
 hook configuration is complete and the installation is not degraded, stale, or
-broken. Invalid project, connection, host kind, guard mode, policy hash, or hook
-phase data does not activate the installation. `active` means Volicord observed
-a matching hook event for a currently usable guard configuration; it does not
-claim OS-level enforcement, sandboxing, or write prevention.
+broken. Invalid project, connection, host kind, integration profile, policy
+hash, or hook phase data does not activate the installation. `active` means
+Volicord observed a matching hook event for a currently usable observe
+configuration; it does not claim OS-level enforcement, sandboxing, actor
+identity proof, or write prevention.
 
 The input event contract is host-neutral. Guard parsing is tolerant of common
 field placements for host kind, session, tool name, command, prompt, result,
@@ -610,7 +602,7 @@ Lifecycle behavior:
   host supplies it. Matched in-scope writes do not create unresolved
   unrecorded-change rows. Unmatched, out-of-scope, or ambiguous observed
   Product Repository changes record an unresolved unrecorded-change row and
-  return `warn`. Post-tool observation and matching are guarded-operation
+  return `warn`. Post-tool observation and matching are host-observation
   records, not proof of product correctness. It does not execute untrusted
   commands to discover changes.
 - `prompt-capture` records prompt-capture metadata and recognizes strict
@@ -638,7 +630,7 @@ Lifecycle behavior:
 
 ## Change reconciliation command
 
-`volicord changes reconcile [--repo PATH] [--task active|ID] [--json]` is the local recovery command for unresolved guarded unrecorded Product Repository change findings.
+`volicord changes reconcile [--repo PATH] [--task active|ID] [--json]` is the local recovery command for unresolved unrecorded Product Repository change findings.
 
 The command resolves the selected project from `--repo PATH` or the current working directory and selects the active Task by default. It calls the public `volicord.reconcile_changes` Core method with `actor_source=local_user` and `operation_category=local_recovery`, prints the number of resolved findings, pending user judgments, and remaining unresolved findings, and exits under the normal CLI exit-code model. Rejected Core responses remain rejected CLI results rather than successful reconciliation summaries.
 
@@ -737,19 +729,21 @@ Required diagnostic JSON values:
 - `actions[]`: required or suggested user actions, each with a stable action id
   and human-readable command or instruction when one is available
 - Guard-aware setup, doctor, connection status, and connection verification
-  JSON must expose `guard_strength` plus `pre_tool_blocking_available`,
-  `post_tool_correlation_available`, `bash_shell_mutation_coverage`,
-  `hook_path_safety`, `hook_commands_cwd_independent`,
-  `hook_commands_subdirectory_safe`, `bypass_detection_active`,
-  `prompt_capture_available`,
-  `local_web_consent_available`, and `managed_distribution_verified` where
-  guard diagnostics are reported. Guard-health JSON may also expose
-  `generated_config_verified`, `native_host_output_adapter_verified`, and
+  JSON must expose `selected_profile`, `control_surface`,
+  `cooperative_pre_tool_warning_available`,
+  `cooperative_pre_tool_denial_available`, `post_tool_correlation_available`,
+  `bash_shell_mutation_coverage`, `hook_path_safety`,
+  `hook_commands_cwd_independent`, `hook_commands_subdirectory_safe`,
+  `prompt_capture_available`, and `local_web_consent_available` where guard
+  diagnostics are reported. `control_surface.os_enforced` must be `false`
+  unless Volicord implements OS-level enforcement. Guard-health JSON may also
+  expose `generated_config_verified`,
+  `native_host_output_adapter_verified`, and
   `direct_file_write_matcher_coverage` to show the stricter host-hook
   prerequisites. When watcher diagnostics are reported, JSON must also expose
-  `watcher_status`,
-  `watcher_baseline_created_at`, `watcher_coverage_start_at`,
-  `watcher_coverage_basis`, and `watcher_partial_coverage_warning`.
+  `watcher_status`, `watcher_baseline_created_at`,
+  `watcher_coverage_start_at`, `watcher_coverage_basis`, and
+  `watcher_partial_coverage_warning`.
 
 Setup and doctor JSON must include `status_meaning` so diagnostic consumers can
 distinguish setup action status from installation-profile health.

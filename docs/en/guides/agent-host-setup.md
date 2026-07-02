@@ -2,7 +2,7 @@
 
 Use this guide to connect Codex, Claude Code, or a generic MCP host to
 Volicord. The ordinary first-run path starts with `volicord init`, a host, a
-Product Repository, and the integration mode that matches the host capabilities;
+Product Repository, and the integration profile that matches the host capabilities;
 Volicord manages the internal host and registry values.
 
 Exact CLI behavior belongs to
@@ -17,7 +17,7 @@ Install `volicord` first with [Installation](../getting-started/installation.md)
 then run the host setup sequence:
 
 ```sh
-volicord init --host codex --repo /path/to/your-product-repo --mode mcp-only
+volicord init --host codex --repo /path/to/your-product-repo --profile record
 volicord connection status codex --repo /path/to/your-product-repo
 ```
 
@@ -26,11 +26,11 @@ you want the agent to work. `volicord init` creates or reuses the Runtime Home
 and installation profile when needed, registers or reuses that repository
 project, derives the visible project name from the repository directory,
 installs project-scoped MCP configuration for the selected host, writes
-Volicord-managed guidance and policy metadata, records guard installation
+Volicord-managed guidance and policy metadata, records integration
 status, and stores internal registry identities in the selected
 `Volicord Runtime Home`. Generated host configuration starts
-`volicord mcp --stdio`. `--mode mcp-only` is the lower-guarantee setup path and
-does not require host lifecycle hook installation.
+`volicord mcp --stdio`. `--profile record` does not require host lifecycle hook
+installation or a session watcher.
 
 Use `volicord connect` for lower-level connection variants after the
 installation profile is ready, for example when selecting personal, global, or
@@ -41,36 +41,40 @@ directory is not the target Product Repository:
 volicord connect codex --repo /path/to/your-product-repo
 ```
 
-## Protection Levels
+## Integration Profiles
 
-Guard health reports the strongest active protection surface for the selected
-connection or session:
+Guard health reports the selected profile and a control-surface summary for the
+selected connection or session:
 
-| `guard_strength` | How it is reached | Operational meaning |
+| Profile | How it is reached | Operational meaning |
 |---|---|---|
-| `authority_record_only` | MCP tools and authority records are available without an active session watcher or effective host hook guard. | No pre-tool blocking. Setup guidance and policy metadata can steer the host but cannot force it. |
-| `detective_watch` | A session watcher is active for the selected session. | Product Repository metadata changes after the watcher coverage start can create findings that feed reconciliation and close readiness, but the watcher does not prevent writes or identify the actor. Partial coverage is reported separately. |
-| `host_hook_guarded` | Project-local host hooks have verified generated config, cwd-independent and subdirectory-safe hook commands, native host output, required phases, write matchers, matching policy hash, and runtime observation. | Pre-tool decisions, post-tool correlation, prompt capture, guard state, and close/write blockers can participate in the workflow. |
-| `managed_guarded` | `host_hook_guarded` is active and a verified managed distribution source is recorded. | Reserved for supported host-managed plugin, bundle, or policy distribution. Current Codex and Claude Code setup does not reach this label. |
+| `record` | MCP tools and authority records are available without requiring host hooks or a session watcher. | Setup guidance and policy metadata can steer the host but cannot force it. |
+| `observe` | Project-local host hooks have verified generated config, cwd-independent and subdirectory-safe hook commands, native host output, required phases, write matchers, matching policy hash, runtime observation, and session watcher observation. | Cooperative pre-tool warnings or denials, post-tool correlation, prompt capture, guard state, unrecorded-change findings, and close/write blockers can participate in the workflow. |
+
+The control-surface summary reports whether host hooks and the session watcher
+are active, whether cooperative pre-tool warning or denial is available, whether
+unrecorded changes can be detected, whether actor identity can be proven, and
+whether OS enforcement is provided. Current Volicord output reports no actor
+identity proof and no OS enforcement.
 
 ## Guard Lifecycle
 
-In guarded mode, setup and activation are separate. `volicord init` installs or
+In observe profile, setup and activation are separate. `volicord init` installs or
 updates MCP host configuration, Volicord-managed `AGENTS.md` guidance,
 `.volicord/policy.json`, host hook or rule files, and guard installation state.
 The host may still need reload, restart, trust, project MCP approval, or another
 host-owned action before those files run.
 
-Current verified guarded adapters are host-specific:
+Current verified observe adapters are host-specific:
 
-- Codex guarded setup writes project MCP configuration, Volicord-managed POSIX
+- Codex observe setup writes project MCP configuration, Volicord-managed POSIX
   `sh` wrapper scripts under `.codex/hooks/`, `.codex/hooks.json`, and
   `.codex/rules/*.rules`. Pre-tool and post-tool matchers cover `Bash`,
   `apply_patch`, `Edit`, `Write`, and
   `mcp__.*__(write|edit|create|update|delete|remove|move|patch).*` tool names.
   The host may require project trust, hook trust, and restart or reload before
   the generated rule and hook files run.
-- Claude Code guarded setup writes `.mcp.json`, Volicord-managed POSIX `sh`
+- Claude Code observe setup writes `.mcp.json`, Volicord-managed POSIX `sh`
   wrapper scripts under `.claude/hooks/`, `.claude/settings.json`, and
   `.claude/rules/*.md`. Pre-tool and post-tool matchers cover `Bash`, `Edit`,
   `Write`, `MultiEdit`, and
@@ -95,7 +99,7 @@ Generated hook configs invoke the wrapper scripts with `--host-output codex` or
 `--host-output claude-code`, so hook stdout is host-native JSON/context or empty
 output, not Volicord wrapper JSON.
 
-Default `guarded` init must be able to install and verify all required host
+Observe init must be able to install and verify all required host
 lifecycle hook phases. When the selected Codex or Claude Code adapter does not
 know a reliable project-local hook schema or path for every required phase, init
 fails instead of treating `AGENTS.md` or `.volicord/policy.json` as enforcement.
@@ -103,24 +107,17 @@ Use `--allow-degraded` only when you explicitly want the degraded setup files
 and understand that required hook phases will be reported missing:
 
 ```sh
-volicord init --host codex --repo /path/to/your-product-repo --allow-degraded
+volicord init --host codex --repo /path/to/your-product-repo --profile observe --allow-degraded
 ```
 
-Managed mode is separate from project-local guarded mode. It requires a verified
-host-managed distribution source recorded in Volicord host contract data. The
-current Codex and Claude Code contracts do not record a verified plugin, bundle,
-or managed policy distribution source, so `volicord init --mode managed` fails
-with `MANAGED_MODE_UNSUPPORTED`; use `guarded` or `mcp-only` unless such a
-contract is added and implemented.
-
 `volicord connection verify` and `volicord doctor` keep file health, required
-host action, and observed activation separate. A guard installation becomes
+host action, observed activation, and control-surface facts separate. A guard installation becomes
 active only after Volicord observes a matching guard hook event for the recorded
-project, Agent Connection, host kind, guard mode, and policy hash. Hook path
+project, Agent Connection, host kind, integration profile, and policy hash. Hook path
 safety does not replace host trust, reload, restart, or approval. `AGENTS.md`
 is instruction support, and host hooks or rules are cooperative and detective
-guardrails; they are not OS sandboxing, command isolation, or proof that writes
-cannot happen outside Volicord-aware paths.
+guardrails; they are not OS sandboxing, command isolation, network isolation,
+actor proof, or proof that writes cannot happen outside Volicord-aware paths.
 
 ## Connection Intents
 

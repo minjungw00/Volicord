@@ -32,7 +32,7 @@ Rust 이식성만으로 지원을 추론하지 마세요. 어떤 Rust 크레이�
 | 실행 파일 역할 이름 | 지원되고 검증되었습니다. | 참조 담당 문서는 `volicord`를 관리 CLI 명령과 로컬 MCP stdio 어댑터가 사용하는 `mcp` 하위 명령을 제공하는 설치 실행 파일로 정의합니다. | `volicord`를 빌드하거나 설치합니다. 호스트 설정은 MCP를 `volicord mcp --stdio ...`로 시작해야 합니다. |
 | 패키지 관리자 설치 | 맞는 저장소 아티팩트가 추가되기 전까지 지원 범위 밖입니다. | 이 체크아웃에는 Homebrew tap, Homebrew formula, Linux 패키지 관리자 패키지, 외부 패키지 registry가 표현되어 있지 않습니다. 지원되는 첫 실행 경로는 릴리스 tarball과 설치 스크립트입니다. | 릴리스 바이너리 설치 스크립트, Docker, 기존 `volicord` 실행 파일, 또는 개발용 소스 빌드 경로를 사용합니다. |
 | Codex와 Claude Code 호스트 최소 버전 | 안정적인 호스트 최소 버전은 정의되어 있지 않습니다. 호스트 호환성은 문서화된 버전 하한이 아니라 운영 점검으로 확인합니다. | Codex 검증은 `PATH`에서 `codex`를 찾고 `codex --version`을 실행합니다. Claude Code 검증은 `claude mcp get <server_name>`으로 호스트 상태를 조사합니다. 관리 검증은 최종 결과 상태를 담당합니다. | 설치 후 `volicord connection verify HOST [--repo PATH] [--shared|--global]`을 사용합니다. 문서화되지 않은 Codex 또는 Claude Code 최소 버전에 의존하지 않습니다. |
-| Codex guarded hook root 해석 | 로컬 Git work tree에 대해 지원됩니다. | 생성된 Codex guarded hook 명령은 Volicord 관리 wrapper로 dispatch하기 전에 `git rev-parse --show-toplevel`로 Git work-tree root를 해석하며, 초기화는 그 root 전략을 지원할 수 없으면 완전한 guarded 설정을 거부합니다. | 완전한 Codex guarded 모드에는 `.git` work-tree root가 있는 Product Repository를 사용하고, 미래의 Codex hook 환경이 저장소 하위 디렉터리에서 `git`을 실행할 수 있게 합니다. 이 전제조건이 없으면 `--mode mcp-only`를 사용합니다. |
+| Codex observe hook root 해석 | 로컬 Git work tree에 대해 지원됩니다. | 생성된 Codex observe hook 명령은 Volicord 관리 wrapper로 dispatch하기 전에 `git rev-parse --show-toplevel`로 Git work-tree root를 해석하며, 초기화는 그 root 전략을 지원할 수 없으면 observe 설정을 거부합니다. | Codex observe 프로필에는 `.git` work-tree root가 있는 Product Repository를 사용하고, 미래의 Codex hook 환경이 저장소 하위 디렉터리에서 `git`을 실행할 수 있게 합니다. 이 전제조건이 없으면 `--profile record`를 사용합니다. |
 
 <a id="toolchain-requirements"></a>
 
@@ -176,11 +176,11 @@ Volicord가 등록된 프로젝트를 검증하거나 사용할 때는 읽기 �
 - `.claude/hooks/` 아래의 Volicord 관리 Claude Code hook wrapper script
 - `.claude/rules/` 아래의 Volicord 관리 Claude Code rule 파일
 
-완전한 Codex guarded 설정에는 선택된 Product Repository가 Git work tree여야 합니다.
+Codex observe 설정에는 선택된 Product Repository가 Git work tree여야 합니다.
 생성된 hook이 호스트 session cwd에 의존하지 않고 프로젝트 root를 해석하기 위해서입니다.
-이 Git-root 요구사항은 Codex guarded hook 경로 안전성에만 해당하며, 통합 파일을 Volicord
-런타임 상태로 만들거나 OS 수준 sandboxing을 추가하지 않습니다. `mcp-only` 설정은 Codex
-guarded hook 설치를 요구하지 않습니다.
+이 Git-root 요구사항은 Codex observe hook 경로 안전성에만 해당하며, 통합 파일을 Volicord
+런타임 상태로 만들거나 OS 수준 sandboxing을 추가하지 않습니다. `record` 설정은 Codex
+observe hook 설치를 요구하지 않습니다.
 
 비대화형 shared-intent 호스트 설정 또는 지침 쓰기에는 [관리 CLI](admin-cli.md#noninteractive-approval-behavior)가 정의한 명시적 `--shared` 명령 경로가 필요합니다. 런타임 기록, SQLite 데이터베이스, 생성 기록, 로그, 상태 보기, QA 결과, 수락 기록, 닫기 준비 상태, 잔여 위험 기록은 `Product Repository`에 속하지 않습니다.
 

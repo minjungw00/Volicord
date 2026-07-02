@@ -450,7 +450,7 @@ CREATE TABLE guard_installations (
   connection_internal_id TEXT NOT NULL,
   project_internal_id TEXT,
   host_kind TEXT NOT NULL CHECK (length(trim(host_kind)) > 0),
-  guard_mode TEXT NOT NULL CHECK (guard_mode IN ('mcp_only', 'guarded', 'managed')),
+  guard_mode TEXT NOT NULL CHECK (guard_mode IN ('record', 'observe')),
   host_capability_json TEXT NOT NULL DEFAULT '{}',
   installation_health TEXT NOT NULL
     CHECK (installation_health IN ('unknown', 'healthy', 'action_required', 'failed')),
@@ -494,7 +494,7 @@ CREATE TABLE guard_installations (
   connection_internal_id TEXT NOT NULL,
   project_internal_id TEXT,
   host_kind TEXT NOT NULL CHECK (length(trim(host_kind)) > 0),
-  guard_mode TEXT NOT NULL CHECK (guard_mode IN ('mcp_only', 'guarded', 'managed')),
+  guard_mode TEXT NOT NULL CHECK (guard_mode IN ('record', 'observe')),
   host_capability_json TEXT NOT NULL DEFAULT '{}',
   installation_status TEXT NOT NULL
     CHECK (installation_status IN (
@@ -1171,7 +1171,7 @@ CREATE TABLE agent_sessions (
   connection_internal_id TEXT NOT NULL,
   guard_installation_id TEXT,
   host_kind TEXT NOT NULL CHECK (length(trim(host_kind)) > 0),
-  guard_mode TEXT NOT NULL CHECK (guard_mode IN ('mcp_only', 'guarded', 'managed')),
+  guard_mode TEXT NOT NULL CHECK (guard_mode IN ('record', 'observe')),
   started_at TEXT NOT NULL,
   ended_at TEXT,
   metadata_json TEXT NOT NULL DEFAULT '{}',

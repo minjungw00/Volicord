@@ -16,8 +16,8 @@ use crate::values::{
     ChangeUnitEffectKind, CloseReadinessBlockerCategory, CloseReason, CloseState, EffectKind,
     EnabledEnforcementMechanism, ErrorCode, EvidenceAssuranceLevel, EvidenceCoverageState,
     EvidenceSourceKind, EvidenceStatus, GuaranteeLevel, GuardConfigurationStatus, GuardDecision,
-    GuardEffectiveStatus, GuardInstallationStatus, GuardMode, GuardObservationStatus,
-    GuardStrength, HostKind, JudgmentBasisCompatibilityStatus, JudgmentKind, JudgmentPresentation,
+    GuardEffectiveStatus, GuardInstallationStatus, GuardObservationStatus, HostKind,
+    IntegrationProfile, JudgmentBasisCompatibilityStatus, JudgmentKind, JudgmentPresentation,
     JudgmentRequiredFor, JudgmentResolutionOutcome, MethodName, NextActionKind,
     PlannedBlockerSourceKind, ProjectContinuityKind, ProjectContinuityStatus,
     ProjectEnforcementProfileSource, ProjectEnforcementProfileStatus, PromptCaptureStatus,
@@ -294,7 +294,7 @@ pub struct GuardInstallation {
     pub connection_id: AgentConnectionId,
     pub project_id: RequiredNullable<ProjectId>,
     pub host_kind: HostKind,
-    pub guard_mode: GuardMode,
+    pub integration_profile: IntegrationProfile,
     pub host_capability: JsonObject,
     pub installation_status: GuardInstallationStatus,
     pub installed_at: RequiredNullable<UtcTimestamp>,
@@ -302,7 +302,7 @@ pub struct GuardInstallation {
     pub metadata: JsonObject,
 }
 
-/// Project-scoped Agent Session record for guarded operation.
+/// Project-scoped Agent Session record for host-observed operation.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AgentSession {
@@ -311,7 +311,7 @@ pub struct AgentSession {
     pub connection_id: AgentConnectionId,
     pub guard_installation_id: RequiredNullable<GuardInstallationId>,
     pub host_kind: HostKind,
-    pub guard_mode: GuardMode,
+    pub integration_profile: IntegrationProfile,
     pub started_at: UtcTimestamp,
     pub ended_at: RequiredNullable<UtcTimestamp>,
     pub metadata: JsonObject,
@@ -394,12 +394,26 @@ pub struct UnrecordedChangeResolutionSummary {
     pub resolved_at: UtcTimestamp,
 }
 
-/// Compact guard-health projection for close-readiness and status views.
+/// Public summary of Volicord control-surface capabilities.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ControlSurfaceSummary {
+    pub selected_profile: IntegrationProfile,
+    pub host_hooks_active: bool,
+    pub session_watcher_active: bool,
+    pub cooperative_pre_tool_warning_available: bool,
+    pub cooperative_pre_tool_denial_available: bool,
+    pub unrecorded_changes_detectable: bool,
+    pub actor_identity_provable: bool,
+    pub os_enforced: bool,
+}
+
+/// Compact integration-health projection for close-readiness and status views.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct GuardHealthSummary {
-    pub guard_mode: GuardMode,
-    pub guard_strength: GuardStrength,
+    pub selected_profile: IntegrationProfile,
+    pub control_surface: ControlSurfaceSummary,
     pub guard_installation_id: RequiredNullable<GuardInstallationId>,
     pub guard_installation_status: GuardInstallationStatus,
     pub guard_configuration_status: GuardConfigurationStatus,
@@ -410,7 +424,8 @@ pub struct GuardHealthSummary {
     pub hook_path_safety: String,
     pub hook_commands_cwd_independent: bool,
     pub hook_commands_subdirectory_safe: bool,
-    pub pre_tool_blocking_available: bool,
+    pub cooperative_pre_tool_warning_available: bool,
+    pub cooperative_pre_tool_denial_available: bool,
     pub post_tool_correlation_available: bool,
     pub bash_shell_mutation_coverage: bool,
     pub direct_file_write_matcher_coverage: bool,
@@ -429,7 +444,6 @@ pub struct GuardHealthSummary {
     pub prompt_capture_status: PromptCaptureStatus,
     pub prompt_capture_available: bool,
     pub local_web_consent_available: bool,
-    pub managed_distribution_verified: bool,
     pub mcp_connection_healthy: bool,
     pub mcp_connection_status: RequiredNullable<String>,
     pub session_watch_status: SessionWatchStatus,
@@ -842,7 +856,7 @@ pub struct CloseReadinessBlocker {
     pub code: String,
     pub message: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub guard_strength: Option<GuardStrength>,
+    pub control_surface: Option<ControlSurfaceSummary>,
     #[serde(default)]
     pub can_resolve_in_chat: bool,
     #[serde(default)]

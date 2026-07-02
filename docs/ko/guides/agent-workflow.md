@@ -257,7 +257,7 @@ Core가 사용자 소유 판단을 필요로 하면, 에이전트는 초점이 �
 사용자 답변이 권한을 지니는 Core 상태가 되어야 한다면 지원되는 로컬
 `User Channel`로 사용자를 안내합니다. 현재 지원되는 경로는 초기화된 클라이언트가
 capability를 선언했을 때의 MCP elicitation, prompt-capture 사용 가능 상태가
-`configured`, `observed`, `active`일 때의 guarded prompt-capture 채팅 명령, 그리고
+`configured`, `observed`, `active`일 때의 observe prompt-capture 채팅 명령, 그리고
 안정적인 로컬 CLI 복구 경로입니다.
 
 ```sh

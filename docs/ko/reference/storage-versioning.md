@@ -12,7 +12,7 @@ Registry 저장소와 project-state 저장소는 각각 migration ledger 행을 
 등록, 프로젝트 alias, Agent Connection 기록, `connection_projects`, `guard_installations`,
 `local_web_consent_tokens`를 포함합니다. 기준 project-state 저장소는 Core 상태 기록, replay
 행, staged artifact, persistent artifact, evidence, user judgment, run, blocker,
-`write_checks`, guarded-operation 기록, session-watch 기록을 포함합니다.
+`write_checks`, host-observation 기록, session-watch 기록을 포함합니다.
 
 ## Project State Version
 

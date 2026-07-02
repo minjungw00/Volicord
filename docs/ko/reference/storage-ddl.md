@@ -8,7 +8,7 @@
 
 - `registry.sqlite`와 프로젝트 `state.sqlite`의 기준 SQLite 테이블 형태
 - 기준 인덱스, 외래 키, 마이그레이션 테이블, 물리 제약
-- `project_state.state_version`, 재실행 행, 현재 적용 Change Unit 고유성, Write Check 기준 버전, 스테이징된 아티팩트 출처, guarded-operation 기록에 대한 SQLite 제약
+- `project_state.state_version`, 재실행 행, 현재 적용 Change Unit 고유성, Write Check 기준 버전, 스테이징된 아티팩트 출처, host-observation 기록에 대한 SQLite 제약
 - Runtime Home 등록 데이터와 프로젝트별 Core 상태 사이의 DDL 수준 분리
 
 이 문서는 담당하지 않습니다.
@@ -176,7 +176,7 @@ CREATE UNIQUE INDEX idx_agent_connections_target_global
   WHERE project_internal_id IS NULL;
 ```
 
-Registry 스키마 버전 `2`는 guarded-operation 설정 기록을 추가합니다.
+Registry 스키마 버전 `2`는 host-observation 설정 기록을 추가합니다.
 Registry 스키마 버전 `3`은 이전 guard 설치 상태 열을 아래의 명시적
 생명주기와 관찰 필드로 대체합니다.
 
@@ -187,7 +187,7 @@ CREATE TABLE guard_installations (
   connection_internal_id TEXT NOT NULL,
   project_internal_id TEXT,
   host_kind TEXT NOT NULL CHECK (length(trim(host_kind)) > 0),
-  guard_mode TEXT NOT NULL CHECK (guard_mode IN ('mcp_only', 'guarded', 'managed')),
+  guard_mode TEXT NOT NULL CHECK (guard_mode IN ('record', 'observe')),
   host_capability_json TEXT NOT NULL DEFAULT '{}',
   installation_status TEXT NOT NULL
     CHECK (installation_status IN (
@@ -301,7 +301,7 @@ Registry 제약:
 - `agent_connections.mode`는 `read_only` 또는 `workflow`로 제한됩니다.
 - `agent_connections.last_verification_report_json`은 최신 검증 보고서 JSON 객체를 저장합니다. `agent_connections.last_user_actions_json`은 최신 사용자 동작 JSON 배열을 저장합니다.
 - `connection_projects`는 Agent Connection 하나에 대한 명시적 프로젝트 허용 목록입니다. `connection_internal_id`와 `project_internal_id`로 멤버십을 저장합니다. 아직 멤버십이 남은 프로젝트나 연결 삭제는 제한됩니다.
-- `guard_installations`는 Runtime Home 하나, Agent Connection 하나, 선택적 프로젝트 범위에 대한 로컬 guard 설정 생명주기 상태와 호스트 capability를 저장합니다. `guard_mode` 값은 `mcp_only`, `guarded`, `managed`입니다. `installation_status` 값은 `absent`, `configured`, `reload_required`, `active`, `degraded`, `stale`, `broken`입니다. 기록된 프로젝트, Agent Connection, 호스트 종류, guard 모드, policy hash, 알려진 hook 단계와 일치하는 유효한 guard hook 관찰은 first-seen 및 last-seen 메타데이터를 기록합니다. 필요한 hook 설정이 완전하고 행이 `degraded`, `stale`, `broken`이 아닐 때만 행을 `active`로 옮길 수 있습니다. 그 밖에는 관찰 메타데이터를 기록하더라도 설치를 효과적으로 active로 만들지 않습니다. 이 행은 guarded operation을 위한 로컬 권한 기록이며 OS 수준 집행 증명이나 쓰기 방지 증명이 아닙니다.
+- `guard_installations`는 Runtime Home 하나, Agent Connection 하나, 선택적 프로젝트 범위에 대한 로컬 guard 설정 생명주기 상태와 호스트 capability를 저장합니다. 내부 `guard_mode` 값은 `record`, `observe`입니다. `installation_status` 값은 `absent`, `configured`, `reload_required`, `active`, `degraded`, `stale`, `broken`입니다. 기록된 프로젝트, Agent Connection, 호스트 종류, 통합 프로필, policy hash, 알려진 hook 단계와 일치하는 유효한 guard hook 관찰은 first-seen 및 last-seen 메타데이터를 기록합니다. 선택된 프로필이 `observe`이고 필요한 hook 설정이 완전하며 행이 `degraded`, `stale`, `broken`이 아닐 때만 행을 `active`로 옮길 수 있습니다. 그 밖에는 관찰 메타데이터를 기록하더라도 설치를 효과적으로 active로 만들지 않습니다. 이 행은 host observation을 위한 로컬 권한 기록이며 OS 수준 집행 증명이나 쓰기 방지 증명이 아닙니다.
 - `local_web_consent_tokens`는 대기 사용자 판단을 위한 해시된 일회성 local web consent token을 저장합니다. 행은 등록된 프로젝트, Agent Connection, Connection Projects 멤버십에 범위가 묶입니다. 원문 token은 저장하지 않습니다. `status`는 `pending`, `consumed`, `expired`입니다. 소비된 행에는 완료 타임스탬프가 있어야 하며, 대기 또는 만료 행에는 없어야 합니다. 이 행은 임시 User Channel capture 메타데이터이며 그 자체로 Core 판단 권한이 아닙니다.
 - `schema_migrations`는 적용된 registry 스키마 버전을 기록합니다. 마이그레이션 실행 의미는 [저장소 버전 관리](storage-versioning.md)가 담당합니다.
 
@@ -309,7 +309,7 @@ Registry 제약:
 
 등록된 프로젝트마다 프로젝트별 `state.sqlite`가 하나 있습니다. 이 데이터베이스는 그 프로젝트의 Core 상태를 저장하며, 외래 키와 인덱스가 같은 프로젝트 관계를 강제할 수 있도록 프로젝트 범위 행에 `project_id`를 반복해 저장합니다.
 
-현재 마이그레이션을 모두 적용하면 저장소 프로필 `baseline_sqlite_v3`의 프로젝트 상태 스키마 버전은 `5`입니다. 아래의 기본 DDL 블록은 적용된 마이그레이션 뒤의 현재 테이블 배치를 보여 줍니다. guarded-operation 기록은 스키마 버전 `2`, expected-write 상관 기록은 스키마 버전 `3`, 로컬 복구 재실행 category 지원은 스키마 버전 `4`, 세션 수준 Product Repository watch 기록은 스키마 버전 `5`에서 도입되었습니다. 저장소 프로필과 마이그레이션 경계 동작은 [저장소 버전 관리](storage-versioning.md)가 담당합니다.
+현재 마이그레이션을 모두 적용하면 저장소 프로필 `baseline_sqlite_v3`의 프로젝트 상태 스키마 버전은 `5`입니다. 아래의 기본 DDL 블록은 적용된 마이그레이션 뒤의 현재 테이블 배치를 보여 줍니다. host-observation 기록은 스키마 버전 `2`, expected-write 상관 기록은 스키마 버전 `3`, 로컬 복구 재실행 category 지원은 스키마 버전 `4`, 세션 수준 Product Repository watch 기록은 스키마 버전 `5`에서 도입되었습니다. 저장소 프로필과 마이그레이션 경계 동작은 [저장소 버전 관리](storage-versioning.md)가 담당합니다.
 
 ```sql
 CREATE TABLE schema_migrations (
@@ -840,7 +840,7 @@ CREATE INDEX idx_task_events_task_seq
   ON task_events (project_id, task_id, event_seq);
 ```
 
-프로젝트 상태 스키마 버전 `2`는 guarded-operation 기록을 추가합니다.
+프로젝트 상태 스키마 버전 `2`는 host-observation 기록을 추가합니다.
 
 ```sql
 CREATE TABLE agent_sessions (
@@ -849,7 +849,7 @@ CREATE TABLE agent_sessions (
   connection_internal_id TEXT NOT NULL,
   guard_installation_id TEXT,
   host_kind TEXT NOT NULL CHECK (length(trim(host_kind)) > 0),
-  guard_mode TEXT NOT NULL CHECK (guard_mode IN ('mcp_only', 'guarded', 'managed')),
+  guard_mode TEXT NOT NULL CHECK (guard_mode IN ('record', 'observe')),
   started_at TEXT NOT NULL,
   ended_at TEXT,
   metadata_json TEXT NOT NULL DEFAULT '{}',
@@ -1102,7 +1102,7 @@ CREATE INDEX idx_session_watch_observations_unrecorded_change
 - `artifact_staging.created_by_actor_source`는 스테이징 출처를 기록합니다. 스테이징된 바이트와 알림은 아티팩트 담당 상태이며 그 자체로 증거 권한이 아닙니다.
 - `evidence_observations.source_kind`와 `assurance_level`은 협력적 에이전트 보고, 등록된 연결 관찰, 외부 도구 결과, 사용자 관찰, 재사용 증거, 미확인 주장을 구분합니다.
 - `tool_invocations`는 행위자 출처와 작업 범주를 포함해 재실행 행을 저장합니다. 재실행 행은 호출자 권한이 아니며 현재 연결 맥락이나 User Channel 요구사항을 우회하지 않습니다.
-- `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unrecorded_changes`, `session_watch_baselines`, `session_watch_observations`는 프로젝트별 guarded-operation 및 session-watch 기록입니다. 연결 범위를 위해 `connection_internal_id`를 반복해 저장하고, 프로젝트별 키를 사용해 기록이 프로젝트 사이로 새지 않게 합니다.
+- `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unrecorded_changes`, `session_watch_baselines`, `session_watch_observations`는 프로젝트별 host-observation 및 session-watch 기록입니다. 연결 범위를 위해 `connection_internal_id`를 반복해 저장하고, 프로젝트별 키를 사용해 기록이 프로젝트 사이로 새지 않게 합니다.
 - `guard_events.decision`은 `allow`, `deny`, `warn`, `inject_context`로 제한됩니다. 이 값은 로컬 guard decision을 기록하며 OS 수준 집행 증명이 아닙니다.
 - `expected_writes.status`는 `pending` 또는 `matched`로 제한되고, `path_policy`는 `exact_paths`로 제한됩니다. 매칭된 행은 매칭된 post-tool guard event, matched paths JSON, `matched_at`을 가져야 하고, 대기 행은 이 매칭 필드를 가지면 안 됩니다.
 - `unrecorded_changes.status`는 `unresolved` 또는 `resolved`로 제한됩니다. 해결된 행은 resolution JSON, `resolved_at`, `resolved_by_actor_source`를 가져야 하고, 미해결 행은 이 해결 필드를 가지면 안 됩니다. Resolution JSON은 [저장소 기록](storage-records.md)이 요구하는 간결한 resolution basis와 capture basis를 포함해야 하며, 전체 민감 명령이나 prompt 내용을 저장하면 안 됩니다.

@@ -69,7 +69,7 @@ fn binary_help_uses_agent_connection_model() -> Result<(), Box<dyn Error>> {
     assert_success(&init_help);
     let init_text = stdout(&init_help);
     assert!(init_text.contains("volicord init --host codex|claude-code --repo PATH"));
-    assert!(init_text.contains("--mode mcp-only|guarded|managed"));
+    assert!(init_text.contains("--profile record|observe"));
     assert!(init_text.contains("--allow-degraded"));
     assert!(init_text.contains("--home PATH"));
     assert!(init_text.contains("--mcp-command PATH"));
@@ -136,9 +136,9 @@ fn binary_help_options_match_supported_contracts() -> Result<(), Box<dyn Error>>
             "--guard-installation",
             "--host",
             "--host-output",
-            "--guard-mode",
+            "--integration-profile",
             "--policy-hash",
-            "--mode",
+            "--profile",
         ],
     )?;
     assert_help_options(
@@ -169,7 +169,7 @@ fn binary_help_options_match_supported_contracts() -> Result<(), Box<dyn Error>>
             "--guard-installation",
             "--host",
             "--host-output",
-            "--guard-mode",
+            "--integration-profile",
             "--policy-hash",
             "--output",
         ],
@@ -192,7 +192,7 @@ fn binary_help_options_match_supported_contracts() -> Result<(), Box<dyn Error>>
         &[
             "--host",
             "--repo",
-            "--mode",
+            "--profile",
             "--allow-degraded",
             "--home",
             "--mcp-command",
@@ -444,6 +444,8 @@ fn init_codex_guarded_without_degraded_opt_in_generates_hooks() -> Result<(), Bo
             "codex",
             "--repo",
             path_text(&repo_root).as_str(),
+            "--profile",
+            "observe",
             "--json",
         ],
         &[("PATH", path_env(&[bin_dir.as_path()]))],
@@ -516,6 +518,8 @@ fn init_claude_code_guarded_without_degraded_opt_in_generates_hooks() -> Result<
             "claude-code",
             "--repo",
             path_text(&repo_root).as_str(),
+            "--profile",
+            "observe",
             "--json",
         ],
         &[("PATH", path_env(&[bin_dir.as_path()]))],
@@ -583,6 +587,8 @@ fn init_codex_guarded_hook_command_runs_from_subdirectory_with_spaces() -> Resul
             "codex",
             "--repo",
             path_text(&repo_root).as_str(),
+            "--profile",
+            "observe",
             "--json",
         ],
         &[
@@ -656,6 +662,8 @@ fn init_claude_code_guarded_hook_command_runs_from_subdirectory_with_spaces(
             "claude-code",
             "--repo",
             path_text(&repo_root).as_str(),
+            "--profile",
+            "observe",
             "--json",
         ],
         &[
@@ -742,6 +750,8 @@ fn connection_status_downgrades_relative_codex_hook_command() -> Result<(), Box<
             "codex",
             "--repo",
             path_text(&repo_root).as_str(),
+            "--profile",
+            "observe",
             "--json",
         ],
         &[
@@ -783,9 +793,14 @@ fn connection_status_downgrades_relative_codex_hook_command() -> Result<(), Box<
     )?;
     assert_success(&active_status);
     let active_status_json = json_stdout(&active_status)?;
+    assert_eq!(active_status_json["states"]["selected_profile"], "observe");
     assert_eq!(
-        active_status_json["states"]["guard_strength"],
-        "host_hook_guarded"
+        active_status_json["states"]["control_surface"]["host_hooks_active"],
+        true
+    );
+    assert_eq!(
+        active_status_json["states"]["control_surface"]["os_enforced"],
+        false
     );
     assert_eq!(active_status_json["states"]["hook_path_safety"], "ok");
 
@@ -812,8 +827,11 @@ fn connection_status_downgrades_relative_codex_hook_command() -> Result<(), Box<
     assert_eq!(value["connection"]["connection_id"], connection_id);
     assert_eq!(value["states"]["hook_path_safety"], "relative_path_unsafe");
     assert_eq!(value["states"]["generated_config_verified"], false);
-    assert_eq!(value["states"]["guard_strength"], "authority_record_only");
-    assert_ne!(value["states"]["guard_strength"], "host_hook_guarded");
+    assert_eq!(
+        value["states"]["control_surface"]["host_hooks_active"],
+        false
+    );
+    assert_eq!(value["states"]["control_surface"]["os_enforced"], false);
     assert_eq!(value["primary_next_action"]["id"], "guard_hook_path_safety");
     assert!(value["guard"]["stale_files"]
         .as_array()
@@ -830,8 +848,8 @@ fn connection_status_downgrades_relative_codex_hook_command() -> Result<(), Box<
 
 #[cfg(unix)]
 #[test]
-fn init_codex_mcp_only_skips_host_hooks_and_strong_guard_labels() -> Result<(), Box<dyn Error>> {
-    let runtime_home = TempRuntimeHome::new("cli-bin-init-mcp-only")?;
+fn init_codex_record_profile_skips_host_hooks() -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-init-record")?;
     let repo_root = create_git_repo(&runtime_home, "product-repo")?;
     let bin_dir = runtime_home.path().join("bin");
     write_fake_codex(&bin_dir)?;
@@ -845,8 +863,8 @@ fn init_codex_mcp_only_skips_host_hooks_and_strong_guard_labels() -> Result<(), 
             "codex",
             "--repo",
             path_text(&repo_root).as_str(),
-            "--mode",
-            "mcp-only",
+            "--profile",
+            "record",
             "--json",
         ],
         &[
@@ -857,16 +875,30 @@ fn init_codex_mcp_only_skips_host_hooks_and_strong_guard_labels() -> Result<(), 
 
     assert_success(&output);
     let value = json_stdout(&output)?;
-    assert_eq!(value["mode"], "mcp-only");
-    assert_eq!(value["guard_mode"], "mcp_only");
-    assert_eq!(value["states"]["guard_profile"], "mcp_only");
-    assert_eq!(value["states"]["guard_strength"], "authority_record_only");
+    assert_eq!(value["selected_profile"], "record");
+    assert_eq!(value["states"]["selected_profile"], "record");
+    assert_eq!(
+        value["states"]["control_surface"]["host_hooks_active"],
+        false
+    );
+    assert_eq!(
+        value["states"]["control_surface"]["cooperative_pre_tool_warning_available"],
+        false
+    );
+    assert_eq!(
+        value["states"]["control_surface"]["cooperative_pre_tool_denial_available"],
+        false
+    );
+    assert_eq!(value["states"]["control_surface"]["os_enforced"], false);
     assert_eq!(value["states"]["hook_config"], "disabled");
     assert_eq!(value["states"]["rule_instruction_config"], "not_applicable");
     assert_eq!(value["states"]["required_guard_phases"], "disabled");
     assert_eq!(value["states"]["prompt_capture"], "not_configured");
     assert_eq!(value["states"]["guard_effective"], "inactive");
-    assert_eq!(value["states"]["pre_tool_blocking_available"], false);
+    assert_eq!(
+        value["states"]["cooperative_pre_tool_denial_available"],
+        false
+    );
     assert_eq!(value["states"]["post_tool_correlation_available"], false);
     assert_eq!(value["states"]["bypass_detection_active"], false);
     assert_eq!(value["degraded"]["allowed"], false);
@@ -890,10 +922,9 @@ fn init_codex_mcp_only_skips_host_hooks_and_strong_guard_labels() -> Result<(), 
         Some(&projects[0].project_id),
     )?;
     assert_eq!(guard_installations.len(), 1);
-    assert_eq!(guard_installations[0].guard_mode, "mcp_only");
+    assert_eq!(guard_installations[0].guard_mode, "record");
     let capability: Value = serde_json::from_str(&guard_installations[0].host_capability_json)?;
-    assert_eq!(capability["guard_profile"], "mcp_only");
-    assert_eq!(capability["managed_source"], "not_applicable");
+    assert_eq!(capability["selected_profile"], "record");
     assert_eq!(capability["prompt_capture"], true);
     assert!(capability["missing_required_hooks"]
         .as_array()
@@ -904,8 +935,8 @@ fn init_codex_mcp_only_skips_host_hooks_and_strong_guard_labels() -> Result<(), 
 
 #[cfg(unix)]
 #[test]
-fn init_managed_unsupported_fails_without_guarded_artifacts() -> Result<(), Box<dyn Error>> {
-    let runtime_home = TempRuntimeHome::new("cli-bin-init-managed-unsupported")?;
+fn init_rejects_invalid_profile_without_artifacts() -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-init-invalid-profile")?;
     let repo_root = create_git_repo(&runtime_home, "product-repo")?;
 
     let output = run_with_home_env(
@@ -916,7 +947,7 @@ fn init_managed_unsupported_fails_without_guarded_artifacts() -> Result<(), Box<
             "codex",
             "--repo",
             path_text(&repo_root).as_str(),
-            "--mode",
+            "--profile",
             "managed",
             "--allow-degraded",
             "--json",
@@ -925,16 +956,8 @@ fn init_managed_unsupported_fails_without_guarded_artifacts() -> Result<(), Box<
     )?;
 
     assert!(!output.status.success());
-    let value = json_stdout(&output)?;
-    assert_eq!(value["status"], "failed");
-    assert_eq!(value["error_code"], "MANAGED_MODE_UNSUPPORTED");
-    assert_eq!(value["mode"], "managed");
-    assert_eq!(value["managed_mode"]["supported"], false);
-    assert_eq!(
-        value["managed_mode"]["allow_degraded_effect"],
-        "not_applied"
-    );
-    assert_eq!(value["primary_next_action"]["id"], "choose_supported_mode");
+    assert!(stderr(&output).contains("unknown integration profile"));
+    assert!(stderr(&output).contains("record or observe"));
     assert!(!repo_root.join(".codex/hooks.json").exists());
     assert!(!repo_root.join(".volicord/policy.json").exists());
     assert!(!repo_root.join("AGENTS.md").exists());
@@ -958,6 +981,8 @@ fn init_dry_run_does_not_write_runtime_or_repo_files() -> Result<(), Box<dyn Err
             "codex",
             "--repo",
             path_text(&repo_root).as_str(),
+            "--profile",
+            "observe",
             "--dry-run",
             "--json",
         ],
@@ -969,7 +994,7 @@ fn init_dry_run_does_not_write_runtime_or_repo_files() -> Result<(), Box<dyn Err
     assert_eq!(value["action"], "init");
     assert_eq!(value["status"], "dry_run");
     assert_eq!(value["host"], "codex");
-    assert_eq!(value["mode"], "guarded");
+    assert_eq!(value["selected_profile"], "observe");
     assert_eq!(value["degraded"]["allowed"], false);
     assert_eq!(
         value["degraded"]["missing_required_hooks"],
@@ -1045,6 +1070,8 @@ fn init_codex_guarded_rejects_unmanaged_hook_config() -> Result<(), Box<dyn Erro
             "codex",
             "--repo",
             path_text(&repo_root).as_str(),
+            "--profile",
+            "observe",
             "--json",
         ],
         &[("PATH", path_env(&[bin_dir.as_path()]))],
@@ -1086,6 +1113,8 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
             "codex",
             "--repo",
             path_text(&repo_root).as_str(),
+            "--profile",
+            "observe",
             "--json",
         ],
         &[
@@ -1099,18 +1128,28 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     assert_eq!(value["action"], "init");
     assert_eq!(value["host"], "codex");
     assert_eq!(value["status"], "action_required");
-    assert_eq!(value["mode"], "guarded");
-    assert_eq!(value["guard_mode"], "guarded");
+    assert_eq!(value["selected_profile"], "observe");
     assert_eq!(value["states"]["runtime_home"], "ready");
     assert_eq!(value["states"]["project_registration"], "registered");
     assert_eq!(value["states"]["mcp_config"], "match");
     assert_eq!(value["states"]["guard_installation"], "reload_required");
-    assert_eq!(value["states"]["guard_strength"], "authority_record_only");
-    assert_eq!(value["states"]["pre_tool_blocking_available"], false);
+    assert_eq!(value["states"]["selected_profile"], "observe");
+    assert_eq!(
+        value["states"]["control_surface"]["host_hooks_active"],
+        false
+    );
+    assert_eq!(
+        value["states"]["control_surface"]["cooperative_pre_tool_denial_available"],
+        false
+    );
+    assert_eq!(value["states"]["control_surface"]["os_enforced"], false);
+    assert_eq!(
+        value["states"]["cooperative_pre_tool_denial_available"],
+        false
+    );
     assert_eq!(value["states"]["post_tool_correlation_available"], false);
     assert_eq!(value["states"]["bypass_detection_active"], false);
     assert_eq!(value["states"]["local_web_consent_available"], false);
-    assert_eq!(value["states"]["managed_distribution_verified"], false);
     assert_eq!(value["states"]["guard_degraded_allowed"], false);
     assert_eq!(value["degraded"]["allowed"], false);
     assert_eq!(value["states"]["agents_managed_block"], "updated");
@@ -1160,6 +1199,8 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
             "codex",
             "--repo",
             path_text(&repo_root).as_str(),
+            "--profile",
+            "observe",
         ],
         &[
             ("PATH", path_env(&[bin_dir.as_path()])),
@@ -1172,10 +1213,10 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     assert!(init_text.contains("connection_state: action_required"));
     assert!(init_text.contains("mcp_config_state: match"));
     assert!(init_text.contains("guard_installation_state: configured"));
-    assert!(init_text.contains("guard_strength: authority_record_only"));
-    assert!(init_text.contains("pre_tool_blocking=no"));
+    assert!(init_text.contains("selected_profile: observe"));
+    assert!(init_text.contains("cooperative_pre_tool_denial=no"));
     assert!(init_text.contains("post_tool_correlation=no"));
-    assert!(init_text.contains("managed_distribution_verified=no"));
+    assert!(init_text.contains("os_enforced=no"));
     assert!(init_text.contains("guard_degraded_allowed: no"));
     assert!(init_text.contains("agents_block_state: unchanged"));
     assert!(init_text.contains("volicord_policy_file_state: unchanged"));
@@ -1230,11 +1271,11 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
         false
     );
     assert_eq!(
-        status_without_intent_json["states"]["guard_strength"],
-        "authority_record_only"
+        status_without_intent_json["states"]["control_surface"]["host_hooks_active"],
+        false
     );
     assert_eq!(
-        status_without_intent_json["states"]["pre_tool_blocking_available"],
+        status_without_intent_json["states"]["cooperative_pre_tool_denial_available"],
         false
     );
     assert_eq!(
@@ -1289,8 +1330,7 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     assert_eq!(policy["schema"], "volicord-policy-v1");
     assert_eq!(policy["managed_by"], "volicord");
     assert_eq!(policy["host"], "codex");
-    assert_eq!(policy["mode"], "guarded");
-    assert_eq!(policy["guard_mode"], "guarded");
+    assert_eq!(policy["selected_profile"], "observe");
     assert_eq!(policy["mcp"]["command"], "volicord");
     assert_eq!(
         policy["mcp"]["args"],
@@ -1327,7 +1367,7 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     )?;
     assert_eq!(guard_installations.len(), 1);
     assert_eq!(guard_installations[0].host_kind, "codex");
-    assert_eq!(guard_installations[0].guard_mode, "guarded");
+    assert_eq!(guard_installations[0].guard_mode, "observe");
     assert_eq!(guard_installations[0].installation_status, "configured");
     let capability: Value = serde_json::from_str(&guard_installations[0].host_capability_json)?;
     assert_eq!(capability["schema"], "volicord-guard-capability-v1");
@@ -1337,10 +1377,7 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     );
     assert_eq!(capability["allow_degraded"], false);
     assert_eq!(capability["prompt_capture"], true);
-    assert_eq!(capability["guard_profile"], "host_hook_guarded");
-    assert_eq!(capability["managed_source"], "project_local_host_hooks");
-    assert_eq!(capability["managed_bundle_hash"], Value::Null);
-    assert_eq!(capability["managed_verification_status"], "not_applicable");
+    assert_eq!(capability["selected_profile"], "observe");
     assert_eq!(capability["native_host_output_adapter"], "codex");
     assert_eq!(capability["native_host_output_adapter_verified"], true);
     assert_eq!(capability["bash_shell_mutation_coverage"], true);
@@ -1369,7 +1406,7 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     assert!(wrapper.contains(&format!("--connection {connection_id}")));
     assert!(wrapper.contains("--guard-installation"));
     assert!(wrapper.contains("--host codex"));
-    assert!(wrapper.contains("--guard-mode guarded"));
+    assert!(wrapper.contains("--integration-profile observe"));
     assert!(wrapper.contains("--policy-hash"));
     assert!(wrapper.contains(
         capability["policy_hash"]
@@ -1403,31 +1440,25 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
         .find(|check| check["id"] == "registry_counts")
         .expect("doctor should report registry counts");
     assert_eq!(registry_counts["details"]["guard_installations"], 1);
-    assert_eq!(doctor_json["states"]["guard_profile"], "host_hook_guarded");
+    assert_eq!(doctor_json["states"]["selected_profile"], "observe");
     assert_eq!(
-        doctor_json["states"]["guard_strength"],
-        "authority_record_only"
+        doctor_json["states"]["control_surface"]["host_hooks_active"],
+        false
     );
-    assert_eq!(doctor_json["states"]["pre_tool_blocking_available"], false);
+    assert_eq!(
+        doctor_json["states"]["control_surface"]["os_enforced"],
+        false
+    );
+    assert_eq!(
+        doctor_json["states"]["cooperative_pre_tool_denial_available"],
+        false
+    );
     assert_eq!(
         doctor_json["states"]["post_tool_correlation_available"],
         false
     );
     assert_eq!(doctor_json["states"]["bash_shell_mutation_coverage"], true);
     assert_eq!(doctor_json["states"]["bypass_detection_active"], false);
-    assert_eq!(
-        doctor_json["states"]["managed_distribution_verified"],
-        false
-    );
-    assert_eq!(
-        doctor_json["states"]["managed_source"],
-        "project_local_host_hooks"
-    );
-    assert_eq!(doctor_json["states"]["managed_bundle_hash"], Value::Null);
-    assert_eq!(
-        doctor_json["states"]["managed_verification_status"],
-        "not_applicable"
-    );
     assert_eq!(doctor_json["states"]["agents_managed_block"], "installed");
     assert_eq!(doctor_json["states"]["volicord_policy_file"], "installed");
     assert_eq!(
@@ -1453,6 +1484,8 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
             "codex",
             "--repo",
             path_text(&repo_root).as_str(),
+            "--profile",
+            "observe",
             "--json",
         ],
         &[
@@ -1505,6 +1538,8 @@ fn init_claude_code_guarded_writes_project_mcp_policy_and_rule() -> Result<(), B
             "claude-code",
             "--repo",
             path_text(&repo_root).as_str(),
+            "--profile",
+            "observe",
             "--json",
         ],
         &[
@@ -1517,7 +1552,7 @@ fn init_claude_code_guarded_writes_project_mcp_policy_and_rule() -> Result<(), B
     let value = json_stdout(&output)?;
     assert_eq!(value["action"], "init");
     assert_eq!(value["host"], "claude-code");
-    assert_eq!(value["mode"], "guarded");
+    assert_eq!(value["selected_profile"], "observe");
     assert_eq!(value["states"]["guard_installation"], "reload_required");
     assert_eq!(value["states"]["guard_degraded_allowed"], false);
     assert_eq!(value["degraded"]["allowed"], false);
@@ -1584,7 +1619,7 @@ fn init_claude_code_guarded_writes_project_mcp_policy_and_rule() -> Result<(), B
     )?;
     assert_eq!(guard_installations.len(), 1);
     assert_eq!(guard_installations[0].host_kind, "claude_code");
-    assert_eq!(guard_installations[0].guard_mode, "guarded");
+    assert_eq!(guard_installations[0].guard_mode, "observe");
     assert_eq!(
         guard_installations[0].installation_status,
         "reload_required"
@@ -1612,7 +1647,7 @@ fn init_claude_code_guarded_writes_project_mcp_policy_and_rule() -> Result<(), B
     assert!(wrapper.contains(&format!("--connection {connection_id}")));
     assert!(wrapper.contains("--guard-installation"));
     assert!(wrapper.contains("--host claude-code"));
-    assert!(wrapper.contains("--guard-mode guarded"));
+    assert!(wrapper.contains("--integration-profile observe"));
     assert!(wrapper.contains("--policy-hash"));
     assert!(wrapper.contains(
         capability["policy_hash"]
@@ -2021,6 +2056,8 @@ fn connection_verify_reports_missing_mcp_config_as_primary_action() -> Result<()
             "codex",
             "--repo",
             path_text(&repo_root).as_str(),
+            "--profile",
+            "observe",
             "--allow-degraded",
             "--json",
         ],
@@ -2083,6 +2120,8 @@ fn connection_status_reports_missing_guard_files_as_primary_action() -> Result<(
             "codex",
             "--repo",
             path_text(&repo_root).as_str(),
+            "--profile",
+            "observe",
             "--allow-degraded",
             "--json",
         ],
@@ -2138,6 +2177,8 @@ fn connection_status_reports_stale_guard_files_as_primary_action() -> Result<(),
             "codex",
             "--repo",
             path_text(&repo_root).as_str(),
+            "--profile",
+            "observe",
             "--allow-degraded",
             "--json",
         ],

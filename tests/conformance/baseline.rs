@@ -943,7 +943,7 @@ fn guarded_unresolved_unrecorded_changes_block_close_without_mutation() -> Resul
 {
     let fixture = CoreFixture::new("guarded_unrecorded_close")?;
     let service = core(&fixture);
-    record_guard_installation(&fixture, "guarded_unrecorded_close", "guarded", "active")?;
+    record_guard_installation(&fixture, "guarded_unrecorded_close", "observe", "active")?;
     let (task_id, change_unit_id) =
         create_task_with_change_unit(&fixture, &service, "guarded_unrecorded_close")?;
     let after_evidence =

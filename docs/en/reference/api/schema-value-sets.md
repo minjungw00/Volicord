@@ -346,42 +346,20 @@ write_decision
 close_readiness
 ```
 
-`GuardHealthSummary.guard_mode` uses:
+`IntegrationProfile` and `GuardHealthSummary.selected_profile` use:
 
 ```text
-mcp_only
-guarded
-managed
+record
+observe
 ```
 
-`managed` is a recorded guard mode only for installations backed by a verified
-managed distribution contract, such as a host-supported plugin, managed
-configuration bundle, or managed policy layer. A host that lacks such a verified
-contract must report managed initialization as unsupported instead of recording
-ordinary project-local guarded files as managed mode.
-
-`GuardHealthSummary.guard_strength` uses:
-
-```text
-authority_record_only
-detective_watch
-host_hook_guarded
-managed_guarded
-```
-
-`authority_record_only` means Volicord can record authority state but no active
-session watcher or effective host hook guard is available for the selected
-view. `detective_watch` means a session watcher is active and can detect bypass
-Product Repository changes after its coverage start, but it cannot pre-block
-writes or identify the actor. `host_hook_guarded` means the selected
-project-local guarded host hooks have verified generated config,
-cwd-independent and subdirectory-safe hook commands, native host output,
-required lifecycle phases, Bash/shell and direct file-write matcher coverage,
-matching policy hash, and current runtime guard observation.
-`managed_guarded` means the host-hook guarded condition is met and the selected
-managed distribution metadata is verified. These labels do not prove product
-correctness, review completion, test sufficiency, OS enforcement, sandboxing,
-security isolation, final acceptance, or residual-risk acceptance.
+`record` means Volicord records authority state and exposes MCP/tool workflow
+without requiring host hooks or session watcher observation. `observe` means
+Volicord records authority state and uses supported host hooks plus session
+watcher observation. Observe may return cooperative host warnings or denials and
+may detect unrecorded Product Repository changes after watcher coverage starts,
+but it does not prove actor identity, provide OS enforcement, isolate the
+network, or sandbox tools.
 
 `GuardHealthSummary.hook_path_safety` uses:
 
@@ -411,8 +389,7 @@ or missing verification metadata.
 `relative_path_unsafe` includes bare `.codex/hooks/...`,
 `./.codex/hooks/...`, `.claude/hooks/...`, or `./.claude/hooks/...` commands
 that would resolve against the host session cwd. A non-`ok`
-`hook_path_safety` value prevents `host_hook_guarded` and `managed_guarded`
-from being the current `guard_strength`.
+`hook_path_safety` value keeps observe host hooks inactive.
 
 `GuardHealthSummary.guard_installation_status` uses:
 
@@ -486,7 +463,7 @@ first_project_selection
 method_boundary
 ```
 
-These values report guard integration state for close-readiness and status projections. `guard_installation_status` is the stored lifecycle value, `guard_configuration_status` derives file and required-hook completeness, `guard_observation_status` derives whether the current installation has a matching hook observation, and `effective_guard_status` is the close-readiness health used for guarded or managed paths. `active` effective health requires guarded or managed mode, complete required hook configuration, a non-stale and non-broken installation, a current matching observation, and matching host and policy identity. `prompt_capture_status` is the prompt-capture availability state for user-owned judgment chat commands: `unsupported_by_host` means the host capability is absent, `not_configured` means the prompt-capture phase is not configured for the selected connection, `reload_required` means installed configuration or policy identity must be reloaded before use, `configured` means verification-code chat commands may be shown before a prompt-capture observation, `observed` means a matching guard hook has been observed, `active` means a matching prompt-capture hook observation is recorded, and `degraded` means prompt capture is blocked by degraded guard health. `session_watch_status` is detective watcher availability: `disabled` means no selected session-watch baseline is available, `active` means bounded snapshot comparison is available, `degraded` means watcher output is partial or needs operator attention, and `unavailable` means the watcher could not perform the selected snapshot check. These values do not prove product correctness, test sufficiency, OS enforcement, sandboxing, security isolation, final acceptance, or residual-risk acceptance. `mcp_only` remains cooperative except that unresolved watcher-created unrecorded-change findings block close while an active session watch is selected.
+These values report guard integration state for close-readiness and status projections. `guard_installation_status` is the stored lifecycle value, `guard_configuration_status` derives file and required-hook completeness, `guard_observation_status` derives whether the current installation has a matching hook observation, and `effective_guard_status` is the close-readiness health used for observe paths. `active` effective health requires observe profile, complete required hook configuration, a non-stale and non-broken installation, a current matching observation, and matching host and policy identity. `prompt_capture_status` is the prompt-capture availability state for user-owned judgment chat commands: `unsupported_by_host` means the host capability is absent, `not_configured` means the prompt-capture phase is not configured for the selected connection, `reload_required` means installed configuration or policy identity must be reloaded before use, `configured` means verification-code chat commands may be shown before a prompt-capture observation, `observed` means a matching guard hook has been observed, `active` means a matching prompt-capture hook observation is recorded, and `degraded` means prompt capture is blocked by degraded guard health. `session_watch_status` is detective watcher availability: `disabled` means no selected session-watch baseline is available, `active` means bounded snapshot comparison is available, `degraded` means watcher output is partial or needs operator attention, and `unavailable` means the watcher could not perform the selected snapshot check. These values do not prove product correctness, test sufficiency, OS enforcement, sandboxing, security isolation, final acceptance, or residual-risk acceptance. `record` remains cooperative except that unresolved watcher-created unrecorded-change findings block close while an active session watch is selected.
 
 `pending_project_selection` means an MCP session has more than one available
 project and has not yet selected a project explicitly enough to create a

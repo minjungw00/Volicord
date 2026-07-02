@@ -2,7 +2,7 @@
 
 This tutorial prepares the local `volicord` executable. The ordinary first-run
 path records the installation profile while running
-`volicord init --host HOST --repo PATH --mode mcp-only` in the
+`volicord init --host HOST --repo PATH --profile record` in the
 [Quickstart](quickstart.md). Use `volicord setup` only when you need to prepare
 or repair the installation profile separately.
 
@@ -75,11 +75,11 @@ volicord init --help
 ```
 
 For the ordinary first repository connection, continue with
-`volicord init --host HOST --repo PATH --mode mcp-only` in the
+`volicord init --host HOST --repo PATH --profile record` in the
 [Quickstart](quickstart.md). `volicord init` can initialize the Runtime Home and
 installation profile while it connects the selected Product Repository, writes
-project-scoped MCP configuration, and records guard installation status.
-Guarded hook setup has the verified-hook or explicit degraded opt-in
+project-scoped MCP configuration, and records integration status.
+Observe hook setup has the verified-hook or explicit degraded opt-in
 requirements described in the
 [Administrative CLI Reference](../reference/admin-cli.md#agent-host-setup-and-init).
 
@@ -181,7 +181,7 @@ install path. From the Volicord source repository:
 ```sh
 cargo build --workspace --bins
 ./target/debug/volicord --version
-./target/debug/volicord init --host codex --repo /path/to/your-product-repo --mode mcp-only
+./target/debug/volicord init --host codex --repo /path/to/your-product-repo --profile record
 ```
 
 This builds and runs the local development executable at
@@ -215,9 +215,9 @@ docker run --rm -it \
   volicord:local setup
 ```
 
-For MCP-only setup in Docker, run
-`volicord init --host HOST --repo /workspace --mode mcp-only` with the same
-mounts. Guarded Docker setup has the same verified-hook or explicit degraded
+For record-profile setup in Docker, run
+`volicord init --host HOST --repo /workspace --profile record` with the same
+mounts. Observe Docker setup has the same verified-hook or explicit degraded
 opt-in requirements as non-container setup. After the Runtime Home contains the
 project registration and Agent Connection you want to serve, for example from
 that matching `volicord init` run or a lower-level `volicord connect` run, start
@@ -245,7 +245,7 @@ port. The host publish address remains `127.0.0.1`, and Volicord still requires
 
 Setup does not register a Product Repository and does not install host
 configuration. Project registration happens when you run `volicord project use`
-or a command such as `volicord init --host HOST --repo PATH --mode mcp-only` or
+or a command such as `volicord init --host HOST --repo PATH --profile record` or
 `volicord connect` from inside a Git repository.
 
 Project naming and internal identity behavior are owned by the
@@ -257,14 +257,13 @@ Internal identities are stored by Volicord and are not first-time setup inputs.
 Connect a host to the Product Repository:
 
 ```sh
-volicord init --host codex --repo /path/to/your-product-repo --mode mcp-only
+volicord init --host codex --repo /path/to/your-product-repo --profile record
 ```
 
 `/path/to/your-product-repo` is an example path for the Product Repository where
-you want the agent to work. Use guarded init only when the selected host has
-verified required hook support, or when you explicitly choose degraded guard
-setup with `--allow-degraded`. Managed init also requires a verified managed
-distribution contract for the selected host.
+you want the agent to work. Use `--profile observe` only when the selected host
+has verified required hook support, or when you explicitly choose degraded
+observe setup with `--allow-degraded`.
 
 For the full first-run path, continue with the [Quickstart](quickstart.md). For
 host-specific details, see [Agent Host Setup](../guides/agent-host-setup.md).

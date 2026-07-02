@@ -348,39 +348,19 @@ write_decision
 close_readiness
 ```
 
-`GuardHealthSummary.guard_mode`는 아래 값을 사용합니다.
+`IntegrationProfile`과 `GuardHealthSummary.selected_profile`은 아래 값을 사용합니다.
 
 ```text
-mcp_only
-guarded
-managed
+record
+observe
 ```
 
-`managed`는 호스트 지원 plugin, managed 설정 bundle, managed policy 계층처럼 검증된
-managed 배포 계약이 뒷받침하는 설치에만 기록되는 guard 모드입니다. 그런 검증된 계약이
-없는 호스트는 일반 프로젝트 로컬 guarded 파일을 managed 모드로 기록하는 대신 managed
-초기화를 지원하지 않는다고 보고해야 합니다.
-
-`GuardHealthSummary.guard_strength`는 아래 값을 사용합니다.
-
-```text
-authority_record_only
-detective_watch
-host_hook_guarded
-managed_guarded
-```
-
-`authority_record_only`는 Volicord가 권한 상태는 기록할 수 있지만 선택된 보기에 대해
-활성 session watcher나 효과적인 host hook guard를 사용할 수 없다는 뜻입니다.
-`detective_watch`는 session watcher가 활성 상태이고 coverage 시작 뒤의 우회 Product
-Repository 변경을 감지할 수 있지만 쓰기를 사전에 차단하거나 행위자를 식별할 수 없다는
-뜻입니다. `host_hook_guarded`는 선택된 프로젝트 로컬 guarded host hook에 검증된 생성
-설정, cwd-independent 및 subdirectory-safe hook 명령, native host output, 필요한
-lifecycle phase, Bash/shell 및 직접 파일 쓰기 matcher coverage, 일치하는 policy hash,
-현재 런타임 guard 관찰이 있다는 뜻입니다.
-`managed_guarded`는 host-hook guarded 조건을 만족하고 선택된 managed 배포 메타데이터가
-검증되었다는 뜻입니다. 이 라벨은 제품 정확성, review 완료, 테스트 충분성,
-OS 강제, 샌드박싱, 보안 격리, 최종 수락, 잔여 위험 수락을 증명하지 않습니다.
+`record`는 host hook이나 session watcher 관찰을 요구하지 않고 권한 상태를 기록하고
+MCP/tool workflow를 노출한다는 뜻입니다. `observe`는 권한 상태를 기록하고 지원되는 host
+hook과 session watcher 관찰을 사용한다는 뜻입니다. Observe는 협력형 host warning 또는
+denial을 반환하고 watcher coverage 시작 뒤의 미기록 Product Repository 변경을 탐지할 수
+있지만, 행위자 identity를 증명하거나, OS 집행을 제공하거나, 네트워크를 격리하거나,
+tool을 sandbox하지 않습니다.
 
 `GuardHealthSummary.hook_path_safety`는 아래 값을 사용합니다.
 
@@ -408,8 +388,7 @@ wrapper_not_executable
 
 `relative_path_unsafe`에는 호스트 session cwd를 기준으로 해석되는 bare `.codex/hooks/...`,
 `./.codex/hooks/...`, `.claude/hooks/...`, 또는 `./.claude/hooks/...` 명령이 포함됩니다.
-`ok`가 아닌 `hook_path_safety` 값은 현재 `guard_strength`가 `host_hook_guarded` 또는
-`managed_guarded`가 되는 것을 막습니다.
+`ok`가 아닌 `hook_path_safety` 값은 observe host hook을 inactive로 유지합니다.
 
 `GuardHealthSummary.guard_installation_status`는 아래 값을 사용합니다.
 
@@ -483,7 +462,7 @@ first_project_selection
 method_boundary
 ```
 
-이 값들은 닫기 준비 상태와 상태 조회 보기에 쓰이는 guard 통합 상태를 보고합니다. `guard_installation_status`는 저장된 생명주기 값이고, `guard_configuration_status`는 파일과 required hook 완전성을 도출하며, `guard_observation_status`는 현재 설치에 일치하는 hook 관찰이 있는지를 도출합니다. `effective_guard_status`는 guarded 또는 managed 경로의 닫기 준비 상태 건강 점검에 쓰는 값입니다. 효과적인 `active` 건강 상태에는 guarded 또는 managed 모드, 완전한 required hook 설정, 오래되거나 깨지지 않은 설치, 현재 일치하는 관찰, 일치하는 호스트와 policy 식별 정보가 필요합니다. `prompt_capture_status`는 사용자 소유 판단 채팅 명령을 위한 prompt capture 사용 가능 상태입니다. `unsupported_by_host`는 호스트 기능이 없음을 뜻하고, `not_configured`는 선택된 연결에 prompt-capture 단계가 설정되어 있지 않음을 뜻합니다. `reload_required`는 사용 전에 설치된 설정이나 policy 식별 정보를 다시 읽어야 함을 뜻합니다. `configured`는 prompt-capture 관찰 전에도 검증 코드 채팅 명령을 표시할 수 있음을 뜻하고, `observed`는 일치하는 guard hook이 관찰되었음을 뜻합니다. `active`는 일치하는 prompt-capture hook 관찰이 기록되었음을 뜻하고, `degraded`는 저하된 guard 건강 상태 때문에 prompt capture가 차단됨을 뜻합니다. `session_watch_status`는 탐지용 watcher 사용 가능 상태입니다. `disabled`는 선택된 session-watch baseline을 사용할 수 없다는 뜻이고, `active`는 한정된 스냅샷 비교를 사용할 수 있다는 뜻이며, `degraded`는 watcher 출력이 부분적이거나 운영자 조치가 필요하다는 뜻이고, `unavailable`은 watcher가 선택된 스냅샷 확인을 수행할 수 없었다는 뜻입니다. 이 값들은 제품 정확성, 테스트 충분성, OS 강제, 샌드박싱, 보안 격리, 최종 수락, 잔여 위험 수락을 증명하지 않습니다. `mcp_only`는 활성 session watch가 선택되어 있을 때 watcher가 만든 해결되지 않은 미기록 변경 찾기가 닫기를 막는 경우를 제외하고 협력형으로 남습니다.
+이 값들은 닫기 준비 상태와 상태 조회 보기에 쓰이는 guard 통합 상태를 보고합니다. `guard_installation_status`는 저장된 생명주기 값이고, `guard_configuration_status`는 파일과 required hook 완전성을 도출하며, `guard_observation_status`는 현재 설치에 일치하는 hook 관찰이 있는지를 도출합니다. `effective_guard_status`는 observe 경로의 닫기 준비 상태 건강 점검에 쓰는 값입니다. 효과적인 `active` 건강 상태에는 observe 프로필, 완전한 required hook 설정, 오래되거나 깨지지 않은 설치, 현재 일치하는 관찰, 일치하는 호스트와 policy 식별 정보가 필요합니다. `prompt_capture_status`는 사용자 소유 판단 채팅 명령을 위한 prompt capture 사용 가능 상태입니다. `unsupported_by_host`는 호스트 기능이 없음을 뜻하고, `not_configured`는 선택된 연결에 prompt-capture 단계가 설정되어 있지 않음을 뜻합니다. `reload_required`는 사용 전에 설치된 설정이나 policy 식별 정보를 다시 읽어야 함을 뜻합니다. `configured`는 prompt-capture 관찰 전에도 검증 코드 채팅 명령을 표시할 수 있음을 뜻하고, `observed`는 일치하는 guard hook이 관찰되었음을 뜻합니다. `active`는 일치하는 prompt-capture hook 관찰이 기록되었음을 뜻하고, `degraded`는 저하된 guard 건강 상태 때문에 prompt capture가 차단됨을 뜻합니다. `session_watch_status`는 탐지용 watcher 사용 가능 상태입니다. `disabled`는 선택된 session-watch baseline을 사용할 수 없다는 뜻이고, `active`는 한정된 스냅샷 비교를 사용할 수 있다는 뜻이며, `degraded`는 watcher 출력이 부분적이거나 운영자 조치가 필요하다는 뜻이고, `unavailable`은 watcher가 선택된 스냅샷 확인을 수행할 수 없었다는 뜻입니다. 이 값들은 제품 정확성, 테스트 충분성, OS 강제, 샌드박싱, 보안 격리, 최종 수락, 잔여 위험 수락을 증명하지 않습니다. `record`는 활성 session watch가 선택되어 있을 때 watcher가 만든 해결되지 않은 미기록 변경 찾기가 닫기를 막는 경우를 제외하고 협력형으로 남습니다.
 
 `pending_project_selection`은 MCP session에 사용할 수 있는 프로젝트가 둘 이상이고
 session-watch baseline을 만들 만큼 프로젝트가 아직 명시적으로 선택되지 않았다는

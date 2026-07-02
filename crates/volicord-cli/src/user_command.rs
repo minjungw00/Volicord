@@ -860,9 +860,9 @@ fn render_status_response(
     }
     if let Some(guard_health) = response.response_value.get("guard_health") {
         output.push_str(&format!(
-            "guard_mode: {}\nguard_strength: {}\nguard_capabilities: {}\nguard_effective_state: {}\nhook_path_safety: {}\nguard_observed: {}\nprompt_capture_state: {}\nprompt_capture_available: {}\nwatcher_status: {}\nwatcher_baseline_created_at: {}\nwatcher_coverage_start_at: {}\nwatcher_coverage_basis: {}\nwatcher_partial_coverage_warning: {}\nunresolved_unrecorded_changes: {}\n",
-            text_field(guard_health, "guard_mode", "not_configured"),
-            text_field(guard_health, "guard_strength", "not_checked"),
+            "selected_profile: {}\ncontrol_surface: {}\nguard_capabilities: {}\nguard_effective_state: {}\nhook_path_safety: {}\nguard_observed: {}\nprompt_capture_state: {}\nprompt_capture_available: {}\nwatcher_status: {}\nwatcher_baseline_created_at: {}\nwatcher_coverage_start_at: {}\nwatcher_coverage_basis: {}\nwatcher_partial_coverage_warning: {}\nunresolved_unrecorded_changes: {}\n",
+            text_field(guard_health, "selected_profile", "not_configured"),
+            control_surface_text(guard_health),
             guard_capabilities_text(guard_health),
             text_field(guard_health, "effective_guard_status", "not_checked"),
             text_field(guard_health, "hook_path_safety", "not_checked"),
@@ -923,17 +923,58 @@ fn bool_field(value: &Value, field: &str) -> bool {
     value.get(field).and_then(Value::as_bool).unwrap_or(false)
 }
 
+fn control_surface_field<'a>(guard_health: &'a Value, field: &str, fallback: &'a str) -> &'a str {
+    guard_health
+        .get("control_surface")
+        .and_then(|value| value.get(field))
+        .and_then(Value::as_str)
+        .unwrap_or(fallback)
+}
+
+fn control_surface_bool(guard_health: &Value, field: &str) -> bool {
+    guard_health
+        .get("control_surface")
+        .and_then(|value| value.get(field))
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+}
+
+fn control_surface_text(guard_health: &Value) -> String {
+    format!(
+        "selected_profile={}, host_hooks_active={}, session_watcher_active={}, cooperative_pre_tool_warning={}, cooperative_pre_tool_denial={}, unrecorded_changes_detectable={}, actor_identity_provable={}, os_enforced={}",
+        control_surface_field(guard_health, "selected_profile", "not_configured"),
+        yes_no(control_surface_bool(guard_health, "host_hooks_active")),
+        yes_no(control_surface_bool(guard_health, "session_watcher_active")),
+        yes_no(control_surface_bool(guard_health, "cooperative_pre_tool_warning_available")),
+        yes_no(control_surface_bool(guard_health, "cooperative_pre_tool_denial_available")),
+        yes_no(control_surface_bool(guard_health, "unrecorded_changes_detectable")),
+        yes_no(control_surface_bool(guard_health, "actor_identity_provable")),
+        yes_no(control_surface_bool(guard_health, "os_enforced")),
+    )
+}
+
 fn guard_capabilities_text(guard_health: &Value) -> String {
     format!(
-        "pre_tool_blocking={}, post_tool_correlation={}, hook_path_safety={}, bash_shell_mutation_coverage={}, bypass_detection={}, prompt_capture={}, local_web_consent={}, managed_distribution_verified={}",
-        yes_no(bool_field(guard_health, "pre_tool_blocking_available")),
+        "cooperative_pre_tool_warning={}, cooperative_pre_tool_denial={}, post_tool_correlation={}, hook_path_safety={}, bash_shell_mutation_coverage={}, unrecorded_changes_detectable={}, prompt_capture={}, local_web_consent={}, actor_identity_provable={}, os_enforced={}",
+        yes_no(bool_field(
+            guard_health,
+            "cooperative_pre_tool_warning_available"
+        )),
+        yes_no(bool_field(
+            guard_health,
+            "cooperative_pre_tool_denial_available"
+        )),
         yes_no(bool_field(guard_health, "post_tool_correlation_available")),
         text_field(guard_health, "hook_path_safety", "not_checked"),
         yes_no(bool_field(guard_health, "bash_shell_mutation_coverage")),
-        yes_no(bool_field(guard_health, "bypass_detection_active")),
+        yes_no(control_surface_bool(
+            guard_health,
+            "unrecorded_changes_detectable"
+        )),
         yes_no(bool_field(guard_health, "prompt_capture_available")),
         yes_no(bool_field(guard_health, "local_web_consent_available")),
-        yes_no(bool_field(guard_health, "managed_distribution_verified")),
+        yes_no(control_surface_bool(guard_health, "actor_identity_provable")),
+        yes_no(control_surface_bool(guard_health, "os_enforced")),
     )
 }
 

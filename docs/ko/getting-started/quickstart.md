@@ -11,34 +11,30 @@ Agent Connection 의미는 [Agent Connection 참조](../reference/agent-connecti
 ## 빠른 경로
 
 ```sh
-volicord init --host codex --repo /path/to/your-product-repo --mode mcp-only
+volicord init --host codex --repo /path/to/your-product-repo --profile record
 ```
 
 `/path/to/your-product-repo`는 에이전트에게 작업을 요청할 Product Repository의 경로
 예시입니다. `volicord init`은 첫 실행에서 저장소를 설정하고 호스트를 연결하는 기본
 명령입니다. 필요하면 Runtime Home과 설치 프로필을 만들거나 재사용하고, 선택한
 저장소를 등록하며, 선택한 호스트의 프로젝트 범위 MCP 설정을 설치하고, Volicord가
-관리하는 지침과 policy 메타데이터를 쓰고, guard 설치 상태를 기록합니다. 생성된 호스트
+관리하는 지침과 policy 메타데이터를 쓰고, 통합 상태를 기록합니다. 생성된 호스트
 설정은 단일 공개 실행 파일을 프로젝트에 묶인 `volicord mcp --stdio`로 시작합니다.
 
-이 빠른 경로는 호스트 lifecycle hook 설치를 요구하지 않고 pre-tool 차단 hook이 없는
-`--mode mcp-only`를 사용합니다. 선택된 session에 대해 session watcher가 활성 상태가
-되면 guard health가 `detective_watch`를 보고하고 watcher coverage 시작 뒤의 Product
-Repository 메타데이터 변경에서 미기록 변경 찾기를 만들 수 있지만, watcher는 쓰기를
-막거나 누가 변경했는지 식별하지 않으며 부분 coverage는 별도로 보고됩니다. 기본
-`guarded` init은 모든 필수 호스트 hook phase에 대한 검증된 지원이
-필요합니다. 지원이 빠져 있으면 degraded guard 파일과 누락 hook 진단을 명시적으로 원할
-때만 `--allow-degraded`를 사용합니다. Managed init은 여기에 더해 검증된 managed 배포
-계약이 필요하며, 선택한 호스트에 그런 계약이 없으면 `MANAGED_MODE_UNSUPPORTED`로
-실패합니다. 정확한 프로젝트 이름, guard mode 동작, 연결 기본값, 내부 식별 정보 동작은
+이 빠른 경로는 host lifecycle hook 설치나 session watcher를 요구하지 않는
+`--profile record`를 사용합니다. `--profile observe`는 모든 필수 host hook phase와
+session watcher 관찰에 대한 검증된 지원을 요구합니다. 지원이 빠져 있으면 degraded observe
+파일과 누락 hook 진단을 명시적으로 원할 때만 `--allow-degraded`를 사용합니다. Observe는
+협력형 host decision을 반환하고 watcher coverage 시작 뒤의 미기록 변경을 탐지할 수 있지만
+OS 집행, 행위자 증명, 네트워크 격리, sandbox를 제공하지 않습니다. 정확한 프로젝트 이름,
+프로필 동작, 연결 기본값, 내부 식별 정보 동작은
 [관리 CLI 참조](../reference/admin-cli.md)가 담당합니다.
 
-이 `mcp-only` 빠른 경로 대신 guarded 설정을 선택하면, 생성된 hook 명령은 호스트
+이 `record` 빠른 경로 대신 observe 설정을 선택하면, 생성된 hook 명령은 호스트
 session이 저장소 하위 디렉터리에서 시작해도 동작하도록 만들어집니다. Status,
 verification, doctor 진단은 `hook_path_safety`를 보고합니다.
 `relative_path_unsafe`, `wrapper_missing`, `wrapper_not_executable` 같은 값은 생성된 hook
-명령이나 wrapper를 복구하기 전에는 완전한 host-hook guarded strength가 활성 상태가
-아니라는 뜻입니다.
+명령이나 wrapper를 복구하기 전에는 observe host hook이 활성 상태가 아니라는 뜻입니다.
 
 ## 설정 확인하기
 
@@ -53,7 +49,7 @@ volicord connection verify codex --repo /path/to/your-product-repo
 `action_required`를 보고하면 이름 붙은 호스트 소유 동작이나 로컬 복구 동작을 완료한
 뒤 verification을 다시 실행합니다. 정확한 결과 상태 의미는 [관리 CLI
 참조](../reference/admin-cli.md#agent-connection-result-states)가 담당합니다.
-Guarded hook 경로 복구 안내는
+Observe hook 경로 복구 안내는
 [에이전트 호스트 문제 해결](../guides/agent-host-troubleshooting.md#guard-hook-path-or-wrapper-is-unsafe)이
 담당합니다.
 
@@ -82,7 +78,7 @@ volicord connect codex --repo /path/to/your-product-repo
 
 `volicord connect`는 personal, shared, global, read-only 변형을 위한 낮은 수준의
 연결 관리 명령으로 계속 지원됩니다. 일반적인 첫 실행 경로에서는
-`volicord init --host HOST --repo PATH --mode mcp-only`를 우선 사용합니다.
+`volicord init --host HOST --repo PATH --profile record`를 우선 사용합니다.
 
 ## 연결 조회 또는 변경하기
 

@@ -5,7 +5,7 @@ use std::{
 
 use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::Value;
-use volicord_types::{GuardInstallationStatus, GuardMode};
+use volicord_types::{GuardInstallationStatus, IntegrationProfile};
 
 use crate::{
     agent_connections::{
@@ -1552,14 +1552,13 @@ fn validate_connection_intent(intent: &str) -> Result<(), InspectionIssue> {
 fn validate_guard_mode_value(mode: &str) -> Result<(), InspectionIssue> {
     if matches!(
         mode,
-        value if value == GuardMode::McpOnly.as_str()
-            || value == GuardMode::Guarded.as_str()
-            || value == GuardMode::Managed.as_str()
+        value if value == IntegrationProfile::Record.as_str()
+            || value == IntegrationProfile::Observe.as_str()
     ) {
         Ok(())
     } else {
         Err(InspectionIssue::Malformed(format!(
-            "guard_installations.guard_mode is not supported: {mode}"
+            "guard_installations.guard_mode is not a supported integration profile: {mode}"
         )))
     }
 }

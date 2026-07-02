@@ -119,7 +119,7 @@ volicord project use
 Or select the Product Repository explicitly:
 
 ```sh
-volicord init --host codex --repo /path/to/your-product-repo --mode mcp-only
+volicord init --host codex --repo /path/to/your-product-repo --profile record
 ```
 
 `/path/to/your-product-repo` is an example path for the Product Repository where
@@ -132,13 +132,13 @@ Observable symptom: `volicord connect` or `volicord connection ...` cannot infer
 the host, or the host value is unsupported.
 
 Bounded recovery: for ordinary first-run setup without lifecycle hook
-installation, pass the host, repository, and `mcp-only` mode to init explicitly:
+installation, pass the host, repository, and `record` profile to init explicitly:
 
 ```sh
-volicord init --host codex --repo /path/to/your-product-repo --mode mcp-only
+volicord init --host codex --repo /path/to/your-product-repo --profile record
 ```
 
-For guarded or managed setup, use the full init contract in the
+For observe setup, use the full init contract in the
 [Administrative CLI Reference](../reference/admin-cli.md#agent-host-setup-and-init);
 missing verified hook support requires an explicit degraded opt-in.
 
@@ -274,18 +274,17 @@ Diagnostic meanings and repairs:
   is not in the currently verified shape. Rerun init and avoid replacing the
   generated command with unsupported placeholders.
 
-Codex guarded hook commands require the selected Product Repository to be a Git
+Codex observe hook commands require the selected Product Repository to be a Git
 work tree. If the wrapper stderr says the Git root could not be resolved, or
 hooks fail only when the host session starts from a subdirectory, confirm that
 the session is inside the intended Git work tree and that `git` is available to
-the host process, then rerun init for that repository. Claude Code guarded hook
+the host process, then rerun init for that repository. Claude Code observe hook
 commands are rooted at `${CLAUDE_PROJECT_DIR}`; if the host does not provide
 that project directory, reload or repair the host configuration through the
 host's own trust and project-selection flow.
 
-Unsafe hook paths prevent full `host_hook_guarded` or `managed_guarded` guard
-strength. They can leave the view at `authority_record_only` or
-`detective_watch` depending on watcher availability. Path repair is still
+Unsafe hook paths keep observe host hooks inactive. Watcher availability is
+reported separately in the control-surface summary. Path repair is still
 separate from host trust, approval, restart, and reload; complete any reported
 host-owned action and rerun verification after repair.
 

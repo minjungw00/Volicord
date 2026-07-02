@@ -16,7 +16,7 @@ use volicord_store::{
     },
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
 };
-use volicord_types::{GuardInstallationStatus, GuardMode, GuardStrength};
+use volicord_types::{GuardInstallationStatus, IntegrationProfile};
 
 use crate::{
     setup_command::{path_text, CommandOutcome, CommandStatus},
@@ -381,14 +381,20 @@ fn inspect_guard_installations(
             "no guard installation status is recorded",
         ));
         checks.push(
-            DiagnosticCheck::skipped("guard_profile", "no guard profile is recorded").with_details(
-                json!({
-                    "guard_profile": "not_checked",
-                    "managed_source": "not_checked",
-                    "managed_bundle_hash": Value::Null,
-                    "managed_verification_status": "not_checked",
-                }),
-            ),
+            DiagnosticCheck::skipped("control_surface", "no integration profile is recorded")
+                .with_details(json!({
+                    "selected_profile": "not_checked",
+                    "control_surface": {
+                        "selected_profile": "not_checked",
+                        "host_hooks_active": false,
+                        "session_watcher_active": false,
+                        "cooperative_pre_tool_warning_available": false,
+                        "cooperative_pre_tool_denial_available": false,
+                        "unrecorded_changes_detectable": false,
+                        "actor_identity_provable": false,
+                        "os_enforced": false,
+                    },
+                })),
         );
         checks.push(
             DiagnosticCheck::skipped(
@@ -404,34 +410,47 @@ fn inspect_guard_installations(
         return;
     }
 
-    let guarded = snapshot
+    let observed_profile_installations = snapshot
         .guard_installations
         .iter()
-        .filter(|installation| installation.guard_mode != GuardMode::McpOnly.as_str())
+        .filter(|installation| installation.guard_mode == IntegrationProfile::Observe.as_str())
         .collect::<Vec<_>>();
     let mut file_findings = DoctorGuardFileFindings::default();
     for installation in &snapshot.guard_installations {
         file_findings.merge(doctor_guard_file_findings(installation, snapshot));
     }
     file_findings.sort_dedup();
-    let guard_profile = doctor_guard_profile_state(&snapshot.guard_installations, &file_findings);
-    let managed_source = doctor_managed_source_state(&snapshot.guard_installations, &file_findings);
-    let managed_bundle_hash = doctor_managed_bundle_hash(&file_findings);
-    let managed_verification =
-        doctor_managed_verification_state(&snapshot.guard_installations, &file_findings);
-    let guard_profile_check = if guard_profile == "mixed" || managed_verification == "mixed" {
+    let selected_profile =
+        doctor_selected_profile_state(&snapshot.guard_installations, &file_findings);
+    let missing_required_hooks = observed_profile_installations
+        .iter()
+        .flat_map(|installation| guard_missing_required_hooks(&installation.host_capability_json))
+        .collect::<Vec<_>>();
+    let observed_count = observed_profile_installations
+        .iter()
+        .filter(|installation| guard_observation_current(installation))
+        .count();
+    let control_surface = doctor_control_surface_summary(
+        &selected_profile,
+        &observed_profile_installations,
+        &file_findings,
+        observed_count,
+        missing_required_hooks.is_empty(),
+    );
+    let control_surface_check = if selected_profile == "mixed" {
         DiagnosticCheck::warning(
-            "guard_profile",
-            "guard installations record mixed managed boundary metadata",
+            "control_surface",
+            "guard installations record mixed integration profiles",
         )
     } else {
-        DiagnosticCheck::passed("guard_profile", format!("guard profile is {guard_profile}"))
+        DiagnosticCheck::passed(
+            "control_surface",
+            format!("selected integration profile is {selected_profile}"),
+        )
     };
-    checks.push(guard_profile_check.with_details(json!({
-        "guard_profile": guard_profile,
-        "managed_source": managed_source,
-        "managed_bundle_hash": managed_bundle_hash,
-        "managed_verification_status": managed_verification,
+    checks.push(control_surface_check.with_details(json!({
+        "selected_profile": selected_profile,
+        "control_surface": control_surface,
     })));
     let guard_file_problem = !file_findings.missing_files.is_empty()
         || !file_findings.stale_files.is_empty()
@@ -454,7 +473,7 @@ fn inspect_guard_installations(
             DiagnosticAction {
                 id: "repair_guard_files".to_owned(),
                 instruction:
-                    "Run volicord init again for affected guarded projects to reinstall or refresh guard files."
+                    "Run volicord init again for affected observe-profile projects to reinstall or refresh guard files."
                         .to_owned(),
                 command: Some("volicord init --host HOST --repo PATH".to_owned()),
             },
@@ -471,19 +490,14 @@ fn inspect_guard_installations(
             DiagnosticAction {
                 id: "repair_guard_hook_path_safety".to_owned(),
                 instruction:
-                    "Run volicord init again for affected guarded projects to regenerate cwd-independent hook commands."
+                    "Run volicord init again for affected observe-profile projects to regenerate cwd-independent hook commands."
                         .to_owned(),
                 command: Some("volicord init --host HOST --repo PATH".to_owned()),
             },
         );
     }
 
-    let missing_required_hooks = guarded
-        .iter()
-        .flat_map(|installation| guard_missing_required_hooks(&installation.host_capability_json))
-        .collect::<Vec<_>>();
-
-    let reload_required = guarded.iter().any(|installation| {
+    let reload_required = observed_profile_installations.iter().any(|installation| {
         installation.installation_status == GuardInstallationStatus::ReloadRequired.as_str()
     });
     if reload_required {
@@ -511,10 +525,10 @@ fn inspect_guard_installations(
         ));
     }
 
-    if guarded.is_empty() {
+    if observed_profile_installations.is_empty() {
         checks.push(DiagnosticCheck::skipped(
             "guard_required_hooks_supported",
-            "guard hook capability is not applicable to mcp-only installations",
+            "host hook capability is not applicable to record-profile installations",
         ));
     } else if missing_required_hooks.is_empty() {
         checks.push(DiagnosticCheck::passed(
@@ -525,7 +539,7 @@ fn inspect_guard_installations(
         checks.push(
             DiagnosticCheck::warning(
                 "guard_required_hooks_supported",
-                "one or more guarded installations are missing required hook capabilities",
+                "one or more observe-profile installations are missing required hook capabilities",
             )
             .with_details(json!({ "missing_required_hooks": missing_required_hooks })),
         );
@@ -534,34 +548,30 @@ fn inspect_guard_installations(
             DiagnosticAction {
                 id: "repair_guard_required_hooks".to_owned(),
                 instruction:
-                    "Run volicord init again with a host adapter that supports every required guard hook, or use mcp-only mode."
+                    "Run volicord init again with a host adapter that supports every required guard hook, or use the record profile."
                         .to_owned(),
                 command: Some("volicord init --host HOST --repo PATH".to_owned()),
             },
         );
     }
 
-    let observed_count = guarded
-        .iter()
-        .filter(|installation| guard_observation_current(installation))
-        .count();
-    if guarded.is_empty() {
+    if observed_profile_installations.is_empty() {
         checks.push(DiagnosticCheck::skipped(
             "guard_hook_observed",
-            "guard hook observation is not applicable to mcp-only installations",
+            "guard hook observation is not applicable to record-profile installations",
         ));
-    } else if observed_count == guarded.len() {
+    } else if observed_count == observed_profile_installations.len() {
         checks.push(
             DiagnosticCheck::passed("guard_hook_observed", "guard hooks have been observed")
-                .with_details(json!({ "observed": observed_count, "guarded": guarded.len() })),
+                .with_details(json!({ "observed": observed_count, "observe": observed_profile_installations.len() })),
         );
     } else {
         checks.push(
             DiagnosticCheck::warning(
                 "guard_hook_observed",
-                "one or more guarded installations have not been observed",
+                "one or more observe-profile installations have not been observed",
             )
-            .with_details(json!({ "observed": observed_count, "guarded": guarded.len() })),
+            .with_details(json!({ "observed": observed_count, "observe": observed_profile_installations.len() })),
         );
         push_unique_diagnostic_action(
             actions,
@@ -596,17 +606,17 @@ fn inspect_guard_installations(
             DiagnosticAction {
                 id: "repair_guard_status".to_owned(),
                 instruction:
-                    "Repair or reinstall affected guard integrations before relying on guarded close readiness."
+                    "Repair or reinstall affected observe-profile integrations before relying on host-hook observation."
                         .to_owned(),
                 command: Some("volicord init --host HOST --repo PATH".to_owned()),
             },
         );
-    } else if guarded.is_empty() {
+    } else if observed_profile_installations.is_empty() {
         checks.push(DiagnosticCheck::skipped(
             "guard_status_active",
-            "guard active status is not applicable to mcp-only installations",
+            "guard active status is not applicable to record-profile installations",
         ));
-    } else if guarded
+    } else if observed_profile_installations
         .iter()
         .all(|installation| guard_effective_active(installation))
     {
@@ -618,17 +628,17 @@ fn inspect_guard_installations(
         checks.push(
             DiagnosticCheck::warning(
                 "guard_status_active",
-                "effective guard status is not active for one or more guarded installations",
+                "effective guard status is not active for one or more observe-profile installations",
             )
             .with_details(json!({
                 "status_counts": status_counts,
-                "effective_active": guarded.iter().filter(|installation| guard_effective_active(installation)).count(),
-                "guarded": guarded.len(),
+                "effective_active": observed_profile_installations.iter().filter(|installation| guard_effective_active(installation)).count(),
+                "observe": observed_profile_installations.len(),
             })),
         );
     }
 
-    inspect_prompt_capture_availability(&guarded, checks);
+    inspect_prompt_capture_availability(&observed_profile_installations, checks);
 }
 
 #[derive(Debug, Default)]
@@ -637,10 +647,7 @@ struct DoctorGuardFileFindings {
     stale_files: Vec<String>,
     broken_files: Vec<String>,
     file_states: BTreeMap<String, String>,
-    guard_profiles: Vec<String>,
-    managed_sources: Vec<String>,
-    managed_bundle_hashes: Vec<String>,
-    managed_verification_statuses: Vec<String>,
+    selected_profiles: Vec<String>,
     native_host_output_adapter_verified_values: Vec<bool>,
     bash_shell_mutation_coverage_values: Vec<bool>,
     direct_file_write_matcher_coverage_values: Vec<bool>,
@@ -658,12 +665,7 @@ impl DoctorGuardFileFindings {
         for (kind, state) in other.file_states {
             self.set_file_state(&kind, &state);
         }
-        self.guard_profiles.extend(other.guard_profiles);
-        self.managed_sources.extend(other.managed_sources);
-        self.managed_bundle_hashes
-            .extend(other.managed_bundle_hashes);
-        self.managed_verification_statuses
-            .extend(other.managed_verification_statuses);
+        self.selected_profiles.extend(other.selected_profiles);
         self.native_host_output_adapter_verified_values
             .extend(other.native_host_output_adapter_verified_values);
         self.bash_shell_mutation_coverage_values
@@ -687,14 +689,8 @@ impl DoctorGuardFileFindings {
         self.stale_files.dedup();
         self.broken_files.sort();
         self.broken_files.dedup();
-        self.guard_profiles.sort();
-        self.guard_profiles.dedup();
-        self.managed_sources.sort();
-        self.managed_sources.dedup();
-        self.managed_bundle_hashes.sort();
-        self.managed_bundle_hashes.dedup();
-        self.managed_verification_statuses.sort();
-        self.managed_verification_statuses.dedup();
+        self.selected_profiles.sort();
+        self.selected_profiles.dedup();
         self.hook_path_safety_statuses
             .sort_by_key(|status| doctor_hook_path_status_rank(status));
         self.hook_path_safety_statuses.dedup();
@@ -797,10 +793,7 @@ fn doctor_guard_file_details(findings: &DoctorGuardFileFindings) -> Value {
         "stale_files": &findings.stale_files,
         "broken_files": &findings.broken_files,
         "file_states": &findings.file_states,
-        "guard_profiles": &findings.guard_profiles,
-        "managed_sources": &findings.managed_sources,
-        "managed_bundle_hashes": &findings.managed_bundle_hashes,
-        "managed_verification_statuses": &findings.managed_verification_statuses,
+        "selected_profiles": &findings.selected_profiles,
         "generated_config_verified": doctor_generated_config_verified(findings),
         "native_host_output_adapter_verified": doctor_generated_config_verified(findings)
             && all_recorded_values_true(&findings.native_host_output_adapter_verified_values),
@@ -839,17 +832,8 @@ fn doctor_guard_file_findings(
     {
         findings.set_file_state("host_rule_instruction", "unsupported_by_host");
     }
-    if let Some(value) = nonempty_json_string(&value, "guard_profile") {
-        findings.guard_profiles.push(value);
-    }
-    if let Some(value) = nonempty_json_string(&value, "managed_source") {
-        findings.managed_sources.push(value);
-    }
-    if let Some(value) = nonempty_json_string(&value, "managed_bundle_hash") {
-        findings.managed_bundle_hashes.push(value);
-    }
-    if let Some(value) = nonempty_json_string(&value, "managed_verification_status") {
-        findings.managed_verification_statuses.push(value);
+    if let Some(value) = nonempty_json_string(&value, "selected_profile") {
+        findings.selected_profiles.push(value);
     }
     findings
         .native_host_output_adapter_verified_values
@@ -881,57 +865,49 @@ fn doctor_guard_file_findings(
     findings
 }
 
-fn doctor_guard_profile_state(
+fn doctor_selected_profile_state(
     installations: &[volicord_store::inspection::GuardInstallationInspectionRecord],
     findings: &DoctorGuardFileFindings,
 ) -> String {
-    if let Some(value) = single_or_mixed(&findings.guard_profiles) {
+    if let Some(value) = single_or_mixed(&findings.selected_profiles) {
         return value;
     }
     match doctor_guard_mode_state(installations).as_str() {
-        "mcp_only" => "mcp_only",
-        "guarded" => "host_hook_guarded",
-        "managed" => "managed_guarded",
+        "record" => "record",
+        "observe" => "observe",
         _ => "mixed",
     }
     .to_owned()
 }
 
-fn doctor_managed_source_state(
-    installations: &[volicord_store::inspection::GuardInstallationInspectionRecord],
+fn doctor_control_surface_summary(
+    selected_profile: &str,
+    observe_installations: &[&volicord_store::inspection::GuardInstallationInspectionRecord],
     findings: &DoctorGuardFileFindings,
-) -> String {
-    if let Some(value) = single_or_mixed(&findings.managed_sources) {
-        return value;
-    }
-    match doctor_guard_profile_state(installations, findings).as_str() {
-        "mcp_only" => "not_applicable",
-        "host_hook_guarded" => "project_local_host_hooks",
-        "managed_guarded" => "unknown",
-        "mixed" => "mixed",
-        _ => "unknown",
-    }
-    .to_owned()
-}
-
-fn doctor_managed_bundle_hash(findings: &DoctorGuardFileFindings) -> Option<String> {
-    single_or_mixed(&findings.managed_bundle_hashes)
-}
-
-fn doctor_managed_verification_state(
-    installations: &[volicord_store::inspection::GuardInstallationInspectionRecord],
-    findings: &DoctorGuardFileFindings,
-) -> String {
-    if let Some(value) = single_or_mixed(&findings.managed_verification_statuses) {
-        return value;
-    }
-    match doctor_guard_profile_state(installations, findings).as_str() {
-        "mcp_only" | "host_hook_guarded" => "not_applicable",
-        "managed_guarded" => "unverified",
-        "mixed" => "mixed",
-        _ => "unknown",
-    }
-    .to_owned()
+    observed_count: usize,
+    required_hooks_available: bool,
+) -> Value {
+    let host_hooks_active = selected_profile == IntegrationProfile::Observe.as_str()
+        && !observe_installations.is_empty()
+        && observed_count == observe_installations.len()
+        && observe_installations
+            .iter()
+            .all(|installation| guard_effective_active(installation))
+        && required_hooks_available
+        && doctor_generated_config_verified(findings)
+        && all_recorded_values_true(&findings.native_host_output_adapter_verified_values)
+        && all_recorded_values_true(&findings.bash_shell_mutation_coverage_values)
+        && all_recorded_values_true(&findings.direct_file_write_matcher_coverage_values);
+    json!({
+        "selected_profile": selected_profile,
+        "host_hooks_active": host_hooks_active,
+        "session_watcher_active": false,
+        "cooperative_pre_tool_warning_available": host_hooks_active,
+        "cooperative_pre_tool_denial_available": host_hooks_active,
+        "unrecorded_changes_detectable": false,
+        "actor_identity_provable": false,
+        "os_enforced": false,
+    })
 }
 
 fn doctor_verify_recorded_hook_path_safety(
@@ -940,13 +916,14 @@ fn doctor_verify_recorded_hook_path_safety(
     snapshot: &RegistryInspectionSnapshot,
     findings: &mut DoctorGuardFileFindings,
 ) {
-    let requires_path_safety = matches!(
-        capability.get("guard_profile").and_then(Value::as_str),
-        Some("host_hook_guarded" | "managed_guarded")
-    ) || capability
-        .get("required_guard_phases")
-        .and_then(Value::as_array)
-        .is_some_and(|phases| !phases.is_empty());
+    let requires_path_safety = capability
+        .get("selected_profile")
+        .and_then(Value::as_str)
+        .is_some_and(|profile| profile == IntegrationProfile::Observe.as_str())
+        || capability
+            .get("required_guard_phases")
+            .and_then(Value::as_array)
+            .is_some_and(|phases| !phases.is_empty());
     let Some(commands) = capability
         .get("host_hook_commands")
         .and_then(Value::as_array)
@@ -1794,14 +1771,14 @@ fn guard_effective_active(
 }
 
 fn inspect_prompt_capture_availability(
-    guarded: &[&volicord_store::inspection::GuardInstallationInspectionRecord],
+    observe_installations: &[&volicord_store::inspection::GuardInstallationInspectionRecord],
     checks: &mut Vec<DiagnosticCheck>,
 ) {
-    if guarded.is_empty() {
+    if observe_installations.is_empty() {
         checks.push(
             DiagnosticCheck::skipped(
                 "prompt_capture_available",
-                "prompt capture is not applicable to mcp-only installations",
+                "prompt capture is not applicable to record-profile installations",
             )
             .with_details(json!({
                 "state": "not_applicable",
@@ -1811,17 +1788,17 @@ fn inspect_prompt_capture_availability(
         );
         return;
     }
-    let configured = guarded
+    let configured = observe_installations
         .iter()
         .filter(|installation| guard_prompt_capture_configured(&installation.host_capability_json))
         .count();
-    let host_supported = guarded
+    let host_supported = observe_installations
         .iter()
         .filter(|installation| {
             guard_prompt_capture_host_supported(&installation.host_capability_json)
         })
         .count();
-    let observed = guarded
+    let observed = observe_installations
         .iter()
         .filter(|installation| {
             installation.last_seen_at.is_some()
@@ -1832,7 +1809,7 @@ fn inspect_prompt_capture_availability(
         checks.push(
             DiagnosticCheck::warning(
                 "prompt_capture_available",
-                "host does not support prompt capture for recorded guarded installations",
+                "host does not support prompt capture for recorded observe-profile installations",
             )
             .with_details(json!({
                 "state": "unsupported_by_host",
@@ -1868,7 +1845,7 @@ fn inspect_prompt_capture_availability(
         checks.push(
             DiagnosticCheck::warning(
                 "prompt_capture_available",
-                "prompt capture is not configured for recorded guarded installations",
+                "prompt capture is not configured for recorded observe-profile installations",
             )
             .with_details(json!({
                 "state": "not_configured",
@@ -2212,7 +2189,7 @@ fn render_doctor_output(
         }
         OutputFormat::Text => {
             let mut text = format!(
-                "Volicord doctor {}\nstatus_meaning: {}\nruntime_home_state: {}\nruntime_home: {}\ninstallation_profile_state: {}\ncommand_state: {}\nproject_registration_state: {}\nconnection_state: {}\nmcp_config_state: {}\nguard_installation_state: {}\nguard_strength: {}\nguard_capabilities: {}\nguard_configuration_state: {}\nguard_observation_state: {}\nguard_effective_state: {}\nguard_profile_state: {}\nmanaged_source_state: {}\nmanaged_bundle_hash: {}\nmanaged_verification_state: {}\nguard_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_path_safety: {}\nrequired_guard_phases_state: {}\nrequired_guard_phases_missing: {}\nguard_hook_observed: {}\nguard_status_state: {}\nprompt_capture_state: {}\nprompt_capture_health: {}\nwatcher_status: not_started\nwatcher_baseline_created_at: none\nwatcher_coverage_start_at: none\nwatcher_coverage_basis: none\nwatcher_partial_coverage_warning: doctor does not initialize an MCP session watch\nhost_reload_required: {}\n",
+                "Volicord doctor {}\nstatus_meaning: {}\nruntime_home_state: {}\nruntime_home: {}\ninstallation_profile_state: {}\ncommand_state: {}\nproject_registration_state: {}\nconnection_state: {}\nmcp_config_state: {}\nguard_installation_state: {}\nselected_profile: {}\ncontrol_surface: {}\nguard_capabilities: {}\nguard_configuration_state: {}\nguard_observation_state: {}\nguard_effective_state: {}\nguard_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_path_safety: {}\nrequired_guard_phases_state: {}\nrequired_guard_phases_missing: {}\nguard_hook_observed: {}\nguard_status_state: {}\nprompt_capture_state: {}\nprompt_capture_health: {}\nwatcher_status: not_started\nwatcher_baseline_created_at: none\nwatcher_coverage_start_at: none\nwatcher_coverage_basis: none\nwatcher_partial_coverage_warning: doctor does not initialize an MCP session watch\nhost_reload_required: {}\n",
                 status.as_str(),
                 doctor_status_meaning(status, checks),
                 doctor_runtime_home_state(runtime_home, checks),
@@ -2223,15 +2200,12 @@ fn render_doctor_output(
                 doctor_count_state(checks, "connections", "stored"),
                 doctor_mcp_config_state(checks),
                 doctor_count_state(checks, "guard_installations", "stored"),
-                doctor_guard_strength(checks),
+                doctor_selected_profile_from_checks(checks),
+                doctor_control_surface_text(checks),
                 doctor_guard_capabilities_text(checks),
                 doctor_check_state(checks, "guard_required_hooks_supported"),
                 doctor_check_state(checks, "guard_hook_observed"),
                 doctor_check_state(checks, "guard_status_active"),
-                doctor_guard_metadata_state(checks, "guard_profile"),
-                doctor_guard_metadata_state(checks, "managed_source"),
-                doctor_guard_bundle_hash_text(checks),
-                doctor_guard_metadata_state(checks, "managed_verification_status"),
                 doctor_check_state(checks, "guard_files_installed"),
                 doctor_guard_file_kind_state(checks, "agents_managed_block"),
                 doctor_guard_file_kind_state(checks, "volicord_policy"),
@@ -2265,20 +2239,17 @@ fn doctor_states_json(
         "connection": doctor_count_state(checks, "connections", "stored"),
         "mcp_config": doctor_mcp_config_state(checks),
         "guard_installation": doctor_count_state(checks, "guard_installations", "stored"),
-        "guard_strength": doctor_guard_strength(checks),
-        "pre_tool_blocking_available": doctor_host_hook_guard_available(checks),
+        "selected_profile": doctor_selected_profile_from_checks(checks),
+        "control_surface": doctor_control_surface_value(checks),
+        "cooperative_pre_tool_warning_available": doctor_control_surface_bool(checks, "cooperative_pre_tool_warning_available"),
+        "cooperative_pre_tool_denial_available": doctor_control_surface_bool(checks, "cooperative_pre_tool_denial_available"),
         "post_tool_correlation_available": doctor_host_hook_guard_available(checks),
         "bypass_detection_active": false,
         "prompt_capture_available": doctor_prompt_capture_available(checks),
         "local_web_consent_available": false,
-        "managed_distribution_verified": doctor_managed_distribution_verified(checks),
         "guard_configuration": doctor_check_state(checks, "guard_required_hooks_supported"),
         "guard_observation": doctor_check_state(checks, "guard_hook_observed"),
         "guard_effective": doctor_check_state(checks, "guard_status_active"),
-        "guard_profile": doctor_guard_metadata_state(checks, "guard_profile"),
-        "managed_source": doctor_guard_metadata_state(checks, "managed_source"),
-        "managed_bundle_hash": doctor_guard_bundle_hash_value(checks),
-        "managed_verification_status": doctor_guard_metadata_state(checks, "managed_verification_status"),
         "guard_files": doctor_check_state(checks, "guard_files_installed"),
         "agents_managed_block": doctor_guard_file_kind_state(checks, "agents_managed_block"),
         "volicord_policy_file": doctor_guard_file_kind_state(checks, "volicord_policy"),
@@ -2447,36 +2418,60 @@ fn doctor_direct_file_write_matcher_coverage(checks: &[DiagnosticCheck]) -> bool
     doctor_guard_file_bool_detail(checks, "direct_file_write_matcher_coverage")
 }
 
-fn doctor_guard_metadata_state(checks: &[DiagnosticCheck], key: &str) -> String {
+fn doctor_selected_profile_from_checks(checks: &[DiagnosticCheck]) -> String {
     checks
         .iter()
-        .find(|check| check.id == "guard_profile")
+        .find(|check| check.id == "control_surface")
         .and_then(|check| check.details.as_ref())
-        .and_then(|details| details.get(key))
+        .and_then(|details| details.get("selected_profile"))
         .and_then(Value::as_str)
         .map(str::to_owned)
-        .unwrap_or_else(|| match check_status(checks, "guard_profile") {
+        .unwrap_or_else(|| match check_status(checks, "control_surface") {
             Some("skipped") | None => "not_checked".to_owned(),
             _ => "unknown".to_owned(),
         })
 }
 
-fn doctor_guard_bundle_hash_value(checks: &[DiagnosticCheck]) -> Value {
+fn doctor_control_surface_value(checks: &[DiagnosticCheck]) -> Value {
     checks
         .iter()
-        .find(|check| check.id == "guard_profile")
+        .find(|check| check.id == "control_surface")
         .and_then(|check| check.details.as_ref())
-        .and_then(|details| details.get("managed_bundle_hash"))
+        .and_then(|details| details.get("control_surface"))
         .cloned()
-        .unwrap_or(Value::Null)
+        .unwrap_or_else(|| {
+            json!({
+                "selected_profile": doctor_selected_profile_from_checks(checks),
+                "host_hooks_active": false,
+                "session_watcher_active": false,
+                "cooperative_pre_tool_warning_available": false,
+                "cooperative_pre_tool_denial_available": false,
+                "unrecorded_changes_detectable": false,
+                "actor_identity_provable": false,
+                "os_enforced": false,
+            })
+        })
 }
 
-fn doctor_guard_bundle_hash_text(checks: &[DiagnosticCheck]) -> String {
-    doctor_guard_bundle_hash_value(checks)
-        .as_str()
-        .filter(|value| !value.trim().is_empty())
-        .map(str::to_owned)
-        .unwrap_or_else(|| "none".to_owned())
+fn doctor_control_surface_bool(checks: &[DiagnosticCheck], key: &str) -> bool {
+    doctor_control_surface_value(checks)
+        .get(key)
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+}
+
+fn doctor_control_surface_text(checks: &[DiagnosticCheck]) -> String {
+    format!(
+        "selected_profile={}, host_hooks_active={}, session_watcher_active={}, cooperative_pre_tool_warning={}, cooperative_pre_tool_denial={}, unrecorded_changes_detectable={}, actor_identity_provable={}, os_enforced={}",
+        doctor_selected_profile_from_checks(checks),
+        yes_no(doctor_control_surface_bool(checks, "host_hooks_active")),
+        yes_no(doctor_control_surface_bool(checks, "session_watcher_active")),
+        yes_no(doctor_control_surface_bool(checks, "cooperative_pre_tool_warning_available")),
+        yes_no(doctor_control_surface_bool(checks, "cooperative_pre_tool_denial_available")),
+        yes_no(doctor_control_surface_bool(checks, "unrecorded_changes_detectable")),
+        yes_no(doctor_control_surface_bool(checks, "actor_identity_provable")),
+        yes_no(doctor_control_surface_bool(checks, "os_enforced")),
+    )
 }
 
 fn doctor_required_guard_phases_state(checks: &[DiagnosticCheck]) -> &'static str {
@@ -2530,38 +2525,8 @@ fn doctor_prompt_capture_status(checks: &[DiagnosticCheck]) -> String {
         .unwrap_or_else(|| "not_checked".to_owned())
 }
 
-fn doctor_guard_strength(checks: &[DiagnosticCheck]) -> &'static str {
-    if doctor_managed_distribution_verified(checks) && doctor_host_hook_guard_available(checks) {
-        GuardStrength::ManagedGuarded.as_str()
-    } else if doctor_host_hook_guard_available(checks) {
-        GuardStrength::HostHookGuarded.as_str()
-    } else {
-        GuardStrength::AuthorityRecordOnly.as_str()
-    }
-}
-
 fn doctor_host_hook_guard_available(checks: &[DiagnosticCheck]) -> bool {
-    matches!(
-        doctor_guard_metadata_state(checks, "guard_profile").as_str(),
-        "host_hook_guarded" | "managed_guarded"
-    ) && doctor_check_state(checks, "guard_status_active") == "ready"
-        && doctor_required_guard_phases_state(checks) == "configured"
-        && doctor_check_state(checks, "guard_files_installed") == "ready"
-        && doctor_generated_config_verified_state(checks)
-        && doctor_hook_path_safety_state(checks) == "ok"
-        && doctor_hook_commands_cwd_independent(checks)
-        && doctor_hook_commands_subdirectory_safe(checks)
-        && doctor_native_host_output_adapter_verified(checks)
-        && doctor_bash_shell_mutation_coverage(checks)
-        && doctor_direct_file_write_matcher_coverage(checks)
-}
-
-fn doctor_managed_distribution_verified(checks: &[DiagnosticCheck]) -> bool {
-    doctor_guard_metadata_state(checks, "guard_profile") == GuardStrength::ManagedGuarded.as_str()
-        && doctor_guard_metadata_state(checks, "managed_verification_status") == "verified"
-        && doctor_guard_bundle_hash_value(checks)
-            .as_str()
-            .is_some_and(|value| !value.trim().is_empty())
+    doctor_control_surface_bool(checks, "host_hooks_active")
 }
 
 fn doctor_prompt_capture_available(checks: &[DiagnosticCheck]) -> bool {
@@ -2574,15 +2539,17 @@ fn doctor_prompt_capture_available(checks: &[DiagnosticCheck]) -> bool {
 fn doctor_guard_capabilities_text(checks: &[DiagnosticCheck]) -> String {
     let host_hook_available = doctor_host_hook_guard_available(checks);
     format!(
-        "pre_tool_blocking={}, post_tool_correlation={}, hook_path_safety={}, bash_shell_mutation_coverage={}, bypass_detection={}, prompt_capture={}, local_web_consent={}, managed_distribution_verified={}",
+        "cooperative_pre_tool_warning={}, cooperative_pre_tool_denial={}, post_tool_correlation={}, hook_path_safety={}, bash_shell_mutation_coverage={}, unrecorded_changes_detectable={}, prompt_capture={}, local_web_consent={}, actor_identity_provable={}, os_enforced={}",
+        yes_no(host_hook_available),
         yes_no(host_hook_available),
         yes_no(host_hook_available),
         doctor_hook_path_safety_state(checks),
         yes_no(doctor_bash_shell_mutation_coverage(checks)),
-        yes_no(false),
+        yes_no(doctor_control_surface_bool(checks, "unrecorded_changes_detectable")),
         yes_no(doctor_prompt_capture_available(checks)),
         yes_no(false),
-        yes_no(doctor_managed_distribution_verified(checks)),
+        yes_no(doctor_control_surface_bool(checks, "actor_identity_provable")),
+        yes_no(doctor_control_surface_bool(checks, "os_enforced")),
     )
 }
 

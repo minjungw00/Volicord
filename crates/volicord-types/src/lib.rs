@@ -57,10 +57,14 @@ mod tests {
     }
 
     #[test]
-    fn guard_values_serialize_stable_names() {
+    fn integration_profile_values_serialize_stable_names() {
         assert_eq!(
-            serde_json::to_value(GuardMode::McpOnly).expect("guard mode serializes"),
-            json!("mcp_only")
+            serde_json::to_value(IntegrationProfile::Record).expect("profile serializes"),
+            json!("record")
+        );
+        assert_eq!(
+            serde_json::to_value(IntegrationProfile::Observe).expect("profile serializes"),
+            json!("observe")
         );
         assert_eq!(
             serde_json::to_value(GuardDecision::InjectContext).expect("guard decision serializes"),
@@ -85,24 +89,6 @@ mod tests {
             serde_json::to_value(GuardEffectiveStatus::ActionRequired)
                 .expect("effective guard status serializes"),
             json!("action_required")
-        );
-        assert_eq!(
-            serde_json::to_value(GuardStrength::AuthorityRecordOnly)
-                .expect("guard strength serializes"),
-            json!("authority_record_only")
-        );
-        assert_eq!(
-            serde_json::to_value(GuardStrength::DetectiveWatch).expect("guard strength serializes"),
-            json!("detective_watch")
-        );
-        assert_eq!(
-            serde_json::to_value(GuardStrength::HostHookGuarded)
-                .expect("guard strength serializes"),
-            json!("host_hook_guarded")
-        );
-        assert_eq!(
-            serde_json::to_value(GuardStrength::ManagedGuarded).expect("guard strength serializes"),
-            json!("managed_guarded")
         );
         assert_eq!(
             serde_json::to_value(UnrecordedChangeStatus::Unresolved)

@@ -46,7 +46,7 @@ pub(crate) fn close_blocker_with_resolution(
         category,
         code: code.to_owned(),
         message: message.into(),
-        guard_strength: None,
+        control_surface: None,
         can_resolve_in_chat,
         terminal_action_required,
         related_refs,

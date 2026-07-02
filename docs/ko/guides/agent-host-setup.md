@@ -2,7 +2,7 @@
 
 이 가이드는 Codex, Claude Code, 일반 MCP 호스트를 Volicord에 연결할 때
 사용합니다. 일반적인 첫 실행 경로는 `volicord init`, 호스트, Product Repository,
-그리고 호스트 capability에 맞는 통합 모드에서 시작하며, 내부 호스트와 registry 값은
+그리고 호스트 capability에 맞는 통합 프로필에서 시작하며, 내부 호스트와 registry 값은
 Volicord가 관리합니다.
 
 정확한 CLI 동작은 [관리 CLI 참조](../reference/admin-cli.md)가 담당합니다.
@@ -15,7 +15,7 @@ Agent Connection 의미는 [Agent Connection 참조](../reference/agent-connecti
 설정 순서를 실행합니다.
 
 ```sh
-volicord init --host codex --repo /path/to/your-product-repo --mode mcp-only
+volicord init --host codex --repo /path/to/your-product-repo --profile record
 volicord connection status codex --repo /path/to/your-product-repo
 ```
 
@@ -23,10 +23,10 @@ volicord connection status codex --repo /path/to/your-product-repo
 예시입니다. `volicord init`은 필요하면 Runtime Home과 설치 프로필을 만들거나
 재사용하고, 해당 저장소 프로젝트를 등록하거나 재사용하며, 저장소 디렉터리에서 보이는
 프로젝트 이름을 파생하고, 선택한 호스트의 프로젝트 범위 MCP 설정을 설치하고,
-Volicord 관리 지침과 policy 메타데이터를 쓰고, guard 설치 상태를 기록하며, 내부
+Volicord 관리 지침과 policy 메타데이터를 쓰고, 통합 상태를 기록하며, 내부
 registry 식별 정보를 선택된 `Volicord Runtime Home`에 저장합니다. 생성된 호스트
-설정은 `volicord mcp --stdio`를 시작합니다. `--mode mcp-only`는 더 낮은 보장의 설정
-경로이며 호스트 lifecycle hook 설치를 요구하지 않습니다.
+설정은 `volicord mcp --stdio`를 시작합니다. `--profile record`는 host lifecycle hook
+설치나 session watcher를 요구하지 않습니다.
 
 설치 프로필이 준비된 뒤 personal, global, read-only 동작을 직접 선택하는 등 낮은
 수준의 연결 변형이 필요할 때는 `volicord connect`를 사용합니다. 프로세스 현재
@@ -36,33 +36,37 @@ registry 식별 정보를 선택된 `Volicord Runtime Home`에 저장합니다. 
 volicord connect codex --repo /path/to/your-product-repo
 ```
 
-## 보호 수준
+## 통합 프로필
 
-Guard health는 선택된 연결 또는 session에서 활성인 가장 강한 보호 표면을 보고합니다.
+Guard health는 선택된 연결 또는 session에 대해 선택된 프로필과 control-surface 요약을
+보고합니다.
 
-| `guard_strength` | 도달 조건 | 운영상 의미 |
+| 프로필 | 도달 조건 | 운영상 의미 |
 |---|---|---|
-| `authority_record_only` | 활성 session watcher나 효과적인 host hook guard 없이 MCP 도구와 권한 기록을 사용할 수 있습니다. | pre-tool 차단은 없습니다. 설정 안내와 policy 메타데이터가 호스트를 유도할 수 있지만 강제하지는 못합니다. |
-| `detective_watch` | 선택된 session에 대해 session watcher가 활성 상태입니다. | Watcher coverage 시작 뒤의 Product Repository 메타데이터 변경이 조정과 닫기 준비 상태에 쓰이는 찾기를 만들 수 있지만, watcher는 쓰기를 막거나 행위자를 식별하지 않습니다. 부분 coverage는 별도로 보고됩니다. |
-| `host_hook_guarded` | 프로젝트 로컬 host hook에 검증된 생성 설정, cwd-independent 및 subdirectory-safe hook 명령, native host output, 필수 phase, 쓰기 matcher, 일치하는 policy hash, 런타임 관찰이 있습니다. | pre-tool 결정, post-tool 상관, prompt capture, guard 상태, 닫기/쓰기 차단 사유가 workflow에 참여할 수 있습니다. |
-| `managed_guarded` | `host_hook_guarded`가 활성이고 검증된 managed 배포 출처가 기록되어 있습니다. | 지원되는 호스트 관리 plugin, bundle, policy 배포용입니다. 현재 Codex와 Claude Code 설정은 이 라벨에 도달하지 않습니다. |
+| `record` | Host hook이나 session watcher를 요구하지 않고 MCP 도구와 권한 기록을 사용할 수 있습니다. | 설정 안내와 policy 메타데이터가 호스트를 유도할 수 있지만 강제하지는 못합니다. |
+| `observe` | 프로젝트 로컬 host hook에 검증된 생성 설정, cwd-independent 및 subdirectory-safe hook 명령, native host output, 필수 phase, 쓰기 matcher, 일치하는 policy hash, 런타임 관찰, session watcher 관찰이 있습니다. | 협력형 pre-tool warning 또는 denial, post-tool 상관, prompt capture, guard 상태, 미기록 변경 찾기, 닫기/쓰기 차단 사유가 workflow에 참여할 수 있습니다. |
+
+Control-surface 요약은 host hook과 session watcher가 활성인지, 협력형 pre-tool warning이나
+denial이 사용 가능한지, 미기록 변경을 탐지할 수 있는지, 행위자 identity를 증명할 수 있는지,
+OS 집행이 제공되는지를 보고합니다. 현재 Volicord 출력은 행위자 identity 증명과 OS 집행을
+제공하지 않는다고 보고합니다.
 
 ## Guard 수명주기
 
-Guarded 모드에서는 설정과 활성화가 분리됩니다. `volicord init`은 MCP 호스트 설정,
+Observe 프로필에서는 설정과 활성화가 분리됩니다. `volicord init`은 MCP 호스트 설정,
 Volicord 관리 `AGENTS.md` 안내, `.volicord/policy.json`, 호스트 hook 또는 rule 파일,
 guard 설치 상태를 설치하거나 갱신합니다. 그래도 그 파일이 실행되려면 호스트 reload,
 restart, trust, 프로젝트 MCP 승인, 또는 다른 호스트 소유 동작이 필요할 수 있습니다.
 
-현재 검증된 guarded adapter는 호스트별로 다릅니다.
+현재 검증된 observe adapter는 호스트별로 다릅니다.
 
-- Codex guarded 설정은 프로젝트 MCP 설정, `.codex/hooks/` 아래의 Volicord 관리
+- Codex observe 설정은 프로젝트 MCP 설정, `.codex/hooks/` 아래의 Volicord 관리
   POSIX `sh` wrapper script, `.codex/hooks.json`, `.codex/rules/*.rules`를 씁니다.
   pre-tool 및 post-tool matcher는 `Bash`, `apply_patch`, `Edit`, `Write`,
   `mcp__.*__(write|edit|create|update|delete|remove|move|patch).*` tool 이름을
   대상으로 합니다. 생성된 rule과 hook 파일이 실행되려면 호스트에 프로젝트 trust,
   hook trust, restart 또는 reload가 필요할 수 있습니다.
-- Claude Code guarded 설정은 `.mcp.json`, `.claude/hooks/` 아래의 Volicord 관리
+- Claude Code observe 설정은 `.mcp.json`, `.claude/hooks/` 아래의 Volicord 관리
   POSIX `sh` wrapper script, `.claude/settings.json`, `.claude/rules/*.md`를 씁니다.
   pre-tool 및 post-tool matcher는 `Bash`, `Edit`, `Write`, `MultiEdit`,
   `mcp__.*__(write|edit|create|update|delete|remove|move|patch).*` tool 이름을
@@ -84,7 +88,7 @@ wrapper는 phase wrapper가 존재하고 실행 가능한지 확인한 뒤 실�
 `--host-output claude-code`로 호출하므로 hook stdout은 host-native JSON/context이거나
 빈 출력이며 Volicord wrapper JSON이 아닙니다.
 
-기본 `guarded` init은 모든 필수 호스트 lifecycle hook phase를 설치하고 검증할 수
+Observe init은 모든 필수 호스트 lifecycle hook phase를 설치하고 검증할 수
 있어야 합니다. 선택한 Codex 또는 Claude Code 어댑터가 모든 필수 phase에 대해 신뢰할
 수 있는 프로젝트 로컬 hook 스키마나 경로를 알지 못하면, init은 `AGENTS.md`나
 `.volicord/policy.json`을 집행으로 취급하지 않고 실패합니다. `--allow-degraded`는
@@ -92,22 +96,16 @@ degraded 설정 파일을 명시적으로 원하고 필수 hook phase가 누락�
 때만 사용합니다.
 
 ```sh
-volicord init --host codex --repo /path/to/your-product-repo --allow-degraded
+volicord init --host codex --repo /path/to/your-product-repo --profile observe --allow-degraded
 ```
 
-Managed 모드는 프로젝트 로컬 guarded 모드와 별개입니다. Volicord 호스트 계약 데이터에
-기록된 검증된 호스트 managed 배포 출처가 필요합니다. 현재 Codex와 Claude Code 계약에는
-검증된 plugin, bundle, managed policy 배포 출처가 기록되어 있지 않으므로
-`volicord init --mode managed`는 `MANAGED_MODE_UNSUPPORTED`로 실패합니다. 그런 계약이
-추가되고 구현되기 전에는 `guarded` 또는 `mcp-only`를 사용합니다.
-
 `volicord connection verify`와 `volicord doctor`는 파일 상태, 필요한 호스트 동작,
-관찰된 활성화를 분리해서 다룹니다. Volicord가 기록된 프로젝트, Agent Connection, 호스트
-종류, guard 모드, policy hash와 일치하는 guard hook 이벤트를 관찰해야 guard 설치가
+관찰된 활성화, control-surface 사실을 분리해서 다룹니다. Volicord가 기록된 프로젝트,
+Agent Connection, 호스트 종류, 통합 프로필, policy hash와 일치하는 guard hook 이벤트를 관찰해야 guard 설치가
 활성화됩니다. Hook 경로 안전성은 호스트 trust, reload, restart, approval을 대신하지
 않습니다. `AGENTS.md`는 지침 지원이며, 호스트 hook과 rule은 협력적이고 탐지적인
-guardrail입니다. OS 샌드박싱, 명령 격리, Volicord를 아는 경로 밖에서 쓰기가 일어날 수
-없다는 증명이 아닙니다.
+guardrail입니다. OS 샌드박싱, 명령 격리, 네트워크 격리, 행위자 증명, Volicord를 아는
+경로 밖에서 쓰기가 일어날 수 없다는 증명이 아닙니다.
 
 ## 연결 의도
 

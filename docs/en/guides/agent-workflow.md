@@ -191,7 +191,7 @@ that judgment. Do not add extra authority outcomes in prose.
 
 If the user's answer must become authority-bearing Core state, route the user to
 a supported local `User Channel`. Current supported paths are MCP elicitation
-when the initialized client declares that capability, guarded prompt-capture
+when the initialized client declares that capability, observe prompt-capture
 chat commands when prompt-capture availability is `configured`, `observed`, or
 `active`, and the stable local CLI recovery route:
 
