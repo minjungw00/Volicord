@@ -79,6 +79,12 @@ Do not describe Volicord as making user-owned judgments. Volicord can help
 record, route, preserve, or show the boundary where the user's judgment is
 needed, but the judgment remains user-owned.
 
+Do not describe Volicord authority records as OS-level enforcement, a sandbox,
+or proof that an agent followed instructions. Use the
+[Product and Maintenance Charter](product-maintenance-charter.md) for the
+durable product-identity boundary, and route exact guarantee wording to the
+focused Reference owners.
+
 Do not merge test success, write approval, final acceptance, and
 residual-risk acceptance into one generic approval. Keep those concepts
 separate and route exact meaning to [Core Model](../reference/core-model.md) and
@@ -98,7 +104,7 @@ cable, and single-checkmark motifs.
 
 Do not use color as the sole status carrier.
 
-Provisional project tokens:
+Initial project tokens:
 
 | Token | Value |
 |---|---|

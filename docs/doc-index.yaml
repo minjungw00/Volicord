@@ -207,8 +207,8 @@ shared_documents:
   normative_level: guide
   owner_area: onboarding
   created_on: '2026-04-23'
-  last_updated_on: '2026-07-01'
-  last_verified_on: '2026-07-01'
+  last_updated_on: '2026-07-02'
+  last_verified_on: '2026-07-02'
   applies_to:
   - volicord_workspace_0_1
   primary_audience:
@@ -317,8 +317,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: onboarding
   created_on: '2026-04-23'
-  last_updated_on: '2026-06-30'
-  last_verified_on: '2026-06-30'
+  last_updated_on: '2026-07-02'
+  last_verified_on: '2026-07-02'
   applies_to:
   - volicord_workspace_0_1
   primary_audience:
@@ -2095,8 +2095,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
   created_on: '2026-06-20'
-  last_updated_on: '2026-06-30'
-  last_verified_on: '2026-06-30'
+  last_updated_on: '2026-07-02'
+  last_verified_on: '2026-07-02'
   applies_to:
   - volicord_workspace_0_1
   - doc_index_schema_v3
@@ -2115,6 +2115,53 @@ documents:
   - reference.index
   - build.architecture
   - maintain.brand-guidelines
+- doc_id: maintain.product-maintenance-charter
+  path_en: docs/en/maintain/product-maintenance-charter.md
+  path_ko: docs/ko/maintain/product-maintenance-charter.md
+  kind: maintenance
+  summary: Maintenance charter for Volicord product identity, service principles, documentation roles,
+    pre-major compatibility guidance, code guidance, testing philosophy, brand and translation boundaries,
+    and length-gate rejection.
+  normative_level: maintenance
+  translation_policy: semantic_parity
+  owner_area: documentation_maintenance
+  created_on: '2026-07-02'
+  last_updated_on: '2026-07-02'
+  last_verified_on: '2026-07-02'
+  applies_to:
+  - volicord_workspace_0_1
+  - doc_index_schema_v3
+  - terminology_map_v1
+  primary_audience:
+  - agents
+  - maintainers
+  - implementers
+  - translators
+  - reviewers
+  journeys:
+  - maintain
+  - implement
+  canonical_for:
+  - Volicord product and maintenance charter for service principles, documentation roles, code guidance,
+    testing philosophy, brand boundaries, and translation boundaries.
+  - Pre-major compatibility guidance for goal-directed design work before Volicord is ready for a first
+    major release.
+  - Rejection of file-length, document-length, and LOC hard gates as quality controls.
+  - Durable behavior testing and one-time cleanup-test boundary guidance.
+  depends_on:
+  - maintain.documentation-policy
+  - maintain.document-charters
+  - maintain.brand-guidelines
+  - maintain.translation-policy
+  - maintain.validation
+  - docs.doc-index
+  - terminology.map
+  - reference.index
+  - reference.core-model
+  - reference.runtime-boundaries
+  - reference.security
+  - development.index
+  - development.testing-strategy
 - doc_id: maintain.document-charters
   path_en: docs/en/maintain/document-charters.md
   path_ko: docs/ko/maintain/document-charters.md
@@ -2125,8 +2172,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
   created_on: '2026-06-30'
-  last_updated_on: '2026-07-01'
-  last_verified_on: '2026-07-01'
+  last_updated_on: '2026-07-02'
+  last_verified_on: '2026-07-02'
   applies_to:
   - volicord_workspace_0_1
   - doc_index_schema_v3
@@ -2200,8 +2247,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
   created_on: '2026-06-24'
-  last_updated_on: '2026-06-24'
-  last_verified_on: '2026-06-24'
+  last_updated_on: '2026-07-02'
+  last_verified_on: '2026-07-02'
   applies_to:
   - volicord_workspace_0_1
   - doc_index_schema_v3
@@ -2219,7 +2266,7 @@ documents:
   - Volicord voice guidance and claim-boundary discipline for documentation and generated repository guidance.
   - Volicord product/system, Core, CLI identifier, MCP adapter identifier, Runtime Home label, and domain-concept
     presentation boundaries.
-  - Project-local visual identity principles and provisional color tokens for Volicord presentation.
+  - Project-local visual identity principles and initial project tokens for Volicord presentation.
   - Distinction between the Volicord brand and ordinary `test harness` or `테스트 하네스` technical terms.
   depends_on:
   - terminology.map
@@ -2239,8 +2286,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
   created_on: '2026-06-20'
-  last_updated_on: '2026-06-24'
-  last_verified_on: '2026-06-24'
+  last_updated_on: '2026-07-02'
+  last_verified_on: '2026-07-02'
   applies_to:
   - volicord_workspace_0_1
   - doc_index_schema_v3
@@ -2269,8 +2316,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
   created_on: '2026-06-20'
-  last_updated_on: '2026-06-30'
-  last_verified_on: '2026-06-30'
+  last_updated_on: '2026-07-02'
+  last_verified_on: '2026-07-02'
   applies_to:
   - volicord_workspace_0_1
   - doc_index_schema_v3

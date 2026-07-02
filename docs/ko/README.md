@@ -21,6 +21,6 @@ Volicord(볼리코드) 한국어 문서의 진입점입니다. 하려는 일에 
 - 에이전트: [에이전트 가이드](guides/agent-workflow.md)를 사용하고, 저장소 작업 규칙은 [AGENTS.md](../../AGENTS.md)에서 확인합니다.
 - 소스 코드 학습자: [개발자 문서](development/README.md)에서 시작한 뒤 [코드베이스 둘러보기](development/codebase-tour.md), [요청 생명주기](development/request-lifecycle.md), [아키텍처](development/architecture.md)를 봅니다.
 - 참조 독자: [참조 색인](reference/README.md), [관리 CLI](reference/admin-cli.md), [API 메서드](reference/api/methods.md)에서 담당 문서를 찾습니다.
-- 문서 유지보수자: [문서 정책](maintain/documentation-policy.md), [문서 헌장](maintain/document-charters.md), [그림 정책](maintain/diagram-policy.md), [번역 정책](maintain/translation-policy.md), [브랜드 지침](maintain/brand-guidelines.md), [검증](maintain/validation.md), [doc-index.yaml](../doc-index.yaml), [용어 지도](../terminology-map.yaml)를 사용합니다.
+- 문서 유지보수자: [제품 및 유지보수 헌장](maintain/product-maintenance-charter.md), [문서 정책](maintain/documentation-policy.md), [문서 헌장](maintain/document-charters.md), [그림 정책](maintain/diagram-policy.md), [번역 정책](maintain/translation-policy.md), [브랜드 지침](maintain/brand-guidelines.md), [검증](maintain/validation.md), [doc-index.yaml](../doc-index.yaml), [용어 지도](../terminology-map.yaml)를 사용합니다.
 
 독자용 문서는 작업을 설명하고 순서화합니다. 정확한 제품 계약은 참조 문서에 있습니다. 사람이 읽는 참조 경로는 [참조 색인](reference/README.md)을 사용합니다. 유지보수 중 기계가 읽는 정확한 담당 경로가 필요할 때는 [doc-index.yaml](../doc-index.yaml)을 사용합니다.

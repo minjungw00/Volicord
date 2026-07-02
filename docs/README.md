@@ -22,6 +22,7 @@ Fast reader routes:
 - Multi-repository operation: [English](en/guides/multi-repository-agent-setup.md) / [Korean](ko/guides/multi-repository-agent-setup.md)
 - Exact CLI and API contracts: [English CLI](en/reference/admin-cli.md) / [Korean CLI](ko/reference/admin-cli.md) / [English API](en/reference/api/methods.md) / [Korean API](ko/reference/api/methods.md)
 - Reference navigation: [English](en/reference/README.md) / [Korean](ko/reference/README.md)
+- Product and maintenance charter: [English](en/maintain/product-maintenance-charter.md) / [Korean](ko/maintain/product-maintenance-charter.md)
 - Brand presentation and claim guidance: [English](en/maintain/brand-guidelines.md) / [Korean](ko/maintain/brand-guidelines.md)
 - Diagram creation and review policy: [English](en/maintain/diagram-policy.md) / [Korean](ko/maintain/diagram-policy.md)
 

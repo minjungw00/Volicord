@@ -79,7 +79,7 @@ read-only and verifies the machine-checkable shape:
 After automated structural validation, manually confirm repository hygiene:
 
 - No generated records, runtime homes, SQLite files, generated logs, archive
-  copies, conversion notes, scratch notes, temporary inventories, or work logs
+  copies, conversion notes, scratch notes, local inventories, or work logs
   remain in maintained documentation.
 
 ## Human Semantic Review
@@ -126,10 +126,15 @@ remaining checks stay manual and owner-routed.
 
 When a documentation or implementation change suggests a new automated check,
 decide whether it is a durable contract test or a one-time audit. A durable test
-belongs in the repository when it asserts the current allowed contract or
-maintained validation rule. A one-time audit belongs in the change process when
-it only proves that cleanup-specific text, flags, fields, or examples were
-removed.
+belongs in the repository when it asserts current durable behavior, a contract,
+a state transition, user value, a stable abstraction boundary, or a maintained
+validation rule. A one-time audit belongs in the change process when it only
+proves that cleanup-specific text, flags, fields, or examples were removed.
+
+File length, document length, and LOC counts are not durable quality checks.
+Use [Product and Maintenance Charter](product-maintenance-charter.md) for the
+quality-gate boundary, and prefer checks that validate owner routing,
+contracts, links, examples, state transitions, and reader usability.
 
 For implementation-layer placement and test-authoring examples, use
 [Testing Strategy](../development/testing-strategy.md). This validation policy

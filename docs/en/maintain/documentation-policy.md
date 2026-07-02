@@ -56,6 +56,12 @@ project-local visual principles, and brand claim boundaries. The brand
 guidelines do not define product behavior, API behavior, storage effects,
 schemas, security guarantees, or Core authority semantics.
 
+Use [Product and Maintenance Charter](product-maintenance-charter.md) as the
+durable maintenance charter for Volicord product identity, service planning
+principles, documentation roles, code-guidance boundaries, test philosophy,
+pre-major compatibility guidance, and length-gate rejection. The charter does
+not move exact contracts out of focused Reference owners.
+
 Use [Document Charters](document-charters.md) when deciding what major documents
 and document families should own, exclude, diagram, and link to. The charters
 turn the metadata model into practical scope guidance for high-traffic
@@ -139,7 +145,7 @@ files, product runtime homes, test runtime homes, generated projections, fixture
 output, QA results, acceptance records, close-readiness state, or residual-risk
 records in them.
 
-If a documentation tool creates temporary output during editing or validation,
+If a documentation tool creates generated output during editing or validation,
 remove it before finishing unless it is ordinary ignored build output.
 
 ## Scoped Working Rules
