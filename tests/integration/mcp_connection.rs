@@ -5,7 +5,8 @@ use std::error::Error;
 use serde_json::{json, Value};
 use volicord_core::{CoreService, InvocationContext};
 use volicord_mcp::{
-    mcp_tools_for_mode, McpAdapter, McpConnectionContext, PUBLIC_METHOD_TOOL_NAMES,
+    mcp_tools_for_mode, McpAdapter, McpConnectionContext, ADAPTER_UTILITY_TOOL_NAMES,
+    PUBLIC_METHOD_TOOL_NAMES, READ_ONLY_METHOD_TOOL_NAMES,
 };
 use volicord_store::{
     agent_connections::{
@@ -17,7 +18,9 @@ use volicord_store::{
 };
 use volicord_test_support::core_fixtures::CoreFixture;
 use volicord_types::{
-    ActorSource, AgentConnectionMode, OperationCategory, ProjectId,
+    ActorSource, AgentConnectionMode, OperationCategory, ProjectId, CLOSE_TASK_TOOL_NAME,
+    INTAKE_TOOL_NAME, PREPARE_WRITE_TOOL_NAME, RECONCILE_CHANGES_TOOL_NAME,
+    RECORD_USER_JUDGMENT_TOOL_NAME, REQUEST_USER_JUDGMENT_TOOL_NAME,
     VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
 
@@ -25,35 +28,42 @@ use volicord_types::{
 fn workflow_tools_include_agent_workflow_and_read_tools_but_exclude_user_only() {
     let tools = mcp_tools_for_mode(AgentConnectionMode::Workflow);
     let names = tool_names(&tools);
+    let expected = PUBLIC_METHOD_TOOL_NAMES
+        .iter()
+        .chain(ADAPTER_UTILITY_TOOL_NAMES.iter())
+        .copied()
+        .collect::<Vec<_>>();
 
-    assert_eq!(
-        &names[..PUBLIC_METHOD_TOOL_NAMES.len()],
-        PUBLIC_METHOD_TOOL_NAMES
-    );
-    assert!(names.contains(&"volicord.intake"));
-    assert!(names.contains(&"volicord.prepare_write"));
-    assert!(names.contains(&"volicord.request_user_judgment"));
-    assert!(names.contains(&"volicord.reconcile_changes"));
-    assert!(names.contains(&"volicord.check_close"));
-    assert!(names.contains(&"volicord.close_task"));
-    assert!(names.contains(&"volicord.status"));
-    assert!(names.contains(&"volicord.list_projects"));
-    assert!(!names.contains(&"volicord.record_user_judgment"));
+    assert_eq!(names, expected);
+    assert!(PUBLIC_METHOD_TOOL_NAMES.contains(&RECONCILE_CHANGES_TOOL_NAME));
+    assert!(names.contains(&INTAKE_TOOL_NAME));
+    assert!(names.contains(&PREPARE_WRITE_TOOL_NAME));
+    assert!(names.contains(&REQUEST_USER_JUDGMENT_TOOL_NAME));
+    assert!(names.contains(&RECONCILE_CHANGES_TOOL_NAME));
+    assert!(names.contains(&CLOSE_TASK_TOOL_NAME));
+    assert!(!names.contains(&RECORD_USER_JUDGMENT_TOOL_NAME));
 }
 
 #[test]
 fn read_only_tools_expose_only_read_operations_and_project_discovery() {
     let tools = mcp_tools_for_mode(AgentConnectionMode::ReadOnly);
     let names = tool_names(&tools);
+    let expected = READ_ONLY_METHOD_TOOL_NAMES
+        .iter()
+        .chain(ADAPTER_UTILITY_TOOL_NAMES.iter())
+        .copied()
+        .collect::<Vec<_>>();
 
-    assert_eq!(
-        names,
-        vec![
-            "volicord.status",
-            "volicord.check_close",
-            "volicord.list_projects"
-        ]
-    );
+    assert_eq!(names, expected);
+    for mutation_tool in [
+        INTAKE_TOOL_NAME,
+        PREPARE_WRITE_TOOL_NAME,
+        REQUEST_USER_JUDGMENT_TOOL_NAME,
+        RECONCILE_CHANGES_TOOL_NAME,
+        CLOSE_TASK_TOOL_NAME,
+    ] {
+        assert!(!names.contains(&mutation_tool));
+    }
 }
 
 #[test]
@@ -244,9 +254,9 @@ fn user_only_record_judgment_is_not_available_to_agent_mcp() -> Result<(), Box<d
     assert!(!adapter
         .tools()?
         .iter()
-        .any(|tool| tool.name == "volicord.record_user_judgment"));
+        .any(|tool| tool.name == RECORD_USER_JUDGMENT_TOOL_NAME));
     let error = adapter
-        .call_tool("volicord.record_user_judgment", json!({}))
+        .call_tool(RECORD_USER_JUDGMENT_TOOL_NAME, json!({}))
         .expect_err("agent MCP must not expose user-only judgment recording");
     assert!(error.to_string().contains("unknown MCP tool"));
     Ok(())

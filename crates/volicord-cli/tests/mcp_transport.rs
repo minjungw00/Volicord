@@ -11,6 +11,9 @@ use std::{
 
 use serde_json::{json, Value};
 use volicord_core::{CoreService, InvocationContext};
+use volicord_mcp::{
+    ADAPTER_UTILITY_TOOL_NAMES, PUBLIC_METHOD_TOOL_NAMES, READ_ONLY_METHOD_TOOL_NAMES,
+};
 use volicord_store::{
     agent_connections::{
         agent_connection_record, ensure_agent_connection, AgentConnectionRegistration,
@@ -20,29 +23,13 @@ use volicord_store::{
 };
 use volicord_test_support::core_fixtures::CoreFixture;
 use volicord_types::{
-    ActorSource, OperationCategory, ProjectId, VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
+    ActorSource, OperationCategory, ProjectId, CLOSE_TASK_TOOL_NAME, INTAKE_TOOL_NAME,
+    PREPARE_WRITE_TOOL_NAME, RECONCILE_CHANGES_TOOL_NAME, RECORD_USER_JUDGMENT_TOOL_NAME,
+    REQUEST_USER_JUDGMENT_TOOL_NAME, VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
     VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
 
 const PROCESS_TIMEOUT: Duration = Duration::from_secs(10);
-const EXPECTED_WORKFLOW_METHOD_TOOLS: [&str; 10] = [
-    "volicord.intake",
-    "volicord.update_scope",
-    "volicord.status",
-    "volicord.prepare_write",
-    "volicord.stage_artifact",
-    "volicord.record_run",
-    "volicord.request_user_judgment",
-    "volicord.reconcile_changes",
-    "volicord.check_close",
-    "volicord.close_task",
-];
-const EXPECTED_READ_ONLY_TOOLS: [&str; 3] = [
-    "volicord.status",
-    "volicord.check_close",
-    "volicord.list_projects",
-];
-const LIST_PROJECTS_TOOL_NAME: &str = "volicord.list_projects";
 
 #[test]
 fn volicord_mcp_subcommand_reports_help_version_and_preflight() -> Result<(), Box<dyn Error>> {
@@ -201,18 +188,12 @@ fn volicord_mcp_subcommand_stdio_uses_line_delimited_json_and_reconnects_state(
         .iter()
         .map(|tool| tool["name"].as_str().expect("tool name"))
         .collect::<Vec<_>>();
-    assert_eq!(
-        &tool_names[..EXPECTED_WORKFLOW_METHOD_TOOLS.len()],
-        EXPECTED_WORKFLOW_METHOD_TOOLS
-    );
-    assert_eq!(
-        tool_names[EXPECTED_WORKFLOW_METHOD_TOOLS.len()],
-        LIST_PROJECTS_TOOL_NAME
-    );
-    assert!(!tool_names.contains(&"volicord.record_user_judgment"));
+    let expected_tools = expected_workflow_tools();
+    assert_eq!(tool_names, expected_tools);
+    assert!(!tool_names.contains(&RECORD_USER_JUDGMENT_TOOL_NAME));
     assert_eq!(
         tool_names.iter().copied().collect::<BTreeSet<_>>().len(),
-        EXPECTED_WORKFLOW_METHOD_TOOLS.len() + 1
+        expected_tools.len()
     );
     assert_public_tool_schemas_hide_internal_fields(
         responses[&3]["result"]["tools"]
@@ -412,19 +393,7 @@ fn volicord_mcp_subcommand_tools_list_respects_connection_mode_and_schema_bounda
     let workflow_tools = tools_from_response(&workflow_responses[&2]);
     assert_eq!(
         tool_names_from_tools(workflow_tools),
-        vec![
-            "volicord.intake",
-            "volicord.update_scope",
-            "volicord.status",
-            "volicord.prepare_write",
-            "volicord.stage_artifact",
-            "volicord.record_run",
-            "volicord.request_user_judgment",
-            "volicord.reconcile_changes",
-            "volicord.check_close",
-            "volicord.close_task",
-            "volicord.list_projects",
-        ]
+        expected_workflow_tools()
     );
     assert_public_tool_schemas_hide_internal_fields(workflow_tools);
 
@@ -439,10 +408,16 @@ fn volicord_mcp_subcommand_tools_list_respects_connection_mode_and_schema_bounda
     let read_only_responses = responses_by_id(&read_only_output.stdout)?;
     let read_only_tools = tools_from_response(&read_only_responses[&11]);
     let read_only_names = tool_names_from_tools(read_only_tools);
-    assert_eq!(read_only_names.as_slice(), EXPECTED_READ_ONLY_TOOLS);
-    assert!(!read_only_names.contains(&"volicord.intake"));
-    assert!(!read_only_names.contains(&"volicord.close_task"));
-    assert!(!read_only_names.contains(&"volicord.prepare_write"));
+    assert_eq!(read_only_names, expected_read_only_tools());
+    for mutation_tool in [
+        INTAKE_TOOL_NAME,
+        PREPARE_WRITE_TOOL_NAME,
+        REQUEST_USER_JUDGMENT_TOOL_NAME,
+        RECONCILE_CHANGES_TOOL_NAME,
+        CLOSE_TASK_TOOL_NAME,
+    ] {
+        assert!(!read_only_names.contains(&mutation_tool));
+    }
     assert_public_tool_schemas_hide_internal_fields(read_only_tools);
 
     Ok(())
@@ -835,11 +810,28 @@ fn tool_names_from_tools(tools: &[Value]) -> Vec<&str> {
         .collect()
 }
 
-fn assert_public_tool_schemas_hide_internal_fields(tools: &[Value]) {
-    let expected_public = EXPECTED_WORKFLOW_METHOD_TOOLS
+fn expected_workflow_tools() -> Vec<&'static str> {
+    PUBLIC_METHOD_TOOL_NAMES
         .iter()
+        .chain(ADAPTER_UTILITY_TOOL_NAMES.iter())
         .copied()
-        .collect::<BTreeSet<_>>();
+        .collect()
+}
+
+fn expected_read_only_tools() -> Vec<&'static str> {
+    READ_ONLY_METHOD_TOOL_NAMES
+        .iter()
+        .chain(ADAPTER_UTILITY_TOOL_NAMES.iter())
+        .copied()
+        .collect()
+}
+
+fn public_method_tool_set() -> BTreeSet<&'static str> {
+    PUBLIC_METHOD_TOOL_NAMES.iter().copied().collect()
+}
+
+fn assert_public_tool_schemas_hide_internal_fields(tools: &[Value]) {
+    let expected_public = public_method_tool_set();
     for tool in tools {
         let name = tool["name"].as_str().expect("tool name");
         if !expected_public.contains(name) {

@@ -165,7 +165,7 @@ Document: [Agent Workflow](../guides/agent-workflow.md)
 - Intended reader: Agents, agent operators, and maintainers reviewing
   agent-facing workflow guidance.
 - Should own: Authority-aware work sequencing, when to use Volicord APIs at
-  guide level, evidence practices, user-judgment request flow, write-readiness
+  guide level, evidence practices, user-judgment request flow, write-ticket
   boundaries, and close-readiness expectations for agents.
 - Should not own: Public API method contracts, schema definitions, storage
   effects, user-owned decision content, security guarantees, or host setup

@@ -1141,6 +1141,30 @@ volicord inbox answer JUDGMENT_ID --choice accept
 }
 
 #[test]
+fn accepts_inline_supported_init_profile_examples() {
+    let fixture = valid_fixture();
+    let commands = r#"```sh
+volicord init --host codex --repo /path/to/repo --profile=record
+volicord init --host claude-code --repo /path/to/repo --profile=observe
+```
+"#;
+    write(
+        fixture.path(),
+        "docs/en/example.md",
+        &format!("# Overview\n\n{commands}"),
+    );
+    write(
+        fixture.path(),
+        "docs/ko/example.md",
+        &format!("<a id=\"overview\"></a>\n# 개요\n\n{commands}"),
+    );
+
+    let report = report(fixture.path());
+
+    assert!(report.is_ok(), "{:#?}", report.errors());
+}
+
+#[test]
 fn rejects_init_examples_outside_public_option_surface() {
     let fixture = valid_fixture();
     write(
@@ -1153,6 +1177,47 @@ fn rejects_init_examples_outside_public_option_surface() {
     let errors = category_errors(&report, "command.invalid_example");
 
     assert_eq!(errors.len(), 2, "{:#?}", report.errors());
+    assert!(
+        errors
+            .iter()
+            .any(|error| error.message().contains("--allow-degraded")
+                && error.message().contains("not supported")),
+        "{:#?}",
+        report.errors()
+    );
+    assert!(
+        errors
+            .iter()
+            .any(|error| error.message().contains("--connection")
+                && error.message().contains("not supported")),
+        "{:#?}",
+        report.errors()
+    );
+}
+
+#[test]
+fn rejects_inline_init_examples_outside_public_option_surface() {
+    let fixture = valid_fixture();
+    write(
+        fixture.path(),
+        "docs/en/example.md",
+        "# Overview\n\n```sh\nvolicord init --host codex --repo /path/to/repo --profile=managed\nvolicord init --host codex --repo /path/to/repo --allow-degraded=true\nvolicord init --host codex --repo /path/to/repo --connection=CONNECTION_ID\n```\n",
+    );
+
+    let report = report(fixture.path());
+    let errors = category_errors(&report, "command.invalid_example");
+
+    assert_eq!(errors.len(), 3, "{:#?}", report.errors());
+    assert!(
+        errors
+            .iter()
+            .any(|error| error.message().contains("--profile")
+                && error.message().contains("managed")
+                && error.message().contains("record")
+                && error.message().contains("observe")),
+        "{:#?}",
+        report.errors()
+    );
     assert!(
         errors
             .iter()
@@ -1290,6 +1355,26 @@ fn rejects_invalid_public_integration_profile_examples() {
             .any(|error| error.message().contains("--integration-profile")
                 && error.message().contains("record")
                 && error.message().contains("observe")),
+        "{:#?}",
+        report.errors()
+    );
+}
+
+#[test]
+fn rejects_write_readiness_public_document_term() {
+    let fixture = valid_fixture();
+    write(
+        fixture.path(),
+        "docs/en/example.md",
+        "# Overview\n\nUse the write-readiness boundary before writing.\n",
+    );
+
+    let report = report(fixture.path());
+    let errors = category_errors(&report, "public_language.write_ticket_term");
+
+    assert_eq!(errors.len(), 1, "{:#?}", report.errors());
+    assert!(
+        errors[0].message().contains("write-ticket"),
         "{:#?}",
         report.errors()
     );

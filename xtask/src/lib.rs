@@ -134,6 +134,16 @@ const PUBLIC_LANGUAGE_SOURCE_PATHS: &[&str] = &[
     "crates/volicord-mcp/src/util.rs",
 ];
 const PUBLIC_UNQUALIFIED_SECURITY_WORDS: &[&str] = &["safe", "secure", "protected"];
+const PUBLIC_DOCUMENT_DISALLOWED_TERMS: &[PublicDocumentDisallowedTerm] = &[
+    PublicDocumentDisallowedTerm {
+        term: "write-readiness",
+        replacement: "write-ticket",
+    },
+    PublicDocumentDisallowedTerm {
+        term: "write readiness",
+        replacement: "write ticket",
+    },
+];
 const TERMINOLOGY_ALLOWED_ROLES: &[&str] = &[
     "public_user_term",
     "storage_internal_identifier",
@@ -184,6 +194,11 @@ struct RequiredTerminologyRoles {
     term_key: &'static str,
     display: &'static str,
     roles: &'static [&'static str],
+}
+
+struct PublicDocumentDisallowedTerm {
+    term: &'static str,
+    replacement: &'static str,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -360,6 +375,7 @@ pub fn run_docs_check(root: &Path) -> Result<CheckReport> {
         validate_bilingual_link_parity(&root, index, &mut errors);
         validate_terminology_paths(&root, index, &mut errors);
         validate_volicord_command_examples(&root, index, &mut errors);
+        validate_public_document_language(&root, index, &mut errors);
     }
     validate_public_language_claims(&root, &mut errors);
 
@@ -2688,6 +2704,60 @@ fn validate_public_language_claims(root: &Path, errors: &mut Vec<ValidationError
                         format!(
                             "line {} uses unqualified `{word}` in public output source; use explicit guarantee disclosure wording",
                             index + 1
+                        ),
+                    ));
+                }
+            }
+        }
+    }
+}
+
+fn validate_public_document_language(
+    root: &Path,
+    index: &DocIndex,
+    errors: &mut Vec<ValidationError>,
+) {
+    for path in index
+        .indexed_paths
+        .iter()
+        .filter(|path| path.ends_with(".md"))
+    {
+        let contents = match fs::read_to_string(root.join(path)) {
+            Ok(contents) => contents,
+            Err(error) => {
+                errors.push(ValidationError::new(
+                    path,
+                    "public_language.read",
+                    format!("failed to read Markdown file: {error}"),
+                ));
+                continue;
+            }
+        };
+
+        let mut active_fence = None;
+        for (index, line) in contents.lines().enumerate() {
+            if let Some(fence) = active_fence.as_ref() {
+                if is_closing_fence(line, fence) {
+                    active_fence = None;
+                }
+                continue;
+            }
+            if let Some(fence) = opening_fence(line) {
+                active_fence = Some(fence);
+                continue;
+            }
+
+            let lower = line.to_ascii_lowercase();
+            for disallowed in PUBLIC_DOCUMENT_DISALLOWED_TERMS {
+                if lower.contains(disallowed.term) {
+                    errors.push(ValidationError::new(
+                        path,
+                        "public_language.write_ticket_term",
+                        format!(
+                            "line {} uses `{}` in public documentation; use `{}` terminology for the write-ticket concept",
+                            index + 1,
+                            disallowed.term,
+                            disallowed.replacement
                         ),
                     ));
                 }
