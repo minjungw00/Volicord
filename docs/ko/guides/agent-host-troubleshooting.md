@@ -348,7 +348,7 @@ volicord connections
 프로젝트 상태, Volicord 기록, 증거 첨부 저장소, 관련 없는 호스트 항목을 제거하면 안
 됩니다.
 
-## 보안 경계
+## 보안 한계
 
 Volicord setup과 verification은 로컬 진단입니다. 외부 호스트가 안전하다거나, 모델이
 Volicord 도구를 사용할 것이라거나, 파일 쓰기가 안전하다는 증명이 아닙니다. 정확한

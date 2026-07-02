@@ -14,7 +14,7 @@
 이 문서가 담당합니다.
 
 - `volicord mcp --stdio` 프로세스 시작과 종료 동작
-- `volicord serve --transport local-http` 시작, 로컬 리스너, 전송 경계 보안 점검
+- `volicord serve --transport local-http` 시작, 로컬 리스너, 전송 경계 인증과 Origin 점검
 - 생성된 호스트 설정과 내보낸 MCP 설정이 사용하는 프로세스 설정
 - MCP Runtime Home 경로 해석
 - MCP 프로토콜 버전 협상과 초기화 수명주기
@@ -51,8 +51,9 @@ MCP TCP 리스너, HTTP MCP 리스너, Unix-domain socket 리스너, 또는 그 
 명시적 프로세스 모드입니다. 이 명령은 loopback 전용 HTTP 리스너를 시작하고, 가능한
 곳에서는 stdio와 같은 Agent Connection에 묶인 MCP 어댑터 로직을 재사용합니다. 기본 MCP
 전송이 아니며, Docker가 아닌 로컬 호스트 설정 생성에서 사용하지 않고, 일반 Volicord
-네트워크 서비스도 아닙니다. 이 프로세스를 nonlocal HTTP listener로 바꾸는 serve 옵션은
-없습니다.
+네트워크 서비스도 아닙니다. 로컬/Docker 전송일 뿐 공개 네트워크 API, SaaS endpoint,
+다중 사용자 서버, 보안 경계가 아닙니다. 이 프로세스를 nonlocal HTTP listener로 바꾸는
+serve 옵션은 없습니다.
 
 현재 serve 전송은 인증을 요구하는 로컬 MCP-over-HTTP 부분 구현입니다. MCP 세션 헤더와
 bearer token 검사와 함께 HTTP `POST /mcp`로 JSON-RPC를 받고 JSON 응답을 반환합니다.

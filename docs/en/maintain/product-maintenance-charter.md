@@ -15,8 +15,8 @@ close-readiness state, or residual-risk decisions.
 ## Product Identity
 
 - Volicord is a local work authority record for AI-assisted product work.
-- Core is the local authority record for Volicord state. Do not describe
-  Volicord itself as the authority record.
+- Core is the local authority record for Volicord state. Do not collapse Core's
+  exact state-authority role into the public Volicord product identity.
 - User judgment remains distinct from agent action. Volicord may record,
   route, preserve, or show where judgment is needed, but it must not be
   presented as making user-owned decisions.

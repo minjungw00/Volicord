@@ -148,6 +148,11 @@ Volicord 구현은 이 저장소가 유지하는 구현 집합을 뜻합니다. 
 
 현재 로컬 Rust MCP 어댑터는 Volicord 구현 안의 실행 파일 역할인 `volicord mcp --stdio` stdio 프로세스입니다. MCP 호스트는 프로토콜이나 호스트 설정 맥락에서 설정된 항목을 MCP 서버라고 부를 수 있습니다. 그 라벨은 Volicord를 서버 제품으로 만들거나 Volicord 구현을 네트워크 서버로 만들지 않습니다. MCP 호스트는 `volicord mcp --stdio`를 자식 프로세스로 시작하고, 프로세스 환경으로 설정을 전달하며, stdin/stdout을 통해 줄 단위 JSON-RPC를 주고받습니다. 기준 프로세스는 TCP, HTTP, Unix-domain socket, 또는 그 밖의 네트워크 리스너를 열지 않습니다.
 
+별도 `volicord serve --transport local-http` 모드는 로컬/Docker 사용을 위한 Local HTTP
+transport입니다. 기준 stdio 프로세스가 아니며 공개 네트워크 API, SaaS endpoint, 다중
+사용자 서버, 보안 경계로 취급하면 안 됩니다. 정확한 listener, 인증, Origin, HTTP 와이어
+동작은 [MCP 전송](mcp-transport.md)이 담당합니다.
+
 정확한 실행 파일 동작, 환경 변수, 프레이밍, 시작 검증 또는 사전 점검 동작, 응답 래핑, 종료, 재연결 규칙은 [MCP 전송](mcp-transport.md)이 담당합니다. 이 런타임 경계 담당 문서는 프로세스, 위치, 금지되는 추론의 경계만 구분합니다.
 
 ### Agent Connections와 Connection Projects

@@ -150,6 +150,12 @@ Must not claim:
 
 The current local Rust MCP adapter is the `volicord mcp --stdio` stdio process, an executable role within Volicord implementation. An MCP host may label the configured entry an MCP server for protocol or host-configuration purposes. That label does not make Volicord a server product or make Volicord implementation a network server. An MCP host starts `volicord mcp --stdio` as a child process, passes configuration through process environment, and exchanges line-delimited JSON-RPC through stdin/stdout. The baseline process opens no TCP, HTTP, Unix-domain socket, or other network listener.
 
+The separate `volicord serve --transport local-http` mode is a Local HTTP
+transport for local/Docker use. It is not the baseline stdio process and must
+not be treated as a public network API, SaaS endpoint, multi-user server, or
+security boundary. Exact listener, authentication, Origin, and HTTP wire
+behavior belongs to [MCP Transport](mcp-transport.md).
+
 Exact executable behavior, environment variables, framing, startup validation or preflight behavior, response wrapping, shutdown, and reconnection rules belong to [MCP Transport](mcp-transport.md). This runtime-boundaries owner only keeps the process, location, and non-inference boundaries distinct.
 
 ### Agent Connections and Connection Projects

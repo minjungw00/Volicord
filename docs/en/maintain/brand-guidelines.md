@@ -49,7 +49,8 @@ into operational Reference contracts, error messages, or routine CLI output.
 
 - Volicord is the product/system brand.
 - Core remains a product concept and authority-record role. Do not rename Core
-  or describe Volicord as the authority record itself.
+  or collapse Core's exact state-authority role into the public Volicord product
+  identity.
 - `volicord` is the administrative CLI identifier. Exact CLI behavior belongs to
   [Administrative CLI](../reference/admin-cli.md).
 - `volicord mcp --stdio` is the local MCP adapter process identifier. Exact MCP process,

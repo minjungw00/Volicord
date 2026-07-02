@@ -11,6 +11,13 @@ In this guide, Volicord is the local work authority record for AI-assisted produ
 
 This guide is workflow guidance. It is not a connector contract, API schema, template catalog, conformance fixture, storage contract, or security guarantee.
 
+Guarantee limits stay with [Security](../reference/security.md). In this guide,
+Write Tickets are not OS permission, code review approval, final acceptance, or
+proof that a write occurred; Detective profile observations are signals, not
+OS-level blocking; and Close Status is decision support, not proof of
+correctness, test sufficiency, QA completion, deployment success, human review
+completion, or risk-free completion.
+
 Owner links:
 
 - Exact Agent Connection behavior: [Agent Connection Reference](../reference/agent-connection.md)
@@ -95,7 +102,7 @@ Volicord guidance can reach agents through:
 
 These instructions can help tool selection, project routing, and workflow consistency. They are not access control, security enforcement, User Channel authority, User Judgment, Write Ticket, Evidence, acceptance, Close Status, or proof that a model will choose Volicord tools.
 
-Volicord authority and external filesystem permission remain distinct. A Volicord record or issued Write Ticket does not independently grant the host permission to edit product files, and host filesystem permission does not create Volicord authority.
+Volicord authority and external filesystem permission remain distinct. A Volicord record or issued Write Ticket does not independently grant the host permission to edit product files, act as code review approval, supply final acceptance, or prove that a write occurred; host filesystem permission does not create Volicord authority.
 
 <a id="keep-context-small"></a>
 ## Keep context small

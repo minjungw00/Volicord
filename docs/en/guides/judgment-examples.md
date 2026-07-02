@@ -6,6 +6,10 @@ The examples are illustrative. They help readers recognize boundary shapes while
 
 Each example separates the user's decision from what the agent may do and what the agent must not imply. User Judgment, sensitive-action approval, final acceptance, residual-risk acceptance, verification criteria, Evidence, Close Status, and Write Ticket stay distinct.
 
+Guarantee limits stay with [Security](../reference/security.md); these examples
+do not turn any judgment, Evidence, Write Ticket, or Close Status result into a
+security guarantee or proof.
+
 For recorded important judgments, structured rationale should preserve the selected reason, considered alternatives, trade-offs, assumptions, uncertainties, and review triggers. Rationale preserves intent and context; it does not create authority, Evidence, acceptance, Close Status, or residual-risk acceptance.
 
 ## Product choice
@@ -191,7 +195,7 @@ Agent may do:
 
 Agent must not imply:
 
-- "Looks good" is final acceptance unless that exact question was pending.
+- A casual "looks good" settles final acceptance when no exact final-acceptance question was pending.
 - Final acceptance supplies missing evidence, changes verification criteria, accepts residual risk, expands current scope, creates sensitive-action approval or a write ticket, or accepts unrelated files.
 
 Owner links:

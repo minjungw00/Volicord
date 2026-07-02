@@ -118,15 +118,18 @@ Exit and stream behavior:
   transport process. It accepts only loopback listen addresses, requires bearer
   authentication for the MCP local HTTP endpoint, generates a process-local
   token when no token is supplied, applies Origin checks to browser-facing
-  requests, and delegates HTTP wire behavior and transport security checks to
-  [MCP Transport](mcp-transport.md).
+  requests, and delegates HTTP wire behavior and transport-bound authentication
+  and Origin checks to [MCP Transport](mcp-transport.md). It is local/Docker
+  transport only, not a public network API, SaaS endpoint, multi-user server, or
+  security boundary.
 
 Not supported:
 
 - The CLI has no general-purpose `server` or daemon command.
-- `volicord serve` must not be treated as a public Volicord API service or an
-  unauthenticated network service, and it has no supported option that changes
-  the local HTTP listener into a nonlocal listener.
+- `volicord serve` must not be treated as a public Volicord API service, SaaS
+  endpoint, multi-user server, security boundary, or unauthenticated network
+  service, and it has no supported option that changes the local HTTP listener
+  into a nonlocal listener.
 - Administrative commands are not public Volicord API methods and must not be
   added to the public method list.
 - Guard commands are cooperative and detective hook commands, not OS-level

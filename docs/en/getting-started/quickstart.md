@@ -30,10 +30,10 @@ profile (`--profile observe`) requires verified support for all required host
 hook phases and session watcher observation. If those prerequisites are
 unavailable, use `--profile record` or prepare a supported host, platform, and
 repository configuration for observe before rerunning init. The Detective
-profile can return cooperative host decisions and detect unrecorded changes
-after watcher coverage starts, but it does not provide OS enforcement, actor
-proof, network isolation, or a sandbox. On native Windows, use this Record
-profile fast path because observe is not supported until Windows host hooks and
+profile can return cooperative host decision signals and detect unrecorded
+changes after watcher coverage starts, but it does not provide OS enforcement,
+actor proof, network isolation, or a sandbox. On native Windows, use this
+Record profile fast path because observe is not supported until Windows host hooks and
 watcher behavior are implemented and tested. Exact project naming, profile
 behavior, connection defaults, and internal identity behavior belong to
 [Administrative CLI Reference](../reference/admin-cli.md).

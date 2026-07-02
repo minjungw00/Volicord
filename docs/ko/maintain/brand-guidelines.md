@@ -50,8 +50,8 @@ CLI 출력에 태그라인을 넣지 않습니다.
 ## 제품과 구성 요소 표현
 
 - Volicord는 제품/시스템 브랜드입니다.
-- Core는 계속 제품 개념이자 기준 기록 역할입니다. Core 이름을 바꾸거나 Volicord
-  자체를 기준 기록으로 설명하지 않습니다.
+- Core는 계속 제품 개념이자 기준 기록 역할입니다. Core 이름을 바꾸거나 Core의 정확한
+  상태 권한 역할을 공개 Volicord 제품 정체성으로 합치지 않습니다.
 - `volicord`는 관리 CLI 식별자입니다. 정확한 CLI 동작은 [관리 CLI](../reference/admin-cli.md)가
   담당합니다.
 - `volicord mcp --stdio`는 로컬 MCP 어댑터 프로세스 식별자입니다. 정확한 MCP 프로세스, 전송,

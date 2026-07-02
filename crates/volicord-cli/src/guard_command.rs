@@ -3456,9 +3456,13 @@ fn context_output(event_name: &str, message: Option<String>) -> Option<Value> {
 fn blocking_reason(phase: GuardPhase, result: &Value) -> String {
     let reason = first_reason_message(result).unwrap_or_else(|| match phase {
         GuardPhase::SessionStart => "Volicord session context could not be prepared.".to_owned(),
-        GuardPhase::PreTool => "Volicord blocked this tool call.".to_owned(),
-        GuardPhase::PostTool => "Volicord blocked normal handling of this tool result.".to_owned(),
-        GuardPhase::PromptCapture => "Volicord blocked this user prompt.".to_owned(),
+        GuardPhase::PreTool => "Volicord requested a host denial for this tool call.".to_owned(),
+        GuardPhase::PostTool => {
+            "Volicord requested a host denial for normal handling of this tool result.".to_owned()
+        }
+        GuardPhase::PromptCapture => {
+            "Volicord requested a host denial for this user prompt.".to_owned()
+        }
         GuardPhase::Stop => "Volicord needs more work before this session stops.".to_owned(),
     });
     host_native_message_with_disclosure(&reason)

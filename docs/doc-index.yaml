@@ -348,7 +348,7 @@ documents:
   - learn
   canonical_for:
   - Volicord public product identity and first-read positioning
-  - first-read distinction between Volicord as local authority control plane and Core as the local authority record
+  - first-read distinction between Volicord as a local work authority record and Core as the local authority record
   - overview-level routing to Scope, Core Model, Runtime Boundaries, Security, Glossary, and documentation metadata owners
 - doc_id: start.installation
   path_en: docs/en/getting-started/installation.md
@@ -360,8 +360,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: onboarding
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-02'
-  last_verified_on: '2026-07-02'
+  last_updated_on: '2026-07-03'
+  last_verified_on: '2026-07-03'
   applies_to:
   - volicord_workspace_0_1
   - rust_workspace_1_85
@@ -1153,7 +1153,7 @@ documents:
   - local `volicord mcp --stdio` process command contract
   - loopback-only local `volicord serve --transport local-http` process command contract
   - MCP stdio process startup and exit behavior
-  - MCP local HTTP serve startup and transport-bound security checks
+  - MCP local HTTP serve startup and transport-bound authentication and Origin checks
   - MCP local web consent fallback endpoint
   - MCP process environment variables and integration-bound startup
   - MCP startup validation and integration process binding
@@ -1180,8 +1180,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: runtime_security
   created_on: '2026-05-28'
-  last_updated_on: '2026-06-28'
-  last_verified_on: '2026-06-28'
+  last_updated_on: '2026-07-03'
+  last_verified_on: '2026-07-03'
   applies_to:
   - volicord_workspace_0_1
   primary_audience:

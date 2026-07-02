@@ -18,7 +18,7 @@ This document owns:
 
 - `volicord mcp --stdio` process startup and exit behavior
 - `volicord serve --transport local-http` startup, local listener, and
-  transport-bound security checks
+  transport-bound authentication and Origin checks
 - process configuration used by generated host configuration and exported MCP
   config
 - MCP Runtime Home environment resolution
@@ -63,8 +63,10 @@ when host prompt input and chat command capture are unavailable.
 for Docker and localhost MCP use. It starts a loopback-only HTTP listener and
 reuses the same Agent-Connection-bound MCP adapter logic as stdio where
 possible. It is not the default MCP transport, not used by generated local
-non-Docker host configuration, and not a general Volicord network service. No
-serve option changes this process into a nonlocal HTTP listener.
+non-Docker host configuration, and not a general Volicord network service. It
+is local/Docker transport only: not a public network API, SaaS endpoint,
+multi-user server, or security boundary. No serve option changes this process
+into a nonlocal HTTP listener.
 
 The current serve transport is an authenticated local MCP-over-HTTP subset. It
 accepts JSON-RPC over HTTP `POST /mcp` with MCP session headers and bearer-token

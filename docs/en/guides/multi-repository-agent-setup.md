@@ -169,6 +169,8 @@ configuration when ownership and safety checks permit it.
   in public MCP tool calls unless the call is `volicord.list_projects`.
 - A `Product Repository` is a product-file boundary and may contain selected
   shared host configuration, but it is not Volicord authority.
-- Write ticket is Volicord write-intent authority, not OS permission or proof that a write occurred.
-- Volicord does not provide OS sandboxing, filesystem ACLs, network policy, or
-  secret isolation.
+- A Write Ticket records a Volicord work-authority decision for a proposed
+  product-file write. It is not OS permission, code review approval, final
+  acceptance, or proof that a write occurred.
+- Security limits and non-guarantees are owned by
+  [Security](../reference/security.md).

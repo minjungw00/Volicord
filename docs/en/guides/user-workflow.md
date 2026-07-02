@@ -4,6 +4,13 @@ Volicord lets you work in ordinary language while keeping decision boundaries vi
 
 This guide is the user workflow path. Exact API behavior, schemas, storage effects, security wording, and reference-level close rules live in the owners linked from the [Reference Index](../reference/README.md).
 
+Guarantee limits stay with [Security](../reference/security.md). In this guide,
+Write Tickets are not OS permission, code review approval, final acceptance, or
+proof that a write occurred; Detective profile observations are signals, not
+OS-level blocking; and Close Status is decision support, not proof of
+correctness, test sufficiency, QA completion, deployment success, human review
+completion, or risk-free completion.
+
 ## Daily workflow
 
 Use this loop during normal work. It shows user-visible handoffs, not API call
@@ -212,7 +219,7 @@ repaired. Exact repair guidance belongs to
 
 ## Approve writes and sensitive actions
 
-A user-facing write approval is bounded permission for a named write attempt. In this guide, write approval means ordinary user approval for a write flow; it is separate from a Volicord write ticket.
+A user-facing write approval is bounded user consent for a named write attempt. In this guide, write approval means ordinary user approval for a write flow; it is separate from a Volicord Write Ticket.
 
 Write approval is not whole-plan approval, final acceptance, residual-risk acceptance, sensitive-action approval, or a guarantee that Volicord can prevent every unsafe action.
 

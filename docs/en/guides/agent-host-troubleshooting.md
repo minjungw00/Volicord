@@ -366,7 +366,7 @@ and safety checks permit it. It must not remove the `Product Repository`,
 project state, Volicord records, evidence attachment storage, or unrelated host
 entries.
 
-## Security Boundary
+## Security Limits
 
 Volicord setup and verification are local diagnostics. They do not prove that an
 external host is secure, that a model will use Volicord tools, or that file

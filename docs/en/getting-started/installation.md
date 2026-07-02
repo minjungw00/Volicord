@@ -281,7 +281,9 @@ The local HTTP transport is loopback-only. Use host networking only where the
 local Docker environment supports it, and keep Volicord bound to
 `127.0.0.1`. If host networking is unavailable, use stdio or CLI flows inside
 the container rather than publishing a nonlocal HTTP listener. Do not store
-`VOLICORD_HTTP_TOKEN` in repository files.
+`VOLICORD_HTTP_TOKEN` in repository files. Treat this as local/Docker transport
+only, not a public network API, SaaS endpoint, multi-user server, or security
+boundary.
 
 ## What Setup Does Not Do
 

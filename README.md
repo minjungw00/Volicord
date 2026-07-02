@@ -53,10 +53,10 @@ Use this short model when reading the rest of the README:
 | Concept | First-user meaning |
 |---|---|
 | `Task` | The user-value unit being shaped, worked, blocked, or closed. It carries the current goal, scope, non-goals, and current work boundary. |
-| Write Ticket | A product-file change should be compatible with the current `Task` and current scope. A write ticket records Volicord-authorized write intent for one proposed product-file change; it is not OS permission, review approval, final acceptance, or proof that a write occurred. |
+| Write Ticket | A product-file change should be compatible with the current `Task` and current scope. A Write Ticket records a Volicord work-authority decision for one proposed product-file change; it is not OS permission, code review approval, final acceptance, or proof that a write occurred. |
 | Evidence | Recorded support for a specific claim, such as a run, observation, or evidence attachment. Evidence supports claims, but it does not become user judgment or proof of correctness. |
 | User Judgment | A decision that belongs to the user: product direction, material technical direction, scope, sensitive action, final acceptance, residual-risk acceptance, cancellation, or similar authority-bearing choices. |
-| Close Status | A check that the current `Task` can finish honestly without hiding unresolved owner-defined requirements. Close Status is decision support, not proof that the product result is correct. |
+| Close Status | A check that the current `Task` can finish honestly without hiding unresolved owner-defined requirements. Close Status is decision support, not proof of correctness, test sufficiency, QA completion, deployment success, human review completion, or risk-free completion. |
 
 ## How The Pieces Fit
 
@@ -96,7 +96,7 @@ flowchart TD
   judgment{"User-owned<br/>judgment needed?"}
   inbox["Judgment Inbox / User Channel<br/>records the user's answer"]
   write{"Product-file<br/>write needed?"}
-  ticket["Volicord issues or<br/>blocks a write ticket"]
+  ticket["Volicord records a<br/>Write Ticket result"]
   run["record_run records<br/>execution or observation"]
   evidence["Evidence and Close Status<br/>stay visible"]
   close{"Close blockers<br/>remain?"}
@@ -240,9 +240,9 @@ Volicord.
 Use the Detective profile (`--profile observe`) only when the selected host,
 platform, and Product Repository support the extra observation surfaces. It
 keeps the Record profile model and adds supported host hooks plus a session
-watcher. Those hooks may provide cooperative pre-tool warnings or denials, and
-the watcher may detect unrecorded Product Repository changes after its coverage
-starts.
+watcher. Those hooks may provide cooperative host warning or denial decision
+signals, and the watcher may detect unrecorded Product Repository changes after
+its coverage starts.
 
 Volicord reports an observation summary for the selected connection or session.
 The summary tells you which surfaces are currently active:
@@ -321,31 +321,22 @@ The local consent URL is separate from host prompt input. The Local HTTP
 transport still does not implement HTTP host prompts, and local consent is
 available only on loopback endpoints with a valid consent token.
 
-## What Volicord Does Not Guarantee
+## Guarantee Limits
 
-Volicord keeps work authority visible, but it is not a general security product
-or correctness oracle. Do not rely on Volicord for:
+Volicord keeps work authority visible, but it is not a permission system,
+security boundary, correctness oracle, or human review replacement.
 
-- OS-level sandboxing or OS permission enforcement
-- malware defense, malware scanning, or secret scanning
-- network isolation, network monitoring, or network blocking
-- prevention of all product-file writes
-- universal pre-tool blocking or full filesystem monitoring
-- tamper-proof audit logging
-- proof that code is correct
-- proof that tests are sufficient
-- replacement for human review, QA, release judgment, or risk judgment
-- proof that an external host trusted, approved, loaded, initialized, or exposed
-  `volicord mcp --stdio`
-- proof that `AGENTS.md`, host rules, or MCP instructions forced model behavior
+- Write Tickets are not OS permission, code review approval, final acceptance,
+  or proof that a write occurred.
+- Detective profile hooks and watcher output are cooperative or detective
+  signals. They are not OS-level blocking, actor proof, network isolation, or a
+  sandbox.
+- Close Status is decision support from current Volicord records, not proof of
+  correctness, test sufficiency, QA completion, deployment success, human review
+  completion, or risk-free completion.
 
-Observe hooks may return `warn` or `deny` decisions when supported and active,
-and close checks or write-ticket blockers may expose follow-up work. Those are
-cooperative local controls, not kernel-level enforcement or a guarantee that
-tools cannot write files outside Volicord-aware paths.
-
-See the [Security Reference](docs/en/reference/security.md) for exact guarantee
-wording and explicit non-guarantees.
+Detailed guarantee classes and explicit non-guarantees live in the
+[Security Reference](docs/en/reference/security.md).
 
 ## Docker And Local HTTP Transport
 
@@ -363,13 +354,14 @@ volicord serve --transport local-http
 ```
 
 It is an explicit advanced transport for Docker and localhost MCP use, not the
-default host setup path. It accepts only loopback listen addresses, requires
-bearer authentication for the MCP local HTTP endpoint, generates a process-local
-token when no token is supplied, checks browser request Origins against
-configured `--allow-origin` values, exposes `POST /mcp`, and does not implement
-server-sent event streams, HTTP elicitation, or full MCP Streamable HTTP
-compatibility. Do not treat it as a general network service; there is no
-supported nonlocal listen option.
+default host setup path. It is local/Docker transport only: not a public network
+API, SaaS endpoint, multi-user server, or security boundary. It accepts only
+loopback listen addresses, requires bearer authentication for the MCP local HTTP
+endpoint, generates a process-local token when no token is supplied, checks
+browser request Origins against configured `--allow-origin` values, exposes
+`POST /mcp`, and does not implement server-sent event streams, HTTP
+elicitation, or full MCP Streamable HTTP compatibility. Do not treat it as a
+general network service; there is no supported nonlocal listen option.
 
 Use [Installation](docs/en/getting-started/installation.md) and
 [MCP Transport](docs/en/reference/mcp-transport.md) for the detailed Docker and
@@ -385,7 +377,7 @@ HTTP boundaries.
 | Host cannot start MCP | Confirm the host can run `volicord mcp --help` through the same command path. Run `volicord doctor` for installation-profile health. |
 | Product Repository is not detected | Pass `--repo /path/to/your-product-repo` and make sure the path is an existing local repository separate from the Runtime Home. |
 | A judgment is pending | Prefer the host prompt or exact chat command when available. Use `volicord inbox` and `volicord inbox answer` as the CLI inbox path. |
-| Close is blocked | Ask the agent to show `volicord.check_close` results, pending user judgments, missing evidence, unresolved unrecorded changes, and residual risks. Address the named blocker instead of closing from a summary. |
+| Close has blockers | Ask the agent to show `volicord.check_close` results, pending user judgments, missing evidence, unresolved unrecorded changes, and residual risks. Address the named blocker instead of closing from a summary. |
 
 ## Deeper Docs
 

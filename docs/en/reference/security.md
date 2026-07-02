@@ -10,6 +10,8 @@ This document owns Volicord security guarantee wording, local connection assumpt
 | The boundary that no baseline preventive guarantee is supported. | Storage record layout, artifact lifecycle detail, locks, hashes, or migrations. |
 | Local connection assumptions, `operation_category` non-claims, and access-boundary non-claims. | Connector implementation or host-specific operating recipes. |
 | Sensitive-action approval as a security-adjacent user-owned judgment boundary. | OS permissions, deployment controls, arbitrary-tool sandboxing, or host policy. |
+| Close Status, review, deployment, QA, and risk non-guarantees. | Close-task method behavior or state-schema shapes. |
+| Local HTTP transport non-guarantees for public-network, SaaS, multi-user, and security-boundary claims. | HTTP wire behavior; see [MCP Transport](mcp-transport.md). |
 | Non-authority rules for local files, generated displays, copied identifiers, chat text, and agent memory. | Runtime location definitions; see [Runtime Boundaries](runtime-boundaries.md). |
 | Host trust, host approval, and guidance non-guarantees for Agent Connections. | Codex or Claude Code host configuration syntax; see [Administrative CLI](admin-cli.md). |
 
@@ -23,6 +25,7 @@ Volicord security wording describes record and policy boundaries inside document
 | `Product Repository` | Product files can be inspected as inputs, and compatible product-file writes can be governed by owner-defined Core, user-judgment, and write-ticket paths. | Product files are not Volicord state, and Volicord does not provide arbitrary product-file edit permission, malware scanning, secret scanning, or global filesystem interception. |
 | Agent Connections and host configuration | Agent Connections provide documented connection context, `actor_source` provenance, connection intent, mode, and Connection Projects allowlists when the current invocation matches the registered connection. | Connection configuration is not OS permission, host trust, user identity, or proof that an external host loaded or exposed `volicord mcp --stdio`. |
 | `volicord mcp --stdio` | The adapter routes MCP calls through Agent Connection checks, Runtime Home state, Core, and Store. | The process does not itself grant arbitrary product-file edit authority, record authority-bearing user judgments, enforce host trust, block commands, block networks, or isolate tools. |
+| Local HTTP transport | `volicord serve --transport local-http` can expose the documented loopback-only MCP-over-HTTP subset for local/Docker use with bearer-token and Origin checks. | Local HTTP transport is not a public network API, SaaS endpoint, multi-user server, security boundary, nonlocal listener, or full MCP Streamable HTTP implementation. |
 | `volicord` CLI | Administrative commands manage setup, registry state, and supported host-integration state. | The CLI is not a public API security boundary, host trust controller, OS permission mechanism, or blanket write approval. |
 
 ## Supported security guarantees
@@ -245,6 +248,30 @@ Volicord does not guarantee:
 - Native artifact capture from Agent Connections as a baseline guarantee.
 - Artifact authority from displayed identifiers alone.
 - Validation or acceptance from copied artifact, run, evidence, or judgment text.
+
+### Close Status, QA, deployment, and review
+
+Volicord does not guarantee:
+
+- Product correctness from Close Status.
+- Test sufficiency from Close Status.
+- QA completion.
+- Deployment success.
+- Human review completion or replacement.
+- Risk-free completion.
+- That final acceptance or residual-risk acceptance supplies missing required
+  evidence.
+
+### Local HTTP transport
+
+Volicord Local HTTP transport does not guarantee:
+
+- A public network API.
+- A SaaS endpoint.
+- A multi-user server.
+- A security boundary.
+- A nonlocal listener.
+- Full MCP Streamable HTTP compatibility.
 
 ### Broad authority inference
 

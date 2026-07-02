@@ -9,7 +9,9 @@ Volicord is a local work authority record for AI-assisted product work. Its thes
 
 Volicord includes local runtime components, Agent Connections, supported host configuration, and documentation routes. Exact authority-record structure belongs to [Core Model](../reference/core-model.md), but first-read user paths do not require that internal term.
 
-Volicord is not an OS security product. It does not provide OS sandboxing, filesystem ACLs, network policy, or secret isolation.
+Volicord is not a permission system, OS security product, sandbox, or proof
+system. Exact guarantee wording and non-guarantees live in
+[Security](../reference/security.md).
 
 ## The Ordinary Problem
 
@@ -62,10 +64,10 @@ Agent setup through the ordinary
 The Record profile (`--profile record`) records authority state and exposes MCP
 tools without requiring host lifecycle hooks or a session watcher. The Detective
 profile (`--profile observe`) adds supported host hooks and session watcher
-observation. Host hooks can return cooperative pre-tool warnings or denials, and
-the watcher can report Unrecorded Changes after coverage starts; neither
-surface prevents all writes, proves who changed a file, provides a sandbox, or
-adds OS-level enforcement. Exact profile
+observation. Host hooks can return cooperative host warning or denial decision
+signals, and the watcher can report Unrecorded Changes after coverage starts;
+neither surface prevents all writes, proves who changed a file, provides a
+sandbox, or adds OS-level enforcement. Exact profile
 behavior is defined by [Administrative CLI](../reference/admin-cli.md).
 
 `volicord setup` remains the installation-profile preparation and repair path.
@@ -86,8 +88,8 @@ At first-read level, Volicord documentation keeps these authority concepts separ
 - User-owned judgment remains user-owned; an agent may explain options, but it must not invent the judgment.
 - Evidence supports a specific recorded claim. It is not final acceptance or residual-risk acceptance.
 - Verification criteria guide what should be checked. They are not themselves evidence or acceptance.
-- A Write Ticket records authorized write intent for one product-file write attempt. It is distinct from ordinary write approval, sensitive-action approval, final acceptance, and residual-risk acceptance, and it is not OS permission or proof that a write occurred.
-- Close Status is not a proof of product correctness.
+- A Write Ticket records a Volicord work-authority decision for one product-file write attempt. It is distinct from ordinary write approval, sensitive-action approval, final acceptance, and residual-risk acceptance, and it is not OS permission, code review approval, or proof that a write occurred.
+- Close Status is not proof of product correctness, test sufficiency, QA completion, deployment success, human review completion, or risk-free completion.
 
 ## Connection Modes
 

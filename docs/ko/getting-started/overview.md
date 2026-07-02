@@ -12,7 +12,8 @@ Volicord는 로컬 런타임 구성요소, Agent Connection, 지원되는 호스
 포함합니다. 정확한 권한 기록 구조는 [Core 모델](../reference/core-model.md)이
 담당하지만, 첫 읽기 사용자 경로에서 그 내부 용어를 알아야 하는 것은 아닙니다.
 
-Volicord는 OS 보안 제품이 아닙니다. OS 샌드박싱, 파일시스템 ACL, 네트워크 정책, 비밀 격리를 제공하지 않습니다.
+Volicord는 권한 시스템, OS 보안 제품, 샌드박스, 증명 시스템이 아닙니다. 정확한 보장
+표현과 비보장은 [보안](../reference/security.md)이 담당합니다.
 
 ## 일반적인 문제
 
@@ -63,10 +64,10 @@ Volicord는 이런 대체를 보이게 하려고 존재합니다. 범위, 사용
 
 Record profile(`--profile record`)은 host lifecycle hook이나 session watcher를 요구하지
 않고 권한 상태를 기록하며 MCP 도구를 노출합니다. Detective profile(`--profile observe`)은
-지원되는 host hook과 session watcher 관찰을 더합니다. Host hook은 협력형 pre-tool
-warning 또는 denial을 반환할 수 있고, watcher는 coverage 시작 뒤의 미기록 변경을 보고할
-수 있습니다. 두 표면 모두 모든 쓰기를 막거나, 파일을 바꾼 행위자를 증명하거나, sandbox를
-제공하거나, OS 수준 집행을 추가하지 않습니다. 정확한 프로필 동작은
+지원되는 host hook과 session watcher 관찰을 더합니다. Host hook은 협력형 host warning
+또는 denial decision 신호를 반환할 수 있고, watcher는 coverage 시작 뒤의 미기록 변경을
+보고할 수 있습니다. 두 표면 모두 모든 쓰기를 막거나, 파일을 바꾼 행위자를 증명하거나,
+sandbox를 제공하거나, OS 수준 집행을 추가하지 않습니다. 정확한 프로필 동작은
 [관리 CLI](../reference/admin-cli.md)가 정의합니다.
 
 `volicord setup`은 설치 프로필 준비와 복구 경로로 남습니다. `volicord connect`는
@@ -87,8 +88,8 @@ Volicord 문서는 첫 읽기 수준에서 아래 권한 개념을 구분하고 
 - 사용자 소유 판단은 사용자 소유로 남습니다. 에이전트는 선택지를 설명할 수 있지만 판단을 만들어 내면 안 됩니다.
 - 증거는 특정 기록된 주장을 뒷받침합니다. 최종 수락이나 잔여 위험 수락이 아닙니다.
 - 검증 기준은 무엇을 확인해야 하는지 안내합니다. 그 자체가 증거나 수락은 아닙니다.
-- 쓰기 티켓은 제품 파일 쓰기 시도 하나에 대한 권한 있는 쓰기 의도를 기록합니다. 일반 쓰기 승인, 민감 동작 승인, 최종 수락, 잔여 위험 수락과 구분되며 OS 권한이나 쓰기가 실제로 일어났다는 증명이 아닙니다.
-- 닫기 상태는 제품 정확성 증명이 아닙니다.
+- 쓰기 티켓은 제품 파일 쓰기 시도 하나에 대한 Volicord 작업 권한 판단을 기록합니다. 일반 쓰기 승인, 민감 동작 승인, 최종 수락, 잔여 위험 수락과 구분되며 OS 권한, 코드 리뷰 승인, 쓰기가 실제로 일어났다는 증명이 아닙니다.
+- 닫기 상태는 제품 정확성, 테스트 충분성, QA 완료, 배포 성공, 사람 검토 완료, 무위험 완료의 증명이 아닙니다.
 
 ## Connection Mode
 

@@ -48,10 +48,10 @@ README의 나머지 내용을 읽을 때는 아래 모델을 사용합니다.
 | 개념 | 첫 사용자에게 필요한 의미 |
 |---|---|
 | `Task` | 구체화되거나, 작업 중이거나, 막혀 있거나, 닫히는 사용자 가치 단위입니다. 현재 목표, 범위, 범위 밖 항목, 현재 작업 경계를 담습니다. |
-| 쓰기 티켓 | 제품 파일 변경은 현재 `Task`와 현재 범위에 호환되어야 합니다. 쓰기 티켓은 제안된 제품 파일 변경 하나에 대해 Volicord 안에서 권한 있는 쓰기 의도를 기록합니다. OS 권한, 검토 승인, 최종 수락, 쓰기가 실제로 일어났다는 증명이 아닙니다. |
+| 쓰기 티켓 | 제품 파일 변경은 현재 `Task`와 현재 범위에 호환되어야 합니다. 쓰기 티켓은 제안된 제품 파일 변경 하나에 대한 Volicord 작업 권한 판단을 기록합니다. OS 권한, 코드 리뷰 승인, 최종 수락, 쓰기가 실제로 일어났다는 증명이 아닙니다. |
 | 증거 | 실행, 관찰, 증거 첨부처럼 특정 주장을 뒷받침하도록 기록된 자료입니다. 증거는 주장을 돕지만 사용자 판단이나 정확성 증명이 되지는 않습니다. |
 | 사용자 판단 | 제품 방향, 중요한 기술 방향, 범위, 민감 동작, 최종 수락, 잔여 위험 수락, 취소처럼 사용자에게 속한 결정입니다. |
-| 닫기 상태 | 현재 `Task`를 미해결 요구사항을 숨기지 않고 정직하게 끝낼 수 있는지 확인하는 일입니다. 닫기 상태는 판단을 돕는 자료이지 제품 결과가 옳다는 증명이 아닙니다. |
+| 닫기 상태 | 현재 `Task`를 미해결 요구사항을 숨기지 않고 정직하게 끝낼 수 있는지 확인하는 일입니다. 닫기 상태는 판단을 돕는 자료이지 정확성, 테스트 충분성, QA 완료, 배포 성공, 사람 검토 완료, 무위험 완료의 증명이 아닙니다. |
 
 ## 구성 요소가 맞물리는 방식
 
@@ -91,7 +91,7 @@ flowchart TD
   judgment{"사용자 소유<br/>판단 필요?"}
   inbox["Judgment Inbox / User Channel<br/>사용자 답변 기록"]
   write{"제품 파일<br/>쓰기 필요?"}
-  ticket["Volicord가 쓰기 티켓을<br/>발급하거나 차단"]
+  ticket["Volicord가 쓰기 티켓<br/>결과 기록"]
   run["record_run이 실행 또는<br/>관찰 기록"]
   evidence["증거와 닫기 상태를<br/>보이게 유지"]
   close{"닫기 차단 사유가<br/>남아 있음?"}
@@ -221,9 +221,9 @@ Volicord를 통해 `Task`와 범위를 기록하고, 제안된 제품 파일 변
 
 Detective profile(`--profile observe`)은 선택한 호스트, 플랫폼, Product Repository가 추가
 관찰 표면을 지원할 때만 사용합니다. Record profile 모델은 그대로 유지하면서 지원되는
-host hook과 session watcher를 더합니다. 이 hook은 협력형 pre-tool warning 또는 denial을
-제공할 수 있고, watcher는 coverage가 시작된 뒤 미기록 Product Repository 변경을 탐지할 수
-있습니다.
+host hook과 session watcher를 더합니다. 이 hook은 협력형 host warning 또는 denial
+decision 신호를 제공할 수 있고, watcher는 coverage가 시작된 뒤 미기록 Product Repository
+변경을 탐지할 수 있습니다.
 
 Volicord는 선택된 연결 또는 session에 대해 관찰 요약을 보고합니다. 이 요약은
 현재 어떤 표면이 활성인지 알려 줍니다. 여기에는 `selected_profile`, host hook, session
@@ -295,28 +295,20 @@ volicord inbox answer JUDGMENT_ID --choice CHOICE_ID
 HTTP 호스트 프롬프트를 구현하지 않으며, 로컬 consent는 유효한 consent token이 있는
 loopback endpoint에서만 사용할 수 있습니다.
 
-## Volicord가 보장하지 않는 것
+## 보장 한계
 
-Volicord는 작업 권한을 보이게 하지만 일반 보안 제품이나 정확성 판정기가 아닙니다.
-아래를 Volicord에 기대하면 안 됩니다.
+Volicord는 작업 권한을 보이게 하지만 권한 시스템, 보안 경계, 정확성 판정기, 사람 검토
+대체물이 아닙니다.
 
-- OS 수준 샌드박싱 또는 OS 권한 강제
-- 악성코드 방어, 악성코드 검사, 비밀값 검사
-- 네트워크 격리, 네트워크 모니터링, 네트워크 차단
-- 모든 제품 파일 쓰기 예방
-- 보편적 도구 실행 전 차단 또는 전체 파일시스템 모니터링
-- 변조 불가능한 감사 로그
-- 코드가 옳다는 증명
-- 테스트가 충분하다는 증명
-- 사람 리뷰, QA, 릴리스 판단, 위험 판단의 대체
-- 외부 호스트가 `volicord mcp --stdio`를 신뢰, 승인, 로드, 초기화, 노출했다는 증명
-- `AGENTS.md`, 호스트 rule, MCP instructions가 모델 동작을 강제했다는 증명
+- 쓰기 티켓은 OS 권한, 코드 리뷰 승인, 최종 수락, 쓰기가 실제로 일어났다는 증명이
+  아닙니다.
+- Detective profile의 hook과 watcher 출력은 협력형 또는 탐지형 신호입니다. OS 수준
+  차단, 행위자 증명, 네트워크 격리, 샌드박스가 아닙니다.
+- 닫기 상태는 현재 Volicord 기록을 바탕으로 판단을 돕는 자료입니다. 정확성, 테스트
+  충분성, QA 완료, 배포 성공, 사람 검토 완료, 무위험 완료의 증명이 아닙니다.
 
-Observe hook은 지원되고 활성일 때 `warn` 또는 `deny` 결정을 반환할 수 있고, 닫기 확인이나
-쓰기 티켓 차단은 후속 작업을 드러낼 수 있습니다. 이것은 협력적인 로컬 제어이지 커널 수준
-강제나 Volicord를 아는 경로 밖에서 도구가 파일을 쓸 수 없다는 보장이 아닙니다.
-
-정확한 보장 표현과 명시적 비보장은 [보안 참조](docs/ko/reference/security.md)를 봅니다.
+자세한 보장 종류와 명시적 비보장은 [보안 참조](docs/ko/reference/security.md)가
+담당합니다.
 
 ## Docker와 Local HTTP transport
 
@@ -333,11 +325,13 @@ volicord serve --transport local-http
 ```
 
 이 transport는 Docker와 localhost MCP 사용을 위한 명시적 고급 모드이며 기본 호스트 설정
-경로가 아닙니다. Loopback listen 주소만 허용하고 MCP local HTTP endpoint에는 bearer 인증을
-요구하며, token을 제공하지 않으면 프로세스 로컬 token을 생성하고, 브라우저 요청 Origin은
-설정된 `--allow-origin` 값과 대조합니다. `POST /mcp`를 노출하지만 server-sent event
-스트림, HTTP elicitation, 전체 MCP Streamable HTTP 호환성은 구현하지 않습니다. 일반
-네트워크 서비스처럼 다루면 안 되며, 지원되는 nonlocal listen 옵션은 없습니다.
+경로가 아닙니다. 로컬/Docker 전송일 뿐 공개 네트워크 API, SaaS endpoint, 다중 사용자
+서버, 보안 경계가 아닙니다. Loopback listen 주소만 허용하고 MCP local HTTP endpoint에는
+bearer 인증을 요구하며, token을 제공하지 않으면 프로세스 로컬 token을 생성하고, 브라우저
+요청 Origin은 설정된 `--allow-origin` 값과 대조합니다. `POST /mcp`를 노출하지만
+server-sent event 스트림, HTTP elicitation, 전체 MCP Streamable HTTP 호환성은 구현하지
+않습니다. 일반 네트워크 서비스처럼 다루면 안 되며, 지원되는 nonlocal listen 옵션은
+없습니다.
 
 자세한 Docker와 HTTP 경계는 [설치](docs/ko/getting-started/installation.md)와
 [MCP 전송](docs/ko/reference/mcp-transport.md)을 사용합니다.
@@ -352,7 +346,7 @@ volicord serve --transport local-http
 | 호스트가 MCP를 시작하지 못함 | 같은 명령 경로로 호스트가 `volicord mcp --help`를 실행할 수 있는지 확인합니다. 설치 프로필 상태는 `volicord doctor`로 확인합니다. |
 | Product Repository가 감지되지 않음 | `--repo /path/to/your-product-repo`를 넘기고, 그 경로가 Runtime Home과 분리된 기존 로컬 저장소인지 확인합니다. |
 | 판단이 대기 중임 | 가능하면 호스트 프롬프트나 정확한 채팅 명령을 우선 사용합니다. CLI inbox 경로로 `volicord inbox`와 `volicord inbox answer`를 사용합니다. |
-| 닫기가 막힘 | 에이전트에게 `volicord.check_close` 결과, 대기 중인 사용자 판단, 빠진 증거, 미해결 미기록 변경, 잔여 위험을 보여 달라고 합니다. 요약으로 닫지 말고 이름 붙은 차단 사유를 처리합니다. |
+| 닫기 차단 사유가 있음 | 에이전트에게 `volicord.check_close` 결과, 대기 중인 사용자 판단, 빠진 증거, 미해결 미기록 변경, 잔여 위험을 보여 달라고 합니다. 요약으로 닫지 말고 이름 붙은 차단 사유를 처리합니다. |
 
 ## 더 읽을 문서
 

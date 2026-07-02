@@ -49,12 +49,13 @@ selected connection or session:
 | Profile | How it is reached | Operational meaning |
 |---|---|---|
 | Record profile (`record`) | MCP tools and authority records are available without requiring host hooks or a session watcher. | Setup guidance and policy metadata can steer the host but cannot force it. |
-| Detective profile (`observe`) | Project-local host hooks have verified generated config, cwd-independent and subdirectory-safe hook commands, native host output, required phases, write matchers, matching policy hash, runtime observation, and session watcher observation. | Cooperative pre-tool warnings or denials, post-tool correlation, chat command capture, observe status, Unrecorded Changes, and close/write blockers can participate in the workflow. |
+| Detective profile (`observe`) | Project-local host hooks have verified generated config, cwd-independent and subdirectory-safe hook commands, native host output, required phases, write matchers, matching policy hash, runtime observation, and session watcher observation. | Cooperative host warning or denial decision signals, post-tool correlation, chat command capture, observe status, Unrecorded Changes, and close/write blockers can participate in the workflow. |
 
 The Record profile can issue Volicord Write Tickets through the prepare-write
-workflow. The Detective profile does not make Write Tickets into filesystem enforcement; it
-adds supported hook and watcher observations that can later be correlated with
-ticket-scoped writes and Unrecorded Changes.
+workflow. The Detective profile does not make Write Tickets into filesystem
+enforcement, code review approval, final acceptance, or proof that a write
+occurred; it adds supported hook and watcher observations that can later be
+correlated with ticket-scoped writes and Unrecorded Changes.
 
 The observation summary reports whether host hooks and the session watcher
 are active, whether cooperative pre-tool warning or denial is available, whether

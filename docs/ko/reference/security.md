@@ -10,6 +10,8 @@
 | 기준 범위에 지원되는 예방형 보장이 없다는 경계. | 저장소 기록 배치, 아티팩트 생명주기 세부사항, 잠금, 해시, 마이그레이션. |
 | 로컬 연결 가정, `operation_category` 비주장, 접근 경계 비주장. | 커넥터 구현이나 호스트별 운영 레시피. |
 | 보안과 맞닿아 있는 사용자 소유 판단으로서 민감 동작 승인 경계. | OS 권한, 배포 통제, 임의 도구 샌드박싱, 호스트 정책. |
+| 닫기 상태, 검토, 배포, QA, 위험에 대한 비보장. | Task 닫기 메서드 동작이나 상태 스키마 형태. |
+| 공개 네트워크, SaaS, 다중 사용자, 보안 경계 주장에 대한 Local HTTP transport 비보장. | HTTP 와이어 동작. 해당 동작은 [MCP 전송](mcp-transport.md)이 담당합니다. |
 | 로컬 파일, 생성된 표시, 복사된 식별자, 대화 텍스트, 에이전트 기억이 권한이 아니라는 규칙. | 런타임 위치 정의. 위치 정의는 [런타임 경계](runtime-boundaries.md)가 담당합니다. |
 | Agent Connection의 호스트 신뢰, 호스트 승인, 안내 비보장. | Codex 또는 Claude Code 호스트 설정 문법. 해당 문법은 [관리 CLI](admin-cli.md)가 담당합니다. |
 
@@ -23,6 +25,7 @@ Volicord 보안 표현은 문서화된 Volicord 경로 안의 기록과 정책 �
 | `Product Repository` | 제품 파일은 입력으로 검사될 수 있고, 호환되는 제품 파일 쓰기는 담당 문서가 정의한 Core, 사용자 판단, 쓰기 티켓 경로의 지배를 받을 수 있습니다. | 제품 파일은 Volicord 상태가 아니며, Volicord는 임의 제품 파일 편집 권한, 악성코드 검사, 비밀값 검사, 전역 파일시스템 가로채기를 제공하지 않습니다. |
 | Agent Connection과 호스트 설정 | 현재 호출이 등록된 연결과 맞을 때 Agent Connection은 문서화된 연결 맥락, `actor_source` 출처, 연결 의도, 모드, Connection Projects 허용 목록을 제공합니다. | 연결 설정은 OS 권한, 호스트 신뢰, 사용자 신원, 외부 호스트가 `volicord mcp --stdio`를 로드하거나 노출했다는 증거가 아닙니다. |
 | `volicord mcp --stdio` | 어댑터는 MCP 호출을 Agent Connection 점검, Runtime Home 상태, Core, Store를 통해 라우팅합니다. | 이 프로세스 자체는 임의 제품 파일 편집 권한을 부여하거나, 권한을 지니는 사용자 판단을 기록하거나, 호스트 신뢰를 강제하거나, 명령을 차단하거나, 네트워크를 차단하거나, 도구를 격리하지 않습니다. |
+| Local HTTP transport | `volicord serve --transport local-http`는 bearer token과 Origin 점검이 있는 문서화된 loopback 전용 MCP-over-HTTP 부분 구현을 로컬/Docker 사용을 위해 노출할 수 있습니다. | Local HTTP transport는 공개 네트워크 API, SaaS endpoint, 다중 사용자 서버, 보안 경계, nonlocal listener, 전체 MCP Streamable HTTP 구현이 아닙니다. |
 | `volicord` CLI | 관리 명령은 설정, registry 상태, 지원되는 호스트 통합 상태를 관리합니다. | CLI는 공개 API 보안 경계, 호스트 신뢰 제어기, OS 권한 메커니즘, 포괄적 쓰기 승인이 아닙니다. |
 
 ## 지원되는 보안 보장
@@ -245,6 +248,29 @@ Volicord는 아래를 보장하지 않습니다.
 - 기준 보장으로서의 Agent Connection 자체 아티팩트 캡처.
 - 표시된 식별자만으로 생기는 아티팩트 권한.
 - 복사된 아티팩트, 실행 기록, 증거, 판단 텍스트에서 생기는 검증이나 수락.
+
+### 닫기 상태, QA, 배포, 검토
+
+Volicord는 아래를 보장하지 않습니다.
+
+- 닫기 상태에서 생기는 제품 정확성.
+- 닫기 상태에서 생기는 테스트 충분성.
+- QA 완료.
+- 배포 성공.
+- 사람 검토 완료 또는 대체.
+- 무위험 완료.
+- 최종 수락이나 잔여 위험 수락이 빠진 필수 증거를 보충한다는 것.
+
+### Local HTTP transport
+
+Volicord Local HTTP transport는 아래를 보장하지 않습니다.
+
+- 공개 네트워크 API.
+- SaaS endpoint.
+- 다중 사용자 서버.
+- 보안 경계.
+- nonlocal listener.
+- 전체 MCP Streamable HTTP 호환성.
 
 ### 포괄적 권한 추론
 
