@@ -44,10 +44,16 @@ Core 쪽 동작은 `volicord-core`에 있고 공유 타입과 Store에 의존하
 
 - [`crates/volicord-core/src/pipeline.rs`](../../../../crates/volicord-core/src/pipeline.rs):
   `CoreService`, `MethodPolicy`, `OwnerPipelineBranch`, 공통 사전 점검.
-- [`crates/volicord-mcp/src/lib.rs`](../../../../crates/volicord-mcp/src/lib.rs):
-  `PUBLIC_METHOD_TOOL_NAMES`, `McpConnectionStartupInspection`,
-  `McpConnectionContext`, `McpAdapter`, `McpAdapter::call_tool`,
-  `prepare_connection_arguments`.
+- [`crates/volicord-mcp/src/tool_registry.rs`](../../../../crates/volicord-mcp/src/tool_registry.rs):
+  `PUBLIC_METHOD_TOOL_NAMES`, `McpToolDefinition`, 공개 도구 메타데이터.
+- [`crates/volicord-mcp/src/routing.rs`](../../../../crates/volicord-mcp/src/routing.rs):
+  `McpConnectionStartupInspection`, `McpConnectionContext`, 시작/프로젝트 라우팅
+  도우미.
+- [`crates/volicord-mcp/src/adapter.rs`](../../../../crates/volicord-mcp/src/adapter.rs):
+  `McpAdapter`, `McpAdapter::call_tool`, 타입 지정 인자 준비, 신뢰된 요청
+  래퍼 구성, Core 디스패치.
+- [`crates/volicord-mcp/src/stdio.rs`](../../../../crates/volicord-mcp/src/stdio.rs):
+  JSON-RPC stdio 디스패치, `tools/call` 결과 래핑, elicitation 처리.
 - [`crates/volicord-cli/src/connection_command.rs`](../../../../crates/volicord-cli/src/connection_command.rs):
   Core/MCP 어댑터 경로 밖의 관리 호스트 설정 오케스트레이션.
 - [`crates/volicord-cli/src/registration.rs`](../../../../crates/volicord-cli/src/registration.rs):
@@ -56,7 +62,7 @@ Core 쪽 동작은 `volicord-core`에 있고 공유 타입과 Store에 의존하
 
 ## 관련 테스트와 참조 담당 문서
 
-- [`crates/volicord-mcp/src/lib.rs`](../../../../crates/volicord-mcp/src/lib.rs)의
+- [`crates/volicord-mcp/src/tests.rs`](../../../../crates/volicord-mcp/src/tests.rs)의
   `adapter_and_direct_core_status_have_equivalent_response_meaning`.
 - [`tests/integration/mcp_connection.rs`](../../../../tests/integration/mcp_connection.rs)의
   `connection_invocation_is_injected_and_single_project_is_auto_selected`,

@@ -1,0 +1,74 @@
+use crate::prelude::*;
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct McpToolDefinition {
+    pub name: &'static str,
+    pub description: &'static str,
+    #[serde(rename = "inputSchema")]
+    pub input_schema: Value,
+}
+
+pub fn public_method_tools() -> Vec<McpToolDefinition> {
+    method_tools(PUBLIC_METHOD_TOOL_NAMES)
+}
+
+/// Returns adapter utility tool definitions.
+pub fn adapter_utility_tools() -> Vec<McpToolDefinition> {
+    ADAPTER_UTILITY_TOOL_NAMES
+        .iter()
+        .map(|name| McpToolDefinition {
+            name,
+            description: tool_description(name),
+            input_schema: json!({
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+            }),
+        })
+        .collect()
+}
+
+/// Returns workflow-mode MCP-visible tools.
+pub fn mcp_tools() -> Vec<McpToolDefinition> {
+    mcp_tools_for_mode(AgentConnectionMode::Workflow)
+}
+
+/// Returns MCP-visible tools for the supplied Agent Connection mode.
+pub fn mcp_tools_for_mode(mode: AgentConnectionMode) -> Vec<McpToolDefinition> {
+    let mut tools = match mode {
+        AgentConnectionMode::ReadOnly => method_tools(READ_ONLY_METHOD_TOOL_NAMES),
+        AgentConnectionMode::Workflow => public_method_tools(),
+    };
+    tools.extend(adapter_utility_tools());
+    tools
+}
+
+pub(crate) fn method_tools<const N: usize>(names: [&'static str; N]) -> Vec<McpToolDefinition> {
+    names
+        .iter()
+        .map(|name| McpToolDefinition {
+            name,
+            description: tool_description(name),
+            input_schema: mcp_request_schema(name).expect("MCP tool schema should exist"),
+        })
+        .collect()
+}
+
+pub(crate) fn tool_description(name: &str) -> &'static str {
+    match name {
+        "volicord.intake" => "Start, resume, supersede, or reject an ordinary user work loop.",
+        "volicord.update_scope" => "Update current Task scope and Change Unit state.",
+        "volicord.status" => "Read the current Core status view.",
+        "volicord.prepare_write" => "Check one proposed product-file write against Core state.",
+        "volicord.stage_artifact" => "Stage artifact bytes or an artifact notice.",
+        "volicord.record_run" => "Record shaping, direct, or implementation work.",
+        "volicord.request_user_judgment" => "Create one pending focused user-owned judgment.",
+        "volicord.reconcile_changes" => {
+            "Reconcile unresolved unrecorded Product Repository changes."
+        }
+        CHECK_CLOSE_TOOL_NAME => "Check close readiness for a selected Task.",
+        "volicord.close_task" => "Perform a selected Task close path.",
+        LIST_PROJECTS_TOOL_NAME => "List projects explicitly allowed for this MCP connection.",
+        _ => "Unsupported Volicord method.",
+    }
+}

@@ -45,10 +45,17 @@ only the structure visible in the repository.
 
 - [`crates/volicord-core/src/pipeline.rs`](../../../../crates/volicord-core/src/pipeline.rs):
   `CoreService`, `MethodPolicy`, `OwnerPipelineBranch`, and common preflight.
-- [`crates/volicord-mcp/src/lib.rs`](../../../../crates/volicord-mcp/src/lib.rs):
-  `PUBLIC_METHOD_TOOL_NAMES`, `McpConnectionStartupInspection`,
-  `McpConnectionContext`, `McpAdapter`, `McpAdapter::call_tool`, and
-  `prepare_connection_arguments`.
+- [`crates/volicord-mcp/src/tool_registry.rs`](../../../../crates/volicord-mcp/src/tool_registry.rs):
+  `PUBLIC_METHOD_TOOL_NAMES`, `McpToolDefinition`, and public tool metadata.
+- [`crates/volicord-mcp/src/routing.rs`](../../../../crates/volicord-mcp/src/routing.rs):
+  `McpConnectionStartupInspection`, `McpConnectionContext`, and startup/project
+  routing helpers.
+- [`crates/volicord-mcp/src/adapter.rs`](../../../../crates/volicord-mcp/src/adapter.rs):
+  `McpAdapter`, `McpAdapter::call_tool`, typed argument preparation, trusted
+  envelope construction, and Core dispatch.
+- [`crates/volicord-mcp/src/stdio.rs`](../../../../crates/volicord-mcp/src/stdio.rs):
+  JSON-RPC stdio dispatch, `tools/call` result wrapping, and elicitation
+  handling.
 - [`crates/volicord-cli/src/connection_command.rs`](../../../../crates/volicord-cli/src/connection_command.rs):
   administrative host setup orchestration outside the Core/MCP adapter path.
 - [`crates/volicord-cli/src/registration.rs`](../../../../crates/volicord-cli/src/registration.rs):
@@ -58,7 +65,7 @@ only the structure visible in the repository.
 ## Related Tests And Reference Owners
 
 - `adapter_and_direct_core_status_have_equivalent_response_meaning` in
-  [`crates/volicord-mcp/src/lib.rs`](../../../../crates/volicord-mcp/src/lib.rs).
+  [`crates/volicord-mcp/src/tests.rs`](../../../../crates/volicord-mcp/src/tests.rs).
 - `connection_invocation_is_injected_and_single_project_is_auto_selected` and
   `read_only_mode_rejects_agent_workflow_methods_before_core` in
   [`tests/integration/mcp_connection.rs`](../../../../tests/integration/mcp_connection.rs).

@@ -171,7 +171,10 @@ Important modules:
 - [`crates/volicord-store/src/migrations.rs`](../../../crates/volicord-store/src/migrations.rs)
   for baseline migration constants and migration application.
 - [`crates/volicord-store/src/core_pipeline.rs`](../../../crates/volicord-store/src/core_pipeline.rs)
-  for Core-facing Store reads, `CoreStorageMutation`, and commit outcomes.
+  for Core-facing Store reads, `CoreStorageMutation`, commit outcomes, and the
+  atomic commit boundary.
+- [`crates/volicord-store/src/core_pipeline/mutation_apply.rs`](../../../crates/volicord-store/src/core_pipeline/mutation_apply.rs)
+  for transaction-scoped SQL application of `CoreStorageMutation` values.
 - [`crates/volicord-store/src/artifacts.rs`](../../../crates/volicord-store/src/artifacts.rs)
   for `CoreProjectStore::create_artifact_staging` and
   `verify_persistent_artifact_body`.
@@ -412,10 +415,23 @@ Recommended first file:
 Important modules:
 
 - [`crates/volicord-mcp/src/lib.rs`](../../../crates/volicord-mcp/src/lib.rs)
-  for `PUBLIC_METHOD_TOOL_NAMES`, `McpConnectionStartupInspection`,
-  `McpConnectionContext`, `McpAdapter`, `McpAdapter::call_tool`,
-  `prepare_connection_arguments`, `public_method_tools`, `run_stdio_from_env`,
-  `handle_json_rpc_request`, and `call_tool_result`.
+  for the public crate surface and re-exported adapter entry points.
+- [`crates/volicord-mcp/src/tool_registry.rs`](../../../crates/volicord-mcp/src/tool_registry.rs)
+  for `PUBLIC_METHOD_TOOL_NAMES`, `McpToolDefinition`, and
+  `public_method_tools`.
+- [`crates/volicord-mcp/src/routing.rs`](../../../crates/volicord-mcp/src/routing.rs)
+  for `McpConnectionStartupInspection`, `McpConnectionContext`, and project
+  selection helpers.
+- [`crates/volicord-mcp/src/adapter.rs`](../../../crates/volicord-mcp/src/adapter.rs)
+  for `McpAdapter`, `McpAdapter::call_tool`, typed argument decoding, and Core
+  invocation.
+- [`crates/volicord-mcp/src/stdio.rs`](../../../crates/volicord-mcp/src/stdio.rs)
+  for `run_stdio_from_env`, `run_preflight_check_from_env`,
+  `handle_json_rpc_request`, response wrapping, and elicitation handling.
+- [`crates/volicord-mcp/src/local_http.rs`](../../../crates/volicord-mcp/src/local_http.rs),
+  [`local_web_consent.rs`](../../../crates/volicord-mcp/src/local_web_consent.rs),
+  and [`http.rs`](../../../crates/volicord-mcp/src/http.rs) for loopback HTTP
+  serving, consent handling, and shared HTTP parsing.
 - [`crates/volicord-cli/src/main.rs`](../../../crates/volicord-cli/src/main.rs)
   for public `volicord mcp` process-mode dispatch.
 
@@ -426,14 +442,14 @@ Important current symbols:
   `McpDerivedInvocationContext`
 - `McpAdapter`, `McpAdapter::derive_invocation_context`,
   `McpAdapter::call_tool`
-- `prepare_typed_request`, `prepare_connection_arguments`, `decode_params`
 - `run_stdio_from_env`, `run_preflight_check_from_env`,
   `preflight_check`
-- `McpAdapterError`, `call_tool_result`, `json_rpc_error_for_adapter`
+- `LocalHttpServerConfig`, `run_local_http_server`
+- `McpAdapterError`, `LocalHttpError`, `json_rpc_error_for_adapter`
 
 Most relevant tests:
 
-- Unit tests in [`crates/volicord-mcp/src/lib.rs`](../../../crates/volicord-mcp/src/lib.rs),
+- Unit tests in [`crates/volicord-mcp/src/tests.rs`](../../../crates/volicord-mcp/src/tests.rs),
   including `tool_sets_follow_connection_mode_and_exclude_user_only_recording`,
   `connection_context_resolves_and_preflight_reports_allowed_project`,
   `adapter_auto_selects_single_project_and_injects_connection_invocation`,

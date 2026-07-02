@@ -76,7 +76,7 @@ work. Core is the local authority record for Volicord state.
 For public method work, the shortest useful source path is:
 
 1. [`crates/volicord-types/src/methods.rs`](../../../crates/volicord-types/src/methods.rs)
-2. [`crates/volicord-mcp/src/lib.rs`](../../../crates/volicord-mcp/src/lib.rs)
+2. [`crates/volicord-mcp/src/adapter.rs`](../../../crates/volicord-mcp/src/adapter.rs)
 3. [`crates/volicord-core/src/pipeline.rs`](../../../crates/volicord-core/src/pipeline.rs)
 4. [`crates/volicord-core/src/methods/`](../../../crates/volicord-core/src/methods/)
 5. [`crates/volicord-store/src/core_pipeline.rs`](../../../crates/volicord-store/src/core_pipeline.rs)

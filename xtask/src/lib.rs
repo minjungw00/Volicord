@@ -130,6 +130,15 @@ const PUBLIC_LANGUAGE_SOURCE_PATHS: &[&str] = &[
     "crates/volicord-cli/src/guard_command.rs",
     "crates/volicord-cli/src/user_command.rs",
     "crates/volicord-mcp/src/lib.rs",
+    "crates/volicord-mcp/src/adapter.rs",
+    "crates/volicord-mcp/src/errors.rs",
+    "crates/volicord-mcp/src/http.rs",
+    "crates/volicord-mcp/src/local_http.rs",
+    "crates/volicord-mcp/src/local_web_consent.rs",
+    "crates/volicord-mcp/src/routing.rs",
+    "crates/volicord-mcp/src/stdio.rs",
+    "crates/volicord-mcp/src/tool_registry.rs",
+    "crates/volicord-mcp/src/util.rs",
 ];
 const PUBLIC_UNQUALIFIED_SECURITY_WORDS: &[&str] = &["safe", "secure", "protected"];
 const TERMINOLOGY_ALLOWED_ROLES: &[&str] = &[

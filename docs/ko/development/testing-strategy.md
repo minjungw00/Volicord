@@ -51,7 +51,7 @@
 | Storage DDL 참조, 실행 가능한 마이그레이션, 스키마 검증 동작 | `cargo test -p volicord-store --test storage_ddl_contract`와 가까운 Store 테스트. | 유지되는 Storage DDL 문서가 바뀌면 docs-check를, 공개 메서드에서 보이는 저장 효과가 바뀌면 Core, 적합성, MCP 통합 테스트를 추가합니다. |
 | Core 메서드 동작 | `crates/volicord-core/src/methods/tests.rs`. | 교차 메서드 기준 범위 시나리오는 `tests/conformance/baseline.rs`를, MCP 노출이나 operation category 파생이 중요하면 `tests/integration/mcp_connection.rs`를 추가합니다. |
 | 공통 Core 사전 점검, 분기 처리, 재실행, 최신성, 접근 정책 | `crates/volicord-core/src/pipeline.rs` 단위 테스트와 메서드 테스트. | 어댑터가 파생한 호출 맥락이나 세션 바인딩이 관련되면 MCP 통합 테스트를 추가합니다. |
-| MCP 어댑터 시작, 도구 스키마, `tools/call`, stdio 전송 | `crates/volicord-mcp/src/lib.rs` 테스트와 `mcp_transport`. | MCP를 통과한 Core/Store 계층 간 동작은 `tests/integration/mcp_connection.rs`를 추가합니다. |
+| MCP 어댑터 시작, 도구 스키마, `tools/call`, stdio 전송 | `crates/volicord-mcp/src/tests.rs` 테스트와 `mcp_transport`. | MCP를 통과한 Core/Store 계층 간 동작은 `tests/integration/mcp_connection.rs`를 추가합니다. |
 | 관리 에이전트 설정 동작 | `binary_admin`과 `connection_command.rs`, 호스트 어댑터, managed host configuration, 등록 도우미의 CLI 모듈 테스트. | 부트스트랩, 검사, registry, 마이그레이션, Agent Connection, 프로젝트 멤버십, managed host configuration state 인벤토리 동작이 바뀌면 Store 테스트를 추가합니다. |
 | 테스트 픽스처 동작 | `volicord-test-support` 테스트 또는 소비 패키지의 테스트. | 픽스처가 빠진 계약 담당 문서를 드러내면 담당 문서 중심 문서 점검을 추가합니다. |
 | 문서 검증기 동작 | `xtask` 테스트와 `cargo run -p xtask -- docs-check`. | 새 결정적 구조 규칙을 도입하면 픽스처 사례를 추가합니다. |

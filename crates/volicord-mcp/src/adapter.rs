@@ -1,0 +1,1063 @@
+use crate::errors::McpAdapterError;
+use crate::prelude::*;
+use crate::routing::*;
+use crate::tool_registry::*;
+use crate::util::*;
+
+/// Minimal MCP adapter marker for validating dependency direction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct McpAdapterBoundary {
+    pub(crate) core: CoreBoundary,
+}
+
+impl McpAdapterBoundary {
+    /// Creates an inert MCP adapter boundary marker.
+    pub const fn new(core: CoreBoundary) -> Self {
+        Self { core }
+    }
+
+    /// Returns the adapter boundary label.
+    pub const fn label(self) -> &'static str {
+        let _ = self.core;
+        "mcp-adapter"
+    }
+}
+
+/// Invocation context derived for one tool call before entering Core.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct McpDerivedInvocationContext {
+    pub project_id: ProjectId,
+    pub actor_source: ActorSource,
+    pub operation_category: OperationCategory,
+    pub invocation_binding_basis: String,
+    pub session_id: Option<String>,
+    pub local_web_consent_available: bool,
+}
+
+impl McpDerivedInvocationContext {
+    fn core_invocation(&self) -> InvocationContext {
+        let invocation = InvocationContext::new(
+            self.project_id.clone(),
+            self.actor_source.clone(),
+            self.operation_category,
+            self.invocation_binding_basis.clone(),
+        );
+        if let Some(session_id) = self.session_id.as_ref() {
+            invocation
+                .with_session_id(session_id.clone())
+                .with_local_web_consent_available(self.local_web_consent_available)
+        } else {
+            invocation.with_local_web_consent_available(self.local_web_consent_available)
+        }
+    }
+}
+
+/// Loopback consent endpoint facts available to adapter fallback selection.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LocalWebConsentContext {
+    pub base_url: String,
+}
+
+/// Local MCP adapter bound to a Core service and one Agent Connection.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct McpAdapter {
+    pub(crate) core: CoreService,
+    pub(crate) runtime_home: PathBuf,
+    pub(crate) context: McpConnectionContext,
+    pub(crate) local_web_consent: Option<LocalWebConsentContext>,
+}
+
+impl McpAdapter {
+    /// Creates an adapter for a Runtime Home and connection-bound adapter context.
+    pub fn new(runtime_home: impl AsRef<Path>, context: McpConnectionContext) -> Self {
+        let runtime_home = runtime_home.as_ref().to_path_buf();
+        Self {
+            core: CoreService::new(&runtime_home),
+            runtime_home,
+            context,
+            local_web_consent: None,
+        }
+    }
+
+    /// Enables local loopback web consent fallback for pending user judgments.
+    pub fn with_local_web_consent(mut self, context: LocalWebConsentContext) -> Self {
+        self.local_web_consent = Some(context);
+        self
+    }
+
+    /// Initializes a session-watch baseline before serving tools when startup is project-bound.
+    pub fn initialize_startup_session_watch(
+        &self,
+        session_id: &str,
+    ) -> Result<(), McpAdapterError> {
+        let Some(project_id) = self.project_bound_startup_project()? else {
+            return Ok(());
+        };
+        self.ensure_session_watch_baseline(
+            &project_id,
+            session_id,
+            SessionWatchCoverageBasis::McpStart,
+        )
+    }
+
+    fn project_bound_startup_project(&self) -> Result<Option<ProjectId>, McpAdapterError> {
+        let available_projects = self
+            .allowed_project_availabilities("session watch startup")?
+            .into_iter()
+            .filter(|project| project.available)
+            .collect::<Vec<_>>();
+        if available_projects.len() == 1 {
+            Ok(Some(ProjectId::new(&available_projects[0].project_id)))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn ensure_session_watch_baseline(
+        &self,
+        project_id: &ProjectId,
+        session_id: &str,
+        coverage_basis: SessionWatchCoverageBasis,
+    ) -> Result<(), McpAdapterError> {
+        if latest_watch_baseline_for_session(&self.runtime_home, project_id.as_str(), session_id)
+            .map_err(McpAdapterError::Store)?
+            .is_some()
+        {
+            return Ok(());
+        }
+
+        let now = CoreProjectStore::open(&self.runtime_home, project_id)
+            .and_then(|store| store.current_timestamp())
+            .map_err(McpAdapterError::Store)?;
+        self.ensure_agent_session_for_watch(project_id, session_id, &now)?;
+
+        if latest_watch_baseline_for_session(&self.runtime_home, project_id.as_str(), session_id)
+            .map_err(McpAdapterError::Store)?
+            .is_some()
+        {
+            return Ok(());
+        }
+
+        let store = CoreProjectStore::open(&self.runtime_home, project_id)
+            .map_err(McpAdapterError::Store)?;
+        let snapshot = match snapshot_product_repository(
+            &self.runtime_home,
+            &store.project_record().repo_root,
+            WatchSnapshotOptions::default(),
+        ) {
+            Ok(snapshot) => snapshot,
+            Err(_) => return Ok(()),
+        };
+        let partial_coverage_warning = match coverage_basis {
+            SessionWatchCoverageBasis::McpStart => None,
+            SessionWatchCoverageBasis::FirstProjectSelection => {
+                Some(FIRST_PROJECT_SELECTION_PARTIAL_COVERAGE_WARNING)
+            }
+            SessionWatchCoverageBasis::MethodBoundary => {
+                Some(METHOD_BOUNDARY_PARTIAL_COVERAGE_WARNING)
+            }
+        };
+        let mut metadata = json!({
+            "schema_version": 1,
+            "source": WATCH_METADATA_SOURCE,
+            "status_detail": "active",
+            "detector_role": "detective",
+            "does_not_prevent_writes": true,
+            "does_not_identify_actor": true,
+            "coverage_start_at": now,
+            "coverage_basis": coverage_basis.as_str(),
+        });
+        if let Some(warning) = partial_coverage_warning {
+            metadata["partial_coverage_warning"] = json!(warning);
+        }
+        create_watch_baseline(
+            &self.runtime_home,
+            project_id.as_str(),
+            WatchBaselineCreate {
+                watch_baseline_id: generated_metadata_id(
+                    "watch_base",
+                    project_id.as_str(),
+                    session_id,
+                ),
+                session_id: session_id.to_owned(),
+                connection_internal_id: self.context.connection_internal_id.as_str().to_owned(),
+                guard_installation_id: self.selected_guard_installation_id(project_id)?,
+                status: StoreSessionWatchStatus::Active,
+                snapshot,
+                created_at: metadata["coverage_start_at"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_owned(),
+                metadata_json: serde_json::to_string(&metadata).map_err(McpAdapterError::Json)?,
+            },
+        )
+        .map_err(McpAdapterError::Store)?;
+        Ok(())
+    }
+
+    fn ensure_agent_session_for_watch(
+        &self,
+        project_id: &ProjectId,
+        session_id: &str,
+        now: &str,
+    ) -> Result<(), McpAdapterError> {
+        if agent_session(&self.runtime_home, project_id.as_str(), session_id)
+            .map_err(McpAdapterError::Store)?
+            .is_some()
+        {
+            return Ok(());
+        }
+        let record = guard_health_record(
+            &self.runtime_home,
+            project_id.as_str(),
+            self.context.connection_internal_id.as_str(),
+        )
+        .map_err(McpAdapterError::Store)?;
+        let guard_installation_id = record
+            .guard_installation
+            .as_ref()
+            .map(|installation| installation.guard_installation_id.clone());
+        let guard_mode = record
+            .guard_installation
+            .as_ref()
+            .map(|installation| installation.guard_mode.clone())
+            .or_else(|| {
+                record
+                    .latest_session
+                    .as_ref()
+                    .map(|session| session.guard_mode.clone())
+            })
+            .unwrap_or_else(|| IntegrationProfile::Record.as_str().to_owned());
+        let host_kind = record
+            .guard_installation
+            .as_ref()
+            .map(|installation| installation.host_kind.clone())
+            .or_else(|| {
+                record
+                    .connection
+                    .as_ref()
+                    .map(|connection| connection.host_kind.clone())
+            })
+            .unwrap_or_else(|| "unknown".to_owned());
+
+        insert_agent_session(
+            &self.runtime_home,
+            project_id.as_str(),
+            AgentSessionInsert {
+                session_id: session_id.to_owned(),
+                connection_internal_id: self.context.connection_internal_id.as_str().to_owned(),
+                guard_installation_id,
+                host_kind,
+                guard_mode,
+                started_at: now.to_owned(),
+                metadata_json: serde_json::to_string(&json!({
+                    "schema_version": 1,
+                    "source": WATCH_METADATA_SOURCE,
+                    "session_watch_initialized": true
+                }))
+                .map_err(McpAdapterError::Json)?,
+            },
+        )
+        .map_err(McpAdapterError::Store)?;
+        Ok(())
+    }
+
+    fn selected_guard_installation_id(
+        &self,
+        project_id: &ProjectId,
+    ) -> Result<Option<String>, McpAdapterError> {
+        guard_health_record(
+            &self.runtime_home,
+            project_id.as_str(),
+            self.context.connection_internal_id.as_str(),
+        )
+        .map(|record| {
+            record
+                .guard_installation
+                .map(|installation| installation.guard_installation_id)
+        })
+        .map_err(McpAdapterError::Store)
+    }
+
+    pub(crate) fn allowed_project_availabilities(
+        &self,
+        tool_name: &str,
+    ) -> Result<Vec<McpProjectAvailability>, McpAdapterError> {
+        current_enabled_connection(
+            &self.runtime_home,
+            self.context.connection_internal_id.as_str(),
+            tool_name,
+        )?;
+        let projects = list_connection_projects(
+            &self.runtime_home,
+            self.context.connection_internal_id.as_str(),
+        )
+        .map_err(McpAdapterError::Store)?;
+        Ok(projects
+            .iter()
+            .filter(|project| {
+                self.context
+                    .project_allowlist_allows(project.project_id.as_str())
+            })
+            .map(|project| inspect_allowed_project(&self.runtime_home, project))
+            .collect())
+    }
+
+    fn session_watch_coverage_for_projects(
+        &self,
+        session_id: Option<&str>,
+        projects: &[McpProjectAvailability],
+    ) -> Result<McpSessionWatchCoverage, McpAdapterError> {
+        if let Some(session_id) = session_id {
+            for project in projects.iter().filter(|project| project.available) {
+                if let Some(baseline) = latest_watch_baseline_for_session(
+                    &self.runtime_home,
+                    &project.project_id,
+                    session_id,
+                )
+                .map_err(McpAdapterError::Store)?
+                {
+                    return Ok(coverage_from_watch_baseline(&baseline));
+                }
+            }
+        }
+        let available_project_count = projects.iter().filter(|project| project.available).count();
+        if available_project_count == 1 {
+            Ok(McpSessionWatchCoverage {
+                status: SessionWatchStatus::Unavailable,
+                baseline_created_at: None,
+                coverage_start_at: None,
+                coverage_basis: None,
+                partial_coverage_warning: Some(
+                    "Session-watch baseline has not been created for this MCP session.".to_owned(),
+                ),
+            })
+        } else {
+            Ok(McpSessionWatchCoverage {
+                status: SessionWatchStatus::PendingProjectSelection,
+                baseline_created_at: None,
+                coverage_start_at: None,
+                coverage_basis: None,
+                partial_coverage_warning: Some(
+                    "Session-watch coverage is pending until the MCP request names an explicit project_selector."
+                        .to_owned(),
+                ),
+            })
+        }
+    }
+
+    /// Returns the tools exposed by this adapter's current connection mode.
+    pub fn tools(&self) -> Result<Vec<McpToolDefinition>, McpAdapterError> {
+        let connection = current_enabled_connection(
+            &self.runtime_home,
+            self.context.connection_internal_id.as_str(),
+            "tools/list",
+        )?;
+        let mode = parse_connection_mode(&connection.mode).map_err(|error| {
+            McpAdapterError::ToolExecution {
+                tool_name: "tools/list".to_owned(),
+                message: error.to_string(),
+            }
+        })?;
+        Ok(mcp_tools_for_mode(mode))
+    }
+
+    /// Derives local invocation facts for one decoded request envelope.
+    pub fn derive_invocation_context(
+        &self,
+        envelope: &ToolEnvelope,
+        operation_category: OperationCategory,
+        session_id: Option<&str>,
+    ) -> McpDerivedInvocationContext {
+        McpDerivedInvocationContext {
+            project_id: envelope.project_id.clone(),
+            actor_source: ActorSource::agent_connection(
+                self.context.connection_internal_id.clone(),
+            ),
+            operation_category,
+            invocation_binding_basis: self.context.invocation_binding_basis.clone(),
+            session_id: session_id.map(str::to_owned),
+            local_web_consent_available: self.local_web_consent.is_some(),
+        }
+    }
+
+    /// Calls one public Volicord method tool and returns Core's response.
+    pub fn call_tool(
+        &self,
+        tool_name: &str,
+        params: Value,
+    ) -> Result<PipelineResponse, McpAdapterError> {
+        self.call_tool_for_session(tool_name, params, None)
+    }
+
+    pub(crate) fn call_tool_for_session(
+        &self,
+        tool_name: &str,
+        params: Value,
+        session_id: Option<&str>,
+    ) -> Result<PipelineResponse, McpAdapterError> {
+        match tool_name {
+            "volicord.intake" => self.call_intake(tool_name, params, session_id),
+            "volicord.update_scope" => self.call_update_scope(tool_name, params, session_id),
+            "volicord.status" => self.call_status(tool_name, params, session_id),
+            "volicord.prepare_write" => self.call_prepare_write(tool_name, params, session_id),
+            "volicord.stage_artifact" => self.call_stage_artifact(tool_name, params, session_id),
+            "volicord.record_run" => self.call_record_run(tool_name, params, session_id),
+            "volicord.request_user_judgment" => {
+                self.call_request_user_judgment(tool_name, params, session_id)
+            }
+            "volicord.reconcile_changes" => {
+                self.call_reconcile_changes(tool_name, params, session_id)
+            }
+            CHECK_CLOSE_TOOL_NAME => self.call_check_close(tool_name, params, session_id),
+            "volicord.close_task" => self.call_close_task(tool_name, params, session_id),
+            other => Err(McpAdapterError::UnknownTool(other.to_owned())),
+        }
+    }
+
+    fn call_intake(
+        &self,
+        tool_name: &str,
+        params: Value,
+        session_id: Option<&str>,
+    ) -> Result<PipelineResponse, McpAdapterError> {
+        let prepared: PreparedMcpArguments<McpIntakeArguments> =
+            self.prepare_mcp_arguments(tool_name, params, session_id)?;
+        let envelope = self.generated_envelope(
+            tool_name,
+            &prepared.project_id,
+            None,
+            OperationCategory::AgentWorkflow,
+        )?;
+        let args = prepared.arguments;
+        self.call_core_request(
+            tool_name,
+            IntakeRequest {
+                envelope,
+                plain_language_request: args.plain_language_request,
+                requested_mode: args.requested_mode,
+                resume_policy: args.resume_policy,
+                initial_scope: args.initial_scope,
+                initial_context_refs: args.initial_context_refs,
+            },
+            CoreService::intake,
+            session_id,
+        )
+    }
+
+    fn call_update_scope(
+        &self,
+        tool_name: &str,
+        params: Value,
+        session_id: Option<&str>,
+    ) -> Result<PipelineResponse, McpAdapterError> {
+        let prepared: PreparedMcpArguments<McpUpdateScopeArguments> =
+            self.prepare_mcp_arguments(tool_name, params, session_id)?;
+        let task_id = prepared.arguments.task_id.clone();
+        let envelope = self.generated_envelope(
+            tool_name,
+            &prepared.project_id,
+            Some(&task_id),
+            OperationCategory::AgentWorkflow,
+        )?;
+        let args = prepared.arguments;
+        self.call_core_request(
+            tool_name,
+            UpdateScopeRequest {
+                envelope,
+                task_id,
+                goal_summary: args.goal_summary,
+                scope_update: args.scope_update,
+                scope_boundary: args.scope_boundary,
+                non_goals: args.non_goals,
+                acceptance_criteria: args.acceptance_criteria,
+                autonomy_boundary: args.autonomy_boundary,
+                baseline_ref: args.baseline_ref,
+                change_unit: args.change_unit,
+                related_scope_decision_refs: args.related_scope_decision_refs,
+            },
+            CoreService::update_scope,
+            session_id,
+        )
+    }
+
+    fn call_status(
+        &self,
+        tool_name: &str,
+        params: Value,
+        session_id: Option<&str>,
+    ) -> Result<PipelineResponse, McpAdapterError> {
+        let prepared: PreparedMcpArguments<McpStatusArguments> =
+            self.prepare_mcp_arguments(tool_name, params, session_id)?;
+        let task_id = prepared.arguments.task_id.clone();
+        let envelope = self.generated_envelope(
+            tool_name,
+            &prepared.project_id,
+            task_id.as_ref(),
+            OperationCategory::Read,
+        )?;
+        let args = prepared.arguments;
+        self.call_core_request(
+            tool_name,
+            StatusRequest {
+                envelope,
+                include: args.detail.include(),
+            },
+            CoreService::status,
+            session_id,
+        )
+    }
+
+    fn call_prepare_write(
+        &self,
+        tool_name: &str,
+        params: Value,
+        session_id: Option<&str>,
+    ) -> Result<PipelineResponse, McpAdapterError> {
+        let prepared: PreparedMcpArguments<McpPrepareWriteArguments> =
+            self.prepare_mcp_arguments(tool_name, params, session_id)?;
+        let task_id = prepared.arguments.task_id.clone();
+        let envelope = self.generated_envelope(
+            tool_name,
+            &prepared.project_id,
+            task_id.as_ref(),
+            OperationCategory::AgentWorkflow,
+        )?;
+        let args = prepared.arguments;
+        self.call_core_request(
+            tool_name,
+            PrepareWriteRequest {
+                envelope,
+                task_id,
+                change_unit_id: args.change_unit_id,
+                intended_operation: args.intended_operation,
+                intended_paths: args.intended_paths,
+                product_file_write_intended: args.product_file_write_intended,
+                sensitive_categories: args.sensitive_categories,
+                baseline_ref: args.baseline_ref,
+            },
+            CoreService::prepare_write,
+            session_id,
+        )
+    }
+
+    fn call_stage_artifact(
+        &self,
+        tool_name: &str,
+        params: Value,
+        session_id: Option<&str>,
+    ) -> Result<PipelineResponse, McpAdapterError> {
+        let prepared: PreparedMcpArguments<McpStageArtifactArguments> =
+            self.prepare_mcp_arguments(tool_name, params, session_id)?;
+        let task_id = prepared.arguments.task_id.clone();
+        let envelope = self.generated_envelope(
+            tool_name,
+            &prepared.project_id,
+            Some(&task_id),
+            OperationCategory::AgentWorkflow,
+        )?;
+        let args = prepared.arguments;
+        self.call_core_request(
+            tool_name,
+            StageArtifactRequest {
+                envelope,
+                task_id,
+                display_name: args.display_name,
+                content_type: args.content_type,
+                redaction_state: args.redaction_state,
+                safe_bytes_or_notice: args.safe_bytes_or_notice,
+                expected_sha256: args.expected_sha256,
+                expected_size_bytes: args.expected_size_bytes,
+                relation_hint: args.relation_hint,
+            },
+            CoreService::stage_artifact,
+            session_id,
+        )
+    }
+
+    fn call_record_run(
+        &self,
+        tool_name: &str,
+        params: Value,
+        session_id: Option<&str>,
+    ) -> Result<PipelineResponse, McpAdapterError> {
+        let prepared: PreparedMcpArguments<McpRecordRunArguments> =
+            self.prepare_mcp_arguments(tool_name, params, session_id)?;
+        let task_id = prepared.arguments.task_id.clone();
+        let envelope = self.generated_envelope(
+            tool_name,
+            &prepared.project_id,
+            Some(&task_id),
+            OperationCategory::AgentWorkflow,
+        )?;
+        let args = prepared.arguments;
+        self.call_core_request(
+            tool_name,
+            RecordRunRequest {
+                envelope,
+                task_id,
+                change_unit_id: args.change_unit_id,
+                kind: args.kind,
+                run_id: args.run_id,
+                baseline_ref: args.baseline_ref,
+                write_check_id: args.write_check_id,
+                summary: args.summary,
+                observed_changes: args.observed_changes,
+                artifact_inputs: args.artifact_inputs,
+                evidence_updates: args.evidence_updates,
+                evidence_observations: args.evidence_observations,
+                close_assessment: args.close_assessment,
+            },
+            CoreService::record_run,
+            session_id,
+        )
+    }
+
+    fn call_request_user_judgment(
+        &self,
+        tool_name: &str,
+        params: Value,
+        session_id: Option<&str>,
+    ) -> Result<PipelineResponse, McpAdapterError> {
+        let prepared: PreparedMcpArguments<McpRequestUserJudgmentArguments> =
+            self.prepare_mcp_arguments(tool_name, params, session_id)?;
+        let task_id = prepared.arguments.task_id.clone();
+        let envelope = self.generated_envelope(
+            tool_name,
+            &prepared.project_id,
+            Some(&task_id),
+            OperationCategory::AgentWorkflow,
+        )?;
+        let args = prepared.arguments;
+        self.call_core_request(
+            tool_name,
+            RequestUserJudgmentRequest {
+                envelope,
+                task_id,
+                change_unit_id: args.change_unit_id,
+                sensitive_action_scope: args.sensitive_action_scope,
+                judgment_kind: args.judgment_kind,
+                presentation: args.presentation,
+                question: args.question,
+                options: args.options,
+                context: args.context,
+                affected_refs: args.affected_refs,
+                required_for: args.required_for,
+                expires_at: args.expires_at,
+            },
+            CoreService::request_user_judgment,
+            session_id,
+        )
+    }
+
+    fn call_reconcile_changes(
+        &self,
+        tool_name: &str,
+        params: Value,
+        session_id: Option<&str>,
+    ) -> Result<PipelineResponse, McpAdapterError> {
+        let prepared: PreparedMcpArguments<McpReconcileChangesArguments> =
+            self.prepare_mcp_arguments(tool_name, params, session_id)?;
+        let task_id = prepared.arguments.task_id.clone();
+        let envelope = self.generated_envelope(
+            tool_name,
+            &prepared.project_id,
+            Some(&task_id),
+            OperationCategory::AgentWorkflow,
+        )?;
+        let args = prepared.arguments;
+        self.call_core_request(
+            tool_name,
+            ReconcileChangesRequest {
+                envelope,
+                task_id,
+                resolution_requests: args.resolution_requests,
+            },
+            CoreService::reconcile_changes,
+            session_id,
+        )
+    }
+
+    fn call_check_close(
+        &self,
+        tool_name: &str,
+        params: Value,
+        session_id: Option<&str>,
+    ) -> Result<PipelineResponse, McpAdapterError> {
+        let prepared: PreparedMcpArguments<McpCheckCloseArguments> =
+            self.prepare_mcp_arguments(tool_name, params, session_id)?;
+        let task_id = prepared.arguments.task_id.clone();
+        let envelope = self.generated_envelope(
+            tool_name,
+            &prepared.project_id,
+            Some(&task_id),
+            OperationCategory::Read,
+        )?;
+        self.call_core_request(
+            tool_name,
+            CloseTaskRequest {
+                envelope,
+                task_id,
+                intent: CloseIntent::Check,
+                close_reason: RequiredNullable::null(),
+                superseding_task_id: RequiredNullable::null(),
+                user_note: RequiredNullable::null(),
+            },
+            CoreService::close_task,
+            session_id,
+        )
+    }
+
+    fn call_close_task(
+        &self,
+        tool_name: &str,
+        params: Value,
+        session_id: Option<&str>,
+    ) -> Result<PipelineResponse, McpAdapterError> {
+        let prepared: PreparedMcpArguments<McpCloseTaskArguments> =
+            self.prepare_mcp_arguments(tool_name, params, session_id)?;
+        let task_id = prepared.arguments.task_id.clone();
+        let envelope = self.generated_envelope(
+            tool_name,
+            &prepared.project_id,
+            Some(&task_id),
+            OperationCategory::AgentWorkflow,
+        )?;
+        let args = prepared.arguments;
+        self.call_core_request(
+            tool_name,
+            CloseTaskRequest {
+                envelope,
+                task_id,
+                intent: args.intent.into(),
+                close_reason: args.close_reason,
+                superseding_task_id: args.superseding_task_id,
+                user_note: args.user_note,
+            },
+            CoreService::close_task,
+            session_id,
+        )
+    }
+
+    fn call_core_request<T, F>(
+        &self,
+        tool_name: &str,
+        request: T,
+        call: F,
+        session_id: Option<&str>,
+    ) -> Result<PipelineResponse, McpAdapterError>
+    where
+        T: MethodOperationCategory + HasEnvelope,
+        F: FnOnce(
+            &CoreService,
+            T,
+            InvocationContext,
+        ) -> Result<PipelineResponse, CorePipelineError>,
+    {
+        let operation_category = request.operation_category();
+        self.ensure_mode_allows(tool_name, operation_category)?;
+        let invocation = self.derive_invocation_context(
+            request_envelope(&request),
+            operation_category,
+            session_id,
+        );
+        call(&self.core, request, invocation.core_invocation()).map_err(McpAdapterError::Core)
+    }
+
+    pub(crate) fn call_adapter_tool(
+        &self,
+        tool_name: &str,
+        params: Value,
+        session_id: Option<&str>,
+    ) -> Result<Value, McpAdapterError> {
+        match tool_name {
+            LIST_PROJECTS_TOOL_NAME => {
+                let object = params
+                    .as_object()
+                    .ok_or_else(|| McpAdapterError::ToolExecution {
+                        tool_name: tool_name.to_owned(),
+                        message: "volicord.list_projects arguments must be an object".to_owned(),
+                    })?;
+                if !object.is_empty() {
+                    return Err(McpAdapterError::ToolExecution {
+                        tool_name: tool_name.to_owned(),
+                        message: "volicord.list_projects does not accept arguments".to_owned(),
+                    });
+                }
+                let result = self.list_projects_result(session_id)?;
+                serde_json::to_value(result).map_err(McpAdapterError::Json)
+            }
+            other => Err(McpAdapterError::UnknownTool(other.to_owned())),
+        }
+    }
+
+    fn list_projects_result(
+        &self,
+        session_id: Option<&str>,
+    ) -> Result<ListProjectsResult, McpAdapterError> {
+        let connection = current_enabled_connection(
+            &self.runtime_home,
+            self.context.connection_internal_id.as_str(),
+            "volicord.list_projects",
+        )?;
+        let availabilities = self.allowed_project_availabilities("volicord.list_projects")?;
+        let items = availabilities
+            .iter()
+            .map(|project| ListProjectItem {
+                project_selector: project.project_id.clone(),
+                available: project.available,
+                unavailable_reason: project.unavailable_reason.clone(),
+                repo_root: project.repo_root_display.clone(),
+            })
+            .collect::<Vec<_>>();
+        let coverage = self.session_watch_coverage_for_projects(session_id, &availabilities)?;
+        let mode = parse_connection_mode(&connection.mode).map_err(|error| {
+            McpAdapterError::ToolExecution {
+                tool_name: "volicord.list_projects".to_owned(),
+                message: error.to_string(),
+            }
+        })?;
+
+        Ok(ListProjectsResult {
+            connection_id: connection.connection_internal_id,
+            mode,
+            watcher_status: coverage.status,
+            watcher_baseline_created_at: coverage.baseline_created_at,
+            watcher_coverage_start_at: coverage.coverage_start_at,
+            watcher_coverage_basis: coverage.coverage_basis,
+            watcher_partial_coverage_warning: coverage.partial_coverage_warning,
+            projects: items,
+        })
+    }
+
+    fn prepare_mcp_arguments<T>(
+        &self,
+        tool_name: &str,
+        params: Value,
+        session_id: Option<&str>,
+    ) -> Result<PreparedMcpArguments<T>, McpAdapterError>
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        let object = params
+            .as_object()
+            .ok_or_else(|| McpAdapterError::ToolExecution {
+                tool_name: tool_name.to_owned(),
+                message: "tool arguments must be an object".to_owned(),
+            })?;
+        reject_internal_mcp_argument_fields(object, tool_name)?;
+        let requested_project_selector =
+            optional_string_field(object, "project_selector", tool_name)?;
+        let selected_project_id = self.select_project(requested_project_selector.as_deref())?;
+        if let Some(session_id) = session_id {
+            let coverage_basis = if requested_project_selector.is_some() {
+                SessionWatchCoverageBasis::FirstProjectSelection
+            } else {
+                SessionWatchCoverageBasis::MethodBoundary
+            };
+            self.ensure_session_watch_baseline(&selected_project_id, session_id, coverage_basis)?;
+        }
+        let arguments = self.decode_params(tool_name, params)?;
+        Ok(PreparedMcpArguments {
+            arguments,
+            project_id: selected_project_id,
+        })
+    }
+
+    fn generated_envelope(
+        &self,
+        tool_name: &str,
+        project_id: &ProjectId,
+        task_id: Option<&volicord_types::TaskId>,
+        operation_category: OperationCategory,
+    ) -> Result<ToolEnvelope, McpAdapterError> {
+        let state_version = if operation_category == OperationCategory::Read {
+            None
+        } else {
+            Some(self.current_state_version(project_id)?)
+        };
+        let idempotency_key = if operation_category == OperationCategory::Read {
+            RequiredNullable::null()
+        } else {
+            RequiredNullable::some(IdempotencyKey::new(generated_metadata_id(
+                "idem",
+                self.context.connection_internal_id.as_str(),
+                tool_name,
+            )))
+        };
+
+        Ok(ToolEnvelope {
+            project_id: project_id.clone(),
+            task_id: task_id.cloned().into(),
+            request_id: RequestId::new(generated_metadata_id(
+                "req",
+                self.context.connection_internal_id.as_str(),
+                tool_name,
+            )),
+            idempotency_key,
+            expected_state_version: state_version.into(),
+            dry_run: false,
+            locale: Some(DEFAULT_LOCALE.to_owned()).into(),
+        })
+    }
+
+    fn current_state_version(&self, project_id: &ProjectId) -> Result<u64, McpAdapterError> {
+        let store = CoreProjectStore::open(&self.runtime_home, project_id)
+            .map_err(McpAdapterError::Store)?;
+        store
+            .project_state()
+            .map(|state| state.state_version)
+            .map_err(McpAdapterError::Store)
+    }
+
+    fn select_project(
+        &self,
+        requested_project_id: Option<&str>,
+    ) -> Result<ProjectId, McpAdapterError> {
+        let connection_internal_id = self.context.connection_internal_id.as_str();
+        let _connection = current_enabled_connection(
+            &self.runtime_home,
+            connection_internal_id,
+            "project routing",
+        )?;
+
+        if let Some(project_id) = requested_project_id {
+            if !self.context.project_allowlist_allows(project_id) {
+                return Err(routing_error(format!(
+                    "project selector {project_id} is outside this HTTP serve project allowlist"
+                )));
+            }
+            let access = agent_connection_project_access(
+                &self.runtime_home,
+                connection_internal_id,
+                project_id,
+            )
+            .map_err(McpAdapterError::Store)?
+            .ok_or_else(|| McpAdapterError::ToolExecution {
+                tool_name: "project routing".to_owned(),
+                message: format!("connection {connection_internal_id} is not registered"),
+            })?;
+            if !access.connection_enabled {
+                return Err(routing_error("connection is disabled"));
+            }
+            if !access.project_allowed {
+                return Err(routing_error(format!(
+                    "project selector {project_id} is outside this connection project allowlist"
+                )));
+            }
+            let project = access
+                .project
+                .ok_or_else(|| routing_error(format!("project {project_id} is not registered")))?;
+            let project_record = ConnectionProjectRecord {
+                connection_internal_id: connection_internal_id.to_owned(),
+                project_internal_id: project.project_internal_id.clone(),
+                project_id: project.project_id.clone(),
+                created_at: String::new(),
+                project,
+            };
+            let availability = inspect_allowed_project(&self.runtime_home, &project_record);
+            return selected_project_from_availability(availability);
+        }
+
+        let projects = list_connection_projects(&self.runtime_home, connection_internal_id)
+            .map_err(McpAdapterError::Store)?;
+        let projects = projects
+            .into_iter()
+            .filter(|project| {
+                self.context
+                    .project_allowlist_allows(project.project_id.as_str())
+            })
+            .collect::<Vec<_>>();
+        if projects.is_empty() {
+            return Err(routing_error(
+                "connection has no allowed projects matching this transport allowlist; ask the operator to add one",
+            ));
+        }
+        if projects.len() != 1 {
+            return Err(routing_error(
+                "project selection is ambiguous for this connection; project_selector is required when multiple projects are allowed",
+            ));
+        }
+
+        selected_project_from_availability(inspect_allowed_project(
+            &self.runtime_home,
+            &projects[0],
+        ))
+    }
+
+    fn ensure_mode_allows(
+        &self,
+        tool_name: &str,
+        operation_category: OperationCategory,
+    ) -> Result<(), McpAdapterError> {
+        let connection = current_enabled_connection(
+            &self.runtime_home,
+            self.context.connection_internal_id.as_str(),
+            tool_name,
+        )?;
+        let current_mode = parse_connection_mode(&connection.mode).map_err(|error| {
+            McpAdapterError::ToolExecution {
+                tool_name: tool_name.to_owned(),
+                message: error.to_string(),
+            }
+        })?;
+        if current_mode.allows_operation_category(operation_category) {
+            return Ok(());
+        }
+        Err(McpAdapterError::ToolExecution {
+            tool_name: tool_name.to_owned(),
+            message: format!(
+                "connection mode {} does not allow operation category {}",
+                current_mode.as_str(),
+                operation_category.as_str()
+            ),
+        })
+    }
+
+    fn decode_params<T>(&self, tool_name: &str, params: Value) -> Result<T, McpAdapterError>
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        serde_json::from_value(params).map_err(|source| McpAdapterError::InvalidParams {
+            tool_name: tool_name.to_owned(),
+            source,
+        })
+    }
+}
+
+trait HasEnvelope {
+    fn envelope(&self) -> &ToolEnvelope;
+}
+
+macro_rules! impl_has_envelope {
+    ($($request:ty),* $(,)?) => {
+        $(
+            impl HasEnvelope for $request {
+                fn envelope(&self) -> &ToolEnvelope {
+                    &self.envelope
+                }
+            }
+        )*
+    };
+}
+
+impl_has_envelope!(
+    IntakeRequest,
+    UpdateScopeRequest,
+    StatusRequest,
+    PrepareWriteRequest,
+    StageArtifactRequest,
+    RecordRunRequest,
+    RequestUserJudgmentRequest,
+    ReconcileChangesRequest,
+    CloseTaskRequest,
+);
+
+fn request_envelope<T: HasEnvelope>(request: &T) -> &ToolEnvelope {
+    request.envelope()
+}
+
+struct PreparedMcpArguments<T> {
+    arguments: T,
+    project_id: ProjectId,
+}

@@ -165,7 +165,9 @@ Core 변이 원자 커밋이 여기에 속합니다.
 - [`crates/volicord-store/src/migrations.rs`](../../../crates/volicord-store/src/migrations.rs):
   기준 마이그레이션 상수와 마이그레이션 적용.
 - [`crates/volicord-store/src/core_pipeline.rs`](../../../crates/volicord-store/src/core_pipeline.rs):
-  Core 쪽 Store 읽기, `CoreStorageMutation`, 커밋 결과.
+  Core 쪽 Store 읽기, `CoreStorageMutation`, 커밋 결과, 원자적 커밋 경계.
+- [`crates/volicord-store/src/core_pipeline/mutation_apply.rs`](../../../crates/volicord-store/src/core_pipeline/mutation_apply.rs):
+  트랜잭션 범위 SQL 작성기로 `CoreStorageMutation` 값을 적용합니다.
 - [`crates/volicord-store/src/artifacts.rs`](../../../crates/volicord-store/src/artifacts.rs):
   `CoreProjectStore::create_artifact_staging`,
   `verify_persistent_artifact_body`.
@@ -399,10 +401,20 @@ config export, 로컬 `User Channel` 명령, 사전 점검 실행을 처리합�
 중요 모듈:
 
 - [`crates/volicord-mcp/src/lib.rs`](../../../crates/volicord-mcp/src/lib.rs):
-  `PUBLIC_METHOD_TOOL_NAMES`, `McpConnectionStartupInspection`,
-  `McpConnectionContext`, `McpAdapter`, `McpAdapter::call_tool`,
-  `prepare_connection_arguments`, `public_method_tools`, `run_stdio_from_env`,
-  `handle_json_rpc_request`, `call_tool_result`.
+  공개 크레이트 표면과 다시 내보내는 어댑터 진입점.
+- [`crates/volicord-mcp/src/tool_registry.rs`](../../../crates/volicord-mcp/src/tool_registry.rs):
+  `PUBLIC_METHOD_TOOL_NAMES`, `McpToolDefinition`, `public_method_tools`.
+- [`crates/volicord-mcp/src/routing.rs`](../../../crates/volicord-mcp/src/routing.rs):
+  `McpConnectionStartupInspection`, `McpConnectionContext`, 프로젝트 선택 도우미.
+- [`crates/volicord-mcp/src/adapter.rs`](../../../crates/volicord-mcp/src/adapter.rs):
+  `McpAdapter`, `McpAdapter::call_tool`, 타입 지정 인자 디코딩, Core 호출.
+- [`crates/volicord-mcp/src/stdio.rs`](../../../crates/volicord-mcp/src/stdio.rs):
+  `run_stdio_from_env`, `run_preflight_check_from_env`,
+  `handle_json_rpc_request`, 응답 래핑, elicitation 처리.
+- [`crates/volicord-mcp/src/local_http.rs`](../../../crates/volicord-mcp/src/local_http.rs),
+  [`local_web_consent.rs`](../../../crates/volicord-mcp/src/local_web_consent.rs),
+  [`http.rs`](../../../crates/volicord-mcp/src/http.rs): loopback HTTP 서빙,
+  동의 처리, 공유 HTTP 파싱.
 - [`crates/volicord-cli/src/main.rs`](../../../crates/volicord-cli/src/main.rs):
   공개 `volicord mcp` 프로세스 모드 디스패치.
 
@@ -413,14 +425,14 @@ config export, 로컬 `User Channel` 명령, 사전 점검 실행을 처리합�
   `McpDerivedInvocationContext`
 - `McpAdapter`, `McpAdapter::derive_invocation_context`,
   `McpAdapter::call_tool`
-- `prepare_typed_request`, `prepare_connection_arguments`, `decode_params`
 - `run_stdio_from_env`, `run_preflight_check_from_env`,
   `preflight_check`
-- `McpAdapterError`, `call_tool_result`, `json_rpc_error_for_adapter`
+- `LocalHttpServerConfig`, `run_local_http_server`
+- `McpAdapterError`, `LocalHttpError`, `json_rpc_error_for_adapter`
 
 가장 관련 있는 테스트:
 
-- [`crates/volicord-mcp/src/lib.rs`](../../../crates/volicord-mcp/src/lib.rs)의
+- [`crates/volicord-mcp/src/tests.rs`](../../../crates/volicord-mcp/src/tests.rs)의
   단위 테스트. 먼저 `tool_sets_follow_connection_mode_and_exclude_user_only_recording`,
   `connection_context_resolves_and_preflight_reports_allowed_project`,
   `adapter_auto_selects_single_project_and_injects_connection_invocation`,

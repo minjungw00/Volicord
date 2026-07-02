@@ -29,9 +29,10 @@ sequenceDiagram
   participant Store as volicord-store
 
   Host->>MCP: JSON-RPC tools/call
-  MCP->>MCP: call_tool_result가 name과 arguments 추출
+  MCP->>MCP: call_tool_result_with_elicitation이 name과 arguments 추출
   MCP->>MCP: McpAdapter::call_tool이 도구 라우팅
-  MCP->>MCP: prepare_connection_arguments가 프로젝트를 선택하고 envelope 채움
+  MCP->>MCP: prepare_mcp_arguments가 프로젝트 선택
+  MCP->>MCP: generated_envelope가 신뢰된 envelope 채움
   MCP->>MCP: decode_params가 타입 지정 요청 디코딩
   MCP->>MCP: McpDerivedInvocationContext::core_invocation이 InvocationContext 파생
   MCP->>Core: CoreService method(request, invocation)
@@ -44,25 +45,25 @@ sequenceDiagram
   MCP-->>Host: Volicord JSON을 담은 tools/call content text
 ```
 
-공유 어댑터 경로는
-[`crates/volicord-mcp/src/lib.rs`](../../../crates/volicord-mcp/src/lib.rs)에
-있습니다.
+공유 어댑터 경로는 `volicord-mcp` 모듈들에 나뉘어 있습니다.
 
-- `run_stdio`는 줄 단위 JSON-RPC를 읽습니다.
-- `handle_json_rpc_request`는 `initialize`, `ping`, `tools/list`,
-  `tools/call`을 디스패치합니다.
-- `call_tool_result`는 `params.name`과 `params.arguments`를 추출하고,
-  `McpAdapter::call_tool`을 호출한 뒤 `PipelineResponse.response_json`을
-  MCP 텍스트 content로 래핑합니다.
-- `McpAdapter::call_tool`은 도구 이름을 match하고
-  `prepare_typed_request<T>`를 호출한 뒤 해당 `CoreService` 메서드로
-  디스패치합니다.
-- `prepare_typed_request<T>`는 호출자가 제출한 권한 필드가 아니라 어댑터가
-  통제하는 도구/메서드 매핑에서 메서드 수준 `operation_category`를 파생한 뒤 준비된
-  인자를 `decode_params<T>`로 디코딩합니다.
-- `prepare_connection_arguments`는 요청 래퍼를 `McpConnectionContext`와
-  비교하고, 호출에 허용되는 프로젝트 하나를 선택하고, 타입 지정 디코딩 전에
-  신뢰된 요청 래퍼 필드를 채웁니다.
+- [`crates/volicord-mcp/src/stdio.rs`](../../../crates/volicord-mcp/src/stdio.rs):
+  `run_stdio`가 줄 단위 JSON-RPC를 읽고,
+  `handle_json_rpc_request`가 `initialize`, `ping`, `tools/list`,
+  `tools/call`을 디스패치하며, `call_tool_result_with_elicitation`이
+  `params.name`과 `params.arguments`를 추출하고 `McpAdapter`를 호출한 뒤
+  `PipelineResponse.response_json`을 MCP 텍스트 content로 래핑합니다.
+- [`crates/volicord-mcp/src/tool_registry.rs`](../../../crates/volicord-mcp/src/tool_registry.rs):
+  `PUBLIC_METHOD_TOOL_NAMES`, `McpToolDefinition`, 도구 목록 메타데이터.
+- [`crates/volicord-mcp/src/adapter.rs`](../../../crates/volicord-mcp/src/adapter.rs):
+  `McpAdapter::call_tool`이 도구 이름을 match하고, 메서드별 helper가 타입
+  지정 Core 요청을 구성하며, `prepare_mcp_arguments<T>`가 내부 전용 필드를
+  거부하고 허용된 프로젝트를 선택하고 `decode_params<T>`로 인자를
+  디코딩합니다. `generated_envelope`는 신뢰된 요청 래퍼 필드를 채우고,
+  `call_core_request`는 `CoreService`를 호출하기 전에 호출 맥락을 파생합니다.
+- [`crates/volicord-mcp/src/routing.rs`](../../../crates/volicord-mcp/src/routing.rs):
+  시작 검사, `McpConnectionContext`, connection mode 파싱, 프로젝트 allowlist
+  점검, 프로젝트 가용성 도우미.
 - 프로젝트 선택은 선택된 프로젝트, 묶인 Agent Connection, 행위자 출처, 요청
   `operation_category`, 어댑터 바인딩 근거를 담은
   `McpDerivedInvocationContext`를 만듭니다.
@@ -96,14 +97,15 @@ Runtime Home, Agent Connection 상태, Agent Connection 바인딩,
   효과 없음, dry-run, 커밋된 변이 응답 구성으로 보냅니다.
 
 Store 커밋 경로는
-[`crates/volicord-store/src/core_pipeline.rs`](../../../crates/volicord-store/src/core_pipeline.rs)에
+[`crates/volicord-store/src/core_pipeline.rs`](../../../crates/volicord-store/src/core_pipeline.rs)와
+[`crates/volicord-store/src/core_pipeline/mutation_apply.rs`](../../../crates/volicord-store/src/core_pipeline/mutation_apply.rs)에
 있습니다.
 
 - Core는 `commit_input`으로 `CommitMutationInput`을 만듭니다.
 - `CoreProjectStore::commit_mutation`은 재실행 조회, stale state 점검,
   `project_state.state_version` 증가, 메서드가 제공한 `CoreStorageMutation`
-  적용, 권한 이벤트 삽입, 응답 JSON 구성, 선택적 재실행 행 삽입,
-  트랜잭션 커밋을 수행합니다.
+  값을 트랜잭션 범위 SQL 도우미로 적용, 권한 이벤트 삽입, 응답 JSON 구성,
+  선택적 재실행 행 삽입, 트랜잭션 커밋을 수행합니다.
 - `MutationCommitOutcome`은 committed, replayed, replay-context mismatch,
   idempotency conflict, stale-state 결과를 Core로 돌려보냅니다.
 
@@ -144,10 +146,10 @@ API 오류는 rejected response로 남으며 닫기 차단 사유가 아닙니�
 1. [`crates/volicord-types/src/methods.rs`](../../../crates/volicord-types/src/methods.rs)는
    `StatusRequest`, `StatusInclude`, `StatusResult`, 그리고
    `OperationCategory::Read`를 반환하는 `MethodOperationCategory` 구현을 정의합니다.
-2. [`crates/volicord-mcp/src/lib.rs`](../../../crates/volicord-mcp/src/lib.rs)는
-   `McpAdapter::call_tool`에서 `"volicord.status"`를 라우팅하고,
-   `StatusRequest`를 디코딩하고, `InvocationContext`를 파생하고,
-   `CoreService::status`를 호출합니다.
+2. [`crates/volicord-mcp/src/adapter.rs`](../../../crates/volicord-mcp/src/adapter.rs)는
+   `McpAdapter::call_tool`에서 `"volicord.status"`를 라우팅하고, 타입 지정
+   status 인자를 준비하고, 신뢰된 요청 래퍼를 만들고,
+   `InvocationContext`를 파생한 뒤 `CoreService::status`를 호출합니다.
 3. [`crates/volicord-core/src/methods/status.rs`](../../../crates/volicord-core/src/methods/status.rs)는
    `CoreService::status`, `status_task`, `status_result_fields`를 구현합니다.
 4. [`crates/volicord-core/src/pipeline.rs`](../../../crates/volicord-core/src/pipeline.rs)는
@@ -159,12 +161,12 @@ API 오류는 rejected response로 남으며 닫기 차단 사유가 아닙니�
 생명주기:
 
 1. MCP 호스트가 `name="volicord.status"`로 `tools/call`을 보냅니다.
-2. `call_tool_result`가 도구 이름과 인자를 추출합니다.
+2. `call_tool_result_with_elicitation`이 도구 이름과 인자를 추출합니다.
 3. `McpAdapter::call_tool`이 호출을 status 분기로 라우팅합니다.
-4. `prepare_typed_request`는 status `operation_category`를 파생하고,
-   `McpConnectionContext`에서 허용된 프로젝트를 선택하고, 신뢰된 요청 래퍼
-   필드를 채우고, `StatusRequest`를 디코딩한 뒤 Core `InvocationContext`를
-   만듭니다.
+4. `prepare_mcp_arguments`는 `McpConnectionContext`에서 허용된 프로젝트를
+   선택하고, `generated_envelope`는 status `operation_category`에 맞는 신뢰된
+   요청 래퍼 필드를 채우며, `call_core_request`는 Core
+   `InvocationContext`를 만듭니다.
 5. `CoreService::status`는 타입 지정 요청을 요청 JSON으로 직렬화하고,
    `MethodPolicy::exact`, `TaskRequirement::Optional`, `ReplayPolicy::None`,
    `FreshnessPolicy::None`, `MethodEffectPolicy::ReadOnly`로
@@ -180,7 +182,7 @@ API 오류는 rejected response로 남으며 닫기 차단 사유가 아닙니�
    연속성 요약을 읽습니다.
 9. `CoreService::execute_prepared_request`는 `OwnerPipelineBranch::ReadOnly`를
    받아 `EffectKind::ReadOnly` 결과를 만들고 `PipelineResponse`를 반환합니다.
-10. `call_tool_result`는 `PipelineResponse.response_json`을 MCP
+10. `call_tool_result_with_elicitation`은 `PipelineResponse.response_json`을 MCP
     `content[0].text`에 담습니다.
 
 일어나지 않는 일:
@@ -198,7 +200,7 @@ API 오류는 rejected response로 남으며 닫기 차단 사유가 아닙니�
   `status_is_read_only_including_dry_run`
 - [`crates/volicord-core/src/methods/tests.rs`](../../../crates/volicord-core/src/methods/tests.rs)의
   `status_include_false_omits_optional_sections_without_effect`
-- [`crates/volicord-mcp/src/lib.rs`](../../../crates/volicord-mcp/src/lib.rs)의
+- [`crates/volicord-mcp/src/tests.rs`](../../../crates/volicord-mcp/src/tests.rs)의
   `adapter_and_direct_core_status_have_equivalent_response_meaning`
 - [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs)의
   `mcp_and_direct_status_omit_same_excluded_projection_fields`
@@ -224,10 +226,10 @@ API 오류는 rejected response로 남으며 닫기 차단 사유가 아닙니�
 1. [`crates/volicord-types/src/methods.rs`](../../../crates/volicord-types/src/methods.rs)는
    `IntakeRequest`, `InitialScope`, `IntakeResult`, 그리고
    `OperationCategory::AgentWorkflow`을 반환하는 `MethodOperationCategory` 구현을 정의합니다.
-2. [`crates/volicord-mcp/src/lib.rs`](../../../crates/volicord-mcp/src/lib.rs)는
-   `McpAdapter::call_tool`에서 `"volicord.intake"`를 라우팅하고,
-   `IntakeRequest`를 디코딩하고, `InvocationContext`를 파생하고,
-   `CoreService::intake`를 호출합니다.
+2. [`crates/volicord-mcp/src/adapter.rs`](../../../crates/volicord-mcp/src/adapter.rs)는
+   `McpAdapter::call_tool`에서 `"volicord.intake"`를 라우팅하고, 타입 지정
+   intake 인자를 준비하고, 신뢰된 요청 래퍼를 만들고,
+   `InvocationContext`를 파생한 뒤 `CoreService::intake`를 호출합니다.
 3. [`crates/volicord-core/src/methods/intake.rs`](../../../crates/volicord-core/src/methods/intake.rs)는
    `CoreService::intake`와 `plan_intake`를 구현합니다.
 4. [`crates/volicord-core/src/methods/mod.rs`](../../../crates/volicord-core/src/methods/mod.rs)는
@@ -237,13 +239,16 @@ API 오류는 rejected response로 남으며 닫기 차단 사유가 아닙니�
    `OwnerPipelineBranch::DryRunPreview` 또는
    `OwnerPipelineBranch::CommitMutation`을 실행합니다.
 6. [`crates/volicord-store/src/core_pipeline.rs`](../../../crates/volicord-store/src/core_pipeline.rs)는
-   `CoreStorageMutation` 값을 적용하고 이벤트와 재실행 행을 커밋합니다.
+   커밋 트랜잭션을 열고 이벤트와 재실행 행을 커밋하며,
+   [`crates/volicord-store/src/core_pipeline/mutation_apply.rs`](../../../crates/volicord-store/src/core_pipeline/mutation_apply.rs)는
+   그 트랜잭션 안에서 `CoreStorageMutation` 값을 적용합니다.
 
 생명주기:
 
 1. MCP 호스트가 `name="volicord.intake"`로 `tools/call`을 보냅니다.
-2. `McpAdapter::call_tool`이 `IntakeRequest`를 디코딩하고,
-   `InvocationContext`를 파생한 뒤 `CoreService::intake`를 호출합니다.
+2. `McpAdapter::call_tool`이 타입 지정 intake 인자를 준비하고, 신뢰된 요청
+   래퍼를 만들고, `InvocationContext`를 파생한 뒤
+   `CoreService::intake`를 호출합니다.
 3. `CoreService::intake`는 `TaskRequirement::None`과 함께
    `mutation_method_policy`를 고릅니다. Dry-run이면 정책은
    `MethodEffectPolicy::DryRunPreview`와 `ReplayPolicy::None`을 사용합니다.
@@ -289,7 +294,7 @@ API 오류는 rejected response로 남으며 닫기 차단 사유가 아닙니�
   `intake_commits_once_and_replays_without_effect`
 - [`crates/volicord-core/src/methods/tests.rs`](../../../crates/volicord-core/src/methods/tests.rs)의
   `intake_dry_run_has_no_storage_effect`
-- [`crates/volicord-mcp/src/lib.rs`](../../../crates/volicord-mcp/src/lib.rs)의
+- [`crates/volicord-mcp/src/tests.rs`](../../../crates/volicord-mcp/src/tests.rs)의
   `adapter_and_direct_core_intake_dry_run_have_equivalent_response_meaning`
 - [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs)의
   `connection_invocation_is_injected_and_single_project_is_auto_selected`
@@ -317,10 +322,10 @@ API 오류는 rejected response로 남으며 닫기 차단 사유가 아닙니�
    `PrepareWriteRequest`, `PrepareWriteResult`, 그리고
    `OperationCategory::AgentWorkflow`을 반환하는 `MethodOperationCategory` 구현을
    정의합니다.
-2. [`crates/volicord-mcp/src/lib.rs`](../../../crates/volicord-mcp/src/lib.rs)는
-   `McpAdapter::call_tool`에서 `"volicord.prepare_write"`를 라우팅하고,
-   `PrepareWriteRequest`를 디코딩하고, `InvocationContext`를 파생하고,
-   `CoreService::prepare_write`를 호출합니다.
+2. [`crates/volicord-mcp/src/adapter.rs`](../../../crates/volicord-mcp/src/adapter.rs)는
+   `McpAdapter::call_tool`에서 `"volicord.prepare_write"`를 라우팅하고, 타입
+   지정 prepare-write 인자를 준비하고, 신뢰된 요청 래퍼를 만들고,
+   `InvocationContext`를 파생한 뒤 `CoreService::prepare_write`를 호출합니다.
 3. [`crates/volicord-core/src/methods/prepare_write.rs`](../../../crates/volicord-core/src/methods/prepare_write.rs)는
    `CoreService::prepare_write`, `prepare_write_policy`,
    `plan_prepare_write`를 구현합니다.
@@ -331,15 +336,16 @@ API 오류는 rejected response로 남으며 닫기 차단 사유가 아닙니�
    `Product Repository` 경로 정규화 도우미를 제공합니다.
 6. [`crates/volicord-core/src/policy/judgment_relevance.rs`](../../../crates/volicord-core/src/policy/judgment_relevance.rs)는
    계획기가 사용하는 판단 관련성 점검을 제공합니다.
-7. [`crates/volicord-store/src/core_pipeline.rs`](../../../crates/volicord-store/src/core_pipeline.rs)는
-   커밋된 allowed 분기가 쓰기 티켓을 발급할 때
+7. [`crates/volicord-store/src/core_pipeline/mutation_apply.rs`](../../../crates/volicord-store/src/core_pipeline/mutation_apply.rs)는
+   커밋된 allowed 분기가 쓰기 티켓을 발급할 때 Store 커밋 트랜잭션 안에서
    `CoreStorageMutation::InsertWriteTicket`을 적용합니다.
 
 생명주기:
 
 1. MCP 호스트가 `name="volicord.prepare_write"`로 `tools/call`을 보냅니다.
-2. `McpAdapter::call_tool`이 `PrepareWriteRequest`를 디코딩하고,
-   `InvocationContext`를 파생한 뒤 `CoreService::prepare_write`를 호출합니다.
+2. `McpAdapter::call_tool`이 타입 지정 prepare-write 인자를 준비하고, 신뢰된
+   요청 래퍼를 만들고, `InvocationContext`를 파생한 뒤
+   `CoreService::prepare_write`를 호출합니다.
 3. `CoreService::prepare_write`는 먼저 `envelope.task_id`가 있을 때
    `PrepareWriteRequest.task_id`와 일치하는지 확인합니다.
 4. `prepare_write_policy`는 요청 또는 요청 래퍼가 Task ID를 제공하면

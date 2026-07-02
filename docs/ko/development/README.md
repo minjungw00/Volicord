@@ -69,7 +69,7 @@ Core는 Volicord 상태를 위한 로컬 기준 기록입니다.
 공개 메서드 작업에서 가장 짧게 유용한 소스 경로는 아래와 같습니다.
 
 1. [`crates/volicord-types/src/methods.rs`](../../../crates/volicord-types/src/methods.rs)
-2. [`crates/volicord-mcp/src/lib.rs`](../../../crates/volicord-mcp/src/lib.rs)
+2. [`crates/volicord-mcp/src/adapter.rs`](../../../crates/volicord-mcp/src/adapter.rs)
 3. [`crates/volicord-core/src/pipeline.rs`](../../../crates/volicord-core/src/pipeline.rs)
 4. [`crates/volicord-core/src/methods/`](../../../crates/volicord-core/src/methods/)
 5. [`crates/volicord-store/src/core_pipeline.rs`](../../../crates/volicord-store/src/core_pipeline.rs)
