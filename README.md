@@ -227,83 +227,62 @@ model behavior.
 
 ## Integration Profiles
 
-`volicord init` defaults to `--profile record`.
+`volicord init` defaults to `--profile record`. Omitting `--profile` gives the
+normal first-user setup.
+
+Use `record` when you want the host to use Volicord's local MCP tools and Core
+records without depending on host lifecycle hooks or a session watcher. This is
+the profile to start with when you want the agent to record tasks, scope, write
+checks, evidence, runs, and user-judgment requests through Volicord.
+
+Use `observe` only when the selected host, platform, and Product Repository
+support the extra observation surfaces. It keeps the `record` model and adds
+supported host hooks plus a session watcher. Those hooks may provide
+cooperative pre-tool warnings or denials, and the watcher may detect unrecorded
+Product Repository changes after its coverage starts.
 
 Volicord reports a control-surface summary for the selected connection or
-session. The summary is not a security proof; it states which cooperative and
-detective surfaces are active.
+session. The summary tells you which surfaces are currently active:
+`selected_profile`, host hooks, session watcher observation, cooperative
+pre-tool warning or denial, unrecorded-change detection, actor identity proof,
+and OS enforcement. Current Volicord output reports no actor identity proof and
+no OS enforcement. Treat the summary as an operational disclosure, not a
+security proof.
 
-| Profile | What it means now |
-|---|---|
-| `record` | MCP tools, local authority records, setup guidance, and policy metadata are available. Host lifecycle hooks and session watcher observation are not required. |
-| `observe` | Authority records are combined with supported host hooks and session watcher observation. Host hooks may return cooperative pre-tool warnings or denials, and the watcher may detect unrecorded Product Repository changes after coverage starts. |
+`observe` does not prevent all writes, identify who changed a file, monitor all
+files, isolate the network, sandbox tools, or prove that a model followed
+instructions. It adds cooperative and detective signals that Volicord can show
+or use in close-readiness and reconciliation workflows when the required
+observations are actually active.
 
-The control-surface summary reports `selected_profile`,
-`host_hooks_active`, `session_watcher_active`,
-`cooperative_pre_tool_warning_available`,
-`cooperative_pre_tool_denial_available`,
-`unrecorded_changes_detectable`, `actor_identity_provable`, and
-`os_enforced`. Current Volicord output reports `actor_identity_provable=false`
-and `os_enforced=false`; observe profile does not prevent all writes, identify
-the actor who changed a file, isolate the network, or provide a sandbox.
+After `volicord init`, or after any host-required approval or reload step, verify
+the current setup:
 
-Observe profile adds cooperative and detective guard surfaces around the MCP
-workflow:
+```sh
+volicord connection verify codex --repo /path/to/your-product-repo
+```
 
-| Surface | What it contributes |
-|---|---|
-| MCP | Gives the host local `volicord.*` tools over `volicord mcp --stdio`, bound to the stored Agent Connection and allowed Product Repository. |
-| `AGENTS.md` | Adds a Volicord-managed guidance block telling agents to check status, start tasks, prepare writes, request user judgment, check close, and report when Volicord tools are unavailable. |
-| `.volicord/policy.json` | Records machine-readable hook command policy for supported lifecycle hooks: session start, pre-tool, post-tool, prompt capture, and stop. |
-| Host hooks and rules | When the host supports them and loads the generated configuration, hooks can inject context, classify tool attempts, warn or deny some unsafe-looking operations, record observed unrecorded changes, capture strict chat judgment commands, and block stop when close blockers remain. Host rule files point the host at the policy. |
+Use `volicord connection status HOST --repo PATH` and `volicord doctor` when
+you need to inspect stored setup state, required user actions, and the current
+control-surface facts. Installed files, generated guidance, and policy metadata
+alone do not prove that the host loaded or ran the observe-specific pieces.
 
-Observe profile reduces bypass when the host actually runs the configured hooks
-and respects the rules. It is still not OS-level enforcement. It does not
-sandbox tools, monitor all files, block all commands, isolate the network, or
-prove that the model followed instructions.
-
-Guard installation has separate file and activation phases. `volicord init`
-installs or updates the host configuration, Volicord-managed `AGENTS.md`
-guidance, `.volicord/policy.json`, host hook or rule files, and guard state.
-For Codex observe setup, generated files include project MCP config,
-Volicord-managed POSIX `sh` wrapper scripts under `.codex/hooks/`,
-`.codex/hooks.json`, and `.codex/rules/*.rules`. Its pre-tool and post-tool
-matchers cover `Bash`, `apply_patch`, `Edit`, `Write`, and
-`mcp__.*__(write|edit|create|update|delete|remove|move|patch).*` tool names.
-For Claude Code observe setup, generated files include `.mcp.json`,
-Volicord-managed POSIX `sh` wrapper scripts under `.claude/hooks/`,
-`.claude/settings.json`, and `.claude/rules/*.md`. Its pre-tool and post-tool
-matchers cover `Bash`, `Edit`, `Write`, `MultiEdit`, and
-`mcp__.*__(write|edit|create|update|delete|remove|move|patch).*` tool names.
-Generated hook configs call the wrapper scripts with `--host-output codex` or
-`--host-output claude-code`, so hook stdout is host-native JSON/context or empty
-output, not Volicord wrapper JSON. Generated hook commands are also
-cwd-independent for subdirectory host sessions: Codex resolves the Git
-work-tree root at hook runtime and dispatches to the Volicord-managed wrapper
-under that root, while Claude Code uses `${CLAUDE_PROJECT_DIR}`-rooted wrapper
-commands. Do not replace generated commands with bare `.codex/hooks/...` or
-`.claude/hooks/...` relative paths. Verification reports those as
-`relative_path_unsafe`, and unsafe hook paths keep observe host hooks inactive
-until `volicord init --host HOST --repo PATH --profile observe` regenerates safe
-hook commands and the host reloads or trusts them when required. Codex may still
-require project trust, hook trust, restart, or reload before rules and hooks
-run. For Claude Code, Volicord merges managed settings without owning unrelated
-settings, and the host may still require project MCP approval, workspace trust,
-or settings reload. The first matching observed guard hook event activates the
-installation. `volicord connection verify` and `volicord doctor` report file
-health, required host action, observed activation, and control-surface facts
-separately; installed files, `AGENTS.md`, and `.volicord/policy.json` alone do
-not prove that hooks are active.
+Host-specific file layouts, hook matchers, wrapper output modes, path-safety
+diagnostics, and host approval or reload details live in
+[Agent Host Setup](docs/en/guides/agent-host-setup.md) and
+[Agent Host Troubleshooting](docs/en/guides/agent-host-troubleshooting.md).
+Exact command behavior lives in the
+[Administrative CLI Reference](docs/en/reference/admin-cli.md).
 
 ## Unrecorded Changes And Close Blockers
 
-Guarded hooks and an active session watcher can report unrecorded Product
+Observe hooks and an active session watcher can report unrecorded Product
 Repository changes when a product file changes without a matching expected
 write. Session watcher findings come from bounded product-file metadata
 comparison for the selected session. They detect changed paths; they do not
 store full file contents, prove who changed a file, prove intent, or prevent
-writes. Those findings remain guard findings until reconciled, and unresolved
-findings block close.
+writes. Those findings remain unresolved observation findings until reconciled,
+and unresolved findings block close.
 
 Reconciliation can resolve deterministic cases, such as a finding already
 covered by a compatible `Write Check` or recorded run. If acceptance is needed,
@@ -357,10 +336,10 @@ or correctness oracle. Do not rely on Volicord for:
   `volicord mcp --stdio`
 - proof that `AGENTS.md`, host rules, or MCP instructions forced model behavior
 
-Guarded mode may return `warn` or `deny` decisions through configured hooks, and
-close/write checks may expose blockers. Those are cooperative local controls,
-not kernel-level enforcement or a guarantee that tools cannot write files
-outside Volicord-aware paths.
+Observe hooks may return `warn` or `deny` decisions when supported and active,
+and close/write checks may expose blockers. Those are cooperative local
+controls, not kernel-level enforcement or a guarantee that tools cannot write
+files outside Volicord-aware paths.
 
 See the [Security Reference](docs/en/reference/security.md) for exact guarantee
 wording and explicit non-guarantees.
@@ -396,7 +375,7 @@ HTTP boundaries.
 |---|---|
 | `volicord` is not found | Put the install directory on `PATH`, or install to a directory already on `PATH`, then rerun `volicord --version`. Future agent hosts must also be able to start `volicord`. |
 | `init` reports `action_required` | Complete the named action, such as host restart or reload, project trust, MCP approval, OAuth, command-link repair, or installation-profile repair, then rerun `volicord connection verify HOST --repo PATH`. |
-| Guarded setup reports unsafe hook paths | Rerun `volicord init --host HOST --repo PATH` to regenerate cwd-independent managed hook commands, then complete any host trust, restart, or reload action and rerun `volicord connection verify HOST --repo PATH`. |
+| Observe-specific checks are inactive | Run `volicord connection verify HOST --repo PATH`, complete the named user action, and use [Agent Host Troubleshooting](docs/en/guides/agent-host-troubleshooting.md) for hook or watcher diagnostics. |
 | Host cannot start MCP | Confirm the host can run `volicord mcp --help` through the same command path. Run `volicord doctor` for installation-profile health. |
 | Product Repository is not detected | Pass `--repo /path/to/your-product-repo` and make sure the path is an existing local repository separate from the Runtime Home. |
 | A judgment is pending | Prefer the host's MCP elicitation or exact chat prompt-capture command when available. Use `volicord inbox` and `volicord inbox answer` as the CLI fallback. |

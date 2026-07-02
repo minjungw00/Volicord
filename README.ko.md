@@ -212,67 +212,45 @@ cargo build --workspace --bins
 
 ## 통합 프로필
 
-`volicord init`의 기본값은 `--profile record`입니다.
+`volicord init`의 기본값은 `--profile record`입니다. `--profile`을 생략하면 일반 첫
+사용자 설정이 됩니다.
+
+`record`는 host lifecycle hook이나 session watcher에 의존하지 않고 호스트가 Volicord의
+로컬 MCP 도구와 Core 기록을 사용하게 할 때 선택합니다. 에이전트가 Volicord를 통해
+`Task`, 범위, 쓰기 확인, 증거, 실행, 사용자 판단 요청을 기록하게 하려는 첫 경로입니다.
+
+`observe`는 선택한 호스트, 플랫폼, Product Repository가 추가 관찰 표면을 지원할 때만
+사용합니다. `record` 모델은 그대로 유지하면서 지원되는 host hook과 session watcher를
+더합니다. 이 hook은 협력형 pre-tool warning 또는 denial을 제공할 수 있고, watcher는
+coverage가 시작된 뒤 미기록 Product Repository 변경을 탐지할 수 있습니다.
 
 Volicord는 선택된 연결 또는 session에 대해 control-surface 요약을 보고합니다. 이 요약은
-보안 증명이 아니라 어떤 협력형 및 탐지형 표면이 활성인지 설명합니다.
+현재 어떤 표면이 활성인지 알려 줍니다. 여기에는 `selected_profile`, host hook, session
+watcher 관찰, 협력형 pre-tool warning 또는 denial, 미기록 변경 탐지, 행위자 identity
+증명, OS 집행이 포함됩니다. 현재 Volicord 출력은 행위자 identity 증명과 OS 집행을
+제공하지 않는다고 보고합니다. 이 요약은 운영 상태 공개이며 보안 증명이 아닙니다.
 
-| 프로필 | 현재 의미 |
-|---|---|
-| `record` | MCP 도구, 로컬 권한 기록, 설정 안내, policy 메타데이터를 사용할 수 있습니다. Host lifecycle hook과 session watcher 관찰은 요구하지 않습니다. |
-| `observe` | 권한 기록에 지원되는 host hook과 session watcher 관찰을 더합니다. Host hook은 협력형 pre-tool warning 또는 denial을 반환할 수 있고, watcher는 coverage 시작 뒤의 미기록 Product Repository 변경을 탐지할 수 있습니다. |
+`observe`는 모든 쓰기를 막거나, 파일을 바꾼 사람이 누구인지 식별하거나, 모든 파일을
+감시하거나, 네트워크를 격리하거나, 도구를 샌드박스하거나, 모델이 지침을 따랐다는 것을
+증명하지 않습니다. 필요한 관찰이 실제로 활성일 때 Volicord가 닫기 준비 상태와 조정
+워크플로에서 보여 주거나 사용할 수 있는 협력형 및 탐지형 신호를 더합니다.
 
-Control-surface 요약은 `selected_profile`, `host_hooks_active`,
-`session_watcher_active`, `cooperative_pre_tool_warning_available`,
-`cooperative_pre_tool_denial_available`, `unrecorded_changes_detectable`,
-`actor_identity_provable`, `os_enforced`를 보고합니다. 현재 Volicord 출력은
-`actor_identity_provable=false`와 `os_enforced=false`를 보고합니다. Observe 프로필은 모든
-쓰기를 막거나, 파일을 바꾼 행위자를 식별하거나, 네트워크를 격리하거나, sandbox를 제공하지
-않습니다.
+`volicord init` 뒤나 호스트가 요구한 승인 또는 reload 단계를 마친 뒤에는 현재 설정을
+검증합니다.
 
-Observe 프로필은 MCP 워크플로 주변에 협력적이고 탐지적인 guard 표면을 더합니다.
+```sh
+volicord connection verify codex --repo /path/to/your-product-repo
+```
 
-| 표면 | 기여하는 것 |
-|---|---|
-| MCP | 저장된 Agent Connection과 허용된 Product Repository에 묶인 로컬 `volicord.*` 도구를 `volicord mcp --stdio`로 호스트에 제공합니다. |
-| `AGENTS.md` | 상태 확인, 작업 시작, 쓰기 준비, 사용자 판단 요청, 닫기 확인, Volicord 도구 사용 불가 보고를 에이전트에게 요구하는 Volicord 관리 안내 블록을 더합니다. |
-| `.volicord/policy.json` | session start, pre-tool, post-tool, prompt capture, stop 같은 지원 lifecycle hook을 위한 기계 판독 hook 명령 policy를 기록합니다. |
-| 호스트 hook과 rule | 호스트가 지원하고 생성된 설정을 로드하면 hook은 맥락을 주입하고, 도구 시도를 분류하고, 안전하지 않아 보이는 일부 작업을 경고하거나 거부하고, 관찰된 미기록 변경을 기록하고, 엄격한 채팅 판단 명령을 캡처하고, 닫기 차단 사유가 남아 있을 때 stop을 막을 수 있습니다. 호스트 rule 파일은 호스트를 policy로 안내합니다. |
+저장된 설정 상태, 필요한 사용자 동작, 현재 control-surface 사실을 확인해야 하면
+`volicord connection status HOST --repo PATH`와 `volicord doctor`를 사용합니다. 설치된
+파일, 생성된 안내, policy 메타데이터만으로 호스트가 observe 전용 구성 요소를 로드하거나
+실행했다는 것이 증명되지는 않습니다.
 
-Observe 프로필은 호스트가 설정된 hook을 실제로 실행하고 rule을 존중할 때 우회를 줄입니다.
-그래도 OS 수준 강제는 아닙니다. 도구를 샌드박스하지 않고, 모든 파일을 감시하지 않으며,
-모든 명령을 차단하지 않고, 네트워크를 격리하지 않으며, 모델이 지침을 따랐다는 것을
-증명하지 않습니다.
-
-Guard 설치에는 파일 설치와 활성화라는 별도 단계가 있습니다. `volicord init`은 호스트
-설정, Volicord 관리 `AGENTS.md` 안내, `.volicord/policy.json`, 호스트 hook 또는 rule
-파일, guard 상태를 설치하거나 갱신합니다. Codex observe 설정은 프로젝트 MCP 설정,
-`.codex/hooks/` 아래의 Volicord 관리 POSIX `sh` wrapper script,
-`.codex/hooks.json`, `.codex/rules/*.rules`를 생성합니다. pre-tool 및 post-tool
-matcher는 `Bash`, `apply_patch`, `Edit`, `Write`,
-`mcp__.*__(write|edit|create|update|delete|remove|move|patch).*` tool 이름을
-대상으로 합니다. Claude Code observe 설정은 `.mcp.json`, `.claude/hooks/` 아래의
-Volicord 관리 POSIX `sh` wrapper script, `.claude/settings.json`,
-`.claude/rules/*.md`를 생성합니다. pre-tool 및 post-tool matcher는 `Bash`,
-`Edit`, `Write`, `MultiEdit`,
-`mcp__.*__(write|edit|create|update|delete|remove|move|patch).*` tool 이름을
-대상으로 합니다. 생성된 hook 설정은 wrapper script를 `--host-output codex` 또는
-`--host-output claude-code`로 호출하므로 hook stdout은 host-native JSON/context이거나
-빈 출력이며 Volicord wrapper JSON이 아닙니다. 생성된 hook 명령은 하위 디렉터리에서
-시작한 호스트 session에도 cwd-independent입니다. Codex는 hook 실행 시점에 Git work-tree
-root를 해석하고 그 root 아래의 Volicord 관리 wrapper로 dispatch하며, Claude Code는
-`${CLAUDE_PROJECT_DIR}` 기준 wrapper 명령을 사용합니다. 생성된 명령을 bare
-`.codex/hooks/...` 또는 `.claude/hooks/...` 상대 경로로 바꾸면 안 됩니다. 검증은 그런
-경로를 `relative_path_unsafe`로 보고하며, 안전하지 않은 hook 경로는
-`volicord init --host HOST --repo PATH --profile observe`로 안전한 hook 명령을 다시 생성하고
-필요한 경우 호스트가 reload하거나 trust하기 전까지 observe host hook을 inactive로 유지합니다.
-Codex에서는 호스트가 rule과 hook을 실행하려면 프로젝트 trust, hook trust, restart 또는
-reload가 필요할 수 있습니다. Claude Code에서는 Volicord가 관련 없는 settings를 소유하지
-않고 관리 항목을 병합하며, 호스트에 프로젝트 MCP approval, workspace trust, settings
-reload가 필요할 수 있습니다. 처음으로 일치하는 guard hook 이벤트가 관찰되면 설치가
-활성화됩니다. `volicord connection verify`와 `volicord doctor`는 파일 상태, 필요한 호스트
-동작, 관찰된 활성화, control-surface 사실을 분리해서 보고합니다. 파일, `AGENTS.md`,
-`.volicord/policy.json`이 설치되었다는 사실만으로 hook이 활성 상태임이 증명되지는 않습니다.
+호스트별 파일 배치, hook matcher, wrapper 출력 방식, 경로 안전성 진단, 호스트 approval
+또는 reload 세부사항은 [에이전트 호스트 설정](docs/ko/guides/agent-host-setup.md)과
+[에이전트 호스트 문제 해결](docs/ko/guides/agent-host-troubleshooting.md)이 담당합니다.
+정확한 명령 동작은 [관리 CLI 참조](docs/ko/reference/admin-cli.md)가 담당합니다.
 
 ## 미기록 변경과 닫기 차단 사유
 
@@ -280,7 +258,7 @@ Observe hook과 활성 session watcher는 제품 파일 변경이 대응되는 �
 때 미기록 Product Repository 변경을 보고할 수 있습니다. Session watcher 찾기는 선택된
 session에 대한 한정된 제품 파일 메타데이터 비교에서 나옵니다. 변경된 경로를 감지하지만,
 전체 파일 내용을 저장하거나, 누가 파일을 바꿨는지 증명하거나, 의도를 증명하거나, 쓰기를
-막지 않습니다. 이런 항목은 조정될 때까지 guard 찾기로 남으며, 미해결 찾기는 닫기를
+막지 않습니다. 이런 항목은 조정될 때까지 미해결 관찰 찾기로 남으며, 미해결 찾기는 닫기를
 막습니다.
 
 조정은 호환되는 `Write Check`나 기록된 실행이 이미 다루는 찾기처럼 결정적으로 해결할
@@ -334,7 +312,7 @@ Volicord는 작업 권한을 보이게 하지만 일반 보안 제품이나 정�
 - 외부 호스트가 `volicord mcp --stdio`를 신뢰, 승인, 로드, 초기화, 노출했다는 증명
 - `AGENTS.md`, 호스트 rule, MCP instructions가 모델 동작을 강제했다는 증명
 
-Guarded 모드는 설정된 hook을 통해 `warn` 또는 `deny` 결정을 반환할 수 있고, 닫기/쓰기
+Observe hook은 지원되고 활성일 때 `warn` 또는 `deny` 결정을 반환할 수 있고, 닫기/쓰기
 확인은 차단 사유를 드러낼 수 있습니다. 이것은 협력적인 로컬 제어이지 커널 수준 강제나
 Volicord를 아는 경로 밖에서 도구가 파일을 쓸 수 없다는 보장이 아닙니다.
 
@@ -368,7 +346,7 @@ Streamable HTTP 호환성은 구현하지 않습니다. 일반 네트워크 서�
 |---|---|
 | `volicord`를 찾지 못함 | 설치 디렉터리를 `PATH`에 넣거나 이미 `PATH`에 있는 디렉터리에 설치한 뒤 `volicord --version`을 다시 실행합니다. 미래의 에이전트 호스트도 `volicord`를 시작할 수 있어야 합니다. |
 | `init`이 `action_required`를 보고함 | 호스트 restart 또는 reload, 프로젝트 trust, MCP approval, OAuth, 명령 링크 복구, 설치 프로필 복구처럼 이름 붙은 동작을 완료한 뒤 `volicord connection verify HOST --repo PATH`를 다시 실행합니다. |
-| Guarded 설정이 안전하지 않은 hook 경로를 보고함 | `volicord init --host HOST --repo PATH`를 다시 실행해 cwd-independent 관리 hook 명령을 재생성한 뒤, 필요한 host trust, restart, reload 동작을 완료하고 `volicord connection verify HOST --repo PATH`를 다시 실행합니다. |
+| Observe 전용 점검이 활성화되지 않음 | `volicord connection verify HOST --repo PATH`를 실행하고, 이름 붙은 사용자 동작을 완료한 뒤, hook 또는 watcher 진단은 [에이전트 호스트 문제 해결](docs/ko/guides/agent-host-troubleshooting.md)을 사용합니다. |
 | 호스트가 MCP를 시작하지 못함 | 같은 명령 경로로 호스트가 `volicord mcp --help`를 실행할 수 있는지 확인합니다. 설치 프로필 상태는 `volicord doctor`로 확인합니다. |
 | Product Repository가 감지되지 않음 | `--repo /path/to/your-product-repo`를 넘기고, 그 경로가 Runtime Home과 분리된 기존 로컬 저장소인지 확인합니다. |
 | 판단이 대기 중임 | 가능하면 호스트의 MCP elicitation이나 정확한 채팅 prompt-capture 명령을 우선 사용합니다. CLI fallback으로 `volicord inbox`와 `volicord inbox answer`를 사용합니다. |
