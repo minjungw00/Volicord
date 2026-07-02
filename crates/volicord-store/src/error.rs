@@ -53,15 +53,6 @@ pub enum StoreError {
         database_kind: &'static str,
         field: &'static str,
     },
-    /// A recorded migration row conflicts with the compiled migration catalog.
-    MigrationConflict {
-        database_kind: &'static str,
-        version: i64,
-        expected_name: &'static str,
-        actual_name: String,
-        expected_storage_profile: &'static str,
-        actual_storage_profile: String,
-    },
     /// A database uses a storage profile that this build does not support.
     UnsupportedStorageProfile {
         database_kind: &'static str,
@@ -280,15 +271,6 @@ impl StoreError {
                 field: Some(field),
                 owner_state_error: None,
             },
-            Self::MigrationConflict { database_kind, .. } => StoreFailureClassification {
-                route: StoreFailureRoute::OperationalUnavailable,
-                category: "migration_conflict",
-                retryable: false,
-                database_kind: Some(database_kind),
-                entity: None,
-                field: None,
-                owner_state_error: None,
-            },
             Self::UnsupportedStorageProfile { database_kind, .. } => StoreFailureClassification {
                 route: StoreFailureRoute::OperationalUnavailable,
                 category: "unsupported_storage_profile",
@@ -457,17 +439,6 @@ impl fmt::Display for StoreError {
                 formatter,
                 "stored field {field} has an unsupported value in {database_kind}"
             ),
-            Self::MigrationConflict {
-                database_kind,
-                version,
-                expected_name,
-                actual_name,
-                expected_storage_profile,
-                actual_storage_profile,
-            } => write!(
-                formatter,
-                "migration conflict for {database_kind} version {version}: expected {expected_name}/{expected_storage_profile}, found {actual_name}/{actual_storage_profile}"
-            ),
             Self::UnsupportedStorageProfile {
                 database_kind,
                 actual_storage_profile,
@@ -500,7 +471,6 @@ impl Error for StoreError {
             | Self::CorruptOwnerStateJson { .. }
             | Self::CorruptOwnerStateValue { .. }
             | Self::CorruptStoredValue { .. }
-            | Self::MigrationConflict { .. }
             | Self::UnsupportedStorageProfile { .. }
             | Self::SchemaInvariant { .. } => None,
         }

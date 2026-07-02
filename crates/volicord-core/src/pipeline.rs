@@ -1727,13 +1727,10 @@ mod tests {
     }
 
     #[test]
-    fn migration_conflict_routes_to_structured_unavailability() -> Result<(), Box<dyn Error>> {
+    fn legacy_schema_table_routes_to_structured_unavailability() -> Result<(), Box<dyn Error>> {
         let harness = PipelineHarness::new()?;
         harness.conn()?.execute(
-            "UPDATE schema_migrations
-                SET name = 'conflicting_project_state_initial'
-              WHERE database_kind = 'project_state'
-                AND version = 1",
+            "CREATE TABLE schema_migrations (database_kind TEXT NOT NULL)",
             [],
         )?;
 
@@ -1741,19 +1738,19 @@ mod tests {
             method_name: MethodName::Status,
             request_json: request_json(
                 MethodName::Status,
-                &envelope("req_migration_conflict", None, false, None, None),
-                "migration-conflict",
+                &envelope("req_legacy_schema", None, false, None, None),
+                "legacy-schema",
             ),
-            envelope: envelope("req_migration_conflict", None, false, None, None),
+            envelope: envelope("req_legacy_schema", None, false, None, None),
             invocation: invocation(OperationCategory::Read, Some(CONNECTION_ID)),
             operation_category: OperationCategory::Read,
             task_requirement: TaskRequirement::Optional,
             branch: OwnerPipelineBranch::ReadOnly {
-                result_fields: result_fields("migration_conflict"),
+                result_fields: result_fields("legacy_schema"),
             },
         })?;
 
-        assert_store_rejection(&response, "MCP_UNAVAILABLE", "migration_conflict");
+        assert_store_rejection(&response, "MCP_UNAVAILABLE", "schema_invariant");
         assert_public_response_has_no_internal_leak(&response, &harness.runtime_home_path);
         Ok(())
     }

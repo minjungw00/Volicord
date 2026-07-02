@@ -485,8 +485,7 @@ pub(crate) fn concise_store_reason(error: &StoreError) -> String {
         | StoreError::CorruptOwnerStateValue { logical_column, .. } => {
             format!("corrupt owner state field {logical_column}")
         }
-        StoreError::MigrationConflict { database_kind, .. }
-        | StoreError::SchemaInvariant { database_kind, .. } => {
+        StoreError::SchemaInvariant { database_kind, .. } => {
             format!("{database_kind} schema is invalid")
         }
         StoreError::UnsupportedStorageProfile {

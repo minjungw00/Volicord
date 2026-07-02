@@ -7,7 +7,7 @@ use sha2::{Digest, Sha256};
 use crate::{
     agent_connections::is_agent_connection_project_allowed,
     bootstrap::{list_projects, project_record_for_execution},
-    migrations::PROJECT_STATE_DATABASE_KIND,
+    schema::PROJECT_STATE_DATABASE_KIND,
     sqlite::{begin_immediate_transaction, open_project_state_database},
     StoreError, StoreResult,
 };

@@ -36,7 +36,7 @@ hook 명령은 생성된 호스트 통합 wrapper만을 위한 것이며 일반 
 - MCP 프로세스 시작, stdio와 HTTP 프레이밍, 와이어 동작, 응답 래핑, 종료:
   [MCP 전송](mcp-transport.md)
 - 외부 호스트 hook 프로토콜 스키마와 호스트별 응답 의미
-- 저장소 기록 배치, SQLite DDL, 일반 저장소 마이그레이션 정의, Core 권한 의미,
+- 저장소 기록 배치, SQLite DDL, canonical 저장소 스키마 정의, Core 권한 의미,
   보안 보장 의미
 
 ## 명령 모델
@@ -652,7 +652,7 @@ Dry-run이 하지 않는 것:
 - `Volicord Runtime Home` 생성
 - SQLite 데이터베이스 생성 또는 수정
 - SQLite WAL 또는 SHM 파일 생성
-- registry 또는 프로젝트 상태 마이그레이션 적용
+- registry 또는 프로젝트 상태 스키마 초기화나 검증
 - 프로젝트, Agent Connection, Connection Projects, 설치 프로필 행, 검증 상태 행
   또는 host-hook 설치 행 등록 또는 갱신
 - 호스트 설정 파일 생성, 수정, 제거

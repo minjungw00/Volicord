@@ -37,7 +37,7 @@ Volicord는 Agent Connection을 로컬 MCP 호스트 connection 하나의 지속
 
 - [`crates/volicord-mcp`](../../../../crates/volicord-mcp): connection-bound startup, MCP initialization, tool discovery, Project selection, Core 호출 전 adapter validation.
 - [`crates/volicord-cli`](../../../../crates/volicord-cli): 공개 `volicord mcp` 프로세스 진입점, 호스트 설정 명령 생성, 관리 connect/status/verify/uninstall 흐름.
-- [`crates/volicord-store`](../../../../crates/volicord-store): registry schema, migration, Agent Connection records, Connection Project membership, Runtime Home access.
+- [`crates/volicord-store`](../../../../crates/volicord-store): registry schema initialization and validation, Agent Connection records, Connection Project membership, Runtime Home access.
 - 저장 값 집합과 기계 판독 가능한 관리 출력에 쓰이는 공유 타입.
 
 ## 관련 테스트와 참조 담당 문서

@@ -9,10 +9,10 @@ This page does not define storage record layouts, SQLite DDL, storage effects, a
 | Need | Owner |
 |---|---|
 | Records and storage-owned values | [Storage Records](storage-records.md) |
-| Baseline SQLite table shape, indexes, foreign keys, migration tables, and constraints | [Storage DDL](storage-ddl.md) |
+| Baseline SQLite table shape, indexes, foreign keys, constraints, and canonical SQL sources | [Storage DDL](storage-ddl.md) |
 | Method or branch storage effects | [Storage Effects](storage-effects.md) |
 | Artifact storage lifecycle | [Artifact Storage](storage-artifacts.md) |
-| Versioning, replay, locking, and migrations | [Storage Versioning](storage-versioning.md) |
+| State-version clock, replay, locking, and incompatible storage handling | [Storage Versioning](storage-versioning.md) |
 | Runtime and repository location boundaries | [Runtime Boundaries](runtime-boundaries.md) |
 
 ## Nearby Routes

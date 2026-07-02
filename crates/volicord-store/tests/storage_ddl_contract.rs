@@ -6,10 +6,7 @@ use std::{
 use rusqlite::{params, Connection, Error as RusqliteError, ErrorCode};
 use serde_json::Value;
 use volicord_store::{
-    migrations::{
-        apply_project_state_migrations, apply_registry_migrations, PROJECT_STATE_SCHEMA_VERSION,
-        REGISTRY_SCHEMA_VERSION, STORAGE_PROFILE,
-    },
+    schema::{initialize_project_state_schema, initialize_registry_schema, STORAGE_PROFILE},
     sqlite::{enable_foreign_keys, validate_project_state_schema, validate_registry_schema},
 };
 
@@ -85,19 +82,6 @@ fn initial_schemas_satisfy_connection_storage_contract() -> Result<(), Box<dyn E
     let initial_project = initial_project_state_schema()?;
     let initial_project_schema = read_database_schema(&initial_project)?;
 
-    assert_current_migration_rows(
-        &initial_registry,
-        "registry",
-        REGISTRY_SCHEMA_VERSION,
-        &["registry_initial_v1"],
-    )?;
-    assert_current_migration_rows(
-        &initial_project,
-        "project_state",
-        PROJECT_STATE_SCHEMA_VERSION,
-        &["project_state_initial_v1"],
-    )?;
-
     assert_tables_include(
         &initial_registry_schema,
         &[
@@ -108,7 +92,6 @@ fn initial_schemas_satisfy_connection_storage_contract() -> Result<(), Box<dyn E
             "agent_connections",
             "connection_projects",
             "guard_installations",
-            "schema_migrations",
         ],
     );
     assert_columns_include(
@@ -427,7 +410,7 @@ fn build_schema_from_sql(sql: &str) -> Result<Connection, Box<dyn Error>> {
 fn initial_registry_schema() -> Result<Connection, Box<dyn Error>> {
     let mut conn = Connection::open_in_memory()?;
     enable_foreign_keys(&conn)?;
-    apply_registry_migrations(&mut conn)?;
+    initialize_registry_schema(&mut conn)?;
     validate_registry_schema(&conn)?;
     Ok(conn)
 }
@@ -435,7 +418,7 @@ fn initial_registry_schema() -> Result<Connection, Box<dyn Error>> {
 fn initial_project_state_schema() -> Result<Connection, Box<dyn Error>> {
     let mut conn = Connection::open_in_memory()?;
     enable_foreign_keys(&conn)?;
-    apply_project_state_migrations(&mut conn)?;
+    initialize_project_state_schema(&mut conn)?;
     validate_project_state_schema(&conn)?;
     Ok(conn)
 }
@@ -519,49 +502,6 @@ fn assert_unique_index_columns(schema: &DatabaseSchema, index: &str, columns: &[
         .map(|column| column.name.as_str())
         .collect::<Vec<_>>();
     assert_eq!(actual, columns, "unexpected columns for {index}");
-}
-
-fn assert_current_migration_rows(
-    conn: &Connection,
-    database_kind: &str,
-    latest_version: i64,
-    expected_names: &[&str],
-) -> rusqlite::Result<()> {
-    let mut stmt = conn.prepare(
-        "SELECT version, name, storage_profile
-           FROM schema_migrations
-          WHERE database_kind = ?1
-          ORDER BY version",
-    )?;
-    let rows = stmt.query_map([database_kind], |row| {
-        Ok((
-            row.get::<_, i64>(0)?,
-            row.get::<_, String>(1)?,
-            row.get::<_, String>(2)?,
-        ))
-    })?;
-    let mut actual = Vec::new();
-    for row in rows {
-        actual.push(row?);
-    }
-    let expected = expected_names
-        .iter()
-        .enumerate()
-        .map(|(index, name)| {
-            (
-                i64::try_from(index + 1).expect("migration index fits"),
-                (*name).to_owned(),
-                STORAGE_PROFILE.to_owned(),
-            )
-        })
-        .collect::<Vec<_>>();
-    assert_eq!(actual, expected, "unexpected {database_kind} ledger rows");
-    assert_eq!(
-        actual.last().map(|(version, _, _)| *version),
-        Some(latest_version),
-        "unexpected latest {database_kind} migration version"
-    );
-    Ok(())
 }
 
 fn read_database_schema(conn: &Connection) -> rusqlite::Result<DatabaseSchema> {
@@ -1083,12 +1023,11 @@ fn insert_minimal_project_graph(conn: &Connection) -> rusqlite::Result<()> {
         "INSERT INTO project_state (
             project_id,
             storage_profile,
-            schema_version,
             created_at,
             updated_at
         )
-        VALUES (?1, ?2, ?3, 't0', 't0')",
-        params!["project_a", STORAGE_PROFILE, PROJECT_STATE_SCHEMA_VERSION],
+        VALUES (?1, ?2, 't0', 't0')",
+        params!["project_a", STORAGE_PROFILE],
     )?;
     conn.execute(
         "INSERT INTO tasks (

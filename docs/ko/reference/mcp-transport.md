@@ -37,7 +37,7 @@
 - 관리 Runtime Home setup, 연결, 프로젝트, export, 검증 명령: [관리 CLI](admin-cli.md)
 - 생성된 호스트 hook 명령 문법, hook 경로 안전성 진단, host-hook wrapper 복구:
   [관리 CLI](admin-cli.md#guard-hook-commands)
-- 저장소 배치, 마이그레이션, 저장 효과: [저장소](storage.md)가 안내하는 저장소 담당 문서
+- 저장소 배치, 스키마 초기화와 검증, 저장 효과: [저장소](storage.md)가 안내하는 저장소 담당 문서
 
 ## 프로세스 모델
 

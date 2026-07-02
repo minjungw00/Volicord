@@ -42,7 +42,7 @@ This document does not own:
 - MCP process startup, stdio and HTTP framing, wire behavior, response wrapping, and
   shutdown; see [MCP Transport](mcp-transport.md)
 - external host hook protocol schemas and host-specific response semantics
-- storage record layout, SQLite DDL, general storage migration definitions,
+- storage record layout, SQLite DDL, canonical storage schema definitions,
   Core authority semantics, and security guarantee meanings
 
 ## Command model
@@ -721,7 +721,7 @@ Dry-run does not:
 - create a `Volicord Runtime Home`
 - create or modify SQLite databases
 - create SQLite WAL or SHM files
-- apply registry or project-state migrations
+- initialize or validate registry or project-state schemas
 - register or update projects, Agent Connections, Connection Projects,
   installation profile rows, host-hook installation rows, or verification status
   rows

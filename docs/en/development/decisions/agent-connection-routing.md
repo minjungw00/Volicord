@@ -37,7 +37,7 @@ The design keeps these responsibilities separate:
 
 - [`crates/volicord-mcp`](../../../../crates/volicord-mcp): connection-bound startup, MCP initialization, tool discovery, project selection, and adapter validation before Core calls.
 - [`crates/volicord-cli`](../../../../crates/volicord-cli): public `volicord mcp` process entry, host configuration command generation, and administrative connect/status/verify/uninstall flows.
-- [`crates/volicord-store`](../../../../crates/volicord-store): registry schema, migrations, Agent Connection records, Connection Project membership, and Runtime Home access.
+- [`crates/volicord-store`](../../../../crates/volicord-store): registry schema initialization and validation, Agent Connection records, Connection Project membership, and Runtime Home access.
 - Shared types used by those crates for stored value sets and machine-readable administrative output.
 
 ## Related Tests And Reference Owners

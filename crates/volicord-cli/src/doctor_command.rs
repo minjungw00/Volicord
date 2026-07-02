@@ -170,12 +170,7 @@ where
             guard_installation_count = Some(snapshot.guard_installations.len());
             inspect_guard_installations(snapshot, &mut checks, &mut actions);
         }
-        DatabaseInspection::Unsupported {
-            path,
-            detected_version,
-            latest_supported_version,
-            detail,
-        } => {
+        DatabaseInspection::Unsupported { path, detail } => {
             checks.push(
                 DiagnosticCheck::failed(
                     "registry",
@@ -183,8 +178,6 @@ where
                 )
                 .with_details(json!({
                     "path": path_text(path),
-                    "detected_version": detected_version,
-                    "latest_supported_version": latest_supported_version,
                     "detail": detail,
                 })),
             );
@@ -334,23 +327,11 @@ fn inspect_registry_snapshot(
     checks: &mut Vec<DiagnosticCheck>,
 ) {
     match snapshot.schema {
-        InspectionSchemaState::Current { version } => checks.push(
+        InspectionSchemaState::Current => checks.push(
             DiagnosticCheck::passed("registry_schema", "Runtime Home registry schema is current")
                 .with_details(json!({
                     "path": path_text(&snapshot.path),
-                    "version": version,
                     "storage_profile": snapshot.runtime_home.storage_profile,
-                })),
-        ),
-        InspectionSchemaState::MigrationRequired {
-            detected_version,
-            latest_supported_version,
-        } => checks.push(
-            DiagnosticCheck::failed("registry_schema", "Runtime Home registry needs migration")
-                .with_details(json!({
-                    "path": path_text(&snapshot.path),
-                    "detected_version": detected_version,
-                    "latest_supported_version": latest_supported_version,
                 })),
         ),
     }

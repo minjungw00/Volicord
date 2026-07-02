@@ -17,7 +17,7 @@ This document does not own:
 - API artifact schemas; see [API Artifact Schemas](api/schema-artifacts.md)
 - API method behavior; see the [API Methods](api/methods.md), [Stage-artifact method](api/method-stage-artifact.md), and [Record-run method](api/method-record-run.md)
 - record-family overview; see [Storage Records](storage-records.md)
-- baseline SQLite DDL, constraints, indexes, foreign keys, or migration table shape; see [Storage DDL](storage-ddl.md)
+- baseline SQLite DDL, constraints, indexes, foreign keys, or canonical SQL sources; see [Storage DDL](storage-ddl.md)
 - generic method storage effects; see [Storage Effects](storage-effects.md)
 - invocation-context security claims; see [Security](security.md) and [Runtime Boundaries](runtime-boundaries.md)
 
@@ -506,12 +506,12 @@ Condition:
 
 Required owner-defined contract:
 
-- That path needs an explicit storage or migration contract.
+- That path needs an explicit storage retention, repair, or teardown contract.
 - The contract must preserve artifact hashes, owner links, events, and replay rows, or mark affected refs invalid for recovery.
 
 Not allowed:
 
-- A retention or migration path must not silently delete evidence support that current records still name.
+- A retention, repair, or teardown path must not silently delete evidence support that current records still name.
 
 ## Related owners
 

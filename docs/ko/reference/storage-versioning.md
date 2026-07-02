@@ -1,29 +1,26 @@
 # 저장소 버전 관리
 
-이 문서는 현재 Volicord SQLite 저장소의 기준 저장소 버전 관리 규칙을 담당합니다. 공개 API 동작, Core 권한 의미, 보안 보장, 지원 기준 밖 migration 동작을 정의하지 않습니다.
+이 문서는 현재 Volicord SQLite 저장소의 기준 저장소 버전 관리 규칙을 담당합니다. 공개 API 동작, Core 권한 의미, 보안 보장, 스키마 변환 체인, 오래된 Runtime Home 호환성 변환을 정의하지 않습니다.
 
 ## 저장소 프로필
 
-현재 기준 저장소는 `baseline_sqlite_v3`입니다.
+현재 기준 저장소 프로필은 `baseline_sqlite_v3`입니다.
 
-Registry 저장소와 project-state 저장소는 각각 migration ledger 행을 기록합니다. 데이터베이스는 schema version, migration name, database kind, storage profile이 컴파일된 기준과 일치할 때만 current입니다. 알 수 없는 더 최신 version, 누락된 migration 행, 부분 ledger, migration name mismatch, storage-profile mismatch는 storage/runtime unavailable 조건입니다. Store 코드는 기록 의미를 추측하거나, 데이터를 조용히 다시 쓰거나, 지원되지 않는 profile을 변환하면 안 됩니다.
+기준 저장소는 canonical SQL 원본 [`registry.sql`](../../../crates/volicord-store/src/schema/registry.sql)과 [`project.sql`](../../../crates/volicord-store/src/schema/project.sql)을 사용합니다. Runtime Home 초기화는 비어 있는 SQLite 데이터베이스에 이 원본을 적용합니다. 기준 저장소는 `schema_migrations`, `schema_version`, `migration_version`, `storage_version` 또는 이에 해당하는 저장소 버전 필드를 만들지 않습니다.
 
-기준 registry 저장소는 Runtime Home 식별 정보, 설치 프로필 기록, 저장소 루트 기반 프로젝트
-등록, 프로젝트 alias, Agent Connection 기록, `connection_projects`, `guard_installations`를
-포함합니다. 기준 project-state 저장소는 Core 상태 projection 기록, `authority_events`,
-replay 행, staged artifact, persistent artifact, evidence, user judgment,
-`local_web_consent_tokens`, run, blocker, `write_tickets`, host-observation 기록,
-session-watch 기록을 포함합니다.
+데이터베이스는 테이블 형태, 열, 인덱스, 외래 키, 제약, 저장된 `storage_profile`이 현재 기준과 일치할 때만 사용할 수 있습니다. 오래된 schema ledger를 나타내는 알 수 없는 테이블, 누락된 필수 테이블, 금지된 저장소 버전 열, 저장소 프로필 불일치, 형식이 잘못된 필수 기록은 storage/runtime unavailable 조건입니다. Store 코드는 기록 의미를 추측하거나, 데이터를 조용히 다시 쓰거나, 지원되지 않는 저장소를 변환하면 안 됩니다. 호환되지 않는 저장소를 가진 기존 Runtime Home은 분명하게 실패하고 Runtime Home 재생성을 요구해야 합니다. 단, 집중 담당 문서가 향후 호환성 변환 계약을 명시적으로 정의한 경우는 예외입니다.
+
+기준 registry 저장소는 Runtime Home 식별 정보, 설치 프로필 기록, 저장소 루트 기반 프로젝트 등록, 프로젝트 alias, Agent Connection 기록, `connection_projects`, `guard_installations`를 포함합니다. 기준 project-state 저장소는 Core 상태 projection 기록, `authority_events`, replay 행, staged artifact, persistent artifact, evidence, user judgment, `local_web_consent_tokens`, run, blocker, `write_tickets`, host-observation 기록, session-watch 기록을 포함합니다.
 
 ## Project State Version
 
-`project_state.state_version`은 커밋된 권한 상태 변경을 위한 project-wide Core state clock입니다.
+`project_state.state_version`은 커밋된 권한 상태 변경을 위한 project-wide Core state clock입니다. 이것은 schema version, migration version, storage version, 호환성 marker가 아닙니다.
 
-완전한 owner-allowed state-changing transaction이 commit될 때만 증가합니다. rejected request, dry-run response, read-only result, startup check, host verification, migration metadata, lock acquisition, status projection, rendered report, failed transaction에서는 증가하지 않습니다.
+완전한 owner-allowed state-changing transaction이 commit될 때만 증가합니다. rejected request, dry-run response, read-only result, startup check, host verification, schema initialization, storage-profile validation, lock acquisition, status projection, rendered report, failed transaction에서는 증가하지 않습니다.
 
 새로 커밋된 권한 mutation은 현재 projection update와 같은 트랜잭션 안에서 영속 `authority_events` 행을 적어도 하나 추가합니다. 일반 커밋 mutation은 권한 이벤트를 정확히 하나 추가합니다. 담당 문서가 이벤트 배치를 명시적으로 정의하면, 그 배치의 모든 행은 해당 커밋 상태 전이의 단일 결과 `project_state.state_version`을 공유합니다.
 
-`tasks.state_version`은 기준 권한 필드가 아닙니다. 기준 밖 `tasks.state_version` 열은 무시되는 metadata일 뿐이며 conflict, freshness, lock, 쓰기 티켓 basis로 사용하면 안 됩니다.
+`tasks.state_version`은 기준 권한 필드가 아닙니다. 기준 밖 `tasks.state_version` 열은 잘못된 저장소 형태이며 conflict, freshness, lock, 쓰기 티켓 basis로 사용하면 안 됩니다.
 
 관련 필드:
 
@@ -73,19 +70,14 @@ Pre-commit failure에는 storage effect가 없습니다. Transaction failure는 
 - corrupt typed owner state
 - idempotency request-hash conflict
 - invocation-context mismatch
+- 호환되지 않는 기존 저장소 형태
 
-Retry는 rejected reason을 따릅니다. 오래된 version conflict는 state를 refresh하고, validation failure는 input을 고치며, 빠진 user judgment는 User Channel을 사용하고, write compatibility가 여전히 필요하면 필요한 쓰기 티켓 흐름을 사용합니다.
-
-## Migration Boundary
-
-Migration semantics는 지원되는 storage profile 또는 schema-version 변경이 Core authority record를 어떻게 보존하는지 설명합니다. 지원되는 migration execution은 [범위](scope.md), [저장소 기록](storage-records.md), [저장소 DDL](storage-ddl.md), 이 문서가 version, storage profile, validation, preservation, repair, retry, metadata-advance behavior를 정의할 때만 존재합니다.
-
-Migration은 focused owner가 명시적으로 그 effect를 정의하지 않는 한 공개 `project_state.state_version` increment, Core event, replay record, public method effect를 만들지 않습니다.
+Retry는 rejected reason을 따릅니다. 오래된 version conflict는 state를 refresh하고, validation failure는 input을 고치며, 빠진 user judgment는 User Channel을 사용하고, write compatibility가 여전히 필요하면 필요한 쓰기 티켓 흐름을 사용하며, 저장소가 호환되지 않으면 Runtime Home을 재생성합니다.
 
 ## 담당 문서 링크
 
 - 기록 계열 overview와 저장소 소유 값: [저장소 기록](storage-records.md)
-- SQLite DDL, constraint, index, foreign key, migration table shape: [저장소 DDL](storage-ddl.md)
+- SQLite DDL, constraint, index, foreign key: [저장소 DDL](storage-ddl.md)
 - Method storage effect: [저장 효과](storage-effects.md)
 - 공개 conflict 동작: [API 오류 우선순위](api/error-precedence.md#state-conflict-behavior)
 - 공개 invocation-context mismatch 코드: [API 오류 코드](api/error-codes.md#errorcode-invocation-context-mismatch)

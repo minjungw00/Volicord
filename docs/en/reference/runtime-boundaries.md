@@ -10,7 +10,7 @@ Volicord implementation is the implementation set maintained by this repository.
 |---|---|
 | The distinction between Volicord as the product/system and Volicord implementation as the repository-maintained implementation set. | Public API behavior, public schema shapes, or method-specific effects. |
 | The distinction among Volicord source repository, Volicord installation, and running executable roles. | Release packaging policy or a mandatory installation-root layout. |
-| The definition of `Product Repository` and Product Repository API path normalization. | Storage record layout, locks, migrations, versioning, or artifact lifecycle details. |
+| The definition of `Product Repository` and Product Repository API path normalization. | Storage record layout, locks, schema initialization, versioning, or artifact lifecycle details. |
 | The definition of `Volicord Runtime Home`. | API method behavior or public schema shapes. |
 | The separation between Volicord implementation files, product files, runtime data, and external MCP host configuration, including the exact Runtime Home/Product Repository path relationship contract. | Detailed security guarantee meanings or security non-guarantees. |
 | Local access and location non-authority rules. | Projection authority, template bodies, or rendered display freshness. |
@@ -283,7 +283,7 @@ Do not infer that:
 ## Related owners
 
 - [Security](security.md): security claims, non-claims, trust boundaries, and guarantee levels.
-- [Storage Records](storage-records.md), [Storage Effects](storage-effects.md), [Artifact Storage](storage-artifacts.md), and [Storage Versioning](storage-versioning.md): storage record layout, effects, artifacts, migrations, versioning, and runtime data details.
+- [Storage Records](storage-records.md), [Storage Effects](storage-effects.md), [Artifact Storage](storage-artifacts.md), and [Storage Versioning](storage-versioning.md): storage record layout, effects, artifacts, schema initialization, versioning, and runtime data details.
 - [API Methods](api/methods.md) and method owner documents: method routing and method behavior.
 - [Core Model](core-model.md): Core authority, User Channel judgment boundaries, `actor_source`, write ticket, acceptance, and residual risk.
 - [Security](security.md): `operation_category`, security non-guarantees, and Agent Connection authority non-inference.

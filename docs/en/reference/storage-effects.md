@@ -14,9 +14,9 @@ This document owns:
 This document does not own:
 
 - record-family overview; see [Storage Records](storage-records.md)
-- baseline SQLite DDL, constraints, indexes, foreign keys, or migration table shape; see [Storage DDL](storage-ddl.md)
+- baseline SQLite DDL, constraints, indexes, foreign keys, or canonical SQL sources; see [Storage DDL](storage-ddl.md)
 - artifact lifecycle details; see [Artifact Storage](storage-artifacts.md)
-- idempotency, locks, state-version clocks, event ordering, or migrations; see [Storage Versioning](storage-versioning.md)
+- idempotency, locks, state-version clocks, event ordering, or incompatible-storage handling; see [Storage Versioning](storage-versioning.md)
 - public response branches or schemas; see [API Schema Core](api/schema-core.md)
 - API method behavior; see the [API Methods](api/methods.md) and method owner documents
 - public error code precedence; see [API error precedence](api/error-precedence.md)

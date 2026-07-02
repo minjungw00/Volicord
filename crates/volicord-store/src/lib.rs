@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-//! Storage boundary for SQLite records, artifact plumbing, and migrations.
+//! Storage boundary for SQLite records, artifact plumbing, and schema initialization.
 //!
 //! This crate implements baseline SQLite schema creation and transaction
 //! utilities only. Public Volicord method behavior remains outside this crate.
@@ -15,8 +15,8 @@ pub mod error;
 pub mod guards;
 pub mod inspection;
 pub mod local_consent;
-pub mod migrations;
 pub mod runtime_home;
+pub mod schema;
 pub mod session_watch;
 pub mod sqlite;
 

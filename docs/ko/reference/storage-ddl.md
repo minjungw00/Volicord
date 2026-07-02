@@ -7,16 +7,17 @@
 이 문서가 담당합니다.
 
 - `registry.sqlite`와 프로젝트 `state.sqlite`의 기준 SQLite 테이블 형태
-- 기준 인덱스, 외래 키, 마이그레이션 테이블, 물리 제약
+- 기준 인덱스, 외래 키, 물리 제약
 - `project_state.state_version`, 재실행 행, 현재 적용 Change Unit 고유성, 쓰기 티켓 기준 버전, 스테이징된 아티팩트 출처, host-observation 기록에 대한 SQLite 제약
 - Runtime Home 등록 데이터와 프로젝트별 Core 상태 사이의 DDL 수준 분리
+- 문서화된 canonical SQL 블록과 canonical SQL 원본 파일 사이의 일치
 
 이 문서는 담당하지 않습니다.
 
 - 기록 계열 목적, 저장 위치, 저장소 소유 값, JSON 배치 범주: [저장소 기록](storage-records.md)
 - 메서드 분기별 저장 효과: [저장 효과](storage-effects.md)
 - 아티팩트 스테이징, 승격, 연결, 본문 읽기, 보존, 무결성 생명주기: [아티팩트 저장소](storage-artifacts.md)
-- 상태 버전, 멱등성, 이벤트, 잠금, 마이그레이션 의미: [저장소 버전 관리](storage-versioning.md)
+- 상태 버전, 멱등성, 이벤트, 잠금, 호환되지 않는 저장소 처리: [저장소 버전 관리](storage-versioning.md)
 - API 요청 또는 응답 스키마: [API 코어 스키마](api/schema-core.md)가 안내하는 API 스키마 담당 문서
 - 런타임 위치 경계: [런타임 경계](runtime-boundaries.md)
 - 보안 보장 수준: [보안](security.md)
@@ -31,45 +32,32 @@ PRAGMA foreign_keys = ON;
 
 상태 변경 커밋을 위해 최신성, 쓰기 티켓 호환성 행, 스테이징, 재실행 행을 읽는 변경 트랜잭션은 `BEGIN IMMEDIATE` 또는 동등한 직렬화된 쓰기 경계를 사용해야 합니다.
 
-담당 저장소 또는 마이그레이션 계약이 복구나 보존 경로를 정의하지 않는 한 권한을 지닌 행은 계속 주소 지정 가능해야 합니다. registry는 잊힌 프로젝트 등록이 소유한 비권한 alias 행을 cascade로 지울 수 있습니다. 이 alias 정리가 프로젝트별 Core 권한 기록 삭제를 뜻하면 안 됩니다.
+담당 저장소 계약이 복구나 보존 경로를 정의하지 않는 한 권한을 지닌 행은 계속 주소 지정 가능해야 합니다. registry는 잊힌 프로젝트 등록이 소유한 비권한 alias 행을 cascade로 지울 수 있습니다. 이 alias 정리가 프로젝트별 Core 권한 기록 삭제를 뜻하면 안 됩니다.
 
 `_json`으로 끝나는 SQLite `TEXT` 열은 JSON을 저장하는 표현 선택입니다. 권한, 생명주기, 범위, 증거, 완료, 닫기 준비 상태, 쓰기 호환성에 쓰이는 JSON은 타입이 지정된 담당 상태입니다. 타입을 아는 Core 코드는 커밋 전에 해당 API 스키마 담당 문서, 저장소 담당 문서, 또는 아티팩트 담당 문서에 맞게 이 열을 파싱하고 검증해야 합니다. 타입이 지정된 담당 상태를 디코드하지 못하는 경우는 손상이며 빈 객체, 빈 배열, false 값, 기본 enum, 또는 "요구사항 없음" 해석으로 바꾸면 안 됩니다. SQL `NULL`은 담당 스키마가 그 필드를 명시적으로 선택 필드라고 표시할 때만 부재를 뜻할 수 있습니다. 선택 열의 형식이 잘못된 JSON도 부재가 아니라 손상입니다. 열린 표시 메타데이터는 권한이나 닫기 판단에 쓰이지 않을 때만 타입을 지정하지 않은 채로 둘 수 있습니다. 안전한 진단은 테이블, 기록 참조, 논리 열, 손상 범주를 식별할 수 있지만 원본 저장 JSON, 비밀값, SQL 텍스트, 민감한 절대 경로를 노출하면 안 됩니다. `'{}'`, `'[]'` 같은 SQLite 기본값은 API 필드를 선택 필드로 만들지 않습니다.
 
-`project_state.state_version`은 기준 범위의 유일한 공개 상태 시계입니다. 기준 SQLite DDL은 `tasks.state_version`을 만들면 안 됩니다.
+`project_state.state_version`은 기준 범위의 유일한 공개 상태 시계입니다. 기준 SQLite DDL은 `tasks.state_version`, 저장소 `schema_version` 열, migration ledger 테이블을 만들면 안 됩니다.
 
 물리 `write_tickets` 테이블은 제품 파일 쓰기 시도에 대한 쓰기 티켓 권한 기록을 저장합니다. 이 행은 Volicord 안에서 권한 있는 쓰기 의도와 호환성 상태를 기록합니다. OS 권한, 파일시스템 ACL, sandboxing, 네트워크 정책, 비밀 격리, 전역 파일시스템 가로채기, 쓰기가 실제로 일어났다는 증명이 아닙니다.
+
+## Canonical SQL 원본
+
+실행 가능한 canonical SQL 원본은 [`registry.sql`](../../../crates/volicord-store/src/schema/registry.sql)과 [`project.sql`](../../../crates/volicord-store/src/schema/project.sql)입니다. Runtime Home 초기화는 비어 있는 SQLite 데이터베이스에 이 원본을 적용합니다. 이 원본과 호환되지 않는 저장소 형태를 가진 기존 Runtime Home은 분명하게 실패하고 Runtime Home 재생성을 요구합니다. 기준 저장소는 legacy migration path를 정의하지 않습니다.
+
+`docs-check`는 아래 canonical SQL 블록이 해당 원본 파일과 정확히 일치하는지 검증합니다. 집중 `storage_ddl_contract` 테스트는 실행 가능한 스키마 의미를 검증합니다.
 
 ## `registry.sqlite`
 
 `registry.sqlite`는 Runtime Home 식별 정보, 설치 프로필 기록, 프로젝트 등록, 프로젝트 alias, Agent Connection 기록, Connection Projects 멤버십, host-hook 설치 기록, 호스트 설정 인벤토리를 저장합니다. 프로젝트별 Core 상태는 저장하지 않습니다.
 
-현재 기준 마이그레이션을 적용하면 저장소 프로필 `baseline_sqlite_v3`의
-registry 스키마 버전은 `1`입니다. 아래 DDL 블록들은 읽기 쉽도록 기록
-영역별로 나누었으며, 함께 기준 registry 배치를 설명합니다. 활성 local web
-consent token 행은 registry 기록이 아닙니다. Token 생명주기와 사용자 판단
-해결이 하나의 project-state 트랜잭션을 공유할 수 있도록 project-state 기록으로
-둡니다. 저장소 프로필과 마이그레이션 경계 동작은
-[저장소 버전 관리](storage-versioning.md)가 담당합니다.
-
+<!-- canonical-storage-sql: registry start -->
 ```sql
-CREATE TABLE schema_migrations (
-  database_kind TEXT NOT NULL CHECK (database_kind = 'registry'),
-  version INTEGER NOT NULL CHECK (version > 0),
-  name TEXT NOT NULL,
-  storage_profile TEXT NOT NULL,
-  applied_at TEXT NOT NULL,
-  checksum_sha256 TEXT,
-  metadata_json TEXT NOT NULL DEFAULT '{}',
-  PRIMARY KEY (database_kind, version)
-);
-
 CREATE TABLE runtime_home (
   singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
   runtime_home_id TEXT NOT NULL UNIQUE,
   runtime_home_path TEXT NOT NULL UNIQUE,
   registry_db_path TEXT NOT NULL UNIQUE,
   storage_profile TEXT NOT NULL,
-  schema_version INTEGER NOT NULL CHECK (schema_version > 0),
   metadata_json TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
@@ -180,11 +168,7 @@ CREATE UNIQUE INDEX idx_agent_connections_target_global
     server_name
   )
   WHERE project_internal_id IS NULL;
-```
 
-Registry host-hook installation 기록입니다.
-
-```sql
 CREATE TABLE guard_installations (
   guard_installation_id TEXT PRIMARY KEY,
   runtime_home_id TEXT NOT NULL,
@@ -234,14 +218,15 @@ CREATE UNIQUE INDEX idx_guard_installations_scope_global
   ON guard_installations (connection_internal_id, guard_mode)
   WHERE project_internal_id IS NULL;
 ```
+<!-- canonical-storage-sql: registry end -->
 
 Registry 제약:
 
-- `runtime_home`은 단일 행 테이블입니다. Runtime Home 식별 정보, Runtime Home 경로, registry 데이터베이스 경로, 저장소 프로필, 스키마 버전, 메타데이터, 타임스탬프를 저장합니다. 저장된 `runtime_home_id`는 Runtime Home 기록을 식별하며 보안 보장이 아닙니다.
+- `runtime_home`은 단일 행 테이블입니다. Runtime Home 식별 정보, Runtime Home 경로, registry 데이터베이스 경로, 저장소 프로필, 메타데이터, 타임스탬프를 저장합니다. 저장된 `runtime_home_id`는 Runtime Home 기록을 식별하며 보안 보장이 아닙니다.
 - `installation_profile`은 Runtime Home에 대해 선택된 `volicord` 명령, MCP 시작 명령, bin 디렉터리, 기본 연결 모드, 메타데이터, 타임스탬프를 저장합니다. `volicord init`이 이를 마련할 수 있습니다. 호스트 신뢰, 사용자 권한, 공개 API 상태가 아닙니다.
 - `projects.project_internal_id`는 프로젝트 기록의 저장 기본 키입니다. `projects.project_name`은 표시 이름입니다. `projects.project_alias`는 CLI 선택 보조 값입니다. `projects.repo_root`는 저장소 루트 조회 키입니다. `projects.project_alias`, `projects.repo_root`, `projects.project_home`, `projects.state_db_path`는 고유합니다.
 - `project_aliases`는 alias를 `project_internal_id` 값에 매핑합니다. alias 행은 registry 선택 보조 값이지 프로젝트별 Core 권한 기록이 아닙니다.
-- `projects.state_db_path`는 저장 열로 유지됩니다. Store 애플리케이션 수준 현재 등록 검증은 운영 `ProjectRecord` 조회나 목록 조회, 프로젝트 상태 마이그레이션 또는 쓰기 가능 열기, Agent Connection 프로젝트 라우팅, Core 실행, 프로필 재사용, MCP 프로젝트 가용성 전에 이 값이 `project_home/state.sqlite`와 같은지 확인해야 합니다.
+- `projects.state_db_path`는 저장 열로 유지됩니다. Store 애플리케이션 수준 현재 등록 검증은 운영 `ProjectRecord` 조회나 목록 조회, 쓰기 가능 project-state 열기, Agent Connection 프로젝트 라우팅, Core 실행, 프로필 재사용, MCP 프로젝트 가용성 전에 이 값이 `project_home/state.sqlite`와 같은지 확인해야 합니다.
 - `projects.status`는 저장소 소유 값이며 기준 범위에서 유효한 값은 `active`뿐입니다.
 - `agent_connections.connection_internal_id`는 Agent Connection 기록의 저장 기본 키입니다. 이 테이블은 호스트 종류, `intent`에 저장되는 연결 의도, 호스트 범위, 선택적 `project_internal_id`, 서버 이름, 설정 대상, 모드, 활성 상태, 관리 fingerprint, 검증 요약 상태, 검증 보고서 JSON, 사용자 동작 JSON, 메타데이터, 타임스탬프를 저장합니다.
 - `agent_connections.intent`는 `personal`, `shared`, `global`로 제한됩니다.
@@ -249,36 +234,17 @@ Registry 제약:
 - `agent_connections.mode`는 `read_only` 또는 `workflow`로 제한됩니다.
 - `agent_connections.last_verification_report_json`은 최신 검증 보고서 JSON 객체를 저장합니다. `agent_connections.last_user_actions_json`은 최신 사용자 동작 JSON 배열을 저장합니다.
 - `connection_projects`는 Agent Connection 하나에 대한 명시적 프로젝트 허용 목록입니다. `connection_internal_id`와 `project_internal_id`로 멤버십을 저장합니다. 아직 멤버십이 남은 프로젝트나 연결 삭제는 제한됩니다.
-- `guard_installations`는 Runtime Home 하나, Agent Connection 하나, 선택적 프로젝트 범위에 대한 로컬 host-hook 설정 생명주기 상태와 호스트 capability를 저장합니다. 내부 `guard_mode` 값은 `record`, `detective`입니다. `installation_status` 값은 `absent`, `configured`, `reload_required`, `active`, `degraded`, `stale`, `broken`입니다. 기록된 프로젝트, Agent Connection, 호스트 종류, 통합 프로필, policy hash, 알려진 hook 단계와 일치하는 유효한 host hook 관찰은 first-seen 및 last-seen 메타데이터를 기록합니다. 선택된 프로필이 `detective`이고 필요한 hook 설정이 완전하며 행이 `degraded`, `stale`, `broken`이 아닐 때만 행을 `active`로 옮길 수 있습니다. 그 밖에는 관찰 메타데이터를 기록하더라도 설치를 효과적으로 active로 만들지 않습니다. 이 행은 host observation을 위한 로컬 권한 기록이며 OS 수준 집행 증명이나 쓰기 방지 증명이 아닙니다.
-- `schema_migrations`는 적용된 registry 스키마 버전을 기록합니다. 마이그레이션 실행 의미는 [저장소 버전 관리](storage-versioning.md)가 담당합니다.
+- `guard_installations`는 Runtime Home 하나, Agent Connection 하나, 선택적 프로젝트 범위에 대한 로컬 host-hook 설정 생명주기 상태와 호스트 capability를 저장합니다. 내부 `guard_mode` 값은 `record`, `detective`입니다. `installation_status` 값은 `absent`, `configured`, `reload_required`, `active`, `degraded`, `stale`, `broken`입니다. 이 행은 host observation을 위한 로컬 권한 기록이며 OS 수준 집행 증명이나 쓰기 방지 증명이 아닙니다.
 
 ## 프로젝트 `state.sqlite`
 
 등록된 프로젝트마다 프로젝트별 `state.sqlite`가 하나 있습니다. 이 데이터베이스는 그 프로젝트의 Core 상태를 저장하며, 외래 키와 인덱스가 같은 프로젝트 관계를 강제할 수 있도록 프로젝트 범위 행에 `project_id`를 반복해 저장합니다.
 
-현재 기준 마이그레이션을 적용하면 저장소 프로필 `baseline_sqlite_v3`의
-project-state 스키마 버전은 `1`입니다. 아래 DDL 블록들은 읽기 쉽도록 기록
-영역별로 나누었으며, local web consent token 기록을 포함해 기준 project-state
-배치를 설명합니다. 따라서 token 생명주기와 사용자 판단 해결은 같은
-project-state 트랜잭션에서 커밋할 수 있습니다. 저장소 프로필과 마이그레이션
-경계 동작은 [저장소 버전 관리](storage-versioning.md)가 담당합니다.
-
+<!-- canonical-storage-sql: project start -->
 ```sql
-CREATE TABLE schema_migrations (
-  database_kind TEXT NOT NULL CHECK (database_kind = 'project_state'),
-  version INTEGER NOT NULL CHECK (version > 0),
-  name TEXT NOT NULL,
-  storage_profile TEXT NOT NULL,
-  applied_at TEXT NOT NULL,
-  checksum_sha256 TEXT,
-  metadata_json TEXT NOT NULL DEFAULT '{}',
-  PRIMARY KEY (database_kind, version)
-);
-
 CREATE TABLE project_state (
   project_id TEXT PRIMARY KEY,
   storage_profile TEXT NOT NULL,
-  schema_version INTEGER NOT NULL CHECK (schema_version > 0),
   state_version INTEGER NOT NULL DEFAULT 0 CHECK (state_version >= 0),
   active_task_id TEXT,
   enforcement_profile_json TEXT NOT NULL DEFAULT '{"profile_id":"baseline_cooperative","guarantee_level":"cooperative","enabled_mechanisms":[],"source":"baseline_scope","status":"active"}',
@@ -436,51 +402,6 @@ CREATE TABLE user_judgments (
     REFERENCES change_units (project_id, task_id, change_unit_id)
 );
 
-CREATE TABLE local_web_consent_tokens (
-  project_id TEXT NOT NULL,
-  token_hash TEXT NOT NULL CHECK (length(token_hash) = 64),
-  connection_internal_id TEXT NOT NULL,
-  judgment_id TEXT NOT NULL,
-  capture_basis TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'pending'
-    CHECK (status IN ('pending', 'consumed', 'expired')),
-  created_at TEXT NOT NULL,
-  expires_at TEXT NOT NULL,
-  consumed_at TEXT,
-  completed_at TEXT,
-  created_metadata_json TEXT NOT NULL DEFAULT '{}',
-  completion_metadata_json TEXT NOT NULL DEFAULT '{}',
-  PRIMARY KEY (project_id, token_hash),
-  FOREIGN KEY (project_id) REFERENCES project_state (project_id) ON DELETE RESTRICT,
-  FOREIGN KEY (project_id, judgment_id)
-    REFERENCES user_judgments (project_id, judgment_id)
-    ON DELETE RESTRICT,
-  CHECK (
-    (
-      status = 'pending'
-      AND consumed_at IS NULL
-      AND completed_at IS NULL
-    )
-    OR (
-      status = 'consumed'
-      AND consumed_at IS NOT NULL
-      AND completed_at IS NOT NULL
-    )
-    OR (
-      status = 'expired'
-      AND consumed_at IS NULL
-      AND completed_at IS NULL
-    )
-  )
-);
-
-CREATE INDEX idx_local_web_consent_tokens_judgment
-  ON local_web_consent_tokens (project_id, judgment_id, status);
-CREATE INDEX idx_local_web_consent_tokens_connection
-  ON local_web_consent_tokens (project_id, connection_internal_id, status, expires_at);
-CREATE INDEX idx_local_web_consent_tokens_expiry
-  ON local_web_consent_tokens (project_id, status, expires_at);
-
 CREATE TABLE project_continuity_records (
   project_id TEXT NOT NULL,
   continuity_record_id TEXT NOT NULL,
@@ -537,14 +458,6 @@ CREATE TABLE write_tickets (
 CREATE UNIQUE INDEX idx_write_tickets_consumed_run
   ON write_tickets (project_id, consumed_by_run_id)
   WHERE consumed_by_run_id IS NOT NULL;
-
-저장 상태 값은 공개 쓰기 티켓 생명주기에 이렇게 대응됩니다.
-`status=active`는 열린 티켓을 드러내고, `status=consumed`는 담당 API가
-그 보기를 선택할 때 소비되어 닫힌 티켓 경로를 드러내며, `status=expired`는
-만료를 드러냅니다. `status=stale` 또는 `status=revoked`는 현재 호환성을
-제거하며 담당 메서드가 오래됨/철회된 호환성으로 드러낼 수 있습니다.
-Detective 프로필 host hook과 session watcher는 별도 관찰 기록을 만들 수
-있지만, 이 테이블 자체는 host-hook 집행이 아닙니다.
 
 CREATE TABLE runs (
   project_id TEXT NOT NULL,
@@ -872,11 +785,6 @@ CREATE INDEX idx_authority_events_state_version
   ON authority_events (project_id, state_version, event_seq);
 CREATE INDEX idx_authority_events_hash_chain
   ON authority_events (project_id, previous_event_hash, event_hash);
-```
-
-Host-observation 프로젝트 상태 테이블입니다.
-
-```sql
 CREATE TABLE agent_sessions (
   project_id TEXT NOT NULL,
   session_id TEXT NOT NULL,
@@ -979,11 +887,6 @@ CREATE INDEX idx_unrecorded_changes_connection
   ON unrecorded_changes (project_id, connection_internal_id, status);
 CREATE INDEX idx_unrecorded_changes_task
   ON unrecorded_changes (project_id, task_id, status);
-```
-
-Expected-write 상관 프로젝트 상태 테이블입니다.
-
-```sql
 CREATE TABLE expected_writes (
   project_id TEXT NOT NULL,
   expected_write_id TEXT NOT NULL,
@@ -1036,11 +939,6 @@ CREATE INDEX idx_expected_writes_host_invocation
   WHERE host_invocation_id IS NOT NULL;
 CREATE INDEX idx_expected_writes_task
   ON expected_writes (project_id, task_id, status);
-```
-
-Session-watch 프로젝트 상태 테이블입니다.
-
-```sql
 CREATE TABLE session_watch_baselines (
   project_id TEXT NOT NULL,
   watch_baseline_id TEXT NOT NULL,
@@ -1116,17 +1014,62 @@ CREATE INDEX idx_session_watch_observations_expected_write
 CREATE INDEX idx_session_watch_observations_unrecorded_change
   ON session_watch_observations (project_id, unrecorded_change_id)
   WHERE unrecorded_change_id IS NOT NULL;
+CREATE TABLE local_web_consent_tokens (
+  project_id TEXT NOT NULL,
+  token_hash TEXT NOT NULL CHECK (length(token_hash) = 64),
+  connection_internal_id TEXT NOT NULL,
+  judgment_id TEXT NOT NULL,
+  capture_basis TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'consumed', 'expired')),
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  consumed_at TEXT,
+  completed_at TEXT,
+  created_metadata_json TEXT NOT NULL DEFAULT '{}',
+  completion_metadata_json TEXT NOT NULL DEFAULT '{}',
+  PRIMARY KEY (project_id, token_hash),
+  FOREIGN KEY (project_id) REFERENCES project_state (project_id) ON DELETE RESTRICT,
+  FOREIGN KEY (project_id, judgment_id)
+    REFERENCES user_judgments (project_id, judgment_id)
+    ON DELETE RESTRICT,
+  CHECK (
+    (
+      status = 'pending'
+      AND consumed_at IS NULL
+      AND completed_at IS NULL
+    )
+    OR (
+      status = 'consumed'
+      AND consumed_at IS NOT NULL
+      AND completed_at IS NOT NULL
+    )
+    OR (
+      status = 'expired'
+      AND consumed_at IS NULL
+      AND completed_at IS NULL
+    )
+  )
+);
+
+CREATE INDEX idx_local_web_consent_tokens_judgment
+  ON local_web_consent_tokens (project_id, judgment_id, status);
+CREATE INDEX idx_local_web_consent_tokens_connection
+  ON local_web_consent_tokens (project_id, connection_internal_id, status, expires_at);
+CREATE INDEX idx_local_web_consent_tokens_expiry
+  ON local_web_consent_tokens (project_id, status, expires_at);
 ```
+<!-- canonical-storage-sql: project end -->
 
 프로젝트 상태 제약:
 
-- `project_state.state_version`은 기준 범위의 유일한 공개 상태 시계이며 [저장소 버전 관리](storage-versioning.md)에 따라 단조롭게 진행해야 합니다.
+- `project_state.state_version`은 기준 범위의 유일한 공개 상태 시계이며 [저장소 버전 관리](storage-versioning.md)에 따라 단조롭게 진행해야 합니다. 이것은 Core 상태 시계이지 schema version이 아닙니다.
 - `authority_events`는 커밋된 권한 이벤트마다 영속 이벤트 행 하나를 저장합니다. 같은 `state_version`을 가진 여러 이벤트 행은 하나의 커밋된 상태 전이에 속한 이벤트 배치입니다.
 - `authority_events.actor_source`, `tasks.created_by_actor_source`, `user_judgments.requested_by_actor_source`, `user_judgments.resolved_by_actor_source`, `write_tickets.created_by_actor_source`, `runs.created_by_actor_source`, `artifact_staging.created_by_actor_source`, `evidence_observations.observed_by_actor_source`, `tool_invocations.actor_source`는 행위자 출처를 저장합니다.
 - `authority_events.operation_category`와 `tool_invocations.operation_category`는 `read`, `agent_workflow`, `user_only`, `admin_local`, `local_recovery`로 제한됩니다.
 - `authority_events.request_hash`는 커밋된 권한 이벤트의 요청 정체성을 저장합니다. `previous_event_hash`와 `event_hash`는 무결성 점검과 내보내기 상관을 위한 로컬 해시 체인을 저장하지만, 조작 방지 감사 보장을 뜻하지 않습니다.
 - 사용자 판단 행은 권한을 지니는 해결에 대한 User Channel 출처를 저장합니다. `status='resolved'`는 답변이 존재한다는 사실을 기록할 뿐이며, 승인 의미는 저장된 기계 동작, 결과, 근거, 출처, 메서드 담당 문서에서 나옵니다.
-- `local_web_consent_tokens`는 대기 사용자 판단을 위한 해시된 일회성 local web consent token을 저장합니다. 행은 project-state 데이터베이스, 선택된 Agent Connection, 대기 판단, capture basis, 만료, 생성/완료 메타데이터에 범위가 묶입니다. 원문 token은 저장하지 않습니다. `status`는 `pending`, `consumed`, `expired`입니다. 소비된 행에는 완료 타임스탬프가 있어야 하며, 대기 또는 만료 행에는 없어야 합니다. Token 소비는 대응하는 사용자 판단 해결과 같은 project-state 트랜잭션에서 커밋해야 합니다. 이 행은 임시 User Channel capture 메타데이터이며 그 자체로 Core 판단 권한이 아닙니다.
+- `local_web_consent_tokens`는 대기 사용자 판단을 위한 해시된 일회성 local web consent token을 저장합니다. 원문 token은 저장하지 않습니다. Token 소비는 대응하는 사용자 판단 해결과 같은 project-state 트랜잭션에서 커밋해야 합니다. 이 행은 임시 User Channel capture 메타데이터이며 그 자체로 Core 판단 권한이 아닙니다.
 - `write_tickets`는 단일 사용 쓰기 티켓 호환성을 기록합니다. `write_tickets.consumed_by_run_id`와 `runs.write_ticket_id`의 고유 인덱스는 쓰기 티켓 소비 하나가 여러 실행으로 갈라지는 것을 막습니다.
 - `artifact_staging.created_by_actor_source`는 스테이징 출처를 기록합니다. 스테이징된 바이트와 알림은 아티팩트 담당 상태이며 그 자체로 증거 권한이 아닙니다.
 - `evidence_observations.source_kind`와 `assurance_level`은 협력적 에이전트 보고, 등록된 연결 관찰, 외부 도구 결과, 사용자 관찰, 재사용 증거, 미확인 주장을 구분합니다.
@@ -1134,7 +1077,7 @@ CREATE INDEX idx_session_watch_observations_unrecorded_change
 - `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unrecorded_changes`, `session_watch_baselines`, `session_watch_observations`는 프로젝트별 host-observation 및 session-watch 기록입니다. 연결 범위를 위해 `connection_internal_id`를 반복해 저장하고, 프로젝트별 키를 사용해 기록이 프로젝트 사이로 새지 않게 합니다.
 - `guard_events.decision`은 `allow`, `deny`, `warn`, `inject_context`로 제한됩니다. 이 값은 로컬 host decision request를 기록하며 OS 수준 집행 증명이 아닙니다.
 - `expected_writes.status`는 `pending` 또는 `matched`로 제한되고, `path_policy`는 `exact_paths`로 제한됩니다. 매칭된 행은 매칭된 post-tool host-hook event, matched paths JSON, `matched_at`을 가져야 하고, 대기 행은 이 매칭 필드를 가지면 안 됩니다.
-- `unrecorded_changes.status`는 `unresolved` 또는 `resolved`로 제한됩니다. 해결된 행은 resolution JSON, `resolved_at`, `resolved_by_actor_source`를 가져야 하고, 미해결 행은 이 해결 필드를 가지면 안 됩니다. Resolution JSON은 [저장소 기록](storage-records.md)이 요구하는 간결한 resolution basis와 capture basis를 포함해야 하며, 전체 민감 명령이나 prompt 내용을 저장하면 안 됩니다.
+- `unrecorded_changes.status`는 `unresolved` 또는 `resolved`로 제한됩니다. 해결된 행은 resolution JSON, `resolved_at`, `resolved_by_actor_source`를 가져야 하고, 미해결 행은 이 해결 필드를 가지면 안 됩니다.
 - `session_watch_baselines.status`는 `disabled`, `active`, `degraded`, `unavailable`로 제한되고, `scope_kind`는 `repository` 또는 `path_set`으로 제한됩니다.
 - `session_watch_observations.observation_status`는 `unresolved` 또는 `linked`로 제한됩니다. 연결된 행은 `unrecorded_change_id`와 `linked_at`을 가져야 하고, 미해결 행은 이 연결 필드를 가지면 안 됩니다.
 
@@ -1142,6 +1085,6 @@ CREATE INDEX idx_session_watch_observations_unrecorded_change
 
 - [저장소 기록](storage-records.md): 영속 기록 계열, 배치, 관계 배치, 저장소 소유 값, JSON 배치를 정의합니다.
 - [저장 효과](storage-effects.md): 어떤 메서드 분기가 기록을 만들거나, 바꾸거나, 관찰하거나, 건드리지 않는지 정의합니다.
-- [저장소 버전 관리](storage-versioning.md): 상태 버전, 멱등성, 재실행, 이벤트, 잠금, 마이그레이션 계약을 정의합니다.
+- [저장소 버전 관리](storage-versioning.md): `project_state.state_version` 시계, 멱등성, 재실행, 이벤트, 잠금, 호환되지 않는 저장소 처리를 정의합니다.
 - [Agent Connection](agent-connection.md): Agent Connection, Connection Projects, 현재 연결 맥락, 모드 게이트, Agent Connection과 User Channel의 경계를 정의합니다.
 - [보안](security.md): 보안 경계와 보장 수준을 정의합니다.

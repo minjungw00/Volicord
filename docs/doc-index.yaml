@@ -183,8 +183,8 @@ shared_documents:
   normative_level: maintenance
   owner_area: repository_guidance
   created_on: '2026-06-20'
-  last_updated_on: '2026-06-26'
-  last_verified_on: '2026-06-26'
+  last_updated_on: '2026-07-03'
+  last_verified_on: '2026-07-03'
   applies_to:
   - volicord_workspace_0_1
   primary_audience:
@@ -224,8 +224,8 @@ shared_documents:
   normative_level: maintenance
   owner_area: documentation_maintenance
   created_on: '2026-06-07'
-  last_updated_on: '2026-07-02'
-  last_verified_on: '2026-07-02'
+  last_updated_on: '2026-07-03'
+  last_verified_on: '2026-07-03'
   applies_to:
   - volicord_workspace_0_1
   - doc_index_schema_v3
@@ -583,8 +583,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: developer_documentation
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-02'
-  last_verified_on: '2026-07-02'
+  last_updated_on: '2026-07-03'
+  last_verified_on: '2026-07-03'
   applies_to:
   - volicord_workspace_0_1
   - rust_workspace_1_85
@@ -668,8 +668,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: developer_documentation
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-02'
-  last_verified_on: '2026-07-02'
+  last_updated_on: '2026-07-03'
+  last_verified_on: '2026-07-03'
   applies_to:
   - volicord_workspace_0_1
   - rust_workspace_1_85
@@ -703,8 +703,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: developer_documentation
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-02'
-  last_verified_on: '2026-07-02'
+  last_updated_on: '2026-07-03'
+  last_verified_on: '2026-07-03'
   applies_to:
   - volicord_workspace_0_1
   - rust_workspace_1_85
@@ -811,8 +811,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: developer_documentation
   created_on: '2026-06-20'
-  last_updated_on: '2026-06-24'
-  last_verified_on: '2026-06-24'
+  last_updated_on: '2026-07-03'
+  last_verified_on: '2026-07-03'
   applies_to:
   - volicord_workspace_0_1
   - rust_workspace_1_85
@@ -840,8 +840,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: developer_documentation
   created_on: '2026-06-22'
-  last_updated_on: '2026-06-24'
-  last_verified_on: '2026-06-24'
+  last_updated_on: '2026-07-03'
+  last_verified_on: '2026-07-03'
   applies_to:
   - volicord_workspace_0_1
   - rust_workspace_1_85
@@ -1031,8 +1031,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-05-07'
-  last_updated_on: '2026-07-02'
-  last_verified_on: '2026-07-02'
+  last_updated_on: '2026-07-03'
+  last_verified_on: '2026-07-03'
   applies_to:
   - volicord_workspace_0_1
   primary_audience:
@@ -1803,8 +1803,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-05-06'
-  last_updated_on: '2026-06-24'
-  last_verified_on: '2026-06-24'
+  last_updated_on: '2026-07-03'
+  last_verified_on: '2026-07-03'
   applies_to:
   - volicord_workspace_0_1
   - storage_baseline_sqlite_v3
@@ -1827,8 +1827,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-02'
-  last_verified_on: '2026-07-02'
+  last_updated_on: '2026-07-03'
+  last_verified_on: '2026-07-03'
   applies_to:
   - volicord_workspace_0_1
   - storage_baseline_sqlite_v3
@@ -1855,8 +1855,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-17'
-  last_updated_on: '2026-07-02'
-  last_verified_on: '2026-07-02'
+  last_updated_on: '2026-07-03'
+  last_verified_on: '2026-07-03'
   applies_to:
   - volicord_workspace_0_1
   - storage_baseline_sqlite_v3
@@ -1872,7 +1872,7 @@ documents:
   - '`registry.sqlite` schema shape'
   - project `state.sqlite` schema shape
   - Agent Connection, Connection Projects, managed host configuration state, and host-observation tables
-  - baseline SQLite indexes, foreign keys, migration tables, and constraints
+  - baseline SQLite indexes, foreign keys, and constraints
   - storage constraints for state clock columns, replay rows, current Change Unit uniqueness, write-ticket
     basis versions, staged artifact provenance, and host-observation records
 - doc_id: reference.storage-effects
@@ -1884,8 +1884,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-02'
-  last_verified_on: '2026-07-02'
+  last_updated_on: '2026-07-03'
+  last_verified_on: '2026-07-03'
   applies_to:
   - volicord_workspace_0_1
   - storage_baseline_sqlite_v3
@@ -1909,8 +1909,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-06-29'
-  last_verified_on: '2026-06-29'
+  last_updated_on: '2026-07-03'
+  last_verified_on: '2026-07-03'
   applies_to:
   - volicord_workspace_0_1
   - storage_baseline_sqlite_v3
@@ -1935,8 +1935,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-02'
-  last_verified_on: '2026-07-02'
+  last_updated_on: '2026-07-03'
+  last_verified_on: '2026-07-03'
   applies_to:
   - volicord_workspace_0_1
   - storage_baseline_sqlite_v3
@@ -1950,9 +1950,9 @@ documents:
   - state versioning
   - idempotency and replay rows
   - storage locking
-  - migration boundaries
-  - supported storage profile migration semantics
-  - baseline_sqlite_v3 initial migration boundary
+  - canonical storage schema initialization boundary
+  - unsupported storage-profile failure semantics
+  - incompatible Runtime Home recreation boundary
 - doc_id: reference.agent-connection
   path_en: docs/en/reference/agent-connection.md
   path_ko: docs/ko/reference/agent-connection.md
@@ -2318,8 +2318,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-02'
-  last_verified_on: '2026-07-02'
+  last_updated_on: '2026-07-03'
+  last_verified_on: '2026-07-03'
   applies_to:
   - volicord_workspace_0_1
   - doc_index_schema_v3

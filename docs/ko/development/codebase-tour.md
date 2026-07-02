@@ -17,7 +17,7 @@ Core 권한 의미는 참조 문서에 남습니다.
 
 1. `volicord-types`: 타입 지정 요청, 응답, 값 집합, 식별자, 정규 해시
    형태를 봅니다.
-2. `volicord-store`: Runtime Home, 프로젝트 Store, 아티팩트, 마이그레이션,
+2. `volicord-store`: Runtime Home, 프로젝트 Store, 아티팩트, 스키마,
    커밋 경계를 봅니다.
 3. `volicord-core`: 공유 요청 파이프라인, 메서드 계획, 정책, Store 조율을
    봅니다.
@@ -74,7 +74,7 @@ Core 권한 의미는 참조 문서에 남습니다.
 담당하지 않는 것:
 
 - Core 메서드 동작.
-- Store 변이, DDL, 마이그레이션, 저장 효과.
+- Store 변이, DDL, canonical schema SQL, 저장 효과.
 - MCP 또는 CLI 전송 동작.
 - 스키마나 값 집합의 제품 계약 의미.
 
@@ -128,15 +128,15 @@ Core 권한 의미는 참조 문서에 남습니다.
 존재 이유:
 
 `volicord-store`는 SQLite 기반 Runtime Home과 프로젝트 Store 메커니즘을
-담당합니다. 데이터베이스 열기, 스키마 검증, 로컬 기록 부트스트랩,
-마이그레이션 적용, 설정 상태 검사, 아티팩트 스테이징, 저장소 실패 분류,
-Core 변이 원자 커밋이 여기에 속합니다.
+담당합니다. 데이터베이스 열기, 스키마 초기화와 검증, 로컬 기록 부트스트랩,
+설정 상태 검사, 아티팩트 스테이징, 저장소 실패 분류, Core 변이 원자 커밋이
+여기에 속합니다.
 
 구현에서 담당하는 것:
 
 - Runtime Home 해석과 registry/project 경로 도우미.
 - Runtime Home 초기화, 프로젝트 등록, Agent Connection 등록.
-- SQLite 열기, 스키마 검증, 마이그레이션, 트랜잭션 도우미.
+- SQLite 열기, canonical 스키마 초기화, 스키마 검증, 트랜잭션 도우미.
 - `CoreProjectStore` 읽기 도우미와 `CoreStorageMutation` 적용.
 - `CoreProjectStore::commit_mutation` 원자 트랜잭션 경계.
 - 일시적 아티팩트 스테이징과 영구 아티팩트 본문 검증 도우미.
@@ -166,8 +166,9 @@ Core 변이 원자 커밋이 여기에 속합니다.
   `ensure_agent_connection`, `add_connection_project`.
 - [`crates/volicord-store/src/sqlite.rs`](../../../crates/volicord-store/src/sqlite.rs):
   데이터베이스 경로, 열기, 검증, `begin_immediate_transaction`.
-- [`crates/volicord-store/src/migrations.rs`](../../../crates/volicord-store/src/migrations.rs):
-  기준 마이그레이션 상수와 마이그레이션 적용.
+- [`crates/volicord-store/src/schema.rs`](../../../crates/volicord-store/src/schema.rs)와
+  [`crates/volicord-store/src/schema/`](../../../crates/volicord-store/src/schema/):
+  canonical registry/project SQL 원본과 스키마 초기화.
 - [`crates/volicord-store/src/core_pipeline.rs`](../../../crates/volicord-store/src/core_pipeline.rs):
   Core 쪽 Store 읽기, `CoreStorageMutation`, 커밋 결과, 원자적 커밋 경계.
 - [`crates/volicord-store/src/core_pipeline/mutation_apply.rs`](../../../crates/volicord-store/src/core_pipeline/mutation_apply.rs):
@@ -230,7 +231,7 @@ Core 변이 원자 커밋이 여기에 속합니다.
 담당하지 않는 것:
 
 - MCP stdio 프레이밍이나 CLI 설정 동작.
-- SQLite DDL, 마이그레이션 정의, 원시 저장소 레이아웃 계약.
+- SQLite DDL, canonical 스키마 정의, 원시 저장소 레이아웃 계약.
 - `Product Repository` 제품 파일 쓰기.
 - 공개 스키마 계약이나 정확한 값 집합 의미.
 

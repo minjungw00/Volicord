@@ -17,7 +17,7 @@ Volicord 소스와 설치 파일은 별도의 구현 아티팩트 역할입니�
 유지합니다.
 
 - Store 코드는 Runtime Home 경로 처리, registry/project 데이터베이스,
-  프로젝트 Store 접근, 마이그레이션, 검사, Runtime Home 아래 아티팩트
+  프로젝트 Store 접근, 스키마 초기화와 검증, 검사, Runtime Home 아래 아티팩트
   데이터를 맡습니다.
 - CLI 설정은 Product Repository 경로를 Runtime Home 기록에 등록하지만 그
   저장소를 런타임 상태로 만들지 않습니다.

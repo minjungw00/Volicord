@@ -14,9 +14,9 @@
 이 문서는 담당하지 않습니다.
 
 - 기록 계열 개요: [저장소 기록](storage-records.md)을 봅니다.
-- 기준 SQLite DDL, 제약, 인덱스, 외래 키, 마이그레이션 테이블 형태: [저장소 DDL](storage-ddl.md)을 봅니다.
+- 기준 SQLite DDL, 제약, 인덱스, 외래 키, canonical SQL 원본: [저장소 DDL](storage-ddl.md)을 봅니다.
 - 아티팩트 생명주기 세부사항; [아티팩트 저장소](storage-artifacts.md)를 봅니다.
-- 멱등성, 잠금, `state_version` 시계, 이벤트 순서, 마이그레이션; [저장소 버전 관리](storage-versioning.md)를 봅니다.
+- 멱등성, 잠금, `state_version` 시계, 이벤트 순서, 호환되지 않는 저장소 처리; [저장소 버전 관리](storage-versioning.md)를 봅니다.
 - 공개 응답 분기와 스키마; [API 코어 스키마](api/schema-core.md)를 봅니다.
 - API 메서드 동작; [API 메서드](api/methods.md)와 메서드 담당 문서를 봅니다.
 - 공개 오류 코드 우선순위; [API 오류 우선순위](api/error-precedence.md)를 봅니다.

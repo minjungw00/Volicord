@@ -19,7 +19,7 @@ The implementation keeps `Volicord Runtime Home` and `Product Repository` as
 separate location concepts:
 
 - Store code owns Runtime Home path handling, registry/project databases,
-  project Store access, migrations, inspection, and artifact data under Runtime
+  project Store access, schema initialization and validation, inspection, and artifact data under Runtime
   Home.
 - CLI setup registers a Product Repository path with Runtime Home records but
   does not turn that repository into runtime state.

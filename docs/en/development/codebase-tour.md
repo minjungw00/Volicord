@@ -18,7 +18,7 @@ Read in this order when you are learning the public method path:
 
 1. `volicord-types` for typed request, response, value-set, identifier, and
    canonical-hash shapes.
-2. `volicord-store` for Runtime Home, project Store, artifact, migration, and
+2. `volicord-store` for Runtime Home, project Store, artifact, schema, and
    commit boundaries.
 3. `volicord-core` for the shared request pipeline, method planners, policies,
    and Store coordination.
@@ -80,7 +80,7 @@ Owns in the implementation:
 Does not own:
 
 - Core method behavior.
-- Store mutations, DDL, migrations, or storage effects.
+- Store mutations, DDL, canonical schema SQL, or storage effects.
 - MCP or CLI transport behavior.
 - Product contract meaning for schemas or value sets.
 
@@ -136,15 +136,15 @@ Recommended next component:
 Why it exists:
 
 `volicord-store` owns SQLite-backed Runtime Home and project Store mechanics:
-opening databases, validating schema, bootstrapping local records, applying
-migrations, inspecting setup state, staging artifacts, classifying storage
+opening databases, initializing and validating schema, bootstrapping local
+records, inspecting setup state, staging artifacts, classifying storage
 failures, and atomically committing Core mutations.
 
 Owns in the implementation:
 
 - Runtime Home resolution and registry/project path helpers.
 - Runtime Home initialization, project registration, and Agent Connection registration.
-- SQLite open, schema validation, migration, and transaction helpers.
+- SQLite open, canonical schema initialization, schema validation, and transaction helpers.
 - `CoreProjectStore` read helpers and `CoreStorageMutation` application.
 - The `CoreProjectStore::commit_mutation` atomic transaction boundary.
 - Transient artifact staging and persistent artifact body verification helpers.
@@ -174,8 +174,9 @@ Important modules:
   `ensure_agent_connection`, and `add_connection_project`.
 - [`crates/volicord-store/src/sqlite.rs`](../../../crates/volicord-store/src/sqlite.rs)
   for database paths, opening, validation, and `begin_immediate_transaction`.
-- [`crates/volicord-store/src/migrations.rs`](../../../crates/volicord-store/src/migrations.rs)
-  for baseline migration constants and migration application.
+- [`crates/volicord-store/src/schema.rs`](../../../crates/volicord-store/src/schema.rs)
+  and [`crates/volicord-store/src/schema/`](../../../crates/volicord-store/src/schema/)
+  for canonical registry/project SQL sources and schema initialization.
 - [`crates/volicord-store/src/core_pipeline.rs`](../../../crates/volicord-store/src/core_pipeline.rs)
   for Core-facing Store reads, `CoreStorageMutation`, commit outcomes, and the
   atomic commit boundary.
@@ -240,7 +241,7 @@ Owns in the implementation:
 Does not own:
 
 - MCP stdio framing or CLI setup behavior.
-- SQLite DDL, migration definitions, or raw storage layout contracts.
+- SQLite DDL, canonical schema definitions, or raw storage layout contracts.
 - Product-file writes in `Product Repository`.
 - Public schema contracts or exact value-set meaning.
 

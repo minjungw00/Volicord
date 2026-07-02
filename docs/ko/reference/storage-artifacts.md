@@ -17,7 +17,7 @@
 - API 아티팩트 스키마; [API 아티팩트 스키마](api/schema-artifacts.md)를 봅니다.
 - API 메서드 동작; [API 메서드](api/methods.md), [아티팩트 스테이징 메서드](api/method-stage-artifact.md), [실행 기록 메서드](api/method-record-run.md)를 봅니다.
 - 기록 계열 개요: [저장소 기록](storage-records.md)을 봅니다.
-- 기준 SQLite DDL, 제약, 인덱스, 외래 키, 마이그레이션 테이블 형태: [저장소 DDL](storage-ddl.md)을 봅니다.
+- 기준 SQLite DDL, 제약, 인덱스, 외래 키, canonical SQL 원본: [저장소 DDL](storage-ddl.md)을 봅니다.
 - 일반 메서드 저장 효과; [저장 효과](storage-effects.md)를 봅니다.
 - 로컬 파일 접근 보안 주장; [보안](security.md)과 [런타임 경계](runtime-boundaries.md)를 봅니다.
 
@@ -505,12 +505,12 @@ expires_at: "<future-expiration-timestamp>"
 
 담당 문서가 정의해야 하는 계약:
 
-- 그런 경로에는 명시적인 저장소 또는 마이그레이션 계약이 필요합니다.
+- 그런 경로에는 명시적인 저장소 보존, 복구, 해체 계약이 필요합니다.
 - 그 계약은 아티팩트 해시, 담당 연결, 이벤트, 재실행 행을 보존해야 합니다. 그렇지 않으면 영향을 받은 참조를 복구할 때 유효하지 않은 것으로 표시해야 합니다.
 
 허용되지 않는 것:
 
-- 보존 또는 마이그레이션 경로가 현재 기록에서 아직 이름 붙인 증거 지원을 조용히 삭제하면 안 됩니다.
+- 보존, 복구, 해체 경로가 현재 기록에서 아직 이름 붙인 증거 지원을 조용히 삭제하면 안 됩니다.
 
 ## 관련 담당 문서
 

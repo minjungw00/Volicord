@@ -17,10 +17,10 @@ This document owns:
 
 This document does not own:
 
-- baseline SQLite DDL, indexes, foreign keys, migration tables, or constraints; see [Storage DDL](storage-ddl.md)
+- baseline SQLite DDL, indexes, foreign keys, canonical SQL sources, or constraints; see [Storage DDL](storage-ddl.md)
 - method branch persistence effects; see [Storage Effects](storage-effects.md)
 - artifact staging, promotion, linking, body reads, retention, or integrity lifecycle; see [Artifact Storage](storage-artifacts.md)
-- `project_state.state_version`, idempotency, replay, events, lock, and migration contracts; see [Storage Versioning](storage-versioning.md)
+- `project_state.state_version`, idempotency, replay, events, lock, and incompatible-storage handling; see [Storage Versioning](storage-versioning.md)
 - API request or response shape; see [API Schema Core](api/schema-core.md), [API State Schemas](api/schema-state.md), [API Artifact Schemas](api/schema-artifacts.md), [API Judgment Schemas](api/schema-judgment.md), and [API Value Sets](api/schema-value-sets.md)
 - API method behavior; see [API Methods](api/methods.md) and the method owner documents
 - runtime location and repository boundaries; see [Runtime Boundaries](runtime-boundaries.md)
@@ -54,11 +54,11 @@ Artifact path bases:
 - `artifact_staging.tmp_path` is stored relative to `project_home`; staged bytes or notices under the transient staging area use a shape such as `artifacts/tmp/<file>`.
 - `artifacts.body_path` is stored relative to the artifact-store root, normally `project_home/artifacts`; persistent bodies use a shape such as `tmp/<file>` and are resolved as `artifact_store_root.join(body_path)`.
 
-For operational project records, `project_home` is the location owner for project-local runtime state. The executable project state database path is derived from the validated project home as `project_home/state.sqlite`. The stored `state_db_path` remains in `registry.sqlite` for persistence and diagnostics, but it must match that derived path before Store returns a normal `ProjectRecord`, opens or migrates project-local state, resolves Agent Connection project access, enters Core execution, or reports MCP project availability. A mismatching registration remains inspectable as raw registry content for diagnosis, but operational lookup and listing must reject it rather than omit it or return it as a normal project. Inspection must not open, create, migrate, or repair the alternate `state_db_path`.
+For operational project records, `project_home` is the location owner for project-local runtime state. The executable project state database path is derived from the validated project home as `project_home/state.sqlite`. The stored `state_db_path` remains in `registry.sqlite` for persistence and diagnostics, but it must match that derived path before Store returns a normal `ProjectRecord`, opens project-local state, resolves Agent Connection project access, enters Core execution, or reports MCP project availability. A mismatching registration remains inspectable as raw registry content for diagnosis, but operational lookup and listing must reject it rather than omit it or return it as a normal project. Inspection must not open, create, initialize, or repair the alternate `state_db_path`.
 
 The `Product Repository` is the user product-file boundary registered by `repo_root`. It is not a Volicord runtime home, not Core authority storage, and not where runtime records, replay rows, judgments, write tickets, guard records, or Agent Connection registry state are stored.
 
-Baseline SQLite table shape, indexes, foreign keys, migration tables, and constraints belong to [Storage DDL](storage-ddl.md). The current baseline SQLite storage profile for these records is `baseline_sqlite_v3`; profile/version boundary behavior belongs to [Storage Versioning](storage-versioning.md).
+Baseline SQLite table shape, indexes, foreign keys, constraints, and canonical SQL sources belong to [Storage DDL](storage-ddl.md). The current baseline SQLite storage profile for these records is `baseline_sqlite_v3`; storage-profile and incompatible-storage boundary behavior belongs to [Storage Versioning](storage-versioning.md).
 
 Runtime Home identity must not depend only on a filesystem path. A copied or moved Runtime Home may carry the same stored `runtime_home_id`, while a newly created Runtime Home gets a new id. The id can help detect suspicious copies, duplicate registrations, or path drift; it is not a security guarantee.
 
@@ -266,9 +266,9 @@ Task and Change Unit shaping JSON stores compact summaries and bounded lists onl
 ## Related Owners
 
 - [Storage Effects](storage-effects.md) defines which method branches create, update, observe, or leave records untouched.
-- [Storage DDL](storage-ddl.md) defines baseline SQLite table shape, indexes, foreign keys, migration tables, and constraints.
+- [Storage DDL](storage-ddl.md) defines baseline SQLite table shape, indexes, foreign keys, constraints, and canonical SQL sources.
 - [Artifact Storage](storage-artifacts.md) defines artifact staging, promotion, linking, body reads, retention, and integrity lifecycle.
-- [Storage Versioning](storage-versioning.md) defines state versioning, idempotency, replay, events, locks, and migration contracts.
+- [Storage Versioning](storage-versioning.md) defines the state-version clock, idempotency, replay, events, locks, and incompatible-storage handling.
 - [Agent Connection](agent-connection.md) defines Agent Connections, Connection Projects, mode-gated MCP tool access, and User Channel boundaries.
 - [API Schema Core](api/schema-core.md), [API State Schemas](api/schema-state.md), [API Artifact Schemas](api/schema-artifacts.md), [API Judgment Schemas](api/schema-judgment.md), and [API Value Sets](api/schema-value-sets.md) define API shape and public API values.
 - [API Methods](api/methods.md) and method owner documents define public method behavior that uses records.

@@ -7,16 +7,17 @@ This document owns the baseline SQLite DDL contract for the storage layout descr
 This document owns:
 
 - baseline SQLite table shape for `registry.sqlite` and project `state.sqlite`
-- baseline indexes, foreign keys, migration tables, and physical constraints
+- baseline indexes, foreign keys, and physical constraints
 - SQLite constraints for `project_state.state_version`, replay rows, current Change Unit uniqueness, write-ticket basis versions, staged artifact provenance, and host-observation records
 - the DDL-level split between Runtime Home registration data and project-local Core state
+- parity between the documented canonical SQL blocks and the canonical SQL source files
 
 This document does not own:
 
 - record-family purpose, storage locations, storage-owned values, or JSON placement categories; see [Storage Records](storage-records.md)
 - method branch storage effects; see [Storage Effects](storage-effects.md)
 - artifact staging, promotion, linking, body reads, retention, or integrity lifecycle; see [Artifact Storage](storage-artifacts.md)
-- state-version, idempotency, event, lock, or migration semantics; see [Storage Versioning](storage-versioning.md)
+- state-version, idempotency, event, lock, or incompatible-storage handling; see [Storage Versioning](storage-versioning.md)
 - API request or response schemas; see the API schema owners routed from [API Schema Core](api/schema-core.md)
 - runtime location boundaries; see [Runtime Boundaries](runtime-boundaries.md)
 - security guarantee levels; see [Security](security.md)
@@ -31,45 +32,32 @@ PRAGMA foreign_keys = ON;
 
 Mutating transactions must use `BEGIN IMMEDIATE` or an equivalent serialized write boundary before reading freshness, write-ticket compatibility rows, staging, or replay rows for a state-changing commit.
 
-Baseline authority rows remain addressable unless an owning storage or migration contract defines a repair or retention path. The registry may cascade-delete non-authority alias rows that are owned by a forgotten project registration; it must not use alias cleanup to imply deletion of project-local Core authority records.
+Baseline authority rows remain addressable unless an owning storage contract defines a repair or retention path. The registry may cascade-delete non-authority alias rows that are owned by a forgotten project registration; it must not use alias cleanup to imply deletion of project-local Core authority records.
 
 SQLite `TEXT` columns ending in `_json` store JSON as a representation choice. JSON used for authority, lifecycle, scope, evidence, completion, close readiness, or write compatibility is typed owner state. Typed Core code must parse and validate those columns before commit against the applicable API schema owner, storage owner, or artifact owner. Failure to decode typed owner state is corruption and must never be converted to an empty object, empty array, false value, default enum, or "no requirement" interpretation. SQL `NULL` may mean absence only when the owning schema explicitly marks the field optional; malformed JSON in an optional column is corruption, not absence. Open-ended display metadata may remain untyped only when it is not used for authority or close decisions. Safe diagnostics may identify the table, record reference, logical column, and corruption category, but must not expose raw stored JSON, secrets, SQL text, or sensitive absolute paths. SQLite defaults such as `'{}'` and `'[]'` do not make API fields optional.
 
-`project_state.state_version` is the only public baseline state clock. Baseline SQLite DDL must not create `tasks.state_version`.
+`project_state.state_version` is the only public baseline state clock. Baseline SQLite DDL must not create `tasks.state_version`, storage `schema_version` columns, or a migration ledger table.
 
 The physical `write_tickets` table stores write-ticket authority records for product-file write attempts. These rows record Volicord-authorized write intent and compatibility state; they are not OS permissions, filesystem ACLs, sandboxing, network policy, secret isolation, global filesystem interception, or proof that a write occurred.
+
+## Canonical SQL Sources
+
+The executable canonical SQL sources are [`registry.sql`](../../../crates/volicord-store/src/schema/registry.sql) and [`project.sql`](../../../crates/volicord-store/src/schema/project.sql). Runtime Home initialization applies these sources to empty SQLite databases. Existing Runtime Homes whose storage shape is incompatible with these sources fail clearly and require Runtime Home recreation; baseline storage does not define a legacy migration path.
+
+`docs-check` validates that the canonical SQL blocks below match those source files exactly. The focused `storage_ddl_contract` test validates the executable schema semantics.
 
 ## `registry.sqlite`
 
 `registry.sqlite` stores Runtime Home identity, installation profile records, project registration, project aliases, Agent Connection records, Connection Projects membership, host-hook installation records, and host configuration inventory. It does not store project-local Core state.
 
-Applying the current baseline migration produces registry schema version `1`
-for storage profile `baseline_sqlite_v3`. The DDL blocks below are split by
-record area for readability and together describe the baseline registry layout.
-Active local web consent token rows are not registry records; they are
-project-state records so token lifecycle and user judgment resolution can share
-one project-state transaction. Storage profile and migration boundary behavior
-are owned by [Storage Versioning](storage-versioning.md).
-
+<!-- canonical-storage-sql: registry start -->
 ```sql
-CREATE TABLE schema_migrations (
-  database_kind TEXT NOT NULL CHECK (database_kind = 'registry'),
-  version INTEGER NOT NULL CHECK (version > 0),
-  name TEXT NOT NULL,
-  storage_profile TEXT NOT NULL,
-  applied_at TEXT NOT NULL,
-  checksum_sha256 TEXT,
-  metadata_json TEXT NOT NULL DEFAULT '{}',
-  PRIMARY KEY (database_kind, version)
-);
-
 CREATE TABLE runtime_home (
   singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
   runtime_home_id TEXT NOT NULL UNIQUE,
   runtime_home_path TEXT NOT NULL UNIQUE,
   registry_db_path TEXT NOT NULL UNIQUE,
   storage_profile TEXT NOT NULL,
-  schema_version INTEGER NOT NULL CHECK (schema_version > 0),
   metadata_json TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
@@ -180,11 +168,7 @@ CREATE UNIQUE INDEX idx_agent_connections_target_global
     server_name
   )
   WHERE project_internal_id IS NULL;
-```
 
-Registry host-hook installation records:
-
-```sql
 CREATE TABLE guard_installations (
   guard_installation_id TEXT PRIMARY KEY,
   runtime_home_id TEXT NOT NULL,
@@ -234,14 +218,15 @@ CREATE UNIQUE INDEX idx_guard_installations_scope_global
   ON guard_installations (connection_internal_id, guard_mode)
   WHERE project_internal_id IS NULL;
 ```
+<!-- canonical-storage-sql: registry end -->
 
 Registry constraints:
 
-- `runtime_home` is a singleton table. It stores Runtime Home identity, the Runtime Home path, the registry database path, storage profile, schema version, metadata, and timestamps. The stored `runtime_home_id` identifies the Runtime Home record; it is not a security guarantee.
+- `runtime_home` is a singleton table. It stores Runtime Home identity, the Runtime Home path, the registry database path, storage profile, metadata, and timestamps. The stored `runtime_home_id` identifies the Runtime Home record; it is not a security guarantee.
 - `installation_profile` stores the selected `volicord` command, MCP launch command, bin directory, default connection mode, metadata, and timestamps for the Runtime Home. It may be established by `volicord init`. It is not host trust, user authority, or public API state.
 - `projects.project_internal_id` is the storage primary key for project records. `projects.project_name` is the display name. `projects.project_alias` is the CLI selection aid. `projects.repo_root` is the repository-root lookup key. `projects.project_alias`, `projects.repo_root`, `projects.project_home`, and `projects.state_db_path` are unique.
 - `project_aliases` maps aliases to `project_internal_id` values. Alias rows are registry selection aids, not project-local Core authority records.
-- `projects.state_db_path` is retained as a stored column. Store application-level current-registration validation must confirm it equals `project_home/state.sqlite` before operational `ProjectRecord` lookup or listing, project-state migration or writable open, Agent Connection project routing, Core execution, profile reuse, or MCP project availability.
+- `projects.state_db_path` is retained as a stored column. Store application-level current-registration validation must confirm it equals `project_home/state.sqlite` before operational `ProjectRecord` lookup or listing, writable project-state open, Agent Connection project routing, Core execution, profile reuse, or MCP project availability.
 - `projects.status` is storage-owned and baseline-valid only as `active`.
 - `agent_connections.connection_internal_id` is the storage primary key for Agent Connection records. The table stores host kind, connection intent in `intent`, host scope, optional `project_internal_id`, server name, config target, mode, enabled state, managed fingerprint, verification summary status, verification report JSON, user actions JSON, metadata, and timestamps.
 - `agent_connections.intent` is constrained to `personal`, `shared`, or `global`.
@@ -249,37 +234,17 @@ Registry constraints:
 - `agent_connections.mode` is constrained to `read_only` or `workflow`.
 - `agent_connections.last_verification_report_json` stores the latest verification report JSON object. `agent_connections.last_user_actions_json` stores the latest user-action JSON array.
 - `connection_projects` is the explicit project allowlist for one Agent Connection. It stores membership with `connection_internal_id` and `project_internal_id`. Deleting a project or connection that still has membership is restricted.
-- `guard_installations` stores local host-hook setup lifecycle state and host capability for one Runtime Home, Agent Connection, and optional project scope. Its internal `guard_mode` values are `record` and `detective`. Its `installation_status` values are `absent`, `configured`, `reload_required`, `active`, `degraded`, `stale`, and `broken`. A valid observed host hook for the recorded project, Agent Connection, host kind, integration profile, policy hash, and known hook phase records first-seen and last-seen metadata. It can move a row to `active` only when the selected profile is `detective`, required hook configuration is complete, and the row is not `degraded`, `stale`, or `broken`; otherwise the observation metadata is recorded without making the installation effectively active. These rows are local authority records for host observation; they are not OS-level enforcement proof or write-prevention proof.
-- `schema_migrations` records applied registry schema versions. Migration execution semantics stay with [Storage Versioning](storage-versioning.md).
+- `guard_installations` stores local host-hook setup lifecycle state and host capability for one Runtime Home, Agent Connection, and optional project scope. Its internal `guard_mode` values are `record` and `detective`. Its `installation_status` values are `absent`, `configured`, `reload_required`, `active`, `degraded`, `stale`, and `broken`. These rows are local authority records for host observation; they are not OS-level enforcement proof or write-prevention proof.
 
 ## Project `state.sqlite`
 
 Each registered project has one project-local `state.sqlite`. It stores Core state for that project and repeats `project_id` in project-scoped rows so foreign keys and indexes can enforce same-project relationships.
 
-Applying the current baseline migration produces project-state schema version
-`1` for storage profile `baseline_sqlite_v3`. The DDL blocks below are split by
-record area for readability and together describe the baseline project-state
-layout, including local web consent token records. Token lifecycle and user
-judgment resolution can therefore commit in the same project-state transaction.
-Storage profile and migration boundary behavior are owned by
-[Storage Versioning](storage-versioning.md).
-
+<!-- canonical-storage-sql: project start -->
 ```sql
-CREATE TABLE schema_migrations (
-  database_kind TEXT NOT NULL CHECK (database_kind = 'project_state'),
-  version INTEGER NOT NULL CHECK (version > 0),
-  name TEXT NOT NULL,
-  storage_profile TEXT NOT NULL,
-  applied_at TEXT NOT NULL,
-  checksum_sha256 TEXT,
-  metadata_json TEXT NOT NULL DEFAULT '{}',
-  PRIMARY KEY (database_kind, version)
-);
-
 CREATE TABLE project_state (
   project_id TEXT PRIMARY KEY,
   storage_profile TEXT NOT NULL,
-  schema_version INTEGER NOT NULL CHECK (schema_version > 0),
   state_version INTEGER NOT NULL DEFAULT 0 CHECK (state_version >= 0),
   active_task_id TEXT,
   enforcement_profile_json TEXT NOT NULL DEFAULT '{"profile_id":"baseline_cooperative","guarantee_level":"cooperative","enabled_mechanisms":[],"source":"baseline_scope","status":"active"}',
@@ -437,51 +402,6 @@ CREATE TABLE user_judgments (
     REFERENCES change_units (project_id, task_id, change_unit_id)
 );
 
-CREATE TABLE local_web_consent_tokens (
-  project_id TEXT NOT NULL,
-  token_hash TEXT NOT NULL CHECK (length(token_hash) = 64),
-  connection_internal_id TEXT NOT NULL,
-  judgment_id TEXT NOT NULL,
-  capture_basis TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'pending'
-    CHECK (status IN ('pending', 'consumed', 'expired')),
-  created_at TEXT NOT NULL,
-  expires_at TEXT NOT NULL,
-  consumed_at TEXT,
-  completed_at TEXT,
-  created_metadata_json TEXT NOT NULL DEFAULT '{}',
-  completion_metadata_json TEXT NOT NULL DEFAULT '{}',
-  PRIMARY KEY (project_id, token_hash),
-  FOREIGN KEY (project_id) REFERENCES project_state (project_id) ON DELETE RESTRICT,
-  FOREIGN KEY (project_id, judgment_id)
-    REFERENCES user_judgments (project_id, judgment_id)
-    ON DELETE RESTRICT,
-  CHECK (
-    (
-      status = 'pending'
-      AND consumed_at IS NULL
-      AND completed_at IS NULL
-    )
-    OR (
-      status = 'consumed'
-      AND consumed_at IS NOT NULL
-      AND completed_at IS NOT NULL
-    )
-    OR (
-      status = 'expired'
-      AND consumed_at IS NULL
-      AND completed_at IS NULL
-    )
-  )
-);
-
-CREATE INDEX idx_local_web_consent_tokens_judgment
-  ON local_web_consent_tokens (project_id, judgment_id, status);
-CREATE INDEX idx_local_web_consent_tokens_connection
-  ON local_web_consent_tokens (project_id, connection_internal_id, status, expires_at);
-CREATE INDEX idx_local_web_consent_tokens_expiry
-  ON local_web_consent_tokens (project_id, status, expires_at);
-
 CREATE TABLE project_continuity_records (
   project_id TEXT NOT NULL,
   continuity_record_id TEXT NOT NULL,
@@ -538,14 +458,6 @@ CREATE TABLE write_tickets (
 CREATE UNIQUE INDEX idx_write_tickets_consumed_run
   ON write_tickets (project_id, consumed_by_run_id)
   WHERE consumed_by_run_id IS NOT NULL;
-
-Storage status values map to the public write-ticket lifecycle as follows:
-`status=active` exposes an open ticket, `status=consumed` exposes a closed
-consumed ticket path where the owning API selects that view, `status=expired`
-exposes expiration, and `status=stale` or `status=revoked` removes current
-compatibility and may be surfaced as revoked/stale compatibility by the owning
-method. Detective-profile host hooks and session watchers may create separate
-observation records; this table by itself is not host-hook enforcement.
 
 CREATE TABLE runs (
   project_id TEXT NOT NULL,
@@ -873,11 +785,6 @@ CREATE INDEX idx_authority_events_state_version
   ON authority_events (project_id, state_version, event_seq);
 CREATE INDEX idx_authority_events_hash_chain
   ON authority_events (project_id, previous_event_hash, event_hash);
-```
-
-Host-observation project-state tables:
-
-```sql
 CREATE TABLE agent_sessions (
   project_id TEXT NOT NULL,
   session_id TEXT NOT NULL,
@@ -980,11 +887,6 @@ CREATE INDEX idx_unrecorded_changes_connection
   ON unrecorded_changes (project_id, connection_internal_id, status);
 CREATE INDEX idx_unrecorded_changes_task
   ON unrecorded_changes (project_id, task_id, status);
-```
-
-Expected-write correlation project-state tables:
-
-```sql
 CREATE TABLE expected_writes (
   project_id TEXT NOT NULL,
   expected_write_id TEXT NOT NULL,
@@ -1037,11 +939,6 @@ CREATE INDEX idx_expected_writes_host_invocation
   WHERE host_invocation_id IS NOT NULL;
 CREATE INDEX idx_expected_writes_task
   ON expected_writes (project_id, task_id, status);
-```
-
-Session-watch project-state tables:
-
-```sql
 CREATE TABLE session_watch_baselines (
   project_id TEXT NOT NULL,
   watch_baseline_id TEXT NOT NULL,
@@ -1117,17 +1014,62 @@ CREATE INDEX idx_session_watch_observations_expected_write
 CREATE INDEX idx_session_watch_observations_unrecorded_change
   ON session_watch_observations (project_id, unrecorded_change_id)
   WHERE unrecorded_change_id IS NOT NULL;
+CREATE TABLE local_web_consent_tokens (
+  project_id TEXT NOT NULL,
+  token_hash TEXT NOT NULL CHECK (length(token_hash) = 64),
+  connection_internal_id TEXT NOT NULL,
+  judgment_id TEXT NOT NULL,
+  capture_basis TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'consumed', 'expired')),
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  consumed_at TEXT,
+  completed_at TEXT,
+  created_metadata_json TEXT NOT NULL DEFAULT '{}',
+  completion_metadata_json TEXT NOT NULL DEFAULT '{}',
+  PRIMARY KEY (project_id, token_hash),
+  FOREIGN KEY (project_id) REFERENCES project_state (project_id) ON DELETE RESTRICT,
+  FOREIGN KEY (project_id, judgment_id)
+    REFERENCES user_judgments (project_id, judgment_id)
+    ON DELETE RESTRICT,
+  CHECK (
+    (
+      status = 'pending'
+      AND consumed_at IS NULL
+      AND completed_at IS NULL
+    )
+    OR (
+      status = 'consumed'
+      AND consumed_at IS NOT NULL
+      AND completed_at IS NOT NULL
+    )
+    OR (
+      status = 'expired'
+      AND consumed_at IS NULL
+      AND completed_at IS NULL
+    )
+  )
+);
+
+CREATE INDEX idx_local_web_consent_tokens_judgment
+  ON local_web_consent_tokens (project_id, judgment_id, status);
+CREATE INDEX idx_local_web_consent_tokens_connection
+  ON local_web_consent_tokens (project_id, connection_internal_id, status, expires_at);
+CREATE INDEX idx_local_web_consent_tokens_expiry
+  ON local_web_consent_tokens (project_id, status, expires_at);
 ```
+<!-- canonical-storage-sql: project end -->
 
 Project-state constraints:
 
-- `project_state.state_version` is the only public baseline state clock and must be monotonic according to [Storage Versioning](storage-versioning.md).
+- `project_state.state_version` is the only public baseline state clock and must advance monotonically according to [Storage Versioning](storage-versioning.md). It is a Core state clock, not a schema version.
 - `authority_events` stores one durable event row per committed authority event. Multiple event rows with the same `state_version` are one event batch for one committed state transition.
 - `authority_events.actor_source`, `tasks.created_by_actor_source`, `user_judgments.requested_by_actor_source`, `user_judgments.resolved_by_actor_source`, `write_tickets.created_by_actor_source`, `runs.created_by_actor_source`, `artifact_staging.created_by_actor_source`, `evidence_observations.observed_by_actor_source`, and `tool_invocations.actor_source` store actor provenance.
 - `authority_events.operation_category` and `tool_invocations.operation_category` are constrained to `read`, `agent_workflow`, `user_only`, `admin_local`, or `local_recovery`.
 - `authority_events.request_hash` stores the request identity for the committed authority event. `previous_event_hash` and `event_hash` store a local hash chain for integrity checking and export correlation; they are not tamper-proof audit guarantees.
 - User judgment rows store User Channel provenance for authority-bearing resolution. `status='resolved'` records that an answer exists; approval meaning comes from the stored machine action, outcome, basis, provenance, and method owner.
-- `local_web_consent_tokens` stores hashed one-time local web consent tokens for pending user judgments. Rows are scoped to the project-state database, the selected Agent Connection, the pending judgment, capture basis, expiration, and creation/completion metadata. The raw token is not stored. `status` is `pending`, `consumed`, or `expired`; consumed rows must have completion timestamps, and pending or expired rows must not. Token consumption must commit in the same project-state transaction as the corresponding user judgment resolution. These rows are transient User Channel capture metadata and are not Core judgment authority by themselves.
+- `local_web_consent_tokens` stores hashed one-time local web consent tokens for pending user judgments. The raw token is not stored. Token consumption must commit in the same project-state transaction as the corresponding user judgment resolution. These rows are transient User Channel capture metadata and are not Core judgment authority by themselves.
 - `write_tickets` records single-use write-ticket compatibility. The unique indexes on `write_tickets.consumed_by_run_id` and `runs.write_ticket_id` prevent one write-ticket consumption from forking across multiple runs.
 - `artifact_staging.created_by_actor_source` records staging provenance. Staged bytes and notices remain artifact-owned and are not evidence authority by themselves.
 - `evidence_observations.source_kind` and `assurance_level` distinguish cooperative agent reports, registered connection observations, external tool results, user observations, reused evidence, and unverified claims.
@@ -1135,7 +1077,7 @@ Project-state constraints:
 - `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unrecorded_changes`, `session_watch_baselines`, and `session_watch_observations` are project-local host-observation and session-watch records. They repeat `connection_internal_id` for connection scoping and use project-local keys so records do not leak across projects.
 - `guard_events.decision` is constrained to `allow`, `deny`, `warn`, or `inject_context`. These values record local host decision requests; they are not OS-level enforcement proof.
 - `expected_writes.status` is constrained to `pending` or `matched`, and `path_policy` is constrained to `exact_paths`. Matched rows must carry the matched post-tool host-hook event, matched paths JSON, and `matched_at`; pending rows must not carry those matched fields.
-- `unrecorded_changes.status` is constrained to `unresolved` or `resolved`. Resolved rows must carry resolution JSON, `resolved_at`, and `resolved_by_actor_source`; unresolved rows must not carry those resolution fields. Resolution JSON must include the compact resolution basis and capture basis required by [Storage Records](storage-records.md), without storing full sensitive command or prompt content.
+- `unrecorded_changes.status` is constrained to `unresolved` or `resolved`. Resolved rows must carry resolution JSON, `resolved_at`, and `resolved_by_actor_source`; unresolved rows must not carry those resolution fields.
 - `session_watch_baselines.status` is constrained to `disabled`, `active`, `degraded`, or `unavailable`, and `scope_kind` is constrained to `repository` or `path_set`.
 - `session_watch_observations.observation_status` is constrained to `unresolved` or `linked`. Linked rows must carry `unrecorded_change_id` and `linked_at`; unresolved rows must not carry those link fields.
 
@@ -1143,6 +1085,6 @@ Project-state constraints:
 
 - [Storage Records](storage-records.md) defines persisted record families, placement, relationship layout, storage-owned values, and JSON placement.
 - [Storage Effects](storage-effects.md) defines which method branches create, update, observe, or leave records untouched.
-- [Storage Versioning](storage-versioning.md) defines state versioning, idempotency, replay, events, locks, and migration contracts.
+- [Storage Versioning](storage-versioning.md) defines the `project_state.state_version` clock, idempotency, replay, events, locks, and incompatible-storage handling.
 - [Agent Connection](agent-connection.md) defines Agent Connection, Connection Projects, current connection context, mode gating, and Agent Connection versus User Channel boundaries.
 - [Security](security.md) defines security boundaries and guarantee levels.

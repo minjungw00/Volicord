@@ -7,7 +7,7 @@ This document owns Volicord security guarantee wording, local connection assumpt
 | This document owns | This document does not own |
 |---|---|
 | Supported guarantee semantics for `cooperative` and connection-observation `detective` wording. | API method request/response schemas or method-specific behavior. |
-| The boundary that no baseline preventive guarantee is supported. | Storage record layout, artifact lifecycle detail, locks, hashes, or migrations. |
+| The boundary that no baseline preventive guarantee is supported. | Storage record layout, artifact lifecycle detail, locks, hashes, or schema initialization. |
 | Local connection assumptions, `operation_category` non-claims, and access-boundary non-claims. | Connector implementation or host-specific operating recipes. |
 | Sensitive-action approval as a security-adjacent user-owned judgment boundary. | OS permissions, deployment controls, arbitrary-tool sandboxing, or host policy. |
 | Close Status, review, deployment, QA, and risk non-guarantees. | Close-task method behavior or state-schema shapes. |

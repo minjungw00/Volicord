@@ -47,7 +47,7 @@ This document does not own:
   verification commands; see [Administrative CLI](admin-cli.md)
 - generated host hook command syntax, hook path safety diagnostics, and
   host-hook wrapper repair; see [Administrative CLI](admin-cli.md#guard-hook-commands)
-- storage layout, migrations, and storage effects; see the storage owners
+- storage layout, schema initialization and validation, and storage effects; see the storage owners
   through [Storage](storage.md)
 
 ## Process Model

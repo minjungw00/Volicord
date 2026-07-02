@@ -8,11 +8,9 @@ use rusqlite::{
 };
 
 use crate::{
-    migrations::{
-        apply_project_state_migrations, apply_registry_migrations,
-        expected_project_state_migrations, expected_registry_migrations,
-        PROJECT_STATE_DATABASE_KIND, PROJECT_STATE_SCHEMA_VERSION, REGISTRY_DATABASE_KIND,
-        REGISTRY_SCHEMA_VERSION, STORAGE_PROFILE,
+    schema::{
+        initialize_project_state_schema, initialize_registry_schema, PROJECT_STATE_DATABASE_KIND,
+        REGISTRY_DATABASE_KIND, STORAGE_PROFILE,
     },
     StoreError, StoreResult,
 };
@@ -67,7 +65,7 @@ pub fn artifacts_tmp_path(runtime_home: impl AsRef<Path>, project_id: impl AsRef
 /// Opens `registry.sqlite`, creating the parent directory and baseline schema.
 pub fn open_registry_database(path: impl AsRef<Path>) -> StoreResult<Connection> {
     let mut conn = open_sqlite_database(path)?;
-    apply_registry_migrations(&mut conn)?;
+    initialize_registry_schema(&mut conn)?;
     validate_registry_schema(&conn)?;
     Ok(conn)
 }
@@ -75,7 +73,7 @@ pub fn open_registry_database(path: impl AsRef<Path>) -> StoreResult<Connection>
 /// Opens project `state.sqlite`, creating the parent directory and baseline schema.
 pub fn open_project_state_database(path: impl AsRef<Path>) -> StoreResult<Connection> {
     let mut conn = open_sqlite_database(path)?;
-    apply_project_state_migrations(&mut conn)?;
+    initialize_project_state_schema(&mut conn)?;
     validate_project_state_schema(&conn)?;
     Ok(conn)
 }
@@ -126,20 +124,14 @@ pub fn with_immediate_transaction<T>(
     Ok(output)
 }
 
-/// Validates baseline registry schema invariants after migration.
+/// Validates baseline registry schema invariants after canonical initialization.
 pub fn validate_registry_schema(conn: &Connection) -> StoreResult<()> {
     validate_foreign_keys_enabled(conn, REGISTRY_DATABASE_KIND)?;
-    validate_latest_migration(conn, REGISTRY_DATABASE_KIND, REGISTRY_SCHEMA_VERSION)?;
-    validate_migration_history(
-        conn,
-        REGISTRY_DATABASE_KIND,
-        &expected_registry_migrations(),
-    )?;
+    reject_table(conn, REGISTRY_DATABASE_KIND, "schema_migrations")?;
     require_tables(
         conn,
         REGISTRY_DATABASE_KIND,
         &[
-            "schema_migrations",
             "runtime_home",
             "installation_profile",
             "projects",
@@ -179,6 +171,12 @@ pub fn validate_registry_schema(conn: &Connection) -> StoreResult<()> {
             default_value: None,
             primary_key_position: 0,
         },
+    )?;
+    reject_column(
+        conn,
+        REGISTRY_DATABASE_KIND,
+        "runtime_home",
+        "schema_version",
     )?;
     require_column_spec(
         conn,
@@ -360,29 +358,19 @@ pub fn validate_registry_schema(conn: &Connection) -> StoreResult<()> {
         require_column(conn, REGISTRY_DATABASE_KIND, "guard_installations", column)?;
     }
     validate_guard_installations_constraints(conn)?;
-    validate_registry_versions(conn)?;
+    validate_registry_storage_profile(conn)?;
     validate_foreign_key_check(conn, REGISTRY_DATABASE_KIND)?;
     Ok(())
 }
 
-/// Validates baseline project-state schema invariants after migration.
+/// Validates baseline project-state schema invariants after canonical initialization.
 pub fn validate_project_state_schema(conn: &Connection) -> StoreResult<()> {
     validate_foreign_keys_enabled(conn, PROJECT_STATE_DATABASE_KIND)?;
-    validate_latest_migration(
-        conn,
-        PROJECT_STATE_DATABASE_KIND,
-        PROJECT_STATE_SCHEMA_VERSION,
-    )?;
-    validate_migration_history(
-        conn,
-        PROJECT_STATE_DATABASE_KIND,
-        &expected_project_state_migrations(),
-    )?;
+    reject_table(conn, PROJECT_STATE_DATABASE_KIND, "schema_migrations")?;
     require_tables(
         conn,
         PROJECT_STATE_DATABASE_KIND,
         &[
-            "schema_migrations",
             "project_state",
             "tasks",
             "change_units",
@@ -468,6 +456,12 @@ pub fn validate_project_state_schema(conn: &Connection) -> StoreResult<()> {
         PROJECT_STATE_DATABASE_KIND,
         "project_state",
         "state_version",
+    )?;
+    reject_column(
+        conn,
+        PROJECT_STATE_DATABASE_KIND,
+        "project_state",
+        "schema_version",
     )?;
     require_column_spec(
         conn,
@@ -734,7 +728,7 @@ pub fn validate_project_state_schema(conn: &Connection) -> StoreResult<()> {
     validate_artifacts_body_path_constraint(conn)?;
     validate_guard_project_record_tables(conn)?;
     validate_local_web_consent_tokens(conn)?;
-    validate_project_state_versions(conn)?;
+    validate_project_state_storage_profile(conn)?;
     validate_foreign_key_check(conn, PROJECT_STATE_DATABASE_KIND)?;
     Ok(())
 }
@@ -782,6 +776,17 @@ fn require_tables(
     }
 
     Ok(())
+}
+
+fn reject_table(conn: &Connection, database_kind: &'static str, name: &str) -> StoreResult<()> {
+    if sqlite_object_exists(conn, "table", name)? {
+        Err(StoreError::schema_invariant(
+            database_kind,
+            format!("forbidden legacy table {name}; recreate the Runtime Home"),
+        ))
+    } else {
+        Ok(())
+    }
 }
 
 fn require_indexes(
@@ -832,88 +837,7 @@ fn sqlite_object_exists(
     )
 }
 
-fn validate_latest_migration(
-    conn: &Connection,
-    database_kind: &'static str,
-    latest_version: i64,
-) -> StoreResult<()> {
-    let version = conn
-        .query_row(
-            "SELECT COALESCE(MAX(version), 0)
-               FROM schema_migrations
-              WHERE database_kind = ?1",
-            [database_kind],
-            |row| row.get::<_, i64>(0),
-        )
-        .map_err(StoreError::from)?;
-    if version == latest_version {
-        Ok(())
-    } else {
-        Err(StoreError::schema_invariant(
-            database_kind,
-            format!("latest migration is {version}, expected {latest_version}"),
-        ))
-    }
-}
-
-fn validate_migration_history(
-    conn: &Connection,
-    database_kind: &'static str,
-    expected: &[crate::migrations::ExpectedMigration],
-) -> StoreResult<()> {
-    let mut stmt = conn.prepare(
-        "SELECT version, name, storage_profile
-           FROM schema_migrations
-          WHERE database_kind = ?1
-          ORDER BY version",
-    )?;
-    let rows = stmt.query_map([database_kind], |row| {
-        Ok((
-            row.get::<_, i64>(0)?,
-            row.get::<_, String>(1)?,
-            row.get::<_, String>(2)?,
-        ))
-    })?;
-
-    let mut actual = Vec::new();
-    for row in rows {
-        actual.push(row?);
-    }
-
-    if actual.len() != expected.len() {
-        return Err(StoreError::schema_invariant(
-            database_kind,
-            format!(
-                "migration history has {} rows, expected {}",
-                actual.len(),
-                expected.len()
-            ),
-        ));
-    }
-
-    for (index, (actual_version, actual_name, actual_profile)) in actual.iter().enumerate() {
-        let expected_row = expected[index];
-        if expected_row.database_kind != database_kind
-            || *actual_version != expected_row.version
-            || actual_name != expected_row.name
-            || actual_profile != STORAGE_PROFILE
-        {
-            return Err(StoreError::schema_invariant(
-                database_kind,
-                format!(
-                    "migration row {index} is version={actual_version} name={actual_name} profile={actual_profile}, expected version={} name={} profile={}",
-                    expected_row.version,
-                    expected_row.name,
-                    STORAGE_PROFILE
-                ),
-            ));
-        }
-    }
-
-    Ok(())
-}
-
-fn validate_project_state_versions(conn: &Connection) -> StoreResult<()> {
+fn validate_project_state_storage_profile(conn: &Connection) -> StoreResult<()> {
     if let Some(actual_storage_profile) = conn
         .query_row(
             "SELECT storage_profile
@@ -932,24 +856,10 @@ fn validate_project_state_versions(conn: &Connection) -> StoreResult<()> {
         ));
     }
 
-    let stale_count: i64 = conn.query_row(
-        "SELECT COUNT(*)
-           FROM project_state
-          WHERE schema_version != ?1",
-        [PROJECT_STATE_SCHEMA_VERSION],
-        |row| row.get(0),
-    )?;
-    if stale_count == 0 {
-        Ok(())
-    } else {
-        Err(StoreError::schema_invariant(
-            PROJECT_STATE_DATABASE_KIND,
-            "project_state.schema_version does not match the latest applied migration",
-        ))
-    }
+    Ok(())
 }
 
-fn validate_registry_versions(conn: &Connection) -> StoreResult<()> {
+fn validate_registry_storage_profile(conn: &Connection) -> StoreResult<()> {
     if let Some(actual_storage_profile) = conn
         .query_row(
             "SELECT storage_profile
@@ -968,21 +878,7 @@ fn validate_registry_versions(conn: &Connection) -> StoreResult<()> {
         ));
     }
 
-    let stale_count: i64 = conn.query_row(
-        "SELECT COUNT(*)
-           FROM runtime_home
-          WHERE schema_version != ?1",
-        [REGISTRY_SCHEMA_VERSION],
-        |row| row.get(0),
-    )?;
-    if stale_count == 0 {
-        Ok(())
-    } else {
-        Err(StoreError::schema_invariant(
-            REGISTRY_DATABASE_KIND,
-            "runtime_home.schema_version does not match the latest applied migration",
-        ))
-    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1768,25 +1664,18 @@ mod tests {
     use volicord_test_support::TempRuntimeHome;
 
     use super::*;
-    use crate::migrations::{
-        PROJECT_STATE_SCHEMA_VERSION, REGISTRY_SCHEMA_VERSION, STORAGE_PROFILE,
-    };
+    use crate::schema::STORAGE_PROFILE;
 
     #[test]
-    fn registry_migrations_are_idempotent() -> StoreResult<()> {
-        let runtime_home = TempRuntimeHome::new("registry-idempotent")?;
+    fn registry_schema_initialization_is_idempotent() -> StoreResult<()> {
+        let runtime_home = TempRuntimeHome::new("registry-schema-idempotent")?;
         let path = registry_db_path(runtime_home.path());
 
         let conn = open_registry_database(&path)?;
-        assert_eq!(migration_count(&conn)?, REGISTRY_SCHEMA_VERSION);
-        assert_eq!(
-            latest_migration_version(&conn, REGISTRY_DATABASE_KIND)?,
-            REGISTRY_SCHEMA_VERSION
-        );
+        assert!(!sqlite_object_exists(&conn, "table", "schema_migrations")?);
         drop(conn);
 
         let conn = open_registry_database(&path)?;
-        assert_eq!(migration_count(&conn)?, REGISTRY_SCHEMA_VERSION);
         assert!(foreign_keys_enabled(&conn)?);
         assert!(sqlite_object_exists(&conn, "table", "runtime_home")?);
         assert!(sqlite_object_exists(&conn, "table", "agent_connections")?);
@@ -1801,26 +1690,15 @@ mod tests {
     }
 
     #[test]
-    fn project_state_migrations_are_idempotent() -> StoreResult<()> {
-        let runtime_home = TempRuntimeHome::new("project-state-idempotent")?;
+    fn project_state_schema_initialization_is_idempotent() -> StoreResult<()> {
+        let runtime_home = TempRuntimeHome::new("project-state-schema-idempotent")?;
         let path = project_state_db_path(runtime_home.path(), "PRJ-0001");
 
         let conn = open_project_state_database(&path)?;
-        assert_eq!(migration_count(&conn)?, PROJECT_STATE_SCHEMA_VERSION);
-        assert_eq!(
-            latest_migration_version(&conn, PROJECT_STATE_DATABASE_KIND)?,
-            PROJECT_STATE_SCHEMA_VERSION
-        );
-        assert!(migration_exists(
-            &conn,
-            PROJECT_STATE_DATABASE_KIND,
-            1,
-            "project_state_initial_v1"
-        )?);
+        assert!(!sqlite_object_exists(&conn, "table", "schema_migrations")?);
         drop(conn);
 
         let conn = open_project_state_database(&path)?;
-        assert_eq!(migration_count(&conn)?, PROJECT_STATE_SCHEMA_VERSION);
         assert!(foreign_keys_enabled(&conn)?);
         assert!(sqlite_object_exists(&conn, "table", "authority_events")?);
         assert!(sqlite_object_exists(&conn, "view", "task_events")?);
@@ -1854,6 +1732,7 @@ mod tests {
         let conn = open_project_state_database(runtime_home.project_state_db_path("PRJ-clock"))?;
 
         assert!(column_exists(&conn, "project_state", "state_version")?);
+        assert!(!column_exists(&conn, "project_state", "schema_version")?);
         assert!(!column_exists(&conn, "tasks", "state_version")?);
         Ok(())
     }
@@ -2103,12 +1982,11 @@ mod tests {
                 "INSERT INTO project_state (
                     project_id,
                     storage_profile,
-                    schema_version,
                     created_at,
                     updated_at
                 )
-                VALUES (?1, ?2, ?3, 't0', 't0')",
-                params!["project_tx", STORAGE_PROFILE, PROJECT_STATE_SCHEMA_VERSION],
+                VALUES (?1, ?2, 't0', 't0')",
+                params!["project_tx", STORAGE_PROFILE],
             )?;
             Ok(())
         })?;
@@ -2122,50 +2000,16 @@ mod tests {
         Ok(())
     }
 
-    fn migration_count(conn: &Connection) -> rusqlite::Result<i64> {
-        conn.query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| {
-            row.get(0)
-        })
-    }
-
-    fn latest_migration_version(conn: &Connection, database_kind: &str) -> rusqlite::Result<i64> {
-        conn.query_row(
-            "SELECT COALESCE(MAX(version), 0)
-               FROM schema_migrations
-              WHERE database_kind = ?1",
-            [database_kind],
-            |row| row.get(0),
-        )
-    }
-
-    fn migration_exists(
-        conn: &Connection,
-        database_kind: &str,
-        version: i64,
-        name: &str,
-    ) -> rusqlite::Result<bool> {
-        conn.query_row(
-            "SELECT COUNT(*)
-               FROM schema_migrations
-              WHERE database_kind = ?1
-                AND version = ?2
-                AND name = ?3",
-            params![database_kind, version, name],
-            |row| Ok(row.get::<_, i64>(0)? == 1),
-        )
-    }
-
     fn insert_project_state(conn: &Connection) -> rusqlite::Result<()> {
         conn.execute(
             "INSERT INTO project_state (
                 project_id,
                 storage_profile,
-                schema_version,
                 created_at,
                 updated_at
             )
-            VALUES (?1, ?2, ?3, 't0', 't0')",
-            params!["project_a", STORAGE_PROFILE, PROJECT_STATE_SCHEMA_VERSION],
+            VALUES (?1, ?2, 't0', 't0')",
+            params!["project_a", STORAGE_PROFILE],
         )?;
         Ok(())
     }

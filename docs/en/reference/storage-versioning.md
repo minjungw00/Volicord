@@ -1,30 +1,26 @@
 # Storage Versioning
 
-This document owns the baseline storage-versioning rules for current Volicord SQLite storage. It does not define public API behavior, Core authority meaning, security guarantees, or migration behavior outside the supported baseline.
+This document owns baseline storage-versioning rules for current Volicord SQLite storage. It does not define public API behavior, Core authority meaning, security guarantees, schema conversion chains, or compatibility conversion for old Runtime Homes.
 
 ## Storage Profile
 
 The current baseline storage profile is `baseline_sqlite_v3`.
 
-Registry storage and project-state storage record their own migration ledger rows. A database is current only when its schema version, migration names, database kind, and storage profile match the compiled baseline. Unknown newer versions, missing migration rows, partial ledgers, migration-name mismatch, and storage-profile mismatch are storage/runtime-unavailable conditions. Store code must not guess record meaning, silently rewrite data, or convert unsupported profiles.
+Baseline storage uses the canonical SQL sources [`registry.sql`](../../../crates/volicord-store/src/schema/registry.sql) and [`project.sql`](../../../crates/volicord-store/src/schema/project.sql). Runtime Home initialization applies those sources to empty SQLite databases. Baseline storage does not create `schema_migrations`, `schema_version`, `migration_version`, `storage_version`, or equivalent storage-version fields.
 
-Baseline registry storage includes Runtime Home identity, installation profile
-records, repository-root-based project registrations, project aliases, Agent
-Connection records, `connection_projects`, and `guard_installations`.
-Baseline project-state storage includes Core state projection records,
-`authority_events`, replay rows, staged artifacts, persistent artifacts,
-evidence, user judgments, `local_web_consent_tokens`, runs, blockers,
-`write_tickets`, host-observation records, and session-watch records.
+A database is usable only when its table shape, columns, indexes, foreign keys, constraints, and stored `storage_profile` match the current baseline. Unknown tables that represent an old schema ledger, missing required tables, forbidden storage version columns, storage-profile mismatch, and malformed required records are storage/runtime-unavailable conditions. Store code must not guess record meaning, silently rewrite data, or convert unsupported storage. Existing Runtime Homes with incompatible storage must fail clearly and require Runtime Home recreation unless the focused owners explicitly define a future compatibility-conversion contract.
+
+Baseline registry storage includes Runtime Home identity, installation profile records, repository-root-based project registrations, project aliases, Agent Connection records, `connection_projects`, and `guard_installations`. Baseline project-state storage includes Core state projection records, `authority_events`, replay rows, staged artifacts, persistent artifacts, evidence, user judgments, `local_web_consent_tokens`, runs, blockers, `write_tickets`, host-observation records, and session-watch records.
 
 ## Project State Version
 
-`project_state.state_version` is the project-wide Core state clock for committed authority state changes.
+`project_state.state_version` is the project-wide Core state clock for committed authority state changes. It is not a schema version, migration version, storage version, or compatibility marker.
 
-It increments only when a complete owner-allowed state-changing transaction commits. It does not increment for rejected requests, dry-run responses, read-only results, startup checks, host verification, migration metadata, lock acquisition, status projection, rendered reports, or failed transactions.
+It increments only when a complete owner-allowed state-changing transaction commits. It does not increment for rejected requests, dry-run responses, read-only results, startup checks, host verification, schema initialization, storage-profile validation, lock acquisition, status projection, rendered reports, or failed transactions.
 
 Every newly committed authority mutation appends at least one durable `authority_events` row in the same transaction as the current projection updates. A normal committed mutation appends exactly one authority event. If an owner explicitly defines an event batch, all rows in that batch share the single resulting `project_state.state_version` for that committed state transition.
 
-`tasks.state_version` is not a baseline authority field. A non-baseline `tasks.state_version` column is ignored metadata only and must not be used as a conflict, freshness, lock, or write-ticket basis.
+`tasks.state_version` is not a baseline authority field. A non-baseline `tasks.state_version` column is invalid storage shape and must not be used as a conflict, freshness, lock, or write-ticket basis.
 
 Related fields:
 
@@ -74,19 +70,14 @@ Examples:
 - corrupt typed owner state
 - idempotency request-hash conflict
 - invocation-context mismatch
+- incompatible existing storage shape
 
-Retry follows the rejected reason: refresh state for stale version conflicts, fix invalid input for validation failures, use the User Channel for missing user judgments, or use the required write-ticket flow when write compatibility is still needed.
-
-## Migration Boundary
-
-Migration semantics describe how supported storage profile or schema-version changes preserve Core authority records. Supported migration execution exists only when [Scope](scope.md), [Storage Records](storage-records.md), [Storage DDL](storage-ddl.md), and this document define the version, storage profile, validation, preservation, repair, retry, and metadata-advance behavior.
-
-Migration does not create a public `project_state.state_version` increment, Core event, replay record, or public method effect unless a focused owner explicitly defines that effect.
+Retry follows the rejected reason: refresh state for stale version conflicts, fix invalid input for validation failures, use the User Channel for missing user judgments, use the required write-ticket flow when write compatibility is still needed, or recreate the Runtime Home when storage is incompatible.
 
 ## Owner Links
 
 - Record-family overview and storage-owned values: [Storage Records](storage-records.md)
-- SQLite DDL, constraints, indexes, foreign keys, and migration table shape: [Storage DDL](storage-ddl.md)
+- SQLite DDL, constraints, indexes, and foreign keys: [Storage DDL](storage-ddl.md)
 - Method storage effects: [Storage Effects](storage-effects.md)
 - Public conflict behavior: [API error precedence](api/error-precedence.md#state-conflict-behavior)
 - Public invocation-context mismatch code: [API error codes](api/error-codes.md#errorcode-invocation-context-mismatch)

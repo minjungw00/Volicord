@@ -105,7 +105,7 @@ acceptance decisions, close-readiness state, or residual-risk decisions.
   - `cargo test --all-targets --all-features`
 - Use narrower Cargo commands only when the repository structure or task scope
   clearly calls for them, and report the reason.
-- When editing Storage DDL, migrations, or schema validation code, also run:
+- When editing Storage DDL, canonical SQL, or schema validation code, also run:
   - `cargo test -p volicord-store --test storage_ddl_contract`
 - When implementation work also changes maintained documentation, run the
   applicable documentation validation from `docs/en/maintain/validation.md` or

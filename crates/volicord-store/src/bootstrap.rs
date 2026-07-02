@@ -6,11 +6,11 @@ use sha2::{Digest, Sha256};
 use volicord_types::BASELINE_PROJECT_ENFORCEMENT_PROFILE_JSON;
 
 use crate::{
-    migrations::{PROJECT_STATE_SCHEMA_VERSION, REGISTRY_SCHEMA_VERSION, STORAGE_PROFILE},
     runtime_home::{
         normalize_lexical_path, paths_equal_for_boundary, validate_project_home_boundary,
         validate_runtime_home_product_repository, RuntimePathBoundaryError,
     },
+    schema::STORAGE_PROFILE,
     sqlite::{
         open_project_state_database, open_registry_database, project_home_path, registry_db_path,
         with_immediate_transaction, PROJECT_STATE_DB_FILE,
@@ -28,7 +28,6 @@ pub struct RuntimeHomeRecord {
     pub registry_db_path: PathBuf,
     pub runtime_home_id: String,
     pub storage_profile: String,
-    pub schema_version: i64,
     pub metadata_json: String,
     pub created_at: String,
     pub updated_at: String,
@@ -118,7 +117,6 @@ pub fn initialize_runtime_home(
                 runtime_home_path,
                 registry_db_path,
                 storage_profile,
-                schema_version,
                 metadata_json,
                 created_at,
                 updated_at
@@ -130,7 +128,6 @@ pub fn initialize_runtime_home(
                 ?3,
                 ?4,
                 ?5,
-                ?6,
                 strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
                 strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
             )",
@@ -139,7 +136,6 @@ pub fn initialize_runtime_home(
                 runtime_home_text,
                 registry_path_text,
                 STORAGE_PROFILE,
-                REGISTRY_SCHEMA_VERSION,
                 metadata_json
             ],
         )?;
@@ -392,7 +388,6 @@ fn write_project_registration_from_validated_paths(
             "INSERT INTO project_state (
                 project_id,
                 storage_profile,
-                schema_version,
                 created_at,
                 updated_at,
                 metadata_json,
@@ -401,21 +396,18 @@ fn write_project_registration_from_validated_paths(
             VALUES (
                 ?1,
                 ?2,
+                strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+                strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
                 ?3,
-                strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
-                strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
-                ?4,
-                ?5
+                ?4
             )
             ON CONFLICT(project_id) DO UPDATE SET
                 storage_profile = excluded.storage_profile,
-                schema_version = excluded.schema_version,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
                 metadata_json = excluded.metadata_json",
             params![
                 registration.project_internal_id,
                 STORAGE_PROFILE,
-                PROJECT_STATE_SCHEMA_VERSION,
                 registration.metadata_json,
                 BASELINE_PROJECT_ENFORCEMENT_PROFILE_JSON
             ],
@@ -782,7 +774,6 @@ fn runtime_home_record_from_conn(
         "SELECT
             runtime_home_id,
             storage_profile,
-            schema_version,
             metadata_json,
             created_at,
             updated_at
@@ -795,10 +786,9 @@ fn runtime_home_record_from_conn(
                 registry_db_path: registry_path.clone(),
                 runtime_home_id: row.get(0)?,
                 storage_profile: row.get(1)?,
-                schema_version: row.get(2)?,
-                metadata_json: row.get(3)?,
-                created_at: row.get(4)?,
-                updated_at: row.get(5)?,
+                metadata_json: row.get(2)?,
+                created_at: row.get(3)?,
+                updated_at: row.get(4)?,
             })
         },
     )
@@ -1079,7 +1069,6 @@ mod tests {
     use crate::{
         core_pipeline::CoreProjectStore,
         inspection::{inspect_registry_database, DatabaseInspection},
-        migrations::PROJECT_STATE_DATABASE_KIND,
         sqlite::{open_project_state_database, open_read_only_database},
     };
     use volicord_test_support::TempRuntimeHome;
@@ -1554,14 +1543,17 @@ mod tests {
         )?;
         let conn = open_project_state_database(&alternate_state_path)?;
         drop(conn);
-        let migrations_before = migration_count(&alternate_state_path)?;
+        let metadata_before = fs::metadata(&alternate_state_path)?;
+        let modified_before = metadata_before.modified()?;
 
         replace_project_state_db_path(runtime_home.path(), project_id, &alternate_state_path)?;
 
         let open_error = CoreProjectStore::open(runtime_home.path(), &ProjectId::new(project_id))
             .expect_err("Core store open should reject mismatched state_db_path");
         assert_state_db_path_mismatch(open_error, &alternate_state_path, &expected_state_path);
-        assert_eq!(migration_count(&alternate_state_path)?, migrations_before);
+        let metadata_after = fs::metadata(&alternate_state_path)?;
+        assert_eq!(metadata_after.len(), metadata_before.len());
+        assert_eq!(metadata_after.modified()?, modified_before);
         let lookup_error = project_record(runtime_home.path(), project_id)
             .expect_err("mismatched state_db_path should be rejected by project lookup");
         assert_state_db_path_mismatch(lookup_error, &alternate_state_path, &expected_state_path);
@@ -1768,17 +1760,6 @@ mod tests {
             rusqlite::params![project_id, project_home.to_string_lossy().as_ref()],
         )?;
         Ok(())
-    }
-
-    fn migration_count(state_path: &Path) -> StoreResult<i64> {
-        let conn = open_read_only_database(state_path)?;
-        Ok(conn.query_row(
-            "SELECT COUNT(*)
-               FROM schema_migrations
-              WHERE database_kind = ?1",
-            [PROJECT_STATE_DATABASE_KIND],
-            |row| row.get(0),
-        )?)
     }
 
     fn assert_registry_record_unchanged_and_visible(

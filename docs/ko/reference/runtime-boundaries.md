@@ -10,7 +10,7 @@ Volicord 구현은 이 저장소가 유지하는 구현 집합입니다. Volicor
 |---|---|
 | 제품/시스템인 Volicord와 저장소가 유지하는 구현 집합인 Volicord 구현의 구분. | 공개 API 동작, 공개 스키마 형태, 메서드별 효과. |
 | Volicord 소스 저장소, Volicord 설치, 실행 중인 실행 파일 역할의 구분. | 릴리스 패키징 정책이나 필수 설치 루트 배치. |
-| `Product Repository` 정의와 `Product Repository` API 경로 정규화. | 저장소 기록 배치, 잠금, 마이그레이션, 버전 관리, 아티팩트 생명주기 세부사항. |
+| `Product Repository` 정의와 `Product Repository` API 경로 정규화. | 저장소 기록 배치, 잠금, 스키마 초기화, 버전 관리, 아티팩트 생명주기 세부사항. |
 | `Volicord Runtime Home` 정의. | API 메서드 동작이나 공개 스키마 형태. |
 | Volicord 구현 파일, 제품 파일, 런타임 데이터, 외부 MCP 호스트 설정의 분리. 정확한 Runtime Home/Product Repository 경로 관계 계약을 포함합니다. | 자세한 보안 보장 의미나 보안 비주장. |
 | 로컬 파일 접근과 위치가 권한을 만들지 않는다는 규칙. | 상태 보기 권한, 템플릿 본문, 렌더링된 표시의 최신성. |
@@ -243,7 +243,7 @@ Native Windows에서 Runtime Home/Product Repository 경계 검증은 로컬 dri
 
 저장소 담당 문서가 정의하는 것:
 - 어떤 Volicord 기록, 메타데이터, 아티팩트 데이터, 운영 진단이 `Volicord Runtime Home`에 속하는지
-- 그 기록이 어떤 형태를 갖고, 어떻게 버전 관리, 검증, 마이그레이션, 갱신되는지
+- 그 기록이 어떤 형태를 갖고, 어떻게 상태 버전 시계, 검증, 초기화, 갱신으로 다루어지는지
 - 어떤 메서드 분기가 저장 효과를 만드는지
 
 보안 담당 문서가 정의하는 것:
@@ -279,7 +279,7 @@ Native Windows에서 Runtime Home/Product Repository 경계 검증은 로컬 dri
 ## 관련 담당 문서
 
 - [보안](security.md): 보안 주장, 비주장, 신뢰 경계, 보장 수준.
-- [저장소 기록](storage-records.md), [저장 효과](storage-effects.md), [아티팩트 저장소](storage-artifacts.md), [저장소 버전 관리](storage-versioning.md): 저장소 기록 배치, 효과, 아티팩트, 마이그레이션, 버전 관리, 런타임 데이터 세부사항.
+- [저장소 기록](storage-records.md), [저장 효과](storage-effects.md), [아티팩트 저장소](storage-artifacts.md), [저장소 버전 관리](storage-versioning.md): 저장소 기록 배치, 효과, 아티팩트, 스키마 초기화, 버전 관리, 런타임 데이터 세부사항.
 - [API 메서드](api/methods.md)와 메서드 담당 문서: 메서드 경로와 메서드 동작.
 - [Core 모델](core-model.md): Core 권한, User Channel 판단 경계, `actor_source`, 쓰기 티켓, 수락, 잔여 위험.
 - [보안](security.md): `operation_category`, 보안 비보장, Agent Connection 권한 추론 금지.

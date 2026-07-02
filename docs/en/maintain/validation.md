@@ -148,8 +148,8 @@ matters as a durable contract, test the positive current shape instead:
 
 - CLI help exposes only the current public option allowlist for the command.
 - Maintained shell examples use supported `volicord` commands and options.
-- Storage schema checks assert current tables, columns, indexes, constraints,
-  migrations, and validation behavior.
+- Storage schema checks assert current canonical SQL, tables, columns, indexes,
+  constraints, initialization, and validation behavior.
 - MCP preflight and transport/schema checks assert current startup behavior,
   public tool exposure, and public schema projection. Public MCP schemas must
   keep hiding internal envelope and invocation fields as a stable abstraction
@@ -243,18 +243,22 @@ clearly calls for them, and report the reason.
 
 ## Storage DDL Contract Check
 
-When editing Storage DDL, `volicord-store` migrations, or schema validation code,
-run the focused owner-to-implementation consistency check:
+When editing Storage DDL, `volicord-store` canonical SQL, or schema validation
+code, run the focused owner-to-implementation consistency check:
 
 ```sh
 cargo test -p volicord-store --test storage_ddl_contract
 ```
 
 This check compares the authoritative English and Korean Storage DDL SQL with
-the latest schemas produced by executable migrations in in-memory SQLite
+the schemas initialized from canonical registry/project SQL in in-memory SQLite
 databases. It checks schema semantics such as tables, columns, defaults,
 constraints, foreign keys, indexes, partial indexes, and maintained triggers
 without comparing Markdown prose or SQL formatting.
+
+The repository documentation check also validates that the marked canonical SQL
+blocks in English and Korean Storage DDL match the canonical registry/project
+SQL source files.
 
 This is a repository maintenance and implementation consistency check. It is
 distinct from general documentation structure validation, public runtime

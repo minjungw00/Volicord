@@ -16,7 +16,7 @@ This document owns:
 This document does not own:
 
 - API request fields, response branches, schema shapes, exact value sets, or method behavior
-- storage records, DDL, state-version effects, artifact bytes, locks, migrations, or persistence layout
+- storage records, DDL, state-version effects, artifact bytes, locks, schema initialization, or persistence layout
 - rendered projection bodies, template text, display labels, or user workflow instructions
 - security guarantee wording, access-boundary claims, or out-of-scope capability catalogs
 

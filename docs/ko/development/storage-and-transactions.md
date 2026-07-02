@@ -27,9 +27,9 @@
 - SQLite 열기, 검증, 트랜잭션 도우미는
   [`crates/volicord-store/src/sqlite.rs`](../../../crates/volicord-store/src/sqlite.rs)에
   있습니다.
-- 기준 마이그레이션 적용은
-  [`crates/volicord-store/src/migrations.rs`](../../../crates/volicord-store/src/migrations.rs)에
-  있습니다.
+- canonical schema SQL과 초기화 도우미는
+  [`crates/volicord-store/src/schema.rs`](../../../crates/volicord-store/src/schema.rs)와
+  [`crates/volicord-store/src/schema/`](../../../crates/volicord-store/src/schema/)에 있습니다.
 - 프로젝트 로컬 Core Store 접근은
   [`crates/volicord-store/src/core_pipeline.rs`](../../../crates/volicord-store/src/core_pipeline.rs)의
   `CoreProjectStore`가 담당합니다.
@@ -79,7 +79,7 @@ flowchart LR
 표시는 호출자가 상태를 보는 데 도움을 주지만, 표시만으로 권한, 쓰기 티켓, 증거, 수락,
 닫기 준비 상태를 만들지 않습니다.
 
-## 부트스트랩과 마이그레이션 경계
+## 부트스트랩과 스키마 경계
 
 관리 설정은 공개 메서드 실행이 가능해지기 전에 Store 부트스트랩과 검사
 경로를 사용합니다.
@@ -92,8 +92,8 @@ flowchart LR
    `initialize_runtime_home`, `register_project`, `ensure_agent_connection`,
    `add_connection_project`로 Runtime Home 메타데이터를 초기화하고 프로젝트와
    Agent Connection 관계를 등록합니다.
-3. 기존 상태는 설정 경로가 허용하는 범위에서 SQLite 도우미와
-   마이그레이션을 통해 열고 검증합니다.
+3. 빈 registry/project 상태 데이터베이스는 canonical SQL에서 초기화하고,
+   기존 상태는 SQLite 도우미가 현재 스키마 형태와 저장소 프로필을 검증한 뒤에만 엽니다.
 4. 이후 공개 메서드 호출은 CLI 설정 코드를 거치지 않고
    `CoreProjectStore::open`으로 프로젝트를 엽니다.
 

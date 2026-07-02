@@ -25,8 +25,9 @@ workspace. The implementation keeps these locations separate:
   [`crates/volicord-store/src/bootstrap.rs`](../../../crates/volicord-store/src/bootstrap.rs).
 - SQLite open, validation, and transaction helpers live in
   [`crates/volicord-store/src/sqlite.rs`](../../../crates/volicord-store/src/sqlite.rs).
-- Baseline migration application lives in
-  [`crates/volicord-store/src/migrations.rs`](../../../crates/volicord-store/src/migrations.rs).
+- Canonical schema SQL and initialization helpers live in
+  [`crates/volicord-store/src/schema.rs`](../../../crates/volicord-store/src/schema.rs)
+  and [`crates/volicord-store/src/schema/`](../../../crates/volicord-store/src/schema/).
 - Project-local Core Store access lives in
   [`crates/volicord-store/src/core_pipeline.rs`](../../../crates/volicord-store/src/core_pipeline.rs)
   as `CoreProjectStore`.
@@ -77,7 +78,7 @@ that replay. Read-time projections and rendered displays help callers see
 state, but they do not create authority, write tickets, evidence, acceptance,
 or close readiness by display alone.
 
-## Bootstrap And Migration Boundary
+## Bootstrap And Schema Boundary
 
 Administrative setup uses Store bootstrap and inspection paths before public
 method execution is available:
@@ -88,8 +89,9 @@ method execution is available:
    [`crates/volicord-cli/src/registration.rs`](../../../crates/volicord-cli/src/registration.rs).
 2. Store bootstrap initializes Runtime Home metadata and registers projects and
    Agent Connections through `initialize_runtime_home`, `register_project`, and connection registration helpers.
-3. Existing state is opened and validated through SQLite helpers and migrations
-   where the setup path allows it.
+3. Empty registry/project state databases are initialized from canonical SQL,
+   and existing state is opened only after SQLite helpers validate the current
+   schema shape and storage profile.
 4. Public method calls later open a project through `CoreProjectStore::open`
    rather than going through CLI setup code.
 
