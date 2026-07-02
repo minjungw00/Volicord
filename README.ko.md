@@ -157,9 +157,9 @@ Runtime Home을 초기화하고, 설치 프로필을 기록하며, 선택한 Pro
 MCP 설정을 씁니다. 또한 Volicord 관리 지침과 policy 메타데이터를 쓰고 통합 상태를
 기록합니다. `--profile record`는 호스트 lifecycle hook 설치나 session watcher를 요구하지
 않으며 native Windows에서 지원되는 프로필입니다. `--profile observe`는 지원되는 host
-hook과 session watcher capability를 요구하고 native Windows에서는 지원되지 않습니다. 지원되는
-observe 호스트에서 필수 hook 지원이 빠진 경우에는 observe 설정을 사용하려면
-`--allow-degraded`를 명시적으로 선택해야 합니다.
+hook과 session watcher capability를 요구하고 native Windows에서는 지원되지 않습니다.
+Observe 전제조건을 사용할 수 없으면 `--profile record`를 사용하거나, observe를 다시
+실행하기 전에 지원되는 호스트, 플랫폼, 저장소 설정을 준비합니다.
 
 명령이 `action_required`를 보고하면 이름 붙은 호스트 통제 동작이나 로컬 동작을 따릅니다.
 예를 들면 호스트 restart 또는 reload, 프로젝트 MCP 설정 승인, 프로젝트 trust, 명령

@@ -156,7 +156,8 @@ volicord init --host codex --repo /path/to/your-product-repo --profile record
 
 For observe setup, use the full init contract in the
 [Administrative CLI Reference](../reference/admin-cli.md#agent-host-setup-and-init);
-missing verified hook support requires an explicit degraded opt-in.
+missing host-hook or session watcher support must fail with an actionable
+diagnostic. Use `--profile record` when observe prerequisites are unavailable.
 
 On native Windows, observe setup is not supported. If init reports
 `OBSERVE_WINDOWS_UNSUPPORTED`, rerun with the record profile:
@@ -165,8 +166,8 @@ On native Windows, observe setup is not supported. If init reports
 volicord init --host codex --repo C:\path\to\your-product-repo --profile record
 ```
 
-Use WSL2, Linux, or macOS for observe only where the selected host hook contract
-is supported and tested.
+Use WSL2, Linux, or macOS for observe only where the selected host hook and
+session watcher contracts are supported and tested.
 
 For lower-level connection recovery, pass the host and repository to connect
 explicitly:

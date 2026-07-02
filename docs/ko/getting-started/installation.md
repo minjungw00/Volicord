@@ -108,9 +108,9 @@ volicord init --help
 일반적인 첫 저장소 연결은 [빠른 시작](quickstart.md)의
 `volicord init --host HOST --repo PATH --profile record`로 이어갑니다. `volicord init`은
 선택한 Product Repository를 연결하고, 프로젝트 범위 MCP 설정을 쓰며, 통합 상태를
-기록하는 동안 Runtime Home과 설치 프로필을 초기화할 수 있습니다. Observe hook 설정에는
-[관리 CLI 참조](../reference/admin-cli.md#agent-host-setup-and-init)에 설명된 검증된 hook
-지원 또는 명시적 degraded opt-in 요구사항이 적용됩니다.
+기록하는 동안 Runtime Home과 설치 프로필을 초기화할 수 있습니다. Observe 설정에는
+[관리 CLI 참조](../reference/admin-cli.md#agent-host-setup-and-init)에 설명된 검증된 host
+hook 및 session watcher 요구사항이 적용됩니다.
 Native Windows에서는 `--profile record`를 사용합니다. `--profile observe`는 Windows
 host hook과 watcher 동작이 구현되고 테스트되기 전까지 unsupported-platform 진단으로
 실패합니다.
@@ -238,10 +238,10 @@ docker run --rm -it \
 
 Docker에서 record 프로필 설정을 하려면 같은 mount로
 `volicord init --host HOST --repo /workspace --profile record`를 실행합니다. Observe Docker
-설정에는 컨테이너를 쓰지 않을 때와 같은 검증된 hook 지원 또는 명시적 degraded opt-in
-요구사항이 적용됩니다. Runtime Home에 serve할 프로젝트 등록과 Agent Connection이 들어간
-뒤, 예를 들어 그와 일치하는 `volicord init` 실행이나 낮은 수준의 `volicord connect`
-실행 뒤, 운영자가 제공한 token으로 로컬 HTTP MCP endpoint를 시작합니다.
+설정에는 컨테이너를 쓰지 않을 때와 같은 검증된 host hook 및 session watcher 요구사항이
+적용됩니다. Runtime Home에 serve할 프로젝트 등록과 Agent Connection이 들어간 뒤, 예를
+들어 그와 일치하는 `volicord init` 실행이나 낮은 수준의 `volicord connect` 실행 뒤,
+운영자가 제공한 token으로 로컬 HTTP MCP endpoint를 시작합니다.
 
 ```sh
 VOLICORD_HTTP_TOKEN="$(openssl rand -hex 32)"
@@ -280,9 +280,9 @@ volicord init --host codex --repo /path/to/your-product-repo --profile record
 ```
 
 `/path/to/your-product-repo`는 에이전트에게 작업을 요청할 Product Repository의 경로
-예시입니다. 선택한 호스트에 검증된 필수 hook 지원이 있거나 `--allow-degraded`로 degraded
-observe 설정을 명시적으로 선택할 때만 `--profile observe`를 사용합니다. Native
-Windows에서는 observe가 지원되지 않으므로 `--profile record`를 사용합니다.
+예시입니다. 선택한 호스트, 플랫폼, 저장소 설정이 검증된 observe 전제조건을 만족할 때만
+`--profile observe`를 사용합니다. Native Windows에서는 observe가 지원되지 않으므로
+`--profile record`를 사용합니다.
 
 전체 첫 실행 경로는 [빠른 시작](quickstart.md)을 계속 읽습니다. 호스트별
 세부사항은 [에이전트 호스트 설정](../guides/agent-host-setup.md)을 봅니다.

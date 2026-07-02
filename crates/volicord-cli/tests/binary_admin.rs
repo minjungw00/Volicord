@@ -69,7 +69,6 @@ fn binary_help_uses_agent_connection_model() -> Result<(), Box<dyn Error>> {
     let init_text = stdout(&init_help);
     assert!(init_text.contains("volicord init --host codex|claude-code --repo PATH"));
     assert!(init_text.contains("--profile record|observe"));
-    assert!(init_text.contains("--allow-degraded"));
     assert!(init_text.contains("--home PATH"));
     assert!(init_text.contains("--mcp-command PATH"));
     assert!(init_text.contains("--dry-run"));
@@ -114,7 +113,6 @@ fn binary_help_options_match_supported_contracts() -> Result<(), Box<dyn Error>>
             "--repo",
             "--shared",
             "--global",
-            "--allow-degraded",
             "--read-only",
             "--dry-run",
             "--task",
@@ -191,7 +189,6 @@ fn binary_help_options_match_supported_contracts() -> Result<(), Box<dyn Error>>
             "--host",
             "--repo",
             "--profile",
-            "--allow-degraded",
             "--home",
             "--mcp-command",
             "--dry-run",
@@ -454,11 +451,6 @@ fn init_codex_guarded_without_degraded_opt_in_generates_hooks() -> Result<(), Bo
     assert_success(&output);
     let value = json_stdout(&output)?;
     assert_eq!(value["host"], "codex");
-    assert_eq!(value["degraded"]["allowed"], false);
-    assert_eq!(
-        value["degraded"]["missing_required_hooks"],
-        serde_json::json!([])
-    );
     assert_eq!(value["states"]["hook_config"], "created");
     assert_eq!(value["states"]["required_guard_phases"], "configured");
     assert_eq!(value["states"]["guard_installation"], "reload_required");
@@ -528,11 +520,6 @@ fn init_claude_code_guarded_without_degraded_opt_in_generates_hooks() -> Result<
     assert_success(&output);
     let value = json_stdout(&output)?;
     assert_eq!(value["host"], "claude-code");
-    assert_eq!(value["degraded"]["allowed"], false);
-    assert_eq!(
-        value["degraded"]["missing_required_hooks"],
-        serde_json::json!([])
-    );
     assert_eq!(value["states"]["hook_config"], "created");
     assert_eq!(value["states"]["guard_installation"], "reload_required");
     assert_eq!(value["states"]["prompt_capture"], "reload_required");
@@ -901,11 +888,6 @@ fn init_codex_record_profile_skips_host_hooks() -> Result<(), Box<dyn Error>> {
     );
     assert_eq!(value["states"]["post_tool_correlation_available"], false);
     assert_eq!(value["states"]["bypass_detection_active"], false);
-    assert_eq!(value["degraded"]["allowed"], false);
-    assert_eq!(
-        value["degraded"]["missing_required_hooks"],
-        serde_json::json!([])
-    );
     assert!(repo_root.join(".codex/config.toml").exists());
     assert!(repo_root.join("AGENTS.md").exists());
     assert!(repo_root.join(".volicord/policy.json").exists());
@@ -935,6 +917,87 @@ fn init_codex_record_profile_skips_host_hooks() -> Result<(), Box<dyn Error>> {
 
 #[cfg(unix)]
 #[test]
+fn init_codex_record_profile_succeeds_without_host_hooks_or_watcher() -> Result<(), Box<dyn Error>>
+{
+    let runtime_home = TempRuntimeHome::new("cli-bin-init-record-without-observe-prereqs")?;
+    let repo_root = create_git_repo(&runtime_home, "product-repo")?;
+    let bin_dir = runtime_home.path().join("bin");
+    write_fake_codex(&bin_dir)?;
+    write_fake_mcp(&bin_dir)?;
+
+    let output = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--host",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--profile",
+            "record",
+            "--json",
+        ],
+        &[
+            ("PATH", path_env(&[bin_dir.as_path()])),
+            ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
+        ],
+    )?;
+
+    assert_success(&output);
+    let value = json_stdout(&output)?;
+    assert_eq!(value["selected_profile"], "record");
+    assert_eq!(value["states"]["hook_config"], "disabled");
+    assert_eq!(value["states"]["guard_effective"], "inactive");
+    assert!(repo_root.join(".codex/config.toml").exists());
+    assert!(!repo_root.join(".codex/hooks.json").exists());
+    assert!(!repo_root.join(".codex/rules/volicord.rules").exists());
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn init_codex_observe_profile_fails_without_observe_prerequisites() -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-init-observe-missing-prereqs")?;
+    let repo_root = create_git_repo(&runtime_home, "product-repo")?;
+    let unsupported_runtime_home = repo_root.join(".volicord-runtime");
+    let bin_dir = runtime_home.path().join("bin");
+    write_fake_codex(&bin_dir)?;
+    write_fake_mcp(&bin_dir)?;
+
+    let output = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--host",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--profile",
+            "observe",
+            "--home",
+            path_text(&unsupported_runtime_home).as_str(),
+            "--json",
+        ],
+        &[
+            ("PATH", path_env(&[bin_dir.as_path()])),
+            ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
+        ],
+    )?;
+
+    assert!(!output.status.success());
+    let diagnostic = stderr(&output);
+    assert!(diagnostic.contains("OBSERVE_WATCHER_UNSUPPORTED"));
+    assert!(diagnostic.contains("--profile record"));
+    assert!(diagnostic.contains("supported host"));
+    assert!(diagnostic.contains("repository configuration"));
+    assert!(!repo_root.join(".codex/hooks.json").exists());
+    assert!(!repo_root.join(".volicord/policy.json").exists());
+    assert!(!repo_root.join("AGENTS.md").exists());
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
 fn init_rejects_invalid_profile_without_artifacts() -> Result<(), Box<dyn Error>> {
     let runtime_home = TempRuntimeHome::new("cli-bin-init-invalid-profile")?;
     let repo_root = create_git_repo(&runtime_home, "product-repo")?;
@@ -949,7 +1012,6 @@ fn init_rejects_invalid_profile_without_artifacts() -> Result<(), Box<dyn Error>
             path_text(&repo_root).as_str(),
             "--profile",
             "managed",
-            "--allow-degraded",
             "--json",
         ],
         &[],
@@ -995,11 +1057,6 @@ fn init_dry_run_does_not_write_runtime_or_repo_files() -> Result<(), Box<dyn Err
     assert_eq!(value["status"], "dry_run");
     assert_eq!(value["host"], "codex");
     assert_eq!(value["selected_profile"], "observe");
-    assert_eq!(value["degraded"]["allowed"], false);
-    assert_eq!(
-        value["degraded"]["missing_required_hooks"],
-        serde_json::json!([])
-    );
     assert_eq!(value["profile"]["status"], "planned");
     assert_eq!(value["mcp"]["command"], "volicord");
     assert_eq!(value["mcp"]["args"][0], "mcp");
@@ -1150,8 +1207,6 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     assert_eq!(value["states"]["post_tool_correlation_available"], false);
     assert_eq!(value["states"]["bypass_detection_active"], false);
     assert_eq!(value["states"]["local_web_consent_available"], false);
-    assert_eq!(value["states"]["guard_degraded_allowed"], false);
-    assert_eq!(value["degraded"]["allowed"], false);
     assert_eq!(value["states"]["agents_managed_block"], "updated");
     assert_eq!(value["states"]["volicord_policy_file"], "created");
     assert_eq!(value["states"]["rule_instruction_config"], "created");
@@ -1217,7 +1272,6 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     assert!(init_text.contains("cooperative_pre_tool_denial=no"));
     assert!(init_text.contains("post_tool_correlation=no"));
     assert!(init_text.contains("os_enforced=no"));
-    assert!(init_text.contains("guard_degraded_allowed: no"));
     assert!(init_text.contains("agents_block_state: unchanged"));
     assert!(init_text.contains("volicord_policy_file_state: unchanged"));
     assert!(init_text.contains("rule_instruction_config_state: unchanged"));
@@ -1375,7 +1429,6 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
         capability["policy_hash"],
         value["guard_installation"]["policy_hash"]
     );
-    assert_eq!(capability["allow_degraded"], false);
     assert_eq!(capability["prompt_capture"], true);
     assert_eq!(capability["selected_profile"], "observe");
     assert_eq!(capability["native_host_output_adapter"], "codex");
@@ -1498,10 +1551,8 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     assert_eq!(second_json["connection"]["connection_id"], connection_id);
     assert_eq!(second_json["profile"]["status"], "reused");
     assert_eq!(second_json["states"]["guard_installation"], "configured");
-    assert_eq!(second_json["states"]["guard_degraded_allowed"], false);
     assert_eq!(second_json["states"]["hook_config"], "unchanged");
     assert_eq!(second_json["states"]["prompt_capture"], "configured");
-    assert_eq!(second_json["degraded"]["allowed"], false);
     assert_eq!(
         count_occurrences(
             &fs::read_to_string(repo_root.join("AGENTS.md"))?,
@@ -1554,8 +1605,6 @@ fn init_claude_code_guarded_writes_project_mcp_policy_and_rule() -> Result<(), B
     assert_eq!(value["host"], "claude-code");
     assert_eq!(value["selected_profile"], "observe");
     assert_eq!(value["states"]["guard_installation"], "reload_required");
-    assert_eq!(value["states"]["guard_degraded_allowed"], false);
-    assert_eq!(value["degraded"]["allowed"], false);
     assert_eq!(value["states"]["prompt_capture"], "reload_required");
     assert_eq!(value["mcp"]["command"], "volicord");
     let connection_id = value["connection"]["connection_id"]
@@ -1630,7 +1679,6 @@ fn init_claude_code_guarded_writes_project_mcp_policy_and_rule() -> Result<(), B
         capability["host_capabilities"]["user_prompt_submit_hook"],
         true
     );
-    assert_eq!(capability["allow_degraded"], false);
     assert!(capability["missing_required_hooks"]
         .as_array()
         .expect("missing hooks should be an array")
@@ -2058,7 +2106,6 @@ fn connection_verify_reports_missing_mcp_config_as_primary_action() -> Result<()
             path_text(&repo_root).as_str(),
             "--profile",
             "observe",
-            "--allow-degraded",
             "--json",
         ],
         &[
@@ -2092,7 +2139,7 @@ fn connection_verify_reports_missing_mcp_config_as_primary_action() -> Result<()
     assert_eq!(
         value["primary_next_action"]["command"],
         format!(
-            "volicord init --host codex --repo {} --allow-degraded",
+            "volicord init --host codex --repo {}",
             path_text(&repo_root)
         )
     );
@@ -2122,7 +2169,6 @@ fn connection_status_reports_missing_guard_files_as_primary_action() -> Result<(
             path_text(&repo_root).as_str(),
             "--profile",
             "observe",
-            "--allow-degraded",
             "--json",
         ],
         &[
@@ -2179,7 +2225,6 @@ fn connection_status_reports_stale_guard_files_as_primary_action() -> Result<(),
             path_text(&repo_root).as_str(),
             "--profile",
             "observe",
-            "--allow-degraded",
             "--json",
         ],
         &[

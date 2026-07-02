@@ -110,13 +110,12 @@ know a reliable project-local hook schema or path for every required phase, init
 fails instead of treating `AGENTS.md` or `.volicord/policy.json` as enforcement.
 On native Windows, observe init fails with `OBSERVE_WINDOWS_UNSUPPORTED`
 because Windows host-hook wrappers and session watcher behavior are not
-implemented and tested; `--allow-degraded` does not override that platform
-rejection. Use `--profile record` on native Windows.
-Use `--allow-degraded` only when you explicitly want the degraded setup files
-and understand that required hook phases will be reported missing:
+implemented and tested. Use `--profile record` on native Windows.
+If observe prerequisites are unavailable, use `--profile record` or prepare a
+supported host, platform, and repository configuration before rerunning init:
 
 ```sh
-volicord init --host codex --repo /path/to/your-product-repo --profile observe --allow-degraded
+volicord init --host codex --repo /path/to/your-product-repo --profile record
 ```
 
 `volicord connection verify` and `volicord doctor` keep file health, required

@@ -10,7 +10,7 @@ and [MCP Transport](../reference/mcp-transport.md).
 This is not the default first-run path for one Product Repository. For ordinary
 first-run setup, use [Agent Host Setup](agent-host-setup.md) and
 `volicord init --host HOST --repo PATH --profile record`. Observe setup has the
-verified-hook or explicit degraded opt-in requirements described there. Use the
+supported host-hook and session watcher requirements described there. Use the
 lower-level `volicord connect` commands here only when one host-level or global
 host entry must route to more than one explicitly allowed repository.
 

@@ -26,15 +26,15 @@ project-bound `volicord mcp --stdio`.
 
 This fast path uses `--profile record`, which does not require host lifecycle
 hook installation or a session watcher. `--profile observe` requires verified
-support for all required host hook phases and session watcher observation; if
-hook support is missing, use `--allow-degraded` only when you explicitly want
-degraded observe files and missing-hook diagnostics. Observe can return
-cooperative host decisions and detect unrecorded changes after watcher coverage
-starts, but it does not provide OS enforcement, actor proof, network isolation,
-or a sandbox. On native Windows, use this `record` fast path because observe is
-not supported until Windows host hooks and watcher behavior are implemented and
-tested. Exact project naming, profile behavior, connection defaults, and
-internal identity behavior belong to
+support for all required host hook phases and session watcher observation. If
+those prerequisites are unavailable, use `--profile record` or prepare a
+supported host, platform, and repository configuration for observe before
+rerunning init. Observe can return cooperative host decisions and detect
+unrecorded changes after watcher coverage starts, but it does not provide OS
+enforcement, actor proof, network isolation, or a sandbox. On native Windows,
+use this `record` fast path because observe is not supported until Windows host
+hooks and watcher behavior are implemented and tested. Exact project naming,
+profile behavior, connection defaults, and internal identity behavior belong to
 [Administrative CLI Reference](../reference/admin-cli.md).
 
 If you choose observe setup instead of this `record` fast path, generated

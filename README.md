@@ -167,9 +167,9 @@ starts `volicord mcp --stdio`, writes Volicord-managed guidance and policy
 metadata, and records integration status. `--profile record` does not require
 host lifecycle hook installation or a session watcher and is the supported
 native Windows profile. `--profile observe` requires supported host hook and
-session watcher capabilities and is not supported on native Windows; when
-required hook support is missing on supported observe hosts, observe setup must
-be explicitly selected with `--allow-degraded`.
+session watcher capabilities and is not supported on native Windows. If observe
+prerequisites are unavailable, use `--profile record` or prepare a supported
+host, platform, and repository configuration for observe before rerunning init.
 
 If the command reports `action_required`, follow the named host-controlled or
 local action, such as restarting or reloading the host, approving project MCP

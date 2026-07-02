@@ -61,7 +61,7 @@ Supported baseline commands:
 ```text
 volicord --help
 volicord --version
-volicord init --host codex|claude-code --repo PATH [--profile record|observe] [--allow-degraded] [--home PATH] [--mcp-command PATH] [--dry-run] [--json]
+volicord init --host codex|claude-code --repo PATH [--profile record|observe] [--home PATH] [--mcp-command PATH] [--dry-run] [--json]
 volicord setup [--home PATH] [--link-bin PATH] [--mcp-command PATH] [--json]
 volicord doctor [--json]
 volicord connect [HOST] [--repo PATH] [--shared|--global] [--read-only] [--dry-run] [--json]
@@ -339,26 +339,29 @@ Guard-aware setup, status, verification, and doctor output report
 
 Observe initialization requires the selected host adapter to declare and verify
 support for every required lifecycle hook:
-`session-start`, `pre-tool`, `post-tool`, `prompt-capture`, and `stop`.
+`session-start`, `pre-tool`, `post-tool`, `prompt-capture`, and `stop`. It also
+requires session watcher snapshot support for the selected Product Repository.
 `AGENTS.md` and `.volicord/policy.json` are not host hook configuration. If the
 adapter does not know a reliable project-local hook schema or path for every
-required phase, init fails with `OBSERVE_HOOKS_UNSUPPORTED` unless the caller
-passes `--allow-degraded`. The explicit degraded opt-in may write MCP
-configuration, guidance, policy, and supported hook or rule files, but it records
-degraded guard status and reports missing required hook phases in human and JSON
-output. `record` does not require hook installation.
+required phase, init fails with `OBSERVE_HOOKS_UNSUPPORTED`. If the session
+watcher cannot snapshot the selected repository, init fails with
+`OBSERVE_WATCHER_UNSUPPORTED`. The recovery is to use `--profile record` for
+record-only setup or prepare a supported host, platform, and repository
+configuration for observe before rerunning init. `record` does not require hook
+installation or session watcher setup.
 
 On native Windows, init rejects `--profile observe` with
 `OBSERVE_WINDOWS_UNSUPPORTED` before planning or writing observe hook files.
-`--allow-degraded` does not override this platform rejection. Native Windows
-supports `--profile record`; use WSL2, Linux, or macOS for observe only where
-the selected host hook contract is supported and tested.
+Native Windows supports `--profile record`; use WSL2, Linux, or macOS for
+observe only where the selected host hook and watcher contracts are supported
+and tested.
 
 Codex observe initialization additionally requires the selected Product
 Repository to be a Git work tree root that supports cwd-independent wrapper
 resolution from subdirectory host sessions. When that prerequisite is not met,
-init fails instead of generating a bare relative hook path. Claude Code observe
-initialization uses the host project-directory placeholder described under
+init fails with `OBSERVE_HOOK_ROOT_UNSUPPORTED` instead of generating a bare
+relative hook path. Claude Code observe initialization uses the host
+project-directory placeholder described under
 [Guard hook commands](#guard-hook-commands).
 
 For `observe`, init records `reload_required` when the host still needs restart
@@ -391,8 +394,8 @@ Non-dry-run `volicord init`:
 - writes supported host rule files such as `.codex/rules/*.rules` or
   `.claude/rules/volicord.md`
 - records guard installation status in the Runtime Home registry
-- rejects `observe` initialization when required host hook
-  configuration is missing unless `--allow-degraded` was explicitly supplied
+- rejects `observe` initialization when required host hook configuration or
+  session watcher support is missing
 - rejects `observe` initialization on native Windows because Windows host-hook
   wrappers and watcher behavior are not implemented and tested
 - reports the required host restart, reload, approval, or trust action when the

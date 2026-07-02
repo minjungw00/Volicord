@@ -23,13 +23,13 @@ volicord init --host codex --repo /path/to/your-product-repo --profile record
 
 이 빠른 경로는 host lifecycle hook 설치나 session watcher를 요구하지 않는
 `--profile record`를 사용합니다. `--profile observe`는 모든 필수 host hook phase와
-session watcher 관찰에 대한 검증된 지원을 요구합니다. 지원이 빠져 있으면 degraded observe
-파일과 누락 hook 진단을 명시적으로 원할 때만 `--allow-degraded`를 사용합니다. Observe는
-협력형 host decision을 반환하고 watcher coverage 시작 뒤의 미기록 변경을 탐지할 수 있지만
-OS 집행, 행위자 증명, 네트워크 격리, sandbox를 제공하지 않습니다. Native Windows에서는
-Windows host hook과 watcher 동작이 구현되고 테스트되기 전까지 observe가 지원되지 않으므로
-이 `record` 빠른 경로를 사용합니다. 정확한 프로젝트 이름,
-프로필 동작, 연결 기본값, 내부 식별 정보 동작은
+session watcher 관찰에 대한 검증된 지원을 요구합니다. 이 전제조건을 사용할 수 없으면
+`--profile record`를 사용하거나, observe를 다시 실행하기 전에 지원되는 호스트, 플랫폼,
+저장소 설정을 준비합니다. Observe는 협력형 host decision을 반환하고 watcher coverage
+시작 뒤의 미기록 변경을 탐지할 수 있지만 OS 집행, 행위자 증명, 네트워크 격리, sandbox를
+제공하지 않습니다. Native Windows에서는 Windows host hook과 watcher 동작이 구현되고
+테스트되기 전까지 observe가 지원되지 않으므로 이 `record` 빠른 경로를 사용합니다. 정확한
+프로젝트 이름, 프로필 동작, 연결 기본값, 내부 식별 정보 동작은
 [관리 CLI 참조](../reference/admin-cli.md)가 담당합니다.
 
 이 `record` 빠른 경로 대신 observe 설정을 선택하면, 생성된 hook 명령은 호스트

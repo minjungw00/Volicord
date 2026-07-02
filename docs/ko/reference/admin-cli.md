@@ -53,7 +53,7 @@ MCP 전송 프로세스로 제한됩니다. `volicord inbox` 명령군은 사용
 ```text
 volicord --help
 volicord --version
-volicord init --host codex|claude-code --repo PATH [--profile record|observe] [--allow-degraded] [--home PATH] [--mcp-command PATH] [--dry-run] [--json]
+volicord init --host codex|claude-code --repo PATH [--profile record|observe] [--home PATH] [--mcp-command PATH] [--dry-run] [--json]
 volicord setup [--home PATH] [--link-bin PATH] [--mcp-command PATH] [--json]
 volicord doctor [--json]
 volicord connect [HOST] [--repo PATH] [--shared|--global] [--read-only] [--dry-run] [--json]
@@ -308,23 +308,25 @@ guard를 인식하는 setup, status, verification, doctor 출력은 `selected_pr
 
 `observe` 초기화에는 선택한 호스트 어댑터가 모든 필수 lifecycle hook인
 `session-start`, `pre-tool`, `post-tool`, `prompt-capture`, `stop` 지원을 선언하고
-검증할 수 있어야 합니다. `AGENTS.md`와 `.volicord/policy.json`은 호스트 hook 설정이
-아닙니다. 어댑터가 모든 필수 phase에 대해 신뢰할 수 있는 프로젝트 로컬 hook 스키마나
-경로를 알지 못하면 init은 호출자가 `--allow-degraded`를 전달하지 않는 한
-`OBSERVE_HOOKS_UNSUPPORTED`로 실패합니다. 명시적인 degraded opt-in은 MCP 설정, 안내,
-policy, 지원되는 hook 또는 rule 파일을 쓸 수 있지만, degraded guard 상태를 기록하고
-사람용 출력과 JSON 출력에 누락된 필수 hook phase를 보고합니다. `record`는 hook 설치를
+검증할 수 있어야 합니다. 또한 선택한 Product Repository에 대해 session watcher
+snapshot 지원이 필요합니다. `AGENTS.md`와 `.volicord/policy.json`은 호스트 hook
+설정이 아닙니다. 어댑터가 모든 필수 phase에 대해 신뢰할 수 있는 프로젝트 로컬 hook
+스키마나 경로를 알지 못하면 init은 `OBSERVE_HOOKS_UNSUPPORTED`로 실패합니다. Session
+watcher가 선택한 저장소의 snapshot을 만들 수 없으면 init은
+`OBSERVE_WATCHER_UNSUPPORTED`로 실패합니다. 복구 방법은 record-only 설정에는
+`--profile record`를 사용하거나, observe를 다시 실행하기 전에 지원되는 호스트, 플랫폼,
+저장소 설정을 준비하는 것입니다. `record`는 hook 설치나 session watcher 설정을
 요구하지 않습니다.
 
 Native Windows에서는 init이 observe hook 파일을 계획하거나 쓰기 전에
-`--profile observe`를 `OBSERVE_WINDOWS_UNSUPPORTED`로 거부합니다. `--allow-degraded`는
-이 플랫폼 거부를 우회하지 않습니다. Native Windows는 `--profile record`를 지원합니다.
-Observe는 선택한 host hook 계약이 지원되고 테스트된 WSL2, Linux, macOS에서만 사용합니다.
+`--profile observe`를 `OBSERVE_WINDOWS_UNSUPPORTED`로 거부합니다. Native Windows는
+`--profile record`를 지원합니다. Observe는 선택한 host hook과 watcher 계약이 지원되고
+테스트된 WSL2, Linux, macOS에서만 사용합니다.
 
 Codex `observe` 초기화에는 선택된 Product Repository가 하위 디렉터리 호스트
 session에서도 cwd-independent wrapper 해석을 지원하는 Git work tree root여야 한다는
 요구사항도 있습니다. 이 전제조건을 만족하지 않으면 init은 bare 상대 hook 경로를
-생성하지 않고 실패합니다. Claude Code `observe` 초기화는
+생성하지 않고 `OBSERVE_HOOK_ROOT_UNSUPPORTED`로 실패합니다. Claude Code `observe` 초기화는
 [Guard hook 명령](#guard-hook-commands)에서 설명한 호스트 프로젝트 디렉터리 placeholder를
 사용합니다.
 
@@ -354,8 +356,8 @@ dry-run이 아닌 `volicord init`은 다음을 수행합니다.
 - `.codex/rules/*.rules` 또는 `.claude/rules/volicord.md` 같은 지원 호스트 rule 파일을
   씁니다.
 - Runtime Home registry에 guard 설치 상태를 기록합니다.
-- 필수 호스트 hook 설정이 없을 때 `--allow-degraded`가 명시적으로 제공되지 않았다면
-  `observe` 초기화를 거부합니다.
+- 필수 호스트 hook 설정이나 session watcher 지원이 없으면 `observe` 초기화를
+  거부합니다.
 - Windows host-hook wrapper와 watcher 동작이 구현되고 테스트되지 않았으므로 native
   Windows에서 `observe` 초기화를 거부합니다.
 - 호스트가 새 MCP 또는 guard 설정을 로드해야 할 때 필요한 restart, reload, trust,

@@ -147,7 +147,8 @@ volicord init --host codex --repo /path/to/your-product-repo --profile record
 
 Observe 설정에는 [관리 CLI
 참조](../reference/admin-cli.md#agent-host-setup-and-init)의 전체 init 계약을 사용합니다.
-검증된 hook 지원이 빠져 있으면 명시적인 degraded opt-in이 필요합니다.
+host hook 또는 session watcher 지원이 빠져 있으면 실행 가능한 진단과 함께 실패해야
+합니다. Observe 전제 조건을 사용할 수 없으면 `--profile record`를 사용합니다.
 
 Native Windows에서는 observe 설정이 지원되지 않습니다. Init이
 `OBSERVE_WINDOWS_UNSUPPORTED`를 보고하면 record 프로필로 다시 실행합니다.
@@ -156,8 +157,8 @@ Native Windows에서는 observe 설정이 지원되지 않습니다. Init이
 volicord init --host codex --repo C:\path\to\your-product-repo --profile record
 ```
 
-Observe는 선택한 host hook 계약이 지원되고 테스트된 WSL2, Linux, macOS에서만
-사용합니다.
+Observe는 선택한 host hook과 session watcher 계약이 지원되고 테스트된 WSL2, Linux,
+macOS에서만 사용합니다.
 
 하위 수준 연결 복구에는 호스트와 저장소를 connect에 명시적으로 전달합니다.
 
