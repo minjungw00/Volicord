@@ -191,7 +191,7 @@ Volicord가 등록된 프로젝트를 검증하거나 사용할 때는 읽기 �
 - 프로젝트 범위 Codex `.codex/config.toml`
 - 프로젝트 범위 Claude Code `.mcp.json`
 - Volicord 관리 `AGENTS.md` 지침 블록
-- `.volicord/policy.json` guard policy 파일
+- `.volicord/policy.json` observe hook policy 파일
 - Codex `.codex/hooks.json` hook 설정과 `.codex/hooks/` 아래의 Volicord 관리 wrapper
   script
 - `.claude/settings.json` 안의 Volicord 관리 Claude Code hook 항목

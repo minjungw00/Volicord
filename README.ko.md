@@ -254,9 +254,9 @@ volicord connection verify codex --repo /path/to/your-product-repo
 
 ## 미기록 변경과 닫기 차단 사유
 
-Observe hook과 활성 session watcher는 제품 파일 변경이 대응되는 예상 쓰기와 맞지 않을
-때 미기록 Product Repository 변경을 보고할 수 있습니다. Session watcher 찾기는 선택된
-session에 대한 한정된 제품 파일 메타데이터 비교에서 나옵니다. 변경된 경로를 감지하지만,
+`observe` 프로필의 host hook과 활성 session watcher는 제품 파일 변경이 대응되는 예상
+쓰기와 맞지 않을 때 미기록 Product Repository 변경을 보고할 수 있습니다. Session watcher
+찾기는 선택된 session에 대한 한정된 제품 파일 메타데이터 비교에서 나옵니다. 변경된 경로를 감지하지만,
 전체 파일 내용을 저장하거나, 누가 파일을 바꿨는지 증명하거나, 의도를 증명하거나, 쓰기를
 막지 않습니다. 이런 항목은 조정될 때까지 미해결 관찰 찾기로 남으며, 미해결 찾기는 닫기를
 막습니다.

@@ -276,9 +276,9 @@ Exact command behavior lives in the
 
 ## Unrecorded Changes And Close Blockers
 
-Observe hooks and an active session watcher can report unrecorded Product
-Repository changes when a product file changes without a matching expected
-write. Session watcher findings come from bounded product-file metadata
+The `observe` profile's host hooks and an active session watcher can report
+unrecorded Product Repository changes when a product file changes without a
+matching expected write. Session watcher findings come from bounded product-file metadata
 comparison for the selected session. They detect changed paths; they do not
 store full file contents, prove who changed a file, prove intent, or prevent
 writes. Those findings remain unresolved observation findings until reconciled,

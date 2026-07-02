@@ -120,7 +120,7 @@ Agent Connection은 초점이 맞춰진 판단 필요를 요청하거나 보여 
 권한을 지니는 사용자 답변은 로컬 `User Channel`을 거칩니다.
 
 호스트와 클라이언트가 지원하면 MCP 어댑터는 대기 판단에 MCP elicitation을 사용할 수
-있습니다. guard health가 prompt capture를 `configured`, `observed`, `active`로
+있습니다. observe 상태가 prompt capture를 `configured`, `observed`, `active`로
 보고할 때 채팅 경로는 `Volicord: answer J-3 1 #AB7K` 같은 엄격한 prompt 명령입니다.
 elicitation과 prompt capture를 사용할 수 없고 adapter가 fallback을 안전하게 노출할 수
 있으면 Volicord는 짧게 만료되는 일회성 token이 있는 loopback local web consent URL을

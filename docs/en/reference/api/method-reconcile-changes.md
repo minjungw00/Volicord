@@ -120,7 +120,7 @@ Returns `ReconcileChangesResult` with:
 | `rejected_resolution_requests` | Caller-supplied resolution requests that Core refused. These are structured rejections inside a successful method result, not public `ToolRejectedResponse` errors. |
 | `state` | Current `StateSummary` after the reconciliation projection or commit. |
 | `close_blockers` | Projected close blockers after planned reconciliation effects. |
-| `guard_health` | Projected guard-health summary when guard health is available for the verified connection. |
+| `guard_health` | Projected `GuardHealthSummary` hook-state facts when available for the verified connection. |
 | `next_actions` | Next safe steps, such as recording the created user-owned judgment or rerunning reconciliation. |
 
 The result disclosure is not correctness proof, test sufficiency proof, human review replacement, OS sandboxing, network isolation, malware defense, full write prevention, or actor attribution proof.

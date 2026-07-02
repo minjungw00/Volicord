@@ -102,7 +102,7 @@ StateSummary:
 
 ## Guard health summary
 
-`GuardHealthSummary`는 메서드 담당 문서가 선택했을 때 닫기 준비 상태와 상태 조회 보기가 반환하는 간결한 guard 상태 보기입니다.
+`GuardHealthSummary`는 메서드 담당 문서가 선택했을 때 닫기 준비 상태와 상태 조회 보기가 반환하는 간결한 observe host-hook 및 관찰 상태 보기입니다. `guard_*` 필드 이름은 내부 host 관찰 기록과 hook 관련 구현 상태를 위한 스키마 식별자이며, 공개 보안 모드나 보안 경계가 아닙니다.
 
 ```yaml
 ControlSurfaceSummary:
@@ -165,14 +165,14 @@ GuardHealthSummary:
 의미:
 - `selected_profile`과 `guard_installation_status`는 제어 값 문자열입니다.
 - `control_surface`는 Volicord가 현재 관찰하거나 결정할 수 있는 것을 요약하는 공개 값입니다. 선택된 프로필, host hook과 session watcher 활성 여부, 협력형 pre-tool warning 또는 denial 가용성, 미기록 변경 탐지 가능 여부, 행위자 identity 증명 가능 여부, OS 집행 제공 여부를 보고합니다.
-- `guard_installation_id`가 `null`이 아니면 불투명 guard 설치 식별자입니다.
+- `guard_installation_id`가 `null`이 아니면 불투명 내부 guard 설치 식별자입니다.
 - `guard_configuration_status`, `guard_observation_status`, `effective_guard_status`는 파일/설정 건강 상태, 런타임 hook 관찰, 닫기 준비 상태에서 쓰는 효과적인 observe 프로필 상태를 분리합니다.
-- `generated_config_verified`, `native_host_output_adapter_verified`, `hook_path_safety`, `hook_commands_cwd_independent`, `hook_commands_subdirectory_safe`, `cooperative_pre_tool_warning_available`, `cooperative_pre_tool_denial_available`, `post_tool_correlation_available`, `bash_shell_mutation_coverage`, `direct_file_write_matcher_coverage`, `bypass_detection_active`, `prompt_capture_available`, `local_web_consent_available`는 선택된 프로필의 capability 사실을 노출합니다. Observe host hook에는 검증된 생성 설정, native host output, `hook_path_safety=ok`, cwd-independent이고 subdirectory-safe인 필수 hook 명령, 필요한 lifecycle phase, Bash/shell 및 직접 파일 쓰기 matcher coverage, 일치하는 policy hash, 현재 런타임 guard 관찰이 필요합니다. 미기록 변경 탐지에는 활성 session watch가 필요하며, 부분 coverage 경고는 `session_watch_partial_coverage_warning`에 계속 표시됩니다. 런타임 전용 기능을 관찰할 수 없는 setup 진단은 그 기능을 false로 보고합니다.
-- `guard_hook_observed`는 선택된 guard 설치에 대해 현재 일치하는 호스트 guard hook 관찰이 기록되어 있는지를 보고합니다.
-- `last_guard_observed_at`은 가장 최근 저장된 guard 설치 관찰 시각이며, 관찰이 기록되어 있지 않으면 `null`입니다.
-- `last_guard_event_at`은 상태 보기에 사용할 수 있는 최신 guard 이벤트 타임스탬프입니다. 사용할 수 있는 guard 이벤트가 없으면 `null`입니다.
+- `generated_config_verified`, `native_host_output_adapter_verified`, `hook_path_safety`, `hook_commands_cwd_independent`, `hook_commands_subdirectory_safe`, `cooperative_pre_tool_warning_available`, `cooperative_pre_tool_denial_available`, `post_tool_correlation_available`, `bash_shell_mutation_coverage`, `direct_file_write_matcher_coverage`, `bypass_detection_active`, `prompt_capture_available`, `local_web_consent_available`는 선택된 프로필의 capability 사실을 노출합니다. Observe host hook에는 검증된 생성 설정, native host output, `hook_path_safety=ok`, cwd-independent이고 subdirectory-safe인 필수 hook 명령, 필요한 lifecycle phase, Bash/shell 및 직접 파일 쓰기 matcher coverage, 일치하는 policy hash, 현재 일치하는 host-hook 관찰이 필요합니다. 미기록 변경 탐지에는 활성 session watch가 필요하며, 부분 coverage 경고는 `session_watch_partial_coverage_warning`에 계속 표시됩니다. 런타임 전용 기능을 관찰할 수 없는 setup 진단은 그 기능을 false로 보고합니다.
+- `guard_hook_observed`는 선택된 내부 guard 설치 기록에 대해 현재 일치하는 host-hook 관찰이 기록되어 있는지를 보고합니다.
+- `last_guard_observed_at`은 가장 최근 저장된 내부 guard 설치 관찰 시각이며, 관찰이 기록되어 있지 않으면 `null`입니다.
+- `last_guard_event_at`은 상태 보기에 사용할 수 있는 최신 host-hook 이벤트 타임스탬프입니다. 사용할 수 있는 host-hook 이벤트가 없으면 `null`입니다.
 - `host_kind`, `observed_hook_phase`, `observed_host_kind`, `expected_policy_hash`, `observed_policy_hash`, `observed_binary_version`은 사용할 수 있을 때 선택된 설치와 최신 저장 관찰 메타데이터를 보고합니다.
-- `required_hook_phases`와 `missing_required_hook_phases`는 필요한 guard hook 설정의 완전성을 보고합니다. 필요한 단계가 `required_hook_phases`에 없거나 `missing_required_hook_phases`에 나열되어 있으면 누락된 것으로 취급합니다. 필요한 단계가 누락되어 있으면 유효한 hook 이벤트가 관찰되었더라도 효과적인 guard 건강 상태는 active가 되지 않습니다.
+- `required_hook_phases`와 `missing_required_hook_phases`는 필요한 host-hook 설정의 완전성을 보고합니다. 필요한 단계가 `required_hook_phases`에 없거나 `missing_required_hook_phases`에 나열되어 있으면 누락된 것으로 취급합니다. 필요한 단계가 누락되어 있으면 유효한 hook 이벤트가 관찰되었더라도 효과적인 observe 건강 상태는 active가 되지 않습니다.
 - `prompt_capture_status`는 선택된 연결의 기계 판독 prompt capture 사용 가능 상태를 보고합니다. `prompt_capture_available=true`는 그 상태가 검증 코드 채팅 명령을 허용할 때만 사용하며, 원문 프롬프트 텍스트가 포함된다는 뜻이 아닙니다.
 - `prompt_capture_available`은 선택된 연결에서 prompt capture 검증 코드 채팅 명령을 표시하거나 기록할 수 있는지 보고합니다. 프롬프트 텍스트는 포함하지 않습니다.
 - `local_web_consent_available`은 현재 adapter 호출이 User Channel 복구를 위한 loopback local web consent fallback을 제공할 수 있는지 보고합니다.
@@ -185,21 +185,21 @@ GuardHealthSummary:
 - `session_watch_partial_coverage_warning`은 기록된 coverage 시작 전의 Product Repository 변경이 watcher coverage 밖에 있을 때 사람이 읽을 수 있는 경고입니다.
 - `session_watch_detail`은 선택된 watcher 상태에 대한 짧은 진단 세부정보이며, 사용할 수 있는 세부정보가 없으면 `null`입니다.
 - `unresolved_unrecorded_change_count`는 해결되지 않은 미기록 Product Repository 변경 수입니다. 프롬프트 텍스트, 명령 텍스트, 경로 목록은 노출하지 않습니다.
-- `missing_or_stale_write_ticket`는 guard 이벤트가 누락되었거나, 결정할 수 없거나, 모호하거나, 오래된 쓰기 티켓 준비 상태를 감지했는지 보고합니다.
-- `write_ticket_path_scope_violation`은 guard 이벤트가 active 쓰기 티켓 범위 밖의 Product Repository 경로를 관찰했는지 보고합니다.
+- `missing_or_stale_write_ticket`는 host-hook 이벤트가 누락되었거나, 결정할 수 없거나, 모호하거나, 오래된 쓰기 티켓 준비 상태를 감지했는지 보고합니다.
+- `write_ticket_path_scope_violation`은 host-hook 이벤트가 active 쓰기 티켓 범위 밖의 Product Repository 경로를 관찰했는지 보고합니다.
 
 의미하지 않는 것:
 - `control_surface`는 정확성, review 완료, 테스트 충분성, OS 수준 강제, 쓰기 차단을 증명하지 않습니다.
 - `GuardHealthSummary`는 제품 정확성, 테스트 충분성, OS 강제, 샌드박싱, 보안 격리, 최종 수락의 증거가 아닙니다.
-- `active` guard 요약은 증거, 아티팩트 무결성, 사용자 소유 판단, 쓰기 티켓, 최종 수락, 잔여 위험 수락 요구사항을 대체하지 않습니다.
+- active인 `effective_guard_status`는 증거, 아티팩트 무결성, 사용자 소유 판단, 쓰기 티켓, 최종 수락, 잔여 위험 수락 요구사항을 대체하지 않습니다.
 - Session watch 상태와 coverage 메타데이터는 Volicord가 쓰기를 막았거나, 파일을 바꾼 행위자를 식별했거나, 파일 내용을 저장했거나, OS 수준 강제를 제공했다는 뜻이 아닙니다.
 - `session_watch_partial_coverage_warning`이 `null`이 아니면 `session_watch_coverage_start_at` 전의 Product Repository 변경은 session-watch coverage 밖에 남습니다.
-- `record` 프로필은 협력형으로 남습니다. Guard 건강 상태가 해결되지 않은 미기록 변경 찾기를 보고하면 그 찾기는 닫기를 막습니다.
+- `record` 프로필은 협력형으로 남습니다. observe control surface 건강 상태가 해결되지 않은 미기록 변경 찾기를 보고하면 그 찾기는 닫기를 막습니다.
 - `observe` 프로필은 모든 쓰기를 막거나, 파일을 바꾼 행위자를 식별하거나, 네트워크를 격리하거나, sandbox를 제공하지 않습니다.
 
 담당 문서 링크:
 - `selected_profile`, `hook_path_safety`, `guard_installation_status`, `guard_configuration_status`, `guard_observation_status`, `effective_guard_status`, `prompt_capture_status`, `session_watch_status`, `session_watch_coverage_basis` 값: [상태와 차단 사유 값](schema-value-sets.md#state-and-blocker-values)
-- 닫기 준비 상태 guard 차단 사유와 메서드 로컬 코드: [`volicord.close_task`](method-close-task.md)
+- 닫기 준비 상태 `guard_*` 차단 사유와 메서드 로컬 코드: [`volicord.close_task`](method-close-task.md)
 - Agent Connection 의미: [Agent Connection](../agent-connection.md)
 
 <a id="unrecorded-change-reconciliation-shapes"></a>
@@ -707,7 +707,7 @@ GuaranteeDisclosure:
 - `CloseReadinessBlocker`는 닫기 차단 사유를 표현하는 데이터 형태입니다.
 - `CloseReadinessBlocker.category`는 제어 값 문자열입니다.
 - `CloseReadinessBlocker.code`는 담당 문서가 정의하는 차단 사유 코드입니다. 차단 사유 또는 메서드 담당 문서가 더 좁은 로컬 목록을 공개하지 않는 한 빠짐없는 전역 공개 enum이 아닙니다.
-- `CloseReadinessBlocker.control_surface`는 guard 건강 상태에서 도출한 연결 기능 차단 사유에 있을 수 있으며, 차단 사유를 계산한 시점의 control-surface 요약을 보고합니다. guard 건강 상태에서 도출하지 않은 차단 사유에서는 생략됩니다.
+- `CloseReadinessBlocker.control_surface`는 `guard_*` 연결 기능 차단 사유에 있을 수 있으며, 차단 사유를 계산한 시점의 control-surface 요약을 보고합니다. `GuardHealthSummary` hook-state 사실에서 도출하지 않은 차단 사유에서는 생략됩니다.
 - `can_resolve_in_chat`은 메서드 담당 문서가 그 경로를 알고 있을 때 차단 사유를 채팅으로 매개되는 사용자 경로에서 해소할 수 있는지를 보고합니다.
 - `terminal_action_required`는 다음 행동이 채팅 밖의 터미널, 호스트, 파일시스템, setup 동작을 필요로 하는지를 보고합니다.
 - `CloseReadinessBlocker.message`, `ValidatorResult.message`, `GuaranteeDisplay.basis`는 자유 형식 표시 문자열입니다.

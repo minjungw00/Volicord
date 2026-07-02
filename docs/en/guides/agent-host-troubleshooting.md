@@ -295,8 +295,8 @@ Diagnostic meanings and repairs:
   `--repo PATH`, then reload or restart the host when required.
 - `host_output_mismatch`, `policy_hash_mismatch`, or `authority_mismatch`: the
   generated wrapper metadata no longer matches the expected host-output mode,
-  policy hash, connection, or guard installation. Rerun init so the managed
-  files and registry state agree.
+  policy hash, connection, or observe installation record. Rerun init so the
+  managed files and registry state agree.
 - `metadata_missing` or `placeholder_unsupported`: the generated configuration
   is not in the currently verified shape. Rerun init and avoid replacing the
   generated command with unsupported placeholders.

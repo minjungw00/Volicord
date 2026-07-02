@@ -303,7 +303,7 @@ flowchart TD
   connection["Agent Connection 인벤토리 등록 또는 재사용"]
   membership["Connection Project 멤버십 추가 또는 확인"]
   host["계획된 호스트 설정 적용"]
-  integration["init guard 통합 파일 적용과 guard 설치 기록"]
+  integration["init observe host-hook 파일 적용과 내부 guard 설치 기록"]
   verify["호스트 적용 뒤 검증 실행"]
   readiness["호스트 준비 상태와 관리 설정 확인"]
   preflight["해석된 Runtime Home으로 volicord mcp --check --connection 실행"]
@@ -336,7 +336,7 @@ flowchart TD
 
 dry-run이 아닌 실행은 먼저 선택된 Runtime Home을 초기화하거나 재사용한 뒤 선택된 프로젝트를 등록하거나 재사용합니다. 프로젝트가 registry 상태에서 사용할 수 있게 된 뒤 명령은 MCP 실행 파일을 해석하고, 연결 식별자를 도출하고, 호스트 설정 계획을 만들며, Agent Connection 행을 등록하거나 갱신하기 전에 호스트 계획 충돌을 거부합니다.
 
-호스트 계획이 받아들여지면 명령은 Agent Connection을 등록하거나 재사용하고, 단일 프로젝트 범위의 프로젝트 수 규칙을 적용하며, Connection Project 멤버십을 추가하거나 확인한 다음 계획된 호스트 설정을 적용합니다. `volicord init`은 Agent Connection과 프로젝트 멤버십이 존재한 뒤 담당자가 정의한 guard 통합 파일도 적용하고 guard 설치 상태를 기록합니다. `Product Repository` 지침이 있더라도 로컬 에이전트를 위한 조언 맥락으로 남습니다. 이 지침은 Core 메서드 권한과 별개입니다. 사용자 판단을 기록하지 않고 쓰기 티켓을 발급하지 않습니다.
+호스트 계획이 받아들여지면 명령은 Agent Connection을 등록하거나 재사용하고, 단일 프로젝트 범위의 프로젝트 수 규칙을 적용하며, Connection Project 멤버십을 추가하거나 확인한 다음 계획된 호스트 설정을 적용합니다. `volicord init`은 Agent Connection과 프로젝트 멤버십이 존재한 뒤 담당자가 정의한 observe host-hook 파일도 적용하고 내부 guard 설치 상태를 기록합니다. `Product Repository` 지침이 있더라도 로컬 에이전트를 위한 조언 맥락으로 남습니다. 이 지침은 Core 메서드 권한과 별개입니다. 사용자 판단을 기록하지 않고 쓰기 티켓을 발급하지 않습니다.
 
 검증은 호스트 설정이 적용된 뒤 실행됩니다. 호스트 어댑터를 통해 호스트 준비 상태와 관리 설정을 확인하고, 해석된 Runtime Home으로 `volicord mcp --check --connection <connection_id>`를 실행하며, 호스트 게이트가 handshake를 허용하고 사전 점검이 통과한 경우에만 직접 MCP stdio 초기화와 `tools/list` 발견을 수행합니다. 그런 다음 명령은 관리 CLI 구현이 정한 방식으로 결과 검증 상태를 기록하거나 보고합니다.
 

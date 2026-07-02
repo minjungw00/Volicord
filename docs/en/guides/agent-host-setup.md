@@ -43,13 +43,13 @@ volicord connect codex --repo /path/to/your-product-repo
 
 ## Integration Profiles
 
-Guard health reports the selected profile and a control-surface summary for the
+Observe status reports the selected profile and a control-surface summary for the
 selected connection or session:
 
 | Profile | How it is reached | Operational meaning |
 |---|---|---|
 | `record` | MCP tools and authority records are available without requiring host hooks or a session watcher. | Setup guidance and policy metadata can steer the host but cannot force it. |
-| `observe` | Project-local host hooks have verified generated config, cwd-independent and subdirectory-safe hook commands, native host output, required phases, write matchers, matching policy hash, runtime observation, and session watcher observation. | Cooperative pre-tool warnings or denials, post-tool correlation, prompt capture, guard state, unrecorded-change findings, and close/write blockers can participate in the workflow. |
+| `observe` | Project-local host hooks have verified generated config, cwd-independent and subdirectory-safe hook commands, native host output, required phases, write matchers, matching policy hash, runtime observation, and session watcher observation. | Cooperative pre-tool warnings or denials, post-tool correlation, prompt capture, observe status, unrecorded-change findings, and close/write blockers can participate in the workflow. |
 
 `record` can issue Volicord authority write tickets through the Core method
 workflow. `observe` does not make write tickets into filesystem enforcement; it
@@ -62,11 +62,12 @@ unrecorded changes can be detected, whether actor identity can be proven, and
 whether OS enforcement is provided. Current Volicord output reports no actor
 identity proof and no OS enforcement.
 
-## Guard Lifecycle
+## Observe Lifecycle
 
 In observe profile, setup and activation are separate. `volicord init` installs or
 updates MCP host configuration, Volicord-managed `AGENTS.md` guidance,
-`.volicord/policy.json`, host hook or rule files, and guard installation state.
+`.volicord/policy.json`, host hook or rule files, and observe installation state
+for host-hook observation.
 The host may still need reload, restart, trust, project MCP approval, or another
 host-owned action before those files run.
 
@@ -119,13 +120,14 @@ volicord init --host codex --repo /path/to/your-product-repo --profile record
 ```
 
 `volicord connection verify` and `volicord doctor` keep file health, required
-host action, observed activation, and control-surface facts separate. A guard installation becomes
-active only after Volicord observes a matching guard hook event for the recorded
-project, Agent Connection, host kind, integration profile, and policy hash. Hook path
-safety does not replace host trust, reload, restart, or approval. `AGENTS.md`
-is instruction support, and host hooks or rules are cooperative and detective
-guardrails; they are not OS sandboxing, command isolation, network isolation,
-actor proof, or proof that writes cannot happen outside Volicord-aware paths.
+host action, observed activation, and control-surface facts separate. The
+observe installation state becomes active only after Volicord observes a
+matching host-hook event for the recorded project, Agent Connection, host kind,
+integration profile, and policy hash. Hook path safety does not replace host
+trust, reload, restart, or approval. `AGENTS.md` is instruction support, and
+host hooks or rules are cooperative and detective guardrails; they are not OS
+sandboxing, command isolation, network isolation, actor proof, or proof that
+writes cannot happen outside Volicord-aware paths.
 
 ## Connection Intents
 

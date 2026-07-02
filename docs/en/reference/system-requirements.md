@@ -196,7 +196,7 @@ Read access is required when Volicord validates or uses the registered project. 
 - project-scoped Codex `.codex/config.toml`
 - project-scoped Claude Code `.mcp.json`
 - Volicord-managed `AGENTS.md` guidance blocks
-- `.volicord/policy.json` guard policy files
+- `.volicord/policy.json` observe hook policy files
 - Codex `.codex/hooks.json` hook configuration and Volicord-managed wrapper
   scripts under `.codex/hooks/`
 - Volicord-managed Claude Code hook entries in `.claude/settings.json`

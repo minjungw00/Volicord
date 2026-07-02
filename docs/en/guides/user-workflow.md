@@ -157,7 +157,7 @@ for you, call `volicord.record_user_judgment`, or convert a chat reply into
 authority-bearing Core state outside a supported User Channel path. A strict
 prompt-capture command such as `Volicord: answer J-3 1 #AB7K` is a User Channel path
 only when the local prompt-capture path is available and the current
-verification code is validated and recorded by the guard hook. Generated
+verification code is validated and recorded by the observe host hook. Generated
 Markdown, status summaries, ordinary chat text, Product Repository guidance, and
 rendered projections can help you read state, but they are not Core authority;
 for projection boundaries, see
@@ -189,10 +189,10 @@ sequenceDiagram
 
 ## Reconcile unrecorded changes
 
-Guarded mode may surface an unrecorded Product Repository change when a hook
-observes a product-file change that does not match an expected write. Treat it
-as a guard finding, not as proof of malicious behavior and not as a change the
-agent can waive.
+The `observe` profile may surface an unrecorded Product Repository change when
+a host hook observes a product-file change that does not match an expected
+write. Treat it as an observation finding, not as proof of malicious behavior
+and not as a change the agent can waive.
 
 Unresolved findings block close. The agent should run
 `volicord.reconcile_changes` when available, show deterministic resolutions and
@@ -203,10 +203,11 @@ the actor. CLI recovery is `volicord changes reconcile`; if reconciliation
 creates a pending judgment, answer it through the normal User Channel path and
 rerun reconciliation.
 
-If guard health reports `hook_path_safety` as anything other than `ok`, treat
-hook-based pre-tool blocking, prompt capture, and unrecorded-change observation
-as unavailable or degraded until the setup is repaired. Exact repair guidance
-belongs to [Agent Host Troubleshooting](agent-host-troubleshooting.md#guard-hook-path-or-wrapper-is-unsafe).
+If observe status reports `hook_path_safety` as anything other than `ok`, treat
+hook-based cooperative pre-tool warning or denial, prompt capture, and
+unrecorded-change observation as unavailable or degraded until the setup is
+repaired. Exact repair guidance belongs to
+[Agent Host Troubleshooting](agent-host-troubleshooting.md#guard-hook-path-or-wrapper-is-unsafe).
 
 ## Approve writes and sensitive actions
 

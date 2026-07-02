@@ -84,8 +84,8 @@ Mutation conditions:
 Close condition:
 
 - `intent=complete` can close only after preflight succeeds, the close readiness evaluation over the current `CurrentCloseBasis` is valid, current close-basis refs satisfy their artifact and Run compatibility rules, and no close blocker remains.
-- Close readiness blocks when any write ticket for the Task remains open, any active write ticket has expired without resolution, or any guard or watcher observation reports unresolved out-of-scope Product Repository paths for the ticket scope.
-- In `observe` profile, close readiness also checks guard health, including hook path safety, prompt-capture availability facts, unresolved unrecorded Product Repository changes, guard-detected write-ticket issues, and session-watch availability. In `record` profile, host hooks are not required; unresolved unrecorded Product Repository changes still block close until reconciliation resolves them.
+- Close readiness blocks when any write ticket for the Task remains open, any active write ticket has expired without resolution, or any host-hook or watcher observation reports unresolved out-of-scope Product Repository paths for the ticket scope.
+- In `observe` profile, close readiness also checks `GuardHealthSummary` host-hook and observation-state facts, including hook path safety, prompt-capture availability facts, unresolved unrecorded Product Repository changes, hook-detected write-ticket issues, and session-watch availability. In `record` profile, host hooks are not required; unresolved unrecorded Product Repository changes still block close until reconciliation resolves them.
 - Host hook and session watch observations do not prevent Product Repository writes and do not identify the actor that made a file change. They only support cooperative detection and correlation to expected-write or write-ticket records.
 - Required close evidence must be supported by current claim-matching evidence observation provenance. Unverified, provenance-free, stale, or cooperative-agent-only evidence does not satisfy a close requirement when stronger provenance is required.
 - `intent=cancel` requires a current accepted cancellation judgment with `machine_action=accept`, `resolution_outcome=accepted`, `resolved_by_actor_source=local_user`, compatible User Channel provenance, and a basis bound to the Task, current scope revision, and current Change Unit. It does not require completion-only evidence, final acceptance, or residual-risk acceptance.
@@ -203,7 +203,7 @@ Returns `CloseTaskResult` with `base.response_kind=result`.
 | `continuity_summary` | `ProjectContinuitySummary[]` for project continuity records made relevant by this close result. For successful `intent=complete`, this includes continuity records Core carries forward for close-basis known limits that do not require residual-risk acceptance. Empty means the computation ran and found no carry-forward records for this result. Shape is owned by [API State Schemas](schema-state.md#project-continuity-shapes). |
 | `blockers` | `CloseReadinessBlocker[]` returned when the requested path has close or terminal blockers. Shape and nesting are owned by [API State Schemas](schema-state.md#close-readiness-and-validation-shapes); `category` values are owned by [API Value Sets](schema-value-sets.md#state-and-blocker-values). |
 | `pending_judgment_inbox_items` | `JudgmentInboxItem[]` for required unanswered pending judgments that need user action in the current close-readiness result. Shape is owned by [API Judgment Schemas](schema-judgment.md#judgmentinboxitem). |
-| `guard_health` | `GuardHealthSummary | null` for guard-health facts selected into the close-readiness result. Shape is owned by [API State Schemas](schema-state.md#guard-health-summary). |
+| `guard_health` | `GuardHealthSummary | null` for hook-state facts selected into the close-readiness result. Shape is owned by [API State Schemas](schema-state.md#guard-health-summary). |
 | `evidence_summary` | `EvidenceSummary | null` for the close basis visible in the result, or `null` when no evidence summary is selected into the result. Shape is owned by [API State Schemas](schema-state.md#evidence-and-run-snapshot-shapes). |
 | `artifact_refs` | `ArtifactRef[]` for close-relevant artifacts selected into the result. `ArtifactRef` shape is owned by [API Artifact Schemas](schema-artifacts.md#artifactref). |
 
@@ -226,18 +226,18 @@ The production meanings below apply only after the method reaches close-readines
 | `expired_write_ticket` | `write_compatibility` | A write ticket for the selected Task expired while still unresolved. |
 | `write_ticket_stale` | `write_compatibility` | A close-relevant write ticket is unusable for a freshness reason that is not routed as `STATE_VERSION_CONFLICT`. |
 | `baseline_stale` | `baseline` | The close-relevant baseline basis is stale on a blocker-producing path. |
-| `guard_not_installed` | `connection_capability` | An observe close path has no usable guard installation recorded for the verified connection. |
-| `guard_reload_required` | `connection_capability` | Guard files are installed, but the host must restart or reload before Volicord has observed the configured hooks. |
-| `guard_not_observed` | `connection_capability` | An observe close path has configured guard files, but no matching host guard hook observation is recorded. |
-| `guard_stale` | `connection_capability` | An observe close path has a guard installation whose recorded status is `stale`. |
-| `guard_broken` | `connection_capability` | An observe close path has a guard installation whose recorded status is `broken`. |
-| `guard_required_hooks_missing` | `connection_capability` | An observe close path has a guard installation with missing required hook phases. The blocker reports the missing phases, host kind, `terminal_action_required`, `can_resolve_in_chat`, and `next_actions`. |
-| `guard_degraded` | `connection_capability` | An observe close path has degraded guard configuration or health not covered by a more specific guard blocker, and the current guard policy blocks close on degraded health. |
+| `guard_not_installed` | `connection_capability` | An observe close path has no usable observe host-hook installation record for the verified connection. |
+| `guard_reload_required` | `connection_capability` | Observe hook files are installed, but the host must restart or reload before Volicord has observed the configured hooks. |
+| `guard_not_observed` | `connection_capability` | An observe close path has configured observe hook files, but no matching host-hook observation is recorded. |
+| `guard_stale` | `connection_capability` | An observe close path has an internal guard installation record whose status is `stale`. |
+| `guard_broken` | `connection_capability` | An observe close path has an internal guard installation record whose status is `broken`. |
+| `guard_required_hooks_missing` | `connection_capability` | An observe close path has an internal guard installation record with missing required host-hook phases. The blocker reports the missing phases, host kind, `terminal_action_required`, `can_resolve_in_chat`, and `next_actions`. |
+| `guard_degraded` | `connection_capability` | An observe close path has degraded host-hook configuration or observation-state health not covered by a more specific `guard_*` blocker, and the current observe hook-health policy blocks close on degraded health. |
 | `guard_connection_unhealthy` | `connection_capability` | An observe close path has an Agent Connection health fact that is not healthy. |
 | `session_watch_unavailable` | `connection_capability` | An observe close path requires Product Repository session-watch coverage, but the selected watcher state is `disabled`, `degraded`, `unavailable`, or active with a partial-coverage warning. |
-| `unresolved_unrecorded_changes` | `connection_capability` | Guard health reports unresolved unrecorded Product Repository changes that must be reconciled before close. The blocker includes `next_actions` with `owner_method=volicord.reconcile_changes`, and `can_resolve_in_chat` reports whether the current path can proceed through a chat-mediated user path. |
-| `guard_write_ticket_missing_or_stale` | `write_compatibility` | Guard events detected missing, indeterminate, ambiguous, or stale write-ticket readiness for the close path. |
-| `guard_write_ticket_path_scope_violation` | `write_compatibility` | Guard events observed a Product Repository path outside the active write-ticket scope. |
+| `unresolved_unrecorded_changes` | `connection_capability` | Observe control-surface health reports unresolved unrecorded Product Repository changes that must be reconciled before close. The blocker includes `next_actions` with `owner_method=volicord.reconcile_changes`, and `can_resolve_in_chat` reports whether the current path can proceed through a chat-mediated user path. |
+| `guard_write_ticket_missing_or_stale` | `write_compatibility` | Host-hook events detected missing, indeterminate, ambiguous, or stale write-ticket readiness for the close path. |
+| `guard_write_ticket_path_scope_violation` | `write_compatibility` | Host-hook events observed a Product Repository path outside the active write-ticket scope. |
 | `evidence_claim_unsupported` | `evidence_claim` | A required close claim lacks supported evidence coverage. |
 | `evidence_claim_missing` | `evidence_claim` | A required close claim has no current evidence coverage record. |
 | `evidence_provenance_insufficient` | `evidence_provenance` | Required close evidence exists but lacks sufficient current source and assurance provenance. |

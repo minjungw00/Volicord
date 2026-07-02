@@ -309,7 +309,7 @@ flowchart TD
   connection["Register or reuse Agent Connection inventory"]
   membership["Add or confirm Connection Project membership"]
   host["Apply the planned host configuration"]
-  integration["Apply init guard integration files and record guard installation when requested"]
+  integration["Apply init observe host-hook files and record internal guard installation when requested"]
   verify["Run verification after host apply"]
   readiness["Check host readiness and managed configuration"]
   preflight["Run volicord mcp --check --connection with the resolved Runtime Home"]
@@ -342,7 +342,7 @@ The connection sequence validates command options and resolves paths before any 
 
 Non-dry-run execution initializes or reuses the selected Runtime Home first, then registers or reuses the selected project. After the project is available in registry state, the command resolves the MCP executable, derives the connection identity, builds the host configuration plan, and rejects host-plan conflicts before registering or updating the Agent Connection row.
 
-Once the host plan is accepted, the command registers or reuses the Agent Connection, enforces the project-count rule for single-project scopes, adds or confirms the Connection Project membership, and then applies the planned host configuration. `volicord init` also applies the owner-defined guard integration files and records guard installation status after the Agent Connection and project membership exist. Product Repository guidance, where present, remains advisory context for local agents. It is separate from Core method authority: it does not record user judgments or issue write tickets.
+Once the host plan is accepted, the command registers or reuses the Agent Connection, enforces the project-count rule for single-project scopes, adds or confirms the Connection Project membership, and then applies the planned host configuration. `volicord init` also applies the owner-defined observe host-hook files and records internal guard installation status after the Agent Connection and project membership exist. Product Repository guidance, where present, remains advisory context for local agents. It is separate from Core method authority: it does not record user judgments or issue write tickets.
 
 Verification runs after host configuration is applied. It checks host readiness and managed configuration through the host adapter, runs `volicord mcp --check --connection <connection_id>` with the resolved Runtime Home, and performs direct MCP stdio initialization and `tools/list` discovery only when the host gate allows that handshake and preflight has passed. The command then records or reports the resulting verification status as implemented by the administrative CLI.
 

@@ -1267,7 +1267,7 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     assert!(init_text.contains("Volicord init action_required"));
     assert!(init_text.contains("connection_state: action_required"));
     assert!(init_text.contains("mcp_config_state: match"));
-    assert!(init_text.contains("guard_installation_state: configured"));
+    assert!(init_text.contains("observe_installation_state: configured"));
     assert!(init_text.contains("selected_profile: observe"));
     assert!(init_text.contains("cooperative_pre_tool_denial=no"));
     assert!(init_text.contains("post_tool_correlation=no"));
@@ -1276,8 +1276,8 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     assert!(init_text.contains("volicord_policy_file_state: unchanged"));
     assert!(init_text.contains("rule_instruction_config_state: unchanged"));
     assert!(init_text.contains("hook_config_state: unchanged"));
-    assert!(init_text.contains("required_guard_phases_state: configured"));
-    assert!(init_text.contains("guard_observed: no"));
+    assert!(init_text.contains("required_hook_phases_state: configured"));
+    assert!(init_text.contains("observe_hook_observed: no"));
     assert!(init_text.contains("prompt_capture_state: configured"));
     assert!(init_text.contains("host_reload_required: yes"));
     assert!(init_text.contains("next_action: Restart or reload codex"));
@@ -1655,7 +1655,7 @@ fn init_claude_code_guarded_writes_project_mcp_policy_and_rule() -> Result<(), B
     assert!(repo_root.join(".claude/rules/volicord.md").exists());
     let rule = fs::read_to_string(repo_root.join(".claude/rules/volicord.md"))?;
     assert!(rule.contains(".volicord/policy.json"));
-    assert!(rule.contains("Configured local guard commands"));
+    assert!(rule.contains("Configured local observe hook commands"));
     assert!(rule.contains(".claude/hooks/volicord-session-start.sh"));
     assert!(rule.contains(".claude/hooks/volicord-pre-tool.sh"));
     assert!(rule.contains(".claude/hooks/volicord-prompt-capture.sh"));

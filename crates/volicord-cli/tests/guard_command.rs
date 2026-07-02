@@ -4051,7 +4051,7 @@ fn make_executable(path: &Path) -> Result<(), Box<dyn Error>> {
 fn assert_guard_init_state_is_installed_or_degraded(value: &Value) {
     let state = value["states"]["guard_installation"]
         .as_str()
-        .expect("init output should include guard installation state");
+        .expect("init output should include observe installation state");
     assert!(
         matches!(state, "configured" | "reload_required" | "degraded"),
         "unexpected guarded init state: {state}"

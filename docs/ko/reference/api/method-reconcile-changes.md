@@ -120,7 +120,7 @@ Dry run은 계획된 해결이나 대기 판단을 미리 보여 줄 뿐 ref, ev
 | `rejected_resolution_requests` | Core가 거부한 호출자 제공 해결 요청입니다. 이는 성공한 메서드 결과 안의 구조화된 거부이며 공개 `ToolRejectedResponse` 오류가 아닙니다. |
 | `state` | 조정 보기 또는 커밋 뒤의 현재 `StateSummary`입니다. |
 | `close_blockers` | 계획된 조정 효과 뒤의 닫기 차단 사유 보기입니다. |
-| `guard_health` | 검증된 연결에 대해 guard 상태를 사용할 수 있을 때의 guard 상태 보기입니다. |
+| `guard_health` | 검증된 연결에 대해 사용할 수 있을 때의 `GuardHealthSummary` hook-state 사실 보기입니다. |
 | `next_actions` | 만들어진 사용자 소유 판단을 기록하거나 조정을 다시 실행하는 등 다음 안전 단계입니다. |
 
 결과 공개는 정확성 증명, 테스트 충분성 증명, 인간 검토 대체, OS 샌드박싱, 네트워크 격리, 악성 코드 방어, 전체 쓰기 방지, 행위자 귀속 증명이 아닙니다.

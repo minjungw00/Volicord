@@ -363,23 +363,23 @@ fn inspect_guard_installations(
     if snapshot.guard_installations.is_empty() {
         checks.push(DiagnosticCheck::skipped(
             "guard_files_installed",
-            "no guard installations are recorded",
+            "no observe installations are recorded",
         ));
         checks.push(DiagnosticCheck::skipped(
             "guard_host_reload_required",
-            "no guard installation needs host reload",
+            "no observe installation needs host reload",
         ));
         checks.push(DiagnosticCheck::skipped(
             "guard_hook_observed",
-            "no guard hook observation is recorded",
+            "no observe host-hook observation is recorded",
         ));
         checks.push(DiagnosticCheck::skipped(
             "guard_required_hooks_supported",
-            "no guard hook capability record is available",
+            "no observe hook capability record is available",
         ));
         checks.push(DiagnosticCheck::skipped(
             "guard_status_active",
-            "no guard installation status is recorded",
+            "no observe installation status is recorded",
         ));
         checks.push(
             DiagnosticCheck::skipped("control_surface", "no integration profile is recorded")
@@ -441,7 +441,7 @@ fn inspect_guard_installations(
     let control_surface_check = if selected_profile == "mixed" {
         DiagnosticCheck::warning(
             "control_surface",
-            "guard installations record mixed integration profiles",
+            "observe installations record mixed integration profiles",
         )
     } else {
         DiagnosticCheck::passed(
@@ -458,14 +458,14 @@ fn inspect_guard_installations(
         || !file_findings.broken_files.is_empty();
     if !guard_file_problem {
         checks.push(
-            DiagnosticCheck::passed("guard_files_installed", "guard files are installed")
+            DiagnosticCheck::passed("guard_files_installed", "observe hook files are installed")
                 .with_details(doctor_guard_file_details(&file_findings)),
         );
     } else {
         checks.push(
             DiagnosticCheck::warning(
                 "guard_files_installed",
-                "one or more guard files are missing, stale, or broken",
+                "one or more observe hook files are missing, stale, or broken",
             )
             .with_details(doctor_guard_file_details(&file_findings)),
         );
@@ -474,7 +474,7 @@ fn inspect_guard_installations(
             DiagnosticAction {
                 id: "repair_guard_files".to_owned(),
                 instruction:
-                    "Run volicord init again for affected observe-profile projects to reinstall or refresh guard files."
+                    "Run volicord init again for affected observe-profile projects to reinstall or refresh observe hook files."
                         .to_owned(),
                 command: Some("volicord init --host HOST --repo PATH".to_owned()),
             },
@@ -505,7 +505,7 @@ fn inspect_guard_installations(
         checks.push(
             DiagnosticCheck::warning(
                 "guard_host_reload_required",
-                "one or more guard installations need host reload",
+                "one or more observe installations need host reload",
             )
             .with_details(json!({ "reload_required": true })),
         );
@@ -522,7 +522,7 @@ fn inspect_guard_installations(
     } else {
         checks.push(DiagnosticCheck::passed(
             "guard_host_reload_required",
-            "no recorded guard installation requires host reload",
+            "no recorded observe installation requires host reload",
         ));
     }
 
@@ -534,7 +534,7 @@ fn inspect_guard_installations(
     } else if missing_required_hooks.is_empty() {
         checks.push(DiagnosticCheck::passed(
             "guard_required_hooks_supported",
-            "required guard hook capabilities are recorded",
+            "required observe hook capabilities are recorded",
         ));
     } else {
         checks.push(
@@ -549,7 +549,7 @@ fn inspect_guard_installations(
             DiagnosticAction {
                 id: "repair_guard_required_hooks".to_owned(),
                 instruction:
-                    "Run volicord init again with a host adapter that supports every required guard hook, or use the record profile."
+                    "Run volicord init again with a host adapter that supports every required observe hook, or use the record profile."
                         .to_owned(),
                 command: Some("volicord init --host HOST --repo PATH".to_owned()),
             },
@@ -559,11 +559,11 @@ fn inspect_guard_installations(
     if observed_profile_installations.is_empty() {
         checks.push(DiagnosticCheck::skipped(
             "guard_hook_observed",
-            "guard hook observation is not applicable to record-profile installations",
+            "observe host-hook observation is not applicable to record-profile installations",
         ));
     } else if observed_count == observed_profile_installations.len() {
         checks.push(
-            DiagnosticCheck::passed("guard_hook_observed", "guard hooks have been observed")
+            DiagnosticCheck::passed("guard_hook_observed", "observe host hooks have been observed")
                 .with_details(json!({ "observed": observed_count, "observe": observed_profile_installations.len() })),
         );
     } else {
@@ -579,7 +579,7 @@ fn inspect_guard_installations(
             DiagnosticAction {
                 id: "observe_guard_hook".to_owned(),
                 instruction:
-                    "Start, restart, or reload affected agent hosts so the Volicord guard hook runs."
+                    "Start, restart, or reload affected agent hosts so the Volicord observe host hook runs."
                         .to_owned(),
                 command: None,
             },
@@ -598,7 +598,7 @@ fn inspect_guard_installations(
         checks.push(
             DiagnosticCheck::warning(
                 "guard_status_active",
-                format!("one or more guard installations are {status}"),
+                format!("one or more observe installations are {status}"),
             )
             .with_details(json!({ "status_counts": status_counts })),
         );
@@ -1833,7 +1833,7 @@ fn inspect_prompt_capture_availability(
         checks.push(
             DiagnosticCheck::warning(
                 "prompt_capture_available",
-                "prompt capture is configured but no guard hook observation is recorded",
+                "prompt capture is configured but no observe host-hook observation is recorded",
             )
             .with_details(json!({
                 "state": "configured_unobserved",
@@ -2191,7 +2191,7 @@ fn render_doctor_output(
         }
         OutputFormat::Text => {
             let mut text = format!(
-                "Volicord doctor {}\nstatus_meaning: {}\n{}\nruntime_home_state: {}\nruntime_home: {}\ninstallation_profile_state: {}\ncommand_state: {}\nproject_registration_state: {}\nconnection_state: {}\nmcp_config_state: {}\nguard_installation_state: {}\nselected_profile: {}\ncontrol_surface: {}\nguard_capabilities: {}\nguard_configuration_state: {}\nguard_observation_state: {}\nguard_effective_state: {}\nguard_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_path_safety: {}\nrequired_guard_phases_state: {}\nrequired_guard_phases_missing: {}\nguard_hook_observed: {}\nguard_status_state: {}\nprompt_capture_state: {}\nprompt_capture_health: {}\nwatcher_status: not_started\nwatcher_baseline_created_at: none\nwatcher_coverage_start_at: none\nwatcher_coverage_basis: none\nwatcher_partial_coverage_warning: doctor does not initialize an MCP session watch\nhost_reload_required: {}\n",
+                "Volicord doctor {}\nstatus_meaning: {}\n{}\nruntime_home_state: {}\nruntime_home: {}\ninstallation_profile_state: {}\ncommand_state: {}\nproject_registration_state: {}\nconnection_state: {}\nmcp_config_state: {}\nobserve_installation_state: {}\nselected_profile: {}\ncontrol_surface: {}\ncontrol_capabilities: {}\nobserve_configuration_state: {}\nhost_hook_observation_state: {}\nobserve_effective_state: {}\nobserve_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_path_safety: {}\nrequired_hook_phases_state: {}\nrequired_hook_phases_missing: {}\nhost_hook_observed: {}\nobserve_status_state: {}\nprompt_capture_state: {}\nprompt_capture_health: {}\nwatcher_status: not_started\nwatcher_baseline_created_at: none\nwatcher_coverage_start_at: none\nwatcher_coverage_basis: none\nwatcher_partial_coverage_warning: doctor does not initialize an MCP session watch\nhost_reload_required: {}\n",
                 status.as_str(),
                 doctor_status_meaning(status, checks),
                 DETECTIVE_OBSERVATION_DISCLOSURE_TEXT,

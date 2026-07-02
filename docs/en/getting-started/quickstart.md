@@ -129,7 +129,7 @@ Agent Connections may request or show focused judgment needs, but
 authority-bearing user answers go through the local `User Channel`:
 
 When the host and client support it, the MCP adapter may use MCP elicitation
-for the pending judgment. When guard health reports prompt capture as
+for the pending judgment. When observe status reports prompt capture as
 `configured`, `observed`, or `active`, the chat path is a strict prompt command
 such as `Volicord: answer J-3 1 #AB7K`. When elicitation and prompt capture are
 unavailable and the adapter can safely expose the fallback, Volicord may return

@@ -1113,14 +1113,14 @@ fn current_policy_hash(project: &ProjectRecord) -> Result<Option<String>, GuardC
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(error) => {
             return Err(GuardCommandError::Runtime(format!(
-                "failed to read guard policy {}: {error}",
+                "failed to read observe hook policy {}: {error}",
                 policy_path.display()
             )));
         }
     };
     let value = serde_json::from_str::<Value>(&text).map_err(|error| {
         GuardCommandError::Runtime(format!(
-            "guard policy is not valid JSON: {} ({error})",
+            "observe hook policy is not valid JSON: {} ({error})",
             policy_path.display()
         ))
     })?;
@@ -2389,7 +2389,7 @@ fn prompt_capture_unavailable_reason(
         PromptCaptureStatus::Degraded => (
             "prompt_capture_degraded",
             "Prompt capture is degraded for this host, project, and connection.".to_owned(),
-            "Repair the guard integration before using prompt-capture chat commands.",
+            "Repair the observe hook integration before using prompt-capture chat commands.",
         ),
         _ => (
             "prompt_capture_unavailable",

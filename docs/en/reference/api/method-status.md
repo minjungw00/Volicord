@@ -21,7 +21,7 @@ This document does not own:
 
 ## Purpose
 
-`volicord.status` returns a current-position view over Core state. The view can include current Task summary, blockers, pending user judgments, write-ticket summary, evidence summary, close state, close-readiness findings, guard health, project continuity summaries, guarantee display, and next safe actions.
+`volicord.status` returns a current-position view over Core state. The view can include current Task summary, blockers, pending user judgments, write-ticket summary, evidence summary, close state, close-readiness findings, `GuardHealthSummary` hook-state facts, project continuity summaries, guarantee display, and next safe actions.
 
 ## Required inputs
 
@@ -87,11 +87,11 @@ Include projection contract:
 - `include.write_ticket` returns active, expired, stale, consumed, or otherwise relevant write-ticket state through `write_ticket_summary`.
 - `write_ticket_summary` is a compatibility summary only; it is not filesystem access, shell approval, final acceptance, ordinary write approval, or proof that a write occurred.
 - `include.evidence` returns current `EvidenceSummary` and coverage when available.
-- `include.close` returns `CurrentCloseBasis | null`, close state, computed blockers, risk acceptance coverage, guard health including hook path safety when available, and relevant next actions. The blockers use the same close-readiness calculation as `volicord.close_task intent=check`.
+- `include.close` returns `CurrentCloseBasis | null`, close state, computed blockers, risk acceptance coverage, `GuardHealthSummary` hook-state facts including hook path safety when available, and relevant next actions. The blockers use the same close-readiness calculation as `volicord.close_task intent=check`.
 - `include.guarantees` returns only guarantees derived from the project enforcement profile, verified invocation context, enabled enforcement mechanisms, and supported baseline scope.
 - `include.continuity` returns active `ProjectContinuitySummary[]` entries for durable project-level context.
 - `include.evidence=false` means evidence summaries, coverage, artifact evidence refs, and evidence-only next actions are not computed and not returned.
-- `include.close=false` means close readiness is not computed and `CurrentCloseBasis`, close state, close blockers, guard health, residual-risk coverage, and close-only next actions are not returned.
+- `include.close=false` means close readiness is not computed and `CurrentCloseBasis`, close state, close blockers, `GuardHealthSummary` hook-state facts, residual-risk coverage, and close-only next actions are not returned.
 - `include.guarantees=false` means guarantee display is not derived and not returned.
 - `include.continuity=false` means project continuity summaries are not read or returned.
 

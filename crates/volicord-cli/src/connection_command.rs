@@ -5161,7 +5161,7 @@ fn init_user_actions(
     if host_kind == HostKind::Codex && init_mode != InitMode::Record {
         let hook_trust_action = UserAction::new(
             UserActionKind::HostTrustRequired,
-            "Review and trust Codex project hook commands before relying on Volicord guard hooks",
+            "Review and trust Codex project hook commands before relying on Volicord observe host hooks",
         );
         if !actions.contains(&hook_trust_action) {
             actions.push(hook_trust_action);
@@ -5804,7 +5804,7 @@ fn render_simplified_connection_output(
     match data.format {
         OutputFormat::Text => {
             let mut output = format!(
-                "Agent Connection {}\n{}\nruntime_home_state: ready\nruntime_home: {}\nconnection_state: {}\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nproject_registration_state: {}\nconnected_repositories: {}\nmcp_config_state: {}\nmcp_config: {}\nselected_profile: {}\ncontrol_surface: {}\ncontrol_capabilities: {}\nhost_hooks_active: {}\nsession_watcher_active: {}\nactor_identity_provable: {}\nos_enforced: {}\nguard_installation_state: {}\nguard_configuration_state: {}\nguard_observation_state: {}\nguard_effective_state: {}\nguard_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_path_safety: {}\nrequired_guard_phases_state: {}\nrequired_guard_phases_missing: {}\nguard_hook_observed: {}\nguard_observed: {}\nlast_guard_event: {}\nprompt_capture_state: {}\nhost_reload_required: {}\nguard_blockers: {}\n",
+                "Agent Connection {}\n{}\nruntime_home_state: ready\nruntime_home: {}\nconnection_state: {}\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nproject_registration_state: {}\nconnected_repositories: {}\nmcp_config_state: {}\nmcp_config: {}\nselected_profile: {}\ncontrol_surface: {}\ncontrol_capabilities: {}\nhost_hooks_active: {}\nsession_watcher_active: {}\nactor_identity_provable: {}\nos_enforced: {}\nobserve_installation_state: {}\nobserve_configuration_state: {}\nhost_hook_observation_state: {}\nobserve_effective_state: {}\nobserve_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_path_safety: {}\nrequired_hook_phases_state: {}\nrequired_hook_phases_missing: {}\nhost_hook_observed: {}\nobserve_hook_observed: {}\nlast_host_hook_event: {}\nprompt_capture_state: {}\nhost_reload_required: {}\nobserve_blockers: {}\n",
                 data.action,
                 DETECTIVE_OBSERVATION_DISCLOSURE_TEXT,
                 data.runtime_home.display(),
@@ -5899,7 +5899,7 @@ fn render_simplified_plan_output(
     match data.format {
         OutputFormat::Text => {
             let mut output = format!(
-                "Agent Connection {} {}\n{}\nruntime_home_state: ready\nruntime_home: {}\nconnection_state: {}\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nproject_registration_state: {}\nconnected_repositories: {}\nmcp_config_state: planned_{}\nmcp_config: {}\nselected_profile: {}\ncontrol_surface: {}\ncontrol_capabilities: {}\nhost_hooks_active: {}\nsession_watcher_active: {}\nactor_identity_provable: {}\nos_enforced: {}\nguard_installation_state: {}\nguard_configuration_state: {}\nguard_observation_state: {}\nguard_effective_state: {}\nguard_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_path_safety: {}\nrequired_guard_phases_state: {}\nrequired_guard_phases_missing: {}\nguard_hook_observed: {}\nguard_observed: {}\nlast_guard_event: {}\nprompt_capture_state: {}\nhost_reload_required: {}\nguard_blockers: {}\nplanned_change: {}\n",
+                "Agent Connection {} {}\n{}\nruntime_home_state: ready\nruntime_home: {}\nconnection_state: {}\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nproject_registration_state: {}\nconnected_repositories: {}\nmcp_config_state: planned_{}\nmcp_config: {}\nselected_profile: {}\ncontrol_surface: {}\ncontrol_capabilities: {}\nhost_hooks_active: {}\nsession_watcher_active: {}\nactor_identity_provable: {}\nos_enforced: {}\nobserve_installation_state: {}\nobserve_configuration_state: {}\nhost_hook_observation_state: {}\nobserve_effective_state: {}\nobserve_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_path_safety: {}\nrequired_hook_phases_state: {}\nrequired_hook_phases_missing: {}\nhost_hook_observed: {}\nobserve_hook_observed: {}\nlast_host_hook_event: {}\nprompt_capture_state: {}\nhost_reload_required: {}\nobserve_blockers: {}\nplanned_change: {}\n",
                 data.action,
                 data.status.as_str(),
                 DETECTIVE_OBSERVATION_DISCLOSURE_TEXT,
@@ -6036,7 +6036,7 @@ fn render_init_output(data: InitOutput<'_>) -> Result<String, ConnectionCommandE
     match data.format {
         OutputFormat::Text => {
             let mut output = format!(
-                "Volicord init {}\n{}\nruntime_home_state: ready\nruntime_home: {}\nproject_registration_state: {}\nrepo: {}\nconnection_state: {}\nhost: {}\nselected_profile: {}\nconnection_id: {}\nmcp_config_state: {}\nmcp_config: {}\nplanned_change: {}\nprofile: {}\ncontrol_surface: {}\ncontrol_capabilities: {}\nhost_hooks_active: {}\nsession_watcher_active: {}\nactor_identity_provable: {}\nos_enforced: {}\nguard_installation_state: {}\nguard_configuration_state: {}\nguard_observation_state: {}\nguard_effective_state: {}\nguard_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_root_resolution: {}\nhook_path_safety: {}\nrequired_guard_phases_state: {}\nrequired_guard_phases_missing: {}\nguard_hook_observed: {}\nguard_observed: {}\nlast_guard_event: {}\nprompt_capture_state: {}\nhost_reload_required: {}\nguard_blockers: {}\n",
+                "Volicord init {}\n{}\nruntime_home_state: ready\nruntime_home: {}\nproject_registration_state: {}\nrepo: {}\nconnection_state: {}\nhost: {}\nselected_profile: {}\nconnection_id: {}\nmcp_config_state: {}\nmcp_config: {}\nplanned_change: {}\nprofile: {}\ncontrol_surface: {}\ncontrol_capabilities: {}\nhost_hooks_active: {}\nsession_watcher_active: {}\nactor_identity_provable: {}\nos_enforced: {}\nobserve_installation_state: {}\nobserve_configuration_state: {}\nhost_hook_observation_state: {}\nobserve_effective_state: {}\nobserve_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_root_resolution: {}\nhook_path_safety: {}\nrequired_hook_phases_state: {}\nrequired_hook_phases_missing: {}\nhost_hook_observed: {}\nobserve_hook_observed: {}\nlast_host_hook_event: {}\nprompt_capture_state: {}\nhost_reload_required: {}\nobserve_blockers: {}\n",
                 data.status.as_str(),
                 DETECTIVE_OBSERVATION_DISCLOSURE_TEXT,
                 data.runtime_home.display(),
@@ -6165,7 +6165,7 @@ fn init_checks_json(
             json!({
                 "id": "guard_installation",
                 "status": guard_status,
-                "summary": "guard installation status was recorded",
+                "summary": "observe installation status was recorded",
             }),
         ];
         checks.extend(guard_checks_json_values(guard_state));
@@ -6187,24 +6187,24 @@ fn guard_checks_json_values(guard_state: &GuardOperationalState) -> Vec<Value> {
         "installed" => json!({
             "id": "guard_files_installed",
             "status": "passed",
-            "summary": "guard files are installed",
+            "summary": "observe hook files are installed",
         }),
         "missing" => json!({
             "id": "guard_files_installed",
             "status": "failed",
-            "summary": "guard files are missing",
+            "summary": "observe hook files are missing",
             "details": guard_file_details_json(guard_state),
         }),
         "stale" => json!({
             "id": "guard_files_installed",
             "status": "failed",
-            "summary": "guard files are stale",
+            "summary": "observe hook files are stale",
             "details": guard_file_details_json(guard_state),
         }),
         "broken" => json!({
             "id": "guard_files_installed",
             "status": "failed",
-            "summary": "guard files are broken",
+            "summary": "observe hook files are broken",
             "details": guard_file_details_json(guard_state),
         }),
         "disabled" => json!({
@@ -6215,20 +6215,20 @@ fn guard_checks_json_values(guard_state: &GuardOperationalState) -> Vec<Value> {
         other => json!({
             "id": "guard_files_installed",
             "status": "skipped",
-            "summary": format!("guard files are {other}"),
+            "summary": format!("observe hook files are {other}"),
         }),
     };
     let reload_check = if guard_state.installation_state == "reload_required" {
         json!({
             "id": "guard_host_reload_required",
             "status": "failed",
-            "summary": "host reload is required before guard hooks are active",
+            "summary": "host reload is required before observe host hooks are active",
         })
     } else if guard_selected {
         json!({
             "id": "guard_host_reload_required",
             "status": "passed",
-            "summary": "host reload is not currently required by guard installation state",
+            "summary": "host reload is not currently required by observe installation state",
         })
     } else {
         json!({
@@ -6241,7 +6241,7 @@ fn guard_checks_json_values(guard_state: &GuardOperationalState) -> Vec<Value> {
         "observed" => json!({
             "id": "guard_hook_observed",
             "status": "passed",
-            "summary": "guard hook has been observed",
+            "summary": "observe host hook has been observed",
             "details": {
                 "last_observed_at": &guard_state.last_observed_at,
                 "last_guard_event_at": &guard_state.last_guard_event_at,
@@ -6250,7 +6250,7 @@ fn guard_checks_json_values(guard_state: &GuardOperationalState) -> Vec<Value> {
         "not_observed" if guard_selected => json!({
             "id": "guard_hook_observed",
             "status": "failed",
-            "summary": "guard hook has not been observed",
+            "summary": "observe host hook has not been observed",
             "details": {
                 "last_observed_at": Value::Null,
                 "last_guard_event_at": &guard_state.last_guard_event_at,
@@ -6259,7 +6259,7 @@ fn guard_checks_json_values(guard_state: &GuardOperationalState) -> Vec<Value> {
         other => json!({
             "id": "guard_hook_observed",
             "status": "skipped",
-            "summary": format!("guard hook observation is {other}"),
+            "summary": format!("observe host-hook observation is {other}"),
         }),
     };
     let status_check = if guard_state.effective_state == "active" {
@@ -6294,16 +6294,16 @@ fn guard_checks_json_values(guard_state: &GuardOperationalState) -> Vec<Value> {
             "id": "guard_required_hooks_supported",
             "status": if guard_selected { "passed" } else { "skipped" },
             "summary": if guard_selected {
-                "required guard hook capabilities are supported"
+                "required observe hook capabilities are supported"
             } else {
-                "guard hook capabilities are not applicable"
+                "observe hook capabilities are not applicable"
             },
         })
     } else {
         json!({
             "id": "guard_required_hooks_supported",
             "status": "failed",
-            "summary": "required guard hook capabilities are missing",
+            "summary": "required observe hook capabilities are missing",
             "details": {
                 "missing_required_hooks": &guard_state.missing_required_hooks,
             },
@@ -6453,7 +6453,7 @@ fn render_simplified_remove_dry_run(
         }
         SimplifiedRemovePlan::MembershipOnly => match format {
             OutputFormat::Text => Ok(format!(
-                "Agent Connection remove dry_run\n{}\nruntime_home_state: ready\nruntime_home: {}\nconnection_state: dry_run\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nproject_registration_state: {}\nconnected_repositories: {}\nmcp_config_state: membership\nplanned_change: membership\nselected_profile: not_checked\nguard_installation_state: not_checked\nguard_files_state: not_checked\nguard_hook_observed: not_checked\nlast_guard_event: none\nprompt_capture_state: not_checked\nhost_reload_required: no\nguard_blockers: none\nremaining_connected_projects: {}\nnext_action: none\n",
+                "Agent Connection remove dry_run\n{}\nruntime_home_state: ready\nruntime_home: {}\nconnection_state: dry_run\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nproject_registration_state: {}\nconnected_repositories: {}\nmcp_config_state: membership\nplanned_change: membership\nselected_profile: not_checked\nobserve_installation_state: not_checked\nobserve_files_state: not_checked\nhost_hook_observed: not_checked\nlast_host_hook_event: none\nprompt_capture_state: not_checked\nhost_reload_required: no\nobserve_blockers: none\nremaining_connected_projects: {}\nnext_action: none\n",
                 DETECTIVE_OBSERVATION_DISCLOSURE_TEXT,
                 runtime_home.display(),
                 public_host_name_text(&connection.host_kind),
@@ -6733,7 +6733,7 @@ fn primary_connection_action(
     if guard_state.installation_state == "files_missing" {
         return Some(connection_repair_action(
             "guard_files_missing",
-            "Run init again to reinstall missing guard files.",
+            "Run init again to reinstall missing observe hook files.",
             connection,
             projects,
         ));
@@ -6746,7 +6746,7 @@ fn primary_connection_action(
     {
         return Some(connection_repair_action(
             "guard_hook_path_safety",
-            "Run init again to regenerate cwd-independent guard hook commands.",
+            "Run init again to regenerate cwd-independent observe hook commands.",
             connection,
             projects,
         ));
@@ -6754,7 +6754,7 @@ fn primary_connection_action(
     if guard_state.installation_state == "stale" {
         return Some(connection_repair_action(
             "guard_files_stale",
-            "Run init again to refresh stale guard files.",
+            "Run init again to refresh stale observe hook files.",
             connection,
             projects,
         ));
@@ -6762,7 +6762,7 @@ fn primary_connection_action(
     if guard_state.installation_state == "broken" {
         return Some(connection_repair_action(
             "guard_files_broken",
-            "Repair broken guard files, then run init again.",
+            "Repair broken observe hook files, then run init again.",
             connection,
             projects,
         ));
@@ -6862,16 +6862,16 @@ fn repair_instruction(id: &str, fallback: &str, command: &str) -> String {
             format!("Repair the malformed MCP configuration, then run {command}.")
         }
         "guard_files_missing" => {
-            format!("Run {command} to reinstall missing guard files.")
+            format!("Run {command} to reinstall missing observe hook files.")
         }
         "guard_files_stale" => {
-            format!("Run {command} to refresh stale guard files.")
+            format!("Run {command} to refresh stale observe hook files.")
         }
         "guard_files_broken" => {
-            format!("Repair broken guard files, then run {command}.")
+            format!("Repair broken observe hook files, then run {command}.")
         }
         "guard_hook_path_safety" => {
-            format!("Run {command} to regenerate cwd-independent guard hook commands.")
+            format!("Run {command} to regenerate cwd-independent observe hook commands.")
         }
         _ => fallback.to_owned(),
     }
@@ -7427,7 +7427,7 @@ fn guard_effective_state(
 fn guard_blockers_for_state(
     guard_mode: &str,
     installation_state: &str,
-    guard_hook_observed: bool,
+    host_hook_observed: bool,
     required_hooks_missing: bool,
 ) -> Vec<String> {
     if guard_mode == IntegrationProfile::Record.as_str() {
@@ -7437,7 +7437,7 @@ fn guard_blockers_for_state(
         "not_configured" | "files_missing" => vec!["guard_not_installed".to_owned()],
         "reload_required" => vec!["guard_reload_required".to_owned()],
         "configured" => vec!["guard_not_observed".to_owned()],
-        "active" if !guard_hook_observed => vec!["guard_not_observed".to_owned()],
+        "active" if !host_hook_observed => vec!["guard_not_observed".to_owned()],
         "stale" => vec!["guard_stale".to_owned()],
         "broken" => vec!["guard_broken".to_owned()],
         "degraded" if required_hooks_missing => vec!["guard_required_hooks_missing".to_owned()],
@@ -9741,7 +9741,7 @@ mod tests {
             "\"matcher\": \"Bash|Edit|Write|MultiEdit|mcp__.*__(write|edit|create|update|delete|remove|move|patch).*\""
         ));
         assert!(fs::read_to_string(repo.join(".claude/rules/volicord.md"))?
-            .contains("Configured local guard commands"));
+            .contains("Configured local observe hook commands"));
 
         let again = plan_guard_integration_for_test(
             HostKind::ClaudeCode,
