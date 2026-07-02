@@ -3,9 +3,9 @@
 이 문서는 로컬 `volicord` 관리/부트스트랩 CLI 계약을 담당합니다. CLI는
 `Volicord Runtime Home`을 마련하고, 저장소 루트에서 프로젝트를 등록하며, 사용자가
 내부 식별 정보를 다루지 않아도 되도록 Agent Connection을 관리하고, 로컬
-`User Channel` 명령 경로를 제공하며, generic MCP 설정을 내보내고, `volicord host-hook`를
-통한 로컬 detective host hook lifecycle 명령을 제공하며, 설정 또는 연결 진단을 보고합니다.
-이 명령들은 공개 Volicord API 메서드가 아닙니다.
+`User Channel` 명령 경로를 제공하며, 설정 또는 연결 진단을 보고합니다. 숨겨진 내부
+hook 명령은 생성된 호스트 통합 wrapper만을 위한 것이며 일반 사용자 대상 명령이
+아닙니다. 이 명령들은 공개 Volicord API 메서드가 아닙니다.
 
 이 문서는 공개 API 메서드 동작, API 스키마, 저장소 기록 배치, 보안 보장, Core
 권한 의미, MCP stdio 전송 동작을 정의하지 않습니다.
@@ -15,12 +15,12 @@
 이 문서가 담당합니다.
 
 - `volicord` 명령 이름, 명령줄 인자, 기본값, stdout/stderr 처리, 프로세스 종료 코드
-- `init` 또는 `setup` 중 Runtime Home, 설치 프로필, 실행 파일 링크, MCP 명령 선택
+- `init` 중 Runtime Home, 설치 프로필, MCP 명령 선택
 - 저장소 루트 프로젝트 감지와 관리 프로젝트 명령
 - 지원 호스트 통합을 위한 Agent Connection 명령 동작
-- generic MCP 설정 내보내기 동작
 - 로컬 serve 명령 이름, 명령줄 인자, 기본값, stdout/stderr 처리, 시작 종료 코드
-- 로컬 `volicord host-hook` lifecycle 명령 이름, 옵션, decision, 출력, 이벤트 기록 동작
+- 생성된 호스트 wrapper를 위한 숨겨진 내부 hook lifecycle 명령 이름, 옵션, decision,
+  출력, 이벤트 기록 동작
 - 로컬 `volicord changes` 복구 명령 이름과 출력
 - 로컬 `User Channel` 명령 이름과 명령 출력
 - 진단 상태, 필요한 사용자 동작, dry-run 동작, JSON 출력, 비대화식 동작
@@ -54,10 +54,10 @@ MCP 전송 프로세스로 제한됩니다. `volicord inbox` 명령군은 사용
 volicord --help
 volicord --version
 volicord init --host codex|claude-code --repo PATH [--profile record|detective] [--home PATH] [--mcp-command PATH] [--dry-run] [--json]
-volicord setup [--home PATH] [--link-bin PATH] [--mcp-command PATH] [--json]
+volicord status [--repo PATH] [--task active|ID] [--json]
 volicord doctor [--json]
-volicord connect [HOST] [--repo PATH] [--shared|--global] [--read-only] [--dry-run] [--json]
-volicord connections [--repo PATH] [--json]
+volicord connection add [HOST] [--repo PATH] [--shared|--global] [--read-only] [--dry-run] [--json]
+volicord connection list [--repo PATH] [--json]
 volicord connection status [HOST] [--repo PATH] [--shared|--global] [--json]
 volicord connection verify [HOST] [--repo PATH] [--shared|--global] [--json]
 volicord connection mode [HOST] workflow|read-only [--repo PATH] [--shared|--global] [--json]
@@ -67,13 +67,8 @@ volicord project current [--json]
 volicord project list [--json]
 volicord project rename NAME [--repo PATH] [--json]
 volicord project forget [PATH|NAME] [--json]
-volicord export mcp-config [--output PATH] [--repo PATH] [--read-only] [--json]
+volicord mcp --stdio --connection <connection_id> [--project <project_id>]
 volicord serve --transport local-http [--listen 127.0.0.1:8765] [--home PATH] [--connection <connection_id>] [--project PATH]... [--token TOKEN | --generate-token] [--allow-origin ORIGIN]
-volicord host-hook session-start [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|detective] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
-volicord host-hook pre-tool [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|detective] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
-volicord host-hook post-tool [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|detective] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
-volicord host-hook prompt-capture [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|detective] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
-volicord host-hook stop [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|detective] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
 volicord changes reconcile [--repo PATH] [--task active|ID] [--json]
 volicord inbox [--repo PATH] [--task active|ID] [--json]
 volicord inbox answer <judgment-id> --choice <choice> [--repo PATH] [--note TEXT] [--json]
@@ -95,14 +90,15 @@ volicord inbox open <judgment-id> [--repo PATH] [--json]
 - `volicord --version`은 stdout에 `volicord <version>`을 쓰며 Runtime Home 해석을
   요구하지 않습니다.
 - `--json`은 stdout에 JSON 문서 정확히 하나를 쓰며 사람용 설명을 섞지 않습니다.
-- `volicord host-hook`는 기본적으로 `--output volicord-json`을 사용합니다.
+- 숨겨진 내부 hook 명령은 기본적으로 `--output volicord-json`을 사용합니다.
   `volicord-json` 모드에서는 Volicord wrapper JSON을 쓰고, `deny`는 종료 코드
   `1`로 끝나며, `allow`, `warn`, `inject_context`는 종료 코드 `0`으로 끝납니다.
   `--output text`는 같은 종료 동작으로 사람이 읽기 쉬운 짧은 한 줄을 씁니다.
-- `volicord host-hook --host-output codex|claude-code`는 Volicord wrapper JSON 대신
-  host-native hook 출력을 씁니다. Policy decision은 해당 호스트의 stdout, stderr,
-  종료 코드 규칙을 사용합니다. 생성되는 Codex와 Claude Code hook wrapper script는
-  이 모드를 사용하며, Claude Code policy block은 종료 코드 `1`로 표현하지 않습니다.
+- `--host-output codex|claude-code`를 받은 숨겨진 내부 hook 명령은 Volicord wrapper
+  JSON 대신 host-native hook 출력을 씁니다. Policy decision은 해당 호스트의 stdout,
+  stderr, 종료 코드 규칙을 사용합니다. 생성되는 Codex와 Claude Code hook wrapper
+  script는 이 모드를 사용하며, Claude Code policy block은 종료 코드 `1`로 표현하지
+  않습니다.
 - 오류는 CLI 종료 코드 모델에 따라 stderr 진단으로 남습니다.
 - `volicord serve --transport local-http`는 명시적 장기 실행 MCP 전송 프로세스입니다.
   loopback listen 주소만 허용하고 MCP local HTTP endpoint에는 bearer 인증을 요구하며,
@@ -119,70 +115,46 @@ volicord inbox open <judgment-id> [--repo PATH] [--json]
   nonlocal listener로 바꾸는 지원 옵션은 없습니다.
 - 관리 명령은 공개 Volicord API 메서드가 아니며 공개 메서드 목록에 추가되면
   안 됩니다.
-- Host-hook 명령은 협력적이고 탐지적인 hook 명령이며 OS 수준 sandboxing이나 보안 집행
-  증명이 아닙니다.
+- 숨겨진 hook 명령은 협력적이고 탐지적인 hook 명령이며 OS 수준 sandboxing이나 보안
+  집행 증명이 아닙니다. 일반 top-level help에는 표시되지 않습니다.
 - 텍스트 모드 사용자 흐름은 `project_internal_id`, `connection_internal_id`,
   호스트 설정 키, 프로토콜 래퍼, 저장된 registry 필드를 사용자가 입력하도록 요구하면
   안 됩니다.
 
 <a id="runtime-home-selection"></a>
-## setup과 Runtime Home
+## Runtime Home 선택
 
-`volicord setup`은 저장소를 연결하지 않고 로컬 설치 프로필을 마련하거나 복구합니다.
-선택된 Runtime Home을 만들거나 검증하고, 이후 관리 명령, Agent Connection, export,
-MCP 프로세스 흐름이 사용할 명령 경로를 저장합니다. Setup은 독립 설치 프로필 명령이지
-일반적인 첫 실행 저장소 경로가 아닙니다. `volicord init`은 기본 첫 실행 경로이며
-저장소 설정과 호스트 연결을 수행하면서 Runtime Home 경로나 MCP 시작 명령도 선택할 수
-있습니다. Setup은 `volicord`를 `PATH`에서 사용할 수 있게 돕지만 부모 셸의 현재 환경을
-바꿀 수는 없습니다.
+`volicord init`은 로컬 설치 프로필을 만들거나 재사용하는 공개 첫 실행 경로입니다.
+선택된 Runtime Home을 만들거나 검증하고, 이후 관리 명령, Agent Connection, MCP
+프로세스 흐름이 사용할 명령 경로를 저장하며, 선택된 저장소를 등록하고 선택된 호스트
+연결을 설치합니다. Init은 저장소 설정과 호스트 연결을 수행하면서 Runtime Home 경로나
+MCP 시작 명령도 선택할 수 있습니다. 부모 셸의 현재 환경을 바꿀 수는 없습니다.
 
-텍스트 모드에서 `volicord setup`은 stdin과 stdout이 대화형 터미널이고 `--json`이
-없으며 `--link-bin`도 없을 때만 프롬프트를 표시할 수 있습니다. 선택된 명령 경로가
-`PATH`에 준비되어 있지 않을 때만 프롬프트를 표시합니다. 비대화식 조건, JSON 모드,
-명시적 `--link-bin` 모드에서는 프롬프트 대신 동작을 보고해야 합니다.
-
-setup의 최상위 상태는 설치 프로필 준비에 이름 붙은 사용자 동작이 아직 필요한지를
-답합니다. Runtime Home과 설치 프로필을 저장한 뒤에도 선택된 명령을 이후 셸이나
-에이전트 호스트가 `PATH`로 찾을 준비가 되어 있지 않으면 setup은
-`action_required`를 보고할 수 있습니다. setup 출력은 명령 가용성 세부사항과 필요한
-동작을 명시적으로 보여 줘야 합니다.
+최상위 setup 상태는 설치 프로필 준비 또는 호스트 연결에 이름 붙은 사용자 동작이 아직
+필요한지를 답합니다. Runtime Home과 설치 프로필을 저장한 뒤에도 선택된 명령을 이후
+셸이나 에이전트 호스트가 `PATH`로 찾을 준비가 되어 있지 않으면 init은
+`action_required`를 보고할 수 있습니다. 출력은 명령 가용성 세부사항과 필요한 동작을
+명시적으로 보여 줘야 합니다.
 
 인자:
 
 | 인자 | 의미 |
 |---|---|
 | `--home PATH` | `Volicord Runtime Home`을 선택합니다. 생략하면 플랫폼 기본 로컬 런타임 위치를 사용합니다. 선택한 경로는 프로젝트 상태를 사용하기 전에 Runtime Home/Product Repository 분리 계약을 만족해야 합니다. |
-| `--link-bin PATH` | 필요하면 디렉터리를 만들고 쓰기 가능 여부를 확인한 뒤, 가능할 때 그곳에 `volicord` 명령 링크를 만들거나 갱신합니다. 명령은 대상 경로를 보고하고 안전하지 않은 교체를 거절하며, 이 옵션 자체가 셸 시작 파일이나 부모 셸 `PATH`를 편집하지는 않습니다. |
-| `--mcp-command PATH` | 관리 호스트 설정과 generic export가 `mcp --stdio --connection <connection_id> [--project <project_id>]` 인자를 붙여 사용할 정확한 `volicord` 명령을 저장합니다. 생략하면 setup이 선택한 실행 중인 `volicord` 실행 파일을 사용합니다. |
-| `--json` | 기계 판독 비대화식 출력을 선택합니다. JSON 모드에서는 setup이 프롬프트를 표시하지 않습니다. |
+| `--mcp-command PATH` | init이 설치 프로필을 만들거나 갱신할 때 관리 호스트 설정이 `mcp --stdio --connection <connection_id> [--project <project_id>]` 인자를 붙여 사용할 정확한 `volicord` 명령을 저장합니다. 생략하면 init이 선택한 실행 중인 `volicord` 실행 파일을 사용합니다. |
+| `--json` | 기계 판독 비대화식 출력을 선택합니다. JSON 모드에서는 init이 프롬프트를 표시하지 않습니다. |
 
-Setup 효과:
+Runtime Home과 설치 프로필 선택에 관련된 init 효과:
 
 - Runtime Home registry를 만들거나 검증합니다.
 - Runtime Home 식별 정보와 설치 프로필 메타데이터를 기록합니다.
-- 이후 `init`, `connect`, `doctor`, export, MCP 시작 흐름이 사용할 `volicord` 명령 위치와 MCP
+- 이후 `init`, `connection`, `doctor`, MCP 시작 흐름이 사용할 `volicord` 명령 위치와 MCP
   시작 명령을 기록합니다.
 - 선택된 명령 경로가 현재 프로세스의 `PATH`로 해석되는지 검사합니다.
-- 대화형 텍스트 모드에서는 안전한 명령 가용성 선택지를 물어볼 수 있습니다.
-  선택지는 쓰기 가능성이 확인된 기존 setup 제안 디렉터리에 명령 링크 생성,
-  `HOME` 아래의 없는 관례적 사용자 명령 디렉터리(예: `~/.local/bin`)를 setup이
-  안전하게 만들 수 있고 생성 뒤 쓰기 가능성을 확인할 수 있을 때 그곳에 링크 생성,
-  승인된 셸 시작 `PATH` 블록 쓰기, 셸 명령 출력, 링크 건너뛰기입니다.
-- `--link-bin`으로 지정했거나 대화형 프롬프트에서 선택한 `volicord` 명령 링크를
-  갱신할 수 있습니다.
-- 명시적 대화형 승인을 받은 뒤에만 관리되는 셸 시작 `PATH` 블록을 쓸 수 있습니다.
-- 링크 디렉터리가 현재 프로세스의 `PATH`에 보이지 않으면 `PATH` 동작을 보고합니다.
+- 선택된 명령이 현재 프로세스의 `PATH`에 보이지 않으면 `PATH` 동작을 보고합니다.
   기존 셸과 에이전트 호스트 프로세스에는 restart 또는 reload가 필요할 수 있습니다.
-- 임의의 존재하지 않는 경로를 자동 대화형 명령 링크 선택지로 제안하지 않습니다.
-  명시적으로 없는 디렉터리를 사용하려면 `--link-bin PATH`를 사용합니다.
-- 별도의 프로젝트 또는 연결 명령이 저장소를 선택하기 전에는 프로젝트를 등록하지 않습니다.
+- 첫 실행 호스트 설정 경로의 일부로 선택된 저장소를 등록하거나 재사용합니다.
 - 공개 Volicord API 메서드를 만들거나 사용자 소유 판단을 기록하지 않습니다.
-
-Unix에서 대화형 셸 시작 파일 갱신은 setup이 `HOME`과 `SHELL`을 식별할 수 있을 때
-`bash`, `zsh`, `sh`에 대해 지원됩니다. 대상 파일은 각각 `~/.bashrc`,
-`~/.zshrc`, `~/.profile`입니다. Setup은 사용자가 정확한 블록을 승인한 뒤 그 파일의
-Volicord 관리 블록을 쓰거나 갱신합니다. 지원되지 않는 셸, 지원되지 않는 플랫폼,
-누락된 환경 변수, 쓰기 실패는 수동 `PATH` 동작으로 남습니다.
 
 `volicord doctor`는 설치 프로필을 위한 읽기 중심 진단 명령입니다. 최상위 상태는
 현재 설치 프로필을 사용할 수 있는지를 답합니다. Runtime Home 접근, registry 스키마,
@@ -278,7 +250,7 @@ Agent Connection 설정은 낮은 수준의 호스트 설정 범위 이름 대�
 세부사항이며 사용자 권한 토큰이 아닙니다. 텍스트 모드 명령 입력은 선택된 호스트,
 의도, 저장소 루트를 사용합니다.
 
-일반 `volicord connect` 명령은 MCP 명령 경로나 Runtime Home 경로를 다시 묻지 않고
+일반 `volicord connection add` 명령은 MCP 명령 경로나 Runtime Home 경로를 다시 묻지 않고
 해석된 Runtime Home에 저장된 프로필을 사용합니다. 개인, 로컬, 사용자 전체 호스트
 설정은 그 Runtime Home을 `VOLICORD_HOME`으로 담을 수 있습니다. shared 프로젝트
 호스트 설정은 개인 Runtime Home 경로를 포함하면 안 되며, 생성된 항목이 선택된 프로젝트
@@ -352,7 +324,8 @@ dry-run이 아닌 `volicord init`은 다음을 수행합니다.
 - `volicord mcp --stdio --connection <connection_id> --project <project_id>`를 사용하는
   프로젝트 범위 Codex `.codex/config.toml` 또는 Claude Code `.mcp.json`을 씁니다.
 - `AGENTS.md` 안의 Volicord 관리 블록만 쓰거나 갱신합니다.
-- `volicord host-hook`를 호출하는 detective host hook 명령을 담은 `.volicord/policy.json`을 씁니다.
+- 숨겨진 내부 hook namespace를 호출하는 detective host hook 명령을 담은
+  `.volicord/policy.json`을 씁니다.
 - 필수 detective lifecycle phase를 위한 Volicord 관리 hook wrapper script를
   `.codex/hooks/` 또는 `.claude/hooks/` 아래에 씁니다.
 - `.codex/hooks.json` 또는 `.claude/settings.json` 같은 지원 호스트 hook 파일을
@@ -384,8 +357,8 @@ init 재실행은 일치하는 Volicord 관리 내용에 대해 idempotent입니
 | 명령 | Runtime Home registry 효과 | 호스트 설정 효과 | 검증 효과 |
 |---|---|---|---|
 | `volicord init` | 필요하면 Runtime Home과 설치 프로필을 초기화하고, 선택된 저장소 프로젝트를 등록하거나 재사용하며, shared 프로젝트 범위 Agent Connection을 만들거나 갱신하고, Connection Projects 멤버십을 보장하며, detective-profile hook 관찰 상태를 기록합니다. | `codex` 또는 `claude-code`를 위한 관리 프로젝트 로컬 MCP 설정, `AGENTS.md` 안내, `.volicord/policy.json`, 지원 호스트 hook wrapper script, 호스트 hook 파일과 rule 파일을 설치하거나 갱신합니다. | 관찰 가능한 곳에서 호스트 설정, MCP 시작, 초기화, `tools/list` 점검을 실행한 뒤 필요한 host reload, restart, trust, approval 동작을 보고합니다. |
-| `volicord connect` | 선택된 저장소 프로젝트를 등록하거나 재사용하고, 일치하는 Agent Connection을 만들거나 갱신하며, 연결 의도와 모드를 기록하고, 프로젝트가 Connection Projects에 들어 있음을 보장합니다. | 선택된 의도에 따라 `codex` 또는 `claude-code`용 관리 호스트 설정을 설치하거나 갱신합니다. | 관찰 가능한 곳에서 호스트 설정, MCP 시작, 초기화, `tools/list` 점검을 실행합니다. |
-| `volicord connections` | 일치하는 Agent Connection과 연결 프로젝트를 읽습니다. | 호스트를 시작하지 않고 호스트 설정을 다시 쓰지 않습니다. | 저장된 검증 상태와 진단 검증 상태를 호스트 점검 없이 보고합니다. |
+| `volicord connection add` | 선택된 저장소 프로젝트를 등록하거나 재사용하고, 일치하는 Agent Connection을 만들거나 갱신하며, 연결 의도와 모드를 기록하고, 프로젝트가 Connection Projects에 들어 있음을 보장합니다. | 선택된 의도에 따라 `codex` 또는 `claude-code`용 관리 호스트 설정을 설치하거나 갱신합니다. | 관찰 가능한 곳에서 호스트 설정, MCP 시작, 초기화, `tools/list` 점검을 실행합니다. |
+| `volicord connection list` | 일치하는 Agent Connection과 연결 프로젝트를 읽습니다. | 호스트를 시작하지 않고 호스트 설정을 다시 쓰지 않습니다. | 저장된 검증 상태와 진단 검증 상태를 호스트 점검 없이 보고합니다. |
 | `volicord connection status` | 선택된 Agent Connection 하나를 읽습니다. | 호스트를 시작하지 않고 호스트 설정을 다시 쓰지 않습니다. | 저장된 전체 검증 상태와 필요한 사용자 동작을 보고합니다. |
 | `volicord connection verify` | 선택된 Agent Connection을 읽고 마지막으로 알려진 검증 상태를 갱신합니다. | 호스트 통합이 관찰 가능한 대상을 소유하면 관리 대상을 검사합니다. | 관찰 가능한 점검을 실행하고 결과 검증 상태를 저장합니다. |
 | `volicord connection mode` | 선택된 연결 모드를 갱신합니다. | 모드를 반영하려면 호스트 항목을 다시 생성해야 하는 경우가 아니면 호스트 설정을 다시 쓰지 않습니다. | 모드 변경 뒤 진단을 보고합니다. |
@@ -393,7 +366,7 @@ init 재실행은 일치하는 Volicord 관리 내용에 대해 idempotent입니
 
 규칙:
 
-- `volicord connect`는 기본적으로 Runtime Home의 모든 프로젝트를 연결하면 안 됩니다.
+- `volicord connection add`는 기본적으로 Runtime Home의 모든 프로젝트를 연결하면 안 됩니다.
 - 선택 프로젝트는 항상 저장소 루트에서 해석되며 명령이 지속 프로젝트 등록을 필요로
   하면 자동 등록됩니다.
 - shared 의도는 [런타임 경계](runtime-boundaries.md#explicit-integration-files-in-product-repositories)가
@@ -440,42 +413,39 @@ Agent Connection의 text와 JSON 출력은 진단 출력입니다. JSON 출력�
 안 됩니다. 이는 MCP 프로세스의 시작 검증일 뿐입니다.
 
 <a id="generic-mcp-config-export"></a>
-## generic MCP 설정 내보내기
+## 호스트 MCP 설정
 
-`volicord export mcp-config [--output PATH] [--repo PATH] [--read-only] [--json]`는
-호스트 중립 MCP 설정을 내보냅니다. 이는 별도 export 흐름이며 일반 호스트 연결
-의도가 아닙니다.
+Volicord는 공개 generic MCP 설정 내보내기 명령을 제공하지 않습니다. 지원 호스트
+설정은 `volicord init`과 `volicord connection add`를 통해 수행됩니다. 이 명령들은
+선택된 호스트 어댑터가 관리 대상을 소유할 때 지원 호스트 설정을 직접 씁니다.
+Generic 또는 그 밖의 미지원 외부 호스트는 사용자 관리 설정 표면으로 남습니다.
 
 규칙:
 
-- 명령은 선택된 저장소 프로젝트를 루트 기준으로 해석하거나 등록합니다.
-- setup이 유효하지 않으면 `action_required` setup 진단을 보고하고, 유효하면 설치
-  프로필의 저장된 MCP 명령을 사용합니다.
-- 내보낸 명령이 묶인 `volicord mcp --stdio` 프로세스를 시작하는 데 필요한 내부 registry
-  상태를 만들거나 갱신할 수 있습니다.
-- `--read-only`를 생략하면 workflow 모드를 사용합니다.
-- `--output PATH`가 있으면 설정을 그 정확한 출력 파일에 씁니다. `--output`을
-  생략하면 해석된 저장소 맥락의 기본 MCP 설정 파일을 쓰며, 기본 파일 이름은
-  `volicord.mcp.json`입니다.
-- 내보낸 설정은 export 뒤에도 사용자 관리 설정으로 남습니다. Volicord는 임의 외부
-  호스트가 이를 로드, 신뢰, 승인, 초기화, 노출했다고 주장하면 안 됩니다.
+- 지원되는 관리 호스트 설정은 Agent Connection에 묶이며, 묶인
+  `volicord mcp --stdio` 프로세스를 시작합니다.
+- 사용자 관리 generic 호스트 설정은 지원되는 Agent Connection이 존재한 뒤 설치된
+  `volicord` 실행 파일과 `mcp --stdio --connection <connection_id>
+  [--project <project_id>]` 인자를 이름 붙일 수 있습니다.
+- Volicord는 임의 외부 호스트가 사용자 관리 설정을 로드, 신뢰, 승인, 초기화, 노출했다고
+  주장하면 안 됩니다.
 
 <a id="guard-hook-commands"></a>
-## Detective host hook lifecycle 명령
+## 내부 detective hook lifecycle 명령
 
-`volicord host-hook` 명령은 agent lifecycle event 때 명령을 실행할 수 있는 호스트를
-위한 로컬 hook 진입점입니다. 이 명령은 등록된 프로젝트 상태를 검사하고 host-observation
-이벤트를 기록하며 기계 판독 가능한 로컬 decision을 반환합니다.
-Core 메서드, 사용자 소유 판단, 쓰기 티켓, 닫기 준비 상태 점검, 호스트 신뢰,
-셸 승인, OS 수준 sandboxing을 대체하지 않습니다.
+숨겨진 내부 hook namespace는 agent lifecycle event 때 명령을 실행할 수 있는 생성 호스트
+wrapper를 위한 로컬 진입점입니다. 일반 top-level help에는 표시되지 않고 일반 사용자
+대상 명령군도 아닙니다. Hook 명령은 등록된 프로젝트 상태를 검사하고 host-observation
+이벤트를 기록하며 기계 판독 가능한 로컬 decision을 반환합니다. Core 메서드, 사용자
+소유 판단, 쓰기 티켓, 닫기 준비 상태 점검, 호스트 신뢰, 셸 승인, OS 수준 sandboxing을
+대체하지 않습니다.
 
 각 host-hook 명령은 기본적으로 stdin에서 JSON hook event 하나를 읽습니다. `--file PATH`는
 테스트나 이벤트를 파일에 준비하는 호스트 통합을 위해 그 파일에서 JSON event를
 읽습니다. 기본 `--output volicord-json` 출력은 `decision`, `allowed`,
 `guard_event_id`, 선택적 `session_id`, 명령별 `result`를 포함합니다.
-`--output text`는 사람이 읽기 쉬운 짧은 한 줄 출력을 선택합니다. 기존 `--json`과
-`--text` flag는 호환성을 위해 계속 받습니다. 지원되는 decision은 `allow`, `deny`,
-`warn`, `inject_context`입니다.
+`--output text`는 사람이 읽기 쉬운 짧은 한 줄 출력을 선택합니다. 지원되는 decision은
+`allow`, `deny`, `warn`, `inject_context`입니다.
 
 `--host-output codex|claude-code`는 설치된 호스트 hook에 맞는 host-native hook 출력
 방식을 선택합니다. 이 모드에서 stdout은 호스트가 인식하는 response JSON이나
@@ -496,8 +466,8 @@ Agent Connection 식별 정보를 제공합니다. `--session ID`, `--guard-inst
 저장소 값을 사용합니다. 공개 통합 프로필은 `record`와 `detective`입니다.
 `--policy-hash HASH`는 생성된 hook wrapper script가 기대하는
 `.volicord/policy.json` hash를 고정합니다. hash가 맞지 않으면 그 hook event는 host-hook
-설치를 활성화할 수 없지만, 테스트나 디버깅에 쓰는 직접 host-hook 명령은 이 옵션을
-생략할 수 있습니다.
+설치를 활성화할 수 없지만, 테스트나 디버깅에 쓰는 내부 hook 명령은 이 옵션을 생략할
+수 있습니다.
 
 생성된 Codex hook 설정은 cwd-independent 및 subdirectory-safe여야 합니다. Bare
 `.codex/hooks/...` 경로를 호출하지 않습니다. 각 hook 항목은 아래 형태의 POSIX `sh`
@@ -518,9 +488,9 @@ exec "$root/.codex/hooks/volicord-dispatch.sh" PHASE
 `${CLAUDE_PROJECT_DIR}` 기준 exec-form 명령과 빈 args를 사용합니다.
 
 `.codex/hooks/`와 `.claude/hooks/` 아래의 생성 wrapper script는 stdin을 변경하지 않고
-`volicord host-hook`로 전달하며, stdout, stderr, host-hook 종료 코드를 보존하고, 기대하는
-호스트 종류, host-native 출력 방식, 저장소 selector, Agent Connection, host-hook 설치,
-policy hash를 전달합니다. 사용자는 생성된 hook 명령을 bare `.codex/hooks/...` 또는
+숨겨진 내부 hook namespace로 전달하며, stdout, stderr, host-hook 종료 코드를 보존하고,
+기대하는 호스트 종류, host-native 출력 방식, 저장소 selector, Agent Connection,
+host-hook 설치, policy hash를 전달합니다. 사용자는 생성된 hook 명령을 bare `.codex/hooks/...` 또는
 `.claude/hooks/...` 상대 경로로 바꾸면 안 됩니다.
 
 Detective-aware status, verification, doctor 진단은 `hook_path_safety`,
@@ -672,7 +642,6 @@ Dry-run이 하지 않는 것:
   또는 host-hook 설치 행 등록 또는 갱신
 - 호스트 설정 파일 생성, 수정, 제거
 - `Product Repository` 파일이나 디렉터리 생성, 수정, 제거
-- generic export 파일 생성, 수정, 제거
 - MCP 시작 점검, MCP 초기화, 도구 탐색 호출
 
 Text 출력은 사람이 읽을 수 있어야 하며 각 리소스 작업을 `created`, `reused`,
@@ -680,7 +649,7 @@ Text 출력은 사람이 읽을 수 있어야 하며 각 리소스 작업을 `cr
 
 <a id="setup-output"></a>
 JSON 출력은 관리 CLI 출력이지 공개 Volicord API 응답 스키마가 아닙니다. setup, 연결,
-export, 프로젝트, User Channel 상태를 보고하는 명령은 비대화식 운영자가 성공한
+프로젝트, User Channel 상태를 보고하는 명령은 비대화식 운영자가 성공한
 setup과 필요한 사용자 동작을 구분할 수 있을 만큼 구조화된 상태를 포함해야 합니다.
 
 필수 진단 JSON 값:
@@ -729,7 +698,7 @@ setup과 doctor JSON은 진단 소비자가 setup 동작 상태와 설치 프로
 
 ## 관리 경계
 
-관리 CLI는 로컬 리소스를 초기화, 등록, 연결, 내보내기, 진단할 수 있습니다. 그 자체로
+관리 CLI는 로컬 리소스를 초기화, 등록, 연결, 진단할 수 있습니다. 그 자체로
 공개 Volicord API 메서드를 만들지 않으며 Core 권한, 쓰기 티켓 호환성, 증거 충분성,
 닫기 준비 상태, 사용자 소유 판단, 수락, 잔여 위험 수락, 아티팩트 권한, 보안 보장을
 만들지 않습니다.

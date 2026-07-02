@@ -89,7 +89,7 @@ volicord mcp --stdio --connection <connection_id> [--project <project_id>]
 ```
 
 The `<connection_id>` process-binding value comes from the stored
-`connection_internal_id` created by `volicord connect` or the export flow.
+`connection_internal_id` created by `volicord connection add` or the export flow.
 The optional `<project_id>` process-binding value is a stored
 `project_internal_id` already allowed for that connection. Ordinary users
 should not need to type either value in text-mode flows.
@@ -243,8 +243,7 @@ Current MCP Runtime Home resolution:
 3. A relative `VOLICORD_HOME` is resolved against the process current working
    directory without requiring the path to exist.
 4. When `VOLICORD_HOME` is absent, use the Runtime Home established by
-   `volicord init` or `volicord setup`, or the platform default local runtime
-   location.
+   `volicord init`, or the platform default local runtime location.
 5. Do not require canonicalization before startup validation.
 
 ## Startup Validation
@@ -568,7 +567,7 @@ For a public Volicord method-tool call, the adapter first performs deterministic
 repository-root project selection and per-project validation owned by
 [Agent Connection](agent-connection.md#current-connection-context). Ambiguous or
 unavailable project selection is rejected before Core execution and the
-actionable text must name the `volicord project use` or `volicord connect`
+actionable text must name the `volicord project use` or `volicord connection add`
 command needed to repair the state.
 
 `volicord mcp --stdio` does not advertise or implement MCP task-augmented tool

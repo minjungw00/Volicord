@@ -72,7 +72,7 @@ server-sent event 스트림, HTTP elicitation, 전체 MCP Streamable HTTP 호환
 volicord mcp --stdio --connection <connection_id> [--project <project_id>]
 ```
 
-`<connection_id>` 프로세스 바인딩 값은 `volicord connect` 또는 export 흐름이 만든
+`<connection_id>` 프로세스 바인딩 값은 `volicord connection add` 또는 export 흐름이 만든
 저장된 `connection_internal_id`에서 옵니다. 선택적 `<project_id>` 프로세스 바인딩 값은
 그 연결에 이미 허용된 저장 `project_internal_id`입니다. 일반 사용자가 텍스트 모드
 흐름에서 두 값 중 어느 것도 입력할 필요가 없어야 합니다.
@@ -206,8 +206,8 @@ Connection의 연결 프로젝트와 저장소 루트 해석으로 제어됩니�
 2. 절대 경로 `VOLICORD_HOME`은 제공된 그대로 사용합니다.
 3. 상대 경로 `VOLICORD_HOME`은 그 경로가 존재하지 않아도 프로세스의 현재 작업
    디렉터리를 기준으로 해석합니다.
-4. `VOLICORD_HOME`이 없으면 `volicord init` 또는 `volicord setup`이 마련한 Runtime Home,
-   또는 플랫폼 기본 로컬 런타임 위치를 사용합니다.
+4. `VOLICORD_HOME`이 없으면 `volicord init`이 마련한 Runtime Home 또는 플랫폼 기본
+   로컬 런타임 위치를 사용합니다.
 5. 시작 검증 전에 정규화를 요구하지 않습니다.
 
 ## 시작 검증
@@ -508,7 +508,7 @@ MCP 어댑터는 Core에 넘기기 전에 Core 래퍼를 생성합니다. 어댑
 [Agent Connection](agent-connection.md#current-connection-context)이 담당하는 결정적 저장소
 루트 프로젝트 선택과 프로젝트별 검증을 수행합니다. 모호하거나 사용할 수 없는 프로젝트
 선택은 Core 실행 전에 거절하고, 실행 가능한 텍스트는 상태를 고칠
-`volicord project use` 또는 `volicord connect` 명령을 이름 붙여야 합니다.
+`volicord project use` 또는 `volicord connection add` 명령을 이름 붙여야 합니다.
 
 `volicord mcp --stdio`는 MCP 태스크 보강 도구 실행을 광고하거나 구현하지 않습니다. `tools/call`
 요청은 `CreateTaskResult`를 반환하지 않으며, `task` 파라미터는 지원되는 기준 기능이

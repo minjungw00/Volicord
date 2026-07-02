@@ -28,7 +28,7 @@
 
 ## 저장 위치
 
-Volicord는 기준 범위 기록을 로컬 `Volicord Runtime Home` 하나와 등록된 프로젝트별 로컬 상태 데이터베이스 하나에 저장합니다. `volicord init`은 첫 실행 저장소 설정 중 선택된 Runtime Home과 설치 프로필을 마련하거나 재사용할 수 있고, `volicord setup`은 그 프로필을 직접 준비하거나 복구합니다. 일반 사용자 흐름은 Runtime Home 경로를 다시 제공할 필요가 없습니다.
+Volicord는 기준 범위 기록을 로컬 `Volicord Runtime Home` 하나와 등록된 프로젝트별 로컬 상태 데이터베이스 하나에 저장합니다. `volicord init`은 첫 실행 저장소 설정 중 선택된 Runtime Home과 설치 프로필을 마련하거나 재사용할 수 있습니다. 일반 사용자 흐름은 Runtime Home 경로를 다시 제공할 필요가 없습니다.
 
 아래 트리는 관련 저장 기능을 사용한 뒤의 대표 배치입니다. 프로젝트 등록 직후의 초기 디렉터리 체크리스트가 아닙니다. 프로젝트 등록은 프로젝트 상태를 만들거나 열지만, 아티팩트 저장소 디렉터리는 필요할 때 늦게 만들어질 수 있습니다.
 
@@ -79,7 +79,7 @@ API 스키마 형태와 저장소 기록 배치는 서로 다른 담당 문서�
 | 저장 영역 | 기록 계열 | 저장 범주 | 배치 요약 |
 |---|---|---|---|
 | `registry.sqlite` | Runtime Home 식별 정보 | 런타임 식별 | 저장된 `runtime_home_id` 하나, Runtime Home 경로, registry 데이터베이스 경로, 스키마/저장 프로필, 메타데이터, 타임스탬프. |
-| `registry.sqlite` | 설치 프로필 | 실행 파일 프로필 | `volicord init` 또는 `volicord setup`이 마련한 선택된 `volicord` 명령, MCP 시작 명령, bin 디렉터리, 기본 연결 모드, 메타데이터, 타임스탬프. |
+| `registry.sqlite` | 설치 프로필 | 실행 파일 프로필 | `volicord init`이 마련한 선택된 `volicord` 명령, MCP 시작 명령, bin 디렉터리, 기본 연결 모드, 메타데이터, 타임스탬프. |
 | `registry.sqlite` | 프로젝트 등록과 alias | 프로젝트 매핑 | `project_internal_id`, 표시 이름, CLI 선택 alias, Runtime Home 관계, 고유한 `repo_root`, 위치를 담당하는 `project_home`, 실행 시 `project_home/state.sqlite`와 일치해야 하는 저장된 `state_db_path`, 상태, 메타데이터, alias에서 내부 식별 정보로 가는 매핑. |
 | `registry.sqlite` | Agent Connection | MCP 호스트 연결 단위 | 지속되는 `connection_internal_id`, 호스트 종류, 연결 의도, 호스트 범위, 선택적 `project_internal_id`, 내부 서버 이름, 설정 대상, 모드, 활성 상태, 관리 fingerprint, 검증 요약 상태, 검증 보고서 JSON, 사용자 동작 JSON, 메타데이터, 타임스탬프. |
 | `registry.sqlite` | Connection Projects | 연결 프로젝트 허용 목록 | `connection_internal_id`와 `project_internal_id`를 사용하는 Agent Connection과 등록된 프로젝트 사이의 명시적 다대다 멤버십. |

@@ -1163,7 +1163,7 @@ fn doctor_classify_codex_hook_command_path(
         }
         return "relative_path_unsafe";
     }
-    if command_text.contains(&format!("volicord host-hook {phase_command}")) {
+    if command_text.contains(&format!("volicord _hook {phase_command}")) {
         return "ok";
     }
     "metadata_missing"
@@ -1197,7 +1197,7 @@ fn doctor_classify_claude_hook_command_path(
         }
         return "relative_path_unsafe";
     }
-    if command_text.contains(&format!("volicord host-hook {phase_command}")) {
+    if command_text.contains(&format!("volicord _hook {phase_command}")) {
         return "ok";
     }
     "metadata_missing"
@@ -2086,13 +2086,10 @@ fn inspect_path_or_shim(
             DiagnosticAction {
                 id: "repair_command_links".to_owned(),
                 instruction: format!(
-                    "Use advanced repair command volicord setup --link-bin {} to repair command links; restart or reload existing agent hosts after command-link changes.",
+                    "Repair the command links in {} or reinstall the volicord executable on PATH; restart or reload existing agent hosts after command-link changes.",
                     profile.bin_dir.display()
                 ),
-                command: Some(format!(
-                    "volicord setup --link-bin {}",
-                    profile.bin_dir.display()
-                )),
+                command: None,
             },
         );
     } else if link_ready {
@@ -2136,9 +2133,9 @@ fn inspect_path_or_shim(
             DiagnosticAction {
                 id: "create_command_links".to_owned(),
                 instruction:
-                    "Use advanced repair command volicord setup --link-bin PATH for a command-link directory you keep on PATH; restart or reload existing agent hosts after PATH or command-link changes."
+                    "Install the volicord executable in a command directory you keep on PATH; restart or reload existing agent hosts after PATH or command-link changes."
                         .to_owned(),
-                command: Some("volicord setup --link-bin PATH".to_owned()),
+                command: None,
             },
         );
     }
@@ -2675,10 +2672,10 @@ fn push_command_availability_action(actions: &mut Vec<DiagnosticAction>) {
         actions,
         DiagnosticAction {
             id: "make_profile_commands_available".to_owned(),
-        instruction:
-                "Use advanced repair command volicord setup --link-bin PATH or update PATH so volicord resolves to the installation profile command; restart or reload existing agent hosts after PATH or command-link changes."
+            instruction:
+                "Install the volicord executable on PATH or update PATH so volicord resolves to the installation profile command; restart or reload existing agent hosts after PATH or command-link changes."
                     .to_owned(),
-            command: Some("volicord setup --link-bin PATH".to_owned()),
+            command: None,
         },
     );
 }
@@ -2718,7 +2715,7 @@ mod tests {
                         "hooks": [
                             {
                                 "type": "command",
-                                "command": "volicord host-hook pre-tool --host claude-code --host-output claude-code",
+                                "command": "volicord _hook pre-tool --host claude-code --host-output claude-code",
                                 "timeout": 30
                             }
                         ]

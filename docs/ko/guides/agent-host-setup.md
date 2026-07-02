@@ -29,11 +29,11 @@ registry 식별 정보를 선택된 `Volicord Runtime Home`에 저장합니다. 
 설치나 session watcher를 요구하지 않습니다.
 
 설치 프로필이 준비된 뒤 personal, global, read-only 동작을 직접 선택하는 등 낮은
-수준의 연결 변형이 필요할 때는 `volicord connect`를 사용합니다. 프로세스 현재
+수준의 연결 변형이 필요할 때는 `volicord connection add`를 사용합니다. 프로세스 현재
 디렉터리가 대상 Product Repository가 아닐 때만 `--repo PATH`를 사용합니다.
 
 ```sh
-volicord connect codex --repo /path/to/your-product-repo
+volicord connection add codex --repo /path/to/your-product-repo
 ```
 
 ## 통합 프로필
@@ -122,9 +122,9 @@ restart, approval을 대신하지 않습니다. `AGENTS.md`는 지침 지원이�
 
 | 의도 | 명령 형태 | 호스트 지원 |
 |---|---|---|
-| `personal` | `volicord connect codex` 또는 `volicord connect claude-code` | 현재 사용자를 위한 로컬 설정. |
-| `shared` | `volicord connect codex --shared` 또는 `volicord connect claude-code --shared` | 호스트가 지원할 때 명시적 통합 파일을 통해 저장되는 프로젝트 공유 설정. |
-| `global` | `volicord connect claude-code --global` | 이를 지원하는 호스트의 사용자 전체 호스트 설정. |
+| `personal` | `volicord connection add codex` 또는 `volicord connection add claude-code` | 현재 사용자를 위한 로컬 설정. |
+| `shared` | `volicord connection add codex --shared` 또는 `volicord connection add claude-code --shared` | 호스트가 지원할 때 명시적 통합 파일을 통해 저장되는 프로젝트 공유 설정. |
+| `global` | `volicord connection add claude-code --global` | 이를 지원하는 호스트의 사용자 전체 호스트 설정. |
 
 `--shared`와 `--global`은 함께 사용할 수 없습니다. 둘 다 없으면 Volicord는
 `personal`을 사용합니다.
@@ -135,7 +135,7 @@ restart, approval을 대신하지 않습니다. `AGENTS.md`는 지침 지원이�
 연결에는 `--read-only`를 사용합니다.
 
 ```sh
-volicord connect codex --read-only
+volicord connection add codex --read-only
 ```
 
 기존 연결 모드는 아래처럼 바꿉니다.
@@ -152,8 +152,8 @@ volicord connection mode codex workflow
 dry-run은 지속 변경 없이 계획을 보고합니다.
 
 ```sh
-volicord connect codex --dry-run
-volicord connect claude-code --shared --dry-run
+volicord connection add codex --dry-run
+volicord connection add claude-code --shared --dry-run
 volicord connection remove codex --dry-run
 ```
 
@@ -163,7 +163,7 @@ volicord connection remove codex --dry-run
 ## 조회와 검증
 
 ```sh
-volicord connections
+volicord connection list
 volicord connection status codex --repo /path/to/your-product-repo
 volicord connection verify codex --repo /path/to/your-product-repo
 ```
@@ -185,18 +185,13 @@ volicord connection verify claude-code --global
 | `failed` | 필요한 로컬 전제 조건, 호스트 설정 단계, 검증 단계가 성공하지 못했습니다. |
 | `dry_run` | 명령이 지속 변경 없이 계획된 동작을 보고했습니다. |
 
-## Generic MCP 설정 내보내기
+## Generic MCP 호스트 설정
 
-Volicord가 직접 관리하지 않는 MCP 호스트에는 아래처럼 설정을 내보냅니다.
-
-```sh
-cd /path/to/your-product-repo
-volicord export mcp-config --output /tmp/volicord.mcp.json
-```
-
-내보내기는 감지된 Product Repository와 설치 프로필을 사용합니다. 내보낸 설정이
-read-only 연결에 묶여야 하면 `--read-only`를 추가합니다. 내보낸 파일은 내보내기 뒤에도
-사용자 관리 파일로 남습니다.
+Volicord가 직접 관리하지 않는 MCP 호스트에는 먼저 지원되는 Agent Connection을 만든 뒤,
+외부 호스트의 자체 설정에서
+`volicord mcp --stdio --connection <connection_id> [--project <project_id>]`를 시작하도록
+구성합니다. 연결이 read-only여야 하면 `volicord connection mode`를 사용합니다. 외부
+호스트 설정은 사용자 관리 설정으로 남습니다.
 
 ## User Channel 경계
 

@@ -28,7 +28,9 @@ git init -q "$repo"
 "$bin" --help >/dev/null
 "$bin" mcp --help >/dev/null
 VOLICORD_HOME="$home" "$bin" init --host codex --repo "$repo" --dry-run --json >/dev/null
-"$bin" guard --help >/dev/null
+"$bin" status --help >/dev/null
+"$bin" connection --help >/dev/null
+"$bin" inbox --help >/dev/null
 "$bin" serve --help >/dev/null
 
 printf 'volicord smoke test passed for %s\n' "$bin"

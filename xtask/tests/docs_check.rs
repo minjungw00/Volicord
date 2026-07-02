@@ -1099,15 +1099,10 @@ fn accepts_sensitive_identifiers_in_document_prose_when_map_roles_are_valid() {
 fn accepts_supported_volicord_shell_command_examples() {
     let fixture = valid_fixture();
     let commands = r#"```sh
-./target/debug/volicord setup
-volicord setup
-volicord setup --json
-volicord setup --mcp-command /path/to/volicord
-volicord setup --link-bin /path/to/bin
-volicord setup --home /path/to/runtime-home
 ./target/debug/volicord mcp --version
 ./target/debug/volicord mcp --help
 volicord mcp --stdio --connection CONNECTION_ID
+volicord mcp --stdio --connection CONNECTION_ID --project PROJECT_ID
 volicord mcp --check --connection CONNECTION_ID
 volicord mcp --check --connection CONNECTION_ID --project PROJECT_ID
 volicord serve --transport local-http
@@ -1116,9 +1111,11 @@ volicord serve --transport local-http --listen [::1]:8765 --token TOKEN --projec
 volicord init --host codex --repo /path/to/repo --profile record
 volicord init --host claude-code --repo /path/to/repo --profile detective
 ./target/debug/volicord init --host codex --repo /path/to/repo --dry-run
-volicord host-hook session-start --repo /path/to/repo --connection CONNECTION_ID --integration-profile detective --output volicord-json
-volicord connect codex --read-only
-volicord export mcp-config --output /tmp/volicord.mcp.json
+volicord status --repo /path/to/repo
+volicord status --task active
+volicord connection add codex --read-only
+volicord connection list --repo /path/to/repo
+volicord connection status codex --repo /path/to/repo
 volicord connection mode codex workflow
 volicord inbox --task active
 volicord inbox answer JUDGMENT_ID --choice accept
@@ -1333,26 +1330,17 @@ fn rejects_invalid_public_integration_profile_examples() {
     write(
         fixture.path(),
         "docs/en/example.md",
-        "# Overview\n\n```sh\nvolicord init --host codex --repo /path/to/repo --profile managed\nvolicord host-hook session-start --repo /path/to/repo --connection CONNECTION_ID --integration-profile managed\n```\n",
+        "# Overview\n\n```sh\nvolicord init --host codex --repo /path/to/repo --profile managed\n```\n",
     );
 
     let report = report(fixture.path());
     let errors = category_errors(&report, "command.invalid_example");
 
-    assert_eq!(errors.len(), 2, "{:#?}", report.errors());
+    assert_eq!(errors.len(), 1, "{:#?}", report.errors());
     assert!(
         errors
             .iter()
             .any(|error| error.message().contains("--profile")
-                && error.message().contains("record")
-                && error.message().contains("detective")),
-        "{:#?}",
-        report.errors()
-    );
-    assert!(
-        errors
-            .iter()
-            .any(|error| error.message().contains("--integration-profile")
                 && error.message().contains("record")
                 && error.message().contains("detective")),
         "{:#?}",
@@ -1381,12 +1369,12 @@ fn rejects_write_readiness_public_document_term() {
 }
 
 #[test]
-fn rejects_mcp_command_on_connect_command_examples() {
+fn rejects_mcp_command_on_connection_add_command_examples() {
     let fixture = valid_fixture();
     write(
         fixture.path(),
         "docs/en/example.md",
-        "# Overview\n\n```sh\nvolicord connect codex --mcp-command ./target/debug/volicord\n```\n",
+        "# Overview\n\n```sh\nvolicord connection add codex --mcp-command ./target/debug/volicord\n```\n",
     );
 
     let report = report(fixture.path());
@@ -1399,19 +1387,19 @@ fn rejects_mcp_command_on_connect_command_examples() {
         report.errors()
     );
     assert!(
-        errors[0].message().contains("volicord connect"),
+        errors[0].message().contains("volicord connection add"),
         "{:#?}",
         report.errors()
     );
 }
 
 #[test]
-fn rejects_link_bin_on_connect_command_examples() {
+fn rejects_link_bin_on_connection_add_command_examples() {
     let fixture = valid_fixture();
     write(
         fixture.path(),
         "docs/en/example.md",
-        "# Overview\n\n```sh\nvolicord connect codex --link-bin /path/to/bin\n```\n",
+        "# Overview\n\n```sh\nvolicord connection add codex --link-bin /path/to/bin\n```\n",
     );
 
     let report = report(fixture.path());
@@ -1424,7 +1412,7 @@ fn rejects_link_bin_on_connect_command_examples() {
         report.errors()
     );
     assert!(
-        errors[0].message().contains("volicord connect"),
+        errors[0].message().contains("volicord connection add"),
         "{:#?}",
         report.errors()
     );
@@ -1436,7 +1424,7 @@ fn ignores_unsupported_volicord_commands_in_prose() {
     write(
         fixture.path(),
         "docs/en/example.md",
-        "# Overview\n\nA diagnostic can mention `connection_id`, and prose can name `volicord connect codex --mcp-command ./target/debug/volicord` or `volicord connect codex --link-bin /path/to/bin` without becoming an executable example.\n",
+        "# Overview\n\nA diagnostic can mention `connection_id`, and prose can name `volicord connection add codex --mcp-command ./target/debug/volicord` or `volicord connection add codex --link-bin /path/to/bin` without becoming an executable example.\n",
     );
 
     let report = report(fixture.path());

@@ -81,7 +81,7 @@ fn guard_session_start_injects_context_and_records_event() -> Result<(), Box<dyn
     let output = run_guard(
         fixture.runtime_home(),
         fixture.repo_root(),
-        ["host-hook", "session-start", "--repo", fixture.repo_arg()],
+        ["_hook", "session-start", "--repo", fixture.repo_arg()],
         &event,
     )?;
     assert_success(&output);
@@ -121,7 +121,7 @@ fn guard_accepts_only_supported_integration_profiles() -> Result<(), Box<dyn Err
             fixture.runtime_home(),
             fixture.repo_root(),
             [
-                "host-hook",
+                "_hook",
                 "session-start",
                 "--repo",
                 fixture.repo_arg(),
@@ -146,7 +146,7 @@ fn guard_accepts_only_supported_integration_profiles() -> Result<(), Box<dyn Err
         fixture.runtime_home(),
         fixture.repo_root(),
         [
-            "host-hook",
+            "_hook",
             "session-start",
             "--repo",
             fixture.repo_arg(),
@@ -182,7 +182,7 @@ fn guard_session_start_promotes_matching_installation_active() -> Result<(), Box
     let output = run_guard(
         fixture.runtime_home(),
         fixture.repo_root(),
-        ["host-hook", "session-start", "--repo", fixture.repo_arg()],
+        ["_hook", "session-start", "--repo", fixture.repo_arg()],
         &event,
     )?;
     assert_success(&output);
@@ -229,7 +229,7 @@ fn guard_session_start_with_stale_policy_hash_does_not_activate_installation(
         fixture.runtime_home(),
         fixture.repo_root(),
         [
-            "host-hook",
+            "_hook",
             "session-start",
             "--repo",
             fixture.repo_arg(),
@@ -266,7 +266,7 @@ fn guard_pre_tool_denies_product_write_without_active_task() -> Result<(), Box<d
     let output = run_guard(
         fixture.runtime_home(),
         fixture.repo_root(),
-        ["host-hook", "pre-tool", "--repo", fixture.repo_arg()],
+        ["_hook", "pre-tool", "--repo", fixture.repo_arg()],
         &event,
     )?;
     assert_eq!(output.status.code(), Some(1));
@@ -300,7 +300,7 @@ fn guard_pre_tool_allows_read_status_without_active_task() -> Result<(), Box<dyn
     let output = run_guard(
         fixture.runtime_home(),
         fixture.repo_root(),
-        ["host-hook", "pre-tool", "--repo", fixture.repo_arg()],
+        ["_hook", "pre-tool", "--repo", fixture.repo_arg()],
         &event,
     )?;
     assert_success(&output);
@@ -338,7 +338,7 @@ fn guard_pre_tool_codex_host_output_deny_is_native_json() -> Result<(), Box<dyn 
         fixture.runtime_home(),
         fixture.repo_root(),
         [
-            "host-hook",
+            "_hook",
             "pre-tool",
             "--repo",
             fixture.repo_arg(),
@@ -387,7 +387,7 @@ fn guard_pre_tool_claude_host_output_deny_never_uses_exit_one() -> Result<(), Bo
         fixture.runtime_home(),
         fixture.repo_root(),
         [
-            "host-hook",
+            "_hook",
             "pre-tool",
             "--repo",
             fixture.repo_arg(),
@@ -419,7 +419,7 @@ fn guard_pre_tool_host_output_allow_has_empty_streams() -> Result<(), Box<dyn Er
             fixture.runtime_home(),
             fixture.repo_root(),
             [
-                "host-hook",
+                "_hook",
                 "pre-tool",
                 "--repo",
                 fixture.repo_arg(),
@@ -448,7 +448,7 @@ fn guard_session_start_host_output_injects_context() -> Result<(), Box<dyn Error
         fixture.runtime_home(),
         fixture.repo_root(),
         [
-            "host-hook",
+            "_hook",
             "session-start",
             "--repo",
             fixture.repo_arg(),
@@ -656,7 +656,7 @@ fn guard_volicord_json_deny_is_not_host_native_output() -> Result<(), Box<dyn Er
     let output = run_guard(
         fixture.runtime_home(),
         fixture.repo_root(),
-        ["host-hook", "pre-tool", "--repo", fixture.repo_arg()],
+        ["_hook", "pre-tool", "--repo", fixture.repo_arg()],
         &event,
     )?;
     assert_eq!(output.status.code(), Some(1));
@@ -703,7 +703,7 @@ fn guard_unsupported_host_output_mode_fails_clearly() -> Result<(), Box<dyn Erro
         fixture.runtime_home(),
         fixture.repo_root(),
         [
-            "host-hook",
+            "_hook",
             "pre-tool",
             "--repo",
             fixture.repo_arg(),
@@ -730,7 +730,7 @@ fn guard_host_output_non_policy_error_uses_stderr_not_stdout() -> Result<(), Box
         fixture.runtime_home(),
         fixture.repo_root(),
         [
-            "host-hook",
+            "_hook",
             "pre-tool",
             "--repo",
             fixture.repo_arg(),
@@ -760,7 +760,7 @@ fn guard_pre_tool_rejects_paths_outside_project_allowlist() -> Result<(), Box<dy
     let output = run_guard(
         fixture.runtime_home(),
         fixture.repo_root(),
-        ["host-hook", "pre-tool", "--repo", fixture.repo_arg()],
+        ["_hook", "pre-tool", "--repo", fixture.repo_arg()],
         &event,
     )?;
     assert_eq!(output.status.code(), Some(1));
@@ -796,7 +796,7 @@ fn guard_pre_tool_requires_current_write_ticket() -> Result<(), Box<dyn Error>> 
     let denied = run_guard(
         fixture.runtime_home(),
         fixture.repo_root(),
-        ["host-hook", "pre-tool", "--repo", fixture.repo_arg()],
+        ["_hook", "pre-tool", "--repo", fixture.repo_arg()],
         &denied_event,
     )?;
     assert_eq!(denied.status.code(), Some(1));
@@ -824,7 +824,7 @@ fn guard_pre_tool_requires_current_write_ticket() -> Result<(), Box<dyn Error>> 
     let allowed = run_guard(
         fixture.runtime_home(),
         fixture.repo_root(),
-        ["host-hook", "pre-tool", "--repo", fixture.repo_arg()],
+        ["_hook", "pre-tool", "--repo", fixture.repo_arg()],
         &allowed_event,
     )?;
     assert_success(&allowed);
@@ -855,7 +855,7 @@ fn guard_pre_tool_requires_current_write_ticket() -> Result<(), Box<dyn Error>> 
     let out_of_scope = run_guard(
         fixture.runtime_home(),
         fixture.repo_root(),
-        ["host-hook", "pre-tool", "--repo", fixture.repo_arg()],
+        ["_hook", "pre-tool", "--repo", fixture.repo_arg()],
         &out_of_scope_event,
     )?;
     assert_eq!(out_of_scope.status.code(), Some(1));
@@ -886,7 +886,7 @@ fn guard_post_tool_records_unrecorded_product_file_changes() -> Result<(), Box<d
     let output = run_guard(
         fixture.runtime_home(),
         fixture.repo_root(),
-        ["host-hook", "post-tool", "--repo", fixture.repo_arg()],
+        ["_hook", "post-tool", "--repo", fixture.repo_arg()],
         &event,
     )?;
     assert_success(&output);
@@ -934,7 +934,7 @@ fn guard_post_tool_links_active_write_ticket_without_expected_write() -> Result<
     let output = run_guard(
         fixture.runtime_home(),
         fixture.repo_root(),
-        ["host-hook", "post-tool", "--repo", fixture.repo_arg()],
+        ["_hook", "post-tool", "--repo", fixture.repo_arg()],
         &event,
     )?;
     assert_success(&output);
@@ -990,7 +990,7 @@ fn guard_post_tool_host_output_warns_with_context() -> Result<(), Box<dyn Error>
         fixture.runtime_home(),
         fixture.repo_root(),
         [
-            "host-hook",
+            "_hook",
             "post-tool",
             "--repo",
             fixture.repo_arg(),
@@ -1033,7 +1033,7 @@ fn guard_post_tool_matches_expected_allowed_write() -> Result<(), Box<dyn Error>
     let pre_output = run_guard(
         fixture.runtime_home(),
         fixture.repo_root(),
-        ["host-hook", "pre-tool", "--repo", fixture.repo_arg()],
+        ["_hook", "pre-tool", "--repo", fixture.repo_arg()],
         &pre,
     )?;
     assert_success(&pre_output);
@@ -1070,7 +1070,7 @@ fn guard_post_tool_matches_expected_allowed_write() -> Result<(), Box<dyn Error>
     let post_output = run_guard(
         fixture.runtime_home(),
         fixture.repo_root(),
-        ["host-hook", "post-tool", "--repo", fixture.repo_arg()],
+        ["_hook", "post-tool", "--repo", fixture.repo_arg()],
         &post,
     )?;
     assert_success(&post_output);
@@ -1125,7 +1125,7 @@ fn guard_post_tool_records_out_of_scope_expected_write() -> Result<(), Box<dyn E
     assert_success(&run_guard(
         fixture.runtime_home(),
         fixture.repo_root(),
-        ["host-hook", "pre-tool", "--repo", fixture.repo_arg()],
+        ["_hook", "pre-tool", "--repo", fixture.repo_arg()],
         &pre,
     )?);
 
@@ -1144,7 +1144,7 @@ fn guard_post_tool_records_out_of_scope_expected_write() -> Result<(), Box<dyn E
     let output = run_guard(
         fixture.runtime_home(),
         fixture.repo_root(),
-        ["host-hook", "post-tool", "--repo", fixture.repo_arg()],
+        ["_hook", "post-tool", "--repo", fixture.repo_arg()],
         &post,
     )?;
     assert_success(&output);
@@ -1197,7 +1197,7 @@ fn guard_pre_tool_ambiguous_shell_does_not_create_expected_write() -> Result<(),
     let pre_output = run_guard(
         fixture.runtime_home(),
         fixture.repo_root(),
-        ["host-hook", "pre-tool", "--repo", fixture.repo_arg()],
+        ["_hook", "pre-tool", "--repo", fixture.repo_arg()],
         &pre,
     )?;
     assert_success(&pre_output);
@@ -1228,7 +1228,7 @@ fn guard_pre_tool_ambiguous_shell_does_not_create_expected_write() -> Result<(),
     let denied_output = run_guard(
         fixture.runtime_home(),
         fixture.repo_root(),
-        ["host-hook", "pre-tool", "--repo", fixture.repo_arg()],
+        ["_hook", "pre-tool", "--repo", fixture.repo_arg()],
         &denied_pre,
     )?;
     assert_eq!(denied_output.status.code(), Some(1));
@@ -1257,7 +1257,7 @@ fn guard_pre_tool_ambiguous_shell_does_not_create_expected_write() -> Result<(),
     let post_output = run_guard(
         fixture.runtime_home(),
         fixture.repo_root(),
-        ["host-hook", "post-tool", "--repo", fixture.repo_arg()],
+        ["_hook", "post-tool", "--repo", fixture.repo_arg()],
         &post,
     )?;
     assert_success(&post_output);
@@ -1295,7 +1295,7 @@ fn guard_expected_write_does_not_leak_between_sessions() -> Result<(), Box<dyn E
     assert_success(&run_guard(
         fixture.runtime_home(),
         fixture.repo_root(),
-        ["host-hook", "pre-tool", "--repo", fixture.repo_arg()],
+        ["_hook", "pre-tool", "--repo", fixture.repo_arg()],
         &pre,
     )?);
 
@@ -1314,7 +1314,7 @@ fn guard_expected_write_does_not_leak_between_sessions() -> Result<(), Box<dyn E
     let output = run_guard(
         fixture.runtime_home(),
         fixture.repo_root(),
-        ["host-hook", "post-tool", "--repo", fixture.repo_arg()],
+        ["_hook", "post-tool", "--repo", fixture.repo_arg()],
         &post_other_session,
     )?;
     assert_success(&output);
@@ -1365,7 +1365,7 @@ fn guard_expected_write_does_not_leak_between_projects() -> Result<(), Box<dyn E
     assert_success(&run_guard(
         first.runtime_home(),
         first.repo_root(),
-        ["host-hook", "pre-tool", "--repo", first.repo_arg()],
+        ["_hook", "pre-tool", "--repo", first.repo_arg()],
         &pre,
     )?);
 
@@ -1386,7 +1386,7 @@ fn guard_expected_write_does_not_leak_between_projects() -> Result<(), Box<dyn E
     let output = run_guard(
         second.runtime_home(),
         second.repo_root(),
-        ["host-hook", "post-tool", "--repo", second.repo_arg()],
+        ["_hook", "post-tool", "--repo", second.repo_arg()],
         &post,
     )?;
     assert_success(&output);
@@ -1422,7 +1422,7 @@ fn guard_prompt_capture_hashes_prompt_and_omits_text() -> Result<(), Box<dyn Err
         fixture.runtime_home(),
         fixture.repo_root(),
         [
-            "host-hook",
+            "_hook",
             "prompt-capture",
             "--repo",
             fixture.repo_arg(),
@@ -1467,7 +1467,7 @@ fn guard_session_start_shows_chat_judgment_instructions() -> Result<(), Box<dyn 
     let output = run_guard(
         fixture.runtime_home(),
         fixture.repo_root(),
-        ["host-hook", "session-start", "--repo", fixture.repo_arg()],
+        ["_hook", "session-start", "--repo", fixture.repo_arg()],
         &event,
     )?;
     assert_success(&output);
@@ -1518,7 +1518,7 @@ fn guard_session_start_hides_chat_judgment_instructions_without_prompt_capture(
     let output = run_guard(
         fixture.runtime_home(),
         fixture.repo_root(),
-        ["host-hook", "session-start", "--repo", fixture.repo_arg()],
+        ["_hook", "session-start", "--repo", fixture.repo_arg()],
         &event,
     )?;
     assert_success(&output);
@@ -1554,7 +1554,7 @@ fn guard_session_start_omits_stale_chat_judgment_instructions() -> Result<(), Bo
     let output = run_guard(
         fixture.runtime_home(),
         fixture.repo_root(),
-        ["host-hook", "session-start", "--repo", fixture.repo_arg()],
+        ["_hook", "session-start", "--repo", fixture.repo_arg()],
         &event,
     )?;
     assert_success(&output);
@@ -1585,7 +1585,7 @@ fn guard_session_start_omits_expired_chat_judgment_instructions() -> Result<(), 
     let output = run_guard(
         fixture.runtime_home(),
         fixture.repo_root(),
-        ["host-hook", "session-start", "--repo", fixture.repo_arg()],
+        ["_hook", "session-start", "--repo", fixture.repo_arg()],
         &event,
     )?;
     assert_success(&output);
@@ -1618,7 +1618,7 @@ fn guard_prompt_capture_records_answer_command() -> Result<(), Box<dyn Error>> {
     let output = run_guard(
         fixture.runtime_home(),
         fixture.repo_root(),
-        ["host-hook", "prompt-capture", "--repo", fixture.repo_arg()],
+        ["_hook", "prompt-capture", "--repo", fixture.repo_arg()],
         &event,
     )?;
     assert_success(&output);
@@ -1670,7 +1670,7 @@ fn guard_prompt_capture_host_output_injects_recorded_context() -> Result<(), Box
         fixture.runtime_home(),
         fixture.repo_root(),
         [
-            "host-hook",
+            "_hook",
             "prompt-capture",
             "--repo",
             fixture.repo_arg(),
@@ -1711,7 +1711,7 @@ fn guard_prompt_capture_records_reject_command() -> Result<(), Box<dyn Error>> {
     let output = run_guard(
         fixture.runtime_home(),
         fixture.repo_root(),
-        ["host-hook", "prompt-capture", "--repo", fixture.repo_arg()],
+        ["_hook", "prompt-capture", "--repo", fixture.repo_arg()],
         &event,
     )?;
     assert_success(&output);
@@ -1735,7 +1735,7 @@ fn guard_prompt_capture_records_defer_command() -> Result<(), Box<dyn Error>> {
     let output = run_guard(
         fixture.runtime_home(),
         fixture.repo_root(),
-        ["host-hook", "prompt-capture", "--repo", fixture.repo_arg()],
+        ["_hook", "prompt-capture", "--repo", fixture.repo_arg()],
         &event,
     )?;
     assert_success(&output);
@@ -1759,7 +1759,7 @@ fn guard_prompt_capture_records_note_as_deferred_judgment() -> Result<(), Box<dy
     let output = run_guard(
         fixture.runtime_home(),
         fixture.repo_root(),
-        ["host-hook", "prompt-capture", "--repo", fixture.repo_arg()],
+        ["_hook", "prompt-capture", "--repo", fixture.repo_arg()],
         &event,
     )?;
     assert_success(&output);
@@ -1782,7 +1782,7 @@ fn guard_prompt_capture_rejects_unsupported_host_without_recording() -> Result<(
     let output = run_guard(
         fixture.runtime_home(),
         fixture.repo_root(),
-        ["host-hook", "prompt-capture", "--repo", fixture.repo_arg()],
+        ["_hook", "prompt-capture", "--repo", fixture.repo_arg()],
         &event,
     )?;
     assert_eq!(output.status.code(), Some(1));
@@ -1816,7 +1816,7 @@ fn guard_prompt_capture_rejects_not_configured_without_recording() -> Result<(),
     let output = run_guard(
         fixture.runtime_home(),
         fixture.repo_root(),
-        ["host-hook", "prompt-capture", "--repo", fixture.repo_arg()],
+        ["_hook", "prompt-capture", "--repo", fixture.repo_arg()],
         &event,
     )?;
     assert_eq!(output.status.code(), Some(1));
@@ -1862,7 +1862,7 @@ fn guard_prompt_capture_rejects_policy_mismatch_without_recording() -> Result<()
     let output = run_guard(
         fixture.runtime_home(),
         fixture.repo_root(),
-        ["host-hook", "prompt-capture", "--repo", fixture.repo_arg()],
+        ["_hook", "prompt-capture", "--repo", fixture.repo_arg()],
         &event,
     )?;
     assert_eq!(output.status.code(), Some(1));
@@ -1894,7 +1894,7 @@ fn guard_prompt_capture_rejects_malformed_command() -> Result<(), Box<dyn Error>
     let output = run_guard(
         fixture.runtime_home(),
         fixture.repo_root(),
-        ["host-hook", "prompt-capture", "--repo", fixture.repo_arg()],
+        ["_hook", "prompt-capture", "--repo", fixture.repo_arg()],
         &event,
     )?;
     assert_eq!(output.status.code(), Some(1));
@@ -1921,7 +1921,7 @@ fn guard_prompt_capture_host_output_blocks_malformed_prompt() -> Result<(), Box<
         fixture.runtime_home(),
         fixture.repo_root(),
         [
-            "host-hook",
+            "_hook",
             "prompt-capture",
             "--repo",
             fixture.repo_arg(),
@@ -1957,7 +1957,7 @@ fn guard_prompt_capture_rejects_missing_verification_code() -> Result<(), Box<dy
     let output = run_guard(
         fixture.runtime_home(),
         fixture.repo_root(),
-        ["host-hook", "prompt-capture", "--repo", fixture.repo_arg()],
+        ["_hook", "prompt-capture", "--repo", fixture.repo_arg()],
         &event,
     )?;
     assert_eq!(output.status.code(), Some(1));
@@ -1988,7 +1988,7 @@ fn guard_prompt_capture_rejects_wrong_verification_code() -> Result<(), Box<dyn 
     let output = run_guard(
         fixture.runtime_home(),
         fixture.repo_root(),
-        ["host-hook", "prompt-capture", "--repo", fixture.repo_arg()],
+        ["_hook", "prompt-capture", "--repo", fixture.repo_arg()],
         &event,
     )?;
     assert_eq!(output.status.code(), Some(1));
@@ -2011,7 +2011,7 @@ fn guard_prompt_capture_ignores_non_command_prompt() -> Result<(), Box<dyn Error
     let output = run_guard(
         fixture.runtime_home(),
         fixture.repo_root(),
-        ["host-hook", "prompt-capture", "--repo", fixture.repo_arg()],
+        ["_hook", "prompt-capture", "--repo", fixture.repo_arg()],
         &event,
     )?;
     assert_success(&output);
@@ -2037,7 +2037,7 @@ fn guard_prompt_capture_rejects_invalid_chat_id() -> Result<(), Box<dyn Error>> 
     let output = run_guard(
         fixture.runtime_home(),
         fixture.repo_root(),
-        ["host-hook", "prompt-capture", "--repo", fixture.repo_arg()],
+        ["_hook", "prompt-capture", "--repo", fixture.repo_arg()],
         &event,
     )?;
     assert_eq!(output.status.code(), Some(1));
@@ -2063,7 +2063,7 @@ fn guard_prompt_capture_rejects_mismatched_project() -> Result<(), Box<dyn Error
     let output = run_guard(
         fixture.runtime_home(),
         fixture.repo_root(),
-        ["host-hook", "prompt-capture", "--repo", fixture.repo_arg()],
+        ["_hook", "prompt-capture", "--repo", fixture.repo_arg()],
         &event,
     )?;
     assert_eq!(output.status.code(), Some(1));
@@ -2091,7 +2091,7 @@ fn guard_prompt_capture_rejects_mismatched_connection() -> Result<(), Box<dyn Er
     let output = run_guard(
         fixture.runtime_home(),
         fixture.repo_root(),
-        ["host-hook", "prompt-capture", "--repo", fixture.repo_arg()],
+        ["_hook", "prompt-capture", "--repo", fixture.repo_arg()],
         &event,
     )?;
     assert_eq!(output.status.code(), Some(1));
@@ -2117,7 +2117,7 @@ fn guard_prompt_capture_rejects_stale_judgment() -> Result<(), Box<dyn Error>> {
     let output = run_guard(
         fixture.runtime_home(),
         fixture.repo_root(),
-        ["host-hook", "prompt-capture", "--repo", fixture.repo_arg()],
+        ["_hook", "prompt-capture", "--repo", fixture.repo_arg()],
         &event,
     )?;
     assert_eq!(output.status.code(), Some(1));
@@ -2148,13 +2148,13 @@ fn guard_prompt_capture_replays_duplicate_same_answer() -> Result<(), Box<dyn Er
     assert_success(&run_guard(
         fixture.runtime_home(),
         fixture.repo_root(),
-        ["host-hook", "prompt-capture", "--repo", fixture.repo_arg()],
+        ["_hook", "prompt-capture", "--repo", fixture.repo_arg()],
         &first,
     )?);
     let output = run_guard(
         fixture.runtime_home(),
         fixture.repo_root(),
-        ["host-hook", "prompt-capture", "--repo", fixture.repo_arg()],
+        ["_hook", "prompt-capture", "--repo", fixture.repo_arg()],
         &second,
     )?;
     assert_success(&output);
@@ -2186,13 +2186,13 @@ fn guard_prompt_capture_rejects_conflicting_duplicate_answer() -> Result<(), Box
     assert_success(&run_guard(
         fixture.runtime_home(),
         fixture.repo_root(),
-        ["host-hook", "prompt-capture", "--repo", fixture.repo_arg()],
+        ["_hook", "prompt-capture", "--repo", fixture.repo_arg()],
         &first,
     )?);
     let output = run_guard(
         fixture.runtime_home(),
         fixture.repo_root(),
-        ["host-hook", "prompt-capture", "--repo", fixture.repo_arg()],
+        ["_hook", "prompt-capture", "--repo", fixture.repo_arg()],
         &second,
     )?;
     assert_eq!(output.status.code(), Some(1));
@@ -2218,7 +2218,7 @@ fn guard_prompt_capture_rejects_expired_verification_code() -> Result<(), Box<dy
     let output = run_guard(
         fixture.runtime_home(),
         fixture.repo_root(),
-        ["host-hook", "prompt-capture", "--repo", fixture.repo_arg()],
+        ["_hook", "prompt-capture", "--repo", fixture.repo_arg()],
         &event,
     )?;
     assert_eq!(output.status.code(), Some(1));
@@ -2245,7 +2245,7 @@ fn guard_prompt_capture_rejects_multiple_commands() -> Result<(), Box<dyn Error>
     let output = run_guard(
         fixture.runtime_home(),
         fixture.repo_root(),
-        ["host-hook", "prompt-capture", "--repo", fixture.repo_arg()],
+        ["_hook", "prompt-capture", "--repo", fixture.repo_arg()],
         &event,
     )?;
     assert_eq!(output.status.code(), Some(1));
@@ -2269,7 +2269,7 @@ fn guard_stop_denies_false_completion_when_close_readiness_blocks() -> Result<()
     let output = run_guard(
         fixture.runtime_home(),
         fixture.repo_root(),
-        ["host-hook", "stop", "--repo", fixture.repo_arg()],
+        ["_hook", "stop", "--repo", fixture.repo_arg()],
         &event,
     )?;
     assert_eq!(output.status.code(), Some(1));
@@ -2299,7 +2299,7 @@ fn guard_stop_host_output_blocks_and_allows_continue() -> Result<(), Box<dyn Err
         blocked.runtime_home(),
         blocked.repo_root(),
         [
-            "host-hook",
+            "_hook",
             "stop",
             "--repo",
             blocked.repo_arg(),
@@ -2328,7 +2328,7 @@ fn guard_stop_host_output_blocks_and_allows_continue() -> Result<(), Box<dyn Err
         allowed.runtime_home(),
         allowed.repo_root(),
         [
-            "host-hook",
+            "_hook",
             "stop",
             "--repo",
             allowed.repo_arg(),
@@ -3235,7 +3235,7 @@ impl GuardedLifecycleFixture {
         run_guard(
             self.runtime_home(),
             &self.repo_root,
-            ["host-hook", phase, "--repo", self.repo_arg()],
+            ["_hook", phase, "--repo", self.repo_arg()],
             event,
         )
     }
@@ -3856,7 +3856,7 @@ fn run_host_guard(
     let mut command = Command::new(volicord_bin());
     command
         .args([
-            "host-hook",
+            "_hook",
             phase,
             "--repo",
             fixture.repo_arg(),

@@ -2274,19 +2274,14 @@ fn validate_volicord_command(tokens: &[String]) -> std::result::Result<(), Strin
     match command {
         "-h" | "--help" | "help" => validate_no_more_args(args, "volicord help"),
         "-V" | "--version" => validate_no_more_args(args, "volicord version"),
-        "setup" => validate_setup_command(&args[1..]),
+        "status" => validate_status_command(&args[1..]),
         "doctor" => validate_doctor_command(&args[1..]),
         "mcp" => validate_mcp_command(&args[1..]),
         "serve" => validate_serve_command(&args[1..]),
-        "host-hook" => validate_host_hook_command(&args[1..]),
         "init" => validate_init_command(&args[1..]),
-        "connect" => validate_connect_command(&args[1..]),
-        "connections" => validate_connections_command(&args[1..]),
         "connection" => validate_connection_command(&args[1..]),
         "project" => validate_project_command(&args[1..]),
-        "export" => validate_export_command(&args[1..]),
         "inbox" => validate_inbox_command(&args[1..]),
-        "user" => validate_user_command(&args[1..]),
         other => Err(format!(
             "unknown `volicord` command `{other}`; use a supported administrative command"
         )),
@@ -2343,12 +2338,12 @@ fn validate_no_more_args(args: &[String], context: &str) -> std::result::Result<
     }
 }
 
-fn validate_setup_command(args: &[String]) -> std::result::Result<(), String> {
+fn validate_status_command(args: &[String]) -> std::result::Result<(), String> {
     if is_help_only(args) {
         return Ok(());
     }
-    let parsed = parse_command_args(args, &["json"], &["home", "link-bin", "mcp-command"])?;
-    reject_positionals(&parsed, 0, "`volicord setup`")
+    let parsed = parse_command_args(args, &["json"], &["repo", "task"])?;
+    reject_positionals(&parsed, 0, "`volicord status`")
 }
 
 fn validate_doctor_command(args: &[String]) -> std::result::Result<(), String> {
@@ -2377,9 +2372,6 @@ fn validate_mcp_command(args: &[String]) -> std::result::Result<(), String> {
     }
     if !parsed.options.contains("connection") {
         return Err("`volicord mcp` requires --connection".to_string());
-    }
-    if parsed.options.contains("project") && !has_check {
-        return Err("`volicord mcp --project` requires --check".to_string());
     }
     Ok(())
 }
@@ -2415,49 +2407,6 @@ fn validate_serve_command(args: &[String]) -> std::result::Result<(), String> {
     Ok(())
 }
 
-fn validate_host_hook_command(args: &[String]) -> std::result::Result<(), String> {
-    if is_help_only(args) {
-        return Ok(());
-    }
-    let Some(subcommand) = args.first().map(String::as_str) else {
-        return Err("`volicord host-hook` requires a lifecycle subcommand".to_string());
-    };
-    if matches!(subcommand, "-h" | "--help" | "help") {
-        return validate_no_more_args(args, "`volicord host-hook` help");
-    }
-    if !matches!(
-        subcommand,
-        "session-start" | "pre-tool" | "post-tool" | "prompt-capture" | "stop"
-    ) {
-        return Err(format!(
-            "unknown `volicord host-hook` subcommand `{subcommand}`; use session-start, pre-tool, post-tool, prompt-capture, or stop"
-        ));
-    }
-    let parsed = parse_command_args(
-        &args[1..],
-        &["json", "text"],
-        &[
-            "file",
-            "repo",
-            "connection",
-            "session",
-            "guard-installation",
-            "host",
-            "integration-profile",
-            "policy-hash",
-            "output",
-            "host-output",
-        ],
-    )?;
-    reject_mutually_exclusive(&parsed, "json", "text")?;
-    validate_integration_profile_option(
-        &parsed,
-        "integration-profile",
-        &format!("`volicord host-hook {subcommand}`"),
-    )?;
-    reject_positionals(&parsed, 0, &format!("`volicord host-hook {subcommand}`"))
-}
-
 fn validate_init_command(args: &[String]) -> std::result::Result<(), String> {
     if is_help_only(args) {
         return Ok(());
@@ -2478,33 +2427,31 @@ fn validate_init_command(args: &[String]) -> std::result::Result<(), String> {
     Ok(())
 }
 
-fn validate_connect_command(args: &[String]) -> std::result::Result<(), String> {
-    if is_help_only(args) {
-        return Ok(());
-    }
-    let parsed = parse_command_args(
-        args,
-        &["shared", "global", "read-only", "dry-run", "json"],
-        &["repo"],
-    )?;
-    reject_mutually_exclusive(&parsed, "shared", "global")?;
-    validate_optional_host(&parsed, "`volicord connect`")
-}
-
-fn validate_connections_command(args: &[String]) -> std::result::Result<(), String> {
-    if is_help_only(args) {
-        return Ok(());
-    }
-    let parsed = parse_command_args(args, &["json"], &["repo"])?;
-    reject_positionals(&parsed, 0, "`volicord connections`")
-}
-
 fn validate_connection_command(args: &[String]) -> std::result::Result<(), String> {
     let Some(subcommand) = args.first().map(String::as_str) else {
         return Ok(());
     };
     match subcommand {
         "-h" | "--help" | "help" => validate_no_more_args(args, "`volicord connection` help"),
+        "add" => {
+            if is_help_only(&args[1..]) {
+                return Ok(());
+            }
+            let parsed = parse_command_args(
+                &args[1..],
+                &["shared", "global", "read-only", "dry-run", "json"],
+                &["repo"],
+            )?;
+            reject_mutually_exclusive(&parsed, "shared", "global")?;
+            validate_optional_host(&parsed, "`volicord connection add`")
+        }
+        "list" => {
+            if is_help_only(&args[1..]) {
+                return Ok(());
+            }
+            let parsed = parse_command_args(&args[1..], &["json"], &["repo"])?;
+            reject_positionals(&parsed, 0, "`volicord connection list`")
+        }
         "status" | "verify" => {
             if is_help_only(&args[1..]) {
                 return Ok(());
@@ -2534,7 +2481,7 @@ fn validate_connection_command(args: &[String]) -> std::result::Result<(), Strin
             validate_optional_host(&parsed, "`volicord connection remove`")
         }
         other => Err(format!(
-            "unknown `volicord connection` subcommand `{other}`; use status, verify, mode, or remove"
+            "unknown `volicord connection` subcommand `{other}`; use add, list, status, verify, mode, or remove"
         )),
     }
 }
@@ -2579,44 +2526,6 @@ fn validate_project_command(args: &[String]) -> std::result::Result<(), String> 
     }
 }
 
-fn validate_export_command(args: &[String]) -> std::result::Result<(), String> {
-    match args.first().map(String::as_str) {
-        Some("-h" | "--help" | "help") => validate_no_more_args(args, "`volicord export` help"),
-        Some("mcp-config") => {
-            if is_help_only(&args[1..]) {
-                return Ok(());
-            }
-            let parsed =
-                parse_command_args(&args[1..], &["read-only", "json"], &["output", "repo"])?;
-            reject_positionals(&parsed, 0, "`volicord export mcp-config`")
-        }
-        Some(other) => Err(format!(
-            "unknown `volicord export` subcommand `{other}`; use mcp-config"
-        )),
-        None => Ok(()),
-    }
-}
-
-fn validate_user_command(args: &[String]) -> std::result::Result<(), String> {
-    let Some(subcommand) = args.first().map(String::as_str) else {
-        return Ok(());
-    };
-    match subcommand {
-        "-h" | "--help" | "help" => validate_no_more_args(args, "`volicord user` help"),
-        "status" | "judgments" => {
-            if is_help_only(&args[1..]) {
-                return Ok(());
-            }
-            let parsed = parse_command_args(&args[1..], &["json"], &["repo", "task"])?;
-            reject_positionals(&parsed, 0, &format!("`volicord user {subcommand}`"))
-        }
-        "judgment" => validate_user_judgment_command(&args[1..]),
-        other => Err(format!(
-            "unknown `volicord user` subcommand `{other}`; use status, judgments, or judgment"
-        )),
-    }
-}
-
 fn validate_inbox_command(args: &[String]) -> std::result::Result<(), String> {
     match args.first().map(String::as_str) {
         None => Ok(()),
@@ -2645,32 +2554,6 @@ fn validate_inbox_command(args: &[String]) -> std::result::Result<(), String> {
         }
         Some(other) => Err(format!(
             "unknown `volicord inbox` subcommand `{other}`; use answer or open"
-        )),
-    }
-}
-
-fn validate_user_judgment_command(args: &[String]) -> std::result::Result<(), String> {
-    let Some(subcommand) = args.first().map(String::as_str) else {
-        return Err("`volicord user judgment` requires show or answer".to_string());
-    };
-    match subcommand {
-        "-h" | "--help" | "help" => validate_no_more_args(args, "`volicord user judgment` help"),
-        "show" => {
-            if is_help_only(&args[1..]) {
-                return Ok(());
-            }
-            let parsed = parse_command_args(&args[1..], &["json"], &["repo"])?;
-            require_positionals(&parsed, 1, 1, "`volicord user judgment show`")
-        }
-        "answer" => {
-            if is_help_only(&args[1..]) {
-                return Ok(());
-            }
-            let parsed = parse_command_args(&args[1..], &["json"], &["repo", "note"])?;
-            require_positionals(&parsed, 2, 2, "`volicord user judgment answer`")
-        }
-        other => Err(format!(
-            "unknown `volicord user judgment` subcommand `{other}`; use show or answer"
         )),
     }
 }

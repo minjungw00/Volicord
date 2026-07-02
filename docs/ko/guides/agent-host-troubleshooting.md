@@ -1,9 +1,8 @@
 # 에이전트 호스트 문제 해결
 
-`volicord init`, `volicord setup`, `volicord connect`,
-`volicord connection ...`, `volicord export mcp-config`가 호스트 설정 문제를 보고할 때 이 가이드를
-사용합니다. 이 가이드는 Volicord가 Product Repository를 감지하고 내부 식별 정보를 관리하는
-단순화된 명령 모델을 전제로 합니다.
+`volicord init`, `volicord connection add`, `volicord connection ...`이 호스트 설정 문제를
+보고할 때 이 가이드를 사용합니다. 이 가이드는 Volicord가 Product Repository를 감지하고
+내부 식별 정보를 관리하는 단순화된 명령 모델을 전제로 합니다.
 
 정확한 setup, doctor, 연결 결과 상태 의미는
 [관리 CLI 참조](../reference/admin-cli.md#runtime-home-selection)와
@@ -16,21 +15,21 @@
 ```sh
 volicord doctor
 volicord project current
-volicord connections
+volicord connection list
 ```
 
 명령을 의도한 Product Repository 밖에서 실행하고 있다면 그 저장소로 `cd`하거나,
-확인하려는 project, connection, export, user 명령에 `--repo PATH`를 추가합니다.
+확인하려는 project, connection, inbox 명령에 `--repo PATH`를 추가합니다.
 
-`volicord setup`과 `volicord doctor`는 서로 다른 상태 질문에 답합니다. setup은
-설치 프로필 준비에 사용자 동작이 아직 필요한지를 보고합니다. doctor는 저장된 설치
-프로필을 사용할 수 있는지를 보고합니다. 따라서 프로필을 사용할 수 있으면 doctor가
-`complete`를 보고하면서도 이후 셸이나 에이전트 호스트를 위한 명령 가용성 경고 또는
-권장 `PATH`와 명령 링크 동작을 함께 보여 줄 수 있습니다.
+`volicord init`과 `volicord doctor`는 서로 다른 상태 질문에 답합니다. Init은 첫 저장소
+설정과 호스트 연결에 사용자 또는 호스트 동작이 아직 필요한지를 보고합니다. Doctor는
+저장된 설치 프로필을 사용할 수 있는지를 보고합니다. 따라서 프로필을 사용할 수 있으면
+doctor가 `complete`를 보고하면서도 이후 셸이나 에이전트 호스트를 위한 명령 가용성
+경고 또는 권장 `PATH` 동작을 함께 보여 줄 수 있습니다.
 
 ## 설정이 완료되지 않음
 
-관찰 증상: 일반 project, connection, export, MCP, user workflow가 선택된
+관찰 증상: 일반 project, connection, MCP, inbox workflow가 선택된
 `Volicord Runtime Home`에 설정이 완료되지 않았다고 말합니다.
 
 제한된 복구:
@@ -38,7 +37,7 @@ volicord connections
 `volicord`를 이미 사용할 수 있다면:
 
 ```sh
-volicord setup
+volicord init --host codex --repo /path/to/your-product-repo --profile record
 volicord doctor
 ```
 
@@ -47,55 +46,31 @@ volicord doctor
 
 ```sh
 cargo build --workspace --bins
-./target/debug/volicord setup
+./target/debug/volicord init --host codex --repo /path/to/your-product-repo --profile record
 ```
 
-Setup이 `volicord`를 사용할 수 있게 만드는 방법을 묻거나
-`action_required`를 보고하면 그 안내를 따릅니다. 셸 명령을 출력했다면 setup을 계속할
-터미널에서 그 명령을 실행합니다. 셸 시작 파일을 쓰거나 갱신하라고 했다면 새 셸을
-열거나 에이전트 호스트를 restart 또는 reload한 뒤 다시 확인합니다.
+Init이 `volicord`를 사용할 수 있게 만드는 방법, 호스트 trust, reload를
+`action_required`로 보고하면 그 안내를 따릅니다. 셸 시작 파일을 직접 갱신했다면 새
+셸을 열거나 에이전트 호스트를 restart 또는 reload한 뒤 다시 확인합니다.
 
 ```sh
 volicord doctor
 ```
 
-자동화나 특수한 로컬 배치 때문에 결정적인 명령 링크 디렉터리가 필요할 때만
-`--link-bin PATH`를 사용합니다. `volicord setup`은 필요한 `PATH` 동작을 보고할 수
-있고, 그 디렉터리에 쓸 수 없으면 복구 동작을 보고할 수 있지만 부모 셸을 영구적으로
-바꿀 수는 없습니다.
-
 Runtime Home 파일을 직접 만들지 않습니다. Registry와 설치 프로필이 함께 만들어지도록
-`volicord setup`을 사용합니다.
+init을 사용합니다.
 
-## setup이 `~/.local/bin`을 제안하지 않음
+## 명령이 PATH에 없음
 
-관찰 증상: 대화형 setup이 명령을 `PATH`에서 사용할 수 없다고 보고하지만
-`~/.local/bin` 만들기를 제안하지 않습니다.
+관찰 증상: init 또는 doctor가 이후 터미널이나 에이전트 호스트에서 `volicord`를
+`PATH`로 사용할 수 없다고 보고합니다.
 
 제한된 복구:
 
-Setup은 `HOME` 아래에서 안전한 후보를 식별할 수 있고, 그 디렉터리가 없을 때 안전하게
-만들 수 있으며, 명령 링크를 만들기 전에 쓰기 가능 여부를 확인할 수 있을 때만 관례적
-사용자 명령 디렉터리를 제안합니다. `HOME`이 없거나 쓸 수 없거나, 셸 또는 플랫폼이
-그 안내형 선택을 지원하지 않거나, 후보 경로가 기존의 안전하지 않은 항목과 충돌하거나,
-setup이 JSON, 비-TTY, 명시적 `--link-bin` 모드로 실행 중이면 수동 `PATH` 동작으로
-남길 수 있습니다.
-
-안전한 다음 단계:
-
-- 대화형 터미널에서 `volicord setup`을 다시 실행하고 프롬프트나 `action_required`
-  출력을 따릅니다.
-- 사용자가 제어하는 명령 디렉터리로 `volicord setup --link-bin PATH`를 실행합니다.
-  Setup은 필요하면 디렉터리를 만들고 쓰기 가능 여부를 확인하며, 이 옵션 자체가 셸
-  시작 파일을 편집하지는 않습니다.
-- `~/.local/bin`이 사용자가 제어하려는 명령 디렉터리일 때만 직접 만든 뒤 setup을 다시
-  실행합니다.
-
-Setup이 셸 명령을 출력하거나 `PATH` 동작을 이름 붙이면 그 명령이 필요한 터미널에서
-실행하거나 setup이 이름 붙인 지원 시작 파일을 갱신합니다. Volicord는 명령을 `PATH`에서
-사용할 수 있게 도울 수 있지만 현재 부모 셸 환경을 직접 바꿀 수는 없습니다. 이미
-실행 중인 에이전트 호스트는 새 명령 디렉터리를 보려면 restart 또는 reload가 필요할 수
-있습니다.
+설치된 `volicord` 바이너리를 사용자가 제어하는 명령 디렉터리에 두거나 링크한 뒤, 그
+디렉터리가 `PATH`에 보이도록 합니다. Volicord는 현재 부모 셸 환경을 직접 바꿀 수
+없습니다. 이미 실행 중인 에이전트 호스트는 새 명령 디렉터리를 보려면 restart 또는
+reload가 필요할 수 있습니다.
 
 ## 저장소가 감지되지 않음
 
@@ -135,7 +110,7 @@ WSL UNC 경로, WSL 스타일 `/mnt/<drive>` 경로이기 때문에 유효하지
 
 ## 호스트를 선택할 수 없음
 
-관찰 증상: `volicord connect` 또는 `volicord connection ...`이 호스트를 추론하지
+관찰 증상: `volicord connection add` 또는 `volicord connection ...`이 호스트를 추론하지
 못하거나 호스트 값이 지원되지 않습니다.
 
 제한된 복구: lifecycle hook 설치 없는 일반 첫 실행 설정에는 호스트, 저장소,
@@ -163,7 +138,7 @@ macOS에서만 사용합니다.
 하위 수준 연결 복구에는 호스트와 저장소를 connect에 명시적으로 전달합니다.
 
 ```sh
-volicord connect codex --repo /path/to/your-product-repo
+volicord connection add codex --repo /path/to/your-product-repo
 volicord connection status codex --repo /path/to/your-product-repo
 ```
 
@@ -214,25 +189,25 @@ volicord connection verify codex --repo /path/to/your-product-repo
 
 ## MCP 명령을 사용할 수 없음
 
-관찰 증상: setup 또는 verification이 `volicord mcp --stdio`를 찾거나 시작하거나 초기화할 수
+관찰 증상: init 또는 verification이 `volicord mcp --stdio`를 찾거나 시작하거나 초기화할 수
 없다고 보고합니다.
 
 제한된 복구:
 
-설치된 릴리스 바이너리로 setup을 다시 실행합니다.
+설치된 릴리스 바이너리로 init을 다시 실행합니다.
 
 ```sh
-volicord setup
+volicord init --host codex --repo /path/to/your-product-repo --profile record
 ```
 
 의도적으로 개발용 소스 체크아웃에서 작업 중이라면:
 
 ```sh
 cargo build --workspace --bins
-./target/debug/volicord setup
+./target/debug/volicord init --host codex --repo /path/to/your-product-repo --profile record
 ```
 
-Setup 프롬프트나 `action_required`가 이름 붙인 명령 가용성 단계를 완료한 뒤 설치와
+`action_required`가 이름 붙인 명령 가용성 또는 호스트 단계를 완료한 뒤 설치와
 연결을 다시 확인합니다.
 
 ```sh
@@ -240,10 +215,10 @@ volicord doctor
 volicord connection verify codex --repo /path/to/your-product-repo
 ```
 
-`volicord setup`은 관리 호스트 설정과 generic export가 사용할 MCP 명령을 기록하는
-위치입니다. 일반 `connect` 명령은 사용자가 MCP 명령 경로를 전달하도록 요구하지
-않습니다. 실행 파일이 sibling 조회나 `PATH`로 찾을 수 없는 위치에 설치되어 있다면
-`--mcp-command PATH`로 setup을 다시 실행합니다.
+Init은 관리 호스트 설정이 사용할 MCP 명령을 기록합니다. 일반 `connection add` 명령은
+사용자가 MCP 명령 경로를 전달하도록 요구하지 않습니다. 실행 파일이 sibling 조회나
+`PATH`로 찾을 수 없는 위치에 설치되어 있다면 `--mcp-command PATH`로 init을 다시
+실행합니다.
 
 <a id="guard-hook-path-or-wrapper-is-unsafe"></a>
 ## Hook 경로 또는 wrapper가 안전하지 않음
@@ -315,20 +290,20 @@ volicord connection verify codex --shared
 `Product Repository` 통합 파일은 Volicord 권한이 아니며, 호스트가 MCP 서버를 로드,
 신뢰, 노출했다는 증거도 아닙니다.
 
-## Generic Export가 호스트에 나타나지 않음
+## Generic 호스트에 Volicord 도구가 보이지 않음
 
-관찰 증상: `volicord export mcp-config`가 파일을 만들었지만 외부 호스트에 Volicord
-도구가 보이지 않습니다.
+관찰 증상: 사용자 관리 설정을 사용하는 외부 MCP 호스트에 Volicord 도구가 보이지 않습니다.
 
 제한된 복구:
 
 ```sh
-volicord export mcp-config --output /tmp/volicord.mcp.json
 volicord doctor
+volicord connection status codex --repo /path/to/your-product-repo
 ```
 
-그다음 외부 호스트의 자체 설정 절차로 export 파일을 로드하거나 reload합니다. 내보낸
-파일은 export 뒤에도 사용자 관리 파일입니다.
+그다음 외부 호스트의 자체 설정 절차를 확인합니다. 해당 항목은 기존 Agent Connection에
+대해 `volicord mcp --stdio --connection <connection_id> [--project <project_id>]`를
+시작해야 합니다. 외부 설정은 사용자 관리 설정입니다.
 
 ## 제거가 일부만 완료됨
 
@@ -340,7 +315,7 @@ volicord doctor
 ```sh
 volicord connection remove codex --dry-run
 volicord connection status codex
-volicord connections
+volicord connection list
 ```
 
 제거는 먼저 선택된 Product Repository 멤버십을 제거합니다. 소유 멤버십이 남지 않고 안전 점검이

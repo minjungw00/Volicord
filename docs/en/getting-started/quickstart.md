@@ -63,9 +63,9 @@ Detective host hook path repair guidance belongs to
 
 ## Choose A Host Intent
 
-Use the lower-level `volicord connect` command only when you need a personal,
+Use the lower-level `volicord connection add` command only when you need a personal,
 global, or read-only variant directly. Add `--shared` only when using
-`volicord connect` to manage the project-shared integration file without the
+`volicord connection add` to manage the project-shared integration file without the
 ordinary `init` flow, and use `--global` only for a host path that supports
 user-wide configuration. Exact intent semantics belong to
 [Administrative CLI Reference](../reference/admin-cli.md#connection-intents-and-hosts);
@@ -75,24 +75,24 @@ host availability requirements belong to
 Use `--read-only` only when the host should expose read-oriented behavior:
 
 ```sh
-volicord connect codex --read-only
+volicord connection add codex --read-only
 ```
 
 For lower-level connection management, use `--repo PATH` when the current
 directory is not the target Product Repository:
 
 ```sh
-volicord connect codex --repo /path/to/your-product-repo
+volicord connection add codex --repo /path/to/your-product-repo
 ```
 
-`volicord connect` is still the lower-level connection-management command for
+`volicord connection add` is still the lower-level connection-management command for
 personal, shared, global, and read-only variants. For the ordinary first-run
 path, prefer `volicord init --host HOST --repo PATH --profile record`.
 
 ## Inspect Or Change The Connection
 
 ```sh
-volicord connections
+volicord connection list
 volicord connection status codex --repo /path/to/your-product-repo
 volicord connection verify codex --repo /path/to/your-product-repo
 volicord connection mode codex read-only
@@ -109,19 +109,12 @@ volicord connection remove codex
 
 `--dry-run` reports the plan without persistent changes.
 
-## Export Generic MCP Config
+## Use A Generic MCP Host
 
-For an MCP host that Volicord does not manage directly, export a host-neutral
-config:
-
-```sh
-volicord export mcp-config --output /tmp/volicord.mcp.json
-```
-
-The export uses the detected Product Repository and the installation profile.
-Exact output defaults belong to
-[Administrative CLI Reference](../reference/admin-cli.md#generic-mcp-config-export).
-The exported file is user-managed after export; Volicord does not claim that an
+For an MCP host that Volicord does not manage directly, first create a supported
+Agent Connection, then configure the external host through its own settings to
+start `volicord mcp --stdio --connection <connection_id> [--project <project_id>]`.
+That configuration remains user-managed. Volicord does not claim that an
 arbitrary external host loaded or approved it.
 
 ## Record User Judgment

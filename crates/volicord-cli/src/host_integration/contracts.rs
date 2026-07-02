@@ -982,7 +982,7 @@ fn validate_codex_volicord_hook_command(
     if !uses_phase_wrapper
         && !mentions_dispatch
         && !uses_dispatch
-        && !command.contains("volicord host-hook")
+        && !command.contains("volicord _hook")
     {
         return Ok(());
     }
@@ -1014,7 +1014,7 @@ fn validate_claude_volicord_hook_command(
             phase.capability_name()
         )));
     }
-    if !command.contains(&relative_wrapper) && !command.contains("volicord host-hook") {
+    if !command.contains(&relative_wrapper) && !command.contains("volicord _hook") {
         return Ok(());
     }
     let args_empty = object

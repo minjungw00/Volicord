@@ -4,9 +4,9 @@ This document owns the local `volicord` administrative and bootstrap CLI
 contract. The CLI establishes the `Volicord Runtime Home`, registers projects
 from repository roots, manages Agent Connections without requiring users to
 handle internal identities, provides the local `User Channel` command path,
-exports generic MCP configuration, provides local detective host hook lifecycle
-commands through `volicord host-hook`, and reports setup or connection diagnostics.
-These commands are not public Volicord API methods.
+and reports setup or connection diagnostics. Hidden internal hook commands exist
+only for generated host integration wrappers and are not normal user-facing
+commands. These commands are not public Volicord API methods.
 
 It does not define public API method behavior, API schemas, storage record
 layout, security guarantees, Core authority semantics, or MCP stdio transport
@@ -18,15 +18,13 @@ This document owns:
 
 - `volicord` command names, command-line arguments, defaults, stdout/stderr
   routing, and process exit codes
-- Runtime Home, installation profile, executable-link, and MCP command
-  selection during `init` or `setup`
+- Runtime Home, installation profile, and MCP command selection during `init`
 - repository-root project detection and administrative project commands
 - Agent Connection command behavior for supported host integrations
-- generic MCP config export behavior
 - local serve command names, command-line arguments, defaults, stdout/stderr
   routing, and startup exit codes
-- local `volicord host-hook` lifecycle command names, options, decisions, output,
-  and event-recording behavior
+- hidden internal hook lifecycle command names, options, decisions, output, and
+  event-recording behavior for generated host wrappers
 - local `volicord changes` recovery command names and output
 - local `User Channel` command names and command output
 - diagnostic status, required user actions, dry-run behavior, JSON output, and
@@ -62,10 +60,10 @@ Supported baseline commands:
 volicord --help
 volicord --version
 volicord init --host codex|claude-code --repo PATH [--profile record|detective] [--home PATH] [--mcp-command PATH] [--dry-run] [--json]
-volicord setup [--home PATH] [--link-bin PATH] [--mcp-command PATH] [--json]
+volicord status [--repo PATH] [--task active|ID] [--json]
 volicord doctor [--json]
-volicord connect [HOST] [--repo PATH] [--shared|--global] [--read-only] [--dry-run] [--json]
-volicord connections [--repo PATH] [--json]
+volicord connection add [HOST] [--repo PATH] [--shared|--global] [--read-only] [--dry-run] [--json]
+volicord connection list [--repo PATH] [--json]
 volicord connection status [HOST] [--repo PATH] [--shared|--global] [--json]
 volicord connection verify [HOST] [--repo PATH] [--shared|--global] [--json]
 volicord connection mode [HOST] workflow|read-only [--repo PATH] [--shared|--global] [--json]
@@ -75,13 +73,8 @@ volicord project current [--json]
 volicord project list [--json]
 volicord project rename NAME [--repo PATH] [--json]
 volicord project forget [PATH|NAME] [--json]
-volicord export mcp-config [--output PATH] [--repo PATH] [--read-only] [--json]
+volicord mcp --stdio --connection <connection_id> [--project <project_id>]
 volicord serve --transport local-http [--listen 127.0.0.1:8765] [--home PATH] [--connection <connection_id>] [--project PATH]... [--token TOKEN | --generate-token] [--allow-origin ORIGIN]
-volicord host-hook session-start [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|detective] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
-volicord host-hook pre-tool [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|detective] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
-volicord host-hook post-tool [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|detective] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
-volicord host-hook prompt-capture [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|detective] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
-volicord host-hook stop [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|detective] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
 volicord changes reconcile [--repo PATH] [--task active|ID] [--json]
 volicord inbox [--repo PATH] [--task active|ID] [--json]
 volicord inbox answer <judgment-id> --choice <choice> [--repo PATH] [--note TEXT] [--json]
@@ -104,14 +97,14 @@ Exit and stream behavior:
   require Runtime Home resolution.
 - `--json` writes exactly one JSON document to stdout and does not mix human
   explanation into stdout.
-- `volicord host-hook` uses `--output volicord-json` by default. In
-  `volicord-json` mode it writes the Volicord wrapper JSON, `deny` exits `1`,
+- Hidden internal hook commands use `--output volicord-json` by default. In
+  `volicord-json` mode they write the Volicord wrapper JSON, `deny` exits `1`,
   and `allow`, `warn`, and `inject_context` exit `0`. `--output text` uses the
   same exit behavior with a concise human-readable line.
-- `volicord host-hook --host-output codex|claude-code` writes host-native hook
-  output instead of the Volicord wrapper JSON. Policy decisions use the host's
-  stdout, stderr, and exit-code rules; generated Codex and Claude Code hook
-  wrapper scripts use this mode, and Claude Code policy blocks are not
+- Hidden internal hook commands with `--host-output codex|claude-code` write
+  host-native hook output instead of the Volicord wrapper JSON. Policy decisions
+  use the host's stdout, stderr, and exit-code rules; generated Codex and Claude
+  Code hook wrapper scripts use this mode, and Claude Code policy blocks are not
   represented as exit code `1`.
 - Errors remain stderr diagnostics under the CLI exit-code model.
 - `volicord serve --transport local-http` is an explicit long-running MCP
@@ -132,78 +125,52 @@ Not supported:
   into a nonlocal listener.
 - Administrative commands are not public Volicord API methods and must not be
   added to the public method list.
-- Host-hook commands are cooperative detective signal commands, not OS-level
-  sandboxing or a security-enforcement proof.
+- Hidden hook commands are cooperative detective signal commands, not OS-level
+  sandboxing or a security-enforcement proof, and they are not shown in normal
+  top-level help.
 - Text-mode user flows must not require users to type `project_internal_id`,
   `connection_internal_id`, host config keys, protocol envelopes, or stored
   registry fields.
 
 <a id="runtime-home-selection"></a>
-## Setup and Runtime Home
+## Runtime Home Selection
 
-`volicord setup` establishes or repairs the local installation profile without
-connecting a repository. It creates or verifies the selected Runtime Home and
-stores the command paths later administrative, Agent Connection, export, and
-MCP process flows use. Setup is the standalone installation-profile command,
-not the ordinary first-run repository path. `volicord init` is the
-primary first-run path and may also select the Runtime Home path or MCP launch
-command while performing repository setup and host connection. Setup can help
-make `volicord` available on `PATH`, but it cannot change the parent shell's
-current environment.
+`volicord init` is the public first-run path for creating or reusing the local
+installation profile. It creates or verifies the selected Runtime Home, records
+the command paths later administrative, Agent Connection, and MCP process flows
+use, registers the selected repository, and installs the selected host
+connection. Init can select the Runtime Home path or MCP launch command while
+performing repository setup and host connection. It cannot change the parent
+shell's current environment.
 
-In text mode, `volicord setup` may prompt only when stdin and stdout are
-interactive terminals, `--json` is absent, and `--link-bin` is absent. It
-prompts only when the selected command paths are not ready on `PATH`. In
-noninteractive conditions, JSON mode, or explicit `--link-bin` mode, setup must
-report actions instead of prompting.
-
-The top-level setup status answers whether installation-profile preparation
-still needs a named user action. Setup may report `action_required` after
-saving the Runtime Home and installation profile when selected commands are not
-ready for future `PATH` lookup by shells or agent hosts. Setup output must keep
-command-availability details and required actions explicit.
+The top-level setup status answers whether installation-profile preparation or
+host connection still needs a named user action. Init may report
+`action_required` after saving the Runtime Home and installation profile when
+selected commands are not ready for future `PATH` lookup by shells or agent
+hosts. Output must keep command-availability details and required actions
+explicit.
 
 Arguments:
 
 | Argument | Meaning |
 |---|---|
 | `--home PATH` | Selects the `Volicord Runtime Home`. Omission uses the platform default local runtime location. The selected path must satisfy the Runtime Home/Product Repository separation contract before project state is used. |
-| `--link-bin PATH` | Creates the directory if needed, verifies it is writable, then creates or updates a command link for `volicord` there when feasible. The command reports the target path, refuses unsafe replacement, and does not by itself edit shell startup files or the parent shell `PATH`. |
-| `--mcp-command PATH` | Stores the exact `volicord` command that managed host configuration and generic exports should use before the `mcp --stdio --connection <connection_id> [--project <project_id>]` arguments. Omission uses the running `volicord` executable selected by setup. |
-| `--json` | Selects machine-readable, noninteractive output. Setup does not prompt in JSON mode. |
+| `--mcp-command PATH` | Stores the exact `volicord` command that managed host configuration should use before the `mcp --stdio --connection <connection_id> [--project <project_id>]` arguments when init creates or updates the installation profile. Omission uses the running `volicord` executable selected by init. |
+| `--json` | Selects machine-readable, noninteractive output. Init does not prompt in JSON mode. |
 
-Setup effects:
+Init effects that relate to Runtime Home and installation profile selection:
 
 - creates or validates the Runtime Home registry
 - records Runtime Home identity and installation profile metadata
 - records the selected `volicord` command location and MCP launch command for
-  later `init`, `connect`, `doctor`, export, and MCP startup flows
+  later `init`, `connection`, `doctor`, and MCP startup flows
 - inspects whether selected command paths resolve through the current process
   `PATH`
-- may prompt in interactive text mode for safe command-availability choices:
-  create command links in an existing setup-suggested directory whose
-  writability was verified, create links after creating a missing conventional
-  user command directory such as `~/.local/bin` under `HOME` when setup can
-  safely create it and verifies writability after creation, write an approved
-  shell startup `PATH` block, print a shell command, or skip linking
-- may update the `volicord` command link named by `--link-bin` or selected
-  through the interactive prompt
-- may write a managed shell startup `PATH` block only after explicit
-  interactive approval
-- reports a `PATH` action when a link directory is not visible to the current
+- reports a `PATH` action when selected commands are not visible to the current
   process; existing shells and agent host processes may need restart or reload
-- does not offer arbitrary missing paths as automatic interactive command-link
-  choices; use `--link-bin PATH` for an explicit missing directory
-- does not register a project unless a separate project or connection command
-  selects a repository
+- registers or reuses the selected repository as part of the first-run host
+  setup path
 - does not create a public Volicord API method or record a user-owned judgment
-
-On Unix, interactive shell startup updates are supported for `bash`, `zsh`, and
-`sh` when setup can identify `HOME` and `SHELL`. The target files are
-`~/.bashrc`, `~/.zshrc`, and `~/.profile` respectively. Setup writes or updates
-a Volicord-managed block in that file after the user approves the exact block.
-Unsupported shells, unsupported platforms, missing environment variables, or
-write failures leave a manual `PATH` action instead.
 
 `volicord doctor` is the read-oriented diagnostic command for the installation
 profile. Its top-level status answers whether the current installation profile
@@ -305,7 +272,7 @@ server name, and command arguments so that the host can start
 user authority tokens. Text-mode command input uses the selected host, intent,
 and repository root instead.
 
-Ordinary `volicord connect` commands use the saved profile in the resolved
+Ordinary `volicord connection add` commands use the saved profile in the resolved
 Runtime Home instead of asking for an MCP command path or Runtime Home path.
 Personal, local, or user-wide host configuration may carry that Runtime Home as
 `VOLICORD_HOME`. Shared project host configuration must not embed a personal
@@ -393,7 +360,7 @@ Non-dry-run `volicord init`:
   <project_id>`
 - writes or updates only the Volicord-managed block in `AGENTS.md`
 - writes `.volicord/policy.json` with detective host hook commands that invoke
-  `volicord host-hook`
+  the hidden internal hook namespace
 - writes Volicord-managed hook wrapper scripts under `.codex/hooks/` or
   `.claude/hooks/` for required detective lifecycle phases
 - writes supported host hook files such as `.codex/hooks.json` or
@@ -427,8 +394,8 @@ or looks up the stored `connection_internal_id`.
 | Command | Runtime Home registry effect | Host configuration effect | Verification effect |
 |---|---|---|---|
 | `volicord init` | Initializes Runtime Home and installation profile if needed, registers or reuses the selected repository project, creates or updates the shared project-scoped Agent Connection, ensures Connection Projects membership, and records detective-profile hook observation status. | Installs or updates managed project-local MCP configuration, `AGENTS.md` guidance, `.volicord/policy.json`, supported host hook wrapper scripts, and host hook and rule files for `codex` or `claude-code`. | Runs host-config, MCP startup, initialization, and `tools/list` checks where observable, then reports any host reload, restart, trust, or approval action. |
-| `volicord connect` | Registers or reuses the selected repository project, creates or updates the matching Agent Connection, records the connection intent and mode, and ensures the project is in Connection Projects. | Installs or updates managed host configuration for `codex` or `claude-code` according to the selected intent. | Runs host-config, MCP startup, initialization, and `tools/list` checks where observable. |
-| `volicord connections` | Reads matching Agent Connections and connected projects. | Does not launch the host and does not rewrite host configuration. | Reports stored and diagnostic verification state without refreshing host checks. |
+| `volicord connection add` | Registers or reuses the selected repository project, creates or updates the matching Agent Connection, records the connection intent and mode, and ensures the project is in Connection Projects. | Installs or updates managed host configuration for `codex` or `claude-code` according to the selected intent. | Runs host-config, MCP startup, initialization, and `tools/list` checks where observable. |
+| `volicord connection list` | Reads matching Agent Connections and connected projects. | Does not launch the host and does not rewrite host configuration. | Reports stored and diagnostic verification state without refreshing host checks. |
 | `volicord connection status` | Reads one selected Agent Connection. | Does not launch the host and does not rewrite host configuration. | Reports full stored verification status and required user actions. |
 | `volicord connection verify` | Reads the selected Agent Connection and updates last-known verification status. | Inspects the managed target when the host integration owns an observable target. | Runs the observable checks and stores the resulting verification state. |
 | `volicord connection mode` | Updates the selected connection mode. | Does not rewrite host configuration unless the host entry must be regenerated to reflect the mode. | Reports diagnostics after the mode change. |
@@ -436,7 +403,7 @@ or looks up the stored `connection_internal_id`.
 
 Rules:
 
-- `volicord connect` must never connect every project in the Runtime Home by
+- `volicord connection add` must never connect every project in the Runtime Home by
   default.
 - A selected project is always resolved from a repository root and registered
   automatically when the command needs a durable project registration.
@@ -490,44 +457,41 @@ A successful `volicord mcp --check` startup check alone must not be described as
 `complete` Agent Connection. It is startup validation for the MCP process only.
 
 <a id="generic-mcp-config-export"></a>
-## Generic MCP config export
+## Host MCP configuration
 
-`volicord export mcp-config [--output PATH] [--repo PATH] [--read-only] [--json]`
-exports host-neutral MCP configuration. It is a separate export flow, not a
-normal host connection intent.
+Volicord does not expose a public generic MCP config export command. Supported
+host setup is performed through `volicord init` and `volicord connection add`.
+Those commands write supported host configuration directly when the selected
+host adapter owns a managed target. Generic or otherwise unsupported external
+hosts remain user-managed configuration surfaces.
 
 Rules:
 
-- The command resolves or registers the selected repository project by root.
-- It uses the installation profile's stored MCP command unless the setup is invalid,
-  in which case it reports an `action_required` setup diagnostic.
-- It may create or update internal registry state needed for the exported
-  command to start a bound `volicord mcp --stdio` process.
-- Omission of `--read-only` uses workflow mode.
-- When `--output PATH` is present, the configuration is written to that exact
-  output file. When `--output` is omitted, the command writes the default MCP
-  config file for the resolved repository context, using `volicord.mcp.json` as
-  the default filename.
-- Exported configuration remains user-managed after export. Volicord must not
-  claim that an arbitrary external host loaded, trusted, approved, initialized,
-  or exposed it.
+- Supported managed host configuration is tied to an Agent Connection and starts
+  a bound `volicord mcp --stdio` process.
+- User-managed generic host configuration may name the installed `volicord`
+  executable and the `mcp --stdio --connection <connection_id>
+  [--project <project_id>]` arguments after a supported Agent Connection exists.
+- Volicord must not claim that an arbitrary external host loaded, trusted,
+  approved, initialized, or exposed a user-managed configuration.
 
 <a id="guard-hook-commands"></a>
-## Detective host hook lifecycle commands
+## Internal detective hook lifecycle commands
 
-`volicord host-hook` commands are local hook entry points for hosts that can run a
-command during agent lifecycle events. They inspect registered project state,
-record host-observation events, and return a machine-readable local decision.
-They do not replace Core methods, user-owned judgments, write tickets,
-close-readiness checks, host trust, shell approval, or OS-level sandboxing.
+The hidden internal hook namespace is a local entry point for generated host
+wrappers that can run a command during agent lifecycle events. It is not shown
+in normal top-level help and is not a general user-facing command group. Hook
+commands inspect registered project state, record host-observation events, and
+return a machine-readable local decision. They do not replace Core methods,
+user-owned judgments, write tickets, close-readiness checks, host trust, shell
+approval, or OS-level sandboxing.
 
 Each host-hook command reads one JSON hook event from stdin by default. `--file PATH`
 reads that JSON event from a file for tests or host integrations that stage
 events. The default `--output volicord-json` output includes `decision`,
 `allowed`, `guard_event_id`, optional `session_id`, and a command-specific
-`result`. `--output text` selects a concise human-readable line. Legacy `--json`
-and `--text` flags remain accepted for compatibility. Supported decisions are
-`allow`, `deny`, `warn`, and `inject_context`.
+`result`. `--output text` selects a concise human-readable line. Supported
+decisions are `allow`, `deny`, `warn`, and `inject_context`.
 
 `--host-output codex|claude-code` selects host-native hook rendering for
 installed host hooks. In this mode stdout contains only host-recognized response
@@ -550,8 +514,8 @@ such as `codex`, `claude_code`, or `generic`. Public integration profiles are
 `record` and `detective`.
 `--policy-hash HASH` pins the expected `.volicord/policy.json` hash for
 generated hook wrapper scripts; a mismatch prevents that hook event from
-activating the detective installation record, while direct host-hook commands used for tests
-or debugging may omit the option.
+activating the detective installation record, while internal hook commands used
+for tests or debugging may omit the option.
 
 Generated Codex hook configuration must be cwd-independent and
 subdirectory-safe. It does not invoke a bare `.codex/hooks/...` path. Each hook
@@ -574,7 +538,7 @@ subdirectory-safe. It uses exec-form commands rooted at
 `${CLAUDE_PROJECT_DIR}/.claude/hooks/volicord-pre-tool.sh`, with no args.
 
 Generated wrapper scripts under `.codex/hooks/` and `.claude/hooks/` forward
-stdin unchanged to `volicord host-hook`, preserve stdout, stderr, and the host-hook
+stdin unchanged to the hidden internal hook namespace, preserve stdout, stderr, and the host-hook
 exit code, and pass the expected host kind, host-native output mode, repository
 selector, Agent Connection, host-hook installation, and policy hash. Users must not
 replace generated hook commands with bare `.codex/hooks/...` or
@@ -592,7 +556,7 @@ view. The repair action is to regenerate the safe managed commands with
 `volicord init --host HOST --repo PATH --profile detective`, then complete any
 host trust, approval, reload, or restart action still reported.
 
-When a `detective` host-hook command receives a valid event for the recorded
+When a `detective` internal hook command receives a valid event for the recorded
 project, Agent Connection, host-hook installation, host kind, integration profile,
 policy hash, and known hook phase, Volicord records observation metadata. The
 observation can promote the detective installation record to `active` only when
@@ -746,7 +710,6 @@ Dry-run does not:
   rows
 - create, modify, or remove host configuration files
 - create, modify, or remove `Product Repository` files or directories
-- create, modify, or remove generic export files
 - invoke MCP startup checks, MCP initialization, or tool discovery
 
 Text output must be human-readable and identify each resource action using
@@ -754,7 +717,7 @@ Text output must be human-readable and identify each resource action using
 
 <a id="setup-output"></a>
 JSON output is administrative CLI output, not a public Volicord API response
-schema. Commands that report setup, connection, export, project, or user-channel
+schema. Commands that report setup, connection, project, or user-channel
 state must include enough structured status for noninteractive operators to
 distinguish successful setup from required user action.
 

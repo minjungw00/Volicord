@@ -11,7 +11,7 @@
 설정에는 [에이전트 호스트 설정](agent-host-setup.md)과
 `volicord init --host HOST --repo PATH --profile record`를 사용합니다. Detective 설정에는
 그 문서가 설명하는 지원되는 host hook과 session watcher 요구사항이 적용됩니다.
-여기의 하위 수준 `volicord connect` 명령은 호스트 수준 또는 global 호스트 항목 하나가
+여기의 하위 수준 `volicord connection add` 명령은 호스트 수준 또는 global 호스트 항목 하나가
 명시적으로 허용된 둘 이상의 저장소로 라우팅해야 할 때만 사용합니다.
 
 ## 토폴로지
@@ -41,8 +41,8 @@ Product Repository 하나를 추가해도 Runtime Home에 등록된 모든 프�
 
 이 토폴로지는 호스트 수준 설정에 맞습니다.
 
-- Codex personal 연결: `volicord connect codex`
-- Claude Code global 연결: `volicord connect claude-code --global`
+- Codex personal 연결: `volicord connection add codex`
+- Claude Code global 연결: `volicord connection add claude-code --global`
 
 프로젝트 공유 연결과 호스트 로컬 연결은 단일 Product Repository 흐름으로 남습니다.
 
@@ -53,14 +53,14 @@ Product Repository 하나를 추가해도 Runtime Home에 등록된 모든 프�
 첫 번째 Product Repository를 명시적으로 선택합니다.
 
 ```sh
-volicord connect codex --repo /path/to/acme-api
+volicord connection add codex --repo /path/to/acme-api
 volicord connection status codex --repo /path/to/acme-api
 ```
 
 Claude Code global 설정은 아래처럼 실행합니다.
 
 ```sh
-volicord connect claude-code --global --repo /path/to/acme-api
+volicord connection add claude-code --global --repo /path/to/acme-api
 volicord connection status claude-code --global --repo /path/to/acme-api
 ```
 
@@ -73,7 +73,7 @@ Home에 저장합니다.
 두 번째 Product Repository에 같은 호스트와 의도를 적용합니다.
 
 ```sh
-volicord connect codex --repo /path/to/billing-api
+volicord connection add codex --repo /path/to/billing-api
 volicord connection status codex --repo /path/to/billing-api
 ```
 
@@ -81,7 +81,7 @@ volicord connection status codex --repo /path/to/billing-api
 `--repo`를 사용하면 멤버십 대상을 모호하지 않게 유지할 수 있습니다.
 
 ```sh
-volicord connect codex
+volicord connection add codex
 volicord connection status codex
 ```
 
@@ -92,7 +92,7 @@ volicord connection status codex
 ## 연결 확인하기
 
 ```sh
-volicord connections
+volicord connection list
 volicord connection verify codex
 volicord connection status codex --repo /path/to/acme-api
 volicord connection status codex --repo /path/to/billing-api

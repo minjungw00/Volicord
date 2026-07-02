@@ -1,29 +1,21 @@
 #![forbid(unsafe_code)]
 
-use std::{
-    env, fmt,
-    io::{self, IsTerminal},
-    path::Path,
-    process,
-};
+use std::{env, fmt, path::Path, process};
 
 use volicord_cli::{
     changes_command::{changes_usage, run_changes_command, ChangesCommandError},
     connection_command::{
-        connect_usage, connection_usage, connections_usage, init_usage, run_connect_command,
-        run_connection_command, run_connections_command, run_init_command, ConnectionCommandError,
-        ProductionConnectionProcess,
+        connection_usage, init_usage, run_connection_command, run_init_command,
+        ConnectionCommandError, ProductionConnectionProcess,
     },
     doctor_command::{doctor_usage, run_doctor_command, DoctorCommandError},
-    export_command::{export_usage, run_export_command, ExportCommandError},
-    guard_command::{guard_usage, run_guard_command, GuardCommandError},
+    guard_command::{run_guard_command, GuardCommandError},
     project_context::{project_usage, run_project_command, ProjectCommandError},
     serve_command::{run_serve_command, serve_usage, ServeCommand, ServeCommandError},
-    setup_command::{
-        run_setup_command, run_setup_command_interactive, setup_usage, ClosureSetupProcess,
-        CommandOutcome, SetupCommandError, StdioSetupTerminal,
+    setup_command::CommandOutcome,
+    user_command::{
+        inbox_usage, run_inbox_command, run_status_command, status_usage, UserCommandError,
     },
-    user_command::{inbox_usage, run_inbox_command, run_user_command, UserCommandError},
 };
 use volicord_store::bootstrap::installation_profile;
 use volicord_store::runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError};
@@ -102,25 +94,7 @@ where
                 )))
             }
         }
-        "setup" => {
-            let process = ClosureSetupProcess::new(&env_var);
-            if setup_prompt_allowed(&args[2..])
-                && io::stdin().is_terminal()
-                && io::stdout().is_terminal()
-            {
-                let mut terminal = StdioSetupTerminal::new();
-                command_outcome(run_setup_command_interactive(
-                    &args[2..],
-                    current_dir,
-                    &process,
-                    &mut terminal,
-                )?)
-            } else {
-                command_outcome(run_setup_command(&args[2..], current_dir, &process)?)
-            }
-        }
         "doctor" => command_outcome(run_doctor_command(&args[2..], &env_var, current_dir)?),
-        "export" => run_export_command(&args[2..], &env_var, current_dir).map_err(CliError::from),
         "mcp" => command_mcp(&args[2..], env_var, current_dir),
         "serve" => command_serve(&args[2..], env_var, current_dir),
         "init" => {
@@ -128,27 +102,11 @@ where
             run_init_command(&args[2..], current_dir, &mut connection_process)
                 .map_err(CliError::from)
         }
-        "host-hook" => {
+        "_hook" => {
             if !guard_help_requested(&args[2..]) {
                 require_setup_completed(&env_var, current_dir)?;
             }
             guard_command_outcome(run_guard_command(&args[2..], env_var, current_dir)?)
-        }
-        "connect" => {
-            if !simple_help_requested(&args[2..]) {
-                require_setup_completed(&env_var, current_dir)?;
-            }
-            let mut connection_process = ProductionConnectionProcess;
-            run_connect_command(&args[2..], current_dir, &mut connection_process)
-                .map_err(CliError::from)
-        }
-        "connections" => {
-            if !simple_help_requested(&args[2..]) {
-                require_setup_completed(&env_var, current_dir)?;
-            }
-            let mut connection_process = ProductionConnectionProcess;
-            run_connections_command(&args[2..], current_dir, &mut connection_process)
-                .map_err(CliError::from)
         }
         "connection" => {
             if !connection_help_requested(&args[2..]) {
@@ -164,11 +122,11 @@ where
             }
             run_changes_command(&args[2..], env_var, current_dir).map_err(CliError::from)
         }
-        "user" => {
-            if user_subcommand_requires_setup(&args[2..]) {
+        "status" => {
+            if !simple_help_requested(&args[2..]) {
                 require_setup_completed(&env_var, current_dir)?;
             }
-            run_user_command(&args[2..], env_var, current_dir).map_err(CliError::from)
+            run_status_command(&args[2..], env_var, current_dir).map_err(CliError::from)
         }
         "inbox" => {
             if inbox_subcommand_requires_setup(&args[2..]) {
@@ -187,13 +145,6 @@ where
             usage()
         ))),
     }
-}
-
-fn user_subcommand_requires_setup(args: &[String]) -> bool {
-    matches!(
-        args.first().map(String::as_str),
-        Some("status" | "judgments" | "judgment")
-    )
 }
 
 fn inbox_subcommand_requires_setup(args: &[String]) -> bool {
@@ -221,24 +172,15 @@ fn simple_help_requested(args: &[String]) -> bool {
     )
 }
 
-fn setup_prompt_allowed(args: &[String]) -> bool {
-    !matches!(
-        args.first().map(String::as_str),
-        Some("-h" | "--help" | "help")
-    ) && !args.iter().any(|arg| {
-        matches!(arg.as_str(), "--json" | "--link-bin")
-            || arg.starts_with("--json=")
-            || arg.starts_with("--link-bin=")
-    })
-}
-
 fn connection_help_requested(args: &[String]) -> bool {
     match args {
         [] => true,
         [first] if matches!(first.as_str(), "-h" | "--help" | "help") => true,
         [subcommand, help, ..]
-            if matches!(subcommand.as_str(), "status" | "verify" | "mode" | "remove")
-                && matches!(help.as_str(), "-h" | "--help" | "help") =>
+            if matches!(
+                subcommand.as_str(),
+                "add" | "list" | "status" | "verify" | "mode" | "remove"
+            ) && matches!(help.as_str(), "-h" | "--help" | "help") =>
         {
             true
         }
@@ -297,12 +239,12 @@ where
 fn setup_required_message(runtime_home: &Path) -> String {
     if !runtime_home.exists() {
         format!(
-            "RUNTIME_HOME_MISSING: Runtime Home {} is missing; run `volicord init --host <host> --repo <path>` from the Product Repository to initialize the primary host connection. Use `volicord setup` only for installation-profile repair.",
+            "RUNTIME_HOME_MISSING: Runtime Home {} is missing; run `volicord init --host <host> --repo <path>` from the Product Repository to initialize Volicord.",
             runtime_home.display()
         )
     } else {
         format!(
-            "SETUP_REQUIRED: installation profile is missing for Runtime Home {}; run `volicord init --host <host> --repo <path>` from the Product Repository to initialize the primary host connection. Use `volicord setup` only for installation-profile repair.",
+            "SETUP_REQUIRED: installation profile is missing for Runtime Home {}; run `volicord init --host <host> --repo <path>` from the Product Repository to initialize Volicord.",
             runtime_home.display()
         )
     }
@@ -478,20 +420,16 @@ fn display_path(path: &Path) -> String {
 
 fn usage() -> String {
     format!(
-        "Usage:\n  volicord --help\n  volicord --version\n{}{}{}{}{}{}{}{}{}{}{}{}{}\nEnvironment:\n  VOLICORD_HOME  Override Runtime Home path (default: $HOME/.volicord)\n\nAgent Connection commands manage local MCP host connections. User Channel commands record local user judgments.\nThese are local administrative commands, not public Volicord API methods.\n",
+        "Usage:\n  volicord --help\n  volicord --version\n{}{}{}{}{}{}{}{}{}\nEnvironment:\n  VOLICORD_HOME  Override Runtime Home path (default: $HOME/.volicord)\n\nAgent Connection commands manage local MCP host connections. User Channel commands record local user judgments.\nThese are local administrative commands, not public Volicord API methods.\n",
         indent_usage_block(&init_usage()),
-        indent_usage_block(&setup_usage()),
+        indent_usage_block(&status_usage()),
         indent_usage_block(&doctor_usage()),
-        indent_usage_block(&export_usage()),
+        indent_usage_block(&project_usage()),
+        indent_usage_block(&connection_usage()),
+        indent_usage_block(&inbox_usage()),
+        indent_usage_block(&changes_usage()),
         indent_usage_block(&mcp_usage()),
         indent_usage_block(&serve_usage()),
-        indent_usage_block(&guard_usage()),
-        indent_usage_block(&connect_usage()),
-        indent_usage_block(&connections_usage()),
-        indent_usage_block(&connection_usage()),
-        indent_usage_block(&changes_usage()),
-        indent_usage_block(&inbox_usage()),
-        indent_usage_block(&project_usage())
     )
 }
 
@@ -612,29 +550,11 @@ impl From<ProjectCommandError> for CliError {
     }
 }
 
-impl From<SetupCommandError> for CliError {
-    fn from(error: SetupCommandError) -> Self {
-        match error {
-            SetupCommandError::Usage(message) => Self::Usage(message),
-            SetupCommandError::Runtime(message) => Self::Runtime(message),
-        }
-    }
-}
-
 impl From<DoctorCommandError> for CliError {
     fn from(error: DoctorCommandError) -> Self {
         match error {
             DoctorCommandError::Usage(message) => Self::Usage(message),
             DoctorCommandError::Runtime(message) => Self::Runtime(message),
-        }
-    }
-}
-
-impl From<ExportCommandError> for CliError {
-    fn from(error: ExportCommandError) -> Self {
-        match error {
-            ExportCommandError::Usage(message) => Self::Usage(message),
-            ExportCommandError::Runtime(message) => Self::Runtime(message),
         }
     }
 }
@@ -662,15 +582,14 @@ mod tests {
     use std::{
         ffi::OsString,
         fs,
-        io::Write,
         path::{Path, PathBuf},
     };
 
     use serde_json::Value;
     use volicord_store::bootstrap::{
-        installation_profile as read_installation_profile, list_projects,
+        initialize_runtime_home, list_projects, write_installation_profile,
+        InstallationProfileRegistration,
     };
-    use volicord_store::sqlite::registry_db_path;
     use volicord_test_support::TempRuntimeHome;
 
     use super::*;
@@ -709,32 +628,19 @@ mod tests {
         .expect("help should not need Runtime Home");
 
         assert!(output.contains("volicord --version"));
-        assert!(output.contains("volicord setup"));
         assert!(output.contains("volicord init"));
+        assert!(output.contains("volicord status"));
         assert!(output.contains("volicord doctor"));
+        assert!(output.contains("volicord project use"));
+        assert!(output.contains("volicord connection add"));
+        assert!(output.contains("volicord connection list"));
         assert!(output.contains("volicord mcp --stdio --connection <connection_id>"));
         assert!(output.contains("volicord serve --transport local-http"));
         assert!(output.contains("\n  volicord connection verify"));
         assert!(output.contains("\n  volicord inbox"));
         assert!(!output.contains("\nvolicord connection verify"));
         assert!(!output.contains("\nvolicord inbox"));
-    }
-
-    #[test]
-    fn setup_prompt_gate_allows_plain_setup_but_not_noninteractive_options() {
-        assert!(setup_prompt_allowed(&[]));
-        assert!(setup_prompt_allowed(&[
-            "--home".to_owned(),
-            "runtime".to_owned()
-        ]));
-        assert!(!setup_prompt_allowed(&["--help".to_owned()]));
-        assert!(!setup_prompt_allowed(&["--json".to_owned()]));
-        assert!(!setup_prompt_allowed(&["--json=true".to_owned()]));
-        assert!(!setup_prompt_allowed(&[
-            "--link-bin".to_owned(),
-            "bin".to_owned()
-        ]));
-        assert!(!setup_prompt_allowed(&["--link-bin=bin".to_owned()]));
+        assert!(!output.contains("volicord _hook"));
     }
 
     #[test]
@@ -753,39 +659,6 @@ mod tests {
                 usage()
             ))
         );
-    }
-
-    #[test]
-    fn setup_respects_volicord_home_override() {
-        let runtime_home = TempRuntimeHome::new("cli-setup").expect("temp runtime home");
-        let mcp = write_fake_executable(runtime_home.path(), "volicord")
-            .expect("fake mcp should be created");
-        let output = run_cli(
-            vec![
-                "volicord".to_owned(),
-                "setup".to_owned(),
-                "--mcp-command".to_owned(),
-                display_path(&mcp),
-            ],
-            |name| {
-                if name == "VOLICORD_HOME" {
-                    Some(OsString::from(runtime_home.path()))
-                } else {
-                    None
-                }
-            },
-            Path::new(env!("CARGO_MANIFEST_DIR")),
-        )
-        .expect("setup should succeed");
-
-        assert!(output.contains("Volicord setup action_required\n"));
-        assert!(output.contains("default_connection_mode: workflow\n"));
-        assert!(output.contains("command_state: action_required\n"));
-        assert!(output.contains("next_action: "));
-        assert!(registry_db_path(runtime_home.path()).exists());
-        assert!(read_installation_profile(runtime_home.path())
-            .expect("profile read should work")
-            .is_some());
     }
 
     #[test]
@@ -809,7 +682,7 @@ mod tests {
     }
 
     #[test]
-    fn setup_resolves_runtime_home_with_shared_resolver() {
+    fn runtime_home_resolver_keeps_relative_volicord_home_based_on_current_dir() {
         let current_dir = TempRuntimeHome::new("cli-cwd").expect("temp current dir");
         let runtime_home = resolve_runtime_home(
             |name| {
@@ -822,35 +695,14 @@ mod tests {
             current_dir.path(),
         )
         .expect("shared resolver should resolve relative Runtime Home");
-        let mcp = write_fake_executable(current_dir.path(), "volicord")
-            .expect("fake mcp should be created");
 
-        let output = run_cli(
-            vec![
-                "volicord".to_owned(),
-                "setup".to_owned(),
-                "--mcp-command".to_owned(),
-                display_path(&mcp),
-            ],
-            |name| {
-                if name == "VOLICORD_HOME" {
-                    Some(OsString::from("shared-runtime"))
-                } else {
-                    None
-                }
-            },
-            current_dir.path(),
-        )
-        .expect("setup should use shared Runtime Home resolution");
-
-        assert!(output.contains(&format!("runtime_home: {}\n", display_path(&runtime_home))));
-        assert!(registry_db_path(runtime_home).exists());
+        assert_eq!(runtime_home, current_dir.path().join("shared-runtime"));
     }
 
     #[test]
     fn runtime_home_resolution_errors_are_runtime_errors() {
         let error = run_cli(
-            ["volicord", "setup"],
+            ["volicord", "doctor"],
             |name| {
                 if name == "VOLICORD_HOME" {
                     Some(OsString::new())
@@ -871,7 +723,7 @@ mod tests {
     #[test]
     fn project_current_reports_unregistered_repository_without_creating_project() {
         let runtime_home = TempRuntimeHome::new("cli-project-current").expect("temp runtime home");
-        setup_runtime_home(&runtime_home).expect("setup should succeed");
+        setup_runtime_home(&runtime_home).expect("fixture setup should succeed");
         let repo_root = create_git_repo(&runtime_home, "current-repo");
         let nested = repo_root.join("src/nested");
         fs::create_dir_all(&nested).expect("nested repo fixture should be created");
@@ -893,7 +745,7 @@ mod tests {
     #[test]
     fn project_use_detects_nested_git_repository_and_hides_text_internal_id() {
         let runtime_home = TempRuntimeHome::new("cli-project-use").expect("temp runtime home");
-        setup_runtime_home(&runtime_home).expect("setup should succeed");
+        setup_runtime_home(&runtime_home).expect("fixture setup should succeed");
         let repo_root = create_git_repo(&runtime_home, "product-repo");
         let nested = repo_root.join("src/nested");
         fs::create_dir_all(&nested).expect("nested repo fixture should be created");
@@ -935,7 +787,7 @@ mod tests {
     fn project_list_disambiguates_duplicate_basenames_by_path() {
         let runtime_home =
             TempRuntimeHome::new("cli-project-duplicates").expect("temp runtime home");
-        setup_runtime_home(&runtime_home).expect("setup should succeed");
+        setup_runtime_home(&runtime_home).expect("fixture setup should succeed");
         let repo_a = create_git_repo(&runtime_home, "left/repo");
         let repo_b = create_git_repo(&runtime_home, "right/repo");
 
@@ -1000,7 +852,7 @@ mod tests {
     #[test]
     fn project_rename_and_forget_select_without_user_supplied_ids() {
         let runtime_home = TempRuntimeHome::new("cli-project-rename").expect("temp runtime home");
-        setup_runtime_home(&runtime_home).expect("setup should succeed");
+        setup_runtime_home(&runtime_home).expect("fixture setup should succeed");
         let repo_root = create_git_repo(&runtime_home, "rename-repo");
 
         run_with_home_at(
@@ -1051,7 +903,7 @@ mod tests {
     #[test]
     fn project_use_rejects_repository_under_runtime_home_without_project_state() {
         let runtime_home = TempRuntimeHome::new("cli-project-boundary").expect("temp runtime home");
-        setup_runtime_home(&runtime_home).expect("setup should succeed");
+        setup_runtime_home(&runtime_home).expect("fixture setup should succeed");
         let repo_root = runtime_home.path().join("product-repo");
         fs::create_dir_all(repo_root.join(".git")).expect("repo fixture should be created");
 
@@ -1077,7 +929,7 @@ mod tests {
     }
 
     #[test]
-    fn project_use_requires_setup_profile() {
+    fn project_use_requires_installation_profile() {
         let runtime_home = TempRuntimeHome::new("cli-uninitialized").expect("temp runtime home");
         let repo_root = create_git_repo(&runtime_home, "missing-setup-repo");
         let error = run_with_home_at(
@@ -1085,7 +937,7 @@ mod tests {
             ["volicord", "project", "use"],
             &repo_root,
         )
-        .expect_err("project use should require setup");
+        .expect_err("project use should require an installation profile");
 
         assert!(matches!(error, CliError::Runtime(_)));
         assert!(error
@@ -1118,25 +970,20 @@ mod tests {
         )
     }
 
-    fn setup_runtime_home(runtime_home: &TempRuntimeHome) -> Result<String, CliError> {
-        let mcp = write_fake_executable(runtime_home.path(), "volicord")
-            .expect("fake mcp should be created");
-        run_cli(
-            vec![
-                "volicord".to_owned(),
-                "setup".to_owned(),
-                "--mcp-command".to_owned(),
-                display_path(&mcp),
-            ],
-            |name| {
-                if name == "VOLICORD_HOME" {
-                    Some(OsString::from(runtime_home.path()))
-                } else {
-                    None
-                }
+    fn setup_runtime_home(runtime_home: &TempRuntimeHome) -> Result<(), CliError> {
+        initialize_runtime_home(runtime_home.path(), "runtime_home_cli_test", "{}")?;
+        write_installation_profile(
+            runtime_home.path(),
+            InstallationProfileRegistration {
+                installation_id: "default".to_owned(),
+                volicord_command: "volicord".to_owned(),
+                volicord_mcp_command: "volicord".to_owned(),
+                bin_dir: runtime_home.path().join("bin"),
+                default_connection_mode: "workflow".to_owned(),
+                metadata_json: "{}".to_owned(),
             },
-            Path::new(env!("CARGO_MANIFEST_DIR")),
-        )
+        )?;
+        Ok(())
     }
 
     fn json_value(text: &str) -> Value {
@@ -1149,28 +996,5 @@ mod tests {
             .expect("repo fixture should be created");
         fs::create_dir_all(repo_root.join(".git")).expect("git marker should be created");
         repo_root
-    }
-
-    fn write_fake_executable(dir: &Path, name: &str) -> std::io::Result<PathBuf> {
-        fs::create_dir_all(dir)?;
-        let path = dir.join(name);
-        let mut file = fs::File::create(&path)?;
-        writeln!(file, "#!/bin/sh")?;
-        make_executable(&path)?;
-        Ok(path)
-    }
-
-    #[cfg(unix)]
-    fn make_executable(path: &Path) -> std::io::Result<()> {
-        use std::os::unix::fs::PermissionsExt;
-
-        let mut permissions = fs::metadata(path)?.permissions();
-        permissions.set_mode(0o755);
-        fs::set_permissions(path, permissions)
-    }
-
-    #[cfg(not(unix))]
-    fn make_executable(_path: &Path) -> std::io::Result<()> {
-        Ok(())
     }
 }

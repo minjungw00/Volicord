@@ -14,9 +14,8 @@ use volicord_core::{CoreService, InvocationContext};
 use volicord_store::agent_connections::{
     add_connection_project, agent_connection_record, ensure_agent_connection,
     list_connection_projects, AgentConnectionRegistration, ConnectionProjectRegistration,
-    CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW, HOST_KIND_CODEX, HOST_KIND_GENERIC,
-    HOST_SCOPE_EXPORT, HOST_SCOPE_PROJECT, VERIFIED_STATUS_ACTION_REQUIRED,
-    VERIFIED_STATUS_COMPLETE,
+    CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW, HOST_KIND_CODEX, HOST_SCOPE_PROJECT,
+    VERIFIED_STATUS_ACTION_REQUIRED, VERIFIED_STATUS_COMPLETE,
 };
 use volicord_store::guards::{
     guard_event, insert_unrecorded_change, list_guard_installations, UnrecordedChangeInsert,
@@ -38,33 +37,24 @@ use volicord_types::{
     VERIFICATION_BASIS_TEST_FIXTURE_BINDING, WORKFLOW_METHOD_TOOL_NAMES,
 };
 
-const SETUP_HELP_OPTIONS: &[&str] = &["--home", "--link-bin", "--mcp-command", "--json"];
-
 #[test]
 fn binary_help_uses_agent_connection_model() -> Result<(), Box<dyn Error>> {
     let help = run_without_home(["--help"])?;
     assert_success(&help);
     let text = stdout(&help);
 
-    assert!(text.contains("volicord setup"));
     assert!(text.contains("volicord init --host"));
+    assert!(text.contains("volicord status"));
     assert!(text.contains("volicord doctor"));
-    assert!(text.contains("volicord export mcp-config"));
-    assert!(text.contains("volicord host-hook session-start"));
-    assert!(text.contains("volicord connect [HOST]"));
-    assert!(text.contains("volicord connections [--repo PATH]"));
+    assert!(text.contains("volicord project use"));
+    assert!(text.contains("volicord connection add [HOST]"));
+    assert!(text.contains("volicord connection list [--repo PATH]"));
     assert!(text.contains("volicord connection status [HOST]"));
+    assert!(text.contains("volicord changes reconcile"));
+    assert!(text.contains("volicord serve --transport local-http"));
+    assert!(text.contains("volicord mcp --stdio"));
     assert!(text.contains("volicord inbox answer <judgment-id> --choice <choice>"));
     assert!(text.contains("User Channel"));
-
-    let setup_help = run_without_home(["setup", "--help"])?;
-    assert_success(&setup_help);
-    let setup_text = stdout(&setup_help);
-    assert!(setup_text.contains("volicord setup"));
-    assert!(setup_text.contains("--home PATH"));
-    assert!(setup_text.contains("--link-bin PATH"));
-    assert!(setup_text.contains("--mcp-command PATH"));
-    assert!(setup_text.contains("--json"));
 
     let init_help = run_without_home(["init", "--help"])?;
     assert_success(&init_help);
@@ -76,28 +66,17 @@ fn binary_help_uses_agent_connection_model() -> Result<(), Box<dyn Error>> {
     assert!(init_text.contains("--dry-run"));
     assert!(init_text.contains("--json"));
 
-    let unknown_user = run_without_home(["user", "not-a-real-command", "--repo", "."])?;
-    assert_eq!(unknown_user.status.code(), Some(2));
-    assert!(stderr(&unknown_user).contains("unknown user command: not-a-real-command"));
+    let status_help = run_without_home(["status", "--help"])?;
+    assert_success(&status_help);
+    assert!(stdout(&status_help).contains("volicord status [--repo PATH]"));
 
-    let connect_help = run_without_home(["connect", "--help"])?;
-    assert_success(&connect_help);
-    let connect_text = stdout(&connect_help);
-    assert!(connect_text.contains("volicord connect [HOST]"));
-    assert!(connect_text.contains("--repo PATH"));
-    assert!(connect_text.contains("--shared|--global"));
-    assert!(connect_text.contains("--read-only"));
-
-    let connection_help = run_without_home(["connection", "status", "--help"])?;
+    let connection_help = run_without_home(["connection", "add", "--help"])?;
     assert_success(&connection_help);
     let connection_text = stdout(&connection_help);
-    assert!(connection_text.contains("volicord connection status [HOST]"));
-
-    let export_help = run_without_home(["export", "mcp-config", "--help"])?;
-    assert_success(&export_help);
-    let export_text = stdout(&export_help);
-    assert!(export_text.contains("volicord export mcp-config"));
-    assert!(export_text.contains("--output PATH"));
+    assert!(connection_text.contains("volicord connection add [HOST]"));
+    assert!(connection_text.contains("--repo PATH"));
+    assert!(connection_text.contains("--shared|--global"));
+    assert!(connection_text.contains("--read-only"));
     Ok(())
 }
 
@@ -108,10 +87,8 @@ fn binary_help_options_match_supported_contracts() -> Result<(), Box<dyn Error>>
         &[
             "--version",
             "--home",
-            "--link-bin",
             "--mcp-command",
             "--json",
-            "--output",
             "--repo",
             "--shared",
             "--global",
@@ -129,14 +106,7 @@ fn binary_help_options_match_supported_contracts() -> Result<(), Box<dyn Error>>
             "--token",
             "--generate-token",
             "--allow-origin",
-            "--file",
-            "--connection",
-            "--session",
-            "--guard-installation",
             "--host",
-            "--host-output",
-            "--integration-profile",
-            "--policy-hash",
             "--profile",
         ],
     )?;
@@ -157,25 +127,10 @@ fn binary_help_options_match_supported_contracts() -> Result<(), Box<dyn Error>>
             "--allow-origin",
         ],
     )?;
-    assert_help_options(
-        ["host-hook", "--help"],
-        &[
-            "--file",
-            "--repo",
-            "--connection",
-            "--session",
-            "--guard-installation",
-            "--host",
-            "--host-output",
-            "--integration-profile",
-            "--policy-hash",
-            "--output",
-        ],
-    )?;
-    assert_help_options(["setup", "--help"], SETUP_HELP_OPTIONS)?;
+    assert_help_options(["status", "--help"], &["--repo", "--task", "--json"])?;
     assert_help_options(["doctor", "--help"], &["--json"])?;
     assert_help_options(
-        ["connect", "--help"],
+        ["connection", "add", "--help"],
         &[
             "--repo",
             "--shared",
@@ -197,10 +152,17 @@ fn binary_help_options_match_supported_contracts() -> Result<(), Box<dyn Error>>
             "--json",
         ],
     )?;
-    assert_help_options(["connections", "--help"], &["--repo", "--json"])?;
+    assert_help_options(["connection", "list", "--help"], &["--repo", "--json"])?;
     assert_help_options(
         ["connection", "--help"],
-        &["--repo", "--shared", "--global", "--dry-run", "--json"],
+        &[
+            "--repo",
+            "--shared",
+            "--global",
+            "--read-only",
+            "--dry-run",
+            "--json",
+        ],
     )?;
     assert_help_options(
         ["connection", "status", "--help"],
@@ -218,178 +180,11 @@ fn binary_help_options_match_supported_contracts() -> Result<(), Box<dyn Error>>
         ["connection", "remove", "--help"],
         &["--repo", "--shared", "--global", "--dry-run", "--json"],
     )?;
-    assert_help_options(
-        ["export", "mcp-config", "--help"],
-        &["--output", "--repo", "--read-only", "--json"],
-    )?;
     assert_help_options(["project", "--help"], &["--repo", "--json"])?;
     assert_help_options(
-        ["user", "--help"],
-        &["--repo", "--task", "--note", "--json"],
+        ["inbox", "--help"],
+        &["--repo", "--task", "--choice", "--note", "--json"],
     )?;
-    Ok(())
-}
-
-#[cfg(unix)]
-#[test]
-fn setup_and_doctor_report_installation_profile() -> Result<(), Box<dyn Error>> {
-    let runtime_home = TempRuntimeHome::new("cli-bin-setup-doctor")?;
-    let bin_dir = runtime_home.path().join("bin");
-    let mcp = write_fake_mcp(&bin_dir)?;
-
-    let setup = run_setup_json(runtime_home.path(), &mcp)?;
-    assert_success(&setup);
-    let setup_json = json_stdout(&setup)?;
-    assert_eq!(setup_json["status"], "action_required");
-    assert_eq!(
-        setup_json["status_meaning"],
-        "installation profile setup needs a named user action"
-    );
-    assert_eq!(setup_json["setup_report"]["status"], "action_required");
-    assert_eq!(
-        setup_json["setup_report"]["installation_profile"]["status"],
-        "complete"
-    );
-    assert_eq!(
-        setup_json["installation_profile"]["volicord_mcp_command"],
-        path_text(&mcp)
-    );
-    assert_eq!(
-        setup_json["installation_profile"]["default_connection_mode"],
-        "workflow"
-    );
-    assert!(setup_json["checks"]
-        .as_array()
-        .expect("checks should be an array")
-        .iter()
-        .any(|check| {
-            check["id"] == "volicord_mcp_command"
-                && check["status"] == "passed"
-                && check["details"]["path"] == path_text(&mcp)
-                && check["details"]["source"] == "explicit"
-        }));
-    assert!(setup_json["actions_required"]
-        .as_array()
-        .expect("actions_required should be an array")
-        .iter()
-        .any(|action| action["id"] == "make_volicord_command_available"));
-    assert_eq!(
-        setup_json["primary_next_action"]["id"],
-        "make_volicord_command_available"
-    );
-    assert_eq!(
-        setup_json["states"]["command_availability"],
-        "action_required"
-    );
-
-    let doctor = run_with_home_env(runtime_home.path(), ["doctor", "--json"], &[])?;
-    assert_success(&doctor);
-    let doctor_json = json_stdout(&doctor)?;
-    assert_eq!(doctor_json["status"], "complete");
-    assert_diagnostic_disclosure(&doctor_json);
-    assert_eq!(
-        doctor_json["status_meaning"],
-        "installation profile is usable; warnings name recommended follow-up actions"
-    );
-    assert_eq!(
-        doctor_json["actions_required"]
-            .as_array()
-            .expect("actions_required should be an array")
-            .len(),
-        0
-    );
-    assert!(
-        doctor_json["warning_count"]
-            .as_u64()
-            .expect("warning_count should be numeric")
-            >= 1
-    );
-    assert!(doctor_json["checks"]
-        .as_array()
-        .expect("checks should be an array")
-        .iter()
-        .any(|check| check["id"] == "installation_profile" && check["status"] == "passed"));
-    let mcp_availability = doctor_json["checks"]
-        .as_array()
-        .expect("checks should be an array")
-        .iter()
-        .find(|check| check["id"] == "volicord_mcp_command_availability")
-        .expect("doctor should report MCP launch command availability");
-    assert_eq!(mcp_availability["status"], "warning");
-    assert_eq!(
-        mcp_availability["details"]["profile_command"],
-        path_text(&mcp)
-    );
-    assert_eq!(mcp_availability["details"]["path_matches_profile"], false);
-    assert_eq!(
-        mcp_availability["details"]["agent_host_restart_or_reload_may_be_needed"],
-        true
-    );
-    assert!(doctor_json["actions_recommended"]
-        .as_array()
-        .expect("actions_recommended should be an array")
-        .iter()
-        .any(|action| action["id"] == "make_profile_commands_available"));
-    assert_eq!(
-        doctor_json["primary_next_action"]["id"],
-        "make_profile_commands_available"
-    );
-    assert_eq!(
-        doctor_json["primary_next_action"]["requirement"],
-        "recommended"
-    );
-    assert_eq!(doctor_json["states"]["host_reload_required"], true);
-
-    let doctor_text = run_with_home_env(runtime_home.path(), ["doctor"], &[])?;
-    assert_success(&doctor_text);
-    let text = stdout(&doctor_text);
-    assert!(text.contains("Volicord doctor complete"));
-    assert!(text.contains("not OS sandboxing"));
-    assert!(text.contains(
-        "status_meaning: installation profile is usable; warnings name recommended follow-up actions"
-    ));
-    assert!(text.contains("command_state: action_recommended"));
-    assert!(text.contains("host_reload_required: yes"));
-    assert!(text.contains("next_action: recommended:"));
-    assert!(text.contains("restart or reload existing agent hosts"));
-    Ok(())
-}
-
-#[cfg(unix)]
-#[test]
-fn setup_plain_non_tty_reports_actions_without_prompting_or_shell_edits(
-) -> Result<(), Box<dyn Error>> {
-    let runtime_home = TempRuntimeHome::new("cli-bin-setup-non-tty")?;
-    let bin_dir = runtime_home.path().join("bin");
-    let path_dir = runtime_home.path().join("path-bin");
-    let home = runtime_home.path().join("home");
-    fs::create_dir_all(&path_dir)?;
-    fs::create_dir_all(&home)?;
-    let mcp = write_fake_mcp(&bin_dir)?;
-
-    let output = run_with_home_env(
-        runtime_home.path(),
-        ["setup", "--mcp-command", path_text(&mcp).as_str()],
-        &[
-            ("PATH", path_env(&[path_dir.as_path()])),
-            ("HOME", path_text(&home)),
-            ("SHELL", "/bin/zsh".to_owned()),
-        ],
-    )?;
-
-    assert_success(&output);
-    let text = stdout(&output);
-    assert!(text.contains("Volicord setup action_required"));
-    assert!(text.contains("status_meaning: installation profile setup needs a named user action"));
-    assert!(text.contains("command_state: action_required"));
-    assert!(text.contains("next_action:"));
-    assert!(text.contains("optional_action_count:"));
-    assert!(!text.contains("Choices:"));
-    assert!(!text.contains("Choice ["));
-    assert!(!text.contains("Managed block to write"));
-    assert!(!home.join(".zshrc").exists());
-    assert!(!home.join(".local/bin/volicord").exists());
-    assert!(!home.join(".local/bin/volicord-mcp").exists());
     Ok(())
 }
 
@@ -474,7 +269,7 @@ fn init_codex_guarded_without_degraded_opt_in_generates_hooks() -> Result<(), Bo
     assert!(hooks.contains("post-tool"));
     assert!(hooks.contains("prompt-capture"));
     assert!(hooks.contains("stop"));
-    assert!(!hooks.contains("volicord host-hook "));
+    assert!(!hooks.contains("volicord _hook "));
     assert!(hooks.contains(
         "Bash|apply_patch|Edit|Write|mcp__.*__(write|edit|create|update|delete|remove|move|patch).*"
     ));
@@ -483,7 +278,7 @@ fn init_codex_guarded_without_degraded_opt_in_generates_hooks() -> Result<(), Bo
     assert!(is_executable(&dispatch)?);
     let wrapper = repo_root.join(".codex/hooks/volicord-pre-tool.sh");
     let wrapper_text = fs::read_to_string(&wrapper)?;
-    assert!(wrapper_text.contains("exec volicord host-hook pre-tool"));
+    assert!(wrapper_text.contains("exec volicord _hook pre-tool"));
     assert!(wrapper_text.contains(&format!("--connection {connection_id}")));
     assert!(wrapper_text.contains("--guard-installation"));
     assert!(wrapper_text.contains("--host codex"));
@@ -541,13 +336,13 @@ fn init_claude_code_guarded_without_degraded_opt_in_generates_hooks() -> Result<
     assert!(settings.contains("${CLAUDE_PROJECT_DIR}/.claude/hooks/volicord-stop.sh"));
     assert!(!settings.contains("\"command\": \".claude/hooks/"));
     assert!(settings.contains("\"args\": []"));
-    assert!(!settings.contains("volicord host-hook "));
+    assert!(!settings.contains("volicord _hook "));
     assert!(settings.contains(
         "Bash|Edit|Write|MultiEdit|mcp__.*__(write|edit|create|update|delete|remove|move|patch).*"
     ));
     let wrapper = repo_root.join(".claude/hooks/volicord-pre-tool.sh");
     let wrapper_text = fs::read_to_string(&wrapper)?;
-    assert!(wrapper_text.contains("exec volicord host-hook pre-tool"));
+    assert!(wrapper_text.contains("exec volicord _hook pre-tool"));
     assert!(wrapper_text.contains("--host claude-code"));
     assert!(wrapper_text.contains("--policy-hash"));
     assert!(wrapper_text.contains("--host-output claude-code"));
@@ -603,7 +398,7 @@ fn init_codex_guarded_hook_command_runs_from_subdirectory_with_spaces() -> Resul
     assert!(command.contains("git rev-parse --show-toplevel"));
     assert!(command.contains(".codex/hooks/volicord-dispatch.sh"));
     assert!(command.contains("pre-tool"));
-    assert!(!command.contains("volicord host-hook "));
+    assert!(!command.contains("volicord _hook "));
 
     let event_id = "generated_codex_pre_tool_from_src";
     let event = pre_tool_write_event(event_id);
@@ -618,7 +413,7 @@ fn init_codex_guarded_hook_command_runs_from_subdirectory_with_spaces() -> Resul
     assert_eq!(value["hookSpecificOutput"]["hookEventName"], "PreToolUse");
 
     let stored = guard_event(runtime_home.path(), project_id, event_id)?
-        .expect("generated Codex hook command should invoke volicord host-hook");
+        .expect("generated Codex hook command should invoke volicord _hook");
     assert_eq!(stored.connection_internal_id, connection_id);
     assert_eq!(stored.decision, "deny");
     let installations =
@@ -707,7 +502,7 @@ fn init_claude_code_guarded_hook_command_runs_from_subdirectory_with_spaces(
     assert_eq!(value["hookSpecificOutput"]["hookEventName"], "PreToolUse");
 
     let stored = guard_event(runtime_home.path(), project_id, event_id)?
-        .expect("generated Claude Code hook command should invoke volicord host-hook");
+        .expect("generated Claude Code hook command should invoke volicord _hook");
     assert_eq!(stored.connection_internal_id, connection_id);
     assert_eq!(stored.decision, "deny");
     let installations =
@@ -1361,7 +1156,7 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     assert!(hooks.contains("post-tool"));
     assert!(hooks.contains("prompt-capture"));
     assert!(hooks.contains("stop"));
-    assert!(!hooks.contains("volicord host-hook "));
+    assert!(!hooks.contains("volicord _hook "));
     assert!(hooks.contains(
         "Bash|apply_patch|Edit|Write|mcp__.*__(write|edit|create|update|delete|remove|move|patch).*"
     ));
@@ -1411,7 +1206,7 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     );
     assert_eq!(
         policy["host_hook"]["commands"]["pre_tool"]["args"][0],
-        "host-hook"
+        "_hook"
     );
     assert_eq!(
         policy["host_hook"]["commands"]["pre_tool"]["args"][1],
@@ -1464,7 +1259,7 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     assert!(is_executable(&dispatch_path)?);
     let wrapper_path = repo_root.join(".codex/hooks/volicord-pre-tool.sh");
     let wrapper = fs::read_to_string(&wrapper_path)?;
-    assert!(wrapper.contains("exec volicord host-hook pre-tool"));
+    assert!(wrapper.contains("exec volicord _hook pre-tool"));
     assert!(wrapper.contains(&format!("--connection {connection_id}")));
     assert!(wrapper.contains("--guard-installation"));
     assert!(wrapper.contains("--host codex"));
@@ -1657,7 +1452,7 @@ fn init_claude_code_guarded_writes_project_mcp_policy_and_rule() -> Result<(), B
     assert!(settings.contains("${CLAUDE_PROJECT_DIR}/.claude/hooks/volicord-stop.sh"));
     assert!(!settings.contains("\"command\": \".claude/hooks/"));
     assert!(settings.contains("\"args\": []"));
-    assert!(!settings.contains("volicord host-hook "));
+    assert!(!settings.contains("volicord _hook "));
     assert!(settings.contains(
         "\"matcher\": \"Bash|Edit|Write|MultiEdit|mcp__.*__(write|edit|create|update|delete|remove|move|patch).*\""
     ));
@@ -1700,7 +1495,7 @@ fn init_claude_code_guarded_writes_project_mcp_policy_and_rule() -> Result<(), B
             && file["managed_projection"] == "claude_code_settings_hooks"));
     let wrapper_path = repo_root.join(".claude/hooks/volicord-pre-tool.sh");
     let wrapper = fs::read_to_string(&wrapper_path)?;
-    assert!(wrapper.contains("exec volicord host-hook pre-tool"));
+    assert!(wrapper.contains("exec volicord _hook pre-tool"));
     assert!(wrapper.contains(&format!("--connection {connection_id}")));
     assert!(wrapper.contains("--guard-installation"));
     assert!(wrapper.contains("--host claude-code"));
@@ -1717,7 +1512,7 @@ fn init_claude_code_guarded_writes_project_mcp_policy_and_rule() -> Result<(), B
 }
 
 #[test]
-fn ordinary_command_before_setup_instructs_setup() -> Result<(), Box<dyn Error>> {
+fn ordinary_command_before_profile_instructs_init() -> Result<(), Box<dyn Error>> {
     let runtime_home = TempRuntimeHome::new("cli-bin-setup-required")?;
 
     let output = run_with_home_env(runtime_home.path(), ["project", "list"], &[])?;
@@ -1881,12 +1676,13 @@ fn connect_respects_explicit_read_only_and_uses_same_dry_run_plan() -> Result<()
     let bin_dir = runtime_home.path().join("bin");
     write_fake_codex(&bin_dir)?;
     let mcp = write_fake_mcp(&bin_dir)?;
-    assert_success(&run_setup(runtime_home.path(), &mcp)?);
+    prepare_runtime_home(runtime_home.path(), &mcp)?;
 
     let dry_run = run_with_home_env(
         runtime_home.path(),
         [
-            "connect",
+            "connection",
+            "add",
             "codex",
             "--repo",
             path_text(&repo_root).as_str(),
@@ -1910,7 +1706,8 @@ fn connect_respects_explicit_read_only_and_uses_same_dry_run_plan() -> Result<()
     let output = run_with_home_env(
         runtime_home.path(),
         [
-            "connect",
+            "connection",
+            "add",
             "codex",
             "--repo",
             path_text(&repo_root).as_str(),
@@ -1996,11 +1793,11 @@ fn connect_defaults_to_workflow_mode() -> Result<(), Box<dyn Error>> {
     let codex_home = runtime_home.path().join("codex-home");
     write_fake_codex(&bin_dir)?;
     let mcp = write_fake_mcp(&bin_dir)?;
-    assert_success(&run_setup(runtime_home.path(), &mcp)?);
+    prepare_runtime_home(runtime_home.path(), &mcp)?;
 
     let output = run_with_home_env_in_dir(
         runtime_home.path(),
-        ["connect", "codex", "--json"],
+        ["connection", "add", "codex", "--json"],
         &[
             ("PATH", path_env(&[bin_dir.as_path()])),
             ("CODEX_HOME", path_text(&codex_home)),
@@ -2053,7 +1850,11 @@ fn connect_codex_global_reports_supported_intents() -> Result<(), Box<dyn Error>
     initialize_runtime_home(runtime_home.path(), "runtime_home_codex_global", "{}")?;
     write_test_installation_profile(runtime_home.path())?;
 
-    let output = run_with_home_env(runtime_home.path(), ["connect", "codex", "--global"], &[])?;
+    let output = run_with_home_env(
+        runtime_home.path(),
+        ["connection", "add", "codex", "--global"],
+        &[],
+    )?;
 
     assert_eq!(output.status.code(), Some(2));
     let diagnostic = stderr(&output);
@@ -2069,12 +1870,13 @@ fn connection_output_prioritizes_missing_host_binary_action() -> Result<(), Box<
     let repo_root = create_git_repo(&runtime_home, "product-repo")?;
     let bin_dir = runtime_home.path().join("bin");
     let mcp = write_fake_mcp(&bin_dir)?;
-    assert_success(&run_setup(runtime_home.path(), &mcp)?);
+    prepare_runtime_home(runtime_home.path(), &mcp)?;
 
     let output = run_with_home_env(
         runtime_home.path(),
         [
-            "connect",
+            "connection",
+            "add",
             "codex",
             "--repo",
             path_text(&repo_root).as_str(),
@@ -2364,7 +2166,7 @@ fn connection_selector_distinguishes_project_registration_and_allowlist(
     let codex_home = runtime_home.path().join("codex-home");
     write_fake_codex(&bin_dir)?;
     let mcp = write_fake_mcp(&bin_dir)?;
-    assert_success(&run_setup(runtime_home.path(), &mcp)?);
+    prepare_runtime_home(runtime_home.path(), &mcp)?;
 
     let unregistered = run_with_home_env(
         runtime_home.path(),
@@ -2383,7 +2185,8 @@ fn connection_selector_distinguishes_project_registration_and_allowlist(
     let connect = run_with_home_env(
         runtime_home.path(),
         [
-            "connect",
+            "connection",
+            "add",
             "codex",
             "--repo",
             path_text(&repo_a).as_str(),
@@ -2426,12 +2229,13 @@ fn connect_claude_code_global_is_accepted() -> Result<(), Box<dyn Error>> {
     let bin_dir = runtime_home.path().join("bin");
     write_fake_claude_code(&bin_dir)?;
     let mcp = write_fake_mcp(&bin_dir)?;
-    assert_success(&run_setup(runtime_home.path(), &mcp)?);
+    prepare_runtime_home(runtime_home.path(), &mcp)?;
 
     let output = run_with_home_env(
         runtime_home.path(),
         [
-            "connect",
+            "connection",
+            "add",
             "claude-code",
             "--repo",
             path_text(&repo_root).as_str(),
@@ -2455,125 +2259,6 @@ fn connect_claude_code_global_is_accepted() -> Result<(), Box<dyn Error>> {
 
 #[cfg(unix)]
 #[test]
-fn export_mcp_config_uses_default_file_when_output_is_omitted() -> Result<(), Box<dyn Error>> {
-    let runtime_home = TempRuntimeHome::new("cli-bin-export-default")?;
-    let repo_root = create_git_repo(&runtime_home, "product-repo")?;
-    let invocation_dir = runtime_home.path().join("invocation-dir");
-    fs::create_dir_all(&invocation_dir)?;
-    let bin_dir = runtime_home.path().join("bin");
-    let mcp = write_fake_mcp(&bin_dir)?;
-    assert_success(&run_setup(runtime_home.path(), &mcp)?);
-
-    let output = run_with_home_env_in_dir(
-        runtime_home.path(),
-        [
-            "export",
-            "mcp-config",
-            "--repo",
-            path_text(&repo_root).as_str(),
-        ],
-        &[],
-        &invocation_dir,
-    )?;
-    assert_success(&output);
-    let text = stdout(&output);
-    let output_path = repo_root.join("volicord.mcp.json");
-    assert!(text.contains("MCP configuration exported"));
-    assert!(text.contains(&format!("output: {}", path_text(&output_path))));
-    assert!(!text.contains("mcpServers"));
-    assert!(!text.contains("--connection"));
-    assert!(!invocation_dir.join("volicord.mcp.json").exists());
-
-    let connection_id = assert_exported_mcp_config(&output_path, &mcp, runtime_home.path())?;
-
-    let record = agent_connection_record(runtime_home.path(), &connection_id)?
-        .expect("generic export connection should be stored");
-    assert_eq!(record.host_kind, HOST_KIND_GENERIC);
-    assert_eq!(record.host_scope, HOST_SCOPE_EXPORT);
-    assert_eq!(record.mode, CONNECTION_MODE_WORKFLOW);
-    assert_eq!(record.config_target, path_text(&output_path));
-    assert_eq!(
-        record.last_verification_status,
-        VERIFIED_STATUS_ACTION_REQUIRED
-    );
-    let projects = list_connection_projects(runtime_home.path(), &connection_id)?;
-    assert_eq!(projects.len(), 1);
-    assert_eq!(projects[0].project.repo_root, repo_root);
-    Ok(())
-}
-
-#[cfg(unix)]
-#[test]
-fn export_mcp_config_writes_explicit_output_path() -> Result<(), Box<dyn Error>> {
-    let runtime_home = TempRuntimeHome::new("cli-bin-export-explicit")?;
-    let repo_root = create_git_repo(&runtime_home, "product-repo")?;
-    let bin_dir = runtime_home.path().join("bin");
-    let mcp = write_fake_mcp(&bin_dir)?;
-    assert_success(&run_setup(runtime_home.path(), &mcp)?);
-    let output_path = runtime_home.path().join("exports").join("custom.mcp.json");
-
-    let first = run_with_home_env(
-        runtime_home.path(),
-        [
-            "export",
-            "mcp-config",
-            "--repo",
-            path_text(&repo_root).as_str(),
-            "--output",
-            path_text(&output_path).as_str(),
-            "--read-only",
-            "--json",
-        ],
-        &[],
-    )?;
-    assert_success(&first);
-    let first_json = json_stdout(&first)?;
-    let connection_id = first_json["connection"]["connection_id"]
-        .as_str()
-        .expect("connection_id should be present")
-        .to_owned();
-    let default_output_path = repo_root.join("volicord.mcp.json");
-    assert_eq!(first_json["output_path"], path_text(&output_path));
-    assert_eq!(first_json["mode"], CONNECTION_MODE_READ_ONLY);
-    assert_eq!(first_json["connection"]["status"], "created");
-    assert_eq!(
-        assert_exported_mcp_config(&output_path, &mcp, runtime_home.path())?,
-        connection_id
-    );
-    assert!(!default_output_path.exists());
-
-    let second = run_with_home_env(
-        runtime_home.path(),
-        [
-            "export",
-            "mcp-config",
-            "--repo",
-            path_text(&repo_root).as_str(),
-            "--output",
-            path_text(&output_path).as_str(),
-            "--read-only",
-            "--json",
-        ],
-        &[],
-    )?;
-    assert_success(&second);
-    let second_json = json_stdout(&second)?;
-    assert_eq!(
-        second_json["connection"]["connection_id"],
-        connection_id.as_str()
-    );
-    assert_eq!(second_json["connection"]["status"], "reused");
-    assert_eq!(
-        agent_connection_record(runtime_home.path(), &connection_id)?
-            .expect("connection should remain")
-            .mode,
-        CONNECTION_MODE_READ_ONLY
-    );
-    Ok(())
-}
-
-#[cfg(unix)]
-#[test]
 fn connection_status_mode_and_remove_use_natural_selectors() -> Result<(), Box<dyn Error>> {
     let runtime_home = TempRuntimeHome::new("cli-bin-connection-lifecycle")?;
     let repo_a = runtime_home.create_product_repo("product-a")?;
@@ -2584,12 +2269,13 @@ fn connection_status_mode_and_remove_use_natural_selectors() -> Result<(), Box<d
     let codex_home = runtime_home.path().join("codex-home");
     let mcp = write_fake_mcp(&bin_dir)?;
     write_fake_codex(&bin_dir)?;
-    assert_success(&run_setup(runtime_home.path(), &mcp)?);
+    prepare_runtime_home(runtime_home.path(), &mcp)?;
 
     let connect = run_with_home_env(
         runtime_home.path(),
         [
-            "connect",
+            "connection",
+            "add",
             "codex",
             "--repo",
             path_text(&repo_a).as_str(),
@@ -2613,7 +2299,8 @@ fn connection_status_mode_and_remove_use_natural_selectors() -> Result<(), Box<d
     let connect_second = run_with_home_env(
         runtime_home.path(),
         [
-            "connect",
+            "connection",
+            "add",
             "codex",
             "--repo",
             path_text(&repo_b).as_str(),
@@ -2637,7 +2324,7 @@ fn connection_status_mode_and_remove_use_natural_selectors() -> Result<(), Box<d
 
     let connections = run_with_home_env(
         runtime_home.path(),
-        ["connections", "--repo", path_text(&repo_a).as_str()],
+        ["connection", "list", "--repo", path_text(&repo_a).as_str()],
         &[("CODEX_HOME", path_text(&codex_home))],
     )?;
     assert_success(&connections);
@@ -2788,13 +2475,14 @@ fn ambiguous_connection_selector_reports_actionable_choices() -> Result<(), Box<
     let codex_home_b = runtime_home.path().join("codex-b");
     let mcp = write_fake_mcp(&bin_dir)?;
     write_fake_codex(&bin_dir)?;
-    assert_success(&run_setup(runtime_home.path(), &mcp)?);
+    prepare_runtime_home(runtime_home.path(), &mcp)?;
 
     for codex_home in [&codex_home_a, &codex_home_b] {
         let connect = run_with_home_env(
             runtime_home.path(),
             [
-                "connect",
+                "connection",
+                "add",
                 "codex",
                 "--repo",
                 path_text(&repo_root).as_str(),
@@ -2865,8 +2553,7 @@ fn user_channel_records_pending_judgment_with_local_user_provenance() -> Result<
     )?;
     let judgment_id = record_id(&judgment.response_value["user_judgment_ref"])?;
 
-    let status =
-        run_with_home_env_in_dir(runtime_home.path(), ["user", "status"], &[], &repo_root)?;
+    let status = run_with_home_env_in_dir(runtime_home.path(), ["status"], &[], &repo_root)?;
     assert_success(&status);
     let status_text = stdout(&status);
     assert!(status_text.contains("User Channel status"));
@@ -3176,23 +2863,23 @@ fn run_with_home_env_in_dir<const N: usize>(
     Ok(command.output()?)
 }
 
-fn run_setup(runtime_home: &Path, mcp_command: &Path) -> Result<Output, Box<dyn Error>> {
-    let mut command = Command::new(volicord_bin());
-    command
-        .args(["setup", "--mcp-command"])
-        .arg(mcp_command)
-        .env("VOLICORD_HOME", runtime_home);
-    Ok(command.output()?)
-}
-
-fn run_setup_json(runtime_home: &Path, mcp_command: &Path) -> Result<Output, Box<dyn Error>> {
-    let mut command = Command::new(volicord_bin());
-    command
-        .args(["setup", "--mcp-command"])
-        .arg(mcp_command)
-        .arg("--json")
-        .env("VOLICORD_HOME", runtime_home);
-    Ok(command.output()?)
+fn prepare_runtime_home(runtime_home: &Path, mcp_command: &Path) -> Result<(), Box<dyn Error>> {
+    initialize_runtime_home(runtime_home, "runtime_home_binary_admin_fixture", "{}")?;
+    write_installation_profile(
+        runtime_home,
+        InstallationProfileRegistration {
+            installation_id: "default".to_owned(),
+            volicord_command: path_text(mcp_command),
+            volicord_mcp_command: path_text(mcp_command),
+            bin_dir: mcp_command
+                .parent()
+                .map(Path::to_path_buf)
+                .unwrap_or_else(|| runtime_home.join("bin")),
+            default_connection_mode: CONNECTION_MODE_WORKFLOW.to_owned(),
+            metadata_json: "{}".to_owned(),
+        },
+    )?;
+    Ok(())
 }
 
 fn volicord_bin() -> &'static str {
@@ -3466,7 +3153,7 @@ fn assert_guard_policy_invokes_required_phases(policy: &Value, connection_id: &s
         let args = command["args"]
             .as_array()
             .expect("host-hook command args should be an array");
-        assert_eq!(args.first().and_then(Value::as_str), Some("host-hook"));
+        assert_eq!(args.first().and_then(Value::as_str), Some("_hook"));
         assert_eq!(args.get(1).and_then(Value::as_str), Some(command_name));
         assert!(arg_pair(args, "--connection", connection_id));
         let host_output = match policy["host"].as_str() {
@@ -3482,49 +3169,6 @@ fn assert_guard_policy_invokes_required_phases(policy: &Value, connection_id: &s
 fn arg_pair(args: &[Value], key: &str, value: &str) -> bool {
     args.windows(2)
         .any(|pair| pair[0] == key && pair[1] == value)
-}
-
-#[cfg(unix)]
-fn assert_exported_mcp_config(
-    output_path: &Path,
-    mcp_command: &Path,
-    runtime_home: &Path,
-) -> Result<String, Box<dyn Error>> {
-    let config: Value = serde_json::from_str(&fs::read_to_string(output_path)?)?;
-    let server = &config["mcpServers"]["volicord"];
-    let connection_id = server["args"]
-        .as_array()
-        .and_then(|args| match args.as_slice() {
-            [mcp, stdio, flag, id, project_flag, project_id]
-                if mcp.as_str() == Some("mcp")
-                    && stdio.as_str() == Some("--stdio")
-                    && flag.as_str() == Some("--connection")
-                    && project_flag.as_str() == Some("--project")
-                    && project_id.as_str().is_some_and(|value| !value.is_empty()) =>
-            {
-                id.as_str()
-            }
-            _ => None,
-        })
-        .expect("exported MCP config should bind a connection id");
-    let project_id = server["args"][5]
-        .as_str()
-        .expect("exported MCP config should bind a project id");
-
-    assert_eq!(server["command"], path_text(mcp_command));
-    assert_eq!(
-        server["args"],
-        serde_json::json!([
-            "mcp",
-            "--stdio",
-            "--connection",
-            connection_id,
-            "--project",
-            project_id
-        ])
-    );
-    assert_eq!(server["env"]["VOLICORD_HOME"], path_text(runtime_home));
-    Ok(connection_id.to_owned())
 }
 
 fn write_test_installation_profile(runtime_home: &Path) -> Result<(), Box<dyn Error>> {

@@ -127,8 +127,9 @@ volicord --version
 volicord --help
 volicord mcp --help
 volicord init --help
-volicord setup --help
-volicord host-hook --help
+volicord status --help
+volicord connection --help
+volicord inbox --help
 volicord serve --help
 ```
 
@@ -145,17 +146,15 @@ volicord serve --help
 ```sh
 volicord --version
 volicord init --help
-volicord setup --help
-volicord connect --help
+volicord status --help
+volicord connection add --help
 volicord mcp --version
 volicord mcp --help
 ```
 
-호스트 설정은 보통 `volicord init`이 마련한 MCP 명령 정보를 사용합니다.
-`volicord setup`은 그 설치 프로필을 직접 준비하거나 복구할 수 있습니다. 정확한
-`--mcp-command`, 찾기 순서, `--link-bin`, 연결, generic export 동작은 [관리
-CLI](admin-cli.md#runtime-home-selection)와 [generic MCP 설정
-내보내기](admin-cli.md#generic-mcp-config-export)를 사용합니다.
+호스트 설정은 보통 `volicord init`이 마련한 MCP 명령 정보를 사용합니다. 정확한
+`--mcp-command`, 찾기 순서, 연결, generic 호스트 설정 동작은 [관리
+CLI](admin-cli.md#runtime-home-selection)를 사용합니다.
 
 요구사항 요약:
 
@@ -164,8 +163,8 @@ CLI](admin-cli.md#runtime-home-selection)와 [generic MCP 설정
   인자와 함께 시작할 수 있어야 합니다.
 - shared 프로젝트 호스트 설정은 개인 Runtime Home 경로를 포함하면 안 됩니다. 미래의
   호스트 환경이 `PATH`로 해석해야 하는 명령 이름 `volicord`를 사용합니다.
-- Generic 내보내기는 명시적 설정을 렌더링할 수 있지만, 호스트별 담당 문서가 관찰
-  가능한 로드 가능성 게이트를 정의하기 전까지 사용자 관리 상태로 남습니다.
+- 사용자 관리 generic 호스트 설정은 호스트별 담당 문서가 관찰 가능한 로드 가능성
+  게이트를 정의하기 전까지 사용자 관리 상태로 남습니다.
 
 ## Runtime Home 요구사항
 
@@ -177,8 +176,8 @@ CLI](admin-cli.md#runtime-home-selection)와 [generic MCP 설정
 - Native Windows에서는 로컬 drive-letter Runtime Home 경로를 선택합니다. UNC 경로,
   `\\wsl$\...` 같은 WSL UNC 경로, `/mnt/c/...` 같은 WSL mount-style 경로는 native
   Windows Runtime Home 경로로 지원되지 않습니다.
-- 선택한 사용자가 `volicord init`, `volicord setup`, `volicord project use`, `volicord connect`, `volicord connection verify`를 실행할 때 디렉터리를 만들거나 그 안에 쓸 수 있어야 합니다.
-- 기본 `$HOME/.volicord`가 의도한 위치가 아니라면 미래의 `volicord mcp --stdio` 호스트 프로세스도 같은 Runtime Home 선택을 받아야 합니다. shared 프로젝트 호스트 설정은 개인 Runtime Home 경로를 담으면 안 되므로, 각 사용자는 기본값이 아닌 Runtime Home을 자신의 로컬 init, 프로필 setup, 또는 환경으로 제공해야 합니다.
+- 선택한 사용자가 `volicord init`, `volicord project use`, `volicord connection add`, `volicord connection verify`를 실행할 때 디렉터리를 만들거나 그 안에 쓸 수 있어야 합니다.
+- 기본 `$HOME/.volicord`가 의도한 위치가 아니라면 미래의 `volicord mcp --stdio` 호스트 프로세스도 같은 Runtime Home 선택을 받아야 합니다. shared 프로젝트 호스트 설정은 개인 Runtime Home 경로를 담으면 안 되므로, 각 사용자는 기본값이 아닌 Runtime Home을 자신의 로컬 init 또는 환경으로 제공해야 합니다.
 
 Runtime Home 선택과 정확한 생성 동작은 [관리 CLI](admin-cli.md)와 [MCP 전송](mcp-transport.md)이 담당합니다. 런타임 위치와 분리 규칙은 [런타임 경계](runtime-boundaries.md)가 담당합니다.
 

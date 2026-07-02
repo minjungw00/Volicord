@@ -317,7 +317,7 @@ setup, host-specific MCP configuration, generic MCP config export, local
 Owns in the implementation:
 
 - Process entry and administrative command dispatch for the `volicord` binary.
-- `volicord connect`, `volicord connections`, and `volicord connection ...`
+- `volicord connection add`, `volicord connection list`, and `volicord connection ...`
   parsing, storage preparation, host plan construction, preflight invocation,
   status, verification, mode, removal, and output.
 - Setup, doctor, project, export, and local User Channel command parsing and
@@ -347,10 +347,8 @@ Important modules:
 - [`crates/volicord-cli/src/project_context.rs`](../../../crates/volicord-cli/src/project_context.rs)
   for Git repository root detection and `volicord project ...` commands.
 - [`crates/volicord-cli/src/connection_command.rs`](../../../crates/volicord-cli/src/connection_command.rs)
-  for `volicord connect`, `volicord connections`, and
+  for `volicord connection add`, `volicord connection list`, and
   `volicord connection status/verify/mode/remove` orchestration.
-- [`crates/volicord-cli/src/export_command.rs`](../../../crates/volicord-cli/src/export_command.rs)
-  for `volicord export mcp-config`.
 - [`crates/volicord-cli/src/host_integration/`](../../../crates/volicord-cli/src/host_integration/)
   for Codex, Claude Code, and generic host integration adapters.
 - [`crates/volicord-cli/src/registration.rs`](../../../crates/volicord-cli/src/registration.rs)
@@ -365,7 +363,7 @@ Important current symbols:
 - `run_project_command`, `resolve_repository_root`
 - `run_connect_command`, `run_connections_command`, `run_connection_command`,
   `connect_usage`, `connections_usage`, `connection_usage`
-- `run_export_command`, `run_user_command`
+- `run_status_command`, `run_user_command`
 - `AgentCommandError`, `AgentProcessOutput`
 - `HostKind`, `HostScope`, `HostPlan`, `HostAdapter`, `Verification`
 - `AgentConnectionRegistration`, `ConnectionProjectRegistration`,
@@ -376,9 +374,9 @@ Important current symbols:
 Most relevant tests:
 
 - [`crates/volicord-cli/tests/binary_admin.rs`](../../../crates/volicord-cli/tests/binary_admin.rs)
-  exercises the `volicord` binary for setup, doctor, project detection,
-  dry-run behavior, `volicord connect`, connection status/verification/mode/removal,
-  generic export, User Channel commands, preflight handling, and config-file safety.
+  exercises the `volicord` binary for init, doctor, project detection,
+  dry-run behavior, `volicord connection add`, connection status/verification/mode/removal,
+  User Channel commands, preflight handling, and config-file safety.
 - Colocated unit tests in CLI modules cover parsing, planning, rendering,
   registration metadata, and host-configuration behavior.
 

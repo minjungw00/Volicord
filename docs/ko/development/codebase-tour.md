@@ -304,7 +304,7 @@ config export, 로컬 `User Channel` 명령, 사전 점검 실행을 처리합�
 구현에서 담당하는 것:
 
 - `volicord` 바이너리의 프로세스 진입과 관리 명령 디스패치.
-- `volicord connect`, `volicord connections`, `volicord connection ...` 파싱,
+- `volicord connection add`, `volicord connection list`, `volicord connection ...` 파싱,
   저장소 준비, 호스트 계획 구성, 사전 점검 호출, status, verification, mode,
   removal, 출력.
 - Setup, doctor, project, export, 로컬 User Channel 명령 파싱과 출력.
@@ -333,10 +333,8 @@ config export, 로컬 `User Channel` 명령, 사전 점검 실행을 처리합�
 - [`crates/volicord-cli/src/project_context.rs`](../../../crates/volicord-cli/src/project_context.rs):
   Git 저장소 루트 감지와 `volicord project ...` 명령.
 - [`crates/volicord-cli/src/connection_command.rs`](../../../crates/volicord-cli/src/connection_command.rs):
-  `volicord connect`, `volicord connections`,
+  `volicord connection add`, `volicord connection list`,
   `volicord connection status/verify/mode/remove` 오케스트레이션.
-- [`crates/volicord-cli/src/export_command.rs`](../../../crates/volicord-cli/src/export_command.rs):
-  `volicord export mcp-config`.
 - [`crates/volicord-cli/src/host_integration/`](../../../crates/volicord-cli/src/host_integration/):
   Codex, Claude Code, generic 호스트 통합 어댑터.
 - [`crates/volicord-cli/src/registration.rs`](../../../crates/volicord-cli/src/registration.rs):
@@ -351,7 +349,7 @@ config export, 로컬 `User Channel` 명령, 사전 점검 실행을 처리합�
 - `run_project_command`, `resolve_repository_root`
 - `run_connect_command`, `run_connections_command`, `run_connection_command`,
   `connect_usage`, `connections_usage`, `connection_usage`
-- `run_export_command`, `run_user_command`
+- `run_status_command`, `run_user_command`
 - `AgentCommandError`, `AgentProcessOutput`
 - `HostKind`, `HostScope`, `HostPlan`, `HostAdapter`, `Verification`
 - `AgentConnectionRegistration`, `ConnectionProjectRegistration`,
@@ -362,8 +360,8 @@ config export, 로컬 `User Channel` 명령, 사전 점검 실행을 처리합�
 가장 관련 있는 테스트:
 
 - [`crates/volicord-cli/tests/binary_admin.rs`](../../../crates/volicord-cli/tests/binary_admin.rs)는
-  `volicord` 바이너리의 setup, doctor, 프로젝트 감지, dry-run 동작,
-  `volicord connect`, connection status/verification/mode/removal, generic export,
+  `volicord` 바이너리의 init, doctor, 프로젝트 감지, dry-run 동작,
+  `volicord connection add`, connection status/verification/mode/removal,
   User Channel 명령, 사전 점검 처리, 설정 파일 안전성을 실행합니다.
 - CLI 모듈 안의 단위 테스트는 파싱, 계획, 렌더링, 등록 메타데이터,
   호스트 설정 동작을 다룹니다.

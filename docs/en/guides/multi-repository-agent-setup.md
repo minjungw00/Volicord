@@ -11,7 +11,7 @@ This is not the default first-run path for one Product Repository. For ordinary
 first-run setup, use [Agent Host Setup](agent-host-setup.md) and
 `volicord init --host HOST --repo PATH --profile record`. Detective setup has the
 supported host-hook and session watcher requirements described there. Use the
-lower-level `volicord connect` commands here only when one host-level or global
+lower-level `volicord connection add` commands here only when one host-level or global
 host entry must route to more than one explicitly allowed repository.
 
 ## Topology
@@ -43,8 +43,8 @@ in the Runtime Home.
 
 This topology fits host-level configuration:
 
-- Codex personal connection: `volicord connect codex`
-- Claude Code global connection: `volicord connect claude-code --global`
+- Codex personal connection: `volicord connection add codex`
+- Claude Code global connection: `volicord connection add claude-code --global`
 
 Project-shared and host-local connections remain flows for one Product
 Repository.
@@ -57,14 +57,14 @@ want the agent to work.
 Select the first Product Repository explicitly:
 
 ```sh
-volicord connect codex --repo /path/to/acme-api
+volicord connection add codex --repo /path/to/acme-api
 volicord connection status codex --repo /path/to/acme-api
 ```
 
 For Claude Code global configuration:
 
 ```sh
-volicord connect claude-code --global --repo /path/to/acme-api
+volicord connection add claude-code --global --repo /path/to/acme-api
 volicord connection status claude-code --global --repo /path/to/acme-api
 ```
 
@@ -77,7 +77,7 @@ stores internal registry identities in the Runtime Home.
 Run the same host and intent for the second Product Repository:
 
 ```sh
-volicord connect codex --repo /path/to/billing-api
+volicord connection add codex --repo /path/to/billing-api
 volicord connection status codex --repo /path/to/billing-api
 ```
 
@@ -85,7 +85,7 @@ The same rule applies when the current working directory is already inside the
 Product Repository; using `--repo` keeps the membership target unambiguous.
 
 ```sh
-volicord connect codex
+volicord connection add codex
 volicord connection status codex
 ```
 
@@ -96,7 +96,7 @@ operator to handle the internal connection identity.
 ## Inspect The Connection
 
 ```sh
-volicord connections
+volicord connection list
 volicord connection verify codex
 volicord connection status codex --repo /path/to/acme-api
 volicord connection status codex --repo /path/to/billing-api

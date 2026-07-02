@@ -70,9 +70,8 @@ Record profile(`--profile record`)은 host lifecycle hook이나 session watcher�
 sandbox를 제공하거나, OS 수준 집행을 추가하지 않습니다. 정확한 프로필 동작은
 [관리 CLI](../reference/admin-cli.md)가 정의합니다.
 
-`volicord setup`은 설치 프로필 준비와 복구 경로로 남습니다. `volicord connect`는
-personal, shared, global, read-only, generic export 흐름을 위한 낮은 수준의 연결
-관리 명령으로 남습니다.
+`volicord init`은 공개 첫 실행 설정 경로입니다. `volicord connection add`는
+personal, shared, global, read-only 흐름을 위한 낮은 수준의 연결 관리 명령으로 남습니다.
 
 에이전트 설정은 다음을 하면 안 됩니다.
 

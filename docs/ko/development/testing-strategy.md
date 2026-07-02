@@ -19,7 +19,7 @@
 | 모듈 단위 테스트 | [`crates/volicord-types/src/lib.rs`](../../../crates/volicord-types/src/lib.rs), [`crates/volicord-core/src/pipeline.rs`](../../../crates/volicord-core/src/pipeline.rs), [`crates/volicord-store/src/core_pipeline.rs`](../../../crates/volicord-store/src/core_pipeline.rs), [`crates/volicord-store/src/sqlite.rs`](../../../crates/volicord-store/src/sqlite.rs), CLI 또는 MCP 모듈 같은 구현 모듈 안의 테스트. | 로컬 도우미 동작, 타입 지정 파싱, 정규 해시, 정책 도우미, Store 트랜잭션 경계, 스키마 검증, 코드 가까이의 작은 분기 점검. | 계층 간 수락 테스트나 제품 계약 출처. |
 | Core 메서드 테스트 | `volicord-core` 패키지의 [`crates/volicord-core/src/methods/tests.rs`](../../../crates/volicord-core/src/methods/tests.rs). | 메서드 계획, `CoreService`를 통한 공유 사전 점검, dry-run/효과 없음/커밋 분기, 재실행, 상태 버전 효과, 아티팩트 스테이징 구분, 메서드에 보이는 Store 효과. | MCP 전송 범위나 전체 공개 동작 권위. |
 | 저장소 DDL 계약 테스트 | `volicord-store` 패키지의 `storage_ddl_contract` 대상인 [`crates/volicord-store/tests/storage_ddl_contract.rs`](../../../crates/volicord-store/tests/storage_ddl_contract.rs). | Storage DDL 담당 문서와 구현 사이의 정합성, 실행 가능한 마이그레이션, 스키마 검증, 테이블, 컬럼, 제약, 인덱스, 유지되는 트리거. | 일반 저장 효과 동작이나 런타임 적합성. |
-| 관리 CLI 바이너리 테스트 | `volicord-cli` 패키지의 `binary_admin` 대상인 [`crates/volicord-cli/tests/binary_admin.rs`](../../../crates/volicord-cli/tests/binary_admin.rs). | `volicord` 바이너리, Runtime Home setup 명령, 프로젝트 감지, `volicord connect`, `volicord connections`, `volicord connection status/verify/mode/remove`, `volicord export mcp-config`, `volicord inbox ...`, zero-write dry-run, 호스트 상태 검증, 연결 프로젝트 멤버십 생명주기, 잔류 효과 보고, 호스트 설정 쓰기, 사전 점검 실패 처리, 명령줄 오류 경로. | 공개 API 메서드 동작. |
+| 관리 CLI 바이너리 테스트 | `volicord-cli` 패키지의 `binary_admin` 대상인 [`crates/volicord-cli/tests/binary_admin.rs`](../../../crates/volicord-cli/tests/binary_admin.rs). | `volicord` 바이너리, `volicord init`을 통한 Runtime Home setup, 프로젝트 감지, `volicord status`, `volicord connection add`, `volicord connection list`, `volicord connection status/verify/mode/remove`, `volicord inbox ...`, zero-write dry-run, 호스트 상태 검증, 연결 프로젝트 멤버십 생명주기, 잔류 효과 보고, 호스트 설정 쓰기, 사전 점검 실패 처리, 명령줄 오류 경로. | 공개 API 메서드 동작. |
 | MCP 전송 바이너리 테스트 | `volicord-cli` 패키지의 `mcp_transport` 대상인 [`crates/volicord-cli/tests/mcp_transport.rs`](../../../crates/volicord-cli/tests/mcp_transport.rs). | `volicord mcp` 하위 명령, help/version, `--check`, stdio 프레이밍, JSON-RPC 동작, 재연결 사례, 응답 래핑. | Core 메서드 의미. |
 | MCP 통합 테스트 | `volicord-integration-tests` 패키지의 `mcp_connection` 대상인 [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs). | MCP, Core, Store, Agent Connection 바인딩, operation category 파생, 도구 노출, 재실행 맥락 바인딩, MCP를 통해 보이는 저장소 효과 없음 점검. | 집중 메서드 테스트나 참조 담당 문서의 대체물. |
 | 적합성 구현 테스트 | `volicord-conformance-tests` 패키지의 `baseline` 대상인 [`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs). | Core 쪽 API를 통한 기준 범위 교차 메서드 시나리오. 재실행, 쓰기 티켓, 아티팩트, 판단, 닫기 준비 상태, 오류 처리 경로, 손상 처리 등을 포함합니다. | 제품 수락, 보안 증명, 닫기 준비 상태, 또는 제품 규칙의 유일한 출처. |
@@ -73,7 +73,7 @@
 
 CLI 도움말은 제거된 플래그 이름을 검사하지 말고 각 명령이 노출하는 현재 옵션
 허용 목록을 검증합니다. `connect_help_exposes_only_public_connect_options` 같은
-도움말 테스트는 `volicord connect`의 도움말에서 파싱한 옵션을 지원되는 옵션
+도움말 테스트는 `volicord connection add`의 도움말에서 파싱한 옵션을 지원되는 옵션
 집합과 비교해야 합니다. 문서 명령 예시 검증은 실행 가능한 `volicord` 예시를 공개
 CLI 명령 계약과 대조해야 하며,
 `documented_volicord_commands_match_public_cli_contract` 같은 형태입니다.

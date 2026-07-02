@@ -32,13 +32,13 @@ status, and stores internal registry identities in the selected
 `volicord mcp --stdio`. `--profile record` does not require host lifecycle hook
 installation or a session watcher.
 
-Use `volicord connect` for lower-level connection variants after the
+Use `volicord connection add` for lower-level connection variants after the
 installation profile is ready, for example when selecting personal, global, or
 read-only behavior directly. Use `--repo PATH` only when the process current
 directory is not the target Product Repository:
 
 ```sh
-volicord connect codex --repo /path/to/your-product-repo
+volicord connection add codex --repo /path/to/your-product-repo
 ```
 
 ## Integration Profiles
@@ -136,9 +136,9 @@ Connection intent describes where the host configuration belongs:
 
 | Intent | Command shape | Host support |
 |---|---|---|
-| `personal` | `volicord connect codex` or `volicord connect claude-code` | Local setup for the current user. |
-| `shared` | `volicord connect codex --shared` or `volicord connect claude-code --shared` | Project-shared configuration stored through an explicit integration file when the host supports it. |
-| `global` | `volicord connect claude-code --global` | User-wide host configuration for hosts that support it. |
+| `personal` | `volicord connection add codex` or `volicord connection add claude-code` | Local setup for the current user. |
+| `shared` | `volicord connection add codex --shared` or `volicord connection add claude-code --shared` | Project-shared configuration stored through an explicit integration file when the host supports it. |
+| `global` | `volicord connection add claude-code --global` | User-wide host configuration for hosts that support it. |
 
 `--shared` and `--global` are mutually exclusive. When neither is present,
 Volicord uses `personal`.
@@ -149,7 +149,7 @@ The default mode is `workflow`. Use `--read-only` for a connection that should
 expose read-oriented behavior instead of workflow tools:
 
 ```sh
-volicord connect codex --read-only
+volicord connection add codex --read-only
 ```
 
 Change an existing connection mode with:
@@ -166,8 +166,8 @@ The host may need a reload or restart after a mode change.
 Dry run reports the plan without persistent changes:
 
 ```sh
-volicord connect codex --dry-run
-volicord connect claude-code --shared --dry-run
+volicord connection add codex --dry-run
+volicord connection add claude-code --shared --dry-run
 volicord connection remove codex --dry-run
 ```
 
@@ -177,7 +177,7 @@ connection whose host target you want to inspect first.
 ## Inspect And Verify
 
 ```sh
-volicord connections
+volicord connection list
 volicord connection status codex --repo /path/to/your-product-repo
 volicord connection verify codex --repo /path/to/your-product-repo
 ```
@@ -199,18 +199,13 @@ Result states:
 | `failed` | A required local prerequisite, host configuration step, or verification step did not succeed. |
 | `dry_run` | The command reported planned actions without persistent changes. |
 
-## Generic MCP Config Export
+## Generic MCP Host Configuration
 
-For an MCP host that Volicord does not manage directly:
-
-```sh
-cd /path/to/your-product-repo
-volicord export mcp-config --output /tmp/volicord.mcp.json
-```
-
-The export uses the detected Product Repository and the installation profile. Add
-`--read-only` when the exported config should bind a read-only connection. The
-exported file remains user-managed after export.
+For an MCP host that Volicord does not manage directly, first create a supported
+Agent Connection, then configure the external host through its own settings to
+start `volicord mcp --stdio --connection <connection_id> [--project
+<project_id>]`. Use `volicord connection mode` when the connection should be
+read-only. The external host configuration remains user-managed.
 
 ## User Channel Boundary
 

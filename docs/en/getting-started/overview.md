@@ -70,9 +70,9 @@ neither surface prevents all writes, proves who changed a file, provides a
 sandbox, or adds OS-level enforcement. Exact profile
 behavior is defined by [Administrative CLI](../reference/admin-cli.md).
 
-`volicord setup` remains the installation-profile preparation and repair path.
-`volicord connect` remains the lower-level connection-management command for
-personal, shared, global, read-only, and generic export flows.
+`volicord init` is the public first-run setup path. `volicord connection add`
+remains the lower-level connection-management command for personal, shared,
+global, and read-only flows.
 
 Agent setup must not:
 

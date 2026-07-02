@@ -59,7 +59,7 @@ Detective host hook 경로 복구 안내는
 ## 호스트 의도 선택하기
 
 personal, global, read-only 변형을 직접 써야 할 때만 낮은 수준의
-`volicord connect` 명령을 사용합니다. 일반 `init` 흐름 없이 `volicord connect`로
+`volicord connection add` 명령을 사용합니다. 일반 `init` 흐름 없이 `volicord connection add`로
 프로젝트 공유 통합 파일을 관리할 때만 `--shared`를 추가하고, `--global`은 사용자
 전체 설정을 지원하는 호스트 경로에만 사용합니다. 정확한 의도 의미는
 [관리 CLI 참조](../reference/admin-cli.md#connection-intents-and-hosts)가 담당하고,
@@ -69,24 +69,24 @@ personal, global, read-only 변형을 직접 써야 할 때만 낮은 수준의
 읽기 중심 동작만 노출해야 할 때만 `--read-only`를 사용합니다.
 
 ```sh
-volicord connect codex --read-only
+volicord connection add codex --read-only
 ```
 
 낮은 수준의 연결 관리에서는 현재 디렉터리가 연결 대상 Product Repository가 아닐 때
 `--repo PATH`를 사용합니다.
 
 ```sh
-volicord connect codex --repo /path/to/your-product-repo
+volicord connection add codex --repo /path/to/your-product-repo
 ```
 
-`volicord connect`는 personal, shared, global, read-only 변형을 위한 낮은 수준의
+`volicord connection add`는 personal, shared, global, read-only 변형을 위한 낮은 수준의
 연결 관리 명령으로 계속 지원됩니다. 일반적인 첫 실행 경로에서는
 `volicord init --host HOST --repo PATH --profile record`를 우선 사용합니다.
 
 ## 연결 조회 또는 변경하기
 
 ```sh
-volicord connections
+volicord connection list
 volicord connection status codex --repo /path/to/your-product-repo
 volicord connection verify codex --repo /path/to/your-product-repo
 volicord connection mode codex read-only
@@ -102,18 +102,13 @@ volicord connection remove codex
 
 `--dry-run`은 지속 변경 없이 계획을 보고합니다.
 
-## Generic MCP 설정 내보내기
+## Generic MCP 호스트 사용하기
 
-Volicord가 직접 관리하지 않는 MCP 호스트에는 호스트 중립 설정을 내보냅니다.
-
-```sh
-volicord export mcp-config --output /tmp/volicord.mcp.json
-```
-
-내보내기는 감지된 Product Repository와 설치 프로필을 사용합니다. 정확한 출력 기본값은
-[관리 CLI 참조](../reference/admin-cli.md#generic-mcp-config-export)가 담당합니다. 내보낸
-파일은 내보내기 뒤에도 사용자가 관리합니다. Volicord는 임의 외부 호스트가 이 파일을
-로드하거나 승인했다고 주장하지 않습니다.
+Volicord가 직접 관리하지 않는 MCP 호스트에는 먼저 지원되는 Agent Connection을 만든 뒤,
+외부 호스트의 자체 설정에서
+`volicord mcp --stdio --connection <connection_id> [--project <project_id>]`를 시작하도록
+구성합니다. 그 설정은 사용자 관리 설정으로 남습니다. Volicord는 임의 외부 호스트가
+이 설정을 로드하거나 승인했다고 주장하지 않습니다.
 
 ## 사용자 판단 기록하기
 

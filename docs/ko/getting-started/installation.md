@@ -2,8 +2,8 @@
 
 이 튜토리얼은 로컬 `volicord` 실행 파일을 준비합니다. 일반적인 첫 실행 경로는
 [빠른 시작](quickstart.md)의 `volicord init --host HOST --repo PATH --profile record`를
-실행하면서 설치 프로필을 기록합니다. `volicord setup`은 설치 프로필을 따로 준비하거나
-복구해야 할 때만 사용합니다.
+실행하면서 설치 프로필을 기록합니다. 저장된 설치 프로필을 확인해야 할 때는
+`volicord doctor`를 사용합니다.
 
 정확한 명령 동작은 [관리 CLI 참조](../reference/admin-cli.md)가 담당합니다.
 런타임 위치와 저장소 분리는 [런타임 경계](../reference/runtime-boundaries.md)가
@@ -115,57 +115,25 @@ Native Windows에서는 `--profile record`를 사용합니다. `--profile detect
 host hook과 watcher 동작이 구현되고 테스트되기 전까지 unsupported-platform 진단으로
 실패합니다.
 
-저장소를 연결하지 않고 설치 프로필만 준비하거나 복구하려면 `volicord setup`을
-사용합니다.
+`volicord init`은 선택된 `Volicord Runtime Home`을 만들거나 검증하고 설치 프로필을
+저장하면서 저장소를 연결합니다. 실행 중인 `volicord` 실행 파일을 발견하고 MCP 시작
+명령을 저장하며, 이후 터미널과 에이전트 호스트에서 선택된 명령을 `PATH`로 사용할 수
+있는지 확인합니다. 정확한 Runtime Home 선택, MCP 시작 명령 동작, 출력 동작은
+[관리 CLI 참조](../reference/admin-cli.md#runtime-home-selection)가 담당합니다. 이 상태는
+setup에 이름 붙은 사용자 또는 호스트 동작이 아직 필요한지를 답하므로, 오래 유지되는
+로컬 상태가 저장된 뒤에도 `action_required`가 나타날 수 있습니다.
 
-```sh
-volicord setup
-```
+호스트 설정을 실행하기 전에 설치된 `volicord` 바이너리가 `PATH`에 있어야 합니다.
+셸 시작 파일 변경은 암시적으로 이루어지지 않습니다. 셸 시작 파일을 통해 `PATH`를
+갱신했다면, 새 셸을 열거나 기존 에이전트 호스트 프로세스를 restart 또는 reload한 뒤
+명령을 찾을 수 있다고 기대해야 합니다.
 
-`volicord setup`은 선택된 `Volicord Runtime Home`을 만들거나 검증하고 설치
-프로필을 저장합니다. 실행 중인 `volicord` 실행 파일을 발견하고 MCP 시작 명령을
-저장하며, 이후 터미널과 에이전트 호스트에서 선택된 명령을 `PATH`로 사용할 수 있는지
-확인합니다. 정확한 `volicord setup` 옵션, MCP 시작 명령 동작, 출력 동작은 [관리 CLI
-참조](../reference/admin-cli.md#runtime-home-selection)가 담당합니다.
-이 상태는 설치 프로필 준비에 이름 붙은 사용자 동작이 아직 필요한지를 답하므로,
-설치 프로필이 저장된 뒤에도 `action_required`가 나타날 수 있습니다.
-
-대화형 터미널에서 선택된 실행 파일이 `PATH`에 준비되어 있지 않으면 setup은 명령
-가용성 선택지를 제시할 수 있습니다.
-
-- setup이 쓰기 가능하다고 확인한 제안 디렉터리에 명령 링크를 만듭니다.
-- `~/.local/bin` 같은 관례적 사용자 명령 디렉터리가 없고 안전하게 만들 수 있을 때
-  그 디렉터리를 만든 뒤, 쓰기 가능 여부를 확인하고 링크합니다.
-- 명령 링크를 만들고, 명시적 승인을 받은 뒤 지원되는 셸 시작 파일에 관리되는
-  `PATH` 블록을 추가합니다.
-- 명령 링크를 만들고 사용자가 직접 실행할 셸 명령을 출력합니다.
-- 수동 `PATH` 복구용 셸 명령을 출력합니다.
-- 지금은 명령 링크를 건너뜁니다.
-
-셸 시작 파일 변경은 암시적으로 이루어지지 않습니다. Setup이 지원되는 셸 시작 파일을
-식별할 수 있으면 대상 파일과 관리되는 블록을 보여 주고 쓰기 전에 승인을 요청합니다.
-관리되는 블록은 Volicord가 소유하는 블록이며 관련 없는 셸 설정을 다시 쓰지
-않습니다. 지원되지 않는 셸이나 플랫폼에서는 수동 동작이 필요합니다.
-
-Setup은 부모 셸의 현재 `PATH`를 바꿀 수 없습니다. 출력된 `export PATH=...` 명령은
-그 명령을 실행한 터미널에만 영향을 줍니다. Setup이 셸 시작 파일을 쓰거나 갱신하라고
-요청했다면, 새 셸을 열거나 기존 에이전트 호스트 프로세스를 restart 또는 reload한
-뒤 명령을 찾을 수 있다고 기대해야 합니다.
-
-자동화나 결정적인 로컬 배치가 필요할 때는 명시적 setup 옵션을 사용합니다.
+자동화나 결정적인 로컬 배치가 필요할 때는 명시적 init 옵션을 사용합니다.
 
 | 옵션 | 사용할 때 |
 |---|---|
-| `--link-bin PATH` | 필요하면 디렉터리를 만들고 쓰기 가능 여부를 확인한 뒤 그곳에 명령 링크를 만들거나 갱신합니다. 이 옵션 자체가 셸 시작 파일을 편집하지는 않습니다. |
 | `--mcp-command PATH` | 생성된 MCP 시작 항목이 실행 중인 실행 파일 대신 특정 `volicord` 명령을 사용해야 할 때 그 명령을 저장합니다. |
 | `--home PATH` | 기본값이 아닌 `Volicord Runtime Home`을 선택합니다. |
-
-예를 들어 비대화식 프로필 복구 단계에서 결정적인 명령 링크 디렉터리를 지정할 수
-있습니다.
-
-```sh
-volicord setup --link-bin ~/.local/bin
-```
 
 프롬프트나 `action_required`가 이름 붙인 명령 가용성 단계를 완료한 뒤 설정 준비
 상태를 확인합니다.
@@ -177,25 +145,24 @@ volicord doctor
 `doctor`는 기본 `init` 진행도가 아니라 설치 프로필 상태를 보고합니다. 저장된
 프로필을 사용할 수 있으면, 이후 셸이나 에이전트 호스트를 위한 명령 가용성 경고 또는
 권장 `PATH`와 명령 링크 동작을 함께 보고하더라도 `complete`를 보고합니다.
-`action_required`는 설치 프로필 복구나 실행 파일 경로 수정처럼 차단하는 로컬 복구
-동작을 이름 붙입니다.
+`action_required`는 실행 파일 경로 수정처럼 차단하는 로컬 복구 동작을 이름 붙입니다.
 
 ## 기존 설치 실행 파일 사용하기
 
 `volicord`가 이미 `PATH`에 있으면 바로 [빠른 시작](quickstart.md)으로 갈 수 있습니다.
-저장소를 연결하기 전에 설치 프로필을 점검하거나 복구해야 할 때만 아래처럼 실행합니다.
+설치 프로필을 점검해야 할 때는 아래처럼 실행합니다.
 
 ```sh
-volicord setup
 volicord doctor
 ```
 
 실행 파일을 릴리스로 설치했든, 개발용 소스 빌드에서 가져왔든, 다른 설치 명령
-디렉터리에서 가져왔든 setup은 같은 설치 프로필 계약을 사용합니다. 생성된 호스트
+디렉터리에서 가져왔든 init은 같은 설치 프로필 계약을 사용합니다. 생성된 호스트
 설정이 다른 `volicord` 명령 경로로 MCP를 시작해야 할 때만
-`volicord setup --mcp-command PATH`를 사용합니다. Setup이 `action_required`를 보고하면 새 터미널이나 에이전트 호스트를
-시작하기 전에 이름 붙은 로컬 동작을 완료합니다. 일반 `volicord init`과
-`volicord connect` 명령은 저장된 설치 프로필을 사용합니다.
+`volicord init --mcp-command PATH ...`를 사용합니다. Init이 `action_required`를
+보고하면 새 터미널이나 에이전트 호스트를 시작하기 전에 이름 붙은 로컬 또는 호스트
+동작을 완료합니다. 일반 `volicord init`과 `volicord connection add` 명령은 저장된
+설치 프로필을 사용합니다.
 
 ## 개발용 소스 빌드
 
@@ -240,7 +207,7 @@ Docker에서 record 프로필 설정을 하려면 같은 mount로
 `volicord init --host HOST --repo /workspace --profile record`를 실행합니다. Detective Docker
 설정에는 컨테이너를 쓰지 않을 때와 같은 검증된 host hook 및 session watcher 요구사항이
 적용됩니다. Runtime Home에 serve할 프로젝트 등록과 Agent Connection이 들어간 뒤, 예를
-들어 그와 일치하는 `volicord init` 실행이나 낮은 수준의 `volicord connect` 실행 뒤,
+들어 그와 일치하는 `volicord init` 실행이나 낮은 수준의 `volicord connection add` 실행 뒤,
 운영자가 제공한 token으로 로컬 HTTP MCP endpoint를 시작합니다.
 
 ```sh
@@ -262,11 +229,11 @@ Local HTTP 전송은 loopback 전용입니다. 로컬 Docker 환경이 host netw
 로컬/Docker 전송일 뿐 공개 네트워크 API, SaaS endpoint, 다중 사용자 서버, 보안 경계가
 아닙니다.
 
-## 설정이 하지 않는 일
+## 설치가 하지 않는 일
 
-`volicord setup`은 Product Repository를 등록하지 않고 호스트 설정을 설치하지도 않습니다.
-프로젝트 등록은 Git 저장소 안에서 `volicord project use`,
-`volicord init --host HOST --repo PATH --profile record`, `volicord connect` 같은 명령을
+바이너리 설치만으로는 Product Repository를 등록하지 않고 호스트 설정을 설치하지도
+않습니다. 프로젝트 등록은 Git 저장소 안에서 `volicord project use`,
+`volicord init --host HOST --repo PATH --profile record`, `volicord connection add` 같은 명령을
 실행할 때 이루어집니다.
 
 프로젝트 이름과 내부 식별 정보 동작은 [관리 CLI

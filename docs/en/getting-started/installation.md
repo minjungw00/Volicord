@@ -3,8 +3,8 @@
 This tutorial prepares the local `volicord` executable. The ordinary first-run
 path records the installation profile while running
 `volicord init --host HOST --repo PATH --profile record` in the
-[Quickstart](quickstart.md). Use `volicord setup` only when you need to prepare
-or repair the installation profile separately.
+[Quickstart](quickstart.md). Use `volicord doctor` when you need to inspect the
+saved installation profile.
 
 Exact command behavior belongs to
 [Administrative CLI Reference](../reference/admin-cli.md). Runtime location and
@@ -125,65 +125,29 @@ On native Windows, use `--profile record`; `--profile detective` fails with an
 unsupported-platform diagnostic until Windows host hooks and watcher behavior
 are implemented and tested.
 
-Use `volicord setup` only when you want to prepare or repair the installation
-profile without connecting a repository:
+`volicord init` creates or reuses the selected `Volicord Runtime Home` and saves
+the installation profile while connecting a repository. It discovers the running
+`volicord` executable, stores the MCP launch command, and checks whether the
+selected command is available on `PATH` for future terminals and agent hosts.
+Exact Runtime Home selection, MCP launch command behavior, and output behavior
+belong to [Administrative CLI Reference](../reference/admin-cli.md#runtime-home-selection).
+Its status answers whether setup still needs a named user or host action, so
+`action_required` can appear even after durable local state has been saved.
 
-```sh
-volicord setup
-```
+Ensure the installed `volicord` binary is available on `PATH` before running
+host setup. Shell startup file changes are never implicit. If you update `PATH`
+through your shell startup files, open a new shell or restart or reload existing
+agent host processes before expecting them to see the command.
 
-`volicord setup` creates or verifies the selected `Volicord Runtime Home` and
-saves the installation profile. It discovers the running `volicord` executable,
-stores the MCP launch command, and checks whether the selected command is
-available on `PATH` for future terminals and agent hosts. Exact setup options,
-MCP launch command behavior, and output behavior belong to
-[Administrative CLI Reference](../reference/admin-cli.md#runtime-home-selection).
-Its status answers whether installation-profile preparation still needs a named
-user action, so `action_required` can appear even after the installation profile
-has been saved.
-
-In an interactive terminal, setup may offer command-availability choices when
-the selected executable is not ready on `PATH`:
-
-- create command links in a suggested directory that setup can verify is
-  writable
-- create a conventional user command directory such as `~/.local/bin` when it
-  is missing and safe to create, then verify writability before linking
-- create command links and, after explicit approval, add a managed `PATH` block
-  to a supported shell startup file
-- create command links and print the shell command to run yourself
-- print a shell command for manual `PATH` repair
-- skip command linking for now
-
-Shell startup file changes are never implicit. If setup can identify a
-supported shell startup file, it shows the target file and managed block and
-asks for approval before writing. The managed block is Volicord-owned and does
-not rewrite unrelated shell configuration. Unsupported shells or platforms
-require manual action.
-
-Setup cannot change the parent shell's current `PATH`. A printed
-`export PATH=...` command affects only the terminal where you run it. If setup
-writes or asks you to update a shell startup file, open a new shell or restart
-or reload existing agent host processes before expecting them to see the
-commands.
-
-For automation or deterministic local layouts, use explicit setup options:
+For automation or deterministic local layouts, use explicit init options:
 
 | Option | When to use it |
 |---|---|
-| `--link-bin PATH` | Create the directory if needed, verify it is writable, then create or update command links there. This does not by itself edit shell startup files. |
-| `--mcp-command PATH` | Store a specific `volicord` command for generated MCP launch entries when setup should not use the running executable. |
+| `--mcp-command PATH` | Store a specific `volicord` command for generated MCP launch entries when init should not use the running executable. |
 | `--home PATH` | Select a non-default `Volicord Runtime Home`. |
 
-For example, a noninteractive profile-repair step can still choose a deterministic
-command-link directory:
-
-```sh
-volicord setup --link-bin ~/.local/bin
-```
-
 After completing any prompt or action-required command-availability step, check
-setup readiness:
+installation-profile health:
 
 ```sh
 volicord doctor
@@ -193,27 +157,25 @@ volicord doctor
 reports `complete` when the saved profile is usable, even if it also reports
 command-availability warnings or recommended `PATH` and command-link actions
 for future shells or agent hosts. `action_required` names a blocking local
-repair action, such as rerunning setup or fixing an executable path.
+repair action, such as fixing an executable path.
 
 ## Use An Existing Installed Executable
 
 If `volicord` already exists on `PATH`, you can go straight to the
-[Quickstart](quickstart.md). Run setup and doctor only when you want to inspect
-or repair the installation profile before connecting a repository:
+[Quickstart](quickstart.md). Run doctor when you want to inspect the
+installation profile:
 
 ```sh
-volicord setup
 volicord doctor
 ```
 
-Setup uses the same installation-profile contract whether the executable came
-from a release install, a development source build, or another installed
-command directory. Use `volicord setup --mcp-command PATH` only when generated
-host configuration should start MCP through a different `volicord` command
-path.
-If setup reports `action_required`, complete the named local action before
-starting new terminals or agent hosts. Ordinary `volicord init` and
-`volicord connect` commands use the saved installation profile.
+Init uses the same installation-profile contract whether the executable came
+from a release install, a development source build, or another installed command
+directory. Use `volicord init --mcp-command PATH ...` only when generated host
+configuration should start MCP through a different `volicord` command path. If
+init reports `action_required`, complete the named local or host action before
+starting new terminals or agent hosts. Ordinary `volicord init` and `volicord
+connection add` commands use the saved installation profile.
 
 ## Development Source Build
 
@@ -262,7 +224,7 @@ For record-profile setup in Docker, run
 mounts. Detective Docker setup has the same verified host-hook and session
 watcher requirements as non-container setup. After the Runtime Home contains
 the project registration and Agent Connection you want to serve, for example
-from that matching `volicord init` run or a lower-level `volicord connect` run,
+from that matching `volicord init` run or a lower-level `volicord connection add` run,
 start the local HTTP MCP endpoint with an operator-provided token:
 
 ```sh
@@ -285,12 +247,13 @@ the container rather than publishing a nonlocal HTTP listener. Do not store
 only, not a public network API, SaaS endpoint, multi-user server, or security
 boundary.
 
-## What Setup Does Not Do
+## What Installation Does Not Do
 
-Setup does not register a Product Repository and does not install host
-configuration. Project registration happens when you run `volicord project use`
-or a command such as `volicord init --host HOST --repo PATH --profile record` or
-`volicord connect` from inside a Git repository.
+Installing the binary alone does not register a Product Repository and does not
+install host configuration. Project registration happens when you run
+`volicord project use` or a command such as
+`volicord init --host HOST --repo PATH --profile record` or
+`volicord connection add` from inside a Git repository.
 
 Project naming and internal identity behavior are owned by the
 [Administrative CLI Reference](../reference/admin-cli.md#project-commands).

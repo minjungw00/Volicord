@@ -389,11 +389,11 @@ enum WriteTicketCoverage {
 
 pub fn guard_usage() -> String {
     concat!(
-        "volicord host-hook session-start [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|detective] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]\n",
-        "volicord host-hook pre-tool [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|detective] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]\n",
-        "volicord host-hook post-tool [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|detective] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]\n",
-        "volicord host-hook prompt-capture [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|detective] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]\n",
-        "volicord host-hook stop [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|detective] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]\n",
+        "volicord _hook session-start [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|detective] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]\n",
+        "volicord _hook pre-tool [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|detective] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]\n",
+        "volicord _hook post-tool [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|detective] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]\n",
+        "volicord _hook prompt-capture [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|detective] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]\n",
+        "volicord _hook stop [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|detective] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]\n",
     )
     .to_owned()
 }
@@ -436,7 +436,7 @@ where
         "stop" => GuardPhase::Stop,
         other => {
             return Err(GuardCommandError::Usage(format!(
-                "unknown host-hook command: {other}\n\n{}",
+                "unknown _hook command: {other}\n\n{}",
                 guard_usage()
             )))
         }

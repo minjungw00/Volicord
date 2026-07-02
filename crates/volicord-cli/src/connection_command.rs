@@ -341,17 +341,27 @@ pub fn init_usage() -> String {
 }
 
 pub fn connect_usage() -> String {
-    "volicord connect [HOST] [--repo PATH] [--shared|--global] [--read-only] [--dry-run] [--json]\n"
+    connection_add_usage()
+}
+
+fn connection_add_usage() -> String {
+    "volicord connection add [HOST] [--repo PATH] [--shared|--global] [--read-only] [--dry-run] [--json]\n"
         .to_owned()
 }
 
 pub fn connections_usage() -> String {
-    "volicord connections [--repo PATH] [--json]\n".to_owned()
+    connection_list_usage()
+}
+
+fn connection_list_usage() -> String {
+    "volicord connection list [--repo PATH] [--json]\n".to_owned()
 }
 
 pub fn connection_usage() -> String {
     format!(
-        "{}{}{}{}",
+        "{}{}{}{}{}{}",
+        connection_add_usage(),
+        connection_list_usage(),
         connection_status_usage(),
         connection_verify_usage(),
         connection_mode_usage(),
@@ -710,7 +720,7 @@ pub fn run_connect_command(
     process: &mut impl ConnectionProcess,
 ) -> Result<String, ConnectionCommandError> {
     if is_help_request(args) {
-        return Ok(connect_usage());
+        return Ok(connection_add_usage());
     }
     let parsed = parse_connection_options(
         args,
@@ -788,7 +798,7 @@ pub fn run_connect_command(
     if parsed.dry_run {
         return render_simplified_plan_output(SimplifiedPlanOutput {
             format: connection_output_format(&parsed),
-            action: "connect",
+            action: "connection_add",
             status: AgentResultStatus::DryRun,
             runtime_home: &runtime_home,
             connection_id: &connection_internal_id,
@@ -931,7 +941,7 @@ pub fn run_connections_command(
     process: &mut impl ConnectionProcess,
 ) -> Result<String, ConnectionCommandError> {
     if is_help_request(args) {
-        return Ok(connections_usage());
+        return Ok(connection_list_usage());
     }
     let parsed = parse_connection_options(args, &["repo", "json"], 0)?;
     let runtime_home = resolve_runtime_home(|name| process.env_var(name), current_dir)?;
@@ -973,6 +983,8 @@ pub fn run_connection_command(
         )));
     }
     match subcommand {
+        "add" => run_connect_command(&args[1..], current_dir, process),
+        "list" => run_connections_command(&args[1..], current_dir, process),
         "status" => command_connection_status(&args[1..], current_dir, process),
         "verify" => command_connection_verify(&args[1..], current_dir, process),
         "mode" => command_connection_mode(&args[1..], current_dir, process),
@@ -1489,7 +1501,7 @@ fn unsupported_connection_intent_message(host_kind: HostKind, intent: Connection
     let supported = format_supported_connection_intents(host_kind);
     if host_kind == HostKind::Generic {
         return format!(
-            "UNSUPPORTED_HOST: generic MCP export is not a host connection; use `volicord export mcp-config`; supported connection intents: {supported}"
+            "UNSUPPORTED_HOST: generic MCP export is not a stable host connection command; supported connection intents: {supported}"
         );
     }
     format!(
@@ -1773,7 +1785,7 @@ fn selector_intent_text(selector: &ConnectionSelector) -> &'static str {
 fn selector_repair_command(selector: &ConnectionSelector) -> String {
     match selector.intent {
         Some(intent @ (ConnectionIntent::Personal | ConnectionIntent::Global)) => format!(
-            "volicord connect {}{} --repo {}",
+            "volicord connection add {}{} --repo {}",
             public_host_label(selector.host_kind),
             intent_flag_suffix(intent),
             selector.repo_root.display()
@@ -1893,7 +1905,7 @@ fn required_installation_profile(
 ) -> Result<InstallationProfileRecord, ConnectionCommandError> {
     installation_profile(runtime_home)?.ok_or_else(|| {
         ConnectionCommandError::runtime(format!(
-            "SETUP_REQUIRED: installation profile is missing for Runtime Home {}; run `volicord init --host <host> --repo <path>` for the primary host setup. Use `volicord setup` only for installation-profile repair before lower-level connection workflows.",
+            "SETUP_REQUIRED: installation profile is missing for Runtime Home {}; run `volicord init --host <host> --repo <path>` from the Product Repository to initialize Volicord.",
             runtime_home.display()
         ))
     })
@@ -4525,7 +4537,7 @@ fn is_legacy_claude_managed_handler(phase: HostLifecyclePhase, handler: &Value) 
                 .and_then(Value::as_str)
                 .is_some_and(|command| {
                     let legacy_direct = command
-                        .contains(&format!("volicord host-hook {}", phase.command_name()))
+                        .contains(&format!("volicord _hook {}", phase.command_name()))
                         && command.contains("--connection")
                         && command.contains("--guard-installation")
                         && (command.contains("--host claude-code")
@@ -4552,7 +4564,7 @@ fn looks_like_conflicting_claude_managed_handler(
             .and_then(Value::as_str)
             .is_some_and(|command| {
                 (command != desired.command || hook_handler_args(object) != desired.args)
-                    && ((command.contains("volicord host-hook")
+                    && ((command.contains("volicord _hook")
                         && command.contains(phase.command_name())
                         && (command.contains("--host claude-code")
                             || command.contains("--host claude_code")
@@ -4645,7 +4657,7 @@ fn is_volicord_codex_hook_handler(phase: HostLifecyclePhase, handler: &Value) ->
             .and_then(Value::as_str)
             .is_some_and(|command| {
                 let direct_guard = command
-                    .contains(&format!("volicord host-hook {}", phase.command_name()))
+                    .contains(&format!("volicord _hook {}", phase.command_name()))
                     && command.contains("--connection")
                     && command.contains("--guard-installation")
                     && command.contains("--host codex")
@@ -4697,7 +4709,7 @@ fn guard_command_specs(
         .into_iter()
         .map(|phase| {
             let mut args = vec![
-                "host-hook".to_owned(),
+                "_hook".to_owned(),
                 phase.command_name().to_owned(),
                 "--repo".to_owned(),
                 path_text(repo_root),
@@ -6843,7 +6855,7 @@ fn connection_repair_action(
         )
     } else {
         format!(
-            "volicord connect {}{} --repo {}",
+            "volicord connection add {}{} --repo {}",
             host,
             intent_flag_suffix(
                 parse_connection_intent(&connection.intent).unwrap_or(ConnectionIntent::Personal)
@@ -8204,7 +8216,7 @@ fn classify_codex_hook_command_path(
         }
         return HookWrapperResolutionStatus::RelativePathUnsafe;
     }
-    if command_text.contains(&format!("volicord host-hook {phase_command}")) {
+    if command_text.contains(&format!("volicord _hook {phase_command}")) {
         return HookWrapperResolutionStatus::Ok;
     }
     HookWrapperResolutionStatus::MetadataMissing
@@ -8238,7 +8250,7 @@ fn classify_claude_hook_command_path(
         }
         return HookWrapperResolutionStatus::RelativePathUnsafe;
     }
-    if command_text.contains(&format!("volicord host-hook {phase_command}")) {
+    if command_text.contains(&format!("volicord _hook {phase_command}")) {
         return HookWrapperResolutionStatus::Ok;
     }
     HookWrapperResolutionStatus::MetadataMissing
@@ -8583,7 +8595,7 @@ fn verify_managed_script_file(
         .and_then(Value::as_str)
         .unwrap_or_default();
     for required in [
-        "volicord host-hook ",
+        "volicord _hook ",
         "--repo ",
         "--connection ",
         "--guard-installation ",
@@ -9563,7 +9575,7 @@ mod tests {
         assert!(hooks_text.contains("post-tool"));
         assert!(hooks_text.contains("prompt-capture"));
         assert!(hooks_text.contains("stop"));
-        assert!(!hooks_text.contains("volicord host-hook "));
+        assert!(!hooks_text.contains("volicord _hook "));
         assert!(hooks_text.contains(
             "Bash|apply_patch|Edit|Write|mcp__.*__(write|edit|create|update|delete|remove|move|patch).*"
         ));
@@ -9579,7 +9591,7 @@ mod tests {
         let pre_tool_wrapper_path = repo.join(".codex/hooks/volicord-pre-tool.sh");
         let pre_tool_wrapper = fs::read_to_string(&pre_tool_wrapper_path)?;
         assert!(pre_tool_wrapper.contains(HOOK_WRAPPER_MARKER));
-        assert!(pre_tool_wrapper.contains("exec volicord host-hook pre-tool"));
+        assert!(pre_tool_wrapper.contains("exec volicord _hook pre-tool"));
         assert!(pre_tool_wrapper.contains(&format!("--repo {}", shell_word(&path_text(&repo)))));
         assert!(pre_tool_wrapper.contains("--connection conn_alpha"));
         assert!(pre_tool_wrapper.contains("--guard-installation guard_installation_alpha"));
@@ -9750,11 +9762,11 @@ mod tests {
         }
         assert!(!settings_text.contains("\"command\": \".claude/hooks/"));
         assert!(settings_text.contains("\"args\": []"));
-        assert!(!settings_text.contains("volicord host-hook "));
+        assert!(!settings_text.contains("volicord _hook "));
         let pre_tool_wrapper_path = repo.join(".claude/hooks/volicord-pre-tool.sh");
         let pre_tool_wrapper = fs::read_to_string(&pre_tool_wrapper_path)?;
         assert!(pre_tool_wrapper.contains(HOOK_WRAPPER_MARKER));
-        assert!(pre_tool_wrapper.contains("exec volicord host-hook pre-tool"));
+        assert!(pre_tool_wrapper.contains("exec volicord _hook pre-tool"));
         assert!(pre_tool_wrapper.contains("--host claude-code"));
         assert!(pre_tool_wrapper.contains("--host-output claude-code"));
         assert!(pre_tool_wrapper.contains("--guard-installation guard_installation_alpha"));
@@ -9887,7 +9899,7 @@ mod tests {
         "hooks": [
           {
             "type": "command",
-            "command": "volicord host-hook pre-tool --host claude-code --host-output claude-code",
+            "command": "volicord _hook pre-tool --host claude-code --host-output claude-code",
             "timeout": 30
           }
         ]

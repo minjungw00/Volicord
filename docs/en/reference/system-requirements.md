@@ -126,8 +126,9 @@ volicord --version
 volicord --help
 volicord mcp --help
 volicord init --help
-volicord setup --help
-volicord host-hook --help
+volicord status --help
+volicord connection --help
+volicord inbox --help
 volicord serve --help
 ```
 
@@ -146,19 +147,17 @@ ordinary command lookup:
 ```sh
 volicord --version
 volicord init --help
-volicord setup --help
-volicord connect --help
+volicord status --help
+volicord connection add --help
 volicord mcp --version
 volicord mcp --help
 ```
 
 Host configuration normally uses MCP command information established by
-`volicord init`; `volicord setup` can prepare or repair that installation
-profile directly.
-For exact `--mcp-command`, discovery-order, `--link-bin`, connection, and
-generic export behavior, use
-[Administrative CLI](admin-cli.md#runtime-home-selection) and
-[Generic MCP config export](admin-cli.md#generic-mcp-config-export).
+`volicord init`.
+For exact `--mcp-command`, discovery-order, connection, and generic host
+configuration behavior, use
+[Administrative CLI](admin-cli.md#runtime-home-selection).
 
 Requirement summary:
 
@@ -169,8 +168,8 @@ Requirement summary:
 - Shared project host configuration must not embed a personal Runtime Home
   path. It uses `volicord` as a command name that the future host environment
   must resolve through `PATH`.
-- Generic export can render explicit configuration, but it remains user-managed
-  until a host-specific owner defines an observable loadability gate.
+- User-managed generic host configuration remains user-managed until a
+  host-specific owner defines an observable loadability gate.
 
 ## Runtime Home Requirements
 
@@ -182,8 +181,8 @@ Before installation:
 - On native Windows, select a local drive-letter Runtime Home path. UNC paths,
   WSL UNC paths such as `\\wsl$\...`, and WSL mount-style paths such as
   `/mnt/c/...` are not supported native Windows Runtime Home paths.
-- Ensure the selected user can create the directory or write into it when running `volicord init`, `volicord setup`, `volicord project use`, `volicord connect`, or `volicord connection verify`.
-- Ensure future `volicord mcp --stdio` host processes receive the same Runtime Home selection when the default `$HOME/.volicord` is not the intended location. Shared project host configuration must not carry a personal Runtime Home path, so each user must provide a non-default Runtime Home through their own local init, profile setup, or environment.
+- Ensure the selected user can create the directory or write into it when running `volicord init`, `volicord project use`, `volicord connection add`, or `volicord connection verify`.
+- Ensure future `volicord mcp --stdio` host processes receive the same Runtime Home selection when the default `$HOME/.volicord` is not the intended location. Shared project host configuration must not carry a personal Runtime Home path, so each user must provide a non-default Runtime Home through their own local init or environment.
 
 Runtime Home selection and exact creation behavior are owned by [Administrative CLI](admin-cli.md) and [MCP Transport](mcp-transport.md). Runtime location and separation rules are owned by [Runtime Boundaries](runtime-boundaries.md).
 

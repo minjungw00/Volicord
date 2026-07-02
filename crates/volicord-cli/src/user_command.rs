@@ -128,6 +128,10 @@ pub(crate) struct JudgmentRecordingInput<'a> {
     pub idempotency_key: Option<String>,
 }
 
+pub fn status_usage() -> String {
+    "volicord status [--repo PATH] [--task active|ID] [--json]\n".to_owned()
+}
+
 pub fn user_usage() -> String {
     concat!(
         "volicord user status [--repo PATH] [--task active|ID] [--json]\n",
@@ -145,6 +149,30 @@ pub fn inbox_usage() -> String {
         "volicord inbox open <judgment-id> [--repo PATH] [--json]\n"
     )
     .to_owned()
+}
+
+pub fn run_status_command<F>(
+    args: &[String],
+    env_var: F,
+    current_dir: &Path,
+) -> Result<String, UserCommandError>
+where
+    F: Fn(&str) -> Option<std::ffi::OsString>,
+{
+    if matches!(
+        args.first().map(String::as_str),
+        Some("-h" | "--help" | "help")
+    ) {
+        if args.len() == 1 {
+            return Ok(status_usage());
+        }
+        return Err(UserCommandError::Usage(format!(
+            "unexpected argument: {}\n\n{}",
+            args[1],
+            status_usage()
+        )));
+    }
+    command_status(args, env_var, current_dir)
 }
 
 pub fn run_user_command<F>(

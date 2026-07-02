@@ -49,7 +49,9 @@ try {
     $env:VOLICORD_HOME = $home
     Invoke-Checked -FilePath $command -Arguments @("init", "--host", "codex", "--repo", $repo, "--dry-run", "--json")
     $env:VOLICORD_HOME = $oldHome
-    Invoke-Checked -FilePath $command -Arguments @("guard", "--help")
+    Invoke-Checked -FilePath $command -Arguments @("status", "--help")
+    Invoke-Checked -FilePath $command -Arguments @("connection", "--help")
+    Invoke-Checked -FilePath $command -Arguments @("inbox", "--help")
     Invoke-Checked -FilePath $command -Arguments @("serve", "--help")
     Write-Host "volicord smoke test passed for $command"
 } finally {

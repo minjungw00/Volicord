@@ -1,9 +1,9 @@
 # Agent Host Troubleshooting
 
-Use this guide when `volicord init`, `volicord setup`, `volicord connect`,
-`volicord connection ...`, or `volicord export mcp-config` reports a host setup
-problem. It assumes the simplified command model where Volicord detects Product
-Repositories and manages internal identities.
+Use this guide when `volicord init`, `volicord connection add`, or
+`volicord connection ...` reports a host setup problem. It assumes the
+simplified command model where Volicord detects Product Repositories and
+manages internal identities.
 
 Exact setup, doctor, and connection result-state meanings belong to
 [Administrative CLI Reference](../reference/admin-cli.md#runtime-home-selection)
@@ -17,31 +17,31 @@ Collect the current local state:
 ```sh
 volicord doctor
 volicord project current
-volicord connections
+volicord connection list
 ```
 
 If the command is being run outside the intended Product Repository, either `cd`
-into that repository or add `--repo PATH` to the project, connection, export, or
-user command you are checking.
+into that repository or add `--repo PATH` to the project, connection, or inbox
+command you are checking.
 
-`volicord setup` and `volicord doctor` answer different status questions. Setup
-reports whether installation-profile preparation still needs a user action.
-Doctor reports whether the saved installation profile is usable. A profile can
-therefore make doctor report `complete` while doctor still shows
-command-availability warnings or recommended `PATH` and command-link actions for
-future shells or agent hosts.
+`volicord init` and `volicord doctor` answer different status questions. Init
+reports whether first-run repository setup and host connection still need a user
+or host action. Doctor reports whether the saved installation profile is usable.
+A profile can therefore make doctor report `complete` while doctor still shows
+command-availability warnings or recommended `PATH` actions for future shells or
+agent hosts.
 
 ## Setup Has Not Been Completed
 
-Observable symptom: ordinary project, connection, export, MCP, or user workflows
-say setup has not been completed for the selected `Volicord Runtime Home`.
+Observable symptom: ordinary project, connection, MCP, or inbox workflows say
+setup has not been completed for the selected `Volicord Runtime Home`.
 
 Bounded recovery:
 
 If `volicord` is already available:
 
 ```sh
-volicord setup
+volicord init --host codex --repo /path/to/your-product-repo --profile record
 volicord doctor
 ```
 
@@ -51,57 +51,32 @@ working from a development source checkout:
 
 ```sh
 cargo build --workspace --bins
-./target/debug/volicord setup
+./target/debug/volicord init --host codex --repo /path/to/your-product-repo --profile record
 ```
 
-Follow setup's prompt or `action_required` output if it asks how to make
-`volicord` available. If it prints a shell command, run that
-command in the terminal that will continue the setup. If it writes or asks you
-to update a shell startup file, open a new shell or restart or reload the agent
-host before checking again:
+Follow init's `action_required` output if it asks how to make `volicord`
+available, approve host trust, or reload the host. If you update a shell startup
+file yourself, open a new shell or restart or reload the agent host before
+checking again:
 
 ```sh
 volicord doctor
 ```
 
-Use `--link-bin PATH` only when you need a deterministic command-link directory
-for automation or a special local layout. Setup can report the required `PATH`
-action or a repair action if that directory is not writable, but it cannot
-permanently change the parent shell.
+Do not create Runtime Home files by hand. Use init so the registry, setup
+profile, project registration, and connection state are created together.
 
-Do not create Runtime Home files by hand. Use setup so the registry and setup
-profile are created together.
+## Command Is Not On PATH
 
-## Setup Does Not Offer `~/.local/bin`
-
-Observable symptom: interactive setup reports that commands are not available
-on `PATH`, but it does not offer to create `~/.local/bin`.
+Observable symptom: init or doctor reports that `volicord` is not available on
+`PATH` for future terminals or agent hosts.
 
 Bounded recovery:
 
-Setup offers a conventional user command directory only when it can identify a
-safe candidate under `HOME`, create it safely when missing, and verify
-writability before creating command links. It may leave a manual `PATH` action
-instead when `HOME` is missing or not writable, the shell or platform is not
-supported for that guided choice, the candidate path conflicts with an existing
-unsafe entry, or setup is running in JSON, non-TTY, or explicit `--link-bin`
-mode.
-
-Safe next steps:
-
-- Rerun `volicord setup` in an interactive terminal and follow the prompt or
-  `action_required` output.
-- Run `volicord setup --link-bin PATH` with a command directory you control.
-  Setup creates the directory if needed, verifies it is writable, and does not
-  edit shell startup files by itself.
-- Create `~/.local/bin` manually only when that is the command directory you
-  want to control, then rerun setup.
-
-If setup prints a shell command or names a `PATH` action, run that command in
-the terminal that needs it or update the supported startup file it names.
-Volicord can help make commands available on `PATH`, but it cannot directly
-mutate the current parent shell environment. Already-running agent hosts may
-need restart or reload before they see a new command directory.
+Install or link the `volicord` binary into a command directory you control, then
+ensure that directory is visible through `PATH`. Volicord cannot directly mutate
+the current parent shell environment. Already-running agent hosts may need
+restart or reload before they see a new command directory.
 
 ## Repository Is Not Detected
 
@@ -144,7 +119,7 @@ Bounded recovery:
 
 ## Host Cannot Be Selected
 
-Observable symptom: `volicord connect` or `volicord connection ...` cannot infer
+Observable symptom: `volicord connection add` or `volicord connection ...` cannot infer
 the host, or the host value is unsupported.
 
 Bounded recovery: for ordinary first-run setup without lifecycle hook
@@ -173,7 +148,7 @@ For lower-level connection recovery, pass the host and repository to connect
 explicitly:
 
 ```sh
-volicord connect codex --repo /path/to/your-product-repo
+volicord connection add codex --repo /path/to/your-product-repo
 volicord connection status codex --repo /path/to/your-product-repo
 ```
 
@@ -226,25 +201,25 @@ has identified that as the intended recovery.
 
 ## MCP Command Is Unavailable
 
-Observable symptom: setup or verification reports that `volicord mcp --stdio`
+Observable symptom: init or verification reports that `volicord mcp --stdio`
 cannot be found, launched, or initialized.
 
 Bounded recovery:
 
-Rerun setup with the installed release binary:
+Rerun init with the installed release binary:
 
 ```sh
-volicord setup
+volicord init --host codex --repo /path/to/your-product-repo --profile record
 ```
 
 If you are intentionally working from a development source checkout:
 
 ```sh
 cargo build --workspace --bins
-./target/debug/volicord setup
+./target/debug/volicord init --host codex --repo /path/to/your-product-repo --profile record
 ```
 
-Complete any setup prompt or `action_required` command-availability step, then
+Complete any `action_required` command-availability or host step, then
 check the installation and connection again:
 
 ```sh
@@ -252,11 +227,10 @@ volicord doctor
 volicord connection verify codex --repo /path/to/your-product-repo
 ```
 
-Setup is the place that records the MCP command used by managed host
-configuration and generic exports. Ordinary `connect` commands do not ask users
-to pass an MCP command path. If the executable is installed somewhere setup
-cannot discover by sibling lookup or `PATH`, rerun setup with
-`--mcp-command PATH`.
+Init records the MCP command used by managed host configuration. Ordinary
+`connection add` commands do not ask users to pass an MCP command path. If the
+executable is installed somewhere init cannot discover by sibling lookup or
+`PATH`, rerun init with `--mcp-command PATH`.
 
 <a id="guard-hook-path-or-wrapper-is-unsafe"></a>
 ## Hook Path Or Wrapper Is Unsafe
@@ -331,20 +305,22 @@ Complete the host-owned project approval or reload action named by the command.
 The `Product Repository` integration file is not Volicord authority and does not
 prove that the host loaded, trusted, or exposed the MCP server.
 
-## Generic Export Does Not Appear In The Host
+## Generic Host Does Not Show Volicord Tools
 
-Observable symptom: `volicord export mcp-config` produced a file, but an external
-host does not show Volicord tools.
+Observable symptom: an external MCP host with user-managed configuration does
+not show Volicord tools.
 
 Bounded recovery:
 
 ```sh
-volicord export mcp-config --output /tmp/volicord.mcp.json
 volicord doctor
+volicord connection status codex --repo /path/to/your-product-repo
 ```
 
-Then load or reload the exported file through the external host's own
-configuration process. The exported file is user-managed after export.
+Then inspect the external host's own configuration process. Its entry should
+start `volicord mcp --stdio --connection <connection_id> [--project
+<project_id>]` for an existing Agent Connection. The external configuration is
+user-managed.
 
 ## Removal Completed Only Partially
 
@@ -357,7 +333,7 @@ Bounded recovery:
 ```sh
 volicord connection remove codex --dry-run
 volicord connection status codex
-volicord connections
+volicord connection list
 ```
 
 Removal first removes the selected Product Repository membership. It removes the Agent
