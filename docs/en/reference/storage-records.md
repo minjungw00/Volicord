@@ -44,7 +44,7 @@ The tree is representative after the relevant storage features have been used; i
 
 Storage placement:
 
-- `registry.sqlite` stores Runtime Home identity, installation profile records, project registration mapping, project aliases, Agent Connection records, Connection Projects membership, guard installation records, and registry metadata. The installation profile includes the selected `volicord` command, MCP launch command, bin directory, default connection mode, metadata, and timestamps. Project registration includes `project_internal_id`, display name, CLI selection alias, Runtime Home relationship, registered `repo_root`, `project_home`, project `state.sqlite` path, status, metadata, and timestamps.
+- `registry.sqlite` stores Runtime Home identity, installation profile records, project registration mapping, project aliases, Agent Connection records, Connection Projects membership, host-hook installation records, and registry metadata. The installation profile includes the selected `volicord` command, MCP launch command, bin directory, default connection mode, metadata, and timestamps. Project registration includes `project_internal_id`, display name, CLI selection alias, Runtime Home relationship, registered `repo_root`, `project_home`, project `state.sqlite` path, status, metadata, and timestamps.
 - `projects/{project_internal_id}/` is the default Volicord project home shape for one registered project. It is not the same location or authority as `repo_root`.
 - `state.sqlite` stores project-local Core state and project-scoped host-observation records for the registered project.
 - `artifacts/` is the project artifact store when artifact storage is used; it may be created lazily when artifact storage is first needed. `artifacts/tmp/` is transient staging space when artifact staging requires it, not evidence authority; it may be created lazily when staging occurs. These directories need not exist immediately after project registration.
@@ -83,13 +83,13 @@ Baseline storage persists only the record families defined by this baseline stor
 | `registry.sqlite` | Project registration and aliases | Project mapping | `project_internal_id`, display name, CLI selection alias, Runtime Home relationship, unique `repo_root`, location-owning `project_home`, stored `state_db_path` that must match `project_home/state.sqlite` for execution, status, metadata, and alias-to-internal-identity mappings. |
 | `registry.sqlite` | Agent Connection | MCP host connection unit | Durable `connection_internal_id`, host kind, connection intent, host scope, optional `project_internal_id`, internal server name, config target, mode, enabled state, managed fingerprint, verification summary status, verification report JSON, user actions JSON, metadata, and timestamps. |
 | `registry.sqlite` | Connection Projects | Connection project allowlist | Explicit many-to-many membership between an Agent Connection and registered projects using `connection_internal_id` and `project_internal_id`. |
-| `registry.sqlite` | Guard installation | Guard setup and host capability record | Runtime Home, Agent Connection, optional project scope, host kind, guard mode, host capability JSON, installation lifecycle status, observed hook metadata, timestamps, and metadata. |
+| `registry.sqlite` | Host-hook installation | Host-hook setup and host capability record | Runtime Home, Agent Connection, optional project scope, host kind, integration mode, host capability JSON, installation lifecycle status, observed hook metadata, timestamps, and metadata. |
 | `state.sqlite` | `project_state` | Project state header | Storage profile, `state_version`, current `Task` pointer, and project enforcement profile. |
-| `state.sqlite` | `agent_sessions` | Observed Agent Session | Project-scoped session for one Agent Connection, optional guard installation, host kind, integration profile, start/end timestamps, and metadata. |
-| `state.sqlite` | `guard_events` | Guard decision event | Project-scoped guard event tied to a connection and optional session or installation, with decision, subject JSON, result JSON, timestamp, and metadata. |
+| `state.sqlite` | `agent_sessions` | Observed Agent Session | Project-scoped session for one Agent Connection, optional host-hook installation, host kind, integration profile, start/end timestamps, and metadata. |
+| `state.sqlite` | `guard_events` | Host-hook decision event | Project-scoped host-hook event tied to a connection and optional session or installation, with decision, subject JSON, result JSON, timestamp, and metadata. |
 | `state.sqlite` | `prompt_captures` | Prompt capture | Project-scoped prompt capture for a session, including connection, capture kind, prompt hash, optional prompt text, timestamp, and metadata. |
-| `state.sqlite` | `expected_writes` | Expected Product Repository write | Project-scoped expected-write correlation record created by an allowed observe pre-tool write, with connection/session identity, optional host invocation identity, exact path policy, active task/Change Unit/write-ticket basis, timestamps, and matched post-tool metadata. |
-| `state.sqlite` | `unrecorded_changes` | Unrecorded Product Repository change | Project-scoped unresolved or resolved record for observed Product Repository changes that are not yet matched to a Core run or other owner-defined record. |
+| `state.sqlite` | `expected_writes` | Expected Product Repository write | Project-scoped expected-write correlation record created by an allowed detective pre-tool write, with connection/session identity, optional host invocation identity, exact path policy, active task/Change Unit/write-ticket basis, timestamps, and matched post-tool metadata. |
+| `state.sqlite` | `unrecorded_changes` | Unrecorded Product Repository change | Project-scoped unresolved or resolved record for detected Product Repository changes that are not yet matched to a Core run or other owner-defined record. |
 | `state.sqlite` | `session_watch_baselines` | Session watch baseline | Project-scoped session watch status and baseline snapshot for a registered Product Repository or watched path set, including effective exclusions, snapshot digest metadata, and compact snapshot entries. |
 | `state.sqlite` | `session_watch_observations` | Session watch observation | Project-scoped detective observation derived from comparing a later safe snapshot to a baseline, with observed changed paths, optional expected-write or write-ticket correlation, and optional link to an existing unrecorded-change row. |
 | `state.sqlite` | `tasks` | Work-unit state | User-value work unit, shaping summary, scope and close-basis revisions, nullable current close basis, lifecycle/result/terminal close summary, current `CompletionPolicy`, current Change Unit pointer, and creator actor source. |
@@ -118,10 +118,10 @@ Baseline records use opaque stable ids as primary keys or equivalent unique keys
 - Project registration requires a unique `project_internal_id`, unique project alias, unique repository root, unique project home, and unique state database path. `project_name` is the display name and `project_alias` is the CLI selection aid.
 - Agent Connection identity is unique by `connection_internal_id`.
 - Connection Projects membership is unique by `connection_internal_id` and `project_internal_id`, and is the only registry membership that lets one connection address a registered project.
-- Guard installation identity is unique by `guard_installation_id`. Project-scoped guard installations must name a registered project and an Agent Connection that has Connection Projects membership for that project.
+- Host-hook installation identity is unique by `guard_installation_id`. Project-scoped host-hook installations must name a registered project and an Agent Connection that has Connection Projects membership for that project.
 - Local web consent token identity is the stored token hash within one project-state database. The raw token must not be stored, and a pending token must name the project, selected Agent Connection, pending judgment, capture basis, and expiration. Consuming a token and resolving the corresponding user judgment must be one project-state transaction or equivalent atomic operation.
 - Project-scoped rows belong to a registered project.
-- Guard sessions, guard events, prompt captures, expected writes, unrecorded changes, session watch baselines, and session watch observations belong to one project-local `state.sqlite` and name the Agent Connection that observed or produced the record.
+- Agent Sessions, host-hook events, prompt captures, expected writes, unrecorded changes, session watch baselines, and session watch observations belong to one project-local `state.sqlite` and name the Agent Connection that observed or produced the record.
 - Task-scoped rows belong to the same project and `Task` as their owning `tasks` row.
 - Current pointers and owner references must point to same-project records.
 - A `Task` has at most one current Change Unit.
@@ -143,7 +143,7 @@ Storage must validate stored relationships before commit, including:
 - artifact staging consumption and promotion targets
 - artifact owner relations
 - Connection Projects membership and enabled-state consistency for Agent Connection routing
-- guard installation, Agent Session, guard event, prompt capture, expected-write, unrecorded-change, session watch baseline, and session watch observation project and connection scope
+- host-hook installation, Agent Session, host-hook event, prompt capture, expected-write, unrecorded-change, session watch baseline, and session watch observation project and connection scope
 - JSON reference arrays that SQLite cannot express as direct foreign keys
 
 ### Authority Row Preservation
@@ -156,7 +156,7 @@ This preservation applies to `tasks`, `change_units`, `user_judgments`, `project
 
 Host-observation records preserve local authority facts about host integration state. They can help Core and Store code determine whether work can honestly proceed or close, but they are not OS-level sandboxing, filesystem ACLs, external policy enforcement, anti-forgery proof, actor identity proof, or proof that a write was prevented.
 
-`guard_installations` records setup lifecycle state, observed hook metadata, and host capability by Runtime Home, Agent Connection, and optional project scope. `configured` and `reload_required` mean files or metadata are installed but no matching host-hook observation has yet been recorded. `active` means Volicord observed a valid host hook for the recorded project, Agent Connection, host kind, integration profile, and policy hash; it does not prove OS-level enforcement or sandboxing. `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unrecorded_changes`, `session_watch_baselines`, and `session_watch_observations` are project-local rows and must not leak across project `state.sqlite` databases. A pending `expected_writes` row means observe pre-tool allowed a concrete expected write for bounded project, connection, session, time, path, task, Change Unit, and deterministic active write-ticket coordinates. A matched row means post-tool observation was correlated to that expected write; it is not proof of product correctness, actor identity, or OS-level write prevention. Unmatched, ambiguous, or ticket-out-of-scope Product Repository changes create unresolved `unrecorded_changes` rows. An unresolved `unrecorded_changes` row means an observed Product Repository change still needs owner-defined reconciliation. Resolving the row records the local resolution basis, actor source, capture basis, resolution timestamp, and optional linked user judgment while preserving the row.
+`guard_installations` records setup lifecycle state, observed hook metadata, and host capability by Runtime Home, Agent Connection, and optional project scope. `configured` and `reload_required` mean files or metadata are installed but no matching host-hook observation has yet been recorded. `active` means Volicord observed a valid host hook for the recorded project, Agent Connection, host kind, integration profile, and policy hash; it does not prove OS-level enforcement or sandboxing. `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unrecorded_changes`, `session_watch_baselines`, and `session_watch_observations` are project-local rows and must not leak across project `state.sqlite` databases. A pending `expected_writes` row means detective pre-tool allowed a concrete expected write for bounded project, connection, session, time, path, task, Change Unit, and deterministic active write-ticket coordinates. A matched row means post-tool observation was correlated to that expected write; it is not proof of product correctness, actor identity, or OS-level write prevention. Unmatched, ambiguous, or ticket-out-of-scope Product Repository changes create unresolved `unrecorded_changes` rows. An unresolved `unrecorded_changes` row means an observed Product Repository change still needs owner-defined reconciliation. Resolving the row records the local resolution basis, actor source, capture basis, resolution timestamp, and optional linked user judgment while preserving the row.
 
 `session_watch_baselines` and `session_watch_observations` support detective session-level Product Repository watching. They are not a sandbox, filesystem permission boundary, pre-write block, proof of who changed a file, or proof of why a file changed. A baseline stores watch availability, the registered repository root or watched path set, effective exclusions, and deterministic snapshot digest metadata. An observation stores changed product paths found by comparing a later safe snapshot with the baseline, plus optional expected-write, write-ticket, and unrecorded-change correlation refs. Linking an observation to an expected write or one active matching write ticket is deterministic correlation only. Linking an observation to an unrecorded-change row records local reconciliation context; it does not create close blockers by itself.
 
@@ -193,9 +193,9 @@ Closed storage-owned value sets are persistence constraints. Unknown values must
 | Agent Connection `mode` | `workflow`, `read_only` |
 | Agent Connection `enabled` | `0`, `1` |
 | Agent Connection `last_verification_status` | `not_verified`, `complete`, `action_required`, `failed` |
-| Guard installation `guard_mode` | `record`, `observe` |
-| Guard installation `installation_status` | `absent`, `configured`, `reload_required`, `active`, `degraded`, `stale`, `broken` |
-| `agent_sessions.guard_mode` | `record`, `observe` |
+| Host-hook installation `guard_mode` | `record`, `detective` |
+| Host-hook installation `installation_status` | `absent`, `configured`, `reload_required`, `active`, `degraded`, `stale`, `broken` |
+| `agent_sessions.guard_mode` | `record`, `detective` |
 | `guard_events.decision` | `allow`, `deny`, `warn`, `inject_context` |
 | `expected_writes.path_policy` | `exact_paths` |
 | `expected_writes.status` | `pending`, `matched` |
@@ -238,11 +238,11 @@ Rules:
 |---|---|
 | Installation profile | Installation-profile metadata that is not a host trust decision, user judgment, or public API schema. |
 | Agent Connection | Verification report JSON, user-action JSON, and metadata that are not used as authority, host trust proof, or a replacement for external host configuration. |
-| Guard installation | Host capability JSON and metadata for local guard setup health, not OS enforcement proof. |
+| Host-hook installation | Host capability JSON and metadata for local host-hook setup health, not OS enforcement proof. |
 | `agent_sessions` | Non-authority metadata for a project-scoped Agent Session. |
-| `guard_events` | Guard subject JSON, result JSON, and metadata for a local guard decision event. |
+| `guard_events` | Host-hook subject JSON, result JSON, and metadata for a local host decision request. |
 | `prompt_captures` | Non-authority metadata for a captured prompt record; prompt text is a direct nullable text column. |
-| `expected_writes` | Expected path arrays, write-ticket id arrays, matched path arrays, and metadata for observe expected-write correlation. |
+| `expected_writes` | Expected path arrays, write-ticket id arrays, matched path arrays, and metadata for detective expected-write correlation. |
 | `unrecorded_changes` | Observed path arrays, detection JSON, resolution JSON, and metadata for unrecorded Product Repository changes. Resolution JSON stores compact resolution basis, capture basis, resolved method, and optional linked user-judgment reference; it must not store full sensitive command or prompt content. |
 | `session_watch_baselines` | Watched path arrays, effective exclusion arrays, snapshot entry arrays, and metadata for a session watch baseline. Snapshot entries store path, kind, size, hash, or skip reason metadata only; they do not store file contents. |
 | `session_watch_observations` | Observed changed path arrays, compact change-summary JSON, snapshot entry arrays, and metadata for a session watch observation. Snapshot and change summaries do not prove actor identity, intent, product correctness, or close readiness. |

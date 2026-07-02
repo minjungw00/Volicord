@@ -2278,7 +2278,7 @@ fn validate_volicord_command(tokens: &[String]) -> std::result::Result<(), Strin
         "doctor" => validate_doctor_command(&args[1..]),
         "mcp" => validate_mcp_command(&args[1..]),
         "serve" => validate_serve_command(&args[1..]),
-        "guard" => validate_guard_command(&args[1..]),
+        "host-hook" => validate_host_hook_command(&args[1..]),
         "init" => validate_init_command(&args[1..]),
         "connect" => validate_connect_command(&args[1..]),
         "connections" => validate_connections_command(&args[1..]),
@@ -2415,22 +2415,22 @@ fn validate_serve_command(args: &[String]) -> std::result::Result<(), String> {
     Ok(())
 }
 
-fn validate_guard_command(args: &[String]) -> std::result::Result<(), String> {
+fn validate_host_hook_command(args: &[String]) -> std::result::Result<(), String> {
     if is_help_only(args) {
         return Ok(());
     }
     let Some(subcommand) = args.first().map(String::as_str) else {
-        return Err("`volicord guard` requires a lifecycle subcommand".to_string());
+        return Err("`volicord host-hook` requires a lifecycle subcommand".to_string());
     };
     if matches!(subcommand, "-h" | "--help" | "help") {
-        return validate_no_more_args(args, "`volicord guard` help");
+        return validate_no_more_args(args, "`volicord host-hook` help");
     }
     if !matches!(
         subcommand,
         "session-start" | "pre-tool" | "post-tool" | "prompt-capture" | "stop"
     ) {
         return Err(format!(
-            "unknown `volicord guard` subcommand `{subcommand}`; use session-start, pre-tool, post-tool, prompt-capture, or stop"
+            "unknown `volicord host-hook` subcommand `{subcommand}`; use session-start, pre-tool, post-tool, prompt-capture, or stop"
         ));
     }
     let parsed = parse_command_args(
@@ -2453,9 +2453,9 @@ fn validate_guard_command(args: &[String]) -> std::result::Result<(), String> {
     validate_integration_profile_option(
         &parsed,
         "integration-profile",
-        &format!("`volicord guard {subcommand}`"),
+        &format!("`volicord host-hook {subcommand}`"),
     )?;
-    reject_positionals(&parsed, 0, &format!("`volicord guard {subcommand}`"))
+    reject_positionals(&parsed, 0, &format!("`volicord host-hook {subcommand}`"))
 }
 
 fn validate_init_command(args: &[String]) -> std::result::Result<(), String> {
@@ -3005,9 +3005,9 @@ fn validate_integration_profile_option(
     context: &str,
 ) -> std::result::Result<(), String> {
     for value in parsed.value_options.get(option).into_iter().flatten() {
-        if !matches!(value.as_str(), "record" | "observe") {
+        if !matches!(value.as_str(), "record" | "detective") {
             return Err(format!(
-                "{context} option `--{option}` value `{value}` is unsupported; use `record` or `observe`"
+                "{context} option `--{option}` value `{value}` is unsupported; use `record` or `detective`"
             ));
         }
     }

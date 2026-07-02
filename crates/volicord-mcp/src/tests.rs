@@ -1229,14 +1229,14 @@ fn install_prompt_capture_guard(fixture: &CoreFixture) -> Result<(), Box<dyn Err
             connection_internal_id: fixture.connection_id().to_owned(),
             project_id: Some(fixture.project_id().to_owned()),
             host_kind: "prompt_capture_test_host".to_owned(),
-            guard_mode: IntegrationProfile::Observe.as_str().to_owned(),
+            guard_mode: IntegrationProfile::Detective.as_str().to_owned(),
             host_capability_json: json!({
-                "schema": "volicord-guard-capability-v1",
+                "schema": "volicord-host-hook-capability-v1",
                 "policy_hash": "sha256:mcp-prompt-capture",
                 "host_capabilities": {
                     "user_prompt_submit_hook": true
                 },
-                "required_guard_phases": [
+                "required_hook_phases": [
                     "session_start_hook",
                     "pre_tool_hook",
                     "post_tool_hook",

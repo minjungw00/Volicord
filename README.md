@@ -166,10 +166,10 @@ creates the Agent Connection, writes project-scoped MCP configuration that
 starts `volicord mcp --stdio`, writes Volicord-managed guidance and policy
 metadata, and records integration status. `--profile record` does not require
 host lifecycle hook installation or a session watcher and is the supported
-native Windows profile. `--profile observe` requires supported host hook and
-session watcher capabilities and is not supported on native Windows. If observe
+native Windows profile. `--profile detective` requires supported host hook and
+session watcher capabilities and is not supported on native Windows. If detective
 prerequisites are unavailable, use `--profile record` or prepare a supported
-host, platform, and repository configuration for observe before rerunning init.
+host, platform, and repository configuration for detective before rerunning init.
 
 If the command reports `action_required`, follow the named host-controlled or
 local action, such as restarting or reloading the host, approving project MCP
@@ -237,7 +237,7 @@ to record a `Task` and scope, prepare write tickets for proposed product-file
 changes, and record evidence, runs, and User Judgment requests through
 Volicord.
 
-Use the Detective profile (`--profile observe`) only when the selected host,
+Use the Detective profile (`--profile detective`) only when the selected host,
 platform, and Product Repository support the extra observation surfaces. It
 keeps the Record profile model and adds supported host hooks plus a session
 watcher. Those hooks may provide cooperative host warning or denial decision
@@ -252,7 +252,7 @@ and OS enforcement. Current Volicord output reports no actor identity proof and
 no OS enforcement. Treat the summary as an operational disclosure, not a
 security proof.
 
-`observe` does not prevent all writes, identify who changed a file, monitor all
+The `detective` profile does not prevent all writes, identify who changed a file, monitor all
 files, isolate the network, sandbox tools, or prove that a model followed
 instructions. It adds cooperative and detective signals that Volicord can show
 or use in Close Status and reconciliation workflows when the required
@@ -268,7 +268,7 @@ volicord connection verify codex --repo /path/to/your-product-repo
 Use `volicord connection status HOST --repo PATH` and `volicord doctor` when
 you need to inspect stored setup state, required user actions, and the current
 observation facts. Installed files, generated guidance, and policy metadata
-alone do not prove that the host loaded or ran the observe-specific pieces.
+alone do not prove that the host loaded or ran the detective-specific pieces.
 
 Host-specific file layouts, hook matchers, wrapper output modes, path-safety
 diagnostics, and host approval or reload details live in
@@ -373,7 +373,7 @@ HTTP boundaries.
 |---|---|
 | `volicord` is not found | Put the install directory on `PATH`, or install to a directory already on `PATH`, then rerun `volicord --version`. Future agent hosts must also be able to start `volicord`. |
 | `init` reports `action_required` | Complete the named action, such as host restart or reload, project trust, MCP approval, OAuth, command-link repair, or installation-profile repair, then rerun `volicord connection verify HOST --repo PATH`. |
-| Observe-specific checks are inactive | Run `volicord connection verify HOST --repo PATH`, complete the named user action, and use [Agent Host Troubleshooting](docs/en/guides/agent-host-troubleshooting.md) for hook or watcher diagnostics. |
+| Detective-specific checks are inactive | Run `volicord connection verify HOST --repo PATH`, complete the named user action, and use [Agent Host Troubleshooting](docs/en/guides/agent-host-troubleshooting.md) for hook or watcher diagnostics. |
 | Host cannot start MCP | Confirm the host can run `volicord mcp --help` through the same command path. Run `volicord doctor` for installation-profile health. |
 | Product Repository is not detected | Pass `--repo /path/to/your-product-repo` and make sure the path is an existing local repository separate from the Runtime Home. |
 | A judgment is pending | Prefer the host prompt or exact chat command when available. Use `volicord inbox` and `volicord inbox answer` as the CLI inbox path. |

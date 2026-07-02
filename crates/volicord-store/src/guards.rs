@@ -1375,7 +1375,7 @@ fn selected_guard_installation(
 
 fn guard_mode_priority(value: &str) -> u8 {
     match value {
-        "observe" => 2,
+        "detective" => 2,
         "record" => 1,
         _ => 0,
     }
@@ -1672,7 +1672,8 @@ fn validate_guard_installation_observation(
     validate_guard_mode(&input.guard_mode)?;
     if input.guard_mode == IntegrationProfile::Record.as_str() {
         return Err(StoreError::InvalidInput {
-            detail: "host hook observation requires observe integration profile".to_owned(),
+            detail: "host hook observation requires detective host-hook integration profile"
+                .to_owned(),
         });
     }
     validate_identifier("observed_policy_hash", &input.observed_policy_hash)?;
@@ -1851,14 +1852,14 @@ fn validate_host_kind(value: &str) -> StoreResult<()> {
 fn validate_guard_mode(value: &str) -> StoreResult<()> {
     if [
         IntegrationProfile::Record.as_str(),
-        IntegrationProfile::Observe.as_str(),
+        IntegrationProfile::Detective.as_str(),
     ]
     .contains(&value)
     {
         Ok(())
     } else {
         Err(StoreError::InvalidInput {
-            detail: "integration profile must be record or observe".to_owned(),
+            detail: "integration profile must be record or detective".to_owned(),
         })
     }
 }
@@ -1997,7 +1998,7 @@ fn host_capability_has_missing_required_hooks(host_capability_json: &str) -> Sto
         return Ok(true);
     }
     let configured_phases = value
-        .get("required_guard_phases")
+        .get("required_hook_phases")
         .and_then(Value::as_array)
         .map(|values| {
             values
@@ -2457,7 +2458,7 @@ mod tests {
                 connection_internal_id: "conn_guard_a".to_owned(),
                 project_id: Some("project_guard_a".to_owned()),
                 host_kind: "codex".to_owned(),
-                guard_mode: "observe".to_owned(),
+                guard_mode: "detective".to_owned(),
                 host_capability_json: r#"{"prompt_capture":true}"#.to_owned(),
                 installation_status: "active".to_owned(),
                 installed_at: Some("2026-06-30T00:00:00Z".to_owned()),
@@ -2472,7 +2473,7 @@ mod tests {
             },
         )?;
         assert_eq!(installation.project_id.as_deref(), Some("project_guard_a"));
-        assert_eq!(installation.guard_mode, "observe");
+        assert_eq!(installation.guard_mode, "detective");
 
         let session = insert_agent_session(
             fixture.runtime_home.path(),
@@ -2482,7 +2483,7 @@ mod tests {
                 connection_internal_id: "conn_guard_a".to_owned(),
                 guard_installation_id: Some("guard_installation_a".to_owned()),
                 host_kind: "codex".to_owned(),
-                guard_mode: "observe".to_owned(),
+                guard_mode: "detective".to_owned(),
                 started_at: "2026-06-30T00:02:00Z".to_owned(),
                 metadata_json: "{}".to_owned(),
             },
@@ -2648,7 +2649,7 @@ mod tests {
                 connection_internal_id: "conn_guard_a".to_owned(),
                 guard_installation_id: None,
                 host_kind: "codex".to_owned(),
-                guard_mode: "observe".to_owned(),
+                guard_mode: "detective".to_owned(),
                 started_at: "2026-06-30T01:00:00Z".to_owned(),
                 metadata_json: "{}".to_owned(),
             },
@@ -2714,7 +2715,7 @@ mod tests {
                 connection_internal_id: "conn_guard_a".to_owned(),
                 project_id: Some("project_guard_b".to_owned()),
                 host_kind: "codex".to_owned(),
-                guard_mode: "observe".to_owned(),
+                guard_mode: "detective".to_owned(),
                 host_capability_json: "{}".to_owned(),
                 installation_status: "active".to_owned(),
                 installed_at: None,
@@ -2742,7 +2743,7 @@ mod tests {
 
     #[test]
     fn guard_installation_observation_promotes_active() -> Result<(), Box<dyn Error>> {
-        let fixture = GuardFixture::new("guard-observe-active")?;
+        let fixture = GuardFixture::new("guard-detective-active")?;
         fixture.add_project_connection("project_guard_a", "conn_guard_a", "repo-a")?;
         fixture.upsert_observable_installation("guard_installation_a", "conn_guard_a")?;
 
@@ -2753,7 +2754,7 @@ mod tests {
                 connection_internal_id: "conn_guard_a".to_owned(),
                 project_id: "project_guard_a".to_owned(),
                 host_kind: "codex".to_owned(),
-                guard_mode: "observe".to_owned(),
+                guard_mode: "detective".to_owned(),
                 observed_policy_hash: "sha256:policy-a".to_owned(),
                 observed_binary_version: Some("1.2.3".to_owned()),
                 observed_phase: "session_start".to_owned(),
@@ -2786,7 +2787,7 @@ mod tests {
                 connection_internal_id: "conn_guard_a".to_owned(),
                 project_id: "project_guard_a".to_owned(),
                 host_kind: "codex".to_owned(),
-                guard_mode: "observe".to_owned(),
+                guard_mode: "detective".to_owned(),
                 observed_policy_hash: "sha256:policy-a".to_owned(),
                 observed_binary_version: Some("1.2.4".to_owned()),
                 observed_phase: "pre_tool".to_owned(),
@@ -2815,8 +2816,8 @@ mod tests {
                 connection_internal_id: "conn_guard_a".to_owned(),
                 project_id: Some("project_guard_a".to_owned()),
                 host_kind: "codex".to_owned(),
-                guard_mode: "observe".to_owned(),
-                host_capability_json: r#"{"policy_hash":"sha256:policy-a","required_guard_phases":["session_start_hook","pre_tool_hook","post_tool_hook","user_prompt_submit_hook","stop_hook"],"missing_required_hooks":[],"prompt_capture":true}"#.to_owned(),
+                guard_mode: "detective".to_owned(),
+                host_capability_json: r#"{"policy_hash":"sha256:policy-a","required_hook_phases":["session_start_hook","pre_tool_hook","post_tool_hook","user_prompt_submit_hook","stop_hook"],"missing_required_hooks":[],"prompt_capture":true}"#.to_owned(),
                 installation_status: "configured".to_owned(),
                 installed_at: Some("2026-06-30T02:06:00Z".to_owned()),
                 last_checked_at: "2026-06-30T02:06:00Z".to_owned(),
@@ -2840,7 +2841,7 @@ mod tests {
     #[test]
     fn guard_installation_observation_records_metadata_without_promoting_degraded(
     ) -> Result<(), Box<dyn Error>> {
-        let fixture = GuardFixture::new("guard-observe-degraded")?;
+        let fixture = GuardFixture::new("guard-detective-degraded")?;
         fixture.add_project_connection("project_guard_a", "conn_guard_a", "repo-a")?;
         upsert_guard_installation(
             fixture.runtime_home.path(),
@@ -2849,8 +2850,8 @@ mod tests {
                 connection_internal_id: "conn_guard_a".to_owned(),
                 project_id: Some("project_guard_a".to_owned()),
                 host_kind: "codex".to_owned(),
-                guard_mode: "observe".to_owned(),
-                host_capability_json: r#"{"policy_hash":"sha256:policy-a","required_guard_phases":["session_start_hook","pre_tool_hook"],"missing_required_hooks":["pre_tool_hook"],"prompt_capture":true}"#.to_owned(),
+                guard_mode: "detective".to_owned(),
+                host_capability_json: r#"{"policy_hash":"sha256:policy-a","required_hook_phases":["session_start_hook","pre_tool_hook"],"missing_required_hooks":["pre_tool_hook"],"prompt_capture":true}"#.to_owned(),
                 installation_status: "degraded".to_owned(),
                 installed_at: Some("2026-06-30T01:59:00Z".to_owned()),
                 last_checked_at: "2026-06-30T01:59:00Z".to_owned(),
@@ -2871,7 +2872,7 @@ mod tests {
                 connection_internal_id: "conn_guard_a".to_owned(),
                 project_id: "project_guard_a".to_owned(),
                 host_kind: "codex".to_owned(),
-                guard_mode: "observe".to_owned(),
+                guard_mode: "detective".to_owned(),
                 observed_policy_hash: "sha256:policy-a".to_owned(),
                 observed_binary_version: Some("1.2.3".to_owned()),
                 observed_phase: "session_start".to_owned(),
@@ -2900,7 +2901,7 @@ mod tests {
     #[test]
     fn guard_installation_observation_does_not_promote_partial_required_phase_configuration(
     ) -> Result<(), Box<dyn Error>> {
-        let fixture = GuardFixture::new("guard-observe-partial-hooks")?;
+        let fixture = GuardFixture::new("guard-detective-partial-hooks")?;
         fixture.add_project_connection("project_guard_a", "conn_guard_a", "repo-a")?;
         upsert_guard_installation(
             fixture.runtime_home.path(),
@@ -2909,8 +2910,8 @@ mod tests {
                 connection_internal_id: "conn_guard_a".to_owned(),
                 project_id: Some("project_guard_a".to_owned()),
                 host_kind: "codex".to_owned(),
-                guard_mode: "observe".to_owned(),
-                host_capability_json: r#"{"policy_hash":"sha256:policy-a","required_guard_phases":["session_start_hook"],"missing_required_hooks":[],"prompt_capture":true}"#.to_owned(),
+                guard_mode: "detective".to_owned(),
+                host_capability_json: r#"{"policy_hash":"sha256:policy-a","required_hook_phases":["session_start_hook"],"missing_required_hooks":[],"prompt_capture":true}"#.to_owned(),
                 installation_status: "configured".to_owned(),
                 installed_at: Some("2026-06-30T01:59:00Z".to_owned()),
                 last_checked_at: "2026-06-30T01:59:00Z".to_owned(),
@@ -2931,7 +2932,7 @@ mod tests {
                 connection_internal_id: "conn_guard_a".to_owned(),
                 project_id: "project_guard_a".to_owned(),
                 host_kind: "codex".to_owned(),
-                guard_mode: "observe".to_owned(),
+                guard_mode: "detective".to_owned(),
                 observed_policy_hash: "sha256:policy-a".to_owned(),
                 observed_binary_version: Some("1.2.3".to_owned()),
                 observed_phase: "session_start".to_owned(),
@@ -2952,7 +2953,7 @@ mod tests {
     #[test]
     fn guard_installation_observation_rejects_mismatched_identity_or_policy(
     ) -> Result<(), Box<dyn Error>> {
-        let fixture = GuardFixture::new("guard-observe-invalid")?;
+        let fixture = GuardFixture::new("guard-detective-invalid")?;
         fixture.add_project_connection("project_guard_a", "conn_guard_a", "repo-a")?;
         fixture.add_project_connection("project_guard_b", "conn_guard_b", "repo-b")?;
         fixture.add_connection_to_existing_project("project_guard_a", "conn_guard_other")?;
@@ -2964,7 +2965,7 @@ mod tests {
                 connection_internal_id: "conn_guard_other".to_owned(),
                 project_id: "project_guard_a".to_owned(),
                 host_kind: "codex".to_owned(),
-                guard_mode: "observe".to_owned(),
+                guard_mode: "detective".to_owned(),
                 observed_policy_hash: "sha256:policy-a".to_owned(),
                 observed_binary_version: Some("1.2.3".to_owned()),
                 observed_phase: "session_start".to_owned(),
@@ -2975,7 +2976,7 @@ mod tests {
                 connection_internal_id: "conn_guard_a".to_owned(),
                 project_id: "project_guard_b".to_owned(),
                 host_kind: "codex".to_owned(),
-                guard_mode: "observe".to_owned(),
+                guard_mode: "detective".to_owned(),
                 observed_policy_hash: "sha256:policy-a".to_owned(),
                 observed_binary_version: Some("1.2.3".to_owned()),
                 observed_phase: "pre_tool".to_owned(),
@@ -2986,7 +2987,7 @@ mod tests {
                 connection_internal_id: "conn_guard_a".to_owned(),
                 project_id: "project_guard_a".to_owned(),
                 host_kind: "claude_code".to_owned(),
-                guard_mode: "observe".to_owned(),
+                guard_mode: "detective".to_owned(),
                 observed_policy_hash: "sha256:policy-a".to_owned(),
                 observed_binary_version: Some("1.2.3".to_owned()),
                 observed_phase: "post_tool".to_owned(),
@@ -2997,7 +2998,7 @@ mod tests {
                 connection_internal_id: "conn_guard_a".to_owned(),
                 project_id: "project_guard_a".to_owned(),
                 host_kind: "codex".to_owned(),
-                guard_mode: "observe".to_owned(),
+                guard_mode: "detective".to_owned(),
                 observed_policy_hash: "sha256:other-policy".to_owned(),
                 observed_binary_version: Some("1.2.3".to_owned()),
                 observed_phase: "stop".to_owned(),
@@ -3022,7 +3023,7 @@ mod tests {
 
     #[test]
     fn guard_installation_observation_rejects_unknown_phase() -> Result<(), Box<dyn Error>> {
-        let fixture = GuardFixture::new("guard-observe-unknown-phase")?;
+        let fixture = GuardFixture::new("guard-detective-unknown-phase")?;
         fixture.add_project_connection("project_guard_a", "conn_guard_a", "repo-a")?;
         fixture.upsert_observable_installation("guard_installation_a", "conn_guard_a")?;
 
@@ -3033,7 +3034,7 @@ mod tests {
                 connection_internal_id: "conn_guard_a".to_owned(),
                 project_id: "project_guard_a".to_owned(),
                 host_kind: "codex".to_owned(),
-                guard_mode: "observe".to_owned(),
+                guard_mode: "detective".to_owned(),
                 observed_policy_hash: "sha256:policy-a".to_owned(),
                 observed_binary_version: Some("1.2.3".to_owned()),
                 observed_phase: "unknown_phase".to_owned(),
@@ -3139,8 +3140,8 @@ mod tests {
                     connection_internal_id: connection_id.to_owned(),
                     project_id: Some("project_guard_a".to_owned()),
                     host_kind: "codex".to_owned(),
-                    guard_mode: "observe".to_owned(),
-                    host_capability_json: r#"{"policy_hash":"sha256:policy-a","required_guard_phases":["session_start_hook","pre_tool_hook","post_tool_hook","user_prompt_submit_hook","stop_hook"],"missing_required_hooks":[],"prompt_capture":true}"#.to_owned(),
+                    guard_mode: "detective".to_owned(),
+                    host_capability_json: r#"{"policy_hash":"sha256:policy-a","required_hook_phases":["session_start_hook","pre_tool_hook","post_tool_hook","user_prompt_submit_hook","stop_hook"],"missing_required_hooks":[],"prompt_capture":true}"#.to_owned(),
                     installation_status: "reload_required".to_owned(),
                     installed_at: Some("2026-06-30T01:59:00Z".to_owned()),
                     last_checked_at: "2026-06-30T01:59:00Z".to_owned(),

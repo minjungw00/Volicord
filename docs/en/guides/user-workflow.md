@@ -164,7 +164,7 @@ for you, call `volicord.record_user_judgment`, or convert a chat reply into
 recorded Volicord state outside a supported User Channel path. A strict
 chat command such as `Volicord: answer J-3 1 #AB7K` is a User Channel path
 only when command capture is available and the current verification code is
-validated and recorded by the observe host hook. Generated
+validated and recorded by the detective host hook. Generated
 Markdown, status summaries, ordinary chat text, Product Repository guidance, and
 rendered projections can help you read state, but they are not the Volicord
 record;
@@ -211,7 +211,7 @@ the actor. CLI recovery is `volicord changes reconcile`; if reconciliation
 creates a pending judgment, answer it through the normal User Channel path and
 rerun reconciliation.
 
-If observe status reports `hook_path_safety` as anything other than `ok`, treat
+If detective status reports `hook_path_safety` as anything other than `ok`, treat
 hook-based cooperative pre-tool warning or denial, chat command capture, and
 Unrecorded Change observation as unavailable or degraded until the setup is
 repaired. Exact repair guidance belongs to

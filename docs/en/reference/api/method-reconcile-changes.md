@@ -23,11 +23,11 @@ This document does not own:
 
 ## Purpose
 
-`volicord.reconcile_changes` is the public recovery path for observe-hook and session-watch-created unrecorded Product Repository change findings.
+`volicord.reconcile_changes` is the public recovery path for detective-hook and session-watch-created unrecorded Product Repository change findings.
 
-The method lists unresolved findings for the selected Task, resolves findings that Core can verify from stored Core, guard, expected-write, or session-watch records, and creates ordinary pending `UserJudgment` rows when a remaining finding requires a user-owned acceptance decision. It must not silently dismiss a bypass finding. It must not let an Agent Connection mark an unrecorded Product Repository change accepted without a compatible resolved User Channel judgment.
+The method lists unresolved findings for the selected Task, resolves findings that Core can verify from stored Core, host-hook, expected-write, or session-watch records, and creates ordinary pending `UserJudgment` rows when a remaining finding requires a user-owned acceptance decision. It must not silently dismiss a bypass finding. It must not let an Agent Connection mark an unrecorded Product Repository change accepted without a compatible resolved User Channel judgment.
 
-Resolving an unrecorded-change finding removes that finding from the unresolved guard-health count and from the `unresolved_unrecorded_changes` close blocker calculation. It does not prove that the changed product files are correct, reviewed, tested, accepted for close, or acceptable residual risk.
+Resolving an unrecorded-change finding removes that finding from the unresolved host-hook health count and from the `unresolved_unrecorded_changes` close blocker calculation. It does not prove that the changed product files are correct, reviewed, tested, accepted for close, or acceptable residual risk.
 
 ## Required inputs
 

@@ -128,7 +128,7 @@ where
             run_init_command(&args[2..], current_dir, &mut connection_process)
                 .map_err(CliError::from)
         }
-        "guard" => {
+        "host-hook" => {
             if !guard_help_requested(&args[2..]) {
                 require_setup_completed(&env_var, current_dir)?;
             }

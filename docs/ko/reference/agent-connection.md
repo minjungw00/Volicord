@@ -83,8 +83,8 @@ Agent Connection 생명주기는 여러 상태 영역에 걸쳐 있습니다. �
 | 제거 | 관리 호스트 내용, `connection_projects`, 그리고 경우에 따라 `agent_connections`입니다. | `volicord connection remove`. | 제거는 `Product Repository`, 프로젝트 등록, 프로젝트 상태, Core 기록, Runtime Home 자체, 아티팩트 저장소, 관련 없는 호스트 설정을 삭제하면 안 됩니다. |
 
 Volicord 관리 호스트 설정은 Volicord가 특정 생성 호스트 설정 내용을 소유하고 지문으로
-확인한다는 뜻입니다. 이는 호스트 계약에 기록된 내부 guard 배포 상태와 같지 않습니다. 그
-상태는 hook 관련 구현 기록을 위한 검증된 출처를 설명하며, 공개 통합 모드나 보안 경계가
+확인한다는 뜻입니다. 이는 호스트 계약에 기록된 내부 host-hook 배포 상태와 같지 않습니다.
+그 상태는 hook 관련 구현 기록을 위한 검증된 출처를 설명하며, 공개 통합 모드나 보안 경계가
 아닙니다.
 
 규칙:

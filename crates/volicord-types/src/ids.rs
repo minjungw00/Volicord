@@ -59,8 +59,11 @@ opaque_string_type!(ProjectId, "Opaque project identifier.");
 opaque_string_type!(TaskId, "Opaque Task identifier.");
 opaque_string_type!(AgentConnectionId, "Opaque Agent Connection identifier.");
 opaque_string_type!(AgentSessionId, "Opaque Agent Session identifier.");
-opaque_string_type!(GuardInstallationId, "Opaque guard-installation identifier.");
-opaque_string_type!(GuardEventId, "Opaque guard-event identifier.");
+opaque_string_type!(
+    GuardInstallationId,
+    "Opaque host-hook installation identifier."
+);
+opaque_string_type!(GuardEventId, "Opaque host-hook event identifier.");
 opaque_string_type!(PromptCaptureId, "Opaque prompt-capture identifier.");
 opaque_string_type!(UnrecordedChangeId, "Opaque unrecorded-change identifier.");
 opaque_string_type!(RequestId, "Opaque request identifier.");
@@ -117,9 +120,9 @@ pub enum DurableIdKind {
     Event,
     /// Core-generated Agent Session ids.
     AgentSession,
-    /// Core-generated guard-installation ids.
+    /// Core-generated host-hook installation ids.
     GuardInstallation,
-    /// Core-generated guard-event ids.
+    /// Core-generated host-hook event ids.
     GuardEvent,
     /// Core-generated prompt-capture ids.
     PromptCapture,

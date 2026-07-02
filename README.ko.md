@@ -155,9 +155,9 @@ Runtime Home을 초기화하고, 설치 프로필을 기록하며, 선택한 Pro
 재사용하고, Agent Connection을 만들며, `volicord mcp --stdio`를 시작하는 프로젝트 범위
 MCP 설정을 씁니다. 또한 Volicord 관리 지침과 policy 메타데이터를 쓰고 통합 상태를
 기록합니다. `--profile record`는 호스트 lifecycle hook 설치나 session watcher를 요구하지
-않으며 native Windows에서 지원되는 프로필입니다. `--profile observe`는 지원되는 host
+않으며 native Windows에서 지원되는 프로필입니다. `--profile detective`는 지원되는 host
 hook과 session watcher capability를 요구하고 native Windows에서는 지원되지 않습니다.
-Observe 전제조건을 사용할 수 없으면 `--profile record`를 사용하거나, observe를 다시
+Detective 전제조건을 사용할 수 없으면 `--profile record`를 사용하거나, detective를 다시
 실행하기 전에 지원되는 호스트, 플랫폼, 저장소 설정을 준비합니다.
 
 명령이 `action_required`를 보고하면 이름 붙은 호스트 통제 동작이나 로컬 동작을 따릅니다.
@@ -219,7 +219,7 @@ Record profile(`--profile record`)은 host lifecycle hook이나 session watcher�
 Volicord를 통해 `Task`와 범위를 기록하고, 제안된 제품 파일 변경을 위한 쓰기 티켓을
 준비하며, 증거, 실행, 사용자 판단 요청을 기록하게 하려는 첫 경로입니다.
 
-Detective profile(`--profile observe`)은 선택한 호스트, 플랫폼, Product Repository가 추가
+Detective profile(`--profile detective`)은 선택한 호스트, 플랫폼, Product Repository가 추가
 관찰 표면을 지원할 때만 사용합니다. Record profile 모델은 그대로 유지하면서 지원되는
 host hook과 session watcher를 더합니다. 이 hook은 협력형 host warning 또는 denial
 decision 신호를 제공할 수 있고, watcher는 coverage가 시작된 뒤 미기록 Product Repository
@@ -231,7 +231,7 @@ watcher 관찰, 협력형 pre-tool warning 또는 denial, 미기록 변경 탐�
 증명, OS 집행이 포함됩니다. 현재 Volicord 출력은 행위자 identity 증명과 OS 집행을
 제공하지 않는다고 보고합니다. 이 요약은 운영 상태 공개이며 보안 증명이 아닙니다.
 
-`observe`는 모든 쓰기를 막거나, 파일을 바꾼 사람이 누구인지 식별하거나, 모든 파일을
+`detective` 프로필은 모든 쓰기를 막거나, 파일을 바꾼 사람이 누구인지 식별하거나, 모든 파일을
 감시하거나, 네트워크를 격리하거나, 도구를 샌드박스하거나, 모델이 지침을 따랐다는 것을
 증명하지 않습니다. 필요한 관찰이 실제로 활성일 때 Volicord가 닫기 상태와 조정
 워크플로에서 보여 주거나 사용할 수 있는 협력형 및 탐지형 신호를 더합니다.
@@ -245,7 +245,7 @@ volicord connection verify codex --repo /path/to/your-product-repo
 
 저장된 설정 상태, 필요한 사용자 동작, 현재 관찰 사실을 확인해야 하면
 `volicord connection status HOST --repo PATH`와 `volicord doctor`를 사용합니다. 설치된
-파일, 생성된 안내, policy 메타데이터만으로 호스트가 observe 전용 구성 요소를 로드하거나
+파일, 생성된 안내, policy 메타데이터만으로 호스트가 detective 전용 구성 요소를 로드하거나
 실행했다는 것이 증명되지는 않습니다.
 
 호스트별 파일 배치, hook matcher, wrapper 출력 방식, 경로 안전성 진단, 호스트 approval
@@ -342,7 +342,7 @@ server-sent event 스트림, HTTP elicitation, 전체 MCP Streamable HTTP 호환
 |---|---|
 | `volicord`를 찾지 못함 | 설치 디렉터리를 `PATH`에 넣거나 이미 `PATH`에 있는 디렉터리에 설치한 뒤 `volicord --version`을 다시 실행합니다. 미래의 에이전트 호스트도 `volicord`를 시작할 수 있어야 합니다. |
 | `init`이 `action_required`를 보고함 | 호스트 restart 또는 reload, 프로젝트 trust, MCP approval, OAuth, 명령 링크 복구, 설치 프로필 복구처럼 이름 붙은 동작을 완료한 뒤 `volicord connection verify HOST --repo PATH`를 다시 실행합니다. |
-| Observe 전용 점검이 활성화되지 않음 | `volicord connection verify HOST --repo PATH`를 실행하고, 이름 붙은 사용자 동작을 완료한 뒤, hook 또는 watcher 진단은 [에이전트 호스트 문제 해결](docs/ko/guides/agent-host-troubleshooting.md)을 사용합니다. |
+| Detective 전용 점검이 활성화되지 않음 | `volicord connection verify HOST --repo PATH`를 실행하고, 이름 붙은 사용자 동작을 완료한 뒤, hook 또는 watcher 진단은 [에이전트 호스트 문제 해결](docs/ko/guides/agent-host-troubleshooting.md)을 사용합니다. |
 | 호스트가 MCP를 시작하지 못함 | 같은 명령 경로로 호스트가 `volicord mcp --help`를 실행할 수 있는지 확인합니다. 설치 프로필 상태는 `volicord doctor`로 확인합니다. |
 | Product Repository가 감지되지 않음 | `--repo /path/to/your-product-repo`를 넘기고, 그 경로가 Runtime Home과 분리된 기존 로컬 저장소인지 확인합니다. |
 | 판단이 대기 중임 | 가능하면 호스트 프롬프트나 정확한 채팅 명령을 우선 사용합니다. CLI inbox 경로로 `volicord inbox`와 `volicord inbox answer`를 사용합니다. |

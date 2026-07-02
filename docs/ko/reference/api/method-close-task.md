@@ -85,7 +85,7 @@ API 경계 블록:
 
 - `intent=complete`는 사전 확인이 성공하고, 현재 `CurrentCloseBasis`에 대한 닫기 준비 상태 평가가 유효하며, 현재 닫기 근거 참조가 그 아티팩트 및 실행 기록 호환성 규칙을 만족하고, 닫기 차단 사유가 남아 있지 않을 때만 닫을 수 있습니다.
 - 해당 `Task`의 쓰기 티켓이 아직 열려 있거나, active 쓰기 티켓이 해결 없이 만료되었거나, host-hook 또는 watcher 관찰이 티켓 범위 밖의 미해결 Product Repository 경로를 보고하면 닫기 준비 상태는 차단됩니다.
-- `observe` 프로필에서는 닫기 준비 상태가 hook 경로 안전성, prompt capture 사용 가능 사실, 해결되지 않은 미기록 Product Repository 변경, hook이 감지한 쓰기 티켓 문제, session watch 사용 가능성을 포함한 `GuardHealthSummary` host-hook 및 관찰 상태 사실도 확인합니다. `record` 프로필에서는 host hook이 요구되지 않습니다. 해결되지 않은 미기록 Product Repository 변경은 조정으로 해결될 때까지 닫기를 막습니다.
+- `detective` 프로필에서는 닫기 준비 상태가 hook 경로 안전성, prompt capture 사용 가능 사실, 해결되지 않은 미기록 Product Repository 변경, hook이 감지한 쓰기 티켓 문제, session watch 사용 가능성을 포함한 `GuardHealthSummary` host-hook 및 관찰 상태 사실도 확인합니다. `record` 프로필에서는 host hook이 요구되지 않습니다. 해결되지 않은 미기록 Product Repository 변경은 조정으로 해결될 때까지 닫기를 막습니다.
 - Host hook과 session watch 관찰은 Product Repository 쓰기를 막지 않으며 파일을 바꾼 행위자를 식별하지 않습니다. 협력형 탐지와 expected-write 또는 쓰기 티켓 기록에 대한 상관 관계만 지원합니다.
 - 필요한 닫기 증거는 현재 닫기 근거에 맞고 주장과 일치하는 증거 관찰 출처로 뒷받침되어야 합니다. 더 강한 출처가 필요한 닫기 요구사항에는 확인되지 않은 주장, 출처 없는 증거, 오래된 출처, 협력적 에이전트 보고만으로 된 증거가 충분하지 않습니다.
 - `intent=cancel`은 `machine_action=accept`, `resolution_outcome=accepted`, `resolved_by_actor_source=local_user`, 호환 User Channel 출처, `Task`, 현재 범위 리비전, 현재 적용 Change Unit에 묶인 근거를 가진 현재 수락된 취소 판단을 요구합니다. 완료 전용 증거, 최종 수락, 잔여 위험 수락은 필요하지 않습니다.
@@ -159,7 +159,7 @@ CloseTaskRequest:
 1. 요청 래퍼, 메서드 필드, `intent` 필드 조합, 같은 프로젝트의 `Task` 식별자를 검증합니다. 형태 오류, 잘못된 프로젝트 식별자, 읽을 수 없는 `Task` 식별자는 `ToolRejectedResponse`를 반환합니다.
 2. 호출 맥락, 작업 범주, 행위자 출처, 요청한 종료 경로의 선행조건을 확인합니다.
 3. `dry_run=false`인 상태 변경 `intent`에서는 `idempotency_key`, 현재 `expected_state_version`, 멱등 요청 해시, 닫기 관련 `WriteTicket.basis_state_version`을 확인합니다. 오래되었거나 충돌하는 값은 `ToolRejectedResponse`를 반환합니다.
-4. `intent=check`는 선택된 결정적 session-watch 확인을 실행하고, 선택된 guard 상태 사실을 포함해 [`volicord.status`](method-status.md)의 `include.close=true`와 같은 계산으로 현재 닫기 준비 상태를 계산한 뒤 `CloseTaskResult`를 반환합니다.
+4. `intent=check`는 선택된 결정적 session-watch 확인을 실행하고, 선택된 host-hook 상태 사실을 포함해 [`volicord.status`](method-status.md)의 `include.close=true`와 같은 계산으로 현재 닫기 준비 상태를 계산한 뒤 `CloseTaskResult`를 반환합니다.
 5. 상태 변경 `intent`와 `dry_run=true` 조합은 유효한 사전 확인 뒤 공통 미리보기 분기를 반환합니다.
 6. `intent=complete`는 현재 `CurrentCloseBasis`에 대한 닫기 준비 상태 평가를 실행합니다. 차단 사유가 남아 있으면 차단 분기를 반환하고, 없으면 `close_state=closed`, 종료 닫기 결과, 잔여 위험 수락이 필요하지 않은 닫기 근거의 알려진 한계에 대해 메서드가 선택한 프로젝트 연속성 기록을 커밋합니다.
 7. `intent=cancel`은 `machine_action=accept`, `resolution_outcome=accepted`, `resolved_by_actor_source=local_user`, 호환 User Channel 출처를 가지며 현재 `Task`, 범위 리비전, Change Unit과 호환되는 현재 수락된 `judgment_kind=cancellation`을 요구합니다. 취소 권한이 없거나 호환되지 않으면 차단 분기를 반환합니다.
@@ -226,16 +226,16 @@ CloseTaskRequest:
 | `expired_write_ticket` | `write_compatibility` | 선택된 `Task`의 쓰기 티켓이 해결되지 않은 상태로 만료되었습니다. |
 | `write_ticket_stale` | `write_compatibility` | 닫기 관련 쓰기 티켓이 `STATE_VERSION_CONFLICT`로 처리되지 않는 최신성 사유로 사용할 수 없습니다. |
 | `baseline_stale` | `baseline` | 닫기 관련 기준선 근거가 차단 사유 생성 경로에서 오래되었습니다. |
-| `guard_not_installed` | `connection_capability` | observe 닫기 경로에 확인된 연결에 대해 사용할 수 있는 observe host-hook 설치 기록이 없습니다. |
-| `guard_reload_required` | `connection_capability` | observe hook 파일은 설치되어 있지만, Volicord가 설정된 hook을 관찰하기 전에 호스트를 restart 또는 reload해야 합니다. |
-| `guard_not_observed` | `connection_capability` | observe 닫기 경로에 observe hook 파일은 설정되어 있지만 일치하는 host-hook 관찰이 기록되어 있지 않습니다. |
-| `guard_stale` | `connection_capability` | observe 닫기 경로에 기록 상태가 `stale`인 내부 guard 설치 기록이 있습니다. |
-| `guard_broken` | `connection_capability` | observe 닫기 경로에 기록 상태가 `broken`인 내부 guard 설치 기록이 있습니다. |
-| `guard_required_hooks_missing` | `connection_capability` | observe 닫기 경로에 필요한 host-hook 단계가 누락된 내부 guard 설치 기록이 있습니다. 이 차단 사유는 누락 단계, 호스트 종류, `terminal_action_required`, `can_resolve_in_chat`, `next_actions`를 보고합니다. |
-| `guard_degraded` | `connection_capability` | observe 닫기 경로에 더 구체적인 `guard_*` 차단 사유로 처리되지 않는 host-hook 설정 또는 관찰 상태 건강 저하가 있고 현재 observe hook-health 정책이 저하 상태에서 닫기를 차단합니다. |
-| `guard_connection_unhealthy` | `connection_capability` | observe 닫기 경로에 건강하지 않은 Agent Connection 상태 사실이 있습니다. |
-| `session_watch_unavailable` | `connection_capability` | observe 닫기 경로에 Product Repository session-watch coverage가 필요하지만 선택된 watcher 상태가 `disabled`, `degraded`, `unavailable`이거나 활성 상태이면서 부분 coverage 경고가 있습니다. |
-| `unresolved_unrecorded_changes` | `connection_capability` | observe control surface 건강 상태가 닫기 전에 조정해야 하는 해결되지 않은 미기록 Product Repository 변경을 보고합니다. 이 차단 사유는 `owner_method=volicord.reconcile_changes`인 `next_actions`를 포함하며, `can_resolve_in_chat`은 현재 경로가 채팅 매개 사용자 경로로 진행할 수 있는지를 나타냅니다. |
+| `guard_not_installed` | `connection_capability` | detective 닫기 경로에 확인된 연결에 대해 사용할 수 있는 detective host-hook 설치 기록이 없습니다. |
+| `guard_reload_required` | `connection_capability` | detective host hook 파일은 설치되어 있지만, Volicord가 설정된 hook을 관찰하기 전에 호스트를 restart 또는 reload해야 합니다. |
+| `guard_not_observed` | `connection_capability` | detective 닫기 경로에 detective host hook 파일은 설정되어 있지만 일치하는 host-hook 관찰이 기록되어 있지 않습니다. |
+| `guard_stale` | `connection_capability` | detective 닫기 경로에 기록 상태가 `stale`인 내부 host-hook 설치 기록이 있습니다. |
+| `guard_broken` | `connection_capability` | detective 닫기 경로에 기록 상태가 `broken`인 내부 host-hook 설치 기록이 있습니다. |
+| `guard_required_hooks_missing` | `connection_capability` | detective 닫기 경로에 필요한 host-hook 단계가 누락된 내부 host-hook 설치 기록이 있습니다. 이 차단 사유는 누락 단계, 호스트 종류, `terminal_action_required`, `can_resolve_in_chat`, `next_actions`를 보고합니다. |
+| `guard_degraded` | `connection_capability` | detective 닫기 경로에 더 구체적인 `guard_*` 차단 사유로 처리되지 않는 host-hook 설정 또는 관찰 상태 건강 저하가 있고 현재 detective host hook-health 정책이 저하 상태에서 닫기를 차단합니다. |
+| `guard_connection_unhealthy` | `connection_capability` | detective 닫기 경로에 건강하지 않은 Agent Connection 상태 사실이 있습니다. |
+| `session_watch_unavailable` | `connection_capability` | detective 닫기 경로에 Product Repository session-watch coverage가 필요하지만 선택된 watcher 상태가 `disabled`, `degraded`, `unavailable`이거나 활성 상태이면서 부분 coverage 경고가 있습니다. |
+| `unresolved_unrecorded_changes` | `connection_capability` | detective control surface 건강 상태가 닫기 전에 조정해야 하는 해결되지 않은 미기록 Product Repository 변경을 보고합니다. 이 차단 사유는 `owner_method=volicord.reconcile_changes`인 `next_actions`를 포함하며, `can_resolve_in_chat`은 현재 경로가 채팅 매개 사용자 경로로 진행할 수 있는지를 나타냅니다. |
 | `guard_write_ticket_missing_or_stale` | `write_compatibility` | host-hook 이벤트가 닫기 경로에 누락되었거나, 결정할 수 없거나, 모호하거나, 오래된 쓰기 티켓 준비 상태를 감지했습니다. |
 | `guard_write_ticket_path_scope_violation` | `write_compatibility` | host-hook 이벤트가 active 쓰기 티켓 범위 밖의 Product Repository 경로를 관찰했습니다. |
 | `evidence_claim_unsupported` | `evidence_claim` | 필요한 닫기 주장이 지원되는 증거 범위를 갖지 못했습니다. |
@@ -276,7 +276,7 @@ CloseTaskRequest:
 | 분기 | 생성 규칙 |
 |---|---|
 | `intent=check` | 현재 닫기 준비 상태 차단 사유를 응답 관찰 데이터로 반환합니다. |
-| `intent=complete` | 완료 경로가 닫기 준비 상태 평가에 도달했고 담당 문서가 정의한 닫기 요구사항이 해결되지 않았을 때 닫기 차단 사유를 만듭니다. 여기에는 열려 있거나 만료된 미해결 쓰기 티켓, 해결되지 않은 미기록 변경 찾기, guard 상태, session watch, guard가 감지한 쓰기 티켓 차단 사유가 포함됩니다. 부분 watcher coverage는 다른 담당 policy가 차단하지 않는 한 guard-health 경고로 남습니다. |
+| `intent=complete` | 완료 경로가 닫기 준비 상태 평가에 도달했고 담당 문서가 정의한 닫기 요구사항이 해결되지 않았을 때 닫기 차단 사유를 만듭니다. 여기에는 열려 있거나 만료된 미해결 쓰기 티켓, 해결되지 않은 미기록 변경 찾기, host-hook 상태, session watch, host-hook이 감지한 쓰기 티켓 차단 사유가 포함됩니다. 부분 watcher coverage는 다른 담당 policy가 차단하지 않는 한 host-hook health 경고로 남습니다. |
 | `intent=cancel` | 취소 권한 누락이나 비호환을 포함해 취소 전용 종료 제약에 대해서만 차단 사유를 만듭니다. 완료 전용 증거, 최종 수락, 잔여 위험 공백은 그 자체로 취소를 막지 않습니다. |
 | `intent=supersede` | 대체 전용 종료 제약에 대해서만 차단 사유를 만듭니다. 완료 전용 증거, 최종 수락, 잔여 위험 공백은 그 자체로 대체를 막지 않습니다. |
 

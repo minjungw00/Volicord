@@ -154,7 +154,7 @@ volicord inbox answer JUDGMENT_ID --choice CHOICE_ID
 설명할 수 있습니다. 하지만 Agent Connection은 사용자의 권한 판단을 대신
 기록하거나, `volicord.record_user_judgment`를 호출하거나, 채팅 답변을 기록된
 Volicord 상태로 바꾸면 안 됩니다. `Volicord: answer J-3 1 #AB7K` 같은 엄격한
-채팅 명령은 명령 캡처를 사용할 수 있고 현재 검증 코드를 observe host hook이 검증해
+채팅 명령은 명령 캡처를 사용할 수 있고 현재 검증 코드를 detective host hook이 검증해
 기록할 때만 `User Channel` 경로입니다. 생성된 Markdown, 상태 요약,
 일반 채팅 문장, Product Repository 지침, 렌더링된 상태 보기는 상태를 읽는 데 도움을 줄 수
 있지만 Volicord 기록은 아닙니다. 상태 보기 경계는
@@ -197,7 +197,7 @@ Product Repository 변경을 드러낼 수 있습니다. 이를 악의적 동작
 식별하지 않습니다. CLI 복구 경로는 `volicord changes reconcile`입니다. 조정이 대기
 판단을 만들면 일반 User Channel 경로로 답하고 조정을 다시 실행합니다.
 
-Observe 상태가 `hook_path_safety`를 `ok`가 아닌 값으로 보고하면, 설정을 복구하기 전까지
+Detective 상태가 `hook_path_safety`를 `ok`가 아닌 값으로 보고하면, 설정을 복구하기 전까지
 hook 기반 협력형 pre-tool warning 또는 denial, 채팅 명령 캡처, 미기록 변경 관찰을 사용할
 수 없거나 degraded된 상태로 봅니다. 정확한 복구 안내는 [에이전트 호스트 문제 해결](agent-host-troubleshooting.md#guard-hook-path-or-wrapper-is-unsafe)이
 담당합니다.

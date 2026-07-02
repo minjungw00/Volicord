@@ -137,7 +137,7 @@ It defines what the current work may change and what must stay outside the curre
 
 A Change Unit effect contract is optional Core state attached to a current Change Unit. It expresses additional allowed effects, forbidden effects, allowed paths, expected outputs, invariants, evidence expectations, and sensitive-action expectations.
 
-For product-file writes, the effect contract can narrow what `prepare_write` may mark compatible when it restricts product-file effects or paths. It is not a workflow engine, methodology phase, command interceptor, network blocker, OS sandbox, secret guard, user-owned judgment, sensitive-action approval, evidence, write ticket, final acceptance, close readiness, or residual-risk acceptance.
+For product-file writes, the effect contract can narrow what `prepare_write` may mark compatible when it restricts product-file effects or paths. It is not a workflow engine, methodology phase, command interceptor, network blocker, OS sandbox, secret-control mechanism, user-owned judgment, sensitive-action approval, evidence, write ticket, final acceptance, close readiness, or residual-risk acceptance.
 
 ### Autonomy Boundary
 

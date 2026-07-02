@@ -45,8 +45,8 @@ This document does not own:
   [Agent Connection](agent-connection.md)
 - administrative Runtime Home setup, connection, project, export, and
   verification commands; see [Administrative CLI](admin-cli.md)
-- generated host hook command syntax, hook path safety diagnostics, and guard
-  wrapper repair; see [Administrative CLI](admin-cli.md#guard-hook-commands)
+- generated host hook command syntax, hook path safety diagnostics, and
+  host-hook wrapper repair; see [Administrative CLI](admin-cli.md#guard-hook-commands)
 - storage layout, migrations, and storage effects; see the storage owners
   through [Storage](storage.md)
 

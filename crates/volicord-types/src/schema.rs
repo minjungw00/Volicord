@@ -275,7 +275,7 @@ impl GuaranteeDisclosure {
             guarantee_class: GuaranteeClass::CooperativeHostDecision,
             guarantees: vec![
                 "Reports the decision Volicord returned to a cooperative host hook for one observed event.".to_owned(),
-                "May record the host event and Volicord decision when the guard command reaches the storage path.".to_owned(),
+                "May record the host event and Volicord decision when the host-hook command reaches the storage path.".to_owned(),
             ],
             non_guarantees: broad_non_guarantees(),
         }
@@ -361,7 +361,7 @@ pub struct StateRecordRef {
     pub state_version: RequiredNullable<u64>,
 }
 
-/// Registry-scoped guard installation and host capability record.
+/// Registry-scoped host-hook installation and host capability record.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct GuardInstallation {
@@ -393,7 +393,7 @@ pub struct AgentSession {
     pub metadata: JsonObject,
 }
 
-/// Project-scoped guard event record.
+/// Project-scoped host-hook event record.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct GuardEvent {

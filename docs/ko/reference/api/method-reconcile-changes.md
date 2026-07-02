@@ -23,11 +23,11 @@
 
 ## 목적
 
-`volicord.reconcile_changes`는 observe hook 및 session-watch 생성 미기록 Product Repository 변경 찾기를 복구하는 공개 경로입니다.
+`volicord.reconcile_changes`는 detective host hook 및 session-watch 생성 미기록 Product Repository 변경 찾기를 복구하는 공개 경로입니다.
 
-이 메서드는 선택된 `Task`의 미해결 찾기를 나열하고, Core가 저장된 Core, guard, expected-write, 또는 session-watch 기록에서 검증할 수 있는 찾기를 해결하며, 남은 찾기에 사용자 소유 수락 판단이 필요하면 일반 대기 `UserJudgment` 행을 만듭니다. 우회 찾기를 조용히 묵살하면 안 됩니다. Agent Connection이 호환되는 해결된 User Channel 판단 없이 미기록 Product Repository 변경을 수락으로 표시하게 하면 안 됩니다.
+이 메서드는 선택된 `Task`의 미해결 찾기를 나열하고, Core가 저장된 Core, host-hook, expected-write, 또는 session-watch 기록에서 검증할 수 있는 찾기를 해결하며, 남은 찾기에 사용자 소유 수락 판단이 필요하면 일반 대기 `UserJudgment` 행을 만듭니다. 우회 찾기를 조용히 묵살하면 안 됩니다. Agent Connection이 호환되는 해결된 User Channel 판단 없이 미기록 Product Repository 변경을 수락으로 표시하게 하면 안 됩니다.
 
-미기록 변경 찾기를 해결하면 해당 찾기는 미해결 guard 상태 수와 `unresolved_unrecorded_changes` 닫기 차단 계산에서 빠집니다. 이는 변경된 제품 파일이 정확하거나, 리뷰되었거나, 테스트되었거나, 닫기에 최종 수락되었거나, 잔여 위험으로 수락 가능하다는 증명이 아닙니다.
+미기록 변경 찾기를 해결하면 해당 찾기는 미해결 host-hook 상태 수와 `unresolved_unrecorded_changes` 닫기 차단 계산에서 빠집니다. 이는 변경된 제품 파일이 정확하거나, 리뷰되었거나, 테스트되었거나, 닫기에 최종 수락되었거나, 잔여 위험으로 수락 가능하다는 증명이 아닙니다.
 
 ## 필수 입력
 

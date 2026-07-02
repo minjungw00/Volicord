@@ -145,19 +145,19 @@ WSL UNC 경로, WSL 스타일 `/mnt/<drive>` 경로이기 때문에 유효하지
 volicord init --host codex --repo /path/to/your-product-repo --profile record
 ```
 
-Observe 설정에는 [관리 CLI
+Detective 설정에는 [관리 CLI
 참조](../reference/admin-cli.md#agent-host-setup-and-init)의 전체 init 계약을 사용합니다.
 host hook 또는 session watcher 지원이 빠져 있으면 실행 가능한 진단과 함께 실패해야
-합니다. Observe 전제 조건을 사용할 수 없으면 `--profile record`를 사용합니다.
+합니다. Detective 전제 조건을 사용할 수 없으면 `--profile record`를 사용합니다.
 
-Native Windows에서는 observe 설정이 지원되지 않습니다. Init이
-`OBSERVE_WINDOWS_UNSUPPORTED`를 보고하면 record 프로필로 다시 실행합니다.
+Native Windows에서는 detective 설정이 지원되지 않습니다. Init이
+`DETECTIVE_WINDOWS_UNSUPPORTED`를 보고하면 record 프로필로 다시 실행합니다.
 
 ```powershell
 volicord init --host codex --repo C:\path\to\your-product-repo --profile record
 ```
 
-Observe는 선택한 host hook과 session watcher 계약이 지원되고 테스트된 WSL2, Linux,
+Detective는 선택한 host hook과 session watcher 계약이 지원되고 테스트된 WSL2, Linux,
 macOS에서만 사용합니다.
 
 하위 수준 연결 복구에는 호스트와 저장소를 connect에 명시적으로 전달합니다.
@@ -280,21 +280,21 @@ volicord connection verify codex --repo /path/to/your-product-repo
   Repository를 옮긴 뒤 흔히 발생합니다. 현재 `--repo PATH`로 init을 다시 실행하고,
   필요하면 호스트를 reload 또는 restart합니다.
 - `host_output_mismatch`, `policy_hash_mismatch`, `authority_mismatch`: 생성된 wrapper
-  메타데이터가 기대하는 host-output mode, policy hash, 연결, observe 설치와 맞지 않습니다.
+  메타데이터가 기대하는 host-output mode, policy hash, 연결, detective 설치와 맞지 않습니다.
   관리 파일과 registry 상태가 일치하도록 init을 다시 실행합니다.
 - `metadata_missing` 또는 `placeholder_unsupported`: 생성된 설정이 현재 검증되는 형태가
   아닙니다. Init을 다시 실행하고 생성 명령을 지원되지 않는 placeholder로 바꾸지
   않습니다.
 
-Codex observe hook 명령에는 선택된 Product Repository가 Git work tree여야 합니다. Wrapper
+Codex detective host hook 명령에는 선택된 Product Repository가 Git work tree여야 합니다. Wrapper
 stderr가 Git root를 해석할 수 없다고 말하거나, 호스트 session이 하위 디렉터리에서
 시작할 때만 hook이 실패한다면, session이 의도한 Git work tree 안에 있고 호스트
 프로세스가 `git`을 사용할 수 있는지 확인한 뒤 그 저장소에 대해 init을 다시 실행합니다.
-Claude Code observe hook 명령은 `${CLAUDE_PROJECT_DIR}`를 기준으로 합니다. 호스트가 그
+Claude Code detective host hook 명령은 `${CLAUDE_PROJECT_DIR}`를 기준으로 합니다. 호스트가 그
 프로젝트 디렉터리를 제공하지 않는다면 호스트 자체의 trust와 project-selection 흐름으로
 호스트 설정을 reload하거나 복구합니다.
 
-안전하지 않은 hook 경로는 observe host hook을 inactive로 유지합니다. Watcher 사용 가능
+안전하지 않은 hook 경로는 detective host hook을 inactive로 유지합니다. Watcher 사용 가능
 여부는 관찰 요약에서 별도로 보고됩니다. 경로 복구는 여전히 호스트 trust,
 approval, restart, reload와 별개입니다. 보고된 호스트 소유 동작을 완료하고 복구 뒤
 verification을 다시 실행합니다.

@@ -3,8 +3,8 @@
 이 문서는 로컬 `volicord` 관리/부트스트랩 CLI 계약을 담당합니다. CLI는
 `Volicord Runtime Home`을 마련하고, 저장소 루트에서 프로젝트를 등록하며, 사용자가
 내부 식별 정보를 다루지 않아도 되도록 Agent Connection을 관리하고, 로컬
-`User Channel` 명령 경로를 제공하며, generic MCP 설정을 내보내고, `volicord guard`를
-통한 로컬 observe hook lifecycle 명령을 제공하며, 설정 또는 연결 진단을 보고합니다.
+`User Channel` 명령 경로를 제공하며, generic MCP 설정을 내보내고, `volicord host-hook`를
+통한 로컬 detective host hook lifecycle 명령을 제공하며, 설정 또는 연결 진단을 보고합니다.
 이 명령들은 공개 Volicord API 메서드가 아닙니다.
 
 이 문서는 공개 API 메서드 동작, API 스키마, 저장소 기록 배치, 보안 보장, Core
@@ -20,7 +20,7 @@
 - 지원 호스트 통합을 위한 Agent Connection 명령 동작
 - generic MCP 설정 내보내기 동작
 - 로컬 serve 명령 이름, 명령줄 인자, 기본값, stdout/stderr 처리, 시작 종료 코드
-- 로컬 `volicord guard` lifecycle 명령 이름, 옵션, decision, 출력, 이벤트 기록 동작
+- 로컬 `volicord host-hook` lifecycle 명령 이름, 옵션, decision, 출력, 이벤트 기록 동작
 - 로컬 `volicord changes` 복구 명령 이름과 출력
 - 로컬 `User Channel` 명령 이름과 명령 출력
 - 진단 상태, 필요한 사용자 동작, dry-run 동작, JSON 출력, 비대화식 동작
@@ -53,7 +53,7 @@ MCP 전송 프로세스로 제한됩니다. `volicord inbox` 명령군은 사용
 ```text
 volicord --help
 volicord --version
-volicord init --host codex|claude-code --repo PATH [--profile record|observe] [--home PATH] [--mcp-command PATH] [--dry-run] [--json]
+volicord init --host codex|claude-code --repo PATH [--profile record|detective] [--home PATH] [--mcp-command PATH] [--dry-run] [--json]
 volicord setup [--home PATH] [--link-bin PATH] [--mcp-command PATH] [--json]
 volicord doctor [--json]
 volicord connect [HOST] [--repo PATH] [--shared|--global] [--read-only] [--dry-run] [--json]
@@ -69,11 +69,11 @@ volicord project rename NAME [--repo PATH] [--json]
 volicord project forget [PATH|NAME] [--json]
 volicord export mcp-config [--output PATH] [--repo PATH] [--read-only] [--json]
 volicord serve --transport local-http [--listen 127.0.0.1:8765] [--home PATH] [--connection <connection_id>] [--project PATH]... [--token TOKEN | --generate-token] [--allow-origin ORIGIN]
-volicord guard session-start [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|observe] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
-volicord guard pre-tool [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|observe] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
-volicord guard post-tool [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|observe] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
-volicord guard prompt-capture [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|observe] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
-volicord guard stop [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|observe] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
+volicord host-hook session-start [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|detective] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
+volicord host-hook pre-tool [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|detective] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
+volicord host-hook post-tool [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|detective] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
+volicord host-hook prompt-capture [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|detective] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
+volicord host-hook stop [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|detective] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
 volicord changes reconcile [--repo PATH] [--task active|ID] [--json]
 volicord inbox [--repo PATH] [--task active|ID] [--json]
 volicord inbox answer <judgment-id> --choice <choice> [--repo PATH] [--note TEXT] [--json]
@@ -95,11 +95,11 @@ volicord inbox open <judgment-id> [--repo PATH] [--json]
 - `volicord --version`은 stdout에 `volicord <version>`을 쓰며 Runtime Home 해석을
   요구하지 않습니다.
 - `--json`은 stdout에 JSON 문서 정확히 하나를 쓰며 사람용 설명을 섞지 않습니다.
-- `volicord guard`는 기본적으로 `--output volicord-json`을 사용합니다.
+- `volicord host-hook`는 기본적으로 `--output volicord-json`을 사용합니다.
   `volicord-json` 모드에서는 Volicord wrapper JSON을 쓰고, `deny`는 종료 코드
   `1`로 끝나며, `allow`, `warn`, `inject_context`는 종료 코드 `0`으로 끝납니다.
   `--output text`는 같은 종료 동작으로 사람이 읽기 쉬운 짧은 한 줄을 씁니다.
-- `volicord guard --host-output codex|claude-code`는 Volicord wrapper JSON 대신
+- `volicord host-hook --host-output codex|claude-code`는 Volicord wrapper JSON 대신
   host-native hook 출력을 씁니다. Policy decision은 해당 호스트의 stdout, stderr,
   종료 코드 규칙을 사용합니다. 생성되는 Codex와 Claude Code hook wrapper script는
   이 모드를 사용하며, Claude Code policy block은 종료 코드 `1`로 표현하지 않습니다.
@@ -119,7 +119,7 @@ volicord inbox open <judgment-id> [--repo PATH] [--json]
   nonlocal listener로 바꾸는 지원 옵션은 없습니다.
 - 관리 명령은 공개 Volicord API 메서드가 아니며 공개 메서드 목록에 추가되면
   안 됩니다.
-- Guard 명령은 협력적이고 탐지적인 hook 명령이며 OS 수준 sandboxing이나 보안 집행
+- Host-hook 명령은 협력적이고 탐지적인 hook 명령이며 OS 수준 sandboxing이나 보안 집행
   증명이 아닙니다.
 - 텍스트 모드 사용자 흐름은 `project_internal_id`, `connection_internal_id`,
   호스트 설정 키, 프로토콜 래퍼, 저장된 registry 필드를 사용자가 입력하도록 요구하면
@@ -192,8 +192,8 @@ Volicord 관리 블록을 쓰거나 갱신합니다. 지원되지 않는 셸, �
 호스트를 위한 명령 가용성 경고와 `actions_recommended`를 함께 보고할 수 있습니다.
 `PATH` 또는 명령 링크 권장 동작은 기존 에이전트 호스트에 restart 또는 reload가
 필요할 수 있는 때를 말해야 합니다. 지원 호스트 감지는 연결 검증이 보고할 문제로
-표시합니다. observe-profile 설치 기록이 있으면 doctor는 observe hook 파일 설치, 설정
-건강 상태, 런타임 hook 관찰 건강 상태, 효과적인 observe 건강 상태, 호스트 reload
+표시합니다. detective-profile 설치 기록이 있으면 doctor는 detective host hook 파일 설치, 설정
+건강 상태, 런타임 hook 관찰 건강 상태, 효과적인 detective 건강 상태, 호스트 reload
 필요도 진단으로 보고할 수 있습니다. 이 진단은 로컬 setup 및 관찰 점검이며 OS 강제,
 sandboxing, 쓰기 방지, 제품 정확성,
 닫기 상태의 증명이 아닙니다. Doctor는 `selected_profile`과 관찰 요약도 보고합니다. 이
@@ -299,45 +299,45 @@ watcher 관찰을 설치하지 않는 chat-first 사용을 위한 첫 실행 저
 
 - `record`가 기본값입니다. MCP 설정, 관리되는 `AGENTS.md` 안내 블록, policy 메타데이터를
   쓰며 host lifecycle hook이나 session watcher를 요구하지 않습니다.
-- `observe`는 MCP 설정, 관리되는 `AGENTS.md` 안내 블록, `.volicord/policy.json` hook 명령
+- `detective`는 MCP 설정, 관리되는 `AGENTS.md` 안내 블록, `.volicord/policy.json` hook 명령
   policy, 지원되는 프로젝트 로컬 host hook 및 rule 파일을 쓰고 host-hook/session-watcher
   관찰 상태를 기록합니다.
 
-observe를 인식하는 setup, status, verification, doctor text 출력은 `selected_profile`과
+detective를 인식하는 setup, status, verification, doctor text 출력은 `selected_profile`과
 `observation_summary`를 보고합니다. 대응 JSON 필드는 `control_surface`입니다. 이 요약에는 `host_hooks_active`,
 `session_watcher_active`, `cooperative_pre_tool_warning_available`,
 `cooperative_pre_tool_denial_available`, `unrecorded_changes_detectable`,
 `actor_identity_provable`, `os_enforced`가 포함됩니다. 현재 Volicord 출력은
 `os_enforced=false`와 `actor_identity_provable=false`를 보고해야 합니다.
 
-`observe` 초기화에는 선택한 호스트 어댑터가 모든 필수 lifecycle hook인
+`detective` 초기화에는 선택한 호스트 어댑터가 모든 필수 lifecycle hook인
 `session-start`, `pre-tool`, `post-tool`, `prompt-capture`, `stop` 지원을 선언하고
 검증할 수 있어야 합니다. 또한 선택한 Product Repository에 대해 session watcher
 snapshot 지원이 필요합니다. `AGENTS.md`와 `.volicord/policy.json`은 호스트 hook
 설정이 아닙니다. 어댑터가 모든 필수 phase에 대해 신뢰할 수 있는 프로젝트 로컬 hook
-스키마나 경로를 알지 못하면 init은 `OBSERVE_HOOKS_UNSUPPORTED`로 실패합니다. Session
+스키마나 경로를 알지 못하면 init은 `DETECTIVE_HOOKS_UNSUPPORTED`로 실패합니다. Session
 watcher가 선택한 저장소의 snapshot을 만들 수 없으면 init은
-`OBSERVE_WATCHER_UNSUPPORTED`로 실패합니다. 복구 방법은 record-only 설정에는
-`--profile record`를 사용하거나, observe를 다시 실행하기 전에 지원되는 호스트, 플랫폼,
+`DETECTIVE_WATCHER_UNSUPPORTED`로 실패합니다. 복구 방법은 record-only 설정에는
+`--profile record`를 사용하거나, detective를 다시 실행하기 전에 지원되는 호스트, 플랫폼,
 저장소 설정을 준비하는 것입니다. `record`는 hook 설치나 session watcher 설정을
 요구하지 않습니다.
 
-Native Windows에서는 init이 observe hook 파일을 계획하거나 쓰기 전에
-`--profile observe`를 `OBSERVE_WINDOWS_UNSUPPORTED`로 거부합니다. Native Windows는
-`--profile record`를 지원합니다. Observe는 선택한 host hook과 watcher 계약이 지원되고
+Native Windows에서는 init이 detective host hook 파일을 계획하거나 쓰기 전에
+`--profile detective`를 `DETECTIVE_WINDOWS_UNSUPPORTED`로 거부합니다. Native Windows는
+`--profile record`를 지원합니다. Detective는 선택한 host hook과 watcher 계약이 지원되고
 테스트된 WSL2, Linux, macOS에서만 사용합니다.
 
-Codex `observe` 초기화에는 선택된 Product Repository가 하위 디렉터리 호스트
+Codex `detective` 초기화에는 선택된 Product Repository가 하위 디렉터리 호스트
 session에서도 cwd-independent wrapper 해석을 지원하는 Git work tree root여야 한다는
 요구사항도 있습니다. 이 전제조건을 만족하지 않으면 init은 bare 상대 hook 경로를
-생성하지 않고 `OBSERVE_HOOK_ROOT_UNSUPPORTED`로 실패합니다. Claude Code `observe` 초기화는
-[observe hook lifecycle 명령](#guard-hook-commands)에서 설명한 호스트 프로젝트 디렉터리 placeholder를
+생성하지 않고 `DETECTIVE_HOOK_ROOT_UNSUPPORTED`로 실패합니다. Claude Code `detective` 초기화는
+[detective host hook lifecycle 명령](#guard-hook-commands)에서 설명한 호스트 프로젝트 디렉터리 placeholder를
 사용합니다.
 
-`observe`에서 init은 생성된 observe host hook을 로드하려면 호스트 restart 또는 reload가
+`detective`에서 init은 생성된 detective host hook을 로드하려면 호스트 restart 또는 reload가
 아직 필요할 때 `reload_required`를 기록하고, 파일은 설치되었지만 일치하는 host-hook
 event가 아직 관찰되지 않았을 때 `configured`를 기록합니다. 파일을 썼다는 이유만으로
-observe 설치 기록을 `active`로 표시하지 않습니다.
+detective 설치 기록을 `active`로 표시하지 않습니다.
 
 `--home PATH`는 이 초기화에 사용할 Runtime Home을 선택합니다. `--mcp-command PATH`는
 init이 설치 프로필을 만들거나 갱신해야 할 때 정확한 명령 경로를 설치 프로필에
@@ -352,23 +352,23 @@ dry-run이 아닌 `volicord init`은 다음을 수행합니다.
 - `volicord mcp --stdio --connection <connection_id> --project <project_id>`를 사용하는
   프로젝트 범위 Codex `.codex/config.toml` 또는 Claude Code `.mcp.json`을 씁니다.
 - `AGENTS.md` 안의 Volicord 관리 블록만 쓰거나 갱신합니다.
-- `volicord guard`를 호출하는 observe hook 명령을 담은 `.volicord/policy.json`을 씁니다.
-- 필수 observe lifecycle phase를 위한 Volicord 관리 hook wrapper script를
+- `volicord host-hook`를 호출하는 detective host hook 명령을 담은 `.volicord/policy.json`을 씁니다.
+- 필수 detective lifecycle phase를 위한 Volicord 관리 hook wrapper script를
   `.codex/hooks/` 또는 `.claude/hooks/` 아래에 씁니다.
 - `.codex/hooks.json` 또는 `.claude/settings.json` 같은 지원 호스트 hook 파일을
   쓰며, 이 파일은 해당 wrapper script를 호출합니다.
 - `.codex/rules/*.rules` 또는 `.claude/rules/volicord.md` 같은 지원 호스트 rule 파일을
   씁니다.
-- Runtime Home registry에 observe-profile hook 관찰 상태를 기록합니다.
-- 필수 호스트 hook 설정이나 session watcher 지원이 없으면 `observe` 초기화를
+- Runtime Home registry에 detective-profile hook 관찰 상태를 기록합니다.
+- 필수 호스트 hook 설정이나 session watcher 지원이 없으면 `detective` 초기화를
   거부합니다.
 - Windows host-hook wrapper와 watcher 동작이 구현되고 테스트되지 않았으므로 native
-  Windows에서 `observe` 초기화를 거부합니다.
-- 호스트가 새 MCP 또는 observe hook 설정을 로드해야 할 때 필요한 restart, reload, trust,
+  Windows에서 `detective` 초기화를 거부합니다.
+- 호스트가 새 MCP 또는 detective host hook 설정을 로드해야 할 때 필요한 restart, reload, trust,
   approval 동작을 보고합니다.
 
 init 재실행은 일치하는 Volicord 관리 내용에 대해 idempotent입니다. 관리 블록, policy
-파일, 호스트 MCP 항목, observe 설치 기록을 중복 없이 갱신합니다. 기존 대상에 Volicord가
+파일, 호스트 MCP 항목, detective 설치 기록을 중복 없이 갱신합니다. 기존 대상에 Volicord가
 소유 마커나 관리 지문을 요구하는 위치의 비관리 내용이 있으면 init은 이를 덮어쓰지
 않고 충돌로 보고해야 합니다.
 
@@ -383,7 +383,7 @@ init 재실행은 일치하는 Volicord 관리 내용에 대해 idempotent입니
 
 | 명령 | Runtime Home registry 효과 | 호스트 설정 효과 | 검증 효과 |
 |---|---|---|---|
-| `volicord init` | 필요하면 Runtime Home과 설치 프로필을 초기화하고, 선택된 저장소 프로젝트를 등록하거나 재사용하며, shared 프로젝트 범위 Agent Connection을 만들거나 갱신하고, Connection Projects 멤버십을 보장하며, observe-profile hook 관찰 상태를 기록합니다. | `codex` 또는 `claude-code`를 위한 관리 프로젝트 로컬 MCP 설정, `AGENTS.md` 안내, `.volicord/policy.json`, 지원 호스트 hook wrapper script, 호스트 hook 파일과 rule 파일을 설치하거나 갱신합니다. | 관찰 가능한 곳에서 호스트 설정, MCP 시작, 초기화, `tools/list` 점검을 실행한 뒤 필요한 host reload, restart, trust, approval 동작을 보고합니다. |
+| `volicord init` | 필요하면 Runtime Home과 설치 프로필을 초기화하고, 선택된 저장소 프로젝트를 등록하거나 재사용하며, shared 프로젝트 범위 Agent Connection을 만들거나 갱신하고, Connection Projects 멤버십을 보장하며, detective-profile hook 관찰 상태를 기록합니다. | `codex` 또는 `claude-code`를 위한 관리 프로젝트 로컬 MCP 설정, `AGENTS.md` 안내, `.volicord/policy.json`, 지원 호스트 hook wrapper script, 호스트 hook 파일과 rule 파일을 설치하거나 갱신합니다. | 관찰 가능한 곳에서 호스트 설정, MCP 시작, 초기화, `tools/list` 점검을 실행한 뒤 필요한 host reload, restart, trust, approval 동작을 보고합니다. |
 | `volicord connect` | 선택된 저장소 프로젝트를 등록하거나 재사용하고, 일치하는 Agent Connection을 만들거나 갱신하며, 연결 의도와 모드를 기록하고, 프로젝트가 Connection Projects에 들어 있음을 보장합니다. | 선택된 의도에 따라 `codex` 또는 `claude-code`용 관리 호스트 설정을 설치하거나 갱신합니다. | 관찰 가능한 곳에서 호스트 설정, MCP 시작, 초기화, `tools/list` 점검을 실행합니다. |
 | `volicord connections` | 일치하는 Agent Connection과 연결 프로젝트를 읽습니다. | 호스트를 시작하지 않고 호스트 설정을 다시 쓰지 않습니다. | 저장된 검증 상태와 진단 검증 상태를 호스트 점검 없이 보고합니다. |
 | `volicord connection status` | 선택된 Agent Connection 하나를 읽습니다. | 호스트를 시작하지 않고 호스트 설정을 다시 쓰지 않습니다. | 저장된 전체 검증 상태와 필요한 사용자 동작을 보고합니다. |
@@ -420,8 +420,8 @@ Agent Connection 명령은 아래 결과 상태를 사용합니다.
 검증 출력은 점검과 사용자 동작을 일급 진단으로 만들어야 합니다. Text 출력은 전체
 상태, 시도되었거나 차단된 각 점검, 필요한 경우 다음 사용자 동작을 보여 줘야 합니다.
 JSON 출력은 진단 소비자를 위해 최상위 `status`, `checks`, `actions` 필드를 포함해야
-합니다. 연결 상태 및 검증 출력은 observe hook 파일 설치, 설정 건강 상태, 런타임 hook 관찰
-건강 상태, 효과적인 observe 건강 상태, 호스트 reload 필요, prompt-capture 가용성, 알 수
+합니다. 연결 상태 및 검증 출력은 detective host hook 파일 설치, 설정 건강 상태, 런타임 hook 관찰
+건강 상태, 효과적인 detective 건강 상태, 호스트 reload 필요, prompt-capture 가용성, 알 수
 있을 때의 최근 host-hook event를 별도 진단으로 유지해야 합니다. Text 출력은 `selected_profile`,
 `observation_summary`, 협력형 pre-tool warning 가용성, 협력형 pre-tool denial 가용성,
 post-tool 상관 가용성, 미기록 변경 탐지 가용성, prompt-capture 가용성, local web consent
@@ -461,15 +461,15 @@ Agent Connection의 text와 JSON 출력은 진단 출력입니다. JSON 출력�
   호스트가 이를 로드, 신뢰, 승인, 초기화, 노출했다고 주장하면 안 됩니다.
 
 <a id="guard-hook-commands"></a>
-## Observe hook lifecycle 명령
+## Detective host hook lifecycle 명령
 
-`volicord guard` 명령은 agent lifecycle event 때 명령을 실행할 수 있는 호스트를
+`volicord host-hook` 명령은 agent lifecycle event 때 명령을 실행할 수 있는 호스트를
 위한 로컬 hook 진입점입니다. 이 명령은 등록된 프로젝트 상태를 검사하고 host-observation
 이벤트를 기록하며 기계 판독 가능한 로컬 decision을 반환합니다.
 Core 메서드, 사용자 소유 판단, 쓰기 티켓, 닫기 준비 상태 점검, 호스트 신뢰,
 셸 승인, OS 수준 sandboxing을 대체하지 않습니다.
 
-각 guard 명령은 기본적으로 stdin에서 JSON hook event 하나를 읽습니다. `--file PATH`는
+각 host-hook 명령은 기본적으로 stdin에서 JSON hook event 하나를 읽습니다. `--file PATH`는
 테스트나 이벤트를 파일에 준비하는 호스트 통합을 위해 그 파일에서 JSON event를
 읽습니다. 기본 `--output volicord-json` 출력은 `decision`, `allowed`,
 `guard_event_id`, 선택적 `session_id`, 명령별 `result`를 포함합니다.
@@ -480,23 +480,23 @@ Core 메서드, 사용자 소유 판단, 쓰기 티켓, 닫기 준비 상태 점
 `--host-output codex|claude-code`는 설치된 호스트 hook에 맞는 host-native hook 출력
 방식을 선택합니다. 이 모드에서 stdout은 호스트가 인식하는 response JSON이나
 context만 포함하거나, 호스트가 출력을 기대하지 않는 경우 비어 있습니다. stdout에는
-Volicord wrapper JSON을 쓰지 않습니다. 저장되는 guard event에는 Volicord가 사용하는
+Volicord wrapper JSON을 쓰지 않습니다. 저장되는 host-hook event에는 Volicord가 사용하는
 내부 decision과 result 세부 정보가 계속 남습니다.
 Volicord wrapper JSON은 `disclosure.guarantee_class=cooperative_host_decision`을
 포함합니다. Host-native 출력은 context나 deny reason에 짧은 협력형 결정 공개를
-포함해야 합니다. Guard 결정은 OS 수준 집행, 네트워크 격리, 악성 코드 방어,
+포함해야 합니다. Host-hook 결정은 OS 수준 집행, 네트워크 격리, 악성 코드 방어,
 행위자 귀속 증명, 전체 쓰기 방지, 정확성 증명, 테스트 충분성 증명, 인간 검토 대체가
 아닙니다.
 
 프로젝트 선택은 `--repo PATH`, event에 있는 프로젝트나 저장소 필드, 또는 현재 작업
 디렉터리를 사용합니다. Hook event에 `connection_id`가 없으면 `--connection ID`로
 Agent Connection 식별 정보를 제공합니다. `--session ID`, `--guard-installation ID`,
-`--host HOST`, `--integration-profile record|observe`로 기록되는 세션, 설치, 호스트 종류,
+`--host HOST`, `--integration-profile record|detective`로 기록되는 세션, 설치, 호스트 종류,
 통합 프로필을 고정할 수 있습니다. 호스트 종류는 `codex`, `claude_code`, `generic` 같은
-저장소 값을 사용합니다. 공개 통합 프로필은 `record`와 `observe`입니다.
+저장소 값을 사용합니다. 공개 통합 프로필은 `record`와 `detective`입니다.
 `--policy-hash HASH`는 생성된 hook wrapper script가 기대하는
-`.volicord/policy.json` hash를 고정합니다. hash가 맞지 않으면 그 hook event는 guard
-설치를 활성화할 수 없지만, 테스트나 디버깅에 쓰는 직접 guard 명령은 이 옵션을
+`.volicord/policy.json` hash를 고정합니다. hash가 맞지 않으면 그 hook event는 host-hook
+설치를 활성화할 수 없지만, 테스트나 디버깅에 쓰는 직접 host-hook 명령은 이 옵션을
 생략할 수 있습니다.
 
 생성된 Codex hook 설정은 cwd-independent 및 subdirectory-safe여야 합니다. Bare
@@ -518,34 +518,34 @@ exec "$root/.codex/hooks/volicord-dispatch.sh" PHASE
 `${CLAUDE_PROJECT_DIR}` 기준 exec-form 명령과 빈 args를 사용합니다.
 
 `.codex/hooks/`와 `.claude/hooks/` 아래의 생성 wrapper script는 stdin을 변경하지 않고
-`volicord guard`로 전달하며, stdout, stderr, guard 종료 코드를 보존하고, 기대하는
-호스트 종류, host-native 출력 방식, 저장소 selector, Agent Connection, guard 설치,
+`volicord host-hook`로 전달하며, stdout, stderr, host-hook 종료 코드를 보존하고, 기대하는
+호스트 종류, host-native 출력 방식, 저장소 selector, Agent Connection, host-hook 설치,
 policy hash를 전달합니다. 사용자는 생성된 hook 명령을 bare `.codex/hooks/...` 또는
 `.claude/hooks/...` 상대 경로로 바꾸면 안 됩니다.
 
-Observe-aware status, verification, doctor 진단은 `hook_path_safety`,
+Detective-aware status, verification, doctor 진단은 `hook_path_safety`,
 `hook_commands_cwd_independent`, `hook_commands_subdirectory_safe`,
 `generated_config_verified`를 보고합니다. Hook path safety는
 `relative_path_unsafe`, `wrapper_missing`, `wrapper_not_executable`,
 `absolute_path_stale`, `placeholder_unsupported`, `host_output_mismatch`,
 `policy_hash_mismatch` 같은 값을 보고할 수 있으며, 전체 값 집합은
 [API 값 집합](api/schema-value-sets.md#state-and-blocker-values)이 담당합니다. `ok`가 아닌
-hook path safety 값은 해당 보기에서 observe host hook을 inactive로 유지합니다. 복구 동작은
-`volicord init --host HOST --repo PATH --profile observe`로 안전한 관리 명령을 다시 생성한
+hook path safety 값은 해당 보기에서 detective host hook을 inactive로 유지합니다. 복구 동작은
+`volicord init --host HOST --repo PATH --profile detective`로 안전한 관리 명령을 다시 생성한
 뒤, 계속 보고되는 host trust, approval, reload, restart 동작을 완료하는 것입니다.
 
-`observe` guard 명령이 기록된 프로젝트, Agent Connection, guard 설치,
+`detective` host-hook 명령이 기록된 프로젝트, Agent Connection, host-hook 설치,
 호스트 종류, 통합 프로필, policy hash, 알려진 hook 단계와 일치하는 유효한 event를
 받으면 Volicord는 관찰 메타데이터를 기록합니다. 필요한 hook 설정이 완전하고 설치가
-degraded, stale, broken 상태가 아닐 때만 그 관찰이 observe 설치 기록을 `active`로 승격할 수
+degraded, stale, broken 상태가 아닐 때만 그 관찰이 detective 설치 기록을 `active`로 승격할 수
 있습니다. 프로젝트, 연결, 호스트 종류, 통합 프로필, policy hash, hook 단계 데이터가 맞지
-않으면 설치를 활성화하지 않습니다. `active`는 Volicord가 현재 사용할 수 있는 observe
+않으면 설치를 활성화하지 않습니다. `active`는 Volicord가 현재 사용할 수 있는 detective
 설정에 대해 일치하는 hook event를 관찰했다는 뜻입니다. OS 수준 집행, sandboxing, 행위자
 증명, 쓰기 방지를 주장하지 않습니다.
 
-입력 event 계약은 호스트 중립입니다. Guard 파서는 호스트 종류, 세션, 도구 이름,
+입력 event 계약은 호스트 중립입니다. Host-hook 파서는 호스트 종류, 세션, 도구 이름,
 명령, prompt, 결과, 변경 경로의 일반적인 필드 위치를 관대하게 읽고, 알 수 없는
-필드는 저장되는 guard event의 redacted subject에 보존합니다. Prompt 형태 필드는
+필드는 저장되는 host-hook event의 redacted subject에 보존합니다. Prompt 형태 필드는
 기본적으로 hash하거나 생략합니다. Prompt capture 기록은 이후 담당 문서가 별도
 정책을 정의하기 전까지 prompt hash를 저장하고 prompt text는 생략합니다.
 
@@ -560,7 +560,7 @@ Lifecycle 동작:
   밖에 있거나, 관찰된 경로가 active 쓰기 티켓 범위 밖에 있거나, active 티켓 매칭이
   모호하거나, policy가 명확한 변경 shell 명령을 차단할 때 `deny` 또는 `warn`을
   반환할 수 있습니다. 이러한 결정은 협력형 host 결정이며 OS 수준 집행이 아닙니다.
-  불확실한 shell 명령은 observe hook policy가 `deny`를 요구하지 않으면 기본적으로
+  불확실한 shell 명령은 detective host hook policy가 `deny`를 요구하지 않으면 기본적으로
   `warn`입니다. Pre-tool이 구체적인 저장소 내부 경로 집합, active task, 정확히 하나의
   현재 active matching 쓰기 티켓, 호환되는 프로젝트 범위를 가진 명확한 제품 파일 쓰기를
   허용하면 expected-write 상관 행을 기록합니다. 이 행은 프로젝트, 연결, 세션, 선택적
@@ -669,7 +669,7 @@ Dry-run이 하지 않는 것:
 - SQLite WAL 또는 SHM 파일 생성
 - registry 또는 프로젝트 상태 마이그레이션 적용
 - 프로젝트, Agent Connection, Connection Projects, 설치 프로필 행, 검증 상태 행
-  또는 guard 설치 행 등록 또는 갱신
+  또는 host-hook 설치 행 등록 또는 갱신
 - 호스트 설정 파일 생성, 수정, 제거
 - `Product Repository` 파일이나 디렉터리 생성, 수정, 제거
 - generic export 파일 생성, 수정, 제거
@@ -689,7 +689,7 @@ setup과 필요한 사용자 동작을 구분할 수 있을 만큼 구조화된 
 - `checks[]`: 안정적인 점검 ID, 상태, 요약, 선택 세부사항이 있는 순서 있는 진단 점검
 - `actions[]`: 필요하거나 제안되는 사용자 동작. 사용할 수 있을 때 안정적인 동작 ID와
   사람이 읽을 수 있는 명령 또는 안내를 포함합니다.
-- observe를 인식하는 setup, doctor, 연결 상태, 연결 검증 JSON은 observe 진단을 보고하는
+- detective를 인식하는 setup, doctor, 연결 상태, 연결 검증 JSON은 detective 진단을 보고하는
   곳에서 `selected_profile`, `control_surface`,
   `cooperative_pre_tool_warning_available`,
   `cooperative_pre_tool_denial_available`, `post_tool_correlation_available`,

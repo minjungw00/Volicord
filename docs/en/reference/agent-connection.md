@@ -94,9 +94,9 @@ one surface without changing the others.
 
 Volicord-managed host configuration means Volicord owns and fingerprints
 specific generated host configuration content. It is not the same as
-the internal guard distribution state recorded by a host contract. That state
-describes a verified source for hook-related implementation records; it is not
-a public integration mode or security boundary.
+the internal host-hook distribution state recorded by a host contract. That
+state describes a verified source for hook-related implementation records; it
+is not a public integration mode or security boundary.
 
 Rules:
 

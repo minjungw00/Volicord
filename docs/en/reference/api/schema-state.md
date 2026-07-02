@@ -102,7 +102,7 @@ Owner links:
 
 ## Guard health summary
 
-`GuardHealthSummary` is the compact observe host-hook and observation-state projection returned by close-readiness and status views when the method owner selects it. The `guard_*` field names are schema identifiers for internal host observation records and hook-related implementation state; they are not a public security mode or security boundary.
+`GuardHealthSummary` is the compact detective host-hook and observation-state projection returned by close-readiness and status views when the method owner selects it. The `guard_*` field names are schema identifiers for internal host observation records and hook-related implementation state; they are not a public security mode or security boundary.
 
 ```yaml
 ControlSurfaceSummary:
@@ -165,14 +165,14 @@ GuardHealthSummary:
 Meaning:
 - `selected_profile` and `guard_installation_status` are controlled value strings.
 - `control_surface` is the public summary of what Volicord can currently observe or decide. It reports the selected profile, whether host hooks and a session watcher are active, whether cooperative pre-tool warning or denial is available, whether unrecorded changes can be detected, whether actor identity can be proven, and whether OS enforcement is provided.
-- `guard_installation_id`, when non-null, is an opaque internal guard-installation identifier.
-- `guard_configuration_status`, `guard_observation_status`, and `effective_guard_status` separate file/config health, runtime hook observation, and the effective observe-profile close-readiness status.
-- `generated_config_verified`, `native_host_output_adapter_verified`, `hook_path_safety`, `hook_commands_cwd_independent`, `hook_commands_subdirectory_safe`, `cooperative_pre_tool_warning_available`, `cooperative_pre_tool_denial_available`, `post_tool_correlation_available`, `bash_shell_mutation_coverage`, `direct_file_write_matcher_coverage`, `bypass_detection_active`, `prompt_capture_available`, and `local_web_consent_available` expose capability facts for the selected profile. Observe host hooks require verified generated config, native host output, `hook_path_safety=ok`, cwd-independent and subdirectory-safe required hook commands, required lifecycle phases, Bash/shell and direct file-write matcher coverage, a matching policy hash, and a current matching host-hook observation. Unrecorded-change detection requires an active session watch; a partial coverage warning remains visible in `session_watch_partial_coverage_warning`. A setup diagnostic that cannot observe a runtime-only capability reports that capability as false.
-- `guard_hook_observed` reports whether a current matching host-hook observation is recorded for the selected internal guard installation record.
-- `last_guard_observed_at` is the latest stored internal guard-installation observation timestamp, or `null` when no observation is recorded.
+- `guard_installation_id`, when non-null, is an opaque internal host-hook installation identifier.
+- `guard_configuration_status`, `guard_observation_status`, and `effective_guard_status` separate file/config health, runtime hook observation, and the effective detective-profile close-readiness status.
+- `generated_config_verified`, `native_host_output_adapter_verified`, `hook_path_safety`, `hook_commands_cwd_independent`, `hook_commands_subdirectory_safe`, `cooperative_pre_tool_warning_available`, `cooperative_pre_tool_denial_available`, `post_tool_correlation_available`, `bash_shell_mutation_coverage`, `direct_file_write_matcher_coverage`, `bypass_detection_active`, `prompt_capture_available`, and `local_web_consent_available` expose capability facts for the selected profile. Detective host hooks require verified generated config, native host output, `hook_path_safety=ok`, cwd-independent and subdirectory-safe required hook commands, required lifecycle phases, Bash/shell and direct file-write matcher coverage, a matching policy hash, and a current matching host-hook observation. Unrecorded-change detection requires an active session watch; a partial coverage warning remains visible in `session_watch_partial_coverage_warning`. A setup diagnostic that cannot observe a runtime-only capability reports that capability as false.
+- `guard_hook_observed` reports whether a current matching host-hook observation is recorded for the selected internal host-hook installation record.
+- `last_guard_observed_at` is the latest stored internal host-hook installation observation timestamp, or `null` when no observation is recorded.
 - `last_guard_event_at` is the latest host-hook event timestamp available to the projection, or `null` when no host-hook event is available.
 - `host_kind`, `observed_hook_phase`, `observed_host_kind`, `expected_policy_hash`, `observed_policy_hash`, and `observed_binary_version` report the selected installation and latest stored observation metadata when available.
-- `required_hook_phases` and `missing_required_hook_phases` report required host-hook configuration completeness. A required phase is missing when it is absent from `required_hook_phases` or listed in `missing_required_hook_phases`. Missing required phases keep effective observe health non-active even when a valid hook event has been observed.
+- `required_hook_phases` and `missing_required_hook_phases` report required host-hook configuration completeness. A required phase is missing when it is absent from `required_hook_phases` or listed in `missing_required_hook_phases`. Missing required phases keep effective detective health non-active even when a valid hook event has been observed.
 - `prompt_capture_status` reports the machine-readable prompt-capture availability state for the selected connection. `prompt_capture_available=true` only when that state allows verification-code chat commands; it does not mean raw prompt text is included.
 - `prompt_capture_available` reports whether prompt-capture verification-code chat commands may be shown or recorded for the selected connection. It does not include prompt text.
 - `local_web_consent_available` reports whether the current adapter invocation can offer the loopback local web consent fallback for User Channel recovery.
@@ -194,8 +194,8 @@ Does not imply:
 - An active `effective_guard_status` does not replace evidence, artifact integrity, user-owned judgment, write-ticket, final acceptance, or residual-risk acceptance requirements.
 - Session watch status and coverage metadata do not mean Volicord prevented a write, identified the actor who changed a file, stored file contents, or provided OS-level enforcement.
 - When `session_watch_partial_coverage_warning` is non-null, Product Repository changes before `session_watch_coverage_start_at` remain outside session-watch coverage.
-- `record` profile remains cooperative. Unresolved unrecorded-change findings still block close when observe control-surface health reports them.
-- `observe` profile does not prevent all writes, identify the actor who changed a file, isolate the network, or provide a sandbox.
+- `record` profile remains cooperative. Unresolved unrecorded-change findings still block close when detective control-surface health reports them.
+- `detective` profile does not prevent all writes, identify the actor who changed a file, isolate the network, or provide a sandbox.
 
 Owner links:
 - `selected_profile`, `hook_path_safety`, `guard_installation_status`, `guard_configuration_status`, `guard_observation_status`, `effective_guard_status`, `prompt_capture_status`, `session_watch_status`, and `session_watch_coverage_basis` values: [state and blocker values](schema-value-sets.md#state-and-blocker-values)
@@ -457,7 +457,7 @@ Meaning:
 - `WriteTicket` is the ticket-first authority record returned by `volicord.prepare_write` when a committed allowed decision issues a write ticket.
 - `WriteTicket.state` is a controlled value string.
 - `WriteTicket.path_patterns.allowed` and `WriteTicket.path_patterns.denied` are normalized Product Repository path patterns captured by the ticket decision.
-- `WriteTicket.observed_paths` is empty until an observe-profile hook, watcher, or later owner-defined observation path connects observed product paths to the ticket.
+- `WriteTicket.observed_paths` is empty until a detective-profile hook, watcher, or later owner-defined observation path connects observed product paths to the ticket.
 - `WriteTicket.control_surface` and `WriteTicket.guarantee_display` disclose the current Volicord control surface and guarantee wording. They do not claim OS-level filesystem enforcement.
 - `WriteDecisionReason` is used by `PrepareWriteResult.write_decision_reasons`.
 
@@ -492,7 +492,7 @@ Meaning:
 | `state` | Controlled state value. | Uses the [method-local values](schema-value-sets.md#method-local-values) owned for `WriteTicket.state`. |
 | `scope` | `WriteTicketScope`. | Captures the Task, Change Unit, operation, sensitive categories, product-write flag, and baseline used for ticket issuance. |
 | `path_patterns` | `WriteTicketPathPatterns`. | Captures allowed and denied normalized Product Repository path patterns for the ticket decision. |
-| `observed_paths` | Normalized Product Repository path strings. | Lists observed paths only when an owner-defined observe path has connected observations to the ticket. Use `[]` when no observations are connected. |
+| `observed_paths` | Normalized Product Repository path strings. | Lists observed paths only when an owner-defined detective path has connected observations to the ticket. Use `[]` when no observations are connected. |
 | `basis_state_version` | State-clock value. | The `project_state.state_version` basis committed with the ticket. |
 | `expires_at` | UTC timestamp or `null`. | Ticket expiration used as a Volicord compatibility condition, not as OS-level enforcement. |
 | `control_surface` | `ControlSurfaceSummary | null`. | Disclosure of the current Volicord control surface. |

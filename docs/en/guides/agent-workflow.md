@@ -211,7 +211,7 @@ An Agent Connection must not call `volicord.record_user_judgment`, supply User
 Channel provenance, or convert an ordinary chat reply into authority-bearing
 acceptance. A strict chat command such as `Volicord: answer J-3 1 #AB7K`
 is authority-bearing only when command capture is available and the current
-verification code is validated and recorded by the observe host hook. If
+verification code is validated and recorded by the detective host hook. If
 the answer has not been recorded through a supported User Channel, name the
 needed user action and continue only with work that does not depend on that
 judgment. Use `--repo PATH` only when the current directory is not the intended
@@ -247,7 +247,7 @@ When current state includes a work-slice effect boundary, include whether the in
 <a id="reconcile-unrecorded-changes"></a>
 ## Reconcile unrecorded changes
 
-If observe status reports unresolved unrecorded Product Repository changes, call
+If detective status reports unresolved unrecorded Product Repository changes, call
 `volicord.reconcile_changes` or route the user to `volicord changes reconcile`
 when MCP is unavailable. Deterministic cases may resolve through the method.
 User acceptance must become a supported `User Channel` judgment; do not mark an

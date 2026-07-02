@@ -9,7 +9,7 @@ visibility, 허용 문서 계층, 피할 동의어, 식별자 보존, 담당 경
 정확한 계약은 아래 집중 담당 문서나 [참조 색인](README.md)을 봅니다.
 
 아키텍처와 참조 문서는 정밀성이 필요할 때 기술 용어를 사용할 수 있습니다. Core,
-Change Unit, expected write, guard, `actor_source`, `operation_category`,
+Change Unit, expected write, host-hook installation, `actor_source`, `operation_category`,
 `ArtifactRef`, `StagedArtifactHandle` 같은 용어는 의도적으로 공개 용어집 항목에
 넣지 않습니다.
 
@@ -26,6 +26,6 @@ Change Unit, expected write, guard, `actor_source`, `operation_category`,
 | Close Status | 닫기 상태 | 현재 Volicord 기록에서 현재 작업을 정직하게 끝낼 수 있는지 판단하도록 돕는 상태입니다. | [Core 모델](core-model.md) |
 | Agent Connection | 에이전트 연결 | 에이전트가 지원되는 Volicord workflow를 읽거나 참여할 수 있는 로컬 MCP 호스트 연결입니다. | [Agent Connection 참조](agent-connection.md) |
 | User Channel | 사용자 채널 | 권한을 지니는 User Judgment를 기록하는 로컬 경로입니다. | [Core 모델](core-model.md) |
-| Record profile | 기록 프로필 | observe hook을 요구하지 않고 일반 기록 기반 workflow를 쓰는 Agent Connection profile입니다. | [관리 CLI](admin-cli.md) |
+| Record profile | 기록 프로필 | detective host hook을 요구하지 않고 일반 기록 기반 workflow를 쓰는 Agent Connection profile입니다. | [관리 CLI](admin-cli.md) |
 | Detective profile | 탐지 프로필 | 지원되는 host hook과 watcher 관찰을 더하는 Agent Connection profile입니다. | [Agent Connection 참조](agent-connection.md) |
 | Local HTTP transport | 로컬 HTTP 전송 | 로컬 HTTP 동작에 쓰는 loopback 전용 MCP 전송입니다. | [MCP 전송](mcp-transport.md) |

@@ -198,7 +198,7 @@ that keeps public behavior precise.
 | CLI architecture | This page's administrative setup flow, `crates/volicord-cli/src/main.rs`, `setup_command.rs`, `doctor_command.rs`, `connection_command.rs`, `project_context.rs`, `user_command.rs`, and `host_integration/`. | [Administrative CLI](../reference/admin-cli.md), [Runtime Boundaries](../reference/runtime-boundaries.md), and [Agent Connection](../reference/agent-connection.md). |
 | Write ticket design | `crates/volicord-core/src/policy/write_ticket.rs`, `crates/volicord-core/src/methods/prepare_write.rs`, `crates/volicord-core/src/methods/record_run.rs`, and write-ticket tests in Core and conformance suites. | [Core Model](../reference/core-model.md), [Prepare-write Method](../reference/api/method-prepare-write.md), [Record-run Method](../reference/api/method-record-run.md), and [Storage Effects](../reference/storage-effects.md). |
 | Judgment Inbox design | `crates/volicord-core/src/methods/judgment.rs`, pending-inbox projection helpers in `crates/volicord-core/src/methods/mod.rs`, `crates/volicord-cli/src/user_command.rs`, and MCP elicitation or local web consent modules. | [Administrative CLI](../reference/admin-cli.md#user-channel-commands), [Agent Connection](../reference/agent-connection.md), [Judgment Schemas](../reference/api/schema-judgment.md#judgmentinboxitem), [Request-user-judgment Method](../reference/api/method-request-user-judgment.md#volicordrequest_user_judgment), and [Record-user-judgment Method](../reference/api/method-record-user-judgment.md#volicordrecord_user_judgment). |
-| Observe and session-watch design | `crates/volicord-cli/src/host_integration/`, `crates/volicord-cli/src/guard_command.rs`, session-watch storage helpers, and close-readiness policy tests. | [Administrative CLI](../reference/admin-cli.md#guard-hook-commands), [Storage Records](../reference/storage-records.md), [MCP Transport](../reference/mcp-transport.md), and [Security](../reference/security.md). |
+| Detective and session-watch design | `crates/volicord-cli/src/host_integration/`, `crates/volicord-cli/src/guard_command.rs`, session-watch storage helpers, and close-readiness policy tests. | [Administrative CLI](../reference/admin-cli.md#guard-hook-commands), [Storage Records](../reference/storage-records.md), [MCP Transport](../reference/mcp-transport.md), and [Security](../reference/security.md). |
 | Local HTTP design | `crates/volicord-mcp/src/local_http.rs`, `local_web_consent.rs`, and `http.rs`. | [MCP Transport](../reference/mcp-transport.md), [Administrative CLI](../reference/admin-cli.md), and [Security](../reference/security.md). |
 
 This map is for source navigation. If source and Reference disagree, treat that
@@ -289,7 +289,7 @@ This flow is an implementation map. Exact public method contracts, error precede
 
 ## Administrative agent setup flow
 
-`volicord init`, `volicord connect`, and `volicord connection ...` are implemented as local administrative orchestration, not as public Core methods. The implementation lives under `crates/volicord-cli/src/connection_command.rs` and the host adapters in `crates/volicord-cli/src/host_integration/`; exact command, Agent Connection, MCP transport, guard integration, and runtime-boundary contracts stay with [Administrative CLI](../reference/admin-cli.md), [MCP Transport](../reference/mcp-transport.md), [Runtime Boundaries](../reference/runtime-boundaries.md), and [Security](../reference/security.md).
+`volicord init`, `volicord connect`, and `volicord connection ...` are implemented as local administrative orchestration, not as public Core methods. The implementation lives under `crates/volicord-cli/src/connection_command.rs` and the host adapters in `crates/volicord-cli/src/host_integration/`; exact command, Agent Connection, MCP transport, host-hook integration, and runtime-boundary contracts stay with [Administrative CLI](../reference/admin-cli.md), [MCP Transport](../reference/mcp-transport.md), [Runtime Boundaries](../reference/runtime-boundaries.md), and [Security](../reference/security.md).
 
 This setup flow shows the order followed by local administrative connection
 setup. Solid arrows show the main setup order, while dotted arrows point from
@@ -309,7 +309,7 @@ flowchart TD
   connection["Register or reuse Agent Connection inventory"]
   membership["Add or confirm Connection Project membership"]
   host["Apply the planned host configuration"]
-  integration["Apply init observe host-hook files and record internal guard installation when requested"]
+  integration["Apply init detective host-hook files and record internal host-hook installation when requested"]
   verify["Run verification after host apply"]
   readiness["Check host readiness and managed configuration"]
   preflight["Run volicord mcp --check --connection with the resolved Runtime Home"]
@@ -342,7 +342,7 @@ The connection sequence validates command options and resolves paths before any 
 
 Non-dry-run execution initializes or reuses the selected Runtime Home first, then registers or reuses the selected project. After the project is available in registry state, the command resolves the MCP executable, derives the connection identity, builds the host configuration plan, and rejects host-plan conflicts before registering or updating the Agent Connection row.
 
-Once the host plan is accepted, the command registers or reuses the Agent Connection, enforces the project-count rule for single-project scopes, adds or confirms the Connection Project membership, and then applies the planned host configuration. `volicord init` also applies the owner-defined observe host-hook files and records internal guard installation status after the Agent Connection and project membership exist. Product Repository guidance, where present, remains advisory context for local agents. It is separate from Core method authority: it does not record user judgments or issue write tickets.
+Once the host plan is accepted, the command registers or reuses the Agent Connection, enforces the project-count rule for single-project scopes, adds or confirms the Connection Project membership, and then applies the planned host configuration. `volicord init` also applies the owner-defined detective host-hook files and records internal host-hook installation status after the Agent Connection and project membership exist. Product Repository guidance, where present, remains advisory context for local agents. It is separate from Core method authority: it does not record user judgments or issue write tickets.
 
 Verification runs after host configuration is applied. It checks host readiness and managed configuration through the host adapter, runs `volicord mcp --check --connection <connection_id>` with the resolved Runtime Home, and performs direct MCP stdio initialization and `tools/list` discovery only when the host gate allows that handshake and preflight has passed. The command then records or reports the resulting verification status as implemented by the administrative CLI.
 

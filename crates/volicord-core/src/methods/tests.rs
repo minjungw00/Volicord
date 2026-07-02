@@ -12579,7 +12579,7 @@ fn close_task_complete_success() -> Result<(), Box<dyn Error>> {
 fn guarded_close_complete_success_reports_guard_health() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let guard_installation_id =
-        record_guard_installation(&harness, "guarded_success", "observe", "active", "{}")?;
+        record_guard_installation(&harness, "guarded_success", "detective", "active", "{}")?;
     let session_id = "session_guarded_success";
     initialize_full_watch_baseline(
         &harness,
@@ -12630,7 +12630,7 @@ fn guarded_close_complete_success_reports_guard_health() -> Result<(), Box<dyn E
     assert_eq!(harness.counts()?, before_status);
     assert_eq!(
         status.response_value["guard_health"]["selected_profile"],
-        "observe"
+        "detective"
     );
     assert_eq!(
         status.response_value["guard_health"]["guard_installation_id"],
@@ -12642,7 +12642,7 @@ fn guarded_close_complete_success_reports_guard_health() -> Result<(), Box<dyn E
     );
     assert_eq!(
         status.response_value["guard_health"]["control_surface"]["selected_profile"],
-        "observe"
+        "detective"
     );
     assert_eq!(
         status.response_value["guard_health"]["control_surface"]["host_hooks_active"],
@@ -12724,7 +12724,7 @@ fn guarded_close_complete_success_reports_guard_health() -> Result<(), Box<dyn E
     );
     assert_eq!(
         status.response_value["active_task"]["guard_health"]["selected_profile"],
-        "observe"
+        "detective"
     );
     let local_web_status = harness.service.status(
         StatusRequest {
@@ -12770,7 +12770,7 @@ fn guarded_close_complete_success_reports_guard_health() -> Result<(), Box<dyn E
     assert_eq!(response.response_value["blockers"], json!([]));
     assert_eq!(
         response.response_value["guard_health"]["selected_profile"],
-        "observe"
+        "detective"
     );
     assert_eq!(
         response.response_value["guard_health"]["control_surface"]["host_hooks_active"],
@@ -12795,7 +12795,7 @@ fn host_hook_strength_requires_native_output_adapter() -> Result<(), Box<dyn Err
     record_guard_installation(
         &harness,
         "native_output_unverified",
-        "observe",
+        "detective",
         "active",
         &capability.to_string(),
     )?;
@@ -12852,7 +12852,7 @@ fn host_hook_strength_requires_generated_config_verification() -> Result<(), Box
     record_guard_installation(
         &harness,
         "generated_config_missing",
-        "observe",
+        "detective",
         "active",
         &capability.to_string(),
     )?;
@@ -12906,7 +12906,7 @@ fn host_hook_strength_requires_hook_path_safety_and_recovers() -> Result<(), Box
     record_guard_installation(
         &harness,
         suffix,
-        "observe",
+        "detective",
         "active",
         &capability.to_string(),
     )?;
@@ -12955,7 +12955,7 @@ fn host_hook_strength_requires_hook_path_safety_and_recovers() -> Result<(), Box
     record_guard_installation(
         &harness,
         suffix,
-        "observe",
+        "detective",
         "active",
         &safe_capability.to_string(),
     )?;
@@ -13007,7 +13007,7 @@ fn host_hook_strength_requires_shell_and_direct_write_matcher_coverage(
         record_guard_installation(
             &harness,
             suffix,
-            "observe",
+            "detective",
             "active",
             &capability.to_string(),
         )?;
@@ -13050,7 +13050,7 @@ fn guarded_close_blocks_unhealthy_guard_installation() -> Result<(), Box<dyn Err
     record_guard_installation(
         &harness,
         "guarded_unhealthy",
-        "observe",
+        "detective",
         "reload_required",
         "{}",
     )?;
@@ -13114,7 +13114,7 @@ fn guarded_close_blocks_configured_guard_before_observation() -> Result<(), Box<
     record_guard_installation(
         &harness,
         "guarded_not_observed",
-        "observe",
+        "detective",
         "configured",
         "{}",
     )?;
@@ -13233,7 +13233,7 @@ fn guarded_configured_guard_becomes_effectively_active_after_valid_observation(
     let guard_installation_id = record_guard_installation(
         &harness,
         "guarded_configured_observed",
-        "observe",
+        "detective",
         "configured",
         "{}",
     )?;
@@ -13244,7 +13244,7 @@ fn guarded_configured_guard_becomes_effectively_active_after_valid_observation(
             connection_internal_id: CONNECTION_ID.to_owned(),
             project_id: PROJECT_ID.to_owned(),
             host_kind: HOST_KIND_CODEX.to_owned(),
-            guard_mode: "observe".to_owned(),
+            guard_mode: "detective".to_owned(),
             observed_policy_hash: "sha256:guardedfixture".to_owned(),
             observed_binary_version: Some("0.0.0-test".to_owned()),
             observed_phase: "session_start".to_owned(),
@@ -13315,12 +13315,12 @@ fn guarded_degraded_installation_with_valid_event_still_blocks_missing_required_
 ) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let degraded_capability = json!({
-        "schema": "volicord-guard-capability-v1",
+        "schema": "volicord-host-hook-capability-v1",
         "policy_hash": "sha256:guardedfixture",
         "host_capabilities": {
             "user_prompt_submit_hook": true
         },
-        "required_guard_phases": [
+        "required_hook_phases": [
             "session_start_hook",
             "pre_tool_hook",
             "post_tool_hook",
@@ -13334,7 +13334,7 @@ fn guarded_degraded_installation_with_valid_event_still_blocks_missing_required_
     let guard_installation_id = record_guard_installation(
         &harness,
         "guarded_degraded_observed",
-        "observe",
+        "detective",
         "degraded",
         &degraded_capability,
     )?;
@@ -13345,7 +13345,7 @@ fn guarded_degraded_installation_with_valid_event_still_blocks_missing_required_
             connection_internal_id: CONNECTION_ID.to_owned(),
             project_id: PROJECT_ID.to_owned(),
             host_kind: HOST_KIND_CODEX.to_owned(),
-            guard_mode: "observe".to_owned(),
+            guard_mode: "detective".to_owned(),
             observed_policy_hash: "sha256:guardedfixture".to_owned(),
             observed_binary_version: Some("0.0.0-test".to_owned()),
             observed_phase: "session_start".to_owned(),
@@ -13434,12 +13434,12 @@ fn guarded_partial_required_phase_configuration_with_event_still_blocks_missing_
 ) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let partial_capability = json!({
-        "schema": "volicord-guard-capability-v1",
+        "schema": "volicord-host-hook-capability-v1",
         "policy_hash": "sha256:guardedfixture",
         "host_capabilities": {
             "user_prompt_submit_hook": true
         },
-        "required_guard_phases": ["session_start_hook"],
+        "required_hook_phases": ["session_start_hook"],
         "missing_required_hooks": [],
         "prompt_capture": true
     })
@@ -13447,7 +13447,7 @@ fn guarded_partial_required_phase_configuration_with_event_still_blocks_missing_
     let guard_installation_id = record_guard_installation(
         &harness,
         "guarded_partial_observed",
-        "observe",
+        "detective",
         "configured",
         &partial_capability,
     )?;
@@ -13458,7 +13458,7 @@ fn guarded_partial_required_phase_configuration_with_event_still_blocks_missing_
             connection_internal_id: CONNECTION_ID.to_owned(),
             project_id: PROJECT_ID.to_owned(),
             host_kind: HOST_KIND_CODEX.to_owned(),
-            guard_mode: "observe".to_owned(),
+            guard_mode: "detective".to_owned(),
             observed_policy_hash: "sha256:guardedfixture".to_owned(),
             observed_binary_version: Some("0.0.0-test".to_owned()),
             observed_phase: "session_start".to_owned(),
@@ -13534,7 +13534,7 @@ fn guarded_partial_required_phase_configuration_with_event_still_blocks_missing_
 #[test]
 fn guarded_close_blocks_missing_guard_installation() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
-    insert_guarded_agent_session(&harness, "guarded_missing_install", "observe")?;
+    insert_guarded_agent_session(&harness, "guarded_missing_install", "detective")?;
     let (task_id, change_unit_id) =
         create_task_with_change_unit(&harness, "guarded_missing_install")?;
     let after_evidence = record_close_evidence(
@@ -13600,7 +13600,7 @@ fn guarded_close_blocks_stale_broken_and_degraded_guard_status() -> Result<(), B
         record_guard_installation(
             &harness,
             &format!("guarded_{status}"),
-            "observe",
+            "detective",
             status,
             "{}",
         )?;
@@ -13655,7 +13655,7 @@ fn guarded_close_blocks_stale_broken_and_degraded_guard_status() -> Result<(), B
 fn guarded_close_blocks_unresolved_unrecorded_changes_and_check_is_read_only(
 ) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
-    record_guard_installation(&harness, "guarded_unrecorded", "observe", "active", "{}")?;
+    record_guard_installation(&harness, "guarded_unrecorded", "detective", "active", "{}")?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "guarded_unrecorded")?;
     let after_evidence = record_close_evidence(
         &harness,
@@ -13724,7 +13724,13 @@ fn guarded_close_blocks_unresolved_unrecorded_changes_and_check_is_read_only(
 fn reconcile_changes_resolves_not_product_change_and_updates_close_blocker(
 ) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
-    record_guard_installation(&harness, "reconcile_not_product", "observe", "active", "{}")?;
+    record_guard_installation(
+        &harness,
+        "reconcile_not_product",
+        "detective",
+        "active",
+        "{}",
+    )?;
     let (task_id, change_unit_id) =
         create_task_with_change_unit(&harness, "reconcile_not_product")?;
     let after_evidence = record_close_evidence(
@@ -13843,7 +13849,7 @@ fn reconcile_changes_resolves_not_product_change_and_updates_close_blocker(
 fn reconcile_changes_accepts_local_recovery_and_persists_replay_category(
 ) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
-    record_guard_installation(&harness, "reconcile_local", "observe", "active", "{}")?;
+    record_guard_installation(&harness, "reconcile_local", "detective", "active", "{}")?;
     let (task_id, _) = create_task_with_change_unit(&harness, "reconcile_local")?;
     let unrecorded_change_id =
         insert_guarded_unrecorded_change_with_paths(&harness, &task_id, "reconcile_local", "[]")?;
@@ -13946,7 +13952,7 @@ fn reconcile_changes_local_recovery_reports_no_unresolved_findings_read_only(
 #[test]
 fn reconcile_changes_creates_and_consumes_user_acceptance_judgment() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
-    record_guard_installation(&harness, "reconcile_accept", "observe", "active", "{}")?;
+    record_guard_installation(&harness, "reconcile_accept", "detective", "active", "{}")?;
     let (task_id, _) = create_task_with_change_unit(&harness, "reconcile_accept")?;
     let unrecorded_change_id =
         insert_guarded_unrecorded_change(&harness, &task_id, "reconcile_accept")?;
@@ -14053,7 +14059,7 @@ fn reconcile_changes_local_recovery_consumes_user_acceptance_and_removes_close_b
     record_guard_installation(
         &harness,
         "reconcile_local_accept",
-        "observe",
+        "detective",
         "active",
         "{}",
     )?;
@@ -14178,7 +14184,7 @@ fn reconcile_changes_local_recovery_consumes_user_acceptance_and_removes_close_b
 fn reconcile_changes_rejects_agent_supplied_system_resolution_basis() -> Result<(), Box<dyn Error>>
 {
     let harness = MethodHarness::new()?;
-    record_guard_installation(&harness, "reconcile_reject", "observe", "active", "{}")?;
+    record_guard_installation(&harness, "reconcile_reject", "detective", "active", "{}")?;
     let (task_id, _) = create_task_with_change_unit(&harness, "reconcile_reject")?;
     let unrecorded_change_id =
         insert_guarded_unrecorded_change(&harness, &task_id, "reconcile_reject")?;
@@ -14230,7 +14236,7 @@ fn reconcile_changes_rejects_agent_direct_accepted_by_user_without_judgment(
     record_guard_installation(
         &harness,
         "reconcile_agent_accept",
-        "observe",
+        "detective",
         "active",
         "{}",
     )?;
@@ -14307,7 +14313,7 @@ fn reconcile_changes_rejects_mismatched_invocation_project() -> Result<(), Box<d
 fn reconcile_changes_resolves_invalid_observation_deterministically() -> Result<(), Box<dyn Error>>
 {
     let harness = MethodHarness::new()?;
-    record_guard_installation(&harness, "reconcile_invalid", "observe", "active", "{}")?;
+    record_guard_installation(&harness, "reconcile_invalid", "detective", "active", "{}")?;
     let (task_id, _) = create_task_with_change_unit(&harness, "reconcile_invalid")?;
     let unrecorded_change_id = insert_guarded_unrecorded_change_with_paths(
         &harness,
@@ -14343,7 +14349,7 @@ fn reconcile_changes_resolves_invalid_observation_deterministically() -> Result<
 #[test]
 fn reconcile_changes_isolates_other_projects() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
-    record_guard_installation(&harness, "reconcile_cross", "observe", "active", "{}")?;
+    record_guard_installation(&harness, "reconcile_cross", "detective", "active", "{}")?;
     let (task_id, _) = create_task_with_change_unit(&harness, "reconcile_cross")?;
     let main_change_id = insert_guarded_unrecorded_change_with_paths(
         &harness,
@@ -14390,7 +14396,7 @@ fn reconcile_changes_isolates_other_projects() -> Result<(), Box<dyn Error>> {
 fn guarded_close_blocks_write_ticket_issue_from_guard_event() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let guard_installation_id =
-        record_guard_installation(&harness, "guarded_write_ready", "observe", "active", "{}")?;
+        record_guard_installation(&harness, "guarded_write_ready", "detective", "active", "{}")?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "guarded_write_ready")?;
     let after_evidence = record_close_evidence(
         &harness,
@@ -14462,7 +14468,7 @@ fn guarded_close_blocks_write_ticket_issue_from_guard_event() -> Result<(), Box<
 fn guarded_close_blocks_write_ticket_path_scope_guard_event() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let guard_installation_id =
-        record_guard_installation(&harness, "guarded_path_scope", "observe", "active", "{}")?;
+        record_guard_installation(&harness, "guarded_path_scope", "detective", "active", "{}")?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "guarded_path_scope")?;
     record_close_evidence(
         &harness,
@@ -14510,7 +14516,7 @@ fn guarded_close_blocks_write_ticket_path_scope_guard_event() -> Result<(), Box<
 #[test]
 fn reconcile_changes_resolves_deterministic_active_write_ticket() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
-    record_guard_installation(&harness, "reconcile_ticket", "observe", "active", "{}")?;
+    record_guard_installation(&harness, "reconcile_ticket", "detective", "active", "{}")?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "reconcile_ticket")?;
     let prepare = harness.service.prepare_write(
         prepare_write_request(
@@ -14624,7 +14630,7 @@ fn close_check_blocks_open_and_expired_write_tickets() -> Result<(), Box<dyn Err
 #[test]
 fn guarded_pending_judgment_displays_user_answer_paths() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
-    record_guard_installation(&harness, "guarded_pending", "observe", "active", "{}")?;
+    record_guard_installation(&harness, "guarded_pending", "detective", "active", "{}")?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "guarded_pending")?;
     let after_evidence = record_close_evidence(
         &harness,
@@ -14727,7 +14733,7 @@ fn guarded_pending_judgment_uses_prompt_capture_guidance_when_mcp_unhealthy(
     record_guard_installation(
         &harness,
         "guarded_pending_prompt_capture",
-        "observe",
+        "detective",
         "active",
         "{}",
     )?;
@@ -15013,7 +15019,7 @@ fn guarded_expected_write_does_not_create_duplicate_watcher_blocker() -> Result<
 {
     let harness = MethodHarness::new()?;
     let guard_installation_id =
-        record_guard_installation(&harness, "watch_expected", "observe", "active", "{}")?;
+        record_guard_installation(&harness, "watch_expected", "detective", "active", "{}")?;
     let (task_id, change_unit_id, _) = create_close_ready_task(&harness, "watch_expected")?;
     let session_id = "session_watch_expected";
     initialize_full_watch_baseline(
@@ -15062,7 +15068,7 @@ fn guarded_watcher_links_deterministic_active_write_ticket() -> Result<(), Box<d
     let mut harness = MethodHarness::new()?;
     harness.use_clock(ManualClock::at("2026-06-18T00:00:00Z"));
     let guard_installation_id =
-        record_guard_installation(&harness, "watch_ticket", "observe", "active", "{}")?;
+        record_guard_installation(&harness, "watch_ticket", "detective", "active", "{}")?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "watch_ticket")?;
     let prepare = harness.service.prepare_write(
         prepare_write_request(
@@ -15120,7 +15126,7 @@ fn guarded_hook_missing_write_is_detected_by_watcher() -> Result<(), Box<dyn Err
     record_guard_installation(
         &harness,
         "watch_guarded_fallback",
-        "observe",
+        "detective",
         "active",
         "{}",
     )?;
@@ -15147,7 +15153,7 @@ fn guarded_hook_missing_write_is_detected_by_watcher() -> Result<(), Box<dyn Err
     assert_close_blocker(&response.response_value, "unresolved_unrecorded_changes");
     assert_eq!(
         response.response_value["guard_health"]["selected_profile"],
-        "observe"
+        "detective"
     );
     assert_eq!(unresolved_changes_for_connection(&harness)?.len(), 1);
     Ok(())
@@ -15675,7 +15681,7 @@ fn initialize_full_watch_baseline(
             connection_internal_id: CONNECTION_ID.to_owned(),
             guard_installation_id: Some(guard_installation_id.to_owned()),
             host_kind: HOST_KIND_CODEX.to_owned(),
-            guard_mode: "observe".to_owned(),
+            guard_mode: "detective".to_owned(),
             started_at: "2026-06-30T00:03:00Z".to_owned(),
             metadata_json: serde_json::to_string(&json!({
                 "schema_version": 1,
@@ -16218,7 +16224,7 @@ fn record_guard_installation(
 ) -> Result<String, Box<dyn Error>> {
     let guard_installation_id = format!("guard_installation_{suffix}");
     let host_capability_json = if host_capability_json == "{}" && guard_mode != "record" {
-        complete_guard_capability_json(harness)?
+        complete_host_hook_capability_json(harness)?
     } else {
         host_capability_json.to_owned()
     };
@@ -16251,7 +16257,7 @@ fn record_guard_installation(
     Ok(guard_installation_id)
 }
 
-fn complete_guard_capability_json(harness: &MethodHarness) -> Result<String, Box<dyn Error>> {
+fn complete_host_hook_capability_json(harness: &MethodHarness) -> Result<String, Box<dyn Error>> {
     Ok(complete_guard_capability_value(harness)?.to_string())
 }
 
@@ -16267,7 +16273,7 @@ fn complete_guard_capability_value(harness: &MethodHarness) -> Result<Value, Box
             .expect("hook config path has parent"),
     )?;
     fs::create_dir_all(&hooks_dir)?;
-    let policy_text = r#"{"managed_by":"volicord","guard":{"commands":{}}}"#;
+    let policy_text = r#"{"managed_by":"volicord","host_hook": {"commands":{}}}"#;
     let hook_config_text = r#"{"hooks":{"SessionStart":[{"matcher":"startup|resume","hooks":[{"type":"command","command":"sh -c 'root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-dispatch.sh\" session-start'"}]}],"PreToolUse":[{"matcher":"Bash|apply_patch|Edit|Write|mcp__.*__(write|edit|create|update|delete|remove|move|patch).*","hooks":[{"type":"command","command":"sh -c 'root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-dispatch.sh\" pre-tool'"}]}],"PostToolUse":[{"matcher":"Bash|apply_patch|Edit|Write|mcp__.*__(write|edit|create|update|delete|remove|move|patch).*","hooks":[{"type":"command","command":"sh -c 'root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-dispatch.sh\" post-tool'"}]}],"UserPromptSubmit":[{"hooks":[{"type":"command","command":"sh -c 'root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-dispatch.sh\" prompt-capture'"}]}],"Stop":[{"hooks":[{"type":"command","command":"sh -c 'root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-dispatch.sh\" stop'"}]}]}}"#;
     fs::write(&policy_path, policy_text)?;
     fs::write(&hook_config_path, hook_config_text)?;
@@ -16291,7 +16297,7 @@ fn complete_guard_capability_value(harness: &MethodHarness) -> Result<Value, Box
     for (capability_phase, command_name, policy_key) in phases {
         let wrapper_path = hooks_dir.join(format!("volicord-{command_name}.sh"));
         let wrapper_command = format!(
-            "volicord guard {command_name} --repo {} --connection {CONNECTION_ID} --guard-installation guard_installation --host codex --integration-profile observe --policy-hash sha256:guardedfixture --host-output codex",
+            "volicord host-hook {command_name} --repo {} --connection {CONNECTION_ID} --guard-installation guard_installation --host codex --integration-profile detective --policy-hash sha256:guardedfixture --host-output codex",
             path_text(&repo_root),
         );
         let wrapper_text = format!(
@@ -16350,7 +16356,7 @@ fn complete_guard_capability_value(harness: &MethodHarness) -> Result<Value, Box
     ];
     files.extend(wrapper_files);
     Ok(json!({
-        "schema": "volicord-guard-capability-v1",
+        "schema": "volicord-host-hook-capability-v1",
         "policy_hash": "sha256:guardedfixture",
         "native_host_output_adapter": "codex",
         "native_host_output_adapter_verified": true,
@@ -16359,7 +16365,7 @@ fn complete_guard_capability_value(harness: &MethodHarness) -> Result<Value, Box
         "host_capabilities": {
             "user_prompt_submit_hook": true
         },
-        "required_guard_phases": [
+        "required_hook_phases": [
             "session_start_hook",
             "pre_tool_hook",
             "post_tool_hook",

@@ -63,7 +63,7 @@ Agent setup through the ordinary
 
 The Record profile (`--profile record`) records authority state and exposes MCP
 tools without requiring host lifecycle hooks or a session watcher. The Detective
-profile (`--profile observe`) adds supported host hooks and session watcher
+profile (`--profile detective`) adds supported host hooks and session watcher
 observation. Host hooks can return cooperative host warning or denial decision
 signals, and the watcher can report Unrecorded Changes after coverage starts;
 neither surface prevents all writes, proves who changed a file, provides a

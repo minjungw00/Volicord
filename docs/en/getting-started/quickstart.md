@@ -26,23 +26,23 @@ project-bound `volicord mcp --stdio`.
 
 This fast path uses the Record profile (`--profile record`), which does not
 require host lifecycle hook installation or a session watcher. The Detective
-profile (`--profile observe`) requires verified support for all required host
+profile (`--profile detective`) requires verified support for all required host
 hook phases and session watcher observation. If those prerequisites are
 unavailable, use `--profile record` or prepare a supported host, platform, and
-repository configuration for observe before rerunning init. The Detective
+repository configuration for detective before rerunning init. The Detective
 profile can return cooperative host decision signals and detect unrecorded
 changes after watcher coverage starts, but it does not provide OS enforcement,
 actor proof, network isolation, or a sandbox. On native Windows, use this
-Record profile fast path because observe is not supported until Windows host hooks and
+Record profile fast path because detective is not supported until Windows host hooks and
 watcher behavior are implemented and tested. Exact project naming, profile
 behavior, connection defaults, and internal identity behavior belong to
 [Administrative CLI Reference](../reference/admin-cli.md).
 
-If you choose observe setup instead of this `record` fast path, generated
+If you choose detective setup instead of this `record` fast path, generated
 hook commands are designed to work when the host session starts from a
 repository subdirectory. Status, verification, and doctor diagnostics report
 `hook_path_safety`; a value such as `relative_path_unsafe`, `wrapper_missing`,
-or `wrapper_not_executable` means observe host hooks are not active until the
+or `wrapper_not_executable` means detective host hooks are not active until the
 generated hook commands or wrappers are repaired.
 
 ## Confirm The Setup
@@ -58,7 +58,7 @@ Completion state: the connection is ready when status or verification reports
 `complete`. If it reports `action_required`, complete the named host-owned or
 local repair action, then rerun verification. Exact result-state meaning belongs
 to [Administrative CLI Reference](../reference/admin-cli.md#agent-connection-result-states).
-Observe hook path repair guidance belongs to
+Detective host hook path repair guidance belongs to
 [Agent Host Troubleshooting](../guides/agent-host-troubleshooting.md#guard-hook-path-or-wrapper-is-unsafe).
 
 ## Choose A Host Intent
@@ -130,7 +130,7 @@ Agent Connections may request or show focused judgment needs, but
 authority-bearing user answers go through the local `User Channel`:
 
 When the host and client support it, the MCP adapter may use a host prompt for
-the pending judgment. When observe status reports chat command capture as
+the pending judgment. When detective status reports chat command capture as
 `configured`, `observed`, or `active`, the chat path is a strict prompt command
 such as `Volicord: answer J-3 1 #AB7K`. When host prompt input and chat command
 capture are unavailable and the adapter can safely expose the fallback,

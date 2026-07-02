@@ -132,7 +132,7 @@ For `decision=allowed`:
 - `write_ticket_effect` is `issued` for a new committed `decision=allowed` response
 - `write_ticket.path_patterns.allowed` and top-level `allowed_path_patterns` contain the normalized repo-relative `intended_paths` allowed for this ticket
 - `write_ticket.path_patterns.denied` and top-level `denied_path_patterns` are `[]` for an allowed result
-- `write_ticket.observed_paths` is `[]` until an observe-profile hook, watcher, or later owner-defined observation path connects observations to the ticket
+- `write_ticket.observed_paths` is `[]` until a detective-profile hook, watcher, or later owner-defined observation path connects observations to the ticket
 - `control_surface` and `write_ticket.control_surface` disclose the current Volicord control surface, including `os_enforced=false` in the baseline non-enforcement model
 - idempotent replay returns the stored original committed `PrepareWriteResult` exactly; it does not recompute or reclassify `write_ticket_effect`, `base.state_version`, `base.events`, or any other response field, and it does not create another write ticket or repeat the storage effect
 - the write ticket is scoped to `WriteTicketScope` using normalized repo-relative `intended_paths`

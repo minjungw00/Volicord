@@ -53,7 +53,7 @@ use crate::user_command::{
 };
 
 const GUARD_SCHEMA_VERSION: u64 = 1;
-const DEFAULT_INTEGRATION_PROFILE: &str = "observe";
+const DEFAULT_INTEGRATION_PROFILE: &str = "detective";
 const VOLICORD_POLICY_FILE: &str = ".volicord/policy.json";
 const EXPECTED_WRITE_TTL_MINUTES: i64 = 15;
 const SESSION_WATCH_METADATA_SOURCE: &str = "volicord_session_watch";
@@ -389,11 +389,11 @@ enum WriteTicketCoverage {
 
 pub fn guard_usage() -> String {
     concat!(
-        "volicord guard session-start [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|observe] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]\n",
-        "volicord guard pre-tool [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|observe] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]\n",
-        "volicord guard post-tool [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|observe] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]\n",
-        "volicord guard prompt-capture [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|observe] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]\n",
-        "volicord guard stop [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|observe] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]\n",
+        "volicord host-hook session-start [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|detective] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]\n",
+        "volicord host-hook pre-tool [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|detective] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]\n",
+        "volicord host-hook post-tool [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|detective] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]\n",
+        "volicord host-hook prompt-capture [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|detective] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]\n",
+        "volicord host-hook stop [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|detective] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]\n",
     )
     .to_owned()
 }
@@ -436,7 +436,7 @@ where
         "stop" => GuardPhase::Stop,
         other => {
             return Err(GuardCommandError::Usage(format!(
-                "unknown guard command: {other}\n\n{}",
+                "unknown host-hook command: {other}\n\n{}",
                 guard_usage()
             )))
         }
@@ -750,25 +750,26 @@ fn read_guard_input(path: Option<&Path>) -> Result<GuardInput, GuardCommandError
     let raw_text = match path {
         Some(path) => fs::read_to_string(path).map_err(|error| {
             GuardCommandError::Runtime(format!(
-                "failed to read guard event file {}: {error}",
+                "failed to read host-hook event file {}: {error}",
                 path.display()
             ))
         })?,
         None => {
             let mut text = String::new();
             io::stdin().read_to_string(&mut text).map_err(|error| {
-                GuardCommandError::Runtime(format!("failed to read guard event stdin: {error}"))
+                GuardCommandError::Runtime(format!("failed to read host-hook event stdin: {error}"))
             })?;
             text
         }
     };
     if raw_text.trim().is_empty() {
         return Err(GuardCommandError::Usage(
-            "guard event JSON must not be empty".to_owned(),
+            "host-hook event JSON must not be empty".to_owned(),
         ));
     }
-    let raw_value = serde_json::from_str::<Value>(&raw_text)
-        .map_err(|error| GuardCommandError::Usage(format!("guard event must be JSON: {error}")))?;
+    let raw_value = serde_json::from_str::<Value>(&raw_text).map_err(|error| {
+        GuardCommandError::Usage(format!("host-hook event must be JSON: {error}"))
+    })?;
     let raw_sha256 = sha256_text(&raw_text);
     let redacted_value = redact_event_value(&raw_value);
     Ok(GuardInput {
@@ -834,7 +835,7 @@ fn guard_envelope(
         })
         .ok_or_else(|| {
             GuardCommandError::Usage(
-                "guard command requires --connection or connection_id in the event".to_owned(),
+                "host-hook command requires --connection or connection_id in the event".to_owned(),
             )
         })?;
     let host_kind = normalize_host_kind(
@@ -865,7 +866,7 @@ fn guard_envelope(
                     &[
                         &["integration_profile"],
                         &["profile"],
-                        &["guard", "profile"],
+                        &["host_hook", "profile"],
                     ],
                 )
             })
@@ -930,7 +931,7 @@ fn guard_envelope(
                 &input.raw_value,
                 &[
                     &["guard_installation_id"],
-                    &["guard", "installation_id"],
+                    &["host_hook", "installation_id"],
                     &["volicord", "guard_installation_id"],
                 ],
             )
@@ -954,12 +955,12 @@ fn normalize_guard_mode(value: String) -> Result<String, GuardCommandError> {
     if matches!(
         value.as_str(),
         profile if profile == IntegrationProfile::Record.as_str()
-            || profile == IntegrationProfile::Observe.as_str()
+            || profile == IntegrationProfile::Detective.as_str()
     ) {
         Ok(value)
     } else {
         Err(GuardCommandError::Usage(
-            "integration profile must be record or observe".to_owned(),
+            "integration profile must be record or detective".to_owned(),
         ))
     }
 }
@@ -1007,7 +1008,7 @@ fn initialize_observe_session_watch(
     phase: GuardPhase,
 ) -> Result<(), GuardCommandError> {
     if phase != GuardPhase::SessionStart
-        || envelope.guard_mode != IntegrationProfile::Observe.as_str()
+        || envelope.guard_mode != IntegrationProfile::Detective.as_str()
     {
         return Ok(());
     }
@@ -1024,7 +1025,7 @@ fn initialize_observe_session_watch(
     )
     .map_err(|error| {
         GuardCommandError::Runtime(format!(
-            "failed to start observe session watcher for {}: {error}",
+            "failed to start detective session watcher for {}: {error}",
             project.repo_root.display()
         ))
     })?;
@@ -1113,14 +1114,14 @@ fn current_policy_hash(project: &ProjectRecord) -> Result<Option<String>, GuardC
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(error) => {
             return Err(GuardCommandError::Runtime(format!(
-                "failed to read observe hook policy {}: {error}",
+                "failed to read detective host hook policy {}: {error}",
                 policy_path.display()
             )));
         }
     };
     let value = serde_json::from_str::<Value>(&text).map_err(|error| {
         GuardCommandError::Runtime(format!(
-            "observe hook policy is not valid JSON: {} ({error})",
+            "detective host hook policy is not valid JSON: {} ({error})",
             policy_path.display()
         ))
     })?;
@@ -2389,7 +2390,7 @@ fn prompt_capture_unavailable_reason(
         PromptCaptureStatus::Degraded => (
             "prompt_capture_degraded",
             "Chat command capture is degraded for this host, project, and connection.".to_owned(),
-            "Repair the observe hook integration before using chat commands.",
+            "Repair the detective host hook integration before using chat commands.",
         ),
         _ => (
             "prompt_capture_unavailable",
@@ -3028,8 +3029,9 @@ fn pending_chat_judgment_summaries(
     task_id: &TaskId,
     envelope: &GuardEnvelope,
 ) -> Result<Vec<GuardPendingJudgmentSummary>, GuardCommandError> {
-    let occurred_at = UtcTimestamp::parse(&envelope.occurred_at)
-        .map_err(|error| GuardCommandError::Runtime(format!("invalid guard timestamp: {error}")))?;
+    let occurred_at = UtcTimestamp::parse(&envelope.occurred_at).map_err(|error| {
+        GuardCommandError::Runtime(format!("invalid host-hook timestamp: {error}"))
+    })?;
     let expected_actor =
         ActorSource::agent_connection(envelope.connection_id.clone()).to_canonical_string();
     let records = store.user_judgment_records_for_task(task_id)?;
@@ -3346,7 +3348,7 @@ fn render_guard_output(
             };
             Ok(RenderedGuardOutput {
                 stdout: format!(
-                    "Volicord guard {}: {} ({})\n{}\n",
+                    "Volicord host-hook {}: {} ({})\n{}\n",
                     phase.command_name(),
                     decision.as_str(),
                     allowed,
@@ -3836,5 +3838,5 @@ fn hex_bytes(bytes: &[u8]) -> String {
 }
 
 fn json_error(error: serde_json::Error) -> GuardCommandError {
-    GuardCommandError::Runtime(format!("failed to serialize guard output: {error}"))
+    GuardCommandError::Runtime(format!("failed to serialize host-hook output: {error}"))
 }

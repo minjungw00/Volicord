@@ -44,7 +44,7 @@ Volicord는 기준 범위 기록을 로컬 `Volicord Runtime Home` 하나와 등
 
 저장 위치:
 
-- `registry.sqlite`는 Runtime Home 식별 정보, 설치 프로필 기록, 프로젝트 등록 매핑, 프로젝트 alias, Agent Connection 기록, Connection Projects 멤버십, guard 설치 기록, registry 메타데이터를 저장합니다. 설치 프로필에는 선택된 `volicord` 명령, MCP 시작 명령, bin 디렉터리, 기본 연결 모드, 메타데이터, 타임스탬프가 포함됩니다. 프로젝트 등록에는 `project_internal_id`, 표시 이름, CLI 선택 alias, Runtime Home 관계, 등록된 `repo_root`, `project_home`, 프로젝트 `state.sqlite` 경로, 상태, 메타데이터, 타임스탬프가 포함됩니다.
+- `registry.sqlite`는 Runtime Home 식별 정보, 설치 프로필 기록, 프로젝트 등록 매핑, 프로젝트 alias, Agent Connection 기록, Connection Projects 멤버십, host-hook 설치 기록, registry 메타데이터를 저장합니다. 설치 프로필에는 선택된 `volicord` 명령, MCP 시작 명령, bin 디렉터리, 기본 연결 모드, 메타데이터, 타임스탬프가 포함됩니다. 프로젝트 등록에는 `project_internal_id`, 표시 이름, CLI 선택 alias, Runtime Home 관계, 등록된 `repo_root`, `project_home`, 프로젝트 `state.sqlite` 경로, 상태, 메타데이터, 타임스탬프가 포함됩니다.
 - `projects/{project_internal_id}/`는 등록된 프로젝트 하나에 대한 기본 Volicord 프로젝트 홈 형태입니다. `repo_root`와 같은 위치나 권한이 아닙니다.
 - `state.sqlite`는 등록된 프로젝트의 프로젝트별 로컬 Core 상태와 프로젝트 범위 host-observation 기록을 저장합니다.
 - `artifacts/`는 아티팩트 저장소를 사용할 때의 프로젝트 아티팩트 저장소이며, 아티팩트 저장소가 처음 필요할 때 늦게 만들어질 수 있습니다. `artifacts/tmp/`는 아티팩트 스테이징에 필요할 때 쓰는 임시 스테이징 공간이며 증거 권한이 아닙니다. 이 디렉터리도 스테이징이 일어날 때 늦게 만들어질 수 있습니다. 이 디렉터리들은 프로젝트 등록 직후에 반드시 존재할 필요가 없습니다.
@@ -56,9 +56,9 @@ Volicord는 기준 범위 기록을 로컬 `Volicord Runtime Home` 하나와 등
 
 운영 프로젝트 기록에서 `project_home`은 프로젝트별 로컬 런타임 상태 위치를 담당합니다. 실행 가능한 프로젝트 상태 데이터베이스 경로는 검증된 프로젝트 홈에서 `project_home/state.sqlite`로 파생합니다. 저장된 `state_db_path`는 영속성과 진단을 위해 `registry.sqlite`에 남지만, Store가 정상 `ProjectRecord`를 반환하거나, 프로젝트별 상태를 열거나 마이그레이션하거나, Agent Connection 프로젝트 접근을 해석하거나, Core 실행에 들어가거나, MCP 프로젝트 가용성을 보고하기 전에 이 파생 경로와 일치해야 합니다. 일치하지 않는 등록은 진단을 위한 원시 registry 내용으로 검사할 수 있지만, 운영 조회와 목록 조회는 그 행을 생략하거나 정상 프로젝트로 반환하지 말고 거절해야 합니다. 검사는 대체 `state_db_path`를 열거나, 만들거나, 마이그레이션하거나, 복구하면 안 됩니다.
 
-`Product Repository`는 `repo_root`로 등록되는 사용자 제품 파일 경계입니다. Volicord Runtime Home이 아니며, Core 권한 저장소가 아니고, 런타임 기록, 재실행 행, 판단, 쓰기 티켓, guard 기록, Agent Connection registry 상태를 저장하는 위치도 아닙니다.
+`Product Repository`는 `repo_root`로 등록되는 사용자 제품 파일 경계입니다. Volicord Runtime Home이 아니며, Core 권한 저장소가 아니고, 런타임 기록, 재실행 행, 판단, 쓰기 티켓, host-hook 기록, Agent Connection registry 상태를 저장하는 위치도 아닙니다.
 
-기준 SQLite 테이블 형태, 인덱스, 외래 키, 마이그레이션 테이블, 제약은 [저장소 DDL](storage-ddl.md)이 담당합니다. 이 기록들의 현재 기준 SQLite 저장소 프로필은 `baseline_sqlite_v3`이며, 프로필/버전 경계 동작은 [저장소 버전 관리](storage-versioning.md)가 담당합니다.
+기준 SQLite 테이블 형태, 인덱스, 외래 키, 마이그레이션 테이블, 제약은 [저장소 DDL](storage-ddl.md)이 담당합니다. 이 기록들의 현재 기준 SQLite 저장소는 `baseline_sqlite_v3`이며, 프로필/버전 경계 동작은 [저장소 버전 관리](storage-versioning.md)가 담당합니다.
 
 Runtime Home 식별은 파일시스템 경로에만 의존하면 안 됩니다. 복사되거나 이동된 Runtime Home은 같은 저장된 `runtime_home_id`를 가질 수 있고, 새 Runtime Home은 새 식별자를 가져야 합니다. 이 식별자는 의심스러운 복사본, 중복 등록, 경로 변경을 감지하는 데 도움이 될 수 있지만 보안 보장은 아닙니다.
 
@@ -83,12 +83,12 @@ API 스키마 형태와 저장소 기록 배치는 서로 다른 담당 문서�
 | `registry.sqlite` | 프로젝트 등록과 alias | 프로젝트 매핑 | `project_internal_id`, 표시 이름, CLI 선택 alias, Runtime Home 관계, 고유한 `repo_root`, 위치를 담당하는 `project_home`, 실행 시 `project_home/state.sqlite`와 일치해야 하는 저장된 `state_db_path`, 상태, 메타데이터, alias에서 내부 식별 정보로 가는 매핑. |
 | `registry.sqlite` | Agent Connection | MCP 호스트 연결 단위 | 지속되는 `connection_internal_id`, 호스트 종류, 연결 의도, 호스트 범위, 선택적 `project_internal_id`, 내부 서버 이름, 설정 대상, 모드, 활성 상태, 관리 fingerprint, 검증 요약 상태, 검증 보고서 JSON, 사용자 동작 JSON, 메타데이터, 타임스탬프. |
 | `registry.sqlite` | Connection Projects | 연결 프로젝트 허용 목록 | `connection_internal_id`와 `project_internal_id`를 사용하는 Agent Connection과 등록된 프로젝트 사이의 명시적 다대다 멤버십. |
-| `registry.sqlite` | Guard installation | Guard 설정과 호스트 capability 기록 | Runtime Home, Agent Connection, 선택적 프로젝트 범위, 호스트 종류, guard 모드, 호스트 capability JSON, 설치 생명주기 상태, 관찰된 hook 메타데이터, 타임스탬프, 메타데이터. |
+| `registry.sqlite` | Host-hook installation | Host-hook 설정과 호스트 capability 기록 | Runtime Home, Agent Connection, 선택적 프로젝트 범위, 호스트 종류, 통합 모드, 호스트 capability JSON, 설치 생명주기 상태, 관찰된 hook 메타데이터, 타임스탬프, 메타데이터. |
 | `state.sqlite` | `project_state` | 프로젝트 상태 헤더 | 저장 프로필, `state_version`, 현재 적용 `Task` 포인터, 프로젝트 강제 프로필. |
-| `state.sqlite` | `agent_sessions` | 관찰된 Agent Session | Agent Connection 하나에 대한 프로젝트 범위 세션, 선택적 guard 설치, 호스트 종류, 통합 프로필, 시작/종료 타임스탬프, 메타데이터. |
-| `state.sqlite` | `guard_events` | Guard decision 이벤트 | 연결 및 선택적 세션 또는 설치에 묶이는 프로젝트 범위 guard 이벤트입니다. decision, subject JSON, result JSON, 타임스탬프, 메타데이터를 포함합니다. |
+| `state.sqlite` | `agent_sessions` | 관찰된 Agent Session | Agent Connection 하나에 대한 프로젝트 범위 세션, 선택적 host-hook 설치, 호스트 종류, 통합 프로필, 시작/종료 타임스탬프, 메타데이터. |
+| `state.sqlite` | `guard_events` | Host-hook decision 이벤트 | 연결 및 선택적 세션 또는 설치에 묶이는 프로젝트 범위 host-hook 이벤트입니다. decision, subject JSON, result JSON, 타임스탬프, 메타데이터를 포함합니다. |
 | `state.sqlite` | `prompt_captures` | Prompt capture | 세션에 대한 프로젝트 범위 prompt capture입니다. 연결, capture kind, prompt hash, 선택적 prompt text, 타임스탬프, 메타데이터를 포함합니다. |
-| `state.sqlite` | `expected_writes` | 예상 Product Repository 쓰기 | 허용된 observe pre-tool 쓰기가 만드는 프로젝트 범위 expected-write 상관 기록입니다. 연결/세션 식별 정보, 선택적 호스트 invocation 식별 정보, 정확한 경로 정책, active task/Change Unit/쓰기 티켓 근거, 타임스탬프, 매칭된 post-tool 메타데이터를 포함합니다. |
+| `state.sqlite` | `expected_writes` | 예상 Product Repository 쓰기 | 허용된 detective pre-tool 쓰기가 만드는 프로젝트 범위 expected-write 상관 기록입니다. 연결/세션 식별 정보, 선택적 호스트 invocation 식별 정보, 정확한 경로 정책, active task/Change Unit/쓰기 티켓 근거, 타임스탬프, 매칭된 post-tool 메타데이터를 포함합니다. |
 | `state.sqlite` | `unrecorded_changes` | 기록되지 않은 Product Repository 변경 | Core run 또는 담당자가 정의한 다른 기록과 아직 연결되지 않은 관찰된 Product Repository 변경에 대한 프로젝트 범위 미해결 또는 해결 기록. |
 | `state.sqlite` | `session_watch_baselines` | 세션 watch 기준선 | 등록된 Product Repository 또는 watch path set에 대한 프로젝트 범위 세션 watch 상태와 기준선 스냅샷입니다. 유효한 제외 항목, 스냅샷 digest 메타데이터, 간결한 스냅샷 entry를 포함합니다. |
 | `state.sqlite` | `session_watch_observations` | 세션 watch 관찰 | 이후의 안전한 스냅샷을 기준선과 비교해 얻은 프로젝트 범위 detective 관찰입니다. 관찰된 변경 경로, 선택적 expected-write 또는 쓰기 티켓 상관 관계, 기존 unrecorded-change 행에 대한 선택적 연결을 포함합니다. |
@@ -118,10 +118,10 @@ API 스키마 형태와 저장소 기록 배치는 서로 다른 담당 문서�
 - 프로젝트 등록에는 고유한 `project_internal_id`, 고유한 프로젝트 alias, 고유한 저장소 루트, 고유한 프로젝트 홈, 고유한 상태 데이터베이스 경로가 필요합니다. `project_name`은 표시 이름이고 `project_alias`는 CLI 선택 보조 값입니다.
 - Agent Connection 식별 정보는 `connection_internal_id`별로 고유합니다.
 - Connection Projects 멤버십은 `connection_internal_id`와 `project_internal_id`의 조합별로 고유하며, 하나의 연결이 등록된 프로젝트를 주소 지정할 수 있게 하는 유일한 registry 멤버십입니다.
-- Guard installation 식별 정보는 `guard_installation_id`별로 고유합니다. 프로젝트 범위 guard 설치는 등록된 프로젝트와 그 프로젝트에 대한 Connection Projects 멤버십을 가진 Agent Connection을 이름 붙여야 합니다.
+- Host-hook installation 식별 정보는 `guard_installation_id`별로 고유합니다. 프로젝트 범위 host-hook 설치는 등록된 프로젝트와 그 프로젝트에 대한 Connection Projects 멤버십을 가진 Agent Connection을 이름 붙여야 합니다.
 - Local web consent token 식별 정보는 하나의 project-state 데이터베이스 안에 저장된 token hash입니다. 원문 token은 저장하면 안 되며, 대기 token은 프로젝트, 선택된 Agent Connection, 대기 판단, capture basis, 만료를 이름 붙여야 합니다. Token 소비와 대응하는 사용자 판단 해결은 하나의 project-state 트랜잭션 또는 동등한 원자적 작업이어야 합니다.
 - 프로젝트 범위 행은 등록된 프로젝트에 속합니다.
-- Guard 세션, guard 이벤트, prompt capture, expected write, unrecorded change, session watch baseline, session watch observation은 프로젝트별 `state.sqlite` 하나에 속하며 그 기록을 관찰했거나 만든 Agent Connection을 이름 붙입니다.
+- Agent Session, host-hook 이벤트, prompt capture, expected write, unrecorded change, session watch baseline, session watch observation은 프로젝트별 `state.sqlite` 하나에 속하며 그 기록을 관찰했거나 만든 Agent Connection을 이름 붙입니다.
 - `Task` 범위 행은 자신을 소유한 `tasks` 행과 같은 프로젝트와 같은 `Task`에 속합니다.
 - 현재 적용 포인터와 소유 참조는 같은 프로젝트의 기록을 가리켜야 합니다.
 - `Task` 하나에는 현재 적용 Change Unit이 최대 하나만 있습니다.
@@ -143,7 +143,7 @@ API 스키마 형태와 저장소 기록 배치는 서로 다른 담당 문서�
 - 아티팩트 스테이징 소비와 승격 대상
 - 아티팩트 소유 관계
 - Agent Connection 라우팅을 위한 Connection Projects 멤버십과 활성 상태 일관성
-- guard 설치, Agent Session, guard 이벤트, prompt capture, expected write, unrecorded change, session watch baseline, session watch observation의 프로젝트 및 연결 범위
+- host-hook 설치, Agent Session, host-hook 이벤트, prompt capture, expected write, unrecorded change, session watch baseline, session watch observation의 프로젝트 및 연결 범위
 - SQLite가 직접 외래 키로 표현할 수 없는 JSON 참조 배열
 
 ### 권한 행 보존
@@ -156,7 +156,7 @@ API 스키마 형태와 저장소 기록 배치는 서로 다른 담당 문서�
 
 Host-observation 기록은 호스트 통합 상태에 대한 로컬 권한 사실을 보존합니다. 이 기록은 Core와 Store 코드가 작업을 정직하게 진행하거나 닫을 수 있는지 판단하는 데 도움이 될 수 있습니다. 그러나 OS 수준 sandboxing, 파일시스템 ACL, 외부 정책 집행, 위조 방지 증명, 행위자 identity 증명, 쓰기 방지 증명이 아닙니다.
 
-`guard_installations`는 Runtime Home, Agent Connection, 선택적 프로젝트 범위별 설정 생명주기 상태, 관찰된 hook 메타데이터, 호스트 capability를 기록합니다. `configured`와 `reload_required`는 파일 또는 메타데이터가 설치되었지만 일치하는 host-hook 관찰이 아직 기록되지 않았다는 뜻입니다. `active`는 기록된 프로젝트, Agent Connection, 호스트 종류, 통합 프로필, policy hash와 일치하는 유효한 host hook을 Volicord가 관찰했다는 뜻입니다. OS 수준 집행이나 sandboxing을 증명하지 않습니다. `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unrecorded_changes`, `session_watch_baselines`, `session_watch_observations`는 프로젝트별 로컬 행이며 프로젝트 `state.sqlite` 데이터베이스 사이로 새면 안 됩니다. 대기 중인 `expected_writes` 행은 observe pre-tool이 프로젝트, 연결, 세션, 시간, 경로, Task, Change Unit, 결정적 active 쓰기 티켓 좌표로 제한된 구체적 예상 쓰기를 허용했다는 뜻입니다. 매칭된 행은 post-tool 관찰이 그 예상 쓰기와 상관되었다는 뜻이며 제품 정확성, 행위자 identity, OS 수준 쓰기 방지 증명이 아닙니다. 매칭되지 않았거나, 모호하거나, 티켓 범위 밖인 Product Repository 변경은 해결되지 않은 `unrecorded_changes` 행을 만듭니다. 미해결 `unrecorded_changes` 행은 관찰된 Product Repository 변경이 아직 담당자가 정의한 조정을 필요로 한다는 뜻입니다. 그 행을 해결하면 로컬 resolution basis, 행위자 출처, capture basis, 해결 타임스탬프, 선택적 연결 사용자 판단을 기록하고 행은 보존됩니다.
+`guard_installations`는 Runtime Home, Agent Connection, 선택적 프로젝트 범위별 설정 생명주기 상태, 관찰된 hook 메타데이터, 호스트 capability를 기록합니다. `configured`와 `reload_required`는 파일 또는 메타데이터가 설치되었지만 일치하는 host-hook 관찰이 아직 기록되지 않았다는 뜻입니다. `active`는 기록된 프로젝트, Agent Connection, 호스트 종류, 통합 프로필, policy hash와 일치하는 유효한 host hook을 Volicord가 관찰했다는 뜻입니다. OS 수준 집행이나 sandboxing을 증명하지 않습니다. `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unrecorded_changes`, `session_watch_baselines`, `session_watch_observations`는 프로젝트별 로컬 행이며 프로젝트 `state.sqlite` 데이터베이스 사이로 새면 안 됩니다. 대기 중인 `expected_writes` 행은 detective pre-tool이 프로젝트, 연결, 세션, 시간, 경로, Task, Change Unit, 결정적 active 쓰기 티켓 좌표로 제한된 구체적 예상 쓰기를 허용했다는 뜻입니다. 매칭된 행은 post-tool 관찰이 그 예상 쓰기와 상관되었다는 뜻이며 제품 정확성, 행위자 identity, OS 수준 쓰기 방지 증명이 아닙니다. 매칭되지 않았거나, 모호하거나, 티켓 범위 밖인 Product Repository 변경은 해결되지 않은 `unrecorded_changes` 행을 만듭니다. 미해결 `unrecorded_changes` 행은 관찰된 Product Repository 변경이 아직 담당자가 정의한 조정을 필요로 한다는 뜻입니다. 그 행을 해결하면 로컬 resolution basis, 행위자 출처, capture basis, 해결 타임스탬프, 선택적 연결 사용자 판단을 기록하고 행은 보존됩니다.
 
 `session_watch_baselines`와 `session_watch_observations`는 세션 수준 Product Repository watch의 detective fallback을 지원합니다. 이 기록은 sandbox, 파일시스템 권한 경계, 쓰기 전 차단, 누가 파일을 바꿨는지에 대한 증명, 왜 파일이 바뀌었는지에 대한 증명이 아닙니다. 기준선은 watch 가용성, 등록된 저장소 루트 또는 watched path set, 유효한 제외 항목, 결정적 스냅샷 digest 메타데이터를 저장합니다. 관찰은 이후의 안전한 스냅샷을 기준선과 비교해 찾은 변경 product path와 선택적 expected-write, 쓰기 티켓, unrecorded-change 상관 참조를 저장합니다. 관찰을 expected write 또는 하나의 active matching 쓰기 티켓에 연결하는 것은 결정적 상관 관계일 뿐입니다. 관찰을 unrecorded-change 행에 연결하면 로컬 조정 맥락을 기록하지만, 그 자체로 닫기 차단 사유를 만들지는 않습니다.
 
@@ -193,9 +193,9 @@ Host-observation 기록은 호스트 통합 상태에 대한 로컬 권한 사�
 | Agent Connection `mode` | `workflow`, `read_only` |
 | Agent Connection `enabled` | `0`, `1` |
 | Agent Connection `last_verification_status` | `not_verified`, `complete`, `action_required`, `failed` |
-| Guard installation `guard_mode` | `record`, `observe` |
-| Guard installation `installation_status` | `absent`, `configured`, `reload_required`, `active`, `degraded`, `stale`, `broken` |
-| `agent_sessions.guard_mode` | `record`, `observe` |
+| Host-hook installation `guard_mode` | `record`, `detective` |
+| Host-hook installation `installation_status` | `absent`, `configured`, `reload_required`, `active`, `degraded`, `stale`, `broken` |
+| `agent_sessions.guard_mode` | `record`, `detective` |
 | `guard_events.decision` | `allow`, `deny`, `warn`, `inject_context` |
 | `expected_writes.path_policy` | `exact_paths` |
 | `expected_writes.status` | `pending`, `matched` |
@@ -238,11 +238,11 @@ JSON을 저장하는 SQLite `TEXT` 열은 저장 표현 선택일 뿐이며 임�
 |---|---|
 | 설치 프로필 | 호스트 신뢰 결정, 사용자 판단, 공개 API 스키마가 아닌 설치 프로필 메타데이터. |
 | Agent Connection | 권한, 호스트 신뢰 증명, 외부 호스트 설정의 대체물로 쓰지 않는 검증 보고서 JSON, 사용자 동작 JSON, 메타데이터. |
-| Guard installation | 로컬 guard 설정 health를 위한 호스트 capability JSON과 메타데이터입니다. OS 집행 증명이 아닙니다. |
+| Host-hook installation | 로컬 host-hook 설정 health를 위한 호스트 capability JSON과 메타데이터입니다. OS 집행 증명이 아닙니다. |
 | `agent_sessions` | 프로젝트 범위 Agent Session에 대한 비권한 메타데이터. |
-| `guard_events` | 로컬 guard decision 이벤트의 guard subject JSON, result JSON, 메타데이터. |
+| `guard_events` | 로컬 host decision request의 host-hook subject JSON, result JSON, 메타데이터. |
 | `prompt_captures` | 캡처된 prompt 기록의 비권한 메타데이터. Prompt text는 직접 nullable text 열입니다. |
-| `expected_writes` | Observe expected-write 상관 관계를 위한 expected path 배열, 쓰기 티켓 id 배열, matched path 배열, 메타데이터. |
+| `expected_writes` | Detective expected-write 상관 관계를 위한 expected path 배열, 쓰기 티켓 id 배열, matched path 배열, 메타데이터. |
 | `unrecorded_changes` | 기록되지 않은 Product Repository 변경의 관찰 경로 배열, detection JSON, resolution JSON, 메타데이터. Resolution JSON은 간결한 resolution basis, capture basis, 해결 메서드, 선택적 연결 사용자 판단 참조를 저장하며, 전체 민감 명령이나 prompt 내용을 저장하면 안 됩니다. |
 | `session_watch_baselines` | 세션 watch 기준선을 위한 watched path 배열, 유효한 제외 배열, 스냅샷 entry 배열, 메타데이터. 스냅샷 entry는 경로, 종류, 크기, hash 또는 skip reason 메타데이터만 저장하며 파일 내용을 저장하지 않습니다. |
 | `session_watch_observations` | 세션 watch 관찰을 위한 관찰된 변경 경로 배열, 간결한 change-summary JSON, 스냅샷 entry 배열, 메타데이터. 스냅샷과 변경 요약은 행위자 식별, 의도, 제품 정확성, 닫기 준비 상태를 증명하지 않습니다. |

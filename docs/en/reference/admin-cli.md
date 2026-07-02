@@ -4,8 +4,8 @@ This document owns the local `volicord` administrative and bootstrap CLI
 contract. The CLI establishes the `Volicord Runtime Home`, registers projects
 from repository roots, manages Agent Connections without requiring users to
 handle internal identities, provides the local `User Channel` command path,
-exports generic MCP configuration, provides local observe hook lifecycle
-commands through `volicord guard`, and reports setup or connection diagnostics.
+exports generic MCP configuration, provides local detective host hook lifecycle
+commands through `volicord host-hook`, and reports setup or connection diagnostics.
 These commands are not public Volicord API methods.
 
 It does not define public API method behavior, API schemas, storage record
@@ -25,7 +25,7 @@ This document owns:
 - generic MCP config export behavior
 - local serve command names, command-line arguments, defaults, stdout/stderr
   routing, and startup exit codes
-- local `volicord guard` lifecycle command names, options, decisions, output,
+- local `volicord host-hook` lifecycle command names, options, decisions, output,
   and event-recording behavior
 - local `volicord changes` recovery command names and output
 - local `User Channel` command names and command output
@@ -61,7 +61,7 @@ Supported baseline commands:
 ```text
 volicord --help
 volicord --version
-volicord init --host codex|claude-code --repo PATH [--profile record|observe] [--home PATH] [--mcp-command PATH] [--dry-run] [--json]
+volicord init --host codex|claude-code --repo PATH [--profile record|detective] [--home PATH] [--mcp-command PATH] [--dry-run] [--json]
 volicord setup [--home PATH] [--link-bin PATH] [--mcp-command PATH] [--json]
 volicord doctor [--json]
 volicord connect [HOST] [--repo PATH] [--shared|--global] [--read-only] [--dry-run] [--json]
@@ -77,11 +77,11 @@ volicord project rename NAME [--repo PATH] [--json]
 volicord project forget [PATH|NAME] [--json]
 volicord export mcp-config [--output PATH] [--repo PATH] [--read-only] [--json]
 volicord serve --transport local-http [--listen 127.0.0.1:8765] [--home PATH] [--connection <connection_id>] [--project PATH]... [--token TOKEN | --generate-token] [--allow-origin ORIGIN]
-volicord guard session-start [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|observe] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
-volicord guard pre-tool [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|observe] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
-volicord guard post-tool [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|observe] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
-volicord guard prompt-capture [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|observe] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
-volicord guard stop [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|observe] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
+volicord host-hook session-start [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|detective] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
+volicord host-hook pre-tool [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|detective] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
+volicord host-hook post-tool [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|detective] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
+volicord host-hook prompt-capture [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|detective] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
+volicord host-hook stop [--file PATH] [--repo PATH] [--connection ID] [--session ID] [--guard-installation ID] [--host HOST] [--integration-profile record|detective] [--policy-hash HASH] [--output volicord-json|text] [--host-output codex|claude-code]
 volicord changes reconcile [--repo PATH] [--task active|ID] [--json]
 volicord inbox [--repo PATH] [--task active|ID] [--json]
 volicord inbox answer <judgment-id> --choice <choice> [--repo PATH] [--note TEXT] [--json]
@@ -104,11 +104,11 @@ Exit and stream behavior:
   require Runtime Home resolution.
 - `--json` writes exactly one JSON document to stdout and does not mix human
   explanation into stdout.
-- `volicord guard` uses `--output volicord-json` by default. In
+- `volicord host-hook` uses `--output volicord-json` by default. In
   `volicord-json` mode it writes the Volicord wrapper JSON, `deny` exits `1`,
   and `allow`, `warn`, and `inject_context` exit `0`. `--output text` uses the
   same exit behavior with a concise human-readable line.
-- `volicord guard --host-output codex|claude-code` writes host-native hook
+- `volicord host-hook --host-output codex|claude-code` writes host-native hook
   output instead of the Volicord wrapper JSON. Policy decisions use the host's
   stdout, stderr, and exit-code rules; generated Codex and Claude Code hook
   wrapper scripts use this mode, and Claude Code policy blocks are not
@@ -132,7 +132,7 @@ Not supported:
   into a nonlocal listener.
 - Administrative commands are not public Volicord API methods and must not be
   added to the public method list.
-- Guard commands are cooperative and detective hook commands, not OS-level
+- Host-hook commands are cooperative detective signal commands, not OS-level
   sandboxing or a security-enforcement proof.
 - Text-mode user flows must not require users to type `project_internal_id`,
   `connection_internal_id`, host config keys, protocol envelopes, or stored
@@ -214,10 +214,10 @@ stored command paths are executable, doctor may report `complete` while
 reporting command-availability warnings and `actions_recommended` for future
 shells or agent hosts. PATH or command-link recommendations must say when
 existing agent hosts may need restart or reload. Doctor reports supported host
-detection as a connection-verification concern. When observe-profile
-installation records exist, doctor may also report observe hook file
+detection as a connection-verification concern. When detective-profile
+installation records exist, doctor may also report detective host hook file
 installation, configuration health, runtime hook observation health, effective
-observe health, and host reload requirement as diagnostics. These diagnostics
+detective health, and host reload requirement as diagnostics. These diagnostics
 are local setup and observation checks; they are not proof of OS enforcement,
 sandboxing, write prevention, product correctness, or Close Status. Doctor also reports
 `selected_profile` and an observation summary that includes host-hook,
@@ -330,11 +330,11 @@ through `PATH` and does not embed a personal Runtime Home path.
 - `record` is the default. It writes MCP configuration, the managed `AGENTS.md`
   guidance block, and policy metadata without requiring host lifecycle hooks or
   a session watcher.
-- `observe` writes MCP configuration, the managed `AGENTS.md` guidance block,
+- `detective` writes MCP configuration, the managed `AGENTS.md` guidance block,
   `.volicord/policy.json` hook command policy, supported project-local host hook
   and rule files, and records the host-hook/session-watcher observation state.
 
-Observe-aware setup, status, verification, and doctor text output report
+Detective-aware setup, status, verification, and doctor text output report
 `selected_profile` and an `observation_summary`. The corresponding JSON field is
 `control_surface`. The summary includes
 `host_hooks_active`, `session_watcher_active`,
@@ -344,37 +344,37 @@ Observe-aware setup, status, verification, and doctor text output report
 `os_enforced`. Current Volicord output must report `os_enforced=false` and
 `actor_identity_provable=false`.
 
-Observe initialization requires the selected host adapter to declare and verify
+Detective initialization requires the selected host adapter to declare and verify
 support for every required lifecycle hook:
 `session-start`, `pre-tool`, `post-tool`, `prompt-capture`, and `stop`. It also
 requires session watcher snapshot support for the selected Product Repository.
 `AGENTS.md` and `.volicord/policy.json` are not host hook configuration. If the
 adapter does not know a reliable project-local hook schema or path for every
-required phase, init fails with `OBSERVE_HOOKS_UNSUPPORTED`. If the session
+required phase, init fails with `DETECTIVE_HOOKS_UNSUPPORTED`. If the session
 watcher cannot snapshot the selected repository, init fails with
-`OBSERVE_WATCHER_UNSUPPORTED`. The recovery is to use `--profile record` for
+`DETECTIVE_WATCHER_UNSUPPORTED`. The recovery is to use `--profile record` for
 record-only setup or prepare a supported host, platform, and repository
-configuration for observe before rerunning init. `record` does not require hook
+configuration for detective before rerunning init. `record` does not require hook
 installation or session watcher setup.
 
-On native Windows, init rejects `--profile observe` with
-`OBSERVE_WINDOWS_UNSUPPORTED` before planning or writing observe hook files.
+On native Windows, init rejects `--profile detective` with
+`DETECTIVE_WINDOWS_UNSUPPORTED` before planning or writing detective host hook files.
 Native Windows supports `--profile record`; use WSL2, Linux, or macOS for
-observe only where the selected host hook and watcher contracts are supported
+detective only where the selected host hook and watcher contracts are supported
 and tested.
 
-Codex observe initialization additionally requires the selected Product
+Codex detective initialization additionally requires the selected Product
 Repository to be a Git work tree root that supports cwd-independent wrapper
 resolution from subdirectory host sessions. When that prerequisite is not met,
-init fails with `OBSERVE_HOOK_ROOT_UNSUPPORTED` instead of generating a bare
-relative hook path. Claude Code observe initialization uses the host
+init fails with `DETECTIVE_HOOK_ROOT_UNSUPPORTED` instead of generating a bare
+relative hook path. Claude Code detective initialization uses the host
 project-directory placeholder described under
-[observe hook lifecycle commands](#guard-hook-commands).
+[detective host hook lifecycle commands](#guard-hook-commands).
 
-For `observe`, init records `reload_required` when the host still needs restart
-or reload to load generated observe host hooks, and `configured` when files are
+For `detective`, init records `reload_required` when the host still needs restart
+or reload to load generated detective host hooks, and `configured` when files are
 installed but no matching host-hook event has been observed. Init does not mark
-an observe installation record `active` merely because files were written.
+a detective installation record `active` merely because files were written.
 
 `--home PATH` selects the Runtime Home for this initialization. `--mcp-command
 PATH` stores the exact command path in the installation profile when init must
@@ -392,24 +392,24 @@ Non-dry-run `volicord init`:
   with `volicord mcp --stdio --connection <connection_id> --project
   <project_id>`
 - writes or updates only the Volicord-managed block in `AGENTS.md`
-- writes `.volicord/policy.json` with observe hook commands that invoke
-  `volicord guard`
+- writes `.volicord/policy.json` with detective host hook commands that invoke
+  `volicord host-hook`
 - writes Volicord-managed hook wrapper scripts under `.codex/hooks/` or
-  `.claude/hooks/` for required observe lifecycle phases
+  `.claude/hooks/` for required detective lifecycle phases
 - writes supported host hook files such as `.codex/hooks.json` or
   `.claude/settings.json` that invoke those wrapper scripts
 - writes supported host rule files such as `.codex/rules/*.rules` or
   `.claude/rules/volicord.md`
-- records observe-profile hook observation status in the Runtime Home registry
-- rejects `observe` initialization when required host hook configuration or
+- records detective-profile hook observation status in the Runtime Home registry
+- rejects `detective` initialization when required host hook configuration or
   session watcher support is missing
-- rejects `observe` initialization on native Windows because Windows host-hook
+- rejects `detective` initialization on native Windows because Windows host-hook
   wrappers and watcher behavior are not implemented and tested
 - reports the required host restart, reload, approval, or trust action when the
-  host must load the new MCP or observe hook configuration
+  host must load the new MCP or detective host hook configuration
 
 Re-running init is idempotent for matching Volicord-managed content. It updates
-managed blocks, policy files, host MCP entries, and observe installation records
+managed blocks, policy files, host MCP entries, and detective installation records
 without duplicating them. If an existing target contains unmanaged content where
 Volicord requires ownership markers or a managed fingerprint, init must report a
 conflict instead of overwriting it.
@@ -426,7 +426,7 @@ or looks up the stored `connection_internal_id`.
 
 | Command | Runtime Home registry effect | Host configuration effect | Verification effect |
 |---|---|---|---|
-| `volicord init` | Initializes Runtime Home and installation profile if needed, registers or reuses the selected repository project, creates or updates the shared project-scoped Agent Connection, ensures Connection Projects membership, and records observe-profile hook observation status. | Installs or updates managed project-local MCP configuration, `AGENTS.md` guidance, `.volicord/policy.json`, supported host hook wrapper scripts, and host hook and rule files for `codex` or `claude-code`. | Runs host-config, MCP startup, initialization, and `tools/list` checks where observable, then reports any host reload, restart, trust, or approval action. |
+| `volicord init` | Initializes Runtime Home and installation profile if needed, registers or reuses the selected repository project, creates or updates the shared project-scoped Agent Connection, ensures Connection Projects membership, and records detective-profile hook observation status. | Installs or updates managed project-local MCP configuration, `AGENTS.md` guidance, `.volicord/policy.json`, supported host hook wrapper scripts, and host hook and rule files for `codex` or `claude-code`. | Runs host-config, MCP startup, initialization, and `tools/list` checks where observable, then reports any host reload, restart, trust, or approval action. |
 | `volicord connect` | Registers or reuses the selected repository project, creates or updates the matching Agent Connection, records the connection intent and mode, and ensures the project is in Connection Projects. | Installs or updates managed host configuration for `codex` or `claude-code` according to the selected intent. | Runs host-config, MCP startup, initialization, and `tools/list` checks where observable. |
 | `volicord connections` | Reads matching Agent Connections and connected projects. | Does not launch the host and does not rewrite host configuration. | Reports stored and diagnostic verification state without refreshing host checks. |
 | `volicord connection status` | Reads one selected Agent Connection. | Does not launch the host and does not rewrite host configuration. | Reports full stored verification status and required user actions. |
@@ -466,8 +466,8 @@ Verification output must make checks and user actions first-class diagnostics.
 Text output must show the overall status, each check that was attempted or
 blocked, and the next user action when one is required. JSON output must include
 top-level `status`, `checks`, and `actions` fields for diagnostic consumers.
-Connection status and verification output must keep observe hook file installation,
-configuration health, runtime hook observation health, effective observe health,
+Connection status and verification output must keep detective host hook file installation,
+configuration health, runtime hook observation health, effective detective health,
 host reload requirement, prompt-capture availability, and last host-hook event when
 known as separate diagnostics. Text output reports `selected_profile`, an
 `observation_summary`, cooperative pre-tool warning availability,
@@ -513,15 +513,15 @@ Rules:
   or exposed it.
 
 <a id="guard-hook-commands"></a>
-## Observe hook lifecycle commands
+## Detective host hook lifecycle commands
 
-`volicord guard` commands are local hook entry points for hosts that can run a
+`volicord host-hook` commands are local hook entry points for hosts that can run a
 command during agent lifecycle events. They inspect registered project state,
 record host-observation events, and return a machine-readable local decision.
 They do not replace Core methods, user-owned judgments, write tickets,
 close-readiness checks, host trust, shell approval, or OS-level sandboxing.
 
-Each guard command reads one JSON hook event from stdin by default. `--file PATH`
+Each host-hook command reads one JSON hook event from stdin by default. `--file PATH`
 reads that JSON event from a file for tests or host integrations that stage
 events. The default `--output volicord-json` output includes `decision`,
 `allowed`, `guard_event_id`, optional `session_id`, and a command-specific
@@ -532,7 +532,7 @@ and `--text` flags remain accepted for compatibility. Supported decisions are
 `--host-output codex|claude-code` selects host-native hook rendering for
 installed host hooks. In this mode stdout contains only host-recognized response
 JSON or context, or is empty when the host expects no output; stdout does not
-contain the Volicord wrapper JSON. Stored guard events keep the internal
+contain the Volicord wrapper JSON. Stored host-hook events keep the internal
 decision and result details used by Volicord.
 Volicord wrapper JSON includes `disclosure.guarantee_class=cooperative_host_decision`.
 Host-native output must include a concise cooperative-decision disclosure in the
@@ -544,13 +544,13 @@ Project selection uses `--repo PATH`, an event project or repository field when
 present, or the current working directory. `--connection ID` supplies the
 Agent Connection identity when the hook event does not contain `connection_id`.
 `--session ID`, `--guard-installation ID`, `--host HOST`, and
-`--integration-profile record|observe` can pin the recorded session,
+`--integration-profile record|detective` can pin the recorded session,
 installation, host kind, and integration profile. Host kinds use storage values
 such as `codex`, `claude_code`, or `generic`. Public integration profiles are
-`record` and `observe`.
+`record` and `detective`.
 `--policy-hash HASH` pins the expected `.volicord/policy.json` hash for
 generated hook wrapper scripts; a mismatch prevents that hook event from
-activating the observe installation record, while direct guard commands used for tests
+activating the detective installation record, while direct host-hook commands used for tests
 or debugging may omit the option.
 
 Generated Codex hook configuration must be cwd-independent and
@@ -574,38 +574,38 @@ subdirectory-safe. It uses exec-form commands rooted at
 `${CLAUDE_PROJECT_DIR}/.claude/hooks/volicord-pre-tool.sh`, with no args.
 
 Generated wrapper scripts under `.codex/hooks/` and `.claude/hooks/` forward
-stdin unchanged to `volicord guard`, preserve stdout, stderr, and the guard
+stdin unchanged to `volicord host-hook`, preserve stdout, stderr, and the host-hook
 exit code, and pass the expected host kind, host-native output mode, repository
-selector, Agent Connection, guard installation, and policy hash. Users must not
+selector, Agent Connection, host-hook installation, and policy hash. Users must not
 replace generated hook commands with bare `.codex/hooks/...` or
 `.claude/hooks/...` relative paths.
 
-Observe-aware status, verification, and doctor diagnostics report
+Detective-aware status, verification, and doctor diagnostics report
 `hook_path_safety`, `hook_commands_cwd_independent`,
 `hook_commands_subdirectory_safe`, and `generated_config_verified`. Hook path
 safety can report values including `relative_path_unsafe`, `wrapper_missing`,
 `wrapper_not_executable`, `absolute_path_stale`, `placeholder_unsupported`,
 `host_output_mismatch`, and `policy_hash_mismatch`; the complete value set is
 owned by [API Value Sets](api/schema-value-sets.md#state-and-blocker-values).
-Any non-`ok` hook path safety value keeps observe host hooks inactive for that
+Any non-`ok` hook path safety value keeps detective host hooks inactive for that
 view. The repair action is to regenerate the safe managed commands with
-`volicord init --host HOST --repo PATH --profile observe`, then complete any
+`volicord init --host HOST --repo PATH --profile detective`, then complete any
 host trust, approval, reload, or restart action still reported.
 
-When an `observe` guard command receives a valid event for the recorded
-project, Agent Connection, guard installation, host kind, integration profile,
+When a `detective` host-hook command receives a valid event for the recorded
+project, Agent Connection, host-hook installation, host kind, integration profile,
 policy hash, and known hook phase, Volicord records observation metadata. The
-observation can promote the observe installation record to `active` only when
+observation can promote the detective installation record to `active` only when
 required hook configuration is complete and the installation is not degraded,
 stale, or broken. Invalid project, connection, host kind, integration profile,
 policy hash, or hook phase data does not activate the installation. `active`
-means Volicord observed a matching hook event for a currently usable observe
+means Volicord observed a matching hook event for a currently usable detective
 configuration; it does not claim OS-level enforcement, sandboxing, actor
 identity proof, or write prevention.
 
-The input event contract is host-neutral. Guard parsing is tolerant of common
+The input event contract is host-neutral. Host-hook parsing is tolerant of common
 field placements for host kind, session, tool name, command, prompt, result,
-and changed paths, and preserves unknown fields in the stored guard event's
+and changed paths, and preserves unknown fields in the stored host-hook event's
 redacted subject. Prompt-like fields are hashed or omitted by default; prompt
 capture records store the prompt hash and omit prompt text unless a future
 owner-defined policy says otherwise.
@@ -622,7 +622,7 @@ Lifecycle behavior:
   selected Product Repository, an observed path is outside active write-ticket
   scope, the active ticket match is ambiguous, or policy blocks a clearly
   mutating shell command. These decisions are cooperative host decisions, not
-  OS-level enforcement. Uncertain shell commands default to `warn` unless guard
+  OS-level enforcement. Uncertain shell commands default to `warn` unless host-hook
   policy asks for `deny`. When pre-tool allows a clearly mutating product-file
   write with a concrete in-repository path set, active task, exactly one current
   active matching write ticket, and compatible project scope, it records an
@@ -742,7 +742,7 @@ Dry-run does not:
 - create SQLite WAL or SHM files
 - apply registry or project-state migrations
 - register or update projects, Agent Connections, Connection Projects,
-  installation profile rows, guard installation rows, or verification status
+  installation profile rows, host-hook installation rows, or verification status
   rows
 - create, modify, or remove host configuration files
 - create, modify, or remove `Product Repository` files or directories
@@ -766,15 +766,15 @@ Required diagnostic JSON values:
   and optional details
 - `actions[]`: required or suggested user actions, each with a stable action id
   and human-readable command or instruction when one is available
-- Observe-aware setup, doctor, connection status, and connection verification
+- Detective-aware setup, doctor, connection status, and connection verification
   JSON must expose `selected_profile`, `control_surface`,
   `cooperative_pre_tool_warning_available`,
   `cooperative_pre_tool_denial_available`, `post_tool_correlation_available`,
   `bash_shell_mutation_coverage`, `hook_path_safety`,
   `hook_commands_cwd_independent`, `hook_commands_subdirectory_safe`,
-  `prompt_capture_available`, and `local_web_consent_available` where guard
+  `prompt_capture_available`, and `local_web_consent_available` where host-hook
   diagnostics are reported. `control_surface.os_enforced` must be `false`
-  unless Volicord implements OS-level enforcement. Guard-health JSON may also
+  unless Volicord implements OS-level enforcement. Host-hook health JSON may also
   expose `generated_config_verified`,
   `native_host_output_adapter_verified`, and
   `direct_file_write_matcher_coverage` to show the stricter host-hook

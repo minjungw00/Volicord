@@ -85,7 +85,7 @@ Close condition:
 
 - `intent=complete` can close only after preflight succeeds, the close readiness evaluation over the current `CurrentCloseBasis` is valid, current close-basis refs satisfy their artifact and Run compatibility rules, and no close blocker remains.
 - Close readiness blocks when any write ticket for the Task remains open, any active write ticket has expired without resolution, or any host-hook or watcher observation reports unresolved out-of-scope Product Repository paths for the ticket scope.
-- In `observe` profile, close readiness also checks `GuardHealthSummary` host-hook and observation-state facts, including hook path safety, prompt-capture availability facts, unresolved unrecorded Product Repository changes, hook-detected write-ticket issues, and session-watch availability. In `record` profile, host hooks are not required; unresolved unrecorded Product Repository changes still block close until reconciliation resolves them.
+- In `detective` profile, close readiness also checks `GuardHealthSummary` host-hook and observation-state facts, including hook path safety, prompt-capture availability facts, unresolved unrecorded Product Repository changes, hook-detected write-ticket issues, and session-watch availability. In `record` profile, host hooks are not required; unresolved unrecorded Product Repository changes still block close until reconciliation resolves them.
 - Host hook and session watch observations do not prevent Product Repository writes and do not identify the actor that made a file change. They only support cooperative detection and correlation to expected-write or write-ticket records.
 - Required close evidence must be supported by current claim-matching evidence observation provenance. Unverified, provenance-free, stale, or cooperative-agent-only evidence does not satisfy a close requirement when stronger provenance is required.
 - `intent=cancel` requires a current accepted cancellation judgment with `machine_action=accept`, `resolution_outcome=accepted`, `resolved_by_actor_source=local_user`, compatible User Channel provenance, and a basis bound to the Task, current scope revision, and current Change Unit. It does not require completion-only evidence, final acceptance, or residual-risk acceptance.
@@ -159,7 +159,7 @@ Implementations evaluate `volicord.close_task` in this order:
 1. Validate the envelope, method fields, intent-field combination, and same-project `Task` identity. Shape failures, wrong-project identity, and unreadable `Task` identity return `ToolRejectedResponse`.
 2. Verify the invocation context, operation category, actor source, and requested terminal-path preconditions.
 3. For `dry_run=false` mutating intents, check `idempotency_key`, current `expected_state_version`, idempotency request hash, and close-relevant `WriteTicket.basis_state_version`. Stale or conflicting values return `ToolRejectedResponse`.
-4. For `intent=check`, run any selected deterministic session-watch check, compute current close readiness, including selected guard-health facts, with the same calculation used by [`volicord.status`](method-status.md) when `include.close=true`, and return `CloseTaskResult`.
+4. For `intent=check`, run any selected deterministic session-watch check, compute current close readiness, including selected host-hook health facts, with the same calculation used by [`volicord.status`](method-status.md) when `include.close=true`, and return `CloseTaskResult`.
 5. For mutating intents with `dry_run=true`, return the common preview branch after valid preflight.
 6. For `intent=complete`, run the close readiness evaluation over the current `CurrentCloseBasis`. If blockers remain, return the blocked branch; otherwise commit `close_state=closed`, the terminal close result, and any method-selected project continuity records for close-basis known limits that do not require residual-risk acceptance.
 7. For `intent=cancel`, require a current accepted `judgment_kind=cancellation` with `machine_action=accept`, `resolution_outcome=accepted`, `resolved_by_actor_source=local_user`, compatible User Channel provenance, and compatibility with the current Task, scope revision, and Change Unit. Missing or incompatible cancellation authority returns the blocked branch.
@@ -226,16 +226,16 @@ The production meanings below apply only after the method reaches close-readines
 | `expired_write_ticket` | `write_compatibility` | A write ticket for the selected Task expired while still unresolved. |
 | `write_ticket_stale` | `write_compatibility` | A close-relevant write ticket is unusable for a freshness reason that is not routed as `STATE_VERSION_CONFLICT`. |
 | `baseline_stale` | `baseline` | The close-relevant baseline basis is stale on a blocker-producing path. |
-| `guard_not_installed` | `connection_capability` | An observe close path has no usable observe host-hook installation record for the verified connection. |
-| `guard_reload_required` | `connection_capability` | Observe hook files are installed, but the host must restart or reload before Volicord has observed the configured hooks. |
-| `guard_not_observed` | `connection_capability` | An observe close path has configured observe hook files, but no matching host-hook observation is recorded. |
-| `guard_stale` | `connection_capability` | An observe close path has an internal guard installation record whose status is `stale`. |
-| `guard_broken` | `connection_capability` | An observe close path has an internal guard installation record whose status is `broken`. |
-| `guard_required_hooks_missing` | `connection_capability` | An observe close path has an internal guard installation record with missing required host-hook phases. The blocker reports the missing phases, host kind, `terminal_action_required`, `can_resolve_in_chat`, and `next_actions`. |
-| `guard_degraded` | `connection_capability` | An observe close path has degraded host-hook configuration or observation-state health not covered by a more specific `guard_*` blocker, and the current observe hook-health policy blocks close on degraded health. |
-| `guard_connection_unhealthy` | `connection_capability` | An observe close path has an Agent Connection health fact that is not healthy. |
-| `session_watch_unavailable` | `connection_capability` | An observe close path requires Product Repository session-watch coverage, but the selected watcher state is `disabled`, `degraded`, `unavailable`, or active with a partial-coverage warning. |
-| `unresolved_unrecorded_changes` | `connection_capability` | Observe control-surface health reports unresolved unrecorded Product Repository changes that must be reconciled before close. The blocker includes `next_actions` with `owner_method=volicord.reconcile_changes`, and `can_resolve_in_chat` reports whether the current path can proceed through a chat-mediated user path. |
+| `guard_not_installed` | `connection_capability` | A detective close path has no usable detective host-hook installation record for the verified connection. |
+| `guard_reload_required` | `connection_capability` | Detective host hook files are installed, but the host must restart or reload before Volicord has observed the configured hooks. |
+| `guard_not_observed` | `connection_capability` | A detective close path has configured detective host-hook files, but no matching host-hook observation is recorded. |
+| `guard_stale` | `connection_capability` | A detective close path has an internal host-hook installation record whose status is `stale`. |
+| `guard_broken` | `connection_capability` | A detective close path has an internal host-hook installation record whose status is `broken`. |
+| `guard_required_hooks_missing` | `connection_capability` | A detective close path has an internal host-hook installation record with missing required host-hook phases. The blocker reports the missing phases, host kind, `terminal_action_required`, `can_resolve_in_chat`, and `next_actions`. |
+| `guard_degraded` | `connection_capability` | A detective close path has degraded host-hook configuration or observation-state health not covered by a more specific `guard_*` blocker, and the current detective host hook-health policy blocks close on degraded health. |
+| `guard_connection_unhealthy` | `connection_capability` | A detective close path has an Agent Connection health fact that is not healthy. |
+| `session_watch_unavailable` | `connection_capability` | A detective close path requires Product Repository session-watch coverage, but the selected watcher state is `disabled`, `degraded`, `unavailable`, or active with a partial-coverage warning. |
+| `unresolved_unrecorded_changes` | `connection_capability` | Detective control-surface health reports unresolved unrecorded Product Repository changes that must be reconciled before close. The blocker includes `next_actions` with `owner_method=volicord.reconcile_changes`, and `can_resolve_in_chat` reports whether the current path can proceed through a chat-mediated user path. |
 | `guard_write_ticket_missing_or_stale` | `write_compatibility` | Host-hook events detected missing, indeterminate, ambiguous, or stale write-ticket readiness for the close path. |
 | `guard_write_ticket_path_scope_violation` | `write_compatibility` | Host-hook events observed a Product Repository path outside the active write-ticket scope. |
 | `evidence_claim_unsupported` | `evidence_claim` | A required close claim lacks supported evidence coverage. |
@@ -276,7 +276,7 @@ Method-specific blocker branches:
 | Branch | Production rule |
 |---|---|
 | `intent=check` | Returns current close readiness blockers as response observation data. |
-| `intent=complete` | Produces close readiness blockers when the completion path reaches close readiness evaluation and owner-defined close requirements remain unresolved. This includes open or expired unresolved write tickets, unresolved unrecorded-change findings, guard-health, session-watch, and guard-detected write-ticket blockers. Partial watcher coverage remains a guard-health warning unless another owner-defined policy blocks it. |
+| `intent=complete` | Produces close readiness blockers when the completion path reaches close readiness evaluation and owner-defined close requirements remain unresolved. This includes open or expired unresolved write tickets, unresolved unrecorded-change findings, host-hook health, session-watch, and host-hook-detected write-ticket blockers. Partial watcher coverage remains a host-hook health warning unless another owner-defined policy blocks it. |
 | `intent=cancel` | Produces blockers only for cancellation-specific terminal constraints, including missing or incompatible cancellation authority. Completion-only evidence, final acceptance, or residual-risk gaps do not block cancellation by themselves. |
 | `intent=supersede` | Produces blockers only for supersession-specific terminal constraints. Completion-only evidence, final acceptance, or residual-risk gaps do not block supersession by themselves. |
 
@@ -287,7 +287,7 @@ Non-claims:
 - `STATE_VERSION_CONFLICT` is a rejected-response `ErrorCode`, not a method-local blocker or decision code.
 - A blocker category does not create the underlying user judgment, approval, evidence, artifact availability, final acceptance, residual-risk acceptance, or recovery state.
 - Close readiness is not correctness proof, test sufficiency proof, or human review replacement. `CloseTaskResult.base.disclosure.non_guarantees` must include `NotCorrectnessProof`, `NotTestSufficiencyProof`, and `NotHumanReviewReplacement`.
-- Guard and watcher blockers do not claim full write prevention, actor attribution, OS sandboxing, or OS-level filesystem enforcement.
+- Host-hook and watcher blockers do not claim full write prevention, actor attribution, OS sandboxing, or OS-level filesystem enforcement.
 - Unverified claims, provenance-missing evidence, stale observation provenance, and cooperative agent reports may be recorded as evidence history, but they do not satisfy required close evidence when the close path requires stronger provenance.
 - Rejected, deferred, stale, superseded, expired, invalid-basis, agent-recorded, provenance-missing, or outcome-absent cancellation judgments do not permit cancellation.
 

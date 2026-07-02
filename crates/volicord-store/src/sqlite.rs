@@ -1325,7 +1325,7 @@ fn validate_guard_installations_constraints(conn: &Connection) -> StoreResult<()
     let table_sql = normalized_table_sql(conn, "guard_installations")?;
     let required_fragments = [
         "length(trim(host_kind)) > 0",
-        "guard_mode in ('record', 'observe')",
+        "guard_mode in ('record', 'detective')",
     ];
     for fragment in required_fragments {
         if !table_sql.contains(fragment) {
@@ -1569,7 +1569,7 @@ fn validate_guard_project_record_tables(conn: &Connection) -> StoreResult<()> {
     }
 
     let sessions_sql = normalized_table_sql(conn, "agent_sessions")?;
-    if !sessions_sql.contains("guard_mode in ('record', 'observe')")
+    if !sessions_sql.contains("guard_mode in ('record', 'detective')")
         || !sessions_sql.contains("length(trim(host_kind)) > 0")
     {
         return Err(StoreError::schema_invariant(

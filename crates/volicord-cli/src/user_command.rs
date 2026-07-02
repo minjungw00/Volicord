@@ -1136,7 +1136,7 @@ fn render_status_response(
     }
     if let Some(guard_health) = response.response_value.get("guard_health") {
         output.push_str(&format!(
-            "selected_profile: {}\nobservation_summary: {}\nobservation_capabilities: {}\nobserve_effective_state: {}\nhook_path_safety: {}\nhost_hook_observed: {}\nprompt_capture_state: {}\nprompt_capture_available: {}\nwatcher_status: {}\nwatcher_baseline_created_at: {}\nwatcher_coverage_start_at: {}\nwatcher_coverage_basis: {}\nwatcher_partial_coverage_warning: {}\nunresolved_unrecorded_changes: {}\n",
+            "selected_profile: {}\nobservation_summary: {}\nobservation_capabilities: {}\ndetective_effective_state: {}\nhook_path_safety: {}\nhost_hook_observed: {}\nprompt_capture_state: {}\nprompt_capture_available: {}\nwatcher_status: {}\nwatcher_baseline_created_at: {}\nwatcher_coverage_start_at: {}\nwatcher_coverage_basis: {}\nwatcher_partial_coverage_warning: {}\nunresolved_unrecorded_changes: {}\n",
             text_field(guard_health, "selected_profile", "not_configured"),
             control_surface_text(guard_health),
             guard_capabilities_text(guard_health),

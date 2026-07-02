@@ -1113,7 +1113,7 @@ documents:
   - administrative project registration command behavior
   - administrative Agent Connection and User Channel registration command behavior
   - agent connection connect, connections, status, verify, mode, and remove commands
-  - local `volicord guard` lifecycle hook command behavior
+  - local `volicord host-hook` lifecycle hook command behavior
   - local `volicord serve` command-line startup and safety-gate behavior
   - Codex and Claude Code host setup intent support, plus generic MCP config export
   - managed host configuration state setup result states and verification reporting

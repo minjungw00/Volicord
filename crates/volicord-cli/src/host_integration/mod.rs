@@ -146,7 +146,7 @@ impl HostCapabilities {
         }
     }
 
-    pub fn missing_required_guard_phases(self) -> Vec<HostLifecyclePhase> {
+    pub fn missing_required_hook_phases(self) -> Vec<HostLifecyclePhase> {
         REQUIRED_GUARD_PHASES
             .iter()
             .copied()
@@ -772,13 +772,13 @@ mod tests {
         assert!(codex.stdio_mcp);
         assert!(codex.project_local_configuration);
         assert!(codex.rule_file_support);
-        assert!(codex.missing_required_guard_phases().is_empty());
+        assert!(codex.missing_required_hook_phases().is_empty());
 
         let claude = host_capabilities(HostKind::ClaudeCode);
         assert!(claude.stdio_mcp);
         assert!(claude.project_local_configuration);
         assert!(claude.rule_file_support);
         assert!(claude.user_prompt_submit_hook);
-        assert!(claude.missing_required_guard_phases().is_empty());
+        assert!(claude.missing_required_hook_phases().is_empty());
     }
 }

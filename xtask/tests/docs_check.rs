@@ -1114,9 +1114,9 @@ volicord serve --transport local-http
 volicord serve --transport local-http --listen 127.0.0.1:8765 --generate-token
 volicord serve --transport local-http --listen [::1]:8765 --token TOKEN --project /path/to/repo --project /path/to/other-repo --allow-origin https://app.example --allow-origin http://127.0.0.1:3000
 volicord init --host codex --repo /path/to/repo --profile record
-volicord init --host claude-code --repo /path/to/repo --profile observe
+volicord init --host claude-code --repo /path/to/repo --profile detective
 ./target/debug/volicord init --host codex --repo /path/to/repo --dry-run
-volicord guard session-start --repo /path/to/repo --connection CONNECTION_ID --integration-profile observe --output volicord-json
+volicord host-hook session-start --repo /path/to/repo --connection CONNECTION_ID --integration-profile detective --output volicord-json
 volicord connect codex --read-only
 volicord export mcp-config --output /tmp/volicord.mcp.json
 volicord connection mode codex workflow
@@ -1145,7 +1145,7 @@ fn accepts_inline_supported_init_profile_examples() {
     let fixture = valid_fixture();
     let commands = r#"```sh
 volicord init --host codex --repo /path/to/repo --profile=record
-volicord init --host claude-code --repo /path/to/repo --profile=observe
+volicord init --host claude-code --repo /path/to/repo --profile=detective
 ```
 "#;
     write(
@@ -1170,7 +1170,7 @@ fn rejects_init_examples_outside_public_option_surface() {
     write(
         fixture.path(),
         "docs/en/example.md",
-        "# Overview\n\n```sh\nvolicord init --host claude-code --repo /path/to/repo --profile observe --allow-degraded\nvolicord init --host codex --repo /path/to/repo --connection CONNECTION_ID\n```\n",
+        "# Overview\n\n```sh\nvolicord init --host claude-code --repo /path/to/repo --profile detective --allow-degraded\nvolicord init --host codex --repo /path/to/repo --connection CONNECTION_ID\n```\n",
     );
 
     let report = report(fixture.path());
@@ -1214,7 +1214,7 @@ fn rejects_inline_init_examples_outside_public_option_surface() {
             .any(|error| error.message().contains("--profile")
                 && error.message().contains("managed")
                 && error.message().contains("record")
-                && error.message().contains("observe")),
+                && error.message().contains("detective")),
         "{:#?}",
         report.errors()
     );
@@ -1333,7 +1333,7 @@ fn rejects_invalid_public_integration_profile_examples() {
     write(
         fixture.path(),
         "docs/en/example.md",
-        "# Overview\n\n```sh\nvolicord init --host codex --repo /path/to/repo --profile managed\nvolicord guard session-start --repo /path/to/repo --connection CONNECTION_ID --integration-profile managed\n```\n",
+        "# Overview\n\n```sh\nvolicord init --host codex --repo /path/to/repo --profile managed\nvolicord host-hook session-start --repo /path/to/repo --connection CONNECTION_ID --integration-profile managed\n```\n",
     );
 
     let report = report(fixture.path());
@@ -1345,7 +1345,7 @@ fn rejects_invalid_public_integration_profile_examples() {
             .iter()
             .any(|error| error.message().contains("--profile")
                 && error.message().contains("record")
-                && error.message().contains("observe")),
+                && error.message().contains("detective")),
         "{:#?}",
         report.errors()
     );
@@ -1354,7 +1354,7 @@ fn rejects_invalid_public_integration_profile_examples() {
             .iter()
             .any(|error| error.message().contains("--integration-profile")
                 && error.message().contains("record")
-                && error.message().contains("observe")),
+                && error.message().contains("detective")),
         "{:#?}",
         report.errors()
     );

@@ -41,7 +41,7 @@ The physical `write_tickets` table stores write-ticket authority records for pro
 
 ## `registry.sqlite`
 
-`registry.sqlite` stores Runtime Home identity, installation profile records, project registration, project aliases, Agent Connection records, Connection Projects membership, guard installation records, and host configuration inventory. It does not store project-local Core state.
+`registry.sqlite` stores Runtime Home identity, installation profile records, project registration, project aliases, Agent Connection records, Connection Projects membership, host-hook installation records, and host configuration inventory. It does not store project-local Core state.
 
 Applying the current baseline migration produces registry schema version `1`
 for storage profile `baseline_sqlite_v3`. The DDL blocks below are split by
@@ -182,7 +182,7 @@ CREATE UNIQUE INDEX idx_agent_connections_target_global
   WHERE project_internal_id IS NULL;
 ```
 
-Registry guard-installation records:
+Registry host-hook installation records:
 
 ```sql
 CREATE TABLE guard_installations (
@@ -191,7 +191,7 @@ CREATE TABLE guard_installations (
   connection_internal_id TEXT NOT NULL,
   project_internal_id TEXT,
   host_kind TEXT NOT NULL CHECK (length(trim(host_kind)) > 0),
-  guard_mode TEXT NOT NULL CHECK (guard_mode IN ('record', 'observe')),
+  guard_mode TEXT NOT NULL CHECK (guard_mode IN ('record', 'detective')),
   host_capability_json TEXT NOT NULL DEFAULT '{}',
   installation_status TEXT NOT NULL
     CHECK (installation_status IN (
@@ -249,7 +249,7 @@ Registry constraints:
 - `agent_connections.mode` is constrained to `read_only` or `workflow`.
 - `agent_connections.last_verification_report_json` stores the latest verification report JSON object. `agent_connections.last_user_actions_json` stores the latest user-action JSON array.
 - `connection_projects` is the explicit project allowlist for one Agent Connection. It stores membership with `connection_internal_id` and `project_internal_id`. Deleting a project or connection that still has membership is restricted.
-- `guard_installations` stores local guard setup lifecycle state and host capability for one Runtime Home, Agent Connection, and optional project scope. Its internal `guard_mode` values are `record` and `observe`. Its `installation_status` values are `absent`, `configured`, `reload_required`, `active`, `degraded`, `stale`, and `broken`. A valid observed host hook for the recorded project, Agent Connection, host kind, integration profile, policy hash, and known hook phase records first-seen and last-seen metadata. It can move a row to `active` only when the selected profile is `observe`, required hook configuration is complete, and the row is not `degraded`, `stale`, or `broken`; otherwise the observation metadata is recorded without making the installation effectively active. These rows are local authority records for host observation; they are not OS-level enforcement proof or write-prevention proof.
+- `guard_installations` stores local host-hook setup lifecycle state and host capability for one Runtime Home, Agent Connection, and optional project scope. Its internal `guard_mode` values are `record` and `detective`. Its `installation_status` values are `absent`, `configured`, `reload_required`, `active`, `degraded`, `stale`, and `broken`. A valid observed host hook for the recorded project, Agent Connection, host kind, integration profile, policy hash, and known hook phase records first-seen and last-seen metadata. It can move a row to `active` only when the selected profile is `detective`, required hook configuration is complete, and the row is not `degraded`, `stale`, or `broken`; otherwise the observation metadata is recorded without making the installation effectively active. These rows are local authority records for host observation; they are not OS-level enforcement proof or write-prevention proof.
 - `schema_migrations` records applied registry schema versions. Migration execution semantics stay with [Storage Versioning](storage-versioning.md).
 
 ## Project `state.sqlite`
@@ -544,7 +544,7 @@ Storage status values map to the public write-ticket lifecycle as follows:
 consumed ticket path where the owning API selects that view, `status=expired`
 exposes expiration, and `status=stale` or `status=revoked` removes current
 compatibility and may be surfaced as revoked/stale compatibility by the owning
-method. Observe-profile host hooks and session watchers may create separate
+method. Detective-profile host hooks and session watchers may create separate
 observation records; this table by itself is not host-hook enforcement.
 
 CREATE TABLE runs (
@@ -884,7 +884,7 @@ CREATE TABLE agent_sessions (
   connection_internal_id TEXT NOT NULL,
   guard_installation_id TEXT,
   host_kind TEXT NOT NULL CHECK (length(trim(host_kind)) > 0),
-  guard_mode TEXT NOT NULL CHECK (guard_mode IN ('record', 'observe')),
+  guard_mode TEXT NOT NULL CHECK (guard_mode IN ('record', 'detective')),
   started_at TEXT NOT NULL,
   ended_at TEXT,
   metadata_json TEXT NOT NULL DEFAULT '{}',
@@ -1133,8 +1133,8 @@ Project-state constraints:
 - `evidence_observations.source_kind` and `assurance_level` distinguish cooperative agent reports, registered connection observations, external tool results, user observations, reused evidence, and unverified claims.
 - `tool_invocations` stores replay rows with actor provenance and operation category. Replay rows are not caller authority and do not bypass current connection context or User Channel requirements.
 - `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unrecorded_changes`, `session_watch_baselines`, and `session_watch_observations` are project-local host-observation and session-watch records. They repeat `connection_internal_id` for connection scoping and use project-local keys so records do not leak across projects.
-- `guard_events.decision` is constrained to `allow`, `deny`, `warn`, or `inject_context`. These values record local guard decisions; they are not OS-level enforcement proof.
-- `expected_writes.status` is constrained to `pending` or `matched`, and `path_policy` is constrained to `exact_paths`. Matched rows must carry the matched post-tool guard event, matched paths JSON, and `matched_at`; pending rows must not carry those matched fields.
+- `guard_events.decision` is constrained to `allow`, `deny`, `warn`, or `inject_context`. These values record local host decision requests; they are not OS-level enforcement proof.
+- `expected_writes.status` is constrained to `pending` or `matched`, and `path_policy` is constrained to `exact_paths`. Matched rows must carry the matched post-tool host-hook event, matched paths JSON, and `matched_at`; pending rows must not carry those matched fields.
 - `unrecorded_changes.status` is constrained to `unresolved` or `resolved`. Resolved rows must carry resolution JSON, `resolved_at`, and `resolved_by_actor_source`; unresolved rows must not carry those resolution fields. Resolution JSON must include the compact resolution basis and capture basis required by [Storage Records](storage-records.md), without storing full sensitive command or prompt content.
 - `session_watch_baselines.status` is constrained to `disabled`, `active`, `degraded`, or `unavailable`, and `scope_kind` is constrained to `repository` or `path_set`.
 - `session_watch_observations.observation_status` is constrained to `unresolved` or `linked`. Linked rows must carry `unrecorded_change_id` and `linked_at`; unresolved rows must not carry those link fields.

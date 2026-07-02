@@ -154,19 +154,19 @@ installation, pass the host, repository, and `record` profile to init explicitly
 volicord init --host codex --repo /path/to/your-product-repo --profile record
 ```
 
-For observe setup, use the full init contract in the
+For detective setup, use the full init contract in the
 [Administrative CLI Reference](../reference/admin-cli.md#agent-host-setup-and-init);
 missing host-hook or session watcher support must fail with an actionable
-diagnostic. Use `--profile record` when observe prerequisites are unavailable.
+diagnostic. Use `--profile record` when detective prerequisites are unavailable.
 
-On native Windows, observe setup is not supported. If init reports
-`OBSERVE_WINDOWS_UNSUPPORTED`, rerun with the record profile:
+On native Windows, detective setup is not supported. If init reports
+`DETECTIVE_WINDOWS_UNSUPPORTED`, rerun with the record profile:
 
 ```powershell
 volicord init --host codex --repo C:\path\to\your-product-repo --profile record
 ```
 
-Use WSL2, Linux, or macOS for observe only where the selected host hook and
+Use WSL2, Linux, or macOS for detective only where the selected host hook and
 session watcher contracts are supported and tested.
 
 For lower-level connection recovery, pass the host and repository to connect
@@ -295,22 +295,22 @@ Diagnostic meanings and repairs:
   `--repo PATH`, then reload or restart the host when required.
 - `host_output_mismatch`, `policy_hash_mismatch`, or `authority_mismatch`: the
   generated wrapper metadata no longer matches the expected host-output mode,
-  policy hash, connection, or observe installation record. Rerun init so the
+  policy hash, connection, or detective installation record. Rerun init so the
   managed files and registry state agree.
 - `metadata_missing` or `placeholder_unsupported`: the generated configuration
   is not in the currently verified shape. Rerun init and avoid replacing the
   generated command with unsupported placeholders.
 
-Codex observe hook commands require the selected Product Repository to be a Git
+Codex detective host hook commands require the selected Product Repository to be a Git
 work tree. If the wrapper stderr says the Git root could not be resolved, or
 hooks fail only when the host session starts from a subdirectory, confirm that
 the session is inside the intended Git work tree and that `git` is available to
-the host process, then rerun init for that repository. Claude Code observe hook
+the host process, then rerun init for that repository. Claude Code detective host hook
 commands are rooted at `${CLAUDE_PROJECT_DIR}`; if the host does not provide
 that project directory, reload or repair the host configuration through the
 host's own trust and project-selection flow.
 
-Unsafe hook paths keep observe host hooks inactive. Watcher availability is
+Unsafe hook paths keep detective host hooks inactive. Watcher availability is
 reported separately in the observation summary. Path repair is still
 separate from host trust, approval, restart, and reload; complete any reported
 host-owned action and rerun verification after repair.

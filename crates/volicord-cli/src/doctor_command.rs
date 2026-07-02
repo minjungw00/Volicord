@@ -363,23 +363,23 @@ fn inspect_guard_installations(
     if snapshot.guard_installations.is_empty() {
         checks.push(DiagnosticCheck::skipped(
             "guard_files_installed",
-            "no observe installations are recorded",
+            "no detective installations are recorded",
         ));
         checks.push(DiagnosticCheck::skipped(
             "guard_host_reload_required",
-            "no observe installation needs host reload",
+            "no detective installation needs host reload",
         ));
         checks.push(DiagnosticCheck::skipped(
             "guard_hook_observed",
-            "no observe host-hook observation is recorded",
+            "no detective host-hook observation is recorded",
         ));
         checks.push(DiagnosticCheck::skipped(
             "guard_required_hooks_supported",
-            "no observe hook capability record is available",
+            "no detective host-hook capability record is available",
         ));
         checks.push(DiagnosticCheck::skipped(
             "guard_status_active",
-            "no observe installation status is recorded",
+            "no detective installation status is recorded",
         ));
         checks.push(
             DiagnosticCheck::skipped("control_surface", "no integration profile is recorded")
@@ -414,7 +414,7 @@ fn inspect_guard_installations(
     let observed_profile_installations = snapshot
         .guard_installations
         .iter()
-        .filter(|installation| installation.guard_mode == IntegrationProfile::Observe.as_str())
+        .filter(|installation| installation.guard_mode == IntegrationProfile::Detective.as_str())
         .collect::<Vec<_>>();
     let mut file_findings = DoctorGuardFileFindings::default();
     for installation in &snapshot.guard_installations {
@@ -441,7 +441,7 @@ fn inspect_guard_installations(
     let control_surface_check = if selected_profile == "mixed" {
         DiagnosticCheck::warning(
             "control_surface",
-            "observe installations record mixed integration profiles",
+            "detective installations record mixed integration profiles",
         )
     } else {
         DiagnosticCheck::passed(
@@ -458,14 +458,17 @@ fn inspect_guard_installations(
         || !file_findings.broken_files.is_empty();
     if !guard_file_problem {
         checks.push(
-            DiagnosticCheck::passed("guard_files_installed", "observe hook files are installed")
-                .with_details(doctor_guard_file_details(&file_findings)),
+            DiagnosticCheck::passed(
+                "guard_files_installed",
+                "detective host-hook files are installed",
+            )
+            .with_details(doctor_guard_file_details(&file_findings)),
         );
     } else {
         checks.push(
             DiagnosticCheck::warning(
                 "guard_files_installed",
-                "one or more observe hook files are missing, stale, or broken",
+                "one or more detective host-hook files are missing, stale, or broken",
             )
             .with_details(doctor_guard_file_details(&file_findings)),
         );
@@ -474,7 +477,7 @@ fn inspect_guard_installations(
             DiagnosticAction {
                 id: "repair_guard_files".to_owned(),
                 instruction:
-                    "Run volicord init again for affected observe-profile projects to reinstall or refresh observe hook files."
+                    "Run volicord init again for affected detective-profile projects to reinstall or refresh detective host-hook files."
                         .to_owned(),
                 command: Some("volicord init --host HOST --repo PATH".to_owned()),
             },
@@ -491,7 +494,7 @@ fn inspect_guard_installations(
             DiagnosticAction {
                 id: "repair_guard_hook_path_safety".to_owned(),
                 instruction:
-                    "Run volicord init again for affected observe-profile projects to regenerate cwd-independent hook commands."
+                    "Run volicord init again for affected detective-profile projects to regenerate cwd-independent hook commands."
                         .to_owned(),
                 command: Some("volicord init --host HOST --repo PATH".to_owned()),
             },
@@ -505,7 +508,7 @@ fn inspect_guard_installations(
         checks.push(
             DiagnosticCheck::warning(
                 "guard_host_reload_required",
-                "one or more observe installations need host reload",
+                "one or more detective installations need host reload",
             )
             .with_details(json!({ "reload_required": true })),
         );
@@ -514,7 +517,7 @@ fn inspect_guard_installations(
             DiagnosticAction {
                 id: "reload_guard_host".to_owned(),
                 instruction:
-                    "Restart or reload affected agent hosts so they load the Volicord guard configuration."
+                    "Restart or reload affected agent hosts so they load the Volicord host hook configuration."
                         .to_owned(),
                 command: None,
             },
@@ -522,7 +525,7 @@ fn inspect_guard_installations(
     } else {
         checks.push(DiagnosticCheck::passed(
             "guard_host_reload_required",
-            "no recorded observe installation requires host reload",
+            "no recorded detective installation requires host reload",
         ));
     }
 
@@ -534,13 +537,13 @@ fn inspect_guard_installations(
     } else if missing_required_hooks.is_empty() {
         checks.push(DiagnosticCheck::passed(
             "guard_required_hooks_supported",
-            "required observe hook capabilities are recorded",
+            "required detective host-hook capabilities are recorded",
         ));
     } else {
         checks.push(
             DiagnosticCheck::warning(
                 "guard_required_hooks_supported",
-                "one or more observe-profile installations are missing required hook capabilities",
+                "one or more detective-profile installations are missing required hook capabilities",
             )
             .with_details(json!({ "missing_required_hooks": missing_required_hooks })),
         );
@@ -549,7 +552,7 @@ fn inspect_guard_installations(
             DiagnosticAction {
                 id: "repair_guard_required_hooks".to_owned(),
                 instruction:
-                    "Run volicord init again with a host adapter that supports every required observe hook, or use the record profile."
+                    "Run volicord init again with a host adapter that supports every required detective host hook, or use the record profile."
                         .to_owned(),
                 command: Some("volicord init --host HOST --repo PATH".to_owned()),
             },
@@ -559,27 +562,27 @@ fn inspect_guard_installations(
     if observed_profile_installations.is_empty() {
         checks.push(DiagnosticCheck::skipped(
             "guard_hook_observed",
-            "observe host-hook observation is not applicable to record-profile installations",
+            "detective host-hook observation is not applicable to record-profile installations",
         ));
     } else if observed_count == observed_profile_installations.len() {
         checks.push(
-            DiagnosticCheck::passed("guard_hook_observed", "observe host hooks have been observed")
-                .with_details(json!({ "observed": observed_count, "observe": observed_profile_installations.len() })),
+            DiagnosticCheck::passed("guard_hook_observed", "detective host hooks have been observed")
+                .with_details(json!({ "observed": observed_count, "detective": observed_profile_installations.len() })),
         );
     } else {
         checks.push(
             DiagnosticCheck::warning(
                 "guard_hook_observed",
-                "one or more observe-profile installations have not been observed",
+                "one or more detective-profile installations have not been observed",
             )
-            .with_details(json!({ "observed": observed_count, "observe": observed_profile_installations.len() })),
+            .with_details(json!({ "observed": observed_count, "detective": observed_profile_installations.len() })),
         );
         push_unique_diagnostic_action(
             actions,
             DiagnosticAction {
-                id: "observe_guard_hook".to_owned(),
+                id: "detective_host_hook".to_owned(),
                 instruction:
-                    "Start, restart, or reload affected agent hosts so the Volicord observe host hook runs."
+                    "Start, restart, or reload affected agent hosts so the Volicord detective host hook runs."
                         .to_owned(),
                 command: None,
             },
@@ -598,7 +601,7 @@ fn inspect_guard_installations(
         checks.push(
             DiagnosticCheck::warning(
                 "guard_status_active",
-                format!("one or more observe installations are {status}"),
+                format!("one or more detective installations are {status}"),
             )
             .with_details(json!({ "status_counts": status_counts })),
         );
@@ -607,7 +610,7 @@ fn inspect_guard_installations(
             DiagnosticAction {
                 id: "repair_guard_status".to_owned(),
                 instruction:
-                    "Repair or reinstall affected observe-profile integrations before relying on host-hook observation."
+                    "Repair or reinstall affected detective-profile integrations before relying on host-hook observation."
                         .to_owned(),
                 command: Some("volicord init --host HOST --repo PATH".to_owned()),
             },
@@ -615,26 +618,29 @@ fn inspect_guard_installations(
     } else if observed_profile_installations.is_empty() {
         checks.push(DiagnosticCheck::skipped(
             "guard_status_active",
-            "guard active status is not applicable to record-profile installations",
+            "detective signal active status is not applicable to record-profile installations",
         ));
     } else if observed_profile_installations
         .iter()
         .all(|installation| guard_effective_active(installation))
     {
         checks.push(
-            DiagnosticCheck::passed("guard_status_active", "effective guard status is active")
-                .with_details(json!({ "status_counts": status_counts })),
+            DiagnosticCheck::passed(
+                "guard_status_active",
+                "effective detective signal status is active",
+            )
+            .with_details(json!({ "status_counts": status_counts })),
         );
     } else {
         checks.push(
             DiagnosticCheck::warning(
                 "guard_status_active",
-                "effective guard status is not active for one or more observe-profile installations",
+                "effective detective signal status is not active for one or more detective-profile installations",
             )
             .with_details(json!({
                 "status_counts": status_counts,
                 "effective_active": observed_profile_installations.iter().filter(|installation| guard_effective_active(installation)).count(),
-                "observe": observed_profile_installations.len(),
+                "detective": observed_profile_installations.len(),
             })),
         );
     }
@@ -714,7 +720,7 @@ impl DoctorGuardFileFindings {
         self.hook_subdirectory_safe_values.push(status == "ok");
         if !matches!(status, "ok" | "wrapper_missing" | "dispatch_missing") {
             self.stale_files
-                .push("guard_capability_json:hook_path_safety".to_owned());
+                .push("host_hook_capability_json:hook_path_safety".to_owned());
         }
     }
 
@@ -818,10 +824,10 @@ fn doctor_guard_file_findings(
     let Ok(value) = serde_json::from_str::<Value>(capability_json) else {
         findings
             .broken_files
-            .push("guard_capability_json".to_owned());
+            .push("host_hook_capability_json".to_owned());
         findings.record_hook_path_status(
             "metadata_missing",
-            json!({ "source": "guard_capability_json" }),
+            json!({ "source": "host_hook_capability_json" }),
         );
         return findings;
     };
@@ -875,7 +881,7 @@ fn doctor_selected_profile_state(
     }
     match doctor_guard_mode_state(installations).as_str() {
         "record" => "record",
-        "observe" => "observe",
+        "detective" => "detective",
         _ => "mixed",
     }
     .to_owned()
@@ -883,15 +889,15 @@ fn doctor_selected_profile_state(
 
 fn doctor_control_surface_summary(
     selected_profile: &str,
-    observe_installations: &[&volicord_store::inspection::GuardInstallationInspectionRecord],
+    detective_installations: &[&volicord_store::inspection::GuardInstallationInspectionRecord],
     findings: &DoctorGuardFileFindings,
     observed_count: usize,
     required_hooks_available: bool,
 ) -> Value {
-    let host_hooks_active = selected_profile == IntegrationProfile::Observe.as_str()
-        && !observe_installations.is_empty()
-        && observed_count == observe_installations.len()
-        && observe_installations
+    let host_hooks_active = selected_profile == IntegrationProfile::Detective.as_str()
+        && !detective_installations.is_empty()
+        && observed_count == detective_installations.len()
+        && detective_installations
             .iter()
             .all(|installation| guard_effective_active(installation))
         && required_hooks_available
@@ -920,9 +926,9 @@ fn doctor_verify_recorded_hook_path_safety(
     let requires_path_safety = capability
         .get("selected_profile")
         .and_then(Value::as_str)
-        .is_some_and(|profile| profile == IntegrationProfile::Observe.as_str())
+        .is_some_and(|profile| profile == IntegrationProfile::Detective.as_str())
         || capability
-            .get("required_guard_phases")
+            .get("required_hook_phases")
             .and_then(Value::as_array)
             .is_some_and(|phases| !phases.is_empty());
     let Some(commands) = capability
@@ -1157,7 +1163,7 @@ fn doctor_classify_codex_hook_command_path(
         }
         return "relative_path_unsafe";
     }
-    if command_text.contains(&format!("volicord guard {phase_command}")) {
+    if command_text.contains(&format!("volicord host-hook {phase_command}")) {
         return "ok";
     }
     "metadata_missing"
@@ -1191,7 +1197,7 @@ fn doctor_classify_claude_hook_command_path(
         }
         return "relative_path_unsafe";
     }
-    if command_text.contains(&format!("volicord guard {phase_command}")) {
+    if command_text.contains(&format!("volicord host-hook {phase_command}")) {
         return "ok";
     }
     "metadata_missing"
@@ -1339,7 +1345,7 @@ fn doctor_verify_guard_file(file: &Value, findings: &mut DoctorGuardFileFindings
     let Some(path_text) = file.get("path").and_then(Value::as_str) else {
         findings
             .broken_files
-            .push("guard_capability_json:files.path".to_owned());
+            .push("host_hook_capability_json:files.path".to_owned());
         findings.set_file_state(kind, "broken");
         return;
     };
@@ -1700,7 +1706,7 @@ fn guard_missing_required_hooks(capability_json: &str) -> Vec<String> {
         return Vec::new();
     };
     let configured_required_hooks = value
-        .get("required_guard_phases")
+        .get("required_hook_phases")
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
@@ -1772,10 +1778,10 @@ fn guard_effective_active(
 }
 
 fn inspect_prompt_capture_availability(
-    observe_installations: &[&volicord_store::inspection::GuardInstallationInspectionRecord],
+    detective_installations: &[&volicord_store::inspection::GuardInstallationInspectionRecord],
     checks: &mut Vec<DiagnosticCheck>,
 ) {
-    if observe_installations.is_empty() {
+    if detective_installations.is_empty() {
         checks.push(
             DiagnosticCheck::skipped(
                 "prompt_capture_available",
@@ -1789,17 +1795,17 @@ fn inspect_prompt_capture_availability(
         );
         return;
     }
-    let configured = observe_installations
+    let configured = detective_installations
         .iter()
         .filter(|installation| guard_prompt_capture_configured(&installation.host_capability_json))
         .count();
-    let host_supported = observe_installations
+    let host_supported = detective_installations
         .iter()
         .filter(|installation| {
             guard_prompt_capture_host_supported(&installation.host_capability_json)
         })
         .count();
-    let observed = observe_installations
+    let observed = detective_installations
         .iter()
         .filter(|installation| {
             installation.last_seen_at.is_some()
@@ -1810,7 +1816,7 @@ fn inspect_prompt_capture_availability(
         checks.push(
             DiagnosticCheck::warning(
                 "prompt_capture_available",
-                "host does not support prompt capture for recorded observe-profile installations",
+                "host does not support prompt capture for recorded detective-profile installations",
             )
             .with_details(json!({
                 "state": "unsupported_by_host",
@@ -1833,7 +1839,7 @@ fn inspect_prompt_capture_availability(
         checks.push(
             DiagnosticCheck::warning(
                 "prompt_capture_available",
-                "prompt capture is configured but no observe host-hook observation is recorded",
+                "prompt capture is configured but no detective host-hook observation is recorded",
             )
             .with_details(json!({
                 "state": "configured_unobserved",
@@ -1846,7 +1852,7 @@ fn inspect_prompt_capture_availability(
         checks.push(
             DiagnosticCheck::warning(
                 "prompt_capture_available",
-                "prompt capture is not configured for recorded observe-profile installations",
+                "prompt capture is not configured for recorded detective-profile installations",
             )
             .with_details(json!({
                 "state": "not_configured",
@@ -2191,7 +2197,7 @@ fn render_doctor_output(
         }
         OutputFormat::Text => {
             let mut text = format!(
-                "Volicord doctor {}\nstatus_meaning: {}\n{}\nruntime_home_state: {}\nruntime_home: {}\ninstallation_profile_state: {}\ncommand_state: {}\nproject_registration_state: {}\nconnection_state: {}\nmcp_config_state: {}\nobserve_installation_state: {}\nselected_profile: {}\nobservation_summary: {}\nobservation_capabilities: {}\nobserve_configuration_state: {}\nhost_hook_observation_state: {}\nobserve_effective_state: {}\nobserve_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_path_safety: {}\nrequired_hook_phases_state: {}\nrequired_hook_phases_missing: {}\nhost_hook_observed: {}\nobserve_status_state: {}\nprompt_capture_state: {}\nprompt_capture_health: {}\nwatcher_status: not_started\nwatcher_baseline_created_at: none\nwatcher_coverage_start_at: none\nwatcher_coverage_basis: none\nwatcher_partial_coverage_warning: doctor does not initialize an MCP session watch\nhost_reload_required: {}\n",
+                "Volicord doctor {}\nstatus_meaning: {}\n{}\nruntime_home_state: {}\nruntime_home: {}\ninstallation_profile_state: {}\ncommand_state: {}\nproject_registration_state: {}\nconnection_state: {}\nmcp_config_state: {}\ndetective_installation_state: {}\nselected_profile: {}\nobservation_summary: {}\nobservation_capabilities: {}\ndetective_configuration_state: {}\nhost_hook_observation_state: {}\ndetective_effective_state: {}\ndetective_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_path_safety: {}\nrequired_hook_phases_state: {}\nrequired_hook_phases_missing: {}\nhost_hook_observed: {}\ndetective_status_state: {}\nprompt_capture_state: {}\nprompt_capture_health: {}\nwatcher_status: not_started\nwatcher_baseline_created_at: none\nwatcher_coverage_start_at: none\nwatcher_coverage_basis: none\nwatcher_partial_coverage_warning: doctor does not initialize an MCP session watch\nhost_reload_required: {}\n",
                 status.as_str(),
                 doctor_status_meaning(status, checks),
                 DETECTIVE_OBSERVATION_DISCLOSURE_TEXT,
@@ -2215,7 +2221,7 @@ fn render_doctor_output(
                 doctor_guard_file_kind_state(checks, "host_rule_instruction"),
                 doctor_guard_file_kind_state(checks, "host_hook_config"),
                 doctor_hook_path_safety_state(checks),
-                doctor_required_guard_phases_state(checks),
+                doctor_required_hook_phases_state(checks),
                 doctor_missing_required_hooks_text(checks),
                 doctor_check_state(checks, "guard_hook_observed"),
                 doctor_check_state(checks, "guard_status_active"),
@@ -2258,7 +2264,7 @@ fn doctor_states_json(
         "volicord_policy_file": doctor_guard_file_kind_state(checks, "volicord_policy"),
         "rule_instruction_config": doctor_guard_file_kind_state(checks, "host_rule_instruction"),
         "hook_config": doctor_guard_file_kind_state(checks, "host_hook_config"),
-        "required_guard_phases": doctor_required_guard_phases_state(checks),
+        "required_hook_phases": doctor_required_hook_phases_state(checks),
         "missing_required_hooks": doctor_missing_required_hooks_value(checks),
         "guard_hook_observed": doctor_check_state(checks, "guard_hook_observed"),
         "guard_status": doctor_check_state(checks, "guard_status_active"),
@@ -2477,7 +2483,7 @@ fn doctor_control_surface_text(checks: &[DiagnosticCheck]) -> String {
     )
 }
 
-fn doctor_required_guard_phases_state(checks: &[DiagnosticCheck]) -> &'static str {
+fn doctor_required_hook_phases_state(checks: &[DiagnosticCheck]) -> &'static str {
     match check_status(checks, "guard_required_hooks_supported") {
         Some("passed") => "configured",
         Some("warning") | Some("failed") => "missing",
@@ -2712,7 +2718,7 @@ mod tests {
                         "hooks": [
                             {
                                 "type": "command",
-                                "command": "volicord guard pre-tool --host claude-code --host-output claude-code",
+                                "command": "volicord host-hook pre-tool --host claude-code --host-output claude-code",
                                 "timeout": 30
                             }
                         ]

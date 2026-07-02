@@ -22,9 +22,9 @@ volicord init --host codex --repo /path/to/your-product-repo --profile record
 설정은 단일 공개 실행 파일을 프로젝트에 묶인 `volicord mcp --stdio`로 시작합니다.
 
 이 빠른 경로는 host lifecycle hook 설치나 session watcher를 요구하지 않는
-Record profile(`--profile record`)을 사용합니다. Detective profile(`--profile observe`)은
+Record profile(`--profile record`)을 사용합니다. Detective profile(`--profile detective`)은
 모든 필수 host hook phase와 session watcher 관찰에 대한 검증된 지원을 요구합니다. 이
-전제조건을 사용할 수 없으면 `--profile record`를 사용하거나, observe를 다시 실행하기 전에
+전제조건을 사용할 수 없으면 `--profile record`를 사용하거나, detective를 다시 실행하기 전에
 지원되는 호스트, 플랫폼, 저장소 설정을 준비합니다. Detective profile은 협력형 host
 decision 신호를 반환하고 watcher coverage 시작 뒤의 미기록 변경을 탐지할 수 있지만
 OS 집행, 행위자 증명, 네트워크 격리, sandbox를 제공하지 않습니다. Native Windows에서는
@@ -33,11 +33,11 @@ Windows host hook과 watcher 동작이 구현되고 테스트되기 전까지 ob
 내부 식별 정보 동작은
 [관리 CLI 참조](../reference/admin-cli.md)가 담당합니다.
 
-이 `record` 빠른 경로 대신 observe 설정을 선택하면, 생성된 hook 명령은 호스트
+이 `record` 빠른 경로 대신 detective 설정을 선택하면, 생성된 hook 명령은 호스트
 session이 저장소 하위 디렉터리에서 시작해도 동작하도록 만들어집니다. Status,
 verification, doctor 진단은 `hook_path_safety`를 보고합니다.
 `relative_path_unsafe`, `wrapper_missing`, `wrapper_not_executable` 같은 값은 생성된 hook
-명령이나 wrapper를 복구하기 전에는 observe host hook이 활성 상태가 아니라는 뜻입니다.
+명령이나 wrapper를 복구하기 전에는 detective host hook이 활성 상태가 아니라는 뜻입니다.
 
 ## 설정 확인하기
 
@@ -52,7 +52,7 @@ volicord connection verify codex --repo /path/to/your-product-repo
 `action_required`를 보고하면 이름 붙은 호스트 소유 동작이나 로컬 복구 동작을 완료한
 뒤 verification을 다시 실행합니다. 정확한 결과 상태 의미는 [관리 CLI
 참조](../reference/admin-cli.md#agent-connection-result-states)가 담당합니다.
-Observe hook 경로 복구 안내는
+Detective host hook 경로 복구 안내는
 [에이전트 호스트 문제 해결](../guides/agent-host-troubleshooting.md#guard-hook-path-or-wrapper-is-unsafe)이
 담당합니다.
 
@@ -121,7 +121,7 @@ Agent Connection은 초점이 맞춰진 판단 필요를 요청하거나 보여 
 권한을 지니는 사용자 답변은 로컬 `User Channel`을 거칩니다.
 
 호스트와 클라이언트가 지원하면 MCP 어댑터는 대기 판단에 호스트 프롬프트를 사용할 수
-있습니다. observe 상태가 채팅 명령 캡처를 `configured`, `observed`, `active`로 보고할 때
+있습니다. detective 상태가 채팅 명령 캡처를 `configured`, `observed`, `active`로 보고할 때
 채팅 경로는 `Volicord: answer J-3 1 #AB7K` 같은 엄격한 prompt 명령입니다. 호스트
 프롬프트 입력과 채팅 명령 캡처를 사용할 수 없고 adapter가 fallback을 안전하게 노출할 수
 있으면 Volicord는 짧게 만료되는 일회성 token이 있는 loopback local consent URL을 반환할

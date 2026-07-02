@@ -41,7 +41,7 @@ PRAGMA foreign_keys = ON;
 
 ## `registry.sqlite`
 
-`registry.sqlite`는 Runtime Home 식별 정보, 설치 프로필 기록, 프로젝트 등록, 프로젝트 alias, Agent Connection 기록, Connection Projects 멤버십, guard 설치 기록, 호스트 설정 인벤토리를 저장합니다. 프로젝트별 Core 상태는 저장하지 않습니다.
+`registry.sqlite`는 Runtime Home 식별 정보, 설치 프로필 기록, 프로젝트 등록, 프로젝트 alias, Agent Connection 기록, Connection Projects 멤버십, host-hook 설치 기록, 호스트 설정 인벤토리를 저장합니다. 프로젝트별 Core 상태는 저장하지 않습니다.
 
 현재 기준 마이그레이션을 적용하면 저장소 프로필 `baseline_sqlite_v3`의
 registry 스키마 버전은 `1`입니다. 아래 DDL 블록들은 읽기 쉽도록 기록
@@ -182,7 +182,7 @@ CREATE UNIQUE INDEX idx_agent_connections_target_global
   WHERE project_internal_id IS NULL;
 ```
 
-Registry guard-installation 기록입니다.
+Registry host-hook installation 기록입니다.
 
 ```sql
 CREATE TABLE guard_installations (
@@ -191,7 +191,7 @@ CREATE TABLE guard_installations (
   connection_internal_id TEXT NOT NULL,
   project_internal_id TEXT,
   host_kind TEXT NOT NULL CHECK (length(trim(host_kind)) > 0),
-  guard_mode TEXT NOT NULL CHECK (guard_mode IN ('record', 'observe')),
+  guard_mode TEXT NOT NULL CHECK (guard_mode IN ('record', 'detective')),
   host_capability_json TEXT NOT NULL DEFAULT '{}',
   installation_status TEXT NOT NULL
     CHECK (installation_status IN (
@@ -249,7 +249,7 @@ Registry 제약:
 - `agent_connections.mode`는 `read_only` 또는 `workflow`로 제한됩니다.
 - `agent_connections.last_verification_report_json`은 최신 검증 보고서 JSON 객체를 저장합니다. `agent_connections.last_user_actions_json`은 최신 사용자 동작 JSON 배열을 저장합니다.
 - `connection_projects`는 Agent Connection 하나에 대한 명시적 프로젝트 허용 목록입니다. `connection_internal_id`와 `project_internal_id`로 멤버십을 저장합니다. 아직 멤버십이 남은 프로젝트나 연결 삭제는 제한됩니다.
-- `guard_installations`는 Runtime Home 하나, Agent Connection 하나, 선택적 프로젝트 범위에 대한 로컬 guard 설정 생명주기 상태와 호스트 capability를 저장합니다. 내부 `guard_mode` 값은 `record`, `observe`입니다. `installation_status` 값은 `absent`, `configured`, `reload_required`, `active`, `degraded`, `stale`, `broken`입니다. 기록된 프로젝트, Agent Connection, 호스트 종류, 통합 프로필, policy hash, 알려진 hook 단계와 일치하는 유효한 host hook 관찰은 first-seen 및 last-seen 메타데이터를 기록합니다. 선택된 프로필이 `observe`이고 필요한 hook 설정이 완전하며 행이 `degraded`, `stale`, `broken`이 아닐 때만 행을 `active`로 옮길 수 있습니다. 그 밖에는 관찰 메타데이터를 기록하더라도 설치를 효과적으로 active로 만들지 않습니다. 이 행은 host observation을 위한 로컬 권한 기록이며 OS 수준 집행 증명이나 쓰기 방지 증명이 아닙니다.
+- `guard_installations`는 Runtime Home 하나, Agent Connection 하나, 선택적 프로젝트 범위에 대한 로컬 host-hook 설정 생명주기 상태와 호스트 capability를 저장합니다. 내부 `guard_mode` 값은 `record`, `detective`입니다. `installation_status` 값은 `absent`, `configured`, `reload_required`, `active`, `degraded`, `stale`, `broken`입니다. 기록된 프로젝트, Agent Connection, 호스트 종류, 통합 프로필, policy hash, 알려진 hook 단계와 일치하는 유효한 host hook 관찰은 first-seen 및 last-seen 메타데이터를 기록합니다. 선택된 프로필이 `detective`이고 필요한 hook 설정이 완전하며 행이 `degraded`, `stale`, `broken`이 아닐 때만 행을 `active`로 옮길 수 있습니다. 그 밖에는 관찰 메타데이터를 기록하더라도 설치를 효과적으로 active로 만들지 않습니다. 이 행은 host observation을 위한 로컬 권한 기록이며 OS 수준 집행 증명이나 쓰기 방지 증명이 아닙니다.
 - `schema_migrations`는 적용된 registry 스키마 버전을 기록합니다. 마이그레이션 실행 의미는 [저장소 버전 관리](storage-versioning.md)가 담당합니다.
 
 ## 프로젝트 `state.sqlite`
@@ -543,7 +543,7 @@ CREATE UNIQUE INDEX idx_write_tickets_consumed_run
 그 보기를 선택할 때 소비되어 닫힌 티켓 경로를 드러내며, `status=expired`는
 만료를 드러냅니다. `status=stale` 또는 `status=revoked`는 현재 호환성을
 제거하며 담당 메서드가 오래됨/철회된 호환성으로 드러낼 수 있습니다.
-Observe 프로필 host hook과 session watcher는 별도 관찰 기록을 만들 수
+Detective 프로필 host hook과 session watcher는 별도 관찰 기록을 만들 수
 있지만, 이 테이블 자체는 host-hook 집행이 아닙니다.
 
 CREATE TABLE runs (
@@ -883,7 +883,7 @@ CREATE TABLE agent_sessions (
   connection_internal_id TEXT NOT NULL,
   guard_installation_id TEXT,
   host_kind TEXT NOT NULL CHECK (length(trim(host_kind)) > 0),
-  guard_mode TEXT NOT NULL CHECK (guard_mode IN ('record', 'observe')),
+  guard_mode TEXT NOT NULL CHECK (guard_mode IN ('record', 'detective')),
   started_at TEXT NOT NULL,
   ended_at TEXT,
   metadata_json TEXT NOT NULL DEFAULT '{}',
@@ -1132,8 +1132,8 @@ CREATE INDEX idx_session_watch_observations_unrecorded_change
 - `evidence_observations.source_kind`와 `assurance_level`은 협력적 에이전트 보고, 등록된 연결 관찰, 외부 도구 결과, 사용자 관찰, 재사용 증거, 미확인 주장을 구분합니다.
 - `tool_invocations`는 행위자 출처와 작업 범주를 포함해 재실행 행을 저장합니다. 재실행 행은 호출자 권한이 아니며 현재 연결 맥락이나 User Channel 요구사항을 우회하지 않습니다.
 - `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unrecorded_changes`, `session_watch_baselines`, `session_watch_observations`는 프로젝트별 host-observation 및 session-watch 기록입니다. 연결 범위를 위해 `connection_internal_id`를 반복해 저장하고, 프로젝트별 키를 사용해 기록이 프로젝트 사이로 새지 않게 합니다.
-- `guard_events.decision`은 `allow`, `deny`, `warn`, `inject_context`로 제한됩니다. 이 값은 로컬 guard decision을 기록하며 OS 수준 집행 증명이 아닙니다.
-- `expected_writes.status`는 `pending` 또는 `matched`로 제한되고, `path_policy`는 `exact_paths`로 제한됩니다. 매칭된 행은 매칭된 post-tool guard event, matched paths JSON, `matched_at`을 가져야 하고, 대기 행은 이 매칭 필드를 가지면 안 됩니다.
+- `guard_events.decision`은 `allow`, `deny`, `warn`, `inject_context`로 제한됩니다. 이 값은 로컬 host decision request를 기록하며 OS 수준 집행 증명이 아닙니다.
+- `expected_writes.status`는 `pending` 또는 `matched`로 제한되고, `path_policy`는 `exact_paths`로 제한됩니다. 매칭된 행은 매칭된 post-tool host-hook event, matched paths JSON, `matched_at`을 가져야 하고, 대기 행은 이 매칭 필드를 가지면 안 됩니다.
 - `unrecorded_changes.status`는 `unresolved` 또는 `resolved`로 제한됩니다. 해결된 행은 resolution JSON, `resolved_at`, `resolved_by_actor_source`를 가져야 하고, 미해결 행은 이 해결 필드를 가지면 안 됩니다. Resolution JSON은 [저장소 기록](storage-records.md)이 요구하는 간결한 resolution basis와 capture basis를 포함해야 하며, 전체 민감 명령이나 prompt 내용을 저장하면 안 됩니다.
 - `session_watch_baselines.status`는 `disabled`, `active`, `degraded`, `unavailable`로 제한되고, `scope_kind`는 `repository` 또는 `path_set`으로 제한됩니다.
 - `session_watch_observations.observation_status`는 `unresolved` 또는 `linked`로 제한됩니다. 연결된 행은 `unrecorded_change_id`와 `linked_at`을 가져야 하고, 미해결 행은 이 연결 필드를 가지면 안 됩니다.

@@ -140,7 +140,7 @@ pub struct HostIntegrationContract {
     pub optional_lifecycle_phases: &'static [HostLifecyclePhase],
     pub prompt_capture: ContractCapability,
     pub reload_restart_trust_requirements: &'static [HostRequirement],
-    pub observe_profile_hook_support: ContractCapability,
+    pub detective_profile_hook_support: ContractCapability,
     pub known_limitations: &'static [&'static str],
     pub official_sources: &'static [&'static str],
 }
@@ -405,9 +405,9 @@ pub const CODEX_CONTRACT: HostIntegrationContract = HostIntegrationContract {
         detail: "UserPromptSubmit includes the submitted prompt.",
     },
     reload_restart_trust_requirements: &CODEX_REQUIREMENTS,
-    observe_profile_hook_support: ContractCapability {
+    detective_profile_hook_support: ContractCapability {
         status: ContractSupportStatus::Verified,
-        detail: "The Codex adapter generates and verifies project-local hook commands for every required observe-profile lifecycle phase.",
+        detail: "The Codex adapter generates and verifies project-local hook commands for every required detective-profile lifecycle phase.",
     },
     known_limitations: &CODEX_LIMITATIONS,
     official_sources: &CODEX_SOURCES,
@@ -449,9 +449,9 @@ pub const CLAUDE_CODE_CONTRACT: HostIntegrationContract = HostIntegrationContrac
         detail: "UserPromptSubmit includes the submitted prompt.",
     },
     reload_restart_trust_requirements: &CLAUDE_CODE_REQUIREMENTS,
-    observe_profile_hook_support: ContractCapability {
+    detective_profile_hook_support: ContractCapability {
         status: ContractSupportStatus::Verified,
-        detail: "The Claude Code adapter generates and verifies project-local settings hook commands for every required observe-profile lifecycle phase.",
+        detail: "The Claude Code adapter generates and verifies project-local settings hook commands for every required detective-profile lifecycle phase.",
     },
     known_limitations: &CLAUDE_CODE_LIMITATIONS,
     official_sources: &CLAUDE_CODE_SOURCES,
@@ -465,8 +465,8 @@ pub fn contract_for(host_kind: HostKind) -> Option<&'static HostIntegrationContr
     }
 }
 
-pub fn contract_supports_observe_profile(contract: &HostIntegrationContract) -> bool {
-    contract.observe_profile_hook_support.status == ContractSupportStatus::Verified
+pub fn contract_supports_detective_profile(contract: &HostIntegrationContract) -> bool {
+    contract.detective_profile_hook_support.status == ContractSupportStatus::Verified
 }
 
 pub fn hook_event_for_phase(
@@ -982,7 +982,7 @@ fn validate_codex_volicord_hook_command(
     if !uses_phase_wrapper
         && !mentions_dispatch
         && !uses_dispatch
-        && !command.contains("volicord guard")
+        && !command.contains("volicord host-hook")
     {
         return Ok(());
     }
@@ -1014,7 +1014,7 @@ fn validate_claude_volicord_hook_command(
             phase.capability_name()
         )));
     }
-    if !command.contains(&relative_wrapper) && !command.contains("volicord guard") {
+    if !command.contains(&relative_wrapper) && !command.contains("volicord host-hook") {
         return Ok(());
     }
     let args_empty = object
@@ -1179,7 +1179,7 @@ mod tests {
         include_str!("../../tests/fixtures/host_contracts/claude_code/rules/volicord.md");
 
     #[test]
-    fn codex_contract_records_verified_observe_profile_shapes() {
+    fn codex_contract_records_verified_detective_profile_shapes() {
         let contract = contract_for(HostKind::Codex).expect("Codex contract should exist");
 
         assert_eq!(contract.host_kind, HostKind::Codex);
@@ -1208,17 +1208,17 @@ mod tests {
             ContractSupportStatus::Verified
         );
         assert_eq!(
-            contract.observe_profile_hook_support.status,
+            contract.detective_profile_hook_support.status,
             ContractSupportStatus::Verified
         );
-        assert!(contract_supports_observe_profile(contract));
+        assert!(contract_supports_detective_profile(contract));
 
         let capabilities = host_capabilities(HostKind::Codex);
-        assert!(capabilities.missing_required_guard_phases().is_empty());
+        assert!(capabilities.missing_required_hook_phases().is_empty());
     }
 
     #[test]
-    fn claude_code_contract_records_verified_observe_profile_shapes() {
+    fn claude_code_contract_records_verified_detective_profile_shapes() {
         let contract =
             contract_for(HostKind::ClaudeCode).expect("Claude Code contract should exist");
 
@@ -1250,13 +1250,13 @@ mod tests {
             ContractSupportStatus::Verified
         );
         assert_eq!(
-            contract.observe_profile_hook_support.status,
+            contract.detective_profile_hook_support.status,
             ContractSupportStatus::Verified
         );
-        assert!(contract_supports_observe_profile(contract));
+        assert!(contract_supports_detective_profile(contract));
 
         let capabilities = host_capabilities(HostKind::ClaudeCode);
-        assert!(capabilities.missing_required_guard_phases().is_empty());
+        assert!(capabilities.missing_required_hook_phases().is_empty());
     }
 
     #[test]

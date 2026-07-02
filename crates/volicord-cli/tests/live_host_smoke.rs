@@ -43,16 +43,16 @@ mod unix {
             "--repo",
             fixture.repo_arg(),
             "--profile",
-            "observe",
+            "detective",
             "--home",
             fixture.runtime_home_arg(),
             "--json",
         ])?;
-        assert_success("volicord init --host codex --profile observe", &init);
+        assert_success("volicord init --host codex --profile detective", &init);
         let init_json = json_stdout(&init)?;
         assert_guarded_init_reported_action_required(&init_json, "codex", "host_trust_required");
         assert_eq!(init_json["states"]["hook_config"], "created");
-        assert_eq!(init_json["states"]["required_guard_phases"], "configured");
+        assert_eq!(init_json["states"]["required_hook_phases"], "configured");
         assert_file_contains(
             &fixture.repo_root.join(".codex/config.toml"),
             "[mcp_servers.volicord]",
@@ -128,12 +128,15 @@ mod unix {
             "--repo",
             fixture.repo_arg(),
             "--profile",
-            "observe",
+            "detective",
             "--home",
             fixture.runtime_home_arg(),
             "--json",
         ])?;
-        assert_success("volicord init --host claude-code --profile observe", &init);
+        assert_success(
+            "volicord init --host claude-code --profile detective",
+            &init,
+        );
         let init_json = json_stdout(&init)?;
         assert_guarded_init_reported_action_required(
             &init_json,
@@ -368,7 +371,7 @@ mod unix {
 
     fn assert_guarded_init_reported_action_required(value: &Value, host: &str, host_action: &str) {
         assert_eq!(value["host"], host);
-        assert_eq!(value["selected_profile"], "observe");
+        assert_eq!(value["selected_profile"], "detective");
         assert_eq!(value["status"], "action_required");
         assert_eq!(value["states"]["host_reload_required"], true);
         assert_eq!(value["states"]["guard_installation"], "reload_required");

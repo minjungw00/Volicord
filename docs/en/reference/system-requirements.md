@@ -27,13 +27,13 @@ Do not infer support from Rust portability alone. A Rust crate being portable in
 | macOS x86_64 | Supported and release-packaged as `x86_64-apple-darwin`. | The release workflow builds on a macOS Intel runner and packages `volicord-x86_64-apple-darwin.tar.gz`. | Use a macOS x86_64 environment with a POSIX-style shell and the install-script tools listed below. |
 | Docker | Supported as a local runtime option when using the checked-in `Dockerfile`. No external image registry is claimed. | The checked-in `Dockerfile` builds the release CLI into a Debian runtime image. The release workflow builds the image and smoke-tests `volicord --help`. The Installation page documents local `docker build` and `docker run` usage. | Build the image from this repository or from a trusted source copy. Do not assume a published registry image exists unless a repository artifact adds it. |
 | Native Windows x86_64 record profile | Supported and release-packaged as `x86_64-pc-windows-msvc` for the `record` profile. | The release workflow builds on `windows-2022`, smoke-tests `target/x86_64-pc-windows-msvc/release/volicord.exe`, packages `volicord-x86_64-pc-windows-msvc.zip`, generates `.sha256`, and runs a native Windows `cargo test --workspace --all-targets --all-features` job. `scripts/install.ps1` installs the release binary under a user-local directory by default. | Use PowerShell on native Windows x86_64. Use `volicord init --host HOST --repo PATH --profile record`. |
-| Native Windows observe profile | Out of scope until Windows host-hook wrappers and watcher behavior are implemented and tested. | Observe setup writes POSIX `sh` hook wrappers for the currently verified adapters. The CLI rejects `volicord init --profile observe` on native Windows with `OBSERVE_WINDOWS_UNSUPPORTED`. | Use `--profile record` on native Windows, or run Volicord in WSL2, Linux, or macOS where the selected host hook contract is supported. |
+| Native Windows detective profile | Out of scope until Windows host-hook wrappers and watcher behavior are implemented and tested. | Detective setup writes POSIX `sh` hook wrappers for the currently verified adapters. The CLI rejects `volicord init --profile detective` on native Windows with `DETECTIVE_WINDOWS_UNSUPPORTED`. | Use `--profile record` on native Windows, or run Volicord in WSL2, Linux, or macOS where the selected host hook contract is supported. |
 | Development source build toolchain | Supported and verified for Rust 1.85 or newer with Cargo, as a development path. | The workspace root `Cargo.toml` sets `rust-version = "1.85"` and all workspace packages inherit that value. The Installation page keeps Cargo commands under the development source-build path. | Install or select Rust 1.85+ with Cargo only when using the development source-build path. |
 | Shell syntax | Supported for maintained POSIX-style examples on Linux, WSL2, and macOS, and for maintained PowerShell examples on native Windows. Other shells are unverified for these examples. | POSIX installation examples use `sh`-compatible environment assignments and `~/.local/bin`. Native Windows installation examples use `scripts/install.ps1`, PowerShell parameters or environment variables, and `%LOCALAPPDATA%\Volicord\bin`. CLI integration tests create `#!/bin/sh` fake executables behind `#[cfg(unix)]`; the release workflow runs the PowerShell smoke test on Windows. | Use the shell syntax for the selected operating environment and verify the installed command before continuing. |
 | Executable role names | Supported and verified. | Reference owners define `volicord` as the installed executable for administrative CLI commands and the `mcp` subcommand used by the local MCP stdio adapter. | Build or install `volicord`; host configuration should start MCP with `volicord mcp --stdio ...`. |
 | Package-manager installation | Out of scope unless a matching repository artifact is added. | No Homebrew tap, Homebrew formula, Linux package-manager package, or external package registry is represented in this checkout. The supported first-run path is the release tarball plus install script. | Use the release binary install script, Docker, an existing `volicord` executable, or the development source-build path. |
 | Host version minimums for Codex and Claude Code | No stable minimum host version is defined. Host compatibility is checked operationally, not by a documented version floor. | Codex verification looks for `codex` on `PATH` and runs `codex --version`. Claude Code verification inspects host state through `claude mcp get <server_name>`. Administrative verification owns the final result states. | Use `volicord connection verify HOST [--repo PATH] [--shared|--global]` after installation. Do not rely on an undocumented Codex or Claude Code minimum version. |
-| Codex observe hook root resolution | Supported for local Git work trees. | Generated Codex observe hook commands resolve the Git work-tree root with `git rev-parse --show-toplevel` before dispatching to Volicord-managed wrappers, and initialization rejects observe setup when that root strategy cannot be supported. | For Codex observe profile, use a Product Repository with a `.git` work-tree root and ensure the future Codex hook environment can run `git` from repository subdirectories. Use `--profile record` when this prerequisite is not available. |
+| Codex detective host hook root resolution | Supported for local Git work trees. | Generated Codex detective host hook commands resolve the Git work-tree root with `git rev-parse --show-toplevel` before dispatching to Volicord-managed wrappers, and initialization rejects detective setup when that root strategy cannot be supported. | For Codex detective profile, use a Product Repository with a `.git` work-tree root and ensure the future Codex hook environment can run `git` from repository subdirectories. Use `--profile record` when this prerequisite is not available. |
 
 ## Toolchain Requirements
 
@@ -127,7 +127,7 @@ volicord --help
 volicord mcp --help
 volicord init --help
 volicord setup --help
-volicord guard --help
+volicord host-hook --help
 volicord serve --help
 ```
 
@@ -196,20 +196,20 @@ Read access is required when Volicord validates or uses the registered project. 
 - project-scoped Codex `.codex/config.toml`
 - project-scoped Claude Code `.mcp.json`
 - Volicord-managed `AGENTS.md` guidance blocks
-- `.volicord/policy.json` observe hook policy files
+- `.volicord/policy.json` detective host hook policy files
 - Codex `.codex/hooks.json` hook configuration and Volicord-managed wrapper
   scripts under `.codex/hooks/`
 - Volicord-managed Claude Code hook entries in `.claude/settings.json`
 - Volicord-managed Claude Code hook wrapper scripts under `.claude/hooks/`
 - Volicord-managed Claude Code rule files under `.claude/rules/`
 
-Codex observe setup requires the selected Product Repository to be a Git
+Codex detective setup requires the selected Product Repository to be a Git
 work tree so generated hooks can resolve the project root without depending on
-the host session cwd. This Git-root requirement is for Codex observe hook path
+the host session cwd. This Git-root requirement is for Codex detective host hook path
 safety only; it does not make integration files Volicord runtime state or add
-OS-level sandboxing. `record` setup does not require Codex observe hook
+OS-level sandboxing. `record` setup does not require Codex detective host hook
 installation. Native Windows `record` setup is supported, but native Windows
-observe setup is rejected until Windows host hooks and watcher behavior are
+detective setup is rejected until Windows host hooks and watcher behavior are
 implemented and tested.
 
 Noninteractive shared-intent host configuration or guidance writes require the explicit `--shared` command path defined by [Administrative CLI](admin-cli.md#noninteractive-approval-behavior). Runtime records, SQLite databases, generated records, logs, projections, QA results, acceptance records, close-readiness state, and residual-risk records do not belong in the `Product Repository`.
@@ -259,7 +259,7 @@ Stop before installation when any of these conditions apply:
 - The Product Repository is missing, is not a directory, or is not writable for a requested project-scoped configuration or guidance write.
 - Shared-intent host configuration cannot start `volicord mcp --stdio` from the future host environment's `PATH`.
 - Codex or Claude Code is required for the selected host path but the administrative compatibility check cannot launch or interpret the host.
-- Native Windows setup requests `--profile observe`.
+- Native Windows setup requests `--profile detective`.
 - A required host trust, project trust, project MCP approval, OAuth, reload, restart, or comparable host-owned action remains and the operator cannot complete it.
 - The planned environment depends on a package manager, a Homebrew tap, a published Docker registry image, a remote host, a network listener, or a host-version promise that this repository does not document.
 

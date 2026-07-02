@@ -1553,7 +1553,7 @@ fn validate_guard_mode_value(mode: &str) -> Result<(), InspectionIssue> {
     if matches!(
         mode,
         value if value == IntegrationProfile::Record.as_str()
-            || value == IntegrationProfile::Observe.as_str()
+            || value == IntegrationProfile::Detective.as_str()
     ) {
         Ok(())
     } else {

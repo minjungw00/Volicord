@@ -968,7 +968,7 @@ fn guarded_unresolved_unrecorded_changes_block_close_without_mutation() -> Resul
 {
     let fixture = CoreFixture::new("guarded_unrecorded_close")?;
     let service = core(&fixture);
-    record_guard_installation(&fixture, "guarded_unrecorded_close", "observe", "active")?;
+    record_guard_installation(&fixture, "guarded_unrecorded_close", "detective", "active")?;
     let (task_id, change_unit_id) =
         create_task_with_change_unit(&fixture, &service, "guarded_unrecorded_close")?;
     let after_evidence =
@@ -3713,7 +3713,7 @@ fn record_guard_installation(
             project_id: Some(fixture.project_id().to_owned()),
             host_kind: HOST_KIND_CODEX.to_owned(),
             guard_mode: guard_mode.to_owned(),
-            host_capability_json: complete_guard_capability_json(),
+            host_capability_json: complete_host_hook_capability_json(),
             installation_status: installation_status.to_owned(),
             installed_at: Some("2026-06-30T00:00:00Z".to_owned()),
             last_checked_at: "2026-06-30T00:01:00Z".to_owned(),
@@ -3734,11 +3734,11 @@ fn record_guard_installation(
     Ok(())
 }
 
-fn complete_guard_capability_json() -> String {
+fn complete_host_hook_capability_json() -> String {
     json!({
-        "schema": "volicord-guard-capability-v1",
+        "schema": "volicord-host-hook-capability-v1",
         "policy_hash": "sha256:guardedfixture",
-        "required_guard_phases": [
+        "required_hook_phases": [
             "session_start_hook",
             "pre_tool_hook",
             "post_tool_hook",

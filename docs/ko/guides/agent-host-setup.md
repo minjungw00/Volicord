@@ -38,13 +38,13 @@ volicord connect codex --repo /path/to/your-product-repo
 
 ## 통합 프로필
 
-Observe 상태는 선택된 연결 또는 session에 대해 선택된 프로필과 관찰 요약을
+Detective 상태는 선택된 연결 또는 session에 대해 선택된 프로필과 관찰 요약을
 보고합니다.
 
 | 프로필 | 도달 조건 | 운영상 의미 |
 |---|---|---|
 | Record profile(`record`) | Host hook이나 session watcher를 요구하지 않고 MCP 도구와 권한 기록을 사용할 수 있습니다. | 설정 안내와 policy 메타데이터가 호스트를 유도할 수 있지만 강제하지는 못합니다. |
-| Detective profile(`observe`) | 프로젝트 로컬 host hook에 검증된 생성 설정, cwd-independent 및 subdirectory-safe hook 명령, native host output, 필수 phase, 쓰기 matcher, 일치하는 policy hash, 런타임 관찰, session watcher 관찰이 있습니다. | 협력형 host warning 또는 denial decision 신호, post-tool 상관, 채팅 명령 캡처, observe 상태, 미기록 변경, 닫기/쓰기 차단 사유가 workflow에 참여할 수 있습니다. |
+| Detective profile(`detective`) | 프로젝트 로컬 host hook에 검증된 생성 설정, cwd-independent 및 subdirectory-safe hook 명령, native host output, 필수 phase, 쓰기 matcher, 일치하는 policy hash, 런타임 관찰, session watcher 관찰이 있습니다. | 협력형 host warning 또는 denial decision 신호, post-tool 상관, 채팅 명령 캡처, detective 상태, 미기록 변경, 닫기/쓰기 차단 사유가 workflow에 참여할 수 있습니다. |
 
 Record profile은 prepare-write workflow를 통해 Volicord 쓰기 티켓을 발급할 수 있습니다.
 Detective profile은 쓰기 티켓을 파일시스템 집행, 코드 리뷰 승인, 최종 수락, 쓰기가
@@ -56,23 +56,23 @@ denial이 사용 가능한지, 미기록 변경을 탐지할 수 있는지, 행�
 OS 집행이 제공되는지를 보고합니다. 현재 Volicord 출력은 행위자 identity 증명과 OS 집행을
 제공하지 않는다고 보고합니다.
 
-## Observe 수명주기
+## Detective 수명주기
 
-Observe 프로필에서는 설정과 활성화가 분리됩니다. `volicord init`은 MCP 호스트 설정,
+Detective 프로필에서는 설정과 활성화가 분리됩니다. `volicord init`은 MCP 호스트 설정,
 Volicord 관리 `AGENTS.md` 안내, `.volicord/policy.json`, 호스트 hook 또는 rule 파일,
-host-hook 관찰을 위한 observe 설치 상태를 설치하거나 갱신합니다. 그래도 그 파일이
+host-hook 관찰을 위한 detective 설치 상태를 설치하거나 갱신합니다. 그래도 그 파일이
 실행되려면 호스트 reload, restart, trust, 프로젝트 MCP 승인, 또는 다른 호스트 소유
 동작이 필요할 수 있습니다.
 
-현재 검증된 observe adapter는 호스트별로 다릅니다.
+현재 검증된 detective adapter는 호스트별로 다릅니다.
 
-- Codex observe 설정은 프로젝트 MCP 설정, `.codex/hooks/` 아래의 Volicord 관리
+- Codex detective 설정은 프로젝트 MCP 설정, `.codex/hooks/` 아래의 Volicord 관리
   POSIX `sh` wrapper script, `.codex/hooks.json`, `.codex/rules/*.rules`를 씁니다.
   pre-tool 및 post-tool matcher는 `Bash`, `apply_patch`, `Edit`, `Write`,
   `mcp__.*__(write|edit|create|update|delete|remove|move|patch).*` tool 이름을
   대상으로 합니다. 생성된 rule과 hook 파일이 실행되려면 호스트에 프로젝트 trust,
   hook trust, restart 또는 reload가 필요할 수 있습니다.
-- Claude Code observe 설정은 `.mcp.json`, `.claude/hooks/` 아래의 Volicord 관리
+- Claude Code detective 설정은 `.mcp.json`, `.claude/hooks/` 아래의 Volicord 관리
   POSIX `sh` wrapper script, `.claude/settings.json`, `.claude/rules/*.md`를 씁니다.
   pre-tool 및 post-tool matcher는 `Bash`, `Edit`, `Write`, `MultiEdit`,
   `mcp__.*__(write|edit|create|update|delete|remove|move|patch).*` tool 이름을
@@ -94,13 +94,13 @@ wrapper는 phase wrapper가 존재하고 실행 가능한지 확인한 뒤 실�
 `--host-output claude-code`로 호출하므로 hook stdout은 host-native JSON/context이거나
 빈 출력이며 Volicord wrapper JSON이 아닙니다.
 
-Observe init은 모든 필수 호스트 lifecycle hook phase를 설치하고 검증할 수
+Detective init은 모든 필수 호스트 lifecycle hook phase를 설치하고 검증할 수
 있어야 합니다. 선택한 Codex 또는 Claude Code 어댑터가 모든 필수 phase에 대해 신뢰할
 수 있는 프로젝트 로컬 hook 스키마나 경로를 알지 못하면, init은 `AGENTS.md`나
 `.volicord/policy.json`을 집행으로 취급하지 않고 실패합니다. Native Windows에서는
 Windows host-hook wrapper와 session watcher 동작이 구현되고 테스트되지 않았으므로
-observe init이 `OBSERVE_WINDOWS_UNSUPPORTED`로 실패합니다. Native Windows에서는
-`--profile record`를 사용합니다. Observe 전제조건을 사용할 수 없으면
+detective init이 `DETECTIVE_WINDOWS_UNSUPPORTED`로 실패합니다. Native Windows에서는
+`--profile record`를 사용합니다. Detective 전제조건을 사용할 수 없으면
 `--profile record`를 사용하거나, init을 다시 실행하기 전에 지원되는 호스트, 플랫폼,
 저장소 설정을 준비합니다.
 
@@ -111,7 +111,7 @@ volicord init --host codex --repo /path/to/your-product-repo --profile record
 `volicord connection verify`와 `volicord doctor`는 파일 상태, 필요한 호스트 동작,
 관찰된 활성화, 관찰 사실을 분리해서 다룹니다. Volicord가 기록된 프로젝트,
 Agent Connection, 호스트 종류, 통합 프로필, policy hash와 일치하는 host-hook event를
-관찰해야 observe 설치 상태가 활성화됩니다. Hook 경로 안전성은 호스트 trust, reload,
+관찰해야 detective 설치 상태가 활성화됩니다. Hook 경로 안전성은 호스트 trust, reload,
 restart, approval을 대신하지 않습니다. `AGENTS.md`는 지침 지원이며, 호스트 hook과 rule은
 협력적이고 탐지적인 guardrail입니다. OS 샌드박싱, 명령 격리, 네트워크 격리, 행위자
 증명, Volicord를 아는 경로 밖에서 쓰기가 일어날 수 없다는 증명이 아닙니다.

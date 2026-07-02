@@ -428,7 +428,7 @@ pub fn chat_judgment_verification_code(
 /// Baseline actor assurance level for cooperative Agent Connection provenance.
 pub const ACTOR_ASSURANCE_AGENT_CONNECTION_COOPERATIVE: &str = "agent_connection_cooperative";
 
-/// Host family associated with an Agent Connection or guard record.
+/// Host family associated with an Agent Connection or host-hook record.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum HostKind {
     Codex,
@@ -525,7 +525,7 @@ impl Error for HostKindParseError {}
 #[serde(rename_all = "snake_case")]
 pub enum IntegrationProfile {
     Record,
-    Observe,
+    Detective,
 }
 
 impl IntegrationProfile {
@@ -533,12 +533,12 @@ impl IntegrationProfile {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Record => "record",
-            Self::Observe => "observe",
+            Self::Detective => "detective",
         }
     }
 }
 
-/// Guard decision recorded for a host-observed operation.
+/// Cooperative host-hook decision recorded for a host-observed operation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum GuardDecision {
@@ -549,7 +549,7 @@ pub enum GuardDecision {
 }
 
 impl GuardDecision {
-    /// Returns the stable value name for this guard decision.
+    /// Returns the stable value name for this host-hook decision.
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Allow => "allow",
@@ -560,7 +560,7 @@ impl GuardDecision {
     }
 }
 
-/// Local guard-installation lifecycle status.
+/// Local host-hook installation lifecycle status.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum GuardInstallationStatus {
@@ -574,7 +574,7 @@ pub enum GuardInstallationStatus {
 }
 
 impl GuardInstallationStatus {
-    /// Returns the stable value name for this guard-installation status.
+    /// Returns the stable value name for this host-hook installation status.
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Absent => "absent",
@@ -588,7 +588,7 @@ impl GuardInstallationStatus {
     }
 }
 
-/// Derived local guard configuration health.
+/// Derived local host-hook configuration health.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum GuardConfigurationStatus {
@@ -601,7 +601,7 @@ pub enum GuardConfigurationStatus {
 }
 
 impl GuardConfigurationStatus {
-    /// Returns the stable value name for this guard-configuration status.
+    /// Returns the stable value name for this host-hook configuration status.
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Absent => "absent",
@@ -614,7 +614,7 @@ impl GuardConfigurationStatus {
     }
 }
 
-/// Derived local guard runtime-observation health.
+/// Derived local host-hook runtime-observation health.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum GuardObservationStatus {
@@ -624,7 +624,7 @@ pub enum GuardObservationStatus {
 }
 
 impl GuardObservationStatus {
-    /// Returns the stable value name for this guard-observation status.
+    /// Returns the stable value name for this host-hook observation status.
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::NotObserved => "not_observed",
@@ -634,7 +634,7 @@ impl GuardObservationStatus {
     }
 }
 
-/// Derived effective guard health used by close-readiness checks.
+/// Derived effective detective-signal health used by close-readiness checks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum GuardEffectiveStatus {
@@ -646,7 +646,7 @@ pub enum GuardEffectiveStatus {
 }
 
 impl GuardEffectiveStatus {
-    /// Returns the stable value name for this effective guard status.
+    /// Returns the stable value name for this effective detective-signal status.
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Inactive => "inactive",

@@ -1069,7 +1069,7 @@ fn guard_capability_facts(
         .filter(|value| !value.trim().is_empty())
         .map(str::to_owned);
     let required_hook_phases =
-        string_array_field(&capability, "required_guard_phases").unwrap_or_default();
+        string_array_field(&capability, "required_hook_phases").unwrap_or_default();
     let missing_required_hook_phases = guard_missing_required_hook_phases(
         &required_hook_phases,
         string_array_field(&capability, "missing_required_hooks").unwrap_or_default(),
@@ -1169,7 +1169,7 @@ fn hook_path_safety_facts(
 
 fn capability_requires_hook_path_safety(capability: &JsonObject) -> bool {
     capability
-        .get("required_guard_phases")
+        .get("required_hook_phases")
         .and_then(Value::as_array)
         .is_some_and(|phases| !phases.is_empty())
 }
@@ -1326,7 +1326,7 @@ fn classify_codex_hook_command_path(
         }
         return "relative_path_unsafe";
     }
-    if command_text.contains(&format!("volicord guard {phase_command}")) {
+    if command_text.contains(&format!("volicord host-hook {phase_command}")) {
         return "ok";
     }
     "metadata_missing"
@@ -1360,7 +1360,7 @@ fn classify_claude_hook_command_path(
         }
         return "relative_path_unsafe";
     }
-    if command_text.contains(&format!("volicord guard {phase_command}")) {
+    if command_text.contains(&format!("volicord host-hook {phase_command}")) {
         return "ok";
     }
     "metadata_missing"
@@ -1762,7 +1762,7 @@ pub(super) fn refresh_control_surface(summary: &mut GuardHealthSummary) {
 }
 
 fn host_hooks_active(summary: &GuardHealthSummary) -> bool {
-    summary.selected_profile == IntegrationProfile::Observe
+    summary.selected_profile == IntegrationProfile::Detective
         && summary.effective_guard_status == GuardEffectiveStatus::Active
         && summary.guard_configuration_status == GuardConfigurationStatus::Configured
         && summary.guard_observation_status == GuardObservationStatus::Observed
@@ -2059,7 +2059,7 @@ fn guard_close_blockers(
     };
     let record_unrecorded_blocks = summary.selected_profile == IntegrationProfile::Record
         && summary.unresolved_unrecorded_change_count > 0;
-    if summary.selected_profile != IntegrationProfile::Observe && !record_unrecorded_blocks {
+    if summary.selected_profile != IntegrationProfile::Detective && !record_unrecorded_blocks {
         return Vec::new();
     }
 
@@ -2098,9 +2098,9 @@ fn guard_close_blockers(
         || summary.session_watch_partial_coverage_warning.is_some()
     {
         let message = if summary.session_watch_status == SessionWatchStatus::Active {
-            "Observe profile requires full Product Repository session-watch coverage."
+            "Detective profile requires full Product Repository session-watch coverage."
         } else {
-            "Observe profile requires an active Product Repository session watch."
+            "Detective profile requires an active Product Repository session watch."
         };
         blockers.push(close_blocker(
             CloseReadinessBlockerCategory::ConnectionCapability,
@@ -2120,7 +2120,7 @@ fn guard_close_blockers(
         blockers.push(close_blocker_with_resolution(
             CloseReadinessBlockerCategory::ConnectionCapability,
             "guard_connection_unhealthy",
-            "Observe profile requires the Agent Connection to be healthy.",
+            "Detective profile requires the Agent Connection to be healthy.",
             false,
             true,
             vec![task_ref.clone()],
@@ -2246,8 +2246,8 @@ fn guard_installation_close_blocker(
     let (code, message, label) = match summary.guard_configuration_status {
         GuardConfigurationStatus::Absent => (
             "guard_not_installed",
-            format!("Observe profile requires a recorded host-hook installation ({observation_detail})."),
-            format!("Install the observe profile hook integration for host {host_kind} before completing the Task."),
+            format!("Detective profile requires a recorded host-hook installation ({observation_detail})."),
+            format!("Install the detective profile hook integration for host {host_kind} before completing the Task."),
         ),
         GuardConfigurationStatus::ReloadRequired => (
             "guard_reload_required",
@@ -2270,23 +2270,23 @@ fn guard_installation_close_blocker(
         ),
         GuardConfigurationStatus::Stale => (
             "guard_stale",
-            format!("Observe profile health is stale for this close path ({observation_detail})."),
-            format!("Refresh or reinstall the observe profile hook integration for host {host_kind} before completing the Task."),
+            format!("Detective profile health is stale for this close path ({observation_detail})."),
+            format!("Refresh or reinstall the detective profile hook integration for host {host_kind} before completing the Task."),
         ),
         GuardConfigurationStatus::Broken => (
             "guard_broken",
-            format!("Observe profile health is broken for this close path ({observation_detail})."),
-            format!("Repair the observe profile hook integration for host {host_kind} before completing the Task."),
+            format!("Detective profile health is broken for this close path ({observation_detail})."),
+            format!("Repair the detective profile hook integration for host {host_kind} before completing the Task."),
         ),
         GuardConfigurationStatus::Degraded if !summary.missing_required_hook_phases.is_empty() => (
             "guard_required_hooks_missing",
-            format!("Observe profile configuration is missing required hook phases for this close path ({observation_detail})."),
+            format!("Detective profile configuration is missing required hook phases for this close path ({observation_detail})."),
             format!("Install required host hook phases for host {host_kind}: {missing_phases}."),
         ),
         GuardConfigurationStatus::Degraded => (
             "guard_degraded",
-            format!("Observe profile health is degraded and blocks close ({observation_detail})."),
-            format!("Repair degraded observe profile health for host {host_kind} before completing the Task."),
+            format!("Detective profile health is degraded and blocks close ({observation_detail})."),
+            format!("Repair degraded detective profile health for host {host_kind} before completing the Task."),
         ),
     };
     Some(close_blocker_with_resolution(

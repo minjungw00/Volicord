@@ -85,8 +85,8 @@ mod tests {
             json!("record")
         );
         assert_eq!(
-            serde_json::to_value(IntegrationProfile::Observe).expect("profile serializes"),
-            json!("observe")
+            serde_json::to_value(IntegrationProfile::Detective).expect("profile serializes"),
+            json!("detective")
         );
         assert_eq!(
             serde_json::from_value::<IntegrationProfile>(json!("record"))
@@ -94,13 +94,17 @@ mod tests {
             IntegrationProfile::Record
         );
         assert_eq!(
-            serde_json::from_value::<IntegrationProfile>(json!("observe"))
-                .expect("observe profile deserializes"),
-            IntegrationProfile::Observe
+            serde_json::from_value::<IntegrationProfile>(json!("detective"))
+                .expect("detective profile deserializes"),
+            IntegrationProfile::Detective
+        );
+        assert!(
+            serde_json::from_value::<IntegrationProfile>(json!("observe")).is_err(),
+            "observe is intentionally rejected as an integration profile"
         );
         assert!(
             serde_json::from_value::<IntegrationProfile>(json!("managed")).is_err(),
-            "only record and observe are public integration profiles"
+            "only record and detective are public integration profiles"
         );
         assert_eq!(
             serde_json::to_value(GuardDecision::InjectContext).expect("guard decision serializes"),
@@ -148,7 +152,7 @@ mod tests {
 
         assert_eq!(
             schema_enum_strings(schema),
-            BTreeSet::from(["observe".to_owned(), "record".to_owned()])
+            BTreeSet::from(["detective".to_owned(), "record".to_owned()])
         );
     }
 

@@ -35,7 +35,7 @@
 - Agent Connection, Connection Projects, 프로젝트 선택 의미, 현재 연결 맥락, 행위자 출처:
   [Agent Connection](agent-connection.md)
 - 관리 Runtime Home setup, 연결, 프로젝트, export, 검증 명령: [관리 CLI](admin-cli.md)
-- 생성된 호스트 hook 명령 문법, hook 경로 안전성 진단, guard wrapper 복구:
+- 생성된 호스트 hook 명령 문법, hook 경로 안전성 진단, host-hook wrapper 복구:
   [관리 CLI](admin-cli.md#guard-hook-commands)
 - 저장소 배치, 마이그레이션, 저장 효과: [저장소](storage.md)가 안내하는 저장소 담당 문서
 

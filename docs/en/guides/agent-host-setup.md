@@ -43,13 +43,13 @@ volicord connect codex --repo /path/to/your-product-repo
 
 ## Integration Profiles
 
-Observe status reports the selected profile and an observation summary for the
+Detective status reports the selected profile and an observation summary for the
 selected connection or session:
 
 | Profile | How it is reached | Operational meaning |
 |---|---|---|
 | Record profile (`record`) | MCP tools and authority records are available without requiring host hooks or a session watcher. | Setup guidance and policy metadata can steer the host but cannot force it. |
-| Detective profile (`observe`) | Project-local host hooks have verified generated config, cwd-independent and subdirectory-safe hook commands, native host output, required phases, write matchers, matching policy hash, runtime observation, and session watcher observation. | Cooperative host warning or denial decision signals, post-tool correlation, chat command capture, observe status, Unrecorded Changes, and close/write blockers can participate in the workflow. |
+| Detective profile (`detective`) | Project-local host hooks have verified generated config, cwd-independent and subdirectory-safe hook commands, native host output, required phases, write matchers, matching policy hash, runtime observation, and session watcher observation. | Cooperative host warning or denial decision signals, post-tool correlation, chat command capture, detective status, Unrecorded Changes, and close/write blockers can participate in the workflow. |
 
 The Record profile can issue Volicord Write Tickets through the prepare-write
 workflow. The Detective profile does not make Write Tickets into filesystem
@@ -63,25 +63,25 @@ unrecorded changes can be detected, whether actor identity can be proven, and
 whether OS enforcement is provided. Current Volicord output reports no actor
 identity proof and no OS enforcement.
 
-## Observe Lifecycle
+## Detective Lifecycle
 
-In observe profile, setup and activation are separate. `volicord init` installs or
+In detective profile, setup and activation are separate. `volicord init` installs or
 updates MCP host configuration, Volicord-managed `AGENTS.md` guidance,
-`.volicord/policy.json`, host hook or rule files, and observe installation state
+`.volicord/policy.json`, host hook or rule files, and detective installation state
 for host-hook observation.
 The host may still need reload, restart, trust, project MCP approval, or another
 host-owned action before those files run.
 
-Current verified observe adapters are host-specific:
+Current verified detective adapters are host-specific:
 
-- Codex observe setup writes project MCP configuration, Volicord-managed POSIX
+- Codex detective setup writes project MCP configuration, Volicord-managed POSIX
   `sh` wrapper scripts under `.codex/hooks/`, `.codex/hooks.json`, and
   `.codex/rules/*.rules`. Pre-tool and post-tool matchers cover `Bash`,
   `apply_patch`, `Edit`, `Write`, and
   `mcp__.*__(write|edit|create|update|delete|remove|move|patch).*` tool names.
   The host may require project trust, hook trust, and restart or reload before
   the generated rule and hook files run.
-- Claude Code observe setup writes `.mcp.json`, Volicord-managed POSIX `sh`
+- Claude Code detective setup writes `.mcp.json`, Volicord-managed POSIX `sh`
   wrapper scripts under `.claude/hooks/`, `.claude/settings.json`, and
   `.claude/rules/*.md`. Pre-tool and post-tool matchers cover `Bash`, `Edit`,
   `Write`, `MultiEdit`, and
@@ -106,14 +106,14 @@ Generated hook configs invoke the wrapper scripts with `--host-output codex` or
 `--host-output claude-code`, so hook stdout is host-native JSON/context or empty
 output, not Volicord wrapper JSON.
 
-Observe init must be able to install and verify all required host
+Detective init must be able to install and verify all required host
 lifecycle hook phases. When the selected Codex or Claude Code adapter does not
 know a reliable project-local hook schema or path for every required phase, init
 fails instead of treating `AGENTS.md` or `.volicord/policy.json` as enforcement.
-On native Windows, observe init fails with `OBSERVE_WINDOWS_UNSUPPORTED`
+On native Windows, detective init fails with `DETECTIVE_WINDOWS_UNSUPPORTED`
 because Windows host-hook wrappers and session watcher behavior are not
 implemented and tested. Use `--profile record` on native Windows.
-If observe prerequisites are unavailable, use `--profile record` or prepare a
+If detective prerequisites are unavailable, use `--profile record` or prepare a
 supported host, platform, and repository configuration before rerunning init:
 
 ```sh
@@ -122,7 +122,7 @@ volicord init --host codex --repo /path/to/your-product-repo --profile record
 
 `volicord connection verify` and `volicord doctor` keep file health, required
 host action, observed activation, and observation facts separate. The
-observe installation state becomes active only after Volicord observes a
+detective installation state becomes active only after Volicord observes a
 matching host-hook event for the recorded project, Agent Connection, host kind,
 integration profile, and policy hash. Hook path safety does not replace host
 trust, reload, restart, or approval. `AGENTS.md` is instruction support, and

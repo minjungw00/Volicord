@@ -275,7 +275,7 @@ volicord inbox answer JUDGMENT_ID --choice CHOICE_ID
 Agent Connection은 `volicord.record_user_judgment`를 호출하거나, User Channel
 출처를 제공하거나, 일반 채팅 답변을 권한을 지니는 수락으로 바꾸면 안 됩니다.
 `Volicord: answer J-3 1 #AB7K` 같은 엄격한 채팅 명령은 명령 캡처를 사용할 수 있고
-현재 검증 코드를 observe host hook이 검증해 기록할 때만 권한을 지닙니다.
+현재 검증 코드를 detective host hook이 검증해 기록할 때만 권한을 지닙니다.
 답변이 지원되는 User Channel을 통해 기록되지 않았다면 필요한 사용자 행동을
 이름 붙이고, 그 판단에 의존하지 않는 작업만 계속합니다. 현재 디렉터리가 의도한 Product
 Repository가 아닐 때만 `--repo PATH`를 사용하고, 활성 작업이 의도한 작업이 아닐 때만
@@ -313,7 +313,7 @@ Volicord에 연결된 작업에서 제품, 코드, 파일을 쓰기 전에는 �
 <a id="reconcile-unrecorded-changes"></a>
 ## 미기록 변경 조정하기
 
-Observe 상태가 미해결 미기록 Product Repository 변경을 보고하면
+Detective 상태가 미해결 미기록 Product Repository 변경을 보고하면
 `volicord.reconcile_changes`를 호출합니다. MCP를 사용할 수 없으면 사용자를
 `volicord changes reconcile`로 안내합니다. 결정적 사례는 메서드가 해결할 수 있습니다.
 사용자 수락은 지원되는 `User Channel` 판단이 되어야 합니다. 에이전트 텍스트, 생성된

@@ -1827,8 +1827,7 @@ terms:
     ko_reference: "Detective profile"
     ko_user: "탐지 프로필"
     preserve_as_identifier:
-      - "observe"
-      - "--profile observe"
+      - "--profile detective"
       - "installation_profile"
     primary_owner:
       en: "docs/en/reference/agent-connection.md"
@@ -1839,9 +1838,12 @@ terms:
     replacement_for:
       - "observe profile"
       - "`observe` profile"
+      - "--profile observe"
+      - "detective profile"
+      - "`detective` profile"
       - "guard profile"
     notes:
-      - "Use Detective profile as the public label for the observation-focused profile; preserve `observe` only as an exact value or command argument."
+      - "Use Detective profile and `detective` as the public label and value for the observation-focused profile."
   connection_internal_id:
     category: "storage_internal_identifier"
     roles:
@@ -2086,7 +2088,6 @@ terms:
     ko_user: "관찰 hook"
     preserve_as_identifier:
       - "guard"
-      - "volicord guard"
       - "guard_installations"
       - "guard_events"
       - "GuardHealthSummary"
@@ -2100,7 +2101,7 @@ terms:
         ko: "docs/ko/reference/api/schema-state.md"
     notes:
       - "Use Detective profile, observation, host hook, or chat command capture in public guides when those terms describe the user-visible behavior."
-      - "Preserve `guard` only as an exact command, schema, storage, or implementation identifier."
+      - "Preserve `guard` only as an exact schema, storage, or implementation identifier."
   expected_write:
     category: "internal_concept"
     en: "Expected Write"
@@ -2127,7 +2128,7 @@ terms:
       - en: "docs/en/reference/api/schema-state.md"
         ko: "docs/ko/reference/api/schema-state.md"
     notes:
-      - "Use only for observe/storage correlation records and exact identifiers."
+      - "Use only for detective/storage correlation records and exact identifiers."
       - "Use Write Ticket or observed write/change wording in user-facing docs, depending on meaning."
   connection_projects:
     category: "product_concept"

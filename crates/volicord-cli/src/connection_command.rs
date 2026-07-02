@@ -336,7 +336,7 @@ struct VerificationReport {
 }
 
 pub fn init_usage() -> String {
-    "volicord init --host codex|claude-code --repo PATH [--profile record|observe] [--home PATH] [--mcp-command PATH] [--dry-run] [--json]\n"
+    "volicord init --host codex|claude-code --repo PATH [--profile record|detective] [--home PATH] [--mcp-command PATH] [--dry-run] [--json]\n"
         .to_owned()
 }
 
@@ -669,14 +669,14 @@ struct ParsedConnectionOptions {
 enum InitMode {
     #[default]
     Record,
-    Observe,
+    Detective,
 }
 
 impl InitMode {
     fn profile_value(self) -> &'static str {
         match self {
             Self::Record => IntegrationProfile::Record.as_str(),
-            Self::Observe => IntegrationProfile::Observe.as_str(),
+            Self::Detective => IntegrationProfile::Detective.as_str(),
         }
     }
 
@@ -1353,9 +1353,9 @@ fn parse_init_options(
 fn parse_init_profile(value: &str) -> Result<InitMode, ConnectionCommandError> {
     match value {
         "record" => Ok(InitMode::Record),
-        "observe" => Ok(InitMode::Observe),
+        "detective" => Ok(InitMode::Detective),
         other => Err(ConnectionCommandError::usage(format!(
-            "unknown integration profile: {other}; use record or observe"
+            "unknown integration profile: {other}; use record or detective"
         ))),
     }
 }
@@ -1369,7 +1369,7 @@ fn resolve_init_repo_root(
     match resolve_connection_repo_root(current_dir, Some(repo)) {
         Ok(repo_root) => Ok(repo_root),
         Err(ConnectionCommandError::Runtime(message))
-            if init_mode == InitMode::Observe
+            if init_mode == InitMode::Detective
                 && message.contains("no Git repository root found") =>
         {
             Err(ConnectionCommandError::runtime(
@@ -2942,7 +2942,7 @@ fn plan_guard_integration(
     let missing_required_hooks = if init_mode == InitMode::Record {
         Vec::new()
     } else {
-        capabilities.missing_required_guard_phases()
+        capabilities.missing_required_hook_phases()
     };
     if init_mode != InitMode::Record && !missing_required_hooks.is_empty() {
         return Err(ConnectionCommandError::runtime(
@@ -3075,7 +3075,7 @@ fn ensure_observe_profile_supported_on_platform(
     host_kind: HostKind,
 ) -> Result<(), ConnectionCommandError> {
     Err(ConnectionCommandError::runtime(format!(
-        "OBSERVE_WINDOWS_UNSUPPORTED: native Windows supports the record profile for {}, but observe profile is not supported because Windows host-hook wrappers and session watcher behavior are not implemented and tested. Use --profile record on native Windows, or run Volicord in WSL2, Linux, or macOS where the selected host hook contract is supported.",
+        "DETECTIVE_WINDOWS_UNSUPPORTED: native Windows supports the record profile for {}, but detective profile is not supported because Windows host-hook wrappers and session watcher behavior are not implemented and tested. Use --profile record on native Windows, or run Volicord in WSL2, Linux, or macOS where the selected host hook contract is supported.",
         public_host_label(host_kind)
     )))
 }
@@ -3083,27 +3083,27 @@ fn ensure_observe_profile_supported_on_platform(
 fn guard_profile_for_init_mode(init_mode: InitMode) -> &'static str {
     match init_mode {
         InitMode::Record => "record",
-        InitMode::Observe => "observe",
+        InitMode::Detective => "detective",
     }
 }
 
 fn managed_source_for_init_mode(init_mode: InitMode) -> &'static str {
     match init_mode {
         InitMode::Record => "not_applicable",
-        InitMode::Observe => "host_hooks",
+        InitMode::Detective => "host_hooks",
     }
 }
 
 fn managed_status_for_init_mode(init_mode: InitMode) -> &'static str {
     match init_mode {
-        InitMode::Record | InitMode::Observe => "not_applicable",
+        InitMode::Record | InitMode::Detective => "not_applicable",
     }
 }
 
 fn native_host_output_adapter(host_kind: HostKind, init_mode: InitMode) -> &'static str {
     match (host_kind, init_mode) {
-        (HostKind::Codex, InitMode::Observe) => "codex",
-        (HostKind::ClaudeCode, InitMode::Observe) => "claude-code",
+        (HostKind::Codex, InitMode::Detective) => "codex",
+        (HostKind::ClaudeCode, InitMode::Detective) => "claude-code",
         _ => "none",
     }
 }
@@ -3113,12 +3113,12 @@ fn native_host_output_adapter_verified(host_kind: HostKind, init_mode: InitMode)
 }
 
 fn bash_shell_mutation_coverage(host_kind: HostKind, init_mode: InitMode) -> bool {
-    matches!(init_mode, InitMode::Observe)
+    matches!(init_mode, InitMode::Detective)
         && matches!(host_kind, HostKind::Codex | HostKind::ClaudeCode)
 }
 
 fn direct_file_write_matcher_coverage(host_kind: HostKind, init_mode: InitMode) -> bool {
-    matches!(init_mode, InitMode::Observe)
+    matches!(init_mode, InitMode::Detective)
         && matches!(host_kind, HostKind::Codex | HostKind::ClaudeCode)
 }
 
@@ -3127,7 +3127,7 @@ fn observe_hooks_unsupported_message(
     missing_required_hooks: &[HostLifecyclePhase],
 ) -> String {
     format!(
-        "OBSERVE_HOOKS_UNSUPPORTED: {} observe init requires supported host lifecycle hook configuration, but this adapter does not know verified project-local hook support for: {}. AGENTS.md and {VOLICORD_POLICY_FILE} are not host hook configuration. Use --profile record for record-only setup, or prepare a supported host, platform, and configuration for observe before rerunning init.",
+        "DETECTIVE_HOOKS_UNSUPPORTED: {} detective init requires supported host lifecycle hook configuration, but this adapter does not know verified project-local hook support for: {}. AGENTS.md and {VOLICORD_POLICY_FILE} are not host hook configuration. Use --profile record for record-only setup, or prepare a supported host, platform, and configuration for detective before rerunning init.",
         public_host_label(host_kind),
         lifecycle_phase_names(missing_required_hooks).join(", ")
     )
@@ -3135,7 +3135,7 @@ fn observe_hooks_unsupported_message(
 
 fn observe_hook_root_unsupported_message(host_kind: HostKind, repo_root: &Path) -> String {
     format!(
-        "OBSERVE_HOOK_ROOT_UNSUPPORTED: {} observe init requires a Git work tree root for supported host hook configuration, but no Git repository root was found from {}. Use --profile record for record-only setup, or prepare a supported host, platform, and configuration for observe before rerunning init.",
+        "DETECTIVE_HOOK_ROOT_UNSUPPORTED: {} detective init requires a Git work tree root for supported host hook configuration, but no Git repository root was found from {}. Use --profile record for record-only setup, or prepare a supported host, platform, and configuration for detective before rerunning init.",
         public_host_label(host_kind),
         repo_root.display()
     )
@@ -3149,7 +3149,7 @@ fn ensure_observe_session_watcher_supported(
     snapshot_product_repository(runtime_home, repo_root, WatchSnapshotOptions::default()).map_err(
         |error| {
             ConnectionCommandError::runtime(format!(
-                "OBSERVE_WATCHER_UNSUPPORTED: {} observe init requires session watcher support for the selected Product Repository, but the watcher snapshot check failed: {error}. Use --profile record for record-only setup, or prepare a supported host, platform, and repository configuration for observe before rerunning init.",
+                "DETECTIVE_WATCHER_UNSUPPORTED: {} detective init requires session watcher support for the selected Product Repository, but the watcher snapshot check failed: {error}. Use --profile record for record-only setup, or prepare a supported host, platform, and repository configuration for detective before rerunning init.",
                 public_host_label(host_kind)
             ))
         },
@@ -3303,7 +3303,7 @@ fn plan_hook_wrapper_files(
         .map(|phase| {
             let guard_command = guard_commands.get(phase.policy_key()).ok_or_else(|| {
                 ConnectionCommandError::runtime(format!(
-                    "missing generated guard command for {}",
+                    "missing generated host-hook command for {}",
                     phase.policy_key()
                 ))
             })?;
@@ -3503,14 +3503,14 @@ fn codex_dispatch_wrapper_script_content() -> String {
             "# phase=dispatch\n",
             "# script_role=codex_dispatch\n",
             "if [ \"$#\" -ne 1 ]; then\n",
-            "    printf '%s\\n' 'volicord dispatch: expected one guard phase argument' >&2\n",
+            "    printf '%s\\n' 'volicord dispatch: expected one host-hook phase argument' >&2\n",
             "    exit 64\n",
             "fi\n",
             "phase=$1\n",
             "case \"$phase\" in\n",
             "    session-start|pre-tool|post-tool|prompt-capture|stop) ;;\n",
             "    *)\n",
-            "        printf '%s\\n' \"volicord dispatch: unsupported guard phase: $phase\" >&2\n",
+            "        printf '%s\\n' \"volicord dispatch: unsupported host-hook phase: $phase\" >&2\n",
             "        exit 64\n",
             "        ;;\n",
             "esac\n",
@@ -3569,7 +3569,7 @@ fn plan_codex_hook_file(
 ) -> Result<GeneratedFilePlan, ConnectionCommandError> {
     let contract = contract_for(HostKind::Codex).ok_or_else(|| {
         ConnectionCommandError::runtime(
-            "OBSERVE_HOOKS_UNSUPPORTED: no Codex host integration contract is available",
+            "DETECTIVE_HOOKS_UNSUPPORTED: no Codex host integration contract is available",
         )
     })?;
     let hooks = REQUIRED_GUARD_PHASES
@@ -3577,7 +3577,7 @@ fn plan_codex_hook_file(
         .map(|phase| {
             let event = hook_event_for_phase(contract, *phase).ok_or_else(|| {
                 ConnectionCommandError::runtime(format!(
-                    "OBSERVE_HOOKS_UNSUPPORTED: Codex contract is missing {} hook event data",
+                    "DETECTIVE_HOOKS_UNSUPPORTED: Codex contract is missing {} hook event data",
                     phase.capability_name()
                 ))
             })?;
@@ -3707,7 +3707,7 @@ fn claude_settings_hooks_projection(
 ) -> Result<Value, ConnectionCommandError> {
     let contract = contract_for(HostKind::ClaudeCode).ok_or_else(|| {
         ConnectionCommandError::runtime(
-            "OBSERVE_HOOKS_UNSUPPORTED: no Claude Code host integration contract is available",
+            "DETECTIVE_HOOKS_UNSUPPORTED: no Claude Code host integration contract is available",
         )
     })?;
     let hooks = REQUIRED_GUARD_PHASES
@@ -3715,7 +3715,7 @@ fn claude_settings_hooks_projection(
         .map(|phase| {
             let event = hook_event_for_phase(contract, *phase).ok_or_else(|| {
                 ConnectionCommandError::runtime(format!(
-                    "OBSERVE_HOOKS_UNSUPPORTED: Claude Code contract is missing {} hook event data",
+                    "DETECTIVE_HOOKS_UNSUPPORTED: Claude Code contract is missing {} hook event data",
                     phase.capability_name()
                 ))
             })?;
@@ -3803,7 +3803,7 @@ fn plan_codex_rule_file(
         .map(|(_, command)| command)
         .collect::<Vec<_>>();
     let mut body = String::from(
-        "prefix_rule(\n    pattern = [\".codex\", \"hooks\"],\n    decision = \"prompt\",\n    justification = \"Volicord hook wrappers observe local lifecycle state.\",\n    match = [\n",
+        "prefix_rule(\n    pattern = [\".codex\", \"hooks\"],\n    decision = \"prompt\",\n    justification = \"Volicord hook wrappers record local lifecycle events.\",\n    match = [\n",
     );
     for command in command_lines {
         body.push_str("        ");
@@ -4525,7 +4525,7 @@ fn is_legacy_claude_managed_handler(phase: HostLifecyclePhase, handler: &Value) 
                 .and_then(Value::as_str)
                 .is_some_and(|command| {
                     let legacy_direct = command
-                        .contains(&format!("volicord guard {}", phase.command_name()))
+                        .contains(&format!("volicord host-hook {}", phase.command_name()))
                         && command.contains("--connection")
                         && command.contains("--guard-installation")
                         && (command.contains("--host claude-code")
@@ -4552,7 +4552,7 @@ fn looks_like_conflicting_claude_managed_handler(
             .and_then(Value::as_str)
             .is_some_and(|command| {
                 (command != desired.command || hook_handler_args(object) != desired.args)
-                    && ((command.contains("volicord guard")
+                    && ((command.contains("volicord host-hook")
                         && command.contains(phase.command_name())
                         && (command.contains("--host claude-code")
                             || command.contains("--host claude_code")
@@ -4579,14 +4579,14 @@ fn hook_handler_args(object: &serde_json::Map<String, Value>) -> Option<Vec<Stri
 fn claude_event_name(phase: HostLifecyclePhase) -> Result<&'static str, ConnectionCommandError> {
     let contract = contract_for(HostKind::ClaudeCode).ok_or_else(|| {
         ConnectionCommandError::runtime(
-            "OBSERVE_HOOKS_UNSUPPORTED: no Claude Code host integration contract is available",
+            "DETECTIVE_HOOKS_UNSUPPORTED: no Claude Code host integration contract is available",
         )
     })?;
     hook_event_for_phase(contract, phase)
         .map(|event| event.event_name)
         .ok_or_else(|| {
             ConnectionCommandError::runtime(format!(
-                "OBSERVE_HOOKS_UNSUPPORTED: Claude Code contract is missing {} hook event data",
+                "DETECTIVE_HOOKS_UNSUPPORTED: Claude Code contract is missing {} hook event data",
                 phase.capability_name()
             ))
         })
@@ -4645,7 +4645,7 @@ fn is_volicord_codex_hook_handler(phase: HostLifecyclePhase, handler: &Value) ->
             .and_then(Value::as_str)
             .is_some_and(|command| {
                 let direct_guard = command
-                    .contains(&format!("volicord guard {}", phase.command_name()))
+                    .contains(&format!("volicord host-hook {}", phase.command_name()))
                     && command.contains("--connection")
                     && command.contains("--guard-installation")
                     && command.contains("--host codex")
@@ -4697,7 +4697,7 @@ fn guard_command_specs(
         .into_iter()
         .map(|phase| {
             let mut args = vec![
-                "guard".to_owned(),
+                "host-hook".to_owned(),
                 phase.command_name().to_owned(),
                 "--repo".to_owned(),
                 path_text(repo_root),
@@ -4715,11 +4715,11 @@ fn guard_command_specs(
                 args.push(policy_hash.to_owned());
             }
             match (host_kind, init_mode) {
-                (HostKind::Codex, InitMode::Observe) => {
+                (HostKind::Codex, InitMode::Detective) => {
                     args.push("--host-output".to_owned());
                     args.push("codex".to_owned());
                 }
-                (HostKind::ClaudeCode, InitMode::Observe) => {
+                (HostKind::ClaudeCode, InitMode::Detective) => {
                     args.push("--host-output".to_owned());
                     args.push("claude-code".to_owned());
                 }
@@ -4798,7 +4798,7 @@ fn policy_json(
             "args": &mcp_entry.args,
             "env": &mcp_entry.env,
         },
-        "guard": {
+        "host_hook": {
             "enabled": init_mode != InitMode::Record,
             "commands": commands,
         },
@@ -4823,7 +4823,7 @@ fn record_guard_installation(
             project_id: Some(project_id.to_owned()),
             host_kind: host_kind.as_str().to_owned(),
             guard_mode: init_mode.guard_value().to_owned(),
-            host_capability_json: guard_capability_json(integration)?,
+            host_capability_json: host_hook_capability_json(integration)?,
             installation_status: installation_status.as_str().to_owned(),
             installed_at: (init_mode != InitMode::Record).then_some(now.clone()),
             last_checked_at: now,
@@ -4850,11 +4850,13 @@ fn record_guard_installation(
     .map_err(Into::into)
 }
 
-fn guard_capability_json(plan: &GuardIntegrationPlan) -> Result<String, ConnectionCommandError> {
+fn host_hook_capability_json(
+    plan: &GuardIntegrationPlan,
+) -> Result<String, ConnectionCommandError> {
     let capabilities = serde_json::to_value(plan.capabilities)
         .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
     serde_json::to_string(&json!({
-        "schema": "volicord-guard-capability-v1",
+        "schema": "volicord-host-hook-capability-v1",
         "policy_hash": plan.policy_hash,
         "selected_profile": plan.guard_profile,
         "native_host_output_adapter": plan.native_host_output_adapter,
@@ -4862,7 +4864,7 @@ fn guard_capability_json(plan: &GuardIntegrationPlan) -> Result<String, Connecti
         "bash_shell_mutation_coverage": plan.bash_shell_mutation_coverage,
         "direct_file_write_matcher_coverage": plan.direct_file_write_matcher_coverage,
         "host_capabilities": capabilities,
-        "required_guard_phases": required_guard_phase_names(),
+        "required_hook_phases": required_guard_phase_names(),
         "missing_required_hooks": lifecycle_phase_names(&plan.missing_required_hooks),
         "prompt_capture": plan.capabilities.user_prompt_submit_hook
             && guard_has_prompt_capture_commands(&plan.policy),
@@ -4870,7 +4872,7 @@ fn guard_capability_json(plan: &GuardIntegrationPlan) -> Result<String, Connecti
         "host_hook_commands": host_hook_commands_json(&plan.host_hook_commands),
         "hook_root_resolution": hook_root_resolution_json(&plan.host_hook_commands),
         "hook_path_safety": hook_path_safety_json(&plan.host_hook_commands),
-        "commands": plan.policy["guard"]["commands"].clone(),
+        "commands": plan.policy["host_hook"]["commands"].clone(),
     }))
     .map_err(|error| ConnectionCommandError::runtime(error.to_string()))
 }
@@ -4911,7 +4913,7 @@ fn lifecycle_phase_names(phases: &[HostLifecyclePhase]) -> Vec<&'static str> {
 
 fn guard_has_prompt_capture_commands(policy: &Value) -> bool {
     policy
-        .get("guard")
+        .get("host_hook")
         .and_then(|guard| guard.get("commands"))
         .and_then(|commands| commands.get("prompt_capture"))
         .is_some()
@@ -5166,7 +5168,7 @@ fn init_user_actions(
     if host_kind == HostKind::Codex && init_mode != InitMode::Record {
         let hook_trust_action = UserAction::new(
             UserActionKind::HostTrustRequired,
-            "Review and trust Codex project hook commands before relying on Volicord observe host hooks",
+            "Review and trust Codex project hook commands before relying on Volicord detective host hooks",
         );
         if !actions.contains(&hook_trust_action) {
             actions.push(hook_trust_action);
@@ -5175,7 +5177,7 @@ fn init_user_actions(
     actions.push(UserAction::new(
         UserActionKind::ReloadRequired,
         format!(
-            "Restart or reload {} so it loads the Volicord MCP and guard configuration",
+            "Restart or reload {} so it loads the Volicord MCP and host hook configuration",
             public_host_label(host_kind)
         ),
     ));
@@ -5472,7 +5474,7 @@ impl GuardOperationalState {
             "volicord_policy_file": &self.policy_file_state,
             "rule_instruction_config": &self.rule_instruction_state,
             "hook_config": &self.hook_config_state,
-            "required_guard_phases": self.required_guard_phases_state(),
+            "required_hook_phases": self.required_hook_phases_state(),
             "hook_observed": &self.hook_observed_state,
             "guard_observed": self.guard_observed(),
             "last_observed_at": &self.last_observed_at,
@@ -5507,13 +5509,13 @@ impl GuardOperationalState {
 
     fn selected_profile(&self) -> &str {
         match self.guard_profile_state.as_str() {
-            "observe" => "observe",
+            "detective" => "detective",
             _ => "record",
         }
     }
 
     fn host_hook_guard_available(&self) -> bool {
-        self.mode_state == IntegrationProfile::Observe.as_str()
+        self.mode_state == IntegrationProfile::Detective.as_str()
             && self.effective_state == "active"
             && self.missing_required_hooks.is_empty()
             && self.generated_config_verified
@@ -5548,7 +5550,7 @@ impl GuardOperationalState {
         )
     }
 
-    fn required_guard_phases_state(&self) -> &'static str {
+    fn required_hook_phases_state(&self) -> &'static str {
         if self.mode_state == IntegrationProfile::Record.as_str() {
             "disabled"
         } else if self.missing_required_hooks.is_empty() {
@@ -5809,7 +5811,7 @@ fn render_simplified_connection_output(
     match data.format {
         OutputFormat::Text => {
             let mut output = format!(
-                "Agent Connection {}\n{}\nruntime_home_state: ready\nruntime_home: {}\nconnection_state: {}\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nproject_registration_state: {}\nconnected_repositories: {}\nmcp_config_state: {}\nmcp_config: {}\nselected_profile: {}\nobservation_summary: {}\nobservation_capabilities: {}\nhost_hooks_active: {}\nsession_watcher_active: {}\nactor_identity_provable: {}\nos_enforced: {}\nobserve_installation_state: {}\nobserve_configuration_state: {}\nhost_hook_observation_state: {}\nobserve_effective_state: {}\nobserve_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_path_safety: {}\nrequired_hook_phases_state: {}\nrequired_hook_phases_missing: {}\nhost_hook_observed: {}\nobserve_hook_observed: {}\nlast_host_hook_event: {}\nprompt_capture_state: {}\nhost_reload_required: {}\nobserve_blockers: {}\n",
+                "Agent Connection {}\n{}\nruntime_home_state: ready\nruntime_home: {}\nconnection_state: {}\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nproject_registration_state: {}\nconnected_repositories: {}\nmcp_config_state: {}\nmcp_config: {}\nselected_profile: {}\nobservation_summary: {}\nobservation_capabilities: {}\nhost_hooks_active: {}\nsession_watcher_active: {}\nactor_identity_provable: {}\nos_enforced: {}\ndetective_installation_state: {}\ndetective_configuration_state: {}\nhost_hook_observation_state: {}\ndetective_effective_state: {}\ndetective_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_path_safety: {}\nrequired_hook_phases_state: {}\nrequired_hook_phases_missing: {}\nhost_hook_observed: {}\ndetective_hook_observed: {}\nlast_host_hook_event: {}\nprompt_capture_state: {}\nhost_reload_required: {}\ndetective_blockers: {}\n",
                 data.action,
                 DETECTIVE_OBSERVATION_DISCLOSURE_TEXT,
                 data.runtime_home.display(),
@@ -5840,7 +5842,7 @@ fn render_simplified_connection_output(
                 data.guard_state.rule_instruction_state,
                 data.guard_state.hook_config_state,
                 data.guard_state.hook_path_safety_state,
-                data.guard_state.required_guard_phases_state(),
+                data.guard_state.required_hook_phases_state(),
                 comma_or_none(&data.guard_state.missing_required_hooks),
                 data.guard_state.hook_observed_state,
                 yes_no(data.guard_state.guard_observed()),
@@ -5882,7 +5884,7 @@ fn render_simplified_connection_output(
                 "checks": checks_json(data.connection, data.verification, &data.guard_state),
                 "actions": actions_json_values(&data.user_actions),
                 "primary_next_action": primary_next_action.map(|action| action.to_json()),
-                "guard": data.guard_state.to_json(),
+                "host_hook": data.guard_state.to_json(),
                 "verification": data.verification.map(verification_json),
             });
             serde_json::to_string_pretty(&value)
@@ -5904,7 +5906,7 @@ fn render_simplified_plan_output(
     match data.format {
         OutputFormat::Text => {
             let mut output = format!(
-                "Agent Connection {} {}\n{}\nruntime_home_state: ready\nruntime_home: {}\nconnection_state: {}\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nproject_registration_state: {}\nconnected_repositories: {}\nmcp_config_state: planned_{}\nmcp_config: {}\nselected_profile: {}\nobservation_summary: {}\nobservation_capabilities: {}\nhost_hooks_active: {}\nsession_watcher_active: {}\nactor_identity_provable: {}\nos_enforced: {}\nobserve_installation_state: {}\nobserve_configuration_state: {}\nhost_hook_observation_state: {}\nobserve_effective_state: {}\nobserve_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_path_safety: {}\nrequired_hook_phases_state: {}\nrequired_hook_phases_missing: {}\nhost_hook_observed: {}\nobserve_hook_observed: {}\nlast_host_hook_event: {}\nprompt_capture_state: {}\nhost_reload_required: {}\nobserve_blockers: {}\nplanned_change: {}\n",
+                "Agent Connection {} {}\n{}\nruntime_home_state: ready\nruntime_home: {}\nconnection_state: {}\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nproject_registration_state: {}\nconnected_repositories: {}\nmcp_config_state: planned_{}\nmcp_config: {}\nselected_profile: {}\nobservation_summary: {}\nobservation_capabilities: {}\nhost_hooks_active: {}\nsession_watcher_active: {}\nactor_identity_provable: {}\nos_enforced: {}\ndetective_installation_state: {}\ndetective_configuration_state: {}\nhost_hook_observation_state: {}\ndetective_effective_state: {}\ndetective_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_path_safety: {}\nrequired_hook_phases_state: {}\nrequired_hook_phases_missing: {}\nhost_hook_observed: {}\ndetective_hook_observed: {}\nlast_host_hook_event: {}\nprompt_capture_state: {}\nhost_reload_required: {}\ndetective_blockers: {}\nplanned_change: {}\n",
                 data.action,
                 data.status.as_str(),
                 DETECTIVE_OBSERVATION_DISCLOSURE_TEXT,
@@ -5937,7 +5939,7 @@ fn render_simplified_plan_output(
                 guard_state.rule_instruction_state,
                 guard_state.hook_config_state,
                 guard_state.hook_path_safety_state,
-                guard_state.required_guard_phases_state(),
+                guard_state.required_hook_phases_state(),
                 comma_or_none(&guard_state.missing_required_hooks),
                 guard_state.hook_observed_state,
                 yes_no(guard_state.guard_observed()),
@@ -5993,7 +5995,7 @@ fn render_simplified_plan_output(
                 }],
                 "actions": actions_json_values(&data.user_actions),
                 "primary_next_action": primary_next_action.map(|action| action.to_json()),
-                "guard": guard_state.to_json(),
+                "host_hook": guard_state.to_json(),
             });
             serde_json::to_string_pretty(&value)
                 .map(|text| format!("{text}\n"))
@@ -6041,7 +6043,7 @@ fn render_init_output(data: InitOutput<'_>) -> Result<String, ConnectionCommandE
     match data.format {
         OutputFormat::Text => {
             let mut output = format!(
-                "Volicord init {}\n{}\nruntime_home_state: ready\nruntime_home: {}\nproject_registration_state: {}\nrepo: {}\nconnection_state: {}\nhost: {}\nselected_profile: {}\nconnection_id: {}\nmcp_config_state: {}\nmcp_config: {}\nplanned_change: {}\nprofile: {}\nobservation_summary: {}\nobservation_capabilities: {}\nhost_hooks_active: {}\nsession_watcher_active: {}\nactor_identity_provable: {}\nos_enforced: {}\nobserve_installation_state: {}\nobserve_configuration_state: {}\nhost_hook_observation_state: {}\nobserve_effective_state: {}\nobserve_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_root_resolution: {}\nhook_path_safety: {}\nrequired_hook_phases_state: {}\nrequired_hook_phases_missing: {}\nhost_hook_observed: {}\nobserve_hook_observed: {}\nlast_host_hook_event: {}\nprompt_capture_state: {}\nhost_reload_required: {}\nobserve_blockers: {}\n",
+                "Volicord init {}\n{}\nruntime_home_state: ready\nruntime_home: {}\nproject_registration_state: {}\nrepo: {}\nconnection_state: {}\nhost: {}\nselected_profile: {}\nconnection_id: {}\nmcp_config_state: {}\nmcp_config: {}\nplanned_change: {}\nprofile: {}\nobservation_summary: {}\nobservation_capabilities: {}\nhost_hooks_active: {}\nsession_watcher_active: {}\nactor_identity_provable: {}\nos_enforced: {}\ndetective_installation_state: {}\ndetective_configuration_state: {}\nhost_hook_observation_state: {}\ndetective_effective_state: {}\ndetective_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_root_resolution: {}\nhook_path_safety: {}\nrequired_hook_phases_state: {}\nrequired_hook_phases_missing: {}\nhost_hook_observed: {}\ndetective_hook_observed: {}\nlast_host_hook_event: {}\nprompt_capture_state: {}\nhost_reload_required: {}\ndetective_blockers: {}\n",
                 data.status.as_str(),
                 DETECTIVE_OBSERVATION_DISCLOSURE_TEXT,
                 data.runtime_home.display(),
@@ -6072,7 +6074,7 @@ fn render_init_output(data: InitOutput<'_>) -> Result<String, ConnectionCommandE
                 guard_state.hook_config_state,
                 hook_root_resolution,
                 guard_state.hook_path_safety_state,
-                guard_state.required_guard_phases_state(),
+                guard_state.required_hook_phases_state(),
                 comma_or_none(&guard_state.missing_required_hooks),
                 guard_state.hook_observed_state,
                 yes_no(guard_state.guard_observed()),
@@ -6133,7 +6135,7 @@ fn render_init_output(data: InitOutput<'_>) -> Result<String, ConnectionCommandE
                     "policy_hash": &data.integration.policy_hash,
                     "recorded": data.guard_installation.is_some(),
                 },
-                "guard": guard_state.to_json(),
+                "host_hook": guard_state.to_json(),
                 "checks": init_checks_json(data.verification, guard_status, &guard_state),
                 "actions": actions_json_values(&actions),
                 "primary_next_action": primary_next_action.map(|action| action.to_json()),
@@ -6170,7 +6172,7 @@ fn init_checks_json(
             json!({
                 "id": "guard_installation",
                 "status": guard_status,
-                "summary": "observe installation status was recorded",
+                "summary": "detective installation status was recorded",
             }),
         ];
         checks.extend(guard_checks_json_values(guard_state));
@@ -6187,29 +6189,29 @@ fn init_checks_json(
 }
 
 fn guard_checks_json_values(guard_state: &GuardOperationalState) -> Vec<Value> {
-    let guard_selected = matches!(guard_state.mode_state.as_str(), "observe" | "mixed");
+    let guard_selected = matches!(guard_state.mode_state.as_str(), "detective" | "mixed");
     let files_check = match guard_state.files_state.as_str() {
         "installed" => json!({
             "id": "guard_files_installed",
             "status": "passed",
-            "summary": "observe hook files are installed",
+            "summary": "detective host-hook files are installed",
         }),
         "missing" => json!({
             "id": "guard_files_installed",
             "status": "failed",
-            "summary": "observe hook files are missing",
+            "summary": "detective host-hook files are missing",
             "details": guard_file_details_json(guard_state),
         }),
         "stale" => json!({
             "id": "guard_files_installed",
             "status": "failed",
-            "summary": "observe hook files are stale",
+            "summary": "detective host-hook files are stale",
             "details": guard_file_details_json(guard_state),
         }),
         "broken" => json!({
             "id": "guard_files_installed",
             "status": "failed",
-            "summary": "observe hook files are broken",
+            "summary": "detective host-hook files are broken",
             "details": guard_file_details_json(guard_state),
         }),
         "disabled" => json!({
@@ -6220,20 +6222,20 @@ fn guard_checks_json_values(guard_state: &GuardOperationalState) -> Vec<Value> {
         other => json!({
             "id": "guard_files_installed",
             "status": "skipped",
-            "summary": format!("observe hook files are {other}"),
+            "summary": format!("detective host-hook files are {other}"),
         }),
     };
     let reload_check = if guard_state.installation_state == "reload_required" {
         json!({
             "id": "guard_host_reload_required",
             "status": "failed",
-            "summary": "host reload is required before observe host hooks are active",
+            "summary": "host reload is required before detective host hooks are active",
         })
     } else if guard_selected {
         json!({
             "id": "guard_host_reload_required",
             "status": "passed",
-            "summary": "host reload is not currently required by observe installation state",
+            "summary": "host reload is not currently required by detective installation state",
         })
     } else {
         json!({
@@ -6246,7 +6248,7 @@ fn guard_checks_json_values(guard_state: &GuardOperationalState) -> Vec<Value> {
         "observed" => json!({
             "id": "guard_hook_observed",
             "status": "passed",
-            "summary": "observe host hook has been observed",
+            "summary": "detective host hook has been observed",
             "details": {
                 "last_observed_at": &guard_state.last_observed_at,
                 "last_guard_event_at": &guard_state.last_guard_event_at,
@@ -6255,7 +6257,7 @@ fn guard_checks_json_values(guard_state: &GuardOperationalState) -> Vec<Value> {
         "not_observed" if guard_selected => json!({
             "id": "guard_hook_observed",
             "status": "failed",
-            "summary": "observe host hook has not been observed",
+            "summary": "detective host hook has not been observed",
             "details": {
                 "last_observed_at": Value::Null,
                 "last_guard_event_at": &guard_state.last_guard_event_at,
@@ -6264,20 +6266,20 @@ fn guard_checks_json_values(guard_state: &GuardOperationalState) -> Vec<Value> {
         other => json!({
             "id": "guard_hook_observed",
             "status": "skipped",
-            "summary": format!("observe host-hook observation is {other}"),
+            "summary": format!("detective host-hook observation is {other}"),
         }),
     };
     let status_check = if guard_state.effective_state == "active" {
         json!({
             "id": "guard_status_active",
             "status": "passed",
-            "summary": "effective guard status is active",
+            "summary": "effective detective signal status is active",
         })
     } else if guard_selected {
         json!({
             "id": "guard_status_active",
             "status": "failed",
-            "summary": format!("effective guard status is {}", guard_state.effective_state),
+            "summary": format!("effective detective signal status is {}", guard_state.effective_state),
             "details": {
                 "installation_status": &guard_state.installation_state,
                 "configuration_health": &guard_state.configuration_state,
@@ -6291,7 +6293,7 @@ fn guard_checks_json_values(guard_state: &GuardOperationalState) -> Vec<Value> {
         json!({
             "id": "guard_status_active",
             "status": "skipped",
-            "summary": "guard active status is not applicable",
+            "summary": "detective signal active status is not applicable",
         })
     };
     let capability_check = if guard_state.missing_required_hooks.is_empty() || !guard_selected {
@@ -6299,16 +6301,16 @@ fn guard_checks_json_values(guard_state: &GuardOperationalState) -> Vec<Value> {
             "id": "guard_required_hooks_supported",
             "status": if guard_selected { "passed" } else { "skipped" },
             "summary": if guard_selected {
-                "required observe hook capabilities are supported"
+                "required detective host-hook capabilities are supported"
             } else {
-                "observe hook capabilities are not applicable"
+                "detective host-hook capabilities are not applicable"
             },
         })
     } else {
         json!({
             "id": "guard_required_hooks_supported",
             "status": "failed",
-            "summary": "required observe hook capabilities are missing",
+            "summary": "required detective host-hook capabilities are missing",
             "details": {
                 "missing_required_hooks": &guard_state.missing_required_hooks,
             },
@@ -6458,7 +6460,7 @@ fn render_simplified_remove_dry_run(
         }
         SimplifiedRemovePlan::MembershipOnly => match format {
             OutputFormat::Text => Ok(format!(
-                "Agent Connection remove dry_run\n{}\nruntime_home_state: ready\nruntime_home: {}\nconnection_state: dry_run\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nproject_registration_state: {}\nconnected_repositories: {}\nmcp_config_state: membership\nplanned_change: membership\nselected_profile: not_checked\nobserve_installation_state: not_checked\nobserve_files_state: not_checked\nhost_hook_observed: not_checked\nlast_host_hook_event: none\nprompt_capture_state: not_checked\nhost_reload_required: no\nobserve_blockers: none\nremaining_connected_projects: {}\nnext_action: none\n",
+                "Agent Connection remove dry_run\n{}\nruntime_home_state: ready\nruntime_home: {}\nconnection_state: dry_run\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nproject_registration_state: {}\nconnected_repositories: {}\nmcp_config_state: membership\nplanned_change: membership\nselected_profile: not_checked\ndetective_installation_state: not_checked\ndetective_files_state: not_checked\nhost_hook_observed: not_checked\nlast_host_hook_event: none\nprompt_capture_state: not_checked\nhost_reload_required: no\ndetective_blockers: none\nremaining_connected_projects: {}\nnext_action: none\n",
                 DETECTIVE_OBSERVATION_DISCLOSURE_TEXT,
                 runtime_home.display(),
                 public_host_name_text(&connection.host_kind),
@@ -6571,7 +6573,7 @@ fn connection_states_json(
         "volicord_policy_file": &guard_state.policy_file_state,
         "rule_instruction_config": &guard_state.rule_instruction_state,
         "hook_config": &guard_state.hook_config_state,
-        "required_guard_phases": guard_state.required_guard_phases_state(),
+        "required_hook_phases": guard_state.required_hook_phases_state(),
         "missing_required_hooks": &guard_state.missing_required_hooks,
         "guard_hook_observed": &guard_state.hook_observed_state,
         "guard_observed": guard_state.guard_observed(),
@@ -6738,7 +6740,7 @@ fn primary_connection_action(
     if guard_state.installation_state == "files_missing" {
         return Some(connection_repair_action(
             "guard_files_missing",
-            "Run init again to reinstall missing observe hook files.",
+            "Run init again to reinstall missing detective host-hook files.",
             connection,
             projects,
         ));
@@ -6751,7 +6753,7 @@ fn primary_connection_action(
     {
         return Some(connection_repair_action(
             "guard_hook_path_safety",
-            "Run init again to regenerate cwd-independent observe hook commands.",
+            "Run init again to regenerate cwd-independent detective host-hook commands.",
             connection,
             projects,
         ));
@@ -6759,7 +6761,7 @@ fn primary_connection_action(
     if guard_state.installation_state == "stale" {
         return Some(connection_repair_action(
             "guard_files_stale",
-            "Run init again to refresh stale observe hook files.",
+            "Run init again to refresh stale detective host-hook files.",
             connection,
             projects,
         ));
@@ -6767,7 +6769,7 @@ fn primary_connection_action(
     if guard_state.installation_state == "broken" {
         return Some(connection_repair_action(
             "guard_files_broken",
-            "Repair broken observe hook files, then run init again.",
+            "Repair broken detective host-hook files, then run init again.",
             connection,
             projects,
         ));
@@ -6796,13 +6798,13 @@ fn guard_degraded_action(
     let Some(connection) = connection else {
         return PrimaryNextAction::new(
             "guard_capability_degraded",
-            "Use --profile record if host hooks are not needed, or prepare a supported host, platform, and configuration for observe before rerunning init.",
+            "Use --profile record if host hooks are not needed, or prepare a supported host, platform, and configuration for detective before rerunning init.",
         );
     };
     let Some(project) = projects.first() else {
         return PrimaryNextAction::new(
             "guard_capability_degraded",
-            "Use --profile record if host hooks are not needed, or prepare a supported host, platform, and configuration for observe before rerunning init.",
+            "Use --profile record if host hooks are not needed, or prepare a supported host, platform, and configuration for detective before rerunning init.",
         );
     };
     let host = public_host_name_text(&connection.host_kind);
@@ -6814,7 +6816,7 @@ fn guard_degraded_action(
     PrimaryNextAction::new(
         "guard_capability_degraded",
         format!(
-            "Use --profile record if host hooks are not needed, or prepare a supported host, platform, and configuration for observe before running {command}."
+            "Use --profile record if host hooks are not needed, or prepare a supported host, platform, and configuration for detective before running {command}."
         ),
     )
     .with_command(command)
@@ -6867,16 +6869,16 @@ fn repair_instruction(id: &str, fallback: &str, command: &str) -> String {
             format!("Repair the malformed MCP configuration, then run {command}.")
         }
         "guard_files_missing" => {
-            format!("Run {command} to reinstall missing observe hook files.")
+            format!("Run {command} to reinstall missing detective host-hook files.")
         }
         "guard_files_stale" => {
-            format!("Run {command} to refresh stale observe hook files.")
+            format!("Run {command} to refresh stale detective host-hook files.")
         }
         "guard_files_broken" => {
-            format!("Repair broken observe hook files, then run {command}.")
+            format!("Repair broken detective host-hook files, then run {command}.")
         }
         "guard_hook_path_safety" => {
-            format!("Run {command} to regenerate cwd-independent observe hook commands.")
+            format!("Run {command} to regenerate cwd-independent detective host-hook commands.")
         }
         _ => fallback.to_owned(),
     }
@@ -7331,7 +7333,7 @@ fn guard_profile_state_for_installations(
     }
     match guard_mode_state(installations).as_str() {
         "record" => "record",
-        "observe" => "observe",
+        "detective" => "detective",
         _ => "mixed",
     }
     .to_owned()
@@ -7346,7 +7348,7 @@ fn managed_source_state_for_installations(
     }
     match guard_profile_state_for_installations(installations, findings).as_str() {
         "record" => "not_applicable",
-        "observe" => "host_hooks",
+        "detective" => "host_hooks",
         "mixed" => "mixed",
         _ => "unknown",
     }
@@ -7365,7 +7367,7 @@ fn managed_verification_state_for_installations(
         return value;
     }
     match guard_profile_state_for_installations(installations, findings).as_str() {
-        "record" | "observe" => "not_applicable",
+        "record" | "detective" => "not_applicable",
         "mixed" => "mixed",
         _ => "unknown",
     }
@@ -7593,7 +7595,7 @@ impl GuardFileFindings {
                 | HookWrapperResolutionStatus::DispatchMissing
         ) {
             self.stale_files
-                .push("guard_capability_json:hook_path_safety".to_owned());
+                .push("host_hook_capability_json:hook_path_safety".to_owned());
         }
     }
 
@@ -7752,10 +7754,10 @@ fn guard_file_findings_with_context(
     let Ok(value) = serde_json::from_str::<Value>(capability_json) else {
         findings
             .broken_files
-            .push("guard_capability_json".to_owned());
+            .push("host_hook_capability_json".to_owned());
         findings.record_hook_path_status(
             HookWrapperResolutionStatus::MetadataMissing,
-            json!({ "source": "guard_capability_json" }),
+            json!({ "source": "host_hook_capability_json" }),
         );
         return findings;
     };
@@ -7820,7 +7822,7 @@ fn bool_json_field(value: &Value, key: &str) -> bool {
 
 fn missing_required_hooks_from_capability(capability: &Value) -> Vec<String> {
     let configured_required_hooks = capability
-        .get("required_guard_phases")
+        .get("required_hook_phases")
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
@@ -7881,9 +7883,9 @@ fn verify_recorded_hook_path_safety(
 fn capability_requires_hook_path_safety(capability: &Value) -> bool {
     matches!(
         capability.get("selected_profile").and_then(Value::as_str),
-        Some("observe")
+        Some("detective")
     ) || capability
-        .get("required_guard_phases")
+        .get("required_hook_phases")
         .and_then(Value::as_array)
         .is_some_and(|phases| !phases.is_empty())
 }
@@ -8202,7 +8204,7 @@ fn classify_codex_hook_command_path(
         }
         return HookWrapperResolutionStatus::RelativePathUnsafe;
     }
-    if command_text.contains(&format!("volicord guard {phase_command}")) {
+    if command_text.contains(&format!("volicord host-hook {phase_command}")) {
         return HookWrapperResolutionStatus::Ok;
     }
     HookWrapperResolutionStatus::MetadataMissing
@@ -8236,7 +8238,7 @@ fn classify_claude_hook_command_path(
         }
         return HookWrapperResolutionStatus::RelativePathUnsafe;
     }
-    if command_text.contains(&format!("volicord guard {phase_command}")) {
+    if command_text.contains(&format!("volicord host-hook {phase_command}")) {
         return HookWrapperResolutionStatus::Ok;
     }
     HookWrapperResolutionStatus::MetadataMissing
@@ -8321,7 +8323,7 @@ fn verify_guard_file(file: &Value, capability: &Value, findings: &mut GuardFileF
     let Some(path_text) = file.get("path").and_then(Value::as_str) else {
         findings
             .broken_files
-            .push("guard_capability_json:files.path".to_owned());
+            .push("host_hook_capability_json:files.path".to_owned());
         if let Some(kind) = kind {
             findings.set_kind_state(kind, "broken");
         }
@@ -8509,7 +8511,11 @@ fn verify_managed_json_file(
             return;
         }
     }
-    if policy.get("guard").and_then(|guard| guard.get("commands")) != capability.get("commands") {
+    if policy
+        .get("host_hook")
+        .and_then(|guard| guard.get("commands"))
+        != capability.get("commands")
+    {
         findings.stale_files.push(path_text.to_owned());
         state = "stale";
     }
@@ -8577,7 +8583,7 @@ fn verify_managed_script_file(
         .and_then(Value::as_str)
         .unwrap_or_default();
     for required in [
-        "volicord guard ",
+        "volicord host-hook ",
         "--repo ",
         "--connection ",
         "--guard-installation ",
@@ -9381,21 +9387,21 @@ mod tests {
     }
 
     #[test]
-    fn observe_integration_plan_rejects_missing_generic_hooks(
+    fn detective_integration_plan_rejects_missing_generic_hooks(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let repo = temp_dir("guard-capabilities-reject")?;
         let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
         let error = plan_guard_integration_for_test(
             HostKind::Generic,
-            InitMode::Observe,
+            InitMode::Detective,
             &repo,
             "conn_alpha",
             "guard_installation_alpha",
             &entry,
         )
-        .expect_err("default observe init should reject missing host hook support");
+        .expect_err("default detective init should reject missing host hook support");
 
-        assert!(error.to_string().contains("OBSERVE_HOOKS_UNSUPPORTED"));
+        assert!(error.to_string().contains("DETECTIVE_HOOKS_UNSUPPORTED"));
         assert!(error.to_string().contains("--profile record"));
         assert!(error.to_string().contains("supported host"));
         assert!(error.to_string().contains("AGENTS.md"));
@@ -9404,22 +9410,22 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn observe_profile_is_rejected_on_native_windows() -> Result<(), Box<dyn std::error::Error>> {
-        let repo = temp_dir("windows-observe-reject")?;
+    fn detective_profile_is_rejected_on_native_windows() -> Result<(), Box<dyn std::error::Error>> {
+        let repo = temp_dir("windows-detective-reject")?;
         fs::create_dir_all(repo.join(".git"))?;
         let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
 
         let error = plan_guard_integration_for_test(
             HostKind::Codex,
-            InitMode::Observe,
+            InitMode::Detective,
             &repo,
             "conn_alpha",
             "guard_installation_alpha",
             &entry,
         )
-        .expect_err("native Windows observe init should fail before planning hook files");
+        .expect_err("native Windows detective init should fail before planning hook files");
 
-        assert!(error.to_string().contains("OBSERVE_WINDOWS_UNSUPPORTED"));
+        assert!(error.to_string().contains("DETECTIVE_WINDOWS_UNSUPPORTED"));
         assert!(error.to_string().contains("--profile record"));
         assert!(error.to_string().contains("WSL2"));
         assert!(!repo.join(".codex/hooks.json").exists());
@@ -9433,15 +9439,17 @@ mod tests {
         let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
         let error = plan_guard_integration_for_test(
             HostKind::Codex,
-            InitMode::Observe,
+            InitMode::Detective,
             &repo,
             "conn_alpha",
             "guard_installation_alpha",
             &entry,
         )
-        .expect_err("Codex observe hooks should require a Git root strategy");
+        .expect_err("Codex detective host hooks should require a Git root strategy");
 
-        assert!(error.to_string().contains("OBSERVE_HOOK_ROOT_UNSUPPORTED"));
+        assert!(error
+            .to_string()
+            .contains("DETECTIVE_HOOK_ROOT_UNSUPPORTED"));
         assert!(error.to_string().contains("Git work tree root"));
         assert!(error.to_string().contains("--profile record"));
         assert!(error.to_string().contains("supported host"));
@@ -9459,7 +9467,7 @@ mod tests {
         let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
         let plan = plan_guard_integration_for_test(
             HostKind::Codex,
-            InitMode::Observe,
+            InitMode::Detective,
             &repo,
             "conn_alpha",
             "guard_installation_alpha",
@@ -9469,12 +9477,16 @@ mod tests {
 
         assert!(applied.missing_required_hooks.is_empty());
         assert_eq!(
-            initial_guard_installation_status(InitMode::Observe, &host_plan_stub(&entry), &applied),
+            initial_guard_installation_status(
+                InitMode::Detective,
+                &host_plan_stub(&entry),
+                &applied
+            ),
             GuardInstallationStatus::ReloadRequired
         );
-        let capability: Value = serde_json::from_str(&guard_capability_json(&applied)?)?;
+        let capability: Value = serde_json::from_str(&host_hook_capability_json(&applied)?)?;
         assert_eq!(capability["prompt_capture"], true);
-        assert_eq!(capability["selected_profile"], "observe");
+        assert_eq!(capability["selected_profile"], "detective");
         assert_eq!(capability["native_host_output_adapter"], "codex");
         assert_eq!(capability["native_host_output_adapter_verified"], true);
         assert_eq!(capability["bash_shell_mutation_coverage"], true);
@@ -9551,7 +9563,7 @@ mod tests {
         assert!(hooks_text.contains("post-tool"));
         assert!(hooks_text.contains("prompt-capture"));
         assert!(hooks_text.contains("stop"));
-        assert!(!hooks_text.contains("volicord guard "));
+        assert!(!hooks_text.contains("volicord host-hook "));
         assert!(hooks_text.contains(
             "Bash|apply_patch|Edit|Write|mcp__.*__(write|edit|create|update|delete|remove|move|patch).*"
         ));
@@ -9567,7 +9579,7 @@ mod tests {
         let pre_tool_wrapper_path = repo.join(".codex/hooks/volicord-pre-tool.sh");
         let pre_tool_wrapper = fs::read_to_string(&pre_tool_wrapper_path)?;
         assert!(pre_tool_wrapper.contains(HOOK_WRAPPER_MARKER));
-        assert!(pre_tool_wrapper.contains("exec volicord guard pre-tool"));
+        assert!(pre_tool_wrapper.contains("exec volicord host-hook pre-tool"));
         assert!(pre_tool_wrapper.contains(&format!("--repo {}", shell_word(&path_text(&repo)))));
         assert!(pre_tool_wrapper.contains("--connection conn_alpha"));
         assert!(pre_tool_wrapper.contains("--guard-installation guard_installation_alpha"));
@@ -9594,7 +9606,7 @@ mod tests {
         let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
         apply_guard_integration(plan_guard_integration_for_test(
             HostKind::Codex,
-            InitMode::Observe,
+            InitMode::Detective,
             &repo,
             "conn_alpha",
             "guard_installation_alpha",
@@ -9642,7 +9654,7 @@ mod tests {
             .output()?;
         assert!(!invalid.status.success());
         assert_eq!(String::from_utf8_lossy(&invalid.stdout), "");
-        assert!(String::from_utf8_lossy(&invalid.stderr).contains("unsupported guard phase"));
+        assert!(String::from_utf8_lossy(&invalid.stderr).contains("unsupported host-hook phase"));
         Ok(())
     }
 
@@ -9653,7 +9665,7 @@ mod tests {
         let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
         let plan = plan_guard_integration_for_test(
             HostKind::ClaudeCode,
-            InitMode::Observe,
+            InitMode::Detective,
             &repo,
             "conn_alpha",
             "guard_installation_alpha",
@@ -9662,7 +9674,7 @@ mod tests {
         let applied = apply_guard_integration(plan)?;
 
         assert!(applied.missing_required_hooks.is_empty());
-        let capability: Value = serde_json::from_str(&guard_capability_json(&applied)?)?;
+        let capability: Value = serde_json::from_str(&host_hook_capability_json(&applied)?)?;
         assert_eq!(capability["prompt_capture"], true);
         assert_eq!(
             capability["hook_root_resolution"]["basis"],
@@ -9738,11 +9750,11 @@ mod tests {
         }
         assert!(!settings_text.contains("\"command\": \".claude/hooks/"));
         assert!(settings_text.contains("\"args\": []"));
-        assert!(!settings_text.contains("volicord guard "));
+        assert!(!settings_text.contains("volicord host-hook "));
         let pre_tool_wrapper_path = repo.join(".claude/hooks/volicord-pre-tool.sh");
         let pre_tool_wrapper = fs::read_to_string(&pre_tool_wrapper_path)?;
         assert!(pre_tool_wrapper.contains(HOOK_WRAPPER_MARKER));
-        assert!(pre_tool_wrapper.contains("exec volicord guard pre-tool"));
+        assert!(pre_tool_wrapper.contains("exec volicord host-hook pre-tool"));
         assert!(pre_tool_wrapper.contains("--host claude-code"));
         assert!(pre_tool_wrapper.contains("--host-output claude-code"));
         assert!(pre_tool_wrapper.contains("--guard-installation guard_installation_alpha"));
@@ -9757,11 +9769,11 @@ mod tests {
             "\"matcher\": \"Bash|Edit|Write|MultiEdit|mcp__.*__(write|edit|create|update|delete|remove|move|patch).*\""
         ));
         assert!(fs::read_to_string(repo.join(".claude/rules/volicord.md"))?
-            .contains("Configured local observe hook commands"));
+            .contains("Configured local detective host-hook commands"));
 
         let again = plan_guard_integration_for_test(
             HostKind::ClaudeCode,
-            InitMode::Observe,
+            InitMode::Detective,
             &repo,
             "conn_alpha",
             "guard_installation_alpha",
@@ -9826,7 +9838,7 @@ mod tests {
         let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
         let applied = apply_guard_integration(plan_guard_integration_for_test(
             HostKind::ClaudeCode,
-            InitMode::Observe,
+            InitMode::Detective,
             &repo,
             "conn_alpha",
             "guard_installation_alpha",
@@ -9853,7 +9865,7 @@ mod tests {
                     .is_some_and(|args| args.is_empty())
         }));
 
-        let capability_json = guard_capability_json(&applied)?;
+        let capability_json = host_hook_capability_json(&applied)?;
         let findings = guard_file_findings(&capability_json);
         assert!(findings.stale_files.is_empty());
         assert!(findings.broken_files.is_empty());
@@ -9875,7 +9887,7 @@ mod tests {
         "hooks": [
           {
             "type": "command",
-            "command": "volicord guard pre-tool --host claude-code --host-output claude-code",
+            "command": "volicord host-hook pre-tool --host claude-code --host-output claude-code",
             "timeout": 30
           }
         ]
@@ -9888,7 +9900,7 @@ mod tests {
         let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
         let error = plan_guard_integration_for_test(
             HostKind::ClaudeCode,
-            InitMode::Observe,
+            InitMode::Detective,
             &repo,
             "conn_alpha",
             "guard_installation_alpha",
@@ -9912,7 +9924,7 @@ mod tests {
 
         let error = plan_guard_integration_for_test(
             HostKind::Codex,
-            InitMode::Observe,
+            InitMode::Detective,
             &repo,
             "conn_alpha",
             "guard_installation_alpha",
@@ -9939,7 +9951,7 @@ mod tests {
 
         let error = plan_guard_integration_for_test(
             HostKind::Codex,
-            InitMode::Observe,
+            InitMode::Detective,
             &repo,
             "conn_alpha",
             "guard_installation_alpha",
@@ -9965,7 +9977,7 @@ mod tests {
         let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
         let applied = apply_guard_integration(plan_guard_integration_for_test(
             HostKind::Codex,
-            InitMode::Observe,
+            InitMode::Detective,
             &repo,
             "conn_alpha",
             "guard_installation_alpha",
@@ -9975,7 +9987,7 @@ mod tests {
         let dispatch_path = repo.join(".codex/hooks/volicord-dispatch.sh");
         assert!(script_is_executable(&wrapper_path));
         assert!(script_is_executable(&dispatch_path));
-        let capability_json = guard_capability_json(&applied)?;
+        let capability_json = host_hook_capability_json(&applied)?;
 
         let mut permissions = fs::metadata(&wrapper_path)?.permissions();
         permissions.set_mode(0o644);
@@ -9991,7 +10003,7 @@ mod tests {
 
         let repaired = apply_guard_integration(plan_guard_integration_for_test(
             HostKind::Codex,
-            InitMode::Observe,
+            InitMode::Detective,
             &repo,
             "conn_alpha",
             "guard_installation_alpha",
@@ -10027,7 +10039,7 @@ mod tests {
         let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
         let error = plan_guard_integration_for_test(
             HostKind::ClaudeCode,
-            InitMode::Observe,
+            InitMode::Detective,
             &repo,
             "conn_alpha",
             "guard_installation_alpha",
@@ -10048,13 +10060,13 @@ mod tests {
         let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
         let applied = apply_guard_integration(plan_guard_integration_for_test(
             HostKind::ClaudeCode,
-            InitMode::Observe,
+            InitMode::Detective,
             &repo,
             "conn_alpha",
             "guard_installation_alpha",
             &entry,
         )?)?;
-        let capability_json = guard_capability_json(&applied)?;
+        let capability_json = host_hook_capability_json(&applied)?;
 
         let settings_path = repo.join(".claude/settings.json");
         let mut settings: Value = serde_json::from_str(&fs::read_to_string(&settings_path)?)?;
@@ -10078,14 +10090,14 @@ mod tests {
         let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
         let plan = plan_guard_integration_for_test(
             HostKind::Codex,
-            InitMode::Observe,
+            InitMode::Detective,
             &repo,
             "conn_alpha",
             "guard_installation_alpha",
             &entry,
         )?;
         let applied = apply_guard_integration(plan)?;
-        let capability_json = guard_capability_json(&applied)?;
+        let capability_json = host_hook_capability_json(&applied)?;
 
         let findings = guard_file_findings(&capability_json);
         assert!(findings.missing_files.is_empty());
@@ -10168,13 +10180,13 @@ mod tests {
         let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
         let applied = apply_guard_integration(plan_guard_integration_for_test(
             HostKind::Codex,
-            InitMode::Observe,
+            InitMode::Detective,
             &repo,
             "conn_alpha",
             "guard_installation_alpha",
             &entry,
         )?)?;
-        let capability_json = guard_capability_json(&applied)?;
+        let capability_json = host_hook_capability_json(&applied)?;
         let capability: Value = serde_json::from_str(&capability_json)?;
         let findings = guard_file_findings(&capability_json);
         assert_eq!(findings.hook_path_safety_state(), "ok");
@@ -10230,7 +10242,7 @@ mod tests {
     fn claude_guard_state_becomes_active_after_synthetic_observation(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let runtime_home = temp_dir("claude-guard-runtime")?;
-        let repo = temp_dir("claude-guard-observed")?;
+        let repo = temp_dir("claude-guard-detective")?;
         fs::create_dir_all(repo.join(".git"))?;
         initialize_runtime_home(&runtime_home, "runtime_home_test", "{}")?;
         let project = ensure_project_for_repo(
@@ -10247,7 +10259,7 @@ mod tests {
         let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
         let integration = apply_guard_integration(plan_guard_integration_for_test(
             HostKind::ClaudeCode,
-            InitMode::Observe,
+            InitMode::Detective,
             &repo,
             "conn_alpha",
             "guard_installation_alpha",
@@ -10285,8 +10297,8 @@ mod tests {
                 connection_internal_id: "conn_alpha".to_owned(),
                 project_id: Some(project.project_id.clone()),
                 host_kind: HostKind::ClaudeCode.as_str().to_owned(),
-                guard_mode: IntegrationProfile::Observe.as_str().to_owned(),
-                host_capability_json: guard_capability_json(&integration)?,
+                guard_mode: IntegrationProfile::Detective.as_str().to_owned(),
+                host_capability_json: host_hook_capability_json(&integration)?,
                 installation_status: GuardInstallationStatus::ReloadRequired.as_str().to_owned(),
                 installed_at: Some("2026-07-01T00:00:00Z".to_owned()),
                 last_checked_at: "2026-07-01T00:00:00Z".to_owned(),
@@ -10306,7 +10318,7 @@ mod tests {
                 connection_internal_id: "conn_alpha".to_owned(),
                 project_id: project.project_id.clone(),
                 host_kind: HostKind::ClaudeCode.as_str().to_owned(),
-                guard_mode: IntegrationProfile::Observe.as_str().to_owned(),
+                guard_mode: IntegrationProfile::Detective.as_str().to_owned(),
                 observed_policy_hash: integration.policy_hash.clone(),
                 observed_binary_version: Some("test".to_owned()),
                 observed_phase: "session_start".to_owned(),
@@ -10319,9 +10331,9 @@ mod tests {
         assert_eq!(guard_state.installation_state, "active");
         assert_eq!(guard_state.hook_observed_state, "observed");
         assert_eq!(guard_state.effective_state, "active");
-        assert_eq!(guard_state.selected_profile(), "observe");
+        assert_eq!(guard_state.selected_profile(), "detective");
         let control_surface = guard_state.control_surface_json();
-        assert_eq!(control_surface["selected_profile"], "observe");
+        assert_eq!(control_surface["selected_profile"], "detective");
         assert_eq!(control_surface["host_hooks_active"], true);
         assert_eq!(
             control_surface["cooperative_pre_tool_warning_available"],
@@ -10369,7 +10381,7 @@ mod tests {
         let entry = ManagedServerEntry::new("conn_codex_missing_bash", Path::new("volicord"), None);
         let integration = apply_guard_integration(plan_guard_integration_for_test(
             HostKind::Codex,
-            InitMode::Observe,
+            InitMode::Detective,
             &repo,
             "conn_codex_missing_bash",
             "guard_installation_missing_bash",
@@ -10379,7 +10391,8 @@ mod tests {
         let hooks_path = repo.join(".codex/hooks.json");
         let hooks_without_bash = fs::read_to_string(&hooks_path)?.replace("Bash|", "");
         fs::write(&hooks_path, &hooks_without_bash)?;
-        let mut capability: Value = serde_json::from_str(&guard_capability_json(&integration)?)?;
+        let mut capability: Value =
+            serde_json::from_str(&host_hook_capability_json(&integration)?)?;
         let hook_file = capability["files"]
             .as_array_mut()
             .and_then(|files| {
@@ -10422,7 +10435,7 @@ mod tests {
                 connection_internal_id: "conn_codex_missing_bash".to_owned(),
                 project_id: Some(project.project_id.clone()),
                 host_kind: HostKind::Codex.as_str().to_owned(),
-                guard_mode: IntegrationProfile::Observe.as_str().to_owned(),
+                guard_mode: IntegrationProfile::Detective.as_str().to_owned(),
                 host_capability_json: serde_json::to_string(&capability)?,
                 installation_status: GuardInstallationStatus::ReloadRequired.as_str().to_owned(),
                 installed_at: Some("2026-07-01T00:00:00Z".to_owned()),
@@ -10443,7 +10456,7 @@ mod tests {
                 connection_internal_id: "conn_codex_missing_bash".to_owned(),
                 project_id: project.project_id.clone(),
                 host_kind: HostKind::Codex.as_str().to_owned(),
-                guard_mode: IntegrationProfile::Observe.as_str().to_owned(),
+                guard_mode: IntegrationProfile::Detective.as_str().to_owned(),
                 observed_policy_hash: integration.policy_hash.clone(),
                 observed_binary_version: Some("test".to_owned()),
                 observed_phase: "session_start".to_owned(),
@@ -10458,7 +10471,7 @@ mod tests {
         assert_eq!(guard_state.hook_config_state, "stale");
         assert_eq!(guard_state.effective_state, "degraded");
         assert!(guard_state.stale_files.contains(&path_text(&hooks_path)));
-        assert_eq!(guard_state.selected_profile(), "observe");
+        assert_eq!(guard_state.selected_profile(), "detective");
         let control_surface = guard_state.control_surface_json();
         assert_eq!(control_surface["host_hooks_active"], false);
         assert_eq!(

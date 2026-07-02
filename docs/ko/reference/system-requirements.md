@@ -27,13 +27,13 @@ Rust 이식성만으로 지원을 추론하지 마세요. 어떤 Rust 크레이�
 | macOS x86_64 | `x86_64-apple-darwin`으로 지원되고 릴리스 패키징됩니다. | 릴리스 워크플로는 macOS Intel runner에서 빌드하고 `volicord-x86_64-apple-darwin.tar.gz`를 패키징합니다. | macOS x86_64 환경에서 POSIX 스타일 셸과 아래 설치 스크립트 도구를 사용합니다. |
 | Docker | 체크인된 `Dockerfile`을 사용할 때 로컬 런타임 선택지로 지원됩니다. 외부 image registry는 주장하지 않습니다. | 체크인된 `Dockerfile`은 릴리스 CLI를 Debian runtime image에 빌드합니다. 릴리스 워크플로는 image를 빌드하고 `volicord --help` smoke test를 실행합니다. 설치 문서는 로컬 `docker build`와 `docker run` 사용을 설명합니다. | 이 저장소 또는 신뢰하는 소스 사본에서 image를 빌드합니다. 저장소 아티팩트가 추가되기 전에는 게시된 registry image가 있다고 가정하지 않습니다. |
 | Native Windows x86_64 record 프로필 | `record` 프로필에 대해 `x86_64-pc-windows-msvc`로 지원되고 릴리스 패키징됩니다. | 릴리스 워크플로는 `windows-2022`에서 빌드하고, `target/x86_64-pc-windows-msvc/release/volicord.exe`를 smoke test하며, `volicord-x86_64-pc-windows-msvc.zip`을 패키징하고 `.sha256`을 생성합니다. 또한 native Windows `cargo test --workspace --all-targets --all-features` job을 실행합니다. `scripts/install.ps1`은 기본적으로 사용자 로컬 디렉터리 아래에 릴리스 바이너리를 설치합니다. | Native Windows x86_64에서 PowerShell을 사용합니다. `volicord init --host HOST --repo PATH --profile record`를 사용합니다. |
-| Native Windows observe 프로필 | Windows host-hook wrapper와 watcher 동작이 구현되고 테스트되기 전까지 지원 범위 밖입니다. | Observe 설정은 현재 검증된 adapter에 대해 POSIX `sh` hook wrapper를 씁니다. CLI는 native Windows에서 `volicord init --profile observe`를 `OBSERVE_WINDOWS_UNSUPPORTED`로 거부합니다. | Native Windows에서는 `--profile record`를 사용하거나, 선택한 host hook 계약이 지원되는 WSL2, Linux, macOS에서 Volicord를 실행합니다. |
+| Native Windows detective 프로필 | Windows host-hook wrapper와 watcher 동작이 구현되고 테스트되기 전까지 지원 범위 밖입니다. | Detective 설정은 현재 검증된 adapter에 대해 POSIX `sh` hook wrapper를 씁니다. CLI는 native Windows에서 `volicord init --profile detective`를 `DETECTIVE_WINDOWS_UNSUPPORTED`로 거부합니다. | Native Windows에서는 `--profile record`를 사용하거나, 선택한 host hook 계약이 지원되는 WSL2, Linux, macOS에서 Volicord를 실행합니다. |
 | 개발용 소스 빌드 도구 체인 | 개발 경로로서 Cargo가 포함된 Rust 1.85 이상은 지원되고 검증되었습니다. | 워크스페이스 루트 `Cargo.toml`이 `rust-version = "1.85"`를 설정하고 모든 워크스페이스 패키지가 이 값을 상속합니다. 설치 문서는 Cargo 명령을 개발용 소스 빌드 경로 아래에만 둡니다. | 개발용 소스 빌드 경로를 사용할 때만 Cargo가 포함된 Rust 1.85 이상을 설치하거나 선택합니다. |
 | 셸 문법 | Linux, WSL2, macOS의 유지되는 POSIX 스타일 예시와 native Windows의 유지되는 PowerShell 예시에 대해 지원됩니다. 다른 셸은 이 예시에 대해 미검증입니다. | POSIX 설치 예시는 `sh` 호환 환경 변수 지정과 `~/.local/bin`을 사용합니다. Native Windows 설치 예시는 `scripts/install.ps1`, PowerShell 매개변수 또는 환경 변수, `%LOCALAPPDATA%\Volicord\bin`을 사용합니다. CLI 통합 테스트는 `#[cfg(unix)]` 아래에서 `#!/bin/sh` 가짜 실행 파일을 만들며, 릴리스 워크플로는 Windows에서 PowerShell smoke test를 실행합니다. | 선택한 운영 환경에 맞는 셸 문법을 사용하고, 설치된 명령을 확인한 뒤 계속합니다. |
 | 실행 파일 역할 이름 | 지원되고 검증되었습니다. | 참조 담당 문서는 `volicord`를 관리 CLI 명령과 로컬 MCP stdio 어댑터가 사용하는 `mcp` 하위 명령을 제공하는 설치 실행 파일로 정의합니다. | `volicord`를 빌드하거나 설치합니다. 호스트 설정은 MCP를 `volicord mcp --stdio ...`로 시작해야 합니다. |
 | 패키지 관리자 설치 | 맞는 저장소 아티팩트가 추가되기 전까지 지원 범위 밖입니다. | 이 체크아웃에는 Homebrew tap, Homebrew formula, Linux 패키지 관리자 패키지, 외부 패키지 registry가 표현되어 있지 않습니다. 지원되는 첫 실행 경로는 릴리스 tarball과 설치 스크립트입니다. | 릴리스 바이너리 설치 스크립트, Docker, 기존 `volicord` 실행 파일, 또는 개발용 소스 빌드 경로를 사용합니다. |
 | Codex와 Claude Code 호스트 최소 버전 | 안정적인 호스트 최소 버전은 정의되어 있지 않습니다. 호스트 호환성은 문서화된 버전 하한이 아니라 운영 점검으로 확인합니다. | Codex 검증은 `PATH`에서 `codex`를 찾고 `codex --version`을 실행합니다. Claude Code 검증은 `claude mcp get <server_name>`으로 호스트 상태를 조사합니다. 관리 검증은 최종 결과 상태를 담당합니다. | 설치 후 `volicord connection verify HOST [--repo PATH] [--shared|--global]`을 사용합니다. 문서화되지 않은 Codex 또는 Claude Code 최소 버전에 의존하지 않습니다. |
-| Codex observe hook root 해석 | 로컬 Git work tree에 대해 지원됩니다. | 생성된 Codex observe hook 명령은 Volicord 관리 wrapper로 dispatch하기 전에 `git rev-parse --show-toplevel`로 Git work-tree root를 해석하며, 초기화는 그 root 전략을 지원할 수 없으면 observe 설정을 거부합니다. | Codex observe 프로필에는 `.git` work-tree root가 있는 Product Repository를 사용하고, 미래의 Codex hook 환경이 저장소 하위 디렉터리에서 `git`을 실행할 수 있게 합니다. 이 전제조건이 없으면 `--profile record`를 사용합니다. |
+| Codex detective host hook root 해석 | 로컬 Git work tree에 대해 지원됩니다. | 생성된 Codex detective host hook 명령은 Volicord 관리 wrapper로 dispatch하기 전에 `git rev-parse --show-toplevel`로 Git work-tree root를 해석하며, 초기화는 그 root 전략을 지원할 수 없으면 detective 설정을 거부합니다. | Codex detective 프로필에는 `.git` work-tree root가 있는 Product Repository를 사용하고, 미래의 Codex hook 환경이 저장소 하위 디렉터리에서 `git`을 실행할 수 있게 합니다. 이 전제조건이 없으면 `--profile record`를 사용합니다. |
 
 <a id="toolchain-requirements"></a>
 
@@ -128,7 +128,7 @@ volicord --help
 volicord mcp --help
 volicord init --help
 volicord setup --help
-volicord guard --help
+volicord host-hook --help
 volicord serve --help
 ```
 
@@ -159,7 +159,7 @@ CLI](admin-cli.md#runtime-home-selection)와 [generic MCP 설정
 
 요구사항 요약:
 
-- 설치 프로필은 찾을 수 있는 `volicord` 명령을 식별해야 합니다.
+- 설치는 찾을 수 있는 `volicord` 명령을 식별해야 합니다.
 - 미래의 호스트 프로세스는 설정된 `volicord` 명령을 `mcp --stdio --connection <connection_id>`
   인자와 함께 시작할 수 있어야 합니다.
 - shared 프로젝트 호스트 설정은 개인 Runtime Home 경로를 포함하면 안 됩니다. 미래의
@@ -191,19 +191,19 @@ Volicord가 등록된 프로젝트를 검증하거나 사용할 때는 읽기 �
 - 프로젝트 범위 Codex `.codex/config.toml`
 - 프로젝트 범위 Claude Code `.mcp.json`
 - Volicord 관리 `AGENTS.md` 지침 블록
-- `.volicord/policy.json` observe hook policy 파일
+- `.volicord/policy.json` detective host hook policy 파일
 - Codex `.codex/hooks.json` hook 설정과 `.codex/hooks/` 아래의 Volicord 관리 wrapper
   script
 - `.claude/settings.json` 안의 Volicord 관리 Claude Code hook 항목
 - `.claude/hooks/` 아래의 Volicord 관리 Claude Code hook wrapper script
 - `.claude/rules/` 아래의 Volicord 관리 Claude Code rule 파일
 
-Codex observe 설정에는 선택된 Product Repository가 Git work tree여야 합니다.
+Codex detective 설정에는 선택된 Product Repository가 Git work tree여야 합니다.
 생성된 hook이 호스트 session cwd에 의존하지 않고 프로젝트 root를 해석하기 위해서입니다.
-이 Git-root 요구사항은 Codex observe hook 경로 안전성에만 해당하며, 통합 파일을 Volicord
+이 Git-root 요구사항은 Codex detective host hook 경로 안전성에만 해당하며, 통합 파일을 Volicord
 런타임 상태로 만들거나 OS 수준 sandboxing을 추가하지 않습니다. `record` 설정은 Codex
-observe hook 설치를 요구하지 않습니다. Native Windows `record` 설정은 지원되지만,
-Windows host hook과 watcher 동작이 구현되고 테스트되기 전까지 native Windows observe
+detective host hook 설치를 요구하지 않습니다. Native Windows `record` 설정은 지원되지만,
+Windows host hook과 watcher 동작이 구현되고 테스트되기 전까지 native Windows detective
 설정은 거부됩니다.
 
 비대화형 shared-intent 호스트 설정 또는 지침 쓰기에는 [관리 CLI](admin-cli.md#noninteractive-approval-behavior)가 정의한 명시적 `--shared` 명령 경로가 필요합니다. 런타임 기록, SQLite 데이터베이스, 생성 기록, 로그, 상태 보기, QA 결과, 수락 기록, 닫기 준비 상태, 잔여 위험 기록은 `Product Repository`에 속하지 않습니다.
@@ -261,7 +261,7 @@ CLI](admin-cli.md)가 정의한 관리 결과 게이트가 필요합니다.
 - Product Repository가 없거나, 디렉터리가 아니거나, 요청한 프로젝트 범위 설정 또는 지침 쓰기에 필요한 쓰기가 불가능합니다.
 - shared-intent 호스트 설정이 미래의 호스트 환경의 `PATH`에서 `volicord mcp --stdio`를 시작할 수 없습니다.
 - 선택한 호스트 경로에 Codex 또는 Claude Code가 필요한데 관리 호환성 점검이 호스트를 시작하거나 해석할 수 없습니다.
-- Native Windows 설정에서 `--profile observe`를 요청합니다.
+- Native Windows 설정에서 `--profile detective`를 요청합니다.
 - 필요한 호스트 신뢰, 프로젝트 신뢰, 프로젝트 MCP 승인, OAuth, reload, restart, 또는 비슷한 호스트 소유 동작이 남아 있고 운영자가 이를 완료할 수 없습니다.
 - 계획한 환경이 이 저장소가 문서화하지 않는 패키지 관리자, Homebrew tap, 게시된 Docker registry image, 원격 호스트, 네트워크 리스너, 호스트 버전 약속에 의존합니다.
 

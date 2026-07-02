@@ -196,7 +196,7 @@ flowchart TD
 | CLI 아키텍처 | 이 페이지의 관리 설정 흐름, `crates/volicord-cli/src/main.rs`, `setup_command.rs`, `doctor_command.rs`, `connection_command.rs`, `project_context.rs`, `user_command.rs`, `host_integration/`. | [관리 CLI](../reference/admin-cli.md), [런타임 경계](../reference/runtime-boundaries.md), [Agent Connection](../reference/agent-connection.md). |
 | 쓰기 티켓 설계 | `crates/volicord-core/src/policy/write_ticket.rs`, `crates/volicord-core/src/methods/prepare_write.rs`, `crates/volicord-core/src/methods/record_run.rs`, Core와 conformance 묶음의 쓰기 티켓 테스트. | [Core 모델](../reference/core-model.md), [쓰기 준비 메서드](../reference/api/method-prepare-write.md), [실행 기록 메서드](../reference/api/method-record-run.md), [저장 효과](../reference/storage-effects.md). |
 | Judgment Inbox 설계 | `crates/volicord-core/src/methods/judgment.rs`, `crates/volicord-core/src/methods/mod.rs`의 대기 inbox 상태 보기 도우미, `crates/volicord-cli/src/user_command.rs`, MCP elicitation 또는 local web consent 모듈. | [관리 CLI](../reference/admin-cli.md#user-channel-commands), [Agent Connection](../reference/agent-connection.md), [판단 스키마](../reference/api/schema-judgment.md#judgmentinboxitem), [사용자 판단 요청 메서드](../reference/api/method-request-user-judgment.md#volicordrequest_user_judgment), [사용자 판단 기록 메서드](../reference/api/method-record-user-judgment.md#volicordrecord_user_judgment). |
-| Observe와 session-watch 설계 | `crates/volicord-cli/src/host_integration/`, `crates/volicord-cli/src/guard_command.rs`, session-watch 저장소 도우미, 닫기 준비 상태 policy 테스트. | [관리 CLI](../reference/admin-cli.md#guard-hook-commands), [저장소 기록](../reference/storage-records.md), [MCP 전송](../reference/mcp-transport.md), [보안](../reference/security.md). |
+| Detective와 session-watch 설계 | `crates/volicord-cli/src/host_integration/`, `crates/volicord-cli/src/guard_command.rs`, session-watch 저장소 도우미, 닫기 준비 상태 policy 테스트. | [관리 CLI](../reference/admin-cli.md#guard-hook-commands), [저장소 기록](../reference/storage-records.md), [MCP 전송](../reference/mcp-transport.md), [보안](../reference/security.md). |
 | 로컬 HTTP 설계 | `crates/volicord-mcp/src/local_http.rs`, `local_web_consent.rs`, `http.rs`. | [MCP 전송](../reference/mcp-transport.md), [관리 CLI](../reference/admin-cli.md), [보안](../reference/security.md). |
 
 이 지도는 소스 탐색을 위한 것입니다. 소스와 참조 문서가 어긋나 보이면 코드에서 새 제품
@@ -284,7 +284,7 @@ sequenceDiagram
 
 ## 관리 에이전트 설정 흐름
 
-`volicord init`, `volicord connect`, `volicord connection ...`은 공개 Core 메서드가 아니라 로컬 관리 오케스트레이션으로 구현됩니다. 구현은 `crates/volicord-cli/src/connection_command.rs`와 `crates/volicord-cli/src/host_integration/`의 호스트 어댑터에 있습니다. 정확한 명령, Agent Connection, MCP 전송, guard 통합, 런타임 경계 계약은 [관리 CLI](../reference/admin-cli.md), [MCP 전송](../reference/mcp-transport.md), [런타임 경계](../reference/runtime-boundaries.md), [보안](../reference/security.md)이 담당합니다.
+`volicord init`, `volicord connect`, `volicord connection ...`은 공개 Core 메서드가 아니라 로컬 관리 오케스트레이션으로 구현됩니다. 구현은 `crates/volicord-cli/src/connection_command.rs`와 `crates/volicord-cli/src/host_integration/`의 호스트 어댑터에 있습니다. 정확한 명령, Agent Connection, MCP 전송, host-hook 통합, 런타임 경계 계약은 [관리 CLI](../reference/admin-cli.md), [MCP 전송](../reference/mcp-transport.md), [런타임 경계](../reference/runtime-boundaries.md), [보안](../reference/security.md)이 담당합니다.
 
 이 설정 흐름은 로컬 관리 연결 설정이 따르는 순서를 보여 줍니다. 실선 화살표는 주요
 설정 순서를 보여 주고, 점선 화살표는 각 단계에서 가능한 실패 보고로 이어집니다.
@@ -303,7 +303,7 @@ flowchart TD
   connection["Agent Connection 인벤토리 등록 또는 재사용"]
   membership["Connection Project 멤버십 추가 또는 확인"]
   host["계획된 호스트 설정 적용"]
-  integration["init observe host-hook 파일 적용과 내부 guard 설치 기록"]
+  integration["init detective host-hook 파일 적용과 내부 host-hook 설치 기록"]
   verify["호스트 적용 뒤 검증 실행"]
   readiness["호스트 준비 상태와 관리 설정 확인"]
   preflight["해석된 Runtime Home으로 volicord mcp --check --connection 실행"]
@@ -336,7 +336,7 @@ flowchart TD
 
 dry-run이 아닌 실행은 먼저 선택된 Runtime Home을 초기화하거나 재사용한 뒤 선택된 프로젝트를 등록하거나 재사용합니다. 프로젝트가 registry 상태에서 사용할 수 있게 된 뒤 명령은 MCP 실행 파일을 해석하고, 연결 식별자를 도출하고, 호스트 설정 계획을 만들며, Agent Connection 행을 등록하거나 갱신하기 전에 호스트 계획 충돌을 거부합니다.
 
-호스트 계획이 받아들여지면 명령은 Agent Connection을 등록하거나 재사용하고, 단일 프로젝트 범위의 프로젝트 수 규칙을 적용하며, Connection Project 멤버십을 추가하거나 확인한 다음 계획된 호스트 설정을 적용합니다. `volicord init`은 Agent Connection과 프로젝트 멤버십이 존재한 뒤 담당자가 정의한 observe host-hook 파일도 적용하고 내부 guard 설치 상태를 기록합니다. `Product Repository` 지침이 있더라도 로컬 에이전트를 위한 조언 맥락으로 남습니다. 이 지침은 Core 메서드 권한과 별개입니다. 사용자 판단을 기록하지 않고 쓰기 티켓을 발급하지 않습니다.
+호스트 계획이 받아들여지면 명령은 Agent Connection을 등록하거나 재사용하고, 단일 프로젝트 범위의 프로젝트 수 규칙을 적용하며, Connection Project 멤버십을 추가하거나 확인한 다음 계획된 호스트 설정을 적용합니다. `volicord init`은 Agent Connection과 프로젝트 멤버십이 존재한 뒤 담당자가 정의한 detective host-hook 파일도 적용하고 내부 host-hook 설치 상태를 기록합니다. `Product Repository` 지침이 있더라도 로컬 에이전트를 위한 조언 맥락으로 남습니다. 이 지침은 Core 메서드 권한과 별개입니다. 사용자 판단을 기록하지 않고 쓰기 티켓을 발급하지 않습니다.
 
 검증은 호스트 설정이 적용된 뒤 실행됩니다. 호스트 어댑터를 통해 호스트 준비 상태와 관리 설정을 확인하고, 해석된 Runtime Home으로 `volicord mcp --check --connection <connection_id>`를 실행하며, 호스트 게이트가 handshake를 허용하고 사전 점검이 통과한 경우에만 직접 MCP stdio 초기화와 `tools/list` 발견을 수행합니다. 그런 다음 명령은 관리 CLI 구현이 정한 방식으로 결과 검증 상태를 기록하거나 보고합니다.
 

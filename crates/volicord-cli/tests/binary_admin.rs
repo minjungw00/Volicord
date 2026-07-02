@@ -50,7 +50,7 @@ fn binary_help_uses_agent_connection_model() -> Result<(), Box<dyn Error>> {
     assert!(text.contains("volicord init --host"));
     assert!(text.contains("volicord doctor"));
     assert!(text.contains("volicord export mcp-config"));
-    assert!(text.contains("volicord guard session-start"));
+    assert!(text.contains("volicord host-hook session-start"));
     assert!(text.contains("volicord connect [HOST]"));
     assert!(text.contains("volicord connections [--repo PATH]"));
     assert!(text.contains("volicord connection status [HOST]"));
@@ -70,7 +70,7 @@ fn binary_help_uses_agent_connection_model() -> Result<(), Box<dyn Error>> {
     assert_success(&init_help);
     let init_text = stdout(&init_help);
     assert!(init_text.contains("volicord init --host codex|claude-code --repo PATH"));
-    assert!(init_text.contains("--profile record|observe"));
+    assert!(init_text.contains("--profile record|detective"));
     assert!(init_text.contains("--home PATH"));
     assert!(init_text.contains("--mcp-command PATH"));
     assert!(init_text.contains("--dry-run"));
@@ -158,7 +158,7 @@ fn binary_help_options_match_supported_contracts() -> Result<(), Box<dyn Error>>
         ],
     )?;
     assert_help_options(
-        ["guard", "--help"],
+        ["host-hook", "--help"],
         &[
             "--file",
             "--repo",
@@ -444,7 +444,7 @@ fn init_codex_guarded_without_degraded_opt_in_generates_hooks() -> Result<(), Bo
             "--repo",
             path_text(&repo_root).as_str(),
             "--profile",
-            "observe",
+            "detective",
             "--json",
         ],
         &[("PATH", path_env(&[bin_dir.as_path()]))],
@@ -454,7 +454,7 @@ fn init_codex_guarded_without_degraded_opt_in_generates_hooks() -> Result<(), Bo
     let value = json_stdout(&output)?;
     assert_eq!(value["host"], "codex");
     assert_eq!(value["states"]["hook_config"], "created");
-    assert_eq!(value["states"]["required_guard_phases"], "configured");
+    assert_eq!(value["states"]["required_hook_phases"], "configured");
     assert_eq!(value["states"]["guard_installation"], "reload_required");
     assert_eq!(value["states"]["prompt_capture"], "reload_required");
     assert_eq!(value["hook_root_resolution"]["basis"], "git_work_tree");
@@ -474,7 +474,7 @@ fn init_codex_guarded_without_degraded_opt_in_generates_hooks() -> Result<(), Bo
     assert!(hooks.contains("post-tool"));
     assert!(hooks.contains("prompt-capture"));
     assert!(hooks.contains("stop"));
-    assert!(!hooks.contains("volicord guard "));
+    assert!(!hooks.contains("volicord host-hook "));
     assert!(hooks.contains(
         "Bash|apply_patch|Edit|Write|mcp__.*__(write|edit|create|update|delete|remove|move|patch).*"
     ));
@@ -483,7 +483,7 @@ fn init_codex_guarded_without_degraded_opt_in_generates_hooks() -> Result<(), Bo
     assert!(is_executable(&dispatch)?);
     let wrapper = repo_root.join(".codex/hooks/volicord-pre-tool.sh");
     let wrapper_text = fs::read_to_string(&wrapper)?;
-    assert!(wrapper_text.contains("exec volicord guard pre-tool"));
+    assert!(wrapper_text.contains("exec volicord host-hook pre-tool"));
     assert!(wrapper_text.contains(&format!("--connection {connection_id}")));
     assert!(wrapper_text.contains("--guard-installation"));
     assert!(wrapper_text.contains("--host codex"));
@@ -513,7 +513,7 @@ fn init_claude_code_guarded_without_degraded_opt_in_generates_hooks() -> Result<
             "--repo",
             path_text(&repo_root).as_str(),
             "--profile",
-            "observe",
+            "detective",
             "--json",
         ],
         &[("PATH", path_env(&[bin_dir.as_path()]))],
@@ -541,13 +541,13 @@ fn init_claude_code_guarded_without_degraded_opt_in_generates_hooks() -> Result<
     assert!(settings.contains("${CLAUDE_PROJECT_DIR}/.claude/hooks/volicord-stop.sh"));
     assert!(!settings.contains("\"command\": \".claude/hooks/"));
     assert!(settings.contains("\"args\": []"));
-    assert!(!settings.contains("volicord guard "));
+    assert!(!settings.contains("volicord host-hook "));
     assert!(settings.contains(
         "Bash|Edit|Write|MultiEdit|mcp__.*__(write|edit|create|update|delete|remove|move|patch).*"
     ));
     let wrapper = repo_root.join(".claude/hooks/volicord-pre-tool.sh");
     let wrapper_text = fs::read_to_string(&wrapper)?;
-    assert!(wrapper_text.contains("exec volicord guard pre-tool"));
+    assert!(wrapper_text.contains("exec volicord host-hook pre-tool"));
     assert!(wrapper_text.contains("--host claude-code"));
     assert!(wrapper_text.contains("--policy-hash"));
     assert!(wrapper_text.contains("--host-output claude-code"));
@@ -577,7 +577,7 @@ fn init_codex_guarded_hook_command_runs_from_subdirectory_with_spaces() -> Resul
             "--repo",
             path_text(&repo_root).as_str(),
             "--profile",
-            "observe",
+            "detective",
             "--json",
         ],
         &[
@@ -603,7 +603,7 @@ fn init_codex_guarded_hook_command_runs_from_subdirectory_with_spaces() -> Resul
     assert!(command.contains("git rev-parse --show-toplevel"));
     assert!(command.contains(".codex/hooks/volicord-dispatch.sh"));
     assert!(command.contains("pre-tool"));
-    assert!(!command.contains("volicord guard "));
+    assert!(!command.contains("volicord host-hook "));
 
     let event_id = "generated_codex_pre_tool_from_src";
     let event = pre_tool_write_event(event_id);
@@ -618,7 +618,7 @@ fn init_codex_guarded_hook_command_runs_from_subdirectory_with_spaces() -> Resul
     assert_eq!(value["hookSpecificOutput"]["hookEventName"], "PreToolUse");
 
     let stored = guard_event(runtime_home.path(), project_id, event_id)?
-        .expect("generated Codex hook command should invoke volicord guard");
+        .expect("generated Codex hook command should invoke volicord host-hook");
     assert_eq!(stored.connection_internal_id, connection_id);
     assert_eq!(stored.decision, "deny");
     let installations =
@@ -652,7 +652,7 @@ fn init_claude_code_guarded_hook_command_runs_from_subdirectory_with_spaces(
             "--repo",
             path_text(&repo_root).as_str(),
             "--profile",
-            "observe",
+            "detective",
             "--json",
         ],
         &[
@@ -707,7 +707,7 @@ fn init_claude_code_guarded_hook_command_runs_from_subdirectory_with_spaces(
     assert_eq!(value["hookSpecificOutput"]["hookEventName"], "PreToolUse");
 
     let stored = guard_event(runtime_home.path(), project_id, event_id)?
-        .expect("generated Claude Code hook command should invoke volicord guard");
+        .expect("generated Claude Code hook command should invoke volicord host-hook");
     assert_eq!(stored.connection_internal_id, connection_id);
     assert_eq!(stored.decision, "deny");
     let installations =
@@ -740,7 +740,7 @@ fn connection_status_downgrades_relative_codex_hook_command() -> Result<(), Box<
             "--repo",
             path_text(&repo_root).as_str(),
             "--profile",
-            "observe",
+            "detective",
             "--json",
         ],
         &[
@@ -782,7 +782,10 @@ fn connection_status_downgrades_relative_codex_hook_command() -> Result<(), Box<
     )?;
     assert_success(&active_status);
     let active_status_json = json_stdout(&active_status)?;
-    assert_eq!(active_status_json["states"]["selected_profile"], "observe");
+    assert_eq!(
+        active_status_json["states"]["selected_profile"],
+        "detective"
+    );
     assert_eq!(
         active_status_json["states"]["control_surface"]["host_hooks_active"],
         true
@@ -822,12 +825,12 @@ fn connection_status_downgrades_relative_codex_hook_command() -> Result<(), Box<
     );
     assert_eq!(value["states"]["control_surface"]["os_enforced"], false);
     assert_eq!(value["primary_next_action"]["id"], "guard_hook_path_safety");
-    assert!(value["guard"]["stale_files"]
+    assert!(value["host_hook"]["stale_files"]
         .as_array()
         .expect("stale_files should be an array")
         .iter()
         .any(|path| path == &path_text(&hooks_path)));
-    assert!(value["guard"]["hook_path_safety_details"]
+    assert!(value["host_hook"]["hook_path_safety_details"]
         .as_array()
         .expect("hook path details should be an array")
         .iter()
@@ -881,7 +884,7 @@ fn init_codex_record_profile_skips_host_hooks() -> Result<(), Box<dyn Error>> {
     assert_eq!(value["states"]["control_surface"]["os_enforced"], false);
     assert_eq!(value["states"]["hook_config"], "disabled");
     assert_eq!(value["states"]["rule_instruction_config"], "not_applicable");
-    assert_eq!(value["states"]["required_guard_phases"], "disabled");
+    assert_eq!(value["states"]["required_hook_phases"], "disabled");
     assert_eq!(value["states"]["prompt_capture"], "not_configured");
     assert_eq!(value["states"]["guard_effective"], "inactive");
     assert_eq!(
@@ -921,7 +924,7 @@ fn init_codex_record_profile_skips_host_hooks() -> Result<(), Box<dyn Error>> {
 #[test]
 fn init_codex_record_profile_succeeds_without_host_hooks_or_watcher() -> Result<(), Box<dyn Error>>
 {
-    let runtime_home = TempRuntimeHome::new("cli-bin-init-record-without-observe-prereqs")?;
+    let runtime_home = TempRuntimeHome::new("cli-bin-init-record-without-detective-prereqs")?;
     let repo_root = create_git_repo(&runtime_home, "product-repo")?;
     let bin_dir = runtime_home.path().join("bin");
     write_fake_codex(&bin_dir)?;
@@ -958,8 +961,9 @@ fn init_codex_record_profile_succeeds_without_host_hooks_or_watcher() -> Result<
 
 #[cfg(unix)]
 #[test]
-fn init_codex_observe_profile_fails_without_observe_prerequisites() -> Result<(), Box<dyn Error>> {
-    let runtime_home = TempRuntimeHome::new("cli-bin-init-observe-missing-prereqs")?;
+fn init_codex_detective_profile_fails_without_observe_prerequisites() -> Result<(), Box<dyn Error>>
+{
+    let runtime_home = TempRuntimeHome::new("cli-bin-init-detective-missing-prereqs")?;
     let repo_root = create_git_repo(&runtime_home, "product-repo")?;
     let unsupported_runtime_home = repo_root.join(".volicord-runtime");
     let bin_dir = runtime_home.path().join("bin");
@@ -975,7 +979,7 @@ fn init_codex_observe_profile_fails_without_observe_prerequisites() -> Result<()
             "--repo",
             path_text(&repo_root).as_str(),
             "--profile",
-            "observe",
+            "detective",
             "--home",
             path_text(&unsupported_runtime_home).as_str(),
             "--json",
@@ -988,7 +992,7 @@ fn init_codex_observe_profile_fails_without_observe_prerequisites() -> Result<()
 
     assert!(!output.status.success());
     let diagnostic = stderr(&output);
-    assert!(diagnostic.contains("OBSERVE_WATCHER_UNSUPPORTED"));
+    assert!(diagnostic.contains("DETECTIVE_WATCHER_UNSUPPORTED"));
     assert!(diagnostic.contains("--profile record"));
     assert!(diagnostic.contains("supported host"));
     assert!(diagnostic.contains("repository configuration"));
@@ -1021,7 +1025,7 @@ fn init_rejects_invalid_profile_without_artifacts() -> Result<(), Box<dyn Error>
 
     assert!(!output.status.success());
     assert!(stderr(&output).contains("unknown integration profile"));
-    assert!(stderr(&output).contains("record or observe"));
+    assert!(stderr(&output).contains("record or detective"));
     assert!(!repo_root.join(".codex/hooks.json").exists());
     assert!(!repo_root.join(".volicord/policy.json").exists());
     assert!(!repo_root.join("AGENTS.md").exists());
@@ -1046,7 +1050,7 @@ fn init_dry_run_does_not_write_runtime_or_repo_files() -> Result<(), Box<dyn Err
             "--repo",
             path_text(&repo_root).as_str(),
             "--profile",
-            "observe",
+            "detective",
             "--dry-run",
             "--json",
         ],
@@ -1058,7 +1062,7 @@ fn init_dry_run_does_not_write_runtime_or_repo_files() -> Result<(), Box<dyn Err
     assert_eq!(value["action"], "init");
     assert_eq!(value["status"], "dry_run");
     assert_eq!(value["host"], "codex");
-    assert_eq!(value["selected_profile"], "observe");
+    assert_eq!(value["selected_profile"], "detective");
     assert_eq!(value["profile"]["status"], "planned");
     assert_eq!(value["mcp"]["command"], "volicord");
     assert_eq!(value["mcp"]["args"][0], "mcp");
@@ -1130,7 +1134,7 @@ fn init_codex_guarded_rejects_unmanaged_hook_config() -> Result<(), Box<dyn Erro
             "--repo",
             path_text(&repo_root).as_str(),
             "--profile",
-            "observe",
+            "detective",
             "--json",
         ],
         &[("PATH", path_env(&[bin_dir.as_path()]))],
@@ -1173,7 +1177,7 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
             "--repo",
             path_text(&repo_root).as_str(),
             "--profile",
-            "observe",
+            "detective",
             "--json",
         ],
         &[
@@ -1187,12 +1191,12 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     assert_eq!(value["action"], "init");
     assert_eq!(value["host"], "codex");
     assert_eq!(value["status"], "action_required");
-    assert_eq!(value["selected_profile"], "observe");
+    assert_eq!(value["selected_profile"], "detective");
     assert_eq!(value["states"]["runtime_home"], "ready");
     assert_eq!(value["states"]["project_registration"], "registered");
     assert_eq!(value["states"]["mcp_config"], "match");
     assert_eq!(value["states"]["guard_installation"], "reload_required");
-    assert_eq!(value["states"]["selected_profile"], "observe");
+    assert_eq!(value["states"]["selected_profile"], "detective");
     assert_eq!(
         value["states"]["control_surface"]["host_hooks_active"],
         false
@@ -1213,7 +1217,7 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     assert_eq!(value["states"]["volicord_policy_file"], "created");
     assert_eq!(value["states"]["rule_instruction_config"], "created");
     assert_eq!(value["states"]["hook_config"], "created");
-    assert_eq!(value["states"]["required_guard_phases"], "configured");
+    assert_eq!(value["states"]["required_hook_phases"], "configured");
     assert_eq!(value["states"]["guard_observed"], false);
     assert_eq!(value["states"]["prompt_capture"], "reload_required");
     assert_eq!(value["states"]["host_reload_required"], true);
@@ -1257,7 +1261,7 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
             "--repo",
             path_text(&repo_root).as_str(),
             "--profile",
-            "observe",
+            "detective",
         ],
         &[
             ("PATH", path_env(&[bin_dir.as_path()])),
@@ -1269,8 +1273,8 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     assert!(init_text.contains("Volicord init action_required"));
     assert!(init_text.contains("connection_state: action_required"));
     assert!(init_text.contains("mcp_config_state: match"));
-    assert!(init_text.contains("observe_installation_state: configured"));
-    assert!(init_text.contains("selected_profile: observe"));
+    assert!(init_text.contains("detective_installation_state: configured"));
+    assert!(init_text.contains("selected_profile: detective"));
     assert!(init_text.contains("cooperative_pre_tool_denial=no"));
     assert!(init_text.contains("post_tool_correlation=no"));
     assert!(init_text.contains("os_enforced=no"));
@@ -1279,7 +1283,7 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     assert!(init_text.contains("rule_instruction_config_state: unchanged"));
     assert!(init_text.contains("hook_config_state: unchanged"));
     assert!(init_text.contains("required_hook_phases_state: configured"));
-    assert!(init_text.contains("observe_hook_observed: no"));
+    assert!(init_text.contains("detective_hook_observed: no"));
     assert!(init_text.contains("prompt_capture_state: configured"));
     assert!(init_text.contains("host_reload_required: yes"));
     assert!(init_text.contains("next_action: Restart or reload codex"));
@@ -1357,7 +1361,7 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     assert!(hooks.contains("post-tool"));
     assert!(hooks.contains("prompt-capture"));
     assert!(hooks.contains("stop"));
-    assert!(!hooks.contains("volicord guard "));
+    assert!(!hooks.contains("volicord host-hook "));
     assert!(hooks.contains(
         "Bash|apply_patch|Edit|Write|mcp__.*__(write|edit|create|update|delete|remove|move|patch).*"
     ));
@@ -1386,7 +1390,7 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     assert_eq!(policy["schema"], "volicord-policy-v1");
     assert_eq!(policy["managed_by"], "volicord");
     assert_eq!(policy["host"], "codex");
-    assert_eq!(policy["selected_profile"], "observe");
+    assert_eq!(policy["selected_profile"], "detective");
     assert_eq!(policy["mcp"]["command"], "volicord");
     assert_eq!(
         policy["mcp"]["args"],
@@ -1399,20 +1403,23 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
             project_id
         ])
     );
-    assert_eq!(policy["guard"]["enabled"], true);
+    assert_eq!(policy["host_hook"]["enabled"], true);
     assert_guard_policy_invokes_required_phases(&policy, &connection_id);
     assert_eq!(
-        policy["guard"]["commands"]["pre_tool"]["command"],
+        policy["host_hook"]["commands"]["pre_tool"]["command"],
         "volicord"
     );
-    assert_eq!(policy["guard"]["commands"]["pre_tool"]["args"][0], "guard");
     assert_eq!(
-        policy["guard"]["commands"]["pre_tool"]["args"][1],
+        policy["host_hook"]["commands"]["pre_tool"]["args"][0],
+        "host-hook"
+    );
+    assert_eq!(
+        policy["host_hook"]["commands"]["pre_tool"]["args"][1],
         "pre-tool"
     );
-    assert!(policy["guard"]["commands"]["pre_tool"]["args"]
+    assert!(policy["host_hook"]["commands"]["pre_tool"]["args"]
         .as_array()
-        .expect("guard args should be an array")
+        .expect("host-hook args should be an array")
         .windows(2)
         .any(|pair| pair[0] == "--connection" && pair[1] == connection_id));
 
@@ -1423,16 +1430,16 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     )?;
     assert_eq!(guard_installations.len(), 1);
     assert_eq!(guard_installations[0].host_kind, "codex");
-    assert_eq!(guard_installations[0].guard_mode, "observe");
+    assert_eq!(guard_installations[0].guard_mode, "detective");
     assert_eq!(guard_installations[0].installation_status, "configured");
     let capability: Value = serde_json::from_str(&guard_installations[0].host_capability_json)?;
-    assert_eq!(capability["schema"], "volicord-guard-capability-v1");
+    assert_eq!(capability["schema"], "volicord-host-hook-capability-v1");
     assert_eq!(
         capability["policy_hash"],
         value["guard_installation"]["policy_hash"]
     );
     assert_eq!(capability["prompt_capture"], true);
-    assert_eq!(capability["selected_profile"], "observe");
+    assert_eq!(capability["selected_profile"], "detective");
     assert_eq!(capability["native_host_output_adapter"], "codex");
     assert_eq!(capability["native_host_output_adapter_verified"], true);
     assert_eq!(capability["bash_shell_mutation_coverage"], true);
@@ -1445,7 +1452,7 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     );
     assert!(capability["commands"]["pre_tool"]["args"]
         .as_array()
-        .expect("capability guard args should be an array")
+        .expect("capability host-hook args should be an array")
         .windows(2)
         .any(|pair| pair[0] == "--host-output" && pair[1] == "codex"));
     let dispatch_path = repo_root.join(".codex/hooks/volicord-dispatch.sh");
@@ -1457,11 +1464,11 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     assert!(is_executable(&dispatch_path)?);
     let wrapper_path = repo_root.join(".codex/hooks/volicord-pre-tool.sh");
     let wrapper = fs::read_to_string(&wrapper_path)?;
-    assert!(wrapper.contains("exec volicord guard pre-tool"));
+    assert!(wrapper.contains("exec volicord host-hook pre-tool"));
     assert!(wrapper.contains(&format!("--connection {connection_id}")));
     assert!(wrapper.contains("--guard-installation"));
     assert!(wrapper.contains("--host codex"));
-    assert!(wrapper.contains("--integration-profile observe"));
+    assert!(wrapper.contains("--integration-profile detective"));
     assert!(wrapper.contains("--policy-hash"));
     assert!(wrapper.contains(
         capability["policy_hash"]
@@ -1495,7 +1502,7 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
         .find(|check| check["id"] == "registry_counts")
         .expect("doctor should report registry counts");
     assert_eq!(registry_counts["details"]["guard_installations"], 1);
-    assert_eq!(doctor_json["states"]["selected_profile"], "observe");
+    assert_eq!(doctor_json["states"]["selected_profile"], "detective");
     assert_eq!(
         doctor_json["states"]["control_surface"]["host_hooks_active"],
         false
@@ -1521,7 +1528,7 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
         "installed"
     );
     assert_eq!(doctor_json["states"]["hook_config"], "installed");
-    assert_eq!(doctor_json["states"]["required_guard_phases"], "configured");
+    assert_eq!(doctor_json["states"]["required_hook_phases"], "configured");
     assert_eq!(
         doctor_json["states"]["prompt_capture"],
         "action_recommended"
@@ -1540,7 +1547,7 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
             "--repo",
             path_text(&repo_root).as_str(),
             "--profile",
-            "observe",
+            "detective",
             "--json",
         ],
         &[
@@ -1592,7 +1599,7 @@ fn init_claude_code_guarded_writes_project_mcp_policy_and_rule() -> Result<(), B
             "--repo",
             path_text(&repo_root).as_str(),
             "--profile",
-            "observe",
+            "detective",
             "--json",
         ],
         &[
@@ -1605,7 +1612,7 @@ fn init_claude_code_guarded_writes_project_mcp_policy_and_rule() -> Result<(), B
     let value = json_stdout(&output)?;
     assert_eq!(value["action"], "init");
     assert_eq!(value["host"], "claude-code");
-    assert_eq!(value["selected_profile"], "observe");
+    assert_eq!(value["selected_profile"], "detective");
     assert_eq!(value["states"]["guard_installation"], "reload_required");
     assert_eq!(value["states"]["prompt_capture"], "reload_required");
     assert_eq!(value["mcp"]["command"], "volicord");
@@ -1636,10 +1643,10 @@ fn init_claude_code_guarded_writes_project_mcp_policy_and_rule() -> Result<(), B
         repo_root.join(".volicord/policy.json"),
     )?)?;
     assert_eq!(policy["host"], "claude-code");
-    assert_eq!(policy["guard"]["enabled"], true);
+    assert_eq!(policy["host_hook"]["enabled"], true);
     assert_guard_policy_invokes_required_phases(&policy, connection_id);
     assert_eq!(
-        policy["guard"]["commands"]["session_start"]["command"],
+        policy["host_hook"]["commands"]["session_start"]["command"],
         "volicord"
     );
     let settings = fs::read_to_string(repo_root.join(".claude/settings.json"))?;
@@ -1650,14 +1657,14 @@ fn init_claude_code_guarded_writes_project_mcp_policy_and_rule() -> Result<(), B
     assert!(settings.contains("${CLAUDE_PROJECT_DIR}/.claude/hooks/volicord-stop.sh"));
     assert!(!settings.contains("\"command\": \".claude/hooks/"));
     assert!(settings.contains("\"args\": []"));
-    assert!(!settings.contains("volicord guard "));
+    assert!(!settings.contains("volicord host-hook "));
     assert!(settings.contains(
         "\"matcher\": \"Bash|Edit|Write|MultiEdit|mcp__.*__(write|edit|create|update|delete|remove|move|patch).*\""
     ));
     assert!(repo_root.join(".claude/rules/volicord.md").exists());
     let rule = fs::read_to_string(repo_root.join(".claude/rules/volicord.md"))?;
     assert!(rule.contains(".volicord/policy.json"));
-    assert!(rule.contains("Configured local observe hook commands"));
+    assert!(rule.contains("Configured local detective host-hook commands"));
     assert!(rule.contains(".claude/hooks/volicord-session-start.sh"));
     assert!(rule.contains(".claude/hooks/volicord-pre-tool.sh"));
     assert!(rule.contains(".claude/hooks/volicord-prompt-capture.sh"));
@@ -1670,7 +1677,7 @@ fn init_claude_code_guarded_writes_project_mcp_policy_and_rule() -> Result<(), B
     )?;
     assert_eq!(guard_installations.len(), 1);
     assert_eq!(guard_installations[0].host_kind, "claude_code");
-    assert_eq!(guard_installations[0].guard_mode, "observe");
+    assert_eq!(guard_installations[0].guard_mode, "detective");
     assert_eq!(
         guard_installations[0].installation_status,
         "reload_required"
@@ -1693,11 +1700,11 @@ fn init_claude_code_guarded_writes_project_mcp_policy_and_rule() -> Result<(), B
             && file["managed_projection"] == "claude_code_settings_hooks"));
     let wrapper_path = repo_root.join(".claude/hooks/volicord-pre-tool.sh");
     let wrapper = fs::read_to_string(&wrapper_path)?;
-    assert!(wrapper.contains("exec volicord guard pre-tool"));
+    assert!(wrapper.contains("exec volicord host-hook pre-tool"));
     assert!(wrapper.contains(&format!("--connection {connection_id}")));
     assert!(wrapper.contains("--guard-installation"));
     assert!(wrapper.contains("--host claude-code"));
-    assert!(wrapper.contains("--integration-profile observe"));
+    assert!(wrapper.contains("--integration-profile detective"));
     assert!(wrapper.contains("--policy-hash"));
     assert!(wrapper.contains(
         capability["policy_hash"]
@@ -2107,7 +2114,7 @@ fn connection_verify_reports_missing_mcp_config_as_primary_action() -> Result<()
             "--repo",
             path_text(&repo_root).as_str(),
             "--profile",
-            "observe",
+            "detective",
             "--json",
         ],
         &[
@@ -2171,7 +2178,7 @@ fn connection_verify_fails_when_workflow_reconcile_changes_tool_is_missing(
             "--repo",
             path_text(&repo_root).as_str(),
             "--profile",
-            "observe",
+            "detective",
             "--json",
         ],
         &[
@@ -2234,7 +2241,7 @@ fn connection_status_reports_missing_guard_files_as_primary_action() -> Result<(
             "--repo",
             path_text(&repo_root).as_str(),
             "--profile",
-            "observe",
+            "detective",
             "--json",
         ],
         &[
@@ -2264,7 +2271,7 @@ fn connection_status_reports_missing_guard_files_as_primary_action() -> Result<(
     assert_eq!(value["states"]["guard_installation"], "files_missing");
     assert_eq!(value["states"]["prompt_capture"], "not_configured");
     assert_eq!(value["primary_next_action"]["id"], "guard_files_missing");
-    assert!(value["guard"]["missing_files"]
+    assert!(value["host_hook"]["missing_files"]
         .as_array()
         .expect("missing_files should be an array")
         .iter()
@@ -2290,7 +2297,7 @@ fn connection_status_reports_stale_guard_files_as_primary_action() -> Result<(),
             "--repo",
             path_text(&repo_root).as_str(),
             "--profile",
-            "observe",
+            "detective",
             "--json",
         ],
         &[
@@ -2327,7 +2334,7 @@ fn connection_status_reports_stale_guard_files_as_primary_action() -> Result<(),
     let value = json_stdout(&status)?;
     assert_eq!(value["states"]["guard_installation"], "stale");
     assert_eq!(value["primary_next_action"]["id"], "guard_files_stale");
-    assert!(value["guard"]["stale_files"]
+    assert!(value["host_hook"]["stale_files"]
         .as_array()
         .expect("stale_files should be an array")
         .iter()
@@ -3435,9 +3442,9 @@ fn assert_host_native_pre_tool_deny_output(output: &Output) -> Result<Value, Box
 
 #[cfg(unix)]
 fn assert_guard_policy_invokes_required_phases(policy: &Value, connection_id: &str) {
-    let commands = policy["guard"]["commands"]
+    let commands = policy["host_hook"]["commands"]
         .as_object()
-        .expect("guard commands should be an object");
+        .expect("host-hook commands should be an object");
     let phases = [
         ("session_start", "session-start"),
         ("pre_tool", "pre-tool"),
@@ -3448,24 +3455,24 @@ fn assert_guard_policy_invokes_required_phases(policy: &Value, connection_id: &s
     assert_eq!(
         commands.len(),
         phases.len(),
-        "policy should define exactly the required guard phase commands"
+        "policy should define exactly the required host-hook phase commands"
     );
 
     for (policy_key, command_name) in phases {
         let command = commands
             .get(policy_key)
-            .unwrap_or_else(|| panic!("missing guard command for {policy_key}"));
+            .unwrap_or_else(|| panic!("missing host-hook command for {policy_key}"));
         assert_eq!(command["command"], "volicord");
         let args = command["args"]
             .as_array()
-            .expect("guard command args should be an array");
-        assert_eq!(args.first().and_then(Value::as_str), Some("guard"));
+            .expect("host-hook command args should be an array");
+        assert_eq!(args.first().and_then(Value::as_str), Some("host-hook"));
         assert_eq!(args.get(1).and_then(Value::as_str), Some(command_name));
         assert!(arg_pair(args, "--connection", connection_id));
         let host_output = match policy["host"].as_str() {
             Some("codex") => "codex",
             Some("claude-code") => "claude-code",
-            other => panic!("unexpected guard policy host: {other:?}"),
+            other => panic!("unexpected host-hook policy host: {other:?}"),
         };
         assert!(arg_pair(args, "--host-output", host_output));
     }

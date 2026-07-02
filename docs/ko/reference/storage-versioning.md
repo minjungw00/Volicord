@@ -4,7 +4,7 @@
 
 ## 저장소 프로필
 
-현재 기준 저장소 프로필은 `baseline_sqlite_v3`입니다.
+현재 기준 저장소는 `baseline_sqlite_v3`입니다.
 
 Registry 저장소와 project-state 저장소는 각각 migration ledger 행을 기록합니다. 데이터베이스는 schema version, migration name, database kind, storage profile이 컴파일된 기준과 일치할 때만 current입니다. 알 수 없는 더 최신 version, 누락된 migration 행, 부분 ledger, migration name mismatch, storage-profile mismatch는 storage/runtime unavailable 조건입니다. Store 코드는 기록 의미를 추측하거나, 데이터를 조용히 다시 쓰거나, 지원되지 않는 profile을 변환하면 안 됩니다.
 

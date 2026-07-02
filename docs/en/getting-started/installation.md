@@ -118,10 +118,10 @@ For the ordinary first repository connection, continue with
 [Quickstart](quickstart.md). `volicord init` can initialize the Runtime Home and
 installation profile while it connects the selected Product Repository, writes
 project-scoped MCP configuration, and records integration status.
-Observe setup has the verified host-hook and session watcher requirements
+Detective setup has the verified host-hook and session watcher requirements
 described in the
 [Administrative CLI Reference](../reference/admin-cli.md#agent-host-setup-and-init).
-On native Windows, use `--profile record`; `--profile observe` fails with an
+On native Windows, use `--profile record`; `--profile detective` fails with an
 unsupported-platform diagnostic until Windows host hooks and watcher behavior
 are implemented and tested.
 
@@ -259,7 +259,7 @@ docker run --rm -it \
 
 For record-profile setup in Docker, run
 `volicord init --host HOST --repo /workspace --profile record` with the same
-mounts. Observe Docker setup has the same verified host-hook and session
+mounts. Detective Docker setup has the same verified host-hook and session
 watcher requirements as non-container setup. After the Runtime Home contains
 the project registration and Agent Connection you want to serve, for example
 from that matching `volicord init` run or a lower-level `volicord connect` run,
@@ -305,9 +305,9 @@ volicord init --host codex --repo /path/to/your-product-repo --profile record
 ```
 
 `/path/to/your-product-repo` is an example path for the Product Repository where
-you want the agent to work. Use `--profile observe` only when the selected host,
-platform, and repository configuration satisfy the verified observe
-prerequisites; native Windows uses `--profile record` because observe is not
+you want the agent to work. Use `--profile detective` only when the selected host,
+platform, and repository configuration satisfy the verified detective
+prerequisites; native Windows uses `--profile record` because detective is not
 supported there.
 
 For the full first-run path, continue with the [Quickstart](quickstart.md). For
