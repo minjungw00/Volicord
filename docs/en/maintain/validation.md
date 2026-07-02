@@ -73,8 +73,9 @@ read-only and verifies the machine-checkable shape:
   MCP process bindings, and diagnostics.
 - `docs/terminology-map.yaml` primary-owner and related-reference paths exist
   and are represented in `doc-index.yaml`.
-- README, route-page, Reference, Development, `AGENTS.md`, and terminology
-  links do not point to retired documentation paths.
+- Public-output source avoids unqualified broad security words that would
+  overstate Volicord guarantees; exact security guarantee meaning remains with
+  the Security and brand-claim owners.
 
 After automated structural validation, manually confirm repository hygiene:
 

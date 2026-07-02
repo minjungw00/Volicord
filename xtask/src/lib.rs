@@ -87,7 +87,6 @@ const PAIRED_ALLOWED: &[&str] = &[
     "canonical_for",
     "depends_on",
 ];
-const LEGACY_FIELDS: &[&str] = &["role", "owner_for", "not_owner_for", "audience"];
 const KINDS: &[&str] = &[
     "landing",
     "tutorial",
@@ -116,13 +115,6 @@ const REQUIRED_SHARED_PATHS: &[&str] = &[
     "docs/README.md",
     "docs/doc-index.yaml",
     "docs/terminology-map.yaml",
-];
-const RETIRED_EXACT_PATHS: &[&str] = &["docs/en/start.md", "docs/ko/start.md"];
-const RETIRED_PREFIXES: &[&str] = &[
-    "docs/en/use/",
-    "docs/ko/use/",
-    "docs/en/build/",
-    "docs/ko/build/",
 ];
 const PUBLIC_LANGUAGE_SOURCE_PATHS: &[&str] = &[
     "crates/volicord-cli/src/connection_command.rs",
@@ -365,7 +357,6 @@ pub fn run_docs_check(root: &Path) -> Result<CheckReport> {
         validate_markdown_links(&root, index, &mut errors);
         validate_bilingual_link_parity(&root, index, &mut errors);
         validate_terminology_paths(&root, index, &mut errors);
-        validate_retired_paths(&root, index, &mut errors);
         validate_volicord_command_examples(&root, index, &mut errors);
     }
     validate_public_language_claims(&root, &mut errors);
@@ -699,13 +690,6 @@ fn validate_entries(
         }
 
         for field in entry.keys().filter_map(Value::as_str) {
-            if LEGACY_FIELDS.contains(&field) {
-                errors.push(ValidationError::new(
-                    DOC_INDEX_PATH,
-                    "metadata.legacy_field",
-                    format!("{label} uses retired version 1 field {field}"),
-                ));
-            }
             if !allowed.contains(&field) {
                 errors.push(ValidationError::new(
                     DOC_INDEX_PATH,
@@ -1212,16 +1196,6 @@ fn validate_markdown_links(root: &Path, index: &DocIndex, errors: &mut Vec<Valid
         for link in markdown_links(&contents) {
             if is_ignored_link(&link) {
                 continue;
-            }
-            if let Some(retired_path) = resolve_link_target(root, path, &link)
-                .ok()
-                .and_then(|resolved| retired_match(&resolved.path))
-            {
-                errors.push(ValidationError::new(
-                    path,
-                    "retired_path.reference",
-                    format!("link {link} points to retired documentation path {retired_path}"),
-                ));
             }
             if let Err(failure) = validate_local_target(root, path, &link, &mut cache) {
                 errors.push(ValidationError::new(
@@ -1988,84 +1962,6 @@ fn validate_terminology_target(
         }
     }
     Ok(())
-}
-
-fn validate_retired_paths(root: &Path, index: &DocIndex, errors: &mut Vec<ValidationError>) {
-    for path in index
-        .indexed_paths
-        .iter()
-        .filter(|path| path.ends_with(".md") || path.ends_with(".yaml") || path.ends_with(".yml"))
-    {
-        if path.ends_with(".md") {
-            let contents = match fs::read_to_string(root.join(path)) {
-                Ok(contents) => contents,
-                Err(_) => continue,
-            };
-            for reference in markdown_retired_references(root, path, &contents) {
-                errors.push(ValidationError::new(
-                    path,
-                    "retired_path.reference",
-                    format!("references retired documentation path {reference}"),
-                ));
-            }
-        } else {
-            let contents = match fs::read_to_string(root.join(path)) {
-                Ok(contents) => contents,
-                Err(_) => continue,
-            };
-            let value: Value = match serde_yaml::from_str(&contents) {
-                Ok(value) => value,
-                Err(_) => continue,
-            };
-            let mut mentions = BTreeSet::new();
-            collect_yaml_path_mentions(&value, &mut mentions);
-            for mention in mentions {
-                let resolved = normalize_path(&PathBuf::from(split_link(&mention).0));
-                let reference = path_to_slash(&resolved);
-                if let Some(retired) = retired_match(&reference) {
-                    errors.push(ValidationError::new(
-                        path,
-                        "retired_path.reference",
-                        format!("references retired documentation path {retired}"),
-                    ));
-                }
-            }
-        }
-    }
-}
-
-fn markdown_retired_references(root: &Path, source: &str, contents: &str) -> BTreeSet<String> {
-    let mut references = BTreeSet::new();
-    let mut in_code_block = false;
-
-    for event in Parser::new_ext(contents, markdown_options()) {
-        match event {
-            Event::Start(Tag::CodeBlock(_)) => in_code_block = true,
-            Event::End(TagEnd::CodeBlock) => in_code_block = false,
-            Event::Start(Tag::Link { dest_url, .. })
-            | Event::Start(Tag::Image { dest_url, .. }) => {
-                if !is_ignored_link(&dest_url) {
-                    if let Ok(resolved) = resolve_link_target(root, source, &dest_url) {
-                        if let Some(retired) = retired_match(&resolved.path) {
-                            references.insert(retired);
-                        }
-                    }
-                }
-            }
-            Event::Text(text) | Event::Html(text) | Event::InlineHtml(text) if !in_code_block => {
-                for mention in path_mentions_in_text(&text) {
-                    let resolved = normalize_path(&PathBuf::from(split_link(&mention).0));
-                    let reference = path_to_slash(&resolved);
-                    if let Some(retired) = retired_match(&reference) {
-                        references.insert(retired);
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-
-    references
 }
 
 fn collect_yaml_path_mentions(value: &Value, mentions: &mut BTreeSet<String>) {
@@ -3016,18 +2912,6 @@ fn is_repository_document_path(path: &str) -> bool {
         || path == "docs/AGENTS.md"
         || path == "crates/AGENTS.md"
         || path.starts_with("docs/")
-}
-
-fn retired_match(path: &str) -> Option<String> {
-    if RETIRED_EXACT_PATHS.contains(&path) {
-        return Some(path.to_string());
-    }
-    for prefix in RETIRED_PREFIXES {
-        if path == prefix.trim_end_matches('/') || path.starts_with(prefix) {
-            return Some(path.to_string());
-        }
-    }
-    None
 }
 
 fn is_ignored_link(link: &str) -> bool {

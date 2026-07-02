@@ -68,8 +68,9 @@ cargo run -p xtask -- docs-check
   선택자, 저장소 내부, MCP 프로세스 바인딩, 진단에 필요한 역할을 포함합니다.
 - `docs/terminology-map.yaml`의 `primary_owner`와 `related_references` 경로가
   존재하고 `doc-index.yaml`에 표현되어 있습니다.
-- README, 경로 문서, 참조 문서, 개발 문서, `AGENTS.md`, 용어 링크가 폐기된
-  문서 경로를 가리키지 않습니다.
+- 공개 출력 소스는 Volicord 보장을 과장할 수 있는 넓은 보안 단어를 한정 없이
+  사용하지 않습니다. 정확한 보안 보장 의미는 보안 담당 문서와 브랜드 주장
+  담당 문서에 남아 있습니다.
 
 자동 구조 검증 뒤에는 저장소 위생을 사람이 확인합니다.
 

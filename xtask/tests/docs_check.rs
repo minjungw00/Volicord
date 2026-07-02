@@ -1007,20 +1007,6 @@ fn reports_repeated_bilingual_links_deterministically() {
 }
 
 #[test]
-fn reports_retired_path_references() {
-    let fixture = valid_fixture();
-    write(
-        fixture.path(),
-        "docs/en/example.md",
-        "# Overview\n\n[Old guide](use/old.md)\n",
-    );
-
-    let report = report(fixture.path());
-
-    assert!(has_category(&report, "retired_path.reference"));
-}
-
-#[test]
 fn reports_terminology_map_path_failure() {
     let fixture = valid_fixture();
     let terminology = valid_terminology_map()
@@ -1030,6 +1016,20 @@ fn reports_terminology_map_path_failure() {
     let report = report(fixture.path());
 
     assert!(has_category(&report, "terminology.missing_target"));
+}
+
+#[test]
+fn reports_unqualified_public_language_security_claims() {
+    let fixture = valid_fixture();
+    write(
+        fixture.path(),
+        "crates/volicord-cli/src/connection_command.rs",
+        "pub const MESSAGE: &str = \"Volicord is secure.\";\n",
+    );
+
+    let report = report(fixture.path());
+
+    assert!(has_category(&report, "public_language.security_claim"));
 }
 
 #[test]

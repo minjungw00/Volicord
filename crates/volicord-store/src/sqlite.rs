@@ -2055,17 +2055,17 @@ mod tests {
     }
 
     #[test]
-    fn project_state_schema_validation_rejects_replay_context_status_column() -> StoreResult<()> {
+    fn project_state_schema_validation_rejects_unknown_tool_invocation_column() -> StoreResult<()> {
         let runtime_home = TempRuntimeHome::new("schema-validation-replay-status")?;
         let conn =
             open_project_state_database(runtime_home.project_state_db_path("PRJ-validation"))?;
         conn.execute(
-            "ALTER TABLE tool_invocations ADD COLUMN replay_context_status TEXT",
+            "ALTER TABLE tool_invocations ADD COLUMN unsupported_extra_status TEXT",
             [],
         )?;
 
         let error = validate_project_state_schema(&conn)
-            .expect_err("legacy replay context status column should fail schema validation");
+            .expect_err("unsupported tool_invocations column should fail schema validation");
         let classification = error.classification();
 
         assert!(matches!(error, StoreError::SchemaInvariant { .. }));

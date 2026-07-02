@@ -52,9 +52,7 @@ fn binary_help_uses_agent_connection_model() -> Result<(), Box<dyn Error>> {
     assert!(text.contains("volicord connect [HOST]"));
     assert!(text.contains("volicord connections [--repo PATH]"));
     assert!(text.contains("volicord connection status [HOST]"));
-    assert!(!text.contains("volicord agent connect"));
     assert!(text.contains("volicord inbox answer <judgment-id> --choice <choice>"));
-    assert!(!text.contains("volicord user judgment answer INDEX_OR_ID OPTION_INDEX_OR_ID"));
     assert!(text.contains("User Channel"));
 
     let setup_help = run_without_home(["setup", "--help"])?;

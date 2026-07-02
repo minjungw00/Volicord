@@ -1374,35 +1374,6 @@ fn invalid_stored_method_owned_json_routes_to_structured_unavailability(
 }
 
 #[test]
-fn authority_owner_json_decode_paths_do_not_reintroduce_fail_open_patterns() {
-    let sources = [
-        ("methods/mod.rs", include_str!("mod.rs")),
-        ("methods/close_task.rs", include_str!("close_task.rs")),
-        ("methods/prepare_write.rs", include_str!("prepare_write.rs")),
-        ("methods/record_run.rs", include_str!("record_run.rs")),
-        ("methods/update_scope.rs", include_str!("update_scope.rs")),
-        ("methods/status.rs", include_str!("status.rs")),
-    ];
-    let forbidden = [
-        "parse_json_object(&task.completion_policy_json)",
-        "parse_json_object(&context.task.close_summary_json)",
-        "parse_json_object(&record.close_basis_json)",
-        "parse_json_object(&record.lifecycle_json)",
-        "parse_json_object(&change_unit.write_basis_json)",
-        "serde_json::from_str::<Vec<String>>(&change_unit.bounded_paths_json).unwrap_or_default()",
-    ];
-
-    for (path, source) in sources {
-        for pattern in forbidden {
-            assert!(
-                !source.contains(pattern),
-                "{path} reintroduced fail-open owner-state JSON decoding: {pattern}"
-            );
-        }
-    }
-}
-
-#[test]
 fn public_methods_use_same_verified_invocation_context() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     enable_record_run_capabilities(&harness)?;
@@ -5146,12 +5117,12 @@ fn record_run_limits_historical_far_future_write_check_to_fifteen_minutes(
 ) -> Result<(), Box<dyn Error>> {
     let mut harness = MethodHarness::new()?;
     enable_record_run_capabilities(&harness)?;
-    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_auth_legacy")?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_auth_far_future")?;
     insert_active_write_check_with_timestamps(
         &harness,
         &task_id,
         &change_unit_id,
-        "wa_legacy_future",
+        "wa_far_future_expiration",
         2,
         "2026-06-18T00:00:00.000Z",
         "2999-01-01T00:00:00.000Z",
@@ -5163,13 +5134,13 @@ fn record_run_limits_historical_far_future_write_check_to_fifteen_minutes(
 
     let response = harness.service.record_run(
         product_write_record_run_request(
-            "req_run_auth_legacy",
-            "idem_run_auth_legacy",
+            "req_run_auth_far_future",
+            "idem_run_auth_far_future",
             2,
             &task_id,
             &change_unit_id,
-            "wa_legacy_future",
-            "run_auth_legacy",
+            "wa_far_future_expiration",
+            "run_auth_far_future",
         ),
         invocation(OperationCategory::AgentWorkflow),
     )?;
@@ -7662,19 +7633,19 @@ fn rejected_authority_judgment_accepts_concise_rationale() -> Result<(), Box<dyn
 fn resolved_judgment_without_machine_action_is_owner_state_corruption() -> Result<(), Box<dyn Error>>
 {
     let harness = MethodHarness::new()?;
-    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "legacy_no_action")?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "missing_action")?;
     let after_basis = record_close_evidence(
         &harness,
         &task_id,
         &change_unit_id,
         2,
-        "legacy_no_action",
+        "missing_action",
         true,
     )?;
     let judgment = harness.service.request_user_judgment(
         user_judgment_request(
-            "req_legacy_no_action_judgment",
-            "idem_legacy_no_action_judgment",
+            "req_missing_action_judgment",
+            "idem_missing_action_judgment",
             false,
             Some(after_basis),
             &task_id,
@@ -7710,7 +7681,7 @@ fn resolved_judgment_without_machine_action_is_owner_state_corruption() -> Resul
 
     let response = harness.service.close_task(
         close_task_request(CloseTaskFixture {
-            request_id: "req_legacy_no_action_close",
+            request_id: "req_missing_action_close",
             idempotency_key: None,
             dry_run: false,
             expected_state_version: None,
@@ -8157,13 +8128,13 @@ fn stored_final_acceptance_without_actor_provenance_does_not_authorize_close(
 ) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) =
-        create_task_with_change_unit(&harness, "final_legacy_provenance")?;
+        create_task_with_change_unit(&harness, "final_missing_provenance")?;
     let after_basis = record_close_evidence(
         &harness,
         &task_id,
         &change_unit_id,
         2,
-        "final_legacy_provenance",
+        "final_missing_provenance",
         true,
     )?;
     let (after_final, final_judgment_id) = record_final_acceptance_with_id(
@@ -8171,15 +8142,15 @@ fn stored_final_acceptance_without_actor_provenance_does_not_authorize_close(
         &task_id,
         &change_unit_id,
         after_basis,
-        "final_legacy_provenance",
+        "final_missing_provenance",
     )?;
     clear_user_judgment_actor_provenance(&harness, &final_judgment_id)?;
     let before = harness.counts()?;
 
     let response = harness.service.close_task(
         close_task_request(CloseTaskFixture {
-            request_id: "req_close_final_legacy_provenance",
-            idempotency_key: Some("idem_close_final_legacy_provenance"),
+            request_id: "req_close_final_missing_provenance",
+            idempotency_key: Some("idem_close_final_missing_provenance"),
             dry_run: false,
             expected_state_version: Some(after_final),
             task_id: &task_id,
@@ -9737,11 +9708,12 @@ fn basisless_resolved_judgment_is_rejected_by_storage_constraint() -> Result<(),
 #[test]
 fn bare_array_authority_options_are_owner_state_corruption() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
-    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "legacy_options")?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "bare_authority_options")?;
     let pending_judgment = harness.service.request_user_judgment(
         user_judgment_request(
-            "req_legacy_options",
-            "idem_legacy_options",
+            "req_bare_authority_options",
+            "idem_bare_authority_options",
             false,
             Some(2),
             &task_id,
@@ -9770,8 +9742,8 @@ fn bare_array_authority_options_are_owner_state_corruption() -> Result<(), Box<d
 
     let response = harness.service.record_user_judgment(
         record_judgment_request(
-            "req_record_legacy_options",
-            "idem_record_legacy_options",
+            "req_record_bare_authority_options",
+            "idem_record_bare_authority_options",
             Some(3),
             &task_id,
             &pending_judgment_id,

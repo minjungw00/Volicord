@@ -1670,7 +1670,7 @@ mod tests {
     }
 
     #[test]
-    fn invalid_legacy_project_registration_rejects_core_execution() -> Result<(), Box<dyn Error>> {
+    fn invalid_project_registration_rejects_core_execution() -> Result<(), Box<dyn Error>> {
         let harness = PipelineHarness::new()?;
         harness.replace_project_repo_root(&harness.runtime_home_path)?;
         let envelope = envelope("req_invalid_project_path", None, false, None, None);

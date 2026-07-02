@@ -1577,58 +1577,43 @@ mod tests {
     #[test]
     fn checked_project_record_rejects_same_path_registration_for_operational_reads(
     ) -> Result<(), Box<dyn Error>> {
-        let (runtime_home, _) = registered_project("store-checked-same", "project_same_legacy")?;
-        replace_project_repo_root(
-            runtime_home.path(),
-            "project_same_legacy",
-            runtime_home.path(),
-        )?;
+        let project_id = "project_same_path_invalid";
+        let (runtime_home, _) = registered_project("store-checked-same", project_id)?;
+        replace_project_repo_root(runtime_home.path(), project_id, runtime_home.path())?;
 
-        let error = project_record_for_execution(runtime_home.path(), "project_same_legacy")
-            .expect_err("same-path legacy registration should be rejected for execution");
+        let error = project_record_for_execution(runtime_home.path(), project_id)
+            .expect_err("same-path registration should be rejected for execution");
         assert_invalid_project_registration(error, "same_path");
-        let open_error =
-            CoreProjectStore::open(runtime_home.path(), &ProjectId::new("project_same_legacy"))
-                .expect_err("Core store open should reject same-path legacy registration");
+        let open_error = CoreProjectStore::open(runtime_home.path(), &ProjectId::new(project_id))
+            .expect_err("Core store open should reject same-path registration");
         assert_invalid_project_registration(open_error, "same_path");
 
-        let lookup_error = project_record(runtime_home.path(), "project_same_legacy")
+        let lookup_error = project_record(runtime_home.path(), project_id)
             .expect_err("project lookup should reject same-path registration");
         assert_invalid_project_registration(lookup_error, "same_path");
         let list_error = list_projects(runtime_home.path())
             .expect_err("project listing should reject same-path registration");
         assert_invalid_project_registration(list_error, "same_path");
-        let damaged = raw_project_record(runtime_home.path(), "project_same_legacy")?;
+        let damaged = raw_project_record(runtime_home.path(), project_id)?;
         assert_eq!(damaged.repo_root, runtime_home.path());
-        assert_registry_record_unchanged_and_visible(
-            runtime_home.path(),
-            "project_same_legacy",
-            &damaged,
-        )?;
+        assert_registry_record_unchanged_and_visible(runtime_home.path(), project_id, &damaged)?;
         Ok(())
     }
 
     #[test]
-    fn checked_project_record_rejects_legacy_repository_inside_runtime_home(
-    ) -> Result<(), Box<dyn Error>> {
-        let (runtime_home, _) =
-            registered_project("store-checked-repo-inside", "project_repo_inside_legacy")?;
-        let repo_root = runtime_home.path().join("legacy-product-repo");
+    fn checked_project_record_rejects_repository_inside_runtime_home() -> Result<(), Box<dyn Error>>
+    {
+        let project_id = "project_repo_inside_runtime_home";
+        let (runtime_home, _) = registered_project("store-checked-repo-inside", project_id)?;
+        let repo_root = runtime_home.path().join("invalid-product-repo");
         fs::create_dir_all(&repo_root)?;
-        replace_project_repo_root(
-            runtime_home.path(),
-            "project_repo_inside_legacy",
-            &repo_root,
-        )?;
+        replace_project_repo_root(runtime_home.path(), project_id, &repo_root)?;
 
-        let error = CoreProjectStore::open(
-            runtime_home.path(),
-            &ProjectId::new("project_repo_inside_legacy"),
-        )
-        .expect_err("repository under Runtime Home should be rejected for execution");
+        let error = CoreProjectStore::open(runtime_home.path(), &ProjectId::new(project_id))
+            .expect_err("repository under Runtime Home should be rejected for execution");
 
         assert_invalid_project_registration(error, "runtime_home_contains_product_repository");
-        let lookup_error = project_record(runtime_home.path(), "project_repo_inside_legacy")
+        let lookup_error = project_record(runtime_home.path(), project_id)
             .expect_err("project lookup should reject repository under Runtime Home");
         assert_invalid_project_registration(
             lookup_error,
@@ -1637,42 +1622,29 @@ mod tests {
         let list_error = list_projects(runtime_home.path())
             .expect_err("project listing should reject repository under Runtime Home");
         assert_invalid_project_registration(list_error, "runtime_home_contains_product_repository");
-        let damaged = raw_project_record(runtime_home.path(), "project_repo_inside_legacy")?;
+        let damaged = raw_project_record(runtime_home.path(), project_id)?;
         assert_eq!(damaged.repo_root, repo_root);
-        assert_registry_record_unchanged_and_visible(
-            runtime_home.path(),
-            "project_repo_inside_legacy",
-            &damaged,
-        )?;
+        assert_registry_record_unchanged_and_visible(runtime_home.path(), project_id, &damaged)?;
         Ok(())
     }
 
     #[test]
-    fn checked_project_record_rejects_legacy_runtime_home_inside_repository(
-    ) -> Result<(), Box<dyn Error>> {
-        let (runtime_home, _) = registered_project(
-            "store-checked-runtime-inside",
-            "project_runtime_inside_legacy",
-        )?;
+    fn checked_project_record_rejects_runtime_home_inside_repository() -> Result<(), Box<dyn Error>>
+    {
+        let project_id = "project_runtime_home_inside_repo";
+        let (runtime_home, _) = registered_project("store-checked-runtime-inside", project_id)?;
         let repo_root = runtime_home
             .path()
             .parent()
             .expect("runtime home has parent")
             .to_path_buf();
-        replace_project_repo_root(
-            runtime_home.path(),
-            "project_runtime_inside_legacy",
-            &repo_root,
-        )?;
+        replace_project_repo_root(runtime_home.path(), project_id, &repo_root)?;
 
-        let error = CoreProjectStore::open(
-            runtime_home.path(),
-            &ProjectId::new("project_runtime_inside_legacy"),
-        )
-        .expect_err("Runtime Home under repository should be rejected for execution");
+        let error = CoreProjectStore::open(runtime_home.path(), &ProjectId::new(project_id))
+            .expect_err("Runtime Home under repository should be rejected for execution");
 
         assert_invalid_project_registration(error, "product_repository_contains_runtime_home");
-        let lookup_error = project_record(runtime_home.path(), "project_runtime_inside_legacy")
+        let lookup_error = project_record(runtime_home.path(), project_id)
             .expect_err("project lookup should reject Runtime Home under repository");
         assert_invalid_project_registration(
             lookup_error,
@@ -1681,12 +1653,8 @@ mod tests {
         let list_error = list_projects(runtime_home.path())
             .expect_err("project listing should reject Runtime Home under repository");
         assert_invalid_project_registration(list_error, "product_repository_contains_runtime_home");
-        let damaged = raw_project_record(runtime_home.path(), "project_runtime_inside_legacy")?;
-        assert_registry_record_unchanged_and_visible(
-            runtime_home.path(),
-            "project_runtime_inside_legacy",
-            &damaged,
-        )?;
+        let damaged = raw_project_record(runtime_home.path(), project_id)?;
+        assert_registry_record_unchanged_and_visible(runtime_home.path(), project_id, &damaged)?;
         Ok(())
     }
 

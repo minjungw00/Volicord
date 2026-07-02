@@ -1460,7 +1460,7 @@ fn assert_artifacts_integrity_status_is_closed(label: &str, conn: &Connection) {
                 'artifact_bad_integrity_status',
                 'task_a',
                 'volicord-artifact://project_a/artifact_bad_integrity_status',
-                'legacy_unknown',
+                'unsupported_status',
                 'none',
                 'unavailable',
                 't1',

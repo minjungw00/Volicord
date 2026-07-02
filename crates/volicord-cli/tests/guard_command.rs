@@ -106,6 +106,67 @@ fn guard_session_start_injects_context_and_records_event() -> Result<(), Box<dyn
 }
 
 #[test]
+fn guard_accepts_only_supported_integration_profiles() -> Result<(), Box<dyn Error>> {
+    let fixture = GuardCliFixture::new("guard-supported-profiles")?;
+
+    for profile in ["record", "observe"] {
+        let event_id = format!("guard_supported_profile_{profile}");
+        let event = json!({
+            "event_id": event_id,
+            "session_id": format!("guard_session_{profile}"),
+            "connection_id": fixture.connection_id(),
+            "host_kind": "codex"
+        });
+        let output = run_guard(
+            fixture.runtime_home(),
+            fixture.repo_root(),
+            [
+                "guard",
+                "session-start",
+                "--repo",
+                fixture.repo_arg(),
+                "--integration-profile",
+                profile,
+            ],
+            &event,
+        )?;
+        assert_success(&output);
+        let stored = guard_event(fixture.runtime_home(), fixture.project_id(), &event_id)?
+            .expect("supported profile should allow guard event persistence");
+        assert_eq!(stored.event_kind, "session_start");
+    }
+
+    let event = json!({
+        "event_id": "guard_unsupported_profile",
+        "session_id": "guard_session_unsupported_profile",
+        "connection_id": fixture.connection_id(),
+        "host_kind": "codex"
+    });
+    let output = run_guard(
+        fixture.runtime_home(),
+        fixture.repo_root(),
+        [
+            "guard",
+            "session-start",
+            "--repo",
+            fixture.repo_arg(),
+            "--integration-profile",
+            "unsupported",
+        ],
+        &event,
+    )?;
+    assert_eq!(output.status.code(), Some(2));
+    assert!(stderr(&output).contains("integration profile must be record or observe"));
+    assert!(guard_event(
+        fixture.runtime_home(),
+        fixture.project_id(),
+        "guard_unsupported_profile"
+    )?
+    .is_none());
+    Ok(())
+}
+
+#[test]
 fn guard_session_start_promotes_matching_installation_active() -> Result<(), Box<dyn Error>> {
     let fixture = GuardCliFixture::new("guard-session-activates")?;
     let (guard_installation_id, policy_hash) = fixture.install_guard_policy()?;

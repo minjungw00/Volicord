@@ -934,8 +934,8 @@ mod tests {
         assert!(validate_json_schema(&schema, &blocked_outcome).is_err());
 
         let mut unknown = user_judgment_option_json();
-        unknown["legacy_note"] = json!("not current public shape");
-        assert_unknown::<UserJudgmentOption>(unknown, "legacy_note");
+        unknown["unsupported_note"] = json!("not current public shape");
+        assert_unknown::<UserJudgmentOption>(unknown, "unsupported_note");
     }
 
     #[test]
@@ -1008,9 +1008,9 @@ mod tests {
     fn persisted_options_reject_bare_array_and_missing_current_fields() {
         let bare_array = serde_json::from_value::<PersistedUserJudgmentOptions>(json!([
             {
-                "option_id": "legacy_accept",
+                "option_id": "unsupported_accept",
                 "label": "Accept",
-                "description": "Legacy option with no outcome.",
+                "description": "Unsupported option with no outcome.",
                 "consequence": "Audit only.",
                 "machine_action": "accept",
                 "is_default": true
@@ -1113,7 +1113,7 @@ mod tests {
     }
 
     #[test]
-    fn artifact_ref_requires_integrity_status_and_rejects_legacy_unknown() {
+    fn artifact_ref_requires_integrity_status_and_rejects_unsupported_status() {
         let schema = serde_json::to_value(schemars::schema_for!(ArtifactRef))
             .expect("artifact schema should serialize");
         assert_required(
@@ -1144,10 +1144,10 @@ mod tests {
         assert!(serde_json::from_value::<ArtifactRef>(corrupt.clone()).is_ok());
         assert!(validate_json_schema(&schema, &corrupt).is_ok());
 
-        let legacy_unknown =
-            artifact_ref_json("legacy_unknown", Value::Null, Value::Null, Value::Null);
-        assert!(serde_json::from_value::<ArtifactRef>(legacy_unknown.clone()).is_err());
-        assert!(validate_json_schema(&schema, &legacy_unknown).is_err());
+        let unsupported_status =
+            artifact_ref_json("unsupported_status", Value::Null, Value::Null, Value::Null);
+        assert!(serde_json::from_value::<ArtifactRef>(unsupported_status.clone()).is_err());
+        assert!(validate_json_schema(&schema, &unsupported_status).is_err());
 
         let mut missing_integrity =
             artifact_ref_json("corrupt", Value::Null, Value::Null, Value::Null);
