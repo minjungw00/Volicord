@@ -16,13 +16,16 @@ use volicord_types::{
     ActorSource, IdempotencyKey, JudgmentKind, JudgmentRationale, JudgmentResolutionOutcome,
     OperationCategory, PersistedUserJudgmentOptions, ProjectId, RecordUserJudgmentPayload,
     RecordUserJudgmentRequest, RequestId, SensitiveActionScope, StatusInclude, StatusRequest,
-    TaskId, ToolEnvelope, UserJudgmentContext, UserJudgmentId, UserJudgmentOption,
+    SummaryCard, TaskId, ToolEnvelope, UserJudgmentContext, UserJudgmentId, UserJudgmentOption,
     VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
 };
 
-use crate::disclosure::AUTHORITY_DISCLOSURE_TEXT;
 use crate::project_context::{
     registered_project_for_repo, resolve_repository_root, ProjectCommandError,
+};
+use crate::summary_card::{
+    count_state_text, render_summary_card_text, summary_card_from_response,
+    USER_CHANNEL_SUMMARY_GUARANTEE,
 };
 
 type UserOptions = BTreeMap<String, Vec<String>>;
@@ -240,8 +243,14 @@ where
         &resolved.runtime_home,
         &ProjectId::new(&resolved.project_id),
     )?;
-    let records = pending_judgment_records_for_task(&store, &parsed.task)?;
-    render_inbox_items(&records, parsed.output)
+    let selected_task_id = selected_or_active_task_id(&store, &parsed.task)?;
+    let has_selected_task = selected_task_id.is_some();
+    let records = if let Some(task_id) = selected_task_id {
+        store.pending_user_judgment_records(&TaskId::new(task_id))?
+    } else {
+        Vec::new()
+    };
+    render_inbox_items(&records, parsed.output, has_selected_task)
 }
 
 fn command_inbox_answer<F>(
@@ -595,18 +604,6 @@ fn selected_or_active_task_id(
     }
 }
 
-fn pending_judgment_records_for_task(
-    store: &CoreProjectStore,
-    selected: &TaskSelector,
-) -> Result<Vec<UserJudgmentRecord>, UserCommandError> {
-    let Some(task_id) = selected_or_active_task_id(store, selected)? else {
-        return Ok(Vec::new());
-    };
-    store
-        .pending_user_judgment_records(&TaskId::new(task_id))
-        .map_err(Into::into)
-}
-
 pub(crate) fn select_option(
     options: &[UserJudgmentOption],
     selector: &str,
@@ -904,206 +901,39 @@ fn render_status_response(
     if response_kind(response) != Some("result") {
         return render_rejected_or_json(response);
     }
-    let mut output = String::new();
-    output.push_str("User Channel status\n");
-    output.push_str(AUTHORITY_DISCLOSURE_TEXT);
-    output.push('\n');
-    if let Some(summary) = response.response_value["status_summary"].as_str() {
-        output.push_str(&format!("summary: {summary}\n"));
-    }
-    output.push_str(&format!(
-        "close_status: {}\n",
-        response
-            .response_value
-            .get("close_state")
-            .and_then(Value::as_str)
-            .unwrap_or("not_available")
-    ));
-    let close_blockers = response.response_value["close_blockers"]
-        .as_array()
-        .map(Vec::as_slice)
-        .unwrap_or(&[]);
-    output.push_str(&format!("close_blockers: {}\n", close_blockers.len()));
-    if let Some(blocker) = close_blockers.first() {
-        if let Some(code) = blocker.get("code").and_then(Value::as_str) {
-            output.push_str(&format!("first_close_blocker: {code}\n"));
-        }
-        if let Some(action) = blocker
-            .get("next_actions")
-            .and_then(Value::as_array)
-            .and_then(|actions| actions.first())
-            .and_then(action_label)
-        {
-            output.push_str(&format!("next_action: {action}\n"));
-        }
-    } else {
-        output.push_str("next_action: none\n");
-    }
-    if let Some(guard_health) = response.response_value.get("guard_health") {
-        output.push_str(&format!(
-            "selected_profile: {}\nobservation_summary: {}\nobservation_capabilities: {}\ndetective_effective_state: {}\nhook_path_safety: {}\nhost_hook_observed: {}\nprompt_capture_state: {}\nprompt_capture_available: {}\nwatcher_status: {}\nwatcher_baseline_created_at: {}\nwatcher_coverage_start_at: {}\nwatcher_coverage_basis: {}\nwatcher_partial_coverage_warning: {}\nunresolved_unrecorded_changes: {}\n",
-            text_field(guard_health, "selected_profile", "not_configured"),
-            control_surface_text(guard_health),
-            guard_capabilities_text(guard_health),
-            text_field(guard_health, "effective_guard_status", "not_checked"),
-            text_field(guard_health, "hook_path_safety", "not_checked"),
-            yes_no(
-                guard_health
-                    .get("guard_hook_observed")
-                    .and_then(Value::as_bool)
-                    .unwrap_or(false)
-            ),
-            text_field(guard_health, "prompt_capture_status", "not_checked"),
-            yes_no(
-                guard_health
-                    .get("prompt_capture_available")
-                    .and_then(Value::as_bool)
-                    .unwrap_or(false)
-            ),
-            text_field(guard_health, "session_watch_status", "not_checked"),
-            text_field(guard_health, "session_watch_baseline_created_at", "none"),
-            text_field(guard_health, "session_watch_coverage_start_at", "none"),
-            text_field(guard_health, "session_watch_coverage_basis", "none"),
-            text_field(
-                guard_health,
-                "session_watch_partial_coverage_warning",
-                "none"
-            ),
-            guard_health
-                .get("unresolved_unrecorded_change_count")
-                .and_then(Value::as_u64)
-                .unwrap_or(0),
-        ));
-    }
-    let pending = response.response_value["pending_user_judgments"]
-        .as_array()
-        .map(Vec::as_slice)
-        .unwrap_or(&[]);
-    output.push_str(&format!("pending_user_judgments: {}\n", pending.len()));
-    if !pending.is_empty() {
-        output.push_str(&format!(
-            "pending_user_judgment_path: {}\n",
-            judgment_path_text(response.response_value.get("guard_health"))
-        ));
+    let mut output = String::from("User Channel status\n");
+    if let Some(card) = summary_card_from_response(&response.response_value) {
+        output.push_str(&render_summary_card_text(&card));
     }
     Ok(output)
-}
-
-fn action_label(action: &Value) -> Option<&str> {
-    action
-        .get("blocking_question")
-        .and_then(Value::as_str)
-        .or_else(|| action.get("label").and_then(Value::as_str))
-}
-
-fn text_field<'a>(value: &'a Value, field: &str, fallback: &'a str) -> &'a str {
-    value.get(field).and_then(Value::as_str).unwrap_or(fallback)
-}
-
-fn bool_field(value: &Value, field: &str) -> bool {
-    value.get(field).and_then(Value::as_bool).unwrap_or(false)
-}
-
-fn control_surface_field<'a>(guard_health: &'a Value, field: &str, fallback: &'a str) -> &'a str {
-    guard_health
-        .get("control_surface")
-        .and_then(|value| value.get(field))
-        .and_then(Value::as_str)
-        .unwrap_or(fallback)
-}
-
-fn control_surface_bool(guard_health: &Value, field: &str) -> bool {
-    guard_health
-        .get("control_surface")
-        .and_then(|value| value.get(field))
-        .and_then(Value::as_bool)
-        .unwrap_or(false)
-}
-
-fn control_surface_text(guard_health: &Value) -> String {
-    format!(
-        "selected_profile={}, host_hooks_active={}, session_watcher_active={}, cooperative_pre_tool_warning={}, cooperative_pre_tool_denial={}, unrecorded_changes_detectable={}, actor_identity_provable={}, os_enforced={}",
-        control_surface_field(guard_health, "selected_profile", "not_configured"),
-        yes_no(control_surface_bool(guard_health, "host_hooks_active")),
-        yes_no(control_surface_bool(guard_health, "session_watcher_active")),
-        yes_no(control_surface_bool(guard_health, "cooperative_pre_tool_warning_available")),
-        yes_no(control_surface_bool(guard_health, "cooperative_pre_tool_denial_available")),
-        yes_no(control_surface_bool(guard_health, "unrecorded_changes_detectable")),
-        yes_no(control_surface_bool(guard_health, "actor_identity_provable")),
-        yes_no(control_surface_bool(guard_health, "os_enforced")),
-    )
-}
-
-fn guard_capabilities_text(guard_health: &Value) -> String {
-    format!(
-        "cooperative_pre_tool_warning={}, cooperative_pre_tool_denial={}, post_tool_correlation={}, hook_path_safety={}, bash_shell_mutation_coverage={}, unrecorded_changes_detectable={}, prompt_capture={}, local_web_consent={}, actor_identity_provable={}, os_enforced={}",
-        yes_no(bool_field(
-            guard_health,
-            "cooperative_pre_tool_warning_available"
-        )),
-        yes_no(bool_field(
-            guard_health,
-            "cooperative_pre_tool_denial_available"
-        )),
-        yes_no(bool_field(guard_health, "post_tool_correlation_available")),
-        text_field(guard_health, "hook_path_safety", "not_checked"),
-        yes_no(bool_field(guard_health, "bash_shell_mutation_coverage")),
-        yes_no(control_surface_bool(
-            guard_health,
-            "unrecorded_changes_detectable"
-        )),
-        yes_no(bool_field(guard_health, "prompt_capture_available")),
-        yes_no(bool_field(guard_health, "local_web_consent_available")),
-        yes_no(control_surface_bool(guard_health, "actor_identity_provable")),
-        yes_no(control_surface_bool(guard_health, "os_enforced")),
-    )
-}
-
-fn judgment_path_text(guard_health: Option<&Value>) -> &'static str {
-    if guard_health
-        .and_then(|value| value.get("mcp_connection_healthy"))
-        .and_then(Value::as_bool)
-        .unwrap_or(false)
-    {
-        "use host prompt input; `volicord inbox` is the CLI inbox path"
-    } else if guard_health
-        .and_then(|value| value.get("prompt_capture_available"))
-        .and_then(Value::as_bool)
-        .unwrap_or(false)
-    {
-        "use the chat command input method; `volicord inbox` is the CLI inbox path"
-    } else {
-        "use `volicord inbox` and `volicord inbox answer` as the CLI inbox path"
-    }
-}
-
-fn yes_no(value: bool) -> &'static str {
-    if value {
-        "yes"
-    } else {
-        "no"
-    }
 }
 
 fn render_inbox_items(
     records: &[UserJudgmentRecord],
     output: OutputFormat,
+    has_selected_task: bool,
 ) -> Result<String, UserCommandError> {
+    let summary_card = inbox_summary_card(records, has_selected_task);
     if output == OutputFormat::Json {
         let values = records
             .iter()
             .map(inbox_item_json)
             .collect::<Result<Vec<_>, _>>()?;
-        return serde_json::to_string_pretty(&json!({ "pending_judgment_inbox_items": values }))
-            .map(|text| format!("{text}\n"))
-            .map_err(|error| UserCommandError::Runtime(error.to_string()));
-    }
-
-    if records.is_empty() {
-        return Ok("Judgment Inbox\nNo pending judgments.\n".to_owned());
+        return serde_json::to_string_pretty(&json!({
+            "summary_card": summary_card,
+            "pending_judgment_inbox_items": values,
+        }))
+        .map(|text| format!("{text}\n"))
+        .map_err(|error| UserCommandError::Runtime(error.to_string()));
     }
 
     let mut text = String::from("Judgment Inbox\n");
+    text.push_str(&render_summary_card_text(&summary_card));
+    if records.is_empty() {
+        text.push_str("No pending judgments.\n");
+        return Ok(text);
+    }
+
     for (index, record) in records.iter().enumerate() {
         let request: volicord_types::PersistedUserJudgmentRequest =
             decode_json("request_json", &record.request_json)?;
@@ -1135,6 +965,35 @@ fn render_inbox_items(
         ));
     }
     Ok(text)
+}
+
+fn inbox_summary_card(records: &[UserJudgmentRecord], has_selected_task: bool) -> SummaryCard {
+    SummaryCard {
+        task: if has_selected_task {
+            "selected".to_owned()
+        } else {
+            "none".to_owned()
+        },
+        recording: "read_only".to_owned(),
+        profile: "not_selected".to_owned(),
+        write_ticket: "not_selected".to_owned(),
+        evidence: "not_selected".to_owned(),
+        user_judgment: count_state_text("pending", records.len()),
+        changes: "not_selected".to_owned(),
+        close_status: "not_selected".to_owned(),
+        transport: "User Channel".to_owned(),
+        next: records
+            .first()
+            .map(|record| {
+                format!(
+                    "Run volicord inbox answer {} --choice <choice>.",
+                    record.judgment_id
+                )
+            })
+            .unwrap_or_else(|| "none".to_owned()),
+        next_action: None,
+        guarantee: USER_CHANNEL_SUMMARY_GUARANTEE.to_owned(),
+    }
 }
 
 fn render_inbox_record_response(

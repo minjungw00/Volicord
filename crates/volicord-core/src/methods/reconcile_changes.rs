@@ -441,8 +441,28 @@ fn plan_reconcile_changes(
         &planned_judgments,
         user_channel_guard_health.as_ref(),
     );
+    let summary_card = summary_card_for_core(SummaryCardBuild {
+        task: Some(&task),
+        recording: if storage_mutations.is_empty() {
+            "read_only"
+        } else {
+            "core_committed"
+        },
+        profile: profile_summary_text(
+            close_plan.guard_health.as_ref(),
+            state.guarantee_display.as_ref(),
+        ),
+        write_ticket: write_ticket_summary_text(true, state.write_ticket_summary.as_ref()),
+        evidence: evidence_summary_text(true, state.evidence_summary.as_ref()),
+        pending_user_judgments: projected_pending_refs.len(),
+        changes: changes_summary_text(true, unresolved_findings.len() as u64),
+        close_status: close_state_text(close_plan.close_state).to_owned(),
+        verified_invocation,
+        next_action: first_next_action(&result_next_actions, &close_plan.blockers),
+    });
     let result = ReconcileChangesResult {
         base: placeholder_base(),
+        summary_card,
         task_ref,
         unresolved_changes: unresolved_findings,
         resolved_changes,

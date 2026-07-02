@@ -13,7 +13,7 @@ use crate::schema::{
     GuardHealthSummary, JsonObject, JudgmentInboxItem, JudgmentRationale, NextActionSummary,
     ObservedChanges, ProjectContinuitySummary, RecordUserJudgmentPayload, RequiredNullable,
     RiskAcceptanceCoverage, RunSummary, SensitiveActionScope, StagedArtifactHandle, StateRecordRef,
-    StateSummary, ToolEnvelope, ToolResponse, ToolResultBase, UnrecordedChangeFinding,
+    StateSummary, SummaryCard, ToolEnvelope, ToolResponse, ToolResultBase, UnrecordedChangeFinding,
     UnrecordedChangeResolutionSummary, UserJudgment, UserJudgmentCandidate, UserJudgmentContext,
     UserJudgmentOptionInput, WriteDecisionReason, WriteTicket, WriteTicketStateSummary,
 };
@@ -278,6 +278,7 @@ pub struct StatusInclude {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct StatusResult {
     pub base: ToolResultBase,
+    pub summary_card: SummaryCard,
     pub active_task: Option<StateSummary>,
     pub status_summary: String,
     pub next_actions: Vec<NextActionSummary>,
@@ -614,6 +615,7 @@ pub struct UnrecordedChangeResolutionRequest {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct ReconcileChangesResult {
     pub base: ToolResultBase,
+    pub summary_card: SummaryCard,
     pub task_ref: StateRecordRef,
     pub unresolved_changes: Vec<UnrecordedChangeFinding>,
     pub resolved_changes: Vec<UnrecordedChangeResolutionSummary>,
@@ -704,6 +706,7 @@ pub struct McpCloseTaskArguments {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct CloseTaskResult {
     pub base: ToolResultBase,
+    pub summary_card: SummaryCard,
     pub close_state: CloseState,
     pub current_close_basis: Option<CurrentCloseBasis>,
     pub risk_acceptance_coverage: Vec<RiskAcceptanceCoverage>,

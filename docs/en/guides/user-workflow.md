@@ -100,6 +100,11 @@ You decide which pending decision to answer and whether to continue, defer, narr
 
 A useful status summary says:
 
+Volicord status-like CLI output uses the same summary card model for this:
+`Task`, `Recording`, `Profile`, `Write Ticket`, `Evidence`, `User Judgment`,
+`Changes`, `Close Status`, `Transport`, `Next`, and `Guarantee`. The `Next`
+line should give one safe action when one is knowable.
+
 - current `Task` or work boundary
 - current scope
 - out-of-scope items and allowed action state when known

@@ -39,8 +39,8 @@ use volicord_store::{
     StoreError,
 };
 use volicord_types::{
-    GuardInstallationStatus, IntegrationProfile, PromptCaptureStatus, ADAPTER_UTILITY_TOOL_NAMES,
-    READ_ONLY_METHOD_TOOL_NAMES, WORKFLOW_METHOD_TOOL_NAMES,
+    GuardInstallationStatus, IntegrationProfile, PromptCaptureStatus, SummaryCard,
+    ADAPTER_UTILITY_TOOL_NAMES, READ_ONLY_METHOD_TOOL_NAMES, WORKFLOW_METHOD_TOOL_NAMES,
 };
 
 use crate::host_integration::{
@@ -63,6 +63,7 @@ use crate::{
     managed_block::{self, ManagedBlockError, ManagedBlockWrite},
     registration::ADMIN_METADATA_JSON,
     setup_command::{is_executable_file, path_text as setup_path_text, runtime_home_id_for_path},
+    summary_card::{render_summary_card_text, DIAGNOSTIC_SUMMARY_GUARANTEE},
 };
 
 const VOLICORD_HOME: &str = "VOLICORD_HOME";
@@ -5820,12 +5821,18 @@ fn render_simplified_connection_output(
         Some(data.connection),
         data.projects,
     );
+    let summary_card =
+        connection_summary_card(data.action, &data.guard_state, primary_next_action.as_ref());
     match data.format {
         OutputFormat::Text => {
             let mut output = format!(
-                "Agent Connection {}\n{}\nruntime_home_state: ready\nruntime_home: {}\nconnection_state: {}\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nproject_registration_state: {}\nconnected_repositories: {}\nmcp_config_state: {}\nmcp_config: {}\nselected_profile: {}\nobservation_summary: {}\nobservation_capabilities: {}\nhost_hooks_active: {}\nsession_watcher_active: {}\nactor_identity_provable: {}\nos_enforced: {}\ndetective_installation_state: {}\ndetective_configuration_state: {}\nhost_hook_observation_state: {}\ndetective_effective_state: {}\ndetective_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_path_safety: {}\nrequired_hook_phases_state: {}\nrequired_hook_phases_missing: {}\nhost_hook_observed: {}\ndetective_hook_observed: {}\nlast_host_hook_event: {}\nprompt_capture_state: {}\nhost_reload_required: {}\ndetective_blockers: {}\n",
+                "Agent Connection {}\n{}\n{}runtime_home_state: ready\nruntime_home: {}\nconnection_state: {}\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nproject_registration_state: {}\nconnected_repositories: {}\nmcp_config_state: {}\nmcp_config: {}\nselected_profile: {}\nobservation_summary: {}\nobservation_capabilities: {}\nhost_hooks_active: {}\nsession_watcher_active: {}\nactor_identity_provable: {}\nos_enforced: {}\ndetective_installation_state: {}\ndetective_configuration_state: {}\nhost_hook_observation_state: {}\ndetective_effective_state: {}\ndetective_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_path_safety: {}\nrequired_hook_phases_state: {}\nrequired_hook_phases_missing: {}\nhost_hook_observed: {}\ndetective_hook_observed: {}\nlast_host_hook_event: {}\nprompt_capture_state: {}\nhost_reload_required: {}\ndetective_blockers: {}\n",
                 data.action,
                 DETECTIVE_OBSERVATION_DISCLOSURE_TEXT,
+                summary_card
+                    .as_ref()
+                    .map(render_summary_card_text)
+                    .unwrap_or_default(),
                 data.runtime_home.display(),
                 data.status.as_str(),
                 public_host_name_text(&data.connection.host_kind),
@@ -5835,8 +5842,7 @@ fn render_simplified_connection_output(
                 project_registration_state(data.projects),
                 display_project_roots(data.projects),
                 mcp_config_state,
-                target
-                ,
+                target,
                 data.guard_state.selected_profile(),
                 control_surface_text(&data.guard_state),
                 guard_capabilities_text(&data.guard_state),
@@ -5874,11 +5880,13 @@ fn render_simplified_connection_output(
                     verification.handshake.status.as_str()
                 ));
             }
-            append_primary_next_action_text(&mut output, primary_next_action.as_ref());
+            if summary_card.is_none() {
+                append_primary_next_action_text(&mut output, primary_next_action.as_ref());
+            }
             Ok(output)
         }
         OutputFormat::Json => {
-            let value = json!({
+            let mut value = json!({
                 "action": data.action,
                 "status": data.status.as_str(),
                 "disclosure": detective_observation_disclosure_json(),
@@ -5895,10 +5903,19 @@ fn render_simplified_connection_output(
                 "planned_change": planned_change,
                 "checks": checks_json(data.connection, data.verification, &data.guard_state),
                 "actions": actions_json_values(&data.user_actions),
-                "primary_next_action": primary_next_action.map(|action| action.to_json()),
+                "primary_next_action": primary_next_action.as_ref().map(|action| action.to_json()),
                 "host_hook": data.guard_state.to_json(),
                 "verification": data.verification.map(verification_json),
             });
+            if let Some(card) = &summary_card {
+                value
+                    .as_object_mut()
+                    .expect("connection output should be a JSON object")
+                    .insert(
+                        "summary_card".to_owned(),
+                        serde_json::to_value(card).expect("summary card should serialize to JSON"),
+                    );
+            }
             serde_json::to_string_pretty(&value)
                 .map(|text| format!("{text}\n"))
                 .map_err(|error| ConnectionCommandError::runtime(error.to_string()))
@@ -6801,6 +6818,32 @@ fn primary_connection_action(
     actions
         .first()
         .map(|action| PrimaryNextAction::new(user_action_id(action.kind), action.message.clone()))
+}
+
+fn connection_summary_card(
+    action: &str,
+    guard_state: &GuardOperationalState,
+    primary_next_action: Option<&PrimaryNextAction>,
+) -> Option<SummaryCard> {
+    if !matches!(action, "status" | "verified") {
+        return None;
+    }
+    Some(SummaryCard {
+        task: "not_selected".to_owned(),
+        recording: "diagnostic_observation".to_owned(),
+        profile: guard_state.selected_profile().to_owned(),
+        write_ticket: "not_selected".to_owned(),
+        evidence: "not_selected".to_owned(),
+        user_judgment: "not_selected".to_owned(),
+        changes: "not_selected".to_owned(),
+        close_status: "not_selected".to_owned(),
+        transport: "Agent Connection".to_owned(),
+        next: primary_next_action
+            .map(|action| action.instruction.clone())
+            .unwrap_or_else(|| "none".to_owned()),
+        next_action: None,
+        guarantee: DIAGNOSTIC_SUMMARY_GUARANTEE.to_owned(),
+    })
 }
 
 fn guard_degraded_action(

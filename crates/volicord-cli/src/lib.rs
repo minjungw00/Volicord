@@ -19,4 +19,5 @@ pub mod serve_command;
 pub mod setup_command;
 mod setup_report;
 mod shell_path;
+mod summary_card;
 pub mod user_command;

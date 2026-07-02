@@ -20,6 +20,7 @@ use volicord_types::{
 use crate::project_context::{
     registered_project_for_repo, resolve_repository_root, ProjectCommandError,
 };
+use crate::summary_card::{render_summary_card_text, summary_card_from_response};
 
 type RawOptions = BTreeMap<String, Vec<String>>;
 
@@ -272,32 +273,9 @@ fn render_reconcile_response(
             .map(|value| format!("{value}\n"))
             .map_err(|error| ChangesCommandError::Runtime(error.to_string()));
     }
-    let resolved = response.response_value["resolved_changes"]
-        .as_array()
-        .map(Vec::len)
-        .unwrap_or(0);
-    let pending = response.response_value["pending_user_judgment_refs"]
-        .as_array()
-        .map(Vec::len)
-        .unwrap_or(0);
-    let unresolved = response.response_value["unresolved_changes"]
-        .as_array()
-        .map(Vec::len)
-        .unwrap_or(0);
-    let mut output = format!(
-        "changes recovery: {resolved} resolved, {pending} pending user judgment(s), {unresolved} unresolved\n"
-    );
-    if pending > 0 {
-        if let Some(label) = response.response_value["next_actions"]
-            .as_array()
-            .and_then(|actions| actions.first())
-            .and_then(|action| action["label"].as_str())
-        {
-            output.push_str(&format!("next_action: {label}\n"));
-        }
-        output.push_str("recovery_path: use `volicord inbox` and `volicord inbox answer` when other User Channel input methods are unavailable or manual recovery is needed; then rerun `volicord changes reconcile`\n");
-    } else if unresolved > 0 {
-        output.push_str("next_action: rerun `volicord changes reconcile` after required recovery input is available\n");
+    let mut output = String::from("Changes reconciliation\n");
+    if let Some(card) = summary_card_from_response(&response.response_value) {
+        output.push_str(&render_summary_card_text(&card));
     }
     Ok(output)
 }

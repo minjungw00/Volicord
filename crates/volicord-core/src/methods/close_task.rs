@@ -599,8 +599,37 @@ pub(super) fn plan_close_task_with_context(
         response_state_version,
         context.guard_health.as_ref(),
     )?;
+    let no_next_actions: &[NextActionSummary] = &[];
+    let summary_card = summary_card_for_core(SummaryCardBuild {
+        task: Some(&synthetic_task),
+        recording: if storage_mutations.is_empty() {
+            "read_only"
+        } else {
+            "core_committed"
+        },
+        profile: profile_summary_text(
+            context.guard_health.as_ref(),
+            result_state.guarantee_display.as_ref(),
+        ),
+        write_ticket: write_ticket_summary_text(true, result_state.write_ticket_summary.as_ref()),
+        evidence: evidence_summary_text(true, result_evidence_summary.as_ref()),
+        pending_user_judgments: result_state.pending_user_judgment_refs.len(),
+        changes: changes_summary_text(
+            true,
+            context
+                .guard_health
+                .as_ref()
+                .map(|health| health.unresolved_unrecorded_change_count)
+                .unwrap_or(0),
+        ),
+        close_status: close_state_text(close_state).to_owned(),
+        verified_invocation: verified_invocation
+            .expect("close task result planning requires verified invocation context"),
+        next_action: first_next_action(no_next_actions, &blockers),
+    });
     let result = CloseTaskResult {
         base: placeholder_base(),
+        summary_card,
         close_state,
         current_close_basis: result_current_close_basis.clone(),
         risk_acceptance_coverage: result_risk_acceptance_coverage.clone(),

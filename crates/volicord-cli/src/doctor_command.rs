@@ -16,7 +16,7 @@ use volicord_store::{
     },
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
 };
-use volicord_types::{GuardInstallationStatus, IntegrationProfile};
+use volicord_types::{GuardInstallationStatus, IntegrationProfile, SummaryCard};
 
 use crate::{
     disclosure::{detective_observation_disclosure_json, DETECTIVE_OBSERVATION_DISCLOSURE_TEXT},
@@ -25,6 +25,7 @@ use crate::{
         detect_command_on_path, is_executable_file, mcp_binary_name, path_directory_is_on_path,
         paths_equivalent, volicord_binary_name, PATH_ENV,
     },
+    summary_card::{render_summary_card_text, DIAGNOSTIC_SUMMARY_GUARANTEE},
 };
 
 const REQUIRED_GUARD_HOOK_PHASES: &[&str] = &[
@@ -2164,6 +2165,7 @@ fn render_doctor_output(
     checks: &[DiagnosticCheck],
     actions: &[DiagnosticAction],
 ) -> Result<String, DoctorCommandError> {
+    let summary_card = doctor_summary_card(status, checks, actions);
     match output {
         OutputFormat::Json => {
             let actions_required = if status == CommandStatus::Complete {
@@ -2179,6 +2181,7 @@ fn render_doctor_output(
             serde_json::to_string_pretty(&json!({
                 "status": status.as_str(),
                 "status_meaning": doctor_status_meaning(status, checks),
+                "summary_card": &summary_card,
                 "disclosure": detective_observation_disclosure_json(),
                 "runtime_home": path_text(runtime_home),
                 "states": doctor_states_json(runtime_home, checks, actions),
@@ -2193,11 +2196,12 @@ fn render_doctor_output(
             .map_err(|error| DoctorCommandError::Runtime(error.to_string()))
         }
         OutputFormat::Text => {
-            let mut text = format!(
-                "Volicord doctor {}\nstatus_meaning: {}\n{}\nruntime_home_state: {}\nruntime_home: {}\ninstallation_profile_state: {}\ncommand_state: {}\nproject_registration_state: {}\nconnection_state: {}\nmcp_config_state: {}\ndetective_installation_state: {}\nselected_profile: {}\nobservation_summary: {}\nobservation_capabilities: {}\ndetective_configuration_state: {}\nhost_hook_observation_state: {}\ndetective_effective_state: {}\ndetective_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_path_safety: {}\nrequired_hook_phases_state: {}\nrequired_hook_phases_missing: {}\nhost_hook_observed: {}\ndetective_status_state: {}\nprompt_capture_state: {}\nprompt_capture_health: {}\nwatcher_status: not_started\nwatcher_baseline_created_at: none\nwatcher_coverage_start_at: none\nwatcher_coverage_basis: none\nwatcher_partial_coverage_warning: doctor does not initialize an MCP session watch\nhost_reload_required: {}\n",
+            let text = format!(
+                "Volicord doctor {}\nstatus_meaning: {}\n{}\n{}runtime_home_state: {}\nruntime_home: {}\ninstallation_profile_state: {}\ncommand_state: {}\nproject_registration_state: {}\nconnection_state: {}\nmcp_config_state: {}\ndetective_installation_state: {}\nselected_profile: {}\nobservation_summary: {}\nobservation_capabilities: {}\ndetective_configuration_state: {}\nhost_hook_observation_state: {}\ndetective_effective_state: {}\ndetective_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_path_safety: {}\nrequired_hook_phases_state: {}\nrequired_hook_phases_missing: {}\nhost_hook_observed: {}\ndetective_status_state: {}\nprompt_capture_state: {}\nprompt_capture_health: {}\nwatcher_status: not_started\nwatcher_baseline_created_at: none\nwatcher_coverage_start_at: none\nwatcher_coverage_basis: none\nwatcher_partial_coverage_warning: doctor does not initialize an MCP session watch\nhost_reload_required: {}\n",
                 status.as_str(),
                 doctor_status_meaning(status, checks),
                 DETECTIVE_OBSERVATION_DISCLOSURE_TEXT,
+                render_summary_card_text(&summary_card),
                 doctor_runtime_home_state(runtime_home, checks),
                 runtime_home.display(),
                 doctor_installation_profile_state(checks),
@@ -2226,7 +2230,6 @@ fn render_doctor_output(
                 doctor_prompt_capture_health(checks),
                 yes_no(doctor_host_reload_required(checks, actions)),
             );
-            append_doctor_next_action(&mut text, status, actions);
             Ok(text)
         }
     }
@@ -2627,20 +2630,30 @@ fn primary_doctor_action_json(status: CommandStatus, actions: &[DiagnosticAction
     })
 }
 
-fn append_doctor_next_action(
-    output: &mut String,
+fn doctor_summary_card(
     status: CommandStatus,
+    checks: &[DiagnosticCheck],
     actions: &[DiagnosticAction],
-) {
-    match actions.first() {
-        Some(action) if status == CommandStatus::Complete => {
-            output.push_str(&format!(
-                "next_action: recommended: {}\n",
-                action.instruction
-            ));
-        }
-        Some(action) => output.push_str(&format!("next_action: {}\n", action.instruction)),
-        None => output.push_str("next_action: none\n"),
+) -> SummaryCard {
+    SummaryCard {
+        task: "not_selected".to_owned(),
+        recording: "diagnostic_observation".to_owned(),
+        profile: doctor_selected_profile_from_checks(checks),
+        write_ticket: "not_selected".to_owned(),
+        evidence: "not_selected".to_owned(),
+        user_judgment: "not_selected".to_owned(),
+        changes: "not_selected".to_owned(),
+        close_status: "not_selected".to_owned(),
+        transport: "local CLI".to_owned(),
+        next: match actions.first() {
+            Some(action) if status == CommandStatus::Complete => {
+                format!("recommended: {}", action.instruction)
+            }
+            Some(action) => action.instruction.clone(),
+            None => "none".to_owned(),
+        },
+        next_action: None,
+        guarantee: DIAGNOSTIC_SUMMARY_GUARANTEE.to_owned(),
     }
 }
 

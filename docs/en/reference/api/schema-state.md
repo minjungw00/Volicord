@@ -1,6 +1,6 @@
 # API state schemas
 
-This document owns API state-shaped schemas for the baseline scope. It defines public response shapes for `StateSummary`, `StateRecordRef`, lifecycle state as API data, state-related snapshots, `ProjectContinuityRecord`, `ProjectContinuitySummary`, `ShapingReadiness`, `ChangeUnitEffectContract`, and display shapes such as `NextActionSummary`, `WriteTicket`, `WriteTicketScope`, `WriteTicketPathPatterns`, `WriteTicketStateSummary`, `WriteTicketSummary`, `WriteTicketAttemptScope`, `EvidenceSummary`, `EvidenceObservation`, `GuardHealthSummary`, `UnrecordedChangeFinding`, `UnrecordedChangeResolutionSummary`, `CurrentCloseBasis`, `ResidualRisk`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`, `ValidatorResult`, `GuaranteeDisplay`, and `GuaranteeDisclosure`.
+This document owns API state-shaped schemas for the baseline scope. It defines public response shapes for `StateSummary`, `StateRecordRef`, lifecycle state as API data, state-related snapshots, `ProjectContinuityRecord`, `ProjectContinuitySummary`, `ShapingReadiness`, `ChangeUnitEffectContract`, and display shapes such as `SummaryCard`, `NextActionSummary`, `WriteTicket`, `WriteTicketScope`, `WriteTicketPathPatterns`, `WriteTicketStateSummary`, `WriteTicketSummary`, `WriteTicketAttemptScope`, `EvidenceSummary`, `EvidenceObservation`, `GuardHealthSummary`, `UnrecordedChangeFinding`, `UnrecordedChangeResolutionSummary`, `CurrentCloseBasis`, `ResidualRisk`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`, `ValidatorResult`, `GuaranteeDisplay`, and `GuaranteeDisclosure`.
 
 ## Owner boundary
 
@@ -383,6 +383,20 @@ Owner links:
 ## Current-position display shapes
 
 ```yaml
+SummaryCard:
+  task: string
+  recording: string
+  profile: string
+  write_ticket: string
+  evidence: string
+  user_judgment: string
+  changes: string
+  close_status: string
+  transport: string
+  next: string
+  next_action: NextActionSummary | null
+  guarantee: string
+
 NextActionSummary:
   action_kind: string
   owner_method: string | null
@@ -447,6 +461,10 @@ WriteDecisionReason:
 ```
 
 Meaning:
+- `SummaryCard` is the stable compact summary shape for major user-facing status views. It uses public display strings for Task, Recording, Profile, Write Ticket, Evidence, User Judgment, Changes, Close Status, Transport, one Next action, and a concise Guarantee line.
+- `SummaryCard.next` is the single display next action selected for the summary. Use `none` only when the owner-selected view knows no next action. `SummaryCard.next_action` may carry the matching structured `NextActionSummary` and may be omitted when no structured action applies.
+- `SummaryCard` is a summary of other owner-selected state fields, not a second authority record. It must not add internal identifiers unless an identifier is needed for the displayed next action.
+- `SummaryCard.guarantee` is concise display wording for the summarized view. It must not claim correctness proof, test sufficiency proof, review completion, or OS-level enforcement unless another owner explicitly provides that guarantee.
 - `NextActionSummary` is the canonical next-action display shape. Its valid fields are `action_kind`, `owner_method`, `label`, `blocking_question`, and `required_refs`.
 - A `next_actions` entry that uses stale `action` or `reason` fields is not a valid `NextActionSummary`.
 - `WriteTicketStateSummary.status` and `WriteTicketSummary.status` are controlled value strings.

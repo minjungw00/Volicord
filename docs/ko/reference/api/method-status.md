@@ -21,7 +21,7 @@
 
 ## 목적
 
-`volicord.status`는 Core 상태의 현재 위치 보기를 반환합니다. 현재 `Task` 요약, 차단 사유, 대기 중인 사용자 판단, 쓰기 티켓 요약, 증거 요약, 닫기 상태, 닫기 준비 상태 발견 사항, `GuardHealthSummary` hook-state 사실, 프로젝트 연속성 요약, 보장 표시, 다음 안전한 행동을 포함할 수 있습니다.
+`volicord.status`는 Core 상태의 현재 위치 보기를 반환합니다. 현재 `Task` 요약, 차단 사유, 대기 중인 사용자 판단, 쓰기 티켓 요약, 증거 요약, 닫기 상태, 닫기 준비 상태 발견 사항, `GuardHealthSummary` hook-state 사실, 프로젝트 연속성 요약, 보장 표시, 다음 안전한 행동, 간결한 `summary_card`를 포함할 수 있습니다.
 
 ## 필수 입력
 
@@ -90,6 +90,7 @@ StatusRequest:
 - `include.close`는 `CurrentCloseBasis | null`, 닫기 상태, 계산된 차단 사유, 위험 수락 범위, 사용할 수 있을 때 hook 경로 안전성을 포함한 `GuardHealthSummary` hook-state 사실, 관련 다음 행동을 반환합니다. 차단 사유는 `volicord.check_close`와 같은 닫기 준비 상태 계산을 사용합니다.
 - `include.guarantees`는 프로젝트 강제 프로필, 확인된 호출 맥락, 활성화된 강제 메커니즘, 지원되는 기준 범위에서 파생된 보장만 반환합니다.
 - `include.continuity`는 오래 유지하는 프로젝트 수준 맥락의 활성 `ProjectContinuitySummary[]` 항목을 반환합니다.
+- `summary_card`는 성공한 `StatusResult` 응답에서 항상 반환됩니다. 담당 문서가 선택한 보기를 공개 표시 용어와, 알 수 있을 때 선택된 다음 행동 하나인 `next`로 요약합니다. 요약하는 구조화 필드 너머의 권한을 추가하지 않습니다.
 - `include.evidence=false`는 증거 요약, 범위, 아티팩트 증거 참조, 증거 전용 다음 행동을 계산하지도 반환하지도 않는다는 뜻입니다.
 - `include.close=false`는 닫기 준비 상태를 계산하지 않고 `CurrentCloseBasis`, 닫기 상태, 닫기 차단 사유, `GuardHealthSummary` hook-state 사실, 잔여 위험 범위, 닫기 전용 다음 행동을 반환하지 않는다는 뜻입니다.
 - `include.guarantees=false`는 보장 표시를 파생하지도 반환하지도 않는다는 뜻입니다.
@@ -110,6 +111,7 @@ StatusRequest:
 | 필드 | 결과 필드 의미 |
 |---|---|
 | `base` | 공통 결과 메타데이터입니다. `ToolResultBase` 형태는 [API 코어 스키마](schema-core.md#common-response)가 담당합니다. 읽기 전용 상태 조회 결과는 `events: []`와 권한 기록 공개를 사용합니다. 공통 응답 분기에 `EventRef.event_kind`가 있을 때 그 값은 불투명한 예시용 분류 문자열로 남습니다. |
+| `summary_card` | 선택된 상태 조회 보기에 대한 `SummaryCard`입니다. 형태는 [API 상태 스키마](schema-state.md#current-position-display-shapes)가 담당합니다. |
 | `active_task` | 현재 선택된 `Task` 요약의 `StateSummary | null`입니다. |
 | `status_summary` | 현재 상태 조회 보기를 요약하는 자유 형식 표시 문자열입니다. 닫기 준비 상태 보기가 선택되면 현재 닫기 준비 상태나 첫 번째 닫기 차단 사유 코드를 요약할 수 있습니다. 구조화된 권한 사실은 다른 결과 필드에 남습니다. |
 | `next_actions` | 다음 안전한 API 단계를 설명하는 `NextActionSummary[]`입니다. |
@@ -124,7 +126,7 @@ StatusRequest:
 | `guarantee_display` | 현재 상태 조회 보기에 대한 `GuaranteeDisplay | null`입니다. |
 | `continuity_summary` | `include.continuity=true`일 때의 `ProjectContinuitySummary[]`입니다. 이 상태 보기를 선택하지 않으면 생략합니다. 형태는 [API 상태 스키마](schema-state.md#project-continuity-shapes)가 담당합니다. |
 
-중첩된 `StateSummary`, `StateRecordRef`, `ProjectContinuitySummary`, `CurrentCloseBasis`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`, `GuardHealthSummary`, `GuaranteeDisplay`, `NextActionSummary` 형태는 [API 상태 스키마](schema-state.md)가 담당합니다.
+중첩된 `SummaryCard`, `StateSummary`, `StateRecordRef`, `ProjectContinuitySummary`, `CurrentCloseBasis`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`, `GuardHealthSummary`, `GuaranteeDisplay`, `NextActionSummary` 형태는 [API 상태 스키마](schema-state.md)가 담당합니다.
 
 ## 차단 결과
 

@@ -210,6 +210,11 @@ fn doctor_without_setup_reports_action_required() -> Result<(), Box<dyn Error>> 
         .any(|action| action["id"] == "run_init"));
     assert_eq!(value["primary_next_action"]["id"], "run_init");
     assert_eq!(value["primary_next_action"]["requirement"], "required");
+    assert_eq!(value["summary_card"]["recording"], "diagnostic_observation");
+    assert_eq!(
+        value["summary_card"]["next"],
+        "Run volicord init --host <host> --repo <path> from the Product Repository to initialize the primary host connection."
+    );
     assert_eq!(value["states"]["prompt_capture_status"], "not_checked");
     let doctor_text = run_with_home_env(runtime_home.path(), ["doctor"], &[])?;
     assert_success(&doctor_text);
@@ -218,7 +223,9 @@ fn doctor_without_setup_reports_action_required() -> Result<(), Box<dyn Error>> 
     assert!(text.contains("installation_profile_state: missing_or_invalid"));
     assert!(text.contains("mcp_config_state: unknown"));
     assert!(text.contains("prompt_capture_state: not_checked"));
-    assert!(text.contains("next_action: Run volicord init --host <host> --repo <path>"));
+    assert!(text.contains(
+        "Next: Run volicord init --host <host> --repo <path> from the Product Repository to initialize the primary host connection."
+    ));
     assert_eq!(fs::read_dir(runtime_home.path())?.count(), 0);
     Ok(())
 }
@@ -622,6 +629,11 @@ fn connection_status_downgrades_relative_codex_hook_command() -> Result<(), Box<
     );
     assert_eq!(value["states"]["control_surface"]["os_enforced"], false);
     assert_eq!(value["primary_next_action"]["id"], "guard_hook_path_safety");
+    assert_eq!(value["summary_card"]["transport"], "Agent Connection");
+    assert!(value["summary_card"]["next"]
+        .as_str()
+        .expect("summary next should be text")
+        .contains("volicord init --host codex --repo"));
     assert!(value["host_hook"]["stale_files"]
         .as_array()
         .expect("stale_files should be an array")
@@ -1119,6 +1131,10 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
         status_without_intent_json["primary_next_action"]["id"],
         "reload_required"
     );
+    assert!(status_without_intent_json["summary_card"]["next"]
+        .as_str()
+        .expect("summary next should be text")
+        .contains("Restart or reload codex"));
     assert_eq!(
         status_without_intent_json["states"]["hook_config"],
         "installed"
@@ -1842,7 +1858,7 @@ fn connect_defaults_to_workflow_mode() -> Result<(), Box<dyn Error>> {
     assert!(status_text.contains("project_registration_state: registered"));
     assert!(status_text.contains("mcp_config_state: match"));
     assert!(status_text.contains("host_reload_required: no"));
-    assert!(status_text.contains("next_action: none"));
+    assert!(status_text.contains("Next: none"));
     Ok(())
 }
 
@@ -1949,6 +1965,11 @@ fn connection_verify_reports_missing_mcp_config_as_primary_action() -> Result<()
     let value = json_stdout(&verify)?;
     assert_eq!(value["states"]["mcp_config"], "missing");
     assert_eq!(value["primary_next_action"]["id"], "mcp_config_missing");
+    assert_eq!(value["summary_card"]["recording"], "diagnostic_observation");
+    assert!(value["summary_card"]["next"]
+        .as_str()
+        .expect("summary next should be text")
+        .contains("volicord init --host codex --repo"));
     assert_eq!(
         value["primary_next_action"]["command"],
         format!(
@@ -2075,6 +2096,10 @@ fn connection_status_reports_missing_guard_files_as_primary_action() -> Result<(
     assert_eq!(value["states"]["guard_installation"], "files_missing");
     assert_eq!(value["states"]["prompt_capture"], "not_configured");
     assert_eq!(value["primary_next_action"]["id"], "guard_files_missing");
+    assert!(value["summary_card"]["next"]
+        .as_str()
+        .expect("summary next should be text")
+        .contains("reinstall missing detective host-hook files"));
     assert!(value["host_hook"]["missing_files"]
         .as_array()
         .expect("missing_files should be an array")
@@ -2153,6 +2178,10 @@ fn connection_status_reports_stale_guard_files_as_primary_action() -> Result<(),
         doctor_json["primary_next_action"]["id"],
         "repair_guard_files"
     );
+    assert!(doctor_json["summary_card"]["next"]
+        .as_str()
+        .expect("summary next should be text")
+        .starts_with("recommended: Run volicord init"));
     Ok(())
 }
 
@@ -2559,11 +2588,17 @@ fn user_channel_records_pending_judgment_with_local_user_provenance() -> Result<
     assert_success(&status);
     let status_text = stdout(&status);
     assert!(status_text.contains("User Channel status"));
-    assert!(status_text.contains("close_status: blocked"));
-    assert!(status_text.contains("close_blockers:"));
-    assert!(status_text.contains("next_action:"));
-    assert!(status_text.contains("pending_user_judgments: 1"));
-    assert!(status_text.contains("pending_user_judgment_path:"));
+    assert!(status_text.contains("Close Status: blocked"));
+    assert!(status_text.contains("User Judgment: pending (1)"));
+    assert!(status_text.contains("Next:"));
+    assert!(status_text.contains("Guarantee: Local authority record"));
+
+    let status_json =
+        run_with_home_env_in_dir(runtime_home.path(), ["status", "--json"], &[], &repo_root)?;
+    assert_success(&status_json);
+    let status_value = json_stdout(&status_json)?;
+    assert_eq!(status_value["summary_card"]["close_status"], "blocked");
+    assert_eq!(status_value["summary_card"]["user_judgment"], "pending (1)");
 
     let list = run_with_home_env_in_dir(runtime_home.path(), ["inbox"], &[], &repo_root)?;
     assert_success(&list);
@@ -2579,6 +2614,11 @@ fn user_channel_records_pending_judgment_with_local_user_provenance() -> Result<
         run_with_home_env_in_dir(runtime_home.path(), ["inbox", "--json"], &[], &repo_root)?;
     assert_success(&list_json);
     let list_value = json_stdout(&list_json)?;
+    assert_eq!(list_value["summary_card"]["user_judgment"], "pending (1)");
+    assert!(list_value["summary_card"]["next"]
+        .as_str()
+        .expect("summary next should be text")
+        .contains("volicord inbox answer"));
     let first = &list_value["pending_judgment_inbox_items"][0];
     assert_eq!(first["judgment_id"], judgment_id.as_str());
     assert_eq!(first["requirement_status"], "required");
@@ -2732,6 +2772,8 @@ fn changes_reconcile_runs_as_local_recovery() -> Result<(), Box<dyn Error>> {
         value["resolved_changes"][0]["resolved_by_actor_source"],
         "system"
     );
+    assert_eq!(value["summary_card"]["recording"], "core_committed");
+    assert_eq!(value["summary_card"]["changes"], "none");
 
     insert_unrecorded_change(
         runtime_home.path(),
@@ -2756,7 +2798,9 @@ fn changes_reconcile_runs_as_local_recovery() -> Result<(), Box<dyn Error>> {
     )?;
     assert_success(&text_output);
     let text = stdout(&text_output);
-    assert!(text.contains("changes recovery:"));
+    assert!(text.contains("Changes reconciliation"));
+    assert!(text.contains("Changes: none"));
+    assert!(text.contains("Next:"));
     assert!(!text.contains("reconciled changes:"));
 
     let conn =

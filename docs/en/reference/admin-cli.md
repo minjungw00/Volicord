@@ -133,6 +133,19 @@ Not supported:
   `connection_internal_id`, host config keys, protocol envelopes, or stored
   registry fields.
 
+Major status-like user-facing surfaces, including `volicord status`,
+`volicord doctor`, `volicord connection status`, `volicord connection verify`,
+`volicord changes reconcile`, and `volicord inbox`, use a compact summary card
+before detailed diagnostics when the command can compute one. Text output uses
+the public labels `Task`, `Recording`, `Profile`, `Write Ticket`, `Evidence`,
+`User Judgment`, `Changes`, `Close Status`, `Transport`, `Next`, and
+`Guarantee`. `Next` must name exactly one next action when the command can know
+one, and `none` only when no next action is known for the selected view.
+Text-mode summary output must not expose internal IDs by default unless an ID is
+needed to perform the displayed next action. Matching JSON output exposes the
+same stable data as `summary_card`; JSON consumers must not parse text-only
+formatting.
+
 <a id="runtime-home-selection"></a>
 ## Runtime Home Selection
 
@@ -195,7 +208,8 @@ observation and local web consent are reported as unavailable unless the
 reporting process actually owns that runtime state. Doctor does not create
 projects, install host configuration, change
 connection mode, or answer user judgments.
-Text and JSON doctor output include a diagnostic disclosure. JSON output uses
+Text and JSON doctor output include a diagnostic disclosure and the compact
+`summary_card` for the diagnostic view. JSON output uses
 `disclosure.guarantee_class=detective_observation` and `non_guarantees` values
 such as `NotOsSandbox`, `NotNetworkIsolation`, `NotFullWritePrevention`,
 `NotActorAttributionProof`, `NotCorrectnessProof`, `NotTestSufficiencyProof`,
@@ -433,7 +447,8 @@ Agent Connection commands use these result states:
 Verification output must make checks and user actions first-class diagnostics.
 Text output must show the overall status, each check that was attempted or
 blocked, and the next user action when one is required. JSON output must include
-top-level `status`, `checks`, and `actions` fields for diagnostic consumers.
+top-level `status`, `checks`, `actions`, and `summary_card` fields for
+diagnostic consumers.
 Connection status and verification output must keep detective host hook file installation,
 configuration health, runtime hook observation health, effective detective health,
 host reload requirement, prompt-capture availability, and last host-hook event when
@@ -635,7 +650,7 @@ Lifecycle behavior:
 
 `volicord changes reconcile [--repo PATH] [--task active|ID] [--json]` is the local recovery command for unresolved unrecorded Product Repository change findings.
 
-The command resolves the selected project from `--repo PATH` or the current working directory and selects the active Task by default. It calls the public `volicord.reconcile_changes` Core method with `actor_source=local_user` and `operation_category=local_recovery`, prints the number of resolved findings, pending user judgments, and remaining unresolved findings, and exits under the normal CLI exit-code model. Rejected Core responses remain rejected CLI results rather than successful reconciliation summaries.
+The command resolves the selected project from `--repo PATH` or the current working directory and selects the active Task by default. It calls the public `volicord.reconcile_changes` Core method with `actor_source=local_user` and `operation_category=local_recovery`, prints the compact summary card plus the number of resolved findings, pending user judgments, and remaining unresolved findings, and exits under the normal CLI exit-code model. Rejected Core responses remain rejected CLI results rather than successful reconciliation summaries.
 
 The command may resolve deterministic findings or create pending user-owned judgments. It does not record a user answer, accept a change on the user's behalf, prove correctness, prove review or test sufficiency, or complete close readiness. When it creates pending judgments, the user answers them through the `Judgment Inbox`, then reruns `volicord changes reconcile`.
 
@@ -688,9 +703,10 @@ Recording one judgment records only the addressed judgment. Final acceptance and
 residual-risk acceptance remain separate judgment kinds and actions; this
 command must not collapse one into the other.
 
-Status and inbox list/open output expose selected owner state for the user's
-next action. They do not create evidence, final acceptance, residual-risk
-acceptance, or close readiness. Only
+Status and inbox list output expose selected owner state for the user's next
+action, including a compact `summary_card` when the view can compute one.
+They do not create evidence, final acceptance, residual-risk acceptance, or
+close readiness. Only
 `volicord inbox answer` mutates the addressed pending judgment, and it
 does so only through the selected Core-generated option.
 
@@ -730,6 +746,8 @@ Required diagnostic JSON values:
   and optional details
 - `actions[]`: required or suggested user actions, each with a stable action id
   and human-readable command or instruction when one is available
+- `summary_card`: stable compact summary data for status-like diagnostic or
+  user-channel outputs that compute a summary card
 - Detective-aware setup, doctor, connection status, and connection verification
   JSON must expose `selected_profile`, `control_surface`,
   `cooperative_pre_tool_warning_available`,

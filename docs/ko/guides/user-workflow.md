@@ -97,6 +97,11 @@ Judgment Inbox 항목, 미기록 변경, 닫기 차단 사유는 요약의 배�
 
 좋은 상태 요약은 아래를 말합니다.
 
+Volicord의 상태형 CLI 출력은 이를 위해 같은 summary card 모델을 사용합니다. `Task`,
+`Recording`, `Profile`, `Write Ticket`, `Evidence`, `User Judgment`, `Changes`,
+`Close Status`, `Transport`, `Next`, `Guarantee`입니다. `Next` 줄은 알 수 있을 때 안전한
+행동 하나를 제시해야 합니다.
+
 - 현재 `Task` 또는 작업 모양
 - 현재 적용 범위
 - 알려진 경우 범위 밖 항목과 허용된 행동 상태

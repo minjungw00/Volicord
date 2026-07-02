@@ -739,8 +739,28 @@ fn status_close_include_matches_check_close_blockers() -> Result<(), Box<dyn Err
     )?;
 
     assert_eq!(status.response_value["close_state"], "blocked");
+    assert_eq!(
+        status.response_value["summary_card"]["task"],
+        "selected (ready)"
+    );
+    assert_eq!(
+        status.response_value["summary_card"]["close_status"],
+        "blocked"
+    );
+    assert_eq!(
+        status.response_value["summary_card"]["evidence"],
+        "sufficient"
+    );
     assert_authority_disclosure(&status.response_value);
     assert_authority_disclosure(&check.response_value);
+    assert_eq!(
+        check.response_value["summary_card"]["close_status"],
+        "blocked"
+    );
+    assert_eq!(
+        check.response_value["summary_card"]["next"],
+        check.response_value["blockers"][0]["next_actions"][0]["label"]
+    );
     assert!(status.response_value["current_close_basis"].is_object());
     assert_eq!(
         status.response_value["current_close_basis"],
@@ -13925,6 +13945,15 @@ fn reconcile_changes_resolves_not_product_change_and_updates_close_blocker(
 
     assert_eq!(response.response_value["base"]["response_kind"], "result");
     assert_authority_disclosure(&response.response_value);
+    assert_eq!(
+        response.response_value["summary_card"]["recording"],
+        "core_committed"
+    );
+    assert_eq!(response.response_value["summary_card"]["changes"], "none");
+    assert_eq!(
+        response.response_value["summary_card"]["next"],
+        response.response_value["close_blockers"][0]["next_actions"][0]["label"]
+    );
     assert_eq!(
         response.response_value["resolved_changes"][0]["resolution_basis"],
         "not_product_change"

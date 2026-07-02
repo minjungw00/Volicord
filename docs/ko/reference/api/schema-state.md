@@ -1,6 +1,6 @@
 # API 상태 스키마
 
-이 문서는 기준 범위의 상태 형태 API 스키마를 담당합니다. `StateSummary`, `StateRecordRef`, API 데이터 형태의 생명주기 상태, 상태 관련 스냅샷, `ProjectContinuityRecord`, `ProjectContinuitySummary`, `ShapingReadiness`, `ChangeUnitEffectContract`, 그리고 `NextActionSummary`, `WriteTicket`, `WriteTicketScope`, `WriteTicketPathPatterns`, `WriteTicketStateSummary`, `WriteTicketSummary`, `WriteTicketAttemptScope`, `EvidenceSummary`, `EvidenceObservation`, `GuardHealthSummary`, `UnrecordedChangeFinding`, `UnrecordedChangeResolutionSummary`, `CurrentCloseBasis`, `ResidualRisk`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`, `ValidatorResult`, `GuaranteeDisplay`, `GuaranteeDisclosure` 같은 표시 형태를 정의합니다.
+이 문서는 기준 범위의 상태 형태 API 스키마를 담당합니다. `StateSummary`, `StateRecordRef`, API 데이터 형태의 생명주기 상태, 상태 관련 스냅샷, `ProjectContinuityRecord`, `ProjectContinuitySummary`, `ShapingReadiness`, `ChangeUnitEffectContract`, 그리고 `SummaryCard`, `NextActionSummary`, `WriteTicket`, `WriteTicketScope`, `WriteTicketPathPatterns`, `WriteTicketStateSummary`, `WriteTicketSummary`, `WriteTicketAttemptScope`, `EvidenceSummary`, `EvidenceObservation`, `GuardHealthSummary`, `UnrecordedChangeFinding`, `UnrecordedChangeResolutionSummary`, `CurrentCloseBasis`, `ResidualRisk`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`, `ValidatorResult`, `GuaranteeDisplay`, `GuaranteeDisclosure` 같은 표시 형태를 정의합니다.
 
 ## 담당 경계
 
@@ -383,6 +383,20 @@ ShapingGap:
 ## 현재 위치 표시 형태
 
 ```yaml
+SummaryCard:
+  task: string
+  recording: string
+  profile: string
+  write_ticket: string
+  evidence: string
+  user_judgment: string
+  changes: string
+  close_status: string
+  transport: string
+  next: string
+  next_action: NextActionSummary | null
+  guarantee: string
+
 NextActionSummary:
   action_kind: string
   owner_method: string | null
@@ -447,6 +461,10 @@ WriteDecisionReason:
 ```
 
 의미:
+- `SummaryCard`는 주요 사용자 대상 상태 보기에 쓰는 안정적인 간결 요약 형태입니다. `Task`, `Recording`, `Profile`, `Write Ticket`, `Evidence`, `User Judgment`, `Changes`, `Close Status`, `Transport`, 다음 행동 하나, 짧은 `Guarantee` 줄에 공개 표시 문자열을 사용합니다.
+- `SummaryCard.next`는 요약을 위해 선택된 단일 표시 다음 행동입니다. 담당 문서가 선택한 보기에서 알 수 있는 다음 행동이 없을 때만 `none`을 사용합니다. `SummaryCard.next_action`은 대응하는 구조화된 `NextActionSummary`를 담을 수 있으며 구조화된 행동이 적용되지 않으면 생략될 수 있습니다.
+- `SummaryCard`는 담당 문서가 선택한 다른 상태 필드의 요약이지 두 번째 권한 기록이 아닙니다. 표시된 다음 행동에 식별자가 필요하지 않은 한 내부 식별자를 추가하면 안 됩니다.
+- `SummaryCard.guarantee`는 요약된 보기에 대한 짧은 표시 문구입니다. 다른 담당 문서가 명시적으로 그런 보장을 제공하지 않는 한 정확성 증명, 테스트 충분성 증명, review 완료, OS 수준 집행을 주장하면 안 됩니다.
 - `NextActionSummary`는 기준 다음 행동 표시 형태입니다. 유효한 필드는 `action_kind`, `owner_method`, `label`, `blocking_question`, `required_refs`입니다.
 - 오래된 `action` 또는 `reason` 필드를 쓰는 `next_actions` 항목은 유효한 `NextActionSummary`가 아닙니다.
 - `WriteTicketStateSummary.status`와 `WriteTicketSummary.status`는 제어 값 문자열입니다.

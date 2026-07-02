@@ -102,6 +102,7 @@ fn status_result_fields(
     let mut guard_health = None;
     let mut continuity_summary = None;
     let mut next_actions = Vec::new();
+    let mut card_pending_user_judgment_count = 0usize;
     let guarantee_profile = if include.guarantees {
         Some(
             store
@@ -123,6 +124,7 @@ fn status_result_fields(
             .map_err(CorePipelineError::from)?;
         let all_pending_user_judgments =
             projected_pending_user_judgment_refs(store, &task_id, state_version)?;
+        card_pending_user_judgment_count = all_pending_user_judgments.len();
         if include.pending_user_judgments {
             pending_user_judgments = all_pending_user_judgments.clone();
         }
@@ -222,8 +224,32 @@ fn status_result_fields(
     }
     next_actions = unique_next_actions(next_actions);
 
+    let close_blockers_slice = close_blockers.as_deref().unwrap_or(&[]);
+    let summary_card = summary_card_for_core(SummaryCardBuild {
+        task,
+        recording: "read_only",
+        profile: profile_summary_text(guard_health.as_ref(), guarantee_projection.as_ref()),
+        write_ticket: write_ticket_summary_text(
+            include.write_ticket,
+            write_ticket_summary.as_ref(),
+        ),
+        evidence: evidence_summary_text(include.evidence, evidence_summary.as_ref()),
+        pending_user_judgments: card_pending_user_judgment_count,
+        changes: changes_summary_text(
+            include.close,
+            guard_health
+                .as_ref()
+                .map(|health| health.unresolved_unrecorded_change_count)
+                .unwrap_or(0),
+        ),
+        close_status: close_state_summary_text(include.close, close_state),
+        verified_invocation,
+        next_action: first_next_action(&next_actions, close_blockers_slice),
+    });
+
     let result = volicord_types::StatusResult {
         base: placeholder_base(),
+        summary_card,
         active_task: None,
         status_summary: status_summary_for(task, close_state, close_blockers.as_deref()),
         next_actions,

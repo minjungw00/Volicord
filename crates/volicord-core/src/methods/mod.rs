@@ -36,7 +36,7 @@ use volicord_types::{
     CompletionPolicy, ControlSurfaceSummary, CurrentCloseBasis, DryRunSummary, DurableIdKind,
     EffectKind, ErrorCode, EvidenceAssuranceLevel, EvidenceCoverageItem, EvidenceCoverageState,
     EvidenceObservation, EvidenceObservationId, EvidenceObservationInput, EvidenceSourceKind,
-    EvidenceStatus, EvidenceSummary, EvidenceUpdateProvenance, GuaranteeDisplay,
+    EvidenceStatus, EvidenceSummary, EvidenceUpdateProvenance, GuaranteeDisplay, GuaranteeLevel,
     GuardConfigurationStatus, GuardEffectiveStatus, GuardHealthSummary, GuardInstallationId,
     GuardInstallationStatus, GuardObservationStatus, IntegrationProfile, JsonObject,
     JudgmentAnswerConstraints, JudgmentBasis, JudgmentBasisCompatibilityStatus,
@@ -53,8 +53,8 @@ use volicord_types::{
     ResumePolicy, RiskAcceptanceCoverage, RiskId, RunId, RunSummary, SensitiveActionRequirement,
     SessionWatchCoverageBasis, SessionWatchStatus, StageArtifactRequest, StageArtifactResult,
     StagedArtifactHandle, StagedArtifactHandleId, StateRecordKind, StateRecordRef,
-    StatusCloseState, StatusInclude, StatusRequest, StorageRef, TaskId, TaskLifecyclePhase,
-    TaskLifecycleState, TaskMode, TaskResult, ToolEnvelope, ToolResultBase,
+    StatusCloseState, StatusInclude, StatusRequest, StorageRef, SummaryCard, TaskId,
+    TaskLifecyclePhase, TaskLifecycleState, TaskMode, TaskResult, ToolEnvelope, ToolResultBase,
     UnrecordedChangeFinding, UnrecordedChangeId, UnrecordedChangeResolutionBasis,
     UnrecordedChangeResolutionRequest, UnrecordedChangeResolutionSummary, UnrecordedChangeStatus,
     UpdateScopeRequest, UserJudgment, UserJudgmentContext, UserJudgmentId, UserJudgmentOption,
@@ -2542,6 +2542,170 @@ fn next_actions_for_state(
             blocking_question: None,
             required_refs: vec![task_ref.clone()],
         }],
+    }
+}
+
+fn summary_card_for_core(input: SummaryCardBuild<'_>) -> SummaryCard {
+    let next = input
+        .next_action
+        .map(next_action_label)
+        .unwrap_or_else(|| "none".to_owned());
+    SummaryCard {
+        task: task_summary_text(input.task),
+        recording: input.recording.to_owned(),
+        profile: input.profile.unwrap_or_else(|| "not_selected".to_owned()),
+        write_ticket: input.write_ticket,
+        evidence: input.evidence,
+        user_judgment: count_state_text("pending", input.pending_user_judgments),
+        changes: input.changes,
+        close_status: input.close_status,
+        transport: transport_summary(input.verified_invocation),
+        next,
+        next_action: input.next_action.cloned(),
+        guarantee: AUTHORITY_RECORD_SUMMARY_GUARANTEE.to_owned(),
+    }
+}
+
+struct SummaryCardBuild<'a> {
+    task: Option<&'a TaskRecord>,
+    recording: &'a str,
+    profile: Option<String>,
+    write_ticket: String,
+    evidence: String,
+    pending_user_judgments: usize,
+    changes: String,
+    close_status: String,
+    verified_invocation: &'a VerifiedInvocationContext,
+    next_action: Option<&'a NextActionSummary>,
+}
+
+const AUTHORITY_RECORD_SUMMARY_GUARANTEE: &str =
+    "Local authority record; not OS enforcement, correctness proof, test sufficiency proof, or review completion.";
+
+fn task_summary_text(task: Option<&TaskRecord>) -> String {
+    task.map(|task| format!("selected ({})", task.lifecycle_phase))
+        .unwrap_or_else(|| "none".to_owned())
+}
+
+fn profile_summary_text(
+    guard_health: Option<&GuardHealthSummary>,
+    guarantee_display: Option<&GuaranteeDisplay>,
+) -> Option<String> {
+    guard_health
+        .map(|health| health.selected_profile.as_str().to_owned())
+        .or_else(|| {
+            guarantee_display.map(|display| match display.level {
+                GuaranteeLevel::Cooperative => "record".to_owned(),
+                GuaranteeLevel::Detective => "detective".to_owned(),
+            })
+        })
+}
+
+fn write_ticket_summary_text(selected: bool, summary: Option<&WriteTicketStateSummary>) -> String {
+    if !selected {
+        return "not_selected".to_owned();
+    }
+    summary
+        .map(|summary| match summary.status {
+            WriteTicketStatus::Active => "active",
+            WriteTicketStatus::Consumed => "consumed",
+            WriteTicketStatus::Expired => "expired",
+            WriteTicketStatus::Stale => "stale",
+            WriteTicketStatus::Revoked => "revoked",
+        })
+        .unwrap_or("none")
+        .to_owned()
+}
+
+fn evidence_summary_text(selected: bool, summary: Option<&EvidenceSummary>) -> String {
+    if !selected {
+        return "not_selected".to_owned();
+    }
+    summary
+        .map(|summary| match summary.status {
+            EvidenceStatus::Unknown => "unknown",
+            EvidenceStatus::Insufficient => "insufficient",
+            EvidenceStatus::Sufficient => "sufficient",
+            EvidenceStatus::Blocked => "blocked",
+        })
+        .unwrap_or("none")
+        .to_owned()
+}
+
+fn close_state_summary_text(selected: bool, close_state: Option<StatusCloseState>) -> String {
+    if !selected {
+        return "not_selected".to_owned();
+    }
+    close_state
+        .map(status_close_state_text)
+        .unwrap_or("none")
+        .to_owned()
+}
+
+fn status_close_state_text(close_state: StatusCloseState) -> &'static str {
+    match close_state {
+        StatusCloseState::Ready => "ready",
+        StatusCloseState::Blocked => "blocked",
+        StatusCloseState::Closed => "closed",
+        StatusCloseState::Cancelled => "cancelled",
+        StatusCloseState::Superseded => "superseded",
+        StatusCloseState::None => "none",
+    }
+}
+
+fn close_state_text(close_state: CloseState) -> &'static str {
+    match close_state {
+        CloseState::Ready => "ready",
+        CloseState::Blocked => "blocked",
+        CloseState::Closed => "closed",
+        CloseState::Cancelled => "cancelled",
+        CloseState::Superseded => "superseded",
+    }
+}
+
+fn changes_summary_text(selected: bool, unresolved_count: u64) -> String {
+    if !selected {
+        return "not_selected".to_owned();
+    }
+    count_state_text("unresolved", unresolved_count as usize)
+}
+
+fn count_state_text(label: &str, count: usize) -> String {
+    if count == 0 {
+        "none".to_owned()
+    } else {
+        format!("{label} ({count})")
+    }
+}
+
+fn next_action_label(action: &NextActionSummary) -> String {
+    if !action.label.trim().is_empty() {
+        action.label.clone()
+    } else {
+        action
+            .blocking_question
+            .clone()
+            .unwrap_or_else(|| "none".to_owned())
+    }
+}
+
+fn first_next_action<'a>(
+    next_actions: &'a [NextActionSummary],
+    close_blockers: &'a [CloseReadinessBlocker],
+) -> Option<&'a NextActionSummary> {
+    next_actions.first().or_else(|| {
+        close_blockers
+            .iter()
+            .flat_map(|blocker| blocker.next_actions.iter())
+            .next()
+    })
+}
+
+fn transport_summary(verified_invocation: &VerifiedInvocationContext) -> String {
+    match &verified_invocation.actor_source {
+        ActorSource::AgentConnection(_) => "Agent Connection".to_owned(),
+        ActorSource::LocalUser => "User Channel".to_owned(),
+        ActorSource::System => "system".to_owned(),
     }
 }
 

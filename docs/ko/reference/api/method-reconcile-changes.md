@@ -98,6 +98,7 @@ Dry run은 계획된 해결이나 대기 판단을 미리 보여 줄 뿐 ref, ev
 - `base.response_kind=result`
 - 찾기가 해결되거나 판단이 생성되면 `base.effect_kind=core_committed`
 - 저장 변경이 필요 없으면 `base.effect_kind=read_only`
+- `summary_card`
 - `task_ref`
 - `unresolved_changes`
 - `resolved_changes`
@@ -113,6 +114,7 @@ Dry run은 계획된 해결이나 대기 판단을 미리 보여 줄 뿐 ref, ev
 | 필드 | 결과 필드 의미 |
 |---|---|
 | `base` | 공통 결과 메타데이터입니다. `disclosure`를 포함한 `ToolResultBase` 형태는 [API 코어 스키마](schema-core.md#common-response)가 담당합니다. `ReconcileChangesResult`는 `base.disclosure.guarantee_class=authority_record`를 사용합니다. |
+| `summary_card` | 선택된 조정 결과에 대한 `SummaryCard`입니다. 기록, 변경, 대기 판단, 닫기 상태, 전송, 선택된 다음 행동 하나, 보장 줄을 요약하며 구조화된 결과 필드 너머의 권한을 추가하지 않습니다. 형태는 [API 상태 스키마](schema-state.md#current-position-display-shapes)가 담당합니다. |
 | `task_ref` | 조정한 `Task`의 `StateRecordRef`입니다. |
 | `unresolved_changes` | 이 호출이 선택한 결정적 해결과 사용자 수락 해결을 적용한 뒤에도 남은 미해결 찾기입니다. |
 | `resolved_changes` | 이 호출이 해결한 찾기입니다. basis, 행위자 출처, capture basis, 타임스탬프, 선택적 연결 사용자 판단을 포함합니다. |

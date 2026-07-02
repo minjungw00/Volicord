@@ -98,6 +98,7 @@ Returns `ReconcileChangesResult` with:
 - `base.response_kind=result`
 - `base.effect_kind=core_committed` when findings are resolved or judgments are created
 - `base.effect_kind=read_only` when no storage mutation is needed
+- `summary_card`
 - `task_ref`
 - `unresolved_changes`
 - `resolved_changes`
@@ -113,6 +114,7 @@ Returns `ReconcileChangesResult` with:
 | Field | Result-field meaning |
 |---|---|
 | `base` | Common result metadata. The `ToolResultBase` shape, including `disclosure`, is owned by [API Schema Core](schema-core.md#common-response). `ReconcileChangesResult` uses `base.disclosure.guarantee_class=authority_record`. |
+| `summary_card` | `SummaryCard` for the selected reconciliation result. It summarizes recording, changes, pending judgment, close status, transport, one selected next action, and the guarantee line without adding authority beyond the structured result fields. Shape is owned by [API State Schemas](schema-state.md#current-position-display-shapes). |
 | `task_ref` | `StateRecordRef` for the reconciled Task. |
 | `unresolved_changes` | Remaining unresolved findings after applying deterministic and accepted-user resolutions selected by this call. |
 | `resolved_changes` | Findings that this call resolved, including basis, actor source, capture basis, timestamp, and optional linked user judgment. |

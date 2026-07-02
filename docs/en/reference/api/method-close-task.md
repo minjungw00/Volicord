@@ -215,6 +215,7 @@ Returns `CloseTaskResult` with `base.response_kind=result`.
 | Field | Result-field meaning |
 |---|---|
 | `base` | Common result metadata. The `ToolResultBase` shape, including `disclosure` and `events`, is owned by [API Schema Core](schema-core.md#common-response). Valid `CloseTaskResult` branches use `base.response_kind=result` and `base.disclosure.guarantee_class=authority_record`; this document selects `base.effect_kind=read_only` for `volicord.check_close` and `base.effect_kind=core_committed` for committed terminal or owner-allowed committed blocked outcomes. |
+| `summary_card` | `SummaryCard` for the selected close or check-close result. It summarizes close status, evidence, pending judgment, changes, transport, one selected next action, and the guarantee line without adding authority beyond the structured result fields. Shape is owned by [API State Schemas](schema-state.md#current-position-display-shapes). |
 | `close_state` | Method result close state for the requested path. Supported values are owned by [API Value Sets](schema-value-sets.md#task-lifecycle-values). `close_state=blocked` is a method result after valid close or terminal-path evaluation, not `ToolRejectedResponse`. |
 | `state` | `StateSummary` for the selected Task after the check, terminal mutation, or owner-allowed blocked outcome. Nested state fields, including `close_blockers`, are owned by [API State Schemas](schema-state.md). |
 | `current_close_basis` | `CurrentCloseBasis | null` used for close readiness when selected into the result. `null` means no current close basis is available for this result. Shape is owned by [API State Schemas](schema-state.md#close-readiness-and-validation-shapes). |
@@ -226,7 +227,7 @@ Returns `CloseTaskResult` with `base.response_kind=result`.
 | `evidence_summary` | `EvidenceSummary | null` for the close basis visible in the result, or `null` when no evidence summary is selected into the result. Shape is owned by [API State Schemas](schema-state.md#evidence-and-run-snapshot-shapes). |
 | `artifact_refs` | `ArtifactRef[]` for close-relevant artifacts selected into the result. `ArtifactRef` shape is owned by [API Artifact Schemas](schema-artifacts.md#artifactref). |
 
-`CloseTaskResult` does not have a top-level `next_actions` field. Next actions for close blockers appear inside `CloseReadinessBlocker.next_actions` and use the canonical `NextActionSummary` shape from [API State Schemas](schema-state.md#current-position-display-shapes).
+`CloseTaskResult` does not have a top-level `next_actions` list. `summary_card.next` is the single display next action selected for the result summary. Next actions for close blockers remain inside `CloseReadinessBlocker.next_actions` and use the canonical `NextActionSummary` shape from [API State Schemas](schema-state.md#current-position-display-shapes).
 
 This method owns the method-scoped `CloseReadinessBlocker.code` values it produces. Those codes are not public `ErrorCode` values and are not global value-set entries.
 

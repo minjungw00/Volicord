@@ -695,6 +695,24 @@ pub struct NextActionSummary {
     pub required_refs: Vec<StateRecordRef>,
 }
 
+/// Stable compact status card shared by status-like outputs.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct SummaryCard {
+    pub task: String,
+    pub recording: String,
+    pub profile: String,
+    pub write_ticket: String,
+    pub evidence: String,
+    pub user_judgment: String,
+    pub changes: String,
+    pub close_status: String,
+    pub transport: String,
+    pub next: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_action: Option<NextActionSummary>,
+    pub guarantee: String,
+}
+
 /// Current write ticket display summary.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct WriteTicketStateSummary {
