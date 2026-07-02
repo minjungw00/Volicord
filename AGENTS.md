@@ -34,10 +34,10 @@ residual-risk decisions, or implementation output.
 - Use `docs/terminology-map.yaml` for terminology and identifier-preservation
   rules.
 - For Rust implementation work, start with
-  `docs/en/development/change-guide.md` or
-  `docs/ko/development/change-guide.md`, then use the matching
-  `docs/en/development/architecture.md` or
-  `docs/ko/development/architecture.md` before changing durable
+  `docs/en/architecture-guide/change-guide.md` or
+  `docs/ko/architecture-guide/change-guide.md`, then use the matching
+  `docs/en/architecture-guide/architecture.md` or
+  `docs/ko/architecture-guide/architecture.md` before changing durable
   implementation structure.
 - For public API, CLI, MCP, storage, schema, runtime-boundary, security, Core
   model, conformance, close-readiness, value-set, or blocker behavior, use the
@@ -78,7 +78,7 @@ residual-risk decisions, or implementation output.
   helper, or snapshot must not become the only place a product contract is
   defined.
 - Do not add legacy compatibility code, old aliases, fallback behavior, or
-  adapter paths unless a stable Reference or Development owner explicitly
+  adapter paths unless a stable Reference or Architecture Guide owner explicitly
   requires them. When compatibility is required, test the current supported
   behavior and owner-defined boundary.
 - When public contracts change, update the focused owner, durable contract

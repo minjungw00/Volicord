@@ -272,8 +272,8 @@ alone do not prove that the host loaded or ran the detective-specific pieces.
 
 Host-specific file layouts, hook matchers, wrapper output modes, path-safety
 diagnostics, and host approval or reload details live in
-[Agent Host Setup](docs/en/guides/agent-host-setup.md) and
-[Agent Host Troubleshooting](docs/en/guides/agent-host-troubleshooting.md).
+[Agent Host Setup](docs/en/user-guide/agent-host-setup.md) and
+[Agent Host Troubleshooting](docs/en/user-guide/agent-host-troubleshooting.md).
 Exact command behavior lives in the
 [Administrative CLI Reference](docs/en/reference/admin-cli.md).
 
@@ -381,7 +381,7 @@ exposes `POST /mcp`, and does not implement server-sent event streams, HTTP
 elicitation, or full MCP Streamable HTTP compatibility. Do not treat it as a
 general network service or publish it on a public host interface.
 
-Use [Installation](docs/en/getting-started/installation.md) and
+Use [Installation](docs/en/user-guide/installation.md) and
 [MCP Transport](docs/en/reference/mcp-transport.md) for the detailed Docker and
 HTTP boundaries.
 
@@ -391,7 +391,7 @@ HTTP boundaries.
 |---|---|
 | `volicord` is not found | Put the install directory on `PATH`, or install to a directory already on `PATH`, then rerun `volicord --version`. Future agent hosts must also be able to start `volicord`. |
 | `init` reports `action_required` | Complete the named action, such as host restart or reload, project trust, MCP approval, OAuth, command-link repair, or installation-profile repair, then rerun `volicord connection verify HOST --repo PATH`. |
-| Detective-specific checks are inactive | Run `volicord connection verify HOST --repo PATH`, complete the named user action, and use [Agent Host Troubleshooting](docs/en/guides/agent-host-troubleshooting.md) for hook or watcher diagnostics. |
+| Detective-specific checks are inactive | Run `volicord connection verify HOST --repo PATH`, complete the named user action, and use [Agent Host Troubleshooting](docs/en/user-guide/agent-host-troubleshooting.md) for hook or watcher diagnostics. |
 | Host cannot start MCP | Confirm the host can run `volicord mcp --help` through the same command path. Run `volicord doctor` for installation-profile health. |
 | Product Repository is not detected | Pass `--repo /path/to/your-product-repo` and make sure the path is an existing local repository separate from the Runtime Home. |
 | A judgment is pending | Prefer the host prompt or exact chat command when available. Use `volicord inbox` and `volicord inbox answer` as the CLI inbox path. |
@@ -401,10 +401,10 @@ HTTP boundaries.
 
 | Need | Read |
 |---|---|
-| Install details and Docker examples | [Installation](docs/en/getting-started/installation.md) |
+| Install details and Docker examples | [Installation](docs/en/user-guide/installation.md) |
 | Supported environments | [System Requirements](docs/en/reference/system-requirements.md) |
-| User workflow and judgment boundaries | [User Guide](docs/en/guides/user-workflow.md) |
-| Host setup and repair | [Agent Host Setup](docs/en/guides/agent-host-setup.md) and [Agent Host Troubleshooting](docs/en/guides/agent-host-troubleshooting.md) |
+| User workflow and judgment boundaries | [User Guide](docs/en/user-guide/user-workflow.md) |
+| Host setup and repair | [Agent Host Setup](docs/en/user-guide/agent-host-setup.md) and [Agent Host Troubleshooting](docs/en/user-guide/agent-host-troubleshooting.md) |
 | Exact CLI behavior | [Administrative CLI Reference](docs/en/reference/admin-cli.md) |
 | MCP stdio and HTTP transport | [MCP Transport](docs/en/reference/mcp-transport.md) |
 | Agent Connection and User Channel boundaries | [Agent Connection Reference](docs/en/reference/agent-connection.md) |

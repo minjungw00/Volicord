@@ -52,7 +52,7 @@ discussion when it helps reviewers understand why a diagram belongs in a
 document. It should not be pasted into ordinary reader-facing prose.
 
 Avoid literal policy labels such as `Diagram role:` or `그림 역할:` in README,
-Getting Started, Guides, Reference, and Development pages. Reader-facing
+User Guide, Architecture Guide, Reference, and Maintain pages. Reader-facing
 documents should state the same purpose naturally, for example:
 
 - "This workflow shows how the user, agent host, and Volicord hand off a
@@ -68,13 +68,13 @@ metadata before they can understand the diagram.
 
 | Category | Question it answers | Typical reader | Arrows usually mean | Do not use it to show | Appropriate locations |
 |---|---|---|---|---|---|
-| User workflow diagram | What does the user or agent do next, and where does judgment or handoff occur? | New users, product users, agents, operators | Work order, handoff, user decision, or visible collaboration loop | Architecture components, API call order, storage ownership, or authority source of truth | Root README, Getting Started overview, User Workflow Guide, Agent Workflow Guide, guide-level examples |
-| Component map | What parts exist, and what responsibility or boundary does each part have? | Operators, source-code learners, implementers | Relationship, containment, responsibility boundary, or allowed communication as defined by the legend | A user task flow, exact runtime sequence, ownership of user judgment, or storage lifecycle | Root README at overview depth, Agent Host Setup, Architecture and Development documents, focused Reference owners when contract-backed |
-| Runtime sequence | In what time order do calls, messages, or process steps happen? | Implementers, agent integrators, reviewers | Time-ordered invocation, message, response, callback, or process transition | Authority dependency, user approval meaning, durable storage ownership, or broad component responsibility | Development documents, request lifecycle explanations, API method owners, focused Reference pages |
+| User workflow diagram | What does the user or agent do next, and where does judgment or handoff occur? | New users, product users, agents, operators | Work order, handoff, user decision, or visible collaboration loop | Architecture components, API call order, storage ownership, or authority source of truth | Root README, User Guide Overview, User Workflow Guide, Agent Workflow Guide, guide-level examples |
+| Component map | What parts exist, and what responsibility or boundary does each part have? | Operators, source-code learners, implementers | Relationship, containment, responsibility boundary, or allowed communication as defined by the legend | A user task flow, exact runtime sequence, ownership of user judgment, or storage lifecycle | Root README at overview depth, Agent Host Setup, Architecture Guide documents, focused Reference owners when contract-backed |
+| Runtime sequence | In what time order do calls, messages, or process steps happen? | Implementers, agent integrators, reviewers | Time-ordered invocation, message, response, callback, or process transition | Authority dependency, user approval meaning, durable storage ownership, or broad component responsibility | Architecture Guide documents, request lifecycle explanations, API method owners, focused Reference pages |
 | Authority model | Which record, role, or channel owns a decision, source of truth, or authority boundary? | Maintainers, agents, reviewers, implementers | Authority relation, ownership, source-of-truth path, or decision-routing relation | Execution order, implementation call stack, storage location, or component deployment | Core Model, User Workflow Guide, Agent Workflow Guide, Reference owners, overview pages only at conceptual depth |
-| Storage lifecycle | How does a stored record, artifact, or file state move through creation, update, retention, or removal? | Implementers, storage reviewers, maintainers | State transition, persistence boundary, retention transition, or deletion/removal phase | Process ownership, authority ownership, user workflow order, or runtime call order | Storage Reference, Runtime Boundaries, Development architecture, storage-focused implementation docs |
+| Storage lifecycle | How does a stored record, artifact, or file state move through creation, update, retention, or removal? | Implementers, storage reviewers, maintainers | State transition, persistence boundary, retention transition, or deletion/removal phase | Process ownership, authority ownership, user workflow order, or runtime call order | Storage Reference, Runtime Boundaries, Architecture Guide architecture, storage-focused implementation docs |
 | Connection setup flow | How does an operator prepare, verify, guide, use, or remove an Agent Connection setup? | Operators, agent integrators, agents | Setup step, verification checkpoint, configuration handoff, or recovery branch | Full MCP protocol sequence, storage lifecycle, broad architecture map, or exact CLI output contract | Quickstart for compact happy paths, Agent Host Setup, Agent Host Troubleshooting, Administrative CLI at command-contract depth |
-| Dependency graph | What depends on what for build, source organization, documentation ownership, or concept routing? | Implementers, maintainers, reviewers, source-code learners | Dependency direction declared by the caption, such as build dependency, module dependency, document dependency, or concept prerequisite | Runtime execution order, authority ownership, storage movement, or user task order | Development documents, architecture pages, testing strategy, maintain documents, route metadata explanations |
+| Dependency graph | What depends on what for build, source organization, documentation ownership, or concept routing? | Implementers, maintainers, reviewers, source-code learners | Dependency direction declared by the caption, such as build dependency, module dependency, document dependency, or concept prerequisite | Runtime execution order, authority ownership, storage movement, or user task order | Architecture Guide documents, architecture pages, testing strategy, maintain documents, route metadata explanations |
 
 ## Review Rules
 
@@ -105,7 +105,7 @@ metadata before they can understand the diagram.
 
 Review a diagram when its document owner changes meaning, when a linked
 Reference owner changes the facts the diagram summarizes, or when durable source
-structure changes in a way that affects a Development diagram.
+structure changes in a way that affects an Architecture Guide diagram.
 
 Before keeping or adding a diagram, confirm:
 

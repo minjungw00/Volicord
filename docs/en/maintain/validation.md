@@ -111,8 +111,8 @@ response shape, field names, required fields, nullability, enum-like values,
 `state_version`, refs, artifact refs, run refs, judgment refs, close-readiness
 blockers, response branches, and links to applicable owners where relevant.
 
-For developer-learning changes caused by code movement, confirm the relevant
-Development documents describe durable crates, modules, entry points, execution
+For Architecture Guide changes caused by code movement, confirm the relevant
+Architecture Guide documents describe durable crates, modules, entry points, execution
 stages, and responsibility boundaries without turning implementation detail into
 product contract text.
 
@@ -138,7 +138,7 @@ quality-gate boundary, and prefer checks that validate owner routing,
 contracts, links, examples, state transitions, and reader usability.
 
 For implementation-layer placement and test-authoring examples, use
-[Testing Strategy](../development/testing-strategy.md). This validation policy
+[Testing Strategy](../architecture-guide/testing-strategy.md). This validation policy
 owns the maintenance-check, review, and reporting boundaries for those checks.
 
 Do not add permanent tests whose only assertion is a cleanup-specific string

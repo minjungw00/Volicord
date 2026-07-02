@@ -59,7 +59,7 @@ Completion state: the connection is ready when status or verification reports
 local repair action, then rerun verification. Exact result-state meaning belongs
 to [Administrative CLI Reference](../reference/admin-cli.md#agent-connection-result-states).
 Detective host hook path repair guidance belongs to
-[Agent Host Troubleshooting](../guides/agent-host-troubleshooting.md#guard-hook-path-or-wrapper-is-unsafe).
+[Agent Host Troubleshooting](../user-guide/agent-host-troubleshooting.md#guard-hook-path-or-wrapper-is-unsafe).
 
 ## Choose A Host Intent
 
@@ -144,7 +144,7 @@ task.
 
 | Need | Read |
 |---|---|
-| Host setup details | [Agent Host Setup](../guides/agent-host-setup.md) |
-| Troubleshooting `action_required` or `failed` | [Agent Host Troubleshooting](../guides/agent-host-troubleshooting.md) |
-| User workflow and judgment boundaries | [User Guide](../guides/user-workflow.md) |
-| Agent workflow boundaries | [Agent Guide](../guides/agent-workflow.md) |
+| Host setup details | [Agent Host Setup](../user-guide/agent-host-setup.md) |
+| Troubleshooting `action_required` or `failed` | [Agent Host Troubleshooting](../user-guide/agent-host-troubleshooting.md) |
+| User workflow and judgment boundaries | [User Guide](../user-guide/user-workflow.md) |
+| Agent workflow boundaries | [Agent Guide](../user-guide/agent-workflow.md) |

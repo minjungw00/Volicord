@@ -74,7 +74,7 @@ arrow-semantics guidance, accuracy-owner expectations, and placement boundaries
 so workflow diagrams, component maps, runtime sequences, authority models,
 storage lifecycles, connection setup flows, and dependency graphs stay distinct.
 It also keeps authoring and review metadata separate from reader-facing prose:
-ordinary README, guide, Reference, and Development pages should explain a
+ordinary README, guide, Reference, and Architecture Guide pages should explain a
 diagram's purpose in natural captions or surrounding prose instead of exposing
 literal labels such as `Diagram role:`.
 
@@ -125,11 +125,11 @@ storage-effect owners where relevant. Unsupported enum-like values, stale
 response shapes, mismatched required fields, and inconsistent response branches
 are documentation failures.
 
-Source-code links and developer-learning prose should describe durable crates,
+Source-code links and Architecture Guide prose should describe durable crates,
 modules, entry points, execution stages, and responsibility boundaries. Avoid
 line-number-dependent explanations, private helper catalogs, and implementation
-history. When code structure changes durably, update the relevant Development
-document, especially [Architecture](../development/architecture.md), in the same
+history. When code structure changes durably, update the relevant Architecture Guide
+document, especially [Architecture](../architecture-guide/architecture.md), in the same
 documentation batch.
 
 ## Durable Maintained Content

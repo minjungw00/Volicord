@@ -13,7 +13,7 @@ and runtime/file boundaries belong to
 
 ## Setup Sequence
 
-Install `volicord` first with [Installation](../getting-started/installation.md),
+Install `volicord` first with [Installation](../user-guide/installation.md),
 then run the host setup sequence:
 
 ```sh
@@ -236,7 +236,7 @@ storage, or unrelated host configuration.
 
 | Symptom | Next document |
 |---|---|
-| Installation profile, executable, or Product Repository detection is not ready. | [Installation](../getting-started/installation.md) |
+| Installation profile, executable, or Product Repository detection is not ready. | [Installation](../user-guide/installation.md) |
 | Connection reports `action_required` or `failed`. | [Agent Host Troubleshooting](agent-host-troubleshooting.md) |
 | Exact command behavior is unclear. | [Administrative CLI Reference](../reference/admin-cli.md) |
 | Runtime Home and Product Repository boundaries matter. | [Runtime Boundaries](../reference/runtime-boundaries.md) |

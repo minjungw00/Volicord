@@ -1,4 +1,4 @@
-# 시작 개요
+# 사용자 가이드 개요
 
 이 문서는 Volicord의 첫 읽기 개요입니다. 제품의 핵심 생각을 일반 언어로 설명하고 정확한 계약 질문은 Reference 담당 문서로 보냅니다.
 
@@ -111,13 +111,13 @@ Volicord는 다듬어진 채팅 답변, 생성된 요약, 읽기 쉬운 상태 �
 
 | 독자 | 다음 경로 |
 |---|---|
-| 새 제품 독자 | [사용자 가이드](../guides/user-workflow.md) |
+| 새 제품 독자 | [사용자 가이드](../user-guide/user-workflow.md) |
 | 환경 확인 | [시스템 요구사항](../reference/system-requirements.md) |
 | 첫 설정 | [설치](installation.md) -> [빠른 시작](quickstart.md) |
-| 에이전트 호스트 운영자 | [빠른 시작](quickstart.md) -> [에이전트 호스트 설정](../guides/agent-host-setup.md) -> [에이전트 호스트 문제 해결](../guides/agent-host-troubleshooting.md) |
-| 여러 저장소 운영자 | [여러 저장소 에이전트 설정](../guides/multi-repository-agent-setup.md) |
-| 에이전트 작성자 | [에이전트 가이드](../guides/agent-workflow.md) -> [Agent Connection Reference](../reference/agent-connection.md) |
-| 소스 코드 학습자 | [구현 가이드](../development/change-guide.md) -> [아키텍처](../development/architecture.md) |
+| 에이전트 호스트 운영자 | [빠른 시작](quickstart.md) -> [에이전트 호스트 설정](../user-guide/agent-host-setup.md) -> [에이전트 호스트 문제 해결](../user-guide/agent-host-troubleshooting.md) |
+| 여러 저장소 운영자 | [여러 저장소 에이전트 설정](../user-guide/multi-repository-agent-setup.md) |
+| 에이전트 작성자 | [에이전트 가이드](../user-guide/agent-workflow.md) -> [Agent Connection Reference](../reference/agent-connection.md) |
+| 소스 코드 학습자 | [구현 가이드](../architecture-guide/change-guide.md) -> [아키텍처](../architecture-guide/architecture.md) |
 | Reference 독자 | [Reference Index](../reference/README.md), [관리 CLI](../reference/admin-cli.md), [API 메서드](../reference/api/methods.md) |
 
 새 독자가 Volicord를 이해하는 데 API 스키마나 담당자 메타데이터가 필요해서는 안 됩니다. 정확한 계약 담당 문서가 필요할 때 [Reference Index](../reference/README.md)를 사용합니다.

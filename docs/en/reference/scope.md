@@ -1,6 +1,6 @@
 # Scope reference
 
-This reference owns the Volicord supported baseline scope boundary. Product identity belongs to [Getting Started Overview](../getting-started/overview.md). This page defines which capability families are inside the baseline, which remain outside it, and how reserved or profile-gated values affect scope.
+This reference owns the Volicord supported baseline scope boundary. Product identity belongs to [User Guide Overview](../user-guide/overview.md). This page defines which capability families are inside the baseline, which remain outside it, and how reserved or profile-gated values affect scope.
 
 This page is a stable reference contract rather than project narration or implementation planning.
 
@@ -16,7 +16,7 @@ This document owns:
 
 This document does not own:
 
-- baseline implementation reading paths; see the [Implementation Guide](../development/change-guide.md)
+- baseline implementation reading paths; see the [Implementation Guide](../architecture-guide/change-guide.md)
 - API method behavior
 - schema fields
 - storage records or effects

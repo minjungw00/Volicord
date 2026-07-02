@@ -7,10 +7,10 @@ This README is route-only. It does not define term meanings, terminology metadat
 ## Start Here
 
 - Environment prerequisites before installation: [System Requirements](system-requirements.md).
-- Executable preparation and verification tutorial: [Installation](../getting-started/installation.md).
+- Executable preparation and verification tutorial: [Installation](../user-guide/installation.md).
 - Product/system boundaries: [Scope](scope.md), [Core Model](core-model.md), [Runtime Boundaries](runtime-boundaries.md), and [Security](security.md).
-- First-run agent host setup: [Quickstart](../getting-started/quickstart.md) for the shortest success path, then [Agent Host Setup](../guides/agent-host-setup.md) for the complete operator guide and [Multi-Repository Agent Setup](../guides/multi-repository-agent-setup.md) for one user-scope Agent Connection serving multiple repositories.
-- Setup failures and recovery: [Agent Host Troubleshooting](../guides/agent-host-troubleshooting.md).
+- First-run agent host setup: [Quickstart](../user-guide/quickstart.md) for the shortest success path, then [Agent Host Setup](../user-guide/agent-host-setup.md) for the complete operator guide and [Multi-Repository Agent Setup](../user-guide/multi-repository-agent-setup.md) for one user-scope Agent Connection serving multiple repositories.
+- Setup failures and recovery: [Agent Host Troubleshooting](../user-guide/agent-host-troubleshooting.md).
 - Local executable contracts: [Administrative CLI](admin-cli.md) for `volicord` administrative commands and Runtime Home selection, and [MCP Transport](mcp-transport.md) for `volicord mcp --stdio` startup, preflight, response wrapping, and shutdown.
 - API method behavior: [API Methods](api/methods.md), then the linked method owner.
 - API schema families: [Schema Core](api/schema-core.md), [State Schemas](api/schema-state.md), [Artifact Schemas](api/schema-artifacts.md), [Judgment Schemas](api/schema-judgment.md), and [Value Sets](api/schema-value-sets.md).

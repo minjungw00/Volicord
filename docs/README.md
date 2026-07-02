@@ -14,12 +14,16 @@ Comprehensive product and first-setup overview:
 
 Fast reader routes:
 
-- Product orientation: [English](en/getting-started/overview.md) / [Korean](ko/getting-started/overview.md)
+- User Guide layer: [English](en/user-guide/README.md) / [Korean](ko/user-guide/README.md)
+- Architecture Guide layer: [English](en/architecture-guide/README.md) / [Korean](ko/architecture-guide/README.md)
+- Reference layer: [English](en/reference/README.md) / [Korean](ko/reference/README.md)
+- Maintain layer: [English](en/maintain/documentation-policy.md) / [Korean](ko/maintain/documentation-policy.md)
+- Product orientation: [English](en/user-guide/overview.md) / [Korean](ko/user-guide/overview.md)
 - Environment applicability: [English](en/reference/system-requirements.md) / [Korean](ko/reference/system-requirements.md)
-- Install and verify executables: [English](en/getting-started/installation.md) / [Korean](ko/getting-started/installation.md)
-- Choose the Codex or Claude Code setup path: [English](en/getting-started/quickstart.md) / [Korean](ko/getting-started/quickstart.md)
-- Complete host setup and recovery: [English setup](en/guides/agent-host-setup.md) / [Korean setup](ko/guides/agent-host-setup.md) / [English troubleshooting](en/guides/agent-host-troubleshooting.md) / [Korean troubleshooting](ko/guides/agent-host-troubleshooting.md)
-- Multi-repository operation: [English](en/guides/multi-repository-agent-setup.md) / [Korean](ko/guides/multi-repository-agent-setup.md)
+- Install and verify executables: [English](en/user-guide/installation.md) / [Korean](ko/user-guide/installation.md)
+- Choose the Codex or Claude Code setup path: [English](en/user-guide/quickstart.md) / [Korean](ko/user-guide/quickstart.md)
+- Complete host setup and recovery: [English setup](en/user-guide/agent-host-setup.md) / [Korean setup](ko/user-guide/agent-host-setup.md) / [English troubleshooting](en/user-guide/agent-host-troubleshooting.md) / [Korean troubleshooting](ko/user-guide/agent-host-troubleshooting.md)
+- Multi-repository operation: [English](en/user-guide/multi-repository-agent-setup.md) / [Korean](ko/user-guide/multi-repository-agent-setup.md)
 - Exact CLI and API contracts: [English CLI](en/reference/admin-cli.md) / [Korean CLI](ko/reference/admin-cli.md) / [English API](en/reference/api/methods.md) / [Korean API](ko/reference/api/methods.md)
 - Reference navigation: [English](en/reference/README.md) / [Korean](ko/reference/README.md)
 - Product and maintenance charter: [English](en/maintain/product-maintenance-charter.md) / [Korean](ko/maintain/product-maintenance-charter.md)
@@ -31,7 +35,7 @@ Shared metadata:
 - [doc-index.yaml](doc-index.yaml) is the canonical machine-readable route for documentation owners and paired paths.
 - [terminology-map.yaml](terminology-map.yaml) is the terminology and identifier-preservation source of truth.
 
-Those metadata files support maintainers, translators, and agents. Ordinary readers should start from the language entry pages, Getting Started, Guides, Development, or Reference pages.
+Those metadata files support maintainers, translators, and agents. Ordinary readers should start from the language entry pages, User Guide, Architecture Guide, or Reference pages.
 
 Maintainers and implementation agents should read [../AGENTS.md](../AGENTS.md), then the relevant documentation, translation, brand, and validation policies under `docs/*/maintain/`.
 

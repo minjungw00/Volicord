@@ -7,7 +7,7 @@ schemas, storage effects, security guarantees, runtime boundaries, error
 behavior, close-readiness rules, connector behavior, conformance authority, or
 Core authority semantics.
 
-Use [Developer Documentation](README.md) when learning the source, the
+Use [Architecture Guide](README.md) when learning the source, the
 [Codebase Tour](codebase-tour.md) for first files and symbols,
 [Request Lifecycle](request-lifecycle.md) for representative method traces,
 [Implementation Design Patterns](design-patterns.md) for recurring structures,
@@ -26,7 +26,7 @@ work. Core is the local authority record for Volicord state.
 
    Decide whether the change touches shared types, Store behavior, Core method
    behavior, MCP adapter behavior, administrative setup, test fixtures, or
-   developer documentation only. If it crosses more than one boundary, keep the
+   Architecture Guide only. If it crosses more than one boundary, keep the
    questions separate.
 
 2. Locate the current implementation path.
@@ -57,11 +57,11 @@ work. Core is the local authority record for Volicord state.
    protects the changed behavior, then add broader tests only when the change
    crosses layers.
 
-6. Update affected developer explanation.
+6. Update affected Architecture Guide explanation.
 
    If the durable source shape, dependency direction, execution flow, Store
    boundary, test topology, or change workflow changed, update the relevant
-   developer page in both languages. Keep exact product contracts in Reference
+   Architecture Guide page in both languages. Keep exact product contracts in Reference
    owners.
 
 7. Run validation.
@@ -81,7 +81,7 @@ work. Core is the local authority record for Volicord state.
 
 ## Change-Type Routing
 
-| Change type | First implementation path | First Reference owner route | Useful test layer | Developer explanation to check |
+| Change type | First implementation path | First Reference owner route | Useful test layer | Architecture Guide explanation to check |
 |---|---|---|---|---|
 | Shared request or value type | `crates/volicord-types/src/methods.rs`, `schema.rs`, `values.rs`, `ids.rs`, or `canonical.rs` | API schema owners and [Value Sets](../reference/api/schema-value-sets.md); method owner for method-specific meaning | `volicord-types` unit tests; Core or MCP tests when the shape affects method planning or adapter exposure | [Codebase Tour](codebase-tour.md), [Design Patterns](design-patterns.md), and [Testing Strategy](testing-strategy.md) |
 | Store behavior | `crates/volicord-store/src/core_pipeline.rs`, `core_pipeline/mutation_apply.rs`, `schema.rs`, `schema/*.sql`, `sqlite.rs`, `bootstrap.rs`, or `artifacts.rs` | [Storage](../reference/storage.md), [Storage Effects](../reference/storage-effects.md), [Storage Records](../reference/storage-records.md), [Storage DDL](../reference/storage-ddl.md), [Artifact Storage](../reference/storage-artifacts.md), [Storage Versioning](../reference/storage-versioning.md) | Store unit tests; Core method tests for public effects; conformance or MCP integration when cross-layer behavior changes | [Storage and Transactions](storage-and-transactions.md), [Implementation Architecture](architecture.md), and decision records |
@@ -89,7 +89,7 @@ work. Core is the local authority record for Volicord state.
 | MCP adapter behavior | `crates/volicord-mcp/src/lib.rs`, `adapter.rs`, `routing.rs`, `tool_registry.rs`, `stdio.rs`, `local_http.rs`, `local_web_consent.rs`, and the `volicord mcp` dispatch in `crates/volicord-cli/src/main.rs` | [MCP Transport](../reference/mcp-transport.md); [Agent Connection](../reference/agent-connection.md) for verified connection context; [API Methods](../reference/api/methods.md) for public tool set | `crates/volicord-mcp/src/tests.rs`, `mcp_transport`, and `tests/integration/mcp_connection.rs` | [Request Lifecycle](request-lifecycle.md), [Architecture Decisions](decisions/README.md), and [Testing Strategy](testing-strategy.md) |
 | Administrative agent setup behavior | `crates/volicord-cli/src/connection_command.rs`, `host_integration/`, and `registration.rs` | [Administrative CLI](../reference/admin-cli.md), with [Agent Connection](../reference/agent-connection.md), [Runtime Boundaries](../reference/runtime-boundaries.md), and [MCP Transport](../reference/mcp-transport.md) for adjacent concerns | `binary_admin`; Store setup tests when bootstrap, inspection, registry, or schema initialization behavior changes | [Implementation Architecture](architecture.md) and [Runtime Home and Product Repository separation](decisions/runtime-home-and-product-repository.md) |
 | Test fixture behavior | `crates/volicord-test-support/src/lib.rs`, `tests/conformance/`, `tests/integration/`, or colocated test helpers | The owner of each asserted fact; [Conformance](../reference/conformance.md) only for conformance scenario meaning and assertion routing | The consuming package's tests plus focused fixture tests | [Testing Strategy](testing-strategy.md) and [Codebase Tour](codebase-tour.md) |
-| Developer documentation only | `docs/en/development/`, `docs/ko/development/`, and route metadata | The developer page's `doc-index.yaml` owner scope; Reference owners only when exact behavior is being changed | Documentation checks; Cargo commands only when requested or needed for source verification | The paired page, [Developer Documentation](README.md), and `docs/doc-index.yaml` |
+| Architecture Guide only | `docs/en/architecture-guide/`, `docs/ko/architecture-guide/`, and route metadata | The Architecture Guide page's `doc-index.yaml` owner scope; Reference owners only when exact behavior is being changed | Documentation checks; Cargo commands only when requested or needed for source verification | The paired page, [Architecture Guide](README.md), and `docs/doc-index.yaml` |
 
 ## Disagreement Handling
 
@@ -97,7 +97,7 @@ When implementation and documentation appear to disagree, classify the
 disagreement before editing:
 
 - If guide-level source-structure description differs from stable code, update
-  the developer-learning page that owns that explanation.
+  the Architecture Guide page that owns that explanation.
 - If code differs from API, schema, storage, security, error, scope, runtime, or
   Core authority owners, do not treat code as the new contract.
 - If tests, fixtures, examples, or conformance scenario prose are the only
@@ -117,7 +117,7 @@ security proof, or residual-risk acceptance.
 - Each changed behavior has a focused owner or an owner-gap report.
 - The implementation path and boundary were identified before editing.
 - Tests were selected for the changed layer.
-- Developer-learning documentation was updated when durable source structure,
+- Architecture Guide documentation was updated when durable source structure,
   execution flow, storage boundary, or test strategy changed.
 - Paired English and Korean documentation stayed aligned when maintained
   documents changed.

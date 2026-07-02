@@ -10,14 +10,14 @@ acceptance decisions, close-readiness state, or residual-risk decisions.
 ## First Reads
 
 - Read the root `AGENTS.md` before editing implementation files.
-- Start with `docs/en/development/change-guide.md` or
-  `docs/ko/development/change-guide.md` according to the working language.
-- Use `docs/en/development/architecture.md` or
-  `docs/ko/development/architecture.md` before changing crate placement,
+- Start with `docs/en/architecture-guide/change-guide.md` or
+  `docs/ko/architecture-guide/change-guide.md` according to the working language.
+- Use `docs/en/architecture-guide/architecture.md` or
+  `docs/ko/architecture-guide/architecture.md` before changing crate placement,
   dependency direction, execution flow, Store boundaries, or adapter
   boundaries.
-- Use `docs/en/development/testing-strategy.md` or
-  `docs/ko/development/testing-strategy.md` before adding or moving tests.
+- Use `docs/en/architecture-guide/testing-strategy.md` or
+  `docs/ko/architecture-guide/testing-strategy.md` before adding or moving tests.
 - Use `docs/doc-index.yaml` for exact owner routing and
   `docs/en/reference/README.md` or `docs/ko/reference/README.md` for
   reader-facing Reference navigation.
@@ -63,7 +63,7 @@ acceptance decisions, close-readiness state, or residual-risk decisions.
 - Keep product code in ordinary implementation paths under the Rust workspace,
   not under `docs/`.
 - Place durable crate behavior in the crate that owns the responsibility
-  described by the Development docs. Keep Core-facing code independent of CLI
+  described by the Architecture Guide docs. Keep Core-facing code independent of CLI
   and MCP adapter layers.
 - Keep shared type, schema representation, identifier, and value-set code in
   the workspace areas documented for shared types rather than duplicating

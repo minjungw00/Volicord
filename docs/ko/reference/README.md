@@ -7,10 +7,10 @@
 ## 먼저 볼 곳
 
 - 설치 전 환경 전제 조건: [시스템 요구사항](system-requirements.md).
-- 실행 파일 준비와 검증 튜토리얼: [설치](../getting-started/installation.md).
+- 실행 파일 준비와 검증 튜토리얼: [설치](../user-guide/installation.md).
 - 제품/시스템 경계: [범위](scope.md), [Core 모델](core-model.md), [런타임 경계](runtime-boundaries.md), [보안](security.md).
-- 첫 에이전트 호스트 설정: 가장 짧은 성공 경로는 [빠른 시작](../getting-started/quickstart.md)에, 전체 운영자 가이드는 [에이전트 호스트 설정](../guides/agent-host-setup.md)에, 하나의 사용자 범위 Agent Connection이 여러 저장소를 처리하는 경로는 [다중 저장소 에이전트 설정](../guides/multi-repository-agent-setup.md)에 있습니다.
-- 설정 실패와 복구: [에이전트 호스트 문제 해결](../guides/agent-host-troubleshooting.md).
+- 첫 에이전트 호스트 설정: 가장 짧은 성공 경로는 [빠른 시작](../user-guide/quickstart.md)에, 전체 운영자 가이드는 [에이전트 호스트 설정](../user-guide/agent-host-setup.md)에, 하나의 사용자 범위 Agent Connection이 여러 저장소를 처리하는 경로는 [다중 저장소 에이전트 설정](../user-guide/multi-repository-agent-setup.md)에 있습니다.
+- 설정 실패와 복구: [에이전트 호스트 문제 해결](../user-guide/agent-host-troubleshooting.md).
 - 로컬 실행 파일 계약: `volicord` 관리 명령과 Runtime Home 선택은 [관리 CLI](admin-cli.md), `volicord mcp --stdio` 시작, 사전 점검, 응답 래핑, 종료는 [MCP 전송](mcp-transport.md)에 있습니다.
 - API 메서드 동작: [API 메서드](api/methods.md)에서 연결된 메서드 담당 문서.
 - API 스키마 묶음: [API 코어 스키마](api/schema-core.md), [상태 스키마](api/schema-state.md), [아티팩트 스키마](api/schema-artifacts.md), [판단 스키마](api/schema-judgment.md), [값 집합](api/schema-value-sets.md).

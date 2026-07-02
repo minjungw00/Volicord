@@ -1,7 +1,7 @@
 # Implementation design patterns
 
 This guide explains stable implementation structures visible in the current
-Rust workspace. It is a developer-learning document: it names problems,
+Rust workspace. It is an Architecture Guide document: it names problems,
 source locations, benefits, trade-offs, and tests, but it does not define
 public API behavior, schemas, storage effects, security guarantees, runtime
 behavior, or Core authority semantics.

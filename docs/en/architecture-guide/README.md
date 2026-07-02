@@ -1,6 +1,12 @@
-# Developer documentation
+# Architecture Guide
 
-This is the source-code learning entry point for developers who want to
+| Metadata | Value |
+|---|---|
+| Purpose | Route architecture and implementation-structure explanations for the current Rust workspace. |
+| Audience | Implementers, reviewers, and source-code learners. |
+| Canonical for | Architecture Guide layer navigation and guide-level implementation learning. Exact product contracts stay in Reference. |
+
+This is the source-code learning entry point for implementers who want to
 understand the current Rust implementation. It explains where to start, what to
 read next, and where exact product contracts live.
 
@@ -50,8 +56,8 @@ work. Core is the local authority record for Volicord state.
    `Product Repository`.
 8. Change workflow: use the [Implementation Guide](change-guide.md) when you
    are ready to classify a change, locate the owner document, inspect the
-   implementation boundary, choose validation, and update affected developer
-   explanation.
+   implementation boundary, choose validation, and update affected Architecture Guide
+   pages.
 9. Exact Reference contracts: use the
    [Reference Index](../reference/README.md) and
    [API Methods](../reference/api/methods.md). Learning documents can explain
@@ -65,7 +71,7 @@ work. Core is the local authority record for Volicord state.
 |---|---|---|
 | Which crate should I open first? | [Codebase Tour](codebase-tour.md) | [Implementation Architecture](architecture.md) owns guide-level implementation structure. |
 | How does a method call move through MCP, Core, Store, and back? | [Request Lifecycle](request-lifecycle.md) | Method behavior is owned by [API Methods](../reference/api/methods.md) and the linked method owner. |
-| Why does Core not depend on CLI or MCP? | [Implementation Architecture](architecture.md) and [Core and adapter dependency boundary](decisions/core-adapter-boundary.md) | Dependency-boundary guidance stays in developer-learning docs; public behavior still routes to Reference owners. |
+| Why does Core not depend on CLI or MCP? | [Implementation Architecture](architecture.md) and [Core and adapter dependency boundary](decisions/core-adapter-boundary.md) | Dependency-boundary guidance stays in Architecture Guide docs; public behavior still routes to Reference owners. |
 | Why are planners separate from Store commit? | [Implementation Design Patterns](design-patterns.md) and [Planning before atomic mutation commit](decisions/plan-and-atomic-commit.md) | Exact method behavior and storage effects route to method and storage owners. |
 | What storage mutation is committed? | [Request Lifecycle](request-lifecycle.md) and [Storage and Transactions](storage-and-transactions.md) | Exact storage effects route to [Storage Effects](../reference/storage-effects.md) and adjacent storage owners. |
 | Which test layer should I use? | [Testing Strategy](testing-strategy.md) | Tests verify owner-defined facts but do not own product contracts. |

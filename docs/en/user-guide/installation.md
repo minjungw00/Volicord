@@ -274,4 +274,4 @@ prerequisites; native Windows uses `--profile record` because detective is not
 supported there.
 
 For the full first-run path, continue with the [Quickstart](quickstart.md). For
-host-specific details, see [Agent Host Setup](../guides/agent-host-setup.md).
+host-specific details, see [Agent Host Setup](../user-guide/agent-host-setup.md).

@@ -11,7 +11,7 @@ Agent Connection 의미는 [Agent Connection 참조](../reference/agent-connecti
 
 ## 설정 순서
 
-먼저 [설치](../getting-started/installation.md)에 따라 `volicord`를 설치한 뒤 호스트
+먼저 [설치](../user-guide/installation.md)에 따라 `volicord`를 설치한 뒤 호스트
 설정 순서를 실행합니다.
 
 ```sh
@@ -221,7 +221,7 @@ volicord connection remove codex
 
 | 증상 | 다음 문서 |
 |---|---|
-| 설치 프로필, 실행 파일, Product Repository 감지가 준비되지 않았습니다. | [설치](../getting-started/installation.md) |
+| 설치 프로필, 실행 파일, Product Repository 감지가 준비되지 않았습니다. | [설치](../user-guide/installation.md) |
 | 연결이 `action_required` 또는 `failed`를 보고합니다. | [에이전트 호스트 문제 해결](agent-host-troubleshooting.md) |
 | 정확한 명령 동작이 불분명합니다. | [관리 CLI 참조](../reference/admin-cli.md) |
 | Runtime Home과 Product Repository 경계가 중요합니다. | [런타임 경계](../reference/runtime-boundaries.md) |

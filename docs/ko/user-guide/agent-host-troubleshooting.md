@@ -41,7 +41,7 @@ volicord init --host codex --repo /path/to/your-product-repo --profile record
 volicord doctor
 ```
 
-`volicord`를 사용할 수 없다면 [설치](../getting-started/installation.md)의 릴리스
+`volicord`를 사용할 수 없다면 [설치](../user-guide/installation.md)의 릴리스
 바이너리 경로를 다시 실행합니다. 의도적으로 개발용 소스 체크아웃에서 작업 중이라면:
 
 ```sh

@@ -46,7 +46,7 @@ volicord doctor
 ```
 
 If `volicord` is not available, rerun the release binary path in
-[Installation](../getting-started/installation.md). If you are intentionally
+[Installation](../user-guide/installation.md). If you are intentionally
 working from a development source checkout:
 
 ```sh

@@ -59,7 +59,7 @@ all writes are safe; and making agent summaries into Core authority records.
 | Maintain documentation | Product principles, branding, service planning goals, code guidance, documentation style, testing philosophy, translation policy, validation boundaries, and owner-routing practice. It guides maintainers without redefining exact product contracts. |
 | User documentation | Practical usage help for installation, setup, ordinary workflow, troubleshooting, user-agent collaboration, and examples. It may summarize behavior for users and should link to Reference when exact behavior matters. |
 | Contract and Reference documentation | Public behavior, supported scope, API, storage, transport, security boundaries, schemas, value meanings, error behavior, and other exact product contracts. |
-| Design and Development documentation | Architecture and implementation understanding beyond contract detail: source structure, request flow, design patterns, testing strategy, change workflow, and durable implementation rationale. |
+| Architecture Guide documentation | Architecture and implementation understanding beyond contract detail: source structure, request flow, design patterns, testing strategy, change workflow, and durable implementation rationale. |
 
 Use [Document Charters](document-charters.md) for detailed ownership rules for
 major document families.
@@ -77,8 +77,8 @@ adapters may call Core-facing interfaces. Code should make effect paths,
 state transitions, no-effect branches, user-judgment routing, and close blockers
 easy to reason about.
 
-Development documentation should track durable source structure. Update the
-applicable [Development documentation](../development/README.md) when an
+Architecture Guide should track durable source structure. Update the
+applicable [Architecture Guide](../architecture-guide/README.md) when an
 implementation change durably changes crate roles, module responsibilities,
 request flow, or testing strategy.
 
@@ -116,7 +116,7 @@ current terminology role metadata.
 Test results are implementation or maintenance checks. They do not define
 product contracts, prove security, complete QA, establish Close Status,
 record final acceptance, or accept residual risk. Use [Validation](validation.md)
-and [Testing Strategy](../development/testing-strategy.md) for placement and
+and [Testing Strategy](../architecture-guide/testing-strategy.md) for placement and
 reporting boundaries.
 
 ## Brand And Translation

@@ -10,8 +10,8 @@ decisions, close-readiness state, or residual-risk decisions.
 
 The charters describe durable information ownership. If exact behavior matters,
 link to the focused [Reference Index](../reference/README.md) owner instead of
-copying a second contract into an onboarding, guide, development, or Maintain
-page.
+copying a second contract into a User Guide, Architecture Guide, Reference
+index, or Maintain page.
 
 ## General Use
 
@@ -50,20 +50,20 @@ Document: [Root README](../../../README.md)
   explains what each diagram shows and what it omits. Avoid presenting a
   complete API call sequence, storage layout, or contract boundary map, and do
   not expose diagram-role metadata as reader-facing labels.
-- Link deeper by: Sending setup detail to [Installation](../getting-started/installation.md),
-  first host use to [Quickstart](../getting-started/quickstart.md), workflow
-  practice to [User Workflow](../guides/user-workflow.md) and
-  [Agent Workflow](../guides/agent-workflow.md), host operations to
-  [Agent Host Setup](../guides/agent-host-setup.md), and exact behavior to
+- Link deeper by: Sending setup detail to [Installation](../user-guide/installation.md),
+  first host use to [Quickstart](../user-guide/quickstart.md), workflow
+  practice to [User Workflow](../user-guide/user-workflow.md) and
+  [Agent Workflow](../user-guide/agent-workflow.md), host operations to
+  [Agent Host Setup](../user-guide/agent-host-setup.md), and exact behavior to
   [Administrative CLI](../reference/admin-cli.md),
   [MCP Transport](../reference/mcp-transport.md),
   [Core Model](../reference/core-model.md),
   [Agent Connection](../reference/agent-connection.md), and
   [Runtime Boundaries](../reference/runtime-boundaries.md).
 
-## Getting Started Overview
+## User Guide Overview
 
-Document: [Getting Started Overview](../getting-started/overview.md)
+Document: [User Guide Overview](../user-guide/overview.md)
 
 - Primary goal: Give the first-read product identity and local authority model
   before the reader installs or operates Volicord.
@@ -83,11 +83,11 @@ Document: [Getting Started Overview](../getting-started/overview.md)
   [Runtime Boundaries](../reference/runtime-boundaries.md), security claims to
   [Security](../reference/security.md), terminology to
   [Glossary](../reference/glossary.md), and setup to
-  [Installation](../getting-started/installation.md).
+  [Installation](../user-guide/installation.md).
 
 ## Installation
 
-Document: [Installation](../getting-started/installation.md)
+Document: [Installation](../user-guide/installation.md)
 
 - Primary goal: Lead readers through installing, finding, and verifying the
   local executable.
@@ -107,11 +107,11 @@ Document: [Installation](../getting-started/installation.md)
   [System Requirements](../reference/system-requirements.md), command
   semantics to [Administrative CLI](../reference/admin-cli.md), MCP process
   requirements to [MCP Transport](../reference/mcp-transport.md), and first host
-  use to [Quickstart](../getting-started/quickstart.md).
+  use to [Quickstart](../user-guide/quickstart.md).
 
 ## Quickstart
 
-Document: [Quickstart](../getting-started/quickstart.md)
+Document: [Quickstart](../user-guide/quickstart.md)
 
 - Primary goal: Provide the shortest real path from verified executables to one
   successful supported agent-host setup.
@@ -126,15 +126,15 @@ Document: [Quickstart](../getting-started/quickstart.md)
 - Acceptable diagrams: Optional linear step diagrams. Avoid full component maps
   or troubleshooting decision trees.
 - Link deeper by: Sending executable preparation to
-  [Installation](../getting-started/installation.md), complete host operations
-  to [Agent Host Setup](../guides/agent-host-setup.md), stalled setup to
-  [Agent Host Troubleshooting](../guides/agent-host-troubleshooting.md), and
+  [Installation](../user-guide/installation.md), complete host operations
+  to [Agent Host Setup](../user-guide/agent-host-setup.md), stalled setup to
+  [Agent Host Troubleshooting](../user-guide/agent-host-troubleshooting.md), and
   exact command or process behavior to [Administrative CLI](../reference/admin-cli.md)
   and [MCP Transport](../reference/mcp-transport.md).
 
 ## Agent Host Setup Guide
 
-Document: [Agent Host Setup](../guides/agent-host-setup.md)
+Document: [Agent Host Setup](../user-guide/agent-host-setup.md)
 
 - Primary goal: Explain how to install, verify, guide, operate, and remove
   supported agent-host integrations.
@@ -154,11 +154,11 @@ Document: [Agent Host Setup](../guides/agent-host-setup.md)
   [Runtime Boundaries](../reference/runtime-boundaries.md), connection concepts
   to [Agent Connection](../reference/agent-connection.md), API surfaces to
   [API Methods](../reference/api/methods.md), and recovery detail to
-  [Agent Host Troubleshooting](../guides/agent-host-troubleshooting.md).
+  [Agent Host Troubleshooting](../user-guide/agent-host-troubleshooting.md).
 
 ## Agent Workflow Guide
 
-Document: [Agent Workflow](../guides/agent-workflow.md)
+Document: [Agent Workflow](../user-guide/agent-workflow.md)
 
 - Primary goal: Explain how agents work against Volicord's authority
   boundaries during product work.
@@ -176,12 +176,12 @@ Document: [Agent Workflow](../guides/agent-workflow.md)
   [API Methods](../reference/api/methods.md), authority concepts to
   [Core Model](../reference/core-model.md), connection context to
   [Agent Connection](../reference/agent-connection.md), user-facing practice to
-  [User Workflow](../guides/user-workflow.md), and method-specific behavior to
+  [User Workflow](../user-guide/user-workflow.md), and method-specific behavior to
   the focused method owners under `docs/en/reference/api/`.
 
 ## User Workflow Guide
 
-Document: [User Workflow](../guides/user-workflow.md)
+Document: [User Workflow](../user-guide/user-workflow.md)
 
 - Primary goal: Help users collaborate with agents while preserving
   user-owned judgment and visible work records.
@@ -197,9 +197,9 @@ Document: [User Workflow](../guides/user-workflow.md)
   documents.
 - Link deeper by: Sending exact authority concepts to
   [Core Model](../reference/core-model.md), example decisions to
-  [Judgment Examples](../guides/judgment-examples.md), agent-facing procedure to
-  [Agent Workflow](../guides/agent-workflow.md), and setup questions to
-  [Agent Host Setup](../guides/agent-host-setup.md).
+  [Judgment Examples](../user-guide/judgment-examples.md), agent-facing procedure to
+  [Agent Workflow](../user-guide/agent-workflow.md), and setup questions to
+  [Agent Host Setup](../user-guide/agent-host-setup.md).
 
 ## Reference Documents
 
@@ -223,10 +223,10 @@ Reference owners.
   contracts and to onboarding or guide documents only for reader context, not
   to define exact behavior outside Reference.
 
-## Architecture And Development Documents
+## Architecture Guide Documents
 
-Document family: [Developer Documentation](../development/README.md),
-[Architecture](../development/architecture.md), and related Development pages.
+Document family: [Architecture Guide](../architecture-guide/README.md),
+[Architecture](../architecture-guide/architecture.md), and related Architecture Guide pages.
 
 - Primary goal: Teach the durable implementation shape and how to make changes
   without turning implementation explanation into product contract text.
@@ -242,8 +242,8 @@ Document family: [Developer Documentation](../development/README.md),
   that teach stable code structure.
 - Link deeper by: Sending exact product behavior to the applicable
   [Reference Index](../reference/README.md) owner, Rust edit workflow to
-  [Change Guide](../development/change-guide.md), validation responsibilities
-  to [Testing Strategy](../development/testing-strategy.md), and working rules
+  [Change Guide](../architecture-guide/change-guide.md), validation responsibilities
+  to [Testing Strategy](../architecture-guide/testing-strategy.md), and working rules
   to repository `AGENTS.md` files.
 
 ## Maintain Documents

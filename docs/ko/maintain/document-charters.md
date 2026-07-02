@@ -8,7 +8,7 @@ Volicord의 주요 문서가 시간이 지나도 무엇을 담당하고, 제외�
 판단, 닫기 준비 상태, 잔여 위험 판단을 정의하지 않습니다.
 
 헌장은 오래 유지될 정보 담당 범위를 설명합니다. 정확한 동작이 중요할 때는
-온보딩, 가이드, 개발, Maintain 문서에 두 번째 계약을 복사하지 말고 집중
+사용자 가이드, 아키텍처 가이드, 참조 색인, Maintain 문서에 두 번째 계약을 복사하지 말고 집중
 [참조 색인](../reference/README.md) 담당 문서로 연결합니다.
 
 ## 일반 사용법
@@ -48,19 +48,19 @@ Volicord의 주요 문서가 시간이 지나도 무엇을 담당하고, 제외�
   주변 산문에서 자연스럽게 설명해야 합니다. 완전한 API 호출 순서, 저장소 배치,
   계약 경계 지도로 제시하면 안 되며, 그림 역할 메타데이터를 독자용 라벨로 노출하지
   않습니다.
-- 더 깊은 문서로 연결하는 방식: 설정 세부사항은 [설치](../getting-started/installation.md),
-  첫 호스트 사용은 [빠른 시작](../getting-started/quickstart.md), 작업 흐름 실무는
-  [사용자 작업 흐름](../guides/user-workflow.md)과
-  [에이전트 작업 흐름](../guides/agent-workflow.md), 호스트 운영은
-  [에이전트 호스트 설정](../guides/agent-host-setup.md), 정확한 동작은
+- 더 깊은 문서로 연결하는 방식: 설정 세부사항은 [설치](../user-guide/installation.md),
+  첫 호스트 사용은 [빠른 시작](../user-guide/quickstart.md), 작업 흐름 실무는
+  [사용자 작업 흐름](../user-guide/user-workflow.md)과
+  [에이전트 작업 흐름](../user-guide/agent-workflow.md), 호스트 운영은
+  [에이전트 호스트 설정](../user-guide/agent-host-setup.md), 정확한 동작은
   [관리 CLI](../reference/admin-cli.md), [MCP 전송](../reference/mcp-transport.md),
   [Core 모델](../reference/core-model.md),
   [Agent Connection](../reference/agent-connection.md),
   [런타임 경계](../reference/runtime-boundaries.md)로 보냅니다.
 
-## 시작하기 개요
+## 사용자 가이드 개요
 
-문서: [시작하기 개요](../getting-started/overview.md)
+문서: [사용자 가이드 개요](../user-guide/overview.md)
 
 - 주요 목표: 독자가 Volicord를 설치하거나 운영하기 전에 첫 읽기용 제품 정체성과
   로컬 권한 모델을 제공합니다.
@@ -76,11 +76,11 @@ Volicord의 주요 문서가 시간이 지나도 무엇을 담당하고, 제외�
   권한 개념은 [Core 모델](../reference/core-model.md), 런타임 배치는
   [런타임 경계](../reference/runtime-boundaries.md), 보안 주장은
   [보안](../reference/security.md), 용어는 [용어집](../reference/glossary.md),
-  설정은 [설치](../getting-started/installation.md)로 보냅니다.
+  설정은 [설치](../user-guide/installation.md)로 보냅니다.
 
 ## 설치
 
-문서: [설치](../getting-started/installation.md)
+문서: [설치](../user-guide/installation.md)
 
 - 주요 목표: 독자가 로컬 실행 파일을 설치하고 찾고 검증하는 과정을 안내합니다.
 - 의도한 독자: 로컬 Volicord 설치를 준비하는 새 사용자, 운영자, 구현자입니다.
@@ -95,11 +95,11 @@ Volicord의 주요 문서가 시간이 지나도 무엇을 담당하고, 제외�
 - 더 깊은 문서로 연결하는 방식: 환경 분류는 [시스템 요구사항](../reference/system-requirements.md),
   명령 의미는 [관리 CLI](../reference/admin-cli.md), MCP 프로세스 요구사항은
   [MCP 전송](../reference/mcp-transport.md), 첫 호스트 사용은
-  [빠른 시작](../getting-started/quickstart.md)으로 보냅니다.
+  [빠른 시작](../user-guide/quickstart.md)으로 보냅니다.
 
 ## 빠른 시작
 
-문서: [빠른 시작](../getting-started/quickstart.md)
+문서: [빠른 시작](../user-guide/quickstart.md)
 
 - 주요 목표: 검증된 실행 파일에서 지원되는 에이전트 호스트 설정 하나가 성공하는
   가장 짧은 실제 경로를 제공합니다.
@@ -112,15 +112,15 @@ Volicord의 주요 문서가 시간이 지나도 무엇을 담당하고, 제외�
   CLI 플래그 동작, 완전한 문제 해결 목록, MCP 전송 계약, API 메서드 참조입니다.
 - 허용되는 그림: 선택적인 선형 단계 그림입니다. 전체 구성 요소 지도나 문제 해결
   결정 트리는 피합니다.
-- 더 깊은 문서로 연결하는 방식: 실행 파일 준비는 [설치](../getting-started/installation.md),
-  전체 호스트 운영은 [에이전트 호스트 설정](../guides/agent-host-setup.md), 멈춘
-  설정은 [에이전트 호스트 문제 해결](../guides/agent-host-troubleshooting.md),
+- 더 깊은 문서로 연결하는 방식: 실행 파일 준비는 [설치](../user-guide/installation.md),
+  전체 호스트 운영은 [에이전트 호스트 설정](../user-guide/agent-host-setup.md), 멈춘
+  설정은 [에이전트 호스트 문제 해결](../user-guide/agent-host-troubleshooting.md),
   정확한 명령 또는 프로세스 동작은 [관리 CLI](../reference/admin-cli.md)와
   [MCP 전송](../reference/mcp-transport.md)으로 보냅니다.
 
 ## 에이전트 호스트 설정 가이드
 
-문서: [에이전트 호스트 설정](../guides/agent-host-setup.md)
+문서: [에이전트 호스트 설정](../user-guide/agent-host-setup.md)
 
 - 주요 목표: 지원되는 에이전트 호스트 통합을 설치, 검증, 안내, 운영, 제거하는
   방법을 설명합니다.
@@ -138,11 +138,11 @@ Volicord의 주요 문서가 시간이 지나도 무엇을 담당하고, 제외�
   저장소 경계는 [런타임 경계](../reference/runtime-boundaries.md), 연결 개념은
   [Agent Connection](../reference/agent-connection.md), API 표면은
   [API 메서드](../reference/api/methods.md), 복구 세부사항은
-  [에이전트 호스트 문제 해결](../guides/agent-host-troubleshooting.md)로 보냅니다.
+  [에이전트 호스트 문제 해결](../user-guide/agent-host-troubleshooting.md)로 보냅니다.
 
 ## 에이전트 작업 흐름 가이드
 
-문서: [에이전트 작업 흐름](../guides/agent-workflow.md)
+문서: [에이전트 작업 흐름](../user-guide/agent-workflow.md)
 
 - 주요 목표: 제품 작업 중 에이전트가 Volicord의 권한 경계를 기준으로 어떻게
   일하는지 설명합니다.
@@ -159,12 +159,12 @@ Volicord의 주요 문서가 시간이 지나도 무엇을 담당하고, 제외�
   [API 메서드](../reference/api/methods.md), 권한 개념은
   [Core 모델](../reference/core-model.md), 연결 맥락은
   [Agent Connection](../reference/agent-connection.md), 사용자 대상 실무는
-  [사용자 작업 흐름](../guides/user-workflow.md), 메서드별 동작은
+  [사용자 작업 흐름](../user-guide/user-workflow.md), 메서드별 동작은
   `docs/ko/reference/api/` 아래의 집중 메서드 담당 문서로 보냅니다.
 
 ## 사용자 작업 흐름 가이드
 
-문서: [사용자 작업 흐름](../guides/user-workflow.md)
+문서: [사용자 작업 흐름](../user-guide/user-workflow.md)
 
 - 주요 목표: 사용자가 사용자 소유 판단과 보이는 작업 기록을 보존하면서 에이전트와
   협업하도록 돕습니다.
@@ -178,9 +178,9 @@ Volicord의 주요 문서가 시간이 지나도 무엇을 담당하고, 제외�
   아키텍처 문서가 담당하는 구성 요소 지도는 피합니다.
 - 더 깊은 문서로 연결하는 방식: 정확한 권한 개념은
   [Core 모델](../reference/core-model.md), 결정 예시는
-  [판단 예시](../guides/judgment-examples.md), 에이전트 대상 절차는
-  [에이전트 작업 흐름](../guides/agent-workflow.md), 설정 질문은
-  [에이전트 호스트 설정](../guides/agent-host-setup.md)으로 보냅니다.
+  [판단 예시](../user-guide/judgment-examples.md), 에이전트 대상 절차는
+  [에이전트 작업 흐름](../user-guide/agent-workflow.md), 설정 질문은
+  [에이전트 호스트 설정](../user-guide/agent-host-setup.md)으로 보냅니다.
 
 ## 참조 문서
 
@@ -200,10 +200,10 @@ Volicord의 주요 문서가 시간이 지나도 무엇을 담당하고, 제외�
   온보딩이나 가이드 문서는 독자 맥락을 위해서만 연결합니다. 참조 밖에서 정확한
   동작을 정의하는 데 사용하지 않습니다.
 
-## 아키텍처와 개발 문서
+## 아키텍처 가이드 문서
 
-문서 계열: [개발자 문서](../development/README.md),
-[아키텍처](../development/architecture.md)와 관련 개발 문서입니다.
+문서 계열: [아키텍처 가이드](../architecture-guide/README.md),
+[아키텍처](../architecture-guide/architecture.md)와 관련 아키텍처 가이드 문서입니다.
 
 - 주요 목표: 오래 유지될 구현 형태와 변경 방법을 가르치되, 구현 설명을 제품 계약
   문구로 바꾸지 않습니다.
@@ -218,8 +218,8 @@ Volicord의 주요 문서가 시간이 지나도 무엇을 담당하고, 제외�
   생명주기 그림, 요청 순서, 구현 결정 그림입니다.
 - 더 깊은 문서로 연결하는 방식: 정확한 제품 동작은 적용되는
   [참조 색인](../reference/README.md) 담당 문서로, Rust 편집 작업 흐름은
-  [변경 가이드](../development/change-guide.md)로, 검증 책임은
-  [테스트 전략](../development/testing-strategy.md)으로, 작업 규칙은 저장소
+  [변경 가이드](../architecture-guide/change-guide.md)로, 검증 책임은
+  [테스트 전략](../architecture-guide/testing-strategy.md)으로, 작업 규칙은 저장소
   `AGENTS.md` 파일로 보냅니다.
 
 ## Maintain 문서

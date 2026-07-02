@@ -254,4 +254,4 @@ volicord init --host codex --repo /path/to/your-product-repo --profile record
 `--profile record`를 사용합니다.
 
 전체 첫 실행 경로는 [빠른 시작](quickstart.md)을 계속 읽습니다. 호스트별
-세부사항은 [에이전트 호스트 설정](../guides/agent-host-setup.md)을 봅니다.
+세부사항은 [에이전트 호스트 설정](../user-guide/agent-host-setup.md)을 봅니다.

@@ -53,7 +53,7 @@ volicord connection verify codex --repo /path/to/your-product-repo
 뒤 verification을 다시 실행합니다. 정확한 결과 상태 의미는 [관리 CLI
 참조](../reference/admin-cli.md#agent-connection-result-states)가 담당합니다.
 Detective host hook 경로 복구 안내는
-[에이전트 호스트 문제 해결](../guides/agent-host-troubleshooting.md#guard-hook-path-or-wrapper-is-unsafe)이
+[에이전트 호스트 문제 해결](../user-guide/agent-host-troubleshooting.md#guard-hook-path-or-wrapper-is-unsafe)이
 담당합니다.
 
 ## 호스트 의도 선택하기
@@ -135,7 +135,7 @@ volicord inbox answer JUDGMENT_ID --choice CHOICE_ID
 
 | 필요 | 읽을 문서 |
 |---|---|
-| 호스트 설정 세부사항 | [에이전트 호스트 설정](../guides/agent-host-setup.md) |
-| `action_required` 또는 `failed` 문제 해결 | [에이전트 호스트 문제 해결](../guides/agent-host-troubleshooting.md) |
-| 사용자 작업 흐름과 판단 경계 | [사용자 가이드](../guides/user-workflow.md) |
-| 에이전트 작업 흐름 경계 | [에이전트 가이드](../guides/agent-workflow.md) |
+| 호스트 설정 세부사항 | [에이전트 호스트 설정](../user-guide/agent-host-setup.md) |
+| `action_required` 또는 `failed` 문제 해결 | [에이전트 호스트 문제 해결](../user-guide/agent-host-troubleshooting.md) |
+| 사용자 작업 흐름과 판단 경계 | [사용자 가이드](../user-guide/user-workflow.md) |
+| 에이전트 작업 흐름 경계 | [에이전트 가이드](../user-guide/agent-workflow.md) |

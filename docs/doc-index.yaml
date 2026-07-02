@@ -28,13 +28,13 @@ owner_areas:
   repository_guidance:
     description: Repository-wide and scoped working-rule maintenance for agents and maintainers.
   onboarding:
-    description: First-read, installation, and environment-orientation documentation maintenance.
+    description: User Guide first-read, installation, and environment-orientation documentation maintenance.
   user_workflow:
     description: User-facing and agent-facing workflow guide maintenance.
   agent_connection:
     description: Agent host, MCP adapter, administrative setup, and Agent Connection documentation
       maintenance.
-  developer_documentation:
+  architecture_guide:
     description: Source-learning, implementation workflow, architecture, and test documentation maintenance.
   core_api:
     description: Core authority model, public API, schema, projection, template, and value-set documentation
@@ -130,8 +130,8 @@ shared_documents:
   normative_level: maintenance
   owner_area: repository_guidance
   created_on: '2026-05-07'
-  last_updated_on: '2026-07-02'
-  last_verified_on: '2026-07-02'
+  last_updated_on: '2026-07-03'
+  last_verified_on: '2026-07-03'
   applies_to:
   - volicord_workspace_0_1
   - doc_index_schema_v3
@@ -263,7 +263,7 @@ shared_documents:
   - bilingual terminology controls
   - identifier preservation rules
   - English and Korean discouraged-expression metadata
-  - Volicord product identity routing to Getting Started Overview
+  - Volicord product identity routing to User Guide Overview
   - Volicord, Core, Volicord implementation, Volicord source repository, Volicord installation, Volicord Runtime Home, Product Repository, Agent Connection, Connection Projects, and User Channel terminology routing
   - write ticket, write approval, sensitive-action approval, final-acceptance, residual-risk acceptance,
     and verification-criteria terminology distinctions
@@ -295,12 +295,13 @@ documents:
   - operate
   - learn
   depends_on:
-  - start
-  - start.installation
-  - use.local-mcp-quickstart
-  - use.user-guide
-  - use.agent-host-setup
-  - use.agent-host-troubleshooting
+  - user-guide.index
+  - user-guide.overview
+  - user-guide.installation
+  - user-guide.quickstart
+  - user-guide.user-workflow
+  - user-guide.agent-host-setup
+  - user-guide.agent-host-troubleshooting
   - reference.system-requirements
   - reference.core-model
   - reference.runtime-boundaries
@@ -312,13 +313,13 @@ documents:
   path_en: docs/en/README.md
   path_ko: docs/ko/README.md
   kind: landing
-  summary: Language-specific documentation entry point, root README route, and reader-path router.
+  summary: Language-specific documentation entry point, root README route, and four-layer reader-path router.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: onboarding
   created_on: '2026-04-23'
-  last_updated_on: '2026-07-02'
-  last_verified_on: '2026-07-02'
+  last_updated_on: '2026-07-03'
+  last_verified_on: '2026-07-03'
   applies_to:
   - volicord_workspace_0_1
   primary_audience:
@@ -326,9 +327,51 @@ documents:
   journeys:
   - evaluate
   - learn
-- doc_id: start
-  path_en: docs/en/getting-started/overview.md
-  path_ko: docs/ko/getting-started/overview.md
+  depends_on:
+  - user-guide.index
+  - architecture-guide.index
+  - reference.index
+  - maintain.documentation-policy
+- doc_id: user-guide.index
+  path_en: docs/en/user-guide/README.md
+  path_ko: docs/ko/user-guide/README.md
+  kind: landing
+  summary: User Guide layer index for user procedures, agent-host setup, workflow practice, and troubleshooting.
+  normative_level: guide
+  translation_policy: semantic_parity
+  owner_area: onboarding
+  created_on: '2026-07-03'
+  last_updated_on: '2026-07-03'
+  last_verified_on: '2026-07-03'
+  applies_to:
+  - volicord_workspace_0_1
+  - mcp_protocol_2025_11_25
+  primary_audience:
+  - new users
+  - operators
+  - agents
+  - agent integrators
+  journeys:
+  - evaluate
+  - install
+  - operate
+  canonical_for:
+  - User Guide layer navigation.
+  - User-facing route ownership for installation, first setup, workflow, judgment examples, agent-host operation, multi-repository setup, and troubleshooting.
+  depends_on:
+  - user-guide.overview
+  - user-guide.installation
+  - user-guide.quickstart
+  - user-guide.user-workflow
+  - user-guide.agent-workflow
+  - user-guide.judgment-examples
+  - user-guide.agent-host-setup
+  - user-guide.agent-host-troubleshooting
+  - user-guide.multi-repository-agent-setup
+  - reference.index
+- doc_id: user-guide.overview
+  path_en: docs/en/user-guide/overview.md
+  path_ko: docs/ko/user-guide/overview.md
   kind: landing
   summary: First-read product identity and orientation for Volicord, Core, and the local authority model.
   normative_level: guide
@@ -350,9 +393,9 @@ documents:
   - Volicord public product identity and first-read positioning
   - first-read distinction between Volicord as a local work authority record and Core as the local authority record
   - overview-level routing to Scope, Core Model, Runtime Boundaries, Security, Glossary, and documentation metadata owners
-- doc_id: start.installation
-  path_en: docs/en/getting-started/installation.md
-  path_ko: docs/ko/getting-started/installation.md
+- doc_id: user-guide.installation
+  path_en: docs/en/user-guide/installation.md
+  path_ko: docs/ko/user-guide/installation.md
   kind: tutorial
   summary: Release binary installation, development source build, executable discovery, and installation
     verification tutorial.
@@ -375,9 +418,9 @@ documents:
   - reference.system-requirements
   - reference.admin-cli
   - reference.mcp-transport
-- doc_id: use.local-mcp-quickstart
-  path_en: docs/en/getting-started/quickstart.md
-  path_ko: docs/ko/getting-started/quickstart.md
+- doc_id: user-guide.quickstart
+  path_en: docs/en/user-guide/quickstart.md
+  path_ko: docs/ko/user-guide/quickstart.md
   kind: tutorial
   summary: Shortest real agent host setup tutorial for a first successful run.
   normative_level: guide
@@ -397,13 +440,13 @@ documents:
   - install
   - operate
   depends_on:
-  - start.installation
-  - use.agent-host-setup
+  - user-guide.installation
+  - user-guide.agent-host-setup
   - reference.admin-cli
   - reference.mcp-transport
-- doc_id: use.user-guide
-  path_en: docs/en/guides/user-workflow.md
-  path_ko: docs/ko/guides/user-workflow.md
+- doc_id: user-guide.user-workflow
+  path_en: docs/en/user-guide/user-workflow.md
+  path_ko: docs/ko/user-guide/user-workflow.md
   kind: how_to
   summary: How-to guidance for user workflow and authority-aware work with Volicord.
   normative_level: guide
@@ -419,9 +462,9 @@ documents:
   - agents
   journeys:
   - operate
-- doc_id: use.agent-guide
-  path_en: docs/en/guides/agent-workflow.md
-  path_ko: docs/ko/guides/agent-workflow.md
+- doc_id: user-guide.agent-workflow
+  path_en: docs/en/user-guide/agent-workflow.md
+  path_ko: docs/ko/user-guide/agent-workflow.md
   kind: how_to
   summary: How-to guidance for agents operating against Volicord authority boundaries.
   normative_level: guide
@@ -437,9 +480,9 @@ documents:
   - agent operators
   journeys:
   - operate
-- doc_id: use.judgment-examples
-  path_en: docs/en/guides/judgment-examples.md
-  path_ko: docs/ko/guides/judgment-examples.md
+- doc_id: user-guide.judgment-examples
+  path_en: docs/en/user-guide/judgment-examples.md
+  path_ko: docs/ko/user-guide/judgment-examples.md
   kind: how_to
   summary: Example-oriented guidance for user judgments and related workflow decisions.
   normative_level: example
@@ -456,9 +499,9 @@ documents:
   - maintainers
   journeys:
   - operate
-- doc_id: use.agent-host-setup
-  path_en: docs/en/guides/agent-host-setup.md
-  path_ko: docs/ko/guides/agent-host-setup.md
+- doc_id: user-guide.agent-host-setup
+  path_en: docs/en/user-guide/agent-host-setup.md
+  path_ko: docs/ko/user-guide/agent-host-setup.md
   kind: how_to
   summary: How-to guidance for installing, verifying, guiding, and removing Codex, Claude Code, and generic
     agent host integrations.
@@ -484,10 +527,10 @@ documents:
   - reference.runtime-boundaries
   - reference.agent-connection
   - reference.api.methods
-  - use.agent-host-troubleshooting
-- doc_id: use.agent-host-troubleshooting
-  path_en: docs/en/guides/agent-host-troubleshooting.md
-  path_ko: docs/ko/guides/agent-host-troubleshooting.md
+  - user-guide.agent-host-troubleshooting
+- doc_id: user-guide.agent-host-troubleshooting
+  path_en: docs/en/user-guide/agent-host-troubleshooting.md
+  path_ko: docs/ko/user-guide/agent-host-troubleshooting.md
   kind: how_to
   summary: Symptom-oriented recovery guidance for Codex, Claude Code, and generic agent host integration
     failures.
@@ -515,9 +558,9 @@ documents:
   - reference.storage
   - reference.storage-records
   - reference.storage-versioning
-- doc_id: use.multi-repository-agent-setup
-  path_en: docs/en/guides/multi-repository-agent-setup.md
-  path_ko: docs/ko/guides/multi-repository-agent-setup.md
+- doc_id: user-guide.multi-repository-agent-setup
+  path_en: docs/en/user-guide/multi-repository-agent-setup.md
+  path_ko: docs/ko/user-guide/multi-repository-agent-setup.md
   kind: how_to
   summary: How-to guidance for one user-scope Agent Connection serving multiple explicitly allowed Product
     Repositories.
@@ -537,20 +580,20 @@ documents:
   journeys:
   - operate
   depends_on:
-  - use.agent-host-setup
-  - use.agent-host-troubleshooting
+  - user-guide.agent-host-setup
+  - user-guide.agent-host-troubleshooting
   - reference.admin-cli
   - reference.mcp-transport
   - reference.runtime-boundaries
   - reference.agent-connection
-- doc_id: development.index
-  path_en: docs/en/development/README.md
-  path_ko: docs/ko/development/README.md
+- doc_id: architecture-guide.index
+  path_en: docs/en/architecture-guide/README.md
+  path_ko: docs/ko/architecture-guide/README.md
   kind: landing
-  summary: Developer documentation landing page and implementation-learning route.
+  summary: Architecture Guide layer index and implementation-learning route.
   normative_level: guide
   translation_policy: semantic_parity
-  owner_area: developer_documentation
+  owner_area: architecture_guide
   created_on: '2026-06-20'
   last_updated_on: '2026-07-03'
   last_verified_on: '2026-07-03'
@@ -564,24 +607,24 @@ documents:
   - learn
   - implement
   depends_on:
-  - development.codebase-tour
-  - development.request-lifecycle
-  - development.design-patterns
-  - development.storage-and-transactions
-  - development.testing-strategy
-  - development.decisions.index
-  - build.architecture
-  - build.implementation-guide
+  - architecture-guide.codebase-tour
+  - architecture-guide.request-lifecycle
+  - architecture-guide.design-patterns
+  - architecture-guide.storage-and-transactions
+  - architecture-guide.testing-strategy
+  - architecture-guide.decisions.index
+  - architecture-guide.architecture
+  - architecture-guide.change-guide
   - reference.index
   - reference.api.methods
-- doc_id: development.codebase-tour
-  path_en: docs/en/development/codebase-tour.md
-  path_ko: docs/ko/development/codebase-tour.md
+- doc_id: architecture-guide.codebase-tour
+  path_en: docs/en/architecture-guide/codebase-tour.md
+  path_ko: docs/ko/architecture-guide/codebase-tour.md
   kind: explanation
   summary: Explanation of the repository and crate layout for source-code learners.
   normative_level: guide
   translation_policy: semantic_parity
-  owner_area: developer_documentation
+  owner_area: architecture_guide
   created_on: '2026-06-20'
   last_updated_on: '2026-07-03'
   last_verified_on: '2026-07-03'
@@ -596,21 +639,21 @@ documents:
   - learn
   - implement
   depends_on:
-  - development.testing-strategy
-  - build.architecture
+  - architecture-guide.testing-strategy
+  - architecture-guide.architecture
   - reference.index
   - reference.api.methods
-- doc_id: development.request-lifecycle
-  path_en: docs/en/development/request-lifecycle.md
-  path_ko: docs/ko/development/request-lifecycle.md
+- doc_id: architecture-guide.request-lifecycle
+  path_en: docs/en/architecture-guide/request-lifecycle.md
+  path_ko: docs/ko/architecture-guide/request-lifecycle.md
   kind: explanation
   summary: Explanation of request flow from adapters through Core-facing behavior.
   normative_level: guide
   translation_policy: semantic_parity
-  owner_area: developer_documentation
+  owner_area: architecture_guide
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-02'
-  last_verified_on: '2026-07-02'
+  last_updated_on: '2026-07-03'
+  last_verified_on: '2026-07-03'
   applies_to:
   - volicord_workspace_0_1
   - rust_workspace_1_85
@@ -621,7 +664,7 @@ documents:
   - learn
   - implement
   depends_on:
-  - build.architecture
+  - architecture-guide.architecture
   - reference.api.methods
   - reference.api.method-status
   - reference.api.method-intake
@@ -630,17 +673,17 @@ documents:
   - reference.mcp-transport
   - reference.runtime-boundaries
   - reference.core-model
-- doc_id: development.design-patterns
-  path_en: docs/en/development/design-patterns.md
-  path_ko: docs/ko/development/design-patterns.md
+- doc_id: architecture-guide.design-patterns
+  path_en: docs/en/architecture-guide/design-patterns.md
+  path_ko: docs/ko/architecture-guide/design-patterns.md
   kind: explanation
   summary: Explanation of durable implementation patterns and responsibility boundaries.
   normative_level: guide
   translation_policy: semantic_parity
-  owner_area: developer_documentation
+  owner_area: architecture_guide
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-02'
-  last_verified_on: '2026-07-02'
+  last_updated_on: '2026-07-03'
+  last_verified_on: '2026-07-03'
   applies_to:
   - volicord_workspace_0_1
   - rust_workspace_1_85
@@ -651,22 +694,22 @@ documents:
   - learn
   - implement
   depends_on:
-  - development.index
-  - development.codebase-tour
-  - development.request-lifecycle
-  - development.testing-strategy
-  - build.architecture
+  - architecture-guide.index
+  - architecture-guide.codebase-tour
+  - architecture-guide.request-lifecycle
+  - architecture-guide.testing-strategy
+  - architecture-guide.architecture
   - reference.index
   - reference.api.methods
   - reference.storage-effects
-- doc_id: development.storage-and-transactions
-  path_en: docs/en/development/storage-and-transactions.md
-  path_ko: docs/ko/development/storage-and-transactions.md
+- doc_id: architecture-guide.storage-and-transactions
+  path_en: docs/en/architecture-guide/storage-and-transactions.md
+  path_ko: docs/ko/architecture-guide/storage-and-transactions.md
   kind: explanation
   summary: Explanation of storage and transaction architecture for implementers.
   normative_level: guide
   translation_policy: semantic_parity
-  owner_area: developer_documentation
+  owner_area: architecture_guide
   created_on: '2026-06-20'
   last_updated_on: '2026-07-03'
   last_verified_on: '2026-07-03'
@@ -681,10 +724,10 @@ documents:
   - learn
   - implement
   depends_on:
-  - development.index
-  - development.request-lifecycle
-  - development.design-patterns
-  - build.architecture
+  - architecture-guide.index
+  - architecture-guide.request-lifecycle
+  - architecture-guide.design-patterns
+  - architecture-guide.architecture
   - reference.storage
   - reference.storage-effects
   - reference.storage-records
@@ -693,15 +736,15 @@ documents:
   - reference.storage-versioning
   - reference.runtime-boundaries
   - reference.admin-cli
-- doc_id: development.testing-strategy
-  path_en: docs/en/development/testing-strategy.md
-  path_ko: docs/ko/development/testing-strategy.md
+- doc_id: architecture-guide.testing-strategy
+  path_en: docs/en/architecture-guide/testing-strategy.md
+  path_ko: docs/ko/architecture-guide/testing-strategy.md
   kind: explanation
   summary: Explanation of test organization, durable contract-test authoring, and validation
     responsibilities.
   normative_level: guide
   translation_policy: semantic_parity
-  owner_area: developer_documentation
+  owner_area: architecture_guide
   created_on: '2026-06-20'
   last_updated_on: '2026-07-03'
   last_verified_on: '2026-07-03'
@@ -715,101 +758,21 @@ documents:
   - learn
   - implement
   depends_on:
-  - development.index
-  - development.codebase-tour
-  - development.design-patterns
-  - build.architecture
+  - architecture-guide.index
+  - architecture-guide.codebase-tour
+  - architecture-guide.design-patterns
+  - architecture-guide.architecture
   - reference.index
   - reference.conformance
   - maintain.validation
-- doc_id: development.decisions.index
-  path_en: docs/en/development/decisions/README.md
-  path_ko: docs/ko/development/decisions/README.md
+- doc_id: architecture-guide.decisions.index
+  path_en: docs/en/architecture-guide/decisions/README.md
+  path_ko: docs/ko/architecture-guide/decisions/README.md
   kind: landing
   summary: Architecture-decision record index for implementation rationale.
   normative_level: guide
   translation_policy: semantic_parity
-  owner_area: developer_documentation
-  created_on: '2026-06-20'
-  last_updated_on: '2026-06-24'
-  last_verified_on: '2026-06-24'
-  applies_to:
-  - volicord_workspace_0_1
-  - rust_workspace_1_85
-  primary_audience:
-  - implementers
-  - reviewers
-  journeys:
-  - learn
-  - implement
-  depends_on:
-  - development.decision.agent-connection-routing
-  - development.decision.core-adapter-boundary
-  - development.decision.plan-and-atomic-commit
-  - development.decision.runtime-home-and-product-repository
-  - build.architecture
-- doc_id: development.decision.core-adapter-boundary
-  path_en: docs/en/development/decisions/core-adapter-boundary.md
-  path_ko: docs/ko/development/decisions/core-adapter-boundary.md
-  kind: explanation
-  summary: Architecture decision explaining the Core and adapter boundary.
-  normative_level: guide
-  translation_policy: semantic_parity
-  owner_area: developer_documentation
-  created_on: '2026-06-20'
-  last_updated_on: '2026-07-02'
-  last_verified_on: '2026-07-02'
-  applies_to:
-  - volicord_workspace_0_1
-  - rust_workspace_1_85
-  primary_audience:
-  - implementers
-  - reviewers
-  journeys:
-  - learn
-  - implement
-  depends_on:
-  - development.design-patterns
-  - build.architecture
-  - reference.api.methods
-  - reference.mcp-transport
-  - reference.admin-cli
-  - reference.agent-connection
-- doc_id: development.decision.plan-and-atomic-commit
-  path_en: docs/en/development/decisions/plan-and-atomic-commit.md
-  path_ko: docs/ko/development/decisions/plan-and-atomic-commit.md
-  kind: explanation
-  summary: Architecture decision explaining plan and atomic commit boundaries.
-  normative_level: guide
-  translation_policy: semantic_parity
-  owner_area: developer_documentation
-  created_on: '2026-06-20'
-  last_updated_on: '2026-06-24'
-  last_verified_on: '2026-06-24'
-  applies_to:
-  - volicord_workspace_0_1
-  - rust_workspace_1_85
-  primary_audience:
-  - implementers
-  - reviewers
-  journeys:
-  - learn
-  - implement
-  depends_on:
-  - development.storage-and-transactions
-  - development.design-patterns
-  - build.architecture
-  - reference.api.methods
-  - reference.storage-effects
-  - reference.storage-versioning
-- doc_id: development.decision.runtime-home-and-product-repository
-  path_en: docs/en/development/decisions/runtime-home-and-product-repository.md
-  path_ko: docs/ko/development/decisions/runtime-home-and-product-repository.md
-  kind: explanation
-  summary: Architecture decision explaining Runtime Home and Product Repository separation.
-  normative_level: guide
-  translation_policy: semantic_parity
-  owner_area: developer_documentation
+  owner_area: architecture_guide
   created_on: '2026-06-20'
   last_updated_on: '2026-07-03'
   last_verified_on: '2026-07-03'
@@ -823,22 +786,102 @@ documents:
   - learn
   - implement
   depends_on:
-  - development.storage-and-transactions
-  - build.architecture
+  - architecture-guide.decision.agent-connection-routing
+  - architecture-guide.decision.core-adapter-boundary
+  - architecture-guide.decision.plan-and-atomic-commit
+  - architecture-guide.decision.runtime-home-and-product-repository
+  - architecture-guide.architecture
+- doc_id: architecture-guide.decision.core-adapter-boundary
+  path_en: docs/en/architecture-guide/decisions/core-adapter-boundary.md
+  path_ko: docs/ko/architecture-guide/decisions/core-adapter-boundary.md
+  kind: explanation
+  summary: Architecture decision explaining the Core and adapter boundary.
+  normative_level: guide
+  translation_policy: semantic_parity
+  owner_area: architecture_guide
+  created_on: '2026-06-20'
+  last_updated_on: '2026-07-03'
+  last_verified_on: '2026-07-03'
+  applies_to:
+  - volicord_workspace_0_1
+  - rust_workspace_1_85
+  primary_audience:
+  - implementers
+  - reviewers
+  journeys:
+  - learn
+  - implement
+  depends_on:
+  - architecture-guide.design-patterns
+  - architecture-guide.architecture
+  - reference.api.methods
+  - reference.mcp-transport
+  - reference.admin-cli
+  - reference.agent-connection
+- doc_id: architecture-guide.decision.plan-and-atomic-commit
+  path_en: docs/en/architecture-guide/decisions/plan-and-atomic-commit.md
+  path_ko: docs/ko/architecture-guide/decisions/plan-and-atomic-commit.md
+  kind: explanation
+  summary: Architecture decision explaining plan and atomic commit boundaries.
+  normative_level: guide
+  translation_policy: semantic_parity
+  owner_area: architecture_guide
+  created_on: '2026-06-20'
+  last_updated_on: '2026-07-03'
+  last_verified_on: '2026-07-03'
+  applies_to:
+  - volicord_workspace_0_1
+  - rust_workspace_1_85
+  primary_audience:
+  - implementers
+  - reviewers
+  journeys:
+  - learn
+  - implement
+  depends_on:
+  - architecture-guide.storage-and-transactions
+  - architecture-guide.design-patterns
+  - architecture-guide.architecture
+  - reference.api.methods
+  - reference.storage-effects
+  - reference.storage-versioning
+- doc_id: architecture-guide.decision.runtime-home-and-product-repository
+  path_en: docs/en/architecture-guide/decisions/runtime-home-and-product-repository.md
+  path_ko: docs/ko/architecture-guide/decisions/runtime-home-and-product-repository.md
+  kind: explanation
+  summary: Architecture decision explaining Runtime Home and Product Repository separation.
+  normative_level: guide
+  translation_policy: semantic_parity
+  owner_area: architecture_guide
+  created_on: '2026-06-20'
+  last_updated_on: '2026-07-03'
+  last_verified_on: '2026-07-03'
+  applies_to:
+  - volicord_workspace_0_1
+  - rust_workspace_1_85
+  primary_audience:
+  - implementers
+  - reviewers
+  journeys:
+  - learn
+  - implement
+  depends_on:
+  - architecture-guide.storage-and-transactions
+  - architecture-guide.architecture
   - reference.runtime-boundaries
   - reference.storage
   - reference.storage-artifacts
   - reference.admin-cli
   - reference.security
-- doc_id: development.decision.agent-connection-routing
-  path_en: docs/en/development/decisions/agent-connection-routing.md
-  path_ko: docs/ko/development/decisions/agent-connection-routing.md
+- doc_id: architecture-guide.decision.agent-connection-routing
+  path_en: docs/en/architecture-guide/decisions/agent-connection-routing.md
+  path_ko: docs/ko/architecture-guide/decisions/agent-connection-routing.md
   kind: explanation
   summary: Architecture decision explaining Agent Connection, host routing, and explicit project
     allowlists for agent-host connections.
   normative_level: guide
   translation_policy: semantic_parity
-  owner_area: developer_documentation
+  owner_area: architecture_guide
   created_on: '2026-06-22'
   last_updated_on: '2026-07-03'
   last_verified_on: '2026-07-03'
@@ -854,8 +897,8 @@ documents:
   - learn
   - implement
   depends_on:
-  - development.design-patterns
-  - build.architecture
+  - architecture-guide.design-patterns
+  - architecture-guide.architecture
   - reference.agent-connection
   - reference.mcp-transport
   - reference.admin-cli
@@ -864,14 +907,14 @@ documents:
   - reference.storage-ddl
   - reference.storage-versioning
   - reference.security
-- doc_id: build.implementation-guide
-  path_en: docs/en/development/change-guide.md
-  path_ko: docs/ko/development/change-guide.md
+- doc_id: architecture-guide.change-guide
+  path_en: docs/en/architecture-guide/change-guide.md
+  path_ko: docs/ko/architecture-guide/change-guide.md
   kind: how_to
   summary: How-to guidance for making implementation changes in the Rust workspace.
   normative_level: guide
   translation_policy: semantic_parity
-  owner_area: developer_documentation
+  owner_area: architecture_guide
   created_on: '2026-06-12'
   last_updated_on: '2026-07-03'
   last_verified_on: '2026-07-03'
@@ -885,23 +928,23 @@ documents:
   - learn
   - implement
   depends_on:
-  - development.index
-  - development.codebase-tour
-  - development.request-lifecycle
-  - development.design-patterns
-  - development.storage-and-transactions
-  - development.testing-strategy
-  - development.decisions.index
-  - build.architecture
+  - architecture-guide.index
+  - architecture-guide.codebase-tour
+  - architecture-guide.request-lifecycle
+  - architecture-guide.design-patterns
+  - architecture-guide.storage-and-transactions
+  - architecture-guide.testing-strategy
+  - architecture-guide.decisions.index
+  - architecture-guide.architecture
   - reference.index
-- doc_id: build.architecture
-  path_en: docs/en/development/architecture.md
-  path_ko: docs/ko/development/architecture.md
+- doc_id: architecture-guide.architecture
+  path_en: docs/en/architecture-guide/architecture.md
+  path_ko: docs/ko/architecture-guide/architecture.md
   kind: explanation
   summary: Durable explanation of workspace architecture, crate roles, and execution flow.
   normative_level: guide
   translation_policy: semantic_parity
-  owner_area: developer_documentation
+  owner_area: architecture_guide
   created_on: '2026-06-17'
   last_updated_on: '2026-07-03'
   last_verified_on: '2026-07-03'
@@ -915,13 +958,13 @@ documents:
   - learn
   - implement
   depends_on:
-  - development.index
-  - development.codebase-tour
-  - development.request-lifecycle
-  - development.design-patterns
-  - development.storage-and-transactions
-  - development.testing-strategy
-  - development.decisions.index
+  - architecture-guide.index
+  - architecture-guide.codebase-tour
+  - architecture-guide.request-lifecycle
+  - architecture-guide.design-patterns
+  - architecture-guide.storage-and-transactions
+  - architecture-guide.testing-strategy
+  - architecture-guide.decisions.index
   - reference.runtime-boundaries
   - reference.admin-cli
   - reference.mcp-transport
@@ -2115,7 +2158,7 @@ documents:
   - docs.doc-index
   - terminology.map
   - reference.index
-  - build.architecture
+  - architecture-guide.architecture
   - maintain.brand-guidelines
 - doc_id: maintain.product-maintenance-charter
   path_en: docs/en/maintain/product-maintenance-charter.md
@@ -2162,8 +2205,8 @@ documents:
   - reference.core-model
   - reference.runtime-boundaries
   - reference.security
-  - development.index
-  - development.testing-strategy
+  - architecture-guide.index
+  - architecture-guide.testing-strategy
 - doc_id: maintain.document-charters
   path_en: docs/en/maintain/document-charters.md
   path_ko: docs/ko/maintain/document-charters.md
@@ -2187,7 +2230,7 @@ documents:
   journeys:
   - maintain
   canonical_for:
-  - Information-ownership charters for the root README, Getting Started, Guides, Reference, Development,
+  - Information-ownership charters for the root README, User Guide, Architecture Guide, Reference,
     and Maintain document families.
   - Inclusion and exclusion boundaries for major document families.
   - Diagram-role and deeper-document linking guidance for major maintained documents.
@@ -2343,4 +2386,4 @@ documents:
   - maintain.brand-guidelines
   - docs.doc-index
   - terminology.map
-  - development.testing-strategy
+  - architecture-guide.testing-strategy

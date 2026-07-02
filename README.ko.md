@@ -249,8 +249,8 @@ volicord connection verify codex --repo /path/to/your-product-repo
 실행했다는 것이 증명되지는 않습니다.
 
 호스트별 파일 배치, hook matcher, wrapper 출력 방식, 경로 안전성 진단, 호스트 approval
-또는 reload 세부사항은 [에이전트 호스트 설정](docs/ko/guides/agent-host-setup.md)과
-[에이전트 호스트 문제 해결](docs/ko/guides/agent-host-troubleshooting.md)이 담당합니다.
+또는 reload 세부사항은 [에이전트 호스트 설정](docs/ko/user-guide/agent-host-setup.md)과
+[에이전트 호스트 문제 해결](docs/ko/user-guide/agent-host-troubleshooting.md)이 담당합니다.
 정확한 명령 동작은 [관리 CLI 참조](docs/ko/reference/admin-cli.md)가 담당합니다.
 
 ## 미기록 변경과 닫기 차단 사유
@@ -350,7 +350,7 @@ volicord serve --transport local-http
 전체 MCP Streamable HTTP 호환성은 구현하지 않습니다. 일반 네트워크 서비스처럼 다루거나
 공개 호스트 인터페이스에 노출하면 안 됩니다.
 
-자세한 Docker와 HTTP 경계는 [설치](docs/ko/getting-started/installation.md)와
+자세한 Docker와 HTTP 경계는 [설치](docs/ko/user-guide/installation.md)와
 [MCP 전송](docs/ko/reference/mcp-transport.md)을 사용합니다.
 
 ## 문제 해결
@@ -359,7 +359,7 @@ volicord serve --transport local-http
 |---|---|
 | `volicord`를 찾지 못함 | 설치 디렉터리를 `PATH`에 넣거나 이미 `PATH`에 있는 디렉터리에 설치한 뒤 `volicord --version`을 다시 실행합니다. 미래의 에이전트 호스트도 `volicord`를 시작할 수 있어야 합니다. |
 | `init`이 `action_required`를 보고함 | 호스트 restart 또는 reload, 프로젝트 trust, MCP approval, OAuth, 명령 링크 복구, 설치 프로필 복구처럼 이름 붙은 동작을 완료한 뒤 `volicord connection verify HOST --repo PATH`를 다시 실행합니다. |
-| Detective 전용 점검이 활성화되지 않음 | `volicord connection verify HOST --repo PATH`를 실행하고, 이름 붙은 사용자 동작을 완료한 뒤, hook 또는 watcher 진단은 [에이전트 호스트 문제 해결](docs/ko/guides/agent-host-troubleshooting.md)을 사용합니다. |
+| Detective 전용 점검이 활성화되지 않음 | `volicord connection verify HOST --repo PATH`를 실행하고, 이름 붙은 사용자 동작을 완료한 뒤, hook 또는 watcher 진단은 [에이전트 호스트 문제 해결](docs/ko/user-guide/agent-host-troubleshooting.md)을 사용합니다. |
 | 호스트가 MCP를 시작하지 못함 | 같은 명령 경로로 호스트가 `volicord mcp --help`를 실행할 수 있는지 확인합니다. 설치 프로필 상태는 `volicord doctor`로 확인합니다. |
 | Product Repository가 감지되지 않음 | `--repo /path/to/your-product-repo`를 넘기고, 그 경로가 Runtime Home과 분리된 기존 로컬 저장소인지 확인합니다. |
 | 판단이 대기 중임 | 가능하면 호스트 프롬프트나 정확한 채팅 명령을 우선 사용합니다. CLI inbox 경로로 `volicord inbox`와 `volicord inbox answer`를 사용합니다. |
@@ -369,10 +369,10 @@ volicord serve --transport local-http
 
 | 필요 | 읽을 문서 |
 |---|---|
-| 설치 세부사항과 Docker 예시 | [설치](docs/ko/getting-started/installation.md) |
+| 설치 세부사항과 Docker 예시 | [설치](docs/ko/user-guide/installation.md) |
 | 지원 환경 | [시스템 요구사항](docs/ko/reference/system-requirements.md) |
-| 사용자 작업 흐름과 판단 경계 | [사용자 가이드](docs/ko/guides/user-workflow.md) |
-| 호스트 설정과 복구 | [에이전트 호스트 설정](docs/ko/guides/agent-host-setup.md)과 [에이전트 호스트 문제 해결](docs/ko/guides/agent-host-troubleshooting.md) |
+| 사용자 작업 흐름과 판단 경계 | [사용자 가이드](docs/ko/user-guide/user-workflow.md) |
+| 호스트 설정과 복구 | [에이전트 호스트 설정](docs/ko/user-guide/agent-host-setup.md)과 [에이전트 호스트 문제 해결](docs/ko/user-guide/agent-host-troubleshooting.md) |
 | 정확한 CLI 동작 | [관리 CLI 참조](docs/ko/reference/admin-cli.md) |
 | MCP stdio와 HTTP 전송 | [MCP 전송](docs/ko/reference/mcp-transport.md) |
 | Agent Connection과 User Channel 경계 | [Agent Connection 참조](docs/ko/reference/agent-connection.md) |

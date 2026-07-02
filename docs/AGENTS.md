@@ -60,14 +60,14 @@ residual-risk decisions.
   configuration changes route to
   `docs/en/reference/runtime-boundaries.md`,
   `docs/ko/reference/runtime-boundaries.md`, and adjacent CLI or MCP owners.
-- Developer-learning changes caused by durable source movement route to
-  `docs/en/development/architecture.md`,
-  `docs/ko/development/architecture.md`,
-  `docs/en/development/change-guide.md`,
-  `docs/ko/development/change-guide.md`, and the nearest focused Development
+- Architecture Guide changes caused by durable source movement route to
+  `docs/en/architecture-guide/architecture.md`,
+  `docs/ko/architecture-guide/architecture.md`,
+  `docs/en/architecture-guide/change-guide.md`,
+  `docs/ko/architecture-guide/change-guide.md`, and the nearest focused Architecture Guide
   page.
 - Onboarding, installation, and agent-host setup changes route through the
-  relevant README, Getting Started, or Guide page listed in `doc-index.yaml`.
+  relevant README or User Guide page listed in `doc-index.yaml`.
 - Maintenance-process changes route to the applicable Maintain owner, not to a
   reader-facing guide.
 
@@ -139,8 +139,8 @@ residual-risk decisions.
   automated checks.
 - For contract-adjacent changes, confirm exact behavior remains in the focused
   Reference owner and non-owner pages only summarize or link.
-- For developer-learning changes caused by code movement, confirm the relevant
-  Development documents describe durable crates, modules, entry points,
+- For Architecture Guide changes caused by code movement, confirm the relevant
+  Architecture Guide documents describe durable crates, modules, entry points,
   execution stages, and responsibility boundaries without defining product
   contracts.
 - Before finishing, confirm changed links, file paths, anchors,

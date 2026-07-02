@@ -1,4 +1,4 @@
-# Getting Started Overview
+# User Guide Overview
 
 This is the first-read overview for Volicord. It explains the product thesis in ordinary language and routes exact contract questions to Reference owners.
 
@@ -111,13 +111,13 @@ Volicord does not turn a polished chat answer, generated summary, readable statu
 
 | Reader | Next path |
 |---|---|
-| New product reader | [User Guide](../guides/user-workflow.md) |
+| New product reader | [User Guide](../user-guide/user-workflow.md) |
 | Environment check | [System Requirements](../reference/system-requirements.md) |
 | First setup | [Installation](installation.md) -> [Quickstart](quickstart.md) |
-| Agent host operator | [Quickstart](quickstart.md) -> [Agent Host Setup](../guides/agent-host-setup.md) -> [Agent Host Troubleshooting](../guides/agent-host-troubleshooting.md) |
-| Multi-repository operator | [Multi-Repository Agent Setup](../guides/multi-repository-agent-setup.md) |
-| Agent author | [Agent Guide](../guides/agent-workflow.md) -> [Agent Connection Reference](../reference/agent-connection.md) |
-| Source-code learner | [Implementation Guide](../development/change-guide.md) -> [Architecture](../development/architecture.md) |
+| Agent host operator | [Quickstart](quickstart.md) -> [Agent Host Setup](../user-guide/agent-host-setup.md) -> [Agent Host Troubleshooting](../user-guide/agent-host-troubleshooting.md) |
+| Multi-repository operator | [Multi-Repository Agent Setup](../user-guide/multi-repository-agent-setup.md) |
+| Agent author | [Agent Guide](../user-guide/agent-workflow.md) -> [Agent Connection Reference](../reference/agent-connection.md) |
+| Source-code learner | [Implementation Guide](../architecture-guide/change-guide.md) -> [Architecture](../architecture-guide/architecture.md) |
 | Reference reader | [Reference Index](../reference/README.md), [Administrative CLI](../reference/admin-cli.md), [API Methods](../reference/api/methods.md) |
 
 New readers should not need API schemas or owner metadata to understand what Volicord is. Use the [Reference Index](../reference/README.md) when you need exact contract owners.

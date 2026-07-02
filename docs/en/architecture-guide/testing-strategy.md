@@ -35,7 +35,7 @@ every small edit runs every listed test.
 
 | Change area | Likely code or doc area | Start with | Add when |
 |---|---|---|---|
-| Developer documentation, documentation routes, metadata, links, or terminology | `docs/en/`, `docs/ko/`, `docs/doc-index.yaml`, `docs/terminology-map.yaml`; `xtask` when validator behavior changes. | `cargo run -p xtask -- docs-check`, plus manual semantic parity, owner-routing, and terminology review. | `xtask` tests when adding or changing deterministic docs-check rules. |
+| Architecture Guide, documentation routes, metadata, links, or terminology | `docs/en/`, `docs/ko/`, `docs/doc-index.yaml`, `docs/terminology-map.yaml`; `xtask` when validator behavior changes. | `cargo run -p xtask -- docs-check`, plus manual semantic parity, owner-routing, and terminology review. | `xtask` tests when adding or changing deterministic docs-check rules. |
 | Public schemas, shared request/result types, value sets, identifiers, or request hashing | `crates/volicord-types/src/` and the applicable Reference owners. | `volicord-types` unit tests. | Core method tests when method planning changes; MCP integration when tool schemas or exposure change; docs-check when maintained docs change. |
 | Public method behavior, Core pipeline behavior, policy helpers, replay, or effect branches | `crates/volicord-core/src/pipeline.rs`, `crates/volicord-core/src/methods/`, and `crates/volicord-core/src/policy/`. | Core colocated unit tests and `crates/volicord-core/src/methods/tests.rs`. | `tests/conformance/baseline.rs` for cross-method baseline scenarios; `tests/integration/mcp_connection.rs` for adapter-visible context or tool exposure. |
 | Store DDL, canonical SQL, persistence helpers, transaction boundaries, storage effects, or artifact storage | `crates/volicord-store/src/`, [`crates/volicord-store/tests/storage_ddl_contract.rs`](../../../crates/volicord-store/tests/storage_ddl_contract.rs), and storage Reference owners. | Store colocated unit tests; `cargo test -p volicord-store --test storage_ddl_contract` for Storage DDL, canonical SQL, or schema validation changes. | Core method, conformance, or MCP integration tests when public-method-visible storage behavior changes. |
@@ -56,7 +56,7 @@ every small edit runs every listed test.
 | Administrative agent setup behavior | `binary_admin` and colocated CLI module tests for `connection_command.rs`, host adapters, managed host configuration, and registration helpers. | Add Store tests when bootstrap, inspection, registry, schema initialization, Agent Connection, project membership, or managed host configuration state inventory behavior changes. |
 | Test fixture behavior | `volicord-test-support` tests or the consuming package's tests. | Add owner-focused documentation checks if the fixture exposes a missing contract owner. |
 | Documentation validator behavior | `xtask` tests and `cargo run -p xtask -- docs-check`. | Add fixture cases when a new deterministic structural rule is introduced. |
-| Developer documentation only | `cargo run -p xtask -- docs-check` plus manual semantic parity, owner-routing, and terminology review. | Run Cargo tests only when requested or when the documentation change depends on source behavior that needs fresh validation. |
+| Architecture Guide only | `cargo run -p xtask -- docs-check` plus manual semantic parity, owner-routing, and terminology review. | Run Cargo tests only when requested or when the documentation change depends on source behavior that needs fresh validation. |
 
 ## Durable Contract Tests And One-Time Audits
 
