@@ -158,7 +158,6 @@ impl McpAdapter {
             }
         };
         let mut metadata = json!({
-            "schema_version": 1,
             "source": WATCH_METADATA_SOURCE,
             "status_detail": "active",
             "detector_role": "detective",
@@ -251,7 +250,6 @@ impl McpAdapter {
                 guard_mode,
                 started_at: now.to_owned(),
                 metadata_json: serde_json::to_string(&json!({
-                    "schema_version": 1,
                     "source": WATCH_METADATA_SOURCE,
                     "session_watch_initialized": true
                 }))

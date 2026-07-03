@@ -75,7 +75,7 @@ CREATE TABLE user_judgments (
   status TEXT NOT NULL CHECK (status IN ('pending', 'resolved', 'stale', 'superseded', 'expired')),
   request_json TEXT NOT NULL DEFAULT '{}',
   context_json TEXT NOT NULL DEFAULT '{}',
-  options_json TEXT NOT NULL DEFAULT '{"schema_version":1,"options":[]}',
+  options_json TEXT NOT NULL DEFAULT '{"options":[]}',
   affected_refs_json TEXT NOT NULL DEFAULT '[]',
   artifact_refs_json TEXT NOT NULL DEFAULT '[]',
   sensitive_action_scope_json TEXT NOT NULL DEFAULT '{}',

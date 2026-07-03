@@ -1075,6 +1075,13 @@ mod tests {
 
     #[test]
     fn persisted_options_reject_bare_array_and_missing_current_fields() {
+        let current = serde_json::to_value(PersistedUserJudgmentOptions::current(Vec::new()))
+            .expect("current persisted options should serialize");
+        assert_eq!(current, json!({ "options": [] }));
+        let decoded = serde_json::from_value::<PersistedUserJudgmentOptions>(current)
+            .expect("current persisted options should deserialize");
+        assert!(decoded.options.is_empty());
+
         let bare_array = serde_json::from_value::<PersistedUserJudgmentOptions>(json!([
             {
                 "option_id": "unsupported_accept",
@@ -1088,7 +1095,6 @@ mod tests {
         assert!(bare_array.is_err());
 
         let missing_action = serde_json::from_value::<PersistedUserJudgmentOptions>(json!({
-            "schema_version": 1,
             "options": [{
                 "option_id": "accept",
                 "label": "Accept",
@@ -1101,7 +1107,6 @@ mod tests {
         assert!(missing_action.is_err());
 
         let missing_outcome = serde_json::from_value::<PersistedUserJudgmentOptions>(json!({
-            "schema_version": 1,
             "options": [{
                 "option_id": "accept",
                 "label": "Accept",
@@ -1114,7 +1119,6 @@ mod tests {
         assert!(missing_outcome.is_err());
 
         let blocked_outcome = serde_json::from_value::<PersistedUserJudgmentOptions>(json!({
-            "schema_version": 1,
             "options": [{
                 "option_id": "accept",
                 "label": "Accept",

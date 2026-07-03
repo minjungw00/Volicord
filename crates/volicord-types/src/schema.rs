@@ -1218,10 +1218,9 @@ pub struct UserJudgmentOptionInput {
 }
 
 /// Stored representation for `user_judgments.options_json`.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PersistedUserJudgmentOptions {
-    pub schema_version: u32,
     pub options: Vec<PersistedUserJudgmentOption>,
 }
 
@@ -1229,7 +1228,6 @@ impl PersistedUserJudgmentOptions {
     /// Creates the current persisted option representation.
     pub fn current(options: Vec<UserJudgmentOption>) -> Self {
         Self {
-            schema_version: 1,
             options: options
                 .into_iter()
                 .map(PersistedUserJudgmentOption::from_current)
@@ -1248,33 +1246,7 @@ impl PersistedUserJudgmentOptions {
     }
 }
 
-impl<'de> Deserialize<'de> for PersistedUserJudgmentOptions {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        #[serde(deny_unknown_fields)]
-        struct Wire {
-            schema_version: u32,
-            options: Vec<PersistedUserJudgmentOption>,
-        }
-
-        let value = Value::deserialize(deserializer)?;
-        let wire = Wire::deserialize(value).map_err(serde::de::Error::custom)?;
-        if wire.schema_version != 1 {
-            return Err(serde::de::Error::custom(
-                "persisted user judgment options schema_version must be 1",
-            ));
-        }
-        Ok(Self {
-            schema_version: wire.schema_version,
-            options: wire.options,
-        })
-    }
-}
-
-/// Versioned internal representation for `user_judgments.options_json`.
+/// Persisted internal representation for `user_judgments.options_json`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PersistedUserJudgmentOption {

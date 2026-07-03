@@ -986,7 +986,6 @@ fn resolution_mutation(resolution: &PlannedResolution) -> CoreResult<CoreStorage
         UnrecordedChangeResolutionUpdate {
             unrecorded_change_id: resolution.record.unrecorded_change_id.clone(),
             resolution_json: serde_json::to_string(&json!({
-                "schema_version": 1,
                 "resolution_basis": resolution.basis,
                 "capture_basis": resolution.capture_basis,
                 "user_judgment_ref": resolution.user_judgment_ref,

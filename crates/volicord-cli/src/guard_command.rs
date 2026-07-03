@@ -52,7 +52,6 @@ use crate::user_command::{
     UserCommandError,
 };
 
-const GUARD_SCHEMA_VERSION: u64 = 1;
 const DEFAULT_INTEGRATION_PROFILE: &str = "detective";
 const VOLICORD_POLICY_FILE: &str = ".volicord/policy.json";
 const EXPECTED_WRITE_TTL_MINUTES: i64 = 15;
@@ -991,8 +990,7 @@ fn ensure_required_session(
                 guard_mode: envelope.guard_mode.clone(),
                 started_at: envelope.occurred_at.clone(),
                 metadata_json: json!({
-                    "source": "volicord_guard_cli",
-                    "schema_version": GUARD_SCHEMA_VERSION
+                    "source": "volicord_guard_cli"
                 })
                 .to_string(),
             },
@@ -1051,7 +1049,6 @@ fn initialize_observe_session_watch(
             snapshot,
             created_at: started_at.clone(),
             metadata_json: json!({
-                "schema_version": 1,
                 "source": SESSION_WATCH_METADATA_SOURCE,
                 "status_detail": "active",
                 "detector_role": "detective",
@@ -1782,7 +1779,6 @@ fn expected_write_candidate(
             expires_at: format_timestamp(expires_at),
             metadata_json: json!({
                 "source": "volicord_guard_pre_tool",
-                "schema_version": GUARD_SCHEMA_VERSION,
                 "raw_event_sha256": input.raw_sha256,
                 "ticket_backed": true,
                 "write_ticket_ids": write_ticket_ids
@@ -2041,8 +2037,7 @@ fn record_unrecorded_changes(
             .to_string(),
             detected_at: context.envelope.occurred_at.clone(),
             metadata_json: json!({
-                "guard_event_id": context.envelope.event_id,
-                "schema_version": GUARD_SCHEMA_VERSION
+                "guard_event_id": context.envelope.event_id
             })
             .to_string(),
         },
@@ -2438,8 +2433,7 @@ fn record_prompt_capture(
                     "source": "volicord_guard_prompt_capture",
                     "raw_event_sha256": input.raw_sha256,
                     "prompt_size_bytes": prompt.len(),
-                    "prompt_text_omitted": true,
-                    "schema_version": GUARD_SCHEMA_VERSION
+                    "prompt_text_omitted": true
                 })
                 .to_string(),
             },
@@ -3283,7 +3277,6 @@ fn persist_guard_event(
             occurred_at: envelope.occurred_at.clone(),
             metadata_json: json!({
                 "source": "volicord_guard_cli",
-                "schema_version": GUARD_SCHEMA_VERSION,
                 "cooperative_detective": true
             })
             .to_string(),
@@ -3299,7 +3292,6 @@ fn guard_subject(
     project: &ProjectRecord,
 ) -> Value {
     json!({
-        "schema_version": GUARD_SCHEMA_VERSION,
         "lifecycle_phase": phase.event_kind(),
         "host_kind": envelope.host_kind,
         "connection_id": envelope.connection_id,
@@ -3322,7 +3314,6 @@ fn render_guard_output(
             stdout: format!(
                 "{}\n",
                 serde_json::to_string_pretty(&json!({
-                    "schema_version": GUARD_SCHEMA_VERSION,
                     "phase": phase.event_kind(),
                     "decision": decision.as_str(),
                     "allowed": decision != GuardDecision::Deny,

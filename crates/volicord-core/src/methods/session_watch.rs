@@ -82,7 +82,6 @@ pub(super) fn initialize_session_watch_baseline(
             snapshot,
             created_at: now.to_string(),
             metadata_json: serde_json::to_string(&json!({
-                "schema_version": 1,
                 "source": WATCH_METADATA_SOURCE,
                 "status_detail": "active",
                 "detector_role": "detective",
@@ -193,7 +192,6 @@ pub(super) fn run_session_watch_check(
             diff,
             observed_at: now.to_string(),
             metadata_json: serde_json::to_string(&json!({
-                "schema_version": 1,
                 "source": WATCH_METADATA_SOURCE,
                 "correlation_status": correlation.status.clone(),
                 "write_ticket_ids": correlation.write_ticket_ids.clone(),
@@ -442,7 +440,6 @@ fn ensure_agent_session(
             guard_mode,
             started_at: now.to_string(),
             metadata_json: serde_json::to_string(&json!({
-                "schema_version": 1,
                 "source": WATCH_METADATA_SOURCE,
                 "session_watch_initialized": true
             }))?,
@@ -537,7 +534,6 @@ fn insert_unrecorded_change_for_observation(
                     .to_owned(),
             observed_paths_json: serde_json::to_string(observed_paths)?,
             detection_json: serde_json::to_string(&json!({
-                "schema_version": 1,
                 "source": WATCH_METADATA_SOURCE,
                 "watch_observation_id": observation.watch_observation_id,
                 "watch_baseline_id": baseline.watch_baseline_id,
@@ -552,7 +548,6 @@ fn insert_unrecorded_change_for_observation(
             }))?,
             detected_at: now.to_string(),
             metadata_json: serde_json::to_string(&json!({
-                "schema_version": 1,
                 "source": WATCH_METADATA_SOURCE,
                 "resolution_basis_owner": "volicord.reconcile_changes",
                 "stored_payload": "path_hash_size_metadata_only"
@@ -974,7 +969,6 @@ fn watch_status_metadata_json(
     error: Option<&str>,
 ) -> CoreResult<String> {
     let mut object = watch_metadata_object(baseline)?;
-    object.insert("schema_version".to_owned(), json!(1));
     object.insert("source".to_owned(), json!(WATCH_METADATA_SOURCE));
     object.insert("status_detail".to_owned(), json!(status_detail));
     if let Some(error) = error {

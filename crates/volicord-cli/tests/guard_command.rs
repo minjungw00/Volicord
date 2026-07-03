@@ -663,7 +663,6 @@ fn guard_volicord_json_deny_is_not_host_native_output() -> Result<(), Box<dyn Er
     assert!(stderr(&output).is_empty());
     let value = json_stdout(&output)?;
     assert_eq!(value["decision"], "deny");
-    assert!(value.get("schema_version").is_some());
     assert!(value.get("result").is_some());
     assert!(!is_host_native_pre_tool_deny(&value));
     Ok(())

@@ -4322,7 +4322,6 @@ mod tests {
                         JudgmentBasisCompatibilityStatus::Current,
                     );
                     insert.options_json = json!({
-                        "schema_version": 1,
                         "options": [{
                             "option_id": "accept",
                             "label": "Accept",
@@ -4836,7 +4835,6 @@ mod tests {
             .to_string(),
             context_json: "{}".to_owned(),
             options_json: json!({
-                "schema_version": 1,
                 "options": [{
                 "option_id": "accept",
                 "label": "Accept",

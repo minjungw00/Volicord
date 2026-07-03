@@ -15839,7 +15839,6 @@ fn initialize_full_watch_baseline(
             guard_mode: "detective".to_owned(),
             started_at: "2026-06-30T00:03:00Z".to_owned(),
             metadata_json: serde_json::to_string(&json!({
-                "schema_version": 1,
                 "source": "test_fixture",
                 "session_watch_initialized": true
             }))?,
@@ -15863,7 +15862,6 @@ fn initialize_full_watch_baseline(
             snapshot,
             created_at: "2026-06-30T00:03:00Z".to_owned(),
             metadata_json: serde_json::to_string(&json!({
-                "schema_version": 1,
                 "source": "volicord_session_watch",
                 "status_detail": "active",
                 "detector_role": "detective",
