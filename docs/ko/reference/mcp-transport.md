@@ -15,7 +15,7 @@
 
 - `volicord mcp --stdio` 프로세스 시작과 종료 동작
 - `volicord serve --transport local-http` 시작, 로컬 리스너, 전송 경계 인증과 Origin 점검
-- 생성된 호스트 설정과 내보낸 MCP 설정이 사용하는 프로세스 설정
+- 생성된 호스트 설정과 사용자 관리 generic 호스트 설정이 사용하는 프로세스 설정
 - MCP Runtime Home 경로 해석
 - MCP 프로토콜 버전 협상과 초기화 수명주기
 - stdio JSON-RPC 프레이밍, 메시지 검증, 지원되는 MCP 메서드
@@ -78,15 +78,17 @@ server-sent event 스트림, HTTP elicitation, 전체 MCP Streamable HTTP 호환
 전체 쓰기 방지, 행위자 귀속 증명, 정확성 증명, 테스트 충분성 증명, 인간 검토 대체가
 아닙니다.
 
-생성된 호스트 설정과 generic export는 내부 연결 바인딩으로 stdio 루프를 시작합니다.
-생성된 항목이 안전하게 프로젝트에 묶이면 선택된 내부 프로젝트 바인딩도 함께 담습니다.
+생성된 호스트 설정과 사용자 관리 generic 호스트 설정은 내부 연결 바인딩으로 stdio
+루프를 시작합니다. 설정 항목이 안전하게 프로젝트에 묶이면 선택된 내부 프로젝트
+바인딩도 함께 담습니다.
 
 ```text
 volicord mcp --stdio --connection <connection_id> [--project <project_id>]
 ```
 
-`<connection_id>` 프로세스 바인딩 값은 `volicord connection add` 또는 export 흐름이 만든
-저장된 `connection_internal_id`에서 옵니다. 선택적 `<project_id>` 프로세스 바인딩 값은
+`<connection_id>` 프로세스 바인딩 값은 `volicord init` 또는
+`volicord connection add`가 만든 저장 `connection_internal_id`에서 옵니다.
+선택적 `<project_id>` 프로세스 바인딩 값은
 그 연결에 이미 허용된 저장 `project_internal_id`입니다. 일반 사용자가 텍스트 모드
 흐름에서 두 값 중 어느 것도 입력할 필요가 없어야 합니다.
 
@@ -236,7 +238,7 @@ Session-watch 시작 coverage:
 `VOLICORD_LOCAL_WEB_CONSENT=0`, `false`, `off`, `disabled`는 stdio local web consent
 리스너를 끕니다. 다른 값은 리스너 주소나 token 정책을 바꾸지 않습니다.
 
-연결 식별 정보는 생성된 호스트 설정이나 generic export 출력 안의
+연결 식별 정보는 생성된 호스트 설정이나 사용자 관리 generic 호스트 설정 안의
 `--connection <connection_id>`로 제공합니다. 이것은 선택된 Agent Connection에 대한 내부
 프로세스 바인딩이며, 사용자가 보통 직접 고르거나 관리하는 값이 아닙니다. 묶인 Agent
 Connection과 Runtime Home 레지스트리 상태가 연결 모드, 연결 프로젝트, 어댑터가 파생하는

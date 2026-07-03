@@ -149,7 +149,7 @@ API와 참조 예시는 필요할 때 메서드 안의 정합성, 요청과 응�
 오래 유지될 테스트 이름은 현재 계약을 기준으로 짓습니다. 예시는
 `connect_help_exposes_only_public_connect_options`,
 `documented_volicord_commands_match_public_cli_contract`,
-`export_mcp_config_uses_default_file_when_output_is_omitted`,
+`export_help_lists_authority_bundle`,
 `mcp_public_schema_hides_internal_envelope_fields`,
 `terminology_map_defines_identity_sensitive_roles`,
 `storage_registry_contains_current_contract_columns`입니다. `removed_options_are_gone`,

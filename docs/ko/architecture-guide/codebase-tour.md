@@ -299,8 +299,8 @@ Core 권한 의미는 참조 문서에 남습니다.
 
 `volicord-cli`는 로컬 `volicord` 관리 실행 파일과 재사용 가능한 명령 모듈을
 구현합니다. 설치 프로필 준비 상태, Git 저장소 프로젝트 감지, 프로젝트와
-Agent Connection 등록, Agent Connection 설정, 호스트별 MCP 설정, generic MCP
-config export, 로컬 `User Channel` 명령, 사전 점검 실행을 처리합니다.
+Agent Connection 등록, Agent Connection 설정, 호스트별 MCP 설정, 권한 번들
+내보내기, 로컬 `User Channel` 명령, 사전 점검 실행을 처리합니다.
 
 구현에서 담당하는 것:
 
@@ -309,7 +309,7 @@ config export, 로컬 `User Channel` 명령, 사전 점검 실행을 처리합�
   저장소 준비, 호스트 계획 구성, 사전 점검 호출, status, verification, mode,
   removal, 출력.
 - Setup, doctor, project, export, 로컬 User Channel 명령 파싱과 출력.
-- Codex, Claude Code, generic export 호스트 통합 계획.
+- Codex와 Claude Code 호스트 통합 계획.
 - 관리 호스트 설정 계획과 안전성 점검.
 - Agent Connection, Connection Projects, 호출 출처 메타데이터 생성.
 

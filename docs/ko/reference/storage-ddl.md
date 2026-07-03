@@ -241,7 +241,7 @@ Registry 제약:
 - `projects.status`는 저장소 소유 값이며 기준 범위에서 유효한 값은 `active`뿐입니다.
 - `agent_connections.connection_internal_id`는 Agent Connection 기록의 저장 기본 키입니다. 이 테이블은 호스트 종류, `intent`에 저장되는 연결 의도, 호스트 범위, 선택적 `project_internal_id`, 서버 이름, 설정 대상, 모드, 활성 상태, 관리 fingerprint, 검증 요약 상태, 검증 보고서 JSON, 사용자 동작 JSON, 메타데이터, 타임스탬프를 저장합니다.
 - `agent_connections.intent`는 `personal`, `shared`, `global`로 제한됩니다.
-- `agent_connections.host_scope`는 `host_kind`와 함께 제한됩니다. Codex는 `user`와 `project`를 지원하고, Claude Code는 `local`, `project`, `user`를 지원하며, generic export는 `export`를 지원합니다.
+- `agent_connections.host_scope`는 `host_kind`와 함께 제한됩니다. Codex는 `user`와 `project`를 지원하고, Claude Code는 `local`, `project`, `user`를 지원하며, `generic` 레코드는 `export`로 제한됩니다.
 - `agent_connections.mode`는 `read_only` 또는 `workflow`로 제한됩니다.
 - `agent_connections.last_verification_report_json`은 최신 검증 보고서 JSON 객체를 저장합니다. `agent_connections.last_user_actions_json`은 최신 사용자 동작 JSON 배열을 저장합니다.
 - `connection_projects`는 Agent Connection 하나에 대한 명시적 프로젝트 허용 목록입니다. `connection_internal_id`와 `project_internal_id`로 멤버십을 저장합니다. 아직 멤버십이 남은 프로젝트나 연결 삭제는 제한됩니다.

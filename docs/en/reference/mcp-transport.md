@@ -19,8 +19,8 @@ This document owns:
 - `volicord mcp --stdio` process startup and exit behavior
 - `volicord serve --transport local-http` startup, local listener, and
   transport-bound authentication and Origin checks
-- process configuration used by generated host configuration and exported MCP
-  config
+- process configuration used by generated host configuration and user-managed
+  generic host configuration
 - MCP Runtime Home environment resolution
 - MCP protocol-version negotiation and initialization lifecycle
 - stdio JSON-RPC framing, message validation, and supported MCP methods
@@ -94,16 +94,18 @@ sandboxing, network isolation, malware defense, full write prevention, actor
 attribution proof, correctness proof, test sufficiency proof, or human review
 replacement.
 
-Generated host configuration and generic exports launch the stdio loop with an
-internal connection binding. When the generated entry is safely project-bound,
-it also carries the selected internal project binding:
+Generated host configuration and user-managed generic host configuration launch
+the stdio loop with an internal connection binding. When the configuration
+entry is safely project-bound, it also carries the selected internal project
+binding:
 
 ```text
 volicord mcp --stdio --connection <connection_id> [--project <project_id>]
 ```
 
 The `<connection_id>` process-binding value comes from the stored
-`connection_internal_id` created by `volicord connection add` or the export flow.
+`connection_internal_id` created by `volicord init` or
+`volicord connection add`.
 The optional `<project_id>` process-binding value is a stored
 `project_internal_id` already allowed for that connection. Ordinary users
 should not need to type either value in text-mode flows.
@@ -277,9 +279,9 @@ stdio local web consent listener. Other values do not change the listener
 address or token policy.
 
 Connection process binding is supplied by `--connection <connection_id>` in
-generated host configuration or generic export output. It names the stored
-`connection_internal_id` for the selected Agent Connection and is not a normal
-user-chosen value. The bound Agent Connection and Runtime Home registry state
+generated host configuration or user-managed generic host configuration. It
+names the stored `connection_internal_id` for the selected Agent Connection and
+is not a normal user-chosen value. The bound Agent Connection and Runtime Home registry state
 supply the connection mode, connected projects, and adapter-derived `actor_source` and
 `operation_category`. Project access is controlled by the selected Agent
 Connection's connected projects and repository-root resolution. No other

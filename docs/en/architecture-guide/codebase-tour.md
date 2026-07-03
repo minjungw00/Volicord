@@ -312,7 +312,7 @@ Why it exists:
 `volicord-cli` implements the local `volicord` administrative executable and
 reusable command modules. It handles installation profile readiness, Git repository
 project detection, project and Agent Connection registration, Agent Connection
-setup, host-specific MCP configuration, generic MCP config export, local
+setup, host-specific MCP configuration, authority bundle export, local
 `User Channel` commands, and preflight execution.
 
 Owns in the implementation:
@@ -323,7 +323,7 @@ Owns in the implementation:
   status, verification, mode, removal, and output.
 - Setup, doctor, project, export, and local User Channel command parsing and
   output.
-- Codex, Claude Code, and generic export host integration planning.
+- Codex and Claude Code host integration planning.
 - Managed host configuration planning and safety checks.
 - Agent Connection, Connection Projects, and invocation metadata generation.
 

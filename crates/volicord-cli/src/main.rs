@@ -276,12 +276,6 @@ fn command_export<F>(args: &[String], env_var: F, current_dir: &Path) -> Result<
 where
     F: Fn(&str) -> Option<std::ffi::OsString>,
 {
-    if args.first().map(String::as_str) == Some("mcp-config") {
-        return Err(CliError::usage(format!(
-            "unknown export command: mcp-config\n\n{}",
-            export_usage()
-        )));
-    }
     run_export_command(args, env_var, current_dir).map_err(CliError::from)
 }
 

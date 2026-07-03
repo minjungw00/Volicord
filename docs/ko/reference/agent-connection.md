@@ -120,9 +120,9 @@ Volicord 관리 호스트 설정은 Volicord가 특정 생성 호스트 설정 �
 | `global` | 지원 호스트의 사용자 전역 호스트 설정입니다. 프로젝트 접근은 계속 저장소 루트 등록과 Connection Projects로 제한됩니다. | 모든 저장소를 연결하지 않으며 프로젝트나 호스트 신뢰를 우회하지 않습니다. |
 
 기준 범위에서 직접 관리하는 호스트 종류는 `codex`와 `claude_code`입니다. 호스트 중립
-MCP 설정 내보내기는 별도 export 흐름입니다. 내보낸 설정은 `volicord mcp --stdio`를 시작하는 데
-필요한 내부 registry 상태를 사용할 수 있지만, export는 직접 호스트 설치를 위한 일반
-연결 의도가 아닙니다.
+MCP 설정은 사용자 관리입니다. 사용자 관리 설정은 지원되는 Agent Connection이 이미
+있을 때만 `volicord mcp --stdio`를 시작하는 데 필요한 내부 registry 상태를 사용할 수
+있지만, 직접 호스트 설치를 위한 일반 연결 의도는 아닙니다.
 
 ## Connection Projects
 

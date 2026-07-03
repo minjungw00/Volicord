@@ -241,7 +241,7 @@ Registry constraints:
 - `projects.status` is storage-owned and baseline-valid only as `active`.
 - `agent_connections.connection_internal_id` is the storage primary key for Agent Connection records. The table stores host kind, connection intent in `intent`, host scope, optional `project_internal_id`, server name, config target, mode, enabled state, managed fingerprint, verification summary status, verification report JSON, user actions JSON, metadata, and timestamps.
 - `agent_connections.intent` is constrained to `personal`, `shared`, or `global`.
-- `agent_connections.host_scope` is constrained with `host_kind`: Codex supports `user` and `project`; Claude Code supports `local`, `project`, and `user`; generic export supports `export`.
+- `agent_connections.host_scope` is constrained with `host_kind`: Codex supports `user` and `project`; Claude Code supports `local`, `project`, and `user`; generic records are limited to `export`.
 - `agent_connections.mode` is constrained to `read_only` or `workflow`.
 - `agent_connections.last_verification_report_json` stores the latest verification report JSON object. `agent_connections.last_user_actions_json` stores the latest user-action JSON array.
 - `connection_projects` is the explicit project allowlist for one Agent Connection. It stores membership with `connection_internal_id` and `project_internal_id`. Deleting a project or connection that still has membership is restricted.

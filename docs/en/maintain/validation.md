@@ -164,7 +164,7 @@ matters as a durable contract, test the positive current shape instead:
 Name durable tests after the current contract, for example
 `connect_help_exposes_only_public_connect_options`,
 `documented_volicord_commands_match_public_cli_contract`,
-`export_mcp_config_uses_default_file_when_output_is_omitted`,
+`export_help_lists_authority_bundle`,
 `mcp_public_schema_hides_internal_envelope_fields`,
 `terminology_map_defines_identity_sensitive_roles`, or
 `storage_registry_contains_current_contract_columns`. Avoid names and structures

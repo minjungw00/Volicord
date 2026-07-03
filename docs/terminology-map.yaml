@@ -1771,7 +1771,7 @@ terms:
       - "Use for the local MCP host connection unit stored with `connection_internal_id`."
       - "Use `connection_id` only for the MCP process argument spelling, MCP startup diagnostics, provenance placeholders, or implementation-owned output fields that use that spelling."
       - "`connection.mode` is either `workflow` or `read_only`."
-      - "`connection_intent` is `personal`, `shared`, or `global`; generic MCP config export is a separate administrative export flow, not a connection intent."
+      - "`connection_intent` is `personal`, `shared`, or `global`; user-managed generic MCP configuration is not a connection intent."
       - "Do not use as a synonym for Product Repository, Runtime Home, User Channel, or managed host configuration state."
       - "Do not make Agent Connection wording sound like OS permission, secret isolation, filesystem ACLs, or user authority."
   record_profile:
@@ -1962,7 +1962,7 @@ terms:
         ko: "docs/ko/reference/storage-ddl.md"
     notes:
       - "Use for the user-facing Agent Connection intent choice of `personal`, `shared`, or `global`."
-      - "Generic MCP config export uses `volicord export mcp-config`; it is not a generic host connection intent."
+      - "Generic MCP configuration is user-managed; it is not a generic host connection intent."
   current_connection_context:
     category: "runtime_context"
     en: "current connection context"

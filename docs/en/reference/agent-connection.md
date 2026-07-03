@@ -136,9 +136,10 @@ is not a security level and not an authority grant.
 | `global` | User-wide host configuration for a supported host, with project access still constrained by repository-root registration and Connection Projects. | It does not connect every repository and does not bypass project or host trust. |
 
 The baseline directly managed host kinds are `codex` and `claude_code`.
-Host-neutral MCP configuration export is a separate export flow. Exported
-configuration can use internal registry state needed to start `volicord mcp --stdio`,
-but export is not a normal connection intent for direct host installation.
+Host-neutral MCP configuration is user-managed. User-managed configuration can
+use internal registry state needed to start `volicord mcp --stdio` only after a
+supported Agent Connection exists, but it is not a normal connection intent for
+direct host installation.
 
 ## Connection Projects
 

@@ -193,11 +193,46 @@ fn binary_help_options_match_supported_contracts() -> Result<(), Box<dyn Error>>
         &["--repo", "--task", "--dry-run", "--json"],
     )?;
     assert_help_options(["export", "--help"], &["--repo", "--output", "--json"])?;
+    assert_help_options(
+        ["export", "authority-bundle", "--help"],
+        &["--repo", "--output", "--json"],
+    )?;
     assert_help_options(["project", "--help"], &["--repo", "--json"])?;
     assert_help_options(
         ["inbox", "--help"],
         &["--repo", "--task", "--choice", "--note", "--json"],
     )?;
+    Ok(())
+}
+
+#[test]
+fn export_help_lists_authority_bundle() -> Result<(), Box<dyn Error>> {
+    let output = run_without_home(["export", "--help"])?;
+    assert_success(&output);
+    let text = stdout(&output);
+
+    assert!(text.contains("volicord export authority-bundle --output PATH"));
+    assert!(!text.contains("mcp-config [--output"));
+    assert!(!text.contains("--read-only"));
+    Ok(())
+}
+
+#[test]
+fn export_authority_bundle_help_shows_authority_bundle_usage() -> Result<(), Box<dyn Error>> {
+    let output = run_without_home(["export", "authority-bundle", "--help"])?;
+    assert_success(&output);
+    let text = stdout(&output);
+
+    assert!(text.contains("volicord export authority-bundle --output PATH"));
+    assert!(!text.contains("mcp-config [--output"));
+    assert!(!text.contains("--read-only"));
+    Ok(())
+}
+
+#[test]
+fn export_mcp_config_is_not_public_command() -> Result<(), Box<dyn Error>> {
+    assert_mcp_config_export_rejected(run_without_home(["export", "mcp-config"])?);
+    assert_mcp_config_export_rejected(run_without_home(["export", "mcp-config", "--help"])?);
     Ok(())
 }
 
@@ -3292,6 +3327,17 @@ fn assert_success(output: &Output) {
         stdout(output),
         stderr(output)
     );
+}
+
+fn assert_mcp_config_export_rejected(output: Output) {
+    assert_eq!(output.status.code(), Some(2));
+    assert!(stdout(&output).is_empty());
+
+    let diagnostic = stderr(&output);
+    assert!(diagnostic.contains("unknown export command: mcp-config"));
+    assert!(diagnostic.contains("volicord export authority-bundle --output PATH"));
+    assert!(!diagnostic.contains("mcp-config [--output"));
+    assert!(!diagnostic.contains("--read-only"));
 }
 
 fn stdout(output: &Output) -> String {
