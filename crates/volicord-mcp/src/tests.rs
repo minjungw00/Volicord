@@ -5,7 +5,10 @@ use std::{
     io::{BufReader, Cursor},
 };
 
-use crate::local_http::{validate_bearer_token_text, validate_local_http_server_config};
+use crate::local_http::{
+    validate_bearer_token_text, validate_local_http_server_config, LOCAL_HTTP_CONTAINER_WARNING,
+    LOCAL_HTTP_EXPOSURE_WARNING, LOCAL_HTTP_GENERATED_TOKEN_WARNING,
+};
 use crate::local_web_consent::{parse_urlencoded, single_param};
 use crate::prelude::*;
 use crate::stdio::{pending_judgment_from_response, percent_encode_query};
@@ -132,6 +135,16 @@ fn generated_bearer_tokens_are_unique_in_small_sample() -> Result<(), Box<dyn Er
         );
     }
     Ok(())
+}
+
+#[test]
+fn local_http_startup_warnings_keep_generated_tokens_and_container_binds_local() {
+    assert!(LOCAL_HTTP_EXPOSURE_WARNING.contains("host loopback"));
+    assert!(LOCAL_HTTP_EXPOSURE_WARNING.contains("do not expose"));
+    assert!(LOCAL_HTTP_CONTAINER_WARNING.contains("Docker host-loopback publishing"));
+    assert!(LOCAL_HTTP_CONTAINER_WARNING.contains("public interfaces"));
+    assert!(LOCAL_HTTP_GENERATED_TOKEN_WARNING.contains("local secret"));
+    assert!(LOCAL_HTTP_GENERATED_TOKEN_WARNING.contains("Docker host-loopback boundary"));
 }
 
 #[test]
@@ -1068,6 +1081,29 @@ fn local_http_rejects_origin_unless_explicitly_allowed() -> Result<(), Box<dyn E
     assert_eq!(
         http_header(&allowed, "Access-Control-Allow-Origin"),
         Some("https://allowed.example")
+    );
+    Ok(())
+}
+
+#[test]
+fn local_http_rejects_unsupported_mcp_endpoint_methods() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-http-method")?;
+    let mut server = http_server(&fixture, Vec::new(), Vec::new())?;
+
+    let rejected = server.handle_request(http_request(
+        "PUT",
+        LOCAL_HTTP_MCP_ENDPOINT_PATH,
+        Some("test_token"),
+        None,
+        None,
+        Value::Null,
+    )?);
+
+    assert_eq!(rejected.status, 405);
+    assert_eq!(http_json(&rejected)["error"]["code"], "METHOD_NOT_ALLOWED");
+    assert_eq!(
+        http_header(&rejected, "Allow"),
+        Some("POST, GET, DELETE, OPTIONS")
     );
     Ok(())
 }

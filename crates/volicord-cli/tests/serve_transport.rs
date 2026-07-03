@@ -26,6 +26,7 @@ fn volicord_serve_local_http_starts_with_secure_defaults() -> Result<(), Box<dyn
     let fixture = ServeFixture::new("serve-bin-secure-defaults")?;
     let outside_project_id = "project_serve_outside";
     fixture.add_allowed_project(outside_project_id)?;
+    let token_file = fixture.write_token_file(TEST_TOKEN)?;
     let mut server = RunningServer::spawn(fixture.serve_command([
         "--transport",
         "local-http",
@@ -33,8 +34,8 @@ fn volicord_serve_local_http_starts_with_secure_defaults() -> Result<(), Box<dyn
         "127.0.0.1:0",
         "--connection",
         fixture.connection_id(),
-        "--token",
-        TEST_TOKEN,
+        "--token-file",
+        token_file.as_str(),
         "--project",
         fixture.product_repo_path(),
     ]))?;
@@ -46,6 +47,8 @@ fn volicord_serve_local_http_starts_with_secure_defaults() -> Result<(), Box<dyn
         }
         Err(error) => return Err(error),
     };
+    let exposure_warning = server.wait_for_stderr_line("host loopback or intended Docker")?;
+    assert!(exposure_warning.contains("do not expose"));
     let disclosure = server.wait_for_stderr_line("Does not prove:")?;
     assert!(disclosure.contains("public API availability"));
     assert!(disclosure.contains("authentication service status"));
@@ -53,6 +56,7 @@ fn volicord_serve_local_http_starts_with_secure_defaults() -> Result<(), Box<dyn
 
     let unauth_health = send_http(addr, "GET", "/healthz", Vec::new(), None)?;
     assert!(unauth_health.starts_with("HTTP/1.1 401 Unauthorized"));
+    assert_defensive_headers(&unauth_health);
     assert_eq!(
         response_json(&unauth_health)["error"]["code"],
         "AUTH_REQUIRED"
@@ -71,6 +75,7 @@ fn volicord_serve_local_http_starts_with_secure_defaults() -> Result<(), Box<dyn
         Some(initialize_request(1)),
     )?;
     assert!(invalid_origin.starts_with("HTTP/1.1 403 Forbidden"));
+    assert_defensive_headers(&invalid_origin);
     assert_eq!(
         response_json(&invalid_origin)["error"]["code"],
         "ORIGIN_NOT_ALLOWED"
@@ -85,6 +90,7 @@ fn volicord_serve_local_http_starts_with_secure_defaults() -> Result<(), Box<dyn
         Some(initialize_request(2)),
     )?;
     assert!(initialize.starts_with("HTTP/1.1 200 OK"));
+    assert_defensive_headers(&initialize);
     let session_id =
         response_header(&initialize, "Mcp-Session-Id").ok_or("missing Mcp-Session-Id")?;
 
@@ -156,6 +162,15 @@ impl ServeFixture {
 
     fn product_repo_path(&self) -> &str {
         &self.product_repo_path
+    }
+
+    fn write_token_file(&self, token: &str) -> Result<String, Box<dyn Error>> {
+        let token_file = self.fixture.runtime_home_path().join("serve.token");
+        fs::write(&token_file, format!("{token}\n"))?;
+        Ok(token_file
+            .to_str()
+            .ok_or("token file path should be UTF-8")?
+            .to_owned())
     }
 
     fn serve_command<const N: usize>(&self, args: [&str; N]) -> Command {
@@ -409,6 +424,17 @@ fn response_json(response: &str) -> Value {
         .map(|(_, body)| body)
         .expect("HTTP response should include header/body separator");
     serde_json::from_str(body).expect("HTTP response body should be JSON")
+}
+
+fn assert_defensive_headers(response: &str) {
+    assert_eq!(
+        response_header(response, "Cache-Control").as_deref(),
+        Some("no-store")
+    );
+    assert_eq!(
+        response_header(response, "X-Content-Type-Options").as_deref(),
+        Some("nosniff")
+    );
 }
 
 fn read_to_end(mut reader: impl Read) -> io::Result<Vec<u8>> {

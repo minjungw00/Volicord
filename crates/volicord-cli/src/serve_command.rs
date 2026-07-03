@@ -2,7 +2,7 @@
 
 use std::{
     ffi::OsString,
-    fmt,
+    fmt, fs,
     net::SocketAddr,
     path::{Path, PathBuf},
 };
@@ -85,6 +85,7 @@ struct ServeOptions {
     container_listen: Option<SocketAddr>,
     home: Option<PathBuf>,
     token: Option<String>,
+    token_file: Option<PathBuf>,
     generate_token: bool,
     connection_id: Option<String>,
     project_paths: Vec<PathBuf>,
@@ -118,6 +119,14 @@ where
             "UNSUPPORTED_TRANSPORT: --transport must be {LOCAL_HTTP_TRANSPORT}"
         )));
     }
+    let token_inputs = options.token.is_some() as usize
+        + options.token_file.is_some() as usize
+        + options.generate_token as usize;
+    if token_inputs > 1 {
+        return Err(ServeCommandError::usage(
+            "cannot combine --token, --token-file, and --generate-token",
+        ));
+    }
 
     let home_override = options.home.clone();
     let runtime_home = resolve_runtime_home(
@@ -150,20 +159,15 @@ where
         Some(connection_id) => connection_id,
         None => infer_connection_id(&runtime_home, &project_allowlist)?,
     };
-    let (bearer_token, token_source) = match options.token {
-        Some(token) => {
-            if options.generate_token {
-                return Err(ServeCommandError::usage(
-                    "cannot combine --token and --generate-token",
-                ));
-            }
-            (token, LocalHttpTokenSource::Supplied)
-        }
-        None => (
+    let (bearer_token, token_source) = match (options.token, options.token_file) {
+        (Some(token), None) => (token, LocalHttpTokenSource::Supplied),
+        (None, Some(path)) => (read_token_file(&path)?, LocalHttpTokenSource::TokenFile),
+        (None, None) => (
             generate_bearer_token()
                 .map_err(|error| ServeCommandError::runtime(error.to_string()))?,
             LocalHttpTokenSource::Generated,
         ),
+        (Some(_), Some(_)) => unreachable!("token inputs are checked before token resolution"),
     };
 
     Ok(ServeCommand::LocalHttp {
@@ -181,7 +185,7 @@ where
 }
 
 pub fn serve_usage() -> String {
-    "volicord serve --transport local-http [--listen 127.0.0.1:8765 | --container-listen 0.0.0.0:8765] [--home PATH] [--connection <connection_id>] [--project PATH]... [--token TOKEN | --generate-token] [--allow-origin ORIGIN]\nLocal HTTP transport is for Docker and localhost adapters only. It is not a public network API, SaaS endpoint, multi-user server, authentication service, remote API, or security boundary.\nUse --listen only with loopback addresses. Use --container-listen only inside a container with Docker host-loopback publishing.\n"
+    "volicord serve --transport local-http [--listen 127.0.0.1:8765 | --container-listen 0.0.0.0:8765] [--home PATH] [--connection <connection_id>] [--project PATH]... [--token-file PATH | --token TOKEN | --generate-token] [--allow-origin ORIGIN]\nLocal HTTP transport is for Docker and localhost adapters only. It is not a public network API, SaaS endpoint, multi-user server, authentication service, remote API, or security boundary.\nPrefer --token-file PATH over --token TOKEN for local bearer-token secrets. Use --listen only with loopback addresses. Use --container-listen only inside a container with Docker host-loopback publishing.\n"
         .to_owned()
 }
 
@@ -247,6 +251,17 @@ fn parse_serve_options(args: &[String]) -> Result<ServeOptions, ServeCommandErro
             "--token" => {
                 set_once_string(args, &mut index, &mut options.token, "--token")?;
             }
+            "--token-file" => {
+                index += 1;
+                let value = option_value(args, index, "--token-file")?;
+                if options.token_file.is_some() {
+                    return Err(ServeCommandError::usage(
+                        "--token-file was supplied more than once",
+                    ));
+                }
+                options.token_file = Some(PathBuf::from(value));
+                index += 1;
+            }
             "--generate-token" => {
                 if options.generate_token {
                     return Err(ServeCommandError::usage(
@@ -290,6 +305,16 @@ fn parse_serve_options(args: &[String]) -> Result<ServeOptions, ServeCommandErro
     }
 
     Ok(options)
+}
+
+fn read_token_file(path: &Path) -> Result<String, ServeCommandError> {
+    let value = fs::read_to_string(path).map_err(|error| {
+        ServeCommandError::runtime(format!(
+            "failed to read --token-file {}: {error}",
+            path.display()
+        ))
+    })?;
+    Ok(value.trim_end_matches(['\r', '\n']).to_owned())
 }
 
 fn set_once_string(
@@ -389,7 +414,7 @@ fn infer_connection_id(
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
+    use std::{fs, path::Path};
 
     use volicord_test_support::core_fixtures::CoreFixture;
 
@@ -459,11 +484,80 @@ mod tests {
     }
 
     #[test]
+    fn serve_token_file_supplies_local_secret() -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = CoreFixture::new("serve-command-token-file")?;
+        let token_file = fixture.runtime_home_path().join("serve.token");
+        fs::write(&token_file, "token_from_file\n")?;
+
+        let command = run_serve_command(
+            &[
+                "--transport".to_owned(),
+                "local-http".to_owned(),
+                "--connection".to_owned(),
+                fixture.connection_id().to_owned(),
+                "--token-file".to_owned(),
+                token_file.display().to_string(),
+            ],
+            |name| {
+                if name == "VOLICORD_HOME" {
+                    Some(fixture.runtime_home_path().as_os_str().to_owned())
+                } else {
+                    None
+                }
+            },
+            Path::new(env!("CARGO_MANIFEST_DIR")),
+        )?;
+
+        let ServeCommand::LocalHttp { config } = command else {
+            panic!("serve command should build HTTP server config");
+        };
+        assert_eq!(config.bearer_token, "token_from_file");
+        assert_eq!(config.token_source, LocalHttpTokenSource::TokenFile);
+        Ok(())
+    }
+
+    #[test]
+    fn serve_rejects_combined_token_sources() {
+        for extra_option in ["--token", "--generate-token"] {
+            let args = if extra_option == "--token" {
+                vec![
+                    "--transport".to_owned(),
+                    "local-http".to_owned(),
+                    "--token-file".to_owned(),
+                    "token.txt".to_owned(),
+                    "--token".to_owned(),
+                    "token".to_owned(),
+                ]
+            } else {
+                vec![
+                    "--transport".to_owned(),
+                    "local-http".to_owned(),
+                    "--token-file".to_owned(),
+                    "token.txt".to_owned(),
+                    "--generate-token".to_owned(),
+                ]
+            };
+            let error = run_serve_command(&args, |_| None, Path::new(env!("CARGO_MANIFEST_DIR")))
+                .expect_err("token sources should be mutually exclusive");
+
+            assert_eq!(
+                error,
+                ServeCommandError::Usage(
+                    "cannot combine --token, --token-file, and --generate-token".to_owned()
+                ),
+                "unexpected error for {extra_option}"
+            );
+        }
+    }
+
+    #[test]
     fn serve_help_describes_local_http_boundary() {
         let usage = serve_usage();
 
         assert!(usage.contains("volicord serve --transport local-http"));
         assert!(usage.contains("--container-listen 0.0.0.0:8765"));
+        assert!(usage.contains("--token-file PATH"));
+        assert!(usage.contains("Prefer --token-file PATH over --token TOKEN"));
         assert!(usage.contains("Docker and localhost adapters only"));
         assert!(usage.contains("not a public network API"));
         assert!(usage.contains("not a public network API, SaaS endpoint, multi-user server, authentication service, remote API, or security boundary"));

@@ -65,7 +65,7 @@ jobs:
 
       - name: Smoke test binary
         if: runner.os != 'Windows'
-        run: scripts/smoke-test-binary.sh "target/${{ matrix.target }}/release/volicord"
+        run: sh scripts/smoke-test-binary.sh "target/${{ matrix.target }}/release/volicord"
 
       - name: Smoke test binary (Windows)
         if: runner.os == 'Windows'
@@ -180,15 +180,17 @@ jobs:
               PATH="/tmp/bin:/usr/local/bin:$PATH" VOLICORD_HOME=/var/lib/volicord volicord init --host codex --repo /workspace/repo --profile record --json >/tmp/init.json'
 
           token="volicord-docker-smoke-token"
+          printf "%s\n" "$token" > "$tmp/serve.token"
           container="$(docker run -d \
             --user "$docker_user" \
             -p 127.0.0.1:8765:8765 \
+            -v "$tmp/serve.token:/tmp/volicord-serve.token:ro" \
             -v "$repo:/workspace/repo" \
             -v "$home:/var/lib/volicord" \
             volicord:${{ github.sha }} \
             serve --transport local-http \
               --container-listen 0.0.0.0:8765 \
-              --token "$token" \
+              --token-file /tmp/volicord-serve.token \
               --project /workspace/repo)"
 
           health_url="http://127.0.0.1:8765/healthz"

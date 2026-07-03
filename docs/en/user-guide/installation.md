@@ -239,17 +239,20 @@ Detective Docker setup has the same verified host-hook and session watcher
 requirements as non-container setup. After the Runtime Home contains the
 project registration and Agent Connection you want to serve, for example from
 that matching `init` run or a lower-level `connection add` run, start the local
-HTTP MCP endpoint with an operator-provided token:
+HTTP MCP endpoint with an operator-provided token file:
 
 ```sh
-VOLICORD_HTTP_TOKEN="$(openssl rand -hex 32)"
+umask 077
+VOLICORD_HTTP_TOKEN_FILE="$(mktemp)"
+openssl rand -hex 32 > "$VOLICORD_HTTP_TOKEN_FILE"
 docker run --rm \
   -p 127.0.0.1:8765:8765 \
+  -v "$VOLICORD_HTTP_TOKEN_FILE:/tmp/volicord-http-token:ro" \
   -v volicord-home:/var/lib/volicord \
   -v "$PWD:/workspace" \
   volicord:local serve --transport local-http \
     --container-listen 0.0.0.0:8765 \
-    --token "$VOLICORD_HTTP_TOKEN" \
+    --token-file /tmp/volicord-http-token \
     --project /workspace
 ```
 
@@ -257,8 +260,8 @@ The `-p 127.0.0.1:8765:8765` mapping publishes the container port only on the
 host loopback interface. `--container-listen 0.0.0.0:8765` is for this Docker
 publishing shape; native local runs should use the default loopback `--listen`
 behavior instead. Do not publish the container port on `0.0.0.0`, a public host
-interface, or a remote host, and do not store `VOLICORD_HTTP_TOKEN` in
-repository files. Treat this as local/Docker transport only, not a public
+interface, or a remote host, and do not store the token file in repository
+files. Treat this as local/Docker transport only, not a public
 network API, SaaS endpoint, multi-user server, or security boundary.
 
 ## What Installation Does Not Do

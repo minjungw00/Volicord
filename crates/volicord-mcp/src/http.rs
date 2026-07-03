@@ -272,7 +272,7 @@ pub(crate) fn write_http_response(
 ) -> io::Result<()> {
     write!(
         stream,
-        "HTTP/1.1 {} {}\r\nContent-Length: {}\r\nConnection: close\r\nCache-Control: no-store\r\n",
+        "HTTP/1.1 {} {}\r\nContent-Length: {}\r\nConnection: close\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\n",
         response.status,
         response.reason,
         response.body.len()

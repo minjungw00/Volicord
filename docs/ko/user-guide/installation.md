@@ -220,25 +220,28 @@ docker run --rm -it \
 Detective Docker 설정에는 컨테이너를 쓰지 않을 때와 같은 검증된 host hook 및 session
 watcher 요구사항이 적용됩니다. Runtime Home에 serve할 프로젝트 등록과 Agent Connection이
 들어간 뒤, 예를 들어 그와 일치하는 `init` 실행이나 낮은 수준의 `connection add` 실행 뒤,
-운영자가 제공한 token으로 로컬 HTTP MCP endpoint를 시작합니다.
+운영자가 제공한 token 파일로 로컬 HTTP MCP endpoint를 시작합니다.
 
 ```sh
-VOLICORD_HTTP_TOKEN="$(openssl rand -hex 32)"
+umask 077
+VOLICORD_HTTP_TOKEN_FILE="$(mktemp)"
+openssl rand -hex 32 > "$VOLICORD_HTTP_TOKEN_FILE"
 docker run --rm \
   -p 127.0.0.1:8765:8765 \
+  -v "$VOLICORD_HTTP_TOKEN_FILE:/tmp/volicord-http-token:ro" \
   -v volicord-home:/var/lib/volicord \
   -v "$PWD:/workspace" \
   volicord:local serve --transport local-http \
     --container-listen 0.0.0.0:8765 \
-    --token "$VOLICORD_HTTP_TOKEN" \
+    --token-file /tmp/volicord-http-token \
     --project /workspace
 ```
 
 `-p 127.0.0.1:8765:8765`는 컨테이너 포트를 호스트 loopback 인터페이스에만 노출합니다.
 `--container-listen 0.0.0.0:8765`는 이 Docker 노출 형태를 위한 옵션입니다. 네이티브 로컬
 실행은 대신 기본 loopback `--listen` 동작을 사용해야 합니다. 컨테이너 포트를 `0.0.0.0`,
-공개 호스트 인터페이스, 원격 호스트에 노출하지 말고, `VOLICORD_HTTP_TOKEN`을 저장소 파일에
-저장하지 마세요. 이것은 로컬/Docker 전송일 뿐 공개 네트워크 API, SaaS endpoint, 다중
+공개 호스트 인터페이스, 원격 호스트에 노출하지 말고, token 파일을 저장소 파일에 저장하지
+마세요. 이것은 로컬/Docker 전송일 뿐 공개 네트워크 API, SaaS endpoint, 다중
 사용자 서버, 보안 경계가 아닙니다.
 
 ## 설치가 하지 않는 일

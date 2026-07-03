@@ -68,7 +68,7 @@ volicord project list [--json]
 volicord project rename NAME [--repo PATH] [--json]
 volicord project forget [PATH|NAME] [--json]
 volicord mcp --stdio --connection <connection_id> [--project <project_id>]
-volicord serve --transport local-http [--listen 127.0.0.1:8765 | --container-listen 0.0.0.0:8765] [--home PATH] [--connection <connection_id>] [--project PATH]... [--token TOKEN | --generate-token] [--allow-origin ORIGIN]
+volicord serve --transport local-http [--listen 127.0.0.1:8765 | --container-listen 0.0.0.0:8765] [--home PATH] [--connection <connection_id>] [--project PATH]... [--token-file PATH | --token TOKEN | --generate-token] [--allow-origin ORIGIN]
 volicord changes reconcile [--repo PATH] [--task active|ID] [--dry-run] [--json]
 volicord inbox [--repo PATH] [--task active|ID] [--json]
 volicord inbox answer <judgment-id> --choice <choice> [--repo PATH] [--note TEXT] [--json]
@@ -103,8 +103,9 @@ volicord inbox open <judgment-id> [--repo PATH] [--json]
 - `volicord serve --transport local-http`는 명시적 장기 실행 MCP 전송 프로세스입니다.
   네이티브 로컬 실행은 loopback listen 주소만 허용합니다. 명시적 `--container-listen`
   모드는 Docker host-loopback 노출에만 제한됩니다. MCP local HTTP endpoint에는 bearer
-  인증을 요구하며, token을 제공하지 않으면 프로세스 로컬 token을 생성하고, 브라우저 대상
-  요청에는 Origin 점검을 적용하며, HTTP 와이어 동작과 전송 경계 인증 및 Origin 점검은
+  인증을 요구하며, 직접 명령줄 token 값보다 `--token-file PATH`를 선호하고, token을
+  제공하지 않으면 프로세스 로컬 token을 생성하고, 브라우저 대상 요청에는 Origin 점검을
+  적용하며, HTTP 와이어 동작과 전송 경계 인증 및 Origin 점검은
   [MCP 전송](mcp-transport.md)에 맡깁니다. 이는 로컬/Docker 전송일 뿐 공개 네트워크 API,
   SaaS endpoint, 다중 사용자 서버, 보안 경계가 아닙니다.
 

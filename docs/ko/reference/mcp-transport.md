@@ -118,11 +118,16 @@ Local HTTP serve 명령줄 동작:
 - `--project PATH`는 반복할 수 있습니다. 각 경로는 등록된 저장소 루트로 해석되며 serve
   프로세스를 해당 프로젝트 식별 정보들로 좁힙니다. 이렇게 좁힌 집합도 선택된 Agent
   Connection의 연결 프로젝트 허용 목록 안에 있어야 합니다.
-- `--token TOKEN`은 이 프로세스의 bearer token을 제공합니다. 생략하면 Volicord가 프로세스
-  로컬 token을 생성하고 시작 중 stderr에 씁니다. token은 저장소 파일에 저장하지
-  않습니다.
-- `--generate-token`은 생성 token 경로를 명시적으로 선택하며 `--token`과 함께 사용할 수
-  없습니다.
+- `--token-file PATH`는 UTF-8 로컬 파일에서 bearer token을 읽습니다. 끝의 줄바꿈은
+  token에 포함하지 않습니다. 로컬 비밀값이 shell history나 serve 프로세스 인자에 직접
+  남지 않도록 `--token`보다 `--token-file`을 선호합니다.
+- `--token TOKEN`은 bearer token을 명령줄에 직접 제공합니다. 통제된 로컬 사용을 위해
+  지원하지만 문서에서 선호하는 형태는 아닙니다.
+- `--token-file`과 `--token`을 모두 생략하면 Volicord가 프로세스 로컬 token을 생성하고
+  시작 중 stderr에 씁니다. 생성 token 출력은 그 token이 로컬 비밀값이며 endpoint를
+  host loopback 또는 의도한 Docker host-loopback 경계에만 두어야 한다고 경고합니다.
+- `--generate-token`은 생성 token 경로를 명시적으로 선택하며 `--token-file` 또는
+  `--token`과 함께 사용할 수 없습니다.
 - `--allow-origin ORIGIN`은 반복할 수 있으며 정확히 일치하는 Origin 값의 브라우저 가능
   요청을 허용합니다. 이 옵션이 없으면 `Origin` 헤더가 있는 요청은 거절되고 CORS 응답
   헤더를 내지 않습니다.
@@ -134,6 +139,9 @@ Local HTTP serve 명령줄 동작:
 - 시작 중 설정, JSON, 저장소 오류는 진단을 stderr에 쓰고 종료 코드 `1`로 끝납니다.
 - HTTP serve 시작 설정, 리스너, 인증 token, Origin, 프로젝트 허용 목록 오류는 진단을
   stderr에 쓰고 종료 코드 `1`로 끝납니다.
+- HTTP serve 시작 진단은 Local HTTP가 host loopback 또는 의도한 Docker host-loopback
+  노출에만 쓰인다고 경고합니다. `--container-listen`은 공개 인터페이스나 원격 호스트를
+  위한 옵션이 아니라는 추가 경고를 냅니다.
 - stdio 루프가 실행 중일 때 잘못된 JSON과 지원하지 않는 JSON-RPC 요청은 응답을 쓸 수
   있으면 JSON-RPC 오류를 반환합니다.
 
@@ -159,6 +167,10 @@ HTTP serve 요청 동작:
   consent form 제출은 consent endpoint 자신의 origin과 일치해야 합니다.
 - CORS preflight는 MCP endpoint에 대해서만, Origin 허용 목록 검증 뒤에만, 그리고 허용된
   Origin이 하나 이상 설정되어 있을 때만 받습니다.
+- Local HTTP 응답에는 `Cache-Control: no-store`와 `X-Content-Type-Options: nosniff`가
+  포함됩니다. CORS 응답 헤더는 명시적으로 허용된 Origin에 대해서만 냅니다.
+- 요청 header는 16 KiB, 요청 body는 1 MiB로 제한됩니다. 더 큰 header는
+  `HTTP_HEADERS_TOO_LARGE`, 더 큰 body는 `HTTP_BODY_TOO_LARGE`로 실패합니다.
 - 구조화된 HTTP 오류는 인증, Origin, 프로젝트 허용 목록, 지원하지 않는 전송, 지원하지
   않는 메서드, 지원하지 않는 content negotiation 실패에 안정적인 전송 오류 코드를
   사용합니다.

@@ -91,11 +91,13 @@ if command -v curl >/dev/null 2>&1; then
     serve_stderr="$workdir/serve.stderr"
     serve_stdout="$workdir/serve.stdout"
     token="volicord-smoke-token"
+    token_file="$workdir/serve.token"
+    printf '%s\n' "$token" >"$token_file"
     VOLICORD_HOME="$home" "$command_path" serve \
         --transport local-http \
         --listen 127.0.0.1:0 \
         --connection "$connection_id" \
-        --token "$token" >"$serve_stdout" 2>"$serve_stderr" &
+        --token-file "$token_file" >"$serve_stdout" 2>"$serve_stderr" &
     serve_pid=$!
 
     listen_url=""

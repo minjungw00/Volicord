@@ -12,6 +12,7 @@ pub const LOCAL_HTTP_MCP_ENDPOINT_PATH: &str = "/mcp";
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LocalHttpTokenSource {
     Supplied,
+    TokenFile,
     Generated,
 }
 
@@ -87,9 +88,14 @@ pub fn run_local_http_server(config: LocalHttpServerConfig) -> Result<(), LocalH
     eprintln!("volicord serve listening on http://{actual_addr}{LOCAL_HTTP_MCP_ENDPOINT_PATH}");
     eprintln!("{}", local_http_transport_summary(listen_scope));
     eprintln!("authentication: bearer token required");
+    eprintln!("{LOCAL_HTTP_EXPOSURE_WARNING}");
+    if listen_scope == LocalHttpListenScope::ContainerPublishedHostLoopback {
+        eprintln!("{LOCAL_HTTP_CONTAINER_WARNING}");
+    }
     eprintln!("{TRANSPORT_DISCLOSURE_TEXT}");
     if config.token_source == LocalHttpTokenSource::Generated {
         eprintln!("generated_bearer_token: {}", config.bearer_token);
+        eprintln!("{LOCAL_HTTP_GENERATED_TOKEN_WARNING}");
     }
 
     let mut server = LocalHttpServer::new(adapter, config);
@@ -173,6 +179,12 @@ fn local_http_transport_summary(scope: LocalHttpListenScope) -> &'static str {
         }
     }
 }
+
+pub(crate) const LOCAL_HTTP_EXPOSURE_WARNING: &str = "warning: local HTTP endpoint is for host loopback or intended Docker host-loopback publishing only; do not expose it on public interfaces or remote networks";
+
+pub(crate) const LOCAL_HTTP_CONTAINER_WARNING: &str = "warning: --container-listen is intended only for Docker host-loopback publishing; do not publish the container port on public interfaces or remote hosts";
+
+pub(crate) const LOCAL_HTTP_GENERATED_TOKEN_WARNING: &str = "warning: generated_bearer_token is a local secret for this serve process; keep the endpoint on host loopback or the intended Docker host-loopback boundary and do not expose it publicly";
 
 fn local_web_consent_base_url(addr: SocketAddr, scope: LocalHttpListenScope) -> String {
     match scope {

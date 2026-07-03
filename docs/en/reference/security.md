@@ -25,7 +25,7 @@ Volicord security wording describes record and policy boundaries inside document
 | `Product Repository` | Product files can be inspected as inputs, and compatible product-file writes can be governed by owner-defined Core, user-judgment, and write-ticket paths. | Product files are not Volicord state, and Volicord does not provide arbitrary product-file edit permission, malware scanning, secret scanning, or global filesystem interception. |
 | Agent Connections and host configuration | Agent Connections provide documented connection context, `actor_source` provenance, connection intent, mode, and Connection Projects allowlists when the current invocation matches the registered connection. | Connection configuration is not OS permission, host trust, user identity, or proof that an external host loaded or exposed `volicord mcp --stdio`. |
 | `volicord mcp --stdio` | The adapter routes MCP calls through Agent Connection checks, Runtime Home state, Core, and Store. | The process does not itself grant arbitrary product-file edit authority, record authority-bearing user judgments, enforce host trust, block commands, block networks, or isolate tools. |
-| Local HTTP transport | `volicord serve --transport local-http` can expose the documented local MCP-over-HTTP subset for localhost and Docker host-loopback use with bearer-token and Origin checks. | Local HTTP transport is not a public network API, SaaS endpoint, multi-user server, security boundary, public host-interface listener, remote service, or full MCP Streamable HTTP implementation. |
+| Local HTTP transport | `volicord serve --transport local-http` can expose the documented local MCP-over-HTTP subset for localhost and Docker host-loopback use with bearer-token and Origin checks. The bearer token is a local secret for the serve process. | Local HTTP transport is not a public network API, SaaS endpoint, multi-user server, security boundary, public host-interface listener, remote service, authentication service, or full MCP Streamable HTTP implementation. |
 | `volicord` CLI | Administrative commands manage setup, registry state, and supported host-integration state. | The CLI is not a public API security boundary, host trust controller, OS permission mechanism, or blanket write approval. |
 
 ## Supported security guarantees
@@ -270,8 +270,13 @@ Volicord Local HTTP transport does not guarantee:
 - A SaaS endpoint.
 - A multi-user server.
 - A security boundary.
+- An authentication service or authorization service.
 - A public host-interface listener or remote service.
 - Full MCP Streamable HTTP compatibility.
+
+Bearer-token and Origin checks are transport-bound checks for the local HTTP
+process. They do not make the endpoint suitable for public exposure; keep it on
+host loopback or the intended Docker host-loopback publishing boundary.
 
 ### Broad authority inference
 

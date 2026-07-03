@@ -74,7 +74,7 @@ volicord project list [--json]
 volicord project rename NAME [--repo PATH] [--json]
 volicord project forget [PATH|NAME] [--json]
 volicord mcp --stdio --connection <connection_id> [--project <project_id>]
-volicord serve --transport local-http [--listen 127.0.0.1:8765 | --container-listen 0.0.0.0:8765] [--home PATH] [--connection <connection_id>] [--project PATH]... [--token TOKEN | --generate-token] [--allow-origin ORIGIN]
+volicord serve --transport local-http [--listen 127.0.0.1:8765 | --container-listen 0.0.0.0:8765] [--home PATH] [--connection <connection_id>] [--project PATH]... [--token-file PATH | --token TOKEN | --generate-token] [--allow-origin ORIGIN]
 volicord changes reconcile [--repo PATH] [--task active|ID] [--dry-run] [--json]
 volicord inbox [--repo PATH] [--task active|ID] [--json]
 volicord inbox answer <judgment-id> --choice <choice> [--repo PATH] [--note TEXT] [--json]
@@ -111,8 +111,9 @@ Exit and stream behavior:
   transport process. Native local runs accept only loopback listen addresses.
   The explicit `--container-listen` mode is limited to Docker host-loopback
   publishing. The MCP local HTTP endpoint requires bearer authentication,
-  generates a process-local token when no token is supplied, applies Origin
-  checks to browser-facing requests, and delegates HTTP wire behavior and
+  prefers `--token-file PATH` over direct command-line token values, generates
+  a process-local token when no token is supplied, applies Origin checks to
+  browser-facing requests, and delegates HTTP wire behavior and
   transport-bound authentication and Origin checks to
   [MCP Transport](mcp-transport.md). It is local/Docker transport only, not a
   public network API, SaaS endpoint, multi-user server, or security boundary.

@@ -143,8 +143,10 @@ try {
         $serveErr = Join-Path $workDir "serve.stderr"
         $serveOut = Join-Path $workDir "serve.stdout"
         $token = "volicord-smoke-token"
+        $tokenFile = Join-Path $workDir "serve.token"
+        Set-Content -LiteralPath $tokenFile -Value $token -Encoding ascii
         $serveProcess = Start-Process -FilePath $command `
-            -ArgumentList @("serve", "--transport", "local-http", "--listen", "127.0.0.1:0", "--connection", $connectionId, "--token", $token) `
+            -ArgumentList @("serve", "--transport", "local-http", "--listen", "127.0.0.1:0", "--connection", $connectionId, "--token-file", $tokenFile) `
             -RedirectStandardOutput $serveOut `
             -RedirectStandardError $serveErr `
             -NoNewWindow `

@@ -25,7 +25,7 @@ Volicord 보안 표현은 문서화된 Volicord 경로 안의 기록과 정책 �
 | `Product Repository` | 제품 파일은 입력으로 검사될 수 있고, 호환되는 제품 파일 쓰기는 담당 문서가 정의한 Core, 사용자 판단, 쓰기 티켓 경로의 지배를 받을 수 있습니다. | 제품 파일은 Volicord 상태가 아니며, Volicord는 임의 제품 파일 편집 권한, 악성코드 검사, 비밀값 검사, 전역 파일시스템 가로채기를 제공하지 않습니다. |
 | Agent Connection과 호스트 설정 | 현재 호출이 등록된 연결과 맞을 때 Agent Connection은 문서화된 연결 맥락, `actor_source` 출처, 연결 의도, 모드, Connection Projects 허용 목록을 제공합니다. | 연결 설정은 OS 권한, 호스트 신뢰, 사용자 신원, 외부 호스트가 `volicord mcp --stdio`를 로드하거나 노출했다는 증거가 아닙니다. |
 | `volicord mcp --stdio` | 어댑터는 MCP 호출을 Agent Connection 점검, Runtime Home 상태, Core, Store를 통해 라우팅합니다. | 이 프로세스 자체는 임의 제품 파일 편집 권한을 부여하거나, 권한을 지니는 사용자 판단을 기록하거나, 호스트 신뢰를 강제하거나, 명령을 차단하거나, 네트워크를 차단하거나, 도구를 격리하지 않습니다. |
-| Local HTTP transport | `volicord serve --transport local-http`는 bearer token과 Origin 점검이 있는 문서화된 로컬 MCP-over-HTTP 부분 구현을 localhost와 Docker host-loopback 사용을 위해 노출할 수 있습니다. | Local HTTP transport는 공개 네트워크 API, SaaS endpoint, 다중 사용자 서버, 보안 경계, 공개 호스트 인터페이스 리스너, 원격 서비스, 전체 MCP Streamable HTTP 구현이 아닙니다. |
+| Local HTTP transport | `volicord serve --transport local-http`는 bearer token과 Origin 점검이 있는 문서화된 로컬 MCP-over-HTTP 부분 구현을 localhost와 Docker host-loopback 사용을 위해 노출할 수 있습니다. bearer token은 해당 serve 프로세스의 로컬 비밀값입니다. | Local HTTP transport는 공개 네트워크 API, SaaS endpoint, 다중 사용자 서버, 보안 경계, 공개 호스트 인터페이스 리스너, 원격 서비스, 인증 서비스, 전체 MCP Streamable HTTP 구현이 아닙니다. |
 | `volicord` CLI | 관리 명령은 설정, registry 상태, 지원되는 호스트 통합 상태를 관리합니다. | CLI는 공개 API 보안 경계, 호스트 신뢰 제어기, OS 권한 메커니즘, 포괄적 쓰기 승인이 아닙니다. |
 
 ## 지원되는 보안 보장
@@ -269,8 +269,13 @@ Volicord Local HTTP transport는 아래를 보장하지 않습니다.
 - SaaS endpoint.
 - 다중 사용자 서버.
 - 보안 경계.
+- 인증 서비스 또는 인가 서비스.
 - 공개 호스트 인터페이스 리스너 또는 원격 서비스.
 - 전체 MCP Streamable HTTP 호환성.
+
+Bearer token과 Origin 점검은 로컬 HTTP 프로세스에 묶인 전송 점검입니다. 이 점검이
+endpoint를 공개 노출에 적합하게 만들지는 않습니다. endpoint는 host loopback 또는 의도한
+Docker host-loopback 노출 경계에 두어야 합니다.
 
 ### 포괄적 권한 추론
 

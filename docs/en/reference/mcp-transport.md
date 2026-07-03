@@ -142,11 +142,18 @@ Local HTTP serve command-line behavior:
   repository root and narrows the serve process to those project identities.
   The narrowed set must still be inside the selected Agent Connection's
   connected-project allowlist.
-- `--token TOKEN` supplies the bearer token for this process. If omitted,
-  Volicord generates a process-local token and writes it to stderr during
-  startup. Tokens are not stored in repository files.
+- `--token-file PATH` supplies the bearer token from a UTF-8 local file. A
+  trailing line ending is not part of the token. Prefer `--token-file` over
+  `--token` so the local secret is not carried directly in shell history or the
+  serve process arguments.
+- `--token TOKEN` supplies the bearer token directly on the command line. It is
+  supported for controlled local use but is not the preferred documented form.
+- If neither `--token-file` nor `--token` is supplied, Volicord generates a
+  process-local token and writes it to stderr during startup. The generated
+  token output warns that the token is a local secret and that the endpoint
+  must stay on host loopback or the intended Docker host-loopback boundary.
 - `--generate-token` explicitly selects the generated-token path and is
-  mutually exclusive with `--token`.
+  mutually exclusive with `--token-file` and `--token`.
 - `--allow-origin ORIGIN` may be repeated to permit browser-capable requests
   from exact Origin values. Without it, requests carrying an `Origin` header are
   rejected and CORS response headers are not emitted.
@@ -160,6 +167,9 @@ Exit and stream behavior:
 - HTTP serve startup configuration, listener, authentication-token, Origin, and
   project-allowlist failures write diagnostics to stderr and exit with code
   `1`.
+- HTTP serve startup diagnostics warn that Local HTTP is for host loopback or
+  intended Docker host-loopback publishing only. `--container-listen` emits an
+  additional warning that it is not for public interfaces or remote hosts.
 - Once the stdio loop is running, malformed JSON and unsupported JSON-RPC
   requests return JSON-RPC errors when a response can be written.
 
@@ -189,6 +199,12 @@ HTTP serve request behavior:
   consent endpoint's own origin.
 - CORS preflight is accepted only for the MCP endpoint, only after Origin
   allowlist validation, and only when at least one allowed Origin is configured.
+- Local HTTP responses include `Cache-Control: no-store` and
+  `X-Content-Type-Options: nosniff`. CORS response headers are emitted only for
+  explicitly allowed Origins.
+- Request headers are limited to 16 KiB and request bodies are limited to
+  1 MiB. Larger headers fail with `HTTP_HEADERS_TOO_LARGE`; larger bodies fail
+  with `HTTP_BODY_TOO_LARGE`.
 - Structured HTTP errors use stable transport error codes for authentication,
   Origin, project allowlist, unsupported transport, unsupported method, and
   unsupported content negotiation failures.
