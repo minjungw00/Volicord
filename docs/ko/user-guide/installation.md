@@ -189,25 +189,37 @@ Docker 지원은 로컬 컨테이너 배치와 localhost MCP 접근을 위한 �
 docker build -t volicord:local .
 ```
 
-setup, init, project, connection, serve 명령을 실행할 때는 Runtime Home 볼륨을
-사용하고 Product Repository를 같은 컨테이너 경로에 마운트합니다. 프로젝트 등록은
-저장소 루트를 저장하므로, 한 경로 배치에서 준비한 Runtime Home을 다른 컨테이너
-workspace 경로와 함께 재사용하면 안 됩니다.
+`init`, `project`, `connection`, `doctor`, `connection verify`, `serve` 명령을 실행할
+때는 Runtime Home 볼륨을 사용하고 Product Repository를 같은 컨테이너 경로에 마운트합니다.
+프로젝트 등록은 저장소 루트를 저장하므로, 한 경로 배치에서 준비한 Runtime Home을 다른
+컨테이너 workspace 경로와 함께 재사용하면 안 됩니다.
 
-예를 들어 같은 마운트로 Docker 설치 프로필을 점검하거나 복구합니다.
+예를 들어 마운트한 저장소에 대한 record 프로필 설치를 만들거나 재사용합니다.
 
 ```sh
 docker run --rm -it \
   -v volicord-home:/var/lib/volicord \
   -v "$PWD:/workspace" \
-  volicord:local setup
+  volicord:local init --host codex --repo /workspace --profile record
 ```
 
-Docker에서 record 프로필 설정을 하려면 같은 mount로
-`volicord init --host HOST --repo /workspace --profile record`를 실행합니다. Detective Docker
-설정에는 컨테이너를 쓰지 않을 때와 같은 검증된 host hook 및 session watcher 요구사항이
-적용됩니다. Runtime Home에 serve할 프로젝트 등록과 Agent Connection이 들어간 뒤, 예를
-들어 그와 일치하는 `volicord init` 실행이나 낮은 수준의 `volicord connection add` 실행 뒤,
+같은 마운트로 Docker 설치 프로필을 점검하고 선택한 Agent Connection을 검증합니다.
+
+```sh
+docker run --rm -it \
+  -v volicord-home:/var/lib/volicord \
+  -v "$PWD:/workspace" \
+  volicord:local doctor
+
+docker run --rm -it \
+  -v volicord-home:/var/lib/volicord \
+  -v "$PWD:/workspace" \
+  volicord:local connection verify codex --repo /workspace
+```
+
+Detective Docker 설정에는 컨테이너를 쓰지 않을 때와 같은 검증된 host hook 및 session
+watcher 요구사항이 적용됩니다. Runtime Home에 serve할 프로젝트 등록과 Agent Connection이
+들어간 뒤, 예를 들어 그와 일치하는 `init` 실행이나 낮은 수준의 `connection add` 실행 뒤,
 운영자가 제공한 token으로 로컬 HTTP MCP endpoint를 시작합니다.
 
 ```sh

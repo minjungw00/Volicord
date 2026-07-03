@@ -205,27 +205,41 @@ docker build -t volicord:local .
 ```
 
 Use a Runtime Home volume and mount the Product Repository at the same container
-path whenever you run setup, init, project, connection, and serve commands.
+path whenever you run `init`, `project`, `connection`, `doctor`,
+`connection verify`, and `serve` commands.
 Project registrations store repository roots, so a Runtime Home prepared for
 one path layout should not be reused with a different container workspace path.
 
-For example, inspect or repair the Docker installation profile with the same
-mounts:
+For example, create or reuse a record-profile installation for the mounted
+repository:
 
 ```sh
 docker run --rm -it \
   -v volicord-home:/var/lib/volicord \
   -v "$PWD:/workspace" \
-  volicord:local setup
+  volicord:local init --host codex --repo /workspace --profile record
 ```
 
-For record-profile setup in Docker, run
-`volicord init --host HOST --repo /workspace --profile record` with the same
-mounts. Detective Docker setup has the same verified host-hook and session
-watcher requirements as non-container setup. After the Runtime Home contains
-the project registration and Agent Connection you want to serve, for example
-from that matching `volicord init` run or a lower-level `volicord connection add` run,
-start the local HTTP MCP endpoint with an operator-provided token:
+Inspect the same Docker installation profile and verify the selected Agent
+Connection with the same mounts:
+
+```sh
+docker run --rm -it \
+  -v volicord-home:/var/lib/volicord \
+  -v "$PWD:/workspace" \
+  volicord:local doctor
+
+docker run --rm -it \
+  -v volicord-home:/var/lib/volicord \
+  -v "$PWD:/workspace" \
+  volicord:local connection verify codex --repo /workspace
+```
+
+Detective Docker setup has the same verified host-hook and session watcher
+requirements as non-container setup. After the Runtime Home contains the
+project registration and Agent Connection you want to serve, for example from
+that matching `init` run or a lower-level `connection add` run, start the local
+HTTP MCP endpoint with an operator-provided token:
 
 ```sh
 VOLICORD_HTTP_TOKEN="$(openssl rand -hex 32)"
