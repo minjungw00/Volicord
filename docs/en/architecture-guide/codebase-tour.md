@@ -206,7 +206,7 @@ Most relevant tests:
 
 - Colocated unit tests in the Store modules.
 - Core method tests in
-  [`crates/volicord-core/src/methods/tests.rs`](../../../crates/volicord-core/src/methods/tests.rs)
+  [`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs)
   for Store-visible effects.
 - Cross-layer storage checks in
   [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs)
@@ -289,7 +289,7 @@ Most relevant tests:
 - [`crates/volicord-core/src/pipeline.rs`](../../../crates/volicord-core/src/pipeline.rs)
   has unit tests for replay, freshness, branch shape, no-effect behavior, and
   Store failure routing.
-- [`crates/volicord-core/src/methods/tests.rs`](../../../crates/volicord-core/src/methods/tests.rs)
+- [`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs)
   exercises method plans and effects. Start with
   `status_is_read_only_including_dry_run`,
   `intake_commits_once_and_replays_without_effect`,
@@ -522,7 +522,7 @@ Important current symbols:
 Most relevant tests:
 
 - This crate is primarily exercised through
-  [`crates/volicord-core/src/methods/tests.rs`](../../../crates/volicord-core/src/methods/tests.rs),
+  [`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs),
   [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs),
   and [`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs).
 

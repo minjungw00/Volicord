@@ -197,9 +197,9 @@ API 오류는 rejected response로 남으며 닫기 차단 사유가 아닙니�
 
 대표 테스트:
 
-- [`crates/volicord-core/src/methods/tests.rs`](../../../crates/volicord-core/src/methods/tests.rs)의
+- [`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs)의
   `status_is_read_only_including_dry_run`
-- [`crates/volicord-core/src/methods/tests.rs`](../../../crates/volicord-core/src/methods/tests.rs)의
+- [`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs)의
   `status_include_false_omits_optional_sections_without_effect`
 - [`crates/volicord-mcp/src/tests.rs`](../../../crates/volicord-mcp/src/tests.rs)의
   `adapter_and_direct_core_status_have_equivalent_response_meaning`
@@ -291,9 +291,9 @@ API 오류는 rejected response로 남으며 닫기 차단 사유가 아닙니�
 
 대표 테스트:
 
-- [`crates/volicord-core/src/methods/tests.rs`](../../../crates/volicord-core/src/methods/tests.rs)의
+- [`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs)의
   `intake_commits_once_and_replays_without_effect`
-- [`crates/volicord-core/src/methods/tests.rs`](../../../crates/volicord-core/src/methods/tests.rs)의
+- [`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs)의
   `intake_dry_run_has_no_storage_effect`
 - [`crates/volicord-mcp/src/tests.rs`](../../../crates/volicord-mcp/src/tests.rs)의
   `adapter_and_direct_core_intake_dry_run_have_equivalent_response_meaning`
@@ -396,13 +396,13 @@ API 오류는 rejected response로 남으며 닫기 차단 사유가 아닙니�
 
 대표 테스트:
 
-- [`crates/volicord-core/src/methods/tests.rs`](../../../crates/volicord-core/src/methods/tests.rs)의
+- [`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs)의
   `prepare_write_allowed_issues_one_write_ticket_with_post_commit_basis`
-- [`crates/volicord-core/src/methods/tests.rs`](../../../crates/volicord-core/src/methods/tests.rs)의
+- [`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs)의
   `prepare_write_blocked_path_issues_no_write_ticket`
-- [`crates/volicord-core/src/methods/tests.rs`](../../../crates/volicord-core/src/methods/tests.rs)의
+- [`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs)의
   `prepare_write_dry_run_has_no_write_ticket_effect`
-- [`crates/volicord-core/src/methods/tests.rs`](../../../crates/volicord-core/src/methods/tests.rs)의
+- [`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs)의
   `prepare_write_user_only_category_is_invocation_context_rejection`
 - [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs)의
   `read_only_mode_rejects_agent_workflow_methods_before_core`

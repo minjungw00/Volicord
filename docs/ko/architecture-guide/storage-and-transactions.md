@@ -32,7 +32,17 @@
   [`crates/volicord-store/src/schema/`](../../../crates/volicord-store/src/schema/)에 있습니다.
 - 프로젝트 로컬 Core Store 접근은
   [`crates/volicord-store/src/core_pipeline.rs`](../../../crates/volicord-store/src/core_pipeline.rs)의
-  `CoreProjectStore`가 담당합니다.
+  `CoreProjectStore`에서 시작합니다. 열기 처리는
+  [`core_pipeline/open.rs`](../../../crates/volicord-store/src/core_pipeline/open.rs),
+  재실행 조회는
+  [`core_pipeline/replay.rs`](../../../crates/volicord-store/src/core_pipeline/replay.rs),
+  원자적 커밋 트랜잭션은
+  [`core_pipeline/commit.rs`](../../../crates/volicord-store/src/core_pipeline/commit.rs),
+  변이 작성기는
+  [`core_pipeline/mutation_apply.rs`](../../../crates/volicord-store/src/core_pipeline/mutation_apply.rs),
+  공유 지속 값 검증은
+  [`core_pipeline/validation.rs`](../../../crates/volicord-store/src/core_pipeline/validation.rs)에
+  있습니다.
 - 아티팩트 스테이징과 영구 아티팩트 본문 검증은
   [`crates/volicord-store/src/artifacts.rs`](../../../crates/volicord-store/src/artifacts.rs)에
   있습니다.
@@ -137,6 +147,7 @@ flowchart LR
 idempotency key, 정규 요청 해시, 검증된 재실행 맥락, 선택적 예상 상태
 버전, 대기 중인 이벤트로 `CommitMutationInput`을 만듭니다.
 
+[`core_pipeline/commit.rs`](../../../crates/volicord-store/src/core_pipeline/commit.rs)의
 `CoreProjectStore::commit_mutation`은 원자적 Store 경계입니다. 이 함수는
 아래 순서를 수행합니다.
 
@@ -193,7 +204,7 @@ Core 파이프라인 테스트가 있습니다.
 메서드 계획 Core 변이를 통해 일어납니다.
 
 관련 테스트에는
-[`crates/volicord-core/src/methods/tests.rs`](../../../crates/volicord-core/src/methods/tests.rs)의
+[`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs)의
 `stage_artifact_creates_transient_handle_without_core_commit`,
 `stage_artifact_dry_run_creates_no_handle_or_storage`,
 `record_run_promotes_staged_artifact_and_updates_evidence`, 그리고

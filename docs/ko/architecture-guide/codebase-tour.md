@@ -197,7 +197,7 @@ Core 권한 의미는 참조 문서에 남습니다.
 
 - Store 모듈 안의 단위 테스트.
 - Store에 보이는 효과는
-  [`crates/volicord-core/src/methods/tests.rs`](../../../crates/volicord-core/src/methods/tests.rs)의
+  [`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs)의
   Core 메서드 테스트에서 확인합니다.
 - 계층 간 저장소 확인은
   [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs)와
@@ -277,7 +277,7 @@ Core 권한 의미는 참조 문서에 남습니다.
 - [`crates/volicord-core/src/pipeline.rs`](../../../crates/volicord-core/src/pipeline.rs)는
   재실행, 최신성, 분기 형태, 효과 없는 동작, Store 실패 처리 경로를 단위
   테스트합니다.
-- [`crates/volicord-core/src/methods/tests.rs`](../../../crates/volicord-core/src/methods/tests.rs)는
+- [`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs)는
   메서드 계획과 효과를 실행합니다. 먼저
   `status_is_read_only_including_dry_run`,
   `intake_commits_once_and_replays_without_effect`,
@@ -502,7 +502,7 @@ Agent Connection 등록, 요청 빌더, 직접 Store 검사 도우미를 프로�
 가장 관련 있는 테스트:
 
 - 이 크레이트는 주로
-  [`crates/volicord-core/src/methods/tests.rs`](../../../crates/volicord-core/src/methods/tests.rs),
+  [`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs),
   [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs),
   [`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs)를
   통해 실행됩니다.

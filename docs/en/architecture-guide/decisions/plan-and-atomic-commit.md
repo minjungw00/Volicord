@@ -60,7 +60,7 @@ not use the normal Core mutation commit.
   `transaction_replay_hash_conflict_rejects_without_effect` in
   [`crates/volicord-store/src/core_pipeline.rs`](../../../../crates/volicord-store/src/core_pipeline.rs).
 - `stage_artifact_creates_transient_handle_without_core_commit` in
-  [`crates/volicord-core/src/methods/tests.rs`](../../../../crates/volicord-core/src/methods/tests.rs).
+  [`crates/volicord-core/src/methods/tests/mod.rs`](../../../../crates/volicord-core/src/methods/tests/mod.rs).
 - [Storage Effects](../../reference/storage-effects.md),
   [Storage Versioning](../../reference/storage-versioning.md), and the linked
   public method owner from [API Methods](../../reference/api/methods.md).

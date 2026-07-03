@@ -202,9 +202,9 @@ What does not happen:
 Representative tests:
 
 - `status_is_read_only_including_dry_run` in
-  [`crates/volicord-core/src/methods/tests.rs`](../../../crates/volicord-core/src/methods/tests.rs)
+  [`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs)
 - `status_include_false_omits_optional_sections_without_effect` in
-  [`crates/volicord-core/src/methods/tests.rs`](../../../crates/volicord-core/src/methods/tests.rs)
+  [`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs)
 - `adapter_and_direct_core_status_have_equivalent_response_meaning` in
   [`crates/volicord-mcp/src/tests.rs`](../../../crates/volicord-mcp/src/tests.rs)
 - `mcp_and_direct_status_omit_same_excluded_projection_fields` in
@@ -297,9 +297,9 @@ What changes by branch:
 Representative tests:
 
 - `intake_commits_once_and_replays_without_effect` in
-  [`crates/volicord-core/src/methods/tests.rs`](../../../crates/volicord-core/src/methods/tests.rs)
+  [`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs)
 - `intake_dry_run_has_no_storage_effect` in
-  [`crates/volicord-core/src/methods/tests.rs`](../../../crates/volicord-core/src/methods/tests.rs)
+  [`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs)
 - `adapter_and_direct_core_intake_dry_run_have_equivalent_response_meaning` in
   [`crates/volicord-mcp/src/tests.rs`](../../../crates/volicord-mcp/src/tests.rs)
 - `connection_invocation_is_injected_and_single_project_is_auto_selected` in
@@ -403,13 +403,13 @@ What changes by branch:
 Representative tests:
 
 - `prepare_write_allowed_issues_one_write_ticket_with_post_commit_basis` in
-  [`crates/volicord-core/src/methods/tests.rs`](../../../crates/volicord-core/src/methods/tests.rs)
+  [`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs)
 - `prepare_write_blocked_path_issues_no_write_ticket` in
-  [`crates/volicord-core/src/methods/tests.rs`](../../../crates/volicord-core/src/methods/tests.rs)
+  [`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs)
 - `prepare_write_dry_run_has_no_write_ticket_effect` in
-  [`crates/volicord-core/src/methods/tests.rs`](../../../crates/volicord-core/src/methods/tests.rs)
+  [`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs)
 - `prepare_write_user_only_category_is_invocation_context_rejection` in
-  [`crates/volicord-core/src/methods/tests.rs`](../../../crates/volicord-core/src/methods/tests.rs)
+  [`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs)
 - `read_only_mode_rejects_agent_workflow_methods_before_core` in
   [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs)
 - `committed_non_allow_prepare_write_audit_and_replay_are_exact` and

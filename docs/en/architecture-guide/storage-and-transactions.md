@@ -28,9 +28,18 @@ workspace. The implementation keeps these locations separate:
 - Canonical schema SQL and initialization helpers live in
   [`crates/volicord-store/src/schema.rs`](../../../crates/volicord-store/src/schema.rs)
   and [`crates/volicord-store/src/schema/`](../../../crates/volicord-store/src/schema/).
-- Project-local Core Store access lives in
+- Project-local Core Store access is rooted at
   [`crates/volicord-store/src/core_pipeline.rs`](../../../crates/volicord-store/src/core_pipeline.rs)
-  as `CoreProjectStore`.
+  as `CoreProjectStore`. Opening lives in
+  [`core_pipeline/open.rs`](../../../crates/volicord-store/src/core_pipeline/open.rs),
+  replay lookup in
+  [`core_pipeline/replay.rs`](../../../crates/volicord-store/src/core_pipeline/replay.rs),
+  the atomic commit transaction in
+  [`core_pipeline/commit.rs`](../../../crates/volicord-store/src/core_pipeline/commit.rs),
+  mutation writers in
+  [`core_pipeline/mutation_apply.rs`](../../../crates/volicord-store/src/core_pipeline/mutation_apply.rs),
+  and shared persisted-value validation in
+  [`core_pipeline/validation.rs`](../../../crates/volicord-store/src/core_pipeline/validation.rs).
 - Artifact staging and persistent artifact body verification live in
   [`crates/volicord-store/src/artifacts.rs`](../../../crates/volicord-store/src/artifacts.rs).
 
@@ -134,7 +143,9 @@ For normal committed Core mutations, Core builds `CommitMutationInput` with the
 project ID, method name, optional idempotency key, canonical request hash,
 verified replay context, optional expected state version, and pending events.
 
-`CoreProjectStore::commit_mutation` is the atomic Store boundary. It:
+`CoreProjectStore::commit_mutation` in
+[`core_pipeline/commit.rs`](../../../crates/volicord-store/src/core_pipeline/commit.rs)
+is the atomic Store boundary. It:
 
 1. validates commit input and pending events;
 2. begins an immediate SQLite transaction;
@@ -194,7 +205,7 @@ Relevant tests include
 `stage_artifact_creates_transient_handle_without_core_commit`,
 `stage_artifact_dry_run_creates_no_handle_or_storage`, and
 `record_run_promotes_staged_artifact_and_updates_evidence` in
-[`crates/volicord-core/src/methods/tests.rs`](../../../crates/volicord-core/src/methods/tests.rs),
+[`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs),
 and `artifact_lifecycle_promotes_valid_handles_and_rolls_back_invalid_ones`
 in [`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs).
 
