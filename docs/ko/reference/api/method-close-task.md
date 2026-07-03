@@ -188,7 +188,7 @@ CloseTaskRequest:
 
 | 경우 | 상태 버전 효과 |
 |---|---|
-| `volicord.check_close` | `dry_run=true`여도 `project_state.state_version`을 증가시키지 않습니다. Session에 묶인 watcher는 준비 상태 관찰을 반환하기 전에 한정된 진단용 session-watch 관찰이나 watcher가 만든 미기록 변경 찾기를 기록할 수 있습니다. |
+| `volicord.check_close` | `dry_run=true`여도 `project_state.state_version`을 증가시키지 않습니다. `dry_run=false`이면 Session에 묶인 watcher가 준비 상태 관찰을 반환하기 전에 한정된 진단용 session-watch 관찰이나 watcher가 만든 미기록 변경 찾기를 기록할 수 있습니다. |
 | 성공한 종료 상태 변경 | `project_state.state_version`을 정확히 한 번 증가시킵니다. |
 | 상태 변경 `intent`의 커밋된 차단 결과 | 이 메서드와 저장 효과 담당 문서가 그 커밋된 차단 결과를 허용할 때 `project_state.state_version`을 정확히 한 번 증가시킵니다. |
 | 사전 확인 거절 또는 유효한 `dry_run` 미리보기 | 아무것도 증가시키지 않습니다. |
@@ -359,7 +359,7 @@ CloseTaskRequest:
 
 커밋되는 `dry_run=false` 상태 변경 `intent`는 메서드 결과에 따라 종료 결과나 차단 결과를 지속 저장할 수 있습니다. 성공한 종료 닫기는 닫기 전 준비 상태에 사용한 현재 닫기 근거와 별개인 종료 닫기 요약을 지속 저장할 수 있습니다. 성공한 `intent=complete`는 현재 닫기 근거의 잔여 위험 중 보이지만 잔여 위험 수락이 필요하지 않은 항목에 대해 `kind=known_limit` 프로젝트 연속성 기록도 지속 저장할 수 있습니다. 정확한 저장 효과, 재실행 행, 이벤트, 상태 버전 증가, 프로젝트 연속성 지속 저장, 차단 사유 지속 저장 규칙은 [저장 효과](../storage-effects.md)와 [저장소 버전 관리](../storage-versioning.md)가 담당합니다.
 
-거절 응답과 유효한 `dry_run` 미리보기에는 저장 효과가 없습니다.
+거절 응답과 유효한 상태 변경 `intent`의 `ToolDryRunResponse` 미리보기에는 저장 효과가 없습니다.
 
 ## 예시
 

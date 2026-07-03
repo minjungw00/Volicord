@@ -188,7 +188,7 @@ Implementations evaluate `volicord.close_task` in this order:
 
 | Case | State-version effect |
 |---|---|
-| `volicord.check_close` | Never increments `project_state.state_version`, including when `dry_run=true`. A session-bound watcher may record bounded diagnostic session-watch observations or watcher-created unrecorded-change findings before returning the readiness observation. |
+| `volicord.check_close` | Never increments `project_state.state_version`, including when `dry_run=true`. For `dry_run=false`, a session-bound watcher may record bounded diagnostic session-watch observations or watcher-created unrecorded-change findings before returning the readiness observation. |
 | Successful terminal mutation | Increments `project_state.state_version` exactly once. |
 | Committed blocked result for a mutating intent | Increments `project_state.state_version` exactly once when this method and the storage-effect owner allow the committed blocked result. |
 | Preflight rejection or valid `dry_run` preview | Increments nothing. |
@@ -359,7 +359,7 @@ authority-state mutation.
 
 Committed `dry_run=false` mutating intents may persist terminal or blocked outcomes according to the method result. A successful terminal close may persist a terminal close summary, distinct from the current close basis used for pre-close readiness. Successful `intent=complete` may also persist project continuity records with `kind=known_limit` for current close-basis residual risks that are visible but do not require residual-risk acceptance. Exact storage effects, replay rows, events, state-version increments, project continuity persistence, and blocker persistence rules are owned by [Storage Effects](../storage-effects.md) and [Storage Versioning](../storage-versioning.md).
 
-Rejected responses and valid `dry_run` previews have no storage effect.
+Rejected responses and valid mutating-intent `ToolDryRunResponse` previews have no storage effect.
 
 ## Examples
 

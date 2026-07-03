@@ -217,7 +217,7 @@ active_task:
   non_goals:
     - "Changing dashboard chart rendering."
   acceptance_criteria:
-    - "CSV exports include the selected columns in the approved order."
+    - "CSV exports include the selected columns in the specified order."
   autonomy_boundary: "Stay within CSV summary export behavior."
   active_change_unit_ref:
     record_kind: change_unit
