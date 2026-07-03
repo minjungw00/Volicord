@@ -22,6 +22,17 @@ This document does not own:
 - runtime location boundaries; see [Runtime Boundaries](runtime-boundaries.md)
 - security guarantee levels; see [Security](security.md)
 
+<a id="surface-stability"></a>
+## Surface Stability
+
+For label meanings, see [Documentation Policy](../maintain/documentation-policy.md#surface-stability-labels).
+
+| Surface | Stability | Notes |
+|---|---|---|
+| Baseline SQLite DDL, canonical SQL blocks, table constraints, indexes, foreign keys, and `project_state.state_version` as the public baseline state clock | `stable` | This is the implementable storage DDL contract for the current baseline profile. |
+| Physical table names, column names, internal IDs, generated host-observation rows, and `_json` representation columns | `internal` | These make the storage layout implementable; they are not ordinary user-facing selectors or public API arguments unless another focused owner exposes them. |
+| Safe storage or corruption diagnostics that identify table, record reference, logical column, or corruption category | `diagnostic` | Diagnostics must not expose raw stored JSON, secrets, SQL text, or sensitive absolute paths. |
+
 ## Connection And Transaction Requirements
 
 SQLite foreign keys are part of this DDL contract. Every connection that reads or writes these databases must enable:

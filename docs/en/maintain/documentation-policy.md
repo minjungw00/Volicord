@@ -78,6 +78,29 @@ ordinary README, guide, Reference, and Architecture Guide pages should explain a
 diagram's purpose in natural captions or surrounding prose instead of exposing
 literal labels such as `Diagram role:`.
 
+<a id="surface-stability-labels"></a>
+## Surface Stability Labels
+
+Use this small vocabulary when a maintained owner needs to distinguish public
+contracts, evolving local integration surfaces, implementation details, and
+diagnostic output. These labels classify documented surfaces; they do not create
+schema versions, migration versions, alternate API versions, legacy
+compatibility paths, storage upgrade paths, or fallback behavior.
+
+| Label | Meaning |
+|---|---|
+| `stable` | A documented public or baseline contract intended for implementation and integration reliance. |
+| `beta` | A documented surface that is supported in the current workspace but still expected to evolve within its owner-defined boundary. |
+| `internal` | A documented implementation, storage, process-binding, generated-wrapper, or adapter detail that is not a public contract or ordinary user-facing selector. |
+| `diagnostic` | Human-readable summaries, reports, health views, disclosure text, or troubleshooting output. Structured fields and stable IDs are contracts only when the focused owner explicitly says so. |
+
+Focused Reference owner pages that define public, beta, internal, or diagnostic
+surfaces must include a short `## Surface Stability` section with the stable
+anchor `<a id="surface-stability"></a>`. Keep the section compact, use labels at
+the narrowest practical surface level, and link back to this vocabulary instead
+of repeating long explanations. Do not use stability labels to downgrade a
+currently stable contract without support from the focused owner documents.
+
 ## Ownership Boundaries
 
 Exact product contracts stay in the focused Reference owners selected from

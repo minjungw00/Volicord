@@ -338,6 +338,27 @@ fn category_errors<'a>(
         .collect()
 }
 
+fn index_admin_cli_surface_doc(root: &Path) {
+    let mut index = valid_doc_index();
+    index.push_str(
+        r#"- doc_id: reference.admin-cli
+  path_en: docs/en/reference/admin-cli.md
+  path_ko: docs/ko/reference/admin-cli.md
+  kind: reference
+  summary: Administrative CLI reference.
+  normative_level: contract
+  translation_policy: semantic_parity
+  owner_area: developer_documentation
+  created_on: '2026-06-20'
+  last_updated_on: '2026-06-20'
+  last_verified_on: '2026-06-23'
+  applies_to:
+  - volicord_workspace_0_1
+"#,
+    );
+    write(root, "docs/doc-index.yaml", &index);
+}
+
 #[test]
 fn accepts_valid_version_3_metadata() {
     let fixture = valid_fixture();
@@ -1053,6 +1074,60 @@ fn reports_required_terminology_role_failure() {
     assert_eq!(errors.len(), 1, "{:#?}", report.errors());
     assert!(
         errors[0].message().contains("project_selector"),
+        "{:#?}",
+        report.errors()
+    );
+}
+
+#[test]
+fn reports_missing_required_surface_stability_section() {
+    let fixture = valid_fixture();
+    index_admin_cli_surface_doc(fixture.path());
+    write(
+        fixture.path(),
+        "docs/en/reference/admin-cli.md",
+        "# Administrative CLI reference\n",
+    );
+    write(
+        fixture.path(),
+        "docs/ko/reference/admin-cli.md",
+        "<a id=\"administrative-cli-reference\"></a>\n# 관리 CLI 참조\n",
+    );
+
+    let report = report(fixture.path());
+    let errors = category_errors(&report, "surface_stability.missing_section");
+
+    assert_eq!(errors.len(), 2, "{:#?}", report.errors());
+}
+
+#[test]
+fn reports_missing_required_surface_stability_label() {
+    let fixture = valid_fixture();
+    index_admin_cli_surface_doc(fixture.path());
+    let section = "# Administrative CLI reference\n\n<a id=\"surface-stability\"></a>\n## Surface Stability\n\nFor label meanings, see [Documentation Policy](../maintain/documentation-policy.md#surface-stability-labels).\n\n| Surface | Stability | Notes |\n|---|---|---|\n| Commands | `stable` | Local CLI command contract. |\n";
+    write(fixture.path(), "docs/en/reference/admin-cli.md", section);
+    write(
+        fixture.path(),
+        "docs/ko/reference/admin-cli.md",
+        &section.replace("# Administrative CLI reference", "# 관리 CLI 참조"),
+    );
+
+    let report = report(fixture.path());
+    let errors = category_errors(&report, "surface_stability.missing_label");
+
+    assert!(
+        errors
+            .iter()
+            .any(|error| error.file() == "docs/en/reference/admin-cli.md"
+                && error.message().contains("`beta`")),
+        "{:#?}",
+        report.errors()
+    );
+    assert!(
+        errors
+            .iter()
+            .any(|error| error.file() == "docs/ko/reference/admin-cli.md"
+                && error.message().contains("`diagnostic`")),
         "{:#?}",
         report.errors()
     );

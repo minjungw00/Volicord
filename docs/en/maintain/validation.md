@@ -73,6 +73,9 @@ read-only and verifies the machine-checkable shape:
   MCP process bindings, and diagnostics.
 - `docs/terminology-map.yaml` primary-owner and related-reference paths exist
   and are represented in `doc-index.yaml`.
+- Focused Reference owner pages that the documentation policy marks as needing
+  surface labels include a `Surface Stability` section, link to the canonical
+  vocabulary, and use only `stable`, `beta`, `internal`, or `diagnostic` labels.
 - Public-output source avoids unqualified broad security words that would
   overstate Volicord guarantees; exact security guarantee meaning remains with
   the Security and brand-claim owners.

@@ -23,6 +23,16 @@
 
 기준 범위의 기준 설명은 [범위](scope.md)를 확인하세요. 용어집에 포함된 선별 핵심 용어의 간단한 뜻은 [용어집](glossary.md)을 확인하세요. 완전한 구조화 용어 메타데이터는 [`docs/terminology-map.yaml`](../../terminology-map.yaml)을 확인하세요.
 
+<a id="surface-stability"></a>
+## 표면 안정성
+
+라벨 의미는 [문서 정책](../maintain/documentation-policy.md#surface-stability-labels)을 확인하세요.
+
+| 표면 | 안정성 | 비고 |
+|---|---|---|
+| 시나리오 의미, `scenario_id` 규칙, 기대 동작 요약, 주장 권한, 담당 문서 링크 요구사항 | `stable` | 담당 문서가 정의한 동작을 위한 참조 기준입니다. |
+| 실행기 요약, 렌더링된 보기, 상태 문구, 유지보수 점검 라벨, 생성된 적합성 보고서 | `diagnostic` | 집중 담당 문서가 그 사실을 권한으로 정의하지 않는 한 주장 권한이 아닙니다. |
+
 ## 적합성 항목 요약
 
 | 항목 | 경계 | 세부사항 |

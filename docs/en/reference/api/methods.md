@@ -4,6 +4,16 @@ Use this human-readable method-family router to find the owner document for publ
 
 This page does not define method behavior, request or response bodies, shared schemas, storage effects, error semantics, security guarantees, or Core authority semantics.
 
+<a id="surface-stability"></a>
+## Surface Stability
+
+For label meanings, see [Documentation Policy](../../maintain/documentation-policy.md#surface-stability-labels).
+
+| Surface | Stability | Notes |
+|---|---|---|
+| Supported public method names in the table below | `stable` | These Core authority methods are the public API method set. |
+| Linked method owner documents | `stable` | Each linked owner defines the method behavior, request and response shape, and effects it owns unless that owner labels a narrower nested surface differently. |
+
 <a id="method-owner-routing-table"></a>
 
 ## Method Owners

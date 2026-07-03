@@ -23,6 +23,16 @@ This reference does not define neighboring contracts:
 
 For the canonical baseline scope, see [Scope](scope.md). For compact meanings of curated core terms included in the glossary, see [Glossary](glossary.md). For complete structured terminology metadata, see [`docs/terminology-map.yaml`](../../terminology-map.yaml).
 
+<a id="surface-stability"></a>
+## Surface Stability
+
+For label meanings, see [Documentation Policy](../maintain/documentation-policy.md#surface-stability-labels).
+
+| Surface | Stability | Notes |
+|---|---|---|
+| Scenario semantics, `scenario_id` rules, expected behavior summaries, assertion authority, and owner-link requirements | `stable` | These are reference criteria for owner-defined behavior. |
+| Runner summaries, rendered views, status wording, maintenance-check labels, and generated conformance reports | `diagnostic` | They are not assertion authority unless a focused owner defines the fact as authoritative. |
+
 ## Conformance item summary
 
 | Item | Boundary | Details |

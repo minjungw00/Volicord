@@ -50,6 +50,18 @@ This document does not own:
 - storage layout, schema initialization and validation, and storage effects; see the storage owners
   through [Storage](storage.md)
 
+<a id="surface-stability"></a>
+## Surface Stability
+
+For label meanings, see [Documentation Policy](../maintain/documentation-policy.md#surface-stability-labels).
+
+| Surface | Stability | Notes |
+|---|---|---|
+| `volicord mcp --stdio`, stdio JSON-RPC framing, MCP initialization, supported MCP methods, `tools/list`, `tools/call`, and response wrapping | `stable` | Local process and MCP transport contracts for the supported method set. |
+| Local HTTP serve transport, Docker host-loopback publishing shape, and local web consent fallback endpoint | `beta` | Supported local surfaces with owner-defined limits; they are not public network API surfaces or full MCP Streamable HTTP compatibility. |
+| Process-binding values, generated host configuration details, internal connection/project identities, and hidden invocation metadata | `internal` | These details bind local processes and generated adapters; public MCP tool schemas must hide them unless a focused owner exposes a selector. |
+| Startup diagnostics, `/healthz`, structured HTTP error reports, and human-readable transport warnings | `diagnostic` | Diagnostic output must preserve owner-defined codes and disclosures where documented, but prose presentation is not a public API schema. |
+
 ## Process Model
 
 `volicord mcp --stdio` is a local MCP stdio process mode of the installed

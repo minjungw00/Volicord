@@ -39,6 +39,18 @@ hook 명령은 생성된 호스트 통합 wrapper만을 위한 것이며 일반 
 - 저장소 기록 배치, SQLite DDL, canonical 저장소 스키마 정의, Core 권한 의미,
   보안 보장 의미
 
+<a id="surface-stability"></a>
+## 표면 안정성
+
+라벨 의미는 [문서 정책](../maintain/documentation-policy.md#surface-stability-labels)을 확인하세요.
+
+| 표면 | 안정성 | 비고 |
+|---|---|---|
+| 지원되는 관리 명령 이름, 옵션, stdout/stderr 처리, 프로세스 종료 코드, dry-run 동작, 로컬 User Channel 명령 이름 | `stable` | 이는 로컬 CLI 계약이며 공개 Volicord API 메서드가 아닙니다. |
+| `detective` 프로필 설정, host-hook 관찰, session watcher 관찰, local consent 사용 가능 상태 보고, 호스트별 통합 capability 보고 | `beta` | capability gate와 담당 문서가 정의한 비보장을 가진 지원되는 협력적 관찰 표면입니다. |
+| 숨겨진 hook lifecycle namespace, 생성 wrapper 세부사항, 저장된 내부 식별 정보, 호스트 설정 키, 프로세스 바인딩 값 | `internal` | 이 세부사항은 생성된 호스트 통합을 지원하며 일반 사용자 대상 명령 입력이 되면 안 됩니다. |
+| 사람이 읽는 상태 요약, doctor 보고서, 연결 검증 보고서, compact summary card, action 문구, 진단 disclosure | `diagnostic` | JSON 필드 존재와 안정적인 ID는 이 문서가 명시적으로 요구할 때만 계약입니다. Text formatting은 공개 API 스키마가 아닙니다. |
+
 ## 명령 모델
 
 `volicord`는 로컬 관리/부트스트랩 실행 파일입니다. 일반 목적의 장기 실행 서버가

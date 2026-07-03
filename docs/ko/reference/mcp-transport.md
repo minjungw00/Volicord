@@ -39,6 +39,18 @@
   [관리 CLI](admin-cli.md#guard-hook-commands)
 - 저장소 배치, 스키마 초기화와 검증, 저장 효과: [저장소](storage.md)가 안내하는 저장소 담당 문서
 
+<a id="surface-stability"></a>
+## 표면 안정성
+
+라벨 의미는 [문서 정책](../maintain/documentation-policy.md#surface-stability-labels)을 확인하세요.
+
+| 표면 | 안정성 | 비고 |
+|---|---|---|
+| `volicord mcp --stdio`, stdio JSON-RPC 프레이밍, MCP 초기화, 지원되는 MCP 메서드, `tools/list`, `tools/call`, 응답 래핑 | `stable` | 지원되는 메서드 집합을 위한 로컬 프로세스와 MCP 전송 계약입니다. |
+| Local HTTP serve 전송, Docker host-loopback 노출 형태, local web consent fallback endpoint | `beta` | 담당 문서가 정한 제한 안에서 지원되는 로컬 표면입니다. 공개 네트워크 API 표면이나 전체 MCP Streamable HTTP 호환성이 아닙니다. |
+| 프로세스 바인딩 값, 생성된 호스트 설정 세부사항, 내부 연결/프로젝트 식별 정보, 숨겨진 호출 메타데이터 | `internal` | 이 세부사항은 로컬 프로세스와 생성 adapter를 묶습니다. 집중 담당 문서가 selector를 노출하지 않는 한 공개 MCP 도구 스키마는 이를 숨겨야 합니다. |
+| 시작 진단, `/healthz`, 구조화된 HTTP 오류 보고서, 사람이 읽는 전송 경고 | `diagnostic` | 문서화된 곳에서는 담당 문서가 정의한 코드와 disclosure를 보존해야 하지만, 산문 표현은 공개 API 스키마가 아닙니다. |
+
 ## 프로세스 모델
 
 `volicord mcp --stdio`는 설치된 `volicord` 실행 파일의 로컬 MCP stdio 프로세스

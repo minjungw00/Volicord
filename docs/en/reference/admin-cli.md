@@ -45,6 +45,18 @@ This document does not own:
 - storage record layout, SQLite DDL, canonical storage schema definitions,
   Core authority semantics, and security guarantee meanings
 
+<a id="surface-stability"></a>
+## Surface Stability
+
+For label meanings, see [Documentation Policy](../maintain/documentation-policy.md#surface-stability-labels).
+
+| Surface | Stability | Notes |
+|---|---|---|
+| Supported administrative command names, options, stdout/stderr routing, process exit codes, dry-run behavior, and local User Channel command names | `stable` | These are local CLI contracts, not public Volicord API methods. |
+| `detective` profile setup, host-hook observation, session watcher observation, local consent availability reporting, and host-specific integration capability reporting | `beta` | These are supported cooperative observation surfaces with capability gates and owner-defined non-guarantees. |
+| Hidden hook lifecycle namespace, generated wrapper details, stored internal identities, host config keys, and process-binding values | `internal` | These details support generated host integrations and must not become normal user-facing command inputs. |
+| Human-readable status summaries, doctor reports, connection verification reports, compact summary cards, action text, and diagnostic disclosures | `diagnostic` | JSON field presence and stable IDs are contracts only where this page explicitly requires them; text formatting is not a public API schema. |
+
 ## Command model
 
 `volicord` is a local administrative/bootstrap executable. It is not a general

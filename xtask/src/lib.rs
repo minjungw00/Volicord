@@ -15,6 +15,49 @@ const STORAGE_DDL_DOC_PATHS: &[&str] = &[
     "docs/en/reference/storage-ddl.md",
     "docs/ko/reference/storage-ddl.md",
 ];
+const SURFACE_STABILITY_LABELS: &[&str] = &["stable", "beta", "internal", "diagnostic"];
+const REQUIRED_SURFACE_STABILITY_DOCS: &[SurfaceStabilityRequirement] = &[
+    SurfaceStabilityRequirement {
+        path: "docs/en/reference/admin-cli.md",
+        required_labels: &["stable", "beta", "internal", "diagnostic"],
+    },
+    SurfaceStabilityRequirement {
+        path: "docs/ko/reference/admin-cli.md",
+        required_labels: &["stable", "beta", "internal", "diagnostic"],
+    },
+    SurfaceStabilityRequirement {
+        path: "docs/en/reference/api/methods.md",
+        required_labels: &["stable"],
+    },
+    SurfaceStabilityRequirement {
+        path: "docs/ko/reference/api/methods.md",
+        required_labels: &["stable"],
+    },
+    SurfaceStabilityRequirement {
+        path: "docs/en/reference/mcp-transport.md",
+        required_labels: &["stable", "beta", "internal", "diagnostic"],
+    },
+    SurfaceStabilityRequirement {
+        path: "docs/ko/reference/mcp-transport.md",
+        required_labels: &["stable", "beta", "internal", "diagnostic"],
+    },
+    SurfaceStabilityRequirement {
+        path: "docs/en/reference/conformance.md",
+        required_labels: &["stable", "diagnostic"],
+    },
+    SurfaceStabilityRequirement {
+        path: "docs/ko/reference/conformance.md",
+        required_labels: &["stable", "diagnostic"],
+    },
+    SurfaceStabilityRequirement {
+        path: "docs/en/reference/storage-ddl.md",
+        required_labels: &["stable", "internal", "diagnostic"],
+    },
+    SurfaceStabilityRequirement {
+        path: "docs/ko/reference/storage-ddl.md",
+        required_labels: &["stable", "internal", "diagnostic"],
+    },
+];
 
 const TOP_LEVEL_REQUIRED: &[&str] = &[
     "version",
@@ -212,6 +255,11 @@ struct RequiredTerminologyRoles {
 struct PublicDocumentDisallowedTerm {
     term: &'static str,
     replacement: &'static str,
+}
+
+struct SurfaceStabilityRequirement {
+    path: &'static str,
+    required_labels: &'static [&'static str],
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -521,6 +569,7 @@ pub fn run_docs_check(root: &Path) -> Result<CheckReport> {
         validate_volicord_command_examples(&root, index, &mut errors);
         validate_public_document_language(&root, index, &mut errors);
     }
+    validate_surface_stability_sections(&root, &mut errors);
     validate_public_language_claims(&root, &mut errors);
     validate_storage_ddl_sql_blocks(&root, &mut errors);
 
@@ -1033,6 +1082,130 @@ fn validate_storage_ddl_sql_blocks(root: &Path, errors: &mut Vec<ValidationError
             }
         }
     }
+}
+
+fn validate_surface_stability_sections(root: &Path, errors: &mut Vec<ValidationError>) {
+    for requirement in REQUIRED_SURFACE_STABILITY_DOCS {
+        let path = root.join(requirement.path);
+        if !path.exists() {
+            continue;
+        }
+        let contents = match fs::read_to_string(&path) {
+            Ok(contents) => contents,
+            Err(error) => {
+                errors.push(ValidationError::new(
+                    requirement.path,
+                    "surface_stability.read",
+                    format!("failed to read required surface stability document: {error}"),
+                ));
+                continue;
+            }
+        };
+
+        let Some(section) = extract_surface_stability_section(&contents) else {
+            errors.push(ValidationError::new(
+                requirement.path,
+                "surface_stability.missing_section",
+                "missing required <a id=\"surface-stability\"></a> Surface Stability section",
+            ));
+            continue;
+        };
+
+        if !section.contains("documentation-policy.md#surface-stability-labels") {
+            errors.push(ValidationError::new(
+                requirement.path,
+                "surface_stability.missing_link",
+                "Surface Stability section must link to the canonical documentation policy vocabulary",
+            ));
+        }
+
+        let labels = extract_surface_stability_labels(section);
+        for label in &labels {
+            if !SURFACE_STABILITY_LABELS.contains(&label.as_str()) {
+                errors.push(ValidationError::new(
+                    requirement.path,
+                    "surface_stability.invalid_label",
+                    format!("Surface Stability section uses unsupported label `{label}`"),
+                ));
+            }
+        }
+        for required_label in requirement.required_labels {
+            if !labels.contains(*required_label) {
+                errors.push(ValidationError::new(
+                    requirement.path,
+                    "surface_stability.missing_label",
+                    format!(
+                        "Surface Stability section is missing required `{required_label}` label"
+                    ),
+                ));
+            }
+        }
+    }
+}
+
+fn extract_surface_stability_section(contents: &str) -> Option<&str> {
+    let marker = "<a id=\"surface-stability\"></a>";
+    let start = contents.find(marker)?;
+    let after_marker = &contents[start..];
+    let mut offset = 0;
+    let mut heading_count = 0;
+
+    for line in after_marker.split_inclusive('\n') {
+        if line.trim_start().starts_with("## ") {
+            heading_count += 1;
+            if heading_count == 2 {
+                return Some(&after_marker[..offset]);
+            }
+        }
+        offset += line.len();
+    }
+
+    Some(after_marker)
+}
+
+fn extract_surface_stability_labels(section: &str) -> BTreeSet<String> {
+    let mut labels = BTreeSet::new();
+    for line in section.lines() {
+        let trimmed = line.trim();
+        if !trimmed.starts_with('|') || !trimmed.ends_with('|') {
+            continue;
+        }
+        let cells = markdown_table_cells(trimmed);
+        if cells.len() < 2 || is_markdown_table_separator(&cells) {
+            continue;
+        }
+        for label in extract_backtick_values(cells[1]) {
+            labels.insert(label);
+        }
+    }
+    labels
+}
+
+fn markdown_table_cells(line: &str) -> Vec<&str> {
+    line.trim_matches('|').split('|').map(str::trim).collect()
+}
+
+fn is_markdown_table_separator(cells: &[&str]) -> bool {
+    cells.iter().all(|cell| {
+        cell.chars()
+            .all(|character| matches!(character, '-' | ':' | ' '))
+    })
+}
+
+fn extract_backtick_values(contents: &str) -> Vec<String> {
+    let mut values = Vec::new();
+    let mut remaining = contents;
+
+    while let Some(start) = remaining.find('`') {
+        let after_start = &remaining[start + 1..];
+        let Some(end) = after_start.find('`') else {
+            break;
+        };
+        values.push(after_start[..end].to_string());
+        remaining = &after_start[end + 1..];
+    }
+
+    values
 }
 
 fn extract_canonical_storage_sql_block(contents: &str, label: &str) -> Option<String> {

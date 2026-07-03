@@ -22,6 +22,17 @@
 - 런타임 위치 경계: [런타임 경계](runtime-boundaries.md)
 - 보안 보장 수준: [보안](security.md)
 
+<a id="surface-stability"></a>
+## 표면 안정성
+
+라벨 의미는 [문서 정책](../maintain/documentation-policy.md#surface-stability-labels)을 확인하세요.
+
+| 표면 | 안정성 | 비고 |
+|---|---|---|
+| 기준 SQLite DDL, canonical SQL 블록, 테이블 제약, 인덱스, 외래 키, 공개 기준 상태 시계인 `project_state.state_version` | `stable` | 현재 기준 프로필을 위한 구현 가능한 저장소 DDL 계약입니다. |
+| 물리 테이블 이름, 열 이름, 내부 ID, 생성된 host-observation 행, `_json` 표현 열 | `internal` | 저장소 배치를 구현 가능하게 하는 세부사항입니다. 다른 집중 담당 문서가 노출하지 않는 한 일반 사용자 대상 selector나 공개 API 인자가 아닙니다. |
+| 테이블, 기록 참조, 논리 열, 손상 범주를 식별하는 안전한 저장소 또는 손상 진단 | `diagnostic` | 진단은 원본 저장 JSON, 비밀값, SQL 텍스트, 민감한 절대 경로를 노출하면 안 됩니다. |
+
 ## 연결과 트랜잭션 요구사항
 
 SQLite 외래 키는 이 DDL 계약의 일부입니다. 이 데이터베이스들을 읽거나 쓰는 모든 연결은 아래 설정을 활성화해야 합니다.
