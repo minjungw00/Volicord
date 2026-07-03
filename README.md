@@ -74,6 +74,11 @@ PowerShell:
 volicord --version
 ```
 
+To preview the selected target, asset, install directory, binaries, and checksum
+plan before downloading or writing files, use `--dry-run` on POSIX or `-DryRun`
+in PowerShell. `--print-target` and `-PrintTarget` print only the release target
+identifier.
+
 `OWNER/REPO` is the GitHub repository that hosts the Volicord release assets for
 this checkout. The POSIX script detects supported Linux, WSL2, and macOS
 targets and downloads the target-named tarball. The PowerShell script installs

@@ -53,11 +53,21 @@ target-named tarball and checksum:
 VOLICORD_RELEASE_BASE_URL=https://example.invalid/releases/v0.1.0 sh ./scripts/install.sh
 ```
 
-The default install directory is `~/.local/bin`. Use `VOLICORD_INSTALL_DIR` to
-choose a different directory:
+The default install directory is `~/.local/bin`. Use `--install-dir PATH` for a
+single command, or `VOLICORD_INSTALL_DIR` for environment-driven automation:
 
 ```sh
-VOLICORD_REPO=OWNER/REPO VOLICORD_INSTALL_DIR=/usr/local/bin sh ./scripts/install.sh
+VOLICORD_REPO=OWNER/REPO sh ./scripts/install.sh --install-dir /usr/local/bin
+```
+
+To preview the detected target, release asset, checksum plan, install
+directory, and binary name without downloading or writing files, add
+`--dry-run`. Use `--print-target` when automation only needs the target
+identifier:
+
+```sh
+VOLICORD_REPO=OWNER/REPO sh ./scripts/install.sh --dry-run
+sh ./scripts/install.sh --print-target
 ```
 
 For native Windows x86_64, download or copy `scripts/install.ps1` from the same
@@ -86,6 +96,16 @@ user-local directory:
 
 ```powershell
 .\scripts\install.ps1 -Repo OWNER/REPO -InstallDir "$env:LOCALAPPDATA\Volicord\bin"
+```
+
+To preview the detected target, release asset, checksum plan, install
+directory, binary name, and requested `PATH` behavior without downloading,
+installing, or changing the user `PATH`, add `-DryRun`. Use `-PrintTarget` when
+automation only needs the target identifier:
+
+```powershell
+.\scripts\install.ps1 -Repo OWNER/REPO -DryRun
+.\scripts\install.ps1 -PrintTarget
 ```
 
 The Windows installer prints a current-session `PATH` command when the install

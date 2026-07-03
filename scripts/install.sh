@@ -29,9 +29,50 @@ sha256_file() {
     fi
 }
 
+usage() {
+    cat >&2 <<'EOF'
+usage: install.sh [--dry-run] [--print-target] [--install-dir PATH]
+
+Options:
+  --dry-run           Print the planned target, asset, install directory, and checksum plan without downloading or installing.
+  --print-target      Print only the detected release target identifier.
+  --install-dir PATH  Install to PATH instead of VOLICORD_INSTALL_DIR or ~/.local/bin.
+EOF
+}
+
+release_base_url_for_repo() {
+    version=${VOLICORD_VERSION:-latest}
+    case "$version" in
+        latest)
+            printf 'https://github.com/%s/releases/latest/download\n' "$VOLICORD_REPO"
+            ;;
+        *)
+            printf 'https://github.com/%s/releases/download/%s\n' "$VOLICORD_REPO" "$version"
+            ;;
+    esac
+}
+
+release_base_url_if_known() {
+    if [ -n "${VOLICORD_RELEASE_BASE_URL:-}" ]; then
+        printf '%s\n' "${VOLICORD_RELEASE_BASE_URL%/}"
+        return 0
+    fi
+
+    if [ -z "${VOLICORD_REPO:-}" ]; then
+        return 1
+    fi
+
+    case "$VOLICORD_REPO" in
+        */*) ;;
+        *) fail "VOLICORD_REPO must use OWNER/REPO form" ;;
+    esac
+
+    release_base_url_for_repo
+}
+
 detect_target() {
-    os=$(uname -s 2>/dev/null || printf unknown)
-    arch=$(uname -m 2>/dev/null || printf unknown)
+    os=$1
+    arch=$2
 
     case "$os" in
         Linux)
@@ -64,32 +105,19 @@ detect_target() {
 }
 
 release_base_url() {
-    if [ -n "${VOLICORD_RELEASE_BASE_URL:-}" ]; then
-        printf '%s\n' "${VOLICORD_RELEASE_BASE_URL%/}"
+    if release_base_url_if_known; then
         return
     fi
 
-    if [ -z "${VOLICORD_REPO:-}" ]; then
-        fail "set VOLICORD_REPO=OWNER/REPO or VOLICORD_RELEASE_BASE_URL before running this script"
-    fi
-
-    case "$VOLICORD_REPO" in
-        */*) ;;
-        *) fail "VOLICORD_REPO must use OWNER/REPO form" ;;
-    esac
-
-    version=${VOLICORD_VERSION:-latest}
-    case "$version" in
-        latest)
-            printf 'https://github.com/%s/releases/latest/download\n' "$VOLICORD_REPO"
-            ;;
-        *)
-            printf 'https://github.com/%s/releases/download/%s\n' "$VOLICORD_REPO" "$version"
-            ;;
-    esac
+    fail "set VOLICORD_REPO=OWNER/REPO or VOLICORD_RELEASE_BASE_URL before running this script"
 }
 
 install_dir() {
+    if [ -n "$install_dir_arg" ]; then
+        printf '%s\n' "$install_dir_arg"
+        return
+    fi
+
     if [ -n "${VOLICORD_INSTALL_DIR:-}" ]; then
         printf '%s\n' "$VOLICORD_INSTALL_DIR"
         return
@@ -102,10 +130,77 @@ install_dir() {
     printf '%s/.local/bin\n' "$HOME"
 }
 
-target=$(detect_target)
-base_url=$(release_base_url)
+print_checksum_plan() {
+    checksum_name=$1
+    if [ "${VOLICORD_REQUIRE_CHECKSUM:-0}" = "1" ]; then
+        printf 'checksum verification: required; would download %s and fail if it is unavailable, invalid, or mismatched\n' "$checksum_name"
+    else
+        printf 'checksum verification: would try %s; if unavailable, installation would warn and continue\n' "$checksum_name"
+    fi
+}
+
+dry_run=0
+print_target=0
+install_dir_arg=
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --dry-run)
+            dry_run=1
+            ;;
+        --print-target)
+            print_target=1
+            ;;
+        --install-dir)
+            shift
+            [ "$#" -gt 0 ] || fail "--install-dir requires a PATH"
+            install_dir_arg=$1
+            ;;
+        --install-dir=*)
+            install_dir_arg=${1#--install-dir=}
+            [ -n "$install_dir_arg" ] || fail "--install-dir requires a PATH"
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            fail "unknown option: $1"
+            ;;
+    esac
+    shift
+done
+
+os=$(uname -s 2>/dev/null || printf unknown)
+arch=$(uname -m 2>/dev/null || printf unknown)
+target=$(detect_target "$os" "$arch")
+if [ "$print_target" = "1" ]; then
+    printf '%s\n' "$target"
+    exit 0
+fi
+
 dest_dir=$(install_dir)
 archive_name="volicord-$target.tar.gz"
+
+if [ "$dry_run" = "1" ]; then
+    printf 'volicord install dry run\n'
+    printf 'detected platform: %s/%s\n' "$os" "$arch"
+    printf 'target: %s\n' "$target"
+    if base_url=$(release_base_url_if_known); then
+        archive_url="$base_url/$archive_name"
+        checksum_url="$archive_url.sha256"
+        printf 'release asset URL: %s\n' "$archive_url"
+        print_checksum_plan "$checksum_url"
+    else
+        printf 'release asset name: %s\n' "$archive_name"
+        print_checksum_plan "$archive_name.sha256"
+    fi
+    printf 'install directory: %s\n' "$dest_dir"
+    printf 'binary to install: volicord\n'
+    exit 0
+fi
+
+base_url=$(release_base_url)
 archive_url="$base_url/$archive_name"
 checksum_url="$archive_url.sha256"
 

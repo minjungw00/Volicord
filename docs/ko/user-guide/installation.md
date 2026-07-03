@@ -47,11 +47,21 @@ GitHub가 아닌 릴리스 mirror에서는 target 이름이 붙은 tarball과 ch
 VOLICORD_RELEASE_BASE_URL=https://example.invalid/releases/v0.1.0 sh ./scripts/install.sh
 ```
 
-기본 설치 디렉터리는 `~/.local/bin`입니다. 다른 디렉터리를 쓰려면
+기본 설치 디렉터리는 `~/.local/bin`입니다. 한 번 실행할 때만 바꾸려면
+`--install-dir PATH`를 사용하고, 환경 변수 기반 자동화에는
 `VOLICORD_INSTALL_DIR`을 사용합니다.
 
 ```sh
-VOLICORD_REPO=OWNER/REPO VOLICORD_INSTALL_DIR=/usr/local/bin sh ./scripts/install.sh
+VOLICORD_REPO=OWNER/REPO sh ./scripts/install.sh --install-dir /usr/local/bin
+```
+
+파일을 내려받거나 쓰지 않고 감지된 target, 릴리스 asset, checksum 계획, 설치
+디렉터리, 바이너리 이름을 미리 보려면 `--dry-run`을 추가합니다. 자동화가 target
+식별자만 필요할 때는 `--print-target`을 사용합니다.
+
+```sh
+VOLICORD_REPO=OWNER/REPO sh ./scripts/install.sh --dry-run
+sh ./scripts/install.sh --print-target
 ```
 
 Native Windows x86_64에서는 Volicord 릴리스 자산을 게시하는 같은 저장소에서
@@ -78,6 +88,16 @@ GitHub가 아닌 릴리스 mirror에서는 아래처럼 실행합니다.
 
 ```powershell
 .\scripts\install.ps1 -Repo OWNER/REPO -InstallDir "$env:LOCALAPPDATA\Volicord\bin"
+```
+
+파일을 내려받거나 설치하거나 사용자 `PATH`를 바꾸지 않고 감지된 target, 릴리스
+asset, checksum 계획, 설치 디렉터리, 바이너리 이름, 요청된 `PATH` 동작을 미리 보려면
+`-DryRun`을 추가합니다. 자동화가 target 식별자만 필요할 때는 `-PrintTarget`을
+사용합니다.
+
+```powershell
+.\scripts\install.ps1 -Repo OWNER/REPO -DryRun
+.\scripts\install.ps1 -PrintTarget
 ```
 
 설치 디렉터리가 아직 `PATH`에 없으면 Windows 설치 스크립트는 현재 세션용 `PATH`

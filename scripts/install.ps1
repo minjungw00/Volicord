@@ -4,6 +4,8 @@ param(
     [string]$Version = $env:VOLICORD_VERSION,
     [string]$ReleaseBaseUrl = $env:VOLICORD_RELEASE_BASE_URL,
     [string]$InstallDir = $env:VOLICORD_INSTALL_DIR,
+    [switch]$DryRun,
+    [switch]$PrintTarget,
     [switch]$RequireChecksum,
     [switch]$UpdateUserPath
 )
@@ -34,7 +36,7 @@ function Download-File {
     }
 }
 
-function Get-ArchitectureTarget {
+function Get-WindowsArchitecture {
     if ($env:OS -ne "Windows_NT") {
         Fail "native Windows install requires PowerShell on Windows; use scripts/install.sh in Linux, WSL2, or macOS"
     }
@@ -45,21 +47,27 @@ function Get-ArchitectureTarget {
         $arch = $env:PROCESSOR_ARCHITECTURE
     }
 
-    switch -Regex ($arch.ToLowerInvariant()) {
+    return $arch
+}
+
+function Get-ArchitectureTarget {
+    param([string]$Architecture)
+
+    switch -Regex ($Architecture.ToLowerInvariant()) {
         "^(x64|amd64)$" { return "x86_64-pc-windows-msvc" }
         default {
-            Fail "unsupported Windows CPU architecture: $arch; this installer expects x86_64-pc-windows-msvc"
+            Fail "unsupported Windows CPU architecture: $Architecture; this installer expects x86_64-pc-windows-msvc"
         }
     }
 }
 
-function Get-ReleaseBaseUrl {
+function Get-OptionalReleaseBaseUrl {
     if (-not [string]::IsNullOrWhiteSpace($ReleaseBaseUrl)) {
         return $ReleaseBaseUrl.TrimEnd("/")
     }
 
     if ([string]::IsNullOrWhiteSpace($Repo)) {
-        Fail "set VOLICORD_REPO=OWNER/REPO, pass -Repo OWNER/REPO, or set VOLICORD_RELEASE_BASE_URL before running this script"
+        return $null
     }
     if ($Repo -notmatch "^[^/]+/[^/]+$") {
         Fail "VOLICORD_REPO must use OWNER/REPO form"
@@ -74,6 +82,14 @@ function Get-ReleaseBaseUrl {
         return "https://github.com/$Repo/releases/latest/download"
     }
     return "https://github.com/$Repo/releases/download/$selectedVersion"
+}
+
+function Get-ReleaseBaseUrl {
+    $resolvedBaseUrl = Get-OptionalReleaseBaseUrl
+    if ([string]::IsNullOrWhiteSpace($resolvedBaseUrl)) {
+        Fail "set VOLICORD_REPO=OWNER/REPO, pass -Repo OWNER/REPO, or set VOLICORD_RELEASE_BASE_URL before running this script"
+    }
+    return $resolvedBaseUrl
 }
 
 function Get-InstallDirectory {
@@ -118,10 +134,45 @@ if ($env:VOLICORD_UPDATE_USER_PATH -eq "1") {
     $UpdateUserPath = $true
 }
 
-$target = Get-ArchitectureTarget
-$baseUrl = Get-ReleaseBaseUrl
+$architecture = Get-WindowsArchitecture
+$target = Get-ArchitectureTarget -Architecture $architecture
+if ($PrintTarget) {
+    Write-Output $target
+    return
+}
+
 $destDir = Get-InstallDirectory
 $archiveName = "volicord-$target.zip"
+
+if ($DryRun) {
+    Write-Host "volicord install dry run"
+    Write-Host "detected platform: Windows_NT/$architecture"
+    Write-Host "target: $target"
+    $resolvedBaseUrl = Get-OptionalReleaseBaseUrl
+    if (-not [string]::IsNullOrWhiteSpace($resolvedBaseUrl)) {
+        $archiveUrl = "$resolvedBaseUrl/$archiveName"
+        $checksumName = "$archiveUrl.sha256"
+        Write-Host "release asset URL: $archiveUrl"
+    } else {
+        $checksumName = "$archiveName.sha256"
+        Write-Host "release asset name: $archiveName"
+    }
+    if ($RequireChecksum) {
+        Write-Host "checksum verification: required; would download $checksumName and fail if it is unavailable, invalid, or mismatched"
+    } else {
+        Write-Host "checksum verification: would try $checksumName; if unavailable, installation would warn and continue"
+    }
+    Write-Host "install directory: $destDir"
+    Write-Host "binary to install: volicord.exe"
+    if ($UpdateUserPath) {
+        Write-Host "PATH update: would update the user PATH if the install directory is missing"
+    } else {
+        Write-Host "PATH update: no persistent PATH update requested"
+    }
+    return
+}
+
+$baseUrl = Get-ReleaseBaseUrl
 $archiveUrl = "$baseUrl/$archiveName"
 $checksumUrl = "$archiveUrl.sha256"
 

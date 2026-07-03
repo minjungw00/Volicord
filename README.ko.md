@@ -71,6 +71,10 @@ Native Windows x86_64에서는 `scripts/install.ps1`을 내려받거나 복사�
 volicord --version
 ```
 
+파일을 내려받거나 쓰기 전에 선택될 target, asset, 설치 디렉터리, 바이너리,
+checksum 계획을 미리 보려면 POSIX에서는 `--dry-run`, PowerShell에서는 `-DryRun`을
+사용합니다. `--print-target`과 `-PrintTarget`은 릴리스 target 식별자만 출력합니다.
+
 `OWNER/REPO`는 이 체크아웃의 Volicord 릴리스 자산을 호스팅하는 GitHub 저장소입니다.
 POSIX 스크립트는 지원되는 Linux, WSL2, macOS target을 감지하고 target 이름이 붙은
 tarball을 내려받습니다. PowerShell 스크립트는 기본적으로 사용자 로컬 디렉터리 아래에

@@ -45,6 +45,67 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Validate POSIX installer
+        if: runner.os != 'Windows'
+        env:
+          VOLICORD_REPO: example/volicord
+        run: |
+          set -eu
+          sh -n scripts/install.sh
+          target="$(sh scripts/install.sh --print-target)"
+          test -n "$target"
+          dry_install_dir="$RUNNER_TEMP/volicord-install-dry-run-${{ matrix.target }}-$$"
+          dry_output="$RUNNER_TEMP/volicord-install-dry-run.txt"
+          sh scripts/install.sh --dry-run --install-dir "$dry_install_dir" > "$dry_output"
+          grep -F "target: $target" "$dry_output"
+          grep -F "release asset URL: https://github.com/example/volicord/releases/latest/download/volicord-$target.tar.gz" "$dry_output"
+          grep -F "install directory: $dry_install_dir" "$dry_output"
+          grep -F "binary to install: volicord" "$dry_output"
+          grep -F "checksum verification: would try https://github.com/example/volicord/releases/latest/download/volicord-$target.tar.gz.sha256; if unavailable, installation would warn and continue" "$dry_output"
+          test ! -e "$dry_install_dir"
+
+      - name: Validate PowerShell installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          VOLICORD_REPO: example/volicord
+        run: |
+          $scriptPath = (Resolve-Path -LiteralPath "scripts/install.ps1").Path
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile($scriptPath, [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -ne 0) {
+              throw ($errors | Out-String)
+          }
+
+          $target = (& ./scripts/install.ps1 -PrintTarget).Trim()
+          if ($target -ne "x86_64-pc-windows-msvc") {
+              throw "unexpected installer target: $target"
+          }
+
+          $dryInstallDir = Join-Path $env:RUNNER_TEMP ("volicord-install-dry-run-" + [System.Guid]::NewGuid().ToString("N"))
+          $dryOutput = Join-Path $env:RUNNER_TEMP "volicord-install-dry-run.txt"
+          & ./scripts/install.ps1 -DryRun -InstallDir $dryInstallDir *> $dryOutput
+          $dry = Get-Content -LiteralPath $dryOutput -Raw
+          if (-not $dry.Contains("target: $target")) {
+              throw "dry-run output did not include target"
+          }
+          if (-not $dry.Contains("release asset URL: https://github.com/example/volicord/releases/latest/download/volicord-$target.zip")) {
+              throw "dry-run output did not include release asset URL"
+          }
+          if (-not $dry.Contains("install directory: $dryInstallDir")) {
+              throw "dry-run output did not include install directory"
+          }
+          if (-not $dry.Contains("binary to install: volicord.exe")) {
+              throw "dry-run output did not include installed binary"
+          }
+          if (-not $dry.Contains("checksum verification: would try https://github.com/example/volicord/releases/latest/download/volicord-$target.zip.sha256; if unavailable, installation would warn and continue")) {
+              throw "dry-run output did not include checksum plan"
+          }
+          if (Test-Path -LiteralPath $dryInstallDir) {
+              throw "dry-run created install directory: $dryInstallDir"
+          }
+
       - name: Install Rust
         if: runner.os != 'Windows'
         run: |
