@@ -43,8 +43,8 @@ use crate::host_integration::{
     contracts::{
         contract_for, hook_event_for_phase, validate_contract_config, HostContractConfigKind,
     },
-    export_file_name, format_supported_connection_intents,
-    generic::{GenericAdapter, GenericExportRequest},
+    format_supported_connection_intents,
+    generic::{GenericAdapter, USER_MANAGED_CONFIGURATION_GUIDANCE},
     host_capabilities, supports_connection_intent,
     verification::{Verification, VerificationStatus},
     ConnectionIntent, HostAdapter, HostCapabilities, HostConfigError, HostIntegrationFileKind,
@@ -305,9 +305,6 @@ pub fn run_init_command(
             installation_profile: installation_context,
             mode,
             expected_fingerprint,
-            export_target: None,
-            export_dir: None,
-            current_dir,
         },
         process,
     )?;
@@ -394,9 +391,6 @@ pub fn run_init_command(
             installation_profile: installation_profile_context(&runtime_home, &profile),
             mode,
             expected_fingerprint,
-            export_target: None,
-            export_dir: None,
-            current_dir,
         },
         process,
     )?;
@@ -586,9 +580,6 @@ pub fn run_connect_command(
             ),
             mode,
             expected_fingerprint,
-            export_target: None,
-            export_dir: None,
-            current_dir,
         },
         process,
     )?;
@@ -655,9 +646,6 @@ pub fn run_connect_command(
             ),
             mode,
             expected_fingerprint,
-            export_target: None,
-            export_dir: None,
-            current_dir,
         },
         process,
     )?;
@@ -1053,7 +1041,7 @@ fn host_scope_for_intent(
         (HostKind::ClaudeCode, ConnectionIntent::Shared) => Ok(HostScope::Project),
         (HostKind::ClaudeCode, ConnectionIntent::Global) => Ok(HostScope::User),
         (HostKind::Generic, _) => Err(ConnectionCommandError::usage(
-            "generic MCP export is not a host connection; use the export command",
+            USER_MANAGED_CONFIGURATION_GUIDANCE,
         )),
         (HostKind::Codex, ConnectionIntent::Global) => unreachable!("validated above"),
     }
@@ -1062,9 +1050,7 @@ fn host_scope_for_intent(
 fn unsupported_connection_intent_message(host_kind: HostKind, intent: ConnectionIntent) -> String {
     let supported = format_supported_connection_intents(host_kind);
     if host_kind == HostKind::Generic {
-        return format!(
-            "UNSUPPORTED_HOST: generic MCP export is not a stable host connection command; supported connection intents: {supported}"
-        );
+        return format!("UNSUPPORTED_HOST: {USER_MANAGED_CONFIGURATION_GUIDANCE}; supported connection intents: {supported}");
     }
     format!(
         "UNSUPPORTED_HOST_INTENT: {} does not support {}; supported connection intents: {}",
@@ -1616,7 +1602,7 @@ fn connection_target_hint(
         }
         (HostKind::ClaudeCode, HostScope::User) => Ok("claude user".to_owned()),
         (HostKind::Generic, _) => Err(ConnectionCommandError::usage(
-            "generic MCP export is not a host connection; use the export command",
+            USER_MANAGED_CONFIGURATION_GUIDANCE,
         )),
         _ => Err(ConnectionCommandError::usage(
             "host and scope must match the supported Agent Connection matrix",
@@ -1634,9 +1620,6 @@ struct BuildHostPlanRequest<'a> {
     installation_profile: InstallationProfile<'a>,
     mode: &'a str,
     expected_fingerprint: Option<&'a str>,
-    export_target: Option<&'a Path>,
-    export_dir: Option<&'a Path>,
-    current_dir: &'a Path,
 }
 
 fn build_host_plan(
@@ -1666,27 +1649,9 @@ fn build_host_plan(
             let mut adapter = ClaudeCodeAdapter::new(ProductionCommandRunner);
             adapter.plan(plan_request).map_err(Into::into)
         }
-        HostKind::Generic => {
-            let adapter = GenericAdapter;
-            let project_id = request.project_id.ok_or_else(|| {
-                ConnectionCommandError::runtime("generic MCP export requires a selected project id")
-            })?;
-            let output_dir = request.export_dir.unwrap_or(request.current_dir);
-            let target_path = request
-                .export_target
-                .map(Path::to_path_buf)
-                .unwrap_or_else(|| output_dir.join(export_file_name(request.connection_id)));
-            adapter
-                .plan_export(GenericExportRequest {
-                    connection_id: request.connection_id,
-                    project_id,
-                    installation_profile: request.installation_profile,
-                    mode: request.mode,
-                    target_path: &target_path,
-                    expected_fingerprint: request.expected_fingerprint,
-                })
-                .map_err(Into::into)
-        }
+        HostKind::Generic => Err(ConnectionCommandError::usage(
+            USER_MANAGED_CONFIGURATION_GUIDANCE,
+        )),
     }
 }
 
@@ -1882,7 +1847,7 @@ fn stored_or_default_user_actions(
         )],
         (HostKind::Generic, HostScope::Export) => vec![UserAction::new(
             UserActionKind::HostTrustRequired,
-            "generic export must be loaded, trusted, or approved in the target host by the user",
+            "Configure the external MCP host manually after a supported Agent Connection exists; Volicord does not write generic host configuration",
         )],
         _ => Vec::new(),
     }

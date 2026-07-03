@@ -484,16 +484,6 @@ pub fn default_server_name(connection_id: &str) -> String {
     DEFAULT_SERVER_NAME.to_owned()
 }
 
-pub fn export_file_name(connection_id: &str) -> String {
-    let sanitized = sanitize_identifier(connection_id);
-    let stem = if sanitized.is_empty() {
-        short_hash(connection_id)
-    } else {
-        sanitized
-    };
-    format!("volicord-{stem}.mcp.json")
-}
-
 pub fn validated_server_name(
     connection_id: &str,
     explicit: Option<&str>,
@@ -565,41 +555,6 @@ fn digest_json(value: &Value) -> String {
     let digest = Sha256::digest(bytes);
     let mut text = String::with_capacity(64);
     for byte in digest {
-        text.push_str(&format!("{byte:02x}"));
-    }
-    text
-}
-
-fn sanitize_identifier(input: &str) -> String {
-    let mut out = String::new();
-    let mut last_dash = false;
-    for ch in input.chars().flat_map(char::to_lowercase) {
-        let next = if ch.is_ascii_alphanumeric() || ch == '_' {
-            Some(ch)
-        } else if ch == '-' || ch == '.' || ch == '/' || ch == ':' {
-            Some('-')
-        } else {
-            None
-        };
-        if let Some(ch) = next {
-            if ch == '-' {
-                if last_dash {
-                    continue;
-                }
-                last_dash = true;
-            } else {
-                last_dash = false;
-            }
-            out.push(ch);
-        }
-    }
-    out.trim_matches('-').to_owned()
-}
-
-fn short_hash(input: &str) -> String {
-    let digest = Sha256::digest(input.as_bytes());
-    let mut text = String::new();
-    for byte in digest.iter().take(6) {
         text.push_str(&format!("{byte:02x}"));
     }
     text

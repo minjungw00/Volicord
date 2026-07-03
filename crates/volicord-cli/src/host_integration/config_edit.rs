@@ -185,16 +185,6 @@ pub(crate) fn write_if_fresh(
     })
 }
 
-pub(crate) fn remove_file_if_fresh(
-    target: &Path,
-    snapshot: &FileSnapshot,
-) -> Result<(), HostConfigError> {
-    compare_snapshot(target, snapshot)?;
-    fs::remove_file(target).map_err(|error| {
-        HostConfigError::Io(format!("failed to remove {}: {error}", target.display()))
-    })
-}
-
 fn compare_snapshot(target: &Path, expected: &FileSnapshot) -> Result<(), HostConfigError> {
     let current = read_snapshot(target)?;
     if &current == expected {

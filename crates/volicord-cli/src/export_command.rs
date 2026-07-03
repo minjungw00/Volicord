@@ -802,7 +802,7 @@ mod tests {
         assert!(!help.contains("--read-only"));
 
         let error = run_export_command(&args(&["mcp-config"]), |_| None, current_dir)
-            .expect_err("generic MCP config export should not dispatch");
+            .expect_err("mcp-config should not dispatch");
 
         assert_eq!(
             error,

@@ -237,6 +237,37 @@ fn export_mcp_config_is_not_public_command() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
+fn generic_host_guidance_does_not_suggest_export_command() -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-generic-host-guidance")?;
+    initialize_runtime_home(runtime_home.path(), "runtime_home_generic_guidance", "{}")?;
+    write_test_installation_profile(runtime_home.path())?;
+    let repo_root = create_git_repo(&runtime_home, "product-repo")?;
+
+    let output = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connection",
+            "add",
+            "generic",
+            "--repo",
+            path_text(&repo_root).as_str(),
+        ],
+        &[],
+    )?;
+    assert_eq!(output.status.code(), Some(2));
+    assert!(stdout(&output).is_empty());
+
+    let diagnostic = stderr(&output);
+    assert!(diagnostic.contains("generic MCP host configuration is user-managed"));
+    assert!(diagnostic.contains("supported managed connection hosts are `codex` and `claude-code`"));
+    assert!(diagnostic.contains("after a supported Agent Connection exists"));
+    assert!(!diagnostic.contains(&["volicord", "export", "mcp-config"].join(" ")));
+    assert!(!diagnostic.contains(&["use", "the", "export", "command"].join(" ")));
+    assert!(!diagnostic.contains(&["generic", "export"].join(" ")));
+    Ok(())
+}
+
+#[test]
 fn doctor_without_setup_reports_action_required() -> Result<(), Box<dyn Error>> {
     let runtime_home = TempRuntimeHome::new("cli-bin-doctor-missing")?;
     assert_eq!(fs::read_dir(runtime_home.path())?.count(), 0);

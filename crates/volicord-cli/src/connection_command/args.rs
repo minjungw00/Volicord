@@ -8,7 +8,7 @@ use volicord_store::agent_connections::{
 };
 use volicord_types::IntegrationProfile;
 
-use crate::host_integration::HostKind;
+use crate::host_integration::{generic::USER_MANAGED_CONFIGURATION_GUIDANCE, HostKind};
 
 use super::ConnectionCommandError;
 
@@ -355,6 +355,9 @@ pub(super) fn parse_public_host_kind(value: &str) -> Result<HostKind, Connection
     match value {
         HOST_KIND_CODEX => Ok(HostKind::Codex),
         "claude-code" | HOST_KIND_CLAUDE_CODE => Ok(HostKind::ClaudeCode),
+        "generic" => Err(ConnectionCommandError::usage(format!(
+            "UNSUPPORTED_HOST: {USER_MANAGED_CONFIGURATION_GUIDANCE}"
+        ))),
         other => Err(ConnectionCommandError::usage(format!(
             "UNSUPPORTED_HOST: unknown host: {other}; choose `codex` or `claude-code`"
         ))),
