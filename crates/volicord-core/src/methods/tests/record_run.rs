@@ -1,0 +1,2837 @@
+use super::*;
+
+#[test]
+fn record_run_without_product_write_commits_run_only() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_no_write")?;
+    let before = harness.counts()?;
+    let before_revision = task_revision(&harness, &task_id)?;
+
+    let response = harness.service.record_run(
+        record_run_request(
+            "req_run_no_write",
+            "idem_run_no_write",
+            false,
+            Some(2),
+            &task_id,
+            &change_unit_id,
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let after = harness.counts()?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "result");
+    assert_eq!(response.response_value["base"]["state_version"], 3);
+    assert_eq!(
+        response.response_value["run_summary"]["observed_changes"]["product_file_write_observed"],
+        false
+    );
+    let run_id = run_id_from_record_run(&response.response_value);
+    assert_eq!(run_scope_revision(&harness, &run_id)?, 1);
+    assert_eq!(after.state_version, before.state_version + 1);
+    assert_eq!(after.runs, before.runs + 1);
+    assert_eq!(after.write_tickets, before.write_tickets);
+    assert_eq!(after.artifacts, before.artifacts);
+    assert_eq!(after.task_events, before.task_events + 1);
+    assert_eq!(after.tool_invocations, before.tool_invocations + 1);
+    let after_revision = task_revision(&harness, &task_id)?;
+    assert_eq!(
+        after_revision.close_basis_revision,
+        before_revision.close_basis_revision + 1
+    );
+    assert!(after_revision.current_close_basis.is_none());
+    assert!(response.response_value["current_close_basis"].is_null());
+    Ok(())
+}
+
+#[test]
+fn record_run_non_null_close_assessment_creates_current_basis() -> Result<(), Box<dyn Error>> {
+    let mut harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_basis")?;
+    let generator = CountingDurableIdGenerator::new(["run_basis", "event_basis"]);
+    let clock = ManualClock::at("2026-06-18T12:00:00Z");
+    harness.use_generator_and_clock(generator, clock);
+
+    let mut request = record_run_request(
+        "req_run_basis",
+        "idem_run_basis",
+        false,
+        Some(2),
+        &task_id,
+        &change_unit_id,
+    );
+    request.close_assessment = Some(close_assessment_with_risks(
+        "Recorded close basis.",
+        Vec::new(),
+    ))
+    .into();
+    let response = harness
+        .service
+        .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+    let revision = task_revision(&harness, &task_id)?;
+    let basis = revision
+        .current_close_basis
+        .expect("current close basis should be stored");
+
+    assert_eq!(response.response_value["base"]["state_version"], 3);
+    assert_eq!(basis.task_id.as_str(), task_id);
+    assert_eq!(basis.change_unit_id.as_str(), change_unit_id);
+    assert_eq!(basis.scope_revision, 1);
+    assert_eq!(basis.close_basis_revision, revision.close_basis_revision);
+    assert_eq!(basis.result_summary, "Recorded close basis.");
+    assert!(basis.residual_risks.is_empty());
+    assert_eq!(basis.updated_at.to_string(), "2026-06-18T12:00:00Z");
+    assert_eq!(
+        response.response_value["current_close_basis"]["residual_risks"],
+        json!([])
+    );
+    assert!(
+        response.response_value["current_close_basis"]["result_refs"]
+            .as_array()
+            .expect("result_refs should be present")
+            .iter()
+            .filter_map(|record_ref| record_ref["record_kind"].as_str())
+            .any(|kind| kind == "run")
+    );
+    Ok(())
+}
+
+#[test]
+fn current_compatible_run_ref_can_enter_close_basis() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "current_run_ref")?;
+
+    let mut first = record_run_request(
+        "req_current_run_ref_first",
+        "idem_current_run_ref_first",
+        false,
+        Some(2),
+        &task_id,
+        &change_unit_id,
+    );
+    first.run_id = Some(RunId::new("run_current_ref_first")).into();
+    let first_response = harness
+        .service
+        .record_run(first, invocation(OperationCategory::AgentWorkflow))?;
+    assert_eq!(first_response.response_value["base"]["state_version"], 3);
+
+    let mut second = record_run_request(
+        "req_current_run_ref_second",
+        "idem_current_run_ref_second",
+        false,
+        Some(3),
+        &task_id,
+        &change_unit_id,
+    );
+    second.run_id = Some(RunId::new("run_current_ref_second")).into();
+    second.close_assessment = Some(volicord_types::CloseAssessmentInput {
+        result_summary: "Current prior Run can support this close basis.".to_owned(),
+        result_refs: vec![test_state_record_ref(
+            StateRecordKind::Run,
+            "run_current_ref_first",
+            PROJECT_ID,
+            &task_id,
+            Some(999),
+        )],
+        residual_risks: Vec::new(),
+        sensitive_categories: Vec::new(),
+        recovery_constraints: Vec::new(),
+    })
+    .into();
+
+    let response = harness
+        .service
+        .record_run(second, invocation(OperationCategory::AgentWorkflow))?;
+    let basis = task_revision(&harness, &task_id)?
+        .current_close_basis
+        .expect("current basis should be stored");
+
+    assert_eq!(response.response_value["base"]["response_kind"], "result");
+    assert!(basis.result_refs.iter().any(|record_ref| {
+        record_ref.record_kind == StateRecordKind::Run
+            && record_ref.record_id.as_str() == "run_current_ref_first"
+            && record_ref.state_version.as_ref() == Some(&4)
+    }));
+    assert!(basis.result_refs.iter().any(|record_ref| {
+        record_ref.record_kind == StateRecordKind::Run
+            && record_ref.record_id.as_str() == "run_current_ref_second"
+            && record_ref.state_version.as_ref() == Some(&4)
+    }));
+    Ok(())
+}
+
+#[test]
+fn record_run_rejects_superseded_change_unit_run_ref_without_effect() -> Result<(), Box<dyn Error>>
+{
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "old_unit_run_ref")?;
+
+    let mut old = record_run_request(
+        "req_old_unit_run",
+        "idem_old_unit_run",
+        false,
+        Some(2),
+        &task_id,
+        &change_unit_id,
+    );
+    old.run_id = Some(RunId::new("run_old_unit")).into();
+    harness
+        .service
+        .record_run(old, invocation(OperationCategory::AgentWorkflow))?;
+
+    let replace = harness.service.update_scope(
+        update_scope_request(
+            "req_old_unit_replace",
+            "idem_old_unit_replace",
+            false,
+            Some(3),
+            &task_id,
+            ChangeUnitOperation::ReplaceCurrent,
+            "Replacement current scope.",
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let replacement_change_unit_id = response_record_id(&replace.response_value, "change_unit_ref");
+    let before = harness.counts()?;
+
+    let mut request = record_run_request(
+        "req_old_unit_rejected",
+        "idem_old_unit_rejected",
+        false,
+        Some(4),
+        &task_id,
+        &replacement_change_unit_id,
+    );
+    request.close_assessment = Some(volicord_types::CloseAssessmentInput {
+        result_summary: "Old unit Run must not become current.".to_owned(),
+        result_refs: vec![test_state_record_ref(
+            StateRecordKind::Run,
+            "run_old_unit",
+            PROJECT_ID,
+            &task_id,
+            Some(3),
+        )],
+        residual_risks: Vec::new(),
+        sensitive_categories: Vec::new(),
+        recovery_constraints: Vec::new(),
+    })
+    .into();
+
+    let response = harness
+        .service
+        .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["code"],
+        "VALIDATION_FAILED"
+    );
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn record_run_scope_revision_is_required_by_storage_constraint() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_scope_required")?;
+
+    let mut request = record_run_request(
+        "req_scope_required_run",
+        "idem_scope_required_run",
+        false,
+        Some(2),
+        &task_id,
+        &change_unit_id,
+    );
+    request.run_id = Some(RunId::new("run_scope_required")).into();
+    harness
+        .service
+        .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+    let before = harness.counts()?;
+
+    let error = harness
+        .conn()?
+        .execute(
+            "UPDATE runs
+                SET scope_revision = NULL
+              WHERE project_id = ?1
+                AND run_id = 'run_scope_required'",
+            rusqlite::params![PROJECT_ID],
+        )
+        .expect_err("runs.scope_revision is required");
+    assert_constraint_error(error);
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn record_run_rejects_baseline_incompatible_run_ref_without_effect() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "baseline_run_ref")?;
+
+    let mut baseline = record_run_request(
+        "req_baseline_run",
+        "idem_baseline_run",
+        false,
+        Some(2),
+        &task_id,
+        &change_unit_id,
+    );
+    baseline.run_id = Some(RunId::new("run_baseline_mismatch")).into();
+    harness
+        .service
+        .record_run(baseline, invocation(OperationCategory::AgentWorkflow))?;
+    set_run_observed_baseline(&harness, "run_baseline_mismatch", "baseline_other")?;
+    let before = harness.counts()?;
+
+    let mut request = record_run_request(
+        "req_baseline_ref_rejected",
+        "idem_baseline_ref_rejected",
+        false,
+        Some(3),
+        &task_id,
+        &change_unit_id,
+    );
+    request.close_assessment = Some(volicord_types::CloseAssessmentInput {
+        result_summary: "Baseline-mismatched Run must not become current.".to_owned(),
+        result_refs: vec![test_state_record_ref(
+            StateRecordKind::Run,
+            "run_baseline_mismatch",
+            PROJECT_ID,
+            &task_id,
+            Some(3),
+        )],
+        residual_risks: Vec::new(),
+        sensitive_categories: Vec::new(),
+        recovery_constraints: Vec::new(),
+    })
+    .into();
+
+    let response = harness
+        .service
+        .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["code"],
+        "VALIDATION_FAILED"
+    );
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn historical_verified_artifact_reuse_requires_new_current_run() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "artifact_reuse")?;
+    let (artifact_state_version, artifact_ref) =
+        promote_artifact_for_record_run(&harness, &task_id, &change_unit_id, 2, "artifact_reuse")?;
+    let old_run_id = latest_run_id(&harness, &task_id)?;
+
+    let replace = harness.service.update_scope(
+        update_scope_request(
+            "req_artifact_reuse_replace",
+            "idem_artifact_reuse_replace",
+            false,
+            Some(artifact_state_version),
+            &task_id,
+            ChangeUnitOperation::ReplaceCurrent,
+            "Replacement scope for artifact reuse.",
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let replacement_change_unit_id = response_record_id(&replace.response_value, "change_unit_ref");
+
+    let mut direct_old_run = record_run_request(
+        "req_artifact_reuse_old_run",
+        "idem_artifact_reuse_old_run",
+        false,
+        Some(artifact_state_version + 1),
+        &task_id,
+        &replacement_change_unit_id,
+    );
+    direct_old_run.close_assessment = Some(volicord_types::CloseAssessmentInput {
+        result_summary: "Old Run must not be reused directly.".to_owned(),
+        result_refs: vec![test_state_record_ref(
+            StateRecordKind::Run,
+            &old_run_id,
+            PROJECT_ID,
+            &task_id,
+            Some(artifact_state_version),
+        )],
+        residual_risks: Vec::new(),
+        sensitive_categories: Vec::new(),
+        recovery_constraints: Vec::new(),
+    })
+    .into();
+    let before_reject = harness.counts()?;
+    let rejected = harness
+        .service
+        .record_run(direct_old_run, invocation(OperationCategory::AgentWorkflow))?;
+    assert_eq!(rejected.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(harness.counts()?, before_reject);
+
+    let mut current_reuse = record_run_request(
+        "req_artifact_reuse_current",
+        "idem_artifact_reuse_current",
+        false,
+        Some(artifact_state_version + 1),
+        &task_id,
+        &replacement_change_unit_id,
+    );
+    current_reuse.run_id = Some(RunId::new("run_artifact_reuse_current")).into();
+    current_reuse.artifact_inputs = vec![existing_artifact_input(
+        "artifact_input_reuse_current",
+        artifact_ref.clone(),
+    )];
+    current_reuse.evidence_updates = vec![supported_evidence_update(
+        "Historical verified artifact reused by a current Run.",
+    )];
+    current_reuse.close_assessment = Some(volicord_types::CloseAssessmentInput {
+        result_summary: "Artifact reuse is recorded by a current Run.".to_owned(),
+        result_refs: vec![test_state_record_ref(
+            StateRecordKind::Artifact,
+            artifact_ref.artifact_id.as_str(),
+            PROJECT_ID,
+            &task_id,
+            Some(artifact_state_version),
+        )],
+        residual_risks: Vec::new(),
+        sensitive_categories: Vec::new(),
+        recovery_constraints: Vec::new(),
+    })
+    .into();
+
+    let response = harness
+        .service
+        .record_run(current_reuse, invocation(OperationCategory::AgentWorkflow))?;
+    let basis = task_revision(&harness, &task_id)?
+        .current_close_basis
+        .expect("current basis should be stored");
+
+    assert_eq!(response.response_value["base"]["response_kind"], "result");
+    assert_eq!(
+        run_scope_revision(&harness, "run_artifact_reuse_current")?,
+        2
+    );
+    assert!(basis.result_refs.iter().any(|record_ref| {
+        record_ref.record_kind == StateRecordKind::Run
+            && record_ref.record_id.as_str() == "run_artifact_reuse_current"
+    }));
+    assert!(basis.result_refs.iter().all(|record_ref| {
+        record_ref.record_kind != StateRecordKind::Run
+            || record_ref.record_id.as_str() != old_run_id
+    }));
+    Ok(())
+}
+
+#[test]
+fn record_run_state_includes_current_evidence_and_close_state() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_state_projection")?;
+    let mut request = record_run_request(
+        "req_run_state_projection",
+        "idem_run_state_projection",
+        false,
+        Some(2),
+        &task_id,
+        &change_unit_id,
+    );
+    request.evidence_updates = vec![supported_evidence_update("Close claim supported.")];
+    request.close_assessment = Some(volicord_types::CloseAssessmentInput {
+        result_summary: "Close claim supported.".to_owned(),
+        result_refs: Vec::new(),
+        residual_risks: Vec::new(),
+        sensitive_categories: Vec::new(),
+        recovery_constraints: Vec::new(),
+    })
+    .into();
+
+    let response = harness
+        .service
+        .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+
+    assert_eq!(
+        response.response_value["evidence_summary"]["status"],
+        "sufficient"
+    );
+    assert_eq!(
+        response.response_value["state"]["evidence_summary"],
+        response.response_value["evidence_summary"]
+    );
+    assert_eq!(response.response_value["state"]["close_state"], "blocked");
+    assert_close_blocker(
+        &response.response_value["state"],
+        "missing_final_acceptance",
+    );
+    assert!(response.response_value["state"]["close_blockers"]
+        .as_array()
+        .is_some_and(|blockers| !blockers.is_empty()));
+    Ok(())
+}
+
+#[test]
+fn record_run_generates_opaque_residual_risk_ids_on_commit() -> Result<(), Box<dyn Error>> {
+    let mut harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_risks")?;
+    let generator = CountingDurableIdGenerator::new(["risk_alpha", "risk_beta", "event_risks"]);
+    let clock = ManualClock::at("2026-06-18T12:30:00Z");
+    harness.use_generator_and_clock(generator.clone(), clock);
+
+    let mut request = record_run_request(
+        "req_run_risks",
+        "idem_run_risks",
+        false,
+        Some(2),
+        &task_id,
+        &change_unit_id,
+    );
+    request.run_id = Some(RunId::new("run_risks_supplied")).into();
+    request.close_assessment = Some(close_assessment_with_risks(
+        "Recorded close basis with risks.",
+        vec![
+            residual_risk_input("First residual risk."),
+            residual_risk_input("Second residual risk."),
+        ],
+    ))
+    .into();
+    let response = harness
+        .service
+        .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+    let risk_ids = response.response_value["current_close_basis"]["residual_risks"]
+        .as_array()
+        .expect("residual risks should be an array")
+        .iter()
+        .map(|risk| {
+            risk["risk_id"]
+                .as_str()
+                .expect("risk id should be present")
+                .to_owned()
+        })
+        .collect::<Vec<_>>();
+    let (_, event_payload, _) = latest_task_event(&harness)?;
+
+    assert_eq!(risk_ids, vec!["risk_risk_alpha", "risk_risk_beta"]);
+    assert_eq!(generator.count(DurableIdKind::Risk), 2);
+    assert_eq!(event_payload["residual_risk_ids"], json!(risk_ids));
+    assert_eq!(
+        event_payload["source_run_ref"]["record_id"],
+        "run_risks_supplied"
+    );
+    assert_eq!(event_payload["scope_revision"], 1);
+    assert_eq!(event_payload["close_basis_revision"], 2);
+    Ok(())
+}
+
+#[test]
+fn record_run_rejects_unsupported_close_basis_ref_kinds_without_effect(
+) -> Result<(), Box<dyn Error>> {
+    let unsupported = [
+        (StateRecordKind::WriteTicket, "wa_fabricated"),
+        (StateRecordKind::UserJudgment, "uj_fabricated"),
+        (StateRecordKind::Blocker, "blocker_fabricated"),
+        (StateRecordKind::TaskEvent, "evt_fabricated"),
+        (StateRecordKind::ProjectState, "project_state_fabricated"),
+        (StateRecordKind::Task, "task_fabricated"),
+        (StateRecordKind::AgentConnection, "connection_fabricated"),
+    ];
+
+    for (index, (record_kind, record_id)) in unsupported.into_iter().enumerate() {
+        let harness = MethodHarness::new()?;
+        enable_record_run_capabilities(&harness)?;
+        let (task_id, change_unit_id) =
+            create_task_with_change_unit(&harness, &format!("unsupported_ref_{index}"))?;
+        let before = harness.counts()?;
+
+        let mut request = record_run_request(
+            &format!("req_unsupported_ref_{index}"),
+            &format!("idem_unsupported_ref_{index}"),
+            false,
+            Some(2),
+            &task_id,
+            &change_unit_id,
+        );
+        request.close_assessment = Some(volicord_types::CloseAssessmentInput {
+            result_summary: "Unsupported refs must not enter close authority.".to_owned(),
+            result_refs: vec![test_state_record_ref(
+                record_kind,
+                record_id,
+                PROJECT_ID,
+                &task_id,
+                Some(999),
+            )],
+            residual_risks: Vec::new(),
+            sensitive_categories: Vec::new(),
+            recovery_constraints: Vec::new(),
+        })
+        .into();
+
+        let response = harness
+            .service
+            .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+        assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+        assert_eq!(
+            response.response_value["errors"][0]["code"],
+            "VALIDATION_FAILED"
+        );
+        assert_eq!(harness.counts()?, before);
+    }
+
+    Ok(())
+}
+
+#[test]
+fn record_run_rejects_nonexistent_allowed_close_basis_refs_without_effect(
+) -> Result<(), Box<dyn Error>> {
+    let allowed_but_missing = [
+        (StateRecordKind::Run, "run_missing"),
+        (StateRecordKind::Artifact, "artifact_missing"),
+        (StateRecordKind::EvidenceSummary, "evidence_missing"),
+        (StateRecordKind::ChangeUnit, "cu_missing"),
+    ];
+
+    for (index, (record_kind, record_id)) in allowed_but_missing.into_iter().enumerate() {
+        let harness = MethodHarness::new()?;
+        enable_record_run_capabilities(&harness)?;
+        let (task_id, change_unit_id) =
+            create_task_with_change_unit(&harness, &format!("missing_ref_{index}"))?;
+        let before = harness.counts()?;
+
+        let mut request = record_run_request(
+            &format!("req_missing_ref_{index}"),
+            &format!("idem_missing_ref_{index}"),
+            false,
+            Some(2),
+            &task_id,
+            &change_unit_id,
+        );
+        request.close_assessment = Some(volicord_types::CloseAssessmentInput {
+            result_summary: "Missing allowed refs still need stored records.".to_owned(),
+            result_refs: vec![test_state_record_ref(
+                record_kind,
+                record_id,
+                PROJECT_ID,
+                &task_id,
+                Some(2),
+            )],
+            residual_risks: Vec::new(),
+            sensitive_categories: Vec::new(),
+            recovery_constraints: Vec::new(),
+        })
+        .into();
+
+        let response = harness
+            .service
+            .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+        assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+        assert_eq!(
+            response.response_value["errors"][0]["code"],
+            "VALIDATION_FAILED"
+        );
+        assert_eq!(harness.counts()?, before);
+    }
+
+    Ok(())
+}
+
+#[test]
+fn record_run_rejects_cross_project_artifact_and_cross_task_run_refs_without_effect(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "cross_refs")?;
+
+    for (index, record_ref) in [
+        test_state_record_ref(
+            StateRecordKind::Artifact,
+            "artifact_cross_project",
+            "project_other",
+            &task_id,
+            Some(2),
+        ),
+        test_state_record_ref(
+            StateRecordKind::Run,
+            "run_cross_task",
+            PROJECT_ID,
+            "task_other",
+            Some(2),
+        ),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let before = harness.counts()?;
+        let mut request = record_run_request(
+            &format!("req_cross_ref_{index}"),
+            &format!("idem_cross_ref_{index}"),
+            false,
+            Some(2),
+            &task_id,
+            &change_unit_id,
+        );
+        request.run_id = Some(RunId::new(format!("run_cross_ref_{index}"))).into();
+        request.close_assessment = Some(volicord_types::CloseAssessmentInput {
+            result_summary: "Cross-owner refs must not enter close authority.".to_owned(),
+            result_refs: vec![record_ref],
+            residual_risks: Vec::new(),
+            sensitive_categories: Vec::new(),
+            recovery_constraints: Vec::new(),
+        })
+        .into();
+
+        let response = harness
+            .service
+            .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+        assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+        assert_eq!(
+            response.response_value["errors"][0]["code"],
+            "VALIDATION_FAILED"
+        );
+        assert_eq!(harness.counts()?, before);
+    }
+
+    Ok(())
+}
+
+#[test]
+fn record_run_rejects_corrupt_artifact_close_basis_ref_without_effect() -> Result<(), Box<dyn Error>>
+{
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "corrupt_basis_artifact")?;
+    let (state_version, artifact_ref) = promote_artifact_for_record_run(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        2,
+        "corrupt_basis_artifact",
+    )?;
+    let artifact_id = artifact_ref.artifact_id.as_str().to_owned();
+    set_artifact_integrity(
+        &harness,
+        &artifact_id,
+        "corrupt",
+        artifact_ref.content_type.as_deref(),
+        artifact_ref.sha256.as_deref(),
+        artifact_ref.size_bytes.as_ref().copied(),
+    )?;
+    let before = harness.counts()?;
+
+    let mut request = record_run_request(
+        "req_unverified_artifact_basis",
+        "idem_unverified_artifact_basis",
+        false,
+        Some(state_version),
+        &task_id,
+        &change_unit_id,
+    );
+    request.close_assessment = Some(volicord_types::CloseAssessmentInput {
+        result_summary: "Unverified artifact must not enter close authority.".to_owned(),
+        result_refs: vec![test_state_record_ref(
+            StateRecordKind::Artifact,
+            &artifact_id,
+            PROJECT_ID,
+            &task_id,
+            Some(999),
+        )],
+        residual_risks: Vec::new(),
+        sensitive_categories: Vec::new(),
+        recovery_constraints: Vec::new(),
+    })
+    .into();
+
+    let response = harness
+        .service
+        .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["code"],
+        "VALIDATION_FAILED"
+    );
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn record_run_rejects_noncurrent_evidence_summary_close_basis_ref_without_effect(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "noncurrent_evidence")?;
+    let first_state =
+        record_close_evidence(&harness, &task_id, &change_unit_id, 2, "old_evidence", true)?;
+    let old_evidence_summary_id = latest_evidence_summary_id(&harness, &task_id)?;
+    let current_state = record_close_evidence(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        first_state,
+        "new_evidence",
+        true,
+    )?;
+    let before = harness.counts()?;
+
+    let mut request = record_run_request(
+        "req_noncurrent_evidence_basis",
+        "idem_noncurrent_evidence_basis",
+        false,
+        Some(current_state),
+        &task_id,
+        &change_unit_id,
+    );
+    request.close_assessment = Some(volicord_types::CloseAssessmentInput {
+        result_summary: "Old evidence summary must not enter current close authority.".to_owned(),
+        result_refs: vec![test_state_record_ref(
+            StateRecordKind::EvidenceSummary,
+            &old_evidence_summary_id,
+            PROJECT_ID,
+            &task_id,
+            Some(first_state),
+        )],
+        residual_risks: Vec::new(),
+        sensitive_categories: Vec::new(),
+        recovery_constraints: Vec::new(),
+    })
+    .into();
+
+    let response = harness
+        .service
+        .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["code"],
+        "VALIDATION_FAILED"
+    );
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn record_run_canonicalizes_deduplicates_and_adds_current_close_basis_refs(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "canonical_refs")?;
+    let mut request = record_run_request(
+        "req_canonical_refs",
+        "idem_canonical_refs",
+        false,
+        Some(2),
+        &task_id,
+        &change_unit_id,
+    );
+    request.run_id = Some(RunId::new("run_canonical_refs")).into();
+    request.evidence_updates = vec![supported_evidence_update("Canonical close basis claim.")];
+    let future_run_ref = test_state_record_ref(
+        StateRecordKind::Run,
+        "run_canonical_refs",
+        PROJECT_ID,
+        &task_id,
+        Some(999),
+    );
+    let past_run_ref = test_state_record_ref(
+        StateRecordKind::Run,
+        "run_canonical_refs",
+        PROJECT_ID,
+        &task_id,
+        Some(1),
+    );
+    let mut risk = residual_risk_input("Caller-versioned risk source.");
+    risk.acceptance_required = false;
+    risk.source_refs = vec![future_run_ref.clone(), past_run_ref.clone()];
+    request.close_assessment = Some(volicord_types::CloseAssessmentInput {
+        result_summary: "Canonical refs are stored.".to_owned(),
+        result_refs: vec![future_run_ref, past_run_ref],
+        residual_risks: vec![risk],
+        sensitive_categories: Vec::new(),
+        recovery_constraints: Vec::new(),
+    })
+    .into();
+
+    let response = harness
+        .service
+        .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+    let revision = task_revision(&harness, &task_id)?;
+    let basis = revision
+        .current_close_basis
+        .expect("current close basis should be stored");
+
+    assert_eq!(response.response_value["base"]["state_version"], 3);
+    assert_eq!(basis.result_refs.len(), 3);
+    assert!(basis.result_refs.iter().any(|record_ref| {
+        record_ref.record_kind == StateRecordKind::Run
+            && record_ref.record_id.as_str() == "run_canonical_refs"
+            && record_ref.state_version.as_ref() == Some(&3)
+    }));
+    assert!(basis.result_refs.iter().any(|record_ref| {
+        record_ref.record_kind == StateRecordKind::ChangeUnit
+            && record_ref.record_id.as_str() == change_unit_id
+            && record_ref.state_version.as_ref() == Some(&3)
+    }));
+    assert!(basis.result_refs.iter().any(|record_ref| {
+        record_ref.record_kind == StateRecordKind::EvidenceSummary
+            && record_ref.state_version.as_ref() == Some(&3)
+    }));
+    assert_eq!(
+        basis
+            .evidence_summary_ref
+            .as_ref()
+            .and_then(|record_ref| record_ref.state_version.as_ref().copied()),
+        Some(3)
+    );
+    assert_eq!(basis.residual_risks[0].source_refs.len(), 1);
+    assert_eq!(
+        basis.residual_risks[0].source_refs[0]
+            .state_version
+            .as_ref(),
+        Some(&3)
+    );
+    Ok(())
+}
+
+#[test]
+fn final_acceptance_judgment_basis_uses_canonical_close_basis_refs() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "canonical_final")?;
+    let state_version = record_close_evidence(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        2,
+        "canonical_final",
+        true,
+    )?;
+    let close_basis = task_revision(&harness, &task_id)?
+        .current_close_basis
+        .expect("current close basis should be stored");
+
+    let response = harness.service.request_user_judgment(
+        user_judgment_request(
+            "req_canonical_final",
+            "idem_canonical_final",
+            false,
+            Some(state_version),
+            &task_id,
+            Some(&change_unit_id),
+            JudgmentKind::FinalAcceptance,
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "result");
+    assert_eq!(
+        response.response_value["user_judgment"]["basis"]["result_refs"],
+        serde_json::to_value(&close_basis.result_refs)?
+    );
+    assert!(close_basis
+        .result_refs
+        .iter()
+        .all(|record_ref| record_ref.state_version.as_ref() == Some(&state_version)));
+    Ok(())
+}
+
+#[test]
+fn record_run_null_close_assessment_invalidates_existing_basis() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_clear_basis")?;
+
+    let mut establish = record_run_request(
+        "req_run_establish_basis",
+        "idem_run_establish_basis",
+        false,
+        Some(2),
+        &task_id,
+        &change_unit_id,
+    );
+    establish.close_assessment = Some(close_assessment_with_risks(
+        "Established basis.",
+        Vec::new(),
+    ))
+    .into();
+    harness
+        .service
+        .record_run(establish, invocation(OperationCategory::AgentWorkflow))?;
+    assert!(task_revision(&harness, &task_id)?
+        .current_close_basis
+        .is_some());
+
+    let clear = record_run_request(
+        "req_run_clear_basis",
+        "idem_run_clear_basis",
+        false,
+        Some(3),
+        &task_id,
+        &change_unit_id,
+    );
+    let response = harness
+        .service
+        .record_run(clear, invocation(OperationCategory::AgentWorkflow))?;
+    let revision = task_revision(&harness, &task_id)?;
+
+    assert!(response.response_value["current_close_basis"].is_null());
+    assert_eq!(revision.close_basis_revision, 3);
+    assert!(revision.current_close_basis.is_none());
+    Ok(())
+}
+
+#[test]
+fn record_run_dry_run_allocates_no_residual_risk_ids() -> Result<(), Box<dyn Error>> {
+    let mut harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_dry_risk")?;
+    let generator = CountingDurableIdGenerator::new(Vec::<&str>::new());
+    let clock = ManualClock::at("2026-06-18T13:00:00Z");
+    harness.use_generator_and_clock(generator.clone(), clock);
+    let before = harness.counts()?;
+    let before_revision = task_revision(&harness, &task_id)?;
+
+    let mut request = record_run_request(
+        "req_run_dry_risk",
+        "idem_run_dry_risk",
+        true,
+        Some(2),
+        &task_id,
+        &change_unit_id,
+    );
+    request.run_id = Some(RunId::new("run_dry_risk_supplied")).into();
+    request.close_assessment = Some(close_assessment_with_risks(
+        "Dry-run close basis.",
+        vec![residual_risk_input("Dry-run residual risk.")],
+    ))
+    .into();
+    let response = harness
+        .service
+        .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "dry_run");
+    assert_eq!(generator.count(DurableIdKind::Risk), 0);
+    assert_eq!(harness.counts()?, before);
+    assert_eq!(task_revision(&harness, &task_id)?, before_revision);
+    Ok(())
+}
+
+#[test]
+fn record_run_product_write_consumes_valid_write_ticket_once() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_write")?;
+    let write_ticket_id =
+        prepare_write_ticket(&harness, &task_id, &change_unit_id, 2, "run_write")?;
+    let before = harness.counts()?;
+
+    let mut request = record_run_request(
+        "req_run_write",
+        "idem_run_write",
+        false,
+        Some(3),
+        &task_id,
+        &change_unit_id,
+    );
+    request.observed_changes.product_file_write_observed = true;
+    request.observed_changes.changed_paths = vec!["src/export.rs".to_owned()];
+    request.write_ticket_id = Some(WriteTicketId::new(&write_ticket_id)).into();
+    request.evidence_updates = vec![supported_evidence_update(
+        "Product write was reported with external tool output.",
+    )];
+    let response = harness
+        .service
+        .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+    let after = harness.counts()?;
+    let run_id = run_id_from_record_run(&response.response_value);
+    let observation_id = response.response_value["evidence_observations"][0]["observation_id"]
+        .as_str()
+        .expect("observation id should be present")
+        .to_owned();
+    let write_summary = &response.response_value["state"]["write_ticket_summary"];
+
+    assert_eq!(response.response_value["base"]["state_version"], 4);
+    assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "consumed");
+    assert_eq!(write_summary["status"], "consumed");
+    assert_eq!(write_summary["consumed_by_run_ref"]["record_id"], run_id);
+    assert_eq!(
+        write_summary["observation_refs"][0]["record_kind"],
+        "evidence_observation"
+    );
+    assert_eq!(
+        write_summary["observation_refs"][0]["record_id"],
+        observation_id
+    );
+    assert_eq!(
+        write_summary["guarantee_display"]["capability_refs"][0]["record_kind"],
+        "agent_connection"
+    );
+    let status = harness.service.status(
+        StatusRequest {
+            envelope: envelope("req_run_write_status", None, false, None, Some(&task_id)),
+            include: status_include(),
+        },
+        invocation(OperationCategory::Read),
+    )?;
+    let mut response_write_summary =
+        response.response_value["state"]["write_ticket_summary"].clone();
+    let status_write_summary = status.response_value["write_ticket_summary"].clone();
+    response_write_summary["guarantee_display"] = status_write_summary["guarantee_display"].clone();
+    assert_eq!(status_write_summary, response_write_summary);
+    assert_eq!(after.state_version, before.state_version + 1);
+    assert_eq!(after.runs, before.runs + 1);
+    assert_eq!(after.write_tickets, before.write_tickets);
+    assert_eq!(after.task_events, before.task_events + 1);
+    assert_eq!(after.tool_invocations, before.tool_invocations + 1);
+    Ok(())
+}
+
+#[test]
+fn record_run_consumes_write_ticket_at_fourteen_minutes_fifty_nine_seconds(
+) -> Result<(), Box<dyn Error>> {
+    let mut harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_auth_1459")?;
+    let id_generator =
+        CountingDurableIdGenerator::new(["auth_1459", "prepare_event_1459", "record_event_1459"]);
+    let clock = ManualClock::at("2026-06-18T00:00:00Z");
+    harness.use_generator_and_clock(id_generator, clock.clone());
+    let write_ticket_id =
+        prepare_write_ticket(&harness, &task_id, &change_unit_id, 2, "run_auth_1459")?;
+    clock.advance(Duration::seconds(14 * 60 + 59));
+    let before = harness.counts()?;
+
+    let response = harness.service.record_run(
+        product_write_record_run_request(
+            "req_run_auth_1459",
+            "idem_run_auth_1459",
+            3,
+            &task_id,
+            &change_unit_id,
+            &write_ticket_id,
+            "run_auth_1459",
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let after = harness.counts()?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "result");
+    assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "consumed");
+    assert_eq!(after.state_version, before.state_version + 1);
+    assert_eq!(after.runs, before.runs + 1);
+    assert_eq!(after.task_events, before.task_events + 1);
+    Ok(())
+}
+
+#[test]
+fn record_run_rejects_write_ticket_at_exactly_fifteen_minutes_without_effect(
+) -> Result<(), Box<dyn Error>> {
+    let mut harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_auth_1500")?;
+    let id_generator = CountingDurableIdGenerator::new(["auth_1500", "prepare_event_1500"]);
+    let clock = ManualClock::at("2026-06-18T00:00:00Z");
+    harness.use_generator_and_clock(id_generator, clock.clone());
+    let write_ticket_id =
+        prepare_write_ticket(&harness, &task_id, &change_unit_id, 2, "run_auth_1500")?;
+    clock.advance(Duration::minutes(15));
+    let before = harness.counts()?;
+
+    let response = harness.service.record_run(
+        product_write_record_run_request(
+            "req_run_auth_1500",
+            "idem_run_auth_1500",
+            3,
+            &task_id,
+            &change_unit_id,
+            &write_ticket_id,
+            "run_auth_1500",
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["code"],
+        "WRITE_TICKET_INVALID"
+    );
+    assert_eq!(
+        response.response_value["errors"][0]["details"]["write_ticket_reason"],
+        "expired"
+    );
+    assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "active");
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn record_run_limits_historical_far_future_write_ticket_to_fifteen_minutes(
+) -> Result<(), Box<dyn Error>> {
+    let mut harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_auth_far_future")?;
+    insert_active_write_ticket_with_timestamps(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        "wa_far_future_expiration",
+        2,
+        "2026-06-18T00:00:00.000Z",
+        "2999-01-01T00:00:00.000Z",
+    )?;
+    let id_generator = CountingDurableIdGenerator::new(Vec::<&str>::new());
+    let clock = ManualClock::at("2026-06-18T00:15:00Z");
+    harness.use_generator_and_clock(id_generator, clock);
+    let before = harness.counts()?;
+
+    let response = harness.service.record_run(
+        product_write_record_run_request(
+            "req_run_auth_far_future",
+            "idem_run_auth_far_future",
+            2,
+            &task_id,
+            &change_unit_id,
+            "wa_far_future_expiration",
+            "run_auth_far_future",
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["details"]["write_ticket_reason"],
+        "expired"
+    );
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn record_run_honors_stored_expiration_earlier_than_fifteen_minutes() -> Result<(), Box<dyn Error>>
+{
+    let mut harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_auth_early_exp")?;
+    insert_active_write_ticket_with_timestamps(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        "wa_early_expiration",
+        2,
+        "2026-06-18T00:00:00.000Z",
+        "2026-06-18T00:05:00.000Z",
+    )?;
+    let id_generator = CountingDurableIdGenerator::new(Vec::<&str>::new());
+    let clock = ManualClock::at("2026-06-18T00:05:00Z");
+    harness.use_generator_and_clock(id_generator, clock);
+    let before = harness.counts()?;
+
+    let response = harness.service.record_run(
+        product_write_record_run_request(
+            "req_run_auth_early_exp",
+            "idem_run_auth_early_exp",
+            2,
+            &task_id,
+            &change_unit_id,
+            "wa_early_expiration",
+            "run_auth_early_exp",
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["details"]["write_ticket_reason"],
+        "expired"
+    );
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn record_run_treats_invalid_write_ticket_timestamp_as_corrupt_state() -> Result<(), Box<dyn Error>>
+{
+    let mut harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_auth_bad_time")?;
+    insert_active_write_ticket_with_timestamps(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        "wa_bad_timestamp",
+        2,
+        "not-a-timestamp",
+        "2026-06-18T00:15:00.000Z",
+    )?;
+    let id_generator = CountingDurableIdGenerator::new(Vec::<&str>::new());
+    let clock = ManualClock::at("2026-06-18T00:00:00Z");
+    harness.use_generator_and_clock(id_generator, clock);
+    let before = harness.counts()?;
+
+    let response = harness.service.record_run(
+        product_write_record_run_request(
+            "req_run_auth_bad_time",
+            "idem_run_auth_bad_time",
+            2,
+            &task_id,
+            &change_unit_id,
+            "wa_bad_timestamp",
+            "run_auth_bad_time",
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+
+    assert_store_rejection(&response, "MCP_UNAVAILABLE", "corrupt_stored_value");
+    let details = &response.response_value["errors"][0]["details"]["owner_state_error"];
+    assert_eq!(details["table"], "write_tickets");
+    assert_eq!(details["record_ref"], "wa_bad_timestamp");
+    assert_eq!(details["logical_column"], "created_at");
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn record_run_stale_basis_precedes_write_ticket_expiration() -> Result<(), Box<dyn Error>> {
+    let mut harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_auth_stale_exp")?;
+    insert_active_write_ticket_with_timestamps(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        "wa_stale_and_expired",
+        2,
+        "2026-06-18T00:00:00.000Z",
+        "2999-01-01T00:00:00.000Z",
+    )?;
+    harness.service.update_scope(
+        update_scope_request(
+            "req_run_auth_stale_exp_touch",
+            "idem_run_auth_stale_exp_touch",
+            false,
+            Some(2),
+            &task_id,
+            ChangeUnitOperation::KeepCurrent,
+            "Initial current scope.",
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let id_generator = CountingDurableIdGenerator::new(Vec::<&str>::new());
+    let clock = ManualClock::at("2026-06-18T00:15:00Z");
+    harness.use_generator_and_clock(id_generator, clock);
+    let before = harness.counts()?;
+
+    let response = harness.service.record_run(
+        product_write_record_run_request(
+            "req_run_auth_stale_exp",
+            "idem_run_auth_stale_exp",
+            3,
+            &task_id,
+            &change_unit_id,
+            "wa_stale_and_expired",
+            "run_auth_stale_exp",
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["code"],
+        "STATE_VERSION_CONFLICT"
+    );
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn record_run_missing_write_ticket_rejects_product_write_without_effect(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_missing_auth")?;
+    let before = harness.counts()?;
+
+    let mut request = record_run_request(
+        "req_run_missing_auth",
+        "idem_run_missing_auth",
+        false,
+        Some(2),
+        &task_id,
+        &change_unit_id,
+    );
+    request.observed_changes.product_file_write_observed = true;
+    request.observed_changes.changed_paths = vec!["src/export.rs".to_owned()];
+    let response = harness
+        .service
+        .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["code"],
+        "WRITE_TICKET_REQUIRED"
+    );
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn record_run_stale_write_ticket_basis_rejects_before_consumption() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_stale_auth")?;
+    let write_ticket_id =
+        prepare_write_ticket(&harness, &task_id, &change_unit_id, 2, "run_stale_auth")?;
+    harness.service.update_scope(
+        update_scope_request(
+            "req_run_stale_auth_touch",
+            "idem_run_stale_auth_touch",
+            false,
+            Some(3),
+            &task_id,
+            ChangeUnitOperation::KeepCurrent,
+            "Initial current scope.",
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let before = harness.counts()?;
+
+    let mut request = record_run_request(
+        "req_run_stale_auth",
+        "idem_run_stale_auth",
+        false,
+        Some(4),
+        &task_id,
+        &change_unit_id,
+    );
+    request.observed_changes.product_file_write_observed = true;
+    request.observed_changes.changed_paths = vec!["src/export.rs".to_owned()];
+    request.write_ticket_id = Some(WriteTicketId::new(&write_ticket_id)).into();
+    let response = harness
+        .service
+        .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["code"],
+        "STATE_VERSION_CONFLICT"
+    );
+    assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "active");
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn record_run_consumed_write_ticket_reuse_rejects_without_effect() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_reuse_auth")?;
+    let write_ticket_id =
+        prepare_write_ticket(&harness, &task_id, &change_unit_id, 2, "run_reuse_auth")?;
+
+    let mut first = record_run_request(
+        "req_run_reuse_first",
+        "idem_run_reuse_first",
+        false,
+        Some(3),
+        &task_id,
+        &change_unit_id,
+    );
+    first.observed_changes.product_file_write_observed = true;
+    first.observed_changes.changed_paths = vec!["src/export.rs".to_owned()];
+    first.write_ticket_id = Some(WriteTicketId::new(&write_ticket_id)).into();
+    harness
+        .service
+        .record_run(first, invocation(OperationCategory::AgentWorkflow))?;
+    let before = harness.counts()?;
+
+    let mut second = record_run_request(
+        "req_run_reuse_second",
+        "idem_run_reuse_second",
+        false,
+        Some(4),
+        &task_id,
+        &change_unit_id,
+    );
+    second.observed_changes.product_file_write_observed = true;
+    second.observed_changes.changed_paths = vec!["src/export.rs".to_owned()];
+    second.write_ticket_id = Some(WriteTicketId::new(&write_ticket_id)).into();
+    let response = harness
+        .service
+        .record_run(second, invocation(OperationCategory::AgentWorkflow))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["code"],
+        "WRITE_TICKET_INVALID"
+    );
+    assert_eq!(
+        response.response_value["errors"][0]["details"]["write_ticket_reason"],
+        "consumed"
+    );
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn record_run_path_mismatch_rejects_without_consuming_write_ticket() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_path_auth")?;
+    let write_ticket_id =
+        prepare_write_ticket(&harness, &task_id, &change_unit_id, 2, "run_path_auth")?;
+    let before = harness.counts()?;
+
+    let mut request = record_run_request(
+        "req_run_path_auth",
+        "idem_run_path_auth",
+        false,
+        Some(3),
+        &task_id,
+        &change_unit_id,
+    );
+    request.observed_changes.product_file_write_observed = true;
+    request.observed_changes.changed_paths = vec!["tests/export.rs".to_owned()];
+    request.write_ticket_id = Some(WriteTicketId::new(&write_ticket_id)).into();
+    let response = harness
+        .service
+        .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["code"],
+        "WRITE_TICKET_INVALID"
+    );
+    assert_eq!(
+        response.response_value["errors"][0]["details"]["write_ticket_reason"],
+        "path_mismatch"
+    );
+    assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "active");
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn record_run_rejects_write_ticket_baseline_mismatch_without_consumption(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_baseline_auth")?;
+    let write_ticket_id =
+        prepare_write_ticket(&harness, &task_id, &change_unit_id, 2, "run_baseline_auth")?;
+    mutate_write_ticket_scope_json(&harness, &write_ticket_id, |scope| {
+        scope["baseline_ref"] = json!("baseline_other");
+    })?;
+    let before = harness.counts()?;
+
+    let response = harness.service.record_run(
+        product_write_record_run_request(
+            "req_run_baseline_auth",
+            "idem_run_baseline_auth",
+            3,
+            &task_id,
+            &change_unit_id,
+            &write_ticket_id,
+            "run_baseline_auth",
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+
+    assert_write_ticket_invalid_reason(&response, "baseline_mismatch");
+    assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "active");
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn record_run_rejects_write_ticket_task_mismatch_without_consumption() -> Result<(), Box<dyn Error>>
+{
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_task_auth")?;
+    let write_ticket_id =
+        prepare_write_ticket(&harness, &task_id, &change_unit_id, 2, "run_task_auth")?;
+    mutate_write_ticket_scope_json(&harness, &write_ticket_id, |scope| {
+        scope["task_id"] = json!("task_other");
+    })?;
+    let before = harness.counts()?;
+
+    let response = harness.service.record_run(
+        product_write_record_run_request(
+            "req_run_task_auth",
+            "idem_run_task_auth",
+            3,
+            &task_id,
+            &change_unit_id,
+            &write_ticket_id,
+            "run_task_auth",
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+
+    assert_write_ticket_invalid_reason(&response, "task_mismatch");
+    assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "active");
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn record_run_rejects_write_ticket_change_unit_mismatch_without_consumption(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_change_unit_auth")?;
+    let write_ticket_id = prepare_write_ticket(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        2,
+        "run_change_unit_auth",
+    )?;
+    mutate_write_ticket_scope_json(&harness, &write_ticket_id, |scope| {
+        scope["change_unit_id"] = json!("cu_other");
+    })?;
+    let before = harness.counts()?;
+
+    let response = harness.service.record_run(
+        product_write_record_run_request(
+            "req_run_change_unit_auth",
+            "idem_run_change_unit_auth",
+            3,
+            &task_id,
+            &change_unit_id,
+            &write_ticket_id,
+            "run_change_unit_auth",
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+
+    assert_write_ticket_invalid_reason(&response, "change_unit_mismatch");
+    assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "active");
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn record_run_rejects_write_ticket_product_write_flag_mismatch_without_consumption(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_flag_auth")?;
+    let write_ticket_id =
+        prepare_write_ticket(&harness, &task_id, &change_unit_id, 2, "run_flag_auth")?;
+    mutate_write_ticket_scope_json(&harness, &write_ticket_id, |scope| {
+        scope["product_file_write_intended"] = json!(false);
+    })?;
+    let before = harness.counts()?;
+
+    let response = harness.service.record_run(
+        product_write_record_run_request(
+            "req_run_flag_auth",
+            "idem_run_flag_auth",
+            3,
+            &task_id,
+            &change_unit_id,
+            &write_ticket_id,
+            "run_flag_auth",
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+
+    assert_write_ticket_invalid_reason(&response, "product_write_flag_mismatch");
+    assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "active");
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn record_run_rejects_write_ticket_sensitive_category_mismatch_without_consumption(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_sensitive_auth")?;
+    insert_active_write_ticket_with_scope(
+        &harness,
+        WriteTicketScopeFixture {
+            task_id: &task_id,
+            change_unit_id: &change_unit_id,
+            write_ticket_id: "wa_sensitive_mismatch",
+            basis_state_version: 2,
+            created_at: "2999-01-01T00:00:00.000Z",
+            expires_at: "2999-01-01T00:15:00.000Z",
+            intended_operation: "local_sensitive_step",
+            intended_paths: &["src/export.rs"],
+            sensitive_categories: &["network"],
+        },
+    )?;
+    enable_record_run_capabilities(&harness)?;
+    let before = harness.counts()?;
+    let mut request = product_write_record_run_request(
+        "req_run_sensitive_auth",
+        "idem_run_sensitive_auth",
+        2,
+        &task_id,
+        &change_unit_id,
+        "wa_sensitive_mismatch",
+        "run_sensitive_auth",
+    );
+    request.observed_changes.sensitive_categories = vec!["credential".to_owned()];
+
+    let response = harness
+        .service
+        .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+
+    assert_write_ticket_invalid_reason(&response, "sensitive_category_mismatch");
+    assert_eq!(
+        write_ticket_status(&harness, "wa_sensitive_mismatch")?,
+        "active"
+    );
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn record_run_promotes_staged_artifact_and_updates_evidence() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_artifact")?;
+    let handle = stage_artifact_for_record_run(&harness, &task_id, "run_artifact", 2)?;
+    let handle_id = handle.handle_id.as_str().to_owned();
+    let expected_content_type = handle.content_type.clone();
+    let expected_sha256 = handle.sha256.clone();
+    let expected_size_bytes = handle.size_bytes;
+    let before = harness.counts()?;
+
+    let mut request = record_run_request(
+        "req_run_artifact",
+        "idem_run_artifact",
+        false,
+        Some(2),
+        &task_id,
+        &change_unit_id,
+    );
+    request.artifact_inputs = vec![artifact_input_for_handle(
+        "artifact_input_report",
+        handle,
+        Some("validation_report"),
+        Some("Search-result count validation passed."),
+    )];
+    request.evidence_updates = vec![supported_evidence_update(
+        "Search-result count validation passed.",
+    )];
+    request.evidence_observations = vec![EvidenceObservationInput {
+        claim: "Search-result count validation passed.".to_owned(),
+        source_kind: EvidenceSourceKind::ExternalTool,
+        assurance_level: EvidenceAssuranceLevel::ExternalToolResult,
+        observed_by_actor_source: None.into(),
+        tool_name: Some("search-count-validator".to_owned()).into(),
+        tool_invocation_id: None.into(),
+        tool_metadata: Map::from_iter([("validator".to_owned(), json!("search-count"))]),
+        input_refs: Vec::new(),
+        output_artifact_refs: Vec::new(),
+        limitations: vec!["External tool output is not product correctness proof.".to_owned()],
+        observed_at: volicord_types::UtcTimestamp::parse("2026-06-18T00:00:00Z")?,
+    }];
+    let response = harness
+        .service
+        .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+    let after = harness.counts()?;
+    let artifact_id = response.response_value["registered_artifacts"][0]["artifact_id"]
+        .as_str()
+        .expect("artifact id should be present")
+        .to_owned();
+    let observation = &response.response_value["evidence_observations"][0];
+    let observation_id = observation["observation_id"]
+        .as_str()
+        .expect("observation id should be present")
+        .to_owned();
+    let artifact_row = persistent_artifact_row(&harness, &artifact_id)?;
+
+    assert_eq!(response.response_value["base"]["state_version"], 3);
+    assert_eq!(
+        response.response_value["registered_artifacts"][0]["integrity_status"],
+        "verified"
+    );
+    assert_eq!(
+        response.response_value["registered_artifacts"][0]["content_type"],
+        expected_content_type
+    );
+    assert_eq!(
+        response.response_value["registered_artifacts"][0]["sha256"],
+        expected_sha256
+    );
+    assert_eq!(
+        response.response_value["registered_artifacts"][0]["size_bytes"],
+        expected_size_bytes
+    );
+    assert_eq!(artifact_row.integrity_status, "verified");
+    assert_eq!(
+        artifact_row.content_type.as_deref(),
+        Some(expected_content_type.as_str())
+    );
+    let body_path = artifact_row
+        .body_path
+        .as_deref()
+        .expect("promoted artifact should store a body path");
+    let staging_row = staged_artifact_row(&harness, &handle_id)?;
+    assert!(
+        body_path.starts_with("tmp/"),
+        "persistent body_path should be artifact-store-relative: {body_path}"
+    );
+    assert!(
+        !body_path.starts_with("artifacts/"),
+        "persistent body_path must not include the project-home artifact prefix"
+    );
+    assert_eq!(staging_row.tmp_path, format!("artifacts/{body_path}"));
+    assert_eq!(
+        artifact_row.sha256.as_deref(),
+        Some(expected_sha256.as_str())
+    );
+    assert_eq!(artifact_row.size_bytes, Some(expected_size_bytes));
+    assert_eq!(artifact_row.status, "available");
+    assert_eq!(
+        response.response_value["evidence_summary"]["status"],
+        "sufficient"
+    );
+    assert_eq!(
+        response.response_value["evidence_summary"]["coverage_items"][0]["supporting_refs"][0]
+            ["record_kind"],
+        "run"
+    );
+    assert_eq!(observation["source_kind"], "external_tool");
+    assert_eq!(observation["assurance_level"], "external_tool_result");
+    assert_eq!(observation["observed_by_actor_source"], AGENT_ACTOR_SOURCE);
+    assert_eq!(observation["tool_metadata"]["validator"], "search-count");
+    assert_eq!(
+        observation["output_artifact_refs"][0]["artifact_id"],
+        artifact_id
+    );
+    assert!(
+        observation_id.starts_with("evidence_observation_"),
+        "generated observation id should use the durable prefix: {observation_id}"
+    );
+    assert_eq!(
+        response.response_value["evidence_summary"]["coverage_items"][0]["observation_refs"][0]
+            ["record_kind"],
+        "evidence_observation"
+    );
+    assert_eq!(
+        response.response_value["evidence_summary"]["coverage_items"][0]["observation_refs"][0]
+            ["record_id"],
+        observation_id
+    );
+    assert_eq!(
+        response.response_value["evidence_summary"]["observation_refs"][0]["record_id"],
+        observation_id
+    );
+    assert_eq!(after.state_version, before.state_version + 1);
+    assert_eq!(after.runs, before.runs + 1);
+    assert_eq!(after.artifacts, before.artifacts + 1);
+    assert_eq!(after.artifact_links, before.artifact_links + 3);
+    assert_eq!(after.evidence_summaries, before.evidence_summaries + 1);
+    assert_eq!(
+        after.evidence_observations,
+        before.evidence_observations + 1
+    );
+    assert_eq!(artifact_staging_status(&harness, &handle_id)?, "consumed");
+    assert!(artifact_owner_link_exists(&harness, &artifact_id, "run")?);
+    assert!(artifact_owner_link_exists(
+        &harness,
+        &artifact_id,
+        "evidence_summary"
+    )?);
+    assert!(artifact_owner_link_exists(
+        &harness,
+        &artifact_id,
+        "evidence_observation"
+    )?);
+    Ok(())
+}
+
+#[test]
+fn record_run_observations_preserve_provenance_classification() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "run_observation_classes")?;
+    let classes = [
+        (
+            "Agent cooperative report.",
+            EvidenceSourceKind::AgentReport,
+            EvidenceAssuranceLevel::CooperativeReport,
+            "agent_report",
+            "cooperative_report",
+        ),
+        (
+            "Registered connection observation.",
+            EvidenceSourceKind::ConnectionObservation,
+            EvidenceAssuranceLevel::RegisteredConnectionObserved,
+            "connection_observation",
+            "registered_connection_observed",
+        ),
+        (
+            "External tool result.",
+            EvidenceSourceKind::ExternalTool,
+            EvidenceAssuranceLevel::ExternalToolResult,
+            "external_tool",
+            "external_tool_result",
+        ),
+        (
+            "User observation.",
+            EvidenceSourceKind::UserObservation,
+            EvidenceAssuranceLevel::UserObserved,
+            "user_observation",
+            "user_observed",
+        ),
+        (
+            "Unverified claim.",
+            EvidenceSourceKind::UnverifiedClaim,
+            EvidenceAssuranceLevel::Unverified,
+            "unverified_claim",
+            "unverified",
+        ),
+    ];
+    let mut request = record_run_request(
+        "req_run_observation_classes",
+        "idem_run_observation_classes",
+        false,
+        Some(2),
+        &task_id,
+        &change_unit_id,
+    );
+    request.evidence_updates = classes
+        .iter()
+        .map(|(claim, source_kind, assurance_level, _, _)| {
+            supported_evidence_update_with_provenance(claim, *source_kind, *assurance_level)
+        })
+        .collect();
+    request.evidence_observations = classes
+        .iter()
+        .map(
+            |(claim, source_kind, assurance_level, _, _)| EvidenceObservationInput {
+                claim: (*claim).to_owned(),
+                source_kind: *source_kind,
+                assurance_level: *assurance_level,
+                observed_by_actor_source: None.into(),
+                tool_name: Some("fixture-evidence-check".to_owned()).into(),
+                tool_invocation_id: None.into(),
+                tool_metadata: JsonObject::new(),
+                input_refs: Vec::new(),
+                output_artifact_refs: Vec::new(),
+                limitations: Vec::new(),
+                observed_at: volicord_types::UtcTimestamp::parse("2026-06-18T00:00:00Z")
+                    .expect("fixture timestamp should parse"),
+            },
+        )
+        .collect();
+
+    let response = harness
+        .service
+        .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+    let observations = response.response_value["evidence_observations"]
+        .as_array()
+        .expect("evidence observations should be present");
+
+    assert_eq!(observations.len(), classes.len());
+    for (observation, (_, _, _, source_value, assurance_value)) in observations.iter().zip(classes)
+    {
+        assert_eq!(observation["source_kind"], source_value);
+        assert_eq!(observation["assurance_level"], assurance_value);
+        assert!(observation.get("guarantee_display").is_none());
+    }
+    Ok(())
+}
+
+#[test]
+fn record_run_rejects_supported_evidence_without_provenance() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "run_missing_provenance")?;
+    let mut request = record_run_request(
+        "req_run_missing_provenance",
+        "idem_run_missing_provenance",
+        false,
+        Some(2),
+        &task_id,
+        &change_unit_id,
+    );
+    let mut evidence_update = supported_evidence_update("Claim without provenance.");
+    evidence_update.provenance = None;
+    request.evidence_updates = vec![evidence_update];
+    let before = harness.counts()?;
+
+    let response = harness
+        .service
+        .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["code"],
+        "VALIDATION_FAILED"
+    );
+    assert_eq!(
+        response.response_value["errors"][0]["details"]["field"],
+        "evidence_updates[].provenance"
+    );
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn record_run_promotes_zero_byte_artifact_with_real_empty_sha256() -> Result<(), Box<dyn Error>> {
+    const EMPTY_SHA256: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_zero_artifact")?;
+    let mut stage_request = stage_artifact_request(
+        "req_stage_zero_artifact",
+        Some("idem_stage_zero_artifact"),
+        false,
+        Some(2),
+        &task_id,
+    );
+    stage_request.safe_bytes_or_notice = String::new();
+    stage_request.expected_sha256 = Some(EMPTY_SHA256.to_owned()).into();
+    stage_request.expected_size_bytes = Some(0).into();
+    let stage_response = harness
+        .service
+        .stage_artifact(stage_request, invocation(OperationCategory::AgentWorkflow))?;
+    let handle: StagedArtifactHandle =
+        serde_json::from_value(stage_response.response_value["staged_artifact_handle"].clone())?;
+
+    let mut request = record_run_request(
+        "req_run_zero_artifact",
+        "idem_run_zero_artifact",
+        false,
+        Some(2),
+        &task_id,
+        &change_unit_id,
+    );
+    request.artifact_inputs = vec![artifact_input_for_handle(
+        "artifact_input_zero",
+        handle,
+        Some("empty_report"),
+        Some("Zero-byte artifact was registered."),
+    )];
+    let response = harness
+        .service
+        .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+    let artifact_id = response.response_value["registered_artifacts"][0]["artifact_id"]
+        .as_str()
+        .expect("artifact id should be present");
+    let artifact_row = persistent_artifact_row(&harness, artifact_id)?;
+
+    assert_eq!(
+        response.response_value["registered_artifacts"][0]["integrity_status"],
+        "verified"
+    );
+    assert_eq!(
+        response.response_value["registered_artifacts"][0]["sha256"],
+        EMPTY_SHA256
+    );
+    assert_eq!(
+        response.response_value["registered_artifacts"][0]["size_bytes"],
+        0
+    );
+    assert_eq!(artifact_row.integrity_status, "verified");
+    assert_eq!(artifact_row.sha256.as_deref(), Some(EMPTY_SHA256));
+    assert_eq!(artifact_row.size_bytes, Some(0));
+    Ok(())
+}
+
+#[test]
+fn corrupt_artifact_blocks_evidence_and_close() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "corrupt_evidence_artifact")?;
+    let handle = stage_artifact_for_record_run(&harness, &task_id, "corrupt_evidence_artifact", 2)?;
+
+    let mut request = record_run_request(
+        "req_run_corrupt_evidence_artifact",
+        "idem_run_corrupt_evidence_artifact",
+        false,
+        Some(2),
+        &task_id,
+        &change_unit_id,
+    );
+    request.artifact_inputs = vec![artifact_input_for_handle(
+        "artifact_input_corrupt",
+        handle,
+        Some("validation_report"),
+        Some("Corrupt integrity evidence."),
+    )];
+    request.evidence_updates = vec![supported_evidence_update("Corrupt integrity evidence.")];
+    request.close_assessment = Some(close_assessment_with_risks(
+        "Corrupt integrity evidence.",
+        Vec::new(),
+    ))
+    .into();
+    let response = harness
+        .service
+        .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+    let artifact_id = response.response_value["registered_artifacts"][0]["artifact_id"]
+        .as_str()
+        .expect("artifact id should be present")
+        .to_owned();
+
+    set_artifact_integrity(&harness, &artifact_id, "corrupt", None, None, None)?;
+
+    let status = harness.service.status(
+        StatusRequest {
+            envelope: envelope(
+                "req_status_corrupt_evidence_artifact",
+                None,
+                false,
+                None,
+                Some(&task_id),
+            ),
+            include: StatusInclude {
+                task: true,
+                pending_user_judgments: false,
+                write_ticket: false,
+                evidence: true,
+                close: true,
+                guarantees: false,
+                continuity: false,
+            },
+        },
+        invocation(OperationCategory::Read),
+    )?;
+    let artifact_ref = &status.response_value["evidence_summary"]["coverage_items"][0]
+        ["supporting_artifact_refs"][0];
+
+    assert_eq!(
+        status.response_value["evidence_summary"]["status"],
+        "blocked"
+    );
+    assert_eq!(artifact_ref["availability"], "integrity_failed");
+    assert_eq!(artifact_ref["integrity_status"], "corrupt");
+    assert!(artifact_ref["content_type"].is_null());
+    assert!(artifact_ref["sha256"].is_null());
+    assert!(artifact_ref["size_bytes"].is_null());
+    assert_close_blocker(&status.response_value, "artifact_unavailable");
+
+    let check = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
+            request_id: "req_close_corrupt_evidence_artifact",
+            idempotency_key: None,
+            dry_run: false,
+            expected_state_version: None,
+            task_id: &task_id,
+            intent: CloseIntent::Check,
+            close_reason: None,
+            superseding_task_id: None,
+        }),
+        invocation(OperationCategory::Read),
+    )?;
+    assert_close_blocker(&check.response_value, "artifact_unavailable");
+    Ok(())
+}
+
+#[test]
+fn corrupt_artifact_is_not_linkable_as_existing_artifact() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "corrupt_artifact")?;
+    let (state_version, artifact_ref) =
+        promote_artifact_for_record_run(&harness, &task_id, &change_unit_id, 2, "corrupt")?;
+    let artifact_id = artifact_ref.artifact_id.as_str().to_owned();
+    let before = harness.counts()?;
+    set_artifact_integrity(
+        &harness,
+        &artifact_id,
+        "corrupt",
+        artifact_ref.content_type.as_ref().map(String::as_str),
+        artifact_ref.sha256.as_ref().map(String::as_str),
+        artifact_ref.size_bytes.as_ref().copied(),
+    )?;
+
+    let mut request = record_run_request(
+        "req_run_corrupt_existing",
+        "idem_run_corrupt_existing",
+        false,
+        Some(state_version),
+        &task_id,
+        &change_unit_id,
+    );
+    request.artifact_inputs = vec![existing_artifact_input(
+        "artifact_input_corrupt_existing",
+        artifact_ref,
+    )];
+    let response = harness
+        .service
+        .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["code"],
+        "ARTIFACT_MISSING"
+    );
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn verified_existing_artifact_ref_missing_integrity_fact_is_rejected() -> Result<(), Box<dyn Error>>
+{
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "missing_ref_fact")?;
+    let (state_version, mut artifact_ref) =
+        promote_artifact_for_record_run(&harness, &task_id, &change_unit_id, 2, "missing_ref")?;
+    artifact_ref.sha256 = RequiredNullable::null();
+    let before = harness.counts()?;
+
+    let mut request = record_run_request(
+        "req_run_missing_existing_ref_fact",
+        "idem_run_missing_existing_ref_fact",
+        false,
+        Some(state_version),
+        &task_id,
+        &change_unit_id,
+    );
+    request.artifact_inputs = vec![existing_artifact_input(
+        "artifact_input_missing_existing_ref_fact",
+        artifact_ref,
+    )];
+    let response = harness
+        .service
+        .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["code"],
+        "VALIDATION_FAILED"
+    );
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn missing_persistent_artifact_body_blocks_evidence_and_close_without_mutation(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let fixture = current_artifact_evidence_and_close_fixture(&harness, "missing_body")?;
+    let before_counts = harness.counts()?;
+    let before_row = persistent_artifact_row(&harness, fixture.artifact_id())?;
+
+    fs::remove_file(&fixture.body_path)?;
+
+    let status = status_with_evidence_and_close(&harness, &fixture.task_id)?;
+    let artifact_ref = status_evidence_artifact_ref(&status.response_value);
+
+    assert_eq!(
+        status.response_value["evidence_summary"]["status"],
+        "blocked"
+    );
+    assert_eq!(artifact_ref["availability"], "missing");
+    assert_close_blocker(&status.response_value, "artifact_unavailable");
+    assert_public_response_has_no_internal_leak(&status, &harness.runtime_home_path);
+
+    let check = close_check(&harness, &fixture.task_id)?;
+    assert_close_blocker(&check.response_value, "artifact_unavailable");
+    assert_public_response_has_no_internal_leak(&check, &harness.runtime_home_path);
+    assert_eq!(harness.counts()?, before_counts);
+    assert_eq!(
+        persistent_artifact_row(&harness, fixture.artifact_id())?,
+        before_row
+    );
+    Ok(())
+}
+
+#[test]
+fn modified_persistent_artifact_body_blocks_existing_link_before_write_ticket(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "modified_existing")?;
+    let (state_version, artifact_ref) = promote_artifact_for_record_run(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        2,
+        "modified_existing",
+    )?;
+    let artifact_id = artifact_ref.artifact_id.as_str().to_owned();
+    let write_ticket_id = prepare_write_ticket(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        state_version,
+        "modified_existing",
+    )?;
+    let before = harness.counts()?;
+    let before_row = persistent_artifact_row(&harness, &artifact_id)?;
+    let body_path = persistent_artifact_body_path(&harness, &artifact_id)?;
+    fs::write(&body_path, b"{\"fixture\":\"changed_bytes\"}")?;
+
+    let mut request = product_write_record_run_request(
+        "req_run_modified_existing",
+        "idem_run_modified_existing",
+        state_version + 1,
+        &task_id,
+        &change_unit_id,
+        &write_ticket_id,
+        "run_modified_existing",
+    );
+    request.artifact_inputs = vec![existing_artifact_input(
+        "artifact_input_modified_existing",
+        artifact_ref,
+    )];
+    let response = harness
+        .service
+        .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["code"],
+        "ARTIFACT_MISSING"
+    );
+    assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "active");
+    assert_eq!(harness.counts()?, before);
+    assert_eq!(persistent_artifact_row(&harness, &artifact_id)?, before_row);
+    assert_public_response_has_no_internal_leak(&response, &harness.runtime_home_path);
+    Ok(())
+}
+
+#[test]
+fn changed_persistent_artifact_body_blocks_evidence_and_close_without_mutation(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let fixture = current_artifact_evidence_and_close_fixture(&harness, "changed_body")?;
+    let before_counts = harness.counts()?;
+    let before_row = persistent_artifact_row(&harness, fixture.artifact_id())?;
+
+    fs::write(&fixture.body_path, b"{\"fixture\":\"changed\"}")?;
+
+    let status = status_with_evidence_and_close(&harness, &fixture.task_id)?;
+    let artifact_ref = status_evidence_artifact_ref(&status.response_value);
+
+    assert_eq!(
+        status.response_value["evidence_summary"]["status"],
+        "blocked"
+    );
+    assert_eq!(artifact_ref["availability"], "integrity_failed");
+    assert_eq!(artifact_ref["integrity_status"], "corrupt");
+    assert_close_blocker(&status.response_value, "artifact_unavailable");
+
+    let check = close_check(&harness, &fixture.task_id)?;
+    assert_close_blocker(&check.response_value, "artifact_unavailable");
+    assert_eq!(harness.counts()?, before_counts);
+    assert_eq!(
+        persistent_artifact_row(&harness, fixture.artifact_id())?,
+        before_row
+    );
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn symlink_escape_persistent_artifact_body_is_unusable_without_path_leak(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let fixture = current_artifact_evidence_and_close_fixture(&harness, "symlink_escape")?;
+    let before_counts = harness.counts()?;
+    let outside_path = harness
+        .runtime_home_path
+        .join("projects")
+        .join(PROJECT_ID)
+        .join("outside-artifact-store.json");
+    fs::write(&outside_path, b"{\"fixture\":\"symlink_escape\"}")?;
+    fs::remove_file(&fixture.body_path)?;
+    std::os::unix::fs::symlink(&outside_path, &fixture.body_path)?;
+
+    let status = status_with_evidence_and_close(&harness, &fixture.task_id)?;
+    let artifact_ref = status_evidence_artifact_ref(&status.response_value);
+
+    assert_eq!(artifact_ref["availability"], "unusable");
+    assert_eq!(artifact_ref["integrity_status"], "corrupt");
+    assert_close_blocker(&status.response_value, "artifact_unavailable");
+    assert_public_response_has_no_internal_leak(&status, &harness.runtime_home_path);
+
+    let check = close_check(&harness, &fixture.task_id)?;
+    assert_close_blocker(&check.response_value, "artifact_unavailable");
+    assert_public_response_has_no_internal_leak(&check, &harness.runtime_home_path);
+    assert_eq!(harness.counts()?, before_counts);
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn symlink_within_artifact_store_keeps_persistent_artifact_usable() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let fixture = current_artifact_evidence_and_close_fixture(&harness, "symlink_inside")?;
+    let original_bytes = fs::read(&fixture.body_path)?;
+    let inside_target = fixture
+        .body_path
+        .parent()
+        .expect("artifact body has parent")
+        .join("symlink-inside-target.json");
+    fs::write(&inside_target, original_bytes)?;
+    fs::remove_file(&fixture.body_path)?;
+    std::os::unix::fs::symlink(&inside_target, &fixture.body_path)?;
+
+    let status = status_with_evidence_and_close(&harness, &fixture.task_id)?;
+    let artifact_ref = status_evidence_artifact_ref(&status.response_value);
+
+    assert_eq!(artifact_ref["availability"], "available");
+    assert_eq!(artifact_ref["integrity_status"], "verified");
+    assert_no_close_blocker(&status.response_value, "artifact_unavailable");
+    Ok(())
+}
+
+#[test]
+fn record_run_staged_artifact_actor_source_mismatch_rejects_without_effect(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_stage_source")?;
+    let mut handle = stage_artifact_for_record_run(&harness, &task_id, "run_stage_source", 2)?;
+    handle.created_by_actor_source = ActorSource::agent_connection("forged_connection");
+    let before = harness.counts()?;
+
+    let mut request = record_run_request(
+        "req_run_stage_source",
+        "idem_run_stage_source",
+        false,
+        Some(2),
+        &task_id,
+        &change_unit_id,
+    );
+    request.artifact_inputs = vec![artifact_input_for_handle(
+        "artifact_input_source",
+        handle,
+        None,
+        None,
+    )];
+    let response = harness
+        .service
+        .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["details"]["artifact_input_error"]["reason"],
+        "staged_handle_actor_source_mismatch"
+    );
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn record_run_expired_staged_artifact_rejects_without_effect() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_stage_expired")?;
+    let handle = stage_artifact_for_record_run(&harness, &task_id, "run_stage_expired", 2)?;
+    expire_staged_artifact(&harness, handle.handle_id.as_str())?;
+    let before = harness.counts()?;
+
+    let mut request = record_run_request(
+        "req_run_stage_expired",
+        "idem_run_stage_expired",
+        false,
+        Some(2),
+        &task_id,
+        &change_unit_id,
+    );
+    request.artifact_inputs = vec![artifact_input_for_handle(
+        "artifact_input_expired",
+        handle,
+        None,
+        None,
+    )];
+    let response = harness
+        .service
+        .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["details"]["artifact_input_error"]["reason"],
+        "staged_handle_expired"
+    );
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn record_run_staged_artifact_uses_semantic_expiry_boundary() -> Result<(), Box<dyn Error>> {
+    let mut harness = MethodHarness::new()?;
+    let clock = ManualClock::at("2026-06-18T00:00:00Z");
+    harness.use_clock(clock.clone());
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_stage_boundary")?;
+    let handle = stage_artifact_for_record_run(&harness, &task_id, "run_stage_boundary", 2)?;
+    clock.advance(Duration::seconds(24 * 60 * 60 - 1));
+
+    let mut request = record_run_request(
+        "req_run_stage_boundary_before",
+        "idem_run_stage_boundary_before",
+        false,
+        Some(2),
+        &task_id,
+        &change_unit_id,
+    );
+    request.artifact_inputs = vec![artifact_input_for_handle(
+        "artifact_input_boundary_before",
+        handle,
+        None,
+        None,
+    )];
+    let response = harness
+        .service
+        .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+    assert_eq!(response.response_value["base"]["response_kind"], "result");
+
+    let mut harness = MethodHarness::new()?;
+    let clock = ManualClock::at("2026-06-18T00:00:00Z");
+    harness.use_clock(clock.clone());
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "run_stage_boundary_exact")?;
+    let handle = stage_artifact_for_record_run(&harness, &task_id, "run_stage_boundary_exact", 2)?;
+    clock.advance(Duration::hours(24));
+    let before = harness.counts()?;
+
+    let mut request = record_run_request(
+        "req_run_stage_boundary_exact",
+        "idem_run_stage_boundary_exact",
+        false,
+        Some(2),
+        &task_id,
+        &change_unit_id,
+    );
+    request.artifact_inputs = vec![artifact_input_for_handle(
+        "artifact_input_boundary_exact",
+        handle,
+        None,
+        None,
+    )];
+    let response = harness
+        .service
+        .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["details"]["artifact_input_error"]["reason"],
+        "staged_handle_expired"
+    );
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn record_run_staged_artifact_accepts_equivalent_offset_expiration() -> Result<(), Box<dyn Error>> {
+    let mut harness = MethodHarness::new()?;
+    let clock = ManualClock::at("2026-06-18T00:00:00Z");
+    harness.use_clock(clock);
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_stage_offset")?;
+    let mut handle = stage_artifact_for_record_run(&harness, &task_id, "run_stage_offset", 2)?;
+    handle.expires_at = volicord_types::UtcTimestamp::parse("2026-06-19T09:00:00+09:00")?;
+
+    let mut request = record_run_request(
+        "req_run_stage_offset",
+        "idem_run_stage_offset",
+        false,
+        Some(2),
+        &task_id,
+        &change_unit_id,
+    );
+    request.artifact_inputs = vec![artifact_input_for_handle(
+        "artifact_input_offset",
+        handle,
+        None,
+        None,
+    )];
+    let response = harness
+        .service
+        .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "result");
+    Ok(())
+}
+
+#[test]
+fn record_run_invalid_stored_staged_artifact_expiration_is_corrupt_state(
+) -> Result<(), Box<dyn Error>> {
+    let mut harness = MethodHarness::new()?;
+    let clock = ManualClock::at("2026-06-18T00:00:00Z");
+    harness.use_clock(clock);
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "run_stage_bad_expires")?;
+    let handle = stage_artifact_for_record_run(&harness, &task_id, "run_stage_bad_expires", 2)?;
+    set_staged_artifact_expires_at(&harness, handle.handle_id.as_str(), "tomorrow")?;
+    let before = harness.counts()?;
+
+    let mut request = record_run_request(
+        "req_run_stage_bad_expires",
+        "idem_run_stage_bad_expires",
+        false,
+        Some(2),
+        &task_id,
+        &change_unit_id,
+    );
+    request.artifact_inputs = vec![artifact_input_for_handle(
+        "artifact_input_bad_expires",
+        handle.clone(),
+        None,
+        None,
+    )];
+    let response = harness
+        .service
+        .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+
+    assert_owner_state_value_rejection(
+        &response,
+        "artifact_staging",
+        handle.handle_id.as_str(),
+        "expires_at",
+        &harness.runtime_home_path,
+    );
+    assert_eq!(harness.counts()?, before);
+    assert_eq!(
+        artifact_staging_status(&harness, handle.handle_id.as_str())?,
+        "staged"
+    );
+    Ok(())
+}
+
+#[test]
+fn record_run_checksum_mismatch_rejects_and_rolls_back_all_effects() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_stage_sha")?;
+    let handle = stage_artifact_for_record_run(&harness, &task_id, "run_stage_sha", 2)?;
+    let handle_id = handle.handle_id.as_str().to_owned();
+    let before = harness.counts()?;
+    let before_revision = task_revision(&harness, &task_id)?;
+
+    let mut input = artifact_input_for_handle("artifact_input_sha", handle, None, None);
+    input.expected_sha256 =
+        Some("0000000000000000000000000000000000000000000000000000000000000000".to_owned()).into();
+    let mut request = record_run_request(
+        "req_run_stage_sha",
+        "idem_run_stage_sha",
+        false,
+        Some(2),
+        &task_id,
+        &change_unit_id,
+    );
+    request.artifact_inputs = vec![input];
+    request.close_assessment = Some(close_assessment_with_risks(
+        "Rejected close basis.",
+        Vec::new(),
+    ))
+    .into();
+    let response = harness
+        .service
+        .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["details"]["artifact_input_error"]["reason"],
+        "staged_handle_checksum_mismatch"
+    );
+    assert_eq!(harness.counts()?, before);
+    assert_eq!(task_revision(&harness, &task_id)?, before_revision);
+    assert_eq!(artifact_staging_status(&harness, &handle_id)?, "staged");
+    Ok(())
+}
+
+#[test]
+fn record_run_body_checksum_mismatch_rolls_back_all_effects() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_body_sha")?;
+    let handle = stage_artifact_for_record_run(&harness, &task_id, "run_body_sha", 2)?;
+    let handle_id = handle.handle_id.as_str().to_owned();
+    fs::write(
+        staged_artifact_body_path(&harness, &handle_id)?,
+        vec![b'x'; handle.size_bytes as usize],
+    )?;
+    let before = harness.counts()?;
+    let before_revision = task_revision(&harness, &task_id)?;
+
+    let mut request = record_run_request(
+        "req_run_body_sha",
+        "idem_run_body_sha",
+        false,
+        Some(2),
+        &task_id,
+        &change_unit_id,
+    );
+    request.artifact_inputs = vec![artifact_input_for_handle(
+        "artifact_input_body_sha",
+        handle,
+        Some("validation_report"),
+        Some("Tampered body should not promote."),
+    )];
+    request.evidence_updates = vec![supported_evidence_update(
+        "Tampered body should not promote.",
+    )];
+    request.close_assessment = Some(close_assessment_with_risks(
+        "Tampered body should not promote.",
+        Vec::new(),
+    ))
+    .into();
+
+    let response = harness
+        .service
+        .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["code"],
+        "MCP_UNAVAILABLE"
+    );
+    assert_eq!(harness.counts()?, before);
+    assert_eq!(task_revision(&harness, &task_id)?, before_revision);
+    assert_eq!(artifact_staging_status(&harness, &handle_id)?, "staged");
+    Ok(())
+}
+
+#[test]
+fn record_run_body_size_mismatch_rolls_back_all_effects() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_body_size")?;
+    let handle = stage_artifact_for_record_run(&harness, &task_id, "run_body_size", 2)?;
+    let handle_id = handle.handle_id.as_str().to_owned();
+    fs::write(
+        staged_artifact_body_path(&harness, &handle_id)?,
+        vec![b'x'; handle.size_bytes as usize + 1],
+    )?;
+    let before = harness.counts()?;
+    let before_revision = task_revision(&harness, &task_id)?;
+
+    let mut request = record_run_request(
+        "req_run_body_size",
+        "idem_run_body_size",
+        false,
+        Some(2),
+        &task_id,
+        &change_unit_id,
+    );
+    request.artifact_inputs = vec![artifact_input_for_handle(
+        "artifact_input_body_size",
+        handle,
+        Some("validation_report"),
+        Some("Resized body should not promote."),
+    )];
+    request.evidence_updates = vec![supported_evidence_update(
+        "Resized body should not promote.",
+    )];
+    request.close_assessment = Some(close_assessment_with_risks(
+        "Resized body should not promote.",
+        Vec::new(),
+    ))
+    .into();
+
+    let response = harness
+        .service
+        .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["code"],
+        "MCP_UNAVAILABLE"
+    );
+    assert_eq!(harness.counts()?, before);
+    assert_eq!(task_revision(&harness, &task_id)?, before_revision);
+    assert_eq!(artifact_staging_status(&harness, &handle_id)?, "staged");
+    Ok(())
+}
+
+#[test]
+fn record_run_staging_path_outside_artifact_store_rolls_back_all_effects(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "run_body_path_outside")?;
+    let handle = stage_artifact_for_record_run(&harness, &task_id, "run_body_path_outside", 2)?;
+    let handle_id = handle.handle_id.as_str().to_owned();
+    set_artifact_staging_tmp_path(&harness, &handle_id, "tmp/not-under-artifacts.txt")?;
+    let before = harness.counts()?;
+    let before_revision = task_revision(&harness, &task_id)?;
+
+    let mut request = record_run_request(
+        "req_run_body_path_outside",
+        "idem_run_body_path_outside",
+        false,
+        Some(2),
+        &task_id,
+        &change_unit_id,
+    );
+    request.artifact_inputs = vec![artifact_input_for_handle(
+        "artifact_input_body_path_outside",
+        handle,
+        Some("validation_report"),
+        Some("Invalid staging path should not promote."),
+    )];
+    request.evidence_updates = vec![supported_evidence_update(
+        "Invalid staging path should not promote.",
+    )];
+
+    let response = harness
+        .service
+        .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["code"],
+        "MCP_UNAVAILABLE"
+    );
+    assert_eq!(harness.counts()?, before);
+    assert_eq!(task_revision(&harness, &task_id)?, before_revision);
+    assert_eq!(artifact_staging_status(&harness, &handle_id)?, "staged");
+    Ok(())
+}
+
+#[test]
+fn record_run_dry_run_and_idempotency_replay_have_no_extra_effects() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_replay")?;
+    let before_dry = harness.counts()?;
+    let dry_run = harness.service.record_run(
+        record_run_request(
+            "req_run_dry",
+            "idem_run_dry",
+            true,
+            Some(2),
+            &task_id,
+            &change_unit_id,
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    assert_eq!(dry_run.response_value["base"]["response_kind"], "dry_run");
+    assert_eq!(harness.counts()?, before_dry);
+
+    let request = record_run_request(
+        "req_run_replay",
+        "idem_run_replay",
+        false,
+        Some(2),
+        &task_id,
+        &change_unit_id,
+    );
+    let first = harness.service.record_run(
+        request.clone(),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let after_first = harness.counts()?;
+    let second = harness
+        .service
+        .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+
+    assert!(second.replayed);
+    assert_eq!(second.response_json, first.response_json);
+    assert_eq!(harness.counts()?, after_first);
+    Ok(())
+}
