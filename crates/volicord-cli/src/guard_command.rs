@@ -27,7 +27,8 @@ use volicord_store::{
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
     session_watch::{
         create_watch_baseline, latest_watch_baseline_for_session, snapshot_product_repository,
-        SessionWatchStatus, WatchBaselineCreate, WatchSnapshotOptions,
+        watch_scan_summary_from_entries_json, SessionWatchStatus, WatchBaselineCreate,
+        WatchSnapshotOptions,
     },
     StoreError,
 };
@@ -35,9 +36,10 @@ use volicord_types::{
     chat_judgment_verification_code, ActorSource, GuardDecision, HostKind, IntegrationProfile,
     JudgmentResolutionOutcome, OperationCategory, PersistedJudgmentBasis,
     PersistedUserJudgmentRequest, ProjectId, PromptCaptureStatus, RequestId,
-    SessionWatchCoverageBasis, StatusInclude, StatusRequest, TaskId, ToolEnvelope,
-    UserJudgmentOption, UserJudgmentOptionAction, UtcTimestamp, WriteTicketAttemptScope,
-    VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING, VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
+    SessionWatchCoverageBasis, SessionWatchScanSummary, StatusInclude, StatusRequest, TaskId,
+    ToolEnvelope, UserJudgmentOption, UserJudgmentOptionAction, UtcTimestamp,
+    WriteTicketAttemptScope, VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
+    VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
 };
 
 use crate::disclosure::{
@@ -149,6 +151,7 @@ struct GuardStateSummary {
     pending_user_judgments: Vec<GuardPendingJudgmentSummary>,
     active_blocker_count: usize,
     unresolved_unrecorded_change_count: usize,
+    session_watch_scan_summary: Option<SessionWatchScanSummary>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -736,6 +739,7 @@ fn initialize_observe_session_watch(
             &snapshot.digest,
         ],
     );
+    let scan_summary = session_watch_scan_summary_from_snapshot(&snapshot);
     create_watch_baseline(
         runtime_home,
         &project.project_id,
@@ -755,12 +759,38 @@ fn initialize_observe_session_watch(
                 "does_not_identify_actor": true,
                 "coverage_start_at": started_at,
                 "coverage_basis": SessionWatchCoverageBasis::McpStart.as_str(),
-                "coverage_started_by": "session_start_hook"
+                "coverage_started_by": "session_start_hook",
+                "scan_summary": scan_summary
             })
             .to_string(),
         },
     )?;
     Ok(())
+}
+
+fn session_watch_scan_summary_from_snapshot(
+    snapshot: &volicord_store::session_watch::WatchSnapshot,
+) -> SessionWatchScanSummary {
+    session_watch_scan_summary_from_store(&snapshot.scan_summary)
+}
+
+fn session_watch_scan_summary_from_store(
+    summary: &volicord_store::session_watch::WatchScanSummary,
+) -> SessionWatchScanSummary {
+    SessionWatchScanSummary {
+        files_scanned: summary.files_scanned,
+        files_skipped: summary.files_skipped,
+        unreadable_paths_count: summary.unreadable_paths_count,
+        degraded_reasons: summary.degraded_reasons.clone(),
+        degraded_reason_counts: summary.degraded_reason_counts.clone(),
+        skipped_paths_sample: summary.skipped_paths_sample.clone(),
+        skipped_paths_truncated: summary.skipped_paths_truncated,
+        default_excluded_paths: volicord_store::session_watch::default_watch_excluded_paths(),
+        max_file_size_bytes: volicord_store::session_watch::DEFAULT_MAX_FILE_HASH_BYTES,
+        max_file_count: volicord_store::session_watch::DEFAULT_MAX_SCAN_FILE_COUNT,
+        follows_symlinks: false,
+        not_full_filesystem_monitoring: true,
+    }
 }
 
 fn observe_guard_installation_activation(
@@ -888,6 +918,8 @@ fn guard_state_summary(
         Some(&envelope.connection_id),
     )?
     .len();
+    let session_watch_scan_summary =
+        guard_session_watch_scan_summary(runtime_home, project, envelope)?;
     let _ = input.raw_text.len();
     Ok(GuardStateSummary {
         project_id: project.project_id.clone(),
@@ -905,7 +937,34 @@ fn guard_state_summary(
         pending_user_judgments,
         active_blocker_count,
         unresolved_unrecorded_change_count,
+        session_watch_scan_summary,
     })
+}
+
+fn guard_session_watch_scan_summary(
+    runtime_home: &Path,
+    project: &ProjectRecord,
+    envelope: &GuardEnvelope,
+) -> Result<Option<SessionWatchScanSummary>, GuardCommandError> {
+    let Some(session_id) = envelope.session_id.as_deref() else {
+        return Ok(None);
+    };
+    let Some(baseline) =
+        latest_watch_baseline_for_session(runtime_home, &project.project_id, session_id)?
+    else {
+        return Ok(None);
+    };
+    if let Ok(metadata) = serde_json::from_str::<Value>(&baseline.metadata_json) {
+        if let Some(raw_summary) = metadata.get("scan_summary") {
+            if let Ok(summary) =
+                serde_json::from_value::<SessionWatchScanSummary>(raw_summary.clone())
+            {
+                return Ok(Some(summary));
+            }
+        }
+    }
+    let summary = watch_scan_summary_from_entries_json(&baseline.snapshot_entries_json)?;
+    Ok(Some(session_watch_scan_summary_from_store(&summary)))
 }
 
 fn tool_observation(event: &Value, repo_root: &Path) -> ToolObservation {
@@ -3036,12 +3095,14 @@ fn render_guard_output(
             } else {
                 "allowed"
             };
+            let watcher_text = guard_watcher_scan_text(&result);
             Ok(RenderedGuardOutput {
                 stdout: format!(
-                    "Volicord host-hook {}: {} ({})\n{}\n",
+                    "Volicord host-hook {}: {} ({})\n{}{}\n",
                     phase.command_name(),
                     decision.as_str(),
                     allowed,
+                    watcher_text,
                     COOPERATIVE_DECISION_DISCLOSURE_TEXT
                 ),
                 stderr: String::new(),
@@ -3054,6 +3115,44 @@ fn render_guard_output(
         }
         OutputFormat::HostNative(host) => render_host_native_output(host, phase, decision, result),
     }
+}
+
+fn guard_watcher_scan_text(result: &Value) -> String {
+    let Some(summary) = result
+        .get("context")
+        .and_then(|context| context.get("session_watch_scan_summary"))
+        .filter(|summary| summary.is_object())
+    else {
+        return String::new();
+    };
+    let degraded_reasons = summary
+        .get("degraded_reasons")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect::<Vec<_>>();
+    let degraded_reasons = if degraded_reasons.is_empty() {
+        "none".to_owned()
+    } else {
+        degraded_reasons.join(",")
+    };
+    format!(
+        "watcher_scan: files_scanned={}; files_skipped={}; unreadable_paths={}; degraded_reasons={}\nwatcher_note: not full filesystem monitoring\n",
+        summary
+            .get("files_scanned")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        summary
+            .get("files_skipped")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        summary
+            .get("unreadable_paths_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        degraded_reasons,
+    )
 }
 
 fn render_host_native_output(
@@ -3257,7 +3356,8 @@ fn context_json(summary: &GuardStateSummary) -> Value {
             .map(pending_judgment_summary_json)
             .collect::<Vec<_>>(),
         "active_blocker_count": summary.active_blocker_count,
-        "unresolved_unrecorded_change_count": summary.unresolved_unrecorded_change_count
+        "unresolved_unrecorded_change_count": summary.unresolved_unrecorded_change_count,
+        "session_watch_scan_summary": summary.session_watch_scan_summary
     })
 }
 

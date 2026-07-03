@@ -3913,6 +3913,15 @@ fn mcp_only_watcher_detects_bypass_file_changes() -> Result<(), Box<dyn Error>> 
         "method_boundary"
     );
     assert_eq!(
+        response.response_value["guard_health"]["session_watch_scan_summary"]
+            ["not_full_filesystem_monitoring"],
+        true
+    );
+    assert_eq!(
+        response.response_value["guard_health"]["session_watch_scan_summary"]["follows_symlinks"],
+        false
+    );
+    assert_eq!(
         response.response_value["coverage_summary"]["active_profile"],
         "record"
     );
@@ -3931,6 +3940,10 @@ fn mcp_only_watcher_detects_bypass_file_changes() -> Result<(), Box<dyn Error>> 
     assert_eq!(
         response.response_value["coverage_summary"]["unresolved_unrecorded_change_count"],
         1
+    );
+    assert_eq!(
+        response.response_value["coverage_summary"]["watcher_scan_summary"],
+        response.response_value["guard_health"]["session_watch_scan_summary"]
     );
     assert_coverage_non_guarantees(&response.response_value["coverage_summary"]);
     assert!(

@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     ffi::OsStr,
     fs,
     path::{Path, PathBuf},
@@ -12,9 +12,14 @@ use volicord_store::{
     agent_connections::{CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW},
     inspection::{
         inspect_runtime_home, DatabaseInspection, InspectionSchemaState,
-        InstallationProfileInspectionRecord, RegistryInspectionSnapshot,
+        InstallationProfileInspectionRecord, RegistryInspectionSnapshot, RuntimeHomeInspection,
     },
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
+    session_watch::{
+        default_watch_excluded_paths, latest_watch_baseline_for_connection,
+        watch_scan_summary_from_entries_json, DEFAULT_MAX_FILE_HASH_BYTES,
+        DEFAULT_MAX_SCAN_FILE_COUNT,
+    },
 };
 use volicord_types::{GuardInstallationStatus, IntegrationProfile, SummaryCard};
 
@@ -62,6 +67,12 @@ impl From<RuntimeHomeResolutionError> for DoctorCommandError {
 enum OutputFormat {
     Text,
     Json,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct DoctorOptions {
+    output: OutputFormat,
+    privacy_footprint: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -125,7 +136,7 @@ struct DiagnosticAction {
 }
 
 pub fn doctor_usage() -> String {
-    "volicord doctor [--json]\n".to_owned()
+    "volicord doctor [--json] [--privacy-footprint]\n".to_owned()
 }
 
 pub fn run_doctor_command<F>(
@@ -142,13 +153,19 @@ where
             output: doctor_usage(),
         });
     }
-    let output = parse_doctor_options(args)?;
+    let options = parse_doctor_options(args)?;
     let runtime_home = resolve_runtime_home(&env_var, current_dir)?;
+    let inspection = inspect_runtime_home(&runtime_home);
+    if options.privacy_footprint {
+        return Ok(CommandOutcome {
+            status: CommandStatus::Complete,
+            output: render_privacy_footprint_output(options.output, &runtime_home, &inspection)?,
+        });
+    }
     let mut checks = Vec::new();
     let mut actions = Vec::new();
 
     inspect_runtime_home_path(&runtime_home, &mut checks, &mut actions);
-    let inspection = inspect_runtime_home(&runtime_home);
     let mut profile = None;
     let mut project_count = None;
     let mut connection_count = None;
@@ -169,6 +186,7 @@ where
             connection_count = Some(snapshot.agent_connections.len());
             guard_installation_count = Some(snapshot.guard_installations.len());
             inspect_guard_installations(snapshot, &mut checks, &mut actions);
+            inspect_session_watch_baselines(&runtime_home, snapshot, &mut checks);
         }
         DatabaseInspection::Unsupported { path, detail } => {
             checks.push(
@@ -248,19 +266,26 @@ where
     let status = doctor_status(&checks);
     Ok(CommandOutcome {
         status,
-        output: render_doctor_output(output, status, &runtime_home, &checks, &actions)?,
+        output: render_doctor_output(options.output, status, &runtime_home, &checks, &actions)?,
     })
 }
 
-fn parse_doctor_options(args: &[String]) -> Result<OutputFormat, DoctorCommandError> {
+fn parse_doctor_options(args: &[String]) -> Result<DoctorOptions, DoctorCommandError> {
     let mut output = OutputFormat::Text;
+    let mut privacy_footprint = false;
     for token in args {
         match token.as_str() {
             "-h" | "--help" | "help" => return Err(DoctorCommandError::Usage(doctor_usage())),
             "--json" => output = OutputFormat::Json,
+            "--privacy-footprint" => privacy_footprint = true,
             option if option.starts_with("--json=") => {
                 return Err(DoctorCommandError::Usage(
                     "--json does not accept a value".to_owned(),
+                ))
+            }
+            option if option.starts_with("--privacy-footprint=") => {
+                return Err(DoctorCommandError::Usage(
+                    "--privacy-footprint does not accept a value".to_owned(),
                 ))
             }
             option if option.starts_with('-') => {
@@ -275,7 +300,117 @@ fn parse_doctor_options(args: &[String]) -> Result<OutputFormat, DoctorCommandEr
             }
         }
     }
-    Ok(output)
+    Ok(DoctorOptions {
+        output,
+        privacy_footprint,
+    })
+}
+
+fn render_privacy_footprint_output(
+    output: OutputFormat,
+    runtime_home: &Path,
+    inspection: &RuntimeHomeInspection,
+) -> Result<String, DoctorCommandError> {
+    let registry_state = privacy_registry_state(&inspection.registry);
+    let record_counts = privacy_record_counts(&inspection.registry);
+    let stores = privacy_stores();
+    let does_not_store = privacy_does_not_store();
+    let does_not_prove = privacy_does_not_prove();
+
+    match output {
+        OutputFormat::Json => serde_json::to_string_pretty(&json!({
+            "status": CommandStatus::Complete.as_str(),
+            "runtime_home": path_text(runtime_home),
+            "privacy_footprint": {
+                "registry_state": registry_state,
+                "registry_db_path": path_text(&inspection.registry_db_path),
+                "record_counts": record_counts,
+                "stores": stores,
+                "does_not_store": does_not_store,
+                "does_not_prove": does_not_prove,
+                "doctor_output_scope": "category and count summary only; this command does not print stored row bodies",
+            }
+        }))
+        .map(|text| format!("{text}\n"))
+        .map_err(|error| DoctorCommandError::Runtime(error.to_string())),
+        OutputFormat::Text => {
+            let counts = record_counts
+                .as_object()
+                .map(|counts| {
+                    counts
+                        .iter()
+                        .map(|(key, value)| format!("{key}={}", value.as_u64().unwrap_or(0)))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                })
+                .filter(|value| !value.is_empty())
+                .unwrap_or_else(|| "unavailable".to_owned());
+            Ok(format!(
+                "Volicord Runtime Home privacy footprint\nruntime_home: {}\nregistry_state: {}\nregistry_db_path: {}\nrecord_counts: {}\nstores: {}\ndoes_not_store: {}\ndoes_not_prove: {}\ndoctor_output_scope: category and count summary only; this command does not print stored row bodies\n",
+                runtime_home.display(),
+                registry_state,
+                inspection.registry_db_path.display(),
+                counts,
+                stores.join("; "),
+                does_not_store.join("; "),
+                does_not_prove.join("; "),
+            ))
+        }
+    }
+}
+
+fn privacy_registry_state(
+    registry: &DatabaseInspection<RegistryInspectionSnapshot>,
+) -> &'static str {
+    match registry {
+        DatabaseInspection::Missing { .. } => "missing",
+        DatabaseInspection::Present(_) => "present",
+        DatabaseInspection::Unsupported { .. } => "unsupported",
+        DatabaseInspection::Malformed { .. } => "malformed",
+        DatabaseInspection::Unreadable { .. } => "unreadable",
+    }
+}
+
+fn privacy_record_counts(registry: &DatabaseInspection<RegistryInspectionSnapshot>) -> Value {
+    match registry {
+        DatabaseInspection::Present(snapshot) => json!({
+            "projects": snapshot.projects.len(),
+            "agent_connections": snapshot.agent_connections.len(),
+            "connection_projects": snapshot.connection_projects.len(),
+            "guard_installations": snapshot.guard_installations.len(),
+            "project_state_databases": snapshot.projects.len(),
+        }),
+        _ => Value::Null,
+    }
+}
+
+fn privacy_stores() -> Vec<&'static str> {
+    vec![
+        "Runtime Home identity, registry path, storage profile, installation profile, command paths, and setup metadata",
+        "Product Repository registrations, project home paths, project state database paths, and Agent Connection records",
+        "detective host-hook installation records, capability metadata, policy hashes, hook observation timestamps, and prompt-capture availability state",
+        "project state records for tasks, change units, write tickets, evidence metadata, close-readiness records, User Channel judgments, and artifacts when those features are used",
+        "session-watch baselines and observations with relative paths, file hashes, file sizes, skip reasons, scan summaries, timestamps, and observation links",
+    ]
+}
+
+fn privacy_does_not_store() -> Vec<&'static str> {
+    vec![
+        "session-watch snapshots do not store Product Repository file contents",
+        "prompt-capture availability and verification-code records do not include raw prompt text by default",
+        "doctor --privacy-footprint reports categories and counts, not stored row bodies",
+    ]
+}
+
+fn privacy_does_not_prove() -> Vec<&'static str> {
+    vec![
+        "actor attribution",
+        "write prevention",
+        "tamper-proof audit",
+        "full filesystem monitoring",
+        "OS enforcement or security isolation",
+        "product correctness, test sufficiency, human review, final acceptance, or residual-risk acceptance",
+    ]
 }
 
 fn inspect_runtime_home_path(
@@ -628,6 +763,238 @@ fn inspect_guard_installations(
     }
 
     inspect_prompt_capture_availability(&observed_profile_installations, checks);
+}
+
+#[derive(Debug, Default)]
+struct DoctorWatcherScanAggregate {
+    baseline_count: u64,
+    missing_baseline_count: u64,
+    files_scanned: u64,
+    files_skipped: u64,
+    unreadable_paths_count: u64,
+    degraded_reason_counts: BTreeMap<String, u64>,
+    skipped_paths_sample: Vec<String>,
+    skipped_paths_truncated: bool,
+    baseline_status_counts: BTreeMap<String, u64>,
+    coverage_basis_values: BTreeSet<String>,
+    partial_coverage_warnings: BTreeSet<String>,
+    latest_baseline_created_at: Option<String>,
+    latest_coverage_start_at: Option<String>,
+    read_errors: Vec<String>,
+}
+
+fn inspect_session_watch_baselines(
+    runtime_home: &Path,
+    snapshot: &RegistryInspectionSnapshot,
+    checks: &mut Vec<DiagnosticCheck>,
+) {
+    let detective_installations = snapshot
+        .guard_installations
+        .iter()
+        .filter(|installation| installation.guard_mode == IntegrationProfile::Detective.as_str())
+        .collect::<Vec<_>>();
+    if detective_installations.is_empty() {
+        checks.push(
+            DiagnosticCheck::skipped(
+                "watcher_scan_summary",
+                "no detective session-watch baseline is applicable",
+            )
+            .with_details(doctor_watcher_details_json(
+                "not_applicable",
+                &DoctorWatcherScanAggregate::default(),
+            )),
+        );
+        return;
+    }
+
+    let mut aggregate = DoctorWatcherScanAggregate::default();
+    for installation in detective_installations {
+        let Some(project_id) = installation.project_id.as_deref() else {
+            aggregate.read_errors.push(format!(
+                "{}: detective installation has no project id",
+                installation.guard_installation_id
+            ));
+            continue;
+        };
+        match latest_watch_baseline_for_connection(
+            runtime_home,
+            project_id,
+            &installation.connection_internal_id,
+        ) {
+            Ok(Some(baseline)) => {
+                if let Err(error) = doctor_merge_watcher_baseline(&mut aggregate, &baseline) {
+                    aggregate
+                        .read_errors
+                        .push(format!("{}: {error}", installation.guard_installation_id));
+                }
+            }
+            Ok(None) => aggregate.missing_baseline_count += 1,
+            Err(error) => aggregate
+                .read_errors
+                .push(format!("{}: {error}", installation.guard_installation_id)),
+        }
+    }
+
+    let watcher_status = doctor_watcher_status(&aggregate);
+    let details = doctor_watcher_details_json(&watcher_status, &aggregate);
+    let check = if !aggregate.read_errors.is_empty() {
+        DiagnosticCheck::warning(
+            "watcher_scan_summary",
+            "one or more session-watch baselines could not be read",
+        )
+    } else if aggregate.baseline_count == 0 {
+        DiagnosticCheck::warning(
+            "watcher_scan_summary",
+            "no session-watch baseline is recorded for detective installations",
+        )
+    } else if aggregate.files_skipped > 0 || !aggregate.degraded_reason_counts.is_empty() {
+        DiagnosticCheck::warning(
+            "watcher_scan_summary",
+            "session watcher scan recorded skipped or degraded coverage",
+        )
+    } else {
+        DiagnosticCheck::passed(
+            "watcher_scan_summary",
+            "session watcher scan summary is recorded",
+        )
+    };
+    checks.push(check.with_details(details));
+}
+
+fn doctor_merge_watcher_baseline(
+    aggregate: &mut DoctorWatcherScanAggregate,
+    baseline: &volicord_store::session_watch::WatchBaselineRecord,
+) -> Result<(), String> {
+    aggregate.baseline_count += 1;
+    *aggregate
+        .baseline_status_counts
+        .entry(baseline.status.clone())
+        .or_insert(0) += 1;
+    if aggregate
+        .latest_baseline_created_at
+        .as_deref()
+        .is_none_or(|current| baseline.created_at.as_str() > current)
+    {
+        aggregate.latest_baseline_created_at = Some(baseline.created_at.clone());
+    }
+
+    let metadata = serde_json::from_str::<Value>(&baseline.metadata_json).unwrap_or(Value::Null);
+    if let Some(coverage_start_at) = metadata
+        .get("coverage_start_at")
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+    {
+        if aggregate
+            .latest_coverage_start_at
+            .as_deref()
+            .is_none_or(|current| coverage_start_at > current)
+        {
+            aggregate.latest_coverage_start_at = Some(coverage_start_at.to_owned());
+        }
+    }
+    if let Some(coverage_basis) = metadata
+        .get("coverage_basis")
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+    {
+        aggregate
+            .coverage_basis_values
+            .insert(coverage_basis.to_owned());
+    }
+    if let Some(warning) = metadata
+        .get("partial_coverage_warning")
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+    {
+        aggregate
+            .partial_coverage_warnings
+            .insert(warning.to_owned());
+    }
+
+    let scan_summary = metadata
+        .get("scan_summary")
+        .and_then(|raw_summary| {
+            serde_json::from_value::<volicord_store::session_watch::WatchScanSummary>(
+                raw_summary.clone(),
+            )
+            .ok()
+        })
+        .map(Ok)
+        .unwrap_or_else(|| watch_scan_summary_from_entries_json(&baseline.snapshot_entries_json))
+        .map_err(|error| error.to_string())?;
+    aggregate.files_scanned += scan_summary.files_scanned;
+    aggregate.files_skipped += scan_summary.files_skipped;
+    aggregate.unreadable_paths_count += scan_summary.unreadable_paths_count;
+    for (reason, count) in scan_summary.degraded_reason_counts {
+        *aggregate.degraded_reason_counts.entry(reason).or_insert(0) += count;
+    }
+    for path in scan_summary.skipped_paths_sample {
+        if aggregate.skipped_paths_sample.len() < 20 {
+            aggregate.skipped_paths_sample.push(path);
+        } else {
+            aggregate.skipped_paths_truncated = true;
+            break;
+        }
+    }
+    aggregate.skipped_paths_truncated |= scan_summary.skipped_paths_truncated;
+    Ok(())
+}
+
+fn doctor_watcher_status(aggregate: &DoctorWatcherScanAggregate) -> String {
+    if aggregate.baseline_count == 0 {
+        return "not_started".to_owned();
+    }
+    if aggregate.baseline_status_counts.len() == 1 {
+        aggregate
+            .baseline_status_counts
+            .keys()
+            .next()
+            .cloned()
+            .unwrap_or_else(|| "unknown".to_owned())
+    } else {
+        "mixed".to_owned()
+    }
+}
+
+fn doctor_watcher_details_json(status: &str, aggregate: &DoctorWatcherScanAggregate) -> Value {
+    let degraded_reasons = aggregate
+        .degraded_reason_counts
+        .keys()
+        .cloned()
+        .collect::<Vec<_>>();
+    json!({
+        "watcher_status": status,
+        "baseline_count": aggregate.baseline_count,
+        "missing_baseline_count": aggregate.missing_baseline_count,
+        "baseline_status_counts": aggregate.baseline_status_counts,
+        "baseline_created_at": aggregate.latest_baseline_created_at,
+        "coverage_start_at": aggregate.latest_coverage_start_at,
+        "coverage_basis": doctor_single_or_list(&aggregate.coverage_basis_values),
+        "partial_coverage_warning": doctor_single_or_list(&aggregate.partial_coverage_warnings),
+        "scan_summary": {
+            "files_scanned": aggregate.files_scanned,
+            "files_skipped": aggregate.files_skipped,
+            "unreadable_paths_count": aggregate.unreadable_paths_count,
+            "degraded_reasons": degraded_reasons,
+            "degraded_reason_counts": aggregate.degraded_reason_counts,
+            "skipped_paths_sample": aggregate.skipped_paths_sample,
+            "skipped_paths_truncated": aggregate.skipped_paths_truncated,
+            "default_excluded_paths": default_watch_excluded_paths(),
+            "max_file_size_bytes": DEFAULT_MAX_FILE_HASH_BYTES,
+            "max_file_count": DEFAULT_MAX_SCAN_FILE_COUNT,
+            "follows_symlinks": false,
+            "not_full_filesystem_monitoring": true,
+        },
+        "read_errors": aggregate.read_errors,
+    })
+}
+
+fn doctor_single_or_list(values: &BTreeSet<String>) -> Value {
+    match values.len() {
+        0 => Value::Null,
+        1 => Value::String(values.iter().next().cloned().unwrap_or_default()),
+        _ => json!(values.iter().cloned().collect::<Vec<_>>()),
+    }
 }
 
 #[derive(Debug, Default)]
@@ -2178,7 +2545,7 @@ fn render_doctor_output(
         }
         OutputFormat::Text => {
             let text = format!(
-                "Volicord doctor {}\n{}status_meaning: {}\n{}runtime_home_state: {}\nruntime_home: {}\ninstallation_profile_state: {}\ncommand_state: {}\nproject_registration_state: {}\nconnection_state: {}\nmcp_config_state: {}\ndetective_installation_state: {}\nselected_profile: {}\nobservation_summary: {}\nobservation_capabilities: {}\ndetective_configuration_state: {}\nhost_hook_observation_state: {}\ndetective_effective_state: {}\ndetective_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_path_safety: {}\nrequired_hook_phases_state: {}\nrequired_hook_phases_missing: {}\nhost_hook_observed: {}\ndetective_status_state: {}\nprompt_capture_state: {}\nprompt_capture_health: {}\nwatcher_status: not_started\nwatcher_baseline_created_at: none\nwatcher_coverage_start_at: none\nwatcher_coverage_basis: none\nwatcher_partial_coverage_warning: doctor does not initialize an MCP session watch\nhost_reload_required: {}\n",
+                "Volicord doctor {}\n{}status_meaning: {}\n{}runtime_home_state: {}\nruntime_home: {}\ninstallation_profile_state: {}\ncommand_state: {}\nproject_registration_state: {}\nconnection_state: {}\nmcp_config_state: {}\ndetective_installation_state: {}\nselected_profile: {}\nobservation_summary: {}\nobservation_capabilities: {}\ndetective_configuration_state: {}\nhost_hook_observation_state: {}\ndetective_effective_state: {}\ndetective_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_path_safety: {}\nrequired_hook_phases_state: {}\nrequired_hook_phases_missing: {}\nhost_hook_observed: {}\ndetective_status_state: {}\nprompt_capture_state: {}\nprompt_capture_health: {}\nwatcher_status: {}\nwatcher_baseline_created_at: {}\nwatcher_coverage_start_at: {}\nwatcher_coverage_basis: {}\nwatcher_partial_coverage_warning: {}\nwatcher_files_scanned: {}\nwatcher_files_skipped: {}\nwatcher_unreadable_paths: {}\nwatcher_degraded_reasons: {}\nwatcher_skipped_paths_sample: {}\nwatcher_not_full_filesystem_monitoring: {}\nhost_reload_required: {}\n",
                 status.as_str(),
                 doctor_result_reason_text(status, checks, actions),
                 doctor_status_meaning(status, checks),
@@ -2209,6 +2576,17 @@ fn render_doctor_output(
                 doctor_check_state(checks, "guard_status_active"),
                 doctor_prompt_capture_status(checks),
                 doctor_prompt_capture_health(checks),
+                doctor_watcher_detail_text(checks, "watcher_status", "not_checked"),
+                doctor_watcher_detail_text(checks, "baseline_created_at", "none"),
+                doctor_watcher_detail_text(checks, "coverage_start_at", "none"),
+                doctor_watcher_detail_text(checks, "coverage_basis", "none"),
+                doctor_watcher_detail_text(checks, "partial_coverage_warning", "none"),
+                doctor_watcher_scan_u64_text(checks, "files_scanned"),
+                doctor_watcher_scan_u64_text(checks, "files_skipped"),
+                doctor_watcher_scan_u64_text(checks, "unreadable_paths_count"),
+                doctor_watcher_scan_list_text(checks, "degraded_reasons"),
+                doctor_watcher_scan_list_text(checks, "skipped_paths_sample"),
+                yes_no(doctor_watcher_not_full_filesystem_monitoring(checks)),
                 yes_no(doctor_host_reload_required(checks, actions)),
             );
             Ok(text)
@@ -2275,11 +2653,12 @@ fn doctor_states_json(
         "guard_status": doctor_check_state(checks, "guard_status_active"),
         "prompt_capture": doctor_prompt_capture_health(checks),
         "prompt_capture_status": doctor_prompt_capture_status(checks),
-        "watcher_status": "not_started",
-        "watcher_baseline_created_at": Value::Null,
-        "watcher_coverage_start_at": Value::Null,
-        "watcher_coverage_basis": Value::Null,
-        "watcher_partial_coverage_warning": "doctor does not initialize an MCP session watch",
+        "watcher_status": doctor_watcher_detail_value(checks, "watcher_status"),
+        "watcher_baseline_created_at": doctor_watcher_detail_value(checks, "baseline_created_at"),
+        "watcher_coverage_start_at": doctor_watcher_detail_value(checks, "coverage_start_at"),
+        "watcher_coverage_basis": doctor_watcher_detail_value(checks, "coverage_basis"),
+        "watcher_partial_coverage_warning": doctor_watcher_detail_value(checks, "partial_coverage_warning"),
+        "watcher_scan_summary": doctor_watcher_scan_summary_value(checks),
         "host_reload_required": doctor_host_reload_required(checks, actions),
     });
     if let Some(object) = states.as_object_mut() {
@@ -2313,6 +2692,73 @@ fn doctor_states_json(
         );
     }
     states
+}
+
+fn doctor_watcher_details(checks: &[DiagnosticCheck]) -> Option<&Value> {
+    checks
+        .iter()
+        .find(|check| check.id == "watcher_scan_summary")
+        .and_then(|check| check.details.as_ref())
+}
+
+fn doctor_watcher_detail_value(checks: &[DiagnosticCheck], key: &str) -> Value {
+    doctor_watcher_details(checks)
+        .and_then(|details| details.get(key))
+        .cloned()
+        .unwrap_or(Value::Null)
+}
+
+fn doctor_watcher_detail_text(checks: &[DiagnosticCheck], key: &str, fallback: &str) -> String {
+    match doctor_watcher_detail_value(checks, key) {
+        Value::String(value) if !value.trim().is_empty() => value,
+        Value::Array(values) if !values.is_empty() => values
+            .iter()
+            .filter_map(Value::as_str)
+            .collect::<Vec<_>>()
+            .join(","),
+        Value::Null => fallback.to_owned(),
+        value => value.to_string(),
+    }
+}
+
+fn doctor_watcher_scan_summary_value(checks: &[DiagnosticCheck]) -> Value {
+    doctor_watcher_details(checks)
+        .and_then(|details| details.get("scan_summary"))
+        .cloned()
+        .unwrap_or(Value::Null)
+}
+
+fn doctor_watcher_scan_u64_text(checks: &[DiagnosticCheck], key: &str) -> String {
+    let summary = doctor_watcher_scan_summary_value(checks);
+    summary
+        .get(key)
+        .and_then(Value::as_u64)
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "unknown".to_owned())
+}
+
+fn doctor_watcher_scan_list_text(checks: &[DiagnosticCheck], key: &str) -> String {
+    let summary = doctor_watcher_scan_summary_value(checks);
+    let values = summary
+        .get(key)
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect::<Vec<_>>();
+    if values.is_empty() {
+        "none".to_owned()
+    } else {
+        values.join(",")
+    }
+}
+
+fn doctor_watcher_not_full_filesystem_monitoring(checks: &[DiagnosticCheck]) -> bool {
+    let summary = doctor_watcher_scan_summary_value(checks);
+    summary
+        .get("not_full_filesystem_monitoring")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
 }
 
 fn doctor_runtime_home_state(runtime_home: &Path, checks: &[DiagnosticCheck]) -> String {

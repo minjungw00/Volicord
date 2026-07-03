@@ -75,6 +75,16 @@ Volicord가 어떤 보장을 설명하려면 [범위](scope.md)와 이 보안 �
 - 협력형 Run 보고, 협력적 `agent_report`, 검증되지 않은 주장이 지원 관찰 사실 없이 표시를 `cooperative`보다 높인다는 주장.
 - `detective` 표현이 예방, 샌드박싱, OS 권한 강제, 전체 모니터링, 변조 방지 저장소가 된다는 주장.
 
+Session watcher의 detective 표현은 기록된 coverage 시작 뒤의 한정된 `Product Repository`
+snapshot 비교로 제한됩니다. Watcher는 `.git/`, `.volicord/`, `target/`,
+`node_modules/`, `dist/`, `build/`, `coverage/`, `vendor/` 같은 기본 정책 경로를
+건너뛰고, Runtime Home/Product Repository 분리 규칙으로 선택된 `Volicord Runtime Home`을
+스캔되는 저장소 밖에 두며, 기본적으로 symlink를 따라가지 않습니다. 상태형 출력은 알 수
+있는 경우 파일 수 제한, 파일 크기 제한, 읽을 수 없는 경로, 정책상 건너뛴 경로,
+건너뛴 symlink 같은 skip 또는 degraded coverage reason을 드러내야 합니다. 이 사실은
+전체 파일시스템 감시, 행위자 귀속, 쓰기 방지, 변조 불가능 감사, OS 강제, 보안 격리가
+아닙니다.
+
 ### 예방형 보장
 
 기준 범위 계약은 지원되는 예방형 보장을 정의하지 않습니다.
@@ -157,11 +167,17 @@ Volicord 기록은 그 기록을 만들고, 검증하고, 갱신하는 담당 �
 
 주장할 수 있는 것:
 - 저장소/런타임 담당 문서는 어떤 Volicord 운영 데이터가 여기에 속하고 어떻게 검증되는지 정의합니다.
+- 관리 진단은 저장된 행 본문을 출력하지 않고 registry, 프로젝트 상태, artifact, User
+  Channel, guard, session-watch 메타데이터 같은 Runtime Home privacy footprint를 범주와
+  개수로 요약할 수 있습니다.
 
 주장하면 안 되는 것:
 - `Volicord Runtime Home`이 `Product Repository`라는 주장.
 - `Volicord Runtime Home`이 자동으로 보안 경계라는 주장.
 - 데이터를 `Volicord Runtime Home` 아래에 둔다는 사실이 보안 권한이나 격리를 증명한다는 주장.
+- Runtime Home 기록이 행위자 귀속, 쓰기 방지, 변조 불가능 감사, 전체 파일시스템 감시,
+  OS 강제, 정확성, 테스트 충분성, review 완료, 최종 수락, 잔여 위험 수락을 증명한다는
+  주장.
 
 ### Agent Connection, User Channel, 작업 범주
 

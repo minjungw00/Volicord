@@ -73,7 +73,7 @@ volicord --help
 volicord --version
 volicord init --host codex|claude-code --repo PATH [--profile record|detective] [--home PATH] [--mcp-command PATH] [--dry-run] [--json]
 volicord status [--repo PATH] [--task active|ID] [--json]
-volicord doctor [--json]
+volicord doctor [--json] [--privacy-footprint]
 volicord connection add [HOST] [--repo PATH] [--shared|--global] [--read-only] [--dry-run] [--json]
 volicord connection list [--repo PATH] [--json]
 volicord connection status [HOST] [--repo PATH] [--shared|--global] [--json]
@@ -797,8 +797,22 @@ Required diagnostic JSON values:
   `direct_file_write_matcher_coverage` to show the stricter host-hook
   prerequisites. When watcher diagnostics are reported, JSON must also expose
   `watcher_status`, `watcher_baseline_created_at`,
-  `watcher_coverage_start_at`, `watcher_coverage_basis`, and
-  `watcher_partial_coverage_warning`.
+  `watcher_coverage_start_at`, `watcher_coverage_basis`,
+  `watcher_partial_coverage_warning`, and `watcher_scan_summary`.
+  `watcher_scan_summary` reports `files_scanned`, `files_skipped`,
+  `unreadable_paths_count`, `degraded_reasons`,
+  `degraded_reason_counts`, `skipped_paths_sample`,
+  `skipped_paths_truncated`, `default_excluded_paths`,
+  `max_file_size_bytes`, `max_file_count`, `follows_symlinks=false`,
+  and `not_full_filesystem_monitoring=true`.
+
+`volicord doctor --privacy-footprint` is a read-only diagnostic report for
+the selected `Volicord Runtime Home`. Text and JSON output summarize the
+categories and counts of stored Runtime Home data and list non-proofs such as
+actor attribution, write prevention, tamper-proof audit, full filesystem
+monitoring, OS enforcement, correctness, test sufficiency, review completion,
+final acceptance, and residual-risk acceptance. The command must not print
+stored row bodies, Product Repository file contents, or prompt text.
 
 Setup and doctor JSON must include `status_meaning` so diagnostic consumers can
 distinguish setup action status from installation-profile health.

@@ -110,6 +110,7 @@ fn binary_help_options_match_supported_contracts() -> Result<(), Box<dyn Error>>
             "--allow-origin",
             "--host",
             "--profile",
+            "--privacy-footprint",
         ],
     )?;
     assert_help_options(
@@ -132,7 +133,7 @@ fn binary_help_options_match_supported_contracts() -> Result<(), Box<dyn Error>>
         ],
     )?;
     assert_help_options(["status", "--help"], &["--repo", "--task", "--json"])?;
-    assert_help_options(["doctor", "--help"], &["--json"])?;
+    assert_help_options(["doctor", "--help"], &["--json", "--privacy-footprint"])?;
     assert_help_options(
         ["connection", "add", "--help"],
         &[
@@ -237,6 +238,51 @@ fn doctor_without_setup_reports_action_required() -> Result<(), Box<dyn Error>> 
         "Next: Run volicord init --host <host> --repo <path> from the Product Repository to initialize the primary host connection."
     ));
     assert_eq!(fs::read_dir(runtime_home.path())?.count(), 0);
+    Ok(())
+}
+
+#[test]
+fn doctor_privacy_footprint_reports_runtime_home_scope() -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-doctor-privacy")?;
+
+    let json_output = run_with_home_env(
+        runtime_home.path(),
+        ["doctor", "--privacy-footprint", "--json"],
+        &[],
+    )?;
+    assert_success(&json_output);
+    let value = json_stdout(&json_output)?;
+    assert_eq!(value["status"], "complete");
+    assert_eq!(value["privacy_footprint"]["registry_state"], "missing");
+    assert!(value["privacy_footprint"]["stores"]
+        .as_array()
+        .expect("stores should be an array")
+        .iter()
+        .any(|entry| entry
+            .as_str()
+            .unwrap_or_default()
+            .contains("session-watch baselines")));
+    assert!(value["privacy_footprint"]["does_not_prove"]
+        .as_array()
+        .expect("does_not_prove should be an array")
+        .iter()
+        .any(|entry| entry.as_str().unwrap_or_default() == "actor attribution"));
+    assert!(value["privacy_footprint"]["does_not_store"]
+        .as_array()
+        .expect("does_not_store should be an array")
+        .iter()
+        .any(|entry| entry
+            .as_str()
+            .unwrap_or_default()
+            .contains("Product Repository file contents")));
+
+    let text_output =
+        run_with_home_env(runtime_home.path(), ["doctor", "--privacy-footprint"], &[])?;
+    assert_success(&text_output);
+    let text = stdout(&text_output);
+    assert!(text.contains("Volicord Runtime Home privacy footprint"));
+    assert!(text.contains("does_not_prove: actor attribution"));
+    assert!(text.contains("full filesystem monitoring"));
     Ok(())
 }
 
@@ -1392,6 +1438,15 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     assert_eq!(
         doctor_json["states"]["prompt_capture_status"],
         "configured_unobserved"
+    );
+    assert_eq!(doctor_json["states"]["watcher_status"], "not_started");
+    assert_eq!(
+        doctor_json["states"]["watcher_scan_summary"]["files_scanned"],
+        0
+    );
+    assert_eq!(
+        doctor_json["states"]["watcher_scan_summary"]["not_full_filesystem_monitoring"],
+        true
     );
 
     let second = run_with_home_env(

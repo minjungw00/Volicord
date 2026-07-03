@@ -1189,6 +1189,7 @@ pub(super) fn guard_health_summary_from_record(
         session_watch_coverage_basis: RequiredNullable::null(),
         session_watch_partial_coverage_warning: RequiredNullable::null(),
         session_watch_detail: RequiredNullable::null(),
+        session_watch_scan_summary: RequiredNullable::null(),
         unresolved_unrecorded_change_count: record.unresolved_unrecorded_changes.len() as u64,
         missing_or_stale_write_ticket,
         write_ticket_path_scope_violation,
@@ -1926,6 +1927,7 @@ pub(super) fn coverage_summary_from_guard_health(summary: &GuardHealthSummary) -
         session_watcher_state: coverage_session_watcher_state(summary),
         coverage_started_at: summary.session_watch_coverage_start_at.clone(),
         last_snapshot_at: summary.last_session_watch_checked_at.clone(),
+        watcher_scan_summary: summary.session_watch_scan_summary.clone(),
         unresolved_unrecorded_change_count: summary.unresolved_unrecorded_change_count,
         non_guarantees: vec![
             NonGuarantee::NotActorAttributionProof,

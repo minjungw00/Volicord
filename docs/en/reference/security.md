@@ -75,6 +75,18 @@ Must not claim:
 - A cooperative Run report, cooperative `agent_report`, or unverified claim raises a display above `cooperative` without a supporting observed fact.
 - `detective` wording becomes prevention, sandboxing, OS permission enforcement, full monitoring, or tamper-proof storage.
 
+Session-watcher detective wording is limited to bounded `Product Repository`
+snapshot comparison after the recorded coverage start. The watcher skips
+default policy paths such as `.git/`, `.volicord/`, `target/`,
+`node_modules/`, `dist/`, `build/`, `coverage/`, and `vendor/`, keeps the
+selected `Volicord Runtime Home` outside the scanned repository through the
+Runtime Home/Product Repository separation rule, and does not follow symlinks
+by default. Status-like output must surface skipped or degraded coverage when
+known, including file-count limit, file-size limit, unreadable path,
+skipped-by-policy path, and symlink skipped reasons. These facts are not full
+filesystem monitoring, actor attribution, write prevention, tamper-proof
+audit, OS enforcement, or security isolation.
+
 ### Preventive guarantees
 
 The baseline contract does not define a supported preventive guarantee.
@@ -157,11 +169,19 @@ Runtime location is defined by [Runtime Boundaries](runtime-boundaries.md). This
 
 May claim:
 - Storage/runtime owners define which Volicord operational data belongs there and how it is validated.
+- Administrative diagnostics can summarize the Runtime Home privacy footprint
+  as categories and counts, including registry, project state, artifact, User
+  Channel, guard, and session-watch metadata, without printing stored row
+  bodies.
 
 Must not claim:
 - `Volicord Runtime Home` is the `Product Repository`.
 - `Volicord Runtime Home` is automatically a security boundary.
 - Placing data under `Volicord Runtime Home` proves security authority or isolation.
+- Runtime Home records prove actor attribution, write prevention,
+  tamper-proof audit, full filesystem monitoring, OS enforcement, correctness,
+  test sufficiency, review completion, final acceptance, or residual-risk
+  acceptance.
 
 ### Agent Connections, User Channel, and operation categories
 

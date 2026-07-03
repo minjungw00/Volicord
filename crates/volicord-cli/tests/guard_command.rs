@@ -93,6 +93,19 @@ fn guard_session_start_injects_context_and_records_event() -> Result<(), Box<dyn
         value["result"]["context"]["project_id"],
         fixture.project_id()
     );
+    let scan_summary = &value["result"]["context"]["session_watch_scan_summary"];
+    assert_eq!(scan_summary["not_full_filesystem_monitoring"], true);
+    assert_eq!(scan_summary["follows_symlinks"], false);
+    assert!(scan_summary["default_excluded_paths"]
+        .as_array()
+        .expect("default exclusions should be listed")
+        .iter()
+        .any(|path| path == ".git"));
+    assert!(scan_summary["degraded_reasons"]
+        .as_array()
+        .expect("degraded reasons should be listed")
+        .iter()
+        .any(|reason| reason == "skipped_by_policy"));
 
     let stored = guard_event(
         fixture.runtime_home(),

@@ -165,6 +165,7 @@ impl McpAdapter {
             "does_not_identify_actor": true,
             "coverage_start_at": now,
             "coverage_basis": coverage_basis.as_str(),
+            "scan_summary": Self::session_watch_scan_summary_from_snapshot(&snapshot),
         });
         if let Some(warning) = partial_coverage_warning {
             metadata["partial_coverage_warning"] = json!(warning);
@@ -192,6 +193,26 @@ impl McpAdapter {
         )
         .map_err(McpAdapterError::Store)?;
         Ok(())
+    }
+
+    fn session_watch_scan_summary_from_snapshot(
+        snapshot: &volicord_store::session_watch::WatchSnapshot,
+    ) -> SessionWatchScanSummary {
+        let summary = &snapshot.scan_summary;
+        SessionWatchScanSummary {
+            files_scanned: summary.files_scanned,
+            files_skipped: summary.files_skipped,
+            unreadable_paths_count: summary.unreadable_paths_count,
+            degraded_reasons: summary.degraded_reasons.clone(),
+            degraded_reason_counts: summary.degraded_reason_counts.clone(),
+            skipped_paths_sample: summary.skipped_paths_sample.clone(),
+            skipped_paths_truncated: summary.skipped_paths_truncated,
+            default_excluded_paths: volicord_store::session_watch::default_watch_excluded_paths(),
+            max_file_size_bytes: volicord_store::session_watch::DEFAULT_MAX_FILE_HASH_BYTES,
+            max_file_count: volicord_store::session_watch::DEFAULT_MAX_SCAN_FILE_COUNT,
+            follows_symlinks: false,
+            not_full_filesystem_monitoring: true,
+        }
     }
 
     fn ensure_agent_session_for_watch(

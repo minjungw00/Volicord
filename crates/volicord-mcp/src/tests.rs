@@ -202,6 +202,11 @@ fn project_bound_stdio_startup_creates_baseline_before_tool_handling() -> Result
     let metadata: Value = serde_json::from_str(&baseline.metadata_json)?;
     assert_eq!(metadata["coverage_basis"], "mcp_start");
     assert!(metadata.get("partial_coverage_warning").is_none());
+    assert_eq!(
+        metadata["scan_summary"]["not_full_filesystem_monitoring"],
+        true
+    );
+    assert_eq!(metadata["scan_summary"]["follows_symlinks"], false);
     Ok(())
 }
 

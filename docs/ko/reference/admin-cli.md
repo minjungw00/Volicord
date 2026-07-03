@@ -67,7 +67,7 @@ volicord --help
 volicord --version
 volicord init --host codex|claude-code --repo PATH [--profile record|detective] [--home PATH] [--mcp-command PATH] [--dry-run] [--json]
 volicord status [--repo PATH] [--task active|ID] [--json]
-volicord doctor [--json]
+volicord doctor [--json] [--privacy-footprint]
 volicord connection add [HOST] [--repo PATH] [--shared|--global] [--read-only] [--dry-run] [--json]
 volicord connection list [--repo PATH] [--json]
 volicord connection status [HOST] [--repo PATH] [--shared|--global] [--json]
@@ -720,7 +720,19 @@ setup과 필요한 사용자 동작을 구분할 수 있을 만큼 구조화된 
   `generated_config_verified`, `native_host_output_adapter_verified`,
   `direct_file_write_matcher_coverage`도 노출할 수 있습니다. Watcher 진단을 보고하는 경우
   JSON은 `watcher_status`, `watcher_baseline_created_at`, `watcher_coverage_start_at`,
-  `watcher_coverage_basis`, `watcher_partial_coverage_warning`도 노출해야 합니다.
+  `watcher_coverage_basis`, `watcher_partial_coverage_warning`, `watcher_scan_summary`도
+  노출해야 합니다. `watcher_scan_summary`는 `files_scanned`, `files_skipped`,
+  `unreadable_paths_count`, `degraded_reasons`, `degraded_reason_counts`,
+  `skipped_paths_sample`, `skipped_paths_truncated`, `default_excluded_paths`,
+  `max_file_size_bytes`, `max_file_count`, `follows_symlinks=false`,
+  `not_full_filesystem_monitoring=true`를 보고합니다.
+
+`volicord doctor --privacy-footprint`는 선택된 `Volicord Runtime Home`에 대한 읽기 전용
+진단 보고서입니다. Text와 JSON 출력은 Runtime Home에 저장되는 데이터 범주와 개수를
+요약하고, 행위자 귀속, 쓰기 방지, 변조 불가능 감사, 전체 파일시스템 감시, OS 강제,
+정확성, 테스트 충분성, review 완료, 최종 수락, 잔여 위험 수락을 증명하지 않는다고
+나열합니다. 이 명령은 저장된 행 본문, Product Repository 파일 내용, 프롬프트 텍스트를
+출력하면 안 됩니다.
 
 setup과 doctor JSON은 진단 소비자가 setup 동작 상태와 설치 프로필 상태를 구분할 수
 있도록 `status_meaning`을 포함해야 합니다. doctor JSON은 최상위 상태가

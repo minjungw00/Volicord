@@ -53,7 +53,7 @@ Volicord는 구현 파일, 제품 파일, 런타임 데이터, 외부 호스트 
 
 | 경계 또는 표면 | 거기에 속하는 것 | 주요 프로세스 경로 | 추론하면 안 되는 것 |
 |---|---|---|---|
-| `Volicord Runtime Home` | `registry.sqlite`, 프로젝트별 `projects/{project_internal_id}/state.sqlite`, 아티팩트 저장소를 사용할 때의 `projects/{project_internal_id}/artifacts/` 같은 프로젝트 아티팩트 저장소. registry는 Runtime Home 식별 정보와 경로, 설치 프로필 기록, 저장소 루트 기반 프로젝트 등록, 프로젝트 alias, Agent Connection 기록, Connection Projects 멤버십, host-hook 설치 기록, 호스트 범위, 설정 대상, 연결 의도, 관리 fingerprint, 검증 요약 상태, 검증 보고서 JSON, 사용자 동작 JSON 같은 `managed host configuration state` 인벤토리를 저장합니다. | `volicord init`, 프로젝트, 연결, inbox, changes, 숨겨진 내부 hook 명령은 담당 경로에 따라 registry 상태를 초기화하거나 읽거나 갱신합니다. `volicord mcp --stdio`, Core, Store는 시작, 프로젝트 라우팅, Core 상태, 아티팩트를 위해 Runtime Home 상태를 읽거나 사용합니다. | `Product Repository`, 외부 호스트 설정, 설치 디렉터리, OS 샌드박스, 네트워크 격리 계층, 악성코드 검사기, 비밀값 검사기, 호스트 신뢰 증거가 아닙니다. |
+| `Volicord Runtime Home` | `registry.sqlite`, 프로젝트별 `projects/{project_internal_id}/state.sqlite`, 아티팩트 저장소를 사용할 때의 `projects/{project_internal_id}/artifacts/` 같은 프로젝트 아티팩트 저장소. registry는 Runtime Home 식별 정보와 경로, 설치 프로필 기록, 저장소 루트 기반 프로젝트 등록, 프로젝트 alias, Agent Connection 기록, Connection Projects 멤버십, host-hook 설치 기록, 호스트 범위, 설정 대상, 연결 의도, 관리 fingerprint, 검증 요약 상태, 검증 보고서 JSON, 사용자 동작 JSON 같은 `managed host configuration state` 인벤토리를 저장합니다. 프로젝트 상태는 task, change unit, write ticket, evidence metadata, User Channel 판단, 사용하는 경우 artifact, 그리고 저장소 상대 경로, hash, 크기, skip reason, scan summary, timestamp, observation link를 담는 session-watch baseline 또는 observation을 저장할 수 있습니다. | `volicord init`, 프로젝트, 연결, inbox, changes, doctor, 숨겨진 내부 hook 명령은 담당 경로에 따라 registry 상태를 초기화하거나 읽거나 갱신합니다. `volicord doctor --privacy-footprint`는 저장된 행 본문을 출력하지 않고 Runtime Home 저장 범주와 개수를 보고합니다. `volicord mcp --stdio`, Core, Store는 시작, 프로젝트 라우팅, Core 상태, 아티팩트를 위해 Runtime Home 상태를 읽거나 사용합니다. | `Product Repository`, 외부 호스트 설정, 설치 디렉터리, OS 샌드박스, 네트워크 격리 계층, 악성코드 검사기, 비밀값 검사기, 호스트 신뢰 증거, 행위자 귀속 증명, 쓰기 방지 증명, 변조 불가능 감사, 전체 파일시스템 감시, 정확성 증명, 테스트 충분성 증명, review 완료 증명, 최종 수락 증명, 잔여 위험 수락 증명이 아닙니다. |
 | `Product Repository` | 사용자 제품 파일과 프로젝트 범위 호스트 설정, detective host hook policy, 관리 지침처럼 명시적으로 요청된 통합 파일만 여기에 속합니다. | 일반 제품 파일 편집은 사용자 또는 호스트 도구가 소유합니다. Volicord는 제품 경로를 입력으로 검사할 수 있고, 담당 문서가 정의한 관리 경로를 통해서만 명시적 통합 파일을 쓸 수 있습니다. | Runtime Home 상태, Core 저장소, 기본 아티팩트 저장소, Volicord 권한 증거가 아닙니다. |
 | Runtime Home registry 안의 `managed host configuration state` | 호스트 대상에 대한 Volicord registry 인벤토리입니다. `connection_internal_id`, 호스트 종류, 연결 의도, 호스트 범위, 선택적 `project_internal_id`, 내부 서버 이름, 설정 대상, 모드, 활성 상태, 관리 fingerprint, 검증 요약 상태, 검증 보고서 JSON, 사용자 동작 JSON, host-hook 설치 상태, 메타데이터를 포함합니다. | `volicord init`, `volicord connection add`, `volicord connection list`, `volicord connection status`, `volicord connection verify`, `volicord connection mode`, `volicord connection remove`, 숨겨진 내부 hook 흐름은 registry 행, host-hook 설치 행, Connection Projects 멤버십을 만들고, 갱신하고, 목록 조회하고, 검증하고, 제거합니다. | 외부 호스트 설정 객체 자체가 아니며, 호스트가 `volicord mcp --stdio`를 신뢰, 승인, 로드, 초기화, 노출했거나 detective host hook을 실행했다는 증거가 아닙니다. |
 | 외부 MCP 호스트 설정 | 내부 Agent Connection 바인딩이 있는 `volicord mcp --stdio`와 `VOLICORD_HOME` 같은 환경 값을 지정할 수 있는 호스트 소유 설정 또는 사용자 관리 설정입니다. | [관리 CLI](admin-cli.md)가 그 동작을 정의할 때 `volicord`는 지원되는 직접 설정을 쓸 수 있습니다. 외부 호스트는 로딩과 신뢰 결정을 소유합니다. | Runtime Home registry 상태, Core 권한, Volicord 권한 증거가 아닙니다. `Product Repository`에 있다면 명시적 통합 파일일 뿐입니다. |
@@ -110,6 +110,16 @@ Detective coverage는 한정된 관찰입니다. Host hook과 session watcher는
 snapshot 상태 시각, 해결되지 않은 미기록 변경 수, coverage 비보장을 `CoverageSummary`
 필드로 보고할 수 있습니다. 이 요약은 전체 파일시스템 감시, 행위자 identity 증명,
 쓰기 방지, 변조 불가능 감사, OS 강제, 보안 격리를 제공하지 않습니다.
+
+Session watcher는 한정된 `Product Repository` snapshot scanner이지 전체 감시
+서비스가 아닙니다. 기본적으로 `.git/`, `.hg/`, `.svn/`, `.jj/`, `.volicord/`,
+`target/`, `node_modules/`, `dist/`, `build/`, `coverage/`, `vendor/`를 건너뛰며,
+Runtime Home/Product Repository 경로 분리 규칙은 선택된 `Volicord Runtime Home`을
+스캔되는 저장소 밖에 둡니다. 기본적으로 symlink를 따라가지 않습니다. 사용자 대상
+status, guard, doctor, coverage summary는 `files_scanned`, `files_skipped`,
+`unreadable_paths_count`, 파일 수 제한, 파일 크기 제한, 읽을 수 없는 경로, 정책상
+건너뛴 경로, 건너뛴 symlink에 대한 degraded reason count와 건너뛴 경로 샘플을
+보고할 수 있습니다.
 
 <a id="product-repository-api-path-normalization"></a>
 ### `Product Repository` API 경로 정규화

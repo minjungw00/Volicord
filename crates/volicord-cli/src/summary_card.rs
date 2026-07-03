@@ -66,9 +66,61 @@ pub(crate) fn render_coverage_summary_text(value: &Value) -> Option<String> {
         })
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| "not listed".to_owned());
+    let watcher_scan = coverage
+        .get("watcher_scan_summary")
+        .and_then(watcher_scan_summary_text)
+        .unwrap_or_else(|| "watcher_scan=unavailable".to_owned());
 
     Some(format!(
-        "Coverage: profile={profile}; host_hook={host_hook}; session_watcher={session_watcher}; started={started}; last_snapshot={last_snapshot}; unresolved_unrecorded_changes={unresolved}\nCoverage does not guarantee: {non_guarantees}\n"
+        "Coverage: profile={profile}; host_hook={host_hook}; session_watcher={session_watcher}; started={started}; last_snapshot={last_snapshot}; unresolved_unrecorded_changes={unresolved}\nCoverage watcher scan: {watcher_scan}\nCoverage does not guarantee: {non_guarantees}\n"
+    ))
+}
+
+fn watcher_scan_summary_text(value: &Value) -> Option<String> {
+    if !value.is_object() {
+        return None;
+    }
+    let files_scanned = value.get("files_scanned").and_then(Value::as_u64)?;
+    let files_skipped = value.get("files_skipped").and_then(Value::as_u64)?;
+    let unreadable = value
+        .get("unreadable_paths_count")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let degraded_reasons = value
+        .get("degraded_reasons")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect::<Vec<_>>();
+    let degraded_reasons = if degraded_reasons.is_empty() {
+        "none".to_owned()
+    } else {
+        degraded_reasons.join(",")
+    };
+    let skipped_paths = value
+        .get("skipped_paths_sample")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect::<Vec<_>>();
+    let skipped_paths = if skipped_paths.is_empty() {
+        "none".to_owned()
+    } else {
+        skipped_paths.join(",")
+    };
+    let monitoring_note = if value
+        .get("not_full_filesystem_monitoring")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        "not_full_filesystem_monitoring=yes"
+    } else {
+        "not_full_filesystem_monitoring=unknown"
+    };
+    Some(format!(
+        "files_scanned={files_scanned}; files_skipped={files_skipped}; unreadable_paths={unreadable}; degraded_reasons={degraded_reasons}; skipped_paths_sample={skipped_paths}; {monitoring_note}"
     ))
 }
 
@@ -113,6 +165,14 @@ mod tests {
                 "coverage_started_at": "2026-06-30T00:03:00Z",
                 "last_snapshot_at": "2026-06-30T00:04:00Z",
                 "unresolved_unrecorded_change_count": 2,
+                "watcher_scan_summary": {
+                    "files_scanned": 12,
+                    "files_skipped": 3,
+                    "unreadable_paths_count": 1,
+                    "degraded_reasons": ["file_size_limit", "unreadable_path"],
+                    "skipped_paths_sample": ["large.bin", "private"],
+                    "not_full_filesystem_monitoring": true
+                },
                 "non_guarantees": [
                     "NotActorAttributionProof",
                     "NotFullFilesystemMonitoring",
@@ -126,6 +186,11 @@ mod tests {
         assert!(text.contains("profile=detective"));
         assert!(text.contains("session_watcher=degraded"));
         assert!(text.contains("unresolved_unrecorded_changes=2"));
+        assert!(text.contains("files_scanned=12"));
+        assert!(text.contains("files_skipped=3"));
+        assert!(text.contains("unreadable_paths=1"));
+        assert!(text.contains("file_size_limit,unreadable_path"));
+        assert!(text.contains("not_full_filesystem_monitoring=yes"));
         assert!(text.contains("actor identity proof"));
         assert!(text.contains("full filesystem monitoring"));
         assert!(text.contains("write prevention"));

@@ -24,6 +24,11 @@ pub const WATCH_SNAPSHOT_ALGORITHM: &str = "volicord_session_watch_snapshot_v1_s
 /// Default maximum regular-file bytes read for one snapshot entry.
 pub const DEFAULT_MAX_FILE_HASH_BYTES: u64 = 10 * 1024 * 1024;
 
+/// Default maximum regular-file entries considered by one snapshot.
+pub const DEFAULT_MAX_SCAN_FILE_COUNT: u64 = 50_000;
+
+const WATCH_SKIPPED_PATH_SAMPLE_LIMIT: usize = 20;
+
 /// Session-level Product Repository watch availability.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionWatchStatus {
@@ -104,6 +109,7 @@ pub struct WatchSnapshotOptions {
     pub watch_paths: Vec<PathBuf>,
     pub excluded_paths: Vec<PathBuf>,
     pub max_file_size_bytes: u64,
+    pub max_file_count: u64,
 }
 
 impl Default for WatchSnapshotOptions {
@@ -112,6 +118,7 @@ impl Default for WatchSnapshotOptions {
             watch_paths: Vec::new(),
             excluded_paths: Vec::new(),
             max_file_size_bytes: DEFAULT_MAX_FILE_HASH_BYTES,
+            max_file_count: DEFAULT_MAX_SCAN_FILE_COUNT,
         }
     }
 }
@@ -168,6 +175,7 @@ pub struct WatchSnapshot {
     pub algorithm: String,
     pub digest: String,
     pub entries: Vec<WatchSnapshotEntry>,
+    pub scan_summary: WatchScanSummary,
 }
 
 impl WatchSnapshot {
@@ -185,6 +193,18 @@ impl WatchSnapshot {
     pub fn exclusions_json(&self) -> String {
         json_array_text(self.excluded_paths.iter().map(|path| json!(path)))
     }
+}
+
+/// Compact summary of one deterministic watcher scan.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WatchScanSummary {
+    pub files_scanned: u64,
+    pub files_skipped: u64,
+    pub unreadable_paths_count: u64,
+    pub degraded_reasons: Vec<String>,
+    pub degraded_reason_counts: BTreeMap<String, u64>,
+    pub skipped_paths_sample: Vec<String>,
+    pub skipped_paths_truncated: bool,
 }
 
 /// One changed path between two snapshots.
@@ -314,6 +334,10 @@ pub fn snapshot_product_repository(
     let watch_paths = normalize_relative_path_set("watch_paths", &options.watch_paths)?;
     let effective_exclusions = effective_excluded_paths(&options.excluded_paths)?;
     let mut entries = Vec::new();
+    let mut scan_state = ScanState {
+        regular_files_seen: 0,
+        max_file_count: options.max_file_count,
+    };
 
     if watch_paths.is_empty() {
         scan_path(
@@ -321,6 +345,7 @@ pub fn snapshot_product_repository(
             Path::new(""),
             &effective_exclusions,
             options.max_file_size_bytes,
+            &mut scan_state,
             &mut entries,
         )?;
     } else {
@@ -330,6 +355,7 @@ pub fn snapshot_product_repository(
                 relative,
                 &effective_exclusions,
                 options.max_file_size_bytes,
+                &mut scan_state,
                 &mut entries,
             )?;
         }
@@ -344,6 +370,7 @@ pub fn snapshot_product_repository(
         WatchScopeKind::PathSet
     };
     let digest = snapshot_digest(scope_kind, &watched_paths, &excluded_paths, &entries);
+    let scan_summary = watch_scan_summary_from_entries(&entries);
 
     Ok(WatchSnapshot {
         repo_root,
@@ -353,7 +380,76 @@ pub fn snapshot_product_repository(
         algorithm: WATCH_SNAPSHOT_ALGORITHM.to_owned(),
         digest,
         entries,
+        scan_summary,
     })
+}
+
+/// Returns the default relative paths skipped by the Product Repository watcher.
+pub fn default_watch_excluded_paths() -> Vec<String> {
+    path_texts(&default_excluded_paths()).expect("default exclusions are valid relative paths")
+}
+
+/// Summarizes scan entries without exposing file contents.
+pub fn watch_scan_summary_from_entries(entries: &[WatchSnapshotEntry]) -> WatchScanSummary {
+    let mut files_scanned = 0_u64;
+    let mut files_skipped = 0_u64;
+    let mut unreadable_paths_count = 0_u64;
+    let mut degraded_reason_counts = BTreeMap::<String, u64>::new();
+    let mut skipped_paths_sample = Vec::new();
+
+    for entry in entries {
+        if entry.kind == "file" {
+            files_scanned += 1;
+            continue;
+        }
+        if entry.kind != "skipped" {
+            continue;
+        }
+        files_skipped += 1;
+        if skipped_paths_sample.len() < WATCH_SKIPPED_PATH_SAMPLE_LIMIT {
+            skipped_paths_sample.push(entry.path.clone());
+        }
+        let reason = degraded_reason_for_skip(entry.skip_reason.as_deref());
+        if reason == "unreadable_path" {
+            unreadable_paths_count += 1;
+        }
+        *degraded_reason_counts.entry(reason.to_owned()).or_insert(0) += 1;
+    }
+
+    let degraded_reasons = degraded_reason_counts.keys().cloned().collect();
+    WatchScanSummary {
+        files_scanned,
+        files_skipped,
+        unreadable_paths_count,
+        degraded_reasons,
+        degraded_reason_counts,
+        skipped_paths_sample,
+        skipped_paths_truncated: files_skipped as usize > WATCH_SKIPPED_PATH_SAMPLE_LIMIT,
+    }
+}
+
+fn degraded_reason_for_skip(skip_reason: Option<&str>) -> &'static str {
+    match skip_reason.unwrap_or_default() {
+        "file_count_limit" => "file_count_limit",
+        "size_limit" => "file_size_limit",
+        "metadata_unavailable" | "directory_unavailable" | "read_unavailable" => "unreadable_path",
+        "skipped_by_policy" => "skipped_by_policy",
+        "symlink" => "symlink_skipped",
+        "unsupported_file_type" => "unsupported_file_type",
+        _ => "skipped_path",
+    }
+}
+
+/// Decodes and summarizes stored snapshot entries.
+pub fn watch_scan_summary_from_entries_json(raw: &str) -> StoreResult<WatchScanSummary> {
+    let entries = serde_json::from_str::<Vec<WatchSnapshotEntry>>(raw).map_err(|_| {
+        StoreError::corrupt_owner_state_json(
+            "session_watch_baselines",
+            "unknown",
+            "snapshot_entries_json",
+        )
+    })?;
+    Ok(watch_scan_summary_from_entries(&entries))
 }
 
 /// Compares two deterministic snapshots and returns added, modified, and deleted paths.
@@ -978,14 +1074,31 @@ fn open_project_for_required_read(
     })
 }
 
+struct ScanState {
+    regular_files_seen: u64,
+    max_file_count: u64,
+}
+
+impl ScanState {
+    fn file_count_limit_reached(&self) -> bool {
+        self.regular_files_seen >= self.max_file_count
+    }
+}
+
 fn scan_path(
     repo_root: &Path,
     relative: &Path,
     excluded_paths: &[PathBuf],
     max_file_size_bytes: u64,
+    scan_state: &mut ScanState,
     entries: &mut Vec<WatchSnapshotEntry>,
 ) -> StoreResult<()> {
     if !relative.as_os_str().is_empty() && is_excluded(relative, excluded_paths) {
+        entries.push(WatchSnapshotEntry::skipped(
+            relative_path_text(relative)?,
+            None,
+            "skipped_by_policy",
+        ));
         return Ok(());
     }
 
@@ -1012,15 +1125,33 @@ fn scan_path(
             "symlink",
         ));
     } else if metadata.is_dir() {
+        if !relative.as_os_str().is_empty() && scan_state.file_count_limit_reached() {
+            entries.push(WatchSnapshotEntry::skipped(
+                relative_path_text(relative)?,
+                Some(metadata.len()),
+                "file_count_limit",
+            ));
+            return Ok(());
+        }
         scan_directory(
             repo_root,
             relative,
             excluded_paths,
             max_file_size_bytes,
+            scan_state,
             entries,
         )?;
     } else if metadata.is_file() {
         let path = relative_path_text(relative)?;
+        if scan_state.file_count_limit_reached() {
+            entries.push(WatchSnapshotEntry::skipped(
+                path,
+                Some(metadata.len()),
+                "file_count_limit",
+            ));
+            return Ok(());
+        }
+        scan_state.regular_files_seen += 1;
         if metadata.len() > max_file_size_bytes {
             entries.push(WatchSnapshotEntry::skipped(
                 path,
@@ -1064,6 +1195,7 @@ fn scan_directory(
     relative: &Path,
     excluded_paths: &[PathBuf],
     max_file_size_bytes: u64,
+    scan_state: &mut ScanState,
     entries: &mut Vec<WatchSnapshotEntry>,
 ) -> StoreResult<()> {
     let absolute = repo_root.join(relative);
@@ -1088,6 +1220,11 @@ fn scan_directory(
             relative.join(entry.file_name())
         };
         if is_excluded(&child_relative, excluded_paths) {
+            entries.push(WatchSnapshotEntry::skipped(
+                relative_path_text(&child_relative)?,
+                None,
+                "skipped_by_policy",
+            ));
             continue;
         }
         let child_key = relative_path_text(&child_relative)?;
@@ -1100,6 +1237,7 @@ fn scan_directory(
             &child_relative,
             excluded_paths,
             max_file_size_bytes,
+            scan_state,
             entries,
         )?;
     }
@@ -1164,10 +1302,22 @@ fn effective_excluded_paths(configured_paths: &[PathBuf]) -> StoreResult<Vec<Pat
 }
 
 fn default_excluded_paths() -> Vec<PathBuf> {
-    [".git", ".hg", ".svn", ".jj", ".volicord"]
-        .iter()
-        .map(PathBuf::from)
-        .collect()
+    [
+        ".git",
+        ".hg",
+        ".svn",
+        ".jj",
+        ".volicord",
+        "target",
+        "node_modules",
+        "dist",
+        "build",
+        "coverage",
+        "vendor",
+    ]
+    .iter()
+    .map(PathBuf::from)
+    .collect()
 }
 
 fn normalize_relative_path(field: &'static str, path: &Path) -> StoreResult<PathBuf> {
@@ -1787,7 +1937,12 @@ mod tests {
         write_file(&repo.join("src/included.txt"), "before")?;
         write_file(&repo.join(".git/index"), "before")?;
         write_file(&repo.join(".volicord/policy.json"), "{}")?;
+        write_file(&repo.join("build/generated.txt"), "before")?;
+        write_file(&repo.join("coverage/report.txt"), "before")?;
+        write_file(&repo.join("dist/bundle.js"), "before")?;
+        write_file(&repo.join("node_modules/pkg/index.js"), "before")?;
         write_file(&repo.join("target/generated.txt"), "before")?;
+        write_file(&repo.join("vendor/pkg/lib.rs"), "before")?;
         let options = WatchSnapshotOptions {
             excluded_paths: vec![PathBuf::from("target")],
             ..WatchSnapshotOptions::default()
@@ -1800,7 +1955,51 @@ mod tests {
                 .iter()
                 .map(|entry| entry.path.as_str())
                 .collect::<Vec<_>>(),
-            vec!["src/included.txt"]
+            vec![
+                ".git",
+                ".volicord",
+                "build",
+                "coverage",
+                "dist",
+                "node_modules",
+                "src/included.txt",
+                "target",
+                "vendor",
+            ]
+        );
+        let skipped_by_policy = baseline
+            .entries
+            .iter()
+            .filter(|entry| entry.kind == "skipped")
+            .map(|entry| {
+                (
+                    entry.path.as_str(),
+                    entry.skip_reason.as_deref().unwrap_or_default(),
+                )
+            })
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            skipped_by_policy,
+            BTreeSet::from([
+                (".git", "skipped_by_policy"),
+                (".volicord", "skipped_by_policy"),
+                ("build", "skipped_by_policy"),
+                ("coverage", "skipped_by_policy"),
+                ("dist", "skipped_by_policy"),
+                ("node_modules", "skipped_by_policy"),
+                ("target", "skipped_by_policy"),
+                ("vendor", "skipped_by_policy"),
+            ])
+        );
+        assert_eq!(baseline.scan_summary.files_scanned, 1);
+        assert_eq!(baseline.scan_summary.files_skipped, 8);
+        assert_eq!(baseline.scan_summary.unreadable_paths_count, 0);
+        assert_eq!(
+            baseline
+                .scan_summary
+                .degraded_reason_counts
+                .get("skipped_by_policy"),
+            Some(&8)
         );
 
         write_file(&repo.join("src/included.txt"), "after")?;
@@ -1864,6 +2063,87 @@ mod tests {
             Some("size_limit")
         );
         assert!(snapshot.entries[0].sha256.is_none());
+        assert_eq!(snapshot.scan_summary.files_scanned, 0);
+        assert_eq!(snapshot.scan_summary.files_skipped, 1);
+        assert_eq!(
+            snapshot
+                .scan_summary
+                .degraded_reason_counts
+                .get("file_size_limit"),
+            Some(&1)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn snapshot_marks_file_count_limit_as_skipped() -> Result<(), Box<dyn Error>> {
+        let fixture = TempRuntimeHome::new("watch-snapshot-file-count")?;
+        let repo = fixture.create_product_repo("repo")?;
+        write_file(&repo.join("a.txt"), "alpha")?;
+        write_file(&repo.join("b.txt"), "bravo")?;
+
+        let snapshot = snapshot_product_repository(
+            fixture.path(),
+            &repo,
+            WatchSnapshotOptions {
+                max_file_count: 1,
+                ..WatchSnapshotOptions::default()
+            },
+        )?;
+
+        assert_eq!(snapshot.entries.len(), 2);
+        assert_eq!(snapshot.entries[0].path, "a.txt");
+        assert_eq!(snapshot.entries[0].kind, "file");
+        assert_eq!(snapshot.entries[1].path, "b.txt");
+        assert_eq!(snapshot.entries[1].kind, "skipped");
+        assert_eq!(
+            snapshot.entries[1].skip_reason.as_deref(),
+            Some("file_count_limit")
+        );
+        assert_eq!(snapshot.scan_summary.files_scanned, 1);
+        assert_eq!(snapshot.scan_summary.files_skipped, 1);
+        assert_eq!(
+            snapshot
+                .scan_summary
+                .degraded_reason_counts
+                .get("file_count_limit"),
+            Some(&1)
+        );
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn snapshot_skips_symlinks_without_following() -> Result<(), Box<dyn Error>> {
+        use std::os::unix::fs::symlink;
+
+        let fixture = TempRuntimeHome::new("watch-snapshot-symlink")?;
+        let repo = fixture.create_product_repo("repo")?;
+        write_file(&repo.join("target.txt"), "target")?;
+        symlink(repo.join("target.txt"), repo.join("linked.txt"))?;
+
+        let snapshot =
+            snapshot_product_repository(fixture.path(), &repo, WatchSnapshotOptions::default())?;
+
+        let linked = snapshot
+            .entries
+            .iter()
+            .find(|entry| entry.path == "linked.txt")
+            .expect("symlink should be represented");
+        assert_eq!(linked.kind, "skipped");
+        assert_eq!(linked.skip_reason.as_deref(), Some("symlink"));
+        assert!(linked.sha256.is_none());
+        assert_eq!(
+            snapshot
+                .scan_summary
+                .degraded_reason_counts
+                .get("symlink_skipped"),
+            Some(&1)
+        );
+        assert!(snapshot
+            .entries
+            .iter()
+            .any(|entry| entry.path == "target.txt" && entry.kind == "file"));
         Ok(())
     }
 

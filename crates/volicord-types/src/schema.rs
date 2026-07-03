@@ -1,4 +1,4 @@
-use std::{borrow::Cow, fmt, ops::Deref};
+use std::{borrow::Cow, collections::BTreeMap, fmt, ops::Deref};
 
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -532,9 +532,28 @@ pub struct GuardHealthSummary {
     pub session_watch_coverage_basis: RequiredNullable<SessionWatchCoverageBasis>,
     pub session_watch_partial_coverage_warning: RequiredNullable<String>,
     pub session_watch_detail: RequiredNullable<String>,
+    pub session_watch_scan_summary: RequiredNullable<SessionWatchScanSummary>,
     pub unresolved_unrecorded_change_count: u64,
     pub missing_or_stale_write_ticket: bool,
     pub write_ticket_path_scope_violation: bool,
+}
+
+/// Compact scan-limit and skipped-path summary for a session watcher snapshot.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SessionWatchScanSummary {
+    pub files_scanned: u64,
+    pub files_skipped: u64,
+    pub unreadable_paths_count: u64,
+    pub degraded_reasons: Vec<String>,
+    pub degraded_reason_counts: BTreeMap<String, u64>,
+    pub skipped_paths_sample: Vec<String>,
+    pub skipped_paths_truncated: bool,
+    pub default_excluded_paths: Vec<String>,
+    pub max_file_size_bytes: u64,
+    pub max_file_count: u64,
+    pub follows_symlinks: bool,
+    pub not_full_filesystem_monitoring: bool,
 }
 
 /// Concise coverage projection for status and close-readiness views.
@@ -546,6 +565,7 @@ pub struct CoverageSummary {
     pub session_watcher_state: CoverageSessionWatcherState,
     pub coverage_started_at: RequiredNullable<UtcTimestamp>,
     pub last_snapshot_at: RequiredNullable<UtcTimestamp>,
+    pub watcher_scan_summary: RequiredNullable<SessionWatchScanSummary>,
     pub unresolved_unrecorded_change_count: u64,
     pub non_guarantees: Vec<NonGuarantee>,
 }

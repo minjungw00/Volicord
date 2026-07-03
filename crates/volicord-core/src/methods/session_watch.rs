@@ -70,6 +70,7 @@ pub(super) fn initialize_session_watch_baseline(
             &snapshot.digest,
         ],
     );
+    let scan_summary = session_watch_scan_summary_from_snapshot(&snapshot);
     create_watch_baseline(
         store.runtime_home(),
         verified_invocation.project_id.as_str(),
@@ -89,7 +90,8 @@ pub(super) fn initialize_session_watch_baseline(
                 "does_not_identify_actor": true,
                 "coverage_start_at": now.to_string(),
                 "coverage_basis": SessionWatchCoverageBasis::MethodBoundary.as_str(),
-                "partial_coverage_warning": METHOD_BOUNDARY_PARTIAL_COVERAGE_WARNING
+                "partial_coverage_warning": METHOD_BOUNDARY_PARTIAL_COVERAGE_WARNING,
+                "scan_summary": scan_summary
             }))?,
         },
     )
@@ -283,6 +285,7 @@ pub(super) fn apply_session_watch_status(
                 .into();
                 summary.session_watch_detail =
                     Some("session_watch_baseline_unavailable".to_owned()).into();
+                summary.session_watch_scan_summary = RequiredNullable::null();
             }
         }
         return Ok(());
@@ -308,6 +311,8 @@ pub(super) fn apply_session_watch_status(
     .into();
     apply_session_watch_coverage_metadata(summary, &baseline)?;
     summary.session_watch_detail = watch_status_detail(&baseline.metadata_json).into();
+    summary.session_watch_scan_summary =
+        Some(session_watch_scan_summary_from_baseline(&baseline)?).into();
     Ok(())
 }
 
@@ -781,6 +786,7 @@ fn snapshot_options_from_baseline(
         .map(PathBuf::from)
         .collect(),
         max_file_size_bytes: volicord_store::session_watch::DEFAULT_MAX_FILE_HASH_BYTES,
+        max_file_count: volicord_store::session_watch::DEFAULT_MAX_SCAN_FILE_COUNT,
     })
 }
 
@@ -798,6 +804,15 @@ fn snapshot_from_baseline(baseline: &WatchBaselineRecord) -> CoreResult<WatchSna
             ))
         }
     };
+    let entries = serde_json::from_str::<Vec<WatchSnapshotEntry>>(&baseline.snapshot_entries_json)
+        .map_err(|_| {
+            CorePipelineError::Store(StoreError::corrupt_owner_state_json(
+                "session_watch_baselines",
+                baseline.watch_baseline_id.clone(),
+                "snapshot_entries_json",
+            ))
+        })?;
+    let scan_summary = volicord_store::session_watch::watch_scan_summary_from_entries(&entries);
     Ok(WatchSnapshot {
         repo_root: PathBuf::from(&baseline.repo_root),
         scope_kind,
@@ -815,14 +830,8 @@ fn snapshot_from_baseline(baseline: &WatchBaselineRecord) -> CoreResult<WatchSna
         )?,
         algorithm: baseline.snapshot_algorithm.clone(),
         digest: baseline.snapshot_digest.clone(),
-        entries: serde_json::from_str::<Vec<WatchSnapshotEntry>>(&baseline.snapshot_entries_json)
-            .map_err(|_| {
-            CorePipelineError::Store(StoreError::corrupt_owner_state_json(
-                "session_watch_baselines",
-                baseline.watch_baseline_id.clone(),
-                "snapshot_entries_json",
-            ))
-        })?,
+        entries,
+        scan_summary,
     })
 }
 
@@ -971,6 +980,10 @@ fn watch_status_metadata_json(
     let mut object = watch_metadata_object(baseline)?;
     object.insert("source".to_owned(), json!(WATCH_METADATA_SOURCE));
     object.insert("status_detail".to_owned(), json!(status_detail));
+    object.insert(
+        "scan_summary".to_owned(),
+        serde_json::to_value(session_watch_scan_summary_from_baseline(baseline)?)?,
+    );
     if let Some(error) = error {
         object.insert("error".to_owned(), json!(error));
     } else {
@@ -1008,6 +1021,46 @@ fn watch_status_detail(metadata_json: &str) -> Option<String> {
                 .filter(|detail| !detail.trim().is_empty())
                 .map(str::to_owned)
         })
+}
+
+fn session_watch_scan_summary_from_snapshot(snapshot: &WatchSnapshot) -> SessionWatchScanSummary {
+    session_watch_scan_summary_from_store(&snapshot.scan_summary)
+}
+
+fn session_watch_scan_summary_from_baseline(
+    baseline: &WatchBaselineRecord,
+) -> CoreResult<SessionWatchScanSummary> {
+    let metadata = watch_metadata_object(baseline)?;
+    if let Some(raw_summary) = metadata.get("scan_summary") {
+        if let Ok(summary) = serde_json::from_value::<SessionWatchScanSummary>(raw_summary.clone())
+        {
+            return Ok(summary);
+        }
+    }
+    let store_summary = volicord_store::session_watch::watch_scan_summary_from_entries_json(
+        &baseline.snapshot_entries_json,
+    )
+    .map_err(CorePipelineError::from)?;
+    Ok(session_watch_scan_summary_from_store(&store_summary))
+}
+
+fn session_watch_scan_summary_from_store(
+    summary: &volicord_store::session_watch::WatchScanSummary,
+) -> SessionWatchScanSummary {
+    SessionWatchScanSummary {
+        files_scanned: summary.files_scanned,
+        files_skipped: summary.files_skipped,
+        unreadable_paths_count: summary.unreadable_paths_count,
+        degraded_reasons: summary.degraded_reasons.clone(),
+        degraded_reason_counts: summary.degraded_reason_counts.clone(),
+        skipped_paths_sample: summary.skipped_paths_sample.clone(),
+        skipped_paths_truncated: summary.skipped_paths_truncated,
+        default_excluded_paths: volicord_store::session_watch::default_watch_excluded_paths(),
+        max_file_size_bytes: volicord_store::session_watch::DEFAULT_MAX_FILE_HASH_BYTES,
+        max_file_count: volicord_store::session_watch::DEFAULT_MAX_SCAN_FILE_COUNT,
+        follows_symlinks: false,
+        not_full_filesystem_monitoring: true,
+    }
 }
 
 fn is_session_watch_change(record: &UnrecordedChangeRecord) -> bool {

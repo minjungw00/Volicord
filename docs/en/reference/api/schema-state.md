@@ -157,9 +157,24 @@ GuardHealthSummary:
   session_watch_coverage_basis: string | null
   session_watch_partial_coverage_warning: string | null
   session_watch_detail: string | null
+  session_watch_scan_summary: SessionWatchScanSummary | null
   unresolved_unrecorded_change_count: integer
   missing_or_stale_write_ticket: boolean
   write_ticket_path_scope_violation: boolean
+
+SessionWatchScanSummary:
+  files_scanned: integer
+  files_skipped: integer
+  unreadable_paths_count: integer
+  degraded_reasons: string[]
+  degraded_reason_counts: object
+  skipped_paths_sample: string[]
+  skipped_paths_truncated: boolean
+  default_excluded_paths: string[]
+  max_file_size_bytes: integer
+  max_file_count: integer
+  follows_symlinks: boolean
+  not_full_filesystem_monitoring: boolean
 
 CoverageSummary:
   active_profile: string
@@ -167,6 +182,7 @@ CoverageSummary:
   session_watcher_state: string
   coverage_started_at: string | null
   last_snapshot_at: string | null
+  watcher_scan_summary: SessionWatchScanSummary | null
   unresolved_unrecorded_change_count: integer
   non_guarantees: NonGuarantee[]
 ```
@@ -193,11 +209,13 @@ Meaning:
 - `session_watch_coverage_basis` is `mcp_start`, `first_project_selection`, `method_boundary`, or `null`.
 - `session_watch_partial_coverage_warning` is a human-readable warning when Product Repository changes before the recorded coverage start are outside watcher coverage.
 - `session_watch_detail` is a short diagnostic detail for the selected watcher state, or `null` when no detail is available.
+- `session_watch_scan_summary` reports the selected watcher scan footprint when available. It includes files scanned, files skipped, unreadable path count, degraded reason counts, a sample of skipped paths, default policy exclusions, file-size and file-count limits, `follows_symlinks=false`, and `not_full_filesystem_monitoring=true`.
 - `unresolved_unrecorded_change_count` is a count of unresolved unrecorded Product Repository changes. It does not expose prompt text, command text, or path lists.
 - `missing_or_stale_write_ticket` reports whether host-hook events detected missing, indeterminate, ambiguous, or stale write-ticket readiness.
 - `write_ticket_path_scope_violation` reports whether host-hook events observed a Product Repository path outside the active write-ticket scope.
 - `CoverageSummary` is a concise, derived coverage view selected by status and close-readiness results. `active_profile` is the current `record` or `detective` profile; `host_hook_state` is `observed`, `not_observed`, `unsupported`, or `degraded`; and `session_watcher_state` is `active`, `inactive`, `unsupported`, or `degraded`.
 - `coverage_started_at` is the session-watch coverage start timestamp when the runtime tracks one, or `null` when unavailable. `last_snapshot_at` is the latest watcher baseline or snapshot-status timestamp when tracked, or `null` when unavailable.
+- `CoverageSummary.watcher_scan_summary` mirrors `GuardHealthSummary.session_watch_scan_summary` when coverage is selected.
 - `CoverageSummary.unresolved_unrecorded_change_count` mirrors the unresolved unrecorded Product Repository change count used by close readiness.
 - `CoverageSummary.non_guarantees` must include `NotActorAttributionProof`, `NotFullFilesystemMonitoring`, and `NotFullWritePrevention` when coverage is reported.
 

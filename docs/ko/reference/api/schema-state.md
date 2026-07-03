@@ -157,9 +157,24 @@ GuardHealthSummary:
   session_watch_coverage_basis: string | null
   session_watch_partial_coverage_warning: string | null
   session_watch_detail: string | null
+  session_watch_scan_summary: SessionWatchScanSummary | null
   unresolved_unrecorded_change_count: integer
   missing_or_stale_write_ticket: boolean
   write_ticket_path_scope_violation: boolean
+
+SessionWatchScanSummary:
+  files_scanned: integer
+  files_skipped: integer
+  unreadable_paths_count: integer
+  degraded_reasons: string[]
+  degraded_reason_counts: object
+  skipped_paths_sample: string[]
+  skipped_paths_truncated: boolean
+  default_excluded_paths: string[]
+  max_file_size_bytes: integer
+  max_file_count: integer
+  follows_symlinks: boolean
+  not_full_filesystem_monitoring: boolean
 
 CoverageSummary:
   active_profile: string
@@ -167,6 +182,7 @@ CoverageSummary:
   session_watcher_state: string
   coverage_started_at: string | null
   last_snapshot_at: string | null
+  watcher_scan_summary: SessionWatchScanSummary | null
   unresolved_unrecorded_change_count: integer
   non_guarantees: NonGuarantee[]
 ```
@@ -193,11 +209,13 @@ CoverageSummary:
 - `session_watch_coverage_basis`는 `mcp_start`, `first_project_selection`, `method_boundary`, 또는 `null`입니다.
 - `session_watch_partial_coverage_warning`은 기록된 coverage 시작 전의 Product Repository 변경이 watcher coverage 밖에 있을 때 사람이 읽을 수 있는 경고입니다.
 - `session_watch_detail`은 선택된 watcher 상태에 대한 짧은 진단 세부정보이며, 사용할 수 있는 세부정보가 없으면 `null`입니다.
+- `session_watch_scan_summary`는 사용할 수 있을 때 선택된 watcher scan footprint를 보고합니다. 스캔한 파일 수, 건너뛴 파일 수, 읽을 수 없는 경로 수, degraded reason count, 건너뛴 경로 샘플, 기본 정책 제외 경로, 파일 크기와 파일 수 제한, `follows_symlinks=false`, `not_full_filesystem_monitoring=true`를 포함합니다.
 - `unresolved_unrecorded_change_count`는 해결되지 않은 미기록 Product Repository 변경 수입니다. 프롬프트 텍스트, 명령 텍스트, 경로 목록은 노출하지 않습니다.
 - `missing_or_stale_write_ticket`는 host-hook 이벤트가 누락되었거나, 결정할 수 없거나, 모호하거나, 오래된 쓰기 티켓 준비 상태를 감지했는지 보고합니다.
 - `write_ticket_path_scope_violation`은 host-hook 이벤트가 active 쓰기 티켓 범위 밖의 Product Repository 경로를 관찰했는지 보고합니다.
 - `CoverageSummary`는 상태 조회와 닫기 준비 상태 결과가 선택하는 간결한 도출 coverage 보기입니다. `active_profile`은 현재 `record` 또는 `detective` 프로필입니다. `host_hook_state`는 `observed`, `not_observed`, `unsupported`, `degraded` 중 하나이고, `session_watcher_state`는 `active`, `inactive`, `unsupported`, `degraded` 중 하나입니다.
 - `coverage_started_at`은 런타임이 추적하는 session-watch coverage 시작 시각이며, 사용할 수 없으면 `null`입니다. `last_snapshot_at`은 추적할 때의 최신 watcher baseline 또는 snapshot 상태 시각이며, 사용할 수 없으면 `null`입니다.
+- `CoverageSummary.watcher_scan_summary`는 coverage가 선택될 때 `GuardHealthSummary.session_watch_scan_summary`와 같습니다.
 - `CoverageSummary.unresolved_unrecorded_change_count`는 닫기 준비 상태가 사용하는 해결되지 않은 미기록 Product Repository 변경 수와 같습니다.
 - coverage가 보고될 때 `CoverageSummary.non_guarantees`는 `NotActorAttributionProof`, `NotFullFilesystemMonitoring`, `NotFullWritePrevention`을 포함해야 합니다.
 
