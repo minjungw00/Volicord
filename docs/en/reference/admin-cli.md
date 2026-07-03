@@ -502,6 +502,43 @@ proof, and human review replacement.
 A successful `volicord mcp --check` startup check alone must not be described as a
 `complete` Agent Connection. It is startup validation for the MCP process only.
 
+<a id="authority-bundle-export"></a>
+## Authority bundle export
+
+`volicord export authority-bundle --output PATH [--repo PATH] [--json]`
+exports an integrity-labeled copy of local Volicord records for one already
+registered Product Repository. When `--repo` is omitted, the command resolves
+the current directory to its Git repository root. `--output` names a directory
+that must either not exist yet or already exist as an empty directory.
+
+The command writes:
+
+- `manifest.json`, describing the selected Runtime Home, registered project,
+  exported record counts, artifact copy status, files, checksum path, and
+  non-guarantees.
+- `records.jsonl`, containing project `state.sqlite` storage rows as JSON
+  Lines with `database`, `table`, and `row` fields.
+- `artifacts/`, containing copied persistent artifact body files when the
+  current local artifact store makes those bytes available. Artifact rows remain
+  represented in `records.jsonl` and `manifest.json` even when a body is not
+  copied.
+- `checksums.sha256`, containing SHA-256 checksums for `manifest.json`,
+  `records.jsonl`, `README.txt`, and copied artifact body files.
+- `README.txt`, explaining the bundle contents and guarantee limits.
+
+Rules:
+
+- The authority bundle export reads the selected Runtime Home and project state
+  without creating, registering, migrating, repairing, or updating Runtime Home
+  records.
+- The checksum manifest labels the exported copy. It is not proof that the
+  Runtime Home was never modified before export.
+- The bundle is not tamper-proof storage, cryptographic signing, an external
+  audit log, correctness proof, test sufficiency proof, review completion
+  proof, deployment proof, final acceptance, or residual-risk acceptance.
+- JSON output reports the output path, bundle file paths, record count,
+  artifact count, copied artifact count, and checksum-entry count.
+
 <a id="generic-mcp-config-export"></a>
 ## Host MCP configuration
 

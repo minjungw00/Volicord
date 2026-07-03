@@ -9,6 +9,7 @@ use volicord_cli::{
         ConnectionCommandError, ProductionConnectionProcess,
     },
     doctor_command::{doctor_usage, run_doctor_command, DoctorCommandError},
+    export_command::{export_usage, run_export_command, ExportCommandError},
     guard_command::{run_guard_command, GuardCommandError},
     project_context::{project_usage, run_project_command, ProjectCommandError},
     serve_command::{run_serve_command, serve_usage, ServeCommand, ServeCommandError},
@@ -122,6 +123,7 @@ where
             }
             run_changes_command(&args[2..], env_var, current_dir).map_err(CliError::from)
         }
+        "export" => command_export(&args[2..], env_var, current_dir),
         "status" => {
             if !simple_help_requested(&args[2..]) {
                 require_setup_completed(&env_var, current_dir)?;
@@ -268,6 +270,19 @@ where
     F: Fn(&str) -> Option<std::ffi::OsString>,
 {
     run_project_command(args, env_var, current_dir).map_err(CliError::from)
+}
+
+fn command_export<F>(args: &[String], env_var: F, current_dir: &Path) -> Result<String, CliError>
+where
+    F: Fn(&str) -> Option<std::ffi::OsString>,
+{
+    if args.first().map(String::as_str) == Some("mcp-config") {
+        return Err(CliError::usage(format!(
+            "unknown export command: mcp-config\n\n{}",
+            export_usage()
+        )));
+    }
+    run_export_command(args, env_var, current_dir).map_err(CliError::from)
 }
 
 fn command_mcp<F>(args: &[String], env_var: F, current_dir: &Path) -> Result<String, CliError>
@@ -420,7 +435,7 @@ fn display_path(path: &Path) -> String {
 
 fn usage() -> String {
     format!(
-        "Usage:\n  volicord --help\n  volicord --version\n{}{}{}{}{}{}{}{}{}\nEnvironment:\n  VOLICORD_HOME  Override Runtime Home path (default: $HOME/.volicord)\n\nAgent Connection commands manage local MCP host connections. User Channel commands record local user judgments.\nThese are local administrative commands, not public Volicord API methods.\n",
+        "Usage:\n  volicord --help\n  volicord --version\n{}{}{}{}{}{}{}{}{}{}\nEnvironment:\n  VOLICORD_HOME  Override Runtime Home path (default: $HOME/.volicord)\n\nAgent Connection commands manage local MCP host connections. User Channel commands record local user judgments.\nThese are local administrative commands, not public Volicord API methods.\n",
         indent_usage_block(&init_usage()),
         indent_usage_block(&status_usage()),
         indent_usage_block(&doctor_usage()),
@@ -428,6 +443,7 @@ fn usage() -> String {
         indent_usage_block(&connection_usage()),
         indent_usage_block(&inbox_usage()),
         indent_usage_block(&changes_usage()),
+        indent_usage_block(&export_usage()),
         indent_usage_block(&mcp_usage()),
         indent_usage_block(&serve_usage()),
     )
@@ -541,6 +557,15 @@ impl From<ChangesCommandError> for CliError {
     }
 }
 
+impl From<ExportCommandError> for CliError {
+    fn from(error: ExportCommandError) -> Self {
+        match error {
+            ExportCommandError::Usage(message) => Self::Usage(message),
+            ExportCommandError::Runtime(message) => Self::Runtime(message),
+        }
+    }
+}
+
 impl From<ProjectCommandError> for CliError {
     fn from(error: ProjectCommandError) -> Self {
         match error {
@@ -634,6 +659,7 @@ mod tests {
         assert!(output.contains("volicord project use"));
         assert!(output.contains("volicord connection add"));
         assert!(output.contains("volicord connection list"));
+        assert!(output.contains("volicord export authority-bundle"));
         assert!(output.contains("volicord mcp --stdio --connection <connection_id>"));
         assert!(output.contains("volicord serve --transport local-http"));
         assert!(output.contains("\n  volicord connection verify"));

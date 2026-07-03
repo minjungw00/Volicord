@@ -133,6 +133,22 @@ Current record families hold the current Core state for ordinary reads. `authori
 
 State-version behavior, idempotency, event meaning, replay conflict handling, locks, and migration contracts belong to [Storage Versioning](storage-versioning.md).
 
+### Authority Bundle Export
+
+Administrative CLI behavior for `volicord export authority-bundle` belongs to
+[Administrative CLI](admin-cli.md#authority-bundle-export). Storage Records owns
+the storage-row basis of that export: the bundle's `records.jsonl` represents
+the selected project's baseline `state.sqlite` record families as storage rows,
+and copied persistent artifact bodies are supplementary exported files for
+`artifacts` rows that currently have readable local artifact-store bytes.
+
+The export bundle preserves storage row names, column names, stored values, and
+storage-owned JSON `TEXT` values as exported record data. Its SHA-256 checksum
+manifest labels the exported files. It does not convert the Runtime Home into
+tamper-proof storage, prove that the Runtime Home was never modified before
+export, or prove correctness, test sufficiency, review completion, deployment,
+final acceptance, or residual-risk acceptance.
+
 ### Relationship Validation
 
 Storage must validate stored relationships before commit, including:

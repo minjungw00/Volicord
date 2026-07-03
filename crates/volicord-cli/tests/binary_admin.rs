@@ -4,12 +4,13 @@ use std::{
     collections::BTreeSet,
     error::Error,
     fs,
-    io::Write,
+    io::{Read, Write},
     path::{Path, PathBuf},
     process::{Command, Output, Stdio},
 };
 
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use volicord_core::{CoreService, InvocationContext};
 use volicord_store::agent_connections::{
     add_connection_project, agent_connection_record, ensure_agent_connection,
@@ -48,6 +49,7 @@ fn binary_help_uses_agent_connection_model() -> Result<(), Box<dyn Error>> {
     assert!(text.contains("volicord doctor"));
     assert!(text.contains("volicord project use"));
     assert!(text.contains("volicord connection add [HOST]"));
+    assert!(text.contains("volicord export authority-bundle"));
     assert!(text.contains("volicord connection list [--repo PATH]"));
     assert!(text.contains("volicord connection status [HOST]"));
     assert!(text.contains("volicord changes reconcile"));
@@ -101,6 +103,7 @@ fn binary_help_options_match_supported_contracts() -> Result<(), Box<dyn Error>>
             "--check",
             "--connection",
             "--project",
+            "--output",
             "--transport",
             "--listen",
             "--container-listen",
@@ -189,6 +192,7 @@ fn binary_help_options_match_supported_contracts() -> Result<(), Box<dyn Error>>
         ["changes", "--help"],
         &["--repo", "--task", "--dry-run", "--json"],
     )?;
+    assert_help_options(["export", "--help"], &["--repo", "--output", "--json"])?;
     assert_help_options(["project", "--help"], &["--repo", "--json"])?;
     assert_help_options(
         ["inbox", "--help"],
@@ -1783,6 +1787,126 @@ fn project_list_disambiguates_same_basename_repositories() -> Result<(), Box<dyn
     Ok(())
 }
 
+#[test]
+fn export_authority_bundle_writes_integrity_metadata_without_mutating_project_state(
+) -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-authority-bundle")?;
+    initialize_runtime_home(runtime_home.path(), "runtime_home_authority_bundle", "{}")?;
+    write_test_installation_profile(runtime_home.path())?;
+    let repo_root = create_git_repo(&runtime_home, "product-repo")?;
+    register_project(
+        runtime_home.path(),
+        ProjectRegistration {
+            project_id: "project_authority_bundle".to_owned(),
+            repo_root: repo_root.clone(),
+            project_home: None,
+            status: ACTIVE_PROJECT_STATUS.to_owned(),
+            metadata_json: "{}".to_owned(),
+        },
+    )?;
+    let state_db_path = runtime_home.project_state_db_path("project_authority_bundle");
+    let registry_before = file_sha256_hex(&runtime_home.registry_db_path())?;
+    let state_before = file_sha256_hex(&state_db_path)?;
+    let output_dir = runtime_home.path().join("authority-bundle-output");
+    let repo_arg = path_text(&repo_root);
+    let output_arg = path_text(&output_dir);
+
+    let output = run_with_home_env(
+        runtime_home.path(),
+        [
+            "export",
+            "authority-bundle",
+            "--repo",
+            repo_arg.as_str(),
+            "--output",
+            output_arg.as_str(),
+            "--json",
+        ],
+        &[],
+    )?;
+    assert_success(&output);
+    let command_json = json_stdout(&output)?;
+    assert_eq!(command_json["bundle_kind"], "authority_bundle");
+    assert_eq!(command_json["record_count"], 1);
+    assert_eq!(command_json["artifact_count"], 0);
+
+    let manifest_path = output_dir.join("manifest.json");
+    let records_path = output_dir.join("records.jsonl");
+    let checksums_path = output_dir.join("checksums.sha256");
+    let readme_path = output_dir.join("README.txt");
+    assert!(manifest_path.exists());
+    assert!(records_path.exists());
+    assert!(checksums_path.exists());
+    assert!(readme_path.exists());
+    assert!(output_dir.join("artifacts").is_dir());
+
+    let manifest: Value = serde_json::from_str(&fs::read_to_string(&manifest_path)?)?;
+    let files = manifest["files"]
+        .as_array()
+        .expect("manifest files should be an array")
+        .iter()
+        .map(|entry| {
+            entry["path"]
+                .as_str()
+                .expect("manifest file paths should be strings")
+                .to_owned()
+        })
+        .collect::<BTreeSet<_>>();
+    for expected in [
+        "manifest.json",
+        "records.jsonl",
+        "checksums.sha256",
+        "README.txt",
+        "artifacts/",
+    ] {
+        assert!(
+            files.contains(expected),
+            "manifest should include {expected}: {manifest}"
+        );
+    }
+    assert_eq!(manifest["hash_algorithm"], "sha256");
+    assert_eq!(manifest["records"]["record_count"], 1);
+    assert_eq!(manifest["records"]["path"], "records.jsonl");
+    assert_eq!(manifest["project"]["repo_root"], path_text(&repo_root));
+
+    let records = fs::read_to_string(&records_path)?;
+    let exported_record: Value = serde_json::from_str(
+        records
+            .lines()
+            .next()
+            .expect("records.jsonl should contain the project_state row"),
+    )?;
+    assert_eq!(exported_record["database"], "project_state");
+    assert_eq!(exported_record["table"], "project_state");
+    assert_eq!(
+        exported_record["row"]["project_id"],
+        "project_authority_bundle"
+    );
+
+    let checksum_text = fs::read_to_string(&checksums_path)?;
+    let checksum_paths = checksum_text
+        .lines()
+        .map(|line| verify_checksum_line(&output_dir, line))
+        .collect::<Result<BTreeSet<_>, _>>()?;
+    assert!(checksum_paths.contains("manifest.json"));
+    assert!(checksum_paths.contains("records.jsonl"));
+    assert!(checksum_paths.contains("README.txt"));
+    assert!(!checksum_paths.contains("checksums.sha256"));
+
+    let readme = fs::read_to_string(&readme_path)?;
+    assert!(readme.contains("integrity-labeled copy of local Volicord records"));
+    assert!(readme.contains("not proof that the Runtime Home was never modified before export"));
+    assert!(readme
+        .contains("not a correctness, test sufficiency, review completion, or deployment proof"));
+
+    assert_eq!(
+        registry_before,
+        file_sha256_hex(&runtime_home.registry_db_path())?
+    );
+    assert_eq!(state_before, file_sha256_hex(&state_db_path)?);
+    Ok(())
+}
+
 #[cfg(unix)]
 #[test]
 fn connect_respects_explicit_read_only_and_uses_same_dry_run_plan() -> Result<(), Box<dyn Error>> {
@@ -3223,6 +3347,39 @@ fn assert_non_guarantees(disclosure: &Value, expected: &[&str]) {
 
 fn path_text(path: &Path) -> String {
     path.display().to_string()
+}
+
+fn verify_checksum_line(root: &Path, line: &str) -> Result<String, Box<dyn Error>> {
+    let (expected_hash, relative_path) = line.split_once("  ").ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("checksum line should use sha256sum format: {line}"),
+        )
+    })?;
+    assert_eq!(expected_hash, file_sha256_hex(&root.join(relative_path))?);
+    Ok(relative_path.to_owned())
+}
+
+fn file_sha256_hex(path: &Path) -> Result<String, Box<dyn Error>> {
+    let mut file = fs::File::open(path)?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 8192];
+    loop {
+        let read = file.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    Ok(lowercase_hex_bytes(&hasher.finalize()))
+}
+
+fn lowercase_hex_bytes(bytes: &[u8]) -> String {
+    let mut text = String::new();
+    for byte in bytes {
+        text.push_str(&format!("{byte:02x}"));
+    }
+    text
 }
 
 fn count_occurrences(text: &str, needle: &str) -> usize {

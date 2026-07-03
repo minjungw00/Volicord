@@ -455,6 +455,39 @@ Agent Connection의 text와 JSON 출력은 진단 출력입니다. JSON 출력�
 성공한 `volicord mcp --check` 시작 점검만으로는 Agent Connection을 `complete`로 설명하면
 안 됩니다. 이는 MCP 프로세스의 시작 검증일 뿐입니다.
 
+<a id="authority-bundle-export"></a>
+## 권한 번들 내보내기
+
+`volicord export authority-bundle --output PATH [--repo PATH] [--json]`는 이미
+등록된 하나의 `Product Repository`에 대한 로컬 Volicord 기록의 무결성 라벨이 붙은
+복사본을 내보냅니다. `--repo`를 생략하면 현재 디렉터리에서 Git 저장소 root를
+해석합니다. `--output`은 아직 없거나 이미 비어 있는 디렉터리를 가리켜야 합니다.
+
+명령은 아래 파일을 씁니다.
+
+- `manifest.json`: 선택된 Runtime Home, 등록 프로젝트, 내보낸 기록 수, 아티팩트
+  복사 상태, 파일, 체크섬 경로, 비보장을 설명합니다.
+- `records.jsonl`: 프로젝트 `state.sqlite` 저장소 행을 `database`, `table`, `row`
+  필드가 있는 JSON Lines로 담습니다.
+- `artifacts/`: 현재 로컬 아티팩트 저장소가 해당 바이트를 제공할 수 있을 때 영속
+  아티팩트 본문 파일을 복사해 둡니다. 본문이 복사되지 않은 경우에도 아티팩트 행은
+  `records.jsonl`과 `manifest.json`에 남습니다.
+- `checksums.sha256`: `manifest.json`, `records.jsonl`, `README.txt`, 복사된
+  아티팩트 본문 파일에 대한 SHA-256 체크섬을 담습니다.
+- `README.txt`: 번들 내용과 보장 한계를 설명합니다.
+
+규칙:
+
+- 권한 번들 내보내기는 선택된 Runtime Home과 프로젝트 상태를 읽기만 하며 Runtime
+  Home 기록을 만들거나, 등록하거나, migration하거나, 복구하거나, 갱신하지 않습니다.
+- 체크섬 파일은 내보낸 복사본에 라벨을 붙입니다. Runtime Home이 내보내기 전에
+  한 번도 수정되지 않았다는 증명이 아닙니다.
+- 이 번들은 변조 방지 저장소, 암호학적 서명, 외부 감사 로그, 정확성 증명,
+  테스트 충분성 증명, 검토 완료 증명, 배포 증명, 최종 수락, 잔여 위험 수락이
+  아닙니다.
+- JSON 출력은 출력 경로, 번들 파일 경로, 기록 수, 아티팩트 수, 복사된 아티팩트 수,
+  체크섬 항목 수를 보고합니다.
+
 <a id="generic-mcp-config-export"></a>
 ## 호스트 MCP 설정
 

@@ -265,9 +265,13 @@ Volicord does not guarantee:
 Volicord does not guarantee:
 
 - Tamper-proof storage.
+- That an authority bundle, manifest, or SHA-256 checksum proves the
+  `Volicord Runtime Home` was never modified before export.
 - Native artifact capture from Agent Connections as a baseline guarantee.
 - Artifact authority from displayed identifiers alone.
 - Validation or acceptance from copied artifact, run, evidence, or judgment text.
+- Correctness, test sufficiency, review completion, deployment success, final
+  acceptance, or residual-risk acceptance from an authority bundle.
 
 ### Close Status, QA, deployment, and review
 
