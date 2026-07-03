@@ -31,10 +31,11 @@ A profile can therefore make doctor report `complete` while doctor still shows
 command-availability warnings or recommended `PATH` actions for future shells or
 agent hosts.
 
-## Setup Has Not Been Completed
+## Installation Profile Is Missing
 
 Observable symptom: ordinary project, connection, MCP, or inbox workflows say
-setup has not been completed for the selected `Volicord Runtime Home`.
+`SETUP_REQUIRED` or report that the installation profile is missing for the
+selected `Volicord Runtime Home`.
 
 Bounded recovery:
 
@@ -63,8 +64,9 @@ checking again:
 volicord doctor
 ```
 
-Do not create Runtime Home files by hand. Use init so the registry, setup
-profile, project registration, and connection state are created together.
+Do not create Runtime Home files by hand. Use init so the registry,
+installation profile, project registration, and connection state are created
+together.
 
 ## Command Is Not On PATH
 

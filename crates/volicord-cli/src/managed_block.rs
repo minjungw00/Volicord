@@ -3,8 +3,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
-pub(crate) const START_MARKER: &str = "# >>> volicord setup >>>";
-pub(crate) const END_MARKER: &str = "# <<< volicord setup <<<";
+pub(crate) const START_MARKER: &str = "# BEGIN VOLICORD MANAGED PATH v1";
+pub(crate) const END_MARKER: &str = "# END VOLICORD MANAGED PATH v1";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ManagedBlockWrite {
@@ -25,7 +25,7 @@ pub(crate) fn path_export_block(path_expr: &str) -> String {
 
 pub(crate) fn apply_managed_block(existing: &str, block: &str) -> String {
     apply_managed_block_with_markers(existing, block, START_MARKER, END_MARKER)
-        .expect("setup managed block markers are paired constants")
+        .expect("default managed block markers are paired constants")
 }
 
 pub(crate) fn apply_managed_block_with_markers(

@@ -27,10 +27,10 @@ volicord connection list
 doctor가 `complete`를 보고하면서도 이후 셸이나 에이전트 호스트를 위한 명령 가용성
 경고 또는 권장 `PATH` 동작을 함께 보여 줄 수 있습니다.
 
-## 설정이 완료되지 않음
+## 설치 프로필이 없음
 
-관찰 증상: 일반 project, connection, MCP, inbox workflow가 선택된
-`Volicord Runtime Home`에 설정이 완료되지 않았다고 말합니다.
+관찰 증상: 일반 project, connection, MCP, inbox workflow가 `SETUP_REQUIRED`를
+보고하거나 선택된 `Volicord Runtime Home`에 설치 프로필이 없다고 말합니다.
 
 제한된 복구:
 

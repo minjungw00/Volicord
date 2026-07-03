@@ -83,7 +83,7 @@ pub(crate) fn verify_directory_writable(path: &Path) -> io::Result<()> {
         {
             Ok(mut file) => {
                 let write_result = file
-                    .write_all(b"volicord setup write probe\n")
+                    .write_all(b"volicord PATH write probe\n")
                     .and_then(|()| file.flush());
                 drop(file);
                 let cleanup_result = fs::remove_file(&probe_path);

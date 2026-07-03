@@ -276,7 +276,7 @@ pub(crate) fn resolve_connection_context(
             ..
         }) => {
             return Err(McpAdapterError::Environment(format!(
-                "setup has not been completed for Runtime Home {}; run `volicord setup` before starting a Volicord MCP transport process",
+                "SETUP_REQUIRED: installation profile is missing for Runtime Home {}; run `volicord init --host <host> --repo <path>` from the Product Repository, then run `volicord connection verify <host> --repo <path>` or `volicord doctor` before starting the MCP transport process",
                 runtime_home.display()
             )))
         }

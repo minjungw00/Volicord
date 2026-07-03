@@ -282,7 +282,7 @@ struct InteractiveMenuPlan {
 }
 
 pub fn setup_usage() -> String {
-    "volicord setup [--home PATH] [--link-bin PATH] [--mcp-command PATH] [--json]\n".to_owned()
+    "volicord init --host HOST --repo PATH [--profile record|detective] [--home PATH] [--mcp-command PATH] [--dry-run] [--json]\nvolicord doctor [--json]\n".to_owned()
 }
 
 pub fn run_setup_command(
@@ -360,9 +360,9 @@ fn run_setup_command_inner(
                     .with_details(json!({ "detail": error.to_string() })),
             );
             actions_required.push(SetupAction::required(
-                "run_setup_from_volicord",
+                "run_init_from_volicord",
                 SetupActionKind::CommandAvailability,
-                "Run volicord setup from an accessible volicord executable.",
+                "Install or link an accessible volicord executable, then run volicord init --host <host> --repo <path> from the Product Repository.",
             ));
             let report = SetupReport::new(
                 runtime_home_section,
@@ -415,9 +415,9 @@ fn run_setup_command_inner(
                 SetupAction::required(
                     "select_mcp_command",
                     SetupActionKind::SelectMcpCommand,
-                    "Run volicord setup --mcp-command PATH with an executable volicord path.",
+                    "Run volicord init --host <host> --repo <path> --mcp-command PATH with an executable volicord path.",
                 )
-                .with_command("volicord setup --mcp-command PATH"),
+                .with_command("volicord init --host <host> --repo <path> --mcp-command PATH"),
             );
             let path_env = process.env_var(PATH_ENV);
             let commands = vec![command_availability(
@@ -542,8 +542,7 @@ fn run_setup_command_inner(
                         "repair_link_bin",
                         SetupActionKind::CommandLinks,
                         format!(
-                            "Fix write access for {}, then rerun volicord setup --link-bin {}.",
-                            link_bin.display(),
+                            "Fix write access for {}, then run volicord doctor after installing volicord in a writable PATH directory.",
                             link_bin.display()
                         ),
                     )
@@ -929,12 +928,10 @@ fn plan_setup_actions(
         let mut action = SetupAction::optional(
             "create_command_links",
             SetupActionKind::CommandLinks,
-            "Create command links with --link-bin; setup will not modify shell startup files.",
+            "Create command links manually in a PATH directory; Volicord will not modify shell startup files.",
         );
         if let Some(link_bin) = suggested_link_bin(process) {
-            action = action
-                .with_command(format!("volicord setup --link-bin {}", link_bin.display()))
-                .with_path(&link_bin);
+            action = action.with_path(&link_bin);
         }
         push_unique_action(actions_optional, action);
     }
@@ -1641,7 +1638,7 @@ fn push_link_check(
                     format!("repair_{name}_link"),
                     SetupActionKind::CommandLinks,
                     format!(
-                        "Move or remove the existing {} path, then rerun volicord setup --link-bin {}.",
+                        "Move or remove the existing {} path, then run volicord doctor after installing volicord in a writable PATH directory such as {}.",
                         path.display(),
                         link_bin.display()
                     ),
@@ -1659,7 +1656,7 @@ fn push_link_check(
                     format!("repair_{name}_link"),
                     SetupActionKind::CommandLinks,
                     format!(
-                        "Fix write access for {}, then rerun volicord setup --link-bin {}.",
+                        "Fix write access for {}, then run volicord doctor after installing volicord in a writable PATH directory such as {}.",
                         path.display(),
                         link_bin.display()
                     ),
@@ -2148,10 +2145,7 @@ mod tests {
             vec![SetupActionKind::CommandLinks]
         );
         assert_eq!(actions_optional[0].path, Some(path_text(&home_bin)));
-        assert!(actions_optional[0]
-            .command
-            .as_deref()
-            .is_some_and(|command| command.contains("--link-bin")));
+        assert!(actions_optional[0].command.is_none());
         assert!(!home_bin.exists());
         Ok(())
     }
@@ -2434,9 +2428,7 @@ mod tests {
             .iter()
             .any(|action| action["id"] == "create_command_links"
                 && action["path"] == path_text(&local_bin)
-                && action["command"]
-                    .as_str()
-                    .is_some_and(|command| command.contains("--link-bin"))));
+                && action.get("command").is_none()));
         assert!(!local_bin.exists());
         Ok(())
     }
@@ -2515,7 +2507,7 @@ mod tests {
         assert_eq!(fs::canonicalize(link_bin.join(mcp_binary_name()))?, mcp);
         let zshrc = home.join(".zshrc");
         let first_text = fs::read_to_string(&zshrc)?;
-        assert!(first_text.contains("# >>> volicord setup >>>"));
+        assert!(first_text.contains("# BEGIN VOLICORD MANAGED PATH v1"));
         assert!(first_text.contains("export PATH=\"$HOME/.local/bin:$PATH\""));
 
         let mut second_terminal = FakeTerminal::with_inputs(vec![
@@ -2529,7 +2521,12 @@ mod tests {
             &mut second_terminal,
         )?;
         let second_text = fs::read_to_string(&zshrc)?;
-        assert_eq!(second_text.matches("# >>> volicord setup >>>").count(), 1);
+        assert_eq!(
+            second_text
+                .matches("# BEGIN VOLICORD MANAGED PATH v1")
+                .count(),
+            1
+        );
         Ok(())
     }
 
