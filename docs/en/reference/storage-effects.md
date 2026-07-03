@@ -38,7 +38,7 @@ Effects come from the selected method behavior and response branch. The table su
 
 | Effect category | Response or branch | Durable storage consequence | Details |
 |---|---|---|---|
-| Read-only | Read-only `MethodResult` | Response only; no replay row, event, artifact effect, write-ticket effect, or `project_state.state_version` increment. | [Read-only result](#read-only-result) |
+| Read-only | Read-only `MethodResult` | No Core authority-state mutation. Response data only except for method-permitted session-watch diagnostic records; no replay row, authority event, artifact effect, write-ticket effect, close-state mutation, or `project_state.state_version` increment. | [Read-only result](#read-only-result) |
 | No-effect | `ToolRejectedResponse` or a valid `MethodResult` with `effect_kind=no_effect` | No ordinary requested mutation and no Core commit. The response may carry errors or blocker-shaped data, but those values are not persisted by this branch. | [`ToolRejectedResponse`](#toolrejectedresponse-effect), [No-effect branches](#no-effect-branches) |
 | Dry-run | Valid `ToolDryRunResponse` | Preview only; no persistent refs, replay row, event, staged handle, artifact effect, or `project_state.state_version` increment. | [Valid dry-run preview](#valid-dry-run-preview) |
 | Staging-created | `StageArtifactResult` with `effect_kind=staging_created` | Storage-owned transient staging only; not the regular Core commit transaction. | [Staging-created artifact result](#staging-created-artifact-result) |
@@ -50,14 +50,17 @@ Effects come from the selected method behavior and response branch. The table su
 
 Storage effect:
 
-- Response only.
+- No Core authority-state storage effect.
+- Response data only except for method-permitted session-watch diagnostic records.
 
 Disallowed effects:
 
 - replay row
-- event
-- current-row mutation
+- authority event
+- Core current-row mutation
+- close-state mutation
 - artifact effect
+- evidence update or evidence observation
 - write-ticket effect
 - `project_state.state_version` increment
 
@@ -200,10 +203,12 @@ Valid dry-run previews may include `DryRunSummary.would_blockers: PlannedBlocker
 
 ## Read-only effects
 
-Read-only results are response-only and not replay rows. When a method section
-below explicitly permits session-watch diagnostic records for a session-bound
-Agent Connection, those records are not Core state mutations, replay rows,
-authority events, close-state mutations, or `project_state.state_version` changes.
+Read-only results have no Core authority-state storage effect and are not replay
+rows. Unless a method section below explicitly permits session-watch diagnostic
+records for a session-bound Agent Connection, read-only results are
+response-only. Permitted diagnostic records are not Core state mutations, replay
+rows, authority events, close-state mutations, or
+`project_state.state_version` changes.
 
 For response computation, `volicord.status` and `volicord.check_close` may compute `CurrentCloseBasis`, close state, risk acceptance coverage, blockers, `CloseReadinessBlocker[]`, evidence summaries, artifact refs, project continuity summaries, diagnostics, and next actions for the response when the method owner selects those projections.
 
@@ -224,7 +229,7 @@ Read-time artifact checks may compute an effective missing, unavailable, or inte
 - evidence update or evidence observation
 - `project_state.state_version` increment
 
-For `volicord.check_close`, the response branch is owned by [`volicord.check_close`](api/method-close-task.md#volicordcheck_close). This storage page only asserts that the check remains read-only, including with `dry_run=true` and with `blockers: CloseReadinessBlocker[]`.
+For `volicord.check_close`, the response branch is owned by [`volicord.check_close`](api/method-close-task.md#volicordcheck_close). This storage page asserts that the check remains read-only for Core authority state and `project_state.state_version`, including with `dry_run=true` and with `blockers: CloseReadinessBlocker[]`.
 
 Session-watch diagnostic records store only the bounded snapshot metadata
 described by [Storage Records](storage-records.md). They must not store raw file
@@ -392,7 +397,7 @@ Owner links:
 
 Read-only calls:
 
-- return response data only
+- return response data without Core authority-state mutation
 - do not create replay rows
 - do not create `project_continuity_records`
 - do not mutate Core state
@@ -664,7 +669,7 @@ Owner links:
 <a id="volicordcheck_close"></a>
 ### `volicord.check_close`
 
-Read-only calls:
+Read-only calls have no Core authority-state storage effect:
 
 - return computed close readiness
 - use the same close-readiness calculation as `volicord.status include.close=true`
@@ -679,8 +684,10 @@ For a session-bound Agent Connection and `dry_run=false`, the check may first
 run a bounded session-watch check and create or update `agent_sessions`,
 `session_watch_baselines`, `session_watch_observations`, and watcher-created
 `unrecorded_changes` when Product Repository changes are not deterministically
-covered by expected-write or active write-ticket correlation. These diagnostic effects do not append authority events,
-create blocker rows, mutate close state, or increment
+covered by expected-write or active write-ticket correlation. These diagnostic
+effects are not Core authority-state storage effects. They do not append
+authority events, create blocker rows, mutate close state, touch artifacts or
+evidence, or increment
 `project_state.state_version`. If this check creates the first watcher
 baseline, the coverage basis is `method_boundary` and earlier Product
 Repository changes are outside watcher coverage.

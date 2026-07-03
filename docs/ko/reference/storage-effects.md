@@ -39,7 +39,7 @@ API 데이터 형태는 API 스키마 담당 문서가 담당합니다. 차단 �
 
 | 효과 범주 | 응답 또는 분기 | 지속 저장 결과 | 세부사항 |
 |---|---|---|---|
-| 읽기 전용 | 읽기 전용 `MethodResult` | 응답만 반환합니다. 재실행 행, 이벤트, 아티팩트 효과, 쓰기 티켓 효과, `project_state.state_version` 증가는 없습니다. | [읽기 전용 결과](#read-only-result) |
+| 읽기 전용 | 읽기 전용 `MethodResult` | Core 권한 상태 변경은 없습니다. 메서드가 허용한 세션 watch 진단 기록을 제외하면 응답 데이터만 반환합니다. 재실행 행, 권한 이벤트, 아티팩트 효과, 쓰기 티켓 효과, 닫기 상태 변경, `project_state.state_version` 증가는 없습니다. | [읽기 전용 결과](#read-only-result) |
 | 효과 없음 | `ToolRejectedResponse` 또는 `effect_kind=no_effect`인 유효한 `MethodResult` | 요청된 일반 변이가 없고 Core 커밋도 없습니다. 응답이 오류나 차단 사유형 데이터를 담을 수 있지만, 이 분기는 그 값을 지속하지 않습니다. | [`ToolRejectedResponse`](#toolrejectedresponse-effect), [효과가 없는 분기](#no-effect-branches) |
 | `dry_run` | 유효한 `ToolDryRunResponse` | 미리보기만 반환합니다. 지속 참조, 재실행 행, 이벤트, 스테이징 핸들, 아티팩트 효과, `project_state.state_version` 증가는 없습니다. | [유효한 `dry_run` 미리보기](#valid-dry-run-preview) |
 | 스테이징 생성 | `effect_kind=staging_created`인 `StageArtifactResult` | 저장소 소유 임시 스테이징만 생성합니다. 일반 Core 커밋 트랜잭션이 아닙니다. | [스테이징 생성 아티팩트 결과](#staging-created-artifact-result) |
@@ -51,14 +51,17 @@ API 데이터 형태는 API 스키마 담당 문서가 담당합니다. 차단 �
 
 저장 효과:
 
-- 응답만 반환합니다.
+- Core 권한 상태 저장 효과가 없습니다.
+- 메서드가 허용한 세션 watch 진단 기록을 제외하면 응답 데이터만 반환합니다.
 
 허용되지 않는 효과:
 
 - 재실행 행
-- 이벤트
-- 담당 기록 변경
+- 권한 이벤트
+- Core 현재 기록 변경
+- 닫기 상태 변경
 - 아티팩트 효과
+- 증거 업데이트 또는 증거 관찰
 - 쓰기 티켓 효과
 - `project_state.state_version` 증가
 
@@ -201,10 +204,11 @@ API 데이터 형태는 API 스키마 담당 문서가 담당합니다. 차단 �
 
 ## 읽기 전용 효과
 
-읽기 전용 결과는 응답으로만 반환되며 재실행 행이 아닙니다. 아래 메서드
-절에서 세션에 연결된 Agent Connection의 세션 watch 진단 기록을 명시적으로
-허용하는 경우, 그 기록은 Core 상태 변경, 재실행 행, 권한 이벤트, 닫기 상태
-변경, `project_state.state_version` 변경이 아닙니다.
+읽기 전용 결과에는 Core 권한 상태 저장 효과가 없고 재실행 행도 아닙니다. 아래
+메서드 절이 세션에 연결된 Agent Connection의 세션 watch 진단 기록을 명시적으로
+허용하지 않는 한, 읽기 전용 결과는 응답으로만 반환됩니다. 허용된 진단 기록은
+Core 상태 변경, 재실행 행, 권한 이벤트, 닫기 상태 변경,
+`project_state.state_version` 변경이 아닙니다.
 
 응답 계산을 위해 `volicord.status`와 `volicord.check_close`는 메서드 담당 문서가 그 상태 보기를 선택할 때 `CurrentCloseBasis`, 닫기 상태, 위험 수락 범위, 차단 사유, `CloseReadinessBlocker[]`, 증거 요약, 아티팩트 참조, 프로젝트 연속성 요약, 진단, 다음 행동을 계산할 수 있습니다.
 
@@ -225,7 +229,7 @@ API 데이터 형태는 API 스키마 담당 문서가 담당합니다. 차단 �
 - 증거 업데이트 또는 증거 관찰
 - `project_state.state_version` 증가
 
-`volicord.check_close`의 응답 분기는 [`volicord.check_close`](api/method-close-task.md#volicordcheck_close)가 담당합니다. 이 저장 효과 문서는 `dry_run=true`이거나 `blockers: CloseReadinessBlocker[]`를 포함하더라도 그 점검이 읽기 전용이라는 점만 담당합니다.
+`volicord.check_close`의 응답 분기는 [`volicord.check_close`](api/method-close-task.md#volicordcheck_close)가 담당합니다. 이 저장 효과 문서는 `dry_run=true`이거나 `blockers: CloseReadinessBlocker[]`를 포함하더라도 그 점검이 Core 권한 상태와 `project_state.state_version`에 대해 읽기 전용이라는 점을 담당합니다.
 
 세션 watch 진단 기록은 [저장소 기록](storage-records.md)이 설명하는 제한된
 스냅샷 메타데이터만 저장합니다. 원본 파일 내용, 민감한 prompt 텍스트, 파일
@@ -391,7 +395,7 @@ API 데이터 형태는 API 스키마 담당 문서가 담당합니다. 차단 �
 
 읽기 전용 호출은 다음 특성을 가집니다.
 
-- 응답 데이터만 반환합니다.
+- Core 권한 상태 변경 없이 응답 데이터를 반환합니다.
 - 재실행 행을 만들지 않습니다.
 - `project_continuity_records`를 만들지 않습니다.
 - Core 상태를 변경하지 않습니다.
@@ -663,7 +667,7 @@ watch 비교를 실행하거나, `session_watch_observations`를 만들거나,
 <a id="volicordcheck_close"></a>
 ### `volicord.check_close`
 
-읽기 전용 호출은 다음 특성을 가집니다.
+읽기 전용 호출에는 Core 권한 상태 저장 효과가 없습니다.
 
 - 계산된 닫기 준비 상태를 반환합니다.
 - `volicord.status include.close=true`와 같은 닫기 준비 상태 계산을 사용합니다.
@@ -678,10 +682,12 @@ watch 비교를 실행하거나, `session_watch_observations`를 만들거나,
 watch 점검을 먼저 실행하고 Product Repository 변경이 expected-write 또는 active
 쓰기 티켓 상관 관계로 결정적으로 포함되지 않을 때 `agent_sessions`, `session_watch_baselines`,
 `session_watch_observations`, watcher가 만든 `unrecorded_changes`를 만들거나
-갱신할 수 있습니다. 이러한 진단 효과는 권한 이벤트를 추가하거나, 차단 사유
-행을 만들거나, 닫기 상태를 변경하거나, `project_state.state_version`을 증가시키지
-않습니다. 이 점검이 첫 watcher baseline을 만들면 coverage basis는 `method_boundary`이며
-더 이른 Product Repository 변경은 watcher coverage 밖에 있습니다.
+갱신할 수 있습니다. 이러한 진단 효과는 Core 권한 상태 저장 효과가 아닙니다.
+권한 이벤트를 추가하거나, 차단 사유 행을 만들거나, 닫기 상태를 변경하거나,
+아티팩트 또는 증거를 건드리거나, `project_state.state_version`을 증가시키지
+않습니다. 이 점검이 첫 watcher baseline을 만들면 coverage basis는
+`method_boundary`이며 더 이른 Product Repository 변경은 watcher coverage 밖에
+있습니다.
 
 `dry_run=true`도 `effect_kind=read_only`인 `CloseTaskResult`로 유지됩니다.
 

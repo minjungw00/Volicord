@@ -346,7 +346,16 @@ Branch shapes are owned by [API Schema Core](schema-core.md). Response-branch ro
 
 ## Storage effect
 
-`volicord.check_close` has no storage effect, including when it returns blockers or uses `dry_run=true`.
+`volicord.check_close` has no Core authority-state storage effect, including
+when it returns blockers or uses `dry_run=true`. It does not create replay
+rows, append events, persist close blocker rows, mutate close state, touch
+artifacts or evidence, or increment `project_state.state_version`.
+
+For a session-bound Agent Connection and `dry_run=false`,
+`volicord.check_close` may create or update bounded session-watch diagnostic
+records as described by [Storage Effects](../storage-effects.md#volicordcheck_close).
+Those records are separate from close blocker persistence and Core
+authority-state mutation.
 
 Committed `dry_run=false` mutating intents may persist terminal or blocked outcomes according to the method result. A successful terminal close may persist a terminal close summary, distinct from the current close basis used for pre-close readiness. Successful `intent=complete` may also persist project continuity records with `kind=known_limit` for current close-basis residual risks that are visible but do not require residual-risk acceptance. Exact storage effects, replay rows, events, state-version increments, project continuity persistence, and blocker persistence rules are owned by [Storage Effects](../storage-effects.md) and [Storage Versioning](../storage-versioning.md).
 

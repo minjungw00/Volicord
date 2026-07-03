@@ -346,7 +346,16 @@ CloseTaskRequest:
 
 ## 저장 효과
 
-`volicord.check_close`에는 저장 효과가 없습니다. 차단 사유를 반환하거나 `dry_run=true`를 사용해도 마찬가지입니다.
+`volicord.check_close`는 Core 권한 상태를 저장소에서 변경하지 않습니다. 차단
+사유를 반환하거나 `dry_run=true`를 사용해도 마찬가지입니다. 재실행 행을
+만들거나, 이벤트를 추가하거나, 닫기 차단 사유 행을 지속 저장하거나,
+`close_state`를 변경하거나, 아티팩트 또는 증거를 건드리거나,
+`project_state.state_version`을 증가시키지 않습니다.
+
+세션에 연결된 Agent Connection이고 `dry_run=false`이면
+`volicord.check_close`는 [저장 효과](../storage-effects.md#volicordcheck_close)가
+설명하는 제한된 세션 watch 진단 기록을 만들거나 갱신할 수 있습니다. 그 기록은
+닫기 차단 사유 지속 저장 및 Core 권한 상태 변경과 별개입니다.
 
 커밋되는 `dry_run=false` 상태 변경 `intent`는 메서드 결과에 따라 종료 결과나 차단 결과를 지속 저장할 수 있습니다. 성공한 종료 닫기는 닫기 전 준비 상태에 사용한 현재 닫기 근거와 별개인 종료 닫기 요약을 지속 저장할 수 있습니다. 성공한 `intent=complete`는 현재 닫기 근거의 잔여 위험 중 보이지만 잔여 위험 수락이 필요하지 않은 항목에 대해 `kind=known_limit` 프로젝트 연속성 기록도 지속 저장할 수 있습니다. 정확한 저장 효과, 재실행 행, 이벤트, 상태 버전 증가, 프로젝트 연속성 지속 저장, 차단 사유 지속 저장 규칙은 [저장 효과](../storage-effects.md)와 [저장소 버전 관리](../storage-versioning.md)가 담당합니다.
 
