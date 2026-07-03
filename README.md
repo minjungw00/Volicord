@@ -379,6 +379,12 @@ Supported User Channel input methods:
 | Local consent URL | If host prompt input and chat command capture are unavailable and the adapter can safely expose the fallback, Volicord returns a loopback-only consent URL. The URL uses a short-lived one-time token tied to the project, connection, and pending judgment; a valid answer is recorded through the `User Channel` with local user provenance. |
 | CLI inbox | If the other User Channel input methods are unavailable, disabled, degraded, or need inspection, use `volicord inbox` from the Product Repository. |
 
+The local consent page identifies the project, repository path, connection,
+judgment, available choices, token expiry, and CLI fallback. It records only the
+shown user-owned judgment; it is not proof of correctness, test sufficiency,
+deployment success, review completion, security enforcement, or close
+readiness.
+
 CLI inbox example:
 
 ```sh

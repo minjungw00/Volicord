@@ -208,6 +208,12 @@ volicord inbox
 volicord inbox answer JUDGMENT_ID --choice CHOICE_ID
 ```
 
+When the route is a local consent URL, the page should identify the project,
+repository path, connection, judgment, choices, expiry, and CLI fallback. Treat
+it as a User Channel capture path only; it is not a security boundary or proof
+of correctness, test sufficiency, deployment success, review completion, or
+close readiness.
+
 An Agent Connection must not call `volicord.record_user_judgment`, supply User
 Channel provenance, or convert an ordinary chat reply into authority-bearing
 acceptance. A strict chat command such as `Volicord: answer J-3 1 #AB7K`

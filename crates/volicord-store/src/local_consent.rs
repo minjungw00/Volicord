@@ -520,6 +520,17 @@ mod tests {
         assert_eq!(record.capture_basis, CAPTURE_BASIS);
         assert_eq!(record.status, "pending");
 
+        let plaintext_matches = fixture.conn()?.query_row(
+            "SELECT COUNT(*)
+               FROM local_web_consent_tokens
+              WHERE token_hash = ?1
+                 OR created_metadata_json LIKE ?2
+                 OR completion_metadata_json LIKE ?2",
+            params![TOKEN, format!("%{TOKEN}%")],
+            |row| row.get::<_, i64>(0),
+        )?;
+        assert_eq!(plaintext_matches, 0);
+
         let checked = validate_local_web_consent_token(
             fixture.runtime_home_path(),
             check_input(&fixture, TOKEN, &record.created_at),
@@ -601,6 +612,14 @@ mod tests {
             LocalWebConsentTokenValidation::Rejected(
                 LocalWebConsentTokenRejection::WrongConnection { .. }
             )
+        ));
+        let still_valid = validate_local_web_consent_token(
+            fixture.runtime_home_path(),
+            check_input(&fixture, TOKEN, &record.created_at),
+        )?;
+        assert!(matches!(
+            still_valid,
+            LocalWebConsentTokenValidation::Valid(_)
         ));
         Ok(())
     }

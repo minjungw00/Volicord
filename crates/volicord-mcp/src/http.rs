@@ -272,11 +272,25 @@ pub(crate) fn write_http_response(
 ) -> io::Result<()> {
     write!(
         stream,
-        "HTTP/1.1 {} {}\r\nContent-Length: {}\r\nConnection: close\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\n",
+        "HTTP/1.1 {} {}\r\nContent-Length: {}\r\nConnection: close\r\n",
         response.status,
         response.reason,
         response.body.len()
     )?;
+    if !response
+        .headers
+        .iter()
+        .any(|(name, _)| name.eq_ignore_ascii_case("Cache-Control"))
+    {
+        stream.write_all(b"Cache-Control: no-store\r\n")?;
+    }
+    if !response
+        .headers
+        .iter()
+        .any(|(name, _)| name.eq_ignore_ascii_case("X-Content-Type-Options"))
+    {
+        stream.write_all(b"X-Content-Type-Options: nosniff\r\n")?;
+    }
     for (name, value) in response.headers {
         write!(stream, "{name}: {value}\r\n")?;
     }

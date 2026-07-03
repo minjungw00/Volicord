@@ -319,7 +319,9 @@ Agent Connection은 에이전트 대상 연결입니다. 모델이 사용자의 
 - 호스트 프롬프트 입력과 채팅 명령 캡처를 사용할 수 없으면 MCP 대체 안내 텍스트는
   사람 사용자를 [MCP 전송](mcp-transport.md#user-judgment-elicitation)이 담당하는
   loopback 로컬 consent URL로 안내할 수 있습니다. 그 local web 답변은 여전히 `local_user`
-  User Channel 경로이지 Agent Connection 답변이 아닙니다.
+  User Channel 경로이지 Agent Connection 답변이 아닙니다. Consent page는 사용자에게 대기
+  판단과 비보장을 식별해 보여 주며, Agent Connection이 판단에 답할 권한을 만들지
+  않습니다.
 - 대체 안내 텍스트는 호스트 프롬프트 입력, 채팅 명령 캡처, 로컬 consent URL을 모두
   사용할 수 없을 때만 사용자를 `volicord inbox` CLI inbox 경로로 안내합니다.
 - 권한을 지니는 사용자 판단 해결에는 `actor_source=local_user`,

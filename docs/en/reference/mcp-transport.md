@@ -200,7 +200,9 @@ HTTP serve request behavior:
 - CORS preflight is accepted only for the MCP endpoint, only after Origin
   allowlist validation, and only when at least one allowed Origin is configured.
 - Local HTTP responses include `Cache-Control: no-store` and
-  `X-Content-Type-Options: nosniff`. CORS response headers are emitted only for
+  `X-Content-Type-Options: nosniff`. Local web consent HTML responses also
+  include `Referrer-Policy: no-referrer` and a restrictive
+  `Content-Security-Policy`. CORS response headers are emitted only for
   explicitly allowed Origins.
 - Request headers are limited to 16 KiB and request bodies are limited to
   1 MiB. Larger headers fail with `HTTP_HEADERS_TOO_LARGE`; larger bodies fail
@@ -672,7 +674,13 @@ Local web consent endpoint behavior:
   against the current project and connection, rejects expired, consumed,
   invalid, wrong-project, and wrong-connection tokens with a safe HTML error
   page, and otherwise renders a minimal HTML page with the judgment text,
-  options, verification facts, and a form.
+  available options and their meanings, project name or identifier, registered
+  repository path when available, connection identifier, judgment id, token
+  expiry, fallback CLI command, and a form. The page states that the user is
+  recording a user-owned judgment, that the agent cannot record it on the
+  user's behalf, and that the judgment does not prove correctness, test
+  sufficiency, deployment success, review completion, security enforcement, or
+  close readiness.
 - `POST /consent` accepts only
   `application/x-www-form-urlencoded` form submissions with the token, selected
   Core option ID, and optional note. If an `Origin` header is present, it must

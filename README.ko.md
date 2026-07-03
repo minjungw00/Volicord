@@ -353,6 +353,11 @@ inbox를 User Channel 입력 방법으로 사용해 답합니다. 에이전트�
 | 로컬 consent URL | 호스트 프롬프트 입력과 채팅 명령 캡처를 사용할 수 없고 adapter가 fallback을 안전하게 노출할 수 있으면 Volicord는 loopback 전용 consent URL을 반환합니다. URL은 프로젝트, 연결, 대기 판단에 묶인 짧게 만료되는 일회성 token을 사용하며, 유효한 답변은 로컬 사용자 출처로 `User Channel`을 통해 기록됩니다. |
 | CLI inbox | 다른 User Channel 입력 방법을 사용할 수 없거나 비활성화, 저하 상태이거나 수동 점검이 필요하면 Product Repository에서 `volicord inbox`를 사용합니다. |
 
+로컬 consent page는 프로젝트, 저장소 경로, 연결, 판단, 사용 가능한 선택지, token 만료 시각,
+CLI fallback을 식별해 보여 줍니다. 이 page는 표시된 사용자 소유 판단 하나만 기록하며,
+정확성, 테스트 충분성, 배포 성공, 검토 완료, 보안 강제, 닫기 준비 상태를 증명하지
+않습니다.
+
 CLI inbox 예시:
 
 ```sh

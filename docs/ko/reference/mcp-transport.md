@@ -168,7 +168,9 @@ HTTP serve 요청 동작:
 - CORS preflight는 MCP endpoint에 대해서만, Origin 허용 목록 검증 뒤에만, 그리고 허용된
   Origin이 하나 이상 설정되어 있을 때만 받습니다.
 - Local HTTP 응답에는 `Cache-Control: no-store`와 `X-Content-Type-Options: nosniff`가
-  포함됩니다. CORS 응답 헤더는 명시적으로 허용된 Origin에 대해서만 냅니다.
+  포함됩니다. Local web consent HTML 응답은 `Referrer-Policy: no-referrer`와 제한적인
+  `Content-Security-Policy`도 포함합니다. CORS 응답 헤더는 명시적으로 허용된 Origin에
+  대해서만 냅니다.
 - 요청 header는 16 KiB, 요청 body는 1 MiB로 제한됩니다. 더 큰 header는
   `HTTP_HEADERS_TOO_LARGE`, 더 큰 body는 `HTTP_BODY_TOO_LARGE`로 실패합니다.
 - 구조화된 HTTP 오류는 인증, Origin, 프로젝트 허용 목록, 지원하지 않는 전송, 지원하지
@@ -598,7 +600,11 @@ Local web consent endpoint 동작:
 - `GET /consent?project=<project_id>&token=<token>`은 일회성 token을 현재 프로젝트와
   연결에 대해 검증합니다. 만료됨, 소비됨, 유효하지 않음, wrong-project, wrong-connection
   token은 안전한 HTML 오류 페이지로 거절하고, 그 밖에는 판단 text, 선택지, 검증 정보,
-  form을 담은 최소 HTML page를 렌더링합니다.
+  form을 담은 최소 HTML page를 렌더링합니다. page는 선택지와 그 의미, 프로젝트 이름 또는
+  식별자, 사용할 수 있을 때 등록된 저장소 경로, 연결 식별자, 판단 id, token 만료 시각,
+  fallback CLI 명령을 보여 줍니다. 또한 사용자가 사용자 소유 판단을 기록한다는 점, 에이전트가
+  사용자를 대신해 이를 기록할 수 없다는 점, 이 판단이 정확성, 테스트 충분성, 배포 성공,
+  검토 완료, 보안 강제, 닫기 준비 상태를 증명하지 않는다는 점을 명시합니다.
 - `POST /consent`는 token, 선택한 Core option ID, 선택적 note가 들어 있는
   `application/x-www-form-urlencoded` form 제출만 받습니다. `Origin` header가 있으면
   consent endpoint origin과 일치해야 합니다. 알 수 없는 option ID를 포함한 검증 실패는

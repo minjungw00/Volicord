@@ -788,10 +788,26 @@ fn local_web_consent_get_renders_pending_judgment_page() -> Result<(), Box<dyn E
     )));
 
     assert_eq!(response.status, 200);
+    assert_local_web_consent_security_headers(&response);
     let body = http_body_text(&response)?;
-    assert!(body.contains("Volicord Consent"));
+    assert!(body.contains("Record user-owned judgment"));
+    assert!(body.contains("This page records one user-owned judgment"));
+    assert!(body.contains("The agent cannot record this judgment on your behalf."));
+    assert!(body.contains("does not prove correctness"));
+    assert!(body.contains("test sufficiency"));
+    assert!(body.contains("deployment success"));
+    assert!(body.contains("review completion"));
     assert!(body.contains("Choose the focused User Channel test outcome."));
-    assert!(body.contains("local_user_local_web"));
+    assert!(body.contains(fixture.project_id()));
+    assert!(body.contains(&fixture.product_repo_path().display().to_string()));
+    assert!(body.contains(fixture.connection_id()));
+    assert!(body.contains("Judgment id"));
+    assert!(body.contains("Token expires"));
+    assert!(body.contains("Fallback CLI command"));
+    assert!(body.contains("volicord inbox answer"));
+    assert!(body.contains("Available choices"));
+    assert!(body.contains("Option ID: <code>keep</code>"));
+    assert!(body.contains("Meaning: Only this focused judgment is resolved."));
     assert!(!body.contains("Runtime Home"));
     Ok(())
 }
@@ -814,8 +830,11 @@ fn local_web_consent_post_records_user_owned_answer() -> Result<(), Box<dyn Erro
     ));
 
     assert_eq!(response.status, 200);
+    assert_local_web_consent_security_headers(&response);
     let body = http_body_text(&response)?;
     assert!(body.contains("Answer recorded"));
+    assert!(body.contains("user-owned judgment"));
+    assert!(body.contains("does not prove correctness"));
     let pending_value = pending_response.response_value;
     let record = stored_judgment_record(&fixture, &task_id, &pending_value)?;
     assert_eq!(record.status, "resolved");
@@ -850,10 +869,12 @@ fn local_web_consent_rejects_origin_mismatch_without_consuming_token() -> Result
     ));
 
     assert_eq!(rejected.status, 403);
+    assert_local_web_consent_security_headers(&rejected);
     assert!(http_body_text(&rejected)?.contains("ORIGIN_NOT_ALLOWED"));
 
     let valid = server.handle_request(consent_post_request(Some(consent_base_url()), &form_body));
     assert_eq!(valid.status, 200);
+    assert_local_web_consent_security_headers(&valid);
     assert!(http_body_text(&valid)?.contains("Answer recorded"));
     let pending_value = pending_response.response_value;
     let record = stored_judgment_record(&fixture, &task_id, &pending_value)?;
@@ -878,6 +899,7 @@ fn local_web_consent_validation_failure_leaves_token_reusable() -> Result<(), Bo
         ),
     ));
     assert_eq!(invalid.status, 400);
+    assert_local_web_consent_security_headers(&invalid);
     assert!(http_body_text(&invalid)?.contains("INVALID_SELECTION"));
 
     let valid = server.handle_request(consent_post_request(
@@ -890,6 +912,7 @@ fn local_web_consent_validation_failure_leaves_token_reusable() -> Result<(), Bo
     ));
 
     assert_eq!(valid.status, 200);
+    assert_local_web_consent_security_headers(&valid);
     assert!(http_body_text(&valid)?.contains("Answer recorded"));
     let pending_value = pending_response.response_value;
     let record = stored_judgment_record(&fixture, &task_id, &pending_value)?;
@@ -908,6 +931,7 @@ fn local_web_consent_rejects_invalid_token() -> Result<(), Box<dyn Error>> {
     )));
 
     assert_eq!(response.status, 404);
+    assert_local_web_consent_security_headers(&response);
     assert!(http_body_text(&response)?.contains("INVALID_TOKEN"));
     Ok(())
 }
@@ -931,6 +955,7 @@ fn local_web_consent_rejects_expired_token() -> Result<(), Box<dyn Error>> {
     )));
 
     assert_eq!(response.status, 410);
+    assert_local_web_consent_security_headers(&response);
     assert!(http_body_text(&response)?.contains("TOKEN_EXPIRED"));
     Ok(())
 }
@@ -953,6 +978,8 @@ fn local_web_consent_rejects_replay() -> Result<(), Box<dyn Error>> {
 
     assert_eq!(first.status, 200);
     assert_eq!(replay.status, 409);
+    assert_local_web_consent_security_headers(&first);
+    assert_local_web_consent_security_headers(&replay);
     assert!(http_body_text(&replay)?.contains("TOKEN_CONSUMED"));
     Ok(())
 }
@@ -968,6 +995,7 @@ fn local_web_consent_rejects_wrong_project_and_connection() -> Result<(), Box<dy
     let wrong_project =
         server.handle_request(consent_get_request(&consent_target("project_other", token)));
     assert_eq!(wrong_project.status, 403);
+    assert_local_web_consent_security_headers(&wrong_project);
     assert!(http_body_text(&wrong_project)?.contains("WRONG_PROJECT"));
 
     let mut wrong_connection_server =
@@ -976,6 +1004,7 @@ fn local_web_consent_rejects_wrong_project_and_connection() -> Result<(), Box<dy
         &consent_target(fixture.project_id(), token),
     ));
     assert_eq!(wrong_connection.status, 403);
+    assert_local_web_consent_security_headers(&wrong_connection);
     assert!(http_body_text(&wrong_connection)?.contains("WRONG_CONNECTION"));
     Ok(())
 }
@@ -1532,6 +1561,24 @@ fn http_header<'a>(response: &'a HttpResponse, name: &str) -> Option<&'a str> {
         .iter()
         .find(|(header_name, _)| header_name.eq_ignore_ascii_case(name))
         .map(|(_, value)| value.as_str())
+}
+
+fn assert_local_web_consent_security_headers(response: &HttpResponse) {
+    assert_eq!(http_header(response, "Cache-Control"), Some("no-store"));
+    assert_eq!(
+        http_header(response, "Referrer-Policy"),
+        Some("no-referrer")
+    );
+    assert_eq!(
+        http_header(response, "X-Content-Type-Options"),
+        Some("nosniff")
+    );
+    let csp = http_header(response, "Content-Security-Policy")
+        .expect("local web consent response should include CSP");
+    assert!(csp.contains("default-src 'none'"));
+    assert!(csp.contains("form-action 'self'"));
+    assert!(csp.contains("frame-ancestors 'none'"));
+    assert!(csp.contains("script-src 'none'"));
 }
 
 fn add_allowed_project(fixture: &CoreFixture, project_id: &str) -> Result<(), Box<dyn Error>> {

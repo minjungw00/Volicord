@@ -358,7 +358,9 @@ Conditions:
   text may route the human user to a loopback local consent URL owned by
   [MCP Transport](mcp-transport.md#user-judgment-elicitation). That local web
   answer is still a `local_user` User Channel path, not an Agent Connection
-  answer.
+  answer. The consent page identifies the pending judgment and non-guarantees
+  for the user; it does not create Agent Connection authority to answer the
+  judgment.
 - The fallback text routes the user to the `volicord inbox` CLI inbox path only
   when host prompt input, chat command capture, and local consent URL are not
   available.

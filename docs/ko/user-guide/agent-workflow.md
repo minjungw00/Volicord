@@ -273,6 +273,11 @@ volicord inbox
 volicord inbox answer JUDGMENT_ID --choice CHOICE_ID
 ```
 
+경로가 local consent URL이라면 page는 프로젝트, 저장소 경로, 연결, 판단, 선택지, 만료
+시각, CLI fallback을 식별해 보여 주어야 합니다. 이를 User Channel capture 경로로만
+취급합니다. 보안 경계나 정확성, 테스트 충분성, 배포 성공, 검토 완료, 닫기 준비 상태의
+증거로 취급하면 안 됩니다.
+
 Agent Connection은 `volicord.record_user_judgment`를 호출하거나, User Channel
 출처를 제공하거나, 일반 채팅 답변을 권한을 지니는 수락으로 바꾸면 안 됩니다.
 `Volicord: answer J-3 1 #AB7K` 같은 엄격한 채팅 명령은 명령 캡처를 사용할 수 있고

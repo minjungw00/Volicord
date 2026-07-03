@@ -74,6 +74,8 @@ pub(crate) struct LocalWebConsentServer {
     adapter: McpAdapter,
 }
 
+const LOCAL_WEB_CONSENT_CSP: &str = "default-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; img-src 'none'; object-src 'none'; script-src 'none'; style-src 'unsafe-inline'";
+
 impl LocalWebConsentServer {
     fn new(adapter: McpAdapter) -> Self {
         Self { adapter }
@@ -604,15 +606,31 @@ pub(crate) fn local_web_consent_page(
         );
     };
     let action = format!("{}{}", consent_context.base_url, LOCAL_WEB_CONSENT_PATH);
+    let project = local_web_consent_project_display(adapter, token_record.project_id.as_str());
+    let repository_path = project
+        .repo_root
+        .as_ref()
+        .map(|repo_root| {
+            format!(
+                "<dt>Repository path</dt><dd><code>{}</code></dd>",
+                html_escape(repo_root)
+            )
+        })
+        .unwrap_or_default();
+    let cli_command = format!(
+        "volicord inbox answer {} --choice <choice>",
+        judgment.judgment_id.as_str()
+    );
     let options = judgment
         .options
         .iter()
         .map(|option| {
             format!(
-                "<label class=\"option\"><input type=\"radio\" name=\"selected_option_id\" value=\"{}\"{}><span><strong>{}</strong><br>{}<br><small>{}</small></span></label>",
+                "<label class=\"option\"><input type=\"radio\" name=\"selected_option_id\" value=\"{}\"{}><span><strong>{}</strong><br><small>Option ID: <code>{}</code></small><br>{}<br><small>Meaning: {}</small></span></label>",
                 html_escape(option.option_id.as_str()),
                 if option.is_default { " checked" } else { "" },
                 html_escape(&option.label),
+                html_escape(option.option_id.as_str()),
                 html_escape(&option.description),
                 html_escape(&option.consequence)
             )
@@ -634,22 +652,24 @@ pub(crate) fn local_web_consent_page(
         )
     };
     let body = format!(
-        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Volicord Consent</title>{}</head><body><main><h1>Volicord Consent</h1><section><h2>Question</h2><p>{}</p><h2>Context</h2><p>{}</p>{}</section><section><h2>Verification</h2><dl><dt>Project</dt><dd>{}</dd><dt>Connection</dt><dd>{}</dd><dt>Judgment</dt><dd>{}</dd><dt>Capture basis</dt><dd>{}</dd><dt>Expires</dt><dd>{}</dd></dl></section><form method=\"post\" action=\"{}\"><input type=\"hidden\" name=\"project\" value=\"{}\"><input type=\"hidden\" name=\"token\" value=\"{}\"><fieldset><legend>Answer</legend>{}</fieldset><label>Optional note<textarea name=\"note\" maxlength=\"1000\" rows=\"4\"></textarea></label><button type=\"submit\">Submit answer</button></form></main></body></html>",
+        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Volicord User Judgment</title>{}</head><body><main><h1>Record user-owned judgment</h1><section class="notice"><p>This page records one user-owned judgment through the local User Channel. The agent cannot record this judgment on your behalf.</p><p>This judgment records only the selected option for the pending judgment shown here. It does not prove correctness, test sufficiency, deployment success, review completion, security enforcement, or close readiness.</p></section><section><h2>Question</h2><p>{}</p><h2>Context</h2><p>{}</p>{}</section><section><h2>Judgment identity</h2><dl><dt>Project name</dt><dd>{}</dd><dt>Project identifier</dt><dd><code>{}</code></dd>{}<dt>Connection identifier</dt><dd><code>{}</code></dd><dt>Judgment id</dt><dd><code>{}</code></dd><dt>Token expires</dt><dd>{}</dd><dt>Fallback CLI command</dt><dd><code>{}</code></dd></dl></section><form method="post" action="{}"><input type="hidden" name="project" value="{}"><input type="hidden" name="token" value="{}"><fieldset><legend>Available choices</legend>{}</fieldset><label>Optional note<textarea name="note" maxlength="1000" rows="4"></textarea></label><button type="submit">Record selected judgment</button></form></main></body></html>"#,
         local_web_consent_css(),
         html_escape(&judgment.question),
         html_escape(&judgment.context.summary),
         constraints,
-        html_escape(token_record.project_id.as_str()),
+        html_escape(&project.project_name),
+        html_escape(&project.project_id),
+        repository_path,
         html_escape(token_record.connection_internal_id.as_str()),
         html_escape(token_record.judgment_id.as_str()),
-        html_escape(token_record.capture_basis.as_str()),
         html_escape(token_record.expires_at.as_str()),
+        html_escape(&cli_command),
         html_escape(&action),
         html_escape(token_record.project_id.as_str()),
         html_escape(token),
         options
     );
-    HttpResponse::html(200, "OK", body)
+    local_web_consent_html_response(200, "OK", body)
 }
 
 pub(crate) fn local_web_consent_success_page(
@@ -658,12 +678,12 @@ pub(crate) fn local_web_consent_success_page(
     selected_option: &UserJudgmentOption,
 ) -> HttpResponse {
     let body = format!(
-        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Volicord Consent Recorded</title>{}</head><body><main><h1>Answer recorded</h1><p>Volicord recorded judgment <code>{}</code> with option <code>{}</code>.</p><dl><dt>Project</dt><dd>{}</dd><dt>Capture basis</dt><dd>{}</dd><dt>Completed</dt><dd>{}</dd></dl></main></body></html>",
+        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Volicord Consent Recorded</title>{}</head><body><main><h1>Answer recorded</h1><p>Volicord recorded user-owned judgment <code>{}</code> with option <code>{}</code> through the local User Channel.</p><p>This record does not prove correctness, test sufficiency, deployment success, review completion, security enforcement, or close readiness.</p><dl><dt>Project identifier</dt><dd><code>{}</code></dd><dt>Connection identifier</dt><dd><code>{}</code></dd><dt>Completed</dt><dd>{}</dd></dl></main></body></html>"#,
         local_web_consent_css(),
         html_escape(judgment.judgment_id.as_str()),
         html_escape(selected_option.option_id.as_str()),
         html_escape(token_record.project_id.as_str()),
-        html_escape(token_record.capture_basis.as_str()),
+        html_escape(token_record.connection_internal_id.as_str()),
         html_escape(
             token_record
                 .completed_at
@@ -671,7 +691,7 @@ pub(crate) fn local_web_consent_success_page(
                 .unwrap_or(token_record.consumed_at.as_deref().unwrap_or(""))
         )
     );
-    HttpResponse::html(200, "OK", body)
+    local_web_consent_html_response(200, "OK", body)
 }
 
 pub(crate) fn local_web_consent_rejection_page(
@@ -723,11 +743,55 @@ pub(crate) fn local_web_consent_error_page(
         html_escape(message),
         html_escape(code)
     );
-    HttpResponse::html(status, reason, body)
+    local_web_consent_html_response(status, reason, body)
 }
 
 pub(crate) fn local_web_consent_css() -> &'static str {
-    "<style>body{font-family:system-ui,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;margin:0;background:#f7f7f4;color:#1e2528}main{max-width:760px;margin:0 auto;padding:32px 20px}h1{font-size:1.7rem;margin:0 0 20px}h2{font-size:1rem;margin:22px 0 8px}p,dd,li{line-height:1.45}dl{display:grid;grid-template-columns:max-content 1fr;gap:8px 16px}dt{font-weight:700}dd{margin:0}fieldset{border:1px solid #c8d0d4;padding:12px;margin:18px 0}legend{font-weight:700}.option{display:grid;grid-template-columns:24px 1fr;gap:8px;margin:10px 0;padding:10px;border:1px solid #d6dcdf;background:#fff}textarea{display:block;width:100%;box-sizing:border-box;margin-top:8px}button{margin-top:16px;padding:10px 14px;font:inherit;background:#0f5f6b;color:#fff;border:0}code{background:#e9eeee;padding:2px 4px}</style>"
+    "<style>body{font-family:system-ui,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;margin:0;background:#f7f7f4;color:#1e2528}main{max-width:820px;margin:0 auto;padding:32px 20px}h1{font-size:1.7rem;margin:0 0 20px}h2{font-size:1rem;margin:22px 0 8px}p,dd,li{line-height:1.45}.notice{border-left:4px solid #0f5f6b;background:#fff;padding:10px 14px}dl{display:grid;grid-template-columns:max-content 1fr;gap:8px 16px}dt{font-weight:700}dd{margin:0;overflow-wrap:anywhere}fieldset{border:1px solid #c8d0d4;padding:12px;margin:18px 0}legend{font-weight:700}.option{display:grid;grid-template-columns:24px 1fr;gap:8px;margin:10px 0;padding:10px;border:1px solid #d6dcdf;background:#fff}textarea{display:block;width:100%;box-sizing:border-box;margin-top:8px}button{margin-top:16px;padding:10px 14px;font:inherit;background:#0f5f6b;color:#fff;border:0}code{background:#e9eeee;padding:2px 4px}</style>"
+}
+
+pub(crate) fn local_web_consent_html_response(
+    status: u16,
+    reason: &'static str,
+    body: String,
+) -> HttpResponse {
+    HttpResponse::html(status, reason, body)
+        .with_header("Cache-Control", "no-store")
+        .with_header("Referrer-Policy", "no-referrer")
+        .with_header("X-Content-Type-Options", "nosniff")
+        .with_header("Content-Security-Policy", LOCAL_WEB_CONSENT_CSP)
+}
+
+struct LocalWebConsentProjectDisplay {
+    project_name: String,
+    project_id: String,
+    repo_root: Option<String>,
+}
+
+fn local_web_consent_project_display(
+    adapter: &McpAdapter,
+    project_id: &str,
+) -> LocalWebConsentProjectDisplay {
+    let project_id = project_id.to_owned();
+    match CoreProjectStore::open(&adapter.runtime_home, &ProjectId::new(project_id.clone())) {
+        Ok(store) => {
+            let project = store.project_record();
+            LocalWebConsentProjectDisplay {
+                project_name: if project.project_name.trim().is_empty() {
+                    project.project_id.clone()
+                } else {
+                    project.project_name.clone()
+                },
+                project_id: project.project_id.clone(),
+                repo_root: Some(project.repo_root.display().to_string()),
+            }
+        }
+        Err(_) => LocalWebConsentProjectDisplay {
+            project_name: project_id.clone(),
+            project_id,
+            repo_root: None,
+        },
+    }
 }
 
 pub(crate) fn html_escape(value: &str) -> String {
