@@ -14,9 +14,9 @@ use crate::schema::{
     NextActionSummary, ObservedChanges, ProjectContinuitySummary, RecordUserJudgmentPayload,
     RequiredNullable, RiskAcceptanceCoverage, RunSummary, SensitiveActionScope,
     StagedArtifactHandle, StateRecordRef, StateSummary, SummaryCard, ToolEnvelope, ToolResponse,
-    ToolResultBase, UnrecordedChangeFinding, UnrecordedChangeResolutionSummary, UserJudgment,
-    UserJudgmentCandidate, UserJudgmentContext, UserJudgmentOptionInput, WriteDecisionReason,
-    WriteTicket, WriteTicketStateSummary,
+    ToolResultBase, UnrecordedChangeFinding, UnrecordedChangeResolutionSummary,
+    UserChannelAvailability, UserJudgment, UserJudgmentCandidate, UserJudgmentContext,
+    UserJudgmentOptionInput, WriteDecisionReason, WriteTicket, WriteTicketStateSummary,
 };
 use crate::values::{
     ChangeUnitOperation, CloseMutationIntent, CloseReason, CloseState, EvidenceDisplayState,
@@ -285,6 +285,8 @@ pub struct StatusResult {
     pub next_actions: Vec<NextActionSummary>,
     pub pending_user_judgments: Vec<StateRecordRef>,
     pub pending_judgment_inbox_items: Vec<JudgmentInboxItem>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_channel_availability: Option<UserChannelAvailability>,
     pub blocker_refs: Vec<StateRecordRef>,
     pub write_ticket_summary: Option<WriteTicketStateSummary>,
     #[serde(skip_serializing_if = "Option::is_none")]

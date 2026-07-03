@@ -1143,9 +1143,32 @@ pub struct JudgmentInboxItem {
     pub requirement_status: String,
     pub required_for: Vec<JudgmentRequiredFor>,
     pub status: UserJudgmentStatus,
+    pub answer_path_availability: UserChannelAvailability,
     pub preferred_capture_path: RequiredNullable<JudgmentCapturePath>,
     pub fallbacks: Vec<JudgmentCapturePath>,
     pub expires_at: RequiredNullable<UtcTimestamp>,
+}
+
+/// Current availability summary for supported User Channel answer paths.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct UserChannelAvailability {
+    pub paths: Vec<UserChannelPathAvailability>,
+    pub recommended_path_kind: RequiredNullable<String>,
+    pub recommended_path_label: RequiredNullable<String>,
+    pub recommendation: RequiredNullable<String>,
+}
+
+/// Availability entry for one User Channel answer path.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct UserChannelPathAvailability {
+    pub kind: String,
+    pub label: String,
+    pub available: bool,
+    pub status: String,
+    pub capture_basis: RequiredNullable<String>,
+    pub detail: RequiredNullable<String>,
 }
 
 /// User-facing answer choice for a judgment inbox item.

@@ -136,6 +136,12 @@ volicord inbox open <judgment-id> [--repo PATH] [--json]
 행동을 수행하는 데 필요하지 않은 내부 ID를 기본적으로 노출하면 안 됩니다. 대응 JSON 출력은
 같은 안정 데이터를 `summary_card`로 노출하며, JSON 소비자는 text 전용 formatting을
 파싱하면 안 됩니다.
+대기 판단이 보이면 `volicord status`와 `volicord inbox` Text 출력은 호스트 프롬프트
+입력, 채팅 명령 캡처, 로컬 consent URL, CLI inbox 사용 가능 상태를 요약하는
+`Available answer paths:` 줄을 포함할 수 있습니다. 이 줄은 사용자가 어디에서 답할 수
+있는지 알려 주며, 판단을 기록하거나 Agent Connection이 사용자처럼 동작하게 하지
+않습니다. JSON 출력은 같은 사실을 `user_channel_availability` 또는
+`answer_path_availability`에 담습니다.
 Text 출력이 `action_required` 또는 저하된 진단 상태를 보고할 때는 간결한
 `Result`, `Why`, `Next`, `Does not prove` 줄도 포함합니다. `Result` 줄은
 `action_required`를 치명적인 CLI 오류처럼 표현하면 안 됩니다. `Next`는 호스트 reload
@@ -650,7 +656,9 @@ JSON 출력에서 확인할 수 있습니다.
 판단 종류와 동작으로 남아야 하며, 이 명령이 둘을 하나로 합치면 안 됩니다.
 
 상태와 inbox 목록 출력은 사용자의 다음 행동을 위해 선택된 담당 상태를 보여 주며,
-보기를 계산할 수 있을 때 간결한 `summary_card`를 포함합니다. 이 출력은 증거, 최종 수락,
+보기를 계산할 수 있을 때 간결한 `summary_card`를 포함합니다. 대기 판단이 있으면 Text
+출력은 사용할 수 없는 호스트 프롬프트 입력이 채팅 캡처, 로컬 consent, CLI inbox 같은
+다른 답변 경로를 숨기지 않도록 사용 가능한 답변 경로도 요약합니다. 이 출력은 증거, 최종 수락,
 잔여 위험 수락, 닫기 준비 상태를 만들지 않습니다. `volicord inbox answer`만 대기 중인 해당
 판단을 변경하며, 그것도 선택된 Core 생성 선택지를 통해서만 변경합니다.
 

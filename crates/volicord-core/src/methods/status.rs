@@ -92,6 +92,7 @@ fn status_result_fields(
     let mut active_task = None;
     let mut pending_user_judgments = Vec::new();
     let mut pending_inbox_items = Vec::new();
+    let mut user_channel_availability_summary = None;
     let mut blocker_refs = Vec::new();
     let mut write_ticket_summary = None;
     let mut evidence_summary = None;
@@ -195,15 +196,21 @@ fn status_result_fields(
                 .map_err(CorePipelineError::from)?;
         }
         if include.pending_user_judgments {
+            let user_channel = UserChannelContext {
+                guard_health: close_plan
+                    .as_ref()
+                    .and_then(|plan| plan.guard_health.as_ref()),
+                host_elicitation_available: verified_invocation.host_elicitation_available,
+                local_web_consent_available: verified_invocation.local_web_consent_available,
+            };
+            user_channel_availability_summary = Some(user_channel_availability(user_channel));
             pending_inbox_items = pending_judgment_inbox_items(
                 store,
                 project_state,
                 envelope,
                 &task_id,
                 state_version,
-                close_plan
-                    .as_ref()
-                    .and_then(|plan| plan.guard_health.as_ref()),
+                user_channel,
             )?;
         }
         if include.task {
@@ -279,6 +286,7 @@ fn status_result_fields(
         next_actions,
         pending_user_judgments,
         pending_judgment_inbox_items: pending_inbox_items,
+        user_channel_availability: user_channel_availability_summary,
         blocker_refs,
         write_ticket_summary,
         evidence_summary: include.evidence.then(|| evidence_summary.into()),

@@ -634,6 +634,16 @@ fn stdio_without_elicitation_capability_returns_cli_recovery_when_prompt_capture
         response["inbox_item"]["preferred_capture_path"]["kind"],
         "cli"
     );
+    let availability = &response["inbox_item"]["answer_path_availability"];
+    assert_eq!(
+        channel_path(availability, "mcp_elicitation")["available"],
+        false
+    );
+    assert_eq!(
+        channel_path(availability, "local_web_consent")["available"],
+        false
+    );
+    assert_eq!(channel_path(availability, "cli")["available"], true);
     assert!(response["inbox_item"]["preferred_capture_path"]["command"]
         .as_str()
         .expect("CLI fallback command should be present")
@@ -677,6 +687,16 @@ fn stdio_without_elicitation_capability_returns_chat_capture_when_configured(
         response["inbox_item"]["preferred_capture_path"]["kind"],
         "prompt_capture"
     );
+    let availability = &response["inbox_item"]["answer_path_availability"];
+    assert_eq!(
+        channel_path(availability, "mcp_elicitation")["available"],
+        false
+    );
+    assert_eq!(
+        channel_path(availability, "prompt_capture")["available"],
+        true
+    );
+    assert_eq!(channel_path(availability, "cli")["available"], true);
     let fallback = values[1]["result"]["content"][1]["text"]
         .as_str()
         .expect("fallback text");
@@ -714,6 +734,16 @@ fn stdio_without_elicitation_uses_local_web_consent_when_prompt_capture_unavaila
         response["inbox_item"]["preferred_capture_path"]["kind"],
         "local_web_consent"
     );
+    let availability = &response["inbox_item"]["answer_path_availability"];
+    assert_eq!(
+        channel_path(availability, "mcp_elicitation")["available"],
+        false
+    );
+    assert_eq!(
+        channel_path(availability, "local_web_consent")["available"],
+        true
+    );
+    assert_eq!(channel_path(availability, "cli")["available"], true);
     assert!(response["inbox_item"]["preferred_capture_path"]["url"]
         .as_str()
         .expect("local web URL should be present")
@@ -1858,6 +1888,16 @@ fn volicord_response_from_tool(response: &Value) -> Result<Value, Box<dyn Error>
         .as_str()
         .ok_or("tools/call response should include text content")?;
     Ok(serde_json::from_str(text)?)
+}
+
+fn channel_path<'a>(availability: &'a Value, kind: &str) -> &'a Value {
+    let paths = availability["paths"]
+        .as_array()
+        .expect("user channel availability paths should be an array");
+    paths
+        .iter()
+        .find(|path| path["kind"] == kind)
+        .unwrap_or_else(|| panic!("expected user channel path {kind}, got {paths:?}"))
 }
 
 fn stored_resolution_basis(

@@ -616,7 +616,15 @@ pub(super) fn plan_close_task_with_context(
         &request.envelope,
         &request.task_id,
         response_state_version,
-        context.guard_health.as_ref(),
+        UserChannelContext {
+            guard_health: context.guard_health.as_ref(),
+            host_elicitation_available: verified_invocation
+                .map(|invocation| invocation.host_elicitation_available)
+                .unwrap_or(false),
+            local_web_consent_available: verified_invocation
+                .map(|invocation| invocation.local_web_consent_available)
+                .unwrap_or(false),
+        },
     )?;
     let no_next_actions: &[NextActionSummary] = &[];
     let summary_card = summary_card_for_core(SummaryCardBuild {
@@ -2412,9 +2420,7 @@ fn guard_blockers_with_control_surface(
 pub(super) fn user_channel_pending_judgment_instruction(
     guard_health: Option<&GuardHealthSummary>,
 ) -> String {
-    if guard_health.is_some_and(|summary| summary.mcp_connection_healthy) {
-        "Use host prompt input for the pending user-owned judgment.".to_owned()
-    } else if guard_health.is_some_and(|summary| summary.prompt_capture_available) {
+    if guard_health.is_some_and(|summary| summary.prompt_capture_available) {
         "Use the displayed chat command with the current verification code.".to_owned()
     } else if guard_health.is_some_and(|summary| summary.local_web_consent_available) {
         "Use the local consent URL if the adapter offers one.".to_owned()
@@ -2425,7 +2431,7 @@ pub(super) fn user_channel_pending_judgment_instruction(
 
 pub(super) fn user_channel_can_resolve_in_chat(guard_health: Option<&GuardHealthSummary>) -> bool {
     guard_health
-        .map(|summary| summary.mcp_connection_healthy || summary.prompt_capture_available)
+        .map(|summary| summary.prompt_capture_available)
         .unwrap_or(false)
 }
 

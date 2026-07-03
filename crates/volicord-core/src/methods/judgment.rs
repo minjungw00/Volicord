@@ -509,7 +509,11 @@ fn plan_request_user_judgment(
     let inbox_item = judgment_inbox_item_from_judgment(
         &user_judgment,
         planned_state_version,
-        close_plan.guard_health.as_ref(),
+        UserChannelContext {
+            guard_health: close_plan.guard_health.as_ref(),
+            host_elicitation_available: verified_invocation.host_elicitation_available,
+            local_web_consent_available: verified_invocation.local_web_consent_available,
+        },
     )?;
     let state = build_state_summary(SummaryBuild {
         project_id: &request.envelope.project_id,

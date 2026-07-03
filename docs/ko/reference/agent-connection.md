@@ -324,6 +324,11 @@ Agent Connection은 에이전트 대상 연결입니다. 모델이 사용자의 
   않습니다.
 - 대체 안내 텍스트는 호스트 프롬프트 입력, 채팅 명령 캡처, 로컬 consent URL을 모두
   사용할 수 없을 때만 사용자를 `volicord inbox` CLI inbox 경로로 안내합니다.
+- 상태와 판단 inbox projection은 호스트 프롬프트 입력, 채팅 명령 캡처, 로컬 consent
+  URL, CLI inbox의 User Channel 사용 가능 상태를 함께 보여 줄 수 있습니다. 호스트
+  프롬프트 입력을 사용할 수 없다는 사실이 다른 사용 가능한 답변 경로를 숨기면 안 되며,
+  적용 가능한 경우 CLI inbox는 계속 보입니다. 이 projection은 사용자가 어디에서 답할 수
+  있는지 알려 줄 뿐이며 Agent Connection이 판단을 기록할 수 있게 하지 않습니다.
 - 권한을 지니는 사용자 판단 해결에는 `actor_source=local_user`,
   `operation_category=user_only`, 호환 User Channel 출처가 필요합니다.
 - `actor_source=agent_connection:<connection_id>`는 사용자의 텍스트를 전달해도

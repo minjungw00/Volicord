@@ -12198,13 +12198,30 @@ fn close_complete_blocks_only_relevant_pending_judgments() -> Result<(), Box<dyn
     );
     assert_eq!(
         requested.response_value["inbox_item"]["preferred_capture_path"]["kind"],
-        "mcp_elicitation"
+        "cli"
+    );
+    let requested_availability =
+        &requested.response_value["inbox_item"]["answer_path_availability"];
+    assert_eq!(
+        channel_path(requested_availability, "mcp_elicitation")["available"],
+        false
+    );
+    assert_eq!(
+        channel_path(requested_availability, "prompt_capture")["available"],
+        false
+    );
+    assert_eq!(
+        channel_path(requested_availability, "local_web_consent")["available"],
+        false
+    );
+    assert_eq!(
+        channel_path(requested_availability, "cli")["available"],
+        true
     );
     assert!(requested.response_value["inbox_item"]["fallbacks"]
         .as_array()
         .expect("fallbacks should be an array")
-        .iter()
-        .any(|fallback| fallback["kind"] == "cli"));
+        .is_empty());
     let after_final = record_final_acceptance(
         &harness,
         &task_id,
@@ -15110,7 +15127,7 @@ fn guarded_pending_judgment_displays_user_answer_paths() -> Result<(), Box<dyn E
     );
     assert_eq!(
         requested.response_value["inbox_item"]["preferred_capture_path"]["kind"],
-        "mcp_elicitation"
+        "prompt_capture"
     );
     assert!(requested.response_value["inbox_item"]["fallbacks"]
         .as_array()
@@ -15150,6 +15167,30 @@ fn guarded_pending_judgment_displays_user_answer_paths() -> Result<(), Box<dyn E
         response.response_value["pending_judgment_inbox_items"][0]["requirement_status"],
         "required"
     );
+    let close_item = &response.response_value["pending_judgment_inbox_items"][0];
+    assert_eq!(
+        close_item["preferred_capture_path"]["kind"],
+        "prompt_capture"
+    );
+    assert!(close_item["fallbacks"]
+        .as_array()
+        .expect("close inbox fallbacks should be an array")
+        .iter()
+        .any(|fallback| fallback["kind"] == "cli"));
+    let close_availability = &close_item["answer_path_availability"];
+    assert_eq!(
+        channel_path(close_availability, "mcp_elicitation")["available"],
+        false
+    );
+    assert_eq!(
+        channel_path(close_availability, "prompt_capture")["status"],
+        "observed"
+    );
+    assert_eq!(
+        channel_path(close_availability, "local_web_consent")["available"],
+        false
+    );
+    assert_eq!(channel_path(close_availability, "cli")["available"], true);
     let pending = response.response_value["blockers"]
         .as_array()
         .expect("blockers should be an array")
@@ -15159,12 +15200,120 @@ fn guarded_pending_judgment_displays_user_answer_paths() -> Result<(), Box<dyn E
     let guidance = pending["next_actions"][0]["blocking_question"]
         .as_str()
         .expect("pending blocker should include answer-path guidance");
-    assert!(guidance.contains("host prompt input"), "{guidance}");
-    assert!(!guidance.contains("prompt-capture"), "{guidance}");
+    assert!(guidance.contains("chat command"), "{guidance}");
+    assert!(!guidance.contains("host prompt"), "{guidance}");
     assert!(!guidance.contains("volicord user"), "{guidance}");
     assert_eq!(
         response.response_value["guard_health"]["prompt_capture_available"],
         true
+    );
+
+    let status = harness.service.status(
+        StatusRequest {
+            envelope: envelope(
+                "req_status_guarded_pending_paths",
+                None,
+                false,
+                None,
+                Some(&task_id),
+            ),
+            include: StatusInclude {
+                task: true,
+                pending_user_judgments: true,
+                write_ticket: false,
+                evidence: true,
+                close: true,
+                guarantees: false,
+                continuity: false,
+            },
+        },
+        invocation(OperationCategory::Read),
+    )?;
+    let status_availability = &status.response_value["user_channel_availability"];
+    assert_eq!(
+        channel_path(status_availability, "mcp_elicitation")["available"],
+        false
+    );
+    assert_eq!(
+        channel_path(status_availability, "prompt_capture")["available"],
+        true
+    );
+    assert_eq!(
+        channel_path(status_availability, "local_web_consent")["available"],
+        false
+    );
+    assert_eq!(channel_path(status_availability, "cli")["available"], true);
+    assert_eq!(
+        status.response_value["pending_judgment_inbox_items"][0]["preferred_capture_path"]["kind"],
+        "prompt_capture"
+    );
+
+    let local_web_status = harness.service.status(
+        StatusRequest {
+            envelope: envelope(
+                "req_status_guarded_pending_local_web_paths",
+                None,
+                false,
+                None,
+                Some(&task_id),
+            ),
+            include: StatusInclude {
+                task: true,
+                pending_user_judgments: true,
+                write_ticket: false,
+                evidence: true,
+                close: true,
+                guarantees: false,
+                continuity: false,
+            },
+        },
+        invocation(OperationCategory::Read).with_local_web_consent_available(true),
+    )?;
+    let local_web_availability = &local_web_status.response_value["user_channel_availability"];
+    assert_eq!(
+        channel_path(local_web_availability, "local_web_consent")["available"],
+        true
+    );
+    assert!(
+        local_web_status.response_value["pending_judgment_inbox_items"][0]["fallbacks"]
+            .as_array()
+            .expect("local web fallbacks should be an array")
+            .iter()
+            .any(|fallback| fallback["kind"] == "local_web_consent")
+    );
+
+    let host_elicitation_status = harness.service.status(
+        StatusRequest {
+            envelope: envelope(
+                "req_status_guarded_pending_host_prompt_paths",
+                None,
+                false,
+                None,
+                Some(&task_id),
+            ),
+            include: StatusInclude {
+                task: true,
+                pending_user_judgments: true,
+                write_ticket: false,
+                evidence: true,
+                close: true,
+                guarantees: false,
+                continuity: false,
+            },
+        },
+        invocation(OperationCategory::Read).with_host_elicitation_available(true),
+    )?;
+    assert_eq!(
+        channel_path(
+            &host_elicitation_status.response_value["user_channel_availability"],
+            "mcp_elicitation"
+        )["available"],
+        true
+    );
+    assert_eq!(
+        host_elicitation_status.response_value["pending_judgment_inbox_items"][0]
+            ["preferred_capture_path"]["kind"],
+        "mcp_elicitation"
     );
     assert_eq!(harness.counts()?, before);
     Ok(())
@@ -17781,6 +17930,16 @@ fn assert_pending_judgment_prompt_capture_guidance(response_value: &Value) {
     assert!(guidance.contains("chat command"), "{guidance}");
     assert!(guidance.contains("verification code"), "{guidance}");
     assert!(!guidance.contains("MCP elicitation"), "{guidance}");
+}
+
+fn channel_path<'a>(availability: &'a Value, kind: &str) -> &'a Value {
+    let paths = availability["paths"]
+        .as_array()
+        .expect("user_channel_availability.paths should be an array");
+    paths
+        .iter()
+        .find(|path| path["kind"] == kind)
+        .unwrap_or_else(|| panic!("expected user channel path {kind}, got {paths:?}"))
 }
 
 fn close_blocker_by_code<'a>(response_value: &'a Value, code: &str) -> &'a Value {

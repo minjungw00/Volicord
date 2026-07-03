@@ -8,6 +8,7 @@ This document owns:
 
 - `UserJudgment`
 - `JudgmentInboxItem`
+- `UserChannelAvailability`
 - `UserJudgmentCandidate`
 - `UserJudgmentOptionInput`
 - `UserJudgmentOption`
@@ -99,6 +100,7 @@ JudgmentInboxItem:
   requirement_status: "required" | "optional"
   required_for: string[]
   status: string
+  answer_path_availability: UserChannelAvailability
   preferred_capture_path: JudgmentCapturePath | null
   fallbacks: JudgmentCapturePath[]
   expires_at: string | null
@@ -119,11 +121,29 @@ JudgmentCapturePath:
   capture_basis: string | null
   expires_at: string | null
   detail: string | null
+
+UserChannelAvailability:
+  paths: UserChannelPathAvailability[]
+  recommended_path_kind: string | null
+  recommended_path_label: string | null
+  recommendation: string | null
+
+UserChannelPathAvailability:
+  kind: string
+  label: string
+  available: boolean
+  status: string
+  capture_basis: string | null
+  detail: string | null
 ```
 
 `choices` exposes user-facing choice identifiers and labels, not the internal `machine_action` or `resolution_outcome` fields. Machine action and outcome remain on the durable `UserJudgmentOption` and the recorded resolution.
 
+`answer_path_availability` reports the current availability of supported User Channel paths for this pending judgment. It can include unavailable paths so the user can see that one unavailable path, such as host prompt input, did not hide another available path. Current path kinds include `mcp_elicitation`, `prompt_capture`, `local_web_consent`, and `cli`.
+
 `preferred_capture_path` names the best available User Channel capture path for the current adapter context. Current path kinds include `mcp_elicitation`, `prompt_capture`, `local_web_consent`, and `cli`. `fallbacks` lists other available paths, including the local `volicord inbox answer <judgment-id> --choice <choice>` command when available.
+
+`recommended_path_kind`, `recommended_path_label`, and `recommendation` name the preferred answer method when the current projection has enough information. They are guidance for where the user can answer; they do not record an answer.
 
 ## `JudgmentBasis`
 

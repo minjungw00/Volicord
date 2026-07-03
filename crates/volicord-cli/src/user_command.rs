@@ -17,7 +17,8 @@ use volicord_types::{
     OperationCategory, PersistedUserJudgmentOptions, ProjectId, RecordUserJudgmentPayload,
     RecordUserJudgmentRequest, RequestId, SensitiveActionScope, StatusInclude, StatusRequest,
     SummaryCard, TaskId, ToolEnvelope, UserJudgmentContext, UserJudgmentId, UserJudgmentOption,
-    VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+    VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL, VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB,
+    VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL, VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
 };
 
 use crate::disclosure::{render_action_guidance_text, USER_CHANNEL_NON_GUARANTEE_TEXT};
@@ -914,6 +915,18 @@ fn render_status_response(
     if let Some(card) = summary_card_from_response(&response.response_value) {
         output.push_str(&render_summary_card_text(&card));
     }
+    if response
+        .response_value
+        .get("pending_judgment_inbox_items")
+        .and_then(Value::as_array)
+        .is_some_and(|items| !items.is_empty())
+    {
+        if let Some(line) = render_user_channel_availability_text(
+            response.response_value.get("user_channel_availability"),
+        ) {
+            output.push_str(&line);
+        }
+    }
     if let Some(coverage) = render_coverage_summary_text(&response.response_value) {
         output.push_str(&coverage);
     }
@@ -926,6 +939,7 @@ fn render_inbox_items(
     has_selected_task: bool,
 ) -> Result<String, UserCommandError> {
     let summary_card = inbox_summary_card(records, has_selected_task);
+    let user_channel_availability = cli_only_user_channel_availability();
     if output == OutputFormat::Json {
         let values = records
             .iter()
@@ -933,6 +947,7 @@ fn render_inbox_items(
             .collect::<Result<Vec<_>, _>>()?;
         return serde_json::to_string_pretty(&json!({
             "summary_card": summary_card,
+            "user_channel_availability": user_channel_availability,
             "pending_judgment_inbox_items": values,
         }))
         .map(|text| format!("{text}\n"))
@@ -944,6 +959,9 @@ fn render_inbox_items(
     if records.is_empty() {
         text.push_str("No pending judgments.\n");
         return Ok(text);
+    }
+    if let Some(line) = render_user_channel_availability_text(Some(&user_channel_availability)) {
+        text.push_str(&line);
     }
 
     for (index, record) in records.iter().enumerate() {
@@ -1054,6 +1072,7 @@ fn inbox_item_json(record: &UserJudgmentRecord) -> Result<Value, UserCommandErro
         "requirement_status": requirement_status,
         "required_for": request.required_for,
         "status": &record.status,
+        "answer_path_availability": cli_only_user_channel_availability(),
         "preferred_capture_path": {
             "kind": "cli",
             "label": "CLI inbox",
@@ -1067,6 +1086,110 @@ fn inbox_item_json(record: &UserJudgmentRecord) -> Result<Value, UserCommandErro
         "fallbacks": [],
         "expires_at": request.expires_at
     }))
+}
+
+fn cli_only_user_channel_availability() -> Value {
+    json!({
+        "paths": [
+            {
+                "kind": "mcp_elicitation",
+                "label": "Host prompt input",
+                "available": false,
+                "status": "unavailable",
+                "capture_basis": VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
+                "detail": "Host prompt input is unavailable from this CLI process."
+            },
+            {
+                "kind": "prompt_capture",
+                "label": "Chat command capture",
+                "available": false,
+                "status": "unavailable",
+                "capture_basis": VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
+                "detail": "Chat command capture is unavailable from this CLI process."
+            },
+            {
+                "kind": "local_web_consent",
+                "label": "Local consent URL",
+                "available": false,
+                "status": "unavailable",
+                "capture_basis": VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB,
+                "detail": "No local consent URL is available from this CLI process."
+            },
+            {
+                "kind": "cli",
+                "label": "CLI inbox",
+                "available": true,
+                "status": "available",
+                "capture_basis": VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+                "detail": "Answer from the local terminal as the user."
+            }
+        ],
+        "recommended_path_kind": "cli",
+        "recommended_path_label": "CLI inbox",
+        "recommendation": "Use CLI inbox to answer pending judgments."
+    })
+}
+
+fn render_user_channel_availability_text(availability: Option<&Value>) -> Option<String> {
+    let paths = availability?.get("paths")?.as_array()?;
+    let mut fragments = Vec::new();
+    for kind in [
+        "mcp_elicitation",
+        "prompt_capture",
+        "local_web_consent",
+        "cli",
+    ] {
+        let Some(path) = paths
+            .iter()
+            .find(|path| path["kind"].as_str() == Some(kind))
+        else {
+            continue;
+        };
+        let available = path["available"].as_bool().unwrap_or(false);
+        let status = path["status"].as_str().unwrap_or("unavailable");
+        let fragment = match kind {
+            "mcp_elicitation" => {
+                format!(
+                    "host prompt {}",
+                    if available {
+                        "available"
+                    } else {
+                        "unavailable"
+                    }
+                )
+            }
+            "prompt_capture" => {
+                if available {
+                    format!("chat capture {status}")
+                } else {
+                    "chat capture unavailable".to_owned()
+                }
+            }
+            "local_web_consent" => {
+                format!(
+                    "local consent {}",
+                    if available {
+                        "available"
+                    } else {
+                        "unavailable"
+                    }
+                )
+            }
+            "cli" => {
+                format!(
+                    "CLI inbox {}",
+                    if available {
+                        "available"
+                    } else {
+                        "unavailable"
+                    }
+                )
+            }
+            _ => continue,
+        };
+        fragments.push(fragment);
+    }
+    (!fragments.is_empty()).then(|| format!("Available answer paths: {}\n", fragments.join("; ")))
 }
 
 fn inbox_choice_json(option: &UserJudgmentOption) -> Value {

@@ -364,6 +364,12 @@ Conditions:
 - The fallback text routes the user to the `volicord inbox` CLI inbox path only
   when host prompt input, chat command capture, and local consent URL are not
   available.
+- Status and judgment inbox projections may show User Channel availability for
+  host prompt input, chat command capture, local consent URL, and CLI inbox
+  together. Unavailable host prompt input must not hide another available
+  answer path, and the CLI inbox remains visible when it is applicable. These
+  projections tell the user where to answer; they do not let an Agent
+  Connection record the judgment.
 - Authority-bearing user-judgment resolution requires `actor_source=local_user`,
   `operation_category=user_only`, and compatible User Channel provenance.
 - `actor_source=agent_connection:<connection_id>` cannot become `local_user`

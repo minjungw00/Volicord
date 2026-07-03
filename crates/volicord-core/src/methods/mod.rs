@@ -58,13 +58,13 @@ use volicord_types::{
     SummaryCard, TaskId, TaskLifecyclePhase, TaskLifecycleState, TaskMode, TaskResult,
     ToolEnvelope, ToolResultBase, UnrecordedChangeFinding, UnrecordedChangeId,
     UnrecordedChangeResolutionBasis, UnrecordedChangeResolutionRequest,
-    UnrecordedChangeResolutionSummary, UnrecordedChangeStatus, UpdateScopeRequest, UserJudgment,
-    UserJudgmentCandidate, UserJudgmentContext, UserJudgmentId, UserJudgmentOption,
-    UserJudgmentOptionAction, UserJudgmentOptionId, UserJudgmentOptionInput,
-    UserJudgmentResolution, UserJudgmentStatus, UtcTimestamp, WriteDecisionCategory,
-    WriteDecisionReason, WriteTicket, WriteTicketAttemptScope, WriteTicketEffect, WriteTicketId,
-    WriteTicketPathPatterns, WriteTicketScope, WriteTicketState, WriteTicketStateSummary,
-    WriteTicketStatus, VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+    UnrecordedChangeResolutionSummary, UnrecordedChangeStatus, UpdateScopeRequest,
+    UserChannelAvailability, UserChannelPathAvailability, UserJudgment, UserJudgmentCandidate,
+    UserJudgmentContext, UserJudgmentId, UserJudgmentOption, UserJudgmentOptionAction,
+    UserJudgmentOptionId, UserJudgmentOptionInput, UserJudgmentResolution, UserJudgmentStatus,
+    UtcTimestamp, WriteDecisionCategory, WriteDecisionReason, WriteTicket, WriteTicketAttemptScope,
+    WriteTicketEffect, WriteTicketId, WriteTicketPathPatterns, WriteTicketScope, WriteTicketState,
+    WriteTicketStateSummary, WriteTicketStatus, VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
     VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB, VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
     VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
 };
@@ -1124,7 +1124,7 @@ fn pending_judgment_inbox_items(
     envelope: &ToolEnvelope,
     task_id: &TaskId,
     state_version: u64,
-    guard_health: Option<&GuardHealthSummary>,
+    user_channel: UserChannelContext<'_>,
 ) -> Result<Vec<JudgmentInboxItem>, PlanError> {
     store
         .pending_user_judgment_records(task_id)
@@ -1138,7 +1138,7 @@ fn pending_judgment_inbox_items(
         .iter()
         .map(|record| {
             let judgment = user_judgment_from_record(record)?;
-            judgment_inbox_item_from_judgment(&judgment, state_version, guard_health)
+            judgment_inbox_item_from_judgment(&judgment, state_version, user_channel)
         })
         .collect::<CoreResult<Vec<_>>>()
         .map_err(PlanError::Core)
@@ -1147,10 +1147,11 @@ fn pending_judgment_inbox_items(
 fn judgment_inbox_item_from_judgment(
     judgment: &UserJudgment,
     state_version: u64,
-    guard_health: Option<&GuardHealthSummary>,
+    user_channel: UserChannelContext<'_>,
 ) -> CoreResult<JudgmentInboxItem> {
+    let answer_path_availability = user_channel_availability(user_channel);
     let (preferred_capture_path, fallbacks) =
-        judgment_capture_paths(&judgment.judgment_id, guard_health);
+        judgment_capture_paths(&judgment.judgment_id, &answer_path_availability);
     Ok(JudgmentInboxItem {
         judgment_id: judgment.judgment_id.clone(),
         judgment_ref: state_ref(
@@ -1189,6 +1190,7 @@ fn judgment_inbox_item_from_judgment(
         },
         required_for: judgment.required_for.clone(),
         status: judgment.status,
+        answer_path_availability,
         preferred_capture_path: preferred_capture_path.into(),
         fallbacks,
         expires_at: judgment.expires_at.clone().into(),
@@ -1197,17 +1199,14 @@ fn judgment_inbox_item_from_judgment(
 
 fn judgment_capture_paths(
     judgment_id: &UserJudgmentId,
-    guard_health: Option<&GuardHealthSummary>,
+    availability: &UserChannelAvailability,
 ) -> (Option<JudgmentCapturePath>, Vec<JudgmentCapturePath>) {
     let cli = judgment_cli_capture_path(judgment_id);
-    let local_web = guard_health
-        .is_some_and(|summary| summary.local_web_consent_available)
+    let local_web = channel_path_available(availability, "local_web_consent")
         .then(|| judgment_local_web_capture_path(true));
-    let prompt_capture = guard_health
-        .is_some_and(|summary| summary.prompt_capture_available)
-        .then(judgment_prompt_capture_path);
-    let mcp_elicitation = guard_health
-        .is_some_and(|summary| summary.mcp_connection_healthy)
+    let prompt_capture =
+        channel_path_available(availability, "prompt_capture").then(judgment_prompt_capture_path);
+    let mcp_elicitation = channel_path_available(availability, "mcp_elicitation")
         .then(judgment_mcp_elicitation_capture_path);
 
     let preferred = mcp_elicitation
@@ -1222,6 +1221,126 @@ fn judgment_capture_paths(
         }
     }
     (Some(preferred), fallbacks)
+}
+
+fn channel_path_available(availability: &UserChannelAvailability, kind: &str) -> bool {
+    availability
+        .paths
+        .iter()
+        .any(|path| path.kind == kind && path.available)
+}
+
+#[derive(Clone, Copy)]
+struct UserChannelContext<'a> {
+    guard_health: Option<&'a GuardHealthSummary>,
+    host_elicitation_available: bool,
+    local_web_consent_available: bool,
+}
+
+fn user_channel_availability(user_channel: UserChannelContext<'_>) -> UserChannelAvailability {
+    let chat_available = user_channel
+        .guard_health
+        .map(|summary| summary.prompt_capture_available)
+        .unwrap_or(false);
+    let chat_status = user_channel
+        .guard_health
+        .map(|summary| summary.prompt_capture_status.as_str().to_owned())
+        .unwrap_or_else(|| "unavailable".to_owned());
+    let local_consent_available = user_channel.local_web_consent_available
+        || user_channel
+            .guard_health
+            .map(|summary| summary.local_web_consent_available)
+            .unwrap_or(false);
+    let mut paths = vec![
+        UserChannelPathAvailability {
+            kind: "mcp_elicitation".to_owned(),
+            label: "Host prompt input".to_owned(),
+            available: user_channel.host_elicitation_available,
+            status: if user_channel.host_elicitation_available {
+                "available".to_owned()
+            } else {
+                "unavailable".to_owned()
+            },
+            capture_basis: Some(VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL.to_owned()).into(),
+            detail: Some(if user_channel.host_elicitation_available {
+                "The current MCP client declared host prompt elicitation support.".to_owned()
+            } else {
+                "Host prompt input is unavailable for this invocation.".to_owned()
+            })
+            .into(),
+        },
+        UserChannelPathAvailability {
+            kind: "prompt_capture".to_owned(),
+            label: "Chat command capture".to_owned(),
+            available: chat_available,
+            status: chat_status,
+            capture_basis: Some(VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK.to_owned()).into(),
+            detail: Some(if chat_available {
+                "Verification-code chat commands may answer pending judgments.".to_owned()
+            } else {
+                "Chat command capture is not currently available for this connection.".to_owned()
+            })
+            .into(),
+        },
+        UserChannelPathAvailability {
+            kind: "local_web_consent".to_owned(),
+            label: "Local consent URL".to_owned(),
+            available: local_consent_available,
+            status: if local_consent_available {
+                "available".to_owned()
+            } else {
+                "unavailable".to_owned()
+            },
+            capture_basis: Some(VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB.to_owned()).into(),
+            detail: Some(if local_consent_available {
+                "The current adapter can offer a local consent URL.".to_owned()
+            } else {
+                "No local consent URL is available for this invocation.".to_owned()
+            })
+            .into(),
+        },
+        UserChannelPathAvailability {
+            kind: "cli".to_owned(),
+            label: "CLI inbox".to_owned(),
+            available: true,
+            status: "available".to_owned(),
+            capture_basis: Some(VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL.to_owned()).into(),
+            detail: Some("Answer from the local terminal as the user.".to_owned()).into(),
+        },
+    ];
+    let recommended = [
+        "mcp_elicitation",
+        "prompt_capture",
+        "local_web_consent",
+        "cli",
+    ]
+    .into_iter()
+    .find_map(|kind| {
+        paths
+            .iter()
+            .find(|path| path.kind == kind && path.available)
+            .map(|path| (path.kind.clone(), path.label.clone()))
+    });
+    let (recommended_kind, recommended_label, recommendation) =
+        if let Some((kind, label)) = recommended {
+            (
+                Some(kind.clone()).into(),
+                Some(label.clone()).into(),
+                Some(format!("Use {label} to answer pending judgments.")).into(),
+            )
+        } else {
+            (
+                RequiredNullable::null(),
+                RequiredNullable::null(),
+                RequiredNullable::null(),
+            )
+        };
+    UserChannelAvailability {
+        paths: std::mem::take(&mut paths),
+        recommended_path_kind: recommended_kind,
+        recommended_path_label: recommended_label,
+        recommendation,
+    }
 }
 
 fn judgment_mcp_elicitation_capture_path() -> JudgmentCapturePath {

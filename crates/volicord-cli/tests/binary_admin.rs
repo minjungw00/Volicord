@@ -2657,6 +2657,9 @@ fn user_channel_records_pending_judgment_with_local_user_provenance() -> Result<
     assert!(status_text.contains("User Channel status"));
     assert!(status_text.contains("Close Status: blocked"));
     assert!(status_text.contains("User Judgment: pending (1)"));
+    assert!(status_text.contains(
+        "Available answer paths: host prompt unavailable; chat capture unavailable; local consent unavailable; CLI inbox available"
+    ));
     assert!(status_text.contains("Next:"));
     assert!(status_text.contains("Does not prove:"));
     assert!(status_text.contains("risk-free outcome"));
@@ -2667,6 +2670,17 @@ fn user_channel_records_pending_judgment_with_local_user_provenance() -> Result<
     let status_value = json_stdout(&status_json)?;
     assert_eq!(status_value["summary_card"]["close_status"], "blocked");
     assert_eq!(status_value["summary_card"]["user_judgment"], "pending (1)");
+    assert_eq!(
+        channel_path(&status_value["user_channel_availability"], "cli")["available"],
+        true
+    );
+    assert_eq!(
+        channel_path(
+            &status_value["user_channel_availability"],
+            "local_web_consent"
+        )["available"],
+        false
+    );
 
     let list = run_with_home_env_in_dir(runtime_home.path(), ["inbox"], &[], &repo_root)?;
     assert_success(&list);
@@ -2675,6 +2689,9 @@ fn user_channel_records_pending_judgment_with_local_user_provenance() -> Result<
     assert!(list_text.contains("1. Should the focused CLI user-channel choice be accepted?"));
     assert!(list_text.contains("id: "));
     assert!(list_text.contains("accept: Accept focused choice"));
+    assert!(list_text.contains(
+        "Available answer paths: host prompt unavailable; chat capture unavailable; local consent unavailable; CLI inbox available"
+    ));
     assert!(list_text.contains("volicord inbox answer"));
     assert!(list_text.contains("Does not prove: approval"));
     assert!(!list_text.contains("project_user_channel"));
@@ -2684,6 +2701,14 @@ fn user_channel_records_pending_judgment_with_local_user_provenance() -> Result<
     assert_success(&list_json);
     let list_value = json_stdout(&list_json)?;
     assert_eq!(list_value["summary_card"]["user_judgment"], "pending (1)");
+    assert_eq!(
+        channel_path(&list_value["user_channel_availability"], "cli")["available"],
+        true
+    );
+    assert_eq!(
+        channel_path(&list_value["user_channel_availability"], "mcp_elicitation")["available"],
+        false
+    );
     assert!(list_value["summary_card"]["next"]
         .as_str()
         .expect("summary next should be text")
@@ -2692,6 +2717,10 @@ fn user_channel_records_pending_judgment_with_local_user_provenance() -> Result<
     assert_eq!(first["judgment_id"], judgment_id.as_str());
     assert_eq!(first["requirement_status"], "required");
     assert_eq!(first["choices"][0]["choice_id"], "accept");
+    assert_eq!(
+        channel_path(&first["answer_path_availability"], "cli")["available"],
+        true
+    );
     assert_eq!(first["preferred_capture_path"]["kind"], "cli");
     assert!(first["preferred_capture_path"]["command"]
         .as_str()
@@ -3096,6 +3125,16 @@ fn stderr(output: &Output) -> String {
 
 fn json_stdout(output: &Output) -> Result<Value, Box<dyn Error>> {
     Ok(serde_json::from_str(&stdout(output))?)
+}
+
+fn channel_path<'a>(availability: &'a Value, kind: &str) -> &'a Value {
+    let paths = availability["paths"]
+        .as_array()
+        .expect("user_channel_availability.paths should be an array");
+    paths
+        .iter()
+        .find(|path| path["kind"] == kind)
+        .unwrap_or_else(|| panic!("expected user channel path {kind}, got {paths:?}"))
 }
 
 fn assert_diagnostic_disclosure(value: &Value) {

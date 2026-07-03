@@ -31,24 +31,24 @@ pub struct McpDerivedInvocationContext {
     pub operation_category: OperationCategory,
     pub invocation_binding_basis: String,
     pub session_id: Option<String>,
+    pub host_elicitation_available: bool,
     pub local_web_consent_available: bool,
 }
 
 impl McpDerivedInvocationContext {
     fn core_invocation(&self) -> InvocationContext {
-        let invocation = InvocationContext::new(
+        let mut invocation = InvocationContext::new(
             self.project_id.clone(),
             self.actor_source.clone(),
             self.operation_category,
             self.invocation_binding_basis.clone(),
-        );
+        )
+        .with_host_elicitation_available(self.host_elicitation_available)
+        .with_local_web_consent_available(self.local_web_consent_available);
         if let Some(session_id) = self.session_id.as_ref() {
-            invocation
-                .with_session_id(session_id.clone())
-                .with_local_web_consent_available(self.local_web_consent_available)
-        } else {
-            invocation.with_local_web_consent_available(self.local_web_consent_available)
+            invocation = invocation.with_session_id(session_id.clone());
         }
+        invocation
     }
 }
 
@@ -366,6 +366,7 @@ impl McpAdapter {
         envelope: &ToolEnvelope,
         operation_category: OperationCategory,
         session_id: Option<&str>,
+        host_elicitation_available: bool,
     ) -> McpDerivedInvocationContext {
         McpDerivedInvocationContext {
             project_id: envelope.project_id.clone(),
@@ -375,6 +376,7 @@ impl McpAdapter {
             operation_category,
             invocation_binding_basis: self.context.invocation_binding_basis.clone(),
             session_id: session_id.map(str::to_owned),
+            host_elicitation_available,
             local_web_consent_available: self.local_web_consent.is_some(),
         }
     }
@@ -394,21 +396,53 @@ impl McpAdapter {
         params: Value,
         session_id: Option<&str>,
     ) -> Result<PipelineResponse, McpAdapterError> {
+        self.call_tool_for_session_with_capabilities(tool_name, params, session_id, false)
+    }
+
+    pub(crate) fn call_tool_for_session_with_capabilities(
+        &self,
+        tool_name: &str,
+        params: Value,
+        session_id: Option<&str>,
+        host_elicitation_available: bool,
+    ) -> Result<PipelineResponse, McpAdapterError> {
         match tool_name {
-            INTAKE_TOOL_NAME => self.call_intake(tool_name, params, session_id),
-            UPDATE_SCOPE_TOOL_NAME => self.call_update_scope(tool_name, params, session_id),
-            STATUS_TOOL_NAME => self.call_status(tool_name, params, session_id),
-            PREPARE_WRITE_TOOL_NAME => self.call_prepare_write(tool_name, params, session_id),
-            STAGE_ARTIFACT_TOOL_NAME => self.call_stage_artifact(tool_name, params, session_id),
-            RECORD_RUN_TOOL_NAME => self.call_record_run(tool_name, params, session_id),
-            REQUEST_USER_JUDGMENT_TOOL_NAME => {
-                self.call_request_user_judgment(tool_name, params, session_id)
+            INTAKE_TOOL_NAME => {
+                self.call_intake(tool_name, params, session_id, host_elicitation_available)
             }
-            RECONCILE_CHANGES_TOOL_NAME => {
-                self.call_reconcile_changes(tool_name, params, session_id)
+            UPDATE_SCOPE_TOOL_NAME => {
+                self.call_update_scope(tool_name, params, session_id, host_elicitation_available)
             }
-            CHECK_CLOSE_TOOL_NAME => self.call_check_close(tool_name, params, session_id),
-            CLOSE_TASK_TOOL_NAME => self.call_close_task(tool_name, params, session_id),
+            STATUS_TOOL_NAME => {
+                self.call_status(tool_name, params, session_id, host_elicitation_available)
+            }
+            PREPARE_WRITE_TOOL_NAME => {
+                self.call_prepare_write(tool_name, params, session_id, host_elicitation_available)
+            }
+            STAGE_ARTIFACT_TOOL_NAME => {
+                self.call_stage_artifact(tool_name, params, session_id, host_elicitation_available)
+            }
+            RECORD_RUN_TOOL_NAME => {
+                self.call_record_run(tool_name, params, session_id, host_elicitation_available)
+            }
+            REQUEST_USER_JUDGMENT_TOOL_NAME => self.call_request_user_judgment(
+                tool_name,
+                params,
+                session_id,
+                host_elicitation_available,
+            ),
+            RECONCILE_CHANGES_TOOL_NAME => self.call_reconcile_changes(
+                tool_name,
+                params,
+                session_id,
+                host_elicitation_available,
+            ),
+            CHECK_CLOSE_TOOL_NAME => {
+                self.call_check_close(tool_name, params, session_id, host_elicitation_available)
+            }
+            CLOSE_TASK_TOOL_NAME => {
+                self.call_close_task(tool_name, params, session_id, host_elicitation_available)
+            }
             other => Err(McpAdapterError::UnknownTool(other.to_owned())),
         }
     }
@@ -418,6 +452,7 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session_id: Option<&str>,
+        host_elicitation_available: bool,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpIntakeArguments> =
             self.prepare_mcp_arguments(tool_name, params, session_id)?;
@@ -440,6 +475,7 @@ impl McpAdapter {
             },
             CoreService::intake,
             session_id,
+            host_elicitation_available,
         )
     }
 
@@ -448,6 +484,7 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session_id: Option<&str>,
+        host_elicitation_available: bool,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpUpdateScopeArguments> =
             self.prepare_mcp_arguments(tool_name, params, session_id)?;
@@ -476,6 +513,7 @@ impl McpAdapter {
             },
             CoreService::update_scope,
             session_id,
+            host_elicitation_available,
         )
     }
 
@@ -484,6 +522,7 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session_id: Option<&str>,
+        host_elicitation_available: bool,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpStatusArguments> =
             self.prepare_mcp_arguments(tool_name, params, session_id)?;
@@ -503,6 +542,7 @@ impl McpAdapter {
             },
             CoreService::status,
             session_id,
+            host_elicitation_available,
         )
     }
 
@@ -511,6 +551,7 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session_id: Option<&str>,
+        host_elicitation_available: bool,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpPrepareWriteArguments> =
             self.prepare_mcp_arguments(tool_name, params, session_id)?;
@@ -536,6 +577,7 @@ impl McpAdapter {
             },
             CoreService::prepare_write,
             session_id,
+            host_elicitation_available,
         )
     }
 
@@ -544,6 +586,7 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session_id: Option<&str>,
+        host_elicitation_available: bool,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpStageArtifactArguments> =
             self.prepare_mcp_arguments(tool_name, params, session_id)?;
@@ -570,6 +613,7 @@ impl McpAdapter {
             },
             CoreService::stage_artifact,
             session_id,
+            host_elicitation_available,
         )
     }
 
@@ -578,6 +622,7 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session_id: Option<&str>,
+        host_elicitation_available: bool,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpRecordRunArguments> =
             self.prepare_mcp_arguments(tool_name, params, session_id)?;
@@ -608,6 +653,7 @@ impl McpAdapter {
             },
             CoreService::record_run,
             session_id,
+            host_elicitation_available,
         )
     }
 
@@ -616,6 +662,7 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session_id: Option<&str>,
+        host_elicitation_available: bool,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpRequestUserJudgmentArguments> =
             self.prepare_mcp_arguments(tool_name, params, session_id)?;
@@ -645,6 +692,7 @@ impl McpAdapter {
             },
             CoreService::request_user_judgment,
             session_id,
+            host_elicitation_available,
         )
     }
 
@@ -653,6 +701,7 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session_id: Option<&str>,
+        host_elicitation_available: bool,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpReconcileChangesArguments> =
             self.prepare_mcp_arguments(tool_name, params, session_id)?;
@@ -673,6 +722,7 @@ impl McpAdapter {
             },
             CoreService::reconcile_changes,
             session_id,
+            host_elicitation_available,
         )
     }
 
@@ -681,6 +731,7 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session_id: Option<&str>,
+        host_elicitation_available: bool,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpCheckCloseArguments> =
             self.prepare_mcp_arguments(tool_name, params, session_id)?;
@@ -696,6 +747,7 @@ impl McpAdapter {
             CheckCloseRequest { envelope, task_id },
             CoreService::check_close,
             session_id,
+            host_elicitation_available,
         )
     }
 
@@ -704,6 +756,7 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session_id: Option<&str>,
+        host_elicitation_available: bool,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpCloseTaskArguments> =
             self.prepare_mcp_arguments(tool_name, params, session_id)?;
@@ -727,6 +780,7 @@ impl McpAdapter {
             },
             CoreService::close_task,
             session_id,
+            host_elicitation_available,
         )
     }
 
@@ -736,6 +790,7 @@ impl McpAdapter {
         request: T,
         call: F,
         session_id: Option<&str>,
+        host_elicitation_available: bool,
     ) -> Result<PipelineResponse, McpAdapterError>
     where
         T: MethodOperationCategory + HasEnvelope,
@@ -751,6 +806,7 @@ impl McpAdapter {
             request_envelope(&request),
             operation_category,
             session_id,
+            host_elicitation_available,
         );
         call(&self.core, request, invocation.core_invocation()).map_err(McpAdapterError::Core)
     }

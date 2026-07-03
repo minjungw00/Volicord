@@ -21,7 +21,7 @@ This document does not own:
 
 ## Purpose
 
-`volicord.status` returns a current-position view over Core state. The view can include current Task summary, blockers, pending user judgments, write-ticket summary, evidence summary, close state, close-readiness findings, `GuardHealthSummary` hook-state facts, `CoverageSummary` coverage facts, project continuity summaries, guarantee display, next safe actions, and the compact `summary_card`.
+`volicord.status` returns a current-position view over Core state. The view can include current Task summary, blockers, pending user judgments, User Channel answer-path availability, write-ticket summary, evidence summary, close state, close-readiness findings, `GuardHealthSummary` hook-state facts, `CoverageSummary` coverage facts, project continuity summaries, guarantee display, next safe actions, and the compact `summary_card`.
 
 ## Required inputs
 
@@ -83,7 +83,7 @@ Non-claim: `StatusResult.close_blockers` are not stored close results, correctne
 Include projection contract:
 
 - `include.task` returns the selected `Task` summary and current Change Unit through `active_task`.
-- `include.pending_user_judgments` returns current pending judgment refs plus `pending_judgment_inbox_items` for user action. Relevant stale or superseded judgment state appears through existing result fields such as `blocker_refs` and `next_actions.required_refs`.
+- `include.pending_user_judgments` returns current pending judgment refs, `pending_judgment_inbox_items` for user action, and `user_channel_availability` for supported answer paths in the current invocation context. Relevant stale or superseded judgment state appears through existing result fields such as `blocker_refs` and `next_actions.required_refs`.
 - `include.write_ticket` returns active, expired, stale, consumed, or otherwise relevant write-ticket state through `write_ticket_summary`.
 - `write_ticket_summary` is a compatibility summary only; it is not filesystem access, shell approval, final acceptance, ordinary write approval, or proof that a write occurred.
 - `include.evidence` returns current `EvidenceSummary` and coverage when available.
@@ -118,6 +118,7 @@ Truthful projection rules:
 | `next_actions` | `NextActionSummary[]` describing the next safe API steps. |
 | `pending_user_judgments` | `StateRecordRef[]` for pending user-judgment records selected into the status view. |
 | `pending_judgment_inbox_items` | `JudgmentInboxItem[]` for pending judgments needing user action when `include.pending_user_judgments=true`. Shape is owned by [API Judgment Schemas](schema-judgment.md#judgmentinboxitem). |
+| `user_channel_availability` | `UserChannelAvailability` for supported answer paths when `include.pending_user_judgments=true` and a Task-scoped judgment view is available. It may report unavailable host prompt input while still reporting available chat capture, local consent, or CLI inbox paths. Shape is owned by [API Judgment Schemas](schema-judgment.md#judgmentinboxitem). |
 | `blocker_refs` | `StateRecordRef[]` for blocker records visible in the current status view. |
 | `close_state` | Status close-state value for the current view. Supported values, including `none` when no current close state is available, are owned by [API Value Sets](schema-value-sets.md#task-lifecycle-values). |
 | `current_close_basis` | `CurrentCloseBasis | null` selected into the close status view. Shape is owned by [API State Schemas](schema-state.md#close-readiness-and-validation-shapes). |
@@ -128,7 +129,7 @@ Truthful projection rules:
 | `guarantee_display` | `GuaranteeDisplay | null` for the current status view. |
 | `continuity_summary` | `ProjectContinuitySummary[]` when `include.continuity=true`; omitted when the projection is not selected. Shape is owned by [API State Schemas](schema-state.md#project-continuity-shapes). |
 
-Nested `SummaryCard`, `StateSummary`, `StateRecordRef`, `ProjectContinuitySummary`, `CurrentCloseBasis`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`, `GuardHealthSummary`, `CoverageSummary`, `GuaranteeDisplay`, and `NextActionSummary` shapes are owned by [API State Schemas](schema-state.md).
+Nested `UserChannelAvailability` and `JudgmentInboxItem` shapes are owned by [API Judgment Schemas](schema-judgment.md#judgmentinboxitem). Nested `SummaryCard`, `StateSummary`, `StateRecordRef`, `ProjectContinuitySummary`, `CurrentCloseBasis`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`, `GuardHealthSummary`, `CoverageSummary`, `GuaranteeDisplay`, and `NextActionSummary` shapes are owned by [API State Schemas](schema-state.md).
 
 ## Blocked result
 
@@ -284,6 +285,35 @@ pending_user_judgments:
     project_id: proj_export_001
     task_id: task_export_001
     state_version: 42
+user_channel_availability: &user_channel_availability_example
+  paths:
+    - kind: mcp_elicitation
+      label: "Host prompt input"
+      available: false
+      status: unavailable
+      capture_basis: mcp_elicitation_user_channel
+      detail: "Host prompt input is unavailable for this invocation."
+    - kind: prompt_capture
+      label: "Chat command capture"
+      available: false
+      status: unavailable
+      capture_basis: user_prompt_submit_hook
+      detail: "Chat command capture is not currently available for this connection."
+    - kind: local_web_consent
+      label: "Local consent URL"
+      available: false
+      status: unavailable
+      capture_basis: local_user_local_web
+      detail: "No local consent URL is available for this invocation."
+    - kind: cli
+      label: "CLI inbox"
+      available: true
+      status: available
+      capture_basis: cli_direct_user_channel
+      detail: "Answer from the local terminal as the user."
+  recommended_path_kind: cli
+  recommended_path_label: "CLI inbox"
+  recommendation: "Use CLI inbox to answer pending judgments."
 pending_judgment_inbox_items:
   - judgment_id: uj_export_columns_001
     question: "Which CSV column order should be used?"
@@ -291,6 +321,7 @@ pending_judgment_inbox_items:
     choices:
       - choice_id: accept
         label: "Use the proposed CSV column order"
+    answer_path_availability: *user_channel_availability_example
     preferred_capture_path:
       kind: cli
       label: "CLI inbox"

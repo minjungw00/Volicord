@@ -44,6 +44,7 @@ pub(crate) fn derive_verified_invocation(
         verification_basis: invocation.invocation_binding_basis.trim().to_owned(),
         assurance_level: actor_assurance_level(&invocation.actor_source).to_owned(),
         session_id: invocation.session_id.clone(),
+        host_elicitation_available: invocation.host_elicitation_available,
         local_web_consent_available: invocation.local_web_consent_available,
     })
 }

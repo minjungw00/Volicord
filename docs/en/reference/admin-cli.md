@@ -148,6 +148,12 @@ Text-mode summary output must not expose internal IDs by default unless an ID is
 needed to perform the displayed next action. Matching JSON output exposes the
 same stable data as `summary_card`; JSON consumers must not parse text-only
 formatting.
+When pending judgments are visible, `volicord status` and `volicord inbox` text
+output may include an `Available answer paths:` line that summarizes host
+prompt input, chat command capture, local consent URL, and CLI inbox
+availability. The line tells the user where to answer; it does not record a
+judgment or let an Agent Connection act as the user. JSON output carries the
+same facts in `user_channel_availability` or `answer_path_availability`.
 When text output reports `action_required` or a degraded diagnostic state, it
 also includes concise `Result`, `Why`, `Next`, and `Does not prove` lines. The
 `Result` line must not present `action_required` as a fatal CLI error. `Next`
@@ -720,8 +726,10 @@ command must not collapse one into the other.
 
 Status and inbox list output expose selected owner state for the user's next
 action, including a compact `summary_card` when the view can compute one.
-They do not create evidence, final acceptance, residual-risk acceptance, or
-close readiness. Only
+When pending judgments are present, text output also summarizes available
+answer paths so unavailable host prompt input does not hide chat capture, local
+consent, or CLI inbox paths. They do not create evidence, final acceptance,
+residual-risk acceptance, or close readiness. Only
 `volicord inbox answer` mutates the addressed pending judgment, and it
 does so only through the selected Core-generated option.
 

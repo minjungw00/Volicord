@@ -100,6 +100,7 @@ pub struct InvocationContext {
     pub operation_category: OperationCategory,
     pub invocation_binding_basis: String,
     pub session_id: Option<String>,
+    pub host_elicitation_available: bool,
     pub local_web_consent_available: bool,
 }
 
@@ -117,6 +118,7 @@ impl InvocationContext {
             operation_category,
             invocation_binding_basis: invocation_binding_basis.into(),
             session_id: None,
+            host_elicitation_available: false,
             local_web_consent_available: false,
         }
     }
@@ -125,6 +127,12 @@ impl InvocationContext {
     pub fn with_session_id(mut self, session_id: impl Into<String>) -> Self {
         let session_id = session_id.into();
         self.session_id = (!session_id.trim().is_empty()).then_some(session_id);
+        self
+    }
+
+    /// Marks whether this invocation can use host prompt elicitation for user judgments.
+    pub fn with_host_elicitation_available(mut self, available: bool) -> Self {
+        self.host_elicitation_available = available;
         self
     }
 
@@ -144,6 +152,7 @@ pub struct VerifiedInvocationContext {
     pub verification_basis: String,
     pub assurance_level: String,
     pub session_id: Option<String>,
+    pub host_elicitation_available: bool,
     pub local_web_consent_available: bool,
 }
 

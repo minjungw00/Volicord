@@ -8,6 +8,7 @@
 
 - `UserJudgment`
 - `JudgmentInboxItem`
+- `UserChannelAvailability`
 - `UserJudgmentCandidate`
 - `UserJudgmentOptionInput`
 - `UserJudgmentOption`
@@ -99,6 +100,7 @@ JudgmentInboxItem:
   requirement_status: "required" | "optional"
   required_for: string[]
   status: string
+  answer_path_availability: UserChannelAvailability
   preferred_capture_path: JudgmentCapturePath | null
   fallbacks: JudgmentCapturePath[]
   expires_at: string | null
@@ -119,11 +121,29 @@ JudgmentCapturePath:
   capture_basis: string | null
   expires_at: string | null
   detail: string | null
+
+UserChannelAvailability:
+  paths: UserChannelPathAvailability[]
+  recommended_path_kind: string | null
+  recommended_path_label: string | null
+  recommendation: string | null
+
+UserChannelPathAvailability:
+  kind: string
+  label: string
+  available: boolean
+  status: string
+  capture_basis: string | null
+  detail: string | null
 ```
 
 `choices`는 사용자에게 보이는 선택지 식별자와 라벨을 노출하며 내부 `machine_action`이나 `resolution_outcome` 필드는 노출하지 않습니다. 기계 동작과 결과는 지속되는 `UserJudgmentOption`과 기록된 해결에 남습니다.
 
+`answer_path_availability`는 이 대기 판단에 대해 지원되는 User Channel 경로의 현재 사용 가능 상태를 보고합니다. 사용할 수 없는 경로도 포함할 수 있으므로, 예를 들어 호스트 프롬프트 입력이 사용할 수 없어도 다른 사용 가능한 경로가 숨겨지지 않았음을 사용자가 볼 수 있습니다. 현재 경로 kind에는 `mcp_elicitation`, `prompt_capture`, `local_web_consent`, `cli`가 있습니다.
+
 `preferred_capture_path`는 현재 adapter 맥락에서 가장 적합한 User Channel capture 경로를 이름 붙입니다. 현재 경로 kind에는 `mcp_elicitation`, `prompt_capture`, `local_web_consent`, `cli`가 있습니다. `fallbacks`는 사용할 수 있는 다른 경로를 나열하며, 사용할 수 있을 때 로컬 `volicord inbox answer <judgment-id> --choice <choice>` 명령을 포함합니다.
+
+`recommended_path_kind`, `recommended_path_label`, `recommendation`은 현재 상태 보기에 충분한 정보가 있을 때 선호 답변 방법을 이름 붙입니다. 이는 사용자가 어디에서 답할 수 있는지 알려 주는 안내이며, 답변을 기록하지 않습니다.
 
 ## `JudgmentBasis`
 
