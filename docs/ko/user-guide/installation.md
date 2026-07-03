@@ -262,8 +262,8 @@ volicord init --host codex --repo /path/to/your-product-repo --profile record
 
 `/path/to/your-product-repo`는 에이전트에게 작업을 요청할 Product Repository의 경로
 예시입니다. 선택한 호스트, 플랫폼, 저장소 설정이 검증된 detective 전제조건을 만족할 때만
-`--profile detective`를 사용합니다. Native Windows에서는 observe가 지원되지 않으므로
-`--profile record`를 사용합니다.
+`--profile detective`를 사용합니다. Native Windows에서는 `detective` 프로필이 지원되지
+않으므로 `--profile record`를 사용합니다.
 
 전체 첫 실행 경로는 [빠른 시작](quickstart.md)을 계속 읽습니다. 호스트별
 세부사항은 [에이전트 호스트 설정](../user-guide/agent-host-setup.md)을 봅니다.

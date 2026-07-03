@@ -1823,9 +1823,6 @@ terms:
       - en: "docs/en/reference/admin-cli.md"
         ko: "docs/ko/reference/admin-cli.md"
     replacement_for:
-      - "observe profile"
-      - "`observe` profile"
-      - "--profile observe"
       - "detective profile"
       - "`detective` profile"
       - "guard profile"
