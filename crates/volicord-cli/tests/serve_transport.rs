@@ -46,6 +46,10 @@ fn volicord_serve_local_http_starts_with_secure_defaults() -> Result<(), Box<dyn
         }
         Err(error) => return Err(error),
     };
+    let disclosure = server.wait_for_stderr_line("Does not prove:")?;
+    assert!(disclosure.contains("public API availability"));
+    assert!(disclosure.contains("authentication service status"));
+    assert!(disclosure.contains("security boundary"));
 
     let unauth_health = send_http(addr, "GET", "/healthz", Vec::new(), None)?;
     assert!(unauth_health.starts_with("HTTP/1.1 401 Unauthorized"));
@@ -259,6 +263,38 @@ impl RunningServer {
                 Err(mpsc::RecvTimeoutError::Disconnected) => {
                     return Err(format!(
                         "server stderr closed before startup\nstderr:\n{}",
+                        observed_stderr.join("\n")
+                    )
+                    .into());
+                }
+            }
+        }
+    }
+
+    fn wait_for_stderr_line(&mut self, needle: &str) -> Result<String, Box<dyn Error>> {
+        let started = Instant::now();
+        let mut observed_stderr = Vec::new();
+        loop {
+            let remaining = PROCESS_TIMEOUT
+                .checked_sub(started.elapsed())
+                .ok_or_else(|| {
+                    format!(
+                        "server did not print stderr line containing {needle:?}\nstderr:\n{}",
+                        observed_stderr.join("\n")
+                    )
+                })?;
+            let wait = remaining.min(Duration::from_millis(50));
+            match self.stderr_lines.recv_timeout(wait) {
+                Ok(line) => {
+                    if line.contains(needle) {
+                        return Ok(line);
+                    }
+                    observed_stderr.push(line);
+                }
+                Err(mpsc::RecvTimeoutError::Timeout) => {}
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    return Err(format!(
+                        "server stderr closed before line containing {needle:?}\nstderr:\n{}",
                         observed_stderr.join("\n")
                     )
                     .into());

@@ -1,6 +1,11 @@
 use serde_json::Value;
 use volicord_types::SummaryCard;
 
+use crate::disclosure::{
+    does_not_prove_line, AUTHORITY_RECORD_NON_GUARANTEE_TEXT,
+    DETECTIVE_OBSERVATION_NON_GUARANTEE_TEXT, USER_CHANNEL_NON_GUARANTEE_TEXT,
+};
+
 pub(crate) const DIAGNOSTIC_SUMMARY_GUARANTEE: &str =
     "Local diagnostic observation; not OS enforcement, write prevention, actor attribution proof, correctness proof, test sufficiency proof, or review completion.";
 
@@ -9,7 +14,7 @@ pub(crate) const USER_CHANNEL_SUMMARY_GUARANTEE: &str =
 
 pub(crate) fn render_summary_card_text(card: &SummaryCard) -> String {
     format!(
-        "Task: {}\nRecording: {}\nProfile: {}\nWrite Ticket: {}\nEvidence: {}\nUser Judgment: {}\nChanges: {}\nClose Status: {}\nTransport: {}\nNext: {}\nGuarantee: {}\n",
+        "Task: {}\nRecording: {}\nProfile: {}\nWrite Ticket: {}\nEvidence: {}\nUser Judgment: {}\nChanges: {}\nClose Status: {}\nTransport: {}\nNext: {}\n{}",
         card.task,
         card.recording,
         card.profile,
@@ -20,8 +25,16 @@ pub(crate) fn render_summary_card_text(card: &SummaryCard) -> String {
         card.close_status,
         card.transport,
         card.next,
-        card.guarantee,
+        does_not_prove_line(summary_card_non_guarantees(card)),
     )
+}
+
+fn summary_card_non_guarantees(card: &SummaryCard) -> &'static str {
+    match card.guarantee.as_str() {
+        DIAGNOSTIC_SUMMARY_GUARANTEE => DETECTIVE_OBSERVATION_NON_GUARANTEE_TEXT,
+        USER_CHANNEL_SUMMARY_GUARANTEE => USER_CHANNEL_NON_GUARANTEE_TEXT,
+        _ => AUTHORITY_RECORD_NON_GUARANTEE_TEXT,
+    }
 }
 
 pub(crate) fn summary_card_from_response(value: &Value) -> Option<SummaryCard> {

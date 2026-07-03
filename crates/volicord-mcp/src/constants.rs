@@ -21,7 +21,7 @@ pub(crate) static REQUEST_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
 pub(crate) const SERVER_INSTRUCTIONS: &str = "Volicord records task scope, write tickets, evidence, runs, user-owned judgment requests, evidence attachments, and Close Status for explicitly registered Product Repositories. If project selection is unclear, call volicord.list_projects and use one listed project_selector; do not guess from folders, roots, labels, or memory. Volicord state management is separate from product-file edit authority: product-file edits still require the host/user path and any required write ticket. A write ticket records intended product-file changes; it is not OS permission, review bypass, access control, or a promise of automatic tool use.";
 pub(crate) const WATCH_METADATA_SOURCE: &str = "volicord_session_watch";
-pub(crate) const TRANSPORT_DISCLOSURE_TEXT: &str = "disclosure: transport diagnostics only; not OS sandboxing, network isolation, malware defense, full write prevention, actor identity proof, correctness proof, test sufficiency proof, or human review replacement";
+pub(crate) const TRANSPORT_DISCLOSURE_TEXT: &str = "Does not prove: public API availability, authentication service status, security boundary, full MCP Streamable HTTP compatibility, OS sandboxing, network isolation, write prevention, actor identity proof, correctness proof, test sufficiency proof, or human review completion";
 pub(crate) const FIRST_PROJECT_SELECTION_PARTIAL_COVERAGE_WARNING: &str =
     "Session-watch coverage starts at first explicit project selection; Product Repository changes before project selection are outside watcher coverage.";
 pub(crate) const METHOD_BOUNDARY_PARTIAL_COVERAGE_WARNING: &str =

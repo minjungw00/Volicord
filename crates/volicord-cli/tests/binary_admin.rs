@@ -2591,7 +2591,8 @@ fn user_channel_records_pending_judgment_with_local_user_provenance() -> Result<
     assert!(status_text.contains("Close Status: blocked"));
     assert!(status_text.contains("User Judgment: pending (1)"));
     assert!(status_text.contains("Next:"));
-    assert!(status_text.contains("Guarantee: Local authority record"));
+    assert!(status_text.contains("Does not prove:"));
+    assert!(status_text.contains("risk-free outcome"));
 
     let status_json =
         run_with_home_env_in_dir(runtime_home.path(), ["status", "--json"], &[], &repo_root)?;
@@ -2608,6 +2609,7 @@ fn user_channel_records_pending_judgment_with_local_user_provenance() -> Result<
     assert!(list_text.contains("id: "));
     assert!(list_text.contains("accept: Accept focused choice"));
     assert!(list_text.contains("volicord inbox answer"));
+    assert!(list_text.contains("Does not prove: approval"));
     assert!(!list_text.contains("project_user_channel"));
 
     let list_json =
@@ -2801,6 +2803,8 @@ fn changes_reconcile_runs_as_local_recovery() -> Result<(), Box<dyn Error>> {
     assert!(text.contains("Changes reconciliation"));
     assert!(text.contains("Changes: none"));
     assert!(text.contains("Next:"));
+    assert!(text.contains("Does not prove:"));
+    assert!(text.contains("product-file write occurred"));
     assert!(!text.contains("reconciled changes:"));
 
     let conn =

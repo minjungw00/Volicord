@@ -53,7 +53,10 @@ use crate::host_integration::{
     UserActionKind, REQUIRED_GUARD_PHASES,
 };
 use crate::{
-    disclosure::{detective_observation_disclosure_json, DETECTIVE_OBSERVATION_DISCLOSURE_TEXT},
+    disclosure::{
+        detective_observation_disclosure_json, does_not_prove_line,
+        DETECTIVE_OBSERVATION_DISCLOSURE_TEXT, DETECTIVE_OBSERVATION_NON_GUARANTEE_TEXT,
+    },
     managed_block::{self, ManagedBlockError, ManagedBlockWrite},
     registration::ADMIN_METADATA_JSON,
     setup_command::{is_executable_file, path_text as setup_path_text, runtime_home_id_for_path},
@@ -5433,14 +5436,14 @@ fn render_simplified_connection_output(
         connection_summary_card(data.action, &data.guard_state, primary_next_action.as_ref());
     match data.format {
         OutputFormat::Text => {
+            let summary_or_disclosure_text = summary_card
+                .as_ref()
+                .map(render_summary_card_text)
+                .unwrap_or_else(|| does_not_prove_line(DETECTIVE_OBSERVATION_NON_GUARANTEE_TEXT));
             let mut output = format!(
-                "Agent Connection {}\n{}\n{}runtime_home_state: ready\nruntime_home: {}\nconnection_state: {}\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nproject_registration_state: {}\nconnected_repositories: {}\nmcp_config_state: {}\nmcp_config: {}\nselected_profile: {}\nobservation_summary: {}\nobservation_capabilities: {}\nhost_hooks_active: {}\nsession_watcher_active: {}\nactor_identity_provable: {}\nos_enforced: {}\ndetective_installation_state: {}\ndetective_configuration_state: {}\nhost_hook_observation_state: {}\ndetective_effective_state: {}\ndetective_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_path_safety: {}\nrequired_hook_phases_state: {}\nrequired_hook_phases_missing: {}\nhost_hook_observed: {}\ndetective_hook_observed: {}\nlast_host_hook_event: {}\nprompt_capture_state: {}\nhost_reload_required: {}\ndetective_blockers: {}\n",
+                "Agent Connection {}\n{}runtime_home_state: ready\nruntime_home: {}\nconnection_state: {}\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nproject_registration_state: {}\nconnected_repositories: {}\nmcp_config_state: {}\nmcp_config: {}\nselected_profile: {}\nobservation_summary: {}\nobservation_capabilities: {}\nhost_hooks_active: {}\nsession_watcher_active: {}\nactor_identity_provable: {}\nos_enforced: {}\ndetective_installation_state: {}\ndetective_configuration_state: {}\nhost_hook_observation_state: {}\ndetective_effective_state: {}\ndetective_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_path_safety: {}\nrequired_hook_phases_state: {}\nrequired_hook_phases_missing: {}\nhost_hook_observed: {}\ndetective_hook_observed: {}\nlast_host_hook_event: {}\nprompt_capture_state: {}\nhost_reload_required: {}\ndetective_blockers: {}\n",
                 data.action,
-                DETECTIVE_OBSERVATION_DISCLOSURE_TEXT,
-                summary_card
-                    .as_ref()
-                    .map(render_summary_card_text)
-                    .unwrap_or_default(),
+                summary_or_disclosure_text,
                 data.runtime_home.display(),
                 data.status.as_str(),
                 public_host_name_text(&data.connection.host_kind),

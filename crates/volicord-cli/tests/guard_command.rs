@@ -3779,7 +3779,9 @@ fn assert_pre_tool_deny_output(value: &Value, expected_reason: &str) {
         "expected deny reason to contain {expected_reason:?}, got {reason:?}"
     );
     assert!(
-        reason.contains("not OS sandboxing") && reason.contains("actor identity proof"),
+        reason.contains("Does not prove:")
+            && reason.contains("OS sandboxing")
+            && reason.contains("actor identity proof"),
         "expected deny reason to disclose cooperative decision limits, got {reason:?}"
     );
 }

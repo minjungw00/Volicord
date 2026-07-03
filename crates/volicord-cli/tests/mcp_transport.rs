@@ -63,7 +63,7 @@ fn volicord_mcp_subcommand_reports_help_version_and_preflight() -> Result<(), Bo
         &[
             "configuration:",
             "transport:",
-            "disclosure:",
+            "Does not prove:",
             "runtime_home:",
             "connection_id:",
             "mode:",
