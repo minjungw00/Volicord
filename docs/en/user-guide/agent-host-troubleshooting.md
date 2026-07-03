@@ -31,6 +31,11 @@ A profile can therefore make doctor report `complete` while doctor still shows
 command-availability warnings or recommended `PATH` actions for future shells or
 agent hosts.
 
+When setup, doctor, or connection text output reports `action_required` or a
+degraded diagnostic state, read the short `Result`, `Why`, `Next`, and
+`Does not prove` lines first. `Next` is the concrete action to take before
+opening deeper reference material.
+
 ## Installation Profile Is Missing
 
 Observable symptom: ordinary project, connection, MCP, or inbox workflows say
@@ -179,10 +184,18 @@ volicord connection verify codex --repo /path/to/your-product-repo
 Read the reported action and complete only that host-owned step. Common actions
 include trusting a host entry, approving a project MCP entry, signing in through
 the host, reloading the host, restarting the host, or completing
-installation-profile repair. Then run verification again.
+installation-profile repair. If `Next` includes a `volicord connection verify
+...` command, run it after the host-side step.
 
 Do not treat `action_required` as a fatal failure. Durable Volicord-side state
 may already exist.
+
+Other actionable `Next` lines stay local to the selected workflow. If output
+names `volicord inbox`, inspect or answer the pending user judgment from the
+terminal. If output says no local consent URL is available, use the shown CLI
+answer command or the URL already shown by the MCP Judgment Inbox item. If the
+selector is ambiguous or the wrong repository is selected, rerun with
+`--repo PATH` and the matching intent flag such as `--shared` or `--global`.
 
 ## `failed`
 

@@ -140,12 +140,20 @@ Major status-like user-facing surfaces, including `volicord status`,
 before detailed diagnostics when the command can compute one. Text output uses
 the public labels `Task`, `Recording`, `Profile`, `Write Ticket`, `Evidence`,
 `User Judgment`, `Changes`, `Close Status`, `Transport`, `Next`, and
-`Guarantee`. `Next` must name exactly one next action when the command can know
-one, and `none` only when no next action is known for the selected view.
+`Guarantee`. `Next` must name the immediate next action when the command can
+know one, may include a follow-up verification command when that is how the user
+confirms the action, and uses `none` only when no next action is known for the
+selected view.
 Text-mode summary output must not expose internal IDs by default unless an ID is
 needed to perform the displayed next action. Matching JSON output exposes the
 same stable data as `summary_card`; JSON consumers must not parse text-only
 formatting.
+When text output reports `action_required` or a degraded diagnostic state, it
+also includes concise `Result`, `Why`, `Next`, and `Does not prove` lines. The
+`Result` line must not present `action_required` as a fatal CLI error. `Next`
+names the immediate user action, such as reloading or restarting the host,
+approving host permission, repairing managed configuration, or using
+`volicord connection verify ...` after the host-side action has been completed.
 
 <a id="runtime-home-selection"></a>
 ## Runtime Home Selection
@@ -447,9 +455,12 @@ Agent Connection commands use these result states:
 
 Verification output must make checks and user actions first-class diagnostics.
 Text output must show the overall status, each check that was attempted or
-blocked, and the next user action when one is required. JSON output must include
-top-level `status`, `checks`, `actions`, and `summary_card` fields for
-diagnostic consumers.
+blocked, and the next user action when one is required. For `action_required`
+and degraded detective diagnostics, text output keeps the next action concrete:
+reload or restart the host, approve host or project permission, repair managed
+configuration, or run the shown `volicord connection verify ...` command after
+the host-side action. JSON output must include top-level `status`, `checks`,
+`actions`, and `summary_card` fields for diagnostic consumers.
 Connection status and verification output must keep detective host hook file installation,
 configuration health, runtime hook observation health, effective detective health,
 host reload requirement, prompt-capture availability, and last host-hook event when
@@ -700,7 +711,8 @@ Commands:
   outcome. `--note` is stored only as a note.
 - `volicord inbox open <judgment-id>` attempts the local web consent/browser
   path when the CLI process has a usable consent URL. If no URL is available
-  from the CLI process, it reports the CLI answer command instead.
+  from the CLI process, it reports `action_required` text with `Result`, `Why`,
+  `Next`, and `Does not prove` lines and names the CLI answer command instead.
 
 Recording one judgment records only the addressed judgment. Final acceptance and
 residual-risk acceptance remain separate judgment kinds and actions; this

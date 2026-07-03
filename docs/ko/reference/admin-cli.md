@@ -130,11 +130,17 @@ volicord inbox open <judgment-id> [--repo PATH] [--json]
 간결한 summary card를 사용합니다. Text 출력은 공개 label인 `Task`, `Recording`,
 `Profile`, `Write Ticket`, `Evidence`, `User Judgment`, `Changes`,
 `Close Status`, `Transport`, `Next`, `Guarantee`를 사용합니다. `Next`는 명령이
-알 수 있을 때 정확히 하나의 다음 행동을 이름 붙여야 하며, 선택된 보기에서 다음 행동을
-알 수 없을 때만 `none`을 사용합니다. Text 모드 summary 출력은 표시된 다음 행동을
-수행하는 데 필요하지 않은 내부 ID를 기본적으로 노출하면 안 됩니다. 대응 JSON 출력은
+알 수 있을 때 즉시 수행할 다음 행동을 이름 붙여야 하며, 사용자가 그 동작을 확인하는
+방법이 검증 명령이라면 후속 검증 명령을 함께 포함할 수 있습니다. 선택된 보기에서
+다음 행동을 알 수 없을 때만 `none`을 사용합니다. Text 모드 summary 출력은 표시된 다음
+행동을 수행하는 데 필요하지 않은 내부 ID를 기본적으로 노출하면 안 됩니다. 대응 JSON 출력은
 같은 안정 데이터를 `summary_card`로 노출하며, JSON 소비자는 text 전용 formatting을
 파싱하면 안 됩니다.
+Text 출력이 `action_required` 또는 저하된 진단 상태를 보고할 때는 간결한
+`Result`, `Why`, `Next`, `Does not prove` 줄도 포함합니다. `Result` 줄은
+`action_required`를 치명적인 CLI 오류처럼 표현하면 안 됩니다. `Next`는 호스트 reload
+또는 restart, 호스트 권한 승인, 관리 설정 복구, 또는 호스트 쪽 동작을 완료한 뒤 사용할
+`volicord connection verify ...` 같은 즉시 수행할 사용자 동작을 이름 붙입니다.
 
 <a id="runtime-home-selection"></a>
 ## Runtime Home 선택
@@ -408,8 +414,11 @@ Agent Connection 명령은 아래 결과 상태를 사용합니다.
 
 검증 출력은 점검과 사용자 동작을 일급 진단으로 만들어야 합니다. Text 출력은 전체
 상태, 시도되었거나 차단된 각 점검, 필요한 경우 다음 사용자 동작을 보여 줘야 합니다.
-JSON 출력은 진단 소비자를 위해 최상위 `status`, `checks`, `actions`, `summary_card`
-필드를 포함해야 합니다. 연결 상태 및 검증 출력은 detective host hook 파일 설치, 설정 건강 상태, 런타임 hook 관찰
+`action_required`와 저하된 detective 진단에서는 text 출력이 다음 행동을 구체적으로
+유지합니다. 호스트를 reload 또는 restart하고, 호스트 또는 프로젝트 권한을 승인하고,
+관리 설정을 복구하거나, 호스트 쪽 동작 뒤 표시된 `volicord connection verify ...`
+명령을 실행하라고 안내합니다. JSON 출력은 진단 소비자를 위해 최상위 `status`,
+`checks`, `actions`, `summary_card` 필드를 포함해야 합니다. 연결 상태 및 검증 출력은 detective host hook 파일 설치, 설정 건강 상태, 런타임 hook 관찰
 건강 상태, 효과적인 detective 건강 상태, 호스트 reload 필요, prompt-capture 가용성, 알 수
 있을 때의 최근 host-hook event를 별도 진단으로 유지해야 합니다. Text 출력은 `selected_profile`,
 `observation_summary`, 협력형 pre-tool warning 가용성, 협력형 pre-tool denial 가용성,
@@ -634,7 +643,8 @@ JSON 출력에서 확인할 수 있습니다.
   기록합니다. `--note`는 메모로만 저장됩니다.
 - `volicord inbox open <judgment-id>`는 CLI 프로세스에 사용할 수 있는 consent URL이
   있을 때 local web consent/browser 경로를 시도합니다. CLI 프로세스에서 URL을 알 수
-  없으면 대신 CLI 답변 명령을 보고합니다.
+  없으면 `Result`, `Why`, `Next`, `Does not prove` 줄이 있는 `action_required` text를
+  보고하고 대신 CLI 답변 명령을 이름 붙입니다.
 
 판단 하나를 기록하는 것은 그 판단만 기록합니다. 최종 수락과 잔여 위험 수락은 별개의
 판단 종류와 동작으로 남아야 하며, 이 명령이 둘을 하나로 합치면 안 됩니다.

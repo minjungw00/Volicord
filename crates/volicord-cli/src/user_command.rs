@@ -20,6 +20,7 @@ use volicord_types::{
     VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
 };
 
+use crate::disclosure::{render_action_guidance_text, USER_CHANNEL_NON_GUARANTEE_TEXT};
 use crate::project_context::{
     registered_project_for_repo, resolve_repository_root, ProjectCommandError,
 };
@@ -334,7 +335,15 @@ where
         .map_err(|error| UserCommandError::Runtime(error.to_string()));
     }
     Ok(format!(
-        "No local consent URL is available from this CLI process.\nUse the URL shown in the MCP Judgment Inbox item, or run:\nvolicord inbox answer {judgment_id} --choice <choice>\n"
+        "Judgment Inbox open action_required\n{}",
+        render_action_guidance_text(
+            "action_required (not a fatal CLI error)",
+            "No local consent URL is available from this CLI process.",
+            &format!(
+                "Use the URL shown in the MCP Judgment Inbox item, or run volicord inbox answer {judgment_id} --choice <choice>."
+            ),
+            USER_CHANNEL_NON_GUARANTEE_TEXT,
+        )
     ))
 }
 

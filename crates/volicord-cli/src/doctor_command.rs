@@ -2178,8 +2178,9 @@ fn render_doctor_output(
         }
         OutputFormat::Text => {
             let text = format!(
-                "Volicord doctor {}\nstatus_meaning: {}\n{}runtime_home_state: {}\nruntime_home: {}\ninstallation_profile_state: {}\ncommand_state: {}\nproject_registration_state: {}\nconnection_state: {}\nmcp_config_state: {}\ndetective_installation_state: {}\nselected_profile: {}\nobservation_summary: {}\nobservation_capabilities: {}\ndetective_configuration_state: {}\nhost_hook_observation_state: {}\ndetective_effective_state: {}\ndetective_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_path_safety: {}\nrequired_hook_phases_state: {}\nrequired_hook_phases_missing: {}\nhost_hook_observed: {}\ndetective_status_state: {}\nprompt_capture_state: {}\nprompt_capture_health: {}\nwatcher_status: not_started\nwatcher_baseline_created_at: none\nwatcher_coverage_start_at: none\nwatcher_coverage_basis: none\nwatcher_partial_coverage_warning: doctor does not initialize an MCP session watch\nhost_reload_required: {}\n",
+                "Volicord doctor {}\n{}status_meaning: {}\n{}runtime_home_state: {}\nruntime_home: {}\ninstallation_profile_state: {}\ncommand_state: {}\nproject_registration_state: {}\nconnection_state: {}\nmcp_config_state: {}\ndetective_installation_state: {}\nselected_profile: {}\nobservation_summary: {}\nobservation_capabilities: {}\ndetective_configuration_state: {}\nhost_hook_observation_state: {}\ndetective_effective_state: {}\ndetective_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_path_safety: {}\nrequired_hook_phases_state: {}\nrequired_hook_phases_missing: {}\nhost_hook_observed: {}\ndetective_status_state: {}\nprompt_capture_state: {}\nprompt_capture_health: {}\nwatcher_status: not_started\nwatcher_baseline_created_at: none\nwatcher_coverage_start_at: none\nwatcher_coverage_basis: none\nwatcher_partial_coverage_warning: doctor does not initialize an MCP session watch\nhost_reload_required: {}\n",
                 status.as_str(),
+                doctor_result_reason_text(status, checks, actions),
                 doctor_status_meaning(status, checks),
                 render_summary_card_text(&summary_card),
                 doctor_runtime_home_state(runtime_home, checks),
@@ -2212,6 +2213,30 @@ fn render_doctor_output(
             );
             Ok(text)
         }
+    }
+}
+
+fn doctor_result_reason_text(
+    status: CommandStatus,
+    checks: &[DiagnosticCheck],
+    actions: &[DiagnosticAction],
+) -> String {
+    if status == CommandStatus::Complete && actions.is_empty() {
+        return String::new();
+    }
+    format!(
+        "Result: {}\nWhy: {}\n",
+        doctor_result_text(status, actions),
+        doctor_status_meaning(status, checks)
+    )
+}
+
+fn doctor_result_text(status: CommandStatus, actions: &[DiagnosticAction]) -> &'static str {
+    match status {
+        CommandStatus::Complete if !actions.is_empty() => "complete (warnings need follow-up)",
+        CommandStatus::Complete => "complete",
+        CommandStatus::ActionRequired => "action_required (not a fatal CLI error)",
+        CommandStatus::Failed => "failed",
     }
 }
 

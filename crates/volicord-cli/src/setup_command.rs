@@ -24,6 +24,7 @@ use crate::registration::ADMIN_METADATA_JSON;
 use crate::shell_path::mcp_binary_name;
 pub(crate) use crate::shell_path::{is_executable_file, volicord_binary_name};
 use crate::{
+    disclosure::render_action_guidance_text,
     setup_report::{
         CommandAvailability, SetupAction, SetupActionKind, SetupReport, SetupSectionStatus,
         SetupStatus,
@@ -36,6 +37,8 @@ use crate::{
 
 const INSTALLATION_ID: &str = "default";
 const SETUP_CREATED_BY: &str = "volicord_cli_setup";
+const SETUP_NON_GUARANTEE_TEXT: &str =
+    "future shell PATH state, already-running host reload state, host approval, or model behavior";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommandStatus {
@@ -1713,8 +1716,9 @@ fn render_setup_output(
         .map_err(|error| SetupCommandError::Runtime(error.to_string())),
         OutputFormat::Text => {
             let mut text = format!(
-                "Volicord setup {}\nstatus_meaning: {}\nruntime_home_state: {}\nruntime_home: {}\nregistry_db: {}\ninstallation_profile_state: {}\ncommand_state: {}\nhost_reload_required: {}\n",
+                "Volicord setup {}\n{}status_meaning: {}\nruntime_home_state: {}\nruntime_home: {}\nregistry_db: {}\ninstallation_profile_state: {}\ncommand_state: {}\nhost_reload_required: {}\n",
                 report.status.as_str(),
+                setup_action_guidance_text(report),
                 setup_status_meaning(report.status),
                 report.runtime_home.status.as_str(),
                 runtime_home.runtime_home.display(),
@@ -1790,10 +1794,36 @@ fn primary_setup_action(report: &SetupReport) -> Option<&SetupAction> {
     report.actions_required.first()
 }
 
+fn setup_next_action_text(report: &SetupReport) -> String {
+    primary_setup_action(report)
+        .map(|action| action.instruction.clone())
+        .unwrap_or_else(|| "none".to_owned())
+}
+
 fn append_setup_next_action(output: &mut String, report: &SetupReport) {
-    match primary_setup_action(report) {
-        Some(action) => output.push_str(&format!("next_action: {}\n", action.instruction)),
-        None => output.push_str("next_action: none\n"),
+    output.push_str(&format!(
+        "next_action: {}\n",
+        setup_next_action_text(report)
+    ));
+}
+
+fn setup_action_guidance_text(report: &SetupReport) -> String {
+    if report.status == SetupStatus::Complete {
+        return String::new();
+    }
+    render_action_guidance_text(
+        setup_result_text(report.status),
+        setup_status_meaning(report.status),
+        &setup_next_action_text(report),
+        SETUP_NON_GUARANTEE_TEXT,
+    )
+}
+
+fn setup_result_text(status: SetupStatus) -> &'static str {
+    match status {
+        SetupStatus::ActionRequired => "action_required (not a fatal CLI error)",
+        SetupStatus::Complete => "complete",
+        SetupStatus::Failed => "failed",
     }
 }
 
@@ -2642,6 +2672,18 @@ mod tests {
         assert_eq!(outcome.status, CommandStatus::ActionRequired);
         assert!(terminal.output().contains("Skip command linking for now."));
         assert!(outcome.output.contains("command linking was skipped"));
+        assert!(outcome
+            .output
+            .contains("Result: action_required (not a fatal CLI error)"));
+        assert!(outcome
+            .output
+            .contains("Why: installation profile setup needs a named user action"));
+        assert!(outcome
+            .output
+            .contains("Next: Make volicord available on PATH"));
+        assert!(outcome
+            .output
+            .contains("Does not prove: future shell PATH state"));
         assert!(!home.join(".local").exists());
         assert!(!home.join(".zshrc").exists());
         Ok(())

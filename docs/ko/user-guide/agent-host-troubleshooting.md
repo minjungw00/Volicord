@@ -27,6 +27,10 @@ volicord connection list
 doctor가 `complete`를 보고하면서도 이후 셸이나 에이전트 호스트를 위한 명령 가용성
 경고 또는 권장 `PATH` 동작을 함께 보여 줄 수 있습니다.
 
+setup, doctor, connection의 text 출력이 `action_required` 또는 저하된 진단 상태를
+보고하면 먼저 짧은 `Result`, `Why`, `Next`, `Does not prove` 줄을 읽습니다. `Next`는
+깊은 참조 문서를 열기 전에 수행할 구체적인 동작입니다.
+
 ## 설치 프로필이 없음
 
 관찰 증상: 일반 project, connection, MCP, inbox workflow가 `SETUP_REQUIRED`를
@@ -166,10 +170,18 @@ volicord connection verify codex --repo /path/to/your-product-repo
 
 보고된 동작을 읽고 그 호스트 소유 단계만 완료합니다. 흔한 동작에는 호스트 항목
 신뢰, 프로젝트 MCP 항목 승인, 호스트 로그인, 호스트 reload, 호스트 restart,
-설치 프로필 복구가 있습니다. 그런 다음 verification을 다시 실행합니다.
+설치 프로필 복구가 있습니다. `Next`에 `volicord connection verify ...` 명령이 있으면
+호스트 쪽 단계를 완료한 뒤 그 명령을 실행합니다.
 
 `action_required`를 치명적 실패로 다루지 않습니다. 오래 유지되는 Volicord 쪽 상태가
 이미 있을 수 있습니다.
+
+다른 실행 가능한 `Next` 줄은 선택된 작업 흐름 안에서 해석합니다. 출력이
+`volicord inbox`를 이름 붙이면 터미널에서 대기 중인 사용자 판단을 확인하거나
+답합니다. local consent URL이 없다고 하면 표시된 CLI 답변 명령이나 MCP Judgment
+Inbox 항목에 이미 표시된 URL을 사용합니다. selector가 모호하거나 잘못된 저장소가
+선택되었다면 `--repo PATH`와 `--shared` 또는 `--global` 같은 일치하는 intent flag를
+붙여 다시 실행합니다.
 
 ## `failed`
 

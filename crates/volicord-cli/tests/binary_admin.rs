@@ -225,6 +225,10 @@ fn doctor_without_setup_reports_action_required() -> Result<(), Box<dyn Error>> 
     let doctor_text = run_with_home_env(runtime_home.path(), ["doctor"], &[])?;
     assert_success(&doctor_text);
     let text = stdout(&doctor_text);
+    assert!(text.contains("Result: action_required (not a fatal CLI error)"));
+    assert!(text.contains(
+        "Why: local init or profile repair is required before Volicord workflows are usable"
+    ));
     assert!(text.contains("runtime_home_state: ready"));
     assert!(text.contains("installation_profile_state: missing_or_invalid"));
     assert!(text.contains("mcp_config_state: unknown"));
@@ -1037,6 +1041,10 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     assert_eq!(value["states"]["prompt_capture"], "reload_required");
     assert_eq!(value["states"]["host_reload_required"], true);
     assert_eq!(value["primary_next_action"]["id"], "reload_required");
+    assert!(value["primary_next_action"]["instruction"]
+        .as_str()
+        .expect("primary action instruction should be text")
+        .contains("then run volicord connection verify codex --shared --repo"));
     assert_eq!(value["profile"]["status"], "created");
     assert_eq!(value["connection"]["host_kind"], "codex");
     assert_eq!(value["connection"]["connection_intent"], "shared");
@@ -1086,6 +1094,9 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     assert_success(&text_output);
     let init_text = stdout(&text_output);
     assert!(init_text.contains("Volicord init action_required"));
+    assert!(init_text.contains("Result: action_required (not a fatal CLI error)"));
+    assert!(init_text
+        .contains("Why: Host configuration is present, but the host has not reloaded it yet."));
     assert!(init_text.contains("connection_state: action_required"));
     assert!(init_text.contains("mcp_config_state: match"));
     assert!(init_text.contains("detective_installation_state: configured"));
@@ -1102,6 +1113,9 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     assert!(init_text.contains("prompt_capture_state: configured"));
     assert!(init_text.contains("host_reload_required: yes"));
     assert!(init_text.contains("next_action: Restart or reload codex"));
+    assert!(init_text.contains("Next: Restart or reload codex"));
+    assert!(init_text.contains("then run volicord connection verify codex --shared --repo"));
+    assert!(init_text.contains("Does not prove: OS sandboxing"));
 
     let record = agent_connection_record(runtime_home.path(), &connection_id)?
         .expect("connection should be stored");
@@ -1141,6 +1155,10 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
         .as_str()
         .expect("summary next should be text")
         .contains("Restart or reload codex"));
+    assert!(status_without_intent_json["summary_card"]["next"]
+        .as_str()
+        .expect("summary next should be text")
+        .contains("then run volicord connection verify codex --shared --repo"));
     assert_eq!(
         status_without_intent_json["states"]["hook_config"],
         "installed"
@@ -1161,6 +1179,25 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
         status_without_intent_json["states"]["local_web_consent_available"],
         false
     );
+    let status_without_intent_text = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connection",
+            "status",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+        ],
+        &[],
+    )?;
+    assert_success(&status_without_intent_text);
+    let status_text = stdout(&status_without_intent_text);
+    assert!(status_text.contains("Result: action_required (not a fatal CLI error)"));
+    assert!(status_text
+        .contains("Why: Host configuration is present, but the host has not reloaded it yet."));
+    assert!(status_text.contains("Next: Restart or reload codex"));
+    assert!(status_text.contains("then run volicord connection verify codex --shared --repo"));
+    assert!(status_text.contains("Does not prove: OS sandboxing"));
 
     let config = fs::read_to_string(repo_root.join(".codex/config.toml"))?;
     assert!(config.contains(&format!(
@@ -2175,6 +2212,30 @@ fn connection_status_reports_stale_guard_files_as_primary_action() -> Result<(),
         .iter()
         .any(|path| path == &path_text(&policy_path)));
 
+    let status_text = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connection",
+            "status",
+            "codex",
+            "--shared",
+            "--repo",
+            path_text(&repo_root).as_str(),
+        ],
+        &[],
+    )?;
+    assert_success(&status_text);
+    let text = stdout(&status_text);
+    assert!(
+        text.contains("Result: action_required (not a fatal CLI error)")
+            || text.contains("Result: complete (detective diagnostics degraded)")
+    );
+    assert!(text.contains(
+        "Why: Detective host-hook files no longer match the recorded managed configuration."
+    ));
+    assert!(text.contains("Next: Run volicord init --host codex --repo"));
+    assert!(text.contains("Does not prove: OS sandboxing"));
+
     let doctor = run_with_home_env(runtime_home.path(), ["doctor", "--json"], &[])?;
     assert_success(&doctor);
     let doctor_json = json_stdout(&doctor)?;
@@ -2638,6 +2699,21 @@ fn user_channel_records_pending_judgment_with_local_user_provenance() -> Result<
         .contains("volicord inbox answer"));
     assert!(first["choices"][0].get("machine_action").is_none());
     assert!(first["choices"][0].get("resolution_outcome").is_none());
+
+    let open = run_with_home_env_in_dir(
+        runtime_home.path(),
+        ["inbox", "open", judgment_id.as_str()],
+        &[],
+        &repo_root,
+    )?;
+    assert_success(&open);
+    let open_text = stdout(&open);
+    assert!(open_text.contains("Judgment Inbox open action_required"));
+    assert!(open_text.contains("Result: action_required (not a fatal CLI error)"));
+    assert!(open_text.contains("Why: No local consent URL is available"));
+    assert!(open_text.contains("Next: Use the URL shown in the MCP Judgment Inbox item"));
+    assert!(open_text.contains("volicord inbox answer"));
+    assert!(open_text.contains("Does not prove: approval"));
 
     let record_note = "Recorded from inbox CLI";
     let record = run_with_home_env_in_dir(

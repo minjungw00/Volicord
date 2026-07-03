@@ -54,7 +54,7 @@ use crate::host_integration::{
 };
 use crate::{
     disclosure::{
-        detective_observation_disclosure_json, does_not_prove_line,
+        detective_observation_disclosure_json, does_not_prove_line, render_action_guidance_text,
         DETECTIVE_OBSERVATION_DISCLOSURE_TEXT, DETECTIVE_OBSERVATION_NON_GUARANTEE_TEXT,
     },
     managed_block::{self, ManagedBlockError, ManagedBlockWrite},
@@ -5436,13 +5436,26 @@ fn render_simplified_connection_output(
         connection_summary_card(data.action, &data.guard_state, primary_next_action.as_ref());
     match data.format {
         OutputFormat::Text => {
+            let action_guidance_text = connection_action_guidance_text(
+                data.status,
+                &data.guard_state,
+                primary_next_action.as_ref(),
+                summary_card.is_some(),
+            );
             let summary_or_disclosure_text = summary_card
                 .as_ref()
                 .map(render_summary_card_text)
-                .unwrap_or_else(|| does_not_prove_line(DETECTIVE_OBSERVATION_NON_GUARANTEE_TEXT));
+                .unwrap_or_else(|| {
+                    if action_guidance_text.is_empty() {
+                        does_not_prove_line(DETECTIVE_OBSERVATION_NON_GUARANTEE_TEXT)
+                    } else {
+                        String::new()
+                    }
+                });
             let mut output = format!(
-                "Agent Connection {}\n{}runtime_home_state: ready\nruntime_home: {}\nconnection_state: {}\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nproject_registration_state: {}\nconnected_repositories: {}\nmcp_config_state: {}\nmcp_config: {}\nselected_profile: {}\nobservation_summary: {}\nobservation_capabilities: {}\nhost_hooks_active: {}\nsession_watcher_active: {}\nactor_identity_provable: {}\nos_enforced: {}\ndetective_installation_state: {}\ndetective_configuration_state: {}\nhost_hook_observation_state: {}\ndetective_effective_state: {}\ndetective_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_path_safety: {}\nrequired_hook_phases_state: {}\nrequired_hook_phases_missing: {}\nhost_hook_observed: {}\ndetective_hook_observed: {}\nlast_host_hook_event: {}\nprompt_capture_state: {}\nhost_reload_required: {}\ndetective_blockers: {}\n",
+                "Agent Connection {}\n{}{}runtime_home_state: ready\nruntime_home: {}\nconnection_state: {}\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nproject_registration_state: {}\nconnected_repositories: {}\nmcp_config_state: {}\nmcp_config: {}\nselected_profile: {}\nobservation_summary: {}\nobservation_capabilities: {}\nhost_hooks_active: {}\nsession_watcher_active: {}\nactor_identity_provable: {}\nos_enforced: {}\ndetective_installation_state: {}\ndetective_configuration_state: {}\nhost_hook_observation_state: {}\ndetective_effective_state: {}\ndetective_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_path_safety: {}\nrequired_hook_phases_state: {}\nrequired_hook_phases_missing: {}\nhost_hook_observed: {}\ndetective_hook_observed: {}\nlast_host_hook_event: {}\nprompt_capture_state: {}\nhost_reload_required: {}\ndetective_blockers: {}\n",
                 data.action,
+                action_guidance_text,
                 summary_or_disclosure_text,
                 data.runtime_home.display(),
                 data.status.as_str(),
@@ -5678,14 +5691,29 @@ fn render_init_output(data: InitOutput<'_>) -> Result<String, ConnectionCommandE
         "planned"
     };
     let hook_root_resolution = hook_root_resolution_text(data.integration);
-    let primary_next_action =
+    let mut primary_next_action =
         primary_connection_action(&actions, data.verification, &guard_state, None, &[]);
+    if let Some(action) = primary_next_action.as_mut() {
+        append_init_verify_followup(action, data.host_kind, data.repo_root);
+    }
     match data.format {
         OutputFormat::Text => {
+            let action_guidance_text = connection_action_guidance_text(
+                data.status,
+                &guard_state,
+                primary_next_action.as_ref(),
+                false,
+            );
+            let disclosure_text = if action_guidance_text.is_empty() {
+                format!("{DETECTIVE_OBSERVATION_DISCLOSURE_TEXT}\n")
+            } else {
+                String::new()
+            };
             let mut output = format!(
-                "Volicord init {}\n{}\nruntime_home_state: ready\nruntime_home: {}\nproject_registration_state: {}\nrepo: {}\nconnection_state: {}\nhost: {}\nselected_profile: {}\nconnection_id: {}\nmcp_config_state: {}\nmcp_config: {}\nplanned_change: {}\nprofile: {}\nobservation_summary: {}\nobservation_capabilities: {}\nhost_hooks_active: {}\nsession_watcher_active: {}\nactor_identity_provable: {}\nos_enforced: {}\ndetective_installation_state: {}\ndetective_configuration_state: {}\nhost_hook_observation_state: {}\ndetective_effective_state: {}\ndetective_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_root_resolution: {}\nhook_path_safety: {}\nrequired_hook_phases_state: {}\nrequired_hook_phases_missing: {}\nhost_hook_observed: {}\ndetective_hook_observed: {}\nlast_host_hook_event: {}\nprompt_capture_state: {}\nhost_reload_required: {}\ndetective_blockers: {}\n",
+                "Volicord init {}\n{}{}runtime_home_state: ready\nruntime_home: {}\nproject_registration_state: {}\nrepo: {}\nconnection_state: {}\nhost: {}\nselected_profile: {}\nconnection_id: {}\nmcp_config_state: {}\nmcp_config: {}\nplanned_change: {}\nprofile: {}\nobservation_summary: {}\nobservation_capabilities: {}\nhost_hooks_active: {}\nsession_watcher_active: {}\nactor_identity_provable: {}\nos_enforced: {}\ndetective_installation_state: {}\ndetective_configuration_state: {}\nhost_hook_observation_state: {}\ndetective_effective_state: {}\ndetective_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_root_resolution: {}\nhook_path_safety: {}\nrequired_hook_phases_state: {}\nrequired_hook_phases_missing: {}\nhost_hook_observed: {}\ndetective_hook_observed: {}\nlast_host_hook_event: {}\nprompt_capture_state: {}\nhost_reload_required: {}\ndetective_blockers: {}\n",
                 data.status.as_str(),
-                DETECTIVE_OBSERVATION_DISCLOSURE_TEXT,
+                action_guidance_text,
+                disclosure_text,
                 data.runtime_home.display(),
                 project_state,
                 data.repo_root.display(),
@@ -6421,14 +6449,17 @@ fn primary_connection_action(
         .iter()
         .find(|action| action.kind == UserActionKind::ReloadRequired)
     {
-        return Some(PrimaryNextAction::new(
-            user_action_id(action.kind),
-            action.message.clone(),
-        ));
+        let mut primary =
+            PrimaryNextAction::new(user_action_id(action.kind), action.message.clone());
+        append_connection_verify_followup(&mut primary, connection, projects);
+        return Some(primary);
     }
-    actions
-        .first()
-        .map(|action| PrimaryNextAction::new(user_action_id(action.kind), action.message.clone()))
+    actions.first().map(|action| {
+        let mut primary =
+            PrimaryNextAction::new(user_action_id(action.kind), action.message.clone());
+        append_connection_verify_followup(&mut primary, connection, projects);
+        primary
+    })
 }
 
 fn connection_summary_card(
@@ -6455,6 +6486,199 @@ fn connection_summary_card(
         next_action: None,
         guarantee: DIAGNOSTIC_SUMMARY_GUARANTEE.to_owned(),
     })
+}
+
+fn connection_action_guidance_text(
+    status: AgentResultStatus,
+    guard_state: &GuardOperationalState,
+    primary_next_action: Option<&PrimaryNextAction>,
+    summary_card_renders_next_and_guarantee: bool,
+) -> String {
+    if !connection_guidance_needed(status, guard_state, primary_next_action) {
+        return String::new();
+    }
+    let result = connection_result_text(status, guard_state);
+    let why = connection_guidance_why(status, guard_state, primary_next_action);
+    if summary_card_renders_next_and_guarantee {
+        return format!("Result: {result}\nWhy: {why}\n");
+    }
+    render_action_guidance_text(
+        &result,
+        &why,
+        &connection_next_action_text(primary_next_action),
+        DETECTIVE_OBSERVATION_NON_GUARANTEE_TEXT,
+    )
+}
+
+fn connection_guidance_needed(
+    status: AgentResultStatus,
+    guard_state: &GuardOperationalState,
+    primary_next_action: Option<&PrimaryNextAction>,
+) -> bool {
+    matches!(
+        status,
+        AgentResultStatus::ActionRequired
+            | AgentResultStatus::Failed
+            | AgentResultStatus::NotVerified
+    ) || guard_state.effective_state == "degraded"
+        || guard_state.installation_state == "degraded"
+        || primary_next_action.is_some_and(|action| action.id == "guard_capability_degraded")
+}
+
+fn connection_result_text(
+    status: AgentResultStatus,
+    guard_state: &GuardOperationalState,
+) -> String {
+    match status {
+        AgentResultStatus::ActionRequired => "action_required (not a fatal CLI error)".to_owned(),
+        AgentResultStatus::Complete
+            if guard_state.effective_state == "degraded"
+                || guard_state.installation_state == "degraded" =>
+        {
+            "complete (detective diagnostics degraded)".to_owned()
+        }
+        AgentResultStatus::Complete => "complete".to_owned(),
+        AgentResultStatus::Failed => "failed".to_owned(),
+        AgentResultStatus::NotVerified => "not_verified".to_owned(),
+        AgentResultStatus::DryRun => "dry_run".to_owned(),
+    }
+}
+
+fn connection_guidance_why(
+    status: AgentResultStatus,
+    guard_state: &GuardOperationalState,
+    primary_next_action: Option<&PrimaryNextAction>,
+) -> String {
+    if let Some(action) = primary_next_action {
+        return match action.id.as_str() {
+            "reload_required" => {
+                "Host configuration is present, but the host has not reloaded it yet.".to_owned()
+            }
+            "host_trust_required" => {
+                "The host requires user trust or permission before the configuration is active."
+                    .to_owned()
+            }
+            "project_approval_required" => {
+                "The host requires project approval before the MCP server is available.".to_owned()
+            }
+            "path_binary_not_found" => {
+                "A required host executable or command is not available from PATH.".to_owned()
+            }
+            "mcp_config_missing" => {
+                "The stored connection exists, but managed MCP configuration is missing.".to_owned()
+            }
+            "mcp_config_changed" => {
+                "The host configuration differs from the Volicord-managed connection.".to_owned()
+            }
+            "mcp_config_malformed" => {
+                "The host configuration exists, but it cannot be read as usable MCP configuration."
+                    .to_owned()
+            }
+            "guard_files_missing" => {
+                "Detective host-hook files are missing for the selected connection.".to_owned()
+            }
+            "guard_files_stale" => {
+                "Detective host-hook files no longer match the recorded managed configuration."
+                    .to_owned()
+            }
+            "guard_files_broken" => {
+                "Detective host-hook files are present but not usable.".to_owned()
+            }
+            "guard_hook_path_safety" => {
+                "Detective hook commands are not in the supported cwd-independent shape."
+                    .to_owned()
+            }
+            "guard_capability_degraded" => {
+                "Detective host-hook capability is degraded for this host, project, or configuration."
+                    .to_owned()
+            }
+            _ => action.instruction.clone(),
+        };
+    }
+    if guard_state.effective_state == "degraded" || guard_state.installation_state == "degraded" {
+        return "Detective host-hook diagnostics are degraded for this connection.".to_owned();
+    }
+    match status {
+        AgentResultStatus::ActionRequired => {
+            "Agent Connection state exists, but a user-controlled host action remains.".to_owned()
+        }
+        AgentResultStatus::Failed => {
+            "Verification did not establish a usable Agent Connection for this view.".to_owned()
+        }
+        AgentResultStatus::NotVerified => {
+            "No verification result is recorded for the selected Agent Connection.".to_owned()
+        }
+        AgentResultStatus::Complete | AgentResultStatus::DryRun => {
+            "No follow-up is required.".to_owned()
+        }
+    }
+}
+
+fn connection_next_action_text(primary_next_action: Option<&PrimaryNextAction>) -> String {
+    primary_next_action
+        .map(|action| action.instruction.clone())
+        .unwrap_or_else(|| "none".to_owned())
+}
+
+fn append_connection_verify_followup(
+    action: &mut PrimaryNextAction,
+    connection: Option<&AgentConnectionRecord>,
+    projects: &[ConnectionProjectRecord],
+) {
+    if !next_action_should_verify(&action.id) {
+        return;
+    }
+    let Some(command) = connection_verify_command(connection, projects) else {
+        return;
+    };
+    append_verify_followup(action, command);
+}
+
+fn append_init_verify_followup(
+    action: &mut PrimaryNextAction,
+    host_kind: HostKind,
+    repo_root: &Path,
+) {
+    if !next_action_should_verify(&action.id) {
+        return;
+    }
+    let command = format!(
+        "volicord connection verify {} --shared --repo {}",
+        public_host_label(host_kind),
+        repo_root.display()
+    );
+    append_verify_followup(action, command);
+}
+
+fn next_action_should_verify(id: &str) -> bool {
+    matches!(
+        id,
+        "host_trust_required" | "project_approval_required" | "reload_required"
+    )
+}
+
+fn append_verify_followup(action: &mut PrimaryNextAction, command: String) {
+    if action.instruction.contains("connection verify") {
+        return;
+    }
+    let instruction = action.instruction.trim_end_matches('.');
+    action.instruction = format!("{instruction}; then run {command}.");
+    action.command = Some(command);
+}
+
+fn connection_verify_command(
+    connection: Option<&AgentConnectionRecord>,
+    projects: &[ConnectionProjectRecord],
+) -> Option<String> {
+    let connection = connection?;
+    let project = projects.first()?;
+    let intent = parse_connection_intent(&connection.intent).ok()?;
+    Some(format!(
+        "volicord connection verify {}{} --repo {}",
+        public_host_name_text(&connection.host_kind),
+        intent_flag_suffix(intent),
+        project.project.repo_root.display()
+    ))
 }
 
 fn guard_degraded_action(
