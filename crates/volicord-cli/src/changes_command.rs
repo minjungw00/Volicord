@@ -17,6 +17,7 @@ use volicord_types::{
     TaskId, ToolEnvelope, VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
 };
 
+use crate::disclosure::does_not_prove_line;
 use crate::project_context::{
     registered_project_for_repo, resolve_repository_root, ProjectCommandError,
 };
@@ -81,11 +82,12 @@ enum OutputFormat {
 struct ParsedChangesOptions {
     repo: Option<PathBuf>,
     task_id: Option<String>,
+    dry_run: bool,
     output: OutputFormat,
 }
 
 pub fn changes_usage() -> String {
-    "volicord changes reconcile [--repo PATH] [--task active|ID] [--json]\n".to_owned()
+    "volicord changes reconcile [--repo PATH] [--task active|ID] [--dry-run] [--json]\n".to_owned()
 }
 
 pub fn run_changes_command<F>(
@@ -142,10 +144,13 @@ where
                 project_id: project_id.clone(),
                 task_id: Some(TaskId::new(task_id.clone())).into(),
                 request_id: RequestId::new(generated_id("req_changes_reconcile")),
-                idempotency_key: Some(IdempotencyKey::new(generated_id("idem_changes_reconcile")))
-                    .into(),
+                idempotency_key: if parsed.dry_run {
+                    None.into()
+                } else {
+                    Some(IdempotencyKey::new(generated_id("idem_changes_reconcile"))).into()
+                },
                 expected_state_version: Some(state_version).into(),
-                dry_run: false,
+                dry_run: parsed.dry_run,
                 locale: None.into(),
             },
             task_id: TaskId::new(task_id),
@@ -174,6 +179,8 @@ fn parse_changes_options(
         }
         if token == "--json" {
             set_option(&mut raw, "json", "true".to_owned())?;
+        } else if token == "--dry-run" {
+            set_option(&mut raw, "dry-run", "true".to_owned())?;
         } else if token == "--repo" {
             index += 1;
             let Some(value) = args.get(index) else {
@@ -210,6 +217,7 @@ fn parse_changes_options(
             .map(PathBuf::from)
             .map(|path| absolute_path(current_dir, path)),
         task_id: option_value(&raw, "task"),
+        dry_run: option_value(&raw, "dry-run").is_some(),
         output: if option_value(&raw, "json").is_some() {
             OutputFormat::Json
         } else {
@@ -273,11 +281,75 @@ fn render_reconcile_response(
             .map(|value| format!("{value}\n"))
             .map_err(|error| ChangesCommandError::Runtime(error.to_string()));
     }
+    if response.response_value["base"]["response_kind"].as_str() == Some("dry_run") {
+        return Ok(render_reconcile_dry_run_text(&response.response_value));
+    }
     let mut output = String::from("Changes reconciliation\n");
     if let Some(card) = summary_card_from_response(&response.response_value) {
         output.push_str(&render_summary_card_text(&card));
     }
     Ok(output)
+}
+
+fn render_reconcile_dry_run_text(value: &serde_json::Value) -> String {
+    let mut output = String::from("Changes reconciliation (dry run)\n");
+    let summary = &value["dry_run_summary"];
+    let planned_effects = summary["planned_effects"]
+        .as_array()
+        .map(|values| values.as_slice())
+        .unwrap_or(&[]);
+    if planned_effects.is_empty() {
+        output.push_str("Planned: none\n");
+    } else {
+        for effect in planned_effects {
+            let target = text_value(effect.get("target_kind"));
+            let action = text_value(effect.get("action"));
+            let description = text_value(effect.get("description"));
+            output.push_str(&format!("Planned: {target}.{action}: {description}\n"));
+        }
+    }
+    let blockers = summary["would_blockers"]
+        .as_array()
+        .map(|values| values.as_slice())
+        .unwrap_or(&[]);
+    if blockers.is_empty() {
+        output.push_str("Close blockers that would remain: none\n");
+    } else {
+        let codes = blockers
+            .iter()
+            .map(|blocker| text_value(blocker.get("code")))
+            .collect::<Vec<_>>()
+            .join(", ");
+        output.push_str(&format!("Close blockers that would remain: {codes}\n"));
+    }
+    for diagnostic in summary["diagnostics"]
+        .as_array()
+        .map(|values| values.as_slice())
+        .unwrap_or(&[])
+        .iter()
+        .filter_map(serde_json::Value::as_str)
+    {
+        output.push_str(&format!("Diagnostic: {diagnostic}\n"));
+    }
+    let next = summary["next_actions"]
+        .as_array()
+        .and_then(|values| values.first())
+        .and_then(|action| action.get("label"))
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("none");
+    output.push_str(&format!("Next: {next}\n"));
+    output.push_str(&does_not_prove_line(
+        "actor identity proof, intent proof, correctness proof, test sufficiency proof, human review completion, or that a product-file write occurred",
+    ));
+    output
+}
+
+fn text_value(value: Option<&serde_json::Value>) -> String {
+    match value {
+        Some(serde_json::Value::String(text)) => text.clone(),
+        Some(value) => value.to_string(),
+        None => "unknown".to_owned(),
+    }
 }
 
 fn generated_id(prefix: &str) -> String {

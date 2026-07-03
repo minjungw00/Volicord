@@ -321,6 +321,7 @@ fn broad_non_guarantees() -> Vec<NonGuarantee> {
         NonGuarantee::NotFullWritePrevention,
         NonGuarantee::NotFullFilesystemMonitoring,
         NonGuarantee::NotActorAttributionProof,
+        NonGuarantee::NotIntentProof,
     ]
 }
 

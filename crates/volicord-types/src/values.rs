@@ -1201,6 +1201,7 @@ pub enum NonGuarantee {
     NotFullWritePrevention,
     NotFullFilesystemMonitoring,
     NotActorAttributionProof,
+    NotIntentProof,
 }
 
 /// Controlled source value for a project enforcement profile.

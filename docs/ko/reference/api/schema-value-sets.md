@@ -685,9 +685,10 @@ NotHumanReviewReplacement
 NotFullWritePrevention
 NotFullFilesystemMonitoring
 NotActorAttributionProof
+NotIntentProof
 ```
 
-이 값들은 안정적인 비주장입니다. 결과를 OS 샌드박싱, 네트워크 격리, 악성 코드 방어, 변조 불가능 감사 로그, 제품 정확성 증명, 테스트 충분성 증명, 인간 검토 대체, 전체 쓰기 방지, 전체 파일시스템 감시, 행위자 귀속 증명으로 해석하면 안 된다는 뜻입니다.
+이 값들은 안정적인 비주장입니다. 결과를 OS 샌드박싱, 네트워크 격리, 악성 코드 방어, 변조 불가능 감사 로그, 제품 정확성 증명, 테스트 충분성 증명, 인간 검토 대체, 전체 쓰기 방지, 전체 파일시스템 감시, 행위자 귀속 증명, 의도 증명으로 해석하면 안 된다는 뜻입니다.
 
 <a id="artifact-values"></a>
 ## 아티팩트 값

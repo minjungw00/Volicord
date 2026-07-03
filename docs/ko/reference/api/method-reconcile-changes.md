@@ -163,7 +163,16 @@ Core는 모호하거나 허가되지 않은 Product Repository 변경을 에이�
 
 ## Dry-run 동작
 
-`dry_run=true`에서 유효한 미리보기는 계획 효과를 담은 `ToolDryRunResponse`를 반환합니다. 찾기를 해결하지 않고, 대기 판단을 만들지 않으며, event, replay 행, `project_state.state_version` 증가를 만들지 않습니다.
+`dry_run=true`에서 유효한 미리보기는 `DryRunSummary`를 담은 `ToolDryRunResponse`를 반환합니다. 미리보기는 커밋 경로와 같은 분류 로직을 사용하며 아래를 보고합니다.
+
+- Core가 자동으로 조정할 수 있는 미기록 변경 수
+- 아직 사용자 판단이 필요한 변경 수
+- 만들어질 대기 사용자 소유 판단 요청
+- `unresolved_unrecorded_changes` 닫기 차단 사유가 줄어들지 또는 남을지
+- 계획된 조정 뒤에도 남을 예상 닫기 차단 사유
+- 행위자 증명, 의도 증명, 정확성 증명이 아니라는 비보장
+
+Dry run은 찾기를 해결하지 않고, 대기 판단을 만들지 않으며, event나 replay 행을 추가하지 않고, 아티팩트를 스테이징하거나 연결하지 않으며, `project_state.state_version`을 증가시키지 않습니다.
 
 ## 저장 효과
 

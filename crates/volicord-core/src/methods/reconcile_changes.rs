@@ -7,8 +7,7 @@ struct ReconciliationPlan {
     storage_mutations: Vec<CoreStorageMutation>,
     event_payload: JsonObject,
     result_fields: JsonObject,
-    next_actions: Vec<NextActionSummary>,
-    planned_effects: Vec<PlannedEffect>,
+    dry_run_summary: DryRunSummary,
 }
 
 #[derive(Debug, Clone)]
@@ -23,8 +22,10 @@ struct PlannedResolution {
 
 #[derive(Debug, Clone)]
 struct PlannedJudgment {
-    user_judgment: UserJudgment,
-    mutation: CoreStorageMutation,
+    unrecorded_change_ref: StateRecordRef,
+    candidate: UserJudgmentCandidate,
+    user_judgment: Option<UserJudgment>,
+    mutation: Option<CoreStorageMutation>,
 }
 
 #[derive(Debug, Clone)]
@@ -111,13 +112,7 @@ impl CoreService {
             return self.execute_prepared_request(
                 prepared,
                 OwnerPipelineBranch::DryRunPreview {
-                    dry_run_summary: DryRunSummary {
-                        planned_effects: plan.planned_effects,
-                        would_blockers: Vec::new(),
-                        would_errors: Vec::new(),
-                        next_actions: plan.next_actions,
-                        diagnostics: Vec::new(),
-                    },
+                    dry_run_summary: plan.dry_run_summary,
                 },
             );
         }
@@ -316,6 +311,7 @@ fn plan_reconcile_changes(
                 record,
                 &unrecorded_ref,
                 now,
+                !request.envelope.dry_run,
             )?;
             planned_judgments.push(judgment);
         }
@@ -347,7 +343,7 @@ fn plan_reconcile_changes(
     storage_mutations.extend(
         planned_judgments
             .iter()
-            .map(|judgment| judgment.mutation.clone()),
+            .filter_map(|judgment| judgment.mutation.clone()),
     );
 
     let planned_state_version = if storage_mutations.is_empty() || request.envelope.dry_run {
@@ -393,7 +389,8 @@ fn plan_reconcile_changes(
     pending_authorities.extend(
         planned_judgments
             .iter()
-            .map(|judgment| user_judgment_authority_from_state(&judgment.user_judgment, None)),
+            .filter_map(|judgment| judgment.user_judgment.as_ref())
+            .map(|judgment| user_judgment_authority_from_state(judgment, None)),
     );
     let close_plan = projected_close_check_with_guard_health(
         store,
@@ -440,6 +437,7 @@ fn plan_reconcile_changes(
         &unresolved_findings,
         &planned_judgments,
         user_channel_guard_health.as_ref(),
+        request.envelope.dry_run,
     );
     let summary_card = summary_card_for_core(SummaryCardBuild {
         task: Some(&task),
@@ -464,13 +462,13 @@ fn plan_reconcile_changes(
         base: placeholder_base(),
         summary_card,
         task_ref,
-        unresolved_changes: unresolved_findings,
+        unresolved_changes: unresolved_findings.clone(),
         resolved_changes,
         pending_user_judgment_refs: projected_pending_refs,
         rejected_resolution_requests,
         state,
-        close_blockers: close_plan.blockers,
-        guard_health: close_plan.guard_health,
+        close_blockers: close_plan.blockers.clone(),
+        guard_health: close_plan.guard_health.clone(),
         next_actions: result_next_actions.clone(),
     };
     let event_payload = object_from_value(json!({
@@ -481,20 +479,25 @@ fn plan_reconcile_changes(
             .collect::<Vec<_>>(),
         "requested_user_judgment_ids": planned_judgments
             .iter()
-            .map(|judgment| judgment.user_judgment.judgment_id.as_str().to_owned())
+            .filter_map(|judgment| judgment.user_judgment.as_ref())
+            .map(|judgment| judgment.judgment_id.as_str().to_owned())
             .collect::<Vec<_>>(),
         "rejected_resolution_count": result.rejected_resolution_requests.len()
     }))?;
-    let planned_effects =
-        planned_effects_for_reconciliation(&planned_resolutions, &planned_judgments);
+    let dry_run_summary = dry_run_summary_for_reconciliation(
+        &planned_resolutions,
+        &planned_judgments,
+        &unresolved_findings,
+        &close_plan.blockers,
+        result_next_actions,
+    )?;
 
     Ok(ReconciliationPlan {
         task_id: request.task_id,
         storage_mutations,
         event_payload,
         result_fields: strip_base(serde_json::to_value(result)?)?,
-        next_actions: result_next_actions,
-        planned_effects,
+        dry_run_summary,
     })
 }
 
@@ -769,8 +772,8 @@ fn plan_reconciliation_judgment(
     record: &UnrecordedChangeRecord,
     unrecorded_ref: &StateRecordRef,
     now: &UtcTimestamp,
+    materialize_mutation: bool,
 ) -> Result<PlannedJudgment, PlanError> {
-    let judgment_id = allocate_user_judgment_id(service, store).map_err(PlanError::Core)?;
     let options = vec![UserJudgmentOption {
         option_id: UserJudgmentOptionId::new("accept"),
         label: "Accept observed change".to_owned(),
@@ -795,54 +798,73 @@ fn plan_reconciliation_judgment(
             "This is not evidence, test sufficiency, review completion, final acceptance, or residual-risk acceptance.".to_owned(),
         ],
     };
-    let user_judgment = UserJudgment {
-        judgment_id: judgment_id.clone(),
-        project_id: request.envelope.project_id.clone(),
-        task_id: request.task_id.clone(),
-        change_unit_id: current_change_unit
-            .map(|record| ChangeUnitId::new(record.change_unit_id.clone())),
+    let question =
+        "Do you accept this observed Product Repository change as intentional for this Task?"
+            .to_owned();
+    let candidate = UserJudgmentCandidate {
         judgment_kind: JudgmentKind::ProductDecision,
-        status: UserJudgmentStatus::Pending,
         presentation: JudgmentPresentation::Short,
-        question:
-            "Do you accept this observed Product Repository change as intentional for this Task?"
-                .to_owned(),
+        question: question.clone(),
         options: options.clone(),
         context: context.clone(),
         affected_refs: vec![unrecorded_ref.clone()],
-        basis: basis.clone(),
         required_for: vec![JudgmentRequiredFor::Informational],
-        resolution: None,
         expires_at: None,
-        created_at: now.clone(),
-        resolved_at: None,
     };
-    let mutation = CoreStorageMutation::InsertUserJudgment(UserJudgmentInsert {
-        judgment_id: judgment_id.as_str().to_owned(),
-        task_id: request.task_id.as_str().to_owned(),
-        change_unit_id: current_change_unit.map(|record| record.change_unit_id.clone()),
-        judgment_kind: storage_value(JudgmentKind::ProductDecision).map_err(PlanError::Core)?,
-        request_json: serde_json::to_string(&json!({
-            "presentation": JudgmentPresentation::Short,
-            "question": user_judgment.question.clone(),
-            "required_for": [JudgmentRequiredFor::Informational],
-            "expires_at": RequiredNullable::<UtcTimestamp>::null()
-        }))?,
-        context_json: serde_json::to_string(&context)?,
-        options_json: serde_json::to_string(&PersistedUserJudgmentOptions::current(options))?,
-        affected_refs_json: serde_json::to_string(&[unrecorded_ref])?,
-        artifact_refs_json: "[]".to_owned(),
-        sensitive_action_scope_json: "{}".to_owned(),
-        basis_json: serde_json::to_string(&basis)?,
-        basis_status: JudgmentBasisCompatibilityStatus::Current,
-        requested_by_actor_source: verified_invocation.actor_source.to_canonical_string(),
-        requested_at: now.to_string(),
-        metadata_json: serde_json::to_string(&json!({
-            "created_by": "volicord.reconcile_changes",
-            "unrecorded_change_id": record.unrecorded_change_id
-        }))?,
-    });
+    let (user_judgment, mutation) = if materialize_mutation {
+        let judgment_id = allocate_user_judgment_id(service, store).map_err(PlanError::Core)?;
+        let user_judgment = UserJudgment {
+            judgment_id: judgment_id.clone(),
+            project_id: request.envelope.project_id.clone(),
+            task_id: request.task_id.clone(),
+            change_unit_id: current_change_unit
+                .map(|record| ChangeUnitId::new(record.change_unit_id.clone())),
+            judgment_kind: JudgmentKind::ProductDecision,
+            status: UserJudgmentStatus::Pending,
+            presentation: JudgmentPresentation::Short,
+            question,
+            options: options.clone(),
+            context: context.clone(),
+            affected_refs: vec![unrecorded_ref.clone()],
+            basis: basis.clone(),
+            required_for: vec![JudgmentRequiredFor::Informational],
+            resolution: None,
+            expires_at: None,
+            created_at: now.clone(),
+            resolved_at: None,
+        };
+        let mutation = CoreStorageMutation::InsertUserJudgment(UserJudgmentInsert {
+            judgment_id: judgment_id.as_str().to_owned(),
+            task_id: request.task_id.as_str().to_owned(),
+            change_unit_id: current_change_unit.map(|record| record.change_unit_id.clone()),
+            judgment_kind: storage_value(JudgmentKind::ProductDecision).map_err(PlanError::Core)?,
+            request_json: serde_json::to_string(&json!({
+                "presentation": JudgmentPresentation::Short,
+                "question": user_judgment.question.clone(),
+                "required_for": [JudgmentRequiredFor::Informational],
+                "expires_at": RequiredNullable::<UtcTimestamp>::null()
+            }))?,
+            context_json: serde_json::to_string(&context)?,
+            options_json: serde_json::to_string(&PersistedUserJudgmentOptions::current(options))?,
+            affected_refs_json: serde_json::to_string(&[unrecorded_ref])?,
+            artifact_refs_json: "[]".to_owned(),
+            sensitive_action_scope_json: "{}".to_owned(),
+            basis_json: serde_json::to_string(&basis)?,
+            basis_status: JudgmentBasisCompatibilityStatus::Current,
+            requested_by_actor_source: verified_invocation.actor_source.to_canonical_string(),
+            requested_at: now.to_string(),
+            metadata_json: serde_json::to_string(&json!({
+                "created_by": "volicord.reconcile_changes",
+                "unrecorded_change_id": record.unrecorded_change_id
+            }))?,
+        });
+        (Some(user_judgment), Some(mutation))
+    } else {
+        (None, None)
+    };
     Ok(PlannedJudgment {
+        unrecorded_change_ref: unrecorded_ref.clone(),
+        candidate,
         user_judgment,
         mutation,
     })
@@ -889,15 +911,20 @@ fn projected_pending_refs(
         .into_iter()
         .map(state_ref_from_stored)
         .collect::<Vec<_>>();
-    refs.extend(planned_judgments.iter().map(|judgment| {
-        state_ref(
-            StateRecordKind::UserJudgment,
-            judgment.user_judgment.judgment_id.as_str(),
-            &request.envelope.project_id,
-            Some(&request.task_id),
-            Some(planned_state_version),
-        )
-    }));
+    refs.extend(
+        planned_judgments
+            .iter()
+            .filter_map(|judgment| judgment.user_judgment.as_ref())
+            .map(|user_judgment| {
+                state_ref(
+                    StateRecordKind::UserJudgment,
+                    user_judgment.judgment_id.as_str(),
+                    &request.envelope.project_id,
+                    Some(&request.task_id),
+                    Some(planned_state_version),
+                )
+            }),
+    );
     Ok(refs)
 }
 
@@ -1067,11 +1094,29 @@ fn reconcile_next_actions(
     unresolved_findings: &[UnrecordedChangeFinding],
     planned_judgments: &[PlannedJudgment],
     guard_health: Option<&GuardHealthSummary>,
+    dry_run: bool,
 ) -> Vec<NextActionSummary> {
     if planned_judgments.is_empty() && unresolved_findings.is_empty() {
         return Vec::new();
     }
     if !planned_judgments.is_empty() {
+        if dry_run {
+            return vec![NextActionSummary {
+                action_kind: NextActionKind::ReconcileChanges,
+                owner_method: Some(MethodName::ReconcileChanges),
+                label:
+                    "Run reconciliation without dry-run to create pending user-owned judgment requests."
+                        .to_owned(),
+                blocking_question: Some(
+                    "Does the user accept the observed Product Repository change as intentional?"
+                        .to_owned(),
+                ),
+                required_refs: planned_judgments
+                    .iter()
+                    .map(|judgment| judgment.unrecorded_change_ref.clone())
+                    .collect(),
+            }];
+        }
         return vec![NextActionSummary {
             action_kind: NextActionKind::RecordUserJudgment,
             owner_method: Some(MethodName::RecordUserJudgment),
@@ -1082,10 +1127,11 @@ fn reconcile_next_actions(
             ),
             required_refs: planned_judgments
                 .iter()
-                .map(|judgment| {
+                .filter_map(|judgment| judgment.user_judgment.as_ref())
+                .map(|user_judgment| {
                     state_ref(
                         StateRecordKind::UserJudgment,
-                        judgment.user_judgment.judgment_id.as_str(),
+                        user_judgment.judgment_id.as_str(),
                         &request.envelope.project_id,
                         Some(&request.task_id),
                         None,
@@ -1106,17 +1152,83 @@ fn reconcile_next_actions(
     }]
 }
 
+fn dry_run_summary_for_reconciliation(
+    planned_resolutions: &[PlannedResolution],
+    planned_judgments: &[PlannedJudgment],
+    unresolved_findings: &[UnrecordedChangeFinding],
+    close_blockers: &[CloseReadinessBlocker],
+    next_actions: Vec<NextActionSummary>,
+) -> CoreResult<DryRunSummary> {
+    let planned_effects = planned_effects_for_reconciliation(
+        planned_resolutions,
+        planned_judgments,
+        unresolved_findings,
+        close_blockers,
+    );
+    let would_blockers = close_blockers
+        .iter()
+        .map(close_blocker_as_planned_blocker)
+        .collect::<CoreResult<Vec<_>>>()?;
+    let automatically_reconcilable = planned_resolutions
+        .iter()
+        .filter(|resolution| resolution.basis != UnrecordedChangeResolutionBasis::AcceptedByUser)
+        .count();
+    let accepted_user_resolutions = planned_resolutions
+        .iter()
+        .filter(|resolution| resolution.basis == UnrecordedChangeResolutionBasis::AcceptedByUser)
+        .count();
+    let needing_user_judgment = unresolved_findings.len();
+    let mut diagnostics = vec![
+        format!("automatically_reconcilable_changes={automatically_reconcilable}"),
+        format!("accepted_user_resolution_changes={accepted_user_resolutions}"),
+        format!("changes_needing_user_judgment={needing_user_judgment}"),
+        format!("would_create_user_judgments={}", planned_judgments.len()),
+        close_blocker_diagnostic(planned_resolutions, unresolved_findings, close_blockers),
+        "non_guarantees=no actor proof; no intent proof; no correctness proof".to_owned(),
+    ];
+    diagnostics.extend(planned_judgments.iter().map(|judgment| {
+        format!(
+            "would_create_user_judgment_for={}; kind={}; question={}",
+            judgment.unrecorded_change_ref.record_id.as_str(),
+            storage_value(judgment.candidate.judgment_kind)
+                .unwrap_or_else(|_| "unknown".to_owned()),
+            judgment.candidate.question
+        )
+    }));
+    Ok(DryRunSummary {
+        planned_effects,
+        would_blockers,
+        would_errors: Vec::new(),
+        next_actions,
+        diagnostics,
+    })
+}
+
 fn planned_effects_for_reconciliation(
     planned_resolutions: &[PlannedResolution],
     planned_judgments: &[PlannedJudgment],
+    unresolved_findings: &[UnrecordedChangeFinding],
+    close_blockers: &[CloseReadinessBlocker],
 ) -> Vec<PlannedEffect> {
     let mut effects = Vec::new();
+    let automatically_reconcilable = planned_resolutions
+        .iter()
+        .filter(|resolution| resolution.basis != UnrecordedChangeResolutionBasis::AcceptedByUser)
+        .count();
+    effects.push(PlannedEffect {
+        target_kind: "reconciliation".to_owned(),
+        action: "classify".to_owned(),
+        description: format!(
+            "Classify {automatically_reconcilable} automatically reconcilable change(s) and {} change(s) needing user judgment.",
+            unresolved_findings.len()
+        ),
+    });
     if !planned_resolutions.is_empty() {
         effects.push(PlannedEffect {
             target_kind: "unrecorded_change".to_owned(),
-            action: "resolve".to_owned(),
+            action: "would_resolve".to_owned(),
             description: format!(
-                "Resolve {} unrecorded-change finding(s).",
+                "Would resolve {} unrecorded-change finding(s).",
                 planned_resolutions.len()
             ),
         });
@@ -1124,12 +1236,61 @@ fn planned_effects_for_reconciliation(
     if !planned_judgments.is_empty() {
         effects.push(PlannedEffect {
             target_kind: "user_judgment".to_owned(),
-            action: "request".to_owned(),
+            action: "would_request".to_owned(),
             description: format!(
-                "Create {} pending user-owned judgment request(s).",
+                "Would create {} pending user-owned judgment request(s).",
                 planned_judgments.len()
             ),
         });
     }
+    let unresolved_blocker_remains = close_blockers
+        .iter()
+        .any(|blocker| blocker.code == "unresolved_unrecorded_changes");
+    let close_action = if unresolved_blocker_remains {
+        "would_remain_blocked"
+    } else if !planned_resolutions.is_empty() {
+        "would_reduce_blockers"
+    } else {
+        "would_remain_unchanged"
+    };
+    effects.push(PlannedEffect {
+        target_kind: "close_readiness".to_owned(),
+        action: close_action.to_owned(),
+        description: close_blocker_diagnostic(
+            planned_resolutions,
+            unresolved_findings,
+            close_blockers,
+        ),
+    });
     effects
+}
+
+fn close_blocker_diagnostic(
+    planned_resolutions: &[PlannedResolution],
+    unresolved_findings: &[UnrecordedChangeFinding],
+    close_blockers: &[CloseReadinessBlocker],
+) -> String {
+    let unresolved_blocker_remains = close_blockers
+        .iter()
+        .any(|blocker| blocker.code == "unresolved_unrecorded_changes");
+    if unresolved_blocker_remains {
+        return "close_blockers=unresolved_unrecorded_changes would remain".to_owned();
+    }
+    if !planned_resolutions.is_empty() {
+        return "close_blockers=unresolved_unrecorded_changes would be reduced".to_owned();
+    }
+    if !unresolved_findings.is_empty() {
+        return "close_blockers=unresolved_unrecorded_changes would remain".to_owned();
+    }
+    "close_blockers=no unresolved_unrecorded_changes blocker projected".to_owned()
+}
+
+fn close_blocker_as_planned_blocker(blocker: &CloseReadinessBlocker) -> CoreResult<PlannedBlocker> {
+    Ok(PlannedBlocker {
+        source_kind: PlannedBlockerSourceKind::CloseReadiness,
+        category: storage_value(blocker.category)?,
+        code: blocker.code.clone(),
+        message: blocker.message.clone(),
+        related_refs: blocker.related_refs.clone(),
+    })
 }

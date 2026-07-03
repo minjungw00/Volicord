@@ -69,7 +69,7 @@ volicord project rename NAME [--repo PATH] [--json]
 volicord project forget [PATH|NAME] [--json]
 volicord mcp --stdio --connection <connection_id> [--project <project_id>]
 volicord serve --transport local-http [--listen 127.0.0.1:8765 | --container-listen 0.0.0.0:8765] [--home PATH] [--connection <connection_id>] [--project PATH]... [--token TOKEN | --generate-token] [--allow-origin ORIGIN]
-volicord changes reconcile [--repo PATH] [--task active|ID] [--json]
+volicord changes reconcile [--repo PATH] [--task active|ID] [--dry-run] [--json]
 volicord inbox [--repo PATH] [--task active|ID] [--json]
 volicord inbox answer <judgment-id> --choice <choice> [--repo PATH] [--note TEXT] [--json]
 volicord inbox open <judgment-id> [--repo PATH] [--json]
@@ -585,11 +585,13 @@ Lifecycle 동작:
 
 ## 변경 조정 명령
 
-`volicord changes reconcile [--repo PATH] [--task active|ID] [--json]`는 unresolved 미기록 Product Repository 변경 찾기를 위한 로컬 복구 명령입니다.
+`volicord changes reconcile [--repo PATH] [--task active|ID] [--dry-run] [--json]`는 unresolved 미기록 Product Repository 변경 찾기를 위한 로컬 복구 명령입니다.
 
 이 명령은 `--repo PATH` 또는 현재 작업 디렉터리에서 선택 프로젝트를 해석하고 기본적으로 active `Task`를 선택합니다. `actor_source=local_user`, `operation_category=local_recovery`로 공개 `volicord.reconcile_changes` Core 메서드를 호출하고, 간결한 summary card와 해결된 찾기 수, 대기 사용자 판단 수, 남은 미해결 찾기 수를 출력하며 일반 CLI 종료 코드 모델을 따릅니다. 거절된 Core 응답은 성공한 조정 요약으로 바꾸지 않고 거절된 CLI 결과로 유지합니다.
 
-이 명령은 결정적 찾기를 해결하거나 대기 사용자 소유 판단을 만들 수 있습니다. 사용자 답변을 기록하지 않고, 사용자를 대신해 변경을 수락하지 않으며, 정확성, 리뷰나 테스트 충분성, 닫기 준비 완료를 증명하지 않습니다. 대기 판단이 만들어졌다면 사용자는 `Judgment Inbox`로 판단에 답한 뒤 `volicord changes reconcile`을 다시 실행합니다.
+`--dry-run`을 사용하면 이 명령은 조정 효과를 커밋하지 않고 Core dry-run 미리보기를 반환합니다. Text와 JSON 출력은 계획된 자동 해결, 사용자 판단이 필요한 변경, 만들어질 대기 판단 요청, 예상 닫기 차단 사유, 다음 동작, 그리고 이 미리보기가 행위자 증명, 의도 증명, 정확성 증명이 아니라는 공개 문구를 보고합니다. Dry-run 명령은 `project_state.state_version`을 증가시키지 않고, mutation 또는 replay 기록을 쓰지 않으며, 닫기 차단 사유를 해결하지 않고, 사용자 판단을 만들지 않고, 아티팩트를 스테이징하거나 연결하지 않습니다.
+
+Dry-run이 아닌 명령은 결정적 찾기를 해결하거나 대기 사용자 소유 판단을 만들 수 있습니다. 사용자 답변을 기록하지 않고, 사용자를 대신해 변경을 수락하지 않으며, 행위자 신원, 의도, 정확성, 리뷰나 테스트 충분성, 닫기 준비 완료를 증명하지 않습니다. 대기 판단이 만들어졌다면 사용자는 `Judgment Inbox`로 판단에 답한 뒤 `volicord changes reconcile`을 다시 실행합니다.
 
 ## User Channel 명령
 

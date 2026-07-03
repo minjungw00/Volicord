@@ -686,9 +686,10 @@ NotHumanReviewReplacement
 NotFullWritePrevention
 NotFullFilesystemMonitoring
 NotActorAttributionProof
+NotIntentProof
 ```
 
-These values are stable non-claims. They state that a result must not be interpreted as OS sandboxing, network isolation, malware defense, tamper-proof audit logging, product correctness proof, test sufficiency proof, human-review replacement, full write prevention, full filesystem monitoring, or actor attribution proof.
+These values are stable non-claims. They state that a result must not be interpreted as OS sandboxing, network isolation, malware defense, tamper-proof audit logging, product correctness proof, test sufficiency proof, human-review replacement, full write prevention, full filesystem monitoring, actor attribution proof, or intent proof.
 
 <a id="artifact-values"></a>
 ## Artifact values

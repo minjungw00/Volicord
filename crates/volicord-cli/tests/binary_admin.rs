@@ -182,6 +182,10 @@ fn binary_help_options_match_supported_contracts() -> Result<(), Box<dyn Error>>
         ["connection", "remove", "--help"],
         &["--repo", "--shared", "--global", "--dry-run", "--json"],
     )?;
+    assert_help_options(
+        ["changes", "--help"],
+        &["--repo", "--task", "--dry-run", "--json"],
+    )?;
     assert_help_options(["project", "--help"], &["--repo", "--json"])?;
     assert_help_options(
         ["inbox", "--help"],
@@ -2757,6 +2761,67 @@ fn changes_reconcile_runs_as_local_recovery() -> Result<(), Box<dyn Error>> {
         },
     )?;
 
+    let dry_json_output = run_with_home_env_in_dir(
+        runtime_home.path(),
+        ["changes", "reconcile", "--dry-run", "--json"],
+        &[],
+        &repo_root,
+    )?;
+    assert_success(&dry_json_output);
+    let dry_json = json_stdout(&dry_json_output)?;
+    assert_eq!(dry_json["base"]["response_kind"], "dry_run");
+    assert_eq!(dry_json["base"]["effect_kind"], "no_effect");
+    assert_eq!(
+        dry_json["dry_run_summary"]["planned_effects"][0]["action"],
+        "classify"
+    );
+    assert!(dry_json["dry_run_summary"]["diagnostics"]
+        .as_array()
+        .expect("diagnostics should be an array")
+        .iter()
+        .any(|diagnostic| diagnostic == "automatically_reconcilable_changes=1"));
+    assert_non_guarantees(
+        &dry_json["base"]["disclosure"],
+        &[
+            "NotActorAttributionProof",
+            "NotIntentProof",
+            "NotCorrectnessProof",
+        ],
+    );
+
+    let dry_text_output = run_with_home_env_in_dir(
+        runtime_home.path(),
+        ["changes", "reconcile", "--dry-run"],
+        &[],
+        &repo_root,
+    )?;
+    assert_success(&dry_text_output);
+    let dry_text = stdout(&dry_text_output);
+    assert!(dry_text.contains("Changes reconciliation (dry run)"));
+    assert!(dry_text.contains("automatically_reconcilable_changes=1"));
+    assert!(dry_text.contains("Does not prove:"));
+    assert!(dry_text.contains("intent proof"));
+
+    let conn =
+        rusqlite::Connection::open(runtime_home.project_state_db_path("project_user_channel"))?;
+    let unresolved_after_dry_run: i64 = conn.query_row(
+        "SELECT COUNT(*)
+           FROM unrecorded_changes
+          WHERE unrecorded_change_id = 'unrecorded_cli_changes_reconcile'
+            AND status = 'unresolved'",
+        [],
+        |row| row.get(0),
+    )?;
+    assert_eq!(unresolved_after_dry_run, 1);
+    let reconcile_invocations_after_dry_run: i64 = conn.query_row(
+        "SELECT COUNT(*)
+           FROM tool_invocations
+          WHERE tool_name = 'volicord.reconcile_changes'",
+        [],
+        |row| row.get(0),
+    )?;
+    assert_eq!(reconcile_invocations_after_dry_run, 0);
+
     let output = run_with_home_env_in_dir(
         runtime_home.path(),
         ["changes", "reconcile", "--json"],
@@ -2807,8 +2872,6 @@ fn changes_reconcile_runs_as_local_recovery() -> Result<(), Box<dyn Error>> {
     assert!(text.contains("product-file write occurred"));
     assert!(!text.contains("reconciled changes:"));
 
-    let conn =
-        rusqlite::Connection::open(runtime_home.project_state_db_path("project_user_channel"))?;
     let (actor_source, operation_category): (String, String) = conn.query_row(
         "SELECT actor_source, operation_category
            FROM tool_invocations

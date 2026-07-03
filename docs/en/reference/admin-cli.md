@@ -75,7 +75,7 @@ volicord project rename NAME [--repo PATH] [--json]
 volicord project forget [PATH|NAME] [--json]
 volicord mcp --stdio --connection <connection_id> [--project <project_id>]
 volicord serve --transport local-http [--listen 127.0.0.1:8765 | --container-listen 0.0.0.0:8765] [--home PATH] [--connection <connection_id>] [--project PATH]... [--token TOKEN | --generate-token] [--allow-origin ORIGIN]
-volicord changes reconcile [--repo PATH] [--task active|ID] [--json]
+volicord changes reconcile [--repo PATH] [--task active|ID] [--dry-run] [--json]
 volicord inbox [--repo PATH] [--task active|ID] [--json]
 volicord inbox answer <judgment-id> --choice <choice> [--repo PATH] [--note TEXT] [--json]
 volicord inbox open <judgment-id> [--repo PATH] [--json]
@@ -648,11 +648,13 @@ Lifecycle behavior:
 
 ## Change reconciliation command
 
-`volicord changes reconcile [--repo PATH] [--task active|ID] [--json]` is the local recovery command for unresolved unrecorded Product Repository change findings.
+`volicord changes reconcile [--repo PATH] [--task active|ID] [--dry-run] [--json]` is the local recovery command for unresolved unrecorded Product Repository change findings.
 
 The command resolves the selected project from `--repo PATH` or the current working directory and selects the active Task by default. It calls the public `volicord.reconcile_changes` Core method with `actor_source=local_user` and `operation_category=local_recovery`, prints the compact summary card plus the number of resolved findings, pending user judgments, and remaining unresolved findings, and exits under the normal CLI exit-code model. Rejected Core responses remain rejected CLI results rather than successful reconciliation summaries.
 
-The command may resolve deterministic findings or create pending user-owned judgments. It does not record a user answer, accept a change on the user's behalf, prove correctness, prove review or test sufficiency, or complete close readiness. When it creates pending judgments, the user answers them through the `Judgment Inbox`, then reruns `volicord changes reconcile`.
+With `--dry-run`, the command returns the Core dry-run preview instead of committing reconciliation effects. Text and JSON output report planned automatic resolutions, changes needing user judgment, pending judgment requests that would be created, projected close blockers, next actions, and the disclosure that the preview is not actor proof, intent proof, or correctness proof. The dry-run command does not advance `project_state.state_version`, write mutation or replay records, resolve close blockers, create user judgments, stage artifacts, or attach artifacts.
+
+The non-dry-run command may resolve deterministic findings or create pending user-owned judgments. It does not record a user answer, accept a change on the user's behalf, prove actor identity, prove intent, prove correctness, prove review or test sufficiency, or complete close readiness. When it creates pending judgments, the user answers them through the `Judgment Inbox`, then reruns `volicord changes reconcile`.
 
 ## User Channel commands
 

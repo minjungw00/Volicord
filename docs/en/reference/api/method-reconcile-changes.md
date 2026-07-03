@@ -163,7 +163,16 @@ Agent-only dismissal attempts for individual findings do not normally reject the
 
 ## Dry-run behavior
 
-For `dry_run=true`, a valid preview returns `ToolDryRunResponse` with planned effects. It does not resolve findings, create pending judgments, append events, create replay rows, or increment `project_state.state_version`.
+For `dry_run=true`, a valid preview returns `ToolDryRunResponse` with a `DryRunSummary`. The preview uses the same classification logic as the commit path and reports:
+
+- the number of unrecorded changes Core can reconcile automatically
+- the number of changes that still need user judgment
+- pending user-owned judgment requests that would be created
+- whether the `unresolved_unrecorded_changes` close blocker would be reduced or remain
+- projected close blockers that would remain after the planned reconciliation
+- non-guarantees, including no actor proof, no intent proof, and no correctness proof
+
+Dry run does not resolve findings, create pending judgments, append events, create replay rows, stage or attach artifacts, or increment `project_state.state_version`.
 
 ## Storage effect
 

@@ -13985,6 +13985,58 @@ fn reconcile_changes_resolves_not_product_change_and_updates_close_blocker(
         blocker["next_actions"][0]["action_kind"],
         "reconcile_changes"
     );
+    let before_dry_run_counts = harness.counts()?;
+    let mut dry_run_request = reconcile_changes_request(
+        "req_reconcile_not_product_dry",
+        "idem_reconcile_not_product_dry",
+        Some(after_final),
+        &task_id,
+        Vec::new(),
+    );
+    dry_run_request.envelope.dry_run = true;
+    dry_run_request.envelope.idempotency_key = RequiredNullable::null();
+
+    let dry_run = harness.service.reconcile_changes(
+        dry_run_request,
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+
+    assert_eq!(dry_run.response_value["base"]["response_kind"], "dry_run");
+    assert_eq!(dry_run.response_value["base"]["effect_kind"], "no_effect");
+    assert_authority_disclosure(&dry_run.response_value);
+    assert_eq!(
+        dry_run.response_value["dry_run_summary"]["planned_effects"][0]["action"],
+        "classify"
+    );
+    assert_eq!(
+        dry_run.response_value["dry_run_summary"]["planned_effects"][1]["action"],
+        "would_resolve"
+    );
+    assert!(dry_run.response_value["dry_run_summary"]["would_blockers"]
+        .as_array()
+        .expect("would_blockers should be an array")
+        .iter()
+        .all(|blocker| blocker["code"] != "unresolved_unrecorded_changes"));
+    let diagnostics = dry_run.response_value["dry_run_summary"]["diagnostics"]
+        .as_array()
+        .expect("diagnostics should be an array");
+    assert!(diagnostics
+        .iter()
+        .any(|value| value == "automatically_reconcilable_changes=1"));
+    assert!(diagnostics
+        .iter()
+        .any(|value| value == "changes_needing_user_judgment=0"));
+    assert!(diagnostics
+        .iter()
+        .any(|value| { value == "close_blockers=unresolved_unrecorded_changes would be reduced" }));
+    assert!(diagnostics.iter().any(
+        |value| value == "non_guarantees=no actor proof; no intent proof; no correctness proof"
+    ));
+    assert_eq!(harness.counts()?, before_dry_run_counts);
+    assert_eq!(
+        unrecorded_change_row(&harness, PROJECT_ID, &unrecorded_change_id)?.status,
+        "unresolved"
+    );
 
     let response = harness.service.reconcile_changes(
         reconcile_changes_request(
@@ -14155,6 +14207,109 @@ fn reconcile_changes_local_recovery_reports_no_unresolved_findings_read_only(
             .expect("local recovery should verify invocation")
             .actor_source,
         ActorSource::LocalUser
+    );
+    Ok(())
+}
+
+#[test]
+fn reconcile_changes_dry_run_classifies_user_judgment_without_state_effect(
+) -> Result<(), Box<dyn Error>> {
+    let mut harness = MethodHarness::new()?;
+    record_guard_installation(
+        &harness,
+        "reconcile_judgment_dry",
+        "detective",
+        "active",
+        "{}",
+    )?;
+    let (task_id, _) = create_task_with_change_unit(&harness, "reconcile_judgment_dry")?;
+    let unrecorded_change_id =
+        insert_guarded_unrecorded_change(&harness, &task_id, "reconcile_judgment_dry")?;
+    let dry_run_generator = CountingDurableIdGenerator::new(Vec::<&str>::new());
+    let clock = ManualClock::at("2026-06-30T00:10:00Z");
+    harness.use_generator_and_clock(dry_run_generator.clone(), clock.clone());
+    let before = harness.counts()?;
+
+    let mut dry_run_request = reconcile_changes_request(
+        "req_reconcile_judgment_dry",
+        "idem_reconcile_judgment_dry",
+        Some(2),
+        &task_id,
+        Vec::new(),
+    );
+    dry_run_request.envelope.dry_run = true;
+    dry_run_request.envelope.idempotency_key = RequiredNullable::null();
+    let dry_run = harness.service.reconcile_changes(
+        dry_run_request,
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+
+    assert_eq!(dry_run.response_value["base"]["response_kind"], "dry_run");
+    assert_eq!(
+        dry_run.response_value["dry_run_summary"]["planned_effects"][0]["description"],
+        "Classify 0 automatically reconcilable change(s) and 1 change(s) needing user judgment."
+    );
+    assert!(dry_run.response_value["dry_run_summary"]["planned_effects"]
+        .as_array()
+        .expect("planned_effects should be an array")
+        .iter()
+        .any(|effect| effect["action"] == "would_request"));
+    let diagnostics = dry_run.response_value["dry_run_summary"]["diagnostics"]
+        .as_array()
+        .expect("diagnostics should be an array");
+    assert!(diagnostics
+        .iter()
+        .any(|value| value == "changes_needing_user_judgment=1"));
+    assert!(diagnostics
+        .iter()
+        .any(|value| value == "would_create_user_judgments=1"));
+    assert!(diagnostics.iter().any(|value| value
+        .as_str()
+        .is_some_and(|text| text.contains(&unrecorded_change_id))));
+    assert_eq!(harness.counts()?, before);
+    assert_eq!(
+        unrecorded_change_row(&harness, PROJECT_ID, &unrecorded_change_id)?.status,
+        "unresolved"
+    );
+    assert_eq!(dry_run_generator.count(DurableIdKind::UserJudgment), 0);
+    assert_eq!(dry_run_generator.count(DurableIdKind::Event), 0);
+
+    let commit_generator =
+        CountingDurableIdGenerator::new(["reconcile_judgment_preview", "reconcile_judgment_event"]);
+    harness.use_generator_and_clock(commit_generator.clone(), clock);
+    let committed = harness.service.reconcile_changes(
+        reconcile_changes_request(
+            "req_reconcile_judgment_commit",
+            "idem_reconcile_judgment_commit",
+            Some(2),
+            &task_id,
+            Vec::new(),
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let after = harness.counts()?;
+
+    assert_eq!(committed.response_value["base"]["response_kind"], "result");
+    assert_eq!(
+        committed.response_value["base"]["effect_kind"],
+        "core_committed"
+    );
+    assert_eq!(
+        committed.response_value["pending_user_judgment_refs"]
+            .as_array()
+            .expect("pending refs should be an array")
+            .len(),
+        1
+    );
+    assert_eq!(after.state_version, before.state_version + 1);
+    assert_eq!(after.user_judgments, before.user_judgments + 1);
+    assert_eq!(after.task_events, before.task_events + 1);
+    assert_eq!(after.tool_invocations, before.tool_invocations + 1);
+    assert_eq!(commit_generator.count(DurableIdKind::UserJudgment), 1);
+    assert_eq!(commit_generator.count(DurableIdKind::Event), 1);
+    assert_eq!(
+        unrecorded_change_row(&harness, PROJECT_ID, &unrecorded_change_id)?.status,
+        "unresolved"
     );
     Ok(())
 }
@@ -16213,6 +16368,7 @@ fn assert_authority_disclosure(value: &Value) {
         "NotFullWritePrevention",
         "NotFullFilesystemMonitoring",
         "NotActorAttributionProof",
+        "NotIntentProof",
         "NotOsSandbox",
     ] {
         assert!(
