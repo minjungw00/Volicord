@@ -1727,7 +1727,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_schema_table_routes_to_structured_unavailability() -> Result<(), Box<dyn Error>> {
+    fn forbidden_schema_ledger_routes_to_structured_unavailability() -> Result<(), Box<dyn Error>> {
         let harness = PipelineHarness::new()?;
         harness.conn()?.execute(
             "CREATE TABLE schema_migrations (database_kind TEXT NOT NULL)",
@@ -1738,15 +1738,15 @@ mod tests {
             method_name: MethodName::Status,
             request_json: request_json(
                 MethodName::Status,
-                &envelope("req_legacy_schema", None, false, None, None),
-                "legacy-schema",
+                &envelope("req_forbidden_schema_ledger", None, false, None, None),
+                "forbidden-schema-ledger",
             ),
-            envelope: envelope("req_legacy_schema", None, false, None, None),
+            envelope: envelope("req_forbidden_schema_ledger", None, false, None, None),
             invocation: invocation(OperationCategory::Read, Some(CONNECTION_ID)),
             operation_category: OperationCategory::Read,
             task_requirement: TaskRequirement::Optional,
             branch: OwnerPipelineBranch::ReadOnly {
-                result_fields: result_fields("legacy_schema"),
+                result_fields: result_fields("forbidden_schema_ledger"),
             },
         })?;
 

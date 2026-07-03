@@ -325,13 +325,6 @@ mod tests {
             .expect("check_close request");
         assert_eq!(check.operation_category(), OperationCategory::Read);
 
-        let mut old_check = close_task_request_json();
-        old_check["intent"] = json!("check");
-        assert!(
-            serde_json::from_value::<CloseTaskRequest>(old_check).is_err(),
-            "close_task must not accept the read-only check intent"
-        );
-
         for intent in ["complete", "cancel", "supersede"] {
             let mut request = close_task_request_json();
             request["intent"] = json!(intent);
@@ -901,6 +894,44 @@ mod tests {
             ],
             "RecordUserJudgmentPayload",
         );
+    }
+
+    #[test]
+    fn close_method_family_schema_separates_read_check_from_mutation_request() {
+        let check = public_request_schema("volicord.check_close").expect("check_close schema");
+        assert_required(&check, &["envelope", "task_id"], "CheckCloseRequest");
+        for field in ["intent", "close_reason", "superseding_task_id", "user_note"] {
+            assert!(
+                check["properties"].get(field).is_none(),
+                "check_close must not expose close_task mutation field {field}"
+            );
+        }
+
+        let mut check_with_intent = check_close_request_json();
+        check_with_intent["intent"] = json!("complete");
+        assert_schema_and_serde("volicord.check_close", check_with_intent, false);
+
+        let close = public_request_schema("volicord.close_task").expect("close_task schema");
+        assert_required(
+            &close,
+            &[
+                "envelope",
+                "task_id",
+                "intent",
+                "close_reason",
+                "superseding_task_id",
+                "user_note",
+            ],
+            "CloseTaskRequest",
+        );
+
+        let mut close_without_intent = close_task_request_json();
+        remove_path(&mut close_without_intent, &["intent"]);
+        assert_schema_and_serde("volicord.close_task", close_without_intent, false);
+
+        let mut close_with_read_intent = close_task_request_json();
+        close_with_read_intent["intent"] = json!("check");
+        assert_schema_and_serde("volicord.close_task", close_with_read_intent, false);
     }
 
     #[test]

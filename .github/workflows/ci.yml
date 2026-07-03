@@ -4,10 +4,13 @@ on:
   pull_request:
     paths:
       - ".github/workflows/ci.yml"
+      - ".github/workflows/release.yml"
       - "Cargo.toml"
       - "Cargo.lock"
+      - "Dockerfile"
       - "crates/**"
       - "docs/**"
+      - "scripts/**"
       - "tests/**"
       - "xtask/**"
   push:
@@ -15,10 +18,13 @@ on:
       - main
     paths:
       - ".github/workflows/ci.yml"
+      - ".github/workflows/release.yml"
       - "Cargo.toml"
       - "Cargo.lock"
+      - "Dockerfile"
       - "crates/**"
       - "docs/**"
+      - "scripts/**"
       - "tests/**"
       - "xtask/**"
   workflow_dispatch:
@@ -41,16 +47,31 @@ jobs:
         run: |
           rustup toolchain install "$RUST_VERSION" --profile minimal
           rustup default "$RUST_VERSION"
-          rustup component add rustfmt
+          rustup component add rustfmt clippy
 
       - name: Check formatting
         run: cargo fmt --check
+
+      - name: Run clippy
+        run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
 
       - name: Run documentation checks
         run: cargo run --locked -p xtask -- docs-check
 
       - name: Check public contract snapshots
         run: cargo test --locked -p volicord-integration-tests --test public_contract_snapshots
+
+      - name: Check storage DDL contract
+        run: cargo test --locked -p volicord-store --test storage_ddl_contract
+
+      - name: Check MCP stdio contract
+        run: cargo test --locked -p volicord-cli --test mcp_transport
+
+      - name: Check MCP Agent Connection contract
+        run: cargo test --locked -p volicord-integration-tests --test mcp_connection
+
+      - name: Check Local HTTP transport contract
+        run: cargo test --locked -p volicord-cli --test serve_transport
 
       - name: Run workspace tests
         run: cargo test --locked --workspace --all-targets

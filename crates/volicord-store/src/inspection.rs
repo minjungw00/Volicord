@@ -1695,8 +1695,8 @@ mod tests {
     }
 
     #[test]
-    fn legacy_schema_migrations_table_is_malformed() -> Result<(), Box<dyn Error>> {
-        let fixture = current_fixture("inspect-legacy-ledger")?;
+    fn forbidden_schema_migrations_table_requires_recreation() -> Result<(), Box<dyn Error>> {
+        let fixture = current_fixture("inspect-forbidden-schema-ledger")?;
         Connection::open(&fixture.project.state_db_path)?.execute(
             "CREATE TABLE schema_migrations (database_kind TEXT NOT NULL)",
             [],
@@ -1709,7 +1709,7 @@ mod tests {
                 assert!(detail.contains("schema_migrations"));
                 assert!(detail.contains("recreate"));
             }
-            other => panic!("expected malformed legacy schema ledger, got {other:?}"),
+            other => panic!("expected forbidden schema ledger diagnostic, got {other:?}"),
         }
         Ok(())
     }

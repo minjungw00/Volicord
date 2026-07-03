@@ -2075,7 +2075,7 @@ fn scope_decision_for_other_operation_cannot_authorize_scope_update() -> Result<
 }
 
 #[test]
-fn old_revision_scope_decision_cannot_be_reused() -> Result<(), Box<dyn Error>> {
+fn stale_scope_decision_cannot_authorize_scope_update() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "scope_old_revision")?;
     let (state_version, decision_ref, decision_id) = record_scope_decision_authority(
@@ -8688,7 +8688,7 @@ fn final_acceptance_does_not_substitute_for_residual_risk_acceptance() -> Result
 }
 
 #[test]
-fn final_acceptance_for_old_scope_revision_is_rejected_for_close() -> Result<(), Box<dyn Error>> {
+fn stale_scope_final_acceptance_blocks_close() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "final_old_scope")?;
     let after_basis = record_close_evidence(
@@ -8758,8 +8758,7 @@ fn final_acceptance_for_old_scope_revision_is_rejected_for_close() -> Result<(),
 }
 
 #[test]
-fn final_acceptance_for_old_close_basis_revision_is_rejected_for_close(
-) -> Result<(), Box<dyn Error>> {
+fn stale_close_basis_final_acceptance_blocks_close() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "final_old_basis")?;
     let after_basis = record_close_evidence(
