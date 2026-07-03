@@ -220,7 +220,7 @@ Windows host hook과 watcher 동작이 구현되고 테스트되기 전까지 na
 | Codex | `shared` | `.codex/config.toml`을 적용할 때 선택한 `Product Repository`에 쓸 수 있어야 합니다. 미래의 Codex 호스트는 `PATH`를 통해 프로젝트에 묶인 `volicord mcp --stdio`를 시작할 수 있어야 합니다. shared 파일은 개인 Runtime Home 경로를 포함하면 안 됩니다. Codex 프로젝트 신뢰가 여전히 필요할 수 있습니다. |
 | Claude Code | `personal`, `global` | Volicord가 `claude mcp` 명령을 사용할 수 있도록 관리 프로세스가 `claude` 실행 파일을 시작할 수 있어야 합니다. |
 | Claude Code | `shared` | `.mcp.json`을 적용할 때 선택한 `Product Repository`에 쓸 수 있어야 합니다. 미래의 Claude Code 호스트는 `PATH`를 통해 프로젝트에 묶인 `volicord mcp --stdio`를 시작할 수 있어야 합니다. shared 파일은 개인 Runtime Home 경로를 포함하면 안 됩니다. 프로젝트 MCP 승인이 여전히 필요할 수 있습니다. |
-| Generic | 사용자 관리 | Volicord는 generic MCP 설정 내보내기를 쓰지 않습니다. 외부 호스트를 수동으로 설정하려면 먼저 지원되는 Agent Connection이 있어야 합니다. 외부 호스트는 호스트별 방식으로 로드되고 점검되기 전까지 사용자 관리 상태이며 미검증입니다. |
+| Generic | 사용자 관리 | Volicord는 일반 MCP 호스트 설정을 쓰지 않습니다. 외부 호스트를 수동으로 설정하려면 먼저 지원되는 Agent Connection이 있어야 합니다. 외부 호스트는 호스트별 방식으로 로드되고 점검되기 전까지 사용자 관리 상태이며 미검증입니다. |
 
 호스트 설정을 썼다는 사실은 호스트가 `volicord mcp --stdio`를 신뢰, 승인, 로드, 초기화, 노출했다는 증거가 아닙니다. `managed host configuration state`의 의미와 호스트 신뢰 경계는 [Agent Connection](agent-connection.md)이 담당합니다.
 

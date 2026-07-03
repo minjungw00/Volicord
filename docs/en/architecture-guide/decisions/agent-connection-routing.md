@@ -2,7 +2,7 @@
 
 ## Context
 
-Volicord needs direct coding-agent host support for Codex, Claude Code, and generic MCP configuration while still supporting more than one registered `Product Repository`. MCP roots and launch-directory context are host hints. They are not Volicord authority and cannot safely select a Project by themselves.
+Volicord needs managed coding-agent host support for Codex and Claude Code, plus user-managed generic MCP host configuration guidance, while still supporting more than one registered `Product Repository`. MCP roots and launch-directory context are host hints. They are not Volicord authority and cannot safely select a Project by themselves.
 
 ## Decision
 

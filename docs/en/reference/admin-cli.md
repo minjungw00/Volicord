@@ -539,20 +539,22 @@ Rules:
 - JSON output reports the output path, bundle file paths, record count,
   artifact count, copied artifact count, and checksum-entry count.
 
-<a id="generic-mcp-config-export"></a>
+<a id="external-host-configuration"></a>
 ## Host MCP configuration
 
-Volicord does not expose a public generic MCP config export command. Supported
-host setup is performed through `volicord init` and `volicord connection add`.
-Those commands write supported host configuration directly when the selected
-host adapter owns a managed target. Generic or otherwise unsupported external
-hosts remain user-managed configuration surfaces.
+The public `volicord export` surface is `volicord export authority-bundle`.
+Volicord does not provide a public command that renders generic external MCP
+host configuration. Supported host setup is performed through `volicord init`
+and `volicord connection add`. Those commands write supported host
+configuration directly when the selected host adapter owns a managed target.
+Host-neutral or otherwise unsupported external hosts remain user-managed
+configuration surfaces.
 
 Rules:
 
 - Supported managed host configuration is tied to an Agent Connection and starts
   a bound `volicord mcp --stdio` process.
-- User-managed generic host configuration may name the installed `volicord`
+- User-managed external host configuration may name the installed `volicord`
   executable and the `mcp --stdio --connection <connection_id>
   [--project <project_id>]` arguments after a supported Agent Connection exists.
 - Volicord must not claim that an arbitrary external host loaded, trusted,

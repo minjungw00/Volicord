@@ -226,7 +226,7 @@ Baseline host and connection-intent requirements:
 | Codex | `shared` | The selected `Product Repository` must be writable when applying `.codex/config.toml`; the future Codex host must be able to start project-bound `volicord mcp --stdio` through `PATH`; the shared file must not embed a personal Runtime Home path; Codex project trust may still be required. |
 | Claude Code | `personal`, `global` | The `claude` executable must be launchable by the administrative process so Volicord can use `claude mcp` commands. |
 | Claude Code | `shared` | The selected `Product Repository` must be writable when applying `.mcp.json`; the future Claude Code host must be able to start project-bound `volicord mcp --stdio` through `PATH`; the shared file must not embed a personal Runtime Home path; project MCP approval may still be required. |
-| Generic | user-managed | Volicord does not write a generic MCP configuration export. A supported Agent Connection must already exist before an external host can be configured manually. The external host remains user-managed and unverified until loaded and checked by a host-specific mechanism. |
+| Generic | user-managed | Volicord does not write generic MCP host configuration. A supported Agent Connection must already exist before an external host can be configured manually. The external host remains user-managed and unverified until loaded and checked by a host-specific mechanism. |
 
 Writing host configuration does not prove that the host trusted, approved, loaded, initialized, or exposed `volicord mcp --stdio`. `managed host configuration state` meaning and host trust boundaries are owned by [Agent Connection](agent-connection.md).
 

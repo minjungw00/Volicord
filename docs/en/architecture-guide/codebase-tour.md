@@ -312,7 +312,7 @@ Why it exists:
 `volicord-cli` implements the local `volicord` administrative executable and
 reusable command modules. It handles installation profile readiness, Git repository
 project detection, project and Agent Connection registration, Agent Connection
-setup, host-specific MCP configuration, authority bundle export, local
+setup, supported host-specific MCP configuration, authority bundle export, local
 `User Channel` commands, and preflight execution.
 
 Owns in the implementation:
@@ -321,8 +321,8 @@ Owns in the implementation:
 - `volicord connection add`, `volicord connection list`, and `volicord connection ...`
   parsing, storage preparation, host plan construction, preflight invocation,
   status, verification, mode, removal, and output.
-- Setup, doctor, project, export, and local User Channel command parsing and
-  output.
+- Setup, doctor, project, authority-bundle export, and local User Channel
+  command parsing and output.
 - Codex and Claude Code host integration planning.
 - Managed host configuration planning and safety checks.
 - Agent Connection, Connection Projects, and invocation metadata generation.
@@ -347,11 +347,13 @@ Important modules:
   for installation profile creation, executable discovery, and diagnostic checks.
 - [`crates/volicord-cli/src/project_context.rs`](../../../crates/volicord-cli/src/project_context.rs)
   for Git repository root detection and `volicord project ...` commands.
+- [`crates/volicord-cli/src/export_command.rs`](../../../crates/volicord-cli/src/export_command.rs)
+  for authority bundle export parsing, rendering, and output.
 - [`crates/volicord-cli/src/connection_command.rs`](../../../crates/volicord-cli/src/connection_command.rs)
   for `volicord connection add`, `volicord connection list`, and
   `volicord connection status/verify/mode/remove` orchestration.
 - [`crates/volicord-cli/src/host_integration/`](../../../crates/volicord-cli/src/host_integration/)
-  for Codex, Claude Code, and generic host integration adapters.
+  for Codex, Claude Code, and host configuration planning.
 - [`crates/volicord-cli/src/registration.rs`](../../../crates/volicord-cli/src/registration.rs)
   for Agent Connection, Connection Project, and User Channel registry helpers.
 - [`crates/volicord-cli/src/user_command.rs`](../../../crates/volicord-cli/src/user_command.rs)

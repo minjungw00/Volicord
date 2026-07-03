@@ -2,7 +2,7 @@
 
 ## 맥락
 
-Volicord는 Codex, Claude Code, generic MCP 설정을 위한 직접 coding-agent host 지원이 필요하며, 동시에 등록된 `Product Repository`가 둘 이상인 사용 방식을 지원해야 합니다. MCP roots와 시작 디렉터리 맥락은 호스트 힌트입니다. Volicord 권한이 아니며 그 자체로 Project를 안전하게 선택할 수 없습니다.
+Volicord는 Codex와 Claude Code를 위한 관리 coding-agent host 지원과 사용자가 관리하는 일반 MCP 호스트 설정 안내가 필요하며, 동시에 등록된 `Product Repository`가 둘 이상인 사용 방식을 지원해야 합니다. MCP roots와 시작 디렉터리 맥락은 호스트 힌트입니다. Volicord 권한이 아니며 그 자체로 Project를 안전하게 선택할 수 없습니다.
 
 ## 결정
 

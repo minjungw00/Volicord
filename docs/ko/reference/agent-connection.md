@@ -29,7 +29,7 @@
   문서, [API 값 집합](api/schema-value-sets.md)
 - `volicord mcp --stdio` 시작, 프로세스 환경, stdio 프레이밍, 시작 검증, 응답
   래핑, 종료: [MCP 전송](mcp-transport.md)
-- 관리 setup, 연결, 상태, 검증, 모드, 제거, 프로젝트, export 명령:
+- 관리 setup, 연결, 상태, 검증, 모드, 제거, 프로젝트, 권한 번들 내보내기 명령:
   [관리 CLI](admin-cli.md)
 - 저장소 배치, 아티팩트 생명주기, 스테이징 핸들 검증: [참조 색인](README.md)에서
   고르는 저장소와 아티팩트 담당 문서
@@ -105,8 +105,8 @@ Volicord 관리 호스트 설정은 Volicord가 특정 생성 호스트 설정 �
   네트워크 정책, 사용자 권한이 아닙니다.
 
 저장 기록 계열과 DDL은 [저장소 기록](storage-records.md)과 [저장소 DDL](storage-ddl.md)이
-담당합니다. 관리 생성, 갱신, 검증, 모드, export, 제거 명령은
-[관리 CLI](admin-cli.md)가 담당합니다.
+담당합니다. 관리 생성, 갱신, 검증, 모드, 제거 명령은 [관리 CLI](admin-cli.md)가
+담당합니다.
 
 ## 연결 의도
 
@@ -178,7 +178,7 @@ Connection Projects는 Agent Connection과 등록 프로젝트 사이의 명시�
 - `last_verification_status=complete`는 [관리 CLI](admin-cli.md#agent-connection-result-states)가
   담당하는 운영 게이트를 만족한 관리 검증 결과에 대해서만 저장할 수 있습니다. Volicord가
   직접 시작한 MCP handshake만으로는 충분하지 않습니다.
-- `last_verification_status=action_required`는 Volicord가 설정을 관리하거나 내보낼 수 있지만
+- `last_verification_status=action_required`는 Volicord가 지원 호스트 설정을 관리할 수 있지만
   호스트가 소유한 신뢰, 승인, OAuth, reload, restart, 명령 링크 복구, 설치 프로필
   복구가
   남아 있을 때의 예상 상태입니다.

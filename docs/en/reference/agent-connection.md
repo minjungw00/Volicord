@@ -34,8 +34,9 @@ This document does not own:
 - `volicord mcp --stdio` startup, process environment, stdio framing,
   startup validation, response wrapping, or shutdown; see
   [MCP Transport](mcp-transport.md)
-- administrative setup, connection, status, verification, mode, remove, project,
-  and export commands; see [Administrative CLI](admin-cli.md)
+- administrative setup, connection, status, verification, mode, remove,
+  project, and authority-bundle export commands; see
+  [Administrative CLI](admin-cli.md)
 - storage layout, artifact lifecycle, or staged-handle validation; see storage
   and artifact owners through [Reference Index](README.md)
 - security guarantee meanings or access-boundary wording; see
@@ -121,7 +122,7 @@ Rules:
 
 Storage record families and DDL belong to [Storage Records](storage-records.md)
 and [Storage DDL](storage-ddl.md). Administrative creation, update,
-verification, mode, export, and removal commands belong to
+verification, mode, and removal commands belong to
 [Administrative CLI](admin-cli.md).
 
 ## Connection Intents
@@ -204,7 +205,7 @@ Rules:
   [Administrative CLI](admin-cli.md#agent-connection-result-states). A direct
   Volicord-spawned MCP handshake is not enough by itself.
 - `last_verification_status=action_required` is the expected state when Volicord can
-  manage or export configuration but a host-owned trust, approval, OAuth,
+  manage supported host configuration but a host-owned trust, approval, OAuth,
   reload, restart, command-link repair, or installation-profile repair remains.
 - Rejected, missing, changed, unavailable, and unknown host states are not
   `complete` Agent Connection states.

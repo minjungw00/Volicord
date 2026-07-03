@@ -488,19 +488,20 @@ Agent Connection의 text와 JSON 출력은 진단 출력입니다. JSON 출력�
 - JSON 출력은 출력 경로, 번들 파일 경로, 기록 수, 아티팩트 수, 복사된 아티팩트 수,
   체크섬 항목 수를 보고합니다.
 
-<a id="generic-mcp-config-export"></a>
+<a id="external-host-configuration"></a>
 ## 호스트 MCP 설정
 
-Volicord는 공개 generic MCP 설정 내보내기 명령을 제공하지 않습니다. 지원 호스트
+공개 `volicord export` 표면은 `volicord export authority-bundle`입니다. Volicord는
+일반 외부 MCP 호스트 설정을 렌더링하는 공개 명령을 제공하지 않습니다. 지원 호스트
 설정은 `volicord init`과 `volicord connection add`를 통해 수행됩니다. 이 명령들은
 선택된 호스트 어댑터가 관리 대상을 소유할 때 지원 호스트 설정을 직접 씁니다.
-Generic 또는 그 밖의 미지원 외부 호스트는 사용자 관리 설정 표면으로 남습니다.
+호스트 중립 또는 그 밖의 미지원 외부 호스트는 사용자 관리 설정 표면으로 남습니다.
 
 규칙:
 
 - 지원되는 관리 호스트 설정은 Agent Connection에 묶이며, 묶인
   `volicord mcp --stdio` 프로세스를 시작합니다.
-- 사용자 관리 generic 호스트 설정은 지원되는 Agent Connection이 존재한 뒤 설치된
+- 사용자 관리 외부 호스트 설정은 지원되는 Agent Connection이 존재한 뒤 설치된
   `volicord` 실행 파일과 `mcp --stdio --connection <connection_id>
   [--project <project_id>]` 인자를 이름 붙일 수 있습니다.
 - Volicord는 임의 외부 호스트가 사용자 관리 설정을 로드, 신뢰, 승인, 초기화, 노출했다고

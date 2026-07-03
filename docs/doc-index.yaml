@@ -224,8 +224,8 @@ shared_documents:
   normative_level: maintenance
   owner_area: documentation_maintenance
   created_on: '2026-06-07'
-  last_updated_on: '2026-07-03'
-  last_verified_on: '2026-07-03'
+  last_updated_on: '2026-07-04'
+  last_verified_on: '2026-07-04'
   applies_to:
   - volicord_workspace_0_1
   - doc_index_schema_v3
@@ -246,8 +246,8 @@ shared_documents:
   normative_level: maintenance
   owner_area: documentation_maintenance
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-03'
-  last_verified_on: '2026-07-03'
+  last_updated_on: '2026-07-04'
+  last_verified_on: '2026-07-04'
   applies_to:
   - volicord_workspace_0_1
   - terminology_map_v1
@@ -626,8 +626,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-03'
-  last_verified_on: '2026-07-03'
+  last_updated_on: '2026-07-04'
+  last_verified_on: '2026-07-04'
   applies_to:
   - volicord_workspace_0_1
   - rust_workspace_1_85
@@ -883,8 +883,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-22'
-  last_updated_on: '2026-07-03'
-  last_verified_on: '2026-07-03'
+  last_updated_on: '2026-07-04'
+  last_verified_on: '2026-07-04'
   applies_to:
   - volicord_workspace_0_1
   - rust_workspace_1_85
@@ -1009,8 +1009,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: onboarding
   created_on: '2026-06-23'
-  last_updated_on: '2026-07-02'
-  last_verified_on: '2026-07-02'
+  last_updated_on: '2026-07-04'
+  last_verified_on: '2026-07-04'
   applies_to:
   - volicord_workspace_0_1
   - rust_workspace_1_85
@@ -1105,8 +1105,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: runtime_security
   created_on: '2026-06-07'
-  last_updated_on: '2026-07-03'
-  last_verified_on: '2026-07-03'
+  last_updated_on: '2026-07-04'
+  last_verified_on: '2026-07-04'
   applies_to:
   - volicord_workspace_0_1
   primary_audience:
@@ -1135,8 +1135,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: agent_connection
   created_on: '2026-06-19'
-  last_updated_on: '2026-07-03'
-  last_verified_on: '2026-07-03'
+  last_updated_on: '2026-07-04'
+  last_verified_on: '2026-07-04'
   applies_to:
   - volicord_workspace_0_1
   - mcp_protocol_2025_11_25
@@ -1158,7 +1158,8 @@ documents:
   - agent connection connect, connections, status, verify, mode, and remove commands
   - local `volicord host-hook` lifecycle hook command behavior
   - local `volicord serve` command-line startup and safety-gate behavior
-  - Codex and Claude Code host setup intent support, plus generic MCP config export
+  - Codex and Claude Code host setup intent support, user-managed generic MCP configuration
+    boundaries, and public authority bundle export
   - managed host configuration state setup result states and verification reporting
   - administrative dry-run, machine output, and noninteractive approval behavior
   - Product Repository guidance boundary
@@ -2006,8 +2007,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: agent_connection
   created_on: '2026-05-23'
-  last_updated_on: '2026-07-03'
-  last_verified_on: '2026-07-03'
+  last_updated_on: '2026-07-04'
+  last_verified_on: '2026-07-04'
   applies_to:
   - volicord_workspace_0_1
   - mcp_protocol_2025_11_25
@@ -2141,8 +2142,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-03'
-  last_verified_on: '2026-07-03'
+  last_updated_on: '2026-07-04'
+  last_verified_on: '2026-07-04'
   applies_to:
   - volicord_workspace_0_1
   - doc_index_schema_v3
@@ -2219,8 +2220,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
   created_on: '2026-06-30'
-  last_updated_on: '2026-07-02'
-  last_verified_on: '2026-07-02'
+  last_updated_on: '2026-07-04'
+  last_verified_on: '2026-07-04'
   applies_to:
   - volicord_workspace_0_1
   - doc_index_schema_v3

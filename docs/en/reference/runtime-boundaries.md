@@ -192,7 +192,7 @@ Must not infer:
 
 ### External MCP host configuration
 
-MCP host configuration belongs to the external MCP host. Volicord administrative commands may install supported host configuration directly or render explicit exported configuration when [Administrative CLI](admin-cli.md) defines that behavior, but this document only owns the location boundary.
+MCP host configuration belongs to the external MCP host. Volicord administrative commands may install supported host configuration directly when [Administrative CLI](admin-cli.md) defines that behavior; user-managed external host configuration remains a host-owned surface. This document only owns the location boundary.
 
 May claim:
 - Host configuration can name a `volicord mcp --stdio` executable, an internal Agent Connection binding, and environment values needed by that host.

@@ -139,7 +139,7 @@ Document: [Agent Host Setup](../user-guide/agent-host-setup.md)
 - Primary goal: Explain how to install, verify, guide, operate, and remove
   supported agent-host integrations.
 - Intended reader: Operators, agent integrators, and agents working with Codex,
-  Claude Code, or generic MCP configuration.
+  Claude Code, or user-managed generic MCP host configuration.
 - Should own: Operator choices, supported setup paths, guide-level preflight
   checks, verification and status flows, managed guidance boundaries, and safe
   removal flow.

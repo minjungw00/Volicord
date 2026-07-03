@@ -135,7 +135,7 @@ the documented shape without creating product policy.
 
 Explain example paths, placeholder values, and sample filenames affirmatively:
 say what the value represents for the reader, such as an example Product
-Repository path or an exported MCP config output path. Reserve negative wording
+Repository path or an authority bundle output path. Reserve negative wording
 for safety, authority, routing, persistence, or user-decision boundaries.
 
 API method reference examples must be method-local. Introduce every required
