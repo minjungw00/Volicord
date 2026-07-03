@@ -91,7 +91,7 @@ API 경계 블록:
 
 - `intent=complete`는 사전 확인이 성공하고, 현재 `CurrentCloseBasis`에 대한 닫기 준비 상태 평가가 유효하며, 현재 닫기 근거 참조가 그 아티팩트 및 실행 기록 호환성 규칙을 만족하고, 닫기 차단 사유가 남아 있지 않을 때만 닫을 수 있습니다.
 - 해당 `Task`의 쓰기 티켓이 아직 열려 있거나, active 쓰기 티켓이 해결 없이 만료되었거나, host-hook 또는 watcher 관찰이 티켓 범위 밖의 미해결 Product Repository 경로를 보고하면 닫기 준비 상태는 차단됩니다.
-- `detective` 프로필에서는 닫기 준비 상태가 hook 경로 안전성, prompt capture 사용 가능 사실, 해결되지 않은 미기록 Product Repository 변경, hook이 감지한 쓰기 티켓 문제, session watch 사용 가능성을 포함한 `GuardHealthSummary` host-hook 및 관찰 상태 사실도 확인합니다. `record` 프로필에서는 host hook이 요구되지 않습니다. 해결되지 않은 미기록 Product Repository 변경은 조정으로 해결될 때까지 닫기를 막습니다.
+- `detective` 프로필에서는 닫기 준비 상태가 hook 경로 안전성, prompt capture 사용 가능 사실, 해결되지 않은 미기록 Product Repository 변경, hook이 감지한 쓰기 티켓 문제, session watch 사용 가능성을 포함한 `GuardHealthSummary` host-hook 및 관찰 상태 사실도 확인합니다. Guard health가 선택되면 결과는 도출된 `CoverageSummary` coverage 사실도 보고합니다. `record` 프로필에서는 host hook이 요구되지 않습니다. 해결되지 않은 미기록 Product Repository 변경은 조정으로 해결될 때까지 닫기를 막습니다.
 - Host hook과 session watch 관찰은 Product Repository 쓰기를 막지 않으며 파일을 바꾼 행위자를 식별하지 않습니다. 협력형 탐지와 expected-write 또는 쓰기 티켓 기록에 대한 상관 관계만 지원합니다.
 - 필요한 닫기 증거는 현재 닫기 근거에 맞고 주장과 일치하는 증거 관찰 출처로 뒷받침되어야 합니다. 더 강한 출처가 필요한 닫기 요구사항에는 확인되지 않은 주장, 출처 없는 증거, 오래된 출처, 협력적 에이전트 보고만으로 된 증거가 충분하지 않습니다.
 - `intent=cancel`은 `machine_action=accept`, `resolution_outcome=accepted`, `resolved_by_actor_source=local_user`, 호환 User Channel 출처, `Task`, 현재 범위 리비전, 현재 적용 Change Unit에 묶인 근거를 가진 현재 수락된 취소 판단을 요구합니다. 완료 전용 증거, 최종 수락, 잔여 위험 수락은 필요하지 않습니다.
@@ -224,6 +224,7 @@ CloseTaskRequest:
 | `blockers` | 요청한 경로에 닫기 차단 사유 또는 종료 차단 사유가 있을 때 반환되는 `CloseReadinessBlocker[]`입니다. 형태와 중첩은 [API 상태 스키마](schema-state.md#close-readiness-and-validation-shapes)가 담당하며, `category` 값은 [API 값 집합](schema-value-sets.md#state-and-blocker-values)이 담당합니다. |
 | `pending_judgment_inbox_items` | 현재 닫기 준비 상태 결과에서 사용자 행동이 필요한 필수 미답변 대기 판단의 `JudgmentInboxItem[]`입니다. 형태는 [API 판단 스키마](schema-judgment.md#judgmentinboxitem)가 담당합니다. |
 | `guard_health` | 닫기 준비 상태 결과에 선택된 hook-state 사실의 `GuardHealthSummary | null`입니다. 형태는 [API 상태 스키마](schema-state.md#guard-health-summary)가 담당합니다. |
+| `coverage_summary` | 도출된 active profile, host-hook coverage 상태, session-watcher coverage 상태, 추적된 타임스탬프, 해결되지 않은 미기록 변경 수, coverage 비보장을 담는 `CoverageSummary | null`입니다. 형태는 [API 상태 스키마](schema-state.md#guard-health-summary)가 담당합니다. |
 | `evidence_summary` | 결과에 선택된 닫기 근거의 `EvidenceSummary | null`입니다. 결과에 증거 요약이 선택되지 않으면 `null`입니다. 형태는 [API 상태 스키마](schema-state.md#evidence-and-run-snapshot-shapes)가 담당합니다. |
 | `artifact_refs` | 결과에 선택된 닫기 관련 아티팩트의 `ArtifactRef[]`입니다. `ArtifactRef` 형태는 [API 아티팩트 스키마](schema-artifacts.md#artifactref)가 담당합니다. |
 
@@ -296,9 +297,15 @@ CloseTaskRequest:
 | 분기 | 생성 규칙 |
 |---|---|
 | `volicord.check_close` | 현재 닫기 준비 상태 차단 사유를 응답 관찰 데이터로 반환합니다. |
-| `intent=complete` | 완료 경로가 닫기 준비 상태 평가에 도달했고 담당 문서가 정의한 닫기 요구사항이 해결되지 않았을 때 닫기 차단 사유를 만듭니다. 여기에는 열려 있거나 만료된 미해결 쓰기 티켓, 해결되지 않은 미기록 변경 찾기, host-hook 상태, session watch, host-hook이 감지한 쓰기 티켓 차단 사유가 포함됩니다. 부분 watcher coverage는 다른 담당 policy가 차단하지 않는 한 host-hook health 경고로 남습니다. |
+| `intent=complete` | 완료 경로가 닫기 준비 상태 평가에 도달했고 담당 문서가 정의한 닫기 요구사항이 해결되지 않았을 때 닫기 차단 사유를 만듭니다. 여기에는 열려 있거나 만료된 미해결 쓰기 티켓, 해결되지 않은 미기록 변경 찾기, host-hook 상태, session watch, host-hook이 감지한 쓰기 티켓 차단 사유가 포함됩니다. `detective`에서는 watcher가 inactive, degraded, unavailable, disabled이거나 부분 coverage이면 `session_watch_unavailable`을 만듭니다. `record`에서는 watcher coverage 부재를 non-coverage로 보고하며, 그 자체로는 닫기 차단 사유가 아닙니다. |
 | `intent=cancel` | 취소 권한 누락이나 비호환을 포함해 취소 전용 종료 제약에 대해서만 차단 사유를 만듭니다. 완료 전용 증거, 최종 수락, 잔여 위험 공백은 그 자체로 취소를 막지 않습니다. |
 | `intent=supersede` | 대체 전용 종료 제약에 대해서만 차단 사유를 만듭니다. 완료 전용 증거, 최종 수락, 잔여 위험 공백은 그 자체로 대체를 막지 않습니다. |
+
+닫기 준비 상태 coverage 규칙:
+
+- `record` 프로필은 닫기 준비 상태에 host hook이나 session watcher를 요구하지 않습니다. 현재 닫기 의미가 해결되지 않은 미기록 Product Repository 변경을 보고하면, 그 변경은 계속 보이고 닫기를 막습니다.
+- `detective` 프로필은 watcher가 unsupported, inactive, degraded, unavailable이거나 부분 coverage인 상태를 `coverage_summary`와 `guard_health`를 통해 non-coverage로 보고합니다. 이런 상태를 full coverage처럼 해석하면 안 됩니다.
+- `coverage_summary.non_guarantees`는 detective 관찰이 행위자 identity 증명, 전체 파일시스템 감시, 쓰기 방지가 아님을 보고합니다.
 
 비주장:
 
@@ -307,7 +314,7 @@ CloseTaskRequest:
 - `STATE_VERSION_CONFLICT`는 거절 응답 `ErrorCode`이며 메서드 로컬 차단 사유 코드나 결정 코드가 아닙니다.
 - 차단 사유 범주는 사용자 판단, 승인, 증거, 아티팩트 가용성, 최종 수락, 잔여 위험 수락, 복구 상태 자체를 만들지 않습니다.
 - 닫기 준비 상태는 정확성 증명, 테스트 충분성 증명, 인간 검토 대체가 아닙니다. `CloseTaskResult.base.disclosure.non_guarantees`는 `NotCorrectnessProof`, `NotTestSufficiencyProof`, `NotHumanReviewReplacement`를 포함해야 합니다.
-- Guard와 watcher 차단 사유는 완전한 쓰기 방지, 행위자 귀속, OS 샌드박싱, OS 수준 파일시스템 집행을 주장하지 않습니다.
+- Guard와 watcher 차단 사유는 완전한 쓰기 방지, 전체 파일시스템 감시, 행위자 귀속, OS 샌드박싱, OS 수준 파일시스템 집행을 주장하지 않습니다.
 - 확인되지 않은 주장, 출처가 빠진 증거, 오래된 관찰 출처, 협력적 에이전트 보고는 증거 이력으로 기록될 수 있지만, 닫기 경로가 더 강한 출처를 요구할 때 필요한 닫기 증거를 만족하지 않습니다.
 - 거절, 연기, 오래됨, 대체됨, 만료됨, 유효하지 않은 근거, 에이전트가 기록함, 출처 누락, 결과 없음 취소 판단은 취소를 허용하지 않습니다.
 

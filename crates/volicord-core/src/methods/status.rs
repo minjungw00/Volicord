@@ -100,6 +100,7 @@ fn status_result_fields(
     let mut risk_acceptance_coverage = None;
     let mut close_blockers = None;
     let mut guard_health = None;
+    let mut coverage_summary = None;
     let mut continuity_summary = None;
     let mut next_actions = Vec::new();
     let mut card_pending_user_judgment_count = 0usize;
@@ -169,6 +170,10 @@ fn status_result_fields(
             risk_acceptance_coverage = Some(plan.risk_acceptance_coverage.clone());
             close_blockers = Some(plan.blockers.clone());
             guard_health = plan.guard_health.clone();
+            coverage_summary = plan
+                .guard_health
+                .as_ref()
+                .map(close_task::coverage_summary_from_guard_health);
             next_actions.extend(close_next_actions(&plan.blockers));
             Some(plan)
         } else {
@@ -263,6 +268,7 @@ fn status_result_fields(
         risk_acceptance_coverage,
         close_blockers,
         guard_health: include.close.then_some(guard_health).flatten(),
+        coverage_summary: include.close.then_some(coverage_summary).flatten(),
         guarantee_display: guarantee_projection.map(RequiredNullable::some),
         continuity_summary,
     };

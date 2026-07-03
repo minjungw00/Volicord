@@ -24,8 +24,8 @@ use crate::project_context::{
     registered_project_for_repo, resolve_repository_root, ProjectCommandError,
 };
 use crate::summary_card::{
-    count_state_text, render_summary_card_text, summary_card_from_response,
-    USER_CHANNEL_SUMMARY_GUARANTEE,
+    count_state_text, render_coverage_summary_text, render_summary_card_text,
+    summary_card_from_response, USER_CHANNEL_SUMMARY_GUARANTEE,
 };
 
 type UserOptions = BTreeMap<String, Vec<String>>;
@@ -904,6 +904,9 @@ fn render_status_response(
     let mut output = String::from("User Channel status\n");
     if let Some(card) = summary_card_from_response(&response.response_value) {
         output.push_str(&render_summary_card_text(&card));
+    }
+    if let Some(coverage) = render_coverage_summary_text(&response.response_value) {
+        output.push_str(&coverage);
     }
     Ok(output)
 }

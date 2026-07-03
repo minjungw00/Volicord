@@ -13,18 +13,19 @@ use crate::ids::{
 };
 use crate::values::{
     ActorSource, ArtifactAvailability, ArtifactInputSourceKind, ArtifactIntegrityStatus,
-    ChangeUnitEffectKind, CloseReadinessBlockerCategory, CloseReason, CloseState, EffectKind,
-    EnabledEnforcementMechanism, ErrorCode, EvidenceAssuranceLevel, EvidenceCoverageState,
-    EvidenceSourceKind, EvidenceStatus, GuaranteeClass, GuaranteeLevel, GuardConfigurationStatus,
-    GuardDecision, GuardEffectiveStatus, GuardInstallationStatus, GuardObservationStatus, HostKind,
-    IntegrationProfile, JudgmentBasisCompatibilityStatus, JudgmentKind, JudgmentPresentation,
-    JudgmentRequiredFor, JudgmentResolutionOutcome, MethodName, NextActionKind, NonGuarantee,
-    PlannedBlockerSourceKind, ProjectContinuityKind, ProjectContinuityStatus,
-    ProjectEnforcementProfileSource, ProjectEnforcementProfileStatus, PromptCaptureStatus,
-    RedactionState, ResponseKind, RunKind, SessionWatchCoverageBasis, SessionWatchStatus,
-    StateRecordKind, TaskLifecyclePhase, TaskMode, TaskResult, UnrecordedChangeResolutionBasis,
-    UnrecordedChangeStatus, UserJudgmentOptionAction, UserJudgmentStatus, UtcTimestamp,
-    ValidatorSeverity, ValidatorStatus, WriteDecisionCategory, WriteTicketState, WriteTicketStatus,
+    ChangeUnitEffectKind, CloseReadinessBlockerCategory, CloseReason, CloseState,
+    CoverageHostHookState, CoverageSessionWatcherState, EffectKind, EnabledEnforcementMechanism,
+    ErrorCode, EvidenceAssuranceLevel, EvidenceCoverageState, EvidenceSourceKind, EvidenceStatus,
+    GuaranteeClass, GuaranteeLevel, GuardConfigurationStatus, GuardDecision, GuardEffectiveStatus,
+    GuardInstallationStatus, GuardObservationStatus, HostKind, IntegrationProfile,
+    JudgmentBasisCompatibilityStatus, JudgmentKind, JudgmentPresentation, JudgmentRequiredFor,
+    JudgmentResolutionOutcome, MethodName, NextActionKind, NonGuarantee, PlannedBlockerSourceKind,
+    ProjectContinuityKind, ProjectContinuityStatus, ProjectEnforcementProfileSource,
+    ProjectEnforcementProfileStatus, PromptCaptureStatus, RedactionState, ResponseKind, RunKind,
+    SessionWatchCoverageBasis, SessionWatchStatus, StateRecordKind, TaskLifecyclePhase, TaskMode,
+    TaskResult, UnrecordedChangeResolutionBasis, UnrecordedChangeStatus, UserJudgmentOptionAction,
+    UserJudgmentStatus, UtcTimestamp, ValidatorSeverity, ValidatorStatus, WriteDecisionCategory,
+    WriteTicketState, WriteTicketStatus,
 };
 
 /// JSON object used where an owner document defines a field as `object`.
@@ -318,6 +319,7 @@ fn broad_non_guarantees() -> Vec<NonGuarantee> {
         NonGuarantee::NotTestSufficiencyProof,
         NonGuarantee::NotHumanReviewReplacement,
         NonGuarantee::NotFullWritePrevention,
+        NonGuarantee::NotFullFilesystemMonitoring,
         NonGuarantee::NotActorAttributionProof,
     ]
 }
@@ -532,6 +534,19 @@ pub struct GuardHealthSummary {
     pub unresolved_unrecorded_change_count: u64,
     pub missing_or_stale_write_ticket: bool,
     pub write_ticket_path_scope_violation: bool,
+}
+
+/// Concise coverage projection for status and close-readiness views.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CoverageSummary {
+    pub active_profile: IntegrationProfile,
+    pub host_hook_state: CoverageHostHookState,
+    pub session_watcher_state: CoverageSessionWatcherState,
+    pub coverage_started_at: RequiredNullable<UtcTimestamp>,
+    pub last_snapshot_at: RequiredNullable<UtcTimestamp>,
+    pub unresolved_unrecorded_change_count: u64,
+    pub non_guarantees: Vec<NonGuarantee>,
 }
 
 /// Project-level continuity record that preserves durable context after Task close.

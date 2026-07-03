@@ -1,6 +1,6 @@
 # API 상태 스키마
 
-이 문서는 기준 범위의 상태 형태 API 스키마를 담당합니다. `StateSummary`, `StateRecordRef`, API 데이터 형태의 생명주기 상태, 상태 관련 스냅샷, `ProjectContinuityRecord`, `ProjectContinuitySummary`, `ShapingReadiness`, `ChangeUnitEffectContract`, 그리고 `SummaryCard`, `NextActionSummary`, `WriteTicket`, `WriteTicketScope`, `WriteTicketPathPatterns`, `WriteTicketStateSummary`, `WriteTicketSummary`, `WriteTicketAttemptScope`, `EvidenceSummary`, `EvidenceObservation`, `GuardHealthSummary`, `UnrecordedChangeFinding`, `UnrecordedChangeResolutionSummary`, `CurrentCloseBasis`, `ResidualRisk`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`, `ValidatorResult`, `GuaranteeDisplay`, `GuaranteeDisclosure` 같은 표시 형태를 정의합니다.
+이 문서는 기준 범위의 상태 형태 API 스키마를 담당합니다. `StateSummary`, `StateRecordRef`, API 데이터 형태의 생명주기 상태, 상태 관련 스냅샷, `ProjectContinuityRecord`, `ProjectContinuitySummary`, `ShapingReadiness`, `ChangeUnitEffectContract`, 그리고 `SummaryCard`, `NextActionSummary`, `WriteTicket`, `WriteTicketScope`, `WriteTicketPathPatterns`, `WriteTicketStateSummary`, `WriteTicketSummary`, `WriteTicketAttemptScope`, `EvidenceSummary`, `EvidenceObservation`, `GuardHealthSummary`, `CoverageSummary`, `UnrecordedChangeFinding`, `UnrecordedChangeResolutionSummary`, `CurrentCloseBasis`, `ResidualRisk`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`, `ValidatorResult`, `GuaranteeDisplay`, `GuaranteeDisclosure` 같은 표시 형태를 정의합니다.
 
 ## 담당 경계
 
@@ -160,6 +160,15 @@ GuardHealthSummary:
   unresolved_unrecorded_change_count: integer
   missing_or_stale_write_ticket: boolean
   write_ticket_path_scope_violation: boolean
+
+CoverageSummary:
+  active_profile: string
+  host_hook_state: string
+  session_watcher_state: string
+  coverage_started_at: string | null
+  last_snapshot_at: string | null
+  unresolved_unrecorded_change_count: integer
+  non_guarantees: NonGuarantee[]
 ```
 
 의미:
@@ -187,18 +196,22 @@ GuardHealthSummary:
 - `unresolved_unrecorded_change_count`는 해결되지 않은 미기록 Product Repository 변경 수입니다. 프롬프트 텍스트, 명령 텍스트, 경로 목록은 노출하지 않습니다.
 - `missing_or_stale_write_ticket`는 host-hook 이벤트가 누락되었거나, 결정할 수 없거나, 모호하거나, 오래된 쓰기 티켓 준비 상태를 감지했는지 보고합니다.
 - `write_ticket_path_scope_violation`은 host-hook 이벤트가 active 쓰기 티켓 범위 밖의 Product Repository 경로를 관찰했는지 보고합니다.
+- `CoverageSummary`는 상태 조회와 닫기 준비 상태 결과가 선택하는 간결한 도출 coverage 보기입니다. `active_profile`은 현재 `record` 또는 `detective` 프로필입니다. `host_hook_state`는 `observed`, `not_observed`, `unsupported`, `degraded` 중 하나이고, `session_watcher_state`는 `active`, `inactive`, `unsupported`, `degraded` 중 하나입니다.
+- `coverage_started_at`은 런타임이 추적하는 session-watch coverage 시작 시각이며, 사용할 수 없으면 `null`입니다. `last_snapshot_at`은 추적할 때의 최신 watcher baseline 또는 snapshot 상태 시각이며, 사용할 수 없으면 `null`입니다.
+- `CoverageSummary.unresolved_unrecorded_change_count`는 닫기 준비 상태가 사용하는 해결되지 않은 미기록 Product Repository 변경 수와 같습니다.
+- coverage가 보고될 때 `CoverageSummary.non_guarantees`는 `NotActorAttributionProof`, `NotFullFilesystemMonitoring`, `NotFullWritePrevention`을 포함해야 합니다.
 
 의미하지 않는 것:
 - `control_surface`는 정확성, review 완료, 테스트 충분성, OS 수준 강제, 쓰기 차단을 증명하지 않습니다.
 - `GuardHealthSummary`는 제품 정확성, 테스트 충분성, OS 강제, 샌드박싱, 보안 격리, 최종 수락의 증거가 아닙니다.
 - active인 `effective_guard_status`는 증거, 아티팩트 무결성, 사용자 소유 판단, 쓰기 티켓, 최종 수락, 잔여 위험 수락 요구사항을 대체하지 않습니다.
-- Session watch 상태와 coverage 메타데이터는 Volicord가 쓰기를 막았거나, 파일을 바꾼 행위자를 식별했거나, 파일 내용을 저장했거나, OS 수준 강제를 제공했다는 뜻이 아닙니다.
+- Session watch 상태와 coverage 메타데이터는 Volicord가 쓰기를 막았거나, 전체 파일시스템을 감시했거나, 파일을 바꾼 행위자를 식별했거나, 파일 내용을 저장했거나, OS 수준 강제를 제공했다는 뜻이 아닙니다.
 - `session_watch_partial_coverage_warning`이 `null`이 아니면 `session_watch_coverage_start_at` 전의 Product Repository 변경은 session-watch coverage 밖에 남습니다.
 - `record`는 협력형으로 남습니다. detective control surface 건강 상태가 해결되지 않은 미기록 변경 찾기를 보고하면 그 찾기는 닫기를 막습니다.
-- `detective`는 모든 쓰기를 막거나, 파일을 바꾼 행위자를 식별하거나, 네트워크를 격리하거나, sandbox를 제공하지 않습니다.
+- `detective`는 모든 쓰기를 막거나, 전체 파일시스템을 감시하거나, 파일을 바꾼 행위자를 식별하거나, 네트워크를 격리하거나, sandbox를 제공하지 않습니다.
 
 담당 문서 링크:
-- `selected_profile`, `hook_path_safety`, `guard_installation_status`, `guard_configuration_status`, `guard_observation_status`, `effective_guard_status`, `prompt_capture_status`, `session_watch_status`, `session_watch_coverage_basis` 값: [상태와 차단 사유 값](schema-value-sets.md#state-and-blocker-values)
+- `selected_profile`, `host_hook_state`, `session_watcher_state`, `hook_path_safety`, `guard_installation_status`, `guard_configuration_status`, `guard_observation_status`, `effective_guard_status`, `prompt_capture_status`, `session_watch_status`, `session_watch_coverage_basis` 값: [상태와 차단 사유 값](schema-value-sets.md#state-and-blocker-values)
 - 닫기 준비 상태 `guard_*` 차단 사유와 메서드 로컬 코드: [`volicord.check_close`와 `volicord.close_task`](method-close-task.md)
 - Agent Connection 의미: [Agent Connection](../agent-connection.md)
 

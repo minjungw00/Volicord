@@ -1,6 +1,6 @@
 # API state schemas
 
-This document owns API state-shaped schemas for the baseline scope. It defines public response shapes for `StateSummary`, `StateRecordRef`, lifecycle state as API data, state-related snapshots, `ProjectContinuityRecord`, `ProjectContinuitySummary`, `ShapingReadiness`, `ChangeUnitEffectContract`, and display shapes such as `SummaryCard`, `NextActionSummary`, `WriteTicket`, `WriteTicketScope`, `WriteTicketPathPatterns`, `WriteTicketStateSummary`, `WriteTicketSummary`, `WriteTicketAttemptScope`, `EvidenceSummary`, `EvidenceObservation`, `GuardHealthSummary`, `UnrecordedChangeFinding`, `UnrecordedChangeResolutionSummary`, `CurrentCloseBasis`, `ResidualRisk`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`, `ValidatorResult`, `GuaranteeDisplay`, and `GuaranteeDisclosure`.
+This document owns API state-shaped schemas for the baseline scope. It defines public response shapes for `StateSummary`, `StateRecordRef`, lifecycle state as API data, state-related snapshots, `ProjectContinuityRecord`, `ProjectContinuitySummary`, `ShapingReadiness`, `ChangeUnitEffectContract`, and display shapes such as `SummaryCard`, `NextActionSummary`, `WriteTicket`, `WriteTicketScope`, `WriteTicketPathPatterns`, `WriteTicketStateSummary`, `WriteTicketSummary`, `WriteTicketAttemptScope`, `EvidenceSummary`, `EvidenceObservation`, `GuardHealthSummary`, `CoverageSummary`, `UnrecordedChangeFinding`, `UnrecordedChangeResolutionSummary`, `CurrentCloseBasis`, `ResidualRisk`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`, `ValidatorResult`, `GuaranteeDisplay`, and `GuaranteeDisclosure`.
 
 ## Owner boundary
 
@@ -160,6 +160,15 @@ GuardHealthSummary:
   unresolved_unrecorded_change_count: integer
   missing_or_stale_write_ticket: boolean
   write_ticket_path_scope_violation: boolean
+
+CoverageSummary:
+  active_profile: string
+  host_hook_state: string
+  session_watcher_state: string
+  coverage_started_at: string | null
+  last_snapshot_at: string | null
+  unresolved_unrecorded_change_count: integer
+  non_guarantees: NonGuarantee[]
 ```
 
 Meaning:
@@ -187,18 +196,22 @@ Meaning:
 - `unresolved_unrecorded_change_count` is a count of unresolved unrecorded Product Repository changes. It does not expose prompt text, command text, or path lists.
 - `missing_or_stale_write_ticket` reports whether host-hook events detected missing, indeterminate, ambiguous, or stale write-ticket readiness.
 - `write_ticket_path_scope_violation` reports whether host-hook events observed a Product Repository path outside the active write-ticket scope.
+- `CoverageSummary` is a concise, derived coverage view selected by status and close-readiness results. `active_profile` is the current `record` or `detective` profile; `host_hook_state` is `observed`, `not_observed`, `unsupported`, or `degraded`; and `session_watcher_state` is `active`, `inactive`, `unsupported`, or `degraded`.
+- `coverage_started_at` is the session-watch coverage start timestamp when the runtime tracks one, or `null` when unavailable. `last_snapshot_at` is the latest watcher baseline or snapshot-status timestamp when tracked, or `null` when unavailable.
+- `CoverageSummary.unresolved_unrecorded_change_count` mirrors the unresolved unrecorded Product Repository change count used by close readiness.
+- `CoverageSummary.non_guarantees` must include `NotActorAttributionProof`, `NotFullFilesystemMonitoring`, and `NotFullWritePrevention` when coverage is reported.
 
 Does not imply:
 - `control_surface` is not proof of correctness, review completion, test sufficiency, OS-level enforcement, or write prevention.
 - `GuardHealthSummary` is not evidence of product correctness, test sufficiency, OS enforcement, sandboxing, security isolation, or final acceptance.
 - An active `effective_guard_status` does not replace evidence, artifact integrity, user-owned judgment, write-ticket, final acceptance, or residual-risk acceptance requirements.
-- Session watch status and coverage metadata do not mean Volicord prevented a write, identified the actor who changed a file, stored file contents, or provided OS-level enforcement.
+- Session watch status and coverage metadata do not mean Volicord prevented a write, monitored the full filesystem, identified the actor who changed a file, stored file contents, or provided OS-level enforcement.
 - When `session_watch_partial_coverage_warning` is non-null, Product Repository changes before `session_watch_coverage_start_at` remain outside session-watch coverage.
 - `record` profile remains cooperative. Unresolved unrecorded-change findings still block close when detective control-surface health reports them.
-- `detective` profile does not prevent all writes, identify the actor who changed a file, isolate the network, or provide a sandbox.
+- `detective` profile does not prevent all writes, monitor the full filesystem, identify the actor who changed a file, isolate the network, or provide a sandbox.
 
 Owner links:
-- `selected_profile`, `hook_path_safety`, `guard_installation_status`, `guard_configuration_status`, `guard_observation_status`, `effective_guard_status`, `prompt_capture_status`, `session_watch_status`, and `session_watch_coverage_basis` values: [state and blocker values](schema-value-sets.md#state-and-blocker-values)
+- `selected_profile`, `host_hook_state`, `session_watcher_state`, `hook_path_safety`, `guard_installation_status`, `guard_configuration_status`, `guard_observation_status`, `effective_guard_status`, `prompt_capture_status`, `session_watch_status`, and `session_watch_coverage_basis` values: [state and blocker values](schema-value-sets.md#state-and-blocker-values)
 - Close-readiness `guard_*` blockers and method-local codes: [`volicord.check_close` and `volicord.close_task`](method-close-task.md)
 - Agent Connection meaning: [Agent Connection](../agent-connection.md)
 

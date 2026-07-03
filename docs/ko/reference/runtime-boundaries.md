@@ -104,6 +104,13 @@ Volicord 런타임 상태, SQLite 데이터베이스, 생성 기록, 런타임 �
   이 파일들을 Volicord 런타임 상태로 만들지 않으며 OS sandboxing, 명령 차단, 네트워크
   차단, 비밀값 차단, 전역 파일시스템 가로채기를 제공하지 않습니다.
 
+Detective coverage는 한정된 관찰입니다. Host hook과 session watcher는 coverage가
+시작된 뒤의 미기록 Product Repository 변경을 드러낼 수 있으며, 상태 조회 또는 닫기
+준비 상태 결과는 active profile, host-hook 상태, session-watcher 상태, coverage 시작,
+snapshot 상태 시각, 해결되지 않은 미기록 변경 수, coverage 비보장을 `CoverageSummary`
+필드로 보고할 수 있습니다. 이 요약은 전체 파일시스템 감시, 행위자 identity 증명,
+쓰기 방지, 변조 불가능 감사, OS 강제, 보안 격리를 제공하지 않습니다.
+
 <a id="product-repository-api-path-normalization"></a>
 ### `Product Repository` API 경로 정규화
 

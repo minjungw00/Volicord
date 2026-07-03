@@ -477,7 +477,25 @@ first_project_selection
 method_boundary
 ```
 
-이 값들은 닫기 준비 상태와 상태 조회 보기에 쓰이는 detective host-hook 및 내부 host-hook 기록 상태를 보고합니다. `guard_installation_status`는 저장된 생명주기 값이고, `guard_configuration_status`는 파일과 required hook 완전성을 도출하며, `guard_observation_status`는 현재 설치에 일치하는 hook 관찰이 있는지를 도출합니다. `effective_guard_status`는 detective 경로의 닫기 준비 상태 건강 점검에 쓰는 값입니다. 효과적인 `active` 건강 상태에는 detective 프로필, 완전한 required hook 설정, 오래되거나 깨지지 않은 설치, 현재 일치하는 관찰, 일치하는 호스트와 policy 식별 정보가 필요합니다. `prompt_capture_status`는 사용자 소유 판단 채팅 명령을 위한 prompt capture 사용 가능 상태입니다. `unsupported_by_host`는 호스트 기능이 없음을 뜻하고, `not_configured`는 선택된 연결에 prompt-capture 단계가 설정되어 있지 않음을 뜻합니다. `reload_required`는 사용 전에 설치된 설정이나 policy 식별 정보를 다시 읽어야 함을 뜻합니다. `configured`는 prompt-capture 관찰 전에도 검증 코드 채팅 명령을 표시할 수 있음을 뜻하고, `observed`는 일치하는 host hook이 관찰되었음을 뜻합니다. `active`는 일치하는 prompt-capture hook 관찰이 기록되었음을 뜻하고, `degraded`는 저하된 detective host hook 건강 상태 때문에 prompt capture가 차단됨을 뜻합니다. `session_watch_status`는 탐지용 watcher 사용 가능 상태입니다. `disabled`는 선택된 session-watch baseline을 사용할 수 없다는 뜻이고, `active`는 한정된 스냅샷 비교를 사용할 수 있다는 뜻이며, `degraded`는 watcher 출력이 부분적이거나 운영자 조치가 필요하다는 뜻이고, `unavailable`은 watcher가 선택된 스냅샷 확인을 수행할 수 없었다는 뜻입니다. 이 값들은 제품 정확성, 테스트 충분성, OS 강제, 샌드박싱, 보안 격리, 최종 수락, 잔여 위험 수락, 행위자 귀속, 완전한 쓰기 방지를 증명하지 않습니다. `record`는 협력형으로 남으며, 해결되지 않은 Unrecorded Change는 detective 건강 상태가 보고할 때 닫기를 막습니다.
+`CoverageSummary.host_hook_state`는 아래 값을 사용합니다.
+
+```text
+observed
+not_observed
+unsupported
+degraded
+```
+
+`CoverageSummary.session_watcher_state`는 아래 값을 사용합니다.
+
+```text
+active
+inactive
+unsupported
+degraded
+```
+
+이 값들은 닫기 준비 상태와 상태 조회 보기에 쓰이는 detective host-hook 및 내부 host-hook 기록 상태를 보고합니다. `guard_installation_status`는 저장된 생명주기 값이고, `guard_configuration_status`는 파일과 required hook 완전성을 도출하며, `guard_observation_status`는 현재 설치에 일치하는 hook 관찰이 있는지를 도출합니다. `effective_guard_status`는 detective 경로의 닫기 준비 상태 건강 점검에 쓰는 값입니다. 효과적인 `active` 건강 상태에는 detective 프로필, 완전한 required hook 설정, 오래되거나 깨지지 않은 설치, 현재 일치하는 관찰, 일치하는 호스트와 policy 식별 정보가 필요합니다. `prompt_capture_status`는 사용자 소유 판단 채팅 명령을 위한 prompt capture 사용 가능 상태입니다. `unsupported_by_host`는 호스트 기능이 없음을 뜻하고, `not_configured`는 선택된 연결에 prompt-capture 단계가 설정되어 있지 않음을 뜻합니다. `reload_required`는 사용 전에 설치된 설정이나 policy 식별 정보를 다시 읽어야 함을 뜻합니다. `configured`는 prompt-capture 관찰 전에도 검증 코드 채팅 명령을 표시할 수 있음을 뜻하고, `observed`는 일치하는 host hook이 관찰되었음을 뜻합니다. `active`는 일치하는 prompt-capture hook 관찰이 기록되었음을 뜻하고, `degraded`는 저하된 detective host hook 건강 상태 때문에 prompt capture가 차단됨을 뜻합니다. `session_watch_status`는 탐지용 watcher 사용 가능 상태입니다. `disabled`는 선택된 session-watch baseline을 사용할 수 없다는 뜻이고, `active`는 한정된 스냅샷 비교를 사용할 수 있다는 뜻이며, `degraded`는 watcher 출력이 부분적이거나 운영자 조치가 필요하다는 뜻이고, `unavailable`은 watcher가 선택된 스냅샷 확인을 수행할 수 없었다는 뜻입니다. `CoverageSummary.host_hook_state`와 `CoverageSummary.session_watcher_state`는 사람이 읽는 상태 조회와 닫기 준비 상태 출력을 위한 간결한 도출 상태이며, 자세한 `GuardHealthSummary` 필드를 대체하지 않습니다. 이 값들은 제품 정확성, 테스트 충분성, OS 강제, 샌드박싱, 보안 격리, 최종 수락, 잔여 위험 수락, 행위자 귀속, 전체 파일시스템 감시, 완전한 쓰기 방지를 증명하지 않습니다. `record`는 협력형으로 남으며, 닫기 준비 상태가 해결되지 않은 Unrecorded Change를 보고하면 그 변경은 닫기를 막습니다.
 
 `pending_project_selection`은 MCP session에 사용할 수 있는 프로젝트가 둘 이상이고
 session-watch baseline을 만들 만큼 프로젝트가 아직 명시적으로 선택되지 않았다는
@@ -665,10 +683,11 @@ NotCorrectnessProof
 NotTestSufficiencyProof
 NotHumanReviewReplacement
 NotFullWritePrevention
+NotFullFilesystemMonitoring
 NotActorAttributionProof
 ```
 
-이 값들은 안정적인 비주장입니다. 결과를 OS 샌드박싱, 네트워크 격리, 악성 코드 방어, 변조 불가능 감사 로그, 제품 정확성 증명, 테스트 충분성 증명, 인간 검토 대체, 전체 쓰기 방지, 행위자 귀속 증명으로 해석하면 안 된다는 뜻입니다.
+이 값들은 안정적인 비주장입니다. 결과를 OS 샌드박싱, 네트워크 격리, 악성 코드 방어, 변조 불가능 감사 로그, 제품 정확성 증명, 테스트 충분성 증명, 인간 검토 대체, 전체 쓰기 방지, 전체 파일시스템 감시, 행위자 귀속 증명으로 해석하면 안 된다는 뜻입니다.
 
 <a id="artifact-values"></a>
 ## 아티팩트 값

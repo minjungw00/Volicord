@@ -139,7 +139,7 @@ Meaning:
 
 Does not imply:
 - `ToolRejectedResponse` and `ToolDryRunResponse` do not carry result-only fields such as `task_ref`, `run_summary`, `staged_artifact_handle`, `write_ticket_ref`, `user_judgment_ref`, `decision`, or `close_state`.
-- `ToolResultBase.disclosure` does not create OS sandboxing, network isolation, malware defense, tamper-proof audit logging, full write prevention, actor attribution proof, correctness proof, test sufficiency proof, or a replacement for human review.
+- `ToolResultBase.disclosure` does not create OS sandboxing, network isolation, malware defense, tamper-proof audit logging, full write prevention, full filesystem monitoring, actor attribution proof, correctness proof, test sufficiency proof, or a replacement for human review.
 
 Owner links:
 - supported `response_kind` and `effect_kind` values: [response and effect values](schema-value-sets.md#response-and-effect-values)

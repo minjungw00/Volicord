@@ -106,6 +106,15 @@ Rules:
   state and do not provide OS sandboxing, command blocking, network blocking,
   secret blocking, or global filesystem interception.
 
+Detective coverage is bounded observation. Host hooks and the session watcher
+may surface unrecorded Product Repository changes after coverage starts, and
+status or close-readiness results may report `CoverageSummary` fields for the
+active profile, host-hook state, session-watcher state, coverage start,
+snapshot status timestamp, unresolved unrecorded-change count, and coverage
+non-guarantees. That summary does not provide full filesystem monitoring,
+actor identity proof, write prevention, tamper-proof audit, OS enforcement, or
+security isolation.
+
 <a id="product-repository-api-path-normalization"></a>
 ### Product Repository API path normalization
 

@@ -12450,6 +12450,19 @@ fn external_tool_provenance_supports_the_attached_close_claim() -> Result<(), Bo
     assert_eq!(response.response_value["close_state"], "closed");
     assert_no_close_blocker(&response.response_value, "evidence_provenance_insufficient");
     assert_no_close_blocker(&response.response_value, "evidence_agent_report_only");
+    assert_no_close_blocker(&response.response_value, "session_watch_unavailable");
+    assert_eq!(
+        response.response_value["coverage_summary"]["active_profile"],
+        "record"
+    );
+    assert_eq!(
+        response.response_value["coverage_summary"]["session_watcher_state"],
+        "unsupported"
+    );
+    assert_eq!(
+        response.response_value["coverage_summary"]["unresolved_unrecorded_change_count"],
+        0
+    );
     Ok(())
 }
 
@@ -12869,6 +12882,31 @@ fn guarded_close_complete_success_reports_guard_health() -> Result<(), Box<dyn E
         0
     );
     assert_eq!(
+        status.response_value["coverage_summary"]["active_profile"],
+        "detective"
+    );
+    assert_eq!(
+        status.response_value["coverage_summary"]["host_hook_state"],
+        "observed"
+    );
+    assert_eq!(
+        status.response_value["coverage_summary"]["session_watcher_state"],
+        "active"
+    );
+    assert_eq!(
+        status.response_value["coverage_summary"]["coverage_started_at"],
+        "2026-06-30T00:03:00Z"
+    );
+    assert_eq!(
+        status.response_value["coverage_summary"]["last_snapshot_at"],
+        "2026-06-30T00:03:00Z"
+    );
+    assert_eq!(
+        status.response_value["coverage_summary"]["unresolved_unrecorded_change_count"],
+        0
+    );
+    assert_coverage_non_guarantees(&status.response_value["coverage_summary"]);
+    assert_eq!(
         status.response_value["active_task"]["guard_health"]["selected_profile"],
         "detective"
     );
@@ -12930,6 +12968,23 @@ fn guarded_close_complete_success_reports_guard_health() -> Result<(), Box<dyn E
         response.response_value["guard_health"]["unresolved_unrecorded_change_count"],
         0
     );
+    assert_eq!(
+        response.response_value["coverage_summary"]["active_profile"],
+        "detective"
+    );
+    assert_eq!(
+        response.response_value["coverage_summary"]["host_hook_state"],
+        "observed"
+    );
+    assert_eq!(
+        response.response_value["coverage_summary"]["session_watcher_state"],
+        "active"
+    );
+    assert_eq!(
+        response.response_value["coverage_summary"]["unresolved_unrecorded_change_count"],
+        0
+    );
+    assert_coverage_non_guarantees(&response.response_value["coverage_summary"]);
     Ok(())
 }
 
@@ -15075,6 +15130,27 @@ fn mcp_only_close_blocks_unresolved_unrecorded_change() -> Result<(), Box<dyn Er
         1
     );
     assert_eq!(
+        response.response_value["coverage_summary"]["active_profile"],
+        "record"
+    );
+    assert_eq!(
+        response.response_value["coverage_summary"]["host_hook_state"],
+        "unsupported"
+    );
+    assert_eq!(
+        response.response_value["coverage_summary"]["session_watcher_state"],
+        "unsupported"
+    );
+    assert_eq!(
+        response.response_value["coverage_summary"]["coverage_started_at"],
+        Value::Null
+    );
+    assert_eq!(
+        response.response_value["coverage_summary"]["unresolved_unrecorded_change_count"],
+        1
+    );
+    assert_coverage_non_guarantees(&response.response_value["coverage_summary"]);
+    assert_eq!(
         response.response_value["guard_health"]["prompt_capture_available"],
         false
     );
@@ -15142,6 +15218,27 @@ fn mcp_only_watcher_detects_bypass_file_changes() -> Result<(), Box<dyn Error>> 
         response.response_value["guard_health"]["session_watch_coverage_basis"],
         "method_boundary"
     );
+    assert_eq!(
+        response.response_value["coverage_summary"]["active_profile"],
+        "record"
+    );
+    assert_eq!(
+        response.response_value["coverage_summary"]["host_hook_state"],
+        "unsupported"
+    );
+    assert_eq!(
+        response.response_value["coverage_summary"]["session_watcher_state"],
+        "degraded"
+    );
+    assert_ne!(
+        response.response_value["coverage_summary"]["coverage_started_at"],
+        Value::Null
+    );
+    assert_eq!(
+        response.response_value["coverage_summary"]["unresolved_unrecorded_change_count"],
+        1
+    );
+    assert_coverage_non_guarantees(&response.response_value["coverage_summary"]);
     assert!(
         response.response_value["guard_health"]["session_watch_partial_coverage_warning"]
             .as_str()
@@ -15305,10 +15402,27 @@ fn guarded_hook_missing_write_is_detected_by_watcher() -> Result<(), Box<dyn Err
     )?;
 
     assert_eq!(response.response_value["close_state"], "blocked");
+    assert_close_blocker(&response.response_value, "session_watch_unavailable");
     assert_close_blocker(&response.response_value, "unresolved_unrecorded_changes");
     assert_eq!(
         response.response_value["guard_health"]["selected_profile"],
         "detective"
+    );
+    assert_eq!(
+        response.response_value["coverage_summary"]["active_profile"],
+        "detective"
+    );
+    assert_eq!(
+        response.response_value["coverage_summary"]["host_hook_state"],
+        "observed"
+    );
+    assert_eq!(
+        response.response_value["coverage_summary"]["session_watcher_state"],
+        "degraded"
+    );
+    assert_eq!(
+        response.response_value["coverage_summary"]["unresolved_unrecorded_change_count"],
+        1
     );
     assert_eq!(unresolved_changes_for_connection(&harness)?.len(), 1);
     Ok(())
@@ -16097,12 +16211,36 @@ fn assert_authority_disclosure(value: &Value) {
         "NotTestSufficiencyProof",
         "NotHumanReviewReplacement",
         "NotFullWritePrevention",
+        "NotFullFilesystemMonitoring",
         "NotActorAttributionProof",
         "NotOsSandbox",
     ] {
         assert!(
             values.contains(expected),
             "missing non-guarantee {expected}: {disclosure}"
+        );
+    }
+}
+
+fn assert_coverage_non_guarantees(value: &Value) {
+    let values = value["non_guarantees"]
+        .as_array()
+        .expect("coverage summary should include non_guarantees")
+        .iter()
+        .map(|value| {
+            value
+                .as_str()
+                .expect("coverage non_guarantees should contain strings")
+        })
+        .collect::<BTreeSet<_>>();
+    for expected in [
+        "NotActorAttributionProof",
+        "NotFullFilesystemMonitoring",
+        "NotFullWritePrevention",
+    ] {
+        assert!(
+            values.contains(expected),
+            "missing coverage non-guarantee {expected}: {value}"
         );
     }
 }

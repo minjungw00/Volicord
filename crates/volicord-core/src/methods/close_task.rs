@@ -591,6 +591,10 @@ pub(super) fn plan_close_task_with_context(
     let result_risk_acceptance_coverage = risk_acceptance_coverage.clone();
     let result_evidence_summary = context.evidence_summary.clone();
     let result_artifact_refs = context.artifact_refs.clone();
+    let result_coverage_summary = context
+        .guard_health
+        .as_ref()
+        .map(coverage_summary_from_guard_health);
     let result_pending_judgment_inbox_items = pending_judgment_inbox_items(
         store,
         project_state,
@@ -638,6 +642,7 @@ pub(super) fn plan_close_task_with_context(
         blockers: blockers.clone(),
         pending_judgment_inbox_items: result_pending_judgment_inbox_items,
         guard_health: context.guard_health.clone(),
+        coverage_summary: result_coverage_summary,
         evidence_summary: result_evidence_summary.clone(),
         artifact_refs: result_artifact_refs.clone(),
     };
@@ -1885,6 +1890,63 @@ pub(super) fn refresh_control_surface(summary: &mut GuardHealthSummary) {
         actor_identity_provable: false,
         os_enforced: false,
     };
+}
+
+pub(super) fn coverage_summary_from_guard_health(summary: &GuardHealthSummary) -> CoverageSummary {
+    CoverageSummary {
+        active_profile: summary.selected_profile,
+        host_hook_state: coverage_host_hook_state(summary),
+        session_watcher_state: coverage_session_watcher_state(summary),
+        coverage_started_at: summary.session_watch_coverage_start_at.clone(),
+        last_snapshot_at: summary.last_session_watch_checked_at.clone(),
+        unresolved_unrecorded_change_count: summary.unresolved_unrecorded_change_count,
+        non_guarantees: vec![
+            NonGuarantee::NotActorAttributionProof,
+            NonGuarantee::NotFullFilesystemMonitoring,
+            NonGuarantee::NotFullWritePrevention,
+        ],
+    }
+}
+
+fn coverage_host_hook_state(summary: &GuardHealthSummary) -> CoverageHostHookState {
+    if summary.selected_profile == IntegrationProfile::Record {
+        return CoverageHostHookState::Unsupported;
+    }
+    if summary.control_surface.host_hooks_active {
+        return CoverageHostHookState::Observed;
+    }
+    match summary.effective_guard_status {
+        GuardEffectiveStatus::Degraded | GuardEffectiveStatus::Broken => {
+            CoverageHostHookState::Degraded
+        }
+        GuardEffectiveStatus::ActionRequired
+            if summary.guard_observation_status == GuardObservationStatus::StaleObservation =>
+        {
+            CoverageHostHookState::Degraded
+        }
+        _ => CoverageHostHookState::NotObserved,
+    }
+}
+
+fn coverage_session_watcher_state(summary: &GuardHealthSummary) -> CoverageSessionWatcherState {
+    match summary.session_watch_status {
+        SessionWatchStatus::Active => {
+            if summary.session_watch_partial_coverage_warning.is_some() {
+                CoverageSessionWatcherState::Degraded
+            } else {
+                CoverageSessionWatcherState::Active
+            }
+        }
+        SessionWatchStatus::Degraded | SessionWatchStatus::Unavailable => {
+            CoverageSessionWatcherState::Degraded
+        }
+        SessionWatchStatus::Disabled if summary.selected_profile == IntegrationProfile::Record => {
+            CoverageSessionWatcherState::Unsupported
+        }
+        SessionWatchStatus::Disabled | SessionWatchStatus::PendingProjectSelection => {
+            CoverageSessionWatcherState::Inactive
+        }
+    }
 }
 
 fn host_hooks_active(summary: &GuardHealthSummary) -> bool {

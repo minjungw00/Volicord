@@ -685,6 +685,50 @@ impl SessionWatchStatus {
     }
 }
 
+/// Concise public host-hook coverage state for status and close views.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum CoverageHostHookState {
+    Observed,
+    NotObserved,
+    Unsupported,
+    Degraded,
+}
+
+impl CoverageHostHookState {
+    /// Returns the stable value name for this coverage state.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Observed => "observed",
+            Self::NotObserved => "not_observed",
+            Self::Unsupported => "unsupported",
+            Self::Degraded => "degraded",
+        }
+    }
+}
+
+/// Concise public session-watcher coverage state for status and close views.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum CoverageSessionWatcherState {
+    Active,
+    Inactive,
+    Unsupported,
+    Degraded,
+}
+
+impl CoverageSessionWatcherState {
+    /// Returns the stable value name for this coverage state.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Active => "active",
+            Self::Inactive => "inactive",
+            Self::Unsupported => "unsupported",
+            Self::Degraded => "degraded",
+        }
+    }
+}
+
 /// Basis for the session-watch coverage start time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -1155,6 +1199,7 @@ pub enum NonGuarantee {
     NotTestSufficiencyProof,
     NotHumanReviewReplacement,
     NotFullWritePrevention,
+    NotFullFilesystemMonitoring,
     NotActorAttributionProof,
 }
 

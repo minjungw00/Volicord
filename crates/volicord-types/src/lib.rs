@@ -170,6 +170,7 @@ mod tests {
                 "NotCorrectnessProof",
                 "NotTestSufficiencyProof",
                 "NotHumanReviewReplacement",
+                "NotFullFilesystemMonitoring",
             ],
         );
     }

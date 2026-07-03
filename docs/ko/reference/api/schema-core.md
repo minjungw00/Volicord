@@ -139,7 +139,7 @@ ToolDryRunResponse:
 
 의미하지 않는 것:
 - `ToolRejectedResponse`와 `ToolDryRunResponse`는 `task_ref`, `run_summary`, `staged_artifact_handle`, `write_ticket_ref`, `user_judgment_ref`, `decision`, `close_state` 같은 결과 전용 필드를 담지 않습니다.
-- `ToolResultBase.disclosure`는 OS 샌드박싱, 네트워크 격리, 악성 코드 방어, 변조 불가능 감사 로그, 전체 쓰기 방지, 행위자 귀속 증명, 정확성 증명, 테스트 충분성 증명, 인간 검토 대체를 만들지 않습니다.
+- `ToolResultBase.disclosure`는 OS 샌드박싱, 네트워크 격리, 악성 코드 방어, 변조 불가능 감사 로그, 전체 쓰기 방지, 전체 파일시스템 감시, 행위자 귀속 증명, 정확성 증명, 테스트 충분성 증명, 인간 검토 대체를 만들지 않습니다.
 
 담당 문서 링크:
 - 지원되는 `response_kind`와 `effect_kind` 값: [응답과 효과 값](schema-value-sets.md#response-and-effect-values)

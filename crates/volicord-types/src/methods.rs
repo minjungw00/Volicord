@@ -8,14 +8,15 @@ use crate::ids::{
 };
 use crate::schema::{
     AcceptedRiskInput, ArtifactInput, ArtifactRef, ChangeUnitEffectContract, CloseAssessmentInput,
-    CloseReadinessBlocker, ControlSurfaceSummary, CurrentCloseBasis, EvidenceCoverageItem,
-    EvidenceObservation, EvidenceObservationInput, EvidenceSummary, GuaranteeDisplay,
-    GuardHealthSummary, JsonObject, JudgmentInboxItem, JudgmentRationale, NextActionSummary,
-    ObservedChanges, ProjectContinuitySummary, RecordUserJudgmentPayload, RequiredNullable,
-    RiskAcceptanceCoverage, RunSummary, SensitiveActionScope, StagedArtifactHandle, StateRecordRef,
-    StateSummary, SummaryCard, ToolEnvelope, ToolResponse, ToolResultBase, UnrecordedChangeFinding,
-    UnrecordedChangeResolutionSummary, UserJudgment, UserJudgmentCandidate, UserJudgmentContext,
-    UserJudgmentOptionInput, WriteDecisionReason, WriteTicket, WriteTicketStateSummary,
+    CloseReadinessBlocker, ControlSurfaceSummary, CoverageSummary, CurrentCloseBasis,
+    EvidenceCoverageItem, EvidenceObservation, EvidenceObservationInput, EvidenceSummary,
+    GuaranteeDisplay, GuardHealthSummary, JsonObject, JudgmentInboxItem, JudgmentRationale,
+    NextActionSummary, ObservedChanges, ProjectContinuitySummary, RecordUserJudgmentPayload,
+    RequiredNullable, RiskAcceptanceCoverage, RunSummary, SensitiveActionScope,
+    StagedArtifactHandle, StateRecordRef, StateSummary, SummaryCard, ToolEnvelope, ToolResponse,
+    ToolResultBase, UnrecordedChangeFinding, UnrecordedChangeResolutionSummary, UserJudgment,
+    UserJudgmentCandidate, UserJudgmentContext, UserJudgmentOptionInput, WriteDecisionReason,
+    WriteTicket, WriteTicketStateSummary,
 };
 use crate::values::{
     ChangeUnitOperation, CloseMutationIntent, CloseReason, CloseState, JudgmentKind,
@@ -298,6 +299,8 @@ pub struct StatusResult {
     pub close_blockers: Option<Vec<CloseReadinessBlocker>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub guard_health: Option<GuardHealthSummary>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub coverage_summary: Option<CoverageSummary>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub guarantee_display: Option<RequiredNullable<GuaranteeDisplay>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -715,6 +718,7 @@ pub struct CloseTaskResult {
     pub blockers: Vec<CloseReadinessBlocker>,
     pub pending_judgment_inbox_items: Vec<JudgmentInboxItem>,
     pub guard_health: Option<GuardHealthSummary>,
+    pub coverage_summary: Option<CoverageSummary>,
     pub evidence_summary: Option<EvidenceSummary>,
     pub artifact_refs: Vec<ArtifactRef>,
 }
