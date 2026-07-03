@@ -168,6 +168,27 @@ Name durable tests after the current contract, for example
 such as `removed_options_are_gone`, `legacy_flags_are_removed`,
 `old_strings_do_not_remain`, and `cleanup_removed_project_id`.
 
+## Maintainability Report
+
+Use the maintainability report when reviewers need quick visibility into large
+or complex repository surfaces:
+
+```sh
+cargo run -p xtask -- maintainability-report
+```
+
+The report is reviewer guidance. It lists signals such as the largest Rust,
+test, and Markdown files, heuristic command parsing/execution/rendering mixes,
+and obvious test-coverage hints where those can be inferred cheaply. It does
+not define LOC limits, LOC exception allowlists, invalid long-file states, or a
+requirement to split cohesive files by line count. Treat reported sizes and
+signals as prompts for review questions about ownership, readability, test
+coverage, and source structure.
+
+When the report runs in CI, a failing exit status means the command could not
+inspect the repository. A large file, long document, mixed signal, or coverage
+hint is not a CI failure by itself.
+
 ## Onboarding Usability Validation
 
 Use representative-user usability validation when maintained onboarding,

@@ -58,6 +58,9 @@ jobs:
       - name: Run documentation checks
         run: cargo run --locked -p xtask -- docs-check
 
+      - name: Run maintainability report
+        run: cargo run --locked -p xtask -- maintainability-report
+
       - name: Check public contract snapshots
         run: cargo test --locked -p volicord-integration-tests --test public_contract_snapshots
 
