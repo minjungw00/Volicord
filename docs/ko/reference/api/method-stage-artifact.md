@@ -93,6 +93,7 @@ StageArtifactRequest:
 | 필드 | 결과 필드 의미 |
 |---|---|
 | `base` | 공통 결과 메타데이터입니다. `events`를 포함한 `ToolResultBase` 형태는 [API 코어 스키마](schema-core.md#common-response)가 담당합니다. 성공한 스테이징은 `base.response_kind=result`, `base.effect_kind=staging_created`, 호출이 관찰한 현재 프로젝트 전체 `project_state.state_version`을 담은 `base.state_version`, `events: []`를 사용합니다. |
+| `evidence_state` | 항상 `prepared`입니다. 준비된 첨부 입력에 대한 공개 표시 상태이며 닫기에 수락된 증거가 아닙니다. 값은 [API 값 집합](schema-value-sets.md#state-and-blocker-values)이 담당합니다. |
 | `staged_artifact_handle` | 스테이징된 안전한 바이트 또는 안전한 알림에 대한 임시 `StagedArtifactHandle`입니다. 형태는 [API 아티팩트 스키마](schema-artifacts.md#stagedartifacthandle)가 담당합니다. |
 | `expires_at` | 임시 핸들의 만료 시각입니다. `staged_artifact_handle.expires_at`과 같은 값을 나타내며, 생명주기, 만료, 소비 세부사항은 [아티팩트 저장소](../storage-artifacts.md)가 담당합니다. |
 
@@ -105,6 +106,7 @@ StageArtifactRequest:
 - `base.response_kind=result`
 - `base.effect_kind=staging_created`
 - 호출이 관찰한 현재 프로젝트 전체 버전으로 설정된 `base.state_version`
+- `evidence_state=prepared`
 - 임시 `staged_artifact_handle`
 - `expires_at`
 
@@ -179,6 +181,7 @@ base:
   dry_run: false
   state_version: 42
   events: []
+evidence_state: prepared
 staged_artifact_handle:
   handle_id: staged_trace_log_001
   project_id: proj_trace_001

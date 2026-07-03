@@ -475,6 +475,7 @@ WriteDecisionReason:
 
 Meaning:
 - `SummaryCard` is the stable compact summary shape for major user-facing status views. It uses public display strings for Task, Recording, Profile, Write Ticket, Evidence, User Judgment, Changes, Close Status, Transport, one Next action, and a concise Guarantee line.
+- When selected evidence has a public evidence state, `SummaryCard.evidence` uses the display states owned by [API Value Sets](schema-value-sets.md#state-and-blocker-values). It may show `prepared` for staged-only attachment input; that value is not evidence accepted for close.
 - `SummaryCard.next` is the single display next action selected for the summary. Use `none` only when the owner-selected view knows no next action. `SummaryCard.next_action` may carry the matching structured `NextActionSummary` and may be omitted when no structured action applies.
 - `SummaryCard` is a summary of other owner-selected state fields, not a second authority record. It must not add internal identifiers unless an identifier is needed for the displayed next action.
 - `SummaryCard.guarantee` is concise display wording for the summarized view. It must not claim correctness proof, test sufficiency proof, review completion, or OS-level enforcement unless another owner explicitly provides that guarantee.
@@ -555,6 +556,7 @@ Owner links:
 
 ```yaml
 EvidenceSummary:
+  evidence_state: string
   status: string
   completion_policy: CompletionPolicy
   coverage_items: EvidenceCoverageItem[]
@@ -632,6 +634,7 @@ ObservedChanges:
 ```
 
 Meaning:
+- `EvidenceSummary.evidence_state`, when present, is an evidence display state. It is omitted for coverage-gap summaries that do not yet have attached evidence or a current close-basis evidence ref.
 - `EvidenceSummary.status`, `EvidenceCoverageItem.coverage_state`, `EvidenceUpdateProvenance.source_kind`, `EvidenceUpdateProvenance.assurance_level`, `EvidenceObservation.source_kind`, `EvidenceObservation.assurance_level`, `EvidenceObservationInput.source_kind`, `EvidenceObservationInput.assurance_level`, and `RunSummary.kind` are controlled value strings.
 - `CompletionPolicy.required_claims`, `EvidenceCoverageItem.claim`, `EvidenceObservation.claim`, `EvidenceObservationInput.claim`, and `RunSummary.summary` are free-form claim or display strings.
 - `EvidenceCoverageItem.provenance` is optional on request input and is omitted from committed evidence summaries after Core creates or links the corresponding `EvidenceObservation`. A supported evidence update for a close-relevant claim must have a matching observation input, a usable observation ref, or this provenance object so Core can create an observation.

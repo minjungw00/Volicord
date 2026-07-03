@@ -565,6 +565,23 @@ pub(super) fn plan_close_task_with_context(
         _ => None,
     };
 
+    let result_current_close_basis = context.current_close_basis.clone();
+    let result_evidence_summary = context
+        .evidence_summary
+        .clone()
+        .map(|summary| evidence_summary_for_display(summary, result_current_close_basis.as_ref()));
+    let prepared_input_available = if result_evidence_summary
+        .as_ref()
+        .and_then(|summary| summary.evidence_state)
+        .is_none()
+    {
+        store
+            .has_prepared_artifact_input(&request.task_id, now)
+            .map_err(CorePipelineError::from)?
+    } else {
+        false
+    };
+
     let state = build_state_summary(SummaryBuild {
         project_id: &request.envelope.project_id,
         state_version: response_state_version,
@@ -579,7 +596,7 @@ pub(super) fn plan_close_task_with_context(
             *now.as_datetime(),
             guarantee_display.clone(),
         )?,
-        evidence_summary: context.evidence_summary.clone(),
+        evidence_summary: result_evidence_summary.clone(),
         close_state: Some(close_state),
         close_blockers: blockers.clone(),
         guard_health: context.guard_health.clone(),
@@ -587,9 +604,7 @@ pub(super) fn plan_close_task_with_context(
     })?;
 
     let result_state = state.clone();
-    let result_current_close_basis = context.current_close_basis.clone();
     let result_risk_acceptance_coverage = risk_acceptance_coverage.clone();
-    let result_evidence_summary = context.evidence_summary.clone();
     let result_artifact_refs = context.artifact_refs.clone();
     let result_coverage_summary = context
         .guard_health
@@ -616,7 +631,11 @@ pub(super) fn plan_close_task_with_context(
             result_state.guarantee_display.as_ref(),
         ),
         write_ticket: write_ticket_summary_text(true, result_state.write_ticket_summary.as_ref()),
-        evidence: evidence_summary_text(true, result_evidence_summary.as_ref()),
+        evidence: evidence_summary_text(
+            true,
+            result_evidence_summary.as_ref(),
+            prepared_input_available,
+        ),
         pending_user_judgments: result_state.pending_user_judgment_refs.len(),
         changes: changes_summary_text(
             true,
@@ -3325,6 +3344,7 @@ pub(super) fn close_evidence_summary(
         .transpose()?;
 
     Ok(Some(EvidenceSummary {
+        evidence_state: None,
         status,
         completion_policy: CompletionPolicy {
             evidence_required: policy.evidence_required || !required_claims.is_empty(),

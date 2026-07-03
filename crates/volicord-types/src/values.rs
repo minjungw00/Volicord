@@ -1115,6 +1115,15 @@ pub enum EvidenceStatus {
     Blocked,
 }
 
+/// User-facing evidence presentation state values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum EvidenceDisplayState {
+    Prepared,
+    Attached,
+    AcceptedForClose,
+}
+
 /// Evidence coverage item state values.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]

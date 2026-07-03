@@ -379,12 +379,14 @@ fn plan_reconcile_changes(
         *now.as_datetime(),
         Some(guarantee_display.clone()),
     )?;
+    let current_close_basis = projected_close_basis(store, &request.task_id)?;
     let evidence_summary = projected_evidence_summary(
         store,
         &request.envelope.project_id,
         planned_state_version,
         &task,
-    )?;
+    )?
+    .map(|summary| evidence_summary_for_display(summary, current_close_basis.as_ref()));
     let mut pending_authorities = existing_pending_authorities.clone();
     pending_authorities.extend(
         planned_judgments
@@ -451,7 +453,7 @@ fn plan_reconcile_changes(
             state.guarantee_display.as_ref(),
         ),
         write_ticket: write_ticket_summary_text(true, state.write_ticket_summary.as_ref()),
-        evidence: evidence_summary_text(true, state.evidence_summary.as_ref()),
+        evidence: evidence_summary_text(true, state.evidence_summary.as_ref(), false),
         pending_user_judgments: projected_pending_refs.len(),
         changes: changes_summary_text(true, unresolved_findings.len() as u64),
         close_status: close_state_text(close_plan.close_state).to_owned(),

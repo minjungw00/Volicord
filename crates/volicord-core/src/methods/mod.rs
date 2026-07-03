@@ -35,9 +35,9 @@ use volicord_types::{
     CloseReadinessBlockerCategory, CloseReason, CloseState, CloseTaskRequest, CloseTaskResult,
     CompletionPolicy, ControlSurfaceSummary, CoverageHostHookState, CoverageSessionWatcherState,
     CoverageSummary, CurrentCloseBasis, DryRunSummary, DurableIdKind, EffectKind, ErrorCode,
-    EvidenceAssuranceLevel, EvidenceCoverageItem, EvidenceCoverageState, EvidenceObservation,
-    EvidenceObservationId, EvidenceObservationInput, EvidenceSourceKind, EvidenceStatus,
-    EvidenceSummary, EvidenceUpdateProvenance, GuaranteeDisplay, GuaranteeLevel,
+    EvidenceAssuranceLevel, EvidenceCoverageItem, EvidenceCoverageState, EvidenceDisplayState,
+    EvidenceObservation, EvidenceObservationId, EvidenceObservationInput, EvidenceSourceKind,
+    EvidenceStatus, EvidenceSummary, EvidenceUpdateProvenance, GuaranteeDisplay, GuaranteeLevel,
     GuardConfigurationStatus, GuardEffectiveStatus, GuardHealthSummary, GuardInstallationId,
     GuardInstallationStatus, GuardObservationStatus, IntegrationProfile, JsonObject,
     JudgmentAnswerConstraints, JudgmentBasis, JudgmentBasisCompatibilityStatus,
@@ -2619,19 +2619,57 @@ fn write_ticket_summary_text(selected: bool, summary: Option<&WriteTicketStateSu
         .to_owned()
 }
 
-fn evidence_summary_text(selected: bool, summary: Option<&EvidenceSummary>) -> String {
+fn evidence_summary_for_display(
+    mut summary: EvidenceSummary,
+    close_basis: Option<&CurrentCloseBasis>,
+) -> EvidenceSummary {
+    summary.evidence_state = if close_basis
+        .and_then(|basis| basis.evidence_summary_ref.as_ref())
+        .is_some()
+    {
+        Some(EvidenceDisplayState::AcceptedForClose)
+    } else if evidence_summary_has_attached_evidence(&summary) {
+        Some(EvidenceDisplayState::Attached)
+    } else {
+        None
+    };
+    summary
+}
+
+fn evidence_summary_has_attached_evidence(summary: &EvidenceSummary) -> bool {
+    summary.updated_by_run_ref.is_some()
+        || !summary.artifact_refs.is_empty()
+        || !summary.observation_refs.is_empty()
+        || summary.coverage_items.iter().any(|item| {
+            !item.supporting_refs.is_empty()
+                || !item.observation_refs.is_empty()
+                || !item.supporting_artifact_refs.is_empty()
+        })
+}
+
+fn evidence_summary_text(
+    selected: bool,
+    summary: Option<&EvidenceSummary>,
+    prepared_input_available: bool,
+) -> String {
     if !selected {
         return "not_selected".to_owned();
     }
-    summary
-        .map(|summary| match summary.status {
-            EvidenceStatus::Unknown => "unknown",
-            EvidenceStatus::Insufficient => "insufficient",
-            EvidenceStatus::Sufficient => "sufficient",
-            EvidenceStatus::Blocked => "blocked",
-        })
-        .unwrap_or("none")
-        .to_owned()
+    if let Some(state) = summary.and_then(|summary| summary.evidence_state) {
+        return evidence_display_state_text(state).to_owned();
+    }
+    if prepared_input_available {
+        return evidence_display_state_text(EvidenceDisplayState::Prepared).to_owned();
+    }
+    "none".to_owned()
+}
+
+fn evidence_display_state_text(state: EvidenceDisplayState) -> &'static str {
+    match state {
+        EvidenceDisplayState::Prepared => "prepared",
+        EvidenceDisplayState::Attached => "attached",
+        EvidenceDisplayState::AcceptedForClose => "accepted_for_close",
+    }
 }
 
 fn close_state_summary_text(selected: bool, close_state: Option<StatusCloseState>) -> String {

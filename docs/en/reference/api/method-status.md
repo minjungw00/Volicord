@@ -88,6 +88,7 @@ Include projection contract:
 - `write_ticket_summary` is a compatibility summary only; it is not filesystem access, shell approval, final acceptance, ordinary write approval, or proof that a write occurred.
 - `include.evidence` returns current `EvidenceSummary` and coverage when available.
 - `include.close` returns `CurrentCloseBasis | null`, close state, computed blockers, risk acceptance coverage, `GuardHealthSummary` hook-state facts including hook path safety when available, the derived `CoverageSummary`, and relevant next actions. The blockers use the same close-readiness calculation as `volicord.check_close`.
+- When evidence or close details are selected, `summary_card.evidence` uses the public evidence display state. A staged-only attachment input can appear as `prepared`, and evidence linked to a Run can appear as `attached`. `accepted_for_close` appears when close details are selected and the current close basis references the selected evidence.
 - `include.guarantees` returns only guarantees derived from the project enforcement profile, verified invocation context, enabled enforcement mechanisms, and supported baseline scope.
 - `include.continuity` returns active `ProjectContinuitySummary[]` entries for durable project-level context.
 - `summary_card` is always returned on successful `StatusResult` responses. It summarizes the owner-selected view with public display terminology and one selected `next` action when knowable. It does not add authority beyond the structured fields it summarizes.
@@ -111,7 +112,7 @@ Truthful projection rules:
 | Field | Result-field meaning |
 |---|---|
 | `base` | Common result metadata. The `ToolResultBase` shape is owned by [API Schema Core](schema-core.md#common-response). Read-only status results use `events: []` and an authority-record disclosure; `EventRef.event_kind`, when present in a common response branch, remains an opaque illustrative classification string. |
-| `summary_card` | `SummaryCard` for the selected status view. Shape is owned by [API State Schemas](schema-state.md#current-position-display-shapes). |
+| `summary_card` | `SummaryCard` for the selected status view. Its evidence display uses public evidence states when evidence or close details are selected, with `accepted_for_close` limited to close-readiness output. Shape is owned by [API State Schemas](schema-state.md#current-position-display-shapes). |
 | `active_task` | `StateSummary | null` for the currently selected Task summary. |
 | `status_summary` | Free-form display string summarizing the current status view. When close-readiness is selected, it may summarize the current close-readiness state or the first close blocker code; the structured authority facts remain in the other result fields. |
 | `next_actions` | `NextActionSummary[]` describing the next safe API steps. |

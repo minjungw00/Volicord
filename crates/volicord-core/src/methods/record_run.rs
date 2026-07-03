@@ -362,7 +362,7 @@ fn plan_record_run(
         None
     };
 
-    let evidence_summary = build_record_run_evidence_summary(
+    let mut evidence_summary = build_record_run_evidence_summary(
         &request,
         &run_ref,
         &registered_artifacts,
@@ -399,6 +399,8 @@ fn plan_record_run(
         now: &plan_now,
     };
     let current_close_basis = build_record_run_close_basis(close_basis_context)?;
+    evidence_summary = evidence_summary
+        .map(|summary| evidence_summary_for_display(summary, current_close_basis.as_ref()));
     let close_basis_json = current_close_basis
         .as_ref()
         .map(serde_json::to_string)
@@ -2532,6 +2534,7 @@ fn build_record_run_evidence_summary(
         .collect::<Vec<_>>();
     let status = evidence_status_for_items(&coverage_items);
     Some(volicord_types::EvidenceSummary {
+        evidence_state: Some(EvidenceDisplayState::Attached),
         status,
         completion_policy: CompletionPolicy {
             evidence_required: !required_claims.is_empty(),

@@ -58,6 +58,19 @@ Only a compatible owner method can move staged input into promotion. Existing ar
 | Existing artifact link | [Lifecycle: existing artifact link](#artifact-lifecycle-existing-artifact-link) |
 | Artifact body read | [Lifecycle: artifact body read](#artifact-lifecycle-body-read) |
 
+<a id="public-evidence-state-mapping"></a>
+## Public evidence state mapping
+
+User-facing summaries use a small evidence-state vocabulary for presentation while preserving the internal artifact, Run, observation, and close-basis records.
+
+| Public state | Internal basis | User-facing meaning |
+|---|---|---|
+| `prepared` | An unexpired transient `artifact_staging` row and returned `StagedArtifactHandle` from `volicord.stage_artifact`. | Attachment input is prepared for a later owner method. It is not `accepted_for_close`, does not create an `EvidenceSummary`, and cannot support close readiness by itself. |
+| `attached` | A committed owner method, usually `volicord.record_run`, links evidence observations or artifact refs to claim-scoped evidence. | Evidence is attached to a recorded Run or claim. It may still be insufficient, stale, blocked, redacted, or unavailable for close. |
+| `accepted_for_close` | The current close basis references the current `EvidenceSummary` or related close-basis evidence refs. | Evidence is available to the close-readiness calculation for the current close basis. This is not a correctness proof, test-sufficiency proof, QA result, final acceptance, or residual-risk acceptance. |
+
+These are presentation states. Evidence sufficiency remains in `EvidenceSummary.status`, artifact body usability remains with artifact availability and integrity checks, and close readiness remains with the close-readiness owner.
+
 <a id="artifact-lifecycle-staging"></a>
 **Lifecycle: staging**
 

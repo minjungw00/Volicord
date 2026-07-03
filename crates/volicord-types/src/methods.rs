@@ -19,10 +19,10 @@ use crate::schema::{
     WriteTicket, WriteTicketStateSummary,
 };
 use crate::values::{
-    ChangeUnitOperation, CloseMutationIntent, CloseReason, CloseState, JudgmentKind,
-    JudgmentPresentation, JudgmentRequiredFor, MethodName, OperationCategory, PrepareWriteDecision,
-    RedactionState, RequestedMode, ResumePolicy, RunKind, StatusCloseState, StatusDetailLevel,
-    UnrecordedChangeResolutionBasis, UtcTimestamp, WriteTicketEffect,
+    ChangeUnitOperation, CloseMutationIntent, CloseReason, CloseState, EvidenceDisplayState,
+    JudgmentKind, JudgmentPresentation, JudgmentRequiredFor, MethodName, OperationCategory,
+    PrepareWriteDecision, RedactionState, RequestedMode, ResumePolicy, RunKind, StatusCloseState,
+    StatusDetailLevel, UnrecordedChangeResolutionBasis, UtcTimestamp, WriteTicketEffect,
 };
 
 /// Shared typed mapping from a public request to its operation category.
@@ -410,6 +410,7 @@ pub struct McpStageArtifactArguments {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct StageArtifactResult {
     pub base: ToolResultBase,
+    pub evidence_state: EvidenceDisplayState,
     pub staged_artifact_handle: StagedArtifactHandle,
     pub expires_at: UtcTimestamp,
 }

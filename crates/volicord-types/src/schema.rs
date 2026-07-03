@@ -15,17 +15,17 @@ use crate::values::{
     ActorSource, ArtifactAvailability, ArtifactInputSourceKind, ArtifactIntegrityStatus,
     ChangeUnitEffectKind, CloseReadinessBlockerCategory, CloseReason, CloseState,
     CoverageHostHookState, CoverageSessionWatcherState, EffectKind, EnabledEnforcementMechanism,
-    ErrorCode, EvidenceAssuranceLevel, EvidenceCoverageState, EvidenceSourceKind, EvidenceStatus,
-    GuaranteeClass, GuaranteeLevel, GuardConfigurationStatus, GuardDecision, GuardEffectiveStatus,
-    GuardInstallationStatus, GuardObservationStatus, HostKind, IntegrationProfile,
-    JudgmentBasisCompatibilityStatus, JudgmentKind, JudgmentPresentation, JudgmentRequiredFor,
-    JudgmentResolutionOutcome, MethodName, NextActionKind, NonGuarantee, PlannedBlockerSourceKind,
-    ProjectContinuityKind, ProjectContinuityStatus, ProjectEnforcementProfileSource,
-    ProjectEnforcementProfileStatus, PromptCaptureStatus, RedactionState, ResponseKind, RunKind,
-    SessionWatchCoverageBasis, SessionWatchStatus, StateRecordKind, TaskLifecyclePhase, TaskMode,
-    TaskResult, UnrecordedChangeResolutionBasis, UnrecordedChangeStatus, UserJudgmentOptionAction,
-    UserJudgmentStatus, UtcTimestamp, ValidatorSeverity, ValidatorStatus, WriteDecisionCategory,
-    WriteTicketState, WriteTicketStatus,
+    ErrorCode, EvidenceAssuranceLevel, EvidenceCoverageState, EvidenceDisplayState,
+    EvidenceSourceKind, EvidenceStatus, GuaranteeClass, GuaranteeLevel, GuardConfigurationStatus,
+    GuardDecision, GuardEffectiveStatus, GuardInstallationStatus, GuardObservationStatus, HostKind,
+    IntegrationProfile, JudgmentBasisCompatibilityStatus, JudgmentKind, JudgmentPresentation,
+    JudgmentRequiredFor, JudgmentResolutionOutcome, MethodName, NextActionKind, NonGuarantee,
+    PlannedBlockerSourceKind, ProjectContinuityKind, ProjectContinuityStatus,
+    ProjectEnforcementProfileSource, ProjectEnforcementProfileStatus, PromptCaptureStatus,
+    RedactionState, ResponseKind, RunKind, SessionWatchCoverageBasis, SessionWatchStatus,
+    StateRecordKind, TaskLifecyclePhase, TaskMode, TaskResult, UnrecordedChangeResolutionBasis,
+    UnrecordedChangeStatus, UserJudgmentOptionAction, UserJudgmentStatus, UtcTimestamp,
+    ValidatorSeverity, ValidatorStatus, WriteDecisionCategory, WriteTicketState, WriteTicketStatus,
 };
 
 /// JSON object used where an owner document defines a field as `object`.
@@ -801,6 +801,8 @@ pub struct WriteDecisionReason {
 /// Evidence coverage summary.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct EvidenceSummary {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence_state: Option<EvidenceDisplayState>,
     pub status: EvidenceStatus,
     pub completion_policy: CompletionPolicy,
     pub coverage_items: Vec<EvidenceCoverageItem>,

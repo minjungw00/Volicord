@@ -386,6 +386,7 @@ mod tests {
                 disclosure: GuaranteeDisclosure::authority_record(),
                 events: vec![],
             },
+            evidence_state: EvidenceDisplayState::Prepared,
             staged_artifact_handle: StagedArtifactHandle {
                 handle_id: StagedArtifactHandleId::new("staged_trace_log_001"),
                 project_id: ProjectId::new("proj_trace_001"),
@@ -406,6 +407,7 @@ mod tests {
 
         assert_eq!(encoded["base"]["response_kind"], "result");
         assert_eq!(encoded["base"]["effect_kind"], "staging_created");
+        assert_eq!(encoded["evidence_state"], "prepared");
         assert_eq!(encoded["staged_artifact_handle"]["redaction_state"], "none");
         assert_eq!(
             encoded["staged_artifact_handle"]["created_by_actor_source"],

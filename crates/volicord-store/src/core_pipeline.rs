@@ -909,6 +909,20 @@ impl CoreProjectStore {
         artifact_staging_record(&self.conn, &self.project.project_id, handle_id)
     }
 
+    /// Returns whether a Task has prepared artifact input that has not been consumed.
+    pub fn has_prepared_artifact_input(
+        &self,
+        task_id: &TaskId,
+        now: &UtcTimestamp,
+    ) -> StoreResult<bool> {
+        has_prepared_artifact_input(
+            &self.conn,
+            &self.project.project_id,
+            task_id.as_str(),
+            &now.to_string(),
+        )
+    }
+
     /// Returns whether a committed event id already exists in this project.
     pub fn event_id_exists(&self, event_id: &str) -> StoreResult<bool> {
         row_exists(
@@ -2071,6 +2085,28 @@ fn artifact_staging_record(
         artifact_staging_record_from_row,
     )
     .optional()
+    .map_err(StoreError::from)
+}
+
+fn has_prepared_artifact_input(
+    conn: &Connection,
+    project_id: &str,
+    task_id: &str,
+    now: &str,
+) -> StoreResult<bool> {
+    conn.query_row(
+        "SELECT EXISTS(
+            SELECT 1
+            FROM artifact_staging
+            WHERE project_id = ?1
+              AND task_id = ?2
+              AND status = 'staged'
+              AND expires_at > ?3
+        )",
+        params![project_id, task_id, now],
+        |row| row.get::<_, i64>(0),
+    )
+    .map(|value| value != 0)
     .map_err(StoreError::from)
 }
 

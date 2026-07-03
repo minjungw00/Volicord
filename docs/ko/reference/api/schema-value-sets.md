@@ -576,6 +576,16 @@ sufficient
 blocked
 ```
 
+`StageArtifactResult.evidence_state`, `EvidenceSummary.evidence_state`, 선택된 증거 표시 요약은 해당 필드가 있을 때 아래 증거 표시 상태 값을 사용합니다.
+
+```text
+prepared
+attached
+accepted_for_close
+```
+
+이 값들은 사용자에게 보이는 표시 상태입니다. `accepted_for_close`는 증거가 현재 닫기 준비 상태 계산에 사용될 수 있다는 뜻입니다. 정확성 증명, 테스트 충분성 증명, QA 결과, 최종 수락, 잔여 위험 수락이 아닙니다.
+
 `EvidenceCoverageItem.coverage_state`는 아래 값을 사용합니다.
 
 ```text

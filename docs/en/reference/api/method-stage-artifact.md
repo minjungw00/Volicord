@@ -93,6 +93,7 @@ Rejected and dry-run requests have no storage effect.
 | Field | Result-field meaning |
 |---|---|
 | `base` | Common result metadata. The `ToolResultBase` shape, including `events`, is owned by [API Schema Core](schema-core.md#common-response). Successful staging uses `base.response_kind=result`, `base.effect_kind=staging_created`, the current project-wide `project_state.state_version` observed by the call in `base.state_version`, and `events: []`. |
+| `evidence_state` | Always `prepared`. This is a public display state for prepared attachment input and is not `accepted_for_close` evidence. Values are owned by [API Value Sets](schema-value-sets.md#state-and-blocker-values). |
 | `staged_artifact_handle` | Transient `StagedArtifactHandle` for the staged safe bytes or safe notice. The shape is owned by [API Artifact Schemas](schema-artifacts.md#stagedartifacthandle). |
 | `expires_at` | Expiration timestamp for the transient handle. It mirrors `staged_artifact_handle.expires_at`; lifecycle, expiry, and consumption details are owned by [Artifact Storage](../storage-artifacts.md). |
 
@@ -105,6 +106,7 @@ Returns `StageArtifactResult` with:
 - `base.response_kind=result`
 - `base.effect_kind=staging_created`
 - `base.state_version` set to the current project-wide version observed by the call
+- `evidence_state=prepared`
 - transient `staged_artifact_handle`
 - `expires_at`
 
@@ -179,6 +181,7 @@ base:
   dry_run: false
   state_version: 42
   events: []
+evidence_state: prepared
 staged_artifact_handle:
   handle_id: staged_trace_log_001
   project_id: proj_trace_001

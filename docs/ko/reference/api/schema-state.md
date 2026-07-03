@@ -475,6 +475,7 @@ WriteDecisionReason:
 
 의미:
 - `SummaryCard`는 주요 사용자 대상 상태 보기에 쓰는 안정적인 간결 요약 형태입니다. `Task`, `Recording`, `Profile`, `Write Ticket`, `Evidence`, `User Judgment`, `Changes`, `Close Status`, `Transport`, 다음 행동 하나, 짧은 `Guarantee` 줄에 공개 표시 문자열을 사용합니다.
+- 선택된 증거에 공개 증거 상태가 있으면 `SummaryCard.evidence`는 [API 값 집합](schema-value-sets.md#state-and-blocker-values)이 담당하는 표시 상태를 사용합니다. 스테이징만 된 첨부 입력에는 `prepared`를 표시할 수 있으며, 이 값은 닫기에 수락된 증거가 아닙니다.
 - `SummaryCard.next`는 요약을 위해 선택된 단일 표시 다음 행동입니다. 담당 문서가 선택한 보기에서 알 수 있는 다음 행동이 없을 때만 `none`을 사용합니다. `SummaryCard.next_action`은 대응하는 구조화된 `NextActionSummary`를 담을 수 있으며 구조화된 행동이 적용되지 않으면 생략될 수 있습니다.
 - `SummaryCard`는 담당 문서가 선택한 다른 상태 필드의 요약이지 두 번째 권한 기록이 아닙니다. 표시된 다음 행동에 식별자가 필요하지 않은 한 내부 식별자를 추가하면 안 됩니다.
 - `SummaryCard.guarantee`는 요약된 보기에 대한 짧은 표시 문구입니다. 다른 담당 문서가 명시적으로 그런 보장을 제공하지 않는 한 정확성 증명, 테스트 충분성 증명, review 완료, OS 수준 집행을 주장하면 안 됩니다.
@@ -556,6 +557,7 @@ WriteDecisionReason:
 
 ```yaml
 EvidenceSummary:
+  evidence_state: string
   status: string
   completion_policy: CompletionPolicy
   coverage_items: EvidenceCoverageItem[]
@@ -633,6 +635,7 @@ ObservedChanges:
 ```
 
 의미:
+- `EvidenceSummary.evidence_state`는 값이 있으면 증거 표시 상태입니다. 아직 첨부된 증거나 현재 닫기 근거 증거 참조가 없는 범위 공백 요약에서는 생략됩니다.
 - `EvidenceSummary.status`, `EvidenceCoverageItem.coverage_state`, `EvidenceUpdateProvenance.source_kind`, `EvidenceUpdateProvenance.assurance_level`, `EvidenceObservation.source_kind`, `EvidenceObservation.assurance_level`, `EvidenceObservationInput.source_kind`, `EvidenceObservationInput.assurance_level`, `RunSummary.kind`는 제어 값 문자열입니다.
 - `CompletionPolicy.required_claims`, `EvidenceCoverageItem.claim`, `EvidenceObservation.claim`, `EvidenceObservationInput.claim`, `RunSummary.summary`는 자유 형식 주장 또는 표시 문자열입니다.
 - `EvidenceCoverageItem.provenance`는 요청 입력에서 선택적으로 사용할 수 있으며, Core가 해당 `EvidenceObservation`을 만들거나 연결한 뒤 커밋된 증거 요약에서는 생략됩니다. 닫기와 관련된 주장을 `supported`로 갱신하려면 같은 주장에 대한 관찰 입력, 사용할 수 있는 관찰 참조, 또는 Core가 관찰을 만들 수 있게 하는 이 출처 객체가 필요합니다.

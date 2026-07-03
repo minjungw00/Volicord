@@ -343,6 +343,8 @@ Markdown, 일반 채팅만으로 미기록 변경을 수락됨으로 표시하�
 
 바이트나 안전한 알림을 증거 첨부 입력으로 준비해야 할 때만 `volicord.stage_artifact`를 사용합니다. 공개 증거 단계는 여전히 `volicord.record_run`입니다. 이 메서드가 주장, 출처, 연결된 첨부를 기록합니다. 스테이징 핸들, 복사된 파일 경로, 첨부 입력은 커밋된 실행 기록 결과가 주장별 증거에 연결하기 전까지 입력 전용입니다.
 
+사용자에게 보이는 요약은 스테이징된 첨부 입력에 `prepared`, 커밋된 Run이나 담당 메서드가 연결한 증거에 `attached`, 현재 닫기 근거가 닫기 준비 상태 계산에 사용할 수 있는 증거에만 `accepted_for_close`를 사용합니다. 매핑은 [아티팩트 저장소](../reference/storage-artifacts.md#public-evidence-state-mapping)가 담당합니다.
+
 증거 표시는 아래를 말해야 합니다.
 
 - 무엇을 실행했거나 바꿨는지

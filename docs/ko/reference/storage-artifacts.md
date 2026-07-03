@@ -57,6 +57,19 @@ flowchart LR
 | 기존 아티팩트 연결 | [생명주기: 기존 아티팩트 연결](#artifact-lifecycle-existing-artifact-link) |
 | 아티팩트 본문 읽기 | [생명주기: 아티팩트 본문 읽기](#artifact-lifecycle-body-read) |
 
+<a id="public-evidence-state-mapping"></a>
+## 공개 증거 상태 매핑
+
+사용자에게 보이는 요약은 작은 증거 상태 어휘를 표시용으로 사용하지만, 내부 아티팩트, Run, 관찰, 닫기 근거 기록은 그대로 유지합니다.
+
+| 공개 상태 | 내부 근거 | 사용자에게 보이는 의미 |
+|---|---|---|
+| `prepared` | `volicord.stage_artifact`가 만든 만료되지 않은 임시 `artifact_staging` 행과 반환된 `StagedArtifactHandle`. | 나중에 담당 메서드가 쓸 첨부 입력이 준비된 상태입니다. `accepted_for_close` 상태가 아니고, `EvidenceSummary`를 만들지 않으며, 그 자체로 닫기 준비 상태를 뒷받침할 수 없습니다. |
+| `attached` | 보통 `volicord.record_run` 같은 커밋된 담당 메서드가 증거 관찰 또는 아티팩트 참조를 주장별 증거에 연결한 상태. | 증거가 기록된 Run 또는 주장에 첨부된 상태입니다. 그래도 닫기에 대해 부족하거나, 오래됐거나, 막혔거나, 가려졌거나, 사용할 수 없을 수 있습니다. |
+| `accepted_for_close` | 현재 닫기 근거가 현재 `EvidenceSummary` 또는 관련 닫기 근거 증거 참조를 가리키는 상태. | 증거가 현재 닫기 근거의 닫기 준비 상태 계산에 사용될 수 있습니다. 이는 정확성 증명, 테스트 충분성 증명, QA 결과, 최종 수락, 잔여 위험 수락이 아닙니다. |
+
+이 값들은 표시 상태입니다. 증거 충분성은 계속 `EvidenceSummary.status`에 남고, 아티팩트 본문 사용 가능성은 아티팩트 가용성과 무결성 점검에 남으며, 닫기 준비 상태는 닫기 준비 상태 담당 문서에 남습니다.
+
 <a id="artifact-lifecycle-staging"></a>
 **생명주기: 스테이징**
 

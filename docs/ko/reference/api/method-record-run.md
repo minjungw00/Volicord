@@ -157,7 +157,7 @@ ResidualRiskInput:
 | `base` | 공통 결과 메타데이터입니다. `events`를 포함한 `ToolResultBase` 형태는 [API 코어 스키마](schema-core.md#common-response)가 담당합니다. 커밋된 `RecordRunResult` 분기는 `base.response_kind=result`와 `base.effect_kind=core_committed`를 사용합니다. `base.events[].event_kind`가 있을 때 그 값은 불투명한 예시용 분류 문자열입니다. |
 | `run_summary` | 기록된 Run의 `RunSummary`입니다. `RunSummary.kind`는 요청의 `kind`와 대응하며, 지원되는 실행 종류 값은 [API 값 집합](schema-value-sets.md#method-local-values)이 담당합니다. |
 | `registered_artifacts` | 이 실행 결과가 만들거나 연결한 지속 아티팩트 참조의 `ArtifactRef[]`입니다. 이 참조는 커밋된 증거 요약이나 관찰이 주장에 연결할 때만 증거 첨부입니다. 참조가 존재한다는 사실만으로 증거가 충분해지지는 않습니다. `ArtifactRef` 형태는 [API 아티팩트 스키마](schema-artifacts.md#artifactref)가 담당하고, 승격과 연결 생명주기 세부사항은 [아티팩트 저장소](../storage-artifacts.md)가 담당합니다. |
-| `evidence_summary` | 이 실행 결과가 갱신한 증거 범위의 `EvidenceSummary | null`입니다. 실행이 증거 갱신을 기록하지 않으면 `null`입니다. 형태는 [API 상태 스키마](schema-state.md#evidence-and-run-snapshot-shapes)가 담당하고, 증거 권한 의미는 [Core 모델](../core-model.md#9-evidence-and-run-authority)이 담당합니다. |
+| `evidence_summary` | 이 실행 결과가 갱신한 증거 범위의 `EvidenceSummary | null`입니다. 실행이 증거 갱신을 기록하지 않으면 `null`입니다. 값이 있으면 이 결과가 닫기 준비 상태 표시를 위해 해당 요약을 받아들이는 현재 닫기 근거를 만들지 않는 한 `evidence_summary.evidence_state`는 `attached`입니다. 형태는 [API 상태 스키마](schema-state.md#evidence-and-run-snapshot-shapes)가 담당하고, 증거 권한 의미는 [Core 모델](../core-model.md#9-evidence-and-run-authority)이 담당합니다. |
 | `evidence_observations` | 이 실행 결과가 커밋한 관찰 기록의 `EvidenceObservation[]`입니다. 요청이 관찰을 기록하지 않으면 비어 있습니다. 형태는 [API 상태 스키마](schema-state.md#evidence-and-run-snapshot-shapes)가 담당하고, 관찰 출처와 보장 수준 값은 [API 값 집합](schema-value-sets.md#evidence-observation-values)이 담당합니다. |
 | `current_close_basis` | 이 실행이 기록된 뒤의 `CurrentCloseBasis | null`입니다. `null`이 아니면 이 실행이 현재 닫기 근거를 만들었다는 뜻입니다. `null`이면 이 실행이 현재 닫기 근거를 만들지 않았다는 뜻입니다. 형태는 [API 상태 스키마](schema-state.md#close-readiness-and-validation-shapes)가 담당합니다. |
 | `blocker_refs` | 이 결과 때문에 커밋되었거나 계속 관련되는 실행 또는 증거 관련 차단 사유의 `StateRecordRef[]`입니다. |
@@ -371,6 +371,7 @@ registered_artifacts:
     created_by_actor_source: agent_connection:conn_run_probe
     storage_ref: "artifact-storage://search-result-count-validation"
 evidence_summary:
+  evidence_state: accepted_for_close
   status: sufficient
   completion_policy:
     evidence_required: true

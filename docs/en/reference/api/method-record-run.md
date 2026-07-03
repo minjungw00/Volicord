@@ -157,7 +157,7 @@ Compatibility mismatch rejections use `WRITE_TICKET_INVALID` with `ToolError.det
 | `base` | Common result metadata. The `ToolResultBase` shape, including `events`, is owned by [API Schema Core](schema-core.md#common-response). Committed `RecordRunResult` branches use `base.response_kind=result` and `base.effect_kind=core_committed`. `base.events[].event_kind`, when present, is an opaque illustrative classification string. |
 | `run_summary` | `RunSummary` for the recorded Run. `RunSummary.kind` mirrors the request `kind`; supported run-kind values are owned by [API Value Sets](schema-value-sets.md#method-local-values). |
 | `registered_artifacts` | `ArtifactRef[]` for persistent artifact refs produced or linked for this run result. These refs are Evidence attachments only when the committed evidence summary or observations link them to claims; their existence alone is not evidence sufficiency. `ArtifactRef` shape is owned by [API Artifact Schemas](schema-artifacts.md#artifactref); promotion and linking lifecycle details are owned by [Artifact Storage](../storage-artifacts.md). |
-| `evidence_summary` | `EvidenceSummary | null` for evidence coverage updated by this run result, or `null` when the run records no evidence update. Shape is owned by [API State Schemas](schema-state.md#evidence-and-run-snapshot-shapes); evidence authority meaning is owned by [Core Model](../core-model.md#9-evidence-and-run-authority). |
+| `evidence_summary` | `EvidenceSummary | null` for evidence coverage updated by this run result, or `null` when the run records no evidence update. When present, `evidence_summary.evidence_state` is `attached` unless this result establishes a current close basis that accepts the summary for close-readiness display. Shape is owned by [API State Schemas](schema-state.md#evidence-and-run-snapshot-shapes); evidence authority meaning is owned by [Core Model](../core-model.md#9-evidence-and-run-authority). |
 | `evidence_observations` | `EvidenceObservation[]` for observation records committed by this run result. Empty when the request records no observations. Shape is owned by [API State Schemas](schema-state.md#evidence-and-run-snapshot-shapes); observation source and assurance values are owned by [API Value Sets](schema-value-sets.md#evidence-observation-values). |
 | `current_close_basis` | `CurrentCloseBasis | null` after this run is recorded. Non-null means this Run established the current close basis; `null` means this Run did not establish one. Shape is owned by [API State Schemas](schema-state.md#close-readiness-and-validation-shapes). |
 | `blocker_refs` | `StateRecordRef[]` for run- or evidence-related blockers committed or still relevant because of this result. |
@@ -371,6 +371,7 @@ registered_artifacts:
     created_by_actor_source: agent_connection:conn_run_probe
     storage_ref: "artifact-storage://search-result-count-validation"
 evidence_summary:
+  evidence_state: accepted_for_close
   status: sufficient
   completion_policy:
     evidence_required: true

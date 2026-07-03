@@ -159,6 +159,7 @@ impl CoreService {
                 Some(project_state.state_version),
                 Vec::new(),
             ),
+            evidence_state: EvidenceDisplayState::Prepared,
             staged_artifact_handle: handle,
             expires_at: staged_expires_at,
         };

@@ -215,7 +215,7 @@ CloseTaskRequest:
 | 필드 | 결과 필드 의미 |
 |---|---|
 | `base` | 공통 결과 메타데이터입니다. `disclosure`와 `events`를 포함한 `ToolResultBase` 형태는 [API 코어 스키마](schema-core.md#common-response)가 담당합니다. 유효한 `CloseTaskResult` 분기는 `base.response_kind=result`와 `base.disclosure.guarantee_class=authority_record`를 사용합니다. 이 문서는 `volicord.check_close`에는 `base.effect_kind=read_only`를, 커밋된 종료 결과 또는 담당 문서가 허용한 커밋된 차단 결과에는 `base.effect_kind=core_committed`를 선택합니다. |
-| `summary_card` | 선택된 닫기 또는 닫기 확인 결과에 대한 `SummaryCard`입니다. 닫기 상태, 증거, 대기 판단, 변경, 전송, 선택된 다음 행동 하나, 보장 줄을 요약하며 구조화된 결과 필드 너머의 권한을 추가하지 않습니다. 형태는 [API 상태 스키마](schema-state.md#current-position-display-shapes)가 담당합니다. |
+| `summary_card` | 선택된 닫기 또는 닫기 확인 결과에 대한 `SummaryCard`입니다. 닫기 상태, 증거, 대기 판단, 변경, 전송, 선택된 다음 행동 하나, 보장 줄을 요약하며 구조화된 결과 필드 너머의 권한을 추가하지 않습니다. 증거 표시는 `prepared`, `attached`, `accepted_for_close`를 보여 줄 수 있습니다. `accepted_for_close`는 이 닫기 준비 상태 계산에 사용할 수 있다는 뜻이며 증명이나 최종 수락이 아닙니다. 형태는 [API 상태 스키마](schema-state.md#current-position-display-shapes)가 담당합니다. |
 | `close_state` | 요청한 경로에 대한 메서드 결과 닫기 상태입니다. 지원 값은 [API 값 집합](schema-value-sets.md#task-lifecycle-values)이 담당합니다. `close_state=blocked`는 유효한 닫기 또는 종료 경로 평가 뒤의 메서드 결과이지 `ToolRejectedResponse`가 아닙니다. |
 | `state` | 확인, 종료 상태 변경, 또는 담당 문서가 허용한 차단 결과 뒤 선택된 Task의 `StateSummary`입니다. `close_blockers`를 포함한 중첩 상태 필드는 [API 상태 스키마](schema-state.md)가 담당합니다. |
 | `current_close_basis` | 결과에 선택된 닫기 준비 상태에 사용한 `CurrentCloseBasis | null`입니다. `null`은 이 결과에 사용할 현재 닫기 근거가 없다는 뜻입니다. 형태는 [API 상태 스키마](schema-state.md#close-readiness-and-validation-shapes)가 담당합니다. |
@@ -225,7 +225,7 @@ CloseTaskRequest:
 | `pending_judgment_inbox_items` | 현재 닫기 준비 상태 결과에서 사용자 행동이 필요한 필수 미답변 대기 판단의 `JudgmentInboxItem[]`입니다. 형태는 [API 판단 스키마](schema-judgment.md#judgmentinboxitem)가 담당합니다. |
 | `guard_health` | 닫기 준비 상태 결과에 선택된 hook-state 사실의 `GuardHealthSummary | null`입니다. 형태는 [API 상태 스키마](schema-state.md#guard-health-summary)가 담당합니다. |
 | `coverage_summary` | 도출된 active profile, host-hook coverage 상태, session-watcher coverage 상태, 추적된 타임스탬프, 해결되지 않은 미기록 변경 수, coverage 비보장을 담는 `CoverageSummary | null`입니다. 형태는 [API 상태 스키마](schema-state.md#guard-health-summary)가 담당합니다. |
-| `evidence_summary` | 결과에 선택된 닫기 근거의 `EvidenceSummary | null`입니다. 결과에 증거 요약이 선택되지 않으면 `null`입니다. 형태는 [API 상태 스키마](schema-state.md#evidence-and-run-snapshot-shapes)가 담당합니다. |
+| `evidence_summary` | 결과에 선택된 닫기 근거의 `EvidenceSummary | null`입니다. 결과에 증거 요약이 선택되지 않으면 `null`입니다. 현재 닫기 근거가 선택된 요약을 참조하면 `evidence_summary.evidence_state`는 `accepted_for_close`입니다. 형태는 [API 상태 스키마](schema-state.md#evidence-and-run-snapshot-shapes)가 담당합니다. |
 | `artifact_refs` | 결과에 선택된 닫기 관련 아티팩트의 `ArtifactRef[]`입니다. `ArtifactRef` 형태는 [API 아티팩트 스키마](schema-artifacts.md#artifactref)가 담당합니다. |
 
 `CloseTaskResult`에는 최상위 `next_actions` 목록이 없습니다. `summary_card.next`는 결과 요약을 위해 선택된 단일 표시 다음 행동입니다. 닫기 차단 사유의 다음 동작은 계속 `CloseReadinessBlocker.next_actions` 안에 나타나며 [API 상태 스키마](schema-state.md#current-position-display-shapes)의 기준 `NextActionSummary` 형태를 사용합니다.

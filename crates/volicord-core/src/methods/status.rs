@@ -99,6 +99,8 @@ fn status_result_fields(
     let mut current_close_basis = None;
     let mut risk_acceptance_coverage = None;
     let mut close_blockers = None;
+    let mut card_evidence_summary = None;
+    let mut prepared_input_available = false;
     let mut guard_health = None;
     let mut coverage_summary = None;
     let mut continuity_summary = None;
@@ -142,14 +144,11 @@ fn status_result_fields(
             None
         };
         write_ticket_summary = projected_write_ticket.clone();
-        let projected_evidence = if include.evidence {
+        let mut projected_evidence = if include.evidence || include.close {
             projected_evidence_summary(store, project_id, state_version, task)?
         } else {
             None
         };
-        if include.evidence {
-            evidence_summary = projected_evidence.clone();
-        }
         let close_plan = if include.close {
             let plan = close_task::plan_close_task(
                 store,
@@ -179,6 +178,22 @@ fn status_result_fields(
         } else {
             None
         };
+        projected_evidence = projected_evidence
+            .map(|summary| evidence_summary_for_display(summary, current_close_basis.as_ref()));
+        if include.evidence {
+            evidence_summary = projected_evidence.clone();
+        }
+        card_evidence_summary = projected_evidence.clone();
+        if (include.evidence || include.close)
+            && projected_evidence
+                .as_ref()
+                .and_then(|summary| summary.evidence_state)
+                .is_none()
+        {
+            prepared_input_available = store
+                .has_prepared_artifact_input(&task_id, &utc_timestamp(now))
+                .map_err(CorePipelineError::from)?;
+        }
         if include.pending_user_judgments {
             pending_inbox_items = pending_judgment_inbox_items(
                 store,
@@ -200,7 +215,7 @@ fn status_result_fields(
                 pending_user_judgment_refs: all_pending_user_judgments,
                 blocker_refs: blocker_refs.clone(),
                 write_ticket_summary: projected_write_ticket,
-                evidence_summary: projected_evidence,
+                evidence_summary: projected_evidence.clone(),
                 close_state: close_plan.as_ref().map(|plan| plan.close_state),
                 close_blockers: close_plan
                     .as_ref()
@@ -238,7 +253,11 @@ fn status_result_fields(
             include.write_ticket,
             write_ticket_summary.as_ref(),
         ),
-        evidence: evidence_summary_text(include.evidence, evidence_summary.as_ref()),
+        evidence: evidence_summary_text(
+            include.evidence || include.close,
+            card_evidence_summary.as_ref(),
+            prepared_input_available,
+        ),
         pending_user_judgments: card_pending_user_judgment_count,
         changes: changes_summary_text(
             include.close,

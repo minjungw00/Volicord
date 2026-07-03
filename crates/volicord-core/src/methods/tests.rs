@@ -685,6 +685,14 @@ fn status_include_evidence_returns_current_coverage() -> Result<(), Box<dyn Erro
         "sufficient"
     );
     assert_eq!(
+        response.response_value["evidence_summary"]["evidence_state"],
+        "attached"
+    );
+    assert_eq!(
+        response.response_value["summary_card"]["evidence"],
+        "attached"
+    );
+    assert_eq!(
         response.response_value["evidence_summary"]["coverage_items"][0]["claim"],
         "Close claim supported."
     );
@@ -699,6 +707,42 @@ fn status_include_evidence_returns_current_coverage() -> Result<(), Box<dyn Erro
     assert_field_absent(&response.response_value["active_task"], "close_state");
     assert_field_absent(&response.response_value["active_task"], "close_blockers");
     assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn record_run_evidence_without_close_basis_appears_attached() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "attached_evidence")?;
+    let mut request = record_run_request(
+        "req_attached_evidence",
+        "idem_attached_evidence",
+        false,
+        Some(2),
+        &task_id,
+        &change_unit_id,
+    );
+    request.evidence_updates = vec![supported_evidence_update(
+        "Attached evidence supports a recorded claim.",
+    )];
+
+    let response = harness
+        .service
+        .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+
+    assert_eq!(
+        response.response_value["evidence_summary"]["evidence_state"],
+        "attached"
+    );
+    assert_eq!(
+        response.response_value["evidence_summary"]["status"],
+        "sufficient"
+    );
+    assert!(response.response_value["current_close_basis"].is_null());
+    assert_eq!(
+        response.response_value["state"]["evidence_summary"]["evidence_state"],
+        "attached"
+    );
     Ok(())
 }
 
@@ -749,13 +793,25 @@ fn status_close_include_matches_check_close_blockers() -> Result<(), Box<dyn Err
     );
     assert_eq!(
         status.response_value["summary_card"]["evidence"],
-        "sufficient"
+        "accepted_for_close"
+    );
+    assert_eq!(
+        status.response_value["evidence_summary"]["evidence_state"],
+        "accepted_for_close"
     );
     assert_authority_disclosure(&status.response_value);
     assert_authority_disclosure(&check.response_value);
     assert_eq!(
         check.response_value["summary_card"]["close_status"],
         "blocked"
+    );
+    assert_eq!(
+        check.response_value["summary_card"]["evidence"],
+        "accepted_for_close"
+    );
+    assert_eq!(
+        check.response_value["evidence_summary"]["evidence_state"],
+        "accepted_for_close"
     );
     assert_eq!(
         check.response_value["summary_card"]["next"],
@@ -3685,6 +3741,7 @@ fn staged_evidence_input_is_not_close_evidence_until_recorded() -> Result<(), Bo
     let response = harness
         .service
         .stage_artifact(request, invocation(OperationCategory::AgentWorkflow))?;
+    assert_eq!(response.response_value["evidence_state"], "prepared");
     let after_stage = harness.counts()?;
     let handle_id = response.response_value["staged_artifact_handle"]["handle_id"]
         .as_str()
@@ -3756,9 +3813,18 @@ fn staged_evidence_input_is_not_close_evidence_until_recorded() -> Result<(), Bo
 
     assert_eq!(status.response_value["close_state"], "blocked");
     assert_eq!(
+        status.response_value["summary_card"]["evidence"],
+        "prepared"
+    );
+    assert_ne!(
+        status.response_value["summary_card"]["evidence"],
+        "accepted_for_close"
+    );
+    assert_eq!(
         status.response_value["evidence_summary"]["status"],
         "insufficient"
     );
+    assert_field_absent(&status.response_value["evidence_summary"], "evidence_state");
     let coverage_items = status.response_value["evidence_summary"]["coverage_items"]
         .as_array()
         .expect("coverage_items should be an array");
@@ -3777,6 +3843,12 @@ fn staged_evidence_input_is_not_close_evidence_until_recorded() -> Result<(), Bo
     assert_close_blocker(&status.response_value, "missing_current_close_basis");
     assert_close_blocker(&status.response_value, "evidence_claim_missing");
     assert_eq!(check.response_value["close_state"], "blocked");
+    assert_eq!(check.response_value["summary_card"]["evidence"], "prepared");
+    assert_ne!(
+        check.response_value["summary_card"]["evidence"],
+        "accepted_for_close"
+    );
+    assert_field_absent(&check.response_value["evidence_summary"], "evidence_state");
     assert_close_blocker(&check.response_value, "missing_current_close_basis");
     assert_close_blocker(&check.response_value, "evidence_claim_missing");
     assert_eq!(artifact_staging_status(&harness, &handle_id)?, "staged");
@@ -12448,6 +12520,14 @@ fn external_tool_provenance_supports_the_attached_close_claim() -> Result<(), Bo
     )?;
 
     assert_eq!(response.response_value["close_state"], "closed");
+    assert_eq!(
+        response.response_value["summary_card"]["evidence"],
+        "accepted_for_close"
+    );
+    assert_eq!(
+        response.response_value["evidence_summary"]["evidence_state"],
+        "accepted_for_close"
+    );
     assert_no_close_blocker(&response.response_value, "evidence_provenance_insufficient");
     assert_no_close_blocker(&response.response_value, "evidence_agent_report_only");
     assert_no_close_blocker(&response.response_value, "session_watch_unavailable");

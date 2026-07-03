@@ -577,6 +577,16 @@ sufficient
 blocked
 ```
 
+`StageArtifactResult.evidence_state`, `EvidenceSummary.evidence_state`, and selected evidence display summaries use the evidence display state values below when that field is present:
+
+```text
+prepared
+attached
+accepted_for_close
+```
+
+These values are user-facing presentation states. `accepted_for_close` means evidence is available to the current close-readiness calculation; it is not a correctness proof, test-sufficiency proof, QA result, final acceptance, or residual-risk acceptance.
+
 `EvidenceCoverageItem.coverage_state` uses:
 
 ```text
