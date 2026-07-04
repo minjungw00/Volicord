@@ -1,6 +1,6 @@
 # Reference index
 
-Use this human-readable index to choose the next owner document for a Volicord reference question. For the exact machine-readable owner route, use [`docs/doc-index.yaml`](../../doc-index.yaml); it owns `doc_id`, maintained paths, document kind, focused `canonical_for` scope, maintenance `owner_area`, `created_on`, `last_updated_on`, `last_verified_on`, `applies_to`, dependencies, normative level, primary audience, reader journeys, and translation policy metadata.
+Use this index to choose the Reference page for a CLI, API, storage, runtime, security, terminology, quality, or scope question. Exact product contracts live in the focused Reference pages linked below; this README routes readers to those owners and does not define the contracts itself.
 
 This README is route-only. It does not define term meanings, terminology metadata, API behavior, error meaning, error precedence, response branch routing, blocker routing, storage effects, schema shapes, security guarantees, or Core authority semantics.
 
@@ -30,9 +30,10 @@ This README is route-only. It does not define term meanings, terminology metadat
 - Administrative `volicord` commands are local bootstrap commands, not public Volicord API methods; `volicord mcp --stdio` exposes the public method set through MCP stdio without owning a second method list.
 - Terminology lookup starts with the [Glossary](glossary.md) for selected reader-facing terms and [`docs/terminology-map.yaml`](../../terminology-map.yaml) for structured terminology and identifier controls.
 
-## Maintenance Routes
+## Contributor / Maintenance Routes
 
 - Repository editing rules: [`AGENTS.md`](../../../AGENTS.md).
+- Machine-readable owner metadata: [`docs/doc-index.yaml`](../../doc-index.yaml).
 - Documentation governance: [Documentation Policy](../maintain/documentation-policy.md).
 - Documentation validation: [Validation](../maintain/validation.md).
 - English/Korean wording and Korean style: [Translation Policy](../maintain/translation-policy.md).

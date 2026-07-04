@@ -48,7 +48,7 @@ This document does not own:
 <a id="surface-stability"></a>
 ## Surface Stability
 
-For label meanings, see [Documentation Policy](../maintain/documentation-policy.md#surface-stability-labels).
+For canonical vocabulary, see [Documentation Policy](../maintain/documentation-policy.md#surface-stability-labels). In this section, `stable` means a documented compatibility surface; `beta` means supported, but details may change; `internal` means an implementation or generated-integration detail, not a normal user input surface; and `diagnostic` means a troubleshooting or status-reporting surface whose prose or diagnostic wording is not a stable API contract.
 
 | Surface | Stability | Notes |
 |---|---|---|

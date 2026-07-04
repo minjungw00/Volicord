@@ -1,13 +1,13 @@
 # API methods
 
-Use this human-readable method-family router to find the owner document for public Volicord API method behavior. For the exact machine-readable owner route, use [`docs/doc-index.yaml`](../../../doc-index.yaml).
+Use this method-family router to find the focused Reference owner for public Volicord API method behavior. Exact method contracts live in the linked method owner pages.
 
 This page does not define method behavior, request or response bodies, shared schemas, storage effects, error semantics, security guarantees, or Core authority semantics.
 
 <a id="surface-stability"></a>
 ## Surface Stability
 
-For label meanings, see [Documentation Policy](../../maintain/documentation-policy.md#surface-stability-labels).
+For canonical vocabulary, see [Documentation Policy](../../maintain/documentation-policy.md#surface-stability-labels). In this section, `stable` means a documented compatibility surface; `beta` means supported, but details may change; `internal` means an implementation or generated-integration detail, not a normal user input surface; and `diagnostic` means a troubleshooting or status-reporting surface whose prose or diagnostic wording is not a stable API contract.
 
 | Surface | Stability | Notes |
 |---|---|---|

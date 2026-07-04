@@ -203,4 +203,4 @@ Owner links:
 <a id="owner-documents"></a>
 ## Owner documents
 
-Use this page for supported baseline scope questions. For detailed questions outside the scope boundary, choose the applicable owner from the [Reference Index](README.md) or [`docs/doc-index.yaml`](../../doc-index.yaml). For API method behavior, start with [API Methods](api/methods.md).
+Use this page for supported baseline scope questions. For detailed questions outside the scope boundary, start with the [Reference Index](README.md) and then choose the applicable focused Reference page. For API method behavior, start with [API Methods](api/methods.md). Documentation contributors can use [`docs/doc-index.yaml`](../../doc-index.yaml) for machine-readable owner metadata.

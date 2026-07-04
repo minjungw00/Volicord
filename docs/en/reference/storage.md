@@ -1,6 +1,6 @@
 # Storage
 
-Use this human-readable storage-family router to find the focused storage owner. For the exact machine-readable owner route, use [`docs/doc-index.yaml`](../../doc-index.yaml).
+Use this storage-family router to find the focused storage Reference page for a storage question. Exact storage contracts live in the linked storage owner pages.
 
 This page does not define storage record layouts, SQLite DDL, storage effects, artifact lifecycle, versioning, API shapes, security guarantees, runtime locations, or Core authority semantics.
 

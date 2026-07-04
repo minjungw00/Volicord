@@ -203,4 +203,4 @@ Volicord는 AI 지원 작업 주변의 담당 문서가 정의한 상태를 기�
 <a id="owner-documents"></a>
 ## 담당 문서
 
-지원되는 기준 범위 질문에는 이 문서를 사용합니다. 범위 경계 밖의 세부 계약 질문은 [참조 색인](README.md)이나 [`docs/doc-index.yaml`](../../doc-index.yaml)에서 적용되는 담당 문서를 고릅니다. API 메서드 동작은 [API 메서드](api/methods.md)에서 시작합니다.
+지원되는 기준 범위 질문에는 이 문서를 사용합니다. 범위 경계 밖의 세부 계약 질문은 [참조 색인](README.md)에서 시작한 뒤 적용되는 집중 참조 문서를 고릅니다. API 메서드 동작은 [API 메서드](api/methods.md)에서 시작합니다. 문서 기여자는 기계 판독 담당 메타데이터에 [`docs/doc-index.yaml`](../../doc-index.yaml)을 사용할 수 있습니다.

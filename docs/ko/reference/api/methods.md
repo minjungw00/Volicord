@@ -1,13 +1,13 @@
 # API 메서드
 
-이 문서는 공개 Volicord API 메서드 동작의 담당 문서를 찾기 위한 읽기용 메서드 경로 안내입니다. 기계가 읽는 정확한 담당 경로는 [`docs/doc-index.yaml`](../../../doc-index.yaml)을 사용합니다.
+이 문서는 공개 Volicord API 메서드 동작을 담당하는 집중 참조 문서를 찾기 위한 메서드 경로 안내입니다. 정확한 메서드 계약은 연결된 메서드 담당 문서에 있습니다.
 
 이 문서는 메서드 동작, 요청이나 응답 본문, 공통 스키마, 저장 효과, 오류 의미, 보안 보장, Core 권한 의미를 정의하지 않습니다.
 
 <a id="surface-stability"></a>
 ## 표면 안정성
 
-라벨 의미는 [문서 정책](../../maintain/documentation-policy.md#surface-stability-labels)을 확인하세요.
+기준 어휘는 [문서 정책](../../maintain/documentation-policy.md#surface-stability-labels)을 확인하세요. 이 섹션에서 `stable`은 문서화된 호환성 표면을 뜻합니다. `beta`는 지원되지만 세부사항이 바뀔 수 있음을 뜻합니다. `internal`은 구현 또는 생성된 통합 세부사항이며 일반 사용자 입력 표면이 아님을 뜻합니다. `diagnostic`은 문제 해결이나 상태 보고 표면이며 산문 또는 진단 문구가 안정적인 API 계약이 아님을 뜻합니다.
 
 | 표면 | 안정성 | 비고 |
 |---|---|---|

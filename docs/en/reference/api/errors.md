@@ -1,6 +1,6 @@
 # API errors
 
-Use this human-readable error-family router only as the first hop to focused API error owners. For the exact machine-readable owner route, use [`docs/doc-index.yaml`](../../../doc-index.yaml).
+Use this error-family router only as the first hop to the focused API error Reference pages. Exact error contracts live in those focused owners.
 
 This page is not a contract source.
 

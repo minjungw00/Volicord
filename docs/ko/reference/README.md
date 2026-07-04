@@ -1,6 +1,6 @@
 # 참조 색인
 
-이 색인은 Volicord 참조 질문에서 다음 담당 문서를 고를 때 쓰는 읽기용 색인입니다. 기계가 읽는 정확한 담당 경로는 [`docs/doc-index.yaml`](../../doc-index.yaml)을 사용합니다. 이 파일이 `doc_id`, 유지 경로, 문서 종류, 집중 `canonical_for` 범위, 유지보수 `owner_area`, `created_on`, `last_updated_on`, `last_verified_on`, `applies_to`, 의존 관계, 규범 수준, 주요 독자, 독자 여정, 번역 정책 메타데이터를 담당합니다.
+이 색인은 CLI, API, 저장소, 런타임, 보안, 용어, 품질, 범위 질문에 맞는 참조 문서를 고를 때 사용합니다. 정확한 제품 계약은 아래에 연결된 집중 참조 문서에 있습니다. 이 README는 독자를 해당 담당 문서로 안내하며 계약을 직접 정의하지 않습니다.
 
 이 README는 경로 안내 전용입니다. 용어 뜻, 용어 메타데이터, API 동작, 오류 의미, 오류 우선순위, 응답 분기 처리 경로, 차단 사유 처리 경로, 저장 효과, 스키마 형태, 보안 보장, Core 권한 의미를 정의하지 않습니다.
 
@@ -30,9 +30,10 @@
 - 관리용 `volicord` 명령은 로컬 부트스트랩 명령이며 공개 Volicord API 메서드가 아닙니다. `volicord mcp --stdio`는 별도의 두 번째 메서드 목록을 담당하지 않고 MCP stdio를 통해 공개 메서드 집합을 노출합니다.
 - 용어 조회는 선별된 독자용 용어를 다루는 [용어집](glossary.md)에서 시작하고, 구조화 용어와 식별자 통제는 [`docs/terminology-map.yaml`](../../terminology-map.yaml)을 사용합니다.
 
-## 유지보수 경로
+## 기여자 / 유지보수 경로
 
 - 저장소 편집 규칙: [`AGENTS.md`](../../../AGENTS.md).
+- 기계 판독 담당 메타데이터: [`docs/doc-index.yaml`](../../doc-index.yaml).
 - 문서 거버넌스: [문서 정책](../maintain/documentation-policy.md).
 - 문서 검증: [검증](../maintain/validation.md).
 - 영어/한국어 표현과 한국어 문체: [번역 정책](../maintain/translation-policy.md).
