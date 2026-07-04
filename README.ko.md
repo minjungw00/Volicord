@@ -141,6 +141,7 @@ cargo build --locked --release -p volicord-cli --bin volicord
 ```
 
 로컬에서 빌드한 바이너리를 사용자 `PATH`에 설치하려면 아래처럼 실행합니다.
+필요하면 `$HOME/.local/bin`을 이미 `PATH`에 있는 다른 디렉터리로 바꿉니다.
 
 ```sh
 mkdir -p "$HOME/.local/bin"

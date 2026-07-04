@@ -146,7 +146,8 @@ cargo build --locked --release -p volicord-cli --bin volicord
 ./target/release/volicord --version
 ```
 
-To install that locally built binary on your user `PATH`:
+To install that locally built binary on your user `PATH`, replace
+`$HOME/.local/bin` with another directory already on `PATH` if needed:
 
 ```sh
 mkdir -p "$HOME/.local/bin"
