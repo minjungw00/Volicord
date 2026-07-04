@@ -815,10 +815,12 @@ fn init_codex_record_profile_skips_host_hooks() -> Result<(), Box<dyn Error>> {
     assert!(init_text.contains("Next:"));
     assert!(init_text.contains("Open, restart, or reload Codex in this repository."));
     assert!(init_text.contains("Trust or approve the project configuration if Codex asks."));
-    assert!(init_text.contains(&format!(
-        "Run volicord connection verify codex --shared --repo {}.",
+    let verify_command = format!(
+        "volicord connection verify codex --shared --repo {}",
         repo_root.display()
-    )));
+    );
+    assert!(init_text.contains(&format!("  3. Run:\n     {verify_command}\n")));
+    assert!(!init_text.contains(&format!("Run {verify_command}.")));
     assert!(init_text.contains("Limits:"));
     assert!(init_text.contains(
         "The record profile supports cooperative Volicord workflow recording through MCP."
@@ -829,10 +831,14 @@ fn init_codex_record_profile_skips_host_hooks() -> Result<(), Box<dyn Error>> {
         init_text.contains("correctness proof, test sufficiency proof, or human review completion")
     );
     assert!(init_text.contains("Diagnostics:"));
-    assert!(init_text.contains(&format!(
+    let diagnostics_command = format!(
         "volicord connection status codex --shared --repo {} --json",
         repo_root.display()
+    );
+    assert!(init_text.contains(&format!(
+        "Diagnostics:\n  Run:\n    {diagnostics_command}\n"
     )));
+    assert!(!init_text.contains(&format!("Detailed diagnostics: {diagnostics_command}")));
     assert_init_text_omits_internal_diagnostics(&init_text);
 
     let output = run_with_home_env(
@@ -1300,18 +1306,24 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     assert!(init_text.contains("Next:"));
     assert!(init_text.contains("Open, restart, or reload Codex in this repository."));
     assert!(init_text.contains("Trust or approve the project configuration if Codex asks."));
-    assert!(init_text.contains(&format!(
-        "Run volicord connection verify codex --shared --repo {}.",
+    let verify_command = format!(
+        "volicord connection verify codex --shared --repo {}",
         repo_root.display()
-    )));
+    );
+    assert!(init_text.contains(&format!("  3. Run:\n     {verify_command}\n")));
+    assert!(!init_text.contains(&format!("Run {verify_command}.")));
     assert!(init_text.contains("Limits:"));
     assert!(init_text.contains("The detective profile adds cooperative host observation"));
     assert!(init_text.contains("OS sandboxing, network isolation, malware defense"));
     assert!(init_text.contains("Diagnostics:"));
-    assert!(init_text.contains(&format!(
+    let diagnostics_command = format!(
         "volicord connection status codex --shared --repo {} --json",
         repo_root.display()
+    );
+    assert!(init_text.contains(&format!(
+        "Diagnostics:\n  Run:\n    {diagnostics_command}\n"
     )));
+    assert!(!init_text.contains(&format!("Detailed diagnostics: {diagnostics_command}")));
     assert_init_text_omits_internal_diagnostics(&init_text);
 
     let record = agent_connection_record(runtime_home.path(), &connection_id)?

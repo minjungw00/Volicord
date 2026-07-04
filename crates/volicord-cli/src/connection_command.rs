@@ -5408,10 +5408,17 @@ fn render_init_text_output(
         data.runtime_home.display()
     ));
     for (index, step) in init_next_steps(data, actions).iter().enumerate() {
-        output.push_str(&format!("  {}. {}\n", index + 1, step));
+        match step {
+            InitNextStep::Text(text) => {
+                output.push_str(&format!("  {}. {}\n", index + 1, text));
+            }
+            InitNextStep::Command { label, command } => {
+                output.push_str(&format!("  {}. {}:\n     {}\n", index + 1, label, command));
+            }
+        }
     }
     output.push_str(&format!(
-        "\nLimits:\n{}\n\nDiagnostics:\n  Detailed diagnostics: {}\n",
+        "\nLimits:\n{}\n\nDiagnostics:\n  Run:\n    {}\n",
         init_limits_text(data.init_mode),
         init_diagnostics_command(data),
     ));
@@ -5430,41 +5437,61 @@ fn init_text_title(status: AgentResultStatus, host_kind: HostKind) -> String {
     }
 }
 
-fn init_next_steps(data: &InitOutput<'_>, actions: &[UserAction]) -> Vec<String> {
+enum InitNextStep {
+    Text(String),
+    Command {
+        label: &'static str,
+        command: String,
+    },
+}
+
+fn init_next_steps(data: &InitOutput<'_>, actions: &[UserAction]) -> Vec<InitNextStep> {
     let host = public_host_display_name(data.host_kind);
     let verify_command = init_verify_command(data.host_kind, data.repo_root);
     if data.status == AgentResultStatus::DryRun {
         let mut steps = vec![
-            "Run the same init command without --dry-run to apply the planned repo file changes."
-                .to_owned(),
-            format!("After applying, open, restart, or reload {host} in this repository."),
+            InitNextStep::Text(
+                "Run the same init command without --dry-run to apply the planned repo file changes."
+                    .to_owned(),
+            ),
+            InitNextStep::Text(format!(
+                "After applying, open, restart, or reload {host} in this repository."
+            )),
         ];
         if init_actions_include_trust_or_approval(actions) {
-            steps.push(format!(
+            steps.push(InitNextStep::Text(format!(
                 "Trust or approve the project configuration if {host} asks."
-            ));
+            )));
         }
-        steps.push(format!("After applying, run {verify_command}."));
+        steps.push(InitNextStep::Command {
+            label: "After applying, run",
+            command: verify_command,
+        });
         return steps;
     }
     if data.status == AgentResultStatus::Failed {
         return vec![
-            format!(
-                "Review the detailed diagnostics with {}.",
-                init_diagnostics_command(data)
-            ),
-            format!("Fix the reported issue, then rerun init for {host}."),
+            InitNextStep::Command {
+                label: "Review detailed diagnostics",
+                command: init_diagnostics_command(data),
+            },
+            InitNextStep::Text(format!(
+                "Fix the reported issue, then rerun init for {host}."
+            )),
         ];
     }
-    let mut steps = vec![format!(
+    let mut steps = vec![InitNextStep::Text(format!(
         "Open, restart, or reload {host} in this repository."
-    )];
+    ))];
     if init_actions_include_trust_or_approval(actions) {
-        steps.push(format!(
+        steps.push(InitNextStep::Text(format!(
             "Trust or approve the project configuration if {host} asks."
-        ));
+        )));
     }
-    steps.push(format!("Run {verify_command}."));
+    steps.push(InitNextStep::Command {
+        label: "Run",
+        command: verify_command,
+    });
     steps
 }
 

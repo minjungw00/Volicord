@@ -142,7 +142,9 @@ volicord inbox open <judgment-id> [--repo PATH] [--json]
 있습니다. 이 요약은 초기화된 호스트, profile, repository, repo file changes, 저장된
 Runtime Home 경로, `Next:` 체크리스트, 한계, JSON 진단 명령을 이름 붙입니다.
 `action_required` 결과 상태는 JSON 또는 명령 결과로 계속 나타날 수 있습니다. 사람용
-init text가 전체 진단 결과 모델을 노출해야 하는 것은 아닙니다.
+init text가 전체 진단 결과 모델을 노출해야 하는 것은 아닙니다. 이 간결한 init text의
+명령 동작은 라벨 줄 다음에 들여쓴 명령 줄로 표시하며, 명령 줄 끝에는 산문 구두점을
+붙이지 않습니다.
 
 `volicord status`, `volicord doctor`, `volicord connection status`,
 `volicord connection verify`, `volicord changes reconcile`, `volicord inbox`

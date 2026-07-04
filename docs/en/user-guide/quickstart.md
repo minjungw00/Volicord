@@ -47,13 +47,18 @@ Stored local Volicord state:
 Next:
   1. Open, restart, or reload Codex in this repository.
   2. Trust or approve the project configuration if Codex asks.
-  3. Run volicord connection verify codex --shared --repo /path/to/repo.
+  3. Run:
+     volicord connection verify codex --shared --repo /path/to/repo
 
 Limits:
   The record profile supports cooperative Volicord workflow recording through MCP.
   It does not provide OS sandboxing, network isolation, malware defense,
   full write prevention, actor identity proof, correctness proof, test
   sufficiency proof, or human review completion.
+
+Diagnostics:
+  Run:
+    volicord connection status codex --shared --repo /path/to/repo --json
 ```
 
 The summary distinguishes files written inside the Product Repository from

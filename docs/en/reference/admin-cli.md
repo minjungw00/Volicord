@@ -153,7 +153,9 @@ rather than a raw state dump. The summary names the initialized host, profile,
 repository, repo file changes, stored Runtime Home path, `Next:` checklist,
 limits, and a JSON diagnostics command. The `action_required` result state can
 still appear in JSON or as the command result; the human init text does not have
-to expose the full diagnostic result model.
+to expose the full diagnostic result model. Command actions in this compact init
+text use a label line followed by an indented command line, without trailing
+prose punctuation on the command line.
 
 Major status-like user-facing surfaces, including `volicord status`,
 `volicord doctor`, `volicord connection status`, `volicord connection verify`,
