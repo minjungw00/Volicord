@@ -1,14 +1,13 @@
 # User Guide
 
-| Metadata | Value |
-|---|---|
-| Purpose | Route user procedures for installing Volicord, connecting an agent host, working with User Judgment, interpreting status and close blockers, and recovering setup failures. |
-| Audience | New users, operators, agents, and agent integrators. |
-| Canonical for | User Guide layer navigation. Exact CLI, MCP, API, storage, security, and authority contracts stay in Reference. |
+Use the User Guide when you want to do something with Volicord. It routes
+installation, first setup, user workflow, judgment examples, agent workflow,
+agent-host setup, multi-repository operation, status and close interpretation,
+and troubleshooting.
 
-Use this layer when you want to do something with Volicord. These pages explain
-procedures and public workflow language; they do not replace focused Reference
-contracts.
+These pages explain procedures and public workflow language. For exact CLI,
+MCP, API, storage, security, and authority behavior, follow the linked
+Reference owners.
 
 ## Start Here
 

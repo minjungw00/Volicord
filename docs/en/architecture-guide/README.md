@@ -1,19 +1,15 @@
 # Architecture Guide
 
-| Metadata | Value |
-|---|---|
-| Purpose | Route architecture and implementation-structure explanations for the current Rust workspace. |
-| Audience | Implementers, reviewers, and source-code learners. |
-| Canonical for | Architecture Guide layer navigation and guide-level implementation learning. Exact product contracts stay in Reference. |
+The Architecture Guide is the source-code learning entry point for
+implementers, reviewers, and source-code learners who need to understand the
+current Rust workspace. It routes workspace structure, request flow, storage
+and transaction boundaries, design patterns, test strategy, durable decisions,
+and implementation change workflow.
 
-This is the source-code learning entry point for implementers who want to
-understand the current Rust implementation. It explains where to start, what to
-read next, and where exact product contracts live.
-
-These pages teach implementation structure. They do not define or override
-public API behavior, request or response schemas, storage effects, security
-guarantees, runtime boundaries, Core authority semantics, or product contracts.
-For exact behavior, follow the links to the focused Reference owners.
+Use these pages to learn how the implementation is arranged and why durable
+boundaries exist. Exact public API behavior, request or response schemas,
+storage effects, security guarantees, runtime boundaries, Core authority
+semantics, and other product contracts live in the focused Reference owners.
 
 Volicord is the local work authority record for AI-assisted product
 work. Core is the local authority record for Volicord state.
