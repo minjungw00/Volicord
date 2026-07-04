@@ -1295,6 +1295,14 @@ fn public_host_label(host_kind: HostKind) -> &'static str {
     }
 }
 
+fn public_host_display_name(host_kind: HostKind) -> &'static str {
+    match host_kind {
+        HostKind::Codex => "Codex",
+        HostKind::ClaudeCode => "Claude Code",
+        HostKind::Generic => "generic host",
+    }
+}
+
 fn intent_flag_suffix(intent: ConnectionIntent) -> &'static str {
     match intent {
         ConnectionIntent::Personal => "",
@@ -1999,6 +2007,44 @@ impl FilePlanStatus {
             Self::Updated => "updated",
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RepoFileChangeStatus {
+    Created,
+    Updated,
+    PlannedCreate,
+    PlannedUpdate,
+}
+
+impl RepoFileChangeStatus {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Created => "created",
+            Self::Updated => "updated",
+            Self::PlannedCreate => "planned_create",
+            Self::PlannedUpdate => "planned_update",
+        }
+    }
+
+    fn text_verb(self) -> &'static str {
+        match self {
+            Self::Created => "created",
+            Self::Updated => "updated",
+            Self::PlannedCreate => "would create",
+            Self::PlannedUpdate => "would update",
+        }
+    }
+
+    fn is_actual(self) -> bool {
+        matches!(self, Self::Created | Self::Updated)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RepoFileChange {
+    status: RepoFileChangeStatus,
+    path: String,
 }
 
 #[derive(Debug, Clone)]
@@ -4345,33 +4391,6 @@ fn hook_path_safety_json(commands: &[HostHookCommand]) -> Value {
     })
 }
 
-fn hook_root_resolution_text(integration: &GuardIntegrationPlan) -> String {
-    if integration.host_hook_commands.is_empty() {
-        return "not_applicable".to_owned();
-    }
-    let mut bases = integration
-        .host_hook_commands
-        .iter()
-        .map(|command| command.root_resolution_basis.as_str())
-        .collect::<Vec<_>>();
-    bases.sort_unstable();
-    bases.dedup();
-    if bases.len() == 1
-        && integration
-            .host_hook_commands
-            .iter()
-            .all(|command| command.cwd_independent)
-        && integration
-            .host_hook_commands
-            .iter()
-            .all(|command| command.subdirectory_safe)
-    {
-        bases[0].to_owned()
-    } else {
-        "mixed".to_owned()
-    }
-}
-
 #[cfg(unix)]
 fn script_executable_required() -> bool {
     true
@@ -5289,74 +5308,14 @@ fn render_init_output(data: InitOutput<'_>) -> Result<String, ConnectionCommandE
     } else {
         "planned"
     };
-    let hook_root_resolution = hook_root_resolution_text(data.integration);
     let mut primary_next_action =
         primary_connection_action(&actions, data.verification, &guard_state, None, &[]);
     if let Some(action) = primary_next_action.as_mut() {
         append_init_verify_followup(action, data.host_kind, data.repo_root);
     }
+    let repo_file_changes = init_repo_file_changes(&data);
     match data.format {
-        OutputFormat::Text => {
-            let action_guidance_text = connection_action_guidance_text(
-                data.status,
-                &guard_state,
-                primary_next_action.as_ref(),
-                false,
-            );
-            let disclosure_text = if action_guidance_text.is_empty() {
-                format!("{DETECTIVE_OBSERVATION_DISCLOSURE_TEXT}\n")
-            } else {
-                String::new()
-            };
-            let mut output = format!(
-                "Volicord init {}\n{}{}runtime_home_state: ready\nruntime_home: {}\nproject_registration_state: {}\nrepo: {}\nconnection_state: {}\nhost: {}\nselected_profile: {}\nconnection_id: {}\nmcp_config_state: {}\nmcp_config: {}\nplanned_change: {}\nprofile: {}\nobservation_summary: {}\nobservation_capabilities: {}\nhost_hooks_active: {}\nsession_watcher_active: {}\nactor_identity_provable: {}\nos_enforced: {}\ndetective_installation_state: {}\ndetective_configuration_state: {}\nhost_hook_observation_state: {}\ndetective_effective_state: {}\ndetective_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_root_resolution: {}\nhook_path_safety: {}\nrequired_hook_phases_state: {}\nrequired_hook_phases_missing: {}\nhost_hook_observed: {}\ndetective_hook_observed: {}\nlast_host_hook_event: {}\nprompt_capture_state: {}\nhost_reload_required: {}\ndetective_blockers: {}\n",
-                data.status.as_str(),
-                action_guidance_text,
-                disclosure_text,
-                data.runtime_home.display(),
-                project_state,
-                data.repo_root.display(),
-                data.status.as_str(),
-                public_host_label(data.host_kind),
-                data.init_mode.profile_value(),
-                data.connection_id,
-                mcp_config_state,
-                target,
-                planned_change,
-                data.profile_action,
-                control_surface_text(&guard_state),
-                guard_capabilities_text(&guard_state),
-                yes_no(guard_state.host_hook_guard_available()),
-                "no",
-                "no",
-                "no",
-                guard_state.installation_state,
-                guard_state.configuration_state,
-                guard_state.observation_state,
-                guard_state.effective_state,
-                guard_state.files_state,
-                guard_state.agents_block_state,
-                guard_state.policy_file_state,
-                guard_state.rule_instruction_state,
-                guard_state.hook_config_state,
-                hook_root_resolution,
-                guard_state.hook_path_safety_state,
-                guard_state.required_hook_phases_state(),
-                comma_or_none(&guard_state.missing_required_hooks),
-                guard_state.hook_observed_state,
-                yes_no(guard_state.guard_observed()),
-                optional_text(guard_state.last_guard_event_at.as_deref()),
-                guard_state.prompt_capture_state,
-                yes_no(has_reload_action(&actions)),
-                comma_or_none(&guard_state.unresolved_blockers)
-            );
-            output.push_str(&format!(
-                "generated_file_count: {}\n",
-                data.integration.generated_files.len()
-            ));
-            append_primary_next_action_text(&mut output, primary_next_action.as_ref());
-            Ok(output)
-        }
+        OutputFormat::Text => Ok(render_init_text_output(&data, &actions, &repo_file_changes)),
         OutputFormat::Json => {
             let value = json!({
                 "action": "init",
@@ -5393,6 +5352,8 @@ fn render_init_output(data: InitOutput<'_>) -> Result<String, ConnectionCommandE
                     "config_target": target,
                 },
                 "planned_change": planned_change,
+                "repo_file_changes": repo_file_changes_json(&repo_file_changes),
+                "changed_repo_files": changed_repo_files_json(&repo_file_changes),
                 "generated_files": generated_files_json(&data.integration.generated_files),
                 "host_hook_commands": host_hook_commands_json(&data.integration.host_hook_commands),
                 "hook_root_resolution": hook_root_resolution_json(&data.integration.host_hook_commands),
@@ -5412,6 +5373,255 @@ fn render_init_output(data: InitOutput<'_>) -> Result<String, ConnectionCommandE
                 .map_err(|error| ConnectionCommandError::runtime(error.to_string()))
         }
     }
+}
+
+fn render_init_text_output(
+    data: &InitOutput<'_>,
+    actions: &[UserAction],
+    repo_file_changes: &[RepoFileChange],
+) -> String {
+    let file_section_label = if data.status == AgentResultStatus::DryRun {
+        "Planned repo file changes"
+    } else {
+        "Repo file changes"
+    };
+    let mut output = format!(
+        "{}\n\nProfile:\n  {}\n\nRepository:\n  {}\n\n{}:\n",
+        init_text_title(data.status, data.host_kind),
+        data.init_mode.profile_value(),
+        data.repo_root.display(),
+        file_section_label,
+    );
+    if repo_file_changes.is_empty() {
+        output.push_str("  none\n");
+    } else {
+        for change in repo_file_changes {
+            output.push_str(&format!(
+                "  {} {}\n",
+                change.status.text_verb(),
+                change.path
+            ));
+        }
+    }
+    output.push_str(&format!(
+        "\nStored local Volicord state:\n  {}\n\nNext:\n",
+        data.runtime_home.display()
+    ));
+    for (index, step) in init_next_steps(data, actions).iter().enumerate() {
+        output.push_str(&format!("  {}. {}\n", index + 1, step));
+    }
+    output.push_str(&format!(
+        "\nLimits:\n{}\n\nDiagnostics:\n  Detailed diagnostics: {}\n",
+        init_limits_text(data.init_mode),
+        init_diagnostics_command(data),
+    ));
+    output
+}
+
+fn init_text_title(status: AgentResultStatus, host_kind: HostKind) -> String {
+    let host = public_host_display_name(host_kind);
+    match status {
+        AgentResultStatus::Complete | AgentResultStatus::ActionRequired => {
+            format!("Volicord initialized for {host}")
+        }
+        AgentResultStatus::DryRun => format!("Volicord init plan for {host}"),
+        AgentResultStatus::Failed => format!("Volicord init failed for {host}"),
+        AgentResultStatus::NotVerified => format!("Volicord init not verified for {host}"),
+    }
+}
+
+fn init_next_steps(data: &InitOutput<'_>, actions: &[UserAction]) -> Vec<String> {
+    let host = public_host_display_name(data.host_kind);
+    let verify_command = init_verify_command(data.host_kind, data.repo_root);
+    if data.status == AgentResultStatus::DryRun {
+        let mut steps = vec![
+            "Run the same init command without --dry-run to apply the planned repo file changes."
+                .to_owned(),
+            format!("After applying, open, restart, or reload {host} in this repository."),
+        ];
+        if init_actions_include_trust_or_approval(actions) {
+            steps.push(format!(
+                "Trust or approve the project configuration if {host} asks."
+            ));
+        }
+        steps.push(format!("After applying, run {verify_command}."));
+        return steps;
+    }
+    if data.status == AgentResultStatus::Failed {
+        return vec![
+            format!(
+                "Review the detailed diagnostics with {}.",
+                init_diagnostics_command(data)
+            ),
+            format!("Fix the reported issue, then rerun init for {host}."),
+        ];
+    }
+    let mut steps = vec![format!(
+        "Open, restart, or reload {host} in this repository."
+    )];
+    if init_actions_include_trust_or_approval(actions) {
+        steps.push(format!(
+            "Trust or approve the project configuration if {host} asks."
+        ));
+    }
+    steps.push(format!("Run {verify_command}."));
+    steps
+}
+
+fn init_actions_include_trust_or_approval(actions: &[UserAction]) -> bool {
+    actions.iter().any(|action| {
+        matches!(
+            action.kind,
+            UserActionKind::HostTrustRequired | UserActionKind::ProjectApprovalRequired
+        )
+    })
+}
+
+fn init_verify_command(host_kind: HostKind, repo_root: &Path) -> String {
+    format!(
+        "volicord connection verify {} --shared --repo {}",
+        public_host_label(host_kind),
+        repo_root.display()
+    )
+}
+
+fn init_status_command(host_kind: HostKind, repo_root: &Path) -> String {
+    format!(
+        "volicord connection status {} --shared --repo {} --json",
+        public_host_label(host_kind),
+        repo_root.display()
+    )
+}
+
+fn init_diagnostics_command(data: &InitOutput<'_>) -> String {
+    if data.status == AgentResultStatus::DryRun {
+        return format!(
+            "volicord init --host {} --repo {} --profile {} --dry-run --json",
+            public_host_label(data.host_kind),
+            data.repo_root.display(),
+            data.init_mode.profile_value()
+        );
+    }
+    init_status_command(data.host_kind, data.repo_root)
+}
+
+fn init_limits_text(init_mode: InitMode) -> &'static str {
+    match init_mode {
+        InitMode::Record => {
+            "  The record profile records Volicord setup and MCP configuration only.\n  It does not provide OS sandboxing, network isolation, malware defense, full write prevention, actor identity proof, correctness proof, test sufficiency proof, or human review completion."
+        }
+        InitMode::Detective => {
+            "  The detective profile adds cooperative host observation where supported.\n  It does not provide OS sandboxing, network isolation, malware defense, full write prevention, actor identity proof, correctness proof, test sufficiency proof, or human review completion."
+        }
+    }
+}
+
+fn init_repo_file_changes(data: &InitOutput<'_>) -> Vec<RepoFileChange> {
+    let mut changes = BTreeMap::new();
+    if let Some(status) = repo_file_change_from_host_plan(data.host_plan.change, data.status) {
+        if let Some(path) = repo_relative_host_target_path(data.host_plan, data.repo_root) {
+            insert_repo_file_change(&mut changes, path, status);
+        }
+    }
+    for file in &data.integration.generated_files {
+        if let Some(status) = repo_file_change_from_file_status(file.status) {
+            if let Some(path) = repo_relative_path(&file.path, data.repo_root) {
+                insert_repo_file_change(&mut changes, path, status);
+            }
+        }
+    }
+    changes
+        .into_iter()
+        .map(|(path, status)| RepoFileChange { status, path })
+        .collect()
+}
+
+fn repo_file_change_from_host_plan(
+    change: PlannedChange,
+    status: AgentResultStatus,
+) -> Option<RepoFileChangeStatus> {
+    let dry_run = status == AgentResultStatus::DryRun;
+    match (dry_run, change) {
+        (true, PlannedChange::Create) => Some(RepoFileChangeStatus::PlannedCreate),
+        (true, PlannedChange::Update) => Some(RepoFileChangeStatus::PlannedUpdate),
+        (false, PlannedChange::Create) => Some(RepoFileChangeStatus::Created),
+        (false, PlannedChange::Update) => Some(RepoFileChangeStatus::Updated),
+        _ => None,
+    }
+}
+
+fn repo_file_change_from_file_status(status: FilePlanStatus) -> Option<RepoFileChangeStatus> {
+    match status {
+        FilePlanStatus::PlannedCreate => Some(RepoFileChangeStatus::PlannedCreate),
+        FilePlanStatus::PlannedUpdate => Some(RepoFileChangeStatus::PlannedUpdate),
+        FilePlanStatus::Created => Some(RepoFileChangeStatus::Created),
+        FilePlanStatus::Updated => Some(RepoFileChangeStatus::Updated),
+        FilePlanStatus::Unchanged => None,
+    }
+}
+
+fn repo_relative_host_target_path(plan: &HostPlan, repo_root: &Path) -> Option<String> {
+    match &plan.target {
+        HostTarget::File(path) | HostTarget::Export(path) => repo_relative_path(path, repo_root),
+        HostTarget::ExternalCli { .. } => None,
+    }
+}
+
+fn repo_relative_path(path: &Path, repo_root: &Path) -> Option<String> {
+    let relative = path.strip_prefix(repo_root).ok()?;
+    relative.components().next()?;
+    Some(path_text(relative))
+}
+
+fn insert_repo_file_change(
+    changes: &mut BTreeMap<String, RepoFileChangeStatus>,
+    path: String,
+    status: RepoFileChangeStatus,
+) {
+    changes
+        .entry(path)
+        .and_modify(|existing| *existing = merge_repo_file_change_status(*existing, status))
+        .or_insert(status);
+}
+
+fn merge_repo_file_change_status(
+    existing: RepoFileChangeStatus,
+    new: RepoFileChangeStatus,
+) -> RepoFileChangeStatus {
+    match (existing, new) {
+        (RepoFileChangeStatus::Created, _) | (RepoFileChangeStatus::PlannedCreate, _) => existing,
+        (_, RepoFileChangeStatus::Created) | (_, RepoFileChangeStatus::PlannedCreate) => new,
+        _ => existing,
+    }
+}
+
+fn repo_file_changes_json(changes: &[RepoFileChange]) -> Value {
+    Value::Array(
+        changes
+            .iter()
+            .map(|change| {
+                json!({
+                    "status": change.status.as_str(),
+                    "path": change.path,
+                })
+            })
+            .collect(),
+    )
+}
+
+fn changed_repo_files_json(changes: &[RepoFileChange]) -> Value {
+    Value::Array(
+        changes
+            .iter()
+            .filter(|change| change.status.is_actual())
+            .map(|change| {
+                json!({
+                    "status": change.status.as_str(),
+                    "path": change.path,
+                })
+            })
+            .collect(),
+    )
 }
 
 fn init_checks_json(
