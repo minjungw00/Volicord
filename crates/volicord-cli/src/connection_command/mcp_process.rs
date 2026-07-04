@@ -20,6 +20,7 @@ use crate::host_integration::{HostPlan, HostScope};
 use super::VerificationStep;
 
 const VOLICORD_HOME: &str = "VOLICORD_HOME";
+const VOLICORD_MCP_VERIFICATION: &str = "VOLICORD_MCP_VERIFICATION";
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -234,6 +235,7 @@ fn verify_mcp_stdio_process(
     let mut child = Command::new(&launch.command);
     child.args(&launch.args);
     apply_mcp_launch_context(&mut child, launch, runtime_home);
+    child.env(VOLICORD_MCP_VERIFICATION, "1");
     child
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

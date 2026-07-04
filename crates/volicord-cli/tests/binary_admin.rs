@@ -2165,6 +2165,56 @@ fn connect_respects_explicit_read_only_and_uses_same_dry_run_plan() -> Result<()
 
 #[cfg(unix)]
 #[test]
+fn connection_verification_handshake_does_not_create_session_watch_records(
+) -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-verification-watch-skip")?;
+    let repo_root = runtime_home.create_product_repo("product-repo")?;
+    fs::create_dir_all(repo_root.join(".git"))?;
+    let bin_dir = runtime_home.path().join("bin");
+    write_fake_codex(&bin_dir)?;
+    prepare_runtime_home(runtime_home.path(), Path::new(volicord_bin()))?;
+    let volicord_dir = Path::new(volicord_bin())
+        .parent()
+        .expect("volicord test binary path should have a parent");
+
+    let output = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connection",
+            "add",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--shared",
+            "--json",
+        ],
+        &[("PATH", path_env(&[bin_dir.as_path(), volicord_dir]))],
+    )?;
+    assert_success(&output);
+    let value = json_stdout(&output)?;
+    assert_eq!(
+        value["verification"]["preflight"]["status"], "passed",
+        "{value}"
+    );
+    assert_eq!(
+        value["verification"]["mcp_handshake"]["status"], "passed",
+        "{value}"
+    );
+
+    let connection_id = value["connection"]["connection_id"]
+        .as_str()
+        .expect("connection_id should be present");
+    let projects = list_connection_projects(runtime_home.path(), connection_id)?;
+    assert_eq!(projects.len(), 1);
+    assert_eq!(
+        session_watch_record_counts(runtime_home.path(), &projects[0].project_id)?,
+        (0, 0)
+    );
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
 fn connect_defaults_to_workflow_mode() -> Result<(), Box<dyn Error>> {
     let runtime_home = TempRuntimeHome::new("cli-bin-connection-workflow")?;
     let repo_root = runtime_home.create_product_repo("product-repo")?;
@@ -3519,6 +3569,29 @@ fn assert_non_guarantees(disclosure: &Value, expected: &[&str]) {
 
 fn path_text(path: &Path) -> String {
     path.display().to_string()
+}
+
+fn session_watch_record_counts(
+    runtime_home: &Path,
+    project_id: &str,
+) -> Result<(i64, i64), Box<dyn Error>> {
+    let conn = rusqlite::Connection::open(
+        runtime_home
+            .join("projects")
+            .join(project_id)
+            .join("state.sqlite"),
+    )?;
+    let agent_sessions = conn.query_row(
+        "SELECT COUNT(*) FROM agent_sessions WHERE project_id = ?1",
+        [project_id],
+        |row| row.get(0),
+    )?;
+    let watch_baselines = conn.query_row(
+        "SELECT COUNT(*) FROM session_watch_baselines WHERE project_id = ?1",
+        [project_id],
+        |row| row.get(0),
+    )?;
+    Ok((agent_sessions, watch_baselines))
 }
 
 fn verify_checksum_line(root: &Path, line: &str) -> Result<String, Box<dyn Error>> {

@@ -6,13 +6,43 @@ use crate::prelude::*;
 use crate::routing::*;
 use crate::util::*;
 
-pub fn run_stdio<R, W>(adapter: McpAdapter, reader: R, mut writer: W) -> Result<(), McpAdapterError>
+const VOLICORD_MCP_VERIFICATION: &str = "VOLICORD_MCP_VERIFICATION";
+
+pub fn run_stdio<R, W>(adapter: McpAdapter, reader: R, writer: W) -> Result<(), McpAdapterError>
+where
+    R: BufRead,
+    W: Write,
+{
+    run_stdio_with_options(adapter, reader, writer, StdioRunOptions::default())
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct StdioRunOptions {
+    startup_session_watch: bool,
+}
+
+impl Default for StdioRunOptions {
+    fn default() -> Self {
+        Self {
+            startup_session_watch: true,
+        }
+    }
+}
+
+fn run_stdio_with_options<R, W>(
+    adapter: McpAdapter,
+    reader: R,
+    mut writer: W,
+    options: StdioRunOptions,
+) -> Result<(), McpAdapterError>
 where
     R: BufRead,
     W: Write,
 {
     let mut state = ConnectionState::default();
-    adapter.initialize_startup_session_watch(&state.session_id)?;
+    if options.startup_session_watch {
+        adapter.initialize_startup_session_watch(&state.session_id)?;
+    }
     let mut lines = reader.lines();
 
     while let Some(line) = lines.next() {
@@ -48,6 +78,7 @@ pub fn run_stdio_from_env(
     project_id: Option<&str>,
 ) -> Result<(), McpAdapterError> {
     let current_dir = std::env::current_dir().map_err(current_dir_environment_error)?;
+    let startup_session_watch = !mcp_verification_launch(process_env_var);
     let runtime_home = resolve_runtime_home(process_env_var, &current_dir)?;
     let project_allowlist = project_id
         .map(ProjectId::new)
@@ -63,7 +94,36 @@ pub fn run_stdio_from_env(
     }
     let stdin = io::stdin();
     let stdout = io::stdout();
-    run_stdio(adapter, stdin.lock(), stdout.lock())
+    run_stdio_with_options(
+        adapter,
+        stdin.lock(),
+        stdout.lock(),
+        StdioRunOptions {
+            startup_session_watch,
+        },
+    )
+}
+
+#[cfg(test)]
+pub(crate) fn run_stdio_with_env_marker<R, W, F>(
+    adapter: McpAdapter,
+    reader: R,
+    writer: W,
+    env_var: F,
+) -> Result<(), McpAdapterError>
+where
+    R: BufRead,
+    W: Write,
+    F: Fn(&str) -> Option<OsString>,
+{
+    run_stdio_with_options(
+        adapter,
+        reader,
+        writer,
+        StdioRunOptions {
+            startup_session_watch: !mcp_verification_launch(env_var),
+        },
+    )
 }
 
 /// Runs MCP startup validation from process environment.
@@ -107,6 +167,13 @@ where
     F: Fn(&str) -> Option<OsString>,
 {
     resolve_shared_runtime_home(env_var, current_dir).map_err(McpAdapterError::from)
+}
+
+fn mcp_verification_launch<F>(env_var: F) -> bool
+where
+    F: Fn(&str) -> Option<OsString>,
+{
+    env_var(VOLICORD_MCP_VERIFICATION).is_some_and(|value| value.to_str() == Some("1"))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

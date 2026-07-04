@@ -11,7 +11,9 @@ use crate::local_http::{
 };
 use crate::local_web_consent::{parse_urlencoded, single_param};
 use crate::prelude::*;
-use crate::stdio::{pending_judgment_from_response, percent_encode_query};
+use crate::stdio::{
+    pending_judgment_from_response, percent_encode_query, run_stdio_with_env_marker,
+};
 use volicord_core::CoreBoundary;
 use volicord_store::agent_connections::{
     add_connection_project, agent_connection_record, ensure_agent_connection,
@@ -207,6 +209,35 @@ fn project_bound_stdio_startup_creates_baseline_before_tool_handling() -> Result
         true
     );
     assert_eq!(metadata["scan_summary"]["follows_symlinks"], false);
+    Ok(())
+}
+
+#[test]
+fn verification_marked_stdio_startup_does_not_create_session_watch_records(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-stdio-verification-watch-skip")?;
+    let adapter = adapter(&fixture)?;
+    let input = Cursor::new(Vec::<u8>::new());
+    let mut output = Vec::new();
+
+    run_stdio_with_env_marker(adapter, BufReader::new(input), &mut output, |name| {
+        (name == "VOLICORD_MCP_VERIFICATION").then(|| std::ffi::OsString::from("1"))
+    })?;
+
+    assert!(output.is_empty());
+    let conn = fixture.conn()?;
+    let agent_sessions: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM agent_sessions WHERE project_id = ?1",
+        [fixture.project_id()],
+        |row| row.get(0),
+    )?;
+    let watch_baselines: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM session_watch_baselines WHERE project_id = ?1",
+        [fixture.project_id()],
+        |row| row.get(0),
+    )?;
+    assert_eq!(agent_sessions, 0);
+    assert_eq!(watch_baselines, 0);
     Ok(())
 }
 
