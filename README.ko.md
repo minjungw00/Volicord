@@ -175,12 +175,14 @@ Runtime Home을 초기화하고, 설치 프로필을 기록하며, 선택한 Pro
 가용성 복구가 있습니다. 그런 뒤 연결을 확인합니다.
 
 ```sh
-volicord connection verify codex --repo /path/to/your-product-repo
-volicord connection status codex --repo /path/to/your-product-repo
+volicord connection verify codex --shared --repo /path/to/your-product-repo
+volicord connection status codex --shared --repo /path/to/your-product-repo
 volicord doctor
 ```
 
-정확한 명령 동작은 [관리 CLI 참조](docs/ko/reference/admin-cli.md)를 보세요. 환경
+안내 흐름은 [빠른 시작](docs/ko/user-guide/quickstart.md)과
+[에이전트 호스트 설정](docs/ko/user-guide/agent-host-setup.md)으로 이어집니다.
+정확한 명령 계약은 [관리 CLI 참조](docs/ko/reference/admin-cli.md)를 보세요. 환경
 지원은 [시스템 요구사항](docs/ko/reference/system-requirements.md)에 있습니다.
 
 ### 에이전트에게 평소처럼 작업 요청
@@ -364,7 +366,7 @@ Volicord는 선택된 연결 또는 session에 대해 관찰 요약을 보고합
 검증합니다.
 
 ```sh
-volicord connection verify codex --repo /path/to/your-product-repo
+volicord connection verify codex --shared --repo /path/to/your-product-repo
 ```
 
 저장된 설정 상태, 필요한 사용자 동작, 현재 관찰 사실을 확인해야 하면
@@ -478,7 +480,7 @@ docker run --rm \
 | 증상 | 할 일 |
 |---|---|
 | `volicord`를 찾지 못함 | 설치 디렉터리를 `PATH`에 넣거나 이미 `PATH`에 있는 디렉터리에 설치한 뒤 `volicord --version`을 다시 실행합니다. 미래의 에이전트 호스트도 `volicord`를 시작할 수 있어야 합니다. |
-| `init`이 `action_required`를 보고함 | 호스트 restart 또는 reload, 프로젝트 trust, MCP approval, OAuth, 명령 링크 복구, 설치 프로필 복구처럼 이름 붙은 동작을 완료한 뒤 `volicord connection verify HOST --repo PATH`를 다시 실행합니다. |
+| `init`이 `action_required`를 보고함 | 먼저 `Next:` 체크리스트를 따릅니다. 호스트 restart 또는 reload, 프로젝트 trust, MCP approval, OAuth, 명령 링크 복구, 설치 프로필 복구처럼 이름 붙은 동작을 완료한 뒤 일반 init 경로에서는 `volicord connection verify HOST --shared --repo PATH`를 다시 실행합니다. |
 | Detective 전용 점검이 활성화되지 않음 | `volicord connection verify HOST --repo PATH`를 실행하고, 이름 붙은 사용자 동작을 완료한 뒤, hook 또는 watcher 진단은 [에이전트 호스트 문제 해결](docs/ko/user-guide/agent-host-troubleshooting.md)을 사용합니다. |
 | 호스트가 MCP를 시작하지 못함 | 같은 명령 경로로 호스트가 `volicord mcp --help`를 실행할 수 있는지 확인합니다. 설치 프로필 상태는 `volicord doctor`로 확인합니다. |
 | Product Repository가 감지되지 않음 | `--repo /path/to/your-product-repo`를 넘기고, 그 경로가 Runtime Home과 분리된 기존 로컬 저장소인지 확인합니다. |
@@ -491,10 +493,10 @@ docker run --rm \
 |---|---|
 | 설치 세부사항과 Docker 예시 | [설치](docs/ko/user-guide/installation.md) |
 | 단계별 첫 설정 | [빠른 시작](docs/ko/user-guide/quickstart.md) |
-| 지원 환경 | [시스템 요구사항](docs/ko/reference/system-requirements.md) |
-| 사용자 작업 흐름과 판단 경계 | [사용자 가이드](docs/ko/user-guide/user-workflow.md) |
 | 호스트 설정과 복구 | [에이전트 호스트 설정](docs/ko/user-guide/agent-host-setup.md)과 [에이전트 호스트 문제 해결](docs/ko/user-guide/agent-host-troubleshooting.md) |
-| 정확한 CLI 동작 | [관리 CLI 참조](docs/ko/reference/admin-cli.md) |
+| 사용자 작업 흐름과 판단 경계 | [사용자 가이드](docs/ko/user-guide/user-workflow.md) |
+| 지원 환경 | [시스템 요구사항](docs/ko/reference/system-requirements.md) |
+| 정확한 CLI 플래그, JSON 필드, 결과 상태, 출력 계약 | [관리 CLI 참조](docs/ko/reference/admin-cli.md) |
 | MCP stdio와 HTTP 전송 | [MCP 전송](docs/ko/reference/mcp-transport.md) |
 | Agent Connection과 User Channel 경계 | [Agent Connection 참조](docs/ko/reference/agent-connection.md) |
 | 정확한 권한 구조 | [Core 모델](docs/ko/reference/core-model.md) |

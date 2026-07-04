@@ -16,7 +16,6 @@ Agent Connection 의미는 [Agent Connection 참조](../reference/agent-connecti
 
 ```sh
 volicord init --host codex --repo /path/to/your-product-repo --profile record
-volicord connection status codex --repo /path/to/your-product-repo
 ```
 
 `/path/to/your-product-repo`는 에이전트에게 작업을 요청할 Product Repository의 경로
@@ -27,6 +26,31 @@ volicord connection status codex --repo /path/to/your-product-repo
 registry 식별 정보를 선택된 `Volicord Runtime Home`에 저장합니다. 생성된 호스트
 설정은 `volicord mcp --stdio`를 시작합니다. `--profile record`는 host lifecycle hook
 설치나 session watcher를 요구하지 않습니다.
+
+init 뒤에는 터미널 밖에서 호스트가 소유한 후속 동작을 완료합니다.
+
+- Codex 프로젝트 범위 설정에서는 Product Repository에서 Codex를 열거나 restart 또는
+  reload하고, Codex가 묻는 경우 프로젝트 설정을 trust 또는 approve합니다.
+- Claude Code 프로젝트 범위 설정에서는 Product Repository에서 Claude Code를 열거나
+  restart 또는 reload하고, Claude Code가 묻는 경우 프로젝트 MCP 항목, workspace, 또는
+  프로젝트 설정을 approve합니다.
+
+저장소 로컬 설정을 썼다는 사실은 이미 실행 중인 호스트가 그 설정을 로드하고 신뢰했다는
+증명이 아닙니다. Init은 `.codex/config.toml` 또는 `.mcp.json`,
+`.volicord/policy.json`, 관리 `AGENTS.md` 안내를 쓸 수 있지만, reload, restart,
+trust, approval은 여전히 호스트가 통제합니다. 로컬 Volicord 상태는 이런 Product
+Repository 파일과 별도로 Runtime Home에 저장됩니다. CLI MCP preflight 또는 handshake
+성공은 Volicord의 MCP 서버가 터미널 쪽 점검 경로에서 시작하고 응답할 수 있다는 뜻입니다.
+그 자체만으로 Codex, Claude Code 또는 다른 호스트가 프로젝트 설정을 로드하고 신뢰했다는
+증명은 아닙니다.
+
+호스트 prompt가 요구한 동작을 마친 뒤 터미널 쪽 후속 점검을 실행합니다.
+
+```sh
+volicord connection verify codex --shared --repo /path/to/your-product-repo
+```
+
+Claude Code에는 `codex` 대신 `claude-code`를 사용합니다.
 
 설치 프로필이 준비된 뒤 personal, global, read-only 동작을 직접 선택하는 등 낮은
 수준의 연결 변형이 필요할 때는 `volicord connection add`를 사용합니다. 프로세스 현재
@@ -164,8 +188,8 @@ volicord connection remove codex --dry-run
 
 ```sh
 volicord connection list
-volicord connection status codex --repo /path/to/your-product-repo
-volicord connection verify codex --repo /path/to/your-product-repo
+volicord connection status codex --shared --repo /path/to/your-product-repo
+volicord connection verify codex --shared --repo /path/to/your-product-repo
 ```
 
 같은 호스트와 저장소에 둘 이상의 연결이 일치하면 선택할 때 쓴 의도 플래그를 함께

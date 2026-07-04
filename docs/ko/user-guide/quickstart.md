@@ -11,15 +11,53 @@ Agent Connection 의미는 [Agent Connection 참조](../reference/agent-connecti
 ## 빠른 경로
 
 ```sh
-volicord init --host codex --repo /path/to/your-product-repo --profile record
+volicord init --host codex --repo /path/to/repo --profile record
 ```
 
-`/path/to/your-product-repo`는 에이전트에게 작업을 요청할 Product Repository의 경로
-예시입니다. `volicord init`은 첫 실행에서 저장소를 설정하고 호스트를 연결하는 기본
-명령입니다. 필요하면 Runtime Home과 설치 프로필을 만들거나 재사용하고, 선택한
-저장소를 등록하며, 선택한 호스트의 프로젝트 범위 MCP 설정을 설치하고, 프로젝트 범위
-Volicord 지침과 로컬 설정 파일을 쓰고, 통합 상태를 기록합니다. 생성된 호스트
+`/path/to/repo`는 에이전트에게 작업을 요청할 Product Repository의 경로 예시입니다.
+`volicord init`은 첫 실행에서 저장소를 설정하고 호스트를 연결하는 기본 명령입니다.
+필요하면 Runtime Home과 설치 프로필을 만들거나 재사용하고, 선택한 저장소를 등록하며,
+선택한 호스트의 프로젝트 범위 MCP 설정을 설치하고, 프로젝트 범위 Volicord 지침과 로컬
+설정 파일을 쓰고, 통합 상태를 기록합니다. 생성된 호스트
 설정은 단일 공개 실행 파일을 프로젝트에 묶인 `volicord mcp --stdio`로 시작합니다.
+
+기본 text 출력은 간결한 온보딩 요약입니다. 실제 경로와 변경 동사는 저장소 상태에 맞게
+달라질 수 있지만 형태는 아래처럼 읽으면 됩니다.
+
+```text
+Volicord initialized for Codex
+
+Profile:
+  record
+
+Repository:
+  /path/to/repo
+
+Repo file changes:
+  created .codex/config.toml
+  created .volicord/policy.json
+  updated AGENTS.md
+
+Stored local Volicord state:
+  /home/you/.volicord
+
+Next:
+  1. Open, restart, or reload Codex in this repository.
+  2. Trust or approve the project configuration if Codex asks.
+  3. Run volicord connection verify codex --shared --repo /path/to/repo.
+
+Limits:
+  The record profile records Volicord setup and MCP configuration only.
+  It does not provide OS sandboxing, network isolation, malware defense,
+  full write prevention, actor identity proof, correctness proof, test
+  sufficiency proof, or human review completion.
+```
+
+이 요약은 Product Repository 안에 쓴 파일과 Runtime Home에 저장한 로컬 Volicord 상태를
+구분합니다. 이미 실행 중인 Codex session이 새 설정을 로드하거나 신뢰했다는 뜻은
+아닙니다.
+사용자 workflow에서 Record profile은 협력형 workflow 기록 프로필이며, 보안, 정확성,
+테스트 충분성, 검토 완료를 보장하지 않습니다.
 
 이 빠른 경로는 host lifecycle hook 설치나 session watcher를 요구하지 않는
 Record profile(`--profile record`)을 사용합니다. Detective profile(`--profile detective`)은
@@ -27,8 +65,9 @@ Record profile(`--profile record`)을 사용합니다. Detective profile(`--prof
 전제조건을 사용할 수 없으면 `--profile record`를 사용하거나, detective를 다시 실행하기 전에
 지원되는 호스트, 플랫폼, 저장소 설정을 준비합니다. Detective profile은 협력형 host
 decision 신호를 반환하고 watcher coverage 시작 뒤의 미기록 변경을 탐지할 수 있지만
-OS 집행, 행위자 증명, 네트워크 격리, sandbox를 제공하지 않습니다. Native Windows에서는
-Windows host hook과 watcher 동작이 구현되고 테스트되기 전까지 observe가 지원되지 않으므로
+OS 집행, 행위자 증명, 네트워크 격리, 악성 코드 방어, 전체 쓰기 방지, 정확성 증명,
+테스트 충분성 증명, 사람 검토 완료, sandbox를 제공하지 않습니다. Native Windows에서는
+Windows host hook과 watcher 동작이 구현되고 테스트되기 전까지 detective가 지원되지 않으므로
 이 Record profile 빠른 경로를 사용합니다. 정확한 프로젝트 이름, 프로필 동작, 연결 기본값,
 내부 식별 정보 동작은
 [관리 CLI 참조](../reference/admin-cli.md)를 보세요.
@@ -44,8 +83,8 @@ verification, doctor 진단은 `hook_path_safety`를 보고합니다.
 ```sh
 volicord doctor
 volicord project current
-volicord connection status codex --repo /path/to/your-product-repo
-volicord connection verify codex --repo /path/to/your-product-repo
+volicord connection status codex --shared --repo /path/to/repo
+volicord connection verify codex --shared --repo /path/to/repo
 ```
 
 완료 상태: status나 verification이 `complete`를 보고하면 연결 준비가 끝난 것입니다.
@@ -55,6 +94,9 @@ volicord connection verify codex --repo /path/to/your-product-repo
 Detective host hook 경로 복구 안내는
 [에이전트 호스트 문제 해결](../user-guide/agent-host-troubleshooting.md#guard-hook-path-or-wrapper-is-unsafe)이
 정리합니다.
+CLI verification은 Volicord의 MCP 서버가 터미널 쪽 점검 경로에서 시작하고 응답할 수
+있음을 확인할 수 있습니다. 그 자체만으로 Codex, Claude Code 또는 다른 호스트가 프로젝트
+설정을 로드하고 신뢰했다는 증명은 아닙니다.
 
 ## 호스트 의도 선택하기
 
@@ -87,8 +129,8 @@ volicord connection add codex --repo /path/to/your-product-repo
 
 ```sh
 volicord connection list
-volicord connection status codex --repo /path/to/your-product-repo
-volicord connection verify codex --repo /path/to/your-product-repo
+volicord connection status codex --shared --repo /path/to/repo
+volicord connection verify codex --shared --repo /path/to/repo
 volicord connection mode codex read-only
 volicord connection mode codex workflow
 ```

@@ -49,7 +49,7 @@ hook 명령은 생성된 호스트 통합 wrapper만을 위한 것이며 일반 
 | 지원되는 관리 명령 이름, 옵션, stdout/stderr 처리, 프로세스 종료 코드, dry-run 동작, 로컬 User Channel 명령 이름 | `stable` | 이는 로컬 CLI 계약이며 공개 Volicord API 메서드가 아닙니다. |
 | `detective` 프로필 설정, host-hook 관찰, session watcher 관찰, local consent 사용 가능 상태 보고, 호스트별 통합 capability 보고 | `beta` | capability gate와 담당 문서가 정의한 비보장을 가진 지원되는 협력적 관찰 표면입니다. |
 | 숨겨진 hook lifecycle namespace, 생성 wrapper 세부사항, 저장된 내부 식별 정보, 호스트 설정 키, 프로세스 바인딩 값 | `internal` | 이 세부사항은 생성된 호스트 통합을 지원하며 일반 사용자 대상 명령 입력이 되면 안 됩니다. |
-| 사람이 읽는 상태 요약, doctor 보고서, 연결 검증 보고서, compact summary card, action 문구, 진단 disclosure | `diagnostic` | JSON 필드 존재와 안정적인 ID는 이 문서가 명시적으로 요구할 때만 계약입니다. Text formatting은 공개 API 스키마가 아닙니다. |
+| 사람이 읽는 init 온보딩 요약, 상태 요약, doctor 보고서, 연결 검증 보고서, compact summary card, action 문구, 진단 disclosure | `diagnostic` | JSON 필드 존재와 안정적인 ID는 이 문서가 명시적으로 요구할 때만 계약입니다. Text formatting은 공개 API 스키마가 아닙니다. |
 
 ## 명령 모델
 
@@ -101,7 +101,9 @@ volicord inbox open <judgment-id> [--repo PATH] [--json]
 - 사용법 오류는 진단을 stderr에 쓰고 종료 코드 `2`로 끝납니다.
 - `volicord --version`은 stdout에 `volicord <version>`을 쓰며 Runtime Home 해석을
   요구하지 않습니다.
-- `--json`은 stdout에 JSON 문서 정확히 하나를 쓰며 사람용 설명을 섞지 않습니다.
+- `--json`은 stdout에 JSON 문서 정확히 하나를 쓰며 사람용 설명을 섞지 않습니다. JSON
+  출력은 결과 상태, 진단, `summary_card`, `checks`, `actions`, 안정 필드를 위한 자동화
+  표면입니다. 자동화는 기본 사람용 text 출력을 파싱하면 안 됩니다.
 - 숨겨진 내부 hook 명령은 기본적으로 `--output volicord-json`을 사용합니다.
   `volicord-json` 모드에서는 Volicord wrapper JSON을 쓰고, `deny`는 종료 코드
   `1`로 끝나며, `allow`, `warn`, `inject_context`는 종료 코드 `0`으로 끝납니다.
@@ -136,6 +138,12 @@ volicord inbox open <judgment-id> [--repo PATH] [--json]
   호스트 설정 키, 프로토콜 래퍼, 저장된 registry 필드를 사용자가 입력하도록 요구하면
   안 됩니다.
 
+`volicord init`의 기본 text 출력은 원시 상태 dump가 아니라 간결한 온보딩 요약일 수
+있습니다. 이 요약은 초기화된 호스트, profile, repository, repo file changes, 저장된
+Runtime Home 경로, `Next:` 체크리스트, 한계, JSON 진단 명령을 이름 붙입니다.
+`action_required` 결과 상태는 JSON 또는 명령 결과로 계속 나타날 수 있습니다. 사람용
+init text가 전체 진단 결과 모델을 노출해야 하는 것은 아닙니다.
+
 `volicord status`, `volicord doctor`, `volicord connection status`,
 `volicord connection verify`, `volicord changes reconcile`, `volicord inbox`
 같은 주요 사용자 대상 상태형 표면은 명령이 계산할 수 있을 때 세부 진단보다 앞에
@@ -154,7 +162,7 @@ volicord inbox open <judgment-id> [--repo PATH] [--json]
 있는지 알려 주며, 판단을 기록하거나 Agent Connection이 사용자처럼 동작하게 하지
 않습니다. JSON 출력은 같은 사실을 `user_channel_availability` 또는
 `answer_path_availability`에 담습니다.
-Text 출력이 `action_required` 또는 저하된 진단 상태를 보고할 때는 간결한
+진단 text 출력이 `action_required` 또는 저하된 진단 상태를 보고할 때는 간결한
 `Result`, `Why`, `Next`, `Does not prove` 줄도 포함합니다. `Result` 줄은
 `action_required`를 치명적인 CLI 오류처럼 표현하면 안 됩니다. `Next`는 호스트 reload
 또는 restart, 호스트 권한 승인, 관리 설정 복구, 또는 호스트 쪽 동작을 완료한 뒤 사용할
@@ -172,8 +180,9 @@ MCP 시작 명령도 선택할 수 있습니다. 부모 셸의 현재 환경을 
 최상위 setup 상태는 설치 프로필 준비 또는 호스트 연결에 이름 붙은 사용자 동작이 아직
 필요한지를 답합니다. Runtime Home과 설치 프로필을 저장한 뒤에도 선택된 명령을 이후
 셸이나 에이전트 호스트가 `PATH`로 찾을 준비가 되어 있지 않으면 init은
-`action_required`를 보고할 수 있습니다. 출력은 명령 가용성 세부사항과 필요한 동작을
-명시적으로 보여 줘야 합니다.
+`action_required`를 보고할 수 있습니다. JSON 출력은 명령 가용성 세부사항과 필요한
+동작을 명시적으로 보여 줘야 합니다. 기본 text 출력은 세부 진단 dump 대신 간결한
+온보딩 `Next:` 체크리스트로 그 동작을 보여 줄 수 있습니다.
 
 인자:
 
@@ -452,8 +461,10 @@ Agent Connection의 text와 JSON 출력은 진단 출력입니다. JSON 출력�
 네트워크 격리, 악성 코드 방어, 전체 쓰기 방지, 행위자 귀속 증명, 정확성 증명,
 테스트 충분성 증명, 인간 검토 대체에 대한 안정적인 `non_guarantees` 값을 담습니다.
 
-성공한 `volicord mcp --check` 시작 점검만으로는 Agent Connection을 `complete`로 설명하면
-안 됩니다. 이는 MCP 프로세스의 시작 검증일 뿐입니다.
+성공한 `volicord mcp --check` 시작 점검, CLI MCP preflight, 직접 MCP handshake만으로는
+Agent Connection을 `complete`로 설명하면 안 됩니다. 이는 CLI가 관찰할 수 있는 환경에서
+MCP 프로세스가 시작되는지 검증하는 것일 뿐입니다. 그 자체만으로 Codex, Claude Code 또는
+다른 외부 호스트가 프로젝트 설정을 로드, 신뢰, 승인, 초기화, 노출했다는 증명은 아닙니다.
 
 <a id="authority-bundle-export"></a>
 ## 권한 번들 내보내기

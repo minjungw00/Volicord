@@ -12,17 +12,55 @@ meaning belongs to [Agent Connection Reference](../reference/agent-connection.md
 ## Fast Path
 
 ```sh
-volicord init --host codex --repo /path/to/your-product-repo --profile record
+volicord init --host codex --repo /path/to/repo --profile record
 ```
 
-`/path/to/your-product-repo` is an example path for the Product Repository where
-you want the agent to work. `volicord init` is the primary first-run repository
+`/path/to/repo` is an example path for the Product Repository where you want
+the agent to work. `volicord init` is the primary first-run repository
 setup and host-connection command. It creates or reuses the Runtime Home and
 installation profile when needed, registers the selected repository, installs
 project-scoped MCP configuration for the selected host, writes project-scoped
 Volicord guidance and local setup files, and records integration status.
 Generated host configuration starts the single public executable as
 project-bound `volicord mcp --stdio`.
+
+The default text output is a compact onboarding summary. It should look like
+this shape, with paths and changed-file verbs adjusted for your repository:
+
+```text
+Volicord initialized for Codex
+
+Profile:
+  record
+
+Repository:
+  /path/to/repo
+
+Repo file changes:
+  created .codex/config.toml
+  created .volicord/policy.json
+  updated AGENTS.md
+
+Stored local Volicord state:
+  /home/you/.volicord
+
+Next:
+  1. Open, restart, or reload Codex in this repository.
+  2. Trust or approve the project configuration if Codex asks.
+  3. Run volicord connection verify codex --shared --repo /path/to/repo.
+
+Limits:
+  The record profile records Volicord setup and MCP configuration only.
+  It does not provide OS sandboxing, network isolation, malware defense,
+  full write prevention, actor identity proof, correctness proof, test
+  sufficiency proof, or human review completion.
+```
+
+The summary distinguishes files written inside the Product Repository from
+local Volicord state stored in the Runtime Home. It does not mean an already
+running Codex session has loaded or trusted the new configuration.
+For user workflow, the Record profile is cooperative workflow recording, not a
+security, correctness, test-sufficiency, or review-completion guarantee.
 
 This fast path uses the Record profile (`--profile record`), which does not
 require host lifecycle hook installation or a session watcher. The Detective
@@ -32,7 +70,9 @@ unavailable, use `--profile record` or prepare a supported host, platform, and
 repository configuration for detective before rerunning init. The Detective
 profile can return cooperative host decision signals and detect unrecorded
 changes after watcher coverage starts, but it does not provide OS enforcement,
-actor proof, network isolation, or a sandbox. On native Windows, use this
+actor proof, network isolation, malware defense, full write prevention,
+correctness proof, test sufficiency proof, human review completion, or a
+sandbox. On native Windows, use this
 Record profile fast path because detective is not supported until Windows host hooks and
 watcher behavior are implemented and tested. Exact project naming, profile
 behavior, connection defaults, and internal identity behavior belong to
@@ -50,8 +90,8 @@ generated hook commands or wrappers are repaired.
 ```sh
 volicord doctor
 volicord project current
-volicord connection status codex --repo /path/to/your-product-repo
-volicord connection verify codex --repo /path/to/your-product-repo
+volicord connection status codex --shared --repo /path/to/repo
+volicord connection verify codex --shared --repo /path/to/repo
 ```
 
 Completion state: the connection is ready when status or verification reports
@@ -60,6 +100,9 @@ local repair action, then rerun verification. Exact result-state meaning belongs
 to [Administrative CLI Reference](../reference/admin-cli.md#agent-connection-result-states).
 Detective host hook path repair guidance belongs to
 [Agent Host Troubleshooting](../user-guide/agent-host-troubleshooting.md#guard-hook-path-or-wrapper-is-unsafe).
+CLI verification can prove that Volicord's MCP server can start and respond
+from the terminal-side check path. It does not by itself prove that Codex,
+Claude Code, or another host has loaded and trusted the project configuration.
 
 ## Choose A Host Intent
 
@@ -93,8 +136,8 @@ path, prefer `volicord init --host HOST --repo PATH --profile record`.
 
 ```sh
 volicord connection list
-volicord connection status codex --repo /path/to/your-product-repo
-volicord connection verify codex --repo /path/to/your-product-repo
+volicord connection status codex --shared --repo /path/to/repo
+volicord connection verify codex --shared --repo /path/to/repo
 volicord connection mode codex read-only
 volicord connection mode codex workflow
 ```

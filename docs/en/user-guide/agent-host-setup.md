@@ -18,7 +18,6 @@ then run the host setup sequence:
 
 ```sh
 volicord init --host codex --repo /path/to/your-product-repo --profile record
-volicord connection status codex --repo /path/to/your-product-repo
 ```
 
 `/path/to/your-product-repo` is an example path for the Product Repository where
@@ -31,6 +30,32 @@ status, and stores internal registry identities in the selected
 `Volicord Runtime Home`. Generated host configuration starts
 `volicord mcp --stdio`. `--profile record` does not require host lifecycle hook
 installation or a session watcher.
+
+After init, complete the host-owned follow-up outside the terminal:
+
+- For Codex project-scoped setup, open, restart, or reload Codex in the Product
+  Repository and trust or approve the project configuration if Codex asks.
+- For Claude Code project-scoped setup, open, restart, or reload Claude Code in
+  the Product Repository and approve the project MCP entry, workspace, or
+  project configuration if Claude Code asks.
+
+Writing repo-local configuration is not the same as proving that an already
+running host loaded and trusted it. Init can write `.codex/config.toml` or
+`.mcp.json`, `.volicord/policy.json`, and the managed `AGENTS.md` guidance
+while the host still controls reload, restart, trust, and approval. Local
+Volicord state is stored in the Runtime Home, separate from those Product
+Repository files. CLI MCP preflight or handshake success means Volicord's MCP
+server can start and respond from the terminal-side check path; it does not by
+itself prove that Codex, Claude Code, or another host has loaded and trusted
+the project configuration.
+
+After completing any host prompt, use the terminal-side follow-up check:
+
+```sh
+volicord connection verify codex --shared --repo /path/to/your-product-repo
+```
+
+Use `claude-code` instead of `codex` for Claude Code.
 
 Use `volicord connection add` for lower-level connection variants after the
 installation profile is ready, for example when selecting personal, global, or
@@ -178,8 +203,8 @@ connection whose host target you want to inspect first.
 
 ```sh
 volicord connection list
-volicord connection status codex --repo /path/to/your-product-repo
-volicord connection verify codex --repo /path/to/your-product-repo
+volicord connection status codex --shared --repo /path/to/your-product-repo
+volicord connection verify codex --shared --repo /path/to/your-product-repo
 ```
 
 If more than one connection matches the same host and repository, include the

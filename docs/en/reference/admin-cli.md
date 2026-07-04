@@ -55,7 +55,7 @@ For canonical vocabulary, see [Documentation Policy](../maintain/documentation-p
 | Supported administrative command names, options, stdout/stderr routing, process exit codes, dry-run behavior, and local User Channel command names | `stable` | These are local CLI contracts, not public Volicord API methods. |
 | `detective` profile setup, host-hook observation, session watcher observation, local consent availability reporting, and host-specific integration capability reporting | `beta` | These are supported cooperative observation surfaces with capability gates and owner-defined non-guarantees. |
 | Hidden hook lifecycle namespace, generated wrapper details, stored internal identities, host config keys, and process-binding values | `internal` | These details support generated host integrations and must not become normal user-facing command inputs. |
-| Human-readable status summaries, doctor reports, connection verification reports, compact summary cards, action text, and diagnostic disclosures | `diagnostic` | JSON field presence and stable IDs are contracts only where this page explicitly requires them; text formatting is not a public API schema. |
+| Human-readable init onboarding summaries, status summaries, doctor reports, connection verification reports, compact summary cards, action text, and diagnostic disclosures | `diagnostic` | JSON field presence and stable IDs are contracts only where this page explicitly requires them; text formatting is not a public API schema. |
 
 ## Command model
 
@@ -108,7 +108,9 @@ Exit and stream behavior:
 - `volicord --version` writes `volicord <version>` to stdout and does not
   require Runtime Home resolution.
 - `--json` writes exactly one JSON document to stdout and does not mix human
-  explanation into stdout.
+  explanation into stdout. JSON output is the automation surface for result
+  states, diagnostics, `summary_card`, `checks`, `actions`, and stable fields.
+  Automation must not parse default human text output.
 - Hidden internal hook commands use `--output volicord-json` by default. In
   `volicord-json` mode they write the Volicord wrapper JSON, `deny` exits `1`,
   and `allow`, `warn`, and `inject_context` exit `0`. `--output text` uses the
@@ -146,6 +148,13 @@ Not supported:
   `connection_internal_id`, host config keys, protocol envelopes, or stored
   registry fields.
 
+Default text output for `volicord init` may be a compact onboarding summary
+rather than a raw state dump. The summary names the initialized host, profile,
+repository, repo file changes, stored Runtime Home path, `Next:` checklist,
+limits, and a JSON diagnostics command. The `action_required` result state can
+still appear in JSON or as the command result; the human init text does not have
+to expose the full diagnostic result model.
+
 Major status-like user-facing surfaces, including `volicord status`,
 `volicord doctor`, `volicord connection status`, `volicord connection verify`,
 `volicord changes reconcile`, and `volicord inbox`, use a compact summary card
@@ -166,11 +175,11 @@ prompt input, chat command capture, local consent URL, and CLI inbox
 availability. The line tells the user where to answer; it does not record a
 judgment or let an Agent Connection act as the user. JSON output carries the
 same facts in `user_channel_availability` or `answer_path_availability`.
-When text output reports `action_required` or a degraded diagnostic state, it
-also includes concise `Result`, `Why`, `Next`, and `Does not prove` lines. The
-`Result` line must not present `action_required` as a fatal CLI error. `Next`
-names the immediate user action, such as reloading or restarting the host,
-approving host permission, repairing managed configuration, or using
+When diagnostic text output reports `action_required` or a degraded diagnostic
+state, it also includes concise `Result`, `Why`, `Next`, and `Does not prove`
+lines. The `Result` line must not present `action_required` as a fatal CLI
+error. `Next` names the immediate user action, such as reloading or restarting
+the host, approving host permission, repairing managed configuration, or using
 `volicord connection verify ...` after the host-side action has been completed.
 
 <a id="runtime-home-selection"></a>
@@ -188,8 +197,9 @@ The top-level setup status answers whether installation-profile preparation or
 host connection still needs a named user action. Init may report
 `action_required` after saving the Runtime Home and installation profile when
 selected commands are not ready for future `PATH` lookup by shells or agent
-hosts. Output must keep command-availability details and required actions
-explicit.
+hosts. JSON output must keep command-availability details and required actions
+explicit. Default text output may present those actions through the compact
+onboarding `Next:` checklist instead of a detailed diagnostic dump.
 
 Arguments:
 
@@ -499,8 +509,12 @@ Text and JSON Agent Connection outputs are diagnostic outputs. JSON output uses
 write prevention, actor attribution proof, correctness proof, test sufficiency
 proof, and human review replacement.
 
-A successful `volicord mcp --check` startup check alone must not be described as a
-`complete` Agent Connection. It is startup validation for the MCP process only.
+A successful `volicord mcp --check` startup check, CLI MCP preflight, or direct
+MCP handshake alone must not be described as a `complete` Agent Connection. It
+is startup validation for the MCP process from the CLI-observable environment
+only. It does not by itself prove that Codex, Claude Code, or another external
+host has loaded, trusted, approved, initialized, or exposed the project
+configuration.
 
 <a id="authority-bundle-export"></a>
 ## Authority bundle export

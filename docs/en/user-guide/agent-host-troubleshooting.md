@@ -31,9 +31,16 @@ A profile can therefore make doctor report `complete` while doctor still shows
 command-availability warnings or recommended `PATH` actions for future shells or
 agent hosts.
 
-When setup, doctor, or connection text output reports `action_required` or a
-degraded diagnostic state, read the short `Result`, `Why`, `Next`, and
-`Does not prove` lines first. `Next` is the concrete action to take before
+For `volicord init`, read the compact onboarding output first: confirm the
+title, profile, repository, repo file changes, stored Runtime Home path, and
+then follow the `Next:` checklist. That checklist is the setup flow for host
+reload or restart, project trust or approval, and the follow-up
+`volicord connection verify ...` command.
+
+For `volicord doctor`, `volicord connection status`, `volicord connection
+verify`, and other diagnostic views, read the short `Result`, `Why`, `Next`,
+and `Does not prove` lines first when text output reports `action_required` or
+a degraded diagnostic state. `Next` is the concrete action to take before
 opening deeper reference material.
 
 ## Installation Profile Is Missing
@@ -177,8 +184,8 @@ Observable symptom: connection status or verification reports
 Bounded recovery:
 
 ```sh
-volicord connection status codex --repo /path/to/your-product-repo
-volicord connection verify codex --repo /path/to/your-product-repo
+volicord connection status codex --shared --repo /path/to/your-product-repo
+volicord connection verify codex --shared --repo /path/to/your-product-repo
 ```
 
 Read the reported action and complete only that host-owned step. Common actions
@@ -239,7 +246,7 @@ check the installation and connection again:
 
 ```sh
 volicord doctor
-volicord connection verify codex --repo /path/to/your-product-repo
+volicord connection verify codex --shared --repo /path/to/your-product-repo
 ```
 
 Init records the MCP command used by managed host configuration. Ordinary
@@ -259,9 +266,9 @@ Bounded recovery:
 
 ```sh
 volicord doctor
-volicord connection status codex --repo /path/to/your-product-repo
+volicord connection status codex --shared --repo /path/to/your-product-repo
 volicord init --host codex --repo /path/to/your-product-repo
-volicord connection verify codex --repo /path/to/your-product-repo
+volicord connection verify codex --shared --repo /path/to/your-product-repo
 ```
 
 Use the same host and intent selector as the affected connection. For Claude

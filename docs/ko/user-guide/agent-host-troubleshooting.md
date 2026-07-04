@@ -27,9 +27,15 @@ volicord connection list
 doctor가 `complete`를 보고하면서도 이후 셸이나 에이전트 호스트를 위한 명령 가용성
 경고 또는 권장 `PATH` 동작을 함께 보여 줄 수 있습니다.
 
-setup, doctor, connection의 text 출력이 `action_required` 또는 저하된 진단 상태를
-보고하면 먼저 짧은 `Result`, `Why`, `Next`, `Does not prove` 줄을 읽습니다. `Next`는
-깊은 참조 문서를 열기 전에 수행할 구체적인 동작입니다.
+`volicord init`에서는 먼저 간결한 온보딩 출력을 읽습니다. 제목, profile, repository,
+repo file changes, 저장된 Runtime Home 경로를 확인한 뒤 `Next:` 체크리스트를 따릅니다.
+이 체크리스트가 호스트 reload 또는 restart, 프로젝트 trust 또는 approval, 후속
+`volicord connection verify ...` 명령으로 이어지는 설정 흐름입니다.
+
+`volicord doctor`, `volicord connection status`, `volicord connection verify`와 다른
+진단 보기에서는 text 출력이 `action_required` 또는 저하된 진단 상태를 보고할 때 짧은
+`Result`, `Why`, `Next`, `Does not prove` 줄을 먼저 읽습니다. `Next`는 깊은 참조 문서를
+열기 전에 수행할 구체적인 동작입니다.
 
 ## 설치 프로필이 없음
 
@@ -164,8 +170,8 @@ global 연결 의도를 지원합니다.
 제한된 복구:
 
 ```sh
-volicord connection status codex --repo /path/to/your-product-repo
-volicord connection verify codex --repo /path/to/your-product-repo
+volicord connection status codex --shared --repo /path/to/your-product-repo
+volicord connection verify codex --shared --repo /path/to/your-product-repo
 ```
 
 보고된 동작을 읽고 그 호스트 소유 단계만 완료합니다. 흔한 동작에는 호스트 항목
@@ -224,7 +230,7 @@ cargo build --workspace --bins
 
 ```sh
 volicord doctor
-volicord connection verify codex --repo /path/to/your-product-repo
+volicord connection verify codex --shared --repo /path/to/your-product-repo
 ```
 
 Init은 관리 호스트 설정이 사용할 MCP 명령을 기록합니다. 일반 `connection add` 명령은
@@ -244,9 +250,9 @@ Init은 관리 호스트 설정이 사용할 MCP 명령을 기록합니다. 일�
 
 ```sh
 volicord doctor
-volicord connection status codex --repo /path/to/your-product-repo
+volicord connection status codex --shared --repo /path/to/your-product-repo
 volicord init --host codex --repo /path/to/your-product-repo
-volicord connection verify codex --repo /path/to/your-product-repo
+volicord connection verify codex --shared --repo /path/to/your-product-repo
 ```
 
 영향받은 연결과 같은 호스트와 의도 선택자를 사용합니다. Claude Code에서는 `codex`를
