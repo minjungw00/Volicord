@@ -46,58 +46,116 @@ Volicord is not a good fit when you need:
 
 ## Quick Start
 
-The normal path is one installed `volicord` executable, then `volicord init` in
-the Product Repository where the agent will work. Start with `--profile record`
+For default host setup, the normal path is one installed `volicord` executable,
+then `volicord init` in the Product Repository where the agent will work.
+Docker paths use the same `init` shape from a container and must keep the same
+Runtime Home volume and Product Repository mount. Start with `--profile record`
 unless you already know the selected host, platform, and repository support the
 extra Detective profile observation surfaces.
 
-### 1. Install And Verify The Binary
+### Choose An Install Or Run Path
 
-Release binary installation is the primary path when your system matches a
-supported target. Source builds are for Volicord development.
+Choose the path that matches whether you want clone-free release artifacts, a
+clone-free Docker image, or a local build from this repository.
 
-On Linux, WSL2, or macOS, download the `install.sh` release asset to a
-temporary file, then run it against the same release asset base URL:
+#### Release Binary Install (planned)
+
+This clone-free path becomes available after GitHub Release assets publish
+installer scripts, target archives, and checksum files for
+`https://github.com/minjungw00/Volicord`. It does not require cloning the
+repository.
+
+On Linux, WSL2, or macOS:
 
 ```sh
-repo=OWNER/REPO
-base="https://github.com/$repo/releases/latest/download"
 tmp="$(mktemp "${TMPDIR:-/tmp}/install-volicord.XXXXXX")"
-curl -fsSL "$base/install.sh" -o "$tmp"
-VOLICORD_RELEASE_BASE_URL="$base" VOLICORD_REQUIRE_CHECKSUM=1 sh "$tmp"
+curl -fsSL https://github.com/minjungw00/Volicord/releases/latest/download/install.sh -o "$tmp"
+VOLICORD_REQUIRE_CHECKSUM=1 sh "$tmp"
+
 volicord --version
 ```
 
-On native Windows x86_64, download the `install.ps1` release asset and run it
-in PowerShell:
+On native Windows x86_64, use PowerShell:
 
 ```powershell
-$repo = "OWNER/REPO"
-$base = "https://github.com/$repo/releases/latest/download"
 $tmp = Join-Path $env:TEMP "install-volicord.ps1"
-Invoke-WebRequest "$base/install.ps1" -OutFile $tmp
-& $tmp -ReleaseBaseUrl $base -RequireChecksum
+Invoke-WebRequest "https://github.com/minjungw00/Volicord/releases/latest/download/install.ps1" -OutFile $tmp
+& $tmp -RequireChecksum
+
 volicord --version
 ```
 
-To preview the selected target, asset, install directory, binaries, and checksum
-plan without downloading release archives or writing installation files, rerun
-the downloaded installer with `--dry-run` on POSIX or `-DryRun` in PowerShell.
-`--print-target` and `-PrintTarget` print only the release target identifier.
+For custom install directories, dry runs, target inspection, mirrors, and
+pinned automation flows, see the
+[Installation guide](docs/en/user-guide/installation.md).
 
-`OWNER/REPO` is the GitHub repository that hosts the Volicord release assets.
-The POSIX script detects supported Linux, WSL2, and macOS targets and downloads
-the target-named tarball. The PowerShell script installs the
-`x86_64-pc-windows-msvc` zip artifact under a user-local directory by default.
-The examples require `.sha256` verification and install only the `volicord`
-executable for that platform. They do not edit shell startup files implicitly.
-Volicord does not currently claim a Homebrew tap, Homebrew formula, Linux
-package, Windows package-manager package, or external package-registry install
-path.
+#### Published Docker Image (planned)
 
-Make sure the future agent host can run `volicord` through `PATH`.
+This clone-free Docker path becomes available after a public Volicord image is
+published to GHCR. It does not require cloning the repository.
 
-### 2. Initialize Or Connect The Product Repository
+```sh
+docker pull ghcr.io/minjungw00/volicord:latest
+docker run --rm ghcr.io/minjungw00/volicord:latest --version
+```
+
+For a pinned release, use a release tag:
+
+```sh
+docker pull ghcr.io/minjungw00/volicord:vX.Y.Z
+docker run --rm ghcr.io/minjungw00/volicord:vX.Y.Z --version
+```
+
+#### Build And Run Docker Image From This Repository
+
+Use this path when you have a local clone of the Volicord source repository and
+want to build the image yourself.
+
+```sh
+git clone https://github.com/minjungw00/Volicord.git
+cd Volicord
+
+docker build -t volicord:local .
+docker run --rm volicord:local --version
+```
+
+To initialize Volicord for a Product Repository from the container:
+
+```sh
+docker run --rm -it \
+  -v volicord-home:/var/lib/volicord \
+  -v /path/to/your-product-repo:/workspace \
+  volicord:local init --host codex --repo /workspace --profile record
+```
+
+`/path/to/your-product-repo` is the Product Repository where the agent will
+work, not necessarily the Volicord source repository. Later Docker commands
+should reuse the same Runtime Home volume and Product Repository mount.
+
+#### Build Native Binary From Source
+
+Use this path for development, local review, or native builds before release
+binaries are available. After release binaries exist, this is not the primary
+path for users who only want release artifacts.
+
+```sh
+git clone https://github.com/minjungw00/Volicord.git
+cd Volicord
+
+cargo build --locked --release -p volicord-cli --bin volicord
+./target/release/volicord --version
+```
+
+To install that locally built binary on your user `PATH`:
+
+```sh
+mkdir -p "$HOME/.local/bin"
+install -m 0755 target/release/volicord "$HOME/.local/bin/volicord"
+
+volicord --version
+```
+
+### Initialize Or Connect The Product Repository
 
 Run `volicord init` for the repository where the agent should work:
 
@@ -133,7 +191,7 @@ Exact command behavior lives in the
 [Administrative CLI Reference](docs/en/reference/admin-cli.md). Environment
 support lives in [System Requirements](docs/en/reference/system-requirements.md).
 
-### 3. Ask The Agent To Work Normally
+### Ask The Agent To Work Normally
 
 After initialization, work through the agent host in the Product Repository. You
 do not need to drive the workflow from the terminal.
@@ -150,7 +208,7 @@ state when it is available and say explicitly when it is unavailable. Volicord
 tools, MCP server instructions, host rules, and `AGENTS.md` guidance help steer
 the agent, but they do not absolutely force model behavior.
 
-### 4. Check Pending User Judgments
+### Check Pending User Judgments
 
 When a decision belongs to the user, Volicord keeps it as pending User Judgment
 until it is answered through a supported User Channel. The agent may show a host
@@ -167,7 +225,7 @@ volicord inbox answer JUDGMENT_ID --choice CHOICE_ID --repo /path/to/your-produc
 Agents cannot silently dismiss pending User Judgment or record
 authority-bearing answers as if they were the user.
 
-### 5. Check Close Blockers Or Close Readiness
+### Check Close Blockers Or Close Readiness
 
 Before treating work as finished, ask the agent to show the current Close Status
 and `volicord.check_close` results. The answer should name pending User
@@ -289,21 +347,6 @@ flowchart TD
   close -- no --> finish
 ```
 
-## Source Build For Development
-
-Use the source build path when you are developing Volicord itself or need a
-local development binary:
-
-```sh
-cargo build --workspace --bins
-./target/debug/volicord --version
-./target/debug/volicord init --host codex --repo /path/to/your-product-repo --profile record
-```
-
-This path requires the Rust toolchain named in
-[System Requirements](docs/en/reference/system-requirements.md#toolchain-requirements).
-It is not the primary first-user install path.
-
 ## Integration Profiles
 
 `volicord init` defaults to `--profile record`. Omitting `--profile` gives the
@@ -408,47 +451,51 @@ The local consent URL is separate from host prompt input. The Local HTTP
 transport still does not implement HTTP host prompts, and local consent is
 available only on loopback endpoints with a valid consent token.
 
-## Docker And Local HTTP Transport
+## Docker Local HTTP Transport
 
-Docker support exists through the checked-in `Dockerfile` for local container
-layouts:
+The install/run section above shows how to obtain a Docker image. Use this
+section when you intentionally want Docker/localhost Local HTTP MCP transport
+instead of the default `volicord mcp --stdio` host setup.
 
 ```sh
-docker build -t volicord:local .
+VOLICORD_IMAGE=volicord:local
+# or, after a public image is published:
+# VOLICORD_IMAGE=ghcr.io/minjungw00/volicord:latest
 ```
 
-When serving Local HTTP from the container, publish the container port only to
-host loopback and use the explicit container listen mode:
+Initialize with the same Runtime Home volume and Product Repository mount you
+will use for serving:
 
 ```sh
-VOLICORD_HTTP_TOKEN="$(openssl rand -hex 32)"
+docker run --rm -it \
+  -v volicord-home:/var/lib/volicord \
+  -v /path/to/your-product-repo:/workspace \
+  "$VOLICORD_IMAGE" init --host codex --repo /workspace --profile record
+```
+
+Serve Local HTTP with host-loopback-only port publishing and a token file:
+
+```sh
+umask 077
+VOLICORD_HTTP_TOKEN_FILE="$(mktemp)"
+openssl rand -hex 32 > "$VOLICORD_HTTP_TOKEN_FILE"
+
 docker run --rm \
   -p 127.0.0.1:8765:8765 \
+  -v "$VOLICORD_HTTP_TOKEN_FILE:/tmp/volicord-http-token:ro" \
   -v volicord-home:/var/lib/volicord \
-  -v "$PWD:/workspace" \
-  volicord:local serve --transport local-http \
+  -v /path/to/your-product-repo:/workspace \
+  "$VOLICORD_IMAGE" serve --transport local-http \
     --container-listen 0.0.0.0:8765 \
-    --token "$VOLICORD_HTTP_TOKEN" \
+    --token-file /tmp/volicord-http-token \
     --project /workspace
 ```
 
-The Local HTTP transport is implemented as:
-
-```sh
-volicord serve --transport local-http
-```
-
-It is an explicit advanced transport for Docker and localhost MCP use, not the
-default host setup path. It is local/Docker transport only: not a public network
-API, SaaS endpoint, multi-user server, or security boundary. It accepts only
-loopback listen addresses for native local runs; the separate
-`--container-listen` option is only for Docker host-loopback publishing such as
-`-p 127.0.0.1:8765:8765`. It requires bearer authentication for the MCP local
-HTTP endpoint, generates a process-local token when no token is supplied,
-checks browser request Origins against configured `--allow-origin` values,
-exposes `POST /mcp`, and does not implement server-sent event streams, HTTP
-elicitation, or full MCP Streamable HTTP compatibility. Do not treat it as a
-general network service or publish it on a public host interface.
+`-p 127.0.0.1:8765:8765` publishes the container port only on host loopback.
+`--container-listen 0.0.0.0:8765` is for this Docker host-loopback publishing
+shape. Do not publish the container port on `0.0.0.0`, a public host
+interface, or a remote host. Local HTTP is not a public network API, SaaS
+endpoint, multi-user server, or security boundary.
 
 Use [Installation](docs/en/user-guide/installation.md) and
 [MCP Transport](docs/en/reference/mcp-transport.md) for the detailed Docker and

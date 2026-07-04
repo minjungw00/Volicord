@@ -44,57 +44,112 @@ Product Repository에 잘 맞습니다.
 
 ## 빠른 시작
 
-일반 경로는 설치된 `volicord` 실행 파일 하나를 준비한 뒤, 에이전트가 작업할 Product
-Repository에서 `volicord init`을 실행하는 것입니다. 선택한 호스트, 플랫폼, 저장소가
-Detective profile의 추가 관찰 표면을 지원한다는 것을 이미 알고 있는 경우가 아니라면
-`--profile record`로 시작합니다.
+기본 호스트 설정의 일반 경로는 설치된 `volicord` 실행 파일 하나를 준비한 뒤, 에이전트가
+작업할 Product Repository에서 `volicord init`을 실행하는 것입니다. Docker 경로는
+컨테이너에서 같은 `init` 형태를 사용하며, 같은 Runtime Home 볼륨과 Product Repository
+mount를 유지해야 합니다. 선택한 호스트, 플랫폼, 저장소가 Detective profile의 추가 관찰
+표면을 지원한다는 것을 이미 알고 있는 경우가 아니라면 `--profile record`로 시작합니다.
 
-### 1. 바이너리 설치와 확인
+### 설치 또는 실행 경로 선택
 
-시스템이 지원 target과 맞으면 릴리스 바이너리 설치가 기본 경로입니다. 소스 빌드는
-Volicord 개발용입니다.
+저장소 clone 없이 쓰는 릴리스 자산, 저장소 clone 없이 쓰는 Docker 이미지, 이 저장소에서
+수행하는 로컬 빌드 중 필요한 경로를 선택합니다.
 
-Linux, WSL2, macOS에서는 `install.sh` 릴리스 자산을 임시 파일로 내려받은 뒤 같은
-릴리스 자산 base URL을 지정해 실행합니다.
+#### 릴리스 바이너리 설치 (예정)
+
+이 경로는 `https://github.com/minjungw00/Volicord`의 GitHub Release 자산에 설치
+스크립트, target archive, checksum 파일이 게시된 뒤 저장소를 clone하지 않고 사용할 수
+있습니다. 저장소 clone이 필요하지 않습니다.
+
+Linux, WSL2, macOS:
 
 ```sh
-repo=OWNER/REPO
-base="https://github.com/$repo/releases/latest/download"
 tmp="$(mktemp "${TMPDIR:-/tmp}/install-volicord.XXXXXX")"
-curl -fsSL "$base/install.sh" -o "$tmp"
-VOLICORD_RELEASE_BASE_URL="$base" VOLICORD_REQUIRE_CHECKSUM=1 sh "$tmp"
+curl -fsSL https://github.com/minjungw00/Volicord/releases/latest/download/install.sh -o "$tmp"
+VOLICORD_REQUIRE_CHECKSUM=1 sh "$tmp"
+
 volicord --version
 ```
 
-Native Windows x86_64에서는 `install.ps1` 릴리스 자산을 내려받은 뒤 PowerShell에서
-실행합니다.
+Native Windows x86_64에서는 PowerShell을 사용합니다.
 
 ```powershell
-$repo = "OWNER/REPO"
-$base = "https://github.com/$repo/releases/latest/download"
 $tmp = Join-Path $env:TEMP "install-volicord.ps1"
-Invoke-WebRequest "$base/install.ps1" -OutFile $tmp
-& $tmp -ReleaseBaseUrl $base -RequireChecksum
+Invoke-WebRequest "https://github.com/minjungw00/Volicord/releases/latest/download/install.ps1" -OutFile $tmp
+& $tmp -RequireChecksum
+
 volicord --version
 ```
 
-릴리스 archive를 내려받거나 설치 파일을 쓰지 않고 선택될 target, asset, 설치
-디렉터리, 바이너리, checksum 계획을 미리 보려면 내려받은 설치 스크립트를 POSIX에서는
-`--dry-run`, PowerShell에서는 `-DryRun`으로 다시 실행합니다. `--print-target`과
-`-PrintTarget`은 릴리스 target 식별자만 출력합니다.
+사용자 지정 설치 디렉터리, dry-run, target 확인, mirror, 자동화용 버전 고정은
+[설치 가이드](docs/ko/user-guide/installation.md)를 보세요.
 
-`OWNER/REPO`는 Volicord 릴리스 자산을 호스팅하는 GitHub 저장소입니다. POSIX 스크립트는
-지원되는 Linux, WSL2, macOS target을 감지하고 target 이름이 붙은 tarball을
-내려받습니다. PowerShell 스크립트는 기본적으로 사용자 로컬 디렉터리 아래에
-`x86_64-pc-windows-msvc` zip artifact를 설치합니다. 위 예시는 `.sha256` 검증을
-필수로 요구하고 해당 플랫폼의 `volicord` 실행 파일 하나만 설치합니다. 셸 시작 파일은
-암시적으로 편집하지 않습니다. Volicord는 현재 Homebrew tap, Homebrew formula, Linux
-패키지, Windows 패키지 관리자 패키지, 외부 패키지 registry 설치 경로를 주장하지
-않습니다.
+#### 게시된 Docker 이미지 (예정)
 
-미래의 에이전트 호스트가 `PATH`를 통해 `volicord`를 실행할 수 있게 합니다.
+이 Docker 경로는 공개 Volicord 이미지가 GHCR에 게시된 뒤 저장소를 clone하지 않고
+사용할 수 있습니다. 저장소 clone이 필요하지 않습니다.
 
-### 2. Product Repository 초기화 또는 연결
+```sh
+docker pull ghcr.io/minjungw00/volicord:latest
+docker run --rm ghcr.io/minjungw00/volicord:latest --version
+```
+
+고정된 릴리스에는 릴리스 태그를 사용합니다.
+
+```sh
+docker pull ghcr.io/minjungw00/volicord:vX.Y.Z
+docker run --rm ghcr.io/minjungw00/volicord:vX.Y.Z --version
+```
+
+#### 이 저장소에서 Docker 이미지 빌드 및 실행
+
+Volicord 소스 저장소의 로컬 clone이 있고 이미지를 직접 빌드하려면 이 경로를 사용합니다.
+
+```sh
+git clone https://github.com/minjungw00/Volicord.git
+cd Volicord
+
+docker build -t volicord:local .
+docker run --rm volicord:local --version
+```
+
+컨테이너에서 Product Repository에 대한 Volicord 설정을 초기화합니다.
+
+```sh
+docker run --rm -it \
+  -v volicord-home:/var/lib/volicord \
+  -v /path/to/your-product-repo:/workspace \
+  volicord:local init --host codex --repo /workspace --profile record
+```
+
+`/path/to/your-product-repo`는 에이전트가 작업할 Product Repository입니다. 반드시
+Volicord 소스 저장소일 필요는 없습니다. 이후 Docker 명령은 같은 Runtime Home 볼륨과
+Product Repository mount를 재사용해야 합니다.
+
+#### 소스에서 네이티브 바이너리 빌드
+
+릴리스 바이너리를 사용할 수 있기 전의 개발, 로컬 검토, 네이티브 빌드에는 이 경로를
+사용합니다. 릴리스 바이너리가 나온 뒤에는 릴리스 자산만 원하는 사용자의 기본 경로가
+아닙니다.
+
+```sh
+git clone https://github.com/minjungw00/Volicord.git
+cd Volicord
+
+cargo build --locked --release -p volicord-cli --bin volicord
+./target/release/volicord --version
+```
+
+로컬에서 빌드한 바이너리를 사용자 `PATH`에 설치하려면 아래처럼 실행합니다.
+
+```sh
+mkdir -p "$HOME/.local/bin"
+install -m 0755 target/release/volicord "$HOME/.local/bin/volicord"
+
+volicord --version
+```
+
+### Product Repository 초기화 또는 연결
 
 에이전트가 작업할 저장소에서 `volicord init`을 실행합니다.
 
@@ -127,7 +182,7 @@ volicord doctor
 정확한 명령 동작은 [관리 CLI 참조](docs/ko/reference/admin-cli.md)를 보세요. 환경
 지원은 [시스템 요구사항](docs/ko/reference/system-requirements.md)에 있습니다.
 
-### 3. 에이전트에게 평소처럼 작업 요청
+### 에이전트에게 평소처럼 작업 요청
 
 초기화 뒤에는 Product Repository에서 에이전트 호스트와 대화로 일합니다. 터미널에서
 워크플로를 직접 몰고 갈 필요가 없습니다.
@@ -144,7 +199,7 @@ volicord doctor
 Volicord 도구, MCP 서버 instructions, 호스트 rule, `AGENTS.md` 안내는 에이전트를
 유도하지만 모델 동작을 절대적으로 강제하지 않습니다.
 
-### 4. 대기 중인 사용자 판단 확인
+### 대기 중인 사용자 판단 확인
 
 사용자에게 속한 결정이 필요하면 Volicord는 지원되는 User Channel로 답변될 때까지 그
 항목을 대기 중인 사용자 판단으로 유지합니다. 에이전트는 호스트 프롬프트, 정확한 채팅
@@ -160,7 +215,7 @@ volicord inbox answer JUDGMENT_ID --choice CHOICE_ID --repo /path/to/your-produc
 에이전트는 대기 중인 사용자 판단을 조용히 무시하거나 권한을 지니는 답변을 사용자처럼
 기록할 수 없습니다.
 
-### 5. 닫기 차단 사유 또는 닫기 준비 상태 확인
+### 닫기 차단 사유 또는 닫기 준비 상태 확인
 
 작업을 끝난 것으로 다루기 전에 에이전트에게 현재 닫기 상태와 `volicord.check_close`
 결과를 보여 달라고 요청합니다. 답변은 알려진 경우 대기 중인 사용자 판단, 빠진 증거,
@@ -277,19 +332,6 @@ flowchart TD
   close -- 아니오 --> finish
 ```
 
-## 개발용 소스 빌드
-
-Volicord 자체를 개발하거나 로컬 개발 바이너리가 필요할 때만 소스 빌드 경로를 사용합니다.
-
-```sh
-cargo build --workspace --bins
-./target/debug/volicord --version
-./target/debug/volicord init --host codex --repo /path/to/your-product-repo --profile record
-```
-
-이 경로에는 [시스템 요구사항](docs/ko/reference/system-requirements.md#toolchain-requirements)이
-이름 붙인 Rust 도구 체인이 필요합니다. 첫 사용자의 기본 설치 경로가 아닙니다.
-
 ## 통합 프로필
 
 `volicord init`의 기본값은 `--profile record`입니다. `--profile`을 생략하면 일반 첫
@@ -382,44 +424,50 @@ volicord inbox answer JUDGMENT_ID --choice CHOICE_ID
 HTTP 호스트 프롬프트를 구현하지 않으며, 로컬 consent는 유효한 consent token이 있는
 loopback endpoint에서만 사용할 수 있습니다.
 
-## Docker와 Local HTTP transport
+## Docker Local HTTP transport
 
-체크인된 `Dockerfile`을 통한 로컬 컨테이너 배치용 Docker 지원이 있습니다.
+위 설치 또는 실행 경로 선택 섹션에서 Docker 이미지를 준비하는 방법을 보여 줍니다. 이
+섹션은 기본 `volicord mcp --stdio` 호스트 설정 대신 Docker/localhost Local HTTP MCP
+transport를 의도적으로 사용할 때 사용합니다.
 
 ```sh
-docker build -t volicord:local .
+VOLICORD_IMAGE=volicord:local
+# 또는 공개 이미지가 게시된 뒤:
+# VOLICORD_IMAGE=ghcr.io/minjungw00/volicord:latest
 ```
 
-컨테이너에서 Local HTTP를 제공할 때는 컨테이너 포트를 호스트 loopback에만 노출하고,
-명시적인 `--container-listen` 모드를 사용합니다.
+serve에 사용할 것과 같은 Runtime Home 볼륨 및 Product Repository mount로 초기화합니다.
 
 ```sh
-VOLICORD_HTTP_TOKEN="$(openssl rand -hex 32)"
+docker run --rm -it \
+  -v volicord-home:/var/lib/volicord \
+  -v /path/to/your-product-repo:/workspace \
+  "$VOLICORD_IMAGE" init --host codex --repo /workspace --profile record
+```
+
+호스트 loopback 전용 포트 노출과 token 파일로 Local HTTP를 제공합니다.
+
+```sh
+umask 077
+VOLICORD_HTTP_TOKEN_FILE="$(mktemp)"
+openssl rand -hex 32 > "$VOLICORD_HTTP_TOKEN_FILE"
+
 docker run --rm \
   -p 127.0.0.1:8765:8765 \
+  -v "$VOLICORD_HTTP_TOKEN_FILE:/tmp/volicord-http-token:ro" \
   -v volicord-home:/var/lib/volicord \
-  -v "$PWD:/workspace" \
-  volicord:local serve --transport local-http \
+  -v /path/to/your-product-repo:/workspace \
+  "$VOLICORD_IMAGE" serve --transport local-http \
     --container-listen 0.0.0.0:8765 \
-    --token "$VOLICORD_HTTP_TOKEN" \
+    --token-file /tmp/volicord-http-token \
     --project /workspace
 ```
 
-Local HTTP transport는 아래 명령으로 구현되어 있습니다.
-
-```sh
-volicord serve --transport local-http
-```
-
-이 transport는 Docker와 localhost MCP 사용을 위한 명시적 고급 모드이며 기본 호스트 설정
-경로가 아닙니다. 로컬/Docker 전송일 뿐 공개 네트워크 API, SaaS endpoint, 다중 사용자
-서버, 보안 경계가 아닙니다. 네이티브 로컬 실행에는 loopback listen 주소만 허용합니다.
-별도의 `--container-listen` 옵션은 `-p 127.0.0.1:8765:8765` 같은 Docker host-loopback
-노출에만 사용합니다. MCP local HTTP endpoint에는 bearer 인증을 요구하며, token을 제공하지
-않으면 프로세스 로컬 token을 생성하고, 브라우저 요청 Origin은 설정된 `--allow-origin`
-값과 대조합니다. `POST /mcp`를 노출하지만 server-sent event 스트림, HTTP elicitation,
-전체 MCP Streamable HTTP 호환성은 구현하지 않습니다. 일반 네트워크 서비스처럼 다루거나
-공개 호스트 인터페이스에 노출하면 안 됩니다.
+`-p 127.0.0.1:8765:8765`는 컨테이너 포트를 호스트 loopback에만 노출합니다.
+`--container-listen 0.0.0.0:8765`는 이 Docker host-loopback 노출 형태를 위한
+옵션입니다. 컨테이너 port를 `0.0.0.0`, 공개 host interface, 원격 host에 노출하지
+마세요. Local HTTP는 공개 네트워크 API, SaaS endpoint, 다중 사용자 서버, 보안 경계가
+아닙니다.
 
 자세한 Docker와 HTTP 경계는 [설치](docs/ko/user-guide/installation.md)와
 [MCP 전송](docs/ko/reference/mcp-transport.md)을 사용합니다.
