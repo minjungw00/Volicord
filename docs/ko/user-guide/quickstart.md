@@ -4,9 +4,9 @@
 뒤 작동하는 Agent Connection 하나까지 가는 경로입니다. 에이전트에게 작업을 요청할
 Product Repository로 사용할 일반 Git 저장소에 로컬 호스트를 연결한다고 가정합니다.
 
-정확한 명령 계약은 [관리 CLI 참조](../reference/admin-cli.md)가 담당합니다.
-Agent Connection 의미는 [Agent Connection 참조](../reference/agent-connection.md)가
-담당합니다.
+정확한 명령 계약은 [관리 CLI 참조](../reference/admin-cli.md)를 보세요.
+Agent Connection 의미는 [Agent Connection 참조](../reference/agent-connection.md)에
+있습니다.
 
 ## 빠른 경로
 
@@ -17,8 +17,8 @@ volicord init --host codex --repo /path/to/your-product-repo --profile record
 `/path/to/your-product-repo`는 에이전트에게 작업을 요청할 Product Repository의 경로
 예시입니다. `volicord init`은 첫 실행에서 저장소를 설정하고 호스트를 연결하는 기본
 명령입니다. 필요하면 Runtime Home과 설치 프로필을 만들거나 재사용하고, 선택한
-저장소를 등록하며, 선택한 호스트의 프로젝트 범위 MCP 설정을 설치하고, Volicord가
-관리하는 지침과 policy 메타데이터를 쓰고, 통합 상태를 기록합니다. 생성된 호스트
+저장소를 등록하며, 선택한 호스트의 프로젝트 범위 MCP 설정을 설치하고, 프로젝트 범위
+Volicord 지침과 로컬 설정 파일을 쓰고, 통합 상태를 기록합니다. 생성된 호스트
 설정은 단일 공개 실행 파일을 프로젝트에 묶인 `volicord mcp --stdio`로 시작합니다.
 
 이 빠른 경로는 host lifecycle hook 설치나 session watcher를 요구하지 않는
@@ -31,7 +31,7 @@ OS 집행, 행위자 증명, 네트워크 격리, sandbox를 제공하지 않습
 Windows host hook과 watcher 동작이 구현되고 테스트되기 전까지 observe가 지원되지 않으므로
 이 Record profile 빠른 경로를 사용합니다. 정확한 프로젝트 이름, 프로필 동작, 연결 기본값,
 내부 식별 정보 동작은
-[관리 CLI 참조](../reference/admin-cli.md)가 담당합니다.
+[관리 CLI 참조](../reference/admin-cli.md)를 보세요.
 
 이 `record` 빠른 경로 대신 detective 설정을 선택하면, 생성된 hook 명령은 호스트
 session이 저장소 하위 디렉터리에서 시작해도 동작하도록 만들어집니다. Status,
@@ -51,10 +51,10 @@ volicord connection verify codex --repo /path/to/your-product-repo
 완료 상태: status나 verification이 `complete`를 보고하면 연결 준비가 끝난 것입니다.
 `action_required`를 보고하면 이름 붙은 호스트 소유 동작이나 로컬 복구 동작을 완료한
 뒤 verification을 다시 실행합니다. 정확한 결과 상태 의미는 [관리 CLI
-참조](../reference/admin-cli.md#agent-connection-result-states)가 담당합니다.
+참조](../reference/admin-cli.md#agent-connection-result-states)를 보세요.
 Detective host hook 경로 복구 안내는
 [에이전트 호스트 문제 해결](../user-guide/agent-host-troubleshooting.md#guard-hook-path-or-wrapper-is-unsafe)이
-담당합니다.
+정리합니다.
 
 ## 호스트 의도 선택하기
 
@@ -62,9 +62,9 @@ personal, global, read-only 변형을 직접 써야 할 때만 낮은 수준의
 `volicord connection add` 명령을 사용합니다. 일반 `init` 흐름 없이 `volicord connection add`로
 프로젝트 공유 통합 파일을 관리할 때만 `--shared`를 추가하고, `--global`은 사용자
 전체 설정을 지원하는 호스트 경로에만 사용합니다. 정확한 의도 의미는
-[관리 CLI 참조](../reference/admin-cli.md#connection-intents-and-hosts)가 담당하고,
+[관리 CLI 참조](../reference/admin-cli.md#connection-intents-and-hosts)를 보세요.
 호스트 가용성 요구사항은 [시스템
-요구사항](../reference/system-requirements.md#host-configuration-requirements)이 담당합니다.
+요구사항](../reference/system-requirements.md#host-configuration-requirements)에 있습니다.
 
 읽기 중심 동작만 노출해야 할 때만 `--read-only`를 사용합니다.
 

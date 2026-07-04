@@ -2,9 +2,9 @@
 
 Volicord는 사용자가 평소 말로 일하면서도 판단 경계를 볼 수 있게 합니다. Volicord는 AI 지원 제품 작업을 위한 로컬 작업 권한 기록입니다. 사용자는 작업과 위험한 결정을 정합니다. 에이전트는 범위, 사용자 판단, 증거, 승인, 닫기 상태를 서로 섞지 않고 보여줘야 하며, 자기 추론을 사용자 결정처럼 말하면 안 됩니다.
 
-이 가이드는 사용자 작업 흐름입니다. 정확한 API 동작, 스키마, 저장 효과, 보안 표현, 참조 수준의 닫기 규칙은 [참조 색인](../reference/README.md)이 연결하는 담당 문서에 있습니다.
+이 가이드는 사용자 작업 흐름입니다. 정확한 API 동작, 스키마, 저장 효과, 보안 표현, 참조 수준의 닫기 규칙은 [참조 색인](../reference/README.md)이 연결하는 참조 문서에 있습니다.
 
-보장 한계는 [보안](../reference/security.md)이 담당합니다. 이 가이드에서 쓰기 티켓은
+보장 한계는 [보안](../reference/security.md)을 보세요. 이 가이드에서 쓰기 티켓은
 OS 권한, 코드 리뷰 승인, 최종 수락, 쓰기가 실제로 일어났다는 증명이 아닙니다. Detective
 profile 관찰은 신호이지 OS 수준 차단이 아니며, 닫기 상태는 판단을 돕는 자료이지 정확성,
 테스트 충분성, QA 완료, 배포 성공, 사람 검토 완료, 무위험 완료의 증명이 아닙니다.
@@ -116,7 +116,7 @@ Volicord의 상태형 CLI 출력은 이를 위해 같은 summary card 모델을 
 
 ## 에이전트와 사용자 순환
 
-이 순환은 에이전트가 [Agent Connection](../reference/agent-connection.md)을 통해 할 수 있는 일과 사용자가 `User Channel`로 기록하는 일을 분리합니다. 권한 의미는 [Core 모델](../reference/core-model.md)이 담당합니다.
+이 순환은 에이전트가 [Agent Connection](../reference/agent-connection.md)을 통해 할 수 있는 일과 사용자가 `User Channel`로 기록하는 일을 분리합니다. 권한 의미는 [Core 모델](../reference/core-model.md)을 보세요.
 
 | 시점 | 에이전트가 할 수 있는 일 | 사용자가 결정하거나 기록하는 일 | 뜻하지 않는 것 |
 |---|---|---|---|
@@ -133,9 +133,9 @@ Volicord의 상태형 CLI 출력은 이를 위해 같은 summary card 모델을 
 프롬프트 입력, 명령 캡처가 `configured`, `observed`, `active`일 때의 채팅 명령,
 adapter가 loopback 일회성 token fallback을 안전하게 노출할 수 있을 때의 local consent URL, 그리고 안정적인 CLI inbox 경로인
 `volicord inbox`입니다. 정확한 명령 동작은
-[관리 CLI](../reference/admin-cli.md#user-channel-commands)가 담당하고, 권한 의미는
-[Core 모델](../reference/core-model.md)이 담당하며, Agent Connection 경계는
-[Agent Connection 참조](../reference/agent-connection.md)가 담당합니다.
+[관리 CLI](../reference/admin-cli.md#user-channel-commands)를 보세요. 권한 의미는
+[Core 모델](../reference/core-model.md), Agent Connection 경계는
+[Agent Connection 참조](../reference/agent-connection.md)에 있습니다.
 
 다른 User Channel 입력 방법을 사용할 수 없거나 수동 점검이 필요하고 작업에 대기 중인
 판단이 있으면 선택된 Product Repository에서 아래 순서로 진행합니다.
@@ -168,7 +168,7 @@ Volicord 상태로 바꾸면 안 됩니다. `Volicord: answer J-3 1 #AB7K` 같�
 이 순서는 Judgment Inbox 항목이 기록된 사용자 답변이 되는 방식을 보여 줍니다.
 정확한 요청 필드와 전송 세부사항은 생략합니다. 그런 내용은
 [관리 CLI](../reference/admin-cli.md), [MCP 전송](../reference/mcp-transport.md),
-판단 메서드와 스키마 담당 문서가 맡습니다.
+판단 메서드와 스키마 참조 문서에 있습니다.
 
 ```mermaid
 sequenceDiagram
@@ -204,8 +204,8 @@ Product Repository 변경을 드러낼 수 있습니다. 이를 악의적 동작
 
 Detective 상태가 `hook_path_safety`를 `ok`가 아닌 값으로 보고하면, 설정을 복구하기 전까지
 hook 기반 협력형 pre-tool warning 또는 denial, 채팅 명령 캡처, 미기록 변경 관찰을 사용할
-수 없거나 degraded된 상태로 봅니다. 정확한 복구 안내는 [에이전트 호스트 문제 해결](agent-host-troubleshooting.md#guard-hook-path-or-wrapper-is-unsafe)이
-담당합니다.
+수 없거나 degraded된 상태로 봅니다. 정확한 복구 안내는 [에이전트 호스트 문제 해결](agent-host-troubleshooting.md#guard-hook-path-or-wrapper-is-unsafe)을
+보세요.
 
 ## 쓰기와 민감 동작 승인하기
 
@@ -265,7 +265,7 @@ hook 기반 협력형 pre-tool warning 또는 denial, 채팅 명령 캡처, 미�
 
 사용자에게 닫기 상태는 현재 Volicord 기록을 기준으로 지금 작업을 정직하게 닫을 수
 있는지 확인하는 일입니다. 제품 결과가 객관적으로 옳다는 증명이 아닙니다. 정확한 닫기
-의미는 [Core 모델](../reference/core-model.md)이, 닫기 메서드 동작은 [`Task` 닫기 메서드](../reference/api/method-close-task.md)가 담당합니다.
+의미는 [Core 모델](../reference/core-model.md)을, 닫기 메서드 동작은 [`Task` 닫기 메서드](../reference/api/method-close-task.md)를 보세요.
 
 이 결정 트리는 닫기 상태 결과를 사용자가 해석하는 순서를 보여 줍니다. 정확한
 `volicord.close_task` 알고리즘은 아닙니다.
@@ -327,11 +327,11 @@ flowchart TD
 
 에이전트는 잔여 위험 수락으로 빠진 필수 증거를 덮거나, 위험을 이름 붙이지 않았는데 "좋아 보여"를 위험 수락으로 취급하거나, 취소되거나 대체된 작업을 성공 완료처럼 말하면 안 됩니다.
 
-## 계약 세부사항은 담당 문서 사용하기
+## 계약 세부사항은 참조 문서에서 확인하기
 
-가이드 문서는 작업 흐름을 설명합니다. 정확한 계약은 담당 참조 문서를 봅니다.
+가이드 문서는 작업 흐름을 설명합니다. 정확한 계약은 참조 문서를 봅니다.
 
-| 필요 | 담당 경로 |
+| 필요 | 참조 경로 |
 |---|---|
 | 기준 범위와 지원 범위 밖 경계 | [기준 범위](../reference/scope.md) |
 | 작업 권한, 사용자 판단, 닫기 상태 의미 | [Core 모델](../reference/core-model.md) |
@@ -339,7 +339,7 @@ flowchart TD
 | API 메서드와 스키마 | [참조 색인](../reference/README.md) |
 | Agent Connection과 User Channel 동작 | [Agent Connection 참조](../reference/agent-connection.md) |
 
-이 가이드를 API 계약처럼 다루거나 자세한 계약 규칙을 사용자 경로에 다시 복사하지 않습니다.
+이 가이드는 API 계약이 아닙니다. 정확한 동작이 필요할 때 위 참조 문서를 사용합니다.
 
 ## 다음 읽기 경로
 
@@ -347,5 +347,4 @@ flowchart TD
 |---|---|
 | 작업 중인 사용자 | [판단 예시](judgment-examples.md) -> [기준 범위](../reference/scope.md) |
 | 에이전트 작성자·운영자 | [에이전트 가이드](agent-workflow.md) -> [Agent Connection 참조](../reference/agent-connection.md) |
-| 구현 담당자 | [참조 색인](../reference/README.md) -> 기준 범위 -> API 메서드 -> 스키마 담당 문서 -> 저장 효과 |
-| 문서 유지보수자 | [문서 정책](../maintain/documentation-policy.md) -> [번역 정책](../maintain/translation-policy.md) -> [검증](../maintain/validation.md) |
+| 구현 담당자 | [참조 색인](../reference/README.md) -> 기준 범위 -> API 메서드 -> 스키마 참조 문서 -> 저장 효과 |

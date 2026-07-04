@@ -2,7 +2,7 @@
 
 Volicord lets you work in ordinary language while keeping decision boundaries visible. Volicord is a local work authority record for AI-assisted product work. You decide the work and the risky calls. The agent should keep scope, User Judgment, Evidence, approvals, and Close Status separate instead of presenting inference as your decision.
 
-This guide is the user workflow path. Exact API behavior, schemas, storage effects, security wording, and reference-level close rules live in the owners linked from the [Reference Index](../reference/README.md).
+This guide is the user workflow path. Exact API behavior, schemas, storage effects, security wording, and reference-level close rules live in the Reference pages linked from the [Reference Index](../reference/README.md).
 
 Guarantee limits stay with [Security](../reference/security.md). In this guide,
 Write Tickets are not OS permission, code review approval, final acceptance, or
@@ -179,7 +179,7 @@ for projection boundaries, see
 This sequence shows how a Judgment Inbox item becomes a recorded user answer.
 It omits exact request fields and transport details; those stay with
 [Administrative CLI](../reference/admin-cli.md), [MCP Transport](../reference/mcp-transport.md),
-and the judgment method and schema owners.
+and the judgment method and schema references.
 
 ```mermaid
 sequenceDiagram
@@ -340,11 +340,11 @@ You decide:
 
 The agent should not use residual-risk acceptance to cover missing required evidence, treat "looks good" as risk acceptance unless the risk was named, or present cancelled or superseded work as successful completion.
 
-## Use reference owners for contract detail
+## Use Reference For Contract Detail
 
-Use guide pages for workflow. Use owner reference docs for exact contracts:
+Use guide pages for workflow. Use Reference docs for exact contracts:
 
-| Need | Owner Route |
+| Need | Reference path |
 |---|---|
 | Baseline and out-of-scope boundary | [Scope](../reference/scope.md) |
 | Work authority, User Judgment, and Close Status meaning | [Core Model](../reference/core-model.md) |
@@ -352,7 +352,7 @@ Use guide pages for workflow. Use owner reference docs for exact contracts:
 | API methods and schemas | [Reference Index](../reference/README.md) |
 | Agent Connection and User Channel behavior | [Agent Connection Reference](../reference/agent-connection.md) |
 
-Do not treat this guide as the API contract. Do not copy detailed contract rules back into the user-facing path.
+Do not treat this guide as the API contract. Use the Reference links above when exact behavior matters.
 
 ## Where to go next
 
@@ -360,5 +360,4 @@ Do not treat this guide as the API contract. Do not copy detailed contract rules
 |---|---|
 | Working user | [Judgment Examples](judgment-examples.md) -> [Scope](../reference/scope.md) |
 | Agent author or operator | [Agent Guide](agent-workflow.md) -> [Agent Connection Reference](../reference/agent-connection.md) |
-| Implementer | [Reference Index](../reference/README.md) -> baseline scope -> API methods -> schema owners -> storage effects |
-| Documentation maintainer | [Documentation Policy](../maintain/documentation-policy.md) -> [Translation Policy](../maintain/translation-policy.md) -> [Validation](../maintain/validation.md) |
+| Implementer | [Reference Index](../reference/README.md) -> baseline scope -> API methods -> schema references -> storage effects |

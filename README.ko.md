@@ -41,7 +41,6 @@ Product Repository에 잘 맞습니다.
   사람 검토 완료 증명, 에이전트가 모든 지침을 따랐다는 증명
 - 변조 불가능한 감사 로그 또는 중앙 집중식 다중 사용자 SaaS 워크플로
 - 제품 방향, 최종 수락, 취소, 잔여 위험 결정을 사용자 대신 내려 주는 도구
-- 첫 사용 경로가 아니라 전체 참조 매뉴얼 역할을 하는 루트 README
 
 ## 빠른 시작
 
@@ -112,8 +111,8 @@ volicord init --host claude-code --repo /path/to/your-product-repo --profile rec
 `volicord init`은 대화 중심 사용을 위한 기본 첫 실행 설정 및 연결 명령입니다. 필요하면
 Runtime Home을 초기화하고, 설치 프로필을 기록하며, 선택한 Product Repository를
 등록하거나 재사용하고, Agent Connection을 만들며, `volicord mcp --stdio`를 시작하는
-프로젝트 범위 MCP 설정을 씁니다. 또한 Volicord 관리 지침과 policy 메타데이터를 쓰고
-통합 상태를 기록합니다.
+프로젝트 범위 MCP 설정을 씁니다. 또한 프로젝트 범위 Volicord 지침과 로컬 설정 파일을
+쓰고 통합 상태를 기록합니다.
 
 명령이 `action_required`를 보고하면 이름 붙은 호스트 통제 동작이나 로컬 동작을 따릅니다.
 예를 들면 호스트 restart 또는 reload, 프로젝트 MCP 설정 승인, 프로젝트 trust, 명령
@@ -125,8 +124,8 @@ volicord connection status codex --repo /path/to/your-product-repo
 volicord doctor
 ```
 
-정확한 명령 동작은 [관리 CLI 참조](docs/ko/reference/admin-cli.md)가 담당합니다. 환경
-지원은 [시스템 요구사항](docs/ko/reference/system-requirements.md)이 담당합니다.
+정확한 명령 동작은 [관리 CLI 참조](docs/ko/reference/admin-cli.md)를 보세요. 환경
+지원은 [시스템 요구사항](docs/ko/reference/system-requirements.md)에 있습니다.
 
 ### 3. 에이전트에게 평소처럼 작업 요청
 
@@ -208,8 +207,8 @@ Volicord는 작업 권한을 보이게 하지만 권한 시스템, 보안 경계
 - Volicord 기록은 로컬 작업 흐름 기록입니다. 변조 불가능한 감사 로그로 취급하지
   않습니다.
 
-자세한 보장 종류와 명시적 비보장은 [보안 참조](docs/ko/reference/security.md)가
-담당합니다.
+자세한 보장 종류와 명시적 비보장은 [보안 참조](docs/ko/reference/security.md)에
+정리되어 있습니다.
 
 ## 처음 읽을 개념
 
@@ -327,13 +326,13 @@ volicord connection verify codex --repo /path/to/your-product-repo
 
 저장된 설정 상태, 필요한 사용자 동작, 현재 관찰 사실을 확인해야 하면
 `volicord connection status HOST --repo PATH`와 `volicord doctor`를 사용합니다. 설치된
-파일, 생성된 안내, policy 메타데이터만으로 호스트가 detective 전용 구성 요소를 로드하거나
-실행했다는 것이 증명되지는 않습니다.
+파일, 생성된 프로젝트 지침, 로컬 설정 파일만으로 호스트가 detective 전용 구성 요소를
+로드하거나 실행했다는 것이 증명되지는 않습니다.
 
 호스트별 파일 배치, hook matcher, wrapper 출력 방식, 경로 안전성 진단, 호스트 approval
 또는 reload 세부사항은 [에이전트 호스트 설정](docs/ko/user-guide/agent-host-setup.md)과
-[에이전트 호스트 문제 해결](docs/ko/user-guide/agent-host-troubleshooting.md)이 담당합니다.
-정확한 명령 동작은 [관리 CLI 참조](docs/ko/reference/admin-cli.md)가 담당합니다.
+[에이전트 호스트 문제 해결](docs/ko/user-guide/agent-host-troubleshooting.md)을 보세요.
+정확한 명령 동작은 [관리 CLI 참조](docs/ko/reference/admin-cli.md)를 보세요.
 
 ## 미기록 변경과 닫기 차단 사유
 
@@ -454,4 +453,4 @@ volicord serve --transport local-http
 | 공개 API 메서드와 스키마 | [참조 색인](docs/ko/reference/README.md) |
 
 Volicord 명령은 로컬 관리 명령이며 공개 Volicord API 메서드가 아닙니다. 정확한 공개 API
-동작은 참조 문서가 담당합니다.
+동작은 참조 문서에 있습니다.

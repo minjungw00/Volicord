@@ -7,7 +7,7 @@ Use this guide when writing or reviewing agent behavior for a Volicord-connected
 
 A good Volicord-connected agent turns ordinary user requests into careful work, keeps context small, preserves user-owned judgment, checks before writes, records evidence after meaningful action, reports status for the user's next decision, and closes honestly.
 
-In this guide, Volicord is the local work authority record for AI-assisted product work. Exact authority-record structure belongs to [Core Model](../reference/core-model.md); keep that owner route separate from user-facing status, approvals, Evidence, and Close Status summaries.
+In this guide, Volicord is the local work authority record for AI-assisted product work. For exact authority-record structure, see [Core Model](../reference/core-model.md); keep that Reference path separate from user-facing status, approvals, Evidence, and Close Status summaries.
 
 This guide is workflow guidance. It is not a connector contract, API schema, template catalog, conformance fixture, storage contract, or security guarantee.
 
@@ -18,7 +18,7 @@ OS-level blocking; and Close Status is decision support, not proof of
 correctness, test sufficiency, QA completion, deployment success, human review
 completion, or risk-free completion.
 
-Owner links:
+Reference links:
 
 - Exact Agent Connection behavior: [Agent Connection Reference](../reference/agent-connection.md)
 - Host setup and multi-repository operation: [Agent Host Setup](agent-host-setup.md) and [Multi-Repository Agent Setup](multi-repository-agent-setup.md)
@@ -41,12 +41,12 @@ Keep the loop light for tiny changes. Increase procedure weight when the task be
 
 ### Agent/User authority loop
 
-Use this table to keep agent workflow and user authority paths separate. The exact authority model is owned by [Core Model](../reference/core-model.md), and MCP exposure boundaries are owned by [Agent Connection Reference](../reference/agent-connection.md).
+Use this table to keep agent workflow and user authority paths separate. For the exact authority model, see [Core Model](../reference/core-model.md); for MCP exposure boundaries, see [Agent Connection Reference](../reference/agent-connection.md).
 
 | Moment | Agent-side workflow | User-side authority path | Boundary to preserve |
 |---|---|---|---|
 | Shape and inspect | Use the Agent Connection to read status, inspect available context, and identify the next safe action. | State the goal, scope, non-goals, and any "ask me before..." limits in ordinary language. | Chat, generated Markdown, and guidance help orientation but are not the Volicord record. |
-| Request a judgment | When an owner supports it, request or display a focused pending judgment and Volicord-provided options. | Review the pending question and decide whether to answer, reject, defer, narrow, or ask for more evidence. | `volicord.request_user_judgment` creates or exposes the question; it does not record the user's answer. |
+| Request a judgment | When Volicord supports it, request or display a focused pending judgment and Volicord-provided options. | Review the pending question and decide whether to answer, reject, defer, narrow, or ask for more evidence. | `volicord.request_user_judgment` creates or exposes the question; it does not record the user's answer. |
 | Record an answer | Route the human to the supported `User Channel`; continue only with work that does not depend on an unrecorded judgment. | Record one shown option through the local user path when the answer must become part of Volicord state. | `volicord.record_user_judgment` is a User Channel method, not an Agent Connection MCP workflow tool. |
 | Continue, write, or close | Refresh state, prepare needed write tickets, record Runs and evidence, and surface blockers. | Provide final acceptance, residual-risk acceptance, or the next user decision only when the visible basis is clear. | Evidence attachments support claims; they do not replace User Judgment, Close Status, or residual-risk decisions. |
 
@@ -107,7 +107,7 @@ Volicord authority and external filesystem permission remain distinct. A Volicor
 <a id="keep-context-small"></a>
 ## Keep context small
 
-Always-on context should fit the next action. Carry summaries and refs, then load exact owner sections only when the next action needs them.
+Always-on context should fit the next action. Carry summaries and refs, then load exact Reference sections only when the next action needs them.
 
 Include only what is currently useful:
 
@@ -192,7 +192,7 @@ Keep product judgment, technical judgment, scope judgment, sensitive-action appr
 ### Route authority-bearing answers to the User Channel
 
 When Volicord needs a User Judgment, the agent may request or present the
-focused judgment need and show the owner-returned options. Volicord-provided
+focused judgment need and show the options Volicord returned. Volicord-provided
 options define what the user can accept, reject, defer, or otherwise select for
 that judgment. Do not add extra authority outcomes in prose.
 
@@ -233,7 +233,7 @@ user-owned judgment.
 <a id="check-before-writes"></a>
 ## Check before writes
 
-Before product, code, or file writes in Volicord-connected work, request a write ticket through the owner write path only after the intended operation is specific enough to evaluate. Exact prepare-write behavior belongs to [Prepare-write Method](../reference/api/method-prepare-write.md).
+Before product, code, or file writes in Volicord-connected work, request a write ticket through the prepare-write path only after the intended operation is specific enough to evaluate. Exact prepare-write behavior belongs to [Prepare-write Method](../reference/api/method-prepare-write.md).
 
 Do not claim write compatibility from a plan, stale chat context, broad enthusiasm, stale status, generated summary, or rendered view.
 
@@ -270,7 +270,7 @@ After meaningful execution, checks, reviews, or evidence-attachment-producing wo
 
 Use `volicord.stage_artifact` only when bytes or a safe notice must be prepared as an Evidence attachment input. The public evidence step is still `volicord.record_run`, which records the claim, provenance, and any linked attachment. A staged handle, copied file path, or attachment input is input-only until a committed record-run result links it to claim-scoped Evidence.
 
-User-facing summaries use `prepared` for staged attachment input, `attached` for evidence linked by a committed run or owner method, and `accepted_for_close` only when the current close basis can use that evidence for close-readiness calculation. The mapping is owned by [Artifact Storage](../reference/storage-artifacts.md#public-evidence-state-mapping).
+User-facing summaries use `prepared` for staged attachment input, `attached` for evidence linked by a committed run or applicable method, and `accepted_for_close` only when the current close basis can use that evidence for close-readiness calculation. For the mapping, see [Artifact Storage](../reference/storage-artifacts.md#public-evidence-state-mapping).
 
 Evidence display should say:
 
@@ -325,7 +325,7 @@ Use a read-only close review when the user only asks whether close would be bloc
 Do not close from prose, tests alone, broad acceptance-like language, residual-risk acceptance, generated readable views, or stale status summaries. Final acceptance and residual-risk acceptance cannot override missing required evidence.
 
 <a id="respect-boundaries"></a>
-## Respect owner and scope boundaries
+## Respect Reference And Scope Boundaries
 
 Baseline behavior should stay compact. Do not make out-of-scope capability presentation formats look like supported requirements.
 
@@ -340,28 +340,22 @@ Do not make these appear required for ordinary baseline work:
 - operations control programs
 - other out-of-scope capabilities
 
-Quality concerns should route to the applicable owner when one applies, such as scope, user-owned judgment, evidence, residual-risk visibility, Agent Connection capability, or another applicable blocker. Do not invent a separate quality gate or waiver path in the use guide.
+Quality concerns should route to the applicable reference or blocker category when one applies, such as scope, user-owned judgment, evidence, residual-risk visibility, Agent Connection capability, or another applicable blocker. Do not invent a separate quality gate or waiver path in the use guide.
 
-Use compact user-facing shapes first: status, focused judgment request, what was checked, and Close Status. Reference exact contracts only when the next action depends on the owner.
+Use compact user-facing shapes first: status, focused judgment request, what was checked, and Close Status. Reference exact contracts only when the next action depends on exact contract details.
 
 <a id="language-context"></a>
 ## Choose language context deliberately
 
 For ordinary Volicord session context, load the language needed for the current user or task. Do not load both English and Korean paired docs for the same `doc_id` unless translation parity is the work.
 
-Bilingual documentation maintenance is different: use the documentation and translation policies, compare paired files deliberately, and keep semantic parity.
-
 When the task is Korean-facing, preserve exact identifiers such as API names, schema fields, enum values, file paths, error codes, table names, and validator IDs. Write natural Korean for ordinary concepts instead of English nouns with Korean particles.
 
 <a id="where-next"></a>
 ## Where to go next
 
-Agent authors and operators should use this path:
-
-[AGENTS.md](../../../AGENTS.md) -> [doc-index.yaml](../../doc-index.yaml) -> this guide -> [Agent Connection Reference](../reference/agent-connection.md)
-
-Then use:
+Agent authors and operators should start with this guide, then use:
 
 - [Agent Host Setup](agent-host-setup.md) for connecting, verifying, and removing Codex or Claude Code Agent Connections
 - [Multi-Repository Agent Setup](multi-repository-agent-setup.md) for user-scope Agent Connections that allow more than one `Product Repository`
-- [Reference Index](../reference/README.md) only when the next action needs an exact owner contract
+- [Reference Index](../reference/README.md) only when the next action needs an exact Reference contract

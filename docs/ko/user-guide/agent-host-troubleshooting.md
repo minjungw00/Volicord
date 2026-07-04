@@ -4,9 +4,9 @@
 보고할 때 이 가이드를 사용합니다. 이 가이드는 Volicord가 Product Repository를 감지하고
 내부 식별 정보를 관리하는 단순화된 명령 모델을 전제로 합니다.
 
-정확한 setup, doctor, 연결 결과 상태 의미는
+정확한 setup, doctor, 연결 결과 상태 의미를 확인하려면
 [관리 CLI 참조](../reference/admin-cli.md#runtime-home-selection)와
-[연결 결과 상태](../reference/admin-cli.md#agent-connection-result-states)가 담당합니다.
+[연결 결과 상태](../reference/admin-cli.md#agent-connection-result-states)를 보세요.
 
 ## 변경 전에
 
@@ -196,7 +196,7 @@ Inbox 항목에 이미 표시된 URL을 사용합니다. selector가 모호하�
 4. Dry-run 계획이 기대한 호스트와 Product Repository를 이름 붙인 뒤에만 실제 명령을 다시
    실행합니다.
 
-정확한 실패 문구를 사용해 다음 동작을 고릅니다. 담당 문서나 인간 운영자가 의도한
+정확한 실패 문구를 사용해 다음 동작을 고릅니다. 참조 문서나 인간 운영자가 의도한
 복구라고 식별하지 않은 한 Runtime Home 상태나 호스트 설정을 직접 삭제하지 않습니다.
 
 ## MCP 명령을 사용할 수 없음

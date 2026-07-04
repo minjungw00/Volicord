@@ -26,7 +26,7 @@ you want the agent to work. `volicord init` creates or reuses the Runtime Home
 and installation profile when needed, registers or reuses that repository
 project, derives the visible project name from the repository directory,
 installs project-scoped MCP configuration for the selected host, writes
-Volicord-managed guidance and policy metadata, records integration
+project-scoped Volicord guidance and local setup files, records integration
 status, and stores internal registry identities in the selected
 `Volicord Runtime Home`. Generated host configuration starts
 `volicord mcp --stdio`. `--profile record` does not require host lifecycle hook
@@ -48,7 +48,7 @@ selected connection or session:
 
 | Profile | How it is reached | Operational meaning |
 |---|---|---|
-| Record profile (`record`) | MCP tools and authority records are available without requiring host hooks or a session watcher. | Setup guidance and policy metadata can steer the host but cannot force it. |
+| Record profile (`record`) | MCP tools and authority records are available without requiring host hooks or a session watcher. | Generated setup guidance can steer the host but cannot force it. |
 | Detective profile (`detective`) | Project-local host hooks have verified generated config, cwd-independent and subdirectory-safe hook commands, native host output, required phases, write matchers, matching policy hash, runtime observation, and session watcher observation. | Cooperative host warning or denial decision signals, post-tool correlation, chat command capture, detective status, Unrecorded Changes, and close/write blockers can participate in the workflow. |
 
 The Record profile can issue Volicord Write Tickets through the prepare-write

@@ -211,8 +211,8 @@ Bounded recovery:
    and Product Repository.
 
 Use the exact failure text to choose the next action. Do not delete Runtime Home
-state or host configuration by hand unless an owner document or human operator
-has identified that as the intended recovery.
+state or host configuration by hand unless a Reference document or human
+operator has identified that as the intended recovery.
 
 ## MCP Command Is Unavailable
 

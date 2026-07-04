@@ -5,9 +5,9 @@
 그리고 호스트 capability에 맞는 통합 프로필에서 시작하며, 내부 호스트와 registry 값은
 Volicord가 관리합니다.
 
-정확한 CLI 동작은 [관리 CLI 참조](../reference/admin-cli.md)가 담당합니다.
-Agent Connection 의미는 [Agent Connection 참조](../reference/agent-connection.md)가,
-런타임/파일 경계는 [런타임 경계](../reference/runtime-boundaries.md)가 담당합니다.
+정확한 CLI 동작은 [관리 CLI 참조](../reference/admin-cli.md)를 보세요.
+Agent Connection 의미는 [Agent Connection 참조](../reference/agent-connection.md),
+런타임/파일 경계는 [런타임 경계](../reference/runtime-boundaries.md)에 있습니다.
 
 ## 설정 순서
 
@@ -23,7 +23,7 @@ volicord connection status codex --repo /path/to/your-product-repo
 예시입니다. `volicord init`은 필요하면 Runtime Home과 설치 프로필을 만들거나
 재사용하고, 해당 저장소 프로젝트를 등록하거나 재사용하며, 저장소 디렉터리에서 보이는
 프로젝트 이름을 파생하고, 선택한 호스트의 프로젝트 범위 MCP 설정을 설치하고,
-Volicord 관리 지침과 policy 메타데이터를 쓰고, 통합 상태를 기록하며, 내부
+프로젝트 범위 Volicord 지침과 로컬 설정 파일을 쓰고, 통합 상태를 기록하며, 내부
 registry 식별 정보를 선택된 `Volicord Runtime Home`에 저장합니다. 생성된 호스트
 설정은 `volicord mcp --stdio`를 시작합니다. `--profile record`는 host lifecycle hook
 설치나 session watcher를 요구하지 않습니다.
@@ -43,7 +43,7 @@ Detective 상태는 선택된 연결 또는 session에 대해 선택된 프로�
 
 | 프로필 | 도달 조건 | 운영상 의미 |
 |---|---|---|
-| Record profile(`record`) | Host hook이나 session watcher를 요구하지 않고 MCP 도구와 권한 기록을 사용할 수 있습니다. | 설정 안내와 policy 메타데이터가 호스트를 유도할 수 있지만 강제하지는 못합니다. |
+| Record profile(`record`) | Host hook이나 session watcher를 요구하지 않고 MCP 도구와 권한 기록을 사용할 수 있습니다. | 생성된 설정 안내가 호스트를 유도할 수 있지만 강제하지는 못합니다. |
 | Detective profile(`detective`) | 프로젝트 로컬 host hook에 검증된 생성 설정, cwd-independent 및 subdirectory-safe hook 명령, native host output, 필수 phase, 쓰기 matcher, 일치하는 policy hash, 런타임 관찰, session watcher 관찰이 있습니다. | 협력형 host warning 또는 denial decision 신호, post-tool 상관, 채팅 명령 캡처, detective 상태, 미기록 변경, 닫기/쓰기 차단 사유가 workflow에 참여할 수 있습니다. |
 
 Record profile은 prepare-write workflow를 통해 Volicord 쓰기 티켓을 발급할 수 있습니다.

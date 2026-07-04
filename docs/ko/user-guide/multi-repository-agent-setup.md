@@ -4,8 +4,8 @@
 `Product Repository`를 처리해야 할 때 이 가이드를 사용합니다.
 
 이 가이드는 운영자 작업 흐름입니다. 정확한 Agent Connection, 프로젝트 선택, 전송
-동작은 [Agent Connection](../reference/agent-connection.md)과
-[MCP 전송](../reference/mcp-transport.md)이 담당합니다.
+동작을 확인하려면 [Agent Connection](../reference/agent-connection.md)과
+[MCP 전송](../reference/mcp-transport.md)을 보세요.
 
 이 문서는 Product Repository 하나를 위한 기본 첫 실행 경로가 아닙니다. 일반 첫 실행
 설정에는 [에이전트 호스트 설정](agent-host-setup.md)과
@@ -163,4 +163,4 @@ Product Repository 하나를 제거하면 해당 Product Repository의 Connectio
   있지만 Volicord 권한이 아닙니다.
 - 쓰기 티켓은 제안된 제품 파일 쓰기에 대한 Volicord 작업 권한 판단을 기록합니다.
   OS 권한, 코드 리뷰 승인, 최종 수락, 쓰기가 실제로 일어났다는 증명이 아닙니다.
-- 보안 한계와 비보장은 [보안](../reference/security.md)이 담당합니다.
+- 보안 한계와 비보장은 [보안](../reference/security.md)에 있습니다.

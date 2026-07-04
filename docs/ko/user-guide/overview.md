@@ -1,6 +1,6 @@
 # 사용자 가이드 개요
 
-이 문서는 Volicord의 첫 읽기 개요입니다. 제품의 핵심 생각을 일반 언어로 설명하고 정확한 계약 질문은 Reference 담당 문서로 보냅니다.
+이 문서는 Volicord의 첫 읽기 개요입니다. 제품의 핵심 생각을 일반 언어로 설명하고 정확한 계약 질문은 참조 문서로 안내합니다.
 
 <a id="what-volicord-is"></a>
 ## Volicord란
@@ -9,11 +9,11 @@ Volicord는 AI 보조 제품 작업을 위한 로컬 작업 권한 기록입니�
 에이전트가 함께 일할 때 사용자의 판단 근거를 작업 흐름 안에서 보이게 유지합니다.
 
 Volicord는 로컬 런타임 구성요소, Agent Connection, 지원되는 호스트 설정, 문서 경로를
-포함합니다. 정확한 권한 기록 구조는 [Core 모델](../reference/core-model.md)이
-담당하지만, 첫 읽기 사용자 경로에서 그 내부 용어를 알아야 하는 것은 아닙니다.
+포함합니다. 정확한 권한 기록 구조는 [Core 모델](../reference/core-model.md)을 보세요.
+첫 읽기 사용자 경로에서 그 내부 용어를 알아야 하는 것은 아닙니다.
 
 Volicord는 권한 시스템, OS 보안 제품, 샌드박스, 증명 시스템이 아닙니다. 정확한 보장
-표현과 비보장은 [보안](../reference/security.md)이 담당합니다.
+표현과 비보장은 [보안](../reference/security.md)에 있습니다.
 
 ## 일반적인 문제
 
@@ -32,12 +32,12 @@ Volicord는 이런 대체를 보이게 하려고 존재합니다. 범위, 사용
 
 아래 이름들은 서로 관련되지만 서로 바꿔 쓸 수 없습니다.
 
-| 이름 | 첫 읽기 의미 | 정확한 담당 문서 |
+| 이름 | 첫 읽기 의미 | 정확한 참조 |
 |---|---|---|
 | Volicord | AI 보조 제품 작업을 위한 로컬 작업 권한 기록. | [Volicord란](#what-volicord-is) |
 | `volicord` | 로컬 관리 CLI 명령, 로컬 User Channel, 생성된 MCP 호스트 설정이 사용하는 `mcp` 하위 명령을 제공하는 설치 실행 파일. | [관리 CLI](../reference/admin-cli.md) |
 | `volicord mcp --stdio` | 생성된 호스트 설정이 선택된 Agent Connection을 위해 자식 프로세스로 시작하는 stdio MCP 프로세스 모드. | [MCP 전송](../reference/mcp-transport.md) |
-| `Volicord Runtime Home` | 저장소/런타임 담당 문서가 정의하는 Volicord 운영 데이터의 로컬 런타임 데이터 공간. | [런타임 경계](../reference/runtime-boundaries.md) |
+| `Volicord Runtime Home` | Volicord 운영 데이터의 로컬 런타임 데이터 공간. | [런타임 경계](../reference/runtime-boundaries.md) |
 | `Product Repository` | 사용자의 프로젝트 작업공간과 제품 파일. 명시적으로 선택된 프로젝트 범위 호스트 설정을 포함할 수 있지만 Volicord 런타임 상태는 아닙니다. | [런타임 경계](../reference/runtime-boundaries.md) |
 | Agent Connection | 로컬 MCP 호스트 connection 단위. 하나의 호스트 설정 대상, 관리되는 연결 식별 정보, 모드, 명시적으로 연결된 Project를 묶습니다. | [Agent Connection Reference](../reference/agent-connection.md) |
 | User Channel | 권한을 지니는 사용자 판단을 위한 로컬 사용자 경로. Agent Connection은 `user_only` 판단을 기록하지 않습니다. | [관리 CLI](../reference/admin-cli.md#user-channel-commands) |
@@ -46,7 +46,7 @@ Volicord는 이런 대체를 보이게 하려고 존재합니다. 범위, 사용
 `volicord mcp --stdio` 프로세스는 내부 연결 식별 정보로 하나의 Agent Connection에
 묶이고, connection은 명시적으로 연결된 Project에만 접근할 수 있습니다. 정확한 프로젝트
 선택과 MCP 도구 인자 동작은 [Agent Connection Reference](../reference/agent-connection.md)와
-[MCP 전송](../reference/mcp-transport.md)이 담당합니다.
+[MCP 전송](../reference/mcp-transport.md)을 보세요.
 
 ## 설정이 하는 일
 
@@ -58,7 +58,7 @@ Volicord는 이런 대체를 보이게 하려고 존재합니다. 범위, 사용
 - `Product Repository` 등록 또는 재사용
 - Agent Connection과 Connection Projects 멤버십 생성 또는 재사용
 - `volicord mcp --stdio`를 시작하는 프로젝트 범위 Codex 또는 Claude Code MCP 설정 설치
-- Volicord 관리 지침과 policy 메타데이터 설치
+- 프로젝트 범위 Volicord 지침과 로컬 설정 파일 설치
 - 통합 상태 기록
 - 설정 검증을 실행하고 `complete`, `action_required`, `failed` 보고
 
@@ -96,16 +96,16 @@ Agent Connection은 읽기 중심 모드나 workflow 가능 모드로 둘 수 �
 상태를 조회하고, 프로젝트를 찾고, workflow 변경 도구 없이 닫기 상태를 확인해야
 하면 읽기 중심 모드를 사용합니다. 일반 에이전트 workflow 작업에는 workflow 모드를
 사용합니다. 정확한 CLI 선택 동작은 [관리
-CLI](../reference/admin-cli.md#connection-intents-and-hosts)가 담당하고, MCP에 보이는
+CLI](../reference/admin-cli.md#connection-intents-and-hosts)를 보세요. MCP에 보이는
 정확한 도구 노출은 [MCP
-전송](../reference/mcp-transport.md#tool-discovery-and-toolscall-response-wrapping)이
-담당합니다.
+전송](../reference/mcp-transport.md#tool-discovery-and-toolscall-response-wrapping)에
+있습니다.
 
 ## Volicord가 아닌 것
 
 첫 읽기 제품 정체성에는 이 개요를 사용합니다. 정확한 지원 기준과 범위 밖 경계는 [범위](../reference/scope.md#product-role-exclusions)를 봅니다.
 
-Volicord는 다듬어진 채팅 답변, 생성된 요약, 읽기 쉬운 상태 카드, 복사된 식별자, 선택적 저장소 안내, `Projection`을 권한 기록으로 바꾸지 않습니다. 정확한 표시 경계는 [Projection과 템플릿](../reference/projection-and-templates.md), 런타임과 위치 경계는 [런타임 경계](../reference/runtime-boundaries.md), 보안 문구는 [보안](../reference/security.md)이 담당합니다.
+Volicord는 다듬어진 채팅 답변, 생성된 요약, 읽기 쉬운 상태 카드, 복사된 식별자, 선택적 저장소 안내, `Projection`을 권한 기록으로 바꾸지 않습니다. 정확한 표시 경계는 [Projection과 템플릿](../reference/projection-and-templates.md), 런타임과 위치 경계는 [런타임 경계](../reference/runtime-boundaries.md), 보안 문구는 [보안](../reference/security.md)을 보세요.
 
 ## 다음 독자 경로
 
@@ -120,4 +120,4 @@ Volicord는 다듬어진 채팅 답변, 생성된 요약, 읽기 쉬운 상태 �
 | 소스 코드 학습자 | [구현 가이드](../architecture-guide/change-guide.md) -> [아키텍처](../architecture-guide/architecture.md) |
 | Reference 독자 | [Reference Index](../reference/README.md), [관리 CLI](../reference/admin-cli.md), [API 메서드](../reference/api/methods.md) |
 
-새 독자가 Volicord를 이해하는 데 API 스키마나 담당자 메타데이터가 필요해서는 안 됩니다. 정확한 계약 담당 문서가 필요할 때 [Reference Index](../reference/README.md)를 사용합니다.
+첫 읽기에는 API 스키마나 자세한 참조 계약이 필요하지 않습니다. 정확한 계약 세부사항이 필요할 때 [Reference Index](../reference/README.md)를 사용합니다.

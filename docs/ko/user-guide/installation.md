@@ -5,9 +5,9 @@
 실행하면서 설치 프로필을 기록합니다. 저장된 설치 프로필을 확인해야 할 때는
 `volicord doctor`를 사용합니다.
 
-정확한 명령 동작은 [관리 CLI 참조](../reference/admin-cli.md)가 담당합니다.
-런타임 위치와 저장소 분리는 [런타임 경계](../reference/runtime-boundaries.md)가
-담당합니다.
+정확한 명령 동작은 [관리 CLI 참조](../reference/admin-cli.md)를 보세요.
+런타임 위치와 저장소 분리는 [런타임 경계](../reference/runtime-boundaries.md)에
+있습니다.
 
 ## 전제 조건
 
@@ -166,7 +166,7 @@ host hook과 watcher 동작이 구현되고 테스트되기 전까지 unsupporte
 저장하면서 저장소를 연결합니다. 실행 중인 `volicord` 실행 파일을 발견하고 MCP 시작
 명령을 저장하며, 이후 터미널과 에이전트 호스트에서 선택된 명령을 `PATH`로 사용할 수
 있는지 확인합니다. 정확한 Runtime Home 선택, MCP 시작 명령 동작, 출력 동작은
-[관리 CLI 참조](../reference/admin-cli.md#runtime-home-selection)가 담당합니다. 이 상태는
+[관리 CLI 참조](../reference/admin-cli.md#runtime-home-selection)를 보세요. 이 상태는
 setup에 이름 붙은 사용자 또는 호스트 동작이 아직 필요한지를 답하므로, 오래 유지되는
 로컬 상태가 저장된 뒤에도 `action_required`가 나타날 수 있습니다.
 
@@ -299,7 +299,7 @@ docker run --rm \
 실행할 때 이루어집니다.
 
 프로젝트 이름과 내부 식별 정보 동작은 [관리 CLI
-참조](../reference/admin-cli.md#project-commands)가 담당합니다. 내부 식별 정보는
+참조](../reference/admin-cli.md#project-commands)를 보세요. 내부 식별 정보는
 Volicord가 저장하며 첫 설정 입력이 아닙니다.
 
 ## 다음 단계

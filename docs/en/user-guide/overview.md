@@ -1,13 +1,13 @@
 # User Guide Overview
 
-This is the first-read overview for Volicord. It explains the product thesis in ordinary language and routes exact contract questions to Reference owners.
+This is the first-read overview for Volicord. It explains the product thesis in ordinary language and sends exact contract questions to the Reference layer.
 
 <a id="what-volicord-is"></a>
 ## What Volicord Is
 
 Volicord is a local work authority record for AI-assisted product work. Its thesis is simple: AI-assisted work should keep the user's authority basis visible while the work moves.
 
-Volicord includes local runtime components, Agent Connections, supported host configuration, and documentation routes. Exact authority-record structure belongs to [Core Model](../reference/core-model.md), but first-read user paths do not require that internal term.
+Volicord includes local runtime components, Agent Connections, supported host configuration, and documentation routes. For exact authority-record structure, see [Core Model](../reference/core-model.md), but first-read user paths do not require that internal term.
 
 Volicord is not a permission system, OS security product, sandbox, or proof
 system. Exact guarantee wording and non-guarantees live in
@@ -29,12 +29,12 @@ Volicord exists to make those substitutions visible. It gives the agent and user
 
 These names are related, but they are not interchangeable.
 
-| Name | First-read meaning | Exact owner |
+| Name | First-read meaning | Exact reference |
 |---|---|---|
 | Volicord | The local work authority record for AI-assisted product work. | [What Volicord Is](#what-volicord-is) |
 | `volicord` | The installed executable that provides local administrative CLI commands, the local User Channel, and the `mcp` subcommand used by generated MCP host configuration. | [Administrative CLI](../reference/admin-cli.md) |
 | `volicord mcp --stdio` | The stdio MCP process mode that generated host configuration starts as a child process for the selected Agent Connection. | [MCP Transport](../reference/mcp-transport.md) |
-| `Volicord Runtime Home` | The local runtime data space for Volicord operational data as storage/runtime owners define it. | [Runtime Boundaries](../reference/runtime-boundaries.md) |
+| `Volicord Runtime Home` | The local runtime data space for Volicord operational data. | [Runtime Boundaries](../reference/runtime-boundaries.md) |
 | `Product Repository` | The user's project workspace and product files. It may contain explicitly selected project-scoped host configuration, but it is not Volicord runtime state. | [Runtime Boundaries](../reference/runtime-boundaries.md) |
 | Agent Connection | A local MCP host connection unit. It binds one host configuration target to one managed connection identity, a mode, and explicitly connected Projects. | [Agent Connection Reference](../reference/agent-connection.md) |
 | User Channel | The local user path for authority-bearing user judgments. Agent Connections do not record `user_only` judgments. | [Administrative CLI](../reference/admin-cli.md#user-channel-commands) |
@@ -57,7 +57,7 @@ Agent setup through the ordinary
 - create or reuse an Agent Connection and Connection Projects membership
 - install project-scoped Codex or Claude Code MCP configuration that starts
   `volicord mcp --stdio`
-- install Volicord-managed guidance and policy metadata
+- install project-scoped Volicord guidance and local setup files
 - record integration state
 - run setup verification and report `complete`, `action_required`, or `failed`
 
@@ -120,4 +120,4 @@ Volicord does not turn a polished chat answer, generated summary, readable statu
 | Source-code learner | [Implementation Guide](../architecture-guide/change-guide.md) -> [Architecture](../architecture-guide/architecture.md) |
 | Reference reader | [Reference Index](../reference/README.md), [Administrative CLI](../reference/admin-cli.md), [API Methods](../reference/api/methods.md) |
 
-New readers should not need API schemas or owner metadata to understand what Volicord is. Use the [Reference Index](../reference/README.md) when you need exact contract owners.
+New readers should not need API schemas or detailed reference contracts for the first read. Use the [Reference Index](../reference/README.md) when you need exact contract details.

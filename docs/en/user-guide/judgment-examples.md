@@ -2,7 +2,7 @@
 
 Use these examples after the [User Guide](user-workflow.md) when a task is blocked by a choice the agent should not make alone.
 
-The examples are illustrative. They help readers recognize boundary shapes while exact policy, schema, close, and route meanings stay with their owners. Each scenario is a standalone example for this guide. For exact owner boundaries, use [Core Model](../reference/core-model.md), [Scope](../reference/scope.md), and the relevant owners from the [Reference Index](../reference/README.md).
+The examples are illustrative. They help readers recognize boundary shapes while exact policy, schema, close, and route meanings stay in Reference pages. Each scenario is a standalone example for this guide. For exact boundaries, use [Core Model](../reference/core-model.md), [Scope](../reference/scope.md), and the [Reference Index](../reference/README.md).
 
 Each example separates the user's decision from what the agent may do and what the agent must not imply. User Judgment, sensitive-action approval, final acceptance, residual-risk acceptance, verification criteria, Evidence, Close Status, and Write Ticket stay distinct.
 
@@ -34,7 +34,7 @@ Agent must not imply:
 - Surrounding code is enough to infer product intent.
 - This product choice also grants final acceptance, residual-risk acceptance, sensitive-action approval, scope expansion, evidence sufficiency, or write ticket.
 
-Owner links:
+Reference links:
 
 - [Core Model](../reference/core-model.md)
 - [API Judgment Schemas](../reference/api/schema-judgment.md)
@@ -45,7 +45,7 @@ Scenario:
 
 - The agent needs to choose whether a new report-export confirmation should live in the UI flow, an existing service boundary, or a new shared helper.
 
-This scenario illustrates ownership of a material technical direction. The report-export confirmation is only the example subject.
+This scenario illustrates a material technical direction that belongs to the user. The report-export confirmation is only the example subject.
 
 User decides:
 
@@ -63,7 +63,7 @@ Agent must not imply:
 - A strong recommendation is the same thing as user-owned technical judgment.
 - A technical choice approves dependency installation, product-file writes, data-shape changes, sensitive-action approval, final acceptance, residual-risk acceptance, or write ticket by itself.
 
-Owner links:
+Reference links:
 
 - [Core Model](../reference/core-model.md)
 - [Agent Guide](agent-workflow.md)
@@ -90,7 +90,7 @@ Agent must not imply:
 - Scope expansion can be inferred from implementation convenience.
 - Scope change also creates sensitive-action approval, final acceptance, residual-risk acceptance, evidence sufficiency, or write ticket.
 
-Owner links:
+Reference links:
 
 - [Core Model](../reference/core-model.md)
 - [Update-scope Method](../reference/api/method-update-scope.md)
@@ -117,7 +117,7 @@ Agent must not imply:
 - Verification criteria are evidence, QA completion, final acceptance, residual-risk acceptance, sensitive-action approval, scope expansion, or write ticket.
 - Meeting criteria in an agent summary alone makes the task close-ready.
 
-Owner links:
+Reference links:
 
 - [Core Model](../reference/core-model.md)
 - [Agent Guide](agent-workflow.md)
@@ -144,7 +144,7 @@ Agent must not imply:
 - Sensitive-action approval is write approval, a write ticket, final acceptance, residual-risk acceptance, verification criteria, or security authority.
 - A broad "go ahead" approves unrelated installs, upgrades, deploys, secret printing, product decisions, or product-file writes.
 
-Owner links:
+Reference links:
 
 - [Core Model](../reference/core-model.md)
 - [Security](../reference/security.md)
@@ -164,14 +164,14 @@ Agent may do:
 
 - Identify missing or stale evidence.
 - Explain what claim cannot be supported yet.
-- Follow the evidence and attachment owners when attaching or referencing eligible evidence inputs.
+- Use the evidence and attachment references when attaching or referencing eligible evidence inputs.
 
 Agent must not imply:
 
 - Agent confidence, passing tests alone, a chat summary, or broad approval proves evidence sufficiency.
 - Evidence attachment availability by itself creates Evidence, verification criteria, final acceptance, residual-risk acceptance, QA, or Close Status.
 
-Owner links:
+Reference links:
 
 - [Core Model](../reference/core-model.md)
 - [API State Schemas](../reference/api/schema-state.md)
@@ -198,7 +198,7 @@ Agent must not imply:
 - A casual "looks good" settles final acceptance when no exact final-acceptance question was pending.
 - Final acceptance supplies missing evidence, changes verification criteria, accepts residual risk, expands current scope, creates sensitive-action approval or a write ticket, or accepts unrelated files.
 
-Owner links:
+Reference links:
 
 - [Core Model](../reference/core-model.md)
 - [API Judgment Schemas](../reference/api/schema-judgment.md)
@@ -224,7 +224,7 @@ Agent must not imply:
 - Residual-risk acceptance is final acceptance, evidence sufficiency, verification criteria satisfaction, QA, or proof that no risk remains.
 - Acceptance of one risk accepts other risks or hides the risk from close reporting.
 
-Owner links:
+Reference links:
 
 - [Core Model](../reference/core-model.md)
 - [API Judgment Schemas](../reference/api/schema-judgment.md)
@@ -249,7 +249,7 @@ Agent must not imply:
 - A status summary, passing checks, final acceptance alone, residual-risk acceptance alone, or chat text closes the task.
 - A read-only Close Status review creates Evidence, final acceptance, residual-risk acceptance, or task state.
 
-Owner links:
+Reference links:
 
 - [Core Model](../reference/core-model.md)
 - [Close-task Method](../reference/api/method-close-task.md)
@@ -276,11 +276,11 @@ Agent must not imply:
 - Every implementation detail needs a user decision.
 - Agent-owned latitude can change product behavior, current scope, sensitive actions, verification criteria, final acceptance, or residual risk without asking.
 
-Owner links:
+Reference links:
 
 - [Agent Guide](agent-workflow.md)
 - [Core Model](../reference/core-model.md)
 
 ## Where to go next
 
-Use [Agent Guide](agent-workflow.md) for operating patterns and [Scope](../reference/scope.md) when an example raises a baseline, profile-gated, or out-of-scope question. Use [Reference Index](../reference/README.md) for exact owner routing.
+Use [Agent Guide](agent-workflow.md) for operating patterns and [Scope](../reference/scope.md) when an example raises a baseline, profile-gated, or out-of-scope question. Use [Reference Index](../reference/README.md) for exact Reference routing.

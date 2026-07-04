@@ -19,8 +19,8 @@ volicord init --host codex --repo /path/to/your-product-repo --profile record
 you want the agent to work. `volicord init` is the primary first-run repository
 setup and host-connection command. It creates or reuses the Runtime Home and
 installation profile when needed, registers the selected repository, installs
-project-scoped MCP configuration for the selected host, writes Volicord-managed
-guidance and policy metadata, and records integration status.
+project-scoped MCP configuration for the selected host, writes project-scoped
+Volicord guidance and local setup files, and records integration status.
 Generated host configuration starts the single public executable as
 project-bound `volicord mcp --stdio`.
 

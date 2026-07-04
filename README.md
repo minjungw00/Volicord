@@ -43,7 +43,6 @@ Volicord is not a good fit when you need:
 - a tamper-proof audit log or centralized multi-user SaaS workflow
 - a tool that makes product direction, final acceptance, cancellation, or
   residual-risk decisions for the user
-- a full reference manual in the root README instead of a first-use path
 
 ## Quick Start
 
@@ -116,8 +115,8 @@ volicord init --host claude-code --repo /path/to/your-product-repo --profile rec
 chat-first use. It initializes the Runtime Home if needed, records the
 installation profile, registers or reuses the selected Product Repository,
 creates the Agent Connection, writes project-scoped MCP configuration that
-starts `volicord mcp --stdio`, writes Volicord-managed guidance and policy
-metadata, and records integration status.
+starts `volicord mcp --stdio`, writes project-scoped Volicord guidance and
+local setup files, and records integration status.
 
 If the command reports `action_required`, follow the named host-controlled or
 local action, such as restarting or reloading the host, approving project MCP
@@ -233,7 +232,7 @@ Use this short model when reading the rest of the README:
 | Write Ticket | A product-file change should be compatible with the current `Task` and current scope. A Write Ticket records a Volicord work-authority decision for one proposed product-file change; it is not OS permission, code review approval, final acceptance, or proof that a write occurred. |
 | Evidence | Recorded support for a specific claim, such as a run, observation, or evidence attachment. Evidence supports claims, but it does not become user judgment or proof of correctness. |
 | User Judgment | A decision that belongs to the user: product direction, material technical direction, scope, sensitive action, final acceptance, residual-risk acceptance, cancellation, or similar authority-bearing choices. |
-| Close Status | A check that the current `Task` can finish honestly without hiding unresolved owner-defined requirements. Close Status is decision support, not proof of correctness, test sufficiency, QA completion, deployment success, human review completion, or risk-free completion. |
+| Close Status | A check that the current `Task` can finish honestly without hiding unresolved requirements. Close Status is decision support, not proof of correctness, test sufficiency, QA completion, deployment success, human review completion, or risk-free completion. |
 
 ## How The Pieces Fit
 
@@ -347,8 +346,9 @@ volicord connection verify codex --repo /path/to/your-product-repo
 
 Use `volicord connection status HOST --repo PATH` and `volicord doctor` when
 you need to inspect stored setup state, required user actions, and the current
-observation facts. Installed files, generated guidance, and policy metadata
-alone do not prove that the host loaded or ran the detective-specific pieces.
+observation facts. Installed files, generated project guidance, and local setup
+files alone do not prove that the host loaded or ran the detective-specific
+pieces.
 
 Host-specific file layouts, hook matchers, wrapper output modes, path-safety
 diagnostics, and host approval or reload details live in
