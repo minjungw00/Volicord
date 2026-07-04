@@ -124,7 +124,7 @@ Include only what is currently useful:
 - source freshness
 - one next safe action
 
-Do not inject full schemas, DDL, template bodies, logs, evidence attachment bodies, paired bilingual docs, unrelated contract material, out-of-scope catalogs, or generated readable views into every prompt.
+Do not inject full schemas, DDL, template bodies, logs, evidence attachment bodies, unneeded cross-language material, unrelated contract material, out-of-scope catalogs, or generated readable views into every prompt.
 
 <a id="clarify-focused"></a>
 ## Clarify with focused questions
@@ -347,9 +347,9 @@ Use compact user-facing shapes first: status, focused judgment request, what was
 <a id="language-context"></a>
 ## Choose language context deliberately
 
-For ordinary Volicord session context, load the language needed for the current user or task. Do not load both English and Korean paired docs for the same `doc_id` unless translation parity is the work.
+For ordinary Volicord session context, use the language needed for the current user or task. Keep prompts to the language that helps the next action, and add cross-language material only when the user's request or task actually needs it.
 
-When the task is Korean-facing, preserve exact identifiers such as API names, schema fields, enum values, file paths, error codes, table names, and validator IDs. Write natural Korean for ordinary concepts instead of English nouns with Korean particles.
+When the task is Korean-facing, preserve exact identifiers such as API names, method names, command names, schema fields, enum values, file paths, error codes, table names, and validator IDs. Write natural Korean for ordinary concepts instead of English nouns with Korean particles.
 
 <a id="where-next"></a>
 ## Where to go next

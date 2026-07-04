@@ -352,7 +352,7 @@ Use guide pages for workflow. Use Reference docs for exact contracts:
 | API methods and schemas | [Reference Index](../reference/README.md) |
 | Agent Connection and User Channel behavior | [Agent Connection Reference](../reference/agent-connection.md) |
 
-Do not treat this guide as the API contract. Use the Reference links above when exact behavior matters.
+Use this guide for workflow orientation. Use the Reference links above when exact CLI, API, storage, security, Agent Connection, User Channel, or close behavior matters.
 
 ## Where to go next
 

@@ -339,7 +339,7 @@ flowchart TD
 | API 메서드와 스키마 | [참조 색인](../reference/README.md) |
 | Agent Connection과 User Channel 동작 | [Agent Connection 참조](../reference/agent-connection.md) |
 
-이 가이드는 API 계약이 아닙니다. 정확한 동작이 필요할 때 위 참조 문서를 사용합니다.
+이 가이드는 작업 흐름을 이해하는 데 사용합니다. CLI, API, 저장소, 보안, Agent Connection, User Channel, 닫기 동작의 정확한 내용이 필요할 때는 위 참조 문서를 사용합니다.
 
 ## 다음 읽기 경로
 
