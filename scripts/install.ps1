@@ -12,6 +12,7 @@ param(
 
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = "Stop"
+$StampedReleaseBaseUrl = ""
 
 function Fail {
     param([string]$Message)
@@ -66,28 +67,33 @@ function Get-OptionalReleaseBaseUrl {
         return $ReleaseBaseUrl.TrimEnd("/")
     }
 
-    if ([string]::IsNullOrWhiteSpace($Repo)) {
-        return $null
-    }
-    if ($Repo -notmatch "^[^/]+/[^/]+$") {
-        Fail "VOLICORD_REPO must use OWNER/REPO form"
+    if (-not [string]::IsNullOrWhiteSpace($Repo)) {
+        if ($Repo -notmatch "^[^/]+/[^/]+$") {
+            Fail "VOLICORD_REPO must use OWNER/REPO form"
+        }
+
+        $selectedVersion = $Version
+        if ([string]::IsNullOrWhiteSpace($selectedVersion)) {
+            $selectedVersion = "latest"
+        }
+
+        if ($selectedVersion -eq "latest") {
+            return "https://github.com/$Repo/releases/latest/download"
+        }
+        return "https://github.com/$Repo/releases/download/$selectedVersion"
     }
 
-    $selectedVersion = $Version
-    if ([string]::IsNullOrWhiteSpace($selectedVersion)) {
-        $selectedVersion = "latest"
+    if (-not [string]::IsNullOrWhiteSpace($StampedReleaseBaseUrl)) {
+        return $StampedReleaseBaseUrl.TrimEnd("/")
     }
 
-    if ($selectedVersion -eq "latest") {
-        return "https://github.com/$Repo/releases/latest/download"
-    }
-    return "https://github.com/$Repo/releases/download/$selectedVersion"
+    return $null
 }
 
 function Get-ReleaseBaseUrl {
     $resolvedBaseUrl = Get-OptionalReleaseBaseUrl
     if ([string]::IsNullOrWhiteSpace($resolvedBaseUrl)) {
-        Fail "set VOLICORD_REPO=OWNER/REPO, pass -Repo OWNER/REPO, or set VOLICORD_RELEASE_BASE_URL before running this script"
+        Fail "set VOLICORD_RELEASE_BASE_URL, pass -ReleaseBaseUrl, set VOLICORD_REPO=OWNER/REPO, pass -Repo OWNER/REPO, or use a release-packaged installer with a stamped release URL"
     }
     return $resolvedBaseUrl
 }

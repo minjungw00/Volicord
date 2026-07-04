@@ -317,12 +317,40 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: Add install script and aggregate checksums
+      - name: Add stamped install scripts and aggregate checksums
         run: |
           set -eu
+          release_base_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}"
           cp scripts/install.sh dist/install.sh
           cp scripts/install.ps1 dist/install.ps1
+          awk -v url="$release_base_url" -v q="'" '
+            /^STAMPED_RELEASE_BASE_URL=/ {
+              print "STAMPED_RELEASE_BASE_URL=" q url q
+              next
+            }
+            { print }
+          ' dist/install.sh > dist/install.sh.stamped
+          mv dist/install.sh.stamped dist/install.sh
+          awk -v url="$release_base_url" '
+            /^\$StampedReleaseBaseUrl = / {
+              print "$StampedReleaseBaseUrl = \"" url "\""
+              next
+            }
+            { print }
+          ' dist/install.ps1 > dist/install.ps1.stamped
+          mv dist/install.ps1.stamped dist/install.ps1
           chmod 0644 dist/install.sh dist/install.ps1
+          sh -n dist/install.sh
+          target="$(sh dist/install.sh --print-target)"
+          dry_install_dir="$RUNNER_TEMP/volicord-stamped-install-dry-run-$$"
+          dry_output="$RUNNER_TEMP/volicord-stamped-install-dry-run.txt"
+          env -u VOLICORD_RELEASE_BASE_URL -u VOLICORD_REPO -u VOLICORD_VERSION sh dist/install.sh --dry-run --install-dir "$dry_install_dir" > "$dry_output"
+          grep -F "release asset URL: $release_base_url/volicord-$target.tar.gz" "$dry_output"
+          grep -F "$release_base_url" dist/install.ps1
+          if command -v pwsh >/dev/null 2>&1; then
+            pwsh -NoProfile -Command '$tokens = $null; $errors = $null; [System.Management.Automation.Language.Parser]::ParseFile("dist/install.ps1", [ref]$tokens, [ref]$errors) | Out-Null; if ($errors.Count -ne 0) { throw ($errors | Out-String) }'
+          fi
+          test ! -e "$dry_install_dir"
           (cd dist && cat *.sha256 > volicord-checksums.txt)
 
       - name: Upload assets to GitHub Release

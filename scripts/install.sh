@@ -1,6 +1,8 @@
 #!/bin/sh
 set -eu
 
+STAMPED_RELEASE_BASE_URL=''
+
 fail() {
     printf 'volicord install: %s\n' "$1" >&2
     exit 1
@@ -58,16 +60,22 @@ release_base_url_if_known() {
         return 0
     fi
 
-    if [ -z "${VOLICORD_REPO:-}" ]; then
-        return 1
+    if [ -n "${VOLICORD_REPO:-}" ]; then
+        case "$VOLICORD_REPO" in
+            */*) ;;
+            *) fail "VOLICORD_REPO must use OWNER/REPO form" ;;
+        esac
+
+        release_base_url_for_repo
+        return 0
     fi
 
-    case "$VOLICORD_REPO" in
-        */*) ;;
-        *) fail "VOLICORD_REPO must use OWNER/REPO form" ;;
-    esac
+    if [ -n "$STAMPED_RELEASE_BASE_URL" ]; then
+        printf '%s\n' "${STAMPED_RELEASE_BASE_URL%/}"
+        return 0
+    fi
 
-    release_base_url_for_repo
+    return 1
 }
 
 detect_target() {
@@ -109,7 +117,7 @@ release_base_url() {
         return
     fi
 
-    fail "set VOLICORD_REPO=OWNER/REPO or VOLICORD_RELEASE_BASE_URL before running this script"
+    fail "set VOLICORD_RELEASE_BASE_URL, set VOLICORD_REPO=OWNER/REPO, or use a release-packaged installer with a stamped release URL"
 }
 
 install_dir() {
