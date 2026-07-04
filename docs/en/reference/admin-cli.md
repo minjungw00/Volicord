@@ -347,8 +347,9 @@ through `PATH` and does not embed a personal Runtime Home path.
 `--profile` selects the public integration profile:
 
 - `record` is the default. It writes MCP configuration, the managed `AGENTS.md`
-  guidance block, and policy metadata without requiring host lifecycle hooks or
-  a session watcher.
+  guidance block, and policy metadata to support cooperative Volicord workflow
+  recording through MCP without requiring host lifecycle hooks or a session
+  watcher.
 - `detective` writes MCP configuration, the managed `AGENTS.md` guidance block,
   `.volicord/policy.json` hook command policy, supported project-local host hook
   and rule files, and records the host-hook/session-watcher observation state.

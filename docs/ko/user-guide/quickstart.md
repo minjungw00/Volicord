@@ -47,7 +47,7 @@ Next:
   3. Run volicord connection verify codex --shared --repo /path/to/repo.
 
 Limits:
-  The record profile records Volicord setup and MCP configuration only.
+  The record profile supports cooperative Volicord workflow recording through MCP.
   It does not provide OS sandboxing, network isolation, malware defense,
   full write prevention, actor identity proof, correctness proof, test
   sufficiency proof, or human review completion.
@@ -56,8 +56,8 @@ Limits:
 이 요약은 Product Repository 안에 쓴 파일과 Runtime Home에 저장한 로컬 Volicord 상태를
 구분합니다. 이미 실행 중인 Codex session이 새 설정을 로드하거나 신뢰했다는 뜻은
 아닙니다.
-사용자 workflow에서 Record profile은 협력형 workflow 기록 프로필이며, 보안, 정확성,
-테스트 충분성, 검토 완료를 보장하지 않습니다.
+사용자 워크플로에서 Record profile은 MCP를 통한 협력적 Volicord 워크플로 기록을
+지원합니다. 보안, 정확성, 테스트 충분성, 검토 완료를 보장하지 않습니다.
 
 이 빠른 경로는 host lifecycle hook 설치나 session watcher를 요구하지 않는
 Record profile(`--profile record`)을 사용합니다. Detective profile(`--profile detective`)은

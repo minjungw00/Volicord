@@ -63,11 +63,11 @@ Volicord는 이런 대체를 보이게 하려고 존재합니다. 범위, 사용
 - 설정 검증을 실행하고 `complete`, `action_required`, `failed` 보고
 
 Record profile(`--profile record`)은 host lifecycle hook이나 session watcher를 요구하지
-않고 권한 상태를 기록하며 MCP 도구를 노출합니다. Detective profile(`--profile detective`)은
-지원되는 host hook과 session watcher 관찰을 더합니다. Host hook은 협력형 host warning
-또는 denial decision 신호를 반환할 수 있고, watcher는 coverage 시작 뒤의 미기록 변경을
-보고할 수 있습니다. 두 표면 모두 모든 쓰기를 막거나, 파일을 바꾼 행위자를 증명하거나,
-sandbox를 제공하거나, OS 수준 집행을 추가하지 않습니다. 정확한 프로필 동작은
+않고 MCP를 통한 협력적 Volicord 워크플로 기록을 지원합니다. Detective profile(`--profile
+detective`)은 지원되는 host hook과 session watcher 관찰을 더합니다. Host hook은 협력형
+host warning 또는 denial decision 신호를 반환할 수 있고, watcher는 coverage 시작 뒤의
+미기록 변경을 보고할 수 있습니다. 두 표면 모두 모든 쓰기를 막거나, 파일을 바꾼 행위자를
+증명하거나, sandbox를 제공하거나, OS 수준 집행을 추가하지 않습니다. 정확한 프로필 동작은
 [관리 CLI](../reference/admin-cli.md)가 정의합니다.
 
 `volicord init`은 공개 첫 실행 설정 경로입니다. `volicord connection add`는

@@ -61,13 +61,13 @@ Agent setup through the ordinary
 - record integration state
 - run setup verification and report `complete`, `action_required`, or `failed`
 
-The Record profile (`--profile record`) records authority state and exposes MCP
-tools without requiring host lifecycle hooks or a session watcher. The Detective
-profile (`--profile detective`) adds supported host hooks and session watcher
-observation. Host hooks can return cooperative host warning or denial decision
-signals, and the watcher can report Unrecorded Changes after coverage starts;
-neither surface prevents all writes, proves who changed a file, provides a
-sandbox, or adds OS-level enforcement. Exact profile
+The Record profile (`--profile record`) supports cooperative Volicord workflow
+recording through MCP without requiring host lifecycle hooks or a session
+watcher. The Detective profile (`--profile detective`) adds supported host hooks
+and session watcher observation. Host hooks can return cooperative host warning
+or denial decision signals, and the watcher can report Unrecorded Changes after
+coverage starts; neither surface prevents all writes, proves who changed a file,
+provides a sandbox, or adds OS-level enforcement. Exact profile
 behavior is defined by [Administrative CLI](../reference/admin-cli.md).
 
 `volicord init` is the public first-run setup path. `volicord connection add`

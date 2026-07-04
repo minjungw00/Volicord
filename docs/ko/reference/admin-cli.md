@@ -319,7 +319,8 @@ watcher 관찰을 설치하지 않는 chat-first 사용을 위한 첫 실행 저
 `--profile`은 공개 통합 프로필을 선택합니다.
 
 - `record`가 기본값입니다. MCP 설정, 관리되는 `AGENTS.md` 안내 블록, policy 메타데이터를
-  쓰며 host lifecycle hook이나 session watcher를 요구하지 않습니다.
+  써서 host lifecycle hook이나 session watcher 없이 MCP를 통한 협력적 Volicord 워크플로
+  기록을 지원합니다.
 - `detective`는 MCP 설정, 관리되는 `AGENTS.md` 안내 블록, `.volicord/policy.json` hook 명령
   policy, 지원되는 프로젝트 로컬 host hook 및 rule 파일을 쓰고 host-hook/session-watcher
   관찰 상태를 기록합니다.

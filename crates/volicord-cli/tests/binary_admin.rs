@@ -820,9 +820,14 @@ fn init_codex_record_profile_skips_host_hooks() -> Result<(), Box<dyn Error>> {
         repo_root.display()
     )));
     assert!(init_text.contains("Limits:"));
-    assert!(init_text.contains("The record profile records Volicord setup"));
+    assert!(init_text.contains(
+        "The record profile supports cooperative Volicord workflow recording through MCP."
+    ));
     assert!(init_text.contains("OS sandboxing, network isolation, malware defense"));
-    assert!(init_text.contains("actor identity proof, correctness proof"));
+    assert!(init_text.contains("full write prevention, actor identity proof"));
+    assert!(
+        init_text.contains("correctness proof, test sufficiency proof, or human review completion")
+    );
     assert!(init_text.contains("Diagnostics:"));
     assert!(init_text.contains(&format!(
         "volicord connection status codex --shared --repo {} --json",

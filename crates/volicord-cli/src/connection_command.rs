@@ -5508,7 +5508,7 @@ fn init_diagnostics_command(data: &InitOutput<'_>) -> String {
 fn init_limits_text(init_mode: InitMode) -> &'static str {
     match init_mode {
         InitMode::Record => {
-            "  The record profile records Volicord setup and MCP configuration only.\n  It does not provide OS sandboxing, network isolation, malware defense, full write prevention, actor identity proof, correctness proof, test sufficiency proof, or human review completion."
+            "  The record profile supports cooperative Volicord workflow recording through MCP.\n  It does not provide OS sandboxing, network isolation, malware defense, full write prevention, actor identity proof, correctness proof, test sufficiency proof, or human review completion."
         }
         InitMode::Detective => {
             "  The detective profile adds cooperative host observation where supported.\n  It does not provide OS sandboxing, network isolation, malware defense, full write prevention, actor identity proof, correctness proof, test sufficiency proof, or human review completion."

@@ -67,7 +67,7 @@ Detective 상태는 선택된 연결 또는 session에 대해 선택된 프로�
 
 | 프로필 | 도달 조건 | 운영상 의미 |
 |---|---|---|
-| Record profile(`record`) | Host hook이나 session watcher를 요구하지 않고 MCP 도구와 권한 기록을 사용할 수 있습니다. | 생성된 설정 안내가 호스트를 유도할 수 있지만 강제하지는 못합니다. |
+| Record profile(`record`) | Host hook이나 session watcher를 요구하지 않고 MCP를 통한 협력적 Volicord 워크플로 기록을 사용할 수 있습니다. | 생성된 설정 안내가 호스트를 유도할 수 있지만 강제하지는 못합니다. |
 | Detective profile(`detective`) | 프로젝트 로컬 host hook에 검증된 생성 설정, cwd-independent 및 subdirectory-safe hook 명령, native host output, 필수 phase, 쓰기 matcher, 일치하는 policy hash, 런타임 관찰, session watcher 관찰이 있습니다. | 협력형 host warning 또는 denial decision 신호, post-tool 상관, 채팅 명령 캡처, detective 상태, 미기록 변경, 닫기/쓰기 차단 사유가 workflow에 참여할 수 있습니다. |
 
 Record profile은 prepare-write workflow를 통해 Volicord 쓰기 티켓을 발급할 수 있습니다.

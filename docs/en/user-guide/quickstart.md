@@ -50,7 +50,7 @@ Next:
   3. Run volicord connection verify codex --shared --repo /path/to/repo.
 
 Limits:
-  The record profile records Volicord setup and MCP configuration only.
+  The record profile supports cooperative Volicord workflow recording through MCP.
   It does not provide OS sandboxing, network isolation, malware defense,
   full write prevention, actor identity proof, correctness proof, test
   sufficiency proof, or human review completion.
@@ -59,8 +59,9 @@ Limits:
 The summary distinguishes files written inside the Product Repository from
 local Volicord state stored in the Runtime Home. It does not mean an already
 running Codex session has loaded or trusted the new configuration.
-For user workflow, the Record profile is cooperative workflow recording, not a
-security, correctness, test-sufficiency, or review-completion guarantee.
+For user workflow, the Record profile supports cooperative Volicord workflow
+recording through MCP. It is not a security, correctness, test-sufficiency, or
+review-completion guarantee.
 
 This fast path uses the Record profile (`--profile record`), which does not
 require host lifecycle hook installation or a session watcher. The Detective

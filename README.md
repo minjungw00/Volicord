@@ -355,12 +355,12 @@ flowchart TD
 `volicord init` defaults to `--profile record`. Omitting `--profile` gives the
 normal first-user setup.
 
-Use the Record profile (`--profile record`) when you want the host to use
-Volicord's local MCP tools and records without depending on host lifecycle hooks
-or a session watcher. This is the profile to start with when you want the agent
-to record a `Task` and scope, prepare write tickets for proposed product-file
-changes, record Evidence through runs or observations, and request User
-Judgment through Volicord.
+Use the Record profile (`--profile record`) when you want the host to support
+cooperative Volicord workflow recording through MCP without depending on host
+lifecycle hooks or a session watcher. This is the profile to start with when you
+want the agent to record a `Task` and scope, prepare write tickets for proposed
+product-file changes, record Evidence through runs or observations, and request
+User Judgment through Volicord.
 
 Use the Detective profile (`--profile detective`) only when the selected host,
 platform, and Product Repository support the extra observation surfaces. It

@@ -341,9 +341,10 @@ flowchart TD
 사용자 설정이 됩니다.
 
 Record profile(`--profile record`)은 host lifecycle hook이나 session watcher에 의존하지
-않고 호스트가 Volicord의 로컬 MCP 도구와 기록을 사용하게 할 때 선택합니다. 에이전트가
-Volicord를 통해 `Task`와 범위를 기록하고, 제안된 제품 파일 변경을 위한 쓰기 티켓을
-준비하며, 실행 또는 관찰을 통해 증거를 기록하고 사용자 판단을 요청하게 하려는 첫 경로입니다.
+않고 호스트가 MCP를 통한 협력적 Volicord 워크플로 기록을 지원하게 할 때 선택합니다.
+에이전트가 Volicord를 통해 `Task`와 범위를 기록하고, 제안된 제품 파일 변경을 위한 쓰기
+티켓을 준비하며, 실행 또는 관찰을 통해 증거를 기록하고 사용자 판단을 요청하게 하려는 첫
+경로입니다.
 
 Detective profile(`--profile detective`)은 선택한 호스트, 플랫폼, Product Repository가 추가
 관찰 표면을 지원할 때만 사용합니다. Record profile 모델은 그대로 유지하면서 지원되는
