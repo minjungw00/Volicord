@@ -25,79 +25,106 @@
 내려받을 수 있으면 검증한 뒤 `volicord.exe` 하나만 설치합니다. 두 스크립트 모두 셸
 시작 파일을 암시적으로 편집하지 않습니다.
 
-Linux, WSL2, macOS에서는 Volicord 릴리스 자산을 게시하는 같은 저장소에서
-`scripts/install.sh`를 내려받거나 복사한 뒤, 릴리스 저장소를 명시해서 실행합니다.
+Linux, WSL2, macOS에서는 `install.sh` 릴리스 자산을 임시 파일로 내려받은 뒤 릴리스
+자산 base URL을 명시해서 실행합니다.
 
 ```sh
-VOLICORD_REPO=OWNER/REPO sh ./scripts/install.sh
+repo=OWNER/REPO
+base="https://github.com/$repo/releases/latest/download"
+tmp="$(mktemp "${TMPDIR:-/tmp}/install-volicord.XXXXXX")"
+curl -fsSL "$base/install.sh" -o "$tmp"
+VOLICORD_RELEASE_BASE_URL="$base" VOLICORD_REQUIRE_CHECKSUM=1 sh "$tmp"
 ```
 
-`OWNER/REPO`는 이 체크아웃의 릴리스 자산을 호스팅하는 GitHub 저장소입니다. 기본값은
-그 저장소의 latest release에서 내려받는 것입니다. 특정 태그를 설치하려면
-`VOLICORD_VERSION`을 설정합니다.
+`OWNER/REPO`는 Volicord 릴리스 자산을 호스팅하는 GitHub 저장소입니다. 기본 예시는 그
+저장소의 latest release에서 내려받습니다. 특정 태그를 설치하려면 태그별 릴리스 자산
+base URL을 사용합니다.
 
 ```sh
-VOLICORD_REPO=OWNER/REPO VOLICORD_VERSION=v0.1.0 sh ./scripts/install.sh
+repo=OWNER/REPO
+version=v0.1.0
+base="https://github.com/$repo/releases/download/$version"
+tmp="$(mktemp "${TMPDIR:-/tmp}/install-volicord.XXXXXX")"
+curl -fsSL "$base/install.sh" -o "$tmp"
+VOLICORD_RELEASE_BASE_URL="$base" VOLICORD_REQUIRE_CHECKSUM=1 sh "$tmp"
 ```
 
 GitHub가 아닌 릴리스 mirror에서는 target 이름이 붙은 tarball과 checksum이 들어 있는
-디렉터리를 제공합니다.
+디렉터리에 설치 스크립트 자산도 함께 제공합니다.
 
 ```sh
-VOLICORD_RELEASE_BASE_URL=https://example.invalid/releases/v0.1.0 sh ./scripts/install.sh
+base="https://example.invalid/releases/v0.1.0"
+tmp="$(mktemp "${TMPDIR:-/tmp}/install-volicord.XXXXXX")"
+curl -fsSL "$base/install.sh" -o "$tmp"
+VOLICORD_RELEASE_BASE_URL="$base" VOLICORD_REQUIRE_CHECKSUM=1 sh "$tmp"
 ```
 
 기본 설치 디렉터리는 `~/.local/bin`입니다. 한 번 실행할 때만 바꾸려면
 `--install-dir PATH`를 사용하고, 환경 변수 기반 자동화에는
-`VOLICORD_INSTALL_DIR`을 사용합니다.
+`VOLICORD_INSTALL_DIR`을 사용합니다. 이 예시는 위에서 선택한 릴리스의 `$base`와
+`$tmp`를 다시 사용합니다.
 
 ```sh
-VOLICORD_REPO=OWNER/REPO sh ./scripts/install.sh --install-dir /usr/local/bin
+VOLICORD_RELEASE_BASE_URL="$base" VOLICORD_REQUIRE_CHECKSUM=1 sh "$tmp" --install-dir /usr/local/bin
+VOLICORD_RELEASE_BASE_URL="$base" VOLICORD_REQUIRE_CHECKSUM=1 VOLICORD_INSTALL_DIR=/usr/local/bin sh "$tmp"
 ```
 
-파일을 내려받거나 쓰지 않고 감지된 target, 릴리스 asset, checksum 계획, 설치
-디렉터리, 바이너리 이름을 미리 보려면 `--dry-run`을 추가합니다. 자동화가 target
-식별자만 필요할 때는 `--print-target`을 사용합니다.
+릴리스 archive를 내려받거나 설치 파일을 쓰지 않고 감지된 target, 릴리스 asset,
+checksum 계획, 설치 디렉터리, 바이너리 이름을 미리 보려면 `--dry-run`을 추가합니다.
+자동화가 target 식별자만 필요할 때는 `--print-target`을 사용합니다.
 
 ```sh
-VOLICORD_REPO=OWNER/REPO sh ./scripts/install.sh --dry-run
-sh ./scripts/install.sh --print-target
+VOLICORD_RELEASE_BASE_URL="$base" VOLICORD_REQUIRE_CHECKSUM=1 sh "$tmp" --dry-run
+sh "$tmp" --print-target
 ```
 
-Native Windows x86_64에서는 Volicord 릴리스 자산을 게시하는 같은 저장소에서
-`scripts/install.ps1`을 내려받거나 복사한 뒤 PowerShell에서 실행합니다.
+Native Windows x86_64에서는 `install.ps1` 릴리스 자산을 내려받은 뒤 PowerShell에서
+실행합니다.
 
 ```powershell
-.\scripts\install.ps1 -Repo OWNER/REPO
+$repo = "OWNER/REPO"
+$base = "https://github.com/$repo/releases/latest/download"
+$tmp = Join-Path $env:TEMP "install-volicord.ps1"
+Invoke-WebRequest "$base/install.ps1" -OutFile $tmp
+& $tmp -ReleaseBaseUrl $base -RequireChecksum
 ```
 
 특정 태그를 설치하려면 아래처럼 실행합니다.
 
 ```powershell
-.\scripts\install.ps1 -Repo OWNER/REPO -Version v0.1.0
+$repo = "OWNER/REPO"
+$version = "v0.1.0"
+$base = "https://github.com/$repo/releases/download/$version"
+$tmp = Join-Path $env:TEMP "install-volicord.ps1"
+Invoke-WebRequest "$base/install.ps1" -OutFile $tmp
+& $tmp -ReleaseBaseUrl $base -RequireChecksum
 ```
 
 GitHub가 아닌 릴리스 mirror에서는 아래처럼 실행합니다.
 
 ```powershell
-.\scripts\install.ps1 -ReleaseBaseUrl https://example.invalid/releases/v0.1.0
+$base = "https://example.invalid/releases/v0.1.0"
+$tmp = Join-Path $env:TEMP "install-volicord.ps1"
+Invoke-WebRequest "$base/install.ps1" -OutFile $tmp
+& $tmp -ReleaseBaseUrl $base -RequireChecksum
 ```
 
 기본 native Windows 설치 디렉터리는 `%LOCALAPPDATA%\Volicord\bin`입니다. 다른
-사용자 로컬 디렉터리를 쓰려면 `-InstallDir`를 사용합니다.
+사용자 로컬 디렉터리를 쓰려면 `-InstallDir`를 사용합니다. 이 예시는 위에서 선택한
+릴리스의 `$base`와 `$tmp`를 다시 사용합니다.
 
 ```powershell
-.\scripts\install.ps1 -Repo OWNER/REPO -InstallDir "$env:LOCALAPPDATA\Volicord\bin"
+& $tmp -ReleaseBaseUrl $base -RequireChecksum -InstallDir "$env:LOCALAPPDATA\Volicord\bin"
 ```
 
-파일을 내려받거나 설치하거나 사용자 `PATH`를 바꾸지 않고 감지된 target, 릴리스
-asset, checksum 계획, 설치 디렉터리, 바이너리 이름, 요청된 `PATH` 동작을 미리 보려면
-`-DryRun`을 추가합니다. 자동화가 target 식별자만 필요할 때는 `-PrintTarget`을
+릴리스 archive를 내려받거나 설치하거나 사용자 `PATH`를 바꾸지 않고 감지된 target,
+릴리스 asset, checksum 계획, 설치 디렉터리, 바이너리 이름, 요청된 `PATH` 동작을 미리
+보려면 `-DryRun`을 추가합니다. 자동화가 target 식별자만 필요할 때는 `-PrintTarget`을
 사용합니다.
 
 ```powershell
-.\scripts\install.ps1 -Repo OWNER/REPO -DryRun
-.\scripts\install.ps1 -PrintTarget
+& $tmp -ReleaseBaseUrl $base -RequireChecksum -DryRun
+& $tmp -PrintTarget
 ```
 
 설치 디렉터리가 아직 `PATH`에 없으면 Windows 설치 스크립트는 현재 세션용 `PATH`
@@ -105,7 +132,7 @@ asset, checksum 계획, 설치 디렉터리, 바이너리 이름, 요청된 `PAT
 다시 실행합니다.
 
 ```powershell
-.\scripts\install.ps1 -Repo OWNER/REPO -UpdateUserPath
+& $tmp -ReleaseBaseUrl $base -RequireChecksum -UpdateUserPath
 ```
 
 지원되지 않는 운영체제나 CPU 아키텍처에서는 각 스크립트가 내려받기 전에 실패합니다.

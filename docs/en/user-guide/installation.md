@@ -30,82 +30,107 @@ matching `.sha256` file when it can download one, and installs only the
 it can download one, and installs only `volicord.exe`. Neither script edits
 shell startup files implicitly.
 
-For Linux, WSL2, or macOS, download or copy `scripts/install.sh` from the same
-repository that publishes the Volicord release assets, then run it with the
-release repository named explicitly:
+For Linux, WSL2, or macOS, download the `install.sh` release asset to a
+temporary file, then run it with the release asset base URL named explicitly:
 
 ```sh
-VOLICORD_REPO=OWNER/REPO sh ./scripts/install.sh
+repo=OWNER/REPO
+base="https://github.com/$repo/releases/latest/download"
+tmp="$(mktemp "${TMPDIR:-/tmp}/install-volicord.XXXXXX")"
+curl -fsSL "$base/install.sh" -o "$tmp"
+VOLICORD_RELEASE_BASE_URL="$base" VOLICORD_REQUIRE_CHECKSUM=1 sh "$tmp"
 ```
 
-`OWNER/REPO` is the GitHub repository that hosts the release assets for this
-checkout. By default the script downloads from that repository's latest
-release. To install a specific tag, set `VOLICORD_VERSION`:
+`OWNER/REPO` is the GitHub repository that hosts the Volicord release assets.
+By default the example downloads from that repository's latest release. To
+install a specific tag, use the tag-specific release asset base URL:
 
 ```sh
-VOLICORD_REPO=OWNER/REPO VOLICORD_VERSION=v0.1.0 sh ./scripts/install.sh
+repo=OWNER/REPO
+version=v0.1.0
+base="https://github.com/$repo/releases/download/$version"
+tmp="$(mktemp "${TMPDIR:-/tmp}/install-volicord.XXXXXX")"
+curl -fsSL "$base/install.sh" -o "$tmp"
+VOLICORD_RELEASE_BASE_URL="$base" VOLICORD_REQUIRE_CHECKSUM=1 sh "$tmp"
 ```
 
 For a non-GitHub release mirror, provide the directory that contains the
-target-named tarball and checksum:
+installer asset, target-named tarball, and checksum:
 
 ```sh
-VOLICORD_RELEASE_BASE_URL=https://example.invalid/releases/v0.1.0 sh ./scripts/install.sh
+base="https://example.invalid/releases/v0.1.0"
+tmp="$(mktemp "${TMPDIR:-/tmp}/install-volicord.XXXXXX")"
+curl -fsSL "$base/install.sh" -o "$tmp"
+VOLICORD_RELEASE_BASE_URL="$base" VOLICORD_REQUIRE_CHECKSUM=1 sh "$tmp"
 ```
 
 The default install directory is `~/.local/bin`. Use `--install-dir PATH` for a
-single command, or `VOLICORD_INSTALL_DIR` for environment-driven automation:
+single command, or `VOLICORD_INSTALL_DIR` for environment-driven automation.
+These examples reuse `$base` and `$tmp` from the selected release above:
 
 ```sh
-VOLICORD_REPO=OWNER/REPO sh ./scripts/install.sh --install-dir /usr/local/bin
+VOLICORD_RELEASE_BASE_URL="$base" VOLICORD_REQUIRE_CHECKSUM=1 sh "$tmp" --install-dir /usr/local/bin
+VOLICORD_RELEASE_BASE_URL="$base" VOLICORD_REQUIRE_CHECKSUM=1 VOLICORD_INSTALL_DIR=/usr/local/bin sh "$tmp"
 ```
 
 To preview the detected target, release asset, checksum plan, install
-directory, and binary name without downloading or writing files, add
-`--dry-run`. Use `--print-target` when automation only needs the target
-identifier:
+directory, and binary name without downloading release archives or writing
+installation files, add `--dry-run`. Use `--print-target` when automation only
+needs the target identifier:
 
 ```sh
-VOLICORD_REPO=OWNER/REPO sh ./scripts/install.sh --dry-run
-sh ./scripts/install.sh --print-target
+VOLICORD_RELEASE_BASE_URL="$base" VOLICORD_REQUIRE_CHECKSUM=1 sh "$tmp" --dry-run
+sh "$tmp" --print-target
 ```
 
-For native Windows x86_64, download or copy `scripts/install.ps1` from the same
-repository that publishes the Volicord release assets, then run it in
-PowerShell:
+For native Windows x86_64, download the `install.ps1` release asset and run it
+in PowerShell:
 
 ```powershell
-.\scripts\install.ps1 -Repo OWNER/REPO
+$repo = "OWNER/REPO"
+$base = "https://github.com/$repo/releases/latest/download"
+$tmp = Join-Path $env:TEMP "install-volicord.ps1"
+Invoke-WebRequest "$base/install.ps1" -OutFile $tmp
+& $tmp -ReleaseBaseUrl $base -RequireChecksum
 ```
 
 To install a specific tag:
 
 ```powershell
-.\scripts\install.ps1 -Repo OWNER/REPO -Version v0.1.0
+$repo = "OWNER/REPO"
+$version = "v0.1.0"
+$base = "https://github.com/$repo/releases/download/$version"
+$tmp = Join-Path $env:TEMP "install-volicord.ps1"
+Invoke-WebRequest "$base/install.ps1" -OutFile $tmp
+& $tmp -ReleaseBaseUrl $base -RequireChecksum
 ```
 
 For a non-GitHub release mirror:
 
 ```powershell
-.\scripts\install.ps1 -ReleaseBaseUrl https://example.invalid/releases/v0.1.0
+$base = "https://example.invalid/releases/v0.1.0"
+$tmp = Join-Path $env:TEMP "install-volicord.ps1"
+Invoke-WebRequest "$base/install.ps1" -OutFile $tmp
+& $tmp -ReleaseBaseUrl $base -RequireChecksum
 ```
 
 The default native Windows install directory is
 `%LOCALAPPDATA%\Volicord\bin`. Use `-InstallDir` to choose a different
-user-local directory:
+user-local directory. This example reuses `$base` and `$tmp` from the selected
+release above:
 
 ```powershell
-.\scripts\install.ps1 -Repo OWNER/REPO -InstallDir "$env:LOCALAPPDATA\Volicord\bin"
+& $tmp -ReleaseBaseUrl $base -RequireChecksum -InstallDir "$env:LOCALAPPDATA\Volicord\bin"
 ```
 
 To preview the detected target, release asset, checksum plan, install
-directory, binary name, and requested `PATH` behavior without downloading,
-installing, or changing the user `PATH`, add `-DryRun`. Use `-PrintTarget` when
-automation only needs the target identifier:
+directory, binary name, and requested `PATH` behavior without downloading
+release archives, installing, or changing the user `PATH`, add `-DryRun`. Use
+`-PrintTarget` when automation only needs the target identifier:
 
 ```powershell
-.\scripts\install.ps1 -Repo OWNER/REPO -DryRun
-.\scripts\install.ps1 -PrintTarget
+& $tmp -ReleaseBaseUrl $base -RequireChecksum -DryRun
+& $tmp -PrintTarget
 ```
 
 The Windows installer prints a current-session `PATH` command when the install
@@ -113,7 +138,7 @@ directory is not already on `PATH`. To append the install directory to the
 user-level `PATH`, rerun with `-UpdateUserPath`:
 
 ```powershell
-.\scripts\install.ps1 -Repo OWNER/REPO -UpdateUserPath
+& $tmp -ReleaseBaseUrl $base -RequireChecksum -UpdateUserPath
 ```
 
 Each script fails before downloading on unsupported operating systems or CPU

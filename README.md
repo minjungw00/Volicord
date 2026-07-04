@@ -57,37 +57,44 @@ extra Detective profile observation surfaces.
 Release binary installation is the primary path when your system matches a
 supported target. Source builds are for Volicord development.
 
-On Linux, WSL2, or macOS, download or copy `scripts/install.sh` from the
-repository that publishes the Volicord release assets, then install the release
-binary:
+On Linux, WSL2, or macOS, download the `install.sh` release asset to a
+temporary file, then run it against the same release asset base URL:
 
 ```sh
-VOLICORD_REPO=OWNER/REPO sh ./scripts/install.sh
+repo=OWNER/REPO
+base="https://github.com/$repo/releases/latest/download"
+tmp="$(mktemp "${TMPDIR:-/tmp}/install-volicord.XXXXXX")"
+curl -fsSL "$base/install.sh" -o "$tmp"
+VOLICORD_RELEASE_BASE_URL="$base" VOLICORD_REQUIRE_CHECKSUM=1 sh "$tmp"
 volicord --version
 ```
 
-On native Windows x86_64, download or copy `scripts/install.ps1` and run it in
-PowerShell:
+On native Windows x86_64, download the `install.ps1` release asset and run it
+in PowerShell:
 
 ```powershell
-.\scripts\install.ps1 -Repo OWNER/REPO
+$repo = "OWNER/REPO"
+$base = "https://github.com/$repo/releases/latest/download"
+$tmp = Join-Path $env:TEMP "install-volicord.ps1"
+Invoke-WebRequest "$base/install.ps1" -OutFile $tmp
+& $tmp -ReleaseBaseUrl $base -RequireChecksum
 volicord --version
 ```
 
 To preview the selected target, asset, install directory, binaries, and checksum
-plan before downloading or writing files, use `--dry-run` on POSIX or `-DryRun`
-in PowerShell. `--print-target` and `-PrintTarget` print only the release target
-identifier.
+plan without downloading release archives or writing installation files, rerun
+the downloaded installer with `--dry-run` on POSIX or `-DryRun` in PowerShell.
+`--print-target` and `-PrintTarget` print only the release target identifier.
 
-`OWNER/REPO` is the GitHub repository that hosts the Volicord release assets for
-this checkout. The POSIX script detects supported Linux, WSL2, and macOS
-targets and downloads the target-named tarball. The PowerShell script installs
-the `x86_64-pc-windows-msvc` zip artifact under a user-local directory by
-default. Both scripts verify the `.sha256` file when available and install only
-the `volicord` executable for that platform. They do not edit shell startup
-files implicitly. This checkout does not contain a Homebrew tap, Homebrew
-formula, Linux package, Windows package-manager package, or external
-package-registry install path.
+`OWNER/REPO` is the GitHub repository that hosts the Volicord release assets.
+The POSIX script detects supported Linux, WSL2, and macOS targets and downloads
+the target-named tarball. The PowerShell script installs the
+`x86_64-pc-windows-msvc` zip artifact under a user-local directory by default.
+The examples require `.sha256` verification and install only the `volicord`
+executable for that platform. They do not edit shell startup files implicitly.
+Volicord does not currently claim a Homebrew tap, Homebrew formula, Linux
+package, Windows package-manager package, or external package-registry install
+path.
 
 Make sure the future agent host can run `volicord` through `PATH`.
 

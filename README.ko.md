@@ -55,33 +55,43 @@ Detective profile의 추가 관찰 표면을 지원한다는 것을 이미 알�
 시스템이 지원 target과 맞으면 릴리스 바이너리 설치가 기본 경로입니다. 소스 빌드는
 Volicord 개발용입니다.
 
-Linux, WSL2, macOS에서는 Volicord 릴리스 자산을 게시하는 저장소에서
-`scripts/install.sh`를 내려받거나 복사한 뒤, 릴리스 바이너리를 설치합니다.
+Linux, WSL2, macOS에서는 `install.sh` 릴리스 자산을 임시 파일로 내려받은 뒤 같은
+릴리스 자산 base URL을 지정해 실행합니다.
 
 ```sh
-VOLICORD_REPO=OWNER/REPO sh ./scripts/install.sh
+repo=OWNER/REPO
+base="https://github.com/$repo/releases/latest/download"
+tmp="$(mktemp "${TMPDIR:-/tmp}/install-volicord.XXXXXX")"
+curl -fsSL "$base/install.sh" -o "$tmp"
+VOLICORD_RELEASE_BASE_URL="$base" VOLICORD_REQUIRE_CHECKSUM=1 sh "$tmp"
 volicord --version
 ```
 
-Native Windows x86_64에서는 `scripts/install.ps1`을 내려받거나 복사한 뒤 PowerShell에서
+Native Windows x86_64에서는 `install.ps1` 릴리스 자산을 내려받은 뒤 PowerShell에서
 실행합니다.
 
 ```powershell
-.\scripts\install.ps1 -Repo OWNER/REPO
+$repo = "OWNER/REPO"
+$base = "https://github.com/$repo/releases/latest/download"
+$tmp = Join-Path $env:TEMP "install-volicord.ps1"
+Invoke-WebRequest "$base/install.ps1" -OutFile $tmp
+& $tmp -ReleaseBaseUrl $base -RequireChecksum
 volicord --version
 ```
 
-파일을 내려받거나 쓰기 전에 선택될 target, asset, 설치 디렉터리, 바이너리,
-checksum 계획을 미리 보려면 POSIX에서는 `--dry-run`, PowerShell에서는 `-DryRun`을
-사용합니다. `--print-target`과 `-PrintTarget`은 릴리스 target 식별자만 출력합니다.
+릴리스 archive를 내려받거나 설치 파일을 쓰지 않고 선택될 target, asset, 설치
+디렉터리, 바이너리, checksum 계획을 미리 보려면 내려받은 설치 스크립트를 POSIX에서는
+`--dry-run`, PowerShell에서는 `-DryRun`으로 다시 실행합니다. `--print-target`과
+`-PrintTarget`은 릴리스 target 식별자만 출력합니다.
 
-`OWNER/REPO`는 이 체크아웃의 Volicord 릴리스 자산을 호스팅하는 GitHub 저장소입니다.
-POSIX 스크립트는 지원되는 Linux, WSL2, macOS target을 감지하고 target 이름이 붙은
-tarball을 내려받습니다. PowerShell 스크립트는 기본적으로 사용자 로컬 디렉터리 아래에
-`x86_64-pc-windows-msvc` zip artifact를 설치합니다. 두 스크립트 모두 사용할 수 있을 때
-`.sha256` 파일을 검증하고 해당 플랫폼의 `volicord` 실행 파일 하나만 설치합니다. 셸 시작
-파일은 암시적으로 편집하지 않습니다. 이 체크아웃에는 Homebrew tap, Homebrew formula,
-Linux 패키지, Windows 패키지 관리자 패키지, 외부 패키지 registry 설치 경로가 없습니다.
+`OWNER/REPO`는 Volicord 릴리스 자산을 호스팅하는 GitHub 저장소입니다. POSIX 스크립트는
+지원되는 Linux, WSL2, macOS target을 감지하고 target 이름이 붙은 tarball을
+내려받습니다. PowerShell 스크립트는 기본적으로 사용자 로컬 디렉터리 아래에
+`x86_64-pc-windows-msvc` zip artifact를 설치합니다. 위 예시는 `.sha256` 검증을
+필수로 요구하고 해당 플랫폼의 `volicord` 실행 파일 하나만 설치합니다. 셸 시작 파일은
+암시적으로 편집하지 않습니다. Volicord는 현재 Homebrew tap, Homebrew formula, Linux
+패키지, Windows 패키지 관리자 패키지, 외부 패키지 registry 설치 경로를 주장하지
+않습니다.
 
 미래의 에이전트 호스트가 `PATH`를 통해 `volicord`를 실행할 수 있게 합니다.
 
