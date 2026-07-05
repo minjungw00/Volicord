@@ -465,7 +465,8 @@ pub fn run_init_command(
         Some(&project.project_id),
         process,
     )?;
-    let user_actions = init_user_actions(&verification.host.user_actions, host_kind, parsed.mode);
+    let user_actions =
+        init_first_run_user_actions(&verification.host.user_actions, host_kind, parsed.mode);
     connection = update_agent_connection_verification_report(
         &runtime_home,
         &connection.connection_internal_id,
@@ -4675,19 +4676,19 @@ fn script_executable_required() -> bool {
     false
 }
 
-fn init_user_actions(
+fn init_first_run_user_actions(
     existing: &[UserAction],
     host_kind: HostKind,
     init_mode: InitMode,
 ) -> Vec<UserAction> {
     let mut actions = existing.to_vec();
     if host_kind == HostKind::Codex && init_mode != InitMode::Record {
-        let hook_trust_action = UserAction::new(
+        let codex_first_run_hook_trust_hint = UserAction::new(
             UserActionKind::HostTrustRequired,
             "Review and trust Codex project hook commands before relying on Volicord detective host hooks",
         );
-        if !actions.contains(&hook_trust_action) {
-            actions.push(hook_trust_action);
+        if !actions.contains(&codex_first_run_hook_trust_hint) {
+            actions.push(codex_first_run_hook_trust_hint);
         }
     }
     actions.push(UserAction::new(
@@ -6190,14 +6191,18 @@ fn render_init_output(data: InitOutput<'_>) -> Result<String, ConnectionCommandE
     } else {
         data.verification
             .map(|verification| {
-                init_user_actions(
+                init_first_run_user_actions(
                     &verification.host.user_actions,
                     data.host_kind,
                     data.init_mode,
                 )
             })
             .unwrap_or_else(|| {
-                init_user_actions(&data.host_plan.user_actions, data.host_kind, data.init_mode)
+                init_first_run_user_actions(
+                    &data.host_plan.user_actions,
+                    data.host_kind,
+                    data.init_mode,
+                )
             })
     };
     let guard_status = data
@@ -8349,9 +8354,29 @@ fn guard_file_findings_with_context(
         .into_iter()
         .flatten();
     for file in files {
+        if record_profile_ignores_detective_file(&value, file) {
+            continue;
+        }
         verify_guard_file(file, &value, &mut findings);
     }
     findings
+}
+
+fn record_profile_ignores_detective_file(capability: &Value, file: &Value) -> bool {
+    capability.get("selected_profile").and_then(Value::as_str) == Some("record")
+        && file
+            .get("kind")
+            .and_then(Value::as_str)
+            .and_then(host_integration_file_kind_from_str)
+            .is_some_and(|kind| {
+                matches!(
+                    kind,
+                    HostIntegrationFileKind::HostHookConfig
+                        | HostIntegrationFileKind::HostHookDispatch
+                        | HostIntegrationFileKind::HostHookWrapper
+                        | HostIntegrationFileKind::HostRuleInstruction
+                )
+            })
 }
 
 fn nonempty_json_string(value: &Value, key: &str) -> Option<String> {
