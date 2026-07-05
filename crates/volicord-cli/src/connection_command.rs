@@ -2024,13 +2024,7 @@ fn attach_current_host_runtime_diagnostics(
     let command = host_mcp_command_diagnostic(&host_plan.entry, &runtime);
     let mut actions = host.user_actions.clone();
     if host_runtime_action_applies(&host, &runtime) {
-        let kind = if command.mode == HostMcpCommandLaunchMode::PathResolved
-            && command.risk.as_deref() == Some("host_path_unconfirmed")
-        {
-            UserActionKind::HostMcpCommandPathUnconfirmed
-        } else {
-            UserActionKind::HostRuntimeNotObserved
-        };
+        let kind = UserActionKind::HostRuntimeNotObserved;
         push_unique_action(
             &mut actions,
             UserAction::new(kind, host_runtime_action_message(kind)),
@@ -2059,7 +2053,7 @@ fn host_runtime_action_message(kind: UserActionKind) -> &'static str {
             "Make `volicord` available on the PATH seen by the Codex host process, or configure the MCP command so the host can launch it; restart, reload, resume, or start a new Codex session in this repository; confirm Volicord tools are exposed in the active Codex session"
         }
         UserActionKind::HostRuntimeNotObserved => {
-            "Restart, reload, resume, or start a new Codex session in this repository; confirm Volicord tools are exposed in the active Codex session"
+            "Confirm the active Codex session has started the Volicord MCP server and exposed Volicord tools; if tools are not exposed, check Codex MCP startup and tool-list logs; ensure `volicord` is launchable by the Codex host process"
         }
         _ => "Complete the required host follow-up",
     }
@@ -5728,12 +5722,17 @@ fn append_compact_next_steps(
             push_numbered_text(
                 output,
                 &mut index,
-                "Restart, reload, resume, or start a new Codex session in this repository.",
+                "Confirm the active Codex session has started the Volicord MCP server and exposed Volicord tools.",
             );
             push_numbered_text(
                 output,
                 &mut index,
-                "Confirm that Volicord tools are exposed in the active Codex session.",
+                "If tools are not exposed, check Codex MCP startup and tool-list logs.",
+            );
+            push_numbered_text(
+                output,
+                &mut index,
+                format!("Ensure `volicord` is launchable by the {host} host process."),
             );
             push_optional_numbered_command(output, &mut index, "Run", command.as_deref());
         }
@@ -7241,22 +7240,48 @@ fn primary_connection_action(
         if guard_state.installation_state == "degraded" {
             return Some(guard_degraded_action(connection, projects));
         }
+        if guard_state.installation_state == "reload_required" {
+            if let Some(action) = actions
+                .iter()
+                .find(|action| action.kind == UserActionKind::ReloadRequired)
+            {
+                let mut primary =
+                    PrimaryNextAction::new(user_action_id(action.kind), action.message.clone());
+                attach_connection_verify_command(&mut primary, connection, projects);
+                return Some(primary);
+            }
+        }
     }
-    if let Some(action) = actions
-        .iter()
-        .find(|action| action.kind == UserActionKind::ReloadRequired)
-    {
-        let mut primary =
-            PrimaryNextAction::new(user_action_id(action.kind), action.message.clone());
-        attach_connection_verify_command(&mut primary, connection, projects);
-        return Some(primary);
+    if connection.is_none() {
+        if let Some(action) = actions
+            .iter()
+            .find(|action| action.kind == UserActionKind::ReloadRequired)
+        {
+            let mut primary =
+                PrimaryNextAction::new(user_action_id(action.kind), action.message.clone());
+            attach_connection_verify_command(&mut primary, connection, projects);
+            return Some(primary);
+        }
     }
-    actions.first().map(|action| {
+    prioritized_connection_action(actions).map(|action| {
         let mut primary =
             PrimaryNextAction::new(user_action_id(action.kind), action.message.clone());
         attach_connection_verify_command(&mut primary, connection, projects);
         primary
     })
+}
+
+fn prioritized_connection_action(actions: &[UserAction]) -> Option<&UserAction> {
+    [
+        UserActionKind::HostTrustRequired,
+        UserActionKind::ProjectApprovalRequired,
+        UserActionKind::HostRuntimeNotObserved,
+        UserActionKind::ReloadRequired,
+        UserActionKind::HostMcpCommandPathUnconfirmed,
+    ]
+    .into_iter()
+    .find_map(|kind| actions.iter().find(|action| action.kind == kind))
+    .or_else(|| actions.first())
 }
 
 fn connection_diagnostic_summary_card(
@@ -7293,10 +7318,10 @@ fn connection_summary_next_text(
     };
     match action.id.as_str() {
         "host_mcp_command_path_unconfirmed" => format!(
-            "{host_display} host runtime has not been observed; make the MCP command launchable by the {host_display} host process, restart or reload {host_display}, then rerun verification."
+            "{host_display} host runtime has not been observed; inspect {host_display} MCP startup and tool-list logs, then confirm the MCP command is launchable by the {host_display} host process."
         ),
         "host_runtime_not_observed" => format!(
-            "{host_display} host runtime has not been observed; restart or reload {host_display}, then rerun verification."
+            "{host_display} host runtime has not been observed; confirm the active {host_display} session starts the Volicord MCP server and exposes Volicord tools."
         ),
         "host_trust_required" => format!(
             "The project must be trusted before project-scoped {host_display} configuration loads; then rerun verification."

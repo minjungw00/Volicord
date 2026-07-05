@@ -1031,7 +1031,8 @@ fn init_codex_record_profile_succeeds_without_host_hooks_or_watcher() -> Result<
 
 #[cfg(unix)]
 #[test]
-fn connection_verify_codex_trusted_project_omits_trust_next_step() -> Result<(), Box<dyn Error>> {
+fn connection_verify_trusted_project_prioritizes_host_runtime_guidance(
+) -> Result<(), Box<dyn Error>> {
     let runtime_home = TempRuntimeHome::new("cli-bin-record-verify-compact")?;
     let repo_root = create_git_repo(&runtime_home, "product-repo")?;
     let bin_dir = runtime_home.path().join("bin");
@@ -1098,11 +1099,13 @@ fn connection_verify_codex_trusted_project_omits_trust_next_step() -> Result<(),
     assert!(text.contains("  Host follow-up: action required"));
     assert!(text.contains("Next:"));
     assert!(!text.contains("Trust or approve the project configuration if Codex asks."));
-    assert!(text.contains("Make `volicord` available on the PATH seen by the Codex host process"));
     assert!(
-        text.contains("Restart, reload, resume, or start a new Codex session in this repository.")
+        text.contains(
+            "Confirm the active Codex session has started the Volicord MCP server and exposed Volicord tools."
+        )
     );
-    assert!(text.contains("Confirm that Volicord tools are exposed in the active Codex session."));
+    assert!(text.contains("If tools are not exposed, check Codex MCP startup and tool-list logs."));
+    assert!(text.contains("Ensure `volicord` is launchable by the Codex host process."));
     assert!(text.contains("Limits:"));
     assert!(text.contains(
         "The record profile supports cooperative Volicord workflow recording through MCP."
@@ -1133,11 +1136,11 @@ fn connection_verify_codex_trusted_project_omits_trust_next_step() -> Result<(),
     let value = json_stdout(&verify_json)?;
     assert_eq!(
         value["primary_next_action"]["id"],
-        "host_mcp_command_path_unconfirmed"
+        "host_runtime_not_observed"
     );
     assert_eq!(
         value["primary_next_action"]["instruction"],
-        "Make `volicord` available on the PATH seen by the Codex host process, or configure the MCP command so the host can launch it; restart, reload, resume, or start a new Codex session in this repository; confirm Volicord tools are exposed in the active Codex session"
+        "Confirm the active Codex session has started the Volicord MCP server and exposed Volicord tools; if tools are not exposed, check Codex MCP startup and tool-list logs; ensure `volicord` is launchable by the Codex host process"
     );
     assert_eq!(value["primary_next_action"]["command"], verify_command);
     assert!(!value["primary_next_action"]["instruction"]
@@ -1146,7 +1149,7 @@ fn connection_verify_codex_trusted_project_omits_trust_next_step() -> Result<(),
         .contains("volicord connection verify"));
     assert_eq!(
         value["summary_card"]["next"],
-        "Codex host runtime has not been observed; make the MCP command launchable by the Codex host process, restart or reload Codex, then rerun verification."
+        "Codex host runtime has not been observed; confirm the active Codex session starts the Volicord MCP server and exposes Volicord tools."
     );
     assert!(!value["summary_card"]["next"]
         .as_str()
@@ -1157,6 +1160,15 @@ fn connection_verify_codex_trusted_project_omits_trust_next_step() -> Result<(),
         .expect("summary next should be text")
         .contains("volicord connection verify"));
     assert_ne!(value["primary_next_action"]["id"], "host_trust_required");
+    assert_ne!(
+        value["primary_next_action"]["id"],
+        "host_mcp_command_path_unconfirmed"
+    );
+    assert!(value["actions"]
+        .as_array()
+        .expect("actions should be an array")
+        .iter()
+        .any(|action| action["id"] == "host_runtime_not_observed"));
     assert!(!value["actions"]
         .as_array()
         .expect("actions should be an array")
@@ -1167,6 +1179,11 @@ fn connection_verify_codex_trusted_project_omits_trust_next_step() -> Result<(),
         .expect("connection user actions should be an array")
         .iter()
         .any(|action| action["kind"] == "host_trust_required"));
+    assert!(value["connection"]["user_actions"]
+        .as_array()
+        .expect("connection user actions should be an array")
+        .iter()
+        .any(|action| action["kind"] == "host_runtime_not_observed"));
     assert_eq!(value["verification"]["project_trust"]["status"], "trusted");
     assert_eq!(
         value["verification"]["host_runtime"]["status"],
@@ -1180,6 +1197,13 @@ fn connection_verify_codex_trusted_project_omits_trust_next_step() -> Result<(),
         value["verification"]["host_mcp_command"]["risk"],
         "host_path_unconfirmed"
     );
+    assert!(value["checks"]
+        .as_array()
+        .expect("checks should be an array")
+        .iter()
+        .any(|check| check["id"] == "host_mcp_command"
+            && check["status"] == "action_required"
+            && check["details"]["risk"] == "host_path_unconfirmed"));
     assert_eq!(value["verification"]["host"]["managed_config"], "match");
     assert_eq!(value["verification"]["preflight"]["status"], "passed");
     assert_eq!(value["verification"]["mcp_handshake"]["status"], "passed");
@@ -1192,7 +1216,8 @@ fn connection_verify_codex_trusted_project_omits_trust_next_step() -> Result<(),
 
 #[cfg(unix)]
 #[test]
-fn connection_status_record_profile_uses_compact_human_output() -> Result<(), Box<dyn Error>> {
+fn connection_status_trusted_project_prioritizes_host_runtime_guidance(
+) -> Result<(), Box<dyn Error>> {
     let runtime_home = TempRuntimeHome::new("cli-bin-record-status-compact")?;
     let repo_root = create_git_repo(&runtime_home, "product-repo")?;
     let bin_dir = runtime_home.path().join("bin");
@@ -1262,7 +1287,11 @@ fn connection_status_record_profile_uses_compact_human_output() -> Result<(), Bo
     assert!(text.contains("  Host MCP command: uses volicord from the Codex host PATH"));
     assert!(text.contains("  Host follow-up: action required"));
     assert!(!text.contains("Trust or approve the project configuration if Codex asks."));
-    assert!(text.contains("Open, restart, or reload Codex in this repository."));
+    assert!(text.contains(
+        "Confirm the active Codex session has started the Volicord MCP server and exposed Volicord tools."
+    ));
+    assert!(text.contains("If tools are not exposed, check Codex MCP startup and tool-list logs."));
+    assert!(text.contains("Ensure `volicord` is launchable by the Codex host process."));
     assert_text_renders_volicord_commands_as_standalone_lines(
         &text,
         &[&verify_command, &diagnostics_command],
@@ -1270,12 +1299,52 @@ fn connection_status_record_profile_uses_compact_human_output() -> Result<(), Bo
     assert_connection_text_omits_diagnostic_dump_fields(&text);
     assert!(!text.contains("regenerate cwd-independent detective host-hook commands"));
     assert!(!text.contains("refresh stale detective host-hook files"));
+
+    let status_json = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connection",
+            "status",
+            "codex",
+            "--shared",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--json",
+        ],
+        &[("CODEX_HOME", path_text(&codex_home))],
+    )?;
+    assert_success(&status_json);
+    let value = json_stdout(&status_json)?;
+    assert_eq!(
+        value["primary_next_action"]["id"],
+        "host_runtime_not_observed"
+    );
+    assert_ne!(
+        value["primary_next_action"]["id"],
+        "host_mcp_command_path_unconfirmed"
+    );
+    assert_eq!(
+        value["summary_card"]["next"],
+        "Codex host runtime has not been observed; confirm the active Codex session starts the Volicord MCP server and exposes Volicord tools."
+    );
+    assert!(value["actions"]
+        .as_array()
+        .expect("actions should be an array")
+        .iter()
+        .any(|action| action["id"] == "host_runtime_not_observed"));
+    assert!(value["checks"]
+        .as_array()
+        .expect("checks should be an array")
+        .iter()
+        .any(|check| check["id"] == "host_mcp_command"
+            && check["status"] == "action_required"
+            && check["details"]["risk"] == "host_path_unconfirmed"));
     Ok(())
 }
 
 #[cfg(unix)]
 #[test]
-fn connection_verify_codex_untrusted_project_requests_trust() -> Result<(), Box<dyn Error>> {
+fn connection_verify_untrusted_project_keeps_trust_guidance() -> Result<(), Box<dyn Error>> {
     let runtime_home = TempRuntimeHome::new("cli-bin-codex-untrusted")?;
     let repo_root = create_git_repo(&runtime_home, "product-repo")?;
     let bin_dir = runtime_home.path().join("bin");
@@ -1882,11 +1951,11 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     );
     assert_eq!(
         status_without_intent_json["primary_next_action"]["id"],
-        "reload_required"
+        "host_runtime_not_observed"
     );
     assert_eq!(
         status_without_intent_json["summary_card"]["next"],
-        "Restart or reload Codex so it loads Volicord configuration, then rerun verification."
+        "Codex host runtime has not been observed; confirm the active Codex session starts the Volicord MCP server and exposes Volicord tools."
     );
     assert!(!status_without_intent_json["summary_card"]["next"]
         .as_str()
@@ -1930,7 +1999,11 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
         "Status:\n  Connection: enabled\n  Mode: workflow\n  Last verification: action required"
     ));
     assert!(status_text.contains("  Host follow-up: action required"));
-    assert!(status_text.contains("Open, restart, or reload Codex in this repository."));
+    assert!(status_text.contains(
+        "Confirm the active Codex session has started the Volicord MCP server and exposed Volicord tools."
+    ));
+    assert!(status_text
+        .contains("If tools are not exposed, check Codex MCP startup and tool-list logs."));
     let verify_command = format!(
         "volicord connection verify codex --shared --repo {}",
         repo_root.display()
