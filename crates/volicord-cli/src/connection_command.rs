@@ -5059,6 +5059,13 @@ fn render_simplified_connection_output(
         connection_summary_card(data.action, &data.guard_state, primary_next_action.as_ref());
     match data.format {
         OutputFormat::Text => {
+            if matches!(data.action, "status" | "verified") {
+                return render_compact_connection_text(
+                    &data,
+                    &mcp_config_state,
+                    primary_next_action.as_ref(),
+                );
+            }
             let action_guidance_text = connection_action_guidance_text(
                 data.status,
                 &data.guard_state,
@@ -5168,6 +5175,332 @@ fn render_simplified_connection_output(
                 .map_err(|error| ConnectionCommandError::runtime(error.to_string()))
         }
     }
+}
+
+fn render_compact_connection_text(
+    data: &SimplifiedConnectionOutput<'_>,
+    mcp_config_state: &str,
+    primary_next_action: Option<&PrimaryNextAction>,
+) -> Result<String, ConnectionCommandError> {
+    let host_kind = parse_host_kind(&data.connection.host_kind)?;
+    let host = public_host_display_name(host_kind);
+    let title = match data.action {
+        "verified" => format!("Agent Connection checked for {host}"),
+        "status" => format!("Agent Connection status for {host}"),
+        _ => format!("Agent Connection {} for {host}", data.action),
+    };
+    let mut output = format!("{title}\n\nStatus:\n");
+    if data.action == "status" {
+        output.push_str(&format!(
+            "  Connection: {}\n  Mode: {}\n  Last verification: {}\n",
+            enabled_text(data.connection.enabled),
+            public_mode_text(&data.connection.mode),
+            compact_agent_status_text(data.status)
+        ));
+    } else {
+        output.push_str(&format!(
+            "  Verification: {}\n  Connection: {}\n  Mode: {}\n",
+            compact_agent_status_text(data.status),
+            enabled_text(data.connection.enabled),
+            public_mode_text(&data.connection.mode)
+        ));
+    }
+
+    output.push_str(&format!(
+        "\nProfile:\n  {}\n\n",
+        data.guard_state.selected_profile()
+    ));
+    append_compact_repositories(&mut output, data.projects);
+    output.push_str("\nChecks:\n");
+    for (label, value) in compact_connection_checks(data, mcp_config_state, primary_next_action) {
+        output.push_str(&format!("  {label}: {value}\n"));
+    }
+    output.push_str("\nNext:\n");
+    append_compact_next_steps(&mut output, data, host, primary_next_action);
+    output.push_str(&format!(
+        "\nLimits:\n{}\n\nDiagnostics:\n  Run:\n    {}\n",
+        connection_limits_text(data.guard_state.selected_profile()),
+        connection_status_diagnostics_command(data.connection, data.projects).ok_or_else(|| {
+            ConnectionCommandError::runtime("selected Agent Connection has no connected repository")
+        })?
+    ));
+    Ok(output)
+}
+
+fn append_compact_repositories(output: &mut String, projects: &[ConnectionProjectRecord]) {
+    if projects.len() == 1 {
+        output.push_str(&format!(
+            "Repository:\n  {}\n",
+            projects[0].project.repo_root.display()
+        ));
+        return;
+    }
+    output.push_str("Repositories:\n");
+    if projects.is_empty() {
+        output.push_str("  none\n");
+    } else {
+        for project in projects {
+            output.push_str(&format!("  {}\n", project.project.repo_root.display()));
+        }
+    }
+}
+
+fn compact_connection_checks(
+    data: &SimplifiedConnectionOutput<'_>,
+    mcp_config_state: &str,
+    primary_next_action: Option<&PrimaryNextAction>,
+) -> Vec<(&'static str, String)> {
+    if let Some(verification) = data.verification {
+        return vec![
+            ("MCP configuration", mcp_config_state.to_owned()),
+            (
+                "MCP preflight",
+                verification.preflight.status.as_str().to_owned(),
+            ),
+            (
+                "MCP handshake",
+                verification.handshake.status.as_str().to_owned(),
+            ),
+            (
+                "Host follow-up",
+                host_follow_up_text(data.status, primary_next_action).to_owned(),
+            ),
+        ];
+    }
+    vec![
+        (
+            "Stored connection",
+            format!(
+                "{}, mode {}, last verification {}",
+                enabled_text(data.connection.enabled),
+                public_mode_text(&data.connection.mode),
+                compact_agent_status_text(data.status)
+            ),
+        ),
+        ("Current MCP configuration", mcp_config_state.to_owned()),
+        (
+            "Last MCP preflight",
+            stored_verification_step_status(data.connection, "preflight"),
+        ),
+        (
+            "Last MCP handshake",
+            stored_verification_step_status(data.connection, "mcp_handshake"),
+        ),
+        (
+            "Host follow-up",
+            host_follow_up_text(data.status, primary_next_action).to_owned(),
+        ),
+    ]
+}
+
+fn append_compact_next_steps(
+    output: &mut String,
+    data: &SimplifiedConnectionOutput<'_>,
+    host: &str,
+    primary_next_action: Option<&PrimaryNextAction>,
+) {
+    let Some(action) = primary_next_action else {
+        output.push_str("  none\n");
+        return;
+    };
+    let command = action
+        .command
+        .clone()
+        .or_else(|| connection_verify_command(Some(data.connection), data.projects));
+    let mut index = 1;
+    match action.id.as_str() {
+        "reload_required" => {
+            push_numbered_text(
+                output,
+                &mut index,
+                format!("Open, restart, or reload {host} in this repository."),
+            );
+            if init_actions_include_trust_or_approval(&data.user_actions) {
+                push_numbered_text(
+                    output,
+                    &mut index,
+                    format!("Trust or approve the project configuration if {host} asks."),
+                );
+            }
+            push_optional_numbered_command(output, &mut index, "Run", command.as_deref());
+        }
+        "host_trust_required" | "project_approval_required" => {
+            push_numbered_text(
+                output,
+                &mut index,
+                format!("Trust or approve the project configuration if {host} asks."),
+            );
+            push_optional_numbered_command(output, &mut index, "Run", command.as_deref());
+        }
+        "mcp_config_missing" => {
+            push_numbered_text(
+                output,
+                &mut index,
+                "Reinstall the missing MCP configuration.",
+            );
+            push_optional_numbered_command(output, &mut index, "Run", command.as_deref());
+        }
+        "mcp_config_changed" => {
+            push_numbered_text(output, &mut index, "Review the changed MCP configuration.");
+            push_optional_numbered_command(
+                output,
+                &mut index,
+                "If Volicord should manage it, run",
+                command.as_deref(),
+            );
+        }
+        "mcp_config_malformed" => {
+            push_numbered_text(
+                output,
+                &mut index,
+                "Repair the malformed MCP configuration.",
+            );
+            push_optional_numbered_command(output, &mut index, "Run", command.as_deref());
+        }
+        "guard_files_missing" => {
+            push_numbered_text(
+                output,
+                &mut index,
+                "Reinstall missing detective host-hook files.",
+            );
+            push_optional_numbered_command(output, &mut index, "Run", command.as_deref());
+        }
+        "guard_files_stale" => {
+            push_numbered_text(
+                output,
+                &mut index,
+                "Refresh stale detective host-hook files.",
+            );
+            push_optional_numbered_command(output, &mut index, "Run", command.as_deref());
+        }
+        "guard_files_broken" => {
+            push_numbered_text(
+                output,
+                &mut index,
+                "Repair broken detective host-hook files.",
+            );
+            push_optional_numbered_command(output, &mut index, "Run", command.as_deref());
+        }
+        "guard_hook_path_safety" => {
+            push_numbered_text(
+                output,
+                &mut index,
+                "Regenerate cwd-independent detective host-hook commands.",
+            );
+            push_optional_numbered_command(output, &mut index, "Run", command.as_deref());
+        }
+        "guard_capability_degraded" => {
+            push_numbered_text(
+                output,
+                &mut index,
+                "Use --profile record if host hooks are not needed, or prepare a supported host, platform, and configuration for detective.",
+            );
+            push_optional_numbered_command(output, &mut index, "Run", command.as_deref());
+        }
+        _ => {
+            push_numbered_text(
+                output,
+                &mut index,
+                compact_next_instruction_without_command(action),
+            );
+            push_optional_numbered_command(output, &mut index, "Run", command.as_deref());
+        }
+    }
+}
+
+fn push_numbered_text(output: &mut String, index: &mut usize, text: impl AsRef<str>) {
+    output.push_str(&format!("  {}. {}\n", *index, text.as_ref()));
+    *index += 1;
+}
+
+fn push_optional_numbered_command(
+    output: &mut String,
+    index: &mut usize,
+    label: &str,
+    command: Option<&str>,
+) {
+    if let Some(command) = command {
+        output.push_str(&format!("  {}. {label}:\n     {command}\n", *index));
+        *index += 1;
+    }
+}
+
+fn compact_next_instruction_without_command(action: &PrimaryNextAction) -> String {
+    let mut instruction = action.instruction.clone();
+    if let Some(command) = &action.command {
+        for pattern in [
+            format!("; then run {command}."),
+            format!(" then run {command}."),
+            format!("Run {command}."),
+        ] {
+            instruction = instruction.replace(&pattern, "");
+        }
+    }
+    instruction.trim().to_owned()
+}
+
+fn compact_agent_status_text(status: AgentResultStatus) -> &'static str {
+    match status {
+        AgentResultStatus::Complete => "complete",
+        AgentResultStatus::ActionRequired => "action required",
+        AgentResultStatus::Failed => "failed",
+        AgentResultStatus::NotVerified => "not verified",
+        AgentResultStatus::DryRun => "dry run",
+    }
+}
+
+fn host_follow_up_text(
+    status: AgentResultStatus,
+    primary_next_action: Option<&PrimaryNextAction>,
+) -> &'static str {
+    if primary_next_action.is_some() {
+        return "action required";
+    }
+    match status {
+        AgentResultStatus::Complete => "ready",
+        AgentResultStatus::ActionRequired => "action required",
+        AgentResultStatus::Failed => "failed",
+        AgentResultStatus::NotVerified => "not observed",
+        AgentResultStatus::DryRun => "skipped",
+    }
+}
+
+fn enabled_text(enabled: bool) -> &'static str {
+    if enabled {
+        "enabled"
+    } else {
+        "disabled"
+    }
+}
+
+fn stored_verification_step_status(connection: &AgentConnectionRecord, step: &str) -> String {
+    json_object_text(&connection.last_verification_report_json)
+        .get(step)
+        .and_then(|step| step.get("status"))
+        .and_then(Value::as_str)
+        .unwrap_or("not observed")
+        .replace('_', " ")
+}
+
+fn connection_limits_text(profile: &str) -> &'static str {
+    match profile {
+        "detective" => init_limits_text(InitMode::Detective),
+        _ => init_limits_text(InitMode::Record),
+    }
+}
+
+fn connection_status_diagnostics_command(
+    connection: &AgentConnectionRecord,
+    projects: &[ConnectionProjectRecord],
+) -> Option<String> {
+    let project = projects.first()?;
+    let intent = parse_connection_intent(&connection.intent).ok()?;
+    Some(format!(
+        "volicord connection status {}{} --repo {} --json",
+        public_host_name_text(&connection.host_kind),
+        intent_flag_suffix(intent),
+        project.project.repo_root.display()
+    ))
 }
 
 fn render_simplified_plan_output(

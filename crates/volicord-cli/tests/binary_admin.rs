@@ -985,6 +985,184 @@ fn init_codex_record_profile_succeeds_without_host_hooks_or_watcher() -> Result<
 
 #[cfg(unix)]
 #[test]
+fn connection_verify_record_profile_uses_compact_human_output() -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-record-verify-compact")?;
+    let repo_root = create_git_repo(&runtime_home, "product-repo")?;
+    let bin_dir = runtime_home.path().join("bin");
+    write_fake_codex(&bin_dir)?;
+    write_fake_mcp(&bin_dir)?;
+    let env = [
+        ("PATH", path_env(&[bin_dir.as_path()])),
+        ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
+    ];
+
+    let init = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--host",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--profile",
+            "record",
+            "--json",
+        ],
+        &env,
+    )?;
+    assert_success(&init);
+
+    let verify = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connection",
+            "verify",
+            "codex",
+            "--shared",
+            "--repo",
+            path_text(&repo_root).as_str(),
+        ],
+        &env,
+    )?;
+    assert_success(&verify);
+    let text = stdout(&verify);
+    let verify_command = format!(
+        "volicord connection verify codex --shared --repo {}",
+        repo_root.display()
+    );
+    let diagnostics_command = format!(
+        "volicord connection status codex --shared --repo {} --json",
+        repo_root.display()
+    );
+
+    assert!(text.contains("Agent Connection checked for Codex"));
+    assert!(!text.contains("Agent Connection verified for Codex"));
+    assert!(text.contains("Status:\n  Verification: action required"));
+    assert!(text.contains("Profile:\n  record"));
+    assert!(text.contains(&format!("Repository:\n  {}", repo_root.display())));
+    assert!(text.contains("Checks:\n  MCP configuration: match"));
+    assert!(text.contains("  MCP preflight: passed"));
+    assert!(text.contains("  MCP handshake: passed"));
+    assert!(text.contains("  Host follow-up: action required"));
+    assert!(text.contains("Next:"));
+    assert!(text.contains("Trust or approve the project configuration if Codex asks."));
+    assert!(text.contains("Limits:"));
+    assert!(text.contains(
+        "The record profile supports cooperative Volicord workflow recording through MCP."
+    ));
+    assert!(text.contains("Diagnostics:"));
+    assert_text_renders_volicord_commands_as_standalone_lines(
+        &text,
+        &[&verify_command, &diagnostics_command],
+    );
+    assert_connection_text_omits_diagnostic_dump_fields(&text);
+    assert!(!text.contains("regenerate cwd-independent detective host-hook commands"));
+    assert!(!text.contains("refresh stale detective host-hook files"));
+
+    let verify_json = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connection",
+            "verify",
+            "codex",
+            "--shared",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--json",
+        ],
+        &env,
+    )?;
+    assert_success(&verify_json);
+    let value = json_stdout(&verify_json)?;
+    assert_eq!(value["verification"]["host"]["managed_config"], "match");
+    assert_eq!(value["verification"]["preflight"]["status"], "passed");
+    assert_eq!(value["verification"]["mcp_handshake"]["status"], "passed");
+    assert_eq!(
+        value["connection"]["verification_report"]["mcp_handshake"]["status"],
+        "passed"
+    );
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn connection_status_record_profile_uses_compact_human_output() -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-record-status-compact")?;
+    let repo_root = create_git_repo(&runtime_home, "product-repo")?;
+    let bin_dir = runtime_home.path().join("bin");
+    write_fake_codex(&bin_dir)?;
+    write_fake_mcp(&bin_dir)?;
+    let env = [
+        ("PATH", path_env(&[bin_dir.as_path()])),
+        ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
+    ];
+
+    let init = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--host",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--profile",
+            "record",
+            "--json",
+        ],
+        &env,
+    )?;
+    assert_success(&init);
+
+    let status = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connection",
+            "status",
+            "codex",
+            "--shared",
+            "--repo",
+            path_text(&repo_root).as_str(),
+        ],
+        &[],
+    )?;
+    assert_success(&status);
+    let text = stdout(&status);
+    let verify_command = format!(
+        "volicord connection verify codex --shared --repo {}",
+        repo_root.display()
+    );
+    let diagnostics_command = format!(
+        "volicord connection status codex --shared --repo {} --json",
+        repo_root.display()
+    );
+
+    assert!(text.contains("Agent Connection status for Codex"));
+    assert!(text.contains(
+        "Status:\n  Connection: enabled\n  Mode: workflow\n  Last verification: action required"
+    ));
+    assert!(text.contains("Profile:\n  record"));
+    assert!(text.contains(&format!("Repository:\n  {}", repo_root.display())));
+    assert!(text.contains(
+        "Checks:\n  Stored connection: enabled, mode workflow, last verification action required"
+    ));
+    assert!(text.contains("  Current MCP configuration: match"));
+    assert!(text.contains("  Last MCP preflight: passed"));
+    assert!(text.contains("  Last MCP handshake: passed"));
+    assert!(text.contains("  Host follow-up: action required"));
+    assert!(text.contains("Open, restart, or reload Codex in this repository."));
+    assert!(text.contains("Trust or approve the project configuration if Codex asks."));
+    assert_text_renders_volicord_commands_as_standalone_lines(
+        &text,
+        &[&verify_command, &diagnostics_command],
+    );
+    assert_connection_text_omits_diagnostic_dump_fields(&text);
+    assert!(!text.contains("regenerate cwd-independent detective host-hook commands"));
+    assert!(!text.contains("refresh stale detective host-hook files"));
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
 fn connection_verify_record_profile_does_not_offer_detective_hook_repair(
 ) -> Result<(), Box<dyn Error>> {
     let runtime_home = TempRuntimeHome::new("cli-bin-record-verify-no-detective-repair")?;
@@ -1072,8 +1250,9 @@ fn connection_verify_record_profile_does_not_offer_detective_hook_repair(
     )?;
     assert_success(&verify_text);
     let text = stdout(&verify_text);
-    assert!(text.contains("selected_profile: record"));
-    assert!(text.contains("hook_path_safety: metadata_missing"));
+    assert!(text.contains("Agent Connection checked for Codex"));
+    assert!(text.contains("Profile:\n  record"));
+    assert_connection_text_omits_diagnostic_dump_fields(&text);
     assert!(
         !text.contains("Detective hook commands are not in the supported cwd-independent shape")
     );
@@ -1500,12 +1679,25 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     )?;
     assert_success(&status_without_intent_text);
     let status_text = stdout(&status_without_intent_text);
-    assert!(status_text.contains("Result: action_required (not a fatal CLI error)"));
-    assert!(status_text
-        .contains("Why: Host configuration is present, but the host has not reloaded it yet."));
-    assert!(status_text.contains("Next: Restart or reload codex"));
-    assert!(status_text.contains("then run volicord connection verify codex --shared --repo"));
-    assert!(status_text.contains("Does not prove: OS sandboxing"));
+    assert!(status_text.contains("Agent Connection status for Codex"));
+    assert!(status_text.contains(
+        "Status:\n  Connection: enabled\n  Mode: workflow\n  Last verification: action required"
+    ));
+    assert!(status_text.contains("  Host follow-up: action required"));
+    assert!(status_text.contains("Open, restart, or reload Codex in this repository."));
+    let verify_command = format!(
+        "volicord connection verify codex --shared --repo {}",
+        repo_root.display()
+    );
+    let diagnostics_command = format!(
+        "volicord connection status codex --shared --repo {} --json",
+        repo_root.display()
+    );
+    assert_text_renders_volicord_commands_as_standalone_lines(
+        &status_text,
+        &[&verify_command, &diagnostics_command],
+    );
+    assert_connection_text_omits_diagnostic_dump_fields(&status_text);
 
     let config = fs::read_to_string(repo_root.join(".codex/config.toml"))?;
     assert!(config.contains(&format!(
@@ -2383,12 +2575,15 @@ fn connect_defaults_to_workflow_mode() -> Result<(), Box<dyn Error>> {
     )?;
     assert_success(&status_text);
     let status_text = stdout(&status_text);
-    assert!(status_text.contains("connection_state: complete"));
-    assert!(status_text.contains("runtime_home_state: ready"));
-    assert!(status_text.contains("project_registration_state: registered"));
-    assert!(status_text.contains("mcp_config_state: match"));
-    assert!(status_text.contains("host_reload_required: no"));
-    assert!(status_text.contains("Next: none"));
+    assert!(status_text.contains("Agent Connection status for Codex"));
+    assert!(status_text.contains(
+        "Status:\n  Connection: enabled\n  Mode: workflow\n  Last verification: complete"
+    ));
+    assert!(status_text.contains("Profile:\n  record"));
+    assert!(status_text.contains("  Current MCP configuration: match"));
+    assert!(status_text.contains("  Host follow-up: ready"));
+    assert!(status_text.contains("Next:\n  none"));
+    assert_connection_text_omits_diagnostic_dump_fields(&status_text);
     Ok(())
 }
 
@@ -2713,15 +2908,20 @@ fn connection_status_reports_stale_guard_files_as_primary_action() -> Result<(),
     )?;
     assert_success(&status_text);
     let text = stdout(&status_text);
-    assert!(
-        text.contains("Result: action_required (not a fatal CLI error)")
-            || text.contains("Result: complete (detective diagnostics degraded)")
+    assert!(text.contains("Agent Connection status for Codex"));
+    assert!(text.contains("Profile:\n  detective"));
+    assert!(text.contains("  Host follow-up: action required"));
+    assert!(text.contains("Refresh stale detective host-hook files."));
+    let repair_command = format!("volicord init --host codex --repo {}", repo_root.display());
+    let diagnostics_command = format!(
+        "volicord connection status codex --shared --repo {} --json",
+        repo_root.display()
     );
-    assert!(text.contains(
-        "Why: Detective host-hook files no longer match the recorded managed configuration."
-    ));
-    assert!(text.contains("Next: Run volicord init --host codex --repo"));
-    assert!(text.contains("Does not prove: OS sandboxing"));
+    assert_text_renders_volicord_commands_as_standalone_lines(
+        &text,
+        &[&repair_command, &diagnostics_command],
+    );
+    assert_connection_text_omits_diagnostic_dump_fields(&text);
 
     let doctor = run_with_home_env(runtime_home.path(), ["doctor", "--json"], &[])?;
     assert_success(&doctor);
@@ -3555,6 +3755,78 @@ fn assert_init_text_omits_internal_diagnostics(text: &str) {
         assert!(
             !text.contains(forbidden),
             "init text should not expose `{forbidden}`:\n{text}"
+        );
+    }
+}
+
+fn assert_connection_text_omits_diagnostic_dump_fields(text: &str) {
+    for forbidden in [
+        "Result:",
+        "Why:",
+        "Does not prove:",
+        "runtime_home_state:",
+        "runtime_home:",
+        "connection_state:",
+        "project_registration_state:",
+        "connected_repositories:",
+        "mcp_config_state:",
+        "mcp_config:",
+        "selected_profile:",
+        "observation_summary:",
+        "observation_capabilities:",
+        "host_hooks_active:",
+        "session_watcher_active:",
+        "actor_identity_provable:",
+        "os_enforced:",
+        "detective_installation_state:",
+        "detective_configuration_state:",
+        "host_hook_observation_state:",
+        "detective_effective_state:",
+        "detective_files_state:",
+        "agents_block_state:",
+        "volicord_policy_file_state:",
+        "rule_instruction_config_state:",
+        "hook_config_state:",
+        "hook_path_safety:",
+        "required_hook_phases_state:",
+        "required_hook_phases_missing:",
+        "host_hook_observed:",
+        "detective_hook_observed:",
+        "last_host_hook_event:",
+        "prompt_capture_state:",
+        "host_reload_required:",
+        "detective_blockers:",
+        "host_verification:",
+        "mcp_handshake:",
+        "next_action:",
+    ] {
+        assert!(
+            !text.contains(forbidden),
+            "connection text should not expose `{forbidden}`:\n{text}"
+        );
+    }
+}
+
+fn assert_text_renders_volicord_commands_as_standalone_lines(text: &str, commands: &[&str]) {
+    let lines = text.lines().map(str::trim).collect::<Vec<_>>();
+    for command in commands {
+        assert!(
+            lines.iter().any(|line| line == command),
+            "expected standalone command `{command}` in:\n{text}"
+        );
+    }
+    for line in lines
+        .iter()
+        .copied()
+        .filter(|line| line.contains("volicord "))
+    {
+        assert!(
+            line.starts_with("volicord "),
+            "volicord command should be standalone, got `{line}` in:\n{text}"
+        );
+        assert!(
+            !matches!(line.chars().last(), Some('.' | ',' | ';' | ':')),
+            "volicord command should not have trailing punctuation, got `{line}` in:\n{text}"
         );
     }
 }
