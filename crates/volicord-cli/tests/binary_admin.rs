@@ -985,6 +985,105 @@ fn init_codex_record_profile_succeeds_without_host_hooks_or_watcher() -> Result<
 
 #[cfg(unix)]
 #[test]
+fn connection_verify_record_profile_does_not_offer_detective_hook_repair(
+) -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-record-verify-no-detective-repair")?;
+    let repo_root = create_git_repo(&runtime_home, "product-repo")?;
+    let bin_dir = runtime_home.path().join("bin");
+    write_fake_codex(&bin_dir)?;
+    write_fake_mcp(&bin_dir)?;
+    let env = [
+        ("PATH", path_env(&[bin_dir.as_path()])),
+        ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
+    ];
+
+    let init = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--host",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--profile",
+            "record",
+            "--json",
+        ],
+        &env,
+    )?;
+    assert_success(&init);
+
+    let verify_json = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connection",
+            "verify",
+            "codex",
+            "--shared",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--json",
+        ],
+        &env,
+    )?;
+    assert_success(&verify_json);
+    let value = json_stdout(&verify_json)?;
+    assert_eq!(value["states"]["selected_profile"], "record");
+    assert_eq!(value["states"]["hook_config"], "disabled");
+    assert_eq!(value["states"]["required_hook_phases"], "disabled");
+    assert_eq!(value["states"]["hook_path_safety"], "metadata_missing");
+    assert_eq!(value["host_hook"]["hook_path_safety"], "metadata_missing");
+    assert!(value["host_hook"]["hook_path_safety_details"]
+        .as_array()
+        .expect("hook path details should be an array")
+        .iter()
+        .any(|detail| detail["source"] == "host_hook_commands"));
+    let primary_id = value["primary_next_action"]["id"].as_str();
+    assert!(
+        !matches!(
+            primary_id,
+            Some(
+                "guard_hook_path_safety"
+                    | "guard_files_missing"
+                    | "guard_files_stale"
+                    | "guard_files_broken"
+                    | "guard_capability_degraded"
+            )
+        ),
+        "record profile should not promote detective hook repair: {value}"
+    );
+    let summary_next = value["summary_card"]["next"]
+        .as_str()
+        .expect("summary next should be text");
+    assert!(!summary_next.contains("regenerate cwd-independent detective host-hook commands"));
+    assert!(!summary_next.contains("refresh stale detective host-hook files"));
+
+    let verify_text = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connection",
+            "verify",
+            "codex",
+            "--shared",
+            "--repo",
+            path_text(&repo_root).as_str(),
+        ],
+        &env,
+    )?;
+    assert_success(&verify_text);
+    let text = stdout(&verify_text);
+    assert!(text.contains("selected_profile: record"));
+    assert!(text.contains("hook_path_safety: metadata_missing"));
+    assert!(
+        !text.contains("Detective hook commands are not in the supported cwd-independent shape")
+    );
+    assert!(!text.contains("regenerate cwd-independent detective host-hook commands"));
+    assert!(!text.contains("refresh stale detective host-hook files"));
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
 fn init_codex_detective_profile_fails_without_observe_prerequisites() -> Result<(), Box<dyn Error>>
 {
     let runtime_home = TempRuntimeHome::new("cli-bin-init-detective-missing-prereqs")?;

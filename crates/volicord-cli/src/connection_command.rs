@@ -4756,6 +4756,11 @@ impl GuardOperationalState {
         }
     }
 
+    fn detective_hooks_applicable(&self) -> bool {
+        matches!(self.mode_state.as_str(), "detective" | "mixed")
+            || matches!(self.guard_profile_state.as_str(), "detective" | "mixed")
+    }
+
     fn host_hook_guard_available(&self) -> bool {
         self.mode_state == IntegrationProfile::Detective.as_str()
             && self.effective_state == "active"
@@ -6241,45 +6246,47 @@ fn primary_connection_action(
             }
         }
     }
-    if guard_state.installation_state == "files_missing" {
-        return Some(connection_repair_action(
-            "guard_files_missing",
-            "Run init again to reinstall missing detective host-hook files.",
-            connection,
-            projects,
-        ));
-    }
-    if guard_state.hook_path_safety_state != HookWrapperResolutionStatus::Ok.as_str()
-        && !matches!(
-            guard_state.hook_path_safety_state.as_str(),
-            "not_checked" | "not_applicable"
-        )
-    {
-        return Some(connection_repair_action(
-            "guard_hook_path_safety",
-            "Run init again to regenerate cwd-independent detective host-hook commands.",
-            connection,
-            projects,
-        ));
-    }
-    if guard_state.installation_state == "stale" {
-        return Some(connection_repair_action(
-            "guard_files_stale",
-            "Run init again to refresh stale detective host-hook files.",
-            connection,
-            projects,
-        ));
-    }
-    if guard_state.installation_state == "broken" {
-        return Some(connection_repair_action(
-            "guard_files_broken",
-            "Repair broken detective host-hook files, then run init again.",
-            connection,
-            projects,
-        ));
-    }
-    if guard_state.installation_state == "degraded" {
-        return Some(guard_degraded_action(connection, projects));
+    if guard_state.detective_hooks_applicable() {
+        if guard_state.installation_state == "files_missing" {
+            return Some(connection_repair_action(
+                "guard_files_missing",
+                "Run init again to reinstall missing detective host-hook files.",
+                connection,
+                projects,
+            ));
+        }
+        if guard_state.hook_path_safety_state != HookWrapperResolutionStatus::Ok.as_str()
+            && !matches!(
+                guard_state.hook_path_safety_state.as_str(),
+                "not_checked" | "not_applicable"
+            )
+        {
+            return Some(connection_repair_action(
+                "guard_hook_path_safety",
+                "Run init again to regenerate cwd-independent detective host-hook commands.",
+                connection,
+                projects,
+            ));
+        }
+        if guard_state.installation_state == "stale" {
+            return Some(connection_repair_action(
+                "guard_files_stale",
+                "Run init again to refresh stale detective host-hook files.",
+                connection,
+                projects,
+            ));
+        }
+        if guard_state.installation_state == "broken" {
+            return Some(connection_repair_action(
+                "guard_files_broken",
+                "Repair broken detective host-hook files, then run init again.",
+                connection,
+                projects,
+            ));
+        }
+        if guard_state.installation_state == "degraded" {
+            return Some(guard_degraded_action(connection, projects));
+        }
     }
     if let Some(action) = actions
         .iter()
@@ -6356,8 +6363,7 @@ fn connection_guidance_needed(
         AgentResultStatus::ActionRequired
             | AgentResultStatus::Failed
             | AgentResultStatus::NotVerified
-    ) || guard_state.effective_state == "degraded"
-        || guard_state.installation_state == "degraded"
+    ) || detective_diagnostics_degraded(guard_state)
         || primary_next_action.is_some_and(|action| action.id == "guard_capability_degraded")
 }
 
@@ -6367,10 +6373,7 @@ fn connection_result_text(
 ) -> String {
     match status {
         AgentResultStatus::ActionRequired => "action_required (not a fatal CLI error)".to_owned(),
-        AgentResultStatus::Complete
-            if guard_state.effective_state == "degraded"
-                || guard_state.installation_state == "degraded" =>
-        {
+        AgentResultStatus::Complete if detective_diagnostics_degraded(guard_state) => {
             "complete (detective diagnostics degraded)".to_owned()
         }
         AgentResultStatus::Complete => "complete".to_owned(),
@@ -6431,7 +6434,7 @@ fn connection_guidance_why(
             _ => action.instruction.clone(),
         };
     }
-    if guard_state.effective_state == "degraded" || guard_state.installation_state == "degraded" {
+    if detective_diagnostics_degraded(guard_state) {
         return "Detective host-hook diagnostics are degraded for this connection.".to_owned();
     }
     match status {
@@ -6448,6 +6451,12 @@ fn connection_guidance_why(
             "No follow-up is required.".to_owned()
         }
     }
+}
+
+fn detective_diagnostics_degraded(guard_state: &GuardOperationalState) -> bool {
+    guard_state.detective_hooks_applicable()
+        && (guard_state.effective_state == "degraded"
+            || guard_state.installation_state == "degraded")
 }
 
 fn connection_next_action_text(primary_next_action: Option<&PrimaryNextAction>) -> String {
