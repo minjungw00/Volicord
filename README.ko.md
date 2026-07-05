@@ -152,7 +152,7 @@ volicord --version
 
 ### Product Repository 초기화 또는 연결
 
-에이전트가 작업할 저장소에서 `volicord init`을 실행합니다.
+에이전트가 작업할 저장소를 아래 명령으로 초기화합니다.
 
 ```sh
 volicord init --host codex --repo /path/to/your-product-repo --profile record
@@ -179,6 +179,17 @@ volicord connection verify codex --shared --repo /path/to/your-product-repo
 volicord connection status codex --shared --repo /path/to/your-product-repo
 volicord doctor
 ```
+
+기본 text 출력은 대화형 사용자를 위한 사람이 읽는 요약입니다. 자동화와 전체 진단에는
+JSON 출력을 사용하고, 간결한 text 출력을 파싱하지 않습니다.
+
+```sh
+volicord connection status codex --shared --repo /path/to/your-product-repo --json
+```
+
+CLI MCP preflight 또는 handshake 성공은 Volicord의 MCP 서버가 CLI 점검 경로에서 시작하고
+응답할 수 있다는 뜻입니다. 그 자체만으로 Codex, Claude Code 또는 다른 호스트가 프로젝트
+설정을 로드, 신뢰, 승인했다는 증명은 아닙니다.
 
 안내 흐름은 [빠른 시작](docs/ko/user-guide/quickstart.md)과
 [에이전트 호스트 설정](docs/ko/user-guide/agent-host-setup.md)으로 이어집니다.
@@ -480,10 +491,10 @@ docker run --rm \
 
 | 증상 | 할 일 |
 |---|---|
-| `volicord`를 찾지 못함 | 설치 디렉터리를 `PATH`에 넣거나 이미 `PATH`에 있는 디렉터리에 설치한 뒤 `volicord --version`을 다시 실행합니다. 미래의 에이전트 호스트도 `volicord`를 시작할 수 있어야 합니다. |
-| `init`이 `action_required`를 보고함 | 먼저 `Next:` 체크리스트를 따릅니다. 호스트 restart 또는 reload, 프로젝트 trust, MCP approval, OAuth, 명령 링크 복구, 설치 프로필 복구처럼 이름 붙은 동작을 완료한 뒤 일반 init 경로에서는 `volicord connection verify HOST --shared --repo PATH`를 다시 실행합니다. |
-| Detective 전용 점검이 활성화되지 않음 | `volicord connection verify HOST --repo PATH`를 실행하고, 이름 붙은 사용자 동작을 완료한 뒤, hook 또는 watcher 진단은 [에이전트 호스트 문제 해결](docs/ko/user-guide/agent-host-troubleshooting.md)을 사용합니다. |
-| 호스트가 MCP를 시작하지 못함 | 같은 명령 경로로 호스트가 `volicord mcp --help`를 실행할 수 있는지 확인합니다. 설치 프로필 상태는 `volicord doctor`로 확인합니다. |
+| `volicord`를 찾지 못함 | 설치 디렉터리를 `PATH`에 넣거나 이미 `PATH`에 있는 디렉터리에 설치한 뒤 버전을 다시 확인합니다. 미래의 에이전트 호스트도 `volicord`를 시작할 수 있어야 합니다. |
+| `init`이 `action_required`를 보고함 | 먼저 `Next:` 체크리스트를 따릅니다. 호스트 restart 또는 reload, 프로젝트 trust, MCP approval, OAuth, 명령 링크 복구, 설치 프로필 복구처럼 이름 붙은 동작을 완료한 뒤 일반 init 경로에서는 setup 섹션의 검증 명령을 사용합니다. |
+| Detective 전용 점검이 활성화되지 않음 | 같은 호스트, 의도, 저장소 선택자로 검증하고, 이름 붙은 사용자 동작을 완료한 뒤, hook 또는 watcher 진단은 [에이전트 호스트 문제 해결](docs/ko/user-guide/agent-host-troubleshooting.md)을 사용합니다. |
+| 호스트가 MCP를 시작하지 못함 | 같은 명령 경로로 호스트가 `volicord mcp --help`를 시작할 수 있는지 확인합니다. 설치 프로필 상태는 `volicord doctor`로 확인합니다. |
 | Product Repository가 감지되지 않음 | `--repo /path/to/your-product-repo`를 넘기고, 그 경로가 Runtime Home과 분리된 기존 로컬 저장소인지 확인합니다. |
 | 판단이 대기 중임 | 가능하면 호스트 프롬프트나 정확한 채팅 명령을 우선 사용합니다. CLI inbox 경로로 `volicord inbox`와 `volicord inbox answer`를 사용합니다. |
 | 닫기 차단 사유가 있음 | 에이전트에게 `volicord.check_close` 결과, 대기 중인 사용자 판단, 빠진 증거, 미해결 미기록 변경, 잔여 위험을 보여 달라고 합니다. 요약으로 닫지 말고 이름 붙은 차단 사유를 처리합니다. |

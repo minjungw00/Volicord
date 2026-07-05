@@ -100,6 +100,11 @@ volicord connection status codex --shared --repo /path/to/repo
 volicord connection verify codex --shared --repo /path/to/repo
 ```
 
+Default text output is for interactive reading. Use `--json` when a script or
+operator needs the stable automation surface, full checks, guard state, hook
+diagnostics, MCP handshake details, or host observations; do not parse compact
+human text.
+
 Completion state: the connection is ready when status or verification reports
 `complete`. If it reports `action_required`, complete the named host-owned or
 local repair action, then rerun verification. Exact result-state meaning belongs

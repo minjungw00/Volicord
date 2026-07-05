@@ -77,10 +77,13 @@ selected connection or session:
 | Detective profile (`detective`) | Project-local host hooks have verified generated config, cwd-independent and subdirectory-safe hook commands, native host output, required phases, write matchers, matching policy hash, runtime observation, and session watcher observation. | Cooperative host warning or denial decision signals, post-tool correlation, chat command capture, detective status, Unrecorded Changes, and close/write blockers can participate in the workflow. |
 
 The Record profile can issue Volicord Write Tickets through the prepare-write
-workflow. The Detective profile does not make Write Tickets into filesystem
-enforcement, code review approval, final acceptance, or proof that a write
-occurred; it adds supported hook and watcher observations that can later be
-correlated with ticket-scoped writes and Unrecorded Changes.
+workflow. It does not provide OS sandboxing, network isolation, malware
+defense, full write prevention, actor identity proof, correctness proof, test
+sufficiency proof, or human review completion. The Detective profile does not
+make Write Tickets into filesystem enforcement, code review approval, final
+acceptance, or proof that a write occurred; it adds supported hook and watcher
+observations that can later be correlated with ticket-scoped writes and
+Unrecorded Changes.
 
 The observation summary reports whether host hooks and the session watcher
 are active, whether cooperative pre-tool warning or denial is available, whether
@@ -207,6 +210,91 @@ volicord connection status codex --shared --repo /path/to/your-product-repo
 volicord connection verify codex --shared --repo /path/to/your-product-repo
 ```
 
+Default text output is a compact human summary for interactive setup work. Use
+`--json` for automation and full diagnostics; scripts must not parse the
+compact text. Detailed guard state, hook diagnostics, MCP handshake details,
+and host observations belong in JSON diagnostics.
+
+`volicord connection status codex --shared --repo /path/to/your-product-repo`
+has this compact shape:
+
+```text
+Agent Connection status for Codex
+
+Status:
+  Connection: enabled
+  Mode: workflow
+  Last verification: action required
+
+Profile:
+  record
+
+Repository:
+  /path/to/your-product-repo
+
+Checks:
+  Stored connection: enabled, mode workflow, last verification action required
+  Current MCP configuration: match
+  Last MCP preflight: passed
+  Last MCP handshake: passed
+  Host follow-up: action required
+
+Next:
+  1. Open, restart, or reload Codex in this repository.
+  2. Trust or approve the project configuration if Codex asks.
+  3. Run:
+     volicord connection verify codex --shared --repo /path/to/your-product-repo
+
+Limits:
+  The record profile supports cooperative Volicord workflow recording through MCP.
+  It does not provide OS sandboxing, network isolation, malware defense,
+  full write prevention, actor identity proof, correctness proof, test
+  sufficiency proof, or human review completion.
+
+Diagnostics:
+  Run:
+    volicord connection status codex --shared --repo /path/to/your-product-repo --json
+```
+
+`volicord connection verify codex --shared --repo /path/to/your-product-repo`
+uses the same section model while showing fresh verification checks:
+
+```text
+Agent Connection checked for Codex
+
+Status:
+  Verification: action required
+  Connection: enabled
+  Mode: workflow
+
+Profile:
+  record
+
+Repository:
+  /path/to/your-product-repo
+
+Checks:
+  MCP configuration: match
+  MCP preflight: passed
+  MCP handshake: passed
+  Host follow-up: action required
+
+Next:
+  1. Trust or approve the project configuration if Codex asks.
+  2. Run:
+     volicord connection verify codex --shared --repo /path/to/your-product-repo
+
+Limits:
+  The record profile supports cooperative Volicord workflow recording through MCP.
+  It does not provide OS sandboxing, network isolation, malware defense,
+  full write prevention, actor identity proof, correctness proof, test
+  sufficiency proof, or human review completion.
+
+Diagnostics:
+  Run:
+    volicord connection status codex --shared --repo /path/to/your-product-repo --json
+```
+
 If more than one connection matches the same host and repository, include the
 same intent flag used to select it:
 
@@ -220,7 +308,7 @@ Result states:
 | State | Meaning in setup guidance |
 |---|---|
 | `complete` | Volicord-side state, managed host configuration, observable MCP startup, initialization, and expected tool exposure are ready. |
-| `action_required` | Volicord-side state exists, but a named user-controlled host action remains. |
+| `action_required` | Volicord-side state exists, but a named user-controlled host action remains. It is not a fatal CLI error by itself. |
 | `failed` | A required local prerequisite, host configuration step, or verification step did not succeed. |
 | `dry_run` | The command reported planned actions without persistent changes. |
 

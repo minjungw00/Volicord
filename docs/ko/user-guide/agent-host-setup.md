@@ -71,9 +71,11 @@ Detective 상태는 선택된 연결 또는 session에 대해 선택된 프로�
 | Detective profile(`detective`) | 프로젝트 로컬 host hook에 검증된 생성 설정, cwd-independent 및 subdirectory-safe hook 명령, native host output, 필수 phase, 쓰기 matcher, 일치하는 policy hash, 런타임 관찰, session watcher 관찰이 있습니다. | 협력형 host warning 또는 denial decision 신호, post-tool 상관, 채팅 명령 캡처, detective 상태, 미기록 변경, 닫기/쓰기 차단 사유가 workflow에 참여할 수 있습니다. |
 
 Record profile은 prepare-write workflow를 통해 Volicord 쓰기 티켓을 발급할 수 있습니다.
-Detective profile은 쓰기 티켓을 파일시스템 집행, 코드 리뷰 승인, 최종 수락, 쓰기가
-실제로 일어났다는 증명으로 바꾸지 않습니다. 대신 지원되는 hook과 watcher 관찰을 더해
-나중에 티켓 범위 쓰기 및 미기록 변경과 연결할 수 있습니다.
+OS 샌드박싱, 네트워크 격리, 악성 코드 방어, 전체 쓰기 방지, 행위자 identity 증명,
+정확성 증명, 테스트 충분성 증명, 사람 검토 완료를 제공하지 않습니다. Detective profile은
+쓰기 티켓을 파일시스템 집행, 코드 리뷰 승인, 최종 수락, 쓰기가 실제로 일어났다는
+증명으로 바꾸지 않습니다. 대신 지원되는 hook과 watcher 관찰을 더해 나중에 티켓 범위
+쓰기 및 미기록 변경과 연결할 수 있습니다.
 
 관찰 요약은 host hook과 session watcher가 활성인지, 협력형 pre-tool warning이나
 denial이 사용 가능한지, 미기록 변경을 탐지할 수 있는지, 행위자 identity를 증명할 수 있는지,
@@ -192,6 +194,90 @@ volicord connection status codex --shared --repo /path/to/your-product-repo
 volicord connection verify codex --shared --repo /path/to/your-product-repo
 ```
 
+기본 text 출력은 대화형 설정 작업을 위한 간결한 사람용 요약입니다. 자동화와 전체
+진단에는 `--json`을 사용합니다. 스크립트는 간결한 text를 파싱하면 안 됩니다. 자세한
+guard state, hook 진단, MCP handshake 세부사항, 호스트 관찰은 JSON 진단에 둡니다.
+
+`volicord connection status codex --shared --repo /path/to/your-product-repo`는 아래와
+같은 간결한 형태입니다.
+
+```text
+Agent Connection status for Codex
+
+Status:
+  Connection: enabled
+  Mode: workflow
+  Last verification: action required
+
+Profile:
+  record
+
+Repository:
+  /path/to/your-product-repo
+
+Checks:
+  Stored connection: enabled, mode workflow, last verification action required
+  Current MCP configuration: match
+  Last MCP preflight: passed
+  Last MCP handshake: passed
+  Host follow-up: action required
+
+Next:
+  1. Open, restart, or reload Codex in this repository.
+  2. Trust or approve the project configuration if Codex asks.
+  3. Run:
+     volicord connection verify codex --shared --repo /path/to/your-product-repo
+
+Limits:
+  The record profile supports cooperative Volicord workflow recording through MCP.
+  It does not provide OS sandboxing, network isolation, malware defense,
+  full write prevention, actor identity proof, correctness proof, test
+  sufficiency proof, or human review completion.
+
+Diagnostics:
+  Run:
+    volicord connection status codex --shared --repo /path/to/your-product-repo --json
+```
+
+`volicord connection verify codex --shared --repo /path/to/your-product-repo`는 같은 섹션
+모델을 사용하되 새 검증 점검을 보여 줍니다.
+
+```text
+Agent Connection checked for Codex
+
+Status:
+  Verification: action required
+  Connection: enabled
+  Mode: workflow
+
+Profile:
+  record
+
+Repository:
+  /path/to/your-product-repo
+
+Checks:
+  MCP configuration: match
+  MCP preflight: passed
+  MCP handshake: passed
+  Host follow-up: action required
+
+Next:
+  1. Trust or approve the project configuration if Codex asks.
+  2. Run:
+     volicord connection verify codex --shared --repo /path/to/your-product-repo
+
+Limits:
+  The record profile supports cooperative Volicord workflow recording through MCP.
+  It does not provide OS sandboxing, network isolation, malware defense,
+  full write prevention, actor identity proof, correctness proof, test
+  sufficiency proof, or human review completion.
+
+Diagnostics:
+  Run:
+    volicord connection status codex --shared --repo /path/to/your-product-repo --json
+```
+
 같은 호스트와 저장소에 둘 이상의 연결이 일치하면 선택할 때 쓴 의도 플래그를 함께
 넣습니다.
 
@@ -205,7 +291,7 @@ volicord connection verify claude-code --global
 | 상태 | 설정 가이드에서의 의미 |
 |---|---|
 | `complete` | Volicord 쪽 상태, 관리 호스트 설정, 관찰 가능한 MCP 시작, 초기화, 기대 도구 노출이 준비되었습니다. |
-| `action_required` | Volicord 쪽 상태는 있지만 이름 붙은 사용자 통제 호스트 동작이 남아 있습니다. |
+| `action_required` | Volicord 쪽 상태는 있지만 이름 붙은 사용자 통제 호스트 동작이 남아 있습니다. 그 자체로 치명적인 CLI 오류는 아닙니다. |
 | `failed` | 필요한 로컬 전제 조건, 호스트 설정 단계, 검증 단계가 성공하지 못했습니다. |
 | `dry_run` | 명령이 지속 변경 없이 계획된 동작을 보고했습니다. |
 

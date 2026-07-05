@@ -158,7 +158,7 @@ volicord --version
 
 ### Initialize Or Connect The Product Repository
 
-Run `volicord init` for the repository where the agent should work:
+Initialize the repository where the agent should work:
 
 ```sh
 volicord init --host codex --repo /path/to/your-product-repo --profile record
@@ -187,6 +187,18 @@ volicord connection verify codex --shared --repo /path/to/your-product-repo
 volicord connection status codex --shared --repo /path/to/your-product-repo
 volicord doctor
 ```
+
+Default text output is an interactive human summary. For automation and full
+diagnostics, use JSON output and do not parse the compact text:
+
+```sh
+volicord connection status codex --shared --repo /path/to/your-product-repo --json
+```
+
+CLI MCP preflight or handshake success means Volicord's MCP server can start
+and respond from the CLI check path. It does not by itself prove that Codex,
+Claude Code, or another host has loaded, trusted, or approved the project
+configuration.
 
 The guided flow continues in [Quickstart](docs/en/user-guide/quickstart.md) and
 [Agent Host Setup](docs/en/user-guide/agent-host-setup.md). Exact command
@@ -508,10 +520,10 @@ HTTP boundaries.
 
 | Symptom | What to do |
 |---|---|
-| `volicord` is not found | Put the install directory on `PATH`, or install to a directory already on `PATH`, then rerun `volicord --version`. Future agent hosts must also be able to start `volicord`. |
-| `init` reports `action_required` | Follow the `Next:` checklist first. Complete the named action, such as host restart or reload, project trust, MCP approval, OAuth, command-link repair, or installation-profile repair, then rerun `volicord connection verify HOST --shared --repo PATH` for the ordinary init path. |
-| Detective-specific checks are inactive | Run `volicord connection verify HOST --repo PATH`, complete the named user action, and use [Agent Host Troubleshooting](docs/en/user-guide/agent-host-troubleshooting.md) for hook or watcher diagnostics. |
-| Host cannot start MCP | Confirm the host can run `volicord mcp --help` through the same command path. Run `volicord doctor` for installation-profile health. |
+| `volicord` is not found | Put the install directory on `PATH`, or install to a directory already on `PATH`, then check the version again. Future agent hosts must also be able to start `volicord`. |
+| `init` reports `action_required` | Follow the `Next:` checklist first. Complete the named action, such as host restart or reload, project trust, MCP approval, OAuth, command-link repair, or installation-profile repair, then use the verification command from the setup section for the ordinary init path. |
+| Detective-specific checks are inactive | Verify with the same host, intent, and repository selector, complete the named user action, and use [Agent Host Troubleshooting](docs/en/user-guide/agent-host-troubleshooting.md) for hook or watcher diagnostics. |
+| Host cannot start MCP | Confirm the host can start `volicord mcp --help` through the same command path. Use `volicord doctor` for installation-profile health. |
 | Product Repository is not detected | Pass `--repo /path/to/your-product-repo` and make sure the path is an existing local repository separate from the Runtime Home. |
 | A judgment is pending | Prefer the host prompt or exact chat command when available. Use `volicord inbox` and `volicord inbox answer` as the CLI inbox path. |
 | Close has blockers | Ask the agent to show `volicord.check_close` results, pending User Judgment, missing evidence, unresolved unrecorded changes, and residual risks. Address the named blocker instead of closing from a summary. |

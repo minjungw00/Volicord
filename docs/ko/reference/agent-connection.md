@@ -175,6 +175,9 @@ Connection Projects는 Agent Connection과 등록 프로젝트 사이의 명시�
   승인은 Volicord가 우회할 수 없습니다.
 - 호스트 설정 쓰기는 파일 작업으로 성공했더라도 호스트가 아직 서버를 신뢰, 승인, 로드,
   초기화, 노출하지 않았다면 결과 상태가 `action_required`로 남을 수 있습니다.
+- 사람용 text status와 verification 출력은 대화형 사용자를 위한 진단 요약입니다.
+  자동화와 전체 진단 점검은 [관리 CLI](admin-cli.md#setup-output)가 담당하는 `--json`
+  출력을 사용합니다.
 - `last_verification_status=complete`는 [관리 CLI](admin-cli.md#agent-connection-result-states)가
   담당하는 운영 게이트를 만족한 관리 검증 결과에 대해서만 저장할 수 있습니다. Volicord가
   직접 시작한 MCP handshake만으로는 충분하지 않습니다.

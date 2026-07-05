@@ -171,6 +171,13 @@ Text-mode summary output must not expose internal IDs by default unless an ID is
 needed to perform the displayed next action. Matching JSON output exposes the
 same stable data as `summary_card`; JSON consumers must not parse text-only
 formatting.
+For `volicord connection status` and `volicord connection verify`, default text
+output is an interactive human summary with a title line and compact sections
+for `Status`, `Profile`, `Repository` or `Repositories`, `Checks`, `Next`,
+`Limits`, and `Diagnostics`. `volicord connection add` may also include compact
+host-configuration or repo-file-change sections. Detailed guard state, hook
+diagnostics, MCP preflight and handshake details, and host observations belong
+in JSON diagnostics.
 When pending judgments are visible, `volicord status` and `volicord inbox` text
 output may include an `Available answer paths:` line that summarizes host
 prompt input, chat command capture, local consent URL, and CLI inbox
@@ -492,6 +499,9 @@ reload or restart the host, approve host or project permission, repair managed
 configuration, or run the shown `volicord connection verify ...` command after
 the host-side action. JSON output must include top-level `status`, `checks`,
 `actions`, and `summary_card` fields for diagnostic consumers.
+`action_required` means a host-owned or local follow-up remains; it is not
+automatically a fatal CLI error and exits under the successful administrative
+result rule described above.
 Connection status and verification output must keep detective host hook file installation,
 configuration health, runtime hook observation health, effective detective health,
 host reload requirement, prompt-capture availability, and last host-hook event when

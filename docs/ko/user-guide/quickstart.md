@@ -92,6 +92,10 @@ volicord connection status codex --shared --repo /path/to/repo
 volicord connection verify codex --shared --repo /path/to/repo
 ```
 
+기본 text 출력은 대화형으로 읽는 용도입니다. 스크립트나 운영자가 안정적인 자동화 표면,
+전체 점검, guard state, hook 진단, MCP handshake 세부사항, 호스트 관찰을 필요로 하면
+`--json`을 사용하고 간결한 사람용 text를 파싱하지 않습니다.
+
 완료 상태: status나 verification이 `complete`를 보고하면 연결 준비가 끝난 것입니다.
 `action_required`를 보고하면 이름 붙은 호스트 소유 동작이나 로컬 복구 동작을 완료한
 뒤 verification을 다시 실행합니다. 정확한 결과 상태 의미는 [관리 CLI

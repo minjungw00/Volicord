@@ -37,6 +37,9 @@ repo file changes, 저장된 Runtime Home 경로를 확인한 뒤 `Next:` 체크
 `Result`, `Why`, `Next`, `Does not prove` 줄을 먼저 읽습니다. `Next`는 깊은 참조 문서를
 열기 전에 수행할 구체적인 동작입니다.
 
+안정적인 자동화 표면이나 전체 진단 필드가 필요하면 `--json`을 사용합니다. 간결한 사람용
+text는 대화형 복구를 위한 것이며 스크립트가 파싱하면 안 됩니다.
+
 ## 설치 프로필이 없음
 
 관찰 증상: 일반 project, connection, MCP, inbox workflow가 `SETUP_REQUIRED`를
@@ -196,10 +199,17 @@ Inbox 항목에 이미 표시된 URL을 사용합니다. selector가 모호하�
 
 제한된 복구:
 
-1. `volicord doctor`를 실행합니다.
-2. 이 명령이 이름 붙인 첫 실패 setup 또는 실행 파일 점검을 고칩니다.
-3. 원래 명령이 지원한다면 `--dry-run`으로 다시 실행합니다.
-4. Dry-run 계획이 기대한 호스트와 Product Repository를 이름 붙인 뒤에만 실제 명령을 다시
+설치 프로필을 확인합니다.
+
+```sh
+volicord doctor
+```
+
+그다음 계속 진행합니다.
+
+1. 이 명령이 이름 붙인 첫 실패 setup 또는 실행 파일 점검을 고칩니다.
+2. 원래 명령이 지원한다면 `--dry-run`으로 다시 실행합니다.
+3. Dry-run 계획이 기대한 호스트와 Product Repository를 이름 붙인 뒤에만 실제 명령을 다시
    실행합니다.
 
 정확한 실패 문구를 사용해 다음 동작을 고릅니다. 참조 문서나 인간 운영자가 의도한

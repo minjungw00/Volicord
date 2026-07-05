@@ -158,6 +158,12 @@ init text가 전체 진단 결과 모델을 노출해야 하는 것은 아닙니
 행동을 수행하는 데 필요하지 않은 내부 ID를 기본적으로 노출하면 안 됩니다. 대응 JSON 출력은
 같은 안정 데이터를 `summary_card`로 노출하며, JSON 소비자는 text 전용 formatting을
 파싱하면 안 됩니다.
+`volicord connection status`와 `volicord connection verify`의 기본 text 출력은 대화형
+사용자를 위한 사람용 요약이며, 제목 줄과 `Status`, `Profile`, `Repository` 또는
+`Repositories`, `Checks`, `Next`, `Limits`, `Diagnostics` 간결 섹션을 사용합니다.
+`volicord connection add`는 간결한 host configuration 또는 repo file changes 섹션도
+포함할 수 있습니다. 자세한 guard state, hook 진단, MCP preflight와 handshake 세부사항,
+호스트 관찰은 JSON 진단에 둡니다.
 대기 판단이 보이면 `volicord status`와 `volicord inbox` Text 출력은 호스트 프롬프트
 입력, 채팅 명령 캡처, 로컬 consent URL, CLI inbox 사용 가능 상태를 요약하는
 `Available answer paths:` 줄을 포함할 수 있습니다. 이 줄은 사용자가 어디에서 답할 수
@@ -448,7 +454,10 @@ Agent Connection 명령은 아래 결과 상태를 사용합니다.
 유지합니다. 호스트를 reload 또는 restart하고, 호스트 또는 프로젝트 권한을 승인하고,
 관리 설정을 복구하거나, 호스트 쪽 동작 뒤 표시된 `volicord connection verify ...`
 명령을 실행하라고 안내합니다. JSON 출력은 진단 소비자를 위해 최상위 `status`,
-`checks`, `actions`, `summary_card` 필드를 포함해야 합니다. 연결 상태 및 검증 출력은 detective host hook 파일 설치, 설정 건강 상태, 런타임 hook 관찰
+`checks`, `actions`, `summary_card` 필드를 포함해야 합니다.
+`action_required`는 호스트 소유 또는 로컬 후속 동작이 남았다는 뜻입니다. 자동으로
+치명적인 CLI 오류가 아니며 위에서 설명한 성공한 관리 결과 규칙을 따릅니다.
+연결 상태 및 검증 출력은 detective host hook 파일 설치, 설정 건강 상태, 런타임 hook 관찰
 건강 상태, 효과적인 detective 건강 상태, 호스트 reload 필요, prompt-capture 가용성, 알 수
 있을 때의 최근 host-hook event를 별도 진단으로 유지해야 합니다. Text 출력은 `selected_profile`,
 `observation_summary`, 협력형 pre-tool warning 가용성, 협력형 pre-tool denial 가용성,

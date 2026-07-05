@@ -200,6 +200,9 @@ Rules:
 - A host configuration write can be successful as a file operation while the
   result state remains `action_required` because the host has not yet trusted,
   approved, loaded, initialized, or exposed the server.
+- Human text status and verification output is a diagnostic summary for
+  interactive users. Automation and full diagnostic inspection use the
+  `--json` output owned by [Administrative CLI](admin-cli.md#setup-output).
 - `last_verification_status=complete` may be stored only for an administrative
   verification result that satisfied the operational gates owned by
   [Administrative CLI](admin-cli.md#agent-connection-result-states). A direct

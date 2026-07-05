@@ -43,6 +43,10 @@ and `Does not prove` lines first when text output reports `action_required` or
 a degraded diagnostic state. `Next` is the concrete action to take before
 opening deeper reference material.
 
+Use `--json` when you need the stable automation surface or full diagnostic
+fields. Compact human text is for interactive recovery and should not be parsed
+by scripts.
+
 ## Installation Profile Is Missing
 
 Observable symptom: ordinary project, connection, MCP, or inbox workflows say
@@ -211,10 +215,17 @@ exits with a runtime error.
 
 Bounded recovery:
 
-1. Run `volicord doctor`.
-2. Fix the first failed setup or executable check it names.
-3. Rerun the original command with `--dry-run` when the command supports it.
-4. Rerun the real command only after the dry-run plan names the expected host
+Inspect the installation profile:
+
+```sh
+volicord doctor
+```
+
+Then continue:
+
+1. Fix the first failed setup or executable check it names.
+2. Rerun the original command with `--dry-run` when the command supports it.
+3. Rerun the real command only after the dry-run plan names the expected host
    and Product Repository.
 
 Use the exact failure text to choose the next action. Do not delete Runtime Home
