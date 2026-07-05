@@ -2,6 +2,7 @@ use std::{
     cell::RefCell,
     collections::BTreeMap,
     ffi::OsString,
+    fs,
     path::{Path, PathBuf},
 };
 
@@ -18,7 +19,7 @@ use super::{
 };
 use crate::host_integration::verification::{
     HostConfigurationStatus, HostExecutableStatus, HostGateStatus, ManagedConfigStatus,
-    Verification,
+    ProjectTrustDiagnostic, ProjectTrustStatus, Verification,
 };
 use crate::host_integration::HostCapabilities;
 
@@ -123,9 +124,6 @@ impl<R: CommandRunner> CodexAdapter<R> {
                 &mut conflicts,
             ),
         };
-        let mut user_actions = Vec::new();
-        add_project_trust_action(scope, &mut user_actions);
-
         Ok(HostPlan {
             host_kind: HostKind::Codex,
             connection_intent: request.connection_intent,
@@ -137,7 +135,7 @@ impl<R: CommandRunner> CodexAdapter<R> {
             change,
             fingerprint,
             conflicts,
-            user_actions,
+            user_actions: Vec::new(),
             file_snapshot: Some(snapshot),
         })
     }
@@ -167,9 +165,6 @@ impl<R: CommandRunner> CodexAdapter<R> {
             request.mcp_command,
             request.runtime_home,
         );
-        let mut user_actions = Vec::new();
-        add_project_trust_action(request.scope, &mut user_actions);
-
         Ok(HostPlan {
             host_kind: HostKind::Codex,
             connection_intent: request.connection_intent,
@@ -181,7 +176,7 @@ impl<R: CommandRunner> CodexAdapter<R> {
             change: PlannedChange::Noop,
             fingerprint: request.managed_fingerprint.to_owned(),
             conflicts: Vec::new(),
-            user_actions,
+            user_actions: Vec::new(),
             file_snapshot: None,
         })
     }
@@ -337,21 +332,48 @@ impl<R: CommandRunner> HostAdapter for CodexAdapter<R> {
             }
             return Ok(verification.merge_user_actions(&plan.user_actions));
         }
-        if !executable.is_available() {
-            return Ok(verification_from_executable_unavailable(
-                executable,
-                plan.host_scope == HostScope::Project,
-            )
-            .merge_user_actions(&plan.user_actions));
-        }
         if plan.host_scope == HostScope::Project {
-            return Ok(Verification::action_required(
-                "Codex project trust was not confirmed by this structural configuration check",
-            )
-            .with_host_executable(HostExecutableStatus::Available)
-            .with_host_gate(HostGateStatus::ActionRequired)
-            .with_mcp_handshake_allowed(true)
-            .merge_user_actions(&plan.user_actions));
+            let project_trust = project_trust_for_plan(&self.env, plan);
+            if !executable.is_available() {
+                let mut verification = verification_from_executable_unavailable(executable);
+                verification = verification.with_project_trust(project_trust);
+                return Ok(verification.merge_user_actions(&plan.user_actions));
+            }
+            let mut verification = match project_trust.status {
+                ProjectTrustStatus::Trusted => Verification::configured_ready(
+                    "Codex managed configuration is present, Codex executable is available, and Codex project trust is trusted",
+                )
+                .with_host_executable(HostExecutableStatus::Available)
+                .with_host_gate(HostGateStatus::Ready)
+                .with_mcp_handshake_allowed(true),
+                ProjectTrustStatus::Untrusted => {
+                    Verification::action_required(
+                        "Codex managed configuration is present, Codex executable is available, and Codex project trust is untrusted",
+                    )
+                    .with_host_executable(HostExecutableStatus::Available)
+                    .with_host_gate(HostGateStatus::ActionRequired)
+                    .with_mcp_handshake_allowed(true)
+                    .with_user_actions(vec![UserAction::new(
+                        UserActionKind::HostTrustRequired,
+                        "Codex project trust is untrusted in the Codex user configuration",
+                    )])
+                }
+                ProjectTrustStatus::Missing
+                | ProjectTrustStatus::Unknown
+                | ProjectTrustStatus::Unreadable
+                | ProjectTrustStatus::Malformed => Verification::configured_ready(
+                    "Codex managed configuration is present and Codex executable is available; Codex project trust is not confirmed from the user configuration",
+                )
+                .with_host_executable(HostExecutableStatus::Available)
+                .with_host_gate(HostGateStatus::Unknown)
+                .with_mcp_handshake_allowed(true),
+            };
+            verification = verification.with_project_trust(project_trust);
+            return Ok(verification.merge_user_actions(&plan.user_actions));
+        }
+        if !executable.is_available() {
+            return Ok(verification_from_executable_unavailable(executable)
+                .merge_user_actions(&plan.user_actions));
         }
         Ok(Verification::configured_ready(
             "Codex managed configuration is present, Codex executable is available, and no separate project trust gate applies",
@@ -466,15 +488,6 @@ fn classify_existing_codex_entry(
             ),
         ));
         PlannedChange::Noop
-    }
-}
-
-fn add_project_trust_action(scope: HostScope, user_actions: &mut Vec<UserAction>) {
-    if scope == HostScope::Project {
-        user_actions.push(UserAction::new(
-            UserActionKind::HostTrustRequired,
-            "Codex project configuration is loaded only after the project is trusted",
-        ));
     }
 }
 
@@ -679,15 +692,8 @@ fn status_text(status_code: Option<i32>) -> String {
 
 fn verification_from_executable_unavailable(
     executable: CodexExecutableAvailability,
-    project_trust_unconfirmed: bool,
 ) -> Verification {
-    let mut details = executable.details;
-    if project_trust_unconfirmed {
-        details.push_str(
-            "; Codex project trust was not confirmed by this structural configuration check",
-        );
-    }
-    let mut verification = Verification::action_required(details)
+    let mut verification = Verification::action_required(executable.details)
         .with_host_executable(HostExecutableStatus::Unavailable)
         .with_host_gate(HostGateStatus::ActionRequired)
         .with_host_configuration(HostConfigurationStatus::Discovered)
@@ -696,6 +702,167 @@ fn verification_from_executable_unavailable(
         verification = verification.with_diagnostic(diagnostic);
     }
     verification
+}
+
+pub fn project_trust_diagnostic(
+    env: &CodexEnvironment,
+    repo_root: &Path,
+) -> ProjectTrustDiagnostic {
+    let Some(config_path) = codex_user_config_path(env) else {
+        return ProjectTrustDiagnostic {
+            status: ProjectTrustStatus::Unknown,
+            config_path: String::new(),
+            repo_root: repo_root.display().to_string(),
+            details: "CODEX_HOME was not set and HOME was unavailable, so Codex user configuration could not be located".to_owned(),
+        };
+    };
+    let config_path_text = config_path.display().to_string();
+    let repo_root_text = repo_root.display().to_string();
+    let text = match fs::read_to_string(&config_path) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return ProjectTrustDiagnostic {
+                status: ProjectTrustStatus::Missing,
+                config_path: config_path_text,
+                repo_root: repo_root_text,
+                details: "Codex user configuration file was not found".to_owned(),
+            };
+        }
+        Err(error) => {
+            return ProjectTrustDiagnostic {
+                status: ProjectTrustStatus::Unreadable,
+                config_path: config_path_text,
+                repo_root: repo_root_text,
+                details: format!("Codex user configuration could not be read: {error}"),
+            };
+        }
+    };
+    let document = match parse_document(Some(&text), &config_path) {
+        Ok(document) => document,
+        Err(_) => {
+            return ProjectTrustDiagnostic {
+                status: ProjectTrustStatus::Malformed,
+                config_path: config_path_text,
+                repo_root: repo_root_text,
+                details: "Codex user configuration is malformed TOML".to_owned(),
+            };
+        }
+    };
+    let Some(projects) = document.get("projects").and_then(Item::as_table) else {
+        return ProjectTrustDiagnostic {
+            status: ProjectTrustStatus::Missing,
+            config_path: config_path_text,
+            repo_root: repo_root_text,
+            details: "Codex user configuration has no matching projects table entry".to_owned(),
+        };
+    };
+    let Some((project_path, project_item)) = matching_project_entry(projects, repo_root) else {
+        return ProjectTrustDiagnostic {
+            status: ProjectTrustStatus::Missing,
+            config_path: config_path_text,
+            repo_root: repo_root_text,
+            details: "Codex user configuration has no matching project trust entry".to_owned(),
+        };
+    };
+    let Some(table) = project_item.as_table() else {
+        return ProjectTrustDiagnostic {
+            status: ProjectTrustStatus::Malformed,
+            config_path: config_path_text,
+            repo_root: repo_root_text,
+            details: format!("Codex project trust entry is not a table: {project_path}"),
+        };
+    };
+    let trust_level = table.get("trust_level").and_then(Item::as_str);
+    let status = match trust_level {
+        Some("trusted") => ProjectTrustStatus::Trusted,
+        Some("untrusted") => ProjectTrustStatus::Untrusted,
+        Some(_) | None => ProjectTrustStatus::Unknown,
+    };
+    let details = match status {
+        ProjectTrustStatus::Trusted => "Codex user configuration marks the project trusted",
+        ProjectTrustStatus::Untrusted => "Codex user configuration marks the project untrusted",
+        ProjectTrustStatus::Unknown => {
+            "Codex user configuration project entry does not contain a recognized trust_level"
+        }
+        ProjectTrustStatus::Missing
+        | ProjectTrustStatus::Unreadable
+        | ProjectTrustStatus::Malformed => {
+            "Codex project trust could not be confirmed from user configuration"
+        }
+    };
+    ProjectTrustDiagnostic {
+        status,
+        config_path: config_path_text,
+        repo_root: repo_root_text,
+        details: details.to_owned(),
+    }
+}
+
+fn project_trust_for_plan(env: &CodexEnvironment, plan: &HostPlan) -> ProjectTrustDiagnostic {
+    let HostTarget::File(target) = &plan.target else {
+        return ProjectTrustDiagnostic {
+            status: ProjectTrustStatus::Unknown,
+            config_path: String::new(),
+            repo_root: String::new(),
+            details: "Codex project trust could not be checked for a non-file target".to_owned(),
+        };
+    };
+    let Some(repo_root) = target.parent().and_then(Path::parent) else {
+        return ProjectTrustDiagnostic {
+            status: ProjectTrustStatus::Unknown,
+            config_path: String::new(),
+            repo_root: String::new(),
+            details: "Codex project trust could not be checked because the repository root was unavailable".to_owned(),
+        };
+    };
+    project_trust_diagnostic(env, repo_root)
+}
+
+fn codex_user_config_path(env: &CodexEnvironment) -> Option<PathBuf> {
+    env.codex_home
+        .as_ref()
+        .map(|path| path.join("config.toml"))
+        .or_else(|| {
+            env.home
+                .as_ref()
+                .map(|path| path.join(".codex/config.toml"))
+        })
+}
+
+fn matching_project_entry<'a>(
+    projects: &'a Table,
+    repo_root: &Path,
+) -> Option<(&'a str, &'a Item)> {
+    projects
+        .iter()
+        .find(|(project_path, _)| project_path_matches(project_path, repo_root))
+}
+
+fn project_path_matches(project_path: &str, repo_root: &Path) -> bool {
+    if !Path::new(project_path).is_absolute() || !repo_root.is_absolute() {
+        return false;
+    }
+    let normalized_project_path = normalize_trailing_slashes(project_path);
+    let repo_root_text = repo_root.display().to_string();
+    let normalized_repo_root = normalize_trailing_slashes(&repo_root_text);
+    if normalized_project_path == normalized_repo_root {
+        return true;
+    }
+    let project_canonical = fs::canonicalize(project_path);
+    let repo_canonical = fs::canonicalize(repo_root);
+    matches!(
+        (project_canonical, repo_canonical),
+        (Ok(project), Ok(repo)) if project == repo
+    )
+}
+
+fn normalize_trailing_slashes(path: &str) -> String {
+    let trimmed = path.trim_end_matches('/');
+    if trimmed.is_empty() {
+        "/".to_owned()
+    } else {
+        trimmed.to_owned()
+    }
 }
 
 fn verify_codex_entry(plan: &HostPlan) -> Result<ManagedConfigStatus, HostConfigError> {
@@ -848,7 +1015,120 @@ mod tests {
             plan.target,
             HostTarget::File(repo.join(".codex").join("config.toml"))
         );
-        assert_eq!(plan.user_actions[0].kind, UserActionKind::HostTrustRequired);
+        assert!(plan.user_actions.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn codex_project_trust_reads_trusted() -> Result<(), Box<dyn std::error::Error>> {
+        let dir = temp_dir("codex-trust-trusted")?;
+        let repo = dir.join("product");
+        fs::create_dir_all(&repo)?;
+        let codex_home = dir.join("codex-home");
+        write_project_trust(&codex_home, &repo, "trusted")?;
+
+        let trust = project_trust_diagnostic(
+            &CodexEnvironment {
+                home: None,
+                codex_home: Some(codex_home),
+                path: None,
+            },
+            &repo,
+        );
+
+        assert_eq!(trust.status, ProjectTrustStatus::Trusted);
+        Ok(())
+    }
+
+    #[test]
+    fn codex_project_trust_reads_untrusted() -> Result<(), Box<dyn std::error::Error>> {
+        let dir = temp_dir("codex-trust-untrusted")?;
+        let repo = dir.join("product");
+        fs::create_dir_all(&repo)?;
+        let codex_home = dir.join("codex-home");
+        write_project_trust(&codex_home, &repo, "untrusted")?;
+
+        let trust = project_trust_diagnostic(
+            &CodexEnvironment {
+                home: None,
+                codex_home: Some(codex_home),
+                path: None,
+            },
+            &repo,
+        );
+
+        assert_eq!(trust.status, ProjectTrustStatus::Untrusted);
+        Ok(())
+    }
+
+    #[test]
+    fn codex_project_trust_missing_project_entry_is_missing(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let dir = temp_dir("codex-trust-missing")?;
+        let repo = dir.join("product");
+        let other = dir.join("other");
+        fs::create_dir_all(&repo)?;
+        fs::create_dir_all(&other)?;
+        let codex_home = dir.join("codex-home");
+        write_project_trust(&codex_home, &other, "trusted")?;
+
+        let trust = project_trust_diagnostic(
+            &CodexEnvironment {
+                home: None,
+                codex_home: Some(codex_home),
+                path: None,
+            },
+            &repo,
+        );
+
+        assert_eq!(trust.status, ProjectTrustStatus::Missing);
+        Ok(())
+    }
+
+    #[test]
+    fn codex_project_trust_malformed_config_is_malformed() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let dir = temp_dir("codex-trust-malformed")?;
+        let repo = dir.join("product");
+        fs::create_dir_all(&repo)?;
+        let codex_home = dir.join("codex-home");
+        fs::create_dir_all(&codex_home)?;
+        fs::write(codex_home.join("config.toml"), "[projects.\n")?;
+
+        let trust = project_trust_diagnostic(
+            &CodexEnvironment {
+                home: None,
+                codex_home: Some(codex_home),
+                path: None,
+            },
+            &repo,
+        );
+
+        assert_eq!(trust.status, ProjectTrustStatus::Malformed);
+        Ok(())
+    }
+
+    #[test]
+    fn codex_project_trust_respects_codex_home() -> Result<(), Box<dyn std::error::Error>> {
+        let dir = temp_dir("codex-trust-codex-home")?;
+        let repo = dir.join("product");
+        fs::create_dir_all(&repo)?;
+        let home = dir.join("home");
+        let default_codex_home = home.join(".codex");
+        let codex_home = dir.join("codex-home");
+        write_project_trust(&default_codex_home, &repo, "untrusted")?;
+        write_project_trust(&codex_home, &repo, "trusted")?;
+
+        let trust = project_trust_diagnostic(
+            &CodexEnvironment {
+                home: Some(home),
+                codex_home: Some(codex_home),
+                path: None,
+            },
+            &repo,
+        );
+
+        assert_eq!(trust.status, ProjectTrustStatus::Trusted);
         Ok(())
     }
 
@@ -1297,7 +1577,7 @@ mod tests {
     }
 
     #[test]
-    fn verify_distinguishes_missing_changed_and_project_trust(
+    fn verify_distinguishes_missing_changed_and_project_trust_diagnostics(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let dir = temp_dir("codex-verify")?;
         let codex_home = dir.join("codex");
@@ -1340,15 +1620,20 @@ mod tests {
         ))?;
         adapter.apply(&project)?;
         let verification = adapter.verify(&project)?;
-        assert_eq!(verification.status.as_str(), "action_required");
+        assert_eq!(verification.status.as_str(), "complete");
         assert_eq!(
             verification.host_executable,
             HostExecutableStatus::Available
         );
         assert_eq!(
-            verification.user_actions[0].kind,
-            UserActionKind::HostTrustRequired
+            verification
+                .project_trust
+                .as_ref()
+                .expect("project trust diagnostic should be present")
+                .status,
+            ProjectTrustStatus::Missing
         );
+        assert!(verification.user_actions.is_empty());
         assert!(verification.mcp_handshake_allowed);
         Ok(())
     }
@@ -1415,6 +1700,23 @@ mod tests {
     fn write_fake_codex_file(dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
         fs::create_dir_all(dir)?;
         fs::write(dir.join("codex"), "fake codex")?;
+        Ok(())
+    }
+
+    fn write_project_trust(
+        codex_home: &Path,
+        repo_root: &Path,
+        trust_level: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        fs::create_dir_all(codex_home)?;
+        fs::write(
+            codex_home.join("config.toml"),
+            format!(
+                "[projects.\"{}\"]\ntrust_level = \"{}\"\n",
+                repo_root.display(),
+                trust_level
+            ),
+        )?;
         Ok(())
     }
 

@@ -162,10 +162,100 @@ pub struct Verification {
     pub host_executable: HostExecutableStatus,
     pub host_gate: HostGateStatus,
     pub host_configuration: HostConfigurationStatus,
+    pub project_trust: Option<ProjectTrustDiagnostic>,
+    pub host_runtime: Option<HostRuntimeDiagnostic>,
+    pub host_mcp_command: Option<HostMcpCommandDiagnostic>,
     pub mcp_handshake_allowed: bool,
     pub details: String,
     pub diagnostic: Option<String>,
     pub user_actions: Vec<UserAction>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectTrustStatus {
+    Trusted,
+    Untrusted,
+    Missing,
+    Unknown,
+    Unreadable,
+    Malformed,
+}
+
+impl ProjectTrustStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Trusted => "trusted",
+            Self::Untrusted => "untrusted",
+            Self::Missing => "missing",
+            Self::Unknown => "unknown",
+            Self::Unreadable => "unreadable",
+            Self::Malformed => "malformed",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ProjectTrustDiagnostic {
+    pub status: ProjectTrustStatus,
+    pub config_path: String,
+    pub repo_root: String,
+    pub details: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HostRuntimeObservationStatus {
+    Observed,
+    NotObserved,
+    Unknown,
+}
+
+impl HostRuntimeObservationStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Observed => "observed",
+            Self::NotObserved => "not_observed",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HostRuntimeDiagnostic {
+    pub status: HostRuntimeObservationStatus,
+    pub details: String,
+    pub last_observed_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HostMcpCommandLaunchMode {
+    AbsolutePath,
+    PathResolved,
+    RemoteExecutor,
+    Unknown,
+    Malformed,
+}
+
+impl HostMcpCommandLaunchMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::AbsolutePath => "absolute_path",
+            Self::PathResolved => "path_resolved",
+            Self::RemoteExecutor => "remote_executor",
+            Self::Unknown => "unknown",
+            Self::Malformed => "malformed",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HostMcpCommandDiagnostic {
+    pub mode: HostMcpCommandLaunchMode,
+    pub command: Option<String>,
+    pub risk: Option<String>,
+    pub details: String,
 }
 
 impl Verification {
@@ -177,6 +267,9 @@ impl Verification {
             host_executable: HostExecutableStatus::NotChecked,
             host_gate: HostGateStatus::Unknown,
             host_configuration: HostConfigurationStatus::Unknown,
+            project_trust: None,
+            host_runtime: None,
+            host_mcp_command: None,
             mcp_handshake_allowed: false,
             details: details.into(),
             diagnostic: None,
@@ -192,6 +285,9 @@ impl Verification {
             host_executable: HostExecutableStatus::NotRequired,
             host_gate: HostGateStatus::Ready,
             host_configuration: HostConfigurationStatus::Discovered,
+            project_trust: None,
+            host_runtime: None,
+            host_mcp_command: None,
             mcp_handshake_allowed: true,
             details: details.into(),
             diagnostic: None,
@@ -207,6 +303,9 @@ impl Verification {
             host_executable: HostExecutableStatus::NotChecked,
             host_gate: HostGateStatus::ActionRequired,
             host_configuration: HostConfigurationStatus::Discovered,
+            project_trust: None,
+            host_runtime: None,
+            host_mcp_command: None,
             mcp_handshake_allowed: true,
             details: details.into(),
             diagnostic: None,
@@ -222,6 +321,9 @@ impl Verification {
             host_executable: HostExecutableStatus::NotChecked,
             host_gate: HostGateStatus::Missing,
             host_configuration: HostConfigurationStatus::Missing,
+            project_trust: None,
+            host_runtime: None,
+            host_mcp_command: None,
             mcp_handshake_allowed: false,
             details: details.into(),
             diagnostic: None,
@@ -237,6 +339,9 @@ impl Verification {
             host_executable: HostExecutableStatus::NotChecked,
             host_gate: HostGateStatus::Unknown,
             host_configuration: HostConfigurationStatus::Changed,
+            project_trust: None,
+            host_runtime: None,
+            host_mcp_command: None,
             mcp_handshake_allowed: false,
             details: details.into(),
             diagnostic: None,
@@ -252,6 +357,9 @@ impl Verification {
             host_executable: HostExecutableStatus::Available,
             host_gate: HostGateStatus::Rejected,
             host_configuration: HostConfigurationStatus::Discovered,
+            project_trust: None,
+            host_runtime: None,
+            host_mcp_command: None,
             mcp_handshake_allowed: false,
             details: details.into(),
             diagnostic: None,
@@ -267,6 +375,9 @@ impl Verification {
             host_executable: HostExecutableStatus::Unavailable,
             host_gate: HostGateStatus::Unknown,
             host_configuration: HostConfigurationStatus::Unknown,
+            project_trust: None,
+            host_runtime: None,
+            host_mcp_command: None,
             mcp_handshake_allowed: false,
             details: details.into(),
             diagnostic: None,
@@ -282,6 +393,9 @@ impl Verification {
             host_executable: HostExecutableStatus::NotChecked,
             host_gate: HostGateStatus::Unknown,
             host_configuration: HostConfigurationStatus::Unknown,
+            project_trust: None,
+            host_runtime: None,
+            host_mcp_command: None,
             mcp_handshake_allowed: false,
             details: details.into(),
             diagnostic: None,
@@ -297,6 +411,9 @@ impl Verification {
             host_executable: HostExecutableStatus::NotChecked,
             host_gate: HostGateStatus::Unknown,
             host_configuration: HostConfigurationStatus::Unknown,
+            project_trust: None,
+            host_runtime: None,
+            host_mcp_command: None,
             mcp_handshake_allowed: false,
             details: details.into(),
             diagnostic: None,
@@ -321,6 +438,21 @@ impl Verification {
 
     pub fn with_host_configuration(mut self, host_configuration: HostConfigurationStatus) -> Self {
         self.host_configuration = host_configuration;
+        self
+    }
+
+    pub fn with_project_trust(mut self, project_trust: ProjectTrustDiagnostic) -> Self {
+        self.project_trust = Some(project_trust);
+        self
+    }
+
+    pub fn with_host_runtime(mut self, host_runtime: HostRuntimeDiagnostic) -> Self {
+        self.host_runtime = Some(host_runtime);
+        self
+    }
+
+    pub fn with_host_mcp_command(mut self, host_mcp_command: HostMcpCommandDiagnostic) -> Self {
+        self.host_mcp_command = Some(host_mcp_command);
         self
     }
 
@@ -376,6 +508,15 @@ mod tests {
         assert_eq!(
             ManagedConfigStatus::NotApplicable.as_str(),
             "not_applicable"
+        );
+        assert_eq!(ProjectTrustStatus::Unreadable.as_str(), "unreadable");
+        assert_eq!(
+            HostRuntimeObservationStatus::NotObserved.as_str(),
+            "not_observed"
+        );
+        assert_eq!(
+            HostMcpCommandLaunchMode::PathResolved.as_str(),
+            "path_resolved"
         );
         assert_eq!(Verification::changed("changed").status.as_str(), "changed");
     }

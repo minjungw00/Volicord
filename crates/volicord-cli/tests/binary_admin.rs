@@ -824,12 +824,12 @@ fn init_codex_record_profile_skips_host_hooks() -> Result<(), Box<dyn Error>> {
     )));
     assert!(init_text.contains("Next:"));
     assert!(init_text.contains("Open, restart, or reload Codex in this repository."));
-    assert!(init_text.contains("Trust or approve the project configuration if Codex asks."));
+    assert!(!init_text.contains("Trust or approve the project configuration if Codex asks."));
     let verify_command = format!(
         "volicord connection verify codex --shared --repo {}",
         repo_root.display()
     );
-    assert!(init_text.contains(&format!("  3. Run:\n     {verify_command}\n")));
+    assert!(init_text.contains(&format!("  2. Run:\n     {verify_command}\n")));
     assert!(!init_text.contains(&format!("Run {verify_command}.")));
     assert!(init_text.contains("Limits:"));
     assert!(init_text.contains(
@@ -995,14 +995,17 @@ fn init_codex_record_profile_succeeds_without_host_hooks_or_watcher() -> Result<
 
 #[cfg(unix)]
 #[test]
-fn connection_verify_record_profile_uses_compact_human_output() -> Result<(), Box<dyn Error>> {
+fn connection_verify_codex_trusted_project_omits_trust_next_step() -> Result<(), Box<dyn Error>> {
     let runtime_home = TempRuntimeHome::new("cli-bin-record-verify-compact")?;
     let repo_root = create_git_repo(&runtime_home, "product-repo")?;
     let bin_dir = runtime_home.path().join("bin");
+    let codex_home = runtime_home.path().join("codex-home");
     write_fake_codex(&bin_dir)?;
     write_fake_mcp(&bin_dir)?;
+    write_codex_project_trust(&codex_home, &repo_root, "trusted")?;
     let env = [
         ("PATH", path_env(&[bin_dir.as_path()])),
+        ("CODEX_HOME", path_text(&codex_home)),
         ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
     ];
 
@@ -1051,11 +1054,19 @@ fn connection_verify_record_profile_uses_compact_human_output() -> Result<(), Bo
     assert!(text.contains("Profile:\n  record"));
     assert!(text.contains(&format!("Repository:\n  {}", repo_root.display())));
     assert!(text.contains("Checks:\n  MCP configuration: match"));
+    assert!(text.contains("  Codex project trust: trusted"));
     assert!(text.contains("  MCP preflight: passed"));
     assert!(text.contains("  MCP handshake: passed"));
+    assert!(text.contains("  Codex host runtime: not observed"));
+    assert!(text.contains("  Host MCP command: uses volicord from the Codex host PATH"));
     assert!(text.contains("  Host follow-up: action required"));
     assert!(text.contains("Next:"));
-    assert!(text.contains("Trust or approve the project configuration if Codex asks."));
+    assert!(!text.contains("Trust or approve the project configuration if Codex asks."));
+    assert!(text.contains("Make `volicord` available on the PATH seen by the Codex host process"));
+    assert!(
+        text.contains("Restart, reload, resume, or start a new Codex session in this repository.")
+    );
+    assert!(text.contains("Confirm that Volicord tools are exposed in the active Codex session."));
     assert!(text.contains("Limits:"));
     assert!(text.contains(
         "The record profile supports cooperative Volicord workflow recording through MCP."
@@ -1084,6 +1095,34 @@ fn connection_verify_record_profile_uses_compact_human_output() -> Result<(), Bo
     )?;
     assert_success(&verify_json);
     let value = json_stdout(&verify_json)?;
+    assert_eq!(
+        value["primary_next_action"]["id"],
+        "host_mcp_command_path_unconfirmed"
+    );
+    assert_ne!(value["primary_next_action"]["id"], "host_trust_required");
+    assert!(!value["actions"]
+        .as_array()
+        .expect("actions should be an array")
+        .iter()
+        .any(|action| action["id"] == "host_trust_required"));
+    assert!(!value["connection"]["user_actions"]
+        .as_array()
+        .expect("connection user actions should be an array")
+        .iter()
+        .any(|action| action["kind"] == "host_trust_required"));
+    assert_eq!(value["verification"]["project_trust"]["status"], "trusted");
+    assert_eq!(
+        value["verification"]["host_runtime"]["status"],
+        "not_observed"
+    );
+    assert_eq!(
+        value["verification"]["host_mcp_command"]["mode"],
+        "path_resolved"
+    );
+    assert_eq!(
+        value["verification"]["host_mcp_command"]["risk"],
+        "host_path_unconfirmed"
+    );
     assert_eq!(value["verification"]["host"]["managed_config"], "match");
     assert_eq!(value["verification"]["preflight"]["status"], "passed");
     assert_eq!(value["verification"]["mcp_handshake"]["status"], "passed");
@@ -1100,10 +1139,13 @@ fn connection_status_record_profile_uses_compact_human_output() -> Result<(), Bo
     let runtime_home = TempRuntimeHome::new("cli-bin-record-status-compact")?;
     let repo_root = create_git_repo(&runtime_home, "product-repo")?;
     let bin_dir = runtime_home.path().join("bin");
+    let codex_home = runtime_home.path().join("codex-home");
     write_fake_codex(&bin_dir)?;
     write_fake_mcp(&bin_dir)?;
+    write_codex_project_trust(&codex_home, &repo_root, "trusted")?;
     let env = [
         ("PATH", path_env(&[bin_dir.as_path()])),
+        ("CODEX_HOME", path_text(&codex_home)),
         ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
     ];
 
@@ -1133,7 +1175,7 @@ fn connection_status_record_profile_uses_compact_human_output() -> Result<(), Bo
             "--repo",
             path_text(&repo_root).as_str(),
         ],
-        &[],
+        &[("CODEX_HOME", path_text(&codex_home))],
     )?;
     assert_success(&status);
     let text = stdout(&status);
@@ -1156,11 +1198,14 @@ fn connection_status_record_profile_uses_compact_human_output() -> Result<(), Bo
         "Checks:\n  Stored connection: enabled, mode workflow, last verification action required"
     ));
     assert!(text.contains("  Current MCP configuration: match"));
+    assert!(text.contains("  Codex project trust: trusted"));
     assert!(text.contains("  Last MCP preflight: passed"));
     assert!(text.contains("  Last MCP handshake: passed"));
+    assert!(text.contains("  Codex host runtime: not observed"));
+    assert!(text.contains("  Host MCP command: uses volicord from the Codex host PATH"));
     assert!(text.contains("  Host follow-up: action required"));
+    assert!(!text.contains("Trust or approve the project configuration if Codex asks."));
     assert!(text.contains("Open, restart, or reload Codex in this repository."));
-    assert!(text.contains("Trust or approve the project configuration if Codex asks."));
     assert_text_renders_volicord_commands_as_standalone_lines(
         &text,
         &[&verify_command, &diagnostics_command],
@@ -1168,6 +1213,92 @@ fn connection_status_record_profile_uses_compact_human_output() -> Result<(), Bo
     assert_connection_text_omits_diagnostic_dump_fields(&text);
     assert!(!text.contains("regenerate cwd-independent detective host-hook commands"));
     assert!(!text.contains("refresh stale detective host-hook files"));
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn connection_verify_codex_untrusted_project_requests_trust() -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-codex-untrusted")?;
+    let repo_root = create_git_repo(&runtime_home, "product-repo")?;
+    let bin_dir = runtime_home.path().join("bin");
+    let codex_home = runtime_home.path().join("codex-home");
+    write_fake_codex(&bin_dir)?;
+    write_fake_mcp(&bin_dir)?;
+    write_codex_project_trust(&codex_home, &repo_root, "untrusted")?;
+    let env = [
+        ("PATH", path_env(&[bin_dir.as_path()])),
+        ("CODEX_HOME", path_text(&codex_home)),
+        ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
+    ];
+
+    let init = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--host",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--profile",
+            "record",
+            "--json",
+        ],
+        &env,
+    )?;
+    assert_success(&init);
+
+    let verify = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connection",
+            "verify",
+            "codex",
+            "--shared",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--json",
+        ],
+        &env,
+    )?;
+    assert_success(&verify);
+    let value = json_stdout(&verify)?;
+
+    assert_eq!(
+        value["verification"]["project_trust"]["status"],
+        "untrusted"
+    );
+    assert_eq!(value["primary_next_action"]["id"], "host_trust_required");
+    assert!(value["actions"]
+        .as_array()
+        .expect("actions should be an array")
+        .iter()
+        .any(|action| action["id"] == "host_trust_required"));
+    assert!(value["connection"]["user_actions"]
+        .as_array()
+        .expect("connection user actions should be an array")
+        .iter()
+        .any(|action| action["kind"] == "host_trust_required"));
+
+    let status = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connection",
+            "status",
+            "codex",
+            "--shared",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--json",
+        ],
+        &[("CODEX_HOME", path_text(&codex_home))],
+    )?;
+    assert_success(&status);
+    let value = json_stdout(&status)?;
+    assert_eq!(value["status"], "action_required");
+    assert_eq!(value["primary_next_action"]["id"], "host_trust_required");
+    assert_eq!(value["checks"][1]["id"], "codex_project_trust");
+    assert_eq!(value["checks"][1]["details"]["status"], "untrusted");
     Ok(())
 }
 
@@ -2537,7 +2668,9 @@ fn connection_verification_handshake_does_not_create_session_watch_records(
     let repo_root = runtime_home.create_product_repo("product-repo")?;
     fs::create_dir_all(repo_root.join(".git"))?;
     let bin_dir = runtime_home.path().join("bin");
+    let codex_home = runtime_home.path().join("codex-home");
     write_fake_codex(&bin_dir)?;
+    write_codex_project_trust(&codex_home, &repo_root, "trusted")?;
     prepare_runtime_home(runtime_home.path(), Path::new(volicord_bin()))?;
     let volicord_dir = Path::new(volicord_bin())
         .parent()
@@ -2554,7 +2687,10 @@ fn connection_verification_handshake_does_not_create_session_watch_records(
             "--shared",
             "--json",
         ],
-        &[("PATH", path_env(&[bin_dir.as_path(), volicord_dir]))],
+        &[
+            ("PATH", path_env(&[bin_dir.as_path(), volicord_dir])),
+            ("CODEX_HOME", path_text(&codex_home)),
+        ],
     )?;
     assert_success(&output);
     let value = json_stdout(&output)?;
@@ -2564,6 +2700,10 @@ fn connection_verification_handshake_does_not_create_session_watch_records(
     );
     assert_eq!(
         value["verification"]["mcp_handshake"]["status"], "passed",
+        "{value}"
+    );
+    assert_eq!(
+        value["verification"]["host_runtime"]["status"], "not_observed",
         "{value}"
     );
 
@@ -4182,6 +4322,23 @@ fn assert_non_guarantees(disclosure: &Value, expected: &[&str]) {
 
 fn path_text(path: &Path) -> String {
     path.display().to_string()
+}
+
+fn write_codex_project_trust(
+    codex_home: &Path,
+    repo_root: &Path,
+    trust_level: &str,
+) -> Result<(), Box<dyn Error>> {
+    fs::create_dir_all(codex_home)?;
+    fs::write(
+        codex_home.join("config.toml"),
+        format!(
+            "[projects.\"{}\"]\ntrust_level = \"{}\"\n",
+            repo_root.display(),
+            trust_level
+        ),
+    )?;
+    Ok(())
 }
 
 fn session_watch_record_counts(

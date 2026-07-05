@@ -30,7 +30,9 @@ use volicord_store::{
         GuardInstallationRecord, GuardInstallationUpsert,
     },
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
-    session_watch::{snapshot_product_repository, WatchSnapshotOptions},
+    session_watch::{
+        latest_watch_baseline_for_connection, snapshot_product_repository, WatchSnapshotOptions,
+    },
     StoreError,
 };
 use volicord_types::{
@@ -46,7 +48,11 @@ use crate::host_integration::{
     format_supported_connection_intents,
     generic::{GenericAdapter, USER_MANAGED_CONFIGURATION_GUIDANCE},
     host_capabilities, supports_connection_intent,
-    verification::{Verification, VerificationStatus},
+    verification::{
+        HostMcpCommandDiagnostic, HostMcpCommandLaunchMode, HostRuntimeDiagnostic,
+        HostRuntimeObservationStatus, ManagedConfigStatus, ProjectTrustStatus, Verification,
+        VerificationStatus,
+    },
     ConnectionIntent, HostAdapter, HostCapabilities, HostConfigError, HostIntegrationFileKind,
     HostKind, HostLifecyclePhase, HostPlan, HostPlanRequest, HostRemoveRequest, HostScope,
     HostTarget, InstallationProfile, ManagedServerEntry, PlannedChange, ProjectContext, UserAction,
@@ -716,6 +722,7 @@ pub fn run_connect_command(
         projects: &projects,
         affected_repo_root: Some(&project.repo_root),
         verification: Some(&verification),
+        current_host: None,
         plan: Some(&host_plan),
         user_actions: verification.host.user_actions.clone(),
     })
@@ -794,23 +801,48 @@ fn command_connection_status(
     let runtime_home = resolve_runtime_home(|name| process.env_var(name), current_dir)?;
     let selector = connection_selector(&parsed, current_dir, process)?;
     let (connection, projects) = select_connection(&runtime_home, &selector)?;
+    let host_plan = existing_host_plan(&connection, &runtime_home, process)?;
+    let current_host = current_status_host_diagnostic(
+        &runtime_home,
+        &connection,
+        Some(&host_plan),
+        &projects,
+        process,
+    )?;
+    let user_actions = connection_status_actions(&connection, current_host.as_ref());
+    let status = status_with_current_actions(
+        status_from_store(&connection.last_verification_status),
+        &user_actions,
+    );
     render_connection_output(ConnectionOutput {
         format: connection_output_format(&parsed),
         action: "status",
-        status: status_from_store(&connection.last_verification_status),
+        status,
         runtime_home: &runtime_home,
         guard_state: guard_state_for_connection(
             &runtime_home,
             &connection.connection_internal_id,
             &projects,
         )?,
-        user_actions: stored_user_actions(&connection),
+        user_actions,
         connection: &connection,
         projects: &projects,
         affected_repo_root: None,
         verification: None,
+        current_host,
         plan: None,
     })
+}
+
+fn status_with_current_actions(
+    status: AgentResultStatus,
+    actions: &[UserAction],
+) -> AgentResultStatus {
+    if status == AgentResultStatus::Complete && !actions.is_empty() {
+        AgentResultStatus::ActionRequired
+    } else {
+        status
+    }
 }
 
 fn command_connection_verify(
@@ -859,6 +891,7 @@ fn command_connection_verify(
         projects: &projects,
         affected_repo_root: None,
         verification: Some(&verification),
+        current_host: None,
         plan: Some(&host_plan),
     })
 }
@@ -915,6 +948,7 @@ fn command_connection_mode(
         projects: &projects,
         affected_repo_root: None,
         verification: None,
+        current_host: None,
         plan: None,
     })
 }
@@ -986,6 +1020,7 @@ fn command_connection_remove(
         projects: &remaining_projects,
         affected_repo_root: Some(&selected_project.project.repo_root),
         verification: None,
+        current_host: None,
         plan: host_plan.as_ref(),
     })
 }
@@ -1872,7 +1907,15 @@ fn verify_connection(
     process: &mut impl ConnectionProcess,
 ) -> Result<VerificationReport, ConnectionCommandError> {
     let host_kind = parse_host_kind(&connection.host_kind)?;
-    let host = verify_host_plan(host_kind, host_plan, process)?;
+    let mut host = verify_host_plan(host_kind, host_plan, process)?;
+    let projects = list_connection_projects(runtime_home, &connection.connection_internal_id)?;
+    host = attach_current_host_runtime_diagnostics(
+        runtime_home,
+        connection,
+        host_plan,
+        &projects,
+        host,
+    );
     let preflight = run_connection_preflight(
         process,
         launch,
@@ -1912,6 +1955,231 @@ fn verify_connection(
     })
 }
 
+fn current_status_host_diagnostic(
+    runtime_home: &Path,
+    connection: &AgentConnectionRecord,
+    host_plan: Option<&HostPlan>,
+    projects: &[ConnectionProjectRecord],
+    process: &impl ConnectionProcess,
+) -> Result<Option<Verification>, ConnectionCommandError> {
+    let Some(host_plan) = host_plan else {
+        return Ok(None);
+    };
+    if host_plan.host_kind != HostKind::Codex {
+        return Ok(None);
+    }
+    let mut host = Verification::new(
+        VerificationStatus::NotVerified,
+        "Codex status diagnostics were read without running MCP verification",
+    );
+    if stored_host_managed_config(connection).as_deref() == Some("match") {
+        host = host
+            .with_managed_config(ManagedConfigStatus::Match)
+            .with_mcp_handshake_allowed(true);
+    }
+    if parse_host_scope(&connection.host_scope)? == HostScope::Project {
+        if let Some(project) = projects.first() {
+            let trust = codex::project_trust_diagnostic(
+                &codex_environment(process),
+                &project.project.repo_root,
+            );
+            if trust.status == ProjectTrustStatus::Untrusted {
+                host = host.with_user_actions(vec![UserAction::new(
+                    UserActionKind::HostTrustRequired,
+                    "Codex project trust is untrusted in the Codex user configuration",
+                )]);
+            }
+            host = host.with_project_trust(trust);
+        }
+    }
+    Ok(Some(attach_current_host_runtime_diagnostics(
+        runtime_home,
+        connection,
+        host_plan,
+        projects,
+        host,
+    )))
+}
+
+fn stored_host_managed_config(connection: &AgentConnectionRecord) -> Option<String> {
+    json_object_text(&connection.last_verification_report_json)
+        .get("host")
+        .and_then(|host| host.get("managed_config"))
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+}
+
+fn attach_current_host_runtime_diagnostics(
+    runtime_home: &Path,
+    connection: &AgentConnectionRecord,
+    host_plan: &HostPlan,
+    projects: &[ConnectionProjectRecord],
+    host: Verification,
+) -> Verification {
+    if host_plan.host_kind != HostKind::Codex || host_plan.host_scope != HostScope::Project {
+        return host;
+    }
+    let runtime = host_runtime_observation(runtime_home, connection, projects);
+    let command = host_mcp_command_diagnostic(&host_plan.entry, &runtime);
+    let mut actions = host.user_actions.clone();
+    if host_runtime_action_applies(&host, &runtime) {
+        let kind = if command.mode == HostMcpCommandLaunchMode::PathResolved
+            && command.risk.as_deref() == Some("host_path_unconfirmed")
+        {
+            UserActionKind::HostMcpCommandPathUnconfirmed
+        } else {
+            UserActionKind::HostRuntimeNotObserved
+        };
+        push_unique_action(
+            &mut actions,
+            UserAction::new(kind, host_runtime_action_message(kind)),
+        );
+    }
+    host.with_host_runtime(runtime)
+        .with_host_mcp_command(command)
+        .with_user_actions(actions)
+}
+
+fn host_runtime_action_applies(host: &Verification, runtime: &HostRuntimeDiagnostic) -> bool {
+    runtime.status == HostRuntimeObservationStatus::NotObserved
+        && host.managed_config.as_str() == "match"
+        && host.mcp_handshake_allowed
+        && !host.user_actions.iter().any(|action| {
+            matches!(
+                action.kind,
+                UserActionKind::HostTrustRequired | UserActionKind::ProjectApprovalRequired
+            )
+        })
+}
+
+fn host_runtime_action_message(kind: UserActionKind) -> &'static str {
+    match kind {
+        UserActionKind::HostMcpCommandPathUnconfirmed => {
+            "Make `volicord` available on the PATH seen by the Codex host process, or configure the MCP command so the host can launch it; restart, reload, resume, or start a new Codex session in this repository; confirm Volicord tools are exposed in the active Codex session"
+        }
+        UserActionKind::HostRuntimeNotObserved => {
+            "Restart, reload, resume, or start a new Codex session in this repository; confirm Volicord tools are exposed in the active Codex session"
+        }
+        _ => "Complete the required host follow-up",
+    }
+}
+
+fn push_unique_action(actions: &mut Vec<UserAction>, action: UserAction) {
+    if !actions.iter().any(|existing| existing.kind == action.kind) {
+        actions.push(action);
+    }
+}
+
+fn connection_status_actions(
+    connection: &AgentConnectionRecord,
+    current_host: Option<&Verification>,
+) -> Vec<UserAction> {
+    let mut actions = current_host
+        .map(|host| host.user_actions.clone())
+        .unwrap_or_else(|| stored_user_actions(connection));
+    for action in stored_user_actions(connection)
+        .into_iter()
+        .filter(|action| action.kind == UserActionKind::ReloadRequired)
+    {
+        push_unique_action(&mut actions, action);
+    }
+    actions
+}
+
+fn host_runtime_observation(
+    runtime_home: &Path,
+    connection: &AgentConnectionRecord,
+    projects: &[ConnectionProjectRecord],
+) -> HostRuntimeDiagnostic {
+    if projects.is_empty() {
+        return HostRuntimeDiagnostic {
+            status: HostRuntimeObservationStatus::Unknown,
+            details: "No connected project was available for Codex host runtime observation"
+                .to_owned(),
+            last_observed_at: None,
+        };
+    }
+    let mut last_observed_at = None;
+    for project in projects {
+        match latest_watch_baseline_for_connection(
+            runtime_home,
+            &project.project_id,
+            &connection.connection_internal_id,
+        ) {
+            Ok(Some(baseline)) => {
+                last_observed_at = max_optional_text(last_observed_at, Some(baseline.created_at));
+            }
+            Ok(None) => {}
+            Err(error) => {
+                return HostRuntimeDiagnostic {
+                    status: HostRuntimeObservationStatus::Unknown,
+                    details: format!(
+                        "Codex host runtime observation could not be read from session-watch state: {error}"
+                    ),
+                    last_observed_at: None,
+                };
+            }
+        }
+    }
+    if last_observed_at.is_some() {
+        HostRuntimeDiagnostic {
+            status: HostRuntimeObservationStatus::Observed,
+            details:
+                "Volicord has observed a project-bound Codex host MCP session for this connection"
+                    .to_owned(),
+            last_observed_at,
+        }
+    } else {
+        HostRuntimeDiagnostic {
+            status: HostRuntimeObservationStatus::NotObserved,
+            details: "Volicord has not observed a Codex host process start the Volicord MCP server for this connection".to_owned(),
+            last_observed_at: None,
+        }
+    }
+}
+
+fn host_mcp_command_diagnostic(
+    entry: &ManagedServerEntry,
+    runtime: &HostRuntimeDiagnostic,
+) -> HostMcpCommandDiagnostic {
+    let command = entry.command.trim();
+    if command.is_empty() {
+        return HostMcpCommandDiagnostic {
+            mode: HostMcpCommandLaunchMode::Malformed,
+            command: None,
+            risk: Some("command_missing".to_owned()),
+            details: "Host MCP command is empty".to_owned(),
+        };
+    }
+    let path = Path::new(command);
+    if path.is_absolute() {
+        return HostMcpCommandDiagnostic {
+            mode: HostMcpCommandLaunchMode::AbsolutePath,
+            command: Some(command.to_owned()),
+            risk: None,
+            details: format!("Host MCP command uses absolute path {command}"),
+        };
+    }
+    if path.components().count() == 1 {
+        let risk = (runtime.status == HostRuntimeObservationStatus::NotObserved)
+            .then(|| "host_path_unconfirmed".to_owned());
+        return HostMcpCommandDiagnostic {
+            mode: HostMcpCommandLaunchMode::PathResolved,
+            command: Some(command.to_owned()),
+            risk,
+            details: format!("Host MCP command uses {command} from the Codex host PATH"),
+        };
+    }
+    HostMcpCommandDiagnostic {
+        mode: HostMcpCommandLaunchMode::Unknown,
+        command: Some(command.to_owned()),
+        risk: Some("launch_mode_unknown".to_owned()),
+        details: format!(
+            "Host MCP command is non-absolute and not a simple PATH command: {command}"
+        ),
+    }
+}
+
 fn aggregate_verification_status(
     host: &Verification,
     preflight: &VerificationStep,
@@ -1921,10 +2189,14 @@ fn aggregate_verification_status(
         return AgentResultStatus::Failed;
     }
     match host.status {
-        VerificationStatus::Complete if handshake.status == StepStatus::Passed => {
+        VerificationStatus::Complete
+            if handshake.status == StepStatus::Passed && host.user_actions.is_empty() =>
+        {
             AgentResultStatus::Complete
         }
-        VerificationStatus::ActionRequired if handshake.status == StepStatus::Passed => {
+        VerificationStatus::Complete | VerificationStatus::ActionRequired
+            if handshake.status == StepStatus::Passed =>
+        {
             AgentResultStatus::ActionRequired
         }
         VerificationStatus::NotVerified => AgentResultStatus::NotVerified,
@@ -5010,6 +5282,7 @@ struct ConnectionOutput<'a> {
     projects: &'a [ConnectionProjectRecord],
     affected_repo_root: Option<&'a Path>,
     verification: Option<&'a VerificationReport>,
+    current_host: Option<Verification>,
     plan: Option<&'a HostPlan>,
     user_actions: Vec<UserAction>,
 }
@@ -5078,10 +5351,15 @@ fn render_connection_output(data: ConnectionOutput<'_>) -> Result<String, Connec
                     &data.guard_state,
                     has_reload_action(&data.user_actions),
                 ),
-                "connection": connection_json(data.connection, &project_ids),
+                "connection": connection_json(data.connection, &project_ids, Some(&data.user_actions)),
                 "target": target,
                 "planned_change": planned_change,
-                "checks": checks_json(data.connection, data.verification, &data.guard_state),
+                "checks": checks_json(
+                    data.connection,
+                    data.verification,
+                    data.current_host.as_ref(),
+                    &data.guard_state,
+                ),
                 "actions": actions_json_values(&data.user_actions),
                 "primary_next_action": primary_next_action.as_ref().map(|action| action.to_json()),
                 "host_hook": data.guard_state.to_json(),
@@ -5286,8 +5564,9 @@ fn compact_connection_checks(
     primary_next_action: Option<&PrimaryNextAction>,
 ) -> Vec<(&'static str, String)> {
     if let Some(verification) = data.verification {
-        return vec![
-            ("MCP configuration", mcp_config_state.to_owned()),
+        let mut checks = vec![("MCP configuration", mcp_config_state.to_owned())];
+        append_host_trust_compact_check(&mut checks, &verification.host);
+        checks.extend([
             (
                 "MCP preflight",
                 verification.preflight.status.as_str().to_owned(),
@@ -5296,13 +5575,15 @@ fn compact_connection_checks(
                 "MCP handshake",
                 verification.handshake.status.as_str().to_owned(),
             ),
-            (
-                "Host follow-up",
-                host_follow_up_text(data.status, primary_next_action).to_owned(),
-            ),
-        ];
+        ]);
+        append_host_runtime_compact_checks(&mut checks, &verification.host);
+        checks.push((
+            "Host follow-up",
+            host_follow_up_text(data.status, primary_next_action).to_owned(),
+        ));
+        return checks;
     }
-    vec![
+    let mut checks = vec![
         (
             "Stored connection",
             format!(
@@ -5313,6 +5594,11 @@ fn compact_connection_checks(
             ),
         ),
         ("Current MCP configuration", mcp_config_state.to_owned()),
+    ];
+    if let Some(host) = &data.current_host {
+        append_host_trust_compact_check(&mut checks, host);
+    }
+    checks.extend([
         (
             "Last MCP preflight",
             stored_verification_step_status(data.connection, "preflight"),
@@ -5321,11 +5607,61 @@ fn compact_connection_checks(
             "Last MCP handshake",
             stored_verification_step_status(data.connection, "mcp_handshake"),
         ),
-        (
-            "Host follow-up",
-            host_follow_up_text(data.status, primary_next_action).to_owned(),
-        ),
-    ]
+    ]);
+    if let Some(host) = &data.current_host {
+        append_host_runtime_compact_checks(&mut checks, host);
+    }
+    checks.push((
+        "Host follow-up",
+        host_follow_up_text(data.status, primary_next_action).to_owned(),
+    ));
+    checks
+}
+
+fn append_host_trust_compact_check(checks: &mut Vec<(&'static str, String)>, host: &Verification) {
+    if let Some(trust) = &host.project_trust {
+        checks.push(("Codex project trust", project_trust_text(trust.status)));
+    }
+}
+
+fn append_host_runtime_compact_checks(
+    checks: &mut Vec<(&'static str, String)>,
+    host: &Verification,
+) {
+    if let Some(runtime) = &host.host_runtime {
+        checks.push(("Codex host runtime", host_runtime_text(runtime.status)));
+    }
+    if let Some(command) = &host.host_mcp_command {
+        checks.push(("Host MCP command", host_mcp_command_text(command)));
+    }
+}
+
+fn project_trust_text(status: ProjectTrustStatus) -> String {
+    status.as_str().replace('_', " ")
+}
+
+fn host_runtime_text(status: HostRuntimeObservationStatus) -> String {
+    status.as_str().replace('_', " ")
+}
+
+fn host_mcp_command_text(command: &HostMcpCommandDiagnostic) -> String {
+    match command.mode {
+        HostMcpCommandLaunchMode::AbsolutePath => command
+            .command
+            .as_deref()
+            .map(|command| format!("uses absolute path {command}"))
+            .unwrap_or_else(|| "uses an absolute path".to_owned()),
+        HostMcpCommandLaunchMode::PathResolved => command
+            .command
+            .as_deref()
+            .map(|command| format!("uses {command} from the Codex host PATH"))
+            .unwrap_or_else(|| "uses a command from the Codex host PATH".to_owned()),
+        HostMcpCommandLaunchMode::RemoteExecutor => {
+            "uses a remote or executor-backed launch environment".to_owned()
+        }
+        HostMcpCommandLaunchMode::Unknown => "launch mode unknown".to_owned(),
+        HostMcpCommandLaunchMode::Malformed => "configuration malformed".to_owned(),
+    }
 }
 
 fn append_compact_next_steps(
@@ -5364,6 +5700,37 @@ fn append_compact_next_steps(
                 output,
                 &mut index,
                 format!("Trust or approve the project configuration if {host} asks."),
+            );
+            push_optional_numbered_command(output, &mut index, "Run", command.as_deref());
+        }
+        "host_mcp_command_path_unconfirmed" => {
+            push_numbered_text(
+                output,
+                &mut index,
+                "Make `volicord` available on the PATH seen by the Codex host process, or configure the MCP command so the host can launch it.",
+            );
+            push_numbered_text(
+                output,
+                &mut index,
+                "Restart, reload, resume, or start a new Codex session in this repository.",
+            );
+            push_numbered_text(
+                output,
+                &mut index,
+                "Confirm that Volicord tools are exposed in the active Codex session.",
+            );
+            push_optional_numbered_command(output, &mut index, "Run", command.as_deref());
+        }
+        "host_runtime_not_observed" => {
+            push_numbered_text(
+                output,
+                &mut index,
+                "Restart, reload, resume, or start a new Codex session in this repository.",
+            );
+            push_numbered_text(
+                output,
+                &mut index,
+                "Confirm that Volicord tools are exposed in the active Codex session.",
             );
             push_optional_numbered_command(output, &mut index, "Run", command.as_deref());
         }
@@ -6460,7 +6827,7 @@ fn render_connections_output(
                         .iter()
                         .map(|project| project.project_id.clone())
                         .collect::<Vec<_>>();
-                    let mut value = connection_json(connection, &project_ids);
+                    let mut value = connection_json(connection, &project_ids, None);
                     if let Some(object) = value.as_object_mut() {
                         object.insert(
                             "connected_repositories".to_owned(),
@@ -6548,7 +6915,7 @@ fn render_connection_remove_dry_run_output(
                         "host_reload_required": false,
                         "guard_blockers": [],
                     },
-                    "connection": connection_json(connection, &project_ids),
+                    "connection": connection_json(connection, &project_ids, None),
                     "target": connection.config_target,
                     "planned_change": "membership",
                     "remaining_connected_projects": remaining_count,
@@ -6931,7 +7298,11 @@ fn append_init_verify_followup(
 fn next_action_should_verify(id: &str) -> bool {
     matches!(
         id,
-        "host_trust_required" | "project_approval_required" | "reload_required"
+        "host_trust_required"
+            | "project_approval_required"
+            | "reload_required"
+            | "host_runtime_not_observed"
+            | "host_mcp_command_path_unconfirmed"
     )
 }
 
@@ -8993,28 +9364,32 @@ fn user_action_id(kind: UserActionKind) -> &'static str {
         UserActionKind::HostTrustRequired => "host_trust_required",
         UserActionKind::ProjectApprovalRequired => "project_approval_required",
         UserActionKind::ReloadRequired => "reload_required",
+        UserActionKind::HostRuntimeNotObserved => "host_runtime_not_observed",
+        UserActionKind::HostMcpCommandPathUnconfirmed => "host_mcp_command_path_unconfirmed",
     }
 }
 
 fn checks_json(
     connection: &AgentConnectionRecord,
     verification: Option<&VerificationReport>,
+    current_host: Option<&Verification>,
     guard_state: &GuardOperationalState,
 ) -> Value {
     if let Some(verification) = verification {
-        let mut checks = vec![
-            json!({
-                "id": "host",
-                "status": verification.host.status.as_str(),
-                "summary": verification.host.details,
-                "details": {
-                    "host_state": verification.host.host_state.as_str(),
-                    "managed_config": verification.host.managed_config.as_str(),
-                    "host_executable": verification.host.host_executable.as_str(),
-                    "host_gate": verification.host.host_gate.as_str(),
-                    "host_configuration": verification.host.host_configuration.as_str(),
-                }
-            }),
+        let mut checks = vec![json!({
+            "id": "host",
+            "status": verification.host.status.as_str(),
+            "summary": verification.host.details,
+            "details": {
+                "host_state": verification.host.host_state.as_str(),
+                "managed_config": verification.host.managed_config.as_str(),
+                "host_executable": verification.host.host_executable.as_str(),
+                "host_gate": verification.host.host_gate.as_str(),
+                "host_configuration": verification.host.host_configuration.as_str(),
+            }
+        })];
+        checks.extend(host_diagnostic_checks_json(&verification.host));
+        checks.extend([
             json!({
                 "id": "mcp_preflight",
                 "status": verification.preflight.status.as_str(),
@@ -9025,19 +9400,24 @@ fn checks_json(
                 "status": verification.handshake.status.as_str(),
                 "summary": verification.handshake.details,
             }),
-        ];
+        ]);
         checks.extend(guard_checks_json_values(guard_state));
         return Value::Array(checks);
     }
-    let mut checks = stored_checks_json(connection);
+    let mut checks = stored_checks_json(connection, current_host);
     checks.extend(guard_checks_json_values(guard_state));
     Value::Array(checks)
 }
 
-fn stored_checks_json(connection: &AgentConnectionRecord) -> Vec<Value> {
+fn stored_checks_json(
+    connection: &AgentConnectionRecord,
+    current_host: Option<&Verification>,
+) -> Vec<Value> {
     let report = json_object_text(&connection.last_verification_report_json);
     let Some(object) = report.as_object() else {
-        return Vec::new();
+        return current_host
+            .map(host_diagnostic_checks_json)
+            .unwrap_or_default();
     };
     let mut checks = Vec::new();
     if let Some(host) = object.get("host").and_then(Value::as_object) {
@@ -9050,6 +9430,11 @@ fn stored_checks_json(connection: &AgentConnectionRecord) -> Vec<Value> {
                 .unwrap_or("stored host verification state"),
             "details": host,
         }));
+    }
+    if let Some(host) = current_host {
+        checks.extend(host_diagnostic_checks_json(host));
+    } else {
+        checks.extend(stored_host_diagnostic_checks_json(object));
     }
     if let Some(preflight) = object.get("preflight").and_then(Value::as_object) {
         checks.push(json!({
@@ -9074,11 +9459,144 @@ fn stored_checks_json(connection: &AgentConnectionRecord) -> Vec<Value> {
     checks
 }
 
+fn host_diagnostic_checks_json(host: &Verification) -> Vec<Value> {
+    let mut checks = Vec::new();
+    if let Some(trust) = &host.project_trust {
+        checks.push(json!({
+            "id": "codex_project_trust",
+            "status": project_trust_check_status(trust.status),
+            "summary": trust.details,
+            "details": trust,
+        }));
+    }
+    if let Some(runtime) = &host.host_runtime {
+        checks.push(json!({
+            "id": "codex_host_runtime",
+            "status": host_runtime_check_status(runtime.status),
+            "summary": runtime.details,
+            "details": runtime,
+        }));
+    }
+    if let Some(command) = &host.host_mcp_command {
+        checks.push(json!({
+            "id": "host_mcp_command",
+            "status": host_mcp_command_check_status(command),
+            "summary": command.details,
+            "details": command,
+        }));
+    }
+    checks
+}
+
+fn stored_host_diagnostic_checks_json(object: &serde_json::Map<String, Value>) -> Vec<Value> {
+    let host = object.get("host").and_then(Value::as_object);
+    let project_trust = object
+        .get("project_trust")
+        .or_else(|| host.and_then(|host| host.get("project_trust")));
+    let host_runtime = object
+        .get("host_runtime")
+        .or_else(|| host.and_then(|host| host.get("host_runtime")));
+    let host_mcp_command = object
+        .get("host_mcp_command")
+        .or_else(|| host.and_then(|host| host.get("host_mcp_command")));
+    let mut checks = Vec::new();
+    if let Some(trust) = project_trust.and_then(Value::as_object) {
+        let status = trust
+            .get("status")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown");
+        checks.push(json!({
+            "id": "codex_project_trust",
+            "status": stored_project_trust_check_status(status),
+            "summary": trust.get("details").and_then(Value::as_str).unwrap_or("stored Codex project trust state"),
+            "details": trust,
+        }));
+    }
+    if let Some(runtime) = host_runtime.and_then(Value::as_object) {
+        let status = runtime
+            .get("status")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown");
+        checks.push(json!({
+            "id": "codex_host_runtime",
+            "status": stored_host_runtime_check_status(status),
+            "summary": runtime.get("details").and_then(Value::as_str).unwrap_or("stored Codex host runtime state"),
+            "details": runtime,
+        }));
+    }
+    if let Some(command) = host_mcp_command.and_then(Value::as_object) {
+        checks.push(json!({
+            "id": "host_mcp_command",
+            "status": if command.get("risk").is_some_and(|risk| !risk.is_null()) {
+                "action_required"
+            } else {
+                "passed"
+            },
+            "summary": command.get("details").and_then(Value::as_str).unwrap_or("stored host MCP command state"),
+            "details": command,
+        }));
+    }
+    checks
+}
+
+fn project_trust_check_status(status: ProjectTrustStatus) -> &'static str {
+    match status {
+        ProjectTrustStatus::Trusted => "passed",
+        ProjectTrustStatus::Untrusted => "action_required",
+        ProjectTrustStatus::Missing | ProjectTrustStatus::Unknown => "unknown",
+        ProjectTrustStatus::Unreadable | ProjectTrustStatus::Malformed => "failed",
+    }
+}
+
+fn host_runtime_check_status(status: HostRuntimeObservationStatus) -> &'static str {
+    match status {
+        HostRuntimeObservationStatus::Observed => "passed",
+        HostRuntimeObservationStatus::NotObserved => "action_required",
+        HostRuntimeObservationStatus::Unknown => "unknown",
+    }
+}
+
+fn host_mcp_command_check_status(command: &HostMcpCommandDiagnostic) -> &'static str {
+    if command.risk.is_some() {
+        "action_required"
+    } else if command.mode == HostMcpCommandLaunchMode::Malformed {
+        "failed"
+    } else {
+        "passed"
+    }
+}
+
+fn stored_project_trust_check_status(status: &str) -> &'static str {
+    match status {
+        "trusted" => "passed",
+        "untrusted" => "action_required",
+        "missing" | "unknown" => "unknown",
+        "unreadable" | "malformed" => "failed",
+        _ => "unknown",
+    }
+}
+
+fn stored_host_runtime_check_status(status: &str) -> &'static str {
+    match status {
+        "observed" => "passed",
+        "not_observed" => "action_required",
+        "unknown" => "unknown",
+        _ => "unknown",
+    }
+}
+
 fn stored_user_actions(connection: &AgentConnectionRecord) -> Vec<UserAction> {
     serde_json::from_str::<Vec<UserAction>>(&connection.last_user_actions_json).unwrap_or_default()
 }
 
-fn connection_json(connection: &AgentConnectionRecord, project_ids: &[String]) -> Value {
+fn connection_json(
+    connection: &AgentConnectionRecord,
+    project_ids: &[String],
+    user_actions: Option<&[UserAction]>,
+) -> Value {
+    let user_actions = user_actions
+        .map(|actions| serde_json::to_value(actions).unwrap_or_else(|_| json!([])))
+        .unwrap_or_else(|| json_array_text(&connection.last_user_actions_json));
     json!({
         "connection_id": connection.connection_internal_id,
         "host_kind": connection.host_kind,
@@ -9089,7 +9607,7 @@ fn connection_json(connection: &AgentConnectionRecord, project_ids: &[String]) -
         "connected_projects": project_ids,
         "verification_status": connection.last_verification_status,
         "verification_report": json_object_text(&connection.last_verification_report_json),
-        "user_actions": json_array_text(&connection.last_user_actions_json),
+        "user_actions": user_actions,
         "server_name": connection.server_name,
         "config_target": connection.config_target,
     })
@@ -9113,6 +9631,9 @@ fn verification_json(report: &VerificationReport) -> Value {
     json!({
         "status": report.status.as_str(),
         "disclosure": detective_observation_disclosure_json(),
+        "project_trust": &report.host.project_trust,
+        "host_runtime": &report.host.host_runtime,
+        "host_mcp_command": &report.host.host_mcp_command,
         "host": {
             "status": report.host.status.as_str(),
             "host_state": report.host.host_state.as_str(),
@@ -9120,6 +9641,9 @@ fn verification_json(report: &VerificationReport) -> Value {
             "host_executable": report.host.host_executable.as_str(),
             "host_gate": report.host.host_gate.as_str(),
             "host_configuration": report.host.host_configuration.as_str(),
+            "project_trust": &report.host.project_trust,
+            "host_runtime": &report.host.host_runtime,
+            "host_mcp_command": &report.host.host_mcp_command,
             "mcp_handshake_allowed": report.host.mcp_handshake_allowed,
             "details": report.host.details,
             "diagnostic": report.host.diagnostic,
