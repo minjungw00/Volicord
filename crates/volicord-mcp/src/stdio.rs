@@ -415,9 +415,10 @@ pub(crate) fn lifecycle_error(state: ConnectionPhase, request: &JsonRpcRequest) 
                 &request.id,
                 "initialize has already completed",
             )),
-            "tools/list" | "tools/call" => Some(invalid_request_response(
+            "tools/list" => None,
+            "tools/call" => Some(invalid_request_response(
                 &request.id,
-                "connection is not ready",
+                "tools/call requires notifications/initialized",
             )),
             _ => None,
         },

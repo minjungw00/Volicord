@@ -473,7 +473,7 @@ fn volicord_mcp_subcommand_suppresses_malformed_notification_output_and_effects(
         responses[&1]["result"]["protocolVersion"],
         json!("2025-11-25")
     );
-    assert_eq!(responses[&2]["error"]["code"], -32600);
+    assert!(responses[&2]["result"]["tools"].is_array());
     assert!(responses[&3]["result"]["tools"].is_array());
     let status = volicord_response(&responses[&4])?;
     assert_eq!(status["base"]["response_kind"], "result");
@@ -662,7 +662,6 @@ fn tools_list_messages(
 ) -> Result<String, serde_json::Error> {
     json_lines(&[
         initialize_request(initialize_id),
-        initialized_notification(),
         request(tools_list_id, "tools/list", json!({})),
     ])
 }

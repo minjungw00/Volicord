@@ -184,8 +184,7 @@ fn connection_context_resolves_and_preflight_reports_allowed_project() -> Result
 }
 
 #[test]
-fn project_bound_stdio_startup_creates_baseline_before_tool_handling() -> Result<(), Box<dyn Error>>
-{
+fn mcp_host_startup_observation_is_recorded_before_tool_calls() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-stdio-startup-watch")?;
     let adapter = adapter(&fixture)?;
     let input = Cursor::new(Vec::<u8>::new());
@@ -213,8 +212,7 @@ fn project_bound_stdio_startup_creates_baseline_before_tool_handling() -> Result
 }
 
 #[test]
-fn verification_marked_stdio_startup_does_not_create_session_watch_records(
-) -> Result<(), Box<dyn Error>> {
+fn mcp_verification_probe_does_not_create_host_runtime_observation() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-stdio-verification-watch-skip")?;
     let adapter = adapter(&fixture)?;
     let input = Cursor::new(Vec::<u8>::new());
@@ -420,7 +418,37 @@ fn read_only_mode_rejects_agent_workflow_calls_before_core() -> Result<(), Box<d
 }
 
 #[test]
-fn stdio_lists_mode_filtered_tools() -> Result<(), Box<dyn Error>> {
+fn mcp_tools_list_is_available_after_initialize() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-stdio-list-after-init")?;
+    let adapter = adapter(&fixture)?;
+    let input = Cursor::new(json_lines(&[
+        initialize_request(1, json!({})),
+        request(2, "tools/list", json!({})),
+    ])?);
+    let mut output = Vec::new();
+
+    run_stdio(adapter, BufReader::new(input), &mut output)?;
+
+    let responses = stdio_responses(&output)?;
+    assert_eq!(responses.len(), 2);
+    assert_eq!(
+        responses[0]["result"]["protocolVersion"],
+        json!(SUPPORTED_PROTOCOL_VERSION)
+    );
+    let names = responses[1]["result"]["tools"]
+        .as_array()
+        .expect("tools should be an array")
+        .iter()
+        .map(|tool| tool["name"].as_str().expect("tool name"))
+        .collect::<Vec<_>>();
+    let mut expected = PUBLIC_METHOD_TOOL_NAMES.to_vec();
+    expected.push(LIST_PROJECTS_TOOL_NAME);
+    assert_eq!(names, expected);
+    Ok(())
+}
+
+#[test]
+fn mcp_tools_list_remains_available_after_initialized_notification() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-stdio-mode")?;
     set_mode(&fixture, CONNECTION_MODE_READ_ONLY)?;
     let adapter = adapter(&fixture)?;
@@ -451,6 +479,36 @@ fn stdio_lists_mode_filtered_tools() -> Result<(), Box<dyn Error>> {
             LIST_PROJECTS_TOOL_NAME
         ]
     );
+    Ok(())
+}
+
+#[test]
+fn mcp_tools_call_requires_initialized_notification() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-stdio-call-requires-ready")?;
+    let before = fixture.counts()?;
+    let adapter = adapter(&fixture)?;
+    let input = Cursor::new(json_lines(&[
+        initialize_request(1, json!({})),
+        request(2, "tools/list", json!({})),
+        tools_call(3, "volicord.intake", intake_args(None)),
+        initialized_notification(),
+        tools_call(4, "volicord.status", json!({ "detail": "workflow" })),
+    ])?);
+    let mut output = Vec::new();
+
+    run_stdio(adapter, BufReader::new(input), &mut output)?;
+
+    let responses = stdio_responses(&output)?;
+    assert_eq!(responses.len(), 4);
+    assert!(responses[1]["result"]["tools"].is_array());
+    assert_eq!(responses[2]["error"]["code"], -32600);
+    assert!(responses[2]["error"]["data"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("notifications/initialized"));
+    let status = volicord_response_from_tool(&responses[3])?;
+    assert_eq!(status["base"]["response_kind"], "result");
+    assert_eq!(fixture.counts()?, before);
     Ok(())
 }
 
@@ -1807,6 +1865,24 @@ fn tools_call(id: u64, name: &str, arguments: Value) -> Value {
             "arguments": arguments
         }),
     )
+}
+
+fn intake_args(project_selector: Option<&str>) -> Value {
+    let mut arguments = json!({
+        "plain_language_request": "Exercise MCP lifecycle gating.",
+        "requested_mode": "work",
+        "resume_policy": "create_new",
+        "initial_scope": {
+            "boundary": "MCP lifecycle gating test.",
+            "non_goals": ["Changing Core method behavior."],
+            "acceptance_criteria": ["tools/call is gated until notifications/initialized."]
+        },
+        "initial_context_refs": []
+    });
+    if let Some(project_selector) = project_selector {
+        arguments["project_selector"] = json!(project_selector);
+    }
+    arguments
 }
 
 fn product_judgment_args(fixture: &CoreFixture, task_id: &str, state_version: u64) -> Value {

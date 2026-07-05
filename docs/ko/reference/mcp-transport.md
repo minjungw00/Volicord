@@ -426,7 +426,7 @@ notification으로 받은 요청 전용 메서드는 무시되며 실행하면 �
 |---|---|
 | JSON 파싱 실패 | JSON-RPC `-32700` Parse error |
 | 배열, 원시 루트, 누락되었거나 잘못된 `jsonrpc`, 잘못된 요청 `id`, 누락되었거나 문자열이 아닌 요청 `method`, 잘못된 non-notification 객체를 포함한 유효하지 않은 JSON-RPC 메시지 구조 | JSON-RPC `-32600` Invalid Request |
-| `initialize` 전 요청, 준비 상태 전 `tools/list`나 `tools/call`, 중복 `initialize`를 포함한 요청의 수명주기 위반 | JSON-RPC `-32600` Invalid Request |
+| `initialize` 전 요청, `notifications/initialized` 전 `tools/call`, 중복 `initialize`를 포함한 요청의 수명주기 위반 | JSON-RPC `-32600` Invalid Request |
 | 알 수 없는 요청 메서드 | JSON-RPC `-32601` Method not found |
 | 요청의 잘못된 메서드 파라미터 | JSON-RPC `-32602` Invalid params |
 | 구조적으로 유효한 `tools/call` 요청의 알 수 없는 도구 이름 | JSON-RPC `-32602` Invalid params |
@@ -462,10 +462,12 @@ elicitation을 사용할 수 있다고 봅니다. 다른 capability 항목은 �
 | 연결 지점 | 유효한 클라이언트 메시지 | 결과 |
 |---|---|---|
 | 성공한 `initialize` 전 | `initialize` 요청 | 성공하면 서버는 `protocolVersion: "2025-11-25"`를 반환하고 `notifications/initialized`를 기다립니다. |
-| `notifications/initialized` 대기 중 | `notifications/initialized` notification, `ping` 요청 | `notifications/initialized`가 준비 상태 전환을 완료합니다. `ping`은 `initialize`가 성공한 뒤 사용할 수 있으며, 서버가 notification을 기다리는 동안에도 사용할 수 있습니다. |
+| `notifications/initialized` 대기 중 | `notifications/initialized` notification, `ping` 요청, `tools/list` 요청 | `notifications/initialized`가 준비 상태 전환을 완료합니다. `ping`은 `initialize`가 성공한 뒤 사용할 수 있으며, 서버가 notification을 기다리는 동안에도 사용할 수 있습니다. `tools/list`는 성공한 `initialize` 응답 뒤 사용할 수 있는 읽기 전용 탐색입니다. |
 | 준비 상태 | `ping`, `tools/list`, `tools/call` | 일반 MCP 도구 탐색과 도구 실행을 사용할 수 있습니다. |
 
-`tools/list`와 `tools/call`은 `notifications/initialized`가 준비 상태 전환을 완료한 뒤에만
+`tools/list`는 성공한 `initialize` 응답 뒤 사용할 수 있으며, 서버가
+`notifications/initialized`를 기다리는 동안과 준비 상태 전환 뒤에도 계속 사용할 수
+있습니다. `tools/call`은 `notifications/initialized`가 준비 상태 전환을 완료한 뒤에만
 사용할 수 있습니다. 중복 `initialize` 요청은 유효하지 않습니다. 너무 이르거나 잘못된
 `notifications/initialized` notification은 연결을 준비 상태로 만들지 않습니다.
 
@@ -487,7 +489,7 @@ elicitation을 사용할 수 있다고 봅니다. 다른 capability 항목은 �
 <a id="tool-discovery-and-toolscall-response-wrapping"></a>
 ## 도구 탐색과 `tools/call` 응답 래핑
 
-연결이 준비 상태가 된 뒤 `tools/list`는 현재 저장된 Agent Connection 모드에 따라
+성공한 `initialize` 응답 뒤 `tools/list`는 현재 저장된 Agent Connection 모드에 따라
 도구를 노출합니다.
 
 | 모드 | MCP에 보이는 도구 |

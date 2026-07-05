@@ -482,7 +482,7 @@ Error classification:
 |---|---|
 | JSON parse failure | JSON-RPC `-32700` Parse error |
 | Invalid JSON-RPC message structure, including arrays, primitive roots, missing or invalid `jsonrpc`, invalid request `id`, missing or non-string request `method`, or malformed non-notification objects | JSON-RPC `-32600` Invalid Request |
-| Lifecycle violation on a request, including a request before `initialize`, `tools/list` or `tools/call` before the ready state, or duplicate `initialize` | JSON-RPC `-32600` Invalid Request |
+| Lifecycle violation on a request, including a request before `initialize`, `tools/call` before `notifications/initialized`, or duplicate `initialize` | JSON-RPC `-32600` Invalid Request |
 | Unknown request method | JSON-RPC `-32601` Method not found |
 | Malformed method parameters on a request | JSON-RPC `-32602` Invalid params |
 | Unknown tool name in a structurally valid `tools/call` request | JSON-RPC `-32602` Invalid params |
@@ -519,10 +519,12 @@ Lifecycle states:
 | Connection point | Valid client messages | Result |
 |---|---|---|
 | Before successful `initialize` | `initialize` request | On success, the server returns `protocolVersion: "2025-11-25"` and waits for `notifications/initialized`. |
-| Waiting for `notifications/initialized` | `notifications/initialized` notification; `ping` request | `notifications/initialized` completes the transition to ready. `ping` may be used after `initialize` has succeeded, including while the server waits for the notification. |
+| Waiting for `notifications/initialized` | `notifications/initialized` notification; `ping` request; `tools/list` request | `notifications/initialized` completes the transition to ready. `ping` may be used after `initialize` has succeeded, including while the server waits for the notification. `tools/list` is read-only discovery available after the successful `initialize` response. |
 | Ready | `ping`, `tools/list`, `tools/call` | Normal MCP tool discovery and tool execution are available. |
 
-`tools/list` and `tools/call` are available only after
+`tools/list` is available after the successful `initialize` response, including
+while the server waits for `notifications/initialized`, and remains available
+after the ready transition. `tools/call` is available only after
 `notifications/initialized` has completed the ready transition. A duplicate
 `initialize` request is invalid. An early or malformed
 `notifications/initialized` notification does not make the connection ready.
@@ -545,8 +547,8 @@ The supported lifecycle notification is `notifications/initialized`.
 <a id="tool-discovery-and-toolscall-response-wrapping"></a>
 ## Tool Discovery And `tools/call` Response Wrapping
 
-After the connection is ready, `tools/list` exposes tools according to the
-current stored Agent Connection mode:
+After a successful `initialize` response, `tools/list` exposes tools according
+to the current stored Agent Connection mode:
 
 | Mode | MCP-visible tools |
 |---|---|
