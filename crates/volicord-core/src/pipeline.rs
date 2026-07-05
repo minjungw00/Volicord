@@ -488,8 +488,11 @@ impl CoreService {
 
         let request_hash = canonical_request_hash(&request.request_json)?;
 
-        let store = match CoreProjectStore::open(&self.runtime_home, &request.invocation.project_id)
-        {
+        let store = match open_store_for_policy(
+            &self.runtime_home,
+            &request.invocation.project_id,
+            &request.policy,
+        ) {
             Ok(store) => store,
             Err(error) => {
                 return response_outcome_from_rejected(
@@ -732,6 +735,18 @@ impl CoreService {
                 }
             }
         }
+    }
+}
+
+fn open_store_for_policy(
+    runtime_home: &Path,
+    project_id: &ProjectId,
+    policy: &MethodPolicy,
+) -> Result<CoreProjectStore, StoreError> {
+    if policy.effect == MethodEffectPolicy::ReadOnly {
+        CoreProjectStore::open_read_only(runtime_home, project_id)
+    } else {
+        CoreProjectStore::open(runtime_home, project_id)
     }
 }
 

@@ -12,8 +12,8 @@ use crate::{
     },
     schema::STORAGE_PROFILE,
     sqlite::{
-        open_project_state_database, open_registry_database, project_home_path, registry_db_path,
-        with_immediate_transaction, PROJECT_STATE_DB_FILE,
+        open_project_state_database, open_registry_database, open_registry_database_read_only,
+        project_home_path, registry_db_path, with_immediate_transaction, PROJECT_STATE_DB_FILE,
     },
     StoreError, StoreResult,
 };
@@ -164,6 +164,20 @@ pub fn runtime_home_record(
     runtime_home_record_from_conn(&conn, runtime_home, registry_path)
 }
 
+/// Reads Runtime Home metadata without creating, migrating, or writing registry state.
+pub fn runtime_home_record_read_only(
+    runtime_home: impl AsRef<Path>,
+) -> StoreResult<Option<RuntimeHomeRecord>> {
+    let runtime_home = runtime_home.as_ref().to_path_buf();
+    let registry_path = registry_db_path(&runtime_home);
+    if !registry_path.exists() {
+        return Ok(None);
+    }
+
+    let conn = open_registry_database_read_only(&registry_path)?;
+    runtime_home_record_from_conn(&conn, runtime_home, registry_path)
+}
+
 /// Creates or updates the installation profile for the selected Runtime Home.
 pub fn write_installation_profile(
     runtime_home: impl AsRef<Path>,
@@ -250,11 +264,34 @@ pub fn installation_profile(
     installation_profile_from_conn_optional(&conn)
 }
 
+/// Reads the installation profile without creating, migrating, or writing registry state.
+pub fn installation_profile_read_only(
+    runtime_home: impl AsRef<Path>,
+) -> StoreResult<Option<InstallationProfileRecord>> {
+    let registry_path = registry_db_path(runtime_home);
+    if !registry_path.exists() {
+        return Ok(None);
+    }
+
+    let conn = open_registry_database_read_only(registry_path)?;
+    installation_profile_from_conn_optional(&conn)
+}
+
 /// Reads the installation profile and returns a storage error when setup is incomplete.
 pub fn require_installation_profile(
     runtime_home: impl AsRef<Path>,
 ) -> StoreResult<InstallationProfileRecord> {
     installation_profile(runtime_home)?.ok_or_else(|| StoreError::NotFound {
+        entity: "installation_profile",
+        id: "singleton".to_owned(),
+    })
+}
+
+/// Reads the installation profile read-only and errors when setup is incomplete.
+pub fn require_installation_profile_read_only(
+    runtime_home: impl AsRef<Path>,
+) -> StoreResult<InstallationProfileRecord> {
+    installation_profile_read_only(runtime_home)?.ok_or_else(|| StoreError::NotFound {
         entity: "installation_profile",
         id: "singleton".to_owned(),
     })
@@ -547,6 +584,22 @@ pub fn project_record(
     project_record_from_conn(&conn, &runtime_home, project_id)
 }
 
+/// Reads one registered project without creating, migrating, or writing registry state.
+pub fn project_record_read_only(
+    runtime_home: impl AsRef<Path>,
+    project_id: &str,
+) -> StoreResult<Option<ProjectRecord>> {
+    validate_project_reference(project_id)?;
+    let runtime_home = runtime_home.as_ref().to_path_buf();
+    let registry_path = registry_db_path(&runtime_home);
+    if !registry_path.exists() {
+        return Ok(None);
+    }
+
+    let conn = open_registry_database_read_only(registry_path)?;
+    project_record_from_conn(&conn, &runtime_home, project_id)
+}
+
 /// Reads one registered project by internal id.
 pub fn project_record_by_internal_id(
     runtime_home: impl AsRef<Path>,
@@ -680,6 +733,14 @@ pub fn project_record_for_execution(
     project_id: &str,
 ) -> StoreResult<Option<ProjectRecord>> {
     project_record(runtime_home, project_id)
+}
+
+/// Reads one registered project for execution without registry writes.
+pub fn project_record_for_execution_read_only(
+    runtime_home: impl AsRef<Path>,
+    project_id: &str,
+) -> StoreResult<Option<ProjectRecord>> {
+    project_record_read_only(runtime_home, project_id)
 }
 
 /// Validates a stored project registration for current operational use.

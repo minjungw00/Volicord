@@ -532,13 +532,28 @@ printf '%s\n' \
 <a id="tool-discovery-and-toolscall-response-wrapping"></a>
 ## 도구 탐색과 `tools/call` 응답 래핑
 
-성공한 `initialize` 응답 뒤 `tools/list`는 현재 저장된 Agent Connection 모드에 따라
-도구를 노출합니다.
+성공한 `initialize` 응답 뒤 `tools/list`는 현재 저장된 Agent Connection 모드와 선택된
+허용 프로젝트의 유효 저장소 읽기/쓰기 capability에 따라 도구를 노출합니다.
 
-| 모드 | MCP에 보이는 도구 |
+| 모드와 저장소 읽기/쓰기 capability | MCP에 보이는 도구 |
 |---|---|
-| `workflow` | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.prepare_write`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.reconcile_changes`, `volicord.check_close`, `volicord.close_task`, `volicord.list_projects` |
-| `read_only` | `volicord.status`, `volicord.check_close`, `volicord.list_projects` |
+| 쓰기 가능한 프로젝트 상태의 `workflow` | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.prepare_write`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.reconcile_changes`, `volicord.check_close`, `volicord.close_task`, `volicord.list_projects` |
+| 읽을 수 있지만 쓸 수 없는 프로젝트 상태의 `workflow` | `volicord.status`, `volicord.check_close`, `volicord.list_projects` |
+| 읽을 수 있는 프로젝트 상태의 `read_only` | `volicord.status`, `volicord.check_close`, `volicord.list_projects` |
+| 읽을 수 있는 허용 프로젝트 상태가 없음 | `volicord.list_projects` |
+
+MCP 어댑터는 시작과 탐색 중 프로젝트 상태를 읽기 전용으로 살펴볼 수 있습니다. 현재 MCP
+호스트 환경에서 프로젝트 상태를 읽을 수는 있지만 쓸 수 없다면, 저장된 Agent Connection
+모드가 `workflow`여도 읽기 호환 메서드 도구만 계속 보이고 워크플로 변경 도구는 숨깁니다.
+허용 프로젝트 상태를 하나도 읽을 수 없으면 호출자가 프로젝트 사용 가능성을 확인할 수
+있도록 `volicord.list_projects`만 보이게 유지합니다.
+
+유효 저장소가 읽기 전용이면 읽기 호환 공개 메서드 도구는 session-watch baseline,
+`tool_invocations`, `task_events`, 새 `project_state.state_version`을 만들지 않고 실행됩니다.
+호스트 쪽 오래된 도구 cache가 선택된 프로젝트 상태를 쓸 수 없을 때도 공개 워크플로 변경
+도구를 호출하면, 어댑터는 Core 쓰기를 시도하지 않고 일반 Volicord 거절 응답을 반환합니다.
+이 응답은 `code=MCP_UNAVAILABLE`, `operation_category=agent_workflow`, 메시지
+`Volicord project state is not writable in the current MCP host environment.`를 담습니다.
 
 `workflow` 모드의 증거 경로는 이렇습니다. 바이트나 안전한 알림이 필요할 때만 `volicord.stage_artifact`로 증거 첨부 입력을 준비하고, 그다음 `volicord.record_run`으로 Run 또는 관찰, 주장별 증거 갱신, 증거 관찰 출처, 필요한 첨부 연결 또는 승격을 기록합니다. 스테이징 핸들만으로는 받아들여진 증거가 아니며 닫기 상태를 만족하지 않습니다.
 

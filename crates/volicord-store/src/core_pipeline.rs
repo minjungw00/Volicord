@@ -28,6 +28,7 @@ pub struct CoreProjectStore {
     pub(crate) runtime_home: PathBuf,
     pub(crate) project: ProjectRecord,
     pub(crate) conn: Connection,
+    pub(crate) writable: bool,
 }
 
 /// Current project-state header values needed by request routing.

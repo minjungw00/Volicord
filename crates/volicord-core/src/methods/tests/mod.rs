@@ -19,11 +19,11 @@ use volicord_store::{
     },
     core_pipeline::{CoreProjectStore, StorageEffectCounts, TaskRevisionRecord},
     guards::{
-        insert_agent_session, insert_expected_write, insert_guard_event, insert_unrecorded_change,
-        list_unresolved_unrecorded_changes, observe_guard_installation, unrecorded_change,
-        upsert_guard_installation, AgentSessionInsert, ExpectedWriteInsert, GuardEventInsert,
-        GuardInstallationObservation, GuardInstallationUpsert, UnrecordedChangeInsert,
-        UnrecordedChangeRecord,
+        guard_health_record, insert_agent_session, insert_expected_write, insert_guard_event,
+        insert_unrecorded_change, list_unresolved_unrecorded_changes, observe_guard_installation,
+        unrecorded_change, upsert_guard_installation, AgentSessionInsert, ExpectedWriteInsert,
+        GuardEventInsert, GuardInstallationObservation, GuardInstallationUpsert,
+        UnrecordedChangeInsert, UnrecordedChangeRecord,
     },
     local_consent::{create_local_web_consent_token, LocalWebConsentTokenCreate},
     session_watch::{
@@ -445,28 +445,65 @@ fn create_close_ready_task(
 
 fn initialize_watch_baseline(
     harness: &MethodHarness,
-    task_id: &str,
+    _task_id: &str,
     session_id: &str,
     suffix: &str,
 ) -> Result<(), Box<dyn Error>> {
-    let request_id = format!("req_watch_baseline_{suffix}");
-    let response = harness.service.check_close(
-        check_close_request(CloseTaskFixture {
-            request_id: &request_id,
-            idempotency_key: None,
-            dry_run: false,
-            expected_state_version: None,
-            task_id,
-            intent: CloseIntent::Check,
-            close_reason: None,
-            superseding_task_id: None,
-        }),
-        invocation_with_session(OperationCategory::Read, session_id),
+    let health = guard_health_record(&harness.runtime_home_path, PROJECT_ID, CONNECTION_ID)?;
+    let guard_installation_id = health
+        .guard_installation
+        .as_ref()
+        .map(|installation| installation.guard_installation_id.clone());
+    let guard_mode = health
+        .guard_installation
+        .as_ref()
+        .map(|installation| installation.guard_mode.clone())
+        .unwrap_or_else(|| "detective".to_owned());
+    insert_agent_session(
+        &harness.runtime_home_path,
+        PROJECT_ID,
+        AgentSessionInsert {
+            session_id: session_id.to_owned(),
+            connection_internal_id: CONNECTION_ID.to_owned(),
+            guard_installation_id: guard_installation_id.clone(),
+            host_kind: HOST_KIND_CODEX.to_owned(),
+            guard_mode,
+            started_at: "2026-06-30T00:03:00Z".to_owned(),
+            metadata_json: serde_json::to_string(&json!({
+                "source": "test_fixture",
+                "session_watch_initialized": true
+            }))?,
+        },
     )?;
-    assert_eq!(
-        response.response_value["guard_health"]["session_watch_status"],
-        "active"
-    );
+    let repo_root = product_repo_root(harness)?;
+    let snapshot = snapshot_product_repository(
+        &harness.runtime_home_path,
+        &repo_root,
+        WatchSnapshotOptions::default(),
+    )?;
+    create_watch_baseline(
+        &harness.runtime_home_path,
+        PROJECT_ID,
+        WatchBaselineCreate {
+            watch_baseline_id: format!("watch_base_{suffix}"),
+            session_id: session_id.to_owned(),
+            connection_internal_id: CONNECTION_ID.to_owned(),
+            guard_installation_id,
+            status: SessionWatchStatus::Active,
+            snapshot,
+            created_at: "2026-06-30T00:03:00Z".to_owned(),
+            metadata_json: serde_json::to_string(&json!({
+                "source": "volicord_session_watch",
+                "status_detail": "active",
+                "detector_role": "detective",
+                "does_not_prevent_writes": true,
+                "does_not_identify_actor": true,
+                "coverage_start_at": "2026-06-30T00:03:00Z",
+                "coverage_basis": SessionWatchCoverageBasis::MethodBoundary.as_str(),
+                "partial_coverage_warning": "Session-watch coverage starts at a method boundary; Product Repository changes before that boundary are outside watcher coverage."
+            }))?,
+        },
+    )?;
     Ok(())
 }
 

@@ -70,6 +70,21 @@ pub fn open_registry_database(path: impl AsRef<Path>) -> StoreResult<Connection>
     Ok(conn)
 }
 
+/// Opens an existing `registry.sqlite` for read-only validation.
+pub fn open_registry_database_read_only(path: impl AsRef<Path>) -> StoreResult<Connection> {
+    let path = path.as_ref();
+    if !path.exists() {
+        return Err(StoreError::NotFound {
+            entity: "runtime_home",
+            id: path.display().to_string(),
+        });
+    }
+
+    let conn = open_read_only_database(path)?;
+    validate_registry_schema(&conn)?;
+    Ok(conn)
+}
+
 /// Opens project `state.sqlite`, creating the parent directory and baseline schema.
 pub fn open_project_state_database(path: impl AsRef<Path>) -> StoreResult<Connection> {
     let mut conn = open_sqlite_database(path)?;
@@ -103,6 +118,48 @@ pub fn open_read_only_database(path: impl AsRef<Path>) -> StoreResult<Connection
     conn.set_db_config(DbConfig::SQLITE_DBCONFIG_DEFENSIVE, true)?;
     conn.pragma_update(None, "query_only", "ON")?;
     Ok(conn)
+}
+
+/// Probes whether an existing SQLite database can acquire a write transaction.
+pub fn sqlite_database_write_capability(path: impl AsRef<Path>) -> StoreResult<bool> {
+    let path = path.as_ref();
+    if !path.exists() {
+        return Err(StoreError::NotFound {
+            entity: "project_state_database",
+            id: path.display().to_string(),
+        });
+    }
+
+    let conn = match Connection::open_with_flags(
+        path,
+        OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    ) {
+        Ok(conn) => conn,
+        Err(error) if sqlite_write_probe_denied(&error) => return Ok(false),
+        Err(error) => return Err(StoreError::from(error)),
+    };
+    enable_foreign_keys(&conn)?;
+    match conn.execute_batch("BEGIN IMMEDIATE") {
+        Ok(()) => match conn.execute_batch(
+            "CREATE TABLE __volicord_write_probe_do_not_persist (probe INTEGER);
+             DROP TABLE __volicord_write_probe_do_not_persist",
+        ) {
+            Ok(()) => {
+                conn.execute_batch("ROLLBACK")?;
+                Ok(true)
+            }
+            Err(error) if sqlite_write_probe_denied(&error) => {
+                let _ = conn.execute_batch("ROLLBACK");
+                Ok(false)
+            }
+            Err(error) => {
+                let _ = conn.execute_batch("ROLLBACK");
+                Err(StoreError::from(error))
+            }
+        },
+        Err(error) if sqlite_write_probe_denied(&error) => Ok(false),
+        Err(error) => Err(StoreError::from(error)),
+    }
 }
 
 /// Enables SQLite foreign-key enforcement for a connection.
@@ -760,6 +817,19 @@ fn open_sqlite_database(path: impl AsRef<Path>) -> StoreResult<Connection> {
     let conn = Connection::open(path)?;
     enable_foreign_keys(&conn)?;
     Ok(conn)
+}
+
+fn sqlite_write_probe_denied(error: &rusqlite::Error) -> bool {
+    matches!(
+        error,
+        rusqlite::Error::SqliteFailure(sqlite_error, _)
+            if matches!(
+                sqlite_error.code,
+                rusqlite::ErrorCode::CannotOpen
+                    | rusqlite::ErrorCode::ReadOnly
+                    | rusqlite::ErrorCode::PermissionDenied
+            )
+    )
 }
 
 fn validate_foreign_keys_enabled(

@@ -217,7 +217,8 @@ fn mcp_host_startup_records_observation_when_writable() -> Result<(), Box<dyn Er
 
 #[cfg(unix)]
 #[test]
-fn mcp_startup_allows_tools_list_with_readonly_project_state() -> Result<(), Box<dyn Error>> {
+fn mcp_workflow_connection_degrades_tool_list_when_storage_readonly() -> Result<(), Box<dyn Error>>
+{
     let fixture = CoreFixture::new("mcp-readonly-tools-list")?;
     let adapter = adapter(&fixture)?;
     let _guard = make_project_state_readonly(&fixture)?;
@@ -251,8 +252,143 @@ fn mcp_startup_allows_tools_list_with_readonly_project_state() -> Result<(), Box
         responses[0]["result"]["protocolVersion"],
         json!(SUPPORTED_PROTOCOL_VERSION)
     );
-    assert!(responses[1]["result"]["tools"].is_array());
+    let names = tool_names_from_list_response(&responses[1]);
+    assert_eq!(
+        names,
+        vec![
+            STATUS_TOOL_NAME,
+            CHECK_CLOSE_TOOL_NAME,
+            LIST_PROJECTS_TOOL_NAME
+        ]
+    );
     assert!(responses[1].get("error").is_none());
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn mcp_readonly_storage_exposes_status_and_list_projects() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-readonly-exposes-read-tools")?;
+    let adapter = adapter(&fixture)?;
+    let _guard = make_project_state_readonly(&fixture)?;
+
+    let names = tool_names(&adapter.tools()?);
+
+    assert!(names.contains(&STATUS_TOOL_NAME));
+    assert!(names.contains(&LIST_PROJECTS_TOOL_NAME));
+    assert!(names.contains(&CHECK_CLOSE_TOOL_NAME));
+    assert!(!names.contains(&INTAKE_TOOL_NAME));
+    assert!(!names.contains(&RECORD_RUN_TOOL_NAME));
+    assert!(!names.contains(&CLOSE_TASK_TOOL_NAME));
+    Ok(())
+}
+
+#[test]
+fn mcp_readwrite_storage_exposes_workflow_tools() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-readwrite-exposes-workflow")?;
+    let adapter = adapter(&fixture)?;
+
+    let mut expected = PUBLIC_METHOD_TOOL_NAMES.to_vec();
+    expected.push(LIST_PROJECTS_TOOL_NAME);
+
+    assert_eq!(tool_names(&adapter.tools()?), expected);
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn mcp_status_succeeds_with_readonly_storage() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-readonly-status")?;
+    let adapter = adapter(&fixture)?;
+    let _guard = make_project_state_readonly(&fixture)?;
+
+    let response = adapter.call_tool_for_session(
+        STATUS_TOOL_NAME,
+        json!({ "detail": "workflow" }),
+        Some("session_readonly_status"),
+    )?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "result");
+    assert_eq!(response.response_value["base"]["effect_kind"], "read_only");
+    assert_eq!(
+        response.response_value["status_summary"],
+        "No current Task is selected."
+    );
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn mcp_status_does_not_advance_state_version() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-readonly-status-version")?;
+    let before_version = read_only_state_version(&fixture)?;
+    let before_sessions = read_only_table_count(&fixture, "agent_sessions")?;
+    let before_baselines = read_only_table_count(&fixture, "session_watch_baselines")?;
+    let before_invocations = read_only_table_count(&fixture, "tool_invocations")?;
+    let adapter = adapter(&fixture)?;
+    let _guard = make_project_state_readonly(&fixture)?;
+
+    let response = adapter.call_tool_for_session(
+        STATUS_TOOL_NAME,
+        json!({ "detail": "full" }),
+        Some("session_readonly_status_no_write"),
+    )?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "result");
+    assert_eq!(read_only_state_version(&fixture)?, before_version);
+    assert_eq!(
+        read_only_table_count(&fixture, "agent_sessions")?,
+        before_sessions
+    );
+    assert_eq!(
+        read_only_table_count(&fixture, "session_watch_baselines")?,
+        before_baselines
+    );
+    assert_eq!(
+        read_only_table_count(&fixture, "tool_invocations")?,
+        before_invocations
+    );
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn mcp_write_tool_returns_unavailable_when_storage_readonly() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-readonly-write-reject")?;
+    let before_version = read_only_state_version(&fixture)?;
+    let before_events = read_only_table_count(&fixture, "task_events")?;
+    let before_invocations = read_only_table_count(&fixture, "tool_invocations")?;
+    let adapter = adapter(&fixture)?;
+    let _guard = make_project_state_readonly(&fixture)?;
+
+    let response = adapter.call_tool_for_session(
+        INTAKE_TOOL_NAME,
+        intake_args(None),
+        Some("session_readonly_write_reject"),
+    )?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["code"],
+        "MCP_UNAVAILABLE"
+    );
+    assert_eq!(
+        response.response_value["errors"][0]["message"],
+        "Volicord project state is not writable in the current MCP host environment."
+    );
+    assert_eq!(
+        response.response_value["errors"][0]["details"]["storage_capability"],
+        "read_only"
+    );
+    assert_eq!(read_only_state_version(&fixture)?, before_version);
+    assert_eq!(
+        read_only_table_count(&fixture, "task_events")?,
+        before_events
+    );
+    assert_eq!(
+        read_only_table_count(&fixture, "tool_invocations")?,
+        before_invocations
+    );
     Ok(())
 }
 
@@ -383,7 +519,7 @@ fn first_project_selection_creates_partial_coverage_baseline() -> Result<(), Box
 }
 
 #[test]
-fn project_bound_early_edit_is_detected_on_first_check() -> Result<(), Box<dyn Error>> {
+fn project_bound_early_edit_is_detected_on_first_close_attempt() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-watch-early-edit")?;
     let adapter = adapter(&fixture)?;
     let (task_id, _) = create_task(&adapter)?;
@@ -392,8 +528,12 @@ fn project_bound_early_edit_is_detected_on_first_check() -> Result<(), Box<dyn E
     write_product_file(&fixture, "src/early.txt", "changed before first method\n")?;
 
     let response = adapter.call_tool_for_session(
-        CHECK_CLOSE_TOOL_NAME,
-        json!({ "task_id": task_id }),
+        CLOSE_TASK_TOOL_NAME,
+        json!({
+            "task_id": task_id,
+            "intent": "complete",
+            "close_reason": "completed_self_checked"
+        }),
         Some(session_id),
     )?;
 
@@ -2176,6 +2316,45 @@ fn stored_judgment_record(
 
 fn tool_names(tools: &[McpToolDefinition]) -> Vec<&'static str> {
     tools.iter().map(|tool| tool.name).collect::<Vec<_>>()
+}
+
+fn tool_names_from_list_response(response: &Value) -> Vec<&str> {
+    response["result"]["tools"]
+        .as_array()
+        .expect("tools should be an array")
+        .iter()
+        .map(|tool| tool["name"].as_str().expect("tool name"))
+        .collect::<Vec<_>>()
+}
+
+#[cfg(unix)]
+fn read_only_state_version(fixture: &CoreFixture) -> Result<u64, Box<dyn Error>> {
+    let state_db_path = fixture
+        .runtime_home_path()
+        .join("projects")
+        .join(fixture.project_id())
+        .join("state.sqlite");
+    let conn = open_project_state_database_read_only(state_db_path)?;
+    Ok(conn.query_row(
+        "SELECT state_version FROM project_state WHERE project_id = ?1",
+        [fixture.project_id()],
+        |row| row.get(0),
+    )?)
+}
+
+#[cfg(unix)]
+fn read_only_table_count(fixture: &CoreFixture, table: &str) -> Result<i64, Box<dyn Error>> {
+    let state_db_path = fixture
+        .runtime_home_path()
+        .join("projects")
+        .join(fixture.project_id())
+        .join("state.sqlite");
+    let conn = open_project_state_database_read_only(state_db_path)?;
+    let sql = format!(
+        "SELECT COUNT(*) FROM \"{}\" WHERE project_id = ?1",
+        table.replace('"', "\"\"")
+    );
+    Ok(conn.query_row(&sql, [fixture.project_id()], |row| row.get(0))?)
 }
 
 fn root_properties(schema: &Value) -> Vec<String> {

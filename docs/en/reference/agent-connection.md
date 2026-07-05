@@ -286,6 +286,11 @@ close-readiness tool mapped to the first-class Core read method.
 `volicord.close_task` is the workflow-only MCP mutation tool and must not
 appear in `read_only` tool discovery.
 
+The table above is the mode-based allowlist. Actual MCP `tools/list` output is
+also constrained by the selected projects' readable and writable storage
+capability; [MCP Transport](mcp-transport.md#tool-discovery-and-toolscall-response-wrapping)
+owns the transport-level discovery and read-only-storage degradation rules.
+
 `volicord.record_user_judgment` has `operation_category=user_only`. It is a
 public Core API method for the User Channel path, but it is not exposed by Agent
 Connections. The supported local user path for recording an authority-bearing

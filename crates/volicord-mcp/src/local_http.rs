@@ -202,16 +202,19 @@ pub(crate) fn validate_local_http_project_allowlist(
     project_ids: &[ProjectId],
 ) -> Result<(), LocalHttpError> {
     for project_id in project_ids {
-        let access =
-            agent_connection_project_access(runtime_home, connection_id, project_id.as_str())
-                .map_err(|error| LocalHttpError::Adapter(McpAdapterError::Store(error)))?
-                .ok_or_else(|| LocalHttpError::Config {
-                    code: "PROJECT_NOT_ALLOWED",
-                    message: format!(
-                        "connection {connection_id} is not registered for project {}",
-                        project_id.as_str()
-                    ),
-                })?;
+        let access = agent_connection_project_access_read_only(
+            runtime_home,
+            connection_id,
+            project_id.as_str(),
+        )
+        .map_err(|error| LocalHttpError::Adapter(McpAdapterError::Store(error)))?
+        .ok_or_else(|| LocalHttpError::Config {
+            code: "PROJECT_NOT_ALLOWED",
+            message: format!(
+                "connection {connection_id} is not registered for project {}",
+                project_id.as_str()
+            ),
+        })?;
         if !access.connection_enabled {
             return Err(LocalHttpError::Config {
                 code: "PROJECT_NOT_ALLOWED",

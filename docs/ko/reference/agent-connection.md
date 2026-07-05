@@ -251,6 +251,11 @@ MCP 세션은 어댑터 시작 시 저장된 `connection_internal_id`를 가리�
 닫기 준비 상태 도구입니다. `volicord.close_task`는 워크플로 전용 MCP 변경 도구이며
 `read_only` 도구 탐색에 나타나면 안 됩니다.
 
+위 표는 모드 기준 허용 목록입니다. 실제 MCP `tools/list` 출력은 선택된 프로젝트 저장소를
+읽고 쓸 수 있는 capability에도 제약됩니다. 전송 수준 도구 탐색과 읽기 전용 저장소
+축소 노출 규칙은 [MCP 전송](mcp-transport.md#tool-discovery-and-toolscall-response-wrapping)이
+담당합니다.
+
 `volicord.record_user_judgment`는 `operation_category=user_only`입니다. User Channel
 경로를 위한 공개 Core API 메서드이지만 Agent Connection에는 노출되지 않습니다. 권한을
 지니는 답변을 기록하는 지원 로컬 사용자 경로는

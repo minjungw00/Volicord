@@ -15,16 +15,19 @@ pub(crate) use std::{
 pub(crate) use serde::Serialize;
 pub(crate) use serde_json::{json, Map, Value};
 pub(crate) use volicord_core::{
-    CoreBoundary, CorePipelineError, CoreService, InvocationContext,
+    rejected_response, tool_error, CoreBoundary, CorePipelineError, CoreService, InvocationContext,
     LocalWebConsentJudgmentRequest, PipelineResponse,
 };
 pub(crate) use volicord_store::{
     agent_connections::{
-        agent_connection_project_access, agent_connection_record, list_connection_projects,
-        AgentConnectionRecord, ConnectionProjectRecord, CONNECTION_MODE_READ_ONLY,
-        CONNECTION_MODE_WORKFLOW,
+        agent_connection_project_access_read_only, agent_connection_record_read_only,
+        list_connection_projects_read_only, AgentConnectionRecord, ConnectionProjectRecord,
+        CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW,
     },
-    bootstrap::{require_installation_profile, runtime_home_record, ACTIVE_PROJECT_STATUS},
+    bootstrap::{
+        require_installation_profile_read_only, runtime_home_record_read_only,
+        ACTIVE_PROJECT_STATUS,
+    },
     core_pipeline::{CoreProjectStore, UserJudgmentRecord},
     guards::{
         agent_session, guard_health_record, insert_agent_session, prompt_capture_availability,
@@ -43,13 +46,13 @@ pub(crate) use volicord_store::{
         SessionWatchStatus as StoreSessionWatchStatus, WatchBaselineCreate, WatchBaselineRecord,
         WatchSnapshotOptions,
     },
-    sqlite::open_project_state_database_read_only,
+    sqlite::{open_project_state_database_read_only, sqlite_database_write_capability},
     StoreError,
 };
 pub(crate) use volicord_types::{
     chat_judgment_verification_code, mcp_request_schema, ActorSource, AgentConnectionId,
-    AgentConnectionMode, CheckCloseRequest, CloseTaskRequest, GuaranteeDisclosure, IdempotencyKey,
-    IntakeRequest, IntegrationProfile, JsonObject, JudgmentKind, JudgmentRationale,
+    AgentConnectionMode, CheckCloseRequest, CloseTaskRequest, ErrorCode, GuaranteeDisclosure,
+    IdempotencyKey, IntakeRequest, IntegrationProfile, JsonObject, JudgmentKind, JudgmentRationale,
     JudgmentResolutionOutcome, McpCheckCloseArguments, McpCloseTaskArguments, McpIntakeArguments,
     McpPrepareWriteArguments, McpReconcileChangesArguments, McpRecordRunArguments,
     McpRequestUserJudgmentArguments, McpStageArtifactArguments, McpStatusArguments,

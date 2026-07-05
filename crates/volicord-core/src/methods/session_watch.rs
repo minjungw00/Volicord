@@ -30,6 +30,9 @@ pub(super) fn initialize_session_watch_baseline(
     verified_invocation: &VerifiedInvocationContext,
     now: &UtcTimestamp,
 ) -> CoreResult<()> {
+    if !store.is_writable() {
+        return Ok(());
+    }
     let Some(connection_id) = verified_invocation.actor_source.agent_connection_id() else {
         return Ok(());
     };

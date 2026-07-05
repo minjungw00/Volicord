@@ -9,12 +9,17 @@ use volicord_types::{
 
 use crate::{
     agent_connections::{
-        agent_connection_record, is_agent_connection_project_allowed, AgentConnectionRecord,
+        agent_connection_record_read_only, is_agent_connection_project_allowed,
+        AgentConnectionRecord,
     },
-    bootstrap::{project_record_for_execution, raw_project_record_from_conn, ProjectRecord},
+    bootstrap::{
+        project_record_for_execution, project_record_for_execution_read_only,
+        raw_project_record_from_conn, ProjectRecord,
+    },
     sqlite::{
-        begin_immediate_transaction, open_project_state_database, open_registry_database,
-        registry_db_path,
+        begin_immediate_transaction, open_project_state_database,
+        open_project_state_database_read_only, open_registry_database,
+        open_registry_database_read_only, registry_db_path,
     },
     StoreError, StoreResult,
 };
@@ -459,7 +464,7 @@ pub fn guard_installation(
         return Ok(None);
     }
 
-    let conn = open_registry_database(registry_path)?;
+    let conn = open_registry_database_read_only(registry_path)?;
     guard_installation_from_conn(&conn, guard_installation_id)
 }
 
@@ -478,7 +483,7 @@ pub fn list_guard_installations(
     if !registry_path.exists() {
         return Ok(Vec::new());
     }
-    let conn = open_registry_database(&registry_path)?;
+    let conn = open_registry_database_read_only(&registry_path)?;
     let project_internal_id = project_id
         .map(|project_id| {
             raw_project_record_from_conn(&conn, project_id)?
@@ -1238,7 +1243,7 @@ pub fn guard_health_record(
     validate_identifier("project_id", project_id)?;
     validate_identifier("connection_internal_id", connection_internal_id)?;
     let runtime_home = runtime_home.as_ref().to_path_buf();
-    let connection = agent_connection_record(&runtime_home, connection_internal_id)?;
+    let connection = agent_connection_record_read_only(&runtime_home, connection_internal_id)?;
     let guard_installation =
         selected_guard_installation(&runtime_home, project_id, connection_internal_id)?;
     let latest_session = latest_agent_session(&runtime_home, project_id, connection_internal_id)?;
@@ -1531,10 +1536,10 @@ fn open_project_for_read(
     runtime_home: impl AsRef<Path>,
     project_id: &str,
 ) -> StoreResult<Option<OpenGuardProject>> {
-    let Some(project) = project_record_for_execution(runtime_home, project_id)? else {
+    let Some(project) = project_record_for_execution_read_only(runtime_home, project_id)? else {
         return Ok(None);
     };
-    let conn = open_project_state_database(&project.state_db_path)?;
+    let conn = open_project_state_database_read_only(&project.state_db_path)?;
     Ok(Some(OpenGuardProject { project, conn }))
 }
 
@@ -1542,10 +1547,24 @@ fn open_project_for_required_read(
     runtime_home: impl AsRef<Path>,
     project_id: &str,
 ) -> StoreResult<OpenGuardProject> {
-    open_project_for_read(runtime_home, project_id)?.ok_or_else(|| StoreError::NotFound {
-        entity: "project",
-        id: project_id.to_owned(),
-    })
+    let Some(project) = open_project_for_write(runtime_home, project_id)? else {
+        return Err(StoreError::NotFound {
+            entity: "project",
+            id: project_id.to_owned(),
+        });
+    };
+    Ok(project)
+}
+
+fn open_project_for_write(
+    runtime_home: impl AsRef<Path>,
+    project_id: &str,
+) -> StoreResult<Option<OpenGuardProject>> {
+    let Some(project) = project_record_for_execution(runtime_home, project_id)? else {
+        return Ok(None);
+    };
+    let conn = open_project_state_database(&project.state_db_path)?;
+    Ok(Some(OpenGuardProject { project, conn }))
 }
 
 fn require_runtime_home_id(conn: &Connection) -> StoreResult<String> {

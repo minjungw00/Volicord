@@ -3855,23 +3855,23 @@ fn mcp_only_close_blocks_unresolved_unrecorded_change() -> Result<(), Box<dyn Er
 fn mcp_only_watcher_detects_bypass_file_changes() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     record_guard_installation(&harness, "watch_mcp_only", "record", "configured", "{}")?;
-    let (task_id, _, _) = create_close_ready_task(&harness, "watch_mcp_only")?;
+    let (task_id, _, after_final) = create_close_ready_task(&harness, "watch_mcp_only")?;
     let session_id = "session_watch_mcp_only";
     initialize_watch_baseline(&harness, &task_id, session_id, "mcp_only_seed")?;
 
     write_product_file(&harness, "src/watch.txt", "changed outside guard\n")?;
-    let response = harness.service.check_close(
-        check_close_request(CloseTaskFixture {
+    let response = harness.service.close_task(
+        close_task_request(CloseTaskFixture {
             request_id: "req_watch_mcp_only_detect",
-            idempotency_key: None,
+            idempotency_key: Some("idem_watch_mcp_only_detect"),
             dry_run: false,
-            expected_state_version: None,
+            expected_state_version: Some(after_final),
             task_id: &task_id,
-            intent: CloseIntent::Check,
-            close_reason: None,
+            intent: CloseIntent::Complete,
+            close_reason: Some(CloseReason::CompletedSelfChecked),
             superseding_task_id: None,
         }),
-        invocation_with_session(OperationCategory::Read, session_id),
+        invocation_with_session(OperationCategory::AgentWorkflow, session_id),
     )?;
 
     assert_eq!(response.response_value["close_state"], "blocked");
@@ -3979,7 +3979,8 @@ fn guarded_expected_write_does_not_create_duplicate_watcher_blocker() -> Result<
     let harness = MethodHarness::new()?;
     let guard_installation_id =
         record_guard_installation(&harness, "watch_expected", "detective", "active", "{}")?;
-    let (task_id, change_unit_id, _) = create_close_ready_task(&harness, "watch_expected")?;
+    let (task_id, change_unit_id, after_final) =
+        create_close_ready_task(&harness, "watch_expected")?;
     let session_id = "session_watch_expected";
     initialize_full_watch_baseline(
         &harness,
@@ -3998,21 +3999,21 @@ fn guarded_expected_write_does_not_create_duplicate_watcher_blocker() -> Result<
     )?;
 
     write_product_file(&harness, "src/watch.txt", "covered guarded write\n")?;
-    let response = harness.service.check_close(
-        check_close_request(CloseTaskFixture {
+    let response = harness.service.close_task(
+        close_task_request(CloseTaskFixture {
             request_id: "req_watch_expected_check",
-            idempotency_key: None,
+            idempotency_key: Some("idem_watch_expected_check"),
             dry_run: false,
-            expected_state_version: None,
+            expected_state_version: Some(after_final),
             task_id: &task_id,
-            intent: CloseIntent::Check,
-            close_reason: None,
+            intent: CloseIntent::Complete,
+            close_reason: Some(CloseReason::CompletedSelfChecked),
             superseding_task_id: None,
         }),
-        invocation_with_session(OperationCategory::Read, session_id),
+        invocation_with_session(OperationCategory::AgentWorkflow, session_id),
     )?;
 
-    assert_eq!(response.response_value["close_state"], "ready");
+    assert_eq!(response.response_value["close_state"], "closed");
     assert_no_close_blocker(&response.response_value, "unresolved_unrecorded_changes");
     assert_eq!(
         response.response_value["guard_health"]["session_watch_status"],
@@ -4039,23 +4040,26 @@ fn guarded_watcher_links_deterministic_active_write_ticket() -> Result<(), Box<d
         ),
         invocation(OperationCategory::AgentWorkflow),
     )?;
+    let after_prepare = prepare.response_value["base"]["state_version"]
+        .as_u64()
+        .expect("prepare_write should report state version");
     let write_ticket_id = response_record_id(&prepare.response_value, "write_ticket_ref");
     let session_id = "session_watch_ticket";
     initialize_full_watch_baseline(&harness, session_id, &guard_installation_id, "ticket_seed")?;
 
     write_product_file(&harness, "src/export.rs", "ticket-backed watcher change\n")?;
-    let response = harness.service.check_close(
-        check_close_request(CloseTaskFixture {
+    let response = harness.service.close_task(
+        close_task_request(CloseTaskFixture {
             request_id: "req_watch_ticket_check",
-            idempotency_key: None,
+            idempotency_key: Some("idem_watch_ticket_check"),
             dry_run: false,
-            expected_state_version: None,
+            expected_state_version: Some(after_prepare),
             task_id: &task_id,
-            intent: CloseIntent::Check,
-            close_reason: None,
+            intent: CloseIntent::Complete,
+            close_reason: Some(CloseReason::CompletedSelfChecked),
             superseding_task_id: None,
         }),
-        invocation_with_session(OperationCategory::Read, session_id),
+        invocation_with_session(OperationCategory::AgentWorkflow, session_id),
     )?;
 
     assert_eq!(response.response_value["close_state"], "blocked");
@@ -4089,23 +4093,23 @@ fn guarded_hook_missing_write_is_detected_by_watcher() -> Result<(), Box<dyn Err
         "active",
         "{}",
     )?;
-    let (task_id, _, _) = create_close_ready_task(&harness, "watch_guarded_fallback")?;
+    let (task_id, _, after_final) = create_close_ready_task(&harness, "watch_guarded_fallback")?;
     let session_id = "session_watch_guarded_fallback";
     initialize_watch_baseline(&harness, &task_id, session_id, "guarded_fallback_seed")?;
 
     write_product_file(&harness, "src/watch.txt", "guard hook skipped this write\n")?;
-    let response = harness.service.check_close(
-        check_close_request(CloseTaskFixture {
+    let response = harness.service.close_task(
+        close_task_request(CloseTaskFixture {
             request_id: "req_watch_guarded_fallback",
-            idempotency_key: None,
+            idempotency_key: Some("idem_watch_guarded_fallback"),
             dry_run: false,
-            expected_state_version: None,
+            expected_state_version: Some(after_final),
             task_id: &task_id,
-            intent: CloseIntent::Check,
-            close_reason: None,
+            intent: CloseIntent::Complete,
+            close_reason: Some(CloseReason::CompletedSelfChecked),
             superseding_task_id: None,
         }),
-        invocation_with_session(OperationCategory::Read, session_id),
+        invocation_with_session(OperationCategory::AgentWorkflow, session_id),
     )?;
 
     assert_eq!(response.response_value["close_state"], "blocked");
@@ -4144,18 +4148,18 @@ fn watcher_reverted_change_auto_resolves() -> Result<(), Box<dyn Error>> {
     write_product_file(&harness, "src/watch.txt", "original\n")?;
     initialize_watch_baseline(&harness, &task_id, session_id, "revert_seed")?;
     write_product_file(&harness, "src/watch.txt", "changed\n")?;
-    let blocked = harness.service.check_close(
-        check_close_request(CloseTaskFixture {
+    let blocked = harness.service.close_task(
+        close_task_request(CloseTaskFixture {
             request_id: "req_watch_revert_detect",
-            idempotency_key: None,
+            idempotency_key: Some("idem_watch_revert_detect"),
             dry_run: false,
-            expected_state_version: None,
+            expected_state_version: Some(after_final),
             task_id: &task_id,
-            intent: CloseIntent::Check,
-            close_reason: None,
+            intent: CloseIntent::Complete,
+            close_reason: Some(CloseReason::CompletedSelfChecked),
             superseding_task_id: None,
         }),
-        invocation_with_session(OperationCategory::Read, session_id),
+        invocation_with_session(OperationCategory::AgentWorkflow, session_id),
     )?;
     assert_close_blocker(&blocked.response_value, "unresolved_unrecorded_changes");
 

@@ -12,9 +12,14 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     agent_connections::is_agent_connection_project_allowed,
-    bootstrap::{project_record_for_execution, ProjectRecord},
+    bootstrap::{
+        project_record_for_execution, project_record_for_execution_read_only, ProjectRecord,
+    },
     runtime_home::validate_runtime_home_product_repository,
-    sqlite::{begin_immediate_transaction, open_project_state_database},
+    sqlite::{
+        begin_immediate_transaction, open_project_state_database,
+        open_project_state_database_read_only,
+    },
     StoreError, StoreResult,
 };
 
@@ -1057,10 +1062,10 @@ fn open_project_for_read(
     runtime_home: impl AsRef<Path>,
     project_id: &str,
 ) -> StoreResult<Option<OpenWatchProject>> {
-    let Some(project) = project_record_for_execution(runtime_home, project_id)? else {
+    let Some(project) = project_record_for_execution_read_only(runtime_home, project_id)? else {
         return Ok(None);
     };
-    let conn = open_project_state_database(&project.state_db_path)?;
+    let conn = open_project_state_database_read_only(&project.state_db_path)?;
     Ok(Some(OpenWatchProject { project, conn }))
 }
 
@@ -1068,10 +1073,24 @@ fn open_project_for_required_read(
     runtime_home: impl AsRef<Path>,
     project_id: &str,
 ) -> StoreResult<OpenWatchProject> {
-    open_project_for_read(runtime_home, project_id)?.ok_or_else(|| StoreError::NotFound {
-        entity: "project",
-        id: project_id.to_owned(),
-    })
+    let Some(project) = open_project_for_write(runtime_home, project_id)? else {
+        return Err(StoreError::NotFound {
+            entity: "project",
+            id: project_id.to_owned(),
+        });
+    };
+    Ok(project)
+}
+
+fn open_project_for_write(
+    runtime_home: impl AsRef<Path>,
+    project_id: &str,
+) -> StoreResult<Option<OpenWatchProject>> {
+    let Some(project) = project_record_for_execution(runtime_home, project_id)? else {
+        return Ok(None);
+    };
+    let conn = open_project_state_database(&project.state_db_path)?;
+    Ok(Some(OpenWatchProject { project, conn }))
 }
 
 struct ScanState {

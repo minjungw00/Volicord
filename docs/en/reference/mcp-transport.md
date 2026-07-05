@@ -595,12 +595,31 @@ The supported lifecycle notification is `notifications/initialized`.
 ## Tool Discovery And `tools/call` Response Wrapping
 
 After a successful `initialize` response, `tools/list` exposes tools according
-to the current stored Agent Connection mode:
+to the current stored Agent Connection mode and the effective storage
+capability of the selected allowed projects:
 
-| Mode | MCP-visible tools |
+| Mode and storage capability | MCP-visible tools |
 |---|---|
-| `workflow` | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.prepare_write`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.reconcile_changes`, `volicord.check_close`, `volicord.close_task`, `volicord.list_projects` |
-| `read_only` | `volicord.status`, `volicord.check_close`, `volicord.list_projects` |
+| `workflow` with writable project state | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.prepare_write`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.reconcile_changes`, `volicord.check_close`, `volicord.close_task`, `volicord.list_projects` |
+| `workflow` with readable but non-writable project state | `volicord.status`, `volicord.check_close`, `volicord.list_projects` |
+| `read_only` with readable project state | `volicord.status`, `volicord.check_close`, `volicord.list_projects` |
+| No readable allowed project state | `volicord.list_projects` |
+
+The MCP adapter may inspect project state read-only during startup and
+discovery. If project state is readable but not writable in the current MCP
+host environment, read-compatible method tools remain visible and workflow
+mutation tools are withheld even when the stored Agent Connection mode is
+`workflow`. If no allowed project state can be read, the adapter keeps only
+`volicord.list_projects` visible so the caller can inspect project
+availability.
+
+When effective storage is read-only, read-compatible public method tools run
+without creating session-watch baselines, `tool_invocations`, `task_events`, or a
+new `project_state.state_version`. If a stale host-side tool cache still calls
+a public workflow mutation tool while the selected project state is not
+writable, the adapter returns a normal Volicord rejection with
+`code=MCP_UNAVAILABLE`, `operation_category=agent_workflow`, and message
+`Volicord project state is not writable in the current MCP host environment.`
 
 In `workflow` mode, the Evidence path is: use `volicord.stage_artifact` only to prepare an Evidence attachment input when bytes or a safe notice are needed, then use `volicord.record_run` to record the Run or observation, claim-scoped evidence update, evidence observation provenance, and any attachment link or promotion. A staged handle alone is not accepted Evidence and does not satisfy Close Status.
 

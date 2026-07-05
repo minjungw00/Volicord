@@ -44,6 +44,30 @@ impl McpConnectionContext {
     }
 }
 
+/// Effective storage capability observed for an MCP session or project.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum McpStorageCapability {
+    ReadWrite,
+    ReadOnly,
+    Unavailable,
+    Unknown,
+}
+
+impl McpStorageCapability {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::ReadWrite => "read_write",
+            Self::ReadOnly => "read_only",
+            Self::Unavailable => "unavailable",
+            Self::Unknown => "unknown",
+        }
+    }
+
+    pub(crate) const fn allows_mutation(self) -> bool {
+        matches!(self, Self::ReadWrite)
+    }
+}
+
 /// Connection-bound startup facts shared by stdio startup and preflight checks.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct McpConnectionStartupInspection {
@@ -166,6 +190,7 @@ pub struct McpProjectAvailability {
     pub available: bool,
     pub unavailable_reason: Option<String>,
     pub repo_root_display: String,
+    pub(crate) storage_capability: McpStorageCapability,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -203,15 +228,18 @@ pub(crate) fn validate_mcp_project_allowlist(
     project_ids: &[ProjectId],
 ) -> Result<(), McpAdapterError> {
     for project_id in project_ids {
-        let access =
-            agent_connection_project_access(runtime_home, connection_id, project_id.as_str())
-                .map_err(McpAdapterError::Store)?
-                .ok_or_else(|| {
-                    McpAdapterError::Environment(format!(
-                        "connection {connection_id} is not registered for project {}",
-                        project_id.as_str()
-                    ))
-                })?;
+        let access = agent_connection_project_access_read_only(
+            runtime_home,
+            connection_id,
+            project_id.as_str(),
+        )
+        .map_err(McpAdapterError::Store)?
+        .ok_or_else(|| {
+            McpAdapterError::Environment(format!(
+                "connection {connection_id} is not registered for project {}",
+                project_id.as_str()
+            ))
+        })?;
         if !access.connection_enabled {
             return Err(McpAdapterError::Environment(format!(
                 "connection {connection_id} is disabled"
@@ -261,12 +289,12 @@ pub(crate) fn resolve_connection_context(
     McpAdapterError,
 > {
     let runtime_home = runtime_home.as_ref().to_path_buf();
-    runtime_home_record(&runtime_home)
+    runtime_home_record_read_only(&runtime_home)
         .map_err(McpAdapterError::Store)?
         .ok_or_else(|| {
             McpAdapterError::Environment("Runtime Home is not initialized".to_owned())
         })?;
-    match require_installation_profile(&runtime_home) {
+    match require_installation_profile_read_only(&runtime_home) {
         Ok(_) => {}
         Err(StoreError::NotFound {
             entity: "installation_profile",
@@ -280,7 +308,7 @@ pub(crate) fn resolve_connection_context(
         Err(error) => return Err(McpAdapterError::Store(error)),
     }
     validate_identifier_text("connection_internal_id", connection_internal_id)?;
-    let connection = agent_connection_record(&runtime_home, connection_internal_id)
+    let connection = agent_connection_record_read_only(&runtime_home, connection_internal_id)
         .map_err(McpAdapterError::Store)?
         .ok_or_else(|| {
             McpAdapterError::Environment(format!(
@@ -288,7 +316,7 @@ pub(crate) fn resolve_connection_context(
             ))
         })?;
     let mode = validate_connection_record(&connection)?;
-    let projects = list_connection_projects(&runtime_home, connection_internal_id)
+    let projects = list_connection_projects_read_only(&runtime_home, connection_internal_id)
         .map_err(McpAdapterError::Store)?;
     if projects.is_empty() {
         return Err(McpAdapterError::Environment(format!(
@@ -343,7 +371,7 @@ pub(crate) fn current_enabled_connection(
     connection_internal_id: &str,
     tool_name: &str,
 ) -> Result<AgentConnectionRecord, McpAdapterError> {
-    let connection = agent_connection_record(runtime_home, connection_internal_id)
+    let connection = agent_connection_record_read_only(runtime_home, connection_internal_id)
         .map_err(McpAdapterError::Store)?
         .ok_or_else(|| McpAdapterError::ToolExecution {
             tool_name: tool_name.to_owned(),
@@ -388,11 +416,18 @@ pub(crate) fn inspect_allowed_project(project: &ConnectionProjectRecord) -> McpP
             ),
         );
     }
+    let storage_capability = match sqlite_database_write_capability(&project.project.state_db_path)
+    {
+        Ok(true) => McpStorageCapability::ReadWrite,
+        Ok(false) => McpStorageCapability::ReadOnly,
+        Err(_) => McpStorageCapability::Unknown,
+    };
     McpProjectAvailability {
         project_id: project.project_id.clone(),
         available: true,
         unavailable_reason: None,
         repo_root_display,
+        storage_capability,
     }
 }
 
@@ -406,6 +441,7 @@ pub(crate) fn unavailable_project(
         available: false,
         unavailable_reason: Some(reason.into()),
         repo_root_display,
+        storage_capability: McpStorageCapability::Unavailable,
     }
 }
 

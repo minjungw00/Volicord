@@ -9,7 +9,10 @@ use crate::{
         raw_project_record_from_conn, validate_current_project_registration, validate_project_id,
         ProjectRecord,
     },
-    sqlite::{begin_immediate_transaction, open_registry_database, registry_db_path},
+    sqlite::{
+        begin_immediate_transaction, open_registry_database, open_registry_database_read_only,
+        registry_db_path,
+    },
     StoreError, StoreResult,
 };
 
@@ -415,6 +418,21 @@ pub fn agent_connection_record(
     agent_connection_record_from_conn(&conn, connection_internal_id)
 }
 
+/// Reads one Agent Connection without creating, migrating, or writing registry state.
+pub fn agent_connection_record_read_only(
+    runtime_home: impl AsRef<Path>,
+    connection_internal_id: &str,
+) -> StoreResult<Option<AgentConnectionRecord>> {
+    validate_identifier("connection_internal_id", connection_internal_id)?;
+    let registry_path = registry_db_path(runtime_home);
+    if !registry_path.exists() {
+        return Ok(None);
+    }
+
+    let conn = open_registry_database_read_only(registry_path)?;
+    agent_connection_record_from_conn(&conn, connection_internal_id)
+}
+
 /// Lists Agent Connections in deterministic order.
 pub fn list_agent_connections(
     runtime_home: impl AsRef<Path>,
@@ -775,6 +793,51 @@ pub fn list_connection_projects(
     Ok(projects)
 }
 
+/// Lists explicitly allowed projects without creating, migrating, or writing registry state.
+pub fn list_connection_projects_read_only(
+    runtime_home: impl AsRef<Path>,
+    connection_internal_id: &str,
+) -> StoreResult<Vec<ConnectionProjectRecord>> {
+    validate_identifier("connection_internal_id", connection_internal_id)?;
+    let runtime_home = runtime_home.as_ref().to_path_buf();
+    let registry_path = registry_db_path(&runtime_home);
+    if !registry_path.exists() {
+        return Err(StoreError::NotFound {
+            entity: "agent_connection",
+            id: connection_internal_id.to_owned(),
+        });
+    }
+
+    let conn = open_registry_database_read_only(registry_path)?;
+    require_agent_connection(&conn, connection_internal_id)?;
+    let mut stmt = conn.prepare(
+        "SELECT
+            cp.connection_internal_id,
+            cp.project_internal_id,
+            cp.created_at,
+            p.project_name,
+            p.project_alias,
+            p.runtime_home_id,
+            p.repo_root,
+            p.project_home,
+            p.state_db_path,
+            p.status,
+            p.metadata_json
+         FROM connection_projects AS cp
+         JOIN projects AS p
+           ON p.project_internal_id = cp.project_internal_id
+        WHERE cp.connection_internal_id = ?1
+        ORDER BY p.project_name, cp.project_internal_id",
+    )?;
+    let mut rows = stmt.query([connection_internal_id])?;
+    let mut projects = Vec::new();
+    while let Some(row) = rows.next()? {
+        let project = connection_project_record_from_row(row)?;
+        projects.push(validate_connection_project_record(&runtime_home, project)?);
+    }
+    Ok(projects)
+}
+
 /// Returns current access facts for a connection/project pair.
 pub fn agent_connection_project_access(
     runtime_home: impl AsRef<Path>,
@@ -790,6 +853,58 @@ pub fn agent_connection_project_access(
     }
 
     let conn = open_registry_database(registry_path)?;
+    let Some(connection) = agent_connection_record_from_conn(&conn, connection_internal_id)? else {
+        return Ok(None);
+    };
+    let project = raw_project_record_from_conn(&conn, project_id)?;
+    let project_allowed = if let Some(project) = &project {
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*)
+               FROM connection_projects
+              WHERE connection_internal_id = ?1
+                AND project_internal_id = ?2",
+            params![
+                connection.connection_internal_id,
+                project.project_internal_id
+            ],
+            |row| row.get(0),
+        )?;
+        count > 0
+    } else {
+        false
+    };
+    let project = project
+        .map(|project| validate_current_project_registration(&runtime_home, &project))
+        .transpose()?;
+    let resolved_project_id = project
+        .as_ref()
+        .map(|project| project.project_id.clone())
+        .unwrap_or_else(|| project_id.to_owned());
+
+    Ok(Some(AgentConnectionProjectAccess {
+        connection_internal_id: connection.connection_internal_id,
+        project_id: resolved_project_id,
+        connection_enabled: connection.enabled,
+        project_allowed,
+        project,
+    }))
+}
+
+/// Returns current access facts without creating, migrating, or writing registry state.
+pub fn agent_connection_project_access_read_only(
+    runtime_home: impl AsRef<Path>,
+    connection_internal_id: &str,
+    project_id: &str,
+) -> StoreResult<Option<AgentConnectionProjectAccess>> {
+    validate_identifier("connection_internal_id", connection_internal_id)?;
+    validate_project_id(project_id)?;
+    let runtime_home = runtime_home.as_ref().to_path_buf();
+    let registry_path = registry_db_path(&runtime_home);
+    if !registry_path.exists() {
+        return Ok(None);
+    }
+
+    let conn = open_registry_database_read_only(registry_path)?;
     let Some(connection) = agent_connection_record_from_conn(&conn, connection_internal_id)? else {
         return Ok(None);
     };

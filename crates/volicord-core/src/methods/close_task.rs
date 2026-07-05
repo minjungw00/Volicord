@@ -30,7 +30,7 @@ impl CoreService {
             Err(response) => return Ok(response),
         };
         let plan_now = utc_timestamp(self.now());
-        if !request.envelope.dry_run {
+        if !request.envelope.dry_run && prepared.store.is_writable() {
             if let Err(error) = session_watch::run_session_watch_check(
                 &prepared.store,
                 &prepared.context.verified_invocation,

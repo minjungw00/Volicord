@@ -340,7 +340,7 @@ impl McpAdapter {
             self.context.connection_internal_id.as_str(),
             tool_name,
         )?;
-        let projects = list_connection_projects(
+        let projects = list_connection_projects_read_only(
             &self.runtime_home,
             self.context.connection_internal_id.as_str(),
         )
@@ -411,7 +411,32 @@ impl McpAdapter {
                 message: error.to_string(),
             }
         })?;
-        Ok(mcp_tools_for_mode(mode))
+        let storage_capability = self.session_storage_capability()?;
+        Ok(mcp_tools_for_mode_and_storage(mode, storage_capability))
+    }
+
+    pub(crate) fn session_storage_capability(
+        &self,
+    ) -> Result<McpStorageCapability, McpAdapterError> {
+        let projects = self.allowed_project_availabilities("storage capability")?;
+        let readable = projects
+            .iter()
+            .filter(|project| project.available)
+            .map(|project| project.storage_capability)
+            .collect::<Vec<_>>();
+        if readable.is_empty() {
+            return Ok(McpStorageCapability::Unavailable);
+        }
+        if readable
+            .iter()
+            .all(|capability| *capability == McpStorageCapability::ReadWrite)
+        {
+            return Ok(McpStorageCapability::ReadWrite);
+        }
+        if readable.contains(&McpStorageCapability::ReadOnly) {
+            return Ok(McpStorageCapability::ReadOnly);
+        }
+        Ok(McpStorageCapability::Unknown)
     }
 
     /// Derives local invocation facts for one decoded request envelope.
@@ -460,6 +485,9 @@ impl McpAdapter {
         session_id: Option<&str>,
         host_elicitation_available: bool,
     ) -> Result<PipelineResponse, McpAdapterError> {
+        if let Some(response) = self.readonly_storage_rejection_for_tool(tool_name)? {
+            return Ok(response);
+        }
         match tool_name {
             INTAKE_TOOL_NAME => {
                 self.call_intake(tool_name, params, session_id, host_elicitation_available)
@@ -838,6 +866,56 @@ impl McpAdapter {
         )
     }
 
+    fn readonly_storage_rejection_for_tool(
+        &self,
+        tool_name: &str,
+    ) -> Result<Option<PipelineResponse>, McpAdapterError> {
+        let Some(operation_category) = public_tool_operation_category(tool_name) else {
+            return Ok(None);
+        };
+        if operation_category == OperationCategory::Read {
+            return Ok(None);
+        }
+        let storage_capability = self.session_storage_capability()?;
+        if storage_capability.allows_mutation() {
+            return Ok(None);
+        }
+        let mut details = Map::new();
+        details.insert(
+            "storage_capability".to_owned(),
+            Value::String(storage_capability.as_str().to_owned()),
+        );
+        details.insert(
+            "required_storage_capability".to_owned(),
+            Value::String(McpStorageCapability::ReadWrite.as_str().to_owned()),
+        );
+        details.insert("tool_name".to_owned(), Value::String(tool_name.to_owned()));
+        details.insert(
+            "operation_category".to_owned(),
+            Value::String(operation_category.as_str().to_owned()),
+        );
+        let response = rejected_response(
+            false,
+            None,
+            vec![tool_error(
+                ErrorCode::McpUnavailable,
+                "Volicord project state is not writable in the current MCP host environment.",
+                false,
+                Some(details),
+            )],
+        );
+        let response_value = serde_json::to_value(response).map_err(McpAdapterError::Json)?;
+        let response_json =
+            serde_json::to_string(&response_value).map_err(McpAdapterError::Json)?;
+        Ok(Some(PipelineResponse {
+            response_json,
+            response_value,
+            verified_invocation: None,
+            resolved_task_id: None,
+            replayed: false,
+        }))
+    }
+
     fn call_core_request<T, F>(
         &self,
         tool_name: &str,
@@ -951,18 +1029,50 @@ impl McpAdapter {
             optional_string_field(object, "project_selector", tool_name)?;
         let selected_project_id = self.select_project(requested_project_selector.as_deref())?;
         if let Some(session_id) = session_id {
-            let coverage_basis = if requested_project_selector.is_some() {
-                SessionWatchCoverageBasis::FirstProjectSelection
-            } else {
-                SessionWatchCoverageBasis::MethodBoundary
-            };
-            self.ensure_session_watch_baseline(&selected_project_id, session_id, coverage_basis)?;
+            if self.storage_capability_for_project(&selected_project_id)?
+                == McpStorageCapability::ReadWrite
+            {
+                let coverage_basis = if requested_project_selector.is_some() {
+                    SessionWatchCoverageBasis::FirstProjectSelection
+                } else {
+                    SessionWatchCoverageBasis::MethodBoundary
+                };
+                self.ensure_session_watch_baseline(
+                    &selected_project_id,
+                    session_id,
+                    coverage_basis,
+                )?;
+            }
         }
         let arguments = self.decode_params(tool_name, params)?;
         Ok(PreparedMcpArguments {
             arguments,
             project_id: selected_project_id,
         })
+    }
+
+    fn storage_capability_for_project(
+        &self,
+        project_id: &ProjectId,
+    ) -> Result<McpStorageCapability, McpAdapterError> {
+        let access = agent_connection_project_access_read_only(
+            &self.runtime_home,
+            self.context.connection_internal_id.as_str(),
+            project_id.as_str(),
+        )
+        .map_err(McpAdapterError::Store)?
+        .ok_or_else(|| routing_error("connection is not registered"))?;
+        let Some(project) = access.project else {
+            return Ok(McpStorageCapability::Unavailable);
+        };
+        let availability = inspect_allowed_project(&ConnectionProjectRecord {
+            connection_internal_id: self.context.connection_internal_id.as_str().to_owned(),
+            project_internal_id: project.project_internal_id.clone(),
+            project_id: project.project_id.clone(),
+            created_at: String::new(),
+            project,
+        });
+        Ok(availability.storage_capability)
     }
 
     fn generated_envelope(
@@ -1028,7 +1138,7 @@ impl McpAdapter {
                     "project selector {project_id} is outside this HTTP serve project allowlist"
                 )));
             }
-            let access = agent_connection_project_access(
+            let access = agent_connection_project_access_read_only(
                 &self.runtime_home,
                 connection_internal_id,
                 project_id,
@@ -1060,8 +1170,9 @@ impl McpAdapter {
             return selected_project_from_availability(availability);
         }
 
-        let projects = list_connection_projects(&self.runtime_home, connection_internal_id)
-            .map_err(McpAdapterError::Store)?;
+        let projects =
+            list_connection_projects_read_only(&self.runtime_home, connection_internal_id)
+                .map_err(McpAdapterError::Store)?;
         let projects = projects
             .into_iter()
             .filter(|project| {
@@ -1165,6 +1276,21 @@ impl_has_envelope!(
 
 fn request_envelope<T: HasEnvelope>(request: &T) -> &ToolEnvelope {
     request.envelope()
+}
+
+fn public_tool_operation_category(tool_name: &str) -> Option<OperationCategory> {
+    match tool_name {
+        STATUS_TOOL_NAME | CHECK_CLOSE_TOOL_NAME => Some(OperationCategory::Read),
+        INTAKE_TOOL_NAME
+        | UPDATE_SCOPE_TOOL_NAME
+        | PREPARE_WRITE_TOOL_NAME
+        | STAGE_ARTIFACT_TOOL_NAME
+        | RECORD_RUN_TOOL_NAME
+        | REQUEST_USER_JUDGMENT_TOOL_NAME
+        | RECONCILE_CHANGES_TOOL_NAME
+        | CLOSE_TASK_TOOL_NAME => Some(OperationCategory::AgentWorkflow),
+        _ => None,
+    }
 }
 
 struct PreparedMcpArguments<T> {
