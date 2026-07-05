@@ -928,6 +928,38 @@ fn init_codex_record_profile_skips_host_hooks() -> Result<(), Box<dyn Error>> {
         .expect("missing hooks should be an array")
         .is_empty());
 
+    let doctor = run_with_home_env(runtime_home.path(), ["doctor", "--json"], &[])?;
+    assert_success(&doctor);
+    let doctor_json = json_stdout(&doctor)?;
+    assert_eq!(doctor_json["states"]["selected_profile"], "record");
+    assert_eq!(doctor_json["states"]["guard_files"], "not_checked");
+    assert_eq!(doctor_json["states"]["hook_path_safety"], "not_checked");
+    let doctor_checks = doctor_json["checks"]
+        .as_array()
+        .expect("doctor checks should be an array");
+    let doctor_guard_files_check = doctor_checks
+        .iter()
+        .find(|check| check["id"] == "guard_files_installed")
+        .expect("doctor guard files check should be present");
+    assert_eq!(doctor_guard_files_check["status"], "skipped");
+    assert_eq!(
+        doctor_guard_files_check["summary"],
+        "detective host-hook files are not applicable to record-profile installations"
+    );
+    assert!(
+        !doctor_json["actions"]
+            .as_array()
+            .expect("doctor actions should be an array")
+            .iter()
+            .any(|action| matches!(
+                action["id"].as_str(),
+                Some(
+                    "repair_guard_files" | "repair_guard_hook_path_safety" | "repair_guard_status"
+                )
+            )),
+        "record-profile doctor should not offer detective repair: {doctor_json}"
+    );
+
     let rerun_text_output = run_with_home_env(
         runtime_home.path(),
         [
@@ -1348,15 +1380,37 @@ fn connection_verify_record_profile_does_not_offer_detective_hook_repair(
     assert_success(&verify_json);
     let value = json_stdout(&verify_json)?;
     assert_eq!(value["states"]["selected_profile"], "record");
+    assert_eq!(value["states"]["guard_files"], "disabled");
     assert_eq!(value["states"]["hook_config"], "disabled");
     assert_eq!(value["states"]["required_hook_phases"], "disabled");
-    assert_eq!(value["states"]["hook_path_safety"], "metadata_missing");
-    assert_eq!(value["host_hook"]["hook_path_safety"], "metadata_missing");
+    assert_eq!(value["states"]["hook_path_safety"], "not_applicable");
+    assert_eq!(value["host_hook"]["hook_path_safety"], "not_applicable");
     assert!(value["host_hook"]["hook_path_safety_details"]
         .as_array()
         .expect("hook path details should be an array")
+        .is_empty());
+    let checks = value["checks"]
+        .as_array()
+        .expect("checks should be an array");
+    let guard_files_check = checks
         .iter()
-        .any(|detail| detail["source"] == "host_hook_commands"));
+        .find(|check| check["id"] == "guard_files_installed")
+        .expect("guard files check should be present");
+    assert_eq!(guard_files_check["status"], "skipped");
+    assert_eq!(
+        guard_files_check["summary"],
+        "detective host-hook files are not applicable for the record profile"
+    );
+    assert!(checks.iter().all(|check| {
+        check["summary"]
+            .as_str()
+            .is_none_or(|summary| summary != "detective host-hook files are stale")
+    }));
+    let prompt_capture_check = checks
+        .iter()
+        .find(|check| check["id"] == "prompt_capture_available")
+        .expect("prompt capture check should be present");
+    assert_eq!(prompt_capture_check["status"], "skipped");
     let primary_id = value["primary_next_action"]["id"].as_str();
     assert!(
         !matches!(

@@ -6616,93 +6616,115 @@ fn init_checks_json(
 }
 
 fn guard_checks_json_values(guard_state: &GuardOperationalState) -> Vec<Value> {
-    let guard_selected = matches!(guard_state.mode_state.as_str(), "detective" | "mixed");
-    let files_check = match guard_state.files_state.as_str() {
-        "installed" => json!({
-            "id": "guard_files_installed",
-            "status": "passed",
-            "summary": "detective host-hook files are installed",
-        }),
-        "missing" => json!({
-            "id": "guard_files_installed",
-            "status": "failed",
-            "summary": "detective host-hook files are missing",
-            "details": guard_file_details_json(guard_state),
-        }),
-        "stale" => json!({
-            "id": "guard_files_installed",
-            "status": "failed",
-            "summary": "detective host-hook files are stale",
-            "details": guard_file_details_json(guard_state),
-        }),
-        "broken" => json!({
-            "id": "guard_files_installed",
-            "status": "failed",
-            "summary": "detective host-hook files are broken",
-            "details": guard_file_details_json(guard_state),
-        }),
-        "disabled" => json!({
+    let detective_hooks_applicable = guard_state.detective_hooks_applicable();
+    let files_check = if !detective_hooks_applicable {
+        json!({
             "id": "guard_files_installed",
             "status": "skipped",
-            "summary": "host hook files are disabled for record profile",
-        }),
-        other => json!({
-            "id": "guard_files_installed",
-            "status": "skipped",
-            "summary": format!("detective host-hook files are {other}"),
-        }),
+            "summary": "detective host-hook files are not applicable for the record profile",
+        })
+    } else {
+        match guard_state.files_state.as_str() {
+            "installed" => json!({
+                "id": "guard_files_installed",
+                "status": "passed",
+                "summary": "detective host-hook files are installed",
+            }),
+            "missing" => json!({
+                "id": "guard_files_installed",
+                "status": "failed",
+                "summary": "detective host-hook files are missing",
+                "details": guard_file_details_json(guard_state),
+            }),
+            "stale" => json!({
+                "id": "guard_files_installed",
+                "status": "failed",
+                "summary": "detective host-hook files are stale",
+                "details": guard_file_details_json(guard_state),
+            }),
+            "broken" => json!({
+                "id": "guard_files_installed",
+                "status": "failed",
+                "summary": "detective host-hook files are broken",
+                "details": guard_file_details_json(guard_state),
+            }),
+            "disabled" => json!({
+                "id": "guard_files_installed",
+                "status": "skipped",
+                "summary": "host hook files are disabled for record profile",
+            }),
+            other => json!({
+                "id": "guard_files_installed",
+                "status": "skipped",
+                "summary": format!("detective host-hook files are {other}"),
+            }),
+        }
     };
-    let reload_check = if guard_state.installation_state == "reload_required" {
+    let reload_check = if !detective_hooks_applicable {
+        json!({
+            "id": "guard_host_reload_required",
+            "status": "skipped",
+            "summary": "detective host reload is not applicable for the record profile",
+        })
+    } else if guard_state.installation_state == "reload_required" {
         json!({
             "id": "guard_host_reload_required",
             "status": "failed",
             "summary": "host reload is required before detective host hooks are active",
         })
-    } else if guard_selected {
+    } else {
         json!({
             "id": "guard_host_reload_required",
             "status": "passed",
             "summary": "host reload is not currently required by detective installation state",
         })
-    } else {
+    };
+    let hook_check = if !detective_hooks_applicable {
         json!({
-            "id": "guard_host_reload_required",
+            "id": "guard_hook_observed",
             "status": "skipped",
-            "summary": "guard host reload is not applicable",
+            "summary": "detective host-hook observation is not applicable for the record profile",
         })
+    } else {
+        match guard_state.hook_observed_state.as_str() {
+            "observed" => json!({
+                "id": "guard_hook_observed",
+                "status": "passed",
+                "summary": "detective host hook has been observed",
+                "details": {
+                    "last_observed_at": &guard_state.last_observed_at,
+                    "last_guard_event_at": &guard_state.last_guard_event_at,
+                },
+            }),
+            "not_observed" => json!({
+                "id": "guard_hook_observed",
+                "status": "failed",
+                "summary": "detective host hook has not been observed",
+                "details": {
+                    "last_observed_at": Value::Null,
+                    "last_guard_event_at": &guard_state.last_guard_event_at,
+                },
+            }),
+            other => json!({
+                "id": "guard_hook_observed",
+                "status": "skipped",
+                "summary": format!("detective host-hook observation is {other}"),
+            }),
+        }
     };
-    let hook_check = match guard_state.hook_observed_state.as_str() {
-        "observed" => json!({
-            "id": "guard_hook_observed",
-            "status": "passed",
-            "summary": "detective host hook has been observed",
-            "details": {
-                "last_observed_at": &guard_state.last_observed_at,
-                "last_guard_event_at": &guard_state.last_guard_event_at,
-            },
-        }),
-        "not_observed" if guard_selected => json!({
-            "id": "guard_hook_observed",
-            "status": "failed",
-            "summary": "detective host hook has not been observed",
-            "details": {
-                "last_observed_at": Value::Null,
-                "last_guard_event_at": &guard_state.last_guard_event_at,
-            },
-        }),
-        other => json!({
-            "id": "guard_hook_observed",
+    let status_check = if !detective_hooks_applicable {
+        json!({
+            "id": "guard_status_active",
             "status": "skipped",
-            "summary": format!("detective host-hook observation is {other}"),
-        }),
-    };
-    let status_check = if guard_state.effective_state == "active" {
+            "summary": "detective signal active status is not applicable for the record profile",
+        })
+    } else if guard_state.effective_state == "active" {
         json!({
             "id": "guard_status_active",
             "status": "passed",
             "summary": "effective detective signal status is active",
         })
-    } else if guard_selected {
+    } else {
         json!({
             "id": "guard_status_active",
             "status": "failed",
@@ -6716,22 +6738,18 @@ fn guard_checks_json_values(guard_state: &GuardOperationalState) -> Vec<Value> {
                 "unresolved_blockers": &guard_state.unresolved_blockers,
             },
         })
-    } else {
-        json!({
-            "id": "guard_status_active",
-            "status": "skipped",
-            "summary": "detective signal active status is not applicable",
-        })
     };
-    let capability_check = if guard_state.missing_required_hooks.is_empty() || !guard_selected {
+    let capability_check = if !detective_hooks_applicable {
         json!({
             "id": "guard_required_hooks_supported",
-            "status": if guard_selected { "passed" } else { "skipped" },
-            "summary": if guard_selected {
-                "required detective host-hook capabilities are supported"
-            } else {
-                "detective host-hook capabilities are not applicable"
-            },
+            "status": "skipped",
+            "summary": "detective host-hook capabilities are not applicable for the record profile",
+        })
+    } else if guard_state.missing_required_hooks.is_empty() {
+        json!({
+            "id": "guard_required_hooks_supported",
+            "status": "passed",
+            "summary": "required detective host-hook capabilities are supported",
         })
     } else {
         json!({
@@ -6743,37 +6761,45 @@ fn guard_checks_json_values(guard_state: &GuardOperationalState) -> Vec<Value> {
             },
         })
     };
-    let prompt_capture_check = match guard_state.prompt_capture_state.as_str() {
-        "active" | "observed" | "configured" => json!({
-            "id": "prompt_capture_available",
-            "status": "passed",
-            "summary": format!("prompt capture is {}", guard_state.prompt_capture_state),
-        }),
-        "reload_required" if guard_selected => json!({
-            "id": "prompt_capture_available",
-            "status": "failed",
-            "summary": "prompt capture needs host reload",
-        }),
-        "unsupported_by_host" if guard_selected => json!({
-            "id": "prompt_capture_available",
-            "status": "failed",
-            "summary": "host does not support prompt capture",
-        }),
-        "not_configured" if guard_selected => json!({
-            "id": "prompt_capture_available",
-            "status": "failed",
-            "summary": "prompt capture is not configured",
-        }),
-        "degraded" if guard_selected => json!({
-            "id": "prompt_capture_available",
-            "status": "failed",
-            "summary": "prompt capture is degraded",
-        }),
-        other => json!({
+    let prompt_capture_check = if !detective_hooks_applicable {
+        json!({
             "id": "prompt_capture_available",
             "status": "skipped",
-            "summary": format!("prompt capture is {other}"),
-        }),
+            "summary": "prompt capture is not applicable for the record profile",
+        })
+    } else {
+        match guard_state.prompt_capture_state.as_str() {
+            "active" | "observed" | "configured" => json!({
+                "id": "prompt_capture_available",
+                "status": "passed",
+                "summary": format!("prompt capture is {}", guard_state.prompt_capture_state),
+            }),
+            "reload_required" => json!({
+                "id": "prompt_capture_available",
+                "status": "failed",
+                "summary": "prompt capture needs host reload",
+            }),
+            "unsupported_by_host" => json!({
+                "id": "prompt_capture_available",
+                "status": "failed",
+                "summary": "host does not support prompt capture",
+            }),
+            "not_configured" => json!({
+                "id": "prompt_capture_available",
+                "status": "failed",
+                "summary": "prompt capture is not configured",
+            }),
+            "degraded" => json!({
+                "id": "prompt_capture_available",
+                "status": "failed",
+                "summary": "prompt capture is degraded",
+            }),
+            other => json!({
+                "id": "prompt_capture_available",
+                "status": "skipped",
+                "summary": format!("prompt capture is {other}"),
+            }),
+        }
     };
     vec![
         files_check,
@@ -6990,6 +7016,11 @@ fn connection_states_json(
     guard_state: &GuardOperationalState,
     host_reload_required: bool,
 ) -> Value {
+    let guard_files_state = if guard_state.detective_hooks_applicable() {
+        guard_state.files_state.as_str()
+    } else {
+        "disabled"
+    };
     let mut states = json!({
         "runtime_home": "ready",
         "connection": connection_state,
@@ -7011,7 +7042,7 @@ fn connection_states_json(
         "guard_configuration": &guard_state.configuration_state,
         "guard_observation": &guard_state.observation_state,
         "guard_effective": &guard_state.effective_state,
-        "guard_files": &guard_state.files_state,
+        "guard_files": guard_files_state,
         "agents_managed_block": &guard_state.agents_block_state,
         "volicord_policy_file": &guard_state.policy_file_state,
         "rule_instruction_config": &guard_state.rule_instruction_state,
@@ -7479,7 +7510,11 @@ fn guard_state_for_connection(
     let managed_bundle_hash = managed_bundle_hash_for_findings(&file_findings);
     let managed_verification_state =
         managed_verification_state_for_installations(&installations, &file_findings);
-    let hook_path_safety_state = file_findings.hook_path_safety_state();
+    let hook_path_safety_state = if prompt_capture_disabled {
+        "not_applicable".to_owned()
+    } else {
+        file_findings.hook_path_safety_state()
+    };
     let hook_commands_cwd_independent =
         all_recorded_values_true(&file_findings.hook_cwd_independent_values);
     let hook_commands_subdirectory_safe =
@@ -8308,6 +8343,9 @@ fn bool_json_field(value: &Value, key: &str) -> bool {
 }
 
 fn missing_required_hooks_from_capability(capability: &Value) -> Vec<String> {
+    if capability.get("selected_profile").and_then(Value::as_str) == Some("record") {
+        return Vec::new();
+    }
     let configured_required_hooks = capability
         .get("required_hook_phases")
         .and_then(Value::as_array)
@@ -8368,13 +8406,14 @@ fn verify_recorded_hook_path_safety(
 }
 
 fn capability_requires_hook_path_safety(capability: &Value) -> bool {
-    matches!(
-        capability.get("selected_profile").and_then(Value::as_str),
-        Some("detective")
-    ) || capability
-        .get("required_hook_phases")
-        .and_then(Value::as_array)
-        .is_some_and(|phases| !phases.is_empty())
+    match capability.get("selected_profile").and_then(Value::as_str) {
+        Some("record") => false,
+        Some("detective" | "mixed") => true,
+        _ => capability
+            .get("required_hook_phases")
+            .and_then(Value::as_array)
+            .is_some_and(|phases| !phases.is_empty()),
+    }
 }
 
 fn verify_recorded_hook_command_path_safety(

@@ -538,6 +538,11 @@ fn inspect_guard_installations(
         file_findings.merge(doctor_guard_file_findings(installation, snapshot));
     }
     file_findings.sort_dedup();
+    let mut detective_file_findings = DoctorGuardFileFindings::default();
+    for installation in &observed_profile_installations {
+        detective_file_findings.merge(doctor_guard_file_findings(installation, snapshot));
+    }
+    detective_file_findings.sort_dedup();
     let selected_profile =
         doctor_selected_profile_state(&snapshot.guard_installations, &file_findings);
     let missing_required_hooks = observed_profile_installations
@@ -570,16 +575,21 @@ fn inspect_guard_installations(
         "selected_profile": selected_profile,
         "control_surface": control_surface,
     })));
-    let guard_file_problem = !file_findings.missing_files.is_empty()
-        || !file_findings.stale_files.is_empty()
-        || !file_findings.broken_files.is_empty();
-    if !guard_file_problem {
+    let guard_file_problem = !detective_file_findings.missing_files.is_empty()
+        || !detective_file_findings.stale_files.is_empty()
+        || !detective_file_findings.broken_files.is_empty();
+    if observed_profile_installations.is_empty() {
+        checks.push(DiagnosticCheck::skipped(
+            "guard_files_installed",
+            "detective host-hook files are not applicable to record-profile installations",
+        ));
+    } else if !guard_file_problem {
         checks.push(
             DiagnosticCheck::passed(
                 "guard_files_installed",
                 "detective host-hook files are installed",
             )
-            .with_details(doctor_guard_file_details(&file_findings)),
+            .with_details(doctor_guard_file_details(&detective_file_findings)),
         );
     } else {
         checks.push(
@@ -587,7 +597,7 @@ fn inspect_guard_installations(
                 "guard_files_installed",
                 "one or more detective host-hook files are missing, stale, or broken",
             )
-            .with_details(doctor_guard_file_details(&file_findings)),
+            .with_details(doctor_guard_file_details(&detective_file_findings)),
         );
         push_unique_diagnostic_action(
             actions,
@@ -600,9 +610,10 @@ fn inspect_guard_installations(
             },
         );
     }
-    if file_findings.hook_path_safety_state() != "ok"
+    if !observed_profile_installations.is_empty()
+        && detective_file_findings.hook_path_safety_state() != "ok"
         && !matches!(
-            file_findings.hook_path_safety_state().as_str(),
+            detective_file_findings.hook_path_safety_state().as_str(),
             "not_recorded" | "not_checked" | "not_applicable"
         )
     {
@@ -706,7 +717,7 @@ fn inspect_guard_installations(
         );
     }
 
-    let status_counts = guard_status_counts(&snapshot.guard_installations);
+    let status_counts = guard_status_counts_for_refs(&observed_profile_installations);
     let problem_status = ["broken", "stale", "degraded"].iter().find(|status| {
         status_counts
             .get(**status)
@@ -1272,14 +1283,7 @@ fn doctor_verify_recorded_hook_path_safety(
     snapshot: &RegistryInspectionSnapshot,
     findings: &mut DoctorGuardFileFindings,
 ) {
-    let requires_path_safety = capability
-        .get("selected_profile")
-        .and_then(Value::as_str)
-        .is_some_and(|profile| profile == IntegrationProfile::Detective.as_str())
-        || capability
-            .get("required_hook_phases")
-            .and_then(Value::as_array)
-            .is_some_and(|phases| !phases.is_empty());
+    let requires_path_safety = doctor_capability_requires_hook_path_safety(capability);
     let Some(commands) = capability
         .get("host_hook_commands")
         .and_then(Value::as_array)
@@ -1391,6 +1395,17 @@ fn doctor_verify_recorded_hook_path_safety(
                 "expected_phase_wrapper_path": expected_phase_wrapper_path,
             }),
         );
+    }
+}
+
+fn doctor_capability_requires_hook_path_safety(capability: &Value) -> bool {
+    match capability.get("selected_profile").and_then(Value::as_str) {
+        Some("record") => false,
+        Some("detective" | "mixed") => true,
+        _ => capability
+            .get("required_hook_phases")
+            .and_then(Value::as_array)
+            .is_some_and(|phases| !phases.is_empty()),
     }
 }
 
@@ -2054,6 +2069,9 @@ fn guard_missing_required_hooks(capability_json: &str) -> Vec<String> {
     let Ok(value) = serde_json::from_str::<Value>(capability_json) else {
         return Vec::new();
     };
+    if value.get("selected_profile").and_then(Value::as_str) == Some("record") {
+        return Vec::new();
+    }
     let configured_required_hooks = value
         .get("required_hook_phases")
         .and_then(Value::as_array)
@@ -2232,8 +2250,8 @@ fn guard_prompt_capture_host_supported(capability_json: &str) -> bool {
         .unwrap_or(false)
 }
 
-fn guard_status_counts(
-    installations: &[volicord_store::inspection::GuardInstallationInspectionRecord],
+fn guard_status_counts_for_refs(
+    installations: &[&volicord_store::inspection::GuardInstallationInspectionRecord],
 ) -> serde_json::Map<String, Value> {
     let mut counts = serde_json::Map::new();
     for installation in installations {
