@@ -584,7 +584,7 @@ pub fn run_connect_command(
         return Err(ConnectionCommandError::runtime(conflict.message.clone()));
     }
     if parsed.dry_run {
-        return render_simplified_plan_output(SimplifiedPlanOutput {
+        return render_connection_plan_output(ConnectionPlanOutput {
             format: connection_output_format(&parsed),
             action: "connection_add",
             status: AgentResultStatus::DryRun,
@@ -702,7 +702,7 @@ pub fn run_connect_command(
         &user_actions_json(&verification.host.user_actions)?,
     )?;
     let projects = list_connection_projects(&runtime_home, &connection.connection_internal_id)?;
-    render_simplified_connection_output(SimplifiedConnectionOutput {
+    render_connection_output(ConnectionOutput {
         format: connection_output_format(&parsed),
         action: "connected",
         status: verification.status,
@@ -747,7 +747,7 @@ pub fn run_connections_command(
             rows.push((connection, projects));
         }
     }
-    render_simplified_connections_output(connection_output_format(&parsed), &rows)
+    render_connections_output(connection_output_format(&parsed), &rows)
 }
 
 pub fn run_connection_command(
@@ -794,7 +794,7 @@ fn command_connection_status(
     let runtime_home = resolve_runtime_home(|name| process.env_var(name), current_dir)?;
     let selector = connection_selector(&parsed, current_dir, process)?;
     let (connection, projects) = select_connection(&runtime_home, &selector)?;
-    render_simplified_connection_output(SimplifiedConnectionOutput {
+    render_connection_output(ConnectionOutput {
         format: connection_output_format(&parsed),
         action: "status",
         status: status_from_store(&connection.last_verification_status),
@@ -844,7 +844,7 @@ fn command_connection_verify(
         &user_actions_json(&verification.host.user_actions)?,
     )?;
     let projects = list_connection_projects(&runtime_home, &connection.connection_internal_id)?;
-    render_simplified_connection_output(SimplifiedConnectionOutput {
+    render_connection_output(ConnectionOutput {
         format: connection_output_format(&parsed),
         action: "verified",
         status: verification.status,
@@ -900,7 +900,7 @@ fn command_connection_mode(
         &user_actions_json(&actions)?,
     )?;
     let projects = list_connection_projects(&runtime_home, &connection.connection_internal_id)?;
-    render_simplified_connection_output(SimplifiedConnectionOutput {
+    render_connection_output(ConnectionOutput {
         format: connection_output_format(&parsed),
         action: "mode_updated",
         status: status_from_store(&connection.last_verification_status),
@@ -945,9 +945,9 @@ fn command_connection_remove(
     if parsed.dry_run {
         let plan = host_plan
             .as_ref()
-            .map(SimplifiedRemovePlan::Host)
-            .unwrap_or(SimplifiedRemovePlan::MembershipOnly);
-        return render_simplified_remove_dry_run(
+            .map(ConnectionRemovePlan::Host)
+            .unwrap_or(ConnectionRemovePlan::MembershipOnly);
+        return render_connection_remove_dry_run_output(
             connection_output_format(&parsed),
             &runtime_home,
             &connection,
@@ -971,7 +971,7 @@ fn command_connection_remove(
         }
         remove_agent_connection_if_unused(&runtime_home, &connection.connection_internal_id)?;
     }
-    render_simplified_connection_output(SimplifiedConnectionOutput {
+    render_connection_output(ConnectionOutput {
         format: connection_output_format(&parsed),
         action: "removed",
         status: AgentResultStatus::Complete,
@@ -5000,7 +5000,7 @@ impl PrimaryNextAction {
     }
 }
 
-struct SimplifiedConnectionOutput<'a> {
+struct ConnectionOutput<'a> {
     format: OutputFormat,
     action: &'a str,
     status: AgentResultStatus,
@@ -5014,7 +5014,7 @@ struct SimplifiedConnectionOutput<'a> {
     user_actions: Vec<UserAction>,
 }
 
-struct SimplifiedPlanOutput<'a> {
+struct ConnectionPlanOutput<'a> {
     format: OutputFormat,
     action: &'a str,
     status: AgentResultStatus,
@@ -5031,14 +5031,12 @@ struct SimplifiedPlanOutput<'a> {
     user_actions: Vec<UserAction>,
 }
 
-enum SimplifiedRemovePlan<'a> {
+enum ConnectionRemovePlan<'a> {
     Host(&'a HostPlan),
     MembershipOnly,
 }
 
-fn render_simplified_connection_output(
-    data: SimplifiedConnectionOutput<'_>,
-) -> Result<String, ConnectionCommandError> {
+fn render_connection_output(data: ConnectionOutput<'_>) -> Result<String, ConnectionCommandError> {
     let project_ids = data
         .projects
         .iter()
@@ -5058,8 +5056,11 @@ fn render_simplified_connection_output(
         Some(data.connection),
         data.projects,
     );
-    let summary_card =
-        connection_summary_card(data.action, &data.guard_state, primary_next_action.as_ref());
+    let summary_card = connection_diagnostic_summary_card(
+        data.action,
+        &data.guard_state,
+        primary_next_action.as_ref(),
+    );
     match data.format {
         OutputFormat::Text => {
             render_compact_connection_text(&data, &mcp_config_state, primary_next_action.as_ref())
@@ -5103,7 +5104,7 @@ fn render_simplified_connection_output(
 }
 
 fn render_compact_connection_text(
-    data: &SimplifiedConnectionOutput<'_>,
+    data: &ConnectionOutput<'_>,
     mcp_config_state: &str,
     primary_next_action: Option<&PrimaryNextAction>,
 ) -> Result<String, ConnectionCommandError> {
@@ -5222,7 +5223,7 @@ fn append_compact_host_configuration(
     ));
 }
 
-fn render_compact_remove_text(data: &SimplifiedConnectionOutput<'_>, host: &str) -> String {
+fn render_compact_remove_text(data: &ConnectionOutput<'_>, host: &str) -> String {
     let remaining = data.projects.len();
     let mut output = format!(
         "Agent Connection removed for {host}\n\nStatus:\n  Connection: removed from selected repository\n  Mode: {}\n  Remaining repositories: {}\n\n",
@@ -5280,7 +5281,7 @@ fn append_compact_repositories(output: &mut String, projects: &[ConnectionProjec
 }
 
 fn compact_connection_checks(
-    data: &SimplifiedConnectionOutput<'_>,
+    data: &ConnectionOutput<'_>,
     mcp_config_state: &str,
     primary_next_action: Option<&PrimaryNextAction>,
 ) -> Vec<(&'static str, String)> {
@@ -5329,7 +5330,7 @@ fn compact_connection_checks(
 
 fn append_compact_next_steps(
     output: &mut String,
-    data: &SimplifiedConnectionOutput<'_>,
+    data: &ConnectionOutput<'_>,
     host: &str,
     primary_next_action: Option<&PrimaryNextAction>,
 ) {
@@ -5545,8 +5546,8 @@ fn connection_diagnostics_command(
         .unwrap_or_else(|| "volicord connection list --json".to_owned())
 }
 
-fn render_simplified_plan_output(
-    data: SimplifiedPlanOutput<'_>,
+fn render_connection_plan_output(
+    data: ConnectionPlanOutput<'_>,
 ) -> Result<String, ConnectionCommandError> {
     let target = host_target_text(&data.plan.target);
     let planned_change = planned_change_text(data.plan.change);
@@ -5605,7 +5606,7 @@ fn render_simplified_plan_output(
     }
 }
 
-fn render_compact_plan_text(data: &SimplifiedPlanOutput<'_>) -> String {
+fn render_compact_plan_text(data: &ConnectionPlanOutput<'_>) -> String {
     let host = public_host_display_name(data.host_kind);
     let mut output = format!(
         "Agent Connection plan for {host}\n\nStatus:\n  Plan: dry run\n  Mode: {}\n  Intent: {}\n",
@@ -5627,7 +5628,7 @@ fn render_compact_plan_text(data: &SimplifiedPlanOutput<'_>) -> String {
     output
 }
 
-fn append_compact_plan_changes(output: &mut String, data: &SimplifiedPlanOutput<'_>) {
+fn append_compact_plan_changes(output: &mut String, data: &ConnectionPlanOutput<'_>) {
     if data.action == "remove" {
         output.push_str("  remove selected repository membership\n");
     }
@@ -5685,7 +5686,7 @@ fn append_compact_plan_changes(output: &mut String, data: &SimplifiedPlanOutput<
 
 fn append_compact_plan_next_steps(
     output: &mut String,
-    data: &SimplifiedPlanOutput<'_>,
+    data: &ConnectionPlanOutput<'_>,
     host: &str,
 ) {
     let mut index = 1;
@@ -5728,7 +5729,7 @@ fn append_compact_plan_next_steps(
     }
 }
 
-fn connection_plan_apply_command(data: &SimplifiedPlanOutput<'_>) -> Option<String> {
+fn connection_plan_apply_command(data: &ConnectionPlanOutput<'_>) -> Option<String> {
     let repo_root = data.repo_root?;
     match data.action {
         "connection_add" => Some(connection_add_command(
@@ -5750,7 +5751,7 @@ fn connection_plan_apply_command(data: &SimplifiedPlanOutput<'_>) -> Option<Stri
     }
 }
 
-fn connection_plan_diagnostics_command(data: &SimplifiedPlanOutput<'_>) -> String {
+fn connection_plan_diagnostics_command(data: &ConnectionPlanOutput<'_>) -> String {
     let Some(repo_root) = data.repo_root else {
         return "volicord connection list --json".to_owned();
     };
@@ -6428,7 +6429,7 @@ fn guard_file_details_json(guard_state: &GuardOperationalState) -> Value {
     })
 }
 
-fn render_simplified_connections_output(
+fn render_connections_output(
     format: OutputFormat,
     rows: &[(AgentConnectionRecord, Vec<ConnectionProjectRecord>)],
 ) -> Result<String, ConnectionCommandError> {
@@ -6489,18 +6490,18 @@ fn render_simplified_connections_output(
     }
 }
 
-fn render_simplified_remove_dry_run(
+fn render_connection_remove_dry_run_output(
     format: OutputFormat,
     runtime_home: &Path,
     connection: &AgentConnectionRecord,
     projects: &[ConnectionProjectRecord],
     selected_project: &ConnectionProjectRecord,
-    plan: SimplifiedRemovePlan<'_>,
+    plan: ConnectionRemovePlan<'_>,
     remaining_count: usize,
 ) -> Result<String, ConnectionCommandError> {
     match plan {
-        SimplifiedRemovePlan::Host(host_plan) => {
-            render_simplified_plan_output(SimplifiedPlanOutput {
+        ConnectionRemovePlan::Host(host_plan) => {
+            render_connection_plan_output(ConnectionPlanOutput {
                 format,
                 action: "remove",
                 status: AgentResultStatus::DryRun,
@@ -6517,7 +6518,7 @@ fn render_simplified_remove_dry_run(
                 user_actions: Vec::new(),
             })
         }
-        SimplifiedRemovePlan::MembershipOnly => match format {
+        ConnectionRemovePlan::MembershipOnly => match format {
             OutputFormat::Text => render_compact_membership_remove_plan_text(
                 connection,
                 selected_project,
@@ -6871,7 +6872,7 @@ fn primary_connection_action(
     })
 }
 
-fn connection_summary_card(
+fn connection_diagnostic_summary_card(
     action: &str,
     guard_state: &GuardOperationalState,
     primary_next_action: Option<&PrimaryNextAction>,
