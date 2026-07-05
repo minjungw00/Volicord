@@ -86,7 +86,7 @@ impl McpConnectionStartupInspection {
         };
         let project_reports = selected_projects
             .iter()
-            .map(|project| inspect_allowed_project(&context.runtime_home, project))
+            .map(inspect_allowed_project)
             .collect::<Vec<_>>();
 
         Ok(Self {
@@ -229,16 +229,13 @@ pub(crate) fn validate_mcp_project_allowlist(
                 project_id.as_str()
             )));
         };
-        let availability = inspect_allowed_project(
-            runtime_home,
-            &ConnectionProjectRecord {
-                connection_internal_id: connection_id.to_owned(),
-                project_internal_id: project.project_internal_id.clone(),
-                project_id: project.project_id.clone(),
-                created_at: String::new(),
-                project,
-            },
-        );
+        let availability = inspect_allowed_project(&ConnectionProjectRecord {
+            connection_internal_id: connection_id.to_owned(),
+            project_internal_id: project.project_internal_id.clone(),
+            project_id: project.project_id.clone(),
+            created_at: String::new(),
+            project,
+        });
         if !availability.available {
             return Err(McpAdapterError::Environment(format!(
                 "project {} is unavailable: {}",
@@ -359,16 +356,13 @@ pub(crate) fn current_enabled_connection(
     Ok(connection)
 }
 
-pub(crate) fn inspect_allowed_project(
-    runtime_home: &Path,
-    project: &ConnectionProjectRecord,
-) -> McpProjectAvailability {
+pub(crate) fn inspect_allowed_project(project: &ConnectionProjectRecord) -> McpProjectAvailability {
     let repo_root_display = project.project.repo_root.display().to_string();
     if project.project.status != ACTIVE_PROJECT_STATUS {
         return unavailable_project(project, repo_root_display, "project is not active");
     }
-    let store = match CoreProjectStore::open(runtime_home, &ProjectId::new(&project.project_id)) {
-        Ok(store) => store,
+    let conn = match open_project_state_database_read_only(&project.project.state_db_path) {
+        Ok(conn) => conn,
         Err(error) => {
             return unavailable_project(
                 project,
@@ -380,13 +374,17 @@ pub(crate) fn inspect_allowed_project(
             )
         }
     };
-    if let Err(error) = store.project_state() {
+    if let Err(error) = conn.query_row(
+        "SELECT project_id FROM project_state WHERE project_id = ?1",
+        [project.project_id.as_str()],
+        |row| row.get::<_, String>(0),
+    ) {
         return unavailable_project(
             project,
             repo_root_display,
             format!(
                 "project state is unavailable: {}",
-                concise_store_reason(&error)
+                concise_store_reason(&StoreError::from(error))
             ),
         );
     }

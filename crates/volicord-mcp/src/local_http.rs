@@ -233,16 +233,13 @@ pub(crate) fn validate_local_http_project_allowlist(
                 message: format!("project {} is not registered", project_id.as_str()),
             });
         };
-        let availability = inspect_allowed_project(
-            runtime_home,
-            &ConnectionProjectRecord {
-                connection_internal_id: connection_id.to_owned(),
-                project_internal_id: project.project_internal_id.clone(),
-                project_id: project.project_id.clone(),
-                created_at: String::new(),
-                project,
-            },
-        );
+        let availability = inspect_allowed_project(&ConnectionProjectRecord {
+            connection_internal_id: connection_id.to_owned(),
+            project_internal_id: project.project_internal_id.clone(),
+            project_id: project.project_id.clone(),
+            created_at: String::new(),
+            project,
+        });
         if !availability.available {
             return Err(LocalHttpError::Config {
                 code: "PROJECT_NOT_ALLOWED",
@@ -441,17 +438,9 @@ impl LocalHttpServer {
                         match generate_http_session_id() {
                             Ok(session_id) => {
                                 state.session_id = session_id.clone();
-                                if let Err(error) =
-                                    self.adapter.initialize_startup_session_watch(&session_id)
-                                {
-                                    return structured_http_error_with_headers(
-                                        500,
-                                        "Internal Server Error",
-                                        "SESSION_WATCH_STARTUP_FAILED",
-                                        &error.to_string(),
-                                        cors_headers,
-                                    );
-                                }
+                                let _startup_observation = self
+                                    .adapter
+                                    .startup_session_watch_observation_best_effort(&session_id);
                                 self.sessions.insert(session_id.clone(), state);
                                 cors_headers.push(("Mcp-Session-Id".to_owned(), session_id));
                             }

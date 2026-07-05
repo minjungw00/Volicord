@@ -67,6 +67,15 @@ pub struct McpAdapter {
     pub(crate) local_web_consent: Option<LocalWebConsentContext>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum StartupObservationResult {
+    Recorded,
+    SkippedVerificationProbe,
+    SkippedReadonlyStorage,
+    FailedButNonfatal { reason: String },
+    NotAttempted,
+}
+
 impl McpAdapter {
     /// Creates an adapter for a Runtime Home and connection-bound adapter context.
     pub fn new(runtime_home: impl AsRef<Path>, context: McpConnectionContext) -> Self {
@@ -90,14 +99,38 @@ impl McpAdapter {
         &self,
         session_id: &str,
     ) -> Result<(), McpAdapterError> {
+        self.startup_session_watch_observation(session_id)
+            .map(|_| ())
+    }
+
+    pub(crate) fn startup_session_watch_observation_best_effort(
+        &self,
+        session_id: &str,
+    ) -> StartupObservationResult {
+        match self.startup_session_watch_observation(session_id) {
+            Ok(result) => result,
+            Err(error) if startup_observation_storage_is_readonly(&error) => {
+                StartupObservationResult::SkippedReadonlyStorage
+            }
+            Err(error) => StartupObservationResult::FailedButNonfatal {
+                reason: error.to_string(),
+            },
+        }
+    }
+
+    fn startup_session_watch_observation(
+        &self,
+        session_id: &str,
+    ) -> Result<StartupObservationResult, McpAdapterError> {
         let Some(project_id) = self.project_bound_startup_project()? else {
-            return Ok(());
+            return Ok(StartupObservationResult::NotAttempted);
         };
         self.ensure_session_watch_baseline(
             &project_id,
             session_id,
             SessionWatchCoverageBasis::McpStart,
-        )
+        )?;
+        Ok(StartupObservationResult::Recorded)
     }
 
     fn project_bound_startup_project(&self) -> Result<Option<ProjectId>, McpAdapterError> {
@@ -318,7 +351,7 @@ impl McpAdapter {
                 self.context
                     .project_allowlist_allows(project.project_id.as_str())
             })
-            .map(|project| inspect_allowed_project(&self.runtime_home, project))
+            .map(inspect_allowed_project)
             .collect())
     }
 
@@ -1023,7 +1056,7 @@ impl McpAdapter {
                 created_at: String::new(),
                 project,
             };
-            let availability = inspect_allowed_project(&self.runtime_home, &project_record);
+            let availability = inspect_allowed_project(&project_record);
             return selected_project_from_availability(availability);
         }
 
@@ -1047,10 +1080,7 @@ impl McpAdapter {
             ));
         }
 
-        selected_project_from_availability(inspect_allowed_project(
-            &self.runtime_home,
-            &projects[0],
-        ))
+        selected_project_from_availability(inspect_allowed_project(&projects[0]))
     }
 
     fn ensure_mode_allows(
@@ -1090,6 +1120,17 @@ impl McpAdapter {
             tool_name: tool_name.to_owned(),
             source,
         })
+    }
+}
+
+fn startup_observation_storage_is_readonly(error: &McpAdapterError) -> bool {
+    let McpAdapterError::Store(error) = error else {
+        return false;
+    };
+    match error {
+        StoreError::Io(error) => error.kind() == io::ErrorKind::PermissionDenied,
+        StoreError::Sqlite(_) => error.classification().category == "database_access_denied",
+        _ => false,
     }
 }
 

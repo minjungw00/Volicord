@@ -5,6 +5,10 @@ use std::{
     io::{BufReader, Cursor},
 };
 
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+
+use crate::adapter::StartupObservationResult;
 use crate::local_http::{
     validate_bearer_token_text, validate_local_http_server_config, LOCAL_HTTP_CONTAINER_WARNING,
     LOCAL_HTTP_EXPOSURE_WARNING, LOCAL_HTTP_GENERATED_TOKEN_WARNING,
@@ -184,7 +188,7 @@ fn connection_context_resolves_and_preflight_reports_allowed_project() -> Result
 }
 
 #[test]
-fn mcp_host_startup_observation_is_recorded_before_tool_calls() -> Result<(), Box<dyn Error>> {
+fn mcp_host_startup_records_observation_when_writable() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-stdio-startup-watch")?;
     let adapter = adapter(&fixture)?;
     let input = Cursor::new(Vec::<u8>::new());
@@ -208,6 +212,78 @@ fn mcp_host_startup_observation_is_recorded_before_tool_calls() -> Result<(), Bo
         true
     );
     assert_eq!(metadata["scan_summary"]["follows_symlinks"], false);
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn mcp_startup_allows_tools_list_with_readonly_project_state() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-readonly-tools-list")?;
+    let adapter = adapter(&fixture)?;
+    let _guard = make_project_state_readonly(&fixture)?;
+
+    let report = preflight_check(
+        |name| {
+            if name == "VOLICORD_HOME" {
+                Some(fixture.runtime_home_path().as_os_str().to_owned())
+            } else {
+                None
+            }
+        },
+        fixture.runtime_home_path(),
+        fixture.connection_id(),
+        Some(fixture.project_id()),
+    )?;
+    assert!(report.contains("available_projects: 1"));
+    assert!(report.contains("project[0].available: true"));
+
+    let input = Cursor::new(json_lines(&[
+        initialize_request(1, json!({})),
+        request(2, "tools/list", json!({})),
+    ])?);
+    let mut output = Vec::new();
+
+    run_stdio(adapter, BufReader::new(input), &mut output)?;
+
+    let responses = stdio_responses(&output)?;
+    assert_eq!(responses.len(), 2);
+    assert_eq!(
+        responses[0]["result"]["protocolVersion"],
+        json!(SUPPORTED_PROTOCOL_VERSION)
+    );
+    assert!(responses[1]["result"]["tools"].is_array());
+    assert!(responses[1].get("error").is_none());
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn mcp_startup_observation_write_failure_is_nonfatal() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-readonly-startup-observation")?;
+    let adapter = adapter(&fixture)?;
+    let _guard = make_project_state_readonly(&fixture)?;
+
+    let result = adapter.startup_session_watch_observation_best_effort("session_readonly_startup");
+
+    assert!(
+        matches!(
+            result,
+            StartupObservationResult::SkippedReadonlyStorage
+                | StartupObservationResult::FailedButNonfatal { .. }
+        ),
+        "readonly startup observation should be degraded, got {result:?}"
+    );
+    let input = Cursor::new(json_lines(&[
+        initialize_request(1, json!({})),
+        request(2, "tools/list", json!({})),
+    ])?);
+    let mut output = Vec::new();
+
+    run_stdio(adapter, BufReader::new(input), &mut output)?;
+
+    let responses = stdio_responses(&output)?;
+    assert_eq!(responses.len(), 2);
+    assert!(responses[1]["result"]["tools"].is_array());
     Ok(())
 }
 
@@ -1818,6 +1894,61 @@ fn write_product_file(
     }
     fs::write(absolute, contents)?;
     Ok(())
+}
+
+#[cfg(unix)]
+struct ReadOnlyProjectStateGuard {
+    state_db_path: std::path::PathBuf,
+    state_dir: std::path::PathBuf,
+    old_state_mode: u32,
+    old_dir_mode: u32,
+}
+
+#[cfg(unix)]
+impl Drop for ReadOnlyProjectStateGuard {
+    fn drop(&mut self) {
+        let _ = fs::set_permissions(
+            &self.state_dir,
+            fs::Permissions::from_mode(self.old_dir_mode),
+        );
+        let _ = fs::set_permissions(
+            &self.state_db_path,
+            fs::Permissions::from_mode(self.old_state_mode),
+        );
+    }
+}
+
+#[cfg(unix)]
+fn make_project_state_readonly(
+    fixture: &CoreFixture,
+) -> Result<ReadOnlyProjectStateGuard, Box<dyn Error>> {
+    let state_db_path = fixture
+        .runtime_home_path()
+        .join("projects")
+        .join(fixture.project_id())
+        .join("state.sqlite");
+    let state_dir = state_db_path
+        .parent()
+        .expect("project state database should have a parent directory")
+        .to_path_buf();
+    let old_state_mode = fs::metadata(&state_db_path)?.permissions().mode();
+    let old_dir_mode = fs::metadata(&state_dir)?.permissions().mode();
+
+    fs::set_permissions(
+        &state_db_path,
+        fs::Permissions::from_mode(old_state_mode & !0o222),
+    )?;
+    fs::set_permissions(
+        &state_dir,
+        fs::Permissions::from_mode(old_dir_mode & !0o222),
+    )?;
+
+    Ok(ReadOnlyProjectStateGuard {
+        state_db_path,
+        state_dir,
+        old_state_mode,
+        old_dir_mode,
+    })
 }
 
 fn initialize_request(id: u64, capabilities: Value) -> Value {

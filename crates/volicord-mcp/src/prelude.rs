@@ -43,6 +43,7 @@ pub(crate) use volicord_store::{
         SessionWatchStatus as StoreSessionWatchStatus, WatchBaselineCreate, WatchBaselineRecord,
         WatchSnapshotOptions,
     },
+    sqlite::open_project_state_database_read_only,
     StoreError,
 };
 pub(crate) use volicord_types::{

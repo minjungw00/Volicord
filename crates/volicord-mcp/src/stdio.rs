@@ -40,9 +40,11 @@ where
     W: Write,
 {
     let mut state = ConnectionState::default();
-    if options.startup_session_watch {
-        adapter.initialize_startup_session_watch(&state.session_id)?;
-    }
+    let _startup_observation = if options.startup_session_watch {
+        adapter.startup_session_watch_observation_best_effort(&state.session_id)
+    } else {
+        StartupObservationResult::SkippedVerificationProbe
+    };
     let mut lines = reader.lines();
 
     while let Some(line) = lines.next() {

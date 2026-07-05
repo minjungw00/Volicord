@@ -78,6 +78,21 @@ pub fn open_project_state_database(path: impl AsRef<Path>) -> StoreResult<Connec
     Ok(conn)
 }
 
+/// Opens an existing project `state.sqlite` for read-only validation.
+pub fn open_project_state_database_read_only(path: impl AsRef<Path>) -> StoreResult<Connection> {
+    let path = path.as_ref();
+    if !path.exists() {
+        return Err(StoreError::NotFound {
+            entity: "project_state_database",
+            id: path.display().to_string(),
+        });
+    }
+
+    let conn = open_read_only_database(path)?;
+    validate_project_state_schema(&conn)?;
+    Ok(conn)
+}
+
 /// Opens an existing SQLite database for inspection without creating or migrating it.
 pub fn open_read_only_database(path: impl AsRef<Path>) -> StoreResult<Connection> {
     let conn = Connection::open_with_flags(
