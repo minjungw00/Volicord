@@ -766,7 +766,11 @@ fn connection_status_downgrades_relative_codex_hook_command() -> Result<(), Box<
     assert_eq!(value["states"]["control_surface"]["os_enforced"], false);
     assert_eq!(value["primary_next_action"]["id"], "guard_hook_path_safety");
     assert_eq!(value["summary_card"]["transport"], "Agent Connection");
-    assert!(value["summary_card"]["next"]
+    assert_eq!(
+        value["summary_card"]["next"],
+        "Regenerate cwd-independent detective host-hook commands, then rerun verification."
+    );
+    assert!(!value["summary_card"]["next"]
         .as_str()
         .expect("summary next should be text")
         .contains("volicord init --host codex --repo"));
@@ -1131,6 +1135,27 @@ fn connection_verify_codex_trusted_project_omits_trust_next_step() -> Result<(),
         value["primary_next_action"]["id"],
         "host_mcp_command_path_unconfirmed"
     );
+    assert_eq!(
+        value["primary_next_action"]["instruction"],
+        "Make `volicord` available on the PATH seen by the Codex host process, or configure the MCP command so the host can launch it; restart, reload, resume, or start a new Codex session in this repository; confirm Volicord tools are exposed in the active Codex session"
+    );
+    assert_eq!(value["primary_next_action"]["command"], verify_command);
+    assert!(!value["primary_next_action"]["instruction"]
+        .as_str()
+        .expect("primary action instruction should be text")
+        .contains("volicord connection verify"));
+    assert_eq!(
+        value["summary_card"]["next"],
+        "Codex host runtime has not been observed; make the MCP command launchable by the Codex host process, restart or reload Codex, then rerun verification."
+    );
+    assert!(!value["summary_card"]["next"]
+        .as_str()
+        .expect("summary next should be text")
+        .contains("project configuration"));
+    assert!(!value["summary_card"]["next"]
+        .as_str()
+        .expect("summary next should be text")
+        .contains("volicord connection verify"));
     assert_ne!(value["primary_next_action"]["id"], "host_trust_required");
     assert!(!value["actions"]
         .as_array()
@@ -1295,12 +1320,29 @@ fn connection_verify_codex_untrusted_project_requests_trust() -> Result<(), Box<
     )?;
     assert_success(&verify);
     let value = json_stdout(&verify)?;
+    let verify_command = format!(
+        "volicord connection verify codex --shared --repo {}",
+        repo_root.display()
+    );
 
     assert_eq!(
         value["verification"]["project_trust"]["status"],
         "untrusted"
     );
     assert_eq!(value["primary_next_action"]["id"], "host_trust_required");
+    assert_eq!(
+        value["primary_next_action"]["instruction"],
+        "Codex project trust is untrusted in the Codex user configuration"
+    );
+    assert_eq!(value["primary_next_action"]["command"], verify_command);
+    assert_eq!(
+        value["summary_card"]["next"],
+        "The project must be trusted before project-scoped Codex configuration loads; then rerun verification."
+    );
+    assert!(!value["primary_next_action"]["instruction"]
+        .as_str()
+        .expect("primary action instruction should be text")
+        .contains("volicord connection verify"));
     assert!(value["actions"]
         .as_array()
         .expect("actions should be an array")
@@ -1329,6 +1371,10 @@ fn connection_verify_codex_untrusted_project_requests_trust() -> Result<(), Box<
     let value = json_stdout(&status)?;
     assert_eq!(value["status"], "action_required");
     assert_eq!(value["primary_next_action"]["id"], "host_trust_required");
+    assert_eq!(
+        value["summary_card"]["next"],
+        "The project must be trusted before project-scoped Codex configuration loads; then rerun verification."
+    );
     assert_eq!(value["checks"][1]["id"], "codex_project_trust");
     assert_eq!(value["checks"][1]["details"]["status"], "untrusted");
     Ok(())
@@ -1685,6 +1731,10 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
 
     assert_success(&output);
     let value = json_stdout(&output)?;
+    let verify_command = format!(
+        "volicord connection verify codex --shared --repo {}",
+        repo_root.display()
+    );
     assert_eq!(value["action"], "init");
     assert_eq!(value["host"], "codex");
     assert_eq!(value["status"], "action_required");
@@ -1719,10 +1769,15 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     assert_eq!(value["states"]["prompt_capture"], "reload_required");
     assert_eq!(value["states"]["host_reload_required"], true);
     assert_eq!(value["primary_next_action"]["id"], "reload_required");
-    assert!(value["primary_next_action"]["instruction"]
+    assert_eq!(
+        value["primary_next_action"]["instruction"],
+        "Restart or reload codex so it loads the Volicord MCP and host hook configuration"
+    );
+    assert_eq!(value["primary_next_action"]["command"], verify_command);
+    assert!(!value["primary_next_action"]["instruction"]
         .as_str()
         .expect("primary action instruction should be text")
-        .contains("then run volicord connection verify codex --shared --repo"));
+        .contains("volicord connection verify"));
     assert_eq!(value["profile"]["status"], "created");
     assert_eq!(value["connection"]["host_kind"], "codex");
     assert_eq!(value["connection"]["connection_intent"], "shared");
@@ -1779,10 +1834,6 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     assert!(init_text.contains("Next:"));
     assert!(init_text.contains("Open, restart, or reload Codex in this repository."));
     assert!(init_text.contains("Trust or approve the project configuration if Codex asks."));
-    let verify_command = format!(
-        "volicord connection verify codex --shared --repo {}",
-        repo_root.display()
-    );
     assert!(init_text.contains(&format!("  3. Run:\n     {verify_command}\n")));
     assert!(!init_text.contains(&format!("Run {verify_command}.")));
     assert!(init_text.contains("Limits:"));
@@ -1833,14 +1884,14 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
         status_without_intent_json["primary_next_action"]["id"],
         "reload_required"
     );
-    assert!(status_without_intent_json["summary_card"]["next"]
+    assert_eq!(
+        status_without_intent_json["summary_card"]["next"],
+        "Restart or reload Codex so it loads Volicord configuration, then rerun verification."
+    );
+    assert!(!status_without_intent_json["summary_card"]["next"]
         .as_str()
         .expect("summary next should be text")
-        .contains("Restart or reload codex"));
-    assert!(status_without_intent_json["summary_card"]["next"]
-        .as_str()
-        .expect("summary next should be text")
-        .contains("then run volicord connection verify codex --shared --repo"));
+        .contains("volicord connection verify"));
     assert_eq!(
         status_without_intent_json["states"]["hook_config"],
         "installed"
@@ -2968,10 +3019,10 @@ fn connection_verify_reports_missing_mcp_config_as_primary_action() -> Result<()
     assert_eq!(value["states"]["mcp_config"], "missing");
     assert_eq!(value["primary_next_action"]["id"], "mcp_config_missing");
     assert_eq!(value["summary_card"]["recording"], "diagnostic_observation");
-    assert!(value["summary_card"]["next"]
-        .as_str()
-        .expect("summary next should be text")
-        .contains("volicord init --host codex --repo"));
+    assert_eq!(
+        value["summary_card"]["next"],
+        "Reinstall missing MCP configuration, then rerun verification."
+    );
     assert_eq!(
         value["primary_next_action"]["command"],
         format!(
@@ -2979,10 +3030,14 @@ fn connection_verify_reports_missing_mcp_config_as_primary_action() -> Result<()
             path_text(&repo_root)
         )
     );
-    assert!(value["primary_next_action"]["instruction"]
+    assert_eq!(
+        value["primary_next_action"]["instruction"],
+        "Reinstall missing MCP configuration."
+    );
+    assert!(!value["primary_next_action"]["instruction"]
         .as_str()
         .expect("instruction should be text")
-        .contains("volicord init --host codex --repo"));
+        .contains("volicord init"));
     Ok(())
 }
 
@@ -3098,10 +3153,14 @@ fn connection_status_reports_missing_guard_files_as_primary_action() -> Result<(
     assert_eq!(value["states"]["guard_installation"], "files_missing");
     assert_eq!(value["states"]["prompt_capture"], "not_configured");
     assert_eq!(value["primary_next_action"]["id"], "guard_files_missing");
-    assert!(value["summary_card"]["next"]
+    assert_eq!(
+        value["summary_card"]["next"],
+        "Reinstall missing detective host-hook files, then rerun verification."
+    );
+    assert!(!value["summary_card"]["next"]
         .as_str()
         .expect("summary next should be text")
-        .contains("reinstall missing detective host-hook files"));
+        .contains("volicord init"));
     assert!(value["host_hook"]["missing_files"]
         .as_array()
         .expect("missing_files should be an array")

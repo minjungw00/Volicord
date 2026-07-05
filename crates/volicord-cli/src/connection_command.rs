@@ -5329,9 +5329,11 @@ fn render_connection_output(data: ConnectionOutput<'_>) -> Result<String, Connec
         Some(data.connection),
         data.projects,
     );
+    let host_display = connection_host_display_name(data.connection);
     let summary_card = connection_diagnostic_summary_card(
         data.action,
         &data.guard_state,
+        &host_display,
         primary_next_action.as_ref(),
     );
     match data.format {
@@ -5800,11 +5802,7 @@ fn append_compact_next_steps(
             push_optional_numbered_command(output, &mut index, "Run", command.as_deref());
         }
         _ => {
-            push_numbered_text(
-                output,
-                &mut index,
-                compact_next_instruction_without_command(action),
-            );
+            push_numbered_text(output, &mut index, action.instruction.trim_end_matches('.'));
             push_optional_numbered_command(output, &mut index, "Run", command.as_deref());
         }
     }
@@ -5825,20 +5823,6 @@ fn push_optional_numbered_command(
         output.push_str(&format!("  {}. {label}:\n     {command}\n", *index));
         *index += 1;
     }
-}
-
-fn compact_next_instruction_without_command(action: &PrimaryNextAction) -> String {
-    let mut instruction = action.instruction.clone();
-    if let Some(command) = &action.command {
-        for pattern in [
-            format!("; then run {command}."),
-            format!(" then run {command}."),
-            format!("Run {command}."),
-        ] {
-            instruction = instruction.replace(&pattern, "");
-        }
-    }
-    instruction.trim().to_owned()
 }
 
 fn compact_agent_status_text(status: AgentResultStatus) -> &'static str {
@@ -6234,7 +6218,7 @@ fn render_init_output(data: InitOutput<'_>) -> Result<String, ConnectionCommandE
     let mut primary_next_action =
         primary_connection_action(&actions, data.verification, &guard_state, None, &[]);
     if let Some(action) = primary_next_action.as_mut() {
-        append_init_verify_followup(action, data.host_kind, data.repo_root);
+        attach_init_verify_command(action, data.host_kind, data.repo_root);
     }
     let repo_file_changes = init_repo_file_changes(&data);
     match data.format {
@@ -7132,7 +7116,7 @@ fn primary_connection_action(
             "missing" => {
                 return Some(connection_repair_action(
                     "mcp_config_missing",
-                    "Run volicord init --host <host> --repo <path> to reinstall missing MCP configuration.",
+                    "Reinstall missing MCP configuration.",
                     connection,
                     projects,
                 ));
@@ -7140,7 +7124,7 @@ fn primary_connection_action(
             "changed" => {
                 return Some(connection_repair_action(
                     "mcp_config_changed",
-                    "Review the changed MCP configuration, then run volicord init --host <host> --repo <path> if Volicord should manage it.",
+                    "Review the changed MCP configuration and repair it if Volicord should manage it.",
                     connection,
                     projects,
                 ));
@@ -7148,7 +7132,7 @@ fn primary_connection_action(
             "malformed" => {
                 return Some(connection_repair_action(
                     "mcp_config_malformed",
-                    "Repair the malformed MCP configuration, then run volicord init --host <host> --repo <path>.",
+                    "Repair the malformed MCP configuration.",
                     connection,
                     projects,
                 ));
@@ -7186,7 +7170,7 @@ fn primary_connection_action(
                 "missing" => {
                     return Some(connection_repair_action(
                         "mcp_config_missing",
-                        "Run volicord init --host <host> --repo <path> to reinstall missing MCP configuration.",
+                        "Reinstall missing MCP configuration.",
                         Some(connection),
                         projects,
                     ));
@@ -7194,7 +7178,7 @@ fn primary_connection_action(
                 "changed" => {
                     return Some(connection_repair_action(
                         "mcp_config_changed",
-                        "Review the changed MCP configuration, then run volicord init --host <host> --repo <path> if Volicord should manage it.",
+                        "Review the changed MCP configuration and repair it if Volicord should manage it.",
                         Some(connection),
                         projects,
                     ));
@@ -7202,7 +7186,7 @@ fn primary_connection_action(
                 "malformed" => {
                     return Some(connection_repair_action(
                         "mcp_config_malformed",
-                        "Repair the malformed MCP configuration, then run volicord init --host <host> --repo <path>.",
+                        "Repair the malformed MCP configuration.",
                         Some(connection),
                         projects,
                     ));
@@ -7259,13 +7243,13 @@ fn primary_connection_action(
     {
         let mut primary =
             PrimaryNextAction::new(user_action_id(action.kind), action.message.clone());
-        append_connection_verify_followup(&mut primary, connection, projects);
+        attach_connection_verify_command(&mut primary, connection, projects);
         return Some(primary);
     }
     actions.first().map(|action| {
         let mut primary =
             PrimaryNextAction::new(user_action_id(action.kind), action.message.clone());
-        append_connection_verify_followup(&mut primary, connection, projects);
+        attach_connection_verify_command(&mut primary, connection, projects);
         primary
     })
 }
@@ -7273,6 +7257,7 @@ fn primary_connection_action(
 fn connection_diagnostic_summary_card(
     action: &str,
     guard_state: &GuardOperationalState,
+    host_display: &str,
     primary_next_action: Option<&PrimaryNextAction>,
 ) -> Option<SummaryCard> {
     if !matches!(action, "status" | "verified") {
@@ -7288,15 +7273,72 @@ fn connection_diagnostic_summary_card(
         changes: "not_selected".to_owned(),
         close_status: "not_selected".to_owned(),
         transport: "Agent Connection".to_owned(),
-        next: primary_next_action
-            .map(|action| action.instruction.clone())
-            .unwrap_or_else(|| "none".to_owned()),
+        next: connection_summary_next_text(primary_next_action, host_display),
         next_action: None,
         guarantee: DIAGNOSTIC_SUMMARY_GUARANTEE.to_owned(),
     })
 }
 
-fn append_connection_verify_followup(
+fn connection_summary_next_text(
+    primary_next_action: Option<&PrimaryNextAction>,
+    host_display: &str,
+) -> String {
+    let Some(action) = primary_next_action else {
+        return "none".to_owned();
+    };
+    match action.id.as_str() {
+        "host_mcp_command_path_unconfirmed" => format!(
+            "{host_display} host runtime has not been observed; make the MCP command launchable by the {host_display} host process, restart or reload {host_display}, then rerun verification."
+        ),
+        "host_runtime_not_observed" => format!(
+            "{host_display} host runtime has not been observed; restart or reload {host_display}, then rerun verification."
+        ),
+        "host_trust_required" => format!(
+            "The project must be trusted before project-scoped {host_display} configuration loads; then rerun verification."
+        ),
+        "project_approval_required" => format!(
+            "The project must be approved before project-scoped {host_display} configuration loads; then rerun verification."
+        ),
+        "reload_required" => format!(
+            "Restart or reload {host_display} so it loads Volicord configuration, then rerun verification."
+        ),
+        "mcp_config_missing" => {
+            "Reinstall missing MCP configuration, then rerun verification.".to_owned()
+        }
+        "mcp_config_changed" => {
+            "Review the changed MCP configuration and repair it if Volicord should manage it, then rerun verification.".to_owned()
+        }
+        "mcp_config_malformed" => {
+            "Repair the malformed MCP configuration, then rerun verification.".to_owned()
+        }
+        "guard_files_missing" => {
+            "Reinstall missing detective host-hook files, then rerun verification.".to_owned()
+        }
+        "guard_files_stale" => {
+            "Refresh stale detective host-hook files, then rerun verification.".to_owned()
+        }
+        "guard_files_broken" => {
+            "Repair broken detective host-hook files, then rerun verification.".to_owned()
+        }
+        "guard_hook_path_safety" => {
+            "Regenerate cwd-independent detective host-hook commands, then rerun verification."
+                .to_owned()
+        }
+        "guard_capability_degraded" => {
+            "Prepare a supported detective host configuration or use the record profile, then rerun verification.".to_owned()
+        }
+        _ => action.instruction.clone(),
+    }
+}
+
+fn connection_host_display_name(connection: &AgentConnectionRecord) -> String {
+    parse_host_kind(&connection.host_kind)
+        .map(public_host_display_name)
+        .unwrap_or_else(|_| public_host_name_text(&connection.host_kind))
+        .to_owned()
+}
+
+fn attach_connection_verify_command(
     action: &mut PrimaryNextAction,
     connection: Option<&AgentConnectionRecord>,
     projects: &[ConnectionProjectRecord],
@@ -7307,10 +7349,10 @@ fn append_connection_verify_followup(
     let Some(command) = connection_verify_command(connection, projects) else {
         return;
     };
-    append_verify_followup(action, command);
+    set_verify_command(action, command);
 }
 
-fn append_init_verify_followup(
+fn attach_init_verify_command(
     action: &mut PrimaryNextAction,
     host_kind: HostKind,
     repo_root: &Path,
@@ -7323,7 +7365,7 @@ fn append_init_verify_followup(
         public_host_label(host_kind),
         repo_root.display()
     );
-    append_verify_followup(action, command);
+    set_verify_command(action, command);
 }
 
 fn next_action_should_verify(id: &str) -> bool {
@@ -7337,12 +7379,7 @@ fn next_action_should_verify(id: &str) -> bool {
     )
 }
 
-fn append_verify_followup(action: &mut PrimaryNextAction, command: String) {
-    if action.instruction.contains("connection verify") {
-        return;
-    }
-    let instruction = action.instruction.trim_end_matches('.');
-    action.instruction = format!("{instruction}; then run {command}.");
+fn set_verify_command(action: &mut PrimaryNextAction, command: String) {
     action.command = Some(command);
 }
 
@@ -7385,9 +7422,7 @@ fn guard_degraded_action(
     );
     PrimaryNextAction::new(
         "guard_capability_degraded",
-        format!(
-            "Use --profile record if host hooks are not needed, or prepare a supported host, platform, and configuration for detective before running {command}."
-        ),
+        "Use --profile record if host hooks are not needed, or prepare a supported host, platform, and configuration for detective before rerunning init.",
     )
     .with_command(command)
 }
@@ -7421,34 +7456,23 @@ fn connection_repair_action(
             project.project.repo_root.display()
         )
     };
-    let instruction = repair_instruction(id, fallback, &command);
+    let instruction = repair_instruction(id, fallback);
     PrimaryNextAction::new(id, instruction).with_command(command)
 }
 
-fn repair_instruction(id: &str, fallback: &str, command: &str) -> String {
+fn repair_instruction(id: &str, fallback: &str) -> String {
     match id {
-        "mcp_config_missing" => {
-            format!("Run {command} to reinstall missing MCP configuration.")
-        }
+        "mcp_config_missing" => "Reinstall missing MCP configuration.".to_owned(),
         "mcp_config_changed" => {
-            format!(
-                "Review the changed MCP configuration, then run {command} if Volicord should manage it."
-            )
+            "Review the changed MCP configuration and repair it if Volicord should manage it."
+                .to_owned()
         }
-        "mcp_config_malformed" => {
-            format!("Repair the malformed MCP configuration, then run {command}.")
-        }
-        "guard_files_missing" => {
-            format!("Run {command} to reinstall missing detective host-hook files.")
-        }
-        "guard_files_stale" => {
-            format!("Run {command} to refresh stale detective host-hook files.")
-        }
-        "guard_files_broken" => {
-            format!("Repair broken detective host-hook files, then run {command}.")
-        }
+        "mcp_config_malformed" => "Repair the malformed MCP configuration.".to_owned(),
+        "guard_files_missing" => "Reinstall missing detective host-hook files.".to_owned(),
+        "guard_files_stale" => "Refresh stale detective host-hook files.".to_owned(),
+        "guard_files_broken" => "Repair broken detective host-hook files.".to_owned(),
         "guard_hook_path_safety" => {
-            format!("Run {command} to regenerate cwd-independent detective host-hook commands.")
+            "Regenerate cwd-independent detective host-hook commands.".to_owned()
         }
         _ => fallback.to_owned(),
     }
