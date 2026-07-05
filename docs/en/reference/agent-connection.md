@@ -206,6 +206,11 @@ Rules:
   while Volicord still has not observed the Codex host process start the MCP
   server, and a PATH-resolved command such as `volicord` must be launchable in
   the environment that starts the MCP server.
+- Codex can know the MCP server entry or log startup completion while the
+  active session still has no cached tool snapshot or listed `volicord.*`
+  tools. CLI-side MCP preflight, direct handshake, and host runtime observation
+  do not replace active-session tool-list inspection and Codex MCP
+  startup/tool-list logs.
 - Human text status and verification output is a diagnostic summary for
   interactive users. For `volicord connection status` and
   `volicord connection verify`, read `Status`, `Checks`, `Next`, and

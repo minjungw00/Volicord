@@ -471,6 +471,49 @@ elicitation을 사용할 수 있다고 봅니다. 다른 capability 항목은 �
 사용할 수 있습니다. 중복 `initialize` 요청은 유효하지 않습니다. 너무 이르거나 잘못된
 `notifications/initialized` notification은 연결을 준비 상태로 만들지 않습니다.
 
+<a id="manual-stdio-lifecycle-probe"></a>
+### 수동 stdio 수명주기 probe
+
+이 probe는 설정된 Agent Connection을 활성 Codex host process 밖에서 문제 해결할 때만
+사용합니다. `<repo>`, `<connection_id>`, `<project_id>`를 확인하려는 connection의 값으로
+바꿉니다. 프로세스 환경이 이미 의도한 Runtime Home을 선택하지 않는다면 `<repo>`에서
+실행합니다. `VOLICORD_MCP_VERIFICATION=1`은 실행을 verification probe로 표시합니다. 일반
+Agent Connection과 프로젝트 시작 점검은 유지하지만, 이 프로세스를 Codex host runtime
+관찰로 기록하거나 시작 session-watch baseline을 만들지는 않습니다.
+
+`initialize` 뒤 `tools/list`를 보내면 성공한 JSON-RPC 응답과 모드에 맞는 `volicord.*`
+도구 목록을 반환해야 합니다.
+
+```sh
+cd <repo>
+printf '%s\n' \
+  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"volicord-lifecycle-probe","version":"0.0.0"}}}' \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
+  | VOLICORD_MCP_VERIFICATION=1 volicord mcp --stdio --connection <connection_id> --project <project_id>
+```
+
+`initialize`, `notifications/initialized`, `tools/list` 순서도 성공해야 합니다.
+
+```sh
+cd <repo>
+printf '%s\n' \
+  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"volicord-lifecycle-probe","version":"0.0.0"}}}' \
+  '{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}' \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
+  | VOLICORD_MCP_VERIFICATION=1 volicord mcp --stdio --connection <connection_id> --project <project_id>
+```
+
+`notifications/initialized` 전에 `tools/call`을 보내면 JSON-RPC Invalid Request로 실패해야
+합니다. Initialized notification 전에는 도구 실행이 준비되지 않았기 때문입니다.
+
+```sh
+cd <repo>
+printf '%s\n' \
+  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"volicord-lifecycle-probe","version":"0.0.0"}}}' \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"volicord.status","arguments":{}}}' \
+  | VOLICORD_MCP_VERIFICATION=1 volicord mcp --stdio --connection <connection_id> --project <project_id>
+```
+
 지원되는 MCP 요청 메서드:
 
 - `initialize`

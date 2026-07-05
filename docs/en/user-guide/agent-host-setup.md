@@ -64,6 +64,7 @@ run, or another Codex host environment.
 | Codex project trust | Codex user configuration says the repository is `trusted`, `untrusted`, `unknown`, or otherwise not confirmed. | A trusted entry is not proof that a running Codex host process has reloaded the project configuration. |
 | Codex host runtime observed | Volicord has observed a project-bound Codex host process start the Volicord MCP server for this connection. | A terminal-side CLI handshake alone is not that observation. |
 | Volicord tools exposed in the active Codex session | The active Codex session can see the Volicord MCP tools for the selected mode. | File writes, user approval, correctness, test sufficiency, or future model tool choice. |
+| Codex tool snapshot or listing issue | Codex MCP startup/tool-list logs show that the server entry is known or startup completed, but the active Codex session still has no cached or listed `volicord.*` tools. | CLI preflight, project trust, host runtime observation, or a `startup_complete` log alone is not proof of active-session tool registration. |
 | Host MCP command launchability | The MCP command is launchable in the environment that launches the MCP server. A PATH-resolved command such as `volicord` must be available on the PATH seen by the Codex host process. | A local terminal PATH check proves only that terminal environment, not an IDE, non-interactive, remote, or executor-backed host environment. |
 
 Examples under this generic host process model:

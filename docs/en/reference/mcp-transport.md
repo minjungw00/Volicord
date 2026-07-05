@@ -529,6 +529,53 @@ after the ready transition. `tools/call` is available only after
 `initialize` request is invalid. An early or malformed
 `notifications/initialized` notification does not make the connection ready.
 
+<a id="manual-stdio-lifecycle-probe"></a>
+### Manual Stdio Lifecycle Probe
+
+Use this probe only for troubleshooting a configured Agent Connection outside
+the active Codex host process. Replace `<repo>`, `<connection_id>`, and
+`<project_id>` with values from the connection you are checking. Run from
+`<repo>` unless the process environment already selects the intended Runtime
+Home. `VOLICORD_MCP_VERIFICATION=1` marks the launch as a verification probe:
+it keeps normal Agent Connection and project startup checks, but does not
+record the process as a Codex host runtime observation or create a startup
+session-watch baseline.
+
+`initialize` followed by `tools/list` should return successful JSON-RPC
+responses and list the mode-appropriate `volicord.*` tools:
+
+```sh
+cd <repo>
+printf '%s\n' \
+  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"volicord-lifecycle-probe","version":"0.0.0"}}}' \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
+  | VOLICORD_MCP_VERIFICATION=1 volicord mcp --stdio --connection <connection_id> --project <project_id>
+```
+
+`initialize`, then `notifications/initialized`, then `tools/list` should also
+succeed:
+
+```sh
+cd <repo>
+printf '%s\n' \
+  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"volicord-lifecycle-probe","version":"0.0.0"}}}' \
+  '{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}' \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
+  | VOLICORD_MCP_VERIFICATION=1 volicord mcp --stdio --connection <connection_id> --project <project_id>
+```
+
+`tools/call` before `notifications/initialized` should fail with JSON-RPC
+Invalid Request, because tool execution is not ready before the initialized
+notification:
+
+```sh
+cd <repo>
+printf '%s\n' \
+  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"volicord-lifecycle-probe","version":"0.0.0"}}}' \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"volicord.status","arguments":{}}}' \
+  | VOLICORD_MCP_VERIFICATION=1 volicord mcp --stdio --connection <connection_id> --project <project_id>
+```
+
 Supported MCP request methods:
 
 - `initialize`

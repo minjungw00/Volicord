@@ -57,6 +57,7 @@ session, Codex IDE extension session, 비대화식 Codex run, 그 밖의 Codex �
 | Codex 프로젝트 trust | Codex 사용자 설정이 저장소를 `trusted`, `untrusted`, `unknown`, 또는 그 밖의 미확인 상태로 보고합니다. | `trusted` 항목만으로 실행 중인 Codex 호스트 프로세스가 프로젝트 설정을 reload했다는 증명이 되지 않습니다. |
 | Codex host runtime 관찰 | Volicord가 이 연결에 대해 프로젝트에 묶인 Codex 호스트 프로세스가 Volicord MCP 서버를 시작한 것을 관찰했습니다. | 터미널 쪽 CLI handshake만으로는 이 관찰이 아닙니다. |
 | 활성 Codex session의 Volicord 도구 노출 | 활성 Codex session이 선택된 모드의 Volicord MCP 도구를 볼 수 있습니다. | 파일 쓰기, 사용자 승인, 정확성, 테스트 충분성, 이후 모델의 도구 선택을 증명하지 않습니다. |
+| Codex 도구 snapshot 또는 listing 문제 | Codex MCP startup/tool-list log에는 서버 항목이 알려졌거나 시작이 완료되었다고 나오지만 활성 Codex session에는 캐시되었거나 나열된 `volicord.*` 도구가 없습니다. | CLI preflight, 프로젝트 trust, host runtime 관찰, 또는 `startup_complete` log만으로 활성 session 도구 등록이 증명되지는 않습니다. |
 | 호스트 MCP 명령 launch 가능성 | MCP 명령이 MCP 서버를 시작하는 환경에서 실행 가능해야 합니다. `volicord`처럼 `PATH`로 찾는 명령은 `Codex host process`가 보는 PATH에 있어야 합니다. | 로컬 터미널 PATH 점검은 그 터미널 환경만 증명하며 IDE, 비대화식, 원격, executor-backed 호스트 환경을 증명하지 않습니다. |
 
 이 일반 호스트 프로세스 모델에서의 예시는 아래와 같습니다.

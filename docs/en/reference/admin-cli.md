@@ -508,6 +508,7 @@ Codex connection verification keeps these diagnostic concepts separate:
 | Codex host runtime observation | `Codex host runtime` | `verification.host_runtime` and a `checks[]` entry with `id=codex_host_runtime` when available | Volicord has or has not observed a Codex host process start the Volicord MCP server for the selected connection. |
 | Host MCP command launchability | `Host MCP command` | `verification.host_mcp_command` and a `checks[]` entry with `id=host_mcp_command` when available | The configured MCP command is absolute, PATH-resolved, remote/executor-backed, unknown, or malformed, and can carry launch-risk details such as `host_path_unconfirmed`. |
 | Active-session tool exposure | `Next` action text when confirmation is required | `primary_next_action`, `actions[]`, and `connection.user_actions[]` | The user may still need to confirm that Volicord tools are exposed in the active Codex session. |
+| Codex tool snapshot or listing issue | `Next` action text can direct the user to Codex MCP startup/tool-list logs | Codex host logs, not a Volicord-owned JSON field | Codex may know the MCP server exists or log `startup_complete` while the active session still has no cached tool snapshot or listed `volicord.*` tools. |
 
 Verification output must make checks and user actions first-class diagnostics.
 For connection status and verification, default text output uses compact
@@ -550,7 +551,8 @@ MCP handshake alone must not be described as a `complete` Agent Connection. It
 is startup validation for the MCP process from the CLI-observable environment
 only. It does not by itself prove that Codex, Claude Code, or another external
 host has loaded, trusted, approved, initialized, or exposed the project
-configuration.
+configuration. For Codex, it also does not prove that the active session
+cached a tool snapshot or listed `volicord.*` tools.
 
 <a id="authority-bundle-export"></a>
 ## Authority bundle export

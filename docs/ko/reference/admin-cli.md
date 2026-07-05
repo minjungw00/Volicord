@@ -464,6 +464,7 @@ Codex 연결 검증은 아래 진단 개념을 분리해 유지합니다.
 | Codex host runtime 관찰 | `Codex host runtime` | 가능할 때 `verification.host_runtime`과 `id=codex_host_runtime`인 `checks[]` 항목 | Volicord가 선택된 연결에 대해 Codex 호스트 프로세스가 Volicord MCP 서버를 시작했는지 관찰한 상태입니다. |
 | 호스트 MCP 명령 launch 가능성 | `Host MCP command` | 가능할 때 `verification.host_mcp_command`와 `id=host_mcp_command`인 `checks[]` 항목 | 설정된 MCP 명령이 absolute, PATH-resolved, remote/executor-backed, unknown, malformed 중 어느 launch mode인지와 `host_path_unconfirmed` 같은 launch risk 세부사항을 나타냅니다. |
 | 활성 session 도구 노출 | 확인이 필요할 때 `Next` action text | `primary_next_action`, `actions[]`, `connection.user_actions[]` | 사용자가 활성 Codex session에 Volicord 도구가 노출되는지 아직 확인해야 할 수 있습니다. |
+| Codex 도구 snapshot 또는 listing 문제 | `Next` action text가 Codex MCP startup/tool-list log 확인을 안내할 수 있습니다. | Codex host log이며 Volicord가 소유한 JSON 필드가 아닙니다. | Codex가 MCP 서버의 존재를 알거나 `startup_complete`를 기록해도 활성 session에는 캐시된 tool snapshot이나 나열된 `volicord.*` 도구가 없을 수 있습니다. |
 
 검증 출력은 점검과 사용자 동작을 일급 진단으로 만들어야 합니다. 연결 상태와 검증의
 기본 text 출력은 결과 줄 형태 대신 `Status`, `Checks`, `Next`, `Diagnostics` 간결 섹션을
@@ -497,6 +498,8 @@ Agent Connection의 text와 JSON 출력은 진단 출력입니다. JSON 출력�
 Agent Connection을 `complete`로 설명하면 안 됩니다. 이는 CLI가 관찰할 수 있는 환경에서
 MCP 프로세스가 시작되는지 검증하는 것일 뿐입니다. 그 자체만으로 Codex, Claude Code 또는
 다른 외부 호스트가 프로젝트 설정을 로드, 신뢰, 승인, 초기화, 노출했다는 증명은 아닙니다.
+Codex에서는 활성 session이 tool snapshot을 캐시했거나 `volicord.*` 도구를 나열했다는
+증명도 아닙니다.
 
 <a id="authority-bundle-export"></a>
 ## 권한 번들 내보내기

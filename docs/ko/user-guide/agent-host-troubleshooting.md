@@ -194,22 +194,37 @@ Inbox 항목에 이미 표시된 URL을 사용합니다. selector가 모호하�
 선택되었다면 `--repo PATH`와 `--shared` 또는 `--global` 같은 일치하는 intent flag를
 붙여 다시 실행합니다.
 
-## Codex 프로젝트가 trusted이지만 host runtime이 관찰되지 않음
+<a id="trusted-codex-project-but-host-runtime-is-not-observed"></a>
+## Codex 프로젝트가 trusted이고 CLI handshake도 통과했지만 도구가 노출되지 않음
 
 관찰 증상: 연결 상태 또는 검증이 아래 사실을 함께 보고합니다.
 
 - `Codex project trust: trusted`
+- `MCP configuration: match` 또는 `Current MCP configuration: match`
 - `MCP preflight: passed`
 - `MCP handshake: passed`
-- `Codex host runtime: not observed`
-- `Host MCP command: uses volicord from the Codex host PATH`
+- 활성 Codex session에 `volicord.*` 도구가 노출되지 않습니다.
 
-이는 터미널 쪽 verification이 성공했고 Codex 사용자 설정은 프로젝트를 trusted로 표시하지만,
-Volicord가 이 연결에 대해 `Codex host process`가 Volicord MCP 서버를 시작한 것을 아직
-관찰하지 못했다는 뜻입니다. `volicord`처럼 `PATH`로 찾는 MCP 명령은 verification을 실행한
-터미널뿐 아니라 MCP 서버를 시작하는 환경에서 사용할 수 있어야 합니다.
+다른 줄은 `Codex host runtime: not observed`,
+`Codex host runtime: unknown`, 또는
+`Host MCP command: uses volicord from the Codex host PATH`를 보여 줄 수 있습니다.
+Codex MCP startup/tool-list log에는 시작이 완료되었거나 `startup_complete` 항목이
+보이지만 활성 session에 대해 캐시된 tool snapshot 또는 나열된 `volicord.*` 도구가 없을
+수도 있습니다.
+
+이는 저장소 로컬 MCP 설정이 일치하고 터미널 쪽 verification도 성공했지만, 활성 Codex
+session이 Volicord 도구를 등록했다는 증명은 아니라는 뜻입니다. Codex가 MCP 서버의 존재를
+알거나 서버를 시작했더라도 활성 session에는 tool snapshot 또는 tool listing이 없을 수
+있습니다. Volicord는 Codex host log 없이는 Codex 내부 도구 등록을 완전히 진단할 수
+없습니다.
 
 제한된 복구:
+
+먼저 활성 Codex session의 도구 목록에서 `volicord.*` 도구를 확인합니다. 그런 다음 Codex
+MCP startup/tool-list log에서 서버 launch, `initialize`, `tools/list`, 캐시된 tool
+snapshot, 도구 등록 항목을 확인합니다. 로그가 startup complete를 보여 주지만 tool
+snapshot이나 나열된 `volicord.*` 도구가 없다면 Product Repository에서 Codex session을
+restart, reload, resume 또는 새로 시작하고 도구 노출이 달라지는지 비교합니다.
 
 셸에서 Codex를 시작한다면 Codex를 시작하거나 resume하기 전에 같은 셸 환경을 확인합니다.
 
@@ -217,17 +232,27 @@ Volicord가 이 연결에 대해 `Codex host process`가 Volicord MCP 서버를 
 command -v volicord
 ```
 
-그런 뒤 Product Repository에서 Codex session을 restart, reload, resume 또는 새로 시작하고,
-활성 Codex session에 Volicord 도구가 노출되는지 확인한 뒤 verification을 다시 실행합니다.
+Codex IDE extension에서는 extension session에 보이는 PATH 또는 MCP startup log를 확인합니다.
+비대화식 Codex run에서는 시작 환경을 고친 뒤 새 run을 시작합니다. 원격 또는
+executor-backed MCP 시작에서는 해당 executor에서 명령 가용성을 확인합니다. 로컬 CLI
+PATH만으로는 원격 명령 launch 가능성을 증명하지 않습니다.
+
+호스트 쪽 변경 뒤에는 터미널 쪽 verification을 다시 실행합니다.
 
 ```sh
 volicord connection verify codex --shared --repo /path/to/your-product-repo
 ```
 
-Codex IDE extension에서는 extension session에 보이는 PATH 또는 MCP startup log를 확인합니다.
-비대화식 Codex run에서는 시작 환경을 고친 뒤 새 run을 시작합니다. 원격 또는
-executor-backed MCP 시작에서는 해당 executor에서 명령 가용성을 확인합니다. 로컬 CLI
-PATH만으로는 원격 명령 launch 가능성을 증명하지 않습니다.
+Codex 밖에서 MCP 수명주기를 직접 확인하려면
+[MCP 전송](../reference/mcp-transport.md#manual-stdio-lifecycle-probe)의 수동
+`VOLICORD_MCP_VERIFICATION=1` probe를 사용합니다. 이 probe는 Volicord가
+`initialize`, `notifications/initialized`, `tools/list`, 너무 이른 `tools/call`에 올바르게
+응답하는지 보여 줄 수 있지만, 그래도 활성 Codex session 도구 노출을 증명하지는 않습니다.
+
+고급 진단: 사용하는 Codex 호스트 설정 형식이 MCP 서버의 `required = true`를 지원한다면
+진단 실행에 사용해 그 호스트에서 MCP 시작 실패를 더 잘 보이게 할 수 있습니다. 하지만 서버를
+사용할 수 없을 때 session 시작이나 resume을 막을 수도 있습니다. `required = true`를
+Volicord `record` 프로필의 기본 동작이나 도구 노출의 증명으로 다루지 않습니다.
 
 ## `failed`
 

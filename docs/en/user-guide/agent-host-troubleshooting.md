@@ -211,24 +211,40 @@ answer command or the URL already shown by the MCP Judgment Inbox item. If the
 selector is ambiguous or the wrong repository is selected, rerun with
 `--repo PATH` and the matching intent flag such as `--shared` or `--global`.
 
-## Trusted Codex Project But Host Runtime Is Not Observed
+<a id="trusted-codex-project-but-host-runtime-is-not-observed"></a>
+## Trusted Codex Project And CLI Handshake Passed But Tools Are Not Exposed
 
 Observable symptom: connection status or verification reports all of these
 facts together:
 
 - `Codex project trust: trusted`
+- `MCP configuration: match` or `Current MCP configuration: match`
 - `MCP preflight: passed`
 - `MCP handshake: passed`
-- `Codex host runtime: not observed`
-- `Host MCP command: uses volicord from the Codex host PATH`
+- the active Codex session does not expose `volicord.*` tools
 
-This means terminal-side verification succeeded and Codex user configuration
-marks the project trusted, but Volicord has not observed the Codex host process
-launch the Volicord MCP server for this connection. A PATH-resolved MCP command
-such as `volicord` must be available in the environment that launches the MCP
-server, not only in the terminal that ran verification.
+Other lines may show `Codex host runtime: not observed`,
+`Codex host runtime: unknown`, or
+`Host MCP command: uses volicord from the Codex host PATH`. Codex MCP
+startup/tool-list logs may also show that startup completed, including a
+`startup_complete` entry, but no cached tool snapshot or no listed
+`volicord.*` tools for the active session.
+
+This means the repo-local MCP configuration matches and terminal-side
+verification succeeded, but that does not prove that the active Codex session
+has registered Volicord tools. Codex may know the MCP server exists, or may
+have started it, while the active session still lacks a tool snapshot or tool
+listing. Volicord cannot fully diagnose Codex internal tool registration
+without the Codex host logs.
 
 Bounded recovery:
+
+First check the active Codex session tool list for `volicord.*` tools. Then
+inspect Codex MCP startup/tool-list logs for server launch, `initialize`,
+`tools/list`, cached tool snapshot, and tool-registration entries. If the logs
+show startup complete but no tool snapshot or no listed `volicord.*` tools,
+restart, reload, resume, or start a new Codex session in the Product
+Repository and compare whether tool exposure changes.
 
 If you start Codex from a shell, check the same shell environment before
 starting or resuming Codex:
@@ -237,19 +253,30 @@ starting or resuming Codex:
 command -v volicord
 ```
 
-Then restart, reload, resume, or start a new Codex session in the Product
-Repository, confirm that Volicord tools are exposed in the active Codex
-session, and rerun verification:
-
-```sh
-volicord connection verify codex --shared --repo /path/to/your-product-repo
-```
-
 For a Codex IDE extension, inspect the PATH visible to the extension session or
 its MCP startup logs. For a non-interactive Codex run, start a new run after
 fixing the launch environment. For remote or executor-backed MCP startup,
 confirm command availability in that executor; local CLI PATH does not prove
 remote command launchability.
+
+After any host-side change, rerun terminal-side verification:
+
+```sh
+volicord connection verify codex --shared --repo /path/to/your-product-repo
+```
+
+For a direct MCP lifecycle check outside Codex, use the manual
+`VOLICORD_MCP_VERIFICATION=1` probes in
+[MCP Transport](../reference/mcp-transport.md#manual-stdio-lifecycle-probe).
+Those probes can show that Volicord responds correctly to `initialize`,
+`notifications/initialized`, `tools/list`, and early `tools/call`, but they
+still do not prove active-session Codex tool exposure.
+
+Advanced diagnostic: if the Codex host configuration format you use supports
+`required = true` for an MCP server, using it for a diagnostic run can make MCP
+startup failures more visible in that host. It can also prevent session startup
+or resume when the server is unavailable. Do not treat `required = true` as the
+default Volicord `record` profile behavior or as proof that tools are exposed.
 
 ## `failed`
 
