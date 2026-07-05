@@ -53,14 +53,11 @@ use crate::host_integration::{
     UserActionKind, REQUIRED_GUARD_PHASES,
 };
 use crate::{
-    disclosure::{
-        detective_observation_disclosure_json, does_not_prove_line, render_action_guidance_text,
-        DETECTIVE_OBSERVATION_DISCLOSURE_TEXT, DETECTIVE_OBSERVATION_NON_GUARANTEE_TEXT,
-    },
+    disclosure::detective_observation_disclosure_json,
     managed_block::{self, ManagedBlockError, ManagedBlockWrite},
     registration::ADMIN_METADATA_JSON,
     setup_command::{is_executable_file, path_text as setup_path_text, runtime_home_id_for_path},
-    summary_card::{render_summary_card_text, DIAGNOSTIC_SUMMARY_GUARANTEE},
+    summary_card::DIAGNOSTIC_SUMMARY_GUARANTEE,
 };
 
 mod args;
@@ -717,6 +714,7 @@ pub fn run_connect_command(
         )?,
         connection: &connection,
         projects: &projects,
+        affected_repo_root: Some(&project.repo_root),
         verification: Some(&verification),
         plan: Some(&host_plan),
         user_actions: verification.host.user_actions.clone(),
@@ -809,6 +807,7 @@ fn command_connection_status(
         user_actions: stored_user_actions(&connection),
         connection: &connection,
         projects: &projects,
+        affected_repo_root: None,
         verification: None,
         plan: None,
     })
@@ -858,6 +857,7 @@ fn command_connection_verify(
         user_actions: verification.host.user_actions.clone(),
         connection: &connection,
         projects: &projects,
+        affected_repo_root: None,
         verification: Some(&verification),
         plan: Some(&host_plan),
     })
@@ -913,6 +913,7 @@ fn command_connection_mode(
         user_actions: actions,
         connection: &connection,
         projects: &projects,
+        affected_repo_root: None,
         verification: None,
         plan: None,
     })
@@ -983,6 +984,7 @@ fn command_connection_remove(
         user_actions: Vec::new(),
         connection: &connection,
         projects: &remaining_projects,
+        affected_repo_root: Some(&selected_project.project.repo_root),
         verification: None,
         plan: host_plan.as_ref(),
     })
@@ -5006,6 +5008,7 @@ struct SimplifiedConnectionOutput<'a> {
     guard_state: GuardOperationalState,
     connection: &'a AgentConnectionRecord,
     projects: &'a [ConnectionProjectRecord],
+    affected_repo_root: Option<&'a Path>,
     verification: Option<&'a VerificationReport>,
     plan: Option<&'a HostPlan>,
     user_actions: Vec<UserAction>,
@@ -5059,85 +5062,7 @@ fn render_simplified_connection_output(
         connection_summary_card(data.action, &data.guard_state, primary_next_action.as_ref());
     match data.format {
         OutputFormat::Text => {
-            if matches!(data.action, "status" | "verified") {
-                return render_compact_connection_text(
-                    &data,
-                    &mcp_config_state,
-                    primary_next_action.as_ref(),
-                );
-            }
-            let action_guidance_text = connection_action_guidance_text(
-                data.status,
-                &data.guard_state,
-                primary_next_action.as_ref(),
-                summary_card.is_some(),
-            );
-            let summary_or_disclosure_text = summary_card
-                .as_ref()
-                .map(render_summary_card_text)
-                .unwrap_or_else(|| {
-                    if action_guidance_text.is_empty() {
-                        does_not_prove_line(DETECTIVE_OBSERVATION_NON_GUARANTEE_TEXT)
-                    } else {
-                        String::new()
-                    }
-                });
-            let mut output = format!(
-                "Agent Connection {}\n{}{}runtime_home_state: ready\nruntime_home: {}\nconnection_state: {}\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nproject_registration_state: {}\nconnected_repositories: {}\nmcp_config_state: {}\nmcp_config: {}\nselected_profile: {}\nobservation_summary: {}\nobservation_capabilities: {}\nhost_hooks_active: {}\nsession_watcher_active: {}\nactor_identity_provable: {}\nos_enforced: {}\ndetective_installation_state: {}\ndetective_configuration_state: {}\nhost_hook_observation_state: {}\ndetective_effective_state: {}\ndetective_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_path_safety: {}\nrequired_hook_phases_state: {}\nrequired_hook_phases_missing: {}\nhost_hook_observed: {}\ndetective_hook_observed: {}\nlast_host_hook_event: {}\nprompt_capture_state: {}\nhost_reload_required: {}\ndetective_blockers: {}\n",
-                data.action,
-                action_guidance_text,
-                summary_or_disclosure_text,
-                data.runtime_home.display(),
-                data.status.as_str(),
-                public_host_name_text(&data.connection.host_kind),
-                data.connection.intent,
-                public_mode_text(&data.connection.mode),
-                data.connection.enabled,
-                project_registration_state(data.projects),
-                display_project_roots(data.projects),
-                mcp_config_state,
-                target,
-                data.guard_state.selected_profile(),
-                control_surface_text(&data.guard_state),
-                guard_capabilities_text(&data.guard_state),
-                yes_no(data.guard_state.host_hook_guard_available()),
-                "no",
-                "no",
-                "no",
-                data.guard_state.installation_state,
-                data.guard_state.configuration_state,
-                data.guard_state.observation_state,
-                data.guard_state.effective_state,
-                data.guard_state.files_state,
-                data.guard_state.agents_block_state,
-                data.guard_state.policy_file_state,
-                data.guard_state.rule_instruction_state,
-                data.guard_state.hook_config_state,
-                data.guard_state.hook_path_safety_state,
-                data.guard_state.required_hook_phases_state(),
-                comma_or_none(&data.guard_state.missing_required_hooks),
-                data.guard_state.hook_observed_state,
-                yes_no(data.guard_state.guard_observed()),
-                optional_text(data.guard_state.last_guard_event_at.as_deref()),
-                data.guard_state.prompt_capture_state,
-                yes_no(has_reload_action(&data.user_actions)),
-                comma_or_none(&data.guard_state.unresolved_blockers)
-            );
-            if let Some(planned_change) = planned_change {
-                output.push_str(&format!("planned_change: {planned_change}\n"));
-            }
-            if let Some(verification) = data.verification {
-                output.push_str(&format!(
-                    "host_verification: {}\npreflight: {}\nmcp_handshake: {}\n",
-                    verification.host.status.as_str(),
-                    verification.preflight.status.as_str(),
-                    verification.handshake.status.as_str()
-                ));
-            }
-            if summary_card.is_none() {
-                append_primary_next_action_text(&mut output, primary_next_action.as_ref());
-            }
-            Ok(output)
+            render_compact_connection_text(&data, &mcp_config_state, primary_next_action.as_ref())
         }
         OutputFormat::Json => {
             let mut value = json!({
@@ -5184,33 +5109,63 @@ fn render_compact_connection_text(
 ) -> Result<String, ConnectionCommandError> {
     let host_kind = parse_host_kind(&data.connection.host_kind)?;
     let host = public_host_display_name(host_kind);
-    let title = match data.action {
-        "verified" => format!("Agent Connection checked for {host}"),
-        "status" => format!("Agent Connection status for {host}"),
-        _ => format!("Agent Connection {} for {host}", data.action),
-    };
+    if data.action == "removed" {
+        return Ok(render_compact_remove_text(data, host));
+    }
+    let title = compact_connection_title(data.action, host);
     let mut output = format!("{title}\n\nStatus:\n");
-    if data.action == "status" {
-        output.push_str(&format!(
-            "  Connection: {}\n  Mode: {}\n  Last verification: {}\n",
-            enabled_text(data.connection.enabled),
-            public_mode_text(&data.connection.mode),
-            compact_agent_status_text(data.status)
-        ));
-    } else {
-        output.push_str(&format!(
-            "  Verification: {}\n  Connection: {}\n  Mode: {}\n",
-            compact_agent_status_text(data.status),
-            enabled_text(data.connection.enabled),
-            public_mode_text(&data.connection.mode)
-        ));
+    match data.action {
+        "verified" => {
+            output.push_str(&format!(
+                "  Verification: {}\n  Connection: {}\n  Mode: {}\n",
+                compact_agent_status_text(data.status),
+                enabled_text(data.connection.enabled),
+                public_mode_text(&data.connection.mode)
+            ));
+        }
+        "status" | "mode_updated" => {
+            output.push_str(&format!(
+                "  Connection: {}\n  Mode: {}\n  Last verification: {}\n",
+                enabled_text(data.connection.enabled),
+                public_mode_text(&data.connection.mode),
+                compact_agent_status_text(data.status)
+            ));
+        }
+        "connected" => {
+            output.push_str(&format!(
+                "  Connection: {}\n  Verification: {}\n  Mode: {}\n",
+                enabled_text(data.connection.enabled),
+                compact_agent_status_text(data.status),
+                public_mode_text(&data.connection.mode)
+            ));
+        }
+        _ => {
+            output.push_str(&format!(
+                "  Connection: {}\n  Mode: {}\n  Last verification: {}\n",
+                enabled_text(data.connection.enabled),
+                public_mode_text(&data.connection.mode),
+                compact_agent_status_text(data.status)
+            ));
+        }
     }
 
     output.push_str(&format!(
         "\nProfile:\n  {}\n\n",
         data.guard_state.selected_profile()
     ));
-    append_compact_repositories(&mut output, data.projects);
+    if let Some(repo_root) = data.affected_repo_root {
+        append_compact_repository(&mut output, repo_root);
+    } else {
+        append_compact_repositories(&mut output, data.projects);
+    }
+    if data.action == "connected" {
+        let repo_root = data.affected_repo_root.or_else(|| {
+            data.projects
+                .first()
+                .map(|project| project.project.repo_root.as_path())
+        });
+        append_compact_host_configuration(&mut output, data.plan, repo_root, data.status);
+    }
     output.push_str("\nChecks:\n");
     for (label, value) in compact_connection_checks(data, mcp_config_state, primary_next_action) {
         output.push_str(&format!("  {label}: {value}\n"));
@@ -5220,11 +5175,90 @@ fn render_compact_connection_text(
     output.push_str(&format!(
         "\nLimits:\n{}\n\nDiagnostics:\n  Run:\n    {}\n",
         connection_limits_text(data.guard_state.selected_profile()),
-        connection_status_diagnostics_command(data.connection, data.projects).ok_or_else(|| {
-            ConnectionCommandError::runtime("selected Agent Connection has no connected repository")
-        })?
+        connection_diagnostics_command(data.connection, data.projects)
     ));
     Ok(output)
+}
+
+fn compact_connection_title(action: &str, host: &str) -> String {
+    match action {
+        "connected" => format!("Agent Connection configured for {host}"),
+        "verified" => format!("Agent Connection checked for {host}"),
+        "status" => format!("Agent Connection status for {host}"),
+        "mode_updated" => format!("Agent Connection mode updated for {host}"),
+        other => format!("Agent Connection {other} for {host}"),
+    }
+}
+
+fn append_compact_repository(output: &mut String, repo_root: &Path) {
+    output.push_str(&format!("Repository:\n  {}\n", repo_root.display()));
+}
+
+fn append_compact_host_configuration(
+    output: &mut String,
+    plan: Option<&HostPlan>,
+    repo_root: Option<&Path>,
+    status: AgentResultStatus,
+) {
+    let Some(plan) = plan else {
+        return;
+    };
+    output.push('\n');
+    if let Some(repo_root) = repo_root {
+        if let Some(path) = repo_relative_host_target_path(plan, repo_root) {
+            output.push_str("Repo file changes:\n");
+            if let Some(status) = repo_file_change_from_host_plan(plan.change, status) {
+                output.push_str(&format!("  {} {}\n", status.text_verb(), path));
+            } else {
+                output.push_str("  none\n");
+            }
+            return;
+        }
+    }
+    output.push_str(&format!(
+        "Host configuration:\n  Target: {}\n  Change: {}\n",
+        host_target_text(&plan.target),
+        planned_change_text(plan.change)
+    ));
+}
+
+fn render_compact_remove_text(data: &SimplifiedConnectionOutput<'_>, host: &str) -> String {
+    let remaining = data.projects.len();
+    let mut output = format!(
+        "Agent Connection removed for {host}\n\nStatus:\n  Connection: removed from selected repository\n  Mode: {}\n  Remaining repositories: {}\n\n",
+        public_mode_text(&data.connection.mode),
+        remaining
+    );
+    if let Some(repo_root) = data.affected_repo_root {
+        append_compact_repository(&mut output, repo_root);
+    }
+    if !data.projects.is_empty() {
+        output.push_str("\nRemaining repositories:\n");
+        for project in data.projects {
+            output.push_str(&format!("  {}\n", project.project.repo_root.display()));
+        }
+    }
+    output.push_str("\nRemoved:\n  Selected repository membership\n");
+    if data.plan.is_some() && remaining == 0 {
+        output.push_str(
+            "  Matching managed host configuration\n  Running host processes may keep cached configuration until they reload.\n",
+        );
+    } else {
+        output.push_str("  Host configuration kept for remaining connected repositories\n");
+    }
+    output.push_str("\nNext:\n");
+    if data.plan.is_some() && remaining == 0 {
+        output.push_str(&format!(
+            "  1. Restart or reload {host} if a running host still shows cached Volicord tools.\n"
+        ));
+    } else {
+        output.push_str("  none\n");
+    }
+    output.push_str(&format!(
+        "\nDiagnostics:\n  Run:\n    {}\n",
+        connection_diagnostics_command(data.connection, data.projects)
+    ));
+    output
 }
 
 fn append_compact_repositories(output: &mut String, projects: &[ConnectionProjectRecord]) {
@@ -5503,6 +5537,14 @@ fn connection_status_diagnostics_command(
     ))
 }
 
+fn connection_diagnostics_command(
+    connection: &AgentConnectionRecord,
+    projects: &[ConnectionProjectRecord],
+) -> String {
+    connection_status_diagnostics_command(connection, projects)
+        .unwrap_or_else(|| "volicord connection list --json".to_owned())
+}
+
 fn render_simplified_plan_output(
     data: SimplifiedPlanOutput<'_>,
 ) -> Result<String, ConnectionCommandError> {
@@ -5513,57 +5555,7 @@ fn render_simplified_plan_output(
         primary_connection_action(&data.user_actions, None, &guard_state, None, &[]);
     let project_state = data.repo_root.map(|_| "planned").unwrap_or("not_selected");
     match data.format {
-        OutputFormat::Text => {
-            let mut output = format!(
-                "Agent Connection {} {}\n{}\nruntime_home_state: ready\nruntime_home: {}\nconnection_state: {}\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nproject_registration_state: {}\nconnected_repositories: {}\nmcp_config_state: planned_{}\nmcp_config: {}\nselected_profile: {}\nobservation_summary: {}\nobservation_capabilities: {}\nhost_hooks_active: {}\nsession_watcher_active: {}\nactor_identity_provable: {}\nos_enforced: {}\ndetective_installation_state: {}\ndetective_configuration_state: {}\nhost_hook_observation_state: {}\ndetective_effective_state: {}\ndetective_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_path_safety: {}\nrequired_hook_phases_state: {}\nrequired_hook_phases_missing: {}\nhost_hook_observed: {}\ndetective_hook_observed: {}\nlast_host_hook_event: {}\nprompt_capture_state: {}\nhost_reload_required: {}\ndetective_blockers: {}\nplanned_change: {}\n",
-                data.action,
-                data.status.as_str(),
-                DETECTIVE_OBSERVATION_DISCLOSURE_TEXT,
-                data.runtime_home.display(),
-                data.status.as_str(),
-                public_host_label(data.host_kind),
-                data.intent.as_str(),
-                public_mode_text(data.mode),
-                data.enabled,
-                project_state,
-                data.repo_root
-                    .map(|path| path.display().to_string())
-                    .unwrap_or_default(),
-                planned_change,
-                target,
-                guard_state.selected_profile(),
-                control_surface_text(&guard_state),
-                guard_capabilities_text(&guard_state),
-                yes_no(guard_state.host_hook_guard_available()),
-                "no",
-                "no",
-                "no",
-                guard_state.installation_state,
-                guard_state.configuration_state,
-                guard_state.observation_state,
-                guard_state.effective_state,
-                guard_state.files_state,
-                guard_state.agents_block_state,
-                guard_state.policy_file_state,
-                guard_state.rule_instruction_state,
-                guard_state.hook_config_state,
-                guard_state.hook_path_safety_state,
-                guard_state.required_hook_phases_state(),
-                comma_or_none(&guard_state.missing_required_hooks),
-                guard_state.hook_observed_state,
-                yes_no(guard_state.guard_observed()),
-                optional_text(guard_state.last_guard_event_at.as_deref()),
-                guard_state.prompt_capture_state,
-                yes_no(has_reload_action(&data.user_actions)),
-                comma_or_none(&guard_state.unresolved_blockers),
-                planned_change
-            );
-            if let Some(remaining) = data.projects_remaining {
-                output.push_str(&format!("remaining_connected_projects: {remaining}\n"));
-            }
-            append_primary_next_action_text(&mut output, primary_next_action.as_ref());
-            Ok(output)
-        }
+        OutputFormat::Text => Ok(render_compact_plan_text(&data)),
         OutputFormat::Json => {
             let connected_repositories = data
                 .repo_root
@@ -5610,6 +5602,231 @@ fn render_simplified_plan_output(
                 .map(|text| format!("{text}\n"))
                 .map_err(|error| ConnectionCommandError::runtime(error.to_string()))
         }
+    }
+}
+
+fn render_compact_plan_text(data: &SimplifiedPlanOutput<'_>) -> String {
+    let host = public_host_display_name(data.host_kind);
+    let mut output = format!(
+        "Agent Connection plan for {host}\n\nStatus:\n  Plan: dry run\n  Mode: {}\n  Intent: {}\n",
+        public_mode_text(data.mode),
+        data.intent.as_str()
+    );
+    if let Some(repo_root) = data.repo_root {
+        output.push('\n');
+        append_compact_repository(&mut output, repo_root);
+    }
+    output.push_str("\nPlanned changes:\n");
+    append_compact_plan_changes(&mut output, data);
+    output.push_str("\nNext:\n");
+    append_compact_plan_next_steps(&mut output, data, host);
+    output.push_str(&format!(
+        "\nDiagnostics:\n  Run:\n    {}\n",
+        connection_plan_diagnostics_command(data)
+    ));
+    output
+}
+
+fn append_compact_plan_changes(output: &mut String, data: &SimplifiedPlanOutput<'_>) {
+    if data.action == "remove" {
+        output.push_str("  remove selected repository membership\n");
+    }
+    if let Some(repo_root) = data.repo_root {
+        if let Some(path) = repo_relative_host_target_path(data.plan, repo_root) {
+            match data.plan.change {
+                PlannedChange::Create | PlannedChange::Update => {
+                    if let Some(status) =
+                        repo_file_change_from_host_plan(data.plan.change, data.status)
+                    {
+                        output.push_str(&format!("  {} {}\n", status.text_verb(), path));
+                    }
+                }
+                PlannedChange::Remove => {
+                    output.push_str(&format!("  would remove {path}\n"));
+                }
+                PlannedChange::Noop => {
+                    output.push_str("  no host configuration file change\n");
+                }
+                PlannedChange::ExternalCommand => {
+                    output.push_str(&format!(
+                        "  would run external host configuration command for {}\n",
+                        host_target_text(&data.plan.target)
+                    ));
+                }
+            }
+        } else {
+            output.push_str(&format!(
+                "  host configuration {}: {}\n",
+                planned_change_text(data.plan.change),
+                host_target_text(&data.plan.target)
+            ));
+        }
+    } else {
+        output.push_str(&format!(
+            "  host configuration {}: {}\n",
+            planned_change_text(data.plan.change),
+            host_target_text(&data.plan.target)
+        ));
+    }
+    if let Some(remaining) = data.projects_remaining {
+        if remaining == 0 {
+            output.push_str(
+                "  remove matching managed host configuration\n  running host processes may keep cached configuration until they reload\n",
+            );
+        } else {
+            output.push_str(&format!(
+                "  keep host configuration for {} {}\n",
+                remaining,
+                connected_repository_phrase(remaining)
+            ));
+        }
+    }
+}
+
+fn append_compact_plan_next_steps(
+    output: &mut String,
+    data: &SimplifiedPlanOutput<'_>,
+    host: &str,
+) {
+    let mut index = 1;
+    if let Some(command) = connection_plan_apply_command(data) {
+        push_optional_numbered_command(output, &mut index, "Run", Some(&command));
+    }
+    if data.action == "connection_add" {
+        push_numbered_text(
+            output,
+            &mut index,
+            format!("After applying, open, restart, or reload {host} in this repository."),
+        );
+        if init_actions_include_trust_or_approval(&data.user_actions) {
+            push_numbered_text(
+                output,
+                &mut index,
+                format!("Trust or approve the project configuration if {host} asks."),
+            );
+        }
+        if let Some(repo_root) = data.repo_root {
+            let command = connection_plan_verify_command(data.host_kind, data.intent, repo_root);
+            push_optional_numbered_command(
+                output,
+                &mut index,
+                "After applying, run",
+                Some(&command),
+            );
+        }
+    } else if data.action == "remove" && data.projects_remaining == Some(0) {
+        push_numbered_text(
+            output,
+            &mut index,
+            format!(
+                "After applying, restart or reload {host} if it still shows cached Volicord tools."
+            ),
+        );
+    }
+    if index == 1 {
+        output.push_str("  none\n");
+    }
+}
+
+fn connection_plan_apply_command(data: &SimplifiedPlanOutput<'_>) -> Option<String> {
+    let repo_root = data.repo_root?;
+    match data.action {
+        "connection_add" => Some(connection_add_command(
+            data.host_kind,
+            data.intent,
+            data.mode,
+            repo_root,
+            false,
+            false,
+        )),
+        "remove" => Some(connection_remove_command(
+            data.host_kind,
+            data.intent,
+            repo_root,
+            false,
+            false,
+        )),
+        _ => None,
+    }
+}
+
+fn connection_plan_diagnostics_command(data: &SimplifiedPlanOutput<'_>) -> String {
+    let Some(repo_root) = data.repo_root else {
+        return "volicord connection list --json".to_owned();
+    };
+    match data.action {
+        "connection_add" => connection_add_command(
+            data.host_kind,
+            data.intent,
+            data.mode,
+            repo_root,
+            true,
+            true,
+        ),
+        "remove" => connection_remove_command(data.host_kind, data.intent, repo_root, true, true),
+        _ => "volicord connection list --json".to_owned(),
+    }
+}
+
+fn connection_plan_verify_command(
+    host_kind: HostKind,
+    intent: ConnectionIntent,
+    repo_root: &Path,
+) -> String {
+    format!(
+        "volicord connection verify {}{} --repo {}",
+        public_host_label(host_kind),
+        intent_flag_suffix(intent),
+        repo_root.display()
+    )
+}
+
+fn connection_add_command(
+    host_kind: HostKind,
+    intent: ConnectionIntent,
+    mode: &str,
+    repo_root: &Path,
+    dry_run: bool,
+    json: bool,
+) -> String {
+    let read_only_flag = if mode == CONNECTION_MODE_READ_ONLY {
+        " --read-only"
+    } else {
+        ""
+    };
+    format!(
+        "volicord connection add {}{}{} --repo {}{}{}",
+        public_host_label(host_kind),
+        intent_flag_suffix(intent),
+        read_only_flag,
+        repo_root.display(),
+        if dry_run { " --dry-run" } else { "" },
+        if json { " --json" } else { "" }
+    )
+}
+
+fn connection_remove_command(
+    host_kind: HostKind,
+    intent: ConnectionIntent,
+    repo_root: &Path,
+    dry_run: bool,
+    json: bool,
+) -> String {
+    format!(
+        "volicord connection remove {}{} --repo {}{}{}",
+        public_host_label(host_kind),
+        intent_flag_suffix(intent),
+        repo_root.display(),
+        if dry_run { " --dry-run" } else { "" },
+        if json { " --json" } else { "" }
+    )
+}
+
+fn connected_repository_phrase(count: usize) -> &'static str {
+    if count == 1 {
+        "remaining connected repository"
+    } else {
+        "remaining connected repositories"
     }
 }
 
@@ -6301,18 +6518,11 @@ fn render_simplified_remove_dry_run(
             })
         }
         SimplifiedRemovePlan::MembershipOnly => match format {
-            OutputFormat::Text => Ok(format!(
-                "Agent Connection remove dry_run\n{}\nruntime_home_state: ready\nruntime_home: {}\nconnection_state: dry_run\nhost: {}\nintent: {}\nmode: {}\nenabled: {}\nproject_registration_state: {}\nconnected_repositories: {}\nmcp_config_state: membership\nplanned_change: membership\nselected_profile: not_checked\ndetective_installation_state: not_checked\ndetective_files_state: not_checked\nhost_hook_observed: not_checked\nlast_host_hook_event: none\nprompt_capture_state: not_checked\nhost_reload_required: no\ndetective_blockers: none\nremaining_connected_projects: {}\nnext_action: none\n",
-                DETECTIVE_OBSERVATION_DISCLOSURE_TEXT,
-                runtime_home.display(),
-                public_host_name_text(&connection.host_kind),
-                connection.intent,
-                public_mode_text(&connection.mode),
-                connection.enabled,
-                project_registration_state(projects),
-                display_project_roots(projects),
-                remaining_count
-            )),
+            OutputFormat::Text => render_compact_membership_remove_plan_text(
+                connection,
+                selected_project,
+                remaining_count,
+            ),
             OutputFormat::Json => {
                 let project_ids = projects
                     .iter()
@@ -6354,6 +6564,29 @@ fn render_simplified_remove_dry_run(
             }
         },
     }
+}
+
+fn render_compact_membership_remove_plan_text(
+    connection: &AgentConnectionRecord,
+    selected_project: &ConnectionProjectRecord,
+    remaining_count: usize,
+) -> Result<String, ConnectionCommandError> {
+    let host_kind = parse_host_kind(&connection.host_kind)?;
+    let intent = parse_connection_intent(&connection.intent)?;
+    let host = public_host_display_name(host_kind);
+    let repo_root = &selected_project.project.repo_root;
+    let apply_command = connection_remove_command(host_kind, intent, repo_root, false, false);
+    let diagnostics_command = connection_remove_command(host_kind, intent, repo_root, true, true);
+    Ok(format!(
+        "Agent Connection plan for {host}\n\nStatus:\n  Plan: dry run\n  Mode: {}\n  Intent: {}\n\nRepository:\n  {}\n\nPlanned changes:\n  remove selected repository membership\n  keep host configuration for {} {}\n\nNext:\n  1. Run:\n     {}\n\nDiagnostics:\n  Run:\n    {}\n",
+        public_mode_text(&connection.mode),
+        connection.intent,
+        repo_root.display(),
+        remaining_count,
+        connected_repository_phrase(remaining_count),
+        apply_command,
+        diagnostics_command
+    ))
 }
 
 fn planned_change_text(change: PlannedChange) -> &'static str {
@@ -6664,140 +6897,6 @@ fn connection_summary_card(
     })
 }
 
-fn connection_action_guidance_text(
-    status: AgentResultStatus,
-    guard_state: &GuardOperationalState,
-    primary_next_action: Option<&PrimaryNextAction>,
-    summary_card_renders_next_and_guarantee: bool,
-) -> String {
-    if !connection_guidance_needed(status, guard_state, primary_next_action) {
-        return String::new();
-    }
-    let result = connection_result_text(status, guard_state);
-    let why = connection_guidance_why(status, guard_state, primary_next_action);
-    if summary_card_renders_next_and_guarantee {
-        return format!("Result: {result}\nWhy: {why}\n");
-    }
-    render_action_guidance_text(
-        &result,
-        &why,
-        &connection_next_action_text(primary_next_action),
-        DETECTIVE_OBSERVATION_NON_GUARANTEE_TEXT,
-    )
-}
-
-fn connection_guidance_needed(
-    status: AgentResultStatus,
-    guard_state: &GuardOperationalState,
-    primary_next_action: Option<&PrimaryNextAction>,
-) -> bool {
-    matches!(
-        status,
-        AgentResultStatus::ActionRequired
-            | AgentResultStatus::Failed
-            | AgentResultStatus::NotVerified
-    ) || detective_diagnostics_degraded(guard_state)
-        || primary_next_action.is_some_and(|action| action.id == "guard_capability_degraded")
-}
-
-fn connection_result_text(
-    status: AgentResultStatus,
-    guard_state: &GuardOperationalState,
-) -> String {
-    match status {
-        AgentResultStatus::ActionRequired => "action_required (not a fatal CLI error)".to_owned(),
-        AgentResultStatus::Complete if detective_diagnostics_degraded(guard_state) => {
-            "complete (detective diagnostics degraded)".to_owned()
-        }
-        AgentResultStatus::Complete => "complete".to_owned(),
-        AgentResultStatus::Failed => "failed".to_owned(),
-        AgentResultStatus::NotVerified => "not_verified".to_owned(),
-        AgentResultStatus::DryRun => "dry_run".to_owned(),
-    }
-}
-
-fn connection_guidance_why(
-    status: AgentResultStatus,
-    guard_state: &GuardOperationalState,
-    primary_next_action: Option<&PrimaryNextAction>,
-) -> String {
-    if let Some(action) = primary_next_action {
-        return match action.id.as_str() {
-            "reload_required" => {
-                "Host configuration is present, but the host has not reloaded it yet.".to_owned()
-            }
-            "host_trust_required" => {
-                "The host requires user trust or permission before the configuration is active."
-                    .to_owned()
-            }
-            "project_approval_required" => {
-                "The host requires project approval before the MCP server is available.".to_owned()
-            }
-            "path_binary_not_found" => {
-                "A required host executable or command is not available from PATH.".to_owned()
-            }
-            "mcp_config_missing" => {
-                "The stored connection exists, but managed MCP configuration is missing.".to_owned()
-            }
-            "mcp_config_changed" => {
-                "The host configuration differs from the Volicord-managed connection.".to_owned()
-            }
-            "mcp_config_malformed" => {
-                "The host configuration exists, but it cannot be read as usable MCP configuration."
-                    .to_owned()
-            }
-            "guard_files_missing" => {
-                "Detective host-hook files are missing for the selected connection.".to_owned()
-            }
-            "guard_files_stale" => {
-                "Detective host-hook files no longer match the recorded managed configuration."
-                    .to_owned()
-            }
-            "guard_files_broken" => {
-                "Detective host-hook files are present but not usable.".to_owned()
-            }
-            "guard_hook_path_safety" => {
-                "Detective hook commands are not in the supported cwd-independent shape."
-                    .to_owned()
-            }
-            "guard_capability_degraded" => {
-                "Detective host-hook capability is degraded for this host, project, or configuration."
-                    .to_owned()
-            }
-            _ => action.instruction.clone(),
-        };
-    }
-    if detective_diagnostics_degraded(guard_state) {
-        return "Detective host-hook diagnostics are degraded for this connection.".to_owned();
-    }
-    match status {
-        AgentResultStatus::ActionRequired => {
-            "Agent Connection state exists, but a user-controlled host action remains.".to_owned()
-        }
-        AgentResultStatus::Failed => {
-            "Verification did not establish a usable Agent Connection for this view.".to_owned()
-        }
-        AgentResultStatus::NotVerified => {
-            "No verification result is recorded for the selected Agent Connection.".to_owned()
-        }
-        AgentResultStatus::Complete | AgentResultStatus::DryRun => {
-            "No follow-up is required.".to_owned()
-        }
-    }
-}
-
-fn detective_diagnostics_degraded(guard_state: &GuardOperationalState) -> bool {
-    guard_state.detective_hooks_applicable()
-        && (guard_state.effective_state == "degraded"
-            || guard_state.installation_state == "degraded")
-}
-
-fn connection_next_action_text(primary_next_action: Option<&PrimaryNextAction>) -> String {
-    primary_next_action
-        .map(|action| action.instruction.clone())
-        .unwrap_or_else(|| "none".to_owned())
-}
-
 fn append_connection_verify_followup(
     action: &mut PrimaryNextAction,
     connection: Option<&AgentConnectionRecord>,
@@ -6949,58 +7048,6 @@ fn repair_instruction(id: &str, fallback: &str, command: &str) -> String {
             format!("Run {command} to regenerate cwd-independent detective host-hook commands.")
         }
         _ => fallback.to_owned(),
-    }
-}
-
-fn append_primary_next_action_text(output: &mut String, action: Option<&PrimaryNextAction>) {
-    match action {
-        Some(action) => output.push_str(&format!("next_action: {}\n", action.instruction)),
-        None => output.push_str("next_action: none\n"),
-    }
-}
-
-fn yes_no(value: bool) -> &'static str {
-    if value {
-        "yes"
-    } else {
-        "no"
-    }
-}
-
-fn optional_text(value: Option<&str>) -> &str {
-    value.unwrap_or("none")
-}
-
-fn guard_capabilities_text(guard_state: &GuardOperationalState) -> String {
-    format!(
-        "host_hooks_active={}, cooperative_pre_tool_warning={}, cooperative_pre_tool_denial={}, post_tool_correlation={}, hook_path_safety={}, bash_shell_mutation_coverage={}, unrecorded_changes_detectable={}, prompt_capture={}, local_web_consent={}, actor_identity_provable=no, os_enforced=no",
-        yes_no(guard_state.host_hook_guard_available()),
-        yes_no(guard_state.cooperative_pre_tool_warning_available()),
-        yes_no(guard_state.cooperative_pre_tool_denial_available()),
-        yes_no(guard_state.post_tool_correlation_available()),
-        &guard_state.hook_path_safety_state,
-        yes_no(guard_state.bash_shell_mutation_coverage),
-        yes_no(guard_state.bypass_detection_active()),
-        yes_no(guard_state.prompt_capture_available()),
-        yes_no(false),
-    )
-}
-
-fn control_surface_text(guard_state: &GuardOperationalState) -> String {
-    format!(
-        "selected_profile={}, host_hooks_active={}, session_watcher_active=no, cooperative_pre_tool_warning={}, cooperative_pre_tool_denial={}, unrecorded_changes_detectable=no, actor_identity_provable=no, os_enforced=no",
-        guard_state.selected_profile(),
-        yes_no(guard_state.host_hook_guard_available()),
-        yes_no(guard_state.cooperative_pre_tool_warning_available()),
-        yes_no(guard_state.cooperative_pre_tool_denial_available()),
-    )
-}
-
-fn comma_or_none(values: &[String]) -> String {
-    if values.is_empty() {
-        "none".to_owned()
-    } else {
-        values.join(",")
     }
 }
 

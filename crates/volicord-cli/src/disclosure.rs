@@ -11,8 +11,6 @@ pub(crate) const DETECTIVE_OBSERVATION_NON_GUARANTEE_TEXT: &str = "OS sandboxing
 
 pub(crate) const COOPERATIVE_DECISION_DISCLOSURE_TEXT: &str = "Does not prove: OS sandboxing, network isolation, malware defense, full write prevention, actor identity proof, correctness proof, test sufficiency proof, or human review completion";
 
-pub(crate) const DETECTIVE_OBSERVATION_DISCLOSURE_TEXT: &str = "Does not prove: OS sandboxing, network isolation, malware defense, full write prevention, actor identity proof, correctness proof, test sufficiency proof, or human review completion";
-
 pub(crate) fn does_not_prove_line(non_guarantees: &str) -> String {
     format!("{DOES_NOT_PROVE_LABEL}: {non_guarantees}\n")
 }

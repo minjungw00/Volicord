@@ -2368,6 +2368,49 @@ fn connect_respects_explicit_read_only_and_uses_same_dry_run_plan() -> Result<()
     let mcp = write_fake_mcp(&bin_dir)?;
     prepare_runtime_home(runtime_home.path(), &mcp)?;
 
+    let dry_run_text = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connection",
+            "add",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--shared",
+            "--read-only",
+            "--dry-run",
+        ],
+        &[("PATH", path_env(&[bin_dir.as_path()]))],
+    )?;
+    assert_success(&dry_run_text);
+    let dry_text = stdout(&dry_run_text);
+    let dry_apply_command = format!(
+        "volicord connection add codex --shared --read-only --repo {}",
+        repo_root.display()
+    );
+    let dry_verify_command = format!(
+        "volicord connection verify codex --shared --repo {}",
+        repo_root.display()
+    );
+    let dry_diagnostics_command = format!(
+        "volicord connection add codex --shared --read-only --repo {} --dry-run --json",
+        repo_root.display()
+    );
+    assert!(dry_text.contains("Agent Connection plan for Codex"));
+    assert!(dry_text.contains("Status:\n  Plan: dry run\n  Mode: read-only\n  Intent: shared"));
+    assert!(dry_text.contains(&format!("Repository:\n  {}", repo_root.display())));
+    assert!(dry_text.contains("Planned changes:\n  would create .codex/config.toml"));
+    assert!(dry_text.contains("After applying, open, restart, or reload Codex"));
+    assert_text_renders_volicord_commands_as_standalone_lines(
+        &dry_text,
+        &[
+            &dry_apply_command,
+            &dry_verify_command,
+            &dry_diagnostics_command,
+        ],
+    );
+    assert_connection_text_omits_diagnostic_dump_fields(&dry_text);
+
     let dry_run = run_with_home_env(
         runtime_home.path(),
         [
@@ -2537,7 +2580,7 @@ fn connect_defaults_to_workflow_mode() -> Result<(), Box<dyn Error>> {
 
     let output = run_with_home_env_in_dir(
         runtime_home.path(),
-        ["connection", "add", "codex", "--json"],
+        ["connection", "add", "codex"],
         &[
             ("PATH", path_env(&[bin_dir.as_path()])),
             ("CODEX_HOME", path_text(&codex_home)),
@@ -2546,7 +2589,32 @@ fn connect_defaults_to_workflow_mode() -> Result<(), Box<dyn Error>> {
         &nested,
     )?;
     assert_success(&output);
-    let value = json_stdout(&output)?;
+    let add_text = stdout(&output);
+    let diagnostics_command = format!(
+        "volicord connection status codex --repo {} --json",
+        repo_root.display()
+    );
+    assert!(add_text.contains("Agent Connection configured for Codex"));
+    assert!(add_text
+        .contains("Status:\n  Connection: enabled\n  Verification: complete\n  Mode: workflow"));
+    assert!(add_text.contains("Profile:\n  record"));
+    assert!(add_text.contains(&format!("Repository:\n  {}", repo_root.display())));
+    assert!(add_text.contains("Host configuration:"));
+    assert!(add_text.contains("  Change: create"));
+    assert!(add_text.contains("Checks:\n  MCP configuration: match"));
+    assert!(add_text.contains("  Host follow-up: ready"));
+    assert!(add_text.contains("Next:\n  none"));
+    assert_text_renders_volicord_commands_as_standalone_lines(&add_text, &[&diagnostics_command]);
+    assert_connection_text_omits_diagnostic_dump_fields(&add_text);
+
+    let status_json = run_with_home_env_in_dir(
+        runtime_home.path(),
+        ["connection", "status", "codex", "--json"],
+        &[("CODEX_HOME", path_text(&codex_home))],
+        &nested,
+    )?;
+    assert_success(&status_json);
+    let value = json_stdout(&status_json)?;
     let connection_id = value["connection"]["connection_id"]
         .as_str()
         .expect("connection_id should be present");
@@ -3190,6 +3258,39 @@ fn connection_status_mode_and_remove_use_natural_selectors() -> Result<(), Box<d
         CONNECTION_MODE_READ_ONLY
     );
 
+    let mode_text = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connection",
+            "mode",
+            "codex",
+            "read-only",
+            "--repo",
+            path_text(&repo_a).as_str(),
+        ],
+        &[("CODEX_HOME", path_text(&codex_home))],
+    )?;
+    assert_success(&mode_text);
+    let mode_text = stdout(&mode_text);
+    let mode_verify_command = format!(
+        "volicord connection verify codex --repo {}",
+        repo_a.display()
+    );
+    let mode_diagnostics_command = format!(
+        "volicord connection status codex --repo {} --json",
+        repo_a.display()
+    );
+    assert!(mode_text.contains("Agent Connection mode updated for Codex"));
+    assert!(mode_text.contains(
+        "Status:\n  Connection: enabled\n  Mode: read-only\n  Last verification: complete"
+    ));
+    assert!(mode_text.contains("Open, restart, or reload Codex in this repository."));
+    assert_text_renders_volicord_commands_as_standalone_lines(
+        &mode_text,
+        &[&mode_verify_command, &mode_diagnostics_command],
+    );
+    assert_connection_text_omits_diagnostic_dump_fields(&mode_text);
+
     let remove_dry_run = run_with_home_env(
         runtime_home.path(),
         [
@@ -3208,6 +3309,40 @@ fn connection_status_mode_and_remove_use_natural_selectors() -> Result<(), Box<d
         json_stdout(&remove_dry_run)?["planned_change"],
         "membership"
     );
+
+    let remove_dry_run_text = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connection",
+            "remove",
+            "codex",
+            "--repo",
+            path_text(&repo_b).as_str(),
+            "--dry-run",
+        ],
+        &[("CODEX_HOME", path_text(&codex_home))],
+    )?;
+    assert_success(&remove_dry_run_text);
+    let remove_dry_run_text = stdout(&remove_dry_run_text);
+    let remove_apply_command = format!(
+        "volicord connection remove codex --repo {}",
+        repo_b.display()
+    );
+    let remove_diagnostics_command = format!(
+        "volicord connection remove codex --repo {} --dry-run --json",
+        repo_b.display()
+    );
+    assert!(remove_dry_run_text.contains("Agent Connection plan for Codex"));
+    assert!(remove_dry_run_text.contains("Status:\n  Plan: dry run\n  Mode: read-only"));
+    assert!(remove_dry_run_text.contains(&format!("Repository:\n  {}", repo_b.display())));
+    assert!(remove_dry_run_text.contains("remove selected repository membership"));
+    assert!(remove_dry_run_text
+        .contains("keep host configuration for 1 remaining connected repository"));
+    assert_text_renders_volicord_commands_as_standalone_lines(
+        &remove_dry_run_text,
+        &[&remove_apply_command, &remove_diagnostics_command],
+    );
+    assert_connection_text_omits_diagnostic_dump_fields(&remove_dry_run_text);
 
     let remove = run_with_home_env(
         runtime_home.path(),
@@ -3235,7 +3370,6 @@ fn connection_status_mode_and_remove_use_natural_selectors() -> Result<(), Box<d
             "codex",
             "--repo",
             path_text(&repo_a).as_str(),
-            "--json",
         ],
         &[
             ("PATH", path_env(&[bin_dir.as_path()])),
@@ -3243,6 +3377,19 @@ fn connection_status_mode_and_remove_use_natural_selectors() -> Result<(), Box<d
         ],
     )?;
     assert_success(&remove_last);
+    let remove_last_text = stdout(&remove_last);
+    assert!(remove_last_text.contains("Agent Connection removed for Codex"));
+    assert!(remove_last_text.contains("Remaining repositories: 0"));
+    assert!(remove_last_text.contains(&format!("Repository:\n  {}", repo_a.display())));
+    assert!(remove_last_text.contains("Selected repository membership"));
+    assert!(remove_last_text.contains("Matching managed host configuration"));
+    assert!(remove_last_text
+        .contains("Running host processes may keep cached configuration until they reload."));
+    assert_text_renders_volicord_commands_as_standalone_lines(
+        &remove_last_text,
+        &["volicord connection list --json"],
+    );
+    assert_connection_text_omits_diagnostic_dump_fields(&remove_last_text);
     assert!(agent_connection_record(runtime_home.path(), &connection_id)?.is_none());
     let config = fs::read_to_string(codex_home.join("config.toml"))?;
     assert!(!config.contains(&connection_id));
