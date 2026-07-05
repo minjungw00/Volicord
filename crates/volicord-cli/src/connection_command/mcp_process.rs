@@ -17,7 +17,7 @@ use volicord_types::{
 
 use crate::host_integration::{HostPlan, HostScope};
 
-use super::VerificationStep;
+use super::{McpPreflightDiagnostics, VerificationStep};
 
 const VOLICORD_HOME: &str = "VOLICORD_HOME";
 const VOLICORD_MCP_VERIFICATION: &str = "VOLICORD_MCP_VERIFICATION";
@@ -147,7 +147,8 @@ pub(super) fn run_connection_preflight(
     match process.run_preflight(launch, runtime_home, connection_id, project_id) {
         Ok(output) if output.success => {
             match validate_connection_preflight_report(&output.stdout, connection_id, mode) {
-                Ok(()) => VerificationStep::passed("volicord mcp preflight passed"),
+                Ok(diagnostics) => VerificationStep::passed("volicord mcp preflight passed")
+                    .with_preflight_diagnostics(diagnostics),
                 Err(message) => VerificationStep::failed(message),
             }
         }
@@ -164,14 +165,14 @@ fn validate_connection_preflight_report(
     stdout: &str,
     connection_id: &str,
     mode: &str,
-) -> Result<(), String> {
+) -> Result<Option<McpPreflightDiagnostics>, String> {
     let report = parse_colon_report(stdout)?;
     expect_report_field(&report, "configuration", "valid")?;
     expect_report_field(&report, "transport", "stdio")?;
     expect_report_field(&report, "connection_id", connection_id)?;
     expect_report_field(&report, "mode", mode)?;
     expect_report_field(&report, "enabled", "true")?;
-    Ok(())
+    Ok(McpPreflightDiagnostics::from_preflight_report(&report))
 }
 
 fn parse_colon_report(stdout: &str) -> Result<BTreeMap<String, String>, String> {

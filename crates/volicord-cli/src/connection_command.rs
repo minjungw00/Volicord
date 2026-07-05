@@ -199,6 +199,7 @@ impl StepStatus {
 struct VerificationStep {
     status: StepStatus,
     details: String,
+    preflight_diagnostics: Option<McpPreflightDiagnostics>,
 }
 
 impl VerificationStep {
@@ -206,6 +207,7 @@ impl VerificationStep {
         Self {
             status: StepStatus::Passed,
             details: details.into(),
+            preflight_diagnostics: None,
         }
     }
 
@@ -213,6 +215,7 @@ impl VerificationStep {
         Self {
             status: StepStatus::Failed,
             details: details.into(),
+            preflight_diagnostics: None,
         }
     }
 
@@ -220,7 +223,38 @@ impl VerificationStep {
         Self {
             status: StepStatus::Skipped,
             details: details.into(),
+            preflight_diagnostics: None,
         }
+    }
+
+    fn with_preflight_diagnostics(mut self, diagnostics: Option<McpPreflightDiagnostics>) -> Self {
+        self.preflight_diagnostics = diagnostics;
+        self
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct McpPreflightDiagnostics {
+    storage_read: String,
+    storage_write: String,
+    effective_tool_mode: String,
+}
+
+impl McpPreflightDiagnostics {
+    fn from_preflight_report(report: &BTreeMap<String, String>) -> Option<Self> {
+        Some(Self {
+            storage_read: report.get("project_state_read")?.to_owned(),
+            storage_write: report.get("project_state_write")?.to_owned(),
+            effective_tool_mode: report.get("effective_tool_mode")?.to_owned(),
+        })
+    }
+
+    fn to_json(&self) -> Value {
+        json!({
+            "storage_read": &self.storage_read,
+            "storage_write": &self.storage_write,
+            "effective_tool_mode": &self.effective_tool_mode,
+        })
     }
 }
 
@@ -2050,7 +2084,7 @@ fn host_runtime_action_applies(host: &Verification, runtime: &HostRuntimeDiagnos
 }
 
 fn host_runtime_not_observed_action_message() -> &'static str {
-    "Confirm the active Codex session has started the Volicord MCP server and exposed Volicord tools; if tools are not exposed, check Codex MCP startup and tool-list logs; ensure `volicord` is launchable by the Codex host process"
+    "Confirm the active Codex session exposes Volicord tools. If tools are not exposed, check Codex MCP startup/tool-list logs and Volicord storage read/write capability. Also ensure `volicord` is launchable by the Codex host process."
 }
 
 fn push_unique_action(actions: &mut Vec<UserAction>, action: UserAction) {
@@ -5567,6 +5601,7 @@ fn compact_connection_checks(
                 verification.handshake.status.as_str().to_owned(),
             ),
         ]);
+        append_preflight_storage_compact_checks(&mut checks, &verification.preflight);
         append_host_runtime_compact_checks(&mut checks, &verification.host);
         checks.push((
             "Host follow-up",
@@ -5599,6 +5634,7 @@ fn compact_connection_checks(
             stored_verification_step_status(data.connection, "mcp_handshake"),
         ),
     ]);
+    append_stored_preflight_storage_compact_checks(&mut checks, data.connection);
     if let Some(host) = &data.current_host {
         append_host_runtime_compact_checks(&mut checks, host);
     }
@@ -5624,6 +5660,53 @@ fn append_host_runtime_compact_checks(
     }
     if let Some(command) = &host.host_mcp_command {
         checks.push(("Host MCP command", host_mcp_command_text(command)));
+    }
+}
+
+fn append_preflight_storage_compact_checks(
+    checks: &mut Vec<(&'static str, String)>,
+    preflight: &VerificationStep,
+) {
+    if let Some(diagnostics) = &preflight.preflight_diagnostics {
+        append_storage_compact_checks(checks, diagnostics);
+    }
+}
+
+fn append_stored_preflight_storage_compact_checks(
+    checks: &mut Vec<(&'static str, String)>,
+    connection: &AgentConnectionRecord,
+) {
+    if let Some(diagnostics) = stored_preflight_diagnostics(connection) {
+        append_storage_compact_checks(checks, &diagnostics);
+    }
+}
+
+fn append_storage_compact_checks(
+    checks: &mut Vec<(&'static str, String)>,
+    diagnostics: &McpPreflightDiagnostics,
+) {
+    checks.extend([
+        (
+            "Volicord storage read",
+            diagnostic_value_text(&diagnostics.storage_read),
+        ),
+        (
+            "Volicord storage write",
+            diagnostic_value_text(&diagnostics.storage_write),
+        ),
+        (
+            "Effective MCP tools",
+            diagnostic_value_text(&diagnostics.effective_tool_mode),
+        ),
+    ]);
+}
+
+fn diagnostic_value_text(value: &str) -> String {
+    match value {
+        "read_only_degraded" => "read-only degraded".to_owned(),
+        "read_only" => "read-only".to_owned(),
+        "read_write" => "read-write".to_owned(),
+        _ => value.replace('_', " "),
     }
 }
 
@@ -5698,17 +5781,17 @@ fn append_compact_next_steps(
             push_numbered_text(
                 output,
                 &mut index,
-                "Confirm the active Codex session has started the Volicord MCP server and exposed Volicord tools.",
+                "Confirm Volicord tools are exposed in the active Codex session.",
             );
             push_numbered_text(
                 output,
                 &mut index,
-                "If tools are not exposed, check Codex MCP startup and tool-list logs.",
+                "If tools are not exposed, check Codex MCP startup/tool-list logs and Volicord storage read/write capability.",
             );
             push_numbered_text(
                 output,
                 &mut index,
-                format!("Ensure `volicord` is launchable by the {host} host process."),
+                format!("Also ensure `volicord` is launchable by the {host} host process."),
             );
             push_optional_numbered_command(output, &mut index, "Run", command.as_deref());
         }
@@ -5842,6 +5925,25 @@ fn stored_verification_step_status(connection: &AgentConnectionRecord, step: &st
         .and_then(Value::as_str)
         .unwrap_or("not observed")
         .replace('_', " ")
+}
+
+fn stored_preflight_diagnostics(
+    connection: &AgentConnectionRecord,
+) -> Option<McpPreflightDiagnostics> {
+    let report = json_object_text(&connection.last_verification_report_json);
+    let object = report.as_object()?;
+    stored_preflight_diagnostics_from_report(object)
+}
+
+fn stored_preflight_diagnostics_from_report(
+    report: &serde_json::Map<String, Value>,
+) -> Option<McpPreflightDiagnostics> {
+    let diagnostics = report.get("preflight")?.get("diagnostics")?.as_object()?;
+    Some(McpPreflightDiagnostics {
+        storage_read: diagnostics.get("storage_read")?.as_str()?.to_owned(),
+        storage_write: diagnostics.get("storage_write")?.as_str()?.to_owned(),
+        effective_tool_mode: diagnostics.get("effective_tool_mode")?.as_str()?.to_owned(),
+    })
 }
 
 fn connection_limits_text(profile: &str) -> &'static str {
@@ -7293,7 +7395,7 @@ fn connection_summary_next_text(
     };
     match action.id.as_str() {
         "host_runtime_not_observed" => format!(
-            "{host_display} host runtime has not been observed; confirm the active {host_display} session starts the Volicord MCP server and exposes Volicord tools."
+            "{host_display} host runtime has not been observed; confirm the active {host_display} session exposes Volicord tools, then check {host_display} MCP startup/tool-list logs and Volicord storage read/write capability before host command launchability."
         ),
         "host_trust_required" => format!(
             "The project must be trusted before project-scoped {host_display} configuration loads; then rerun verification."
@@ -9484,6 +9586,9 @@ fn checks_json(
                 "summary": verification.handshake.details,
             }),
         ]);
+        checks.extend(preflight_storage_checks_json(
+            verification.preflight.preflight_diagnostics.as_ref(),
+        ));
         checks.extend(guard_checks_json_values(guard_state));
         return Value::Array(checks);
     }
@@ -9539,7 +9644,80 @@ fn stored_checks_json(
                 .unwrap_or("stored MCP handshake state"),
         }));
     }
+    checks.extend(preflight_storage_checks_json(
+        stored_preflight_diagnostics_from_report(object).as_ref(),
+    ));
     checks
+}
+
+fn preflight_storage_checks_json(diagnostics: Option<&McpPreflightDiagnostics>) -> Vec<Value> {
+    let Some(diagnostics) = diagnostics else {
+        return Vec::new();
+    };
+    vec![
+        json!({
+            "id": "volicord_storage_read",
+            "status": storage_read_check_status(&diagnostics.storage_read),
+            "summary": format!("Volicord storage read: {}", diagnostic_value_text(&diagnostics.storage_read)),
+            "details": {
+                "source": "mcp_preflight",
+                "preflight_field": "project_state_read",
+                "value": &diagnostics.storage_read,
+            },
+        }),
+        json!({
+            "id": "volicord_storage_write",
+            "status": storage_write_check_status(
+                &diagnostics.storage_write,
+                &diagnostics.effective_tool_mode,
+            ),
+            "summary": format!("Volicord storage write: {}", diagnostic_value_text(&diagnostics.storage_write)),
+            "details": {
+                "source": "mcp_preflight",
+                "preflight_field": "project_state_write",
+                "value": &diagnostics.storage_write,
+            },
+        }),
+        json!({
+            "id": "effective_mcp_tools",
+            "status": effective_tool_mode_check_status(&diagnostics.effective_tool_mode),
+            "summary": format!("Effective MCP tools: {}", diagnostic_value_text(&diagnostics.effective_tool_mode)),
+            "details": {
+                "source": "mcp_preflight",
+                "preflight_field": "effective_tool_mode",
+                "value": &diagnostics.effective_tool_mode,
+            },
+        }),
+    ]
+}
+
+fn storage_read_check_status(value: &str) -> &'static str {
+    match value {
+        "passed" => "passed",
+        "failed" => "failed",
+        "skipped" => "skipped",
+        _ => "unknown",
+    }
+}
+
+fn storage_write_check_status(value: &str, effective_tool_mode: &str) -> &'static str {
+    match value {
+        "passed" => "passed",
+        "readonly" if effective_tool_mode == "read_only" => "passed",
+        "readonly" => "action_required",
+        "failed" => "failed",
+        "skipped" => "skipped",
+        _ => "unknown",
+    }
+}
+
+fn effective_tool_mode_check_status(value: &str) -> &'static str {
+    match value {
+        "workflow" | "read_only" => "passed",
+        "read_only_degraded" => "action_required",
+        "unavailable" => "failed",
+        _ => "unknown",
+    }
 }
 
 fn host_diagnostic_checks_json(host: &Verification) -> Vec<Value> {
@@ -9753,10 +9931,17 @@ fn user_actions_json(
 }
 
 fn step_json(step: &VerificationStep) -> Value {
-    json!({
+    let mut value = json!({
         "status": step.status.as_str(),
         "details": step.details,
-    })
+    });
+    if let Some(diagnostics) = &step.preflight_diagnostics {
+        value
+            .as_object_mut()
+            .expect("step JSON should be an object")
+            .insert("diagnostics".to_owned(), diagnostics.to_json());
+    }
+    value
 }
 
 fn status_from_store(value: &str) -> AgentResultStatus {

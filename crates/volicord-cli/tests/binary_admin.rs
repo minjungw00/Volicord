@@ -1031,7 +1031,7 @@ fn init_codex_record_profile_succeeds_without_host_hooks_or_watcher() -> Result<
 
 #[cfg(unix)]
 #[test]
-fn connection_verify_trusted_project_prioritizes_host_runtime_guidance(
+fn connection_verify_trusted_project_prioritizes_tool_exposure_guidance(
 ) -> Result<(), Box<dyn Error>> {
     let runtime_home = TempRuntimeHome::new("cli-bin-record-verify-compact")?;
     let repo_root = create_git_repo(&runtime_home, "product-repo")?;
@@ -1094,18 +1094,30 @@ fn connection_verify_trusted_project_prioritizes_host_runtime_guidance(
     assert!(text.contains("  Codex project trust: trusted"));
     assert!(text.contains("  MCP preflight: passed"));
     assert!(text.contains("  MCP handshake: passed"));
+    assert!(text.contains("  Volicord storage read: passed"));
+    assert!(text.contains("  Volicord storage write: passed"));
+    assert!(text.contains("  Effective MCP tools: workflow"));
     assert!(text.contains("  Codex host runtime: not observed"));
     assert!(text.contains("  Host MCP command: uses volicord from the Codex host PATH"));
     assert!(text.contains("  Host follow-up: action required"));
     assert!(text.contains("Next:"));
     assert!(!text.contains("Trust or approve the project configuration if Codex asks."));
-    assert!(
-        text.contains(
-            "Confirm the active Codex session has started the Volicord MCP server and exposed Volicord tools."
-        )
+    assert!(text.contains("Confirm Volicord tools are exposed in the active Codex session."));
+    assert!(text.contains(
+        "If tools are not exposed, check Codex MCP startup/tool-list logs and Volicord storage read/write capability."
+    ));
+    assert!(text.contains("Also ensure `volicord` is launchable by the Codex host process."));
+    assert!(!text.contains("has started the Volicord MCP server"));
+    assert_order(
+        &text,
+        "Confirm Volicord tools are exposed in the active Codex session.",
+        "If tools are not exposed, check Codex MCP startup/tool-list logs and Volicord storage read/write capability.",
     );
-    assert!(text.contains("If tools are not exposed, check Codex MCP startup and tool-list logs."));
-    assert!(text.contains("Ensure `volicord` is launchable by the Codex host process."));
+    assert_order(
+        &text,
+        "If tools are not exposed, check Codex MCP startup/tool-list logs and Volicord storage read/write capability.",
+        "Also ensure `volicord` is launchable by the Codex host process.",
+    );
     assert!(text.contains("Limits:"));
     assert!(text.contains(
         "The record profile supports cooperative Volicord workflow recording through MCP."
@@ -1140,16 +1152,44 @@ fn connection_verify_trusted_project_prioritizes_host_runtime_guidance(
     );
     assert_eq!(
         value["primary_next_action"]["instruction"],
-        "Confirm the active Codex session has started the Volicord MCP server and exposed Volicord tools; if tools are not exposed, check Codex MCP startup and tool-list logs; ensure `volicord` is launchable by the Codex host process"
+        "Confirm the active Codex session exposes Volicord tools. If tools are not exposed, check Codex MCP startup/tool-list logs and Volicord storage read/write capability. Also ensure `volicord` is launchable by the Codex host process."
     );
     assert_eq!(value["primary_next_action"]["command"], verify_command);
+    assert_order(
+        value["primary_next_action"]["instruction"]
+            .as_str()
+            .expect("primary action instruction should be text"),
+        "exposes Volicord tools",
+        "Volicord storage read/write capability",
+    );
+    assert_order(
+        value["primary_next_action"]["instruction"]
+            .as_str()
+            .expect("primary action instruction should be text"),
+        "Volicord storage read/write capability",
+        "launchable by the Codex host process",
+    );
     assert!(!value["primary_next_action"]["instruction"]
         .as_str()
         .expect("primary action instruction should be text")
         .contains("volicord connection verify"));
     assert_eq!(
         value["summary_card"]["next"],
-        "Codex host runtime has not been observed; confirm the active Codex session starts the Volicord MCP server and exposes Volicord tools."
+        "Codex host runtime has not been observed; confirm the active Codex session exposes Volicord tools, then check Codex MCP startup/tool-list logs and Volicord storage read/write capability before host command launchability."
+    );
+    assert_order(
+        value["summary_card"]["next"]
+            .as_str()
+            .expect("summary next should be text"),
+        "exposes Volicord tools",
+        "Volicord storage read/write capability",
+    );
+    assert_order(
+        value["summary_card"]["next"]
+            .as_str()
+            .expect("summary next should be text"),
+        "Volicord storage read/write capability",
+        "host command launchability",
     );
     assert!(!value["summary_card"]["next"]
         .as_str()
@@ -1202,9 +1242,46 @@ fn connection_verify_trusted_project_prioritizes_host_runtime_guidance(
             && check["details"]["risk"] == "host_path_unconfirmed"));
     assert_eq!(value["verification"]["host"]["managed_config"], "match");
     assert_eq!(value["verification"]["preflight"]["status"], "passed");
+    assert_eq!(
+        value["verification"]["preflight"]["diagnostics"]["storage_read"],
+        "passed"
+    );
+    assert_eq!(
+        value["verification"]["preflight"]["diagnostics"]["storage_write"],
+        "passed"
+    );
+    assert_eq!(
+        value["verification"]["preflight"]["diagnostics"]["effective_tool_mode"],
+        "workflow"
+    );
     assert_eq!(value["verification"]["mcp_handshake"]["status"], "passed");
+    assert!(value["checks"]
+        .as_array()
+        .expect("checks should be an array")
+        .iter()
+        .any(|check| check["id"] == "volicord_storage_read"
+            && check["status"] == "passed"
+            && check["details"]["value"] == "passed"));
+    assert!(value["checks"]
+        .as_array()
+        .expect("checks should be an array")
+        .iter()
+        .any(|check| check["id"] == "volicord_storage_write"
+            && check["status"] == "passed"
+            && check["details"]["value"] == "passed"));
+    assert!(value["checks"]
+        .as_array()
+        .expect("checks should be an array")
+        .iter()
+        .any(|check| check["id"] == "effective_mcp_tools"
+            && check["status"] == "passed"
+            && check["details"]["value"] == "workflow"));
     assert_eq!(
         value["connection"]["verification_report"]["mcp_handshake"]["status"],
+        "passed"
+    );
+    assert_eq!(
+        value["connection"]["verification_report"]["preflight"]["diagnostics"]["storage_write"],
         "passed"
     );
     Ok(())
@@ -1212,8 +1289,7 @@ fn connection_verify_trusted_project_prioritizes_host_runtime_guidance(
 
 #[cfg(unix)]
 #[test]
-fn connection_status_trusted_project_prioritizes_host_runtime_guidance(
-) -> Result<(), Box<dyn Error>> {
+fn connection_status_trusted_project_mentions_storage_diagnostics() -> Result<(), Box<dyn Error>> {
     let runtime_home = TempRuntimeHome::new("cli-bin-record-status-compact")?;
     let repo_root = create_git_repo(&runtime_home, "product-repo")?;
     let bin_dir = runtime_home.path().join("bin");
@@ -1279,15 +1355,29 @@ fn connection_status_trusted_project_prioritizes_host_runtime_guidance(
     assert!(text.contains("  Codex project trust: trusted"));
     assert!(text.contains("  Last MCP preflight: passed"));
     assert!(text.contains("  Last MCP handshake: passed"));
+    assert!(text.contains("  Volicord storage read: passed"));
+    assert!(text.contains("  Volicord storage write: passed"));
+    assert!(text.contains("  Effective MCP tools: workflow"));
     assert!(text.contains("  Codex host runtime: not observed"));
     assert!(text.contains("  Host MCP command: uses volicord from the Codex host PATH"));
     assert!(text.contains("  Host follow-up: action required"));
     assert!(!text.contains("Trust or approve the project configuration if Codex asks."));
+    assert!(text.contains("Confirm Volicord tools are exposed in the active Codex session."));
     assert!(text.contains(
-        "Confirm the active Codex session has started the Volicord MCP server and exposed Volicord tools."
+        "If tools are not exposed, check Codex MCP startup/tool-list logs and Volicord storage read/write capability."
     ));
-    assert!(text.contains("If tools are not exposed, check Codex MCP startup and tool-list logs."));
-    assert!(text.contains("Ensure `volicord` is launchable by the Codex host process."));
+    assert!(text.contains("Also ensure `volicord` is launchable by the Codex host process."));
+    assert!(!text.contains("has started the Volicord MCP server"));
+    assert_order(
+        &text,
+        "Volicord storage read: passed",
+        "Codex host runtime: not observed",
+    );
+    assert_order(
+        &text,
+        "Volicord storage read/write capability",
+        "Also ensure `volicord` is launchable by the Codex host process.",
+    );
     assert_text_renders_volicord_commands_as_standalone_lines(
         &text,
         &[&verify_command, &diagnostics_command],
@@ -1317,13 +1407,38 @@ fn connection_status_trusted_project_prioritizes_host_runtime_guidance(
     );
     assert_eq!(
         value["summary_card"]["next"],
-        "Codex host runtime has not been observed; confirm the active Codex session starts the Volicord MCP server and exposes Volicord tools."
+        "Codex host runtime has not been observed; confirm the active Codex session exposes Volicord tools, then check Codex MCP startup/tool-list logs and Volicord storage read/write capability before host command launchability."
+    );
+    assert_eq!(
+        value["primary_next_action"]["instruction"],
+        "Confirm the active Codex session exposes Volicord tools. If tools are not exposed, check Codex MCP startup/tool-list logs and Volicord storage read/write capability. Also ensure `volicord` is launchable by the Codex host process."
     );
     assert!(value["actions"]
         .as_array()
         .expect("actions should be an array")
         .iter()
         .any(|action| action["id"] == "host_runtime_not_observed"));
+    assert!(value["checks"]
+        .as_array()
+        .expect("checks should be an array")
+        .iter()
+        .any(|check| check["id"] == "volicord_storage_read"
+            && check["status"] == "passed"
+            && check["details"]["value"] == "passed"));
+    assert!(value["checks"]
+        .as_array()
+        .expect("checks should be an array")
+        .iter()
+        .any(|check| check["id"] == "volicord_storage_write"
+            && check["status"] == "passed"
+            && check["details"]["value"] == "passed"));
+    assert!(value["checks"]
+        .as_array()
+        .expect("checks should be an array")
+        .iter()
+        .any(|check| check["id"] == "effective_mcp_tools"
+            && check["status"] == "passed"
+            && check["details"]["value"] == "workflow"));
     assert!(value["checks"]
         .as_array()
         .expect("checks should be an array")
@@ -1947,7 +2062,7 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     );
     assert_eq!(
         status_without_intent_json["summary_card"]["next"],
-        "Codex host runtime has not been observed; confirm the active Codex session starts the Volicord MCP server and exposes Volicord tools."
+        "Codex host runtime has not been observed; confirm the active Codex session exposes Volicord tools, then check Codex MCP startup/tool-list logs and Volicord storage read/write capability before host command launchability."
     );
     assert!(!status_without_intent_json["summary_card"]["next"]
         .as_str()
@@ -1991,11 +2106,10 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
         "Status:\n  Connection: enabled\n  Mode: workflow\n  Last verification: action required"
     ));
     assert!(status_text.contains("  Host follow-up: action required"));
+    assert!(status_text.contains("Confirm Volicord tools are exposed in the active Codex session."));
     assert!(status_text.contains(
-        "Confirm the active Codex session has started the Volicord MCP server and exposed Volicord tools."
+        "If tools are not exposed, check Codex MCP startup/tool-list logs and Volicord storage read/write capability."
     ));
-    assert!(status_text
-        .contains("If tools are not exposed, check Codex MCP startup and tool-list logs."));
     let verify_command = format!(
         "volicord connection verify codex --shared --repo {}",
         repo_root.display()
@@ -4347,6 +4461,19 @@ fn assert_text_renders_volicord_commands_as_standalone_lines(text: &str, command
     }
 }
 
+fn assert_order(text: &str, before: &str, after: &str) {
+    let before_index = text
+        .find(before)
+        .unwrap_or_else(|| panic!("expected `{before}` in:\n{text}"));
+    let after_index = text
+        .find(after)
+        .unwrap_or_else(|| panic!("expected `{after}` in:\n{text}"));
+    assert!(
+        before_index < after_index,
+        "expected `{before}` before `{after}` in:\n{text}"
+    );
+}
+
 fn contains_volicord_shell_command(line: &str) -> bool {
     let Some(start) = line.find("volicord ") else {
         return false;
@@ -4969,6 +5096,16 @@ fn write_fake_mcp_with_workflow_tools(
     let read_only_response = shell_single_quoted(&fake_tools_list_response(&read_only_tools));
     let mut script = "#!/bin/sh\n\
          mode=\"${VOLICORD_TEST_CONNECTION_MODE:-read_only}\"\n\
+         storage_read=\"${VOLICORD_TEST_STORAGE_READ:-passed}\"\n\
+         storage_write=\"${VOLICORD_TEST_STORAGE_WRITE:-passed}\"\n\
+         effective_tool_mode=\"${VOLICORD_TEST_EFFECTIVE_TOOL_MODE:-}\"\n\
+         if [ -z \"$effective_tool_mode\" ]; then\n\
+         if [ \"$storage_read\" != \"passed\" ]; then effective_tool_mode=\"unavailable\";\n\
+         elif [ \"$mode\" = \"read_only\" ]; then effective_tool_mode=\"read_only\";\n\
+         elif [ \"$storage_write\" = \"passed\" ]; then effective_tool_mode=\"workflow\";\n\
+         elif [ \"$storage_write\" = \"readonly\" ]; then effective_tool_mode=\"read_only_degraded\";\n\
+         else effective_tool_mode=\"unavailable\"; fi\n\
+         fi\n\
          if [ \"$1\" = \"mcp\" ] && [ \"$2\" = \"--check\" ]; then\n\
          shift 2\n\
          if [ \"$1\" != \"--connection\" ]; then printf 'missing connection\\n' >&2; exit 2; fi\n\
@@ -4979,6 +5116,9 @@ fn write_fake_mcp_with_workflow_tools(
          printf 'connection_id: %s\\n' \"$connection\"\n\
          printf 'mode: %s\\n' \"$mode\"\n\
          printf 'enabled: true\\n'\n\
+         printf 'project_state_read: %s\\n' \"$storage_read\"\n\
+         printf 'project_state_write: %s\\n' \"$storage_write\"\n\
+         printf 'effective_tool_mode: %s\\n' \"$effective_tool_mode\"\n\
          printf 'allowed_projects: 1\\n'\n\
          printf 'available_projects: 1\\n'\n\
          printf 'verification_scope: startup_check_only\\n'\n\
