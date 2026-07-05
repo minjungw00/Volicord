@@ -1160,10 +1160,6 @@ fn connection_verify_trusted_project_prioritizes_host_runtime_guidance(
         .expect("summary next should be text")
         .contains("volicord connection verify"));
     assert_ne!(value["primary_next_action"]["id"], "host_trust_required");
-    assert_ne!(
-        value["primary_next_action"]["id"],
-        "host_mcp_command_path_unconfirmed"
-    );
     assert!(value["actions"]
         .as_array()
         .expect("actions should be an array")
@@ -1318,10 +1314,6 @@ fn connection_status_trusted_project_prioritizes_host_runtime_guidance(
     assert_eq!(
         value["primary_next_action"]["id"],
         "host_runtime_not_observed"
-    );
-    assert_ne!(
-        value["primary_next_action"]["id"],
-        "host_mcp_command_path_unconfirmed"
     );
     assert_eq!(
         value["summary_card"]["next"],

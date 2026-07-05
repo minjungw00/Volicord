@@ -410,7 +410,6 @@ pub enum UserActionKind {
     ProjectApprovalRequired,
     ReloadRequired,
     HostRuntimeNotObserved,
-    HostMcpCommandPathUnconfirmed,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

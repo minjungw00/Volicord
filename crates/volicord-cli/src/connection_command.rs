@@ -2024,10 +2024,12 @@ fn attach_current_host_runtime_diagnostics(
     let command = host_mcp_command_diagnostic(&host_plan.entry, &runtime);
     let mut actions = host.user_actions.clone();
     if host_runtime_action_applies(&host, &runtime) {
-        let kind = UserActionKind::HostRuntimeNotObserved;
         push_unique_action(
             &mut actions,
-            UserAction::new(kind, host_runtime_action_message(kind)),
+            UserAction::new(
+                UserActionKind::HostRuntimeNotObserved,
+                host_runtime_not_observed_action_message(),
+            ),
         );
     }
     host.with_host_runtime(runtime)
@@ -2047,16 +2049,8 @@ fn host_runtime_action_applies(host: &Verification, runtime: &HostRuntimeDiagnos
         })
 }
 
-fn host_runtime_action_message(kind: UserActionKind) -> &'static str {
-    match kind {
-        UserActionKind::HostMcpCommandPathUnconfirmed => {
-            "Make `volicord` available on the PATH seen by the Codex host process, or configure the MCP command so the host can launch it; restart, reload, resume, or start a new Codex session in this repository; confirm Volicord tools are exposed in the active Codex session"
-        }
-        UserActionKind::HostRuntimeNotObserved => {
-            "Confirm the active Codex session has started the Volicord MCP server and exposed Volicord tools; if tools are not exposed, check Codex MCP startup and tool-list logs; ensure `volicord` is launchable by the Codex host process"
-        }
-        _ => "Complete the required host follow-up",
-    }
+fn host_runtime_not_observed_action_message() -> &'static str {
+    "Confirm the active Codex session has started the Volicord MCP server and exposed Volicord tools; if tools are not exposed, check Codex MCP startup and tool-list logs; ensure `volicord` is launchable by the Codex host process"
 }
 
 fn push_unique_action(actions: &mut Vec<UserAction>, action: UserAction) {
@@ -5700,24 +5694,6 @@ fn append_compact_next_steps(
             );
             push_optional_numbered_command(output, &mut index, "Run", command.as_deref());
         }
-        "host_mcp_command_path_unconfirmed" => {
-            push_numbered_text(
-                output,
-                &mut index,
-                "Make `volicord` available on the PATH seen by the Codex host process, or configure the MCP command so the host can launch it.",
-            );
-            push_numbered_text(
-                output,
-                &mut index,
-                "Restart, reload, resume, or start a new Codex session in this repository.",
-            );
-            push_numbered_text(
-                output,
-                &mut index,
-                "Confirm that Volicord tools are exposed in the active Codex session.",
-            );
-            push_optional_numbered_command(output, &mut index, "Run", command.as_deref());
-        }
         "host_runtime_not_observed" => {
             push_numbered_text(
                 output,
@@ -7277,7 +7253,6 @@ fn prioritized_connection_action(actions: &[UserAction]) -> Option<&UserAction> 
         UserActionKind::ProjectApprovalRequired,
         UserActionKind::HostRuntimeNotObserved,
         UserActionKind::ReloadRequired,
-        UserActionKind::HostMcpCommandPathUnconfirmed,
     ]
     .into_iter()
     .find_map(|kind| actions.iter().find(|action| action.kind == kind))
@@ -7317,9 +7292,6 @@ fn connection_summary_next_text(
         return "none".to_owned();
     };
     match action.id.as_str() {
-        "host_mcp_command_path_unconfirmed" => format!(
-            "{host_display} host runtime has not been observed; inspect {host_display} MCP startup and tool-list logs, then confirm the MCP command is launchable by the {host_display} host process."
-        ),
         "host_runtime_not_observed" => format!(
             "{host_display} host runtime has not been observed; confirm the active {host_display} session starts the Volicord MCP server and exposes Volicord tools."
         ),
@@ -7405,7 +7377,6 @@ fn next_action_should_verify(id: &str) -> bool {
             | "project_approval_required"
             | "reload_required"
             | "host_runtime_not_observed"
-            | "host_mcp_command_path_unconfirmed"
     )
 }
 
@@ -9478,7 +9449,6 @@ fn user_action_id(kind: UserActionKind) -> &'static str {
         UserActionKind::ProjectApprovalRequired => "project_approval_required",
         UserActionKind::ReloadRequired => "reload_required",
         UserActionKind::HostRuntimeNotObserved => "host_runtime_not_observed",
-        UserActionKind::HostMcpCommandPathUnconfirmed => "host_mcp_command_path_unconfirmed",
     }
 }
 
