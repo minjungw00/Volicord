@@ -24,7 +24,6 @@ use crate::registration::ADMIN_METADATA_JSON;
 use crate::shell_path::mcp_binary_name;
 pub(crate) use crate::shell_path::{is_executable_file, volicord_binary_name};
 use crate::{
-    disclosure::render_action_guidance_text,
     setup_report::{
         CommandAvailability, SetupAction, SetupActionKind, SetupReport, SetupSectionStatus,
         SetupStatus,
@@ -365,8 +364,9 @@ fn run_setup_command_inner(
             actions_required.push(SetupAction::required(
                 "run_init_from_volicord",
                 SetupActionKind::CommandAvailability,
-                "Install or link an accessible volicord executable, then run volicord init --host <host> --repo <path> from the Product Repository.",
-            ));
+                "Install or link an accessible volicord executable, then initialize the primary host connection from the Product Repository.",
+            )
+            .with_command("volicord init --host <host> --repo <path>"));
             let report = SetupReport::new(
                 runtime_home_section,
                 installation_profile_failed("installation profile was not saved", &error),
@@ -418,7 +418,7 @@ fn run_setup_command_inner(
                 SetupAction::required(
                     "select_mcp_command",
                     SetupActionKind::SelectMcpCommand,
-                    "Run volicord init --host <host> --repo <path> --mcp-command PATH with an executable volicord path.",
+                    "Select an executable MCP launch command, then rerun init with that command.",
                 )
                 .with_command("volicord init --host <host> --repo <path> --mcp-command PATH"),
             );
@@ -545,10 +545,11 @@ fn run_setup_command_inner(
                         "repair_link_bin",
                         SetupActionKind::CommandLinks,
                         format!(
-                            "Fix write access for {}, then run volicord doctor after installing volicord in a writable PATH directory.",
+                            "Fix write access for {} after installing volicord in a writable PATH directory.",
                             link_bin.display()
                         ),
                     )
+                    .with_command("volicord doctor")
                     .with_path(&link_bin),
                 );
                 link_results.insert("volicord".to_owned(), "failed".to_owned());
@@ -1641,11 +1642,12 @@ fn push_link_check(
                     format!("repair_{name}_link"),
                     SetupActionKind::CommandLinks,
                     format!(
-                        "Move or remove the existing {} path, then run volicord doctor after installing volicord in a writable PATH directory such as {}.",
+                        "Move or remove the existing {} path after installing volicord in a writable PATH directory such as {}.",
                         path.display(),
                         link_bin.display()
                     ),
                 )
+                .with_command("volicord doctor")
                 .with_path(path),
             );
         }
@@ -1659,11 +1661,12 @@ fn push_link_check(
                     format!("repair_{name}_link"),
                     SetupActionKind::CommandLinks,
                     format!(
-                        "Fix write access for {}, then run volicord doctor after installing volicord in a writable PATH directory such as {}.",
+                        "Fix write access for {} after installing volicord in a writable PATH directory such as {}.",
                         path.display(),
                         link_bin.display()
                     ),
                 )
+                .with_command("volicord doctor")
                 .with_path(path),
             );
         }
@@ -1714,43 +1717,89 @@ fn render_setup_output(
         }))
         .map(|text| format!("{text}\n"))
         .map_err(|error| SetupCommandError::Runtime(error.to_string())),
-        OutputFormat::Text => {
-            let mut text = format!(
-                "Volicord setup {}\n{}status_meaning: {}\nruntime_home_state: {}\nruntime_home: {}\nregistry_db: {}\ninstallation_profile_state: {}\ncommand_state: {}\nhost_reload_required: {}\n",
-                report.status.as_str(),
-                setup_action_guidance_text(report),
-                setup_status_meaning(report.status),
-                report.runtime_home.status.as_str(),
-                runtime_home.runtime_home.display(),
-                runtime_home.registry_db_path.display(),
-                report.installation_profile.status.as_str(),
-                setup_command_state(report),
-                yes_no(setup_host_reload_required(report)),
-            );
-            if let Some(profile) = profile {
-                text.push_str(&format!(
-                    "volicord_command: {}\nvolicord_mcp_command: {}\ndefault_connection_mode: {}\n",
-                    profile.volicord_command,
-                    profile.volicord_mcp_command,
-                    profile.default_connection_mode
-                ));
-            }
-            let not_passed = checks
-                .iter()
-                .filter(|check| check.status != "passed")
-                .collect::<Vec<_>>();
-            if let Some(check) = not_passed.first() {
-                text.push_str(&format!(
-                    "blocking_check: {} ({})\n",
-                    check.summary, check.status
-                ));
-            }
-            append_setup_next_action(&mut text, report);
-            text.push_str(&format!(
-                "optional_action_count: {}\n",
-                report.actions_optional.len()
-            ));
-            Ok(text)
+        OutputFormat::Text => Ok(render_compact_setup_text(
+            report,
+            runtime_home,
+            profile,
+            checks,
+        )),
+    }
+}
+
+fn render_compact_setup_text(
+    report: &SetupReport,
+    runtime_home: &RuntimeHomeRecord,
+    profile: Option<&InstallationProfileRecord>,
+    checks: &[DiagnosticCheck],
+) -> String {
+    let mut text = format!("Volicord setup {}\n\n", report.status.as_str());
+    text.push_str("Summary:\n");
+    text.push_str(&format!(
+        "  Status: {}\n  Meaning: {}\n  Runtime Home: {}\n  Installation profile: {}\n  Commands: {}\n  Host reload required: {}\n",
+        setup_result_text(report.status),
+        setup_status_meaning(report.status),
+        display_state_text(report.runtime_home.status.as_str()),
+        display_state_text(report.installation_profile.status.as_str()),
+        display_state_text(setup_command_state(report)),
+        yes_no(setup_host_reload_required(report)),
+    ));
+    text.push_str(&format!(
+        "\nRuntime Home:\n  {}\n  Registry: {}\n",
+        runtime_home.runtime_home.display(),
+        runtime_home.registry_db_path.display()
+    ));
+    if let Some(profile) = profile {
+        text.push_str(&format!(
+            "\nSelected commands:\n  volicord: {}\n  MCP launch: {}\n  Default mode: {}\n",
+            profile.volicord_command, profile.volicord_mcp_command, profile.default_connection_mode
+        ));
+    }
+    append_setup_checks(&mut text, checks);
+    append_setup_actions(&mut text, "Next", &report.actions_required);
+    append_setup_actions(&mut text, "Optional", &report.actions_optional);
+    text.push_str(&format!(
+        "\nLimits:\n  This does not prove {}.\n\nDiagnostics:\n  Run:\n    volicord doctor --json\n",
+        SETUP_NON_GUARANTEE_TEXT
+    ));
+    text
+}
+
+fn append_setup_checks(output: &mut String, checks: &[DiagnosticCheck]) {
+    output.push_str("\nChecks:\n");
+    let not_passed = checks
+        .iter()
+        .filter(|check| check.status != "passed")
+        .collect::<Vec<_>>();
+    if not_passed.is_empty() {
+        output.push_str("  All available setup checks passed.\n");
+        return;
+    }
+    for check in not_passed {
+        output.push_str(&format!(
+            "  {}: {}\n",
+            check.summary,
+            display_state_text(&check.status)
+        ));
+    }
+}
+
+fn append_setup_actions(output: &mut String, label: &str, actions: &[SetupAction]) {
+    if label == "Optional" && actions.is_empty() {
+        return;
+    }
+    output.push_str(&format!("\n{label}:\n"));
+    if actions.is_empty() {
+        output.push_str("  none\n");
+        return;
+    }
+    for (index, action) in actions.iter().enumerate() {
+        output.push_str(&format!(
+            "  {}. {}\n",
+            index + 1,
+            trimmed_sentence(&action.instruction)
+        ));
+        if let Some(command) = &action.command {
+            output.push_str(&format!("     Run:\n       {command}\n"));
         }
     }
 }
@@ -1794,31 +1843,6 @@ fn primary_setup_action(report: &SetupReport) -> Option<&SetupAction> {
     report.actions_required.first()
 }
 
-fn setup_next_action_text(report: &SetupReport) -> String {
-    primary_setup_action(report)
-        .map(|action| action.instruction.clone())
-        .unwrap_or_else(|| "none".to_owned())
-}
-
-fn append_setup_next_action(output: &mut String, report: &SetupReport) {
-    output.push_str(&format!(
-        "next_action: {}\n",
-        setup_next_action_text(report)
-    ));
-}
-
-fn setup_action_guidance_text(report: &SetupReport) -> String {
-    if report.status == SetupStatus::Complete {
-        return String::new();
-    }
-    render_action_guidance_text(
-        setup_result_text(report.status),
-        setup_status_meaning(report.status),
-        &setup_next_action_text(report),
-        SETUP_NON_GUARANTEE_TEXT,
-    )
-}
-
 fn setup_result_text(status: SetupStatus) -> &'static str {
     match status {
         SetupStatus::ActionRequired => "action_required (not a fatal CLI error)",
@@ -1833,6 +1857,14 @@ fn setup_status_meaning(status: SetupStatus) -> &'static str {
         SetupStatus::ActionRequired => "installation profile setup needs a named user action",
         SetupStatus::Failed => "installation profile setup could not complete",
     }
+}
+
+fn display_state_text(value: &str) -> String {
+    value.replace('_', " ")
+}
+
+fn trimmed_sentence(value: &str) -> &str {
+    value.trim().trim_end_matches('.')
 }
 
 fn append_interactive_notes(mut output: String, format: OutputFormat, notes: &[String]) -> String {
@@ -2674,16 +2706,18 @@ mod tests {
         assert!(outcome.output.contains("command linking was skipped"));
         assert!(outcome
             .output
-            .contains("Result: action_required (not a fatal CLI error)"));
+            .contains("Status: action_required (not a fatal CLI error)"));
         assert!(outcome
             .output
-            .contains("Why: installation profile setup needs a named user action"));
+            .contains("Meaning: installation profile setup needs a named user action"));
         assert!(outcome
             .output
-            .contains("Next: Make volicord available on PATH"));
+            .contains("Next:\n  1. Make volicord available on PATH"));
         assert!(outcome
             .output
-            .contains("Does not prove: future shell PATH state"));
+            .contains("This does not prove future shell PATH state"));
+        assert!(!outcome.output.contains("runtime_home_state:"));
+        assert!(!outcome.output.contains("next_action:"));
         assert!(!home.join(".local").exists());
         assert!(!home.join(".zshrc").exists());
         Ok(())

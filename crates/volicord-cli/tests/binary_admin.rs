@@ -290,23 +290,33 @@ fn doctor_without_setup_reports_action_required() -> Result<(), Box<dyn Error>> 
     assert_eq!(value["summary_card"]["recording"], "diagnostic_observation");
     assert_eq!(
         value["summary_card"]["next"],
-        "Run volicord init --host <host> --repo <path> from the Product Repository to initialize the primary host connection."
+        "Initialize the primary host connection from the Product Repository."
+    );
+    assert_eq!(
+        value["primary_next_action"]["command"],
+        "volicord init --host <host> --repo <path>"
     );
     assert_eq!(value["states"]["prompt_capture_status"], "not_checked");
     let doctor_text = run_with_home_env(runtime_home.path(), ["doctor"], &[])?;
     assert_success(&doctor_text);
     let text = stdout(&doctor_text);
-    assert!(text.contains("Result: action_required (not a fatal CLI error)"));
+    assert!(text.contains("Volicord doctor action_required"));
+    assert!(text.contains("Status:\n  Installation profile: local init or profile repair is required before Volicord workflows are usable"));
+    assert!(text.contains("Runtime Home: ready"));
+    assert!(text.contains("Installation profile: missing or invalid"));
+    assert!(text.contains("MCP configuration: unknown"));
+    assert!(text.contains("Prompt capture: not checked"));
     assert!(text.contains(
-        "Why: local init or profile repair is required before Volicord workflows are usable"
+        "Next:\n  1. Initialize the primary host connection from the Product Repository"
     ));
-    assert!(text.contains("runtime_home_state: ready"));
-    assert!(text.contains("installation_profile_state: missing_or_invalid"));
-    assert!(text.contains("mcp_config_state: unknown"));
-    assert!(text.contains("prompt_capture_state: not_checked"));
-    assert!(text.contains(
-        "Next: Run volicord init --host <host> --repo <path> from the Product Repository to initialize the primary host connection."
-    ));
+    assert_text_renders_volicord_commands_as_standalone_lines(
+        &text,
+        &[
+            "volicord init --host <host> --repo <path>",
+            "volicord doctor --json",
+        ],
+    );
+    assert_non_connection_text_omits_diagnostic_dump_fields(&text);
     assert_eq!(fs::read_dir(runtime_home.path())?.count(), 0);
     Ok(())
 }
@@ -2088,7 +2098,12 @@ fn ordinary_command_before_profile_instructs_init() -> Result<(), Box<dyn Error>
     let output = run_with_home_env(runtime_home.path(), ["project", "list"], &[])?;
 
     assert!(!output.status.success());
-    assert!(stderr(&output).contains("volicord init --host <host> --repo <path>"));
+    let diagnostic = stderr(&output);
+    assert!(diagnostic.contains("Run from the Product Repository:"));
+    assert_text_renders_volicord_commands_as_standalone_lines(
+        &diagnostic,
+        &["volicord init --host <host> --repo <path>"],
+    );
     Ok(())
 }
 
@@ -3000,10 +3015,14 @@ fn connection_status_reports_stale_guard_files_as_primary_action() -> Result<(),
         doctor_json["primary_next_action"]["id"],
         "repair_guard_files"
     );
+    assert_eq!(
+        doctor_json["primary_next_action"]["command"],
+        "volicord init --host HOST --repo PATH"
+    );
     assert!(doctor_json["summary_card"]["next"]
         .as_str()
         .expect("summary next should be text")
-        .starts_with("recommended: Run volicord init"));
+        .starts_with("recommended: Reinstall or refresh detective host-hook files"));
     Ok(())
 }
 
@@ -3529,6 +3548,13 @@ fn user_channel_records_pending_judgment_with_local_user_provenance() -> Result<
     assert!(list_text.contains("volicord inbox answer"));
     assert!(list_text.contains("Does not prove: approval"));
     assert!(!list_text.contains("project_user_channel"));
+    assert_text_renders_volicord_commands_as_standalone_lines(
+        &list_text,
+        &[&format!(
+            "volicord inbox answer {} --choice <choice>",
+            judgment_id
+        )],
+    );
 
     let list_json =
         run_with_home_env_in_dir(runtime_home.path(), ["inbox", "--json"], &[], &repo_root)?;
@@ -3546,7 +3572,7 @@ fn user_channel_records_pending_judgment_with_local_user_provenance() -> Result<
     assert!(list_value["summary_card"]["next"]
         .as_str()
         .expect("summary next should be text")
-        .contains("volicord inbox answer"));
+        .starts_with("answer pending judgment"));
     let first = &list_value["pending_judgment_inbox_items"][0];
     assert_eq!(first["judgment_id"], judgment_id.as_str());
     assert_eq!(first["requirement_status"], "required");
@@ -3572,11 +3598,17 @@ fn user_channel_records_pending_judgment_with_local_user_provenance() -> Result<
     assert_success(&open);
     let open_text = stdout(&open);
     assert!(open_text.contains("Judgment Inbox open action_required"));
-    assert!(open_text.contains("Result: action_required (not a fatal CLI error)"));
-    assert!(open_text.contains("Why: No local consent URL is available"));
-    assert!(open_text.contains("Next: Use the URL shown in the MCP Judgment Inbox item"));
-    assert!(open_text.contains("volicord inbox answer"));
-    assert!(open_text.contains("Does not prove: approval"));
+    assert!(open_text.contains("Summary:\n  No local consent URL is available"));
+    assert!(open_text.contains("Next:\n  1. Use the URL shown in the MCP Judgment Inbox item"));
+    assert!(open_text.contains("This does not prove approval"));
+    assert_text_renders_volicord_commands_as_standalone_lines(
+        &open_text,
+        &[&format!(
+            "volicord inbox answer {} --choice <choice>",
+            judgment_id
+        )],
+    );
+    assert_non_connection_text_omits_diagnostic_dump_fields(&open_text);
 
     let record_note = "Recorded from inbox CLI";
     let record = run_with_home_env_in_dir(
@@ -3954,6 +3986,25 @@ fn assert_connection_text_omits_diagnostic_dump_fields(text: &str) {
     }
 }
 
+fn assert_non_connection_text_omits_diagnostic_dump_fields(text: &str) {
+    for forbidden in [
+        "Result:",
+        "Why:",
+        "runtime_home_state:",
+        "installation_profile_state:",
+        "mcp_config_state:",
+        "observation_summary:",
+        "observation_capabilities:",
+        "prompt_capture_state:",
+        "next_action:",
+    ] {
+        assert!(
+            !text.contains(forbidden),
+            "non-connection text should not expose `{forbidden}`:\n{text}"
+        );
+    }
+}
+
 fn assert_text_renders_volicord_commands_as_standalone_lines(text: &str, commands: &[&str]) {
     let lines = text.lines().map(str::trim).collect::<Vec<_>>();
     for command in commands {
@@ -3965,7 +4016,7 @@ fn assert_text_renders_volicord_commands_as_standalone_lines(text: &str, command
     for line in lines
         .iter()
         .copied()
-        .filter(|line| line.contains("volicord "))
+        .filter(|line| contains_volicord_shell_command(line))
     {
         assert!(
             line.starts_with("volicord "),
@@ -3976,6 +4027,33 @@ fn assert_text_renders_volicord_commands_as_standalone_lines(text: &str, command
             "volicord command should not have trailing punctuation, got `{line}` in:\n{text}"
         );
     }
+}
+
+fn contains_volicord_shell_command(line: &str) -> bool {
+    let Some(start) = line.find("volicord ") else {
+        return false;
+    };
+    let rest = &line[start + "volicord ".len()..];
+    let command = rest
+        .split_whitespace()
+        .next()
+        .unwrap_or("")
+        .trim_matches(|character: char| !character.is_ascii_alphanumeric() && character != '-');
+    matches!(
+        command,
+        "init"
+            | "doctor"
+            | "connection"
+            | "status"
+            | "inbox"
+            | "changes"
+            | "project"
+            | "export"
+            | "mcp"
+            | "serve"
+            | "--help"
+            | "--version"
+    )
 }
 
 fn run_with_home_env<const N: usize>(

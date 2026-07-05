@@ -15,18 +15,6 @@ pub(crate) fn does_not_prove_line(non_guarantees: &str) -> String {
     format!("{DOES_NOT_PROVE_LABEL}: {non_guarantees}\n")
 }
 
-pub(crate) fn render_action_guidance_text(
-    result: &str,
-    why: &str,
-    next: &str,
-    non_guarantees: &str,
-) -> String {
-    format!(
-        "Result: {result}\nWhy: {why}\nNext: {next}\n{}",
-        does_not_prove_line(non_guarantees)
-    )
-}
-
 pub(crate) fn cooperative_host_decision_disclosure_json() -> Value {
     disclosure_json(GuaranteeDisclosure::cooperative_host_decision())
 }

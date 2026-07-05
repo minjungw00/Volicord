@@ -13,8 +13,8 @@ pub(crate) const USER_CHANNEL_SUMMARY_GUARANTEE: &str =
     "Local User Channel view; listing does not record a judgment or prove close readiness.";
 
 pub(crate) fn render_summary_card_text(card: &SummaryCard) -> String {
-    format!(
-        "Task: {}\nRecording: {}\nProfile: {}\nWrite Ticket: {}\nEvidence: {}\nUser Judgment: {}\nChanges: {}\nClose Status: {}\nTransport: {}\nNext: {}\n{}",
+    let mut output = format!(
+        "Task: {}\nRecording: {}\nProfile: {}\nWrite Ticket: {}\nEvidence: {}\nUser Judgment: {}\nChanges: {}\nClose Status: {}\nTransport: {}\n",
         card.task,
         card.recording,
         card.profile,
@@ -24,9 +24,35 @@ pub(crate) fn render_summary_card_text(card: &SummaryCard) -> String {
         card.changes,
         card.close_status,
         card.transport,
-        card.next,
-        does_not_prove_line(summary_card_non_guarantees(card)),
-    )
+    );
+    append_summary_next(&mut output, &card.next);
+    output.push_str(&does_not_prove_line(summary_card_non_guarantees(card)));
+    output
+}
+
+fn append_summary_next(output: &mut String, next: &str) {
+    let Some((label, command)) = backticked_volicord_command(next) else {
+        output.push_str(&format!("Next: {next}\n"));
+        return;
+    };
+    output.push_str(&format!("Next: {label}\n  Run:\n    {command}\n"));
+}
+
+fn backticked_volicord_command(next: &str) -> Option<(String, String)> {
+    let start = next.find("`volicord ")?;
+    let command_start = start + 1;
+    let command_end = next[command_start..].find('`')? + command_start;
+    let command = next[command_start..command_end].to_owned();
+    let replacement = if command == "volicord inbox" {
+        "the CLI inbox"
+    } else {
+        "the command below"
+    };
+    let label = next
+        .replace(&format!("`{command}`"), replacement)
+        .trim()
+        .to_owned();
+    Some((label, command))
 }
 
 fn summary_card_non_guarantees(card: &SummaryCard) -> &'static str {
@@ -194,5 +220,31 @@ mod tests {
         assert!(text.contains("actor identity proof"));
         assert!(text.contains("full filesystem monitoring"));
         assert!(text.contains("write prevention"));
+    }
+
+    #[test]
+    fn summary_card_text_renders_embedded_volicord_command_as_standalone_line() {
+        let card = SummaryCard {
+            task: "selected".to_owned(),
+            recording: "read_only".to_owned(),
+            profile: "record".to_owned(),
+            write_ticket: "none".to_owned(),
+            evidence: "none".to_owned(),
+            user_judgment: "pending (1)".to_owned(),
+            changes: "none".to_owned(),
+            close_status: "blocked".to_owned(),
+            transport: "local CLI".to_owned(),
+            next: "Use `volicord inbox` to list and answer pending user-owned judgments."
+                .to_owned(),
+            next_action: None,
+            guarantee: USER_CHANNEL_SUMMARY_GUARANTEE.to_owned(),
+        };
+
+        let text = render_summary_card_text(&card);
+
+        assert!(text
+            .contains("Next: Use the CLI inbox to list and answer pending user-owned judgments."));
+        assert!(text.contains("  Run:\n    volicord inbox\n"));
+        assert!(!text.contains("Next: Use `volicord inbox`"));
     }
 }

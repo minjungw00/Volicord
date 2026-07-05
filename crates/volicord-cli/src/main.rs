@@ -241,12 +241,12 @@ where
 fn setup_required_message(runtime_home: &Path) -> String {
     if !runtime_home.exists() {
         format!(
-            "RUNTIME_HOME_MISSING: Runtime Home {} is missing; run `volicord init --host <host> --repo <path>` from the Product Repository to initialize Volicord.",
+            "RUNTIME_HOME_MISSING: Runtime Home {} is missing.\nRun from the Product Repository:\n  volicord init --host <host> --repo <path>",
             runtime_home.display()
         )
     } else {
         format!(
-            "SETUP_REQUIRED: installation profile is missing for Runtime Home {}; run `volicord init --host <host> --repo <path>` from the Product Repository to initialize Volicord.",
+            "SETUP_REQUIRED: installation profile is missing for Runtime Home {}.\nRun from the Product Repository:\n  volicord init --host <host> --repo <path>",
             runtime_home.display()
         )
     }

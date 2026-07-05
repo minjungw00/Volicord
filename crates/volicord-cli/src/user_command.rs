@@ -21,7 +21,7 @@ use volicord_types::{
     VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL, VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
 };
 
-use crate::disclosure::{render_action_guidance_text, USER_CHANNEL_NON_GUARANTEE_TEXT};
+use crate::disclosure::USER_CHANNEL_NON_GUARANTEE_TEXT;
 use crate::project_context::{
     registered_project_for_repo, resolve_repository_root, ProjectCommandError,
 };
@@ -336,15 +336,7 @@ where
         .map_err(|error| UserCommandError::Runtime(error.to_string()));
     }
     Ok(format!(
-        "Judgment Inbox open action_required\n{}",
-        render_action_guidance_text(
-            "action_required (not a fatal CLI error)",
-            "No local consent URL is available from this CLI process.",
-            &format!(
-                "Use the URL shown in the MCP Judgment Inbox item, or run volicord inbox answer {judgment_id} --choice <choice>."
-            ),
-            USER_CHANNEL_NON_GUARANTEE_TEXT,
-        )
+        "Judgment Inbox open action_required\n\nSummary:\n  No local consent URL is available from this CLI process.\n\nNext:\n  1. Use the URL shown in the MCP Judgment Inbox item when one is available.\n  2. Run:\n     volicord inbox answer {judgment_id} --choice <choice>\n\nLimits:\n  This does not prove {USER_CHANNEL_NON_GUARANTEE_TEXT}.\n"
     ))
 }
 
@@ -990,7 +982,7 @@ fn render_inbox_items(
             ));
         }
         text.push_str(&format!(
-            "   answer: volicord inbox answer {} --choice <choice>\n",
+            "   answer:\n     volicord inbox answer {} --choice <choice>\n",
             record.judgment_id
         ));
     }
@@ -1014,12 +1006,7 @@ fn inbox_summary_card(records: &[UserJudgmentRecord], has_selected_task: bool) -
         transport: "User Channel".to_owned(),
         next: records
             .first()
-            .map(|record| {
-                format!(
-                    "Run volicord inbox answer {} --choice <choice>.",
-                    record.judgment_id
-                )
-            })
+            .map(|record| format!("answer pending judgment {}", record.judgment_id))
             .unwrap_or_else(|| "none".to_owned()),
         next_action: None,
         guarantee: USER_CHANNEL_SUMMARY_GUARANTEE.to_owned(),

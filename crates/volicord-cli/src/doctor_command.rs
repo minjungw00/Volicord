@@ -594,7 +594,7 @@ fn inspect_guard_installations(
             DiagnosticAction {
                 id: "repair_guard_files".to_owned(),
                 instruction:
-                    "Run volicord init again for affected detective-profile projects to reinstall or refresh detective host-hook files."
+                    "Reinstall or refresh detective host-hook files for affected detective-profile projects."
                         .to_owned(),
                 command: Some("volicord init --host HOST --repo PATH".to_owned()),
             },
@@ -611,7 +611,7 @@ fn inspect_guard_installations(
             DiagnosticAction {
                 id: "repair_guard_hook_path_safety".to_owned(),
                 instruction:
-                    "Run volicord init again for affected detective-profile projects to regenerate cwd-independent hook commands."
+                    "Regenerate cwd-independent hook commands for affected detective-profile projects."
                         .to_owned(),
                 command: Some("volicord init --host HOST --repo PATH".to_owned()),
             },
@@ -669,7 +669,7 @@ fn inspect_guard_installations(
             DiagnosticAction {
                 id: "repair_guard_required_hooks".to_owned(),
                 instruction:
-                    "Run volicord init again with a host adapter that supports every required detective host hook, or use the record profile."
+                    "Use a host adapter that supports every required detective host hook, or use the record profile."
                         .to_owned(),
                 command: Some("volicord init --host HOST --repo PATH".to_owned()),
             },
@@ -2335,9 +2335,11 @@ fn inspect_command_path(
         actions.push(DiagnosticAction {
             id: format!("repair_{id}"),
             instruction:
-                "Run volicord init --host <host> --repo <path> --mcp-command PATH after selecting an executable MCP launch command."
+                "Select an executable MCP launch command, then rerun init with that command."
                     .to_owned(),
-            command: Some("volicord init --host <host> --repo <path> --mcp-command PATH".to_owned()),
+            command: Some(
+                "volicord init --host <host> --repo <path> --mcp-command PATH".to_owned(),
+            ),
         });
     }
 }
@@ -2543,79 +2545,159 @@ fn render_doctor_output(
             .map(|text| format!("{text}\n"))
             .map_err(|error| DoctorCommandError::Runtime(error.to_string()))
         }
-        OutputFormat::Text => {
-            let text = format!(
-                "Volicord doctor {}\n{}status_meaning: {}\n{}runtime_home_state: {}\nruntime_home: {}\ninstallation_profile_state: {}\ncommand_state: {}\nproject_registration_state: {}\nconnection_state: {}\nmcp_config_state: {}\ndetective_installation_state: {}\nselected_profile: {}\nobservation_summary: {}\nobservation_capabilities: {}\ndetective_configuration_state: {}\nhost_hook_observation_state: {}\ndetective_effective_state: {}\ndetective_files_state: {}\nagents_block_state: {}\nvolicord_policy_file_state: {}\nrule_instruction_config_state: {}\nhook_config_state: {}\nhook_path_safety: {}\nrequired_hook_phases_state: {}\nrequired_hook_phases_missing: {}\nhost_hook_observed: {}\ndetective_status_state: {}\nprompt_capture_state: {}\nprompt_capture_health: {}\nwatcher_status: {}\nwatcher_baseline_created_at: {}\nwatcher_coverage_start_at: {}\nwatcher_coverage_basis: {}\nwatcher_partial_coverage_warning: {}\nwatcher_files_scanned: {}\nwatcher_files_skipped: {}\nwatcher_unreadable_paths: {}\nwatcher_degraded_reasons: {}\nwatcher_skipped_paths_sample: {}\nwatcher_not_full_filesystem_monitoring: {}\nhost_reload_required: {}\n",
-                status.as_str(),
-                doctor_result_reason_text(status, checks, actions),
-                doctor_status_meaning(status, checks),
-                render_summary_card_text(&summary_card),
-                doctor_runtime_home_state(runtime_home, checks),
-                runtime_home.display(),
-                doctor_installation_profile_state(checks),
-                doctor_command_state(checks),
-                doctor_count_state(checks, "projects", "registered"),
-                doctor_count_state(checks, "connections", "stored"),
-                doctor_mcp_config_state(checks),
-                doctor_count_state(checks, "guard_installations", "stored"),
-                doctor_selected_profile_from_checks(checks),
-                doctor_control_surface_text(checks),
-                doctor_guard_capabilities_text(checks),
-                doctor_check_state(checks, "guard_required_hooks_supported"),
-                doctor_check_state(checks, "guard_hook_observed"),
-                doctor_check_state(checks, "guard_status_active"),
-                doctor_check_state(checks, "guard_files_installed"),
-                doctor_guard_file_kind_state(checks, "agents_managed_block"),
-                doctor_guard_file_kind_state(checks, "volicord_policy"),
-                doctor_guard_file_kind_state(checks, "host_rule_instruction"),
-                doctor_guard_file_kind_state(checks, "host_hook_config"),
-                doctor_hook_path_safety_state(checks),
-                doctor_required_hook_phases_state(checks),
-                doctor_missing_required_hooks_text(checks),
-                doctor_check_state(checks, "guard_hook_observed"),
-                doctor_check_state(checks, "guard_status_active"),
-                doctor_prompt_capture_status(checks),
-                doctor_prompt_capture_health(checks),
-                doctor_watcher_detail_text(checks, "watcher_status", "not_checked"),
-                doctor_watcher_detail_text(checks, "baseline_created_at", "none"),
-                doctor_watcher_detail_text(checks, "coverage_start_at", "none"),
-                doctor_watcher_detail_text(checks, "coverage_basis", "none"),
-                doctor_watcher_detail_text(checks, "partial_coverage_warning", "none"),
+        OutputFormat::Text => Ok(render_compact_doctor_text(
+            status,
+            runtime_home,
+            checks,
+            actions,
+        )),
+    }
+}
+
+fn render_compact_doctor_text(
+    status: CommandStatus,
+    runtime_home: &Path,
+    checks: &[DiagnosticCheck],
+    actions: &[DiagnosticAction],
+) -> String {
+    let mut text_summary_card = doctor_summary_card(status, checks, actions);
+    text_summary_card.next = doctor_next_summary_text(status, actions);
+    let mut text = format!("Volicord doctor {}\n\n", status.as_str());
+    text.push_str(&render_summary_card_text(&text_summary_card));
+    text.push_str("\nStatus:\n");
+    text.push_str(&format!(
+        "  Installation profile: {}\n  Runtime Home: {}\n  Commands: {}\n  Host reload required: {}\n",
+        doctor_status_meaning(status, checks),
+        display_state_text(&doctor_runtime_home_state(runtime_home, checks)),
+        display_state_text(doctor_command_state(checks)),
+        yes_no(doctor_host_reload_required(checks, actions)),
+    ));
+    text.push_str(&format!("\nRuntime Home:\n  {}\n", runtime_home.display()));
+    append_doctor_check_summary(&mut text, checks, actions);
+    append_doctor_next_actions(&mut text, status, actions);
+    text.push_str(
+        "\nLimits:\n  Local setup diagnostics are not OS enforcement, write prevention, actor attribution proof, correctness proof, test sufficiency proof, or review completion.\n\nDiagnostics:\n  Run:\n    volicord doctor --json\n",
+    );
+    text
+}
+
+fn append_doctor_check_summary(
+    output: &mut String,
+    checks: &[DiagnosticCheck],
+    actions: &[DiagnosticAction],
+) {
+    output.push_str("\nChecks:\n");
+    for (label, value) in doctor_compact_check_rows(checks, actions) {
+        output.push_str(&format!("  {label}: {}\n", display_state_text(&value)));
+    }
+    let not_passed = checks
+        .iter()
+        .filter(|check| check.status != "passed")
+        .collect::<Vec<_>>();
+    if not_passed.is_empty() {
+        output.push_str("  Detailed diagnostics: passed\n");
+        return;
+    }
+    output.push_str("  Follow-up diagnostics:\n");
+    for check in not_passed {
+        output.push_str(&format!(
+            "    - {} ({})\n",
+            check.summary,
+            display_state_text(&check.status)
+        ));
+    }
+}
+
+fn doctor_compact_check_rows(
+    checks: &[DiagnosticCheck],
+    actions: &[DiagnosticAction],
+) -> Vec<(&'static str, String)> {
+    vec![
+        (
+            "Installation profile",
+            doctor_installation_profile_state(checks).to_owned(),
+        ),
+        ("Projects", doctor_count_state(checks, "projects", "registered")),
+        (
+            "Connections",
+            doctor_count_state(checks, "connections", "stored"),
+        ),
+        ("MCP configuration", doctor_mcp_config_state(checks)),
+        ("Profile", doctor_selected_profile_from_checks(checks)),
+        (
+            "Detective files",
+            doctor_check_state(checks, "guard_files_installed").to_owned(),
+        ),
+        (
+            "Hook observation",
+            doctor_check_state(checks, "guard_hook_observed").to_owned(),
+        ),
+        ("Prompt capture", doctor_prompt_capture_status(checks)),
+        (
+            "Watcher",
+            doctor_watcher_detail_text(checks, "watcher_status", "not_checked"),
+        ),
+        (
+            "Watcher scan",
+            format!(
+                "files scanned {}; files skipped {}; unreadable paths {}; not full filesystem monitoring {}",
                 doctor_watcher_scan_u64_text(checks, "files_scanned"),
                 doctor_watcher_scan_u64_text(checks, "files_skipped"),
                 doctor_watcher_scan_u64_text(checks, "unreadable_paths_count"),
-                doctor_watcher_scan_list_text(checks, "degraded_reasons"),
-                doctor_watcher_scan_list_text(checks, "skipped_paths_sample"),
                 yes_no(doctor_watcher_not_full_filesystem_monitoring(checks)),
-                yes_no(doctor_host_reload_required(checks, actions)),
-            );
-            Ok(text)
+            ),
+        ),
+        (
+            "Host reload",
+            yes_no(doctor_host_reload_required(checks, actions)).to_owned(),
+        ),
+    ]
+}
+
+fn append_doctor_next_actions(
+    output: &mut String,
+    status: CommandStatus,
+    actions: &[DiagnosticAction],
+) {
+    output.push_str("\nNext:\n");
+    if actions.is_empty() {
+        output.push_str("  none\n");
+        return;
+    }
+    for (index, action) in actions.iter().enumerate() {
+        let prefix = if status == CommandStatus::Complete {
+            "Recommended: "
+        } else {
+            ""
+        };
+        output.push_str(&format!(
+            "  {}. {}{}\n",
+            index + 1,
+            prefix,
+            trimmed_sentence(&action.instruction)
+        ));
+        if let Some(command) = &action.command {
+            output.push_str(&format!("     Run:\n       {command}\n"));
         }
     }
 }
 
-fn doctor_result_reason_text(
-    status: CommandStatus,
-    checks: &[DiagnosticCheck],
-    actions: &[DiagnosticAction],
-) -> String {
-    if status == CommandStatus::Complete && actions.is_empty() {
-        return String::new();
+fn doctor_next_summary_text(status: CommandStatus, actions: &[DiagnosticAction]) -> String {
+    match actions.first() {
+        Some(action) if status == CommandStatus::Complete => {
+            format!("recommended: {}", trimmed_sentence(&action.instruction))
+        }
+        Some(action) => trimmed_sentence(&action.instruction).to_owned(),
+        None => "none".to_owned(),
     }
-    format!(
-        "Result: {}\nWhy: {}\n",
-        doctor_result_text(status, actions),
-        doctor_status_meaning(status, checks)
-    )
 }
 
-fn doctor_result_text(status: CommandStatus, actions: &[DiagnosticAction]) -> &'static str {
-    match status {
-        CommandStatus::Complete if !actions.is_empty() => "complete (warnings need follow-up)",
-        CommandStatus::Complete => "complete",
-        CommandStatus::ActionRequired => "action_required (not a fatal CLI error)",
-        CommandStatus::Failed => "failed",
-    }
+fn display_state_text(value: &str) -> String {
+    value.replace('_', " ")
+}
+
+fn trimmed_sentence(value: &str) -> &str {
+    value.trim().trim_end_matches('.')
 }
 
 fn doctor_states_json(
@@ -2735,22 +2817,6 @@ fn doctor_watcher_scan_u64_text(checks: &[DiagnosticCheck], key: &str) -> String
         .and_then(Value::as_u64)
         .map(|value| value.to_string())
         .unwrap_or_else(|| "unknown".to_owned())
-}
-
-fn doctor_watcher_scan_list_text(checks: &[DiagnosticCheck], key: &str) -> String {
-    let summary = doctor_watcher_scan_summary_value(checks);
-    let values = summary
-        .get(key)
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_str)
-        .collect::<Vec<_>>();
-    if values.is_empty() {
-        "none".to_owned()
-    } else {
-        values.join(",")
-    }
 }
 
 fn doctor_watcher_not_full_filesystem_monitoring(checks: &[DiagnosticCheck]) -> bool {
@@ -2920,20 +2986,6 @@ fn doctor_control_surface_bool(checks: &[DiagnosticCheck], key: &str) -> bool {
         .unwrap_or(false)
 }
 
-fn doctor_control_surface_text(checks: &[DiagnosticCheck]) -> String {
-    format!(
-        "selected_profile={}, host_hooks_active={}, session_watcher_active={}, cooperative_pre_tool_warning={}, cooperative_pre_tool_denial={}, unrecorded_changes_detectable={}, actor_identity_provable={}, os_enforced={}",
-        doctor_selected_profile_from_checks(checks),
-        yes_no(doctor_control_surface_bool(checks, "host_hooks_active")),
-        yes_no(doctor_control_surface_bool(checks, "session_watcher_active")),
-        yes_no(doctor_control_surface_bool(checks, "cooperative_pre_tool_warning_available")),
-        yes_no(doctor_control_surface_bool(checks, "cooperative_pre_tool_denial_available")),
-        yes_no(doctor_control_surface_bool(checks, "unrecorded_changes_detectable")),
-        yes_no(doctor_control_surface_bool(checks, "actor_identity_provable")),
-        yes_no(doctor_control_surface_bool(checks, "os_enforced")),
-    )
-}
-
 fn doctor_required_hook_phases_state(checks: &[DiagnosticCheck]) -> &'static str {
     match check_status(checks, "guard_required_hooks_supported") {
         Some("passed") => "configured",
@@ -2955,15 +3007,6 @@ fn doctor_missing_required_hooks_value(checks: &[DiagnosticCheck]) -> Vec<String
         .filter_map(Value::as_str)
         .map(str::to_owned)
         .collect()
-}
-
-fn doctor_missing_required_hooks_text(checks: &[DiagnosticCheck]) -> String {
-    let missing = doctor_missing_required_hooks_value(checks);
-    if missing.is_empty() {
-        "none".to_owned()
-    } else {
-        missing.join(",")
-    }
 }
 
 fn doctor_prompt_capture_health(checks: &[DiagnosticCheck]) -> &'static str {
@@ -2993,23 +3036,6 @@ fn doctor_prompt_capture_available(checks: &[DiagnosticCheck]) -> bool {
     matches!(
         doctor_prompt_capture_status(checks).as_str(),
         "available" | "configured_unobserved"
-    )
-}
-
-fn doctor_guard_capabilities_text(checks: &[DiagnosticCheck]) -> String {
-    let host_hook_available = doctor_host_hook_guard_available(checks);
-    format!(
-        "cooperative_pre_tool_warning={}, cooperative_pre_tool_denial={}, post_tool_correlation={}, hook_path_safety={}, bash_shell_mutation_coverage={}, unrecorded_changes_detectable={}, prompt_capture={}, local_web_consent={}, actor_identity_provable={}, os_enforced={}",
-        yes_no(host_hook_available),
-        yes_no(host_hook_available),
-        yes_no(host_hook_available),
-        doctor_hook_path_safety_state(checks),
-        yes_no(doctor_bash_shell_mutation_coverage(checks)),
-        yes_no(doctor_control_surface_bool(checks, "unrecorded_changes_detectable")),
-        yes_no(doctor_prompt_capture_available(checks)),
-        yes_no(false),
-        yes_no(doctor_control_surface_bool(checks, "actor_identity_provable")),
-        yes_no(doctor_control_surface_bool(checks, "os_enforced")),
     )
 }
 
@@ -3124,9 +3150,8 @@ fn doctor_status_meaning(status: CommandStatus, checks: &[DiagnosticCheck]) -> &
 fn run_init_action() -> DiagnosticAction {
     DiagnosticAction {
         id: "run_init".to_owned(),
-        instruction:
-            "Run volicord init --host <host> --repo <path> from the Product Repository to initialize the primary host connection."
-                .to_owned(),
+        instruction: "Initialize the primary host connection from the Product Repository."
+            .to_owned(),
         command: Some("volicord init --host <host> --repo <path>".to_owned()),
     }
 }
