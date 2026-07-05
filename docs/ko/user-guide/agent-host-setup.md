@@ -54,6 +54,7 @@ session, Codex IDE extension session, 비대화식 Codex run, 그 밖의 Codex �
 |---|---|---|
 | MCP 설정 일치 | 프로젝트 범위 Codex 설정이 선택된 연결의 Volicord 관리 MCP server 항목과 일치합니다. | `Codex host process`가 그 항목을 로드, 신뢰, 승인, 시작했다는 뜻은 아닙니다. |
 | CLI MCP preflight 또는 handshake 통과 | `volicord connection verify`가 터미널 쪽 점검 환경에서 MCP 서버를 직접 시작했고 서버가 응답했습니다. | 활성 Codex session이 같은 서버를 시작했거나 Volicord 도구를 노출했다는 뜻은 아닙니다. |
+| MCP 저장소 capability | `volicord mcp --check`는 하나의 프로세스 바인딩에 대해 registry 읽기, project-state 읽기, project-state 쓰기, 시작 관찰, effective tool mode를 보고할 수 있습니다. | 시작 점검은 활성 Codex session이 도구를 노출했다거나 변경 도구를 사용할 수 있다는 증명이 아닙니다. |
 | Codex 프로젝트 trust | Codex 사용자 설정이 저장소를 `trusted`, `untrusted`, `unknown`, 또는 그 밖의 미확인 상태로 보고합니다. | `trusted` 항목만으로 실행 중인 Codex 호스트 프로세스가 프로젝트 설정을 reload했다는 증명이 되지 않습니다. |
 | Codex host runtime 관찰 | Volicord가 이 연결에 대해 프로젝트에 묶인 Codex 호스트 프로세스가 Volicord MCP 서버를 시작한 것을 관찰했습니다. | 터미널 쪽 CLI handshake만으로는 이 관찰이 아닙니다. |
 | 활성 Codex session의 Volicord 도구 노출 | 활성 Codex session이 선택된 모드의 Volicord MCP 도구를 볼 수 있습니다. | 파일 쓰기, 사용자 승인, 정확성, 테스트 충분성, 이후 모델의 도구 선택을 증명하지 않습니다. |
@@ -202,6 +203,27 @@ volicord connection mode codex workflow
 ```
 
 모드를 바꾼 뒤에는 호스트 reload 또는 restart가 필요할 수 있습니다.
+
+유효한 도구 노출은 MCP 호스트 환경의 저장소 capability에도 좌우됩니다.
+
+| 조건 | effective tool mode | 예상되는 도구 탐색 |
+|---|---|---|
+| `workflow` 연결이고 프로젝트 상태를 쓸 수 있음 | `workflow` | Workflow 도구와 읽기/프로젝트 탐색 도구. |
+| `workflow` 연결이지만 프로젝트 상태를 읽을 수만 있고 쓸 수 없음 | `read_only_degraded` | `volicord.status`, `volicord.check_close`, `volicord.list_projects` 같은 읽기 호환 도구. |
+| `read-only` 연결이고 프로젝트 상태를 읽을 수 있음 | `read_only` | 읽기 호환 도구. |
+| 읽을 수 있는 허용 프로젝트 상태가 없음 | `unavailable` | 프로젝트 탐색만 보이거나 바인딩에 따라 시작이 실패합니다. |
+
+기존 프로세스 바인딩에 대한 시작 및 저장소 진단은 아래 명령으로 확인합니다.
+
+```sh
+volicord mcp --check --connection CONNECTION_ID --project PROJECT_ID
+```
+
+`registry_read`, `project_state_read`, `project_state_write`,
+`startup_observation`, `effective_tool_mode` 줄을 보고 쓰기 가능한 workflow 경로와
+읽기 전용 degraded mode를 구분합니다. 이 필드들은 시작 진단이며 활성 호스트 도구 노출을
+증명하지 않습니다. 정확한 출력 의미는 [MCP 전송](../reference/mcp-transport.md#configuration-preflight)이
+담당합니다.
 
 ## 적용 전 dry-run
 

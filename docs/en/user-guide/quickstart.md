@@ -119,6 +119,12 @@ configuration. For Codex, also check the Codex project trust line, Codex host
 runtime observation, host MCP command launchability, and whether Volicord tools
 are exposed in the active Codex session. A PATH-resolved MCP command such as
 `volicord` must be available on the PATH seen by the Codex host process.
+If `tools/list` succeeds but only read-compatible tools appear, the MCP host
+environment may be running in read-only degraded mode because it can read but
+cannot write project state. Use
+[Agent Host Setup](agent-host-setup.md) and
+[Agent Host Troubleshooting](agent-host-troubleshooting.md) to inspect storage
+capability before expecting workflow mutation tools.
 
 ## Choose A Host Intent
 

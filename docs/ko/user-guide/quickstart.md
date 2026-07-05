@@ -110,6 +110,11 @@ CLI verification은 Volicord의 MCP 서버가 터미널 쪽 점검 경로에서 
 Codex host runtime 관찰, 호스트 MCP 명령 launch 가능성, 활성 Codex session에 Volicord
 도구가 노출되는지도 함께 확인합니다. `volicord`처럼 `PATH`로 찾는 MCP 명령은
 `Codex host process`가 보는 PATH에 있어야 합니다.
+`tools/list`는 성공했지만 읽기 호환 도구만 보인다면 MCP 호스트 환경이 프로젝트 상태를
+읽을 수는 있지만 쓸 수 없어 read-only degraded mode로 동작하는 것일 수 있습니다.
+Workflow 변경 도구를 기대하기 전에 [에이전트 호스트 설정](agent-host-setup.md)과
+[에이전트 호스트 문제 해결](agent-host-troubleshooting.md)에서 저장소 capability를
+확인합니다.
 
 ## 호스트 의도 선택하기
 

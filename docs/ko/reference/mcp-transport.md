@@ -338,11 +338,16 @@ MCP 호출 인자와 다른 MCP 요청 본문은 `connection_internal_id`, `proj
 ```text
 configuration: valid
 transport: stdio
-disclosure: transport diagnostics only; not OS sandboxing, network isolation, malware defense, full write prevention, actor identity proof, correctness proof, test sufficiency proof, or human review replacement
+Does not prove: public API availability, authentication service status, security boundary, full MCP Streamable HTTP compatibility, OS sandboxing, network isolation, write prevention, actor identity proof, correctness proof, test sufficiency proof, or human review completion
 runtime_home: <absolute path>
 connection_id: <connection_internal_id process-binding value>
 mode: workflow|read_only
 enabled: true|false
+registry_read: passed
+project_state_read: passed|failed
+project_state_write: passed|readonly|failed|skipped
+startup_observation: recordable|best_effort_skipped_if_readonly|skipped_verification_probe
+effective_tool_mode: workflow|read_only_degraded|read_only|unavailable
 allowed_projects: <count>
 available_projects: <count>
 verification_scope: startup_check_only
@@ -353,6 +358,8 @@ watcher_coverage_basis: mcp_start|empty
 watcher_partial_coverage_warning: <warning or empty>
 project[0].project_id: <project_internal_id diagnostic value>
 project[0].available: true|false
+project[0].state_read: passed|failed
+project[0].state_write: passed|readonly|failed|skipped
 project[0].unavailable_reason: <value or empty>
 project[0].repo_root: <path>
 ```
@@ -365,8 +372,18 @@ project[0].repo_root: <path>
 - `--project <project_id>`를 사용하면 제공한 값은 연결 허용 목록 안에 있어야 하며, 그
   프로젝트의 세부 블록만 출력합니다.
 - `connection_id`는 저장된 Agent Connection을 위한 프로세스 바인딩입니다.
-- `disclosure`는 시작 진단의 비보장을 요약하며, 메서드 호출에 쓰이는 기계 판독 가능
+- `Does not prove`는 시작 진단의 비보장을 요약하며, 메서드 호출에 쓰이는 기계 판독 가능
   Core 응답 공개를 바꾸지 않습니다.
+- `registry_read`는 시작 검증에서 Runtime Home registry를 읽을 수 있었는지 보고합니다.
+- `project_state_read`는 선택된 project-state 집합의 읽기 접근을 요약합니다. 프로젝트별
+  `state_read` 줄은 각 세부 블록의 같은 사실을 보고합니다.
+- `project_state_write`는 선택된 project-state 집합의 유효 쓰기 가능성을 요약합니다.
+  프로젝트별 `state_write` 줄은 각 세부 블록의 같은 capability를 보고합니다.
+- `startup_observation`은 일반 시작이 한정된 session-watch 관찰을 기록할 수 있는지,
+  읽기 전용 저장소에서는 그 관찰을 건너뛸 것인지, 또는 verification probe에 그치는지를
+  보고합니다.
+- `effective_tool_mode`는 같은 연결과 프로젝트 저장 가능성에서 시작 점검이 예상하는
+  `tools/list` 모드를 보고합니다.
 - `allowed_projects`는 Agent Connection 허용 목록 전체를 설명합니다.
 - 사용할 수 없는 프로젝트도 모든 프로젝트 세부 키를 출력합니다. `unavailable_reason`은
   사용할 수 없는 프로젝트에서 채워지고 사용할 수 있는 프로젝트에서는 비어 있습니다.
@@ -497,6 +514,12 @@ elicitation을 사용할 수 있다고 봅니다. 다른 capability 항목은 �
 Agent Connection과 프로젝트 시작 점검은 유지하지만, 이 프로세스를 Codex host runtime
 관찰로 기록하거나 시작 session-watch baseline을 만들지는 않습니다.
 
+프로세스 명령 형태는 아래와 같습니다.
+
+```sh
+VOLICORD_MCP_VERIFICATION=1 volicord mcp --stdio --connection CONNECTION_ID --project PROJECT_ID
+```
+
 `initialize` 뒤 `tools/list`를 보내면 성공한 JSON-RPC 응답과 모드에 맞는 `volicord.*`
 도구 목록을 반환해야 합니다.
 
@@ -505,7 +528,7 @@ cd <repo>
 printf '%s\n' \
   '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"volicord-lifecycle-probe","version":"0.0.0"}}}' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
-  | VOLICORD_MCP_VERIFICATION=1 volicord mcp --stdio --connection <connection_id> --project <project_id>
+  | VOLICORD_MCP_VERIFICATION=1 volicord mcp --stdio --connection CONNECTION_ID --project PROJECT_ID
 ```
 
 `initialize`, `notifications/initialized`, `tools/list` 순서도 성공해야 합니다.
@@ -516,7 +539,7 @@ printf '%s\n' \
   '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"volicord-lifecycle-probe","version":"0.0.0"}}}' \
   '{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
-  | VOLICORD_MCP_VERIFICATION=1 volicord mcp --stdio --connection <connection_id> --project <project_id>
+  | VOLICORD_MCP_VERIFICATION=1 volicord mcp --stdio --connection CONNECTION_ID --project PROJECT_ID
 ```
 
 `notifications/initialized` 전에 `tools/call`을 보내면 JSON-RPC Invalid Request로 실패해야
@@ -527,8 +550,14 @@ cd <repo>
 printf '%s\n' \
   '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"volicord-lifecycle-probe","version":"0.0.0"}}}' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"volicord.status","arguments":{}}}' \
-  | VOLICORD_MCP_VERIFICATION=1 volicord mcp --stdio --connection <connection_id> --project <project_id>
+  | VOLICORD_MCP_VERIFICATION=1 volicord mcp --stdio --connection CONNECTION_ID --project PROJECT_ID
 ```
+
+`notifications/initialized` 뒤에는 프로젝트 상태를 읽을 수 있을 때 읽기 전용
+`volicord.status` 호출이 성공할 수 있습니다. 유효 저장소가 읽기 전용이면 workflow
+mutation 호출은 `tools/list`에 없을 수 있습니다. 호스트 쪽 오래된 cache가 그래도 그
+도구를 호출하면 MCP 결과는 쓰기 준비 상태를 증명하지 않고 Volicord `MCP_UNAVAILABLE`
+거절을 래핑합니다.
 
 지원되는 MCP 요청 메서드:
 

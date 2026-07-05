@@ -41,6 +41,17 @@ repo file changes, 저장된 Runtime Home 경로를 확인한 뒤 `Next:` 체크
 안정적인 자동화 표면이나 전체 진단 필드가 필요하면 `--json`을 사용합니다. 간결한 사람용
 text는 대화형 복구를 위한 것이며 스크립트가 파싱하면 안 됩니다.
 
+MCP 시작이나 도구 탐색이 증상이고 JSON 진단 또는 생성된 호스트 설정에서 프로세스
+바인딩 값을 확인할 수 있다면 시작 저장소 capability를 직접 확인합니다.
+
+```sh
+volicord mcp --check --connection CONNECTION_ID --project PROJECT_ID
+```
+
+`registry_read`, `project_state_read`, `project_state_write`,
+`startup_observation`, `effective_tool_mode`를 함께 읽습니다. 성공한 시작 점검은 전체
+호스트 검증이 아니며 활성 호스트 도구 노출을 증명하지 않습니다.
+
 ## 설치 프로필이 없음
 
 관찰 증상: 일반 project, connection, MCP, inbox workflow가 `SETUP_REQUIRED`를
@@ -194,6 +205,38 @@ Inbox 항목에 이미 표시된 URL을 사용합니다. selector가 모호하�
 선택되었다면 `--repo PATH`와 `--shared` 또는 `--global` 같은 일치하는 intent flag를
 붙여 다시 실행합니다.
 
+## 읽기 전용 호스트 저장소
+
+관찰 증상: MCP 호스트 환경이 Volicord 설정을 읽거나 `volicord`를 시작할 수는 있지만,
+직접 sandbox 실행은 SQLite가 읽기 전용 database에 쓰려고 했다는 오류처럼 저장소 오류로
+실패합니다. 권한을 높였거나 제한이 더 적은 진단 실행에서는 `initialize`, `tools/list`,
+읽기 전용 status 호출이 동작할 수 있습니다.
+
+예상 동작:
+
+- Runtime Home registry와 프로젝트 상태를 읽을 수 있으면 MCP 시작과 `tools/list`는 읽기
+  전용 상태를 견딜 수 있습니다.
+- Mutation 도구는 선택된 `Volicord Runtime Home`의 프로젝트 상태를 쓸 수 있어야 합니다.
+  읽기 전용 저장소에서는 `tools/list`에서 빠지거나 구조화된 `MCP_UNAVAILABLE` 거절을
+  반환할 수 있습니다.
+- 읽을 수 있지만 쓸 수 없는 프로젝트 상태를 가진 `workflow` 연결은 도구 탐색에서
+  `read_only_degraded`로 동작합니다.
+- 프로젝트 상태를 읽을 수 있으면 `volicord.status`, `volicord.check_close`,
+  `volicord.list_projects` 같은 읽기 호환 도구는 계속 보일 수 있습니다.
+
+제한된 복구:
+
+```sh
+volicord mcp --check --connection CONNECTION_ID --project PROJECT_ID
+```
+
+`project_state_write`가 `readonly`이고 `effective_tool_mode`가 `read_only_degraded`라면
+workflow 변경 도구가 필요할 때 선택된 Runtime Home과 프로젝트 상태를 쓸 수 있도록 MCP
+호스트 환경을 고칩니다. 의도한 호스트 통합이 read-only라면 연결을 read-only 모드로 두고
+workflow 도구를 기대하지 않습니다. 권한을 높인 실행은 성공하지만 일반 호스트 sandbox가
+실패한다면, 이를 활성 호스트 session이 같은 도구를 로드하거나 노출했다는 증명이 아니라
+저장소 capability 진단으로 봅니다.
+
 <a id="trusted-codex-project-but-host-runtime-is-not-observed"></a>
 ## Codex 프로젝트가 trusted이고 CLI handshake도 통과했지만 도구가 노출되지 않음
 
@@ -220,6 +263,21 @@ session이 Volicord 도구를 등록했다는 증명은 아니라는 뜻입니�
 
 제한된 복구:
 
+설정을 바꾸기 전에 아래 분기를 확인합니다.
+
+- 활성 Codex session이 MCP 서버를 시작하지 않았습니다. 해당 호스트 환경에서 명령 시작
+  가능성을 확인한 뒤 Product Repository에서 Codex session을 restart, reload, resume 또는
+  새로 시작합니다.
+- Codex startup 또는 tool-list log가 server launch, `initialize`, `tools/list`, 도구 등록
+  실패를 보여 줍니다. 먼저 호스트 log의 실패를 따라갑니다.
+- 호스트는 `volicord`를 시작할 수 있지만 프로젝트 상태가 읽기 전용입니다.
+  `volicord mcp --check` 시작 진단을 실행하고 `project_state_write`와
+  `effective_tool_mode`를 확인합니다.
+- CLI 쪽 preflight 또는 handshake는 성공하지만 활성 호스트 session은 여전히
+  `volicord.*` 도구를 나열하지 않습니다. CLI 결과는 터미널 쪽 MCP 검증으로만 다룹니다.
+- 권한을 높인 실행은 성공하지만 sandbox 실행은 실패합니다. 실제 MCP 호스트 환경에서
+  Runtime Home과 project-state 쓰기 capability를 비교합니다.
+
 먼저 활성 Codex session의 도구 목록에서 `volicord.*` 도구를 확인합니다. 그런 다음 Codex
 MCP startup/tool-list log에서 서버 launch, `initialize`, `tools/list`, 캐시된 tool
 snapshot, 도구 등록 항목을 확인합니다. 로그가 startup complete를 보여 주지만 tool
@@ -245,9 +303,22 @@ volicord connection verify codex --shared --repo /path/to/your-product-repo
 
 Codex 밖에서 MCP 수명주기를 직접 확인하려면
 [MCP 전송](../reference/mcp-transport.md#manual-stdio-lifecycle-probe)의 수동
-`VOLICORD_MCP_VERIFICATION=1` probe를 사용합니다. 이 probe는 Volicord가
-`initialize`, `notifications/initialized`, `tools/list`, 너무 이른 `tools/call`에 올바르게
-응답하는지 보여 줄 수 있지만, 그래도 활성 Codex session 도구 노출을 증명하지는 않습니다.
+`VOLICORD_MCP_VERIFICATION=1` probe를 사용합니다. 프로세스 명령 형태는 아래와 같습니다.
+
+```sh
+VOLICORD_MCP_VERIFICATION=1 volicord mcp --stdio --connection CONNECTION_ID --project PROJECT_ID
+```
+
+참조 문서의 JSON-RPC 예시를 이 프로세스에 pipe합니다. 예상 차이는 아래와 같습니다.
+
+- `initialize`와 `tools/list`는 도구 탐색을 확인하며 변경 준비 상태로 해석하지 않습니다.
+- `notifications/initialized` 전 `tools/call`은 JSON-RPC Invalid Request로 실패해야
+  합니다.
+- 초기화 뒤 read-only status 호출은 프로젝트 상태를 읽을 수 있으면 성공할 수 있습니다.
+- 읽기 전용 저장소에서 mutation 호출은 도구 탐색에 없거나 구조화된 unavailable 응답을
+  반환할 수 있습니다.
+
+이 probe도 활성 Codex session 도구 노출을 증명하지는 않습니다.
 
 고급 진단: 사용하는 Codex 호스트 설정 형식이 MCP 서버의 `required = true`를 지원한다면
 진단 실행에 사용해 그 호스트에서 MCP 시작 실패를 더 잘 보이게 할 수 있습니다. 하지만 서버를

@@ -388,11 +388,16 @@ project-detail block for each connected project, in this order:
 ```text
 configuration: valid
 transport: stdio
-disclosure: transport diagnostics only; not OS sandboxing, network isolation, malware defense, full write prevention, actor identity proof, correctness proof, test sufficiency proof, or human review replacement
+Does not prove: public API availability, authentication service status, security boundary, full MCP Streamable HTTP compatibility, OS sandboxing, network isolation, write prevention, actor identity proof, correctness proof, test sufficiency proof, or human review completion
 runtime_home: <absolute path>
 connection_id: <connection_internal_id process-binding value>
 mode: workflow|read_only
 enabled: true|false
+registry_read: passed
+project_state_read: passed|failed
+project_state_write: passed|readonly|failed|skipped
+startup_observation: recordable|best_effort_skipped_if_readonly|skipped_verification_probe
+effective_tool_mode: workflow|read_only_degraded|read_only|unavailable
 allowed_projects: <count>
 available_projects: <count>
 verification_scope: startup_check_only
@@ -403,6 +408,8 @@ watcher_coverage_basis: mcp_start|empty
 watcher_partial_coverage_warning: <warning or empty>
 project[0].project_id: <project_internal_id diagnostic value>
 project[0].available: true|false
+project[0].state_read: passed|failed
+project[0].state_write: passed|readonly|failed|skipped
 project[0].unavailable_reason: <value or empty>
 project[0].repo_root: <path>
 ```
@@ -415,8 +422,21 @@ Project-detail rules:
 - With `--project <project_id>`, the supplied value must be in the connection's
   allowlist and only that project's detail block is emitted.
 - `connection_id` is the process binding for the stored Agent Connection.
-- `disclosure` summarizes the startup diagnostic non-guarantees and does not
+- `Does not prove` summarizes the startup diagnostic non-guarantees and does not
   change the machine-readable Core response disclosure used by method calls.
+- `registry_read` reports whether the Runtime Home registry was readable for
+  startup validation.
+- `project_state_read` summarizes read access for the selected project-state
+  set. Per-project `state_read` lines report the same fact for each detail
+  block.
+- `project_state_write` summarizes effective write capability for the selected
+  project-state set. Per-project `state_write` lines report the same capability
+  for each detail block.
+- `startup_observation` reports whether ordinary startup can record a bounded
+  session-watch observation, would skip that observation under read-only
+  storage, or is only a verification probe.
+- `effective_tool_mode` reports the startup check's expected `tools/list` mode
+  for the same connection and project storage capability.
 - `allowed_projects` describes the Agent Connection allowlist as a whole.
 - Unavailable projects still emit every project-detail key.
   `unavailable_reason` is populated for unavailable projects and empty for
@@ -560,6 +580,12 @@ it keeps normal Agent Connection and project startup checks, but does not
 record the process as a Codex host runtime observation or create a startup
 session-watch baseline.
 
+The process command shape is:
+
+```sh
+VOLICORD_MCP_VERIFICATION=1 volicord mcp --stdio --connection CONNECTION_ID --project PROJECT_ID
+```
+
 `initialize` followed by `tools/list` should return successful JSON-RPC
 responses and list the mode-appropriate `volicord.*` tools:
 
@@ -568,7 +594,7 @@ cd <repo>
 printf '%s\n' \
   '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"volicord-lifecycle-probe","version":"0.0.0"}}}' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
-  | VOLICORD_MCP_VERIFICATION=1 volicord mcp --stdio --connection <connection_id> --project <project_id>
+  | VOLICORD_MCP_VERIFICATION=1 volicord mcp --stdio --connection CONNECTION_ID --project PROJECT_ID
 ```
 
 `initialize`, then `notifications/initialized`, then `tools/list` should also
@@ -580,7 +606,7 @@ printf '%s\n' \
   '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"volicord-lifecycle-probe","version":"0.0.0"}}}' \
   '{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
-  | VOLICORD_MCP_VERIFICATION=1 volicord mcp --stdio --connection <connection_id> --project <project_id>
+  | VOLICORD_MCP_VERIFICATION=1 volicord mcp --stdio --connection CONNECTION_ID --project PROJECT_ID
 ```
 
 `tools/call` before `notifications/initialized` should fail with JSON-RPC
@@ -592,8 +618,14 @@ cd <repo>
 printf '%s\n' \
   '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"volicord-lifecycle-probe","version":"0.0.0"}}}' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"volicord.status","arguments":{}}}' \
-  | VOLICORD_MCP_VERIFICATION=1 volicord mcp --stdio --connection <connection_id> --project <project_id>
+  | VOLICORD_MCP_VERIFICATION=1 volicord mcp --stdio --connection CONNECTION_ID --project PROJECT_ID
 ```
+
+After `notifications/initialized`, a read-only `volicord.status` call can
+succeed when project state is readable. When effective storage is read-only, a
+workflow mutation call may be absent from `tools/list`; if a stale host cache
+still calls it, the MCP result wraps a Volicord `MCP_UNAVAILABLE` rejection
+rather than proving write-capable storage.
 
 Supported MCP request methods:
 

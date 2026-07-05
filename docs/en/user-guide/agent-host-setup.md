@@ -61,6 +61,7 @@ run, or another Codex host environment.
 |---|---|---|
 | MCP configuration match | Project-scoped Codex configuration exists and matches the Volicord-managed MCP server entry for the selected connection. | The Codex host process has loaded, trusted, approved, or started that entry. |
 | CLI MCP preflight or handshake passed | `volicord connection verify` directly launched the MCP server from the terminal-side check environment and the server responded. | The active Codex session has launched the same server or exposed Volicord tools. |
+| MCP storage capability | `volicord mcp --check` can report registry read, project-state read, project-state write, startup observation, and effective tool mode for one process binding. | A startup check does not prove that the active Codex session has exposed tools or that mutation tools are available. |
 | Codex project trust | Codex user configuration says the repository is `trusted`, `untrusted`, `unknown`, or otherwise not confirmed. | A trusted entry is not proof that a running Codex host process has reloaded the project configuration. |
 | Codex host runtime observed | Volicord has observed a project-bound Codex host process start the Volicord MCP server for this connection. | A terminal-side CLI handshake alone is not that observation. |
 | Volicord tools exposed in the active Codex session | The active Codex session can see the Volicord MCP tools for the selected mode. | File writes, user approval, correctness, test sufficiency, or future model tool choice. |
@@ -221,6 +222,28 @@ volicord connection mode codex workflow
 ```
 
 The host may need a reload or restart after a mode change.
+
+Effective tool exposure also depends on storage capability in the MCP host
+environment:
+
+| Condition | Effective tool mode | Expected discovery |
+|---|---|---|
+| `workflow` connection and writable project state | `workflow` | Workflow tools plus read/project-discovery tools. |
+| `workflow` connection and readable but non-writable project state | `read_only_degraded` | Read-compatible tools such as `volicord.status`, `volicord.check_close`, and `volicord.list_projects`. |
+| `read-only` connection and readable project state | `read_only` | Read-compatible tools. |
+| No readable allowed project state | `unavailable` | Project discovery only, or startup failure depending on the binding. |
+
+For an existing process binding, inspect startup and storage diagnostics with:
+
+```sh
+volicord mcp --check --connection CONNECTION_ID --project PROJECT_ID
+```
+
+Use the `registry_read`, `project_state_read`, `project_state_write`,
+`startup_observation`, and `effective_tool_mode` lines to distinguish a
+writable workflow path from read-only degraded mode. These fields are startup
+diagnostics; they do not prove active host tool exposure. Exact output meaning
+belongs to [MCP Transport](../reference/mcp-transport.md#configuration-preflight).
 
 ## Dry Run Before Applying
 

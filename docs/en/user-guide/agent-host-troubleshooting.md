@@ -49,6 +49,19 @@ Use `--json` when you need the stable automation surface or full diagnostic
 fields. Compact human text is for interactive recovery and should not be parsed
 by scripts.
 
+When MCP startup or tool discovery is the symptom and you have the process
+binding values from JSON diagnostics or generated host configuration, inspect
+startup storage capability directly:
+
+```sh
+volicord mcp --check --connection CONNECTION_ID --project PROJECT_ID
+```
+
+Read `registry_read`, `project_state_read`, `project_state_write`,
+`startup_observation`, and `effective_tool_mode` together. A successful startup
+check is not a complete host verification and does not prove active host tool
+exposure.
+
 ## Installation Profile Is Missing
 
 Observable symptom: ordinary project, connection, MCP, or inbox workflows say
@@ -211,6 +224,42 @@ answer command or the URL already shown by the MCP Judgment Inbox item. If the
 selector is ambiguous or the wrong repository is selected, rerun with
 `--repo PATH` and the matching intent flag such as `--shared` or `--global`.
 
+## Read-Only Host Storage
+
+Observable symptom: the MCP host environment can read Volicord configuration or
+start `volicord`, but direct sandbox execution fails with a storage error such
+as SQLite reporting an attempt to write a read-only database. An elevated or
+less-restricted diagnostic run may make `initialize`, `tools/list`, and
+read-only status calls work.
+
+Expected behavior:
+
+- MCP startup and `tools/list` are read-only tolerant when the Runtime Home
+  registry and project state can be read.
+- Mutation tools require writable project state in the selected
+  `Volicord Runtime Home`; they may be absent from `tools/list` or return a
+  structured `MCP_UNAVAILABLE` rejection under read-only storage.
+- A `workflow` connection with readable but non-writable project state becomes
+  `read_only_degraded` for effective tool discovery.
+- Read-only-compatible tools such as `volicord.status`,
+  `volicord.check_close`, and `volicord.list_projects` can still be visible
+  when the project state is readable.
+
+Bounded recovery:
+
+```sh
+volicord mcp --check --connection CONNECTION_ID --project PROJECT_ID
+```
+
+If `project_state_write` is `readonly` and `effective_tool_mode` is
+`read_only_degraded`, repair the MCP host environment so the selected Runtime
+Home and project state are writable when workflow mutation tools are expected.
+If the intended host integration is read-only, keep the connection in
+read-only mode and do not expect workflow tools. If elevated execution succeeds
+while the normal host sandbox fails, treat that as a storage-capability
+diagnostic, not as proof that the active host session has loaded or exposed the
+same tools.
+
 <a id="trusted-codex-project-but-host-runtime-is-not-observed"></a>
 ## Trusted Codex Project And CLI Handshake Passed But Tools Are Not Exposed
 
@@ -238,6 +287,22 @@ listing. Volicord cannot fully diagnose Codex internal tool registration
 without the Codex host logs.
 
 Bounded recovery:
+
+Use these branches before changing configuration:
+
+- The active Codex session did not start the MCP server. Restart, reload,
+  resume, or start a new Codex session in the Product Repository after
+  confirming command launchability in that host environment.
+- Codex startup or tool-list logs show server launch, `initialize`,
+  `tools/list`, or tool-registration failure. Follow the host log failure first.
+- The host can launch `volicord`, but project state is read-only. Run the
+  `volicord mcp --check` startup diagnostic and inspect `project_state_write`
+  and `effective_tool_mode`.
+- CLI-side preflight or handshake succeeds, but the active host session still
+  does not list `volicord.*` tools. Treat the CLI result as terminal-side MCP
+  verification only.
+- Elevated execution succeeds while sandbox execution fails. Compare Runtime
+  Home and project-state write capability in the actual MCP host environment.
 
 First check the active Codex session tool list for `volicord.*` tools. Then
 inspect Codex MCP startup/tool-list logs for server launch, `initialize`,
@@ -268,9 +333,25 @@ volicord connection verify codex --shared --repo /path/to/your-product-repo
 For a direct MCP lifecycle check outside Codex, use the manual
 `VOLICORD_MCP_VERIFICATION=1` probes in
 [MCP Transport](../reference/mcp-transport.md#manual-stdio-lifecycle-probe).
-Those probes can show that Volicord responds correctly to `initialize`,
-`notifications/initialized`, `tools/list`, and early `tools/call`, but they
-still do not prove active-session Codex tool exposure.
+The process command shape is:
+
+```sh
+VOLICORD_MCP_VERIFICATION=1 volicord mcp --stdio --connection CONNECTION_ID --project PROJECT_ID
+```
+
+Pipe the JSON-RPC examples from the Reference page into that process. Expected
+differences:
+
+- `initialize` and `tools/list` check discovery and should not be treated as
+  mutation readiness.
+- `tools/call` before `notifications/initialized` should fail with JSON-RPC
+  Invalid Request.
+- A read-only status call after initialization can succeed when project state
+  is readable.
+- A mutation call under read-only storage may be absent from discovery or
+  return a structured unavailable response.
+
+These probes still do not prove active-session Codex tool exposure.
 
 Advanced diagnostic: if the Codex host configuration format you use supports
 `required = true` for an MCP server, using it for a diagnostic run can make MCP
