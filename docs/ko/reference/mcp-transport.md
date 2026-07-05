@@ -109,6 +109,22 @@ volicord mcp --stdio --connection <connection_id> [--project <project_id>]
   코드 `2`로 끝납니다.
 - help와 version 처리는 Runtime Home이나 Agent Connection 조회보다 먼저 일어납니다.
 
+성공한 `--check` 출력은 진단 보고서입니다. 이 보고서는 설정 유효성, stdio 전송,
+Runtime Home, `connection_id`, `connection.mode`, 연결 활성 상태, registry 읽기 상태,
+선택된 project-state 읽기 상태, 선택된 project-state 쓰기 상태, 시작 관찰 상태,
+effective tool mode, 프로젝트 사용 가능 상태, `verification_scope`를 보고합니다.
+`registry_read`와 `project_state_read`는 읽기 가능 여부를 보고합니다.
+`project_state_write` 진단은 지속 저장되지 않는 SQLite 쓰기 가능성 검사를 사용하며
+`passed`, `readonly`, `failed`, `skipped` 중 하나를 보고합니다. 이 검사는 Core 기록,
+지속 저장되는 진단 행, replay 행, session-watch 기록, tool-invocation 기록을 만들거나
+`project_state.state_version`을 증가시키면 안 됩니다. `startup_observation`은 사용 가능한
+프로젝트가 하나인 일반 stdio 시작이 `recordable`인지, `best_effort_skipped_if_readonly`로
+건너뛰어질 것인지, 또는 `skipped_verification_probe`인지를 보고합니다.
+`effective_tool_mode`는 `workflow`, `read_only_degraded`, `read_only`, `unavailable` 중
+하나이며 같은 연결과 프로젝트 저장 가능성에서의 실제 `tools/list` 동작과 일치해야
+합니다. 쓰기 가능성 진단이 `passed`라고 해서 OS sandboxing, host identity, security
+isolation, 앞으로의 쓰기 성공, Product Repository 쓰기 권한이 증명되지는 않습니다.
+
 Local HTTP serve 명령줄 동작:
 
 - `volicord serve --transport local-http`만 지원되는 serve 전송 표기입니다. 다른 전송

@@ -419,24 +419,7 @@ impl McpAdapter {
         &self,
     ) -> Result<McpStorageCapability, McpAdapterError> {
         let projects = self.allowed_project_availabilities("storage capability")?;
-        let readable = projects
-            .iter()
-            .filter(|project| project.available)
-            .map(|project| project.storage_capability)
-            .collect::<Vec<_>>();
-        if readable.is_empty() {
-            return Ok(McpStorageCapability::Unavailable);
-        }
-        if readable
-            .iter()
-            .all(|capability| *capability == McpStorageCapability::ReadWrite)
-        {
-            return Ok(McpStorageCapability::ReadWrite);
-        }
-        if readable.contains(&McpStorageCapability::ReadOnly) {
-            return Ok(McpStorageCapability::ReadOnly);
-        }
-        Ok(McpStorageCapability::Unknown)
+        Ok(storage_capability_for_projects(&projects))
     }
 
     /// Derives local invocation facts for one decoded request envelope.

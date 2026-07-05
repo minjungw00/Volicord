@@ -182,8 +182,96 @@ fn connection_context_resolves_and_preflight_reports_allowed_project() -> Result
     assert!(report.contains("mode: workflow"));
     assert!(report.contains("allowed_projects: 1"));
     assert!(report.contains("available_projects: 1"));
+    assert!(report.contains("registry_read: passed"));
+    assert!(report.contains("project_state_read: passed"));
+    assert!(report.contains("project_state_write: passed"));
+    assert!(report.contains("startup_observation: recordable"));
+    assert!(report.contains("effective_tool_mode: workflow"));
     assert!(report.contains("watcher_status: pending_mcp_start"));
     assert!(report.contains("watcher_coverage_basis: mcp_start"));
+    Ok(())
+}
+
+#[test]
+fn mcp_check_reports_readwrite_effective_tool_mode() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-check-readwrite-mode")?;
+
+    let report = preflight_report_for_fixture(&fixture, Some(fixture.project_id()))?;
+
+    assert_report_line(&report, "registry_read: passed");
+    assert_report_line(&report, "project_state_read: passed");
+    assert_report_line(&report, "project_state_write: passed");
+    assert_report_line(&report, "startup_observation: recordable");
+    assert_report_line(&report, "effective_tool_mode: workflow");
+    assert_report_line(&report, "project[0].state_read: passed");
+    assert_report_line(&report, "project[0].state_write: passed");
+    Ok(())
+}
+
+#[test]
+fn mcp_check_does_not_mutate_project_state() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-check-no-mutate")?;
+    let before_version = read_only_state_version(&fixture)?;
+    let before_sessions = read_only_table_count(&fixture, "agent_sessions")?;
+    let before_baselines = read_only_table_count(&fixture, "session_watch_baselines")?;
+    let before_invocations = read_only_table_count(&fixture, "tool_invocations")?;
+
+    let report = preflight_report_for_fixture(&fixture, Some(fixture.project_id()))?;
+
+    assert_report_line(&report, "project_state_write: passed");
+    assert_eq!(read_only_state_version(&fixture)?, before_version);
+    assert_eq!(
+        read_only_table_count(&fixture, "agent_sessions")?,
+        before_sessions
+    );
+    assert_eq!(
+        read_only_table_count(&fixture, "session_watch_baselines")?,
+        before_baselines
+    );
+    assert_eq!(
+        read_only_table_count(&fixture, "tool_invocations")?,
+        before_invocations
+    );
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn mcp_check_reports_readonly_project_state() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-check-readonly-state")?;
+    let _guard = make_project_state_readonly(&fixture)?;
+
+    let report = preflight_report_for_fixture(&fixture, Some(fixture.project_id()))?;
+
+    assert_report_line(&report, "registry_read: passed");
+    assert_report_line(&report, "project_state_read: passed");
+    assert_report_line(&report, "project_state_write: readonly");
+    assert_report_line(
+        &report,
+        "startup_observation: best_effort_skipped_if_readonly",
+    );
+    assert_report_line(&report, "effective_tool_mode: read_only_degraded");
+    assert_report_line(&report, "project[0].state_read: passed");
+    assert_report_line(&report, "project[0].state_write: readonly");
+    assert!(!report.contains("attempt to write a readonly database"));
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn mcp_check_reports_readonly_degraded_tool_mode() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-check-readonly-tool-mode")?;
+    let adapter = adapter(&fixture)?;
+    let _guard = make_project_state_readonly(&fixture)?;
+
+    let report = preflight_report_for_fixture(&fixture, Some(fixture.project_id()))?;
+    let names = tool_names(&adapter.tools()?);
+
+    assert_report_line(&report, "effective_tool_mode: read_only_degraded");
+    assert!(names.contains(&STATUS_TOOL_NAME));
+    assert!(names.contains(&CHECK_CLOSE_TOOL_NAME));
+    assert!(names.contains(&LIST_PROJECTS_TOOL_NAME));
+    assert!(!names.contains(&INTAKE_TOOL_NAME));
     Ok(())
 }
 
@@ -2327,7 +2415,31 @@ fn tool_names_from_list_response(response: &Value) -> Vec<&str> {
         .collect::<Vec<_>>()
 }
 
-#[cfg(unix)]
+fn preflight_report_for_fixture(
+    fixture: &CoreFixture,
+    project_id: Option<&str>,
+) -> Result<String, Box<dyn Error>> {
+    Ok(preflight_check(
+        |name| {
+            if name == "VOLICORD_HOME" {
+                Some(fixture.runtime_home_path().as_os_str().to_owned())
+            } else {
+                None
+            }
+        },
+        fixture.runtime_home_path(),
+        fixture.connection_id(),
+        project_id,
+    )?)
+}
+
+fn assert_report_line(report: &str, expected: &str) {
+    assert!(
+        report.lines().any(|line| line == expected),
+        "missing report line `{expected}` in:\n{report}"
+    );
+}
+
 fn read_only_state_version(fixture: &CoreFixture) -> Result<u64, Box<dyn Error>> {
     let state_db_path = fixture
         .runtime_home_path()
@@ -2342,7 +2454,6 @@ fn read_only_state_version(fixture: &CoreFixture) -> Result<u64, Box<dyn Error>>
     )?)
 }
 
-#[cfg(unix)]
 fn read_only_table_count(fixture: &CoreFixture, table: &str) -> Result<i64, Box<dyn Error>> {
     let state_db_path = fixture
         .runtime_home_path()

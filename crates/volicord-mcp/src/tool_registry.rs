@@ -1,5 +1,7 @@
 use crate::prelude::*;
-use crate::routing::McpStorageCapability;
+use crate::routing::{
+    effective_tool_mode_for_mode_and_storage, McpEffectiveToolMode, McpStorageCapability,
+};
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct McpToolDefinition {
@@ -49,14 +51,12 @@ pub fn mcp_tools_for_mode_and_storage(
     mode: AgentConnectionMode,
     storage_capability: McpStorageCapability,
 ) -> Vec<McpToolDefinition> {
-    let mut tools = match (mode, storage_capability) {
-        (_, McpStorageCapability::Unavailable) => Vec::new(),
-        (AgentConnectionMode::ReadOnly, _) => method_tools(READ_ONLY_METHOD_TOOL_NAMES),
-        (AgentConnectionMode::Workflow, McpStorageCapability::ReadWrite) => public_method_tools(),
-        (AgentConnectionMode::Workflow, McpStorageCapability::ReadOnly)
-        | (AgentConnectionMode::Workflow, McpStorageCapability::Unknown) => {
+    let mut tools = match effective_tool_mode_for_mode_and_storage(mode, storage_capability) {
+        McpEffectiveToolMode::Unavailable => Vec::new(),
+        McpEffectiveToolMode::ReadOnly | McpEffectiveToolMode::ReadOnlyDegraded => {
             method_tools(READ_ONLY_METHOD_TOOL_NAMES)
         }
+        McpEffectiveToolMode::Workflow => public_method_tools(),
     };
     tools.extend(adapter_utility_tools());
     tools

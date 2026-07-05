@@ -131,6 +131,25 @@ Baseline command-line behavior:
 - Help and version handling happen before Runtime Home or Agent Connection
   lookup.
 
+Successful `--check` output is a diagnostic report. It reports configuration
+validity, stdio transport, Runtime Home, `connection_id`, `connection.mode`,
+connection enabled state, registry read status, selected project-state read
+status, selected project-state write status, startup-observation status,
+effective tool mode, project availability, and `verification_scope`.
+`registry_read` and `project_state_read` report read capability. The
+`project_state_write` diagnostic uses a non-persistent SQLite write-capability
+probe and reports `passed`, `readonly`, `failed`, or `skipped`; the probe must
+not create Core records, durable diagnostic rows, replay rows, session-watch
+records, tool-invocation records, or advance `project_state.state_version`.
+`startup_observation` reports whether ordinary stdio startup for one available
+project is `recordable`, would be
+`best_effort_skipped_if_readonly`, or is `skipped_verification_probe`.
+`effective_tool_mode` is `workflow`, `read_only_degraded`, `read_only`, or
+`unavailable` and must match the effective `tools/list` behavior for the same
+connection and project storage capability. A passed write-capability diagnostic
+does not prove OS sandboxing, host identity, security isolation, future write
+success, or Product Repository write authority.
+
 Local HTTP serve command-line behavior:
 
 - `volicord serve --transport local-http` is the only supported serve

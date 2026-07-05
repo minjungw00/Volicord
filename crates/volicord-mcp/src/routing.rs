@@ -68,6 +68,42 @@ impl McpStorageCapability {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum McpEffectiveToolMode {
+    Workflow,
+    ReadOnlyDegraded,
+    ReadOnly,
+    Unavailable,
+}
+
+impl McpEffectiveToolMode {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Workflow => "workflow",
+            Self::ReadOnlyDegraded => "read_only_degraded",
+            Self::ReadOnly => "read_only",
+            Self::Unavailable => "unavailable",
+        }
+    }
+}
+
+pub(crate) fn effective_tool_mode_for_mode_and_storage(
+    mode: AgentConnectionMode,
+    storage_capability: McpStorageCapability,
+) -> McpEffectiveToolMode {
+    match (mode, storage_capability) {
+        (_, McpStorageCapability::Unavailable) => McpEffectiveToolMode::Unavailable,
+        (AgentConnectionMode::ReadOnly, _) => McpEffectiveToolMode::ReadOnly,
+        (AgentConnectionMode::Workflow, McpStorageCapability::ReadWrite) => {
+            McpEffectiveToolMode::Workflow
+        }
+        (AgentConnectionMode::Workflow, McpStorageCapability::ReadOnly)
+        | (AgentConnectionMode::Workflow, McpStorageCapability::Unknown) => {
+            McpEffectiveToolMode::ReadOnlyDegraded
+        }
+    }
+}
+
 /// Connection-bound startup facts shared by stdio startup and preflight checks.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct McpConnectionStartupInspection {
@@ -141,6 +177,9 @@ impl McpConnectionStartupInspection {
             .iter()
             .filter(|project| project.available)
             .count();
+        let storage_capability = storage_capability_for_projects(&self.projects);
+        let effective_tool_mode =
+            effective_tool_mode_for_mode_and_storage(self.mode, storage_capability);
         let (watcher_status, watcher_coverage_basis, watcher_partial_coverage_warning) =
             if available_projects == 1 {
                 ("pending_mcp_start", "mcp_start", "")
@@ -157,13 +196,18 @@ impl McpConnectionStartupInspection {
                     "no available project is ready for session-watch coverage",
                 )
             };
+        let startup_observation = self.startup_observation_status(storage_capability);
         let mut report = format!(
-            "configuration: valid\ntransport: stdio\n{}\nruntime_home: {}\nconnection_id: {}\nmode: {}\nenabled: {}\nallowed_projects: {}\navailable_projects: {}\nverification_scope: startup_check_only\nwatcher_status: {}\nwatcher_baseline_created_at: \nwatcher_coverage_start_at: \nwatcher_coverage_basis: {}\nwatcher_partial_coverage_warning: {}\n",
+            "configuration: valid\ntransport: stdio\n{}\nruntime_home: {}\nconnection_id: {}\nmode: {}\nenabled: {}\nregistry_read: passed\nproject_state_read: {}\nproject_state_write: {}\nstartup_observation: {}\neffective_tool_mode: {}\nallowed_projects: {}\navailable_projects: {}\nverification_scope: startup_check_only\nwatcher_status: {}\nwatcher_baseline_created_at: \nwatcher_coverage_start_at: \nwatcher_coverage_basis: {}\nwatcher_partial_coverage_warning: {}\n",
             TRANSPORT_DISCLOSURE_TEXT,
             self.runtime_home.display(),
             self.connection_internal_id.as_str(),
             self.mode.as_str(),
             self.enabled,
+            self.project_state_read_status(),
+            project_state_write_status(storage_capability),
+            startup_observation,
+            effective_tool_mode.as_str(),
             self.allowed_project_count,
             available_projects,
             watcher_status,
@@ -172,14 +216,42 @@ impl McpConnectionStartupInspection {
         );
         for (index, project) in self.projects.iter().enumerate() {
             report.push_str(&format!(
-                "project[{index}].project_id: {}\nproject[{index}].available: {}\nproject[{index}].unavailable_reason: {}\nproject[{index}].repo_root: {}\n",
+                "project[{index}].project_id: {}\nproject[{index}].available: {}\nproject[{index}].state_read: {}\nproject[{index}].state_write: {}\nproject[{index}].unavailable_reason: {}\nproject[{index}].repo_root: {}\n",
                 project.project_id,
                 project.available,
+                project.state_read_status(),
+                project.state_write_status(),
                 project.unavailable_reason.as_deref().unwrap_or(""),
                 project.repo_root_display
             ));
         }
         report
+    }
+
+    fn project_state_read_status(&self) -> &'static str {
+        if self.projects.iter().all(|project| project.available) {
+            "passed"
+        } else {
+            "failed"
+        }
+    }
+
+    fn startup_observation_status(&self, storage_capability: McpStorageCapability) -> &'static str {
+        let available_projects = self
+            .projects
+            .iter()
+            .filter(|project| project.available)
+            .count();
+        if available_projects != 1 {
+            return "skipped_verification_probe";
+        }
+        match storage_capability {
+            McpStorageCapability::ReadWrite => "recordable",
+            McpStorageCapability::ReadOnly => "best_effort_skipped_if_readonly",
+            McpStorageCapability::Unavailable | McpStorageCapability::Unknown => {
+                "skipped_verification_probe"
+            }
+        }
     }
 }
 
@@ -191,6 +263,52 @@ pub struct McpProjectAvailability {
     pub unavailable_reason: Option<String>,
     pub repo_root_display: String,
     pub(crate) storage_capability: McpStorageCapability,
+}
+
+impl McpProjectAvailability {
+    fn state_read_status(&self) -> &'static str {
+        if self.available {
+            "passed"
+        } else {
+            "failed"
+        }
+    }
+
+    fn state_write_status(&self) -> &'static str {
+        project_state_write_status(self.storage_capability)
+    }
+}
+
+pub(crate) fn storage_capability_for_projects(
+    projects: &[McpProjectAvailability],
+) -> McpStorageCapability {
+    let readable = projects
+        .iter()
+        .filter(|project| project.available)
+        .map(|project| project.storage_capability)
+        .collect::<Vec<_>>();
+    if readable.is_empty() {
+        return McpStorageCapability::Unavailable;
+    }
+    if readable
+        .iter()
+        .all(|capability| *capability == McpStorageCapability::ReadWrite)
+    {
+        return McpStorageCapability::ReadWrite;
+    }
+    if readable.contains(&McpStorageCapability::ReadOnly) {
+        return McpStorageCapability::ReadOnly;
+    }
+    McpStorageCapability::Unknown
+}
+
+fn project_state_write_status(storage_capability: McpStorageCapability) -> &'static str {
+    match storage_capability {
+        McpStorageCapability::ReadWrite => "passed",
+        McpStorageCapability::ReadOnly => "readonly",
+        McpStorageCapability::Unavailable => "skipped",
+        McpStorageCapability::Unknown => "failed",
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]

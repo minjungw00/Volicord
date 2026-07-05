@@ -68,6 +68,11 @@ fn volicord_mcp_subcommand_reports_help_version_and_preflight() -> Result<(), Bo
             "connection_id:",
             "mode:",
             "enabled:",
+            "registry_read:",
+            "project_state_read:",
+            "project_state_write:",
+            "startup_observation:",
+            "effective_tool_mode:",
             "allowed_projects:",
             "available_projects:",
             "verification_scope:",
@@ -78,6 +83,8 @@ fn volicord_mcp_subcommand_reports_help_version_and_preflight() -> Result<(), Bo
             "watcher_partial_coverage_warning:",
             "project[0].project_id:",
             "project[0].available:",
+            "project[0].state_read:",
+            "project[0].state_write:",
             "project[0].unavailable_reason:",
             "project[0].repo_root:",
         ],
@@ -94,6 +101,11 @@ fn volicord_mcp_subcommand_reports_help_version_and_preflight() -> Result<(), Bo
     );
     assert_report_line(&report, "mode: workflow");
     assert_report_line(&report, "enabled: true");
+    assert_report_line(&report, "registry_read: passed");
+    assert_report_line(&report, "project_state_read: passed");
+    assert_report_line(&report, "project_state_write: passed");
+    assert_report_line(&report, "startup_observation: recordable");
+    assert_report_line(&report, "effective_tool_mode: workflow");
     assert_report_line(&report, "allowed_projects: 1");
     assert_report_line(&report, "available_projects: 1");
     assert_report_line(&report, "verification_scope: startup_check_only");
@@ -104,6 +116,8 @@ fn volicord_mcp_subcommand_reports_help_version_and_preflight() -> Result<(), Bo
         &format!("project[0].project_id: {}", fixture.project_id()),
     );
     assert_report_line(&report, "project[0].available: true");
+    assert_report_line(&report, "project[0].state_read: passed");
+    assert_report_line(&report, "project[0].state_write: passed");
     assert_report_line(&report, "project[0].unavailable_reason: ");
     assert_eq!(fixture.counts()?, before);
 
