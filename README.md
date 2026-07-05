@@ -188,8 +188,10 @@ volicord connection status codex --shared --repo /path/to/your-product-repo
 volicord doctor
 ```
 
-Default text output is an interactive human summary. For automation and full
-diagnostics, use JSON output and do not parse the compact text:
+Default text output is an interactive human summary. For connection
+verification and status, read `Status`, `Checks`, `Next`, and `Diagnostics`
+first. For automation and full diagnostics, use JSON output and do not parse
+the compact text:
 
 ```sh
 volicord connection status codex --shared --repo /path/to/your-product-repo --json

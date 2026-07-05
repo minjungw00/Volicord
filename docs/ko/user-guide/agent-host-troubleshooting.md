@@ -32,10 +32,11 @@ repo file changes, 저장된 Runtime Home 경로를 확인한 뒤 `Next:` 체크
 이 체크리스트가 호스트 reload 또는 restart, 프로젝트 trust 또는 approval, 후속
 `volicord connection verify ...` 명령으로 이어지는 설정 흐름입니다.
 
-`volicord doctor`, `volicord connection status`, `volicord connection verify`와 다른
-진단 보기에서는 text 출력이 `action_required` 또는 저하된 진단 상태를 보고할 때 짧은
-`Result`, `Why`, `Next`, `Does not prove` 줄을 먼저 읽습니다. `Next`는 깊은 참조 문서를
-열기 전에 수행할 구체적인 동작입니다.
+진단 명령이 모두 같은 text 형태를 쓰지는 않습니다. `volicord connection status`와
+`volicord connection verify`에서는 먼저 `Status`, `Checks`, `Next`, `Diagnostics` 섹션을
+읽습니다. `Status`와 `Checks`는 연결 상태와 시도된 점검을 보여 주고, `Next`는 호스트
+소유 또는 로컬 후속 동작을 이름 붙이며, `Diagnostics`는 JSON 진단 명령을 가리킵니다.
+다른 보기에서는 연결 형태를 가정하지 말고 명령이 출력한 결과 줄 label을 따라갑니다.
 
 안정적인 자동화 표면이나 전체 진단 필드가 필요하면 `--json`을 사용합니다. 간결한 사람용
 text는 대화형 복구를 위한 것이며 스크립트가 파싱하면 안 됩니다.
@@ -167,8 +168,8 @@ global 연결 의도를 지원합니다.
 
 ## `action_required`
 
-관찰 증상: connection status 또는 verification이 `status: action_required`를
-보고합니다.
+관찰 증상: connection status 또는 verification이 text 또는 JSON 출력에서
+`action_required`를 보고합니다.
 
 제한된 복구:
 
@@ -177,10 +178,11 @@ volicord connection status codex --shared --repo /path/to/your-product-repo
 volicord connection verify codex --shared --repo /path/to/your-product-repo
 ```
 
-보고된 동작을 읽고 그 호스트 소유 단계만 완료합니다. 흔한 동작에는 호스트 항목
-신뢰, 프로젝트 MCP 항목 승인, 호스트 로그인, 호스트 reload, 호스트 restart,
-설치 프로필 복구가 있습니다. `Next`에 `volicord connection verify ...` 명령이 있으면
-호스트 쪽 단계를 완료한 뒤 그 명령을 실행합니다.
+먼저 `Status`, `Checks`, `Next`, `Diagnostics` 섹션을 읽습니다. 이름 붙은 호스트 소유
+또는 로컬 단계만 완료합니다. 흔한 동작에는 호스트 항목 신뢰, 프로젝트 MCP 항목 승인,
+호스트 로그인, 호스트 reload, 호스트 restart, 설치 프로필 복구가 있습니다. `Next`가
+`volicord connection verify ...` 명령을 보여 주면 호스트 쪽 단계를 완료한 뒤 그 명령을
+실행합니다.
 
 `action_required`를 치명적 실패로 다루지 않습니다. 오래 유지되는 Volicord 쪽 상태가
 이미 있을 수 있습니다.
@@ -316,7 +318,7 @@ volicord connection verify codex --shared
 
 명령이 이름 붙인 호스트 소유 프로젝트 승인 또는 reload 동작을 완료합니다.
 `Product Repository` 통합 파일은 Volicord 권한이 아니며, 호스트가 MCP 서버를 로드,
-신뢰, 노출했다는 증거도 아닙니다.
+신뢰, 승인, 노출했다는 증거도 아닙니다.
 
 ## Generic 호스트에 Volicord 도구가 보이지 않음
 

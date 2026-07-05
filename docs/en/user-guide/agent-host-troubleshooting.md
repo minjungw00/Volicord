@@ -37,11 +37,13 @@ then follow the `Next:` checklist. That checklist is the setup flow for host
 reload or restart, project trust or approval, and the follow-up
 `volicord connection verify ...` command.
 
-For `volicord doctor`, `volicord connection status`, `volicord connection
-verify`, and other diagnostic views, read the short `Result`, `Why`, `Next`,
-and `Does not prove` lines first when text output reports `action_required` or
-a degraded diagnostic state. `Next` is the concrete action to take before
-opening deeper reference material.
+Diagnostic commands do not all use the same text layout. For
+`volicord connection status` and `volicord connection verify`, read the
+`Status`, `Checks`, `Next`, and `Diagnostics` sections first. `Status` and
+`Checks` show the connection state and attempted checks, `Next` names the
+host-owned or local follow-up, and `Diagnostics` points to the JSON diagnostic
+command. For other views, follow the result-line labels the command prints
+rather than assuming the connection layout.
 
 Use `--json` when you need the stable automation surface or full diagnostic
 fields. Compact human text is for interactive recovery and should not be parsed
@@ -183,7 +185,7 @@ personal, shared, and global connection intents.
 ## `action_required`
 
 Observable symptom: connection status or verification reports
-`status: action_required`.
+`action_required` in text or JSON output.
 
 Bounded recovery:
 
@@ -192,11 +194,12 @@ volicord connection status codex --shared --repo /path/to/your-product-repo
 volicord connection verify codex --shared --repo /path/to/your-product-repo
 ```
 
-Read the reported action and complete only that host-owned step. Common actions
-include trusting a host entry, approving a project MCP entry, signing in through
-the host, reloading the host, restarting the host, or completing
-installation-profile repair. If `Next` includes a `volicord connection verify
-...` command, run it after the host-side step.
+Read the `Status`, `Checks`, `Next`, and `Diagnostics` sections first. Complete
+only the named host-owned or local step. Common actions include trusting a host
+entry, approving a project MCP entry, signing in through the host, reloading the
+host, restarting the host, or completing installation-profile repair. If
+`Next` shows a `volicord connection verify ...` command, run it after the
+host-side step.
 
 Do not treat `action_required` as a fatal failure. Durable Volicord-side state
 may already exist.
@@ -336,7 +339,7 @@ volicord connection verify codex --shared
 
 Complete the host-owned project approval or reload action named by the command.
 The `Product Repository` integration file is not Volicord authority and does not
-prove that the host loaded, trusted, or exposed the MCP server.
+prove that the host loaded, trusted, approved, or exposed the MCP server.
 
 ## Generic Host Does Not Show Volicord Tools
 

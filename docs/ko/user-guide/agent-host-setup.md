@@ -35,14 +35,13 @@ init 뒤에는 터미널 밖에서 호스트가 소유한 후속 동작을 완�
   restart 또는 reload하고, Claude Code가 묻는 경우 프로젝트 MCP 항목, workspace, 또는
   프로젝트 설정을 approve합니다.
 
-저장소 로컬 설정을 썼다는 사실은 이미 실행 중인 호스트가 그 설정을 로드하고 신뢰했다는
-증명이 아닙니다. Init은 `.codex/config.toml` 또는 `.mcp.json`,
-`.volicord/policy.json`, 관리 `AGENTS.md` 안내를 쓸 수 있지만, reload, restart,
-trust, approval은 여전히 호스트가 통제합니다. 로컬 Volicord 상태는 이런 Product
-Repository 파일과 별도로 Runtime Home에 저장됩니다. CLI MCP preflight 또는 handshake
-성공은 Volicord의 MCP 서버가 터미널 쪽 점검 경로에서 시작하고 응답할 수 있다는 뜻입니다.
-그 자체만으로 Codex, Claude Code 또는 다른 호스트가 프로젝트 설정을 로드하고 신뢰했다는
-증명은 아닙니다.
+저장소 로컬 설정을 썼다는 사실은 이미 실행 중인 호스트가 그 설정을 로드, 신뢰,
+승인했다는 증명이 아닙니다. Init은 `.codex/config.toml` 또는 `.mcp.json`,
+`.volicord/policy.json`, 관리 `AGENTS.md` 안내를 쓸 수 있지만, reload, restart, trust,
+approval은 여전히 호스트가 통제합니다. 로컬 Volicord 상태는 이런 Product Repository 파일과
+별도로 Runtime Home에 저장됩니다. CLI MCP preflight 또는 handshake 성공은 Volicord의 MCP
+서버가 터미널 쪽 점검 경로에서 시작하고 응답할 수 있다는 뜻입니다. 그 자체만으로 Codex,
+Claude Code 또는 다른 호스트가 프로젝트 설정을 로드, 신뢰, 승인했다는 증명은 아닙니다.
 
 호스트 prompt가 요구한 동작을 마친 뒤 터미널 쪽 후속 점검을 실행합니다.
 
@@ -194,7 +193,8 @@ volicord connection status codex --shared --repo /path/to/your-product-repo
 volicord connection verify codex --shared --repo /path/to/your-product-repo
 ```
 
-기본 text 출력은 대화형 설정 작업을 위한 간결한 사람용 요약입니다. 자동화와 전체
+기본 text 출력은 대화형 설정 작업을 위한 간결한 사람용 요약입니다. 연결 상태와
+검증에서는 먼저 `Status`, `Checks`, `Next`, `Diagnostics`를 읽습니다. 자동화와 전체
 진단에는 `--json`을 사용합니다. 스크립트는 간결한 text를 파싱하면 안 됩니다. 자세한
 guard state, hook 진단, MCP handshake 세부사항, 호스트 관찰은 JSON 진단에 둡니다.
 

@@ -149,15 +149,16 @@ init text가 전체 진단 결과 모델을 노출해야 하는 것은 아닙니
 `volicord status`, `volicord doctor`, `volicord connection status`,
 `volicord connection verify`, `volicord changes reconcile`, `volicord inbox`
 같은 주요 사용자 대상 상태형 표면은 명령이 계산할 수 있을 때 세부 진단보다 앞에
-간결한 summary card를 사용합니다. Text 출력은 공개 label인 `Task`, `Recording`,
-`Profile`, `Write Ticket`, `Evidence`, `User Judgment`, `Changes`,
-`Close Status`, `Transport`, `Next`, `Guarantee`를 사용합니다. `Next`는 명령이
-알 수 있을 때 즉시 수행할 다음 행동을 이름 붙여야 하며, 사용자가 그 동작을 확인하는
-방법이 검증 명령이라면 후속 검증 명령을 함께 포함할 수 있습니다. 선택된 보기에서
-다음 행동을 알 수 없을 때만 `none`을 사용합니다. Text 모드 summary 출력은 표시된 다음
-행동을 수행하는 데 필요하지 않은 내부 ID를 기본적으로 노출하면 안 됩니다. 대응 JSON 출력은
-같은 안정 데이터를 `summary_card`로 노출하며, JSON 소비자는 text 전용 formatting을
-파싱하면 안 됩니다.
+간결한 summary card 또는 간결한 섹션을 사용합니다. Text 출력은 선택된 명령에 맞는 공개
+label을 사용합니다. 상태 및 User Channel 보기에서는 `Task`, `Recording`, `Profile`,
+`Write Ticket`, `Evidence`, `User Judgment`, `Changes`, `Close Status`, `Transport`,
+`Next`, `Guarantee` 같은 label을 사용합니다. 연결 상태와 검증은 아래에서 설명하는
+연결 전용 섹션 label을 사용합니다. `Next`는 명령이 알 수 있을 때 즉시 수행할 다음
+행동을 이름 붙여야 하며, 사용자가 그 동작을 확인하는 방법이 검증 명령이라면 후속 검증
+명령을 함께 포함할 수 있습니다. 선택된 보기에서 다음 행동을 알 수 없을 때만 `none`을
+사용합니다. Text 모드 summary 출력은 표시된 다음 행동을 수행하는 데 필요하지 않은 내부
+ID를 기본적으로 노출하면 안 됩니다. 대응 JSON 출력은 같은 안정 데이터를 `summary_card`로
+노출하며, JSON 소비자는 text 전용 formatting을 파싱하면 안 됩니다.
 `volicord connection status`와 `volicord connection verify`의 기본 text 출력은 대화형
 사용자를 위한 사람용 요약이며, 제목 줄과 `Status`, `Profile`, `Repository` 또는
 `Repositories`, `Checks`, `Next`, `Limits`, `Diagnostics` 간결 섹션을 사용합니다.
@@ -170,11 +171,14 @@ init text가 전체 진단 결과 모델을 노출해야 하는 것은 아닙니
 있는지 알려 주며, 판단을 기록하거나 Agent Connection이 사용자처럼 동작하게 하지
 않습니다. JSON 출력은 같은 사실을 `user_channel_availability` 또는
 `answer_path_availability`에 담습니다.
-진단 text 출력이 `action_required` 또는 저하된 진단 상태를 보고할 때는 간결한
-`Result`, `Why`, `Next`, `Does not prove` 줄도 포함합니다. `Result` 줄은
-`action_required`를 치명적인 CLI 오류처럼 표현하면 안 됩니다. `Next`는 호스트 reload
-또는 restart, 호스트 권한 승인, 관리 설정 복구, 또는 호스트 쪽 동작을 완료한 뒤 사용할
-`volicord connection verify ...` 같은 즉시 수행할 사용자 동작을 이름 붙입니다.
+결과 줄 형태를 의도적으로 사용하는 비연결 진단 보기에서는 text 출력이
+`action_required` 또는 저하된 진단 상태를 보고할 때 간결한 `Result`, `Why`, `Next`,
+`Does not prove` 줄을 포함합니다. 연결 상태와 검증의 기본 text는 그 형태를 사용하지
+않으며, 사용자는 먼저 `Status`, `Checks`, `Next`, `Diagnostics`를 읽어야 합니다. 두 형태
+모두에서 `action_required`를 치명적인 CLI 오류처럼 표현하면 안 됩니다. `Next`는 호스트
+reload 또는 restart, 호스트나 프로젝트 권한 승인, 관리 설정 복구, 또는 호스트 쪽 동작을
+완료한 뒤 사용할 `volicord connection verify ...` 같은 즉시 수행할 사용자 동작을 이름
+붙입니다.
 
 <a id="runtime-home-selection"></a>
 ## Runtime Home 선택
@@ -448,13 +452,14 @@ Agent Connection 명령은 아래 결과 상태를 사용합니다.
 | `failed` | 요청한 명령이나 검증이 사용할 수 있는 오래 유지되는 Agent Connection 상태, 사용할 수 있는 호스트 설정, 또는 필요한 로컬 전제 조건을 만들지 못했습니다. |
 | `dry_run` | 명령이 영속 변경 없이 계획된 동작을 보고했습니다. |
 
-검증 출력은 점검과 사용자 동작을 일급 진단으로 만들어야 합니다. Text 출력은 전체
-상태, 시도되었거나 차단된 각 점검, 필요한 경우 다음 사용자 동작을 보여 줘야 합니다.
-`action_required`와 저하된 detective 진단에서는 text 출력이 다음 행동을 구체적으로
-유지합니다. 호스트를 reload 또는 restart하고, 호스트 또는 프로젝트 권한을 승인하고,
-관리 설정을 복구하거나, 호스트 쪽 동작 뒤 표시된 `volicord connection verify ...`
-명령을 실행하라고 안내합니다. JSON 출력은 진단 소비자를 위해 최상위 `status`,
-`checks`, `actions`, `summary_card` 필드를 포함해야 합니다.
+검증 출력은 점검과 사용자 동작을 일급 진단으로 만들어야 합니다. 연결 상태와 검증의
+기본 text 출력은 결과 줄 형태 대신 `Status`, `Checks`, `Next`, `Diagnostics` 간결 섹션을
+사용합니다. 전체 상태, 시도되었거나 차단된 각 점검, 필요한 경우 다음 사용자 동작을
+보여 줘야 합니다. `action_required`와 저하된 detective 진단에서는 text 출력이 다음 행동을
+구체적으로 유지합니다. 호스트를 reload 또는 restart하고, 호스트 또는 프로젝트 권한을
+승인하고, 관리 설정을 복구하거나, 호스트 쪽 동작 뒤 표시된
+`volicord connection verify ...` 명령을 실행하라고 안내합니다. JSON 출력은 진단 소비자를
+위해 최상위 `status`, `checks`, `actions`, `summary_card` 필드를 포함해야 합니다.
 `action_required`는 호스트 소유 또는 로컬 후속 동작이 남았다는 뜻입니다. 자동으로
 치명적인 CLI 오류가 아니며 위에서 설명한 성공한 관리 결과 규칙을 따릅니다.
 연결 상태 및 검증 출력은 detective host hook 파일 설치, 설정 건강 상태, 런타임 hook 관찰

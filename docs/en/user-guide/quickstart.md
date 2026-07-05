@@ -63,7 +63,7 @@ Diagnostics:
 
 The summary distinguishes files written inside the Product Repository from
 local Volicord state stored in the Runtime Home. It does not mean an already
-running Codex session has loaded or trusted the new configuration.
+running Codex session has loaded, trusted, or approved the new configuration.
 For user workflow, the Record profile supports cooperative Volicord workflow
 recording through MCP. It is not a security, correctness, test-sufficiency, or
 review-completion guarantee.
@@ -100,10 +100,11 @@ volicord connection status codex --shared --repo /path/to/repo
 volicord connection verify codex --shared --repo /path/to/repo
 ```
 
-Default text output is for interactive reading. Use `--json` when a script or
-operator needs the stable automation surface, full checks, guard state, hook
-diagnostics, MCP handshake details, or host observations; do not parse compact
-human text.
+Default text output is for interactive reading. For connection status and
+verification, read `Status`, `Checks`, `Next`, and `Diagnostics` first. Use
+`--json` when a script or operator needs the stable automation surface, full
+checks, guard state, hook diagnostics, MCP handshake details, or host
+observations; do not parse compact human text.
 
 Completion state: the connection is ready when status or verification reports
 `complete`. If it reports `action_required`, complete the named host-owned or
@@ -113,7 +114,8 @@ Detective host hook path repair guidance belongs to
 [Agent Host Troubleshooting](../user-guide/agent-host-troubleshooting.md#guard-hook-path-or-wrapper-is-unsafe).
 CLI verification can prove that Volicord's MCP server can start and respond
 from the terminal-side check path. It does not by itself prove that Codex,
-Claude Code, or another host has loaded and trusted the project configuration.
+Claude Code, or another host has loaded, trusted, or approved the project
+configuration.
 
 ## Choose A Host Intent
 

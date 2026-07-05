@@ -59,7 +59,7 @@ Diagnostics:
 ```
 
 이 요약은 Product Repository 안에 쓴 파일과 Runtime Home에 저장한 로컬 Volicord 상태를
-구분합니다. 이미 실행 중인 Codex session이 새 설정을 로드하거나 신뢰했다는 뜻은
+구분합니다. 이미 실행 중인 Codex session이 새 설정을 로드, 신뢰, 승인했다는 뜻은
 아닙니다.
 사용자 워크플로에서 기록 프로필은 MCP를 통한 협력적 Volicord 워크플로 기록을
 지원합니다. 보안, 정확성, 테스트 충분성, 검토 완료 보장을 뜻하지 않습니다.
@@ -92,7 +92,8 @@ volicord connection status codex --shared --repo /path/to/repo
 volicord connection verify codex --shared --repo /path/to/repo
 ```
 
-기본 text 출력은 대화형으로 읽는 용도입니다. 스크립트나 운영자가 안정적인 자동화 표면,
+기본 text 출력은 대화형으로 읽는 용도입니다. 연결 상태와 검증에서는 먼저 `Status`,
+`Checks`, `Next`, `Diagnostics`를 읽습니다. 스크립트나 운영자가 안정적인 자동화 표면,
 전체 점검, guard state, hook 진단, MCP handshake 세부사항, 호스트 관찰을 필요로 하면
 `--json`을 사용하고 간결한 사람용 text를 파싱하지 않습니다.
 
@@ -105,7 +106,7 @@ Detective host hook 경로 복구 안내는
 정리합니다.
 CLI verification은 Volicord의 MCP 서버가 터미널 쪽 점검 경로에서 시작하고 응답할 수
 있음을 확인할 수 있습니다. 그 자체만으로 Codex, Claude Code 또는 다른 호스트가 프로젝트
-설정을 로드하고 신뢰했다는 증명은 아닙니다.
+설정을 로드, 신뢰, 승인했다는 증명은 아닙니다.
 
 ## 호스트 의도 선택하기
 

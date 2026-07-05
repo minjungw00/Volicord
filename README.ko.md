@@ -180,8 +180,9 @@ volicord connection status codex --shared --repo /path/to/your-product-repo
 volicord doctor
 ```
 
-기본 text 출력은 대화형 사용자를 위한 사람이 읽는 요약입니다. 자동화와 전체 진단에는
-JSON 출력을 사용하고, 간결한 text 출력을 파싱하지 않습니다.
+기본 text 출력은 대화형 사용자를 위한 사람이 읽는 요약입니다. 연결 검증과 상태에서는
+먼저 `Status`, `Checks`, `Next`, `Diagnostics`를 읽습니다. 자동화와 전체 진단에는 JSON
+출력을 사용하고, 간결한 text 출력을 파싱하지 않습니다.
 
 ```sh
 volicord connection status codex --shared --repo /path/to/your-product-repo --json

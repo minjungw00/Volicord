@@ -40,14 +40,15 @@ After init, complete the host-owned follow-up outside the terminal:
   project configuration if Claude Code asks.
 
 Writing repo-local configuration is not the same as proving that an already
-running host loaded and trusted it. Init can write `.codex/config.toml` or
-`.mcp.json`, `.volicord/policy.json`, and the managed `AGENTS.md` guidance
+running host loaded, trusted, or approved it. Init can write
+`.codex/config.toml` or `.mcp.json`, `.volicord/policy.json`, and the managed
+`AGENTS.md` guidance
 while the host still controls reload, restart, trust, and approval. Local
 Volicord state is stored in the Runtime Home, separate from those Product
 Repository files. CLI MCP preflight or handshake success means Volicord's MCP
 server can start and respond from the terminal-side check path; it does not by
-itself prove that Codex, Claude Code, or another host has loaded and trusted
-the project configuration.
+itself prove that Codex, Claude Code, or another host has loaded, trusted, or
+approved the project configuration.
 
 After completing any host prompt, use the terminal-side follow-up check:
 
@@ -210,10 +211,11 @@ volicord connection status codex --shared --repo /path/to/your-product-repo
 volicord connection verify codex --shared --repo /path/to/your-product-repo
 ```
 
-Default text output is a compact human summary for interactive setup work. Use
-`--json` for automation and full diagnostics; scripts must not parse the
-compact text. Detailed guard state, hook diagnostics, MCP handshake details,
-and host observations belong in JSON diagnostics.
+Default text output is a compact human summary for interactive setup work. For
+connection status and verification, read `Status`, `Checks`, `Next`, and
+`Diagnostics` first. Use `--json` for automation and full diagnostics; scripts
+must not parse the compact text. Detailed guard state, hook diagnostics, MCP
+handshake details, and host observations belong in JSON diagnostics.
 
 `volicord connection status codex --shared --repo /path/to/your-product-repo`
 has this compact shape:
