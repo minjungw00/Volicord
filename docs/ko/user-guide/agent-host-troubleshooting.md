@@ -194,6 +194,41 @@ Inbox 항목에 이미 표시된 URL을 사용합니다. selector가 모호하�
 선택되었다면 `--repo PATH`와 `--shared` 또는 `--global` 같은 일치하는 intent flag를
 붙여 다시 실행합니다.
 
+## Codex 프로젝트가 trusted이지만 host runtime이 관찰되지 않음
+
+관찰 증상: 연결 상태 또는 검증이 아래 사실을 함께 보고합니다.
+
+- `Codex project trust: trusted`
+- `MCP preflight: passed`
+- `MCP handshake: passed`
+- `Codex host runtime: not observed`
+- `Host MCP command: uses volicord from the Codex host PATH`
+
+이는 터미널 쪽 verification이 성공했고 Codex 사용자 설정은 프로젝트를 trusted로 표시하지만,
+Volicord가 이 연결에 대해 `Codex host process`가 Volicord MCP 서버를 시작한 것을 아직
+관찰하지 못했다는 뜻입니다. `volicord`처럼 `PATH`로 찾는 MCP 명령은 verification을 실행한
+터미널뿐 아니라 MCP 서버를 시작하는 환경에서 사용할 수 있어야 합니다.
+
+제한된 복구:
+
+셸에서 Codex를 시작한다면 Codex를 시작하거나 resume하기 전에 같은 셸 환경을 확인합니다.
+
+```sh
+command -v volicord
+```
+
+그런 뒤 Product Repository에서 Codex session을 restart, reload, resume 또는 새로 시작하고,
+활성 Codex session에 Volicord 도구가 노출되는지 확인한 뒤 verification을 다시 실행합니다.
+
+```sh
+volicord connection verify codex --shared --repo /path/to/your-product-repo
+```
+
+Codex IDE extension에서는 extension session에 보이는 PATH 또는 MCP startup log를 확인합니다.
+비대화식 Codex run에서는 시작 환경을 고친 뒤 새 run을 시작합니다. 원격 또는
+executor-backed MCP 시작에서는 해당 executor에서 명령 가용성을 확인합니다. 로컬 CLI
+PATH만으로는 원격 명령 launch 가능성을 증명하지 않습니다.
+
 ## `failed`
 
 관찰 증상: setup, connect, export, verification이 `failed`를 보고하거나 런타임 오류로

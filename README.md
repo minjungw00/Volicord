@@ -200,7 +200,10 @@ volicord connection status codex --shared --repo /path/to/your-product-repo --js
 CLI MCP preflight or handshake success means Volicord's MCP server can start
 and respond from the CLI check path. It does not by itself prove that Codex,
 Claude Code, or another host has loaded, trusted, or approved the project
-configuration.
+configuration. For Codex, also check Codex project trust, Codex host runtime
+observation, host MCP command launchability in the Codex host process
+environment, and whether Volicord tools are exposed in the active Codex
+session.
 
 The guided flow continues in [Quickstart](docs/en/user-guide/quickstart.md) and
 [Agent Host Setup](docs/en/user-guide/agent-host-setup.md). Exact command
@@ -522,7 +525,7 @@ HTTP boundaries.
 
 | Symptom | What to do |
 |---|---|
-| `volicord` is not found | Put the install directory on `PATH`, or install to a directory already on `PATH`, then check the version again. Future agent hosts must also be able to start `volicord`. |
+| `volicord` is not found | Put the install directory on `PATH`, or install to a directory already on `PATH`, then check the version again. Future agent hosts must also be able to start `volicord`; for Codex, that means the PATH seen by the Codex host process. |
 | `init` reports `action_required` | Follow the `Next:` checklist first. Complete the named action, such as host restart or reload, project trust, MCP approval, OAuth, command-link repair, or installation-profile repair, then use the verification command from the setup section for the ordinary init path. |
 | Detective-specific checks are inactive | Verify with the same host, intent, and repository selector, complete the named user action, and use [Agent Host Troubleshooting](docs/en/user-guide/agent-host-troubleshooting.md) for hook or watcher diagnostics. |
 | Host cannot start MCP | Confirm the host can start `volicord mcp --help` through the same command path. Use `volicord doctor` for installation-profile health. |

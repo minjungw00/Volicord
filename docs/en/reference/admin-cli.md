@@ -179,7 +179,9 @@ for `Status`, `Profile`, `Repository` or `Repositories`, `Checks`, `Next`,
 `Limits`, and `Diagnostics`. `volicord connection add` may also include compact
 host-configuration or repo-file-change sections. Detailed guard state, hook
 diagnostics, MCP preflight and handshake details, and host observations belong
-in JSON diagnostics.
+in JSON diagnostics. Codex connection text may summarize separate check lines
+for `Codex project trust`, `Codex host runtime`, and `Host MCP command` while
+keeping the human output compact and section-based.
 When pending judgments are visible, `volicord status` and `volicord inbox` text
 output may include an `Available answer paths:` line that summarizes host
 prompt input, chat command capture, local consent URL, and CLI inbox
@@ -496,6 +498,17 @@ Agent Connection commands use these result states:
 | `failed` | The requested command or verification did not establish usable durable Agent Connection state, usable host configuration, or a required local prerequisite. |
 | `dry_run` | The command reported the planned actions without persistent changes. |
 
+Codex connection verification keeps these diagnostic concepts separate:
+
+| Diagnostic concept | Text output surface | JSON diagnostic surface | Meaning |
+|---|---|---|---|
+| MCP configuration match | `MCP configuration` or `Current MCP configuration` | host check details and managed configuration fields | The managed Codex MCP server entry matches the expected Volicord-generated configuration. |
+| CLI MCP preflight and handshake | `MCP preflight`, `MCP handshake`, `Last MCP preflight`, or `Last MCP handshake` | `checks[]` entries with `id=mcp_preflight` and `id=mcp_handshake`, plus verification report fields | The CLI verification path directly launched and talked to Volicord's MCP server. |
+| Codex project trust | `Codex project trust` | `verification.project_trust` and a `checks[]` entry with `id=codex_project_trust` when available | Codex user configuration marks the project `trusted`, `untrusted`, `unknown`, or otherwise leaves trust unconfirmed. |
+| Codex host runtime observation | `Codex host runtime` | `verification.host_runtime` and a `checks[]` entry with `id=codex_host_runtime` when available | Volicord has or has not observed a Codex host process start the Volicord MCP server for the selected connection. |
+| Host MCP command launchability | `Host MCP command` | `verification.host_mcp_command` and a `checks[]` entry with `id=host_mcp_command` when available | The configured MCP command is absolute, PATH-resolved, remote/executor-backed, unknown, or malformed, and can carry launch-risk details such as `host_path_unconfirmed`. |
+| Active-session tool exposure | `Next` action text when confirmation is required | `primary_next_action`, `actions[]`, and `connection.user_actions[]` | The user may still need to confirm that Volicord tools are exposed in the active Codex session. |
+
 Verification output must make checks and user actions first-class diagnostics.
 For connection status and verification, default text output uses compact
 sections for `Status`, `Checks`, `Next`, and `Diagnostics` instead of the
@@ -506,7 +519,9 @@ action concrete: reload or restart the host, approve host or project permission,
 repair managed configuration, or run the shown `volicord connection verify ...`
 command after the host-side action. JSON output must include top-level
 `status`, `checks`, `actions`, and `summary_card` fields for diagnostic
-consumers.
+consumers. When Codex verification can compute trust, runtime observation, or
+command-launch diagnostics, JSON output must expose those states separately
+instead of collapsing them into MCP handshake success.
 `action_required` means a host-owned or local follow-up remains; it is not
 automatically a fatal CLI error and exits under the successful administrative
 result rule described above.
@@ -857,6 +872,12 @@ Required diagnostic JSON values:
   and human-readable command or instruction when one is available
 - `summary_card`: stable compact summary data for status-like diagnostic or
   user-channel outputs that compute a summary card
+- connection status and verification JSON can expose separate Codex diagnostics
+  for `project_trust`, `host_runtime`, and `host_mcp_command`, with matching
+  `checks[]` entries such as `codex_project_trust`, `codex_host_runtime`, and
+  `host_mcp_command`. These diagnostics distinguish trust state, host runtime
+  observation, and command launch risk from CLI MCP preflight or handshake
+  success.
 - Detective-aware setup, doctor, connection status, and connection verification
   JSON must expose `selected_profile`, `control_surface`,
   `cooperative_pre_tool_warning_available`,

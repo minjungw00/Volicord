@@ -211,6 +211,46 @@ answer command or the URL already shown by the MCP Judgment Inbox item. If the
 selector is ambiguous or the wrong repository is selected, rerun with
 `--repo PATH` and the matching intent flag such as `--shared` or `--global`.
 
+## Trusted Codex Project But Host Runtime Is Not Observed
+
+Observable symptom: connection status or verification reports all of these
+facts together:
+
+- `Codex project trust: trusted`
+- `MCP preflight: passed`
+- `MCP handshake: passed`
+- `Codex host runtime: not observed`
+- `Host MCP command: uses volicord from the Codex host PATH`
+
+This means terminal-side verification succeeded and Codex user configuration
+marks the project trusted, but Volicord has not observed the Codex host process
+launch the Volicord MCP server for this connection. A PATH-resolved MCP command
+such as `volicord` must be available in the environment that launches the MCP
+server, not only in the terminal that ran verification.
+
+Bounded recovery:
+
+If you start Codex from a shell, check the same shell environment before
+starting or resuming Codex:
+
+```sh
+command -v volicord
+```
+
+Then restart, reload, resume, or start a new Codex session in the Product
+Repository, confirm that Volicord tools are exposed in the active Codex
+session, and rerun verification:
+
+```sh
+volicord connection verify codex --shared --repo /path/to/your-product-repo
+```
+
+For a Codex IDE extension, inspect the PATH visible to the extension session or
+its MCP startup logs. For a non-interactive Codex run, start a new run after
+fixing the launch environment. For remote or executor-backed MCP startup,
+confirm command availability in that executor; local CLI PATH does not prove
+remote command launchability.
+
 ## `failed`
 
 Observable symptom: setup, connect, export, or verification reports `failed` or

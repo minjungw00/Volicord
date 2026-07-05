@@ -115,7 +115,10 @@ Detective host hook path repair guidance belongs to
 CLI verification can prove that Volicord's MCP server can start and respond
 from the terminal-side check path. It does not by itself prove that Codex,
 Claude Code, or another host has loaded, trusted, or approved the project
-configuration.
+configuration. For Codex, also check the Codex project trust line, Codex host
+runtime observation, host MCP command launchability, and whether Volicord tools
+are exposed in the active Codex session. A PATH-resolved MCP command such as
+`volicord` must be available on the PATH seen by the Codex host process.
 
 ## Choose A Host Intent
 

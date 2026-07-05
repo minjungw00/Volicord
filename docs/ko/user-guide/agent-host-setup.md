@@ -43,6 +43,36 @@ approval은 여전히 호스트가 통제합니다. 로컬 Volicord 상태는 �
 서버가 터미널 쪽 점검 경로에서 시작하고 응답할 수 있다는 뜻입니다. 그 자체만으로 Codex,
 Claude Code 또는 다른 호스트가 프로젝트 설정을 로드, 신뢰, 승인했다는 증명은 아닙니다.
 
+### Codex 호스트 검증 개념
+
+Codex 검증은 서로 관련된 개념을 분리해서 보고합니다. `Codex host process`는
+Volicord MCP 서버를 시작할 것으로 기대되는 프로세스입니다. 여기에는 Codex CLI/TUI
+session, Codex IDE extension session, 비대화식 Codex run, 그 밖의 Codex 호스트 환경이
+포함될 수 있습니다.
+
+| 개념 | 의미 | 증명하지 않는 것 |
+|---|---|---|
+| MCP 설정 일치 | 프로젝트 범위 Codex 설정이 선택된 연결의 Volicord 관리 MCP server 항목과 일치합니다. | `Codex host process`가 그 항목을 로드, 신뢰, 승인, 시작했다는 뜻은 아닙니다. |
+| CLI MCP preflight 또는 handshake 통과 | `volicord connection verify`가 터미널 쪽 점검 환경에서 MCP 서버를 직접 시작했고 서버가 응답했습니다. | 활성 Codex session이 같은 서버를 시작했거나 Volicord 도구를 노출했다는 뜻은 아닙니다. |
+| Codex 프로젝트 trust | Codex 사용자 설정이 저장소를 `trusted`, `untrusted`, `unknown`, 또는 그 밖의 미확인 상태로 보고합니다. | `trusted` 항목만으로 실행 중인 Codex 호스트 프로세스가 프로젝트 설정을 reload했다는 증명이 되지 않습니다. |
+| Codex host runtime 관찰 | Volicord가 이 연결에 대해 프로젝트에 묶인 Codex 호스트 프로세스가 Volicord MCP 서버를 시작한 것을 관찰했습니다. | 터미널 쪽 CLI handshake만으로는 이 관찰이 아닙니다. |
+| 활성 Codex session의 Volicord 도구 노출 | 활성 Codex session이 선택된 모드의 Volicord MCP 도구를 볼 수 있습니다. | 파일 쓰기, 사용자 승인, 정확성, 테스트 충분성, 이후 모델의 도구 선택을 증명하지 않습니다. |
+| 호스트 MCP 명령 launch 가능성 | MCP 명령이 MCP 서버를 시작하는 환경에서 실행 가능해야 합니다. `volicord`처럼 `PATH`로 찾는 명령은 `Codex host process`가 보는 PATH에 있어야 합니다. | 로컬 터미널 PATH 점검은 그 터미널 환경만 증명하며 IDE, 비대화식, 원격, executor-backed 호스트 환경을 증명하지 않습니다. |
+
+이 일반 호스트 프로세스 모델에서의 예시는 아래와 같습니다.
+
+- Codex CLI/TUI: 의도한 실행 파일이 해석되는 셸에서 Codex를 시작합니다.
+
+  ```sh
+  command -v volicord
+  ```
+
+- Codex IDE extension: extension session에 보이는 PATH나 extension MCP startup log를
+  확인합니다.
+- 비대화식 Codex run: 시작 환경을 고친 뒤 새 run 또는 session을 시작합니다.
+- 원격 또는 executor-backed MCP: 원격 executor 환경에서 명령 가용성을 확인합니다. 로컬
+  CLI PATH 점검만으로는 충분하지 않습니다.
+
 호스트 prompt가 요구한 동작을 마친 뒤 터미널 쪽 후속 점검을 실행합니다.
 
 ```sh
@@ -218,14 +248,18 @@ Repository:
 Checks:
   Stored connection: enabled, mode workflow, last verification action required
   Current MCP configuration: match
+  Codex project trust: trusted
   Last MCP preflight: passed
   Last MCP handshake: passed
+  Codex host runtime: not observed
+  Host MCP command: uses volicord from the Codex host PATH
   Host follow-up: action required
 
 Next:
-  1. Open, restart, or reload Codex in this repository.
-  2. Trust or approve the project configuration if Codex asks.
-  3. Run:
+  1. Make `volicord` available on the PATH seen by the Codex host process, or configure the MCP command so the host can launch it.
+  2. Restart, reload, resume, or start a new Codex session in this repository.
+  3. Confirm that Volicord tools are exposed in the active Codex session.
+  4. Run:
      volicord connection verify codex --shared --repo /path/to/your-product-repo
 
 Limits:
@@ -258,13 +292,18 @@ Repository:
 
 Checks:
   MCP configuration: match
+  Codex project trust: trusted
   MCP preflight: passed
   MCP handshake: passed
+  Codex host runtime: not observed
+  Host MCP command: uses volicord from the Codex host PATH
   Host follow-up: action required
 
 Next:
-  1. Trust or approve the project configuration if Codex asks.
-  2. Run:
+  1. Make `volicord` available on the PATH seen by the Codex host process, or configure the MCP command so the host can launch it.
+  2. Restart, reload, resume, or start a new Codex session in this repository.
+  3. Confirm that Volicord tools are exposed in the active Codex session.
+  4. Run:
      volicord connection verify codex --shared --repo /path/to/your-product-repo
 
 Limits:
@@ -290,10 +329,16 @@ volicord connection verify claude-code --global
 
 | 상태 | 설정 가이드에서의 의미 |
 |---|---|
-| `complete` | Volicord 쪽 상태, 관리 호스트 설정, 관찰 가능한 MCP 시작, 초기화, 기대 도구 노출이 준비되었습니다. |
+| `complete` | Volicord 쪽 상태, 관리 호스트 설정, 필요한 호스트 시작 가능성과 신뢰 게이트, 관찰 가능한 MCP 시작, 초기화, 기대 도구 노출이 준비되었습니다. |
 | `action_required` | Volicord 쪽 상태는 있지만 이름 붙은 사용자 통제 호스트 동작이 남아 있습니다. 그 자체로 치명적인 CLI 오류는 아닙니다. |
 | `failed` | 필요한 로컬 전제 조건, 호스트 설정 단계, 검증 단계가 성공하지 못했습니다. |
 | `dry_run` | 명령이 지속 변경 없이 계획된 동작을 보고했습니다. |
+
+Codex에서는 프로젝트 trust가 `trusted`이고 CLI MCP preflight와 handshake가 통과했더라도
+`action_required`가 나타날 수 있습니다. 이때 남은 단계는 보통 host runtime 또는 시작
+환경 문제입니다. MCP 명령을 `Codex host process`가 시작할 수 있게 만들고, 저장소에서
+Codex session을 restart, reload, resume 또는 새로 시작한 뒤 활성 Codex session에
+Volicord 도구가 노출되는지 확인합니다.
 
 ## Generic MCP 호스트 설정
 

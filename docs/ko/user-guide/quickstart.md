@@ -106,7 +106,10 @@ Detective host hook 경로 복구 안내는
 정리합니다.
 CLI verification은 Volicord의 MCP 서버가 터미널 쪽 점검 경로에서 시작하고 응답할 수
 있음을 확인할 수 있습니다. 그 자체만으로 Codex, Claude Code 또는 다른 호스트가 프로젝트
-설정을 로드, 신뢰, 승인했다는 증명은 아닙니다.
+설정을 로드, 신뢰, 승인했다는 증명은 아닙니다. Codex에서는 Codex 프로젝트 trust 줄,
+Codex host runtime 관찰, 호스트 MCP 명령 launch 가능성, 활성 Codex session에 Volicord
+도구가 노출되는지도 함께 확인합니다. `volicord`처럼 `PATH`로 찾는 MCP 명령은
+`Codex host process`가 보는 PATH에 있어야 합니다.
 
 ## 호스트 의도 선택하기
 

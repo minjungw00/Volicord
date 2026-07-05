@@ -190,7 +190,9 @@ volicord connection status codex --shared --repo /path/to/your-product-repo --js
 
 CLI MCP preflight 또는 handshake 성공은 Volicord의 MCP 서버가 CLI 점검 경로에서 시작하고
 응답할 수 있다는 뜻입니다. 그 자체만으로 Codex, Claude Code 또는 다른 호스트가 프로젝트
-설정을 로드, 신뢰, 승인했다는 증명은 아닙니다.
+설정을 로드, 신뢰, 승인했다는 증명은 아닙니다. Codex에서는 Codex 프로젝트 trust,
+Codex host runtime 관찰, `Codex host process` 환경의 호스트 MCP 명령 launch 가능성,
+활성 Codex session에 Volicord 도구가 노출되는지도 함께 확인합니다.
 
 안내 흐름은 [빠른 시작](docs/ko/user-guide/quickstart.md)과
 [에이전트 호스트 설정](docs/ko/user-guide/agent-host-setup.md)으로 이어집니다.
@@ -492,7 +494,7 @@ docker run --rm \
 
 | 증상 | 할 일 |
 |---|---|
-| `volicord`를 찾지 못함 | 설치 디렉터리를 `PATH`에 넣거나 이미 `PATH`에 있는 디렉터리에 설치한 뒤 버전을 다시 확인합니다. 미래의 에이전트 호스트도 `volicord`를 시작할 수 있어야 합니다. |
+| `volicord`를 찾지 못함 | 설치 디렉터리를 `PATH`에 넣거나 이미 `PATH`에 있는 디렉터리에 설치한 뒤 버전을 다시 확인합니다. 미래의 에이전트 호스트도 `volicord`를 시작할 수 있어야 합니다. Codex에서는 `Codex host process`가 보는 PATH를 뜻합니다. |
 | `init`이 `action_required`를 보고함 | 먼저 `Next:` 체크리스트를 따릅니다. 호스트 restart 또는 reload, 프로젝트 trust, MCP approval, OAuth, 명령 링크 복구, 설치 프로필 복구처럼 이름 붙은 동작을 완료한 뒤 일반 init 경로에서는 setup 섹션의 검증 명령을 사용합니다. |
 | Detective 전용 점검이 활성화되지 않음 | 같은 호스트, 의도, 저장소 선택자로 검증하고, 이름 붙은 사용자 동작을 완료한 뒤, hook 또는 watcher 진단은 [에이전트 호스트 문제 해결](docs/ko/user-guide/agent-host-troubleshooting.md)을 사용합니다. |
 | 호스트가 MCP를 시작하지 못함 | 같은 명령 경로로 호스트가 `volicord mcp --help`를 시작할 수 있는지 확인합니다. 설치 프로필 상태는 `volicord doctor`로 확인합니다. |

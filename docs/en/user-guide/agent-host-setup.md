@@ -50,6 +50,37 @@ server can start and respond from the terminal-side check path; it does not by
 itself prove that Codex, Claude Code, or another host has loaded, trusted, or
 approved the project configuration.
 
+### Codex Host Verification Concepts
+
+Codex verification reports several related concepts separately. The Codex host
+process is the process that is expected to launch the Volicord MCP server: a
+Codex CLI/TUI session, a Codex IDE extension session, a non-interactive Codex
+run, or another Codex host environment.
+
+| Concept | What it means | What it does not prove |
+|---|---|---|
+| MCP configuration match | Project-scoped Codex configuration exists and matches the Volicord-managed MCP server entry for the selected connection. | The Codex host process has loaded, trusted, approved, or started that entry. |
+| CLI MCP preflight or handshake passed | `volicord connection verify` directly launched the MCP server from the terminal-side check environment and the server responded. | The active Codex session has launched the same server or exposed Volicord tools. |
+| Codex project trust | Codex user configuration says the repository is `trusted`, `untrusted`, `unknown`, or otherwise not confirmed. | A trusted entry is not proof that a running Codex host process has reloaded the project configuration. |
+| Codex host runtime observed | Volicord has observed a project-bound Codex host process start the Volicord MCP server for this connection. | A terminal-side CLI handshake alone is not that observation. |
+| Volicord tools exposed in the active Codex session | The active Codex session can see the Volicord MCP tools for the selected mode. | File writes, user approval, correctness, test sufficiency, or future model tool choice. |
+| Host MCP command launchability | The MCP command is launchable in the environment that launches the MCP server. A PATH-resolved command such as `volicord` must be available on the PATH seen by the Codex host process. | A local terminal PATH check proves only that terminal environment, not an IDE, non-interactive, remote, or executor-backed host environment. |
+
+Examples under this generic host process model:
+
+- Codex CLI/TUI: start Codex from a shell where the intended executable resolves.
+
+  ```sh
+  command -v volicord
+  ```
+
+- Codex IDE extension: check the PATH visible to the extension session or the
+  extension's MCP startup logs.
+- Non-interactive Codex run: start a new run or session after fixing the launch
+  environment.
+- Remote or executor-backed MCP: confirm command availability in the remote
+  executor environment; a local CLI PATH check is not enough.
+
 After completing any host prompt, use the terminal-side follow-up check:
 
 ```sh
@@ -237,14 +268,18 @@ Repository:
 Checks:
   Stored connection: enabled, mode workflow, last verification action required
   Current MCP configuration: match
+  Codex project trust: trusted
   Last MCP preflight: passed
   Last MCP handshake: passed
+  Codex host runtime: not observed
+  Host MCP command: uses volicord from the Codex host PATH
   Host follow-up: action required
 
 Next:
-  1. Open, restart, or reload Codex in this repository.
-  2. Trust or approve the project configuration if Codex asks.
-  3. Run:
+  1. Make `volicord` available on the PATH seen by the Codex host process, or configure the MCP command so the host can launch it.
+  2. Restart, reload, resume, or start a new Codex session in this repository.
+  3. Confirm that Volicord tools are exposed in the active Codex session.
+  4. Run:
      volicord connection verify codex --shared --repo /path/to/your-product-repo
 
 Limits:
@@ -277,13 +312,18 @@ Repository:
 
 Checks:
   MCP configuration: match
+  Codex project trust: trusted
   MCP preflight: passed
   MCP handshake: passed
+  Codex host runtime: not observed
+  Host MCP command: uses volicord from the Codex host PATH
   Host follow-up: action required
 
 Next:
-  1. Trust or approve the project configuration if Codex asks.
-  2. Run:
+  1. Make `volicord` available on the PATH seen by the Codex host process, or configure the MCP command so the host can launch it.
+  2. Restart, reload, resume, or start a new Codex session in this repository.
+  3. Confirm that Volicord tools are exposed in the active Codex session.
+  4. Run:
      volicord connection verify codex --shared --repo /path/to/your-product-repo
 
 Limits:
@@ -309,10 +349,17 @@ Result states:
 
 | State | Meaning in setup guidance |
 |---|---|
-| `complete` | Volicord-side state, managed host configuration, observable MCP startup, initialization, and expected tool exposure are ready. |
+| `complete` | Volicord-side state, managed host configuration, required host loadability and trust gates, observable MCP startup, initialization, and expected tool exposure are ready. |
 | `action_required` | Volicord-side state exists, but a named user-controlled host action remains. It is not a fatal CLI error by itself. |
 | `failed` | A required local prerequisite, host configuration step, or verification step did not succeed. |
 | `dry_run` | The command reported planned actions without persistent changes. |
+
+For Codex, `action_required` can appear even when project trust is `trusted`
+and CLI MCP preflight and handshake passed. In that case, the remaining step is
+usually host-runtime or launch-environment work: make the MCP command launchable
+by the Codex host process, restart, reload, resume, or start a Codex session in
+the repository, and confirm that Volicord tools are exposed in the active Codex
+session.
 
 ## Generic MCP Host Configuration
 

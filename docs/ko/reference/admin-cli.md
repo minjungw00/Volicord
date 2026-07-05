@@ -164,7 +164,9 @@ ID를 기본적으로 노출하면 안 됩니다. 대응 JSON 출력은 같은 �
 `Repositories`, `Checks`, `Next`, `Limits`, `Diagnostics` 간결 섹션을 사용합니다.
 `volicord connection add`는 간결한 host configuration 또는 repo file changes 섹션도
 포함할 수 있습니다. 자세한 guard state, hook 진단, MCP preflight와 handshake 세부사항,
-호스트 관찰은 JSON 진단에 둡니다.
+호스트 관찰은 JSON 진단에 둡니다. Codex 연결 text는 `Codex project trust`,
+`Codex host runtime`, `Host MCP command`를 별도 check 줄로 요약할 수 있지만, 사람용
+출력은 계속 간결한 섹션 형태로 유지합니다.
 대기 판단이 보이면 `volicord status`와 `volicord inbox` Text 출력은 호스트 프롬프트
 입력, 채팅 명령 캡처, 로컬 consent URL, CLI inbox 사용 가능 상태를 요약하는
 `Available answer paths:` 줄을 포함할 수 있습니다. 이 줄은 사용자가 어디에서 답할 수
@@ -452,6 +454,17 @@ Agent Connection 명령은 아래 결과 상태를 사용합니다.
 | `failed` | 요청한 명령이나 검증이 사용할 수 있는 오래 유지되는 Agent Connection 상태, 사용할 수 있는 호스트 설정, 또는 필요한 로컬 전제 조건을 만들지 못했습니다. |
 | `dry_run` | 명령이 영속 변경 없이 계획된 동작을 보고했습니다. |
 
+Codex 연결 검증은 아래 진단 개념을 분리해 유지합니다.
+
+| 진단 개념 | Text 출력 표면 | JSON 진단 표면 | 의미 |
+|---|---|---|---|
+| MCP 설정 일치 | `MCP configuration` 또는 `Current MCP configuration` | host check 세부사항과 관리 설정 필드 | 관리 Codex MCP server 항목이 기대하는 Volicord 생성 설정과 일치합니다. |
+| CLI MCP preflight와 handshake | `MCP preflight`, `MCP handshake`, `Last MCP preflight`, `Last MCP handshake` | `id=mcp_preflight`와 `id=mcp_handshake`인 `checks[]` 항목, 그리고 verification report 필드 | CLI verification 경로가 Volicord의 MCP 서버를 직접 시작하고 통신했습니다. |
+| Codex 프로젝트 trust | `Codex project trust` | 가능할 때 `verification.project_trust`와 `id=codex_project_trust`인 `checks[]` 항목 | Codex 사용자 설정이 프로젝트를 `trusted`, `untrusted`, `unknown`, 또는 그 밖의 trust 미확인 상태로 표시합니다. |
+| Codex host runtime 관찰 | `Codex host runtime` | 가능할 때 `verification.host_runtime`과 `id=codex_host_runtime`인 `checks[]` 항목 | Volicord가 선택된 연결에 대해 Codex 호스트 프로세스가 Volicord MCP 서버를 시작했는지 관찰한 상태입니다. |
+| 호스트 MCP 명령 launch 가능성 | `Host MCP command` | 가능할 때 `verification.host_mcp_command`와 `id=host_mcp_command`인 `checks[]` 항목 | 설정된 MCP 명령이 absolute, PATH-resolved, remote/executor-backed, unknown, malformed 중 어느 launch mode인지와 `host_path_unconfirmed` 같은 launch risk 세부사항을 나타냅니다. |
+| 활성 session 도구 노출 | 확인이 필요할 때 `Next` action text | `primary_next_action`, `actions[]`, `connection.user_actions[]` | 사용자가 활성 Codex session에 Volicord 도구가 노출되는지 아직 확인해야 할 수 있습니다. |
+
 검증 출력은 점검과 사용자 동작을 일급 진단으로 만들어야 합니다. 연결 상태와 검증의
 기본 text 출력은 결과 줄 형태 대신 `Status`, `Checks`, `Next`, `Diagnostics` 간결 섹션을
 사용합니다. 전체 상태, 시도되었거나 차단된 각 점검, 필요한 경우 다음 사용자 동작을
@@ -459,7 +472,9 @@ Agent Connection 명령은 아래 결과 상태를 사용합니다.
 구체적으로 유지합니다. 호스트를 reload 또는 restart하고, 호스트 또는 프로젝트 권한을
 승인하고, 관리 설정을 복구하거나, 호스트 쪽 동작 뒤 표시된
 `volicord connection verify ...` 명령을 실행하라고 안내합니다. JSON 출력은 진단 소비자를
-위해 최상위 `status`, `checks`, `actions`, `summary_card` 필드를 포함해야 합니다.
+위해 최상위 `status`, `checks`, `actions`, `summary_card` 필드를 포함해야 합니다. Codex
+검증이 trust, runtime observation, command-launch 진단을 계산할 수 있으면 JSON 출력은
+그 상태를 MCP handshake 성공에 합치지 말고 별도로 노출해야 합니다.
 `action_required`는 호스트 소유 또는 로컬 후속 동작이 남았다는 뜻입니다. 자동으로
 치명적인 CLI 오류가 아니며 위에서 설명한 성공한 관리 결과 규칙을 따릅니다.
 연결 상태 및 검증 출력은 detective host hook 파일 설치, 설정 건강 상태, 런타임 hook 관찰
@@ -770,6 +785,11 @@ setup과 필요한 사용자 동작을 구분할 수 있을 만큼 구조화된 
   사람이 읽을 수 있는 명령 또는 안내를 포함합니다.
 - `summary_card`: summary card를 계산하는 상태형 진단 또는 User Channel 출력을 위한
   안정적인 간결 요약 데이터
+- 연결 상태와 검증 JSON은 `project_trust`, `host_runtime`, `host_mcp_command`에 대한
+  별도 Codex 진단을 노출할 수 있으며, `codex_project_trust`, `codex_host_runtime`,
+  `host_mcp_command` 같은 대응 `checks[]` 항목을 함께 둘 수 있습니다. 이 진단은 trust
+  상태, host runtime 관찰, command launch risk를 CLI MCP preflight 또는 handshake 성공과
+  구분합니다.
 - detective를 인식하는 setup, doctor, 연결 상태, 연결 검증 JSON은 detective 진단을 보고하는
   곳에서 `selected_profile`, `control_surface`,
   `cooperative_pre_tool_warning_available`,
