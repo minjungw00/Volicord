@@ -52,7 +52,8 @@ session, Codex IDE extension session, 비대화식 Codex run, 그 밖의 Codex �
 
 | 개념 | 의미 | 증명하지 않는 것 |
 |---|---|---|
-| MCP 설정 일치 | 프로젝트 범위 Codex 설정이 선택된 연결의 Volicord 관리 MCP server 항목과 일치합니다. | `Codex host process`가 그 항목을 로드, 신뢰, 승인, 시작했다는 뜻은 아닙니다. |
+| MCP 설정 일치 | 프로젝트 범위 Codex 설정이 선택된 연결의 Volicord 관리 MCP server 항목과 일치합니다. Codex 도구 승인 정책 overlay가 있어도 이 일치는 바뀌지 않을 수 있습니다. | `Codex host process`가 그 항목을 로드, 신뢰, 승인, 시작했다는 뜻은 아닙니다. |
+| Codex 도구 승인 정책 overlay | Codex는 관리 `volicord` 서버 항목 아래에 `tools.<tool>.approval_mode` 하위 table을 추가할 수 있습니다. 이는 Codex 소유 `host policy overlay`이며 보존해야 합니다. | Overlay는 Volicord 설정 drift가 아니며, 호스트 trust, 활성 도구 노출, 실행 중인 session의 승인, 정확성, 테스트 충분성, 사람 검토 완료, sandboxing, 행위자 identity를 증명하지 않습니다. |
 | CLI MCP preflight 또는 handshake 통과 | `volicord connection verify`가 터미널 쪽 점검 환경에서 MCP 서버를 직접 시작했고 서버가 응답했습니다. | 활성 Codex session이 같은 서버를 시작했거나 Volicord 도구를 노출했다는 뜻은 아닙니다. |
 | MCP 저장소 capability | `volicord mcp --check`는 하나의 프로세스 바인딩에 대해 registry 읽기, project-state 읽기, project-state 쓰기, 시작 관찰, effective tool mode를 보고할 수 있습니다. | 시작 점검은 활성 Codex session이 도구를 노출했다거나 변경 도구를 사용할 수 있다는 증명이 아닙니다. |
 | Codex 프로젝트 trust | Codex 사용자 설정이 저장소를 `trusted`, `untrusted`, `unknown`, 또는 그 밖의 미확인 상태로 보고합니다. | `trusted` 항목만으로 실행 중인 Codex 호스트 프로세스가 프로젝트 설정을 reload했다는 증명이 되지 않습니다. |
@@ -69,6 +70,19 @@ session, Codex IDE extension session, 비대화식 Codex run, 그 밖의 Codex �
 `VOLICORD_MCP_CONNECTION_ID=<connection_id>`,
 `VOLICORD_MCP_PROJECT_ID=<project_id>`가 있어야 합니다. 명령과 인자만 있고 이 마커가
 없다면 관리 설정 일치로 보기 전에 Volicord 관리 설정을 다시 생성합니다.
+
+Codex에서 Volicord가 관리하는 `managed identity`는 `volicord` 서버 이름, 생성 command,
+선택된 연결과 프로젝트 ID를 담은 args, Volicord 관리 환경 변수 마커입니다. Codex는 같은
+서버 항목 아래에 host policy overlay를 추가할 수 있습니다. 예시는 아래와 같습니다.
+
+```toml
+[mcp_servers.volicord.tools."volicord.intake"]
+approval_mode = "approve"
+```
+
+Codex가 소유한 이 승인 하위 table은 보존합니다. command, args, Volicord 관리 마커가
+계속 일치하면 승인 overlay만 있어도 관리 설정입니다. Volicord 관리 마커가 없는
+`volicord` 항목은 비관리 항목이며, command, args, 관리 마커 drift는 계속 설정 drift입니다.
 
 이 일반 호스트 프로세스 모델에서의 예시는 아래와 같습니다.
 

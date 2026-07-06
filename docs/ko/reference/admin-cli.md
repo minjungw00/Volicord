@@ -476,6 +476,18 @@ Codex 연결 검증은 아래 진단 개념을 분리해 유지합니다.
 | 호스트 MCP 명령 launch 가능성 | `Host MCP command` | 가능할 때 `verification.host_mcp_command`와 `id=host_mcp_command`인 `checks[]` 항목 | 설정된 MCP 명령이 absolute, PATH-resolved, remote/executor-backed, unknown, malformed 중 어느 launch mode인지와 `host_path_unconfirmed` 같은 launch risk 세부사항을 나타냅니다. PATH risk는 launch failure가 증명되지 않는 한 warning입니다. |
 | Codex 도구 snapshot 또는 listing 문제 | `Next` action text가 Codex MCP startup/tool-list log 확인을 안내할 수 있습니다. | Codex host log이며 Volicord가 소유한 JSON 필드가 아닙니다. | Codex가 MCP 서버의 존재를 알거나 `startup_complete`를 기록해도 활성 session에는 캐시된 tool snapshot이나 나열된 `volicord.*` 도구가 없을 수 있습니다. |
 
+허용되는 Codex 도구 승인 정책 overlay 형태는 아래와 같습니다.
+
+```toml
+[mcp_servers.volicord.tools."volicord.intake"]
+approval_mode = "approve"
+```
+
+`volicord` 서버 항목의 command, args, Volicord 관리 환경 변수 마커가 계속 일치한다면 이
+overlay만으로 `managed_config`가 `changed`가 되거나 `mcp_config_changed` 다음 동작이
+나오면 안 됩니다. Volicord 관리 마커가 없는 `volicord` 서버 항목은 비관리로 보고될 수
+있으며, command, args, 관리 마커 drift는 계속 설정 drift입니다.
+
 `verification.host_runtime`은 관리되는 Codex lifecycle phase 필드
 `managed_host_startup`, `managed_host_tools_list`,
 `managed_host_tool_call`을 각각 `observed`, `not_observed`, `unknown`으로

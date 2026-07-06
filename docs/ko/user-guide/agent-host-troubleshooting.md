@@ -350,6 +350,47 @@ Volicord 쪽에서 유효하다는 뜻이며, 활성 Codex session이 그 도구
 사용할 수 없을 때 session 시작이나 resume을 막을 수도 있습니다. `required = true`를
 Volicord `record` 프로필의 기본 동작이나 도구 노출의 증명으로 다루지 않습니다.
 
+<a id="codex-approval-overlay-reported-as-mcp-configuration-changed"></a>
+## 도구 승인 뒤 connection verify가 MCP 설정 변경을 보고함
+
+관찰 증상: Codex에서 하나 이상의 Volicord 도구를 승인한 뒤 연결 상태 또는 검증이
+`MCP configuration: changed`, `Current MCP configuration: changed`, 또는
+`mcp_config_changed` 다음 동작을 보고합니다.
+
+먼저 생성된 Codex 프로젝트 설정을 확인합니다.
+
+```sh
+volicord connection status codex --shared --repo "<repo>" --json
+```
+
+그다음 `<repo>/.codex/config.toml`을 확인합니다. Codex 승인 overlay 형태는 아래와
+같습니다.
+
+```toml
+[mcp_servers.volicord.tools."volicord.intake"]
+approval_mode = "approve"
+```
+
+제한된 복구:
+
+1. 차이가 `[mcp_servers.volicord.tools."<tool>"]` table 하나 이상과 `approval_mode`뿐이면
+   그 항목을 보존하고 verification을 다시 실행합니다.
+2. Overlay만 있는 설정이 여전히 changed로 보고되면 Codex 도구 승인 정책 overlay를
+   허용하는 Volicord build를 사용한 뒤 verification을 다시 실행합니다.
+3. command, args, Volicord 관리 환경 변수 마커가 바뀌었다면 관리 항목을 복구합니다.
+
+   ```sh
+   volicord init --host codex --repo "<repo>"
+   ```
+
+4. `volicord` 서버 항목에 Volicord 관리 마커가 없다면 비관리 호스트 설정으로 다룹니다.
+   무작정 덮어쓰거나 삭제하지 않습니다. 그 사용자 관리 항목을 유지할지, 명시적인
+   `volicord init --host codex --repo "<repo>"` 설정 경로로 교체할지 결정합니다.
+
+Overlay만 있는 승인 정책은 Codex 소유 `host policy overlay`입니다. 승인 하위 table을
+삭제해야 하는 일반 이유가 아니며, 활성 Codex session이 Volicord 도구를 로드하거나
+노출했다는 증명도 아닙니다.
+
 ## `failed`
 
 관찰 증상: setup, connect, export, verification이 `failed`를 보고하거나 런타임 오류로

@@ -385,6 +385,51 @@ startup failures more visible in that host. It can also prevent session startup
 or resume when the server is unavailable. Do not treat `required = true` as the
 default Volicord `record` profile behavior or as proof that tools are exposed.
 
+<a id="codex-approval-overlay-reported-as-mcp-configuration-changed"></a>
+## Connection Verify Reports MCP Configuration Changed After Approving Tools
+
+Observable symptom: after approving one or more Volicord tools in Codex,
+connection status or verification reports `MCP configuration: changed`,
+`Current MCP configuration: changed`, or a `mcp_config_changed` next action.
+
+First inspect the generated Codex project configuration:
+
+```sh
+volicord connection status codex --shared --repo "<repo>" --json
+```
+
+Then inspect `<repo>/.codex/config.toml`. A Codex approval overlay has this
+shape:
+
+```toml
+[mcp_servers.volicord.tools."volicord.intake"]
+approval_mode = "approve"
+```
+
+Bounded recovery:
+
+1. If the only difference is one or more
+   `[mcp_servers.volicord.tools."<tool>"]` tables with `approval_mode`, preserve
+   those entries and rerun verification.
+2. If overlay-only configuration is still reported as changed, use a Volicord
+   build whose verification accepts Codex tool approval policy overlay, then
+   rerun verification.
+3. If the command, args, or Volicord managed environment markers changed, repair
+   the managed entry:
+
+   ```sh
+   volicord init --host codex --repo "<repo>"
+   ```
+
+4. If the `volicord` server entry has no Volicord managed markers, treat it as
+   unmanaged host configuration. Do not overwrite or delete it blindly; decide
+   whether to keep that user-managed entry or replace it through an explicit
+   `volicord init --host codex --repo "<repo>"` setup path.
+
+Overlay-only approval policy is Codex-owned host policy overlay. It is not a
+normal reason to delete the approval subtables, and it does not prove that the
+active Codex session loaded or exposed Volicord tools.
+
 ## `failed`
 
 Observable symptom: setup, connect, export, or verification reports `failed` or

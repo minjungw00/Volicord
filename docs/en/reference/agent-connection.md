@@ -99,6 +99,20 @@ the internal host-hook distribution state recorded by a host contract. That
 state describes a verified source for hook-related implementation records; it
 is not a public integration mode or security boundary.
 
+For Codex project-scoped MCP configuration, the Volicord-managed identity is
+the `volicord` server name together with the generated command, args carrying
+the selected connection and project bindings, and Volicord managed environment
+markers such as `VOLICORD_MCP_LAUNCH=managed_host`,
+`VOLICORD_MCP_HOST=codex`, `VOLICORD_MCP_CONNECTION_ID=<connection_id>`, and
+`VOLICORD_MCP_PROJECT_ID=<project_id>` when a project binding is present.
+Codex-owned tool approval subtables under that server entry are host policy
+overlay, not Volicord-managed identity. Preserving an accepted
+`tools.<tool>.approval_mode` overlay does not prove host trust, active tool
+exposure, running-session approval, correctness, test sufficiency, human
+review completion, sandboxing, or actor identity. A `volicord` server entry
+without Volicord managed markers is unmanaged; command, args, or managed marker
+drift is still configuration drift.
+
 Rules:
 
 - An Agent Connection is agent-facing and cannot act as the local

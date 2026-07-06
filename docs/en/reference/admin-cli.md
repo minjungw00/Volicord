@@ -518,6 +518,20 @@ Codex connection verification keeps these diagnostic concepts separate:
 | Host MCP command launchability | `Host MCP command` | `verification.host_mcp_command` and a `checks[]` entry with `id=host_mcp_command` when available | The configured MCP command is absolute, PATH-resolved, remote/executor-backed, unknown, or malformed, and can carry launch-risk details such as `host_path_unconfirmed`. PATH risk is a warning unless launch failure is proven. |
 | Codex tool snapshot or listing issue | `Next` action text can direct the user to Codex MCP startup/tool-list logs | Codex host logs, not a Volicord-owned JSON field | Codex may know the MCP server exists or log `startup_complete` while the active session still has no cached tool snapshot or listed `volicord.*` tools. |
 
+The accepted Codex tool approval policy overlay shape is:
+
+```toml
+[mcp_servers.volicord.tools."volicord.intake"]
+approval_mode = "approve"
+```
+
+When the `volicord` server entry's command, args, and Volicord managed
+environment markers still match, that overlay alone must not make
+`managed_config` become `changed` or produce the `mcp_config_changed` next
+action. A `volicord` server entry without Volicord managed markers may be
+reported as unmanaged, and command, args, or managed marker drift remains
+configuration drift.
+
 `verification.host_runtime` reports managed Codex lifecycle phase fields
 `managed_host_startup`, `managed_host_tools_list`, and
 `managed_host_tool_call`, each as `observed`, `not_observed`, or `unknown`.

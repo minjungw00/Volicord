@@ -87,6 +87,18 @@ Volicord 관리 호스트 설정은 Volicord가 특정 생성 호스트 설정 �
 그 상태는 hook 관련 구현 기록을 위한 검증된 출처를 설명하며, 공개 통합 모드나 보안 경계가
 아닙니다.
 
+Codex 프로젝트 범위 MCP 설정에서 Volicord가 관리하는 `managed identity`는 `volicord`
+서버 이름, 선택된 연결과 프로젝트 바인딩을 담은 생성 command와 args, 그리고
+`VOLICORD_MCP_LAUNCH=managed_host`, `VOLICORD_MCP_HOST=codex`,
+`VOLICORD_MCP_CONNECTION_ID=<connection_id>`, 프로젝트 바인딩이 있을 때의
+`VOLICORD_MCP_PROJECT_ID=<project_id>` 같은 Volicord 관리 환경 변수 마커로 이루어집니다.
+그 서버 항목 아래의 Codex 소유 도구 승인 하위 table은 `host policy overlay`이며,
+Volicord가 관리하는 identity가 아닙니다. 허용된 `tools.<tool>.approval_mode` overlay를
+보존해도 호스트 trust, 활성 도구 노출, 실행 중인 session의 승인, 정확성, 테스트 충분성,
+사람 검토 완료, sandboxing, 행위자 identity를 증명하지 않습니다. Volicord 관리 마커가
+없는 `volicord` 서버 항목은 비관리 항목입니다. command, args, 관리 마커 drift는 계속
+설정 drift입니다.
+
 규칙:
 
 - Agent Connection은 에이전트 대상이며 로컬 `User Channel`로 동작할 수 없습니다.

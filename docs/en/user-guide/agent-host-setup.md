@@ -59,7 +59,8 @@ run, or another Codex host environment.
 
 | Concept | What it means | What it does not prove |
 |---|---|---|
-| MCP configuration match | Project-scoped Codex configuration exists and matches the Volicord-managed MCP server entry for the selected connection. | The Codex host process has loaded, trusted, approved, or started that entry. |
+| MCP configuration match | Project-scoped Codex configuration exists and matches the Volicord-managed MCP server entry for the selected connection. Codex tool approval policy overlay can be present without changing this match. | The Codex host process has loaded, trusted, approved, or started that entry. |
+| Codex tool approval policy overlay | Codex may add `tools.<tool>.approval_mode` subtables under the managed `volicord` server entry. These are Codex-owned host policy overlay and should be preserved. | The overlay is not Volicord configuration drift, and it does not prove host trust, active tool exposure, running-session approval, correctness, test sufficiency, human review completion, sandboxing, or actor identity. |
 | CLI MCP preflight or handshake passed | `volicord connection verify` directly launched the MCP server from the terminal-side check environment and the server responded. | The active Codex session has launched the same server or exposed Volicord tools. |
 | MCP storage capability | `volicord mcp --check` can report registry read, project-state read, project-state write, startup observation, and effective tool mode for one process binding. | A startup check does not prove that the active Codex session has exposed tools or that mutation tools are available. |
 | Codex project trust | Codex user configuration says the repository is `trusted`, `untrusted`, `unknown`, or otherwise not confirmed. | A trusted entry is not proof that a running Codex host process has reloaded the project configuration. |
@@ -77,6 +78,22 @@ provenance markers such as `VOLICORD_MCP_LAUNCH=managed_host`,
 `VOLICORD_MCP_PROJECT_ID=<project_id>`. If the command and args are present
 without those markers, regenerate the Volicord-managed configuration before
 treating it as a managed configuration match.
+
+For Codex, the Volicord-managed identity is the server name `volicord`, the
+generated command, args carrying the selected connection and project IDs, and
+the Volicord managed environment markers. Codex may add host policy overlay
+under that same server entry, for example:
+
+```toml
+[mcp_servers.volicord.tools."volicord.intake"]
+approval_mode = "approve"
+```
+
+Preserve these Codex-owned approval subtables. When command, args, and
+Volicord managed markers still match, an approval overlay alone is still
+managed configuration. A `volicord` entry without Volicord managed markers is
+unmanaged, and command, args, or managed marker drift remains configuration
+drift.
 
 Examples under this generic host process model:
 
