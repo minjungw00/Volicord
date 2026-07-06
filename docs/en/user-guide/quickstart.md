@@ -12,11 +12,11 @@ meaning belongs to [Agent Connection Reference](../reference/agent-connection.md
 ## Fast Path
 
 ```sh
-volicord init --host codex --repo /path/to/repo --profile record
+volicord init --host codex --repo "<repo>" --profile record
 ```
 
-`/path/to/repo` is an example path for the Product Repository where you want
-the agent to work. `volicord init` is the primary first-run repository
+`<repo>` is the Product Repository path where you want the agent to work.
+`volicord init` is the primary first-run repository
 setup and host-connection command. It creates or reuses the Runtime Home and
 installation profile when needed, registers the selected repository, installs
 project-scoped MCP configuration for the selected host, writes project-scoped
@@ -34,7 +34,7 @@ Profile:
   record
 
 Repository:
-  /path/to/repo
+  <repo>
 
 Repo file changes:
   created .codex/config.toml
@@ -42,13 +42,13 @@ Repo file changes:
   updated AGENTS.md
 
 Stored local Volicord state:
-  /home/you/.volicord
+  <runtime_home>
 
 Next:
   1. Open, restart, or reload Codex in this repository.
   2. Trust or approve the project configuration if Codex asks.
   3. Run:
-     volicord connection verify codex --shared --repo /path/to/repo
+     volicord connection verify codex --shared --repo <repo>
 
 Limits:
   The record profile supports cooperative Volicord workflow recording through MCP.
@@ -58,7 +58,7 @@ Limits:
 
 Diagnostics:
   Run:
-    volicord connection status codex --shared --repo /path/to/repo --json
+    volicord connection status codex --shared --repo <repo> --json
 ```
 
 The summary distinguishes files written inside the Product Repository from
@@ -96,8 +96,8 @@ generated hook commands or wrappers are repaired.
 ```sh
 volicord doctor
 volicord project current
-volicord connection status codex --shared --repo /path/to/repo
-volicord connection verify codex --shared --repo /path/to/repo
+volicord connection status codex --shared --repo "<repo>"
+volicord connection verify codex --shared --repo "<repo>"
 ```
 
 Default text output is for interactive reading. For connection status and
@@ -116,9 +116,10 @@ CLI verification can prove that Volicord's MCP server can start and respond
 from the terminal-side check path. It does not by itself prove that Codex,
 Claude Code, or another host has loaded, trusted, or approved the project
 configuration. For Codex, also check the Codex project trust line, Codex host
-runtime observation, host MCP command launchability, and whether Volicord tools
-are exposed in the active Codex session. A PATH-resolved MCP command such as
-`volicord` must be available on the PATH seen by the Codex host process.
+runtime diagnostics for managed MCP startup, managed `tools/list`, managed tool
+call, host MCP command launchability, and whether Volicord tools are exposed in
+the active Codex session. A PATH-resolved MCP command such as `volicord` must
+be available on the PATH seen by the Codex host process.
 If `tools/list` succeeds but only read-compatible tools appear, the MCP host
 environment may be running in read-only degraded mode because it can read but
 cannot write project state. Use
@@ -147,7 +148,7 @@ For lower-level connection management, use `--repo PATH` when the current
 directory is not the target Product Repository:
 
 ```sh
-volicord connection add codex --repo /path/to/your-product-repo
+volicord connection add codex --repo "<repo>"
 ```
 
 `volicord connection add` is still the lower-level connection-management command for
@@ -158,8 +159,8 @@ path, prefer `volicord init --host HOST --repo PATH --profile record`.
 
 ```sh
 volicord connection list
-volicord connection status codex --shared --repo /path/to/repo
-volicord connection verify codex --shared --repo /path/to/repo
+volicord connection status codex --shared --repo "<repo>"
+volicord connection verify codex --shared --repo "<repo>"
 volicord connection mode codex read-only
 volicord connection mode codex workflow
 ```

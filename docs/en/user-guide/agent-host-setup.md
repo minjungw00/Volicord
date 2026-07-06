@@ -17,11 +17,11 @@ Install `volicord` first with [Installation](../user-guide/installation.md),
 then run the host setup sequence:
 
 ```sh
-volicord init --host codex --repo /path/to/your-product-repo --profile record
+volicord init --host codex --repo "<repo>" --profile record
 ```
 
-`/path/to/your-product-repo` is an example path for the Product Repository where
-you want the agent to work. `volicord init` creates or reuses the Runtime Home
+`<repo>` is the Product Repository path where you want the agent to work.
+`volicord init` creates or reuses the Runtime Home
 and installation profile when needed, registers or reuses that repository
 project, derives the visible project name from the repository directory,
 installs project-scoped MCP configuration for the selected host, writes
@@ -63,10 +63,20 @@ run, or another Codex host environment.
 | CLI MCP preflight or handshake passed | `volicord connection verify` directly launched the MCP server from the terminal-side check environment and the server responded. | The active Codex session has launched the same server or exposed Volicord tools. |
 | MCP storage capability | `volicord mcp --check` can report registry read, project-state read, project-state write, startup observation, and effective tool mode for one process binding. | A startup check does not prove that the active Codex session has exposed tools or that mutation tools are available. |
 | Codex project trust | Codex user configuration says the repository is `trusted`, `untrusted`, `unknown`, or otherwise not confirmed. | A trusted entry is not proof that a running Codex host process has reloaded the project configuration. |
-| Codex host runtime observed | Volicord has observed a project-bound Codex host process start the Volicord MCP server for this connection. | A terminal-side CLI handshake alone is not that observation. |
-| Volicord tools exposed in the active Codex session | The active Codex session can see the Volicord MCP tools for the selected mode. | File writes, user approval, correctness, test sufficiency, or future model tool choice. |
-| Codex tool snapshot or listing issue | Codex MCP startup/tool-list logs show that the server entry is known or startup completed, but the active Codex session still has no cached or listed `volicord.*` tools. | CLI preflight, project trust, host runtime observation, or a `startup_complete` log alone is not proof of active-session tool registration. |
+| Managed Codex MCP startup | Volicord has observed a project-bound Codex host process start the Volicord MCP server through managed Codex launch provenance for this connection. | CLI preflight, a direct handshake, or a manual probe is not managed Codex startup. |
+| Managed Codex tools/list | Volicord has observed the managed Codex host process reach `tools/list` for this connection. | A managed `tools/list` observation alone is not proof that the active session exposes tools or that a tool call can run. |
+| Managed Codex tool call | Volicord has observed the managed Codex host process call a Volicord tool for this connection. | The call is not a proof of file writes, user approval, correctness, test sufficiency, or human review completion. |
+| Volicord tools exposed in the active Codex session | The active Codex session can see the Volicord MCP tools for the selected mode, such as through the host's active tool list or tool search. | Future model tool choice, file writes, user approval, correctness, test sufficiency, or human review completion. |
+| Codex tool snapshot or listing issue | Codex MCP startup/tool-list logs show that the server entry is known or startup completed, but the active Codex session still has no cached or listed `volicord.*` tools. | CLI preflight, project trust, managed startup observation, or a `startup_complete` log alone is not proof of active-session tool registration. |
+| Manual or elevated MCP probe | A manually launched or elevated `volicord mcp --stdio` process can initialize and list tools in that environment. | The active Codex session has registered or exposed those tools. |
 | Host MCP command launchability | The MCP command is launchable in the environment that launches the MCP server. A PATH-resolved command such as `volicord` must be available on the PATH seen by the Codex host process. | A local terminal PATH check proves only that terminal environment, not an IDE, non-interactive, remote, or executor-backed host environment. |
+
+Generated project-scoped Codex configuration should include managed launch
+provenance markers such as `VOLICORD_MCP_LAUNCH=managed_host`,
+`VOLICORD_MCP_HOST=codex`, `VOLICORD_MCP_CONNECTION_ID=<connection_id>`, and
+`VOLICORD_MCP_PROJECT_ID=<project_id>`. If the command and args are present
+without those markers, regenerate the Volicord-managed configuration before
+treating it as a managed configuration match.
 
 Examples under this generic host process model:
 
@@ -86,7 +96,7 @@ Examples under this generic host process model:
 After completing any host prompt, use the terminal-side follow-up check:
 
 ```sh
-volicord connection verify codex --shared --repo /path/to/your-product-repo
+volicord connection verify codex --shared --repo "<repo>"
 ```
 
 Use `claude-code` instead of `codex` for Claude Code.
@@ -97,7 +107,7 @@ read-only behavior directly. Use `--repo PATH` only when the process current
 directory is not the target Product Repository:
 
 ```sh
-volicord connection add codex --repo /path/to/your-product-repo
+volicord connection add codex --repo "<repo>"
 ```
 
 ## Integration Profiles
@@ -179,7 +189,7 @@ If detective prerequisites are unavailable, use `--profile record` or prepare a
 supported host, platform, and repository configuration before rerunning init:
 
 ```sh
-volicord init --host codex --repo /path/to/your-product-repo --profile record
+volicord init --host codex --repo "<repo>" --profile record
 ```
 
 `volicord connection verify` and `volicord doctor` keep file health, required
@@ -236,7 +246,7 @@ environment:
 For an existing process binding, inspect startup and storage diagnostics with:
 
 ```sh
-volicord mcp --check --connection CONNECTION_ID --project PROJECT_ID
+volicord mcp --check --connection "<connection_id>" --project "<project_id>"
 ```
 
 Use the `registry_read`, `project_state_read`, `project_state_write`,
@@ -262,8 +272,8 @@ connection whose host target you want to inspect first.
 
 ```sh
 volicord connection list
-volicord connection status codex --shared --repo /path/to/your-product-repo
-volicord connection verify codex --shared --repo /path/to/your-product-repo
+volicord connection status codex --shared --repo "<repo>"
+volicord connection verify codex --shared --repo "<repo>"
 ```
 
 Default text output is a compact human summary for interactive setup work. For
@@ -272,7 +282,7 @@ connection status and verification, read `Status`, `Checks`, `Next`, and
 must not parse the compact text. Detailed guard state, hook diagnostics, MCP
 handshake details, and host observations belong in JSON diagnostics.
 
-`volicord connection status codex --shared --repo /path/to/your-product-repo`
+`volicord connection status codex --shared --repo <repo>`
 has this compact shape:
 
 ```text
@@ -287,23 +297,26 @@ Profile:
   record
 
 Repository:
-  /path/to/your-product-repo
+  <repo>
 
 Checks:
   Stored connection: enabled, mode workflow, last verification action required
   Current MCP configuration: match
   Codex project trust: trusted
-  Last MCP preflight: passed
-  Last MCP handshake: passed
-  Codex host runtime: not observed
+  Last CLI MCP preflight: passed
+  Last CLI MCP handshake: passed
+  Managed Codex MCP startup: not observed
+  Managed Codex tools/list: not observed
+  Managed Codex tool call: not observed
+  Active Codex tool exposure: unconfirmed
   Host MCP command: uses volicord from the Codex host PATH
   Host follow-up: action required
 
 Next:
   1. Confirm Volicord tools are exposed in the active Codex session.
-  2. If tools are not exposed, check Codex MCP startup/tool-list logs and Volicord storage read/write capability.
+  2. If tools are not exposed, check managed Codex MCP startup/tool-list logs and Volicord storage read/write capability.
   3. Run:
-     volicord connection verify codex --shared --repo /path/to/your-product-repo
+     volicord connection verify codex --shared --repo <repo>
 
 Limits:
   The record profile supports cooperative Volicord workflow recording through MCP.
@@ -313,10 +326,10 @@ Limits:
 
 Diagnostics:
   Run:
-    volicord connection status codex --shared --repo /path/to/your-product-repo --json
+    volicord connection status codex --shared --repo <repo> --json
 ```
 
-`volicord connection verify codex --shared --repo /path/to/your-product-repo`
+`volicord connection verify codex --shared --repo <repo>`
 uses the same section model while showing fresh verification checks:
 
 ```text
@@ -331,22 +344,25 @@ Profile:
   record
 
 Repository:
-  /path/to/your-product-repo
+  <repo>
 
 Checks:
   MCP configuration: match
   Codex project trust: trusted
-  MCP preflight: passed
-  MCP handshake: passed
-  Codex host runtime: not observed
+  CLI MCP preflight: passed
+  CLI MCP handshake: passed
+  Managed Codex MCP startup: not observed
+  Managed Codex tools/list: not observed
+  Managed Codex tool call: not observed
+  Active Codex tool exposure: unconfirmed
   Host MCP command: uses volicord from the Codex host PATH
   Host follow-up: action required
 
 Next:
   1. Confirm Volicord tools are exposed in the active Codex session.
-  2. If tools are not exposed, check Codex MCP startup/tool-list logs and Volicord storage read/write capability.
+  2. If tools are not exposed, check managed Codex MCP startup/tool-list logs and Volicord storage read/write capability.
   3. Run:
-     volicord connection verify codex --shared --repo /path/to/your-product-repo
+     volicord connection verify codex --shared --repo <repo>
 
 Limits:
   The record profile supports cooperative Volicord workflow recording through MCP.
@@ -356,7 +372,7 @@ Limits:
 
 Diagnostics:
   Run:
-    volicord connection status codex --shared --repo /path/to/your-product-repo --json
+    volicord connection status codex --shared --repo <repo> --json
 ```
 
 If more than one connection matches the same host and repository, include the
@@ -371,15 +387,16 @@ Result states:
 
 | State | Meaning in setup guidance |
 |---|---|
-| `complete` | Volicord-side state, managed host configuration, required host loadability and trust gates, observable MCP startup, initialization, and expected tool exposure are ready. |
+| `complete` | Volicord-side state, managed host configuration, required host loadability and trust gates, CLI MCP startup and initialization, and active Codex tool exposure evidence are ready where Codex verification applies. |
 | `action_required` | Volicord-side state exists, but a named user-controlled host action remains. It is not a fatal CLI error by itself. |
 | `failed` | A required local prerequisite, host configuration step, or verification step did not succeed. |
 | `dry_run` | The command reported planned actions without persistent changes. |
 
 For Codex, `action_required` can appear even when project trust is `trusted`
 and CLI MCP preflight and handshake passed. In that case, the remaining step is
-usually active-session or host-runtime work: confirm that Volicord tools are
-exposed in the active Codex session, then check Codex MCP startup/tool-list logs
+usually active-session or managed host-runtime work: confirm that Volicord tools
+are exposed in the active Codex session, then check managed Codex MCP startup,
+managed `tools/list`, managed tool-call evidence, Codex startup/tool-list logs,
 and Volicord storage read/write capability if tools are absent. Treat host MCP
 command launchability as a separate launch-environment diagnostic when the
 command check reports that risk.

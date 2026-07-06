@@ -209,8 +209,9 @@ Rules:
 - Codex can know the MCP server entry or log startup completion while the
   active session still has no cached tool snapshot or listed `volicord.*`
   tools. CLI-side MCP preflight, direct handshake, managed startup observation,
-  and managed `tools/list` observation do not replace managed tool-call
-  evidence or another explicitly reliable active-tool-exposure source.
+  manual or elevated probes, and managed `tools/list` observation do not replace
+  managed tool-call evidence or another explicitly reliable
+  active-tool-exposure source.
 - Human text status and verification output is a diagnostic summary for
   interactive users. For `volicord connection status` and
   `volicord connection verify`, read `Status`, `Checks`, `Next`, and

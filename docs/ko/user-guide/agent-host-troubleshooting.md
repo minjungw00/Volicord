@@ -45,7 +45,7 @@ MCP 시작이나 도구 탐색이 증상이고 JSON 진단 또는 생성된 호�
 바인딩 값을 확인할 수 있다면 시작 저장소 capability를 직접 확인합니다.
 
 ```sh
-volicord mcp --check --connection CONNECTION_ID --project PROJECT_ID
+volicord mcp --check --connection "<connection_id>" --project "<project_id>"
 ```
 
 `registry_read`, `project_state_read`, `project_state_write`,
@@ -62,7 +62,7 @@ volicord mcp --check --connection CONNECTION_ID --project PROJECT_ID
 `volicord`를 이미 사용할 수 있다면:
 
 ```sh
-volicord init --host codex --repo /path/to/your-product-repo --profile record
+volicord init --host codex --repo "<repo>" --profile record
 volicord doctor
 ```
 
@@ -71,7 +71,7 @@ volicord doctor
 
 ```sh
 cargo build --workspace --bins
-./target/debug/volicord init --host codex --repo /path/to/your-product-repo --profile record
+./target/debug/volicord init --host codex --repo "<repo>" --profile record
 ```
 
 Init이 `volicord`를 사용할 수 있게 만드는 방법, 호스트 trust, reload를
@@ -104,7 +104,7 @@ reload가 필요할 수 있습니다.
 제한된 복구:
 
 ```sh
-cd /path/to/your-product-repo
+cd "<repo>"
 volicord project current
 volicord project use
 ```
@@ -112,11 +112,11 @@ volicord project use
 또는 Product Repository를 명시적으로 선택합니다.
 
 ```sh
-volicord init --host codex --repo /path/to/your-product-repo --profile record
+volicord init --host codex --repo "<repo>" --profile record
 ```
 
-`/path/to/your-product-repo`는 에이전트에게 작업을 요청할 Product Repository의 경로
-예시입니다. 사용자에게 보이는 프로젝트 이름은 저장소 디렉터리에서 나옵니다. 내부
+`<repo>`는 에이전트에게 작업을 요청할 Product Repository 경로입니다. 사용자에게 보이는
+프로젝트 이름은 저장소 디렉터리에서 나옵니다. 내부
 프로젝트 식별 정보는 복구 입력이 아닙니다.
 
 ## Windows 경로가 거부됨
@@ -142,7 +142,7 @@ WSL UNC 경로, WSL 스타일 `/mnt/<drive>` 경로이기 때문에 유효하지
 `record` 프로필을 init에 명시적으로 전달합니다.
 
 ```sh
-volicord init --host codex --repo /path/to/your-product-repo --profile record
+volicord init --host codex --repo "<repo>" --profile record
 ```
 
 Detective 설정에는 [관리 CLI
@@ -154,7 +154,7 @@ Native Windows에서는 detective 설정이 지원되지 않습니다. Init이
 `DETECTIVE_WINDOWS_UNSUPPORTED`를 보고하면 record 프로필로 다시 실행합니다.
 
 ```powershell
-volicord init --host codex --repo C:\path\to\your-product-repo --profile record
+volicord init --host codex --repo "<repo>" --profile record
 ```
 
 Detective는 선택한 host hook과 session watcher 계약이 지원되고 테스트된 WSL2, Linux,
@@ -163,8 +163,8 @@ macOS에서만 사용합니다.
 하위 수준 연결 복구에는 호스트와 저장소를 connect에 명시적으로 전달합니다.
 
 ```sh
-volicord connection add codex --repo /path/to/your-product-repo
-volicord connection status codex --repo /path/to/your-product-repo
+volicord connection add codex --repo "<repo>"
+volicord connection status codex --repo "<repo>"
 ```
 
 연결에 사용한 의도 선택자도 함께 사용합니다.
@@ -185,8 +185,8 @@ global 연결 의도를 지원합니다.
 제한된 복구:
 
 ```sh
-volicord connection status codex --shared --repo /path/to/your-product-repo
-volicord connection verify codex --shared --repo /path/to/your-product-repo
+volicord connection status codex --shared --repo "<repo>"
+volicord connection verify codex --shared --repo "<repo>"
 ```
 
 먼저 `Status`, `Checks`, `Next`, `Diagnostics` 섹션을 읽습니다. 이름 붙은 호스트 소유
@@ -227,7 +227,7 @@ Inbox 항목에 이미 표시된 URL을 사용합니다. selector가 모호하�
 제한된 복구:
 
 ```sh
-volicord mcp --check --connection CONNECTION_ID --project PROJECT_ID
+volicord mcp --check --connection "<connection_id>" --project "<project_id>"
 ```
 
 `project_state_write`가 `readonly`이고 `effective_tool_mode`가 `read_only_degraded`라면
@@ -244,12 +244,12 @@ workflow 도구를 기대하지 않습니다. 권한을 높인 실행은 성공�
 
 - `Codex project trust: trusted`
 - `MCP configuration: match` 또는 `Current MCP configuration: match`
-- `MCP preflight: passed`
-- `MCP handshake: passed`
+- `CLI MCP preflight: passed` 또는 `MCP preflight: passed`
+- `CLI MCP handshake: passed` 또는 `MCP handshake: passed`
 - 활성 Codex session에 `volicord.*` 도구가 노출되지 않습니다.
 
-다른 줄은 `Codex host runtime: not observed`,
-`Codex host runtime: unknown`, 또는
+다른 줄은 `Managed Codex MCP startup: not observed`,
+`Managed Codex MCP startup: unknown`, 또는
 `Host MCP command: uses volicord from the Codex host PATH`를 보여 줄 수 있습니다.
 Codex MCP startup/tool-list log에는 시작이 완료되었거나 `startup_complete` 항목이
 보이지만 활성 session에 대해 캐시된 tool snapshot 또는 나열된 `volicord.*` 도구가 없을
@@ -265,6 +265,17 @@ session이 Volicord 도구를 등록했다는 증명은 아니라는 뜻입니�
 
 설정을 바꾸기 전에 아래 분기를 확인합니다.
 
+- 먼저 JSON 진단을 확인합니다.
+
+  ```sh
+  volicord connection status codex --shared --repo "<repo>" --json
+  volicord connection verify codex --shared --repo "<repo>" --json
+  ```
+
+  `checks[]`, `actions[]`, `verification.project_trust`,
+  `verification.host_runtime`, `verification.active_tool_exposure`,
+  `verification.host_mcp_command`를 별도 사실로 읽습니다. CLI MCP handshake 성공을
+  활성 session 도구 노출로 합치지 않습니다.
 - 활성 Codex session이 MCP 서버를 시작하지 않았습니다. 해당 호스트 환경에서 명령 시작
   가능성을 확인한 뒤 Product Repository에서 Codex session을 restart, reload, resume 또는
   새로 시작합니다.
@@ -278,10 +289,10 @@ session이 Volicord 도구를 등록했다는 증명은 아니라는 뜻입니�
 - 권한을 높인 실행은 성공하지만 sandbox 실행은 실패합니다. 실제 MCP 호스트 환경에서
   Runtime Home과 project-state 쓰기 capability를 비교합니다.
 
-먼저 활성 Codex session의 도구 목록에서 `volicord.*` 도구를 확인합니다. 그런 다음 Codex
-MCP startup/tool-list log에서 서버 launch, `initialize`, `tools/list`, 캐시된 tool
-snapshot, 도구 등록 항목을 확인합니다. 로그가 startup complete를 보여 주지만 tool
-snapshot이나 나열된 `volicord.*` 도구가 없다면 Product Repository에서 Codex session을
+먼저 활성 Codex session의 도구 검색 또는 도구 목록에서 `volicord.*` 도구를 확인합니다.
+그런 다음 Codex MCP startup/tool-list log에서 서버 launch, `initialize`, `tools/list`,
+캐시된 tool snapshot, 도구 등록 항목을 확인합니다. 로그가 startup complete를 보여 주지만
+tool snapshot이나 나열된 `volicord.*` 도구가 없다면 Product Repository에서 Codex session을
 restart, reload, resume 또는 새로 시작하고 도구 노출이 달라지는지 비교합니다.
 
 셸에서 Codex를 시작한다면 Codex를 시작하거나 resume하기 전에 같은 셸 환경을 확인합니다.
@@ -295,18 +306,26 @@ Codex IDE extension에서는 extension session에 보이는 PATH 또는 MCP star
 executor-backed MCP 시작에서는 해당 executor에서 명령 가용성을 확인합니다. 로컬 CLI
 PATH만으로는 원격 명령 launch 가능성을 증명하지 않습니다.
 
+설정 일치가 의심되면 생성된 `<repo>/.codex/config.toml` 항목을 확인합니다. Volicord가
+관리하는 프로젝트 범위 Codex 항목에는 일치하는 명령과 인자와 함께
+`VOLICORD_MCP_LAUNCH=managed_host`, `VOLICORD_MCP_HOST=codex`,
+`VOLICORD_MCP_CONNECTION_ID=<connection_id>`,
+`VOLICORD_MCP_PROJECT_ID=<project_id>` 관리 시작 마커가 있어야 합니다. 명령과 인자는
+있지만 이 마커가 없다면 Volicord setup 또는 connection 관리 명령을 다시 실행해 관리
+항목을 다시 생성합니다.
+
 호스트 쪽 변경 뒤에는 터미널 쪽 verification을 다시 실행합니다.
 
 ```sh
-volicord connection verify codex --shared --repo /path/to/your-product-repo
+volicord connection verify codex --shared --repo "<repo>"
 ```
 
 Codex 밖에서 MCP 수명주기를 직접 확인하려면
-[MCP 전송](../reference/mcp-transport.md#manual-stdio-lifecycle-probe)의 수동
+[MCP 전송](../reference/mcp-transport.md#manual-stdio-lifecycle-probe)의 수동 또는 권한 상승
 `VOLICORD_MCP_VERIFICATION=1` probe를 사용합니다. 프로세스 명령 형태는 아래와 같습니다.
 
 ```sh
-VOLICORD_MCP_VERIFICATION=1 volicord mcp --stdio --connection CONNECTION_ID --project PROJECT_ID
+VOLICORD_MCP_VERIFICATION=1 volicord mcp --stdio --connection "<connection_id>" --project "<project_id>"
 ```
 
 참조 문서의 JSON-RPC 예시를 이 프로세스에 pipe합니다. 예상 차이는 아래와 같습니다.
@@ -318,7 +337,13 @@ VOLICORD_MCP_VERIFICATION=1 volicord mcp --stdio --connection CONNECTION_ID --pr
 - 읽기 전용 저장소에서 mutation 호출은 도구 탐색에 없거나 구조화된 unavailable 응답을
   반환할 수 있습니다.
 
-이 probe도 활성 Codex session 도구 노출을 증명하지는 않습니다.
+이 probe는 probe를 시작한 환경에서 MCP 서버가 실행될 수 있다는 사실만 증명합니다. 활성
+Codex session 도구 노출을 증명하지는 않습니다.
+
+사용 중인 build가 smoke 또는 schema 진단을 보고한다면 그 역시 진단으로만 사용합니다.
+예를 들어 `tools_list_schema_validation: passed`는 유효 모드의 MCP 표시 도구 스키마가
+Volicord 쪽에서 유효하다는 뜻이며, 활성 Codex session이 그 도구를 등록했다는 증명은
+아닙니다.
 
 고급 진단: 사용하는 Codex 호스트 설정 형식이 MCP 서버의 `required = true`를 지원한다면
 진단 실행에 사용해 그 호스트에서 MCP 시작 실패를 더 잘 보이게 할 수 있습니다. 하지만 서버를
@@ -358,14 +383,14 @@ volicord doctor
 설치된 릴리스 바이너리로 init을 다시 실행합니다.
 
 ```sh
-volicord init --host codex --repo /path/to/your-product-repo --profile record
+volicord init --host codex --repo "<repo>" --profile record
 ```
 
 의도적으로 개발용 소스 체크아웃에서 작업 중이라면:
 
 ```sh
 cargo build --workspace --bins
-./target/debug/volicord init --host codex --repo /path/to/your-product-repo --profile record
+./target/debug/volicord init --host codex --repo "<repo>" --profile record
 ```
 
 `action_required`가 이름 붙인 명령 가용성 또는 호스트 단계를 완료한 뒤 설치와
@@ -373,7 +398,7 @@ cargo build --workspace --bins
 
 ```sh
 volicord doctor
-volicord connection verify codex --shared --repo /path/to/your-product-repo
+volicord connection verify codex --shared --repo "<repo>"
 ```
 
 Init은 관리 호스트 설정이 사용할 MCP 명령을 기록합니다. 일반 `connection add` 명령은
@@ -393,9 +418,9 @@ Init은 관리 호스트 설정이 사용할 MCP 명령을 기록합니다. 일�
 
 ```sh
 volicord doctor
-volicord connection status codex --shared --repo /path/to/your-product-repo
-volicord init --host codex --repo /path/to/your-product-repo
-volicord connection verify codex --shared --repo /path/to/your-product-repo
+volicord connection status codex --shared --repo "<repo>"
+volicord init --host codex --repo "<repo>"
+volicord connection verify codex --shared --repo "<repo>"
 ```
 
 영향받은 연결과 같은 호스트와 의도 선택자를 사용합니다. Claude Code에서는 `codex`를
@@ -459,7 +484,7 @@ volicord connection verify codex --shared
 
 ```sh
 volicord doctor
-volicord connection status codex --repo /path/to/your-product-repo
+volicord connection status codex --repo "<repo>"
 ```
 
 그다음 외부 호스트의 자체 설정 절차를 확인합니다. 해당 항목은 기존 Agent Connection에

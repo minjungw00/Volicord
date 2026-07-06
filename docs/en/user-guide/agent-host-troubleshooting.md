@@ -54,7 +54,7 @@ binding values from JSON diagnostics or generated host configuration, inspect
 startup storage capability directly:
 
 ```sh
-volicord mcp --check --connection CONNECTION_ID --project PROJECT_ID
+volicord mcp --check --connection "<connection_id>" --project "<project_id>"
 ```
 
 Read `registry_read`, `project_state_read`, `project_state_write`,
@@ -73,7 +73,7 @@ Bounded recovery:
 If `volicord` is already available:
 
 ```sh
-volicord init --host codex --repo /path/to/your-product-repo --profile record
+volicord init --host codex --repo "<repo>" --profile record
 volicord doctor
 ```
 
@@ -83,7 +83,7 @@ working from a development source checkout:
 
 ```sh
 cargo build --workspace --bins
-./target/debug/volicord init --host codex --repo /path/to/your-product-repo --profile record
+./target/debug/volicord init --host codex --repo "<repo>" --profile record
 ```
 
 Follow init's `action_required` output if it asks how to make `volicord`
@@ -119,7 +119,7 @@ was found.
 Bounded recovery:
 
 ```sh
-cd /path/to/your-product-repo
+cd "<repo>"
 volicord project current
 volicord project use
 ```
@@ -127,11 +127,11 @@ volicord project use
 Or select the Product Repository explicitly:
 
 ```sh
-volicord init --host codex --repo /path/to/your-product-repo --profile record
+volicord init --host codex --repo "<repo>" --profile record
 ```
 
-`/path/to/your-product-repo` is an example path for the Product Repository where
-you want the agent to work. The user-facing project name comes from the
+`<repo>` is the Product Repository path where you want the agent to work. The
+user-facing project name comes from the
 repository directory. Internal project identities are not recovery inputs.
 
 ## Windows Path Is Rejected
@@ -159,7 +159,7 @@ Bounded recovery: for ordinary first-run setup without lifecycle hook
 installation, pass the host, repository, and `record` profile to init explicitly:
 
 ```sh
-volicord init --host codex --repo /path/to/your-product-repo --profile record
+volicord init --host codex --repo "<repo>" --profile record
 ```
 
 For detective setup, use the full init contract in the
@@ -171,7 +171,7 @@ On native Windows, detective setup is not supported. If init reports
 `DETECTIVE_WINDOWS_UNSUPPORTED`, rerun with the record profile:
 
 ```powershell
-volicord init --host codex --repo C:\path\to\your-product-repo --profile record
+volicord init --host codex --repo "<repo>" --profile record
 ```
 
 Use WSL2, Linux, or macOS for detective only where the selected host hook and
@@ -181,8 +181,8 @@ For lower-level connection recovery, pass the host and repository to connect
 explicitly:
 
 ```sh
-volicord connection add codex --repo /path/to/your-product-repo
-volicord connection status codex --repo /path/to/your-product-repo
+volicord connection add codex --repo "<repo>"
+volicord connection status codex --repo "<repo>"
 ```
 
 Use the same intent selector used for the connection:
@@ -203,8 +203,8 @@ Observable symptom: connection status or verification reports
 Bounded recovery:
 
 ```sh
-volicord connection status codex --shared --repo /path/to/your-product-repo
-volicord connection verify codex --shared --repo /path/to/your-product-repo
+volicord connection status codex --shared --repo "<repo>"
+volicord connection verify codex --shared --repo "<repo>"
 ```
 
 Read the `Status`, `Checks`, `Next`, and `Diagnostics` sections first. Complete
@@ -248,7 +248,7 @@ Expected behavior:
 Bounded recovery:
 
 ```sh
-volicord mcp --check --connection CONNECTION_ID --project PROJECT_ID
+volicord mcp --check --connection "<connection_id>" --project "<project_id>"
 ```
 
 If `project_state_write` is `readonly` and `effective_tool_mode` is
@@ -268,12 +268,12 @@ facts together:
 
 - `Codex project trust: trusted`
 - `MCP configuration: match` or `Current MCP configuration: match`
-- `MCP preflight: passed`
-- `MCP handshake: passed`
+- `CLI MCP preflight: passed` or `MCP preflight: passed`
+- `CLI MCP handshake: passed` or `MCP handshake: passed`
 - the active Codex session does not expose `volicord.*` tools
 
-Other lines may show `Codex host runtime: not observed`,
-`Codex host runtime: unknown`, or
+Other lines may show `Managed Codex MCP startup: not observed`,
+`Managed Codex MCP startup: unknown`, or
 `Host MCP command: uses volicord from the Codex host PATH`. Codex MCP
 startup/tool-list logs may also show that startup completed, including a
 `startup_complete` entry, but no cached tool snapshot or no listed
@@ -290,6 +290,17 @@ Bounded recovery:
 
 Use these branches before changing configuration:
 
+- Inspect the JSON diagnostics first:
+
+  ```sh
+  volicord connection status codex --shared --repo "<repo>" --json
+  volicord connection verify codex --shared --repo "<repo>" --json
+  ```
+
+  Read `checks[]`, `actions[]`, `verification.project_trust`,
+  `verification.host_runtime`, `verification.active_tool_exposure`, and
+  `verification.host_mcp_command` as separate facts. Do not collapse CLI MCP
+  handshake success into active-session tool exposure.
 - The active Codex session did not start the MCP server. Restart, reload,
   resume, or start a new Codex session in the Product Repository after
   confirming command launchability in that host environment.
@@ -304,12 +315,12 @@ Use these branches before changing configuration:
 - Elevated execution succeeds while sandbox execution fails. Compare Runtime
   Home and project-state write capability in the actual MCP host environment.
 
-First check the active Codex session tool list for `volicord.*` tools. Then
-inspect Codex MCP startup/tool-list logs for server launch, `initialize`,
-`tools/list`, cached tool snapshot, and tool-registration entries. If the logs
-show startup complete but no tool snapshot or no listed `volicord.*` tools,
-restart, reload, resume, or start a new Codex session in the Product
-Repository and compare whether tool exposure changes.
+First check the active Codex session tool search or tool list for `volicord.*`
+tools. Then inspect Codex MCP startup/tool-list logs for server launch,
+`initialize`, `tools/list`, cached tool snapshot, and tool-registration entries.
+If the logs show startup complete but no tool snapshot or no listed
+`volicord.*` tools, restart, reload, resume, or start a new Codex session in
+the Product Repository and compare whether tool exposure changes.
 
 If you start Codex from a shell, check the same shell environment before
 starting or resuming Codex:
@@ -324,19 +335,27 @@ fixing the launch environment. For remote or executor-backed MCP startup,
 confirm command availability in that executor; local CLI PATH does not prove
 remote command launchability.
 
+Inspect the generated `<repo>/.codex/config.toml` entry when configuration
+match is in doubt. A Volicord-managed project-scoped Codex entry should include
+the managed launch markers `VOLICORD_MCP_LAUNCH=managed_host`,
+`VOLICORD_MCP_HOST=codex`, `VOLICORD_MCP_CONNECTION_ID=<connection_id>`, and
+`VOLICORD_MCP_PROJECT_ID=<project_id>` together with the matching command and
+args. If the command and args are present without those markers, rerun
+Volicord setup or connection management to regenerate the managed entry.
+
 After any host-side change, rerun terminal-side verification:
 
 ```sh
-volicord connection verify codex --shared --repo /path/to/your-product-repo
+volicord connection verify codex --shared --repo "<repo>"
 ```
 
-For a direct MCP lifecycle check outside Codex, use the manual
+For a direct MCP lifecycle check outside Codex, use the manual or elevated
 `VOLICORD_MCP_VERIFICATION=1` probes in
 [MCP Transport](../reference/mcp-transport.md#manual-stdio-lifecycle-probe).
 The process command shape is:
 
 ```sh
-VOLICORD_MCP_VERIFICATION=1 volicord mcp --stdio --connection CONNECTION_ID --project PROJECT_ID
+VOLICORD_MCP_VERIFICATION=1 volicord mcp --stdio --connection "<connection_id>" --project "<project_id>"
 ```
 
 Pipe the JSON-RPC examples from the Reference page into that process. Expected
@@ -351,7 +370,14 @@ differences:
 - A mutation call under read-only storage may be absent from discovery or
   return a structured unavailable response.
 
-These probes still do not prove active-session Codex tool exposure.
+These probes prove only that the MCP server can run in the environment where
+the probe was launched. They still do not prove active-session Codex tool
+exposure.
+
+If your build reports smoke or schema diagnostics, use them as diagnostics
+only. For example, `tools_list_schema_validation: passed` confirms Volicord's
+MCP-visible tool schema for the effective mode; it does not prove that the
+active Codex session registered those tools.
 
 Advanced diagnostic: if the Codex host configuration format you use supports
 `required = true` for an MCP server, using it for a diagnostic run can make MCP
@@ -393,14 +419,14 @@ Bounded recovery:
 Rerun init with the installed release binary:
 
 ```sh
-volicord init --host codex --repo /path/to/your-product-repo --profile record
+volicord init --host codex --repo "<repo>" --profile record
 ```
 
 If you are intentionally working from a development source checkout:
 
 ```sh
 cargo build --workspace --bins
-./target/debug/volicord init --host codex --repo /path/to/your-product-repo --profile record
+./target/debug/volicord init --host codex --repo "<repo>" --profile record
 ```
 
 Complete any `action_required` command-availability or host step, then
@@ -408,7 +434,7 @@ check the installation and connection again:
 
 ```sh
 volicord doctor
-volicord connection verify codex --shared --repo /path/to/your-product-repo
+volicord connection verify codex --shared --repo "<repo>"
 ```
 
 Init records the MCP command used by managed host configuration. Ordinary
@@ -428,9 +454,9 @@ Bounded recovery:
 
 ```sh
 volicord doctor
-volicord connection status codex --shared --repo /path/to/your-product-repo
-volicord init --host codex --repo /path/to/your-product-repo
-volicord connection verify codex --shared --repo /path/to/your-product-repo
+volicord connection status codex --shared --repo "<repo>"
+volicord init --host codex --repo "<repo>"
+volicord connection verify codex --shared --repo "<repo>"
 ```
 
 Use the same host and intent selector as the affected connection. For Claude
@@ -498,7 +524,7 @@ Bounded recovery:
 
 ```sh
 volicord doctor
-volicord connection status codex --repo /path/to/your-product-repo
+volicord connection status codex --repo "<repo>"
 ```
 
 Then inspect the external host's own configuration process. Its entry should

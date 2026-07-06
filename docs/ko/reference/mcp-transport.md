@@ -534,49 +534,50 @@ elicitation을 사용할 수 있다고 봅니다. 다른 capability 항목은 �
 이 probe는 설정된 Agent Connection을 활성 Codex host process 밖에서 문제 해결할 때만
 사용합니다. `<repo>`, `<connection_id>`, `<project_id>`를 확인하려는 connection의 값으로
 바꿉니다. 프로세스 환경이 이미 의도한 Runtime Home을 선택하지 않는다면 `<repo>`에서
-실행합니다. `VOLICORD_MCP_VERIFICATION=1`은 실행을 verification probe로 표시합니다. 일반
-Agent Connection과 프로젝트 시작 점검은 유지하지만, 이 프로세스를 Codex host runtime
-관찰로 기록하거나 시작 session-watch baseline을 만들지는 않습니다. 관리 Codex 출처
-마커 없이 실행한 `volicord mcp --stdio`는 host-runtime 관찰 목적에서 수동 CLI
-시작으로 분류됩니다.
+실행합니다. 수동 또는 권한 상승 probe는 그 시작 환경에서 MCP 서버가 실행될 수 있음을
+증명할 수 있지만, 활성 Codex session이 도구를 등록하거나 노출했다는 증명은 아닙니다.
+`VOLICORD_MCP_VERIFICATION=1`은 실행을 verification probe로 표시합니다. 일반 Agent
+Connection과 프로젝트 시작 점검은 유지하지만, 이 프로세스를 Codex host runtime 관찰로
+기록하거나 시작 session-watch baseline을 만들지는 않습니다. 관리 Codex 출처 마커 없이
+실행한 `volicord mcp --stdio`는 host-runtime 관찰 목적에서 수동 CLI 시작으로 분류됩니다.
 
 프로세스 명령 형태는 아래와 같습니다.
 
 ```sh
-VOLICORD_MCP_VERIFICATION=1 volicord mcp --stdio --connection CONNECTION_ID --project PROJECT_ID
+VOLICORD_MCP_VERIFICATION=1 volicord mcp --stdio --connection "<connection_id>" --project "<project_id>"
 ```
 
 `initialize` 뒤 `tools/list`를 보내면 성공한 JSON-RPC 응답과 모드에 맞는 `volicord.*`
 도구 목록을 반환해야 합니다.
 
 ```sh
-cd <repo>
+cd "<repo>"
 printf '%s\n' \
   '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"volicord-lifecycle-probe","version":"0.0.0"}}}' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
-  | VOLICORD_MCP_VERIFICATION=1 volicord mcp --stdio --connection CONNECTION_ID --project PROJECT_ID
+  | VOLICORD_MCP_VERIFICATION=1 volicord mcp --stdio --connection "<connection_id>" --project "<project_id>"
 ```
 
 `initialize`, `notifications/initialized`, `tools/list` 순서도 성공해야 합니다.
 
 ```sh
-cd <repo>
+cd "<repo>"
 printf '%s\n' \
   '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"volicord-lifecycle-probe","version":"0.0.0"}}}' \
   '{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
-  | VOLICORD_MCP_VERIFICATION=1 volicord mcp --stdio --connection CONNECTION_ID --project PROJECT_ID
+  | VOLICORD_MCP_VERIFICATION=1 volicord mcp --stdio --connection "<connection_id>" --project "<project_id>"
 ```
 
 `notifications/initialized` 전에 `tools/call`을 보내면 JSON-RPC Invalid Request로 실패해야
 합니다. Initialized notification 전에는 도구 실행이 준비되지 않았기 때문입니다.
 
 ```sh
-cd <repo>
+cd "<repo>"
 printf '%s\n' \
   '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"volicord-lifecycle-probe","version":"0.0.0"}}}' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"volicord.status","arguments":{}}}' \
-  | VOLICORD_MCP_VERIFICATION=1 volicord mcp --stdio --connection CONNECTION_ID --project PROJECT_ID
+  | VOLICORD_MCP_VERIFICATION=1 volicord mcp --stdio --connection "<connection_id>" --project "<project_id>"
 ```
 
 `notifications/initialized` 뒤에는 프로젝트 상태를 읽을 수 있을 때 읽기 전용

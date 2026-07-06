@@ -11,10 +11,10 @@ Agent Connection 의미는 [Agent Connection 참조](../reference/agent-connecti
 ## 빠른 경로
 
 ```sh
-volicord init --host codex --repo /path/to/repo --profile record
+volicord init --host codex --repo "<repo>" --profile record
 ```
 
-`/path/to/repo`는 에이전트에게 작업을 요청할 Product Repository의 경로 예시입니다.
+`<repo>`는 에이전트에게 작업을 요청할 Product Repository 경로입니다.
 `volicord init`은 첫 실행에서 저장소를 설정하고 호스트를 연결하는 기본 명령입니다.
 필요하면 Runtime Home과 설치 프로필을 만들거나 재사용하고, 선택한 저장소를 등록하며,
 선택한 호스트의 프로젝트 범위 MCP 설정을 설치하고, 프로젝트 범위 Volicord 지침과 로컬
@@ -31,7 +31,7 @@ Profile:
   record
 
 Repository:
-  /path/to/repo
+  <repo>
 
 Repo file changes:
   created .codex/config.toml
@@ -39,13 +39,13 @@ Repo file changes:
   updated AGENTS.md
 
 Stored local Volicord state:
-  /home/you/.volicord
+  <runtime_home>
 
 Next:
   1. Open, restart, or reload Codex in this repository.
   2. Trust or approve the project configuration if Codex asks.
   3. Run:
-     volicord connection verify codex --shared --repo /path/to/repo
+     volicord connection verify codex --shared --repo <repo>
 
 Limits:
   The record profile supports cooperative Volicord workflow recording through MCP.
@@ -55,7 +55,7 @@ Limits:
 
 Diagnostics:
   Run:
-    volicord connection status codex --shared --repo /path/to/repo --json
+    volicord connection status codex --shared --repo <repo> --json
 ```
 
 이 요약은 Product Repository 안에 쓴 파일과 Runtime Home에 저장한 로컬 Volicord 상태를
@@ -88,8 +88,8 @@ verification, doctor 진단은 `hook_path_safety`를 보고합니다.
 ```sh
 volicord doctor
 volicord project current
-volicord connection status codex --shared --repo /path/to/repo
-volicord connection verify codex --shared --repo /path/to/repo
+volicord connection status codex --shared --repo "<repo>"
+volicord connection verify codex --shared --repo "<repo>"
 ```
 
 기본 text 출력은 대화형으로 읽는 용도입니다. 연결 상태와 검증에서는 먼저 `Status`,
@@ -107,9 +107,10 @@ Detective host hook 경로 복구 안내는
 CLI verification은 Volicord의 MCP 서버가 터미널 쪽 점검 경로에서 시작하고 응답할 수
 있음을 확인할 수 있습니다. 그 자체만으로 Codex, Claude Code 또는 다른 호스트가 프로젝트
 설정을 로드, 신뢰, 승인했다는 증명은 아닙니다. Codex에서는 Codex 프로젝트 trust 줄,
-Codex host runtime 관찰, 호스트 MCP 명령 launch 가능성, 활성 Codex session에 Volicord
-도구가 노출되는지도 함께 확인합니다. `volicord`처럼 `PATH`로 찾는 MCP 명령은
-`Codex host process`가 보는 PATH에 있어야 합니다.
+관리 MCP 시작, 관리 `tools/list`, 관리 도구 호출에 대한 Codex host runtime 진단,
+호스트 MCP 명령 launch 가능성, 활성 Codex session에 Volicord 도구가 노출되는지도 함께
+확인합니다. `volicord`처럼 `PATH`로 찾는 MCP 명령은 `Codex host process`가 보는 PATH에
+있어야 합니다.
 `tools/list`는 성공했지만 읽기 호환 도구만 보인다면 MCP 호스트 환경이 프로젝트 상태를
 읽을 수는 있지만 쓸 수 없어 read-only degraded mode로 동작하는 것일 수 있습니다.
 Workflow 변경 도구를 기대하기 전에 [에이전트 호스트 설정](agent-host-setup.md)과
@@ -136,7 +137,7 @@ volicord connection add codex --read-only
 `--repo PATH`를 사용합니다.
 
 ```sh
-volicord connection add codex --repo /path/to/your-product-repo
+volicord connection add codex --repo "<repo>"
 ```
 
 `volicord connection add`는 personal, shared, global, read-only 변형을 위한 낮은 수준의
@@ -147,8 +148,8 @@ volicord connection add codex --repo /path/to/your-product-repo
 
 ```sh
 volicord connection list
-volicord connection status codex --shared --repo /path/to/repo
-volicord connection verify codex --shared --repo /path/to/repo
+volicord connection status codex --shared --repo "<repo>"
+volicord connection verify codex --shared --repo "<repo>"
 volicord connection mode codex read-only
 volicord connection mode codex workflow
 ```

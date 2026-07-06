@@ -182,8 +182,9 @@ Connection Projects는 Agent Connection과 등록 프로젝트 사이의 명시�
   환경에서 실행 가능해야 합니다.
 - Codex가 MCP 서버 항목을 알거나 시작 완료를 기록하더라도 활성 session에는 캐시된 tool
   snapshot이나 나열된 `volicord.*` 도구가 없을 수 있습니다. CLI 쪽 MCP preflight, 직접
-  handshake, 관리 시작 관찰, 관리 `tools/list` 관찰은 관리 도구 호출 증거 또는
-  명시적으로 신뢰할 수 있는 다른 활성 도구 노출 출처를 대신하지 않습니다.
+  handshake, 수동 또는 권한 상승 probe, 관리 시작 관찰, 관리 `tools/list` 관찰은 관리
+  도구 호출 증거 또는 명시적으로 신뢰할 수 있는 다른 활성 도구 노출 출처를 대신하지
+  않습니다.
 - 사람용 text status와 verification 출력은 대화형 사용자를 위한 진단 요약입니다.
   `volicord connection status`와 `volicord connection verify`에서는 먼저 `Status`,
   `Checks`, `Next`, `Diagnostics`를 읽습니다. 자동화와 전체 진단 점검은
