@@ -19,7 +19,12 @@ use volicord_store::agent_connections::{
     VERIFIED_STATUS_ACTION_REQUIRED, VERIFIED_STATUS_COMPLETE,
 };
 use volicord_store::guards::{
-    guard_event, insert_unrecorded_change, list_guard_installations, UnrecordedChangeInsert,
+    guard_event, insert_agent_session, insert_unrecorded_change, list_guard_installations,
+    AgentSessionInsert, UnrecordedChangeInsert,
+};
+use volicord_store::session_watch::{
+    create_watch_baseline, snapshot_product_repository, SessionWatchStatus, WatchBaselineCreate,
+    WatchSnapshotOptions,
 };
 use volicord_store::{
     bootstrap::{
@@ -2997,6 +3002,152 @@ fn connection_verification_handshake_does_not_create_session_watch_records(
         session_watch_record_counts(runtime_home.path(), &projects[0].project_id)?,
         (0, 0)
     );
+
+    insert_test_watch_baseline(
+        runtime_home.path(),
+        &projects[0],
+        "legacy_source_less",
+        "{}",
+    )?;
+    insert_test_watch_baseline(
+        runtime_home.path(),
+        &projects[0],
+        "cli_verification_source",
+        &json!({
+            "lifecycle_events": [{
+                "connection_id": connection_id,
+                "project_id": projects[0].project_id,
+                "host_kind": "codex",
+                "launch_origin": "cli_verification",
+                "lifecycle_event": "managed_host_startup",
+                "timestamp": "2026-07-01T00:00:00Z",
+                "storage_capability": "read_write",
+                "effective_tool_mode": "workflow"
+            }]
+        })
+        .to_string(),
+    )?;
+    insert_test_watch_baseline(
+        runtime_home.path(),
+        &projects[0],
+        "invalid_managed_mismatch",
+        &json!({
+            "lifecycle_events": [{
+                "connection_id": "conn_wrong",
+                "project_id": projects[0].project_id,
+                "host_kind": "codex",
+                "launch_origin": "managed_host",
+                "lifecycle_event": "managed_host_startup",
+                "timestamp": "2026-07-01T00:00:01Z",
+                "storage_capability": "read_write",
+                "effective_tool_mode": "workflow"
+            }]
+        })
+        .to_string(),
+    )?;
+
+    let legacy_verify = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connection",
+            "verify",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--shared",
+            "--json",
+        ],
+        &[
+            ("PATH", path_env(&[bin_dir.as_path(), volicord_dir])),
+            ("CODEX_HOME", path_text(&codex_home)),
+        ],
+    )?;
+    assert_success(&legacy_verify);
+    let legacy_value = json_stdout(&legacy_verify)?;
+    assert_eq!(
+        legacy_value["verification"]["host_runtime"]["status"], "not_observed",
+        "{legacy_value}"
+    );
+    assert_eq!(
+        legacy_value["verification"]["host_runtime"]["managed_host_startup"], "not_observed",
+        "{legacy_value}"
+    );
+
+    insert_test_watch_baseline(
+        runtime_home.path(),
+        &projects[0],
+        "managed_lifecycle",
+        &json!({
+            "lifecycle_events": [
+                {
+                    "connection_id": connection_id,
+                    "project_id": projects[0].project_id,
+                    "host_kind": "codex",
+                    "launch_origin": "managed_host",
+                    "lifecycle_event": "managed_host_startup",
+                    "timestamp": "2026-07-01T00:01:00Z",
+                    "storage_capability": "read_write",
+                    "effective_tool_mode": "workflow"
+                },
+                {
+                    "connection_id": connection_id,
+                    "project_id": projects[0].project_id,
+                    "host_kind": "codex",
+                    "launch_origin": "managed_host",
+                    "lifecycle_event": "managed_host_tools_list",
+                    "timestamp": "2026-07-01T00:01:01Z",
+                    "storage_capability": "read_write",
+                    "effective_tool_mode": "workflow"
+                },
+                {
+                    "connection_id": connection_id,
+                    "project_id": projects[0].project_id,
+                    "host_kind": "codex",
+                    "launch_origin": "managed_host",
+                    "lifecycle_event": "managed_host_tool_call",
+                    "timestamp": "2026-07-01T00:01:02Z",
+                    "storage_capability": "read_write",
+                    "effective_tool_mode": "workflow"
+                }
+            ]
+        })
+        .to_string(),
+    )?;
+
+    let managed_verify = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connection",
+            "verify",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--shared",
+            "--json",
+        ],
+        &[
+            ("PATH", path_env(&[bin_dir.as_path(), volicord_dir])),
+            ("CODEX_HOME", path_text(&codex_home)),
+        ],
+    )?;
+    assert_success(&managed_verify);
+    let managed_value = json_stdout(&managed_verify)?;
+    assert_eq!(
+        managed_value["verification"]["host_runtime"]["status"], "observed",
+        "{managed_value}"
+    );
+    assert_eq!(
+        managed_value["verification"]["host_runtime"]["managed_host_startup"], "observed",
+        "{managed_value}"
+    );
+    assert_eq!(
+        managed_value["verification"]["host_runtime"]["managed_host_tools_list"], "observed",
+        "{managed_value}"
+    );
+    assert_eq!(
+        managed_value["verification"]["host_runtime"]["managed_host_tool_call"], "observed",
+        "{managed_value}"
+    );
     Ok(())
 }
 
@@ -4773,6 +4924,49 @@ fn session_watch_record_counts(
         |row| row.get(0),
     )?;
     Ok((agent_sessions, watch_baselines))
+}
+
+fn insert_test_watch_baseline(
+    runtime_home: &Path,
+    project: &volicord_store::agent_connections::ConnectionProjectRecord,
+    suffix: &str,
+    metadata_json: &str,
+) -> Result<(), Box<dyn Error>> {
+    let session_id = format!("session_{suffix}");
+    let created_at = "2026-07-01T00:00:00Z".to_owned();
+    insert_agent_session(
+        runtime_home,
+        &project.project_id,
+        AgentSessionInsert {
+            session_id: session_id.clone(),
+            connection_internal_id: project.connection_internal_id.clone(),
+            guard_installation_id: None,
+            host_kind: "codex".to_owned(),
+            guard_mode: "record".to_owned(),
+            started_at: created_at.clone(),
+            metadata_json: "{}".to_owned(),
+        },
+    )?;
+    let snapshot = snapshot_product_repository(
+        runtime_home,
+        &project.project.repo_root,
+        WatchSnapshotOptions::default(),
+    )?;
+    create_watch_baseline(
+        runtime_home,
+        &project.project_id,
+        WatchBaselineCreate {
+            watch_baseline_id: format!("watch_base_{suffix}"),
+            session_id,
+            connection_internal_id: project.connection_internal_id.clone(),
+            guard_installation_id: None,
+            status: SessionWatchStatus::Active,
+            snapshot,
+            created_at,
+            metadata_json: metadata_json.to_owned(),
+        },
+    )?;
+    Ok(())
 }
 
 fn verify_checksum_line(root: &Path, line: &str) -> Result<String, Box<dyn Error>> {

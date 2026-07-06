@@ -278,25 +278,27 @@ fn mcp_check_reports_readonly_degraded_tool_mode() -> Result<(), Box<dyn Error>>
 }
 
 #[test]
-fn mcp_host_startup_records_observation_when_writable() -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-stdio-startup-watch")?;
+fn direct_startup_watch_records_legacy_observation_without_managed_lifecycle(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-direct-startup-watch")?;
     let adapter = adapter(&fixture)?;
-    let input = Cursor::new(Vec::<u8>::new());
-    let mut output = Vec::new();
 
-    run_stdio(adapter, BufReader::new(input), &mut output)?;
+    assert_eq!(
+        adapter.startup_session_watch_observation_best_effort("session_direct_startup"),
+        StartupObservationResult::Recorded
+    );
 
-    assert!(output.is_empty());
     let baseline = latest_watch_baseline_for_connection(
         fixture.runtime_home_path(),
         fixture.project_id(),
         fixture.connection_id(),
     )?
-    .expect("stdio startup should create a watch baseline");
+    .expect("direct startup watch should create a watch baseline");
     assert_eq!(baseline.status, "active");
     let metadata: Value = serde_json::from_str(&baseline.metadata_json)?;
     assert_eq!(metadata["coverage_basis"], "mcp_start");
-    assert_eq!(metadata["launch_origin"], "managed_host");
+    assert!(metadata.get("launch_origin").is_none());
+    assert!(metadata.get("lifecycle_events").is_none());
     assert!(metadata.get("partial_coverage_warning").is_none());
     assert_eq!(
         metadata["scan_summary"]["not_full_filesystem_monitoring"],
@@ -380,6 +382,110 @@ fn managed_stdio_launch_records_host_runtime_observation() -> Result<(), Box<dyn
     .expect("managed stdio startup should create a watch baseline");
     let metadata: Value = serde_json::from_str(&baseline.metadata_json)?;
     assert_eq!(metadata["launch_origin"], "managed_host");
+    assert_eq!(metadata["host_kind"], "codex");
+    assert_eq!(metadata["connection_id"], fixture.connection_id());
+    assert_eq!(metadata["project_id"], fixture.project_id());
+    let startup = lifecycle_event(&metadata, "managed_host_startup");
+    assert_eq!(startup["launch_origin"], "managed_host");
+    assert_eq!(startup["host_kind"], "codex");
+    assert_eq!(startup["connection_id"], fixture.connection_id());
+    assert_eq!(startup["project_id"], fixture.project_id());
+    assert_eq!(startup["storage_capability"], "read_write");
+    assert_eq!(startup["effective_tool_mode"], "workflow");
+    assert!(startup["timestamp"].is_string());
+    Ok(())
+}
+
+#[test]
+fn managed_stdio_tools_list_records_lifecycle_observation() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-stdio-managed-tools-list-watch")?;
+    let adapter = project_bound_adapter(&fixture)?;
+    let input = Cursor::new(json_lines(&[
+        initialize_request(1, json!({})),
+        request(2, "tools/list", json!({})),
+    ])?);
+    let mut output = Vec::new();
+
+    run_stdio_with_env_marker(
+        adapter,
+        BufReader::new(input),
+        &mut output,
+        |name| match name {
+            "VOLICORD_MCP_LAUNCH" => Some(OsString::from("managed_host")),
+            "VOLICORD_MCP_HOST" => Some(OsString::from("codex")),
+            "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from(fixture.connection_id())),
+            "VOLICORD_MCP_PROJECT_ID" => Some(OsString::from(fixture.project_id())),
+            _ => None,
+        },
+    )?;
+
+    let responses = stdio_responses(&output)?;
+    assert_eq!(responses.len(), 2);
+    assert!(responses[1]["result"]["tools"].is_array());
+    let baseline = latest_watch_baseline_for_connection(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        fixture.connection_id(),
+    )?
+    .expect("managed tools/list should update the lifecycle baseline");
+    let metadata: Value = serde_json::from_str(&baseline.metadata_json)?;
+    assert_eq!(
+        lifecycle_event_names(&metadata),
+        vec![
+            "managed_host_startup",
+            "managed_host_initialize_response",
+            "managed_host_tools_list",
+        ]
+    );
+    let tools_list = lifecycle_event(&metadata, "managed_host_tools_list");
+    assert_eq!(tools_list["storage_capability"], "read_write");
+    assert_eq!(tools_list["effective_tool_mode"], "workflow");
+    Ok(())
+}
+
+#[test]
+fn managed_stdio_tool_call_records_lifecycle_observation() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-stdio-managed-tool-call-watch")?;
+    let adapter = project_bound_adapter(&fixture)?;
+    let input = Cursor::new(json_lines(&[
+        initialize_request(1, json!({})),
+        initialized_notification(),
+        tools_call(2, "volicord.status", json!({ "detail": "workflow" })),
+    ])?);
+    let mut output = Vec::new();
+
+    run_stdio_with_env_marker(
+        adapter,
+        BufReader::new(input),
+        &mut output,
+        |name| match name {
+            "VOLICORD_MCP_LAUNCH" => Some(OsString::from("managed_host")),
+            "VOLICORD_MCP_HOST" => Some(OsString::from("codex")),
+            "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from(fixture.connection_id())),
+            "VOLICORD_MCP_PROJECT_ID" => Some(OsString::from(fixture.project_id())),
+            _ => None,
+        },
+    )?;
+
+    let responses = stdio_responses(&output)?;
+    assert_eq!(responses.len(), 2);
+    let status = volicord_response_from_tool(&responses[1])?;
+    assert_eq!(status["base"]["response_kind"], "result");
+    let baseline = latest_watch_baseline_for_connection(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        fixture.connection_id(),
+    )?
+    .expect("managed tools/call should update the lifecycle baseline");
+    let metadata: Value = serde_json::from_str(&baseline.metadata_json)?;
+    assert!(lifecycle_event_names(&metadata).contains(&"managed_host_tool_call".to_owned()));
+    assert!(
+        lifecycle_event_names(&metadata).contains(&"managed_host_tool_call_completed".to_owned())
+    );
+    let tool_call = lifecycle_event(&metadata, "managed_host_tool_call");
+    assert_eq!(tool_call["tool_name"], "volicord.status");
+    assert_eq!(tool_call["storage_capability"], "read_write");
+    assert_eq!(tool_call["effective_tool_mode"], "workflow");
     Ok(())
 }
 
@@ -2554,6 +2660,24 @@ fn tool_names_from_list_response(response: &Value) -> Vec<&str> {
         .iter()
         .map(|tool| tool["name"].as_str().expect("tool name"))
         .collect::<Vec<_>>()
+}
+
+fn lifecycle_event_names(metadata: &Value) -> Vec<String> {
+    metadata["lifecycle_events"]
+        .as_array()
+        .expect("lifecycle_events should be an array")
+        .iter()
+        .filter_map(|event| event["lifecycle_event"].as_str().map(str::to_owned))
+        .collect()
+}
+
+fn lifecycle_event<'a>(metadata: &'a Value, lifecycle_event: &str) -> &'a Value {
+    metadata["lifecycle_events"]
+        .as_array()
+        .expect("lifecycle_events should be an array")
+        .iter()
+        .find(|event| event["lifecycle_event"] == lifecycle_event)
+        .unwrap_or_else(|| panic!("missing lifecycle event {lifecycle_event}: {metadata}"))
 }
 
 fn preflight_report_for_fixture(

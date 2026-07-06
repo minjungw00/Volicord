@@ -43,8 +43,8 @@ pub(crate) use volicord_store::{
     },
     session_watch::{
         create_watch_baseline, latest_watch_baseline_for_session, snapshot_product_repository,
-        SessionWatchStatus as StoreSessionWatchStatus, WatchBaselineCreate, WatchBaselineRecord,
-        WatchSnapshotOptions,
+        update_watch_status, SessionWatchStatus as StoreSessionWatchStatus, WatchBaselineCreate,
+        WatchBaselineRecord, WatchSnapshotOptions, WatchStatusUpdate,
     },
     sqlite::{open_project_state_database_read_only, sqlite_database_write_capability},
     StoreError,

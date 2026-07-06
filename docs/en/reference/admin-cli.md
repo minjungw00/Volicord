@@ -512,6 +512,14 @@ Codex connection verification keeps these diagnostic concepts separate:
 | Active-session tool exposure | `Next` action text when confirmation is required | `primary_next_action`, `actions[]`, and `connection.user_actions[]` | The user may still need to confirm that Volicord tools are exposed in the active Codex session. |
 | Codex tool snapshot or listing issue | `Next` action text can direct the user to Codex MCP startup/tool-list logs | Codex host logs, not a Volicord-owned JSON field | Codex may know the MCP server exists or log `startup_complete` while the active session still has no cached tool snapshot or listed `volicord.*` tools. |
 
+`verification.host_runtime` reports managed Codex lifecycle phase fields
+`managed_host_startup`, `managed_host_tools_list`, and
+`managed_host_tool_call`, each as `observed`, `not_observed`, or `unknown`.
+Only lifecycle events whose metadata has `host_kind=codex` and
+`launch_origin=managed_host` for the selected connection and project count for
+these fields; CLI preflight, direct handshake or probe launches, manual
+launches, and source-less legacy observations do not satisfy them.
+
 Verification output must make checks and user actions first-class diagnostics.
 For connection status and verification, default text output uses compact
 sections for `Status`, `Checks`, `Next`, and `Diagnostics` instead of the

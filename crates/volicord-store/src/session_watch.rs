@@ -683,6 +683,51 @@ pub fn latest_watch_baseline_for_connection(
         .map_err(StoreError::from)
 }
 
+/// Reads watch baselines for one project Agent Connection, newest first.
+pub fn watch_baselines_for_connection(
+    runtime_home: impl AsRef<Path>,
+    project_id: &str,
+    connection_internal_id: &str,
+) -> StoreResult<Vec<WatchBaselineRecord>> {
+    validate_identifier("project_id", project_id)?;
+    validate_identifier("connection_internal_id", connection_internal_id)?;
+    let Some(project) = open_project_for_read(runtime_home, project_id)? else {
+        return Ok(Vec::new());
+    };
+    let mut stmt = project.conn.prepare(
+        "SELECT
+            project_id,
+            watch_baseline_id,
+            session_id,
+            connection_internal_id,
+            guard_installation_id,
+            status,
+            scope_kind,
+            repo_root,
+            watched_paths_json,
+            exclusions_json,
+            snapshot_algorithm,
+            snapshot_digest,
+            snapshot_entries_json,
+            created_at,
+            updated_at,
+            metadata_json
+         FROM session_watch_baselines
+        WHERE project_id = ?1
+          AND connection_internal_id = ?2
+        ORDER BY updated_at DESC, watch_baseline_id DESC",
+    )?;
+    let rows = stmt.query_map(
+        params![project.project.project_id, connection_internal_id],
+        watch_baseline_from_row,
+    )?;
+    let mut baselines = Vec::new();
+    for row in rows {
+        baselines.push(row?);
+    }
+    Ok(baselines)
+}
+
 /// Updates the availability status for one watch baseline.
 pub fn update_watch_status(
     runtime_home: impl AsRef<Path>,

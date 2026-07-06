@@ -469,6 +469,14 @@ Codex 연결 검증은 아래 진단 개념을 분리해 유지합니다.
 | 활성 session 도구 노출 | 확인이 필요할 때 `Next` action text | `primary_next_action`, `actions[]`, `connection.user_actions[]` | 사용자가 활성 Codex session에 Volicord 도구가 노출되는지 아직 확인해야 할 수 있습니다. |
 | Codex 도구 snapshot 또는 listing 문제 | `Next` action text가 Codex MCP startup/tool-list log 확인을 안내할 수 있습니다. | Codex host log이며 Volicord가 소유한 JSON 필드가 아닙니다. | Codex가 MCP 서버의 존재를 알거나 `startup_complete`를 기록해도 활성 session에는 캐시된 tool snapshot이나 나열된 `volicord.*` 도구가 없을 수 있습니다. |
 
+`verification.host_runtime`은 관리되는 Codex lifecycle phase 필드
+`managed_host_startup`, `managed_host_tools_list`,
+`managed_host_tool_call`을 각각 `observed`, `not_observed`, `unknown`으로
+보고합니다. 선택된 연결과 프로젝트에 대해 metadata가 `host_kind=codex`이고
+`launch_origin=managed_host`인 lifecycle event만 이 필드에 계산됩니다. CLI
+preflight, 직접 handshake 또는 probe 시작, 수동 시작, source-less legacy
+observation은 이 필드를 충족하지 않습니다.
+
 검증 출력은 점검과 사용자 동작을 일급 진단으로 만들어야 합니다. 연결 상태와 검증의
 기본 text 출력은 결과 줄 형태 대신 `Status`, `Checks`, `Next`, `Diagnostics` 간결 섹션을
 사용합니다. 전체 상태, 시도되었거나 차단된 각 점검, 필요한 경우 다음 사용자 동작을

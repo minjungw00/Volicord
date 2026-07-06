@@ -31,7 +31,7 @@ use volicord_store::{
     },
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
     session_watch::{
-        latest_watch_baseline_for_connection, snapshot_product_repository, WatchSnapshotOptions,
+        snapshot_product_repository, watch_baselines_for_connection, WatchSnapshotOptions,
     },
     StoreError,
 };
@@ -2168,28 +2168,36 @@ fn host_runtime_observation(
     if projects.is_empty() {
         return HostRuntimeDiagnostic {
             status: HostRuntimeObservationStatus::Unknown,
+            managed_host_startup: HostRuntimeObservationStatus::Unknown,
+            managed_host_tools_list: HostRuntimeObservationStatus::Unknown,
+            managed_host_tool_call: HostRuntimeObservationStatus::Unknown,
             details: "No connected project was available for Codex host runtime observation"
                 .to_owned(),
             last_observed_at: None,
         };
     }
-    let mut last_observed_at = None;
+    let mut evidence = ManagedHostLifecycleEvidence::default();
     for project in projects {
-        match latest_watch_baseline_for_connection(
+        match watch_baselines_for_connection(
             runtime_home,
             &project.project_id,
             &connection.connection_internal_id,
         ) {
-            Ok(Some(baseline)) => {
-                if codex_host_runtime_baseline_is_managed(&baseline.metadata_json) {
-                    last_observed_at =
-                        max_optional_text(last_observed_at, Some(baseline.created_at));
+            Ok(baselines) => {
+                for baseline in baselines {
+                    evidence.observe_metadata(
+                        &baseline.metadata_json,
+                        &connection.connection_internal_id,
+                        &project.project_id,
+                    );
                 }
             }
-            Ok(None) => {}
             Err(error) => {
                 return HostRuntimeDiagnostic {
                     status: HostRuntimeObservationStatus::Unknown,
+                    managed_host_startup: HostRuntimeObservationStatus::Unknown,
+                    managed_host_tools_list: HostRuntimeObservationStatus::Unknown,
+                    managed_host_tool_call: HostRuntimeObservationStatus::Unknown,
                     details: format!(
                         "Codex host runtime observation could not be read from session-watch state: {error}"
                     ),
@@ -2198,53 +2206,105 @@ fn host_runtime_observation(
             }
         }
     }
-    if last_observed_at.is_some() {
+    if evidence.managed_host_startup.is_some() {
         HostRuntimeDiagnostic {
             status: HostRuntimeObservationStatus::Observed,
+            managed_host_startup: evidence.startup_status(),
+            managed_host_tools_list: evidence.tools_list_status(),
+            managed_host_tool_call: evidence.tool_call_status(),
             details:
-                "Volicord has observed a project-bound Codex host MCP session for this connection"
+                "Volicord has observed managed Codex MCP lifecycle evidence for this connection"
                     .to_owned(),
-            last_observed_at,
+            last_observed_at: evidence.last_observed_at,
         }
     } else {
         HostRuntimeDiagnostic {
             status: HostRuntimeObservationStatus::NotObserved,
+            managed_host_startup: evidence.startup_status(),
+            managed_host_tools_list: evidence.tools_list_status(),
+            managed_host_tool_call: evidence.tool_call_status(),
             details: "Volicord has not observed a Codex host process start the Volicord MCP server for this connection".to_owned(),
             last_observed_at: None,
         }
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum PersistedMcpLaunchOrigin {
-    CliVerification,
-    ManagedHost,
-    ManualCli,
-    InvalidManagedMarker,
-    UnknownLegacy,
+#[derive(Default)]
+struct ManagedHostLifecycleEvidence {
+    managed_host_startup: Option<String>,
+    managed_host_tools_list: Option<String>,
+    managed_host_tool_call: Option<String>,
+    last_observed_at: Option<String>,
 }
 
-fn persisted_mcp_launch_origin(metadata_json: &str) -> PersistedMcpLaunchOrigin {
-    match serde_json::from_str::<Value>(metadata_json)
-        .ok()
-        .and_then(|metadata| {
-            metadata
-                .get("launch_origin")
+impl ManagedHostLifecycleEvidence {
+    fn observe_metadata(&mut self, metadata_json: &str, connection_id: &str, project_id: &str) {
+        let Ok(metadata) = serde_json::from_str::<Value>(metadata_json) else {
+            return;
+        };
+        let Some(events) = metadata.get("lifecycle_events").and_then(Value::as_array) else {
+            return;
+        };
+        for event in events {
+            if !managed_codex_lifecycle_event_matches(event, connection_id, project_id) {
+                continue;
+            }
+            let Some(lifecycle_event) = event.get("lifecycle_event").and_then(Value::as_str) else {
+                continue;
+            };
+            let timestamp = event
+                .get("timestamp")
                 .and_then(Value::as_str)
-                .map(str::to_owned)
-        })
-        .as_deref()
-    {
-        Some("cli_verification") => PersistedMcpLaunchOrigin::CliVerification,
-        Some("managed_host") => PersistedMcpLaunchOrigin::ManagedHost,
-        Some("manual_cli") => PersistedMcpLaunchOrigin::ManualCli,
-        Some("invalid_managed_marker") => PersistedMcpLaunchOrigin::InvalidManagedMarker,
-        _ => PersistedMcpLaunchOrigin::UnknownLegacy,
+                .map(str::to_owned);
+            match lifecycle_event {
+                "managed_host_startup" => {
+                    self.managed_host_startup =
+                        max_optional_text(self.managed_host_startup.take(), timestamp.clone());
+                }
+                "managed_host_tools_list" => {
+                    self.managed_host_tools_list =
+                        max_optional_text(self.managed_host_tools_list.take(), timestamp.clone());
+                }
+                "managed_host_tool_call" | "managed_host_tool_call_completed" => {
+                    self.managed_host_tool_call =
+                        max_optional_text(self.managed_host_tool_call.take(), timestamp.clone());
+                }
+                _ => {}
+            }
+            self.last_observed_at = max_optional_text(self.last_observed_at.take(), timestamp);
+        }
+    }
+
+    fn startup_status(&self) -> HostRuntimeObservationStatus {
+        observed_status(self.managed_host_startup.is_some())
+    }
+
+    fn tools_list_status(&self) -> HostRuntimeObservationStatus {
+        observed_status(self.managed_host_tools_list.is_some())
+    }
+
+    fn tool_call_status(&self) -> HostRuntimeObservationStatus {
+        observed_status(self.managed_host_tool_call.is_some())
     }
 }
 
-fn codex_host_runtime_baseline_is_managed(metadata_json: &str) -> bool {
-    persisted_mcp_launch_origin(metadata_json) == PersistedMcpLaunchOrigin::ManagedHost
+fn observed_status(observed: bool) -> HostRuntimeObservationStatus {
+    if observed {
+        HostRuntimeObservationStatus::Observed
+    } else {
+        HostRuntimeObservationStatus::NotObserved
+    }
+}
+
+fn managed_codex_lifecycle_event_matches(
+    event: &Value,
+    connection_id: &str,
+    project_id: &str,
+) -> bool {
+    event.get("launch_origin").and_then(Value::as_str) == Some("managed_host")
+        && event.get("host_kind").and_then(Value::as_str) == Some("codex")
+        && event.get("connection_id").and_then(Value::as_str) == Some(connection_id)
+        && event.get("project_id").and_then(Value::as_str) == Some(project_id)
 }
 
 fn host_mcp_command_diagnostic(
@@ -10315,28 +10375,50 @@ mod tests {
     }
 
     #[test]
-    fn persisted_codex_runtime_origin_requires_managed_host_marker() {
-        assert_eq!(
-            persisted_mcp_launch_origin("{}"),
-            PersistedMcpLaunchOrigin::UnknownLegacy
+    fn managed_lifecycle_evidence_requires_managed_codex_event_scope() {
+        let mut evidence = ManagedHostLifecycleEvidence::default();
+        evidence.observe_metadata("{}", "conn_alpha", "project_alpha");
+        evidence.observe_metadata(
+            r#"{"launch_origin":"managed_host"}"#,
+            "conn_alpha",
+            "project_alpha",
+        );
+        evidence.observe_metadata(
+            r#"{"lifecycle_events":[{"connection_id":"conn_alpha","project_id":"project_alpha","host_kind":"codex","launch_origin":"manual_cli","lifecycle_event":"managed_host_startup","timestamp":"2026-07-01T00:00:00Z"}]}"#,
+            "conn_alpha",
+            "project_alpha",
+        );
+        evidence.observe_metadata(
+            r#"{"lifecycle_events":[{"connection_id":"conn_beta","project_id":"project_alpha","host_kind":"codex","launch_origin":"managed_host","lifecycle_event":"managed_host_startup","timestamp":"2026-07-01T00:00:01Z"}]}"#,
+            "conn_alpha",
+            "project_alpha",
         );
         assert_eq!(
-            persisted_mcp_launch_origin(r#"{"launch_origin":"managed_host"}"#),
-            PersistedMcpLaunchOrigin::ManagedHost
+            evidence.startup_status(),
+            HostRuntimeObservationStatus::NotObserved
         );
-        assert!(codex_host_runtime_baseline_is_managed(
-            r#"{"launch_origin":"managed_host"}"#
-        ));
-        for origin in [
-            "cli_verification",
-            "manual_cli",
-            "invalid_managed_marker",
-            "unknown_legacy",
-        ] {
-            let metadata = format!(r#"{{"launch_origin":"{origin}"}}"#);
-            assert!(!codex_host_runtime_baseline_is_managed(&metadata));
-        }
-        assert!(!codex_host_runtime_baseline_is_managed("{}"));
+
+        evidence.observe_metadata(
+            r#"{"lifecycle_events":[{"connection_id":"conn_alpha","project_id":"project_alpha","host_kind":"codex","launch_origin":"managed_host","lifecycle_event":"managed_host_startup","timestamp":"2026-07-01T00:00:02Z"},{"connection_id":"conn_alpha","project_id":"project_alpha","host_kind":"codex","launch_origin":"managed_host","lifecycle_event":"managed_host_tools_list","timestamp":"2026-07-01T00:00:03Z"},{"connection_id":"conn_alpha","project_id":"project_alpha","host_kind":"codex","launch_origin":"managed_host","lifecycle_event":"managed_host_tool_call","timestamp":"2026-07-01T00:00:04Z"}]}"#,
+            "conn_alpha",
+            "project_alpha",
+        );
+        assert_eq!(
+            evidence.startup_status(),
+            HostRuntimeObservationStatus::Observed
+        );
+        assert_eq!(
+            evidence.tools_list_status(),
+            HostRuntimeObservationStatus::Observed
+        );
+        assert_eq!(
+            evidence.tool_call_status(),
+            HostRuntimeObservationStatus::Observed
+        );
+        assert_eq!(
+            evidence.last_observed_at.as_deref(),
+            Some("2026-07-01T00:00:04Z")
+        );
     }
 
     #[test]

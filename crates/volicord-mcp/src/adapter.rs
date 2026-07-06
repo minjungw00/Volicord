@@ -76,6 +76,27 @@ pub(crate) enum StartupObservationResult {
     NotAttempted,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ManagedLifecycleEvent {
+    Startup,
+    InitializeResponse,
+    ToolsList,
+    ToolCallReceived,
+    ToolCallCompleted,
+}
+
+impl ManagedLifecycleEvent {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Startup => "managed_host_startup",
+            Self::InitializeResponse => "managed_host_initialize_response",
+            Self::ToolsList => "managed_host_tools_list",
+            Self::ToolCallReceived => "managed_host_tool_call",
+            Self::ToolCallCompleted => "managed_host_tool_call_completed",
+        }
+    }
+}
+
 impl McpAdapter {
     /// Creates an adapter for a Runtime Home and connection-bound adapter context.
     pub fn new(runtime_home: impl AsRef<Path>, context: McpConnectionContext) -> Self {
@@ -125,6 +146,29 @@ impl McpAdapter {
         }
     }
 
+    pub(crate) fn managed_lifecycle_observation_best_effort(
+        &self,
+        session_id: &str,
+        launch_origin: &str,
+        lifecycle_event: ManagedLifecycleEvent,
+        tool_name: Option<&str>,
+    ) -> StartupObservationResult {
+        match self.managed_lifecycle_observation(
+            session_id,
+            launch_origin,
+            lifecycle_event,
+            tool_name,
+        ) {
+            Ok(result) => result,
+            Err(error) if startup_observation_storage_is_readonly(&error) => {
+                StartupObservationResult::SkippedReadonlyStorage
+            }
+            Err(error) => StartupObservationResult::FailedButNonfatal {
+                reason: error.to_string(),
+            },
+        }
+    }
+
     fn startup_session_watch_observation(
         &self,
         session_id: &str,
@@ -138,6 +182,32 @@ impl McpAdapter {
             session_id,
             SessionWatchCoverageBasis::McpStart,
             launch_origin,
+        )?;
+        Ok(StartupObservationResult::Recorded)
+    }
+
+    fn managed_lifecycle_observation(
+        &self,
+        session_id: &str,
+        launch_origin: &str,
+        lifecycle_event: ManagedLifecycleEvent,
+        tool_name: Option<&str>,
+    ) -> Result<StartupObservationResult, McpAdapterError> {
+        let Some(project_id) = self.project_bound_startup_project()? else {
+            return Ok(StartupObservationResult::NotAttempted);
+        };
+        self.ensure_session_watch_baseline(
+            &project_id,
+            session_id,
+            SessionWatchCoverageBasis::McpStart,
+            Some(launch_origin),
+        )?;
+        self.append_managed_lifecycle_event(
+            &project_id,
+            session_id,
+            launch_origin,
+            lifecycle_event,
+            tool_name,
         )?;
         Ok(StartupObservationResult::Recorded)
     }
@@ -239,6 +309,107 @@ impl McpAdapter {
         )
         .map_err(McpAdapterError::Store)?;
         Ok(())
+    }
+
+    fn append_managed_lifecycle_event(
+        &self,
+        project_id: &ProjectId,
+        session_id: &str,
+        launch_origin: &str,
+        lifecycle_event: ManagedLifecycleEvent,
+        tool_name: Option<&str>,
+    ) -> Result<(), McpAdapterError> {
+        let Some(baseline) =
+            latest_watch_baseline_for_session(&self.runtime_home, project_id.as_str(), session_id)
+                .map_err(McpAdapterError::Store)?
+        else {
+            return Ok(());
+        };
+        let now = CoreProjectStore::open(&self.runtime_home, project_id)
+            .and_then(|store| store.current_timestamp())
+            .map_err(McpAdapterError::Store)?;
+        let mut metadata =
+            serde_json::from_str::<Value>(&baseline.metadata_json).unwrap_or_else(|_| json!({}));
+        if !metadata.is_object() {
+            metadata = json!({});
+        }
+        let object = metadata
+            .as_object_mut()
+            .expect("metadata was normalized to an object");
+        object.insert("host_kind".to_owned(), json!("codex"));
+        object.insert("launch_origin".to_owned(), json!(launch_origin));
+        object.insert(
+            "connection_id".to_owned(),
+            json!(self.context.connection_internal_id.as_str()),
+        );
+        object.insert("project_id".to_owned(), json!(project_id.as_str()));
+        object.insert(
+            "latest_lifecycle_event".to_owned(),
+            json!(lifecycle_event.as_str()),
+        );
+        object.insert("latest_lifecycle_observed_at".to_owned(), json!(&now));
+
+        let mut event =
+            self.managed_lifecycle_event_metadata(project_id, launch_origin, lifecycle_event, &now);
+        if let Some(tool_name) = tool_name {
+            event["tool_name"] = json!(tool_name);
+        }
+
+        let events = object
+            .entry("lifecycle_events".to_owned())
+            .or_insert_with(|| json!([]));
+        if !events.is_array() {
+            *events = json!([]);
+        }
+        events
+            .as_array_mut()
+            .expect("lifecycle_events was normalized to an array")
+            .push(event);
+
+        let status = session_watch_status_from_storage(&baseline.status)?;
+        update_watch_status(
+            &self.runtime_home,
+            project_id.as_str(),
+            &baseline.watch_baseline_id,
+            WatchStatusUpdate {
+                status,
+                updated_at: now,
+                metadata_json: serde_json::to_string(&metadata).map_err(McpAdapterError::Json)?,
+            },
+        )
+        .map_err(McpAdapterError::Store)?;
+        Ok(())
+    }
+
+    fn managed_lifecycle_event_metadata(
+        &self,
+        project_id: &ProjectId,
+        launch_origin: &str,
+        lifecycle_event: ManagedLifecycleEvent,
+        timestamp: &str,
+    ) -> Value {
+        let storage_capability = self
+            .storage_capability_for_project(project_id)
+            .unwrap_or(McpStorageCapability::Unknown);
+        let effective_tool_mode = current_enabled_connection(
+            &self.runtime_home,
+            self.context.connection_internal_id.as_str(),
+            lifecycle_event.as_str(),
+        )
+        .ok()
+        .and_then(|connection| parse_connection_mode(&connection.mode).ok())
+        .map(|mode| effective_tool_mode_for_mode_and_storage(mode, storage_capability).as_str())
+        .unwrap_or("unknown");
+        json!({
+            "connection_id": self.context.connection_internal_id.as_str(),
+            "project_id": project_id.as_str(),
+            "host_kind": "codex",
+            "launch_origin": launch_origin,
+            "lifecycle_event": lifecycle_event.as_str(),
+            "timestamp": timestamp,
+            "storage_capability": storage_capability.as_str(),
+            "effective_tool_mode": effective_tool_mode,
+        })
     }
 
     fn session_watch_scan_summary_from_snapshot(
@@ -1239,6 +1410,21 @@ fn startup_observation_storage_is_readonly(error: &McpAdapterError) -> bool {
         StoreError::Io(error) => error.kind() == io::ErrorKind::PermissionDenied,
         StoreError::Sqlite(_) => error.classification().category == "database_access_denied",
         _ => false,
+    }
+}
+
+fn session_watch_status_from_storage(
+    status: &str,
+) -> Result<StoreSessionWatchStatus, McpAdapterError> {
+    match status {
+        "disabled" => Ok(StoreSessionWatchStatus::Disabled),
+        "active" => Ok(StoreSessionWatchStatus::Active),
+        "degraded" => Ok(StoreSessionWatchStatus::Degraded),
+        "unavailable" => Ok(StoreSessionWatchStatus::Unavailable),
+        _ => Err(McpAdapterError::ToolExecution {
+            tool_name: "managed MCP lifecycle observation".to_owned(),
+            message: format!("session-watch baseline has unsupported status {status}"),
+        }),
     }
 }
 

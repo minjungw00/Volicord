@@ -231,6 +231,13 @@ Session-watch 시작 coverage:
   연결 맥락 때문에 프로젝트에 묶이면, 프로세스는 한정된 스냅샷 생성을 사용할 수 있을 때
   도구 요청을 처리하기 전에 session-watch baseline을 만들거나 연결합니다. Coverage basis는
   `mcp_start`입니다.
+- 관리 출처 마커가 검증된 생성 Codex 시작에서는 쓰기 가능한 저장소를 사용할 수 있을 때
+  stdio 프로세스가 같은 baseline에 `managed_host_startup`,
+  `managed_host_initialize_response`, `managed_host_tools_list`,
+  `managed_host_tool_call` 관찰에 대한 관리 lifecycle metadata도 추가합니다. 각
+  lifecycle event는 선택된 연결과 프로젝트, `host_kind=codex`,
+  `launch_origin=managed_host`, timestamp, 관찰된 저장 capability, 사용할 수 있을 때의
+  effective tool mode를 기록합니다.
 - HTTP serve 초기화가 `Mcp-Session-Id`를 만들고 선택된 serve 연결/프로젝트 맥락에 사용할
   수 있는 허용 프로젝트가 정확히 하나이면, 서버는 그 session의 이후 도구 요청을 받기 전에
   같은 `mcp_start` baseline을 만들거나 연결합니다.

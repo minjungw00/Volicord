@@ -271,6 +271,14 @@ Session-watch startup coverage:
   creates or attaches a session-watch baseline before serving tool requests
   whenever bounded snapshot creation is available. The coverage basis is
   `mcp_start`.
+- For validated generated Codex launches with managed provenance markers, the
+  stdio process also appends managed lifecycle metadata to that baseline for
+  `managed_host_startup`, `managed_host_initialize_response`,
+  `managed_host_tools_list`, and `managed_host_tool_call` observations when
+  writable storage is available. Each lifecycle event records the selected
+  connection and project, `host_kind=codex`, `launch_origin=managed_host`, a
+  timestamp, observed storage capability, and effective tool mode when those
+  values are available.
 - When HTTP serve initialization creates an `Mcp-Session-Id` and the selected
   serve connection/project context has exactly one available allowed project,
   the server creates or attaches the same `mcp_start` baseline before accepting

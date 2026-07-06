@@ -31,8 +31,8 @@ struct StdioRunOptions {
 impl Default for StdioRunOptions {
     fn default() -> Self {
         Self {
-            startup_session_watch: true,
-            launch_origin: McpLaunchOrigin::ManagedHost,
+            startup_session_watch: false,
+            launch_origin: McpLaunchOrigin::ManualCli,
         }
     }
 }
@@ -47,15 +47,23 @@ where
     R: BufRead,
     W: Write,
 {
-    let mut state = ConnectionState::default();
-    let _startup_observation = if options.startup_session_watch {
-        adapter.startup_session_watch_observation_best_effort_with_origin(
-            &state.session_id,
-            options.launch_origin.as_str(),
-        )
-    } else {
-        StartupObservationResult::SkippedVerificationProbe
-    };
+    let mut state = ConnectionState::for_launch_origin(options.launch_origin);
+    let _startup_observation =
+        if options.startup_session_watch && state.managed_host_lifecycle_observations {
+            adapter.managed_lifecycle_observation_best_effort(
+                &state.session_id,
+                options.launch_origin.as_str(),
+                ManagedLifecycleEvent::Startup,
+                None,
+            )
+        } else if options.startup_session_watch {
+            adapter.startup_session_watch_observation_best_effort_with_origin(
+                &state.session_id,
+                options.launch_origin.as_str(),
+            )
+        } else {
+            StartupObservationResult::SkippedVerificationProbe
+        };
     let mut lines = reader.lines();
 
     while let Some(line) = lines.next() {
@@ -292,6 +300,8 @@ pub(crate) struct ConnectionState {
     pub(crate) client_supports_elicitation: bool,
     pub(crate) next_server_request_id: u64,
     pub(crate) session_id: String,
+    pub(crate) managed_host_lifecycle_observations: bool,
+    pub(crate) launch_origin: &'static str,
 }
 
 impl Default for ConnectionState {
@@ -301,6 +311,18 @@ impl Default for ConnectionState {
             client_supports_elicitation: false,
             next_server_request_id: 1,
             session_id: generated_metadata_id("session", "mcp", "stdio"),
+            managed_host_lifecycle_observations: false,
+            launch_origin: McpLaunchOrigin::UnknownLegacy.as_str(),
+        }
+    }
+}
+
+impl ConnectionState {
+    fn for_launch_origin(launch_origin: McpLaunchOrigin) -> Self {
+        Self {
+            managed_host_lifecycle_observations: launch_origin == McpLaunchOrigin::ManagedHost,
+            launch_origin: launch_origin.as_str(),
+            ..Self::default()
         }
     }
 }
@@ -456,6 +478,12 @@ where
                 }
                 Err(error) => return Ok(error),
             }
+            record_managed_lifecycle_event(
+                adapter,
+                state,
+                ManagedLifecycleEvent::InitializeResponse,
+                None,
+            );
             initialize_result()
         }
         "ping" => {
@@ -473,7 +501,15 @@ where
                 return Ok(error);
             }
             match adapter.tools() {
-                Ok(tools) => json!({ "tools": tools }),
+                Ok(tools) => {
+                    record_managed_lifecycle_event(
+                        adapter,
+                        state,
+                        ManagedLifecycleEvent::ToolsList,
+                        None,
+                    );
+                    json!({ "tools": tools })
+                }
                 Err(error) => return Ok(json_rpc_error_for_adapter(response_id, error)),
             }
         }
@@ -531,6 +567,23 @@ pub(crate) fn lifecycle_error(state: ConnectionPhase, request: &JsonRpcRequest) 
         )),
         ConnectionPhase::Ready => None,
     }
+}
+
+fn record_managed_lifecycle_event(
+    adapter: &McpAdapter,
+    state: &ConnectionState,
+    lifecycle_event: ManagedLifecycleEvent,
+    tool_name: Option<&str>,
+) {
+    if !state.managed_host_lifecycle_observations {
+        return;
+    }
+    let _observation = adapter.managed_lifecycle_observation_best_effort(
+        &state.session_id,
+        state.launch_origin,
+        lifecycle_event,
+        tool_name,
+    );
 }
 
 pub(crate) fn initialize_result() -> Value {
@@ -665,6 +718,12 @@ where
             Some(format!("unknown MCP tool: {tool_name}")),
         )));
     }
+    record_managed_lifecycle_event(
+        adapter,
+        state,
+        ManagedLifecycleEvent::ToolCallReceived,
+        Some(tool_name),
+    );
 
     let arguments = match object.get("arguments") {
         None => json!({}),
@@ -723,6 +782,12 @@ where
         }
     };
 
+    record_managed_lifecycle_event(
+        adapter,
+        state,
+        ManagedLifecycleEvent::ToolCallCompleted,
+        Some(tool_name),
+    );
     Ok(Ok(tool_call_result_from_output(output)))
 }
 

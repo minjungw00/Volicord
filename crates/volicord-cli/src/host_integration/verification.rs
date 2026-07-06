@@ -224,6 +224,9 @@ impl HostRuntimeObservationStatus {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct HostRuntimeDiagnostic {
     pub status: HostRuntimeObservationStatus,
+    pub managed_host_startup: HostRuntimeObservationStatus,
+    pub managed_host_tools_list: HostRuntimeObservationStatus,
+    pub managed_host_tool_call: HostRuntimeObservationStatus,
     pub details: String,
     pub last_observed_at: Option<String>,
 }
