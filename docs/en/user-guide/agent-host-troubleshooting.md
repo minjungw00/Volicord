@@ -439,11 +439,17 @@ or resume when the server is unavailable. Do not treat `required = true` as the
 default Volicord `record` profile behavior or as proof that tools are exposed.
 
 <a id="codex-approval-overlay-reported-as-mcp-configuration-changed"></a>
-## Connection Verify Reports MCP Configuration Changed After Approving Tools
+## Codex Tool Approval Overlay And MCP Configuration Drift
 
-Observable symptom: after approving one or more Volicord tools in Codex,
-connection status or verification reports `MCP configuration: changed`,
-`Current MCP configuration: changed`, or a `mcp_config_changed` next action.
+Current behavior: after approving one or more Volicord tools in Codex, the
+approval subtables are an accepted host policy overlay. They should not by
+themselves make connection status or verification report
+`MCP configuration: changed`, `Current MCP configuration: changed`, or a
+`mcp_config_changed` next action.
+
+If that still happens, either the `volicord` server entry has real command,
+args, or managed-marker drift, or the running Volicord build does not yet accept
+Codex tool approval policy overlay.
 
 First inspect the generated Codex project configuration:
 

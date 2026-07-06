@@ -934,7 +934,7 @@ fn status_with_current_diagnostics(
     }
     if status == AgentResultStatus::Complete {
         if let Some(runtime) = current_host.and_then(|host| host.host_runtime.as_ref()) {
-            if runtime.managed_host_tool_call != HostRuntimeObservationStatus::Observed {
+            if !managed_runtime_confirms_active_exposure(runtime) {
                 return AgentResultStatus::ActionRequired;
             }
         }
@@ -2562,14 +2562,12 @@ fn aggregate_verification_status(
     if cli_mcp.has_failed_step() {
         return AgentResultStatus::Failed;
     }
-    if let Some(lifecycle) = host.managed_lifecycle() {
+    if let Some(runtime) = host.host_runtime.as_ref() {
         return match host.status {
             VerificationStatus::Complete
                 if cli_mcp.handshake_passed()
                     && host.user_actions.is_empty()
-                    && lifecycle.managed_host_tool_call
-                        == HostRuntimeObservationStatus::Observed
-                    && host.active_tool_exposure_state() == ActiveToolExposureStatus::Confirmed =>
+                    && managed_runtime_confirms_active_exposure(runtime) =>
             {
                 AgentResultStatus::Complete
             }
@@ -2607,6 +2605,13 @@ fn aggregate_verification_status(
         VerificationStatus::NotVerified => AgentResultStatus::NotVerified,
         _ => AgentResultStatus::Failed,
     }
+}
+
+fn managed_runtime_confirms_active_exposure(runtime: &HostRuntimeDiagnostic) -> bool {
+    runtime.managed_host_startup == HostRuntimeObservationStatus::Observed
+        && runtime.managed_host_tools_list == HostRuntimeObservationStatus::Observed
+        && runtime.managed_host_tool_call == HostRuntimeObservationStatus::Observed
+        && runtime.active_tool_exposure == ActiveToolExposureStatus::Confirmed
 }
 
 fn host_plan_requires_active_tool_exposure(host_plan: &HostPlan) -> bool {
@@ -11143,6 +11148,22 @@ mod tests {
         );
 
         assert_eq!(status, AgentResultStatus::Complete);
+    }
+
+    #[test]
+    fn connection_verify_tool_call_without_managed_lifecycle_cannot_complete() {
+        let cli_mcp = passed_cli_mcp_verification();
+        let status = aggregate_verification_status(
+            &Verification::configured_ready("ready").with_host_runtime(runtime_diagnostic(
+                HostRuntimeObservationStatus::NotObserved,
+                HostRuntimeObservationStatus::NotObserved,
+                HostRuntimeObservationStatus::Observed,
+            )),
+            &cli_mcp,
+            true,
+        );
+
+        assert_eq!(status, AgentResultStatus::ActionRequired);
     }
 
     #[test]

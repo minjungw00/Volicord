@@ -402,11 +402,16 @@ Volicord 쪽에서 유효하다는 뜻이며, 활성 Codex session이 그 도구
 Volicord `record` 프로필의 기본 동작이나 도구 노출의 증명으로 다루지 않습니다.
 
 <a id="codex-approval-overlay-reported-as-mcp-configuration-changed"></a>
-## 도구 승인 뒤 connection verify가 MCP 설정 변경을 보고함
+## Codex 도구 승인 오버레이와 MCP 설정 드리프트
 
-관찰 증상: Codex에서 하나 이상의 Volicord 도구를 승인한 뒤 연결 상태 또는 검증이
+현재 동작: Codex에서 하나 이상의 Volicord 도구를 승인한 뒤 생기는 승인 하위 table은
+허용되는 호스트 정책 오버레이입니다. 이것만으로 연결 상태나 검증이
 `MCP configuration: changed`, `Current MCP configuration: changed`, 또는
-`mcp_config_changed` 다음 동작을 보고합니다.
+`mcp_config_changed` 다음 동작을 보고하면 안 됩니다.
+
+그래도 그 상태가 보고된다면 `volicord` 서버 항목에 실제 command, args, 관리 마커
+드리프트가 있거나, 실행 중인 Volicord 빌드가 아직 Codex 도구 승인 정책 오버레이를 허용하지
+않는 것입니다.
 
 먼저 생성된 Codex 프로젝트 설정을 확인합니다.
 
