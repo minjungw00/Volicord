@@ -45,7 +45,7 @@
       "name": "volicord.intake"
     },
     {
-      "description": "Update current Task scope and Change Unit state.",
+      "description": "Update current Task scope and Change Unit state. MCP arguments exclude envelope fields; the adapter injects project_id, request_id, idempotency_key, expected_state_version, dry_run=false, and locale. Required root fields: task_id, goal_summary, scope_update, scope_boundary, non_goals, acceptance_criteria, autonomy_boundary, baseline_ref, change_unit, related_scope_decision_refs. Use null to leave nullable scope fields unchanged. change_unit.operation is keep_current, create_current, or replace_current. Example keep-current Change Unit: {\"task_id\":\"task_filter_001\",\"goal_summary\":\"Limit saved search filters.\",\"scope_update\":{\"include\":[\"Saved-filter owner and label edits.\"],\"exclude\":[]},\"scope_boundary\":\"Saved-filter owner and label edits.\",\"non_goals\":[],\"acceptance_criteria\":[\"Saved filters reject out-of-scope edits.\"],\"autonomy_boundary\":\"Stay within saved-filter validation.\",\"baseline_ref\":\"baseline_filter_001\",\"change_unit\":{\"operation\":\"keep_current\"},\"related_scope_decision_refs\":[]}",
       "input_schema": {
         "definitions": [
           "ChangeUnitEffectContract",
@@ -86,7 +86,7 @@
       "name": "volicord.update_scope"
     },
     {
-      "description": "Read the current Core status view.",
+      "description": "Read the current Core status view. Read-only MCP call; arguments are optional project_selector, optional-null task_id, and detail summary|workflow|full. No idempotency_key, expected_state_version, request_id, envelope, actor_source, or operation_category fields are accepted. Example read-only status: {\"task_id\":\"task_status_001\",\"detail\":\"workflow\"}",
       "input_schema": {
         "definitions": [
           "StatusDetailLevel"
@@ -102,7 +102,7 @@
       "name": "volicord.status"
     },
     {
-      "description": "Check one proposed product-file write against Core state.",
+      "description": "Check one proposed product-file write against Core state. MCP arguments exclude envelope fields; the adapter injects request metadata. Required root fields: task_id, change_unit_id, intended_operation, intended_paths, product_file_write_intended, sensitive_categories, baseline_ref. Use task_id:null or change_unit_id:null only when Core can resolve the current Task or Change Unit. Example: {\"task_id\":\"task_pref_001\",\"change_unit_id\":\"cu_pref_001\",\"intended_operation\":\"update profile preference save flow\",\"intended_paths\":[\"src/preferences/profile-save.ts\"],\"product_file_write_intended\":true,\"sensitive_categories\":[],\"baseline_ref\":\"baseline_pref_001\"}",
       "input_schema": {
         "definitions": [],
         "root_properties": [
@@ -160,7 +160,7 @@
       "name": "volicord.stage_artifact"
     },
     {
-      "description": "Record Evidence for a run, observation, or result, linking attachments when supplied.",
+      "description": "Record Evidence for a run, observation, or result, linking attachments when supplied. MCP arguments exclude envelope fields; the adapter injects request metadata. Required root fields: task_id, change_unit_id, kind, run_id, baseline_ref, write_ticket_id, summary, observed_changes, artifact_inputs, evidence_updates, evidence_observations, close_assessment. For no Product Repository file writes, set write_ticket_id:null and observed_changes to {\"changed_paths\":[],\"product_file_write_observed\":false,\"sensitive_categories\":[],\"baseline_ref\":\"<baseline>\"}. kind is shaping_update, implementation, or direct. Example no-product-file-change run: {\"task_id\":\"task_run_001\",\"change_unit_id\":\"cu_run_001\",\"kind\":\"implementation\",\"run_id\":null,\"baseline_ref\":\"baseline_run_001\",\"write_ticket_id\":null,\"summary\":\"No product files changed.\",\"observed_changes\":{\"changed_paths\":[],\"product_file_write_observed\":false,\"sensitive_categories\":[],\"baseline_ref\":\"baseline_run_001\"},\"artifact_inputs\":[],\"evidence_updates\":[],\"evidence_observations\":[],\"close_assessment\":null}",
       "input_schema": {
         "definitions": [
           "ActorSource",
@@ -219,7 +219,7 @@
       "name": "volicord.record_run"
     },
     {
-      "description": "Create one pending focused user-owned judgment.",
+      "description": "Create one pending focused user-owned judgment. MCP arguments exclude envelope fields; the adapter injects request metadata. Required root fields: task_id, change_unit_id, judgment_kind, presentation, question, context, affected_refs, required_for, expires_at. Options use option_id, label, description, consequence, is_default; use options:null for authority-bearing kinds such as final_acceptance because Core supplies authority options. context.visible_risks items use risk_id, summary, consequence, related_refs, accepted_for_close. Example final-acceptance request: {\"task_id\":\"task_close_001\",\"change_unit_id\":\"cu_close_001\",\"judgment_kind\":\"final_acceptance\",\"presentation\":\"short\",\"question\":\"Do you accept this result as complete?\",\"options\":null,\"context\":{\"summary\":\"Review the current close basis and decide final acceptance.\",\"related_refs\":[],\"artifact_refs\":[],\"visible_risks\":[],\"constraints\":[\"Only final acceptance for the current close basis is in scope.\"]},\"affected_refs\":[],\"required_for\":[\"close_complete\"],\"expires_at\":null}",
       "input_schema": {
         "definitions": [
           "AcceptedRiskInput",
@@ -287,7 +287,7 @@
       "name": "volicord.reconcile_changes"
     },
     {
-      "description": "Check Close Status for a selected Task.",
+      "description": "Check Close Status for a selected Task. Read-only MCP call; only task_id and optional project_selector are accepted. A missing final acceptance appears in the response as blockers[].code=missing_final_acceptance; it is not a request field. Example check-close request: {\"task_id\":\"task_close_001\"}",
       "input_schema": {
         "definitions": [],
         "root_properties": [

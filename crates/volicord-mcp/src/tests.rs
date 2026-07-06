@@ -18,13 +18,19 @@ use crate::local_web_consent::{parse_urlencoded, single_param};
 use crate::prelude::*;
 use crate::stdio::{
     classify_launch_origin, pending_judgment_from_response, percent_encode_query,
-    run_stdio_with_env_marker, McpLaunchOrigin,
+    run_stdio_with_env_marker, tool_execution_error_result, McpLaunchOrigin,
 };
 use crate::{
     routing::McpStorageCapability,
     tool_registry::{
-        mcp_tool_naming_style, mcp_tools_for_mode_and_storage,
+        canonical_tool_examples, mcp_tool_naming_style, mcp_tools_for_mode_and_storage,
         validate_tools_list_json_compatibility, validate_tools_list_schema_compatibility,
+        CHECK_CLOSE_MISSING_FINAL_ACCEPTANCE_EXAMPLE_ID, PREPARE_WRITE_SIMPLE_EXAMPLE_ID,
+        RECORD_RUN_NO_PRODUCT_FILE_CHANGE_ARGUMENTS_JSON,
+        RECORD_RUN_NO_PRODUCT_FILE_CHANGE_EXAMPLE_ID,
+        REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_ARGUMENTS_JSON,
+        REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_EXAMPLE_ID, STATUS_READ_ONLY_EXAMPLE_ID,
+        UPDATE_SCOPE_KEEP_CURRENT_EXAMPLE_ID,
     },
 };
 use volicord_core::CoreBoundary;
@@ -181,6 +187,184 @@ fn mcp_workflow_tools_have_valid_schemas() {
     assert_eq!(tool_names(&tools), expected);
     assert_eq!(mcp_tool_naming_style(&tools), "dotted_namespace");
     assert_compatible_tool_definitions(&tools);
+}
+
+#[test]
+fn record_run_schema_includes_minimal_no_write_example() {
+    let tool = tool_definition(RECORD_RUN_TOOL_NAME);
+
+    assert!(tool
+        .description
+        .contains("Example no-product-file-change run"));
+    assert!(tool
+        .description
+        .contains(RECORD_RUN_NO_PRODUCT_FILE_CHANGE_ARGUMENTS_JSON));
+    let example = canonical_example(
+        RECORD_RUN_TOOL_NAME,
+        RECORD_RUN_NO_PRODUCT_FILE_CHANGE_EXAMPLE_ID,
+    );
+    assert_eq!(
+        example.arguments_json,
+        RECORD_RUN_NO_PRODUCT_FILE_CHANGE_ARGUMENTS_JSON
+    );
+}
+
+#[test]
+fn request_user_judgment_schema_includes_final_acceptance_example() {
+    let tool = tool_definition(REQUEST_USER_JUDGMENT_TOOL_NAME);
+
+    assert!(tool
+        .description
+        .contains("Example final-acceptance request"));
+    assert!(tool
+        .description
+        .contains(REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_ARGUMENTS_JSON));
+    let example = canonical_example(
+        REQUEST_USER_JUDGMENT_TOOL_NAME,
+        REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_EXAMPLE_ID,
+    );
+    assert_eq!(
+        example.arguments_json,
+        REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_ARGUMENTS_JSON
+    );
+}
+
+#[test]
+fn workflow_tool_descriptions_include_status_check_close_and_scope_examples() {
+    for (tool_name, example_id, marker) in [
+        (
+            STATUS_TOOL_NAME,
+            STATUS_READ_ONLY_EXAMPLE_ID,
+            "Example read-only status",
+        ),
+        (
+            CHECK_CLOSE_TOOL_NAME,
+            CHECK_CLOSE_MISSING_FINAL_ACCEPTANCE_EXAMPLE_ID,
+            "missing final acceptance",
+        ),
+        (
+            UPDATE_SCOPE_TOOL_NAME,
+            UPDATE_SCOPE_KEEP_CURRENT_EXAMPLE_ID,
+            "Example keep-current Change Unit",
+        ),
+        (
+            PREPARE_WRITE_TOOL_NAME,
+            PREPARE_WRITE_SIMPLE_EXAMPLE_ID,
+            "Example",
+        ),
+    ] {
+        let tool = tool_definition(tool_name);
+        let example = canonical_example(tool_name, example_id);
+        assert!(
+            tool.description.contains(marker),
+            "{tool_name} description should contain marker `{marker}`"
+        );
+        assert!(
+            tool.description.contains(example.arguments_json),
+            "{tool_name} description should contain canonical example {}",
+            example.id
+        );
+        assert!(
+            !example.description.is_empty(),
+            "{tool_name} canonical example should describe its purpose"
+        );
+    }
+}
+
+#[test]
+fn canonical_no_product_file_change_record_run_example_validates() -> Result<(), Box<dyn Error>> {
+    let value = canonical_example_value(
+        RECORD_RUN_TOOL_NAME,
+        RECORD_RUN_NO_PRODUCT_FILE_CHANGE_EXAMPLE_ID,
+    )?;
+
+    serde_json::from_value::<McpRecordRunArguments>(value)?;
+    Ok(())
+}
+
+#[test]
+fn canonical_final_acceptance_request_user_judgment_example_validates() -> Result<(), Box<dyn Error>>
+{
+    let value = canonical_example_value(
+        REQUEST_USER_JUDGMENT_TOOL_NAME,
+        REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_EXAMPLE_ID,
+    )?;
+
+    serde_json::from_value::<McpRequestUserJudgmentArguments>(value)?;
+    Ok(())
+}
+
+#[test]
+fn canonical_mcp_guidance_examples_validate() -> Result<(), Box<dyn Error>> {
+    serde_json::from_value::<McpUpdateScopeArguments>(canonical_example_value(
+        UPDATE_SCOPE_TOOL_NAME,
+        UPDATE_SCOPE_KEEP_CURRENT_EXAMPLE_ID,
+    )?)?;
+    serde_json::from_value::<McpStatusArguments>(canonical_example_value(
+        STATUS_TOOL_NAME,
+        STATUS_READ_ONLY_EXAMPLE_ID,
+    )?)?;
+    serde_json::from_value::<McpPrepareWriteArguments>(canonical_example_value(
+        PREPARE_WRITE_TOOL_NAME,
+        PREPARE_WRITE_SIMPLE_EXAMPLE_ID,
+    )?)?;
+    serde_json::from_value::<McpCheckCloseArguments>(canonical_example_value(
+        CHECK_CLOSE_TOOL_NAME,
+        CHECK_CLOSE_MISSING_FINAL_ACCEPTANCE_EXAMPLE_ID,
+    )?)?;
+    Ok(())
+}
+
+#[test]
+fn record_run_invalid_observed_changes_reports_expected_shape() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-invalid-record-run-observed-changes")?;
+    let adapter = adapter(&fixture)?;
+    let mut arguments = canonical_example_value(
+        RECORD_RUN_TOOL_NAME,
+        RECORD_RUN_NO_PRODUCT_FILE_CHANGE_EXAMPLE_ID,
+    )?;
+    arguments["observed_changes"] = json!([]);
+
+    let error = adapter
+        .call_tool(RECORD_RUN_TOOL_NAME, arguments)
+        .expect_err("invalid observed_changes should fail before Core");
+    let text = tool_error_text(&error);
+
+    assert!(text.contains("Invalid arguments for volicord.record_run at observed_changes"));
+    assert!(text.contains("changed_paths"));
+    assert!(text.contains("product_file_write_observed"));
+    assert!(text.contains("baseline_ref"));
+    Ok(())
+}
+
+#[test]
+fn request_user_judgment_invalid_options_report_option_id_shape() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-invalid-judgment-options")?;
+    let adapter = adapter(&fixture)?;
+    let mut arguments = canonical_example_value(
+        REQUEST_USER_JUDGMENT_TOOL_NAME,
+        REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_EXAMPLE_ID,
+    )?;
+    arguments["judgment_kind"] = json!("product_decision");
+    arguments["options"] = json!([
+        {
+            "id": "accept",
+            "label": "Accept",
+            "description": "Record the user's selected option.",
+            "consequence": "The option is recorded for this judgment.",
+            "is_default": true
+        }
+    ]);
+
+    let error = adapter
+        .call_tool(REQUEST_USER_JUDGMENT_TOOL_NAME, arguments)
+        .expect_err("invalid options should fail before Core");
+    let text = tool_error_text(&error);
+
+    assert!(text.contains("Invalid arguments for volicord.request_user_judgment at options[0]"));
+    assert!(text.contains("expected option_id, not id"));
+    assert!(text.contains("label, description, consequence, is_default"));
+    Ok(())
 }
 
 #[test]
@@ -2771,6 +2955,40 @@ fn stored_judgment_record(
 
 fn tool_names(tools: &[McpToolDefinition]) -> Vec<&'static str> {
     tools.iter().map(|tool| tool.name).collect::<Vec<_>>()
+}
+
+fn tool_definition(tool_name: &str) -> McpToolDefinition {
+    mcp_tools_for_mode_and_storage(
+        AgentConnectionMode::Workflow,
+        McpStorageCapability::ReadWrite,
+    )
+    .into_iter()
+    .find(|tool| tool.name == tool_name)
+    .unwrap_or_else(|| panic!("missing tool definition for {tool_name}"))
+}
+
+fn canonical_example(
+    tool_name: &str,
+    example_id: &str,
+) -> &'static crate::tool_registry::McpToolExample {
+    canonical_tool_examples(tool_name)
+        .iter()
+        .find(|example| example.id == example_id)
+        .unwrap_or_else(|| panic!("missing canonical example {example_id} for {tool_name}"))
+}
+
+fn canonical_example_value(tool_name: &str, example_id: &str) -> Result<Value, Box<dyn Error>> {
+    Ok(serde_json::from_str(
+        canonical_example(tool_name, example_id).arguments_json,
+    )?)
+}
+
+fn tool_error_text(error: &McpAdapterError) -> String {
+    let result = tool_execution_error_result(error);
+    result["content"][0]["text"]
+        .as_str()
+        .expect("tool error text")
+        .to_owned()
 }
 
 fn tool_names_from_list_response(response: &Value) -> Vec<&str> {

@@ -11,6 +11,132 @@ pub struct McpToolDefinition {
     pub input_schema: Value,
 }
 
+#[cfg(test)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct McpToolExample {
+    pub id: &'static str,
+    pub description: &'static str,
+    pub arguments_json: &'static str,
+}
+
+macro_rules! update_scope_keep_current_example {
+    () => {
+        r#"{"task_id":"task_filter_001","goal_summary":"Limit saved search filters.","scope_update":{"include":["Saved-filter owner and label edits."],"exclude":[]},"scope_boundary":"Saved-filter owner and label edits.","non_goals":[],"acceptance_criteria":["Saved filters reject out-of-scope edits."],"autonomy_boundary":"Stay within saved-filter validation.","baseline_ref":"baseline_filter_001","change_unit":{"operation":"keep_current"},"related_scope_decision_refs":[]}"#
+    };
+}
+
+macro_rules! status_read_only_example {
+    () => {
+        r#"{"task_id":"task_status_001","detail":"workflow"}"#
+    };
+}
+
+macro_rules! prepare_write_simple_example {
+    () => {
+        r#"{"task_id":"task_pref_001","change_unit_id":"cu_pref_001","intended_operation":"update profile preference save flow","intended_paths":["src/preferences/profile-save.ts"],"product_file_write_intended":true,"sensitive_categories":[],"baseline_ref":"baseline_pref_001"}"#
+    };
+}
+
+macro_rules! record_run_no_product_file_change_example {
+    () => {
+        r#"{"task_id":"task_run_001","change_unit_id":"cu_run_001","kind":"implementation","run_id":null,"baseline_ref":"baseline_run_001","write_ticket_id":null,"summary":"No product files changed.","observed_changes":{"changed_paths":[],"product_file_write_observed":false,"sensitive_categories":[],"baseline_ref":"baseline_run_001"},"artifact_inputs":[],"evidence_updates":[],"evidence_observations":[],"close_assessment":null}"#
+    };
+}
+
+macro_rules! request_user_judgment_final_acceptance_example {
+    () => {
+        r#"{"task_id":"task_close_001","change_unit_id":"cu_close_001","judgment_kind":"final_acceptance","presentation":"short","question":"Do you accept this result as complete?","options":null,"context":{"summary":"Review the current close basis and decide final acceptance.","related_refs":[],"artifact_refs":[],"visible_risks":[],"constraints":["Only final acceptance for the current close basis is in scope."]},"affected_refs":[],"required_for":["close_complete"],"expires_at":null}"#
+    };
+}
+
+macro_rules! check_close_missing_final_acceptance_example {
+    () => {
+        r#"{"task_id":"task_close_001"}"#
+    };
+}
+
+#[cfg(test)]
+pub(crate) const UPDATE_SCOPE_KEEP_CURRENT_EXAMPLE_ID: &str = "keep_current_change_unit";
+#[cfg(test)]
+pub(crate) const STATUS_READ_ONLY_EXAMPLE_ID: &str = "read_only_status";
+#[cfg(test)]
+pub(crate) const PREPARE_WRITE_SIMPLE_EXAMPLE_ID: &str = "simple_prepare_write";
+#[cfg(test)]
+pub(crate) const RECORD_RUN_NO_PRODUCT_FILE_CHANGE_EXAMPLE_ID: &str =
+    "no_product_file_change_record_run";
+#[cfg(test)]
+pub(crate) const REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_EXAMPLE_ID: &str =
+    "final_acceptance_request";
+#[cfg(test)]
+pub(crate) const CHECK_CLOSE_MISSING_FINAL_ACCEPTANCE_EXAMPLE_ID: &str =
+    "check_close_missing_final_acceptance";
+
+pub(crate) const UPDATE_SCOPE_KEEP_CURRENT_ARGUMENTS_JSON: &str =
+    update_scope_keep_current_example!();
+pub(crate) const STATUS_READ_ONLY_ARGUMENTS_JSON: &str = status_read_only_example!();
+pub(crate) const PREPARE_WRITE_SIMPLE_ARGUMENTS_JSON: &str = prepare_write_simple_example!();
+pub(crate) const RECORD_RUN_NO_PRODUCT_FILE_CHANGE_ARGUMENTS_JSON: &str =
+    record_run_no_product_file_change_example!();
+pub(crate) const REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_ARGUMENTS_JSON: &str =
+    request_user_judgment_final_acceptance_example!();
+pub(crate) const CHECK_CLOSE_MISSING_FINAL_ACCEPTANCE_ARGUMENTS_JSON: &str =
+    check_close_missing_final_acceptance_example!();
+
+#[cfg(test)]
+const UPDATE_SCOPE_EXAMPLES: [McpToolExample; 1] = [McpToolExample {
+    id: UPDATE_SCOPE_KEEP_CURRENT_EXAMPLE_ID,
+    description: "Use an existing current Change Unit while updating selected scope fields.",
+    arguments_json: UPDATE_SCOPE_KEEP_CURRENT_ARGUMENTS_JSON,
+}];
+
+#[cfg(test)]
+const STATUS_EXAMPLES: [McpToolExample; 1] = [McpToolExample {
+    id: STATUS_READ_ONLY_EXAMPLE_ID,
+    description: "Read workflow status without creating Core state.",
+    arguments_json: STATUS_READ_ONLY_ARGUMENTS_JSON,
+}];
+
+#[cfg(test)]
+const PREPARE_WRITE_EXAMPLES: [McpToolExample; 1] = [McpToolExample {
+    id: PREPARE_WRITE_SIMPLE_EXAMPLE_ID,
+    description: "Check one product-file write intent for one Change Unit.",
+    arguments_json: PREPARE_WRITE_SIMPLE_ARGUMENTS_JSON,
+}];
+
+#[cfg(test)]
+const RECORD_RUN_EXAMPLES: [McpToolExample; 1] = [McpToolExample {
+    id: RECORD_RUN_NO_PRODUCT_FILE_CHANGE_EXAMPLE_ID,
+    description: "Record a run with no observed Product Repository file writes.",
+    arguments_json: RECORD_RUN_NO_PRODUCT_FILE_CHANGE_ARGUMENTS_JSON,
+}];
+
+#[cfg(test)]
+const REQUEST_USER_JUDGMENT_EXAMPLES: [McpToolExample; 1] = [McpToolExample {
+    id: REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_EXAMPLE_ID,
+    description: "Request final acceptance; Core supplies authority options.",
+    arguments_json: REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_ARGUMENTS_JSON,
+}];
+
+#[cfg(test)]
+const CHECK_CLOSE_EXAMPLES: [McpToolExample; 1] = [McpToolExample {
+    id: CHECK_CLOSE_MISSING_FINAL_ACCEPTANCE_EXAMPLE_ID,
+    description: "Check close readiness; missing final acceptance is a response blocker.",
+    arguments_json: CHECK_CLOSE_MISSING_FINAL_ACCEPTANCE_ARGUMENTS_JSON,
+}];
+
+#[cfg(test)]
+pub(crate) fn canonical_tool_examples(tool_name: &str) -> &'static [McpToolExample] {
+    match tool_name {
+        UPDATE_SCOPE_TOOL_NAME => &UPDATE_SCOPE_EXAMPLES,
+        STATUS_TOOL_NAME => &STATUS_EXAMPLES,
+        PREPARE_WRITE_TOOL_NAME => &PREPARE_WRITE_EXAMPLES,
+        RECORD_RUN_TOOL_NAME => &RECORD_RUN_EXAMPLES,
+        REQUEST_USER_JUDGMENT_TOOL_NAME => &REQUEST_USER_JUDGMENT_EXAMPLES,
+        CHECK_CLOSE_TOOL_NAME => &CHECK_CLOSE_EXAMPLES,
+        _ => &[],
+    }
+}
+
 pub fn public_method_tools() -> Vec<McpToolDefinition> {
     method_tools(PUBLIC_METHOD_TOOL_NAMES)
 }
@@ -148,20 +274,48 @@ pub(crate) fn method_tools<const N: usize>(names: [&'static str; N]) -> Vec<McpT
 pub(crate) fn tool_description(name: &str) -> &'static str {
     match name {
         INTAKE_TOOL_NAME => "Start, resume, supersede, or reject an ordinary user work loop.",
-        UPDATE_SCOPE_TOOL_NAME => "Update current Task scope and Change Unit state.",
-        STATUS_TOOL_NAME => "Read the current Core status view.",
-        PREPARE_WRITE_TOOL_NAME => "Check one proposed product-file write against Core state.",
+        UPDATE_SCOPE_TOOL_NAME => concat!(
+            "Update current Task scope and Change Unit state. MCP arguments exclude envelope fields; the adapter injects project_id, request_id, idempotency_key, expected_state_version, dry_run=false, and locale. ",
+            "Required root fields: task_id, goal_summary, scope_update, scope_boundary, non_goals, acceptance_criteria, autonomy_boundary, baseline_ref, change_unit, related_scope_decision_refs. ",
+            "Use null to leave nullable scope fields unchanged. change_unit.operation is keep_current, create_current, or replace_current. Example keep-current Change Unit: ",
+            update_scope_keep_current_example!()
+        ),
+        STATUS_TOOL_NAME => concat!(
+            "Read the current Core status view. Read-only MCP call; arguments are optional project_selector, optional-null task_id, and detail summary|workflow|full. ",
+            "No idempotency_key, expected_state_version, request_id, envelope, actor_source, or operation_category fields are accepted. Example read-only status: ",
+            status_read_only_example!()
+        ),
+        PREPARE_WRITE_TOOL_NAME => concat!(
+            "Check one proposed product-file write against Core state. MCP arguments exclude envelope fields; the adapter injects request metadata. ",
+            "Required root fields: task_id, change_unit_id, intended_operation, intended_paths, product_file_write_intended, sensitive_categories, baseline_ref. ",
+            "Use task_id:null or change_unit_id:null only when Core can resolve the current Task or Change Unit. Example: ",
+            prepare_write_simple_example!()
+        ),
         STAGE_ARTIFACT_TOOL_NAME => {
             "Prepare an Evidence attachment input; staging alone is not recorded Evidence."
         }
-        RECORD_RUN_TOOL_NAME => {
-            "Record Evidence for a run, observation, or result, linking attachments when supplied."
-        }
-        REQUEST_USER_JUDGMENT_TOOL_NAME => "Create one pending focused user-owned judgment.",
+        RECORD_RUN_TOOL_NAME => concat!(
+            "Record Evidence for a run, observation, or result, linking attachments when supplied. MCP arguments exclude envelope fields; the adapter injects request metadata. ",
+            "Required root fields: task_id, change_unit_id, kind, run_id, baseline_ref, write_ticket_id, summary, observed_changes, artifact_inputs, evidence_updates, evidence_observations, close_assessment. ",
+            "For no Product Repository file writes, set write_ticket_id:null and observed_changes to {\"changed_paths\":[],\"product_file_write_observed\":false,\"sensitive_categories\":[],\"baseline_ref\":\"<baseline>\"}. ",
+            "kind is shaping_update, implementation, or direct. Example no-product-file-change run: ",
+            record_run_no_product_file_change_example!()
+        ),
+        REQUEST_USER_JUDGMENT_TOOL_NAME => concat!(
+            "Create one pending focused user-owned judgment. MCP arguments exclude envelope fields; the adapter injects request metadata. ",
+            "Required root fields: task_id, change_unit_id, judgment_kind, presentation, question, context, affected_refs, required_for, expires_at. ",
+            "Options use option_id, label, description, consequence, is_default; use options:null for authority-bearing kinds such as final_acceptance because Core supplies authority options. ",
+            "context.visible_risks items use risk_id, summary, consequence, related_refs, accepted_for_close. Example final-acceptance request: ",
+            request_user_judgment_final_acceptance_example!()
+        ),
         RECONCILE_CHANGES_TOOL_NAME => {
             "Reconcile unresolved unrecorded Product Repository changes."
         }
-        CHECK_CLOSE_TOOL_NAME => "Check Close Status for a selected Task.",
+        CHECK_CLOSE_TOOL_NAME => concat!(
+            "Check Close Status for a selected Task. Read-only MCP call; only task_id and optional project_selector are accepted. ",
+            "A missing final acceptance appears in the response as blockers[].code=missing_final_acceptance; it is not a request field. Example check-close request: ",
+            check_close_missing_final_acceptance_example!()
+        ),
         CLOSE_TASK_TOOL_NAME => "Perform a selected Task close path.",
         LIST_PROJECTS_TOOL_NAME => "List projects explicitly allowed for this MCP connection.",
         _ => "Unsupported Volicord method.",

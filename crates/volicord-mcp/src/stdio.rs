@@ -1671,9 +1671,18 @@ pub(crate) fn is_known_mcp_tool(tool_name: &str) -> bool {
 
 pub(crate) fn tool_execution_error_result(error: &McpAdapterError) -> Value {
     let text = match error {
-        McpAdapterError::InvalidParams { tool_name, source } => {
-            format!("Invalid arguments for {tool_name}: {source}. Check the tool input schema and retry.")
-        }
+        McpAdapterError::InvalidParams {
+            tool_name,
+            source,
+            guidance,
+        } => match guidance {
+            Some(guidance) => {
+                format!("Invalid arguments for {tool_name} {guidance}. Decoder detail: {source}.")
+            }
+            None => {
+                format!("Invalid arguments for {tool_name}: {source}. Check the tool input schema and retry.")
+            }
+        },
         McpAdapterError::ToolExecution { tool_name, message } if tool_name == "project routing" => {
             format!("{message}. Use volicord.list_projects when project selection is unclear.")
         }

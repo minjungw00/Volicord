@@ -16,7 +16,7 @@
   "connection_mode": "read_only",
   "tools": [
     {
-      "description": "Read the current Core status view.",
+      "description": "Read the current Core status view. Read-only MCP call; arguments are optional project_selector, optional-null task_id, and detail summary|workflow|full. No idempotency_key, expected_state_version, request_id, envelope, actor_source, or operation_category fields are accepted. Example read-only status: {\"task_id\":\"task_status_001\",\"detail\":\"workflow\"}",
       "input_schema": {
         "definitions": [
           "StatusDetailLevel"
@@ -32,7 +32,7 @@
       "name": "volicord.status"
     },
     {
-      "description": "Check Close Status for a selected Task.",
+      "description": "Check Close Status for a selected Task. Read-only MCP call; only task_id and optional project_selector are accepted. A missing final acceptance appears in the response as blockers[].code=missing_final_acceptance; it is not a request field. Example check-close request: {\"task_id\":\"task_close_001\"}",
       "input_schema": {
         "definitions": [],
         "root_properties": [

@@ -1395,11 +1395,517 @@ impl McpAdapter {
     where
         T: serde::de::DeserializeOwned,
     {
+        let diagnostic_params = params.clone();
         serde_json::from_value(params).map_err(|source| McpAdapterError::InvalidParams {
             tool_name: tool_name.to_owned(),
+            guidance: invalid_argument_guidance(tool_name, &diagnostic_params, &source),
             source,
         })
     }
+}
+
+fn invalid_argument_guidance(
+    tool_name: &str,
+    params: &Value,
+    source: &serde_json::Error,
+) -> Option<String> {
+    let source_text = source.to_string();
+    match tool_name {
+        RECORD_RUN_TOOL_NAME => record_run_invalid_argument_guidance(params, &source_text),
+        REQUEST_USER_JUDGMENT_TOOL_NAME => {
+            request_user_judgment_invalid_argument_guidance(params, &source_text)
+        }
+        UPDATE_SCOPE_TOOL_NAME => update_scope_invalid_argument_guidance(params, &source_text),
+        PREPARE_WRITE_TOOL_NAME => prepare_write_invalid_argument_guidance(params, &source_text),
+        STATUS_TOOL_NAME => status_invalid_argument_guidance(params, &source_text),
+        CHECK_CLOSE_TOOL_NAME => check_close_invalid_argument_guidance(params, &source_text),
+        _ => None,
+    }
+}
+
+fn record_run_invalid_argument_guidance(params: &Value, source: &str) -> Option<String> {
+    object_shape_guidance(
+        params.get("observed_changes"),
+        "observed_changes",
+        &[
+            "changed_paths",
+            "product_file_write_observed",
+            "sensitive_categories",
+            "baseline_ref",
+        ],
+        r#"{"changed_paths":[],"product_file_write_observed":false,"sensitive_categories":[],"baseline_ref":"baseline_001"}"#,
+    )
+    .or_else(|| {
+        array_item_shape_guidance(
+            params.get("artifact_inputs"),
+            "artifact_inputs",
+            &[
+                "artifact_input_id",
+                "source_kind",
+                "staged_artifact_handle",
+                "existing_artifact_ref",
+                "relation_hint",
+                "claim",
+                "expected_sha256",
+                "expected_size_bytes",
+                "redaction_state",
+            ],
+            r#"{"artifact_input_id":"artifact_input_001","source_kind":"existing_artifact","staged_artifact_handle":null,"existing_artifact_ref":null,"relation_hint":null,"claim":null,"expected_sha256":null,"expected_size_bytes":null,"redaction_state":null}"#,
+        )
+    })
+    .or_else(|| {
+        array_item_shape_guidance(
+            params.get("evidence_observations"),
+            "evidence_observations",
+            &[
+                "claim",
+                "source_kind",
+                "assurance_level",
+                "observed_by_actor_source",
+                "tool_name",
+                "tool_invocation_id",
+                "tool_metadata",
+                "input_refs",
+                "output_artifact_refs",
+                "limitations",
+                "observed_at",
+            ],
+            r#"{"claim":"Verified behavior.","source_kind":"external_tool","assurance_level":"external_tool_result","observed_by_actor_source":null,"tool_name":null,"tool_invocation_id":null,"tool_metadata":{},"input_refs":[],"output_artifact_refs":[],"limitations":[],"observed_at":"2026-06-18T00:00:00Z"}"#,
+        )
+    })
+    .or_else(|| {
+        string_value_guidance(
+            params,
+            "kind",
+            &["shaping_update", "implementation", "direct"],
+        )
+    })
+    .or_else(|| root_shape_guidance_for_source(params, source, record_run_root_fields(), crate::tool_registry::RECORD_RUN_NO_PRODUCT_FILE_CHANGE_ARGUMENTS_JSON))
+}
+
+fn request_user_judgment_invalid_argument_guidance(params: &Value, source: &str) -> Option<String> {
+    options_shape_guidance(params)
+        .or_else(|| {
+            object_shape_guidance(
+                params.get("context"),
+                "context",
+                &[
+                    "summary",
+                    "related_refs",
+                    "artifact_refs",
+                    "visible_risks",
+                    "constraints",
+                ],
+                r#"{"summary":"User-visible context.","related_refs":[],"artifact_refs":[],"visible_risks":[],"constraints":[]}"#,
+            )
+        })
+        .or_else(|| {
+            array_item_shape_guidance(
+                params.pointer("/context/visible_risks"),
+                "context.visible_risks",
+                &[
+                    "risk_id",
+                    "summary",
+                    "consequence",
+                    "related_refs",
+                    "accepted_for_close",
+                ],
+                r#"{"risk_id":"risk_001","summary":"Known risk.","consequence":"User-visible consequence.","related_refs":[],"accepted_for_close":false}"#,
+            )
+        })
+        .or_else(|| {
+            array_item_shape_guidance(
+                params.get("affected_refs"),
+                "affected_refs",
+                state_record_ref_fields(),
+                state_record_ref_skeleton(),
+            )
+        })
+        .or_else(|| {
+            string_value_guidance(
+                params,
+                "judgment_kind",
+                &[
+                    "product_decision",
+                    "technical_decision",
+                    "scope_decision",
+                    "sensitive_approval",
+                    "final_acceptance",
+                    "residual_risk_acceptance",
+                    "cancellation",
+                ],
+            )
+        })
+        .or_else(|| string_value_guidance(params, "presentation", &["short"]))
+        .or_else(|| {
+            array_string_values_guidance(
+                params.get("required_for"),
+                "required_for",
+                &[
+                    "scope_update",
+                    "prepare_write",
+                    "record_run",
+                    "close_complete",
+                    "close_cancel",
+                    "close_supersede",
+                    "informational",
+                ],
+            )
+        })
+        .or_else(|| root_shape_guidance_for_source(params, source, request_user_judgment_root_fields(), crate::tool_registry::REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_ARGUMENTS_JSON))
+}
+
+fn update_scope_invalid_argument_guidance(params: &Value, source: &str) -> Option<String> {
+    object_shape_guidance(
+        params.get("change_unit"),
+        "change_unit",
+        &["operation"],
+        r#"{"operation":"keep_current"}"#,
+    )
+    .or_else(|| {
+        params.pointer("/change_unit/operation").and_then(|_| {
+            nested_string_value_guidance(
+                params,
+                "/change_unit/operation",
+                "change_unit.operation",
+                &["keep_current", "create_current", "replace_current"],
+            )
+        })
+    })
+    .or_else(|| {
+        root_shape_guidance_for_source(
+            params,
+            source,
+            update_scope_root_fields(),
+            crate::tool_registry::UPDATE_SCOPE_KEEP_CURRENT_ARGUMENTS_JSON,
+        )
+    })
+}
+
+fn prepare_write_invalid_argument_guidance(params: &Value, source: &str) -> Option<String> {
+    root_shape_guidance_for_source(
+        params,
+        source,
+        prepare_write_root_fields(),
+        crate::tool_registry::PREPARE_WRITE_SIMPLE_ARGUMENTS_JSON,
+    )
+}
+
+fn status_invalid_argument_guidance(params: &Value, source: &str) -> Option<String> {
+    string_value_guidance(params, "detail", &["summary", "workflow", "full"]).or_else(|| {
+        root_shape_guidance_for_source(
+            params,
+            source,
+            status_root_fields(),
+            crate::tool_registry::STATUS_READ_ONLY_ARGUMENTS_JSON,
+        )
+    })
+}
+
+fn check_close_invalid_argument_guidance(params: &Value, source: &str) -> Option<String> {
+    root_shape_guidance_for_source(
+        params,
+        source,
+        check_close_root_fields(),
+        crate::tool_registry::CHECK_CLOSE_MISSING_FINAL_ACCEPTANCE_ARGUMENTS_JSON,
+    )
+}
+
+fn options_shape_guidance(params: &Value) -> Option<String> {
+    let options = params.get("options")?;
+    match options {
+        Value::Null => None,
+        Value::Array(items) => {
+            for (index, item) in items.iter().enumerate() {
+                let path = format!("options[{index}]");
+                let Some(object) = item.as_object() else {
+                    return Some(format!(
+                        "at {path}: expected object with fields {}. Valid skeleton: {}",
+                        field_set(option_input_fields()),
+                        option_input_skeleton()
+                    ));
+                };
+                if object.contains_key("id") && !object.contains_key("option_id") {
+                    return Some(format!(
+                        "at {path}: expected option_id, not id. Expected object with fields {}. Valid skeleton: {}",
+                        field_set(option_input_fields()),
+                        option_input_skeleton()
+                    ));
+                }
+                if let Some(message) = object_field_problem(
+                    object,
+                    &path,
+                    option_input_fields(),
+                    option_input_skeleton(),
+                ) {
+                    return Some(message);
+                }
+            }
+            None
+        }
+        _ => Some(format!(
+            "at options: expected null or an array of objects with fields {}. Valid skeleton: [{}]",
+            field_set(option_input_fields()),
+            option_input_skeleton()
+        )),
+    }
+}
+
+fn object_shape_guidance(
+    value: Option<&Value>,
+    path: &str,
+    fields: &[&str],
+    skeleton: &str,
+) -> Option<String> {
+    match value {
+        None => Some(format!(
+            "at {path}: missing required object. Expected fields {}. Valid skeleton: {skeleton}",
+            field_set(fields)
+        )),
+        Some(Value::Object(object)) => object_field_problem(object, path, fields, skeleton),
+        Some(_) => Some(format!(
+            "at {path}: expected object with fields {}. Valid skeleton: {skeleton}",
+            field_set(fields)
+        )),
+    }
+}
+
+fn array_item_shape_guidance(
+    value: Option<&Value>,
+    path: &str,
+    fields: &[&str],
+    skeleton: &str,
+) -> Option<String> {
+    let value = value?;
+    let Value::Array(items) = value else {
+        return Some(format!(
+            "at {path}: expected array of objects with fields {}. Valid item skeleton: {skeleton}",
+            field_set(fields)
+        ));
+    };
+    for (index, item) in items.iter().enumerate() {
+        let item_path = format!("{path}[{index}]");
+        let Some(object) = item.as_object() else {
+            return Some(format!(
+                "at {item_path}: expected object with fields {}. Valid skeleton: {skeleton}",
+                field_set(fields)
+            ));
+        };
+        if let Some(message) = object_field_problem(object, &item_path, fields, skeleton) {
+            return Some(message);
+        }
+    }
+    None
+}
+
+fn object_field_problem(
+    object: &Map<String, Value>,
+    path: &str,
+    fields: &[&str],
+    skeleton: &str,
+) -> Option<String> {
+    let missing = fields
+        .iter()
+        .copied()
+        .filter(|field| !object.contains_key(*field))
+        .collect::<Vec<_>>();
+    let unknown = object
+        .keys()
+        .filter(|field| !fields.contains(&field.as_str()))
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    if missing.is_empty() && unknown.is_empty() {
+        return None;
+    }
+
+    let mut parts = Vec::new();
+    if !missing.is_empty() {
+        parts.push(format!("missing {}", missing.join(", ")));
+    }
+    if !unknown.is_empty() {
+        parts.push(format!("unknown {}", unknown.join(", ")));
+    }
+    Some(format!(
+        "at {path}: {}. Expected fields {}. Valid skeleton: {skeleton}",
+        parts.join("; "),
+        field_set(fields)
+    ))
+}
+
+fn root_shape_guidance_for_source(
+    params: &Value,
+    source: &str,
+    fields: &[&str],
+    skeleton: &str,
+) -> Option<String> {
+    if !source.contains("missing field") && !source.contains("unknown field") {
+        return None;
+    }
+    object_shape_guidance(Some(params), "arguments", fields, skeleton)
+}
+
+fn string_value_guidance(params: &Value, field: &str, allowed: &[&str]) -> Option<String> {
+    let Some(Value::String(value)) = params.get(field) else {
+        return None;
+    };
+    if allowed.contains(&value.as_str()) {
+        return None;
+    }
+    Some(format!(
+        "at {field}: unsupported value `{value}`; expected one of {}",
+        value_set(allowed)
+    ))
+}
+
+fn nested_string_value_guidance(
+    params: &Value,
+    pointer: &str,
+    path: &str,
+    allowed: &[&str],
+) -> Option<String> {
+    let Some(Value::String(value)) = params.pointer(pointer) else {
+        return None;
+    };
+    if allowed.contains(&value.as_str()) {
+        return None;
+    }
+    Some(format!(
+        "at {path}: unsupported value `{value}`; expected one of {}",
+        value_set(allowed)
+    ))
+}
+
+fn array_string_values_guidance(
+    value: Option<&Value>,
+    path: &str,
+    allowed: &[&str],
+) -> Option<String> {
+    let Some(Value::Array(items)) = value else {
+        return None;
+    };
+    for (index, item) in items.iter().enumerate() {
+        let Some(value) = item.as_str() else {
+            return Some(format!(
+                "at {path}[{index}]: expected string value from {}",
+                value_set(allowed)
+            ));
+        };
+        if !allowed.contains(&value) {
+            return Some(format!(
+                "at {path}[{index}]: unsupported value `{value}`; expected one of {}",
+                value_set(allowed)
+            ));
+        }
+    }
+    None
+}
+
+fn field_set(fields: &[&str]) -> String {
+    format!("{{ {} }}", fields.join(", "))
+}
+
+fn value_set(values: &[&str]) -> String {
+    format!("{{ {} }}", values.join(", "))
+}
+
+fn record_run_root_fields() -> &'static [&'static str] {
+    &[
+        "project_selector",
+        "task_id",
+        "change_unit_id",
+        "kind",
+        "run_id",
+        "baseline_ref",
+        "write_ticket_id",
+        "summary",
+        "observed_changes",
+        "artifact_inputs",
+        "evidence_updates",
+        "evidence_observations",
+        "close_assessment",
+    ]
+}
+
+fn request_user_judgment_root_fields() -> &'static [&'static str] {
+    &[
+        "project_selector",
+        "task_id",
+        "change_unit_id",
+        "sensitive_action_scope",
+        "judgment_kind",
+        "presentation",
+        "question",
+        "options",
+        "context",
+        "affected_refs",
+        "required_for",
+        "expires_at",
+    ]
+}
+
+fn update_scope_root_fields() -> &'static [&'static str] {
+    &[
+        "project_selector",
+        "task_id",
+        "goal_summary",
+        "scope_update",
+        "scope_boundary",
+        "non_goals",
+        "acceptance_criteria",
+        "autonomy_boundary",
+        "baseline_ref",
+        "change_unit",
+        "related_scope_decision_refs",
+    ]
+}
+
+fn prepare_write_root_fields() -> &'static [&'static str] {
+    &[
+        "project_selector",
+        "task_id",
+        "change_unit_id",
+        "intended_operation",
+        "intended_paths",
+        "product_file_write_intended",
+        "sensitive_categories",
+        "baseline_ref",
+    ]
+}
+
+fn status_root_fields() -> &'static [&'static str] {
+    &["project_selector", "task_id", "detail"]
+}
+
+fn check_close_root_fields() -> &'static [&'static str] {
+    &["project_selector", "task_id"]
+}
+
+fn option_input_fields() -> &'static [&'static str] {
+    &[
+        "option_id",
+        "label",
+        "description",
+        "consequence",
+        "is_default",
+    ]
+}
+
+fn option_input_skeleton() -> &'static str {
+    r#"{"option_id":"accept","label":"Accept","description":"Record the user's selected option.","consequence":"The option is recorded for this judgment.","is_default":true}"#
+}
+
+fn state_record_ref_fields() -> &'static [&'static str] {
+    &[
+        "record_kind",
+        "record_id",
+        "project_id",
+        "task_id",
+        "state_version",
+    ]
+}
+
+fn state_record_ref_skeleton() -> &'static str {
+    r#"{"record_kind":"task","record_id":"task_001","project_id":"proj_001","task_id":"task_001","state_version":1}"#
 }
 
 fn startup_observation_storage_is_readonly(error: &McpAdapterError) -> bool {

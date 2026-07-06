@@ -32,6 +32,7 @@ pub enum McpAdapterError {
     InvalidParams {
         tool_name: String,
         source: serde_json::Error,
+        guidance: Option<String>,
     },
     ToolExecution {
         tool_name: String,
@@ -49,8 +50,16 @@ impl fmt::Display for McpAdapterError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::UnknownTool(tool_name) => write!(formatter, "unknown MCP tool: {tool_name}"),
-            Self::InvalidParams { tool_name, source } => {
-                write!(formatter, "invalid params for {tool_name}: {source}")
+            Self::InvalidParams {
+                tool_name,
+                source,
+                guidance,
+            } => {
+                write!(formatter, "invalid params for {tool_name}: {source}")?;
+                if let Some(guidance) = guidance {
+                    write!(formatter, "; {guidance}")?;
+                }
+                Ok(())
             }
             Self::ToolExecution { tool_name, message } => {
                 write!(formatter, "{tool_name}: {message}")
