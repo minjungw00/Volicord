@@ -538,22 +538,6 @@ pub fn managed_fingerprint(
     digest_json(&payload)
 }
 
-pub(crate) fn unmanaged_fingerprint(
-    host_kind: HostKind,
-    host_scope: HostScope,
-    server_name: &str,
-    raw: &str,
-) -> String {
-    let payload = json!({
-        "format": "volicord-host-entry-v1",
-        "host_kind": host_kind.as_str(),
-        "host_scope": host_scope.as_str(),
-        "server_name": server_name,
-        "raw": raw,
-    });
-    digest_json(&payload)
-}
-
 fn digest_json(value: &Value) -> String {
     let bytes = serde_json::to_vec(value).expect("JSON fingerprint payload should serialize");
     let digest = Sha256::digest(bytes);

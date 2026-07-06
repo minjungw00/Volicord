@@ -810,7 +810,9 @@ fn verification_from_claude_output(plan: &HostPlan, output: &CommandOutput) -> V
 fn verification_from_managed_status(status: ManagedConfigStatus, details: String) -> Verification {
     match status {
         ManagedConfigStatus::Missing => Verification::missing(details),
-        ManagedConfigStatus::Changed => Verification::changed(details),
+        ManagedConfigStatus::Unmanaged | ManagedConfigStatus::Changed => {
+            Verification::changed(details)
+        }
         ManagedConfigStatus::Malformed => Verification::failed(details)
             .with_managed_config(ManagedConfigStatus::Malformed)
             .with_host_configuration(HostConfigurationStatus::Malformed),

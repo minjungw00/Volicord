@@ -463,7 +463,8 @@ Codex 연결 검증은 아래 진단 개념을 분리해 유지합니다.
 
 | 진단 개념 | Text 출력 표면 | JSON 진단 표면 | 의미 |
 |---|---|---|---|
-| MCP 설정 일치 | `MCP configuration` 또는 `Current MCP configuration` | host check 세부사항과 관리 설정 필드 | 관리 Codex MCP server 항목이 기대하는 Volicord 생성 command, args, 관리 시작 출처 환경 변수 마커와 일치합니다. |
+| MCP 설정 일치 | `MCP configuration` 또는 `Current MCP configuration` | `managed_config`를 포함한 host check 세부사항과 관리 설정 필드 | 관리 Codex MCP server 항목이 기대하는 Volicord 생성 command, args, 관리 시작 출처 환경 변수 마커와 일치합니다. 허용된 Codex 도구 승인 정책 overlay는 이 일치를 바꾸지 않습니다. Volicord 관리 마커가 없는 항목은 `managed_config=unmanaged`를 보고할 수 있으며, command, args, 관리 마커 drift는 계속 불일치입니다. |
+| Codex 도구 승인 정책 | 있을 때 `Codex tool approval policy` | 있을 때 `verification.host.host_policy_overlay`와 `id=codex_tool_approval_policy`인 `checks[]` 항목 | Codex가 소유하는 `tools.<known Volicord tool>.approval_mode` 하위 table은 `kind=codex_tool_approval`인 허용된 host policy overlay로 보고됩니다. 이 진단은 호스트 trust, 활성 도구 노출, 실행 중인 Codex session의 승인을 증명하지 않습니다. |
 | CLI MCP preflight와 handshake | `CLI MCP preflight`, `CLI MCP handshake`, `Last CLI MCP preflight`, `Last CLI MCP handshake` | `id=cli_mcp_preflight`와 `id=cli_mcp_handshake`인 `checks[]` 항목, 그리고 verification report 필드 | CLI verification 경로가 Volicord의 MCP 서버를 직접 시작하고 통신했습니다. 이는 CLI가 관찰할 수 있는 MCP 프로세스를 검증하며 활성 Codex 도구 노출을 뜻하지 않습니다. |
 | CLI MCP 저장 capability | `CLI MCP storage read`, `CLI MCP storage write`, `CLI MCP effective tools` | 가능할 때 `id=cli_mcp_storage_read`, `id=cli_mcp_storage_write`, `id=cli_mcp_effective_tools`인 `checks[]` 항목 | CLI MCP 검증 프로세스에서 관찰한 저장 capability입니다. 관리 Codex 호스트에서 관찰한 저장 capability와 별개입니다. |
 | Codex 프로젝트 trust | `Codex project trust` | 가능할 때 `verification.project_trust`와 `id=codex_project_trust`인 `checks[]` 항목 | Codex 사용자 설정이 프로젝트를 `trusted`, `untrusted`, `unknown`, 또는 그 밖의 trust 미확인 상태로 표시합니다. |

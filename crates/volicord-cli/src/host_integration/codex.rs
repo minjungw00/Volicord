@@ -1,25 +1,28 @@
 use std::{
     cell::RefCell,
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     ffi::OsString,
     fs,
     path::{Path, PathBuf},
 };
 
 use toml_edit::{value, Array, DocumentMut, Item, Table};
+use volicord_types::{
+    ADAPTER_UTILITY_TOOL_NAMES, READ_ONLY_METHOD_TOOL_NAMES, WORKFLOW_METHOD_TOOL_NAMES,
+};
 
 use super::{
     claude_code::{CommandInvocation, CommandRunner, ProductionCommandRunner},
     config_edit::{read_text_snapshot, write_if_fresh, FileSnapshot},
-    format_supported_connection_intents, is_volicord_managed_entry, managed_fingerprint,
-    unmanaged_fingerprint, validated_server_name, ConnectionIntent, HostAdapter, HostConfigError,
-    HostConflict, HostConflictKind, HostDetection, HostEffect, HostKind, HostPlan, HostPlanRequest,
-    HostRemoveRequest, HostScope, HostTarget, InstallationProfile, ManagedServerEntry,
-    PlannedChange, ProjectContext, UserAction, UserActionKind, DEFAULT_MCP_COMMAND,
+    format_supported_connection_intents, managed_fingerprint, validated_server_name,
+    ConnectionIntent, HostAdapter, HostConfigError, HostConflict, HostConflictKind, HostDetection,
+    HostEffect, HostKind, HostPlan, HostPlanRequest, HostRemoveRequest, HostScope, HostTarget,
+    InstallationProfile, ManagedServerEntry, PlannedChange, ProjectContext, UserAction,
+    UserActionKind, DEFAULT_MCP_COMMAND,
 };
 use crate::host_integration::verification::{
-    HostConfigurationStatus, HostExecutableStatus, HostGateStatus, ManagedConfigStatus,
-    ProjectTrustDiagnostic, ProjectTrustStatus, Verification,
+    HostConfigurationStatus, HostExecutableStatus, HostGateStatus, HostPolicyOverlayDiagnostic,
+    ManagedConfigStatus, ProjectTrustDiagnostic, ProjectTrustStatus, Verification,
 };
 use crate::host_integration::HostCapabilities;
 
@@ -29,6 +32,7 @@ const VOLICORD_MCP_CONNECTION_ID: &str = "VOLICORD_MCP_CONNECTION_ID";
 const VOLICORD_MCP_PROJECT_ID: &str = "VOLICORD_MCP_PROJECT_ID";
 const MANAGED_HOST_LAUNCH_VALUE: &str = "managed_host";
 const CODEX_HOST_VALUE: &str = "codex";
+const CODEX_TOOL_APPROVAL_OVERLAY_KIND: &str = "codex_tool_approval";
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CodexEnvironment {
@@ -330,7 +334,8 @@ impl<R: CommandRunner> HostAdapter for CodexAdapter<R> {
             _ => Path::new("unknown Codex configuration target"),
         };
         let executable = self.executable_availability(config_target);
-        let managed = verify_codex_entry(plan)?;
+        let managed_evaluation = verify_codex_entry(plan)?;
+        let managed = managed_evaluation.status;
         if managed != ManagedConfigStatus::Match {
             let mut verification = verification_from_managed_status(
                 managed,
@@ -341,6 +346,9 @@ impl<R: CommandRunner> HostAdapter for CodexAdapter<R> {
                 ),
             )
             .with_host_executable(executable.status);
+            if let Some(overlay) = managed_evaluation.host_policy_overlay {
+                verification = verification.with_host_policy_overlay(overlay);
+            }
             if let Some(diagnostic) = executable.diagnostic {
                 verification = verification.with_diagnostic(diagnostic);
             }
@@ -350,6 +358,9 @@ impl<R: CommandRunner> HostAdapter for CodexAdapter<R> {
             let project_trust = project_trust_for_plan(&self.env, plan);
             if !executable.is_available() {
                 let mut verification = verification_from_executable_unavailable(executable);
+                if let Some(overlay) = managed_evaluation.host_policy_overlay {
+                    verification = verification.with_host_policy_overlay(overlay);
+                }
                 verification = verification.with_project_trust(project_trust);
                 return Ok(verification.merge_user_actions(&plan.user_actions));
             }
@@ -382,19 +393,28 @@ impl<R: CommandRunner> HostAdapter for CodexAdapter<R> {
                 .with_host_gate(HostGateStatus::Unknown)
                 .with_mcp_handshake_allowed(true),
             };
+            if let Some(overlay) = managed_evaluation.host_policy_overlay {
+                verification = verification.with_host_policy_overlay(overlay);
+            }
             verification = verification.with_project_trust(project_trust);
             return Ok(verification.merge_user_actions(&plan.user_actions));
         }
         if !executable.is_available() {
-            return Ok(verification_from_executable_unavailable(executable)
-                .merge_user_actions(&plan.user_actions));
+            let mut verification = verification_from_executable_unavailable(executable);
+            if let Some(overlay) = managed_evaluation.host_policy_overlay {
+                verification = verification.with_host_policy_overlay(overlay);
+            }
+            return Ok(verification.merge_user_actions(&plan.user_actions));
         }
-        Ok(Verification::configured_ready(
+        let mut verification = Verification::configured_ready(
             "Codex managed configuration is present, Codex executable is available, and no separate project trust gate applies",
         )
         .with_host_executable(HostExecutableStatus::Available)
-        .with_mcp_handshake_allowed(true)
-        .merge_user_actions(&plan.user_actions))
+        .with_mcp_handshake_allowed(true);
+        if let Some(overlay) = managed_evaluation.host_policy_overlay {
+            verification = verification.with_host_policy_overlay(overlay);
+        }
+        Ok(verification.merge_user_actions(&plan.user_actions))
     }
 
     fn remove(&mut self, request: HostRemoveRequest) -> Result<HostEffect, HostConfigError> {
@@ -511,15 +531,19 @@ fn classify_existing_codex_entry(
     expected_fingerprint: Option<&str>,
     conflicts: &mut Vec<HostConflict>,
 ) -> PlannedChange {
-    let Some(entry) = codex_managed_entry(item) else {
-        conflicts.push(HostConflict::new(
-            HostConflictKind::UnmanagedNameCollision,
-            format!(
-                "Codex MCP server name is already configured by an unmanaged entry: {server_name}"
-            ),
-        ));
-        return PlannedChange::Noop;
+    let parsed = match parse_codex_managed_entry(item) {
+        Ok(parsed) => parsed,
+        Err(_) => {
+            conflicts.push(HostConflict::new(
+                HostConflictKind::UnmanagedNameCollision,
+                format!(
+                    "Codex MCP server name is already configured by an unmanaged entry: {server_name}"
+                ),
+            ));
+            return PlannedChange::Noop;
+        }
     };
+    let entry = parsed.entry;
     let current = managed_fingerprint(HostKind::Codex, scope, server_name, &entry);
     if current == desired_fingerprint {
         PlannedChange::Noop
@@ -601,7 +625,14 @@ fn upsert_server_table(
         .ok_or_else(|| {
             HostConfigError::Malformed("Codex mcp_servers configuration must be a table".to_owned())
         })?;
-    servers.insert(server_name, Item::Table(server_table(entry)));
+    let preserved_tools = servers
+        .get(server_name)
+        .and_then(accepted_codex_tool_approval_overlay_item);
+    let mut table = server_table(entry);
+    if let Some(tools) = preserved_tools {
+        table["tools"] = tools;
+    }
+    servers.insert(server_name, Item::Table(table));
     Ok(())
 }
 
@@ -623,13 +654,37 @@ fn server_table(entry: &ManagedServerEntry) -> Table {
     table
 }
 
-fn codex_managed_entry(item: &Item) -> Option<ManagedServerEntry> {
-    let table = item.as_table()?;
-    let allowed_keys = ["command", "args", "env"];
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ParsedCodexEntry {
+    entry: ManagedServerEntry,
+    host_policy_overlay: Option<HostPolicyOverlayDiagnostic>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CodexEntryProblem {
+    Unmanaged,
+    Malformed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CodexManagedConfigEvaluation {
+    pub status: ManagedConfigStatus,
+    pub host_policy_overlay: Option<HostPolicyOverlayDiagnostic>,
+}
+
+fn parse_codex_managed_entry(item: &Item) -> Result<ParsedCodexEntry, CodexEntryProblem> {
+    let table = item.as_table().ok_or(CodexEntryProblem::Malformed)?;
+    let allowed_keys = ["command", "args", "env", "tools"];
     if table.iter().any(|(key, _)| !allowed_keys.contains(&key)) {
-        return None;
+        return Err(CodexEntryProblem::Unmanaged);
     }
-    let command = table.get("command")?.as_str()?.to_owned();
+    let host_policy_overlay =
+        codex_tool_approval_overlay(table).ok_or(CodexEntryProblem::Unmanaged)?;
+    let command = table
+        .get("command")
+        .and_then(Item::as_str)
+        .ok_or(CodexEntryProblem::Malformed)?
+        .to_owned();
     let args = table
         .get("args")
         .and_then(Item::as_array)
@@ -639,7 +694,8 @@ fn codex_managed_entry(item: &Item) -> Option<ManagedServerEntry> {
                 .map(|item| item.as_str().map(str::to_owned))
                 .collect::<Option<Vec<_>>>()
         })
-        .unwrap_or_else(|| Some(Vec::new()))?;
+        .unwrap_or_else(|| Some(Vec::new()))
+        .ok_or(CodexEntryProblem::Malformed)?;
     let env = table
         .get("env")
         .and_then(Item::as_table)
@@ -652,52 +708,84 @@ fn codex_managed_entry(item: &Item) -> Option<ManagedServerEntry> {
                 })
                 .collect::<Option<BTreeMap<_, _>>>()
         })
-        .unwrap_or_else(|| Some(BTreeMap::new()))?;
+        .unwrap_or_else(|| Some(BTreeMap::new()))
+        .ok_or(CodexEntryProblem::Malformed)?;
     let entry = ManagedServerEntry { command, args, env };
-    is_volicord_managed_entry(&entry).then_some(entry)
+    if !has_codex_managed_marker_keys(&entry) {
+        return Err(CodexEntryProblem::Unmanaged);
+    }
+    Ok(ParsedCodexEntry {
+        entry,
+        host_policy_overlay,
+    })
 }
 
 fn codex_entry_fingerprint(scope: HostScope, server_name: &str, item: &Item) -> Option<String> {
-    let table = item.as_table()?;
-    let allowed_keys = ["command", "args", "env"];
-    if table.iter().any(|(key, _)| !allowed_keys.contains(&key)) {
-        return Some(unmanaged_fingerprint(
-            HostKind::Codex,
-            scope,
-            server_name,
-            &item.to_string(),
-        ));
-    }
-    let command = table.get("command")?.as_str()?.to_owned();
-    let args = table
-        .get("args")
-        .and_then(Item::as_array)
-        .map(|items| {
-            items
-                .iter()
-                .map(|item| item.as_str().map(str::to_owned))
-                .collect::<Option<Vec<_>>>()
-        })
-        .unwrap_or_else(|| Some(Vec::new()))?;
-    let env = table
-        .get("env")
-        .and_then(Item::as_table)
-        .map(|items| {
-            items
-                .iter()
-                .map(|(key, item)| {
-                    item.as_str()
-                        .map(|value| (key.to_owned(), value.to_owned()))
-                })
-                .collect::<Option<BTreeMap<_, _>>>()
-        })
-        .unwrap_or_else(|| Some(BTreeMap::new()))?;
+    let parsed = parse_codex_managed_entry(item).ok()?;
     Some(managed_fingerprint(
         HostKind::Codex,
         scope,
         server_name,
-        &ManagedServerEntry { command, args, env },
+        &parsed.entry,
     ))
+}
+
+fn has_codex_managed_marker_keys(entry: &ManagedServerEntry) -> bool {
+    entry.env.contains_key(VOLICORD_MCP_LAUNCH)
+        && entry.env.contains_key(VOLICORD_MCP_HOST)
+        && entry.env.contains_key(VOLICORD_MCP_CONNECTION_ID)
+        && (!entry.args.iter().any(|arg| arg == "--project")
+            || entry.env.contains_key(VOLICORD_MCP_PROJECT_ID))
+}
+
+fn accepted_codex_tool_approval_overlay_item(item: &Item) -> Option<Item> {
+    let table = item.as_table()?;
+    codex_tool_approval_overlay(table).flatten()?;
+    table.get("tools").cloned()
+}
+
+fn codex_tool_approval_overlay(table: &Table) -> Option<Option<HostPolicyOverlayDiagnostic>> {
+    let Some(item) = table.get("tools") else {
+        return Some(None);
+    };
+    let tools = item.as_table()?;
+    let mut tool_names = BTreeSet::new();
+    for (tool_name, item) in tools.iter() {
+        if !is_known_volicord_tool(tool_name) {
+            return None;
+        }
+        let tool = item.as_table()?;
+        if tool.iter().any(|(key, _)| key != "approval_mode") {
+            return None;
+        }
+        let approval = tool.get("approval_mode").and_then(Item::as_str)?;
+        if approval.trim().is_empty() {
+            return None;
+        }
+        tool_names.insert(tool_name.to_owned());
+    }
+    let tools = tool_names.into_iter().collect::<Vec<_>>();
+    let tool_count = tools.len();
+    Some(Some(HostPolicyOverlayDiagnostic {
+        present: true,
+        accepted: true,
+        kind: CODEX_TOOL_APPROVAL_OVERLAY_KIND.to_owned(),
+        tool_count,
+        tools,
+        details: if tool_count == 0 {
+            "Codex tool approval policy overlay is present and accepted".to_owned()
+        } else {
+            format!(
+                "Codex tool approval policy overlay is present and accepted for {tool_count} Volicord tool(s)"
+            )
+        },
+    }))
+}
+
+fn is_known_volicord_tool(tool_name: &str) -> bool {
+    WORKFLOW_METHOD_TOOL_NAMES.contains(&tool_name)
+        || READ_ONLY_METHOD_TOOL_NAMES.contains(&tool_name)
+        || ADAPTER_UTILITY_TOOL_NAMES.contains(&tool_name)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -913,22 +1001,37 @@ fn normalize_trailing_slashes(path: &str) -> String {
 pub fn managed_config_status_for_plan(
     plan: &HostPlan,
 ) -> Result<ManagedConfigStatus, HostConfigError> {
+    Ok(managed_config_evaluation_for_plan(plan)?.status)
+}
+
+pub fn managed_config_evaluation_for_plan(
+    plan: &HostPlan,
+) -> Result<CodexManagedConfigEvaluation, HostConfigError> {
     verify_codex_entry(plan)
 }
 
-fn verify_codex_entry(plan: &HostPlan) -> Result<ManagedConfigStatus, HostConfigError> {
+fn verify_codex_entry(plan: &HostPlan) -> Result<CodexManagedConfigEvaluation, HostConfigError> {
     let HostTarget::File(target) = &plan.target else {
-        return Ok(ManagedConfigStatus::Unknown);
+        return Ok(CodexManagedConfigEvaluation {
+            status: ManagedConfigStatus::Unknown,
+            host_policy_overlay: None,
+        });
     };
     let (_, text) = read_text_snapshot(target)?;
     let Some(text) = text else {
-        return Ok(ManagedConfigStatus::Missing);
+        return Ok(CodexManagedConfigEvaluation {
+            status: ManagedConfigStatus::Missing,
+            host_policy_overlay: None,
+        });
     };
     let document = match parse_document(Some(&text), target) {
         Ok(document) => document,
         Err(error) => {
             return match error {
-                HostConfigError::Malformed(_) => Ok(ManagedConfigStatus::Malformed),
+                HostConfigError::Malformed(_) => Ok(CodexManagedConfigEvaluation {
+                    status: ManagedConfigStatus::Malformed,
+                    host_policy_overlay: None,
+                }),
                 other => Err(other),
             };
         }
@@ -938,18 +1041,45 @@ fn verify_codex_entry(plan: &HostPlan) -> Result<ManagedConfigStatus, HostConfig
         .and_then(Item::as_table)
         .and_then(|servers| servers.get(&plan.server_name))
     else {
-        return Ok(ManagedConfigStatus::Missing);
+        return Ok(CodexManagedConfigEvaluation {
+            status: ManagedConfigStatus::Missing,
+            host_policy_overlay: None,
+        });
     };
-    match codex_entry_fingerprint(plan.host_scope, &plan.server_name, item) {
-        Some(fingerprint) if fingerprint == plan.fingerprint => Ok(ManagedConfigStatus::Match),
-        Some(_) => Ok(ManagedConfigStatus::Changed),
-        None => Ok(ManagedConfigStatus::Malformed),
+    match parse_codex_managed_entry(item) {
+        Ok(parsed) => {
+            let fingerprint = managed_fingerprint(
+                HostKind::Codex,
+                plan.host_scope,
+                &plan.server_name,
+                &parsed.entry,
+            );
+            Ok(CodexManagedConfigEvaluation {
+                status: if fingerprint == plan.fingerprint {
+                    ManagedConfigStatus::Match
+                } else {
+                    ManagedConfigStatus::Changed
+                },
+                host_policy_overlay: parsed.host_policy_overlay,
+            })
+        }
+        Err(CodexEntryProblem::Unmanaged) => Ok(CodexManagedConfigEvaluation {
+            status: ManagedConfigStatus::Unmanaged,
+            host_policy_overlay: None,
+        }),
+        Err(CodexEntryProblem::Malformed) => Ok(CodexManagedConfigEvaluation {
+            status: ManagedConfigStatus::Malformed,
+            host_policy_overlay: None,
+        }),
     }
 }
 
 fn verification_from_managed_status(status: ManagedConfigStatus, details: String) -> Verification {
     match status {
         ManagedConfigStatus::Missing => Verification::missing(details),
+        ManagedConfigStatus::Unmanaged => {
+            Verification::changed(details).with_managed_config(ManagedConfigStatus::Unmanaged)
+        }
         ManagedConfigStatus::Changed => Verification::changed(details),
         ManagedConfigStatus::Malformed => Verification::failed(details)
             .with_managed_config(ManagedConfigStatus::Malformed)
@@ -1359,6 +1489,151 @@ mod tests {
     }
 
     #[test]
+    fn managed_entry_with_tool_approval_overlay_is_match() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let repo = temp_dir("codex-project-overlay-match")?;
+        let mut adapter = CodexAdapter::new(CodexEnvironment::default());
+        let plan = adapter.plan(request(
+            HostScope::Project,
+            Some(&repo),
+            Path::new("ignored"),
+        ))?;
+        adapter.apply(&plan)?;
+        let target = repo.join(".codex/config.toml");
+        append_tool_approval_overlay(&target, "volicord.intake")?;
+
+        let evaluation = managed_config_evaluation_for_plan(&plan)?;
+        let plan_after_overlay = adapter.plan(request(
+            HostScope::Project,
+            Some(&repo),
+            Path::new("ignored"),
+        ))?;
+
+        assert_eq!(evaluation.status, ManagedConfigStatus::Match);
+        let overlay = evaluation
+            .host_policy_overlay
+            .expect("overlay diagnostic should be present");
+        assert!(overlay.present);
+        assert!(overlay.accepted);
+        assert_eq!(overlay.kind, CODEX_TOOL_APPROVAL_OVERLAY_KIND);
+        assert_eq!(overlay.tool_count, 1);
+        assert_eq!(overlay.tools, vec!["volicord.intake".to_owned()]);
+        assert_eq!(plan_after_overlay.change, PlannedChange::Noop);
+        assert!(plan_after_overlay.conflicts.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn update_preserves_tool_approval_overlay() -> Result<(), Box<dyn std::error::Error>> {
+        let dir = temp_dir("codex-overlay-preserve")?;
+        let codex_home = dir.join("codex");
+        let mut adapter = CodexAdapter::new(CodexEnvironment {
+            home: None,
+            codex_home: Some(codex_home.clone()),
+            path: None,
+        });
+        let first = adapter.plan(request(HostScope::User, None, Path::new("/bin/volicord")))?;
+        adapter.apply(&first)?;
+        let target = codex_home.join("config.toml");
+        append_tool_approval_overlay(&target, "volicord.status")?;
+
+        let update = adapter.plan(HostPlanRequest {
+            expected_fingerprint: Some(&first.fingerprint),
+            installation_profile: InstallationProfile {
+                volicord_mcp_command: Path::new("/usr/local/bin/volicord"),
+                ..request(HostScope::User, None, Path::new("/bin/volicord")).installation_profile
+            },
+            ..request(HostScope::User, None, Path::new("/bin/volicord"))
+        })?;
+        assert_eq!(update.change, PlannedChange::Update);
+        adapter.apply(&update)?;
+        let text = fs::read_to_string(target)?;
+
+        assert!(text.contains("command = \"/usr/local/bin/volicord\""));
+        assert!(text.contains("[mcp_servers.volicord.tools.\"volicord.status\"]"));
+        assert!(text.contains("approval_mode = \"approve\""));
+        Ok(())
+    }
+
+    #[test]
+    fn wrong_command_with_managed_markers_is_changed() -> Result<(), Box<dyn std::error::Error>> {
+        let repo = temp_dir("codex-command-changed")?;
+        let mut adapter = CodexAdapter::new(CodexEnvironment::default());
+        let plan = adapter.plan(request(
+            HostScope::Project,
+            Some(&repo),
+            Path::new("ignored"),
+        ))?;
+        adapter.apply(&plan)?;
+        let target = repo.join(".codex/config.toml");
+        fs::write(
+            &target,
+            fs::read_to_string(&target)?.replace("command = \"volicord\"", "command = \"other\""),
+        )?;
+
+        let status = managed_config_status_for_plan(&plan)?;
+
+        assert_eq!(status, ManagedConfigStatus::Changed);
+        Ok(())
+    }
+
+    #[test]
+    fn wrong_connection_id_with_managed_markers_is_changed(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let repo = temp_dir("codex-connection-changed")?;
+        let mut adapter = CodexAdapter::new(CodexEnvironment::default());
+        let plan = adapter.plan(request(
+            HostScope::Project,
+            Some(&repo),
+            Path::new("ignored"),
+        ))?;
+        adapter.apply(&plan)?;
+        let target = repo.join(".codex/config.toml");
+        fs::write(
+            &target,
+            fs::read_to_string(&target)?
+                .replace("\"int_alpha\"", "\"int_beta\"")
+                .replace(
+                    "VOLICORD_MCP_CONNECTION_ID = \"int_beta\"",
+                    "VOLICORD_MCP_CONNECTION_ID = \"int_alpha\"",
+                ),
+        )?;
+
+        let status = managed_config_status_for_plan(&plan)?;
+
+        assert_eq!(status, ManagedConfigStatus::Changed);
+        Ok(())
+    }
+
+    #[test]
+    fn wrong_project_id_with_managed_markers_is_changed() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let repo = temp_dir("codex-project-changed")?;
+        let mut adapter = CodexAdapter::new(CodexEnvironment::default());
+        let plan = adapter.plan(request(
+            HostScope::Project,
+            Some(&repo),
+            Path::new("ignored"),
+        ))?;
+        adapter.apply(&plan)?;
+        let target = repo.join(".codex/config.toml");
+        fs::write(
+            &target,
+            fs::read_to_string(&target)?
+                .replace("\"project_alpha\"", "\"project_beta\"")
+                .replace(
+                    "VOLICORD_MCP_PROJECT_ID = \"project_beta\"",
+                    "VOLICORD_MCP_PROJECT_ID = \"project_alpha\"",
+                ),
+        )?;
+
+        let status = managed_config_status_for_plan(&plan)?;
+
+        assert_eq!(status, ManagedConfigStatus::Changed);
+        Ok(())
+    }
+
+    #[test]
     fn owned_table_updates_and_idempotent_reapply() -> Result<(), Box<dyn std::error::Error>> {
         let dir = temp_dir("codex-update")?;
         let codex_home = dir.join("codex");
@@ -1423,7 +1698,7 @@ mod tests {
         fs::create_dir_all(&codex_home)?;
         fs::write(
             codex_home.join("config.toml"),
-            "[mcp_servers.volicord]\ncommand = \"/bin/volicord\"\nargs = [\"mcp\", \"--stdio\", \"--connection\", \"other\"]\n",
+            "[mcp_servers.volicord]\ncommand = \"/bin/volicord\"\nargs = [\"mcp\", \"--stdio\", \"--connection\", \"other\"]\n\n[mcp_servers.volicord.env]\nVOLICORD_MCP_LAUNCH = \"managed_host\"\nVOLICORD_MCP_HOST = \"codex\"\nVOLICORD_MCP_CONNECTION_ID = \"other\"\n",
         )?;
         let adapter = CodexAdapter::new(CodexEnvironment {
             home: None,
@@ -1745,7 +2020,7 @@ mod tests {
     }
 
     #[test]
-    fn verify_treats_missing_managed_launch_markers_as_changed(
+    fn verify_treats_missing_managed_launch_markers_as_unmanaged(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let repo = temp_dir("codex-missing-launch-markers")?;
         fs::create_dir_all(repo.join(".codex"))?;
@@ -1762,7 +2037,7 @@ mod tests {
 
         let status = managed_config_status_for_plan(&plan)?;
 
-        assert_eq!(status, ManagedConfigStatus::Changed);
+        assert_eq!(status, ManagedConfigStatus::Unmanaged);
         Ok(())
     }
 
@@ -1821,6 +2096,18 @@ mod tests {
             mode: "workflow",
             expected_fingerprint: None,
         }
+    }
+
+    fn append_tool_approval_overlay(
+        target: &Path,
+        tool_name: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let mut text = fs::read_to_string(target)?;
+        text.push_str(&format!(
+            "\n[mcp_servers.volicord.tools.\"{tool_name}\"]\napproval_mode = \"approve\"\n"
+        ));
+        fs::write(target, text)?;
+        Ok(())
     }
 
     fn existing_request<'a>(

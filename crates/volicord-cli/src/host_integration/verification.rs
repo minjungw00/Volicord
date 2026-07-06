@@ -66,6 +66,7 @@ impl HostVerificationState {
 #[serde(rename_all = "snake_case")]
 pub enum ManagedConfigStatus {
     Match,
+    Unmanaged,
     Missing,
     Changed,
     Malformed,
@@ -77,6 +78,7 @@ impl ManagedConfigStatus {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Match => "match",
+            Self::Unmanaged => "unmanaged",
             Self::Missing => "missing",
             Self::Changed => "changed",
             Self::Malformed => "malformed",
@@ -162,6 +164,7 @@ pub struct Verification {
     pub host_executable: HostExecutableStatus,
     pub host_gate: HostGateStatus,
     pub host_configuration: HostConfigurationStatus,
+    pub host_policy_overlay: Option<HostPolicyOverlayDiagnostic>,
     pub project_trust: Option<ProjectTrustDiagnostic>,
     pub host_runtime: Option<HostRuntimeDiagnostic>,
     pub host_mcp_command: Option<HostMcpCommandDiagnostic>,
@@ -169,6 +172,16 @@ pub struct Verification {
     pub details: String,
     pub diagnostic: Option<String>,
     pub user_actions: Vec<UserAction>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HostPolicyOverlayDiagnostic {
+    pub present: bool,
+    pub accepted: bool,
+    pub kind: String,
+    pub tool_count: usize,
+    pub tools: Vec<String>,
+    pub details: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -299,6 +312,7 @@ impl Verification {
             host_executable: HostExecutableStatus::NotChecked,
             host_gate: HostGateStatus::Unknown,
             host_configuration: HostConfigurationStatus::Unknown,
+            host_policy_overlay: None,
             project_trust: None,
             host_runtime: None,
             host_mcp_command: None,
@@ -317,6 +331,7 @@ impl Verification {
             host_executable: HostExecutableStatus::NotRequired,
             host_gate: HostGateStatus::Ready,
             host_configuration: HostConfigurationStatus::Discovered,
+            host_policy_overlay: None,
             project_trust: None,
             host_runtime: None,
             host_mcp_command: None,
@@ -335,6 +350,7 @@ impl Verification {
             host_executable: HostExecutableStatus::NotChecked,
             host_gate: HostGateStatus::ActionRequired,
             host_configuration: HostConfigurationStatus::Discovered,
+            host_policy_overlay: None,
             project_trust: None,
             host_runtime: None,
             host_mcp_command: None,
@@ -353,6 +369,7 @@ impl Verification {
             host_executable: HostExecutableStatus::NotChecked,
             host_gate: HostGateStatus::Missing,
             host_configuration: HostConfigurationStatus::Missing,
+            host_policy_overlay: None,
             project_trust: None,
             host_runtime: None,
             host_mcp_command: None,
@@ -371,6 +388,7 @@ impl Verification {
             host_executable: HostExecutableStatus::NotChecked,
             host_gate: HostGateStatus::Unknown,
             host_configuration: HostConfigurationStatus::Changed,
+            host_policy_overlay: None,
             project_trust: None,
             host_runtime: None,
             host_mcp_command: None,
@@ -389,6 +407,7 @@ impl Verification {
             host_executable: HostExecutableStatus::Available,
             host_gate: HostGateStatus::Rejected,
             host_configuration: HostConfigurationStatus::Discovered,
+            host_policy_overlay: None,
             project_trust: None,
             host_runtime: None,
             host_mcp_command: None,
@@ -407,6 +426,7 @@ impl Verification {
             host_executable: HostExecutableStatus::Unavailable,
             host_gate: HostGateStatus::Unknown,
             host_configuration: HostConfigurationStatus::Unknown,
+            host_policy_overlay: None,
             project_trust: None,
             host_runtime: None,
             host_mcp_command: None,
@@ -425,6 +445,7 @@ impl Verification {
             host_executable: HostExecutableStatus::NotChecked,
             host_gate: HostGateStatus::Unknown,
             host_configuration: HostConfigurationStatus::Unknown,
+            host_policy_overlay: None,
             project_trust: None,
             host_runtime: None,
             host_mcp_command: None,
@@ -443,6 +464,7 @@ impl Verification {
             host_executable: HostExecutableStatus::NotChecked,
             host_gate: HostGateStatus::Unknown,
             host_configuration: HostConfigurationStatus::Unknown,
+            host_policy_overlay: None,
             project_trust: None,
             host_runtime: None,
             host_mcp_command: None,
@@ -470,6 +492,11 @@ impl Verification {
 
     pub fn with_host_configuration(mut self, host_configuration: HostConfigurationStatus) -> Self {
         self.host_configuration = host_configuration;
+        self
+    }
+
+    pub fn with_host_policy_overlay(mut self, overlay: HostPolicyOverlayDiagnostic) -> Self {
+        self.host_policy_overlay = Some(overlay);
         self
     }
 

@@ -881,6 +881,7 @@ fn status_with_current_diagnostics(
         matches!(
             host.managed_config,
             ManagedConfigStatus::Missing
+                | ManagedConfigStatus::Unmanaged
                 | ManagedConfigStatus::Changed
                 | ManagedConfigStatus::Malformed
         )
@@ -2051,16 +2052,22 @@ fn current_status_host_diagnostic(
         VerificationStatus::NotVerified,
         "Codex status diagnostics were read without running MCP verification",
     );
-    let managed_config = if host_plan.host_kind == HostKind::Codex {
-        codex::managed_config_status_for_plan(host_plan)?
+    let host_policy_overlay = if host_plan.host_kind == HostKind::Codex {
+        let evaluation = codex::managed_config_evaluation_for_plan(host_plan)?;
+        host = host.with_managed_config(evaluation.status);
+        evaluation.host_policy_overlay
     } else {
-        stored_host_managed_config(connection)
+        let managed_config = stored_host_managed_config(connection)
             .as_deref()
             .and_then(managed_config_status_from_str)
-            .unwrap_or(ManagedConfigStatus::Unknown)
+            .unwrap_or(ManagedConfigStatus::Unknown);
+        host = host.with_managed_config(managed_config);
+        None
     };
-    host = host.with_managed_config(managed_config);
-    if managed_config == ManagedConfigStatus::Match {
+    if let Some(overlay) = host_policy_overlay {
+        host = host.with_host_policy_overlay(overlay);
+    }
+    if host.managed_config == ManagedConfigStatus::Match {
         host = host.with_mcp_handshake_allowed(true);
     }
     if parse_host_scope(&connection.host_scope)? == HostScope::Project {
@@ -2098,6 +2105,7 @@ fn stored_host_managed_config(connection: &AgentConnectionRecord) -> Option<Stri
 fn managed_config_status_from_str(value: &str) -> Option<ManagedConfigStatus> {
     match value {
         "match" => Some(ManagedConfigStatus::Match),
+        "unmanaged" => Some(ManagedConfigStatus::Unmanaged),
         "missing" => Some(ManagedConfigStatus::Missing),
         "changed" => Some(ManagedConfigStatus::Changed),
         "malformed" => Some(ManagedConfigStatus::Malformed),
@@ -5947,6 +5955,7 @@ fn compact_connection_checks(
 ) -> Vec<(&'static str, String)> {
     if let Some(verification) = data.verification {
         let mut checks = vec![("MCP configuration", mcp_config_state.to_owned())];
+        append_host_policy_overlay_compact_check(&mut checks, &verification.host);
         append_host_trust_compact_check(&mut checks, &verification.host);
         checks.extend([
             (
@@ -5979,6 +5988,7 @@ fn compact_connection_checks(
         ("Current MCP configuration", mcp_config_state.to_owned()),
     ];
     if let Some(host) = &data.current_host {
+        append_host_policy_overlay_compact_check(&mut checks, host);
         append_host_trust_compact_check(&mut checks, host);
     }
     checks.extend([
@@ -6000,6 +6010,22 @@ fn compact_connection_checks(
         host_follow_up_text(data.status, primary_next_action).to_owned(),
     ));
     checks
+}
+
+fn append_host_policy_overlay_compact_check(
+    checks: &mut Vec<(&'static str, String)>,
+    host: &Verification,
+) {
+    if let Some(overlay) = &host.host_policy_overlay {
+        checks.push((
+            "Codex tool approval policy",
+            if overlay.accepted {
+                "present".to_owned()
+            } else {
+                "unaccepted".to_owned()
+            },
+        ));
+    }
 }
 
 fn append_host_trust_compact_check(checks: &mut Vec<(&'static str, String)>, host: &Verification) {
@@ -7626,6 +7652,14 @@ fn primary_connection_action(
                     projects,
                 ));
             }
+            "unmanaged" => {
+                return Some(connection_repair_action(
+                    "mcp_config_changed",
+                    "Review the unmanaged MCP configuration entry and repair it if Volicord should manage it.",
+                    connection,
+                    projects,
+                ));
+            }
             "changed" => {
                 return Some(connection_repair_action(
                     "mcp_config_changed",
@@ -7666,6 +7700,14 @@ fn primary_connection_action(
                         projects,
                     ));
                 }
+                "unmanaged" => {
+                    return Some(connection_repair_action(
+                        "mcp_config_changed",
+                        "Review the unmanaged MCP configuration entry and repair it if Volicord should manage it.",
+                        connection,
+                        projects,
+                    ));
+                }
                 "changed" => {
                     return Some(connection_repair_action(
                         "mcp_config_changed",
@@ -7692,6 +7734,14 @@ fn primary_connection_action(
                     return Some(connection_repair_action(
                         "mcp_config_missing",
                         "Reinstall missing MCP configuration.",
+                        Some(connection),
+                        projects,
+                    ));
+                }
+                "unmanaged" => {
+                    return Some(connection_repair_action(
+                        "mcp_config_changed",
+                        "Review the unmanaged MCP configuration entry and repair it if Volicord should manage it.",
                         Some(connection),
                         projects,
                     ));
@@ -10051,6 +10101,7 @@ fn checks_json(
                 "host_executable": verification.host.host_executable.as_str(),
                 "host_gate": verification.host.host_gate.as_str(),
                 "host_configuration": verification.host.host_configuration.as_str(),
+                "host_policy_overlay": &verification.host.host_policy_overlay,
             }
         })];
         checks.extend(host_diagnostic_checks_json(&verification.host));
@@ -10202,6 +10253,14 @@ fn effective_tool_mode_check_status(value: &str) -> &'static str {
 
 fn host_diagnostic_checks_json(host: &Verification) -> Vec<Value> {
     let mut checks = Vec::new();
+    if let Some(overlay) = &host.host_policy_overlay {
+        checks.push(json!({
+            "id": "codex_tool_approval_policy",
+            "status": if overlay.accepted { "passed" } else { "failed" },
+            "summary": overlay.details,
+            "details": overlay,
+        }));
+    }
     if let Some(trust) = &host.project_trust {
         checks.push(json!({
             "id": "codex_project_trust",
@@ -10346,7 +10405,22 @@ fn stored_host_diagnostic_checks_json(object: &serde_json::Map<String, Value>) -
     let host_mcp_command = object
         .get("host_mcp_command")
         .or_else(|| host.and_then(|host| host.get("host_mcp_command")));
+    let host_policy_overlay = object
+        .get("host_policy_overlay")
+        .or_else(|| host.and_then(|host| host.get("host_policy_overlay")));
     let mut checks = Vec::new();
+    if let Some(overlay) = host_policy_overlay.and_then(Value::as_object) {
+        let accepted = overlay
+            .get("accepted")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        checks.push(json!({
+            "id": "codex_tool_approval_policy",
+            "status": if accepted { "passed" } else { "failed" },
+            "summary": overlay.get("details").and_then(Value::as_str).unwrap_or("stored Codex tool approval policy state"),
+            "details": overlay,
+        }));
+    }
     if let Some(trust) = project_trust.and_then(Value::as_object) {
         let status = trust
             .get("status")
@@ -10635,6 +10709,7 @@ fn verification_json(report: &VerificationReport) -> Value {
         "status": report.status.as_str(),
         "disclosure": detective_observation_disclosure_json(),
         "project_trust": &report.host.project_trust,
+        "host_policy_overlay": &report.host.host_policy_overlay,
         "host_runtime": &report.host.host_runtime,
         "managed_host_startup": runtime_observation_json(
             report.host.host_runtime.as_ref(),
@@ -10657,6 +10732,7 @@ fn verification_json(report: &VerificationReport) -> Value {
             "host_executable": report.host.host_executable.as_str(),
             "host_gate": report.host.host_gate.as_str(),
             "host_configuration": report.host.host_configuration.as_str(),
+            "host_policy_overlay": &report.host.host_policy_overlay,
             "project_trust": &report.host.project_trust,
             "host_runtime": &report.host.host_runtime,
             "host_mcp_command": &report.host.host_mcp_command,
