@@ -180,6 +180,11 @@ impl McpConnectionStartupInspection {
         let storage_capability = storage_capability_for_projects(&self.projects);
         let effective_tool_mode =
             effective_tool_mode_for_mode_and_storage(self.mode, storage_capability);
+        let tools =
+            crate::tool_registry::mcp_tools_for_mode_and_storage(self.mode, storage_capability);
+        let tools_list_schema_validation =
+            crate::tool_registry::tools_list_schema_validation_status(&tools);
+        let tool_naming_style = crate::tool_registry::mcp_tool_naming_style(&tools);
         let (watcher_status, watcher_coverage_basis, watcher_partial_coverage_warning) =
             if available_projects == 1 {
                 ("pending_mcp_start", "mcp_start", "")
@@ -198,7 +203,7 @@ impl McpConnectionStartupInspection {
             };
         let startup_observation = self.startup_observation_status(storage_capability);
         let mut report = format!(
-            "configuration: valid\ntransport: stdio\n{}\nruntime_home: {}\nconnection_id: {}\nmode: {}\nenabled: {}\nregistry_read: passed\nproject_state_read: {}\nproject_state_write: {}\nstartup_observation: {}\neffective_tool_mode: {}\nallowed_projects: {}\navailable_projects: {}\nverification_scope: startup_check_only\nwatcher_status: {}\nwatcher_baseline_created_at: \nwatcher_coverage_start_at: \nwatcher_coverage_basis: {}\nwatcher_partial_coverage_warning: {}\n",
+            "configuration: valid\ntransport: stdio\n{}\nruntime_home: {}\nconnection_id: {}\nmode: {}\nenabled: {}\nregistry_read: passed\nproject_state_read: {}\nproject_state_write: {}\nstartup_observation: {}\neffective_tool_mode: {}\ntools_list_schema_validation: {}\ntool_naming_style: {}\nallowed_projects: {}\navailable_projects: {}\nverification_scope: startup_check_only\nwatcher_status: {}\nwatcher_baseline_created_at: \nwatcher_coverage_start_at: \nwatcher_coverage_basis: {}\nwatcher_partial_coverage_warning: {}\n",
             TRANSPORT_DISCLOSURE_TEXT,
             self.runtime_home.display(),
             self.connection_internal_id.as_str(),
@@ -208,6 +213,8 @@ impl McpConnectionStartupInspection {
             project_state_write_status(storage_capability),
             startup_observation,
             effective_tool_mode.as_str(),
+            tools_list_schema_validation,
+            tool_naming_style,
             self.allowed_project_count,
             available_projects,
             watcher_status,

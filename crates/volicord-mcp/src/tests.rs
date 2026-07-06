@@ -20,6 +20,13 @@ use crate::stdio::{
     classify_launch_origin, pending_judgment_from_response, percent_encode_query,
     run_stdio_with_env_marker, McpLaunchOrigin,
 };
+use crate::{
+    routing::McpStorageCapability,
+    tool_registry::{
+        mcp_tool_naming_style, mcp_tools_for_mode_and_storage,
+        validate_tools_list_json_compatibility, validate_tools_list_schema_compatibility,
+    },
+};
 use volicord_core::CoreBoundary;
 use volicord_store::agent_connections::{
     add_connection_project, agent_connection_record, ensure_agent_connection,
@@ -120,6 +127,113 @@ fn mcp_visible_schemas_hide_envelope_and_metadata() {
 }
 
 #[test]
+fn mcp_tools_list_schema_is_client_compatible() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-tools-list-schema-compatible")?;
+    let adapter = adapter(&fixture)?;
+    let input = Cursor::new(json_lines(&[
+        initialize_request(1, json!({})),
+        request(2, "tools/list", json!({})),
+    ])?);
+    let mut output = Vec::new();
+
+    run_stdio(adapter, BufReader::new(input), &mut output)?;
+
+    let responses = stdio_responses(&output)?;
+    let tools = responses[1]["result"]["tools"]
+        .as_array()
+        .expect("tools/list result should be an array");
+    assert_tools_list_json_client_compatible(tools);
+    assert_eq!(
+        tool_names_from_list_response(&responses[1]).len(),
+        tools.len()
+    );
+    Ok(())
+}
+
+#[test]
+fn mcp_readonly_degraded_tools_have_valid_schemas() {
+    let tools = mcp_tools_for_mode_and_storage(
+        AgentConnectionMode::Workflow,
+        McpStorageCapability::ReadOnly,
+    );
+
+    assert_eq!(
+        tool_names(&tools),
+        vec![
+            STATUS_TOOL_NAME,
+            CHECK_CLOSE_TOOL_NAME,
+            LIST_PROJECTS_TOOL_NAME
+        ]
+    );
+    assert_eq!(mcp_tool_naming_style(&tools), "dotted_namespace");
+    assert_compatible_tool_definitions(&tools);
+}
+
+#[test]
+fn mcp_workflow_tools_have_valid_schemas() {
+    let tools = mcp_tools_for_mode_and_storage(
+        AgentConnectionMode::Workflow,
+        McpStorageCapability::ReadWrite,
+    );
+    let mut expected = PUBLIC_METHOD_TOOL_NAMES.to_vec();
+    expected.push(LIST_PROJECTS_TOOL_NAME);
+
+    assert_eq!(tool_names(&tools), expected);
+    assert_eq!(mcp_tool_naming_style(&tools), "dotted_namespace");
+    assert_compatible_tool_definitions(&tools);
+}
+
+#[test]
+fn mcp_minimal_smoke_tool_lists_hello() {
+    let tools = vec![McpToolDefinition {
+        name: "hello",
+        description: "Minimal diagnostic smoke fixture.",
+        input_schema: json!({
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+        }),
+    }];
+
+    assert_eq!(tool_names(&tools), vec!["hello"]);
+    assert_eq!(mcp_tool_naming_style(&tools), "plain");
+    assert_compatible_tool_definitions(&tools);
+}
+
+#[test]
+fn dot_free_aliases_are_not_exposed_by_default() {
+    for tools in [
+        mcp_tools_for_mode_and_storage(
+            AgentConnectionMode::Workflow,
+            McpStorageCapability::ReadWrite,
+        ),
+        mcp_tools_for_mode_and_storage(
+            AgentConnectionMode::Workflow,
+            McpStorageCapability::ReadOnly,
+        ),
+        mcp_tools_for_mode_and_storage(
+            AgentConnectionMode::ReadOnly,
+            McpStorageCapability::ReadWrite,
+        ),
+        mcp_tools_for_mode_and_storage(
+            AgentConnectionMode::Workflow,
+            McpStorageCapability::Unavailable,
+        ),
+    ] {
+        let names = tool_names(&tools);
+        assert_eq!(mcp_tool_naming_style(&tools), "dotted_namespace");
+        assert!(
+            names.iter().all(|name| name.starts_with("volicord.")),
+            "normal tool surface should stay in the volicord dotted namespace: {names:?}"
+        );
+        assert!(
+            !names.iter().any(|name| name.contains("volicord_")),
+            "normal tool surface should not expose dot-free aliases: {names:?}"
+        );
+    }
+}
+
+#[test]
 fn generated_bearer_token_is_visible_ascii_hex() -> Result<(), Box<dyn Error>> {
     let token = generate_bearer_token()?;
 
@@ -189,6 +303,8 @@ fn connection_context_resolves_and_preflight_reports_allowed_project() -> Result
     assert!(report.contains("project_state_write: passed"));
     assert!(report.contains("startup_observation: recordable"));
     assert!(report.contains("effective_tool_mode: workflow"));
+    assert!(report.contains("tools_list_schema_validation: passed"));
+    assert!(report.contains("tool_naming_style: dotted_namespace"));
     assert!(report.contains("watcher_status: pending_mcp_start"));
     assert!(report.contains("watcher_coverage_basis: mcp_start"));
     Ok(())
@@ -205,6 +321,8 @@ fn mcp_check_reports_readwrite_effective_tool_mode() -> Result<(), Box<dyn Error
     assert_report_line(&report, "project_state_write: passed");
     assert_report_line(&report, "startup_observation: recordable");
     assert_report_line(&report, "effective_tool_mode: workflow");
+    assert_report_line(&report, "tools_list_schema_validation: passed");
+    assert_report_line(&report, "tool_naming_style: dotted_namespace");
     assert_report_line(&report, "project[0].state_read: passed");
     assert_report_line(&report, "project[0].state_write: passed");
     Ok(())
@@ -253,6 +371,8 @@ fn mcp_check_reports_readonly_project_state() -> Result<(), Box<dyn Error>> {
         "startup_observation: best_effort_skipped_if_readonly",
     );
     assert_report_line(&report, "effective_tool_mode: read_only_degraded");
+    assert_report_line(&report, "tools_list_schema_validation: passed");
+    assert_report_line(&report, "tool_naming_style: dotted_namespace");
     assert_report_line(&report, "project[0].state_read: passed");
     assert_report_line(&report, "project[0].state_write: readonly");
     assert!(!report.contains("attempt to write a readonly database"));
@@ -2660,6 +2780,24 @@ fn tool_names_from_list_response(response: &Value) -> Vec<&str> {
         .iter()
         .map(|tool| tool["name"].as_str().expect("tool name"))
         .collect::<Vec<_>>()
+}
+
+fn assert_compatible_tool_definitions(tools: &[McpToolDefinition]) {
+    if let Err(errors) = validate_tools_list_schema_compatibility(tools) {
+        panic!(
+            "MCP tool definitions should be client-compatible:\n{}",
+            errors.join("\n")
+        );
+    }
+}
+
+fn assert_tools_list_json_client_compatible(tools: &[Value]) {
+    if let Err(errors) = validate_tools_list_json_compatibility(tools) {
+        panic!(
+            "MCP tools/list response should be client-compatible:\n{}",
+            errors.join("\n")
+        );
+    }
 }
 
 fn lifecycle_event_names(metadata: &Value) -> Vec<String> {

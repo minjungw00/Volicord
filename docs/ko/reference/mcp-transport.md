@@ -119,7 +119,8 @@ volicord mcp --stdio --connection <connection_id> [--project <project_id>]
 성공한 `--check` 출력은 진단 보고서입니다. 이 보고서는 설정 유효성, stdio 전송,
 Runtime Home, `connection_id`, `connection.mode`, 연결 활성 상태, registry 읽기 상태,
 선택된 project-state 읽기 상태, 선택된 project-state 쓰기 상태, 시작 관찰 상태,
-effective tool mode, 프로젝트 사용 가능 상태, `verification_scope`를 보고합니다.
+effective tool mode, `tools/list` 스키마 검증, 도구 이름 스타일, 프로젝트 사용 가능
+상태, `verification_scope`를 보고합니다.
 `registry_read`와 `project_state_read`는 읽기 가능 여부를 보고합니다.
 `project_state_write` 진단은 지속 저장되지 않는 SQLite 쓰기 가능성 검사를 사용하며
 `passed`, `readonly`, `failed`, `skipped` 중 하나를 보고합니다. 이 검사는 Core 기록,
@@ -362,6 +363,8 @@ project_state_read: passed|failed
 project_state_write: passed|readonly|failed|skipped
 startup_observation: recordable|best_effort_skipped_if_readonly|skipped_verification_probe
 effective_tool_mode: workflow|read_only_degraded|read_only|unavailable
+tools_list_schema_validation: passed|failed
+tool_naming_style: dotted_namespace
 allowed_projects: <count>
 available_projects: <count>
 verification_scope: startup_check_only
@@ -398,6 +401,13 @@ project[0].repo_root: <path>
   보고합니다.
 - `effective_tool_mode`는 같은 연결과 프로젝트 저장 가능성에서 시작 점검이 예상하는
   `tools/list` 모드를 보고합니다.
+- `tools_list_schema_validation`은 해당 유효 도구 모드의 MCP 표시 도구 목록이 MCP 도구
+  이름, 객체 입력 스키마, 필수 필드, 속성 형태에 대한 Volicord의 클라이언트 호환성
+  검사를 통과했는지 보고합니다. 이것은 Volicord 쪽 진단이며 호스트가 도구를 등록하거나
+  노출한다는 증명이 아닙니다.
+- `tool_naming_style: dotted_namespace`는 해당 Volicord 도구 이름이 `volicord.*`
+  dotted namespace를 사용한다는 것을 보고합니다. 이 줄은 점 없는 alias를 만들지
+  않습니다.
 - `allowed_projects`는 Agent Connection 허용 목록 전체를 설명합니다.
 - 사용할 수 없는 프로젝트도 모든 프로젝트 세부 키를 출력합니다. `unavailable_reason`은
   사용할 수 없는 프로젝트에서 채워지고 사용할 수 있는 프로젝트에서는 비어 있습니다.

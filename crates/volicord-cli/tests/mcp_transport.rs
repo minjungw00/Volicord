@@ -73,6 +73,8 @@ fn volicord_mcp_subcommand_reports_help_version_and_preflight() -> Result<(), Bo
             "project_state_write:",
             "startup_observation:",
             "effective_tool_mode:",
+            "tools_list_schema_validation:",
+            "tool_naming_style:",
             "allowed_projects:",
             "available_projects:",
             "verification_scope:",
@@ -106,6 +108,8 @@ fn volicord_mcp_subcommand_reports_help_version_and_preflight() -> Result<(), Bo
     assert_report_line(&report, "project_state_write: passed");
     assert_report_line(&report, "startup_observation: recordable");
     assert_report_line(&report, "effective_tool_mode: workflow");
+    assert_report_line(&report, "tools_list_schema_validation: passed");
+    assert_report_line(&report, "tool_naming_style: dotted_namespace");
     assert_report_line(&report, "allowed_projects: 1");
     assert_report_line(&report, "available_projects: 1");
     assert_report_line(&report, "verification_scope: startup_check_only");

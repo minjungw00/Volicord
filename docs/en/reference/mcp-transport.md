@@ -143,7 +143,8 @@ Successful `--check` output is a diagnostic report. It reports configuration
 validity, stdio transport, Runtime Home, `connection_id`, `connection.mode`,
 connection enabled state, registry read status, selected project-state read
 status, selected project-state write status, startup-observation status,
-effective tool mode, project availability, and `verification_scope`.
+effective tool mode, `tools/list` schema validation, tool naming style, project
+availability, and `verification_scope`.
 `registry_read` and `project_state_read` report read capability. The
 `project_state_write` diagnostic uses a non-persistent SQLite write-capability
 probe and reports `passed`, `readonly`, `failed`, or `skipped`; the probe must
@@ -414,6 +415,8 @@ project_state_read: passed|failed
 project_state_write: passed|readonly|failed|skipped
 startup_observation: recordable|best_effort_skipped_if_readonly|skipped_verification_probe
 effective_tool_mode: workflow|read_only_degraded|read_only|unavailable
+tools_list_schema_validation: passed|failed
+tool_naming_style: dotted_namespace
 allowed_projects: <count>
 available_projects: <count>
 verification_scope: startup_check_only
@@ -453,6 +456,14 @@ Project-detail rules:
   storage, or is only a verification probe.
 - `effective_tool_mode` reports the startup check's expected `tools/list` mode
   for the same connection and project storage capability.
+- `tools_list_schema_validation` reports whether the MCP-visible tool list for
+  that effective mode passes Volicord's client-compatibility checks for MCP
+  tool names, object input schemas, required fields, and property shapes. It is
+  a Volicord-side diagnostic and does not prove that a host will register or
+  expose the tools.
+- `tool_naming_style: dotted_namespace` reports that the effective Volicord
+  tool names use the `volicord.*` dotted namespace. It does not create
+  dot-free aliases.
 - `allowed_projects` describes the Agent Connection allowlist as a whole.
 - Unavailable projects still emit every project-detail key.
   `unavailable_reason` is populated for unavailable projects and empty for
