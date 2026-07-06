@@ -165,10 +165,12 @@ ID를 기본적으로 노출하면 안 됩니다. 대응 JSON 출력은 같은 �
 사용자를 위한 사람용 요약이며, 제목 줄과 `Status`, `Profile`, `Repository` 또는
 `Repositories`, `Checks`, `Next`, `Limits`, `Diagnostics` 간결 섹션을 사용합니다.
 `volicord connection add`는 간결한 host configuration 또는 repo file changes 섹션도
-포함할 수 있습니다. 자세한 guard state, hook 진단, MCP preflight와 handshake 세부사항,
-호스트 관찰은 JSON 진단에 둡니다. Codex 연결 text는 `Codex project trust`,
-`Codex host runtime`, `Host MCP command`를 별도 check 줄로 요약할 수 있지만, 사람용
-출력은 계속 간결한 섹션 형태로 유지합니다.
+포함할 수 있습니다. 자세한 guard state, hook 진단, CLI MCP preflight와 handshake
+세부사항, 호스트 관찰은 JSON 진단에 둡니다. Codex 연결 text는
+`Codex project trust`, `Managed Codex MCP startup`, `Managed Codex tools/list`,
+`Managed Codex tool call`, `Active Codex tool exposure`, `Host MCP command`를
+별도 check 줄로 요약할 수 있지만, 사람용 출력은 계속 간결한 섹션 형태로
+유지합니다.
 대기 판단이 보이면 `volicord status`와 `volicord inbox` Text 출력은 호스트 프롬프트
 입력, 채팅 명령 캡처, 로컬 consent URL, CLI inbox 사용 가능 상태를 요약하는
 `Available answer paths:` 줄을 포함할 수 있습니다. 이 줄은 사용자가 어디에서 답할 수
@@ -452,7 +454,7 @@ Agent Connection 명령은 아래 결과 상태를 사용합니다.
 | 상태 | 의미 |
 |---|---|
 | `not_verified` | 선택된 Agent Connection에 현재 기록된 검증 결과가 없습니다. 호스트가 실패했다는 증거가 아닙니다. |
-| `complete` | 오래 유지되는 Agent Connection 상태가 있고, 관리 호스트 설정이 존재하며 예상 관리 지문과 일치하고, 필요한 호스트 로드 가능성 및 신뢰 게이트가 충족되고, MCP 시작이 성공하고, MCP 초기화가 성공하며, `tools/list`가 모드에 필요한 도구를 노출합니다. |
+| `complete` | 오래 유지되는 Agent Connection 상태가 있고, 관리 호스트 설정이 존재하며 예상 관리 지문과 일치하고, 필요한 호스트 로드 가능성 및 신뢰 게이트가 충족되고, CLI MCP 시작과 초기화가 실패하지 않으며, 관리 호스트 도구 호출 증거 또는 명시적으로 신뢰할 수 있는 다른 활성 도구 노출 출처가 활성 Codex 도구 노출을 확인합니다. |
 | `action_required` | 오래 유지되는 Agent Connection 상태와 호스트 설정은 있지만 호스트 신뢰, 프로젝트 승인, OAuth, reload, restart, 명령 링크 복구, 설치 프로필 복구, 또는 그와 비슷한 사용자 통제 동작이 남아 있습니다. |
 | `failed` | 요청한 명령이나 검증이 사용할 수 있는 오래 유지되는 Agent Connection 상태, 사용할 수 있는 호스트 설정, 또는 필요한 로컬 전제 조건을 만들지 못했습니다. |
 | `dry_run` | 명령이 영속 변경 없이 계획된 동작을 보고했습니다. |
@@ -462,20 +464,27 @@ Codex 연결 검증은 아래 진단 개념을 분리해 유지합니다.
 | 진단 개념 | Text 출력 표면 | JSON 진단 표면 | 의미 |
 |---|---|---|---|
 | MCP 설정 일치 | `MCP configuration` 또는 `Current MCP configuration` | host check 세부사항과 관리 설정 필드 | 관리 Codex MCP server 항목이 기대하는 Volicord 생성 command, args, 관리 시작 출처 환경 변수 마커와 일치합니다. |
-| CLI MCP preflight와 handshake | `MCP preflight`, `MCP handshake`, `Last MCP preflight`, `Last MCP handshake` | `id=mcp_preflight`와 `id=mcp_handshake`인 `checks[]` 항목, 그리고 verification report 필드 | CLI verification 경로가 Volicord의 MCP 서버를 직접 시작하고 통신했습니다. |
+| CLI MCP preflight와 handshake | `CLI MCP preflight`, `CLI MCP handshake`, `Last CLI MCP preflight`, `Last CLI MCP handshake` | `id=cli_mcp_preflight`와 `id=cli_mcp_handshake`인 `checks[]` 항목, 그리고 verification report 필드 | CLI verification 경로가 Volicord의 MCP 서버를 직접 시작하고 통신했습니다. 이는 CLI가 관찰할 수 있는 MCP 프로세스를 검증하며 활성 Codex 도구 노출을 뜻하지 않습니다. |
+| CLI MCP 저장 capability | `CLI MCP storage read`, `CLI MCP storage write`, `CLI MCP effective tools` | 가능할 때 `id=cli_mcp_storage_read`, `id=cli_mcp_storage_write`, `id=cli_mcp_effective_tools`인 `checks[]` 항목 | CLI MCP 검증 프로세스에서 관찰한 저장 capability입니다. 관리 Codex 호스트에서 관찰한 저장 capability와 별개입니다. |
 | Codex 프로젝트 trust | `Codex project trust` | 가능할 때 `verification.project_trust`와 `id=codex_project_trust`인 `checks[]` 항목 | Codex 사용자 설정이 프로젝트를 `trusted`, `untrusted`, `unknown`, 또는 그 밖의 trust 미확인 상태로 표시합니다. |
-| Codex host runtime 관찰 | `Codex host runtime` | 가능할 때 `verification.host_runtime`과 `id=codex_host_runtime`인 `checks[]` 항목 | Volicord가 선택된 연결에 대해 Codex 호스트 프로세스가 Volicord MCP 서버를 시작했는지 관찰한 상태입니다. |
-| 호스트 MCP 명령 launch 가능성 | `Host MCP command` | 가능할 때 `verification.host_mcp_command`와 `id=host_mcp_command`인 `checks[]` 항목 | 설정된 MCP 명령이 absolute, PATH-resolved, remote/executor-backed, unknown, malformed 중 어느 launch mode인지와 `host_path_unconfirmed` 같은 launch risk 세부사항을 나타냅니다. |
-| 활성 session 도구 노출 | 확인이 필요할 때 `Next` action text | `primary_next_action`, `actions[]`, `connection.user_actions[]` | 사용자가 활성 Codex session에 Volicord 도구가 노출되는지 아직 확인해야 할 수 있습니다. |
+| 관리 Codex 시작 | `Managed Codex MCP startup` | 가능할 때 `verification.host_runtime.managed_host_startup`과 `id=managed_host_startup`인 `checks[]` 항목 | Volicord가 선택된 연결에 대해 관리 Codex 호스트 프로세스가 Volicord MCP 서버를 시작했는지 관찰한 상태입니다. |
+| 관리 Codex 도구 목록 | `Managed Codex tools/list` | 가능할 때 `verification.host_runtime.managed_host_tools_list`와 `id=managed_host_tools_list`인 `checks[]` 항목 | 관리 Codex 호스트의 `tools/list` lifecycle event를 관찰했는지 나타냅니다. 이것만으로는 활성 도구 노출을 확인하지 않습니다. |
+| 관리 Codex 도구 호출 | `Managed Codex tool call` | 가능할 때 `verification.host_runtime.managed_host_tool_call`과 `id=managed_host_tool_call`인 `checks[]` 항목 | 선택된 연결에 대해 관리 Codex 호스트가 Volicord 도구를 호출했는지 나타냅니다. 이것이 현재 활성 Codex 도구 노출의 완료 증거입니다. |
+| 활성 session 도구 노출 | `Active Codex tool exposure`와 확인이 필요할 때 `Next` action text | `verification.active_tool_exposure`, `verification.host_runtime.active_tool_exposure`, `primary_next_action`, `actions[]`, `connection.user_actions[]` | 활성 Codex 도구 노출이 확인됨, 미확인, 알 수 없음 중 어느 상태인지 나타냅니다. 수동 probe, elevated probe, CLI preflight, 직접 handshake, source-less legacy observation은 이를 확인하지 않습니다. |
+| 관리 호스트 저장 capability | `Managed host storage read`, `Managed host storage write`, `Managed host effective tools` | 가능할 때 `verification.host_runtime.managed_host_storage`와 `id=managed_host_storage_read`, `id=managed_host_storage_write`, `id=managed_host_effective_tools`인 `checks[]` 항목 | 관리 Codex 호스트 lifecycle에서 관찰한 저장 capability입니다. CLI MCP 저장 capability와 별개입니다. |
+| 호스트 MCP 명령 launch 가능성 | `Host MCP command` | 가능할 때 `verification.host_mcp_command`와 `id=host_mcp_command`인 `checks[]` 항목 | 설정된 MCP 명령이 absolute, PATH-resolved, remote/executor-backed, unknown, malformed 중 어느 launch mode인지와 `host_path_unconfirmed` 같은 launch risk 세부사항을 나타냅니다. PATH risk는 launch failure가 증명되지 않는 한 warning입니다. |
 | Codex 도구 snapshot 또는 listing 문제 | `Next` action text가 Codex MCP startup/tool-list log 확인을 안내할 수 있습니다. | Codex host log이며 Volicord가 소유한 JSON 필드가 아닙니다. | Codex가 MCP 서버의 존재를 알거나 `startup_complete`를 기록해도 활성 session에는 캐시된 tool snapshot이나 나열된 `volicord.*` 도구가 없을 수 있습니다. |
 
 `verification.host_runtime`은 관리되는 Codex lifecycle phase 필드
 `managed_host_startup`, `managed_host_tools_list`,
 `managed_host_tool_call`을 각각 `observed`, `not_observed`, `unknown`으로
-보고합니다. 선택된 연결과 프로젝트에 대해 metadata가 `host_kind=codex`이고
+보고합니다. lifecycle 증거가 해당 데이터를 담고 있을 때는
+`active_tool_exposure`와 관리 호스트 저장 진단도 보고할 수 있습니다.
+선택된 연결과 프로젝트에 대해 metadata가 `host_kind=codex`이고
 `launch_origin=managed_host`인 lifecycle event만 이 필드에 계산됩니다. CLI
 preflight, 직접 handshake 또는 probe 시작, 수동 시작, source-less legacy
-observation은 이 필드를 충족하지 않습니다.
+observation은 이 필드를 충족하지 않습니다. 관리 `tools/list` event만 있고 관리
+도구 호출이 없으면 활성 도구 노출은 미확인으로 남습니다.
 
 검증 출력은 점검과 사용자 동작을 일급 진단으로 만들어야 합니다. 연결 상태와 검증의
 기본 text 출력은 결과 줄 형태 대신 `Status`, `Checks`, `Next`, `Diagnostics` 간결 섹션을
@@ -799,11 +808,17 @@ setup과 필요한 사용자 동작을 구분할 수 있을 만큼 구조화된 
   사람이 읽을 수 있는 명령 또는 안내를 포함합니다.
 - `summary_card`: summary card를 계산하는 상태형 진단 또는 User Channel 출력을 위한
   안정적인 간결 요약 데이터
-- 연결 상태와 검증 JSON은 `project_trust`, `host_runtime`, `host_mcp_command`에 대한
-  별도 Codex 진단을 노출할 수 있으며, `codex_project_trust`, `codex_host_runtime`,
-  `host_mcp_command` 같은 대응 `checks[]` 항목을 함께 둘 수 있습니다. 이 진단은 trust
-  상태, host runtime 관찰, command launch risk를 CLI MCP preflight 또는 handshake 성공과
-  구분합니다.
+- 연결 상태와 검증 JSON은 CLI MCP preflight와 handshake, `project_trust`,
+  `host_runtime`, `active_tool_exposure`, `host_mcp_command`, CLI MCP 저장
+  capability, 관리 호스트 저장 capability에 대한 별도 Codex 진단을 노출할 수 있습니다.
+  대응 `checks[]` 항목에는 가능할 때 `cli_mcp_preflight`, `cli_mcp_handshake`,
+  `codex_project_trust`, `managed_host_startup`, `managed_host_tools_list`,
+  `managed_host_tool_call`, `active_tool_exposure`, `host_mcp_command`,
+  `cli_mcp_storage_read`, `cli_mcp_storage_write`, `cli_mcp_effective_tools`,
+  `managed_host_storage_read`, `managed_host_storage_write`,
+  `managed_host_effective_tools`가 포함됩니다. 이 진단은 trust 상태, CLI MCP 시작,
+  관리 호스트 runtime 관찰, 활성 도구 노출, command launch risk, 저장 capability를
+  CLI MCP handshake 성공과 구분합니다.
 - detective를 인식하는 setup, doctor, 연결 상태, 연결 검증 JSON은 detective 진단을 보고하는
   곳에서 `selected_profile`, `control_surface`,
   `cooperative_pre_tool_warning_available`,

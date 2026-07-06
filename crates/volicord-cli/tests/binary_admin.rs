@@ -14,9 +14,10 @@ use sha2::{Digest, Sha256};
 use volicord_core::{CoreService, InvocationContext};
 use volicord_store::agent_connections::{
     add_connection_project, agent_connection_record, ensure_agent_connection,
-    list_connection_projects, AgentConnectionRegistration, ConnectionProjectRegistration,
-    CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW, HOST_KIND_CODEX, HOST_SCOPE_PROJECT,
-    VERIFIED_STATUS_ACTION_REQUIRED, VERIFIED_STATUS_COMPLETE,
+    list_connection_projects, update_agent_connection_verification_report,
+    AgentConnectionRegistration, ConnectionProjectRegistration, CONNECTION_MODE_READ_ONLY,
+    CONNECTION_MODE_WORKFLOW, HOST_KIND_CODEX, HOST_SCOPE_PROJECT, VERIFIED_STATUS_ACTION_REQUIRED,
+    VERIFIED_STATUS_COMPLETE,
 };
 use volicord_store::guards::{
     guard_event, insert_agent_session, insert_unrecorded_change, list_guard_installations,
@@ -1036,7 +1037,7 @@ fn init_codex_record_profile_succeeds_without_host_hooks_or_watcher() -> Result<
 
 #[cfg(unix)]
 #[test]
-fn connection_verify_trusted_project_prioritizes_tool_exposure_guidance(
+fn connection_verify_cli_handshake_without_managed_host_remains_action_required(
 ) -> Result<(), Box<dyn Error>> {
     let runtime_home = TempRuntimeHome::new("cli-bin-record-verify-compact")?;
     let repo_root = create_git_repo(&runtime_home, "product-repo")?;
@@ -1097,26 +1098,30 @@ fn connection_verify_trusted_project_prioritizes_tool_exposure_guidance(
     assert!(text.contains(&format!("Repository:\n  {}", repo_root.display())));
     assert!(text.contains("Checks:\n  MCP configuration: match"));
     assert!(text.contains("  Codex project trust: trusted"));
-    assert!(text.contains("  MCP preflight: passed"));
-    assert!(text.contains("  MCP handshake: passed"));
-    assert!(text.contains("  Volicord storage read: passed"));
-    assert!(text.contains("  Volicord storage write: passed"));
-    assert!(text.contains("  Effective MCP tools: workflow"));
-    assert!(text.contains("  Codex host runtime: not observed"));
+    assert!(text.contains("  CLI MCP preflight: passed"));
+    assert!(text.contains("  CLI MCP handshake: passed"));
+    assert!(text.contains("  CLI MCP storage read: passed"));
+    assert!(text.contains("  CLI MCP storage write: passed"));
+    assert!(text.contains("  CLI MCP effective tools: workflow"));
+    assert!(text.contains("  Managed Codex MCP startup: not observed"));
+    assert!(text.contains("  Managed Codex tools/list: not observed"));
+    assert!(text.contains("  Managed Codex tool call: not observed"));
+    assert!(text.contains("  Active Codex tool exposure: unconfirmed"));
     assert!(text.contains("  Host MCP command: uses volicord from the Codex host PATH"));
     assert!(text.contains("  Host follow-up: action required"));
     assert!(text.contains("Next:"));
     assert!(!text.contains("Trust or approve the project configuration if Codex asks."));
-    assert!(text.contains("Confirm Volicord tools are exposed in the active Codex session."));
-    assert!(text.contains(
-        "If tools are not exposed, check Codex MCP startup/tool-list logs and Volicord storage read/write capability."
-    ));
+    assert!(
+        text.contains("Restart, reload, resume, or start a new Codex session in this repository.")
+    );
+    assert!(text.contains("Confirm that Volicord tools are exposed in the active Codex session."));
+    assert!(text.contains("If tools are not exposed, check Codex MCP startup/tool-list logs."));
     assert!(!text.contains("Also ensure `volicord` is launchable by the Codex host process."));
     assert!(!text.contains("has started the Volicord MCP server"));
     assert_order(
         &text,
-        "Confirm Volicord tools are exposed in the active Codex session.",
-        "If tools are not exposed, check Codex MCP startup/tool-list logs and Volicord storage read/write capability.",
+        "Restart, reload, resume, or start a new Codex session in this repository.",
+        "Confirm that Volicord tools are exposed in the active Codex session.",
     );
     assert!(text.contains("Limits:"));
     assert!(text.contains(
@@ -1148,19 +1153,19 @@ fn connection_verify_trusted_project_prioritizes_tool_exposure_guidance(
     let value = json_stdout(&verify_json)?;
     assert_eq!(
         value["primary_next_action"]["id"],
-        "host_runtime_not_observed"
+        "managed_host_startup_not_observed"
     );
     assert_eq!(
         value["primary_next_action"]["instruction"],
-        "Confirm the active Codex session exposes Volicord tools. If tools are not exposed, check Codex MCP startup/tool-list logs and Volicord storage read/write capability."
+        "Restart, reload, resume, or start a new Codex session in this repository so Codex starts the managed Volicord MCP server."
     );
     assert_eq!(value["primary_next_action"]["command"], verify_command);
     assert_order(
         value["primary_next_action"]["instruction"]
             .as_str()
             .expect("primary action instruction should be text"),
-        "exposes Volicord tools",
-        "Volicord storage read/write capability",
+        "Restart",
+        "managed Volicord MCP server",
     );
     assert!(!value["primary_next_action"]["instruction"]
         .as_str()
@@ -1172,14 +1177,14 @@ fn connection_verify_trusted_project_prioritizes_tool_exposure_guidance(
         .contains("volicord connection verify"));
     assert_eq!(
         value["summary_card"]["next"],
-        "Codex host runtime has not been observed; confirm the active Codex session exposes Volicord tools, then check Codex MCP startup/tool-list logs and Volicord storage read/write capability."
+        "Restart, reload, resume, or start a new Codex session in this repository, then confirm active Volicord tool exposure."
     );
     assert_order(
         value["summary_card"]["next"]
             .as_str()
             .expect("summary next should be text"),
-        "exposes Volicord tools",
-        "Volicord storage read/write capability",
+        "Restart",
+        "active Volicord tool exposure",
     );
     assert!(!value["summary_card"]["next"]
         .as_str()
@@ -1198,7 +1203,7 @@ fn connection_verify_trusted_project_prioritizes_tool_exposure_guidance(
         .as_array()
         .expect("actions should be an array")
         .iter()
-        .any(|action| action["id"] == "host_runtime_not_observed"));
+        .any(|action| action["id"] == "managed_host_startup_not_observed"));
     assert!(!value["actions"]
         .as_array()
         .expect("actions should be an array")
@@ -1213,12 +1218,25 @@ fn connection_verify_trusted_project_prioritizes_tool_exposure_guidance(
         .as_array()
         .expect("connection user actions should be an array")
         .iter()
-        .any(|action| action["kind"] == "host_runtime_not_observed"));
+        .any(|action| action["kind"] == "managed_host_startup_not_observed"));
     assert_eq!(value["verification"]["project_trust"]["status"], "trusted");
     assert_eq!(
         value["verification"]["host_runtime"]["status"],
         "not_observed"
     );
+    assert_eq!(
+        value["verification"]["managed_host_startup"],
+        "not_observed"
+    );
+    assert_eq!(
+        value["verification"]["managed_host_tools_list"],
+        "not_observed"
+    );
+    assert_eq!(
+        value["verification"]["managed_host_tool_call"],
+        "not_observed"
+    );
+    assert_eq!(value["verification"]["active_tool_exposure"], "unconfirmed");
     assert_eq!(
         value["verification"]["host_mcp_command"]["mode"],
         "path_resolved"
@@ -1232,7 +1250,7 @@ fn connection_verify_trusted_project_prioritizes_tool_exposure_guidance(
         .expect("checks should be an array")
         .iter()
         .any(|check| check["id"] == "host_mcp_command"
-            && check["status"] == "action_required"
+            && check["status"] == "warning"
             && check["details"]["risk"] == "host_path_unconfirmed"));
     assert_eq!(value["verification"]["host"]["managed_config"], "match");
     assert_eq!(value["verification"]["preflight"]["status"], "passed");
@@ -1249,25 +1267,29 @@ fn connection_verify_trusted_project_prioritizes_tool_exposure_guidance(
         "workflow"
     );
     assert_eq!(value["verification"]["mcp_handshake"]["status"], "passed");
+    assert_eq!(
+        value["verification"]["cli_mcp_handshake"]["status"],
+        "passed"
+    );
     assert!(value["checks"]
         .as_array()
         .expect("checks should be an array")
         .iter()
-        .any(|check| check["id"] == "volicord_storage_read"
+        .any(|check| check["id"] == "cli_mcp_storage_read"
             && check["status"] == "passed"
             && check["details"]["value"] == "passed"));
     assert!(value["checks"]
         .as_array()
         .expect("checks should be an array")
         .iter()
-        .any(|check| check["id"] == "volicord_storage_write"
+        .any(|check| check["id"] == "cli_mcp_storage_write"
             && check["status"] == "passed"
             && check["details"]["value"] == "passed"));
     assert!(value["checks"]
         .as_array()
         .expect("checks should be an array")
         .iter()
-        .any(|check| check["id"] == "effective_mcp_tools"
+        .any(|check| check["id"] == "cli_mcp_effective_tools"
             && check["status"] == "passed"
             && check["details"]["value"] == "workflow"));
     assert_eq!(
@@ -1347,25 +1369,29 @@ fn connection_status_trusted_project_mentions_storage_diagnostics() -> Result<()
     ));
     assert!(text.contains("  Current MCP configuration: match"));
     assert!(text.contains("  Codex project trust: trusted"));
-    assert!(text.contains("  Last MCP preflight: passed"));
-    assert!(text.contains("  Last MCP handshake: passed"));
-    assert!(text.contains("  Volicord storage read: passed"));
-    assert!(text.contains("  Volicord storage write: passed"));
-    assert!(text.contains("  Effective MCP tools: workflow"));
-    assert!(text.contains("  Codex host runtime: not observed"));
+    assert!(text.contains("  Last CLI MCP preflight: passed"));
+    assert!(text.contains("  Last CLI MCP handshake: passed"));
+    assert!(text.contains("  CLI MCP storage read: passed"));
+    assert!(text.contains("  CLI MCP storage write: passed"));
+    assert!(text.contains("  CLI MCP effective tools: workflow"));
+    assert!(text.contains("  Managed Codex MCP startup: not observed"));
+    assert!(text.contains("  Managed Codex tools/list: not observed"));
+    assert!(text.contains("  Managed Codex tool call: not observed"));
+    assert!(text.contains("  Active Codex tool exposure: unconfirmed"));
     assert!(text.contains("  Host MCP command: uses volicord from the Codex host PATH"));
     assert!(text.contains("  Host follow-up: action required"));
     assert!(!text.contains("Trust or approve the project configuration if Codex asks."));
-    assert!(text.contains("Confirm Volicord tools are exposed in the active Codex session."));
-    assert!(text.contains(
-        "If tools are not exposed, check Codex MCP startup/tool-list logs and Volicord storage read/write capability."
-    ));
+    assert!(
+        text.contains("Restart, reload, resume, or start a new Codex session in this repository.")
+    );
+    assert!(text.contains("Confirm that Volicord tools are exposed in the active Codex session."));
+    assert!(text.contains("If tools are not exposed, check Codex MCP startup/tool-list logs."));
     assert!(!text.contains("Also ensure `volicord` is launchable by the Codex host process."));
     assert!(!text.contains("has started the Volicord MCP server"));
     assert_order(
         &text,
-        "Volicord storage read: passed",
-        "Codex host runtime: not observed",
+        "CLI MCP storage read: passed",
+        "Managed Codex MCP startup: not observed",
     );
     assert_text_renders_volicord_commands_as_standalone_lines(
         &text,
@@ -1392,40 +1418,40 @@ fn connection_status_trusted_project_mentions_storage_diagnostics() -> Result<()
     let value = json_stdout(&status_json)?;
     assert_eq!(
         value["primary_next_action"]["id"],
-        "host_runtime_not_observed"
+        "managed_host_startup_not_observed"
     );
     assert_eq!(
         value["summary_card"]["next"],
-        "Codex host runtime has not been observed; confirm the active Codex session exposes Volicord tools, then check Codex MCP startup/tool-list logs and Volicord storage read/write capability."
+        "Restart, reload, resume, or start a new Codex session in this repository, then confirm active Volicord tool exposure."
     );
     assert_eq!(
         value["primary_next_action"]["instruction"],
-        "Confirm the active Codex session exposes Volicord tools. If tools are not exposed, check Codex MCP startup/tool-list logs and Volicord storage read/write capability."
+        "Restart, reload, resume, or start a new Codex session in this repository so Codex starts the managed Volicord MCP server."
     );
     assert!(value["actions"]
         .as_array()
         .expect("actions should be an array")
         .iter()
-        .any(|action| action["id"] == "host_runtime_not_observed"));
+        .any(|action| action["id"] == "managed_host_startup_not_observed"));
     assert!(value["checks"]
         .as_array()
         .expect("checks should be an array")
         .iter()
-        .any(|check| check["id"] == "volicord_storage_read"
+        .any(|check| check["id"] == "cli_mcp_storage_read"
             && check["status"] == "passed"
             && check["details"]["value"] == "passed"));
     assert!(value["checks"]
         .as_array()
         .expect("checks should be an array")
         .iter()
-        .any(|check| check["id"] == "volicord_storage_write"
+        .any(|check| check["id"] == "cli_mcp_storage_write"
             && check["status"] == "passed"
             && check["details"]["value"] == "passed"));
     assert!(value["checks"]
         .as_array()
         .expect("checks should be an array")
         .iter()
-        .any(|check| check["id"] == "effective_mcp_tools"
+        .any(|check| check["id"] == "cli_mcp_effective_tools"
             && check["status"] == "passed"
             && check["details"]["value"] == "workflow"));
     assert!(value["checks"]
@@ -1433,7 +1459,7 @@ fn connection_status_trusted_project_mentions_storage_diagnostics() -> Result<()
         .expect("checks should be an array")
         .iter()
         .any(|check| check["id"] == "host_mcp_command"
-            && check["status"] == "action_required"
+            && check["status"] == "warning"
             && check["details"]["risk"] == "host_path_unconfirmed"));
     Ok(())
 }
@@ -2047,11 +2073,11 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     );
     assert_eq!(
         status_without_intent_json["primary_next_action"]["id"],
-        "host_runtime_not_observed"
+        "managed_host_startup_not_observed"
     );
     assert_eq!(
         status_without_intent_json["summary_card"]["next"],
-        "Codex host runtime has not been observed; confirm the active Codex session exposes Volicord tools, then check Codex MCP startup/tool-list logs and Volicord storage read/write capability."
+        "Restart, reload, resume, or start a new Codex session in this repository, then confirm active Volicord tool exposure."
     );
     assert!(!status_without_intent_json["summary_card"]["next"]
         .as_str()
@@ -2095,10 +2121,13 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
         "Status:\n  Connection: enabled\n  Mode: workflow\n  Last verification: action required"
     ));
     assert!(status_text.contains("  Host follow-up: action required"));
-    assert!(status_text.contains("Confirm Volicord tools are exposed in the active Codex session."));
-    assert!(status_text.contains(
-        "If tools are not exposed, check Codex MCP startup/tool-list logs and Volicord storage read/write capability."
-    ));
+    assert!(status_text
+        .contains("Restart, reload, resume, or start a new Codex session in this repository."));
+    assert!(status_text
+        .contains("Confirm that Volicord tools are exposed in the active Codex session."));
+    assert!(
+        status_text.contains("If tools are not exposed, check Codex MCP startup/tool-list logs.")
+    );
     let verify_command = format!(
         "volicord connection verify codex --shared --repo {}",
         repo_root.display()
@@ -2948,8 +2977,7 @@ fn connect_respects_explicit_read_only_and_uses_same_dry_run_plan() -> Result<()
 
 #[cfg(unix)]
 #[test]
-fn connection_verification_handshake_does_not_create_session_watch_records(
-) -> Result<(), Box<dyn Error>> {
+fn connection_verify_manual_probe_does_not_complete_connection() -> Result<(), Box<dyn Error>> {
     let runtime_home = TempRuntimeHome::new("cli-bin-verification-watch-skip")?;
     let repo_root = runtime_home.create_product_repo("product-repo")?;
     fs::create_dir_all(repo_root.join(".git"))?;
@@ -3068,6 +3096,19 @@ fn connection_verification_handshake_does_not_create_session_watch_records(
         legacy_value["verification"]["host_runtime"]["status"], "not_observed",
         "{legacy_value}"
     );
+    assert_eq!(legacy_value["status"], VERIFIED_STATUS_ACTION_REQUIRED);
+    assert_eq!(
+        legacy_value["connection"]["verification_status"],
+        VERIFIED_STATUS_ACTION_REQUIRED
+    );
+    assert_eq!(
+        legacy_value["primary_next_action"]["id"],
+        "managed_host_startup_not_observed"
+    );
+    assert_eq!(
+        legacy_value["verification"]["active_tool_exposure"],
+        "unconfirmed"
+    );
     assert_eq!(
         legacy_value["verification"]["host_runtime"]["managed_host_startup"], "not_observed",
         "{legacy_value}"
@@ -3076,7 +3117,58 @@ fn connection_verification_handshake_does_not_create_session_watch_records(
     insert_test_watch_baseline(
         runtime_home.path(),
         &projects[0],
-        "managed_lifecycle",
+        "managed_startup_only",
+        &json!({
+            "lifecycle_events": [{
+                "connection_id": connection_id,
+                "project_id": projects[0].project_id,
+                "host_kind": "codex",
+                "launch_origin": "managed_host",
+                "lifecycle_event": "managed_host_startup",
+                "timestamp": "2026-07-01T00:01:00Z",
+                "storage_capability": "read_write",
+                "effective_tool_mode": "workflow"
+            }]
+        })
+        .to_string(),
+    )?;
+
+    let startup_verify = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connection",
+            "verify",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--shared",
+            "--json",
+        ],
+        &[
+            ("PATH", path_env(&[bin_dir.as_path(), volicord_dir])),
+            ("CODEX_HOME", path_text(&codex_home)),
+        ],
+    )?;
+    assert_success(&startup_verify);
+    let startup_value = json_stdout(&startup_verify)?;
+    assert_eq!(startup_value["status"], VERIFIED_STATUS_ACTION_REQUIRED);
+    assert_eq!(
+        startup_value["verification"]["managed_host_startup"],
+        "observed"
+    );
+    assert_eq!(
+        startup_value["verification"]["managed_host_tools_list"],
+        "not_observed"
+    );
+    assert_eq!(
+        startup_value["primary_next_action"]["id"],
+        "managed_host_tools_list_not_observed"
+    );
+
+    insert_test_watch_baseline(
+        runtime_home.path(),
+        &projects[0],
+        "managed_tools_list_only",
         &json!({
             "lifecycle_events": [
                 {
@@ -3085,7 +3177,7 @@ fn connection_verification_handshake_does_not_create_session_watch_records(
                     "host_kind": "codex",
                     "launch_origin": "managed_host",
                     "lifecycle_event": "managed_host_startup",
-                    "timestamp": "2026-07-01T00:01:00Z",
+                    "timestamp": "2026-07-01T00:02:00Z",
                     "storage_capability": "read_write",
                     "effective_tool_mode": "workflow"
                 },
@@ -3095,7 +3187,81 @@ fn connection_verification_handshake_does_not_create_session_watch_records(
                     "host_kind": "codex",
                     "launch_origin": "managed_host",
                     "lifecycle_event": "managed_host_tools_list",
-                    "timestamp": "2026-07-01T00:01:01Z",
+                    "timestamp": "2026-07-01T00:02:01Z",
+                    "storage_capability": "read_write",
+                    "effective_tool_mode": "workflow"
+                }
+            ]
+        })
+        .to_string(),
+    )?;
+
+    let tools_list_verify = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connection",
+            "verify",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--shared",
+            "--json",
+        ],
+        &[
+            ("PATH", path_env(&[bin_dir.as_path(), volicord_dir])),
+            ("CODEX_HOME", path_text(&codex_home)),
+        ],
+    )?;
+    assert_success(&tools_list_verify);
+    let tools_list_value = json_stdout(&tools_list_verify)?;
+    assert_eq!(tools_list_value["status"], VERIFIED_STATUS_ACTION_REQUIRED);
+    assert_eq!(
+        tools_list_value["verification"]["managed_host_tools_list"],
+        "observed"
+    );
+    assert_eq!(
+        tools_list_value["verification"]["managed_host_tool_call"],
+        "not_observed"
+    );
+    assert_eq!(
+        tools_list_value["verification"]["active_tool_exposure"],
+        "unconfirmed"
+    );
+    assert_eq!(
+        tools_list_value["primary_next_action"]["id"],
+        "active_tool_exposure_unconfirmed"
+    );
+    assert!(tools_list_value["checks"]
+        .as_array()
+        .expect("checks should be an array")
+        .iter()
+        .any(|check| check["id"] == "active_tool_exposure"
+            && check["status"] == "action_required"
+            && check["details"]["value"] == "unconfirmed"));
+
+    insert_test_watch_baseline(
+        runtime_home.path(),
+        &projects[0],
+        "managed_tool_call",
+        &json!({
+            "lifecycle_events": [
+                {
+                    "connection_id": connection_id,
+                    "project_id": projects[0].project_id,
+                    "host_kind": "codex",
+                    "launch_origin": "managed_host",
+                    "lifecycle_event": "managed_host_startup",
+                    "timestamp": "2026-07-01T00:03:00Z",
+                    "storage_capability": "read_write",
+                    "effective_tool_mode": "workflow"
+                },
+                {
+                    "connection_id": connection_id,
+                    "project_id": projects[0].project_id,
+                    "host_kind": "codex",
+                    "launch_origin": "managed_host",
+                    "lifecycle_event": "managed_host_tools_list",
+                    "timestamp": "2026-07-01T00:03:01Z",
                     "storage_capability": "read_write",
                     "effective_tool_mode": "workflow"
                 },
@@ -3105,7 +3271,7 @@ fn connection_verification_handshake_does_not_create_session_watch_records(
                     "host_kind": "codex",
                     "launch_origin": "managed_host",
                     "lifecycle_event": "managed_host_tool_call",
-                    "timestamp": "2026-07-01T00:01:02Z",
+                    "timestamp": "2026-07-01T00:03:02Z",
                     "storage_capability": "read_write",
                     "effective_tool_mode": "workflow"
                 }
@@ -3132,6 +3298,11 @@ fn connection_verification_handshake_does_not_create_session_watch_records(
     )?;
     assert_success(&managed_verify);
     let managed_value = json_stdout(&managed_verify)?;
+    assert_eq!(managed_value["status"], VERIFIED_STATUS_COMPLETE);
+    assert_eq!(
+        managed_value["connection"]["verification_status"],
+        VERIFIED_STATUS_COMPLETE
+    );
     assert_eq!(
         managed_value["verification"]["host_runtime"]["status"], "observed",
         "{managed_value}"
@@ -3148,6 +3319,140 @@ fn connection_verification_handshake_does_not_create_session_watch_records(
         managed_value["verification"]["host_runtime"]["managed_host_tool_call"], "observed",
         "{managed_value}"
     );
+    assert_eq!(
+        managed_value["verification"]["active_tool_exposure"],
+        "confirmed"
+    );
+    assert_eq!(managed_value["primary_next_action"], Value::Null);
+    assert_eq!(managed_value["summary_card"]["next"], "none");
+    assert!(managed_value["checks"]
+        .as_array()
+        .expect("checks should be an array")
+        .iter()
+        .any(|check| check["id"] == "managed_host_storage_write"
+            && check["status"] == "passed"
+            && check["details"]["value"] == "passed"));
+
+    let status = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connection",
+            "status",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--shared",
+            "--json",
+        ],
+        &[("CODEX_HOME", path_text(&codex_home))],
+    )?;
+    assert_success(&status);
+    let status_value = json_stdout(&status)?;
+    assert_eq!(status_value["status"], VERIFIED_STATUS_COMPLETE);
+    assert_eq!(status_value["summary_card"]["next"], "none");
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn connection_status_does_not_report_complete_from_legacy_observation() -> Result<(), Box<dyn Error>>
+{
+    let runtime_home = TempRuntimeHome::new("cli-bin-status-legacy-complete")?;
+    let repo_root = create_git_repo(&runtime_home, "product-repo")?;
+    let bin_dir = runtime_home.path().join("bin");
+    let codex_home = runtime_home.path().join("codex-home");
+    write_fake_codex(&bin_dir)?;
+    write_fake_mcp(&bin_dir)?;
+    write_codex_project_trust(&codex_home, &repo_root, "trusted")?;
+
+    let init = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--host",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--profile",
+            "record",
+            "--json",
+        ],
+        &[
+            ("PATH", path_env(&[bin_dir.as_path()])),
+            ("CODEX_HOME", path_text(&codex_home)),
+            ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
+        ],
+    )?;
+    assert_success(&init);
+    let init_value = json_stdout(&init)?;
+    let connection_id = init_value["connection"]["connection_id"]
+        .as_str()
+        .expect("connection id should be present")
+        .to_owned();
+    let record = agent_connection_record(runtime_home.path(), &connection_id)?
+        .expect("connection should be stored");
+    let projects = list_connection_projects(runtime_home.path(), &connection_id)?;
+    assert_eq!(projects.len(), 1);
+
+    insert_test_watch_baseline(
+        runtime_home.path(),
+        &projects[0],
+        "legacy_source_less",
+        "{}",
+    )?;
+    update_agent_connection_verification_report(
+        runtime_home.path(),
+        &connection_id,
+        VERIFIED_STATUS_COMPLETE,
+        &record.managed_fingerprint,
+        &json!({
+            "status": "complete",
+            "host_runtime": {
+                "status": "observed",
+                "managed_host_startup": "not_observed",
+                "managed_host_tools_list": "not_observed",
+                "managed_host_tool_call": "not_observed",
+                "details": "legacy source-less observation",
+                "last_observed_at": null
+            },
+            "preflight": { "status": "passed", "details": "legacy CLI preflight" },
+            "mcp_handshake": { "status": "passed", "details": "legacy CLI handshake" }
+        })
+        .to_string(),
+        "[]",
+    )?;
+
+    let status = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connection",
+            "status",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--shared",
+            "--json",
+        ],
+        &[("CODEX_HOME", path_text(&codex_home))],
+    )?;
+    assert_success(&status);
+    let value = json_stdout(&status)?;
+    assert_eq!(
+        value["connection"]["verification_status"],
+        VERIFIED_STATUS_COMPLETE
+    );
+    assert_eq!(value["status"], VERIFIED_STATUS_ACTION_REQUIRED);
+    assert_eq!(
+        value["primary_next_action"]["id"],
+        "managed_host_startup_not_observed"
+    );
+    assert!(value["checks"]
+        .as_array()
+        .expect("checks should be an array")
+        .iter()
+        .any(|check| check["id"] == "active_tool_exposure"
+            && check["status"] == "action_required"
+            && check["details"]["value"] == "unconfirmed"));
     Ok(())
 }
 

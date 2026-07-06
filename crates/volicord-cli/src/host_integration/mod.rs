@@ -410,6 +410,10 @@ pub enum UserActionKind {
     ProjectApprovalRequired,
     ReloadRequired,
     HostRuntimeNotObserved,
+    ManagedHostStartupNotObserved,
+    ManagedHostToolsListNotObserved,
+    ActiveToolExposureUnconfirmed,
+    ManagedHostStorageDegraded,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

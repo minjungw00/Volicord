@@ -49,9 +49,9 @@ use crate::host_integration::{
     generic::{GenericAdapter, USER_MANAGED_CONFIGURATION_GUIDANCE},
     host_capabilities, supports_connection_intent,
     verification::{
-        HostMcpCommandDiagnostic, HostMcpCommandLaunchMode, HostRuntimeDiagnostic,
-        HostRuntimeObservationStatus, ManagedConfigStatus, ProjectTrustStatus, Verification,
-        VerificationStatus,
+        ActiveToolExposureStatus, HostMcpCommandDiagnostic, HostMcpCommandLaunchMode,
+        HostRuntimeDiagnostic, HostRuntimeObservationStatus, ManagedConfigStatus,
+        ManagedHostStorageDiagnostic, ProjectTrustStatus, Verification, VerificationStatus,
     },
     ConnectionIntent, HostAdapter, HostCapabilities, HostConfigError, HostIntegrationFileKind,
     HostKind, HostLifecyclePhase, HostPlan, HostPlanRequest, HostRemoveRequest, HostScope,
@@ -886,6 +886,13 @@ fn status_with_current_diagnostics(
         )
     }) {
         return AgentResultStatus::ActionRequired;
+    }
+    if status == AgentResultStatus::Complete {
+        if let Some(runtime) = current_host.and_then(|host| host.host_runtime.as_ref()) {
+            if runtime.managed_host_tool_call != HostRuntimeObservationStatus::Observed {
+                return AgentResultStatus::ActionRequired;
+            }
+        }
     }
     if status == AgentResultStatus::Complete && !actions.is_empty() {
         AgentResultStatus::ActionRequired
@@ -2108,34 +2115,91 @@ fn attach_current_host_runtime_diagnostics(
     let runtime = host_runtime_observation(runtime_home, connection, projects);
     let command = host_mcp_command_diagnostic(&host_plan.entry, &runtime);
     let mut actions = host.user_actions.clone();
-    if host_runtime_action_applies(&host, &runtime) {
-        push_unique_action(
-            &mut actions,
-            UserAction::new(
-                UserActionKind::HostRuntimeNotObserved,
-                host_runtime_not_observed_action_message(),
-            ),
-        );
+    if let Some(action) = managed_runtime_action(&host, &runtime) {
+        push_unique_action(&mut actions, action);
     }
     host.with_host_runtime(runtime)
         .with_host_mcp_command(command)
         .with_user_actions(actions)
 }
 
-fn host_runtime_action_applies(host: &Verification, runtime: &HostRuntimeDiagnostic) -> bool {
-    runtime.status == HostRuntimeObservationStatus::NotObserved
-        && host.managed_config.as_str() == "match"
-        && host.mcp_handshake_allowed
-        && !host.user_actions.iter().any(|action| {
-            matches!(
-                action.kind,
-                UserActionKind::HostTrustRequired | UserActionKind::ProjectApprovalRequired
-            )
-        })
+fn managed_runtime_action(
+    host: &Verification,
+    runtime: &HostRuntimeDiagnostic,
+) -> Option<UserAction> {
+    if host.managed_config.as_str() != "match" || !host.mcp_handshake_allowed {
+        return None;
+    }
+    if host.user_actions.iter().any(|action| {
+        matches!(
+            action.kind,
+            UserActionKind::HostTrustRequired | UserActionKind::ProjectApprovalRequired
+        )
+    }) {
+        return None;
+    }
+    match (
+        runtime.managed_host_startup,
+        runtime.managed_host_tools_list,
+        runtime.managed_host_tool_call,
+    ) {
+        (HostRuntimeObservationStatus::NotObserved, _, _) => Some(UserAction::new(
+            UserActionKind::ManagedHostStartupNotObserved,
+            managed_host_startup_not_observed_action_message(),
+        )),
+        (HostRuntimeObservationStatus::Observed, HostRuntimeObservationStatus::NotObserved, _) => {
+            Some(UserAction::new(
+                UserActionKind::ManagedHostToolsListNotObserved,
+                managed_host_tools_list_not_observed_action_message(),
+            ))
+        }
+        (
+            HostRuntimeObservationStatus::Observed,
+            HostRuntimeObservationStatus::Observed,
+            HostRuntimeObservationStatus::NotObserved,
+        ) => Some(UserAction::new(
+            UserActionKind::ActiveToolExposureUnconfirmed,
+            active_tool_exposure_unconfirmed_action_message(),
+        )),
+        (
+            HostRuntimeObservationStatus::Observed,
+            HostRuntimeObservationStatus::Observed,
+            HostRuntimeObservationStatus::Observed,
+        ) if managed_host_storage_is_degraded(runtime) => Some(UserAction::new(
+            UserActionKind::ManagedHostStorageDegraded,
+            managed_host_storage_degraded_action_message(),
+        )),
+        _ => None,
+    }
 }
 
-fn host_runtime_not_observed_action_message() -> &'static str {
-    "Confirm the active Codex session exposes Volicord tools. If tools are not exposed, check Codex MCP startup/tool-list logs and Volicord storage read/write capability."
+fn managed_host_startup_not_observed_action_message() -> &'static str {
+    "Restart, reload, resume, or start a new Codex session in this repository so Codex starts the managed Volicord MCP server."
+}
+
+fn managed_host_tools_list_not_observed_action_message() -> &'static str {
+    "Check Codex MCP startup/tool-list logs; Volicord has observed managed startup but not managed tools/list."
+}
+
+fn active_tool_exposure_unconfirmed_action_message() -> &'static str {
+    "Confirm active Codex tool exposure or invoke a read-only Volicord tool from the active Codex session."
+}
+
+fn managed_host_storage_degraded_action_message() -> &'static str {
+    "Repair managed Codex host storage read/write capability or switch the connection to a compatible read-only mode."
+}
+
+fn managed_host_storage_is_degraded(runtime: &HostRuntimeDiagnostic) -> bool {
+    let Some(storage) = &runtime.managed_host_storage else {
+        return false;
+    };
+    storage_read_check_status(&storage.storage_read) != "passed"
+        || storage_write_check_status(&storage.storage_write, &storage.effective_tool_mode)
+            != "passed"
+        || !matches!(
+            effective_tool_mode_check_status(&storage.effective_tool_mode),
+            "passed"
+        )
 }
 
 fn push_unique_action(actions: &mut Vec<UserAction>, action: UserAction) {
@@ -2171,7 +2235,9 @@ fn host_runtime_observation(
             managed_host_startup: HostRuntimeObservationStatus::Unknown,
             managed_host_tools_list: HostRuntimeObservationStatus::Unknown,
             managed_host_tool_call: HostRuntimeObservationStatus::Unknown,
-            details: "No connected project was available for Codex host runtime observation"
+            active_tool_exposure: ActiveToolExposureStatus::Unknown,
+            managed_host_storage: None,
+            details: "No connected project was available for managed Codex lifecycle observation"
                 .to_owned(),
             last_observed_at: None,
         };
@@ -2198,8 +2264,10 @@ fn host_runtime_observation(
                     managed_host_startup: HostRuntimeObservationStatus::Unknown,
                     managed_host_tools_list: HostRuntimeObservationStatus::Unknown,
                     managed_host_tool_call: HostRuntimeObservationStatus::Unknown,
+                    active_tool_exposure: ActiveToolExposureStatus::Unknown,
+                    managed_host_storage: None,
                     details: format!(
-                        "Codex host runtime observation could not be read from session-watch state: {error}"
+                        "Managed Codex lifecycle observation could not be read from session-watch state: {error}"
                     ),
                     last_observed_at: None,
                 };
@@ -2212,6 +2280,8 @@ fn host_runtime_observation(
             managed_host_startup: evidence.startup_status(),
             managed_host_tools_list: evidence.tools_list_status(),
             managed_host_tool_call: evidence.tool_call_status(),
+            active_tool_exposure: evidence.active_tool_exposure_status(),
+            managed_host_storage: evidence.storage_diagnostic(),
             details:
                 "Volicord has observed managed Codex MCP lifecycle evidence for this connection"
                     .to_owned(),
@@ -2223,6 +2293,8 @@ fn host_runtime_observation(
             managed_host_startup: evidence.startup_status(),
             managed_host_tools_list: evidence.tools_list_status(),
             managed_host_tool_call: evidence.tool_call_status(),
+            active_tool_exposure: evidence.active_tool_exposure_status(),
+            managed_host_storage: evidence.storage_diagnostic(),
             details: "Volicord has not observed a Codex host process start the Volicord MCP server for this connection".to_owned(),
             last_observed_at: None,
         }
@@ -2234,6 +2306,7 @@ struct ManagedHostLifecycleEvidence {
     managed_host_startup: Option<String>,
     managed_host_tools_list: Option<String>,
     managed_host_tool_call: Option<String>,
+    managed_host_storage: Option<ManagedHostStorageEvidence>,
     last_observed_at: Option<String>,
 }
 
@@ -2256,6 +2329,7 @@ impl ManagedHostLifecycleEvidence {
                 .get("timestamp")
                 .and_then(Value::as_str)
                 .map(str::to_owned);
+            self.observe_storage(event, lifecycle_event, timestamp.clone());
             match lifecycle_event {
                 "managed_host_startup" => {
                     self.managed_host_startup =
@@ -2285,6 +2359,93 @@ impl ManagedHostLifecycleEvidence {
 
     fn tool_call_status(&self) -> HostRuntimeObservationStatus {
         observed_status(self.managed_host_tool_call.is_some())
+    }
+
+    fn active_tool_exposure_status(&self) -> ActiveToolExposureStatus {
+        match self.tool_call_status() {
+            HostRuntimeObservationStatus::Observed => ActiveToolExposureStatus::Confirmed,
+            HostRuntimeObservationStatus::NotObserved => ActiveToolExposureStatus::Unconfirmed,
+            HostRuntimeObservationStatus::Unknown => ActiveToolExposureStatus::Unknown,
+        }
+    }
+
+    fn observe_storage(&mut self, event: &Value, lifecycle_event: &str, timestamp: Option<String>) {
+        let Some(storage_capability) = event.get("storage_capability").and_then(Value::as_str)
+        else {
+            return;
+        };
+        let effective_tool_mode = event
+            .get("effective_tool_mode")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown");
+        let candidate = ManagedHostStorageEvidence {
+            storage_capability: storage_capability.to_owned(),
+            effective_tool_mode: effective_tool_mode.to_owned(),
+            source_lifecycle_event: lifecycle_event.to_owned(),
+            observed_at: timestamp,
+        };
+        if managed_host_storage_candidate_is_newer(self.managed_host_storage.as_ref(), &candidate) {
+            self.managed_host_storage = Some(candidate);
+        }
+    }
+
+    fn storage_diagnostic(&self) -> Option<ManagedHostStorageDiagnostic> {
+        self.managed_host_storage
+            .as_ref()
+            .map(ManagedHostStorageEvidence::to_diagnostic)
+    }
+}
+
+struct ManagedHostStorageEvidence {
+    storage_capability: String,
+    effective_tool_mode: String,
+    source_lifecycle_event: String,
+    observed_at: Option<String>,
+}
+
+impl ManagedHostStorageEvidence {
+    fn to_diagnostic(&self) -> ManagedHostStorageDiagnostic {
+        ManagedHostStorageDiagnostic {
+            storage_read: managed_storage_read_status(&self.storage_capability).to_owned(),
+            storage_write: managed_storage_write_status(&self.storage_capability).to_owned(),
+            effective_tool_mode: self.effective_tool_mode.clone(),
+            source_lifecycle_event: self.source_lifecycle_event.clone(),
+            observed_at: self.observed_at.clone(),
+        }
+    }
+}
+
+fn managed_host_storage_candidate_is_newer(
+    current: Option<&ManagedHostStorageEvidence>,
+    candidate: &ManagedHostStorageEvidence,
+) -> bool {
+    let Some(current) = current else {
+        return true;
+    };
+    match (&current.observed_at, &candidate.observed_at) {
+        (Some(current), Some(candidate)) => candidate > current,
+        (None, Some(_)) => true,
+        (Some(_), None) => false,
+        (None, None) => true,
+    }
+}
+
+fn managed_storage_read_status(storage_capability: &str) -> &'static str {
+    match storage_capability {
+        "read_write" | "read_only" => "passed",
+        "unavailable" => "failed",
+        "unknown" => "unknown",
+        _ => "unknown",
+    }
+}
+
+fn managed_storage_write_status(storage_capability: &str) -> &'static str {
+    match storage_capability {
+        "read_write" => "passed",
+        "read_only" => "readonly",
+        "unavailable" => "skipped",
+        "unknown" => "unknown",
+        _ => "unknown",
     }
 }
 
@@ -2356,6 +2517,24 @@ fn aggregate_verification_status(
 ) -> AgentResultStatus {
     if preflight.status == StepStatus::Failed || handshake.status == StepStatus::Failed {
         return AgentResultStatus::Failed;
+    }
+    if let Some(runtime) = &host.host_runtime {
+        return match host.status {
+            VerificationStatus::Complete
+                if handshake.status == StepStatus::Passed
+                    && host.user_actions.is_empty()
+                    && runtime.managed_host_tool_call == HostRuntimeObservationStatus::Observed =>
+            {
+                AgentResultStatus::Complete
+            }
+            VerificationStatus::Complete | VerificationStatus::ActionRequired
+                if handshake.status == StepStatus::Passed =>
+            {
+                AgentResultStatus::ActionRequired
+            }
+            VerificationStatus::NotVerified => AgentResultStatus::NotVerified,
+            _ => AgentResultStatus::Failed,
+        };
     }
     match host.status {
         VerificationStatus::Complete
@@ -5744,11 +5923,11 @@ fn compact_connection_checks(
         append_host_trust_compact_check(&mut checks, &verification.host);
         checks.extend([
             (
-                "MCP preflight",
+                "CLI MCP preflight",
                 verification.preflight.status.as_str().to_owned(),
             ),
             (
-                "MCP handshake",
+                "CLI MCP handshake",
                 verification.handshake.status.as_str().to_owned(),
             ),
         ]);
@@ -5777,12 +5956,12 @@ fn compact_connection_checks(
     }
     checks.extend([
         (
-            "Last MCP preflight",
-            stored_verification_step_status(data.connection, "preflight"),
+            "Last CLI MCP preflight",
+            stored_verification_step_status(data.connection, "cli_mcp_preflight"),
         ),
         (
-            "Last MCP handshake",
-            stored_verification_step_status(data.connection, "mcp_handshake"),
+            "Last CLI MCP handshake",
+            stored_verification_step_status(data.connection, "cli_mcp_handshake"),
         ),
     ]);
     append_stored_preflight_storage_compact_checks(&mut checks, data.connection);
@@ -5807,7 +5986,36 @@ fn append_host_runtime_compact_checks(
     host: &Verification,
 ) {
     if let Some(runtime) = &host.host_runtime {
-        checks.push(("Codex host runtime", host_runtime_text(runtime.status)));
+        checks.push((
+            "Managed Codex MCP startup",
+            host_runtime_text(runtime.managed_host_startup),
+        ));
+        checks.push((
+            "Managed Codex tools/list",
+            host_runtime_text(runtime.managed_host_tools_list),
+        ));
+        checks.push((
+            "Managed Codex tool call",
+            host_runtime_text(runtime.managed_host_tool_call),
+        ));
+        checks.push((
+            "Active Codex tool exposure",
+            active_tool_exposure_text(runtime.active_tool_exposure),
+        ));
+        if let Some(storage) = &runtime.managed_host_storage {
+            checks.push((
+                "Managed host storage read",
+                diagnostic_value_text(&storage.storage_read),
+            ));
+            checks.push((
+                "Managed host storage write",
+                diagnostic_value_text(&storage.storage_write),
+            ));
+            checks.push((
+                "Managed host effective tools",
+                diagnostic_value_text(&storage.effective_tool_mode),
+            ));
+        }
     }
     if let Some(command) = &host.host_mcp_command {
         checks.push(("Host MCP command", host_mcp_command_text(command)));
@@ -5838,15 +6046,15 @@ fn append_storage_compact_checks(
 ) {
     checks.extend([
         (
-            "Volicord storage read",
+            "CLI MCP storage read",
             diagnostic_value_text(&diagnostics.storage_read),
         ),
         (
-            "Volicord storage write",
+            "CLI MCP storage write",
             diagnostic_value_text(&diagnostics.storage_write),
         ),
         (
-            "Effective MCP tools",
+            "CLI MCP effective tools",
             diagnostic_value_text(&diagnostics.effective_tool_mode),
         ),
     ]);
@@ -5866,6 +6074,10 @@ fn project_trust_text(status: ProjectTrustStatus) -> String {
 }
 
 fn host_runtime_text(status: HostRuntimeObservationStatus) -> String {
+    status.as_str().replace('_', " ")
+}
+
+fn active_tool_exposure_text(status: ActiveToolExposureStatus) -> String {
     status.as_str().replace('_', " ")
 }
 
@@ -5928,16 +6140,55 @@ fn append_compact_next_steps(
             );
             push_optional_numbered_command(output, &mut index, "Run", command.as_deref());
         }
-        "host_runtime_not_observed" => {
+        "managed_host_startup_not_observed" | "host_runtime_not_observed" => {
             push_numbered_text(
                 output,
                 &mut index,
-                "Confirm Volicord tools are exposed in the active Codex session.",
+                "Restart, reload, resume, or start a new Codex session in this repository.",
             );
             push_numbered_text(
                 output,
                 &mut index,
-                "If tools are not exposed, check Codex MCP startup/tool-list logs and Volicord storage read/write capability.",
+                "Confirm that Volicord tools are exposed in the active Codex session.",
+            );
+            push_numbered_text(
+                output,
+                &mut index,
+                "If tools are not exposed, check Codex MCP startup/tool-list logs.",
+            );
+            push_optional_numbered_command(output, &mut index, "Run", command.as_deref());
+        }
+        "managed_host_tools_list_not_observed" => {
+            push_numbered_text(
+                output,
+                &mut index,
+                "Check Codex MCP startup/tool-list logs.",
+            );
+            push_numbered_text(
+                output,
+                &mut index,
+                "Restart, reload, resume, or start a new Codex session in this repository if the managed tools/list snapshot is still absent.",
+            );
+            push_optional_numbered_command(output, &mut index, "Run", command.as_deref());
+        }
+        "active_tool_exposure_unconfirmed" => {
+            push_numbered_text(
+                output,
+                &mut index,
+                "Confirm that Volicord tools are exposed in the active Codex session.",
+            );
+            push_numbered_text(
+                output,
+                &mut index,
+                "Invoke a read-only Volicord tool from the active Codex session.",
+            );
+            push_optional_numbered_command(output, &mut index, "Run", command.as_deref());
+        }
+        "managed_host_storage_degraded" => {
+            push_numbered_text(
+                output,
+                &mut index,
+                "Repair managed Codex host storage read/write capability or switch to a compatible read-only mode.",
             );
             push_optional_numbered_command(output, &mut index, "Run", command.as_deref());
         }
@@ -6065,8 +6316,15 @@ fn enabled_text(enabled: bool) -> &'static str {
 }
 
 fn stored_verification_step_status(connection: &AgentConnectionRecord, step: &str) -> String {
-    json_object_text(&connection.last_verification_report_json)
+    let report = json_object_text(&connection.last_verification_report_json);
+    let legacy_step = match step {
+        "cli_mcp_preflight" => Some("preflight"),
+        "cli_mcp_handshake" => Some("mcp_handshake"),
+        _ => None,
+    };
+    report
         .get(step)
+        .or_else(|| legacy_step.and_then(|legacy| report.get(legacy)))
         .and_then(|step| step.get("status"))
         .and_then(Value::as_str)
         .unwrap_or("not observed")
@@ -6084,7 +6342,11 @@ fn stored_preflight_diagnostics(
 fn stored_preflight_diagnostics_from_report(
     report: &serde_json::Map<String, Value>,
 ) -> Option<McpPreflightDiagnostics> {
-    let diagnostics = report.get("preflight")?.get("diagnostics")?.as_object()?;
+    let diagnostics = report
+        .get("cli_mcp_preflight")
+        .or_else(|| report.get("preflight"))?
+        .get("diagnostics")?
+        .as_object()?;
     Some(McpPreflightDiagnostics {
         storage_read: diagnostics.get("storage_read")?.as_str()?.to_owned(),
         storage_write: diagnostics.get("storage_write")?.as_str()?.to_owned(),
@@ -6799,12 +7061,12 @@ fn init_checks_json(
                 "summary": report.host.details,
             }),
             json!({
-                "id": "mcp_preflight",
+                "id": "cli_mcp_preflight",
                 "status": report.preflight.status.as_str(),
                 "summary": report.preflight.details,
             }),
             json!({
-                "id": "mcp_handshake",
+                "id": "cli_mcp_handshake",
                 "status": report.handshake.status.as_str(),
                 "summary": report.handshake.details,
             }),
@@ -7335,16 +7597,6 @@ fn primary_connection_action(
     projects: &[ConnectionProjectRecord],
 ) -> Option<PrimaryNextAction> {
     if let Some(verification) = verification {
-        if verification.host.host_executable.as_str() == "unavailable" {
-            return Some(PrimaryNextAction::new(
-                "path_binary_not_found",
-                verification
-                    .host
-                    .diagnostic
-                    .clone()
-                    .unwrap_or_else(|| verification.host.details.clone()),
-            ));
-        }
         match verification.host.managed_config.as_str() {
             "missing" => {
                 return Some(connection_repair_action(
@@ -7371,6 +7623,16 @@ fn primary_connection_action(
                 ));
             }
             _ => {}
+        }
+        if verification.host.host_executable.as_str() == "unavailable" {
+            return Some(PrimaryNextAction::new(
+                "path_binary_not_found",
+                verification
+                    .host
+                    .diagnostic
+                    .clone()
+                    .unwrap_or_else(|| verification.host.details.clone()),
+            ));
         }
     }
     if verification.is_none() {
@@ -7405,29 +7667,6 @@ fn primary_connection_action(
         }
         if let Some(connection) = connection {
             let stored_report = json_object_text(&connection.last_verification_report_json);
-            if stored_report
-                .get("host")
-                .and_then(|host| host.get("host_executable"))
-                .and_then(Value::as_str)
-                == Some("unavailable")
-            {
-                return Some(PrimaryNextAction::new(
-                    "path_binary_not_found",
-                    stored_report
-                        .get("host")
-                        .and_then(|host| host.get("diagnostic"))
-                        .and_then(Value::as_str)
-                        .or_else(|| {
-                            stored_report
-                                .get("host")
-                                .and_then(|host| host.get("details"))
-                                .and_then(Value::as_str)
-                        })
-                        .unwrap_or(
-                            "Install or repair the host executable so it is available on PATH.",
-                        ),
-                ));
-            }
             match connection_mcp_config_state(connection, None, None, None).as_str() {
                 "missing" => {
                     return Some(connection_repair_action(
@@ -7454,6 +7693,29 @@ fn primary_connection_action(
                     ));
                 }
                 _ => {}
+            }
+            if stored_report
+                .get("host")
+                .and_then(|host| host.get("host_executable"))
+                .and_then(Value::as_str)
+                == Some("unavailable")
+            {
+                return Some(PrimaryNextAction::new(
+                    "path_binary_not_found",
+                    stored_report
+                        .get("host")
+                        .and_then(|host| host.get("diagnostic"))
+                        .and_then(Value::as_str)
+                        .or_else(|| {
+                            stored_report
+                                .get("host")
+                                .and_then(|host| host.get("details"))
+                                .and_then(Value::as_str)
+                        })
+                        .unwrap_or(
+                            "Install or repair the host executable so it is available on PATH.",
+                        ),
+                ));
             }
         }
     }
@@ -7533,6 +7795,10 @@ fn prioritized_connection_action(actions: &[UserAction]) -> Option<&UserAction> 
     [
         UserActionKind::HostTrustRequired,
         UserActionKind::ProjectApprovalRequired,
+        UserActionKind::ManagedHostStartupNotObserved,
+        UserActionKind::ManagedHostToolsListNotObserved,
+        UserActionKind::ActiveToolExposureUnconfirmed,
+        UserActionKind::ManagedHostStorageDegraded,
         UserActionKind::HostRuntimeNotObserved,
         UserActionKind::ReloadRequired,
     ]
@@ -7574,8 +7840,20 @@ fn connection_summary_next_text(
         return "none".to_owned();
     };
     match action.id.as_str() {
+        "managed_host_startup_not_observed" => format!(
+            "Restart, reload, resume, or start a new {host_display} session in this repository, then confirm active Volicord tool exposure."
+        ),
+        "managed_host_tools_list_not_observed" => format!(
+            "Check {host_display} MCP startup/tool-list logs; managed startup was observed but managed tools/list was not."
+        ),
+        "active_tool_exposure_unconfirmed" => format!(
+            "Confirm active {host_display} tool exposure or invoke a read-only Volicord tool from the active {host_display} session."
+        ),
+        "managed_host_storage_degraded" => format!(
+            "Repair managed {host_display} host storage read/write capability or switch to a compatible read-only mode."
+        ),
         "host_runtime_not_observed" => format!(
-            "{host_display} host runtime has not been observed; confirm the active {host_display} session exposes Volicord tools, then check {host_display} MCP startup/tool-list logs and Volicord storage read/write capability."
+            "Restart, reload, resume, or start a new {host_display} session in this repository, then confirm active Volicord tool exposure."
         ),
         "host_trust_required" => format!(
             "The project must be trusted before project-scoped {host_display} configuration loads; then rerun verification."
@@ -7659,6 +7937,10 @@ fn next_action_should_verify(id: &str) -> bool {
             | "project_approval_required"
             | "reload_required"
             | "host_runtime_not_observed"
+            | "managed_host_startup_not_observed"
+            | "managed_host_tools_list_not_observed"
+            | "active_tool_exposure_unconfirmed"
+            | "managed_host_storage_degraded"
     )
 }
 
@@ -9731,6 +10013,10 @@ fn user_action_id(kind: UserActionKind) -> &'static str {
         UserActionKind::ProjectApprovalRequired => "project_approval_required",
         UserActionKind::ReloadRequired => "reload_required",
         UserActionKind::HostRuntimeNotObserved => "host_runtime_not_observed",
+        UserActionKind::ManagedHostStartupNotObserved => "managed_host_startup_not_observed",
+        UserActionKind::ManagedHostToolsListNotObserved => "managed_host_tools_list_not_observed",
+        UserActionKind::ActiveToolExposureUnconfirmed => "active_tool_exposure_unconfirmed",
+        UserActionKind::ManagedHostStorageDegraded => "managed_host_storage_degraded",
     }
 }
 
@@ -9756,12 +10042,12 @@ fn checks_json(
         checks.extend(host_diagnostic_checks_json(&verification.host));
         checks.extend([
             json!({
-                "id": "mcp_preflight",
+                "id": "cli_mcp_preflight",
                 "status": verification.preflight.status.as_str(),
                 "summary": verification.preflight.details,
             }),
             json!({
-                "id": "mcp_handshake",
+                "id": "cli_mcp_handshake",
                 "status": verification.handshake.status.as_str(),
                 "summary": verification.handshake.details,
             }),
@@ -9804,24 +10090,32 @@ fn stored_checks_json(
     } else {
         checks.extend(stored_host_diagnostic_checks_json(object));
     }
-    if let Some(preflight) = object.get("preflight").and_then(Value::as_object) {
+    if let Some(preflight) = object
+        .get("cli_mcp_preflight")
+        .or_else(|| object.get("preflight"))
+        .and_then(Value::as_object)
+    {
         checks.push(json!({
-            "id": "mcp_preflight",
+            "id": "cli_mcp_preflight",
             "status": preflight.get("status").and_then(Value::as_str).unwrap_or("skipped"),
             "summary": preflight
                 .get("details")
                 .and_then(Value::as_str)
-                .unwrap_or("stored MCP preflight state"),
+                .unwrap_or("stored CLI MCP preflight state"),
         }));
     }
-    if let Some(handshake) = object.get("mcp_handshake").and_then(Value::as_object) {
+    if let Some(handshake) = object
+        .get("cli_mcp_handshake")
+        .or_else(|| object.get("mcp_handshake"))
+        .and_then(Value::as_object)
+    {
         checks.push(json!({
-            "id": "mcp_handshake",
+            "id": "cli_mcp_handshake",
             "status": handshake.get("status").and_then(Value::as_str).unwrap_or("skipped"),
             "summary": handshake
                 .get("details")
                 .and_then(Value::as_str)
-                .unwrap_or("stored MCP handshake state"),
+                .unwrap_or("stored CLI MCP handshake state"),
         }));
     }
     checks.extend(preflight_storage_checks_json(
@@ -9836,34 +10130,34 @@ fn preflight_storage_checks_json(diagnostics: Option<&McpPreflightDiagnostics>) 
     };
     vec![
         json!({
-            "id": "volicord_storage_read",
+            "id": "cli_mcp_storage_read",
             "status": storage_read_check_status(&diagnostics.storage_read),
-            "summary": format!("Volicord storage read: {}", diagnostic_value_text(&diagnostics.storage_read)),
+            "summary": format!("CLI MCP storage read: {}", diagnostic_value_text(&diagnostics.storage_read)),
             "details": {
-                "source": "mcp_preflight",
+                "source": "cli_mcp_preflight",
                 "preflight_field": "project_state_read",
                 "value": &diagnostics.storage_read,
             },
         }),
         json!({
-            "id": "volicord_storage_write",
+            "id": "cli_mcp_storage_write",
             "status": storage_write_check_status(
                 &diagnostics.storage_write,
                 &diagnostics.effective_tool_mode,
             ),
-            "summary": format!("Volicord storage write: {}", diagnostic_value_text(&diagnostics.storage_write)),
+            "summary": format!("CLI MCP storage write: {}", diagnostic_value_text(&diagnostics.storage_write)),
             "details": {
-                "source": "mcp_preflight",
+                "source": "cli_mcp_preflight",
                 "preflight_field": "project_state_write",
                 "value": &diagnostics.storage_write,
             },
         }),
         json!({
-            "id": "effective_mcp_tools",
+            "id": "cli_mcp_effective_tools",
             "status": effective_tool_mode_check_status(&diagnostics.effective_tool_mode),
-            "summary": format!("Effective MCP tools: {}", diagnostic_value_text(&diagnostics.effective_tool_mode)),
+            "summary": format!("CLI MCP effective tools: {}", diagnostic_value_text(&diagnostics.effective_tool_mode)),
             "details": {
-                "source": "mcp_preflight",
+                "source": "cli_mcp_preflight",
                 "preflight_field": "effective_tool_mode",
                 "value": &diagnostics.effective_tool_mode,
             },
@@ -9911,12 +10205,7 @@ fn host_diagnostic_checks_json(host: &Verification) -> Vec<Value> {
         }));
     }
     if let Some(runtime) = &host.host_runtime {
-        checks.push(json!({
-            "id": "codex_host_runtime",
-            "status": host_runtime_check_status(runtime.status),
-            "summary": runtime.details,
-            "details": runtime,
-        }));
+        checks.extend(managed_host_runtime_checks_json(runtime));
     }
     if let Some(command) = &host.host_mcp_command {
         checks.push(json!({
@@ -9927,6 +10216,117 @@ fn host_diagnostic_checks_json(host: &Verification) -> Vec<Value> {
         }));
     }
     checks
+}
+
+fn managed_host_runtime_checks_json(runtime: &HostRuntimeDiagnostic) -> Vec<Value> {
+    let mut checks = vec![
+        json!({
+            "id": "managed_host_startup",
+            "status": host_runtime_check_status(runtime.managed_host_startup),
+            "summary": format!(
+                "Managed Codex MCP startup: {}",
+                host_runtime_text(runtime.managed_host_startup)
+            ),
+            "details": {
+                "value": runtime.managed_host_startup.as_str(),
+                "source": "managed_codex_lifecycle",
+                "last_observed_at": &runtime.last_observed_at,
+            },
+        }),
+        json!({
+            "id": "managed_host_tools_list",
+            "status": host_runtime_check_status(runtime.managed_host_tools_list),
+            "summary": format!(
+                "Managed Codex tools/list: {}",
+                host_runtime_text(runtime.managed_host_tools_list)
+            ),
+            "details": {
+                "value": runtime.managed_host_tools_list.as_str(),
+                "source": "managed_codex_lifecycle",
+                "last_observed_at": &runtime.last_observed_at,
+            },
+        }),
+        json!({
+            "id": "managed_host_tool_call",
+            "status": host_runtime_check_status(runtime.managed_host_tool_call),
+            "summary": format!(
+                "Managed Codex tool call: {}",
+                host_runtime_text(runtime.managed_host_tool_call)
+            ),
+            "details": {
+                "value": runtime.managed_host_tool_call.as_str(),
+                "source": "managed_codex_lifecycle",
+                "last_observed_at": &runtime.last_observed_at,
+            },
+        }),
+        json!({
+            "id": "active_tool_exposure",
+            "status": active_tool_exposure_check_status(runtime.active_tool_exposure),
+            "summary": format!(
+                "Active Codex tool exposure: {}",
+                active_tool_exposure_text(runtime.active_tool_exposure)
+            ),
+            "details": {
+                "value": runtime.active_tool_exposure.as_str(),
+                "source": "managed_codex_tool_call",
+                "last_observed_at": &runtime.last_observed_at,
+            },
+        }),
+    ];
+    if let Some(storage) = &runtime.managed_host_storage {
+        checks.extend(managed_host_storage_checks_json(storage));
+    }
+    checks
+}
+
+fn managed_host_storage_checks_json(storage: &ManagedHostStorageDiagnostic) -> Vec<Value> {
+    vec![
+        json!({
+            "id": "managed_host_storage_read",
+            "status": storage_read_check_status(&storage.storage_read),
+            "summary": format!(
+                "Managed host storage read: {}",
+                diagnostic_value_text(&storage.storage_read)
+            ),
+            "details": {
+                "source": "managed_codex_lifecycle",
+                "source_lifecycle_event": &storage.source_lifecycle_event,
+                "observed_at": &storage.observed_at,
+                "value": &storage.storage_read,
+            },
+        }),
+        json!({
+            "id": "managed_host_storage_write",
+            "status": storage_write_check_status(
+                &storage.storage_write,
+                &storage.effective_tool_mode,
+            ),
+            "summary": format!(
+                "Managed host storage write: {}",
+                diagnostic_value_text(&storage.storage_write)
+            ),
+            "details": {
+                "source": "managed_codex_lifecycle",
+                "source_lifecycle_event": &storage.source_lifecycle_event,
+                "observed_at": &storage.observed_at,
+                "value": &storage.storage_write,
+            },
+        }),
+        json!({
+            "id": "managed_host_effective_tools",
+            "status": effective_tool_mode_check_status(&storage.effective_tool_mode),
+            "summary": format!(
+                "Managed host effective tools: {}",
+                diagnostic_value_text(&storage.effective_tool_mode)
+            ),
+            "details": {
+                "source": "managed_codex_lifecycle",
+                "source_lifecycle_event": &storage.source_lifecycle_event,
+                "observed_at": &storage.observed_at,
+                "value": &storage.effective_tool_mode,
+            },
+        }),
+    ]
 }
 
 fn stored_host_diagnostic_checks_json(object: &serde_json::Map<String, Value>) -> Vec<Value> {
@@ -9954,22 +10354,13 @@ fn stored_host_diagnostic_checks_json(object: &serde_json::Map<String, Value>) -
         }));
     }
     if let Some(runtime) = host_runtime.and_then(Value::as_object) {
-        let status = runtime
-            .get("status")
-            .and_then(Value::as_str)
-            .unwrap_or("unknown");
-        checks.push(json!({
-            "id": "codex_host_runtime",
-            "status": stored_host_runtime_check_status(status),
-            "summary": runtime.get("details").and_then(Value::as_str).unwrap_or("stored Codex host runtime state"),
-            "details": runtime,
-        }));
+        checks.extend(stored_managed_host_runtime_checks_json(runtime));
     }
     if let Some(command) = host_mcp_command.and_then(Value::as_object) {
         checks.push(json!({
             "id": "host_mcp_command",
             "status": if command.get("risk").is_some_and(|risk| !risk.is_null()) {
-                "action_required"
+                "warning"
             } else {
                 "passed"
             },
@@ -9978,6 +10369,154 @@ fn stored_host_diagnostic_checks_json(object: &serde_json::Map<String, Value>) -
         }));
     }
     checks
+}
+
+fn stored_managed_host_runtime_checks_json(runtime: &serde_json::Map<String, Value>) -> Vec<Value> {
+    let startup = stored_runtime_status_field(runtime, "managed_host_startup");
+    let tools_list = stored_runtime_status_field(runtime, "managed_host_tools_list");
+    let tool_call = stored_runtime_status_field(runtime, "managed_host_tool_call");
+    let active_exposure = stored_active_tool_exposure_value(runtime, tool_call);
+    let last_observed_at = runtime
+        .get("last_observed_at")
+        .cloned()
+        .unwrap_or(Value::Null);
+    let mut checks = vec![
+        json!({
+            "id": "managed_host_startup",
+            "status": stored_host_runtime_check_status(startup),
+            "summary": format!("Managed Codex MCP startup: {}", startup.replace('_', " ")),
+            "details": {
+                "value": startup,
+                "source": "managed_codex_lifecycle",
+                "last_observed_at": &last_observed_at,
+            },
+        }),
+        json!({
+            "id": "managed_host_tools_list",
+            "status": stored_host_runtime_check_status(tools_list),
+            "summary": format!("Managed Codex tools/list: {}", tools_list.replace('_', " ")),
+            "details": {
+                "value": tools_list,
+                "source": "managed_codex_lifecycle",
+                "last_observed_at": &last_observed_at,
+            },
+        }),
+        json!({
+            "id": "managed_host_tool_call",
+            "status": stored_host_runtime_check_status(tool_call),
+            "summary": format!("Managed Codex tool call: {}", tool_call.replace('_', " ")),
+            "details": {
+                "value": tool_call,
+                "source": "managed_codex_lifecycle",
+                "last_observed_at": &last_observed_at,
+            },
+        }),
+        json!({
+            "id": "active_tool_exposure",
+            "status": stored_active_tool_exposure_check_status(active_exposure),
+            "summary": format!("Active Codex tool exposure: {}", active_exposure.replace('_', " ")),
+            "details": {
+                "value": active_exposure,
+                "source": "managed_codex_tool_call",
+                "last_observed_at": &last_observed_at,
+            },
+        }),
+    ];
+    if let Some(storage) = runtime
+        .get("managed_host_storage")
+        .and_then(Value::as_object)
+    {
+        checks.extend(stored_managed_host_storage_checks_json(storage));
+    }
+    checks
+}
+
+fn stored_runtime_status_field<'a>(
+    runtime: &'a serde_json::Map<String, Value>,
+    field: &str,
+) -> &'a str {
+    runtime
+        .get(field)
+        .and_then(Value::as_str)
+        .unwrap_or("unknown")
+}
+
+fn stored_active_tool_exposure_value<'a>(
+    runtime: &'a serde_json::Map<String, Value>,
+    tool_call: &'a str,
+) -> &'a str {
+    runtime
+        .get("active_tool_exposure")
+        .and_then(Value::as_str)
+        .unwrap_or(match tool_call {
+            "observed" => "confirmed",
+            "unknown" => "unknown",
+            _ => "unconfirmed",
+        })
+}
+
+fn stored_managed_host_storage_checks_json(storage: &serde_json::Map<String, Value>) -> Vec<Value> {
+    let storage_read = storage
+        .get("storage_read")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    let storage_write = storage
+        .get("storage_write")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    let effective_tool_mode = storage
+        .get("effective_tool_mode")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    let source_lifecycle_event = storage
+        .get("source_lifecycle_event")
+        .cloned()
+        .unwrap_or(Value::Null);
+    let observed_at = storage.get("observed_at").cloned().unwrap_or(Value::Null);
+    vec![
+        json!({
+            "id": "managed_host_storage_read",
+            "status": storage_read_check_status(storage_read),
+            "summary": format!(
+                "Managed host storage read: {}",
+                diagnostic_value_text(storage_read)
+            ),
+            "details": {
+                "source": "managed_codex_lifecycle",
+                "source_lifecycle_event": &source_lifecycle_event,
+                "observed_at": &observed_at,
+                "value": storage_read,
+            },
+        }),
+        json!({
+            "id": "managed_host_storage_write",
+            "status": storage_write_check_status(storage_write, effective_tool_mode),
+            "summary": format!(
+                "Managed host storage write: {}",
+                diagnostic_value_text(storage_write)
+            ),
+            "details": {
+                "source": "managed_codex_lifecycle",
+                "source_lifecycle_event": &source_lifecycle_event,
+                "observed_at": &observed_at,
+                "value": storage_write,
+            },
+        }),
+        json!({
+            "id": "managed_host_effective_tools",
+            "status": effective_tool_mode_check_status(effective_tool_mode),
+            "summary": format!(
+                "Managed host effective tools: {}",
+                diagnostic_value_text(effective_tool_mode)
+            ),
+            "details": {
+                "source": "managed_codex_lifecycle",
+                "source_lifecycle_event": &source_lifecycle_event,
+                "observed_at": &observed_at,
+                "value": effective_tool_mode,
+            },
+        }),
+    ]
 }
 
 fn project_trust_check_status(status: ProjectTrustStatus) -> &'static str {
@@ -9997,11 +10536,19 @@ fn host_runtime_check_status(status: HostRuntimeObservationStatus) -> &'static s
     }
 }
 
+fn active_tool_exposure_check_status(status: ActiveToolExposureStatus) -> &'static str {
+    match status {
+        ActiveToolExposureStatus::Confirmed => "passed",
+        ActiveToolExposureStatus::Unconfirmed => "action_required",
+        ActiveToolExposureStatus::Unknown => "unknown",
+    }
+}
+
 fn host_mcp_command_check_status(command: &HostMcpCommandDiagnostic) -> &'static str {
-    if command.risk.is_some() {
-        "action_required"
-    } else if command.mode == HostMcpCommandLaunchMode::Malformed {
+    if command.mode == HostMcpCommandLaunchMode::Malformed {
         "failed"
+    } else if command.risk.is_some() {
+        "warning"
     } else {
         "passed"
     }
@@ -10021,6 +10568,15 @@ fn stored_host_runtime_check_status(status: &str) -> &'static str {
     match status {
         "observed" => "passed",
         "not_observed" => "action_required",
+        "unknown" => "unknown",
+        _ => "unknown",
+    }
+}
+
+fn stored_active_tool_exposure_check_status(status: &str) -> &'static str {
+    match status {
+        "confirmed" => "passed",
+        "unconfirmed" => "action_required",
         "unknown" => "unknown",
         _ => "unknown",
     }
@@ -10074,6 +10630,19 @@ fn verification_json(report: &VerificationReport) -> Value {
         "disclosure": detective_observation_disclosure_json(),
         "project_trust": &report.host.project_trust,
         "host_runtime": &report.host.host_runtime,
+        "managed_host_startup": runtime_observation_json(
+            report.host.host_runtime.as_ref(),
+            |runtime| runtime.managed_host_startup,
+        ),
+        "managed_host_tools_list": runtime_observation_json(
+            report.host.host_runtime.as_ref(),
+            |runtime| runtime.managed_host_tools_list,
+        ),
+        "managed_host_tool_call": runtime_observation_json(
+            report.host.host_runtime.as_ref(),
+            |runtime| runtime.managed_host_tool_call,
+        ),
+        "active_tool_exposure": active_tool_exposure_json(report.host.host_runtime.as_ref()),
         "host_mcp_command": &report.host.host_mcp_command,
         "host": {
             "status": report.host.status.as_str(),
@@ -10090,10 +10659,27 @@ fn verification_json(report: &VerificationReport) -> Value {
             "diagnostic": report.host.diagnostic,
             "user_actions": report.host.user_actions,
         },
+        "cli_mcp_preflight": step_json(&report.preflight),
+        "cli_mcp_handshake": step_json(&report.handshake),
         "preflight": step_json(&report.preflight),
         "mcp_handshake": step_json(&report.handshake),
         "tools": report.tools,
     })
+}
+
+fn runtime_observation_json(
+    runtime: Option<&HostRuntimeDiagnostic>,
+    field: fn(&HostRuntimeDiagnostic) -> HostRuntimeObservationStatus,
+) -> Value {
+    runtime
+        .map(|runtime| json!(field(runtime).as_str()))
+        .unwrap_or(Value::Null)
+}
+
+fn active_tool_exposure_json(runtime: Option<&HostRuntimeDiagnostic>) -> Value {
+    runtime
+        .map(|runtime| json!(runtime.active_tool_exposure.as_str()))
+        .unwrap_or(Value::Null)
 }
 
 fn detailed_verification_report_json(
@@ -10419,6 +11005,78 @@ mod tests {
             evidence.last_observed_at.as_deref(),
             Some("2026-07-01T00:00:04Z")
         );
+    }
+
+    #[test]
+    fn connection_verify_managed_tools_list_without_tool_call_is_unconfirmed() {
+        let status = aggregate_verification_status(
+            &Verification::configured_ready("ready").with_host_runtime(runtime_diagnostic(
+                HostRuntimeObservationStatus::Observed,
+                HostRuntimeObservationStatus::Observed,
+                HostRuntimeObservationStatus::NotObserved,
+            )),
+            &VerificationStep::passed("CLI MCP preflight passed"),
+            &VerificationStep::passed("CLI MCP handshake passed"),
+        );
+
+        assert_eq!(status, AgentResultStatus::ActionRequired);
+    }
+
+    #[test]
+    fn connection_verify_managed_tool_call_marks_connection_complete() {
+        let status = aggregate_verification_status(
+            &Verification::configured_ready("ready").with_host_runtime(runtime_diagnostic(
+                HostRuntimeObservationStatus::Observed,
+                HostRuntimeObservationStatus::Observed,
+                HostRuntimeObservationStatus::Observed,
+            )),
+            &VerificationStep::passed("CLI MCP preflight passed"),
+            &VerificationStep::passed("CLI MCP handshake passed"),
+        );
+
+        assert_eq!(status, AgentResultStatus::Complete);
+    }
+
+    #[test]
+    fn connection_verify_path_unconfirmed_is_secondary_without_launch_failure() {
+        let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
+        let command = host_mcp_command_diagnostic(
+            &entry,
+            &runtime_diagnostic(
+                HostRuntimeObservationStatus::NotObserved,
+                HostRuntimeObservationStatus::NotObserved,
+                HostRuntimeObservationStatus::NotObserved,
+            ),
+        );
+
+        assert_eq!(command.risk.as_deref(), Some("host_path_unconfirmed"));
+        assert_eq!(host_mcp_command_check_status(&command), "warning");
+    }
+
+    fn runtime_diagnostic(
+        startup: HostRuntimeObservationStatus,
+        tools_list: HostRuntimeObservationStatus,
+        tool_call: HostRuntimeObservationStatus,
+    ) -> HostRuntimeDiagnostic {
+        let active_tool_exposure = match tool_call {
+            HostRuntimeObservationStatus::Observed => ActiveToolExposureStatus::Confirmed,
+            HostRuntimeObservationStatus::NotObserved => ActiveToolExposureStatus::Unconfirmed,
+            HostRuntimeObservationStatus::Unknown => ActiveToolExposureStatus::Unknown,
+        };
+        HostRuntimeDiagnostic {
+            status: if startup == HostRuntimeObservationStatus::Observed {
+                HostRuntimeObservationStatus::Observed
+            } else {
+                HostRuntimeObservationStatus::NotObserved
+            },
+            managed_host_startup: startup,
+            managed_host_tools_list: tools_list,
+            managed_host_tool_call: tool_call,
+            active_tool_exposure,
+            managed_host_storage: None,
+            details: "test runtime".to_owned(),
+            last_observed_at: None,
+        }
     }
 
     #[test]

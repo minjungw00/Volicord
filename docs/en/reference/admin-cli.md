@@ -180,10 +180,11 @@ output is an interactive human summary with a title line and compact sections
 for `Status`, `Profile`, `Repository` or `Repositories`, `Checks`, `Next`,
 `Limits`, and `Diagnostics`. `volicord connection add` may also include compact
 host-configuration or repo-file-change sections. Detailed guard state, hook
-diagnostics, MCP preflight and handshake details, and host observations belong
-in JSON diagnostics. Codex connection text may summarize separate check lines
-for `Codex project trust`, `Codex host runtime`, and `Host MCP command` while
-keeping the human output compact and section-based.
+diagnostics, CLI MCP preflight and handshake details, and host observations
+belong in JSON diagnostics. Codex connection text may summarize separate check
+lines for `Codex project trust`, `Managed Codex MCP startup`, `Managed Codex
+tools/list`, `Managed Codex tool call`, `Active Codex tool exposure`, and `Host
+MCP command` while keeping the human output compact and section-based.
 When pending judgments are visible, `volicord status` and `volicord inbox` text
 output may include an `Available answer paths:` line that summarizes host
 prompt input, chat command capture, local consent URL, and CLI inbox
@@ -495,7 +496,7 @@ Agent Connection commands use these result states:
 | State | Meaning |
 |---|---|
 | `not_verified` | No verification result is currently recorded for the selected Agent Connection. This is not proof that the host failed. |
-| `complete` | Durable Agent Connection state exists, managed host configuration exists and matches the expected managed fingerprint, required host loadability and trust gates are satisfied, MCP startup succeeds, MCP initialization succeeds, and `tools/list` exposes the required tools for the mode. |
+| `complete` | Durable Agent Connection state exists, managed host configuration exists and matches the expected managed fingerprint, required host loadability and trust gates are satisfied, CLI MCP startup and initialization do not fail, and active Codex tool exposure is confirmed by managed host tool-call evidence or another explicitly reliable active-tool-exposure source. |
 | `action_required` | Durable Agent Connection state and host configuration are present, but host trust, project approval, OAuth, reload, restart, command-link repair, installation-profile repair, or a comparable user-controlled action remains. |
 | `failed` | The requested command or verification did not establish usable durable Agent Connection state, usable host configuration, or a required local prerequisite. |
 | `dry_run` | The command reported the planned actions without persistent changes. |
@@ -505,20 +506,28 @@ Codex connection verification keeps these diagnostic concepts separate:
 | Diagnostic concept | Text output surface | JSON diagnostic surface | Meaning |
 |---|---|---|---|
 | MCP configuration match | `MCP configuration` or `Current MCP configuration` | host check details and managed configuration fields | The managed Codex MCP server entry matches the expected Volicord-generated command, args, and managed launch provenance environment markers. |
-| CLI MCP preflight and handshake | `MCP preflight`, `MCP handshake`, `Last MCP preflight`, or `Last MCP handshake` | `checks[]` entries with `id=mcp_preflight` and `id=mcp_handshake`, plus verification report fields | The CLI verification path directly launched and talked to Volicord's MCP server. |
+| CLI MCP preflight and handshake | `CLI MCP preflight`, `CLI MCP handshake`, `Last CLI MCP preflight`, or `Last CLI MCP handshake` | `checks[]` entries with `id=cli_mcp_preflight` and `id=cli_mcp_handshake`, plus verification report fields | The CLI verification path directly launched and talked to Volicord's MCP server. This validates the CLI-observable MCP process, not active Codex tool exposure. |
+| CLI MCP storage capability | `CLI MCP storage read`, `CLI MCP storage write`, and `CLI MCP effective tools` | `checks[]` entries with `id=cli_mcp_storage_read`, `id=cli_mcp_storage_write`, and `id=cli_mcp_effective_tools` when available | Storage capability observed through the CLI MCP verification process. This is separate from storage capability observed from a managed Codex host. |
 | Codex project trust | `Codex project trust` | `verification.project_trust` and a `checks[]` entry with `id=codex_project_trust` when available | Codex user configuration marks the project `trusted`, `untrusted`, `unknown`, or otherwise leaves trust unconfirmed. |
-| Codex host runtime observation | `Codex host runtime` | `verification.host_runtime` and a `checks[]` entry with `id=codex_host_runtime` when available | Volicord has or has not observed a Codex host process start the Volicord MCP server for the selected connection. |
-| Host MCP command launchability | `Host MCP command` | `verification.host_mcp_command` and a `checks[]` entry with `id=host_mcp_command` when available | The configured MCP command is absolute, PATH-resolved, remote/executor-backed, unknown, or malformed, and can carry launch-risk details such as `host_path_unconfirmed`. |
-| Active-session tool exposure | `Next` action text when confirmation is required | `primary_next_action`, `actions[]`, and `connection.user_actions[]` | The user may still need to confirm that Volicord tools are exposed in the active Codex session. |
+| Managed Codex startup | `Managed Codex MCP startup` | `verification.host_runtime.managed_host_startup` and a `checks[]` entry with `id=managed_host_startup` when available | Volicord has or has not observed a managed Codex host process start the Volicord MCP server for the selected connection. |
+| Managed Codex tool listing | `Managed Codex tools/list` | `verification.host_runtime.managed_host_tools_list` and a `checks[]` entry with `id=managed_host_tools_list` when available | Volicord has or has not observed a managed Codex host `tools/list` lifecycle event. This does not by itself confirm active tool exposure. |
+| Managed Codex tool call | `Managed Codex tool call` | `verification.host_runtime.managed_host_tool_call` and a `checks[]` entry with `id=managed_host_tool_call` when available | Volicord has or has not observed a managed Codex host call a Volicord tool for the selected connection. This is the current completion evidence for active Codex tool exposure. |
+| Active-session tool exposure | `Active Codex tool exposure` and `Next` action text when confirmation is required | `verification.active_tool_exposure`, `verification.host_runtime.active_tool_exposure`, `primary_next_action`, `actions[]`, and `connection.user_actions[]` | Whether active Codex tool exposure is confirmed, unconfirmed, or unknown. Manual probes, elevated probes, CLI preflight, direct handshakes, and source-less legacy observations do not confirm it. |
+| Managed host storage capability | `Managed host storage read`, `Managed host storage write`, and `Managed host effective tools` | `verification.host_runtime.managed_host_storage` and `checks[]` entries with `id=managed_host_storage_read`, `id=managed_host_storage_write`, and `id=managed_host_effective_tools` when available | Storage capability observed from the managed Codex host lifecycle. This is separate from CLI MCP storage capability. |
+| Host MCP command launchability | `Host MCP command` | `verification.host_mcp_command` and a `checks[]` entry with `id=host_mcp_command` when available | The configured MCP command is absolute, PATH-resolved, remote/executor-backed, unknown, or malformed, and can carry launch-risk details such as `host_path_unconfirmed`. PATH risk is a warning unless launch failure is proven. |
 | Codex tool snapshot or listing issue | `Next` action text can direct the user to Codex MCP startup/tool-list logs | Codex host logs, not a Volicord-owned JSON field | Codex may know the MCP server exists or log `startup_complete` while the active session still has no cached tool snapshot or listed `volicord.*` tools. |
 
 `verification.host_runtime` reports managed Codex lifecycle phase fields
 `managed_host_startup`, `managed_host_tools_list`, and
 `managed_host_tool_call`, each as `observed`, `not_observed`, or `unknown`.
+It can also report `active_tool_exposure` and managed host storage diagnostics
+when lifecycle evidence carries that data.
 Only lifecycle events whose metadata has `host_kind=codex` and
 `launch_origin=managed_host` for the selected connection and project count for
 these fields; CLI preflight, direct handshake or probe launches, manual
-launches, and source-less legacy observations do not satisfy them.
+launches, and source-less legacy observations do not satisfy them. A managed
+`tools/list` event without a managed tool call leaves active tool exposure
+unconfirmed.
 
 Verification output must make checks and user actions first-class diagnostics.
 For connection status and verification, default text output uses compact
@@ -885,11 +894,18 @@ Required diagnostic JSON values:
 - `summary_card`: stable compact summary data for status-like diagnostic or
   user-channel outputs that compute a summary card
 - connection status and verification JSON can expose separate Codex diagnostics
-  for `project_trust`, `host_runtime`, and `host_mcp_command`, with matching
-  `checks[]` entries such as `codex_project_trust`, `codex_host_runtime`, and
-  `host_mcp_command`. These diagnostics distinguish trust state, host runtime
-  observation, and command launch risk from CLI MCP preflight or handshake
-  success.
+  for CLI MCP preflight and handshake, `project_trust`, `host_runtime`,
+  `active_tool_exposure`, `host_mcp_command`, CLI MCP storage capability, and
+  managed host storage capability. Matching `checks[]` entries include
+  `cli_mcp_preflight`, `cli_mcp_handshake`, `codex_project_trust`,
+  `managed_host_startup`, `managed_host_tools_list`,
+  `managed_host_tool_call`, `active_tool_exposure`, `host_mcp_command`,
+  `cli_mcp_storage_read`, `cli_mcp_storage_write`,
+  `cli_mcp_effective_tools`, `managed_host_storage_read`,
+  `managed_host_storage_write`, and `managed_host_effective_tools` when
+  available. These diagnostics distinguish trust state, CLI MCP startup,
+  managed host runtime observation, active tool exposure, command launch risk,
+  and storage capability from CLI MCP handshake success.
 - Detective-aware setup, doctor, connection status, and connection verification
   JSON must expose `selected_profile`, `control_surface`,
   `cooperative_pre_tool_warning_available`,

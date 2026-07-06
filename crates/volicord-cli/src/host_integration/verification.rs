@@ -227,8 +227,37 @@ pub struct HostRuntimeDiagnostic {
     pub managed_host_startup: HostRuntimeObservationStatus,
     pub managed_host_tools_list: HostRuntimeObservationStatus,
     pub managed_host_tool_call: HostRuntimeObservationStatus,
+    pub active_tool_exposure: ActiveToolExposureStatus,
+    pub managed_host_storage: Option<ManagedHostStorageDiagnostic>,
     pub details: String,
     pub last_observed_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ActiveToolExposureStatus {
+    Confirmed,
+    Unconfirmed,
+    Unknown,
+}
+
+impl ActiveToolExposureStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Confirmed => "confirmed",
+            Self::Unconfirmed => "unconfirmed",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ManagedHostStorageDiagnostic {
+    pub storage_read: String,
+    pub storage_write: String,
+    pub effective_tool_mode: String,
+    pub source_lifecycle_event: String,
+    pub observed_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
