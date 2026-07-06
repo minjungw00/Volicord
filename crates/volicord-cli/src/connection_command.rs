@@ -49,9 +49,10 @@ use crate::host_integration::{
     generic::{GenericAdapter, USER_MANAGED_CONFIGURATION_GUIDANCE},
     host_capabilities, supports_connection_intent,
     verification::{
-        ActiveToolExposureStatus, HostMcpCommandDiagnostic, HostMcpCommandLaunchMode,
-        HostRuntimeDiagnostic, HostRuntimeObservationStatus, ManagedConfigStatus,
-        ManagedHostStorageDiagnostic, ProjectTrustStatus, Verification, VerificationStatus,
+        ActiveToolExposureStatus, CliMcpStepStatus, CliMcpVerification, HostMcpCommandDiagnostic,
+        HostMcpCommandLaunchMode, HostRuntimeDiagnostic, HostRuntimeObservationStatus,
+        ManagedConfigStatus, ManagedHostStorageDiagnostic, ProjectTrustStatus, StorageCapability,
+        Verification, VerificationStatus,
     },
     ConnectionIntent, HostAdapter, HostCapabilities, HostConfigError, HostIntegrationFileKind,
     HostKind, HostLifecyclePhase, HostPlan, HostPlanRequest, HostRemoveRequest, HostScope,
@@ -249,6 +250,14 @@ impl McpPreflightDiagnostics {
         })
     }
 
+    fn storage_capability(&self) -> StorageCapability {
+        StorageCapability::from_read_write_status(
+            &self.storage_read,
+            &self.storage_write,
+            &self.effective_tool_mode,
+        )
+    }
+
     fn to_json(&self) -> Value {
         json!({
             "storage_read": &self.storage_read,
@@ -265,6 +274,41 @@ struct VerificationReport {
     preflight: VerificationStep,
     handshake: VerificationStep,
     tools: Vec<String>,
+}
+
+fn cli_mcp_verification(
+    preflight: &VerificationStep,
+    handshake: &VerificationStep,
+    tools: &[String],
+) -> CliMcpVerification {
+    let storage_capability = preflight
+        .preflight_diagnostics
+        .as_ref()
+        .map(McpPreflightDiagnostics::storage_capability)
+        .unwrap_or(StorageCapability::Unknown);
+    let effective_tool_mode = preflight
+        .preflight_diagnostics
+        .as_ref()
+        .map(|diagnostics| diagnostics.effective_tool_mode.clone());
+    CliMcpVerification::new(
+        cli_mcp_step_status(preflight.status),
+        cli_mcp_step_status(handshake.status),
+        cli_mcp_tools_list_status(handshake.status, tools),
+        storage_capability,
+        effective_tool_mode,
+    )
+}
+
+fn cli_mcp_step_status(status: StepStatus) -> CliMcpStepStatus {
+    match status {
+        StepStatus::Passed => CliMcpStepStatus::Passed,
+        StepStatus::Failed => CliMcpStepStatus::Failed,
+        StepStatus::Skipped => CliMcpStepStatus::Skipped,
+    }
+}
+
+fn cli_mcp_tools_list_status(status: StepStatus, _tools: &[String]) -> CliMcpStepStatus {
+    cli_mcp_step_status(status)
 }
 
 pub fn run_init_command(
@@ -2020,10 +2064,10 @@ fn verify_connection(
             tools: Vec::new(),
         }
     };
+    let cli_mcp = cli_mcp_verification(&preflight, &handshake.step, &handshake.tools);
     let status = aggregate_verification_status(
         &host,
-        &preflight,
-        &handshake.step,
+        &cli_mcp,
         host_plan_requires_active_tool_exposure(host_plan),
     );
     Ok(VerificationReport {
@@ -2398,7 +2442,7 @@ impl ManagedHostLifecycleEvidence {
             .and_then(Value::as_str)
             .unwrap_or("unknown");
         let candidate = ManagedHostStorageEvidence {
-            storage_capability: storage_capability.to_owned(),
+            storage_capability: StorageCapability::from_mcp_storage_capability(storage_capability),
             effective_tool_mode: effective_tool_mode.to_owned(),
             source_lifecycle_event: lifecycle_event.to_owned(),
             observed_at: timestamp,
@@ -2416,7 +2460,7 @@ impl ManagedHostLifecycleEvidence {
 }
 
 struct ManagedHostStorageEvidence {
-    storage_capability: String,
+    storage_capability: StorageCapability,
     effective_tool_mode: String,
     source_lifecycle_event: String,
     observed_at: Option<String>,
@@ -2425,8 +2469,8 @@ struct ManagedHostStorageEvidence {
 impl ManagedHostStorageEvidence {
     fn to_diagnostic(&self) -> ManagedHostStorageDiagnostic {
         ManagedHostStorageDiagnostic {
-            storage_read: managed_storage_read_status(&self.storage_capability).to_owned(),
-            storage_write: managed_storage_write_status(&self.storage_capability).to_owned(),
+            storage_read: self.storage_capability.storage_read_status().to_owned(),
+            storage_write: self.storage_capability.storage_write_status().to_owned(),
             effective_tool_mode: self.effective_tool_mode.clone(),
             source_lifecycle_event: self.source_lifecycle_event.clone(),
             observed_at: self.observed_at.clone(),
@@ -2446,25 +2490,6 @@ fn managed_host_storage_candidate_is_newer(
         (None, Some(_)) => true,
         (Some(_), None) => false,
         (None, None) => true,
-    }
-}
-
-fn managed_storage_read_status(storage_capability: &str) -> &'static str {
-    match storage_capability {
-        "read_write" | "read_only" => "passed",
-        "unavailable" => "failed",
-        "unknown" => "unknown",
-        _ => "unknown",
-    }
-}
-
-fn managed_storage_write_status(storage_capability: &str) -> &'static str {
-    match storage_capability {
-        "read_write" => "passed",
-        "read_only" => "readonly",
-        "unavailable" => "skipped",
-        "unknown" => "unknown",
-        _ => "unknown",
     }
 }
 
@@ -2531,24 +2556,25 @@ fn host_mcp_command_diagnostic(
 
 fn aggregate_verification_status(
     host: &Verification,
-    preflight: &VerificationStep,
-    handshake: &VerificationStep,
+    cli_mcp: &CliMcpVerification,
     requires_active_tool_exposure: bool,
 ) -> AgentResultStatus {
-    if preflight.status == StepStatus::Failed || handshake.status == StepStatus::Failed {
+    if cli_mcp.has_failed_step() {
         return AgentResultStatus::Failed;
     }
-    if let Some(runtime) = &host.host_runtime {
+    if let Some(lifecycle) = host.managed_lifecycle() {
         return match host.status {
             VerificationStatus::Complete
-                if handshake.status == StepStatus::Passed
+                if cli_mcp.handshake_passed()
                     && host.user_actions.is_empty()
-                    && runtime.managed_host_tool_call == HostRuntimeObservationStatus::Observed =>
+                    && lifecycle.managed_host_tool_call
+                        == HostRuntimeObservationStatus::Observed
+                    && host.active_tool_exposure_state() == ActiveToolExposureStatus::Confirmed =>
             {
                 AgentResultStatus::Complete
             }
             VerificationStatus::Complete | VerificationStatus::ActionRequired
-                if handshake.status == StepStatus::Passed =>
+                if cli_mcp.handshake_passed() =>
             {
                 AgentResultStatus::ActionRequired
             }
@@ -2559,7 +2585,7 @@ fn aggregate_verification_status(
     if requires_active_tool_exposure {
         return match host.status {
             VerificationStatus::Complete | VerificationStatus::ActionRequired
-                if handshake.status == StepStatus::Passed =>
+                if cli_mcp.handshake_passed() =>
             {
                 AgentResultStatus::ActionRequired
             }
@@ -2569,12 +2595,12 @@ fn aggregate_verification_status(
     }
     match host.status {
         VerificationStatus::Complete
-            if handshake.status == StepStatus::Passed && host.user_actions.is_empty() =>
+            if cli_mcp.handshake_passed() && host.user_actions.is_empty() =>
         {
             AgentResultStatus::Complete
         }
         VerificationStatus::Complete | VerificationStatus::ActionRequired
-            if handshake.status == StepStatus::Passed =>
+            if cli_mcp.handshake_passed() =>
         {
             AgentResultStatus::ActionRequired
         }
@@ -11089,14 +11115,14 @@ mod tests {
 
     #[test]
     fn connection_verify_managed_tools_list_without_tool_call_is_unconfirmed() {
+        let cli_mcp = passed_cli_mcp_verification();
         let status = aggregate_verification_status(
             &Verification::configured_ready("ready").with_host_runtime(runtime_diagnostic(
                 HostRuntimeObservationStatus::Observed,
                 HostRuntimeObservationStatus::Observed,
                 HostRuntimeObservationStatus::NotObserved,
             )),
-            &VerificationStep::passed("CLI MCP preflight passed"),
-            &VerificationStep::passed("CLI MCP handshake passed"),
+            &cli_mcp,
             true,
         );
 
@@ -11105,14 +11131,14 @@ mod tests {
 
     #[test]
     fn connection_verify_managed_tool_call_marks_connection_complete() {
+        let cli_mcp = passed_cli_mcp_verification();
         let status = aggregate_verification_status(
             &Verification::configured_ready("ready").with_host_runtime(runtime_diagnostic(
                 HostRuntimeObservationStatus::Observed,
                 HostRuntimeObservationStatus::Observed,
                 HostRuntimeObservationStatus::Observed,
             )),
-            &VerificationStep::passed("CLI MCP preflight passed"),
-            &VerificationStep::passed("CLI MCP handshake passed"),
+            &cli_mcp,
             true,
         );
 
@@ -11121,14 +11147,35 @@ mod tests {
 
     #[test]
     fn connection_verify_codex_project_without_runtime_cannot_complete() {
-        let status = aggregate_verification_status(
-            &Verification::configured_ready("ready"),
-            &VerificationStep::passed("CLI MCP preflight passed"),
-            &VerificationStep::passed("CLI MCP handshake passed"),
-            true,
-        );
+        let cli_mcp = passed_cli_mcp_verification();
+        let status =
+            aggregate_verification_status(&Verification::configured_ready("ready"), &cli_mcp, true);
 
         assert_eq!(status, AgentResultStatus::ActionRequired);
+    }
+
+    #[test]
+    fn cli_mcp_verification_separates_handshake_tools_and_storage() {
+        let preflight = VerificationStep::passed("CLI MCP preflight passed")
+            .with_preflight_diagnostics(Some(McpPreflightDiagnostics {
+                storage_read: "passed".to_owned(),
+                storage_write: "readonly".to_owned(),
+                effective_tool_mode: "read_only".to_owned(),
+            }));
+        let handshake = VerificationStep::passed("tools/list returned 1 tools");
+
+        let verification =
+            cli_mcp_verification(&preflight, &handshake, &["volicord.status".to_owned()]);
+
+        assert_eq!(verification.preflight, CliMcpStepStatus::Passed);
+        assert_eq!(verification.handshake, CliMcpStepStatus::Passed);
+        assert_eq!(verification.tools_list, CliMcpStepStatus::Passed);
+        assert_eq!(verification.storage_capability, StorageCapability::ReadOnly);
+        assert_eq!(
+            verification.effective_tool_mode.as_deref(),
+            Some("read_only")
+        );
+        assert!(!verification.has_failed_step());
     }
 
     #[test]
@@ -11191,6 +11238,17 @@ mod tests {
             details: "test runtime".to_owned(),
             last_observed_at: None,
         }
+    }
+
+    fn passed_cli_mcp_verification() -> CliMcpVerification {
+        let preflight = VerificationStep::passed("CLI MCP preflight passed")
+            .with_preflight_diagnostics(Some(McpPreflightDiagnostics {
+                storage_read: "passed".to_owned(),
+                storage_write: "passed".to_owned(),
+                effective_tool_mode: "workflow".to_owned(),
+            }));
+        let handshake = VerificationStep::passed("CLI MCP handshake passed");
+        cli_mcp_verification(&preflight, &handshake, &["volicord.status".to_owned()])
     }
 
     #[test]

@@ -5383,6 +5383,10 @@ fn assert_complete_codex_connection_json(value: &Value) {
     assert_eq!(value["states"]["connection"], VERIFIED_STATUS_COMPLETE);
     assert_eq!(value["states"]["mcp_config"], "match");
     assert_eq!(verification["host"]["managed_config"], "match");
+    assert_eq!(verification["host"]["host_executable"], "available");
+    assert_eq!(verification["host"]["host_gate"], "ready");
+    assert_eq!(verification["host"]["host_configuration"], "discovered");
+    assert_eq!(verification["host"]["mcp_handshake_allowed"], true);
     assert_eq!(verification["project_trust"]["status"], "trusted");
     assert_eq!(verification["cli_mcp_preflight"]["status"], "passed");
     assert_eq!(verification["cli_mcp_handshake"]["status"], "passed");
@@ -5403,6 +5407,18 @@ fn assert_complete_codex_connection_json(value: &Value) {
     assert_eq!(verification["managed_host_tools_list"], "observed");
     assert_eq!(verification["managed_host_tool_call"], "observed");
     assert_eq!(verification["active_tool_exposure"], "confirmed");
+    assert_eq!(
+        verification["host_runtime"]["managed_host_storage"]["storage_read"],
+        "passed"
+    );
+    assert_eq!(
+        verification["host_runtime"]["managed_host_storage"]["storage_write"],
+        "passed"
+    );
+    assert_eq!(
+        verification["host_runtime"]["managed_host_storage"]["effective_tool_mode"],
+        "workflow"
+    );
     assert_eq!(value["primary_next_action"], Value::Null);
     assert_eq!(value["summary_card"]["next"], "none");
     assert_record_profile_detective_checks_are_skipped(value);
@@ -5428,6 +5444,21 @@ fn assert_complete_codex_connection_json(value: &Value) {
         .any(|check| check["id"] == "active_tool_exposure"
             && check["status"] == "passed"
             && check["details"]["value"] == "confirmed"));
+    assert!(checks
+        .iter()
+        .any(|check| check["id"] == "managed_host_storage_read"
+            && check["status"] == "passed"
+            && check["details"]["value"] == "passed"));
+    assert!(checks
+        .iter()
+        .any(|check| check["id"] == "managed_host_storage_write"
+            && check["status"] == "passed"
+            && check["details"]["value"] == "passed"));
+    assert!(checks
+        .iter()
+        .any(|check| check["id"] == "managed_host_effective_tools"
+            && check["status"] == "passed"
+            && check["details"]["value"] == "workflow"));
     assert!(!checks
         .iter()
         .any(|check| check["id"] == "active_tool_exposure"
