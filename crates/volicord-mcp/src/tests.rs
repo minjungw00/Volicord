@@ -338,6 +338,77 @@ fn record_run_invalid_observed_changes_reports_expected_shape() -> Result<(), Bo
 }
 
 #[test]
+fn record_run_invalid_kind_reports_allowed_values() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-invalid-record-run-kind")?;
+    let adapter = adapter(&fixture)?;
+    let mut arguments = canonical_example_value(
+        RECORD_RUN_TOOL_NAME,
+        RECORD_RUN_NO_PRODUCT_FILE_CHANGE_EXAMPLE_ID,
+    )?;
+    arguments["kind"] = json!("test");
+
+    let error = adapter
+        .call_tool(RECORD_RUN_TOOL_NAME, arguments)
+        .expect_err("invalid kind should fail before Core");
+    let text = tool_error_text(&error);
+
+    assert!(text.contains("Invalid arguments for volicord.record_run at kind"));
+    assert!(text.contains("shaping_update"));
+    assert!(text.contains("implementation"));
+    assert!(text.contains("direct"));
+    Ok(())
+}
+
+#[test]
+fn record_run_invalid_evidence_observation_reports_expected_shape() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-invalid-record-run-evidence-observation")?;
+    let adapter = adapter(&fixture)?;
+    let mut arguments = canonical_example_value(
+        RECORD_RUN_TOOL_NAME,
+        RECORD_RUN_NO_PRODUCT_FILE_CHANGE_EXAMPLE_ID,
+    )?;
+    arguments["evidence_observations"] = json!([
+        {
+            "claim": "Verified behavior."
+        }
+    ]);
+
+    let error = adapter
+        .call_tool(RECORD_RUN_TOOL_NAME, arguments)
+        .expect_err("invalid evidence observation should fail before Core");
+    let text = tool_error_text(&error);
+
+    assert!(text.contains("Invalid arguments for volicord.record_run at evidence_observations[0]"));
+    assert!(text.contains("source_kind"));
+    assert!(text.contains("assurance_level"));
+    assert!(text.contains("input_refs"));
+    assert!(text.contains("output_artifact_refs"));
+    Ok(())
+}
+
+#[test]
+fn record_run_unknown_root_field_reports_expected_arguments() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-invalid-record-run-root-field")?;
+    let adapter = adapter(&fixture)?;
+    let mut arguments = canonical_example_value(
+        RECORD_RUN_TOOL_NAME,
+        RECORD_RUN_NO_PRODUCT_FILE_CHANGE_EXAMPLE_ID,
+    )?;
+    arguments["unexpected"] = json!("not accepted");
+
+    let error = adapter
+        .call_tool(RECORD_RUN_TOOL_NAME, arguments)
+        .expect_err("unknown root field should fail before Core");
+    let text = tool_error_text(&error);
+
+    assert!(text.contains("Invalid arguments for volicord.record_run at arguments"));
+    assert!(text.contains("unknown unexpected"));
+    assert!(text.contains("task_id"));
+    assert!(text.contains("observed_changes"));
+    Ok(())
+}
+
+#[test]
 fn request_user_judgment_invalid_options_report_option_id_shape() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-invalid-judgment-options")?;
     let adapter = adapter(&fixture)?;
@@ -364,6 +435,31 @@ fn request_user_judgment_invalid_options_report_option_id_shape() -> Result<(), 
     assert!(text.contains("Invalid arguments for volicord.request_user_judgment at options[0]"));
     assert!(text.contains("expected option_id, not id"));
     assert!(text.contains("label, description, consequence, is_default"));
+    Ok(())
+}
+
+#[test]
+fn request_user_judgment_invalid_visible_risk_reports_expected_shape() -> Result<(), Box<dyn Error>>
+{
+    let fixture = CoreFixture::new("mcp-invalid-judgment-visible-risk")?;
+    let adapter = adapter(&fixture)?;
+    let mut arguments = canonical_example_value(
+        REQUEST_USER_JUDGMENT_TOOL_NAME,
+        REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_EXAMPLE_ID,
+    )?;
+    arguments["context"]["visible_risks"] = json!(["plain risk text"]);
+
+    let error = adapter
+        .call_tool(REQUEST_USER_JUDGMENT_TOOL_NAME, arguments)
+        .expect_err("invalid visible risk should fail before Core");
+    let text = tool_error_text(&error);
+
+    assert!(text.contains(
+        "Invalid arguments for volicord.request_user_judgment at context.visible_risks[0]"
+    ));
+    assert!(text.contains("risk_id"));
+    assert!(text.contains("consequence"));
+    assert!(text.contains("accepted_for_close"));
     Ok(())
 }
 
