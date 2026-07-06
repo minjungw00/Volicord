@@ -568,7 +568,14 @@ fn classify_existing_json_entry(
     conflicts: &mut Vec<HostConflict>,
     label: &str,
 ) -> PlannedChange {
-    let Some(entry) = managed_entry_from_json(value).filter(is_volicord_managed_entry) else {
+    let Some(entry) = managed_entry_from_json(value) else {
+        conflicts.push(HostConflict::new(
+            HostConflictKind::UnmanagedNameCollision,
+            format!("{label} is already configured by an unmanaged entry: {server_name}"),
+        ));
+        return PlannedChange::Noop;
+    };
+    if !is_claude_managed_identity_candidate(&entry) {
         conflicts.push(HostConflict::new(
             HostConflictKind::UnmanagedNameCollision,
             format!("{label} is already configured by an unmanaged entry: {server_name}"),
@@ -596,11 +603,33 @@ fn inspection_is_volicord_managed(inspection: &ClaudeMcpInspection) -> bool {
     let Some(args) = &inspection.args else {
         return false;
     };
-    is_volicord_managed_entry(&ManagedServerEntry {
+    is_claude_managed_identity_candidate(&ManagedServerEntry {
         command: command.clone(),
         args: args.clone(),
         env: inspection.env.clone(),
     })
+}
+
+fn is_claude_managed_identity_candidate(entry: &ManagedServerEntry) -> bool {
+    is_volicord_managed_entry(entry)
+        || command_is_volicord(entry)
+        || args_have_volicord_mcp_binding(&entry.args)
+}
+
+fn command_is_volicord(entry: &ManagedServerEntry) -> bool {
+    Path::new(&entry.command)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name == DEFAULT_MCP_COMMAND)
+}
+
+fn args_have_volicord_mcp_binding(args: &[String]) -> bool {
+    (args.len() == 4 || args.len() == 6)
+        && args[0] == "mcp"
+        && args[1] == "--stdio"
+        && args[2] == "--connection"
+        && !args[3].trim().is_empty()
+        && (args.len() == 4 || (args[4] == "--project" && !args[5].trim().is_empty()))
 }
 
 pub fn build_add_command(
@@ -728,21 +757,30 @@ fn verify_claude_project_entry(plan: &HostPlan) -> Result<ManagedConfigStatus, H
     else {
         return Ok(ManagedConfigStatus::Missing);
     };
-    let current = current_entry_fingerprint_from_json(
+    let Some(entry) = managed_entry_from_json(existing) else {
+        return Ok(ManagedConfigStatus::Malformed);
+    };
+    if !is_claude_managed_identity_candidate(&entry) {
+        return Ok(ManagedConfigStatus::Unmanaged);
+    }
+    let current = managed_fingerprint(
         HostKind::ClaudeCode,
         HostScope::Project,
         &plan.server_name,
-        existing,
+        &entry,
     );
-    match current {
-        Some(fingerprint) if fingerprint == plan.fingerprint => Ok(ManagedConfigStatus::Match),
-        Some(_) => Ok(ManagedConfigStatus::Changed),
-        None => Ok(ManagedConfigStatus::Malformed),
+    if current == plan.fingerprint {
+        Ok(ManagedConfigStatus::Match)
+    } else {
+        Ok(ManagedConfigStatus::Changed)
     }
 }
 
 fn verification_from_claude_output(plan: &HostPlan, output: &CommandOutput) -> Verification {
     let inspection = parse_claude_mcp_get_output(output);
+    // Claude Code exposes configuration and approval state through `claude mcp get`.
+    // Active tool exposure, managed lifecycle, and storage capability stay unknown
+    // here because they require separate managed-host runtime evidence.
     match inspection.state {
         ClaudeMcpState::Connected => {
             let Some(current) =
@@ -810,9 +848,10 @@ fn verification_from_claude_output(plan: &HostPlan, output: &CommandOutput) -> V
 fn verification_from_managed_status(status: ManagedConfigStatus, details: String) -> Verification {
     match status {
         ManagedConfigStatus::Missing => Verification::missing(details),
-        ManagedConfigStatus::Unmanaged | ManagedConfigStatus::Changed => {
-            Verification::changed(details)
+        ManagedConfigStatus::Unmanaged => {
+            Verification::changed(details).with_managed_config(ManagedConfigStatus::Unmanaged)
         }
+        ManagedConfigStatus::Changed => Verification::changed(details),
         ManagedConfigStatus::Malformed => Verification::failed(details)
             .with_managed_config(ManagedConfigStatus::Malformed)
             .with_host_configuration(HostConfigurationStatus::Malformed),
@@ -1034,7 +1073,13 @@ mod tests {
         time::{SystemTime, UNIX_EPOCH},
     };
 
-    use crate::host_integration::ProjectContext;
+    use crate::host_integration::{
+        verification::{
+            ActiveToolExposureStatus, HostApprovalState, HostConfigState, HostPolicyOverlayState,
+            StorageCapability,
+        },
+        ProjectContext,
+    };
 
     use super::*;
 
@@ -1326,6 +1371,48 @@ mod tests {
     }
 
     #[test]
+    fn project_file_managed_entry_uses_claude_mcp_identity_contract(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let repo = temp_dir("claude-project-identity")?;
+        let mut adapter = ClaudeCodeAdapter::new(FakeRunner::new(Vec::new()));
+
+        let plan = adapter.plan(request(
+            HostScope::Project,
+            Some(&repo),
+            Path::new("volicord"),
+        ))?;
+        adapter.apply(&plan)?;
+
+        let text = fs::read_to_string(repo.join(".mcp.json"))?;
+        let value: Value = serde_json::from_str(&text)?;
+        let server = value["mcpServers"]["volicord"]
+            .as_object()
+            .expect("managed server should be an object");
+
+        assert_eq!(
+            server.get("command"),
+            Some(&Value::String("volicord".to_owned()))
+        );
+        assert_eq!(
+            server.get("args"),
+            Some(&serde_json::json!([
+                "mcp",
+                "--stdio",
+                "--connection",
+                "int_alpha",
+                "--project",
+                "project_alpha"
+            ]))
+        );
+        assert!(server.get("env").is_none());
+        assert!(!text.contains("VOLICORD_MCP_LAUNCH"));
+        assert!(!text.contains("VOLICORD_MCP_HOST"));
+        assert!(!text.contains("VOLICORD_MCP_CONNECTION_ID"));
+        assert!(!text.contains("VOLICORD_MCP_PROJECT_ID"));
+        Ok(())
+    }
+
+    #[test]
     fn project_file_reports_managed_fingerprint_mismatch() -> Result<(), Box<dyn std::error::Error>>
     {
         let repo = temp_dir("claude-project-mismatch")?;
@@ -1344,6 +1431,92 @@ mod tests {
         assert_eq!(
             plan.conflicts[0].kind,
             HostConflictKind::FingerprintMismatch
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn project_file_detects_true_managed_identity_drift() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let cases = [
+            (
+                "command",
+                serde_json::json!({
+                    "command": "/tmp/not-volicord",
+                    "args": ["mcp", "--stdio", "--connection", "int_alpha", "--project", "project_alpha"]
+                }),
+            ),
+            (
+                "connection",
+                serde_json::json!({
+                    "command": "volicord",
+                    "args": ["mcp", "--stdio", "--connection", "other", "--project", "project_alpha"]
+                }),
+            ),
+            (
+                "project",
+                serde_json::json!({
+                    "command": "volicord",
+                    "args": ["mcp", "--stdio", "--connection", "int_alpha", "--project", "other_project"]
+                }),
+            ),
+        ];
+
+        for (name, server) in cases {
+            let repo = temp_dir(&format!("claude-project-drift-{name}"))?;
+            fs::write(
+                repo.join(".mcp.json"),
+                serde_json::to_string(&serde_json::json!({
+                    "mcpServers": {
+                        "volicord": server
+                    }
+                }))?,
+            )?;
+            let mut adapter = ClaudeCodeAdapter::new(FakeRunner::new(Vec::new()));
+
+            let plan = adapter.plan(request(
+                HostScope::Project,
+                Some(&repo),
+                Path::new("volicord"),
+            ))?;
+
+            assert_eq!(plan.change, PlannedChange::Noop, "{name}");
+            assert_eq!(
+                plan.conflicts[0].kind,
+                HostConflictKind::FingerprintMismatch,
+                "{name}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn project_file_reports_unmanaged_server_name_collision(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let repo = temp_dir("claude-project-unmanaged")?;
+        fs::write(
+            repo.join(".mcp.json"),
+            serde_json::to_string(&serde_json::json!({
+                "mcpServers": {
+                    "volicord": {
+                        "command": "other-mcp",
+                        "args": ["serve"]
+                    }
+                }
+            }))?,
+        )?;
+        let mut adapter = ClaudeCodeAdapter::new(FakeRunner::new(Vec::new()));
+
+        let plan = adapter.plan(request(
+            HostScope::Project,
+            Some(&repo),
+            Path::new("volicord"),
+        ))?;
+
+        assert_eq!(plan.change, PlannedChange::Noop);
+        assert_eq!(
+            plan.conflicts[0].kind,
+            HostConflictKind::UnmanagedNameCollision
         );
         Ok(())
     }
@@ -1427,6 +1600,40 @@ mod tests {
 
         assert_eq!(plan.entry.command, "volicord");
         assert!(!plan.entry.env.contains_key("VOLICORD_HOME"));
+        Ok(())
+    }
+
+    #[test]
+    fn connected_claude_cli_state_does_not_confirm_active_tool_exposure(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let repo = temp_dir("claude-connected-contract")?;
+        let mut adapter = ClaudeCodeAdapter::new(FakeRunner::new(vec![
+            missing_output(),
+            ok_output(
+                "Status: ✓ Connected\nScope: local\nCommand: /bin/volicord\nArgs: mcp --stdio --connection int_alpha --project project_alpha\nEnvironment:\n  VOLICORD_HOME=/runtime\n",
+            ),
+        ]));
+        let plan = adapter.plan(request(
+            HostScope::Local,
+            Some(&repo),
+            Path::new("/bin/volicord"),
+        ))?;
+
+        let verification = adapter.verify(&plan)?;
+        let contract = verification.common_contract();
+
+        assert_eq!(verification.status.as_str(), "complete");
+        assert!(verification.mcp_handshake_allowed);
+        assert_eq!(contract.host_config, HostConfigState::Match);
+        assert_eq!(contract.managed_identity, ManagedConfigStatus::Match);
+        assert_eq!(contract.host_policy_overlay, HostPolicyOverlayState::Absent);
+        assert_eq!(contract.host_approval, HostApprovalState::Approved);
+        assert!(contract.managed_lifecycle.is_none());
+        assert_eq!(
+            contract.active_tool_exposure,
+            ActiveToolExposureStatus::Unknown
+        );
+        assert_eq!(contract.storage_capability, StorageCapability::Unknown);
         Ok(())
     }
 

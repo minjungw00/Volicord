@@ -350,8 +350,9 @@ const CODEX_LIMITATIONS: [&str; 4] = [
     "AGENTS.md and .volicord/policy.json remain guidance and Volicord metadata, not host hook configuration.",
 ];
 
-const CLAUDE_CODE_LIMITATIONS: [&str; 4] = [
+const CLAUDE_CODE_LIMITATIONS: [&str; 5] = [
     "Project-scoped .mcp.json servers require user approval before they are available.",
+    "Claude Code MCP verification confirms configured server state and approval status; it does not by itself prove active Volicord tool exposure.",
     "Hook if filters and tool hooks are not a complete replacement for host permissions.",
     "Project and user settings files are rejected as a whole when strict JSON validation fails.",
     "AGENTS.md and .volicord/policy.json remain guidance and Volicord metadata, not host hook configuration.",
@@ -451,7 +452,7 @@ pub const CLAUDE_CODE_CONTRACT: HostIntegrationContract = HostIntegrationContrac
     reload_restart_trust_requirements: &CLAUDE_CODE_REQUIREMENTS,
     detective_profile_hook_support: ContractCapability {
         status: ContractSupportStatus::Verified,
-        detail: "The Claude Code adapter generates and verifies project-local settings hook commands for every required detective-profile lifecycle phase.",
+        detail: "The Claude Code adapter generates and verifies project-local settings hook command configuration for every required detective-profile lifecycle phase; active runtime observations are separate.",
     },
     known_limitations: &CLAUDE_CODE_LIMITATIONS,
     official_sources: &CLAUDE_CODE_SOURCES,
@@ -1253,6 +1254,19 @@ mod tests {
             contract.detective_profile_hook_support.status,
             ContractSupportStatus::Verified
         );
+        assert!(contract
+            .detective_profile_hook_support
+            .detail
+            .contains("configuration"));
+        assert!(contract
+            .detective_profile_hook_support
+            .detail
+            .contains("active runtime observations are separate"));
+        assert!(contract
+            .known_limitations
+            .iter()
+            .any(|limitation| limitation
+                .contains("does not by itself prove active Volicord tool exposure")));
         assert!(contract_supports_detective_profile(contract));
 
         let capabilities = host_capabilities(HostKind::ClaudeCode);
