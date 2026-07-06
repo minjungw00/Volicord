@@ -335,7 +335,7 @@ impl<R: CommandRunner> HostAdapter for CodexAdapter<R> {
             _ => Path::new("unknown Codex configuration target"),
         };
         let executable = self.executable_availability(config_target);
-        let managed_evaluation = verify_codex_entry(plan)?;
+        let managed_evaluation = evaluate_codex_managed_identity(plan)?;
         let managed = managed_evaluation.status;
         if managed != ManagedConfigStatus::Match {
             let mut verification = verification_from_managed_status(
@@ -439,7 +439,8 @@ impl<R: CommandRunner> HostAdapter for CodexAdapter<R> {
         let Some(existing) = servers.get(&request.server_name) else {
             return Ok(remove_effect(request, PlannedChange::Noop));
         };
-        let current = codex_entry_fingerprint(request.host_scope, &request.server_name, existing);
+        let current =
+            codex_managed_identity_fingerprint(request.host_scope, &request.server_name, existing);
         if current.as_deref() != Some(request.expected_fingerprint.as_str()) {
             return Err(HostConfigError::Conflict(HostConflict::new(
                 HostConflictKind::FingerprintMismatch,
@@ -532,7 +533,7 @@ fn classify_existing_codex_entry(
     expected_fingerprint: Option<&str>,
     conflicts: &mut Vec<HostConflict>,
 ) -> PlannedChange {
-    let parsed = match parse_codex_managed_entry(item) {
+    let parsed = match parse_codex_managed_identity(item) {
         Ok(parsed) => parsed,
         Err(_) => {
             conflicts.push(HostConflict::new(
@@ -544,7 +545,7 @@ fn classify_existing_codex_entry(
             return PlannedChange::Noop;
         }
     };
-    let entry = parsed.entry;
+    let entry = parsed.managed_entry;
     let current = managed_fingerprint(HostKind::Codex, scope, server_name, &entry);
     if current == desired_fingerprint {
         PlannedChange::Noop
@@ -656,35 +657,39 @@ fn server_table(entry: &ManagedServerEntry) -> Table {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct ParsedCodexEntry {
-    entry: ManagedServerEntry,
+struct ParsedCodexManagedIdentity {
+    managed_entry: ManagedServerEntry,
     host_policy_overlay: Option<HostPolicyOverlayDiagnostic>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum CodexEntryProblem {
+enum CodexManagedIdentityProblem {
     Unmanaged,
     Malformed,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CodexManagedConfigEvaluation {
+pub struct CodexManagedIdentityEvaluation {
     pub status: ManagedConfigStatus,
     pub host_policy_overlay: Option<HostPolicyOverlayDiagnostic>,
 }
 
-fn parse_codex_managed_entry(item: &Item) -> Result<ParsedCodexEntry, CodexEntryProblem> {
-    let table = item.as_table().ok_or(CodexEntryProblem::Malformed)?;
+fn parse_codex_managed_identity(
+    item: &Item,
+) -> Result<ParsedCodexManagedIdentity, CodexManagedIdentityProblem> {
+    let table = item
+        .as_table()
+        .ok_or(CodexManagedIdentityProblem::Malformed)?;
     let allowed_keys = ["command", "args", "env", "tools"];
     if table.iter().any(|(key, _)| !allowed_keys.contains(&key)) {
-        return Err(CodexEntryProblem::Unmanaged);
+        return Err(CodexManagedIdentityProblem::Unmanaged);
     }
     let host_policy_overlay =
-        codex_tool_approval_overlay(table).ok_or(CodexEntryProblem::Unmanaged)?;
+        codex_tool_approval_overlay(table).ok_or(CodexManagedIdentityProblem::Unmanaged)?;
     let command = table
         .get("command")
         .and_then(Item::as_str)
-        .ok_or(CodexEntryProblem::Malformed)?
+        .ok_or(CodexManagedIdentityProblem::Malformed)?
         .to_owned();
     let args = table
         .get("args")
@@ -696,7 +701,7 @@ fn parse_codex_managed_entry(item: &Item) -> Result<ParsedCodexEntry, CodexEntry
                 .collect::<Option<Vec<_>>>()
         })
         .unwrap_or_else(|| Some(Vec::new()))
-        .ok_or(CodexEntryProblem::Malformed)?;
+        .ok_or(CodexManagedIdentityProblem::Malformed)?;
     let env = table
         .get("env")
         .and_then(Item::as_table)
@@ -710,28 +715,32 @@ fn parse_codex_managed_entry(item: &Item) -> Result<ParsedCodexEntry, CodexEntry
                 .collect::<Option<BTreeMap<_, _>>>()
         })
         .unwrap_or_else(|| Some(BTreeMap::new()))
-        .ok_or(CodexEntryProblem::Malformed)?;
+        .ok_or(CodexManagedIdentityProblem::Malformed)?;
     let entry = ManagedServerEntry { command, args, env };
-    if !has_codex_managed_marker_keys(&entry) {
-        return Err(CodexEntryProblem::Unmanaged);
+    if !has_codex_managed_identity_markers(&entry) {
+        return Err(CodexManagedIdentityProblem::Unmanaged);
     }
-    Ok(ParsedCodexEntry {
-        entry,
+    Ok(ParsedCodexManagedIdentity {
+        managed_entry: entry,
         host_policy_overlay,
     })
 }
 
-fn codex_entry_fingerprint(scope: HostScope, server_name: &str, item: &Item) -> Option<String> {
-    let parsed = parse_codex_managed_entry(item).ok()?;
+fn codex_managed_identity_fingerprint(
+    scope: HostScope,
+    server_name: &str,
+    item: &Item,
+) -> Option<String> {
+    let parsed = parse_codex_managed_identity(item).ok()?;
     Some(managed_fingerprint(
         HostKind::Codex,
         scope,
         server_name,
-        &parsed.entry,
+        &parsed.managed_entry,
     ))
 }
 
-fn has_codex_managed_marker_keys(entry: &ManagedServerEntry) -> bool {
+fn has_codex_managed_identity_markers(entry: &ManagedServerEntry) -> bool {
     entry.env.contains_key(VOLICORD_MCP_LAUNCH)
         && entry.env.contains_key(VOLICORD_MCP_HOST)
         && entry.env.contains_key(VOLICORD_MCP_CONNECTION_ID)
@@ -1010,28 +1019,24 @@ fn normalize_trailing_slashes(path: &str) -> String {
     }
 }
 
-pub fn managed_config_status_for_plan(
+pub fn managed_identity_evaluation_for_plan(
     plan: &HostPlan,
-) -> Result<ManagedConfigStatus, HostConfigError> {
-    Ok(managed_config_evaluation_for_plan(plan)?.status)
+) -> Result<CodexManagedIdentityEvaluation, HostConfigError> {
+    evaluate_codex_managed_identity(plan)
 }
 
-pub fn managed_config_evaluation_for_plan(
+fn evaluate_codex_managed_identity(
     plan: &HostPlan,
-) -> Result<CodexManagedConfigEvaluation, HostConfigError> {
-    verify_codex_entry(plan)
-}
-
-fn verify_codex_entry(plan: &HostPlan) -> Result<CodexManagedConfigEvaluation, HostConfigError> {
+) -> Result<CodexManagedIdentityEvaluation, HostConfigError> {
     let HostTarget::File(target) = &plan.target else {
-        return Ok(CodexManagedConfigEvaluation {
+        return Ok(CodexManagedIdentityEvaluation {
             status: ManagedConfigStatus::Unknown,
             host_policy_overlay: None,
         });
     };
     let (_, text) = read_text_snapshot(target)?;
     let Some(text) = text else {
-        return Ok(CodexManagedConfigEvaluation {
+        return Ok(CodexManagedIdentityEvaluation {
             status: ManagedConfigStatus::Missing,
             host_policy_overlay: None,
         });
@@ -1040,7 +1045,7 @@ fn verify_codex_entry(plan: &HostPlan) -> Result<CodexManagedConfigEvaluation, H
         Ok(document) => document,
         Err(error) => {
             return match error {
-                HostConfigError::Malformed(_) => Ok(CodexManagedConfigEvaluation {
+                HostConfigError::Malformed(_) => Ok(CodexManagedIdentityEvaluation {
                     status: ManagedConfigStatus::Malformed,
                     host_policy_overlay: None,
                 }),
@@ -1053,20 +1058,20 @@ fn verify_codex_entry(plan: &HostPlan) -> Result<CodexManagedConfigEvaluation, H
         .and_then(Item::as_table)
         .and_then(|servers| servers.get(&plan.server_name))
     else {
-        return Ok(CodexManagedConfigEvaluation {
+        return Ok(CodexManagedIdentityEvaluation {
             status: ManagedConfigStatus::Missing,
             host_policy_overlay: None,
         });
     };
-    match parse_codex_managed_entry(item) {
+    match parse_codex_managed_identity(item) {
         Ok(parsed) => {
             let fingerprint = managed_fingerprint(
                 HostKind::Codex,
                 plan.host_scope,
                 &plan.server_name,
-                &parsed.entry,
+                &parsed.managed_entry,
             );
-            Ok(CodexManagedConfigEvaluation {
+            Ok(CodexManagedIdentityEvaluation {
                 status: if fingerprint == plan.fingerprint {
                     ManagedConfigStatus::Match
                 } else {
@@ -1075,11 +1080,11 @@ fn verify_codex_entry(plan: &HostPlan) -> Result<CodexManagedConfigEvaluation, H
                 host_policy_overlay: parsed.host_policy_overlay,
             })
         }
-        Err(CodexEntryProblem::Unmanaged) => Ok(CodexManagedConfigEvaluation {
+        Err(CodexManagedIdentityProblem::Unmanaged) => Ok(CodexManagedIdentityEvaluation {
             status: ManagedConfigStatus::Unmanaged,
             host_policy_overlay: None,
         }),
-        Err(CodexEntryProblem::Malformed) => Ok(CodexManagedConfigEvaluation {
+        Err(CodexManagedIdentityProblem::Malformed) => Ok(CodexManagedIdentityEvaluation {
             status: ManagedConfigStatus::Malformed,
             host_policy_overlay: None,
         }),
@@ -1514,7 +1519,7 @@ mod tests {
         let target = repo.join(".codex/config.toml");
         append_tool_approval_overlay(&target, "volicord.intake")?;
 
-        let evaluation = managed_config_evaluation_for_plan(&plan)?;
+        let evaluation = managed_identity_evaluation_for_plan(&plan)?;
         let plan_after_overlay = adapter.plan(request(
             HostScope::Project,
             Some(&repo),
@@ -1585,7 +1590,7 @@ mod tests {
             fs::read_to_string(&target)?.replace("command = \"volicord\"", "command = \"other\""),
         )?;
 
-        let status = managed_config_status_for_plan(&plan)?;
+        let status = managed_identity_evaluation_for_plan(&plan)?.status;
 
         assert_eq!(status, ManagedConfigStatus::Changed);
         Ok(())
@@ -1613,7 +1618,7 @@ mod tests {
                 ),
         )?;
 
-        let status = managed_config_status_for_plan(&plan)?;
+        let status = managed_identity_evaluation_for_plan(&plan)?.status;
 
         assert_eq!(status, ManagedConfigStatus::Changed);
         Ok(())
@@ -1641,7 +1646,7 @@ mod tests {
                 ),
         )?;
 
-        let status = managed_config_status_for_plan(&plan)?;
+        let status = managed_identity_evaluation_for_plan(&plan)?.status;
 
         assert_eq!(status, ManagedConfigStatus::Changed);
         Ok(())
@@ -2049,7 +2054,7 @@ mod tests {
             "[mcp_servers.volicord]\ncommand = \"volicord\"\nargs = [\"mcp\", \"--stdio\", \"--connection\", \"int_alpha\", \"--project\", \"project_alpha\"]\n",
         )?;
 
-        let status = managed_config_status_for_plan(&plan)?;
+        let status = managed_identity_evaluation_for_plan(&plan)?.status;
 
         assert_eq!(status, ManagedConfigStatus::Unmanaged);
         Ok(())
@@ -2076,7 +2081,7 @@ mod tests {
             ),
         )?;
 
-        let status = managed_config_status_for_plan(&plan)?;
+        let status = managed_identity_evaluation_for_plan(&plan)?.status;
 
         assert_eq!(status, ManagedConfigStatus::Changed);
         Ok(())

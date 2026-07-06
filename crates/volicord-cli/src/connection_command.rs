@@ -2053,7 +2053,7 @@ fn current_status_host_diagnostic(
         "Codex status diagnostics were read without running MCP verification",
     );
     let host_policy_overlay = if host_plan.host_kind == HostKind::Codex {
-        let evaluation = codex::managed_config_evaluation_for_plan(host_plan)?;
+        let evaluation = codex::managed_identity_evaluation_for_plan(host_plan)?;
         host = host.with_managed_config(evaluation.status);
         evaluation.host_policy_overlay
     } else {
