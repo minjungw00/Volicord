@@ -11,6 +11,7 @@ mod disclosure;
 pub mod doctor_command;
 pub mod export_command;
 pub mod guard_command;
+mod guard_integration;
 pub mod host_integration;
 mod managed_block;
 pub mod project_context;
