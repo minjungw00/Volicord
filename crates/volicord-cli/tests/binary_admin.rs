@@ -1106,17 +1106,12 @@ fn connection_verify_trusted_project_prioritizes_tool_exposure_guidance(
     assert!(text.contains(
         "If tools are not exposed, check Codex MCP startup/tool-list logs and Volicord storage read/write capability."
     ));
-    assert!(text.contains("Also ensure `volicord` is launchable by the Codex host process."));
+    assert!(!text.contains("Also ensure `volicord` is launchable by the Codex host process."));
     assert!(!text.contains("has started the Volicord MCP server"));
     assert_order(
         &text,
         "Confirm Volicord tools are exposed in the active Codex session.",
         "If tools are not exposed, check Codex MCP startup/tool-list logs and Volicord storage read/write capability.",
-    );
-    assert_order(
-        &text,
-        "If tools are not exposed, check Codex MCP startup/tool-list logs and Volicord storage read/write capability.",
-        "Also ensure `volicord` is launchable by the Codex host process.",
     );
     assert!(text.contains("Limits:"));
     assert!(text.contains(
@@ -1152,7 +1147,7 @@ fn connection_verify_trusted_project_prioritizes_tool_exposure_guidance(
     );
     assert_eq!(
         value["primary_next_action"]["instruction"],
-        "Confirm the active Codex session exposes Volicord tools. If tools are not exposed, check Codex MCP startup/tool-list logs and Volicord storage read/write capability. Also ensure `volicord` is launchable by the Codex host process."
+        "Confirm the active Codex session exposes Volicord tools. If tools are not exposed, check Codex MCP startup/tool-list logs and Volicord storage read/write capability."
     );
     assert_eq!(value["primary_next_action"]["command"], verify_command);
     assert_order(
@@ -1162,20 +1157,17 @@ fn connection_verify_trusted_project_prioritizes_tool_exposure_guidance(
         "exposes Volicord tools",
         "Volicord storage read/write capability",
     );
-    assert_order(
-        value["primary_next_action"]["instruction"]
-            .as_str()
-            .expect("primary action instruction should be text"),
-        "Volicord storage read/write capability",
-        "launchable by the Codex host process",
-    );
+    assert!(!value["primary_next_action"]["instruction"]
+        .as_str()
+        .expect("primary action instruction should be text")
+        .contains("launchable by the Codex host process"));
     assert!(!value["primary_next_action"]["instruction"]
         .as_str()
         .expect("primary action instruction should be text")
         .contains("volicord connection verify"));
     assert_eq!(
         value["summary_card"]["next"],
-        "Codex host runtime has not been observed; confirm the active Codex session exposes Volicord tools, then check Codex MCP startup/tool-list logs and Volicord storage read/write capability before host command launchability."
+        "Codex host runtime has not been observed; confirm the active Codex session exposes Volicord tools, then check Codex MCP startup/tool-list logs and Volicord storage read/write capability."
     );
     assert_order(
         value["summary_card"]["next"]
@@ -1184,13 +1176,10 @@ fn connection_verify_trusted_project_prioritizes_tool_exposure_guidance(
         "exposes Volicord tools",
         "Volicord storage read/write capability",
     );
-    assert_order(
-        value["summary_card"]["next"]
-            .as_str()
-            .expect("summary next should be text"),
-        "Volicord storage read/write capability",
-        "host command launchability",
-    );
+    assert!(!value["summary_card"]["next"]
+        .as_str()
+        .expect("summary next should be text")
+        .contains("host command launchability"));
     assert!(!value["summary_card"]["next"]
         .as_str()
         .expect("summary next should be text")
@@ -1366,17 +1355,12 @@ fn connection_status_trusted_project_mentions_storage_diagnostics() -> Result<()
     assert!(text.contains(
         "If tools are not exposed, check Codex MCP startup/tool-list logs and Volicord storage read/write capability."
     ));
-    assert!(text.contains("Also ensure `volicord` is launchable by the Codex host process."));
+    assert!(!text.contains("Also ensure `volicord` is launchable by the Codex host process."));
     assert!(!text.contains("has started the Volicord MCP server"));
     assert_order(
         &text,
         "Volicord storage read: passed",
         "Codex host runtime: not observed",
-    );
-    assert_order(
-        &text,
-        "Volicord storage read/write capability",
-        "Also ensure `volicord` is launchable by the Codex host process.",
     );
     assert_text_renders_volicord_commands_as_standalone_lines(
         &text,
@@ -1407,11 +1391,11 @@ fn connection_status_trusted_project_mentions_storage_diagnostics() -> Result<()
     );
     assert_eq!(
         value["summary_card"]["next"],
-        "Codex host runtime has not been observed; confirm the active Codex session exposes Volicord tools, then check Codex MCP startup/tool-list logs and Volicord storage read/write capability before host command launchability."
+        "Codex host runtime has not been observed; confirm the active Codex session exposes Volicord tools, then check Codex MCP startup/tool-list logs and Volicord storage read/write capability."
     );
     assert_eq!(
         value["primary_next_action"]["instruction"],
-        "Confirm the active Codex session exposes Volicord tools. If tools are not exposed, check Codex MCP startup/tool-list logs and Volicord storage read/write capability. Also ensure `volicord` is launchable by the Codex host process."
+        "Confirm the active Codex session exposes Volicord tools. If tools are not exposed, check Codex MCP startup/tool-list logs and Volicord storage read/write capability."
     );
     assert!(value["actions"]
         .as_array()
@@ -2062,7 +2046,7 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     );
     assert_eq!(
         status_without_intent_json["summary_card"]["next"],
-        "Codex host runtime has not been observed; confirm the active Codex session exposes Volicord tools, then check Codex MCP startup/tool-list logs and Volicord storage read/write capability before host command launchability."
+        "Codex host runtime has not been observed; confirm the active Codex session exposes Volicord tools, then check Codex MCP startup/tool-list logs and Volicord storage read/write capability."
     );
     assert!(!status_without_intent_json["summary_card"]["next"]
         .as_str()

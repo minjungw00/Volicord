@@ -279,10 +279,9 @@ Checks:
   Host follow-up: action required
 
 Next:
-  1. Make `volicord` available on the PATH seen by the Codex host process, or configure the MCP command so the host can launch it.
-  2. Restart, reload, resume, or start a new Codex session in this repository.
-  3. Confirm that Volicord tools are exposed in the active Codex session.
-  4. Run:
+  1. Confirm Volicord tools are exposed in the active Codex session.
+  2. If tools are not exposed, check Codex MCP startup/tool-list logs and Volicord storage read/write capability.
+  3. Run:
      volicord connection verify codex --shared --repo /path/to/your-product-repo
 
 Limits:
@@ -323,10 +322,9 @@ Checks:
   Host follow-up: action required
 
 Next:
-  1. Make `volicord` available on the PATH seen by the Codex host process, or configure the MCP command so the host can launch it.
-  2. Restart, reload, resume, or start a new Codex session in this repository.
-  3. Confirm that Volicord tools are exposed in the active Codex session.
-  4. Run:
+  1. Confirm Volicord tools are exposed in the active Codex session.
+  2. If tools are not exposed, check Codex MCP startup/tool-list logs and Volicord storage read/write capability.
+  3. Run:
      volicord connection verify codex --shared --repo /path/to/your-product-repo
 
 Limits:
@@ -358,10 +356,11 @@ volicord connection verify claude-code --global
 | `dry_run` | 명령이 지속 변경 없이 계획된 동작을 보고했습니다. |
 
 Codex에서는 프로젝트 trust가 `trusted`이고 CLI MCP preflight와 handshake가 통과했더라도
-`action_required`가 나타날 수 있습니다. 이때 남은 단계는 보통 host runtime 또는 시작
-환경 문제입니다. MCP 명령을 `Codex host process`가 시작할 수 있게 만들고, 저장소에서
-Codex session을 restart, reload, resume 또는 새로 시작한 뒤 활성 Codex session에
-Volicord 도구가 노출되는지 확인합니다.
+`action_required`가 나타날 수 있습니다. 이때 남은 단계는 보통 활성 세션 또는 host
+runtime 문제입니다. 먼저 활성 Codex session에 Volicord 도구가 노출되는지 확인하고,
+도구가 보이지 않으면 Codex MCP startup/tool-list log와 Volicord storage read/write
+capability를 확인합니다. Host MCP command launchability는 명령 점검이 그 위험을
+보고할 때 별도의 시작 환경 진단으로 다룹니다.
 
 ## Generic MCP 호스트 설정
 

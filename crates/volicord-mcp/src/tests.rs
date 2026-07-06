@@ -612,7 +612,10 @@ fn project_bound_early_edit_is_detected_on_first_close_attempt() -> Result<(), B
     let adapter = adapter(&fixture)?;
     let (task_id, _) = create_task(&adapter)?;
     let session_id = "session_project_bound_early_edit";
-    adapter.initialize_startup_session_watch(session_id)?;
+    assert_eq!(
+        adapter.startup_session_watch_observation_best_effort(session_id),
+        StartupObservationResult::Recorded
+    );
     write_product_file(&fixture, "src/early.txt", "changed before first method\n")?;
 
     let response = adapter.call_tool_for_session(

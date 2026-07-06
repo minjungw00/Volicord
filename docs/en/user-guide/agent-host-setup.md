@@ -300,10 +300,9 @@ Checks:
   Host follow-up: action required
 
 Next:
-  1. Make `volicord` available on the PATH seen by the Codex host process, or configure the MCP command so the host can launch it.
-  2. Restart, reload, resume, or start a new Codex session in this repository.
-  3. Confirm that Volicord tools are exposed in the active Codex session.
-  4. Run:
+  1. Confirm Volicord tools are exposed in the active Codex session.
+  2. If tools are not exposed, check Codex MCP startup/tool-list logs and Volicord storage read/write capability.
+  3. Run:
      volicord connection verify codex --shared --repo /path/to/your-product-repo
 
 Limits:
@@ -344,10 +343,9 @@ Checks:
   Host follow-up: action required
 
 Next:
-  1. Make `volicord` available on the PATH seen by the Codex host process, or configure the MCP command so the host can launch it.
-  2. Restart, reload, resume, or start a new Codex session in this repository.
-  3. Confirm that Volicord tools are exposed in the active Codex session.
-  4. Run:
+  1. Confirm Volicord tools are exposed in the active Codex session.
+  2. If tools are not exposed, check Codex MCP startup/tool-list logs and Volicord storage read/write capability.
+  3. Run:
      volicord connection verify codex --shared --repo /path/to/your-product-repo
 
 Limits:
@@ -380,10 +378,11 @@ Result states:
 
 For Codex, `action_required` can appear even when project trust is `trusted`
 and CLI MCP preflight and handshake passed. In that case, the remaining step is
-usually host-runtime or launch-environment work: make the MCP command launchable
-by the Codex host process, restart, reload, resume, or start a Codex session in
-the repository, and confirm that Volicord tools are exposed in the active Codex
-session.
+usually active-session or host-runtime work: confirm that Volicord tools are
+exposed in the active Codex session, then check Codex MCP startup/tool-list logs
+and Volicord storage read/write capability if tools are absent. Treat host MCP
+command launchability as a separate launch-environment diagnostic when the
+command check reports that risk.
 
 ## Generic MCP Host Configuration
 

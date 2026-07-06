@@ -2084,7 +2084,7 @@ fn host_runtime_action_applies(host: &Verification, runtime: &HostRuntimeDiagnos
 }
 
 fn host_runtime_not_observed_action_message() -> &'static str {
-    "Confirm the active Codex session exposes Volicord tools. If tools are not exposed, check Codex MCP startup/tool-list logs and Volicord storage read/write capability. Also ensure `volicord` is launchable by the Codex host process."
+    "Confirm the active Codex session exposes Volicord tools. If tools are not exposed, check Codex MCP startup/tool-list logs and Volicord storage read/write capability."
 }
 
 fn push_unique_action(actions: &mut Vec<UserAction>, action: UserAction) {
@@ -5788,11 +5788,6 @@ fn append_compact_next_steps(
                 &mut index,
                 "If tools are not exposed, check Codex MCP startup/tool-list logs and Volicord storage read/write capability.",
             );
-            push_numbered_text(
-                output,
-                &mut index,
-                format!("Also ensure `volicord` is launchable by the {host} host process."),
-            );
             push_optional_numbered_command(output, &mut index, "Run", command.as_deref());
         }
         "mcp_config_missing" => {
@@ -7395,7 +7390,7 @@ fn connection_summary_next_text(
     };
     match action.id.as_str() {
         "host_runtime_not_observed" => format!(
-            "{host_display} host runtime has not been observed; confirm the active {host_display} session exposes Volicord tools, then check {host_display} MCP startup/tool-list logs and Volicord storage read/write capability before host command launchability."
+            "{host_display} host runtime has not been observed; confirm the active {host_display} session exposes Volicord tools, then check {host_display} MCP startup/tool-list logs and Volicord storage read/write capability."
         ),
         "host_trust_required" => format!(
             "The project must be trusted before project-scoped {host_display} configuration loads; then rerun verification."

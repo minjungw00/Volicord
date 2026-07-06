@@ -94,15 +94,6 @@ impl McpAdapter {
         self
     }
 
-    /// Initializes a session-watch baseline before serving tools when startup is project-bound.
-    pub fn initialize_startup_session_watch(
-        &self,
-        session_id: &str,
-    ) -> Result<(), McpAdapterError> {
-        self.startup_session_watch_observation(session_id)
-            .map(|_| ())
-    }
-
     pub(crate) fn startup_session_watch_observation_best_effort(
         &self,
         session_id: &str,
