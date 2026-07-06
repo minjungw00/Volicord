@@ -836,7 +836,9 @@ fn command_connection_status(
     let runtime_home = resolve_runtime_home(|name| process.env_var(name), current_dir)?;
     let selector = connection_selector(&parsed, current_dir, process)?;
     let (connection, projects) = select_connection(&runtime_home, &selector)?;
-    let host_plan = existing_host_plan(&connection, &runtime_home, process)?;
+    let selected_project = selected_connection_project(&projects, &selector.repo_root)?;
+    let host_plan =
+        existing_host_plan(&connection, &runtime_home, process, Some(selected_project))?;
     let current_host = current_status_host_diagnostic(
         &runtime_home,
         &connection,
@@ -845,9 +847,10 @@ fn command_connection_status(
         process,
     )?;
     let user_actions = connection_status_actions(&connection, current_host.as_ref());
-    let status = status_with_current_actions(
+    let status = status_with_current_diagnostics(
         status_from_store(&connection.last_verification_status),
         &user_actions,
+        current_host.as_ref(),
     );
     render_connection_output(ConnectionOutput {
         format: connection_output_format(&parsed),
@@ -869,10 +872,21 @@ fn command_connection_status(
     })
 }
 
-fn status_with_current_actions(
+fn status_with_current_diagnostics(
     status: AgentResultStatus,
     actions: &[UserAction],
+    current_host: Option<&Verification>,
 ) -> AgentResultStatus {
+    if current_host.is_some_and(|host| {
+        matches!(
+            host.managed_config,
+            ManagedConfigStatus::Missing
+                | ManagedConfigStatus::Changed
+                | ManagedConfigStatus::Malformed
+        )
+    }) {
+        return AgentResultStatus::ActionRequired;
+    }
     if status == AgentResultStatus::Complete && !actions.is_empty() {
         AgentResultStatus::ActionRequired
     } else {
@@ -891,15 +905,17 @@ fn command_connection_verify(
     let parsed = parse_connection_options(args, &["repo", "shared", "global", "json"], 1)?;
     let runtime_home = resolve_runtime_home(|name| process.env_var(name), current_dir)?;
     let selector = connection_selector(&parsed, current_dir, process)?;
-    let (mut connection, _) = select_connection(&runtime_home, &selector)?;
-    let host_plan = existing_host_plan(&connection, &runtime_home, process)?;
-    let launch = mcp_launch_from_host_plan(&host_plan, None);
+    let (mut connection, projects) = select_connection(&runtime_home, &selector)?;
+    let selected_project = selected_connection_project(&projects, &selector.repo_root)?;
+    let host_plan =
+        existing_host_plan(&connection, &runtime_home, process, Some(selected_project))?;
+    let launch = mcp_launch_from_host_plan(&host_plan, Some(&selected_project.project.repo_root));
     let verification = verify_connection(
         &runtime_home,
         &connection,
         &host_plan,
         &launch,
-        None,
+        Some(&selected_project.project_id),
         process,
     )?;
     connection = update_agent_connection_verification_report(
@@ -1007,7 +1023,12 @@ fn command_connection_remove(
         .ok_or_else(|| ConnectionCommandError::runtime("selected repository is not connected"))?;
     let remaining_count = projects.len().saturating_sub(1);
     let host_plan = if remaining_count == 0 {
-        Some(existing_host_plan(&connection, &runtime_home, process)?)
+        Some(existing_host_plan(
+            &connection,
+            &runtime_home,
+            process,
+            Some(selected_project),
+        )?)
     } else {
         None
     };
@@ -1357,6 +1378,16 @@ fn select_connection(
             selector, &matches,
         ))),
     }
+}
+
+fn selected_connection_project<'a>(
+    projects: &'a [ConnectionProjectRecord],
+    repo_root: &Path,
+) -> Result<&'a ConnectionProjectRecord, ConnectionCommandError> {
+    projects
+        .iter()
+        .find(|project| project.project.repo_root == repo_root)
+        .ok_or_else(|| ConnectionCommandError::runtime("selected repository is not connected"))
 }
 
 fn public_host_label(host_kind: HostKind) -> &'static str {
@@ -1814,6 +1845,7 @@ fn existing_host_plan(
     connection: &AgentConnectionRecord,
     runtime_home: &Path,
     process: &impl ConnectionProcess,
+    selected_project: Option<&ConnectionProjectRecord>,
 ) -> Result<HostPlan, ConnectionCommandError> {
     let host_kind = parse_host_kind(&connection.host_kind)?;
     let host_scope = parse_host_scope(&connection.host_scope)?;
@@ -1835,11 +1867,11 @@ fn existing_host_plan(
                     connection_intent,
                     scope: host_scope,
                     connection_id: &connection.connection_internal_id,
+                    project_id: selected_project.map(|project| project.project_id.as_str()),
                     server_name: &connection.server_name,
                     config_target: Path::new(&connection.config_target),
                     mcp_command: &mcp_command,
                     runtime_home: runtime_home_for_entry.as_deref(),
-                    managed_fingerprint: &connection.managed_fingerprint,
                     mode: &connection.mode,
                 })
                 .map_err(Into::into)
@@ -2007,10 +2039,17 @@ fn current_status_host_diagnostic(
         VerificationStatus::NotVerified,
         "Codex status diagnostics were read without running MCP verification",
     );
-    if stored_host_managed_config(connection).as_deref() == Some("match") {
-        host = host
-            .with_managed_config(ManagedConfigStatus::Match)
-            .with_mcp_handshake_allowed(true);
+    let managed_config = if host_plan.host_kind == HostKind::Codex {
+        codex::managed_config_status_for_plan(host_plan)?
+    } else {
+        stored_host_managed_config(connection)
+            .as_deref()
+            .and_then(managed_config_status_from_str)
+            .unwrap_or(ManagedConfigStatus::Unknown)
+    };
+    host = host.with_managed_config(managed_config);
+    if managed_config == ManagedConfigStatus::Match {
+        host = host.with_mcp_handshake_allowed(true);
     }
     if parse_host_scope(&connection.host_scope)? == HostScope::Project {
         if let Some(project) = projects.first() {
@@ -2042,6 +2081,18 @@ fn stored_host_managed_config(connection: &AgentConnectionRecord) -> Option<Stri
         .and_then(|host| host.get("managed_config"))
         .and_then(Value::as_str)
         .map(str::to_owned)
+}
+
+fn managed_config_status_from_str(value: &str) -> Option<ManagedConfigStatus> {
+    match value {
+        "match" => Some(ManagedConfigStatus::Match),
+        "missing" => Some(ManagedConfigStatus::Missing),
+        "changed" => Some(ManagedConfigStatus::Changed),
+        "malformed" => Some(ManagedConfigStatus::Malformed),
+        "not_applicable" => Some(ManagedConfigStatus::NotApplicable),
+        "unknown" => Some(ManagedConfigStatus::Unknown),
+        _ => None,
+    }
 }
 
 fn attach_current_host_runtime_diagnostics(
@@ -2130,7 +2181,10 @@ fn host_runtime_observation(
             &connection.connection_internal_id,
         ) {
             Ok(Some(baseline)) => {
-                last_observed_at = max_optional_text(last_observed_at, Some(baseline.created_at));
+                if codex_host_runtime_baseline_is_managed(&baseline.metadata_json) {
+                    last_observed_at =
+                        max_optional_text(last_observed_at, Some(baseline.created_at));
+                }
             }
             Ok(None) => {}
             Err(error) => {
@@ -2159,6 +2213,38 @@ fn host_runtime_observation(
             last_observed_at: None,
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PersistedMcpLaunchOrigin {
+    CliVerification,
+    ManagedHost,
+    ManualCli,
+    InvalidManagedMarker,
+    UnknownLegacy,
+}
+
+fn persisted_mcp_launch_origin(metadata_json: &str) -> PersistedMcpLaunchOrigin {
+    match serde_json::from_str::<Value>(metadata_json)
+        .ok()
+        .and_then(|metadata| {
+            metadata
+                .get("launch_origin")
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+        })
+        .as_deref()
+    {
+        Some("cli_verification") => PersistedMcpLaunchOrigin::CliVerification,
+        Some("managed_host") => PersistedMcpLaunchOrigin::ManagedHost,
+        Some("manual_cli") => PersistedMcpLaunchOrigin::ManualCli,
+        Some("invalid_managed_marker") => PersistedMcpLaunchOrigin::InvalidManagedMarker,
+        _ => PersistedMcpLaunchOrigin::UnknownLegacy,
+    }
+}
+
+fn codex_host_runtime_baseline_is_managed(metadata_json: &str) -> bool {
+    persisted_mcp_launch_origin(metadata_json) == PersistedMcpLaunchOrigin::ManagedHost
 }
 
 fn host_mcp_command_diagnostic(
@@ -5343,11 +5429,16 @@ fn render_connection_output(data: ConnectionOutput<'_>) -> Result<String, Connec
         .map(|plan| host_target_text(&plan.target))
         .unwrap_or_else(|| data.connection.config_target.clone());
     let planned_change = data.plan.map(|plan| planned_change_text(plan.change));
-    let mcp_config_state =
-        connection_mcp_config_state(data.connection, data.verification, data.plan);
+    let mcp_config_state = connection_mcp_config_state(
+        data.connection,
+        data.verification,
+        data.plan,
+        data.current_host.as_ref(),
+    );
     let primary_next_action = primary_connection_action(
         &data.user_actions,
         data.verification,
+        data.current_host.as_ref(),
         &data.guard_state,
         Some(data.connection),
         data.projects,
@@ -5977,7 +6068,7 @@ fn render_connection_plan_output(
     let planned_change = planned_change_text(data.plan.change);
     let guard_state = GuardOperationalState::not_configured();
     let primary_next_action =
-        primary_connection_action(&data.user_actions, None, &guard_state, None, &[]);
+        primary_connection_action(&data.user_actions, None, None, &guard_state, None, &[]);
     let project_state = data.repo_root.map(|_| "planned").unwrap_or("not_selected");
     match data.format {
         OutputFormat::Text => Ok(render_compact_plan_text(&data)),
@@ -6293,7 +6384,7 @@ fn render_init_output(data: InitOutput<'_>) -> Result<String, ConnectionCommandE
         "planned"
     };
     let mut primary_next_action =
-        primary_connection_action(&actions, data.verification, &guard_state, None, &[]);
+        primary_connection_action(&actions, data.verification, None, &guard_state, None, &[]);
     if let Some(action) = primary_next_action.as_mut() {
         attach_init_verify_command(action, data.host_kind, data.repo_root);
     }
@@ -7139,9 +7230,13 @@ fn connection_mcp_config_state(
     connection: &AgentConnectionRecord,
     verification: Option<&VerificationReport>,
     plan: Option<&HostPlan>,
+    current_host: Option<&Verification>,
 ) -> String {
     if let Some(verification) = verification {
         return verification.host.managed_config.as_str().to_owned();
+    }
+    if let Some(host) = current_host {
+        return host.managed_config.as_str().to_owned();
     }
     if let Some(plan) = plan {
         return planned_change_text(plan.change).to_owned();
@@ -7174,6 +7269,7 @@ fn has_reload_action(actions: &[UserAction]) -> bool {
 fn primary_connection_action(
     actions: &[UserAction],
     verification: Option<&VerificationReport>,
+    current_host: Option<&Verification>,
     guard_state: &GuardOperationalState,
     connection: Option<&AgentConnectionRecord>,
     projects: &[ConnectionProjectRecord],
@@ -7218,6 +7314,35 @@ fn primary_connection_action(
         }
     }
     if verification.is_none() {
+        if let Some(host) = current_host {
+            match host.managed_config.as_str() {
+                "missing" => {
+                    return Some(connection_repair_action(
+                        "mcp_config_missing",
+                        "Reinstall missing MCP configuration.",
+                        connection,
+                        projects,
+                    ));
+                }
+                "changed" => {
+                    return Some(connection_repair_action(
+                        "mcp_config_changed",
+                        "Review the changed MCP configuration and repair it if Volicord should manage it.",
+                        connection,
+                        projects,
+                    ));
+                }
+                "malformed" => {
+                    return Some(connection_repair_action(
+                        "mcp_config_malformed",
+                        "Repair the malformed MCP configuration.",
+                        connection,
+                        projects,
+                    ));
+                }
+                _ => {}
+            }
+        }
         if let Some(connection) = connection {
             let stored_report = json_object_text(&connection.last_verification_report_json);
             if stored_report
@@ -7243,7 +7368,7 @@ fn primary_connection_action(
                         ),
                 ));
             }
-            match connection_mcp_config_state(connection, None, None).as_str() {
+            match connection_mcp_config_state(connection, None, None, None).as_str() {
                 "missing" => {
                     return Some(connection_repair_action(
                         "mcp_config_missing",
@@ -10187,6 +10312,31 @@ mod tests {
 
         assert!(first.starts_with("conn_codex_project_project_a_"));
         assert_ne!(first, second);
+    }
+
+    #[test]
+    fn persisted_codex_runtime_origin_requires_managed_host_marker() {
+        assert_eq!(
+            persisted_mcp_launch_origin("{}"),
+            PersistedMcpLaunchOrigin::UnknownLegacy
+        );
+        assert_eq!(
+            persisted_mcp_launch_origin(r#"{"launch_origin":"managed_host"}"#),
+            PersistedMcpLaunchOrigin::ManagedHost
+        );
+        assert!(codex_host_runtime_baseline_is_managed(
+            r#"{"launch_origin":"managed_host"}"#
+        ));
+        for origin in [
+            "cli_verification",
+            "manual_cli",
+            "invalid_managed_marker",
+            "unknown_legacy",
+        ] {
+            let metadata = format!(r#"{{"launch_origin":"{origin}"}}"#);
+            assert!(!codex_host_runtime_baseline_is_managed(&metadata));
+        }
+        assert!(!codex_host_runtime_baseline_is_managed("{}"));
     }
 
     #[test]

@@ -1,6 +1,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     error::Error,
+    ffi::OsString,
     fs,
     io::{BufReader, Cursor},
 };
@@ -16,7 +17,8 @@ use crate::local_http::{
 use crate::local_web_consent::{parse_urlencoded, single_param};
 use crate::prelude::*;
 use crate::stdio::{
-    pending_judgment_from_response, percent_encode_query, run_stdio_with_env_marker,
+    classify_launch_origin, pending_judgment_from_response, percent_encode_query,
+    run_stdio_with_env_marker, McpLaunchOrigin,
 };
 use volicord_core::CoreBoundary;
 use volicord_store::agent_connections::{
@@ -294,12 +296,140 @@ fn mcp_host_startup_records_observation_when_writable() -> Result<(), Box<dyn Er
     assert_eq!(baseline.status, "active");
     let metadata: Value = serde_json::from_str(&baseline.metadata_json)?;
     assert_eq!(metadata["coverage_basis"], "mcp_start");
+    assert_eq!(metadata["launch_origin"], "managed_host");
     assert!(metadata.get("partial_coverage_warning").is_none());
     assert_eq!(
         metadata["scan_summary"]["not_full_filesystem_monitoring"],
         true
     );
     assert_eq!(metadata["scan_summary"]["follows_symlinks"], false);
+    Ok(())
+}
+
+#[test]
+fn mcp_launch_origin_classifies_verification_managed_manual_and_invalid() {
+    assert_eq!(McpLaunchOrigin::UnknownLegacy.as_str(), "unknown_legacy");
+    assert_eq!(
+        classify_launch_origin(
+            |name| (name == "VOLICORD_MCP_VERIFICATION").then(|| OsString::from("1")),
+            "conn_alpha",
+            Some("project_alpha"),
+        ),
+        McpLaunchOrigin::CliVerification
+    );
+    assert_eq!(
+        classify_launch_origin(
+            |name| match name {
+                "VOLICORD_MCP_LAUNCH" => Some(OsString::from("managed_host")),
+                "VOLICORD_MCP_HOST" => Some(OsString::from("codex")),
+                "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from("conn_alpha")),
+                "VOLICORD_MCP_PROJECT_ID" => Some(OsString::from("project_alpha")),
+                _ => None,
+            },
+            "conn_alpha",
+            Some("project_alpha"),
+        ),
+        McpLaunchOrigin::ManagedHost
+    );
+    assert_eq!(
+        classify_launch_origin(|_| None, "conn_alpha", Some("project_alpha")),
+        McpLaunchOrigin::ManualCli
+    );
+    assert_eq!(
+        classify_launch_origin(
+            |name| match name {
+                "VOLICORD_MCP_LAUNCH" => Some(OsString::from("managed_host")),
+                "VOLICORD_MCP_HOST" => Some(OsString::from("codex")),
+                "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from("conn_beta")),
+                "VOLICORD_MCP_PROJECT_ID" => Some(OsString::from("project_alpha")),
+                _ => None,
+            },
+            "conn_alpha",
+            Some("project_alpha"),
+        ),
+        McpLaunchOrigin::InvalidManagedMarker
+    );
+}
+
+#[test]
+fn managed_stdio_launch_records_host_runtime_observation() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-stdio-managed-watch")?;
+    let adapter = project_bound_adapter(&fixture)?;
+    let input = Cursor::new(Vec::<u8>::new());
+    let mut output = Vec::new();
+
+    run_stdio_with_env_marker(
+        adapter,
+        BufReader::new(input),
+        &mut output,
+        |name| match name {
+            "VOLICORD_MCP_LAUNCH" => Some(OsString::from("managed_host")),
+            "VOLICORD_MCP_HOST" => Some(OsString::from("codex")),
+            "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from(fixture.connection_id())),
+            "VOLICORD_MCP_PROJECT_ID" => Some(OsString::from(fixture.project_id())),
+            _ => None,
+        },
+    )?;
+
+    assert!(output.is_empty());
+    let baseline = latest_watch_baseline_for_connection(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        fixture.connection_id(),
+    )?
+    .expect("managed stdio startup should create a watch baseline");
+    let metadata: Value = serde_json::from_str(&baseline.metadata_json)?;
+    assert_eq!(metadata["launch_origin"], "managed_host");
+    Ok(())
+}
+
+#[test]
+fn manual_stdio_launch_does_not_create_host_runtime_observation() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-stdio-manual-watch-skip")?;
+    let adapter = project_bound_adapter(&fixture)?;
+    let input = Cursor::new(Vec::<u8>::new());
+    let mut output = Vec::new();
+
+    run_stdio_with_env_marker(adapter, BufReader::new(input), &mut output, |_| None)?;
+
+    assert!(output.is_empty());
+    assert!(latest_watch_baseline_for_connection(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        fixture.connection_id(),
+    )?
+    .is_none());
+    Ok(())
+}
+
+#[test]
+fn invalid_managed_marker_launch_does_not_create_host_runtime_observation(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-stdio-invalid-marker-watch-skip")?;
+    let adapter = project_bound_adapter(&fixture)?;
+    let input = Cursor::new(Vec::<u8>::new());
+    let mut output = Vec::new();
+
+    run_stdio_with_env_marker(
+        adapter,
+        BufReader::new(input),
+        &mut output,
+        |name| match name {
+            "VOLICORD_MCP_LAUNCH" => Some(OsString::from("managed_host")),
+            "VOLICORD_MCP_HOST" => Some(OsString::from("codex")),
+            "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from("conn_wrong")),
+            "VOLICORD_MCP_PROJECT_ID" => Some(OsString::from(fixture.project_id())),
+            _ => None,
+        },
+    )?;
+
+    assert!(output.is_empty());
+    assert!(latest_watch_baseline_for_connection(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        fixture.connection_id(),
+    )?
+    .is_none());
     Ok(())
 }
 
@@ -519,7 +649,7 @@ fn mcp_verification_probe_does_not_create_host_runtime_observation() -> Result<(
     let mut output = Vec::new();
 
     run_stdio_with_env_marker(adapter, BufReader::new(input), &mut output, |name| {
-        (name == "VOLICORD_MCP_VERIFICATION").then(|| std::ffi::OsString::from("1"))
+        (name == "VOLICORD_MCP_VERIFICATION").then(|| OsString::from("1"))
     })?;
 
     assert!(output.is_empty());
@@ -1727,6 +1857,14 @@ fn local_http_project_allowlist_narrows_connection_projects() -> Result<(), Box<
 fn adapter(fixture: &CoreFixture) -> Result<McpAdapter, Box<dyn Error>> {
     let context =
         McpConnectionContext::resolve(fixture.runtime_home_path(), fixture.connection_id())?
+            .with_invocation_binding_basis(VERIFICATION_BASIS_TEST_FIXTURE_BINDING);
+    Ok(McpAdapter::new(fixture.runtime_home_path(), context))
+}
+
+fn project_bound_adapter(fixture: &CoreFixture) -> Result<McpAdapter, Box<dyn Error>> {
+    let context =
+        McpConnectionContext::resolve(fixture.runtime_home_path(), fixture.connection_id())?
+            .with_project_allowlist(vec![ProjectId::new(fixture.project_id())])
             .with_invocation_binding_basis(VERIFICATION_BASIS_TEST_FIXTURE_BINDING);
     Ok(McpAdapter::new(fixture.runtime_home_path(), context))
 }

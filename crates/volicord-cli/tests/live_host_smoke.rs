@@ -57,6 +57,14 @@ mod unix {
             &fixture.repo_root.join(".codex/config.toml"),
             "[mcp_servers.volicord]",
         )?;
+        assert_file_contains(
+            &fixture.repo_root.join(".codex/config.toml"),
+            "[mcp_servers.volicord.env]",
+        )?;
+        assert_file_contains(
+            &fixture.repo_root.join(".codex/config.toml"),
+            "VOLICORD_MCP_LAUNCH = \"managed_host\"",
+        )?;
         assert_file_contains(&fixture.repo_root.join(".codex/hooks.json"), "PreToolUse")?;
         assert!(fixture
             .repo_root

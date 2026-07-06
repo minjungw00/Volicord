@@ -103,6 +103,14 @@ binding:
 volicord mcp --stdio --connection <connection_id> [--project <project_id>]
 ```
 
+Generated project-scoped Codex configuration also sets the managed launch
+provenance environment markers `VOLICORD_MCP_LAUNCH=managed_host`,
+`VOLICORD_MCP_HOST=codex`,
+`VOLICORD_MCP_CONNECTION_ID=<connection_id>`, and
+`VOLICORD_MCP_PROJECT_ID=<project_id>`. Codex verification treats command and
+args without matching provenance markers as changed configuration that must be
+regenerated before it can count as a managed configuration match.
+
 The `<connection_id>` process-binding value comes from the stored
 `connection_internal_id` created by `volicord init` or
 `volicord connection add`.
@@ -578,7 +586,9 @@ the active Codex host process. Replace `<repo>`, `<connection_id>`, and
 Home. `VOLICORD_MCP_VERIFICATION=1` marks the launch as a verification probe:
 it keeps normal Agent Connection and project startup checks, but does not
 record the process as a Codex host runtime observation or create a startup
-session-watch baseline.
+session-watch baseline. A `volicord mcp --stdio` launch without the managed
+Codex provenance markers is classified as manual CLI startup for host-runtime
+observation purposes.
 
 The process command shape is:
 

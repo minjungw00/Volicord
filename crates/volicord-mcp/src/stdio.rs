@@ -7,6 +7,12 @@ use crate::routing::*;
 use crate::util::*;
 
 const VOLICORD_MCP_VERIFICATION: &str = "VOLICORD_MCP_VERIFICATION";
+const VOLICORD_MCP_LAUNCH: &str = "VOLICORD_MCP_LAUNCH";
+const VOLICORD_MCP_HOST: &str = "VOLICORD_MCP_HOST";
+const VOLICORD_MCP_CONNECTION_ID: &str = "VOLICORD_MCP_CONNECTION_ID";
+const VOLICORD_MCP_PROJECT_ID: &str = "VOLICORD_MCP_PROJECT_ID";
+const MANAGED_HOST_LAUNCH_VALUE: &str = "managed_host";
+const CODEX_HOST_VALUE: &str = "codex";
 
 pub fn run_stdio<R, W>(adapter: McpAdapter, reader: R, writer: W) -> Result<(), McpAdapterError>
 where
@@ -19,12 +25,14 @@ where
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct StdioRunOptions {
     startup_session_watch: bool,
+    launch_origin: McpLaunchOrigin,
 }
 
 impl Default for StdioRunOptions {
     fn default() -> Self {
         Self {
             startup_session_watch: true,
+            launch_origin: McpLaunchOrigin::ManagedHost,
         }
     }
 }
@@ -41,7 +49,10 @@ where
 {
     let mut state = ConnectionState::default();
     let _startup_observation = if options.startup_session_watch {
-        adapter.startup_session_watch_observation_best_effort(&state.session_id)
+        adapter.startup_session_watch_observation_best_effort_with_origin(
+            &state.session_id,
+            options.launch_origin.as_str(),
+        )
     } else {
         StartupObservationResult::SkippedVerificationProbe
     };
@@ -80,7 +91,8 @@ pub fn run_stdio_from_env(
     project_id: Option<&str>,
 ) -> Result<(), McpAdapterError> {
     let current_dir = std::env::current_dir().map_err(current_dir_environment_error)?;
-    let startup_session_watch = !mcp_verification_launch(process_env_var);
+    let launch_origin = classify_launch_origin(process_env_var, connection_id, project_id);
+    let startup_session_watch = launch_origin == McpLaunchOrigin::ManagedHost;
     let runtime_home = resolve_runtime_home(process_env_var, &current_dir)?;
     let project_allowlist = project_id
         .map(ProjectId::new)
@@ -102,6 +114,7 @@ pub fn run_stdio_from_env(
         stdout.lock(),
         StdioRunOptions {
             startup_session_watch,
+            launch_origin,
         },
     )
 }
@@ -118,12 +131,14 @@ where
     W: Write,
     F: Fn(&str) -> Option<OsString>,
 {
+    let launch_origin = classify_launch_origin_for_adapter(&adapter, &env_var);
     run_stdio_with_options(
         adapter,
         reader,
         writer,
         StdioRunOptions {
-            startup_session_watch: !mcp_verification_launch(env_var),
+            startup_session_watch: launch_origin == McpLaunchOrigin::ManagedHost,
+            launch_origin,
         },
     )
 }
@@ -176,6 +191,92 @@ where
     F: Fn(&str) -> Option<OsString>,
 {
     env_var(VOLICORD_MCP_VERIFICATION).is_some_and(|value| value.to_str() == Some("1"))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum McpLaunchOrigin {
+    CliVerification,
+    ManagedHost,
+    ManualCli,
+    InvalidManagedMarker,
+    #[allow(dead_code)]
+    UnknownLegacy,
+}
+
+impl McpLaunchOrigin {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::CliVerification => "cli_verification",
+            Self::ManagedHost => "managed_host",
+            Self::ManualCli => "manual_cli",
+            Self::InvalidManagedMarker => "invalid_managed_marker",
+            Self::UnknownLegacy => "unknown_legacy",
+        }
+    }
+}
+
+pub(crate) fn classify_launch_origin<F>(
+    env_var: F,
+    connection_id: &str,
+    project_id: Option<&str>,
+) -> McpLaunchOrigin
+where
+    F: Fn(&str) -> Option<OsString>,
+{
+    if mcp_verification_launch(&env_var) {
+        return McpLaunchOrigin::CliVerification;
+    }
+
+    let launch = env_text(&env_var, VOLICORD_MCP_LAUNCH);
+    let host = env_text(&env_var, VOLICORD_MCP_HOST);
+    let marker_connection_id = env_text(&env_var, VOLICORD_MCP_CONNECTION_ID);
+    let marker_project_id = env_text(&env_var, VOLICORD_MCP_PROJECT_ID);
+    if launch.is_none()
+        && host.is_none()
+        && marker_connection_id.is_none()
+        && marker_project_id.is_none()
+    {
+        return McpLaunchOrigin::ManualCli;
+    }
+
+    let project_matches = match project_id {
+        Some(project_id) => marker_project_id.as_deref() == Some(project_id),
+        None => marker_project_id.is_none(),
+    };
+    if launch.as_deref() == Some(MANAGED_HOST_LAUNCH_VALUE)
+        && host.as_deref() == Some(CODEX_HOST_VALUE)
+        && marker_connection_id.as_deref() == Some(connection_id)
+        && project_matches
+    {
+        McpLaunchOrigin::ManagedHost
+    } else {
+        McpLaunchOrigin::InvalidManagedMarker
+    }
+}
+
+#[cfg(test)]
+fn classify_launch_origin_for_adapter<F>(adapter: &McpAdapter, env_var: &F) -> McpLaunchOrigin
+where
+    F: Fn(&str) -> Option<OsString>,
+{
+    let project_id = adapter
+        .context
+        .project_allowlist
+        .as_ref()
+        .and_then(|project_ids| project_ids.as_slice().first())
+        .map(|project_id| project_id.as_str());
+    classify_launch_origin(
+        env_var,
+        adapter.context.connection_internal_id.as_str(),
+        project_id,
+    )
+}
+
+fn env_text<F>(env_var: &F, name: &str) -> Option<String>
+where
+    F: Fn(&str) -> Option<OsString>,
+{
+    env_var(name).and_then(|value| value.into_string().ok())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -98,7 +98,23 @@ impl McpAdapter {
         &self,
         session_id: &str,
     ) -> StartupObservationResult {
-        match self.startup_session_watch_observation(session_id) {
+        match self.startup_session_watch_observation(session_id, None) {
+            Ok(result) => result,
+            Err(error) if startup_observation_storage_is_readonly(&error) => {
+                StartupObservationResult::SkippedReadonlyStorage
+            }
+            Err(error) => StartupObservationResult::FailedButNonfatal {
+                reason: error.to_string(),
+            },
+        }
+    }
+
+    pub(crate) fn startup_session_watch_observation_best_effort_with_origin(
+        &self,
+        session_id: &str,
+        launch_origin: &str,
+    ) -> StartupObservationResult {
+        match self.startup_session_watch_observation(session_id, Some(launch_origin)) {
             Ok(result) => result,
             Err(error) if startup_observation_storage_is_readonly(&error) => {
                 StartupObservationResult::SkippedReadonlyStorage
@@ -112,6 +128,7 @@ impl McpAdapter {
     fn startup_session_watch_observation(
         &self,
         session_id: &str,
+        launch_origin: Option<&str>,
     ) -> Result<StartupObservationResult, McpAdapterError> {
         let Some(project_id) = self.project_bound_startup_project()? else {
             return Ok(StartupObservationResult::NotAttempted);
@@ -120,6 +137,7 @@ impl McpAdapter {
             &project_id,
             session_id,
             SessionWatchCoverageBasis::McpStart,
+            launch_origin,
         )?;
         Ok(StartupObservationResult::Recorded)
     }
@@ -142,6 +160,7 @@ impl McpAdapter {
         project_id: &ProjectId,
         session_id: &str,
         coverage_basis: SessionWatchCoverageBasis,
+        launch_origin: Option<&str>,
     ) -> Result<(), McpAdapterError> {
         if latest_watch_baseline_for_session(&self.runtime_home, project_id.as_str(), session_id)
             .map_err(McpAdapterError::Store)?
@@ -193,6 +212,9 @@ impl McpAdapter {
         });
         if let Some(warning) = partial_coverage_warning {
             metadata["partial_coverage_warning"] = json!(warning);
+        }
+        if let Some(launch_origin) = launch_origin {
+            metadata["launch_origin"] = json!(launch_origin);
         }
         create_watch_baseline(
             &self.runtime_home,
@@ -1015,6 +1037,7 @@ impl McpAdapter {
                     &selected_project_id,
                     session_id,
                     coverage_basis,
+                    None,
                 )?;
             }
         }

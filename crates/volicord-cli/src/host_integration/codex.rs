@@ -23,6 +23,13 @@ use crate::host_integration::verification::{
 };
 use crate::host_integration::HostCapabilities;
 
+const VOLICORD_MCP_LAUNCH: &str = "VOLICORD_MCP_LAUNCH";
+const VOLICORD_MCP_HOST: &str = "VOLICORD_MCP_HOST";
+const VOLICORD_MCP_CONNECTION_ID: &str = "VOLICORD_MCP_CONNECTION_ID";
+const VOLICORD_MCP_PROJECT_ID: &str = "VOLICORD_MCP_PROJECT_ID";
+const MANAGED_HOST_LAUNCH_VALUE: &str = "managed_host";
+const CODEX_HOST_VALUE: &str = "codex";
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CodexEnvironment {
     pub home: Option<PathBuf>,
@@ -89,9 +96,12 @@ impl<R: CommandRunner> CodexAdapter<R> {
 
         let server_name = validated_server_name(request.connection_id, None)?;
         let target = self.config_path(scope, request.project)?;
-        let entry = ManagedServerEntry::new_project_bound(
+        let project_id = (scope == HostScope::Project)
+            .then(|| request.project.map(|project| project.project_id))
+            .flatten();
+        let entry = codex_managed_server_entry(
             request.connection_id,
-            request.project.map(|project| project.project_id),
+            project_id,
             mcp_command,
             runtime_home,
         );
@@ -159,12 +169,16 @@ impl<R: CommandRunner> CodexAdapter<R> {
         }
 
         let server_name = validated_server_name(request.connection_id, Some(request.server_name))?;
-        let entry = ManagedServerEntry::new_project_bound(
+        let project_id = (request.scope == HostScope::Project)
+            .then_some(request.project_id)
+            .flatten();
+        let entry = codex_managed_server_entry(
             request.connection_id,
-            None,
+            project_id,
             request.mcp_command,
             request.runtime_home,
         );
+        let fingerprint = managed_fingerprint(HostKind::Codex, request.scope, &server_name, &entry);
         Ok(HostPlan {
             host_kind: HostKind::Codex,
             connection_intent: request.connection_intent,
@@ -174,7 +188,7 @@ impl<R: CommandRunner> CodexAdapter<R> {
             target: HostTarget::File(request.config_target.to_path_buf()),
             entry,
             change: PlannedChange::Noop,
-            fingerprint: request.managed_fingerprint.to_owned(),
+            fingerprint,
             conflicts: Vec::new(),
             user_actions: Vec::new(),
             file_snapshot: None,
@@ -425,11 +439,11 @@ pub struct CodexExistingPlanRequest<'a> {
     pub connection_intent: ConnectionIntent,
     pub scope: HostScope,
     pub connection_id: &'a str,
+    pub project_id: Option<&'a str>,
     pub server_name: &'a str,
     pub config_target: &'a Path,
     pub mcp_command: &'a Path,
     pub runtime_home: Option<&'a Path>,
-    pub managed_fingerprint: &'a str,
     pub mode: &'a str,
 }
 
@@ -445,6 +459,37 @@ fn codex_scope_for_intent(intent: ConnectionIntent) -> Result<HostScope, HostCon
             ),
         ))),
     }
+}
+
+fn codex_managed_server_entry(
+    connection_id: impl Into<String>,
+    project_id: Option<&str>,
+    mcp_command: &Path,
+    runtime_home: Option<&Path>,
+) -> ManagedServerEntry {
+    let connection_id = connection_id.into();
+    let mut entry = ManagedServerEntry::new_project_bound(
+        connection_id.clone(),
+        project_id,
+        mcp_command,
+        runtime_home,
+    );
+    entry.env.insert(
+        VOLICORD_MCP_LAUNCH.to_owned(),
+        MANAGED_HOST_LAUNCH_VALUE.to_owned(),
+    );
+    entry
+        .env
+        .insert(VOLICORD_MCP_HOST.to_owned(), CODEX_HOST_VALUE.to_owned());
+    entry
+        .env
+        .insert(VOLICORD_MCP_CONNECTION_ID.to_owned(), connection_id);
+    if let Some(project_id) = project_id {
+        entry
+            .env
+            .insert(VOLICORD_MCP_PROJECT_ID.to_owned(), project_id.to_owned());
+    }
+    entry
 }
 
 fn entry_inputs_for_scope<'a>(
@@ -865,6 +910,12 @@ fn normalize_trailing_slashes(path: &str) -> String {
     }
 }
 
+pub fn managed_config_status_for_plan(
+    plan: &HostPlan,
+) -> Result<ManagedConfigStatus, HostConfigError> {
+    verify_codex_entry(plan)
+}
+
 fn verify_codex_entry(plan: &HostPlan) -> Result<ManagedConfigStatus, HostConfigError> {
     let HostTarget::File(target) = &plan.target else {
         return Ok(ManagedConfigStatus::Unknown);
@@ -1190,7 +1241,14 @@ mod tests {
 
         assert_eq!(plan.target, HostTarget::File(stored_target));
         assert_eq!(plan.change, PlannedChange::Noop);
-        assert_eq!(plan.fingerprint, "stored-fingerprint");
+        assert_ne!(plan.fingerprint, "stored-fingerprint");
+        assert_eq!(
+            plan.entry
+                .env
+                .get(VOLICORD_MCP_CONNECTION_ID)
+                .map(String::as_str),
+            Some("int_alpha")
+        );
         Ok(())
     }
 
@@ -1249,6 +1307,54 @@ mod tests {
         assert!(text.contains("[mcp_servers.other]"));
         assert!(text.contains("[mcp_servers.volicord]"));
         assert!(text.contains("args = [\"mcp\", \"--stdio\", \"--connection\", \"int_alpha\"]"));
+        assert!(text.contains("[mcp_servers.volicord.env]"));
+        assert!(text.contains("VOLICORD_MCP_LAUNCH = \"managed_host\""));
+        assert!(text.contains("VOLICORD_MCP_HOST = \"codex\""));
+        assert!(text.contains("VOLICORD_MCP_CONNECTION_ID = \"int_alpha\""));
+        Ok(())
+    }
+
+    #[test]
+    fn project_config_includes_managed_launch_env_markers() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let repo = temp_dir("codex-project-env")?;
+        let mut adapter = CodexAdapter::new(CodexEnvironment::default());
+
+        let plan = adapter.plan(request(
+            HostScope::Project,
+            Some(&repo),
+            Path::new("ignored"),
+        ))?;
+        adapter.apply(&plan)?;
+        let text = fs::read_to_string(repo.join(".codex/config.toml"))?;
+
+        assert_eq!(
+            plan.entry.env.get(VOLICORD_MCP_LAUNCH).map(String::as_str),
+            Some(MANAGED_HOST_LAUNCH_VALUE)
+        );
+        assert_eq!(
+            plan.entry.env.get(VOLICORD_MCP_HOST).map(String::as_str),
+            Some(CODEX_HOST_VALUE)
+        );
+        assert_eq!(
+            plan.entry
+                .env
+                .get(VOLICORD_MCP_CONNECTION_ID)
+                .map(String::as_str),
+            Some("int_alpha")
+        );
+        assert_eq!(
+            plan.entry
+                .env
+                .get(VOLICORD_MCP_PROJECT_ID)
+                .map(String::as_str),
+            Some("project_alpha")
+        );
+        assert!(text.contains("[mcp_servers.volicord.env]"));
+        assert!(text.contains("VOLICORD_MCP_LAUNCH = \"managed_host\""));
+        assert!(text.contains("VOLICORD_MCP_HOST = \"codex\""));
+        assert!(text.contains("VOLICORD_MCP_CONNECTION_ID = \"int_alpha\""));
+        assert!(text.contains("VOLICORD_MCP_PROJECT_ID = \"project_alpha\""));
         Ok(())
     }
 
@@ -1638,6 +1744,55 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn verify_treats_missing_managed_launch_markers_as_changed(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let repo = temp_dir("codex-missing-launch-markers")?;
+        fs::create_dir_all(repo.join(".codex"))?;
+        let adapter = CodexAdapter::new(CodexEnvironment::default());
+        let plan = adapter.plan(request(
+            HostScope::Project,
+            Some(&repo),
+            Path::new("ignored"),
+        ))?;
+        fs::write(
+            repo.join(".codex/config.toml"),
+            "[mcp_servers.volicord]\ncommand = \"volicord\"\nargs = [\"mcp\", \"--stdio\", \"--connection\", \"int_alpha\", \"--project\", \"project_alpha\"]\n",
+        )?;
+
+        let status = managed_config_status_for_plan(&plan)?;
+
+        assert_eq!(status, ManagedConfigStatus::Changed);
+        Ok(())
+    }
+
+    #[test]
+    fn verify_treats_managed_launch_marker_mismatch_as_changed(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let repo = temp_dir("codex-launch-marker-mismatch")?;
+        fs::create_dir_all(repo.join(".codex"))?;
+        let mut adapter = CodexAdapter::new(CodexEnvironment::default());
+        let plan = adapter.plan(request(
+            HostScope::Project,
+            Some(&repo),
+            Path::new("ignored"),
+        ))?;
+        adapter.apply(&plan)?;
+        let target = repo.join(".codex/config.toml");
+        fs::write(
+            &target,
+            fs::read_to_string(&target)?.replace(
+                "VOLICORD_MCP_PROJECT_ID = \"project_alpha\"",
+                "VOLICORD_MCP_PROJECT_ID = \"project_beta\"",
+            ),
+        )?;
+
+        let status = managed_config_status_for_plan(&plan)?;
+
+        assert_eq!(status, ManagedConfigStatus::Changed);
+        Ok(())
+    }
+
     fn request<'a>(
         scope: HostScope,
         repo_root: Option<&'a Path>,
@@ -1681,11 +1836,11 @@ mod tests {
             },
             scope,
             connection_id: "int_alpha",
+            project_id: (scope == HostScope::Project).then_some("project_alpha"),
             server_name: "volicord-existing",
             config_target,
             mcp_command,
             runtime_home,
-            managed_fingerprint: "stored-fingerprint",
             mode: "workflow",
         }
     }

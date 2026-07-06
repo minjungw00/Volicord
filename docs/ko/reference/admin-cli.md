@@ -388,7 +388,8 @@ dry-run이 아닌 `volicord init`은 다음을 수행합니다.
 - 선택한 `Product Repository`를 등록하거나 재사용합니다.
 - 일치하는 Agent Connection과 Connection Projects 멤버십을 만들거나 갱신합니다.
 - `volicord mcp --stdio --connection <connection_id> --project <project_id>`를 사용하는
-  프로젝트 범위 Codex `.codex/config.toml` 또는 Claude Code `.mcp.json`을 씁니다.
+  프로젝트 범위 Codex `.codex/config.toml` 또는 Claude Code `.mcp.json`을 쓰며,
+  Codex에는 관리 시작 출처 환경 변수 마커도 넣습니다.
 - `AGENTS.md` 안의 Volicord 관리 블록만 쓰거나 갱신합니다.
 - 숨겨진 내부 hook namespace를 호출하는 detective host hook 명령을 담은
   `.volicord/policy.json`을 씁니다.
@@ -460,7 +461,7 @@ Codex 연결 검증은 아래 진단 개념을 분리해 유지합니다.
 
 | 진단 개념 | Text 출력 표면 | JSON 진단 표면 | 의미 |
 |---|---|---|---|
-| MCP 설정 일치 | `MCP configuration` 또는 `Current MCP configuration` | host check 세부사항과 관리 설정 필드 | 관리 Codex MCP server 항목이 기대하는 Volicord 생성 설정과 일치합니다. |
+| MCP 설정 일치 | `MCP configuration` 또는 `Current MCP configuration` | host check 세부사항과 관리 설정 필드 | 관리 Codex MCP server 항목이 기대하는 Volicord 생성 command, args, 관리 시작 출처 환경 변수 마커와 일치합니다. |
 | CLI MCP preflight와 handshake | `MCP preflight`, `MCP handshake`, `Last MCP preflight`, `Last MCP handshake` | `id=mcp_preflight`와 `id=mcp_handshake`인 `checks[]` 항목, 그리고 verification report 필드 | CLI verification 경로가 Volicord의 MCP 서버를 직접 시작하고 통신했습니다. |
 | Codex 프로젝트 trust | `Codex project trust` | 가능할 때 `verification.project_trust`와 `id=codex_project_trust`인 `checks[]` 항목 | Codex 사용자 설정이 프로젝트를 `trusted`, `untrusted`, `unknown`, 또는 그 밖의 trust 미확인 상태로 표시합니다. |
 | Codex host runtime 관찰 | `Codex host runtime` | 가능할 때 `verification.host_runtime`과 `id=codex_host_runtime`인 `checks[]` 항목 | Volicord가 선택된 연결에 대해 Codex 호스트 프로세스가 Volicord MCP 서버를 시작했는지 관찰한 상태입니다. |

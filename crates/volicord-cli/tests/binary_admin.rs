@@ -2112,6 +2112,11 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     assert!(config.contains(&format!(
         "args = [\"mcp\", \"--stdio\", \"--connection\", \"{connection_id}\", \"--project\", \"{project_id}\"]"
     )));
+    assert!(config.contains("[mcp_servers.volicord.env]"));
+    assert!(config.contains("VOLICORD_MCP_LAUNCH = \"managed_host\""));
+    assert!(config.contains("VOLICORD_MCP_HOST = \"codex\""));
+    assert!(config.contains(&format!("VOLICORD_MCP_CONNECTION_ID = \"{connection_id}\"")));
+    assert!(config.contains(&format!("VOLICORD_MCP_PROJECT_ID = \"{project_id}\"")));
     let hooks = fs::read_to_string(repo_root.join(".codex/hooks.json"))?;
     assert!(hooks.contains("SessionStart"));
     assert!(hooks.contains("PreToolUse"));
@@ -2925,6 +2930,14 @@ fn connect_respects_explicit_read_only_and_uses_same_dry_run_plan() -> Result<()
         "args = [\"mcp\", \"--stdio\", \"--connection\", \"{connection_id}\", \"--project\", \"{}\"]",
         projects[0].project_id
     )));
+    assert!(config.contains("[mcp_servers.volicord.env]"));
+    assert!(config.contains("VOLICORD_MCP_LAUNCH = \"managed_host\""));
+    assert!(config.contains("VOLICORD_MCP_HOST = \"codex\""));
+    assert!(config.contains(&format!("VOLICORD_MCP_CONNECTION_ID = \"{connection_id}\"")));
+    assert!(config.contains(&format!(
+        "VOLICORD_MCP_PROJECT_ID = \"{}\"",
+        projects[0].project_id
+    )));
     Ok(())
 }
 
@@ -3201,6 +3214,115 @@ fn connection_verify_reports_missing_mcp_config_as_primary_action() -> Result<()
         .as_str()
         .expect("instruction should be text")
         .contains("volicord init"));
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn connection_status_and_verify_report_codex_config_without_managed_launch_markers_as_changed(
+) -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-connection-stale-mcp-env")?;
+    let repo_root = create_git_repo(&runtime_home, "product-repo")?;
+    let bin_dir = runtime_home.path().join("bin");
+    write_fake_codex(&bin_dir)?;
+    let mcp = write_fake_mcp(&bin_dir)?;
+    prepare_runtime_home(runtime_home.path(), &mcp)?;
+
+    let add = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connection",
+            "add",
+            "codex",
+            "--shared",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--json",
+        ],
+        &[
+            ("PATH", path_env(&[bin_dir.as_path()])),
+            ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
+        ],
+    )?;
+    assert_success(&add);
+    let add_json = json_stdout(&add)?;
+    let connection_id = add_json["connection"]["connection_id"]
+        .as_str()
+        .expect("connection id should be present")
+        .to_owned();
+    let project_id = add_json["connection"]["connected_projects"][0]
+        .as_str()
+        .expect("project id should be present")
+        .to_owned();
+    let config_path = repo_root.join(".codex/config.toml");
+    let config = fs::read_to_string(&config_path)?;
+    let legacy_config = config
+        .split("\n[mcp_servers.volicord.env]\n")
+        .next()
+        .expect("generated config should contain a server table")
+        .to_owned();
+    fs::write(&config_path, legacy_config)?;
+
+    let status = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connection",
+            "status",
+            "codex",
+            "--shared",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--json",
+        ],
+        &[],
+    )?;
+    assert_success(&status);
+    let status_json = json_stdout(&status)?;
+    assert_eq!(status_json["states"]["mcp_config"], "changed");
+    assert_eq!(
+        status_json["primary_next_action"]["id"],
+        "mcp_config_changed"
+    );
+    assert_eq!(
+        status_json["primary_next_action"]["command"],
+        format!(
+            "volicord init --host codex --repo {}",
+            path_text(&repo_root)
+        )
+    );
+
+    let verify = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connection",
+            "verify",
+            "codex",
+            "--shared",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--json",
+        ],
+        &[
+            ("PATH", path_env(&[bin_dir.as_path()])),
+            ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
+        ],
+    )?;
+    assert_success(&verify);
+    let verify_json = json_stdout(&verify)?;
+    assert_eq!(verify_json["states"]["mcp_config"], "changed");
+    assert_eq!(
+        verify_json["verification"]["host"]["managed_config"],
+        "changed"
+    );
+    assert_eq!(
+        verify_json["primary_next_action"]["id"],
+        "mcp_config_changed"
+    );
+
+    let expected = format!(
+        "args = [\"mcp\", \"--stdio\", \"--connection\", \"{connection_id}\", \"--project\", \"{project_id}\"]"
+    );
+    assert!(fs::read_to_string(config_path)?.contains(&expected));
     Ok(())
 }
 

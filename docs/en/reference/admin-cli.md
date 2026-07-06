@@ -428,7 +428,7 @@ Non-dry-run `volicord init`:
   membership
 - writes project-scoped Codex `.codex/config.toml` or Claude Code `.mcp.json`
   with `volicord mcp --stdio --connection <connection_id> --project
-  <project_id>`
+  <project_id>` and, for Codex, managed launch provenance environment markers
 - writes or updates only the Volicord-managed block in `AGENTS.md`
 - writes `.volicord/policy.json` with detective host hook commands that invoke
   the hidden internal hook namespace
@@ -504,7 +504,7 @@ Codex connection verification keeps these diagnostic concepts separate:
 
 | Diagnostic concept | Text output surface | JSON diagnostic surface | Meaning |
 |---|---|---|---|
-| MCP configuration match | `MCP configuration` or `Current MCP configuration` | host check details and managed configuration fields | The managed Codex MCP server entry matches the expected Volicord-generated configuration. |
+| MCP configuration match | `MCP configuration` or `Current MCP configuration` | host check details and managed configuration fields | The managed Codex MCP server entry matches the expected Volicord-generated command, args, and managed launch provenance environment markers. |
 | CLI MCP preflight and handshake | `MCP preflight`, `MCP handshake`, `Last MCP preflight`, or `Last MCP handshake` | `checks[]` entries with `id=mcp_preflight` and `id=mcp_handshake`, plus verification report fields | The CLI verification path directly launched and talked to Volicord's MCP server. |
 | Codex project trust | `Codex project trust` | `verification.project_trust` and a `checks[]` entry with `id=codex_project_trust` when available | Codex user configuration marks the project `trusted`, `untrusted`, `unknown`, or otherwise leaves trust unconfirmed. |
 | Codex host runtime observation | `Codex host runtime` | `verification.host_runtime` and a `checks[]` entry with `id=codex_host_runtime` when available | Volicord has or has not observed a Codex host process start the Volicord MCP server for the selected connection. |

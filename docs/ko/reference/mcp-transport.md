@@ -86,6 +86,13 @@ server-sent event 스트림, HTTP elicitation, 전체 MCP Streamable HTTP 호환
 volicord mcp --stdio --connection <connection_id> [--project <project_id>]
 ```
 
+생성된 프로젝트 범위 Codex 설정은 관리 시작 출처 환경 변수 마커
+`VOLICORD_MCP_LAUNCH=managed_host`, `VOLICORD_MCP_HOST=codex`,
+`VOLICORD_MCP_CONNECTION_ID=<connection_id>`,
+`VOLICORD_MCP_PROJECT_ID=<project_id>`도 설정합니다. Codex 검증은 일치하는
+출처 마커 없이 command와 args만 있는 항목을 변경된 설정으로 취급하며, 그런 항목은
+관리 설정 일치로 볼 수 있기 전에 다시 생성해야 합니다.
+
 `<connection_id>` 프로세스 바인딩 값은 `volicord init` 또는
 `volicord connection add`가 만든 저장 `connection_internal_id`에서 옵니다.
 선택적 `<project_id>` 프로세스 바인딩 값은
@@ -512,7 +519,9 @@ elicitation을 사용할 수 있다고 봅니다. 다른 capability 항목은 �
 바꿉니다. 프로세스 환경이 이미 의도한 Runtime Home을 선택하지 않는다면 `<repo>`에서
 실행합니다. `VOLICORD_MCP_VERIFICATION=1`은 실행을 verification probe로 표시합니다. 일반
 Agent Connection과 프로젝트 시작 점검은 유지하지만, 이 프로세스를 Codex host runtime
-관찰로 기록하거나 시작 session-watch baseline을 만들지는 않습니다.
+관찰로 기록하거나 시작 session-watch baseline을 만들지는 않습니다. 관리 Codex 출처
+마커 없이 실행한 `volicord mcp --stdio`는 host-runtime 관찰 목적에서 수동 CLI
+시작으로 분류됩니다.
 
 프로세스 명령 형태는 아래와 같습니다.
 
