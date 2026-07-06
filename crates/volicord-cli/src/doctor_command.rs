@@ -7,7 +7,6 @@ use std::{
 
 use serde::Serialize;
 use serde_json::{json, Value};
-use sha2::{Digest, Sha256};
 use volicord_store::{
     agent_connections::{CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW},
     inspection::{
@@ -25,6 +24,10 @@ use volicord_types::{GuardInstallationStatus, IntegrationProfile, SummaryCard};
 
 use crate::{
     disclosure::detective_observation_disclosure_json,
+    guard_integration::audit::{
+        all_recorded_values_true, guard_file_findings_for_inspection,
+        missing_required_hooks_from_capability_json, GuardFileFindings,
+    },
     setup_command::{path_text, CommandOutcome, CommandStatus},
     shell_path::{
         detect_command_on_path, is_executable_file, mcp_binary_name, path_directory_is_on_path,
@@ -32,14 +35,6 @@ use crate::{
     },
     summary_card::{render_summary_card_text, DIAGNOSTIC_SUMMARY_GUARANTEE},
 };
-
-const REQUIRED_GUARD_HOOK_PHASES: &[&str] = &[
-    "session_start_hook",
-    "pre_tool_hook",
-    "post_tool_hook",
-    "user_prompt_submit_hook",
-    "stop_hook",
-];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DoctorCommandError {
@@ -533,21 +528,29 @@ fn inspect_guard_installations(
         .iter()
         .filter(|installation| installation.guard_mode == IntegrationProfile::Detective.as_str())
         .collect::<Vec<_>>();
-    let mut file_findings = DoctorGuardFileFindings::default();
+    let mut file_findings = GuardFileFindings::default();
     for installation in &snapshot.guard_installations {
-        file_findings.merge(doctor_guard_file_findings(installation, snapshot));
+        file_findings.merge(guard_file_findings_for_inspection(
+            installation,
+            &snapshot.projects,
+        ));
     }
     file_findings.sort_dedup();
-    let mut detective_file_findings = DoctorGuardFileFindings::default();
+    let mut detective_file_findings = GuardFileFindings::default();
     for installation in &observed_profile_installations {
-        detective_file_findings.merge(doctor_guard_file_findings(installation, snapshot));
+        detective_file_findings.merge(guard_file_findings_for_inspection(
+            installation,
+            &snapshot.projects,
+        ));
     }
     detective_file_findings.sort_dedup();
     let selected_profile =
         doctor_selected_profile_state(&snapshot.guard_installations, &file_findings);
     let missing_required_hooks = observed_profile_installations
         .iter()
-        .flat_map(|installation| guard_missing_required_hooks(&installation.host_capability_json))
+        .flat_map(|installation| {
+            missing_required_hooks_from_capability_json(&installation.host_capability_json)
+        })
         .collect::<Vec<_>>();
     let observed_count = observed_profile_installations
         .iter()
@@ -1008,235 +1011,50 @@ fn doctor_single_or_list(values: &BTreeSet<String>) -> Value {
     }
 }
 
-#[derive(Debug, Default)]
-struct DoctorGuardFileFindings {
-    missing_files: Vec<String>,
-    stale_files: Vec<String>,
-    broken_files: Vec<String>,
-    file_states: BTreeMap<String, String>,
-    selected_profiles: Vec<String>,
-    native_host_output_adapter_verified_values: Vec<bool>,
-    bash_shell_mutation_coverage_values: Vec<bool>,
-    direct_file_write_matcher_coverage_values: Vec<bool>,
-    hook_path_safety_statuses: Vec<String>,
-    hook_path_safety_details: Vec<Value>,
-    hook_cwd_independent_values: Vec<bool>,
-    hook_subdirectory_safe_values: Vec<bool>,
-}
-
-impl DoctorGuardFileFindings {
-    fn merge(&mut self, other: Self) {
-        self.missing_files.extend(other.missing_files);
-        self.stale_files.extend(other.stale_files);
-        self.broken_files.extend(other.broken_files);
-        for (kind, state) in other.file_states {
-            self.set_file_state(&kind, &state);
-        }
-        self.selected_profiles.extend(other.selected_profiles);
-        self.native_host_output_adapter_verified_values
-            .extend(other.native_host_output_adapter_verified_values);
-        self.bash_shell_mutation_coverage_values
-            .extend(other.bash_shell_mutation_coverage_values);
-        self.direct_file_write_matcher_coverage_values
-            .extend(other.direct_file_write_matcher_coverage_values);
-        self.hook_path_safety_statuses
-            .extend(other.hook_path_safety_statuses);
-        self.hook_path_safety_details
-            .extend(other.hook_path_safety_details);
-        self.hook_cwd_independent_values
-            .extend(other.hook_cwd_independent_values);
-        self.hook_subdirectory_safe_values
-            .extend(other.hook_subdirectory_safe_values);
-    }
-
-    fn sort_dedup(&mut self) {
-        self.missing_files.sort();
-        self.missing_files.dedup();
-        self.stale_files.sort();
-        self.stale_files.dedup();
-        self.broken_files.sort();
-        self.broken_files.dedup();
-        self.selected_profiles.sort();
-        self.selected_profiles.dedup();
-        self.hook_path_safety_statuses
-            .sort_by_key(|status| doctor_hook_path_status_rank(status));
-        self.hook_path_safety_statuses.dedup();
-    }
-
-    fn set_file_state(&mut self, kind: &str, state: &str) {
-        let update = self
-            .file_states
-            .get(kind)
-            .is_none_or(|current| doctor_file_state_rank(state) > doctor_file_state_rank(current));
-        if update {
-            self.file_states.insert(kind.to_owned(), state.to_owned());
-        }
-    }
-
-    fn record_hook_path_status(&mut self, status: &str, detail: Value) {
-        self.hook_path_safety_statuses.push(status.to_owned());
-        self.hook_path_safety_details.push(detail);
-        self.hook_cwd_independent_values.push(status == "ok");
-        self.hook_subdirectory_safe_values.push(status == "ok");
-        if !matches!(status, "ok" | "wrapper_missing" | "dispatch_missing") {
-            self.stale_files
-                .push("host_hook_capability_json:hook_path_safety".to_owned());
-        }
-    }
-
-    fn hook_path_safety_state(&self) -> String {
-        self.hook_path_safety_statuses
-            .iter()
-            .filter(|status| status.as_str() != "ok")
-            .min_by_key(|status| doctor_hook_path_status_rank(status))
-            .cloned()
-            .unwrap_or_else(|| {
-                if self.hook_path_safety_statuses.is_empty() {
-                    "not_recorded".to_owned()
-                } else {
-                    "ok".to_owned()
-                }
-            })
-    }
-
-    fn hook_path_safety_ok(&self) -> bool {
-        !self.hook_path_safety_statuses.is_empty()
-            && self
-                .hook_path_safety_statuses
-                .iter()
-                .all(|status| status == "ok")
-            && all_recorded_values_true(&self.hook_cwd_independent_values)
-            && all_recorded_values_true(&self.hook_subdirectory_safe_values)
-    }
-}
-
-fn doctor_file_state_rank(value: &str) -> u8 {
-    match value {
-        "broken" => 5,
-        "missing" => 4,
-        "stale" => 3,
-        "installed" => 2,
-        "missing_required_hooks" | "unsupported_by_host" | "not_recorded" => 1,
-        _ => 0,
-    }
-}
-
-fn doctor_hook_path_status_rank(status: &str) -> u8 {
-    match status {
-        "ok" => 100,
-        "metadata_missing" => 0,
-        "authority_mismatch" => 1,
-        "policy_hash_mismatch" => 2,
-        "host_output_mismatch" => 3,
-        "relative_path_unsafe" => 4,
-        "absolute_path_stale" => 5,
-        "placeholder_unsupported" => 6,
-        "dispatch_missing" => 7,
-        "wrapper_missing" => 8,
-        "wrapper_not_executable" => 9,
-        _ => 10,
-    }
-}
-
-fn doctor_known_hook_path_status(status: &str) -> bool {
-    matches!(
-        status,
-        "ok" | "metadata_missing"
-            | "authority_mismatch"
-            | "policy_hash_mismatch"
-            | "host_output_mismatch"
-            | "relative_path_unsafe"
-            | "absolute_path_stale"
-            | "placeholder_unsupported"
-            | "dispatch_missing"
-            | "wrapper_missing"
-            | "wrapper_not_executable"
-    )
-}
-
-fn doctor_guard_file_details(findings: &DoctorGuardFileFindings) -> Value {
+fn doctor_guard_file_details(findings: &GuardFileFindings) -> Value {
     json!({
         "missing_files": &findings.missing_files,
         "stale_files": &findings.stale_files,
         "broken_files": &findings.broken_files,
-        "file_states": &findings.file_states,
-        "selected_profiles": &findings.selected_profiles,
-        "generated_config_verified": doctor_generated_config_verified(findings),
-        "native_host_output_adapter_verified": doctor_generated_config_verified(findings)
-            && all_recorded_values_true(&findings.native_host_output_adapter_verified_values),
+        "file_states": doctor_guard_file_states(findings),
+        "selected_profiles": &findings.guard_profiles,
+        "generated_config_verified": findings.generated_config_verified(),
+        "native_host_output_adapter_verified": findings.native_host_output_adapter_verified(),
         "hook_path_safety": findings.hook_path_safety_state(),
         "hook_commands_cwd_independent": all_recorded_values_true(&findings.hook_cwd_independent_values),
         "hook_commands_subdirectory_safe": all_recorded_values_true(&findings.hook_subdirectory_safe_values),
         "hook_path_safety_details": &findings.hook_path_safety_details,
-        "bash_shell_mutation_coverage": doctor_generated_config_verified(findings)
-            && all_recorded_values_true(&findings.bash_shell_mutation_coverage_values),
-        "direct_file_write_matcher_coverage": doctor_generated_config_verified(findings)
-            && all_recorded_values_true(&findings.direct_file_write_matcher_coverage_values),
+        "bash_shell_mutation_coverage": findings.bash_shell_mutation_coverage(),
+        "direct_file_write_matcher_coverage": findings.direct_file_write_matcher_coverage(),
     })
 }
 
-fn doctor_guard_file_findings(
-    installation: &volicord_store::inspection::GuardInstallationInspectionRecord,
-    snapshot: &RegistryInspectionSnapshot,
-) -> DoctorGuardFileFindings {
-    let mut findings = DoctorGuardFileFindings::default();
-    let capability_json = &installation.host_capability_json;
-    let Ok(value) = serde_json::from_str::<Value>(capability_json) else {
-        findings
-            .broken_files
-            .push("host_hook_capability_json".to_owned());
-        findings.record_hook_path_status(
-            "metadata_missing",
-            json!({ "source": "host_hook_capability_json" }),
-        );
-        return findings;
-    };
-    if value
-        .get("host_capabilities")
-        .and_then(|capabilities| capabilities.get("rule_file_support"))
-        .and_then(Value::as_bool)
-        == Some(false)
+fn doctor_guard_file_states(findings: &GuardFileFindings) -> BTreeMap<String, String> {
+    let mut states = findings.file_kind_states.clone();
+    if findings
+        .broken_files
+        .iter()
+        .any(|file| file == "host_hook_capability_json")
     {
-        findings.set_file_state("host_rule_instruction", "unsupported_by_host");
+        return states;
     }
-    if let Some(value) = nonempty_json_string(&value, "selected_profile") {
-        findings.selected_profiles.push(value);
+    states
+        .entry("host_hook_config".to_owned())
+        .or_insert_with(|| findings.hook_config_state(false));
+    let rule_instruction_state = findings.rule_instruction_state(false);
+    if rule_instruction_state != "not_configured" {
+        states
+            .entry("host_rule_instruction".to_owned())
+            .or_insert(rule_instruction_state);
     }
-    findings
-        .native_host_output_adapter_verified_values
-        .push(bool_json_field(
-            &value,
-            "native_host_output_adapter_verified",
-        ));
-    findings
-        .bash_shell_mutation_coverage_values
-        .push(bool_json_field(&value, "bash_shell_mutation_coverage"));
-    findings
-        .direct_file_write_matcher_coverage_values
-        .push(bool_json_field(
-            &value,
-            "direct_file_write_matcher_coverage",
-        ));
-    if guard_missing_required_hooks(capability_json).is_empty() {
-        findings.set_file_state("host_hook_config", "not_recorded");
-    } else {
-        findings.set_file_state("host_hook_config", "missing_required_hooks");
-    }
-    doctor_verify_recorded_hook_path_safety(&value, installation, snapshot, &mut findings);
-    value
-        .get("files")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .for_each(|file| doctor_verify_guard_file(file, &mut findings));
-    findings
+    states
 }
 
 fn doctor_selected_profile_state(
     installations: &[volicord_store::inspection::GuardInstallationInspectionRecord],
-    findings: &DoctorGuardFileFindings,
+    findings: &GuardFileFindings,
 ) -> String {
-    if let Some(value) = single_or_mixed(&findings.selected_profiles) {
+    if let Some(value) = single_or_mixed(&findings.guard_profiles) {
         return value;
     }
     match doctor_guard_mode_state(installations).as_str() {
@@ -1250,7 +1068,7 @@ fn doctor_selected_profile_state(
 fn doctor_control_surface_summary(
     selected_profile: &str,
     detective_installations: &[&volicord_store::inspection::GuardInstallationInspectionRecord],
-    findings: &DoctorGuardFileFindings,
+    findings: &GuardFileFindings,
     observed_count: usize,
     required_hooks_available: bool,
 ) -> Value {
@@ -1261,7 +1079,7 @@ fn doctor_control_surface_summary(
             .iter()
             .all(|installation| guard_effective_active(installation))
         && required_hooks_available
-        && doctor_generated_config_verified(findings)
+        && findings.generated_config_verified()
         && all_recorded_values_true(&findings.native_host_output_adapter_verified_values)
         && all_recorded_values_true(&findings.bash_shell_mutation_coverage_values)
         && all_recorded_values_true(&findings.direct_file_write_matcher_coverage_values);
@@ -1275,367 +1093,6 @@ fn doctor_control_surface_summary(
         "actor_identity_provable": false,
         "os_enforced": false,
     })
-}
-
-fn doctor_verify_recorded_hook_path_safety(
-    capability: &Value,
-    installation: &volicord_store::inspection::GuardInstallationInspectionRecord,
-    snapshot: &RegistryInspectionSnapshot,
-    findings: &mut DoctorGuardFileFindings,
-) {
-    let requires_path_safety = doctor_capability_requires_hook_path_safety(capability);
-    let Some(commands) = capability
-        .get("host_hook_commands")
-        .and_then(Value::as_array)
-    else {
-        if requires_path_safety {
-            findings.record_hook_path_status(
-                "metadata_missing",
-                json!({ "source": "host_hook_commands" }),
-            );
-        }
-        return;
-    };
-    if commands.is_empty() {
-        if requires_path_safety {
-            findings.record_hook_path_status(
-                "metadata_missing",
-                json!({ "source": "host_hook_commands" }),
-            );
-        }
-        return;
-    }
-    for command in commands {
-        let host_kind = command
-            .get("host_kind")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
-        let phase = command
-            .get("phase")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
-        let command_text = command
-            .get("command")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
-        let args = command
-            .get("args")
-            .and_then(Value::as_array)
-            .map(Vec::as_slice)
-            .unwrap_or(&[]);
-        let expected_wrapper_path = command
-            .get("expected_wrapper_path")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
-        let expected_phase_wrapper_path = command
-            .get("expected_phase_wrapper_path")
-            .and_then(Value::as_str)
-            .unwrap_or(expected_wrapper_path);
-        let phase_command = doctor_phase_command_name(phase).unwrap_or_default();
-        let mut status = doctor_classify_hook_command_path(
-            host_kind,
-            phase_command,
-            command_text,
-            args,
-            expected_wrapper_path,
-            expected_phase_wrapper_path,
-        );
-        if command.get("cwd_independent").and_then(Value::as_bool) != Some(true)
-            || command.get("subdirectory_safe").and_then(Value::as_bool) != Some(true)
-        {
-            status = "relative_path_unsafe";
-        }
-        if let Some(recorded_status) = command
-            .get("wrapper_resolution_status")
-            .and_then(Value::as_str)
-            .filter(|value| *value != "ok")
-        {
-            let recorded_status = if doctor_known_hook_path_status(recorded_status) {
-                recorded_status
-            } else {
-                "metadata_missing"
-            };
-            if doctor_hook_path_status_rank(recorded_status) < doctor_hook_path_status_rank(status)
-            {
-                status = recorded_status;
-            }
-        }
-        if host_kind != installation.host_kind {
-            status = "authority_mismatch";
-        }
-        if !expected_phase_wrapper_path.is_empty()
-            && !doctor_installation_project_roots(installation, snapshot)
-                .iter()
-                .any(|repo_root| {
-                    doctor_path_starts_with_text(expected_phase_wrapper_path, repo_root)
-                })
-        {
-            status = "authority_mismatch";
-        }
-        doctor_verify_recorded_hook_wrapper_path(
-            expected_phase_wrapper_path,
-            "wrapper_missing",
-            findings,
-        );
-        if host_kind == "codex" {
-            doctor_verify_recorded_hook_wrapper_path(
-                expected_wrapper_path,
-                "dispatch_missing",
-                findings,
-            );
-        }
-        findings.record_hook_path_status(
-            status,
-            json!({
-                "phase": phase,
-                "host_kind": host_kind,
-                "command": command_text,
-                "wrapper_resolution_status": status,
-                "expected_wrapper_path": expected_wrapper_path,
-                "expected_phase_wrapper_path": expected_phase_wrapper_path,
-            }),
-        );
-    }
-}
-
-fn doctor_capability_requires_hook_path_safety(capability: &Value) -> bool {
-    match capability.get("selected_profile").and_then(Value::as_str) {
-        Some("record") => false,
-        Some("detective" | "mixed") => true,
-        _ => capability
-            .get("required_hook_phases")
-            .and_then(Value::as_array)
-            .is_some_and(|phases| !phases.is_empty()),
-    }
-}
-
-fn doctor_installation_project_roots(
-    installation: &volicord_store::inspection::GuardInstallationInspectionRecord,
-    snapshot: &RegistryInspectionSnapshot,
-) -> Vec<String> {
-    let Some(project_internal_id) = installation.project_internal_id.as_deref() else {
-        return Vec::new();
-    };
-    snapshot
-        .projects
-        .iter()
-        .filter(|project| project.project_internal_id == project_internal_id)
-        .map(|project| path_text(&project.repo_root))
-        .collect()
-}
-
-fn doctor_verify_recorded_hook_wrapper_path(
-    path_text_value: &str,
-    missing_status: &'static str,
-    findings: &mut DoctorGuardFileFindings,
-) {
-    if path_text_value.trim().is_empty() {
-        findings.record_hook_path_status(
-            "metadata_missing",
-            json!({ "source": "expected_wrapper_path" }),
-        );
-        return;
-    }
-    let path = Path::new(path_text_value);
-    match fs::metadata(path) {
-        Ok(metadata) if metadata.is_file() => {
-            if !script_is_executable(path) {
-                findings.stale_files.push(path_text_value.to_owned());
-                findings.record_hook_path_status(
-                    "wrapper_not_executable",
-                    json!({ "path": path_text_value }),
-                );
-            }
-        }
-        Ok(_) => {
-            findings.broken_files.push(path_text_value.to_owned());
-            findings.record_hook_path_status("wrapper_missing", json!({ "path": path_text_value }));
-        }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            findings.missing_files.push(path_text_value.to_owned());
-            findings.record_hook_path_status(missing_status, json!({ "path": path_text_value }));
-        }
-        Err(_) => {
-            findings.broken_files.push(path_text_value.to_owned());
-            findings.record_hook_path_status("wrapper_missing", json!({ "path": path_text_value }));
-        }
-    }
-}
-
-fn doctor_classify_hook_command_path(
-    host_kind: &str,
-    phase_command: &str,
-    command_text: &str,
-    args: &[Value],
-    expected_wrapper_path: &str,
-    expected_phase_wrapper_path: &str,
-) -> &'static str {
-    if phase_command.is_empty() || command_text.trim().is_empty() {
-        return "metadata_missing";
-    }
-    match host_kind {
-        "codex" => doctor_classify_codex_hook_command_path(
-            phase_command,
-            command_text,
-            expected_wrapper_path,
-            expected_phase_wrapper_path,
-        ),
-        "claude_code" => doctor_classify_claude_hook_command_path(
-            phase_command,
-            command_text,
-            args,
-            expected_phase_wrapper_path,
-        ),
-        _ => "metadata_missing",
-    }
-}
-
-fn doctor_classify_codex_hook_command_path(
-    phase_command: &str,
-    command_text: &str,
-    expected_dispatch_path: &str,
-    expected_phase_wrapper_path: &str,
-) -> &'static str {
-    let relative_wrapper = format!(".codex/hooks/volicord-{phase_command}.sh");
-    if doctor_contains_bare_relative_hook_path(command_text, ".codex/hooks/") {
-        return "relative_path_unsafe";
-    }
-    if command_text.contains(".codex/hooks/volicord-dispatch.sh")
-        || command_text.contains(&relative_wrapper)
-    {
-        if command_text.contains("git rev-parse --show-toplevel")
-            && command_text.contains(".codex/hooks/volicord-dispatch.sh")
-            && command_text.contains(phase_command)
-        {
-            return "ok";
-        }
-        if let Some(path) =
-            doctor_absolute_path_ending_with(command_text, ".codex/hooks/volicord-dispatch.sh")
-        {
-            return if doctor_paths_equivalent_text(&path, expected_dispatch_path) {
-                "ok"
-            } else {
-                "absolute_path_stale"
-            };
-        }
-        if let Some(path) = doctor_absolute_path_ending_with(command_text, &relative_wrapper) {
-            return if doctor_paths_equivalent_text(&path, expected_phase_wrapper_path) {
-                "ok"
-            } else {
-                "absolute_path_stale"
-            };
-        }
-        return "relative_path_unsafe";
-    }
-    if command_text.contains(&format!("volicord _hook {phase_command}")) {
-        return "ok";
-    }
-    "metadata_missing"
-}
-
-fn doctor_classify_claude_hook_command_path(
-    phase_command: &str,
-    command_text: &str,
-    args: &[Value],
-    expected_phase_wrapper_path: &str,
-) -> &'static str {
-    let relative_wrapper = format!(".claude/hooks/volicord-{phase_command}.sh");
-    let placeholder_wrapper = format!("${{CLAUDE_PROJECT_DIR}}/{relative_wrapper}");
-    if doctor_contains_bare_relative_hook_path(command_text, ".claude/hooks/") {
-        return "relative_path_unsafe";
-    }
-    if command_text.contains("${CLAUDE_PROJECT_DIR}") {
-        return if command_text == placeholder_wrapper && args.is_empty() {
-            "ok"
-        } else {
-            "placeholder_unsupported"
-        };
-    }
-    if command_text.contains(&relative_wrapper) {
-        if let Some(path) = doctor_absolute_path_ending_with(command_text, &relative_wrapper) {
-            return if doctor_paths_equivalent_text(&path, expected_phase_wrapper_path) {
-                "ok"
-            } else {
-                "absolute_path_stale"
-            };
-        }
-        return "relative_path_unsafe";
-    }
-    if command_text.contains(&format!("volicord _hook {phase_command}")) {
-        return "ok";
-    }
-    "metadata_missing"
-}
-
-fn doctor_contains_bare_relative_hook_path(command_text: &str, prefix: &str) -> bool {
-    let trimmed = command_text.trim_start_matches([' ', '\'', '"']);
-    trimmed.starts_with(prefix)
-        || trimmed.starts_with(&format!("./{prefix}"))
-        || command_text.contains(&format!(" {prefix}"))
-        || command_text.contains(&format!(" './{prefix}"))
-        || command_text.contains(&format!(" \"./{prefix}"))
-        || command_text.contains(&format!(" '{prefix}"))
-        || command_text.contains(&format!(" \"{prefix}"))
-}
-
-fn doctor_absolute_path_ending_with(command_text: &str, suffix: &str) -> Option<String> {
-    let index = command_text.find(suffix)?;
-    let prefix = &command_text[..index];
-    let start = prefix
-        .rfind([' ', '\'', '"', '=', ';', '('])
-        .map(|position| position + 1)
-        .unwrap_or(0);
-    let path_prefix = prefix.get(start..)?;
-    if !path_prefix.starts_with('/') {
-        return None;
-    }
-    Some(format!("{path_prefix}{suffix}"))
-}
-
-fn doctor_paths_equivalent_text(left: &str, right: &str) -> bool {
-    doctor_lexical_absolute_path(left)
-        .is_some_and(|left| doctor_lexical_absolute_path(right).is_some_and(|right| left == right))
-}
-
-fn doctor_path_starts_with_text(path: &str, prefix: &str) -> bool {
-    let Some(path) = doctor_lexical_absolute_path(path) else {
-        return false;
-    };
-    let Some(prefix) = doctor_lexical_absolute_path(prefix) else {
-        return false;
-    };
-    path == prefix || path.starts_with(&format!("{prefix}/"))
-}
-
-fn doctor_lexical_absolute_path(path_text_value: &str) -> Option<String> {
-    let path = Path::new(path_text_value);
-    if !path.is_absolute() {
-        return None;
-    }
-    let mut parts = Vec::new();
-    for component in path.components() {
-        match component {
-            std::path::Component::RootDir => {}
-            std::path::Component::CurDir => {}
-            std::path::Component::ParentDir => {
-                parts.pop();
-            }
-            std::path::Component::Normal(part) => parts.push(part.to_string_lossy().into_owned()),
-            std::path::Component::Prefix(_) => return None,
-        }
-    }
-    Some(format!("/{}", parts.join("/")))
-}
-
-fn doctor_phase_command_name(phase: &str) -> Option<&'static str> {
-    match phase {
-        "session_start_hook" | "session_start" => Some("session-start"),
-        "pre_tool_hook" | "pre_tool" => Some("pre-tool"),
-        "post_tool_hook" | "post_tool" => Some("post-tool"),
-        "user_prompt_submit_hook" | "prompt_capture" => Some("prompt-capture"),
-        "stop_hook" | "stop" => Some("stop"),
-        _ => None,
-    }
 }
 
 fn doctor_guard_mode_state(
@@ -1660,443 +1117,6 @@ fn single_or_mixed(values: &[String]) -> Option<String> {
         [value] => Some(value.clone()),
         _ => Some("mixed".to_owned()),
     }
-}
-
-fn nonempty_json_string(value: &Value, key: &str) -> Option<String> {
-    value
-        .get(key)
-        .and_then(Value::as_str)
-        .filter(|value| !value.trim().is_empty())
-        .map(str::to_owned)
-}
-
-fn bool_json_field(value: &Value, key: &str) -> bool {
-    value.get(key).and_then(Value::as_bool).unwrap_or(false)
-}
-
-fn all_recorded_values_true(values: &[bool]) -> bool {
-    !values.is_empty() && values.iter().all(|value| *value)
-}
-
-fn doctor_generated_config_verified(findings: &DoctorGuardFileFindings) -> bool {
-    findings.missing_files.is_empty()
-        && findings.stale_files.is_empty()
-        && findings.broken_files.is_empty()
-        && findings
-            .file_states
-            .get("volicord_policy")
-            .is_some_and(|state| state == "installed")
-        && findings
-            .file_states
-            .get("host_hook_config")
-            .is_some_and(|state| state == "installed")
-        && findings
-            .file_states
-            .get("host_hook_dispatch")
-            .is_none_or(|state| state == "installed")
-        && findings
-            .file_states
-            .get("host_hook_wrapper")
-            .is_some_and(|state| state == "installed")
-        && findings.hook_path_safety_ok()
-}
-
-fn doctor_verify_guard_file(file: &Value, findings: &mut DoctorGuardFileFindings) {
-    let kind = file
-        .get("kind")
-        .and_then(Value::as_str)
-        .unwrap_or("unknown");
-    let Some(path_text) = file.get("path").and_then(Value::as_str) else {
-        findings
-            .broken_files
-            .push("host_hook_capability_json:files.path".to_owned());
-        findings.set_file_state(kind, "broken");
-        return;
-    };
-    let text = match fs::read_to_string(path_text) {
-        Ok(text) => text,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            findings.missing_files.push(path_text.to_owned());
-            findings.set_file_state(kind, "missing");
-            return;
-        }
-        Err(_) => {
-            findings.broken_files.push(path_text.to_owned());
-            findings.set_file_state(kind, "broken");
-            return;
-        }
-    };
-    let expected_hash = file
-        .get("content_hash")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
-    match file.get("ownership").and_then(Value::as_str) {
-        Some("managed_block") => {
-            doctor_verify_managed_block(file, kind, path_text, &text, expected_hash, findings)
-        }
-        Some("managed_json") => {
-            if sha256_text(&text) == expected_hash {
-                findings.set_file_state(kind, "installed");
-            } else {
-                findings.stale_files.push(path_text.to_owned());
-                findings.set_file_state(kind, "stale");
-            }
-        }
-        Some("managed_json_projection") => doctor_verify_managed_json_projection(
-            file,
-            kind,
-            path_text,
-            &text,
-            expected_hash,
-            findings,
-        ),
-        Some("managed_script") => {
-            doctor_verify_managed_script(file, kind, path_text, &text, expected_hash, findings)
-        }
-        _ => {
-            findings.broken_files.push(path_text.to_owned());
-            findings.set_file_state(kind, "broken");
-        }
-    }
-}
-
-fn doctor_verify_managed_script(
-    file: &Value,
-    kind: &str,
-    path_text: &str,
-    text: &str,
-    expected_hash: &str,
-    findings: &mut DoctorGuardFileFindings,
-) {
-    let Some(managed_marker) = file.get("managed_marker").and_then(Value::as_str) else {
-        findings.broken_files.push(path_text.to_owned());
-        findings.set_file_state(kind, "broken");
-        return;
-    };
-    if !text.contains(managed_marker) {
-        findings.broken_files.push(path_text.to_owned());
-        findings.set_file_state(kind, "broken");
-        return;
-    }
-    if kind == "host_hook_dispatch" {
-        doctor_verify_managed_dispatch_script(file, kind, path_text, text, expected_hash, findings);
-        return;
-    }
-    let Some(expected_command) = file
-        .get("managed_script_command")
-        .and_then(Value::as_str)
-        .filter(|value| !value.trim().is_empty())
-    else {
-        findings.broken_files.push(path_text.to_owned());
-        findings.set_file_state(kind, "broken");
-        return;
-    };
-    let mut state = "installed";
-    if hook_wrapper_exec_command(text) != Some(expected_command) {
-        findings.stale_files.push(path_text.to_owned());
-        state = "stale";
-    }
-    for key in [
-        "host_kind",
-        "phase",
-        "connection_id",
-        "guard_installation_id",
-        "policy_hash",
-        "host_output",
-    ] {
-        let Some(expected) = file.get(key).and_then(Value::as_str) else {
-            findings.broken_files.push(path_text.to_owned());
-            findings.set_file_state(kind, "broken");
-            return;
-        };
-        if hook_wrapper_comment_value(text, key) != Some(expected) {
-            findings.stale_files.push(path_text.to_owned());
-            let status = match key {
-                "policy_hash" => "policy_hash_mismatch",
-                "host_output" => "host_output_mismatch",
-                _ => "authority_mismatch",
-            };
-            findings.record_hook_path_status(
-                status,
-                json!({ "path": path_text, "field": key, "expected": expected }),
-            );
-            state = "stale";
-        }
-    }
-    if sha256_text(text) != expected_hash {
-        findings.stale_files.push(path_text.to_owned());
-        state = "stale";
-    }
-    if file
-        .get("executable_required")
-        .and_then(Value::as_bool)
-        .unwrap_or(false)
-        && !script_is_executable(Path::new(path_text))
-    {
-        findings.stale_files.push(path_text.to_owned());
-        state = "stale";
-    }
-    findings.set_file_state(kind, state);
-}
-
-fn doctor_verify_managed_dispatch_script(
-    file: &Value,
-    kind: &str,
-    path_text: &str,
-    text: &str,
-    expected_hash: &str,
-    findings: &mut DoctorGuardFileFindings,
-) {
-    let mut state = "installed";
-    if file.get("managed_script_role").and_then(Value::as_str) != Some("codex_dispatch")
-        || hook_wrapper_comment_value(text, "host_kind") != Some("codex")
-        || hook_wrapper_comment_value(text, "phase") != Some("dispatch")
-        || hook_wrapper_comment_value(text, "script_role") != Some("codex_dispatch")
-    {
-        findings.broken_files.push(path_text.to_owned());
-        findings.set_file_state(kind, "broken");
-        return;
-    }
-    for required in [
-        "git rev-parse --show-toplevel",
-        "session-start|pre-tool|post-tool|prompt-capture|stop",
-        ".codex/hooks/volicord-$phase.sh",
-        "exec \"$wrapper\"",
-    ] {
-        if !text.contains(required) {
-            findings.broken_files.push(path_text.to_owned());
-            findings.set_file_state(kind, "broken");
-            return;
-        }
-    }
-    if sha256_text(text) != expected_hash {
-        findings.stale_files.push(path_text.to_owned());
-        state = "stale";
-    }
-    if file
-        .get("executable_required")
-        .and_then(Value::as_bool)
-        .unwrap_or(false)
-        && !script_is_executable(Path::new(path_text))
-    {
-        findings.stale_files.push(path_text.to_owned());
-        state = "stale";
-    }
-    findings.set_file_state(kind, state);
-}
-
-fn doctor_verify_managed_json_projection(
-    file: &Value,
-    kind: &str,
-    path_text: &str,
-    text: &str,
-    expected_hash: &str,
-    findings: &mut DoctorGuardFileFindings,
-) {
-    let Some(expected_projection_json) =
-        file.get("managed_projection_json").and_then(Value::as_str)
-    else {
-        findings.broken_files.push(path_text.to_owned());
-        findings.set_file_state(kind, "broken");
-        return;
-    };
-    if sha256_text(expected_projection_json) != expected_hash {
-        findings.broken_files.push(path_text.to_owned());
-        findings.set_file_state(kind, "broken");
-        return;
-    }
-    let actual = match serde_json::from_str::<Value>(text) {
-        Ok(actual) => actual,
-        Err(_) => {
-            findings.broken_files.push(path_text.to_owned());
-            findings.set_file_state(kind, "broken");
-            return;
-        }
-    };
-    let desired = match serde_json::from_str::<Value>(expected_projection_json) {
-        Ok(desired) => desired,
-        Err(_) => {
-            findings.broken_files.push(path_text.to_owned());
-            findings.set_file_state(kind, "broken");
-            return;
-        }
-    };
-    if managed_projection_present(&actual, &desired) {
-        findings.set_file_state(kind, "installed");
-    } else {
-        findings.stale_files.push(path_text.to_owned());
-        findings.set_file_state(kind, "stale");
-    }
-}
-
-fn managed_projection_present(actual: &Value, desired: &Value) -> bool {
-    let Some(desired_object) = desired.as_object() else {
-        return actual == desired;
-    };
-    desired_object.iter().all(|(key, desired_value)| {
-        let Some(actual_value) = actual.get(key) else {
-            return false;
-        };
-        if key == "hooks" || key == "mcpServers" {
-            return managed_projection_object_present(actual_value, desired_value);
-        }
-        managed_projection_present(actual_value, desired_value)
-    })
-}
-
-fn managed_projection_object_present(actual: &Value, desired: &Value) -> bool {
-    let (Some(actual_object), Some(desired_object)) = (actual.as_object(), desired.as_object())
-    else {
-        return false;
-    };
-    desired_object.iter().all(|(key, desired_value)| {
-        let Some(actual_value) = actual_object.get(key) else {
-            return false;
-        };
-        match (actual_value.as_array(), desired_value.as_array()) {
-            (Some(actual_array), Some(desired_array)) => desired_array.iter().all(|desired_item| {
-                let desired_count = desired_array
-                    .iter()
-                    .filter(|item| *item == desired_item)
-                    .count();
-                let actual_count = actual_array
-                    .iter()
-                    .filter(|item| *item == desired_item)
-                    .count();
-                actual_count == desired_count
-            }),
-            _ => actual_value == desired_value,
-        }
-    })
-}
-
-fn doctor_verify_managed_block(
-    file: &Value,
-    kind: &str,
-    path_text: &str,
-    text: &str,
-    expected_hash: &str,
-    findings: &mut DoctorGuardFileFindings,
-) {
-    let Some(start_marker) = file.get("managed_marker_start").and_then(Value::as_str) else {
-        findings.broken_files.push(path_text.to_owned());
-        findings.set_file_state(kind, "broken");
-        return;
-    };
-    let Some(end_marker) = file.get("managed_marker_end").and_then(Value::as_str) else {
-        findings.broken_files.push(path_text.to_owned());
-        findings.set_file_state(kind, "broken");
-        return;
-    };
-    if marker_count(text, start_marker) != 1 || marker_count(text, end_marker) != 1 {
-        findings.broken_files.push(path_text.to_owned());
-        findings.set_file_state(kind, "broken");
-        return;
-    }
-    let Some(block) = managed_block_slice(text, start_marker, end_marker) else {
-        findings.broken_files.push(path_text.to_owned());
-        findings.set_file_state(kind, "broken");
-        return;
-    };
-    if sha256_text(block) == expected_hash {
-        findings.set_file_state(kind, "installed");
-    } else {
-        findings.stale_files.push(path_text.to_owned());
-        findings.set_file_state(kind, "stale");
-    }
-}
-
-fn marker_count(text: &str, marker: &str) -> usize {
-    text.match_indices(marker).count()
-}
-
-fn hook_wrapper_exec_command(text: &str) -> Option<&str> {
-    text.lines()
-        .map(str::trim)
-        .find_map(|line| line.strip_prefix("exec "))
-}
-
-fn hook_wrapper_comment_value<'a>(text: &'a str, key: &str) -> Option<&'a str> {
-    let prefix = format!("# {key}=");
-    text.lines()
-        .map(str::trim)
-        .find_map(|line| line.strip_prefix(&prefix))
-        .map(str::trim)
-}
-
-#[cfg(unix)]
-fn script_is_executable(path: &Path) -> bool {
-    use std::os::unix::fs::PermissionsExt;
-
-    fs::metadata(path)
-        .map(|metadata| metadata.permissions().mode() & 0o111 != 0)
-        .unwrap_or(false)
-}
-
-#[cfg(not(unix))]
-fn script_is_executable(_path: &Path) -> bool {
-    true
-}
-
-fn managed_block_slice<'a>(text: &'a str, start_marker: &str, end_marker: &str) -> Option<&'a str> {
-    let start = text.find(start_marker)?;
-    let end = start + text[start..].find(end_marker)? + end_marker.len();
-    let end = if text[end..].starts_with('\n') {
-        end + 1
-    } else {
-        end
-    };
-    text.get(start..end)
-}
-
-fn sha256_text(text: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(text.as_bytes());
-    format!("sha256:{}", hex_bytes(&hasher.finalize()))
-}
-
-fn hex_bytes(bytes: &[u8]) -> String {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    let mut output = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        output.push(HEX[(byte >> 4) as usize] as char);
-        output.push(HEX[(byte & 0x0f) as usize] as char);
-    }
-    output
-}
-
-fn guard_missing_required_hooks(capability_json: &str) -> Vec<String> {
-    let Ok(value) = serde_json::from_str::<Value>(capability_json) else {
-        return Vec::new();
-    };
-    if value.get("selected_profile").and_then(Value::as_str) == Some("record") {
-        return Vec::new();
-    }
-    let configured_required_hooks = value
-        .get("required_hook_phases")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_str)
-        .filter(|value| !value.trim().is_empty())
-        .collect::<Vec<_>>();
-    let mut missing_required_hooks = value
-        .get("missing_required_hooks")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_str)
-        .filter(|value| !value.trim().is_empty())
-        .map(str::to_owned)
-        .collect::<Vec<_>>();
-    for required_hook in REQUIRED_GUARD_HOOK_PHASES {
-        if !configured_required_hooks.contains(required_hook) {
-            missing_required_hooks.push((*required_hook).to_owned());
-        }
-    }
-    missing_required_hooks.sort();
-    missing_required_hooks.dedup();
-    missing_required_hooks
 }
 
 fn guard_expected_policy_hash(capability_json: &str) -> Option<String> {
@@ -2133,7 +1153,7 @@ fn guard_configuration_healthy(
     matches!(
         installation.installation_status.as_str(),
         "active" | "configured"
-    ) && guard_missing_required_hooks(&installation.host_capability_json).is_empty()
+    ) && missing_required_hooks_from_capability_json(&installation.host_capability_json).is_empty()
 }
 
 fn guard_effective_active(
@@ -3206,60 +2226,4 @@ fn is_help_request(args: &[String]) -> bool {
         args.first().map(String::as_str),
         Some("-h" | "--help" | "help")
     )
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn managed_projection_presence_allows_unmanaged_hook_groups_but_rejects_duplicate_managed() {
-        let desired = json!({
-            "hooks": {
-                "PreToolUse": [
-                    {
-                        "matcher": "Bash|Edit|Write|MultiEdit|mcp__.*__(write|edit|create|update|delete|remove|move|patch).*",
-                        "hooks": [
-                            {
-                                "type": "command",
-                                "command": "volicord _hook pre-tool --host claude-code --host-output claude-code",
-                                "timeout": 30
-                            }
-                        ]
-                    }
-                ]
-            }
-        });
-        let actual_with_unmanaged = json!({
-            "theme": "dark",
-            "hooks": {
-                "PreToolUse": [
-                    {
-                        "matcher": "Bash",
-                        "hooks": [
-                            {
-                                "type": "command",
-                                "command": "echo keep"
-                            }
-                        ]
-                    },
-                    desired["hooks"]["PreToolUse"][0].clone()
-                ]
-            }
-        });
-        assert!(managed_projection_present(&actual_with_unmanaged, &desired));
-
-        let actual_with_duplicate = json!({
-            "hooks": {
-                "PreToolUse": [
-                    desired["hooks"]["PreToolUse"][0].clone(),
-                    desired["hooks"]["PreToolUse"][0].clone()
-                ]
-            }
-        });
-        assert!(!managed_projection_present(
-            &actual_with_duplicate,
-            &desired
-        ));
-    }
 }

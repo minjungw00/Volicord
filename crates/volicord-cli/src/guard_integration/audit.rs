@@ -6,7 +6,11 @@ use std::{
 
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use volicord_store::{agent_connections::ConnectionProjectRecord, guards::GuardInstallationRecord};
+use volicord_store::{
+    agent_connections::ConnectionProjectRecord,
+    guards::GuardInstallationRecord,
+    inspection::{GuardInstallationInspectionRecord, ProjectInspectionRecord},
+};
 
 use crate::host_integration::{
     contracts::{
@@ -359,6 +363,7 @@ pub(crate) fn file_state_rank(value: &str) -> u8 {
 struct GuardAuthorityContext<'a> {
     host_kind: &'a str,
     project_repo_roots: &'a [PathBuf],
+    strict_authority: bool,
 }
 
 #[cfg(test)]
@@ -377,8 +382,39 @@ pub(crate) fn guard_file_findings_for_installation(
     let context = GuardAuthorityContext {
         host_kind: &installation.host_kind,
         project_repo_roots: &project_repo_roots,
+        strict_authority: false,
     };
     guard_file_findings_with_context(&installation.host_capability_json, Some(context))
+}
+
+pub(crate) fn guard_file_findings_for_inspection(
+    installation: &GuardInstallationInspectionRecord,
+    projects: &[ProjectInspectionRecord],
+) -> GuardFileFindings {
+    let project_repo_roots = installation
+        .project_internal_id
+        .as_deref()
+        .map(|project_internal_id| {
+            projects
+                .iter()
+                .filter(|project| project.project_internal_id == project_internal_id)
+                .map(|project| project.repo_root.clone())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let context = GuardAuthorityContext {
+        host_kind: &installation.host_kind,
+        project_repo_roots: &project_repo_roots,
+        strict_authority: true,
+    };
+    guard_file_findings_with_context(&installation.host_capability_json, Some(context))
+}
+
+pub(crate) fn missing_required_hooks_from_capability_json(capability_json: &str) -> Vec<String> {
+    serde_json::from_str::<Value>(capability_json)
+        .ok()
+        .map(|value| missing_required_hooks_from_capability(&value))
+        .unwrap_or_default()
 }
 
 fn guard_file_findings_with_context(
@@ -603,11 +639,11 @@ fn verify_recorded_hook_command_path_safety(
         status = more_severe_hook_wrapper_status(status, recorded_status);
     }
     if let Some(context) = context {
-        if !host_kind.is_empty() && host_kind != context.host_kind {
+        if (context.strict_authority || !host_kind.is_empty()) && host_kind != context.host_kind {
             status = HookWrapperResolutionStatus::AuthorityMismatch;
         }
         if !expected_phase_wrapper_path.is_empty()
-            && !context.project_repo_roots.is_empty()
+            && (context.strict_authority || !context.project_repo_roots.is_empty())
             && !context.project_repo_roots.iter().any(|repo_root| {
                 path_starts_with_text(expected_phase_wrapper_path, &path_text(repo_root))
             })
@@ -1709,4 +1745,85 @@ pub(crate) fn script_is_executable(_path: &Path) -> bool {
 
 fn path_text(path: &Path) -> String {
     path.display().to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::{json, Value};
+
+    #[test]
+    fn claude_settings_projection_allows_unmanaged_hook_groups_but_rejects_duplicate_managed() {
+        let desired = desired_claude_hooks_projection();
+        let desired_hooks = desired
+            .get("hooks")
+            .and_then(Value::as_object)
+            .expect("desired hooks should be an object");
+
+        let mut unmanaged_hooks = desired_hooks.clone();
+        unmanaged_hooks
+            .get_mut("PreToolUse")
+            .and_then(Value::as_array_mut)
+            .expect("PreToolUse hooks should be an array")
+            .insert(
+                0,
+                json!({
+                    "matcher": "Bash",
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": "echo keep"
+                        }
+                    ]
+                }),
+            );
+        let actual_with_unmanaged = json!({
+            "theme": "dark",
+            "hooks": unmanaged_hooks,
+        });
+        assert_eq!(
+            claude_settings_hooks_projection_from_actual(&actual_with_unmanaged, &desired),
+            Ok(Some(desired.clone()))
+        );
+
+        let mut duplicate_hooks = desired_hooks.clone();
+        let pre_tool_hooks = duplicate_hooks
+            .get_mut("PreToolUse")
+            .and_then(Value::as_array_mut)
+            .expect("PreToolUse hooks should be an array");
+        let managed_group = pre_tool_hooks
+            .first()
+            .cloned()
+            .expect("managed hook group should be present");
+        pre_tool_hooks.push(managed_group);
+        let actual_with_duplicate = json!({ "hooks": duplicate_hooks });
+        assert_eq!(
+            claude_settings_hooks_projection_from_actual(&actual_with_duplicate, &desired),
+            Ok(None)
+        );
+    }
+
+    fn desired_claude_hooks_projection() -> Value {
+        let mut hooks = serde_json::Map::new();
+        for phase in REQUIRED_GUARD_PHASES {
+            let event_name = claude_event_name(phase).expect("phase should map to Claude event");
+            hooks.insert(
+                event_name.to_owned(),
+                Value::Array(vec![json!({
+                    "matcher": "Bash|Edit|Write|MultiEdit|mcp__.*__(write|edit|create|update|delete|remove|move|patch).*",
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": format!(
+                                "volicord _hook {} --host claude-code --host-output claude-code",
+                                phase.command_name()
+                            ),
+                            "timeout": 30
+                        }
+                    ]
+                })]),
+            );
+        }
+        json!({ "hooks": hooks })
+    }
 }
