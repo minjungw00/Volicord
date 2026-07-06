@@ -1,6 +1,6 @@
 use std::{
     cell::RefCell,
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeMap,
     ffi::OsString,
     fs,
     path::{Path, PathBuf},
@@ -22,7 +22,8 @@ use super::{
 };
 use crate::host_integration::verification::{
     HostConfigurationStatus, HostExecutableStatus, HostGateStatus, HostPolicyOverlayDiagnostic,
-    ManagedConfigStatus, ProjectTrustDiagnostic, ProjectTrustStatus, Verification,
+    HostPolicyOverlayEntryDiagnostic, ManagedConfigStatus, ProjectTrustDiagnostic,
+    ProjectTrustStatus, Verification,
 };
 use crate::host_integration::HostCapabilities;
 
@@ -749,7 +750,7 @@ fn codex_tool_approval_overlay(table: &Table) -> Option<Option<HostPolicyOverlay
         return Some(None);
     };
     let tools = item.as_table()?;
-    let mut tool_names = BTreeSet::new();
+    let mut approvals = BTreeMap::new();
     for (tool_name, item) in tools.iter() {
         if !is_known_volicord_tool(tool_name) {
             return None;
@@ -762,16 +763,27 @@ fn codex_tool_approval_overlay(table: &Table) -> Option<Option<HostPolicyOverlay
         if approval.trim().is_empty() {
             return None;
         }
-        tool_names.insert(tool_name.to_owned());
+        approvals.insert(tool_name.to_owned(), approval.to_owned());
     }
-    let tools = tool_names.into_iter().collect::<Vec<_>>();
-    let tool_count = tools.len();
+    let entries = approvals
+        .into_iter()
+        .map(|(tool, approval_mode)| HostPolicyOverlayEntryDiagnostic {
+            tool,
+            approval_mode,
+        })
+        .collect::<Vec<_>>();
+    let tools = entries
+        .iter()
+        .map(|entry| entry.tool.clone())
+        .collect::<Vec<_>>();
+    let tool_count = entries.len();
     Some(Some(HostPolicyOverlayDiagnostic {
         present: true,
         accepted: true,
         kind: CODEX_TOOL_APPROVAL_OVERLAY_KIND.to_owned(),
         tool_count,
         tools,
+        entries,
         details: if tool_count == 0 {
             "Codex tool approval policy overlay is present and accepted".to_owned()
         } else {
@@ -1518,6 +1530,8 @@ mod tests {
         assert_eq!(overlay.kind, CODEX_TOOL_APPROVAL_OVERLAY_KIND);
         assert_eq!(overlay.tool_count, 1);
         assert_eq!(overlay.tools, vec!["volicord.intake".to_owned()]);
+        assert_eq!(overlay.entries[0].tool, "volicord.intake");
+        assert_eq!(overlay.entries[0].approval_mode, "approve");
         assert_eq!(plan_after_overlay.change, PlannedChange::Noop);
         assert!(plan_after_overlay.conflicts.is_empty());
         Ok(())

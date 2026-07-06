@@ -3793,8 +3793,9 @@ fn connection_status_and_verify_report_codex_config_without_managed_launch_marke
 
 #[cfg(unix)]
 #[test]
-fn codex_tool_approval_overlay_is_match_and_preserved_by_init() -> Result<(), Box<dyn Error>> {
-    let runtime_home = TempRuntimeHome::new("cli-bin-codex-tool-approval-overlay")?;
+fn connection_status_and_verify_report_codex_command_drift_as_changed() -> Result<(), Box<dyn Error>>
+{
+    let runtime_home = TempRuntimeHome::new("cli-bin-connection-command-drift")?;
     let repo_root = create_git_repo(&runtime_home, "product-repo")?;
     let bin_dir = runtime_home.path().join("bin");
     write_fake_codex(&bin_dir)?;
@@ -3817,11 +3818,10 @@ fn codex_tool_approval_overlay_is_match_and_preserved_by_init() -> Result<(), Bo
     )?;
     assert_success(&init);
     let config_path = repo_root.join(".codex/config.toml");
-    let mut config = fs::read_to_string(&config_path)?;
-    config.push_str(
-        "\n[mcp_servers.volicord.tools.\"volicord.intake\"]\napproval_mode = \"approve\"\n",
-    );
-    fs::write(&config_path, config)?;
+    fs::write(
+        &config_path,
+        fs::read_to_string(&config_path)?.replace("command = \"volicord\"", "command = \"other\""),
+    )?;
 
     let status = run_with_home_env(
         runtime_home.path(),
@@ -3838,39 +3838,18 @@ fn codex_tool_approval_overlay_is_match_and_preserved_by_init() -> Result<(), Bo
     )?;
     assert_success(&status);
     let status_json = json_stdout(&status)?;
-    assert_eq!(status_json["states"]["mcp_config"], "match");
-    assert_ne!(
+    assert_eq!(status_json["states"]["mcp_config"], "changed");
+    assert_eq!(
         status_json["primary_next_action"]["id"],
         "mcp_config_changed"
     );
-    assert!(status_json["checks"]
-        .as_array()
-        .expect("checks should be an array")
-        .iter()
-        .any(|check| check["id"] == "codex_tool_approval_policy"
-            && check["status"] == "passed"
-            && check["details"]["accepted"] == true
-            && check["details"]["kind"] == "codex_tool_approval"));
-
-    let second_init = run_with_home_env(
-        runtime_home.path(),
-        [
-            "init",
-            "--host",
-            "codex",
-            "--repo",
-            path_text(&repo_root).as_str(),
-            "--json",
-        ],
-        &[
-            ("PATH", path_env(&[bin_dir.as_path()])),
-            ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
-        ],
-    )?;
-    assert_success(&second_init);
-    let preserved = fs::read_to_string(&config_path)?;
-    assert!(preserved.contains("[mcp_servers.volicord.tools.\"volicord.intake\"]"));
-    assert!(preserved.contains("approval_mode = \"approve\""));
+    assert_eq!(
+        status_json["primary_next_action"]["command"],
+        format!(
+            "volicord init --host codex --repo {}",
+            path_text(&repo_root)
+        )
+    );
 
     let verify = run_with_home_env(
         runtime_home.path(),
@@ -3890,6 +3869,195 @@ fn codex_tool_approval_overlay_is_match_and_preserved_by_init() -> Result<(), Bo
     )?;
     assert_success(&verify);
     let verify_json = json_stdout(&verify)?;
+    assert_eq!(verify_json["states"]["mcp_config"], "changed");
+    assert_eq!(
+        verify_json["verification"]["host"]["managed_config"],
+        "changed"
+    );
+    assert_eq!(
+        verify_json["primary_next_action"]["id"],
+        "mcp_config_changed"
+    );
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn codex_tool_approval_overlay_is_match_and_preserved_by_init() -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-codex-tool-approval-overlay")?;
+    let repo_root = create_git_repo(&runtime_home, "product-repo")?;
+    let bin_dir = runtime_home.path().join("bin");
+    let codex_home = runtime_home.path().join("codex-home");
+    write_fake_codex(&bin_dir)?;
+    write_fake_mcp(&bin_dir)?;
+    write_codex_project_trust(&codex_home, &repo_root, "trusted")?;
+
+    let init = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--host",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--json",
+        ],
+        &[
+            ("PATH", path_env(&[bin_dir.as_path()])),
+            ("CODEX_HOME", path_text(&codex_home)),
+            ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
+        ],
+    )?;
+    assert_success(&init);
+    let init_json = json_stdout(&init)?;
+    let connection_id = init_json["connection"]["connection_id"]
+        .as_str()
+        .expect("connection id should be present")
+        .to_owned();
+    let projects = list_connection_projects(runtime_home.path(), &connection_id)?;
+    assert_eq!(projects.len(), 1);
+    let project_id = projects[0].project_id.clone();
+    let config_path = repo_root.join(".codex/config.toml");
+    let mut config = fs::read_to_string(&config_path)?;
+    config.push_str(
+        "\n[mcp_servers.volicord.tools.\"volicord.intake\"]\napproval_mode = \"approve\"\n",
+    );
+    fs::write(&config_path, config)?;
+
+    let status = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connection",
+            "status",
+            "codex",
+            "--shared",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--json",
+        ],
+        &[("CODEX_HOME", path_text(&codex_home))],
+    )?;
+    assert_success(&status);
+    let status_json = json_stdout(&status)?;
+    assert_eq!(status_json["states"]["mcp_config"], "match");
+    assert_ne!(
+        status_json["primary_next_action"]["id"],
+        "mcp_config_changed"
+    );
+    assert!(status_json["checks"]
+        .as_array()
+        .expect("checks should be an array")
+        .iter()
+        .any(|check| check["id"] == "codex_tool_approval_policy"
+            && check["status"] == "passed"
+            && check["details"]["accepted"] == true
+            && check["details"]["kind"] == "codex_tool_approval"
+            && check["details"]["entries"][0]["tool"] == "volicord.intake"
+            && check["details"]["entries"][0]["approval_mode"] == "approve"));
+    assert!(!stdout(&status).contains("volicord init --host codex --repo"));
+
+    let status_text = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connection",
+            "status",
+            "codex",
+            "--shared",
+            "--repo",
+            path_text(&repo_root).as_str(),
+        ],
+        &[("CODEX_HOME", path_text(&codex_home))],
+    )?;
+    assert_success(&status_text);
+    assert!(stdout(&status_text).contains("Codex tool approval policy: present"));
+    assert!(!stdout(&status_text).contains("Review the changed MCP configuration."));
+
+    let second_init = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--host",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--json",
+        ],
+        &[
+            ("PATH", path_env(&[bin_dir.as_path()])),
+            ("CODEX_HOME", path_text(&codex_home)),
+            ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
+        ],
+    )?;
+    assert_success(&second_init);
+    let preserved = fs::read_to_string(&config_path)?;
+    assert!(preserved.contains("[mcp_servers.volicord.tools.\"volicord.intake\"]"));
+    assert!(preserved.contains("approval_mode = \"approve\""));
+
+    insert_test_watch_baseline(
+        runtime_home.path(),
+        &projects[0],
+        "codex_overlay_managed_tool_call",
+        &json!({
+            "lifecycle_events": [
+                {
+                    "connection_id": connection_id,
+                    "project_id": project_id,
+                    "host_kind": "codex",
+                    "launch_origin": "managed_host",
+                    "lifecycle_event": "managed_host_startup",
+                    "timestamp": "2026-07-01T00:03:00Z",
+                    "storage_capability": "read_write",
+                    "effective_tool_mode": "workflow"
+                },
+                {
+                    "connection_id": connection_id,
+                    "project_id": project_id,
+                    "host_kind": "codex",
+                    "launch_origin": "managed_host",
+                    "lifecycle_event": "managed_host_tools_list",
+                    "timestamp": "2026-07-01T00:03:01Z",
+                    "storage_capability": "read_write",
+                    "effective_tool_mode": "workflow"
+                },
+                {
+                    "connection_id": connection_id,
+                    "project_id": project_id,
+                    "host_kind": "codex",
+                    "launch_origin": "managed_host",
+                    "lifecycle_event": "managed_host_tool_call",
+                    "timestamp": "2026-07-01T00:03:02Z",
+                    "storage_capability": "read_write",
+                    "effective_tool_mode": "workflow"
+                }
+            ]
+        })
+        .to_string(),
+    )?;
+
+    let verify = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connection",
+            "verify",
+            "codex",
+            "--shared",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--json",
+        ],
+        &[
+            ("PATH", path_env(&[bin_dir.as_path()])),
+            ("CODEX_HOME", path_text(&codex_home)),
+            ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
+        ],
+    )?;
+    assert_success(&verify);
+    let verify_json = json_stdout(&verify)?;
+    assert_eq!(verify_json["status"], VERIFIED_STATUS_COMPLETE);
+    assert_eq!(
+        verify_json["connection"]["verification_status"],
+        VERIFIED_STATUS_COMPLETE
+    );
     assert_eq!(verify_json["states"]["mcp_config"], "match");
     assert_eq!(
         verify_json["verification"]["host"]["managed_config"],
@@ -3903,10 +4071,40 @@ fn codex_tool_approval_overlay_is_match_and_preserved_by_init() -> Result<(), Bo
         verify_json["verification"]["host"]["host_policy_overlay"]["accepted"],
         true
     );
+    assert_eq!(
+        verify_json["verification"]["host"]["host_policy_overlay"]["entries"][0]["tool"],
+        "volicord.intake"
+    );
+    assert_eq!(
+        verify_json["verification"]["host"]["host_policy_overlay"]["entries"][0]["approval_mode"],
+        "approve"
+    );
     assert_ne!(
         verify_json["primary_next_action"]["id"],
         "mcp_config_changed"
     );
+    assert_eq!(verify_json["primary_next_action"], Value::Null);
+    assert!(!stdout(&verify).contains("volicord init --host codex --repo"));
+
+    let complete_status = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connection",
+            "status",
+            "codex",
+            "--shared",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--json",
+        ],
+        &[("CODEX_HOME", path_text(&codex_home))],
+    )?;
+    assert_success(&complete_status);
+    let complete_status_json = json_stdout(&complete_status)?;
+    assert_eq!(complete_status_json["status"], VERIFIED_STATUS_COMPLETE);
+    assert_eq!(complete_status_json["states"]["mcp_config"], "match");
+    assert_eq!(complete_status_json["primary_next_action"], Value::Null);
+    assert!(!stdout(&complete_status).contains("volicord init --host codex --repo"));
     Ok(())
 }
 

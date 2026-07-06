@@ -181,7 +181,14 @@ pub struct HostPolicyOverlayDiagnostic {
     pub kind: String,
     pub tool_count: usize,
     pub tools: Vec<String>,
+    pub entries: Vec<HostPolicyOverlayEntryDiagnostic>,
     pub details: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HostPolicyOverlayEntryDiagnostic {
+    pub tool: String,
+    pub approval_mode: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
