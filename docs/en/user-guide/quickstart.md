@@ -64,6 +64,10 @@ Diagnostics:
 The summary distinguishes files written inside the Product Repository from
 local Volicord state stored in the Runtime Home. It does not mean an already
 running Codex session has loaded, trusted, or approved the new configuration.
+The repo-local files are ordinary Product Repository setup files. Commit
+`.codex/config.toml`, `.volicord/policy.json`, and the managed `AGENTS.md`
+guidance block only when you want shared Volicord/Codex setup in that
+repository.
 For user workflow, the Record profile supports cooperative Volicord workflow
 recording through MCP. It is not a security, correctness, test-sufficiency, or
 review-completion guarantee.
@@ -126,6 +130,15 @@ cannot write project state. Use
 [Agent Host Setup](agent-host-setup.md) and
 [Agent Host Troubleshooting](agent-host-troubleshooting.md) to inspect storage
 capability before expecting workflow mutation tools.
+
+For a no-state connectivity check, run `volicord connection verify`, then ask
+the active host to call `volicord.list_projects` and `volicord.status`. This
+read-only check should not require creating a `Task`. Use the workflow
+write-path smoke only when creating Volicord state is acceptable:
+`volicord.intake`, `volicord.update_scope`, `volicord.record_run`,
+`volicord.request_user_judgment` for final acceptance if close is required, and
+`volicord.check_close`. That path may leave the task blocked by
+`missing_final_acceptance` until the user records the final judgment.
 
 ## Choose A Host Intent
 

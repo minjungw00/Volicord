@@ -50,6 +50,13 @@ server can start and respond from the terminal-side check path; it does not by
 itself prove that Codex, Claude Code, or another host has loaded, trusted, or
 approved the project configuration.
 
+For shared repository setup, decide whether to commit repo-local files
+according to the Product Repository's configuration policy. Commit
+`.codex/config.toml`, `.volicord/policy.json`, and the managed `AGENTS.md`
+guidance block when you want other contributors or automation to share the
+same Volicord/Codex setup. Keep them local when the setup should remain
+user-specific.
+
 ### Codex Host Verification Concepts
 
 Codex verification reports several related concepts separately. The Codex host
@@ -129,7 +136,7 @@ volicord connection add codex --repo "<repo>"
 
 ## Integration Profiles
 
-Detective status reports the selected profile and an observation summary for the
+Detective status summarizes the selected profile and observation status for the
 selected connection or session:
 
 | Profile | How it is reached | Operational meaning |
@@ -417,6 +424,26 @@ managed `tools/list`, managed tool-call evidence, Codex startup/tool-list logs,
 and Volicord storage read/write capability if tools are absent. Treat host MCP
 command launchability as a separate launch-environment diagnostic when the
 command check reports that risk.
+
+## Read-Only And Workflow Smoke Checks
+
+Use the read-only connectivity check before asking the host to create workflow
+state:
+
+1. Run `volicord connection verify` for the selected host and repository.
+2. In the active MCP host session, call `volicord.list_projects`.
+3. In the same session, call `volicord.status`.
+
+This path checks configuration, active tool visibility, project selection, and
+readable project state. It should not require creating a Volicord `Task`.
+
+Use a workflow write-path smoke check only when creating Volicord state is
+acceptable. A minimal workflow path can use `volicord.intake`,
+`volicord.update_scope`, `volicord.record_run`,
+`volicord.request_user_judgment` for final acceptance when close is required,
+and `volicord.check_close`. That path can leave a task blocked by
+`missing_final_acceptance` until the user records the final judgment through a
+supported `User Channel`.
 
 ## Generic MCP Host Configuration
 

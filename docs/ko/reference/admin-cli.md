@@ -234,12 +234,12 @@ Runtime Home과 설치 프로필 선택에 관련된 init 효과:
 건강 상태, 런타임 hook 관찰 건강 상태, 효과적인 detective 건강 상태, 호스트 reload
 필요도 진단으로 보고할 수 있습니다. 이 진단은 로컬 setup 및 관찰 점검이며 OS 강제,
 sandboxing, 쓰기 방지, 제품 정확성,
-닫기 상태의 증명이 아닙니다. Doctor는 `selected_profile`과 관찰 요약도 보고합니다. 이
-요약에는 host hook, session watcher, 협력형 결정, 미기록 변경
-탐지, 행위자 증명, OS 집행 사실이 포함됩니다. session watcher 관찰이나 local web
-consent 같은 런타임 전용 기능은 보고 프로세스가 실제로 그 런타임 상태를 소유하지 않는 한
-사용할 수 없음으로 보고합니다. 프로젝트를 만들거나, 호스트 설정을 설치하거나, 연결 모드를 바꾸거나,
-사용자 판단에 답하지 않습니다.
+닫기 상태의 증명이 아닙니다. 사람용 doctor text는 profile과 관찰 한계를 요약할 수
+있습니다. 정확한 `selected_profile`, `observation_summary`, `control_surface` 필드는 JSON
+진단에 둡니다. session watcher 관찰이나 local web consent 같은 런타임 전용 기능은 보고
+프로세스가 실제로 그 런타임 상태를 소유하지 않는 한 사용할 수 없음으로 보고합니다.
+프로젝트를 만들거나, 호스트 설정을 설치하거나, 연결 모드를 바꾸거나, 사용자 판단에 답하지
+않습니다.
 doctor의 text와 JSON 출력은 진단 공개와 진단 보기에 대한 간결한 `summary_card`를
 포함합니다. JSON 출력은
 `disclosure.guarantee_class=detective_observation`을 사용하고,
@@ -343,11 +343,14 @@ watcher 관찰을 설치하지 않는 chat-first 사용을 위한 첫 실행 저
   policy, 지원되는 프로젝트 로컬 host hook 및 rule 파일을 쓰고 host-hook/session-watcher
   관찰 상태를 기록합니다.
 
-detective를 인식하는 setup, status, verification, doctor text 출력은 `selected_profile`과
-`observation_summary`를 보고합니다. 대응 JSON 필드는 `control_surface`입니다. 이 요약에는 `host_hooks_active`,
-`session_watcher_active`, `cooperative_pre_tool_warning_available`,
+detective를 인식하는 setup, status, verification, doctor 출력은 profile과 관찰 상태를
+보고합니다. 사람용 text는 `Profile`, `Checks`, `Limits`, `Diagnostics` 같은 명령별
+섹션으로 이를 요약할 수 있으며, 원시 진단 dump가 아닙니다. JSON 진단은
+`selected_profile`, `observation_summary`, `control_surface` 필드를 정확히 담고,
+`host_hooks_active`, `session_watcher_active`,
+`cooperative_pre_tool_warning_available`,
 `cooperative_pre_tool_denial_available`, `unrecorded_changes_detectable`,
-`actor_identity_provable`, `os_enforced`가 포함됩니다. 현재 Volicord 출력은
+`actor_identity_provable`, `os_enforced`를 포함합니다. 현재 Volicord 출력은
 `os_enforced=false`와 `actor_identity_provable=false`를 보고해야 합니다.
 
 `detective` 초기화에는 선택한 호스트 어댑터가 모든 필수 lifecycle hook인
@@ -513,15 +516,16 @@ observation은 이 필드를 충족하지 않습니다. 관리 `tools/list` even
 치명적인 CLI 오류가 아니며 위에서 설명한 성공한 관리 결과 규칙을 따릅니다.
 연결 상태 및 검증 출력은 detective host hook 파일 설치, 설정 건강 상태, 런타임 hook 관찰
 건강 상태, 효과적인 detective 건강 상태, 호스트 reload 필요, prompt-capture 가용성, 알 수
-있을 때의 최근 host-hook event를 별도 진단으로 유지해야 합니다. Text 출력은 `selected_profile`,
-`observation_summary`, 협력형 pre-tool warning 가용성, 협력형 pre-tool denial 가용성,
-post-tool 상관 가용성, 미기록 변경 탐지 가용성, prompt-capture 가용성, local web consent
-가용성, hook path safety, hook 명령 cwd independence, hook 명령 subdirectory safety,
-watcher 상태, watcher baseline 생성 시각, watcher coverage 시작 시각, watcher coverage
-basis, watcher 부분 coverage 경고를 별도 필드로 보고해야 합니다. 파일이 설치되었거나
-설정되었다는 사실을 일치하는 관찰 전의 활성 관찰된 hook이나 활성 host-hook 관찰로
-보고하면 안 됩니다. 불완전한 session-watch coverage를 전체 미기록 변경 탐지로 보고하면
-안 됩니다.
+있을 때의 최근 host-hook event를 별도 진단으로 유지해야 합니다. JSON 진단은
+`selected_profile`, `observation_summary`, 협력형 pre-tool warning 가용성, 협력형
+pre-tool denial 가용성, post-tool 상관 가용성, 미기록 변경 탐지 가용성, prompt-capture
+가용성, local web consent 가용성, hook path safety, hook 명령 cwd independence, hook 명령
+subdirectory safety, watcher 상태, watcher baseline 생성 시각, watcher coverage 시작 시각,
+watcher coverage basis, watcher 부분 coverage 경고를 정확한 필드로 담습니다. 사람용 text는
+이 진단을 간결한 섹션으로 요약할 수 있으며, 원시 진단 필드 dump로 설명하면 안 됩니다.
+파일이 설치되었거나 설정되었다는 사실을 일치하는 관찰 전의 활성 관찰된 hook이나 활성
+host-hook 관찰로 보고하면 안 됩니다. 불완전한 session-watch coverage를 전체 미기록 변경
+탐지로 보고하면 안 됩니다.
 Agent Connection의 text와 JSON 출력은 진단 출력입니다. JSON 출력은
 `disclosure.guarantee_class=detective_observation`을 사용하고, OS 샌드박싱,
 네트워크 격리, 악성 코드 방어, 전체 쓰기 방지, 행위자 귀속 증명, 정확성 증명,

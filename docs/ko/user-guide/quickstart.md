@@ -61,6 +61,9 @@ Diagnostics:
 이 요약은 Product Repository 안에 쓴 파일과 Runtime Home에 저장한 로컬 Volicord 상태를
 구분합니다. 이미 실행 중인 Codex session이 새 설정을 로드, 신뢰, 승인했다는 뜻은
 아닙니다.
+저장소 로컬 파일은 일반 Product Repository 설정 파일입니다. 해당 저장소에 공유
+Volicord/Codex 설정을 담고 싶을 때만 `.codex/config.toml`, `.volicord/policy.json`,
+관리 `AGENTS.md` 안내 블록을 commit합니다.
 사용자 워크플로에서 기록 프로필은 MCP를 통한 협력적 Volicord 워크플로 기록을
 지원합니다. 보안, 정확성, 테스트 충분성, 검토 완료 보장을 뜻하지 않습니다.
 
@@ -116,6 +119,15 @@ CLI verification은 Volicord의 MCP 서버가 터미널 쪽 점검 경로에서 
 Workflow 변경 도구를 기대하기 전에 [에이전트 호스트 설정](agent-host-setup.md)과
 [에이전트 호스트 문제 해결](agent-host-troubleshooting.md)에서 저장소 capability를
 확인합니다.
+
+상태를 만들지 않는 연결 점검에는 `volicord connection verify`를 실행한 뒤 활성 호스트에
+`volicord.list_projects`와 `volicord.status`를 호출하게 합니다. 이 읽기 전용 점검은
+`Task` 생성을 요구하지 않아야 합니다. Volicord 상태를 만들어도 될 때만 워크플로 쓰기
+경로 간단 점검을 사용합니다. 해당 경로는 `volicord.intake`,
+`volicord.update_scope`, `volicord.record_run`, 닫기가 필요할 때 최종 수락을 위한
+`volicord.request_user_judgment`, 그리고 `volicord.check_close`를 사용할 수 있습니다.
+이 경로는 사용자가 최종 판단을 기록할 때까지 `Task`를 `missing_final_acceptance`로 막힌
+상태에 둘 수 있습니다.
 
 ## 호스트 의도 선택하기
 

@@ -256,14 +256,14 @@ installation records exist, doctor may also report detective host hook file
 installation, configuration health, runtime hook observation health, effective
 detective health, and host reload requirement as diagnostics. These diagnostics
 are local setup and observation checks; they are not proof of OS enforcement,
-sandboxing, write prevention, product correctness, or Close Status. Doctor also reports
-`selected_profile` and an observation summary that includes host-hook,
-session-watcher, cooperative decision, unrecorded-change detection, actor-proof,
-and OS-enforcement facts. Runtime-only capabilities such as session watcher
+sandboxing, write prevention, product correctness, or Close Status. Human
+doctor text may summarize profile and observation limits; exact
+`selected_profile`, `observation_summary`, and `control_surface` fields belong
+to JSON diagnostics. Runtime-only capabilities such as session watcher
 observation and local web consent are reported as unavailable unless the
 reporting process actually owns that runtime state. Doctor does not create
-projects, install host configuration, change
-connection mode, or answer user judgments.
+projects, install host configuration, change connection mode, or answer user
+judgments.
 Text and JSON doctor output include a diagnostic disclosure and the compact
 `summary_card` for the diagnostic view. JSON output uses
 `disclosure.guarantee_class=detective_observation` and `non_guarantees` values
@@ -373,9 +373,11 @@ through `PATH` and does not embed a personal Runtime Home path.
   `.volicord/policy.json` hook command policy, supported project-local host hook
   and rule files, and records the host-hook/session-watcher observation state.
 
-Detective-aware setup, status, verification, and doctor text output report
-`selected_profile` and an `observation_summary`. The corresponding JSON field is
-`control_surface`. The summary includes
+Detective-aware setup, status, verification, and doctor outputs report profile
+and observation status. Human text may summarize this through command-specific
+sections such as `Profile`, `Checks`, `Limits`, or `Diagnostics`; it is not a
+raw diagnostic dump. JSON diagnostics carry the exact `selected_profile`,
+`observation_summary`, and `control_surface` fields, including
 `host_hooks_active`, `session_watcher_active`,
 `cooperative_pre_tool_warning_available`,
 `cooperative_pre_tool_denial_available`,
@@ -563,17 +565,19 @@ result rule described above.
 Connection status and verification output must keep detective host hook file installation,
 configuration health, runtime hook observation health, effective detective health,
 host reload requirement, prompt-capture availability, and last host-hook event when
-known as separate diagnostics. Text output reports `selected_profile`, an
-`observation_summary`, cooperative pre-tool warning availability,
-cooperative pre-tool denial availability, post-tool correlation availability,
-unrecorded-change detection availability, prompt-capture availability, local web
-consent availability, hook path safety, hook command cwd independence, hook
-command subdirectory safety, watcher status, watcher baseline creation time,
-watcher coverage start time, watcher coverage basis, and any watcher
-partial-coverage warning as separate fields. Files installed or configured must
-not be reported as an active observed hook or as active host-hook
-observation before a matching observation exists. Incomplete session-watch
-coverage must not be reported as full unrecorded-change detection.
+known as separate diagnostics. JSON diagnostics carry exact fields for
+`selected_profile`, `observation_summary`, cooperative pre-tool warning
+availability, cooperative pre-tool denial availability, post-tool correlation
+availability, unrecorded-change detection availability, prompt-capture
+availability, local web consent availability, hook path safety, hook command
+cwd independence, hook command subdirectory safety, watcher status, watcher
+baseline creation time, watcher coverage start time, watcher coverage basis,
+and any watcher partial-coverage warning. Human text may summarize these
+diagnostics in compact sections; it must not be described as the raw diagnostic
+field dump. Files installed or configured must not be reported as an active
+observed hook or as active host-hook observation before a matching observation
+exists. Incomplete session-watch coverage must not be reported as full
+unrecorded-change detection.
 Text and JSON Agent Connection outputs are diagnostic outputs. JSON output uses
 `disclosure.guarantee_class=detective_observation` with stable
 `non_guarantees` for OS sandboxing, network isolation, malware defense, full

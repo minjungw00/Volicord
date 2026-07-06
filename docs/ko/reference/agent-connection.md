@@ -269,6 +269,19 @@ MCP 세션은 어댑터 시작 시 저장된 `connection_internal_id`를 가리�
 축소 노출 규칙은 [MCP 전송](mcp-transport.md#tool-discovery-and-toolscall-response-wrapping)이
 담당합니다.
 
+읽기 전용 연결 점검은 관리 검증과 활성 MCP 읽기 호출을 함께 사용합니다. 터미널에서는
+`volicord connection verify`를 실행하고, 활성 호스트 session에서는
+`volicord.list_projects`와 `volicord.status`를 호출합니다. 이 경로는 설정, 프로젝트
+탐색, 활성 읽기 도구 노출, 읽을 수 있는 프로젝트 상태를 검증합니다. `Task` 생성을
+요구하면 안 됩니다.
+
+워크플로 쓰기 경로 간단 점검은 Agent Connection 워크플로 도구를 사용하며 Volicord
+상태를 만들 수 있습니다. 최소 경로는 `volicord.intake`, `volicord.update_scope`,
+`volicord.record_run`, 닫기에 최종 수락이 필요할 때 `volicord.request_user_judgment`,
+그리고 `volicord.check_close`를 포함할 수 있습니다. 만들어진 `Task`는 사용자가 지원되는
+`User Channel`을 통해 필요한 최종 판단을 기록할 때까지 `missing_final_acceptance`로 막힌
+상태에 남을 수 있습니다.
+
 `volicord.record_user_judgment`는 `operation_category=user_only`입니다. User Channel
 경로를 위한 공개 Core API 메서드이지만 Agent Connection에는 노출되지 않습니다. 권한을
 지니는 답변을 기록하는 지원 로컬 사용자 경로는

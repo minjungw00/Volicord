@@ -91,6 +91,12 @@ Volicord 런타임 상태, SQLite 데이터베이스, 생성 기록, 런타임 �
 - Codex `.codex/rules/*.rules` 또는 `.claude/rules/` 아래의 Claude Code 파일 같은
   Volicord 관리 호스트 rule 파일
 
+일반 Record profile Codex 설정 파일은 `.codex/config.toml`, `.volicord/policy.json`,
+`AGENTS.md` 안의 Volicord 관리 안내 블록입니다. 이 파일들은 저장소 로컬 통합 파일이지
+Runtime Home 데이터가 아닙니다. 커밋할지는 `Product Repository` 정책 결정입니다. 공유
+Volicord/Codex 설정을 저장소와 함께 전달해야 하면 commit하고, 사용자별 설정이면 로컬에
+둡니다.
+
 규칙:
 
 - 관리 명령은 쓰기를 적용하기 전에 정확한 대상 경로와 내용을 미리 보여 줘야 합니다.

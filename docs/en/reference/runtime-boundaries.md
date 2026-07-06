@@ -92,6 +92,13 @@ The only baseline exceptions are explicitly requested integration files:
 - Volicord-managed host rule files, such as Codex `.codex/rules/*.rules` or
   Claude Code files under `.claude/rules/`
 
+The common Record-profile Codex setup files are `.codex/config.toml`,
+`.volicord/policy.json`, and a managed Volicord guidance block in `AGENTS.md`.
+These are repo-local integration files, not Runtime Home data. Whether to
+commit them is a `Product Repository` policy decision: commit them when shared
+Volicord/Codex setup should travel with the repository, and leave them local
+when the setup is user-specific.
+
 Rules:
 
 - The administrative command must preview the exact target path and content before applying the write.

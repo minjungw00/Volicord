@@ -43,6 +43,11 @@ approval은 여전히 호스트가 통제합니다. 로컬 Volicord 상태는 �
 서버가 터미널 쪽 점검 경로에서 시작하고 응답할 수 있다는 뜻입니다. 그 자체만으로 Codex,
 Claude Code 또는 다른 호스트가 프로젝트 설정을 로드, 신뢰, 승인했다는 증명은 아닙니다.
 
+공유 저장소 설정에서는 Product Repository의 설정 파일 정책에 따라 저장소 로컬 파일을
+commit할지 결정합니다. 다른 기여자나 자동화가 같은 Volicord/Codex 설정을 공유해야 하면
+`.codex/config.toml`, `.volicord/policy.json`, 관리 `AGENTS.md` 안내 블록을 commit합니다.
+사용자별 설정으로 남겨야 하면 로컬 설정 파일로 둡니다.
+
 ### Codex 호스트 검증 개념
 
 Codex 검증은 서로 관련된 개념을 분리해서 보고합니다. `Codex host process`는
@@ -391,6 +396,24 @@ host runtime 문제입니다. 먼저 활성 Codex session에 Volicord 도구가 
 Codex startup/tool-list log, Volicord storage read/write capability를 확인합니다. Host MCP
 command launchability는 명령 점검이 그 위험을 보고할 때 별도의 시작 환경 진단으로
 다룹니다.
+
+## 읽기 전용 및 워크플로 간단 점검
+
+호스트에 워크플로 상태 생성을 요청하기 전에는 읽기 전용 연결 점검을 사용합니다.
+
+1. 선택한 호스트와 저장소에 대해 `volicord connection verify`를 실행합니다.
+2. 활성 MCP 호스트 session에서 `volicord.list_projects`를 호출합니다.
+3. 같은 session에서 `volicord.status`를 호출합니다.
+
+이 경로는 설정, 활성 도구 표시, 프로젝트 선택, 읽을 수 있는 프로젝트 상태를 확인합니다.
+Volicord `Task` 생성을 요구하지 않아야 합니다.
+
+Volicord 상태를 만들어도 될 때만 워크플로 쓰기 경로 간단 점검을 사용합니다. 최소
+워크플로 경로는 `volicord.intake`, `volicord.update_scope`, `volicord.record_run`, 닫기가
+필요할 때 최종 수락을 위한 `volicord.request_user_judgment`, 그리고
+`volicord.check_close`를 사용할 수 있습니다. 이 경로는 사용자가 지원되는 `User Channel`을
+통해 최종 판단을 기록할 때까지 `Task`를 `missing_final_acceptance`로 막힌 상태에 둘 수
+있습니다.
 
 ## Generic MCP 호스트 설정
 

@@ -177,6 +177,12 @@ creates the Agent Connection, writes project-scoped MCP configuration that
 starts `volicord mcp --stdio`, writes project-scoped Volicord guidance and
 local setup files, and records integration status.
 
+For Codex, repo-local setup usually includes `.codex/config.toml`,
+`.volicord/policy.json`, and a managed Volicord guidance block in `AGENTS.md`.
+Commit these files only when you want shared Volicord/Codex setup to travel
+with the Product Repository; otherwise keep them as local setup files according
+to the repository's normal configuration policy.
+
 If the command reports `action_required`, follow the named host-controlled or
 local action, such as restarting or reloading the host, approving project MCP
 configuration, trusting the project, or repairing command availability. Then
@@ -204,6 +210,16 @@ configuration. For Codex, also check Codex project trust, Codex host runtime
 observation, host MCP command launchability in the Codex host process
 environment, and whether Volicord tools are exposed in the active Codex
 session.
+
+Before creating workflow state, use a read-only connection check: run
+`volicord connection verify`, then ask the active host to call
+`volicord.list_projects` and `volicord.status`. That check should not require
+creating a Volicord `Task`. Use a workflow write-path smoke check only when you
+are willing to create Volicord state: `volicord.intake`,
+`volicord.update_scope`, `volicord.record_run`,
+`volicord.request_user_judgment` for final acceptance when close is required,
+and `volicord.check_close`. The workflow path may leave the task blocked by
+`missing_final_acceptance` until you make the final judgment.
 
 The guided flow continues in [Quickstart](docs/en/user-guide/quickstart.md) and
 [Agent Host Setup](docs/en/user-guide/agent-host-setup.md). Exact command
@@ -386,13 +402,11 @@ watcher. Those hooks may provide cooperative host warning or denial decision
 signals, and the watcher may detect unrecorded Product Repository changes after
 its coverage starts.
 
-Volicord reports an observation summary for the selected connection or session.
-The summary tells you which surfaces are currently active:
-`selected_profile`, host hooks, session watcher observation, cooperative
-pre-tool warning or denial, unrecorded-change detection, actor identity proof,
-and OS enforcement. Current Volicord output reports no actor identity proof and
-no OS enforcement. Treat the summary as an operational disclosure, not a
-security proof.
+Default human status output keeps profile limits compact. Use JSON diagnostics
+when you need the exact selected profile, host-hook state, session-watcher
+state, Codex lifecycle observations, host policy overlay, guard or hook
+diagnostics, or storage capability details. Treat those diagnostics as
+operational disclosure, not a security proof.
 
 The `detective` profile does not prevent all writes, identify who changed a
 file, monitor all files, isolate the network, sandbox tools, or prove that a

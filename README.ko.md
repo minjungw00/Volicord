@@ -170,6 +170,11 @@ Runtime Home을 초기화하고, 설치 프로필을 기록하며, 선택한 Pro
 프로젝트 범위 MCP 설정을 씁니다. 또한 프로젝트 범위 Volicord 지침과 로컬 설정 파일을
 쓰고 통합 상태를 기록합니다.
 
+Codex에서는 저장소 로컬 설정으로 보통 `.codex/config.toml`,
+`.volicord/policy.json`, `AGENTS.md` 안의 Volicord 관리 안내 블록이 생깁니다. 이 파일은
+Product Repository에 공유 Volicord/Codex 설정을 함께 담고 싶을 때만 commit합니다. 그렇지
+않다면 저장소의 일반 설정 파일 정책에 따라 로컬 설정 파일로 둡니다.
+
 명령이 `action_required`를 보고하면 이름 붙은 호스트 통제 동작이나 로컬 동작을 따릅니다.
 예를 들면 호스트 restart 또는 reload, 프로젝트 MCP 설정 승인, 프로젝트 trust, 명령
 가용성 복구가 있습니다. 그런 뒤 연결을 확인합니다.
@@ -193,6 +198,15 @@ CLI MCP preflight 또는 handshake 성공은 Volicord의 MCP 서버가 CLI 점�
 설정을 로드, 신뢰, 승인했다는 증명은 아닙니다. Codex에서는 Codex 프로젝트 trust,
 Codex host runtime 관찰, `Codex host process` 환경의 호스트 MCP 명령 launch 가능성,
 활성 Codex session에 Volicord 도구가 노출되는지도 함께 확인합니다.
+
+워크플로 상태를 만들기 전에는 읽기 전용 연결 점검을 사용합니다. 먼저
+`volicord connection verify`를 실행하고, 활성 호스트에 `volicord.list_projects`와
+`volicord.status`를 호출하게 합니다. 이 점검은 Volicord `Task` 생성을 요구하지 않아야
+합니다. 워크플로 쓰기 경로 간단 점검은 Volicord 상태를 만들어도 될 때만 사용합니다.
+그 경로는 `volicord.intake`, `volicord.update_scope`, `volicord.record_run`, 닫기가
+필요할 때 최종 수락을 위한 `volicord.request_user_judgment`, 그리고
+`volicord.check_close`를 사용할 수 있습니다. 이 워크플로 경로는 사용자가 최종 판단을
+내릴 때까지 `Task`를 `missing_final_acceptance`로 막힌 상태에 둘 수 있습니다.
 
 안내 흐름은 [빠른 시작](docs/ko/user-guide/quickstart.md)과
 [에이전트 호스트 설정](docs/ko/user-guide/agent-host-setup.md)으로 이어집니다.
@@ -366,11 +380,10 @@ host hook과 session watcher를 더합니다. 이 hook은 협력형 host warning
 decision 신호를 제공할 수 있고, watcher는 coverage가 시작된 뒤 미기록 Product Repository
 변경을 탐지할 수 있습니다.
 
-Volicord는 선택된 연결 또는 session에 대해 관찰 요약을 보고합니다. 이 요약은 현재 어떤
-표면이 활성인지 알려 줍니다. 여기에는 `selected_profile`, host hook, session watcher
-관찰, 협력형 pre-tool warning 또는 denial, 미기록 변경 탐지, 행위자 identity 증명, OS
-집행이 포함됩니다. 현재 Volicord 출력은 행위자 identity 증명과 OS 집행을 제공하지 않는다고
-보고합니다. 이 요약은 운영 상태 공개이며 보안 증명이 아닙니다.
+기본 사람용 status 출력은 프로필 한계를 간결하게 보여 줍니다. 정확한 선택 프로필,
+host-hook 상태, session-watcher 상태, Codex lifecycle 관찰, host policy overlay,
+guard 또는 hook 진단, 저장소 capability 세부사항이 필요하면 JSON 진단을 사용합니다. 이
+진단은 운영 상태 공개이지 보안 증명이 아닙니다.
 
 `detective` 프로필은 모든 쓰기를 막거나, 파일을 바꾼 사람이 누구인지 식별하거나, 모든
 파일을 감시하거나, 네트워크를 격리하거나, 도구를 샌드박스하거나, 모델이 지침을 따랐다는 것을

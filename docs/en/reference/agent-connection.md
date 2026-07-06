@@ -306,6 +306,20 @@ also constrained by the selected projects' readable and writable storage
 capability; [MCP Transport](mcp-transport.md#tool-discovery-and-toolscall-response-wrapping)
 owns the transport-level discovery and read-only-storage degradation rules.
 
+A read-only connectivity check combines administrative verification with
+active MCP read calls: `volicord connection verify` from the terminal, then
+`volicord.list_projects` and `volicord.status` from the active host session.
+That path verifies configuration, project discovery, active read-tool exposure,
+and readable project state. It must not require creating a `Task`.
+
+A workflow write-path smoke check uses Agent Connection workflow tools and can
+create Volicord state. A minimal path can include `volicord.intake`,
+`volicord.update_scope`, `volicord.record_run`,
+`volicord.request_user_judgment` when final acceptance is required for close,
+and `volicord.check_close`. The resulting task can remain blocked by
+`missing_final_acceptance` until the user records the required final judgment
+through a supported `User Channel`.
+
 `volicord.record_user_judgment` has `operation_category=user_only`. It is a
 public Core API method for the User Channel path, but it is not exposed by Agent
 Connections. The supported local user path for recording an authority-bearing
