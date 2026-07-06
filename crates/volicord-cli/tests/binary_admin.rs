@@ -2986,7 +2986,8 @@ fn connect_respects_explicit_read_only_and_uses_same_dry_run_plan() -> Result<()
 
 #[cfg(unix)]
 #[test]
-fn connection_verify_manual_probe_does_not_complete_connection() -> Result<(), Box<dyn Error>> {
+fn connection_verify_complete_when_active_codex_tools_are_confirmed() -> Result<(), Box<dyn Error>>
+{
     let runtime_home = TempRuntimeHome::new("cli-bin-verification-watch-skip")?;
     let repo_root = runtime_home.create_product_repo("product-repo")?;
     fs::create_dir_all(repo_root.join(".git"))?;
@@ -3307,33 +3308,7 @@ fn connection_verify_manual_probe_does_not_complete_connection() -> Result<(), B
     )?;
     assert_success(&managed_verify);
     let managed_value = json_stdout(&managed_verify)?;
-    assert_eq!(managed_value["status"], VERIFIED_STATUS_COMPLETE);
-    assert_eq!(
-        managed_value["connection"]["verification_status"],
-        VERIFIED_STATUS_COMPLETE
-    );
-    assert_eq!(
-        managed_value["verification"]["host_runtime"]["status"], "observed",
-        "{managed_value}"
-    );
-    assert_eq!(
-        managed_value["verification"]["host_runtime"]["managed_host_startup"], "observed",
-        "{managed_value}"
-    );
-    assert_eq!(
-        managed_value["verification"]["host_runtime"]["managed_host_tools_list"], "observed",
-        "{managed_value}"
-    );
-    assert_eq!(
-        managed_value["verification"]["host_runtime"]["managed_host_tool_call"], "observed",
-        "{managed_value}"
-    );
-    assert_eq!(
-        managed_value["verification"]["active_tool_exposure"],
-        "confirmed"
-    );
-    assert_eq!(managed_value["primary_next_action"], Value::Null);
-    assert_eq!(managed_value["summary_card"]["next"], "none");
+    assert_complete_codex_connection_json(&managed_value);
     assert!(managed_value["checks"]
         .as_array()
         .expect("checks should be an array")
@@ -3357,8 +3332,88 @@ fn connection_verify_manual_probe_does_not_complete_connection() -> Result<(), B
     )?;
     assert_success(&status);
     let status_value = json_stdout(&status)?;
-    assert_eq!(status_value["status"], VERIFIED_STATUS_COMPLETE);
-    assert_eq!(status_value["summary_card"]["next"], "none");
+    assert_complete_codex_connection_json(&status_value);
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn connection_status_complete_when_managed_codex_tool_call_is_observed(
+) -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-status-managed-tool-call")?;
+    let repo_root = create_git_repo(&runtime_home, "product-repo")?;
+    let bin_dir = runtime_home.path().join("bin");
+    let codex_home = runtime_home.path().join("codex-home");
+    write_fake_codex(&bin_dir)?;
+    write_fake_mcp(&bin_dir)?;
+    write_codex_project_trust(&codex_home, &repo_root, "trusted")?;
+    let env = [
+        ("PATH", path_env(&[bin_dir.as_path()])),
+        ("CODEX_HOME", path_text(&codex_home)),
+        ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
+    ];
+
+    let init = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--host",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--profile",
+            "record",
+            "--json",
+        ],
+        &env,
+    )?;
+    assert_success(&init);
+    let init_value = json_stdout(&init)?;
+    let connection_id = init_value["connection"]["connection_id"]
+        .as_str()
+        .expect("connection id should be present")
+        .to_owned();
+    let projects = list_connection_projects(runtime_home.path(), &connection_id)?;
+    assert_eq!(projects.len(), 1);
+
+    insert_managed_codex_tool_call_baseline(
+        runtime_home.path(),
+        &projects[0],
+        "status_managed_tool_call",
+    )?;
+
+    let verify = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connection",
+            "verify",
+            "codex",
+            "--shared",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--json",
+        ],
+        &env,
+    )?;
+    assert_success(&verify);
+    assert_complete_codex_connection_json(&json_stdout(&verify)?);
+
+    let status = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connection",
+            "status",
+            "codex",
+            "--shared",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--json",
+        ],
+        &[("CODEX_HOME", path_text(&codex_home))],
+    )?;
+    assert_success(&status);
+    let status_value = json_stdout(&status)?;
+    assert_complete_codex_connection_json(&status_value);
     Ok(())
 }
 
@@ -3940,6 +3995,7 @@ fn codex_tool_approval_overlay_is_match_and_preserved_by_init() -> Result<(), Bo
     assert_success(&status);
     let status_json = json_stdout(&status)?;
     assert_eq!(status_json["states"]["mcp_config"], "match");
+    assert!(!status_json.to_string().contains("mcp_config_changed"));
     assert_ne!(
         status_json["primary_next_action"]["id"],
         "mcp_config_changed"
@@ -4053,15 +4109,15 @@ fn codex_tool_approval_overlay_is_match_and_preserved_by_init() -> Result<(), Bo
     )?;
     assert_success(&verify);
     let verify_json = json_stdout(&verify)?;
-    assert_eq!(verify_json["status"], VERIFIED_STATUS_COMPLETE);
-    assert_eq!(
-        verify_json["connection"]["verification_status"],
-        VERIFIED_STATUS_COMPLETE
-    );
+    assert_complete_codex_connection_json(&verify_json);
     assert_eq!(verify_json["states"]["mcp_config"], "match");
     assert_eq!(
         verify_json["verification"]["host"]["managed_config"],
         "match"
+    );
+    assert_eq!(
+        verify_json["verification"]["host"]["host_policy_overlay"]["present"],
+        true
     );
     assert_eq!(
         verify_json["verification"]["host"]["host_policy_overlay"]["kind"],
@@ -4101,9 +4157,8 @@ fn codex_tool_approval_overlay_is_match_and_preserved_by_init() -> Result<(), Bo
     )?;
     assert_success(&complete_status);
     let complete_status_json = json_stdout(&complete_status)?;
-    assert_eq!(complete_status_json["status"], VERIFIED_STATUS_COMPLETE);
+    assert_complete_codex_connection_json(&complete_status_json);
     assert_eq!(complete_status_json["states"]["mcp_config"], "match");
-    assert_eq!(complete_status_json["primary_next_action"], Value::Null);
     assert!(!stdout(&complete_status).contains("volicord init --host codex --repo"));
     Ok(())
 }
@@ -5312,6 +5367,154 @@ fn assert_connection_text_omits_diagnostic_dump_fields(text: &str) {
     }
 }
 
+#[cfg(unix)]
+fn assert_complete_codex_connection_json(value: &Value) {
+    assert_eq!(value["status"], VERIFIED_STATUS_COMPLETE, "{value}");
+    assert_eq!(
+        value["connection"]["verification_status"], VERIFIED_STATUS_COMPLETE,
+        "{value}"
+    );
+    let verification = if value["verification"].is_object() {
+        &value["verification"]
+    } else {
+        &value["connection"]["verification_report"]
+    };
+    assert_eq!(verification["status"], VERIFIED_STATUS_COMPLETE);
+    assert_eq!(value["states"]["connection"], VERIFIED_STATUS_COMPLETE);
+    assert_eq!(value["states"]["mcp_config"], "match");
+    assert_eq!(verification["host"]["managed_config"], "match");
+    assert_eq!(verification["project_trust"]["status"], "trusted");
+    assert_eq!(verification["cli_mcp_preflight"]["status"], "passed");
+    assert_eq!(verification["cli_mcp_handshake"]["status"], "passed");
+    assert_eq!(verification["host_runtime"]["status"], "observed");
+    assert_eq!(
+        verification["host_runtime"]["managed_host_startup"],
+        "observed"
+    );
+    assert_eq!(
+        verification["host_runtime"]["managed_host_tools_list"],
+        "observed"
+    );
+    assert_eq!(
+        verification["host_runtime"]["managed_host_tool_call"],
+        "observed"
+    );
+    assert_eq!(verification["managed_host_startup"], "observed");
+    assert_eq!(verification["managed_host_tools_list"], "observed");
+    assert_eq!(verification["managed_host_tool_call"], "observed");
+    assert_eq!(verification["active_tool_exposure"], "confirmed");
+    assert_eq!(value["primary_next_action"], Value::Null);
+    assert_eq!(value["summary_card"]["next"], "none");
+    assert_record_profile_detective_checks_are_skipped(value);
+    assert_complete_codex_json_omits_known_regressions(value);
+
+    let checks = value["checks"]
+        .as_array()
+        .expect("checks should be an array");
+    for id in [
+        "managed_host_startup",
+        "managed_host_tools_list",
+        "managed_host_tool_call",
+    ] {
+        assert!(
+            checks.iter().any(|check| check["id"] == id
+                && check["status"] == "passed"
+                && check["details"]["value"] == "observed"),
+            "complete output should include passed {id} check: {value}"
+        );
+    }
+    assert!(checks
+        .iter()
+        .any(|check| check["id"] == "active_tool_exposure"
+            && check["status"] == "passed"
+            && check["details"]["value"] == "confirmed"));
+    assert!(!checks
+        .iter()
+        .any(|check| check["id"] == "active_tool_exposure"
+            && check["details"]["value"] == "unconfirmed"));
+}
+
+#[cfg(unix)]
+fn assert_record_profile_detective_checks_are_skipped(value: &Value) {
+    assert_eq!(value["states"]["selected_profile"], "record");
+    assert!(
+        matches!(
+            value["states"]["guard_files"].as_str(),
+            Some("disabled" | "not_configured")
+        ),
+        "record profile guard files should be disabled or not configured: {value}"
+    );
+    assert!(
+        matches!(
+            value["states"]["hook_config"].as_str(),
+            Some("disabled" | "not_configured")
+        ),
+        "record profile hook config should be disabled or not configured: {value}"
+    );
+    assert!(
+        matches!(
+            value["states"]["required_hook_phases"].as_str(),
+            Some("configured" | "disabled" | "not_configured")
+        ),
+        "record profile hook phases should not require detective action: {value}"
+    );
+    assert!(
+        matches!(
+            value["states"]["hook_path_safety"].as_str(),
+            Some("not_applicable" | "not_checked")
+        ),
+        "record profile hook path safety should be skipped or not applicable: {value}"
+    );
+    assert!(
+        matches!(
+            value["host_hook"]["hook_path_safety"].as_str(),
+            Some("not_applicable" | "not_checked")
+        ),
+        "record profile host hook path safety should be skipped or not applicable: {value}"
+    );
+
+    let checks = value["checks"]
+        .as_array()
+        .expect("checks should be an array");
+    let guard_files_check = checks
+        .iter()
+        .find(|check| check["id"] == "guard_files_installed")
+        .expect("guard files check should be present");
+    assert_eq!(guard_files_check["status"], "skipped");
+    assert_eq!(
+        guard_files_check["summary"],
+        "detective host-hook files are not applicable for the record profile"
+    );
+    let prompt_capture_check = checks
+        .iter()
+        .find(|check| check["id"] == "prompt_capture_available")
+        .expect("prompt capture check should be present");
+    assert_eq!(prompt_capture_check["status"], "skipped");
+    assert!(checks.iter().all(|check| {
+        check["summary"]
+            .as_str()
+            .is_none_or(|summary| summary != "detective host-hook files are stale")
+    }));
+}
+
+#[cfg(unix)]
+fn assert_complete_codex_json_omits_known_regressions(value: &Value) {
+    let text = value.to_string();
+    for forbidden in [
+        "host_trust_required",
+        "host_mcp_command_path_unconfirmed",
+        "mcp_config_changed",
+        "detective host-hook files are stale",
+        "active_tool_exposure_unconfirmed",
+        "\"unconfirmed\"",
+    ] {
+        assert!(
+            !text.contains(forbidden),
+            "complete Codex output should not contain `{forbidden}`: {value}"
+        );
+    }
+}
+
 fn assert_non_connection_text_omits_diagnostic_dump_fields(text: &str) {
     for forbidden in [
         "Result:",
@@ -5604,6 +5807,53 @@ fn insert_test_watch_baseline(
         },
     )?;
     Ok(())
+}
+
+fn insert_managed_codex_tool_call_baseline(
+    runtime_home: &Path,
+    project: &volicord_store::agent_connections::ConnectionProjectRecord,
+    suffix: &str,
+) -> Result<(), Box<dyn Error>> {
+    insert_test_watch_baseline(
+        runtime_home,
+        project,
+        suffix,
+        &json!({
+            "lifecycle_events": [
+                {
+                    "connection_id": project.connection_internal_id,
+                    "project_id": project.project_id,
+                    "host_kind": "codex",
+                    "launch_origin": "managed_host",
+                    "lifecycle_event": "managed_host_startup",
+                    "timestamp": "2026-07-01T00:03:00Z",
+                    "storage_capability": "read_write",
+                    "effective_tool_mode": "workflow"
+                },
+                {
+                    "connection_id": project.connection_internal_id,
+                    "project_id": project.project_id,
+                    "host_kind": "codex",
+                    "launch_origin": "managed_host",
+                    "lifecycle_event": "managed_host_tools_list",
+                    "timestamp": "2026-07-01T00:03:01Z",
+                    "storage_capability": "read_write",
+                    "effective_tool_mode": "workflow"
+                },
+                {
+                    "connection_id": project.connection_internal_id,
+                    "project_id": project.project_id,
+                    "host_kind": "codex",
+                    "launch_origin": "managed_host",
+                    "lifecycle_event": "managed_host_tool_call",
+                    "timestamp": "2026-07-01T00:03:02Z",
+                    "storage_capability": "read_write",
+                    "effective_tool_mode": "workflow"
+                }
+            ]
+        })
+        .to_string(),
+    )
 }
 
 fn verify_checksum_line(root: &Path, line: &str) -> Result<String, Box<dyn Error>> {
