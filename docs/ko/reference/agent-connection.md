@@ -87,6 +87,29 @@ Volicord 관리 호스트 설정은 Volicord가 특정 생성 호스트 설정 �
 그 상태는 hook 관련 구현 기록을 위한 검증된 출처를 설명하며, 공개 통합 모드나 보안 경계가
 아닙니다.
 
+Agent Connection 검증은 아래 계층을 분리해 유지합니다.
+
+- 호스트 관리 설정 identity: 선택된 연결에 필요한 관리 서버 이름, command, args,
+  environment, scope, fingerprint
+- 호스트 trust, approval, pending 상태: trust, 프로젝트 MCP approval, OAuth, pending
+  approval, rejection 같은 호스트 소유 gate
+- 호스트 policy overlay: 관리 identity가 계속 일치할 때 Volicord 설정 drift가 아니라
+  관리 설정 위에 얹힌 호스트 소유 approval 또는 permission 설정
+- CLI MCP preflight와 handshake: Volicord MCP 서버에 대한 터미널 쪽 시작과 프로토콜 점검
+- 관리 호스트 시작: 선택된 연결에 대해 관리 호스트 프로세스가 Volicord MCP 서버를
+  시작했다는 lifecycle 증거
+- 관리 호스트 `tools/list`: 관리 호스트 프로세스가 MCP 도구 탐색에 도달했다는 lifecycle
+  증거
+- 관리 호스트 도구 호출: 관리 호스트 프로세스가 Volicord 도구를 호출했다는 lifecycle 증거
+- 활성 도구 노출: 활성 호스트 session이 현재 호스트 도구 목록, 도구 검색, 또는 명시적으로
+  신뢰할 수 있는 다른 출처에서 Volicord 도구를 볼 수 있다는 증거
+- 저장소 capability: 선택된 프로세스 바인딩이 registry와 project state를 읽을 수 있는지,
+  workflow 도구에는 project state를 쓸 수 있는지
+
+CLI 쪽 MCP preflight, `volicord mcp --check`, 직접 MCP handshake는 프로세스 시작과
+프로토콜 진단입니다. 그 자체만으로 Codex, Claude Code 또는 다른 외부 호스트가 프로젝트
+설정을 로드, 신뢰, 승인, 초기화, 노출했다는 증명이 아닙니다.
+
 Codex 프로젝트 범위 MCP 설정에서 Volicord가 관리하는 `managed identity`는 `volicord`
 서버 이름, 선택된 연결과 프로젝트 바인딩을 담은 생성 command와 args, 그리고
 `VOLICORD_MCP_LAUNCH=managed_host`, `VOLICORD_MCP_HOST=codex`,
@@ -197,6 +220,15 @@ Connection Projects는 Agent Connection과 등록 프로젝트 사이의 명시�
   handshake, 수동 또는 권한 상승 probe, 관리 시작 관찰, 관리 `tools/list` 관찰은 관리
   도구 호출 증거 또는 명시적으로 신뢰할 수 있는 다른 활성 도구 노출 출처를 대신하지
   않습니다.
+- Claude Code 관리 검증은 프로젝트 `.mcp.json` 항목과 `claude mcp get` 출력에서 command,
+  args, environment, scope가 일치하는지 점검하고 connected, pending approval, rejected,
+  missing, changed, unavailable, unknown 호스트 상태를 보고할 수 있습니다. 현재 Claude Code
+  verification만으로는 활성 Claude Code session의 도구 노출, 관리 lifecycle 시작, 관리
+  `tools/list`, 관리 도구 호출 증거, 실행 중인 Claude Code session 안의 저장소 capability가
+  증명되지 않습니다.
+- MCP 설정 변경 뒤 호스트 프로세스에는 full restart, reload, resume, 또는 새 session이
+  필요할 수 있습니다. 호스트를 시작한 터미널은 나중에 호스트 안에서 연 터미널과 다른
+  PATH나 설정 snapshot을 가질 수 있습니다.
 - 사람용 text status와 verification 출력은 대화형 사용자를 위한 진단 요약입니다.
   `volicord connection status`와 `volicord connection verify`에서는 먼저 `Status`,
   `Checks`, `Next`, `Diagnostics`를 읽습니다. 자동화와 전체 진단 점검은

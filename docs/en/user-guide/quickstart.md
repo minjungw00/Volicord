@@ -63,10 +63,13 @@ Diagnostics:
 
 The summary distinguishes files written inside the Product Repository from
 local Volicord state stored in the Runtime Home. It does not mean an already
-running Codex session has loaded, trusted, or approved the new configuration.
-The repo-local files are ordinary Product Repository setup files. Commit
-`.codex/config.toml`, `.volicord/policy.json`, and the managed `AGENTS.md`
-guidance block only when you want shared Volicord/Codex setup in that
+running host session has loaded, trusted, approved, or exposed the new
+configuration. The repo-local files are ordinary Product Repository setup
+files. Codex setup usually writes `.codex/config.toml`,
+`.volicord/policy.json`, and the managed `AGENTS.md` guidance block. Claude
+Code project setup writes `.mcp.json`; detective setup can also write
+`.claude/settings.json`, `.claude/rules/volicord.md`, and `.claude/hooks/`.
+Commit these files only when you want shared Volicord and host setup in that
 repository.
 For user workflow, the Record profile supports cooperative Volicord workflow
 recording through MCP. It is not a security, correctness, test-sufficiency, or
@@ -118,12 +121,16 @@ Detective host hook path repair guidance belongs to
 [Agent Host Troubleshooting](../user-guide/agent-host-troubleshooting.md#guard-hook-path-or-wrapper-is-unsafe).
 CLI verification can prove that Volicord's MCP server can start and respond
 from the terminal-side check path. It does not by itself prove that Codex,
-Claude Code, or another host has loaded, trusted, or approved the project
-configuration. For Codex, also check the Codex project trust line, Codex host
-runtime diagnostics for managed MCP startup, managed `tools/list`, managed tool
-call, host MCP command launchability, and whether Volicord tools are exposed in
-the active Codex session. A PATH-resolved MCP command such as `volicord` must
-be available on the PATH seen by the Codex host process.
+Claude Code, or another host has loaded, trusted, approved, or exposed the
+project configuration. For Codex, also check the Codex project trust line,
+Codex host runtime diagnostics for managed MCP startup, managed `tools/list`,
+managed tool call, host MCP command launchability, and whether Volicord tools
+are exposed in the active Codex session. A PATH-resolved MCP command such as
+`volicord` must be available on the PATH seen by the Codex host process.
+For Claude Code, use `claude mcp list`, `claude mcp get volicord`, project
+`.mcp.json`, project approval or pending state, `/mcp`, Claude Code
+permissions, and an active `volicord.list_projects` or `volicord.status` call
+to validate active runtime exposure in the Claude Code environment.
 If `tools/list` succeeds but only read-compatible tools appear, the MCP host
 environment may be running in read-only degraded mode because it can read but
 cannot write project state. Use

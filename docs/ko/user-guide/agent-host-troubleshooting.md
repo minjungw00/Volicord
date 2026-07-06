@@ -94,8 +94,9 @@ init을 사용합니다.
 
 설치된 `volicord` 바이너리를 사용자가 제어하는 명령 디렉터리에 두거나 링크한 뒤, 그
 디렉터리가 `PATH`에 보이도록 합니다. Volicord는 현재 부모 셸 환경을 직접 바꿀 수
-없습니다. 이미 실행 중인 에이전트 호스트는 새 명령 디렉터리를 보려면 restart 또는
-reload가 필요할 수 있습니다.
+없습니다. 이미 실행 중인 에이전트 호스트는 새 명령 디렉터리를 보려면 restart, reload,
+resume, 또는 새 session이 필요할 수 있습니다. 나중에 호스트 안에서 연 터미널만이 아니라
+호스트를 시작한 환경을 확인합니다.
 
 ## 저장소가 감지되지 않음
 
@@ -236,6 +237,56 @@ workflow 변경 도구가 필요할 때 선택된 Runtime Home과 프로젝트 �
 workflow 도구를 기대하지 않습니다. 권한을 높인 실행은 성공하지만 일반 호스트 sandbox가
 실패한다면, 이를 활성 호스트 session이 같은 도구를 로드하거나 노출했다는 증명이 아니라
 저장소 capability 진단으로 봅니다.
+
+## Claude Code 설정은 있지만 도구가 노출되지 않음
+
+관찰 증상: `volicord connection status claude-code` 또는
+`volicord connection verify claude-code`가 설정 일치, connected 호스트 상태, 또는
+`action_required`를 보고하지만 활성 Claude Code session에 `volicord.*` 도구가 보이지
+않습니다.
+
+이는 Volicord가 관리 Claude Code 설정이나 `claude mcp get` 상태를 검사할 수 있다는
+뜻입니다. 그러나 활성 Claude Code session 도구 노출이 증명된 것은 아닙니다. 현재 Claude
+Code verification만으로는 실행 중인 Claude Code session 안의 관리 lifecycle 시작, 관리
+`tools/list`, 관리 도구 호출 증거, 저장소 capability가 증명되지 않습니다.
+
+제한된 복구:
+
+1. 호스트 설정과 approval 상태를 확인합니다.
+
+   ```sh
+   claude mcp list
+   claude mcp get volicord
+   ```
+
+2. Shared 프로젝트 설정에서는 프로젝트 `.mcp.json`을 확인하고 프로젝트 서버 항목이
+   approval 대기인지, rejected 상태인지 확인합니다.
+3. 활성 Claude Code session에서 `/mcp`를 확인하고, Volicord 도구에 대한 permissions가
+   호스트 policy에 맞게 allow, ask, deny 중 무엇인지 확인합니다.
+4. Claude Code를 시작하거나 resume하기 전에 호스트 시작 환경을 확인합니다.
+
+   ```sh
+   command -v volicord
+   ```
+
+5. 프로세스 바인딩의 Volicord 시작과 저장소 capability를 확인합니다.
+
+   ```sh
+   volicord mcp --check --connection "<connection_id>" --project "<project_id>"
+   ```
+
+6. Claude Code에서 `volicord.list_projects`와 `volicord.status`부터 읽기 전용 활성 도구
+   호출을 시도합니다.
+7. 호스트 쪽 동작 뒤 Volicord verification을 다시 실행합니다.
+
+   ```sh
+   volicord connection verify claude-code --repo "<repo>"
+   volicord connection status claude-code --repo "<repo>"
+   ```
+
+Claude Code approval 또는 permission overlay를 일반 복구 방법으로 삭제하지 않습니다.
+이름 붙은 호스트 approval, pending 상태, 시작 환경, 관리 설정 불일치, 저장소 capability
+문제만 고칩니다.
 
 <a id="trusted-codex-project-but-host-runtime-is-not-observed"></a>
 ## Codex 프로젝트가 trusted이고 CLI handshake도 통과했지만 도구가 노출되지 않음

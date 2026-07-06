@@ -171,9 +171,11 @@ Runtime Home을 초기화하고, 설치 프로필을 기록하며, 선택한 Pro
 쓰고 통합 상태를 기록합니다.
 
 Codex에서는 저장소 로컬 설정으로 보통 `.codex/config.toml`,
-`.volicord/policy.json`, `AGENTS.md` 안의 Volicord 관리 안내 블록이 생깁니다. 이 파일은
-Product Repository에 공유 Volicord/Codex 설정을 함께 담고 싶을 때만 commit합니다. 그렇지
-않다면 저장소의 일반 설정 파일 정책에 따라 로컬 설정 파일로 둡니다.
+`.volicord/policy.json`, `AGENTS.md` 안의 Volicord 관리 안내 블록이 생깁니다. Claude
+Code에서는 프로젝트 설정으로 `.mcp.json`이 생기며, detective 설정은
+`.claude/settings.json`, `.claude/rules/volicord.md`, `.claude/hooks/`도 쓸 수 있습니다.
+이 파일은 Product Repository에 공유 Volicord와 호스트 설정을 함께 담고 싶을 때만
+commit합니다. 그렇지 않다면 저장소의 일반 설정 파일 정책에 따라 로컬 설정 파일로 둡니다.
 
 명령이 `action_required`를 보고하면 이름 붙은 호스트 통제 동작이나 로컬 동작을 따릅니다.
 예를 들면 호스트 restart 또는 reload, 프로젝트 MCP 설정 승인, 프로젝트 trust, 명령
@@ -195,9 +197,13 @@ volicord connection status codex --shared --repo /path/to/your-product-repo --js
 
 CLI MCP preflight 또는 handshake 성공은 Volicord의 MCP 서버가 CLI 점검 경로에서 시작하고
 응답할 수 있다는 뜻입니다. 그 자체만으로 Codex, Claude Code 또는 다른 호스트가 프로젝트
-설정을 로드, 신뢰, 승인했다는 증명은 아닙니다. Codex에서는 Codex 프로젝트 trust,
+설정을 로드, 신뢰, 승인, 노출했다는 증명은 아닙니다. Codex에서는 Codex 프로젝트 trust,
 Codex host runtime 관찰, `Codex host process` 환경의 호스트 MCP 명령 launch 가능성,
 활성 Codex session에 Volicord 도구가 노출되는지도 함께 확인합니다.
+Claude Code에서는 `claude mcp list`, `claude mcp get volicord`, 프로젝트 `.mcp.json`,
+프로젝트 approval 또는 pending 상태, `/mcp`, Claude Code permissions, 활성
+`volicord.list_projects` 또는 `volicord.status` 호출로 Claude Code 환경의 활성 런타임
+노출을 검증합니다.
 
 워크플로 상태를 만들기 전에는 읽기 전용 연결 점검을 사용합니다. 먼저
 `volicord connection verify`를 실행하고, 활성 호스트에 `volicord.list_projects`와

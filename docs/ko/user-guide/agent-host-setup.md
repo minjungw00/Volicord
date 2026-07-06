@@ -38,17 +38,40 @@ init 뒤에는 터미널 밖에서 호스트가 소유한 후속 동작을 완�
 저장소 로컬 설정을 썼다는 사실은 이미 실행 중인 호스트가 그 설정을 로드, 신뢰,
 승인했다는 증명이 아닙니다. Init은 `.codex/config.toml` 또는 `.mcp.json`,
 `.volicord/policy.json`, 관리 `AGENTS.md` 안내를 쓸 수 있지만, reload, restart, trust,
-approval은 여전히 호스트가 통제합니다. 로컬 Volicord 상태는 이런 Product Repository 파일과
-별도로 Runtime Home에 저장됩니다. CLI MCP preflight 또는 handshake 성공은 Volicord의 MCP
-서버가 터미널 쪽 점검 경로에서 시작하고 응답할 수 있다는 뜻입니다. 그 자체만으로 Codex,
-Claude Code 또는 다른 호스트가 프로젝트 설정을 로드, 신뢰, 승인했다는 증명은 아닙니다.
+approval은 여전히 호스트가 통제합니다. MCP 설정을 바꾼 뒤 호스트에는 full restart,
+reload, resume, 또는 새 session이 필요할 수 있습니다. 또한 호스트를 시작한 터미널의
+PATH나 설정 snapshot은 나중에 호스트 안에서 연 터미널과 다를 수 있습니다. 로컬 Volicord
+상태는 이런 Product Repository 파일과 별도로 Runtime Home에 저장됩니다. CLI MCP preflight
+또는 handshake 성공은 Volicord의 MCP 서버가 터미널 쪽 점검 경로에서 시작하고 응답할 수
+있다는 뜻입니다. 그 자체만으로 Codex, Claude Code 또는 다른 호스트가 프로젝트 설정을
+로드, 신뢰, 승인, 초기화, 노출했다는 증명은 아닙니다.
 
 공유 저장소 설정에서는 Product Repository의 설정 파일 정책에 따라 저장소 로컬 파일을
-commit할지 결정합니다. 다른 기여자나 자동화가 같은 Volicord/Codex 설정을 공유해야 하면
-`.codex/config.toml`, `.volicord/policy.json`, 관리 `AGENTS.md` 안내 블록을 commit합니다.
-사용자별 설정으로 남겨야 하면 로컬 설정 파일로 둡니다.
+commit할지 결정합니다. Codex 설정은 보통 `.codex/config.toml`,
+`.volicord/policy.json`, 관리 `AGENTS.md` 안내 블록을 건드립니다. Claude Code 프로젝트
+설정은 `.mcp.json`을 쓰며, Detective profile은 `.claude/settings.json`,
+`.claude/rules/volicord.md`, `.claude/hooks/` wrapper script도 쓸 수 있습니다. 다른
+기여자나 자동화가 같은 Volicord와 호스트 설정을 공유해야 할 때만 이런 설정 파일을
+commit합니다. 사용자별 설정으로 남겨야 하면 로컬 설정 파일로 둡니다.
 
-### Codex 호스트 검증 개념
+### 호스트 검증 계층
+
+Volicord는 연결 경로를 여러 계층으로 나눕니다. 각 계층은 서로 다른 질문에 답하므로,
+앞선 계층만으로 뒤 계층을 추론하면 안 됩니다.
+
+| 계층 | 보여 줄 수 있는 것 | 증명하지 않는 것 |
+|---|---|---|
+| 호스트 관리 설정 identity | 호스트 설정 대상에 선택된 연결에 필요한 Volicord 관리 서버 이름, command, args, environment, fingerprint가 있습니다. | 호스트가 그 항목을 로드, 신뢰, 승인, 초기화, 노출했다는 뜻은 아닙니다. |
+| 호스트 trust, approval, pending 상태 | 호스트가 trust, approval, OAuth, pending, rejected 또는 비슷한 사용자 통제 gate를 보고하거나 요구합니다. | Volicord는 그 gate를 우회할 수 없으며, gate가 준비되어도 활성 도구 노출이 증명되지는 않습니다. |
+| 호스트 policy overlay | 호스트 소유 approval 또는 permission overlay가 있으며, 관리 identity가 계속 일치하면 일반 Volicord 설정 drift로 보지 않아야 합니다. | Overlay는 Volicord 쓰기 티켓, 보안 보장, 활성 session 승인 증명, 행위자 증명이 아닙니다. |
+| CLI MCP preflight와 handshake | `volicord connection verify`가 터미널 쪽 점검 환경에서 MCP 서버를 시작하고 통신할 수 있습니다. | CLI 쪽 MCP handshake만으로 활성 호스트 도구 노출이 증명되지 않습니다. |
+| 관리 호스트 시작 | 선택된 연결에 대해 호스트 프로세스가 Volicord MCP 서버를 시작했다는 관리 호스트 lifecycle 증거가 있습니다. | 시작만으로 활성 session이 도구를 나열하거나 노출했다는 뜻은 아닙니다. |
+| 관리 호스트 `tools/list` | 관리 호스트 프로세스가 MCP 도구 탐색에 도달했다는 lifecycle 증거가 있습니다. | `tools/list` event만으로 활성 session에서 도구를 호출할 수 있다는 뜻은 아닙니다. |
+| 관리 호스트 도구 호출 | 선택된 연결에 대해 관리 호스트 프로세스가 Volicord 도구를 호출한 것을 Volicord가 관찰했습니다. | 파일 쓰기, 사용자 승인, 정확성, 테스트 충분성, 사람 검토 완료를 증명하지 않습니다. |
+| 활성 도구 노출 | 활성 호스트 session이 현재 도구 목록, 도구 검색, 또는 신뢰할 수 있는 호스트별 출처에서 Volicord 도구를 볼 수 있습니다. | 이후 모델의 도구 선택, workflow 쓰기, 사용자 승인, 정확성, 테스트 충분성, 사람 검토 완료를 증명하지 않습니다. |
+| 저장소 capability | `volicord mcp --check`, CLI verification, 또는 관리 호스트 진단이 해당 프로세스 바인딩에서 registry와 project state를 읽거나 쓸 수 있는지 보고합니다. | 저장소 capability는 활성 호스트 session이 같은 도구를 노출했다는 증명이 아닙니다. |
+
+### Codex 검증 경로
 
 Codex 검증은 서로 관련된 개념을 분리해서 보고합니다. `Codex host process`는
 Volicord MCP 서버를 시작할 것으로 기대되는 프로세스입니다. 여기에는 Codex CLI/TUI
@@ -111,6 +134,36 @@ volicord connection verify codex --shared --repo "<repo>"
 
 Claude Code에는 `codex` 대신 `claude-code`를 사용합니다.
 
+### Claude Code 지원과 런타임 검증
+
+Volicord에는 런타임을 향한 Claude Code adapter가 있습니다. 이 adapter는 `claude-code`를
+관리 호스트 종류로 지원하고, `personal`, `shared`, `global` 연결 의도를 Claude Code scope에
+매핑하며, shared 설정에서는 프로젝트 `.mcp.json`을 쓰고, 프로젝트 외 scope에서는
+`claude mcp add` 또는 `claude mcp get`을 호출할 수 있습니다. 또한 Detective profile의
+`.claude/settings.json`, `.claude/rules/volicord.md`, `.claude/hooks/` wrapper 파일을
+설치할 수 있습니다. Claude Code verification은 관리 `.mcp.json` 항목 또는
+`claude mcp get` 출력이 Volicord 설정과 일치하는지 확인하고, pending approval, rejected,
+missing, changed, unavailable, unknown 같은 호스트 상태를 보고할 수 있습니다.
+
+이 검증은 활성 Claude Code session 도구 노출과 같지 않습니다. 현재 Claude Code
+verification만으로는 활성 도구 노출, 관리 lifecycle 시작, 관리 `tools/list`, 관리 도구
+호출 증거, 실행 중인 Claude Code session 안의 저장소 capability가 증명되지 않습니다.
+실제 Claude Code 환경에서 아래를 확인합니다.
+
+1. `claude mcp list`를 실행합니다.
+2. `claude mcp get volicord`를 실행합니다.
+3. 프로젝트 범위 설정을 쓴다면 프로젝트 `.mcp.json`을 확인합니다.
+4. 프로젝트 서버 approval 또는 pending 상태를 확인합니다.
+5. 활성 Claude Code session에서 `/mcp`를 확인합니다.
+6. Volicord 도구에 대한 Claude Code permissions allow/ask/deny policy를 확인합니다.
+7. Claude Code 또는 그 MCP 서버를 시작하는 환경에서 `command -v volicord`를 확인합니다.
+8. 시작과 저장소 capability 진단을 위해 `volicord mcp --check --connection
+   "<connection_id>" --project "<project_id>"`를 실행합니다.
+9. 활성 Claude Code에서 `volicord.list_projects` 또는 `volicord.status`부터 Volicord 도구
+   호출을 시도합니다.
+10. `volicord connection verify claude-code --repo "<repo>"`와
+    `volicord connection status claude-code --repo "<repo>"`를 실행합니다.
+
 설치 프로필이 준비된 뒤 personal, global, read-only 동작을 직접 선택하는 등 낮은
 수준의 연결 변형이 필요할 때는 `volicord connection add`를 사용합니다. 프로세스 현재
 디렉터리가 대상 Product Repository가 아닐 때만 `--repo PATH`를 사용합니다.
@@ -164,6 +217,11 @@ host-hook 관찰을 위한 detective 설치 상태를 설치하거나 갱신합�
   대상으로 합니다. Settings 쓰기는 관련 없는 settings를 보존하고 Volicord 관리
   항목을 병합합니다. 생성된 hook과 rule 파일이 실행되려면 호스트에 프로젝트 MCP
   approval, workspace trust, settings reload가 필요할 수 있습니다.
+
+여기서 검증되었다는 말은 Volicord가 해당 프로젝트 로컬 설정과 hook 형태를 생성, 병합,
+점검하는 adapter 지원을 갖고 있다는 뜻입니다. 활성 Codex 또는 Claude Code session이 이미
+파일을 로드했거나, hook을 실행했거나, 도구를 노출했거나, 런타임 관찰을 만들었다는 뜻은
+아닙니다.
 
 검증이 `hook_path_safety=ok`를 보고할 때 생성된 hook 명령은 cwd-independent이고
 subdirectory-safe입니다. Codex hook 항목은 bare `.codex/hooks/...` 경로를 실행하지

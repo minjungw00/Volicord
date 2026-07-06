@@ -59,11 +59,12 @@ Diagnostics:
 ```
 
 이 요약은 Product Repository 안에 쓴 파일과 Runtime Home에 저장한 로컬 Volicord 상태를
-구분합니다. 이미 실행 중인 Codex session이 새 설정을 로드, 신뢰, 승인했다는 뜻은
-아닙니다.
-저장소 로컬 파일은 일반 Product Repository 설정 파일입니다. 해당 저장소에 공유
-Volicord/Codex 설정을 담고 싶을 때만 `.codex/config.toml`, `.volicord/policy.json`,
-관리 `AGENTS.md` 안내 블록을 commit합니다.
+구분합니다. 이미 실행 중인 호스트 session이 새 설정을 로드, 신뢰, 승인, 노출했다는
+뜻은 아닙니다. 저장소 로컬 파일은 일반 Product Repository 설정 파일입니다. Codex 설정은
+보통 `.codex/config.toml`, `.volicord/policy.json`, 관리 `AGENTS.md` 안내 블록을 씁니다.
+Claude Code 프로젝트 설정은 `.mcp.json`을 쓰며, detective 설정은
+`.claude/settings.json`, `.claude/rules/volicord.md`, `.claude/hooks/`도 쓸 수 있습니다.
+해당 저장소에 공유 Volicord와 호스트 설정을 담고 싶을 때만 이 파일을 commit합니다.
 사용자 워크플로에서 기록 프로필은 MCP를 통한 협력적 Volicord 워크플로 기록을
 지원합니다. 보안, 정확성, 테스트 충분성, 검토 완료 보장을 뜻하지 않습니다.
 
@@ -109,11 +110,15 @@ Detective host hook 경로 복구 안내는
 정리합니다.
 CLI verification은 Volicord의 MCP 서버가 터미널 쪽 점검 경로에서 시작하고 응답할 수
 있음을 확인할 수 있습니다. 그 자체만으로 Codex, Claude Code 또는 다른 호스트가 프로젝트
-설정을 로드, 신뢰, 승인했다는 증명은 아닙니다. Codex에서는 Codex 프로젝트 trust 줄,
+설정을 로드, 신뢰, 승인, 노출했다는 증명은 아닙니다. Codex에서는 Codex 프로젝트 trust 줄,
 관리 MCP 시작, 관리 `tools/list`, 관리 도구 호출에 대한 Codex host runtime 진단,
 호스트 MCP 명령 launch 가능성, 활성 Codex session에 Volicord 도구가 노출되는지도 함께
 확인합니다. `volicord`처럼 `PATH`로 찾는 MCP 명령은 `Codex host process`가 보는 PATH에
 있어야 합니다.
+Claude Code에서는 `claude mcp list`, `claude mcp get volicord`, 프로젝트 `.mcp.json`,
+프로젝트 approval 또는 pending 상태, `/mcp`, Claude Code permissions, 활성
+`volicord.list_projects` 또는 `volicord.status` 호출로 Claude Code 환경의 활성 런타임
+노출을 검증합니다.
 `tools/list`는 성공했지만 읽기 호환 도구만 보인다면 MCP 호스트 환경이 프로젝트 상태를
 읽을 수는 있지만 쓸 수 없어 read-only degraded mode로 동작하는 것일 수 있습니다.
 Workflow 변경 도구를 기대하기 전에 [에이전트 호스트 설정](agent-host-setup.md)과

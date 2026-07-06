@@ -109,7 +109,9 @@ Bounded recovery:
 Install or link the `volicord` binary into a command directory you control, then
 ensure that directory is visible through `PATH`. Volicord cannot directly mutate
 the current parent shell environment. Already-running agent hosts may need
-restart or reload before they see a new command directory.
+restart, reload, resume, or a new session before they see a new command
+directory. Check the environment that launched the host, not only a terminal
+opened later inside the host.
 
 ## Repository Is Not Detected
 
@@ -259,6 +261,57 @@ read-only mode and do not expect workflow tools. If elevated execution succeeds
 while the normal host sandbox fails, treat that as a storage-capability
 diagnostic, not as proof that the active host session has loaded or exposed the
 same tools.
+
+## Claude Code Configuration Exists But Tools Are Not Exposed
+
+Observable symptom: `volicord connection status claude-code` or
+`volicord connection verify claude-code` reports matching configuration,
+connected host state, or `action_required`, but the active Claude Code session
+does not expose `volicord.*` tools.
+
+This means Volicord can inspect managed Claude Code configuration or
+`claude mcp get` state, but that is not the same as proving active Claude Code
+session tool exposure. Current Claude Code verification does not by itself
+prove managed lifecycle startup, managed `tools/list`, managed tool-call
+evidence, or storage capability inside the running Claude Code session.
+
+Bounded recovery:
+
+1. Inspect the host configuration and approval state:
+
+   ```sh
+   claude mcp list
+   claude mcp get volicord
+   ```
+
+2. For shared project setup, inspect the project `.mcp.json` and check whether
+   the project server entry is pending approval or was rejected.
+3. In the active Claude Code session, check `/mcp` and verify that permissions
+   allow, ask about, or deny Volicord tools as expected by your host policy.
+4. Check the host launch environment before starting or resuming Claude Code:
+
+   ```sh
+   command -v volicord
+   ```
+
+5. Inspect Volicord startup and storage capability for the process binding:
+
+   ```sh
+   volicord mcp --check --connection "<connection_id>" --project "<project_id>"
+   ```
+
+6. Attempt a read-only active tool call from Claude Code, starting with
+   `volicord.list_projects` and `volicord.status`.
+7. Rerun Volicord verification after the host-side action:
+
+   ```sh
+   volicord connection verify claude-code --repo "<repo>"
+   volicord connection status claude-code --repo "<repo>"
+   ```
+
+Do not delete Claude Code approval or permission overlays as a normal repair.
+Fix only the named host approval, pending state, launch environment, managed
+configuration mismatch, or storage capability issue.
 
 <a id="trusted-codex-project-but-host-runtime-is-not-observed"></a>
 ## Trusted Codex Project And CLI Handshake Passed But Tools Are Not Exposed

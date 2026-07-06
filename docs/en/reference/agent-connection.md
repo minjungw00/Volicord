@@ -99,6 +99,34 @@ the internal host-hook distribution state recorded by a host contract. That
 state describes a verified source for hook-related implementation records; it
 is not a public integration mode or security boundary.
 
+Agent Connection verification keeps these layers distinct:
+
+- host managed config identity: the managed server name, command, args,
+  environment, scope, and fingerprint expected for the selected connection
+- host trust, approval, or pending state: host-owned gates such as trust,
+  project MCP approval, OAuth, pending approval, or rejection
+- host policy overlay: host-owned approval or permission settings layered onto
+  managed configuration without becoming Volicord configuration drift when the
+  managed identity still matches
+- CLI MCP preflight and handshake: terminal-side startup and protocol checks
+  for the Volicord MCP server
+- managed host startup: lifecycle evidence that a managed host process started
+  the Volicord MCP server for the selected connection
+- managed host `tools/list`: lifecycle evidence that the managed host process
+  reached MCP tool discovery
+- managed host tool call: lifecycle evidence that the managed host process
+  called a Volicord tool
+- active tool exposure: evidence that the active host session can see
+  Volicord tools through a current host tool list, tool search, or another
+  explicitly reliable source
+- storage capability: whether the selected process binding can read registry
+  and project state and, for workflow tools, write project state
+
+CLI-side MCP preflight, `volicord mcp --check`, or a direct MCP handshake is a
+process startup and protocol diagnostic. It is not, by itself, proof that
+Codex, Claude Code, or another external host loaded, trusted, approved,
+initialized, or exposed the project configuration.
+
 For Codex project-scoped MCP configuration, the Volicord-managed identity is
 the `volicord` server name together with the generated command, args carrying
 the selected connection and project bindings, and Volicord managed environment
@@ -226,6 +254,17 @@ Rules:
   manual or elevated probes, and managed `tools/list` observation do not replace
   managed tool-call evidence or another explicitly reliable
   active-tool-exposure source.
+- Claude Code managed verification can inspect a project `.mcp.json` entry and
+  `claude mcp get` output for matching command, args, environment, and scope,
+  and can report connected, pending approval, rejected, missing, changed,
+  unavailable, or unknown host state. Current Claude Code verification does not
+  by itself prove active Claude Code session tool exposure, managed lifecycle
+  startup, managed `tools/list`, managed tool-call evidence, or storage
+  capability in a running Claude Code session.
+- A host process may need a full restart, reload, resume, or new session after
+  MCP configuration changes. The terminal that launched the host can have a
+  different PATH or configuration snapshot than a terminal opened later inside
+  the host.
 - Human text status and verification output is a diagnostic summary for
   interactive users. For `volicord connection status` and
   `volicord connection verify`, read `Status`, `Checks`, `Next`, and

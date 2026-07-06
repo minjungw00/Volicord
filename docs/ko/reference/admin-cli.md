@@ -491,6 +491,29 @@ overlay만으로 `managed_config`가 `changed`가 되거나 `mcp_config_changed`
 나오면 안 됩니다. Volicord 관리 마커가 없는 `volicord` 서버 항목은 비관리로 보고될 수
 있으며, command, args, 관리 마커 drift는 계속 설정 drift입니다.
 
+Claude Code 연결 검증은 런타임을 향한 Claude Code adapter를 사용합니다. Shared 프로젝트
+설정에서는 프로젝트 `.mcp.json`의 `mcpServers.<server_name>` 항목이 관리 identity이며,
+기대하는 command, args, environment, 관리 fingerprint와 일치해야 합니다. Personal과
+global 설정에서는 Volicord가 Claude Code CLI 대상을 사용하고 `claude mcp get
+<server_name>` 출력을 기대하는 관리 항목과 비교합니다.
+
+Claude Code verification은 아래 호스트 상태를 보고할 수 있습니다.
+
+| 호스트 상태 | 의미 |
+|---|---|
+| connected and matching | `claude mcp get <server_name>`이 command, args, environment, scope가 Volicord 관리 설정과 일치하는 connected 서버를 보고합니다. |
+| pending approval | Claude Code가 MCP 서버를 프로젝트 approval 대기 상태로 보고합니다. 사용자가 Claude Code에서 승인할 때까지 결과는 `action_required`로 남습니다. |
+| rejected | Claude Code가 MCP 서버가 거절되었다고 보고합니다. |
+| missing | Claude Code가 기대한 이름의 MCP 서버를 보고하지 않거나 프로젝트 `.mcp.json` 항목이 없습니다. |
+| changed 또는 unmanaged | 기대한 이름의 서버는 있지만 command, args, environment, scope, fingerprint, ownership이 Volicord 관리 항목과 맞지 않습니다. |
+| unavailable 또는 unknown | `claude` 실행 파일을 사용할 수 없거나, 명령이 실패했거나, 출력 형태를 안전하게 해석할 수 없습니다. |
+
+이 Claude Code verification은 관리 설정과 Claude Code가 `claude mcp get` 또는 프로젝트
+설정 파일을 통해 노출하는 호스트 상태만 증명합니다. 그 자체만으로 활성 Claude Code
+session의 도구 노출, 관리 lifecycle 시작, 관리 `tools/list`, 관리 도구 호출 증거, 실행
+중인 호스트 session의 저장소 capability, 이후 도구 선택, 보고된 host gate를 넘어서는
+사용자 승인을 증명하지 않습니다.
+
 `verification.host_runtime`은 관리되는 Codex lifecycle phase 필드
 `managed_host_startup`, `managed_host_tools_list`,
 `managed_host_tool_call`을 각각 `observed`, `not_observed`, `unknown`으로

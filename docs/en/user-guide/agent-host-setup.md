@@ -42,22 +42,44 @@ After init, complete the host-owned follow-up outside the terminal:
 Writing repo-local configuration is not the same as proving that an already
 running host loaded, trusted, or approved it. Init can write
 `.codex/config.toml` or `.mcp.json`, `.volicord/policy.json`, and the managed
-`AGENTS.md` guidance
-while the host still controls reload, restart, trust, and approval. Local
-Volicord state is stored in the Runtime Home, separate from those Product
-Repository files. CLI MCP preflight or handshake success means Volicord's MCP
-server can start and respond from the terminal-side check path; it does not by
-itself prove that Codex, Claude Code, or another host has loaded, trusted, or
-approved the project configuration.
+`AGENTS.md` guidance while the host still controls reload, restart, trust, and
+approval. A host may need a full restart, reload, resume, or new session after
+MCP configuration changes. The terminal that launched the host can also have a
+different PATH or configuration snapshot than a terminal opened later inside
+the host. Local Volicord state is stored in the Runtime Home, separate from
+those Product Repository files. CLI MCP preflight or handshake success means
+Volicord's MCP server can start and respond from the terminal-side check path;
+it does not by itself prove that Codex, Claude Code, or another host has
+loaded, trusted, approved, initialized, or exposed the project configuration.
 
 For shared repository setup, decide whether to commit repo-local files
-according to the Product Repository's configuration policy. Commit
-`.codex/config.toml`, `.volicord/policy.json`, and the managed `AGENTS.md`
-guidance block when you want other contributors or automation to share the
-same Volicord/Codex setup. Keep them local when the setup should remain
+according to the Product Repository's configuration policy. Codex setup usually
+touches `.codex/config.toml`, `.volicord/policy.json`, and the managed
+`AGENTS.md` guidance block. Claude Code project setup writes `.mcp.json`; the
+Detective profile can also write `.claude/settings.json`,
+`.claude/rules/volicord.md`, and `.claude/hooks/` wrapper scripts. Commit these
+setup files only when you want other contributors or automation to share the
+same Volicord and host setup. Keep them local when the setup should remain
 user-specific.
 
-### Codex Host Verification Concepts
+### Host Verification Layers
+
+Volicord separates the connection path into layers because each layer answers
+a different question. Later layers cannot be inferred from earlier ones.
+
+| Layer | What it can show | What it does not prove |
+|---|---|---|
+| Host managed config identity | The host configuration target has the Volicord-managed server name, command, args, environment, or fingerprint expected for the selected connection. | The host loaded, trusted, approved, initialized, or exposed that entry. |
+| Host trust, approval, or pending state | The host reports or requires a trust, approval, OAuth, pending, rejected, or comparable user-controlled gate. | Volicord cannot bypass that gate, and a ready gate does not prove active tool exposure. |
+| Host policy overlay | A host-owned approval or permission overlay is present and should be interpreted as host policy, not ordinary Volicord configuration drift when the managed identity still matches. | The overlay is not a Volicord write ticket, security guarantee, active-session approval proof, or actor proof. |
+| CLI MCP preflight and handshake | `volicord connection verify` can start and talk to the MCP server from the terminal-side check environment. | CLI-side MCP handshake does not by itself prove active host tool exposure. |
+| Managed host startup | Volicord has managed-host lifecycle evidence that the host process started the Volicord MCP server for the selected connection. | Startup alone does not prove the active session listed or exposed tools. |
+| Managed host `tools/list` | Volicord has lifecycle evidence that the managed host process reached MCP tool discovery. | A `tools/list` event alone does not prove a tool can be called from the active session. |
+| Managed host tool call | Volicord observed the managed host process call a Volicord tool for the selected connection. | The call is not proof of file writes, user approval, correctness, test sufficiency, or human review completion. |
+| Active tool exposure | The active host session can see Volicord tools through the host's current tool list, tool search, or another reliable host-specific source. | Future model tool choice, workflow writes, user approval, correctness, test sufficiency, or human review completion. |
+| Storage capability | `volicord mcp --check`, CLI verification, or managed-host diagnostics report whether registry and project state are readable or writable for that process binding. | Storage capability does not prove the active host session exposed the same tools. |
+
+### Codex Verified Path
 
 Codex verification reports several related concepts separately. The Codex host
 process is the process that is expected to launch the Volicord MCP server: a
@@ -125,6 +147,39 @@ volicord connection verify codex --shared --repo "<repo>"
 
 Use `claude-code` instead of `codex` for Claude Code.
 
+### Claude Code Support And Runtime Validation
+
+Volicord has a runtime-facing Claude Code adapter. The adapter supports
+`claude-code` as a managed host kind, maps `personal`, `shared`, and `global`
+connection intents to Claude Code scopes, writes project `.mcp.json` for shared
+setup, can call `claude mcp add` or `claude mcp get` for non-project scopes,
+and can install the Detective profile's `.claude/settings.json`,
+`.claude/rules/volicord.md`, and `.claude/hooks/` wrapper files. Claude Code
+verification can confirm that the managed `.mcp.json` entry or `claude mcp get`
+output matches Volicord configuration and can report pending approval,
+rejection, missing, changed, unavailable, or unknown host state.
+
+That verification is not the same as active Claude Code session tool exposure.
+Current Claude Code verification does not by itself prove active tool exposure,
+managed lifecycle startup, managed `tools/list`, managed tool-call evidence, or
+storage capability inside a running Claude Code session. Validate those in the
+actual Claude Code environment:
+
+1. Run `claude mcp list`.
+2. Run `claude mcp get volicord`.
+3. Inspect project `.mcp.json` when using project-scoped setup.
+4. Check project server approval or pending state.
+5. Check `/mcp` inside the active Claude Code session.
+6. Check Claude Code permissions allow/ask/deny policy for Volicord tools.
+7. Confirm `command -v volicord` in the environment that launches Claude Code
+   or its MCP server.
+8. Run `volicord mcp --check --connection "<connection_id>" --project
+   "<project_id>"` for startup and storage capability diagnostics.
+9. Attempt an active Claude Code Volicord tool call, starting with
+   `volicord.list_projects` or `volicord.status`.
+10. Run `volicord connection verify claude-code --repo "<repo>"` and
+    `volicord connection status claude-code --repo "<repo>"`.
+
 Use `volicord connection add` for lower-level connection variants after the
 installation profile is ready, for example when selecting personal, global, or
 read-only behavior directly. Use `--repo PATH` only when the process current
@@ -185,6 +240,11 @@ Current verified detective adapters are host-specific:
   Settings writes preserve unrelated settings and merge Volicord-managed
   entries; the host may require project MCP approval, workspace trust, and
   settings reload before the generated hook and rule files run.
+
+Here verified means Volicord has adapter support for generating, merging, and
+checking those project-local configuration and hook shapes. It does not mean an
+active Codex or Claude Code session has already loaded the files, run the
+hooks, exposed tools, or produced runtime observation.
 
 Generated hook commands are cwd-independent and subdirectory-safe when
 verification reports `hook_path_safety=ok`. Codex hook entries do not execute a

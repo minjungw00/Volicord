@@ -179,9 +179,11 @@ local setup files, and records integration status.
 
 For Codex, repo-local setup usually includes `.codex/config.toml`,
 `.volicord/policy.json`, and a managed Volicord guidance block in `AGENTS.md`.
-Commit these files only when you want shared Volicord/Codex setup to travel
-with the Product Repository; otherwise keep them as local setup files according
-to the repository's normal configuration policy.
+For Claude Code, project setup writes `.mcp.json`; detective setup can also
+write `.claude/settings.json`, `.claude/rules/volicord.md`, and
+`.claude/hooks/`. Commit these files only when you want shared Volicord and
+host setup to travel with the Product Repository; otherwise keep them as local
+setup files according to the repository's normal configuration policy.
 
 If the command reports `action_required`, follow the named host-controlled or
 local action, such as restarting or reloading the host, approving project MCP
@@ -205,11 +207,15 @@ volicord connection status codex --shared --repo /path/to/your-product-repo --js
 
 CLI MCP preflight or handshake success means Volicord's MCP server can start
 and respond from the CLI check path. It does not by itself prove that Codex,
-Claude Code, or another host has loaded, trusted, or approved the project
-configuration. For Codex, also check Codex project trust, Codex host runtime
-observation, host MCP command launchability in the Codex host process
+Claude Code, or another host has loaded, trusted, approved, or exposed the
+project configuration. For Codex, also check Codex project trust, Codex host
+runtime observation, host MCP command launchability in the Codex host process
 environment, and whether Volicord tools are exposed in the active Codex
 session.
+For Claude Code, use `claude mcp list`, `claude mcp get volicord`, project
+`.mcp.json`, project approval or pending state, `/mcp`, Claude Code
+permissions, and an active `volicord.list_projects` or `volicord.status` call
+to validate active runtime exposure in the Claude Code environment.
 
 Before creating workflow state, use a read-only connection check: run
 `volicord connection verify`, then ask the active host to call

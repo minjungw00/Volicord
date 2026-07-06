@@ -534,6 +534,31 @@ action. A `volicord` server entry without Volicord managed markers may be
 reported as unmanaged, and command, args, or managed marker drift remains
 configuration drift.
 
+Claude Code connection verification uses the runtime-facing Claude Code
+adapter. For shared project setup, the managed identity is the project
+`.mcp.json` `mcpServers.<server_name>` entry with the expected command, args,
+environment, and managed fingerprint. For personal and global setup, Volicord
+uses the Claude Code CLI target and compares `claude mcp get <server_name>`
+output to the expected managed entry.
+
+Claude Code verification can report these host states:
+
+| Host state | Meaning |
+|---|---|
+| connected and matching | `claude mcp get <server_name>` reports a connected server whose command, args, environment, and scope match Volicord-managed configuration. |
+| pending approval | Claude Code reports the MCP server is pending project approval; the result remains `action_required` until the user approves it in Claude Code. |
+| rejected | Claude Code reports the MCP server was rejected. |
+| missing | Claude Code does not report a configured MCP server with the expected name, or the project `.mcp.json` entry is missing. |
+| changed or unmanaged | A server with the expected name exists, but command, args, environment, scope, fingerprint, or ownership does not match the Volicord-managed entry. |
+| unavailable or unknown | The `claude` executable is unavailable, the command failed, or the output shape cannot be interpreted safely. |
+
+This Claude Code verification proves only the managed configuration and the
+host state that Claude Code exposes through `claude mcp get` or the project
+configuration file. It does not by itself prove active Claude Code session tool
+exposure, managed lifecycle startup, managed `tools/list`, managed tool-call
+evidence, storage capability in the running host session, future tool choice,
+or user approval beyond the reported host gate.
+
 `verification.host_runtime` reports managed Codex lifecycle phase fields
 `managed_host_startup`, `managed_host_tools_list`, and
 `managed_host_tool_call`, each as `observed`, `not_observed`, or `unknown`.
