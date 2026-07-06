@@ -2019,7 +2019,12 @@ fn verify_connection(
             tools: Vec::new(),
         }
     };
-    let status = aggregate_verification_status(&host, &preflight, &handshake.step);
+    let status = aggregate_verification_status(
+        &host,
+        &preflight,
+        &handshake.step,
+        host_plan_requires_active_tool_exposure(host_plan),
+    );
     Ok(VerificationReport {
         status,
         host,
@@ -2169,6 +2174,12 @@ fn managed_runtime_action(
             UserActionKind::ManagedHostStorageDegraded,
             managed_host_storage_degraded_action_message(),
         )),
+        _ if runtime.active_tool_exposure != ActiveToolExposureStatus::Confirmed => {
+            Some(UserAction::new(
+                UserActionKind::ActiveToolExposureUnconfirmed,
+                active_tool_exposure_unconfirmed_action_message(),
+            ))
+        }
         _ => None,
     }
 }
@@ -2514,6 +2525,7 @@ fn aggregate_verification_status(
     host: &Verification,
     preflight: &VerificationStep,
     handshake: &VerificationStep,
+    requires_active_tool_exposure: bool,
 ) -> AgentResultStatus {
     if preflight.status == StepStatus::Failed || handshake.status == StepStatus::Failed {
         return AgentResultStatus::Failed;
@@ -2527,6 +2539,17 @@ fn aggregate_verification_status(
             {
                 AgentResultStatus::Complete
             }
+            VerificationStatus::Complete | VerificationStatus::ActionRequired
+                if handshake.status == StepStatus::Passed =>
+            {
+                AgentResultStatus::ActionRequired
+            }
+            VerificationStatus::NotVerified => AgentResultStatus::NotVerified,
+            _ => AgentResultStatus::Failed,
+        };
+    }
+    if requires_active_tool_exposure {
+        return match host.status {
             VerificationStatus::Complete | VerificationStatus::ActionRequired
                 if handshake.status == StepStatus::Passed =>
             {
@@ -2550,6 +2573,10 @@ fn aggregate_verification_status(
         VerificationStatus::NotVerified => AgentResultStatus::NotVerified,
         _ => AgentResultStatus::Failed,
     }
+}
+
+fn host_plan_requires_active_tool_exposure(host_plan: &HostPlan) -> bool {
+    host_plan.host_kind == HostKind::Codex && host_plan.host_scope == HostScope::Project
 }
 
 #[derive(Debug, Clone)]
@@ -6140,7 +6167,7 @@ fn append_compact_next_steps(
             );
             push_optional_numbered_command(output, &mut index, "Run", command.as_deref());
         }
-        "managed_host_startup_not_observed" | "host_runtime_not_observed" => {
+        "managed_host_startup_not_observed" => {
             push_numbered_text(
                 output,
                 &mut index,
@@ -6317,14 +6344,8 @@ fn enabled_text(enabled: bool) -> &'static str {
 
 fn stored_verification_step_status(connection: &AgentConnectionRecord, step: &str) -> String {
     let report = json_object_text(&connection.last_verification_report_json);
-    let legacy_step = match step {
-        "cli_mcp_preflight" => Some("preflight"),
-        "cli_mcp_handshake" => Some("mcp_handshake"),
-        _ => None,
-    };
     report
         .get(step)
-        .or_else(|| legacy_step.and_then(|legacy| report.get(legacy)))
         .and_then(|step| step.get("status"))
         .and_then(Value::as_str)
         .unwrap_or("not observed")
@@ -6343,8 +6364,7 @@ fn stored_preflight_diagnostics_from_report(
     report: &serde_json::Map<String, Value>,
 ) -> Option<McpPreflightDiagnostics> {
     let diagnostics = report
-        .get("cli_mcp_preflight")
-        .or_else(|| report.get("preflight"))?
+        .get("cli_mcp_preflight")?
         .get("diagnostics")?
         .as_object()?;
     Some(McpPreflightDiagnostics {
@@ -7799,7 +7819,6 @@ fn prioritized_connection_action(actions: &[UserAction]) -> Option<&UserAction> 
         UserActionKind::ManagedHostToolsListNotObserved,
         UserActionKind::ActiveToolExposureUnconfirmed,
         UserActionKind::ManagedHostStorageDegraded,
-        UserActionKind::HostRuntimeNotObserved,
         UserActionKind::ReloadRequired,
     ]
     .into_iter()
@@ -7851,9 +7870,6 @@ fn connection_summary_next_text(
         ),
         "managed_host_storage_degraded" => format!(
             "Repair managed {host_display} host storage read/write capability or switch to a compatible read-only mode."
-        ),
-        "host_runtime_not_observed" => format!(
-            "Restart, reload, resume, or start a new {host_display} session in this repository, then confirm active Volicord tool exposure."
         ),
         "host_trust_required" => format!(
             "The project must be trusted before project-scoped {host_display} configuration loads; then rerun verification."
@@ -7936,7 +7952,6 @@ fn next_action_should_verify(id: &str) -> bool {
         "host_trust_required"
             | "project_approval_required"
             | "reload_required"
-            | "host_runtime_not_observed"
             | "managed_host_startup_not_observed"
             | "managed_host_tools_list_not_observed"
             | "active_tool_exposure_unconfirmed"
@@ -10012,7 +10027,6 @@ fn user_action_id(kind: UserActionKind) -> &'static str {
         UserActionKind::HostTrustRequired => "host_trust_required",
         UserActionKind::ProjectApprovalRequired => "project_approval_required",
         UserActionKind::ReloadRequired => "reload_required",
-        UserActionKind::HostRuntimeNotObserved => "host_runtime_not_observed",
         UserActionKind::ManagedHostStartupNotObserved => "managed_host_startup_not_observed",
         UserActionKind::ManagedHostToolsListNotObserved => "managed_host_tools_list_not_observed",
         UserActionKind::ActiveToolExposureUnconfirmed => "active_tool_exposure_unconfirmed",
@@ -10090,11 +10104,7 @@ fn stored_checks_json(
     } else {
         checks.extend(stored_host_diagnostic_checks_json(object));
     }
-    if let Some(preflight) = object
-        .get("cli_mcp_preflight")
-        .or_else(|| object.get("preflight"))
-        .and_then(Value::as_object)
-    {
+    if let Some(preflight) = object.get("cli_mcp_preflight").and_then(Value::as_object) {
         checks.push(json!({
             "id": "cli_mcp_preflight",
             "status": preflight.get("status").and_then(Value::as_str).unwrap_or("skipped"),
@@ -10104,11 +10114,7 @@ fn stored_checks_json(
                 .unwrap_or("stored CLI MCP preflight state"),
         }));
     }
-    if let Some(handshake) = object
-        .get("cli_mcp_handshake")
-        .or_else(|| object.get("mcp_handshake"))
-        .and_then(Value::as_object)
-    {
+    if let Some(handshake) = object.get("cli_mcp_handshake").and_then(Value::as_object) {
         checks.push(json!({
             "id": "cli_mcp_handshake",
             "status": handshake.get("status").and_then(Value::as_str).unwrap_or("skipped"),
@@ -10661,8 +10667,6 @@ fn verification_json(report: &VerificationReport) -> Value {
         },
         "cli_mcp_preflight": step_json(&report.preflight),
         "cli_mcp_handshake": step_json(&report.handshake),
-        "preflight": step_json(&report.preflight),
-        "mcp_handshake": step_json(&report.handshake),
         "tools": report.tools,
     })
 }
@@ -11017,6 +11021,7 @@ mod tests {
             )),
             &VerificationStep::passed("CLI MCP preflight passed"),
             &VerificationStep::passed("CLI MCP handshake passed"),
+            true,
         );
 
         assert_eq!(status, AgentResultStatus::ActionRequired);
@@ -11032,9 +11037,42 @@ mod tests {
             )),
             &VerificationStep::passed("CLI MCP preflight passed"),
             &VerificationStep::passed("CLI MCP handshake passed"),
+            true,
         );
 
         assert_eq!(status, AgentResultStatus::Complete);
+    }
+
+    #[test]
+    fn connection_verify_codex_project_without_runtime_cannot_complete() {
+        let status = aggregate_verification_status(
+            &Verification::configured_ready("ready"),
+            &VerificationStep::passed("CLI MCP preflight passed"),
+            &VerificationStep::passed("CLI MCP handshake passed"),
+            true,
+        );
+
+        assert_eq!(status, AgentResultStatus::ActionRequired);
+    }
+
+    #[test]
+    fn unknown_active_tool_exposure_has_action() {
+        let action = managed_runtime_action(
+            &Verification::configured_ready("ready"),
+            &HostRuntimeDiagnostic {
+                status: HostRuntimeObservationStatus::Unknown,
+                managed_host_startup: HostRuntimeObservationStatus::Unknown,
+                managed_host_tools_list: HostRuntimeObservationStatus::Unknown,
+                managed_host_tool_call: HostRuntimeObservationStatus::Unknown,
+                active_tool_exposure: ActiveToolExposureStatus::Unknown,
+                managed_host_storage: None,
+                details: "runtime unavailable".to_owned(),
+                last_observed_at: None,
+            },
+        )
+        .expect("unknown active exposure should require an action");
+
+        assert_eq!(action.kind, UserActionKind::ActiveToolExposureUnconfirmed);
     }
 
     #[test]

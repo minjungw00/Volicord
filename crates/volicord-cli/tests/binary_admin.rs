@@ -1253,20 +1253,22 @@ fn connection_verify_cli_handshake_without_managed_host_remains_action_required(
             && check["status"] == "warning"
             && check["details"]["risk"] == "host_path_unconfirmed"));
     assert_eq!(value["verification"]["host"]["managed_config"], "match");
-    assert_eq!(value["verification"]["preflight"]["status"], "passed");
     assert_eq!(
-        value["verification"]["preflight"]["diagnostics"]["storage_read"],
+        value["verification"]["cli_mcp_preflight"]["status"],
         "passed"
     );
     assert_eq!(
-        value["verification"]["preflight"]["diagnostics"]["storage_write"],
+        value["verification"]["cli_mcp_preflight"]["diagnostics"]["storage_read"],
         "passed"
     );
     assert_eq!(
-        value["verification"]["preflight"]["diagnostics"]["effective_tool_mode"],
+        value["verification"]["cli_mcp_preflight"]["diagnostics"]["storage_write"],
+        "passed"
+    );
+    assert_eq!(
+        value["verification"]["cli_mcp_preflight"]["diagnostics"]["effective_tool_mode"],
         "workflow"
     );
-    assert_eq!(value["verification"]["mcp_handshake"]["status"], "passed");
     assert_eq!(
         value["verification"]["cli_mcp_handshake"]["status"],
         "passed"
@@ -1293,11 +1295,12 @@ fn connection_verify_cli_handshake_without_managed_host_remains_action_required(
             && check["status"] == "passed"
             && check["details"]["value"] == "workflow"));
     assert_eq!(
-        value["connection"]["verification_report"]["mcp_handshake"]["status"],
+        value["connection"]["verification_report"]["cli_mcp_handshake"]["status"],
         "passed"
     );
     assert_eq!(
-        value["connection"]["verification_report"]["preflight"]["diagnostics"]["storage_write"],
+        value["connection"]["verification_report"]["cli_mcp_preflight"]["diagnostics"]
+            ["storage_write"],
         "passed"
     );
     Ok(())
@@ -2924,18 +2927,24 @@ fn connect_respects_explicit_read_only_and_uses_same_dry_run_plan() -> Result<()
         value["verification"]["status"],
         VERIFIED_STATUS_ACTION_REQUIRED
     );
-    assert_eq!(value["verification"]["preflight"]["status"], "passed");
-    assert_eq!(value["verification"]["mcp_handshake"]["status"], "passed");
+    assert_eq!(
+        value["verification"]["cli_mcp_preflight"]["status"],
+        "passed"
+    );
+    assert_eq!(
+        value["verification"]["cli_mcp_handshake"]["status"],
+        "passed"
+    );
     assert_eq!(
         connection["verification_report"]["status"],
         VERIFIED_STATUS_ACTION_REQUIRED
     );
     assert_eq!(
-        connection["verification_report"]["preflight"]["status"],
+        connection["verification_report"]["cli_mcp_preflight"]["status"],
         "passed"
     );
     assert_eq!(
-        connection["verification_report"]["mcp_handshake"]["status"],
+        connection["verification_report"]["cli_mcp_handshake"]["status"],
         "passed"
     );
     assert!(connection["verification_report"]["tools"]
@@ -2953,8 +2962,8 @@ fn connect_respects_explicit_read_only_and_uses_same_dry_run_plan() -> Result<()
     );
     let stored_report: Value = serde_json::from_str(&record.last_verification_report_json)?;
     assert_eq!(stored_report["status"], VERIFIED_STATUS_ACTION_REQUIRED);
-    assert_eq!(stored_report["preflight"]["status"], "passed");
-    assert_eq!(stored_report["mcp_handshake"]["status"], "passed");
+    assert_eq!(stored_report["cli_mcp_preflight"]["status"], "passed");
+    assert_eq!(stored_report["cli_mcp_handshake"]["status"], "passed");
     let projects = list_connection_projects(runtime_home.path(), connection_id)?;
     assert_eq!(projects.len(), 1);
     assert_eq!(projects[0].project.repo_root, repo_root);
@@ -3009,11 +3018,11 @@ fn connection_verify_manual_probe_does_not_complete_connection() -> Result<(), B
     assert_success(&output);
     let value = json_stdout(&output)?;
     assert_eq!(
-        value["verification"]["preflight"]["status"], "passed",
+        value["verification"]["cli_mcp_preflight"]["status"], "passed",
         "{value}"
     );
     assert_eq!(
-        value["verification"]["mcp_handshake"]["status"], "passed",
+        value["verification"]["cli_mcp_handshake"]["status"], "passed",
         "{value}"
     );
     assert_eq!(
@@ -3415,8 +3424,8 @@ fn connection_status_does_not_report_complete_from_legacy_observation() -> Resul
                 "details": "legacy source-less observation",
                 "last_observed_at": null
             },
-            "preflight": { "status": "passed", "details": "legacy CLI preflight" },
-            "mcp_handshake": { "status": "passed", "details": "legacy CLI handshake" }
+            "cli_mcp_preflight": { "status": "passed", "details": "CLI preflight" },
+            "cli_mcp_handshake": { "status": "passed", "details": "CLI handshake" }
         })
         .to_string(),
         "[]",
@@ -3832,9 +3841,15 @@ fn connection_verify_fails_when_workflow_reconcile_changes_tool_is_missing(
     let value = json_stdout(&verify)?;
     assert_eq!(value["status"], "failed");
     assert_eq!(value["connection"]["verification_status"], "failed");
-    assert_eq!(value["verification"]["preflight"]["status"], "passed");
-    assert_eq!(value["verification"]["mcp_handshake"]["status"], "failed");
-    assert!(value["verification"]["mcp_handshake"]["details"]
+    assert_eq!(
+        value["verification"]["cli_mcp_preflight"]["status"],
+        "passed"
+    );
+    assert_eq!(
+        value["verification"]["cli_mcp_handshake"]["status"],
+        "failed"
+    );
+    assert!(value["verification"]["cli_mcp_handshake"]["details"]
         .as_str()
         .expect("handshake details should be text")
         .contains(RECONCILE_CHANGES_TOOL_NAME));

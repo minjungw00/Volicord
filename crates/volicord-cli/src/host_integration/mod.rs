@@ -409,7 +409,6 @@ pub enum UserActionKind {
     HostTrustRequired,
     ProjectApprovalRequired,
     ReloadRequired,
-    HostRuntimeNotObserved,
     ManagedHostStartupNotObserved,
     ManagedHostToolsListNotObserved,
     ActiveToolExposureUnconfirmed,

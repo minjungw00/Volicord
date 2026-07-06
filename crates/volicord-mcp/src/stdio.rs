@@ -207,8 +207,7 @@ pub(crate) enum McpLaunchOrigin {
     ManagedHost,
     ManualCli,
     InvalidManagedMarker,
-    #[allow(dead_code)]
-    UnknownLegacy,
+    Unknown,
 }
 
 impl McpLaunchOrigin {
@@ -218,7 +217,7 @@ impl McpLaunchOrigin {
             Self::ManagedHost => "managed_host",
             Self::ManualCli => "manual_cli",
             Self::InvalidManagedMarker => "invalid_managed_marker",
-            Self::UnknownLegacy => "unknown_legacy",
+            Self::Unknown => "unknown",
         }
     }
 }
@@ -312,7 +311,7 @@ impl Default for ConnectionState {
             next_server_request_id: 1,
             session_id: generated_metadata_id("session", "mcp", "stdio"),
             managed_host_lifecycle_observations: false,
-            launch_origin: McpLaunchOrigin::UnknownLegacy.as_str(),
+            launch_origin: McpLaunchOrigin::Unknown.as_str(),
         }
     }
 }

@@ -430,7 +430,7 @@ fn direct_startup_watch_records_legacy_observation_without_managed_lifecycle(
 
 #[test]
 fn mcp_launch_origin_classifies_verification_managed_manual_and_invalid() {
-    assert_eq!(McpLaunchOrigin::UnknownLegacy.as_str(), "unknown_legacy");
+    assert_eq!(McpLaunchOrigin::Unknown.as_str(), "unknown");
     assert_eq!(
         classify_launch_origin(
             |name| (name == "VOLICORD_MCP_VERIFICATION").then(|| OsString::from("1")),
