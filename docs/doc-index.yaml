@@ -595,8 +595,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-03'
-  last_verified_on: '2026-07-03'
+  last_updated_on: '2026-07-07'
+  last_verified_on: '2026-07-07'
   applies_to:
   - volicord_workspace_0_1
   - rust_workspace_1_85
@@ -608,6 +608,7 @@ documents:
   - implement
   depends_on:
   - architecture-guide.codebase-tour
+  - architecture-guide.source-map
   - architecture-guide.request-lifecycle
   - architecture-guide.design-patterns
   - architecture-guide.storage-and-transactions
@@ -643,6 +644,33 @@ documents:
   - architecture-guide.architecture
   - reference.index
   - reference.api.methods
+- doc_id: architecture-guide.source-map
+  path_en: docs/en/architecture-guide/source-map.md
+  path_ko: docs/ko/architecture-guide/source-map.md
+  kind: explanation
+  summary: Source path responsibility map for current Rust workspace modules.
+  normative_level: guide
+  translation_policy: semantic_parity
+  owner_area: architecture_guide
+  created_on: '2026-07-07'
+  last_updated_on: '2026-07-07'
+  last_verified_on: '2026-07-07'
+  applies_to:
+  - volicord_workspace_0_1
+  - rust_workspace_1_85
+  primary_audience:
+  - implementers
+  - reviewers
+  journeys:
+  - learn
+  - implement
+  depends_on:
+  - architecture-guide.architecture
+  - architecture-guide.codebase-tour
+  - architecture-guide.request-lifecycle
+  - architecture-guide.storage-and-transactions
+  - architecture-guide.testing-strategy
+  - reference.index
 - doc_id: architecture-guide.request-lifecycle
   path_en: docs/en/architecture-guide/request-lifecycle.md
   path_ko: docs/ko/architecture-guide/request-lifecycle.md
@@ -941,7 +969,7 @@ documents:
   path_en: docs/en/architecture-guide/architecture.md
   path_ko: docs/ko/architecture-guide/architecture.md
   kind: explanation
-  summary: Durable explanation of workspace architecture, crate roles, and execution flow.
+  summary: Durable explanation of workspace architecture, dependency boundaries, and execution flow.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
@@ -960,6 +988,7 @@ documents:
   depends_on:
   - architecture-guide.index
   - architecture-guide.codebase-tour
+  - architecture-guide.source-map
   - architecture-guide.request-lifecycle
   - architecture-guide.design-patterns
   - architecture-guide.storage-and-transactions

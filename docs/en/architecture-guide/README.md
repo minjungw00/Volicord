@@ -2,9 +2,9 @@
 
 The Architecture Guide is the source-code learning entry point for
 implementers, reviewers, and source-code learners who need to understand the
-current Rust workspace. It routes workspace structure, request flow, storage
-and transaction boundaries, design patterns, test strategy, durable decisions,
-and implementation change workflow.
+current Rust workspace. It routes workspace structure, exact source-path
+responsibilities, request flow, storage and transaction boundaries, design
+patterns, test strategy, durable decisions, and implementation change workflow.
 
 Use these pages to learn how the implementation is arranged and why durable
 boundaries exist. Exact public API behavior, request or response schemas,
@@ -20,20 +20,24 @@ work. Core is the local authority record for Volicord state.
    [Codebase Tour](codebase-tour.md). It names every Cargo workspace member,
    the first source file to open, important symbols, relevant tests, and the
    next component to read.
-2. Representative request flow: read the
+2. Exact source ownership: use the [Source Map](source-map.md) for exact source
+   paths, module responsibilities, CLI submodule boundaries, host-adapter
+   placement, guard integration placement, MCP adapter modules, and test-support
+   paths.
+3. Representative request flow: read the
    [Request Lifecycle](request-lifecycle.md). It follows `volicord.status`,
    `volicord.intake`, and `volicord.prepare_write` from MCP `tools/call` through
    Core and Store behavior to the MCP response wrapper.
-3. Architecture and boundaries: use
+4. Architecture and boundaries: use
    [Implementation Architecture](architecture.md) for the durable workspace
    shape, dependency direction, execution-flow maps, administrative CLI setup
    flow, and code-to-owner routing.
-4. Implementation patterns: read
+5. Implementation patterns: read
    [Implementation Design Patterns](design-patterns.md) for recurring
    structures such as `CoreService`, `MethodPolicy`, method planning,
    `CoreStorageMutation`, injected time, opaque IDs, controlled enums,
    canonical request hashing, and shared test fixtures.
-5. Storage and transaction concepts: read
+6. Storage and transaction concepts: read
    [Storage and Transactions](storage-and-transactions.md) for Runtime Home,
    registry and project databases, `CoreProjectStore`, method planning,
    mutation values, atomic commit, replay, artifact staging, and failure
@@ -43,18 +47,18 @@ work. Core is the local authority record for Volicord state.
    [Storage DDL](../reference/storage-ddl.md),
    [Artifact Storage](../reference/storage-artifacts.md), and
    [Storage Versioning](../reference/storage-versioning.md).
-6. Test strategy: use [Testing Strategy](testing-strategy.md) to choose among
+7. Test strategy: use [Testing Strategy](testing-strategy.md) to choose among
    module unit tests, Core method tests, binary tests, MCP integration tests,
    conformance implementation tests, and `volicord-test-support`.
-7. Durable decisions: use [Architecture Decisions](decisions/README.md) for
+8. Durable decisions: use [Architecture Decisions](decisions/README.md) for
    focused explanations of the Core/adapter boundary, planning before atomic
    mutation commit, and the separation of `Volicord Runtime Home` from
    `Product Repository`.
-8. Change workflow: use the [Implementation Guide](change-guide.md) when you
+9. Change workflow: use the [Implementation Guide](change-guide.md) when you
    are ready to classify a change, locate the owner document, inspect the
    implementation boundary, choose validation, and update affected Architecture Guide
    pages.
-9. Exact Reference contracts: use the
+10. Exact Reference contracts: use the
    [Reference Index](../reference/README.md) and
    [API Methods](../reference/api/methods.md). Learning documents can explain
    how the current code is arranged, but Reference documents own exact method
@@ -66,6 +70,7 @@ work. Core is the local authority record for Volicord state.
 | Question | Start here | Exact owner route |
 |---|---|---|
 | Which crate should I open first? | [Codebase Tour](codebase-tour.md) | [Implementation Architecture](architecture.md) owns guide-level implementation structure. |
+| Which path owns a module responsibility? | [Source Map](source-map.md) | [Implementation Architecture](architecture.md) owns high-level architecture boundaries; exact product behavior still routes to Reference owners. |
 | How does a method call move through MCP, Core, Store, and back? | [Request Lifecycle](request-lifecycle.md) | Method behavior is owned by [API Methods](../reference/api/methods.md) and the linked method owner. |
 | Why does Core not depend on CLI or MCP? | [Implementation Architecture](architecture.md) and [Core and adapter dependency boundary](decisions/core-adapter-boundary.md) | Dependency-boundary guidance stays in Architecture Guide docs; public behavior still routes to Reference owners. |
 | Why are planners separate from Store commit? | [Implementation Design Patterns](design-patterns.md) and [Planning before atomic mutation commit](decisions/plan-and-atomic-commit.md) | Exact method behavior and storage effects route to method and storage owners. |
@@ -74,6 +79,10 @@ work. Core is the local authority record for Volicord state.
 | What should I edit for a change? | [Implementation Guide](change-guide.md) | The focused Reference owner selected from [Reference Index](../reference/README.md) or `docs/doc-index.yaml`. |
 
 ## Source-reading shortcuts
+
+For complete source path responsibilities, use the [Source Map](source-map.md).
+The shortcuts below are common first-open paths for frequent implementation
+questions.
 
 For public method work, the shortest useful source path is:
 
