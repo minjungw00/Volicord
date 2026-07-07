@@ -1,745 +1,299 @@
 # Codebase tour
 
-This tour explains the current Rust workspace by tracing Cargo members, source
-files, symbols, dependency direction, and tests. It is a learning guide, not a
-contract owner. Exact API behavior, storage effects, schemas, security
-guarantees, runtime boundaries, and Core authority semantics remain in
-Reference documents.
+This tour is a reading guide for maintainers learning the Volicord Rust
+workspace. It suggests a useful order for opening code, explains why each crate
+exists, and names a few stable entry symbols or flows to follow.
 
-Code and test paths are written relative to the repository root. Source links
-from this page use relative Markdown targets so they can be opened directly.
-For the workspace-wide Cargo dependency diagram and runtime maps, use
-[Implementation Architecture](architecture.md). For validation-layer choice
-after you identify an affected area, use [Testing Strategy](testing-strategy.md).
+It is not the source ownership map. Use the [Source Map](source-map.md) for
+exact source path responsibilities and module placement. Use
+[Implementation Architecture](architecture.md) for the workspace dependency
+graph and top-level runtime maps, [CLI Workflows](cli-workflows.md) for local
+administrative execution flows, [Request Lifecycle](request-lifecycle.md) for
+representative MCP-to-Core-to-Store method traces, [Storage and Transactions](storage-and-transactions.md)
+for commit and artifact boundaries, [Testing Strategy](testing-strategy.md) for
+test-layer choice, and the [Implementation Guide](change-guide.md) when you are
+ready to make a change.
 
-## First pass reading path
+Exact API behavior, request and response schemas, storage effects, security
+wording, runtime boundaries, error meaning, and Core authority semantics remain
+with the focused [Reference Index](../reference/README.md) owners.
 
-Read in this order when you are learning the public method path:
+Code and test paths below are relative to the repository root.
 
-1. `volicord-types` for typed request, response, value-set, identifier, and
-   canonical-hash shapes.
-2. `volicord-store` for Runtime Home, project Store, artifact, schema, and
-   commit boundaries.
-3. `volicord-core` for the shared request pipeline, method planners, policies,
-   and Store coordination.
-4. `volicord-mcp` for stdio startup, tool registration, typed argument decoding,
-   invocation-context derivation, dispatch, and response wrapping.
-5. `volicord-test-support`, `tests/integration`, and `tests/conformance` for
-   disposable fixtures and cross-layer verification points.
+## Recommended reading order
 
-For administrative setup behavior, read `volicord-cli` after `volicord-store`.
-The CLI path is local setup and registration, not public Core method behavior.
+For a first pass through public method execution, read the code in this order:
 
-For repository documentation validation, read `xtask` after the Maintain
-policies. It is maintenance tooling and not part of the public method path.
+1. `volicord-types`: learn the typed request, response, value, identifier, and
+   canonical-hash shapes that the other crates share.
+2. `volicord-mcp`: follow how an MCP `tools/call` becomes a typed request and
+   a Core invocation.
+3. `volicord-core`: follow the shared preflight, method planning, branch
+   selection, and response construction.
+4. `volicord-store`: follow project Store reads, `CoreStorageMutation` values,
+   normal commit, replay, and artifact boundaries.
+5. `tests/integration` and `tests/conformance`: see how the path is exercised
+   across MCP/Core/Store and across baseline method scenarios.
 
-## Cargo Dependency Shape
+For local operator and setup behavior, branch after `volicord-store` into
+`volicord-cli`, then read [CLI Workflows](cli-workflows.md). The CLI path is
+local administrative orchestration, not an alternate implementation of public
+Core method behavior.
 
-Normal internal Cargo dependency direction from the current manifests:
+For storage questions, read `volicord-store` with
+[Storage and Transactions](storage-and-transactions.md) open beside it. For
+exact record, DDL, artifact, or storage-effect meaning, switch to the storage
+Reference owners from the [Reference Index](../reference/README.md).
 
-- `volicord-types` has no internal dependencies.
-- `volicord-store` depends on `volicord-types`.
-- `volicord-core` depends on `volicord-store` and `volicord-types`.
-- `volicord-cli` depends on `volicord-core`, `volicord-store`, and
-  `volicord-types`.
-- `volicord-mcp` depends on `volicord-core`, `volicord-store`, and
-  `volicord-types`.
-- `volicord-test-support` depends on `volicord-store` and `volicord-types`.
-- `xtask` has no internal product-crate dependencies; its documentation-parser
-  dependencies stay isolated in the maintenance package.
+For a change, do not use this tour as the final routing authority. Use this
+tour to get oriented, [Source Map](source-map.md) to locate the exact path,
+[Testing Strategy](testing-strategy.md) to choose validation layers, and
+[Implementation Guide](change-guide.md) to route owner documents and completion
+checks.
 
-Test-only composition adds `volicord-test-support` to implementation crates and
-lets `tests/conformance` and `tests/integration` compose the implementation
-crates they exercise. Core still does not depend on CLI or MCP adapters. The
-diagram version of this Cargo dependency graph lives in
-[Implementation Architecture](architecture.md).
+## Workspace mental model
+
+The shortest dependency mental model is:
+
+- `volicord-types` sits at the shared type boundary.
+- `volicord-store` uses shared types to manage Runtime Home and project Store
+  mechanics.
+- `volicord-core` uses shared types and Store to implement adapter-independent
+  method handling.
+- `volicord-mcp` and `volicord-cli` are adapters and local administrative
+  entry points around Core and Store.
+- `volicord-test-support`, `tests/integration`, and `tests/conformance` compose
+  crates for disposable verification.
+- `xtask` is repository maintenance tooling, separate from product runtime
+  architecture.
+
+For the exact Cargo dependency graph, use
+[Implementation Architecture](architecture.md). For exact source placement, use
+[Source Map](source-map.md).
 
 ## `crates/volicord-types`
 
-Why it exists:
+Start here when you need to understand the data shape that adapters, Core,
+Store, and tests share. This crate is the boundary for typed requests and
+results, schema-shaped structs, controlled Rust values, opaque identifiers,
+MCP-visible tool names, and canonical request hashing.
 
-`volicord-types` is the shared Rust type boundary for public API and
-domain-shaped values. It gives adapters, Core, Store, and tests one place to
-use the same serde models, JsonSchema generation, controlled value types,
-MCP-visible tool-name constants, opaque identifiers, and canonical request
-hashing.
-
-Owns in the implementation:
-
-- Public request and result Rust shapes for supported methods.
-- Shared schema-shaped structs such as `ToolEnvelope`, `ToolResultBase`,
-  `StateRecordRef`, `StateSummary`, `WriteTicketSummary`,
-  `EvidenceSummary`, `CloseReadinessBlocker`, and `ArtifactRef`.
-- Controlled value enums such as `MethodName`, `OperationCategory`, `EffectKind`,
-  `ResponseKind`, `ResumePolicy`, `PrepareWriteDecision`, and `ErrorCode`.
-- Shared MCP-visible tool-name constants for method and adapter utility tool
-  sets.
-- Opaque identifier wrappers and durable ID generation helpers.
-- Deterministic canonical JSON and request hashing.
-
-Does not own:
-
-- Core method behavior.
-- Store mutations, DDL, canonical schema SQL, or storage effects.
-- MCP or CLI transport behavior.
-- Product contract meaning for schemas or value sets.
-
-Recommended first file:
-
-- [`crates/volicord-types/src/lib.rs`](../../../crates/volicord-types/src/lib.rs)
-
-Important modules:
+Open [`crates/volicord-types/src/lib.rs`](../../../crates/volicord-types/src/lib.rs)
+first, then follow these anchors:
 
 - [`crates/volicord-types/src/methods.rs`](../../../crates/volicord-types/src/methods.rs)
-  for `MethodOperationCategory`, method request structs, method result structs, and
+  for public request/result structs, `MethodOperationCategory`, and
   `public_request_schema`.
 - [`crates/volicord-types/src/schema.rs`](../../../crates/volicord-types/src/schema.rs)
-  for shared envelope, response, state, artifact, judgment, and display shapes.
+  for shared envelope, response, state, artifact, judgment, and display shapes
+  such as `ToolEnvelope`, `StateSummary`, `EvidenceSummary`, and `ArtifactRef`.
 - [`crates/volicord-types/src/values.rs`](../../../crates/volicord-types/src/values.rs)
-  for controlled enums and constants.
-- [`crates/volicord-types/src/tool_names.rs`](../../../crates/volicord-types/src/tool_names.rs)
-  for MCP-visible tool-name constants shared by MCP registration and
-  administrative CLI verification.
+  for controlled values such as `MethodName`, `OperationCategory`,
+  `EffectKind`, `ResponseKind`, and `ErrorCode`.
 - [`crates/volicord-types/src/ids.rs`](../../../crates/volicord-types/src/ids.rs)
-  for ID wrappers, `DurableIdKind`, `DurableIdGenerator`,
-  `RandomDurableIdGenerator`, and `SequenceDurableIdGenerator`.
-- [`crates/volicord-types/src/canonical.rs`](../../../crates/volicord-types/src/canonical.rs)
-  for `canonical_json_string`, `canonical_json_sha256`, and
-  `canonical_request_hash`.
+  and [`crates/volicord-types/src/canonical.rs`](../../../crates/volicord-types/src/canonical.rs)
+  for opaque IDs, `DurableIdGenerator`, and `canonical_request_hash`.
 
-Important current symbols:
-
-- `MethodOperationCategory`, `IntakeRequest`, `StatusRequest`,
-  `PrepareWriteRequest`, `RecordRunRequest`, `CloseTaskRequest`
-- `ToolEnvelope`, `ToolResponse`, `ToolRejectedResponse`,
-  `ToolDryRunResponse`, `ToolError`, `DryRunSummary`
-- `MethodName`, `OperationCategory`, `EffectKind`, `ResponseKind`, `ErrorCode`
-- `RequiredNullable<T>`, `StateSummary`, `StateRecordRef`,
-  `WriteTicketSummary`, `WriteTicketAttemptScope`
-- `canonical_request_hash`, `DurableIdGenerator`, `DURABLE_ID_RETRY_LIMIT`
-
-Most relevant tests:
-
-- Unit tests in [`crates/volicord-types/src/lib.rs`](../../../crates/volicord-types/src/lib.rs),
-  including `typed_requests_derive_documented_operation_categories`,
-  `unknown_top_level_fields_are_rejected_on_public_requests`, and
-  `authority_looking_request_fields_are_rejected`.
-
-Recommended next component:
-
-- Read `volicord-core` if you want to see how typed requests become method
-  behavior. Read `volicord-mcp` if you want to see how MCP arguments become
-  these typed requests.
-
-## `crates/volicord-store`
-
-Why it exists:
-
-`volicord-store` owns SQLite-backed Runtime Home and project Store mechanics:
-opening databases, initializing and validating schema, bootstrapping local
-records, inspecting setup state, staging artifacts, classifying storage
-failures, and atomically committing Core mutations.
-
-Owns in the implementation:
-
-- Runtime Home resolution and registry/project path helpers.
-- Runtime Home initialization, project registration, and Agent Connection registration.
-- SQLite open, canonical schema initialization, schema validation, and transaction helpers.
-- `CoreProjectStore` read helpers and `CoreStorageMutation` application.
-- The `CoreProjectStore::commit_mutation` atomic transaction boundary.
-- Transient artifact staging and persistent artifact body verification helpers.
-- Read-only inspection snapshots used by setup and diagnostics.
-- `StoreError`, `StoreFailureRoute`, and storage failure classification.
-
-Does not own:
-
-- Public method behavior or method policy.
-- Adapter semantics for MCP or CLI.
-- Product-file writes in `Product Repository`.
-- Exact storage contracts, DDL meaning, or storage effect contracts.
-
-Recommended first file:
-
-- [`crates/volicord-store/src/lib.rs`](../../../crates/volicord-store/src/lib.rs)
-
-Important modules:
-
-- [`crates/volicord-store/src/runtime_home.rs`](../../../crates/volicord-store/src/runtime_home.rs)
-  for `resolve_runtime_home` and `RuntimeHomeResolutionError`.
-- [`crates/volicord-store/src/bootstrap.rs`](../../../crates/volicord-store/src/bootstrap.rs)
-  for `initialize_runtime_home`, `register_project`, `ProjectRegistration`,
-  and `ProjectRecord`.
-- [`crates/volicord-store/src/agent_connections.rs`](../../../crates/volicord-store/src/agent_connections.rs)
-  for `AgentConnectionRecord`, `AgentConnectionRegistration`,
-  `ensure_agent_connection`, and `add_connection_project`.
-- [`crates/volicord-store/src/sqlite.rs`](../../../crates/volicord-store/src/sqlite.rs)
-  for database paths, opening, validation, and `begin_immediate_transaction`.
-- [`crates/volicord-store/src/schema.rs`](../../../crates/volicord-store/src/schema.rs)
-  and [`crates/volicord-store/src/schema/`](../../../crates/volicord-store/src/schema/)
-  for canonical registry/project SQL sources and schema initialization.
-- [`crates/volicord-store/src/core_pipeline.rs`](../../../crates/volicord-store/src/core_pipeline.rs)
-  for Core-facing Store reads, `CoreStorageMutation`, commit outcomes, and the
-  atomic commit boundary.
-- [`crates/volicord-store/src/core_pipeline/mutation_apply.rs`](../../../crates/volicord-store/src/core_pipeline/mutation_apply.rs)
-  for transaction-scoped SQL application of `CoreStorageMutation` values.
-- [`crates/volicord-store/src/artifacts.rs`](../../../crates/volicord-store/src/artifacts.rs)
-  for `CoreProjectStore::create_artifact_staging` and
-  `verify_persistent_artifact_body`.
-- [`crates/volicord-store/src/inspection.rs`](../../../crates/volicord-store/src/inspection.rs)
-  for read-only Runtime Home and project-state inspection.
-- [`crates/volicord-store/src/error.rs`](../../../crates/volicord-store/src/error.rs)
-  for `StoreError` and storage failure routing.
-
-Important current symbols:
-
-- `CoreProjectStore`, `ProjectStateHeader`, `ProjectEnforcementProfileRecord`
-- `ToolInvocationRecord`, `VerifiedReplayContext`, `PendingTaskEvent`
-- `CommitMutationInput`, `MutationCommitOutcome`, `CommittedMutationFacts`
-- `CoreStorageMutation`, `StorageEffectCounts`, `ProjectMutation`
-- `RuntimeHomeRecord`, `ProjectRegistration`, `AgentConnectionRegistration`
-- `ArtifactStagingInsert`, `ArtifactStagingRecord`,
-  `PersistentArtifactVerification`
-- `inspect_runtime_home`, `inspect_registry_database`,
-  `inspect_project_state_database`
-
-Most relevant tests:
-
-- Colocated unit tests in the Store modules.
-- Core method tests in
-  [`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs)
-  for Store-visible effects.
-- Cross-layer storage checks in
-  [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs)
-  and [`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs).
-
-Recommended next component:
-
-- Read `volicord-core` to see how method planners choose Store reads and
-  `CoreStorageMutation` values. Read `volicord-cli` to see local setup use Store
-  bootstrap and inspection directly.
-
-## `crates/volicord-core`
-
-Why it exists:
-
-`volicord-core` owns Core-facing services for public Volicord method behavior. It
-keeps adapter-independent method behavior in one crate and coordinates Store
-reads, policy checks, method plans, dry-run previews, committed mutations, and
-common response construction.
-
-Owns in the implementation:
-
-- `CoreService` and the public method entry functions on it.
-- Common preflight for envelope shape, adapter binding, request hashing, Store
-  opening, project state, invocation verification, replay, Task resolution,
-  state-version freshness, and operation-category checks.
-- Method-specific planning in `crates/volicord-core/src/methods/`.
-- Reusable policy helpers in `crates/volicord-core/src/policy/`.
-- Core response construction and routing to read-only, no-effect, dry-run, or
-  committed mutation branches.
-
-Does not own:
-
-- MCP stdio framing or CLI setup behavior.
-- SQLite DDL, canonical schema definitions, or raw storage layout contracts.
-- Product-file writes in `Product Repository`.
-- Public schema contracts or exact value-set meaning.
-
-Recommended first file:
-
-- [`crates/volicord-core/src/lib.rs`](../../../crates/volicord-core/src/lib.rs),
-  then [`crates/volicord-core/src/pipeline.rs`](../../../crates/volicord-core/src/pipeline.rs)
-
-Important modules:
-
-- [`crates/volicord-core/src/pipeline.rs`](../../../crates/volicord-core/src/pipeline.rs)
-  for `CoreService`, `InvocationContext`, `MethodPolicy`,
-  `OwnerPipelineBranch`, `PreparedRequest`, `PipelineResponse`,
-  `CoreService::prepare_request`, and
-  `CoreService::execute_prepared_request`.
-- [`crates/volicord-core/src/methods/`](../../../crates/volicord-core/src/methods/)
-  for method-specific entry functions and planners.
-- [`crates/volicord-core/src/methods/status.rs`](../../../crates/volicord-core/src/methods/status.rs)
-  for `CoreService::status`, `status_task`, and `status_result_fields`.
-- [`crates/volicord-core/src/methods/intake.rs`](../../../crates/volicord-core/src/methods/intake.rs)
-  for `CoreService::intake` and `plan_intake`.
-- [`crates/volicord-core/src/methods/prepare_write.rs`](../../../crates/volicord-core/src/methods/prepare_write.rs)
-  for `CoreService::prepare_write`, `prepare_write_policy`, and
-  `plan_prepare_write`.
-- [`crates/volicord-core/src/policy/`](../../../crates/volicord-core/src/policy/)
-  for access, replay, path, write-ticket, evidence, judgment relevance,
-  and close-readiness helpers.
-
-Important current symbols:
-
-- `CoreService`, `CoreResult`, `CorePipelineError`
-- `AdapterSessionBinding`, `InvocationContext`, `VerifiedInvocationContext`,
-  `VerifiedActorContext`
-- `MethodPolicy`, `TaskRequirement`, `ReplayPolicy`, `FreshnessPolicy`,
-  `MethodEffectPolicy`
-- `OwnerPipelineBranch`, `PreparedRequest`, `VerifiedRequestContext`,
-  `PipelinePreflightOutcome`, `PipelineResponse`
-- `prepare_or_response`, `mutation_method_policy`, `validation_rejected`
-- `CoreService::status`, `CoreService::intake`,
-  `CoreService::prepare_write`, `CoreService::record_run`,
-  `CoreService::close_task`
-
-Most relevant tests:
-
-- [`crates/volicord-core/src/pipeline.rs`](../../../crates/volicord-core/src/pipeline.rs)
-  has unit tests for replay, freshness, branch shape, no-effect behavior, and
-  Store failure routing.
-- [`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs)
-  exercises method plans and effects. Start with
-  `status_is_read_only_including_dry_run`,
-  `intake_commits_once_and_replays_without_effect`,
-  `prepare_write_allowed_issues_one_write_ticket_with_post_commit_basis`,
-  `prepare_write_dry_run_has_no_write_ticket_effect`, and
-  `status_read_only_rejects_corrupt_owner_state_without_effect`.
-- Cross-layer confirmation lives in
-  [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs)
-  and [`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs).
-
-Recommended next component:
-
-- Read `volicord-store` for commit mechanics and `volicord-mcp` for adapter
-  dispatch into `CoreService`.
-
-## `crates/volicord-cli`
-
-Why it exists:
-
-`volicord-cli` implements the local `volicord` administrative executable and
-reusable command modules. It handles installation profile readiness, Git
-repository project detection, project and Agent Connection registration, Agent
-Connection setup, supported host-specific MCP configuration, guard hook
-integration, authority bundle export, local `User Channel` commands, and
-preflight execution.
-
-Owns in the implementation:
-
-- Process entry and administrative command dispatch for the `volicord` binary.
-- Setup workflow helpers, command discovery, command linking, shell startup
-  planning, interactive choices, and setup output rendering.
-- `volicord init`, `volicord connection add`, `volicord connection list`, and
-  `volicord connection ...` dispatch, storage preparation, host plan
-  construction, preflight invocation, status, verification, mode, removal, and
-  output.
-- Guard hook command dispatch, phase handling, recorded observations,
-  prompt-capture handling, write-ticket matching, and host-native rendering.
-- Guard integration planning, generated guard file application, capability
-  metadata, policy helpers, host hook command planning, and factual audit
-  helpers consumed by connection status and doctor diagnostics.
-- Codex and Claude Code host adapter internals, managed host configuration
-  planning, and host configuration safety checks.
-- Doctor, project, authority-bundle export, and local User Channel command
-  parsing and output.
-- Agent Connection, Connection Projects, and invocation metadata generation.
-
-Does not own:
-
-- Public Volicord API method behavior.
-- MCP `tools/call` semantics.
-- Core state transitions or method policy.
-- Exact CLI command contracts.
-
-Recommended first file:
-
-- [`crates/volicord-cli/src/main.rs`](../../../crates/volicord-cli/src/main.rs)
-
-Important modules:
-
-- [`crates/volicord-cli/src/main.rs`](../../../crates/volicord-cli/src/main.rs)
-  for process dispatch and `run_cli`.
-- [`crates/volicord-cli/src/setup_command.rs`](../../../crates/volicord-cli/src/setup_command.rs)
-  for setup command entry, setup process abstractions, setup terminal
-  abstractions, and setup output status.
-- [`crates/volicord-cli/src/setup_command/workflow.rs`](../../../crates/volicord-cli/src/setup_command/workflow.rs)
-  for setup workflow execution and report assembly.
-- [`crates/volicord-cli/src/setup_command/discovery.rs`](../../../crates/volicord-cli/src/setup_command/discovery.rs),
-  [`linking.rs`](../../../crates/volicord-cli/src/setup_command/linking.rs),
-  [`shell_startup.rs`](../../../crates/volicord-cli/src/setup_command/shell_startup.rs),
-  [`interactive.rs`](../../../crates/volicord-cli/src/setup_command/interactive.rs),
-  and [`output.rs`](../../../crates/volicord-cli/src/setup_command/output.rs)
-  for command discovery, command-link handling, shell startup edits,
-  interactive choices, and setup rendering.
-- [`crates/volicord-cli/src/doctor_command.rs`](../../../crates/volicord-cli/src/doctor_command.rs)
-  for diagnostic checks across installation profile, host, connection, and
-  guard facts.
-- [`crates/volicord-cli/src/project_context.rs`](../../../crates/volicord-cli/src/project_context.rs)
-  for Git repository root detection and `volicord project ...` commands.
-- [`crates/volicord-cli/src/export_command.rs`](../../../crates/volicord-cli/src/export_command.rs)
-  for authority bundle export parsing, rendering, and output.
-- [`crates/volicord-cli/src/connection_command.rs`](../../../crates/volicord-cli/src/connection_command.rs)
-  for command-facing dispatch for `volicord init`, `volicord connection add`,
-  `volicord connection list`, and
-  `volicord connection status/verify/mode/remove`.
-- [`crates/volicord-cli/src/connection_command/service.rs`](../../../crates/volicord-cli/src/connection_command/service.rs)
-  for connection provisioning workflow and init provisioning workflow.
-- [`crates/volicord-cli/src/connection_command/selection.rs`](../../../crates/volicord-cli/src/connection_command/selection.rs)
-  for host, repository, and connection selection plus ambiguity handling.
-- [`crates/volicord-cli/src/connection_command/verification.rs`](../../../crates/volicord-cli/src/connection_command/verification.rs)
-  for connection diagnostics, host verification aggregation, stored status, MCP
-  preflight diagnostics, and handshake status.
-- [`crates/volicord-cli/src/connection_command/output/`](../../../crates/volicord-cli/src/connection_command/output/)
-  for connection text, JSON, and summary rendering.
-- [`crates/volicord-cli/src/guard_command.rs`](../../../crates/volicord-cli/src/guard_command.rs)
-  for `_hook` command entry and dispatch across guard phases.
-- [`crates/volicord-cli/src/guard_command/envelope.rs`](../../../crates/volicord-cli/src/guard_command/envelope.rs),
-  [`tool_observation.rs`](../../../crates/volicord-cli/src/guard_command/tool_observation.rs),
-  [`mutation.rs`](../../../crates/volicord-cli/src/guard_command/mutation.rs),
-  [`prompt_command.rs`](../../../crates/volicord-cli/src/guard_command/prompt_command.rs),
-  [`prompt_capture.rs`](../../../crates/volicord-cli/src/guard_command/prompt_capture.rs),
-  [`write_ticket.rs`](../../../crates/volicord-cli/src/guard_command/write_ticket.rs),
-  [`render.rs`](../../../crates/volicord-cli/src/guard_command/render.rs),
-  and [`phase/`](../../../crates/volicord-cli/src/guard_command/phase/)
-  for host event normalization, tool observation extraction, mutation
-  classification, prompt-capture command handling, write-ticket coverage,
-  guard output, and phase-specific lifecycle handling.
-- [`crates/volicord-cli/src/guard_integration/`](../../../crates/volicord-cli/src/guard_integration/)
-  for generated guard file planning and application, capability metadata,
-  policy helpers, host hook command planning, host-specific generated files, and
-  factual audit helpers. Those facts are diagnostics and recorded observations,
-  not security guarantees or human approval records.
-- [`crates/volicord-cli/src/host_integration/`](../../../crates/volicord-cli/src/host_integration/)
-  for shared host kinds, capabilities, lifecycle phases, managed host plan
-  types, config editing, integration contracts, generic-host guidance, and
-  diagnostic status types.
-- [`crates/volicord-cli/src/host_integration/codex/`](../../../crates/volicord-cli/src/host_integration/codex/)
-  for Codex adapter internals: config parsing and update, executable checks,
-  managed identity evaluation, and project trust diagnostics.
-- [`crates/volicord-cli/src/host_integration/claude_code/`](../../../crates/volicord-cli/src/host_integration/claude_code/)
-  for Claude Code adapter internals: CLI command construction, config parsing
-  and update, managed identity checks, and CLI output parsing.
-- [`crates/volicord-cli/src/registration.rs`](../../../crates/volicord-cli/src/registration.rs)
-  for Agent Connection, Connection Project, and User Channel registry helpers.
-- [`crates/volicord-cli/src/user_command.rs`](../../../crates/volicord-cli/src/user_command.rs)
-  for local User Channel status and `volicord inbox` commands.
-
-Important current symbols:
-
-- `run_cli`, `CliError`
-- `run_setup_command`, `run_setup_workflow`, `run_doctor_command`
-- `run_project_command`, `resolve_repository_root`
-- `run_init_command`, `run_connect_command`, `run_connections_command`,
-  `run_connection_command`, `connect_usage`, `connections_usage`,
-  `connection_usage`
-- `provision_init`, `provision_connection`, `select_connection`,
-  `verify_connection`, `render_connection_output`
-- `run_guard_command`, `guard_envelope`, `tool_observation`,
-  `handle_prompt_capture`, `render_guard_output`
-- `plan_guard_integration`, `apply_guard_integration`,
-  `record_guard_installation`, `guard_file_findings_for_installation`
-- `run_status_command`, `run_inbox_command`
-- `HostKind`, `HostScope`, `HostPlan`, `HostAdapter`, `Verification`
-- `AgentConnectionRegistration`, `ConnectionProjectRegistration`,
-  `AgentConnectionRecord`
-- `actor_source`, `operation_category`, `connection_id`,
-  `verification_basis`
-
-Most relevant tests:
-
-- [`crates/volicord-cli/tests/binary_admin.rs`](../../../crates/volicord-cli/tests/binary_admin.rs)
-  exercises the `volicord` binary for init, doctor, project detection,
-  dry-run behavior, `volicord connection add`, connection
-  status/verification/mode/removal, guarded init/status generated-output drift,
-  `volicord inbox` User Channel commands, preflight handling, and config-file
-  safety.
-- [`crates/volicord-cli/tests/guard_command.rs`](../../../crates/volicord-cli/tests/guard_command.rs)
-  exercises guard hook lifecycle behavior, host-native rendering, recorded
-  observations, prompt capture, expected writes, write-ticket matching, and
-  guarded lifecycle scenarios.
-- [`crates/volicord-cli/tests/support/`](../../../crates/volicord-cli/tests/support/)
-  provides binary fixtures, fake hosts, fake MCP processes, guard fixtures,
-  JSON helpers, and assertion helpers for CLI integration tests.
-- Colocated unit tests in CLI modules cover parsing, planning, rendering,
-  setup workflow behavior, registration metadata, guard integration planning,
-  factual guard-file audits, and host-configuration behavior.
-
-Recommended next component:
-
-- Read `volicord-store` for bootstrap, inspection, and registry storage calls.
-  Read `volicord-mcp` and `volicord-cli` for the
-  `volicord mcp --check --connection` preflight path that connection setup
-  validates.
+When reading tests, start with the type-shape and canonical-hash tests in
+`crates/volicord-types/src/lib.rs`. Then move to `volicord-mcp` to see typed
+requests produced from MCP arguments, or to `volicord-core` to see those
+requests planned.
 
 ## `crates/volicord-mcp`
 
-Why it exists:
+Read `volicord-mcp` when you want to see how a local MCP host reaches Core. The
+adapter registers public tools, validates startup/session context, decodes
+`tools/call` arguments, derives trusted invocation context from the local Agent
+Connection, calls Core, and wraps Core JSON as MCP content.
 
-`volicord-mcp` is the local MCP stdio adapter. It registers public Volicord method
-tools, validates startup/session binding, decodes `tools/call` arguments into
-typed requests, derives trusted invocation context from the local session, calls
-Core, and wraps Core's JSON response in an MCP `tools/call` result.
+Open [`crates/volicord-mcp/src/lib.rs`](../../../crates/volicord-mcp/src/lib.rs)
+for the crate surface, then follow this path:
 
-Owns in the implementation:
+1. [`crates/volicord-mcp/src/tool_registry.rs`](../../../crates/volicord-mcp/src/tool_registry.rs)
+   to see the public tool list and `PUBLIC_METHOD_TOOL_NAMES`.
+2. [`crates/volicord-mcp/src/routing.rs`](../../../crates/volicord-mcp/src/routing.rs)
+   to see startup inspection, connection context, project allowlists, and
+   request-time project selection.
+3. [`crates/volicord-mcp/src/adapter.rs`](../../../crates/volicord-mcp/src/adapter.rs)
+   to follow `McpAdapter::call_tool`, typed decoding, generated envelope facts,
+   and `McpDerivedInvocationContext::core_invocation`.
+4. [`crates/volicord-mcp/src/stdio.rs`](../../../crates/volicord-mcp/src/stdio.rs)
+   to see JSON-RPC stdio dispatch, preflight, and response wrapping.
 
-- `volicord mcp` command modes: stdio, `--check`, help, and version.
-- Runtime Home and session binding validation for MCP startup.
-- Tool metadata returned by `tools/list`.
-- `tools/call` dispatch, typed argument decoding, and invocation-context
-  derivation.
-- JSON-RPC stdio framing and MCP response wrapping.
+Keep the boundary in mind: direct Store reads during MCP startup and routing are
+validation and selection work before public method dispatch. Public method
+semantics still route through `volicord-core`. For representative call traces,
+use [Request Lifecycle](request-lifecycle.md); for exact MCP transport behavior,
+use [MCP Transport](../reference/mcp-transport.md).
 
-Does not own:
+## `crates/volicord-core`
 
-- Public method behavior once Core is called.
-- Store mutation policy.
-- Administrative CLI setup behavior.
-- Product-file writes in `Product Repository`.
+Read `volicord-core` when you want the adapter-independent method path. Core
+coordinates shared preflight, Store opening, replay checks, method-specific
+planning, branch selection, and response construction.
 
-Recommended first file:
+Open [`crates/volicord-core/src/lib.rs`](../../../crates/volicord-core/src/lib.rs),
+then [`crates/volicord-core/src/pipeline.rs`](../../../crates/volicord-core/src/pipeline.rs).
+The main symbols to follow are `CoreService`, `InvocationContext`,
+`MethodPolicy`, `PreparedRequest`, `OwnerPipelineBranch`,
+`CoreService::prepare_request`, and
+`CoreService::execute_prepared_request`.
 
-- [`crates/volicord-mcp/src/lib.rs`](../../../crates/volicord-mcp/src/lib.rs)
+After the pipeline, read one method module from
+[`crates/volicord-core/src/methods/`](../../../crates/volicord-core/src/methods/):
 
-Important modules:
+- `status.rs` shows a read-only branch.
+- `intake.rs` shows a planned committed mutation branch.
+- `prepare_write.rs` shows policy-heavy planning and write-ticket decisions.
+- `record_run.rs`, `judgment.rs`, `reconcile_changes.rs`, and
+  `close_task.rs` show how later workflow facts are planned without moving
+  exact method contracts into Core prose.
 
-- [`crates/volicord-mcp/src/lib.rs`](../../../crates/volicord-mcp/src/lib.rs)
-  for the public crate surface and re-exported adapter entry points.
-- [`crates/volicord-mcp/src/tool_registry.rs`](../../../crates/volicord-mcp/src/tool_registry.rs)
-  for `PUBLIC_METHOD_TOOL_NAMES`, `McpToolDefinition`, and
-  `public_method_tools`.
-- [`crates/volicord-mcp/src/routing.rs`](../../../crates/volicord-mcp/src/routing.rs)
-  for `McpConnectionStartupInspection`, `McpConnectionContext`, and project
-  selection helpers.
-- [`crates/volicord-mcp/src/adapter.rs`](../../../crates/volicord-mcp/src/adapter.rs)
-  for `McpAdapter`, `McpAdapter::call_tool`, typed argument decoding, and Core
-  invocation.
-- [`crates/volicord-mcp/src/stdio.rs`](../../../crates/volicord-mcp/src/stdio.rs)
-  for `run_stdio_from_env`, `run_preflight_check_from_env`,
-  `handle_json_rpc_request`, response wrapping, and elicitation handling.
-- [`crates/volicord-mcp/src/local_http.rs`](../../../crates/volicord-mcp/src/local_http.rs),
-  [`local_web_consent.rs`](../../../crates/volicord-mcp/src/local_web_consent.rs),
-  and [`http.rs`](../../../crates/volicord-mcp/src/http.rs) for loopback HTTP
-  serving, consent handling, and shared HTTP parsing.
-- [`crates/volicord-cli/src/main.rs`](../../../crates/volicord-cli/src/main.rs)
-  for public `volicord mcp` process-mode dispatch.
+The reusable policy helpers under
+[`crates/volicord-core/src/policy/`](../../../crates/volicord-core/src/policy/)
+are worth reading after you understand one method. Use
+[Implementation Design Patterns](design-patterns.md) for the recurring
+structures and [Request Lifecycle](request-lifecycle.md) for traced examples.
 
-Important current symbols:
+For tests, start with `crates/volicord-core/src/pipeline.rs` for branch and
+preflight edges, then `crates/volicord-core/src/methods/tests/mod.rs` for method
+plans and Store-visible effects.
 
-- `PUBLIC_METHOD_TOOL_NAMES`, `McpToolDefinition`, `public_method_tools`
-- `McpConnectionStartupInspection`, `McpConnectionContext`,
-  `McpDerivedInvocationContext`
-- `McpAdapter`, `McpAdapter::derive_invocation_context`,
-  `McpAdapter::call_tool`
-- `run_stdio_from_env`, `run_preflight_check_from_env`,
-  `preflight_check`
-- `LocalHttpServerConfig`, `run_local_http_server`
-- `McpAdapterError`, `LocalHttpError`, `json_rpc_error_for_adapter`
+## `crates/volicord-store`
 
-Most relevant tests:
+Read `volicord-store` when you need the runtime data and transaction mechanics.
+Store manages Runtime Home path handling, registry and project database setup,
+schema validation, project Store reads, normal Core mutation commits, replay
+rows, artifact staging, inspection, and storage-error routing.
 
-- Unit tests in [`crates/volicord-mcp/src/tests.rs`](../../../crates/volicord-mcp/src/tests.rs),
-  including `tool_sets_follow_connection_mode_and_exclude_user_only_recording`,
-  `connection_context_resolves_and_preflight_reports_allowed_project`,
-  `adapter_auto_selects_single_project_and_injects_connection_invocation`,
-  `read_only_mode_rejects_agent_workflow_calls_before_core`, and
-  `mcp_visible_schemas_make_project_selector_optional`.
-- [`crates/volicord-cli/tests/mcp_transport.rs`](../../../crates/volicord-cli/tests/mcp_transport.rs)
-  exercises the `volicord mcp` subcommand, `--check`, stdio framing, reconnect
-  behavior, and MCP response wrapping.
-- [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs)
-  exercises cross-layer MCP/Core/Store behavior.
+Open [`crates/volicord-store/src/lib.rs`](../../../crates/volicord-store/src/lib.rs),
+then follow the path that matches your question:
 
-Recommended next component:
+- Setup and local registration: [`runtime_home.rs`](../../../crates/volicord-store/src/runtime_home.rs),
+  [`bootstrap.rs`](../../../crates/volicord-store/src/bootstrap.rs), and
+  [`agent_connections.rs`](../../../crates/volicord-store/src/agent_connections.rs).
+- SQLite shape and validation:
+  [`sqlite.rs`](../../../crates/volicord-store/src/sqlite.rs),
+  [`schema.rs`](../../../crates/volicord-store/src/schema.rs), and
+  [`schema/`](../../../crates/volicord-store/src/schema/).
+- Core-facing Store work:
+  [`core_pipeline.rs`](../../../crates/volicord-store/src/core_pipeline.rs)
+  for `CoreProjectStore`, `CoreStorageMutation`, `CommitMutationInput`,
+  `MutationCommitOutcome`, and `CoreProjectStore::commit_mutation`.
+- Artifact work: [`artifacts.rs`](../../../crates/volicord-store/src/artifacts.rs)
+  for staging and persistent body verification helpers.
+- Read-only setup and diagnostic views:
+  [`inspection.rs`](../../../crates/volicord-store/src/inspection.rs).
 
-- Read `volicord-core` for the method semantics behind each `McpAdapter` branch.
-  Read `volicord-store` for startup validation and session-binding reads.
+Use [Storage and Transactions](storage-and-transactions.md) while reading the
+commit path. That page explains the planning-to-mutation split, atomic commit
+boundary, replay, state-version, artifact, and failure boundaries at guide
+level. Use [Source Map](source-map.md) for the exact Store submodule map.
+
+## `crates/volicord-cli`
+
+Read `volicord-cli` when you need local operator workflows: installation
+profile setup, project detection, Agent Connection registration, host adapter
+planning, guard integration, connection status and verification, doctor
+diagnostics, authority bundle export, User Channel commands, and the public
+`volicord mcp` process-mode handoff.
+
+Open [`crates/volicord-cli/src/main.rs`](../../../crates/volicord-cli/src/main.rs)
+to see `run_cli` and process dispatch. Then choose the workflow you are
+studying:
+
+- Setup workflow: `run_setup_command` and `run_setup_workflow` in
+  [`setup_command.rs`](../../../crates/volicord-cli/src/setup_command.rs) and
+  [`setup_command/`](../../../crates/volicord-cli/src/setup_command/).
+- Agent Connection provisioning and verification: `run_init_command`,
+  `run_connection_command`, `provision_connection`, `select_connection`,
+  `verify_connection`, and rendering under
+  [`connection_command.rs`](../../../crates/volicord-cli/src/connection_command.rs)
+  and [`connection_command/`](../../../crates/volicord-cli/src/connection_command/).
+- Guard hook lifecycle: `run_guard_command`, `guard_envelope`,
+  `tool_observation`, `handle_prompt_capture`, and `render_guard_output` under
+  [`guard_command.rs`](../../../crates/volicord-cli/src/guard_command.rs) and
+  [`guard_command/`](../../../crates/volicord-cli/src/guard_command/).
+- Host and guard integration: `HostKind`, `HostAdapter`,
+  `plan_guard_integration`, and `apply_guard_integration` under
+  [`host_integration/`](../../../crates/volicord-cli/src/host_integration/) and
+  [`guard_integration/`](../../../crates/volicord-cli/src/guard_integration/).
+- User Channel commands:
+  [`user_command.rs`](../../../crates/volicord-cli/src/user_command.rs).
+
+Read [CLI Workflows](cli-workflows.md) before trying to reason from scattered
+CLI modules. It owns the architecture-level execution-flow boundaries; exact
+command contracts remain in [Administrative CLI](../reference/admin-cli.md).
+
+For tests, start with `crates/volicord-cli/tests/binary_admin.rs` for
+binary-visible administrative workflows, `guard_command.rs` for hook
+lifecycle behavior, and `mcp_transport.rs` or `serve_transport.rs` for process
+transport paths.
 
 ## `crates/volicord-test-support`
 
-Why it exists:
+Read `volicord-test-support` when tests feel hard to set up. It provides
+disposable Runtime Home fixtures, registered project and Agent Connection setup,
+Core request builders, Store inspection helpers, and shared fixture utilities.
 
-`volicord-test-support` provides disposable fixture infrastructure shared by
-implementation, integration, and conformance tests. It keeps Runtime Home,
-Product Repository, project registration, Agent Connection registration, request
-builders, and direct Store inspection helpers out of production crates.
+Open [`crates/volicord-test-support/src/lib.rs`](../../../crates/volicord-test-support/src/lib.rs)
+and look for `disposable_runtime_home`, `TempRuntimeHome`, `CoreFixture`, and
+the method request builders. Treat these helpers as test composition, not
+production behavior or product-contract ownership.
 
-Owns in the implementation:
-
-- Temporary Runtime Home helpers under the system temporary directory.
-- Shared `CoreFixture` setup with one registered project and Agent Connection.
-- Request builders for public method tests.
-- Fixture-only Store inspection and mutation helpers used by tests.
-- Small marker modules for future fixture and golden-output helpers.
-
-Does not own:
-
-- Product contracts.
-- Public API behavior.
-- Durable Runtime Home data.
-- Generated reports or runtime output.
-
-Recommended first file:
-
-- [`crates/volicord-test-support/src/lib.rs`](../../../crates/volicord-test-support/src/lib.rs)
-
-Important modules:
-
-- `fixtures` and `golden` marker modules.
-- `core_fixtures` for `CoreFixture`, request builders, and fixture utilities.
-
-Important current symbols:
-
-- `disposable_runtime_home`, `TempRuntimeHome`
-- `CoreFixture`, `CoreFixture::new`, `CoreFixture::store`,
-  `CoreFixture::counts`, `CoreFixture::conn`
-- Fixture request builders such as `intake_request`, `status_request`,
-  `prepare_write_request`, `update_scope_request`, `record_run_request`,
-  `request_user_judgment_request`, `record_user_judgment_request`, and
-  `close_task_request`
-- `UpdateScopeFixture`, `RecordJudgmentFixture`, `CloseTaskFixture`,
-  `UserJudgmentFixture`
-- `supported_evidence_update`, `unsupported_evidence_update`,
-  `artifact_input_for_handle`
-
-Most relevant tests:
-
-- This crate is primarily exercised through
-  [`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs),
-  [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs),
-  and [`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs).
-
-Recommended next component:
-
-- Read whichever test package is using the fixture. Start with
-  `tests/integration` for adapter behavior or `tests/conformance` for
-  cross-method baseline scenarios.
-
-## `tests/conformance`
-
-Why it exists:
-
-`tests/conformance` is a Cargo workspace member containing the
-`volicord-conformance-tests` package and the `baseline` test target. It exercises
-baseline cross-method scenarios through Core-facing APIs and shared fixtures.
-
-Owns in the implementation:
-
-- Baseline scenario coverage that composes Core-facing public methods.
-- Cross-method checks for effect branches, idempotency, write tickets,
-  artifact lifecycle, judgment boundaries, close readiness, error routing, and
-  corruption handling.
-
-Does not own:
-
-- Product contract meaning or conformance authority.
-- Public API schemas.
-- Store DDL or storage effect definitions.
-- Adapter transport behavior.
-
-Recommended first file:
-
-- [`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs)
-
-Important current symbols:
-
-- `no_effect_branches_state_version_and_idempotency_are_stable`
-- `idempotency_replay_rejects_actor_source_mismatch`
-- `idempotency_replay_rejects_operation_category_mismatch`
-- `committed_non_allow_prepare_write_audit_and_replay_are_exact`
-- `prepare_write_issues_write_ticket_only_on_committed_allowed_effect`
-- `status_projection_matches_public_close_check_and_stays_read_only`
-- Shared helpers such as `core`, `invocation`,
-  `create_task_with_change_unit`, and `prepare_write_ticket`
-
-Most relevant tests:
-
-- The package exposes the `baseline` test target from
-  [`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs).
-
-Recommended next component:
-
-- Read `volicord-core` method tests for smaller focused cases, then return to
-  Reference owners for exact behavior questions.
+Use [Testing Strategy](testing-strategy.md) to decide when fixture changes need
+consumer tests in Core, CLI, integration, or conformance packages.
 
 ## `tests/integration`
 
-Why it exists:
+Read `tests/integration` when you want the cross-layer MCP view. The main
+starting point is
+[`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs),
+which composes MCP, Core, Store, Agent Connection binding, project selection,
+operation-category routing, response parity, and no-effect checks through
+representative calls.
 
-`tests/integration` is a Cargo workspace member containing the
-`volicord-integration-tests` package and the `mcp_connection` test target. It
-verifies the cross-layer MCP, Core, Store, connection binding, and invocation-path
-composition.
+Use these tests to understand how layers are composed. Do not treat them as
+the owner of public method contracts, MCP transport contracts, Store contracts,
+or Core authority semantics.
 
-Owns in the implementation:
+## `tests/conformance`
 
-- Tool exposure and schema exposure through MCP.
-- MCP session binding, invocation-context derivation, and operation-category routing.
-- MCP/Core response parity for representative requests.
-- Cross-layer storage effects and no-effect checks.
-- Stdio protocol error handling that should not mutate Store state.
+Read `tests/conformance` when you want baseline cross-method scenarios through
+Core-facing APIs. Start with
+[`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs) after
+you have read one Core method test.
 
-Does not own:
-
-- Public method contracts.
-- MCP transport contracts.
-- Store contracts.
-- Core authority semantics.
-
-Recommended first file:
-
-- [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs)
-
-Important current symbols:
-
-- `workflow_tools_include_agent_workflow_and_read_tools_but_exclude_user_only`
-- `read_only_tools_expose_only_read_operations_and_project_discovery`
-- `connection_invocation_is_injected_and_single_project_is_auto_selected`
-- `read_only_mode_rejects_agent_workflow_methods_before_core`
-- `multiple_allowed_projects_require_explicit_project_selector`
-- `explicit_project_outside_allowlist_is_rejected_before_core`
-- `explicit_allowed_project_routes_to_that_project`
-- Helpers such as `adapter`, `invocation`, `set_connection_mode`, and
-  `add_project`
-
-Most relevant tests:
-
-- The package exposes the `mcp_connection` test target from
-  [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs).
-
-Recommended next component:
-
-- Read `volicord-mcp` for the adapter path under test, then `volicord-core` and
-  `volicord-store` for the behavior behind successful calls.
+This package is useful for seeing replay, write tickets, artifact lifecycle,
+judgment paths, close-readiness checks, error routing, and corruption handling
+across methods. Product meaning still routes to the focused Reference owners.
 
 ## `xtask`
 
-Why it exists:
+Read `xtask` only when you are maintaining documentation validation. It is a
+repository maintenance package for read-only documentation checks such as
+`cargo run -p xtask -- docs-check`.
 
-`xtask` is a repository maintenance package for deterministic documentation
-validation. It exposes `cargo run -p xtask -- docs-check` and keeps
-documentation-tooling dependencies out of product and test-support crates.
+Open [`xtask/src/lib.rs`](../../../xtask/src/lib.rs), then
+[`xtask/src/main.rs`](../../../xtask/src/main.rs). The tests in
+[`xtask/tests/docs_check.rs`](../../../xtask/tests/docs_check.rs) use small
+fixture trees for metadata, bilingual path coverage, links, anchors, command
+examples, terminology roles, terminology paths, and public-language checks.
 
-Owns in the implementation:
+Use [Validation](../maintain/validation.md) for the maintenance policy that
+defines the command boundary and separates automated structure checks from
+manual semantic review.
 
-- Version 3 `docs/doc-index.yaml` structural validation, including
-  owner-area, date, and applicability metadata.
-- Bilingual maintained Markdown coverage checks for `docs/en/` and `docs/ko/`.
-- Local Markdown link and fragment validation, including hidden anchors.
-- `docs/terminology-map.yaml` repository-document path validation.
-- Executable `volicord` command-example validation, terminology role checks,
-  and public-language guarantee-claim checks.
+## Boundary reminders
 
-Does not own:
-
-- Volicord runtime behavior.
-- Public API, schema, storage, security, or Core authority contracts.
-- Semantic translation review or contract-owner technical review.
-- Automatic file rewriting.
-
-Recommended first file:
-
-- [`xtask/src/lib.rs`](../../../xtask/src/lib.rs), then
-  [`xtask/src/main.rs`](../../../xtask/src/main.rs)
-
-Most relevant tests:
-
-- [`xtask/tests/docs_check.rs`](../../../xtask/tests/docs_check.rs) uses small
-  temporary fixture trees for metadata, pairing, link, fragment, command-example,
-  terminology-role, terminology-path, and public-language cases.
-
-Recommended next component:
-
-- Read [Validation](../maintain/validation.md) for the maintenance policy that
-  names the command and separates automated structure checks from manual review.
+- This page gives a reading order and concrete first-open anchors; it does not
+  own exact source path responsibilities. Use [Source Map](source-map.md) for
+  that.
+- Core-facing code stays independent of CLI and MCP adapter crates.
+- MCP startup and routing may read Store before Core dispatch; that is not
+  alternate public method semantics.
+- `Volicord Runtime Home` and `Product Repository` are separate boundaries.
+- Tests verify owner-defined facts, but tests and fixtures are not product
+  contract owners.
+- Learning pages should name durable files, symbols, and flows, not unstable
+  line numbers.

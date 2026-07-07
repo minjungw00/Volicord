@@ -1,714 +1,288 @@
 # 코드베이스 둘러보기
 
-이 문서는 Cargo 멤버, 소스 파일, 심볼, 의존 방향, 테스트를 따라 현재
-Rust 워크스페이스를 설명합니다. 학습 가이드이며 계약 담당 문서가
-아닙니다. 정확한 API 동작, 저장 효과, 스키마, 보안 보장, 런타임 경계,
-Core 권한 의미는 참조 문서에 남습니다.
+이 문서는 Volicord Rust 워크스페이스를 배우는 유지보수자를 위한 읽기
+가이드입니다. 코드를 여는 유용한 순서, 각 크레이트가 존재하는 이유, 따라가면
+좋은 안정적인 진입 심볼과 흐름을 설명합니다.
 
-코드와 테스트 경로는 저장소 루트 기준으로 씁니다. 이 문서의 소스 링크는
-바로 열 수 있도록 상대 Markdown 대상으로 둡니다. 워크스페이스 전체 Cargo
-의존성 그래프와 런타임 지도는 [구현 아키텍처](architecture.md)를 사용합니다.
-영향을 받는 영역을 찾은 뒤 검증 계층을 고를 때는 [테스트 전략](testing-strategy.md)을
-사용합니다.
+이 문서는 소스 담당 지도가 아닙니다. 정확한 소스 경로 책임과 모듈 배치는
+[소스 지도](source-map.md)를 사용합니다. 워크스페이스 의존 그래프와 상위
+런타임 지도는 [구현 아키텍처](architecture.md), 로컬 관리 실행 흐름은
+[CLI 작업 흐름](cli-workflows.md), 대표 MCP에서 Core와 Store로 이어지는 메서드 추적은
+[요청 생명주기](request-lifecycle.md), 커밋과 아티팩트 경계는
+[저장소와 트랜잭션](storage-and-transactions.md), 테스트 계층 선택은
+[테스트 전략](testing-strategy.md), 변경을 시작할 때는
+[구현 가이드](change-guide.md)를 사용합니다.
 
-## 첫 번째 읽기 경로
+정확한 API 동작, 요청과 응답 스키마, 저장 효과, 보안 표현, 런타임 경계, 오류
+의미, Core 권한 의미는 집중 [참조 색인](../reference/README.md) 담당 문서에
+남습니다.
 
-공개 메서드 경로를 배울 때는 아래 순서로 읽습니다.
+아래 코드와 테스트 경로는 저장소 루트 기준입니다.
 
-1. `volicord-types`: 타입 지정 요청, 응답, 값 집합, 식별자, 정규 해시
-   형태를 봅니다.
-2. `volicord-store`: Runtime Home, 프로젝트 Store, 아티팩트, 스키마,
-   커밋 경계를 봅니다.
-3. `volicord-core`: 공유 요청 파이프라인, 메서드 계획, 정책, Store 조율을
-   봅니다.
-4. `volicord-mcp`: stdio 시작, 도구 등록, 타입 지정 인자 디코딩, 호출
-   맥락 파생, 디스패치, 응답 래핑을 봅니다.
-5. `volicord-test-support`, `tests/integration`, `tests/conformance`: 폐기
-   가능한 픽스처와 계층 간 검증 지점을 봅니다.
+## 추천 읽기 순서
 
-관리 설정 동작은 `volicord-store` 뒤에 `volicord-cli`를 읽습니다. CLI 경로는
-로컬 설정과 등록이며 공개 Core 메서드 동작이 아닙니다.
+공개 메서드 실행을 처음 훑을 때는 아래 순서로 코드를 읽습니다.
 
-저장소 문서 검증은 Maintain 정책 뒤에 `xtask`를 읽습니다. 이 패키지는
-유지보수 도구이며 공개 메서드 경로의 일부가 아닙니다.
+1. `volicord-types`: 다른 크레이트가 공유하는 타입 지정 요청, 응답, 값,
+   식별자, 정규 해시 형태를 익힙니다.
+2. `volicord-mcp`: MCP `tools/call`이 타입 지정 요청과 Core 호출로 바뀌는
+   흐름을 따라갑니다.
+3. `volicord-core`: 공유 사전 점검, 메서드 계획, 분기 선택, 응답 구성을
+   따라갑니다.
+4. `volicord-store`: 프로젝트 Store 읽기, `CoreStorageMutation` 값, 일반
+   커밋, 재실행, 아티팩트 경계를 따라갑니다.
+5. `tests/integration`과 `tests/conformance`: MCP/Core/Store를 가로지르는
+   경로와 기준 메서드 시나리오가 어떻게 실행되는지 봅니다.
 
-## Cargo 의존 형태
+로컬 운영자와 설정 동작은 `volicord-store` 뒤에 `volicord-cli`로 갈라져 읽고,
+그다음 [CLI 작업 흐름](cli-workflows.md)을 봅니다. CLI 경로는 로컬 관리
+오케스트레이션이며 공개 Core 메서드 동작의 다른 구현이 아닙니다.
 
-현재 manifest에서 확인되는 일반 내부 Cargo 의존 방향은 아래와 같습니다.
+저장소 질문은 [저장소와 트랜잭션](storage-and-transactions.md)을 옆에 두고
+`volicord-store`를 읽습니다. 정확한 기록, DDL, 아티팩트, 저장 효과 의미가
+필요하면 [참조 색인](../reference/README.md)의 저장소 참조 담당 문서로
+이동합니다.
 
-- `volicord-types`는 내부 의존성이 없습니다.
-- `volicord-store`는 `volicord-types`에 의존합니다.
-- `volicord-core`는 `volicord-store`와 `volicord-types`에 의존합니다.
-- `volicord-cli`는 `volicord-core`, `volicord-store`, `volicord-types`에 의존합니다.
-- `volicord-mcp`는 `volicord-core`, `volicord-store`, `volicord-types`에 의존합니다.
-- `volicord-test-support`는 `volicord-store`와 `volicord-types`에 의존합니다.
-- `xtask`는 내부 제품 크레이트에 의존하지 않습니다. 문서 파서 의존성은
-  유지보수 패키지 안에 격리됩니다.
+변경 작업에서는 이 문서를 최종 경로 지정 권한으로 사용하지 않습니다. 이
+문서로 방향을 잡고, 정확한 경로는 [소스 지도](source-map.md)에서 찾으며,
+검증 계층은 [테스트 전략](testing-strategy.md)에서 고르고, 담당 문서와 완료
+점검은 [구현 가이드](change-guide.md)로 확인합니다.
 
-테스트 전용 조합은 구현 크레이트에 `volicord-test-support`를 더하고,
-`tests/conformance`와 `tests/integration`이 자신이 실행하는 구현 크레이트를
-조합하게 합니다. 그래도 Core는 CLI나 MCP 어댑터에 의존하지 않습니다. 이 Cargo
-의존성 그래프의 그림 버전은 [구현 아키텍처](architecture.md)에 있습니다.
+## 워크스페이스 사고 모델
+
+가장 짧은 의존성 사고 모델은 아래와 같습니다.
+
+- `volicord-types`는 공유 타입 경계에 있습니다.
+- `volicord-store`는 공유 타입을 사용해 Runtime Home과 프로젝트 Store
+  메커니즘을 관리합니다.
+- `volicord-core`는 공유 타입과 Store를 사용해 어댑터 독립 메서드 처리를
+  구현합니다.
+- `volicord-mcp`와 `volicord-cli`는 Core와 Store 주변의 어댑터이자 로컬
+  관리 진입점입니다.
+- `volicord-test-support`, `tests/integration`, `tests/conformance`는 폐기
+  가능한 검증을 위해 크레이트를 조합합니다.
+- `xtask`는 저장소 유지보수 도구이며 제품 런타임 아키텍처와 분리됩니다.
+
+정확한 Cargo 의존 그래프는 [구현 아키텍처](architecture.md)를 사용합니다.
+정확한 소스 배치는 [소스 지도](source-map.md)를 사용합니다.
 
 ## `crates/volicord-types`
 
-존재 이유:
+어댑터, Core, Store, 테스트가 공유하는 데이터 형태를 이해해야 할 때 여기서
+시작합니다. 이 크레이트는 타입 지정 요청과 결과, 스키마 형태 구조체, 제어
+Rust 값, 불투명 식별자, MCP 노출 도구 이름, 정규 요청 해시의 경계입니다.
 
-`volicord-types`는 공개 API와 도메인 형태 값을 위한 공유 Rust 타입
-경계입니다. 어댑터, Core, Store, 테스트가 같은 serde 모델, JsonSchema 생성,
-제어 값 타입, MCP 노출 도구 이름 상수, 불투명 식별자, 정규 요청 해시를
-사용하게 합니다.
-
-구현에서 담당하는 것:
-
-- 지원 메서드의 공개 요청과 결과 Rust 형태.
-- `ToolEnvelope`, `ToolResultBase`, `StateRecordRef`, `StateSummary`,
-  `WriteTicketSummary`, `EvidenceSummary`, `CloseReadinessBlocker`,
-  `ArtifactRef` 같은 공유 스키마 형태 구조체.
-- `MethodName`, `OperationCategory`, `EffectKind`, `ResponseKind`, `ResumePolicy`,
-  `PrepareWriteDecision`, `ErrorCode` 같은 제어 값 enum.
-- 메서드와 어댑터 유틸리티 도구 집합을 위한 공유 MCP 노출 도구 이름 상수.
-- 불투명 식별자 래퍼와 durable ID 생성 도우미.
-- 결정적 정규 JSON과 요청 해시.
-
-담당하지 않는 것:
-
-- Core 메서드 동작.
-- Store 변이, DDL, canonical schema SQL, 저장 효과.
-- MCP 또는 CLI 전송 동작.
-- 스키마나 값 집합의 제품 계약 의미.
-
-추천 첫 파일:
-
-- [`crates/volicord-types/src/lib.rs`](../../../crates/volicord-types/src/lib.rs)
-
-중요 모듈:
+먼저 [`crates/volicord-types/src/lib.rs`](../../../crates/volicord-types/src/lib.rs)를
+열고, 이어서 아래 앵커를 따라갑니다.
 
 - [`crates/volicord-types/src/methods.rs`](../../../crates/volicord-types/src/methods.rs):
-  `MethodOperationCategory`, 메서드 요청 구조체, 메서드 결과 구조체,
-  `public_request_schema`.
+  공개 요청/결과 구조체, `MethodOperationCategory`, `public_request_schema`.
 - [`crates/volicord-types/src/schema.rs`](../../../crates/volicord-types/src/schema.rs):
-  공유 요청 래퍼, 응답, 상태, 아티팩트, 판단, 표시 형태.
+  `ToolEnvelope`, `StateSummary`, `EvidenceSummary`, `ArtifactRef` 같은 공유
+  요청 래퍼, 응답, 상태, 아티팩트, 판단, 표시 형태.
 - [`crates/volicord-types/src/values.rs`](../../../crates/volicord-types/src/values.rs):
-  제어 enum과 상수.
-- [`crates/volicord-types/src/tool_names.rs`](../../../crates/volicord-types/src/tool_names.rs):
-  MCP 등록과 관리 CLI 검증이 공유하는 MCP 노출 도구 이름 상수.
-- [`crates/volicord-types/src/ids.rs`](../../../crates/volicord-types/src/ids.rs):
-  ID 래퍼, `DurableIdKind`, `DurableIdGenerator`,
-  `RandomDurableIdGenerator`, `SequenceDurableIdGenerator`.
-- [`crates/volicord-types/src/canonical.rs`](../../../crates/volicord-types/src/canonical.rs):
-  `canonical_json_string`, `canonical_json_sha256`, `canonical_request_hash`.
+  `MethodName`, `OperationCategory`, `EffectKind`, `ResponseKind`, `ErrorCode`
+  같은 제어 값.
+- [`crates/volicord-types/src/ids.rs`](../../../crates/volicord-types/src/ids.rs)와
+  [`crates/volicord-types/src/canonical.rs`](../../../crates/volicord-types/src/canonical.rs):
+  불투명 ID, `DurableIdGenerator`, `canonical_request_hash`.
 
-중요한 현재 심볼:
-
-- `MethodOperationCategory`, `IntakeRequest`, `StatusRequest`,
-  `PrepareWriteRequest`, `RecordRunRequest`, `CloseTaskRequest`
-- `ToolEnvelope`, `ToolResponse`, `ToolRejectedResponse`,
-  `ToolDryRunResponse`, `ToolError`, `DryRunSummary`
-- `MethodName`, `OperationCategory`, `EffectKind`, `ResponseKind`, `ErrorCode`
-- `RequiredNullable<T>`, `StateSummary`, `StateRecordRef`,
-  `WriteTicketSummary`, `WriteTicketAttemptScope`
-- `canonical_request_hash`, `DurableIdGenerator`, `DURABLE_ID_RETRY_LIMIT`
-
-가장 관련 있는 테스트:
-
-- [`crates/volicord-types/src/lib.rs`](../../../crates/volicord-types/src/lib.rs)의
-  단위 테스트. 먼저 `typed_requests_derive_documented_operation_categories`,
-  `unknown_top_level_fields_are_rejected_on_public_requests`,
-  `authority_looking_request_fields_are_rejected`를 봅니다.
-
-다음에 읽을 컴포넌트:
-
-- 타입 지정 요청이 메서드 동작이 되는 과정을 보려면 `volicord-core`를
-  읽습니다. MCP 인자가 이 타입 지정 요청으로 바뀌는 과정을 보려면
-  `volicord-mcp`를 읽습니다.
-
-## `crates/volicord-store`
-
-존재 이유:
-
-`volicord-store`는 SQLite 기반 Runtime Home과 프로젝트 Store 메커니즘을
-담당합니다. 데이터베이스 열기, 스키마 초기화와 검증, 로컬 기록 부트스트랩,
-설정 상태 검사, 아티팩트 스테이징, 저장소 실패 분류, Core 변이 원자 커밋이
-여기에 속합니다.
-
-구현에서 담당하는 것:
-
-- Runtime Home 해석과 registry/project 경로 도우미.
-- Runtime Home 초기화, 프로젝트 등록, Agent Connection 등록.
-- SQLite 열기, canonical 스키마 초기화, 스키마 검증, 트랜잭션 도우미.
-- `CoreProjectStore` 읽기 도우미와 `CoreStorageMutation` 적용.
-- `CoreProjectStore::commit_mutation` 원자 트랜잭션 경계.
-- 일시적 아티팩트 스테이징과 영구 아티팩트 본문 검증 도우미.
-- 설정과 진단에서 쓰는 읽기 전용 검사 스냅샷.
-- `StoreError`, `StoreFailureRoute`, 저장소 실패 분류.
-
-담당하지 않는 것:
-
-- 공개 메서드 동작이나 메서드 정책.
-- MCP 또는 CLI 어댑터 의미.
-- `Product Repository` 제품 파일 쓰기.
-- 정확한 저장소 계약, DDL 의미, 저장 효과 계약.
-
-추천 첫 파일:
-
-- [`crates/volicord-store/src/lib.rs`](../../../crates/volicord-store/src/lib.rs)
-
-중요 모듈:
-
-- [`crates/volicord-store/src/runtime_home.rs`](../../../crates/volicord-store/src/runtime_home.rs):
-  `resolve_runtime_home`, `RuntimeHomeResolutionError`.
-- [`crates/volicord-store/src/bootstrap.rs`](../../../crates/volicord-store/src/bootstrap.rs):
-  `initialize_runtime_home`, `register_project`, `ProjectRegistration`,
-  `ProjectRecord`.
-- [`crates/volicord-store/src/agent_connections.rs`](../../../crates/volicord-store/src/agent_connections.rs):
-  `AgentConnectionRecord`, `AgentConnectionRegistration`,
-  `ensure_agent_connection`, `add_connection_project`.
-- [`crates/volicord-store/src/sqlite.rs`](../../../crates/volicord-store/src/sqlite.rs):
-  데이터베이스 경로, 열기, 검증, `begin_immediate_transaction`.
-- [`crates/volicord-store/src/schema.rs`](../../../crates/volicord-store/src/schema.rs)와
-  [`crates/volicord-store/src/schema/`](../../../crates/volicord-store/src/schema/):
-  canonical registry/project SQL 원본과 스키마 초기화.
-- [`crates/volicord-store/src/core_pipeline.rs`](../../../crates/volicord-store/src/core_pipeline.rs):
-  Core 쪽 Store 읽기, `CoreStorageMutation`, 커밋 결과, 원자적 커밋 경계.
-- [`crates/volicord-store/src/core_pipeline/mutation_apply.rs`](../../../crates/volicord-store/src/core_pipeline/mutation_apply.rs):
-  트랜잭션 범위 SQL 작성기로 `CoreStorageMutation` 값을 적용합니다.
-- [`crates/volicord-store/src/artifacts.rs`](../../../crates/volicord-store/src/artifacts.rs):
-  `CoreProjectStore::create_artifact_staging`,
-  `verify_persistent_artifact_body`.
-- [`crates/volicord-store/src/inspection.rs`](../../../crates/volicord-store/src/inspection.rs):
-  읽기 전용 Runtime Home과 프로젝트 상태 검사.
-- [`crates/volicord-store/src/error.rs`](../../../crates/volicord-store/src/error.rs):
-  `StoreError`와 저장소 실패 처리 경로.
-
-중요한 현재 심볼:
-
-- `CoreProjectStore`, `ProjectStateHeader`, `ProjectEnforcementProfileRecord`
-- `ToolInvocationRecord`, `VerifiedReplayContext`, `PendingTaskEvent`
-- `CommitMutationInput`, `MutationCommitOutcome`, `CommittedMutationFacts`
-- `CoreStorageMutation`, `StorageEffectCounts`, `ProjectMutation`
-- `RuntimeHomeRecord`, `ProjectRegistration`, `AgentConnectionRegistration`
-- `ArtifactStagingInsert`, `ArtifactStagingRecord`,
-  `PersistentArtifactVerification`
-- `inspect_runtime_home`, `inspect_registry_database`,
-  `inspect_project_state_database`
-
-가장 관련 있는 테스트:
-
-- Store 모듈 안의 단위 테스트.
-- Store에 보이는 효과는
-  [`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs)의
-  Core 메서드 테스트에서 확인합니다.
-- 계층 간 저장소 확인은
-  [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs)와
-  [`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs)에 있습니다.
-
-다음에 읽을 컴포넌트:
-
-- 메서드 계획이 Store 읽기와 `CoreStorageMutation` 값을 어떻게 고르는지
-  보려면 `volicord-core`를 읽습니다. 로컬 설정이 Store 부트스트랩과 검사를
-  직접 사용하는 경로를 보려면 `volicord-cli`를 읽습니다.
-
-## `crates/volicord-core`
-
-존재 이유:
-
-`volicord-core`는 공개 Volicord 메서드 동작을 위한 Core 쪽 서비스를
-담당합니다. 어댑터와 독립적인 메서드 동작을 한 크레이트에 두고 Store
-읽기, 정책 점검, 메서드 계획, dry-run 미리보기, 커밋된 변이, 공통 응답
-구성을 조율합니다.
-
-구현에서 담당하는 것:
-
-- `CoreService`와 그 위의 공개 메서드 진입 함수.
-- 요청 래퍼 형태, 어댑터 바인딩, 요청 해시, Store 열기, 프로젝트 상태,
-  호출 맥락 검증, 재실행, Task 해석, 상태 버전 최신성, 접근 점검의 공통 사전
-  점검.
-- `crates/volicord-core/src/methods/`의 메서드별 계획.
-- `crates/volicord-core/src/policy/`의 재사용 정책 도우미.
-- Core 응답 구성과 읽기 전용, 효과 없음, dry-run, 커밋된 변이 분기 처리.
-
-담당하지 않는 것:
-
-- MCP stdio 프레이밍이나 CLI 설정 동작.
-- SQLite DDL, canonical 스키마 정의, 원시 저장소 레이아웃 계약.
-- `Product Repository` 제품 파일 쓰기.
-- 공개 스키마 계약이나 정확한 값 집합 의미.
-
-추천 첫 파일:
-
-- [`crates/volicord-core/src/lib.rs`](../../../crates/volicord-core/src/lib.rs),
-  그다음 [`crates/volicord-core/src/pipeline.rs`](../../../crates/volicord-core/src/pipeline.rs)
-
-중요 모듈:
-
-- [`crates/volicord-core/src/pipeline.rs`](../../../crates/volicord-core/src/pipeline.rs):
-  `CoreService`, `InvocationContext`, `MethodPolicy`,
-  `OwnerPipelineBranch`, `PreparedRequest`, `PipelineResponse`,
-  `CoreService::prepare_request`, `CoreService::execute_prepared_request`.
-- [`crates/volicord-core/src/methods/`](../../../crates/volicord-core/src/methods/):
-  메서드별 진입 함수와 계획기.
-- [`crates/volicord-core/src/methods/status.rs`](../../../crates/volicord-core/src/methods/status.rs):
-  `CoreService::status`, `status_task`, `status_result_fields`.
-- [`crates/volicord-core/src/methods/intake.rs`](../../../crates/volicord-core/src/methods/intake.rs):
-  `CoreService::intake`, `plan_intake`.
-- [`crates/volicord-core/src/methods/prepare_write.rs`](../../../crates/volicord-core/src/methods/prepare_write.rs):
-  `CoreService::prepare_write`, `prepare_write_policy`, `plan_prepare_write`.
-- [`crates/volicord-core/src/policy/`](../../../crates/volicord-core/src/policy/):
-  접근, 재실행, 경로, 쓰기 티켓, 증거, 판단 관련성, 닫기 준비 상태
-  도우미.
-
-중요한 현재 심볼:
-
-- `CoreService`, `CoreResult`, `CorePipelineError`
-- `AdapterSessionBinding`, `InvocationContext`, `VerifiedInvocationContext`,
-  `VerifiedActorContext`
-- `MethodPolicy`, `TaskRequirement`, `ReplayPolicy`, `FreshnessPolicy`,
-  `MethodEffectPolicy`
-- `OwnerPipelineBranch`, `PreparedRequest`, `VerifiedRequestContext`,
-  `PipelinePreflightOutcome`, `PipelineResponse`
-- `prepare_or_response`, `mutation_method_policy`, `validation_rejected`
-- `CoreService::status`, `CoreService::intake`,
-  `CoreService::prepare_write`, `CoreService::record_run`,
-  `CoreService::close_task`
-
-가장 관련 있는 테스트:
-
-- [`crates/volicord-core/src/pipeline.rs`](../../../crates/volicord-core/src/pipeline.rs)는
-  재실행, 최신성, 분기 형태, 효과 없는 동작, Store 실패 처리 경로를 단위
-  테스트합니다.
-- [`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs)는
-  메서드 계획과 효과를 실행합니다. 먼저
-  `status_is_read_only_including_dry_run`,
-  `intake_commits_once_and_replays_without_effect`,
-  `prepare_write_allowed_issues_one_write_ticket_with_post_commit_basis`,
-  `prepare_write_dry_run_has_no_write_ticket_effect`,
-  `status_read_only_rejects_corrupt_owner_state_without_effect`를 봅니다.
-- 계층 간 확인은
-  [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs)와
-  [`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs)에 있습니다.
-
-다음에 읽을 컴포넌트:
-
-- 커밋 메커니즘은 `volicord-store`에서, `CoreService`로 들어오는 어댑터
-  디스패치는 `volicord-mcp`에서 봅니다.
-
-## `crates/volicord-cli`
-
-존재 이유:
-
-`volicord-cli`는 로컬 `volicord` 관리 실행 파일과 재사용 가능한 명령 모듈을
-구현합니다. 설치 프로필 준비 상태, Git 저장소 프로젝트 감지, 프로젝트와
-Agent Connection 등록, Agent Connection 설정, 지원되는 호스트별 MCP 설정, guard hook
-통합, 권한 번들 내보내기, 로컬 `User Channel` 명령, 사전 점검 실행을 처리합니다.
-
-구현에서 담당하는 것:
-
-- `volicord` 바이너리의 프로세스 진입과 관리 명령 디스패치.
-- Setup workflow 도우미, 명령 발견, 명령 링크, shell startup 계획, interactive
-  선택, setup 출력 렌더링.
-- `volicord init`, `volicord connection add`, `volicord connection list`,
-  `volicord connection ...` 디스패치, 저장소 준비, 호스트 계획 구성, 사전 점검
-  호출, status, verification, mode, removal, 출력.
-- Guard hook 명령 디스패치, phase 처리, 기록된 관찰, prompt-capture 처리,
-  write-ticket matching, host-native rendering.
-- Guard integration 계획, 생성 guard 파일 적용, capability metadata, policy helper,
-  host hook command 계획, connection status와 doctor diagnostics가 쓰는 사실 기반
-  audit helper.
-- Codex와 Claude Code 호스트 어댑터 내부 구현, 관리 호스트 설정 계획, 호스트
-  설정 안전성 점검.
-- Doctor, project, 권한 번들 내보내기, 로컬 User Channel 명령 파싱과 출력.
-- Agent Connection, Connection Projects, 호출 출처 메타데이터 생성.
-
-담당하지 않는 것:
-
-- 공개 Volicord API 메서드 동작.
-- MCP `tools/call` 의미.
-- Core 상태 전이 또는 메서드 정책.
-- 정확한 CLI 명령 계약.
-
-추천 첫 파일:
-
-- [`crates/volicord-cli/src/main.rs`](../../../crates/volicord-cli/src/main.rs)
-
-중요 모듈:
-
-- [`crates/volicord-cli/src/main.rs`](../../../crates/volicord-cli/src/main.rs):
-  프로세스 디스패치와 `run_cli`.
-- [`crates/volicord-cli/src/setup_command.rs`](../../../crates/volicord-cli/src/setup_command.rs):
-  setup 명령 진입점, setup process 추상화, setup terminal 추상화, setup 출력 상태.
-- [`crates/volicord-cli/src/setup_command/workflow.rs`](../../../crates/volicord-cli/src/setup_command/workflow.rs):
-  setup workflow 실행과 report 조립.
-- [`crates/volicord-cli/src/setup_command/discovery.rs`](../../../crates/volicord-cli/src/setup_command/discovery.rs),
-  [`linking.rs`](../../../crates/volicord-cli/src/setup_command/linking.rs),
-  [`shell_startup.rs`](../../../crates/volicord-cli/src/setup_command/shell_startup.rs),
-  [`interactive.rs`](../../../crates/volicord-cli/src/setup_command/interactive.rs),
-  [`output.rs`](../../../crates/volicord-cli/src/setup_command/output.rs):
-  명령 발견, 명령 링크 처리, shell startup 편집, interactive 선택, setup 렌더링.
-- [`crates/volicord-cli/src/doctor_command.rs`](../../../crates/volicord-cli/src/doctor_command.rs):
-  installation profile, host, connection, guard fact를 가로지르는 진단 점검.
-- [`crates/volicord-cli/src/project_context.rs`](../../../crates/volicord-cli/src/project_context.rs):
-  Git 저장소 루트 감지와 `volicord project ...` 명령.
-- [`crates/volicord-cli/src/export_command.rs`](../../../crates/volicord-cli/src/export_command.rs):
-  권한 번들 내보내기 파싱, 렌더링, 출력.
-- [`crates/volicord-cli/src/connection_command.rs`](../../../crates/volicord-cli/src/connection_command.rs):
-  `volicord init`, `volicord connection add`, `volicord connection list`,
-  `volicord connection status/verify/mode/remove`의 명령 디스패치 진입점.
-- [`crates/volicord-cli/src/connection_command/service.rs`](../../../crates/volicord-cli/src/connection_command/service.rs):
-  연결 프로비저닝 workflow와 init 프로비저닝 workflow.
-- [`crates/volicord-cli/src/connection_command/selection.rs`](../../../crates/volicord-cli/src/connection_command/selection.rs):
-  호스트, 저장소, 연결 선택과 모호성 처리.
-- [`crates/volicord-cli/src/connection_command/verification.rs`](../../../crates/volicord-cli/src/connection_command/verification.rs):
-  연결 진단, 호스트 검증 집계, 저장된 상태, MCP 사전 점검 진단, handshake 상태.
-- [`crates/volicord-cli/src/connection_command/output/`](../../../crates/volicord-cli/src/connection_command/output/):
-  연결 텍스트, JSON, summary 렌더링.
-- [`crates/volicord-cli/src/guard_command.rs`](../../../crates/volicord-cli/src/guard_command.rs):
-  `_hook` 명령 진입점과 guard phase 디스패치.
-- [`crates/volicord-cli/src/guard_command/envelope.rs`](../../../crates/volicord-cli/src/guard_command/envelope.rs),
-  [`tool_observation.rs`](../../../crates/volicord-cli/src/guard_command/tool_observation.rs),
-  [`mutation.rs`](../../../crates/volicord-cli/src/guard_command/mutation.rs),
-  [`prompt_command.rs`](../../../crates/volicord-cli/src/guard_command/prompt_command.rs),
-  [`prompt_capture.rs`](../../../crates/volicord-cli/src/guard_command/prompt_capture.rs),
-  [`write_ticket.rs`](../../../crates/volicord-cli/src/guard_command/write_ticket.rs),
-  [`render.rs`](../../../crates/volicord-cli/src/guard_command/render.rs),
-  [`phase/`](../../../crates/volicord-cli/src/guard_command/phase/):
-  host event 정규화, tool observation 추출, mutation 분류, prompt-capture 명령 처리,
-  write-ticket coverage, guard 출력, phase별 lifecycle 처리.
-- [`crates/volicord-cli/src/guard_integration/`](../../../crates/volicord-cli/src/guard_integration/):
-  생성 guard 파일 계획과 적용, capability metadata, policy helper, host hook command
-  계획, 호스트별 생성 파일, 사실 기반 audit helper. 이 사실은 진단과 기록된
-  관찰이며 보안 보장이나 human approval 기록이 아닙니다.
-- [`crates/volicord-cli/src/host_integration/`](../../../crates/volicord-cli/src/host_integration/):
-  공유 host kind, capability, lifecycle phase, managed host plan type, config editing,
-  integration contract, generic host guidance, diagnostic status type.
-- [`crates/volicord-cli/src/host_integration/codex/`](../../../crates/volicord-cli/src/host_integration/codex/):
-  Codex 어댑터 내부 구현. config 파싱과 갱신, 실행 파일 점검, managed identity
-  평가, project trust diagnostic을 포함합니다.
-- [`crates/volicord-cli/src/host_integration/claude_code/`](../../../crates/volicord-cli/src/host_integration/claude_code/):
-  Claude Code 어댑터 내부 구현. CLI command 구성, config 파싱과 갱신, managed
-  identity 점검, CLI output 파싱을 포함합니다.
-- [`crates/volicord-cli/src/registration.rs`](../../../crates/volicord-cli/src/registration.rs):
-  Agent Connection, Connection Project, User Channel 레지스트리 도우미.
-- [`crates/volicord-cli/src/user_command.rs`](../../../crates/volicord-cli/src/user_command.rs):
-  로컬 User Channel 상태와 `volicord inbox` 명령.
-
-중요한 현재 심볼:
-
-- `run_cli`, `CliError`
-- `run_setup_command`, `run_setup_workflow`, `run_doctor_command`
-- `run_project_command`, `resolve_repository_root`
-- `run_init_command`, `run_connect_command`, `run_connections_command`,
-  `run_connection_command`, `connect_usage`, `connections_usage`,
-  `connection_usage`
-- `provision_init`, `provision_connection`, `select_connection`,
-  `verify_connection`, `render_connection_output`
-- `run_guard_command`, `guard_envelope`, `tool_observation`,
-  `handle_prompt_capture`, `render_guard_output`
-- `plan_guard_integration`, `apply_guard_integration`,
-  `record_guard_installation`, `guard_file_findings_for_installation`
-- `run_status_command`, `run_inbox_command`
-- `HostKind`, `HostScope`, `HostPlan`, `HostAdapter`, `Verification`
-- `AgentConnectionRegistration`, `ConnectionProjectRegistration`,
-  `AgentConnectionRecord`
-- `actor_source`, `operation_category`, `connection_id`,
-  `verification_basis`
-
-가장 관련 있는 테스트:
-
-- [`crates/volicord-cli/tests/binary_admin.rs`](../../../crates/volicord-cli/tests/binary_admin.rs)는
-  `volicord` 바이너리의 init, doctor, 프로젝트 감지, dry-run 동작,
-  `volicord connection add`, connection status/verification/mode/removal,
-  guarded init/status 생성 출력 drift, User Channel 명령, 사전 점검 처리, 설정 파일
-  안전성을 실행합니다.
-- [`crates/volicord-cli/tests/guard_command.rs`](../../../crates/volicord-cli/tests/guard_command.rs)는
-  guard hook lifecycle 동작, host-native rendering, 기록된 관찰, prompt capture,
-  expected write, write-ticket matching, guarded lifecycle scenario를 실행합니다.
-- [`crates/volicord-cli/tests/support/`](../../../crates/volicord-cli/tests/support/)는
-  CLI 통합 테스트를 위한 binary fixture, fake host, fake MCP process, guard fixture,
-  JSON helper, assertion helper를 제공합니다.
-- CLI 모듈 안의 단위 테스트는 파싱, 계획, 렌더링, 등록 메타데이터,
-  setup workflow 동작, guard integration 계획, 사실 기반 guard-file audit,
-  호스트 설정 동작을 다룹니다.
-
-다음에 읽을 컴포넌트:
-
-- 부트스트랩, 검사, registry 저장소 호출은 `volicord-store`에서 봅니다.
-  에이전트 설정이 검증하는 `volicord mcp --check --connection` 사전 점검
-  경로는 `volicord-mcp`와 `volicord-cli`에서 봅니다.
+테스트를 읽을 때는 `crates/volicord-types/src/lib.rs`의 타입 형태와 정규 해시
+테스트에서 시작합니다. 그다음 MCP 인자에서 타입 지정 요청이 만들어지는 모습을
+보려면 `volicord-mcp`로, 요청이 계획되는 모습을 보려면 `volicord-core`로
+이동합니다.
 
 ## `crates/volicord-mcp`
 
-존재 이유:
+로컬 MCP 호스트가 Core에 도달하는 경로를 보려면 `volicord-mcp`를 읽습니다.
+이 어댑터는 공개 도구를 등록하고, 시작/세션 맥락을 검증하고, `tools/call`
+인자를 디코딩하고, 로컬 Agent Connection에서 신뢰된 호출 맥락을 파생하고,
+Core를 호출한 뒤 Core JSON을 MCP `content`로 래핑합니다.
 
-`volicord-mcp`는 로컬 MCP stdio 어댑터입니다. 공개 Volicord 메서드 도구를
-등록하고, 시작/세션 바인딩을 검증하며, `tools/call` 인자를 타입 지정
-요청으로 디코딩하고, 로컬 세션에서 신뢰된 호출 맥락을 파생하고, Core를
-호출한 뒤 Core의 JSON 응답을 MCP `tools/call` 결과로 래핑합니다.
+크레이트 표면은 [`crates/volicord-mcp/src/lib.rs`](../../../crates/volicord-mcp/src/lib.rs)에서
+보고, 그다음 아래 경로를 따라갑니다.
 
-구현에서 담당하는 것:
+1. [`crates/volicord-mcp/src/tool_registry.rs`](../../../crates/volicord-mcp/src/tool_registry.rs):
+   공개 도구 목록과 `PUBLIC_METHOD_TOOL_NAMES`.
+2. [`crates/volicord-mcp/src/routing.rs`](../../../crates/volicord-mcp/src/routing.rs):
+   시작 검사, 연결 맥락, 프로젝트 허용 목록, 요청 시점 프로젝트 선택.
+3. [`crates/volicord-mcp/src/adapter.rs`](../../../crates/volicord-mcp/src/adapter.rs):
+   `McpAdapter::call_tool`, 타입 지정 디코딩, 생성된 요청 래퍼 사실,
+   `McpDerivedInvocationContext::core_invocation`.
+4. [`crates/volicord-mcp/src/stdio.rs`](../../../crates/volicord-mcp/src/stdio.rs):
+   JSON-RPC stdio 디스패치, 사전 점검, 응답 래핑.
 
-- `volicord mcp` 명령 모드: stdio, `--check`, help, version.
-- MCP 시작을 위한 Runtime Home과 세션 바인딩 검증.
-- `tools/list`가 반환하는 도구 메타데이터.
-- `tools/call` 디스패치, 타입 지정 인자 디코딩, 호출 맥락 파생.
-- JSON-RPC stdio 프레이밍과 MCP 응답 래핑.
+경계를 분리해서 읽어야 합니다. MCP 시작과 라우팅 중 Store를 직접 읽는 것은 공개
+메서드 디스패치 전의 검증과 선택 작업입니다. 공개 메서드 의미는 계속
+`volicord-core`를 통합니다. 대표 호출 추적은 [요청 생명주기](request-lifecycle.md),
+정확한 MCP 전송 동작은 [MCP 전송](../reference/mcp-transport.md)을 사용합니다.
 
-담당하지 않는 것:
+## `crates/volicord-core`
 
-- Core 호출 뒤의 공개 메서드 동작.
-- Store 변이 정책.
-- 관리 CLI 설정 동작.
-- `Product Repository` 제품 파일 쓰기.
+어댑터와 독립적인 메서드 경로를 보려면 `volicord-core`를 읽습니다. Core는 공유
+사전 점검, Store 열기, 재실행 점검, 메서드별 계획, 분기 선택, 응답 구성을
+조율합니다.
 
-추천 첫 파일:
+[`crates/volicord-core/src/lib.rs`](../../../crates/volicord-core/src/lib.rs)를
+열고, 이어서 [`crates/volicord-core/src/pipeline.rs`](../../../crates/volicord-core/src/pipeline.rs)를
+봅니다. 따라갈 주요 심볼은 `CoreService`, `InvocationContext`,
+`MethodPolicy`, `PreparedRequest`, `OwnerPipelineBranch`,
+`CoreService::prepare_request`,
+`CoreService::execute_prepared_request`입니다.
 
-- [`crates/volicord-mcp/src/lib.rs`](../../../crates/volicord-mcp/src/lib.rs)
+파이프라인 뒤에는
+[`crates/volicord-core/src/methods/`](../../../crates/volicord-core/src/methods/)에서
+메서드 모듈 하나를 고릅니다.
 
-중요 모듈:
+- `status.rs`는 읽기 전용 분기를 보여 줍니다.
+- `intake.rs`는 계획된 커밋 변이 분기를 보여 줍니다.
+- `prepare_write.rs`는 정책이 많은 계획과 쓰기 티켓 결정을 보여 줍니다.
+- `record_run.rs`, `judgment.rs`, `reconcile_changes.rs`, `close_task.rs`는
+  정확한 메서드 계약을 Core 산문으로 옮기지 않으면서 뒤쪽 작업 흐름 사실이
+  어떻게 계획되는지 보여 줍니다.
 
-- [`crates/volicord-mcp/src/lib.rs`](../../../crates/volicord-mcp/src/lib.rs):
-  공개 크레이트 표면과 다시 내보내는 어댑터 진입점.
-- [`crates/volicord-mcp/src/tool_registry.rs`](../../../crates/volicord-mcp/src/tool_registry.rs):
-  `PUBLIC_METHOD_TOOL_NAMES`, `McpToolDefinition`, `public_method_tools`.
-- [`crates/volicord-mcp/src/routing.rs`](../../../crates/volicord-mcp/src/routing.rs):
-  `McpConnectionStartupInspection`, `McpConnectionContext`, 프로젝트 선택 도우미.
-- [`crates/volicord-mcp/src/adapter.rs`](../../../crates/volicord-mcp/src/adapter.rs):
-  `McpAdapter`, `McpAdapter::call_tool`, 타입 지정 인자 디코딩, Core 호출.
-- [`crates/volicord-mcp/src/stdio.rs`](../../../crates/volicord-mcp/src/stdio.rs):
-  `run_stdio_from_env`, `run_preflight_check_from_env`,
-  `handle_json_rpc_request`, 응답 래핑, elicitation 처리.
-- [`crates/volicord-mcp/src/local_http.rs`](../../../crates/volicord-mcp/src/local_http.rs),
-  [`local_web_consent.rs`](../../../crates/volicord-mcp/src/local_web_consent.rs),
-  [`http.rs`](../../../crates/volicord-mcp/src/http.rs): loopback HTTP 서빙,
-  동의 처리, 공유 HTTP 파싱.
-- [`crates/volicord-cli/src/main.rs`](../../../crates/volicord-cli/src/main.rs):
-  공개 `volicord mcp` 프로세스 모드 디스패치.
+[`crates/volicord-core/src/policy/`](../../../crates/volicord-core/src/policy/)
+아래의 재사용 정책 도우미는 메서드 하나를 이해한 뒤 읽으면 좋습니다. 반복
+구조는 [구현 설계 패턴](design-patterns.md), 추적 예시는
+[요청 생명주기](request-lifecycle.md)를 사용합니다.
 
-중요한 현재 심볼:
+테스트는 분기와 사전 점검 경계를 다루는 `crates/volicord-core/src/pipeline.rs`에서
+시작한 뒤, 메서드 계획과 Store에 보이는 효과를 다루는
+`crates/volicord-core/src/methods/tests/mod.rs`로 이동합니다.
 
-- `PUBLIC_METHOD_TOOL_NAMES`, `McpToolDefinition`, `public_method_tools`
-- `McpConnectionStartupInspection`, `McpConnectionContext`,
-  `McpDerivedInvocationContext`
-- `McpAdapter`, `McpAdapter::derive_invocation_context`,
-  `McpAdapter::call_tool`
-- `run_stdio_from_env`, `run_preflight_check_from_env`,
-  `preflight_check`
-- `LocalHttpServerConfig`, `run_local_http_server`
-- `McpAdapterError`, `LocalHttpError`, `json_rpc_error_for_adapter`
+## `crates/volicord-store`
 
-가장 관련 있는 테스트:
+런타임 데이터와 트랜잭션 메커니즘이 필요할 때 `volicord-store`를 읽습니다.
+Store는 Runtime Home 경로 처리, registry와 프로젝트 데이터베이스 설정, 스키마
+검증, 프로젝트 Store 읽기, 일반 Core 변이 커밋, 재실행 행, 아티팩트 스테이징,
+검사, 저장소 오류 처리를 관리합니다.
 
-- [`crates/volicord-mcp/src/tests.rs`](../../../crates/volicord-mcp/src/tests.rs)의
-  단위 테스트. 먼저 `tool_sets_follow_connection_mode_and_exclude_user_only_recording`,
-  `connection_context_resolves_and_preflight_reports_allowed_project`,
-  `adapter_auto_selects_single_project_and_injects_connection_invocation`,
-  `read_only_mode_rejects_agent_workflow_calls_before_core`,
-  `mcp_visible_schemas_make_project_selector_optional`을 봅니다.
-- [`crates/volicord-cli/tests/mcp_transport.rs`](../../../crates/volicord-cli/tests/mcp_transport.rs)는
-  `volicord mcp` 하위 명령, `--check`, stdio 프레이밍, 재연결 동작, MCP 응답 래핑을
-  실행합니다.
-- [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs)는
-  MCP/Core/Store 계층 간 동작을 실행합니다.
+[`crates/volicord-store/src/lib.rs`](../../../crates/volicord-store/src/lib.rs)를
+열고, 질문에 맞는 경로를 따라갑니다.
 
-다음에 읽을 컴포넌트:
+- 설정과 로컬 등록:
+  [`runtime_home.rs`](../../../crates/volicord-store/src/runtime_home.rs),
+  [`bootstrap.rs`](../../../crates/volicord-store/src/bootstrap.rs),
+  [`agent_connections.rs`](../../../crates/volicord-store/src/agent_connections.rs).
+- SQLite 형태와 검증:
+  [`sqlite.rs`](../../../crates/volicord-store/src/sqlite.rs),
+  [`schema.rs`](../../../crates/volicord-store/src/schema.rs),
+  [`schema/`](../../../crates/volicord-store/src/schema/).
+- Core 쪽 Store 작업:
+  [`core_pipeline.rs`](../../../crates/volicord-store/src/core_pipeline.rs)에서
+  `CoreProjectStore`, `CoreStorageMutation`, `CommitMutationInput`,
+  `MutationCommitOutcome`, `CoreProjectStore::commit_mutation`.
+- 아티팩트 작업:
+  [`artifacts.rs`](../../../crates/volicord-store/src/artifacts.rs)의 스테이징과
+  영구 본문 검증 도우미.
+- 읽기 전용 설정과 진단 보기:
+  [`inspection.rs`](../../../crates/volicord-store/src/inspection.rs).
 
-- 각 `McpAdapter` 분기 뒤의 메서드 의미는 `volicord-core`에서 봅니다.
-  시작 검증과 세션 바인딩 읽기는 `volicord-store`에서 봅니다.
+커밋 경로를 읽을 때는 [저장소와 트랜잭션](storage-and-transactions.md)을 함께
+사용합니다. 그 문서는 계획과 변이의 분리, 원자적 커밋 경계, 재실행, 상태 버전,
+아티팩트, 실패 경계를 가이드 수준으로 설명합니다. 정확한 Store 하위 모듈 지도는
+[소스 지도](source-map.md)를 사용합니다.
+
+## `crates/volicord-cli`
+
+설치 프로필 설정, 프로젝트 감지, Agent Connection 등록, 호스트 어댑터 계획,
+guard integration, connection status와 verification, doctor diagnostics, 권한
+번들 내보내기, User Channel 명령, 공개 `volicord mcp` 프로세스 모드 인계를
+읽어야 할 때 `volicord-cli`를 봅니다.
+
+[`crates/volicord-cli/src/main.rs`](../../../crates/volicord-cli/src/main.rs)에서
+`run_cli`와 프로세스 디스패치를 먼저 봅니다. 그다음 살펴볼 작업 흐름을 고릅니다.
+
+- Setup workflow: [`setup_command.rs`](../../../crates/volicord-cli/src/setup_command.rs)와
+  [`setup_command/`](../../../crates/volicord-cli/src/setup_command/)의
+  `run_setup_command`, `run_setup_workflow`.
+- Agent Connection 프로비저닝과 검증:
+  [`connection_command.rs`](../../../crates/volicord-cli/src/connection_command.rs)와
+  [`connection_command/`](../../../crates/volicord-cli/src/connection_command/) 아래의
+  `run_init_command`, `run_connection_command`, `provision_connection`,
+  `select_connection`, `verify_connection`, 렌더링 경로.
+- Guard hook lifecycle:
+  [`guard_command.rs`](../../../crates/volicord-cli/src/guard_command.rs)와
+  [`guard_command/`](../../../crates/volicord-cli/src/guard_command/) 아래의
+  `run_guard_command`, `guard_envelope`, `tool_observation`,
+  `handle_prompt_capture`, `render_guard_output`.
+- Host와 guard integration:
+  [`host_integration/`](../../../crates/volicord-cli/src/host_integration/)와
+  [`guard_integration/`](../../../crates/volicord-cli/src/guard_integration/) 아래의
+  `HostKind`, `HostAdapter`, `plan_guard_integration`,
+  `apply_guard_integration`.
+- User Channel 명령:
+  [`user_command.rs`](../../../crates/volicord-cli/src/user_command.rs).
+
+흩어진 CLI 모듈만 보고 추론하기 전에 [CLI 작업 흐름](cli-workflows.md)을
+읽습니다. 그 문서는 아키텍처 수준 실행 흐름 경계를 담당합니다. 정확한 명령
+계약은 [관리 CLI](../reference/admin-cli.md)에 남습니다.
+
+테스트는 바이너리에서 보이는 관리 작업 흐름을 다루는
+`crates/volicord-cli/tests/binary_admin.rs`, hook lifecycle 동작을 다루는
+`guard_command.rs`, 프로세스 전송 경로를 다루는 `mcp_transport.rs` 또는
+`serve_transport.rs`에서 시작합니다.
 
 ## `crates/volicord-test-support`
 
-존재 이유:
+테스트 설정이 어렵게 느껴질 때 `volicord-test-support`를 읽습니다. 이 크레이트는
+폐기 가능한 Runtime Home 픽스처, 등록된 프로젝트와 Agent Connection 설정,
+Core 요청 빌더, Store 검사 도우미, 공유 픽스처 유틸리티를 제공합니다.
 
-`volicord-test-support`는 구현, 통합, 적합성 테스트가 공유하는 폐기 가능한
-픽스처 기반을 제공합니다. Runtime Home, Product Repository, 프로젝트 등록,
-Agent Connection 등록, 요청 빌더, 직접 Store 검사 도우미를 프로덕션 크레이트 밖에
-둡니다.
+[`crates/volicord-test-support/src/lib.rs`](../../../crates/volicord-test-support/src/lib.rs)를
+열고 `disposable_runtime_home`, `TempRuntimeHome`, `CoreFixture`, 메서드 요청
+빌더를 봅니다. 이 도우미는 테스트 조합으로 다루며, 프로덕션 동작이나 제품
+계약 담당으로 다루지 않습니다.
 
-구현에서 담당하는 것:
-
-- 시스템 임시 디렉터리 아래의 임시 Runtime Home 도우미.
-- 등록된 프로젝트와 Agent Connection 하나를 가진 공유 `CoreFixture` 설정.
-- 공개 메서드 테스트용 요청 빌더.
-- 테스트가 사용하는 픽스처 전용 Store 검사와 변이 도우미.
-- 앞으로의 픽스처와 golden-output 도우미를 위한 작은 marker 모듈.
-
-담당하지 않는 것:
-
-- 제품 계약.
-- 공개 API 동작.
-- 오래 유지되는 Runtime Home 데이터.
-- 생성된 보고서나 런타임 출력.
-
-추천 첫 파일:
-
-- [`crates/volicord-test-support/src/lib.rs`](../../../crates/volicord-test-support/src/lib.rs)
-
-중요 모듈:
-
-- `fixtures`와 `golden` marker 모듈.
-- `CoreFixture`, 요청 빌더, 픽스처 유틸리티가 있는 `core_fixtures`.
-
-중요한 현재 심볼:
-
-- `disposable_runtime_home`, `TempRuntimeHome`
-- `CoreFixture`, `CoreFixture::new`, `CoreFixture::store`,
-  `CoreFixture::counts`, `CoreFixture::conn`
-- `intake_request`, `status_request`, `prepare_write_request`,
-  `update_scope_request`, `record_run_request`,
-  `request_user_judgment_request`, `record_user_judgment_request`,
-  `close_task_request` 같은 픽스처 요청 빌더
-- `UpdateScopeFixture`, `RecordJudgmentFixture`, `CloseTaskFixture`,
-  `UserJudgmentFixture`
-- `supported_evidence_update`, `unsupported_evidence_update`,
-  `artifact_input_for_handle`
-
-가장 관련 있는 테스트:
-
-- 이 크레이트는 주로
-  [`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs),
-  [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs),
-  [`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs)를
-  통해 실행됩니다.
-
-다음에 읽을 컴포넌트:
-
-- 픽스처를 사용하는 테스트 패키지를 읽습니다. 어댑터 동작은
-  `tests/integration`, 교차 메서드 기준 시나리오는 `tests/conformance`에서
-  시작합니다.
-
-## `tests/conformance`
-
-존재 이유:
-
-`tests/conformance`는 `volicord-conformance-tests` 패키지와 `baseline` 테스트
-대상을 담은 Cargo 워크스페이스 멤버입니다. 공유 픽스처와 Core 쪽 API를
-통해 기준 범위 교차 메서드 시나리오를 실행합니다.
-
-구현에서 담당하는 것:
-
-- Core 쪽 공개 메서드를 조합하는 기준 시나리오 범위.
-- 효과 분기, idempotency, 쓰기 티켓, 아티팩트 생명주기, 판단 경계,
-  닫기 준비 상태, 오류 처리 경로, 손상 처리의 교차 메서드 확인.
-
-담당하지 않는 것:
-
-- 제품 계약 의미나 적합성 권한.
-- 공개 API 스키마.
-- Store DDL 또는 저장 효과 정의.
-- 어댑터 전송 동작.
-
-추천 첫 파일:
-
-- [`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs)
-
-중요한 현재 심볼:
-
-- `no_effect_branches_state_version_and_idempotency_are_stable`
-- `idempotency_replay_rejects_actor_source_mismatch`
-- `idempotency_replay_rejects_operation_category_mismatch`
-- `committed_non_allow_prepare_write_audit_and_replay_are_exact`
-- `prepare_write_issues_write_ticket_only_on_committed_allowed_effect`
-- `status_projection_matches_public_close_check_and_stays_read_only`
-- `core`, `invocation`, `create_task_with_change_unit`,
-  `prepare_write_ticket` 같은 공유 도우미
-
-가장 관련 있는 테스트:
-
-- 이 패키지는
-  [`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs)의
-  `baseline` 테스트 대상을 노출합니다.
-
-다음에 읽을 컴포넌트:
-
-- 더 작은 집중 사례는 `volicord-core` 메서드 테스트에서 본 뒤, 정확한 동작
-  질문은 참조 담당 문서로 돌아갑니다.
+픽스처 변경에 Core, CLI, integration, conformance 패키지의 소비자 테스트가
+필요한지는 [테스트 전략](testing-strategy.md)으로 판단합니다.
 
 ## `tests/integration`
 
-존재 이유:
+계층을 가로지르는 MCP 관점이 필요할 때 `tests/integration`을 읽습니다. 주요
+시작점은
+[`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs)입니다.
+이 파일은 대표 호출을 통해 MCP, Core, Store, Agent Connection 바인딩,
+프로젝트 선택, `operation_category` 라우팅, 응답 일치, 효과 없음 점검을
+조합합니다.
 
-`tests/integration`은 `volicord-integration-tests` 패키지와 `mcp_connection`
-테스트 대상을 담은 Cargo 워크스페이스 멤버입니다. MCP, Core, Store,
-Agent Connection 바인딩, 호출 경로 조합을 계층 간으로 검증합니다.
+이 테스트는 계층이 어떻게 조합되는지 이해할 때 사용합니다. 공개 메서드 계약,
+MCP 전송 계약, Store 계약, Core 권한 의미의 담당 문서로 다루지 않습니다.
 
-구현에서 담당하는 것:
+## `tests/conformance`
 
-- MCP를 통한 도구 노출과 스키마 노출.
-- MCP 세션 바인딩, 호출 맥락 파생, operation category 라우팅.
-- 대표 요청의 MCP/Core 응답 일치.
-- 계층 간 저장 효과와 효과 없음 확인.
-- Store 상태를 바꾸면 안 되는 stdio 프로토콜 오류 처리.
+Core 쪽 API를 통한 기준 교차 메서드 시나리오를 보려면 `tests/conformance`를
+읽습니다. Core 메서드 테스트 하나를 읽은 뒤
+[`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs)에서
+시작합니다.
 
-담당하지 않는 것:
-
-- 공개 메서드 계약.
-- MCP 전송 계약.
-- Store 계약.
-- Core 권한 의미.
-
-추천 첫 파일:
-
-- [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs)
-
-중요한 현재 심볼:
-
-- `workflow_tools_include_agent_workflow_and_read_tools_but_exclude_user_only`
-- `read_only_tools_expose_only_read_operations_and_project_discovery`
-- `connection_invocation_is_injected_and_single_project_is_auto_selected`
-- `read_only_mode_rejects_agent_workflow_methods_before_core`
-- `multiple_allowed_projects_require_explicit_project_selector`
-- `explicit_project_outside_allowlist_is_rejected_before_core`
-- `explicit_allowed_project_routes_to_that_project`
-- `adapter`, `invocation`, `set_connection_mode`, `add_project` 같은 도우미
-
-가장 관련 있는 테스트:
-
-- 이 패키지는
-  [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs)의
-  `mcp_connection` 테스트 대상을 노출합니다.
-
-다음에 읽을 컴포넌트:
-
-- 테스트 대상 어댑터 경로는 `volicord-mcp`에서 본 뒤, 성공 호출 뒤의 동작은
-  `volicord-core`와 `volicord-store`에서 봅니다.
+이 패키지는 재실행, 쓰기 티켓, 아티팩트 생명주기, 판단 경로, 닫기 준비 상태
+점검, 오류 처리 경로, 손상 처리를 메서드 사이에서 볼 때 유용합니다. 제품 의미는
+계속 집중 참조 담당 문서로 보냅니다.
 
 ## `xtask`
 
-존재 이유:
+문서 검증을 유지보수할 때만 `xtask`를 읽습니다. `cargo run -p xtask --
+docs-check` 같은 읽기 전용 문서 점검을 위한 저장소 유지보수 패키지입니다.
 
-`xtask`는 결정적 문서 검증을 위한 저장소 유지보수 패키지입니다.
-`cargo run -p xtask -- docs-check`를 제공하며, 문서 도구 의존성이 제품
-크레이트나 테스트 지원 크레이트에 들어가지 않게 합니다.
+[`xtask/src/lib.rs`](../../../xtask/src/lib.rs)를 열고, 이어서
+[`xtask/src/main.rs`](../../../xtask/src/main.rs)를 봅니다.
+[`xtask/tests/docs_check.rs`](../../../xtask/tests/docs_check.rs)의 테스트는
+메타데이터, 한영 경로 범위, 링크, 앵커, 명령 예시, 용어 역할, 용어 경로,
+공개 언어 점검을 위해 작은 픽스처 트리를 사용합니다.
 
-구현에서 담당하는 것:
+자동 구조 점검과 사람이 하는 의미 검토를 구분하고 명령 경계를 정의하는
+유지보수 정책은 [검증](../maintain/validation.md)을 사용합니다.
 
-- 버전 3 `docs/doc-index.yaml` 구조 검증. 여기에는 담당 영역, 날짜, 적용
-  가능성 메타데이터가 포함됩니다.
-- `docs/en/`과 `docs/ko/`의 유지 Markdown 대응 범위 점검.
-- 숨김 앵커를 포함한 로컬 Markdown 링크와 조각 검증.
-- `docs/terminology-map.yaml`의 저장소 문서 경로 검증.
-- 실행 가능한 `volicord` 명령 예시 검증, 용어 역할 점검, 공개 언어의
-  보증 주장 점검.
+## 경계 기억하기
 
-담당하지 않는 것:
-
-- Volicord 런타임 동작.
-- 공개 API, 스키마, 저장소, 보안, Core 권한 계약.
-- 의미 번역 검토나 계약 담당 문서의 기술 검토.
-- 자동 파일 재작성.
-
-추천 첫 파일:
-
-- [`xtask/src/lib.rs`](../../../xtask/src/lib.rs), 그다음
-  [`xtask/src/main.rs`](../../../xtask/src/main.rs)
-
-가장 관련 있는 테스트:
-
-- [`xtask/tests/docs_check.rs`](../../../xtask/tests/docs_check.rs)는 작은 임시
-  픽스처 트리로 메타데이터, 대응, 링크, 조각, 명령 예시, 용어 역할, 용어
-  경로, 공개 언어 사례를 점검합니다.
-
-다음에 읽을 컴포넌트:
-
-- 명령을 이름 붙이고 자동 구조 점검과 사람이 하는 검토를 구분하는 유지보수
-  정책은 [검증](../maintain/validation.md)에서 봅니다.
+- 이 문서는 읽기 순서와 구체적인 첫 진입 앵커를 제공합니다. 정확한 소스 경로
+  책임은 담당하지 않습니다. 그 목적에는 [소스 지도](source-map.md)를 사용합니다.
+- Core 쪽 코드는 CLI와 MCP 어댑터 크레이트에 의존하지 않습니다.
+- MCP 시작과 라우팅은 Core 디스패치 전에 Store를 읽을 수 있습니다. 이것은 공개
+  메서드 의미의 다른 구현이 아닙니다.
+- `Volicord Runtime Home`과 `Product Repository`는 서로 다른 경계입니다.
+- 테스트는 담당 문서가 정의한 사실을 검증하지만, 테스트와 픽스처는 제품 계약
+  담당 문서가 아닙니다.
+- 학습 문서는 불안정한 줄 번호가 아니라 오래 유지될 파일, 심볼, 흐름을
+  이름으로 가리켜야 합니다.

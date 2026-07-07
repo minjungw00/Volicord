@@ -623,7 +623,8 @@ documents:
   path_en: docs/en/architecture-guide/codebase-tour.md
   path_ko: docs/ko/architecture-guide/codebase-tour.md
   kind: explanation
-  summary: Explanation of the repository and crate layout for source-code learners.
+  summary: Maintainer reading guide for learning the Rust workspace by crate, entry symbols, and
+    implementation flows while delegating exact source path responsibility to the Source Map.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
@@ -641,10 +642,18 @@ documents:
   - learn
   - implement
   depends_on:
+  - architecture-guide.source-map
+  - architecture-guide.cli-workflows
+  - architecture-guide.request-lifecycle
+  - architecture-guide.design-patterns
+  - architecture-guide.storage-and-transactions
   - architecture-guide.testing-strategy
+  - architecture-guide.change-guide
   - architecture-guide.architecture
   - reference.index
-  - reference.api.methods
+  - reference.admin-cli
+  - reference.mcp-transport
+  - maintain.validation
 - doc_id: architecture-guide.source-map
   path_en: docs/en/architecture-guide/source-map.md
   path_ko: docs/ko/architecture-guide/source-map.md

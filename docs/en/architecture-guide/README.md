@@ -17,9 +17,9 @@ work. Core is the local authority record for Volicord state.
 ## Reading order
 
 1. Workspace and crate responsibilities: start with the
-   [Codebase Tour](codebase-tour.md). It names every Cargo workspace member,
-   the first source file to open, important symbols, relevant tests, and the
-   next component to read.
+   [Codebase Tour](codebase-tour.md). It gives maintainers a recommended
+   reading order, crate-by-crate narrative context, important entry symbols and
+   flows, and links exact path responsibility to the Source Map.
 2. Exact source ownership: use the [Source Map](source-map.md) for exact source
    paths, module responsibilities, CLI submodule boundaries, host-adapter
    placement, guard integration placement, MCP adapter modules, and test-support
