@@ -802,8 +802,8 @@ documents:
   path_en: docs/en/architecture-guide/testing-strategy.md
   path_ko: docs/ko/architecture-guide/testing-strategy.md
   kind: explanation
-  summary: Explanation of test organization, durable contract-test authoring, and validation
-    responsibilities.
+  summary: Explanation of test-layer selection, fixture and support structure, generated-output
+    drift checks, durable contract-test authoring, and validation responsibilities.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
@@ -824,6 +824,7 @@ documents:
   - architecture-guide.codebase-tour
   - architecture-guide.design-patterns
   - architecture-guide.architecture
+  - architecture-guide.change-guide
   - reference.index
   - reference.conformance
   - maintain.validation
@@ -973,7 +974,8 @@ documents:
   path_en: docs/en/architecture-guide/change-guide.md
   path_ko: docs/ko/architecture-guide/change-guide.md
   kind: how_to
-  summary: How-to guidance for making implementation changes in the Rust workspace.
+  summary: How-to guidance for implementation change routing, owner routing, source-path routing,
+    and validation-command selection in the Rust workspace.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
@@ -992,6 +994,7 @@ documents:
   depends_on:
   - architecture-guide.index
   - architecture-guide.codebase-tour
+  - architecture-guide.source-map
   - architecture-guide.request-lifecycle
   - architecture-guide.design-patterns
   - architecture-guide.storage-and-transactions
@@ -1030,6 +1033,7 @@ documents:
   - architecture-guide.storage-and-transactions
   - architecture-guide.testing-strategy
   - architecture-guide.decisions.index
+  - architecture-guide.change-guide
   - reference.runtime-boundaries
   - reference.admin-cli
   - reference.mcp-transport

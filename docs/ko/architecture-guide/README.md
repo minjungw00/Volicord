@@ -28,8 +28,7 @@ Core는 Volicord 상태를 위한 로컬 기준 기록입니다.
    `tools/call`에서 Core와 Store 동작을 거쳐 MCP 응답 래퍼로 돌아오는
    경로를 따라갑니다.
 5. 아키텍처와 경계: [구현 아키텍처](architecture.md)에서 오래 유지되는
-   워크스페이스 형태, 의존 방향, 실행 흐름 지도, 코드에서 담당 문서로 가는
-   경로를 봅니다.
+   워크스페이스 형태, 의존 방향, 상위 실행 흐름 지도를 봅니다.
 6. 구현 패턴: [구현 설계 패턴](design-patterns.md)에서 `CoreService`,
    `MethodPolicy`, 메서드 계획, `CoreStorageMutation`, 주입된 시간, 불투명
    ID, 제어 enum, 정규 요청 해시, 공유 테스트 픽스처 같은 반복 구조를

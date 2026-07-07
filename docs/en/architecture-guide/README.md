@@ -34,7 +34,7 @@ work. Core is the local authority record for Volicord state.
    Core and Store behavior to the MCP response wrapper.
 5. Architecture and boundaries: use
    [Implementation Architecture](architecture.md) for the durable workspace
-   shape, dependency direction, execution-flow maps, and code-to-owner routing.
+   shape, dependency direction, and top-level execution-flow maps.
 6. Implementation patterns: read
    [Implementation Design Patterns](design-patterns.md) for recurring
    structures such as `CoreService`, `MethodPolicy`, method planning,

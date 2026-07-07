@@ -259,38 +259,22 @@ is limited to startup and session validation, artifact staging is separate from
 normal Core mutation commit, and tests verify owner-defined facts rather than
 owning product contracts.
 
-## Test topology
+## Testing and validation routes
 
-This section maps test locations. Use [Testing Strategy](testing-strategy.md)
-to choose a test layer for a concrete change.
+This architecture overview keeps only the workspace and dependency boundaries
+that explain where implementation tests fit. Detailed test topology,
+test-layer selection, fixture/support structure, generated output drift checks,
+`xtask` docs-check coverage, and durable validation principles belong in
+[Testing Strategy](testing-strategy.md).
 
-| Test area | Verification role |
-|---|---|
-| Colocated unit tests in implementation modules | Check local helpers, parsing, serialization, migration, Store, policy, and edge behavior close to the code under test. |
-| `crates/volicord-core/src/methods/tests/mod.rs` | Exercises Core method planning, shared preflight behavior, effect branches, replay behavior, staging distinction, artifact promotion, close-readiness calculations, and method-owned storage mutation outcomes through `CoreService`. |
-| `crates/volicord-cli/tests/binary_admin.rs` | Runs the `volicord` binary for setup through `volicord init`, project registration, `volicord status`, `volicord connection add`, `volicord connection list`, `volicord connection status/verify/mode/remove`, `volicord inbox ...`, dry-run behavior, host integration preflight handling, host config writes, repository detection, and command-line error paths. |
-| `crates/volicord-cli/tests/guard_command.rs` | Runs guard hook lifecycle behavior for session start, pre-tool, post-tool, prompt capture, stop, expected-write matching, recorded observations, host-native rendering, and guarded init/status lifecycle scenarios. |
-| `crates/volicord-cli/tests/mcp_transport.rs` | Runs the `volicord mcp` subcommand for help/version, `--check`, stdio framing, line-delimited JSON-RPC, reconnection behavior, and MCP response wrapping. |
-| `crates/volicord-cli/tests/support/` | Provides reusable binary, fake host, fake MCP, JSON, assertion, and guard lifecycle fixtures for CLI integration tests. |
-| `tests/integration/mcp_connection.rs` | Verifies MCP connection binding, tool schemas, public method exposure, per-method `operation_category` derivation, Core/MCP parity, session rejection cases, replay context binding, and cross-layer storage effects. |
-| `tests/conformance/baseline.rs` | Exercises baseline public behavior scenarios through Core-facing APIs using shared fixtures, including replay, no-effect branches, write tickets, artifact lifecycle, judgment boundaries, close readiness, error routing, and corruption handling. |
-| `crates/volicord-test-support` | Supplies disposable Runtime Home fixtures, project and Agent Connection helpers, request builders, Store helpers, and shared assertions for the test packages and crate tests. |
+Tests verify behavior that owner documents define. A test fixture, assertion,
+or scenario name must not become the only source for a product contract.
 
-Tests verify behavior that owner documents define. A test fixture, assertion, or scenario name must not become the only source for a product contract.
+## Change and owner routes
 
-## Code-to-owner routing
-
-| Implementation area | First relevant contract owner |
-|---|---|
-| Public method implementation in `crates/volicord-core/src/methods/` | [API Methods](../reference/api/methods.md), then the linked method owner. |
-| Common Core pipeline, response branches, envelope handling, request hashing, and public error routing | [API Schema Core](../reference/api/schema-core.md), [API Error Family Index](../reference/api/errors.md), and [Storage Effects](../reference/storage-effects.md) where persistence is involved. |
-| Core policies for user-owned judgment, write tickets, evidence, close readiness, and authority boundaries | [Core Model](../reference/core-model.md), method owners, [Runtime Boundaries](../reference/runtime-boundaries.md), [Security](../reference/security.md), and [API Value Sets](../reference/api/schema-value-sets.md) as applicable. |
-| Product Repository path normalization and product/runtime location separation | [Runtime Boundaries](../reference/runtime-boundaries.md). |
-| Shared Rust types and schema-shaped data in `crates/volicord-types/src/` | [API Schema Core](../reference/api/schema-core.md), [API State Schemas](../reference/api/schema-state.md), [API Artifact Schemas](../reference/api/schema-artifacts.md), [API Judgment Schemas](../reference/api/schema-judgment.md), and [API Value Sets](../reference/api/schema-value-sets.md). |
-| Atomic Store commit, replay rows, locking/versioning, storage records, and DDL | [Storage](../reference/storage.md), [Storage Effects](../reference/storage-effects.md), [Storage Records](../reference/storage-records.md), [Storage DDL](../reference/storage-ddl.md), and [Storage Versioning](../reference/storage-versioning.md). |
-| Artifact staging and persistent artifact body verification | [Artifact Storage](../reference/storage-artifacts.md) and the method owner that references the artifact. |
-| MCP startup, process binding, stdio framing, and `tools/call` wrapping | [MCP Transport](../reference/mcp-transport.md), with [Runtime Boundaries](../reference/runtime-boundaries.md) and [Security](../reference/security.md) for Agent Connection, project allowlist, and operation-category boundaries. |
-| Administrative agent setup and local registration | [Administrative CLI](../reference/admin-cli.md), with [Runtime Boundaries](../reference/runtime-boundaries.md), [MCP Transport](../reference/mcp-transport.md), and [Security](../reference/security.md) for adjacent host, location, process, and non-guarantee behavior. |
-| Guard hook lifecycle, host-native rendering, generated guard files, capability metadata, and guard audit facts | [Administrative CLI](../reference/admin-cli.md#guard-hook-commands), with [Runtime Boundaries](../reference/runtime-boundaries.md), [Storage Records](../reference/storage-records.md), [MCP Transport](../reference/mcp-transport.md), and [Security](../reference/security.md) for adjacent diagnostic and non-guarantee boundaries. |
-
-Use this page to orient code reading and preserve implementation boundaries. Use the focused owners to decide behavior.
+This architecture overview does not own code-to-owner routing, change-type
+routing, or validation commands by change type. Use the
+[Implementation Guide](change-guide.md) for implementation-area routing to
+source paths, Reference or documentation owners, and validation choices. Use
+the [Source Map](source-map.md) for exact source paths and module
+responsibilities.

@@ -7,12 +7,14 @@
 정의하거나 덮어쓰지 않습니다.
 
 소스를 배우는 중이면 [아키텍처 가이드](README.md)를 사용하고, 첫 파일과
-심볼은 [코드베이스 둘러보기](codebase-tour.md), 대표 메서드 흐름은
-[요청 생명주기](request-lifecycle.md), 반복 구조는 [구현 설계 패턴](design-patterns.md),
-Store 경계는 [저장소와 트랜잭션](storage-and-transactions.md), 테스트 계층
-선택은 [테스트 전략](testing-strategy.md)을 사용합니다. 기계가 읽는 담당
-경로는 [`docs/doc-index.yaml`](../../doc-index.yaml)을 사용하고, 사람이 읽는
-담당 문서 안내는 [참조 색인](../reference/README.md)을 사용합니다.
+심볼은 [코드베이스 둘러보기](codebase-tour.md), 정확한 소스 경로와 모듈
+책임은 [소스 지도](source-map.md), 대표 메서드 흐름은
+[요청 생명주기](request-lifecycle.md), 반복 구조는
+[구현 설계 패턴](design-patterns.md), Store 경계는
+[저장소와 트랜잭션](storage-and-transactions.md), 테스트 계층 선택은
+[테스트 전략](testing-strategy.md)을 사용합니다. 기계가 읽는 담당 경로는
+[`docs/doc-index.yaml`](../../doc-index.yaml)을 사용하고, 사람이 읽는 담당 문서
+안내는 [참조 색인](../reference/README.md)을 사용합니다.
 
 Volicord는 AI 지원 제품 작업을 위한 로컬 작업 권한 기록입니다.
 Core는 Volicord 상태를 위한 로컬 기준 기록입니다.
@@ -28,9 +30,10 @@ Core는 Volicord 상태를 위한 로컬 기준 기록입니다.
 
 2. 현재 구현 경로를 찾습니다.
 
-   [구현 아키텍처](architecture.md)에서 워크스페이스와 모듈 지도를 확인한
-   뒤 아래 경로 표에서 가장 가까운 소스와 테스트를 엽니다. 편집 전에
-   이름 붙인 심볼이 여전히 존재하는지 확인합니다.
+   [구현 아키텍처](architecture.md)에서 상위 워크스페이스 경계를 확인하고
+   [소스 지도](source-map.md)에서 정확한 소스 경로를 봅니다. 그런 다음 아래
+   경로 표에서 가장 가까운 소스와 테스트를 엽니다. 편집 전에 이름 붙인
+   심볼이 여전히 존재하는지 확인합니다.
 
 3. 정확한 참조 담당 문서를 식별합니다.
 
@@ -54,9 +57,11 @@ Core는 Volicord 상태를 위한 로컬 기준 기록입니다.
 
 6. 영향을 받은 아키텍처 가이드 설명을 갱신합니다.
 
-   오래 유지될 소스 형태, 의존 방향, 실행 흐름, Store 경계, 테스트 구조,
-   변경 작업 흐름이 바뀌면 관련 아키텍처 가이드 페이지를 두 언어 모두에서
-   갱신합니다. 정확한 제품 계약은 참조 담당 문서에 둡니다.
+   오래 유지될 소스 형태, 의존 방향, 실행 흐름, Store 경계가 바뀌면 관련
+   아키텍처 가이드 페이지를 두 언어 모두에서 갱신합니다. 테스트 구조나 검증
+   책임이 바뀌면 [테스트 전략](testing-strategy.md)을 갱신합니다. 변경 경로,
+   담당 경로, 검증 명령 경로가 바뀌면 이 가이드를 갱신합니다. 정확한 제품
+   계약은 참조 담당 문서에 둡니다.
 
 7. 검증을 실행합니다.
 
@@ -80,7 +85,8 @@ Core는 Volicord 상태를 위한 로컬 기준 기록입니다.
 | 공유 요청 또는 값 타입 | `crates/volicord-types/src/methods.rs`, `schema.rs`, `values.rs`, `ids.rs`, `canonical.rs` | API 스키마 담당 문서와 [값 집합](../reference/api/schema-value-sets.md), 메서드별 의미는 메서드 담당 문서 | `volicord-types` 단위 테스트. 형태가 메서드 계획이나 어댑터 노출에 영향을 주면 Core 또는 MCP 테스트 | [코드베이스 둘러보기](codebase-tour.md), [구현 설계 패턴](design-patterns.md), [테스트 전략](testing-strategy.md) |
 | Store 동작 | `crates/volicord-store/src/core_pipeline.rs`, `core_pipeline/mutation_apply.rs`, `schema.rs`, `schema/*.sql`, `sqlite.rs`, `bootstrap.rs`, `artifacts.rs` | [저장소](../reference/storage.md), [저장 효과](../reference/storage-effects.md), [저장소 기록](../reference/storage-records.md), [저장소 DDL](../reference/storage-ddl.md), [아티팩트 저장소](../reference/storage-artifacts.md), [저장소 버전 관리](../reference/storage-versioning.md) | Store 단위 테스트. 공개 효과는 Core 메서드 테스트, 계층 간 동작은 적합성 또는 MCP 통합 테스트 | [저장소와 트랜잭션](storage-and-transactions.md), [구현 아키텍처](architecture.md), 결정 기록 |
 | Core 메서드 동작 | `crates/volicord-core/src/methods/`, `pipeline.rs`, `policy/` | [API 메서드](../reference/api/methods.md)에서 연결된 메서드 담당 문서. 닿은 영역에 따라 스키마, 오류, 저장소, Core 모델, 보안 담당 문서 추가 | `crates/volicord-core/src/methods/tests/mod.rs`, 파이프라인 테스트, 교차 메서드 기준 범위 시나리오는 적합성 테스트 | [요청 생명주기](request-lifecycle.md), [구현 설계 패턴](design-patterns.md), [저장소와 트랜잭션](storage-and-transactions.md) |
-| MCP 어댑터 동작 | `crates/volicord-mcp/src/lib.rs`, `adapter.rs`, `routing.rs`, `tool_registry.rs`, `stdio.rs`, `local_http.rs`, `local_web_consent.rs`, `crates/volicord-cli/src/main.rs`의 `volicord mcp` 디스패치 | [MCP 전송](../reference/mcp-transport.md), 검증된 연결 맥락은 [Agent Connection](../reference/agent-connection.md), 공개 도구 집합은 [API 메서드](../reference/api/methods.md) | `crates/volicord-mcp/src/tests.rs`, `mcp_transport`, `tests/integration/mcp_connection.rs` | [요청 생명주기](request-lifecycle.md), [아키텍처 결정](decisions/README.md), [테스트 전략](testing-strategy.md) |
+| MCP 어댑터 동작 | `crates/volicord-mcp/src/lib.rs`, `adapter.rs`, `routing.rs`, `tool_registry.rs`, `stdio.rs`, `local_http.rs`, `local_web_consent.rs`, `crates/volicord-cli/src/main.rs`의 `volicord mcp` 또는 `volicord serve` 디스패치 | [MCP 전송](../reference/mcp-transport.md), 검증된 연결 맥락은 [Agent Connection](../reference/agent-connection.md), 공개 도구 집합은 [API 메서드](../reference/api/methods.md) | `crates/volicord-mcp/src/tests.rs`, `mcp_transport`, `serve_transport`, `tests/integration/mcp_connection.rs`, 생성 API 또는 MCP 도구 projection이 바뀌면 `public_contract_snapshots` | [요청 생명주기](request-lifecycle.md), [아키텍처 결정](decisions/README.md), [테스트 전략](testing-strategy.md) |
+| Runtime Home 또는 Product Repository 경계 동작 | `crates/volicord-store/src/runtime_home.rs`, `crates/volicord-store/src/bootstrap.rs`, `crates/volicord-cli/src/project_context.rs`, `crates/volicord-core/src/policy/`의 경로 관련 도우미 | [런타임 경계](../reference/runtime-boundaries.md), 인접한 지속성, 명령, 비보장 경계는 [저장소](../reference/storage.md), [관리 CLI](../reference/admin-cli.md), [보안](../reference/security.md) | Store와 CLI 모듈 테스트. 바이너리에 보이는 경계는 `binary_admin`, 담당 문서가 정의한 공개 메서드 동작이 바뀌면 Core 메서드 또는 적합성 테스트 | [구현 아키텍처](architecture.md), [소스 지도](source-map.md), [Runtime Home과 Product Repository 분리](decisions/runtime-home-and-product-repository.md) |
 | Setup workflow와 출력 | `crates/volicord-cli/src/setup_command.rs`, `setup_command/workflow.rs`, `setup_command/discovery.rs`, `setup_command/linking.rs`, `setup_command/shell_startup.rs`, `setup_command/interactive.rs`, `setup_command/output.rs`, setup fact를 공유하는 진단은 `doctor_command.rs` | [관리 CLI](../reference/admin-cli.md), 인접한 프로세스, 위치, 비보장 경계는 [런타임 경계](../reference/runtime-boundaries.md), [MCP 전송](../reference/mcp-transport.md), [보안](../reference/security.md) | Setup 모듈 테스트와 `binary_admin`. 부트스트랩, registry, 검사, 스키마 초기화 동작이 바뀌면 Store setup 테스트 | [구현 아키텍처](architecture.md), [코드베이스 둘러보기](codebase-tour.md), [테스트 전략](testing-strategy.md) |
 | Connection provisioning, status, output | `crates/volicord-cli/src/connection_command.rs`, `connection_command/service.rs`, `selection.rs`, `verification.rs`, `mcp_process.rs`, `connection_command/output/`, `registration.rs` | [관리 CLI](../reference/admin-cli.md), 인접 관심사는 [Agent Connection](../reference/agent-connection.md), [런타임 경계](../reference/runtime-boundaries.md), [MCP 전송](../reference/mcp-transport.md) | CLI 모듈 테스트와 `binary_admin`. preflight 또는 MCP에 보이는 동작을 관찰해야 하면 `mcp_transport`나 `mcp_connection` | [구현 아키텍처](architecture.md), [Runtime Home과 Product Repository 분리](decisions/runtime-home-and-product-repository.md) |
 | Guard integration 파일, capability record, audit fact | `crates/volicord-cli/src/guard_integration/`, 적용과 기록은 `connection_command/service.rs`, status rendering은 `connection_command/output/`, 진단 소비는 `doctor_command.rs` | [관리 CLI](../reference/admin-cli.md#guard-hook-commands), 인접한 진단과 비보장 경계는 [런타임 경계](../reference/runtime-boundaries.md), [저장소 기록](../reference/storage-records.md), [MCP 전송](../reference/mcp-transport.md), [보안](../reference/security.md) | `binary_admin`의 guarded init/status 테스트, guard integration 모듈 테스트, doctor 테스트. Audit output을 security proof나 approval record로 취급하지 않습니다 | [구현 아키텍처](architecture.md), [코드베이스 둘러보기](codebase-tour.md), [테스트 전략](testing-strategy.md) |
@@ -89,6 +95,25 @@ Core는 Volicord 상태를 위한 로컬 기준 기록입니다.
 | 테스트 픽스처 동작 | `crates/volicord-test-support/src/lib.rs`, `tests/conformance/`, `tests/integration/`, `crates/volicord-cli/tests/support/`, 구현 모듈 안의 테스트 도우미 | 각 주장 사실의 담당 문서. [적합성](../reference/conformance.md)은 적합성 시나리오 의미와 주장 경로만 담당 | 소비 패키지의 테스트와 집중 픽스처 테스트 | [테스트 전략](testing-strategy.md), [코드베이스 둘러보기](codebase-tour.md) |
 | CLI 통합 테스트 지원 | `crates/volicord-cli/tests/support/assertions.rs`, `binary_fixture.rs`, `fake_hosts.rs`, `fake_mcp.rs`, `guard_fixture.rs`, `json.rs` | 각 setup, connection, guard, MCP, host-adapter 주장 사실의 담당 문서 | Helper를 사용하는 `binary_admin`, `guard_command`, `mcp_transport` 또는 소비 CLI 테스트 대상 | [테스트 전략](testing-strategy.md), [코드베이스 둘러보기](codebase-tour.md) |
 | 아키텍처 가이드만 바뀐 경우 | `docs/en/architecture-guide/`, `docs/ko/architecture-guide/`, 경로 메타데이터 | 아키텍처 가이드 페이지의 `doc-index.yaml` 담당 범위. 정확한 동작이 바뀔 때만 참조 담당 문서 | 문서 점검. Cargo 명령은 요청되었거나 소스 검증이 필요할 때만 | 대응 페이지, [아키텍처 가이드](README.md), `docs/doc-index.yaml` |
+
+## 검증 명령 경로
+
+영향을 받는 변경 영역을 고른 뒤에는 아래 명령을 기본 경로로 사용합니다. 이 표는
+가능성이 높은 첫 검증 명령을 이름 붙이는 것이며, 작은 편집마다 인접 명령을 모두
+실행해야 한다는 규칙이 아닙니다. Rust 구현을 편집했을 때의 워크스페이스 기본값은
+계속 `cargo fmt`, `cargo clippy --all-targets --all-features`,
+`cargo test --all-targets --all-features`입니다.
+
+| 변경 영역 | 첫 명령 경로 | 추가할 때 |
+|---|---|---|
+| 아키텍처 가이드, 문서 경로, 링크, 메타데이터 | `cargo run -p xtask -- docs-check` | docs-check 동작이 바뀌면 `cargo test -p xtask`. |
+| 공유 타입, 공개 스키마, 값 집합, 식별자, 요청 해시, 생성 공개 API/MCP projection | `cargo test -p volicord-types`. Projection이나 snapshot이 영향을 받으면 `cargo test -p volicord-integration-tests --test public_contract_snapshots` | 메서드 계획이 바뀌면 Core 메서드 테스트, 어댑터에 보이는 동작이 바뀌면 MCP 통합 테스트, 유지 문서가 바뀌면 docs-check. |
+| Core 메서드 또는 공유 파이프라인 동작 | `cargo test -p volicord-core` | 교차 메서드 기준 범위 시나리오는 `cargo test -p volicord-conformance-tests --test baseline`, MCP에 보이는 맥락은 `cargo test -p volicord-integration-tests --test mcp_connection`. |
+| Store, Storage DDL, 트랜잭션, Runtime Home, 아티팩트 저장소 동작 | `cargo test -p volicord-store`. DDL 또는 canonical SQL 변경에는 `cargo test -p volicord-store --test storage_ddl_contract` | 공개 메서드에서 보이는 저장 효과가 바뀌면 Core, 적합성, MCP 통합 테스트. |
+| MCP stdio 또는 로컬 HTTP 전송, 도구 목록, 시작, 프로젝트 라우팅 | `cargo test -p volicord-mcp`. 영향을 받는 프로세스 경로에 따라 `cargo test -p volicord-cli --test mcp_transport` 또는 `cargo test -p volicord-cli --test serve_transport` | MCP를 통해 Core/Store 동작을 관찰해야 하면 `cargo test -p volicord-integration-tests --test mcp_connection`, 생성 도구 projection drift는 `cargo test -p volicord-integration-tests --test public_contract_snapshots`. |
+| Setup workflow, connection provisioning, status, verification, host adapter, 관리 CLI 출력 | `cargo test -p volicord-cli`. 바이너리에 보이는 동작이 바뀌면 `cargo test -p volicord-cli --test binary_admin` | Bootstrap 또는 registry 변경에는 Store 테스트, launch 또는 preflight 변경에는 MCP 전송 테스트. |
+| Guard integration 파일, capability record, audit fact, guard hook lifecycle, host-native guard rendering | `cargo test -p volicord-cli --test binary_admin`, `cargo test -p volicord-cli --test guard_command` | Hook 경로가 CLI 밖의 담당 문서 정의 동작에 의존하면 Core, Store, 적합성, MCP 테스트. |
+| 적합성, 계층 간 통합, 공유 픽스처 동작 | `cargo test -p volicord-test-support`, `cargo test -p volicord-conformance-tests --test baseline` 또는 `cargo test -p volicord-integration-tests --test mcp_connection` 같은 소비 패키지 테스트 대상 | 픽스처 동작이 다른 계층의 관찰 결과를 바꾸면 추가 패키지 테스트. |
 
 ## 불일치 처리
 
@@ -114,8 +139,8 @@ Core는 Volicord 상태를 위한 로컬 기준 기록입니다.
 - 변경된 각 동작에 집중 담당 문서가 있거나 담당 문서 공백 보고가 있습니다.
 - 편집 전에 구현 경로와 경계를 식별했습니다.
 - 변경된 계층에 맞는 테스트를 골랐습니다.
-- 오래 유지될 소스 구조, 실행 흐름, 저장소 경계, 테스트 전략이 바뀌었을 때
-  아키텍처 가이드 문서를 갱신했습니다.
+- 오래 유지될 소스 구조, 실행 흐름, 저장소 경계, 테스트 전략, 변경 작업
+  흐름이 바뀌었을 때 관련 아키텍처 가이드 담당 문서를 갱신했습니다.
 - 유지되는 문서가 바뀌었을 때 영어와 한국어 문서가 의미상 맞게 남았습니다.
 - 스크래치 메모, 생성된 보고서, 런타임 홈, SQLite 파일, 픽스처 출력, 로그,
   그 밖의 부수 파일이 유지 문서에 남아 있지 않습니다.

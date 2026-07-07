@@ -250,38 +250,19 @@ diagnostics, host integration, guard integration 실행 흐름 경계는
 검증으로 제한되며, 아티팩트 스테이징은 정상 Core 변이 커밋과 분리되고,
 테스트는 제품 계약을 소유하지 않고 담당 문서가 정의한 사실을 검증합니다.
 
-## 테스트 구조
+## 테스트와 검증 경로
 
-이 절은 테스트 위치를 지도처럼 보여 줍니다. 구체적인 변경에 맞는 테스트
-계층을 고를 때는 [테스트 전략](testing-strategy.md)을 사용합니다.
+이 아키텍처 개요는 구현 테스트가 어디에 맞물리는지 설명하는 워크스페이스와 의존
+경계만 유지합니다. 자세한 테스트 구조, 테스트 계층 선택, 픽스처/지원 구조, 생성
+출력 drift 점검, `xtask` docs-check 범위, 오래 유지될 검증 원칙은
+[테스트 전략](testing-strategy.md)이 담당합니다.
 
-| 테스트 영역 | 검증 역할 |
-|---|---|
-| 구현 모듈에 함께 있는 단위 테스트 | 로컬 도우미, 파싱, 직렬화, 마이그레이션, Store, 정책, 경계 동작을 테스트 대상 코드 가까이에서 확인합니다. |
-| `crates/volicord-core/src/methods/tests/mod.rs` | `CoreService`를 통해 Core 메서드 계획, 공유 사전 점검 동작, 효과 분기, 재실행 동작, 스테이징 구분, 아티팩트 승격, 닫기 준비 상태 계산, 메서드 소유 저장소 변이 결과를 실행합니다. |
-| `crates/volicord-cli/tests/binary_admin.rs` | `volicord` 바이너리로 `volicord init`을 통한 setup, 프로젝트 등록, `volicord status`, `volicord connection add`, `volicord connection list`, `volicord connection status/verify/mode/remove`, `volicord inbox ...`, dry-run 동작, 호스트 통합 사전 점검 처리, 호스트 설정 쓰기, 저장소 감지, 명령줄 오류 경로를 실행합니다. |
-| `crates/volicord-cli/tests/guard_command.rs` | session start, pre-tool, post-tool, prompt capture, stop, expected-write matching, recorded observation, host-native rendering, guarded init/status lifecycle scenario에 대한 guard hook lifecycle 동작을 실행합니다. |
-| `crates/volicord-cli/tests/mcp_transport.rs` | `volicord mcp` 하위 명령으로 help/version, `--check`, stdio 프레이밍, 줄 단위 JSON-RPC, 재연결 동작, MCP 응답 래핑을 실행합니다. |
-| `crates/volicord-cli/tests/support/` | CLI 통합 테스트를 위한 재사용 binary, fake host, fake MCP, JSON, assertion, guard lifecycle fixture를 제공합니다. |
-| `tests/integration/mcp_connection.rs` | MCP 연결 바인딩, 도구 스키마, 공개 메서드 노출, 메서드별 `operation_category` 파생, Core/MCP 일치, 세션 거부 사례, 재실행 맥락 바인딩, 계층 간 저장 효과를 검증합니다. |
-| `tests/conformance/baseline.rs` | 공유 픽스처를 사용해 Core 쪽 API로 기준 범위 공개 동작 시나리오를 실행합니다. 재실행, 효과 없는 분기, 쓰기 티켓, 아티팩트 생명주기, 판단 경계, 닫기 준비 상태, 오류 처리 경로, 손상 처리 등이 포함됩니다. |
-| `crates/volicord-test-support` | 테스트 패키지와 크레이트 테스트를 위한 폐기 가능한 Runtime Home 픽스처, 프로젝트와 Agent Connection 도우미, 요청 빌더, Store 도우미, 공유 검증 단언을 제공합니다. |
+테스트는 담당 문서가 정의한 동작을 검증합니다. 테스트 픽스처, 검증 단언,
+시나리오 이름이 제품 계약의 유일한 출처가 되면 안 됩니다.
 
-테스트는 담당 문서가 정의한 동작을 검증합니다. 테스트 픽스처, 검증 단언, 시나리오 이름이 제품 계약의 유일한 출처가 되면 안 됩니다.
+## 변경과 담당 경로
 
-## 코드에서 담당 문서로 가는 경로
-
-| 구현 영역 | 첫 계약 담당 경로 |
-|---|---|
-| `crates/volicord-core/src/methods/`의 공개 메서드 구현 | [API 메서드](../reference/api/methods.md), 그다음 연결된 메서드 담당 문서. |
-| 공통 Core 파이프라인, 응답 분기, 요청 래퍼 처리, 요청 해시, 공개 오류 처리 경로 | [API 코어 스키마](../reference/api/schema-core.md), [API 오류 문서 묶음 색인](../reference/api/errors.md), 지속 효과가 있을 때는 [저장 효과](../reference/storage-effects.md). |
-| 사용자 소유 판단, 쓰기 티켓, 증거, 닫기 준비 상태, 권한 경계를 다루는 Core 정책 | [Core 모델](../reference/core-model.md), 메서드 담당 문서, [런타임 경계](../reference/runtime-boundaries.md), [보안](../reference/security.md), 적용되는 경우 [API 값 집합](../reference/api/schema-value-sets.md). |
-| Product Repository 경로 정규화와 제품/런타임 위치 분리 | [런타임 경계](../reference/runtime-boundaries.md). |
-| `crates/volicord-types/src/`의 공유 Rust 타입과 스키마 형태 데이터 | [API 코어 스키마](../reference/api/schema-core.md), [API 상태 스키마](../reference/api/schema-state.md), [API 아티팩트 스키마](../reference/api/schema-artifacts.md), [API 판단 스키마](../reference/api/schema-judgment.md), [API 값 집합](../reference/api/schema-value-sets.md). |
-| 원자적 Store 커밋, 재실행 기록 행, 잠금/버전 관리, 저장소 기록, DDL | [저장소](../reference/storage.md), [저장 효과](../reference/storage-effects.md), [저장소 기록](../reference/storage-records.md), [저장소 DDL](../reference/storage-ddl.md), [저장소 버전 관리](../reference/storage-versioning.md). |
-| 아티팩트 스테이징과 영구 아티팩트 본문 검증 | [아티팩트 저장소](../reference/storage-artifacts.md), 그리고 해당 아티팩트를 참조하는 메서드 담당 문서. |
-| MCP 시작, 프로세스 바인딩, stdio 프레이밍, `tools/call` 래핑 | [MCP 전송](../reference/mcp-transport.md), Agent Connection, 프로젝트 허용 목록, 작업 범주 경계는 [런타임 경계](../reference/runtime-boundaries.md)와 [보안](../reference/security.md). |
-| 관리 에이전트 설정과 로컬 등록 | [관리 CLI](../reference/admin-cli.md), 인접한 호스트, 위치, 프로세스, 비보장 동작은 [런타임 경계](../reference/runtime-boundaries.md), [MCP 전송](../reference/mcp-transport.md), [보안](../reference/security.md). |
-| Guard hook lifecycle, host-native rendering, 생성 guard 파일, capability metadata, guard audit fact | [관리 CLI](../reference/admin-cli.md#guard-hook-commands), 인접한 진단과 비보장 경계는 [런타임 경계](../reference/runtime-boundaries.md), [저장소 기록](../reference/storage-records.md), [MCP 전송](../reference/mcp-transport.md), [보안](../reference/security.md). |
-
-이 페이지는 코드 읽기 방향을 잡고 구현 경계를 보존할 때 사용합니다. 동작을 결정할 때는 집중 담당 문서를 사용합니다.
+이 아키텍처 개요는 코드에서 담당 문서로 가는 경로, 변경 유형별 경로, 변경
+유형별 검증 명령을 담당하지 않습니다. 구현 영역을 소스 경로, 참조 또는 문서
+담당자, 검증 선택으로 연결할 때는 [구현 가이드](change-guide.md)를 사용합니다.
+정확한 소스 경로와 모듈 책임은 [소스 지도](source-map.md)를 사용합니다.
