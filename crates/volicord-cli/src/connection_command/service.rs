@@ -184,7 +184,7 @@ fn plan_init_provisioning(
     );
     let integration = plan_guard_integration(
         host_kind,
-        parsed.mode,
+        parsed.mode.integration_profile(),
         &runtime_home,
         &repo_root,
         &connection_id,
@@ -259,7 +259,7 @@ fn apply_init_provisioning(
     ensure_host_plan_has_no_conflict(&host_plan)?;
     let integration = plan_guard_integration(
         plan.host_kind,
-        plan.init_mode,
+        plan.init_mode.integration_profile(),
         &plan.runtime_home,
         &project.repo_root,
         &plan.connection_id,

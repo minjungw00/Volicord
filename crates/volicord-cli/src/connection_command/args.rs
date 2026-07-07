@@ -39,14 +39,18 @@ pub(super) enum InitMode {
 
 impl InitMode {
     pub(super) fn profile_value(self) -> &'static str {
-        match self {
-            Self::Record => IntegrationProfile::Record.as_str(),
-            Self::Detective => IntegrationProfile::Detective.as_str(),
-        }
+        self.integration_profile().as_str()
     }
 
     pub(super) fn guard_value(self) -> &'static str {
         self.profile_value()
+    }
+
+    pub(super) fn integration_profile(self) -> IntegrationProfile {
+        match self {
+            Self::Record => IntegrationProfile::Record,
+            Self::Detective => IntegrationProfile::Detective,
+        }
     }
 }
 
