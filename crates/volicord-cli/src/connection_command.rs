@@ -72,6 +72,7 @@ mod args;
 mod mcp_process;
 mod output;
 mod selection;
+mod service;
 mod verification;
 
 pub use args::{connect_usage, connection_usage, connections_usage, init_usage};
@@ -98,6 +99,10 @@ use selection::{
     connection_for_host_target, connection_selector, host_scope_for_intent,
     resolve_connection_host, resolve_connection_repo_root, select_connection,
     selected_connection_project,
+};
+use service::{
+    provision_connection, provision_init, ConnectionProvisioningOutcome, InitProvisioningRequest,
+    ProvisionConnectionRequest,
 };
 use verification::{
     connection_status_actions, current_status_host_diagnostic, effective_tool_mode_check_status,
@@ -177,265 +182,27 @@ pub fn run_init_command(
         return Ok(init_usage());
     }
     let parsed = parse_init_options(args, current_dir)?;
-    let host_kind = parsed
-        .host_kind
-        .ok_or_else(|| ConnectionCommandError::usage("--host is required"))?;
-    let repo = parsed
-        .repo
-        .as_deref()
-        .ok_or_else(|| ConnectionCommandError::usage("--repo is required"))?;
-    let repo_root = resolve_init_repo_root(current_dir, repo, host_kind, parsed.mode)?;
-    let runtime_home = init_runtime_home_path(&parsed, current_dir, process)?;
-    let existing_profile = installation_profile(&runtime_home)?;
-    let profile_plan =
-        init_profile_plan(&parsed, &runtime_home, existing_profile.as_ref(), process)?;
-    let intent = ConnectionIntent::Shared;
-    let host_scope = host_scope_for_intent(host_kind, intent)?;
-    let mode = CONNECTION_MODE_WORKFLOW;
-    let server_name = DEFAULT_SERVER_NAME.to_owned();
-    let target_hint = connection_target_hint(host_kind, host_scope, Some(&repo_root), process)?;
-    let existing = connection_for_host_target(
-        &runtime_home,
-        host_kind,
-        intent,
-        host_scope,
-        &target_hint,
-        &server_name,
-    )?;
-    let connection_internal_id = existing
-        .as_ref()
-        .map(|connection| connection.connection_internal_id.clone())
-        .unwrap_or_else(|| {
-            deterministic_connection_id(
-                host_kind,
-                host_scope,
-                Some(&path_text(&repo_root)),
-                &target_hint,
-                &server_name,
-            )
-        });
-    let project_hint = project_record_by_repo_root(&runtime_home, &repo_root)
-        .ok()
-        .flatten();
-    let expected_fingerprint = existing
-        .as_ref()
-        .map(|connection| connection.managed_fingerprint.as_str());
-    let installation_context = InstallationProfile {
-        runtime_home: &runtime_home,
-        volicord_command: &profile_plan.volicord_command,
-        volicord_mcp_command: &profile_plan.volicord_mcp_command,
-        default_connection_mode: CONNECTION_MODE_WORKFLOW,
-    };
-    let host_plan = build_host_plan(
-        BuildHostPlanRequest {
-            host_kind,
-            connection_intent: intent,
-            connection_id: &connection_internal_id,
-            repo_root: Some(&repo_root),
-            project_id: project_hint
-                .as_ref()
-                .map(|project| project.project_id.as_str())
-                .or(Some("planned_project")),
-            project_name: project_hint
-                .as_ref()
-                .map(|project| project.project_name.as_str())
-                .or(Some("planned project")),
-            installation_profile: installation_context,
-            mode,
-            expected_fingerprint,
+    let outcome = provision_init(
+        InitProvisioningRequest {
+            parsed: &parsed,
+            current_dir,
         },
         process,
     )?;
-    if let Some(conflict) = host_plan.conflicts.first() {
-        return Err(ConnectionCommandError::runtime(conflict.message.clone()));
-    }
-    let repo_root_key = path_text(&repo_root);
-    let planned_guard_installation_id = stable_id(
-        "guard_installation",
-        &[
-            &connection_internal_id,
-            &repo_root_key,
-            parsed.mode.guard_value(),
-        ],
-    );
-    let integration_plan = plan_guard_integration(
-        host_kind,
-        parsed.mode,
-        &runtime_home,
-        &repo_root,
-        &connection_internal_id,
-        &planned_guard_installation_id,
-        &host_plan.entry,
-    )?;
-
-    if parsed.dry_run {
-        return render_init_output(InitOutput {
-            format: init_output_format(&parsed),
-            status: AgentResultStatus::DryRun,
-            host_kind,
-            init_mode: parsed.mode,
-            runtime_home: &runtime_home,
-            repo_root: &repo_root,
-            connection_id: &connection_internal_id,
-            project_id: project_hint
-                .as_ref()
-                .map(|project| project.project_id.as_str()),
-            host_plan: &host_plan,
-            verification: None,
-            integration: &integration_plan,
-            guard_installation: None,
-            profile_action: if existing_profile.is_some() {
-                "reused"
-            } else {
-                "planned"
-            },
-        });
-    }
-
-    let runtime_home_id = runtime_home_id_for_path(&runtime_home)
-        .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
-    initialize_runtime_home(&runtime_home, &runtime_home_id, ADMIN_METADATA_JSON)?;
-    let profile = ensure_init_installation_profile(&runtime_home, &profile_plan)?;
-    let project = ensure_project_for_repo(
-        &runtime_home,
-        RepoProjectRegistration {
-            project_name: None,
-            project_alias: None,
-            repo_root: repo_root.clone(),
-            project_home: None,
-            status: ACTIVE_PROJECT_STATUS.to_owned(),
-            metadata_json: metadata_json_base()?,
-        },
-    )?;
-    let existing = connection_for_host_target(
-        &runtime_home,
-        host_kind,
-        intent,
-        host_scope,
-        &target_hint,
-        &server_name,
-    )?;
-    let expected_fingerprint = existing
-        .as_ref()
-        .map(|connection| connection.managed_fingerprint.as_str());
-    let host_plan = build_host_plan(
-        BuildHostPlanRequest {
-            host_kind,
-            connection_intent: intent,
-            connection_id: &connection_internal_id,
-            repo_root: Some(&project.repo_root),
-            project_id: Some(&project.project_id),
-            project_name: Some(&project.project_name),
-            installation_profile: installation_profile_context(&runtime_home, &profile),
-            mode,
-            expected_fingerprint,
-        },
-        process,
-    )?;
-    if let Some(conflict) = host_plan.conflicts.first() {
-        return Err(ConnectionCommandError::runtime(conflict.message.clone()));
-    }
-    let integration_plan = plan_guard_integration(
-        host_kind,
-        parsed.mode,
-        &runtime_home,
-        &project.repo_root,
-        &connection_internal_id,
-        &planned_guard_installation_id,
-        &host_plan.entry,
-    )?;
-    let mcp_command = PathBuf::from(&host_plan.entry.command);
-    let metadata_json = connection_metadata_json(&host_plan, &mcp_command, &runtime_home)?;
-    let mut connection = ensure_agent_connection(
-        &runtime_home,
-        AgentConnectionRegistration {
-            connection_internal_id: connection_internal_id.clone(),
-            host_kind: host_kind.as_str().to_owned(),
-            intent: intent.as_str().to_owned(),
-            host_scope: host_scope.as_str().to_owned(),
-            server_name: host_plan.server_name.clone(),
-            config_target: host_target_text(&host_plan.target),
-            mode: mode.to_owned(),
-            enabled: true,
-            managed_fingerprint: host_plan.fingerprint.clone(),
-            last_verification_status: existing
-                .as_ref()
-                .map(|record| record.last_verification_status.clone())
-                .unwrap_or_else(|| VERIFIED_STATUS_NOT_VERIFIED.to_owned()),
-            last_verification_report_json: existing
-                .as_ref()
-                .map(|record| record.last_verification_report_json.clone())
-                .unwrap_or_else(|| "{}".to_owned()),
-            last_user_actions_json: user_actions_json(&host_plan.user_actions)?,
-            metadata_json,
-        },
-    )?;
-    enforce_single_project_scope(&runtime_home, &connection, &project.project_id)?;
-    add_connection_project(
-        &runtime_home,
-        ConnectionProjectRegistration {
-            connection_internal_id: connection.connection_internal_id.clone(),
-            project_id: project.project_id.clone(),
-        },
-    )?;
-    apply_host_plan(host_kind, &host_plan, process)?;
-    let integration_plan = apply_guard_integration(integration_plan)?;
-    let installation_status =
-        initial_guard_installation_status(parsed.mode, &host_plan, &integration_plan);
-    let guard_installation = record_guard_installation(
-        &runtime_home,
-        host_kind,
-        parsed.mode,
-        installation_status,
-        &connection.connection_internal_id,
-        &project.project_id,
-        &integration_plan,
-    )?;
-    let launch = mcp_launch_from_host_plan(&host_plan, Some(&project.repo_root));
-    let verification = verify_connection(
-        &runtime_home,
-        &connection,
-        &host_plan,
-        &launch,
-        Some(&project.project_id),
-        process,
-    )?;
-    let user_actions =
-        init_first_run_user_actions(&verification.host.user_actions, host_kind, parsed.mode);
-    connection = update_agent_connection_verification_report(
-        &runtime_home,
-        &connection.connection_internal_id,
-        verification.status.store_status(),
-        &host_plan.fingerprint,
-        &detailed_verification_report_json(&verification)?,
-        &user_actions_json(&user_actions)?,
-    )?;
-    let status = if verification.status == AgentResultStatus::Complete && user_actions.is_empty() {
-        AgentResultStatus::Complete
-    } else if verification.status == AgentResultStatus::Failed {
-        AgentResultStatus::Failed
-    } else {
-        AgentResultStatus::ActionRequired
-    };
-    let _ = connection;
     render_init_output(InitOutput {
         format: init_output_format(&parsed),
-        status,
-        host_kind,
-        init_mode: parsed.mode,
-        runtime_home: &runtime_home,
-        repo_root: &project.repo_root,
-        connection_id: &connection_internal_id,
-        project_id: Some(&project.project_id),
-        host_plan: &host_plan,
-        verification: Some(&verification),
-        integration: &integration_plan,
-        guard_installation: Some(&guard_installation),
-        profile_action: if existing_profile.is_some() {
-            "reused"
-        } else {
-            "created"
-        },
+        status: outcome.status,
+        host_kind: outcome.host_kind,
+        init_mode: outcome.init_mode,
+        runtime_home: &outcome.runtime_home,
+        repo_root: &outcome.repo_root,
+        connection_id: &outcome.connection_id,
+        project_id: outcome.project_id.as_deref(),
+        host_plan: &outcome.host_plan,
+        verification: outcome.verification.as_ref(),
+        integration: &outcome.integration,
+        guard_installation: outcome.guard_installation.as_ref(),
+        profile_action: outcome.profile_action,
     })
 }
 
@@ -452,208 +219,50 @@ pub fn run_connect_command(
         &["repo", "shared", "global", "read-only", "dry-run", "json"],
         1,
     )?;
-    let host_kind = resolve_connection_host(parsed.host_kind, process)?;
-    let intent = connection_intent_from_flags(&parsed)?;
-    let host_scope = host_scope_for_intent(host_kind, intent)?;
-    let mode = if parsed.read_only {
-        CONNECTION_MODE_READ_ONLY
-    } else {
-        CONNECTION_MODE_WORKFLOW
-    };
-    let runtime_home = resolve_runtime_home(|name| process.env_var(name), current_dir)?;
-    let installation_profile = required_installation_profile(&runtime_home)?;
-    let repo_root = resolve_connection_repo_root(current_dir, parsed.repo.as_deref())?;
-    let server_name = DEFAULT_SERVER_NAME.to_owned();
-    let target_hint = connection_target_hint(host_kind, host_scope, Some(&repo_root), process)?;
-    let existing = connection_for_host_target(
-        &runtime_home,
-        host_kind,
-        intent,
-        host_scope,
-        &target_hint,
-        &server_name,
-    )?;
-    let connection_internal_id = existing
-        .as_ref()
-        .map(|connection| connection.connection_internal_id.clone())
-        .unwrap_or_else(|| {
-            deterministic_connection_id(
-                host_kind,
-                host_scope,
-                Some(&path_text(&repo_root)),
-                &target_hint,
-                &server_name,
-            )
-        });
-    let project_hint = project_record_by_repo_root(&runtime_home, &repo_root)
-        .ok()
-        .flatten();
-    let expected_fingerprint = existing
-        .as_ref()
-        .map(|connection| connection.managed_fingerprint.as_str());
-    let host_plan = build_host_plan(
-        BuildHostPlanRequest {
-            host_kind,
-            connection_intent: intent,
-            connection_id: &connection_internal_id,
-            repo_root: Some(&repo_root),
-            project_id: project_hint
-                .as_ref()
-                .map(|project| project.project_id.as_str())
-                .or(Some("planned_project")),
-            project_name: project_hint
-                .as_ref()
-                .map(|project| project.project_name.as_str())
-                .or(Some("planned project")),
-            installation_profile: installation_profile_context(
-                &runtime_home,
-                &installation_profile,
-            ),
-            mode,
-            expected_fingerprint,
+    match provision_connection(
+        ProvisionConnectionRequest {
+            parsed: &parsed,
+            current_dir,
         },
         process,
-    )?;
-    if let Some(conflict) = host_plan.conflicts.first() {
-        return Err(ConnectionCommandError::runtime(conflict.message.clone()));
+    )? {
+        ConnectionProvisioningOutcome::DryRun(plan) => {
+            let plan = *plan;
+            render_connection_plan_output(ConnectionPlanOutput {
+                format: connection_output_format(&parsed),
+                action: "connection_add",
+                status: AgentResultStatus::DryRun,
+                runtime_home: &plan.runtime_home,
+                connection_id: &plan.connection_id,
+                host_kind: plan.host_kind,
+                intent: plan.intent,
+                host_scope: plan.host_scope,
+                mode: &plan.mode,
+                enabled: true,
+                repo_root: Some(&plan.repo_root),
+                plan: &plan.host_plan,
+                projects_remaining: None,
+                user_actions: plan.host_plan.user_actions.clone(),
+            })
+        }
+        ConnectionProvisioningOutcome::Applied(outcome) => {
+            let outcome = *outcome;
+            render_connection_output(ConnectionOutput {
+                format: connection_output_format(&parsed),
+                action: "connected",
+                status: outcome.verification.status,
+                runtime_home: &outcome.runtime_home,
+                guard_state: outcome.guard_state,
+                connection: &outcome.connection,
+                projects: &outcome.projects,
+                affected_repo_root: Some(&outcome.affected_repo_root),
+                verification: Some(&outcome.verification),
+                current_host: None,
+                plan: Some(&outcome.host_plan),
+                user_actions: outcome.verification.host.user_actions.clone(),
+            })
+        }
     }
-    if parsed.dry_run {
-        return render_connection_plan_output(ConnectionPlanOutput {
-            format: connection_output_format(&parsed),
-            action: "connection_add",
-            status: AgentResultStatus::DryRun,
-            runtime_home: &runtime_home,
-            connection_id: &connection_internal_id,
-            host_kind,
-            intent,
-            host_scope,
-            mode,
-            enabled: true,
-            repo_root: Some(&repo_root),
-            plan: &host_plan,
-            projects_remaining: None,
-            user_actions: host_plan.user_actions.clone(),
-        });
-    }
-
-    initialize_runtime_home(
-        &runtime_home,
-        AGENT_RUNTIME_HOME_ID,
-        metadata_json_base()?.as_str(),
-    )?;
-    let project = ensure_project_for_repo(
-        &runtime_home,
-        RepoProjectRegistration {
-            project_name: None,
-            project_alias: None,
-            repo_root: repo_root.clone(),
-            project_home: None,
-            status: ACTIVE_PROJECT_STATUS.to_owned(),
-            metadata_json: metadata_json_base()?,
-        },
-    )?;
-    let existing = connection_for_host_target(
-        &runtime_home,
-        host_kind,
-        intent,
-        host_scope,
-        &target_hint,
-        &server_name,
-    )?;
-    let expected_fingerprint = existing
-        .as_ref()
-        .map(|connection| connection.managed_fingerprint.as_str());
-    let host_plan = build_host_plan(
-        BuildHostPlanRequest {
-            host_kind,
-            connection_intent: intent,
-            connection_id: &connection_internal_id,
-            repo_root: Some(&project.repo_root),
-            project_id: Some(&project.project_id),
-            project_name: Some(&project.project_name),
-            installation_profile: installation_profile_context(
-                &runtime_home,
-                &installation_profile,
-            ),
-            mode,
-            expected_fingerprint,
-        },
-        process,
-    )?;
-    if let Some(conflict) = host_plan.conflicts.first() {
-        return Err(ConnectionCommandError::runtime(conflict.message.clone()));
-    }
-    let mcp_command = PathBuf::from(&host_plan.entry.command);
-    let metadata_json = connection_metadata_json(&host_plan, &mcp_command, &runtime_home)?;
-    let mut connection = ensure_agent_connection(
-        &runtime_home,
-        AgentConnectionRegistration {
-            connection_internal_id: connection_internal_id.clone(),
-            host_kind: host_kind.as_str().to_owned(),
-            intent: intent.as_str().to_owned(),
-            host_scope: host_scope.as_str().to_owned(),
-            server_name: host_plan.server_name.clone(),
-            config_target: host_target_text(&host_plan.target),
-            mode: mode.to_owned(),
-            enabled: true,
-            managed_fingerprint: host_plan.fingerprint.clone(),
-            last_verification_status: existing
-                .as_ref()
-                .map(|record| record.last_verification_status.clone())
-                .unwrap_or_else(|| VERIFIED_STATUS_NOT_VERIFIED.to_owned()),
-            last_verification_report_json: existing
-                .as_ref()
-                .map(|record| record.last_verification_report_json.clone())
-                .unwrap_or_else(|| "{}".to_owned()),
-            last_user_actions_json: user_actions_json(&host_plan.user_actions)?,
-            metadata_json,
-        },
-    )?;
-    enforce_single_project_scope(&runtime_home, &connection, &project.project_id)?;
-    add_connection_project(
-        &runtime_home,
-        ConnectionProjectRegistration {
-            connection_internal_id: connection.connection_internal_id.clone(),
-            project_id: project.project_id.clone(),
-        },
-    )?;
-    apply_host_plan(host_kind, &host_plan, process)?;
-    let launch = mcp_launch_from_host_plan(&host_plan, Some(&project.repo_root));
-    let verification = verify_connection(
-        &runtime_home,
-        &connection,
-        &host_plan,
-        &launch,
-        Some(&project.project_id),
-        process,
-    )?;
-    connection = update_agent_connection_verification_report(
-        &runtime_home,
-        &connection.connection_internal_id,
-        verification.status.store_status(),
-        &host_plan.fingerprint,
-        &detailed_verification_report_json(&verification)?,
-        &user_actions_json(&verification.host.user_actions)?,
-    )?;
-    let projects = list_connection_projects(&runtime_home, &connection.connection_internal_id)?;
-    render_connection_output(ConnectionOutput {
-        format: connection_output_format(&parsed),
-        action: "connected",
-        status: verification.status,
-        runtime_home: &runtime_home,
-        guard_state: guard_state_for_connection(
-            &runtime_home,
-            &connection.connection_internal_id,
-            &projects,
-        )?,
-        connection: &connection,
-        projects: &projects,
-        affected_repo_root: Some(&project.repo_root),
-        verification: Some(&verification),
-        current_host: None,
-        plan: Some(&host_plan),
-        user_actions: verification.host.user_actions.clone(),
-    })
 }
 
 pub fn run_connections_command(
