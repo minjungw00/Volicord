@@ -1,268 +1,139 @@
 # 구현 아키텍처
 
-이 가이드는 로컬 Rust 워크스페이스의 가이드 수준 구현 구조와 실행 흐름 설명을 담당합니다. 구현자가 코드를 찾고, 책임 경계를 이해하고, 코드 질문을 계약 담당 문서로 보낼 수 있게 돕습니다.
+이 문서는 로컬 Rust 워크스페이스를 위한 아키텍처 가이드의 상위 개요입니다.
+가이드 수준의 운영 경로, 워크스페이스 형태, 의존 방향, 오래 유지될 구현 경계,
+집중 세부 담당 문서로 가는 경로를 담당합니다.
 
-이 문서는 공개 API 동작, 요청 또는 응답 필드, 스키마 의미, 저장 효과, DDL이나 테이블 컬럼, 보안 보장, 런타임 집행, Core 권한 의미, 제품 계약을 정의하거나 덮어쓰지 않습니다. 소스 코드 학습 경로는 [아키텍처 가이드](README.md) 진입점을 사용하고, 크레이트별 첫 파일과 심볼은 [코드베이스 둘러보기](codebase-tour.md)를, 정확한 소스 경로와 모듈 책임은 [소스 지도](source-map.md)를, 대표 메서드 흐름은 [요청 생명주기](request-lifecycle.md)를, 관리 CLI 실행 흐름 경계는 [CLI 작업 흐름](cli-workflows.md)을, 반복 구현 구조는 [구현 설계 패턴](design-patterns.md)을, Store 커밋과 아티팩트 경계는 [저장소와 트랜잭션](storage-and-transactions.md)을, 테스트 계층 선택은 [테스트 전략](testing-strategy.md)을, 집중 결정 기록은 [아키텍처 결정](decisions/README.md)을, 변경 작업 흐름은 [구현 가이드](change-guide.md)를 사용합니다. 정확한 동작은 집중 참조 담당 문서를 사용합니다.
+이 문서는 소스 지도, CLI 작업 흐름 안내, 요청 추적, 저장소 트랜잭션 안내,
+테스트 전략, 변경 가이드, 제품 계약이 아닙니다. 소스 코드 학습 경로는
+[아키텍처 가이드](README.md) 진입점을, 읽는 순서는 [코드베이스 둘러보기](codebase-tour.md)를,
+정확한 소스 경로는 [소스 지도](source-map.md)를, 대표 MCP/Core 요청 흐름은
+[요청 생명주기](request-lifecycle.md)를, 관리 CLI 작업 흐름 경계는
+[CLI 작업 흐름](cli-workflows.md)을, 반복 구조는 [구현 설계 패턴](design-patterns.md)을,
+Store 커밋과 아티팩트 경계는 [저장소와 트랜잭션](storage-and-transactions.md)을,
+테스트 계층 선택은 [테스트 전략](testing-strategy.md)을, 집중 결정 기록은
+[아키텍처 결정](decisions/README.md)을, 변경 경로 지정은 [구현 가이드](change-guide.md)를,
+정확한 동작은 집중 [참조 색인](../reference/README.md)을 사용합니다.
 
-Volicord는 AI 지원 제품 작업을 위한 로컬 작업 권한 기록입니다. Core는 Volicord 상태를 위한 로컬 기준 기록입니다.
+Volicord는 AI 지원 제품 작업을 위한 로컬 작업 권한 기록입니다. Core는 Volicord
+상태를 위한 로컬 기준 기록입니다.
 
-이 가이드에서 직접 열 수 있는 코드와 테스트 경로는 저장소 루트 기준으로 씁니다.
+이 체크아웃은 이 저장소가 유지하는 Volicord 소스 저장소이자 Rust
+워크스페이스입니다. 구현 크레이트, 테스트, 문서, 검증 도구, 저장소 설정을
+담습니다. Volicord 설치는 배포된 실행 파일과 필요한 런타임 리소스의 부분집합이므로
+이 워크스페이스 개요는 설치 매니페스트가 아닙니다.
 
-이 체크아웃은 이 저장소가 유지하는 Volicord 구현을 위한 Volicord 소스 저장소이자 Rust 워크스페이스입니다. Core, 저장소, 공유 타입, `volicord` 관리 CLI와 MCP 프로세스 진입점, `volicord-mcp` 어댑터 라이브러리를 위한 구현 크레이트와 테스트, 문서, 검증 도구, 저장소 설정을 담습니다. Volicord 설치는 배포된 실행 파일과 필요한 런타임 리소스의 부분집합이므로, 이 워크스페이스 개요는 설치 매니페스트처럼 읽으면 안 됩니다.
+직접 열 수 있는 코드와 테스트 경로는 저장소 루트 기준으로 씁니다.
 
 ## 운영 경로
 
-이 가이드 수준 지도는 주요 운영 경로에 참여하는 로컬 구현 구성 요소와 파일 경계를
-보여 줍니다. 구현자가 실행 경로를 이해하도록 돕는 그림이며, 공개 API 계약, 설치
-매니페스트, 저장소 ERD, 사용자 작업 흐름이 아닙니다.
+개요 수준에서 구현에는 오래 유지되는 세 가지 로컬 경로 형태가 있습니다.
+
+- MCP 호스트 -> `volicord mcp --stdio` -> `volicord-mcp` -> `volicord-core` ->
+  `Volicord Runtime Home` 아래의 Store와 아티팩트 기능.
+- 운영자 -> `volicord` 관리 CLI -> setup, 등록, 호스트, 진단 기능 ->
+  `Volicord Runtime Home`과 지원되는 호스트 설정 경계.
+- 로컬 사용자 -> `volicord inbox` CLI -> `volicord-core` -> `Volicord Runtime Home`
+  아래의 Store. 이 경로는 `User Channel`을 사용합니다.
 
 ```mermaid
 flowchart LR
-  subgraph AgentRuntime["MCP 런타임 흐름"]
-    host["에이전트 호스트 / Agent Connection"]
-    mcp["volicord mcp --stdio stdio 어댑터"]
-    core["volicord-core"]
-    store["volicord-store 프로젝트 Store"]
-    artifacts["아티팩트 스테이징과 아티팩트 기능"]
-  end
+  host["MCP host / Agent Connection"]
+  mcp["volicord mcp --stdio"]
+  cli["volicord administrative CLI"]
+  inbox["volicord inbox"]
+  core["volicord-core"]
+  store["volicord-store"]
+  artifacts["artifact facilities"]
+  runtime["Volicord Runtime Home"]
+  product["Product Repository"]
 
-  subgraph AdminManagement["관리 CLI 흐름"]
-    operator["운영자 터미널"]
-    cli["volicord 관리 CLI"]
-    bootstrap["부트스트랩, 등록, 검사 시설"]
-    config["호스트 설정 파일"]
-  end
-
-  subgraph UserAuthority["User Channel 권한 흐름"]
-    user["로컬 터미널 사용자"]
-    usercli["volicord inbox CLI"]
-    channel["User Channel"]
-  end
-
-  subgraph RuntimeBoundary["Volicord Runtime Home"]
-    runtime["런타임 상태와 기록"]
-  end
-
-  subgraph ProductBoundary["Product Repository"]
-    product["제품 파일"]
-  end
-
-  host -- stdio 자식 프로세스 시작 --> mcp
-  mcp -- 공개 tools/call 디스패치 --> core
-  mcp -. 시작과 세션 검증 .-> store
+  host --> mcp --> core
+  mcp -. startup and session validation .-> store
+  cli --> store
+  inbox --> core
   core --> store
   core --> artifacts
   store --> runtime
   artifacts --> runtime
-
-  operator --> cli
-  cli --> bootstrap
-  cli --> config
-  bootstrap --> runtime
-
-  user --> usercli
-  usercli --> channel
-  channel --> core
-  channel -. 권한을 지니는 사용자 판단 .-> runtime
-
-  product -. 담당 문서가 정의한 입력과 관찰된 경로 .-> core
-  host -. 공개 API 밖의 제품 파일 도구 .-> product
+  product -. observed inputs and owner-defined paths .-> core
+  host -. product-file tools outside public API .-> product
 ```
 
-실선 화살표는 주된 로컬 호출 또는 기록 접근 경로로 읽고, 점선 화살표는 검증,
-권한 기록, 관찰된 입력, 공개 API 밖 관계로 읽습니다. `Volicord Runtime Home`과
-`Product Repository` 상자는 저장소/파일 경계이지 프로세스 컨테이너가 아닙니다.
-Product Repository는 Runtime Home 밖에 남습니다. 정확한 동작은 주변 절에서 이름
-붙인 소스 영역과 참조 담당 문서가 담당합니다.
+`volicord-mcp` 어댑터 라이브러리는 시작 검사, 세션 검증, Agent Connection 맥락,
+요청 시점 프로젝트 라우팅을 위해 Store를 직접 사용할 수 있습니다. 이 직접 Store
+사용은 공개 Volicord 메서드 의미를 구현하는 다른 경로가 아닙니다. 공개 메서드
+실행은 Core를 통과합니다.
 
-이 저장소의 Volicord 구현에는 세 가지 운영 경로 형태가 있습니다.
-
-- MCP 호스트 -> `volicord mcp --stdio` -> `volicord-mcp` 어댑터 라이브러리 -> `volicord-core` -> `Volicord Runtime Home` 아래의 Store와 아티팩트 기능.
-- 운영자 -> `volicord` 관리 CLI -> 부트스트랩과 등록 시설 -> `Volicord Runtime Home`과 호스트 설정 파일.
-- 로컬 터미널 사용자 -> `volicord inbox` CLI -> `volicord-core` -> `Volicord Runtime Home` 아래의 Store. 이 경로는 `User Channel`을 사용합니다.
-
-`volicord-mcp` 어댑터 라이브러리는 시작과 요청 라우팅 중에도 `volicord-store`를 직접 사용합니다. 이 Store 사용은 공개 메서드를 Core로 디스패치하기 전에 Runtime Home, Agent Connection 상태, Connection Projects 멤버십, 프로젝트 사용 가능 여부, `connection.mode`, `operation_category`, `actor_source` 출처를 확인합니다. 공개 Volicord 메서드 의미를 구현하는 다른 경로가 아니며, 공개 메서드 실행은 `volicord-core`를 통과합니다.
-
-`Product Repository`는 별도의 제품 파일 경계로 남습니다. 공개 Volicord API는 담당 문서가 정의한 호환성, 관찰 사실, 아티팩트 링크를 기록합니다. 제품 파일 쓰기 자체는 공개 API 경로 밖에서 Agent Connection이나 로컬 도구가 수행합니다.
+`Product Repository`는 별도의 제품 파일 경계로 남습니다. 공개 Volicord 메서드는
+담당 문서가 정의한 호환성, 관찰, 판단, 증거, 아티팩트 링크를 기록합니다. 제품
+파일 쓰기 자체는 공개 메서드 실행 경로 밖에서 Agent Connection, 로컬 도구, 또는
+명시적인 관리 통합 경로가 수행합니다.
 
 ## 워크스페이스 형태
 
-Cargo 워크스페이스는 아래 멤버로 구성됩니다.
+| 워크스페이스 멤버 | 가이드 수준 역할 |
+|---|---|
+| `crates/volicord-types` | 공유 요청, 응답, 스키마 형태, 값 집합, MCP 도구 이름, 식별자, 정규 해시 타입. |
+| `crates/volicord-store` | SQLite, Runtime Home, 부트스트랩, 프로젝트 Store, 아티팩트 저장소, 검사, guard/session 관찰 저장, local web consent 저장, export snapshot, 저장소 오류 구현. |
+| `crates/volicord-core` | 어댑터와 독립적인 Core 서비스, 공유 요청 파이프라인, 메서드 계획, 정책 점검, 응답 구성, Store 조율. |
+| `crates/volicord-cli` | Setup, 프로젝트 등록, User Channel 명령, Agent Connection 설정, 호스트 어댑터, guard 작업 흐름, MCP 프로세스 인계를 위한 로컬 `volicord` 관리 바이너리와 재사용 명령 모듈. |
+| `crates/volicord-mcp` | 시작 검증, 도구 목록, `tools/call` 디코딩과 디스패치, stdio framing, local HTTP transport, local web consent, Core 호출을 위한 MCP 어댑터 라이브러리. |
+| `crates/volicord-test-support` | 구현 테스트가 공유하는 폐기 가능한 Runtime Home, Product Repository, Store, Core, Agent Connection, 픽스처 도우미. |
+| `tests/conformance` | Core 쪽 API와 공유 픽스처를 통한 기준 범위 교차 메서드 시나리오. |
+| `tests/integration` | MCP, Core, Store, Agent Connection 바인딩, operation-category, 공개 스키마 snapshot을 가로지르는 테스트. |
+| `xtask` | 문서 검증을 위한 저장소 유지보수 도구. Volicord 런타임 아키텍처 밖에 있습니다. |
 
-| 워크스페이스 멤버 | Cargo 패키지 | 대상 | 가이드 수준 역할 |
-|---|---|---|---|
-| `crates/volicord-types` | `volicord-types` | 라이브러리 | 공유 Rust 요청, 응답, 스키마 형태, 값 집합, MCP 도구 이름, 식별자, 정규 해시 타입. |
-| `crates/volicord-store` | `volicord-store` | 라이브러리 | SQLite, Runtime Home, 부트스트랩, 프로젝트 Store, 아티팩트 저장소, 검사, guard/session 관찰 저장, local web consent 저장, export snapshot, 저장소 오류 구현. |
-| `crates/volicord-core` | `volicord-core` | 라이브러리 | Core 서비스, 공유 요청 파이프라인, 메서드 계획, 정책 점검, Store 조율. |
-| `crates/volicord-cli` | `volicord-cli` | 라이브러리와 `volicord` 바이너리 | Runtime Home 설정, 프로젝트 등록, User Channel 명령, Agent Connection 설정, 호스트 어댑터, 공개 `volicord mcp` 프로세스 진입점을 위한 로컬 관리 CLI. |
-| `crates/volicord-mcp` | `volicord-mcp` | 라이브러리 | MCP stdio 어댑터, 시작 검증, 도구 목록, `tools/call` 디스패치, Core 호출. |
-| `crates/volicord-test-support` | `volicord-test-support` | 라이브러리 | 구현 테스트가 공유하는 폐기 가능한 Runtime Home, Store, Core, 픽스처 도우미. |
-| `tests/conformance` | `volicord-conformance-tests` | `baseline` 테스트 대상 | Core 쪽 API를 통해 담당 문서가 정의한 동작을 실행하는 기준 범위 교차 메서드 시나리오. |
-| `tests/integration` | `volicord-integration-tests` | `mcp_connection`과 `public_contract_snapshots` 테스트 대상 | MCP, Core, Store, Agent Connection 바인딩, 작업 범주, 공개 스키마 snapshot을 가로지르는 검증. |
-| `xtask` | `xtask` | 라이브러리와 `xtask` 바이너리 | 읽기 전용 문서 검증을 위한 저장소 유지보수 도구. Volicord 런타임 아키텍처의 일부가 아닙니다. |
+## 의존 경계
 
-Cargo manifest에서 확인되는 내부 의존 방향은 아래와 같습니다.
+오래 유지될 의존 방향은 아래와 같습니다.
 
-| 멤버 | 일반 내부 의존성 | 테스트 전용 내부 의존성 |
+- `volicord-types`는 공유 타입 경계에 있으며 내부 제품 크레이트 의존성이 없습니다.
+- `volicord-store`는 공유 타입에 의존하고 지속 저장 메커니즘을 담당합니다. Core,
+  CLI, MCP 어댑터 크레이트에는 의존하지 않습니다.
+- `volicord-core`는 Store와 공유 타입에 의존합니다. Core 쪽 코드는 CLI와 MCP
+  어댑터 크레이트에서 독립적입니다.
+- `volicord-cli`와 `volicord-mcp`는 어댑터 또는 로컬 오케스트레이션 계층입니다.
+  각자의 setup, 시작 검증, 라우팅, 호출 책임을 위해 Core, Store, 공유 타입에
+  의존할 수 있습니다.
+- 테스트 지원 크레이트와 테스트 패키지는 폐기 가능한 픽스처와 계층 간 검증을
+  위해서만 구현 크레이트를 조합합니다.
+- `xtask`는 저장소 유지보수 도구로 격리되며 내부 제품 크레이트 의존성이 없습니다.
+
+정확한 Cargo 의존 간선은 Cargo manifest가 담당합니다. 정확한 소스 배치는 소스
+지도가 담당합니다.
+
+## 오래 유지될 구현 경계
+
+| 경계 | 개요 책임 | 세부 사항과 계약 경로 |
 |---|---|---|
-| `volicord-types` | 없음 | 없음 |
-| `volicord-store` | `volicord-types` | `volicord-test-support` |
-| `volicord-core` | `volicord-store`, `volicord-types` | `volicord-test-support` |
-| `volicord-cli` | `volicord-core`, `volicord-mcp`, `volicord-store`, `volicord-types` | `test-support` 기능이 켜진 `volicord-store`, `volicord-test-support` |
-| `volicord-mcp` | `volicord-core`, `volicord-store`, `volicord-types` | `volicord-test-support` |
-| `volicord-test-support` | `volicord-store`, `volicord-types` | 없음 |
-| `tests/conformance` | 없음. 이 패키지는 테스트 대상만 포함합니다. | `volicord-core`, `volicord-store`, `volicord-test-support`, `volicord-types` |
-| `tests/integration` | 없음. 이 패키지는 테스트 대상만 포함합니다. | `volicord-core`, `volicord-mcp`, `volicord-store`, `volicord-test-support`, `volicord-types` |
-| `xtask` | 없음 | 없음 |
+| Core와 어댑터 | Core는 어댑터와 독립적인 공개 메서드 처리를 담당합니다. CLI와 MCP 어댑터는 Core 주변의 프로세스, setup, 전송, 라우팅, 렌더링 경계를 담당합니다. Core는 어느 어댑터 계층에도 의존하지 않습니다. | [요청 생명주기](request-lifecycle.md), [구현 설계 패턴](design-patterns.md), [Core와 어댑터 의존 경계](decisions/core-adapter-boundary.md), [API 메서드](../reference/api/methods.md), [MCP 전송](../reference/mcp-transport.md), [관리 CLI](../reference/admin-cli.md). |
+| Runtime Home과 Product Repository | `Volicord Runtime Home`은 저장소/런타임 담당 문서가 정의하는 Volicord 런타임 기록과 아티팩트 데이터를 담습니다. `Product Repository`는 사용자 제품 파일과 담당 문서가 허용하는 명시적 통합 파일을 담습니다. | [저장소와 트랜잭션](storage-and-transactions.md), [Runtime Home과 Product Repository 분리](decisions/runtime-home-and-product-repository.md), [런타임 경계](../reference/runtime-boundaries.md), [보안](../reference/security.md). |
+| Store 커밋 경계 | Core 메서드 계획 코드는 읽기 전용, 효과 없음, dry-run, 스테이징, 커밋 분기를 고릅니다. Store는 정상 커밋된 Core 변이를 트랜잭션 경계에서 적용하고, 아티팩트 스테이징을 정상 Core 변이 커밋과 분리합니다. Core 권한 의미는 Core 담당 문서에, 정확한 저장소 기록과 효과는 저장소 담당 문서에 남습니다. | [저장소와 트랜잭션](storage-and-transactions.md), [요청 생명주기](request-lifecycle.md), [Core 모델](../reference/core-model.md), [저장소](../reference/storage.md), [저장 효과](../reference/storage-effects.md). |
+| MCP 어댑터 경계 | `volicord mcp --stdio`는 Runtime Home과 Agent Connection 맥락을 해석하고, 시작/세션 사실을 검증하며, connection mode에 따라 담당 문서가 정의한 도구를 노출하고, 허용된 프로젝트를 선택하고, `tools/call`을 디코딩하고, 어댑터 관리 호출 사실을 도출하고, Core를 호출하고, Core JSON을 MCP content로 감쌉니다. | [요청 생명주기](request-lifecycle.md), [소스 지도](source-map.md), [MCP 전송](../reference/mcp-transport.md), [Agent Connection](../reference/agent-connection.md). |
+| 관리 CLI와 호스트 어댑터 | CLI는 로컬 setup, 프로젝트 등록, Agent Connection 관리, 호스트 통합, guard integration, 진단, `User Channel` 명령을 오케스트레이션합니다. 이 작업 흐름은 로컬 관리 오케스트레이션이며 공개 Core 메서드나 보안 증명이 아닙니다. | [CLI 작업 흐름](cli-workflows.md), [소스 지도](source-map.md), [관리 CLI](../reference/admin-cli.md), [보안](../reference/security.md). |
+| 테스트와 검증 | 구현 테스트는 담당 문서가 정의한 사실을 적절한 계층에서 검증합니다. 테스트, 픽스처, 생성 snapshot, 문서 점검은 제품 계약 담당 문서가 되지 않습니다. | [테스트 전략](testing-strategy.md), [검증](../maintain/validation.md). |
 
-다음 Mermaid 그림은 어떤 워크스페이스 멤버가 어떤 내부 패키지에 의존할 수 있는지
-보여 줍니다. Cargo 의존 방향을 나타내며 런타임 프로세스 토폴로지가 아닙니다.
-정확성은 Cargo manifest가 담당합니다. 실선 화살표는 크레이트나 패키지에서 일반
-내부 의존성으로 향합니다. 점선 `dev`와 `test` 화살표는 개발 의존성과 테스트 전용
-의존성 간선입니다.
+## 세부 경로
 
-```mermaid
-flowchart TD
-  types["volicord-types"]
-  store["volicord-store"]
-  core["volicord-core"]
-  cli["volicord-cli"]
-  mcp["volicord mcp"]
-  support["volicord-test-support"]
-  conformance["tests/conformance"]
-  integration["tests/integration"]
-  xtask["xtask"]
-
-  store --> types
-  core --> store
-  core --> types
-  cli --> core
-  cli --> store
-  cli --> types
-  mcp --> core
-  mcp --> store
-  mcp --> types
-  support --> store
-  support --> types
-
-  store -. dev .-> support
-  core -. dev .-> support
-  cli -. dev .-> support
-  mcp -. dev .-> support
-  conformance -. test .-> core
-  conformance -. test .-> store
-  conformance -. test .-> support
-  conformance -. test .-> types
-  integration -. test .-> mcp
-  integration -. test .-> core
-  integration -. test .-> store
-  integration -. test .-> support
-  integration -. test .-> types
-```
-
-오래 유지될 의존 경계는 아래와 같습니다.
-
-- Core는 CLI나 MCP 어댑터 크레이트에 의존하지 않습니다.
-- MCP는 서로 다른 책임을 위해 Core, Store, 공유 타입에 의존할 수 있습니다. 각각 전송과 디스패치, Agent Connection 시작 검증, 요청 시점 프로젝트 라우팅, 타입 지정 요청 처리를 위한 의존입니다.
-- 관리 CLI는 Store, MCP, 공유 타입으로 로컬 설정, 등록, 프로세스 모드 인계, 사전 점검 오케스트레이션을 수행합니다. 또한 `volicord inbox` 명령 경로는 `User Channel`을 통해 선택된 Core 쪽 메서드를 호출하기 위해 Core에 의존합니다.
-- Store는 공유 타입에 의존합니다.
-- 테스트 지원 크레이트와 테스트 패키지는 폐기 가능한 픽스처와 계층 간 검증을 위해서만 구현 크레이트를 조합합니다.
-- `xtask`는 내부 제품 크레이트에 의존하지 않습니다. 문서 도구 의존성은 유지보수 크레이트 안에 격리됩니다.
-
-## 소스 지도 경로
-
-이 페이지는 워크스페이스 의존성과 실행 흐름 관점을 유지합니다. 정확한 소스 경로,
-모듈 책임, CLI 하위 모듈 경계, 호스트 어댑터 배치, guard integration 배치, MCP
-어댑터 모듈, 테스트 지원 경로는 [소스 지도](source-map.md)를 사용합니다. 소스
-배치는 구현 지침이며, 정확한 동작은 집중 참조 담당 문서에 남습니다.
-
-## 설계 책임 지도
-
-제품 영역의 구현 관점을 찾아야 할 때 이 지도를 사용합니다. 먼저 읽을 오래 유지되는
-소스 영역이나 아키텍처 가이드 문서를 이름 붙이고, 공개 동작을 정확하게 유지하는 계약 담당 문서를
-함께 둡니다.
-
-| 설계 주제 | 구현자용 방향 | 계약 담당 경로 |
-|---|---|---|
-| 아키텍처 개요 | 이 페이지의 운영 경로, 워크스페이스 형태, 의존 경계. 관리 CLI 실행 흐름은 [CLI 작업 흐름](cli-workflows.md)을, 정확한 소스 담당은 [소스 지도](source-map.md)를 봅니다. | [런타임 경계](../reference/runtime-boundaries.md), [범위](../reference/scope.md), [보안](../reference/security.md). |
-| Core 파이프라인 | 대표 요청 흐름은 [요청 생명주기](request-lifecycle.md), Store 커밋 경계는 [저장소와 트랜잭션](storage-and-transactions.md), Core 경로와 policy/method 모듈 담당은 [소스 지도](source-map.md). | [API 메서드](../reference/api/methods.md), [API 코어 스키마](../reference/api/schema-core.md), [저장 효과](../reference/storage-effects.md). |
-| Store, 이벤트, 상태 보기 모델 | Store 트랜잭션, 재실행, 아티팩트 스테이징, 실패 경계는 [저장소와 트랜잭션](storage-and-transactions.md), Store 경로와 모듈 담당은 [소스 지도](source-map.md). | [저장소 기록](../reference/storage-records.md), [저장소 버전 관리](../reference/storage-versioning.md), [상태 보기와 템플릿](../reference/projection-and-templates.md). |
-| MCP 어댑터 | 어댑터에서 Core까지의 요청 흐름은 [요청 생명주기](request-lifecycle.md), MCP 어댑터 경로는 [소스 지도](source-map.md). | [MCP 전송](../reference/mcp-transport.md), [Agent Connection](../reference/agent-connection.md), [API 메서드](../reference/api/methods.md). |
-| CLI 아키텍처 | Setup, connection provisioning, status와 verification, doctor diagnostics, guard lifecycle, host integration, guard integration 경계는 [CLI 작업 흐름](cli-workflows.md)을, 정확한 소스 담당은 [소스 지도](source-map.md)를 봅니다. | [관리 CLI](../reference/admin-cli.md), [런타임 경계](../reference/runtime-boundaries.md), [Agent Connection](../reference/agent-connection.md). |
-| 쓰기 티켓 설계 | Core policy와 method 경로는 [소스 지도](source-map.md), 구현 검증은 Core와 conformance 테스트. | [Core 모델](../reference/core-model.md), [쓰기 준비 메서드](../reference/api/method-prepare-write.md), [실행 기록 메서드](../reference/api/method-record-run.md), [저장 효과](../reference/storage-effects.md). |
-| Judgment Inbox 설계 | Core judgment, CLI User Channel, MCP elicitation, local web consent 소스 담당은 [소스 지도](source-map.md). | [관리 CLI](../reference/admin-cli.md#user-channel-commands), [Agent Connection](../reference/agent-connection.md), [판단 스키마](../reference/api/schema-judgment.md#judgmentinboxitem), [사용자 판단 요청 메서드](../reference/api/method-request-user-judgment.md#volicordrequest_user_judgment), [사용자 판단 기록 메서드](../reference/api/method-record-user-judgment.md#volicordrecord_user_judgment). |
-| Detective와 session-watch 설계 | Guard command, guard integration, host integration, session-watch 저장소 담당은 [소스 지도](source-map.md). | [관리 CLI](../reference/admin-cli.md#guard-hook-commands), [저장소 기록](../reference/storage-records.md), [MCP 전송](../reference/mcp-transport.md), [보안](../reference/security.md). |
-| 로컬 HTTP 설계 | Local HTTP와 local web consent 어댑터 경로는 [소스 지도](source-map.md). | [MCP 전송](../reference/mcp-transport.md), [관리 CLI](../reference/admin-cli.md), [보안](../reference/security.md). |
-
-이 지도는 소스 탐색을 위한 것입니다. 소스와 참조 문서가 어긋나 보이면 코드에서 새 제품
-계약을 추론하지 말고 담당 경로 공백이나 구현 공백으로 다룹니다.
-
-## 요청과 저장소 경계 경로
-
-이 개요는 상위 구현 경계만 유지합니다. 자세한 요청 추적은
-[요청 생명주기](request-lifecycle.md)가 담당하고, Store 트랜잭션, 효과,
-아티팩트 스테이징, 실패 경계는
-[저장소와 트랜잭션](storage-and-transactions.md)이 담당합니다.
-
-| 경계 | 상위 역할 | 자세한 경로 |
-|---|---|---|
-| MCP 어댑터 | Core 호출 전후의 stdio 전송 처리, 시작/세션 검증, 프로젝트 라우팅, 어댑터 관리 요청 사실, 타입 지정 요청 디코딩, MCP 응답 래핑을 담당합니다. | [요청 생명주기](request-lifecycle.md), [소스 지도](source-map.md), [MCP 전송](../reference/mcp-transport.md), [Agent Connection](../reference/agent-connection.md). |
-| Core 파이프라인 | 공통 사전 점검, 메서드 정책 선택, 준비된 요청 맥락, 분기 라우팅, Store 조율을 담당합니다. Core는 CLI와 MCP 어댑터 크레이트에서 독립적입니다. | [요청 생명주기](request-lifecycle.md), [구현 설계 패턴](design-patterns.md), [API 코어 스키마](../reference/api/schema-core.md). |
-| 메서드 모듈 | 메서드별 계획, 검증 결과, dry-run 요약, 결과 필드, 이벤트, `CoreStorageMutation` 값을 담당합니다. | [요청 생명주기](request-lifecycle.md), [소스 지도](source-map.md), [API 메서드](../reference/api/methods.md), 연결된 메서드 담당 문서. |
-| Store와 아티팩트 | 프로젝트 Store 접근, 읽기 도우미, 정상 커밋 트랜잭션, 재실행 행, 저장소 변이 적용, 아티팩트 스테이징, 영구 아티팩트 본문 처리를 담당합니다. | [저장소와 트랜잭션](storage-and-transactions.md), [저장소](../reference/storage.md), [저장 효과](../reference/storage-effects.md), [아티팩트 저장소](../reference/storage-artifacts.md). |
-
-메서드 모듈은 하나의 공개 메서드에 대해 무엇이 일어나야 하는지 결정합니다. 공유
-Core 파이프라인은 공통 요청 순서와 효과 경로 라우팅을 결정합니다. Store는 선택된
-저장소 변이와 아티팩트 작업을 자체 저장소 경계 안에서 적용합니다. 정확한 공개
-동작, 응답 스키마, 저장 효과, 저장소 기록은 집중 참조 담당 문서에 남습니다.
-
-<a id="administrative-agent-setup-flow"></a>
-
-## CLI 작업 흐름 경로
-
-로컬 관리 CLI 작업 흐름은 공개 Core 메서드가 아니라 오케스트레이션 경로입니다. 이
-아키텍처 개요는 상위 경계만 유지합니다. CLI는 Runtime Home과 설치 프로필 setup,
-Agent Connection registry 상태, 호스트 어댑터, guard integration, MCP preflight,
-선택적 stdio handshake, 진단, 렌더링을 조합하지만 정확한 제품 동작은 참조 담당 문서에
-남습니다.
-
-Setup, connection init/add, connection status/verify, guard hook lifecycle, doctor
-diagnostics, host integration, guard integration 실행 흐름 경계는
-[CLI 작업 흐름](cli-workflows.md)을 사용합니다. 정확한 소스 경로는
-[소스 지도](source-map.md)를 사용합니다. 정확한 명령, 전송, 런타임, 연결, 비보장
-계약은 [관리 CLI](../reference/admin-cli.md), [MCP 전송](../reference/mcp-transport.md),
-[런타임 경계](../reference/runtime-boundaries.md), [Agent Connection](../reference/agent-connection.md),
-[보안](../reference/security.md)을 사용합니다.
+| 필요 | 경로 |
+|---|---|
+| 정확한 소스 경로, 모듈 책임, CLI 하위 모듈 경계, 어댑터 모듈, 테스트 지원 경로 | [소스 지도](source-map.md) |
+| 크레이트, 진입 심볼, 구현 흐름을 처음 읽는 순서 | [코드베이스 둘러보기](codebase-tour.md) |
+| Setup, connection provisioning, status, verification, doctor, guard, host integration, guard integration 실행 흐름 경계 | [CLI 작업 흐름](cli-workflows.md) |
+| 대표 MCP/Core 요청 흐름, 분기 차이, 메서드 추적, Store 상호작용, 응답 래핑 | [요청 생명주기](request-lifecycle.md) |
+| Store 트랜잭션, 효과 경로, replay, 아티팩트 스테이징, 커밋 경계, 실패 경계 | [저장소와 트랜잭션](storage-and-transactions.md) |
+| 테스트 계층 선택, 픽스처, 생성 출력 drift 점검, 오래 유지될 테스트, 검증 책임 | [테스트 전략](testing-strategy.md) |
+| 변경 분류, 담당 경로 지정, 소스 경로 지정, 검증 명령 선택 | [구현 가이드](change-guide.md) |
+| 오래 유지될 아키텍처 근거, 결과, 비목표, 구현 영역, 테스트, 담당 경로 | [아키텍처 결정](decisions/README.md) |
 
 ## 결정 경로
 
-아키텍처 개요는 워크스페이스와 실행 지도를 유지합니다. 집중 결정의 결과와
-비목표는 결정 기록에 있습니다.
+집중 결정의 결과와 비목표는 결정 기록에 있습니다.
 
 | 경계 | 집중 결정 |
 |---|---|
+| Agent Connection, host routing, 명시적 Connection Project 멤버십 | [Agent Connection과 호스트 라우팅](decisions/agent-connection-routing.md) |
 | Core가 MCP와 CLI 어댑터에서 독립적임 | [Core와 어댑터 의존 경계](decisions/core-adapter-boundary.md) |
 | 정상 커밋된 Store 변이 전 메서드 계획 | [원자적 변이 커밋 전 계획](decisions/plan-and-atomic-commit.md) |
 | 런타임 데이터와 제품 파일 분리 | [Runtime Home과 Product Repository 분리](decisions/runtime-home-and-product-repository.md) |
-
-다른 오래 유지될 경계는 위 흐름에 남아 있습니다. 관리 CLI 설정은 공개 Core
-메서드 동작이 아니라 로컬 부트스트랩이고, MCP Store 사용은 시작과 세션
-검증으로 제한되며, 아티팩트 스테이징은 정상 Core 변이 커밋과 분리되고,
-테스트는 제품 계약을 소유하지 않고 담당 문서가 정의한 사실을 검증합니다.
-
-## 테스트와 검증 경로
-
-이 아키텍처 개요는 구현 테스트가 어디에 맞물리는지 설명하는 워크스페이스와 의존
-경계만 유지합니다. 자세한 테스트 구조, 테스트 계층 선택, 픽스처/지원 구조, 생성
-출력 drift 점검, `xtask` docs-check 범위, 오래 유지될 검증 원칙은
-[테스트 전략](testing-strategy.md)이 담당합니다.
-
-테스트는 담당 문서가 정의한 동작을 검증합니다. 테스트 픽스처, 검증 단언,
-시나리오 이름이 제품 계약의 유일한 출처가 되면 안 됩니다.
-
-## 변경과 담당 경로
-
-이 아키텍처 개요는 코드에서 담당 문서로 가는 경로, 변경 유형별 경로, 변경
-유형별 검증 명령을 담당하지 않습니다. 구현 영역을 소스 경로, 참조 또는 문서
-담당자, 검증 선택으로 연결할 때는 [구현 가이드](change-guide.md)를 사용합니다.
-정확한 소스 경로와 모듈 책임은 [소스 지도](source-map.md)를 사용합니다.

@@ -1015,8 +1015,8 @@ documents:
   path_en: docs/en/architecture-guide/architecture.md
   path_ko: docs/ko/architecture-guide/architecture.md
   kind: explanation
-  summary: Durable explanation of workspace architecture, dependency boundaries, and top-level execution
-    routes.
+  summary: Concise top-level implementation architecture overview for workspace shape, dependency
+    direction, operational paths, durable boundaries, and detail routes.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide

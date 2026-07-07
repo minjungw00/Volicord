@@ -33,8 +33,9 @@ work. Core is the local authority record for Volicord state.
    `volicord.intake`, and `volicord.prepare_write` from MCP `tools/call` through
    Core and Store behavior to the MCP response wrapper.
 5. Architecture and boundaries: use
-   [Implementation Architecture](architecture.md) for the durable workspace
-   shape, dependency direction, and top-level execution-flow maps.
+   [Implementation Architecture](architecture.md) for the concise top-level
+   overview of workspace shape, dependency direction, operational paths, durable
+   implementation boundaries, and detail routes.
 6. Implementation patterns: read
    [Implementation Design Patterns](design-patterns.md) for recurring
    structures such as `CoreService`, `MethodPolicy`, method planning,
@@ -72,8 +73,8 @@ work. Core is the local authority record for Volicord state.
 
 | Question | Start here | Exact owner route |
 |---|---|---|
-| Which crate should I open first? | [Codebase Tour](codebase-tour.md) | [Implementation Architecture](architecture.md) owns guide-level implementation structure. |
-| Which path owns a module responsibility? | [Source Map](source-map.md) | [Implementation Architecture](architecture.md) owns high-level architecture boundaries; exact product behavior still routes to Reference owners. |
+| Which crate should I open first? | [Codebase Tour](codebase-tour.md) | [Implementation Architecture](architecture.md) owns the high-level workspace shape and dependency boundaries. |
+| Which path owns a module responsibility? | [Source Map](source-map.md) | [Implementation Architecture](architecture.md) owns the overview boundary; exact source-path ownership stays with the Source Map, and exact product behavior still routes to Reference owners. |
 | How do setup, connection provisioning, status, verify, doctor, and guard hook workflows fit together? | [CLI Workflows](cli-workflows.md) | Exact command syntax, flags, result states, and output contracts are owned by [Administrative CLI](../reference/admin-cli.md). |
 | How does a method call move through MCP, Core, Store, and back? | [Request Lifecycle](request-lifecycle.md) | Method behavior is owned by [API Methods](../reference/api/methods.md) and the linked method owner. |
 | Why does Core not depend on CLI or MCP? | [Implementation Architecture](architecture.md) and [Core and adapter dependency boundary](decisions/core-adapter-boundary.md) | Dependency-boundary guidance stays in Architecture Guide docs; public behavior still routes to Reference owners. |

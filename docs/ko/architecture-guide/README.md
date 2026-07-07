@@ -27,8 +27,9 @@ Core는 Volicord 상태를 위한 로컬 기준 기록입니다.
    `volicord.status`, `volicord.intake`, `volicord.prepare_write`가 MCP
    `tools/call`에서 Core와 Store 동작을 거쳐 MCP 응답 래퍼로 돌아오는
    경로를 따라갑니다.
-5. 아키텍처와 경계: [구현 아키텍처](architecture.md)에서 오래 유지되는
-   워크스페이스 형태, 의존 방향, 상위 실행 흐름 지도를 봅니다.
+5. 아키텍처와 경계: [구현 아키텍처](architecture.md)에서 워크스페이스 형태,
+   의존 방향, 운영 경로, 오래 유지될 구현 경계, 세부 경로를 간결한 상위
+   개요로 봅니다.
 6. 구현 패턴: [구현 설계 패턴](design-patterns.md)에서 `CoreService`,
    `MethodPolicy`, 메서드 계획, `CoreStorageMutation`, 주입된 시간, 불투명
    ID, 제어 enum, 정규 요청 해시, 공유 테스트 픽스처 같은 반복 구조를
@@ -61,8 +62,8 @@ Core는 Volicord 상태를 위한 로컬 기준 기록입니다.
 
 | 질문 | 여기서 시작 | 정확한 담당 경로 |
 |---|---|---|
-| 어떤 크레이트를 먼저 열어야 하나? | [코드베이스 둘러보기](codebase-tour.md) | [구현 아키텍처](architecture.md)가 가이드 수준 구현 구조를 담당합니다. |
-| 어떤 경로가 모듈 책임을 담당하나? | [소스 지도](source-map.md) | [구현 아키텍처](architecture.md)는 상위 수준 아키텍처 경계를 담당합니다. 정확한 제품 동작은 계속 참조 담당 문서로 보냅니다. |
+| 어떤 크레이트를 먼저 열어야 하나? | [코드베이스 둘러보기](codebase-tour.md) | [구현 아키텍처](architecture.md)가 상위 워크스페이스 형태와 의존 경계를 담당합니다. |
+| 어떤 경로가 모듈 책임을 담당하나? | [소스 지도](source-map.md) | [구현 아키텍처](architecture.md)는 개요 경계를 담당합니다. 정확한 소스 경로 담당은 소스 지도에 남고, 정확한 제품 동작은 계속 참조 담당 문서로 보냅니다. |
 | Setup, connection provisioning, status, verify, doctor, guard hook 작업 흐름은 어떻게 맞물리나? | [CLI 작업 흐름](cli-workflows.md) | 정확한 명령 문법, 플래그, 결과 상태, 출력 계약은 [관리 CLI](../reference/admin-cli.md)가 담당합니다. |
 | 메서드 호출이 MCP, Core, Store를 지나 응답까지 어떻게 흐르나? | [요청 생명주기](request-lifecycle.md) | 메서드 동작은 [API 메서드](../reference/api/methods.md)와 연결된 메서드 담당 문서가 담당합니다. |
 | 왜 Core는 CLI나 MCP에 의존하지 않나? | [구현 아키텍처](architecture.md)와 [Core와 어댑터 의존 경계](decisions/core-adapter-boundary.md) | 의존 경계 안내는 아키텍처 가이드 문서에 남고, 공개 동작은 참조 담당 문서로 돌아갑니다. |
