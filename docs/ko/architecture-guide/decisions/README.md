@@ -16,6 +16,9 @@ Core 권한 의미, 제품 수락, 닫기 준비 상태, 적합성 결과를 정
 | [원자적 변이 커밋 전 계획](plan-and-atomic-commit.md) | 왜 메서드가 Store 커밋 전에 효과를 계획하고, 왜 Store가 원자적 트랜잭션 경계를 소유하는지 확인합니다. |
 | [Runtime Home과 Product Repository 분리](runtime-home-and-product-repository.md) | 런타임 상태와 제품 파일이 왜 별도 위치에 남아야 하는지, 구현 코드가 그 분리를 어떻게 반영하는지 확인합니다. |
 
-전체 워크스페이스 지도는 [구현 아키텍처](../architecture.md)를, 반복되는 구현
-구조는 [설계 패턴](../design-patterns.md)을, Store 커밋과 아티팩트 경계는
-[저장소와 트랜잭션](../storage-and-transactions.md)을 사용합니다.
+[구현 아키텍처](../architecture.md)는 워크스페이스 아키텍처 개요, 의존 경계
+개요, 오래 유지될 구현 경계, 세부 경로를 볼 때 사용합니다. 정확한 소스 경로
+책임과 모듈 배치는 [소스 지도](../source-map.md)를, 반복되는 구현 구조는
+[설계 패턴](../design-patterns.md)을, Store 커밋과 아티팩트 경계는
+[저장소와 트랜잭션](../storage-and-transactions.md)을, 정확한 Cargo 의존
+간선은 `Cargo.toml` manifest를 사용합니다.

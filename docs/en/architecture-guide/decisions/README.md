@@ -17,7 +17,11 @@ close readiness, or conformance results.
 | [Planning before atomic mutation commit](plan-and-atomic-commit.md) | Why methods plan effects before Store commit and why Store owns the atomic transaction boundary. |
 | [Runtime Home and Product Repository separation](runtime-home-and-product-repository.md) | Why runtime state and product files stay in separate locations and how implementation code reflects that split. |
 
-Use [Implementation Architecture](../architecture.md) for the full workspace
-map, [Design Patterns](../design-patterns.md) for recurring implementation
-structures, and [Storage and Transactions](../storage-and-transactions.md) for
-the Store commit and artifact boundary.
+Use [Implementation Architecture](../architecture.md) for the workspace
+architecture overview, dependency-boundary overview, durable implementation
+boundaries, and detail routes. Use [Source Map](../source-map.md) for exact
+source path responsibilities and module placement,
+[Design Patterns](../design-patterns.md) for recurring implementation
+structures, [Storage and Transactions](../storage-and-transactions.md) for the
+Store commit and artifact boundaries, and `Cargo.toml` manifests for exact
+Cargo dependency edges.
