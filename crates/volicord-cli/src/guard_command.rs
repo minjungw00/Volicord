@@ -1,11 +1,4 @@
-use std::{
-    collections::BTreeSet,
-    ffi::OsString,
-    fmt, fs,
-    path::{Component, Path},
-    str::FromStr,
-    time::SystemTime,
-};
+use std::{collections::BTreeSet, ffi::OsString, fmt, fs, path::Path};
 
 use chrono::{DateTime, Duration as ChronoDuration, SecondsFormat, Utc};
 use serde_json::{json, Map, Value};
@@ -33,7 +26,7 @@ use volicord_store::{
     StoreError,
 };
 use volicord_types::{
-    chat_judgment_verification_code, ActorSource, GuardDecision, HostKind, IntegrationProfile,
+    chat_judgment_verification_code, ActorSource, GuardDecision, IntegrationProfile,
     JudgmentResolutionOutcome, OperationCategory, PersistedJudgmentBasis,
     PersistedUserJudgmentRequest, ProjectId, PromptCaptureStatus, RequestId,
     SessionWatchCoverageBasis, SessionWatchScanSummary, StatusInclude, StatusRequest, TaskId,
@@ -59,12 +52,20 @@ const EXPECTED_WRITE_TTL_MINUTES: i64 = 15;
 const SESSION_WATCH_METADATA_SOURCE: &str = "volicord_session_watch";
 
 mod args;
+mod envelope;
+mod mutation;
+mod tool_observation;
 
 pub use args::guard_usage;
 use args::{
     parse_guard_options, read_guard_input, GuardInput, GuardOptions, GuardPhase, HostOutputMode,
     OutputFormat,
 };
+use envelope::{
+    event_bool, event_path_field, event_string, event_time_or_now, guard_envelope, GuardEnvelope,
+};
+use mutation::{PathAssessment, ToolClassification};
+use tool_observation::{host_invocation_id, tool_observation, ToolObservation};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GuardCommandOutcome {
@@ -124,17 +125,6 @@ struct RenderedGuardOutput {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct GuardEnvelope {
-    event_id: String,
-    session_id: Option<String>,
-    connection_id: String,
-    guard_installation_id: Option<String>,
-    host_kind: String,
-    guard_mode: String,
-    occurred_at: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 struct GuardStateSummary {
     project_id: String,
     project_name: String,
@@ -181,46 +171,6 @@ struct ActiveWriteTicketSummary {
     change_unit_id: Option<String>,
     intended_paths: Vec<String>,
     expires_at: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct ToolObservation {
-    tool_name: Option<String>,
-    host_invocation_id: Option<String>,
-    command: Option<String>,
-    classification: ToolClassification,
-    paths: Vec<PathAssessment>,
-    changed_paths: Vec<PathAssessment>,
-    explicit_write_attempt: bool,
-    exit_code: Option<i64>,
-    success: Option<bool>,
-    status: Option<String>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ToolClassification {
-    ReadOnly,
-    Mutating,
-    UnknownMutationRisk,
-    Unknown,
-}
-
-impl ToolClassification {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::ReadOnly => "read_only",
-            Self::Mutating => "mutating",
-            Self::UnknownMutationRisk => "unknown_mutation_risk",
-            Self::Unknown => "unknown",
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct PathAssessment {
-    raw: String,
-    normalized: Option<String>,
-    inside_repo: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -501,169 +451,6 @@ fn resolve_guard_project(
     }
     let repo_root = resolve_repository_root(current_dir, None)?;
     registered_project_for_repo(runtime_home, &repo_root).map_err(Into::into)
-}
-
-fn event_path_field<'a>(event: &'a Value, paths: &[&[&str]]) -> Option<&'a Path> {
-    for path in paths {
-        if let Some(value) = value_at(event, path).and_then(Value::as_str) {
-            if !value.trim().is_empty() {
-                return Some(Path::new(value));
-            }
-        }
-    }
-    None
-}
-
-fn guard_envelope(
-    phase: GuardPhase,
-    options: &GuardOptions,
-    input: &GuardInput,
-    project: &ProjectRecord,
-) -> Result<GuardEnvelope, GuardCommandError> {
-    let connection_id = options
-        .connection_id
-        .clone()
-        .or_else(|| {
-            event_string(
-                &input.raw_value,
-                &[
-                    &["connection_id"],
-                    &["connection_internal_id"],
-                    &["connection", "id"],
-                    &["volicord", "connection_id"],
-                ],
-            )
-        })
-        .ok_or_else(|| {
-            GuardCommandError::Usage(
-                "host-hook command requires --connection or connection_id in the event".to_owned(),
-            )
-        })?;
-    let host_kind = normalize_host_kind(
-        options
-            .host_kind
-            .clone()
-            .or_else(|| {
-                event_string(
-                    &input.raw_value,
-                    &[
-                        &["host_kind"],
-                        &["host", "kind"],
-                        &["source", "host_kind"],
-                        &["source", "host"],
-                    ],
-                )
-            })
-            .or_else(|| options.output.default_host_kind().map(str::to_owned))
-            .unwrap_or_else(|| "generic".to_owned()),
-    )?;
-    let guard_mode = normalize_guard_mode(
-        options
-            .guard_mode
-            .clone()
-            .or_else(|| {
-                event_string(
-                    &input.raw_value,
-                    &[
-                        &["integration_profile"],
-                        &["profile"],
-                        &["host_hook", "profile"],
-                    ],
-                )
-            })
-            .unwrap_or_else(|| DEFAULT_INTEGRATION_PROFILE.to_owned()),
-    )?;
-    let session_id = options.session_id.clone().or_else(|| {
-        event_string(
-            &input.raw_value,
-            &[
-                &["session_id"],
-                &["session", "id"],
-                &["conversation_id"],
-                &["transcript_id"],
-            ],
-        )
-    });
-    let session_id = match (phase, session_id) {
-        (GuardPhase::SessionStart | GuardPhase::PromptCapture, None) => Some(stable_id(
-            "agent_session",
-            &[
-                phase.command_name(),
-                &connection_id,
-                &project.project_id,
-                &input.raw_sha256,
-            ],
-        )),
-        (_, value) => value,
-    };
-    let event_id = event_string(
-        &input.raw_value,
-        &[
-            &["guard_event_id"],
-            &["event_id"],
-            &["hook_event_id"],
-            &["tool_call_id"],
-            &["id"],
-        ],
-    )
-    .unwrap_or_else(|| {
-        stable_id(
-            "guard_event",
-            &[
-                phase.command_name(),
-                &connection_id,
-                session_id.as_deref().unwrap_or(""),
-                &project.project_id,
-                &input.raw_sha256,
-            ],
-        )
-    });
-    let occurred_at = event_string(
-        &input.raw_value,
-        &[&["occurred_at"], &["timestamp"], &["time"]],
-    )
-    .unwrap_or_else(current_timestamp);
-    Ok(GuardEnvelope {
-        event_id,
-        session_id,
-        connection_id,
-        guard_installation_id: options.guard_installation_id.clone().or_else(|| {
-            event_string(
-                &input.raw_value,
-                &[
-                    &["guard_installation_id"],
-                    &["host_hook", "installation_id"],
-                    &["volicord", "guard_installation_id"],
-                ],
-            )
-        }),
-        host_kind,
-        guard_mode,
-        occurred_at,
-    })
-}
-
-fn normalize_host_kind(value: String) -> Result<String, GuardCommandError> {
-    let normalized = match value.as_str() {
-        "claude-code" => "claude_code".to_owned(),
-        other => other.to_owned(),
-    };
-    HostKind::from_str(&normalized).map_err(|error| GuardCommandError::Usage(error.to_string()))?;
-    Ok(normalized)
-}
-
-fn normalize_guard_mode(value: String) -> Result<String, GuardCommandError> {
-    if matches!(
-        value.as_str(),
-        profile if profile == IntegrationProfile::Record.as_str()
-            || profile == IntegrationProfile::Detective.as_str()
-    ) {
-        Ok(value)
-    } else {
-        Err(GuardCommandError::Usage(
-            "integration profile must be record or detective".to_owned(),
-        ))
-    }
 }
 
 fn ensure_required_session(
@@ -967,340 +754,6 @@ fn guard_session_watch_scan_summary(
     Ok(Some(session_watch_scan_summary_from_store(&summary)))
 }
 
-fn tool_observation(event: &Value, repo_root: &Path) -> ToolObservation {
-    let tool_name = event_string(
-        event,
-        &[
-            &["tool_name"],
-            &["tool", "name"],
-            &["tool_use", "name"],
-            &["tool"],
-        ],
-    );
-    let command = event_string(
-        event,
-        &[
-            &["command"],
-            &["tool_input", "command"],
-            &["input", "command"],
-            &["tool", "input", "command"],
-            &["tool", "arguments", "command"],
-            &["tool_use", "input", "command"],
-        ],
-    );
-    let classification = classify_tool(tool_name.as_deref(), command.as_deref());
-    let paths = collect_path_assessments(event, repo_root, false);
-    let changed_paths = collect_path_assessments(event, repo_root, true);
-    let explicit_write_attempt = event_bool(
-        event,
-        &[
-            &["product_file_write_intended"],
-            &["write_attempt"],
-            &["mutates_files"],
-            &["tool_input", "product_file_write_intended"],
-            &["tool_input", "write_attempt"],
-            &["input", "product_file_write_intended"],
-            &["input", "write_attempt"],
-        ],
-    )
-    .unwrap_or(false);
-    ToolObservation {
-        tool_name,
-        host_invocation_id: host_invocation_id(event),
-        command,
-        classification,
-        paths,
-        changed_paths,
-        explicit_write_attempt,
-        exit_code: event_i64(
-            event,
-            &[
-                &["exit_code"],
-                &["tool_result", "exit_code"],
-                &["result", "exit_code"],
-                &["output", "exit_code"],
-            ],
-        ),
-        success: event_bool(
-            event,
-            &[
-                &["success"],
-                &["tool_result", "success"],
-                &["result", "success"],
-                &["output", "success"],
-            ],
-        ),
-        status: event_string(
-            event,
-            &[
-                &["status"],
-                &["tool_result", "status"],
-                &["result", "status"],
-                &["output", "status"],
-            ],
-        ),
-    }
-}
-
-fn classify_tool(tool_name: Option<&str>, command: Option<&str>) -> ToolClassification {
-    let normalized_tool = tool_name.unwrap_or("").trim().to_ascii_lowercase();
-    if matches!(
-        normalized_tool.as_str(),
-        "read" | "view" | "grep" | "search" | "list" | "glob"
-    ) {
-        return ToolClassification::ReadOnly;
-    }
-    if matches!(
-        normalized_tool.as_str(),
-        "edit" | "write" | "write_file" | "apply_patch" | "patch" | "notebook_edit"
-    ) {
-        return ToolClassification::Mutating;
-    }
-    let Some(command) = command.map(str::trim).filter(|value| !value.is_empty()) else {
-        return if normalized_tool.is_empty() {
-            ToolClassification::Unknown
-        } else {
-            ToolClassification::UnknownMutationRisk
-        };
-    };
-    if shell_command_is_clearly_mutating(command) {
-        return ToolClassification::Mutating;
-    }
-    if shell_command_is_read_only(command) {
-        return ToolClassification::ReadOnly;
-    }
-    ToolClassification::UnknownMutationRisk
-}
-
-fn shell_command_is_clearly_mutating(command: &str) -> bool {
-    let compact = format!(" {command} ");
-    if compact.contains(" > ") || compact.contains(" >> ") || compact.contains(" tee ") {
-        return true;
-    }
-    if compact.contains(" sed -i ")
-        || compact.contains(" perl -pi ")
-        || compact.contains(" git add ")
-        || compact.contains(" git commit ")
-        || compact.contains(" git reset ")
-        || compact.contains(" git clean ")
-        || compact.contains(" git checkout ")
-        || compact.contains(" git switch ")
-    {
-        return true;
-    }
-    command_segments(command).iter().any(|segment| {
-        let first = first_command_word(segment);
-        matches!(
-            first.as_deref(),
-            Some(
-                "rm" | "mv"
-                    | "cp"
-                    | "touch"
-                    | "mkdir"
-                    | "rmdir"
-                    | "ln"
-                    | "chmod"
-                    | "chown"
-                    | "truncate"
-                    | "install"
-                    | "cargo-fmt"
-            )
-        ) || segment.trim_start().starts_with("cargo fmt")
-            || segment.trim_start().starts_with("npm install")
-            || segment.trim_start().starts_with("pnpm install")
-            || segment.trim_start().starts_with("yarn install")
-    })
-}
-
-fn shell_command_is_read_only(command: &str) -> bool {
-    command_segments(command).iter().all(|segment| {
-        let trimmed = segment.trim();
-        if trimmed.is_empty() {
-            return true;
-        }
-        if trimmed.contains(" -delete") {
-            return false;
-        }
-        let first = first_command_word(trimmed);
-        matches!(
-            first.as_deref(),
-            Some(
-                "pwd"
-                    | "ls"
-                    | "cat"
-                    | "rg"
-                    | "grep"
-                    | "find"
-                    | "wc"
-                    | "head"
-                    | "tail"
-                    | "sed"
-                    | "awk"
-                    | "git"
-                    | "cargo"
-                    | "npm"
-                    | "pnpm"
-                    | "yarn"
-                    | "node"
-                    | "rustc"
-            )
-        ) && !trimmed.starts_with("cargo fmt")
-            && !trimmed.starts_with("npm install")
-            && !trimmed.starts_with("pnpm install")
-            && !trimmed.starts_with("yarn install")
-            && !trimmed.starts_with("git add")
-            && !trimmed.starts_with("git commit")
-            && !trimmed.starts_with("git reset")
-            && !trimmed.starts_with("git clean")
-            && !trimmed.starts_with("git checkout")
-            && !trimmed.starts_with("git switch")
-    })
-}
-
-fn command_segments(command: &str) -> Vec<&str> {
-    command
-        .split([';', '\n'])
-        .flat_map(|part| part.split("&&"))
-        .flat_map(|part| part.split("||"))
-        .collect()
-}
-
-fn first_command_word(segment: &str) -> Option<String> {
-    let mut words = segment.split_whitespace();
-    let first = words.next()?;
-    if first == "sudo" || first == "command" {
-        words.next().map(str::to_owned)
-    } else {
-        Some(first.to_owned())
-    }
-}
-
-fn collect_path_assessments(
-    event: &Value,
-    repo_root: &Path,
-    changed_only: bool,
-) -> Vec<PathAssessment> {
-    let mut raw_paths = BTreeSet::new();
-    collect_paths_recursive(event, changed_only, &mut raw_paths);
-    if !changed_only {
-        if let Some(command) = event_string(
-            event,
-            &[
-                &["command"],
-                &["tool_input", "command"],
-                &["input", "command"],
-                &["tool", "input", "command"],
-            ],
-        ) {
-            raw_paths.extend(paths_from_redirection(&command));
-        }
-    }
-    raw_paths
-        .into_iter()
-        .map(|raw| assess_path(repo_root, &raw))
-        .collect()
-}
-
-fn collect_paths_recursive(value: &Value, changed_only: bool, paths: &mut BTreeSet<String>) {
-    match value {
-        Value::Object(object) => {
-            for (key, value) in object {
-                let path_key = if changed_only {
-                    matches!(
-                        key.as_str(),
-                        "changed_paths" | "observed_paths" | "modified_paths"
-                    )
-                } else {
-                    matches!(
-                        key.as_str(),
-                        "paths"
-                            | "path"
-                            | "file_path"
-                            | "target_path"
-                            | "changed_paths"
-                            | "observed_paths"
-                            | "modified_paths"
-                    )
-                };
-                if path_key {
-                    collect_string_values(value, paths);
-                }
-                collect_paths_recursive(value, changed_only, paths);
-            }
-        }
-        Value::Array(values) => {
-            for value in values {
-                collect_paths_recursive(value, changed_only, paths);
-            }
-        }
-        _ => {}
-    }
-}
-
-fn collect_string_values(value: &Value, values: &mut BTreeSet<String>) {
-    match value {
-        Value::String(text) if !text.trim().is_empty() => {
-            values.insert(text.to_owned());
-        }
-        Value::Array(items) => {
-            for item in items {
-                collect_string_values(item, values);
-            }
-        }
-        _ => {}
-    }
-}
-
-fn paths_from_redirection(command: &str) -> Vec<String> {
-    let mut paths = Vec::new();
-    let words = command.split_whitespace().collect::<Vec<_>>();
-    for (index, word) in words.iter().enumerate() {
-        if matches!(*word, ">" | ">>") {
-            if let Some(path) = words.get(index + 1) {
-                paths.push(path.trim_matches('"').trim_matches('\'').to_owned());
-            }
-        }
-    }
-    paths
-}
-
-fn assess_path(repo_root: &Path, raw: &str) -> PathAssessment {
-    let path = Path::new(raw);
-    let (inside_repo, normalized) = if path.is_absolute() {
-        match path.strip_prefix(repo_root) {
-            Ok(relative) => normalized_relative_path(relative)
-                .map(|path| (true, Some(path)))
-                .unwrap_or((false, None)),
-            Err(_) => (false, None),
-        }
-    } else {
-        normalized_relative_path(path)
-            .map(|path| (true, Some(path)))
-            .unwrap_or((false, None))
-    };
-    PathAssessment {
-        raw: raw.to_owned(),
-        normalized,
-        inside_repo,
-    }
-}
-
-fn normalized_relative_path(path: &Path) -> Option<String> {
-    let mut parts = Vec::new();
-    for component in path.components() {
-        match component {
-            Component::Normal(value) => parts.push(value.to_string_lossy().into_owned()),
-            Component::CurDir => {}
-            Component::ParentDir | Component::RootDir | Component::Prefix(_) => return None,
-        }
-    }
-    if parts.is_empty() {
-        None
-    } else {
-        Some(parts.join("/"))
-    }
-}
-
 fn pre_tool_decision(
     summary: &GuardStateSummary,
     observation: &ToolObservation,
@@ -1586,24 +1039,6 @@ fn normalized_observed_paths<'a>(paths: impl Iterator<Item = &'a PathAssessment>
         .collect()
 }
 
-fn host_invocation_id(event: &Value) -> Option<String> {
-    event_string(
-        event,
-        &[
-            &["tool_call_id"],
-            &["tool_use_id"],
-            &["tool_invocation_id"],
-            &["invocation_id"],
-            &["call_id"],
-            &["tool", "call_id"],
-            &["tool", "id"],
-            &["tool_use", "id"],
-            &["tool_result", "tool_call_id"],
-            &["result", "tool_call_id"],
-        ],
-    )
-}
-
 fn record_post_tool_correlation(
     runtime_home: &Path,
     project: &ProjectRecord,
@@ -1840,7 +1275,7 @@ fn match_expected_write(
         ));
     }
 
-    let host_invocation_id = host_invocation_id_from_observation(observation);
+    let host_invocation_id = observation.host_invocation_id.clone();
     let observed_at = event_time_or_now(&envelope.occurred_at);
     let pending =
         list_pending_expected_writes(runtime_home, &project.project_id, &envelope.connection_id)?;
@@ -1953,10 +1388,6 @@ fn expected_write_session_matches(record: &ExpectedWriteRecord, envelope: &Guard
         .session_id
         .as_deref()
         .is_none_or(|session_id| record.session_id.as_deref() == Some(session_id))
-}
-
-fn host_invocation_id_from_observation(observation: &ToolObservation) -> Option<String> {
-    observation.host_invocation_id.clone()
 }
 
 fn expected_write_time_contains(record: &ExpectedWriteRecord, observed_at: DateTime<Utc>) -> bool {
@@ -3497,37 +2928,6 @@ fn object_text(value: Value) -> Result<String, GuardCommandError> {
     }
 }
 
-fn value_at<'a>(value: &'a Value, path: &[&str]) -> Option<&'a Value> {
-    let mut cursor = value;
-    for key in path {
-        cursor = cursor.get(*key)?;
-    }
-    Some(cursor)
-}
-
-fn event_string(value: &Value, paths: &[&[&str]]) -> Option<String> {
-    for path in paths {
-        if let Some(text) = value_at(value, path).and_then(Value::as_str) {
-            if !text.trim().is_empty() {
-                return Some(text.to_owned());
-            }
-        }
-    }
-    None
-}
-
-fn event_bool(value: &Value, paths: &[&[&str]]) -> Option<bool> {
-    paths
-        .iter()
-        .find_map(|path| value_at(value, path).and_then(Value::as_bool))
-}
-
-fn event_i64(value: &Value, paths: &[&[&str]]) -> Option<i64> {
-    paths
-        .iter()
-        .find_map(|path| value_at(value, path).and_then(Value::as_i64))
-}
-
 fn extract_prompt_text(value: &Value) -> Option<String> {
     event_string(
         value,
@@ -3587,18 +2987,8 @@ fn redacted_prompt_value(value: &Value) -> Value {
     }
 }
 
-fn current_timestamp() -> String {
-    DateTime::<Utc>::from(SystemTime::now()).to_rfc3339_opts(SecondsFormat::Secs, true)
-}
-
 fn format_timestamp(timestamp: DateTime<Utc>) -> String {
     timestamp.to_rfc3339_opts(SecondsFormat::Secs, true)
-}
-
-fn event_time_or_now(raw: &str) -> DateTime<Utc> {
-    DateTime::parse_from_rfc3339(raw)
-        .map(|timestamp| timestamp.with_timezone(&Utc))
-        .unwrap_or_else(|_| DateTime::<Utc>::from(SystemTime::now()))
 }
 
 fn sha256_text(text: &str) -> String {
