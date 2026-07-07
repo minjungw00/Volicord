@@ -310,21 +310,30 @@ Recommended next component:
 Why it exists:
 
 `volicord-cli` implements the local `volicord` administrative executable and
-reusable command modules. It handles installation profile readiness, Git repository
-project detection, project and Agent Connection registration, Agent Connection
-setup, supported host-specific MCP configuration, authority bundle export, local
-`User Channel` commands, and preflight execution.
+reusable command modules. It handles installation profile readiness, Git
+repository project detection, project and Agent Connection registration, Agent
+Connection setup, supported host-specific MCP configuration, guard hook
+integration, authority bundle export, local `User Channel` commands, and
+preflight execution.
 
 Owns in the implementation:
 
 - Process entry and administrative command dispatch for the `volicord` binary.
-- `volicord connection add`, `volicord connection list`, and `volicord connection ...`
-  parsing, storage preparation, host plan construction, preflight invocation,
-  status, verification, mode, removal, and output.
-- Setup, doctor, project, authority-bundle export, and local User Channel
-  command parsing and output.
-- Codex and Claude Code host integration planning.
-- Managed host configuration planning and safety checks.
+- Setup workflow helpers, command discovery, command linking, shell startup
+  planning, interactive choices, and setup output rendering.
+- `volicord init`, `volicord connection add`, `volicord connection list`, and
+  `volicord connection ...` dispatch, storage preparation, host plan
+  construction, preflight invocation, status, verification, mode, removal, and
+  output.
+- Guard hook command dispatch, phase handling, recorded observations,
+  prompt-capture handling, write-ticket matching, and host-native rendering.
+- Guard integration planning, generated guard file application, capability
+  metadata, policy helpers, host hook command planning, and factual audit
+  helpers consumed by connection status and doctor diagnostics.
+- Codex and Claude Code host adapter internals, managed host configuration
+  planning, and host configuration safety checks.
+- Doctor, project, authority-bundle export, and local User Channel command
+  parsing and output.
 - Agent Connection, Connection Projects, and invocation metadata generation.
 
 Does not own:
@@ -343,17 +352,65 @@ Important modules:
 - [`crates/volicord-cli/src/main.rs`](../../../crates/volicord-cli/src/main.rs)
   for process dispatch and `run_cli`.
 - [`crates/volicord-cli/src/setup_command.rs`](../../../crates/volicord-cli/src/setup_command.rs)
-  and [`crates/volicord-cli/src/doctor_command.rs`](../../../crates/volicord-cli/src/doctor_command.rs)
-  for installation profile creation, executable discovery, and diagnostic checks.
+  for setup command entry, setup process abstractions, setup terminal
+  abstractions, and setup output status.
+- [`crates/volicord-cli/src/setup_command/workflow.rs`](../../../crates/volicord-cli/src/setup_command/workflow.rs)
+  for setup workflow execution and report assembly.
+- [`crates/volicord-cli/src/setup_command/discovery.rs`](../../../crates/volicord-cli/src/setup_command/discovery.rs),
+  [`linking.rs`](../../../crates/volicord-cli/src/setup_command/linking.rs),
+  [`shell_startup.rs`](../../../crates/volicord-cli/src/setup_command/shell_startup.rs),
+  [`interactive.rs`](../../../crates/volicord-cli/src/setup_command/interactive.rs),
+  and [`output.rs`](../../../crates/volicord-cli/src/setup_command/output.rs)
+  for command discovery, command-link handling, shell startup edits,
+  interactive choices, and setup rendering.
+- [`crates/volicord-cli/src/doctor_command.rs`](../../../crates/volicord-cli/src/doctor_command.rs)
+  for diagnostic checks across installation profile, host, connection, and
+  guard facts.
 - [`crates/volicord-cli/src/project_context.rs`](../../../crates/volicord-cli/src/project_context.rs)
   for Git repository root detection and `volicord project ...` commands.
 - [`crates/volicord-cli/src/export_command.rs`](../../../crates/volicord-cli/src/export_command.rs)
   for authority bundle export parsing, rendering, and output.
 - [`crates/volicord-cli/src/connection_command.rs`](../../../crates/volicord-cli/src/connection_command.rs)
-  for `volicord connection add`, `volicord connection list`, and
-  `volicord connection status/verify/mode/remove` orchestration.
+  for command-facing dispatch for `volicord init`, `volicord connection add`,
+  `volicord connection list`, and
+  `volicord connection status/verify/mode/remove`.
+- [`crates/volicord-cli/src/connection_command/service.rs`](../../../crates/volicord-cli/src/connection_command/service.rs)
+  for connection provisioning workflow and init provisioning workflow.
+- [`crates/volicord-cli/src/connection_command/selection.rs`](../../../crates/volicord-cli/src/connection_command/selection.rs)
+  for host, repository, and connection selection plus ambiguity handling.
+- [`crates/volicord-cli/src/connection_command/verification.rs`](../../../crates/volicord-cli/src/connection_command/verification.rs)
+  for connection diagnostics, host verification aggregation, stored status, MCP
+  preflight diagnostics, and handshake status.
+- [`crates/volicord-cli/src/connection_command/output/`](../../../crates/volicord-cli/src/connection_command/output/)
+  for connection text, JSON, and summary rendering.
+- [`crates/volicord-cli/src/guard_command.rs`](../../../crates/volicord-cli/src/guard_command.rs)
+  for `_hook` command entry and dispatch across guard phases.
+- [`crates/volicord-cli/src/guard_command/envelope.rs`](../../../crates/volicord-cli/src/guard_command/envelope.rs),
+  [`tool_observation.rs`](../../../crates/volicord-cli/src/guard_command/tool_observation.rs),
+  [`mutation.rs`](../../../crates/volicord-cli/src/guard_command/mutation.rs),
+  [`prompt_command.rs`](../../../crates/volicord-cli/src/guard_command/prompt_command.rs),
+  [`prompt_capture.rs`](../../../crates/volicord-cli/src/guard_command/prompt_capture.rs),
+  [`write_ticket.rs`](../../../crates/volicord-cli/src/guard_command/write_ticket.rs),
+  [`render.rs`](../../../crates/volicord-cli/src/guard_command/render.rs),
+  and [`phase/`](../../../crates/volicord-cli/src/guard_command/phase/)
+  for host event normalization, tool observation extraction, mutation
+  classification, prompt-capture command handling, write-ticket coverage,
+  guard output, and phase-specific lifecycle handling.
+- [`crates/volicord-cli/src/guard_integration/`](../../../crates/volicord-cli/src/guard_integration/)
+  for generated guard file planning and application, capability metadata,
+  policy helpers, host hook command planning, host-specific generated files, and
+  factual audit helpers. Those facts are diagnostics and recorded observations,
+  not security guarantees or human approval records.
 - [`crates/volicord-cli/src/host_integration/`](../../../crates/volicord-cli/src/host_integration/)
-  for Codex, Claude Code, and host configuration planning.
+  for shared host kinds, capabilities, lifecycle phases, managed host plan
+  types, config editing, integration contracts, generic-host guidance, and
+  diagnostic status types.
+- [`crates/volicord-cli/src/host_integration/codex/`](../../../crates/volicord-cli/src/host_integration/codex/)
+  for Codex adapter internals: config parsing and update, executable checks,
+  managed identity evaluation, and project trust diagnostics.
+- [`crates/volicord-cli/src/host_integration/claude_code/`](../../../crates/volicord-cli/src/host_integration/claude_code/)
+  for Claude Code adapter internals: CLI command construction, config parsing
+  and update, managed identity checks, and CLI output parsing.
 - [`crates/volicord-cli/src/registration.rs`](../../../crates/volicord-cli/src/registration.rs)
   for Agent Connection, Connection Project, and User Channel registry helpers.
 - [`crates/volicord-cli/src/user_command.rs`](../../../crates/volicord-cli/src/user_command.rs)
@@ -362,12 +419,18 @@ Important modules:
 Important current symbols:
 
 - `run_cli`, `CliError`
-- `run_setup_command`, `run_doctor_command`
+- `run_setup_command`, `run_setup_workflow`, `run_doctor_command`
 - `run_project_command`, `resolve_repository_root`
-- `run_connect_command`, `run_connections_command`, `run_connection_command`,
-  `connect_usage`, `connections_usage`, `connection_usage`
+- `run_init_command`, `run_connect_command`, `run_connections_command`,
+  `run_connection_command`, `connect_usage`, `connections_usage`,
+  `connection_usage`
+- `provision_init`, `provision_connection`, `select_connection`,
+  `verify_connection`, `render_connection_output`
+- `run_guard_command`, `guard_envelope`, `tool_observation`,
+  `handle_prompt_capture`, `render_guard_output`
+- `plan_guard_integration`, `apply_guard_integration`,
+  `record_guard_installation`, `guard_file_findings_for_installation`
 - `run_status_command`, `run_inbox_command`
-- `AgentCommandError`, `AgentProcessOutput`
 - `HostKind`, `HostScope`, `HostPlan`, `HostAdapter`, `Verification`
 - `AgentConnectionRegistration`, `ConnectionProjectRegistration`,
   `AgentConnectionRecord`
@@ -378,11 +441,20 @@ Most relevant tests:
 
 - [`crates/volicord-cli/tests/binary_admin.rs`](../../../crates/volicord-cli/tests/binary_admin.rs)
   exercises the `volicord` binary for init, doctor, project detection,
-  dry-run behavior, `volicord connection add`, connection status/verification/mode/removal,
-  `volicord inbox` User Channel commands, preflight handling, and
-  config-file safety.
+  dry-run behavior, `volicord connection add`, connection
+  status/verification/mode/removal, guarded init/status generated-output drift,
+  `volicord inbox` User Channel commands, preflight handling, and config-file
+  safety.
+- [`crates/volicord-cli/tests/guard_command.rs`](../../../crates/volicord-cli/tests/guard_command.rs)
+  exercises guard hook lifecycle behavior, host-native rendering, recorded
+  observations, prompt capture, expected writes, write-ticket matching, and
+  guarded lifecycle scenarios.
+- [`crates/volicord-cli/tests/support/`](../../../crates/volicord-cli/tests/support/)
+  provides binary fixtures, fake hosts, fake MCP processes, guard fixtures,
+  JSON helpers, and assertion helpers for CLI integration tests.
 - Colocated unit tests in CLI modules cover parsing, planning, rendering,
-  registration metadata, and host-configuration behavior.
+  setup workflow behavior, registration metadata, guard integration planning,
+  factual guard-file audits, and host-configuration behavior.
 
 Recommended next component:
 

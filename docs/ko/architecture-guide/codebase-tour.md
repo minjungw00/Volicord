@@ -299,18 +299,25 @@ Core 권한 의미는 참조 문서에 남습니다.
 
 `volicord-cli`는 로컬 `volicord` 관리 실행 파일과 재사용 가능한 명령 모듈을
 구현합니다. 설치 프로필 준비 상태, Git 저장소 프로젝트 감지, 프로젝트와
-Agent Connection 등록, Agent Connection 설정, 지원되는 호스트별 MCP 설정, 권한 번들
-내보내기, 로컬 `User Channel` 명령, 사전 점검 실행을 처리합니다.
+Agent Connection 등록, Agent Connection 설정, 지원되는 호스트별 MCP 설정, guard hook
+통합, 권한 번들 내보내기, 로컬 `User Channel` 명령, 사전 점검 실행을 처리합니다.
 
 구현에서 담당하는 것:
 
 - `volicord` 바이너리의 프로세스 진입과 관리 명령 디스패치.
-- `volicord connection add`, `volicord connection list`, `volicord connection ...` 파싱,
-  저장소 준비, 호스트 계획 구성, 사전 점검 호출, status, verification, mode,
-  removal, 출력.
-- Setup, doctor, project, 권한 번들 내보내기, 로컬 User Channel 명령 파싱과 출력.
-- Codex와 Claude Code 호스트 통합 계획.
-- 관리 호스트 설정 계획과 안전성 점검.
+- Setup workflow 도우미, 명령 발견, 명령 링크, shell startup 계획, interactive
+  선택, setup 출력 렌더링.
+- `volicord init`, `volicord connection add`, `volicord connection list`,
+  `volicord connection ...` 디스패치, 저장소 준비, 호스트 계획 구성, 사전 점검
+  호출, status, verification, mode, removal, 출력.
+- Guard hook 명령 디스패치, phase 처리, 기록된 관찰, prompt-capture 처리,
+  write-ticket matching, host-native rendering.
+- Guard integration 계획, 생성 guard 파일 적용, capability metadata, policy helper,
+  host hook command 계획, connection status와 doctor diagnostics가 쓰는 사실 기반
+  audit helper.
+- Codex와 Claude Code 호스트 어댑터 내부 구현, 관리 호스트 설정 계획, 호스트
+  설정 안전성 점검.
+- Doctor, project, 권한 번들 내보내기, 로컬 User Channel 명령 파싱과 출력.
 - Agent Connection, Connection Projects, 호출 출처 메타데이터 생성.
 
 담당하지 않는 것:
@@ -328,18 +335,58 @@ Agent Connection 등록, Agent Connection 설정, 지원되는 호스트별 MCP 
 
 - [`crates/volicord-cli/src/main.rs`](../../../crates/volicord-cli/src/main.rs):
   프로세스 디스패치와 `run_cli`.
-- [`crates/volicord-cli/src/setup_command.rs`](../../../crates/volicord-cli/src/setup_command.rs)와
-  [`crates/volicord-cli/src/doctor_command.rs`](../../../crates/volicord-cli/src/doctor_command.rs):
-  설치 프로필 생성, 실행 파일 발견, 진단 점검.
+- [`crates/volicord-cli/src/setup_command.rs`](../../../crates/volicord-cli/src/setup_command.rs):
+  setup 명령 진입점, setup process 추상화, setup terminal 추상화, setup 출력 상태.
+- [`crates/volicord-cli/src/setup_command/workflow.rs`](../../../crates/volicord-cli/src/setup_command/workflow.rs):
+  setup workflow 실행과 report 조립.
+- [`crates/volicord-cli/src/setup_command/discovery.rs`](../../../crates/volicord-cli/src/setup_command/discovery.rs),
+  [`linking.rs`](../../../crates/volicord-cli/src/setup_command/linking.rs),
+  [`shell_startup.rs`](../../../crates/volicord-cli/src/setup_command/shell_startup.rs),
+  [`interactive.rs`](../../../crates/volicord-cli/src/setup_command/interactive.rs),
+  [`output.rs`](../../../crates/volicord-cli/src/setup_command/output.rs):
+  명령 발견, 명령 링크 처리, shell startup 편집, interactive 선택, setup 렌더링.
+- [`crates/volicord-cli/src/doctor_command.rs`](../../../crates/volicord-cli/src/doctor_command.rs):
+  installation profile, host, connection, guard fact를 가로지르는 진단 점검.
 - [`crates/volicord-cli/src/project_context.rs`](../../../crates/volicord-cli/src/project_context.rs):
   Git 저장소 루트 감지와 `volicord project ...` 명령.
 - [`crates/volicord-cli/src/export_command.rs`](../../../crates/volicord-cli/src/export_command.rs):
   권한 번들 내보내기 파싱, 렌더링, 출력.
 - [`crates/volicord-cli/src/connection_command.rs`](../../../crates/volicord-cli/src/connection_command.rs):
-  `volicord connection add`, `volicord connection list`,
-  `volicord connection status/verify/mode/remove` 오케스트레이션.
+  `volicord init`, `volicord connection add`, `volicord connection list`,
+  `volicord connection status/verify/mode/remove`의 명령 디스패치 진입점.
+- [`crates/volicord-cli/src/connection_command/service.rs`](../../../crates/volicord-cli/src/connection_command/service.rs):
+  연결 프로비저닝 workflow와 init 프로비저닝 workflow.
+- [`crates/volicord-cli/src/connection_command/selection.rs`](../../../crates/volicord-cli/src/connection_command/selection.rs):
+  호스트, 저장소, 연결 선택과 모호성 처리.
+- [`crates/volicord-cli/src/connection_command/verification.rs`](../../../crates/volicord-cli/src/connection_command/verification.rs):
+  연결 진단, 호스트 검증 집계, 저장된 상태, MCP 사전 점검 진단, handshake 상태.
+- [`crates/volicord-cli/src/connection_command/output/`](../../../crates/volicord-cli/src/connection_command/output/):
+  연결 텍스트, JSON, summary 렌더링.
+- [`crates/volicord-cli/src/guard_command.rs`](../../../crates/volicord-cli/src/guard_command.rs):
+  `_hook` 명령 진입점과 guard phase 디스패치.
+- [`crates/volicord-cli/src/guard_command/envelope.rs`](../../../crates/volicord-cli/src/guard_command/envelope.rs),
+  [`tool_observation.rs`](../../../crates/volicord-cli/src/guard_command/tool_observation.rs),
+  [`mutation.rs`](../../../crates/volicord-cli/src/guard_command/mutation.rs),
+  [`prompt_command.rs`](../../../crates/volicord-cli/src/guard_command/prompt_command.rs),
+  [`prompt_capture.rs`](../../../crates/volicord-cli/src/guard_command/prompt_capture.rs),
+  [`write_ticket.rs`](../../../crates/volicord-cli/src/guard_command/write_ticket.rs),
+  [`render.rs`](../../../crates/volicord-cli/src/guard_command/render.rs),
+  [`phase/`](../../../crates/volicord-cli/src/guard_command/phase/):
+  host event 정규화, tool observation 추출, mutation 분류, prompt-capture 명령 처리,
+  write-ticket coverage, guard 출력, phase별 lifecycle 처리.
+- [`crates/volicord-cli/src/guard_integration/`](../../../crates/volicord-cli/src/guard_integration/):
+  생성 guard 파일 계획과 적용, capability metadata, policy helper, host hook command
+  계획, 호스트별 생성 파일, 사실 기반 audit helper. 이 사실은 진단과 기록된
+  관찰이며 보안 보장이나 human approval 기록이 아닙니다.
 - [`crates/volicord-cli/src/host_integration/`](../../../crates/volicord-cli/src/host_integration/):
-  Codex, Claude Code, 호스트 설정 계획.
+  공유 host kind, capability, lifecycle phase, managed host plan type, config editing,
+  integration contract, generic host guidance, diagnostic status type.
+- [`crates/volicord-cli/src/host_integration/codex/`](../../../crates/volicord-cli/src/host_integration/codex/):
+  Codex 어댑터 내부 구현. config 파싱과 갱신, 실행 파일 점검, managed identity
+  평가, project trust diagnostic을 포함합니다.
+- [`crates/volicord-cli/src/host_integration/claude_code/`](../../../crates/volicord-cli/src/host_integration/claude_code/):
+  Claude Code 어댑터 내부 구현. CLI command 구성, config 파싱과 갱신, managed
+  identity 점검, CLI output 파싱을 포함합니다.
 - [`crates/volicord-cli/src/registration.rs`](../../../crates/volicord-cli/src/registration.rs):
   Agent Connection, Connection Project, User Channel 레지스트리 도우미.
 - [`crates/volicord-cli/src/user_command.rs`](../../../crates/volicord-cli/src/user_command.rs):
@@ -348,12 +395,18 @@ Agent Connection 등록, Agent Connection 설정, 지원되는 호스트별 MCP 
 중요한 현재 심볼:
 
 - `run_cli`, `CliError`
-- `run_setup_command`, `run_doctor_command`
+- `run_setup_command`, `run_setup_workflow`, `run_doctor_command`
 - `run_project_command`, `resolve_repository_root`
-- `run_connect_command`, `run_connections_command`, `run_connection_command`,
-  `connect_usage`, `connections_usage`, `connection_usage`
+- `run_init_command`, `run_connect_command`, `run_connections_command`,
+  `run_connection_command`, `connect_usage`, `connections_usage`,
+  `connection_usage`
+- `provision_init`, `provision_connection`, `select_connection`,
+  `verify_connection`, `render_connection_output`
+- `run_guard_command`, `guard_envelope`, `tool_observation`,
+  `handle_prompt_capture`, `render_guard_output`
+- `plan_guard_integration`, `apply_guard_integration`,
+  `record_guard_installation`, `guard_file_findings_for_installation`
 - `run_status_command`, `run_inbox_command`
-- `AgentCommandError`, `AgentProcessOutput`
 - `HostKind`, `HostScope`, `HostPlan`, `HostAdapter`, `Verification`
 - `AgentConnectionRegistration`, `ConnectionProjectRegistration`,
   `AgentConnectionRecord`
@@ -365,8 +418,16 @@ Agent Connection 등록, Agent Connection 설정, 지원되는 호스트별 MCP 
 - [`crates/volicord-cli/tests/binary_admin.rs`](../../../crates/volicord-cli/tests/binary_admin.rs)는
   `volicord` 바이너리의 init, doctor, 프로젝트 감지, dry-run 동작,
   `volicord connection add`, connection status/verification/mode/removal,
-  User Channel 명령, 사전 점검 처리, 설정 파일 안전성을 실행합니다.
+  guarded init/status 생성 출력 drift, User Channel 명령, 사전 점검 처리, 설정 파일
+  안전성을 실행합니다.
+- [`crates/volicord-cli/tests/guard_command.rs`](../../../crates/volicord-cli/tests/guard_command.rs)는
+  guard hook lifecycle 동작, host-native rendering, 기록된 관찰, prompt capture,
+  expected write, write-ticket matching, guarded lifecycle scenario를 실행합니다.
+- [`crates/volicord-cli/tests/support/`](../../../crates/volicord-cli/tests/support/)는
+  CLI 통합 테스트를 위한 binary fixture, fake host, fake MCP process, guard fixture,
+  JSON helper, assertion helper를 제공합니다.
 - CLI 모듈 안의 단위 테스트는 파싱, 계획, 렌더링, 등록 메타데이터,
+  setup workflow 동작, guard integration 계획, 사실 기반 guard-file audit,
   호스트 설정 동작을 다룹니다.
 
 다음에 읽을 컴포넌트:

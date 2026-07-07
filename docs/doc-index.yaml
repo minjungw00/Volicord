@@ -224,8 +224,8 @@ shared_documents:
   normative_level: maintenance
   owner_area: documentation_maintenance
   created_on: '2026-06-07'
-  last_updated_on: '2026-07-04'
-  last_verified_on: '2026-07-04'
+  last_updated_on: '2026-07-07'
+  last_verified_on: '2026-07-07'
   applies_to:
   - volicord_workspace_0_1
   - doc_index_schema_v3
@@ -626,8 +626,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-04'
-  last_verified_on: '2026-07-04'
+  last_updated_on: '2026-07-07'
+  last_verified_on: '2026-07-07'
   applies_to:
   - volicord_workspace_0_1
   - rust_workspace_1_85
@@ -746,8 +746,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-03'
-  last_verified_on: '2026-07-03'
+  last_updated_on: '2026-07-07'
+  last_verified_on: '2026-07-07'
   applies_to:
   - volicord_workspace_0_1
   - rust_workspace_1_85
@@ -916,8 +916,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-12'
-  last_updated_on: '2026-07-03'
-  last_verified_on: '2026-07-03'
+  last_updated_on: '2026-07-07'
+  last_verified_on: '2026-07-07'
   applies_to:
   - volicord_workspace_0_1
   - rust_workspace_1_85
