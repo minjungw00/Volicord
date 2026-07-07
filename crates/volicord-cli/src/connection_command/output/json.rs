@@ -711,38 +711,6 @@ fn preflight_storage_checks_json(diagnostics: Option<&McpPreflightDiagnostics>) 
     ]
 }
 
-pub(in crate::connection_command) fn storage_read_check_status(value: &str) -> &'static str {
-    match value {
-        "passed" => "passed",
-        "failed" => "failed",
-        "skipped" => "skipped",
-        _ => "unknown",
-    }
-}
-
-pub(in crate::connection_command) fn storage_write_check_status(
-    value: &str,
-    effective_tool_mode: &str,
-) -> &'static str {
-    match value {
-        "passed" => "passed",
-        "readonly" if effective_tool_mode == "read_only" => "passed",
-        "readonly" => "action_required",
-        "failed" => "failed",
-        "skipped" => "skipped",
-        _ => "unknown",
-    }
-}
-
-pub(in crate::connection_command) fn effective_tool_mode_check_status(value: &str) -> &'static str {
-    match value {
-        "workflow" | "read_only" => "passed",
-        "read_only_degraded" => "action_required",
-        "unavailable" => "failed",
-        _ => "unknown",
-    }
-}
-
 fn host_diagnostic_checks_json(host: &Verification) -> Vec<Value> {
     let mut checks = Vec::new();
     if let Some(overlay) = &host.host_policy_overlay {
@@ -1113,18 +1081,6 @@ fn active_tool_exposure_check_status(status: ActiveToolExposureStatus) -> &'stat
         ActiveToolExposureStatus::Confirmed => "passed",
         ActiveToolExposureStatus::Unconfirmed => "action_required",
         ActiveToolExposureStatus::Unknown => "unknown",
-    }
-}
-
-pub(in crate::connection_command) fn host_mcp_command_check_status(
-    command: &HostMcpCommandDiagnostic,
-) -> &'static str {
-    if command.mode == HostMcpCommandLaunchMode::Malformed {
-        "failed"
-    } else if command.risk.is_some() {
-        "warning"
-    } else {
-        "passed"
     }
 }
 

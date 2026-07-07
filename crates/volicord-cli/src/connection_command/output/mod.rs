@@ -11,12 +11,9 @@ use json::{
 use summary::connection_diagnostic_summary_card;
 use text::{render_compact_connection_text, render_compact_plan_text, render_init_text_output};
 
-#[cfg(test)]
-pub(super) use json::host_mcp_command_check_status;
 pub(super) use json::{
-    detailed_verification_report_json, effective_tool_mode_check_status, generated_files_json,
-    hook_path_safety_json, hook_root_resolution_json, host_hook_commands_json, json_object_text,
-    storage_read_check_status, storage_write_check_status,
+    detailed_verification_report_json, generated_files_json, hook_path_safety_json,
+    hook_root_resolution_json, host_hook_commands_json, json_object_text,
 };
 pub(super) use text::{render_connection_remove_dry_run_output, render_connections_output};
 

@@ -17,7 +17,7 @@ use volicord_types::{
 
 use crate::host_integration::{HostPlan, HostScope};
 
-use super::{McpPreflightDiagnostics, VerificationStep};
+use super::verification::{McpPreflightDiagnostics, VerificationStep};
 
 const VOLICORD_HOME: &str = "VOLICORD_HOME";
 const VOLICORD_MCP_VERIFICATION: &str = "VOLICORD_MCP_VERIFICATION";
