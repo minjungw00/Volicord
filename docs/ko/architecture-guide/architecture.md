@@ -2,7 +2,7 @@
 
 이 가이드는 로컬 Rust 워크스페이스의 가이드 수준 구현 구조와 실행 흐름 설명을 담당합니다. 구현자가 코드를 찾고, 책임 경계를 이해하고, 코드 질문을 계약 담당 문서로 보낼 수 있게 돕습니다.
 
-이 문서는 공개 API 동작, 요청 또는 응답 필드, 스키마 의미, 저장 효과, DDL이나 테이블 컬럼, 보안 보장, 런타임 집행, Core 권한 의미, 제품 계약을 정의하거나 덮어쓰지 않습니다. 소스 코드 학습 경로는 [아키텍처 가이드](README.md) 진입점을 사용하고, 크레이트별 첫 파일과 심볼은 [코드베이스 둘러보기](codebase-tour.md)를, 정확한 소스 경로와 모듈 책임은 [소스 지도](source-map.md)를, 대표 메서드 흐름은 [요청 생명주기](request-lifecycle.md)를, 반복 구현 구조는 [구현 설계 패턴](design-patterns.md)을, Store 커밋과 아티팩트 경계는 [저장소와 트랜잭션](storage-and-transactions.md)을, 테스트 계층 선택은 [테스트 전략](testing-strategy.md)을, 집중 결정 기록은 [아키텍처 결정](decisions/README.md)을, 변경 작업 흐름은 [구현 가이드](change-guide.md)를 사용합니다. 정확한 동작은 집중 참조 담당 문서를 사용합니다.
+이 문서는 공개 API 동작, 요청 또는 응답 필드, 스키마 의미, 저장 효과, DDL이나 테이블 컬럼, 보안 보장, 런타임 집행, Core 권한 의미, 제품 계약을 정의하거나 덮어쓰지 않습니다. 소스 코드 학습 경로는 [아키텍처 가이드](README.md) 진입점을 사용하고, 크레이트별 첫 파일과 심볼은 [코드베이스 둘러보기](codebase-tour.md)를, 정확한 소스 경로와 모듈 책임은 [소스 지도](source-map.md)를, 대표 메서드 흐름은 [요청 생명주기](request-lifecycle.md)를, 관리 CLI 실행 흐름 경계는 [CLI 작업 흐름](cli-workflows.md)을, 반복 구현 구조는 [구현 설계 패턴](design-patterns.md)을, Store 커밋과 아티팩트 경계는 [저장소와 트랜잭션](storage-and-transactions.md)을, 테스트 계층 선택은 [테스트 전략](testing-strategy.md)을, 집중 결정 기록은 [아키텍처 결정](decisions/README.md)을, 변경 작업 흐름은 [구현 가이드](change-guide.md)를 사용합니다. 정확한 동작은 집중 참조 담당 문서를 사용합니다.
 
 Volicord는 AI 지원 제품 작업을 위한 로컬 작업 권한 기록입니다. Core는 Volicord 상태를 위한 로컬 기준 기록입니다.
 
@@ -184,11 +184,11 @@ flowchart TD
 
 | 설계 주제 | 구현자용 방향 | 계약 담당 경로 |
 |---|---|---|
-| 아키텍처 개요 | 이 페이지의 운영 경로, 워크스페이스 형태, 의존 경계, 설정 흐름. 정확한 소스 담당은 [소스 지도](source-map.md)를 봅니다. | [런타임 경계](../reference/runtime-boundaries.md), [범위](../reference/scope.md), [보안](../reference/security.md). |
+| 아키텍처 개요 | 이 페이지의 운영 경로, 워크스페이스 형태, 의존 경계. 관리 CLI 실행 흐름은 [CLI 작업 흐름](cli-workflows.md)을, 정확한 소스 담당은 [소스 지도](source-map.md)를 봅니다. | [런타임 경계](../reference/runtime-boundaries.md), [범위](../reference/scope.md), [보안](../reference/security.md). |
 | Core 파이프라인 | [요청 생명주기](request-lifecycle.md), 이 페이지의 Core 파이프라인 절, Core 경로와 policy/method 모듈 담당을 위한 [소스 지도](source-map.md). | [API 메서드](../reference/api/methods.md), [API 코어 스키마](../reference/api/schema-core.md), [저장 효과](../reference/storage-effects.md). |
 | Store, 이벤트, 상태 보기 모델 | [저장소와 트랜잭션](storage-and-transactions.md), 이 페이지의 Store 경계 절, Store 경로와 모듈 담당을 위한 [소스 지도](source-map.md). | [저장소 기록](../reference/storage-records.md), [저장소 버전 관리](../reference/storage-versioning.md), [상태 보기와 템플릿](../reference/projection-and-templates.md). |
 | MCP 어댑터 | MCP 어댑터 경로는 [소스 지도](source-map.md), 가이드 수준 호출 순서는 이 페이지의 MCP/Core 실행 흐름 절. | [MCP 전송](../reference/mcp-transport.md), [Agent Connection](../reference/agent-connection.md), [API 메서드](../reference/api/methods.md). |
-| CLI 아키텍처 | 이 페이지의 관리 설정 흐름과 CLI 명령, guard integration, 호스트 어댑터 소스 담당을 위한 [소스 지도](source-map.md). | [관리 CLI](../reference/admin-cli.md), [런타임 경계](../reference/runtime-boundaries.md), [Agent Connection](../reference/agent-connection.md). |
+| CLI 아키텍처 | Setup, connection provisioning, status와 verification, doctor diagnostics, guard lifecycle, host integration, guard integration 경계는 [CLI 작업 흐름](cli-workflows.md)을, 정확한 소스 담당은 [소스 지도](source-map.md)를 봅니다. | [관리 CLI](../reference/admin-cli.md), [런타임 경계](../reference/runtime-boundaries.md), [Agent Connection](../reference/agent-connection.md). |
 | 쓰기 티켓 설계 | Core policy와 method 경로는 [소스 지도](source-map.md), 구현 검증은 Core와 conformance 테스트. | [Core 모델](../reference/core-model.md), [쓰기 준비 메서드](../reference/api/method-prepare-write.md), [실행 기록 메서드](../reference/api/method-record-run.md), [저장 효과](../reference/storage-effects.md). |
 | Judgment Inbox 설계 | Core judgment, CLI User Channel, MCP elicitation, local web consent 소스 담당은 [소스 지도](source-map.md). | [관리 CLI](../reference/admin-cli.md#user-channel-commands), [Agent Connection](../reference/agent-connection.md), [판단 스키마](../reference/api/schema-judgment.md#judgmentinboxitem), [사용자 판단 요청 메서드](../reference/api/method-request-user-judgment.md#volicordrequest_user_judgment), [사용자 판단 기록 메서드](../reference/api/method-record-user-judgment.md#volicordrecord_user_judgment). |
 | Detective와 session-watch 설계 | Guard command, guard integration, host integration, session-watch 저장소 담당은 [소스 지도](source-map.md). | [관리 CLI](../reference/admin-cli.md#guard-hook-commands), [저장소 기록](../reference/storage-records.md), [MCP 전송](../reference/mcp-transport.md), [보안](../reference/security.md). |
@@ -277,65 +277,21 @@ sequenceDiagram
 
 <a id="administrative-agent-setup-flow"></a>
 
-## 관리 에이전트 설정 흐름
+## CLI 작업 흐름 경로
 
-`volicord init`, `volicord connection add`, `volicord connection ...`은 공개 Core 메서드가 아니라 로컬 관리 오케스트레이션으로 구현됩니다. 구현은 `crates/volicord-cli/src/connection_command.rs`와 `crates/volicord-cli/src/connection_command/`, 사실 기반 guard integration audit 도우미를 둔 `crates/volicord-cli/src/guard_integration/`, `crates/volicord-cli/src/host_integration/`의 호스트 어댑터에 있습니다. 정확한 명령, Agent Connection, MCP 전송, host-hook 통합, 런타임 경계 계약은 [관리 CLI](../reference/admin-cli.md), [MCP 전송](../reference/mcp-transport.md), [런타임 경계](../reference/runtime-boundaries.md), [보안](../reference/security.md)이 담당합니다.
+로컬 관리 CLI 작업 흐름은 공개 Core 메서드가 아니라 오케스트레이션 경로입니다. 이
+아키텍처 개요는 상위 경계만 유지합니다. CLI는 Runtime Home과 설치 프로필 setup,
+Agent Connection registry 상태, 호스트 어댑터, guard integration, MCP preflight,
+선택적 stdio handshake, 진단, 렌더링을 조합하지만 정확한 제품 동작은 참조 담당 문서에
+남습니다.
 
-이 설정 흐름은 로컬 관리 연결 설정이 따르는 순서를 보여 줍니다. 실선 화살표는 주요
-설정 순서를 보여 주고, 점선 화살표는 각 단계에서 가능한 실패 보고로 이어집니다.
-이 그림은 상시 MCP 런타임 경로가 아니며 경계를 가로지르는 트랜잭션 롤백을 뜻하지
-않습니다. `volicord mcp`는 명시적인 사전 점검과 선택적 stdio handshake 단계에서만
-등장합니다.
-
-```mermaid
-flowchart TD
-  parse["옵션 검증, 경로와 실행 파일 입력 해석"]
-  dry{"--dry-run?"}
-  dryout["쓰기 없는 계획/출력 렌더링, Runtime Home 생성, 등록, 호스트 적용, 사전 점검, handshake 없음"]
-  runtime["Runtime Home 초기화 또는 재사용"]
-  project["선택된 프로젝트 등록 또는 재사용"]
-  plan["호스트 설정 계획 작성과 점검"]
-  connection["Agent Connection 인벤토리 등록 또는 재사용"]
-  membership["Connection Project 멤버십 추가 또는 확인"]
-  host["계획된 호스트 설정 적용"]
-  integration["init detective host-hook 파일 적용과 내부 host-hook 설치 기록"]
-  verify["호스트 적용 뒤 검증 실행"]
-  readiness["호스트 준비 상태와 관리 설정 확인"]
-  preflight["해석된 Runtime Home으로 volicord mcp --check --connection 실행"]
-  gate{"호스트 게이트와 사전 점검이 stdio handshake를 허용?"}
-  handshake["MCP stdio 초기화와 도구 발견"]
-  aggregate["연결 결과 도출"]
-  final["검증 상태 기록 또는 보고"]
-  fail["실패 단계 보고, 앞선 지속 설정 효과는 남을 수 있음"]
-
-  parse --> dry
-  dry -- yes --> dryout
-  dry -- no --> runtime --> project --> plan --> connection --> membership --> host --> integration --> verify
-  verify --> readiness --> preflight --> gate
-  gate -- yes --> handshake --> aggregate --> final
-  gate -- no --> aggregate
-  runtime -. 설정 시작 뒤 실패 .-> fail
-  project -. 실패 .-> fail
-  plan -. 충돌 또는 실패 .-> fail
-  connection -. 실패 .-> fail
-  membership -. 실패 .-> fail
-  host -. 실패 .-> fail
-  integration -. 실패 .-> fail
-  readiness -. 실패 .-> fail
-  preflight -. 실패 .-> fail
-  handshake -. 실패 .-> fail
-  final -. 실패 .-> fail
-```
-
-연결 순서는 지속 설정 전에 명령 옵션을 검증하고 경로를 해석합니다. `--dry-run`에서는 계획 출력을 렌더링할 만큼의 프로젝트, 대상, 연결 식별자만 해석한 뒤 쓰기 없는 경로에서 멈춥니다. Runtime Home 디렉터리나 SQLite 상태를 만들지 않고, 프로젝트, Agent Connection, Connection Project를 등록하지 않으며, 호스트 설정을 적용하지 않고, `volicord mcp --check`를 실행하지 않으며, MCP stdio 초기화나 도구 발견도 수행하지 않습니다.
-
-dry-run이 아닌 실행은 먼저 선택된 Runtime Home을 초기화하거나 재사용한 뒤 선택된 프로젝트를 등록하거나 재사용합니다. 프로젝트가 registry 상태에서 사용할 수 있게 된 뒤 명령은 MCP 실행 파일을 해석하고, 연결 식별자를 도출하고, 호스트 설정 계획을 만들며, Agent Connection 행을 등록하거나 갱신하기 전에 호스트 계획 충돌을 거부합니다.
-
-호스트 계획이 받아들여지면 명령은 Agent Connection을 등록하거나 재사용하고, 단일 프로젝트 범위의 프로젝트 수 규칙을 적용하며, Connection Project 멤버십을 추가하거나 확인한 다음 계획된 호스트 설정을 적용합니다. `volicord init`은 Agent Connection과 프로젝트 멤버십이 존재한 뒤 담당자가 정의한 detective host-hook 파일도 적용하고 내부 host-hook 설치 상태를 기록합니다. `Product Repository` 지침이 있더라도 로컬 에이전트를 위한 조언 맥락으로 남습니다. 이 지침은 Core 메서드 권한과 별개입니다. 사용자 판단을 기록하지 않고 쓰기 티켓을 발급하지 않습니다.
-
-검증은 호스트 설정이 적용된 뒤 실행됩니다. 호스트 어댑터를 통해 호스트 준비 상태와 관리 설정을 확인하고, 해석된 Runtime Home으로 `volicord mcp --check --connection <connection_id>`를 실행하며, 호스트 게이트가 handshake를 허용하고 사전 점검이 통과한 경우에만 직접 MCP stdio 초기화와 `tools/list` 발견을 수행합니다. 그런 다음 명령은 관리 CLI 구현이 정한 방식으로 결과 검증 상태를 기록하거나 보고합니다.
-
-실패 처리는 경계별로 이루어집니다. 입력 검증 오류와 dry-run 실패는 지속 쓰기 전에 발생합니다. Runtime Home, registry, 호스트 설정 효과가 시작된 뒤 뒤쪽 단계가 실패하면 명령은 실패한 단계를 보고합니다. 앞서 성공한 효과는 이후 `connection status`, `connection verify`, `project`, `connection remove` 명령에서 관찰될 수 있습니다. 설정 흐름은 Runtime Home registry 상태와 외부 호스트 설정을 가로지르는 되돌리기 상태나 원자적 되돌림을 제공하지 않습니다.
+Setup, connection init/add, connection status/verify, guard hook lifecycle, doctor
+diagnostics, host integration, guard integration 실행 흐름 경계는
+[CLI 작업 흐름](cli-workflows.md)을 사용합니다. 정확한 소스 경로는
+[소스 지도](source-map.md)를 사용합니다. 정확한 명령, 전송, 런타임, 연결, 비보장
+계약은 [관리 CLI](../reference/admin-cli.md), [MCP 전송](../reference/mcp-transport.md),
+[런타임 경계](../reference/runtime-boundaries.md), [Agent Connection](../reference/agent-connection.md),
+[보안](../reference/security.md)을 사용합니다.
 
 ## 결정 경로
 

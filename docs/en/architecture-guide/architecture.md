@@ -2,7 +2,7 @@
 
 This guide owns guide-level implementation structure and execution-flow explanation for the local Rust workspace. It helps implementers locate code, understand responsibility boundaries, and route code questions to the contract owners.
 
-It does not define or override public API behavior, request or response fields, schema meaning, storage effects, DDL or table columns, security guarantees, runtime enforcement, Core authority semantics, or product contracts. Use the [Architecture Guide](README.md) entry point for the source-code learning path, the [Codebase Tour](codebase-tour.md) for crate-by-crate first files and symbols, the [Source Map](source-map.md) for exact source paths and module responsibilities, the [Request Lifecycle](request-lifecycle.md) for representative method traces, [Implementation Design Patterns](design-patterns.md) for recurring implementation structures, [Storage and Transactions](storage-and-transactions.md) for Store commit and artifact boundaries, [Testing Strategy](testing-strategy.md) for test-layer choice, [Architecture Decisions](decisions/README.md) for focused decision records, the [Implementation Guide](change-guide.md) for change workflow, and the focused Reference owners for exact behavior.
+It does not define or override public API behavior, request or response fields, schema meaning, storage effects, DDL or table columns, security guarantees, runtime enforcement, Core authority semantics, or product contracts. Use the [Architecture Guide](README.md) entry point for the source-code learning path, the [Codebase Tour](codebase-tour.md) for crate-by-crate first files and symbols, the [Source Map](source-map.md) for exact source paths and module responsibilities, the [Request Lifecycle](request-lifecycle.md) for representative method traces, [CLI Workflows](cli-workflows.md) for administrative CLI execution-flow boundaries, [Implementation Design Patterns](design-patterns.md) for recurring implementation structures, [Storage and Transactions](storage-and-transactions.md) for Store commit and artifact boundaries, [Testing Strategy](testing-strategy.md) for test-layer choice, [Architecture Decisions](decisions/README.md) for focused decision records, the [Implementation Guide](change-guide.md) for change workflow, and the focused Reference owners for exact behavior.
 
 Volicord is the local work authority record for AI-assisted product work. Core is the local authority record for Volicord state.
 
@@ -188,11 +188,11 @@ that keeps public behavior precise.
 
 | Design topic | Implementer orientation | Contract owner route |
 |---|---|---|
-| Architecture overview | This page's operational paths, workspace shape, dependency boundaries, and setup flow; [Source Map](source-map.md) for exact source ownership. | [Runtime Boundaries](../reference/runtime-boundaries.md), [Scope](../reference/scope.md), and [Security](../reference/security.md). |
+| Architecture overview | This page's operational paths, workspace shape, and dependency boundaries; [CLI Workflows](cli-workflows.md) for administrative CLI execution flows; [Source Map](source-map.md) for exact source ownership. | [Runtime Boundaries](../reference/runtime-boundaries.md), [Scope](../reference/scope.md), and [Security](../reference/security.md). |
 | Core pipeline | [Request Lifecycle](request-lifecycle.md), this page's Core pipeline section, and [Source Map](source-map.md) for Core paths and policy/method module ownership. | [API Methods](../reference/api/methods.md), [API Schema Core](../reference/api/schema-core.md), and [Storage Effects](../reference/storage-effects.md). |
 | Store, events, and projections | [Storage and Transactions](storage-and-transactions.md), this page's Store boundary section, and [Source Map](source-map.md) for Store paths and module ownership. | [Storage Records](../reference/storage-records.md), [Storage Versioning](../reference/storage-versioning.md), and [Projection and Templates](../reference/projection-and-templates.md). |
 | MCP adapter | [Source Map](source-map.md) for MCP adapter paths and this page's MCP/Core execution-flow section for guide-level call order. | [MCP Transport](../reference/mcp-transport.md), [Agent Connection](../reference/agent-connection.md), and [API Methods](../reference/api/methods.md). |
-| CLI architecture | This page's administrative setup flow and [Source Map](source-map.md) for CLI command, guard integration, and host-adapter source ownership. | [Administrative CLI](../reference/admin-cli.md), [Runtime Boundaries](../reference/runtime-boundaries.md), and [Agent Connection](../reference/agent-connection.md). |
+| CLI architecture | [CLI Workflows](cli-workflows.md) for setup, connection provisioning, status and verification, doctor diagnostics, guard lifecycle, host integration, and guard integration boundaries; [Source Map](source-map.md) for exact source ownership. | [Administrative CLI](../reference/admin-cli.md), [Runtime Boundaries](../reference/runtime-boundaries.md), and [Agent Connection](../reference/agent-connection.md). |
 | Write ticket design | [Source Map](source-map.md) for Core policy and method paths, plus Core and conformance tests for implementation verification. | [Core Model](../reference/core-model.md), [Prepare-write Method](../reference/api/method-prepare-write.md), [Record-run Method](../reference/api/method-record-run.md), and [Storage Effects](../reference/storage-effects.md). |
 | Judgment Inbox design | [Source Map](source-map.md) for Core judgment, CLI User Channel, MCP elicitation, and local web consent source ownership. | [Administrative CLI](../reference/admin-cli.md#user-channel-commands), [Agent Connection](../reference/agent-connection.md), [Judgment Schemas](../reference/api/schema-judgment.md#judgmentinboxitem), [Request-user-judgment Method](../reference/api/method-request-user-judgment.md#volicordrequest_user_judgment), and [Record-user-judgment Method](../reference/api/method-record-user-judgment.md#volicordrecord_user_judgment). |
 | Detective and session-watch design | [Source Map](source-map.md) for guard command, guard integration, host integration, and session-watch storage ownership. | [Administrative CLI](../reference/admin-cli.md#guard-hook-commands), [Storage Records](../reference/storage-records.md), [MCP Transport](../reference/mcp-transport.md), and [Security](../reference/security.md). |
@@ -284,66 +284,23 @@ This flow is an implementation map. Exact public method contracts, error precede
 
 <a id="administrative-agent-setup-flow"></a>
 
-## Administrative agent setup flow
+## CLI workflow route
 
-`volicord init`, `volicord connection add`, and `volicord connection ...` are implemented as local administrative orchestration, not as public Core methods. The implementation lives under `crates/volicord-cli/src/connection_command.rs` and `crates/volicord-cli/src/connection_command/`, factual guard integration audit helpers in `crates/volicord-cli/src/guard_integration/`, and the host adapters in `crates/volicord-cli/src/host_integration/`; exact command, Agent Connection, MCP transport, host-hook integration, and runtime-boundary contracts stay with [Administrative CLI](../reference/admin-cli.md), [MCP Transport](../reference/mcp-transport.md), [Runtime Boundaries](../reference/runtime-boundaries.md), and [Security](../reference/security.md).
+Local administrative CLI workflows are orchestration paths, not public Core
+methods. This architecture overview keeps only the top-level boundary: the CLI
+combines Runtime Home and installation-profile setup, Agent Connection registry
+state, host adapters, guard integration, MCP preflight, optional stdio
+handshake, diagnostics, and rendering while exact product behavior remains with
+Reference owners.
 
-This setup flow shows the order followed by local administrative connection
-setup. Solid arrows show the main setup order, while dotted arrows point from
-stages to possible failure reporting. The diagram is not the steady-state MCP
-runtime path and does not imply cross-boundary transaction rollback;
-`volicord mcp` appears only in the explicit preflight and optional stdio
-handshake stages.
-
-```mermaid
-flowchart TD
-  parse["Parse and validate options; resolve paths and executable inputs"]
-  dry{"--dry-run?"}
-  dryout["Render no-write plan/output; no Runtime Home creation, registration, host apply, preflight, or handshake"]
-  runtime["Initialize or reuse Runtime Home"]
-  project["Register or reuse the selected project"]
-  plan["Build and check the host configuration plan"]
-  connection["Register or reuse Agent Connection inventory"]
-  membership["Add or confirm Connection Project membership"]
-  host["Apply the planned host configuration"]
-  integration["Apply init detective host-hook files and record internal host-hook installation when requested"]
-  verify["Run verification after host apply"]
-  readiness["Check host readiness and managed configuration"]
-  preflight["Run volicord mcp --check --connection with the resolved Runtime Home"]
-  gate{"Host gate and preflight permit stdio handshake?"}
-  handshake["Initialize MCP stdio and discover tools"]
-  aggregate["Derive the connection result"]
-  final["Record or report verification status"]
-  fail["Report the failing step; earlier durable setup effects can remain"]
-
-  parse --> dry
-  dry -- yes --> dryout
-  dry -- no --> runtime --> project --> plan --> connection --> membership --> host --> integration --> verify
-  verify --> readiness --> preflight --> gate
-  gate -- yes --> handshake --> aggregate --> final
-  gate -- no --> aggregate
-  runtime -. failure after setup begins .-> fail
-  project -. failure .-> fail
-  plan -. conflict or failure .-> fail
-  connection -. failure .-> fail
-  membership -. failure .-> fail
-  host -. failure .-> fail
-  integration -. failure .-> fail
-  readiness -. failure .-> fail
-  preflight -. failure .-> fail
-  handshake -. failure .-> fail
-  final -. failure .-> fail
-```
-
-The connection sequence validates command options and resolves paths before any persistent setup. In `--dry-run`, the command resolves enough project, target, and connection identity to render planning output and then stops on the no-write path. It does not create Runtime Home directories or SQLite state, register projects, Agent Connections, or Connection Projects, apply host configuration, run `volicord mcp --check`, initialize MCP stdio, or perform tool discovery.
-
-Non-dry-run execution initializes or reuses the selected Runtime Home first, then registers or reuses the selected project. After the project is available in registry state, the command resolves the MCP executable, derives the connection identity, builds the host configuration plan, and rejects host-plan conflicts before registering or updating the Agent Connection row.
-
-Once the host plan is accepted, the command registers or reuses the Agent Connection, enforces the project-count rule for single-project scopes, adds or confirms the Connection Project membership, and then applies the planned host configuration. `volicord init` also applies the owner-defined detective host-hook files and records internal host-hook installation status after the Agent Connection and project membership exist. Product Repository guidance, where present, remains advisory context for local agents. It is separate from Core method authority: it does not record user judgments or issue write tickets.
-
-Verification runs after host configuration is applied. It checks host readiness and managed configuration through the host adapter, runs `volicord mcp --check --connection <connection_id>` with the resolved Runtime Home, and performs direct MCP stdio initialization and `tools/list` discovery only when the host gate allows that handshake and preflight has passed. The command then records or reports the resulting verification status as implemented by the administrative CLI.
-
-Failure handling is boundary-local. Validation and dry-run failures happen before persistent writes. After Runtime Home, registry, or host configuration effects begin, a later failure reports the failing step; earlier successful effects can remain for later `connection status`, `connection verify`, `project`, or `connection remove` commands to observe. The setup flow does not provide cross-boundary undo state or a single atomic reversal across Runtime Home registry state and external host configuration.
+Use [CLI Workflows](cli-workflows.md) for setup, connection init/add,
+connection status/verify, guard hook lifecycle, doctor diagnostics, host
+integration, and guard integration execution-flow boundaries. Use the
+[Source Map](source-map.md) for exact source paths. Use
+[Administrative CLI](../reference/admin-cli.md), [MCP Transport](../reference/mcp-transport.md),
+[Runtime Boundaries](../reference/runtime-boundaries.md), [Agent Connection](../reference/agent-connection.md),
+and [Security](../reference/security.md) for exact command, transport,
+runtime, connection, and non-guarantee contracts.
 
 ## Decision Routes
 

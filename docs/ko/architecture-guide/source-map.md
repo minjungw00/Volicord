@@ -7,7 +7,8 @@
 이 문서는 실행 흐름, 요청 생명주기, 저장소 트랜잭션, 공개 API 동작, 스키마
 의미, 저장 효과, 보안 보장, Core 권한 의미, 제품 계약을 설명하지 않습니다.
 상위 수준 아키텍처와 의존 경계는 [구현 아키텍처](architecture.md), 첫 번째
-학습 경로는 [코드베이스 둘러보기](codebase-tour.md), 대표 메서드 흐름은
+학습 경로는 [코드베이스 둘러보기](codebase-tour.md), 관리 CLI 작업 흐름 경계는
+[CLI 작업 흐름](cli-workflows.md), 대표 메서드 흐름은
 [요청 생명주기](request-lifecycle.md), Store 커밋과 아티팩트 경계는
 [저장소와 트랜잭션](storage-and-transactions.md), 테스트 계층 선택은
 [테스트 전략](testing-strategy.md), 정확한 계약은 [참조 색인](../reference/README.md)을

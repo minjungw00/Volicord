@@ -20,18 +20,21 @@ Core는 Volicord 상태를 위한 로컬 기준 기록입니다.
 2. 정확한 소스 담당: [소스 지도](source-map.md)에서 정확한 소스 경로, 모듈
    책임, CLI 하위 모듈 경계, 호스트 어댑터 배치, guard integration 배치, MCP
    어댑터 모듈, 테스트 지원 경로를 봅니다.
-3. 대표 요청 흐름: [요청 생명주기](request-lifecycle.md)를 읽습니다.
+3. CLI 작업 흐름 실행: [CLI 작업 흐름](cli-workflows.md)에서 setup, connection
+   provisioning, connection status와 verification, guard hook lifecycle, doctor
+   diagnostics, host integration, guard integration 실행 흐름 경계를 봅니다.
+4. 대표 요청 흐름: [요청 생명주기](request-lifecycle.md)를 읽습니다.
    `volicord.status`, `volicord.intake`, `volicord.prepare_write`가 MCP
    `tools/call`에서 Core와 Store 동작을 거쳐 MCP 응답 래퍼로 돌아오는
    경로를 따라갑니다.
-4. 아키텍처와 경계: [구현 아키텍처](architecture.md)에서 오래 유지되는
-   워크스페이스 형태, 의존 방향, 실행 흐름 지도, 관리 CLI 설정 흐름,
-   코드에서 담당 문서로 가는 경로를 봅니다.
-5. 구현 패턴: [구현 설계 패턴](design-patterns.md)에서 `CoreService`,
+5. 아키텍처와 경계: [구현 아키텍처](architecture.md)에서 오래 유지되는
+   워크스페이스 형태, 의존 방향, 실행 흐름 지도, 코드에서 담당 문서로 가는
+   경로를 봅니다.
+6. 구현 패턴: [구현 설계 패턴](design-patterns.md)에서 `CoreService`,
    `MethodPolicy`, 메서드 계획, `CoreStorageMutation`, 주입된 시간, 불투명
    ID, 제어 enum, 정규 요청 해시, 공유 테스트 픽스처 같은 반복 구조를
    봅니다.
-6. 저장소와 트랜잭션 개념: [저장소와 트랜잭션](storage-and-transactions.md)에서
+7. 저장소와 트랜잭션 개념: [저장소와 트랜잭션](storage-and-transactions.md)에서
    Runtime Home, registry와 프로젝트 데이터베이스, `CoreProjectStore`,
    메서드 계획, 변이 값, 원자적 커밋, 재실행, 아티팩트 스테이징, 실패
    경계를 읽습니다. 정확한 저장소 질문은 [저장소](../reference/storage.md),
@@ -40,16 +43,16 @@ Core는 Volicord 상태를 위한 로컬 기준 기록입니다.
    [저장소 DDL](../reference/storage-ddl.md),
    [아티팩트 저장소](../reference/storage-artifacts.md),
    [저장소 버전 관리](../reference/storage-versioning.md)로 보냅니다.
-7. 테스트 전략: [테스트 전략](testing-strategy.md)에서 모듈 단위 테스트,
+8. 테스트 전략: [테스트 전략](testing-strategy.md)에서 모듈 단위 테스트,
    Core 메서드 테스트, 바이너리 테스트, MCP 통합 테스트, 적합성 구현 테스트,
    `volicord-test-support` 중 무엇을 사용할지 고릅니다.
-8. 오래 유지될 결정: [아키텍처 결정](decisions/README.md)에서 Core/어댑터
+9. 오래 유지될 결정: [아키텍처 결정](decisions/README.md)에서 Core/어댑터
    경계, 원자적 변이 커밋 전 계획, `Volicord Runtime Home`과
    `Product Repository` 분리를 집중 설명으로 확인합니다.
-9. 변경 작업 흐름: 변경을 분류하고, 담당 문서를 찾고, 구현 경계를 확인하고,
+10. 변경 작업 흐름: 변경을 분류하고, 담당 문서를 찾고, 구현 경계를 확인하고,
    검증을 고르고, 영향을 받은 아키텍처 가이드 페이지를 갱신할 준비가 되면
    [구현 가이드](change-guide.md)를 사용합니다.
-10. 정확한 참조 계약: [참조 색인](../reference/README.md)과
+11. 정확한 참조 계약: [참조 색인](../reference/README.md)과
    [API 메서드](../reference/api/methods.md)를 사용합니다. 학습 문서는
    현재 코드 배치를 설명할 수 있지만, 정확한 메서드 동작, 스키마, 저장
    효과, 보안 표현, 런타임 경계, 오류 의미, Core 권한 의미는 참조 문서가
@@ -61,6 +64,7 @@ Core는 Volicord 상태를 위한 로컬 기준 기록입니다.
 |---|---|---|
 | 어떤 크레이트를 먼저 열어야 하나? | [코드베이스 둘러보기](codebase-tour.md) | [구현 아키텍처](architecture.md)가 가이드 수준 구현 구조를 담당합니다. |
 | 어떤 경로가 모듈 책임을 담당하나? | [소스 지도](source-map.md) | [구현 아키텍처](architecture.md)는 상위 수준 아키텍처 경계를 담당합니다. 정확한 제품 동작은 계속 참조 담당 문서로 보냅니다. |
+| Setup, connection provisioning, status, verify, doctor, guard hook 작업 흐름은 어떻게 맞물리나? | [CLI 작업 흐름](cli-workflows.md) | 정확한 명령 문법, 플래그, 결과 상태, 출력 계약은 [관리 CLI](../reference/admin-cli.md)가 담당합니다. |
 | 메서드 호출이 MCP, Core, Store를 지나 응답까지 어떻게 흐르나? | [요청 생명주기](request-lifecycle.md) | 메서드 동작은 [API 메서드](../reference/api/methods.md)와 연결된 메서드 담당 문서가 담당합니다. |
 | 왜 Core는 CLI나 MCP에 의존하지 않나? | [구현 아키텍처](architecture.md)와 [Core와 어댑터 의존 경계](decisions/core-adapter-boundary.md) | 의존 경계 안내는 아키텍처 가이드 문서에 남고, 공개 동작은 참조 담당 문서로 돌아갑니다. |
 | 왜 계획 함수와 Store 커밋이 분리되나? | [구현 설계 패턴](design-patterns.md)과 [원자적 변이 커밋 전 계획](decisions/plan-and-atomic-commit.md) | 정확한 메서드 동작과 저장 효과는 메서드와 저장소 담당 문서로 보냅니다. |
@@ -83,7 +87,8 @@ Core는 Volicord 상태를 위한 로컬 기준 기록입니다.
 6. [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs)
 7. [`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs)
 
-에이전트 호스트 설정과 운영자 동작을 읽을 때는
+에이전트 호스트 설정과 운영자 동작을 읽을 때는 실행 흐름 경계를
+[CLI 작업 흐름](cli-workflows.md)에서 먼저 확인한 뒤
 [`crates/volicord-cli/src/main.rs`](../../../crates/volicord-cli/src/main.rs)에서
 시작한 뒤
 [`crates/volicord-cli/src/connection_command.rs`](../../../crates/volicord-cli/src/connection_command.rs),

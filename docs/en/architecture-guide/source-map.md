@@ -10,9 +10,10 @@ transactions, public API behavior, schema meaning, storage effects, security
 guarantees, Core authority semantics, or product contracts. Use
 [Implementation Architecture](architecture.md) for high-level architecture and
 dependency boundaries, [Codebase Tour](codebase-tour.md) for a first-pass
-learning route, [Request Lifecycle](request-lifecycle.md) for representative
-method traces, [Storage and Transactions](storage-and-transactions.md) for
-Store commit and artifact boundaries, [Testing Strategy](testing-strategy.md)
+learning route, [CLI Workflows](cli-workflows.md) for administrative CLI
+workflow boundaries, [Request Lifecycle](request-lifecycle.md) for
+representative method traces, [Storage and Transactions](storage-and-transactions.md)
+for Store commit and artifact boundaries, [Testing Strategy](testing-strategy.md)
 for test-layer choice, and the [Reference Index](../reference/README.md) for
 exact contracts.
 

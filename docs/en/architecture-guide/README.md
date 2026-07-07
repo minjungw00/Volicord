@@ -24,20 +24,23 @@ work. Core is the local authority record for Volicord state.
    paths, module responsibilities, CLI submodule boundaries, host-adapter
    placement, guard integration placement, MCP adapter modules, and test-support
    paths.
-3. Representative request flow: read the
+3. CLI workflow execution: read [CLI Workflows](cli-workflows.md) for setup,
+   connection provisioning, connection status and verification, guard hook
+   lifecycle, doctor diagnostics, host integration, and guard integration
+   execution-flow boundaries.
+4. Representative request flow: read the
    [Request Lifecycle](request-lifecycle.md). It follows `volicord.status`,
    `volicord.intake`, and `volicord.prepare_write` from MCP `tools/call` through
    Core and Store behavior to the MCP response wrapper.
-4. Architecture and boundaries: use
+5. Architecture and boundaries: use
    [Implementation Architecture](architecture.md) for the durable workspace
-   shape, dependency direction, execution-flow maps, administrative CLI setup
-   flow, and code-to-owner routing.
-5. Implementation patterns: read
+   shape, dependency direction, execution-flow maps, and code-to-owner routing.
+6. Implementation patterns: read
    [Implementation Design Patterns](design-patterns.md) for recurring
    structures such as `CoreService`, `MethodPolicy`, method planning,
    `CoreStorageMutation`, injected time, opaque IDs, controlled enums,
    canonical request hashing, and shared test fixtures.
-6. Storage and transaction concepts: read
+7. Storage and transaction concepts: read
    [Storage and Transactions](storage-and-transactions.md) for Runtime Home,
    registry and project databases, `CoreProjectStore`, method planning,
    mutation values, atomic commit, replay, artifact staging, and failure
@@ -47,18 +50,18 @@ work. Core is the local authority record for Volicord state.
    [Storage DDL](../reference/storage-ddl.md),
    [Artifact Storage](../reference/storage-artifacts.md), and
    [Storage Versioning](../reference/storage-versioning.md).
-7. Test strategy: use [Testing Strategy](testing-strategy.md) to choose among
+8. Test strategy: use [Testing Strategy](testing-strategy.md) to choose among
    module unit tests, Core method tests, binary tests, MCP integration tests,
    conformance implementation tests, and `volicord-test-support`.
-8. Durable decisions: use [Architecture Decisions](decisions/README.md) for
+9. Durable decisions: use [Architecture Decisions](decisions/README.md) for
    focused explanations of the Core/adapter boundary, planning before atomic
    mutation commit, and the separation of `Volicord Runtime Home` from
    `Product Repository`.
-9. Change workflow: use the [Implementation Guide](change-guide.md) when you
+10. Change workflow: use the [Implementation Guide](change-guide.md) when you
    are ready to classify a change, locate the owner document, inspect the
    implementation boundary, choose validation, and update affected Architecture Guide
    pages.
-10. Exact Reference contracts: use the
+11. Exact Reference contracts: use the
    [Reference Index](../reference/README.md) and
    [API Methods](../reference/api/methods.md). Learning documents can explain
    how the current code is arranged, but Reference documents own exact method
@@ -71,6 +74,7 @@ work. Core is the local authority record for Volicord state.
 |---|---|---|
 | Which crate should I open first? | [Codebase Tour](codebase-tour.md) | [Implementation Architecture](architecture.md) owns guide-level implementation structure. |
 | Which path owns a module responsibility? | [Source Map](source-map.md) | [Implementation Architecture](architecture.md) owns high-level architecture boundaries; exact product behavior still routes to Reference owners. |
+| How do setup, connection provisioning, status, verify, doctor, and guard hook workflows fit together? | [CLI Workflows](cli-workflows.md) | Exact command syntax, flags, result states, and output contracts are owned by [Administrative CLI](../reference/admin-cli.md). |
 | How does a method call move through MCP, Core, Store, and back? | [Request Lifecycle](request-lifecycle.md) | Method behavior is owned by [API Methods](../reference/api/methods.md) and the linked method owner. |
 | Why does Core not depend on CLI or MCP? | [Implementation Architecture](architecture.md) and [Core and adapter dependency boundary](decisions/core-adapter-boundary.md) | Dependency-boundary guidance stays in Architecture Guide docs; public behavior still routes to Reference owners. |
 | Why are planners separate from Store commit? | [Implementation Design Patterns](design-patterns.md) and [Planning before atomic mutation commit](decisions/plan-and-atomic-commit.md) | Exact method behavior and storage effects route to method and storage owners. |
@@ -94,7 +98,9 @@ For public method work, the shortest useful source path is:
 6. [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs)
 7. [`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs)
 
-For agent host setup and operator behavior, start instead with
+For agent host setup and operator behavior, read
+[CLI Workflows](cli-workflows.md) for the execution-flow boundaries, then start
+with
 [`crates/volicord-cli/src/main.rs`](../../../crates/volicord-cli/src/main.rs),
 then
 [`crates/volicord-cli/src/connection_command.rs`](../../../crates/volicord-cli/src/connection_command.rs),
