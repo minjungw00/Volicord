@@ -36,23 +36,23 @@ use super::{
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct GuardPendingJudgmentSummary {
-    chat_id: String,
-    verification_code: String,
-    judgment_kind: String,
-    question: Option<String>,
-    answer_instruction: String,
-    note_instruction: String,
-    options: Vec<GuardPendingJudgmentOptionSummary>,
+    pub(super) chat_id: String,
+    pub(super) verification_code: String,
+    pub(super) judgment_kind: String,
+    pub(super) question: Option<String>,
+    pub(super) answer_instruction: String,
+    pub(super) note_instruction: String,
+    pub(super) options: Vec<GuardPendingJudgmentOptionSummary>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct GuardPendingJudgmentOptionSummary {
-    selector: String,
-    option_id: String,
-    label: String,
-    machine_action: String,
-    resolution_outcome: String,
-    instruction: String,
+pub(super) struct GuardPendingJudgmentOptionSummary {
+    pub(super) selector: String,
+    pub(super) option_id: String,
+    pub(super) label: String,
+    pub(super) machine_action: String,
+    pub(super) resolution_outcome: String,
+    pub(super) instruction: String,
 }
 
 pub(super) fn prompt_capture_availability_for_event(
@@ -688,25 +688,4 @@ fn extract_prompt_text(value: &Value) -> Option<String> {
             &["event", "prompt"],
         ],
     )
-}
-
-pub(super) fn pending_judgment_summary_json(summary: &GuardPendingJudgmentSummary) -> Value {
-    json!({
-        "chat_id": summary.chat_id,
-        "verification_code": summary.verification_code,
-        "judgment_kind": summary.judgment_kind,
-        "question": summary.question,
-        "answer_instruction": summary.answer_instruction,
-        "note_instruction": summary.note_instruction,
-        "options": summary.options.iter().map(|option| {
-            json!({
-                "selector": option.selector,
-                "option_id": option.option_id,
-                "label": option.label,
-                "machine_action": option.machine_action,
-                "resolution_outcome": option.resolution_outcome,
-                "instruction": option.instruction
-            })
-        }).collect::<Vec<_>>()
-    })
 }
