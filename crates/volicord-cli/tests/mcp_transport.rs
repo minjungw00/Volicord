@@ -1,13 +1,8 @@
 #![forbid(unsafe_code)]
 
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    error::Error,
-    io::{self, Read, Write},
-    process::{Child, Command, ExitStatus, Output, Stdio},
-    thread::{self, JoinHandle},
-    time::{Duration, Instant},
-};
+mod support;
+
+use std::{collections::BTreeSet, error::Error, process::Command};
 
 use serde_json::{json, Value};
 use volicord_core::{CoreService, InvocationContext};
@@ -29,7 +24,19 @@ use volicord_types::{
     VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
 
-const PROCESS_TIMEOUT: Duration = Duration::from_secs(10);
+use support::{
+    assertions::{
+        assert_report_line, assert_report_line_names, assert_success, assert_success_captured,
+        captured_stderr, captured_stdout, stderr, stdout,
+    },
+    binary_fixture::{base_command, run_child, run_without_binding, ChildStdin},
+    json::{
+        adapter_tool_response, initialize_request, initialize_request_with_capabilities,
+        initialized_notification, initialized_notification_with_params, json_lines,
+        json_rpc_values, notification, request, responses_by_id, tools_call, tools_list_messages,
+        volicord_response,
+    },
+};
 
 #[test]
 fn volicord_mcp_subcommand_reports_help_version_and_preflight() -> Result<(), Box<dyn Error>> {
@@ -605,85 +612,6 @@ impl McpFixture {
     }
 }
 
-fn run_without_binding<const N: usize>(args: [&str; N]) -> Result<Output, Box<dyn Error>> {
-    let mut command = base_command();
-    command.arg("mcp");
-    command.args(args);
-    Ok(command.output()?)
-}
-
-fn base_command() -> Command {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_volicord"));
-    command.env_clear();
-    command.current_dir(env!("CARGO_MANIFEST_DIR"));
-    command
-}
-
-fn request(id: u64, method: &str, params: Value) -> Value {
-    json!({
-        "jsonrpc": "2.0",
-        "id": id,
-        "method": method,
-        "params": params
-    })
-}
-
-fn initialize_request(id: u64) -> Value {
-    initialize_request_with_capabilities(id, json!({}))
-}
-
-fn initialize_request_with_capabilities(id: u64, capabilities: Value) -> Value {
-    request(
-        id,
-        "initialize",
-        json!({
-            "protocolVersion": "2025-11-25",
-            "capabilities": capabilities,
-            "clientInfo": {
-                "name": "volicord-binary-test",
-                "version": "0.0.0"
-            }
-        }),
-    )
-}
-
-fn initialized_notification() -> Value {
-    initialized_notification_with_params(json!({}))
-}
-
-fn initialized_notification_with_params(params: Value) -> Value {
-    notification("notifications/initialized", params)
-}
-
-fn notification(method: &str, params: Value) -> Value {
-    json!({
-        "jsonrpc": "2.0",
-        "method": method,
-        "params": params
-    })
-}
-
-fn tools_call(id: u64, name: &str, arguments: Value) -> Value {
-    request(
-        id,
-        "tools/call",
-        json!({
-            "name": name,
-            "arguments": arguments
-        }),
-    )
-}
-
-fn tools_list_messages(
-    initialize_id: u64,
-    tools_list_id: u64,
-) -> Result<String, serde_json::Error> {
-    json_lines(&[
-        initialize_request(initialize_id),
-        request(tools_list_id, "tools/list", json!({})),
-    ])
-}
-
 fn status_arguments(project_selector: Option<&str>) -> Value {
     let mut arguments = json!({
         "detail": "workflow"
@@ -767,51 +695,6 @@ fn request_user_judgment_arguments(
         "required_for": ["close_complete"],
         "expires_at": null
     })
-}
-
-fn json_lines(messages: &[Value]) -> Result<String, serde_json::Error> {
-    let mut output = String::new();
-    for message in messages {
-        output.push_str(&serde_json::to_string(message)?);
-        output.push('\n');
-    }
-    Ok(output)
-}
-
-fn json_rpc_values(output: &[u8]) -> Result<Vec<Value>, Box<dyn Error>> {
-    let text = std::str::from_utf8(output)?;
-    let mut values = Vec::new();
-    for (line_number, line) in text.lines().enumerate() {
-        if line.trim().is_empty() {
-            continue;
-        }
-        let value: Value = serde_json::from_str(line)
-            .map_err(|error| format!("invalid JSON on output line {}: {error}", line_number + 1))?;
-        assert_eq!(value["jsonrpc"], "2.0");
-        values.push(value);
-    }
-    Ok(values)
-}
-
-fn responses_by_id(output: &[u8]) -> Result<BTreeMap<u64, Value>, Box<dyn Error>> {
-    let text = std::str::from_utf8(output)?;
-    let mut responses = BTreeMap::new();
-    for (line_number, line) in text.lines().enumerate() {
-        if line.trim().is_empty() {
-            continue;
-        }
-        let value: Value = serde_json::from_str(line)
-            .map_err(|error| format!("invalid JSON on output line {}: {error}", line_number + 1))?;
-        assert_eq!(value["jsonrpc"], "2.0");
-        let id = value["id"]
-            .as_u64()
-            .ok_or_else(|| format!("missing numeric id on output line {}", line_number + 1))?;
-        assert!(
-            responses.insert(id, value).is_none(),
-            "duplicate JSON-RPC response id {id}"
-        );
-    }
-    Ok(responses)
 }
 
 fn tools_from_response(response: &Value) -> &[Value] {
@@ -899,183 +782,6 @@ fn schema_definitions_contain(schema: &Value, name: &str) -> bool {
     })
 }
 
-fn volicord_response(response: &Value) -> Result<Value, Box<dyn Error>> {
-    assert_eq!(response["result"]["isError"], json!(false));
-    let text = response["result"]["content"][0]["text"]
-        .as_str()
-        .ok_or("tools/call response should contain text content")?;
-    Ok(serde_json::from_str(text)?)
-}
-
-fn adapter_tool_response(response: &Value) -> Result<Value, Box<dyn Error>> {
-    assert_eq!(response["result"]["isError"], json!(false));
-    let text = response["result"]["content"][0]["text"]
-        .as_str()
-        .ok_or("adapter tools/call response should contain text content")?;
-    Ok(serde_json::from_str(text)?)
-}
-
-enum ChildStdin {
-    KeepOpen,
-    WriteAndClose(String),
-}
-
-struct CapturedChildOutput {
-    status: ExitStatus,
-    stdout: Vec<u8>,
-    stderr: Vec<u8>,
-}
-
-struct RunningChild {
-    child: Option<Child>,
-    stdout: Option<JoinHandle<io::Result<Vec<u8>>>>,
-    stderr: Option<JoinHandle<io::Result<Vec<u8>>>>,
-}
-
-impl RunningChild {
-    fn spawn(mut command: Command, stdin: ChildStdin) -> io::Result<Self> {
-        let mut child = command
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()?;
-        let stdout = child
-            .stdout
-            .take()
-            .ok_or_else(|| io::Error::other("stdout was not piped"))?;
-        let stderr = child
-            .stderr
-            .take()
-            .ok_or_else(|| io::Error::other("stderr was not piped"))?;
-        let stdout = thread::spawn(move || read_to_end(stdout));
-        let stderr = thread::spawn(move || read_to_end(stderr));
-
-        match stdin {
-            ChildStdin::KeepOpen => {}
-            ChildStdin::WriteAndClose(input) => {
-                let mut child_stdin = child
-                    .stdin
-                    .take()
-                    .ok_or_else(|| io::Error::other("stdin was not piped"))?;
-                child_stdin.write_all(input.as_bytes())?;
-            }
-        }
-
-        Ok(Self {
-            child: Some(child),
-            stdout: Some(stdout),
-            stderr: Some(stderr),
-        })
-    }
-
-    fn wait(mut self, timeout: Duration) -> io::Result<CapturedChildOutput> {
-        let started = Instant::now();
-        loop {
-            let child = self
-                .child
-                .as_mut()
-                .ok_or_else(|| io::Error::other("child already reaped"))?;
-            if let Some(status) = child.try_wait()? {
-                self.child.take();
-                return Ok(CapturedChildOutput {
-                    status,
-                    stdout: join_reader(self.stdout.take())?,
-                    stderr: join_reader(self.stderr.take())?,
-                });
-            }
-            if started.elapsed() >= timeout {
-                let _ = child.kill();
-                let _ = child.wait();
-                let stdout = join_reader(self.stdout.take()).unwrap_or_default();
-                let stderr = join_reader(self.stderr.take()).unwrap_or_default();
-                self.child.take();
-                return Err(io::Error::new(
-                    io::ErrorKind::TimedOut,
-                    format!(
-                        "child process timed out after {:?}\nstdout:\n{}\nstderr:\n{}",
-                        timeout,
-                        String::from_utf8_lossy(&stdout),
-                        String::from_utf8_lossy(&stderr)
-                    ),
-                ));
-            }
-            thread::sleep(Duration::from_millis(10));
-        }
-    }
-}
-
-impl Drop for RunningChild {
-    fn drop(&mut self) {
-        if let Some(child) = self.child.as_mut() {
-            let _ = child.kill();
-            let _ = child.wait();
-        }
-        if let Some(stdout) = self.stdout.take() {
-            let _ = stdout.join();
-        }
-        if let Some(stderr) = self.stderr.take() {
-            let _ = stderr.join();
-        }
-    }
-}
-
-fn read_to_end(mut reader: impl Read) -> io::Result<Vec<u8>> {
-    let mut output = Vec::new();
-    reader.read_to_end(&mut output)?;
-    Ok(output)
-}
-
-fn join_reader(handle: Option<JoinHandle<io::Result<Vec<u8>>>>) -> io::Result<Vec<u8>> {
-    let handle = handle.ok_or_else(|| io::Error::other("missing reader"))?;
-    handle
-        .join()
-        .map_err(|_| io::Error::other("reader thread panicked"))?
-}
-
-fn run_child(command: Command, stdin: ChildStdin) -> Result<CapturedChildOutput, Box<dyn Error>> {
-    Ok(RunningChild::spawn(command, stdin)?.wait(PROCESS_TIMEOUT)?)
-}
-
-fn assert_success(output: &Output) {
-    assert!(
-        output.status.success(),
-        "expected success, got status {:?}\nstdout:\n{}\nstderr:\n{}",
-        output.status.code(),
-        stdout(output),
-        stderr(output)
-    );
-}
-
-fn assert_success_captured(output: &CapturedChildOutput) {
-    assert!(
-        output.status.success(),
-        "expected success, got status {:?}\nstdout:\n{}\nstderr:\n{}",
-        output.status.code(),
-        captured_stdout(output),
-        captured_stderr(output)
-    );
-}
-
-fn assert_report_line(report: &str, expected: &str) {
-    assert!(
-        report.lines().any(|line| line == expected),
-        "missing report line `{expected}` in:\n{report}"
-    );
-}
-
-fn assert_report_line_names(report: &str, expected: &[&str]) {
-    let actual = report
-        .lines()
-        .map(|line| {
-            let separator = line
-                .find(':')
-                .unwrap_or_else(|| panic!("report line missing `:` separator: {line}"));
-            &line[..=separator]
-        })
-        .collect::<Vec<_>>();
-    assert_eq!(actual, expected, "unexpected preflight report line names");
-}
-
 fn assert_authority_disclosure(value: &Value) {
     let disclosure = &value["base"]["disclosure"];
     assert_eq!(disclosure["guarantee_class"], "authority_record");
@@ -1092,20 +798,4 @@ fn assert_authority_disclosure(value: &Value) {
             "missing non-guarantee {expected}: {disclosure}"
         );
     }
-}
-
-fn stdout(output: &Output) -> String {
-    String::from_utf8_lossy(&output.stdout).into_owned()
-}
-
-fn stderr(output: &Output) -> String {
-    String::from_utf8_lossy(&output.stderr).into_owned()
-}
-
-fn captured_stdout(output: &CapturedChildOutput) -> String {
-    String::from_utf8_lossy(&output.stdout).into_owned()
-}
-
-fn captured_stderr(output: &CapturedChildOutput) -> String {
-    String::from_utf8_lossy(&output.stderr).into_owned()
 }

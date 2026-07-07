@@ -1,13 +1,8 @@
 #![forbid(unsafe_code)]
 
-use std::{
-    collections::BTreeSet,
-    error::Error,
-    fs,
-    io::{Read, Write},
-    path::{Path, PathBuf},
-    process::{Command, Output, Stdio},
-};
+mod support;
+
+use std::{collections::BTreeSet, error::Error, fs, io::Read, path::Path, process::Output};
 
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -29,8 +24,8 @@ use volicord_store::session_watch::{
 };
 use volicord_store::{
     bootstrap::{
-        initialize_runtime_home, list_projects, register_project, write_installation_profile,
-        InstallationProfileRegistration, ProjectRegistration, ACTIVE_PROJECT_STATUS,
+        initialize_runtime_home, list_projects, register_project, ProjectRegistration,
+        ACTIVE_PROJECT_STATUS,
     },
     core_pipeline::CoreProjectStore,
 };
@@ -39,9 +34,25 @@ use volicord_types::{
     ActorSource, IdempotencyKey, InitialScope, JudgmentKind, JudgmentPresentation,
     JudgmentRequiredFor, OperationCategory, ProjectId, RequestId, RequestedMode, RequiredNullable,
     ResumePolicy, StateRecordKind, StateRecordRef, TaskId, ToolEnvelope, UserJudgmentContext,
-    UserJudgmentOptionId, UserJudgmentOptionInput, ADAPTER_UTILITY_TOOL_NAMES,
-    READ_ONLY_METHOD_TOOL_NAMES, RECONCILE_CHANGES_TOOL_NAME,
-    VERIFICATION_BASIS_TEST_FIXTURE_BINDING, WORKFLOW_METHOD_TOOL_NAMES,
+    UserJudgmentOptionId, UserJudgmentOptionInput, RECONCILE_CHANGES_TOOL_NAME,
+    VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+};
+
+use support::{
+    assertions::{assert_non_guarantees, assert_success, json_stdout, stderr, stdout},
+    binary_fixture::{
+        create_git_repo, create_real_git_repo, path_text, prepare_runtime_home, run_with_home_env,
+        run_with_home_env_in_dir, run_without_home, volicord_bin, write_test_installation_profile,
+    },
+    fake_hosts::{
+        hook_execution_path_env, is_executable, path_env, write_fake_claude_code, write_fake_codex,
+    },
+    fake_mcp::{write_fake_mcp, write_fake_mcp_missing_workflow_reconcile},
+    guard_fixture::{
+        expand_claude_project_command, pre_tool_write_event, run_executable_hook_command,
+        run_shell_hook_command,
+    },
+    json::record_id,
 };
 
 #[test]
@@ -5238,10 +5249,6 @@ fn changes_reconcile_runs_as_local_recovery() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn run_without_home<const N: usize>(args: [&str; N]) -> Result<Output, Box<dyn Error>> {
-    Ok(Command::new(volicord_bin()).args(args).output()?)
-}
-
 fn assert_help_options<const N: usize>(
     args: [&str; N],
     expected: &[&str],
@@ -5629,68 +5636,6 @@ fn contains_volicord_shell_command(line: &str) -> bool {
     )
 }
 
-fn run_with_home_env<const N: usize>(
-    runtime_home: &Path,
-    args: [&str; N],
-    envs: &[(&str, String)],
-) -> Result<Output, Box<dyn Error>> {
-    let mut command = Command::new(volicord_bin());
-    command.args(args).env("VOLICORD_HOME", runtime_home);
-    for (name, value) in envs {
-        command.env(name, value);
-    }
-    Ok(command.output()?)
-}
-
-fn run_with_home_env_in_dir<const N: usize>(
-    runtime_home: &Path,
-    args: [&str; N],
-    envs: &[(&str, String)],
-    current_dir: &Path,
-) -> Result<Output, Box<dyn Error>> {
-    let mut command = Command::new(volicord_bin());
-    command
-        .args(args)
-        .env("VOLICORD_HOME", runtime_home)
-        .current_dir(current_dir);
-    for (name, value) in envs {
-        command.env(name, value);
-    }
-    Ok(command.output()?)
-}
-
-fn prepare_runtime_home(runtime_home: &Path, mcp_command: &Path) -> Result<(), Box<dyn Error>> {
-    initialize_runtime_home(runtime_home, "runtime_home_binary_admin_fixture", "{}")?;
-    write_installation_profile(
-        runtime_home,
-        InstallationProfileRegistration {
-            installation_id: "default".to_owned(),
-            volicord_command: path_text(mcp_command),
-            volicord_mcp_command: path_text(mcp_command),
-            bin_dir: mcp_command
-                .parent()
-                .map(Path::to_path_buf)
-                .unwrap_or_else(|| runtime_home.join("bin")),
-            default_connection_mode: CONNECTION_MODE_WORKFLOW.to_owned(),
-            metadata_json: "{}".to_owned(),
-        },
-    )?;
-    Ok(())
-}
-
-fn volicord_bin() -> &'static str {
-    env!("CARGO_BIN_EXE_volicord")
-}
-
-fn assert_success(output: &Output) {
-    assert!(
-        output.status.success(),
-        "command failed\nstdout:\n{}\nstderr:\n{}",
-        stdout(output),
-        stderr(output)
-    );
-}
-
 fn assert_mcp_config_export_rejected(output: Output) {
     assert_eq!(output.status.code(), Some(2));
     assert!(stdout(&output).is_empty());
@@ -5700,18 +5645,6 @@ fn assert_mcp_config_export_rejected(output: Output) {
     assert!(diagnostic.contains("volicord export authority-bundle --output PATH"));
     assert!(!diagnostic.contains("mcp-config [--output"));
     assert!(!diagnostic.contains("--read-only"));
-}
-
-fn stdout(output: &Output) -> String {
-    String::from_utf8_lossy(&output.stdout).into_owned()
-}
-
-fn stderr(output: &Output) -> String {
-    String::from_utf8_lossy(&output.stderr).into_owned()
-}
-
-fn json_stdout(output: &Output) -> Result<Value, Box<dyn Error>> {
-    Ok(serde_json::from_str(&stdout(output))?)
 }
 
 fn channel_path<'a>(availability: &'a Value, kind: &str) -> &'a Value {
@@ -5737,24 +5670,6 @@ fn assert_diagnostic_disclosure(value: &Value) {
             "NotCorrectnessProof",
         ],
     );
-}
-
-fn assert_non_guarantees(disclosure: &Value, expected: &[&str]) {
-    let values = disclosure["non_guarantees"]
-        .as_array()
-        .expect("disclosure should include non_guarantees");
-    for expected_value in expected {
-        assert!(
-            values
-                .iter()
-                .any(|value| value.as_str() == Some(expected_value)),
-            "missing non-guarantee {expected_value}: {disclosure}"
-        );
-    }
-}
-
-fn path_text(path: &Path) -> String {
-    path.display().to_string()
 }
 
 fn write_codex_project_trust(
@@ -5988,84 +5903,6 @@ fn contains_bare_hook_path(command: &str, prefix: &str) -> bool {
 }
 
 #[cfg(unix)]
-fn pre_tool_write_event(event_id: &str) -> Value {
-    serde_json::json!({
-        "event_id": event_id,
-        "session_id": "generated_hook_session",
-        "tool_name": "Bash",
-        "tool_call_id": format!("{event_id}_tool"),
-        "command": "touch src/lib.rs",
-        "paths": ["src/lib.rs"],
-        "timestamp": "2026-07-01T00:00:00Z"
-    })
-}
-
-#[cfg(unix)]
-fn run_shell_hook_command(
-    command_text: &str,
-    runtime_home: &Path,
-    current_dir: &Path,
-    event: &Value,
-    envs: &[(&str, String)],
-) -> Result<Output, Box<dyn Error>> {
-    let mut command = Command::new("sh");
-    command
-        .arg("-c")
-        .arg(command_text)
-        .env("VOLICORD_HOME", runtime_home)
-        .current_dir(current_dir)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    for (name, value) in envs {
-        command.env(name, value);
-    }
-    let mut child = command.spawn()?;
-    let mut stdin = child.stdin.take().expect("hook stdin should be piped");
-    stdin.write_all(event.to_string().as_bytes())?;
-    drop(stdin);
-    Ok(child.wait_with_output()?)
-}
-
-#[cfg(unix)]
-fn run_executable_hook_command(
-    executable: &Path,
-    args: Vec<String>,
-    runtime_home: &Path,
-    current_dir: &Path,
-    event: &Value,
-    envs: &[(&str, String)],
-) -> Result<Output, Box<dyn Error>> {
-    let mut command = Command::new(executable);
-    command
-        .args(args)
-        .env("VOLICORD_HOME", runtime_home)
-        .current_dir(current_dir)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    for (name, value) in envs {
-        command.env(name, value);
-    }
-    let mut child = command.spawn()?;
-    let mut stdin = child.stdin.take().expect("hook stdin should be piped");
-    stdin.write_all(event.to_string().as_bytes())?;
-    drop(stdin);
-    Ok(child.wait_with_output()?)
-}
-
-#[cfg(unix)]
-fn expand_claude_project_command(
-    command: &str,
-    repo_root: &Path,
-) -> Result<PathBuf, Box<dyn Error>> {
-    let relative = command
-        .strip_prefix("${CLAUDE_PROJECT_DIR}/")
-        .ok_or("Claude Code hook command must start with ${CLAUDE_PROJECT_DIR}/")?;
-    Ok(repo_root.join(relative))
-}
-
-#[cfg(unix)]
 fn assert_host_native_pre_tool_deny_output(output: &Output) -> Result<Value, Box<dyn Error>> {
     assert_eq!(output.status.code(), Some(0));
     assert!(
@@ -6149,280 +5986,6 @@ fn assert_guard_policy_invokes_required_phases(policy: &Value, connection_id: &s
 fn arg_pair(args: &[Value], key: &str, value: &str) -> bool {
     args.windows(2)
         .any(|pair| pair[0] == key && pair[1] == value)
-}
-
-fn write_test_installation_profile(runtime_home: &Path) -> Result<(), Box<dyn Error>> {
-    write_installation_profile(
-        runtime_home,
-        InstallationProfileRegistration {
-            installation_id: "default".to_owned(),
-            volicord_command: "volicord".to_owned(),
-            volicord_mcp_command: "volicord".to_owned(),
-            bin_dir: runtime_home.join("bin"),
-            default_connection_mode: CONNECTION_MODE_WORKFLOW.to_owned(),
-            metadata_json: "{}".to_owned(),
-        },
-    )?;
-    Ok(())
-}
-
-fn create_git_repo(
-    runtime_home: &TempRuntimeHome,
-    name: impl AsRef<Path>,
-) -> Result<PathBuf, Box<dyn Error>> {
-    let repo_root = runtime_home.create_product_repo(name)?;
-    fs::create_dir_all(repo_root.join(".git"))?;
-    Ok(repo_root)
-}
-
-#[cfg(unix)]
-fn create_real_git_repo(
-    runtime_home: &TempRuntimeHome,
-    name: impl AsRef<Path>,
-) -> Result<PathBuf, Box<dyn Error>> {
-    let repo_root = runtime_home.create_product_repo(name)?;
-    init_real_git_repo(&repo_root)?;
-    Ok(repo_root)
-}
-
-#[cfg(unix)]
-fn init_real_git_repo(repo_root: &Path) -> Result<(), Box<dyn Error>> {
-    let output = Command::new("git")
-        .arg("init")
-        .arg("-q")
-        .current_dir(repo_root)
-        .output()?;
-    if !output.status.success() {
-        return Err(format!(
-            "git init failed\nstdout:\n{}\nstderr:\n{}",
-            stdout(&output),
-            stderr(&output)
-        )
-        .into());
-    }
-    Ok(())
-}
-
-#[cfg(unix)]
-fn path_env(path_dirs: &[&Path]) -> String {
-    std::env::join_paths(path_dirs)
-        .expect("test PATH should be valid")
-        .to_string_lossy()
-        .into_owned()
-}
-
-#[cfg(unix)]
-fn hook_execution_path_env(fake_bin_dir: &Path) -> Result<String, Box<dyn Error>> {
-    let volicord_dir = Path::new(volicord_bin())
-        .parent()
-        .ok_or("volicord test binary path should have a parent")?;
-    path_env_with_existing(&[volicord_dir, fake_bin_dir])
-}
-
-#[cfg(unix)]
-fn path_env_with_existing(path_dirs: &[&Path]) -> Result<String, Box<dyn Error>> {
-    let mut paths = path_dirs
-        .iter()
-        .map(|path| (*path).to_path_buf())
-        .collect::<Vec<_>>();
-    if let Some(existing) = std::env::var_os("PATH") {
-        paths.extend(std::env::split_paths(&existing));
-    }
-    Ok(std::env::join_paths(paths)?.to_string_lossy().into_owned())
-}
-
-#[cfg(unix)]
-fn write_fake_codex(dir: &Path) -> Result<PathBuf, Box<dyn Error>> {
-    fs::create_dir_all(dir)?;
-    let path = dir.join("codex");
-    fs::write(
-        &path,
-        "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then printf 'codex 1.2.3-test\\n'; exit 0; fi\nprintf 'unexpected codex invocation\\n' >&2\nexit 2\n",
-    )?;
-    make_executable(&path)?;
-    Ok(path)
-}
-
-#[cfg(unix)]
-fn write_fake_claude_code(dir: &Path) -> Result<PathBuf, Box<dyn Error>> {
-    fs::create_dir_all(dir)?;
-    let path = dir.join("claude");
-    let state_path = path.with_extension("state");
-    let state_text = state_path.display().to_string().replace('\'', "'\\''");
-    let mut script = format!("#!/bin/sh\nstate='{state_text}'\n");
-    script.push_str(
-        "if [ \"$1\" = \"mcp\" ] && [ \"$2\" = \"get\" ]; then\n\
-         if [ -f \"$state\" ]; then cat \"$state\"; exit 0; fi\n\
-         printf 'Server not found\\n' >&2\n\
-         exit 1\n\
-         fi\n\
-         if [ \"$1\" = \"mcp\" ] && [ \"$2\" = \"add\" ]; then\n\
-         shift 2\n\
-         scope=\"\"\n\
-         env_line=\"\"\n\
-         command=\"\"\n\
-         args=\"\"\n\
-         while [ \"$#\" -gt 0 ]; do\n\
-         case \"$1\" in\n\
-         --env) env_line=\"$2\"; shift 2 ;;\n\
-         --transport) shift 2 ;;\n\
-         --scope) scope=\"$2\"; shift 2 ;;\n\
-         --) shift; command=\"$1\"; shift; args=\"$*\"; break ;;\n\
-         *) shift ;;\n\
-         esac\n\
-         done\n\
-         {\n\
-         printf 'Status: Connected\\n'\n\
-         printf 'Scope: %s\\n' \"$scope\"\n\
-         printf 'Command: %s\\n' \"$command\"\n\
-         printf 'Args: %s\\n' \"$args\"\n\
-         if [ -n \"$env_line\" ]; then printf 'Environment:\\n  %s\\n' \"$env_line\"; fi\n\
-         } > \"$state\"\n\
-         exit 0\n\
-         fi\n\
-         printf 'unexpected claude invocation\\n' >&2\n\
-         exit 2\n",
-    );
-    fs::write(&path, script)?;
-    make_executable(&path)?;
-    Ok(path)
-}
-
-#[cfg(unix)]
-fn write_fake_mcp(dir: &Path) -> Result<PathBuf, Box<dyn Error>> {
-    let workflow_tools = workflow_mcp_tool_names().collect::<Vec<_>>();
-    write_fake_mcp_with_workflow_tools(dir, &workflow_tools)
-}
-
-#[cfg(unix)]
-fn write_fake_mcp_missing_workflow_reconcile(dir: &Path) -> Result<PathBuf, Box<dyn Error>> {
-    let workflow_tools = workflow_mcp_tool_names()
-        .filter(|tool| *tool != RECONCILE_CHANGES_TOOL_NAME)
-        .collect::<Vec<_>>();
-    write_fake_mcp_with_workflow_tools(dir, &workflow_tools)
-}
-
-#[cfg(unix)]
-fn write_fake_mcp_with_workflow_tools(
-    dir: &Path,
-    workflow_tools: &[&str],
-) -> Result<PathBuf, Box<dyn Error>> {
-    fs::create_dir_all(dir)?;
-    let path = dir.join("volicord");
-    let read_only_tools = read_only_mcp_tool_names().collect::<Vec<_>>();
-    let workflow_response = shell_single_quoted(&fake_tools_list_response(workflow_tools));
-    let read_only_response = shell_single_quoted(&fake_tools_list_response(&read_only_tools));
-    let mut script = "#!/bin/sh\n\
-         mode=\"${VOLICORD_TEST_CONNECTION_MODE:-read_only}\"\n\
-         storage_read=\"${VOLICORD_TEST_STORAGE_READ:-passed}\"\n\
-         storage_write=\"${VOLICORD_TEST_STORAGE_WRITE:-passed}\"\n\
-         effective_tool_mode=\"${VOLICORD_TEST_EFFECTIVE_TOOL_MODE:-}\"\n\
-         if [ -z \"$effective_tool_mode\" ]; then\n\
-         if [ \"$storage_read\" != \"passed\" ]; then effective_tool_mode=\"unavailable\";\n\
-         elif [ \"$mode\" = \"read_only\" ]; then effective_tool_mode=\"read_only\";\n\
-         elif [ \"$storage_write\" = \"passed\" ]; then effective_tool_mode=\"workflow\";\n\
-         elif [ \"$storage_write\" = \"readonly\" ]; then effective_tool_mode=\"read_only_degraded\";\n\
-         else effective_tool_mode=\"unavailable\"; fi\n\
-         fi\n\
-         if [ \"$1\" = \"mcp\" ] && [ \"$2\" = \"--check\" ]; then\n\
-         shift 2\n\
-         if [ \"$1\" != \"--connection\" ]; then printf 'missing connection\\n' >&2; exit 2; fi\n\
-         connection=\"$2\"\n\
-         printf 'configuration: valid\\n'\n\
-         printf 'transport: stdio\\n'\n\
-         printf 'runtime_home: %s\\n' \"$VOLICORD_HOME\"\n\
-         printf 'connection_id: %s\\n' \"$connection\"\n\
-         printf 'mode: %s\\n' \"$mode\"\n\
-         printf 'enabled: true\\n'\n\
-         printf 'project_state_read: %s\\n' \"$storage_read\"\n\
-         printf 'project_state_write: %s\\n' \"$storage_write\"\n\
-         printf 'effective_tool_mode: %s\\n' \"$effective_tool_mode\"\n\
-         printf 'allowed_projects: 1\\n'\n\
-         printf 'available_projects: 1\\n'\n\
-         printf 'verification_scope: startup_check_only\\n'\n\
-         exit 0\n\
-         fi\n\
-         if [ \"$1\" = \"mcp\" ] && [ \"$2\" = \"--stdio\" ] && [ \"$3\" = \"--connection\" ]; then\n\
-         while IFS= read -r line; do\n\
-         case \"$line\" in\n\
-         *'\"method\":\"initialize\"'*) printf '%s\\n' '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":\"2025-11-25\",\"capabilities\":{\"tools\":{}},\"serverInfo\":{\"name\":\"volicord-mcp\",\"version\":\"test\"},\"instructions\":\"Use Volicord.\"}}' ;;\n\
-         *'\"method\":\"tools/list\"'*)\n\
-         if [ \"$mode\" = \"workflow\" ]; then\n"
-        .to_owned();
-    script.push_str("         printf '%s\\n' ");
-    script.push_str(&workflow_response);
-    script.push_str(
-        "\n\
-         else\n",
-    );
-    script.push_str("         printf '%s\\n' ");
-    script.push_str(&read_only_response);
-    script.push_str(
-        "\n\
-         fi\n\
-         exit 0 ;;\n\
-         esac\n\
-         done\n\
-         exit 0\n\
-         fi\n\
-         printf 'unexpected invocation\\n' >&2\n\
-         exit 2\n",
-    );
-    fs::write(&path, script)?;
-    make_executable(&path)?;
-    Ok(path)
-}
-
-#[cfg(unix)]
-fn workflow_mcp_tool_names() -> impl Iterator<Item = &'static str> {
-    WORKFLOW_METHOD_TOOL_NAMES
-        .iter()
-        .chain(ADAPTER_UTILITY_TOOL_NAMES.iter())
-        .copied()
-}
-
-#[cfg(unix)]
-fn read_only_mcp_tool_names() -> impl Iterator<Item = &'static str> {
-    READ_ONLY_METHOD_TOOL_NAMES
-        .iter()
-        .chain(ADAPTER_UTILITY_TOOL_NAMES.iter())
-        .copied()
-}
-
-#[cfg(unix)]
-fn fake_tools_list_response(tool_names: &[&str]) -> String {
-    let tools = tool_names
-        .iter()
-        .map(|name| json!({ "name": name }))
-        .collect::<Vec<_>>();
-    json!({
-        "jsonrpc": "2.0",
-        "id": 2,
-        "result": { "tools": tools },
-    })
-    .to_string()
-}
-
-#[cfg(unix)]
-fn shell_single_quoted(text: &str) -> String {
-    format!("'{}'", text.replace('\'', "'\\''"))
-}
-
-#[cfg(unix)]
-fn make_executable(path: &Path) -> Result<(), Box<dyn Error>> {
-    use std::os::unix::fs::PermissionsExt;
-
-    let mut permissions = fs::metadata(path)?.permissions();
-    permissions.set_mode(0o755);
-    fs::set_permissions(path, permissions)?;
-    Ok(())
-}
-
-#[cfg(unix)]
-fn is_executable(path: &Path) -> Result<bool, Box<dyn Error>> {
-    use std::os::unix::fs::PermissionsExt;
-
-    Ok(fs::metadata(path)?.permissions().mode() & 0o111 != 0)
 }
 
 fn intake_request(
@@ -6527,11 +6090,4 @@ fn core_invocation(operation_category: OperationCategory) -> InvocationContext {
         operation_category,
         VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
     )
-}
-
-fn record_id(value: &Value) -> Result<String, Box<dyn Error>> {
-    value["record_id"]
-        .as_str()
-        .map(str::to_owned)
-        .ok_or_else(|| "record_id should be present".into())
 }
