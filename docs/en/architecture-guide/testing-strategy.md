@@ -7,11 +7,13 @@ product acceptance.
 
 For exact behavior, use the [Reference Index](../reference/README.md). For
 crate-by-crate source orientation, use the [Codebase Tour](codebase-tour.md).
-For workspace structure and the Cargo dependency graph, use
-[Implementation Architecture](architecture.md). For change workflow, use the
-[Implementation Guide](change-guide.md). For documentation command-example
-validation, terminology role validation, bilingual link parity, and validation
-reporting boundaries, use the [Validation](../maintain/validation.md) policy.
+For workspace shape and the dependency-boundary overview, use
+[Implementation Architecture](architecture.md). For exact Cargo dependency
+edges, read the workspace and crate `Cargo.toml` manifests. For change workflow,
+use the [Implementation Guide](change-guide.md). For documentation
+command-example validation, terminology role validation, bilingual link parity,
+and validation reporting boundaries, use the [Validation](../maintain/validation.md)
+policy.
 
 ## Test Layers
 

@@ -6,10 +6,11 @@ exists, and names a few stable entry symbols or flows to follow.
 
 It is not the source ownership map. Use the [Source Map](source-map.md) for
 exact source path responsibilities and module placement. Use
-[Implementation Architecture](architecture.md) for the workspace dependency
-graph and top-level runtime maps, [CLI Workflows](cli-workflows.md) for local
-administrative execution flows, [Request Lifecycle](request-lifecycle.md) for
-representative MCP-to-Core-to-Store method traces, [Storage and Transactions](storage-and-transactions.md)
+[Implementation Architecture](architecture.md) for workspace shape, the
+dependency-boundary overview, and top-level runtime maps,
+[CLI Workflows](cli-workflows.md) for local administrative execution flows,
+[Request Lifecycle](request-lifecycle.md) for representative MCP-to-Core-to-Store
+method traces, [Storage and Transactions](storage-and-transactions.md)
 for commit and artifact boundaries, [Testing Strategy](testing-strategy.md) for
 test-layer choice, and the [Implementation Guide](change-guide.md) when you are
 ready to make a change.
@@ -67,9 +68,10 @@ The shortest dependency mental model is:
 - `xtask` is repository maintenance tooling, separate from product runtime
   architecture.
 
-For the exact Cargo dependency graph, use
-[Implementation Architecture](architecture.md). For exact source placement, use
-[Source Map](source-map.md).
+For workspace shape and the dependency-boundary overview, use
+[Implementation Architecture](architecture.md). For exact Cargo dependency
+edges, read the workspace and crate `Cargo.toml` manifests. For exact source
+placement, use [Source Map](source-map.md).
 
 ## `crates/volicord-types`
 

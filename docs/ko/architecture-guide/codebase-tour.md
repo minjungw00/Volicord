@@ -5,8 +5,8 @@
 좋은 안정적인 진입 심볼과 흐름을 설명합니다.
 
 이 문서는 소스 담당 지도가 아닙니다. 정확한 소스 경로 책임과 모듈 배치는
-[소스 지도](source-map.md)를 사용합니다. 워크스페이스 의존 그래프와 상위
-런타임 지도는 [구현 아키텍처](architecture.md), 로컬 관리 실행 흐름은
+[소스 지도](source-map.md)를 사용합니다. 워크스페이스 형태, 의존 경계 개요,
+상위 런타임 지도는 [구현 아키텍처](architecture.md), 로컬 관리 실행 흐름은
 [CLI 작업 흐름](cli-workflows.md), 대표 MCP에서 Core와 Store로 이어지는 메서드 추적은
 [요청 생명주기](request-lifecycle.md), 커밋과 아티팩트 경계는
 [저장소와 트랜잭션](storage-and-transactions.md), 테스트 계층 선택은
@@ -63,8 +63,10 @@
   가능한 검증을 위해 크레이트를 조합합니다.
 - `xtask`는 저장소 유지보수 도구이며 제품 런타임 아키텍처와 분리됩니다.
 
-정확한 Cargo 의존 그래프는 [구현 아키텍처](architecture.md)를 사용합니다.
-정확한 소스 배치는 [소스 지도](source-map.md)를 사용합니다.
+워크스페이스 형태와 의존 경계 개요는 [구현 아키텍처](architecture.md)를
+사용합니다. 정확한 Cargo 의존 간선은 워크스페이스와 각 크레이트의
+`Cargo.toml` 매니페스트에서 확인합니다. 정확한 소스 배치는
+[소스 지도](source-map.md)를 사용합니다.
 
 ## `crates/volicord-types`
 
