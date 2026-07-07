@@ -1054,6 +1054,30 @@ fn reports_unqualified_public_language_security_claims() {
 }
 
 #[test]
+fn reports_unqualified_public_language_claims_in_nested_cli_source() {
+    let fixture = valid_fixture();
+    write(
+        fixture.path(),
+        "crates/volicord-cli/src/connection_command/output/text.rs",
+        "pub const MESSAGE: &str = \"Volicord output is protected.\";\n",
+    );
+
+    let report = report(fixture.path());
+    let errors = category_errors(&report, "public_language.security_claim");
+
+    assert_eq!(errors.len(), 1, "{:#?}", report.errors());
+    assert_eq!(
+        errors[0].file(),
+        "crates/volicord-cli/src/connection_command/output/text.rs"
+    );
+    assert!(
+        errors[0].message().contains("protected"),
+        "{:#?}",
+        report.errors()
+    );
+}
+
+#[test]
 fn reports_required_terminology_role_failure() {
     let fixture = valid_fixture();
     let terminology = valid_terminology_map().replace(

@@ -166,21 +166,17 @@ const REQUIRED_SHARED_PATHS: &[&str] = &[
     "docs/doc-index.yaml",
     "docs/terminology-map.yaml",
 ];
-const PUBLIC_LANGUAGE_SOURCE_PATHS: &[&str] = &[
+const PUBLIC_LANGUAGE_SOURCE_ROOTS: &[&str] = &[
     "crates/volicord-cli/src/connection_command.rs",
+    "crates/volicord-cli/src/connection_command",
     "crates/volicord-cli/src/doctor_command.rs",
     "crates/volicord-cli/src/guard_command.rs",
+    "crates/volicord-cli/src/guard_command",
+    "crates/volicord-cli/src/guard_integration",
+    "crates/volicord-cli/src/setup_command.rs",
+    "crates/volicord-cli/src/setup_command",
     "crates/volicord-cli/src/user_command.rs",
-    "crates/volicord-mcp/src/lib.rs",
-    "crates/volicord-mcp/src/adapter.rs",
-    "crates/volicord-mcp/src/errors.rs",
-    "crates/volicord-mcp/src/http.rs",
-    "crates/volicord-mcp/src/local_http.rs",
-    "crates/volicord-mcp/src/local_web_consent.rs",
-    "crates/volicord-mcp/src/routing.rs",
-    "crates/volicord-mcp/src/stdio.rs",
-    "crates/volicord-mcp/src/tool_registry.rs",
-    "crates/volicord-mcp/src/util.rs",
+    "crates/volicord-mcp/src",
 ];
 const MAINTAINABILITY_TOP_N: usize = 10;
 const MAINTAINABILITY_SKIP_DIRS: &[&str] = &[".git", "target"];
@@ -3405,19 +3401,25 @@ fn validate_inbox_command(args: &[String]) -> std::result::Result<(), String> {
 }
 
 fn validate_public_language_claims(root: &Path, errors: &mut Vec<ValidationError>) {
-    if !PUBLIC_LANGUAGE_SOURCE_PATHS
+    if !PUBLIC_LANGUAGE_SOURCE_ROOTS
         .iter()
         .any(|relative| root.join(relative).exists())
     {
         return;
     }
-    for relative in PUBLIC_LANGUAGE_SOURCE_PATHS {
-        let path = root.join(relative);
+
+    let mut sources = BTreeSet::new();
+    for relative in PUBLIC_LANGUAGE_SOURCE_ROOTS {
+        collect_public_language_source_root(root, relative, &mut sources, errors);
+    }
+
+    for relative in sources {
+        let path = root.join(&relative);
         let contents = match fs::read_to_string(&path) {
             Ok(contents) => contents,
             Err(error) => {
                 errors.push(ValidationError::new(
-                    *relative,
+                    relative.clone(),
                     "public_language.read",
                     format!("failed to read public output source: {error}"),
                 ));
@@ -3428,7 +3430,7 @@ fn validate_public_language_claims(root: &Path, errors: &mut Vec<ValidationError
             for word in PUBLIC_UNQUALIFIED_SECURITY_WORDS {
                 if contains_ascii_word_ignore_case(line, word) {
                     errors.push(ValidationError::new(
-                        *relative,
+                        relative.clone(),
                         "public_language.security_claim",
                         format!(
                             "line {} uses unqualified `{word}` in public output source; use explicit guarantee disclosure wording",
@@ -3439,6 +3441,91 @@ fn validate_public_language_claims(root: &Path, errors: &mut Vec<ValidationError
             }
         }
     }
+}
+
+fn collect_public_language_source_root(
+    root: &Path,
+    relative: &str,
+    sources: &mut BTreeSet<String>,
+    errors: &mut Vec<ValidationError>,
+) {
+    let path = root.join(relative);
+    let metadata = match fs::metadata(&path) {
+        Ok(metadata) => metadata,
+        Err(error) => {
+            errors.push(ValidationError::new(
+                relative,
+                "public_language.read",
+                format!("failed to inspect public output source: {error}"),
+            ));
+            return;
+        }
+    };
+
+    if metadata.is_dir() {
+        collect_public_language_source_dir(root, &path, sources, errors);
+    } else if metadata.is_file() && is_rust_source_path(&path) {
+        sources.insert(relative.to_string());
+    }
+}
+
+fn collect_public_language_source_dir(
+    root: &Path,
+    dir: &Path,
+    sources: &mut BTreeSet<String>,
+    errors: &mut Vec<ValidationError>,
+) {
+    let mut entries = Vec::new();
+    let read_dir = match fs::read_dir(dir) {
+        Ok(read_dir) => read_dir,
+        Err(error) => {
+            errors.push(ValidationError::new(
+                repo_relative(root, dir),
+                "public_language.read",
+                format!("failed to read public output source directory: {error}"),
+            ));
+            return;
+        }
+    };
+
+    for entry in read_dir {
+        match entry {
+            Ok(entry) => entries.push(entry),
+            Err(error) => {
+                errors.push(ValidationError::new(
+                    repo_relative(root, dir),
+                    "public_language.read",
+                    format!("failed to read public output source directory entry: {error}"),
+                ));
+            }
+        }
+    }
+    entries.sort_by_key(|entry| entry.path());
+
+    for entry in entries {
+        let path = entry.path();
+        let file_type = match entry.file_type() {
+            Ok(file_type) => file_type,
+            Err(error) => {
+                errors.push(ValidationError::new(
+                    repo_relative(root, &path),
+                    "public_language.read",
+                    format!("failed to inspect public output source: {error}"),
+                ));
+                continue;
+            }
+        };
+
+        if file_type.is_dir() {
+            collect_public_language_source_dir(root, &path, sources, errors);
+        } else if file_type.is_file() && is_rust_source_path(&path) {
+            sources.insert(repo_relative(root, &path));
+        }
+    }
+}
+
+fn is_rust_source_path(path: &Path) -> bool {
+    path.extension().and_then(|extension| extension.to_str()) == Some("rs")
 }
 
 fn validate_public_document_language(
