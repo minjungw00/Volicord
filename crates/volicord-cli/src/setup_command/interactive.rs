@@ -3,7 +3,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::{setup_report::CommandAvailability, shell_path::path_directory_is_on_path};
+use crate::{
+    setup_report::CommandAvailability,
+    shell_path::{path_directory_is_on_path, PATH_ENV},
+};
 
 use super::{
     discovery::{command_availability_summary, suggested_link_bin_candidate},
@@ -11,7 +14,7 @@ use super::{
         selected_command_dirs, shell_path_command, shell_path_command_for_selected_dirs,
         shell_startup_plan, ShellStartupPlan,
     },
-    SetupCommandError, SetupProcess, SetupTerminal, PATH_ENV,
+    SetupCommandError, SetupProcess, SetupTerminal,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]

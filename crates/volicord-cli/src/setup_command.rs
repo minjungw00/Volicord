@@ -1,49 +1,19 @@
 use std::{
-    collections::BTreeMap,
     io,
     io::Write,
     path::{Path, PathBuf},
 };
 
-use serde_json::json;
 use sha2::{Digest, Sha256};
-use volicord_store::{
-    agent_connections::CONNECTION_MODE_WORKFLOW,
-    bootstrap::{
-        initialize_runtime_home, write_installation_profile, InstallationProfileRegistration,
-    },
-    runtime_home::RuntimeHomeResolutionError,
-    StoreError,
-};
+use volicord_store::{runtime_home::RuntimeHomeResolutionError, StoreError};
 
-use crate::registration::ADMIN_METADATA_JSON;
+use crate::setup_command::{
+    output::{append_interactive_notes, render_setup_output},
+    workflow::{command_status, is_help_request, parse_setup_options, run_setup_workflow},
+};
 #[cfg(test)]
 use crate::shell_path::mcp_binary_name;
 pub(crate) use crate::shell_path::{is_executable_file, volicord_binary_name};
-use crate::{
-    setup_command::{
-        discovery::{
-            command_availability, discover_mcp_command, discover_volicord_command,
-            missing_command_availability, plan_setup_actions, push_command_availability_checks,
-        },
-        interactive::{prompt_command_availability_choice, InteractiveSetupChoice},
-        linking::{
-            install_command_link, link_ready_for_path, link_volicord_status, prepare_link_bin,
-            push_link_check, LinkCheckOutputs,
-        },
-        output::{append_interactive_notes, render_setup_output, DiagnosticCheck},
-        shell_startup::{shell_path_command, write_shell_startup_block},
-        workflow::{
-            command_status, installation_profile_failed, is_help_request, parse_setup_options,
-            resolve_setup_runtime_home, runtime_home_report_section, setup_metadata_json,
-            OutputFormat,
-        },
-    },
-    setup_report::{SetupAction, SetupActionKind, SetupReport, SetupSectionStatus},
-    shell_path::{path_directory_is_on_path, PATH_ENV},
-};
-
-const INSTALLATION_ID: &str = "default";
 
 mod discovery;
 mod interactive;
@@ -51,8 +21,6 @@ mod linking;
 mod output;
 mod shell_startup;
 mod workflow;
-
-pub(crate) use output::profile_json;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommandStatus {
@@ -224,7 +192,7 @@ fn run_setup_command_inner(
     args: &[String],
     current_dir: &Path,
     process: &impl SetupProcess,
-    mut terminal: Option<&mut dyn SetupTerminal>,
+    terminal: Option<&mut dyn SetupTerminal>,
 ) -> Result<CommandOutcome, SetupCommandError> {
     if is_help_request(args) {
         return Ok(CommandOutcome {
@@ -232,369 +200,19 @@ fn run_setup_command_inner(
             output: setup_usage(),
         });
     }
-    let mut parsed = parse_setup_options(args, current_dir)?;
-    let runtime_home = resolve_setup_runtime_home(&parsed, current_dir, process)?;
-    let runtime_home_id = runtime_home_id_for_path(&runtime_home)?;
-    let runtime_home_record =
-        initialize_runtime_home(&runtime_home, &runtime_home_id, ADMIN_METADATA_JSON)?;
-    let runtime_home_section = runtime_home_report_section(&runtime_home_record);
-    let mut checks =
-        vec![
-            DiagnosticCheck::passed("runtime_home", "Runtime Home registry is ready").with_details(
-                json!({
-                    "runtime_home": path_text(&runtime_home_record.runtime_home),
-                    "registry_db": path_text(&runtime_home_record.registry_db_path),
-                    "runtime_home_id": runtime_home_record.runtime_home_id,
-                }),
-            ),
-        ];
-    let mut actions_required = Vec::new();
-    let mut actions_optional = Vec::new();
-    let mut actions_performed = vec![SetupAction::performed(
-        "runtime_home_ready",
-        SetupActionKind::RuntimeHomeReady,
-        "Runtime Home registry is ready.",
-    )
-    .with_path(&runtime_home_record.runtime_home)];
-    let mut link_results = BTreeMap::new();
-    let mut shell_startup_plan = None;
-    let mut interactive_notes = Vec::new();
-    let mut command_links_ready = false;
-
-    let volicord_command = match discover_volicord_command(process) {
-        Ok(command) => {
-            checks.push(
-                DiagnosticCheck::passed("volicord_command", "volicord command was discovered")
-                    .with_details(json!({
-                        "path": path_text(&command.path),
-                        "source": command.source,
-                    })),
-            );
-            command
-        }
-        Err(error) => {
-            checks.push(
-                DiagnosticCheck::failed("volicord_command", "volicord command was not discovered")
-                    .with_details(json!({ "detail": error.to_string() })),
-            );
-            actions_required.push(SetupAction::required(
-                "run_init_from_volicord",
-                SetupActionKind::CommandAvailability,
-                "Install or link an accessible volicord executable, then initialize the primary host connection from the Product Repository.",
-            )
-            .with_command("volicord init --host <host> --repo <path>"));
-            let report = SetupReport::new(
-                runtime_home_section,
-                installation_profile_failed("installation profile was not saved", &error),
-                vec![missing_command_availability(
-                    "volicord_command",
-                    &volicord_binary_name(),
-                )],
-                actions_required,
-                actions_optional,
-                actions_performed,
-            );
-            let status = command_status(report.status);
-            return Ok(CommandOutcome {
-                status,
-                output: render_setup_output(
-                    parsed.output,
-                    &report,
-                    &runtime_home_record,
-                    None,
-                    &checks,
-                )?,
-            });
-        }
-    };
-
-    let volicord_mcp = match discover_mcp_command(&parsed, process, &volicord_command) {
-        Ok(command) => {
-            checks.push(
-                DiagnosticCheck::passed(
-                    "volicord_mcp_command",
-                    "MCP launch command was discovered",
-                )
-                .with_details(json!({
-                    "path": path_text(&command.path),
-                    "source": command.source,
-                })),
-            );
-            command
-        }
-        Err(error) => {
-            checks.push(
-                DiagnosticCheck::failed(
-                    "volicord_mcp_command",
-                    "MCP launch command was not discovered",
-                )
-                .with_details(json!({ "detail": error.to_string() })),
-            );
-            actions_required.push(
-                SetupAction::required(
-                    "select_mcp_command",
-                    SetupActionKind::SelectMcpCommand,
-                    "Select an executable MCP launch command, then rerun init with that command.",
-                )
-                .with_command("volicord init --host <host> --repo <path> --mcp-command PATH"),
-            );
-            let path_env = process.env_var(PATH_ENV);
-            let commands = vec![command_availability(
-                "volicord_command",
-                &volicord_binary_name(),
-                &volicord_command,
-                path_env.as_deref(),
-            )];
-            push_command_availability_checks(&commands, &mut checks);
-            plan_setup_actions(
-                &commands,
-                &parsed,
-                process,
-                None,
-                &mut actions_required,
-                &mut actions_optional,
-            );
-            let report = SetupReport::new(
-                runtime_home_section,
-                installation_profile_failed("installation profile was not saved", &error),
-                commands,
-                actions_required,
-                actions_optional,
-                actions_performed,
-            );
-            let status = command_status(report.status);
-            return Ok(CommandOutcome {
-                status,
-                output: render_setup_output(
-                    parsed.output,
-                    &report,
-                    &runtime_home_record,
-                    None,
-                    &checks,
-                )?,
-            });
-        }
-    };
-
-    if parsed.output == OutputFormat::Text && parsed.link_bin.is_none() {
-        let path_env = process.env_var(PATH_ENV);
-        let commands = vec![command_availability(
-            "volicord_command",
-            &volicord_binary_name(),
-            &volicord_command,
-            path_env.as_deref(),
-        )];
-        if commands
-            .iter()
-            .any(|command| !command.selected_path_ready())
-        {
-            if let Some(terminal) = terminal.as_mut() {
-                match prompt_command_availability_choice(
-                    *terminal,
-                    process,
-                    &commands,
-                    [&volicord_command.path, &volicord_mcp.path],
-                )? {
-                    InteractiveSetupChoice::LinkOnly(link_bin) => {
-                        parsed.link_bin = Some(link_bin);
-                    }
-                    InteractiveSetupChoice::LinkAndShell { link_bin, shell } => {
-                        parsed.link_bin = Some(link_bin);
-                        shell_startup_plan = Some(shell);
-                    }
-                    InteractiveSetupChoice::Manual { link_bin, command } => {
-                        if let Some(link_bin) = link_bin {
-                            parsed.link_bin = Some(link_bin);
-                        }
-                        interactive_notes.push(format!("manual_path_command: {command}"));
-                    }
-                    InteractiveSetupChoice::Skip => {
-                        interactive_notes.push("command linking was skipped".to_owned());
-                    }
-                    InteractiveSetupChoice::Cancelled(message) => {
-                        interactive_notes.push(message);
-                    }
-                }
-            }
-        }
-    }
-
-    let bin_dir = parsed
-        .link_bin
-        .clone()
-        .unwrap_or_else(|| command_parent(&volicord_command.path));
-    let mut link_bin_on_path = None;
-
-    if let Some(link_bin) = &parsed.link_bin {
-        let link_bin = absolute_path(current_dir, link_bin.clone());
-        let mut link_bin_usable = false;
-        match prepare_link_bin(&link_bin) {
-            Ok(()) => {
-                link_bin_usable = true;
-                let volicord_link = install_command_link(
-                    &link_bin,
-                    &volicord_binary_name(),
-                    &volicord_command.path,
-                );
-                command_links_ready = link_ready_for_path(&volicord_link);
-                push_link_check(
-                    "link_volicord",
-                    "volicord command link",
-                    &link_bin,
-                    &volicord_binary_name(),
-                    &volicord_link,
-                    LinkCheckOutputs {
-                        checks: &mut checks,
-                        actions_required: &mut actions_required,
-                        actions_performed: &mut actions_performed,
-                    },
-                );
-                link_results.insert("volicord".to_owned(), link_volicord_status(&volicord_link));
-            }
-            Err((summary, detail)) => {
-                checks.push(
-                    DiagnosticCheck::failed("link_bin", summary)
-                        .with_details(json!({ "path": path_text(&link_bin), "detail": detail })),
-                );
-                actions_required.push(
-                    SetupAction::required(
-                        "repair_link_bin",
-                        SetupActionKind::CommandLinks,
-                        format!(
-                            "Fix write access for {} after installing volicord in a writable PATH directory.",
-                            link_bin.display()
-                        ),
-                    )
-                    .with_command("volicord doctor")
-                    .with_path(&link_bin),
-                );
-                link_results.insert("volicord".to_owned(), "failed".to_owned());
-            }
-        }
-        let on_path = path_directory_is_on_path(process.env_var(PATH_ENV).as_deref(), &link_bin);
-        link_bin_on_path = Some(on_path);
-        if !on_path {
-            let mut shell_startup_ready = false;
-            if link_bin_usable && command_links_ready {
-                if let Some(plan) = shell_startup_plan.as_ref() {
-                    shell_startup_ready = write_shell_startup_block(
-                        plan,
-                        &link_bin,
-                        &mut checks,
-                        &mut actions_required,
-                        &mut actions_performed,
-                    );
-                }
-            }
-            if link_bin_usable && command_links_ready {
-                if shell_startup_ready {
-                    actions_required.push(
-                        SetupAction::required(
-                            "open_new_shell_for_path",
-                            SetupActionKind::PathUpdate,
-                            format!(
-                                "Open a new shell or restart MCP hosts so PATH includes {}.",
-                                link_bin.display()
-                            ),
-                        )
-                        .with_path(&link_bin),
-                    )
-                } else {
-                    actions_required.push(
-                        SetupAction::required(
-                            "add_link_bin_to_path",
-                            SetupActionKind::PathUpdate,
-                            format!(
-                                "Add {} to PATH before starting new shells or MCP hosts.",
-                                link_bin.display()
-                            ),
-                        )
-                        .with_command(shell_path_command(process, &link_bin)?)
-                        .with_path(&link_bin),
-                    )
-                }
-            }
-            checks.push(
-                DiagnosticCheck::warning(
-                    "link_bin_path",
-                    "link directory is not currently on PATH",
-                )
-                .with_details(json!({ "link_bin": path_text(&link_bin) })),
-            );
-        } else {
-            checks.push(
-                DiagnosticCheck::passed("link_bin_path", "link directory is on PATH")
-                    .with_details(json!({ "link_bin": path_text(&link_bin) })),
-            );
-        }
-    }
-
-    let path_env = process.env_var(PATH_ENV);
-    let commands = vec![command_availability(
-        "volicord_command",
-        &volicord_binary_name(),
-        &volicord_command,
-        path_env.as_deref(),
-    )];
-    push_command_availability_checks(&commands, &mut checks);
-    plan_setup_actions(
-        &commands,
-        &parsed,
-        process,
-        link_bin_on_path,
-        &mut actions_required,
-        &mut actions_optional,
-    );
-
-    let metadata_json = setup_metadata_json(
-        volicord_command.source,
-        volicord_mcp.source,
-        parsed.link_bin.as_deref(),
-        &link_results,
-    )?;
-    let profile = write_installation_profile(
-        &runtime_home,
-        InstallationProfileRegistration {
-            installation_id: INSTALLATION_ID.to_owned(),
-            volicord_command: path_text(&volicord_command.path),
-            volicord_mcp_command: path_text(&volicord_mcp.path),
-            bin_dir,
-            default_connection_mode: CONNECTION_MODE_WORKFLOW.to_owned(),
-            metadata_json,
-        },
-    )?;
-    checks.push(
-        DiagnosticCheck::passed("installation_profile", "installation profile was saved")
-            .with_details(profile_json(&profile)),
-    );
-    actions_performed.push(
-        SetupAction::performed(
-            "installation_profile_saved",
-            SetupActionKind::InstallationProfileSaved,
-            "Installation profile was saved.",
-        )
-        .with_path(&runtime_home_record.registry_db_path),
-    );
-
-    let report = SetupReport::new(
-        runtime_home_section,
-        SetupSectionStatus::complete("installation profile was saved", profile_json(&profile)),
-        commands,
-        actions_required,
-        actions_optional,
-        actions_performed,
-    );
-    let status = command_status(report.status);
+    let parsed = parse_setup_options(args, current_dir)?;
+    let outcome = run_setup_workflow(parsed, current_dir, process, terminal)?;
+    let status = command_status(outcome.report.status);
     let output = append_interactive_notes(
         render_setup_output(
-            parsed.output,
-            &report,
-            &runtime_home_record,
-            Some(&profile),
-            &checks,
+            outcome.output,
+            &outcome.report,
+            &outcome.runtime_home,
+            outcome.installation_profile.as_ref(),
+            &outcome.checks,
         )?,
-        parsed.output,
-        &interactive_notes,
+        outcome.output,
+        &outcome.interactive_notes,
     );
     Ok(CommandOutcome { status, output })
 }
@@ -640,10 +258,17 @@ mod tests {
         io::{self, Write},
     };
 
-    use crate::setup_report::CommandAvailability;
+    use crate::{
+        setup_command::discovery::plan_setup_actions,
+        setup_report::{CommandAvailability, SetupActionKind},
+        shell_path::PATH_ENV,
+    };
     use rusqlite::Connection;
     use serde_json::Value;
-    use volicord_store::{bootstrap::installation_profile, sqlite::registry_db_path};
+    use volicord_store::{
+        agent_connections::CONNECTION_MODE_WORKFLOW, bootstrap::installation_profile,
+        sqlite::registry_db_path,
+    };
     use volicord_test_support::TempRuntimeHome;
 
     use super::*;
