@@ -1,0 +1,348 @@
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
+
+use volicord_store::{
+    agent_connections::{
+        list_agent_connections, list_connection_projects, AgentConnectionRecord,
+        ConnectionProjectRecord,
+    },
+    bootstrap::project_record_by_repo_root,
+};
+
+use crate::host_integration::{
+    claude_code::{ClaudeCodeAdapter, ProductionCommandRunner},
+    codex::CodexAdapter,
+    format_supported_connection_intents,
+    generic::USER_MANAGED_CONFIGURATION_GUIDANCE,
+    supports_connection_intent, ConnectionIntent, HostAdapter, HostKind, HostScope,
+};
+
+use super::{
+    args::{absolute_path, ParsedConnectionOptions},
+    codex_environment, connection_intent_from_flags, intent_flag_suffix,
+    output::display_project_roots,
+    public_host_label, public_host_name_text, public_mode_text, ConnectionCommandError,
+    ConnectionProcess,
+};
+
+#[derive(Debug, Clone)]
+pub(super) struct ConnectionSelector {
+    host_kind: HostKind,
+    intent: Option<ConnectionIntent>,
+    host_scope: Option<HostScope>,
+    repo_root: PathBuf,
+}
+
+impl ConnectionSelector {
+    pub(super) fn repo_root(&self) -> &Path {
+        &self.repo_root
+    }
+}
+
+pub(super) fn host_scope_for_intent(
+    host_kind: HostKind,
+    intent: ConnectionIntent,
+) -> Result<HostScope, ConnectionCommandError> {
+    if !supports_connection_intent(host_kind, intent) {
+        return Err(ConnectionCommandError::usage(
+            unsupported_connection_intent_message(host_kind, intent),
+        ));
+    }
+    match (host_kind, intent) {
+        (HostKind::Codex, ConnectionIntent::Personal) => Ok(HostScope::User),
+        (HostKind::Codex, ConnectionIntent::Shared) => Ok(HostScope::Project),
+        (HostKind::ClaudeCode, ConnectionIntent::Personal) => Ok(HostScope::Local),
+        (HostKind::ClaudeCode, ConnectionIntent::Shared) => Ok(HostScope::Project),
+        (HostKind::ClaudeCode, ConnectionIntent::Global) => Ok(HostScope::User),
+        (HostKind::Generic, _) => Err(ConnectionCommandError::usage(
+            USER_MANAGED_CONFIGURATION_GUIDANCE,
+        )),
+        (HostKind::Codex, ConnectionIntent::Global) => unreachable!("validated above"),
+    }
+}
+
+fn unsupported_connection_intent_message(host_kind: HostKind, intent: ConnectionIntent) -> String {
+    let supported = format_supported_connection_intents(host_kind);
+    if host_kind == HostKind::Generic {
+        return format!("UNSUPPORTED_HOST: {USER_MANAGED_CONFIGURATION_GUIDANCE}; supported connection intents: {supported}");
+    }
+    format!(
+        "UNSUPPORTED_HOST_INTENT: {} does not support {}; supported connection intents: {}",
+        public_host_label(host_kind),
+        connection_intent_selector_text(intent),
+        supported
+    )
+}
+
+fn connection_intent_selector_text(intent: ConnectionIntent) -> &'static str {
+    match intent {
+        ConnectionIntent::Personal => "personal",
+        ConnectionIntent::Shared => "--shared",
+        ConnectionIntent::Global => "--global",
+    }
+}
+
+pub(super) fn resolve_connection_host(
+    explicit: Option<HostKind>,
+    process: &impl ConnectionProcess,
+) -> Result<HostKind, ConnectionCommandError> {
+    if let Some(host_kind) = explicit {
+        return Ok(host_kind);
+    }
+    let mut available = Vec::new();
+    if let Ok(detection) = CodexAdapter::new(codex_environment(process)).detect() {
+        if detection.available {
+            available.push(detection.host_kind);
+        }
+    }
+    if let Ok(detection) = ClaudeCodeAdapter::new(ProductionCommandRunner).detect() {
+        if detection.available {
+            available.push(detection.host_kind);
+        }
+    }
+    available.sort_by_key(|host| host.as_str());
+    available.dedup();
+    match available.as_slice() {
+        [host_kind] => Ok(*host_kind),
+        [] => Err(ConnectionCommandError::usage(
+            "HOST_NOT_DETECTED: host could not be identified; choose `codex` or `claude-code`",
+        )),
+        _ => Err(ConnectionCommandError::usage(
+            "HOST_AMBIGUOUS: host is ambiguous; choose `codex` or `claude-code`",
+        )),
+    }
+}
+
+pub(super) fn connection_selector(
+    parsed: &ParsedConnectionOptions,
+    current_dir: &Path,
+    process: &impl ConnectionProcess,
+) -> Result<ConnectionSelector, ConnectionCommandError> {
+    let host_kind = resolve_connection_host(parsed.host_kind, process)?;
+    let intent = if parsed.shared || parsed.global {
+        Some(connection_intent_from_flags(parsed)?)
+    } else {
+        None
+    };
+    let host_scope = intent
+        .map(|intent| host_scope_for_intent(host_kind, intent))
+        .transpose()?;
+    let repo_root = resolve_connection_repo_root(current_dir, parsed.repo.as_deref())?;
+    Ok(ConnectionSelector {
+        host_kind,
+        intent,
+        host_scope,
+        repo_root,
+    })
+}
+
+pub(super) fn resolve_connection_repo_root(
+    current_dir: &Path,
+    selected_path: Option<&Path>,
+) -> Result<PathBuf, ConnectionCommandError> {
+    let selected = selected_path.unwrap_or(current_dir);
+    let absolute = absolute_path(current_dir, selected.to_path_buf());
+    let canonical = fs::canonicalize(&absolute).map_err(|error| {
+        ConnectionCommandError::runtime(format!(
+            "repository path is not accessible: {} ({error})",
+            absolute.display()
+        ))
+    })?;
+    let metadata = fs::metadata(&canonical).map_err(|error| {
+        ConnectionCommandError::runtime(format!(
+            "repository path is not accessible: {} ({error})",
+            canonical.display()
+        ))
+    })?;
+    let mut cursor = if metadata.is_file() {
+        canonical
+            .parent()
+            .ok_or_else(|| {
+                ConnectionCommandError::runtime(format!(
+                    "repository path has no parent directory: {}",
+                    canonical.display()
+                ))
+            })?
+            .to_path_buf()
+    } else {
+        canonical
+    };
+
+    loop {
+        let git_path = cursor.join(".git");
+        match git_path.try_exists() {
+            Ok(true) => return Ok(cursor),
+            Ok(false) => {}
+            Err(error) => {
+                return Err(ConnectionCommandError::runtime(format!(
+                    "failed to inspect Git repository marker {}: {error}",
+                    git_path.display()
+                )));
+            }
+        }
+        if !cursor.pop() {
+            break;
+        }
+    }
+
+    Err(ConnectionCommandError::runtime(format!(
+        "no Git repository root found from {}; run `volicord project use PATH` from inside a Git repository or pass --repo PATH",
+        absolute.display()
+    )))
+}
+
+pub(super) fn connection_for_host_target(
+    runtime_home: &Path,
+    host_kind: HostKind,
+    intent: ConnectionIntent,
+    host_scope: HostScope,
+    config_target: &str,
+    server_name: &str,
+) -> Result<Option<AgentConnectionRecord>, ConnectionCommandError> {
+    let matches = list_agent_connections(runtime_home)?
+        .into_iter()
+        .filter(|connection| {
+            connection.host_kind == host_kind.as_str()
+                && connection.intent == intent.as_str()
+                && connection.host_scope == host_scope.as_str()
+                && connection.config_target == config_target
+                && connection.server_name == server_name
+        })
+        .collect::<Vec<_>>();
+    match matches.as_slice() {
+        [] => Ok(None),
+        [connection] => Ok(Some(connection.clone())),
+        connections => Err(ConnectionCommandError::runtime(ambiguous_target_message(
+            connections,
+        ))),
+    }
+}
+
+pub(super) fn select_connection(
+    runtime_home: &Path,
+    selector: &ConnectionSelector,
+) -> Result<(AgentConnectionRecord, Vec<ConnectionProjectRecord>), ConnectionCommandError> {
+    if project_record_by_repo_root(runtime_home, &selector.repo_root)?.is_none() {
+        return Err(ConnectionCommandError::runtime(format!(
+            "PROJECT_NOT_REGISTERED: repository {} is not registered; run `{}` first",
+            selector.repo_root.display(),
+            selector_repair_command(selector)
+        )));
+    }
+    let mut matches = Vec::new();
+    let mut same_host_connections = Vec::new();
+    for connection in list_agent_connections(runtime_home)? {
+        if connection.host_kind != selector.host_kind.as_str() {
+            continue;
+        }
+        if selector
+            .intent
+            .is_some_and(|intent| connection.intent != intent.as_str())
+        {
+            continue;
+        }
+        if selector
+            .host_scope
+            .is_some_and(|scope| connection.host_scope != scope.as_str())
+        {
+            continue;
+        }
+        let projects = list_connection_projects(runtime_home, &connection.connection_internal_id)?;
+        same_host_connections.push((connection.clone(), projects.clone()));
+        if projects
+            .iter()
+            .any(|project| project.project.repo_root == selector.repo_root)
+        {
+            matches.push((connection, projects));
+        }
+    }
+    match matches.len() {
+        0 if same_host_connections.is_empty() => Err(ConnectionCommandError::runtime(format!(
+            "CONNECTION_NOT_FOUND: no Agent Connection matches host {}, intent {}, and repository {}; run `{}`",
+            public_host_label(selector.host_kind),
+            selector_intent_text(selector),
+            selector.repo_root.display(),
+            selector_repair_command(selector)
+        ))),
+        0 => Err(ConnectionCommandError::runtime(format!(
+            "CONNECTION_ALLOWLIST_MISMATCH: repository {} is not in the selected Agent Connection project allowlist; run `{}`",
+            selector.repo_root.display(),
+            selector_repair_command(selector)
+        ))),
+        1 => Ok(matches.remove(0)),
+        _ => Err(ConnectionCommandError::runtime(ambiguous_selector_message(
+            selector, &matches,
+        ))),
+    }
+}
+
+pub(super) fn selected_connection_project<'a>(
+    projects: &'a [ConnectionProjectRecord],
+    repo_root: &Path,
+) -> Result<&'a ConnectionProjectRecord, ConnectionCommandError> {
+    projects
+        .iter()
+        .find(|project| project.project.repo_root == repo_root)
+        .ok_or_else(|| ConnectionCommandError::runtime("selected repository is not connected"))
+}
+
+fn selector_intent_text(selector: &ConnectionSelector) -> &'static str {
+    selector
+        .intent
+        .map(|intent| intent.as_str())
+        .unwrap_or("any")
+}
+
+fn selector_repair_command(selector: &ConnectionSelector) -> String {
+    match selector.intent {
+        Some(intent @ (ConnectionIntent::Personal | ConnectionIntent::Global)) => format!(
+            "volicord connection add {}{} --repo {}",
+            public_host_label(selector.host_kind),
+            intent_flag_suffix(intent),
+            selector.repo_root.display()
+        ),
+        Some(ConnectionIntent::Shared) | None => format!(
+            "volicord init --host {} --repo {}",
+            public_host_label(selector.host_kind),
+            selector.repo_root.display()
+        ),
+    }
+}
+
+fn ambiguous_target_message(connections: &[AgentConnectionRecord]) -> String {
+    let mut message = String::from("host target matches multiple Agent Connections; choices:\n");
+    for connection in connections {
+        message.push_str(&format!(
+            "- host: {}; intent: {}; target: {}; mode: {}\n",
+            public_host_name_text(&connection.host_kind),
+            connection.intent,
+            connection.config_target,
+            public_mode_text(&connection.mode)
+        ));
+    }
+    message
+}
+
+fn ambiguous_selector_message(
+    selector: &ConnectionSelector,
+    matches: &[(AgentConnectionRecord, Vec<ConnectionProjectRecord>)],
+) -> String {
+    let mut message = format!(
+        "connection selector is ambiguous for host {}, intent {}, repository {}; choices:\n",
+        public_host_label(selector.host_kind),
+        selector_intent_text(selector),
+        selector.repo_root.display()
+    );
+    for (connection, projects) in matches {
+        message.push_str(&format!(
+            "- target: {}; mode: {}; connected_repositories: {}\n",
+            connection.config_target,
+            public_mode_text(&connection.mode),
+            display_project_roots(projects)
+        ));
+    }
+    message.push_str("Use a more specific repository path or remove the duplicate connection.\n");
+    message
+}
