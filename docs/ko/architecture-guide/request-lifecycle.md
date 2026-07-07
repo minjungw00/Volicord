@@ -11,6 +11,11 @@
 런타임 경계, 오류 의미, Core 권한 의미는 정의하지 않습니다. 정확한 동작은
 각 절에 연결된 참조 담당 문서가 담당합니다.
 
+아키텍처 가이드 안에서 이 문서는 어댑터 또는 전송 입력에서 Core 메서드 처리,
+Store 상호작용, 응답 또는 오류 형태 구성으로 이어지는 대표 흐름을 담당합니다.
+Store 트랜잭션 순서, dry-run 저장소 경계, 아티팩트 스테이징, 커밋 실패 경계는
+[저장소와 트랜잭션](storage-and-transactions.md)에서 설명합니다.
+
 ## MCP에서 Core까지의 공통 형태
 
 이 순서도는 공개 MCP `tools/call`이 Core가 Volicord 응답을 반환하기 전 따르는 대표
@@ -19,6 +24,14 @@
 정확성은 아래에서 설명하는 `volicord-mcp`, `volicord-core`, 메서드 모듈,
 `volicord-store` 코드 영역이 담당하고, 제품 동작의 정확성은 연결된 참조 담당 문서에
 남습니다.
+
+일반 MCP 경로에서 `volicord mcp --stdio`는 먼저 Runtime Home과 Agent Connection
+프로세스 맥락을 해석하고, 시작 검사는 stdio가 시작되기 전에 필요한 Runtime Home,
+연결 상태, 모드, 프로젝트 멤버십, registry 데이터를 검증합니다. JSON-RPC가
+활성화된 뒤에는 어댑터가 `initialize`, `ping`, `tools/list`, `tools/call`
+디스패치를 담당합니다. 공개 `tools/call`은 허용된 프로젝트를 선택하고, 어댑터가
+관리하는 요청 사실을 채우고, 타입 지정 요청을 디코딩하고, Core 호출 맥락을 파생한
+뒤 해당 `CoreService` 메서드를 호출합니다.
 
 ```mermaid
 sequenceDiagram
@@ -108,6 +121,15 @@ Store 커밋 경로는
   선택적 재실행 행 삽입, 트랜잭션 커밋을 수행합니다.
 - `MutationCommitOutcome`은 committed, replayed, replay-context mismatch,
   idempotency conflict, stale-state 결과를 Core로 돌려보냅니다.
+
+응답과 오류 형태 구성도 같은 계층 분리를 따릅니다. 어댑터나 라우팅 실패는 Core
+계획 전에 반환될 수 있습니다. Core는 준비된 공개 메서드 호출에 대해 rejected,
+읽기 전용, 효과 없음, dry-run, 커밋됨, 재실행, conflict 결과를 포함하는
+`PipelineResponse`를 반환합니다. MCP는 `PipelineResponse.response_json`을
+`tools/call` content text로 래핑합니다. 정확한 공개 오류 우선순위, 응답 스키마,
+MCP 전송 래핑 규칙은 [API 오류](../reference/api/errors.md),
+[API 코어 스키마](../reference/api/schema-core.md),
+[MCP 전송](../reference/mcp-transport.md)이 담당합니다.
 
 ## 분기 차이
 

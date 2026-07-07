@@ -123,6 +123,21 @@ Read-only methods and dry runs can return without a Core mutation commit.
 Committed branches provide result fields, event data, and a list of
 `CoreStorageMutation` values.
 
+## Effect Path Boundary Summary
+
+This page owns the implementation-level Store boundary for effect paths. Exact
+method results and public storage-effect contracts remain with the method owner
+and [Storage Effects](../reference/storage-effects.md).
+
+| Effect path | Store boundary |
+|---|---|
+| Rejected before planning or commit | Returns without calling `CoreProjectStore::commit_mutation`; no Store transaction for a Core mutation starts. |
+| Read-only result | Uses Store reads and returns without a Core mutation commit. |
+| No-effect result | Returns a valid method result without calling the normal Core mutation commit path. |
+| Dry-run preview | Builds preview data without persisting generated refs, authority events, replay rows, staged handles, artifacts, or state-version changes. |
+| Normal committed Core mutation | Runs `CoreProjectStore::commit_mutation`, which applies method-provided `CoreStorageMutation` values and pending events inside one transaction. |
+| Transient artifact staging | Uses artifact staging helpers instead of the normal Core mutation commit path. It has its own storage and cleanup boundary. |
+
 ## Mutation Values
 
 `CoreStorageMutation` functions as a command-like value between method planning

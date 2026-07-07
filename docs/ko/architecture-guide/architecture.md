@@ -185,9 +185,9 @@ flowchart TD
 | 설계 주제 | 구현자용 방향 | 계약 담당 경로 |
 |---|---|---|
 | 아키텍처 개요 | 이 페이지의 운영 경로, 워크스페이스 형태, 의존 경계. 관리 CLI 실행 흐름은 [CLI 작업 흐름](cli-workflows.md)을, 정확한 소스 담당은 [소스 지도](source-map.md)를 봅니다. | [런타임 경계](../reference/runtime-boundaries.md), [범위](../reference/scope.md), [보안](../reference/security.md). |
-| Core 파이프라인 | [요청 생명주기](request-lifecycle.md), 이 페이지의 Core 파이프라인 절, Core 경로와 policy/method 모듈 담당을 위한 [소스 지도](source-map.md). | [API 메서드](../reference/api/methods.md), [API 코어 스키마](../reference/api/schema-core.md), [저장 효과](../reference/storage-effects.md). |
-| Store, 이벤트, 상태 보기 모델 | [저장소와 트랜잭션](storage-and-transactions.md), 이 페이지의 Store 경계 절, Store 경로와 모듈 담당을 위한 [소스 지도](source-map.md). | [저장소 기록](../reference/storage-records.md), [저장소 버전 관리](../reference/storage-versioning.md), [상태 보기와 템플릿](../reference/projection-and-templates.md). |
-| MCP 어댑터 | MCP 어댑터 경로는 [소스 지도](source-map.md), 가이드 수준 호출 순서는 이 페이지의 MCP/Core 실행 흐름 절. | [MCP 전송](../reference/mcp-transport.md), [Agent Connection](../reference/agent-connection.md), [API 메서드](../reference/api/methods.md). |
+| Core 파이프라인 | 대표 요청 흐름은 [요청 생명주기](request-lifecycle.md), Store 커밋 경계는 [저장소와 트랜잭션](storage-and-transactions.md), Core 경로와 policy/method 모듈 담당은 [소스 지도](source-map.md). | [API 메서드](../reference/api/methods.md), [API 코어 스키마](../reference/api/schema-core.md), [저장 효과](../reference/storage-effects.md). |
+| Store, 이벤트, 상태 보기 모델 | Store 트랜잭션, 재실행, 아티팩트 스테이징, 실패 경계는 [저장소와 트랜잭션](storage-and-transactions.md), Store 경로와 모듈 담당은 [소스 지도](source-map.md). | [저장소 기록](../reference/storage-records.md), [저장소 버전 관리](../reference/storage-versioning.md), [상태 보기와 템플릿](../reference/projection-and-templates.md). |
+| MCP 어댑터 | 어댑터에서 Core까지의 요청 흐름은 [요청 생명주기](request-lifecycle.md), MCP 어댑터 경로는 [소스 지도](source-map.md). | [MCP 전송](../reference/mcp-transport.md), [Agent Connection](../reference/agent-connection.md), [API 메서드](../reference/api/methods.md). |
 | CLI 아키텍처 | Setup, connection provisioning, status와 verification, doctor diagnostics, guard lifecycle, host integration, guard integration 경계는 [CLI 작업 흐름](cli-workflows.md)을, 정확한 소스 담당은 [소스 지도](source-map.md)를 봅니다. | [관리 CLI](../reference/admin-cli.md), [런타임 경계](../reference/runtime-boundaries.md), [Agent Connection](../reference/agent-connection.md). |
 | 쓰기 티켓 설계 | Core policy와 method 경로는 [소스 지도](source-map.md), 구현 검증은 Core와 conformance 테스트. | [Core 모델](../reference/core-model.md), [쓰기 준비 메서드](../reference/api/method-prepare-write.md), [실행 기록 메서드](../reference/api/method-record-run.md), [저장 효과](../reference/storage-effects.md). |
 | Judgment Inbox 설계 | Core judgment, CLI User Channel, MCP elicitation, local web consent 소스 담당은 [소스 지도](source-map.md). | [관리 CLI](../reference/admin-cli.md#user-channel-commands), [Agent Connection](../reference/agent-connection.md), [판단 스키마](../reference/api/schema-judgment.md#judgmentinboxitem), [사용자 판단 요청 메서드](../reference/api/method-request-user-judgment.md#volicordrequest_user_judgment), [사용자 판단 기록 메서드](../reference/api/method-record-user-judgment.md#volicordrecord_user_judgment). |
@@ -197,83 +197,24 @@ flowchart TD
 이 지도는 소스 탐색을 위한 것입니다. 소스와 참조 문서가 어긋나 보이면 코드에서 새 제품
 계약을 추론하지 말고 담당 경로 공백이나 구현 공백으로 다룹니다.
 
-## Core 파이프라인과 Store 경계
+## 요청과 저장소 경계 경로
 
-`crates/volicord-core/src/pipeline.rs`, `crates/volicord-core/src/methods/`, `crates/volicord-core/src/policy/`, `crates/volicord-store/src/core_pipeline.rs`는 서로 다른 일을 합니다.
+이 개요는 상위 구현 경계만 유지합니다. 자세한 요청 추적은
+[요청 생명주기](request-lifecycle.md)가 담당하고, Store 트랜잭션, 효과,
+아티팩트 스테이징, 실패 경계는
+[저장소와 트랜잭션](storage-and-transactions.md)이 담당합니다.
 
-| 컴포넌트 | 구현에서의 역할 |
-|---|---|
-| `crates/volicord-core/src/pipeline.rs` | 공통 사전 점검을 실행하고, `VerifiedRequestContext`를 준비하며, 준비된 요청을 읽기, 효과 없음, dry-run, 커밋된 Core 경로로 보내고, 공통 응답 기반을 만듭니다. |
-| `crates/volicord-core/src/methods/` | 하나의 메서드에 대한 계획을 만듭니다. 검증 결과, dry-run 요약, 이벤트 페이로드, 결과 필드, `CoreStorageMutation` 목록을 정합니다. |
-| `crates/volicord-core/src/policy/` | 메서드 계획과 사전 점검이 사용하는 재사용 점검을 제공합니다. 작업 범주, 재실행 맥락, Product Repository 경로 정규화, 쓰기 티켓 호환성, 증거 상태, 판단 관련성, 닫기 준비 상태 계산이 여기에 속합니다. |
-| `crates/volicord-store/src/core_pipeline.rs`와 `crates/volicord-store/src/core_pipeline/` 아래의 형제 모듈 | `core_pipeline.rs`는 Store 쪽 기록, 변이, 읽기 도우미 표면을 담당합니다. `core_pipeline/open.rs`는 프로젝트 로컬 Store 핸들을 엽니다. `core_pipeline/replay.rs`는 재실행 행 조회와 재실행 맥락 일치를 담당합니다. `core_pipeline/commit.rs`는 원자적 `CoreProjectStore::commit_mutation` 트랜잭션을 담당합니다. `core_pipeline/mutation_apply.rs`는 그 트랜잭션 안에서 선택된 저장소 변이를 적용합니다. `core_pipeline/validation.rs`는 공유 지속 값 검증과 디코딩 도우미를 담당합니다. |
-
-메서드 모듈은 하나의 공개 메서드에 대해 무엇이 일어나야 하는지 결정합니다. 공유 Core 파이프라인은 공통 순서와 효과 경로를 결정합니다. Store 커밋은 선택된 저장소 변이를 원자적으로 적용하며, Store가 메서드 정책을 결정하지 않습니다.
-
-## MCP와 Core 실행 흐름
-
-이 순서도는 MCP `tools/call`이 Core 계획과 Store 효과로 이어지는 공유 실행 순서를
-따라갑니다. 순서도 화살표는 대표 구현 호출 순서와 반환 흐름을 보여 주며, 온보딩,
-모든 메서드 분기, 정확한 공개 메서드 계약을 보여 주지 않습니다. 정확한 소스 영역은
-아래 번호 매긴 흐름에 이름 붙어 있고, 공개 동작은 집중 참조 담당 문서에 남습니다.
-
-```mermaid
-sequenceDiagram
-  participant Host as MCP 호스트
-  participant MCP as volicord mcp
-  participant Store as volicord-store
-  participant Core as volicord-core
-  participant Method as volicord-core methods
-
-  Host->>MCP: 연결 바인딩으로 프로세스 시작
-  MCP->>Store: Runtime Home, Agent Connection, 모드, Connection Projects 검증
-  Host->>MCP: tools/call(name, arguments)
-  MCP->>MCP: 프로젝트 선택, 어댑터 사실 주입, 타입 지정 요청 디코딩
-  MCP->>Core: CoreService method(request, invocation)
-  Core->>Core: crates/volicord-core/src/pipeline.rs 공통 사전 점검
-  Core->>Store: 프로젝트 열기, 상태 읽기, 작업 범주, 재실행, Task, 최신성 검증
-  Core->>Method: 메서드별 계획과 정책 점검
-  Method-->>Core: 분기, 결과 필드, 이벤트, 저장소 변이 또는 직접 응답
-  alt 읽기, 효과 없음, dry-run
-    Core-->>MCP: Core 커밋 없는 PipelineResponse
-  else Core 변이
-    Core->>Store: commit_mutation(input, storage mutations, response builder)
-    Store-->>Core: committed, replayed, stale, conflict 결과
-  else stage_artifact
-    Core->>Store: create_artifact_staging(...)
-    Store-->>Core: 스테이징된 핸들 사실
-  end
-  Core-->>MCP: PipelineResponse
-  MCP-->>Host: Volicord JSON을 MCP 응답 본문 텍스트에 담은 결과
-```
-
-구현 흐름은 아래와 같습니다.
-
-1. `volicord mcp --stdio`는 `--connection <connection_id>`와 선택적 `VOLICORD_HOME`에서 Runtime Home과 Agent Connection 프로세스 맥락 하나를 해석합니다.
-2. `McpConnectionStartupInspection`은 Runtime Home 메타데이터, Agent Connection 상태, `connection.mode`, Connection Projects 읽기 가능성, stdio 시작 전에 필요한 registry JSON을 검증합니다. 모든 호출에 쓸 프로젝트 하나를 시작 시점에 선택하지 않습니다.
-3. stdio 루프는 줄 단위 JSON-RPC를 받아 `initialize`, `ping`, `tools/list`, `tools/call`을 디스패치합니다.
-4. `tools/list`는 Agent Connection 모드에 따라 도구를 노출합니다. `workflow` 모드는 공개 Volicord 메서드 도구 10개와 어댑터 소유 `volicord.list_projects` 유틸리티를 노출하고, `read_only` 모드는 공개 메서드 도구 2개와 같은 유틸리티를 노출합니다. 공개 User Channel 메서드인 `volicord.record_user_judgment`는 노출하지 않습니다. 공개 메서드에 대한 `tools/call`에서는 어댑터가 MCP에 보이는 인자를 디코딩하고, `project_selector` 또는 연결 맥락에서 허용된 프로젝트를 결정적으로 선택하며, Agent Connection이 그 프로젝트를 허용하는지 검증하고, Core 요청 래퍼를 생성하며, 어댑터가 관리하는 `operation_category`와 `actor_source` 사실을 주입한 뒤 요청을 `volicord-types`의 해당 타입 지정 요청으로 디코딩합니다.
-5. `tools/call`은 선택된 프로젝트, `connection_id`, `connection.mode`, 메서드에서 파생한 `operation_category`, `actor_source`에서 현재 연결 맥락을 만든 뒤 Core로 디스패치합니다.
-6. `McpAdapter::call_tool`은 해당 `CoreService` 메서드로 디스패치합니다.
-7. 각 `CoreService` 메서드는 `MethodPolicy`를 고르고, 메서드별 계획 전에 공통 사전 점검을 호출합니다.
-8. 공통 사전 점검은 요청 래퍼 형태를 검증하고, 어댑터 바인딩 불일치를 거부하고, 커밋 효과 요청 래퍼 요구사항을 검증하고, 정규 요청 해시를 계산하고, 프로젝트 Store를 열고, `project_state`를 읽고, 현재 연결 맥락을 검증하고, 커밋 분기의 idempotency 재실행을 처리하고, 메서드 정책에 따라 Task를 해석하고, 적용되는 경우 `state_version` 최신성을 점검하고, 메서드에서 파생한 `operation_category`를 점검하고, 검증된 요청 맥락을 준비합니다.
-9. 메서드 모듈은 메서드별 검증, 정책 평가, 계획 또는 결과 구성을 수행합니다.
-10. 선택된 분기는 읽기 전용 결과, 지속 효과 없는 결과, dry-run 미리보기, Core 변이 커밋, 일시적 아티팩트 스테이징 결과 중 하나를 반환합니다.
-11. Core는 `PipelineResponse`를 반환하고, MCP는 정확한 Volicord 응답 JSON을 MCP `tools/call`의 `content` 텍스트로 래핑합니다.
-
-이 흐름은 구현 지도입니다. 정확한 공개 메서드 계약, 오류 우선순위, 응답 스키마, 저장 효과는 집중 참조 담당 문서에 남습니다.
-
-## 효과와 커밋 경계
-
-| 효과 경로 | 구현 위치 | 가이드 수준 저장 결과 |
+| 경계 | 상위 역할 | 자세한 경로 |
 |---|---|---|
-| 읽기 전용 결과 | `crates/volicord-core/src/pipeline.rs`를 통한 `OwnerPipelineBranch::ReadOnly` | 현재 Store 읽기에서 결과를 만듭니다. Core 변이 커밋은 없습니다. |
-| 지속 효과 없는 결과 | `crates/volicord-core/src/pipeline.rs`를 통한 `OwnerPipelineBranch::NoEffectResult` | 차단된 닫기 결과처럼 Core 상태 변이 없이 메서드 결과를 반환합니다. |
-| Dry-run 결과 | `crates/volicord-core/src/pipeline.rs`를 통한 `OwnerPipelineBranch::DryRunPreview` | 지속 저장 효과 없이 미리보기 데이터를 반환합니다. |
-| Core 변이 커밋 | `crates/volicord-core/src/pipeline.rs`와 `CoreProjectStore::commit_mutation`을 통한 `OwnerPipelineBranch::CommitMutation` | 하나의 Store 트랜잭션 안에서 메서드가 제공한 `CoreStorageMutation` 값을 적용하고, 권한 이벤트를 추가하고, idempotency가 있는 경우 재실행 응답을 저장하며, 적용되는 경우 프로젝트 상태를 전진시킵니다. |
-| 일시적 아티팩트 스테이징 | `crates/volicord-core/src/methods/stage_artifact.rs`와 `crates/volicord-store/src/artifacts.rs`의 `CoreProjectStore::create_artifact_staging` | 일시적 스테이징 핸들 행과 안전한 스테이징 바이트를 만듭니다. 일반 Core 변이 커밋 경로를 따르지 않고, `project_state.state_version`을 증가시키지 않으며, `authority_events`를 추가하지 않고, 재실행 기록 행을 만들지 않습니다. |
+| MCP 어댑터 | Core 호출 전후의 stdio 전송 처리, 시작/세션 검증, 프로젝트 라우팅, 어댑터 관리 요청 사실, 타입 지정 요청 디코딩, MCP 응답 래핑을 담당합니다. | [요청 생명주기](request-lifecycle.md), [소스 지도](source-map.md), [MCP 전송](../reference/mcp-transport.md), [Agent Connection](../reference/agent-connection.md). |
+| Core 파이프라인 | 공통 사전 점검, 메서드 정책 선택, 준비된 요청 맥락, 분기 라우팅, Store 조율을 담당합니다. Core는 CLI와 MCP 어댑터 크레이트에서 독립적입니다. | [요청 생명주기](request-lifecycle.md), [구현 설계 패턴](design-patterns.md), [API 코어 스키마](../reference/api/schema-core.md). |
+| 메서드 모듈 | 메서드별 계획, 검증 결과, dry-run 요약, 결과 필드, 이벤트, `CoreStorageMutation` 값을 담당합니다. | [요청 생명주기](request-lifecycle.md), [소스 지도](source-map.md), [API 메서드](../reference/api/methods.md), 연결된 메서드 담당 문서. |
+| Store와 아티팩트 | 프로젝트 Store 접근, 읽기 도우미, 정상 커밋 트랜잭션, 재실행 행, 저장소 변이 적용, 아티팩트 스테이징, 영구 아티팩트 본문 처리를 담당합니다. | [저장소와 트랜잭션](storage-and-transactions.md), [저장소](../reference/storage.md), [저장 효과](../reference/storage-effects.md), [아티팩트 저장소](../reference/storage-artifacts.md). |
 
-`CoreProjectStore::commit_mutation`은 일반 커밋된 Core 변이의 Store 트랜잭션 경계입니다. 자세한 커밋 순서, 재실행 처리, 상태 버전 관계, 아티팩트 스테이징 구분, 실패 경계는 [저장소와 트랜잭션](storage-and-transactions.md)에서 설명합니다. 테이블 레이아웃, DDL, 저장소 기록 세부사항, 메서드별 지속 효과, 아티팩트 생명주기 규칙은 저장소 참조 담당 문서가 담당합니다.
+메서드 모듈은 하나의 공개 메서드에 대해 무엇이 일어나야 하는지 결정합니다. 공유
+Core 파이프라인은 공통 요청 순서와 효과 경로 라우팅을 결정합니다. Store는 선택된
+저장소 변이와 아티팩트 작업을 자체 저장소 경계 안에서 적용합니다. 정확한 공개
+동작, 응답 스키마, 저장 효과, 저장소 기록은 집중 참조 담당 문서에 남습니다.
 
 <a id="administrative-agent-setup-flow"></a>
 

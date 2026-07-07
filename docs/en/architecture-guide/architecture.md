@@ -189,9 +189,9 @@ that keeps public behavior precise.
 | Design topic | Implementer orientation | Contract owner route |
 |---|---|---|
 | Architecture overview | This page's operational paths, workspace shape, and dependency boundaries; [CLI Workflows](cli-workflows.md) for administrative CLI execution flows; [Source Map](source-map.md) for exact source ownership. | [Runtime Boundaries](../reference/runtime-boundaries.md), [Scope](../reference/scope.md), and [Security](../reference/security.md). |
-| Core pipeline | [Request Lifecycle](request-lifecycle.md), this page's Core pipeline section, and [Source Map](source-map.md) for Core paths and policy/method module ownership. | [API Methods](../reference/api/methods.md), [API Schema Core](../reference/api/schema-core.md), and [Storage Effects](../reference/storage-effects.md). |
-| Store, events, and projections | [Storage and Transactions](storage-and-transactions.md), this page's Store boundary section, and [Source Map](source-map.md) for Store paths and module ownership. | [Storage Records](../reference/storage-records.md), [Storage Versioning](../reference/storage-versioning.md), and [Projection and Templates](../reference/projection-and-templates.md). |
-| MCP adapter | [Source Map](source-map.md) for MCP adapter paths and this page's MCP/Core execution-flow section for guide-level call order. | [MCP Transport](../reference/mcp-transport.md), [Agent Connection](../reference/agent-connection.md), and [API Methods](../reference/api/methods.md). |
+| Core pipeline | [Request Lifecycle](request-lifecycle.md) for representative request flow, [Storage and Transactions](storage-and-transactions.md) for Store commit boundaries, and [Source Map](source-map.md) for Core paths and policy/method module ownership. | [API Methods](../reference/api/methods.md), [API Schema Core](../reference/api/schema-core.md), and [Storage Effects](../reference/storage-effects.md). |
+| Store, events, and projections | [Storage and Transactions](storage-and-transactions.md) for Store transactions, replay, artifact staging, and failure boundaries, and [Source Map](source-map.md) for Store paths and module ownership. | [Storage Records](../reference/storage-records.md), [Storage Versioning](../reference/storage-versioning.md), and [Projection and Templates](../reference/projection-and-templates.md). |
+| MCP adapter | [Request Lifecycle](request-lifecycle.md) for adapter-to-Core request flow and [Source Map](source-map.md) for MCP adapter paths. | [MCP Transport](../reference/mcp-transport.md), [Agent Connection](../reference/agent-connection.md), and [API Methods](../reference/api/methods.md). |
 | CLI architecture | [CLI Workflows](cli-workflows.md) for setup, connection provisioning, status and verification, doctor diagnostics, guard lifecycle, host integration, and guard integration boundaries; [Source Map](source-map.md) for exact source ownership. | [Administrative CLI](../reference/admin-cli.md), [Runtime Boundaries](../reference/runtime-boundaries.md), and [Agent Connection](../reference/agent-connection.md). |
 | Write ticket design | [Source Map](source-map.md) for Core policy and method paths, plus Core and conformance tests for implementation verification. | [Core Model](../reference/core-model.md), [Prepare-write Method](../reference/api/method-prepare-write.md), [Record-run Method](../reference/api/method-record-run.md), and [Storage Effects](../reference/storage-effects.md). |
 | Judgment Inbox design | [Source Map](source-map.md) for Core judgment, CLI User Channel, MCP elicitation, and local web consent source ownership. | [Administrative CLI](../reference/admin-cli.md#user-channel-commands), [Agent Connection](../reference/agent-connection.md), [Judgment Schemas](../reference/api/schema-judgment.md#judgmentinboxitem), [Request-user-judgment Method](../reference/api/method-request-user-judgment.md#volicordrequest_user_judgment), and [Record-user-judgment Method](../reference/api/method-record-user-judgment.md#volicordrecord_user_judgment). |
@@ -202,85 +202,25 @@ This map is for source navigation. If source and Reference disagree, treat that
 as an owner-routing or implementation gap rather than inferring a new product
 contract from the code.
 
-## Core pipeline and Store boundary
+## Request And Storage Boundary Routes
 
-`crates/volicord-core/src/pipeline.rs`, `crates/volicord-core/src/methods/`, `crates/volicord-core/src/policy/`, and `crates/volicord-store/src/core_pipeline.rs` have separate jobs:
+This overview keeps only the top-level implementation boundaries. Detailed
+request traces belong in [Request Lifecycle](request-lifecycle.md); Store
+transaction, effect, artifact staging, and failure boundaries belong in
+[Storage and Transactions](storage-and-transactions.md).
 
-| Component | Job in the implementation |
-|---|---|
-| `crates/volicord-core/src/pipeline.rs` | Runs common preflight, prepares `VerifiedRequestContext`, routes prepared requests to read, no-effect, dry-run, or committed Core paths, and builds common response bases. |
-| `crates/volicord-core/src/methods/` | Decodes already typed requests into method-specific plans: validation outcomes, dry-run summaries, event payloads, result fields, and `CoreStorageMutation` lists. |
-| `crates/volicord-core/src/policy/` | Supplies reusable checks used by method planners and preflight: operation category, replay context, Product Repository path normalization, write-ticket compatibility, evidence status, judgment relevance, and close-readiness calculations. |
-| `crates/volicord-store/src/core_pipeline.rs` and sibling modules under `crates/volicord-store/src/core_pipeline/` | `core_pipeline.rs` owns the Store-facing record, mutation, and read-helper surface. `core_pipeline/open.rs` opens project-local Store handles. `core_pipeline/replay.rs` owns replay-row lookup and replay context matching. `core_pipeline/commit.rs` owns the atomic `CoreProjectStore::commit_mutation` transaction. `core_pipeline/mutation_apply.rs` applies selected storage mutations inside that transaction. `core_pipeline/validation.rs` owns shared persisted-value validation and decoding helpers. |
-
-Method modules decide what should happen for one public method. The shared Core pipeline decides the common ordering and effect path. Store commits apply the selected storage mutations atomically; Store does not decide method policy.
-
-## MCP and Core execution flow
-
-This sequence follows the shared execution order that connects an MCP
-`tools/call` to Core planning and Store effects. Sequence arrows show
-representative implementation call order and return flow; they do not show
-onboarding, every method branch, or exact public method contracts. Exact source
-areas are named in the numbered flow below, and public behavior remains with
-the focused Reference owners.
-
-```mermaid
-sequenceDiagram
-  participant Host as MCP host
-  participant MCP as volicord mcp
-  participant Store as volicord-store
-  participant Core as volicord-core
-  participant Method as volicord-core methods
-
-  Host->>MCP: start process with connection binding
-  MCP->>Store: validate Runtime Home, Agent Connection, mode, Connection Projects
-  Host->>MCP: tools/call(name, arguments)
-  MCP->>MCP: select project, inject adapter facts, decode typed request
-  MCP->>Core: CoreService method(request, invocation)
-  Core->>Core: common preflight in crates/volicord-core/src/pipeline.rs
-  Core->>Store: open project, read state, validate operation category, replay, task, freshness
-  Core->>Method: method-specific planning and policy checks
-  Method-->>Core: branch, result fields, events, storage mutations, or direct response
-  alt read, no-effect, or dry-run
-    Core-->>MCP: PipelineResponse without Core commit
-  else Core mutation
-    Core->>Store: commit_mutation(input, storage mutations, response builder)
-    Store-->>Core: committed, replayed, stale, or conflict outcome
-  else stage_artifact
-    Core->>Store: create_artifact_staging(...)
-    Store-->>Core: staged handle facts
-  end
-  Core-->>MCP: PipelineResponse
-  MCP-->>Host: MCP result with Volicord JSON in content text
-```
-
-Implementation flow:
-
-1. `volicord mcp --stdio` resolves Runtime Home and one Agent Connection process context from `--connection <connection_id>` and optional `VOLICORD_HOME`.
-2. `McpConnectionStartupInspection` validates Runtime Home metadata, Agent Connection state, `connection.mode`, Connection Projects readability, and registry JSON needed before stdio begins. It does not select one project for all calls.
-3. The stdio loop accepts line-delimited JSON-RPC and dispatches `initialize`, `ping`, `tools/list`, and `tools/call`.
-4. `tools/list` exposes tools by Agent Connection mode: `workflow` mode exposes ten public Volicord method tools and the adapter-owned `volicord.list_projects` utility, while `read_only` mode exposes two public method tools and the same utility. It does not expose the public User Channel method `volicord.record_user_judgment`. For `tools/call` of a public method, the adapter decodes MCP-visible arguments, deterministically selects an allowed project from `project_selector` or connection context, validates that the Agent Connection allows that project, generates the Core request envelope, injects adapter-managed `operation_category` and `actor_source` facts, then decodes the request into the matching typed request from `volicord-types`.
-5. `tools/call` derives the current connection context from the selected project, `connection_id`, `connection.mode`, method-derived `operation_category`, and `actor_source` before dispatching to Core.
-6. `McpAdapter::call_tool` dispatches to the matching `CoreService` method.
-7. Each `CoreService` method selects a `MethodPolicy` and calls common preflight before method-specific planning.
-8. Common preflight validates request-envelope shape, rejects adapter binding mismatches, validates committed-effect envelope requirements, computes the canonical request hash, opens the project Store, reads `project_state`, verifies the current connection context, handles idempotency replay for committed branches, resolves the Task according to the method policy, checks `state_version` freshness where applicable, checks the method-derived `operation_category`, and prepares a validated request context.
-9. The method module performs method-specific validation, policy evaluation, and plan or result construction.
-10. The selected branch returns a read-only result, no-persistence result, dry-run preview, Core mutation commit, or transient artifact staging result.
-11. Core returns a `PipelineResponse`; MCP wraps the exact Volicord response JSON as MCP `tools/call` content text.
-
-This flow is an implementation map. Exact public method contracts, error precedence, response schemas, and storage effects remain with the focused Reference owners.
-
-## Effect and commit boundaries
-
-| Effect path | Implementation location | Storage consequence at guide level |
+| Boundary | High-level role | Detail route |
 |---|---|---|
-| Read-only result | `OwnerPipelineBranch::ReadOnly` through `crates/volicord-core/src/pipeline.rs` | Builds a result from current Store reads; no Core mutation commit. |
-| Result with no persistence | `OwnerPipelineBranch::NoEffectResult` through `crates/volicord-core/src/pipeline.rs` | Returns a method result without a Core state mutation, such as a blocked close result. |
-| Dry-run result | `OwnerPipelineBranch::DryRunPreview` through `crates/volicord-core/src/pipeline.rs` | Returns preview data with no persistent storage effect. |
-| Core mutation commit | `OwnerPipelineBranch::CommitMutation` through `crates/volicord-core/src/pipeline.rs` and `CoreProjectStore::commit_mutation` | Applies method-provided `CoreStorageMutation` values inside one Store transaction, appends authority events, stores replay response when idempotent, and advances project state where applicable. |
-| Transient artifact staging | `crates/volicord-core/src/methods/stage_artifact.rs` with `CoreProjectStore::create_artifact_staging` in `crates/volicord-store/src/artifacts.rs` | Creates a transient staged-handle row and safe staged bytes. It does not follow the normal Core mutation commit path, does not increment `project_state.state_version`, does not append `authority_events`, and does not create a replay row. |
+| MCP adapter | Owns stdio transport handling, startup/session validation, project routing, adapter-managed request facts, typed request decoding, and MCP response wrapping before or after Core invocation. | [Request Lifecycle](request-lifecycle.md), [Source Map](source-map.md), [MCP Transport](../reference/mcp-transport.md), and [Agent Connection](../reference/agent-connection.md). |
+| Core pipeline | Owns common preflight, method-policy selection, prepared request context, branch routing, and Store coordination. Core stays independent of CLI and MCP adapter crates. | [Request Lifecycle](request-lifecycle.md), [Implementation Design Patterns](design-patterns.md), and [API Schema Core](../reference/api/schema-core.md). |
+| Method modules | Own method-specific planning, validation outcomes, dry-run summaries, result fields, events, and `CoreStorageMutation` values. | [Request Lifecycle](request-lifecycle.md), [Source Map](source-map.md), [API Methods](../reference/api/methods.md), and the linked method owner. |
+| Store and artifacts | Own project Store access, read helpers, normal commit transactions, replay rows, storage mutation application, artifact staging, and persistent artifact body handling. | [Storage and Transactions](storage-and-transactions.md), [Storage](../reference/storage.md), [Storage Effects](../reference/storage-effects.md), and [Artifact Storage](../reference/storage-artifacts.md). |
 
-`CoreProjectStore::commit_mutation` is the Store transaction boundary for normal committed Core mutations. The detailed commit sequence, replay handling, state-version relationship, artifact staging distinction, and failure boundaries are explained in [Storage and Transactions](storage-and-transactions.md). Table layout, DDL, storage record detail, method-specific persistence effects, and artifact lifecycle rules belong to the storage Reference owners.
+Method modules decide what should happen for one public method. The shared Core
+pipeline decides common request ordering and effect-path routing. Store applies
+the selected storage mutations and artifact operations through its own storage
+boundaries. Exact public behavior, response schemas, storage effects, and
+storage records remain with the focused Reference owners.
 
 <a id="administrative-agent-setup-flow"></a>
 

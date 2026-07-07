@@ -13,6 +13,12 @@ effects, security guarantees, runtime boundaries, error semantics, or Core
 authority semantics. Exact behavior belongs to the Reference owners linked in
 each section.
 
+Within the Architecture Guide, this page owns the representative flow from
+adapter or transport input through Core method handling, Store interaction, and
+response or error shaping. Store transaction ordering, dry-run storage
+boundaries, artifact staging, and commit failure boundaries are explained in
+[Storage and Transactions](storage-and-transactions.md).
+
 ## Shared MCP to Core shape
 
 This sequence follows the representative call order for a public MCP
@@ -22,6 +28,15 @@ onboarding steps, exact public method contracts, or storage-effect definitions.
 Implementation exactness belongs to the named `volicord-mcp`, `volicord-core`,
 method-module, and `volicord-store` code areas described below; product
 behavior exactness remains with the linked Reference owners.
+
+For the normal MCP path, `volicord mcp --stdio` first resolves Runtime Home and
+Agent Connection process context, then startup inspection validates the
+Runtime Home, connection state, mode, project membership, and registry data
+needed before stdio begins. Once JSON-RPC is active, the adapter owns
+`initialize`, `ping`, `tools/list`, and `tools/call` dispatch. A public
+`tools/call` selects a permitted project, fills adapter-managed request facts,
+decodes the typed request, derives Core invocation context, and then calls the
+matching `CoreService` method.
 
 ```mermaid
 sequenceDiagram
@@ -110,6 +125,16 @@ and
   insertion, and transaction commit.
 - `MutationCommitOutcome` routes committed, replayed, replay-context mismatch,
   idempotency conflict, and stale-state results back to Core.
+
+Response and error shaping follows the same layer split. Adapter or routing
+failures can return before Core planning. Core returns `PipelineResponse` for
+prepared public method calls, including rejected, read-only, no-effect,
+dry-run, committed, replay, and conflict outcomes. MCP wraps
+`PipelineResponse.response_json` as `tools/call` content text. Exact public
+error precedence, response schemas, and MCP transport wrapping rules remain
+with [API Errors](../reference/api/errors.md),
+[API Schema Core](../reference/api/schema-core.md), and
+[MCP Transport](../reference/mcp-transport.md).
 
 ## Branch differences
 
