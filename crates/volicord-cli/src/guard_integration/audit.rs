@@ -19,6 +19,8 @@ use crate::host_integration::{
     HostIntegrationFileKind, HostKind, HostLifecyclePhase, REQUIRED_GUARD_PHASES,
 };
 
+use super::policy::required_guard_phase_names;
+
 pub(crate) const HOOK_WRAPPER_MARKER: &str = "VOLICORD_MANAGED_HOOK_WRAPPER v1";
 pub(crate) const CODEX_DISPATCH_WRAPPER: &str = ".codex/hooks/volicord-dispatch.sh";
 
@@ -1700,13 +1702,6 @@ pub(crate) fn hook_wrapper_comment_value<'a>(content: &'a str, key: &str) -> Opt
         .find_map(|line| line.strip_prefix(&prefix))
         .map(str::trim)
         .filter(|value| !value.is_empty())
-}
-
-pub(crate) fn required_guard_phase_names() -> Vec<&'static str> {
-    REQUIRED_GUARD_PHASES
-        .iter()
-        .map(|phase| phase.capability_name())
-        .collect()
 }
 
 pub(crate) fn policy_hash(policy: &Value) -> Result<String, serde_json::Error> {

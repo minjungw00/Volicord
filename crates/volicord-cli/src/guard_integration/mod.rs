@@ -1,28 +1,38 @@
 use std::{error::Error, fmt};
 
+pub(crate) mod apply;
 pub(crate) mod audit;
+pub(crate) mod capability;
 pub(crate) mod files;
 pub(crate) mod hooks;
 pub(crate) mod hosts;
 pub(crate) mod plan;
+pub(crate) mod policy;
 
+pub(crate) use apply::apply_guard_integration;
+#[cfg(test)]
+pub(crate) use apply::set_script_executable;
 #[cfg(test)]
 pub(crate) use audit::CODEX_DISPATCH_WRAPPER;
 pub(crate) use audit::{HookWrapperResolutionStatus, ManagedJsonProjection, HOOK_WRAPPER_MARKER};
-pub(crate) use files::{
-    managed_block_conflict, managed_json_projection_merge, plan_managed_exact_json_file,
-    plan_managed_script_file, plan_policy_file, FilePlanStatus, GeneratedFilePlan,
-    GeneratedFileWriteKind, VOLICORD_POLICY_FILE,
-};
 #[cfg(test)]
-pub(crate) use files::{AGENTS_FILE, GUIDANCE_END_MARKER, GUIDANCE_START_MARKER};
+pub(crate) use capability::host_hook_capability_json;
+pub(crate) use capability::{
+    generated_files_json, hook_root_resolution_json, host_hook_commands_json,
+    initial_guard_installation_status, record_guard_installation,
+};
+pub(crate) use files::{FilePlanStatus, GeneratedFilePlan};
+#[cfg(test)]
+pub(crate) use files::{
+    AGENTS_FILE, GUIDANCE_END_MARKER, GUIDANCE_START_MARKER, VOLICORD_POLICY_FILE,
+};
 #[cfg(test)]
 pub(crate) use hooks::shell_word;
 pub(crate) use hooks::{
-    guard_has_prompt_capture_commands, lifecycle_phase_names,
     observe_hook_root_unsupported_message, HostHookCommand, HostHookCommandShape,
 };
 pub(crate) use plan::{plan_guard_integration, GuardIntegrationPlan};
+pub(crate) use policy::{guard_has_prompt_capture_commands, lifecycle_phase_names};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct GuardIntegrationError {

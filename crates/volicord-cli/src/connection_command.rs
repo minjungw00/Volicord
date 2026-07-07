@@ -2,12 +2,12 @@ use std::{
     collections::BTreeMap,
     fmt, fs,
     path::{Path, PathBuf},
-    time::SystemTime,
 };
 
-use chrono::{DateTime, SecondsFormat, Utc};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+#[cfg(test)]
+use volicord_store::guards::{upsert_guard_installation, GuardInstallationUpsert};
 use volicord_store::{
     agent_connections::{
         add_connection_project, ensure_agent_connection, list_agent_connections,
@@ -24,35 +24,29 @@ use volicord_store::{
         project_record_by_repo_root, write_installation_profile, InstallationProfileRecord,
         InstallationProfileRegistration, RepoProjectRegistration, ACTIVE_PROJECT_STATUS,
     },
-    guards::{
-        guard_health_record, list_guard_installations, upsert_guard_installation,
-        GuardInstallationRecord, GuardInstallationUpsert,
-    },
+    guards::{guard_health_record, list_guard_installations, GuardInstallationRecord},
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
     StoreError,
 };
 use volicord_types::{GuardInstallationStatus, IntegrationProfile, PromptCaptureStatus};
 
-#[cfg(test)]
-use crate::guard_integration::audit::guard_file_findings;
-#[cfg(test)]
-use crate::guard_integration::audit::script_is_executable;
 use crate::guard_integration::audit::{
     all_recorded_values_true, combine_optional_file_states, file_state_rank,
-    guard_file_findings_for_installation, hook_wrapper_comment_value, hook_wrapper_exec_command,
-    required_guard_phase_names, sha256_text, GuardFileFindings,
+    guard_file_findings_for_installation, GuardFileFindings,
 };
+#[cfg(test)]
+use crate::guard_integration::audit::{guard_file_findings, script_is_executable, sha256_text};
 use crate::guard_integration::{
-    guard_has_prompt_capture_commands, lifecycle_phase_names, managed_block_conflict,
-    managed_json_projection_merge, observe_hook_root_unsupported_message, plan_guard_integration,
-    plan_managed_exact_json_file, plan_managed_script_file, plan_policy_file, FilePlanStatus,
-    GeneratedFilePlan, GeneratedFileWriteKind, GuardIntegrationError, GuardIntegrationPlan,
-    HookWrapperResolutionStatus, HostHookCommand, HostHookCommandShape, ManagedJsonProjection,
-    HOOK_WRAPPER_MARKER, VOLICORD_POLICY_FILE,
+    apply_guard_integration, guard_has_prompt_capture_commands, initial_guard_installation_status,
+    lifecycle_phase_names, observe_hook_root_unsupported_message, plan_guard_integration,
+    record_guard_installation, FilePlanStatus, GeneratedFilePlan, GuardIntegrationError,
+    GuardIntegrationPlan, HookWrapperResolutionStatus,
 };
 #[cfg(test)]
 use crate::guard_integration::{
-    shell_word, AGENTS_FILE, CODEX_DISPATCH_WRAPPER, GUIDANCE_END_MARKER, GUIDANCE_START_MARKER,
+    generated_files_json, host_hook_capability_json, set_script_executable, shell_word,
+    AGENTS_FILE, CODEX_DISPATCH_WRAPPER, GUIDANCE_END_MARKER, GUIDANCE_START_MARKER,
+    HOOK_WRAPPER_MARKER, VOLICORD_POLICY_FILE,
 };
 #[cfg(test)]
 use crate::host_integration::REQUIRED_GUARD_PHASES;
@@ -72,7 +66,6 @@ use crate::host_integration::{
 };
 use crate::{
     disclosure::detective_observation_disclosure_json,
-    managed_block::{self, ManagedBlockWrite},
     registration::ADMIN_METADATA_JSON,
     setup_command::{is_executable_file, path_text as setup_path_text, runtime_home_id_for_path},
 };
@@ -98,11 +91,9 @@ use args::{
 };
 use mcp_process::mcp_launch_from_host_plan;
 use output::{
-    detailed_verification_report_json, generated_files_json, hook_path_safety_json,
-    hook_root_resolution_json, host_hook_commands_json, render_connection_output,
-    render_connection_plan_output, render_connection_remove_dry_run_output,
-    render_connections_output, render_init_output, ConnectionOutput, ConnectionPlanOutput,
-    ConnectionRemovePlan, InitOutput,
+    detailed_verification_report_json, render_connection_output, render_connection_plan_output,
+    render_connection_remove_dry_run_output, render_connections_output, render_init_output,
+    ConnectionOutput, ConnectionPlanOutput, ConnectionRemovePlan, InitOutput,
 };
 use selection::{
     connection_for_host_target, connection_selector, host_scope_for_intent,
@@ -1123,340 +1114,6 @@ fn stored_or_default_user_actions(
     }
 }
 
-fn apply_guard_integration(
-    mut plan: GuardIntegrationPlan,
-) -> Result<GuardIntegrationPlan, ConnectionCommandError> {
-    for file in &mut plan.generated_files {
-        file.status = match file.write_kind {
-            GeneratedFileWriteKind::Block {
-                start_marker,
-                end_marker,
-                require_existing_marker,
-            } => write_managed_markdown_file(
-                &file.path,
-                &file.content,
-                start_marker,
-                end_marker,
-                require_existing_marker,
-            )?,
-            GeneratedFileWriteKind::Json => {
-                write_managed_json_file(&file.path, &file.policy_value()?)?
-            }
-            GeneratedFileWriteKind::ExactJson => {
-                write_managed_exact_json_file(&file.path, &file.policy_value()?, file.kind)?
-            }
-            GeneratedFileWriteKind::JsonProjection { projection } => {
-                write_managed_json_projection_file(&file.path, &file.policy_value()?, projection)?
-            }
-            GeneratedFileWriteKind::Script => {
-                write_managed_script_file(&file.path, &file.content, file.kind)?
-            }
-        };
-    }
-    Ok(plan)
-}
-
-fn write_managed_markdown_file(
-    path: &Path,
-    block: &str,
-    start_marker: &'static str,
-    end_marker: &'static str,
-    require_existing_marker: bool,
-) -> Result<FilePlanStatus, ConnectionCommandError> {
-    if require_existing_marker && path.exists() {
-        let existing = fs::read_to_string(path).map_err(|error| {
-            ConnectionCommandError::runtime(format!("failed to read {}: {error}", path.display()))
-        })?;
-        if !existing.contains(start_marker) {
-            return Err(ConnectionCommandError::runtime(format!(
-                "{} already exists without a Volicord-managed block",
-                path.display()
-            )));
-        }
-    }
-    match managed_block::write_managed_block_with_markers(path, block, start_marker, end_marker)
-        .map_err(|error| {
-            ConnectionCommandError::runtime(format!("failed to write {}: {error}", path.display()))
-        })? {
-        Ok(ManagedBlockWrite::Created(_)) => Ok(FilePlanStatus::Created),
-        Ok(ManagedBlockWrite::Updated(_)) => Ok(FilePlanStatus::Updated),
-        Ok(ManagedBlockWrite::Unchanged(_)) => Ok(FilePlanStatus::Unchanged),
-        Err(error) => Err(managed_block_conflict(error).into()),
-    }
-}
-
-fn write_managed_json_file(
-    path: &Path,
-    value: &Value,
-) -> Result<FilePlanStatus, ConnectionCommandError> {
-    let mut content = serde_json::to_string_pretty(value)
-        .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
-    content.push('\n');
-    let planned = plan_policy_file(path, value)?;
-    if planned.status == FilePlanStatus::Unchanged {
-        return Ok(FilePlanStatus::Unchanged);
-    }
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|error| {
-            ConnectionCommandError::runtime(format!(
-                "failed to create {}: {error}",
-                parent.display()
-            ))
-        })?;
-    }
-    fs::write(path, content).map_err(|error| {
-        ConnectionCommandError::runtime(format!("failed to write {}: {error}", path.display()))
-    })?;
-    Ok(match planned.status {
-        FilePlanStatus::PlannedCreate => FilePlanStatus::Created,
-        FilePlanStatus::PlannedUpdate => FilePlanStatus::Updated,
-        other => other,
-    })
-}
-
-fn write_managed_exact_json_file(
-    path: &Path,
-    value: &Value,
-    kind: HostIntegrationFileKind,
-) -> Result<FilePlanStatus, ConnectionCommandError> {
-    let mut content = serde_json::to_string_pretty(value)
-        .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
-    content.push('\n');
-    let planned = plan_managed_exact_json_file(kind, path, value)?;
-    if planned.status == FilePlanStatus::Unchanged {
-        return Ok(FilePlanStatus::Unchanged);
-    }
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|error| {
-            ConnectionCommandError::runtime(format!(
-                "failed to create {}: {error}",
-                parent.display()
-            ))
-        })?;
-    }
-    fs::write(path, content).map_err(|error| {
-        ConnectionCommandError::runtime(format!("failed to write {}: {error}", path.display()))
-    })?;
-    Ok(match planned.status {
-        FilePlanStatus::PlannedCreate => FilePlanStatus::Created,
-        FilePlanStatus::PlannedUpdate => FilePlanStatus::Updated,
-        other => other,
-    })
-}
-
-fn write_managed_json_projection_file(
-    path: &Path,
-    value: &Value,
-    projection: ManagedJsonProjection,
-) -> Result<FilePlanStatus, ConnectionCommandError> {
-    let mut existed = true;
-    let existing = match fs::read_to_string(path) {
-        Ok(text) => {
-            let value = serde_json::from_str::<Value>(&text).map_err(|error| {
-                ConnectionCommandError::runtime(format!(
-                    "existing JSON configuration is not valid JSON: {} ({error})",
-                    path.display()
-                ))
-            })?;
-            Some(value)
-        }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            existed = false;
-            None
-        }
-        Err(error) => {
-            return Err(ConnectionCommandError::runtime(format!(
-                "failed to read {}: {error}",
-                path.display()
-            )));
-        }
-    };
-    let current = existing.unwrap_or_else(|| Value::Object(serde_json::Map::new()));
-    let merged = managed_json_projection_merge(&current, value, projection)?;
-    if merged == current {
-        return Ok(FilePlanStatus::Unchanged);
-    }
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|error| {
-            ConnectionCommandError::runtime(format!(
-                "failed to create {}: {error}",
-                parent.display()
-            ))
-        })?;
-    }
-    let mut text = serde_json::to_string_pretty(&merged)
-        .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
-    text.push('\n');
-    fs::write(path, text).map_err(|error| {
-        ConnectionCommandError::runtime(format!("failed to write {}: {error}", path.display()))
-    })?;
-    Ok(if existed {
-        FilePlanStatus::Updated
-    } else {
-        FilePlanStatus::Created
-    })
-}
-
-fn write_managed_script_file(
-    path: &Path,
-    content: &str,
-    kind: HostIntegrationFileKind,
-) -> Result<FilePlanStatus, ConnectionCommandError> {
-    let planned = plan_managed_script_file(path, content, kind)?;
-    if planned.status != FilePlanStatus::Unchanged {
-        let existing_matches = fs::read_to_string(path)
-            .map(|existing| existing == content)
-            .unwrap_or(false);
-        if !existing_matches {
-            if let Some(parent) = path.parent() {
-                fs::create_dir_all(parent).map_err(|error| {
-                    ConnectionCommandError::runtime(format!(
-                        "failed to create {}: {error}",
-                        parent.display()
-                    ))
-                })?;
-            }
-            fs::write(path, content).map_err(|error| {
-                ConnectionCommandError::runtime(format!(
-                    "failed to write {}: {error}",
-                    path.display()
-                ))
-            })?;
-        }
-        set_script_executable(path)?;
-    }
-    Ok(match planned.status {
-        FilePlanStatus::PlannedCreate => FilePlanStatus::Created,
-        FilePlanStatus::PlannedUpdate => FilePlanStatus::Updated,
-        other => other,
-    })
-}
-
-#[cfg(unix)]
-fn set_script_executable(path: &Path) -> Result<(), ConnectionCommandError> {
-    use std::os::unix::fs::PermissionsExt;
-
-    let mut permissions = fs::metadata(path)
-        .map_err(|error| {
-            ConnectionCommandError::runtime(format!(
-                "failed to inspect {} permissions: {error}",
-                path.display()
-            ))
-        })?
-        .permissions();
-    let mode = permissions.mode();
-    if mode & 0o100 == 0 {
-        permissions.set_mode(mode | 0o755);
-        fs::set_permissions(path, permissions).map_err(|error| {
-            ConnectionCommandError::runtime(format!(
-                "failed to make {} executable: {error}",
-                path.display()
-            ))
-        })?;
-    }
-    Ok(())
-}
-
-#[cfg(not(unix))]
-fn set_script_executable(_path: &Path) -> Result<(), ConnectionCommandError> {
-    Ok(())
-}
-
-fn record_guard_installation(
-    runtime_home: &Path,
-    host_kind: HostKind,
-    init_mode: InitMode,
-    installation_status: GuardInstallationStatus,
-    connection_id: &str,
-    project_id: &str,
-    integration: &GuardIntegrationPlan,
-) -> Result<GuardInstallationRecord, ConnectionCommandError> {
-    let now = current_timestamp();
-    upsert_guard_installation(
-        runtime_home,
-        GuardInstallationUpsert {
-            guard_installation_id: integration.guard_installation_id.clone(),
-            connection_internal_id: connection_id.to_owned(),
-            project_id: Some(project_id.to_owned()),
-            host_kind: host_kind.as_str().to_owned(),
-            guard_mode: init_mode.guard_value().to_owned(),
-            host_capability_json: host_hook_capability_json(integration)?,
-            installation_status: installation_status.as_str().to_owned(),
-            installed_at: (init_mode != InitMode::Record).then_some(now.clone()),
-            last_checked_at: now,
-            first_seen_at: None,
-            last_seen_at: None,
-            last_seen_phase: None,
-            observed_host_kind: None,
-            observed_policy_hash: None,
-            observed_binary_version: None,
-            metadata_json: serde_json::to_string(&json!({
-                "created_by": INIT_METADATA_CREATED_BY,
-                "policy_file": VOLICORD_POLICY_FILE,
-                "selected_profile": integration.guard_profile,
-                "required_phases": required_guard_phase_names(),
-                "observation_status": if init_mode == InitMode::Record {
-                    "disabled"
-                } else {
-                    "not_observed"
-                },
-            }))
-            .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
-        },
-    )
-    .map_err(Into::into)
-}
-
-fn host_hook_capability_json(
-    plan: &GuardIntegrationPlan,
-) -> Result<String, ConnectionCommandError> {
-    let capabilities = serde_json::to_value(plan.capabilities)
-        .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
-    serde_json::to_string(&json!({
-        "schema": "volicord-host-hook-capability-v1",
-        "policy_hash": plan.policy_hash,
-        "selected_profile": plan.guard_profile,
-        "native_host_output_adapter": plan.native_host_output_adapter,
-        "native_host_output_adapter_verified": plan.native_host_output_adapter_verified,
-        "bash_shell_mutation_coverage": plan.bash_shell_mutation_coverage,
-        "direct_file_write_matcher_coverage": plan.direct_file_write_matcher_coverage,
-        "host_capabilities": capabilities,
-        "required_hook_phases": required_guard_phase_names(),
-        "missing_required_hooks": lifecycle_phase_names(&plan.missing_required_hooks),
-        "prompt_capture": plan.capabilities.user_prompt_submit_hook
-            && guard_has_prompt_capture_commands(&plan.policy),
-        "files": generated_files_json(&plan.generated_files),
-        "host_hook_commands": host_hook_commands_json(&plan.host_hook_commands),
-        "hook_root_resolution": hook_root_resolution_json(&plan.host_hook_commands),
-        "hook_path_safety": hook_path_safety_json(&plan.host_hook_commands),
-        "commands": plan.policy["host_hook"]["commands"].clone(),
-    }))
-    .map_err(|error| ConnectionCommandError::runtime(error.to_string()))
-}
-
-fn initial_guard_installation_status(
-    init_mode: InitMode,
-    host_plan: &HostPlan,
-    integration: &GuardIntegrationPlan,
-) -> GuardInstallationStatus {
-    if init_mode == InitMode::Record {
-        GuardInstallationStatus::Configured
-    } else if !integration.missing_required_hooks.is_empty() {
-        GuardInstallationStatus::Degraded
-    } else if host_plan.change != PlannedChange::Noop
-        || integration.generated_files.iter().any(|file| {
-            matches!(
-                file.status,
-                FilePlanStatus::Created | FilePlanStatus::Updated
-            )
-        })
-    {
-        GuardInstallationStatus::ReloadRequired
-    } else {
-        GuardInstallationStatus::Configured
-    }
-}
-
 fn init_first_run_user_actions(
     existing: &[UserAction],
     host_kind: HostKind,
@@ -1480,10 +1137,6 @@ fn init_first_run_user_actions(
         ),
     ));
     actions
-}
-
-fn current_timestamp() -> String {
-    DateTime::<Utc>::from(SystemTime::now()).to_rfc3339_opts(SecondsFormat::Secs, true)
 }
 
 fn stable_id(prefix: &str, parts: &[&str]) -> String {
@@ -2956,7 +2609,7 @@ mod tests {
         assert!(applied.missing_required_hooks.is_empty());
         assert_eq!(
             initial_guard_installation_status(
-                InitMode::Detective,
+                IntegrationProfile::Detective,
                 &host_plan_stub(&entry),
                 &applied
             ),

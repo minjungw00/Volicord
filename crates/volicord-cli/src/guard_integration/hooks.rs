@@ -3,7 +3,6 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use serde_json::Value;
 use volicord_types::IntegrationProfile;
 
 use crate::{
@@ -301,18 +300,6 @@ pub(crate) fn shell_word(value: &str) -> String {
         return value.to_owned();
     }
     format!("'{}'", value.replace('\'', "'\\''"))
-}
-
-pub(crate) fn lifecycle_phase_names(phases: &[HostLifecyclePhase]) -> Vec<&'static str> {
-    phases.iter().map(|phase| phase.capability_name()).collect()
-}
-
-pub(crate) fn guard_has_prompt_capture_commands(policy: &Value) -> bool {
-    policy
-        .get("host_hook")
-        .and_then(|guard| guard.get("commands"))
-        .and_then(|commands| commands.get("prompt_capture"))
-        .is_some()
 }
 
 pub(crate) fn observe_hook_root_unsupported_message(

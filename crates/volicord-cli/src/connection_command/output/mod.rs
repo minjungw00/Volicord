@@ -4,6 +4,9 @@ mod json;
 mod summary;
 mod text;
 
+use crate::guard_integration::{
+    generated_files_json, hook_root_resolution_json, host_hook_commands_json,
+};
 use json::{
     actions_json_values, changed_repo_files_json, checks_json, connection_json,
     connection_states_json, init_checks_json, repo_file_changes_json, verification_json,
@@ -11,10 +14,7 @@ use json::{
 use summary::connection_diagnostic_summary_card;
 use text::{render_compact_connection_text, render_compact_plan_text, render_init_text_output};
 
-pub(super) use json::{
-    detailed_verification_report_json, generated_files_json, hook_path_safety_json,
-    hook_root_resolution_json, host_hook_commands_json, json_object_text,
-};
+pub(super) use json::{detailed_verification_report_json, json_object_text};
 pub(super) use text::{render_connection_remove_dry_run_output, render_connections_output};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

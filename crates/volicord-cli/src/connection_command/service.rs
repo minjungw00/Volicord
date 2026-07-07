@@ -302,12 +302,13 @@ fn apply_init_provisioning(
     )?;
     apply_host_plan(plan.host_kind, &host_plan, process)?;
     let integration = apply_guard_integration(integration)?;
+    let integration_profile = plan.init_mode.integration_profile();
     let installation_status =
-        initial_guard_installation_status(plan.init_mode, &host_plan, &integration);
+        initial_guard_installation_status(integration_profile, &host_plan, &integration);
     let guard_installation = record_guard_installation(
         &plan.runtime_home,
         plan.host_kind,
-        plan.init_mode,
+        integration_profile,
         installation_status,
         &connection.connection_internal_id,
         &project.project_id,

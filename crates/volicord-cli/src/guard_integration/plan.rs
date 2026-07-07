@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, path::Path};
 
-use serde_json::{json, Value};
+use serde_json::Value;
 use volicord_store::session_watch::{snapshot_product_repository, WatchSnapshotOptions};
 use volicord_types::IntegrationProfile;
 
@@ -10,10 +10,10 @@ use crate::{
         files::{
             plan_managed_block_file, plan_policy_file, GeneratedFilePlan, AGENTS_FILE,
             GUIDANCE_END_MARKER, GUIDANCE_START_MARKER, VOLICORD_POLICY_FILE,
-            VOLICORD_POLICY_SCHEMA,
         },
-        hooks::{guard_command_specs, host_hook_command_specs, GuardCommandSpec, HostHookCommand},
+        hooks::{guard_command_specs, host_hook_command_specs, HostHookCommand},
         hosts::plan_host_generated_files,
+        policy::{lifecycle_phase_names, policy_json},
         public_host_label, GuardIntegrationError,
     },
     host_integration::{
@@ -202,7 +202,7 @@ fn observe_hooks_unsupported_message(
     format!(
         "DETECTIVE_HOOKS_UNSUPPORTED: {} detective init requires supported host lifecycle hook configuration, but this adapter does not know verified project-local hook support for: {}. AGENTS.md and {VOLICORD_POLICY_FILE} are not host hook configuration. Use --profile record for record-only setup, or prepare a supported host, platform, and configuration for detective before rerunning init.",
         public_host_label(host_kind),
-        super::lifecycle_phase_names(missing_required_hooks).join(", ")
+        lifecycle_phase_names(missing_required_hooks).join(", ")
     )
 }
 
@@ -226,49 +226,4 @@ fn agents_guidance_block() -> String {
     format!(
         "{GUIDANCE_START_MARKER}\n# Volicord\n\n- Check Volicord status before planning: `volicord.status`.\n- Start a task before planning implementation: `volicord.intake`.\n- Prepare write before product-file changes: `volicord.prepare_write`.\n- Request user judgment through Volicord: `volicord.request_user_judgment`; the user records decisions through the `User Channel`.\n- Check close before claiming completion: `volicord.check_close`.\n- If Volicord tools are unavailable, say so explicitly and do not imply Volicord state was updated.\n{GUIDANCE_END_MARKER}\n"
     )
-}
-
-fn policy_json(
-    host_kind: HostKind,
-    profile: IntegrationProfile,
-    repo_root: &Path,
-    connection_id: &str,
-    guard_installation_id: &str,
-    mcp_entry: &ManagedServerEntry,
-    guard_commands: &BTreeMap<String, GuardCommandSpec>,
-) -> Value {
-    let commands = guard_commands
-        .iter()
-        .map(|(phase, spec)| {
-            (
-                phase.clone(),
-                json!({
-                    "command": &spec.command,
-                    "args": &spec.args,
-                }),
-            )
-        })
-        .collect::<serde_json::Map<_, _>>();
-    json!({
-        "schema": VOLICORD_POLICY_SCHEMA,
-        "managed_by": "volicord",
-        "host": public_host_label(host_kind),
-        "repo_root": path_text(repo_root),
-        "connection_id": connection_id,
-        "guard_installation_id": guard_installation_id,
-        "selected_profile": profile.as_str(),
-        "mcp": {
-            "command": &mcp_entry.command,
-            "args": &mcp_entry.args,
-            "env": &mcp_entry.env,
-        },
-        "host_hook": {
-            "enabled": profile != IntegrationProfile::Record,
-            "commands": commands,
-        },
-    })
-}
-
-fn path_text(path: &Path) -> String {
-    path.display().to_string()
 }
