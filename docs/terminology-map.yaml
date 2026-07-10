@@ -2262,6 +2262,7 @@ terms:
       - "agent_workflow"
       - "user_only"
       - "admin_local"
+      - "local_recovery"
     primary_owner:
       en: "docs/en/reference/security.md"
       ko: "docs/ko/reference/security.md"
@@ -2272,7 +2273,7 @@ terms:
         ko: "docs/ko/reference/api/schema-value-sets.md"
     notes:
       - "`operation_category` is an internal API operation classification, not OS permission, host trust, or broad authority."
-      - "Supported categories are `read`, `agent_workflow`, `user_only`, and `admin_local`."
+      - "Supported categories are `read`, `agent_workflow`, `user_only`, `admin_local`, and `local_recovery`."
   managed_host_configuration_state:
     category: "product_label"
     en: "managed host configuration state"
