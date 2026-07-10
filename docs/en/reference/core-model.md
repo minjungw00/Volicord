@@ -1,6 +1,9 @@
 # Core model reference
 
-This reference owns the Core authority model for Volicord state. It defines how Core, a `Task`, a Change Unit, a Change Unit effect contract, user-owned judgment, evidence, artifact references, write ticket, close readiness, blockers, acceptance, and residual risk relate to each other.
+This reference owns the Core authority model for Volicord state. It defines the
+relationships among Core, a `Task`, a Change Unit, a Change Unit effect
+contract, user-owned judgment, evidence, artifact references, write tickets,
+close readiness, blockers, acceptance, and residual risk.
 
 Core is the local authority record for Volicord state. It is not chat memory, generated Markdown, a status report, a tutorial, a storage layout, or an API response shape.
 
@@ -185,15 +188,26 @@ A close blocker is the close-relevant form: it prevents honest close readiness u
 
 ### Close readiness
 
-Close readiness is the Core authority concept for whether the current `Task` can close honestly.
+Close readiness is the Core authority concept for whether the current `Task`
+can close honestly.
 
 It is a record-based readiness decision, not proof that the product result is objectively correct.
 
-It considers the current `Task`, current scope, current Change Unit, required judgments, write and Run compatibility, evidence support and provenance, artifact availability, unresolved blockers, final acceptance, residual-risk visibility, residual-risk acceptance, recovery constraints, and project continuity records that remain relevant after close.
+It combines the current work boundary with judgment, write, Run, evidence,
+artifact, blocker, acceptance, residual-risk, recovery, and project-continuity
+facts. Section 10 lists the close inputs in detail.
 
 ### Current close basis
 
-`CurrentCloseBasis` is the current result and risk state used for close-readiness decisions. It contains the current `Task`, current Change Unit, `scope_revision`, `close_basis_revision`, baseline, result summary, result references, evidence-summary reference, residual risks, sensitive categories, sensitive action requirements, recovery constraints, source Run reference, and update time.
+`CurrentCloseBasis` is the current result and risk state used for close-readiness
+decisions. It contains:
+
+- the current `Task`, current Change Unit, `scope_revision`,
+  `close_basis_revision`, and baseline
+- the result summary, result references, and evidence-summary reference
+- residual risks, sensitive categories, sensitive-action requirements, and
+  recovery constraints
+- the source Run reference and update time
 
 `CurrentCloseBasis` is pre-close authority input. A successful terminal close may produce a terminal close summary, but that terminal summary is not the current pre-close basis and must not be used to recreate one for an open `Task`.
 
@@ -242,7 +256,18 @@ Residual-risk acceptance is the user's acceptance of a named visible residual ri
 
 Cancellation is a user-owned decision to stop the `Task` without a successful completed result.
 
-Authority-bearing judgment kinds are scope decision, sensitive approval, final acceptance, residual-risk acceptance, and cancellation. These judgments require a selected Core-created authority option, a stored `machine_action` that maps to `resolution_outcome=accepted`, a compatible current basis, and `resolved_by_actor_source=local_user` provenance recorded through the `User Channel`. Rejected or deferred outcomes remain durable user decisions but do not approve, accept, authorize, waive, or close anything. A resolved judgment missing machine-readable action or outcome, resolution payload, timestamp, compatible basis, or required `User Channel` provenance is invalid owner state and cannot satisfy current authority requirements.
+Authority-bearing judgment kinds are scope decision, sensitive approval, final
+acceptance, residual-risk acceptance, and cancellation. These judgments require
+a selected Core-created authority option, a stored `machine_action` that maps
+to `resolution_outcome=accepted`, a compatible current basis, and
+`resolved_by_actor_source=local_user` provenance recorded through the
+`User Channel`.
+
+Rejected or deferred outcomes remain durable user decisions. They do not
+approve, accept, authorize, waive, or close anything. A resolved judgment is
+invalid owner state when it lacks a machine-readable action or outcome,
+resolution payload, timestamp, compatible basis, or required `User Channel`
+provenance. Invalid owner state cannot satisfy a current authority requirement.
 
 Agent Connections may request a user judgment through the supported request path, but they must not record authority-bearing user judgments. The `User Channel` is the only authority-bearing path for recording those judgments.
 
@@ -384,24 +409,11 @@ flowchart LR
   still -- yes --> attempt --> run --> consumed --> evidence
 ```
 
-It is not:
-
-- command approval
-- ordinary write approval
-- dependency approval
-- shell permission
-- OS permission
-- host, network, or secret access
-- deployment approval
-- destructive-action approval
-- system access
-- sensitive-action approval
-- user-owned judgment
-- final acceptance
-- evidence
-- residual-risk acceptance
-- proof that a write happened
-- `Task` close
+It does not approve commands, dependencies, sensitive actions, deployments,
+destructive actions, or access to a shell, OS, host, network, secret, or system.
+It is also not ordinary write approval, user-owned judgment, evidence, final
+acceptance, residual-risk acceptance, proof that a write happened, or `Task`
+close.
 
 The prepare-write, record-run, API state schema, storage, and security owners define the method behavior, public shapes, storage effects, replay and stale-state behavior, and guarantee wording.
 

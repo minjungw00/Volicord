@@ -2,596 +2,177 @@
 
 ## Boundary
 
-This reference defines stable conformance scenario semantics and reference criteria.
-
-A conformance scenario is a named behavior criterion. It can be evaluated only against facts made authoritative by the API, storage, security, scope, Core, artifact, and connection owner documents.
+This reference defines stable conformance scenario semantics and criteria. A
+conformance scenario names one observable behavior that can be checked against
+facts owned by the API, storage, security, scope, Core, artifact, and Agent
+Connection references.
 
 This document owns:
 
 - `scenario_id` naming rules
-- conformance scenario semantics
-- expected behavior summaries for the scenario index
-- assertion authority boundaries for conformance criteria
-- the relationship between conformance criteria, canonical owner documents, examples, tutorials, and method-local API examples
+- scenario-level expected behavior
+- assertion authority boundaries
+- the relationship between criteria, owner documents, examples, tutorials, and
+  method-local API examples
 
-This reference does not define neighboring contracts:
+It does not define API branches, request shapes, storage effects, artifact
+promotion, security guarantees, close-readiness behavior, method-reference
+examples, or implementation structure. Those facts remain with the linked
+owners.
 
-- API and storage: API branches, storage effects, operation categories, and artifact promotion
-- API method reference examples: method-local example payloads and setup
-- security and close readiness: security guarantees and close-readiness behavior
-- implementation: implementation routing
-
-For the canonical baseline scope, see [Scope](scope.md). For compact meanings of curated core terms included in the glossary, see [Glossary](glossary.md). For complete structured terminology metadata, see [`docs/terminology-map.yaml`](../../terminology-map.yaml).
+For the baseline boundary, see [Scope](scope.md). For public terms, see
+[Glossary](glossary.md). Complete structured terminology lives in
+[`docs/terminology-map.yaml`](../../terminology-map.yaml).
 
 <a id="surface-stability"></a>
 ## Surface Stability
 
-For canonical vocabulary, see [Documentation Policy](../maintain/documentation-policy.md#surface-stability-labels). In this section, `stable` means a documented compatibility surface; `beta` means supported, but details may change; `internal` means an implementation or generated-integration detail, not a normal user input surface; and `diagnostic` means a troubleshooting or status-reporting surface whose prose or diagnostic wording is not a stable API contract.
+Use the [canonical stability
+vocabulary](../maintain/documentation-policy.md#surface-stability-labels).
 
-| Surface | Stability | Notes |
+| Surface | Stability | Meaning |
 |---|---|---|
-| Scenario semantics, `scenario_id` rules, expected behavior summaries, assertion authority, and owner-link requirements | `stable` | These are reference criteria for owner-defined behavior. |
-| Runner summaries, rendered views, status wording, maintenance-check labels, and generated conformance reports | `diagnostic` | They are not assertion authority unless a focused owner defines the fact as authoritative. |
+| Scenario semantics, `scenario_id` rules, expected behavior, assertion authority, and owner-link requirements | `stable` | Criteria for owner-defined behavior |
+| Runner summaries, rendered views, status wording, maintenance labels, and generated reports | `diagnostic` | Not assertion authority unless a focused owner defines the fact |
 
-## Conformance item summary
-
-| Item | Boundary | Details |
-|---|---|---|
-| Scenario semantics | Stable behavior criterion | [Details](#scenario-semantics) |
-| Scenario IDs | Stable identifier rules | [Details](#scenario-id-rules) |
-| Expected behavior | Owner-routed criteria | [Details](#expected-behavior) |
-| Assertion authority | Facts owned by canonical owners | [Details](#assertion-authority) |
-| Examples and tutorials | Non-authoritative illustrations | [Details](#criteria-vs-examples-and-tutorials) |
-
+<a id="conformance-item-summary"></a>
+<a id="what-conformance-means"></a>
 <a id="scenario-semantics"></a>
-### Scenario semantics
+## Scenario semantics
 
-Definition:
-- A conformance scenario names one behavior criterion that belongs to the baseline scope or to a clearly routed owner boundary.
+A scenario names one baseline behavior criterion or one clearly routed owner
+boundary. It contains a `scenario_id`, authority context, one action, expected
+behavior, owner links, and an assertion boundary.
 
-Required parts:
-- `scenario_id`
-- expected behavior
-- owner links
-- assertion boundary
+A scenario may say what a conforming result preserves, rejects, exposes, or
+leaves unchanged. It must not redefine a neighboring API, storage, security,
+scope, close-readiness, artifact, or connection contract.
 
-Allowed effect:
-- A scenario may summarize what a conforming result must preserve, reject, expose, or leave unchanged.
-
-Not allowed:
-- A scenario must not redefine the API, storage, security, scope, close-readiness, artifact, or connection contract it cites.
+Conformance compares an owner-defined action with owner-defined state and
+owner-defined non-effects. Scenario prose, agent summaries, rendered views,
+metrics, projections, and maintenance labels are not assertion authority by
+themselves.
 
 <a id="scenario-id-rules"></a>
 ### Scenario ID rules
 
-Definition:
-- `scenario_id` is the stable identifier for the behavior under review.
-
-Rules:
-- Use `BASELINE-*` IDs for baseline-scope behavior.
-- Name the observable behavior, not a project phase, review stage, work queue, or implementation status.
-- Keep IDs stable when the expected behavior remains stable.
-- Rename an ID only when the scenario's meaning changes, and update same-page anchors and internal links in the same batch.
-
-Not allowed:
-- Do not use short-lived status labels, date labels, runner names, or maintainer workflow labels as scenario IDs.
+- Use `BASELINE-*` IDs for baseline behavior.
+- Name observable behavior, not a project phase, review stage, queue, runner,
+  date, or implementation status.
+- Keep an ID stable while its expected behavior stays stable.
+- Rename an ID only when its meaning changes. Update same-page anchors and
+  links in the same change.
 
 <a id="expected-behavior"></a>
 ### Expected behavior
 
-Definition:
-- Expected behavior is the stable criterion a conforming implementation or check must satisfy for the scenario.
+Expected behavior is the stable outcome a conforming implementation or check
+must satisfy. This page states only the scenario-level outcome. Exact request
+fields, response branches, storage effects, error precedence, guarantee levels,
+and close-readiness details remain with their owners.
 
-Owner relation:
-- This page may state the scenario-level outcome.
-- Exact request fields, response branches, storage effects, error precedence, guarantee levels, and close-readiness details remain in their canonical owner documents.
-
-Conflict rule:
-- If a scenario summary and a canonical owner disagree, the canonical owner wins. Correct this page rather than implementing the conflicting summary.
-
-Not allowed:
-- Do not treat scenario prose, summaries, rendered views, metrics, or maintenance-check labels as authority for facts the owner documents do not define.
-
-## What conformance means
-
-Conformance means an implementation or check can compare one owner-defined action with owner-defined authority records and owner-defined non-effects.
-
-Conformance criteria judge only facts made authoritative by an owner document. Scenario prose, agent summaries, rendered views, status wording, maintenance-check labels, or projections become conformance authority only when a specific owner defines that fact as authoritative.
-
-They must not be treated as authority by themselves.
-
-When this page says "must", "required", or "always", it is naming a conformance criterion or an owner-routed requirement. It is not redefining neighboring contracts.
+If a summary here conflicts with an owner, the owner wins. Correct this page;
+do not implement the conflicting summary.
 
 <a id="criteria-vs-examples-and-tutorials"></a>
-## Criteria vs examples and tutorials
+## Criteria, examples, and tutorials
 
-Conformance criteria are reference criteria. Examples and tutorials may illustrate how a reader might recognize a scenario, but they do not create authority records, API branches, storage effects, security guarantees, close-readiness results, acceptance evidence, or residual-risk acceptance.
+Examples and tutorials can help readers recognize a scenario, but they do not
+create authority records, API branches, storage effects, security guarantees,
+close results, acceptance evidence, or residual-risk acceptance.
 
-Reference scenarios must use stable behavior descriptions. They must not use maintainer workflow labels, broad review stages, or short-lived project status as the behavior being tested.
+Cross-method scenarios may define scenario-level criteria here. They must not
+become a shared payload, fixture, or example spine for API method references.
+A method example may link to a scenario, but neither side requires the other to
+reuse payloads, refs, paths, `state_version`, artifact refs, Run refs, judgment
+refs, blocker refs, or response snapshots.
 
-Cross-method and end-to-end scenarios may appear in conformance or other scenario-level documentation only as scenario-level criteria. They must not become a shared payload, fixture, or example spine for API method reference documents.
+<a id="scenario-criterion-shape"></a>
+## Criterion shape
 
-API method examples may link to a conformance scenario to explain the concept they illustrate, but they must not copy that scenario's payload, refs, paths, `state_version`, artifact refs, run refs, judgment refs, blocker refs, or response snapshots for consistency. API method examples do not define conformance criteria, and conformance scenarios do not require method reference examples to reuse their payloads.
-
-## Scenario criterion shape
-
-A conformance scenario criterion uses this compact structure:
-
-| Part | Details |
+| Part | Required content |
 |---|---|
-| `scenario_id` | See [`scenario_id`](#criterion-scenario-id) |
-| authority context | See [Authority context](#criterion-authority-context) |
-| action | See [Action](#criterion-action) |
-| expected behavior | See [Expected behavior](#criterion-expected-behavior) |
-| owner links | See [Owner links](#criterion-owner-links) |
+| <a id="criterion-scenario-id"></a>`scenario_id` | Stable behavior identifier that follows the rules above |
+| <a id="criterion-authority-context"></a>Authority context | Facts needed before the action, such as `Task`, Change Unit, state version, actor source, owner refs, Core state, storage rows, artifact refs, and capability facts |
+| <a id="criterion-action"></a>Action | One public Core, API, or operator request using its owner request schema |
+| <a id="criterion-expected-behavior"></a>Expected behavior | Response, state, storage, artifact, blocker, error, guarantee-display, and forbidden-side-effect facts relevant to the criterion |
+| <a id="criterion-owner-links"></a>Owner links | Routes to the API, Core, storage, security, Agent Connection, artifact, or policy owner that defines each exact fact |
+| Assertion boundary | The owner-defined facts that may be judged and the required non-effects |
 
-<a id="criterion-scenario-id"></a>
-### `scenario_id`
-
-Purpose:
-- Stable identifier for the behavior under review.
-
-<a id="criterion-authority-context"></a>
-### Authority context
-
-Purpose:
-- Names the facts needed before the action.
-
-Expected content:
-- Task, Change Unit, state version, actor source, owner refs, Core state, storage rows, artifact refs, and capability facts.
-
-<a id="criterion-action"></a>
-### Action
-
-Purpose:
-- Describes one public Core, API, or operator request.
-
-Owner link:
-- The request must use the owner request schema.
-
-<a id="criterion-expected-behavior"></a>
-### Expected behavior
-
-Purpose:
-- Names the stable outcome that a conforming result must satisfy.
-
-Expected content:
-- Response facts, owner-state effects, storage or artifact facts, blocker facts, error facts, guarantee-display facts, and required absence of forbidden side effects.
-
-<a id="criterion-owner-links"></a>
-### Owner links
-
-Purpose:
-- Routes exact values and meaning to their canonical owners.
-
-Owner links:
-- API, Core, Storage, Security, Agent Connection, artifact, and policy owners.
-
-A conformance criterion must use public owner schemas. It must not invent criterion-only enum values, pseudo-fields, localized display labels as state, prose-only expectations, or out-of-scope-only values.
+A criterion uses public owner schemas. It must not invent criterion-only enum
+values, pseudo-fields, prose-only expectations, localized labels as state, or
+out-of-scope-only values.
 
 <a id="assertion-authority"></a>
 ## Assertion authority
 
-Assertion authority is the narrow set of facts a conformance criterion may judge. Authority comes from owner-defined facts, not from scenario prose or generated summaries.
+Assertion authority is the narrow set of owner-defined facts a criterion may
+judge. These include response facts, Core state, storage effects, artifact
+facts, public `ErrorCode` values, structured blockers, guarantee-display facts,
+and required absence of forbidden side effects.
 
-Conformance assertions may reference owner-defined response facts, Core state, storage effects, artifact facts, public `ErrorCode` values, structured blockers, guarantee-display facts, and required absence of forbidden side effects.
-
-Exact assertion detail stays with these owners:
-
-| Assertion area | Canonical owner |
+| Assertion area | Owner |
 |---|---|
-| API methods and response branch behavior | [API Methods](api/methods.md) and method owner documents |
+| API methods and response branches | [API Methods](api/methods.md) and the linked method owners |
 | Common response branches and `dry_run` preview shapes | [API Schema Core](api/schema-core.md) |
 | State summaries, blockers, evidence, and close-readiness structures | [API State Schemas](api/schema-state.md) |
 | `ArtifactRef`, `ArtifactInput`, and `StagedArtifactHandle` shapes | [API Artifact Schemas](api/schema-artifacts.md) |
-| API value sets, including `operation_category` values | [API Value Sets](api/schema-value-sets.md) |
-| Public errors and precedence | [API error codes](api/error-codes.md), [API error precedence](api/error-precedence.md) |
+| API value sets, including `operation_category` | [API Value Sets](api/schema-value-sets.md) |
+| Public errors and precedence | [API error codes](api/error-codes.md) and [API error precedence](api/error-precedence.md) |
 | Storage effects, no-effect branches, and state-version effects | [Storage Effects](storage-effects.md) |
-| Artifact staging, promotion, persistence, and body-read lifecycle | [Artifact Storage](storage-artifacts.md) |
+| Artifact staging, promotion, persistence, and body reads | [Artifact Storage](storage-artifacts.md) |
 | Security non-claims and guarantee levels | [Security](security.md) |
-| Runtime location and documentation boundaries | [Runtime Boundaries](runtime-boundaries.md) |
-
-## Representative scenario index
-
-These scenario IDs are compact reference criteria. They are not examples, tutorials, runtime results, an implementation plan, required API example payloads, or a shared method-reference example spine. Use the owner links above for exact branch, storage, access, artifact, security, and close-readiness contracts.
-
-- `BASELINE-agent-connection-mismatch-blocks-mutation`
-  See [Agent Connection mismatch](#scenario-baseline-agent-connection-mismatch-blocks-mutation).
-- `BASELINE-verified-agent-connection-allows-owner-mutation`
-  See [verified Agent Connection](#scenario-baseline-verified-agent-connection-allows-owner-mutation).
-- `BASELINE-single-operation-category-per-public-request`
-  See [single operation category](#scenario-baseline-single-operation-category-per-public-request).
-- `BASELINE-detective-display-capability-gated`
-  See [`detective` display](#scenario-baseline-detective-display-capability-gated).
-- `BASELINE-shaping-readiness-gap-blocks-or-asks`
-  See [shaping readiness gap](#scenario-baseline-shaping-readiness-gap-blocks-or-asks).
-- `BASELINE-project-state-version-stale-mutation-rejected`
-  See [stale mutation](#scenario-baseline-project-state-version-stale-mutation-rejected).
-- `BASELINE-dry-run-pre-commit-failure-rejected`
-  See [`dry_run` pre-commit failure](#scenario-baseline-dry-run-pre-commit-failure-rejected).
-- `BASELINE-status-close-blockers-read-only`
-  See [read-only close blockers](#scenario-baseline-status-close-blockers-read-only).
-- `BASELINE-sensitive-approval-records-sensitive-action-scope`
-  See [sensitive approval scope](#scenario-baseline-sensitive-approval-records-sensitive-action-scope).
-- `BASELINE-prepare-write-requires-compatible-scope-and-approval`
-  See [`prepare_write` compatibility](#scenario-baseline-prepare-write-requires-compatible-scope-and-approval).
-- `BASELINE-write-ticket-attempt-scope-product-file-write-only`
-  See [`WriteTicketAttemptScope`](#scenario-baseline-write-ticket-attempt-scope-product-file-write-only).
-- `BASELINE-record-run-consumes-write-ticket-once`
-  See [single-use write-ticket compatibility](#scenario-baseline-record-run-consumes-write-ticket-once).
-- `BASELINE-stage-artifact-transient-handle-only`
-  See [transient staged handle](#scenario-baseline-stage-artifact-transient-handle-only).
-- `BASELINE-record-run-artifact-input-validation-order`
-  See [artifact input validation order](#scenario-baseline-record-run-artifact-input-validation-order).
-- `BASELINE-record-run-promotes-staged-artifact-to-artifact-ref`
-  See [staged artifact promotion](#scenario-baseline-record-run-promotes-staged-artifact-to-artifact-ref).
-- `BASELINE-record-run-rejects-staged-artifact-actor-source-mismatch`
-  See [staged artifact mismatch](#scenario-baseline-record-run-rejects-staged-artifact-actor-source-mismatch).
-- `BASELINE-record-run-links-existing-artifact-without-registering-bytes`
-  See [existing artifact link](#scenario-baseline-record-run-links-existing-artifact-without-registering-bytes).
-- `BASELINE-captured-artifact-rejected-in-baseline-scope`
-  See [captured artifact rejection](#scenario-baseline-captured-artifact-rejected-in-baseline-scope).
-- `BASELINE-close-task-complete-stale-state-version-rejected`
-  See [stale close state](#scenario-baseline-close-task-complete-stale-state-version-rejected).
-- `BASELINE-close-task-complete-stale-write-ticket-basis-rejected`
-  See [stale write-ticket basis](#scenario-baseline-close-task-complete-stale-write-ticket-basis-rejected).
-- `BASELINE-close-task-blocks-current-write-compatibility`
-  See [write compatibility blocker](#scenario-baseline-close-task-blocks-current-write-compatibility).
-- `BASELINE-close-task-blocks-evidence-insufficient`
-  See [evidence blocker](#scenario-baseline-close-task-blocks-evidence-insufficient).
-- `BASELINE-close-task-blocks-required-artifact-unavailable`
-  See [artifact availability blocker](#scenario-baseline-close-task-blocks-required-artifact-unavailable).
-- `BASELINE-close-task-blocks-final-acceptance-missing`
-  See [final acceptance blocker](#scenario-baseline-close-task-blocks-final-acceptance-missing).
-- `BASELINE-close-task-blocks-visible-unaccepted-residual-risk`
-  See [residual risk blocker](#scenario-baseline-close-task-blocks-visible-unaccepted-residual-risk).
-- `BASELINE-check-close-read-only`
-  See [read-only close check](#scenario-baseline-check-close-read-only).
-- `BASELINE-close-task-state-effecting-dry-run-preview`
-  See [state-effecting close dry-run](#scenario-baseline-close-task-state-effecting-dry-run-preview).
-- `BASELINE-close-task-supersede-one-state-version`
-  See [supersede state version](#scenario-baseline-close-task-supersede-one-state-version).
-
-<a id="scenario-baseline-agent-connection-mismatch-blocks-mutation"></a>
-### `BASELINE-agent-connection-mismatch-blocks-mutation`
-
-Expected behavior:
-- Agent Connection mismatch before mutation.
-
-Owner links:
-- [Agent Connection](agent-connection.md)
-- [API error codes](api/error-codes.md)
-- [API error routing](api/error-routing.md)
-- [Security](security.md)
-
-<a id="scenario-baseline-verified-agent-connection-allows-owner-mutation"></a>
-### `BASELINE-verified-agent-connection-allows-owner-mutation`
-
-Expected behavior:
-- Verified Agent Connection permits only owner-scoped mutation checks.
-
-Owner links:
-- [Agent Connection](agent-connection.md)
-- [API method owner routing](api/methods.md#method-owner-routing-table)
-- [Storage Effects](storage-effects.md)
-
-<a id="scenario-baseline-single-operation-category-per-public-request"></a>
-### `BASELINE-single-operation-category-per-public-request`
-
-Expected behavior:
-- One request-level `operation_category` per public API request.
-
-Owner links:
-- [API Value Sets](api/schema-value-sets.md)
-- [Agent Connection](agent-connection.md)
-- [Security](security.md)
-
-<a id="scenario-baseline-detective-display-capability-gated"></a>
-### `BASELINE-detective-display-capability-gated`
-
-Expected behavior:
-- `detective` wording requires a supported observed scope.
-
-Owner links:
-- [Security](security.md)
-- [Agent Connection](agent-connection.md)
-
-<a id="scenario-baseline-shaping-readiness-gap-blocks-or-asks"></a>
-### `BASELINE-shaping-readiness-gap-blocks-or-asks`
-
-Expected behavior:
-- Shaping gaps remain contract-defined blockers or judgment candidates, not separate planning artifacts.
-
-Owner links:
-- [Core Model](core-model.md)
-- [API State Schemas](api/schema-state.md)
-- [Status method](api/method-status.md)
-- [Request-user-judgment method](api/method-request-user-judgment.md)
-- [Record-user-judgment method](api/method-record-user-judgment.md)
-
-<a id="scenario-baseline-project-state-version-stale-mutation-rejected"></a>
-### `BASELINE-project-state-version-stale-mutation-rejected`
-
-Expected behavior:
-- Stale project-wide state version fails before commit.
-
-Owner links:
-- [State version conflict](api/error-precedence.md#state-conflict-behavior)
-- [Storage Versioning](storage-versioning.md)
-- [Storage Effects](storage-effects.md)
-
-<a id="scenario-baseline-dry-run-pre-commit-failure-rejected"></a>
-### `BASELINE-dry-run-pre-commit-failure-rejected`
-
-Expected behavior:
-- `dry_run` does not bypass validation, access, capability, or stale-state rejection.
-
-Owner links:
-- [API Schema Core](api/schema-core.md)
-- [`dry_run=true` pre-preview failure](api/error-routing.md#rejected-dry-run-pre-preview-failure)
-- [Storage Effects](storage-effects.md)
-
-<a id="scenario-baseline-status-close-blockers-read-only"></a>
-### `BASELINE-status-close-blockers-read-only`
-
-Expected behavior:
-- Status and close-check blockers can be read without storage mutation.
-
-Owner links:
-- [Status method](api/method-status.md)
-- [Close-task method](api/method-close-task.md)
-- [API State Schemas](api/schema-state.md)
-- [Storage Effects](storage-effects.md)
-
-<a id="scenario-baseline-sensitive-approval-records-sensitive-action-scope"></a>
-### `BASELINE-sensitive-approval-records-sensitive-action-scope`
-
-Expected behavior:
-- Sensitive-action approval is separate from write ticket and final acceptance.
-
-Owner links:
-- [Core Model](core-model.md)
-- [API Judgment Schemas](api/schema-judgment.md)
-- [Security](security.md)
-
-<a id="scenario-baseline-prepare-write-requires-compatible-scope-and-approval"></a>
-### `BASELINE-prepare-write-requires-compatible-scope-and-approval`
-
-Expected behavior:
-- `prepare_write` is a cooperative product-file compatibility path.
-
-Owner links:
-- [Prepare-write method](api/method-prepare-write.md)
-- [Core Model](core-model.md)
-- [Security](security.md)
-
-<a id="scenario-baseline-write-ticket-attempt-scope-product-file-write-only"></a>
-### `BASELINE-write-ticket-attempt-scope-product-file-write-only`
-
-Expected behavior:
-- `WriteTicketAttemptScope` is product-file write scope only.
-
-Owner links:
-- [Core Model](core-model.md)
-- [Prepare-write method](api/method-prepare-write.md)
-- [API Judgment Schemas](api/schema-judgment.md)
-
-<a id="scenario-baseline-record-run-consumes-write-ticket-once"></a>
-### `BASELINE-record-run-consumes-write-ticket-once`
-
-Expected behavior:
-- Compatible Run recording consumes a matching write-ticket row once.
-
-Owner links:
-- [Record-run method](api/method-record-run.md)
-- [Storage Effects](storage-effects.md)
-- [Storage Versioning](storage-versioning.md)
-
-<a id="scenario-baseline-stage-artifact-transient-handle-only"></a>
-### `BASELINE-stage-artifact-transient-handle-only`
-
-Expected behavior:
-- Staging creates only a transient staged handle.
-
-Owner links:
-- [Stage-artifact method](api/method-stage-artifact.md)
-- [API Artifact Schemas](api/schema-artifacts.md)
-- [Artifact Storage](storage-artifacts.md)
-
-<a id="scenario-baseline-record-run-artifact-input-validation-order"></a>
-### `BASELINE-record-run-artifact-input-validation-order`
-
-Expected behavior:
-- Run artifact inputs are validated before promotion or linking.
-
-Owner links:
-- [Record-run method](api/method-record-run.md)
-- [API Artifact Schemas](api/schema-artifacts.md)
-- [Artifact Storage](storage-artifacts.md)
-
-<a id="scenario-baseline-record-run-promotes-staged-artifact-to-artifact-ref"></a>
-### `BASELINE-record-run-promotes-staged-artifact-to-artifact-ref`
-
-Expected behavior:
-- Compatible Run recording may promote a staged handle to persistent `ArtifactRef`.
-
-Owner links:
-- [Artifact Storage](storage-artifacts.md)
-- [Record-run method](api/method-record-run.md)
-- [Storage Effects](storage-effects.md)
-
-<a id="scenario-baseline-record-run-rejects-staged-artifact-actor-source-mismatch"></a>
-### `BASELINE-record-run-rejects-staged-artifact-actor-source-mismatch`
-
-Expected behavior:
-- Staged-handle provenance mismatch rejects promotion.
-
-Owner links:
-- [Artifact Storage](storage-artifacts.md)
-- [API Artifact Schemas](api/schema-artifacts.md)
-- [Artifact-input error details](api/error-details.md#artifact-input-error-reason)
-
-<a id="scenario-baseline-record-run-links-existing-artifact-without-registering-bytes"></a>
-### `BASELINE-record-run-links-existing-artifact-without-registering-bytes`
-
-Expected behavior:
-- Existing persistent artifacts may be linked without registering new bytes.
-
-Owner links:
-- [API Artifact Schemas](api/schema-artifacts.md)
-- [Artifact Storage](storage-artifacts.md)
-- [Record-run method](api/method-record-run.md)
-
-<a id="scenario-baseline-captured-artifact-rejected-in-baseline-scope"></a>
-### `BASELINE-captured-artifact-rejected-in-baseline-scope`
-
-Expected behavior:
-- Native/captured artifact sources are not baseline artifact authority.
-
-Owner links:
-- [Scope](scope.md)
-- [API Artifact Schemas](api/schema-artifacts.md)
-- [Scope Reference](scope.md)
-
-<a id="scenario-baseline-close-task-complete-stale-state-version-rejected"></a>
-### `BASELINE-close-task-complete-stale-state-version-rejected`
-
-Expected behavior:
-- Stale state fails before close-readiness evaluation.
-
-Owner links:
-- [Close-task method](api/method-close-task.md)
-- [State version conflict](api/error-precedence.md#state-conflict-behavior)
-- [Storage Effects](storage-effects.md)
-
-<a id="scenario-baseline-close-task-complete-stale-write-ticket-basis-rejected"></a>
-### `BASELINE-close-task-complete-stale-write-ticket-basis-rejected`
-
-Expected behavior:
-- Stale close-relevant write-ticket basis fails before close commit.
-
-Owner links:
-- [Close-task method](api/method-close-task.md)
-- [State version conflict](api/error-precedence.md#state-conflict-behavior)
-- [State conflict detail fields](api/error-details.md#state-conflict-detail-fields)
-- [Storage Versioning](storage-versioning.md)
-
-<a id="scenario-baseline-close-task-blocks-current-write-compatibility"></a>
-### `BASELINE-close-task-blocks-current-write-compatibility`
-
-Expected behavior:
-- Close can block on semantic write compatibility.
-
-Owner links:
-- [Core Model](core-model.md)
-- [Close-task method](api/method-close-task.md)
-- [API State Schemas](api/schema-state.md)
-
-<a id="scenario-baseline-close-task-blocks-evidence-insufficient"></a>
-### `BASELINE-close-task-blocks-evidence-insufficient`
-
-Expected behavior:
-- Close can block on insufficient required evidence.
-
-Owner links:
-- [Core Model](core-model.md)
-- [API State Schemas](api/schema-state.md)
-- [Close-task method](api/method-close-task.md)
-- [API blocker routing](api/blocker-routing.md)
-
-<a id="scenario-baseline-close-task-blocks-required-artifact-unavailable"></a>
-### `BASELINE-close-task-blocks-required-artifact-unavailable`
-
-Expected behavior:
-- Close can block on required artifact availability.
-
-Owner links:
-- [API State Schemas](api/schema-state.md)
-- [Artifact Storage](storage-artifacts.md)
-- [Close-task method](api/method-close-task.md)
-- [API blocker routing](api/blocker-routing.md)
-
-<a id="scenario-baseline-close-task-blocks-final-acceptance-missing"></a>
-### `BASELINE-close-task-blocks-final-acceptance-missing`
-
-Expected behavior:
-- Close can block on missing compatible final acceptance.
-
-Owner links:
-- [Core Model](core-model.md)
-- [API Judgment Schemas](api/schema-judgment.md)
-- [Close-task method](api/method-close-task.md)
-
-<a id="scenario-baseline-close-task-blocks-visible-unaccepted-residual-risk"></a>
-### `BASELINE-close-task-blocks-visible-unaccepted-residual-risk`
-
-Expected behavior:
-- Close can block on visible residual risk without compatible acceptance.
-
-Owner links:
-- [Core Model](core-model.md)
-- [API Judgment Schemas](api/schema-judgment.md)
-- [API State Schemas](api/schema-state.md)
-
-<a id="scenario-baseline-check-close-read-only"></a>
-### `BASELINE-check-close-read-only`
-
-Expected behavior:
-- `volicord.check_close` is read-only.
-
-Owner links:
-- [Close-task method](api/method-close-task.md)
-- [API Schema Core](api/schema-core.md)
-- [Storage Effects](storage-effects.md)
-
-<a id="scenario-baseline-close-task-state-effecting-dry-run-preview"></a>
-### `BASELINE-close-task-state-effecting-dry-run-preview`
-
-Expected behavior:
-- State-effecting close intents use dry-run preview only when valid and previewable.
-
-Owner links:
-- [Close-task method](api/method-close-task.md)
-- [API Schema Core](api/schema-core.md)
-- [Storage Effects](storage-effects.md)
-
-<a id="scenario-baseline-close-task-supersede-one-state-version"></a>
-### `BASELINE-close-task-supersede-one-state-version`
-
-Expected behavior:
-- Supersede is a terminal non-completion path with one project-wide state mutation when valid.
-
-Owner links:
-- [Close-task method](api/method-close-task.md)
-- [Core Model](core-model.md)
-- [Storage Effects](storage-effects.md)
+| Runtime and repository boundaries | [Runtime Boundaries](runtime-boundaries.md) |
+
+<a id="representative-scenario-index"></a>
+## Representative scenarios
+
+The following IDs are compact reference criteria. They are not runtime results,
+implementation plans, executable scripts, or required API example payloads.
+
+| `scenario_id` | Expected behavior | Owners |
+|---|---|---|
+| <a id="scenario-baseline-agent-connection-mismatch-blocks-mutation"></a>`BASELINE-agent-connection-mismatch-blocks-mutation` | An Agent Connection mismatch rejects the request before mutation. | [Agent Connection](agent-connection.md); [API error codes](api/error-codes.md); [API error routing](api/error-routing.md); [Security](security.md) |
+| <a id="scenario-baseline-verified-agent-connection-allows-owner-mutation"></a>`BASELINE-verified-agent-connection-allows-owner-mutation` | A verified Agent Connection permits mutation only within the applicable owner contract. | [Agent Connection](agent-connection.md); [API method routing](api/methods.md#method-owner-routing-table); [Storage Effects](storage-effects.md) |
+| <a id="scenario-baseline-single-operation-category-per-public-request"></a>`BASELINE-single-operation-category-per-public-request` | Each public API request has one request-level `operation_category`. | [API Value Sets](api/schema-value-sets.md); [Agent Connection](agent-connection.md); [Security](security.md) |
+| <a id="scenario-baseline-detective-display-capability-gated"></a>`BASELINE-detective-display-capability-gated` | `detective` wording requires a supported observed scope. | [Security](security.md); [Agent Connection](agent-connection.md) |
+| <a id="scenario-baseline-shaping-readiness-gap-blocks-or-asks"></a>`BASELINE-shaping-readiness-gap-blocks-or-asks` | Shaping gaps remain owner-defined blockers or judgment candidates, not separate planning artifacts. | [Core Model](core-model.md); [API State Schemas](api/schema-state.md); [Status method](api/method-status.md); [Request judgment](api/method-request-user-judgment.md); [Record judgment](api/method-record-user-judgment.md) |
+| <a id="scenario-baseline-project-state-version-stale-mutation-rejected"></a>`BASELINE-project-state-version-stale-mutation-rejected` | A stale project-wide state version fails before commit. | [State version conflict](api/error-precedence.md#state-conflict-behavior); [Storage Versioning](storage-versioning.md); [Storage Effects](storage-effects.md) |
+| <a id="scenario-baseline-dry-run-pre-commit-failure-rejected"></a>`BASELINE-dry-run-pre-commit-failure-rejected` | `dry_run` does not bypass validation, access, capability, or stale-state rejection. | [API Schema Core](api/schema-core.md); [`dry_run` pre-preview failure](api/error-routing.md#rejected-dry-run-pre-preview-failure); [Storage Effects](storage-effects.md) |
+| <a id="scenario-baseline-status-close-blockers-read-only"></a>`BASELINE-status-close-blockers-read-only` | Status and close-check blockers can be read without storage mutation. | [Status method](api/method-status.md); [Close-task method](api/method-close-task.md); [API State Schemas](api/schema-state.md); [Storage Effects](storage-effects.md) |
+| <a id="scenario-baseline-sensitive-approval-records-sensitive-action-scope"></a>`BASELINE-sensitive-approval-records-sensitive-action-scope` | Sensitive-action approval stays separate from a write ticket and final acceptance. | [Core Model](core-model.md); [API Judgment Schemas](api/schema-judgment.md); [Security](security.md) |
+| <a id="scenario-baseline-prepare-write-requires-compatible-scope-and-approval"></a>`BASELINE-prepare-write-requires-compatible-scope-and-approval` | `prepare_write` is a cooperative product-file compatibility path. | [Prepare-write method](api/method-prepare-write.md); [Core Model](core-model.md); [Security](security.md) |
+| <a id="scenario-baseline-write-ticket-attempt-scope-product-file-write-only"></a>`BASELINE-write-ticket-attempt-scope-product-file-write-only` | `WriteTicketAttemptScope` covers only product-file writes. | [Core Model](core-model.md); [Prepare-write method](api/method-prepare-write.md); [API Judgment Schemas](api/schema-judgment.md) |
+| <a id="scenario-baseline-record-run-consumes-write-ticket-once"></a>`BASELINE-record-run-consumes-write-ticket-once` | A compatible Run consumes its matching write-ticket row once. | [Record-run method](api/method-record-run.md); [Storage Effects](storage-effects.md); [Storage Versioning](storage-versioning.md) |
+| <a id="scenario-baseline-stage-artifact-transient-handle-only"></a>`BASELINE-stage-artifact-transient-handle-only` | Staging creates only a transient staged handle. | [Stage-artifact method](api/method-stage-artifact.md); [API Artifact Schemas](api/schema-artifacts.md); [Artifact Storage](storage-artifacts.md) |
+| <a id="scenario-baseline-record-run-artifact-input-validation-order"></a>`BASELINE-record-run-artifact-input-validation-order` | Run artifact inputs are validated before promotion or linking. | [Record-run method](api/method-record-run.md); [API Artifact Schemas](api/schema-artifacts.md); [Artifact Storage](storage-artifacts.md) |
+| <a id="scenario-baseline-record-run-promotes-staged-artifact-to-artifact-ref"></a>`BASELINE-record-run-promotes-staged-artifact-to-artifact-ref` | A compatible Run may promote a staged handle to a persistent `ArtifactRef`. | [Artifact Storage](storage-artifacts.md); [Record-run method](api/method-record-run.md); [Storage Effects](storage-effects.md) |
+| <a id="scenario-baseline-record-run-rejects-staged-artifact-actor-source-mismatch"></a>`BASELINE-record-run-rejects-staged-artifact-actor-source-mismatch` | A staged-handle provenance mismatch rejects promotion. | [Artifact Storage](storage-artifacts.md); [API Artifact Schemas](api/schema-artifacts.md); [Artifact-input error details](api/error-details.md#artifact-input-error-reason) |
+| <a id="scenario-baseline-record-run-links-existing-artifact-without-registering-bytes"></a>`BASELINE-record-run-links-existing-artifact-without-registering-bytes` | An existing persistent artifact may be linked without registering new bytes. | [API Artifact Schemas](api/schema-artifacts.md); [Artifact Storage](storage-artifacts.md); [Record-run method](api/method-record-run.md) |
+| <a id="scenario-baseline-captured-artifact-rejected-in-baseline-scope"></a>`BASELINE-captured-artifact-rejected-in-baseline-scope` | Native or captured artifact sources are not baseline artifact authority. | [Scope](scope.md); [API Artifact Schemas](api/schema-artifacts.md) |
+| <a id="scenario-baseline-close-task-complete-stale-state-version-rejected"></a>`BASELINE-close-task-complete-stale-state-version-rejected` | Stale state fails before close-readiness evaluation. | [Close-task method](api/method-close-task.md); [State version conflict](api/error-precedence.md#state-conflict-behavior); [Storage Effects](storage-effects.md) |
+| <a id="scenario-baseline-close-task-complete-stale-write-ticket-basis-rejected"></a>`BASELINE-close-task-complete-stale-write-ticket-basis-rejected` | A stale close-relevant write-ticket basis fails before close commit. | [Close-task method](api/method-close-task.md); [State version conflict](api/error-precedence.md#state-conflict-behavior); [State conflict details](api/error-details.md#state-conflict-detail-fields); [Storage Versioning](storage-versioning.md) |
+| <a id="scenario-baseline-close-task-blocks-current-write-compatibility"></a>`BASELINE-close-task-blocks-current-write-compatibility` | Close can block on semantic write compatibility. | [Core Model](core-model.md); [Close-task method](api/method-close-task.md); [API State Schemas](api/schema-state.md) |
+| <a id="scenario-baseline-close-task-blocks-evidence-insufficient"></a>`BASELINE-close-task-blocks-evidence-insufficient` | Close can block on insufficient required evidence. | [Core Model](core-model.md); [API State Schemas](api/schema-state.md); [Close-task method](api/method-close-task.md); [API blocker routing](api/blocker-routing.md) |
+| <a id="scenario-baseline-close-task-blocks-required-artifact-unavailable"></a>`BASELINE-close-task-blocks-required-artifact-unavailable` | Close can block when a required artifact is unavailable. | [API State Schemas](api/schema-state.md); [Artifact Storage](storage-artifacts.md); [Close-task method](api/method-close-task.md); [API blocker routing](api/blocker-routing.md) |
+| <a id="scenario-baseline-close-task-blocks-final-acceptance-missing"></a>`BASELINE-close-task-blocks-final-acceptance-missing` | Close can block when compatible final acceptance is missing. | [Core Model](core-model.md); [API Judgment Schemas](api/schema-judgment.md); [Close-task method](api/method-close-task.md) |
+| <a id="scenario-baseline-close-task-blocks-visible-unaccepted-residual-risk"></a>`BASELINE-close-task-blocks-visible-unaccepted-residual-risk` | Close can block on visible residual risk without compatible acceptance. | [Core Model](core-model.md); [API Judgment Schemas](api/schema-judgment.md); [API State Schemas](api/schema-state.md) |
+| <a id="scenario-baseline-check-close-read-only"></a>`BASELINE-check-close-read-only` | `volicord.check_close` is read-only. | [Close-task method](api/method-close-task.md); [API Schema Core](api/schema-core.md); [Storage Effects](storage-effects.md) |
+| <a id="scenario-baseline-close-task-state-effecting-dry-run-preview"></a>`BASELINE-close-task-state-effecting-dry-run-preview` | A state-changing close intent uses a dry-run preview only when it is valid and previewable. | [Close-task method](api/method-close-task.md); [API Schema Core](api/schema-core.md); [Storage Effects](storage-effects.md) |
+| <a id="scenario-baseline-close-task-supersede-one-state-version"></a>`BASELINE-close-task-supersede-one-state-version` | `supersede` is a terminal non-completion path with one project-wide state mutation when valid. | [Close-task method](api/method-close-task.md); [Core Model](core-model.md); [Storage Effects](storage-effects.md) |
 
 ## Catalog boundary
 
-Scenario family names outside the baseline scope belong in [Scope](scope.md). The scope owner may keep names only as out-of-scope capabilities, and this page does not reproduce that catalog.
-
-Out-of-scope family names are not:
-
-- scenario scripts
-- supported API payload examples
-- runner or reporting requirements
-- baseline scope
-- implementation tasks
-- runtime results
-- runtime proof
+[Scope](scope.md) owns scenario-family names outside the baseline. Such names
+are not scenario scripts, supported API payloads, runner requirements,
+implementation tasks, runtime results, or runtime proof.
 
 ## Metrics boundary
 
-Metrics are not conformance authority. A metric affects a conformance criterion only when a canonical owner defines the source records, freshness boundary, display wording, and non-substitution rule.
+Metrics are not conformance authority. A metric matters to a criterion only
+when an owner defines its source records, freshness boundary, display wording,
+and non-substitution rule.
 
-Metrics must not:
-
-- create Core state
-- satisfy evidence
-- pass QA or verification
-- authorize writes
-- accept final results
-- accept residual risk
-- close work
-- prove implementation routing
-- replace runtime conformance
+A metric cannot create Core state, satisfy evidence, pass QA or verification,
+authorize writes, accept results or residual risk, close work, prove
+implementation structure, or replace runtime conformance.

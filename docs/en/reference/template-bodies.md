@@ -258,7 +258,7 @@ Label-selection input:
 - `PROJECTION_STALE`.
 
 Suggested label:
-- stale readable view
+- stale view
 
 Recovery cue:
 - Refresh the view before relying on it.
@@ -300,7 +300,8 @@ Recovery cue:
 
 ### Must show
 
-- A compact current-position card with separate regions for state and current scope.
+- A compact current-position card.
+- Separate regions for state and current scope.
 - Current goal, current scope, out-of-scope items, and allowed action state when those fields are present.
 - Separate regions for blockers and pending user judgments.
 - Separate regions for run/evidence summary, evidence provenance limits, and gaps.
@@ -400,7 +401,8 @@ Avoid pressure wording such as `obviously`, `just approve`, or `I can decide thi
 
 ### Must show
 
-- A concise evidence-position summary with separate regions for what was run or checked.
+- A concise evidence-position summary.
+- A separate region for what was run or checked.
 - Separate regions for result and confidence limits.
 - Separate regions for required evidence coverage and optional supporting evidence.
 - Separate regions for artifacts and source refs.
@@ -476,10 +478,11 @@ Use close-position wording:
 - `Close check: {blocked_or_ready}.`
 - `Not closed: {blocker_summary}.`
 - `Ready to attempt close, but not closed by this check.`
-- `Closed by owner result: {close_ref}.`
+- `Closed by recorded close result: {close_ref}.`
 - `Continuity carried forward: {continuity_summary}.`
 
-Use `Closed by owner result` only when `volicord.close_task` returned an actual state-changing close result.
+Use `Closed by recorded close result` only when `volicord.close_task` returned
+an actual state-changing close result.
 
 ### Owner links
 

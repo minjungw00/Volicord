@@ -53,7 +53,7 @@
 템플릿 문구만으로는 아래 일을 할 수 없습니다.
 
 - 쓰기 티켓 생성 또는 담당 기록 변경
-- 증거, 지속 아티팩트, 최종 수락, 잔여 위험 수락 생성
+- 증거, 영속 아티팩트, 최종 수락, 잔여 위험 수락 생성
 - 증거, QA, 검증, 수락, 닫기 준비 상태, 닫기 관문 충족
 - 저장소 구조나 저장 효과 정의 또는 렌더링 본문을 저장소 권한으로 만들기
 - 공개 `ErrorCode` 식별자나 의미의 정의, 이름 변경, 지역화, 의미 변경
@@ -124,7 +124,7 @@
 - `MCP_UNAVAILABLE`.
 
 표시 라벨:
-- Core 또는 연결 사용 불가
+- Core 또는 Agent Connection 사용 불가
 
 해결 안내:
 - Core, MCP, 또는 선택된 연결을 다시 연결하거나 그 경로를 사용할 수 없다고 표시합니다.
@@ -139,7 +139,8 @@
 - 호출 맥락 불일치
 
 해결 안내:
-- 등록된 Agent Connection, User Channel, 프로젝트 라우팅 또는 메서드와 호환되는 호출 맥락을 사용합니다.
+- 등록된 Agent Connection, User Channel, 프로젝트 처리 경로 또는 메서드와
+  호환되는 호출 맥락을 사용합니다.
 - 필요한 경우 연결 바인딩이나 호출 맥락 설정을 고칩니다.
 
 <a id="label-capability-insufficient"></a>
@@ -149,7 +150,7 @@
 - `CAPABILITY_INSUFFICIENT`.
 
 표시 라벨:
-- connection capability 부족
+- 연결 역량 부족
 
 해결 안내:
 - 역량이 있는 Agent Connection을 사용합니다.
@@ -260,7 +261,7 @@
 - `PROJECTION_STALE`.
 
 표시 라벨:
-- 상태 보기 오래됨
+- 오래된 상태 보기
 
 해결 안내:
 - 그 보기에 의존하기 전에 새로 고칩니다.
@@ -284,7 +285,7 @@
 - `VALIDATOR_FAILED`.
 
 표시 라벨:
-- 확인 실패
+- 검사 실패
 
 해결 안내:
 - 가능하면 특정 검증기나 확인 결과를 보여 줍니다.
@@ -326,7 +327,7 @@
 
 직접적인 상태 문구를 씁니다.
 
-- `상태: {observed_at}에 상태 버전 {state_version}에서 관찰됨.`
+- `상태 버전: {state_version}; 관찰 시각: {observed_at}.`
 - `사용자 판단 필요: {pending_judgment_summary}.`
 - `닫기 차단 사유: {close_blocker_summary}.`
 - `증거 출처: {provenance_summary}.`
@@ -424,7 +425,7 @@
 
 ### 사용자에게 보이는 문구
 
-범위 확인 문구를 씁니다.
+증거 범위 문구를 씁니다.
 
 - `확인한 것: {run_or_check_summary}.`
 - `필수 증거 충족: {covered_items}.`
@@ -480,10 +481,11 @@
 - `닫기 확인: {blocked_or_ready}.`
 - `닫히지 않음: {blocker_summary}.`
 - `닫기 시도를 할 준비는 되었지만, 이 확인으로 닫힌 것은 아닙니다.`
-- `담당 결과로 닫힘: {close_ref}.`
+- `기록된 닫기 결과로 닫힘: {close_ref}.`
 - `이어 가는 연속성: {continuity_summary}.`
 
-`volicord.close_task`가 실제 상태 변경 닫기 결과를 반환했을 때만 `담당 결과로 닫힘`을 씁니다.
+`volicord.close_task`가 실제 상태 변경 닫기 결과를 반환했을 때만
+`기록된 닫기 결과로 닫힘`을 씁니다.
 
 ### 담당 문서 링크
 
@@ -539,7 +541,7 @@
 
 ### 담당 문서 링크
 
-- [Agent Connection](agent-connection.md): 현재 적용 연결 맥락과 역량 선언.
+- [Agent Connection](agent-connection.md): 현재 연결 맥락과 연결 역량 선언.
 - [상태 보기와 템플릿 표시 경계](projection-and-templates.md): 읽기 전용 표시와 최신성 경계.
 - [Core 모델](core-model.md): 권한, 사용자 소유 판단, 닫기 준비 상태, 잔여 위험 경계.
 - [API 상태 스키마](api/schema-state.md), [API 판단 스키마](api/schema-judgment.md), [API 아티팩트 스키마](api/schema-artifacts.md): 패킷 입력 형태.
