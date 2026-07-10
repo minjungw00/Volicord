@@ -63,6 +63,7 @@
 | 실행 및 증거 기록 | 기준 범위 작업에 대해 실행 기록, 간결한 증거 요약, 출처를 가진 주장 단위 증거 관찰을 남길 수 있습니다. | [실행 기록 메서드](api/method-record-run.md), [저장 효과](storage-effects.md), [Core 모델](core-model.md) |
 | 집중된 사용자 소유 판단 기록 | 지원되는 판단 경로로 사용자 소유 판단을 요청하고 기록할 수 있습니다. 이 판단은 Core 소유 상태, 증거, 닫기 준비 상태 규칙을 대체하지 않습니다. | [사용자 소유 판단 담당 문서](#user-judgment-owners)를 봅니다. |
 | 프로젝트 연속성 기록 | 오래 유지해야 하는 결정, 의무, 알려진 한계, 수락된 잔여 위험, 제약을 현재 Core 권한을 대체하지 않는 프로젝트 수준 맥락으로 보존할 수 있습니다. | [Core 모델](core-model.md), [API 상태 스키마](api/schema-state.md), [저장소 기록](storage-records.md), [저장 효과](storage-effects.md) |
+| 권한 번들 내보내기 | `volicord export authority-bundle`로 원본 Runtime Home이나 프로젝트 상태를 변경하지 않고 등록된 프로젝트 하나의 로컬 기록과 현재 사용할 수 있는 영속 아티팩트 본문을 무결성 라벨이 붙은 복사본으로 내보낼 수 있습니다. 문서에 정의된 비보장이 그대로 적용됩니다. | [관리 CLI](admin-cli.md#authority-bundle-export), [저장소 기록](storage-records.md), [보안](security.md) |
 | 닫기 시도 | `volicord.check_close`는 닫기 준비 상태를 읽기 전용으로 평가할 수 있고, `volicord.close_task`는 증거, 최종 수락, 잔여 위험, 대체 불가 경계를 유지하면서 지원되는 닫기 결과를 시도할 수 있습니다. | [닫기 메서드](api/method-close-task.md), [Core 모델](core-model.md), [API 차단 사유 처리 경로](api/blocker-routing.md) |
 | 읽기 시점 상태 표시 | 읽기 전용 상태 또는 파생 표시는 상태 보기와 템플릿 담당 문서가 허용할 때 원천 상태를 요약할 수 있습니다. | [상태 보기 권한 참조](projection-and-templates.md), [템플릿 본문](template-bodies.md), [API 상태 스키마](api/schema-state.md) |
 
@@ -110,7 +111,7 @@ Volicord는 AI 지원 작업 주변의 담당 문서가 정의한 상태를 기�
 - 예방형 격리, 샌드박싱, 또는 더 강한 격리 보장 의미
 - 호스팅 대시보드
 - 커넥터 마켓플레이스
-- 내보내기 또는 전달 패키지
+- 권한 번들 가져오기, 복원, 전달 패키지, 그리고 원본 상태를 변경하지 않는 지원 대상 권한 번들 내보내기 이외의 내보내기 패키지 계열
 - 실행 가능한 픽스처 실행기
 - 생성된 적합성 산출물
 - 운영 프로필

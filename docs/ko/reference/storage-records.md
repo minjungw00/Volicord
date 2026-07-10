@@ -201,6 +201,7 @@ Host-observation 기록은 호스트 통합 상태에 대한 로컬 권한 사�
 | 저장 필드 | 기준 범위 값 |
 |---|---|
 | 프로젝트 등록 `status` | `active` |
+| `installation_profile.default_connection_mode` | `read_only`, `workflow` |
 | Agent Connection `host_kind` | `codex`, `claude_code`, `generic` |
 | Agent Connection `intent` | `personal`, `shared`, `global` |
 | Agent Connection `host_scope` | `host_kind` 조합에 따른 `user`, `project`, `local`, `export` |
@@ -218,11 +219,13 @@ Host-observation 기록은 호스트 통합 상태에 대한 로컬 권한 사�
 | `session_watch_baselines.scope_kind` | `repository`, `path_set` |
 | `session_watch_observations.observation_status` | `unresolved`, `linked` |
 | `change_units.status` | `proposed`, `active`, `replaced`, `closed` |
+| `change_units.is_current` | `0`, `1` |
 | `write_tickets.status` | `active`, `consumed`, `expired`, `stale`, `revoked` |
 | `user_judgments.status` | `pending`, `resolved`, `stale`, `superseded`, `expired` |
 | `user_judgments.basis_status` | `current`, `stale`, `superseded` |
 | `user_judgments.resolution_machine_action` | 완전한 해결 그룹의 `accept`, `reject`, `defer` |
 | `user_judgments.resolution_outcome` | 완전한 해결 그룹의 `accepted`, `rejected`, `deferred` |
+| `local_web_consent_tokens.status` | `pending`, `consumed`, `expired` |
 | `project_continuity_records.kind` | `decision`, `obligation`, `known_limit`, `accepted_risk`, `constraint` |
 | `project_continuity_records.status` | `active`, `superseded`, `closed` |
 | `artifact_staging.status` | `staged`, `consumed`, `expired`, `discarded` |
@@ -233,7 +236,7 @@ Host-observation 기록은 호스트 통합 상태에 대한 로컬 권한 사�
 | `evidence_observations.assurance_level` | `cooperative_report`, `registered_connection_observed`, `external_tool_result`, `user_observed`, `unverified` |
 | `blockers.status` | `active`, `resolved`, `superseded` |
 | `tool_invocations.status` | `committed` |
-| `tool_invocations.operation_category` | `read`, `agent_workflow`, `user_only`, `admin_local`, `local_recovery` |
+| `authority_events.operation_category`와 `tool_invocations.operation_category` | `read`, `agent_workflow`, `user_only`, `admin_local`, `local_recovery` |
 
 공개 API 값을 반영하는 행은 [API 값 집합](api/schema-value-sets.md), 관련 스키마 담당 문서, 메서드 담당 문서와 정확히 맞아야 합니다. 이 문서는 `tasks.mode`, `tasks.lifecycle_phase`, `tasks.result`, `runs.kind`, `runs.status`, `evidence_summaries.status` 같은 필드의 공개 API 값을 다시 정의하지 않습니다. 공개 API 값은 [API 값 집합](api/schema-value-sets.md), [API 상태 스키마](api/schema-state.md), 메서드 담당 문서를 봅니다.
 

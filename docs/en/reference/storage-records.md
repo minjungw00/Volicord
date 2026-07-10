@@ -203,6 +203,7 @@ Closed storage-owned value sets are persistence constraints. Unknown values must
 | Stored field | Baseline values |
 |---|---|
 | Project registration `status` | `active` |
+| `installation_profile.default_connection_mode` | `read_only`, `workflow` |
 | Agent Connection `host_kind` | `codex`, `claude_code`, `generic` |
 | Agent Connection `intent` | `personal`, `shared`, `global` |
 | Agent Connection `host_scope` | `user`, `project`, `local`, `export` according to the `host_kind` matrix |
@@ -220,11 +221,13 @@ Closed storage-owned value sets are persistence constraints. Unknown values must
 | `session_watch_baselines.scope_kind` | `repository`, `path_set` |
 | `session_watch_observations.observation_status` | `unresolved`, `linked` |
 | `change_units.status` | `proposed`, `active`, `replaced`, `closed` |
+| `change_units.is_current` | `0`, `1` |
 | `write_tickets.status` | `active`, `consumed`, `expired`, `stale`, `revoked` |
 | `user_judgments.status` | `pending`, `resolved`, `stale`, `superseded`, `expired` |
 | `user_judgments.basis_status` | `current`, `stale`, `superseded` |
 | `user_judgments.resolution_machine_action` | `accept`, `reject`, `defer` in complete resolution groups |
 | `user_judgments.resolution_outcome` | `accepted`, `rejected`, `deferred` in complete resolution groups |
+| `local_web_consent_tokens.status` | `pending`, `consumed`, `expired` |
 | `project_continuity_records.kind` | `decision`, `obligation`, `known_limit`, `accepted_risk`, `constraint` |
 | `project_continuity_records.status` | `active`, `superseded`, `closed` |
 | `artifact_staging.status` | `staged`, `consumed`, `expired`, `discarded` |
@@ -235,7 +238,7 @@ Closed storage-owned value sets are persistence constraints. Unknown values must
 | `evidence_observations.assurance_level` | `cooperative_report`, `registered_connection_observed`, `external_tool_result`, `user_observed`, `unverified` |
 | `blockers.status` | `active`, `resolved`, `superseded` |
 | `tool_invocations.status` | `committed` |
-| `tool_invocations.operation_category` | `read`, `agent_workflow`, `user_only`, `admin_local`, `local_recovery` |
+| `authority_events.operation_category` and `tool_invocations.operation_category` | `read`, `agent_workflow`, `user_only`, `admin_local`, `local_recovery` |
 
 Rows that mirror public API values must match [API Value Sets](api/schema-value-sets.md), the relevant schema owner, and the method owner exactly. This document does not redefine public API values for fields such as `tasks.mode`, `tasks.lifecycle_phase`, `tasks.result`, `runs.kind`, `runs.status`, or `evidence_summaries.status`; see [API Value Sets](api/schema-value-sets.md), [API State Schemas](api/schema-state.md), and method owners.
 

@@ -63,6 +63,7 @@ Supported does not mean:
 | Run and evidence recording | Runs, compact evidence summaries, and claim-scoped evidence observations with provenance can be recorded for baseline work. | [Record-run method](api/method-record-run.md), [Storage Effects](storage-effects.md), [Core Model](core-model.md) |
 | Focused user-owned judgment capture | User-owned judgments can be requested and recorded through supported judgment paths without substituting for Core-owned state, evidence, or close-readiness rules. | See [User-owned judgment owners](#user-judgment-owners). |
 | Project continuity records | Durable decisions, obligations, known limits, accepted residual risks, and constraints can be preserved as project-level context without replacing current Core authority. | [Core Model](core-model.md), [API State Schemas](api/schema-state.md), [Storage Records](storage-records.md), [Storage Effects](storage-effects.md) |
+| Authority bundle export | `volicord export authority-bundle` can export an integrity-labeled copy of one registered project's local records and currently available persistent artifact bodies without mutating the source Runtime Home or project state, subject to the documented non-guarantees. | [Administrative CLI](admin-cli.md#authority-bundle-export), [Storage Records](storage-records.md), [Security](security.md) |
 | Close attempts | `volicord.check_close` can evaluate close readiness read-only, and `volicord.close_task` can attempt supported close outcomes while preserving evidence, final acceptance, residual-risk, and non-substitution boundaries. | [Close method](api/method-close-task.md), [Core Model](core-model.md), [API blocker routing](api/blocker-routing.md) |
 | Read-time status display | Read-only status or derived display can summarize source state when the projection and template owners allow it. | [Projection Authority Reference](projection-and-templates.md), [Template Bodies](template-bodies.md), [API State Schemas](api/schema-state.md) |
 
@@ -110,7 +111,7 @@ Excluded capabilities:
 - pre-tool isolation, sandboxing, or stronger isolation guarantee semantics
 - hosted dashboards
 - connector marketplaces
-- export or transfer packages
+- authority-bundle import, restoration, or transfer packages, and export-package families other than the supported non-mutating authority bundle export
 - executable fixture runners
 - generated conformance artifacts
 - operations profiles
