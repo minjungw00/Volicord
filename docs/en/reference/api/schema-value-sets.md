@@ -49,6 +49,7 @@ The supported public method-name set is:
 volicord.intake
 volicord.update_scope
 volicord.status
+volicord.check_close
 volicord.prepare_write
 volicord.stage_artifact
 volicord.record_run

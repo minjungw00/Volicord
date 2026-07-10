@@ -98,8 +98,8 @@ Include projection contract:
 - `include.continuity=false` means project continuity summaries are not read or returned.
 
 Truthful projection rules:
-- Uncomputed, unselected, or unavailable data is omitted where the schema permits, or `null` only when the selected projection was computed and unavailable. It is not an empty value that implies "computed and none."
-- Empty arrays, including empty close blockers, mean the method computed that field and found no entries.
+- Uncomputed or unselected optional projections are omitted where the schema permits. Fixed-shape top-level fields remain `null` or empty when their corresponding `include` flag is false; interpret those values together with the request's `include` object.
+- When a projection is selected, `null` means it was computed but no value is available, and an empty array, including empty close blockers, means it was computed and no entries were found.
 - Capability declarations alone do not create guarantees. A cooperative-only deployment must not claim `detective`.
 - `GuaranteeDisplay.capability_refs` should identify invocation binding, Agent Connection, or observation facts when those refs are available.
 
@@ -120,6 +120,8 @@ Truthful projection rules:
 | `pending_judgment_inbox_items` | `JudgmentInboxItem[]` for pending judgments needing user action when `include.pending_user_judgments=true`. Shape is owned by [API Judgment Schemas](schema-judgment.md#judgmentinboxitem). |
 | `user_channel_availability` | `UserChannelAvailability` for supported answer paths when `include.pending_user_judgments=true` and a Task-scoped judgment view is available. It may report unavailable host prompt input while still reporting available chat capture, local consent, or CLI inbox paths. Shape is owned by [API Judgment Schemas](schema-judgment.md#judgmentinboxitem). |
 | `blocker_refs` | `StateRecordRef[]` for blocker records visible in the current status view. |
+| `write_ticket_summary` | `WriteTicketStateSummary | null` for the write-ticket projection. When `include.write_ticket=true`, `null` means no relevant write ticket is available; when the projection is not selected, this fixed-shape field remains `null`. Shape is owned by [API State Schemas](schema-state.md#current-position-display-shapes). |
+| `evidence_summary` | `EvidenceSummary | null` when `include.evidence=true`; explicit `null` means the selected projection found no current evidence summary. The field is omitted when `include.evidence=false`. Shape is owned by [API State Schemas](schema-state.md#evidence-and-run-snapshot-shapes). |
 | `close_state` | Status close-state value for the current view. Supported values, including `none` when no current close state is available, are owned by [API Value Sets](schema-value-sets.md#task-lifecycle-values). |
 | `current_close_basis` | `CurrentCloseBasis | null` selected into the close status view. Shape is owned by [API State Schemas](schema-state.md#close-readiness-and-validation-shapes). |
 | `risk_acceptance_coverage` | `RiskAcceptanceCoverage[]` for current residual-risk acceptance coverage in the close status view. Shape is owned by [API State Schemas](schema-state.md#close-readiness-and-validation-shapes). |
@@ -129,7 +131,7 @@ Truthful projection rules:
 | `guarantee_display` | `GuaranteeDisplay | null` for the current status view. |
 | `continuity_summary` | `ProjectContinuitySummary[]` when `include.continuity=true`; omitted when the projection is not selected. Shape is owned by [API State Schemas](schema-state.md#project-continuity-shapes). |
 
-Nested `UserChannelAvailability` and `JudgmentInboxItem` shapes are owned by [API Judgment Schemas](schema-judgment.md#judgmentinboxitem). Nested `SummaryCard`, `StateSummary`, `StateRecordRef`, `ProjectContinuitySummary`, `CurrentCloseBasis`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`, `GuardHealthSummary`, `CoverageSummary`, `GuaranteeDisplay`, and `NextActionSummary` shapes are owned by [API State Schemas](schema-state.md).
+Nested `UserChannelAvailability` and `JudgmentInboxItem` shapes are owned by [API Judgment Schemas](schema-judgment.md#judgmentinboxitem). Nested `SummaryCard`, `StateSummary`, `StateRecordRef`, `WriteTicketStateSummary`, `EvidenceSummary`, `ProjectContinuitySummary`, `CurrentCloseBasis`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`, `GuardHealthSummary`, `CoverageSummary`, `GuaranteeDisplay`, and `NextActionSummary` shapes are owned by [API State Schemas](schema-state.md).
 
 ## Blocked result
 

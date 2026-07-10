@@ -98,8 +98,8 @@ StatusRequest:
 - `include.continuity=false`는 프로젝트 연속성 요약을 읽거나 반환하지 않는다는 뜻입니다.
 
 정직한 상태 보기 규칙:
-- 계산하지 않았거나, 선택하지 않은 데이터는 스키마가 허용하는 곳에서 생략합니다. 선택된 상태 보기를 계산했지만 사용할 수 없을 때만 `null`을 사용합니다. "계산했고 없음"을 암시하는 빈 값으로 표현하면 안 됩니다.
-- 닫기 차단 사유의 빈 배열을 포함한 빈 배열은 메서드가 그 필드를 계산했고 항목이 없었다는 뜻입니다.
+- 계산하지 않았거나 선택하지 않은 선택 상태 보기는 스키마가 허용하는 곳에서 생략합니다. 고정 형태의 최상위 필드는 해당 `include` 플래그가 `false`이면 `null` 또는 빈 배열로 남으므로 요청의 `include` 객체와 함께 해석해야 합니다.
+- 상태 보기가 선택된 경우 `null`은 계산했지만 사용할 값이 없음을 뜻하고, 닫기 차단 사유를 포함한 빈 배열은 계산했지만 항목이 없음을 뜻합니다.
 - 호스트 지침, 연결 모드, 생성된 텍스트만으로는 보장이 생기지 않습니다. 협력형 전용 배포는 `detective`를 주장하면 안 됩니다.
 - `GuaranteeDisplay.capability_refs`는 해당 참조를 사용할 수 있을 때 호출 바인딩, Agent Connection, 관찰 사실을 식별해야 합니다.
 
@@ -120,6 +120,8 @@ StatusRequest:
 | `pending_judgment_inbox_items` | `include.pending_user_judgments=true`일 때 사용자 행동이 필요한 대기 판단의 `JudgmentInboxItem[]`입니다. 형태는 [API 판단 스키마](schema-judgment.md#judgmentinboxitem)가 담당합니다. |
 | `user_channel_availability` | `include.pending_user_judgments=true`이고 작업 범위 판단 보기를 사용할 수 있을 때 지원되는 답변 경로를 나타내는 `UserChannelAvailability`입니다. 호스트 프롬프트 입력을 사용할 수 없다고 보고하면서도 사용할 수 있는 채팅 캡처, 로컬 consent, CLI inbox 경로를 함께 보고할 수 있습니다. 형태는 [API 판단 스키마](schema-judgment.md#judgmentinboxitem)가 담당합니다. |
 | `blocker_refs` | 현재 상태 조회 보기에 보이는 차단 사유 기록의 `StateRecordRef[]`입니다. |
+| `write_ticket_summary` | 쓰기 티켓 상태 보기의 `WriteTicketStateSummary | null`입니다. `include.write_ticket=true`인데 `null`이면 관련 쓰기 티켓을 사용할 수 없음을 뜻하고, 해당 상태 보기를 선택하지 않으면 이 고정 형태 필드는 `null`로 남습니다. 형태는 [API 상태 스키마](schema-state.md#current-position-display-shapes)가 담당합니다. |
+| `evidence_summary` | `include.evidence=true`일 때의 `EvidenceSummary | null`입니다. 명시적 `null`은 선택한 상태 보기에서 현재 증거 요약을 찾지 못했음을 뜻하고, `include.evidence=false`이면 이 필드를 생략합니다. 형태는 [API 상태 스키마](schema-state.md#evidence-and-run-snapshot-shapes)가 담당합니다. |
 | `close_state` | 현재 보기의 닫기 상태 값입니다. 현재 닫기 상태가 없을 때의 `none`을 포함한 지원 값은 [API 값 집합](schema-value-sets.md#task-lifecycle-values)이 담당합니다. |
 | `current_close_basis` | 닫기 상태 조회 보기에 선택된 `CurrentCloseBasis | null`입니다. 형태는 [API 상태 스키마](schema-state.md#close-readiness-and-validation-shapes)가 담당합니다. |
 | `risk_acceptance_coverage` | 닫기 상태 조회 보기에서 현재 잔여 위험 수락 범위를 나타내는 `RiskAcceptanceCoverage[]`입니다. 형태는 [API 상태 스키마](schema-state.md#close-readiness-and-validation-shapes)가 담당합니다. |
@@ -129,7 +131,7 @@ StatusRequest:
 | `guarantee_display` | 현재 상태 조회 보기에 대한 `GuaranteeDisplay | null`입니다. |
 | `continuity_summary` | `include.continuity=true`일 때의 `ProjectContinuitySummary[]`입니다. 이 상태 보기를 선택하지 않으면 생략합니다. 형태는 [API 상태 스키마](schema-state.md#project-continuity-shapes)가 담당합니다. |
 
-중첩된 `UserChannelAvailability`와 `JudgmentInboxItem` 형태는 [API 판단 스키마](schema-judgment.md#judgmentinboxitem)가 담당합니다. 중첩된 `SummaryCard`, `StateSummary`, `StateRecordRef`, `ProjectContinuitySummary`, `CurrentCloseBasis`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`, `GuardHealthSummary`, `CoverageSummary`, `GuaranteeDisplay`, `NextActionSummary` 형태는 [API 상태 스키마](schema-state.md)가 담당합니다.
+중첩된 `UserChannelAvailability`와 `JudgmentInboxItem` 형태는 [API 판단 스키마](schema-judgment.md#judgmentinboxitem)가 담당합니다. 중첩된 `SummaryCard`, `StateSummary`, `StateRecordRef`, `WriteTicketStateSummary`, `EvidenceSummary`, `ProjectContinuitySummary`, `CurrentCloseBasis`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`, `GuardHealthSummary`, `CoverageSummary`, `GuaranteeDisplay`, `NextActionSummary` 형태는 [API 상태 스키마](schema-state.md)가 담당합니다.
 
 ## 차단 결과
 
