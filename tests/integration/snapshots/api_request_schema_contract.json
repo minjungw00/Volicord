@@ -7,6 +7,7 @@
       "crates/volicord-types/src/ids.rs",
       "crates/volicord-types/src/methods.rs",
       "crates/volicord-types/src/schema.rs",
+      "crates/volicord-types/src/tool_names.rs",
       "crates/volicord-types/src/values.rs"
     ],
     "update_command": "VOLICORD_UPDATE_CONTRACT_SNAPSHOTS=1 cargo test -p volicord-integration-tests --test public_contract_snapshots"

@@ -1,14 +1,15 @@
 #![forbid(unsafe_code)]
 
-use std::{env, fs, path::Path};
+use std::{env, ffi::OsStr, fs, path::Path};
 
 use serde_json::{json, Map, Value};
 use volicord_mcp::{mcp_tools_for_mode, McpToolDefinition};
 use volicord_types::{
     canonical_json_sha256, canonical_json_string, public_request_schema, AgentConnectionMode,
-    CLOSE_TASK_TOOL_NAME, INTAKE_TOOL_NAME, PREPARE_WRITE_TOOL_NAME, RECONCILE_CHANGES_TOOL_NAME,
-    RECORD_RUN_TOOL_NAME, REQUEST_USER_JUDGMENT_TOOL_NAME, STAGE_ARTIFACT_TOOL_NAME,
-    STATUS_TOOL_NAME, UPDATE_SCOPE_TOOL_NAME,
+    CHECK_CLOSE_TOOL_NAME, CLOSE_TASK_TOOL_NAME, INTAKE_TOOL_NAME, PREPARE_WRITE_TOOL_NAME,
+    RECONCILE_CHANGES_TOOL_NAME, RECORD_RUN_TOOL_NAME, RECORD_USER_JUDGMENT_TOOL_NAME,
+    REQUEST_USER_JUDGMENT_TOOL_NAME, STAGE_ARTIFACT_TOOL_NAME, STATUS_TOOL_NAME,
+    UPDATE_SCOPE_TOOL_NAME,
 };
 
 const UPDATE_ENV: &str = "VOLICORD_UPDATE_CONTRACT_SNAPSHOTS";
@@ -24,12 +25,12 @@ const PUBLIC_API_METHOD_NAMES: &[&str] = &[
     INTAKE_TOOL_NAME,
     UPDATE_SCOPE_TOOL_NAME,
     STATUS_TOOL_NAME,
-    "volicord.check_close",
+    CHECK_CLOSE_TOOL_NAME,
     PREPARE_WRITE_TOOL_NAME,
     STAGE_ARTIFACT_TOOL_NAME,
     RECORD_RUN_TOOL_NAME,
     REQUEST_USER_JUDGMENT_TOOL_NAME,
-    "volicord.record_user_judgment",
+    RECORD_USER_JUDGMENT_TOOL_NAME,
     RECONCILE_CHANGES_TOOL_NAME,
     CLOSE_TASK_TOOL_NAME,
 ];
@@ -83,6 +84,15 @@ fn generated_mcp_read_only_tool_contract_snapshot_matches_sources() {
     );
 }
 
+#[test]
+fn snapshot_updates_require_explicit_enable_value() {
+    assert!(!snapshot_updates_enabled(None));
+    assert!(!snapshot_updates_enabled(Some(OsStr::new(""))));
+    assert!(!snapshot_updates_enabled(Some(OsStr::new("0"))));
+    assert!(!snapshot_updates_enabled(Some(OsStr::new("true"))));
+    assert!(snapshot_updates_enabled(Some(OsStr::new("1"))));
+}
+
 fn api_schema_contract_snapshot() -> Value {
     let schemas = PUBLIC_API_METHOD_NAMES
         .iter()
@@ -100,6 +110,7 @@ fn api_schema_contract_snapshot() -> Value {
                 "crates/volicord-types/src/ids.rs",
                 "crates/volicord-types/src/methods.rs",
                 "crates/volicord-types/src/schema.rs",
+                "crates/volicord-types/src/tool_names.rs",
                 "crates/volicord-types/src/values.rs",
             ]
         ),
@@ -182,7 +193,7 @@ fn assert_snapshot(relative_path: &str, actual: Value, label: &str) {
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(relative_path);
     let actual = snapshot_text(&actual);
 
-    if env::var_os(UPDATE_ENV).is_some() {
+    if snapshot_updates_enabled(env::var_os(UPDATE_ENV).as_deref()) {
         fs::write(&path, actual)
             .unwrap_or_else(|error| panic!("failed to update {}: {error}", path.display()));
         return;
@@ -194,6 +205,10 @@ fn assert_snapshot(relative_path: &str, actual: Value, label: &str) {
         expected, actual,
         "{label} drifted; regenerate with `{SNAPSHOT_UPDATE_COMMAND}`"
     );
+}
+
+fn snapshot_updates_enabled(value: Option<&OsStr>) -> bool {
+    value == Some(OsStr::new("1"))
 }
 
 fn snapshot_text(value: &Value) -> String {
