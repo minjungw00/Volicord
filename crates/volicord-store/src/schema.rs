@@ -37,15 +37,18 @@ fn initialize_canonical_schema(
     }
 
     let tx = begin_immediate_transaction(conn)?;
+    if user_table_count(&tx)? != 0 {
+        tx.rollback()?;
+        return Ok(());
+    }
     tx.execute_batch(sql)?;
-    tx.commit()?;
-
-    if user_table_count(conn)? == 0 {
+    if user_table_count(&tx)? == 0 {
         return Err(StoreError::schema_invariant(
             database_kind,
             "canonical schema initialization produced no tables",
         ));
     }
+    tx.commit()?;
 
     Ok(())
 }
