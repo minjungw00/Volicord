@@ -500,7 +500,7 @@ WriteDecisionReason:
 - `WriteTicket`은 커밋된 허용 결정이 쓰기 티켓을 발급할 때 `volicord.prepare_write`가 반환하는 티켓 우선 권한 기록입니다.
 - `WriteTicket.state`는 제어되는 값 문자열입니다.
 - `WriteTicket.path_patterns.allowed`와 `WriteTicket.path_patterns.denied`는 티켓 결정이 포착한 정규화된 `Product Repository` 경로 패턴입니다.
-- `WriteTicket.observed_paths`는 detective 프로필 hook, watcher 또는 이후 담당 문서가 정의한 관찰 경로가 관찰된 제품 경로를 티켓에 연결하기 전까지 비어 있습니다.
+- `WriteTicket.observed_paths`는 기준 범위에서 비어 있습니다. Detective host hook과 watcher 관찰은 티켓에 다시 쓰지 않고 host-observation 및 미기록 변경 기록으로 남깁니다.
 - `WriteTicket.control_surface`와 `WriteTicket.guarantee_display`는 현재 Volicord 제어 표면과 보장 문구를 공개합니다. OS 수준 파일시스템 집행을 주장하지 않습니다.
 - `WriteDecisionReason`은 `PrepareWriteResult.write_decision_reasons`에서 사용합니다.
 

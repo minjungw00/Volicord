@@ -71,8 +71,8 @@ MCP TCP 리스너, HTTP MCP 리스너, Unix-domain socket 리스너, 또는 그 
 현재 serve 전송은 인증을 요구하는 로컬 MCP-over-HTTP 부분 구현입니다. MCP 세션 헤더와
 bearer token 검사와 함께 HTTP `POST /mcp`로 JSON-RPC를 받고 JSON 응답을 반환합니다.
 server-sent event 스트림, HTTP elicitation, 전체 MCP Streamable HTTP 호환성은 구현하지
-않습니다. 해당 전송 기능이 구현되고 테스트되기 전에는 문서와 시작 진단이 전체 프로토콜
-호환성을 주장하면 안 됩니다.
+않습니다. 문서와 시작 진단은 이 부분 구현만 설명하며 전체 프로토콜 호환성을 주장하지
+않습니다.
 시작 진단, `/healthz`, 구조화된 HTTP 오류 JSON은 `detective_observation` 공개를
 포함합니다. 이는 전송 진단이며 OS 샌드박싱, 네트워크 격리, 악성 코드 방어,
 전체 쓰기 방지, 행위자 귀속 증명, 정확성 증명, 테스트 충분성 증명, 인간 검토 대체가

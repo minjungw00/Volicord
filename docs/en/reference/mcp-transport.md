@@ -86,8 +86,8 @@ The current serve transport is an authenticated local MCP-over-HTTP subset. It
 accepts JSON-RPC over HTTP `POST /mcp` with MCP session headers and bearer-token
 checks, and returns JSON responses. It does not implement server-sent event
 streams, HTTP elicitation, or full MCP Streamable HTTP compatibility.
-Documentation and startup diagnostics must not claim full protocol
-compatibility until those transport features are implemented and tested.
+Documentation and startup diagnostics describe only this subset and do not
+claim full protocol compatibility.
 Startup diagnostics, `/healthz`, and structured HTTP error JSON include a
 detective-observation disclosure. They are transport diagnostics, not OS
 sandboxing, network isolation, malware defense, full write prevention, actor

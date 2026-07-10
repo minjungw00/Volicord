@@ -141,7 +141,7 @@ User-owned basis:
 
 - `accepted_by_user`: a compatible resolved `product_decision` judgment linked to the finding records that the local user accepts the observed change as intentional for the Task.
 
-Reserved or future owner-defined bases such as `superseded_by_new_observation` and any other listed basis may be stored only when their owner-defined verification is implemented. This method must not implement a filesystem-reverting or filesystem-probing basis unless that verification is safe and owner-defined.
+`superseded_by_new_observation` is reserved and is not produced by the baseline method. A caller cannot select Core-owned bases as an agent dismissal. This method does not perform filesystem reversion or an extra filesystem probe to manufacture a resolution basis.
 
 For Unrecorded Changes that still require acceptance, Core creates pending `UserJudgment` rows rather than accepting them. Existing User Channel input methods can answer those judgments, including host prompt input where the initialized client supports it, chat command capture when command capture is `configured`, `observed`, or `active`, loopback local consent URL when the adapter can safely expose it, and local `volicord inbox` commands as the CLI inbox path. After the user-owned judgment is resolved, `volicord.reconcile_changes` can resolve the linked Unrecorded Change with `accepted_by_user`.
 

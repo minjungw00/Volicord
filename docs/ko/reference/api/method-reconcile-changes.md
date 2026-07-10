@@ -141,7 +141,7 @@ Core 소유 결정적 basis:
 
 - `accepted_by_user`: 찾기에 연결된 호환 해결 `product_decision` 판단이 로컬 사용자가 해당 관찰 변경을 이 `Task`에서 의도된 변경으로 수락했음을 기록합니다.
 
-`superseded_by_new_observation` 같은 예약 또는 향후 담당자 정의 basis와 그 밖의 나열된 basis는 담당자가 정의한 검증이 구현된 경우에만 저장할 수 있습니다. 이 메서드는 그 검증이 안전하고 담당자가 정의하지 않은 한 파일시스템 되돌리기나 파일시스템 탐색 basis를 구현하면 안 됩니다.
+`superseded_by_new_observation`은 예약 값이며 기준 메서드가 생성하지 않습니다. 호출자는 Core 소유 basis를 에이전트 묵살 사유로 선택할 수 없습니다. 이 메서드는 해결 basis를 만들어 내기 위해 파일시스템을 되돌리거나 추가 파일시스템 탐색을 수행하지 않습니다.
 
 아직 수락이 필요한 미기록 변경에 대해 Core는 이를 수락하지 않고 대기 `UserJudgment` 행을 만듭니다. 기존 User Channel 입력 방법은 이 판단에 답할 수 있습니다. 여기에는 초기화된 클라이언트가 지원하는 경우 호스트 프롬프트 입력, 명령 캡처가 `configured`, `observed`, `active`일 때의 채팅 명령 캡처, adapter가 안전하게 노출할 수 있을 때의 loopback 로컬 consent URL, CLI inbox 경로인 로컬 `volicord inbox` 명령이 포함됩니다. 사용자 소유 판단이 해결된 뒤 `volicord.reconcile_changes`는 연결된 미기록 변경을 `accepted_by_user`로 해결할 수 있습니다.
 

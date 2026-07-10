@@ -500,7 +500,7 @@ Meaning:
 - `WriteTicket` is the ticket-first authority record returned by `volicord.prepare_write` when a committed allowed decision issues a write ticket.
 - `WriteTicket.state` is a controlled value string.
 - `WriteTicket.path_patterns.allowed` and `WriteTicket.path_patterns.denied` are normalized Product Repository path patterns captured by the ticket decision.
-- `WriteTicket.observed_paths` is empty until a detective-profile hook, watcher, or later owner-defined observation path connects observed product paths to the ticket.
+- `WriteTicket.observed_paths` is empty in the baseline. Detective host-hook and watcher observations are recorded through host-observation and unrecorded-change records rather than written back into the ticket.
 - `WriteTicket.control_surface` and `WriteTicket.guarantee_display` disclose the current Volicord control surface and guarantee wording. They do not claim OS-level filesystem enforcement.
 - `WriteDecisionReason` is used by `PrepareWriteResult.write_decision_reasons`.
 

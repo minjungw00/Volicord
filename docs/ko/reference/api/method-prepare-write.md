@@ -132,7 +132,7 @@ PrepareWriteRequest:
 - `write_ticket_effect`는 새로 커밋된 `decision=allowed` 응답에서 `issued`입니다.
 - `write_ticket.path_patterns.allowed`와 최상위 `allowed_path_patterns`는 이 티켓에 허용된 정규화 저장소 상대 `intended_paths`를 담습니다.
 - `write_ticket.path_patterns.denied`와 최상위 `denied_path_patterns`는 허용 결과에서 `[]`입니다.
-- `write_ticket.observed_paths`는 detective 프로필 hook, watcher 또는 이후 담당 문서가 정의한 관찰 경로가 티켓에 관찰을 연결하기 전까지 `[]`입니다.
+- `write_ticket.observed_paths`는 기준 범위에서 `[]`입니다. Detective host hook과 watcher 관찰은 별도 host-observation 및 미기록 변경 기록을 사용합니다.
 - `control_surface`와 `write_ticket.control_surface`는 기준 비집행 모델에서 `os_enforced=false`를 포함해 현재 Volicord 제어 표면을 공개합니다.
 - 멱등 재실행은 저장된 원래 커밋 `PrepareWriteResult`를 그대로 반환합니다. `write_ticket_effect`, `base.state_version`, `base.events`나 다른 응답 필드를 다시 계산하거나 재분류하지 않으며, 쓰기 티켓을 새로 만들거나 저장 효과를 반복하지 않습니다.
 - 쓰기 티켓은 정규화된 저장소 상대 `intended_paths`를 사용하는 `WriteTicketScope`에 묶입니다.

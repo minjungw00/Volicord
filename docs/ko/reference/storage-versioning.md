@@ -8,7 +8,7 @@
 
 기준 저장소는 canonical SQL 원본 [`registry.sql`](../../../crates/volicord-store/src/schema/registry.sql)과 [`project.sql`](../../../crates/volicord-store/src/schema/project.sql)을 사용합니다. Runtime Home 초기화는 비어 있는 SQLite 데이터베이스에 이 원본을 적용합니다. 기준 저장소는 `schema_migrations`, `schema_version`, `migration_version`, `storage_version` 또는 이에 해당하는 저장소 버전 필드를 만들지 않습니다.
 
-데이터베이스는 테이블 형태, 열, 인덱스, 외래 키, 제약, 저장된 `storage_profile`이 현재 기준과 일치할 때만 사용할 수 있습니다. 오래된 schema ledger를 나타내는 알 수 없는 테이블, 누락된 필수 테이블, 금지된 저장소 버전 열, 저장소 프로필 불일치, 형식이 잘못된 필수 기록은 storage/runtime unavailable 조건입니다. Store 코드는 기록 의미를 추측하거나, 데이터를 조용히 다시 쓰거나, 지원되지 않는 저장소를 변환하면 안 됩니다. 호환되지 않는 저장소를 가진 기존 Runtime Home은 분명하게 실패하고 Runtime Home 재생성을 요구해야 합니다. 단, 집중 담당 문서가 향후 호환성 변환 계약을 명시적으로 정의한 경우는 예외입니다.
+데이터베이스는 테이블 형태, 열, 인덱스, 외래 키, 제약, 저장된 `storage_profile`이 현재 기준과 일치할 때만 사용할 수 있습니다. 오래된 schema ledger를 나타내는 알 수 없는 테이블, 누락된 필수 테이블, 금지된 저장소 버전 열, 저장소 프로필 불일치, 형식이 잘못된 필수 기록은 storage/runtime unavailable 조건입니다. Store 코드는 기록 의미를 추측하거나, 데이터를 조용히 다시 쓰거나, 지원되지 않는 저장소를 변환하면 안 됩니다. 호환되지 않는 저장소를 가진 기존 Runtime Home은 분명하게 실패하고 Runtime Home 재생성을 요구합니다.
 
 기준 registry 저장소는 Runtime Home 식별 정보, 설치 프로필 기록, 저장소 루트 기반 프로젝트 등록, 프로젝트 alias, Agent Connection 기록, `connection_projects`, `guard_installations`를 포함합니다. 기준 project-state 저장소는 Core 상태 projection 기록, `authority_events`, replay 행, staged artifact, persistent artifact, evidence, user judgment, `local_web_consent_tokens`, run, blocker, `write_tickets`, host-observation 기록, session-watch 기록을 포함합니다.
 

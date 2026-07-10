@@ -33,7 +33,7 @@ This document does not own:
 Only values listed as supported in this document are supported API values.
 
 - Mode-gated values must name the connection mode, User Channel, admin-local, or owner-defined gate at the point of use.
-- Values outside the supported lists are not baseline API values unless [Scope](../scope.md) and the affected semantic owner define the supported behavior.
+- Values outside the supported lists are not baseline API values.
 - Naming a value outside a supported list does not widen baseline scope.
 - Rendered labels are display text. They do not replace the canonical values listed in this document.
 - API examples must use supported enum-like values from this document unless the schema owner explicitly defines the field as a free-form display string, an opaque identifier, or an opaque classification string.
@@ -658,7 +658,7 @@ error
 blocking
 ```
 
-This baseline value-set owner does not publish a supported stable `ValidatorResult.validator_id` set. A `validator_id` string is a reporting label unless an affected owner publishes the exact stable value here and defines its semantic meaning.
+This baseline value-set owner does not publish a supported stable `ValidatorResult.validator_id` set. A `validator_id` string is a reporting label, not a stable controlled value.
 
 `GuaranteeDisplay.level` uses baseline values:
 
