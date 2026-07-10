@@ -25,6 +25,7 @@
 | Guard 명령 테스트 | `volicord-cli` 패키지의 `guard_command` 대상인 [`crates/volicord-cli/tests/guard_command.rs`](../../../crates/volicord-cli/tests/guard_command.rs). | session start, pre-tool, post-tool, prompt capture, stop의 guard hook lifecycle 동작, 기록된 관찰, expected-write matching, write-ticket coverage, host-native rendering, prompt-capture command 처리, guarded lifecycle fixture. | 보안 증명, human approval 기록, 제품 수락 기록, Core 메서드 테스트 대체물. |
 | MCP 전송 바이너리 테스트 | `volicord-cli` 패키지의 `mcp_transport` 대상인 [`crates/volicord-cli/tests/mcp_transport.rs`](../../../crates/volicord-cli/tests/mcp_transport.rs). | `volicord mcp` 하위 명령, help/version, `--check`, stdio 프레이밍, JSON-RPC 동작, 재연결 사례, 응답 래핑. | Core 메서드 의미. |
 | 로컬 HTTP serve 전송 테스트 | `volicord-cli` 패키지의 `serve_transport` 대상인 [`crates/volicord-cli/tests/serve_transport.rs`](../../../crates/volicord-cli/tests/serve_transport.rs). | `volicord serve --transport local-http` 프로세스 경로, loopback listener 시작, token과 origin 점검, HTTP session 동작, defensive header, 로컬 HTTP 전송을 통한 MCP 요청 라우팅. | 일반 MCP 메서드 테스트나 보안 증명. |
+| 명시적으로 실행하는 실제 호스트 smoke 테스트 | `volicord-cli` 패키지의 `live_host_smoke` 대상인 [`crates/volicord-cli/tests/live_host_smoke.rs`](../../../crates/volicord-cli/tests/live_host_smoke.rs). | 해당 호스트에 맞게 준비된 환경에서 설치된 Codex 또는 Claude Code 실행 파일을 명시적으로 점검할 때. 기본적으로 ignored이며 해당 `VOLICORD_RUN_*_SMOKE=1` selector가 필요합니다. | 기본 workspace 테스트 신호, 이식 가능한 호스트 적합성, 호스트 신뢰, 자격 증명이나 네트워크 가용성, 보안 증명. |
 | MCP 통합 테스트 | `volicord-integration-tests` 패키지의 `mcp_connection` 대상인 [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs). | MCP, Core, Store, Agent Connection 바인딩, operation category 파생, 도구 노출, 재실행 맥락 바인딩, MCP를 통해 보이는 저장소 효과 없음 점검. | 집중 메서드 테스트나 참조 담당 문서의 대체물. |
 | 공개 계약 snapshot 테스트 | `volicord-integration-tests` 패키지의 `public_contract_snapshots` 대상인 [`tests/integration/public_contract_snapshots.rs`](../../../tests/integration/public_contract_snapshots.rs). | 생성된 API 요청 스키마와 MCP 도구 계약 snapshot이 현재 소스 projection과 어긋나는지 점검합니다. | 손으로 편집한 생성 snapshot, 의미 기준 참조 검토, 공개 계약이 올바르다는 증명. |
 | 적합성 구현 테스트 | `volicord-conformance-tests` 패키지의 `baseline` 대상인 [`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs). | Core 쪽 API를 통한 기준 범위 교차 메서드 시나리오. 재실행, 쓰기 티켓, 아티팩트, 판단, 닫기 준비 상태, 오류 처리 경로, 손상 처리 등을 포함합니다. | 제품 수락, 보안 증명, 닫기 준비 상태, 또는 제품 규칙의 유일한 출처. |
@@ -45,6 +46,22 @@ guard lifecycle setup, JSON parsing, 재사용 단언을 위한 CLI 통합 도�
 담당합니다. `crates/volicord-cli/tests/fixtures/host_contracts/` 아래의 host contract
 픽스처는 host-adapter와 guard lifecycle 테스트를 지원합니다. 이런 도우미를 통해
 검증하는 사실도 그 사실의 참조 담당 문서로 다시 라우팅해야 합니다.
+
+## 명시적으로 실행하는 실제 호스트 smoke 테스트
+
+`live_host_smoke`는 ignored 테스트 대상으로 등록되어 있으므로 일반 workspace 테스트
+실행은 실제 호스트 점검이 실행되지 않았음을 보고합니다. 호스트 실행 파일이 설치되어
+있고 해당 opt-in 변수를 설정한 환경에서 호스트 하나의 점검만 실행합니다.
+
+```sh
+VOLICORD_RUN_CODEX_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_smoke_is_opt_in -- --ignored --nocapture
+VOLICORD_RUN_CLAUDE_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_smoke_is_opt_in -- --ignored --nocapture
+```
+
+명시적으로 선택한 점검은 opt-in 변수나 호스트 실행 파일을 사용할 수 없으면
+실패합니다. 통과 결과는 설치된 호스트와 로컬 테스트 환경에서 smoke 테스트가 관찰한
+단언만 확인합니다. 이식 가능한 호스트 동작, 호스트 신뢰나 승인, 자격 증명이나 네트워크
+가용성, 보안 집행, 일반 제품 정확성을 증명하지 않습니다.
 
 ## 생성 출력과 문서 검증
 
