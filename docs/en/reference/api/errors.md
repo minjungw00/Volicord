@@ -1,8 +1,8 @@
 # API errors
 
-Use this error-family router only as the first hop to the focused API error Reference pages. Exact error contracts live in those focused owners.
-
-This page is not a contract source.
+Use this page to find the focused API error Reference page for a question. It
+is a router, not a contract source; exact error contracts live in the linked
+owners.
 
 It routes to owners for:
 

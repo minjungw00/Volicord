@@ -77,7 +77,29 @@ These diagnostics must not include raw stored JSON, secrets, SQL text, or sensit
 
 ### `write_ticket_reason`
 
-`ToolError.details.write_ticket_reason` uses `missing`, `expired`, `stale`, `revoked`, `consumed`, `incompatible`, `task_mismatch`, `change_unit_mismatch`, `product_write_flag_mismatch`, `baseline_mismatch`, `sensitive_category_mismatch`, or `path_mismatch`. The mismatch-specific values identify the incompatible record or scope fact while keeping public code `WRITE_TICKET_INVALID`. Expired write-ticket use sets `write_ticket_reason=expired` with public code `WRITE_TICKET_INVALID`. A stale `WriteTicket.basis_state_version` uses `STATE_VERSION_CONFLICT`, not `WRITE_TICKET_INVALID`.
+`ToolError.details.write_ticket_reason` uses:
+
+```text
+missing
+expired
+stale
+revoked
+consumed
+incompatible
+task_mismatch
+change_unit_mismatch
+product_write_flag_mismatch
+baseline_mismatch
+sensitive_category_mismatch
+path_mismatch
+```
+
+The mismatch-specific values identify the incompatible record or scope fact
+while keeping the public code `WRITE_TICKET_INVALID`.
+
+Expired write-ticket use sets `write_ticket_reason=expired` with public code
+`WRITE_TICKET_INVALID`. A stale `WriteTicket.basis_state_version` uses
+`STATE_VERSION_CONFLICT`, not `WRITE_TICKET_INVALID`.
 
 <a id="artifact-input-error-reason"></a>
 

@@ -1,6 +1,9 @@
 # API 오류 우선순위
 
-이 문서는 공개 오류 후보가 둘 이상 있을 때 주 공개 오류를 선택하는 규칙을 담당합니다. 오류와 차단 사유의 정식 결정 흐름, `STATE_VERSION_CONFLICT`의 공개 오래된 상태와 멱등성 충돌 동작도 담당합니다.
+이 문서는 공개 오류 후보가 둘 이상일 때 주 공개 오류를 선택하는 규칙을 담당합니다.
+오류와 차단 사유의 정식 결정 흐름도 정의합니다. 또한
+`STATE_VERSION_CONFLICT`가 다루는 공개 상태 최신성 문제와 멱등성 충돌 동작을
+담당합니다.
 
 오류를 담는 분기의 주 공개 오류 코드를 고를 때 이 문서를 사용합니다. 코드 의미, 분기 경로, 스키마, 저장소, 표시 문구는 이웃 담당 문서를 사용합니다.
 
@@ -8,10 +11,10 @@
 
 이 문서가 담당합니다.
 
-- 전송 또는 어댑터 실패, Core 거부 응답, dry-run 미리보기, 메서드 소유 차단 결과, 커밋된 차단 사유형 결과를 구분하는 정식 결정 흐름.
+- 전송 또는 어댑터 실패, Core 거부 응답, `dry_run` 미리보기, 메서드가 담당하는 차단 결과, 커밋된 차단 사유형 결과를 구분하는 정식 결정 흐름.
 - 오류를 담는 분기의 주 `errors[0]` 선택 순서.
 - `STATE_VERSION_CONFLICT`의 결과 쪽 및 차단 사유 코드 경로 경계.
-- 오래된 공개 `expected_state_version`, 오래된 `WriteTicket.basis_state_version`, 멱등 요청 해시 충돌 동작.
+- 공개 요청의 오래된 `expected_state_version`, 오래된 `WriteTicket.basis_state_version`, 멱등 요청 해시 충돌 동작.
 
 이웃 담당 문서:
 
@@ -35,11 +38,11 @@
 | 순서 | 경계 | 실행 지점 | 공개 형태 | 처리 규칙 |
 |---:|---|---|---|---|
 | 1 | 공개 Volicord 요청이 생기기 전에 전송, JSON-RPC, 또는 어댑터 메시지 형태가 실패합니다. | Core 실행 전 전송 또는 어댑터 계층. | JSON-RPC `error`, 프로세스 종료 진단, 또는 전송 담당 실패 형태입니다. Volicord `ErrorCode`는 선택하지 않습니다. | [MCP 전송](../mcp-transport.md)이나 해당 전송 또는 어댑터 담당 문서로 보냅니다. 요청이 Core 전에 실패한 뒤 이를 `ToolRejectedResponse.errors[]`로 바꾸지 않습니다. |
-| 2 | 알려진 MCP 도구 호출이 Core 실행 전에 MCP 어댑터에서 거절됩니다. 여기에는 Agent Connection 모드 거절, 프로젝트 선택 실패, 프로젝트 허용 목록 실패, 호출자 소유 호출 필드, 알려진 도구 인자 디코딩/스키마 거절이 포함됩니다. | Core 실행 전 MCP 어댑터 계층. | 그 조건이 [MCP 전송](../mcp-transport.md)이 담당하는 JSON-RPC 프로토콜 또는 파라미터 오류가 아닌 한, text content와 `isError: true`를 담은 MCP `CallToolResult`입니다. | Volicord 메서드 결과가 아니며 `ToolRejectedResponse.errors[]`가 없습니다. 다시 시도하기 전에 MCP 호출, 연결 모드, 프로젝트 선택자를 고칩니다. |
-| 3 | 타입이 정해진 Volicord 요청이 Core에 도달했지만 메서드 소유 결과 분기 전에 요청 검증, Core 사전 확인, 호출 호환성, Task 조회, 최신성, 멱등성이 실패합니다. | Core 안, 커밋되는 메서드 실행 전. | 공개 `ErrorCode` 값을 담은 `ToolRejectedResponse.errors[]`입니다. | 거부 분기는 [API 오류 처리 경로](error-routing.md)를 사용하고, `errors[0]`에는 이 문서의 우선순위 표를 사용합니다. 커밋되는 동작은 진행되지 않습니다. |
+| 2 | 알려진 MCP 도구 호출이 Core 실행 전에 MCP 어댑터에서 거절됩니다. 여기에는 Agent Connection 모드 거절, 프로젝트 선택 실패, 프로젝트 허용 목록 실패, 호출자 소유 호출 필드, 알려진 도구 인자 디코딩/스키마 거절이 포함됩니다. | Core 실행 전 MCP 어댑터 계층. | 그 조건이 [MCP 전송](../mcp-transport.md)이 담당하는 JSON-RPC 프로토콜 또는 파라미터 오류가 아닌 한, 텍스트 콘텐츠와 `isError: true`를 담은 MCP `CallToolResult`입니다. | Volicord 메서드 결과가 아니며 `ToolRejectedResponse.errors[]`가 없습니다. 다시 시도하기 전에 MCP 호출, 연결 모드, 프로젝트 선택자를 고칩니다. |
+| 3 | 타입이 정해진 Volicord 요청이 Core에 도달했지만 메서드가 담당하는 결과 분기 전에 요청 검증, Core 사전 확인, 호출 호환성, `Task` 조회, 최신성, 멱등성이 실패합니다. | Core 안, 커밋되는 메서드 실행 전. | 공개 `ErrorCode` 값을 담은 `ToolRejectedResponse.errors[]`입니다. | 거부 분기는 [API 오류 처리 경로](error-routing.md)를 사용하고, `errors[0]`에는 이 문서의 우선순위 표를 사용합니다. 커밋되는 동작은 진행되지 않습니다. |
 | 4 | 유효한 `dry_run` 요청이 사전 확인 뒤 미리보기 분기에 도달합니다. | Core 안, 검증과 사전 확인 뒤, 커밋 전. | 메서드가 정의한 경우 `DryRunSummary.would_errors[]` 또는 `DryRunSummary.would_blockers[]`를 담은 `ToolDryRunResponse`입니다. | 미리보기 분기 동작은 [API 오류 처리 경로](error-routing.md#dry-run-behavior)로 보냅니다. 미리보기 차단 사유는 저장된 `CloseReadinessBlocker` 객체가 아니라 `PlannedBlocker`입니다. |
-| 5 | 유효한 메서드 평가가 커밋된 차단 효과를 선택하지 않고 차단 결과를 반환합니다. | Core 안, 메서드 소유 평가 뒤. | `CloseTaskResult(close_state=blocked)` 또는 메서드 소유 판단 필드 같은 메서드별 `MethodResult` 필드입니다. `errors[]` 분기는 없습니다. | 분기 선택은 [API 오류 처리 경로](error-routing.md#blocked-result-behavior)로, 닫기 차단 사유 경계는 [API 차단 사유 처리 경로](blocker-routing.md)로, 메서드 세부사항은 메서드 담당 문서로 보냅니다. 이는 전송 오류나 스키마 오류가 아닙니다. |
-| 6 | 유효한 메서드 평가가 커밋되는 차단 사유형 또는 비허용 결과를 선택합니다. | Core 안, 메서드 소유 커밋 분기. | 메서드와 저장 효과 담당 문서가 허용할 때 커밋 효과를 가진 메서드별 `MethodResult`입니다. 예를 들면 커밋된 `PrepareWriteResult` 비허용 결정입니다. | 실패한 전송 호출이 아니라 지속 상태일 수 있습니다. 정확한 저장 효과는 [저장 효과](../storage-effects.md)로, 정확한 결과 필드는 메서드 담당 문서로 보냅니다. `ToolRejectedResponse.errors[]` 분기가 없으므로 공개 오류 우선순위는 적용되지 않습니다. |
+| 5 | 유효한 메서드 평가가 커밋된 차단 효과를 선택하지 않고 차단 결과를 반환합니다. | Core 안, 메서드별 평가 뒤. | `CloseTaskResult(close_state=blocked)` 또는 메서드가 담당하는 판단 필드 같은 메서드별 `MethodResult` 필드입니다. `errors[]` 분기는 없습니다. | 분기 선택은 [API 오류 처리 경로](error-routing.md#blocked-result-behavior)로, 닫기 차단 사유 경계는 [API 차단 사유 처리 경로](blocker-routing.md)로, 메서드 세부사항은 메서드 담당 문서로 보냅니다. 이는 전송 오류나 스키마 오류가 아닙니다. |
+| 6 | 유효한 메서드 평가가 커밋되는 차단 사유형 또는 비허용 결과를 선택합니다. | Core 안, 메서드별 커밋 분기. | 메서드와 저장 효과 담당 문서가 허용할 때 커밋 효과를 가진 메서드별 `MethodResult`입니다. 예를 들면 커밋된 `PrepareWriteResult` 비허용 결정입니다. | 실패한 전송 호출이 아니라 지속 상태일 수 있습니다. 정확한 저장 효과는 [저장 효과](../storage-effects.md)로, 정확한 결과 필드는 메서드 담당 문서로 보냅니다. `ToolRejectedResponse.errors[]` 분기가 없으므로 공개 오류 우선순위는 적용되지 않습니다. |
 
 MCP `tools/call`에서 MCP 전송이 성공하면 Volicord 도메인 수준 `ToolRejectedResponse`를 포함해 Volicord 응답은 `isError: false`로 래핑됩니다. 호출자는 `base.response_kind`, `errors`, 메서드 결과 필드를 확인하려면 `result.content[0].text`를 JSON으로 파싱해야 합니다.
 
@@ -155,7 +158,7 @@ MCP `tools/call`에서 MCP 전송이 성공하면 Volicord 도메인 수준 `Too
 - `ToolRejectedResponse.errors[]`
 
 우선순위 경계:
-- `WriteTicket.basis_state_version`이 오래되었으면 만료 무효가 아니라 `STATE_VERSION_CONFLICT`를 선택합니다.
+- `WriteTicket.basis_state_version`이 오래되었으면 만료로 인한 무효 처리 대신 `STATE_VERSION_CONFLICT`를 선택합니다.
 - 만료는 결과 쪽 판단, 차단 사유 코드, 닫기 준비 상태 차단 사유 코드, 미리보기 차단 사유 코드로 모델링하지 않습니다.
 
 세부 필드:

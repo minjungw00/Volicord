@@ -77,13 +77,39 @@
 
 ### `write_ticket_reason`
 
-`ToolError.details.write_ticket_reason`은 `missing`, `expired`, `stale`, `revoked`, `consumed`, `incompatible`, `task_mismatch`, `change_unit_mismatch`, `product_write_flag_mismatch`, `baseline_mismatch`, `sensitive_category_mismatch`, `path_mismatch`를 사용합니다. 불일치별 값은 공개 코드 `WRITE_TICKET_INVALID`를 유지하면서 호환되지 않는 기록 또는 범위 사실을 식별합니다. 만료된 쓰기 티켓 사용은 공개 코드 `WRITE_TICKET_INVALID`와 함께 `write_ticket_reason=expired`를 설정합니다. 오래된 `WriteTicket.basis_state_version`은 `WRITE_TICKET_INVALID`가 아니라 `STATE_VERSION_CONFLICT`를 사용합니다.
+`ToolError.details.write_ticket_reason`은 아래 값을 사용합니다.
+
+```text
+missing
+expired
+stale
+revoked
+consumed
+incompatible
+task_mismatch
+change_unit_mismatch
+product_write_flag_mismatch
+baseline_mismatch
+sensitive_category_mismatch
+path_mismatch
+```
+
+불일치별 값은 공개 코드 `WRITE_TICKET_INVALID`를 유지하면서 호환되지 않는 기록이나
+범위 사실을 식별합니다.
+
+만료된 쓰기 티켓 사용은 공개 코드 `WRITE_TICKET_INVALID`와 함께
+`write_ticket_reason=expired`를 설정합니다. 오래된
+`WriteTicket.basis_state_version`은 `WRITE_TICKET_INVALID`가 아니라
+`STATE_VERSION_CONFLICT`를 사용합니다.
 
 <a id="artifact-input-error-reason"></a>
 
 ### `artifact_input_error.reason`
 
-`ToolError.details.artifact_input_error.reason`은 아래 세부 보조 값을 사용합니다. 이 값들은 최상위 공개 `ErrorCode` 값이 아닙니다. 스테이징된 아티팩트 핸들 검증 실패는 실제 실패가 요청 수준 호출 맥락, actor source, 또는 Product Repository 경로 경계 불일치가 아닌 한 공개 코드 `VALIDATION_FAILED`를 유지합니다.
+`ToolError.details.artifact_input_error.reason`은 아래 세부 보조 값을 사용합니다. 이
+값들은 최상위 공개 `ErrorCode` 값이 아닙니다. 스테이징된 아티팩트 핸들 검증 실패는
+실제 실패가 요청 수준 호출 맥락, `actor_source`, 또는 Product Repository 경로 경계
+불일치가 아닌 한 공개 코드 `VALIDATION_FAILED`를 유지합니다.
 
 | `artifact_input_error.reason` | 의미 |
 |---|---|

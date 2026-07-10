@@ -1,6 +1,8 @@
 # API state schemas
 
-This document owns API state-shaped schemas for the baseline scope. It defines public response shapes for `StateSummary`, `StateRecordRef`, lifecycle state as API data, state-related snapshots, `ProjectContinuityRecord`, `ProjectContinuitySummary`, `ShapingReadiness`, `ChangeUnitEffectContract`, and display shapes such as `SummaryCard`, `NextActionSummary`, `WriteTicket`, `WriteTicketScope`, `WriteTicketPathPatterns`, `WriteTicketStateSummary`, `WriteTicketAttemptScope`, `EvidenceSummary`, `EvidenceObservation`, `GuardHealthSummary`, `CoverageSummary`, `UnrecordedChangeFinding`, `UnrecordedChangeResolutionSummary`, `CurrentCloseBasis`, `ResidualRisk`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`, `ValidatorResult`, `GuaranteeDisplay`, and `GuaranteeDisclosure`.
+This document owns state-shaped API schemas for the baseline scope. It covers
+common state references, current-position summaries, observation health,
+project continuity, write tickets, evidence, and close-readiness data.
 
 ## Owner boundary
 
@@ -14,6 +16,17 @@ This document owns state-shaped API fields, nesting, references, summaries, snap
 | Public error semantics | [API error codes](error-codes.md) and [API error routing](error-routing.md) |
 | Core lifecycle and close-readiness product meaning | [Core Model](../core-model.md) |
 | Storage records and persistence effects | [Storage Records](../storage-records.md) and [Storage Effects](../storage-effects.md) |
+
+## Find a schema
+
+| Data you need | Start here |
+|---|---|
+| State references, current Task position, lifecycle, and shaping readiness | [State references](#state-references) |
+| Host-hook observation and session-watch coverage | [Guard health summary](#guard-health-summary) |
+| Unrecorded changes and project continuity | [Unrecorded change reconciliation shapes](#unrecorded-change-reconciliation-shapes) |
+| Status cards, next actions, and write tickets | [Current-position display shapes](#current-position-display-shapes) |
+| Evidence, observations, and Run summaries | [Evidence and run snapshot shapes](#evidence-and-run-snapshot-shapes) |
+| Close basis, residual risk, blockers, validators, and guarantees | [Close readiness and validation shapes](#close-readiness-and-validation-shapes) |
 
 ## Boundary
 
@@ -189,7 +202,7 @@ CoverageSummary:
 
 Meaning:
 - `selected_profile` and `guard_installation_status` are controlled value strings.
-- `control_surface` is the public summary of what Volicord can currently observe or decide. It reports the selected profile, whether host hooks and a session watcher are active, whether cooperative pre-tool warning or denial is available, whether unrecorded changes can be detected, whether actor identity can be proven, and whether OS enforcement is provided.
+- `control_surface` is the public observation summary of what Volicord can currently observe or decide. It reports the selected profile, whether host hooks and a session watcher are active, whether cooperative pre-tool warning or denial is available, whether unrecorded changes can be detected, whether actor identity can be proven, and whether OS enforcement is provided.
 - `guard_installation_id`, when non-null, is an opaque internal host-hook installation identifier.
 - `guard_configuration_status`, `guard_observation_status`, and `effective_guard_status` separate file/config health, runtime hook observation, and the effective detective-profile close-readiness status.
 - `generated_config_verified`, `native_host_output_adapter_verified`, `hook_path_safety`, `hook_commands_cwd_independent`, `hook_commands_subdirectory_safe`, `cooperative_pre_tool_warning_available`, `cooperative_pre_tool_denial_available`, `post_tool_correlation_available`, `bash_shell_mutation_coverage`, `direct_file_write_matcher_coverage`, `bypass_detection_active`, `prompt_capture_available`, and `local_web_consent_available` expose capability facts for the selected profile. Detective host hooks require verified generated config, native host output, `hook_path_safety=ok`, cwd-independent and subdirectory-safe required hook commands, required lifecycle phases, Bash/shell and direct file-write matcher coverage, a matching policy hash, and a current matching host-hook observation. Unrecorded-change detection requires an active session watch; a partial coverage warning remains visible in `session_watch_partial_coverage_warning`. A setup diagnostic that cannot observe a runtime-only capability reports that capability as false.
@@ -501,7 +514,7 @@ Meaning:
 - `WriteTicket.state` is a controlled value string.
 - `WriteTicket.path_patterns.allowed` and `WriteTicket.path_patterns.denied` are normalized Product Repository path patterns captured by the ticket decision.
 - `WriteTicket.observed_paths` is empty in the baseline. Detective host-hook and watcher observations are recorded through host-observation and unrecorded-change records rather than written back into the ticket.
-- `WriteTicket.control_surface` and `WriteTicket.guarantee_display` disclose the current Volicord control surface and guarantee wording. They do not claim OS-level filesystem enforcement.
+- `WriteTicket.control_surface` and `WriteTicket.guarantee_display` disclose the current Volicord observation summary and guarantee wording. They do not claim OS-level filesystem enforcement.
 - `WriteDecisionReason` is used by `PrepareWriteResult.write_decision_reasons`.
 
 `NextActionSummary` field classifications:
@@ -751,7 +764,7 @@ Meaning:
 - `CloseReadinessBlocker` is a data shape for close-readiness findings.
 - `CloseReadinessBlocker.category` is a controlled value string.
 - `CloseReadinessBlocker.code` is an owner-defined blocker code. It is not an exhaustive global public enum unless the blocker or method owner publishes a narrower local list.
-- `CloseReadinessBlocker.control_surface` may be present on `guard_*` connection-capability blockers to report the control-surface summary at the time the blocker was computed. It is absent for blockers that do not derive from `GuardHealthSummary` hook-state facts.
+- `CloseReadinessBlocker.control_surface` may be present on `guard_*` connection-capability blockers to report the observation summary at the time the blocker was computed. It is absent for blockers that do not derive from `GuardHealthSummary` hook-state facts.
 - `can_resolve_in_chat` reports whether the blocker can be resolved through a chat-mediated user path when the method owner knows that path.
 - `terminal_action_required` reports whether the next action requires a terminal, host, filesystem, or setup action outside chat.
 - `CloseReadinessBlocker.message`, `ValidatorResult.message`, and `GuaranteeDisplay.basis` are free-form display strings.

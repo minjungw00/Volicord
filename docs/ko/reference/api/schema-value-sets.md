@@ -7,12 +7,12 @@
 이 문서가 담당합니다.
 
 - 지원되는 공개 메서드 이름 값
-- 지원되는 행위자 종류 값
+- 지원되는 행위자 출처 값
 - 지원되는 다음 행동 값
 - API `response_kind`와 `effect_kind` 값
-- 지원되는 operation category 값
+- 지원되는 작업 범주(`operation_category`) 값
 - 공유 상태 참조에서 쓰는 기록/참조 판별 값
-- 지원되는 생명주기, 닫기 상태, 증거 관찰 출처와 보장 수준, 쓰기 결정 범주, 판단 종류, 표시 형식, 필요 판단 위치, 판단 해결 결과, 아티팩트 가림 처리, 아티팩트 무결성, 아티팩트 가용성 표시, `ValidatorResult.status`, `ValidatorResult.severity`, 보장 표시 등 API 값 집합
+- 지원되는 생명주기, 닫기 상태, 증거 관찰 출처와 보장 수준, 쓰기 결정 범주, 판단 종류, 표시 형식, 필요 판단 위치, 판단 결과, 아티팩트 가림 처리, 아티팩트 무결성, 아티팩트 가용성 표시, `ValidatorResult.status`, `ValidatorResult.severity`, 보장 표시 등 API 값 집합
 - 지원되는 `change_unit.operation` 값
 - 지원되는 공개 `ValidatorResult.validator_id` 값의 경계
 - 메서드 범위 사유 코드와 불투명 분류 문자열에 대한 값 집합 경계
@@ -32,13 +32,25 @@
 
 이 문서가 지원 값으로 둔 값만 지원되는 API 값입니다.
 
-- 모드 조건부 값은 사용하는 자리에서 connection mode, User Channel, admin-local, 또는 담당 문서가 정의한 조건을 이름 붙여야 합니다.
+- 모드 조건부 값은 사용하는 자리에서 연결 모드, User Channel, 로컬 관리, 또는 담당 문서가 정의한 조건을 이름 붙여야 합니다.
 - 지원 목록 밖의 값은 기준 범위 API 값이 아닙니다.
 - 지원 목록 밖의 이름을 적는 것만으로 기준 범위가 넓어지지 않습니다.
 - 화면에 보이는 라벨은 표시 텍스트일 뿐이며, 이 문서의 기준 값을 대신하지 않습니다.
 - API 예시는 스키마 담당 문서가 해당 필드를 명시적으로 자유 형식 표시 문자열, 불투명 식별자, 또는 불투명 분류 문자열로 정의하지 않는 한, 이 문서의 지원되는 enum 형태 값을 사용해야 합니다.
 - 문자열 형태 필드는 스키마 담당 문서가 이 문서의 값 집합으로 연결할 때만 이 문서가 담당합니다. 불투명 식별자, 불투명 분류 문자열, 자유 형식 표시 문자열은 해당 스키마 또는 메서드 담당 문서에 남습니다.
 - 메서드 예시가 불투명 사유 코드나 분류 문자열을 보여 주더라도 그 문자열이 지원되는 전역 값이 되지는 않습니다.
+
+## 값 집합 찾기
+
+| 값 계열 | 시작할 절 |
+|---|---|
+| 메서드, 행위자 출처, 다음 행동, 응답 분기, 작업 범주 | [메서드 이름 값](#method-name-values), [행위자 출처 값](#actor-source-values), [다음 행동 값](#next-action-values), [응답과 효과 값](#response-and-effect-values), [작업 범주 값](#operation-category-values) |
+| 기록 참조, 프로젝트 연속성, `Task` 생명주기 | [기록과 참조 값](#record-and-reference-values), [프로젝트 연속성 값](#project-continuity-values), [`Task` 생명주기 값](#task-lifecycle-values) |
+| 메서드별 요청과 결과 값 | [메서드 내부 값](#method-local-values) |
+| 관찰 상태, 증거 상태, 차단 사유 범주 | [상태와 차단 사유 값](#state-and-blocker-values) |
+| 증거 출처와 보장 수준 | [증거 관찰 값](#evidence-observation-values) |
+| 아티팩트와 판단 값 | [아티팩트 값](#artifact-values), [판단 값](#judgment-values) |
+| 오류 세부사항 보조 값과 기준 범위 밖의 값 | [오류 세부사항 보조 값](#error-detail-helper-values), [프로필 조건부 및 예약 값](#profile-gated-and-reserved-values) |
 
 <a id="method-name-values"></a>
 ## 메서드 이름 값
@@ -69,11 +81,15 @@ volicord.close_task
 
 | 값 | 사용하는 곳 | 담당 문서 경로 |
 |---|---|---|
-| `local_user` | User Channel 호출 출처와 권한을 지니는 사용자 판단 해결. | 호출 의미: [Agent Connection](../agent-connection.md). 해결 형태 담당 문서: [API 판단 스키마](schema-judgment.md). |
+| `local_user` | User Channel 호출 출처와 권한 효력이 있는 사용자 판단 결과 기록. | 호출 의미: [Agent Connection](../agent-connection.md). 결과 형태 담당 문서: [API 판단 스키마](schema-judgment.md). |
 | `agent_connection:<connection_id>` | Agent Connection 호출 출처와 에이전트가 만들거나 관찰한 상태. | 호출 의미: [Agent Connection](../agent-connection.md). 중첩 형태 담당 문서가 값이 나타나는 위치를 정의합니다. |
 | `system` | 담당 문서가 명시적으로 허용하는 내부 시스템 출처. | 메서드와 저장소 담당 문서가 값이 나타나는 위치를 정의합니다. |
 
-이 값들은 파생된 호출 출처 또는 지속 행위자 출처를 분류합니다. 이 값만으로 사용자 소유 판단, 승인, 범위 결정 권한, 최종 수락, 잔여 위험 수락, 쓰기 티켓이 생기지는 않습니다. 권한을 지니는 사용자 판단 해결은 [Agent Connection](../agent-connection.md)과 메서드 담당 문서가 정의하는 호환 User Channel 출처와 함께 `resolved_by_actor_source=local_user`를 요구합니다.
+이 값들은 파생된 호출 출처 또는 지속 행위자 출처를 분류합니다. 이 값만으로 사용자
+소유 판단, 승인, 범위 결정 권한, 최종 수락, 잔여 위험 수락, 쓰기 티켓이 생기지는
+않습니다. 사용자 판단을 권한 효력이 있는 결과로 기록하려면 [Agent
+Connection](../agent-connection.md)과 메서드 담당 문서가 정의하는 호환 User
+Channel 출처와 함께 `resolved_by_actor_source=local_user`가 필요합니다.
 
 <a id="next-action-values"></a>
 ## 다음 행동 값
@@ -128,19 +144,24 @@ no_effect
 공개 `ErrorCode` 값은 별도이며 [API 오류 코드](error-codes.md)가 담당합니다.
 
 <a id="operation-category-values"></a>
-## Operation category 값
+## 작업 범주 값
 
-메서드 담당 API 호환성 점검은 공개 API 요청 하나마다 요청 수준 operation category 하나를 사용합니다.
+메서드별 API 호환성 점검은 공개 API 요청 하나마다 요청 수준 작업 범주
+(`operation_category`) 하나를 사용합니다.
 
 | 값 | 어휘 설명 |
 |---|---|
-| `read` | 읽기 전용 API operation category입니다. `read_only` Agent Connection은 이 category를 실행할 수 있습니다. |
-| `agent_workflow` | 에이전트 워크플로 API operation category입니다. `workflow` Agent Connection은 이 category와 `read`를 실행할 수 있습니다. |
-| `user_only` | 권한을 지니는 사용자 동작을 위한 User Channel operation category입니다. Agent Connection은 이 category를 실행하지 않습니다. |
-| `admin_local` | 로컬 관리 operation category입니다. Agent Connection은 이 category를 실행하지 않습니다. |
-| `local_recovery` | `volicord.reconcile_changes` 같은 메서드 담당 복구 경로를 위한 로컬 사용자 복구 operation category입니다. Agent Connection은 이 category를 실행하지 않습니다. |
+| `read` | 읽기 전용 API 작업 범주입니다. `read_only` Agent Connection은 이 범주를 실행할 수 있습니다. |
+| `agent_workflow` | 에이전트 작업 흐름용 API 작업 범주입니다. `workflow` Agent Connection은 이 범주와 `read`를 실행할 수 있습니다. |
+| `user_only` | 권한을 지니는 사용자 동작을 위한 User Channel 작업 범주입니다. Agent Connection은 이 범주를 실행하지 않습니다. |
+| `admin_local` | 로컬 관리 작업 범주입니다. Agent Connection은 이 범주를 실행하지 않습니다. |
+| `local_recovery` | `volicord.reconcile_changes` 같은 메서드별 복구 경로를 위한 로컬 사용자 복구 작업 범주입니다. Agent Connection은 이 범주를 실행하지 않습니다. |
 
-Operation category는 Volicord API 호환성 분류이지 OS 권한, 파일시스템 ACL, 샌드박스 규칙, 네트워크 정책, 비밀 격리가 아닙니다. 메서드별 동작 요구사항은 [API 메서드](methods.md)가 안내하는 메서드 담당 문서가 담당하고, Agent Connection 호출 검증 동작은 [Agent Connection](../agent-connection.md)과 [보안](../security.md)이 담당합니다.
+작업 범주는 Volicord API 호환성 분류입니다. OS 권한, 파일시스템 ACL,
+샌드박스 규칙, 네트워크 정책, 비밀 격리가 아닙니다. 메서드별 동작 요구사항은
+[API 메서드](methods.md)가 안내하는 메서드 담당 문서가 담당합니다. Agent
+Connection 호출 검증 동작은 [Agent Connection](../agent-connection.md)과
+[보안](../security.md)이 담당합니다.
 
 <a id="record-and-reference-values"></a>
 ## 기록과 참조 값
@@ -365,18 +386,10 @@ close_readiness
 
 `IntegrationProfile`과 `GuardHealthSummary.selected_profile`은 아래 값을 사용합니다.
 
-```text
-record
-detective
-```
-
-`record`는 host hook이나 session watcher 관찰을 요구하지 않고 권한 상태를 기록하고
-MCP/tool workflow를 노출한다는 뜻이며, 여기에는 Core가 발급한 권한 쓰기 티켓이
-포함됩니다. `detective`는 권한 상태를 기록하고 쓰기 티켓 범위와 연결할 수 있는 지원
-host hook 및 session watcher 관찰을 사용한다는 뜻입니다. Detective는 협력형 host
-warning 또는 denial을 반환하고 watcher coverage 시작 뒤의 미기록 Product Repository
-변경을 탐지할 수 있지만, 행위자 identity를 증명하거나, OS 집행을 제공하거나,
-네트워크를 격리하거나, tool을 sandbox하지 않습니다.
+| 값 | 의미 |
+|---|---|
+| `record` | 호스트 훅이나 세션 감시기 관찰을 요구하지 않고 권한 상태를 기록하며 MCP 도구 작업 흐름을 노출합니다. Core가 발급한 권한 쓰기 티켓도 포함합니다. |
+| `detective` | 쓰기 티켓 범위와 연결할 수 있는 지원되는 호스트 훅과 세션 감시기 관찰을 추가합니다. 협력형 호스트 경고나 거부를 반환하고, 감시 범위가 시작된 뒤의 미기록 Product Repository 변경을 탐지할 수 있습니다. 행위자 신원을 증명하거나, OS 강제를 제공하거나, 네트워크를 격리하거나, 도구를 샌드박스에 격리하지는 않습니다. |
 
 `GuardHealthSummary.hook_path_safety`는 아래 값을 사용합니다.
 
@@ -395,16 +408,18 @@ wrapper_missing
 wrapper_not_executable
 ```
 
-`ok`는 모든 필수 host hook 명령이 cwd-independent 및 subdirectory-safe로 기록되어 있고
-기대하는 managed wrapper 경로로 해석된다는 뜻입니다. 실패 값은 이 조건을 만족하지 못한
-주된 이유를 보고합니다. 여기에는 session cwd에 의존하는 상대 명령, 오래된 절대 프로젝트
-루트, 지원되지 않는 placeholder, 누락된 dispatch 또는 wrapper 스크립트, 지원되는 Unix 계열
-플랫폼의 실행 불가능한 wrapper 스크립트, 생성된 wrapper 메타데이터 불일치, 누락된 검증
-메타데이터가 포함됩니다.
+`ok`는 모든 필수 호스트 훅 명령이 현재 작업 디렉터리와 무관하고 하위
+디렉터리에서도 안전하게 기록되어 있으며, 예상한 관리 래퍼 경로로 해석된다는
+뜻입니다. 실패 값은 이 조건을 만족하지 못한 주된 이유를 보고합니다. 여기에는
+세션의 현재 작업 디렉터리에 의존하는 상대 명령, 오래된 절대 프로젝트 루트,
+지원되지 않는 자리표시자, 누락된 디스패치 또는 래퍼 스크립트, 지원되는 Unix 계열
+플랫폼에서 실행할 수 없는 래퍼 스크립트, 생성된 래퍼 메타데이터 불일치, 누락된
+검증 메타데이터가 포함됩니다.
 
-`relative_path_unsafe`에는 호스트 session cwd를 기준으로 해석되는 bare `.codex/hooks/...`,
-`./.codex/hooks/...`, `.claude/hooks/...`, 또는 `./.claude/hooks/...` 명령이 포함됩니다.
-`ok`가 아닌 `hook_path_safety` 값은 detective host hook을 inactive로 유지합니다.
+`relative_path_unsafe`에는 호스트 세션의 현재 작업 디렉터리를 기준으로 해석되는
+`.codex/hooks/...`, `./.codex/hooks/...`, `.claude/hooks/...`,
+`./.claude/hooks/...` 명령이 포함됩니다. `ok`가 아닌 `hook_path_safety` 값은
+`detective` 호스트 훅을 `inactive`로 유지합니다.
 
 `GuardHealthSummary.guard_installation_status`는 아래 값을 사용합니다.
 
@@ -496,17 +511,51 @@ unsupported
 degraded
 ```
 
-이 값들은 닫기 준비 상태와 상태 조회 보기에 쓰이는 detective host-hook 및 내부 host-hook 기록 상태를 보고합니다. `guard_installation_status`는 저장된 생명주기 값이고, `guard_configuration_status`는 파일과 required hook 완전성을 도출하며, `guard_observation_status`는 현재 설치에 일치하는 hook 관찰이 있는지를 도출합니다. `effective_guard_status`는 detective 경로의 닫기 준비 상태 건강 점검에 쓰는 값입니다. 효과적인 `active` 건강 상태에는 detective 프로필, 완전한 required hook 설정, 오래되거나 깨지지 않은 설치, 현재 일치하는 관찰, 일치하는 호스트와 policy 식별 정보가 필요합니다. `prompt_capture_status`는 사용자 소유 판단 채팅 명령을 위한 prompt capture 사용 가능 상태입니다. `unsupported_by_host`는 호스트 기능이 없음을 뜻하고, `not_configured`는 선택된 연결에 prompt-capture 단계가 설정되어 있지 않음을 뜻합니다. `reload_required`는 사용 전에 설치된 설정이나 policy 식별 정보를 다시 읽어야 함을 뜻합니다. `configured`는 prompt-capture 관찰 전에도 검증 코드 채팅 명령을 표시할 수 있음을 뜻하고, `observed`는 일치하는 host hook이 관찰되었음을 뜻합니다. `active`는 일치하는 prompt-capture hook 관찰이 기록되었음을 뜻하고, `degraded`는 저하된 detective host hook 건강 상태 때문에 prompt capture가 차단됨을 뜻합니다. `session_watch_status`는 탐지용 watcher 사용 가능 상태입니다. `disabled`는 선택된 session-watch baseline을 사용할 수 없다는 뜻이고, `active`는 한정된 스냅샷 비교를 사용할 수 있다는 뜻이며, `degraded`는 watcher 출력이 부분적이거나 운영자 조치가 필요하다는 뜻이고, `unavailable`은 watcher가 선택된 스냅샷 확인을 수행할 수 없었다는 뜻입니다. `CoverageSummary.host_hook_state`와 `CoverageSummary.session_watcher_state`는 사람이 읽는 상태 조회와 닫기 준비 상태 출력을 위한 간결한 도출 상태이며, 자세한 `GuardHealthSummary` 필드를 대체하지 않습니다. 이 값들은 제품 정확성, 테스트 충분성, OS 강제, 샌드박싱, 보안 격리, 최종 수락, 잔여 위험 수락, 행위자 귀속, 전체 파일시스템 감시, 완전한 쓰기 방지를 증명하지 않습니다. `record`는 협력형으로 남으며, 닫기 준비 상태가 해결되지 않은 Unrecorded Change를 보고하면 그 변경은 닫기를 막습니다.
+아래 필드는 `detective` 호스트 훅의 설정, 관찰, 유효한 닫기 준비 상태를
+구분합니다.
 
-`pending_project_selection`은 MCP session에 사용할 수 있는 프로젝트가 둘 이상이고
-session-watch baseline을 만들 만큼 프로젝트가 아직 명시적으로 선택되지 않았다는
-뜻입니다. `mcp_start`는 프로젝트에 묶인 시작 또는 HTTP session 초기화에서 MCP 도구
-처리 전에 watcher coverage가 시작된다는 뜻입니다. `first_project_selection`은 여러
-프로젝트 session이 처음 명시적인 `project_selector`를 이름 붙일 때 coverage가
-시작된다는 뜻입니다. `method_boundary`는 Core 메서드 경계 fallback에서 coverage가
-시작된다는 뜻입니다. `first_project_selection`과 `method_boundary`는 부분 coverage
-basis입니다. 기록된 coverage 시작 전의 Product Repository 변경은 watcher coverage
-밖에 있습니다.
+- `guard_installation_status`는 저장된 설치 생명주기 값입니다.
+- `guard_configuration_status`는 파일과 필수 훅 설정이 완전한지를 나타냅니다.
+- `guard_observation_status`는 현재 설치에 일치하는 훅 관찰이 있는지를 나타냅니다.
+- `effective_guard_status`는 `detective` 경로의 닫기 준비 상태에 쓰는 값입니다. `active`가 되려면 `detective` 프로필, 완전한 필수 훅 설정, 오래되거나 깨지지 않은 설치, 현재 일치하는 관찰, 일치하는 호스트와 정책 식별 정보가 필요합니다.
+
+`prompt_capture_status`는 사용자 소유 판단 채팅 명령을 사용할 수 있는지를
+보고합니다.
+
+- `unsupported_by_host`: 호스트 기능이 없습니다.
+- `not_configured`: 선택된 연결에 프롬프트 캡처 단계가 설정되지 않았습니다.
+- `reload_required`: 사용 전에 설치 설정이나 정책 식별 정보를 다시 읽어야 합니다.
+- `configured`: 프롬프트 캡처 관찰 전에도 검증 코드 채팅 명령을 표시할 수 있습니다.
+- `observed`: 일치하는 호스트 훅이 관찰되었습니다.
+- `active`: 일치하는 프롬프트 캡처 훅 관찰이 기록되었습니다.
+- `degraded`: 저하된 `detective` 호스트 훅 상태 때문에 프롬프트 캡처가 차단됩니다.
+
+`session_watch_status`는 `detective` 세션 감시기의 사용 가능 상태를 보고합니다.
+
+- `disabled`: 선택된 세션 감시 기준선을 사용할 수 없습니다.
+- `active`: 한정된 스냅샷 비교를 사용할 수 있습니다.
+- `degraded`: 감시 결과가 부분적이거나 운영자 조치가 필요합니다.
+- `unavailable`: 감시기가 선택된 스냅샷 확인을 수행할 수 없었습니다.
+
+`CoverageSummary.host_hook_state`와
+`CoverageSummary.session_watcher_state`는 사람이 읽는 상태 조회와 닫기 준비 상태
+출력을 위한 간결한 파생 상태입니다. 자세한 `GuardHealthSummary` 필드를 대신하지
+않습니다.
+
+이 값들은 제품 정확성, 테스트 충분성, OS 강제, 샌드박싱, 보안 격리, 최종 수락,
+잔여 위험 수락, 행위자 귀속, 전체 파일시스템 감시, 완전한 쓰기 방지를 증명하지
+않습니다. `record` 프로필은 협력형입니다. 닫기 준비 상태가 해결되지 않은 미기록
+변경을 보고하면 그 변경은 닫기를 막습니다.
+
+관찰 범위 시점 값의 의미는 다음과 같습니다.
+
+- `pending_project_selection`: MCP 세션에 사용할 수 있는 프로젝트가 둘 이상이고, 세션 감시 기준선을 만들 만큼 프로젝트를 명시적으로 선택하지 않은 상태입니다.
+- `mcp_start`: 프로젝트에 연결된 시작 또는 HTTP 세션 초기화에서 MCP 도구 처리 전에 감시 범위가 시작됩니다.
+- `first_project_selection`: 여러 프로젝트를 다루는 세션이 명시적인 `project_selector`를 처음 지정할 때 감시 범위가 시작됩니다.
+- `method_boundary`: Core 메서드 경계의 대체 지점에서 감시 범위가 시작됩니다.
+
+`first_project_selection`과 `method_boundary`는 부분 관찰 범위 근거입니다. 기록된
+관찰 시작 전의 Product Repository 변경은 감시 범위 밖에 있습니다.
 
 `UnrecordedChangeFinding.status`는 아래 값을 사용합니다.
 
@@ -528,7 +577,11 @@ superseded_by_new_observation
 invalid_observation
 ```
 
-이 값들은 미기록 Product Repository 변경 찾기가 해결된 이유를 분류합니다. 제품 정확성, 증거 충분성, 리뷰 완료, 최종 수락, 잔여 위험 수락, 보안을 증명하지 않습니다. 호출자 사용은 [`volicord.reconcile_changes`](method-reconcile-changes.md)가 제한합니다. basis 이름만으로 에이전트 단독 묵살이 허용되지 않습니다.
+이 값들은 미기록 Product Repository 변경이 해결된 이유를 분류합니다. 제품 정확성,
+증거 충분성, 검토 완료, 최종 수락, 잔여 위험 수락, 보안을 증명하지 않습니다.
+호출자 사용은 [`volicord.reconcile_changes`](method-reconcile-changes.md)가
+제한합니다. 해결 근거의 이름만으로 에이전트가 변경을 단독으로 무시할 수는
+없습니다.
 
 `WriteDecisionReason.category`는 제어되는 범주 값입니다. 지원되는 값은 아래 값 집합뿐입니다.
 
@@ -544,7 +597,10 @@ invalid_observation
 
 이 범주는 `volicord.prepare_write` 결정 사유를 분류합니다. `CloseReadinessBlocker` 객체가 아니며 닫기 준비 상태를 평가하지 않습니다. 메서드별 결정 동작과 사유 생성은 [`volicord.prepare_write`](method-prepare-write.md)에 둡니다.
 
-이 값 집합은 `category`만 제어합니다. `WriteDecisionReason.code`는 전역 닫힌 enum이 아닙니다. 메서드 범위의 불투명 사유 코드이며, 메서드 담당 문서는 예시 코드를 보여 주더라도 전역 지원 목록에 추가하지 않을 수 있습니다. `message`는 자유 형식 표시 문자열이고, `related_refs`는 `StateRecordRef`를 사용합니다.
+이 값 집합은 `category`만 제어합니다. `WriteDecisionReason.code`는 전역에서 쓰는
+고정 값 집합이 아닙니다. 메서드 범위의 불투명 사유 코드이므로, 메서드 담당 문서가
+예시 코드를 보여 주더라도 전역 지원 목록에 추가되는 것은 아닙니다. `message`는
+자유 형식 표시 문자열이고, `related_refs`는 `StateRecordRef`를 사용합니다.
 
 `CloseReadinessBlocker.category`는 아래 값을 사용합니다.
 
@@ -632,7 +688,7 @@ unverified
 
 보장 수준 의미:
 - `cooperative_report`는 제출 행위자 맥락의 협력형 보고입니다.
-- `registered_connection_observed`는 등록된 Agent Connection이 기록된 connection 맥락 안에서 그 주장을 관찰했음을 기록합니다.
+- `registered_connection_observed`는 등록된 Agent Connection이 기록된 연결 맥락 안에서 그 주장을 관찰했음을 기록합니다.
 - `external_tool_result`는 관찰이 외부 도구 결과에 기반함을 기록합니다.
 - `user_observed`는 사용자 귀속 관찰 출처를 기록합니다.
 - `unverified`는 확인된 관찰 보장 수준이 없음을 기록합니다.
@@ -666,7 +722,10 @@ cooperative
 detective
 ```
 
-`cooperative`는 기준 대체값입니다. `detective`는 보안 담당 문서가 그 주장을 지원하고, 프로젝트 강제 사실, 확인된 Agent Connection 또는 User Channel 출처, 활성화된 강제 메커니즘, 관찰 범위 사실이 이를 뒷받침할 때만 표시할 수 있습니다. 선언된 connection capability만으로 표시 보장을 높일 수 없습니다.
+`cooperative`는 다른 근거가 없을 때 사용하는 기준 값입니다. `detective`는 보안 담당 문서가 그 주장을
+지원하고, 프로젝트 강제 사실, 확인된 Agent Connection 또는 User Channel 출처,
+활성화된 강제 메커니즘, 관찰 범위 사실이 이를 뒷받침할 때만 표시할 수 있습니다.
+선언된 연결 기능만으로 표시 보장을 높일 수 없습니다.
 
 `GuaranteeDisclosure.guarantee_class`는 아래 값을 사용합니다.
 
@@ -678,9 +737,9 @@ user_judgment_record
 ```
 
 값 의미:
-- `authority_record`는 결과가 문서화된 메서드 계약 안에서 Core 권한 상태, 응답 분기 메타데이터, 메서드 소유 결과 필드를 보고한다는 뜻입니다.
-- `cooperative_host_decision`은 결과가 관찰된 호스트 event에 대해 협력형 host hook으로 반환한 결정을 보고한다는 뜻입니다.
-- `detective_observation`은 결과가 Volicord가 검사할 수 있었던 로컬 진단, 검증, 관찰, transport 상태 사실을 보고한다는 뜻입니다.
+- `authority_record`는 결과가 문서화된 메서드 계약 안에서 Core 권한 상태, 응답 분기 메타데이터, 메서드별 결과 필드를 보고한다는 뜻입니다.
+- `cooperative_host_decision`은 결과가 관찰된 호스트 이벤트에 대해 협력형 호스트 훅으로 반환한 결정을 보고한다는 뜻입니다.
+- `detective_observation`은 결과가 Volicord가 검사할 수 있었던 로컬 진단, 검증, 관찰, 전송 상태 사실을 보고한다는 뜻입니다.
 - `user_judgment_record`는 결과가 지원되는 `User Channel` 경로로 받은 사용자 소유 판단을 기록한다는 뜻입니다.
 
 `GuaranteeDisclosure.non_guarantees`는 아래 값을 사용합니다.
@@ -832,12 +891,19 @@ superseded
 - 민감 승인 질문은 민감 동작 범위가 현재 민감 동작 요구사항과 겹칠 때만 관련됩니다.
 - `informational` 판단은 감사 또는 표시 맥락이며 그 자체로 쓰기, 실행 기록, 닫기를 차단하지 않습니다.
 
-`UserJudgmentOption.option_id`의 범위는 그 판단 안으로 제한되며 전역 값 집합이 아닙니다. 화면에 보이는 선택지 라벨은 기준 값이 아니라 표시 텍스트일 뿐입니다. 현재 공개 `UserJudgmentOption.machine_action`은 위의 권한 선택지 동작 값을 사용합니다. `UserJudgmentOption.resolution_outcome`은 `JudgmentResolutionOutcome`을 사용합니다. 선택지 라벨과 설명 문구가 기계 판독 가능한 동작이나 결과를 뒤집으면 안 됩니다.
+`UserJudgmentOption.option_id`의 범위는 그 판단 안으로 제한되며 전역 값 집합이
+아닙니다. 화면에 보이는 선택지 라벨은 기준 값이 아니라 표시 텍스트일 뿐입니다.
+공개 API의 `UserJudgmentOption.machine_action`은 위의 권한 선택지 동작 값을
+사용합니다. `UserJudgmentOption.resolution_outcome`은
+`JudgmentResolutionOutcome`을 사용합니다. 선택지 라벨과 설명 문구가 기계 판독
+가능한 동작이나 결과를 뒤집으면 안 됩니다.
 
+<a id="error-detail-helper-values"></a>
 ## 오류 세부사항 보조 값
 
 `ToolError.details.write_ticket_reason`과 `ToolError.details.artifact_input_error.reason` 보조 값은 [API 오류 세부사항](error-details.md#error-detail-helper-values)이 담당합니다. 이 값 집합 문서는 기계 판독용 오류 세부사항 의미를 정의하지 않습니다.
 
+<a id="profile-gated-and-reserved-values"></a>
 ## 프로필 조건부 및 예약 값
 
 예약된 값이나 프로필 조건부 값은 기준 범위의 기본 지원 값이 아닙니다. 이 문서는 지원되지 않는 값 이름을 지원되는 값 집합으로 공개하지 않습니다.

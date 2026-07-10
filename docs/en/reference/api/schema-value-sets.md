@@ -7,7 +7,7 @@ This document owns supported API value sets and enum-like public values for the 
 This document owns:
 
 - supported public method-name values
-- supported actor-kind values
+- supported actor-source values
 - supported next-action values
 - API `response_kind` and `effect_kind` values
 - supported operation-category values
@@ -39,6 +39,18 @@ Only values listed as supported in this document are supported API values.
 - API examples must use supported enum-like values from this document unless the schema owner explicitly defines the field as a free-form display string, an opaque identifier, or an opaque classification string.
 - A string-like field is controlled by this document only when the schema owner routes that field to a value set here. Opaque identifiers, opaque classification strings, and free-form display strings stay with their schema or method owner.
 - A method example may show an opaque reason code or classification string without making that string a supported global value.
+
+## Find a value set
+
+| Value family | Start here |
+|---|---|
+| Methods, actor provenance, next actions, response branches, and operation categories | [Method name values](#method-name-values), [Actor source values](#actor-source-values), [Next-action values](#next-action-values), [Response and effect values](#response-and-effect-values), and [Operation category values](#operation-category-values) |
+| Record references, project continuity, and Task lifecycle | [Record and reference values](#record-and-reference-values), [Project continuity values](#project-continuity-values), and [Task lifecycle values](#task-lifecycle-values) |
+| Method-specific request and result values | [Method-local values](#method-local-values) |
+| Observation health, evidence state, and blocker categories | [State and blocker values](#state-and-blocker-values) |
+| Evidence provenance and assurance | [Evidence observation values](#evidence-observation-values) |
+| Artifact and judgment values | [Artifact values](#artifact-values) and [Judgment values](#judgment-values) |
+| Error-detail helpers and values outside the baseline | [Error detail helper values](#error-detail-helper-values) and [Profile-gated and reserved values](#profile-gated-and-reserved-values) |
 
 <a id="method-name-values"></a>
 ## Method name values
@@ -363,19 +375,10 @@ close_readiness
 
 `IntegrationProfile` and `GuardHealthSummary.selected_profile` use:
 
-```text
-record
-detective
-```
-
-`record` means Volicord records authority state and exposes MCP/tool workflow
-without requiring host hooks or session watcher observation; this includes
-Core-issued authority write tickets. `detective` means Volicord records authority
-state and uses supported host hooks plus session watcher observation that can be
-correlated to write-ticket scope. Detective may return cooperative host warnings
-or denials and may detect unrecorded Product Repository changes after watcher
-coverage starts, but it does not prove actor identity, provide OS enforcement,
-isolate the network, or sandbox tools.
+| Value | Meaning |
+|---|---|
+| `record` | Records authority state and exposes the MCP tool workflow without requiring host hooks or session-watcher observation. This includes Core-issued authority write tickets. |
+| `detective` | Adds supported host hooks and session-watcher observation that can be correlated to write-ticket scope. It may return cooperative host warnings or denials and detect unrecorded Product Repository changes after watcher coverage starts. It does not prove actor identity, provide OS enforcement, isolate the network, or sandbox tools. |
 
 `GuardHealthSummary.hook_path_safety` uses:
 
@@ -497,17 +500,53 @@ unsupported
 degraded
 ```
 
-These values report detective host-hook and internal host-hook record state for close-readiness and status projections. `guard_installation_status` is the stored lifecycle value, `guard_configuration_status` derives file and required-hook completeness, `guard_observation_status` derives whether the current installation has a matching hook observation, and `effective_guard_status` is the close-readiness health used for detective paths. `active` effective health requires detective profile, complete required hook configuration, a non-stale and non-broken installation, a current matching observation, and matching host and policy identity. `prompt_capture_status` is the prompt-capture availability state for user-owned judgment chat commands: `unsupported_by_host` means the host capability is absent, `not_configured` means the prompt-capture phase is not configured for the selected connection, `reload_required` means installed configuration or policy identity must be reloaded before use, `configured` means verification-code chat commands may be shown before a prompt-capture observation, `observed` means a matching host hook has been observed, `active` means a matching prompt-capture hook observation is recorded, and `degraded` means prompt capture is blocked by degraded detective host hook health. `session_watch_status` is detective watcher availability: `disabled` means no selected session-watch baseline is available, `active` means bounded snapshot comparison is available, `degraded` means watcher output is partial or needs operator attention, and `unavailable` means the watcher could not perform the selected snapshot check. `CoverageSummary.host_hook_state` and `CoverageSummary.session_watcher_state` are concise derived states for human status and close-readiness output; they do not replace the detailed `GuardHealthSummary` fields. These values do not prove product correctness, test sufficiency, OS enforcement, sandboxing, security isolation, final acceptance, residual-risk acceptance, actor attribution, full filesystem monitoring, or full write prevention. `record` remains cooperative; unresolved Unrecorded Changes still block close when close-readiness reports them.
+These fields separate detective host-hook configuration, observation, and
+effective close-readiness health:
 
-`pending_project_selection` means an MCP session has more than one available
-project and has not yet selected a project explicitly enough to create a
-session-watch baseline. `mcp_start` means watcher coverage starts before MCP
-tool handling for a project-bound startup or HTTP session initialization.
-`first_project_selection` means coverage starts when a multi-project session
-first names an explicit `project_selector`. `method_boundary` means coverage
-starts at the Core method-boundary fallback. `first_project_selection` and
-`method_boundary` are partial coverage bases; Product Repository changes before
-the recorded coverage start are outside watcher coverage.
+- `guard_installation_status` is the stored installation lifecycle value.
+- `guard_configuration_status` derives file and required-hook completeness.
+- `guard_observation_status` reports whether the current installation has a matching hook observation.
+- `effective_guard_status` is the close-readiness health used for `detective` paths. `active` requires a `detective` profile, complete required-hook configuration, a non-stale and non-broken installation, a current matching observation, and matching host and policy identity.
+
+`prompt_capture_status` reports whether user-owned judgment chat commands are
+available:
+
+- `unsupported_by_host`: the host capability is absent.
+- `not_configured`: the prompt-capture phase is not configured for the selected connection.
+- `reload_required`: installed configuration or policy identity must be reloaded before use.
+- `configured`: verification-code chat commands may be shown before a prompt-capture observation.
+- `observed`: a matching host hook has been observed.
+- `active`: a matching prompt-capture hook observation is recorded.
+- `degraded`: degraded `detective` host-hook health blocks prompt capture.
+
+`session_watch_status` reports `detective` watcher availability:
+
+- `disabled`: no selected session-watch baseline is available.
+- `active`: bounded snapshot comparison is available.
+- `degraded`: watcher output is partial or needs operator attention.
+- `unavailable`: the watcher could not perform the selected snapshot check.
+
+`CoverageSummary.host_hook_state` and
+`CoverageSummary.session_watcher_state` are concise derived states for human
+status and close-readiness output. They do not replace the detailed
+`GuardHealthSummary` fields.
+
+These values do not prove product correctness, test sufficiency, OS
+enforcement, sandboxing, security isolation, final acceptance, residual-risk
+acceptance, actor attribution, full filesystem monitoring, or full write
+prevention. The `record` profile remains cooperative. Unresolved Unrecorded
+Changes still block close when close readiness reports them.
+
+Coverage timing values mean:
+
+- `pending_project_selection`: an MCP session has more than one available project and has not selected one explicitly enough to create a session-watch baseline.
+- `mcp_start`: watcher coverage starts before MCP tool handling for a project-bound startup or HTTP session initialization.
+- `first_project_selection`: coverage starts when a multi-project session first names an explicit `project_selector`.
+- `method_boundary`: coverage starts at the Core method-boundary fallback.
+
+`first_project_selection` and `method_boundary` are partial coverage bases.
+Product Repository changes before the recorded coverage start are outside
+watcher coverage.
 
 `UnrecordedChangeFinding.status` uses:
 

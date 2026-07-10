@@ -1,6 +1,8 @@
 # API 상태 스키마
 
-이 문서는 기준 범위의 상태 형태 API 스키마를 담당합니다. `StateSummary`, `StateRecordRef`, API 데이터 형태의 생명주기 상태, 상태 관련 스냅샷, `ProjectContinuityRecord`, `ProjectContinuitySummary`, `ShapingReadiness`, `ChangeUnitEffectContract`, 그리고 `SummaryCard`, `NextActionSummary`, `WriteTicket`, `WriteTicketScope`, `WriteTicketPathPatterns`, `WriteTicketStateSummary`, `WriteTicketAttemptScope`, `EvidenceSummary`, `EvidenceObservation`, `GuardHealthSummary`, `CoverageSummary`, `UnrecordedChangeFinding`, `UnrecordedChangeResolutionSummary`, `CurrentCloseBasis`, `ResidualRisk`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`, `ValidatorResult`, `GuaranteeDisplay`, `GuaranteeDisclosure` 같은 표시 형태를 정의합니다.
+이 문서는 기준 범위의 상태 형태 API 스키마를 담당합니다. 공통 상태 참조,
+현재 위치 요약, 관찰 상태, 프로젝트 연속성, 쓰기 티켓, 증거, 닫기 준비 상태
+데이터를 다룹니다.
 
 ## 담당 경계
 
@@ -14,6 +16,17 @@
 | 공개 오류 의미 | [API 오류 코드](error-codes.md), [API 오류 처리 경로](error-routing.md) |
 | Core 생명주기와 닫기 준비 상태의 제품 의미 | [Core 모델](../core-model.md) |
 | 저장소 기록과 지속 효과 | [저장소 기록](../storage-records.md), [저장 효과](../storage-effects.md) |
+
+## 스키마 찾기
+
+| 필요한 데이터 | 시작할 절 |
+|---|---|
+| 상태 참조, 현재 `Task` 위치, 생명주기, 구체화 준비 상태 | [상태 참조](#state-references) |
+| 호스트 훅 관찰과 세션 감시 범위 | [`GuardHealthSummary`와 관찰 범위](#guard-health-summary) |
+| 미기록 변경과 프로젝트 연속성 | [미기록 변경 조정 형태](#unrecorded-change-reconciliation-shapes) |
+| 상태 카드, 다음 행동, 쓰기 티켓 | [현재 위치 표시 형태](#current-position-display-shapes) |
+| 증거, 관찰, `Run` 요약 | [증거와 실행 기록 스냅샷 형태](#evidence-and-run-snapshot-shapes) |
+| 닫기 근거, 잔여 위험, 차단 사유, 검증기, 보장 | [닫기 준비 상태와 검증 형태](#close-readiness-and-validation-shapes) |
 
 ## 경계
 
@@ -33,7 +46,7 @@
 ## 상태 참조
 
 의미:
-- `StateRecordRef`는 API 응답에 나타나는 Core 소유 기록의 공통 공개 참조 형태입니다.
+- `StateRecordRef`는 API 응답에 나타나는 Core가 소유하는 기록의 공통 공개 참조 형태입니다.
 - `record_kind`는 제어 값 문자열입니다.
 - `record_id`, `project_id`, `task_id`는 불투명 식별자입니다.
 
@@ -85,7 +98,7 @@ StateSummary:
 
 의미:
 - `StateSummary`는 상태 참조, 요약, 닫기 준비 상태 필드를 담는 간결한 응답 형태입니다.
-- 메서드 include 플래그는 이 형태의 일부만 선택할 수 있습니다. 메서드 담당 문서가 어떤 상태 보기를 선택하지 않는다고 말하면 `evidence_summary`, `close_state`, `close_blockers`, `guard_health`, `guarantee_display` 같은 include 제어 필드는 null이나 빈 값으로 반환하지 않고 생략합니다. 반환된 빈 배열은 그 상태 보기를 계산했고 비어 있음을 뜻합니다.
+- 메서드의 `include` 플래그는 이 형태의 일부만 선택할 수 있습니다. 메서드 담당 문서가 어떤 상태 보기를 선택하지 않는다고 말하면 `evidence_summary`, `close_state`, `close_blockers`, `guard_health`, `guarantee_display` 같은 `include` 제어 필드는 `null`이나 빈 값으로 반환하지 않고 생략합니다. 반환된 빈 배열은 그 상태 보기를 계산했고 비어 있음을 뜻합니다.
 - `mode`와 `close_state`는 값이 있을 때 제어 값 문자열입니다.
 - `goal_summary`, `scope_summary`, `non_goals`, `acceptance_criteria`, `autonomy_boundary`는 자유 형식 표시 문자열입니다.
 - `effect_contract`는 현재 적용 Change Unit의 선택적 추가 효과 계약입니다. `null`은 추가 Change Unit 효과 계약이 기록되어 있지 않다는 뜻입니다. 넓은 안전성이나 제한 없는 실행처럼 설명하면 안 됩니다.
@@ -100,9 +113,13 @@ StateSummary:
 - 커밋 결정 분기: [공통 응답 분기](schema-core.md#common-response)
 - 메서드별 커밋 동작: [API 메서드](methods.md)가 안내하는 메서드 담당 문서
 
-## Guard health summary
+<a id="guard-health-summary"></a>
+## `GuardHealthSummary`와 관찰 범위
 
-`GuardHealthSummary`는 메서드 담당 문서가 선택했을 때 닫기 준비 상태와 상태 조회 보기가 반환하는 간결한 detective host-hook 및 관찰 상태 보기입니다. `guard_*` 필드 이름은 내부 host 관찰 기록과 hook 관련 구현 상태를 위한 스키마 식별자이며, 공개 보안 모드나 보안 경계가 아닙니다.
+`GuardHealthSummary`는 메서드 담당 문서가 선택했을 때 닫기 준비 상태와 상태
+조회 보기가 반환하는 간결한 `detective` 프로필 호스트 훅 및 관찰 상태 보기입니다.
+`guard_*` 필드 이름은 내부 호스트 관찰 기록과 훅 관련 구현 상태를 위한 스키마
+식별자입니다. 공개 보안 모드나 보안 경계가 아닙니다.
 
 ```yaml
 ControlSurfaceSummary:
@@ -189,44 +206,44 @@ CoverageSummary:
 
 의미:
 - `selected_profile`과 `guard_installation_status`는 제어 값 문자열입니다.
-- `control_surface`는 Volicord가 현재 관찰하거나 결정할 수 있는 것을 요약하는 공개 값입니다. 선택된 프로필, host hook과 session watcher 활성 여부, 협력형 pre-tool warning 또는 denial 가용성, 미기록 변경 탐지 가능 여부, 행위자 identity 증명 가능 여부, OS 집행 제공 여부를 보고합니다.
-- `guard_installation_id`가 `null`이 아니면 불투명 내부 host-hook 설치 식별자입니다.
-- `guard_configuration_status`, `guard_observation_status`, `effective_guard_status`는 파일/설정 건강 상태, 런타임 hook 관찰, 닫기 준비 상태에서 쓰는 효과적인 detective 프로필 상태를 분리합니다.
-- `generated_config_verified`, `native_host_output_adapter_verified`, `hook_path_safety`, `hook_commands_cwd_independent`, `hook_commands_subdirectory_safe`, `cooperative_pre_tool_warning_available`, `cooperative_pre_tool_denial_available`, `post_tool_correlation_available`, `bash_shell_mutation_coverage`, `direct_file_write_matcher_coverage`, `bypass_detection_active`, `prompt_capture_available`, `local_web_consent_available`는 선택된 프로필의 capability 사실을 노출합니다. Detective host hook에는 검증된 생성 설정, native host output, `hook_path_safety=ok`, cwd-independent이고 subdirectory-safe인 필수 hook 명령, 필요한 lifecycle phase, Bash/shell 및 직접 파일 쓰기 matcher coverage, 일치하는 policy hash, 현재 일치하는 host-hook 관찰이 필요합니다. 미기록 변경 탐지에는 활성 session watch가 필요하며, 부분 coverage 경고는 `session_watch_partial_coverage_warning`에 계속 표시됩니다. 런타임 전용 기능을 관찰할 수 없는 setup 진단은 그 기능을 false로 보고합니다.
-- `guard_hook_observed`는 선택된 내부 host-hook 설치 기록에 대해 현재 일치하는 host-hook 관찰이 기록되어 있는지를 보고합니다.
-- `last_guard_observed_at`은 가장 최근 저장된 내부 host-hook 설치 관찰 시각이며, 관찰이 기록되어 있지 않으면 `null`입니다.
-- `last_guard_event_at`은 상태 보기에 사용할 수 있는 최신 host-hook 이벤트 타임스탬프입니다. 사용할 수 있는 host-hook 이벤트가 없으면 `null`입니다.
+- `control_surface`는 Volicord가 현재 관찰하거나 결정할 수 있는 것을 보여 주는 공개 관찰 요약입니다. 선택된 프로필, 호스트 훅과 세션 감시기의 활성 여부, 협력형 도구 실행 전 경고 또는 거부의 가용성, 미기록 변경 탐지 가능 여부, 행위자 신원 증명 가능 여부, OS 강제 제공 여부를 보고합니다.
+- `guard_installation_id`가 `null`이 아니면 불투명 내부 호스트 훅 설치 식별자입니다.
+- `guard_configuration_status`, `guard_observation_status`, `effective_guard_status`는 파일과 설정 상태, 런타임 훅 관찰, 닫기 준비 상태에서 쓰는 유효 `detective` 프로필 상태를 구분합니다.
+- `generated_config_verified`, `native_host_output_adapter_verified`, `hook_path_safety`, `hook_commands_cwd_independent`, `hook_commands_subdirectory_safe`, `cooperative_pre_tool_warning_available`, `cooperative_pre_tool_denial_available`, `post_tool_correlation_available`, `bash_shell_mutation_coverage`, `direct_file_write_matcher_coverage`, `bypass_detection_active`, `prompt_capture_available`, `local_web_consent_available`는 선택된 프로필의 기능 정보를 노출합니다. `detective` 호스트 훅에는 검증된 생성 설정과 호스트 기본 출력, `hook_path_safety=ok`, 현재 작업 디렉터리와 무관하고 하위 디렉터리에서도 안전한 필수 훅 명령, 필수 생명주기 단계, Bash/셸 및 직접 파일 쓰기 매처 적용 범위, 일치하는 정책 해시, 현재 일치하는 호스트 훅 관찰이 필요합니다. 미기록 변경 탐지에는 활성 세션 감시가 필요합니다. 부분 관찰 범위 경고는 `session_watch_partial_coverage_warning`에 계속 표시됩니다. 런타임 전용 기능을 관찰할 수 없는 설정 진단은 그 기능을 `false`로 보고합니다.
+- `guard_hook_observed`는 선택된 내부 호스트 훅 설치 기록에 현재 일치하는 호스트 훅 관찰이 기록되어 있는지를 보고합니다.
+- `last_guard_observed_at`은 가장 최근 저장된 내부 호스트 훅 설치 관찰 시각입니다. 관찰이 기록되어 있지 않으면 `null`입니다.
+- `last_guard_event_at`은 상태 보기에 사용할 수 있는 최신 호스트 훅 이벤트 시각입니다. 사용할 수 있는 호스트 훅 이벤트가 없으면 `null`입니다.
 - `host_kind`, `observed_hook_phase`, `observed_host_kind`, `expected_policy_hash`, `observed_policy_hash`, `observed_binary_version`은 사용할 수 있을 때 선택된 설치와 최신 저장 관찰 메타데이터를 보고합니다.
-- `required_hook_phases`와 `missing_required_hook_phases`는 필요한 host-hook 설정의 완전성을 보고합니다. 필요한 단계가 `required_hook_phases`에 없거나 `missing_required_hook_phases`에 나열되어 있으면 누락된 것으로 취급합니다. 필요한 단계가 누락되어 있으면 유효한 hook 이벤트가 관찰되었더라도 효과적인 detective 건강 상태는 active가 되지 않습니다.
-- `prompt_capture_status`는 선택된 연결의 기계 판독 prompt capture 사용 가능 상태를 보고합니다. `prompt_capture_available=true`는 그 상태가 검증 코드 채팅 명령을 허용할 때만 사용하며, 원문 프롬프트 텍스트가 포함된다는 뜻이 아닙니다.
-- `prompt_capture_available`은 선택된 연결에서 prompt capture 검증 코드 채팅 명령을 표시하거나 기록할 수 있는지 보고합니다. 프롬프트 텍스트는 포함하지 않습니다.
-- `local_web_consent_available`은 현재 adapter 호출이 User Channel 복구를 위한 loopback local web consent fallback을 제공할 수 있는지 보고합니다.
+- `required_hook_phases`와 `missing_required_hook_phases`는 필수 호스트 훅 설정이 완전한지를 보고합니다. 필요한 단계가 `required_hook_phases`에 없거나 `missing_required_hook_phases`에 나열되어 있으면 누락된 것으로 취급합니다. 필요한 단계가 누락되면 유효한 훅 이벤트가 관찰되었더라도 유효 `detective` 상태는 `active`가 되지 않습니다.
+- `prompt_capture_status`는 선택된 연결에서 프롬프트 캡처를 사용할 수 있는지를 기계가 읽을 수 있는 값으로 보고합니다. `prompt_capture_available=true`는 그 상태가 검증 코드 채팅 명령을 허용할 때만 사용합니다. 원문 프롬프트 텍스트가 포함된다는 뜻은 아닙니다.
+- `prompt_capture_available`은 선택된 연결에서 프롬프트 캡처용 검증 코드 채팅 명령을 표시하거나 기록할 수 있는지 보고합니다. 프롬프트 텍스트는 포함하지 않습니다.
+- `local_web_consent_available`은 현재 어댑터 호출이 User Channel 복구를 위한 루프백 로컬 웹 동의 대체 경로를 제공할 수 있는지 보고합니다.
 - `mcp_connection_healthy`와 `mcp_connection_status`는 추적되는 Agent Connection 확인 상태가 있을 때 그 상태를 요약합니다.
-- `session_watch_status`는 선택된 연결 또는 session에 대해 session 수준 Product Repository watcher가 `disabled`, `active`, `degraded`, `unavailable`, `pending_project_selection` 중 어떤 상태인지 보고합니다.
-- `last_session_watch_checked_at`은 가장 최근 watcher baseline 상태 갱신 시각이며, 사용할 수 있는 session-watch baseline이 없으면 `null`입니다.
-- `session_watch_baseline_created_at`은 저장된 baseline 생성 시각이며, 사용할 수 있는 session-watch baseline이 없으면 `null`입니다.
-- `session_watch_coverage_start_at`은 선택된 session에 대해 watcher baseline이 coverage를 주장할 수 있는 시작 시각이며, 사용할 수 있는 coverage 시작 시각이 없으면 `null`입니다.
+- `session_watch_status`는 선택된 연결 또는 세션의 Product Repository 세션 감시기가 `disabled`, `active`, `degraded`, `unavailable`, `pending_project_selection` 중 어떤 상태인지 보고합니다.
+- `last_session_watch_checked_at`은 가장 최근 세션 감시 기준선 상태 갱신 시각입니다. 사용할 수 있는 기준선이 없으면 `null`입니다.
+- `session_watch_baseline_created_at`은 저장된 세션 감시 기준선 생성 시각입니다. 사용할 수 있는 기준선이 없으면 `null`입니다.
+- `session_watch_coverage_start_at`은 선택된 세션에서 감시 기준선의 관찰 범위가 시작되는 시각입니다. 사용할 수 있는 시작 시각이 없으면 `null`입니다.
 - `session_watch_coverage_basis`는 `mcp_start`, `first_project_selection`, `method_boundary`, 또는 `null`입니다.
-- `session_watch_partial_coverage_warning`은 기록된 coverage 시작 전의 Product Repository 변경이 watcher coverage 밖에 있을 때 사람이 읽을 수 있는 경고입니다.
-- `session_watch_detail`은 선택된 watcher 상태에 대한 짧은 진단 세부정보이며, 사용할 수 있는 세부정보가 없으면 `null`입니다.
-- `session_watch_scan_summary`는 사용할 수 있을 때 선택된 watcher scan footprint를 보고합니다. 스캔한 파일 수, 건너뛴 파일 수, 읽을 수 없는 경로 수, degraded reason count, 건너뛴 경로 샘플, 기본 정책 제외 경로, 파일 크기와 파일 수 제한, `follows_symlinks=false`, `not_full_filesystem_monitoring=true`를 포함합니다.
+- `session_watch_partial_coverage_warning`은 기록된 관찰 시작 전의 Product Repository 변경이 세션 감시 범위 밖에 있을 때 사람이 읽을 수 있는 경고입니다.
+- `session_watch_detail`은 선택된 세션 감시 상태의 짧은 진단 세부정보입니다. 사용할 수 있는 세부정보가 없으면 `null`입니다.
+- `session_watch_scan_summary`는 사용할 수 있을 때 선택된 세션 감시기의 스캔 범위를 보고합니다. 스캔한 파일 수, 건너뛴 파일 수, 읽을 수 없는 경로 수, 저하 사유별 수, 건너뛴 경로 샘플, 기본 정책 제외 경로, 파일 크기와 파일 수 제한, `follows_symlinks=false`, `not_full_filesystem_monitoring=true`를 포함합니다.
 - `unresolved_unrecorded_change_count`는 해결되지 않은 미기록 Product Repository 변경 수입니다. 프롬프트 텍스트, 명령 텍스트, 경로 목록은 노출하지 않습니다.
-- `missing_or_stale_write_ticket`는 host-hook 이벤트가 누락되었거나, 결정할 수 없거나, 모호하거나, 오래된 쓰기 티켓 준비 상태를 감지했는지 보고합니다.
-- `write_ticket_path_scope_violation`은 host-hook 이벤트가 active 쓰기 티켓 범위 밖의 Product Repository 경로를 관찰했는지 보고합니다.
-- `CoverageSummary`는 상태 조회와 닫기 준비 상태 결과가 선택하는 간결한 도출 coverage 보기입니다. `active_profile`은 현재 `record` 또는 `detective` 프로필입니다. `host_hook_state`는 `observed`, `not_observed`, `unsupported`, `degraded` 중 하나이고, `session_watcher_state`는 `active`, `inactive`, `unsupported`, `degraded` 중 하나입니다.
-- `coverage_started_at`은 런타임이 추적하는 session-watch coverage 시작 시각이며, 사용할 수 없으면 `null`입니다. `last_snapshot_at`은 추적할 때의 최신 watcher baseline 또는 snapshot 상태 시각이며, 사용할 수 없으면 `null`입니다.
-- `CoverageSummary.watcher_scan_summary`는 coverage가 선택될 때 `GuardHealthSummary.session_watch_scan_summary`와 같습니다.
+- `missing_or_stale_write_ticket`는 호스트 훅 이벤트가 누락되었거나, 확인할 수 없거나, 모호하거나, 오래된 쓰기 티켓 준비 상태를 감지했는지 보고합니다.
+- `write_ticket_path_scope_violation`은 호스트 훅 이벤트가 상태가 `active`인 쓰기 티켓 범위 밖의 Product Repository 경로를 관찰했는지 보고합니다.
+- `CoverageSummary`는 상태 조회와 닫기 준비 상태 결과가 선택하는 간결한 파생 관찰 범위 보기입니다. `active_profile`은 현재 `record` 또는 `detective` 프로필입니다. `host_hook_state`는 `observed`, `not_observed`, `unsupported`, `degraded` 중 하나이고, `session_watcher_state`는 `active`, `inactive`, `unsupported`, `degraded` 중 하나입니다.
+- `coverage_started_at`은 런타임이 추적하는 세션 감시 범위 시작 시각이며, 사용할 수 없으면 `null`입니다. `last_snapshot_at`은 추적 중인 최신 감시 기준선 또는 스냅샷 상태 시각이며, 사용할 수 없으면 `null`입니다.
+- `CoverageSummary.watcher_scan_summary`는 관찰 범위가 선택될 때 `GuardHealthSummary.session_watch_scan_summary`와 같습니다.
 - `CoverageSummary.unresolved_unrecorded_change_count`는 닫기 준비 상태가 사용하는 해결되지 않은 미기록 Product Repository 변경 수와 같습니다.
-- coverage가 보고될 때 `CoverageSummary.non_guarantees`는 `NotActorAttributionProof`, `NotFullFilesystemMonitoring`, `NotFullWritePrevention`을 포함해야 합니다.
+- 관찰 범위가 보고될 때 `CoverageSummary.non_guarantees`는 `NotActorAttributionProof`, `NotFullFilesystemMonitoring`, `NotFullWritePrevention`을 포함해야 합니다.
 
 의미하지 않는 것:
-- `control_surface`는 정확성, review 완료, 테스트 충분성, OS 수준 강제, 쓰기 차단을 증명하지 않습니다.
+- `control_surface`는 정확성, 검토 완료, 테스트 충분성, OS 수준 강제, 쓰기 차단을 증명하지 않습니다.
 - `GuardHealthSummary`는 제품 정확성, 테스트 충분성, OS 강제, 샌드박싱, 보안 격리, 최종 수락의 증거가 아닙니다.
 - active인 `effective_guard_status`는 증거, 아티팩트 무결성, 사용자 소유 판단, 쓰기 티켓, 최종 수락, 잔여 위험 수락 요구사항을 대체하지 않습니다.
-- Session watch 상태와 coverage 메타데이터는 Volicord가 쓰기를 막았거나, 전체 파일시스템을 감시했거나, 파일을 바꾼 행위자를 식별했거나, 파일 내용을 저장했거나, OS 수준 강제를 제공했다는 뜻이 아닙니다.
-- `session_watch_partial_coverage_warning`이 `null`이 아니면 `session_watch_coverage_start_at` 전의 Product Repository 변경은 session-watch coverage 밖에 남습니다.
-- `record`는 협력형으로 남습니다. detective control surface 건강 상태가 해결되지 않은 미기록 변경 찾기를 보고하면 그 찾기는 닫기를 막습니다.
-- `detective`는 모든 쓰기를 막거나, 전체 파일시스템을 감시하거나, 파일을 바꾼 행위자를 식별하거나, 네트워크를 격리하거나, sandbox를 제공하지 않습니다.
+- 세션 감시 상태와 관찰 범위 메타데이터는 Volicord가 쓰기를 막았거나, 전체 파일시스템을 감시했거나, 파일을 바꾼 행위자를 식별했거나, 파일 내용을 저장했거나, OS 수준 강제를 제공했다는 뜻이 아닙니다.
+- `session_watch_partial_coverage_warning`이 `null`이 아니면 `session_watch_coverage_start_at` 전의 Product Repository 변경은 세션 감시 범위 밖에 남습니다.
+- `record`는 협력형으로 남습니다. `detective` 관찰 상태가 해결되지 않은 미기록 변경을 보고하면 그 변경은 닫기를 막습니다.
+- `detective`는 모든 쓰기를 막거나, 전체 파일시스템을 감시하거나, 파일을 바꾼 행위자를 식별하거나, 네트워크를 격리하거나, 샌드박스를 제공하지 않습니다.
 
 담당 문서 링크:
 - `selected_profile`, `host_hook_state`, `session_watcher_state`, `hook_path_safety`, `guard_installation_status`, `guard_configuration_status`, `guard_observation_status`, `effective_guard_status`, `prompt_capture_status`, `session_watch_status`, `session_watch_coverage_basis` 값: [상태와 차단 사유 값](schema-value-sets.md#state-and-blocker-values)
@@ -236,9 +253,11 @@ CoverageSummary:
 <a id="unrecorded-change-reconciliation-shapes"></a>
 ## 미기록 변경 조정 형태
 
-`UnrecordedChangeFinding`은 `volicord.reconcile_changes`가 미해결 미기록 Product Repository 변경에 대해 반환하는 공개 찾기 형태입니다.
+`UnrecordedChangeFinding`은 `volicord.reconcile_changes`가 해결되지 않은 미기록
+Product Repository 변경에 대해 반환하는 공개 형태입니다.
 
-`UnrecordedChangeResolutionSummary`는 조정 호출 하나가 해결한 찾기의 공개 요약 형태입니다.
+`UnrecordedChangeResolutionSummary`는 조정 호출 하나가 해결한 미기록 변경의 공개
+요약 형태입니다.
 
 ```yaml
 UnrecordedChangeFinding:
@@ -264,9 +283,9 @@ UnrecordedChangeResolutionSummary:
 - `unrecorded_change_ref`는 `record_kind=unrecorded_change`인 `StateRecordRef`를 사용합니다.
 - `status`는 제어 값 문자열입니다.
 - `summary`, `capture_basis`, `next_action.label`은 표시 문자열이며 정확성 증명이 아닙니다.
-- `observed_paths`는 Core가 안전하게 디코딩할 수 있을 때 Product Repository 상대 경로를 담습니다. prompt text, command text, shell argument, 전체 민감 내용을 포함하지 않습니다.
+- `observed_paths`는 Core가 안전하게 디코딩할 수 있을 때 Product Repository 상대 경로를 담습니다. 프롬프트 텍스트, 명령 텍스트, 셸 인수, 전체 민감 내용을 포함하지 않습니다.
 - `can_resolve_in_chat`은 메서드 담당 문서가 선택한 채팅 매개 사용자 경로로 진행할 수 있는지를 나타냅니다.
-- `resolution_basis`는 찾기가 해결된 이유를 분류합니다.
+- `resolution_basis`는 미기록 변경이 해결된 이유를 분류합니다.
 - `resolved_by_actor_source=system`은 Core가 결정적 basis를 검증했다는 뜻입니다. `resolved_by_actor_source=local_user`는 호환 User Channel 판단이 권한을 제공했다는 뜻입니다.
 - `user_judgment_ref`는 사용자 소유 수락 해결일 때만 null이 아닙니다.
 
@@ -275,7 +294,7 @@ UnrecordedChangeResolutionSummary:
 담당 문서 링크:
 
 - 해결 동작: [`volicord.reconcile_changes`](method-reconcile-changes.md).
-- 해결 basis와 상태 값: [API 값 집합](schema-value-sets.md#unrecorded-change-resolution-basis-values).
+- 해결 근거와 상태 값: [API 값 집합](schema-value-sets.md#unrecorded-change-resolution-basis-values).
 - 저장 기록 보존: [저장소 기록](../storage-records.md).
 
 <a id="project-continuity-shapes"></a>
@@ -489,19 +508,19 @@ WriteDecisionReason:
 - 선택된 증거에 공개 증거 상태가 있으면 `SummaryCard.evidence`는 [API 값 집합](schema-value-sets.md#state-and-blocker-values)이 담당하는 표시 상태를 사용합니다. 스테이징만 된 첨부 입력에는 `prepared`를 표시할 수 있으며, 이 값은 닫기에 수락된 증거가 아닙니다.
 - `SummaryCard.next`는 요약을 위해 선택된 단일 표시 다음 행동입니다. 담당 문서가 선택한 보기에서 알 수 있는 다음 행동이 없을 때만 `none`을 사용합니다. `SummaryCard.next_action`은 대응하는 구조화된 `NextActionSummary`를 담을 수 있으며 구조화된 행동이 적용되지 않으면 생략될 수 있습니다.
 - `SummaryCard`는 담당 문서가 선택한 다른 상태 필드의 요약이지 두 번째 권한 기록이 아닙니다. 표시된 다음 행동에 식별자가 필요하지 않은 한 내부 식별자를 추가하면 안 됩니다.
-- `SummaryCard.guarantee`는 요약된 보기에 대한 짧은 표시 문구입니다. 다른 담당 문서가 명시적으로 그런 보장을 제공하지 않는 한 정확성 증명, 테스트 충분성 증명, review 완료, OS 수준 집행을 주장하면 안 됩니다.
+- `SummaryCard.guarantee`는 요약된 보기에 대한 짧은 표시 문구입니다. 다른 담당 문서가 명시적으로 그런 보장을 제공하지 않는 한 정확성 증명, 테스트 충분성 증명, 검토 완료, OS 수준 집행을 주장하면 안 됩니다.
 - `NextActionSummary`는 기준 다음 행동 표시 형태입니다. 유효한 필드는 `action_kind`, `owner_method`, `label`, `blocking_question`, `required_refs`입니다.
 - 오래된 `action` 또는 `reason` 필드를 쓰는 `next_actions` 항목은 유효한 `NextActionSummary`가 아닙니다.
 - `WriteTicketStateSummary.status`는 제어 값 문자열입니다.
 - `WriteTicketStateSummary.consumed_by_run_ref`는 요약된 쓰기 티켓이 기록된 Run에 의해 소비되었을 때만 `null`이 아닙니다.
 - `WriteTicketStateSummary.observation_refs`는 사용할 수 있을 때 그 소비 Run이 만든 증거 관찰 참조를 나열합니다. 쓰기 티켓이 소비되지 않았거나 소비 Run이 관찰을 만들지 않았다면 비어 있습니다.
-- `WriteTicketAttemptScope`는 호환성 저장 행이 포착하는 한 번의 시도 경계입니다.
+- `WriteTicketAttemptScope`는 쓰기 티켓이 포착하는 한 번의 시도 경계입니다.
 - `WriteTicketAttemptScope`는 일반 쓰기 승인, 민감 동작 승인, 최종 수락, 잔여 위험 수락, 포괄적 사용자 승인이 아닙니다.
 - `WriteTicket`은 커밋된 허용 결정이 쓰기 티켓을 발급할 때 `volicord.prepare_write`가 반환하는 티켓 우선 권한 기록입니다.
 - `WriteTicket.state`는 제어되는 값 문자열입니다.
 - `WriteTicket.path_patterns.allowed`와 `WriteTicket.path_patterns.denied`는 티켓 결정이 포착한 정규화된 `Product Repository` 경로 패턴입니다.
-- `WriteTicket.observed_paths`는 기준 범위에서 비어 있습니다. Detective host hook과 watcher 관찰은 티켓에 다시 쓰지 않고 host-observation 및 미기록 변경 기록으로 남깁니다.
-- `WriteTicket.control_surface`와 `WriteTicket.guarantee_display`는 현재 Volicord 제어 표면과 보장 문구를 공개합니다. OS 수준 파일시스템 집행을 주장하지 않습니다.
+- `WriteTicket.observed_paths`는 기준 범위에서 비어 있습니다. `detective` 호스트 훅과 세션 감시기 관찰은 티켓에 다시 쓰지 않고 호스트 관찰 및 미기록 변경 기록으로 남깁니다.
+- `WriteTicket.control_surface`와 `WriteTicket.guarantee_display`는 현재 Volicord 관찰 요약과 보장 문구를 공개합니다. OS 수준 파일시스템 집행을 주장하지 않습니다.
 - `WriteDecisionReason`은 `PrepareWriteResult.write_decision_reasons`에서 사용합니다.
 
 `NextActionSummary` 필드 분류:
@@ -522,7 +541,7 @@ WriteDecisionReason:
 | `change_unit_id` | 불투명 식별자. | 포착된 시도 경계의 Change Unit을 식별합니다. |
 | `intended_operation` | 자유 형식 의도 문자열. | 제어 값 집합을 만들지 않고 의도한 작업을 설명합니다. |
 | `intended_paths` | 정규화된 Product Repository 경로 문자열. | API 수준 경로 정규화 뒤의 Product Repository 상대 경로입니다. |
-| `product_file_write_intended` | Boolean. | 포착된 시도가 제품 파일 쓰기를 의도했는지 나타냅니다. |
+| `product_file_write_intended` | 불리언. | 포착된 시도가 제품 파일 쓰기를 의도했는지 나타냅니다. |
 | `sensitive_categories` | 불투명 민감 범주 분류 문자열. | 영향받는 메서드나 프로필 담당 문서가 더 좁은 로컬 목록을 공개하지 않는 한 빠짐없는 공개 enum이 아닙니다. |
 | `baseline_ref` | 불투명 기준선 식별자 또는 `null`. | 값이 있을 때 시도 경계에 포착된 기준선 식별자입니다. |
 
@@ -535,7 +554,7 @@ WriteDecisionReason:
 | `state` | 제어되는 상태 값. | `WriteTicket.state`에 대해 [메서드 로컬 값](schema-value-sets.md#method-local-values)이 담당하는 값을 사용합니다. |
 | `scope` | `WriteTicketScope`. | 티켓 발급에 사용된 Task, Change Unit, 작업, 민감 범주, 제품 쓰기 플래그, 기준선을 포착합니다. |
 | `path_patterns` | `WriteTicketPathPatterns`. | 티켓 결정에 대한 허용·거부 정규화 `Product Repository` 경로 패턴을 포착합니다. |
-| `observed_paths` | 정규화된 `Product Repository` 경로 문자열. | 담당 문서가 정의한 detective 경로가 관찰을 티켓에 연결했을 때만 관찰된 경로를 나열합니다. 연결된 관찰이 없으면 `[]`를 사용합니다. |
+| `observed_paths` | 정규화된 `Product Repository` 경로 문자열. | 담당 문서가 정의한 `detective` 경로가 관찰을 티켓에 연결했을 때만 관찰된 경로를 나열합니다. 연결된 관찰이 없으면 `[]`를 사용합니다. |
 | `basis_state_version` | 상태 시계 값. | 티켓과 함께 커밋된 `project_state.state_version` 근거입니다. |
 | `expires_at` | UTC 타임스탬프 또는 `null`. | Volicord 호환성 조건으로 쓰이는 티켓 만료입니다. OS 수준 집행이 아닙니다. |
 | `control_surface` | `ControlSurfaceSummary | null`. | 현재 Volicord 제어 표면 공개입니다. |
@@ -752,9 +771,9 @@ GuaranteeDisclosure:
 - `CloseReadinessBlocker`는 닫기 차단 사유를 표현하는 데이터 형태입니다.
 - `CloseReadinessBlocker.category`는 제어 값 문자열입니다.
 - `CloseReadinessBlocker.code`는 담당 문서가 정의하는 차단 사유 코드입니다. 차단 사유 또는 메서드 담당 문서가 더 좁은 로컬 목록을 공개하지 않는 한 빠짐없는 전역 공개 enum이 아닙니다.
-- `CloseReadinessBlocker.control_surface`는 `guard_*` 연결 기능 차단 사유에 있을 수 있으며, 차단 사유를 계산한 시점의 control-surface 요약을 보고합니다. `GuardHealthSummary` hook-state 사실에서 도출하지 않은 차단 사유에서는 생략됩니다.
+- `CloseReadinessBlocker.control_surface`는 `guard_*` 연결 기능 차단 사유에 있을 수 있으며, 차단 사유를 계산한 시점의 관찰 요약을 보고합니다. `GuardHealthSummary`의 훅 상태에서 도출하지 않은 차단 사유에서는 생략됩니다.
 - `can_resolve_in_chat`은 메서드 담당 문서가 그 경로를 알고 있을 때 차단 사유를 채팅으로 매개되는 사용자 경로에서 해소할 수 있는지를 보고합니다.
-- `terminal_action_required`는 다음 행동이 채팅 밖의 터미널, 호스트, 파일시스템, setup 동작을 필요로 하는지를 보고합니다.
+- `terminal_action_required`는 다음 행동에 채팅 밖의 터미널, 호스트, 파일시스템, 설정 작업이 필요한지를 보고합니다.
 - `CloseReadinessBlocker.message`, `ValidatorResult.message`, `GuaranteeDisplay.basis`는 자유 형식 표시 문자열입니다.
 - `ValidatorResult.validator_id`는 값 집합 담당 문서가 지원되는 안정 값을 공개하기 전까지 보고용 라벨입니다.
 - `ValidatorResult.status`, `ValidatorResult.severity`, `GuaranteeDisplay.level`은 제어 값 문자열입니다.
@@ -777,7 +796,7 @@ GuaranteeDisclosure:
 - `capability_refs`는 표시를 정당화하는 참조를 담는 구현 필드 이름입니다. 기준 연결 아키텍처에서는 사용할 수 있으면 호출 바인딩, Agent Connection, 관찰 사실을 인용해야 합니다.
 - 협력형 전용 배포는 `detective`를 주장하면 안 됩니다.
 - `detective`는 관찰 범위에 대한 지원되는 강제 또는 관찰 사실을 요구하며, 호스트 지침, 연결 모드, 생성된 텍스트만으로는 부족합니다.
-- 별도 지원 관찰이 그 표시를 정당화하지 않는 한 협력적 `agent_report` Run이나 관찰을 `detective` 또는 외부 관찰로 표시하지 않습니다.
+- 별도 지원 관찰이 그 표시를 정당화하지 않는 한 협력형 `agent_report` `Run`이나 관찰을 `detective` 또는 외부 관찰로 표시하지 않습니다.
 
 담당 문서 링크:
 - 닫기 준비 상태 의미와 대체 금지 규칙: [Core 모델의 닫기 준비 상태](../core-model.md#close_task)

@@ -77,7 +77,7 @@
 - `ToolRejectedResponse.errors[]`
 
 조건:
-- 공개 최신성 또는 멱등성 충돌이 있습니다. 오래된 `expected_state_version`은 요청 상태 형태입니다.
+- 공개 API의 최신성 또는 멱등성 충돌이 있습니다. 오래된 `expected_state_version`은 요청 상태 형태입니다.
 
 참고:
 - 오래된 `WriteTicket.basis_state_version`과 멱등 요청 해시 충돌은 [상태 버전 충돌](error-precedence.md#state-conflict-behavior)에서 다룹니다.
@@ -89,7 +89,7 @@
 - `ToolRejectedResponse.errors[]`
 
 조건:
-- 필요한 Core, MCP, 저장소, 타입이 지정된 담당 상태, Agent Connection 도달 가능성을 사용할 수 없습니다. 여기에는 공개 메서드가 권한, 생명주기, 범위, 증거, 완료, 닫기 준비 상태, 쓰기 호환성을 평가하는 데 필요한 지속 타입 지정 담당 상태가 손상되었거나 읽을 수 없는 경우가 포함됩니다.
+- 필요한 Core, MCP, 저장소, 타입이 지정된 담당 상태, 또는 Agent Connection에 접근할 수 없습니다. 여기에는 공개 메서드가 권한, 생명주기, 범위, 증거, 완료, 닫기 준비 상태, 쓰기 호환성을 평가하는 데 필요한 지속 저장된 담당 상태가 손상되었거나 읽을 수 없는 경우가 포함됩니다.
 
 <a id="errorcode-invocation-context-mismatch"></a>
 ### `INVOCATION_CONTEXT_MISMATCH`
@@ -165,7 +165,7 @@
 - `ToolRejectedResponse.errors[]`
 
 조건:
-- 제공된 쓰기 티켓이 만료, 철회, 소비, 또는 버전 외 사유로 비호환입니다.
+- 제공된 쓰기 티켓이 만료되었거나, 철회되었거나, 이미 소비되었거나, 버전과 무관한 이유로 호환되지 않습니다.
 
 참고:
 - 만료된 쓰기 티켓 사용은 `ToolError.details.write_ticket_reason=expired`와 함께 이 코드를 유지합니다.
@@ -209,7 +209,7 @@
 - 담당 문서가 정의한 결과 경로
 
 조건:
-- 관련 사용자 소유 판단이 대기, 적용 범위 없는 보류, 거부, 오래됨, 대체됨, 비호환 상태이거나 그 밖의 이유로 담당 문서가 정의한 결정 요구사항을 만족할 수 없습니다.
+- 관련 사용자 소유 판단이 대기 중이거나, 적용 근거 없이 보류되었거나, 거부되었거나, 오래되었거나, 대체되었거나, 호환되지 않습니다. 그 밖의 이유로 담당 문서가 정의한 결정 요구사항을 만족할 수 없는 경우도 포함합니다.
 
 <a id="errorcode-autonomy-boundary-exceeded"></a>
 ### `AUTONOMY_BOUNDARY_EXCEEDED`
@@ -278,7 +278,7 @@
 - `ToolRejectedResponse.errors[]`
 
 조건:
-- 요청한 읽기용 상태나 보기가 오래되었거나 실패했습니다.
+- 요청한 읽기용 상태 또는 상태 보기가 오래되었거나 실패했습니다.
 
 <a id="errorcode-artifact-missing"></a>
 ### `ARTIFACT_MISSING`

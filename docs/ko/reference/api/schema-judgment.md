@@ -80,7 +80,9 @@ UserJudgment:
 <a id="judgmentinboxitem"></a>
 ## `JudgmentInboxItem`
 
-`JudgmentInboxItem`은 사용자 행동이 필요한 대기 판단을 사용자에게 보여 주기 위한 projection입니다. 이 형태는 답변을 기록하지 않으며 지속되는 `UserJudgment`를 대체하지 않습니다.
+`JudgmentInboxItem`은 사용자 행동이 필요한 대기 판단을 보여 주는 사용자용 상태
+보기입니다. 이 형태는 답변을 기록하지 않으며 지속되는 `UserJudgment`를 대체하지
+않습니다.
 
 ```yaml
 JudgmentInboxItem:
@@ -139,11 +141,21 @@ UserChannelPathAvailability:
 
 `choices`는 사용자에게 보이는 선택지 식별자와 라벨을 노출하며 내부 `machine_action`이나 `resolution_outcome` 필드는 노출하지 않습니다. 기계 동작과 결과는 지속되는 `UserJudgmentOption`과 기록된 해결에 남습니다.
 
-`answer_path_availability`는 이 대기 판단에 대해 지원되는 User Channel 경로의 현재 사용 가능 상태를 보고합니다. 사용할 수 없는 경로도 포함할 수 있으므로, 예를 들어 호스트 프롬프트 입력이 사용할 수 없어도 다른 사용 가능한 경로가 숨겨지지 않았음을 사용자가 볼 수 있습니다. 현재 경로 kind에는 `mcp_elicitation`, `prompt_capture`, `local_web_consent`, `cli`가 있습니다.
+`answer_path_availability`는 이 대기 판단에 대해 지원되는 User Channel 경로의 현재
+사용 가능 상태를 보고합니다. 사용할 수 없는 경로도 포함할 수 있습니다. 예를 들어
+호스트 프롬프트 입력을 사용할 수 없더라도 다른 경로가 사용 가능한지는 계속 확인할
+수 있습니다. 현재 경로 종류에는 `mcp_elicitation`, `prompt_capture`,
+`local_web_consent`, `cli`가 있습니다.
 
-`preferred_capture_path`는 현재 adapter 맥락에서 가장 적합한 User Channel capture 경로를 이름 붙입니다. 현재 경로 kind에는 `mcp_elicitation`, `prompt_capture`, `local_web_consent`, `cli`가 있습니다. `fallbacks`는 사용할 수 있는 다른 경로를 나열하며, 사용할 수 있을 때 로컬 `volicord inbox answer <judgment-id> --choice <choice>` 명령을 포함합니다.
+`preferred_capture_path`는 현재 어댑터 맥락에서 가장 적합한 User Channel 답변 경로를
+가리킵니다. 현재 경로 종류에는 `mcp_elicitation`, `prompt_capture`,
+`local_web_consent`, `cli`가 있습니다. `fallbacks`는 사용할 수 있는 다른 경로를
+나열합니다. 사용할 수 있다면 로컬
+`volicord inbox answer <judgment-id> --choice <choice>` 명령도 포함합니다.
 
-`recommended_path_kind`, `recommended_path_label`, `recommendation`은 현재 상태 보기에 충분한 정보가 있을 때 선호 답변 방법을 이름 붙입니다. 이는 사용자가 어디에서 답할 수 있는지 알려 주는 안내이며, 답변을 기록하지 않습니다.
+`recommended_path_kind`, `recommended_path_label`, `recommendation`은 현재 상태
+보기에 충분한 정보가 있을 때 선호하는 답변 방법을 알려 줍니다. 사용자가 어디에서
+답할 수 있는지 안내할 뿐, 답변을 기록하지는 않습니다.
 
 ## `JudgmentBasis`
 
@@ -216,12 +228,18 @@ UserJudgmentContext:
 
 `UserJudgmentOptionInput`은 메서드 담당 문서가 호출자 작성 선택지를 허용할 때 쓰는 사용자 지정 선택지 요청 형태입니다. 이 형태에는 `machine_action`이나 `resolution_outcome`이 없습니다. 공개 요청이 `options` 안에 이 필드를 담으면 유효하지 않습니다.
 
-`UserJudgmentOption`은 현재 Core가 소유한 선택지 상태/출력 형태입니다. 현재 공개 선택지는 `null`이 아닌 `machine_action`과 `null`이 아닌 `resolution_outcome`을 포함합니다. `machine_action=accept`는 `resolution_outcome=accepted`로, `machine_action=reject`는 `resolution_outcome=rejected`로 매핑되고, `machine_action=defer`는 메서드나 의미 담당 문서가 연기를 허용하는 곳에서만 `resolution_outcome=deferred`로 매핑됩니다. `blocked`는 `JudgmentResolutionOutcome` 값이 아닙니다.
+`UserJudgmentOption`은 현재 Core가 소유한 선택지 상태와 출력 형태입니다. 공개 API의
+선택지는 `null`이 아닌 `machine_action`과 `resolution_outcome`을 포함합니다.
+`machine_action=accept`는 `resolution_outcome=accepted`로,
+`machine_action=reject`는 `resolution_outcome=rejected`로 매핑됩니다.
+`machine_action=defer`는 메서드나 의미 담당 문서가 연기를 허용하는 곳에서만
+`resolution_outcome=deferred`로 매핑됩니다. `blocked`는
+`JudgmentResolutionOutcome` 값이 아닙니다.
 
 권한을 지니는 판단 종류에서 호출자는 요청 입력에 보이는 라벨과 기계 결과 사이의 매핑을 작성하지 않습니다. Core가 권한 선택지의 동작, 결과, 현지화된 라벨, 결과 설명을 만듭니다. 선택지 라벨이나 설명 문구가 기계 판독 가능한 동작이나 결과를 뒤집으면 안 됩니다. 지속 선택지 상태는 명시적인 동작과 결과 필드가 있는 현재 구조화된 선택지 객체를 사용합니다.
 
 <a id="resolution-and-answer-payload"></a>
-## 해결과 답변 요청 본문
+## 판단 결과와 답변 요청 본문
 
 ```yaml
 UserJudgmentResolution:
@@ -264,12 +282,16 @@ JudgmentRationale:
 
 판단 이유 텍스트는 권한을 부여하거나, 쓰기 티켓을 만들거나, 증거 요구사항을 만족하거나, 최종 수락을 성립시키거나, 잔여 위험을 수락하거나, 오래된 판단을 현재 것으로 만들거나, 어떤 선택지가 선택되었는지를 바꿀 수 없습니다.
 
-`resolved_by_actor_source`는 `ActorSource` 값 집합을 사용합니다. [행위자 출처 값](schema-value-sets.md#actor-source-values)을 보세요. 이는 자유 형식 호출자 귀속이 아니라 파생된 출처를 기록합니다. 권한을 지니는 사용자 판단 해결에는 호환 User Channel 출처와 함께 `resolved_by_actor_source=local_user`가 필요합니다.
+`resolved_by_actor_source`는 `ActorSource` 값 집합을 사용합니다. [행위자 출처
+값](schema-value-sets.md#actor-source-values)을 보세요. 이 필드는 자유 형식 호출자
+귀속이 아니라 파생된 출처를 기록합니다. 사용자 판단을 권한 효력이 있는 결과로
+기록하려면 호환 User Channel 출처와 함께
+`resolved_by_actor_source=local_user`가 필요합니다.
 
 권한을 지니는 해결 규칙:
 - `judgment_kind=scope_decision`, `final_acceptance`, `residual_risk_acceptance`, `sensitive_approval`, `cancellation`은 현재 권한 요구사항을 만족하려면 선택된 Core 생성 권한 선택지, `machine_action=accept`, `resolution_outcome=accepted`, `resolved_by_actor_source=local_user`, 호환 User Channel 출처, 호환되는 현재 근거가 필요합니다.
-- `resolution_outcome=rejected` 또는 `deferred`는 지속되는 사용자 결정이지만 어떤 것도 승인, 수락, 권한 부여, 면제, 닫기를 만들지 않습니다. `blocked`는 판단 해결 결과가 아니며 권한 요구사항을 만족할 수 없습니다.
-- 기계 판독 가능한 동작/결과나 필요한 User Channel 출처가 없는 해결 판단은 유효하지 않은 소유자 상태이며 현재 권한 요구사항을 만족할 수 없습니다.
+- `resolution_outcome=rejected` 또는 `deferred`는 지속되는 사용자 결정이지만 어떤 것도 승인, 수락, 권한 부여, 면제, 닫기를 만들지 않습니다. `blocked`는 판단 결과가 아니며 권한 요구사항을 만족할 수 없습니다.
+- 기계 판독 가능한 동작이나 결과 또는 필요한 User Channel 출처가 없는 결과 기록은 유효하지 않은 소유자 상태이며 현재 권한 요구사항을 만족할 수 없습니다.
 
 형태 규칙:
 - 선택된 `judgment_kind`에 맞는 판단별 요청 본문 분기 하나만 채웁니다.
@@ -303,7 +325,11 @@ SensitiveActionScope:
 
 `SensitiveActionScope.action_kind`와 `sensitive_categories[]`는 영향받는 메서드나 프로필 담당 문서가 더 좁은 로컬 목록을 공개하지 않는 한 불투명 민감 동작 분류 문자열입니다. `description`, `command_or_tool_summary`, `network_or_host_summary`, `secret_or_credential_summary`, `capability_claim`은 표시 또는 주장 문자열입니다. 기준 값 집합이나 보안 권한이 아닙니다.
 
-`volicord.request_user_judgment`에서 `sensitive_action_scope`는 선택-null 허용 공개 요청 필드이며, `judgment_kind=sensitive_approval`에서 `null`이 아닌 값이 필요하다는 조건은 메서드 담당 문서가 담당합니다. `SensitiveActionScope`가 `JudgmentBasis` 안에 나타날 때는 서버 파생 지속 상태이며 호출자가 제출한 근거 데이터가 아닙니다.
+`volicord.request_user_judgment`에서 `sensitive_action_scope`는 `null`을 허용하는
+선택적 공개 요청 필드입니다. `judgment_kind=sensitive_approval`일 때 `null`이 아닌
+값이 필요한지는 메서드 담당 문서가 정의합니다. `SensitiveActionScope`가
+`JudgmentBasis` 안에 나타날 때는 서버가 파생한 지속 상태이며, 호출자가 제출한
+근거 데이터가 아닙니다.
 
 <a id="acceptedriskinput"></a>
 ## `AcceptedRiskInput`

@@ -24,7 +24,7 @@
 - 상태와 현재 위치 스키마: [API 상태 스키마](schema-state.md)
 - 아티팩트 스키마: [API 아티팩트 스키마](schema-artifacts.md)
 - 사용자 소유 판단 스키마: [API 판단 스키마](schema-judgment.md)
-- 지원되는 메서드 이름, `response_kind` 값, `effect_kind` 값, operation category 값, 그 밖의 enum 형태 값: [API 값 집합](schema-value-sets.md)
+- 지원되는 메서드 이름, `response_kind` 값, `effect_kind` 값, 작업 범주(`operation_category`) 값, 그 밖의 enum 형태 값: [API 값 집합](schema-value-sets.md)
 - 공개 오류 코드, 우선순위, 오류 의미: [API 오류 코드](error-codes.md), [API 오류 우선순위](error-precedence.md)
 - 저장소 기록과 효과: [저장소 기록](../storage-records.md), [저장 효과](../storage-effects.md)
 
@@ -65,7 +65,7 @@
 
 의미하지 않는 것:
 - 더 좁은 메서드별 요청 규칙을 덮어쓰지 않습니다.
-- `actor_source`, `operation_category`, connection capability, 검증 근거, 그 밖의 호출 출처를 담지 않습니다.
+- `actor_source`, `operation_category`, 검증 근거, 그 밖의 호출 출처를 담지 않습니다.
 
 담당 문서 링크:
 - 메서드별 요청 규칙: [API 메서드](methods.md)가 안내하는 메서드 담당 문서.
@@ -88,13 +88,13 @@ ToolEnvelope:
 - `expected_state_version`은 null 허용입니다. 메서드와 저장소 담당 문서가 null이 아닌 값이 필요한 때를 정의합니다.
 - `project_id`, `task_id`, `request_id`, `idempotency_key`는 null이 아닐 때 불투명 식별자입니다.
 - `locale`은 null 허용 로캘 태그 문자열이며 Volicord가 제어하는 값 집합이 아닙니다.
-- 행위자 출처와 동작 범주는 공개 요청 필드가 아니라 [Agent Connection](../agent-connection.md)이 설명하는 어댑터/Core 로직에서 파생됩니다.
+- 행위자 출처와 작업 범주는 공개 요청 필드가 아니라 [Agent Connection](../agent-connection.md)이 설명하는 어댑터/Core 로직에서 파생됩니다.
 
 의미하지 않는 것:
 - 이 필드 목록은 충돌 동작, 저장소 버전 관리, 메서드별 선택자 우선순위를 정의하지 않습니다.
 
 담당 문서 링크:
-- actor-source 값: [행위자 출처 값](schema-value-sets.md#actor-source-values)
+- 행위자 출처 값: [행위자 출처 값](schema-value-sets.md#actor-source-values)
 - 메서드별 요청 동작: [API 메서드](methods.md)가 안내하는 메서드 담당 문서
 - 충돌 동작: [상태 버전 충돌](error-precedence.md#state-conflict-behavior)
 - 저장소 버전 동작: [저장소 버전 관리](../storage-versioning.md)
@@ -135,7 +135,7 @@ ToolDryRunResponse:
 
 의미:
 - 메서드별 결과 필드는 그 메서드 결과 분기에만 둡니다.
-- `ToolResultBase.disclosure`는 응답 분기를 해석하기 위한 공개 기계 판독 가능 보장/비보장 공개입니다.
+- `ToolResultBase.disclosure`는 기계가 읽을 수 있는 공개 정보입니다. 응답 분기를 해석할 때 무엇을 보장하고 보장하지 않는지 설명합니다.
 
 의미하지 않는 것:
 - `ToolRejectedResponse`와 `ToolDryRunResponse`는 `task_ref`, `run_summary`, `staged_artifact_handle`, `write_ticket_ref`, `user_judgment_ref`, `decision`, `close_state` 같은 결과 전용 필드를 담지 않습니다.

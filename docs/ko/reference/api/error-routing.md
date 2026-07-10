@@ -34,7 +34,7 @@
 거부 응답:
 - 공개 형태: `ToolRejectedResponse.errors[]`와 `ToolError.code: ErrorCode`.
 - 의미: 메서드가 커밋되는 동작으로 진행하지 않았다는 뜻입니다.
-- 조건: 타입이 정해진 Volicord 요청이 Core에 도달했고, 메서드 소유 결과 분기 전에 요청 검증, 최신성, 호출 맥락, `actor_source`, `operation_category`, 그 밖의 선행조건이 실패한 경우입니다.
+- 조건: 타입이 정해진 Volicord 요청이 Core에 도달했고, 메서드가 담당하는 결과 분기 전에 요청 검증, 최신성, 호출 맥락, `actor_source`, `operation_category`, 그 밖의 선행조건이 실패한 경우입니다.
 - 상태 영향: 커밋된 동작이 없고 상태 변경도 없습니다.
 
 Core 실행 전에 일어나는 전송 및 어댑터 실패는 이 분기 밖에 있습니다. [MCP 전송](../mcp-transport.md)이나 해당 전송 또는 어댑터 담당 문서로 보냅니다.
@@ -73,7 +73,7 @@ Core 실행 전에 일어나는 전송 및 어댑터 실패는 이 분기 밖에
 조건:
 - 메서드가 진행되기 전에 요청 형태, 스키마, 프로필, 스테이징된 아티팩트 핸들 검증이 실패합니다.
 
-라우팅:
+응답 경로:
 - `ToolRejectedResponse.errors[]`.
 
 상태 영향:
@@ -89,7 +89,7 @@ Core 실행 전에 일어나는 전송 및 어댑터 실패는 이 분기 밖에
 조건:
 - 커밋 전에 Core, MCP, 호출 맥락, `actor_source`/`operation_category` 호환성, 상태 조회, `Task` 식별자, 필요한 선행조건이 실패합니다.
 
-라우팅:
+응답 경로:
 - `ToolRejectedResponse.errors[]`.
 
 상태 영향:
@@ -101,7 +101,7 @@ Core 실행 전에 일어나는 전송 및 어댑터 실패는 이 분기 밖에
 조건:
 - `expected_state_version`, `WriteTicket.basis_state_version`, 멱등 요청 해시가 오래되었거나 충돌합니다.
 
-라우팅:
+응답 경로:
 - `STATE_VERSION_CONFLICT`를 담은 `ToolRejectedResponse.errors[]`.
 
 상태 영향:
@@ -117,7 +117,7 @@ Core 실행 전에 일어나는 전송 및 어댑터 실패는 이 분기 밖에
 조건:
 - `dry_run=true` 요청이 읽기 결과나 `dry_run` 미리보기를 만들기 전에 실패합니다.
 
-라우팅:
+응답 경로:
 - `dry_run=true`인 `ToolRejectedResponse`.
 
 상태 영향:
@@ -144,7 +144,7 @@ Core 실행 전에 일어나는 전송 및 어댑터 실패는 이 분기 밖에
 조건:
 - `PrepareWriteResult`가 `decision=blocked`, `decision=approval_required`, `decision=decision_required` 중 하나입니다.
 
-라우팅:
+응답 경로:
 - `write_decision_reasons: WriteDecisionReason[]`.
 
 상태 영향:
