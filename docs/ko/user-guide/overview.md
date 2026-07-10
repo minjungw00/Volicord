@@ -1,123 +1,93 @@
 # 사용자 가이드 개요
 
-이 문서는 Volicord의 첫 읽기 개요입니다. 제품의 핵심 생각을 일반 언어로 설명하고 정확한 계약 질문은 참조 문서로 안내합니다.
+이 문서는 설치나 운영 전에 Volicord를 소개합니다. 정확한 동작이 필요할 때는 연결된
+참조 문서를 사용합니다.
 
 <a id="what-volicord-is"></a>
 ## Volicord란
 
-Volicord는 AI 보조 제품 작업을 위한 로컬 작업 권한 기록입니다. 사용자, AI 호스트,
-에이전트가 함께 일할 때 사용자의 판단 근거를 작업 흐름 안에서 보이게 유지합니다.
+Volicord는 AI 지원 제품 작업을 위한 로컬 작업 권한 기록입니다. 에이전트가 제품
+파일을 확인하고, 바꾸고, 점검하는 동안 사용자 판단의 근거를 보이게 유지합니다.
 
-Volicord는 로컬 런타임 구성요소, Agent Connection, 지원되는 호스트 설정, 문서 경로를
-포함합니다. 정확한 권한 기록 구조는 [Core 모델](../reference/core-model.md)을 보세요.
-첫 읽기 사용자 경로에서 그 내부 용어를 알아야 하는 것은 아닙니다.
+핵심 생각은 간단합니다. 빠른 에이전트 작업이 범위 변경, 뒷받침되지 않은 주장,
+사용자가 아직 내리지 않은 판단, 마지막까지 남은 차단 사유를 숨기면 안 됩니다.
 
-Volicord는 권한 시스템, OS 보안 제품, 샌드박스, 증명 시스템이 아닙니다. 정확한 보장
-표현과 비보장은 [보안](../reference/security.md)에 있습니다.
+## 해결하려는 문제
 
-## 일반적인 문제
+에이전트는 파일을 확인하고, 계획을 제안하고, 코드를 쓰고, 테스트를 실행하고,
+결과를 요약할 수 있습니다. 이 속도는 유용하지만 짧은 요약이 중요한 경계를 흐릴 수
+있습니다.
 
-사용자는 에이전트에게 제품 동작 변경, 실패 조사, 릴리스 노트 준비를 요청할 수 있습니다. 에이전트는 파일을 살피고, 계획을 제안하고, 코드를 쓰고, 테스트를 실행하고, 결과를 요약할 수 있습니다. 그 속도는 유용하지만 다음 대체를 숨길 수 있습니다.
+- 작은 요청이 더 넓은 제품 변경이 될 수 있습니다.
+- 구현 선택이 조용히 제품 판단으로 바뀔 수 있습니다.
+- 한 주장의 증거가 모든 것을 뒷받침하는 것처럼 들릴 수 있습니다.
+- 통과한 테스트가 최종 수락으로 오해될 수 있습니다.
+- 가벼운 승인이 모든 미해결 판단으로 확대될 수 있습니다.
 
-- 작은 요청이 더 넓은 제품 변경이 됩니다.
-- 제품 결정이 구현 안에 묻힙니다.
-- 한 주장에 대한 증거가 모든 것에 대한 증거처럼 들립니다.
-- 통과한 테스트가 최종 수락처럼 취급됩니다.
-- 사용자의 가벼운 승인이 모든 미해결 판단을 해결한 것처럼 취급됩니다.
+Volicord는 이 사실들을 나누어 기록합니다. 사용자와 에이전트는 무엇을 알고 있고,
+무엇을 점검했으며, 어떤 판단이 필요하고, 무엇이 닫기를 막는지 볼 수 있습니다.
 
-Volicord는 이런 대체를 보이게 하려고 존재합니다. 범위, 사용자 판단, 증거, 검증 기준,
-수락, 잔여 위험, 닫기 상태를 구분해 둘 로컬 장소를 에이전트와 사용자에게 제공합니다.
+## 로컬 구성 요소
 
-## 로컬 구성요소
+| 이름 | 처음 읽을 때의 의미 |
+|---|---|
+| Volicord | AI 지원 제품 작업을 위한 로컬 작업 권한 기록입니다. |
+| `Product Repository` | 사용자의 프로젝트 작업공간과 제품 파일입니다. Volicord 런타임 상태가 아닙니다. |
+| `Volicord Runtime Home` | Volicord 운영 데이터를 위한 로컬 위치입니다. Product Repository와 분리됩니다. |
+| 에이전트 연결 | MCP 호스트와 명시적으로 연결된 프로젝트 사이의 로컬 연결입니다. |
+| 사용자 채널 | 사용자 소유 판단을 기록하는 로컬 경로입니다. |
+| `volicord` | 설정, 상태 조회, CLI 사용자 채널에 쓰는 설치된 관리 명령입니다. |
 
-아래 이름들은 서로 관련되지만 서로 바꿔 쓸 수 없습니다.
-
-| 이름 | 첫 읽기 의미 | 정확한 참조 |
-|---|---|---|
-| Volicord | AI 보조 제품 작업을 위한 로컬 작업 권한 기록. | [Volicord란](#what-volicord-is) |
-| `volicord` | 로컬 관리 CLI 명령, 로컬 User Channel, 생성된 MCP 호스트 설정이 사용하는 `mcp` 하위 명령을 제공하는 설치 실행 파일. | [관리 CLI](../reference/admin-cli.md) |
-| `volicord mcp --stdio` | 생성된 호스트 설정이 선택된 Agent Connection을 위해 자식 프로세스로 시작하는 stdio MCP 프로세스 모드. | [MCP 전송](../reference/mcp-transport.md) |
-| `Volicord Runtime Home` | Volicord 운영 데이터의 로컬 런타임 데이터 공간. | [런타임 경계](../reference/runtime-boundaries.md) |
-| `Product Repository` | 사용자의 프로젝트 작업공간과 제품 파일. 명시적으로 선택된 프로젝트 범위 호스트 설정을 포함할 수 있지만 Volicord 런타임 상태는 아닙니다. | [런타임 경계](../reference/runtime-boundaries.md) |
-| Agent Connection | 로컬 MCP 호스트 connection 단위. 하나의 호스트 설정 대상, 관리되는 연결 식별 정보, 모드, 명시적으로 연결된 Project를 묶습니다. | [Agent Connection Reference](../reference/agent-connection.md) |
-| User Channel | 권한을 지니는 사용자 판단을 위한 로컬 사용자 경로. Agent Connection은 `user_only` 판단을 기록하지 않습니다. | [관리 CLI](../reference/admin-cli.md#user-channel-commands) |
-
-현재 기준 에이전트 호스트 모델은 connection 기반입니다. 하나의
-`volicord mcp --stdio` 프로세스는 내부 연결 식별 정보로 하나의 Agent Connection에
-묶이고, connection은 명시적으로 연결된 Project에만 접근할 수 있습니다. 정확한 프로젝트
-선택과 MCP 도구 인자 동작은 [Agent Connection Reference](../reference/agent-connection.md)와
+호스트는 `volicord mcp --stdio`로 로컬 MCP 어댑터를 시작합니다. 처음 사용하는 사람이
+프로세스 바인딩 세부사항까지 알 필요는 없습니다. 정확한 구성 요소와 위치 경계는
+[런타임 경계](../reference/runtime-boundaries.md),
+[Agent Connection 참조](../reference/agent-connection.md),
 [MCP 전송](../reference/mcp-transport.md)을 보세요.
 
-## 설정이 하는 일
+## 설정으로 바뀌는 것
 
-일반적인 `volicord init --host HOST --repo PATH --profile record` 경로의 에이전트 설정은
-다음을 할 수 있습니다.
+일반 설정은 Product Repository 하나를 등록하고, 에이전트 연결을 만들고,
+프로젝트 범위 호스트 설정과 지침을 씁니다. 런타임 기록은 `Volicord Runtime Home`에
+남습니다. 프로젝트 신뢰, MCP 승인, 다시 불러오기, 재시작, 현재 세션의 도구 노출은
+외부 호스트가 계속 관리합니다.
 
-- Runtime Home 기록 생성 또는 재사용
-- 설치 프로필 생성 또는 재사용
-- `Product Repository` 등록 또는 재사용
-- Agent Connection과 Connection Projects 멤버십 생성 또는 재사용
-- `volicord mcp --stdio`를 시작하는 프로젝트 범위 Codex 또는 Claude Code MCP 설정 설치
-- 프로젝트 범위 Volicord 지침과 로컬 설정 파일 설치
-- 통합 상태 기록
-- 설정 검증을 실행하고 `complete`, `action_required`, `failed` 보고
+실제 설정 순서는 [설치](installation.md)와 [빠른 시작](quickstart.md)을 따릅니다.
+정확한 명령 효과는 [관리 CLI](../reference/admin-cli.md)에 있습니다.
 
-Record profile(`--profile record`)은 host lifecycle hook이나 session watcher를 요구하지
-않고 MCP를 통한 협력적 Volicord 워크플로 기록을 지원합니다. Detective profile(`--profile
-detective`)은 지원되는 host hook과 session watcher 관찰을 더합니다. Host hook은 협력형
-host warning 또는 denial decision 신호를 반환할 수 있고, watcher는 coverage 시작 뒤의
-미기록 변경을 보고할 수 있습니다. 두 표면 모두 모든 쓰기를 막거나, 파일을 바꾼 행위자를
-증명하거나, sandbox를 제공하거나, OS 수준 집행을 추가하지 않습니다. 정확한 프로필 동작은
-[관리 CLI](../reference/admin-cli.md)가 정의합니다.
+## 권한 개념
 
-`volicord init`은 공개 첫 실행 설정 경로입니다. `volicord connection add`는
-personal, shared, global, read-only 흐름을 위한 낮은 수준의 연결 관리 명령으로 남습니다.
+Volicord는 다음 개념을 구분합니다.
 
-에이전트 설정은 다음을 하면 안 됩니다.
+- **범위**는 현재 작업에 포함되는 것과 제외되는 것을 나타냅니다.
+- **사용자 판단**은 사용자에게 속한 선택을 기록합니다. 에이전트는 선택지를 설명할
+  수 있지만 판단을 만들어 내면 안 됩니다.
+- **증거**는 특정 주장을 뒷받침합니다. 최종 수락이나 정확성 증명이 아닙니다.
+- **검증 기준**은 무엇을 확인해야 하는지 설명합니다. 그 자체가 증거나 수락은
+  아닙니다.
+- **쓰기 티켓**은 제안된 제품 파일 변경 하나를 현재 작업 경계와 대조한 기록입니다.
+  파일시스템 권한, 코드 리뷰 승인, 쓰기가 실제로 일어났다는 증명이 아닙니다.
+- **닫기 상태**는 현재 기록에 차단 사유가 남았는지 보여 줍니다. 정확성, 테스트
+  충분성, QA 완료, 배포 성공, 사람 검토 완료, 무위험 완료를 증명하지 않습니다.
 
-- Runtime Home의 모든 Project 접근 부여
-- Volicord 런타임 데이터베이스나 런타임 기록을 `Product Repository`에 저장
-- Codex 프로젝트 trust, Claude Code 프로젝트 MCP 승인, OAuth, reload, restart, 그 밖의 호스트 소유 동작 우회
-- 모델이 Volicord 도구를 자동으로 선택한다고 약속
-
-## 첫 읽기 권한 개념
-
-Volicord 문서는 첫 읽기 수준에서 아래 권한 개념을 구분하고 정확한 의미를 [Core 모델](../reference/core-model.md)로 보냅니다.
-
-- 사용자 소유 판단은 사용자 소유로 남습니다. 에이전트는 선택지를 설명할 수 있지만 판단을 만들어 내면 안 됩니다.
-- 증거는 특정 기록된 주장을 뒷받침합니다. 최종 수락이나 잔여 위험 수락이 아닙니다.
-- 검증 기준은 무엇을 확인해야 하는지 안내합니다. 그 자체가 증거나 수락은 아닙니다.
-- 쓰기 티켓은 제품 파일 쓰기 시도 하나에 대한 Volicord 작업 권한 판단을 기록합니다. 일반 쓰기 승인, 민감 동작 승인, 최종 수락, 잔여 위험 수락과 구분되며 OS 권한, 코드 리뷰 승인, 쓰기가 실제로 일어났다는 증명이 아닙니다.
-- 닫기 상태는 제품 정확성, 테스트 충분성, QA 완료, 배포 성공, 사람 검토 완료, 무위험 완료의 증명이 아닙니다.
-
-## Connection Mode
-
-Agent Connection은 읽기 중심 모드나 workflow 가능 모드로 둘 수 있습니다. 호스트가
-상태를 조회하고, 프로젝트를 찾고, workflow 변경 도구 없이 닫기 상태를 확인해야
-하면 읽기 중심 모드를 사용합니다. 일반 에이전트 workflow 작업에는 workflow 모드를
-사용합니다. 정확한 CLI 선택 동작은 [관리
-CLI](../reference/admin-cli.md#connection-intents-and-hosts)를 보세요. MCP에 보이는
-정확한 도구 노출은 [MCP
-전송](../reference/mcp-transport.md#tool-discovery-and-toolscall-response-wrapping)에
-있습니다.
+정확한 권한 의미는 [Core 모델](../reference/core-model.md)에 있습니다.
 
 ## Volicord가 아닌 것
 
-첫 읽기 제품 정체성에는 이 개요를 사용합니다. 정확한 지원 기준과 범위 밖 경계는 [범위](../reference/scope.md#product-role-exclusions)를 봅니다.
+Volicord는 OS 권한 시스템, 샌드박스, 보안 경계, 코딩 에이전트, 테스트 실행기,
+정확성 판정기, 사람 검토자가 아닙니다. 지침과 상태 보기는 에이전트와 사용자가 현재
+상태를 읽도록 도울 수 있지만, 기반이 되는 Volicord 기록을 대신하지 않습니다.
 
-Volicord는 다듬어진 채팅 답변, 생성된 요약, 읽기 쉬운 상태 카드, 복사된 식별자, 선택적 저장소 안내, `Projection`을 권한 기록으로 바꾸지 않습니다. 정확한 표시 경계는 [Projection과 템플릿](../reference/projection-and-templates.md), 런타임과 위치 경계는 [런타임 경계](../reference/runtime-boundaries.md), 보안 문구는 [보안](../reference/security.md)을 보세요.
+지원되는 제품 범위와 지원 범위 밖 항목은 [범위](../reference/scope.md)를 보세요.
+정확한 보장과 비보장은 [보안](../reference/security.md)에 있습니다.
 
-## 다음 독자 경로
+## 다음 읽기 경로
 
-| 독자 | 다음 경로 |
+| 목표 | 다음 경로 |
 |---|---|
-| 새 제품 독자 | [사용자 가이드](../user-guide/user-workflow.md) |
-| 환경 확인 | [시스템 요구사항](../reference/system-requirements.md) |
-| 첫 설정 | [설치](installation.md) -> [빠른 시작](quickstart.md) |
-| 에이전트 호스트 운영자 | [빠른 시작](quickstart.md) -> [에이전트 호스트 설정](../user-guide/agent-host-setup.md) -> [에이전트 호스트 문제 해결](../user-guide/agent-host-troubleshooting.md) |
-| 여러 저장소 운영자 | [여러 저장소 에이전트 설정](../user-guide/multi-repository-agent-setup.md) |
-| 에이전트 작성자 | [에이전트 가이드](../user-guide/agent-workflow.md) -> [Agent Connection Reference](../reference/agent-connection.md) |
-| 소스 코드 학습자 | [구현 가이드](../architecture-guide/change-guide.md) -> [아키텍처](../architecture-guide/architecture.md) |
-| Reference 독자 | [Reference Index](../reference/README.md), [관리 CLI](../reference/admin-cli.md), [API 메서드](../reference/api/methods.md) |
-
-첫 읽기에는 API 스키마나 자세한 참조 계약이 필요하지 않습니다. 정확한 계약 세부사항이 필요할 때 [Reference Index](../reference/README.md)를 사용합니다.
+| 실행 파일 설치 | [설치](installation.md) |
+| 첫 연결 만들기 | [빠른 시작](quickstart.md) |
+| 에이전트와 작업하기 | [사용자 작업 흐름](user-workflow.md) |
+| 호스트 설정 또는 복구 | [에이전트 호스트 설정](agent-host-setup.md), [에이전트 호스트 문제 해결](agent-host-troubleshooting.md) |
+| 에이전트 운영 | [에이전트 가이드](agent-workflow.md) |
+| 정확한 계약 확인 | [참조 색인](../reference/README.md) |
+| 구현 학습 | [아키텍처 가이드](../architecture-guide/README.md) |

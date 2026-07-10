@@ -1,123 +1,101 @@
 # User Guide Overview
 
-This is the first-read overview for Volicord. It explains the product thesis in ordinary language and sends exact contract questions to the Reference layer.
+This page introduces Volicord before installation or operation. Use the linked
+Reference pages when exact behavior matters.
 
 <a id="what-volicord-is"></a>
 ## What Volicord Is
 
-Volicord is a local work authority record for AI-assisted product work. Its thesis is simple: AI-assisted work should keep the user's authority basis visible while the work moves.
+Volicord is a local work authority record for AI-assisted product work. It
+keeps the user's decision basis visible while an agent inspects, changes, and
+checks product files.
 
-Volicord includes local runtime components, Agent Connections, supported host configuration, and documentation routes. For exact authority-record structure, see [Core Model](../reference/core-model.md), but first-read user paths do not require that internal term.
+The central idea is simple: fast agent work should not hide changes in scope,
+unsupported claims, decisions the user has not made, or blockers that remain at
+the end.
 
-Volicord is not a permission system, OS security product, sandbox, or proof
-system. Exact guarantee wording and non-guarantees live in
-[Security](../reference/security.md).
+## The Problem It Addresses
 
-## The Ordinary Problem
+An agent can inspect files, propose a plan, write code, run tests, and summarize
+the result. That speed is useful, but a concise summary can blur important
+boundaries:
 
-A user might ask an agent to change product behavior, investigate a failure, or prepare a release note. The agent may inspect files, propose a plan, write code, run tests, and summarize the outcome. That speed is useful, but it can also hide substitutions:
+- a small request can become a broader product change
+- an implementation choice can quietly become a product decision
+- evidence for one claim can sound like evidence for everything
+- a passing test can be mistaken for final acceptance
+- a casual approval can be treated as every unresolved decision
 
-- A small request becomes a broader product change.
-- A product decision gets buried inside implementation.
-- Evidence for one claim starts sounding like evidence for everything.
-- A passing test is treated as final acceptance.
-- A user's casual approval is treated as every unresolved judgment being settled.
-
-Volicord exists to make those substitutions visible. It gives the agent and user a local place to keep scope, User Judgment, Evidence, verification criteria, acceptance, residual risk, and Close Status distinct.
+Volicord records these facts separately so the user and agent can see what is
+known, what was checked, what still needs a decision, and what blocks close.
 
 ## Local Pieces
 
-These names are related, but they are not interchangeable.
+| Name | First-read meaning |
+|---|---|
+| Volicord | The local work authority record for AI-assisted product work. |
+| `Product Repository` | The user's project workspace and product files. It is not Volicord runtime state. |
+| `Volicord Runtime Home` | The local location for Volicord operational data. It is separate from the Product Repository. |
+| Agent Connection | The local connection between an MCP host and explicitly connected projects. |
+| User Channel | The local path used to record a user-owned decision. |
+| `volicord` | The installed administrative command used for setup, status, and the CLI User Channel. |
 
-| Name | First-read meaning | Exact reference |
-|---|---|---|
-| Volicord | The local work authority record for AI-assisted product work. | [What Volicord Is](#what-volicord-is) |
-| `volicord` | The installed executable that provides local administrative CLI commands, the local User Channel, and the `mcp` subcommand used by generated MCP host configuration. | [Administrative CLI](../reference/admin-cli.md) |
-| `volicord mcp --stdio` | The stdio MCP process mode that generated host configuration starts as a child process for the selected Agent Connection. | [MCP Transport](../reference/mcp-transport.md) |
-| `Volicord Runtime Home` | The local runtime data space for Volicord operational data. | [Runtime Boundaries](../reference/runtime-boundaries.md) |
-| `Product Repository` | The user's project workspace and product files. It may contain explicitly selected project-scoped host configuration, but it is not Volicord runtime state. | [Runtime Boundaries](../reference/runtime-boundaries.md) |
-| Agent Connection | A local MCP host connection unit. It binds one host configuration target to one managed connection identity, a mode, and explicitly connected Projects. | [Agent Connection Reference](../reference/agent-connection.md) |
-| User Channel | The local user path for authority-bearing user judgments. Agent Connections do not record `user_only` judgments. | [Administrative CLI](../reference/admin-cli.md#user-channel-commands) |
-
-The current baseline agent host model is connection-based. One
-`volicord mcp --stdio` process binds to one Agent Connection through an internal
-connection identity, and the connection can access only Projects explicitly
-connected to it. Exact project-selection and MCP tool-argument behavior belongs to
-[Agent Connection Reference](../reference/agent-connection.md) and
+The host starts the local MCP adapter through `volicord mcp --stdio`. New users
+do not need its process-binding details. Exact component and location boundaries
+are in [Runtime Boundaries](../reference/runtime-boundaries.md),
+[Agent Connection](../reference/agent-connection.md), and
 [MCP Transport](../reference/mcp-transport.md).
 
-## What Setup Does
+## What Setup Changes
 
-Agent setup through the ordinary
-`volicord init --host HOST --repo PATH --profile record` path can:
+Ordinary setup registers one Product Repository, creates an Agent Connection,
+and writes project-scoped host configuration and guidance. Runtime records stay
+in the Volicord Runtime Home. The external host still controls project trust,
+MCP approval, reloads, restarts, and active tool exposure.
 
-- create or reuse Runtime Home records
-- create or reuse the installation profile
-- register or reuse a `Product Repository`
-- create or reuse an Agent Connection and Connection Projects membership
-- install project-scoped Codex or Claude Code MCP configuration that starts
-  `volicord mcp --stdio`
-- install project-scoped Volicord guidance and local setup files
-- record integration state
-- run setup verification and report `complete`, `action_required`, or `failed`
+Follow [Installation](installation.md) and [Quickstart](quickstart.md) for the
+actual setup steps. Exact command effects belong to
+[Administrative CLI](../reference/admin-cli.md).
 
-The Record profile (`--profile record`) supports cooperative Volicord workflow
-recording through MCP without requiring host lifecycle hooks or a session
-watcher. The Detective profile (`--profile detective`) adds supported host hooks
-and session watcher observation. Host hooks can return cooperative host warning
-or denial decision signals, and the watcher can report Unrecorded Changes after
-coverage starts; neither surface prevents all writes, proves who changed a file,
-provides a sandbox, or adds OS-level enforcement. Exact profile
-behavior is defined by [Administrative CLI](../reference/admin-cli.md).
+## Authority Concepts
 
-`volicord init` is the public first-run setup path. `volicord connection add`
-remains the lower-level connection-management command for personal, shared,
-global, and read-only flows.
+Volicord keeps these concepts distinct:
 
-Agent setup must not:
+- **Scope** says what the current work includes and excludes.
+- **User Judgment** records a choice that belongs to the user. The agent may
+  explain options but must not invent the decision.
+- **Evidence** supports a specific claim. It is not final acceptance or proof
+  of correctness.
+- **Verification criteria** describe what should be checked. They are not
+  themselves Evidence or acceptance.
+- A **Write Ticket** records that one proposed product-file change was checked
+  against the current work boundary. It is not filesystem permission, code
+  review approval, or proof that the write occurred.
+- **Close Status** shows whether current records still contain blockers. It is
+  not proof of correctness, test sufficiency, QA completion, deployment
+  success, human review completion, or risk-free completion.
 
-- grant access to every Project in the Runtime Home
-- store Volicord runtime databases or runtime records in a `Product Repository`
-- bypass Codex project trust, Claude Code project MCP approval, OAuth, reloads, restarts, or other host-owned actions
-- promise that a model will choose Volicord tools automatically
-
-## First-Read Authority Concepts
-
-At first-read level, Volicord documentation keeps these authority concepts separate and routes their exact meaning to [Core Model](../reference/core-model.md):
-
-- User-owned judgment remains user-owned; an agent may explain options, but it must not invent the judgment.
-- Evidence supports a specific recorded claim. It is not final acceptance or residual-risk acceptance.
-- Verification criteria guide what should be checked. They are not themselves evidence or acceptance.
-- A Write Ticket records a Volicord work-authority decision for one product-file write attempt. It is distinct from ordinary write approval, sensitive-action approval, final acceptance, and residual-risk acceptance, and it is not OS permission, code review approval, or proof that a write occurred.
-- Close Status is not proof of product correctness, test sufficiency, QA completion, deployment success, human review completion, or risk-free completion.
-
-## Connection Modes
-
-Agent Connections can be read-oriented or workflow-capable. Use read-oriented
-mode when a host should inspect state, discover projects, or check Close Status
-without workflow mutation tools. Use workflow mode for normal agent
-workflow operations. Exact CLI selection behavior belongs to
-[Administrative CLI](../reference/admin-cli.md#connection-intents-and-hosts),
-and exact MCP-visible tool exposure belongs to
-[MCP Transport](../reference/mcp-transport.md#tool-discovery-and-toolscall-response-wrapping).
+Exact authority meanings are defined in [Core Model](../reference/core-model.md).
 
 ## What Volicord Is Not
 
-Use this overview for first-read product identity. For the exact supported baseline and out-of-scope boundaries, use [Scope](../reference/scope.md#product-role-exclusions).
+Volicord is not an OS permission system, sandbox, security boundary, coding
+agent, test runner, correctness oracle, or human reviewer. Guidance and status
+views can help an agent and user read the current state, but they do not replace
+the underlying Volicord record.
 
-Volicord does not turn a polished chat answer, generated summary, readable status card, copied identifier, optional repository guidance, or `Projection` into the authority record. Exact display boundaries belong to [Projection and Templates](../reference/projection-and-templates.md), runtime and location boundaries belong to [Runtime Boundaries](../reference/runtime-boundaries.md), and security wording belongs to [Security](../reference/security.md).
+Use [Scope](../reference/scope.md) for supported and unsupported product scope.
+Use [Security](../reference/security.md) for exact guarantees and
+non-guarantees.
 
-## Next Reader Journeys
+## Next Reader Paths
 
-| Reader | Next path |
+| Goal | Next path |
 |---|---|
-| New product reader | [User Guide](../user-guide/user-workflow.md) |
-| Environment check | [System Requirements](../reference/system-requirements.md) |
-| First setup | [Installation](installation.md) -> [Quickstart](quickstart.md) |
-| Agent host operator | [Quickstart](quickstart.md) -> [Agent Host Setup](../user-guide/agent-host-setup.md) -> [Agent Host Troubleshooting](../user-guide/agent-host-troubleshooting.md) |
-| Multi-repository operator | [Multi-Repository Agent Setup](../user-guide/multi-repository-agent-setup.md) |
-| Agent author | [Agent Guide](../user-guide/agent-workflow.md) -> [Agent Connection Reference](../reference/agent-connection.md) |
-| Source-code learner | [Implementation Guide](../architecture-guide/change-guide.md) -> [Architecture](../architecture-guide/architecture.md) |
-| Reference reader | [Reference Index](../reference/README.md), [Administrative CLI](../reference/admin-cli.md), [API Methods](../reference/api/methods.md) |
-
-New readers should not need API schemas or detailed reference contracts for the first read. Use the [Reference Index](../reference/README.md) when you need exact contract details.
+| Install the executable | [Installation](installation.md) |
+| Make the first connection | [Quickstart](quickstart.md) |
+| Work with an agent | [User Workflow](user-workflow.md) |
+| Configure or repair a host | [Agent Host Setup](agent-host-setup.md) and [Agent Host Troubleshooting](agent-host-troubleshooting.md) |
+| Operate an agent | [Agent Guide](agent-workflow.md) |
+| Learn exact contracts | [Reference Index](../reference/README.md) |
+| Learn the implementation | [Architecture Guide](../architecture-guide/README.md) |
