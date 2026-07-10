@@ -85,9 +85,9 @@ profile can return cooperative host decision signals and detect unrecorded
 changes after watcher coverage starts, but it does not provide OS enforcement,
 actor proof, network isolation, malware defense, full write prevention,
 correctness proof, test sufficiency proof, human review completion, or a
-sandbox. On native Windows, use this
-Record profile fast path because detective is not supported until Windows host hooks and
-watcher behavior are implemented and tested. Exact project naming, profile
+sandbox. On native Windows, use this Record profile fast path because
+detective is not supported: Windows host hooks and watcher behavior are
+unavailable. Exact project naming, profile
 behavior, connection defaults, and internal identity behavior belong to
 [Administrative CLI Reference](../reference/admin-cli.md).
 
@@ -223,8 +223,9 @@ volicord inbox answer JUDGMENT_ID --choice CHOICE_ID
 ```
 
 Use `--repo PATH` only when you need to answer for a Product Repository other
-than the current one. Use `--task ID` when the active task is not the intended
-task.
+than the current one. `--task ID` applies only to `volicord inbox` listing when
+the active task is not the intended task; `volicord inbox answer` selects the
+task through the judgment id and does not accept `--task`.
 
 ## Next Steps
 

@@ -222,8 +222,9 @@ verification code is validated and recorded by the detective host hook. If
 the answer has not been recorded through a supported User Channel, name the
 needed user action and continue only with work that does not depend on that
 judgment. Use `--repo PATH` only when the current directory is not the intended
-Product Repository, and `--task ID` only when the active task is not the intended
-task.
+Product Repository. `--task ID` applies only to `volicord inbox` listing when
+the active task is not the intended task; `volicord inbox answer` selects the
+task through the judgment id and does not accept `--task`.
 
 Status summaries, generated Markdown, rendered projections, and chat text can
 display a pending judgment or option list. They are support context only; they

@@ -197,8 +197,8 @@ Detective setup has the verified host-hook and session watcher requirements
 described in the
 [Administrative CLI Reference](../reference/admin-cli.md#agent-host-setup-and-init).
 On native Windows, use `--profile record`; `--profile detective` fails with an
-unsupported-platform diagnostic until Windows host hooks and watcher behavior
-are implemented and tested.
+unsupported-platform diagnostic because Windows host hooks and watcher
+behavior are unavailable.
 
 `volicord init` creates or reuses the selected `Volicord Runtime Home` and saves
 the installation profile while connecting a repository. It discovers the running

@@ -33,7 +33,7 @@ Rust 이식성만으로 지원을 추론하지 마세요. 어떤 Rust 크레이�
 | 실행 파일 역할 이름 | 지원되고 검증되었습니다. | 참조 담당 문서는 `volicord`를 관리 CLI 명령과 로컬 MCP stdio 어댑터가 사용하는 `mcp` 하위 명령을 제공하는 설치 실행 파일로 정의합니다. | `volicord`를 빌드하거나 설치합니다. 호스트 설정은 MCP를 `volicord mcp --stdio ...`로 시작해야 합니다. |
 | 패키지 관리자 설치 | 유지되는 기준 범위에서 지원 범위 밖입니다. | 이 저장소는 Homebrew tap, Homebrew formula, Linux 패키지 관리자 패키지, 외부 패키지 registry를 주장하지 않습니다. | 소스 빌드, 로컬 Docker 빌드, 기존 `volicord` 실행 파일, 또는 검증된 게시 자산 세트가 뒷받침하는 릴리스 설치 스크립트를 사용합니다. |
 | Codex와 Claude Code 호스트 최소 버전 | 안정적인 호스트 최소 버전은 정의되어 있지 않습니다. 호스트 호환성은 문서화된 버전 하한이 아니라 운영 점검으로 확인합니다. | Codex 검증은 `PATH`에서 `codex`를 찾고 `codex --version`을 실행합니다. Claude Code 검증은 `claude mcp get <server_name>`으로 호스트 상태를 조사합니다. 관리 검증은 최종 결과 상태를 담당합니다. | 설치 후 `volicord connection verify HOST [--repo PATH] [--shared|--global]`을 사용합니다. 문서화되지 않은 Codex 또는 Claude Code 최소 버전에 의존하지 않습니다. |
-| Codex detective host hook root 해석 | 로컬 Git work tree에 대해 지원됩니다. | 생성된 Codex detective host hook 명령은 Volicord 관리 wrapper로 dispatch하기 전에 `git rev-parse --show-toplevel`로 Git work-tree root를 해석하며, 초기화는 그 root 전략을 지원할 수 없으면 detective 설정을 거부합니다. | Codex detective 프로필에는 `.git` work-tree root가 있는 Product Repository를 사용하고, 미래의 Codex hook 환경이 저장소 하위 디렉터리에서 `git`을 실행할 수 있게 합니다. 이 전제조건이 없으면 `--profile record`를 사용합니다. |
+| Codex detective host hook root 해석 | 로컬 Git work tree에 대해 지원됩니다. | 생성된 Codex detective host hook 명령은 Volicord 관리 wrapper로 dispatch하기 전에 `git rev-parse --show-toplevel`로 Git work-tree root를 해석하며, 초기화는 그 root 전략을 지원할 수 없으면 detective 설정을 거부합니다. | Codex detective 프로필에는 `.git` work-tree root가 있는 Product Repository를 사용하고, Codex hook 환경이 저장소 하위 디렉터리에서 `git`을 실행할 수 있게 합니다. 이 전제조건이 없으면 `--profile record`를 사용합니다. |
 
 <a id="toolchain-requirements"></a>
 
@@ -162,12 +162,12 @@ CLI](admin-cli.md#runtime-home-selection)를 사용합니다.
 요구사항 요약:
 
 - 설치는 찾을 수 있는 `volicord` 명령을 식별해야 합니다.
-- 미래의 호스트 프로세스는 설정된 `volicord` 명령을 `mcp --stdio --connection <connection_id>`
+- 설정을 로드하는 호스트 프로세스는 설정된 `volicord` 명령을 `mcp --stdio --connection <connection_id>`
   인자와 함께 시작할 수 있어야 합니다.
-- shared 프로젝트 호스트 설정은 개인 Runtime Home 경로를 포함하면 안 됩니다. 미래의
+- shared 프로젝트 호스트 설정은 개인 Runtime Home 경로를 포함하면 안 됩니다.
   호스트 환경이 `PATH`로 해석해야 하는 명령 이름 `volicord`를 사용합니다.
-- 사용자 관리 generic 호스트 설정은 호스트별 담당 문서가 관찰 가능한 로드 가능성
-  게이트를 정의하기 전까지 사용자 관리 상태로 남습니다.
+- 사용자 관리 generic 호스트 설정은 사용자 관리 상태이며, 호스트별로 관찰 가능한
+  로드 가능성 게이트가 없습니다.
 
 ## Runtime Home 요구사항
 
@@ -180,7 +180,7 @@ CLI](admin-cli.md#runtime-home-selection)를 사용합니다.
   `\\wsl$\...` 같은 WSL UNC 경로, `/mnt/c/...` 같은 WSL mount-style 경로는 native
   Windows Runtime Home 경로로 지원되지 않습니다.
 - 선택한 사용자가 `volicord init`, `volicord project use`, `volicord connection add`, `volicord connection verify`를 실행할 때 디렉터리를 만들거나 그 안에 쓸 수 있어야 합니다.
-- 기본 `$HOME/.volicord`가 의도한 위치가 아니라면 미래의 `volicord mcp --stdio` 호스트 프로세스도 같은 Runtime Home 선택을 받아야 합니다. shared 프로젝트 호스트 설정은 개인 Runtime Home 경로를 담으면 안 되므로, 각 사용자는 기본값이 아닌 Runtime Home을 자신의 로컬 init 또는 환경으로 제공해야 합니다.
+- 기본 `$HOME/.volicord`가 의도한 위치가 아니라면 `volicord mcp --stdio`를 시작하는 호스트 프로세스도 같은 Runtime Home 선택을 받아야 합니다. shared 프로젝트 호스트 설정은 개인 Runtime Home 경로를 담으면 안 되므로, 각 사용자는 기본값이 아닌 Runtime Home을 자신의 로컬 init 또는 환경으로 제공해야 합니다.
 
 Runtime Home 선택과 정확한 생성 동작은 [관리 CLI](admin-cli.md)와 [MCP 전송](mcp-transport.md)이 담당합니다. 런타임 위치와 분리 규칙은 [런타임 경계](runtime-boundaries.md)가 담당합니다.
 
@@ -228,8 +228,8 @@ Codex detective 설정에는 선택된 Product Repository가 Git work tree여야
 이 Git-root 요구사항은 Codex detective host hook 경로 안전성에만 해당하며, 통합 파일을 Volicord
 런타임 상태로 만들거나 OS 수준 sandboxing을 추가하지 않습니다. `record` 설정은 Codex
 detective host hook 설치를 요구하지 않습니다. Native Windows `record` 설정은 지원되지만,
-Windows host hook과 watcher 동작이 구현되고 테스트되기 전까지 native Windows detective
-설정은 거부됩니다.
+Windows host hook과 watcher 동작을 사용할 수 없어 native Windows detective 설정은
+거부됩니다.
 
 비대화형 shared-intent 호스트 설정 또는 지침 쓰기에는 [관리 CLI](admin-cli.md#noninteractive-approval-behavior)가 정의한 명시적 `--shared` 명령 경로가 필요합니다. 런타임 기록, SQLite 데이터베이스, 생성 기록, 로그, 상태 보기, QA 결과, 수락 기록, 닫기 준비 상태, 잔여 위험 기록은 `Product Repository`에 속하지 않습니다.
 
@@ -243,9 +243,9 @@ Windows host hook과 watcher 동작이 구현되고 테스트되기 전까지 na
 | 호스트 | 연결 의도 | 환경 전제 조건 |
 |---|---|---|
 | Codex | `personal` | `CODEX_HOME` 또는 `HOME`이 사용자 Codex 설정 위치를 식별해야 합니다. 가용성 점검을 위해 `codex`가 `PATH`에서 사용 가능해야 합니다. |
-| Codex | `shared` | `.codex/config.toml`을 적용할 때 선택한 `Product Repository`에 쓸 수 있어야 합니다. 미래의 Codex 호스트는 `PATH`를 통해 프로젝트에 묶인 `volicord mcp --stdio`를 시작할 수 있어야 합니다. shared 파일은 개인 Runtime Home 경로를 포함하면 안 됩니다. Codex 프로젝트 신뢰가 여전히 필요할 수 있습니다. |
+| Codex | `shared` | `.codex/config.toml`을 적용할 때 선택한 `Product Repository`에 쓸 수 있어야 합니다. Codex 호스트는 `PATH`를 통해 프로젝트에 묶인 `volicord mcp --stdio`를 시작할 수 있어야 합니다. shared 파일은 개인 Runtime Home 경로를 포함하면 안 됩니다. Codex 프로젝트 신뢰가 여전히 필요할 수 있습니다. |
 | Claude Code | `personal`, `global` | Volicord가 `claude mcp` 명령을 사용할 수 있도록 관리 프로세스가 `claude` 실행 파일을 시작할 수 있어야 합니다. |
-| Claude Code | `shared` | `.mcp.json`을 적용할 때 선택한 `Product Repository`에 쓸 수 있어야 합니다. 미래의 Claude Code 호스트는 `PATH`를 통해 프로젝트에 묶인 `volicord mcp --stdio`를 시작할 수 있어야 합니다. shared 파일은 개인 Runtime Home 경로를 포함하면 안 됩니다. 프로젝트 MCP 승인이 여전히 필요할 수 있습니다. |
+| Claude Code | `shared` | `.mcp.json`을 적용할 때 선택한 `Product Repository`에 쓸 수 있어야 합니다. Claude Code 호스트는 `PATH`를 통해 프로젝트에 묶인 `volicord mcp --stdio`를 시작할 수 있어야 합니다. shared 파일은 개인 Runtime Home 경로를 포함하면 안 됩니다. 프로젝트 MCP 승인이 여전히 필요할 수 있습니다. |
 | Generic | 사용자 관리 | Volicord는 일반 MCP 호스트 설정을 쓰지 않습니다. 외부 호스트를 수동으로 설정하려면 먼저 지원되는 Agent Connection이 있어야 합니다. 외부 호스트는 호스트별 방식으로 로드되고 점검되기 전까지 사용자 관리 상태이며 미검증입니다. |
 
 호스트 설정을 썼다는 사실은 호스트가 `volicord mcp --stdio`를 신뢰, 승인, 로드, 초기화, 노출했다는 증거가 아닙니다. `managed host configuration state`의 의미와 호스트 신뢰 경계는 [Agent Connection](agent-connection.md)이 담당합니다.
@@ -288,7 +288,7 @@ CLI](admin-cli.md)가 정의한 관리 결과 게이트가 필요합니다.
 - 요청된 guard 통합 관리 파일 쓰기가 심볼릭 링크를 따라가지 않고 대상을 안전하게
   순회할 수 없거나, 필요한 같은 디렉터리 이름 공간 연산을 사용할 수 없거나, 필요한
   기존 파일 메타데이터를 재현할 수 없습니다.
-- shared-intent 호스트 설정이 미래의 호스트 환경의 `PATH`에서 `volicord mcp --stdio`를 시작할 수 없습니다.
+- shared-intent 호스트 설정이 호스트 환경의 `PATH`에서 `volicord mcp --stdio`를 시작할 수 없습니다.
 - 선택한 호스트 경로에 Codex 또는 Claude Code가 필요한데 관리 호환성 점검이 호스트를 시작하거나 해석할 수 없습니다.
 - Native Windows 설정에서 `--profile detective`를 요청합니다.
 - 필요한 호스트 신뢰, 프로젝트 신뢰, 프로젝트 MCP 승인, OAuth, reload, restart, 또는 비슷한 호스트 소유 동작이 남아 있고 운영자가 이를 완료할 수 없습니다.

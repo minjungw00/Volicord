@@ -188,8 +188,8 @@ volicord init --help
 기록하는 동안 Runtime Home과 설치 프로필을 초기화할 수 있습니다. Detective 설정에는
 [관리 CLI 참조](../reference/admin-cli.md#agent-host-setup-and-init)에 설명된 검증된 host
 hook 및 session watcher 요구사항이 적용됩니다.
-Native Windows에서는 `--profile record`를 사용합니다. `--profile detective`는 Windows
-host hook과 watcher 동작이 구현되고 테스트되기 전까지 unsupported-platform 진단으로
+Native Windows에서는 `--profile record`를 사용합니다. Windows host hook과 watcher
+동작을 사용할 수 없으므로 `--profile detective`는 unsupported-platform 진단으로
 실패합니다.
 
 `volicord init`은 선택된 `Volicord Runtime Home`을 만들거나 검증하고 설치 프로필을

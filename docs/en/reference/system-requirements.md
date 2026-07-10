@@ -33,7 +33,7 @@ Do not infer support from Rust portability alone. A Rust crate being portable in
 | Executable role names | Supported and verified. | Reference owners define `volicord` as the installed executable for administrative CLI commands and the `mcp` subcommand used by the local MCP stdio adapter. | Build or install `volicord`; host configuration should start MCP with `volicord mcp --stdio ...`. |
 | Package-manager installation | Out of scope in the maintained baseline. | No Homebrew tap, Homebrew formula, Linux package-manager package, or external package registry is claimed by this repository. | Use a source build, local Docker build, an existing `volicord` executable, or a release installer backed by a verified published asset set. |
 | Host version minimums for Codex and Claude Code | No stable minimum host version is defined. Host compatibility is checked operationally, not by a documented version floor. | Codex verification looks for `codex` on `PATH` and runs `codex --version`. Claude Code verification inspects host state through `claude mcp get <server_name>`. Administrative verification owns the final result states. | Use `volicord connection verify HOST [--repo PATH] [--shared|--global]` after installation. Do not rely on an undocumented Codex or Claude Code minimum version. |
-| Codex detective host hook root resolution | Supported for local Git work trees. | Generated Codex detective host hook commands resolve the Git work-tree root with `git rev-parse --show-toplevel` before dispatching to Volicord-managed wrappers, and initialization rejects detective setup when that root strategy cannot be supported. | For Codex detective profile, use a Product Repository with a `.git` work-tree root and ensure the future Codex hook environment can run `git` from repository subdirectories. Use `--profile record` when this prerequisite is not available. |
+| Codex detective host hook root resolution | Supported for local Git work trees. | Generated Codex detective host hook commands resolve the Git work-tree root with `git rev-parse --show-toplevel` before dispatching to Volicord-managed wrappers, and initialization rejects detective setup when that root strategy cannot be supported. | For Codex detective profile, use a Product Repository with a `.git` work-tree root and ensure the Codex hook environment can run `git` from repository subdirectories. Use `--profile record` when this prerequisite is not available. |
 
 ## Toolchain Requirements
 
@@ -167,13 +167,13 @@ Requirement summary:
 
 - The installation profile must identify a `volicord` command that can be
   found.
-- Future host processes must be able to start the configured `volicord`
+- Host processes that load the configuration must be able to start the configured `volicord`
   command with `mcp --stdio --connection <connection_id>` arguments.
 - Shared project host configuration must not embed a personal Runtime Home
-  path. It uses `volicord` as a command name that the future host environment
+  path. It uses `volicord` as a command name that the host environment
   must resolve through `PATH`.
-- User-managed generic host configuration remains user-managed until a
-  host-specific owner defines an observable loadability gate.
+- User-managed generic host configuration remains user-managed and has no
+  host-specific observable loadability gate.
 
 ## Runtime Home Requirements
 
@@ -186,7 +186,7 @@ Before installation:
   WSL UNC paths such as `\\wsl$\...`, and WSL mount-style paths such as
   `/mnt/c/...` are not supported native Windows Runtime Home paths.
 - Ensure the selected user can create the directory or write into it when running `volicord init`, `volicord project use`, `volicord connection add`, or `volicord connection verify`.
-- Ensure future `volicord mcp --stdio` host processes receive the same Runtime Home selection when the default `$HOME/.volicord` is not the intended location. Shared project host configuration must not carry a personal Runtime Home path, so each user must provide a non-default Runtime Home through their own local init or environment.
+- Ensure host processes that start `volicord mcp --stdio` receive the same Runtime Home selection when the default `$HOME/.volicord` is not the intended location. Shared project host configuration must not carry a personal Runtime Home path, so each user must provide a non-default Runtime Home through their own local init or environment.
 
 Runtime Home selection and exact creation behavior are owned by [Administrative CLI](admin-cli.md) and [MCP Transport](mcp-transport.md). Runtime location and separation rules are owned by [Runtime Boundaries](runtime-boundaries.md).
 
@@ -239,8 +239,8 @@ the host session cwd. This Git-root requirement is for Codex detective host hook
 safety only; it does not make integration files Volicord runtime state or add
 OS-level sandboxing. `record` setup does not require Codex detective host hook
 installation. Native Windows `record` setup is supported, but native Windows
-detective setup is rejected until Windows host hooks and watcher behavior are
-implemented and tested.
+detective setup is rejected because Windows host hooks and watcher behavior are
+unavailable.
 
 Noninteractive shared-intent host configuration or guidance writes require the explicit `--shared` command path defined by [Administrative CLI](admin-cli.md#noninteractive-approval-behavior). Runtime records, SQLite databases, generated records, logs, projections, QA results, acceptance records, close-readiness state, and residual-risk records do not belong in the `Product Repository`.
 
@@ -254,9 +254,9 @@ Baseline host and connection-intent requirements:
 | Host | Connection intent | Environment prerequisite |
 |---|---|---|
 | Codex | `personal` | `CODEX_HOME` or `HOME` must identify the user Codex configuration location; `codex` must be available on `PATH` for the availability check. |
-| Codex | `shared` | The selected `Product Repository` must be writable when applying `.codex/config.toml`; the future Codex host must be able to start project-bound `volicord mcp --stdio` through `PATH`; the shared file must not embed a personal Runtime Home path; Codex project trust may still be required. |
+| Codex | `shared` | The selected `Product Repository` must be writable when applying `.codex/config.toml`; the Codex host must be able to start project-bound `volicord mcp --stdio` through `PATH`; the shared file must not embed a personal Runtime Home path; Codex project trust may still be required. |
 | Claude Code | `personal`, `global` | The `claude` executable must be launchable by the administrative process so Volicord can use `claude mcp` commands. |
-| Claude Code | `shared` | The selected `Product Repository` must be writable when applying `.mcp.json`; the future Claude Code host must be able to start project-bound `volicord mcp --stdio` through `PATH`; the shared file must not embed a personal Runtime Home path; project MCP approval may still be required. |
+| Claude Code | `shared` | The selected `Product Repository` must be writable when applying `.mcp.json`; the Claude Code host must be able to start project-bound `volicord mcp --stdio` through `PATH`; the shared file must not embed a personal Runtime Home path; project MCP approval may still be required. |
 | Generic | user-managed | Volicord does not write generic MCP host configuration. A supported Agent Connection must already exist before an external host can be configured manually. The external host remains user-managed and unverified until loaded and checked by a host-specific mechanism. |
 
 Writing host configuration does not prove that the host trusted, approved, loaded, initialized, or exposed `volicord mcp --stdio`. `managed host configuration state` meaning and host trust boundaries are owned by [Agent Connection](agent-connection.md).
@@ -292,7 +292,7 @@ Stop before installation when any of these conditions apply:
   target without following symbolic links, cannot use the required
   same-directory namespace operation, or cannot reproduce the required
   existing-file metadata.
-- Shared-intent host configuration cannot start `volicord mcp --stdio` from the future host environment's `PATH`.
+- Shared-intent host configuration cannot start `volicord mcp --stdio` from the host environment's `PATH`.
 - Codex or Claude Code is required for the selected host path but the administrative compatibility check cannot launch or interpret the host.
 - Native Windows setup requests `--profile detective`.
 - A required host trust, project trust, project MCP approval, OAuth, reload, restart, or comparable host-owned action remains and the operator cannot complete it.

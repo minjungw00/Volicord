@@ -149,7 +149,9 @@ volicord inbox answer JUDGMENT_ID --choice CHOICE_ID
 판단 id, 질문, 선택지, 필수/선택 상태, 사용할 수 있는 User Channel 입력 방법이 포함됩니다.
 기록할 때는 `volicord inbox answer`로 그 판단에 대해 Volicord가 보여 준 선택지만
 기록합니다. 현재 디렉터리가 의도한 Product Repository가 아닐 때만 `--repo PATH`를
-사용하고, 활성 작업이 의도한 작업이 아닐 때만 `--task ID`를 사용합니다.
+사용합니다. `--task ID`는 활성 작업이 의도한 작업이 아닐 때 `volicord inbox` 목록
+조회에만 사용합니다. `volicord inbox answer`는 판단 ID로 작업을 선택하며 `--task`를
+받지 않습니다.
 
 선택지 하나를 기록하면 그 판단 하나만 해결됩니다. "승인", "좋아 보여",
 "진행해" 같은 넓은 자연어가 모든 대기 권한 결과를 뜻하지는 않습니다. 설명용

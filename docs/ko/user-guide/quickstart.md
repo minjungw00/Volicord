@@ -76,8 +76,8 @@ Record profile(`--profile record`)을 사용합니다. Detective profile(`--prof
 decision 신호를 반환하고 watcher coverage 시작 뒤의 미기록 변경을 탐지할 수 있지만
 OS 집행, 행위자 증명, 네트워크 격리, 악성 코드 방어, 전체 쓰기 방지, 정확성 증명,
 테스트 충분성 증명, 사람 검토 완료, sandbox를 제공하지 않습니다. Native Windows에서는
-Windows host hook과 watcher 동작이 구현되고 테스트되기 전까지 detective가 지원되지 않으므로
-이 Record profile 빠른 경로를 사용합니다. 정확한 프로젝트 이름, 프로필 동작, 연결 기본값,
+Windows host hook과 watcher 동작을 사용할 수 없어 detective가 지원되지 않으므로 이
+Record profile 빠른 경로를 사용합니다. 정확한 프로젝트 이름, 프로필 동작, 연결 기본값,
 내부 식별 정보 동작은
 [관리 CLI 참조](../reference/admin-cli.md)를 보세요.
 
@@ -207,7 +207,9 @@ volicord inbox answer JUDGMENT_ID --choice CHOICE_ID
 ```
 
 현재 Product Repository와 다른 Product Repository에 답해야 할 때만 `--repo PATH`를
-사용합니다. 활성 작업이 의도한 작업이 아닐 때는 `--task ID`를 사용합니다.
+사용합니다. `--task ID`는 활성 작업이 의도한 작업이 아닐 때 `volicord inbox` 목록
+조회에만 사용합니다. `volicord inbox answer`는 판단 ID로 작업을 선택하며 `--task`를
+받지 않습니다.
 
 ## 다음 단계
 

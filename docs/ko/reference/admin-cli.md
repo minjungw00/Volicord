@@ -83,6 +83,7 @@ volicord mcp --stdio --connection <connection_id> [--project <project_id>]
 volicord mcp --check --connection <connection_id>
 volicord mcp --check --connection <connection_id> --project <project_id>
 volicord serve --transport local-http [--listen 127.0.0.1:8765 | --container-listen 0.0.0.0:8765] [--home PATH] [--connection <connection_id>] [--project PATH]... [--token-file PATH | --token TOKEN | --generate-token] [--allow-origin ORIGIN]
+volicord export authority-bundle --output PATH [--repo PATH] [--json]
 volicord changes reconcile [--repo PATH] [--task active|ID] [--dry-run] [--json]
 volicord inbox [--repo PATH] [--task active|ID] [--json]
 volicord inbox answer <judgment-id> --choice <choice> [--repo PATH] [--note TEXT] [--json]
@@ -273,8 +274,8 @@ doctor의 text와 JSON 출력은 진단 공개와 진단 보기에 대한 간결
 `volicord project current`는 현재 작업 디렉터리에서 감지된 프로젝트를 보고합니다.
 프로젝트 등록을 만들지 않습니다.
 
-`volicord project list`는 등록 프로젝트를 사용자 대상 이름, 저장소 루트, 상태,
-진단 가용성과 함께 나열합니다.
+`volicord project list`는 등록 프로젝트를 사용자 대상 이름, 저장소 루트, 상태와
+함께 나열합니다.
 
 `volicord project rename NAME [--repo PATH]`는 선택된 저장소의 사용자 대상 프로젝트
 이름을 바꿉니다. `project_internal_id`, 저장소 루트, 프로젝트 홈, Core 상태는
@@ -324,7 +325,7 @@ Agent Connection 설정은 낮은 수준의 호스트 설정 범위 이름 대�
 하나를 위한 것일 때 명령 이름 `volicord`와 프로젝트에 묶인
 `mcp --stdio --connection <connection_id> --project <project_id>` 인자를 사용합니다.
 여러 연결 프로젝트를 의도적으로 다루는 항목에만 connection-only 생성 인자를 남깁니다.
-미래의 호스트 환경은 명령을 `PATH`로 해석해야 합니다.
+호스트 환경은 명령을 `PATH`로 해석해야 합니다.
 
 <a id="agent-host-setup-and-init"></a>
 `volicord init --host codex --repo PATH --profile record`와
@@ -743,8 +744,8 @@ degraded, stale, broken 상태가 아닐 때만 그 관찰이 detective 설치 �
 입력 event 계약은 호스트 중립입니다. Host-hook 파서는 호스트 종류, 세션, 도구 이름,
 명령, prompt, 결과, 변경 경로의 일반적인 필드 위치를 관대하게 읽고, 알 수 없는
 필드는 저장되는 host-hook event의 redacted subject에 보존합니다. Prompt 형태 필드는
-기본적으로 hash하거나 생략합니다. Prompt capture 기록은 이후 담당 문서가 별도
-정책을 정의하기 전까지 prompt hash를 저장하고 prompt text는 생략합니다.
+기본적으로 hash하거나 생략합니다. Prompt capture 기록은 prompt hash를 저장하고
+prompt text는 생략합니다.
 
 Lifecycle 동작:
 
@@ -843,10 +844,10 @@ JSON 출력에서 확인할 수 있습니다.
   `operation_category=user_only`, 호환 User Channel 출처, 선택된 선택지의 저장된 기계
   동작과 결과로 `volicord.record_user_judgment`를 통해 Core 생성 선택지 하나를
   기록합니다. `--note`는 메모로만 저장됩니다.
-- `volicord inbox open <judgment-id>`는 CLI 프로세스에 사용할 수 있는 consent URL이
-  있을 때 local web consent/browser 경로를 시도합니다. CLI 프로세스에서 URL을 알 수
-  없으면 `Result`, `Why`, `Next`, `Does not prove` 줄이 있는 `action_required` text를
-  보고하고 대신 CLI 답변 명령을 이름 붙입니다.
+- `volicord inbox open <judgment-id>`는 선택한 판단이 여전히 대기 중인지 검증한 뒤,
+  이 CLI 프로세스가 local consent URL을 소유하지 않으므로 `action_required`를
+  보고합니다. 사용할 수 있다면 MCP Judgment Inbox 항목에 이미 표시된 URL을
+  사용하도록 안내하고, 그렇지 않으면 CLI 답변 명령을 안내합니다.
 
 판단 하나를 기록하는 것은 그 판단만 기록합니다. 최종 수락과 잔여 위험 수락은 별개의
 판단 종류와 동작으로 남아야 하며, 이 명령이 둘을 하나로 합치면 안 됩니다.

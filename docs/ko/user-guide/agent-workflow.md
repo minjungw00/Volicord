@@ -284,8 +284,9 @@ Agent Connection은 `volicord.record_user_judgment`를 호출하거나, User Cha
 현재 검증 코드를 detective host hook이 검증해 기록할 때만 권한을 지닙니다.
 답변이 지원되는 User Channel을 통해 기록되지 않았다면 필요한 사용자 행동을
 이름 붙이고, 그 판단에 의존하지 않는 작업만 계속합니다. 현재 디렉터리가 의도한 Product
-Repository가 아닐 때만 `--repo PATH`를 사용하고, 활성 작업이 의도한 작업이 아닐 때만
-`--task ID`를 사용합니다.
+Repository가 아닐 때만 `--repo PATH`를 사용합니다. `--task ID`는 활성 작업이 의도한
+작업이 아닐 때 `volicord inbox` 목록 조회에만 사용합니다. `volicord inbox answer`는
+판단 ID로 작업을 선택하며 `--task`를 받지 않습니다.
 
 상태 요약, 생성된 Markdown, 렌더링된 상태 보기, 채팅 문장은 대기 판단이나 선택지
 목록을 표시할 수 있습니다. 이것들은 지원 맥락일 뿐입니다. 최종 수락, 잔여 위험

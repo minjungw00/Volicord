@@ -89,6 +89,7 @@ volicord mcp --stdio --connection <connection_id> [--project <project_id>]
 volicord mcp --check --connection <connection_id>
 volicord mcp --check --connection <connection_id> --project <project_id>
 volicord serve --transport local-http [--listen 127.0.0.1:8765 | --container-listen 0.0.0.0:8765] [--home PATH] [--connection <connection_id>] [--project PATH]... [--token-file PATH | --token TOKEN | --generate-token] [--allow-origin ORIGIN]
+volicord export authority-bundle --output PATH [--repo PATH] [--json]
 volicord changes reconcile [--repo PATH] [--task active|ID] [--dry-run] [--json]
 volicord inbox [--repo PATH] [--task active|ID] [--json]
 volicord inbox answer <judgment-id> --choice <choice> [--repo PATH] [--note TEXT] [--json]
@@ -297,8 +298,8 @@ inside the Runtime Home when needed.
 `volicord project current` reports the project detected from the current working
 directory. It does not create a project registration.
 
-`volicord project list` lists registered projects by user-facing name, repository
-root, status, and diagnostic availability.
+`volicord project list` lists registered projects by user-facing name,
+repository root, and status.
 
 `volicord project rename NAME [--repo PATH]` changes the user-facing project
 name for the selected repository. It does not change `project_internal_id`,
@@ -351,7 +352,7 @@ Runtime Home path; it uses `volicord` as the command name and project-bound
 `mcp --stdio --connection <connection_id> --project <project_id>` arguments
 when the generated entry is for one selected project. Connection-only generated
 arguments are reserved for entries that intentionally serve more than one
-connected project. The future host environment must resolve the command through
+connected project. The host environment must resolve the command through
 `PATH`.
 
 <a id="agent-host-setup-and-init"></a>
@@ -822,9 +823,8 @@ identity proof, or write prevention.
 The input event contract is host-neutral. Host-hook parsing is tolerant of common
 field placements for host kind, session, tool name, command, prompt, result,
 and changed paths, and preserves unknown fields in the stored host-hook event's
-redacted subject. Prompt-like fields are hashed or omitted by default; prompt
-capture records store the prompt hash and omit prompt text unless a future
-owner-defined policy says otherwise.
+redacted subject. Prompt-like fields are hashed or omitted by default. Prompt
+capture records store the prompt hash and omit prompt text.
 
 Lifecycle behavior:
 
@@ -933,10 +933,10 @@ Commands:
   `actor_source=local_user`, `operation_category=user_only`, compatible User
   Channel provenance, and the selected option's stored machine action and
   outcome. `--note` is stored only as a note.
-- `volicord inbox open <judgment-id>` attempts the local web consent/browser
-  path when the CLI process has a usable consent URL. If no URL is available
-  from the CLI process, it reports `action_required` text with `Result`, `Why`,
-  `Next`, and `Does not prove` lines and names the CLI answer command instead.
+- `volicord inbox open <judgment-id>` validates that the selected judgment is
+  still pending, then reports `action_required` because this CLI process does
+  not own a local consent URL. It directs the user to a URL already shown in an
+  MCP Judgment Inbox item when available, or to the CLI answer command.
 
 Recording one judgment records only the addressed judgment. Final acceptance and
 residual-risk acceptance remain separate judgment kinds and actions; this

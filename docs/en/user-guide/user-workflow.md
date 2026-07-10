@@ -155,8 +155,10 @@ Use `volicord inbox` to see pending judgments for the active or selected task,
 including the judgment id, question, choices, required/optional status, and
 available User Channel input methods. Use `volicord inbox answer` to record only an option
 shown by Volicord for that judgment. Use `--repo PATH` only when the current
-directory is not the intended Product Repository, and `--task ID` only when the
-active task is not the intended task.
+directory is not the intended Product Repository. `--task ID` applies only to
+`volicord inbox` listing when the active task is not the intended task;
+`volicord inbox answer` selects the task through the judgment id and does not
+accept `--task`.
 
 Recording one option resolves only that addressed judgment. Broad natural
 language such as "approved", "looks good", or "go ahead" does not imply every
