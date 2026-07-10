@@ -204,6 +204,17 @@ params:
       project_id: proj_banner_001
       task_id: task_banner_001
       state_version: 51
+  basis:
+    task_id: task_banner_001
+    change_unit_id: cu_banner_001
+    scope_revision: 1
+    close_basis_revision: null
+    baseline_ref: baseline_banner_001
+    result_refs: []
+    residual_risk_ids: []
+    sensitive_action_scope: null
+    created_at_state_version: 51
+    compatibility_status: current
   required_for:
     - close_complete
   expires_at: null

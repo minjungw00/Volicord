@@ -150,7 +150,18 @@ User-owned basis:
 
 `superseded_by_new_observation` is reserved and is not produced by the baseline method. A caller cannot select Core-owned bases as an agent dismissal. This method does not perform filesystem reversion or an extra filesystem probe to manufacture a resolution basis.
 
-For Unrecorded Changes that still require acceptance, Core creates pending `UserJudgment` rows rather than accepting them. Existing User Channel input methods can answer those judgments, including host prompt input where the initialized client supports it, chat command capture when command capture is `configured`, `observed`, or `active`, loopback local consent URL when the adapter can safely expose it, and local `volicord inbox` commands as the CLI inbox path. After the user-owned judgment is resolved, `volicord.reconcile_changes` can resolve the linked Unrecorded Change with `accepted_by_user`.
+For Unrecorded Changes that still require acceptance, Core creates pending
+`UserJudgment` rows rather than accepting them. Existing User Channel paths can
+answer those judgments:
+
+- host prompt input when the initialized client supports it
+- chat command capture when command capture is `configured`, `observed`, or
+  `active`
+- a loopback local consent URL when the adapter can safely expose it
+- local `volicord inbox` commands
+
+After the user-owned judgment is resolved, `volicord.reconcile_changes` can
+resolve the linked Unrecorded Change with `accepted_by_user`.
 
 Core does not resolve ambiguous or unauthorized Product Repository changes through an agent-only dismissal. If more than one active write ticket could cover the paths, no active ticket covers the paths, the paths are outside ticket scope, or the stored Unrecorded Change needs user acceptance, reconciliation leaves it unresolved or creates a pending user-owned judgment.
 
