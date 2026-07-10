@@ -1830,6 +1830,31 @@ mod tests {
 
     #[cfg(any(target_os = "linux", target_os = "macos", windows))]
     #[test]
+    fn concurrent_creation_after_freshness_check_is_not_overwritten(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = TempRuntimeHome::new("guard-atomic-concurrent-create")?;
+        let repo = fixture.path().join("repo");
+        let managed_dir = repo.join(".volicord");
+        fs::create_dir_all(&repo)?;
+        let target = repo.join(VOLICORD_POLICY_FILE);
+        let plan = plan_policy_file(&repo, &target, &owned_policy("new"))?;
+
+        let error = write_managed_file_if_fresh_with_hook(&plan, &plan.content, false, |phase| {
+            if phase == ManagedWritePhase::CommitReady {
+                fs::write(&target, "concurrent creator bytes\n")?;
+            }
+            Ok(())
+        })
+        .expect_err("a concurrent creator must win the no-replace operation");
+
+        assert!(error.to_string().contains("changed since planning"));
+        assert_eq!(fs::read_to_string(&target)?, "concurrent creator bytes\n");
+        assert!(managed_auxiliary_files(&managed_dir)?.is_empty());
+        Ok(())
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos", windows))]
+    #[test]
     fn second_writer_during_rollback_is_preserved() -> Result<(), Box<dyn std::error::Error>> {
         let fixture = TempRuntimeHome::new("guard-atomic-rollback-writer")?;
         let repo = fixture.path().join("repo");
