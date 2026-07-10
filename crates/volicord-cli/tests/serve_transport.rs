@@ -39,14 +39,7 @@ fn volicord_serve_local_http_starts_with_secure_defaults() -> Result<(), Box<dyn
         "--project",
         fixture.product_repo_path(),
     ]))?;
-    let addr = match server.wait_for_listen_addr() {
-        Ok(addr) => addr,
-        Err(error) if local_bind_is_sandbox_blocked(error.as_ref()) => {
-            eprintln!("skipping local TCP startup assertions: {error}");
-            return Ok(());
-        }
-        Err(error) => return Err(error),
-    };
+    let addr = server.wait_for_listen_addr()?;
     let exposure_warning = server.wait_for_stderr_line("host loopback or intended Docker")?;
     assert!(exposure_warning.contains("do not expose"));
     let disclosure = server.wait_for_stderr_line("Does not prove:")?;
@@ -342,12 +335,6 @@ fn parse_listen_addr(line: &str) -> Result<Option<SocketAddr>, Box<dyn Error>> {
         return Ok(None);
     };
     Ok(Some(addr.parse()?))
-}
-
-fn local_bind_is_sandbox_blocked(error: &(dyn Error + 'static)) -> bool {
-    error
-        .to_string()
-        .contains("Operation not permitted (os error 1)")
 }
 
 fn send_http(
