@@ -8,7 +8,7 @@ They do not define public API behavior, schemas, storage effects, security
 guarantees, runtime behavior, Core authority semantics, product acceptance,
 close readiness, or conformance results.
 
-## Decision Set
+## Decision set
 
 | Decision | Use it for |
 |---|---|

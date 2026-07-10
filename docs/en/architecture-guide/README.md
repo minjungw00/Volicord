@@ -14,74 +14,18 @@ semantics, and other product contracts live in the focused Reference owners.
 Volicord is the local work authority record for AI-assisted product
 work. Core is the local authority record for Volicord state.
 
-## Reading order
+## Choose a reading path
 
-1. Workspace and crate responsibilities: start with the
-   [Codebase Tour](codebase-tour.md). It gives maintainers a recommended
-   reading order, crate-by-crate narrative context, important entry symbols and
-   flows, and links exact path responsibility to the Source Map.
-2. Exact source ownership: use the [Source Map](source-map.md) for exact source
-   paths, module responsibilities, CLI submodule boundaries, host-adapter
-   placement, guard integration placement, MCP adapter modules, and test-support
-   paths.
-3. CLI workflow execution: read [CLI Workflows](cli-workflows.md) for setup,
-   connection provisioning, connection status and verification, guard hook
-   lifecycle, doctor diagnostics, host integration, and guard integration
-   execution-flow boundaries.
-4. Representative request flow: read the
-   [Request Lifecycle](request-lifecycle.md). It follows `volicord.status`,
-   `volicord.intake`, and `volicord.prepare_write` from MCP `tools/call` through
-   Core and Store behavior to the MCP response wrapper.
-5. Architecture and boundaries: use
-   [Implementation Architecture](architecture.md) for the concise top-level
-   overview of workspace shape, dependency direction, operational paths, durable
-   implementation boundaries, and detail routes.
-6. Implementation patterns: read
-   [Implementation Design Patterns](design-patterns.md) for recurring
-   structures such as `CoreService`, `MethodPolicy`, method planning,
-   `CoreStorageMutation`, injected time, opaque IDs, controlled enums,
-   canonical request hashing, and shared test fixtures.
-7. Storage and transaction concepts: read
-   [Storage and Transactions](storage-and-transactions.md) for Runtime Home,
-   registry and project databases, `CoreProjectStore`, method planning,
-   mutation values, atomic commit, replay, artifact staging, and failure
-   boundaries. Route exact storage questions to [Storage](../reference/storage.md),
-   [Storage Effects](../reference/storage-effects.md),
-   [Storage Records](../reference/storage-records.md),
-   [Storage DDL](../reference/storage-ddl.md),
-   [Artifact Storage](../reference/storage-artifacts.md), and
-   [Storage Versioning](../reference/storage-versioning.md).
-8. Test strategy: use [Testing Strategy](testing-strategy.md) to choose among
-   module unit tests, Core method tests, binary tests, MCP integration tests,
-   conformance implementation tests, and `volicord-test-support`.
-9. Durable decisions: use [Architecture Decisions](decisions/README.md) for
-   focused explanations of the Core/adapter boundary, planning before atomic
-   mutation commit, and the separation of `Volicord Runtime Home` from
-   `Product Repository`.
-10. Change workflow: use the [Implementation Guide](change-guide.md) when you
-   are ready to classify a change, locate the owner document, inspect the
-   implementation boundary, choose validation, and update affected Architecture Guide
-   pages.
-11. Exact Reference contracts: use the
-   [Reference Index](../reference/README.md) and
-   [API Methods](../reference/api/methods.md). Learning documents can explain
-   how the current code is arranged, but Reference documents own exact method
-   behavior, schemas, storage effects, security wording, runtime boundaries,
-   error meaning, and Core authority semantics.
+You do not need to read every page in order. Start with the route that matches
+your task.
 
-## Learning documents versus owners
-
-| Question | Start here | Exact owner route |
+| Goal | Route | What it answers |
 |---|---|---|
-| Which crate should I open first? | [Codebase Tour](codebase-tour.md) | [Implementation Architecture](architecture.md) owns the high-level workspace shape and dependency boundaries. |
-| Which path owns a module responsibility? | [Source Map](source-map.md) | [Implementation Architecture](architecture.md) owns the overview boundary; exact source-path ownership stays with the Source Map, and exact product behavior still routes to Reference owners. |
-| How do setup, connection provisioning, status, verify, doctor, and guard hook workflows fit together? | [CLI Workflows](cli-workflows.md) | Exact command syntax, flags, result states, and output contracts are owned by [Administrative CLI](../reference/admin-cli.md). |
-| How does a method call move through MCP, Core, Store, and back? | [Request Lifecycle](request-lifecycle.md) | Method behavior is owned by [API Methods](../reference/api/methods.md) and the linked method owner. |
-| Why does Core not depend on CLI or MCP? | [Implementation Architecture](architecture.md) and [Core and adapter dependency boundary](decisions/core-adapter-boundary.md) | Dependency-boundary guidance stays in Architecture Guide docs; public behavior still routes to Reference owners. |
-| Why are planners separate from Store commit? | [Implementation Design Patterns](design-patterns.md) and [Planning before atomic mutation commit](decisions/plan-and-atomic-commit.md) | Exact method behavior and storage effects route to method and storage owners. |
-| What storage mutation is committed? | [Request Lifecycle](request-lifecycle.md) and [Storage and Transactions](storage-and-transactions.md) | Exact storage effects route to [Storage Effects](../reference/storage-effects.md) and adjacent storage owners. |
-| Which test layer should I use? | [Testing Strategy](testing-strategy.md) | Tests verify owner-defined facts but do not own product contracts. |
-| What should I edit for a change? | [Implementation Guide](change-guide.md) | The focused Reference owner selected from [Reference Index](../reference/README.md) or `docs/doc-index.yaml`. |
+| Learn the workspace | [Codebase Tour](codebase-tour.md) -> [Implementation Architecture](architecture.md) -> [Source Map](source-map.md) | Which crates to read, how dependencies point, and which module owns an implementation responsibility. |
+| Follow an administrative workflow | [CLI Workflows](cli-workflows.md) -> [Source Map](source-map.md) | How setup, connection, host, guard, and diagnostic paths are assembled, then where each part lives. |
+| Follow a public method call | [Request Lifecycle](request-lifecycle.md) -> [Implementation Design Patterns](design-patterns.md) -> [Storage and Transactions](storage-and-transactions.md) | How MCP, Core, and Store cooperate, which structures recur, and where persistence begins. |
+| Plan a change | [Implementation Guide](change-guide.md) -> [Testing Strategy](testing-strategy.md) -> [Architecture Decisions](decisions/README.md) | Which owner and source area to inspect, which test layer to use, and why durable boundaries exist. |
+| Check exact behavior | [Reference Index](../reference/README.md) -> [API Methods](../reference/api/methods.md) | Which focused Reference document owns the API, schema, storage, security, runtime, error, or Core authority detail. |
 
 ## Source-reading shortcuts
 

@@ -33,7 +33,7 @@ only the structure visible in the repository.
 - Public method additions or behavior changes must update Core and Reference
   owners, not only adapter dispatch.
 
-## Non-Goals
+## Non-goals
 
 - This decision does not define the public method list or method behavior.
 - It does not make CLI commands public API methods.
@@ -41,7 +41,7 @@ only the structure visible in the repository.
 - It does not prevent adapters from doing their own startup, binding, or config
   validation.
 
-## Relevant Implementation
+## Relevant implementation
 
 - [`crates/volicord-core/src/pipeline.rs`](../../../../crates/volicord-core/src/pipeline.rs):
   `CoreService`, `MethodPolicy`, `OwnerPipelineBranch`, and common preflight.
@@ -72,7 +72,7 @@ only the structure visible in the repository.
   local User Channel orchestration and Core judgment recording.
 - Cargo manifests for `volicord-core`, `volicord-mcp`, and `volicord-cli`.
 
-## Related Tests And Reference Owners
+## Related tests and Reference owners
 
 - `status_is_read_only_including_dry_run` in
   [`crates/volicord-core/src/methods/tests/status.rs`](../../../../crates/volicord-core/src/methods/tests/status.rs),

@@ -13,7 +13,7 @@ Start with [Storage](../reference/storage.md) for the storage owner family,
 [Storage Versioning](../reference/storage-versioning.md) when exact behavior is
 needed.
 
-## Storage Shape
+## Storage shape
 
 `Volicord Runtime Home` is the local runtime data location for Volicord-owned
 records and artifact data. `Product Repository` is the user's product-file
@@ -47,7 +47,7 @@ The registry database tracks Runtime Home-level registration. Project
 databases hold project-local state. This page avoids reproducing table layouts
 or column definitions; use the storage Reference owners for those details.
 
-## Store, Events, And Projections
+## Store, events, and projections
 
 This implementation map shows how method plans become current Store records,
 events, replay rows, and read-time projections. Solid arrows show normal data
@@ -87,7 +87,7 @@ that replay. Read-time projections and rendered displays help callers see
 state, but they do not create authority, write tickets, evidence, acceptance,
 or close readiness by display alone.
 
-## Bootstrap And Schema Boundary
+## Bootstrap and schema boundary
 
 Administrative setup uses Store bootstrap and inspection paths before public
 method execution is available:
@@ -108,7 +108,7 @@ method execution is available:
 This keeps local administrative preparation separate from Core method
 semantics. Exact CLI behavior is owned by [Administrative CLI](../reference/admin-cli.md).
 
-## Read And Planning Flow
+## Read and planning flow
 
 Normal public method execution has two implementation phases before persistence:
 
@@ -124,7 +124,7 @@ Read-only methods and dry runs can return without a Core mutation commit.
 Committed branches provide result fields, event data, and a list of
 `CoreStorageMutation` values.
 
-## Effect Path Boundary Summary
+## Effect path boundary summary
 
 This page owns the implementation-level Store boundary for effect paths. Exact
 method results and public storage-effect contracts remain with the method owner
@@ -139,7 +139,7 @@ and [Storage Effects](../reference/storage-effects.md).
 | Normal committed Core mutation | Runs `CoreProjectStore::commit_mutation`, which applies method-provided `CoreStorageMutation` values and pending events inside one transaction. |
 | Transient artifact staging | Uses artifact staging helpers instead of the normal Core mutation commit path. It has its own storage and cleanup boundary. |
 
-## Mutation Values
+## Mutation values
 
 `CoreStorageMutation` functions as a command-like value between method planning
 and Store persistence. Method planners create values such as `InsertTask`,
@@ -153,7 +153,7 @@ This structure gives the implementation a clear split:
 - Store decides how that intended effect is applied to project-local storage.
 - Reference owners decide the exact product meaning of the effect.
 
-## Commit Input And Atomic Commit
+## Commit input and atomic commit
 
 For normal committed Core mutations, Core builds `CommitMutationInput` with the
 project ID, method name, optional idempotency key, canonical request hash,
@@ -184,7 +184,7 @@ The implementation tests that protect this boundary include
 plus Core pipeline tests in
 [`crates/volicord-core/src/pipeline.rs`](../../../crates/volicord-core/src/pipeline.rs).
 
-## State Version And Replay
+## State version and replay
 
 The normal commit path advances project state once for a newly committed Core
 mutation and stores the corresponding `authority_events` row or owner-defined
@@ -201,7 +201,7 @@ Exact state-version and replay behavior routes to
 [Storage Versioning](../reference/storage-versioning.md), [API Errors](../reference/api/errors.md),
 and the relevant method owner.
 
-## Artifact Boundary
+## Artifact boundary
 
 Artifact staging is intentionally separate from the normal Core mutation
 commit path:
@@ -226,7 +226,7 @@ Relevant tests include
 and `artifact_lifecycle_promotes_valid_handles_and_rolls_back_invalid_ones`
 in [`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs).
 
-## Failure Boundaries
+## Failure boundaries
 
 The implementation separates failure boundaries by effect path:
 

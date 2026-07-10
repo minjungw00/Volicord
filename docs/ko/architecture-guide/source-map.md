@@ -26,7 +26,7 @@
 | `crates/volicord-cli` | `volicord-cli` | 로컬 `volicord` 관리 바이너리, 재사용 명령 모듈, Runtime Home 설정, 프로젝트와 Agent Connection 등록, 호스트 어댑터, guard hook, User Channel 명령, 공개 `volicord mcp` 프로세스 디스패치. |
 | `crates/volicord-platform-fs` | `volicord-platform-fs` | 로컬 어댑터가 사용하는 플랫폼 고유 파일시스템 이름 공간 연산을 위한 내부 안전 파사드. |
 | `crates/volicord-mcp` | `volicord-mcp` | 시작 검증, 도구 목록, `tools/call` 디코딩과 디스패치, stdio 프레이밍, local HTTP 전송, Core 호출을 위한 로컬 MCP 어댑터 라이브러리. |
-| `crates/volicord-test-support` | `volicord-test-support` | 구현 테스트가 공유하는 폐기 가능한 Runtime Home, Product Repository, Store, Core, Agent Connection, 픽스처 도우미. |
+| `crates/volicord-test-support` | `volicord-test-support` | 구현 테스트가 공유하는 폐기 가능한 Runtime Home과 Product Repository 설정, Store 검사, Core 요청 빌더, Agent Connection 설정, 기타 도우미. |
 | `tests/conformance` | `volicord-conformance-tests` | 담당 문서가 정의한 동작을 Core 쪽 API와 공유 픽스처로 실행하는 기준 범위 교차 메서드 시나리오. |
 | `tests/integration` | `volicord-integration-tests` | MCP, Core, Store, Agent Connection 바인딩, 작업 범주, 공개 스키마 snapshot을 가로지르는 테스트. |
 | `xtask` | `xtask` | 문서 검증을 위한 저장소 유지보수 도구. Volicord 런타임 아키텍처의 일부가 아닙니다. |
@@ -143,7 +143,7 @@
 
 | 소스 경로 | 책임 |
 |---|---|
-| `crates/volicord-test-support/src/lib.rs` | 폐기 가능한 Runtime Home 도우미, Core fixture, 요청 builder, fixture 전용 Store 도우미, 구현 테스트용 공유 assertion. |
+| `crates/volicord-test-support/src/lib.rs` | 폐기 가능한 Runtime Home과 Product Repository 설정, Core용 요청 빌더, 픽스처 전용 Store 검사 도우미, 구현 테스트용 공유 단언. |
 | `crates/volicord-cli/tests/support/` | CLI 통합 테스트용 binary fixture, fake host, fake MCP process, JSON helper, assertion, guard lifecycle fixture. |
 | `crates/volicord-cli/tests/binary_admin.rs` | setup, project, connection, status, inbox, preflight, host configuration 동작의 binary 수준 관리 CLI coverage. |
 | `crates/volicord-cli/tests/guard_command.rs` | Guard hook lifecycle, prompt capture, observed mutation, expected-write, write-ticket matching, guarded init/status coverage. |

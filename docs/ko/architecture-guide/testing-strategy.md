@@ -101,76 +101,29 @@ VOLICORD_RUN_CLAUDE_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke cl
 | 호스트 설정 어댑터 | `crates/volicord-cli/src/host_integration/`, 특히 `host_integration/codex/`, `host_integration/claude_code/`, `config_edit.rs`, `contracts.rs`, `generic.rs`, `verification.rs`. | 호스트 어댑터 모듈 테스트와 `binary_admin`. | Host-native hook output이 바뀌면 `guard_command`, launch 또는 preflight 동작이 바뀌면 `mcp_transport`. |
 | 적합성 시나리오나 공유 픽스처 동작 | `tests/conformance/baseline.rs`, `crates/volicord-test-support/src/lib.rs`, CLI 통합 fixture는 `crates/volicord-cli/tests/support/`. | 먼저 그 동작의 집중 크레이트/단위 테스트, 그다음 영향을 받는 적합성 또는 CLI 시나리오. | 픽스처 동작이 다른 계층의 관찰 결과를 바꾸면 소비하는 통합 테스트나 메서드 테스트. |
 
-## 계층 선택
-
-| 변경 범주 | 여기서 시작 | 추가할 때 |
-|---|---|---|
-| 공유 요청, 응답, 값, 식별자, 정규 해시 타입 | `volicord-types` 단위 테스트. | 형태 변경이 메서드 계획이나 어댑터 노출을 바꾸면 Core 메서드 또는 통합 테스트를 추가합니다. |
-| 플랫폼 파일시스템 기본 연산 또는 어댑터 관리 조건부 파일 교체 | `volicord-platform-fs` 테스트와 호출 모듈 단위 테스트. | 운영체제 고유 코드에는 대상별 컴파일 또는 테스트를, 명령에 보이는 결과가 바뀌면 `binary_admin`을 추가합니다. |
-| Store 읽기 도우미, 변이 적용, 트랜잭션, 스키마 초기화, 아티팩트 저장소 동작 | 변경된 코드 가까이의 Store 모듈 테스트. | 공개 메서드 효과가 바뀌면 Core 메서드 테스트를, 계층 간 동작이 영향을 받으면 적합성 또는 MCP 통합 테스트를 추가합니다. |
-| Storage DDL 참조, canonical SQL, 스키마 검증 동작 | `cargo test -p volicord-store --test storage_ddl_contract`와 가까운 Store 테스트. | 유지되는 Storage DDL 문서가 바뀌면 docs-check를, 공개 메서드에서 보이는 저장 효과가 바뀌면 Core, 적합성, MCP 통합 테스트를 추가합니다. |
-| Core 메서드 동작 | `crates/volicord-core/src/methods/tests/` 아래의 해당 메서드별 파일. | 교차 메서드 기준 범위 시나리오는 `tests/conformance/baseline.rs`를, MCP 노출이나 operation category 파생이 중요하면 `tests/integration/mcp_connection.rs`를 추가합니다. |
-| 공통 Core 사전 점검, 분기 처리, 재실행, 최신성, 접근 정책 | `crates/volicord-core/src/pipeline.rs` 단위 테스트와 메서드 테스트. | 어댑터가 파생한 호출 맥락이나 세션 바인딩이 관련되면 MCP 통합 테스트를 추가합니다. |
-| MCP 어댑터 시작, 도구 스키마, `tools/call`, stdio 전송, 로컬 HTTP 전송 | `crates/volicord-mcp/src/tests.rs` 테스트와 영향을 받는 프로세스 경로에 맞는 `mcp_transport` 또는 `serve_transport`. | 생성 API 또는 MCP 도구 projection이 바뀌면 `public_contract_snapshots`, MCP를 통과한 Core/Store 계층 간 동작은 `tests/integration/mcp_connection.rs`를 추가합니다. |
-| Setup workflow 동작과 출력 | `setup_command/` 가까이의 setup 모듈 테스트와 바이너리에 보이는 setup 흐름은 `binary_admin`. | 부트스트랩, 검사, registry, 스키마 초기화, installation-profile persistence가 바뀌면 Store 테스트를 추가합니다. |
-| Connection provisioning, status, verification, output | Connection command 모듈 테스트와 `binary_admin`. | Preflight/process 변경에는 `mcp_transport`, MCP에 보이는 계층 간 동작에는 `tests/integration/mcp_connection.rs`를 추가합니다. |
-| Guard integration 파일, capability record, audit fact | Guard integration 모듈 테스트와 `binary_admin` guarded init/status 사례. | 기록된 관찰이나 hook lifecycle 경로가 생성 fact를 소비하면 `guard_command`를 추가합니다. |
-| Guard hook lifecycle 동작과 host-native rendering | `guard_command`와 함께 있는 guard 모듈 테스트. | Hook 동작이 CLI 밖의 담당 문서 정의 동작에 의존하면 Core, Store, 적합성, MCP 테스트를 추가합니다. |
-| 호스트 설정 어댑터 | 호스트 어댑터 모듈 테스트와 `binary_admin`. | Host-native hook rendering은 `guard_command`, launch/preflight 동작은 `mcp_transport`를 추가합니다. |
-| 테스트 픽스처 동작 | `volicord-test-support` 테스트, `crates/volicord-cli/tests/support/`, 또는 소비 패키지의 테스트. | 픽스처가 빠진 계약 담당 문서를 드러내면 담당 문서 중심 문서 점검을 추가합니다. |
-| 생성 공개 계약 snapshot 동작 | `cargo test -p volicord-integration-tests --test public_contract_snapshots`. | 담당 문서가 승인한 소스 projection이 바뀌었을 때만 기록된 update command로 snapshot을 재생성합니다. |
-| 문서 검증기 동작 | `xtask` 테스트와 `cargo run -p xtask -- docs-check`. | 새 결정적 구조 규칙을 도입하면 픽스처 사례를 추가합니다. |
-| 아키텍처 가이드만 바뀐 경우 | `cargo run -p xtask -- docs-check`와 사람이 하는 의미 일치, 담당 경로, 용어 검토. | 사용자가 요청했거나 문서 변경이 새 소스 검증에 의존하면 Cargo 테스트를 실행합니다. |
-
 ## 오래 유지될 계약 테스트와 일회성 감사
 
-저장소에 남기는 오래 유지될 테스트는 현재 공개 계약, 저장소 계약, 스키마 계약,
-또는 유지 문서 규칙을 검증해야 합니다. 일회성 감사는 정리 작업이 끝났는지
-확인하는 절차입니다. 둘은 구분합니다.
+[검증](../maintain/validation.md)에서 오래 유지될 테스트와 정리 전용 감사를
+구분하는 전체 원칙을 확인합니다. 구현 테스트는 제거 이력이 아니라 현재 지원되는
+형태를 검증해야 합니다.
 
-계기가 된 정리나 이름 변경이 끝난 뒤에도 유용한 테스트라면 오래 유지될 수
-있습니다. 현재 허용되는 형태를 긍정적으로 검증하는 방식을 선호합니다. 예를 들어
-현재 명령 옵션, 문서화된 명령 예시, 현재 저장소 테이블과 컬럼, 현재 MCP 노출
-스키마, `docs/terminology-map.yaml`이 정의한 용어 역할을 검증합니다. 제거된
-아티팩트에 대한 문자열 검색은 감사 절차입니다. 변경 중 필요하면 사용하고 결과를
-보고하되, 오래된 문자열이 사라졌다는 사실만 증명하는 영구 테스트로 만들지
-않습니다.
+현재 테스트에서 다음과 같은 작성 방식을 확인할 수 있습니다.
 
-CLI 도움말은 제거된 플래그 이름을 검사하지 말고 각 명령이 노출하는 현재 옵션
-허용 목록을 검증합니다. `connect_help_exposes_only_public_connect_options` 같은
-도움말 테스트는 `volicord connection add`의 도움말에서 파싱한 옵션을 지원되는 옵션
-집합과 비교해야 합니다. 문서 명령 예시 검증은 실행 가능한 `volicord` 예시를 공개
-CLI 명령 계약과 대조해야 하며,
-`documented_volicord_commands_match_public_cli_contract` 같은 형태입니다.
+- `crates/volicord-cli/tests/binary_admin.rs`의
+  `binary_help_options_match_supported_contracts`는 현재 CLI 도움말의 옵션 허용
+  목록을 검증합니다.
+- `crates/volicord-store/tests/storage_ddl_contract.rs`의
+  `initial_schemas_satisfy_connection_storage_contract`는 현재 스키마 구조를
+  검증합니다.
+- `tests/integration/mcp_connection.rs`의
+  `public_mcp_arguments_reject_internal_envelope_and_invocation_fields`는 공개 MCP
+  스키마 경계를 검증합니다.
+- `xtask/tests/docs_check.rs`의 `reports_required_terminology_role_failure`와
+  `accepts_supported_volicord_shell_command_examples`는 현재 문서 검증 규칙을
+  보호합니다.
 
-저장소, MCP, 용어 점검은 현재 기여자가 보존해야 하는 안정적인 추상화를 검증해야
-합니다. 저장소 스키마 테스트는
-`storage_registry_contains_current_contract_columns`처럼 현재 기대하는 기록, 컬럼,
-인덱스, 제약을 이름 붙여야 합니다. MCP 사전 점검과 공개 스키마 테스트는 현재
-시작 및 스키마 동작을 확인해야 합니다. MCP에 보이는 스키마 형태는
-`mcp_public_schema_hides_internal_envelope_fields`처럼 내부 envelope 필드를 숨기는
-추상화 계약으로 유지되어야 합니다. 용어 점검은
-`terminology_map_defines_identity_sensitive_roles`처럼 저장소 내부, MCP 프로세스
-바인딩, 진단, 공개 선택자 같은 신원 민감 역할 메타데이터를 검증해야 합니다.
-`connection_id`나 `project_id` 같은 식별자를 문서 전체에서 금지하는 검사로
-바꾸지 않습니다.
-
-테스트 이름은 과거 제거 이력이 아니라 현재 보호하는 제품 계약을 기준으로 짓습니다.
-선호하는 예시는 아래와 같습니다.
-
-- `connect_help_exposes_only_public_connect_options`
-- `documented_volicord_commands_match_public_cli_contract`
-- `export_help_lists_authority_bundle`
-- `mcp_public_schema_hides_internal_envelope_fields`
-- `terminology_map_defines_identity_sensitive_roles`
-- `storage_registry_contains_current_contract_columns`
-
-정리 이력을 설명할 뿐 현재 계약을 설명하지 않는 테스트 이름이나 구조는 피합니다.
-
-- `removed_options_are_gone`
-- `legacy_flags_are_removed`
-- `old_strings_do_not_remain`
-- `cleanup_removed_project_id`
+이 테스트들은 구현 또는 유지보수 경계를 보호합니다. 검증하는 제품 사실은 계속
+집중 참조 담당 문서가 정의합니다.
 
 ## 경계를 보여 주는 테스트
 

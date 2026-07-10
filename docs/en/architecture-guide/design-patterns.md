@@ -14,7 +14,7 @@ For exact product behavior, use the [Reference Index](../reference/README.md).
 For the broad crate map, use [Implementation Architecture](architecture.md);
 for representative method traces, use [Request Lifecycle](request-lifecycle.md).
 
-## Pattern Map
+## Pattern map
 
 | Structure | Problem addressed | Source locations and symbols | Benefit | Trade-off | Tests |
 |---|---|---|---|---|---|
@@ -30,7 +30,7 @@ for representative method traces, use [Request Lifecycle](request-lifecycle.md).
 | Canonical request hashing | Idempotency replay needs request identity that is stable across JSON property ordering and formatting. | `canonical_json_bytes`, `canonical_json_sha256`, and `canonical_request_hash` in [`crates/volicord-types/src/canonical.rs`](../../../crates/volicord-types/src/canonical.rs); preflight hashing in [`crates/volicord-core/src/pipeline.rs`](../../../crates/volicord-core/src/pipeline.rs). | Replayed committed calls can compare a deterministic request hash instead of raw input text. | The hash depends on the typed request representation; schema changes must be considered with idempotency and Reference owners. | `canonical_json_hash_is_order_stable`, `typed_request_hash_ignores_raw_order_and_preserves_semantic_differences`, and `typed_request_hashes_are_stable_across_public_request_serialization` in [`crates/volicord-types/src/lib.rs`](../../../crates/volicord-types/src/lib.rs); `idempotency_replay_returns_stored_response` in [`crates/volicord-core/src/pipeline.rs`](../../../crates/volicord-core/src/pipeline.rs). |
 | Test fixture composition through `volicord-test-support` | Cross-layer tests need disposable Runtime Home setup, registered projects and Agent Connections, and request builders without putting fixture code in production crates. | `TempRuntimeHome`, `CoreFixture`, request builders, and Store inspection helpers in [`crates/volicord-test-support/src/lib.rs`](../../../crates/volicord-test-support/src/lib.rs). | Tests can compose Store, Core, MCP, and conformance paths consistently while keeping runtime data under temporary directories. | Fixture helpers can make setup easy to reuse; assertions still need to route back to Reference owners for product meaning. | `tests/conformance/baseline.rs`, `tests/integration/mcp_connection.rs`, and helper tests such as `disposable_runtime_home_stays_under_system_temp` in [`crates/volicord-test-support/src/lib.rs`](../../../crates/volicord-test-support/src/lib.rs). |
 
-## How To Use This Page
+## How to use this page
 
 When making a narrow change, use this page to identify the implementation
 structure you are touching. Then use the [Implementation Guide](change-guide.md)

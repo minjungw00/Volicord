@@ -4,16 +4,10 @@
 가이드 수준의 운영 경로, 워크스페이스 형태, 의존 방향, 오래 유지될 구현 경계,
 집중 세부 담당 문서로 가는 경로를 담당합니다.
 
-이 문서는 소스 지도, CLI 작업 흐름 안내, 요청 추적, 저장소 트랜잭션 안내,
-테스트 전략, 변경 가이드, 제품 계약이 아닙니다. 소스 코드 학습 경로는
-[아키텍처 가이드](README.md) 진입점을, 읽는 순서는 [코드베이스 둘러보기](codebase-tour.md)를,
-정확한 소스 경로는 [소스 지도](source-map.md)를, 대표 MCP/Core 요청 흐름은
-[요청 생명주기](request-lifecycle.md)를, 관리 CLI 작업 흐름 경계는
-[CLI 작업 흐름](cli-workflows.md)을, 반복 구조는 [구현 설계 패턴](design-patterns.md)을,
-Store 커밋과 아티팩트 경계는 [저장소와 트랜잭션](storage-and-transactions.md)을,
-테스트 계층 선택은 [테스트 전략](testing-strategy.md)을, 집중 결정 기록은
-[아키텍처 결정](decisions/README.md)을, 변경 경로 지정은 [구현 가이드](change-guide.md)를,
-정확한 동작은 집중 [참조 색인](../reference/README.md)을 사용합니다.
+이 문서는 소스 지도, 작업 흐름 추적, 테스트 전략, 변경 가이드, 제품 계약이
+아닙니다. 학습 경로가 필요하면 [아키텍처 가이드](README.md)에서 시작합니다.
+정확한 동작은 집중 [참조 색인](../reference/README.md)을 사용합니다. 아래 표에서
+구현 질문에 맞는 아키텍처 가이드 문서로 이동할 수 있습니다.
 
 Volicord는 AI 지원 제품 작업을 위한 로컬 작업 권한 기록입니다. Core는 Volicord
 상태를 위한 로컬 기준 기록입니다.
@@ -27,18 +21,9 @@ Volicord는 AI 지원 제품 작업을 위한 로컬 작업 권한 기록입니�
 
 ## 운영 경로
 
-개요 수준에서 구현에는 오래 유지되는 네 가지 로컬 경로 형태가 있습니다.
-
-- MCP 호스트 -> `volicord mcp --stdio` -> `volicord-mcp` -> `volicord-core` ->
-  `Volicord Runtime Home` 아래의 `volicord-store`. 아티팩트 기능도 이 Store에
-  포함됩니다.
-- 로컬 MCP 클라이언트 -> `volicord serve --transport local-http` ->
-  `volicord-mcp` -> `volicord-core` -> `Volicord Runtime Home` 아래의
-  `volicord-store`.
-- 운영자 -> `volicord` 관리 CLI -> setup, 등록, 호스트, 진단 기능 ->
-  `Volicord Runtime Home`과 지원되는 호스트 설정 경계.
-- 로컬 사용자 -> `volicord inbox` CLI -> `volicord-core` -> `Volicord Runtime Home`
-  아래의 Store. 이 경로는 `User Channel`을 사용합니다.
+아래 그림은 stdio MCP, 로컬 HTTP, 관리 CLI, `User Channel`의 네 진입 경로를
+구분합니다. 실선은 주된 호출 또는 저장 방향을 나타냅니다. 점선은 검증,
+관찰된 입력, 공개 메서드 실행 밖에서 일어나는 작업을 나타냅니다.
 
 ```mermaid
 flowchart LR
@@ -85,7 +70,7 @@ flowchart LR
 | `crates/volicord-cli` | Setup, 프로젝트 등록, User Channel 명령, Agent Connection 설정, 호스트 어댑터, guard 작업 흐름, MCP 프로세스 인계를 위한 로컬 `volicord` 관리 바이너리와 재사용 명령 모듈. |
 | `crates/volicord-platform-fs` | 로컬 어댑터 코드가 사용하는 플랫폼 고유 파일시스템 이름 공간 연산을 위한 내부 안전 파사드. 관리 파일 정책이나 공개 제품 동작을 담당하지 않습니다. |
 | `crates/volicord-mcp` | 시작 검증, 도구 목록, `tools/call` 디코딩과 디스패치, stdio framing, local HTTP transport, local web consent, Core 호출을 위한 MCP 어댑터 라이브러리. |
-| `crates/volicord-test-support` | 구현 테스트가 공유하는 폐기 가능한 Runtime Home, Product Repository, Store, Core, Agent Connection, 픽스처 도우미. |
+| `crates/volicord-test-support` | 구현 테스트가 공유하는 폐기 가능한 Runtime Home과 Product Repository 설정, Store 검사, Core 요청 빌더, Agent Connection 설정, 기타 도우미. |
 | `tests/conformance` | Core 쪽 API와 공유 픽스처를 통한 기준 범위 교차 메서드 시나리오. |
 | `tests/integration` | MCP, Core, Store, Agent Connection 바인딩, operation-category, 공개 스키마 snapshot을 가로지르는 테스트. |
 | `xtask` | 문서 검증을 위한 저장소 유지보수 도구. Volicord 런타임 아키텍처 밖에 있습니다. |

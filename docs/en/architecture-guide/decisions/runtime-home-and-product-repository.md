@@ -41,7 +41,7 @@ separate location concepts:
 - Documentation and tests must avoid storing runtime homes, SQLite databases,
   generated logs, or artifact output in maintained documentation.
 
-## Non-Goals
+## Non-goals
 
 - This decision does not define security isolation.
 - It does not make Runtime Home location proof of authority.
@@ -50,7 +50,7 @@ separate location concepts:
   boundary owner does.
 - It does not define storage record layout, DDL, or artifact lifecycle rules.
 
-## Relevant Implementation
+## Relevant implementation
 
 - [`crates/volicord-store/src/runtime_home.rs`](../../../../crates/volicord-store/src/runtime_home.rs):
   Runtime Home resolution.
@@ -68,7 +68,7 @@ separate location concepts:
 - [`crates/volicord-core/src/policy/path.rs`](../../../../crates/volicord-core/src/policy/path.rs):
   Product Repository path normalization helpers used by Core policy.
 
-## Related Tests And Reference Owners
+## Related tests and Reference owners
 
 - `init_dry_run_does_not_write_runtime_or_repo_files`,
   `init_rejects_invalid_profile_without_artifacts`,

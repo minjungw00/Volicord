@@ -29,7 +29,7 @@ All source and test paths are relative to the repository root.
 | `crates/volicord-cli` | `volicord-cli` | Local `volicord` administrative binary, reusable command modules, Runtime Home setup, project and Agent Connection registration, host adapters, guard hooks, User Channel commands, and public `volicord mcp` process dispatch. |
 | `crates/volicord-platform-fs` | `volicord-platform-fs` | Internal safe facade for platform-native filesystem namespace operations used by local adapters. |
 | `crates/volicord-mcp` | `volicord-mcp` | Local MCP adapter library for startup validation, tool listing, `tools/call` decoding and dispatch, stdio framing, local HTTP transport, and Core invocation. |
-| `crates/volicord-test-support` | `volicord-test-support` | Disposable Runtime Home, Product Repository, Store, Core, Agent Connection, and fixture helpers shared by implementation tests. |
+| `crates/volicord-test-support` | `volicord-test-support` | Disposable Runtime Home and Product Repository setup, Store inspection, Core request builders, Agent Connection setup, and other helpers shared by implementation tests. |
 | `tests/conformance` | `volicord-conformance-tests` | Baseline cross-method scenarios that exercise owner-defined behavior through Core-facing APIs and shared fixtures. |
 | `tests/integration` | `volicord-integration-tests` | Cross-layer MCP, Core, Store, Agent Connection binding, operation-category, and public schema snapshot tests. |
 | `xtask` | `xtask` | Repository maintenance tooling for documentation validation. It is not part of Volicord runtime architecture. |
@@ -146,7 +146,7 @@ All source and test paths are relative to the repository root.
 
 | Source path | Responsibility |
 |---|---|
-| `crates/volicord-test-support/src/lib.rs` | Disposable Runtime Home helpers, Core fixtures, request builders, fixture-only Store helpers, and shared assertions for implementation tests. |
+| `crates/volicord-test-support/src/lib.rs` | Disposable Runtime Home and Product Repository setup, Core-facing request builders, fixture-only Store inspection helpers, and shared assertions for implementation tests. |
 | `crates/volicord-cli/tests/support/` | Binary fixtures, fake hosts, fake MCP processes, JSON helpers, assertions, and guard lifecycle fixtures for CLI integration tests. |
 | `crates/volicord-cli/tests/binary_admin.rs` | Binary-level administrative CLI coverage for setup, project, connection, status, inbox, preflight, and host configuration behavior. |
 | `crates/volicord-cli/tests/guard_command.rs` | Guard hook lifecycle, prompt capture, observed mutation, expected-write, write-ticket matching, and guarded init/status coverage. |

@@ -31,7 +31,7 @@ Connection 기록, 호스트 어댑터, guard integration, 검증, 진단, 렌�
 | Host integration | CLI가 오케스트레이션하는 호스트 어댑터의 plan, apply, verify, remove 책임. | [관리 CLI](../reference/admin-cli.md#external-host-configuration)와 [Agent Connection](../reference/agent-connection.md). |
 | Guard integration | init, status, verification, doctor가 사용하는 생성 파일 계획, 적용, capability metadata, 사실 기반 audit helper. | [관리 CLI](../reference/admin-cli.md#guard-hook-commands)와 [보안](../reference/security.md). |
 
-## Setup workflow
+## 설정 작업 흐름
 
 Setup workflow는 뒤의 연결과 MCP 시작 흐름이 의존하는 로컬 CLI 실행 사실을
 준비합니다.
@@ -56,7 +56,7 @@ Setup workflow는 뒤의 연결과 MCP 시작 흐름이 의존하는 로컬 CLI 
 Setup workflow는 사용자 소유 판단을 기록하거나, 쓰기 티켓을 발급하거나, 호스트
 trust를 증명하거나, 공개 명령 문법을 정의하지 않습니다.
 
-## Connection init과 add
+## 연결 초기화와 추가
 
 연결 프로비저닝은 로컬 관리 오케스트레이션입니다. 공개 Core 메서드 실행과는
 분리됩니다.
@@ -89,7 +89,7 @@ action과 함께 connection result를 렌더링합니다.
 적용된 뒤 뒤쪽 경계가 실패를 보고하면, 이후 status, verify, project, remove workflow가
 그 앞선 effect를 관찰할 수 있습니다.
 
-## Connection status와 verify
+## 연결 상태와 검증
 
 Connection status는 읽기 중심입니다. Agent Connection 하나를 선택하고, 연결된 project
 membership과 저장된 verification fact를 읽으며, 가능할 때 managed host plan을 재구성하고,
@@ -109,7 +109,7 @@ command와 preflight fact, managed host lifecycle observation, guard audit fact�
 initialize, expose했다는 사실을 증명하지 않습니다. 또한 OS enforcement, 사용자 승인, 행위자
 identity, 제품 정확성, 테스트 충분성, 닫기 상태를 증명하지 않습니다.
 
-## Guard hook lifecycle
+## Guard 훅 생명주기
 
 생성된 host wrapper 파일은 지원되는 lifecycle phase에서 숨겨진 내부 hook namespace를
 호출합니다. CLI hook workflow는 Runtime Home과 등록 프로젝트를 해석하고, host event를 guard
@@ -138,7 +138,7 @@ Guard hook decision은 협력형 host decision과 observation입니다. 공개 C
 쓰기 방지, 행위자 귀속 증명, 정확성 증명, 테스트 충분성 증명, 인간 검토 대체가
 아닙니다.
 
-## Doctor diagnostics
+## Doctor 진단
 
 Doctor는 읽기 중심 진단 workflow입니다. Runtime Home을 해석하고, Runtime Home 접근과
 registry 형태를 검사하며, installation profile fact를 읽고, 저장된 command path와 `PATH`
@@ -152,7 +152,7 @@ Project를 만들거나, host configuration을 설치하거나 제거하거나, 
 복구하거나, 보안, 정확성, review, QA, 최종 수락, 잔여 위험 수락, 닫기 상태를 증명하지
 않습니다.
 
-## Host integration 경계
+## 호스트 통합 경계
 
 호스트 어댑터는 host-specific planning, application, verification, removal, capability
 declaration, conflict detection을 담당합니다. CLI workflow는 host, intent, mode, profile,
@@ -165,7 +165,7 @@ CLI는 host configuration을 외부 integration surface로 다룹니다. Host co
 Agent Connection이 존재한 뒤 guidance를 보고할 수 있지만 임의 external host configuration을
 쓰지 않습니다.
 
-## Guard integration 경계
+## Guard 통합 경계
 
 Guard integration은 detective-aware workflow를 위한 generated file, policy JSON, host hook
 command, capability metadata, prompt-capture availability, factual audit input을 계획합니다.

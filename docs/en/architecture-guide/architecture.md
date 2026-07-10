@@ -5,19 +5,11 @@ workspace. It owns guide-level operational paths, workspace shape, dependency
 direction, durable implementation boundaries, and routes to focused detail
 owners.
 
-It is not a source map, CLI workflow guide, request trace, storage transaction
-guide, testing strategy, change guide, or product contract. Use the
-[Architecture Guide](README.md) entry point for the source-code learning path,
-the [Codebase Tour](codebase-tour.md) for reading order, the [Source Map](source-map.md)
-for exact source paths, the [Request Lifecycle](request-lifecycle.md) for
-representative MCP/Core request flow, [CLI Workflows](cli-workflows.md) for
-administrative CLI workflow boundaries, [Implementation Design Patterns](design-patterns.md)
-for recurring structures, [Storage and Transactions](storage-and-transactions.md)
-for Store commit and artifact boundaries, [Testing Strategy](testing-strategy.md)
-for test-layer choice, [Architecture Decisions](decisions/README.md) for
-focused decision records, the [Implementation Guide](change-guide.md) for
-change routing, and the focused [Reference Index](../reference/README.md) for
-exact behavior.
+It is not a source map, workflow trace, testing strategy, change guide, or
+product contract. Start at the [Architecture Guide](README.md) when you need a
+learning route. Use the focused [Reference Index](../reference/README.md) for
+exact behavior. The tables below route each implementation question to the
+appropriate Architecture Guide page.
 
 Volicord is the local work authority record for AI-assisted product work. Core
 is the local authority record for Volicord state.
@@ -33,18 +25,10 @@ to the repository root.
 
 ## Operational paths
 
-At the overview level, the implementation has four durable local path shapes:
-
-- MCP host -> `volicord mcp --stdio` -> `volicord-mcp` -> `volicord-core` ->
-  `volicord-store`, including artifact facilities, under `Volicord Runtime Home`.
-- Local MCP client -> `volicord serve --transport local-http` ->
-  `volicord-mcp` -> `volicord-core` -> `volicord-store` under
-  `Volicord Runtime Home`.
-- Operator -> `volicord` administrative CLI -> setup, registration, host, and
-  diagnostic facilities -> `Volicord Runtime Home` and supported host
-  configuration boundaries.
-- Local user -> `volicord inbox` CLI -> `volicord-core` -> Store under
-  `Volicord Runtime Home`, using the `User Channel`.
+The diagram separates four entry paths: stdio MCP, local HTTP, the
+administrative CLI, and the `User Channel`. Solid arrows show the main call or
+storage direction. Dotted arrows show validation, observed input, or work that
+stays outside public method execution.
 
 ```mermaid
 flowchart LR
@@ -92,7 +76,7 @@ the public method execution path.
 | `crates/volicord-cli` | Local `volicord` administrative binary and reusable command modules for setup, project registration, User Channel commands, Agent Connection setup, host adapters, guard workflows, and MCP process handoff. |
 | `crates/volicord-platform-fs` | Internal safe facade for the platform-native filesystem namespace operations used by local adapter code. It does not own managed-file policy or public product behavior. |
 | `crates/volicord-mcp` | MCP adapter library for startup validation, tool listing, `tools/call` decoding and dispatch, stdio framing, local HTTP transport, local web consent, and Core invocation. |
-| `crates/volicord-test-support` | Disposable Runtime Home, Product Repository, Store, Core, Agent Connection, and fixture helpers shared by implementation tests. |
+| `crates/volicord-test-support` | Disposable Runtime Home and Product Repository setup, Store inspection, Core request builders, Agent Connection setup, and other helpers shared by implementation tests. |
 | `tests/conformance` | Baseline cross-method scenarios through Core-facing APIs and shared fixtures. |
 | `tests/integration` | Cross-layer MCP, Core, Store, Agent Connection binding, operation-category, and public schema snapshot tests. |
 | `xtask` | Repository maintenance tooling for documentation validation; it is outside Volicord runtime architecture. |

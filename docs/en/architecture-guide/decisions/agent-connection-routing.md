@@ -1,4 +1,4 @@
-# Agent Connection And Host Routing
+# Agent Connection and host routing
 
 ## Context
 
@@ -24,7 +24,7 @@ The design keeps these responsibilities separate:
 - Host setup status can distinguish configured-but-awaiting-host-action from complete verification.
 - Generated host configuration prefers `volicord mcp --stdio --connection <connection_id> --project <project_id>` for project-scoped entries and does not require connection-context or actor-provenance environment variables. Connection-only generated entries remain for flows that intentionally serve multiple connected Projects.
 
-## Non-Goals
+## Non-goals
 
 - This decision does not add a public Volicord API method.
 - It does not make CLI commands public API methods.
@@ -33,14 +33,14 @@ The design keeps these responsibilities separate:
 - It does not make repository guidance, MCP server instructions, or host rule files enforce model behavior.
 - It does not permit Volicord runtime state, SQLite databases, generated logs, QA results, acceptance records, close-readiness state, or residual-risk records in the `Product Repository`.
 
-## Relevant Implementation Areas
+## Relevant implementation areas
 
 - [`crates/volicord-mcp`](../../../../crates/volicord-mcp): connection-bound startup, MCP initialization, tool discovery, project selection, and adapter validation before Core calls.
 - [`crates/volicord-cli`](../../../../crates/volicord-cli): public `volicord mcp` process entry, host configuration command generation, and administrative connect/status/verify/uninstall flows.
 - [`crates/volicord-store`](../../../../crates/volicord-store): registry schema initialization and validation, Agent Connection records, Connection Project membership, and Runtime Home access.
 - Shared types used by those crates for stored value sets and machine-readable administrative output.
 
-## Related Tests And Reference Owners
+## Related tests and Reference owners
 
 Tests for this design should cover startup validation, project selection, membership revocation, host setup status, repository-write approval for project scope, managed marker replacement, and rejection of unsupported startup forms.
 

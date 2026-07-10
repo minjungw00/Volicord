@@ -15,7 +15,7 @@ command-example validation, terminology role validation, bilingual link parity,
 and validation reporting boundaries, use the [Validation](../maintain/validation.md)
 policy.
 
-## Test Layers
+## Test layers
 
 | Layer | Actual package or path | Use it for | Avoid using it as |
 |---|---|---|---|
@@ -35,7 +35,7 @@ policy.
 | CLI integration support | [`crates/volicord-cli/tests/support/`](../../../crates/volicord-cli/tests/support/). | Binary fixtures, fake hosts, fake MCP processes, guard lifecycle fixtures, JSON helpers, and assertion helpers reused by `binary_admin`, `guard_command`, `mcp_transport`, and `serve_transport`. | A source of product contracts or durable runtime state. |
 | Documentation maintenance tooling tests | [`xtask/tests/docs_check.rs`](../../../xtask/tests/docs_check.rs), package `xtask`. | The read-only documentation validator, metadata parsing, bilingual coverage, local link and anchor checks, terminology path and role checks, command-example validation, public-language checks, and temporary fixture behavior. | Semantic translation review, technical-accuracy review, or a product contract source. |
 
-## Fixture and Support Structure
+## Fixture and support structure
 
 Shared fixture structure is part of test strategy. `volicord-test-support`
 owns disposable Runtime Home fixtures, registered project and Agent Connection
@@ -51,7 +51,7 @@ and reusable assertions. Host contract fixtures under
 guard lifecycle tests. Assertions made through those helpers still route to the
 Reference owner for the fact being checked.
 
-## Opt-in Live Host Smoke Tests
+## Opt-in live host smoke tests
 
 `live_host_smoke` is a normal Cargo test target whose two live checks carry
 `#[ignore]`, so an ordinary workspace test run reports those checks as ignored.
@@ -69,7 +69,7 @@ and local test environment allowed the smoke test to observe. It does not
 prove portable host behavior, host trust, approval, credential availability,
 network availability, security enforcement, or general product correctness.
 
-## Generated Output and Documentation Validation
+## Generated output and documentation validation
 
 Generated output drift checks verify that generated or projected repository
 artifacts still match their current sources. `public_contract_snapshots`
@@ -86,7 +86,7 @@ roles, command-example shape, and public-language checks. It is documentation
 and public-language validation; it does not replace semantic bilingual review,
 technical-accuracy review, Reference-owner review, or product conformance.
 
-## Validation Map By Change Area
+## Validation map by change area
 
 Use this map after the Codebase Tour or Architecture page has identified the
 affected crates or documents. It names likely checks; it is not a rule that
@@ -107,81 +107,28 @@ every small edit runs every listed test.
 | Host config adapters | `crates/volicord-cli/src/host_integration/`, especially `host_integration/codex/`, `host_integration/claude_code/`, `config_edit.rs`, `contracts.rs`, `generic.rs`, and `verification.rs`. | Host adapter module tests and `binary_admin`. | `guard_command` when host-native hook output changes; `mcp_transport` when launch or preflight behavior changes. |
 | Conformance scenario or shared fixture behavior | `tests/conformance/baseline.rs`, `crates/volicord-test-support/src/lib.rs`, and `crates/volicord-cli/tests/support/` for CLI integration fixtures. | The focused crate/unit tests for the behavior first, then the affected conformance or CLI scenario. | Consuming integration or method tests when fixture behavior changes what another layer observes. |
 
-## Choosing A Layer
+## Durable tests and one-time audits
 
-| Change category | Start with | Add when |
-|---|---|---|
-| Shared request, response, value, identifier, or canonical-hash type | `volicord-types` unit tests. | Add Core method or integration tests when the shape changes method planning or adapter exposure. |
-| Platform filesystem primitive or adapter-managed conditional file replacement | `volicord-platform-fs` tests and the caller module's unit tests. | Add target-specific compile or test coverage for native code, and `binary_admin` when a command-visible result changes. |
-| Store read helper, mutation application, transaction, schema initialization, or artifact storage behavior | Store module tests near the changed code. | Add Core method tests when a public method effect changes; add conformance or MCP integration when cross-layer behavior is affected. |
-| Storage DDL reference, canonical SQL, or schema validation behavior | `cargo test -p volicord-store --test storage_ddl_contract` plus nearby Store tests. | Add docs-check when maintained Storage DDL documentation changes; add Core, conformance, or MCP integration tests when public-method-visible storage effects change. |
-| Core method behavior | The matching method-focused file under `crates/volicord-core/src/methods/tests/`. | Add `tests/conformance/baseline.rs` for cross-method baseline scenarios and `tests/integration/mcp_connection.rs` when MCP exposure or `operation_category` derivation matters. |
-| Common Core preflight, branch routing, replay, freshness, or access policy | `crates/volicord-core/src/pipeline.rs` unit tests and method tests. | Add MCP integration when adapter-derived invocation context or session binding is involved. |
-| MCP adapter startup, tool schema, `tools/call`, stdio transport, or local HTTP transport | `crates/volicord-mcp/src/tests.rs` tests plus `mcp_transport` or `serve_transport` for the affected process path. | Add `public_contract_snapshots` when generated API or MCP tool projections change; add `tests/integration/mcp_connection.rs` for cross-layer Core/Store behavior through MCP. |
-| Setup workflow behavior and output | Setup module tests near `setup_command/` and `binary_admin` for binary-visible setup flows. | Add Store tests when bootstrap, inspection, registry, schema initialization, or installation-profile persistence changes. |
-| Connection provisioning, status, verification, and output | Connection command module tests and `binary_admin`. | Add `mcp_transport` for preflight/process changes and `tests/integration/mcp_connection.rs` for MCP-visible cross-layer behavior. |
-| Guard integration files, capability records, and audit facts | Guard integration module tests and `binary_admin` guarded init/status cases. | Add `guard_command` when recorded observations or hook lifecycle paths consume the generated facts. |
-| Guard hook lifecycle behavior and host-native rendering | `guard_command` and colocated guard module tests. | Add Core, Store, conformance, or MCP tests when the hook behavior depends on owner-defined behavior outside the CLI. |
-| Host config adapters | Host adapter module tests and `binary_admin`. | Add `guard_command` for host-native hook rendering or `mcp_transport` for launch/preflight behavior. |
-| Test fixture behavior | `volicord-test-support` tests, `crates/volicord-cli/tests/support/`, or the consuming package's tests. | Add owner-focused documentation checks if the fixture exposes a missing contract owner. |
-| Generated public contract snapshot behavior | `cargo test -p volicord-integration-tests --test public_contract_snapshots`. | Regenerate snapshots only through the recorded update command when the owner-approved source projection changes. |
-| Documentation validator behavior | `xtask` tests and `cargo run -p xtask -- docs-check`. | Add fixture cases when a new deterministic structural rule is introduced. |
-| Architecture Guide only | `cargo run -p xtask -- docs-check` plus manual semantic parity, owner-routing, and terminology review. | Run Cargo tests only when requested or when the documentation change depends on source behavior that needs fresh validation. |
+Use [Validation](../maintain/validation.md) for the full rule that separates a
+durable test from a cleanup-only audit. At the implementation layer, test the
+current supported shape rather than the history of removed text or options.
 
-## Durable Contract Tests And One-Time Audits
+Current examples show the intended style:
 
-Durable repository tests should verify the current public contract, storage
-contract, schema contract, or maintained documentation rule. A one-time audit
-checks whether a cleanup was completed. Keep those separate.
+- `binary_help_options_match_supported_contracts` checks the current CLI help
+  allowlists in `crates/volicord-cli/tests/binary_admin.rs`.
+- `initial_schemas_satisfy_connection_storage_contract` checks current schema
+  structure in `crates/volicord-store/tests/storage_ddl_contract.rs`.
+- `public_mcp_arguments_reject_internal_envelope_and_invocation_fields` checks
+  the public MCP schema boundary in `tests/integration/mcp_connection.rs`.
+- `reports_required_terminology_role_failure` and
+  `accepts_supported_volicord_shell_command_examples` protect current
+  documentation validation rules in `xtask/tests/docs_check.rs`.
 
-A repository test is durable when it would still be useful after the cleanup or
-rename that prompted it. Prefer positive assertions against the current allowed
-shape: current command options, documented command examples, current storage
-tables and columns, current MCP-visible schemas, and terminology roles defined
-by `docs/terminology-map.yaml`. String searches for removed artifacts are audit
-procedures. Use them during the change when helpful, report the result, and do
-not turn them into persistent tests whose only value is proving that an old
-string disappeared.
+These tests protect implementation or maintenance boundaries. The focused
+Reference owner still defines the product fact being checked.
 
-For CLI help, assert the current option allowlist exposed by each command
-rather than checking for removed flags by name. A help test such as
-`connect_help_exposes_only_public_connect_options` should compare the parsed
-help options for `volicord connection add` with the supported option set. Documentation
-command-example validation should check executable `volicord` examples against
-the public CLI command contract, as in
-`documented_volicord_commands_match_public_cli_contract`.
-
-For storage, MCP, and terminology checks, assert the stable abstraction that
-current contributors must preserve. Storage schema tests should name the
-current records, columns, indexes, and constraints they expect, as in
-`storage_registry_contains_current_contract_columns`. MCP preflight and public
-schema tests should check current startup and schema behavior; MCP-visible
-schema projection should remain an abstraction contract that hides internal
-envelope fields, as in `mcp_public_schema_hides_internal_envelope_fields`.
-Terminology checks should validate identity-sensitive role metadata such as
-storage internals, MCP process bindings, diagnostics, and public selectors, as
-in `terminology_map_defines_identity_sensitive_roles`; they should not become
-prose-wide bans on identifiers such as `connection_id` or `project_id`.
-
-Name tests after the current product contract they protect. Preferred examples
-include:
-
-- `connect_help_exposes_only_public_connect_options`
-- `documented_volicord_commands_match_public_cli_contract`
-- `export_help_lists_authority_bundle`
-- `mcp_public_schema_hides_internal_envelope_fields`
-- `terminology_map_defines_identity_sensitive_roles`
-- `storage_registry_contains_current_contract_columns`
-
-Avoid test names or structures that describe cleanup history instead of the
-current contract:
-
-- `removed_options_are_gone`
-- `legacy_flags_are_removed`
-- `old_strings_do_not_remain`
-- `cleanup_removed_project_id`
-
-## Tests That Demonstrate Boundaries
+## Tests that demonstrate boundaries
 
 Some tests are especially useful for understanding architecture boundaries:
 
@@ -209,7 +156,7 @@ These tests are implementation checks. They are not Volicord runtime
 conformance claims, product acceptance records, QA completion, security proof,
 close-readiness results, or residual-risk acceptance.
 
-## Validation Defaults
+## Validation defaults
 
 For Rust implementation edits, the repository default is:
 

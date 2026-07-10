@@ -29,14 +29,14 @@ not use the normal Core mutation commit.
 - Changes to committed method effects usually touch a method planner, Store
   mutation application, focused tests, and the applicable Reference owner.
 
-## Non-Goals
+## Non-goals
 
 - This decision does not define exact storage effects for any public method.
 - It does not reproduce DDL, storage records, or schema field meanings.
 - It does not make dry-run or no-effect branches product acceptance.
 - It does not require artifact staging to become a normal Core mutation commit.
 
-## Relevant Implementation
+## Relevant implementation
 
 - [`crates/volicord-core/src/pipeline.rs`](../../../../crates/volicord-core/src/pipeline.rs):
   `OwnerPipelineBranch`, `CoreService::execute_prepared_request`, and Core
@@ -50,7 +50,7 @@ not use the normal Core mutation commit.
 - [`crates/volicord-store/src/artifacts.rs`](../../../../crates/volicord-store/src/artifacts.rs):
   `CoreProjectStore::create_artifact_staging`.
 
-## Related Tests And Reference Owners
+## Related tests and Reference owners
 
 - `committed_mutation_increments_state_version_once`,
   `idempotency_replay_returns_stored_response`, and

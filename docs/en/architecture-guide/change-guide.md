@@ -21,7 +21,7 @@ owner navigation.
 Volicord is the local work authority record for AI-assisted product
 work. Core is the local authority record for Volicord state.
 
-## Practical Sequence
+## Practical sequence
 
 1. Classify the requested change.
 
@@ -84,7 +84,7 @@ work. Core is the local authority record for Volicord state.
    first. Do not fill the gap in a README, guide, test, fixture, adapter,
    generated output, or implementation comment.
 
-## Change-Type Routing
+## Change-type routing
 
 | Change type | First implementation path | First Reference owner route | Useful test layer | Architecture Guide explanation to check |
 |---|---|---|---|---|
@@ -103,7 +103,7 @@ work. Core is the local authority record for Volicord state.
 | CLI integration test support | `crates/volicord-cli/tests/support/assertions.rs`, `binary_fixture.rs`, `fake_hosts.rs`, `fake_mcp.rs`, `guard_fixture.rs`, and `json.rs` | The owner of each asserted setup, connection, guard, MCP, or host-adapter fact | `binary_admin`, `guard_command`, `mcp_transport`, or the consuming CLI test target that uses the helper | [Testing Strategy](testing-strategy.md) and [Codebase Tour](codebase-tour.md) |
 | Architecture Guide only | `docs/en/architecture-guide/`, `docs/ko/architecture-guide/`, and route metadata | The Architecture Guide page's `doc-index.yaml` owner scope; Reference owners only when exact behavior is being changed | Documentation checks; Cargo commands only when requested or needed for source verification | The paired page, [Architecture Guide](README.md), and `docs/doc-index.yaml` |
 
-## Validation Command Routes
+## Validation command routes
 
 Use these commands as routing defaults after selecting the affected change
 area. They identify the likely first validation command; they are not a rule
@@ -124,7 +124,7 @@ edits, the workspace default remains `cargo fmt`,
 | Guard integration files, capability records, audit facts, guard hook lifecycle, or host-native guard rendering | `cargo test -p volicord-cli --test binary_admin`; `cargo test -p volicord-cli --test guard_command` | Core, Store, conformance, or MCP tests when the hook path depends on owner-defined behavior outside the CLI. |
 | Conformance, cross-layer integration, or shared fixture behavior | `cargo test -p volicord-test-support`; the consuming package test target such as `cargo test -p volicord-conformance-tests --test baseline` or `cargo test -p volicord-integration-tests --test mcp_connection` | Additional package tests when fixture behavior changes what another layer observes. |
 
-## Disagreement Handling
+## Disagreement handling
 
 When implementation and documentation appear to disagree, classify the
 disagreement before editing:
@@ -141,7 +141,7 @@ disagreement before editing:
 Do not infer a product decision from a mismatch. The owner route identifies
 where the decision belongs.
 
-## Completion Check
+## Completion check
 
 Use this as an implementation and documentation-maintenance check. It is not
 product acceptance, runtime conformance, close readiness, QA completion,
