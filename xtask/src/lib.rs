@@ -9,6 +9,12 @@ use std::path::{Component, Path, PathBuf};
 
 const DOC_INDEX_PATH: &str = "docs/doc-index.yaml";
 const TERMINOLOGY_MAP_PATH: &str = "docs/terminology-map.yaml";
+const OPERATION_CATEGORY_DOC_PATHS: &[&str] = &[
+    "docs/en/reference/api/schema-value-sets.md",
+    "docs/ko/reference/api/schema-value-sets.md",
+];
+const OPERATION_CATEGORY_ANCHOR: &str = "operation-category-values";
+const OPERATION_CATEGORY_TERM_KEY: &str = "operation_category";
 const STORAGE_REGISTRY_SQL_PATH: &str = "crates/volicord-store/src/schema/registry.sql";
 const STORAGE_PROJECT_SQL_PATH: &str = "crates/volicord-store/src/schema/project.sql";
 const STORAGE_DDL_DOC_PATHS: &[&str] = &[
@@ -568,6 +574,7 @@ pub fn run_docs_check(root: &Path) -> Result<CheckReport> {
     validate_surface_stability_sections(&root, &mut errors);
     validate_public_language_claims(&root, &mut errors);
     validate_storage_ddl_sql_blocks(&root, &mut errors);
+    validate_operation_category_values(&root, &mut errors);
 
     errors.sort();
     errors.dedup();
@@ -1202,6 +1209,172 @@ fn extract_backtick_values(contents: &str) -> Vec<String> {
     }
 
     values
+}
+
+fn validate_operation_category_values(root: &Path, errors: &mut Vec<ValidationError>) {
+    if !OPERATION_CATEGORY_DOC_PATHS
+        .iter()
+        .any(|path| root.join(path).exists())
+    {
+        return;
+    }
+
+    let mut documented_values = Vec::new();
+    for relative_path in OPERATION_CATEGORY_DOC_PATHS {
+        let contents = match fs::read_to_string(root.join(relative_path)) {
+            Ok(contents) => contents,
+            Err(error) => {
+                errors.push(ValidationError::new(
+                    *relative_path,
+                    "operation_category_values.read",
+                    format!("failed to read operation category owner: {error}"),
+                ));
+                continue;
+            }
+        };
+        let Some(section) = extract_anchored_markdown_section(&contents, OPERATION_CATEGORY_ANCHOR)
+        else {
+            errors.push(ValidationError::new(
+                *relative_path,
+                "operation_category_values.missing_section",
+                format!("missing anchored operation category section #{OPERATION_CATEGORY_ANCHOR}"),
+            ));
+            continue;
+        };
+        let values = extract_first_column_identifier_values(section);
+        if values.is_empty() {
+            errors.push(ValidationError::new(
+                *relative_path,
+                "operation_category_values.invalid_table",
+                "operation category section must contain a Markdown table with backticked values in its first column",
+            ));
+            continue;
+        }
+        documented_values.push((*relative_path, values));
+    }
+
+    if let [(en_path, en_values), (ko_path, ko_values)] = documented_values.as_slice() {
+        if en_values != ko_values {
+            let missing_from_ko = en_values.difference(ko_values).cloned().collect();
+            let missing_from_en = ko_values.difference(en_values).cloned().collect();
+            errors.push(ValidationError::new(
+                *ko_path,
+                "operation_category_values.language_drift",
+                format!(
+                    "operation category value sets differ between {en_path} and {ko_path}; missing from Korean owner: {}; missing from English owner: {}",
+                    format_backticked_values(&missing_from_ko),
+                    format_backticked_values(&missing_from_en),
+                ),
+            ));
+        }
+    }
+
+    let mut required_identifiers = BTreeSet::from([OPERATION_CATEGORY_TERM_KEY.to_string()]);
+    for (_, values) in &documented_values {
+        required_identifiers.extend(values.iter().cloned());
+    }
+    validate_operation_category_terminology(root, &required_identifiers, errors);
+}
+
+fn extract_anchored_markdown_section<'a>(contents: &'a str, anchor: &str) -> Option<&'a str> {
+    let marker = format!("<a id=\"{anchor}\"></a>");
+    let section_start = contents.find(&marker)? + marker.len();
+    let remaining = &contents[section_start..];
+    let section_end = remaining.find("\n<a id=\"").unwrap_or(remaining.len());
+    Some(&remaining[..section_end])
+}
+
+fn extract_first_column_identifier_values(section: &str) -> BTreeSet<String> {
+    let mut values = BTreeSet::new();
+    for line in section.lines() {
+        let trimmed = line.trim();
+        if !trimmed.starts_with('|') || !trimmed.ends_with('|') {
+            continue;
+        }
+        let cells = markdown_table_cells(trimmed);
+        if cells.is_empty() || is_markdown_table_separator(&cells) {
+            continue;
+        }
+        let identifiers = extract_backtick_values(cells[0]);
+        if let [identifier] = identifiers.as_slice() {
+            values.insert(identifier.clone());
+        }
+    }
+    values
+}
+
+fn validate_operation_category_terminology(
+    root: &Path,
+    required_identifiers: &BTreeSet<String>,
+    errors: &mut Vec<ValidationError>,
+) {
+    let contents = match fs::read_to_string(root.join(TERMINOLOGY_MAP_PATH)) {
+        Ok(contents) => contents,
+        Err(error) => {
+            errors.push(ValidationError::new(
+                TERMINOLOGY_MAP_PATH,
+                "operation_category_values.terminology_read",
+                format!("failed to read terminology map: {error}"),
+            ));
+            return;
+        }
+    };
+    let value: Value = match serde_yaml::from_str(&contents) {
+        Ok(value) => value,
+        Err(error) => {
+            errors.push(ValidationError::new(
+                TERMINOLOGY_MAP_PATH,
+                "operation_category_values.terminology_yaml",
+                format!("failed to parse terminology map YAML: {error}"),
+            ));
+            return;
+        }
+    };
+
+    let preserved = value
+        .as_mapping()
+        .and_then(|top| mapping_get(top, "terms"))
+        .and_then(Value::as_mapping)
+        .and_then(|terms| mapping_get(terms, OPERATION_CATEGORY_TERM_KEY))
+        .and_then(Value::as_mapping)
+        .and_then(|entry| mapping_get(entry, "preserve_as_identifier"))
+        .and_then(sequence_strings);
+    let Some(preserved) = preserved else {
+        errors.push(ValidationError::new(
+            TERMINOLOGY_MAP_PATH,
+            "operation_category_values.terminology_shape",
+            format!(
+                "terms.{OPERATION_CATEGORY_TERM_KEY}.preserve_as_identifier must be a sequence of strings"
+            ),
+        ));
+        return;
+    };
+    let preserved: BTreeSet<_> = preserved.into_iter().collect();
+    let missing: BTreeSet<_> = required_identifiers
+        .difference(&preserved)
+        .cloned()
+        .collect();
+    if !missing.is_empty() {
+        errors.push(ValidationError::new(
+            TERMINOLOGY_MAP_PATH,
+            "operation_category_values.terminology_missing",
+            format!(
+                "terms.{OPERATION_CATEGORY_TERM_KEY}.preserve_as_identifier is missing {}",
+                format_backticked_values(&missing)
+            ),
+        ));
+    }
+}
+
+fn format_backticked_values(values: &BTreeSet<String>) -> String {
+    if values.is_empty() {
+        return "none".to_string();
+    }
+    values
+        .iter()
+        .map(|value| format!("`{value}`"))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn extract_canonical_storage_sql_block(contents: &str, label: &str) -> Option<String> {

@@ -359,6 +359,73 @@ fn index_admin_cli_surface_doc(root: &Path) {
     write(root, "docs/doc-index.yaml", &index);
 }
 
+fn install_operation_category_fixture(
+    root: &Path,
+    en_values: &[&str],
+    ko_values: &[&str],
+    preserved_identifiers: &[&str],
+) {
+    write(
+        root,
+        "docs/en/reference/api/schema-value-sets.md",
+        &operation_category_owner("# API schema value sets", "Value", en_values),
+    );
+    write(
+        root,
+        "docs/ko/reference/api/schema-value-sets.md",
+        &operation_category_owner("# API 스키마 값 집합", "값", ko_values),
+    );
+
+    let mut index = valid_doc_index();
+    index.push_str(
+        r#"- doc_id: reference.api.schema-value-sets
+  path_en: docs/en/reference/api/schema-value-sets.md
+  path_ko: docs/ko/reference/api/schema-value-sets.md
+  kind: reference
+  summary: API schema value sets.
+  normative_level: contract
+  translation_policy: semantic_parity
+  owner_area: developer_documentation
+  created_on: '2026-06-20'
+  last_updated_on: '2026-06-20'
+  last_verified_on: '2026-06-23'
+  applies_to:
+  - volicord_workspace_0_1
+"#,
+    );
+    write(root, "docs/doc-index.yaml", &index);
+
+    let preserved = preserved_identifiers
+        .iter()
+        .map(|identifier| format!("      - {identifier}\n"))
+        .collect::<String>();
+    let mut terminology = valid_terminology_map();
+    terminology.push_str(&format!(
+        r#"  operation_category:
+    category: identifier
+    en: operation_category
+    ko_reference: "`operation_category`"
+    ko_user: "`operation_category`"
+    preserve_as_identifier:
+{preserved}    primary_owner:
+      en: "docs/en/reference/api/schema-value-sets.md#operation-category-values"
+      ko: "docs/ko/reference/api/schema-value-sets.md#operation-category-values"
+    related_references: []
+"#
+    ));
+    write(root, "docs/terminology-map.yaml", &terminology);
+}
+
+fn operation_category_owner(title: &str, value_heading: &str, values: &[&str]) -> String {
+    let rows = values
+        .iter()
+        .map(|value| format!("| `{value}` | Description. |\n"))
+        .collect::<String>();
+    format!(
+        "{title}\n\n<a id=\"operation-category-values\"></a>\n## Operation category values\n\n| {value_heading} | Note |\n|---|---|\n{rows}"
+    )
+}
+
 #[test]
 fn accepts_valid_version_3_metadata() {
     let fixture = valid_fixture();
@@ -366,6 +433,65 @@ fn accepts_valid_version_3_metadata() {
     let report = report(fixture.path());
 
     assert!(report.is_ok(), "{:#?}", report.errors());
+}
+
+#[test]
+fn accepts_synchronized_operation_category_value_sets() {
+    let fixture = valid_fixture();
+    let values = ["read", "agent_workflow", "user_only"];
+    let preserved = ["operation_category", "read", "agent_workflow", "user_only"];
+    install_operation_category_fixture(fixture.path(), &values, &values, &preserved);
+
+    let report = report(fixture.path());
+
+    assert!(report.is_ok(), "{:#?}", report.errors());
+}
+
+#[test]
+fn reports_operation_category_language_value_set_drift() {
+    let fixture = valid_fixture();
+    let en_values = ["read", "agent_workflow", "user_only"];
+    let ko_values = ["read", "agent_workflow"];
+    let preserved = ["operation_category", "read", "agent_workflow", "user_only"];
+    install_operation_category_fixture(fixture.path(), &en_values, &ko_values, &preserved);
+
+    let report = report(fixture.path());
+    let errors = category_errors(&report, "operation_category_values.language_drift");
+
+    assert_eq!(errors.len(), 1, "{:#?}", report.errors());
+    assert!(
+        errors[0].message().contains("`user_only`"),
+        "{:#?}",
+        report.errors()
+    );
+}
+
+#[test]
+fn reports_missing_operation_category_terminology_identifiers() {
+    let values = ["read", "agent_workflow", "user_only"];
+    let all_identifiers = ["operation_category", "read", "agent_workflow", "user_only"];
+
+    for missing_identifier in ["operation_category", "user_only"] {
+        let fixture = valid_fixture();
+        let preserved = all_identifiers
+            .iter()
+            .copied()
+            .filter(|identifier| *identifier != missing_identifier)
+            .collect::<Vec<_>>();
+        install_operation_category_fixture(fixture.path(), &values, &values, &preserved);
+
+        let report = report(fixture.path());
+        let errors = category_errors(&report, "operation_category_values.terminology_missing");
+
+        assert_eq!(errors.len(), 1, "{:#?}", report.errors());
+        assert!(
+            errors[0]
+                .message()
+                .contains(&format!("`{missing_identifier}`")),
+            "{:#?}",
+            report.errors()
+        );
+    }
 }
 
 #[test]
