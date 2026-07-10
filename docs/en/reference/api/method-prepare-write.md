@@ -115,7 +115,7 @@ A newly allowed committed call receives its durable `write_ticket_id` only when 
 | `user_judgment_candidate` | `UserJudgmentCandidate | null` when the method proposes a focused user-owned judgment instead of issuing a write ticket; otherwise `null`. The shape is owned by [API Judgment Schemas](schema-judgment.md#userjudgmentcandidate). |
 | `guarantee_display` | `GuaranteeDisplay | null` for the method's compatibility display. The display shape is owned by [API State Schemas](schema-state.md#close-readiness-and-validation-shapes); security guarantee meaning is owned by [Security](../security.md). |
 
-Nested `StateRecordRef`, `StateSummary`, `WriteTicket`, `ControlSurfaceSummary`, `WriteTicketSummary`, `WriteDecisionReason`, `UserJudgmentCandidate`, and `GuaranteeDisplay` field bodies stay with the schema owners linked above.
+Nested `StateRecordRef`, `StateSummary`, `WriteTicket`, `WriteTicketStateSummary`, `ControlSurfaceSummary`, `WriteDecisionReason`, `UserJudgmentCandidate`, and `GuaranteeDisplay` field bodies stay with the schema owners linked above.
 
 ## Success result
 
@@ -442,7 +442,7 @@ guarantee_display:
 ## Owner links
 
 - Request envelope, common result branches, and dry-run summaries: [API Schema Core](schema-core.md).
-- `WriteTicket`, compatibility `WriteTicketSummary`, state summaries, and refs: [API State Schemas](schema-state.md).
+- `WriteTicket`, `WriteTicketStateSummary`, state summaries, and refs: [API State Schemas](schema-state.md).
 - `SensitiveActionScope` and user-owned approval shapes: [API Judgment Schemas](schema-judgment.md).
 - Write ticket, write approval, sensitive-action approval, final-acceptance, and residual-risk boundaries: [Core Model](../core-model.md).
 - Product Repository path normalization: [Runtime Boundaries](../runtime-boundaries.md#product-repository-api-path-normalization).

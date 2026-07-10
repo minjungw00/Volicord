@@ -1,6 +1,6 @@
 # API 상태 스키마
 
-이 문서는 기준 범위의 상태 형태 API 스키마를 담당합니다. `StateSummary`, `StateRecordRef`, API 데이터 형태의 생명주기 상태, 상태 관련 스냅샷, `ProjectContinuityRecord`, `ProjectContinuitySummary`, `ShapingReadiness`, `ChangeUnitEffectContract`, 그리고 `SummaryCard`, `NextActionSummary`, `WriteTicket`, `WriteTicketScope`, `WriteTicketPathPatterns`, `WriteTicketStateSummary`, `WriteTicketSummary`, `WriteTicketAttemptScope`, `EvidenceSummary`, `EvidenceObservation`, `GuardHealthSummary`, `CoverageSummary`, `UnrecordedChangeFinding`, `UnrecordedChangeResolutionSummary`, `CurrentCloseBasis`, `ResidualRisk`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`, `ValidatorResult`, `GuaranteeDisplay`, `GuaranteeDisclosure` 같은 표시 형태를 정의합니다.
+이 문서는 기준 범위의 상태 형태 API 스키마를 담당합니다. `StateSummary`, `StateRecordRef`, API 데이터 형태의 생명주기 상태, 상태 관련 스냅샷, `ProjectContinuityRecord`, `ProjectContinuitySummary`, `ShapingReadiness`, `ChangeUnitEffectContract`, 그리고 `SummaryCard`, `NextActionSummary`, `WriteTicket`, `WriteTicketScope`, `WriteTicketPathPatterns`, `WriteTicketStateSummary`, `WriteTicketAttemptScope`, `EvidenceSummary`, `EvidenceObservation`, `GuardHealthSummary`, `CoverageSummary`, `UnrecordedChangeFinding`, `UnrecordedChangeResolutionSummary`, `CurrentCloseBasis`, `ResidualRisk`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`, `ValidatorResult`, `GuaranteeDisplay`, `GuaranteeDisclosure` 같은 표시 형태를 정의합니다.
 
 ## 담당 경계
 
@@ -444,13 +444,6 @@ WriteTicketStateSummary:
   observation_refs: StateRecordRef[]
   guarantee_display: GuaranteeDisplay | null
 
-WriteTicketSummary:
-  write_ticket_ref: StateRecordRef
-  status: string
-  attempt_scope: WriteTicketAttemptScope
-  basis_state_version: integer
-  expires_at: string | null
-
 WriteTicketAttemptScope:
   task_id: string
   change_unit_id: string
@@ -499,7 +492,7 @@ WriteDecisionReason:
 - `SummaryCard.guarantee`는 요약된 보기에 대한 짧은 표시 문구입니다. 다른 담당 문서가 명시적으로 그런 보장을 제공하지 않는 한 정확성 증명, 테스트 충분성 증명, review 완료, OS 수준 집행을 주장하면 안 됩니다.
 - `NextActionSummary`는 기준 다음 행동 표시 형태입니다. 유효한 필드는 `action_kind`, `owner_method`, `label`, `blocking_question`, `required_refs`입니다.
 - 오래된 `action` 또는 `reason` 필드를 쓰는 `next_actions` 항목은 유효한 `NextActionSummary`가 아닙니다.
-- `WriteTicketStateSummary.status`와 `WriteTicketSummary.status`는 제어 값 문자열입니다.
+- `WriteTicketStateSummary.status`는 제어 값 문자열입니다.
 - `WriteTicketStateSummary.consumed_by_run_ref`는 요약된 쓰기 티켓이 기록된 Run에 의해 소비되었을 때만 `null`이 아닙니다.
 - `WriteTicketStateSummary.observation_refs`는 사용할 수 있을 때 그 소비 Run이 만든 증거 관찰 참조를 나열합니다. 쓰기 티켓이 소비되지 않았거나 소비 Run이 관찰을 만들지 않았다면 비어 있습니다.
 - `WriteTicketAttemptScope`는 호환성 저장 행이 포착하는 한 번의 시도 경계입니다.
@@ -562,7 +555,7 @@ WriteDecisionReason:
 담당 문서 링크:
 - `action_kind` 값: [다음 행동 값](schema-value-sets.md#next-action-values)
 - `owner_method` 값: [메서드 이름 값](schema-value-sets.md#method-name-values)
-- `WriteTicket.state`, `WriteTicketStateSummary.status`, `WriteTicketSummary.status` 값: [메서드 내부 값](schema-value-sets.md#method-local-values)
+- `WriteTicket.state`와 `WriteTicketStateSummary.status` 값: [메서드 내부 값](schema-value-sets.md#method-local-values)
 - `WriteDecisionReason.category` 값: [상태와 차단 사유 값](schema-value-sets.md#state-and-blocker-values)
 - `WriteDecisionReason.code` 값 집합 경계: [불투명 문자열과 메서드 범위 문자열 필드](schema-value-sets.md#opaque-and-method-scoped-string-fields)
 - `WriteDecisionReason.code` 생성과 로컬 의미: [`volicord.prepare_write`](method-prepare-write.md)를 포함한 메서드 담당 문서

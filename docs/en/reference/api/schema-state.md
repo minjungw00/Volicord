@@ -1,6 +1,6 @@
 # API state schemas
 
-This document owns API state-shaped schemas for the baseline scope. It defines public response shapes for `StateSummary`, `StateRecordRef`, lifecycle state as API data, state-related snapshots, `ProjectContinuityRecord`, `ProjectContinuitySummary`, `ShapingReadiness`, `ChangeUnitEffectContract`, and display shapes such as `SummaryCard`, `NextActionSummary`, `WriteTicket`, `WriteTicketScope`, `WriteTicketPathPatterns`, `WriteTicketStateSummary`, `WriteTicketSummary`, `WriteTicketAttemptScope`, `EvidenceSummary`, `EvidenceObservation`, `GuardHealthSummary`, `CoverageSummary`, `UnrecordedChangeFinding`, `UnrecordedChangeResolutionSummary`, `CurrentCloseBasis`, `ResidualRisk`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`, `ValidatorResult`, `GuaranteeDisplay`, and `GuaranteeDisclosure`.
+This document owns API state-shaped schemas for the baseline scope. It defines public response shapes for `StateSummary`, `StateRecordRef`, lifecycle state as API data, state-related snapshots, `ProjectContinuityRecord`, `ProjectContinuitySummary`, `ShapingReadiness`, `ChangeUnitEffectContract`, and display shapes such as `SummaryCard`, `NextActionSummary`, `WriteTicket`, `WriteTicketScope`, `WriteTicketPathPatterns`, `WriteTicketStateSummary`, `WriteTicketAttemptScope`, `EvidenceSummary`, `EvidenceObservation`, `GuardHealthSummary`, `CoverageSummary`, `UnrecordedChangeFinding`, `UnrecordedChangeResolutionSummary`, `CurrentCloseBasis`, `ResidualRisk`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`, `ValidatorResult`, `GuaranteeDisplay`, and `GuaranteeDisclosure`.
 
 ## Owner boundary
 
@@ -444,13 +444,6 @@ WriteTicketStateSummary:
   observation_refs: StateRecordRef[]
   guarantee_display: GuaranteeDisplay | null
 
-WriteTicketSummary:
-  write_ticket_ref: StateRecordRef
-  status: string
-  attempt_scope: WriteTicketAttemptScope
-  basis_state_version: integer
-  expires_at: string | null
-
 WriteTicketAttemptScope:
   task_id: string
   change_unit_id: string
@@ -499,7 +492,7 @@ Meaning:
 - `SummaryCard.guarantee` is concise display wording for the summarized view. It must not claim correctness proof, test sufficiency proof, review completion, or OS-level enforcement unless another owner explicitly provides that guarantee.
 - `NextActionSummary` is the canonical next-action display shape. Its valid fields are `action_kind`, `owner_method`, `label`, `blocking_question`, and `required_refs`.
 - A `next_actions` entry that uses stale `action` or `reason` fields is not a valid `NextActionSummary`.
-- `WriteTicketStateSummary.status` and `WriteTicketSummary.status` are controlled value strings.
+- `WriteTicketStateSummary.status` is a controlled value string.
 - `WriteTicketStateSummary.consumed_by_run_ref` is non-null only when the summarized write ticket has been consumed by a recorded Run.
 - `WriteTicketStateSummary.observation_refs` lists evidence observation refs created by that consuming Run when those refs are available; it is empty when the write ticket is not consumed or the consuming Run created no observations.
 - `WriteTicketAttemptScope` is the one-attempt boundary captured by the write ticket.
@@ -562,7 +555,7 @@ Meaning:
 Owner links:
 - `action_kind` values: [next-action values](schema-value-sets.md#next-action-values)
 - `owner_method` values: [method name values](schema-value-sets.md#method-name-values)
-- `WriteTicketStateSummary.status` and `WriteTicketSummary.status` values: [method-local values](schema-value-sets.md#method-local-values)
+- `WriteTicket.state` and `WriteTicketStateSummary.status` values: [method-local values](schema-value-sets.md#method-local-values)
 - `WriteDecisionReason.category` values: [state and blocker values](schema-value-sets.md#state-and-blocker-values)
 - `WriteDecisionReason.code` value-set boundary: [opaque and method-scoped string fields](schema-value-sets.md#opaque-and-method-scoped-string-fields)
 - `WriteDecisionReason.code` production and local meaning: method owner documents, including [`volicord.prepare_write`](method-prepare-write.md)

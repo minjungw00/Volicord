@@ -331,7 +331,7 @@ revoked
 
 These states describe Volicord ticket authority and observation lifecycle. They do not imply filesystem ACLs, OS-level enforcement, shell permission, command approval, or proof that a write occurred.
 
-`WriteTicketStateSummary.status` and `WriteTicketSummary.status` use:
+`WriteTicketStateSummary.status` uses:
 
 ```text
 active

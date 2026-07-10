@@ -331,7 +331,7 @@ revoked
 
 이 상태는 Volicord 티켓 권한과 관찰 생명주기를 설명합니다. 파일시스템 ACL, OS 수준 집행, 셸 권한, 명령 승인, 쓰기가 실제로 일어났다는 증명을 뜻하지 않습니다.
 
-`WriteTicketStateSummary.status`와 `WriteTicketSummary.status`는 아래 값을 사용합니다.
+`WriteTicketStateSummary.status`는 아래 값을 사용합니다.
 
 ```text
 active
