@@ -1,4 +1,4 @@
-# Agent Connection과 호스트 라우팅
+# Agent Connection과 호스트 처리 경로
 
 ## 맥락
 
@@ -10,7 +10,7 @@ Volicord는 Codex와 Claude Code의 설정을 관리하고, 일반 MCP 호스트
 
 ## 결정
 
-Volicord는 로컬 MCP 호스트 연결 하나를 나타내는 지속 레지스트리 단위로
+Volicord는 로컬 MCP 호스트 연결 하나를 나타내는 영속 레지스트리 식별 단위로
 `Agent Connection`(에이전트 연결)을 사용합니다. `volicord mcp --stdio`
 프로세스는 `--connection <connection_id>`로 시작합니다. 생성된 호스트 항목이
 연결 프로젝트 하나에 안전하게 묶이면 `--project <project_id>`도 사용할 수
@@ -59,7 +59,8 @@ Volicord는 로컬 MCP 호스트 연결 하나를 나타내는 지속 레지스�
 - 사용자 범위 연결에 등록된 모든 프로젝트를 부여하지 않습니다.
 - 저장소 안내, MCP 서버 지침, 호스트 규칙 파일이 모델 동작을 강제한다고
   정의하지 않습니다.
-- Volicord 런타임 상태, SQLite 데이터베이스, 생성 로그, QA 결과, 수락 기록, 닫기 준비 상태, 잔여 위험 기록을 `Product Repository`에 둘 수 있게 하지 않습니다.
+- Volicord 런타임 상태, SQLite 데이터베이스, 생성 로그, QA 결과, 수락 기록,
+  닫기 준비 상태, 잔여 위험 기록을 `Product Repository`에 둘 수 있게 하지 않습니다.
 
 ## 관련 구현 영역
 

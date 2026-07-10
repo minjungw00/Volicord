@@ -2,7 +2,7 @@
 
 ## 맥락
 
-Volicord에는 Runtime Home 기록, 프로젝트 상태, registry 메타데이터,
+Volicord에는 Runtime Home 기록, 프로젝트 상태, 레지스트리 메타데이터,
 아티팩트 데이터, 운영 설정을 위한 로컬 위치가 필요합니다. 사용자의 제품
 파일은 `Product Repository`에 있습니다. 두 위치를 섞으면 구현 경로를
 이해하기 어려워지고 생성된 런타임 상태가 제품 작업처럼 보일 수 있습니다.
@@ -16,10 +16,10 @@ Volicord 소스와 설치 파일은 별도의 구현 아티팩트 역할입니�
 구현은 `Volicord Runtime Home`과 `Product Repository`를 별도 위치 개념으로
 유지합니다.
 
-- Store 코드는 Runtime Home 경로 처리, registry/project 데이터베이스,
+- Store 코드는 Runtime Home 경로 처리, 레지스트리와 프로젝트 데이터베이스,
   프로젝트 Store 접근, 스키마 초기화와 검증, 검사, Runtime Home 아래 아티팩트
   데이터를 맡습니다.
-- CLI 연결 프로비저닝은 Product Repository 경로를 Runtime Home 기록에
+- CLI 연결 구성은 Product Repository 경로를 Runtime Home 기록에
   등록하지만 그 저장소를 런타임 상태로 만들지 않습니다.
 - CLI 설정과 MCP 시작은 Volicord 설치 파일을 참조할 수 있지만, 설치
   위치가 Runtime Home이나 Product Repository가 되지는 않습니다.
@@ -59,10 +59,10 @@ Volicord 소스와 설치 파일은 별도의 구현 아티팩트 역할입니�
 - [`crates/volicord-store/src/core_pipeline.rs`](../../../../crates/volicord-store/src/core_pipeline.rs):
   `CoreProjectStore` 프로젝트 로컬 Store 접근.
 - [`crates/volicord-store/src/artifacts.rs`](../../../../crates/volicord-store/src/artifacts.rs):
-  Runtime Home 아티팩트 스테이징과 영구 본문 검증.
+  Runtime Home 아티팩트 스테이징과 영속 본문 검증.
 - [`crates/volicord-cli/src/connection_command/service.rs`](../../../../crates/volicord-cli/src/connection_command/service.rs):
-  연결 프로비저닝, Runtime Home 준비, 프로젝트 등록, Agent Connection 멤버십
-  오케스트레이션.
+  연결 구성, Runtime Home 준비, 프로젝트 등록, Agent Connection 멤버십
+  조율.
 - [`crates/volicord-core/src/policy/path.rs`](../../../../crates/volicord-core/src/policy/path.rs):
   Core 정책에서 쓰는 Product Repository 경로 정규화 도우미.
 
