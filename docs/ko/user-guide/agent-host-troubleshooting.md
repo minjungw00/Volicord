@@ -376,8 +376,9 @@ volicord connection verify codex --shared --repo "<repo>"
 ```
 
 Codex 밖에서 MCP 수명주기를 직접 확인하려면
-[MCP 전송](../reference/mcp-transport.md#manual-stdio-lifecycle-probe)의 수동 또는 권한 상승
-`VOLICORD_MCP_VERIFICATION=1` probe를 사용합니다. 프로세스 명령 형태는 아래와 같습니다.
+[MCP 전송](../reference/mcp-transport.md#manual-stdio-lifecycle-probe)의 수동 점검 또는
+권한 상승 `VOLICORD_MCP_VERIFICATION=1` 점검을 사용합니다. 프로세스 명령 형태는
+아래와 같습니다.
 
 ```sh
 VOLICORD_MCP_VERIFICATION=1 volicord mcp --stdio --connection "<connection_id>" --project "<project_id>"
@@ -414,9 +415,9 @@ Volicord `record` 프로필의 기본 동작이나 도구 노출의 증명으로
 `MCP configuration: changed`, `Current MCP configuration: changed`, 또는
 `mcp_config_changed` 다음 동작을 보고하면 안 됩니다.
 
-그래도 그 상태가 보고된다면 `volicord` 서버 항목에 실제 command, args, 관리 마커
-드리프트가 있거나, 실행 중인 Volicord 빌드가 아직 Codex 도구 승인 정책 오버레이를 허용하지
-않는 것입니다.
+그래도 그 상태가 보고된다면 `volicord` 서버 항목의 실제 명령, 인자, 관리 마커가
+일치하지 않거나, 실행 중인 Volicord 빌드가 아직 Codex 도구 승인 정책 추가 설정을
+허용하지 않는 것입니다.
 
 먼저 생성된 Codex 프로젝트 설정을 확인합니다.
 
@@ -424,8 +425,8 @@ Volicord `record` 프로필의 기본 동작이나 도구 노출의 증명으로
 volicord connection status codex --shared --repo "<repo>" --json
 ```
 
-그다음 `<repo>/.codex/config.toml`을 확인합니다. Codex 승인 overlay 형태는 아래와
-같습니다.
+그다음 `<repo>/.codex/config.toml`을 확인합니다. Codex 승인 추가 설정은 아래와
+같은 형태입니다.
 
 ```toml
 [mcp_servers.volicord.tools."volicord.intake"]
@@ -434,11 +435,11 @@ approval_mode = "approve"
 
 제한된 복구:
 
-1. 차이가 `[mcp_servers.volicord.tools."<tool>"]` table 하나 이상과 `approval_mode`뿐이면
-   그 항목을 보존하고 verification을 다시 실행합니다.
-2. Overlay만 있는 설정이 여전히 changed로 보고되면 Codex 도구 승인 정책 overlay를
-   허용하는 Volicord build를 사용한 뒤 verification을 다시 실행합니다.
-3. command, args, Volicord 관리 환경 변수 마커가 바뀌었다면 관리 항목을 복구합니다.
+1. 차이가 `[mcp_servers.volicord.tools."<tool>"]` 테이블 하나 이상과
+   `approval_mode`뿐이면 그 항목을 보존하고 검증을 다시 실행합니다.
+2. 추가 설정만 있는데도 여전히 `changed`로 보고되면 Codex 도구 승인 정책 추가
+   설정을 허용하는 Volicord 빌드를 사용한 뒤 검증을 다시 실행합니다.
+3. 명령, 인자, Volicord 관리 환경 변수 마커가 바뀌었다면 관리 항목을 복구합니다.
 
    ```sh
    volicord init --host codex --repo "<repo>"
@@ -448,9 +449,9 @@ approval_mode = "approve"
    무작정 덮어쓰거나 삭제하지 않습니다. 그 사용자 관리 항목을 유지할지, 명시적인
    `volicord init --host codex --repo "<repo>"` 설정 경로로 교체할지 결정합니다.
 
-오버레이만 있는 승인 정책은 Codex 소유 `host policy overlay`입니다. 승인 하위 테이블을
-삭제해야 하는 일반 이유가 아니며, 현재 Codex 세션이 Volicord 도구를 불러오거나
-노출했다는 증명도 아닙니다.
+추가 설정만 있는 승인 정책은 Codex가 소유하는 호스트 정책 추가 설정입니다. 승인 하위
+테이블을 삭제해야 하는 일반 이유가 아니며, 현재 Codex 세션이 Volicord 도구를
+불러오거나 노출했다는 증명도 아닙니다.
 
 ## `failed`
 

@@ -1,8 +1,12 @@
 # 에이전트 가이드
 
+<a id="purpose"></a>
+
 Volicord에 연결된 세션에서 에이전트를 운영하거나 검토할 때 이 가이드를 사용합니다.
 이 문서는 실무 작업 흐름을 설명합니다. 정확한 API, 스키마, 저장소, 보안, 닫기
 계약은 [참조 색인](../reference/README.md)에 있습니다.
+
+<a id="operating-loop"></a>
 
 ## 운영 순서
 
@@ -36,6 +40,8 @@ Markdown, 지침, 상태 보기는 판단 필요를 보여 줄 수 있지만 기
 아닙니다. 정확한 권한 의미는 [Core 모델](../reference/core-model.md), 정확한 연결 경계는
 [Agent Connection 참조](../reference/agent-connection.md)에 있습니다.
 
+<a id="infer-use"></a>
+
 ## 작업에 맞는 절차 선택
 
 사용자는 작업을 시작하려고 “Volicord”나 API 메서드 이름을 말할 필요가 없습니다.
@@ -52,6 +58,8 @@ Markdown, 지침, 상태 보기는 판단 필요를 보여 줄 수 있지만 기
 보안·개인정보 영향, 증거 한계, 최종 수락 필요, 잔여 위험, 다른 사용자 소유 판단을
 발견하면 작은 변경을 추적 작업으로 전환합니다.
 
+<a id="project-selection"></a>
+
 ## 프로젝트를 의도적으로 선택
 
 에이전트 연결 하나에 둘 이상의 Product Repository가 명시적으로 연결될 수
@@ -66,6 +74,8 @@ Markdown, 지침, 상태 보기는 판단 필요를 보여 줄 수 있지만 기
 [Agent Connection 참조](../reference/agent-connection.md)를 보세요. 운영자 설정은
 [여러 저장소 에이전트 설정](multi-repository-agent-setup.md)에 있습니다.
 
+<a id="keep-context-small"></a>
+
 ## 맥락을 작게 유지
 
 다음 행동에 필요한 정보만 유지합니다.
@@ -79,6 +89,9 @@ Markdown, 지침, 상태 보기는 판단 필요를 보여 줄 수 있지만 기
 
 다음 행동에 필요할 때만 정확한 참조 섹션을 불러옵니다. 모든 프롬프트에 전체 스키마,
 DDL, 템플릿, 로그, 증거 첨부 본문, 관련 없는 계약, 두 언어 문서를 넣지 않습니다.
+
+<a id="clarify-focused"></a>
+<a id="request-judgment-narrowly"></a>
 
 ## 집중된 질문으로 구체화
 
@@ -96,6 +109,9 @@ DDL, 템플릿, 로그, 증거 첨부 본문, 관련 없는 계약, 두 언어 �
 
 에이전트가 안전하게 확인, 새로고침, 재시도, 범위 축소, 기록할 수 있는 일을
 사용자에게 묻지 않습니다.
+
+<a id="preserve-user-judgment"></a>
+<a id="route-user-interaction"></a>
 
 ## 사용자 소유 판단 보존
 
@@ -123,6 +139,8 @@ volicord inbox answer JUDGMENT_ID --choice CHOICE_ID --repo "<repo>"
 [Agent Connection 참조](../reference/agent-connection.md#user-channel-and-agent-connections)와
 [관리 CLI](../reference/admin-cli.md#user-channel-commands)에 있습니다.
 
+<a id="check-before-writes"></a>
+
 ## 쓰기 전에 확인
 
 제품 파일을 쓰기 전에 의도한 경로와 효과를 평가할 수 있을 만큼 구체화합니다. 쓰기
@@ -137,6 +155,8 @@ volicord inbox answer JUDGMENT_ID --choice CHOICE_ID --repo "<repo>"
 범위가 바뀌면 새 쓰기 티켓을 요청하기 전에 갱신합니다. 계획, 오래된 대화 맥락,
 넓은 호응, 생성 요약만으로 쓰기 호환성을 주장하지 않습니다. 정확한 메서드 동작은
 [쓰기 준비](../reference/api/method-prepare-write.md)에 있습니다.
+
+<a id="record-evidence"></a>
 
 ## 행동 뒤에 증거 기록
 
@@ -155,6 +175,8 @@ volicord inbox answer JUDGMENT_ID --choice CHOICE_ID --repo "<repo>"
 첨부 동작은 [아티팩트 스키마](../reference/api/schema-artifacts.md)와
 [아티팩트 저장소](../reference/storage-artifacts.md)에 있습니다.
 
+<a id="reconcile-unrecorded-changes"></a>
+
 ## 미기록 변경 조정
 
 탐지 프로필이 미기록 변경을 보고하면 범위가 제한된 관찰로 다룹니다. 파일을 바꾼
@@ -164,6 +186,9 @@ volicord inbox answer JUDGMENT_ID --choice CHOICE_ID --repo "<repo>"
 사용자를 `volicord changes reconcile`로 안내합니다. 사용자 수락은 지원되는 사용자
 채널을 거쳐야 합니다. 미해결 미기록 변경은 닫기 차단 사유로 보고하고 다음 행동을
 이름 붙입니다.
+
+<a id="report-status"></a>
+<a id="handle-close"></a>
 
 ## 상태 보고와 닫기
 
@@ -188,6 +213,9 @@ volicord inbox answer JUDGMENT_ID --choice CHOICE_ID --repo "<repo>"
 정확한 닫기 의미는 [Core 모델](../reference/core-model.md), 정확한 메서드 동작은
 [`Task` 닫기](../reference/api/method-close-task.md)에 있습니다.
 
+<a id="instructions-and-guidance"></a>
+<a id="respect-boundaries"></a>
+
 ## 범위와 보장 한계
 
 Volicord 지침은 도구 선택을 유도할 수 있지만 접근 제어나 모델이 지침을 따랐다는
@@ -199,11 +227,15 @@ Volicord 지침은 도구 선택을 유도할 수 있지만 접근 제어나 모
 비보장은 [보안](../reference/security.md)을 보세요. 이 가이드에 새 품질 관문이나 면제
 경로를 만들지 않습니다.
 
+<a id="language-context"></a>
+
 ## 언어 맥락
 
 현재 사용자와 작업에 필요한 언어를 사용합니다. 정확한 API 이름, 명령, 필드, enum
 값, 경로, 오류 코드는 보존합니다. 한국어 작업에서는 불필요한 영어 명사구를 그대로
 옮기지 말고 일반 개념을 자연스러운 한국어로 씁니다.
+
+<a id="where-next"></a>
 
 ## 다음 경로
 

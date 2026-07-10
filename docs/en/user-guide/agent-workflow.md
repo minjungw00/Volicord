@@ -1,8 +1,12 @@
 # Agent Guide
 
+<a id="purpose"></a>
+
 Use this guide when operating or reviewing an agent in a Volicord-connected
 session. It explains a practical workflow. Exact API, schema, storage, security,
 and close contracts stay in the [Reference Index](../reference/README.md).
+
+<a id="operating-loop"></a>
 
 ## Operating Loop
 
@@ -39,6 +43,8 @@ they are not the recorded user answer. Exact authority meaning belongs to
 [Core Model](../reference/core-model.md), and exact connection boundaries belong
 to [Agent Connection](../reference/agent-connection.md).
 
+<a id="infer-use"></a>
+
 ## Infer Procedure Weight From The Work
 
 Users do not need to say “Volicord” or name an API method before work begins.
@@ -56,6 +62,8 @@ interface, a dependency or migration choice, destructive risk, security or
 privacy impact, an Evidence limit, final-acceptance need, residual risk, or
 another user-owned decision.
 
+<a id="project-selection"></a>
+
 ## Select The Project Deliberately
 
 An Agent Connection can have more than one explicitly connected Product
@@ -72,6 +80,8 @@ Exact selection and omission rules belong to
 [Agent Connection](../reference/agent-connection.md). For operator setup, see
 [Multi-Repository Agent Setup](multi-repository-agent-setup.md).
 
+<a id="keep-context-small"></a>
+
 ## Keep Context Small
 
 Carry only what the next action needs:
@@ -86,6 +96,9 @@ Carry only what the next action needs:
 Load exact Reference sections when the next action needs them. Do not inject
 full schemas, DDL, templates, logs, Evidence attachment bodies, unrelated
 contracts, or both language versions into every prompt.
+
+<a id="clarify-focused"></a>
+<a id="request-judgment-narrowly"></a>
 
 ## Clarify With Focused Questions
 
@@ -103,6 +116,9 @@ A useful question states:
 
 Do not ask the user to solve something the agent can safely inspect, refresh,
 retry, narrow, or record.
+
+<a id="preserve-user-judgment"></a>
+<a id="route-user-interaction"></a>
 
 ## Preserve User-Owned Judgment
 
@@ -133,6 +149,8 @@ Exact input methods and command behavior belong to
 [Agent Connection](../reference/agent-connection.md#user-channel-and-agent-connections)
 and [Administrative CLI](../reference/admin-cli.md#user-channel-commands).
 
+<a id="check-before-writes"></a>
+
 ## Check Before Writes
 
 Before a product-file write, make the intended paths and effect specific enough
@@ -148,6 +166,8 @@ If scope changes, update it before requesting another Write Ticket. Do not claim
 write compatibility from a plan, stale chat context, broad enthusiasm, or a
 generated summary. Exact method behavior belongs to
 [Prepare-write](../reference/api/method-prepare-write.md).
+
+<a id="record-evidence"></a>
 
 ## Record Evidence After Action
 
@@ -168,6 +188,8 @@ Exact run behavior belongs to
 belongs to [Artifact Schemas](../reference/api/schema-artifacts.md) and
 [Artifact Storage](../reference/storage-artifacts.md).
 
+<a id="reconcile-unrecorded-changes"></a>
+
 ## Reconcile Unrecorded Changes
 
 When the Detective profile reports an Unrecorded Change, treat it as a bounded
@@ -178,6 +200,9 @@ Use `volicord.reconcile_changes` when available. If MCP is unavailable, route
 the user to `volicord changes reconcile`. Any user acceptance must go through a
 supported User Channel. Report unresolved Unrecorded Changes as close blockers
 and name the next action.
+
+<a id="report-status"></a>
+<a id="handle-close"></a>
 
 ## Report Status And Handle Close
 
@@ -204,6 +229,9 @@ required Evidence.
 Exact close meaning belongs to [Core Model](../reference/core-model.md). Exact
 method behavior belongs to [Close-task](../reference/api/method-close-task.md).
 
+<a id="instructions-and-guidance"></a>
+<a id="respect-boundaries"></a>
+
 ## Respect Scope And Guarantee Limits
 
 Volicord guidance can steer tool choice, but it is not access control or proof
@@ -216,12 +244,16 @@ Use [Scope](../reference/scope.md) for supported and unsupported capabilities,
 and [Security](../reference/security.md) for exact guarantees and
 non-guarantees. Do not invent a new quality gate or waiver path in this guide.
 
+<a id="language-context"></a>
+
 ## Language Context
 
 Use the language needed for the current user and task. Preserve exact API names,
 commands, fields, enum values, paths, and error codes. In Korean-facing work,
 write ordinary concepts in natural Korean instead of carrying unnecessary
 English noun chains into the prompt.
+
+<a id="where-next"></a>
 
 ## Next Paths
 
