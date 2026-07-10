@@ -1,6 +1,7 @@
 use std::{
     fs,
     path::{Path, PathBuf},
+    sync::OnceLock,
 };
 
 use rusqlite::{
@@ -10,7 +11,7 @@ use rusqlite::{
 use crate::{
     schema::{
         initialize_project_state_schema, initialize_registry_schema, PROJECT_STATE_DATABASE_KIND,
-        REGISTRY_DATABASE_KIND, STORAGE_PROFILE,
+        PROJECT_STATE_SCHEMA_SQL, REGISTRY_DATABASE_KIND, REGISTRY_SCHEMA_SQL, STORAGE_PROFILE,
     },
     StoreError, StoreResult,
 };
@@ -33,6 +34,11 @@ pub const ARTIFACTS_DIR: &str = "artifacts";
 
 /// Project transient artifact staging directory name.
 pub const ARTIFACTS_TMP_DIR: &str = "tmp";
+
+static REGISTRY_SCHEMA_INVENTORY: OnceLock<Result<Vec<CanonicalSchemaObject>, String>> =
+    OnceLock::new();
+static PROJECT_STATE_SCHEMA_INVENTORY: OnceLock<Result<Vec<CanonicalSchemaObject>, String>> =
+    OnceLock::new();
 
 /// Returns the `registry.sqlite` path for a Runtime Home.
 pub fn registry_db_path(runtime_home: impl AsRef<Path>) -> PathBuf {
@@ -432,6 +438,12 @@ pub fn validate_registry_schema(conn: &Connection) -> StoreResult<()> {
     validate_guard_installations_constraints(conn)?;
     validate_registry_storage_profile(conn)?;
     validate_foreign_key_check(conn, REGISTRY_DATABASE_KIND)?;
+    validate_canonical_schema_inventory(
+        conn,
+        REGISTRY_DATABASE_KIND,
+        REGISTRY_SCHEMA_SQL,
+        &REGISTRY_SCHEMA_INVENTORY,
+    )?;
     Ok(())
 }
 
@@ -802,6 +814,12 @@ pub fn validate_project_state_schema(conn: &Connection) -> StoreResult<()> {
     validate_local_web_consent_tokens(conn)?;
     validate_project_state_storage_profile(conn)?;
     validate_foreign_key_check(conn, PROJECT_STATE_DATABASE_KIND)?;
+    validate_canonical_schema_inventory(
+        conn,
+        PROJECT_STATE_DATABASE_KIND,
+        PROJECT_STATE_SCHEMA_SQL,
+        &PROJECT_STATE_SCHEMA_INVENTORY,
+    )?;
     Ok(())
 }
 
@@ -920,6 +938,109 @@ fn sqlite_object_exists(
         [object_type, name],
         |row| Ok(row.get::<_, i64>(0)? > 0),
     )
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CanonicalSchemaObject {
+    object_type: String,
+    name: String,
+    table_name: String,
+    definition: Option<String>,
+}
+
+fn validate_canonical_schema_inventory(
+    conn: &Connection,
+    database_kind: &'static str,
+    canonical_sql: &'static str,
+    cache: &'static OnceLock<Result<Vec<CanonicalSchemaObject>, String>>,
+) -> StoreResult<()> {
+    let expected = cache.get_or_init(|| canonical_schema_inventory(canonical_sql));
+    let expected = expected.as_ref().map_err(|detail| {
+        StoreError::schema_invariant(
+            database_kind,
+            format!("canonical schema inventory is unavailable: {detail}"),
+        )
+    })?;
+    let actual = read_schema_inventory(conn)?;
+
+    if &actual == expected {
+        return Ok(());
+    }
+
+    for expected_object in expected {
+        match actual.iter().find(|actual_object| {
+            actual_object.object_type == expected_object.object_type
+                && actual_object.name == expected_object.name
+        }) {
+            None => {
+                return Err(StoreError::schema_invariant(
+                    database_kind,
+                    format!(
+                        "missing canonical {} {}",
+                        expected_object.object_type, expected_object.name
+                    ),
+                ));
+            }
+            Some(actual_object) if actual_object != expected_object => {
+                return Err(StoreError::schema_invariant(
+                    database_kind,
+                    format!(
+                        "canonical {} {} definition does not match",
+                        expected_object.object_type, expected_object.name
+                    ),
+                ));
+            }
+            Some(_) => {}
+        }
+    }
+
+    if let Some(unexpected) = actual.iter().find(|actual_object| {
+        !expected.iter().any(|expected_object| {
+            expected_object.object_type == actual_object.object_type
+                && expected_object.name == actual_object.name
+        })
+    }) {
+        Err(StoreError::schema_invariant(
+            database_kind,
+            format!(
+                "unexpected {} {} outside the canonical schema",
+                unexpected.object_type, unexpected.name
+            ),
+        ))
+    } else {
+        Err(StoreError::schema_invariant(
+            database_kind,
+            "canonical schema inventory does not match",
+        ))
+    }
+}
+
+fn canonical_schema_inventory(canonical_sql: &str) -> Result<Vec<CanonicalSchemaObject>, String> {
+    let conn = Connection::open_in_memory().map_err(|error| error.to_string())?;
+    enable_foreign_keys(&conn).map_err(|error| error.to_string())?;
+    conn.execute_batch(canonical_sql)
+        .map_err(|error| error.to_string())?;
+    read_schema_inventory(&conn).map_err(|error| error.to_string())
+}
+
+fn read_schema_inventory(conn: &Connection) -> rusqlite::Result<Vec<CanonicalSchemaObject>> {
+    let mut stmt = conn.prepare(
+        "SELECT type, name, tbl_name, sql
+           FROM sqlite_master
+          WHERE type IN ('table', 'index', 'view', 'trigger')
+            AND name NOT LIKE 'sqlite_%'
+          ORDER BY type, name",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok(CanonicalSchemaObject {
+            object_type: row.get(0)?,
+            name: row.get(1)?,
+            table_name: row.get(2)?,
+            definition: row.get(3)?,
+        })
+    })?;
+
+    rows.collect()
 }
 
 fn validate_project_state_storage_profile(conn: &Connection) -> StoreResult<()> {
