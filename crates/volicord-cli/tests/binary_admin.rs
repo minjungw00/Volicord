@@ -2,7 +2,10 @@
 
 mod support;
 
-use std::{collections::BTreeSet, error::Error, fs, io::Read, path::Path, process::Output};
+use std::{collections::BTreeSet, error::Error, fs, io::Read, path::Path};
+
+#[cfg(unix)]
+use std::process::Output;
 
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -41,9 +44,15 @@ use volicord_types::{
 use support::{
     assertions::{assert_non_guarantees, assert_success, json_stdout, stderr, stdout},
     binary_fixture::{
-        create_git_repo, create_real_git_repo, path_text, prepare_runtime_home, run_with_home_env,
-        run_with_home_env_in_dir, run_without_home, volicord_bin, write_test_installation_profile,
+        create_git_repo, path_text, run_with_home_env, run_with_home_env_in_dir, run_without_home,
+        write_test_installation_profile,
     },
+    json::record_id,
+};
+
+#[cfg(unix)]
+use support::{
+    binary_fixture::{create_real_git_repo, prepare_runtime_home, volicord_bin},
     fake_hosts::{
         hook_execution_path_env, is_executable, path_env, write_fake_claude_code, write_fake_codex,
     },
@@ -52,7 +61,6 @@ use support::{
         expand_claude_project_command, pre_tool_write_event, run_executable_hook_command,
         run_shell_hook_command,
     },
-    json::record_id,
 };
 
 #[test]

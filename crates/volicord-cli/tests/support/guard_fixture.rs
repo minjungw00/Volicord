@@ -42,9 +42,13 @@ use volicord_types::{
 use super::{
     assertions::{assert_non_guarantees, assert_success, json_stdout, stderr, stdout},
     binary_fixture::volicord_bin,
+    json::record_id,
+};
+
+#[cfg(unix)]
+use super::{
     fake_hosts::{path_env, write_fake_codex},
     fake_mcp::write_basic_fake_mcp,
-    json::record_id,
 };
 
 pub(crate) const PROMPT_CAPTURE_TEST_HOST_KIND: &str = "prompt_capture_test_host";

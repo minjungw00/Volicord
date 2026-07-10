@@ -15,6 +15,7 @@ use volicord_store::{
 };
 use volicord_test_support::TempRuntimeHome;
 
+#[cfg(unix)]
 use super::assertions::{stderr, stdout};
 
 const PROCESS_TIMEOUT: Duration = Duration::from_secs(10);
