@@ -1160,7 +1160,27 @@ fn complete_guard_capability_value(harness: &MethodHarness) -> Result<Value, Box
     fs::write(&policy_path, policy_text)?;
     fs::write(&hook_config_path, hook_config_text)?;
     let dispatch_path = hooks_dir.join("volicord-dispatch.sh");
-    let dispatch_text = "#!/bin/sh\n# VOLICORD_MANAGED_HOOK_WRAPPER v1\n# host_kind=codex\n# phase=dispatch\n# script_role=codex_dispatch\nwrapper=\"$(git rev-parse --show-toplevel)/.codex/hooks/volicord-$1.sh\"\nexec \"$wrapper\"\n";
+    let dispatch_text = concat!(
+        "#!/bin/sh\n",
+        "# VOLICORD_MANAGED_HOOK_WRAPPER v1\n",
+        "# host_kind=codex\n",
+        "# phase=dispatch\n",
+        "# script_role=codex_dispatch\n",
+        "if [ \"$#\" -ne 1 ]; then\n",
+        "    exit 64\n",
+        "fi\n",
+        "phase=$1\n",
+        "case \"$phase\" in\n",
+        "    session-start|pre-tool|post-tool|prompt-capture|stop) ;;\n",
+        "    *) exit 64 ;;\n",
+        "esac\n",
+        "root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 70\n",
+        "wrapper=\"$root/.codex/hooks/volicord-$phase.sh\"\n",
+        "if [ ! -f \"$wrapper\" ] || [ ! -x \"$wrapper\" ]; then\n",
+        "    exit 70\n",
+        "fi\n",
+        "exec \"$wrapper\"\n",
+    );
     fs::write(&dispatch_path, dispatch_text)?;
     set_test_executable(&dispatch_path)?;
     let phases = [
@@ -1179,7 +1199,7 @@ fn complete_guard_capability_value(harness: &MethodHarness) -> Result<Value, Box
     for (capability_phase, command_name, policy_key) in phases {
         let wrapper_path = hooks_dir.join(format!("volicord-{command_name}.sh"));
         let wrapper_command = format!(
-            "volicord host-hook {command_name} --repo {} --connection {CONNECTION_ID} --guard-installation guard_installation --host codex --integration-profile detective --policy-hash sha256:guardedfixture --host-output codex",
+            "volicord _hook {command_name} --repo {} --connection {CONNECTION_ID} --guard-installation guard_installation --host codex --integration-profile detective --policy-hash sha256:guardedfixture --host-output codex",
             path_text(&repo_root),
         );
         let wrapper_text = format!(
@@ -1234,6 +1254,17 @@ fn complete_guard_capability_value(harness: &MethodHarness) -> Result<Value, Box
             "path": path_text(&hook_config_path),
             "content_hash": sha256_text(hook_config_text),
             "ownership": "managed_json"
+        }),
+        json!({
+            "kind": "host_hook_dispatch",
+            "path": path_text(&dispatch_path),
+            "content_hash": sha256_text(dispatch_text),
+            "ownership": "managed_script",
+            "managed_marker": "VOLICORD_MANAGED_HOOK_WRAPPER v1",
+            "executable_required": true,
+            "managed_script_role": "codex_dispatch",
+            "host_kind": "codex",
+            "phase": "dispatch"
         }),
     ];
     files.extend(wrapper_files);

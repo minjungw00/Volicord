@@ -1485,7 +1485,7 @@ fn classify_codex_hook_command_path(
         }
         return "relative_path_unsafe";
     }
-    if command_text.contains(&format!("volicord host-hook {phase_command}")) {
+    if command_text.contains(&format!("volicord _hook {phase_command}")) {
         return "ok";
     }
     "metadata_missing"
@@ -1519,7 +1519,7 @@ fn classify_claude_hook_command_path(
         }
         return "relative_path_unsafe";
     }
-    if command_text.contains(&format!("volicord host-hook {phase_command}")) {
+    if command_text.contains(&format!("volicord _hook {phase_command}")) {
         return "ok";
     }
     "metadata_missing"
@@ -1721,6 +1721,11 @@ fn generated_script_verified(file: &Value, text: &str, expected_hash: &str) -> b
     if sha256_text(text) != expected_hash {
         return false;
     }
+    match file.get("managed_script_role").and_then(Value::as_str) {
+        Some("codex_dispatch") => return generated_dispatch_script_verified(file, text),
+        Some(_) => return false,
+        None => {}
+    }
     let Some(expected_command) = file
         .get("managed_script_command")
         .and_then(Value::as_str)
@@ -1728,6 +1733,9 @@ fn generated_script_verified(file: &Value, text: &str, expected_hash: &str) -> b
     else {
         return false;
     };
+    if !expected_command.contains("volicord _hook ") {
+        return false;
+    }
     if hook_wrapper_exec_command(text) != Some(expected_command) {
         return false;
     }
@@ -1755,6 +1763,30 @@ fn generated_script_verified(file: &Value, text: &str, expected_hash: &str) -> b
         return false;
     }
     true
+}
+
+fn generated_dispatch_script_verified(file: &Value, text: &str) -> bool {
+    if hook_wrapper_comment_value(text, "host_kind") != Some("codex")
+        || hook_wrapper_comment_value(text, "phase") != Some("dispatch")
+        || hook_wrapper_comment_value(text, "script_role") != Some("codex_dispatch")
+    {
+        return false;
+    }
+    for required in [
+        "git rev-parse --show-toplevel",
+        "session-start|pre-tool|post-tool|prompt-capture|stop",
+        ".codex/hooks/volicord-$phase.sh",
+        "exec \"$wrapper\"",
+    ] {
+        if !text.contains(required) {
+            return false;
+        }
+    }
+    !file
+        .get("executable_required")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+        || script_is_executable(file)
 }
 
 fn marker_count(text: &str, marker: &str) -> usize {
@@ -4160,4 +4192,39 @@ fn task_ref_for_close(request: &CloseTaskPlanRequest, state_version: u64) -> Sta
         Some(&request.task_id),
         Some(state_version),
     )
+}
+
+#[cfg(test)]
+mod hook_command_classification_tests {
+    use super::*;
+
+    #[test]
+    fn direct_hook_commands_use_the_hidden_internal_namespace() {
+        let no_args = Vec::new();
+
+        for host_kind in ["codex", "claude_code"] {
+            assert_eq!(
+                classify_hook_command_path(
+                    host_kind,
+                    "pre-tool",
+                    "volicord _hook pre-tool",
+                    &no_args,
+                    "",
+                    "",
+                ),
+                "ok"
+            );
+            assert_ne!(
+                classify_hook_command_path(
+                    host_kind,
+                    "pre-tool",
+                    "volicord host-hook pre-tool",
+                    &no_args,
+                    "",
+                    "",
+                ),
+                "ok"
+            );
+        }
+    }
 }
