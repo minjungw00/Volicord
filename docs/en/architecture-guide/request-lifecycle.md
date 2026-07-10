@@ -29,14 +29,15 @@ Implementation exactness belongs to the named `volicord-mcp`, `volicord-core`,
 method-module, and `volicord-store` code areas described below; product
 behavior exactness remains with the linked Reference owners.
 
-For the normal MCP path, `volicord mcp --stdio` first resolves Runtime Home and
-Agent Connection process context, then startup inspection validates the
-Runtime Home, connection state, mode, project membership, and registry data
-needed before stdio begins. Once JSON-RPC is active, the adapter owns
-`initialize`, `ping`, `tools/list`, and `tools/call` dispatch. A public
-`tools/call` selects a permitted project, fills adapter-managed request facts,
-decodes the typed request, derives Core invocation context, and then calls the
-matching `CoreService` method.
+For the stdio MCP path, `volicord mcp --stdio` first resolves Runtime Home and
+Agent Connection process context, then startup inspection validates the facts
+needed before stdio begins. The local HTTP path enters through
+`volicord serve --transport local-http`; it resolves the bound connection
+context, applies the transport project allowlist, and routes HTTP MCP requests
+to the same adapter. After transport dispatch, a public `tools/call` selects a
+permitted project, decodes the typed request, fills adapter-generated request
+facts, derives local Core invocation facts, and calls the matching
+`CoreService` method.
 
 ```mermaid
 sequenceDiagram
@@ -50,8 +51,8 @@ sequenceDiagram
   MCP->>MCP: call_tool_result_with_elicitation extracts name and arguments
   MCP->>MCP: McpAdapter::call_tool routes tool
   MCP->>MCP: prepare_mcp_arguments selects project
-  MCP->>MCP: generated_envelope fills trusted envelope
   MCP->>MCP: decode_params decodes typed request
+  MCP->>MCP: generated_envelope fills adapter-generated envelope fields
   MCP->>MCP: McpDerivedInvocationContext::core_invocation derives InvocationContext
   MCP->>Core: CoreService method(request, invocation)
   Core->>Core: prepare_or_response -> CoreService::prepare_request
@@ -71,29 +72,38 @@ The shared adapter path is split across the `volicord-mcp` modules:
   `tools/call`, and `call_tool_result_with_elicitation` extracts `params.name`
   and `params.arguments`, calls `McpAdapter`, and wraps
   `PipelineResponse.response_json` as MCP text content.
+- [`crates/volicord-mcp/src/local_http.rs`](../../../crates/volicord-mcp/src/local_http.rs):
+  `run_local_http_server` resolves the connection-bound adapter context, applies
+  the transport project allowlist, and routes local HTTP sessions and MCP
+  requests to `McpAdapter`.
 - [`crates/volicord-mcp/src/tool_registry.rs`](../../../crates/volicord-mcp/src/tool_registry.rs):
   `PUBLIC_METHOD_TOOL_NAMES`, `McpToolDefinition`, and tool-list metadata.
 - [`crates/volicord-mcp/src/adapter.rs`](../../../crates/volicord-mcp/src/adapter.rs):
   `McpAdapter::call_tool` matches the tool name, per-method helpers construct
   typed Core requests, `prepare_mcp_arguments<T>` rejects internal-only fields,
   selects a permitted project, and decodes arguments with `decode_params<T>`,
-  `generated_envelope` fills trusted envelope fields, and
-  `call_core_request` derives invocation context before calling `CoreService`.
+  `generated_envelope` fills adapter-generated envelope fields, and
+  `call_core_request` derives local invocation facts before calling
+  `CoreService`.
 - [`crates/volicord-mcp/src/routing.rs`](../../../crates/volicord-mcp/src/routing.rs):
   startup inspection, `McpConnectionContext`, connection-mode parsing, project
   allowlist checks, and project availability helpers.
-- Project selection creates `McpDerivedInvocationContext` for the selected
-  project, bound Agent Connection, actor source, requested operation category, and
-  adapter-binding basis.
+- After project selection, `call_core_request` uses
+  `derive_invocation_context` to create `McpDerivedInvocationContext` for the
+  selected project, bound Agent Connection actor source, requested operation
+  category, and adapter-binding basis.
 - `McpDerivedInvocationContext::core_invocation` creates the Core
   `InvocationContext`.
 
 Startup and session validation also live in `volicord-mcp`, especially
 `McpConnectionStartupInspection::resolve`. That startup path reads Store
-directly through Runtime Home, Agent Connection state, actor-source binding, role, membership, metadata, and local registry JSON
-checks. It does not select one project for all calls, and it is not an
-alternate implementation of public method behavior; public method execution
-routes through `volicord-core`.
+directly to validate Runtime Home initialization, the installation profile,
+the Agent Connection identifier, enabled state, metadata object shape, and
+mode, Connection Project memberships, and project availability. It does not
+derive `actor_source` or select one project for all calls. Request-time adapter
+code derives `actor_source` from the bound Agent Connection after project
+selection. Startup inspection is not an alternate implementation of public
+method behavior; public method execution routes through `volicord-core`.
 
 The shared Core path lives mainly in
 [`crates/volicord-core/src/pipeline.rs`](../../../crates/volicord-core/src/pipeline.rs)
@@ -175,8 +185,8 @@ Primary source path:
    `MethodOperationCategory` implementation that returns `OperationCategory::Read`.
 2. [`crates/volicord-mcp/src/adapter.rs`](../../../crates/volicord-mcp/src/adapter.rs)
    routes `"volicord.status"` in `McpAdapter::call_tool`, prepares typed
-   status arguments, builds the trusted envelope, derives `InvocationContext`,
-   and calls `CoreService::status`.
+   status arguments, builds the adapter-generated envelope, derives local
+   invocation facts and `InvocationContext`, and calls `CoreService::status`.
 3. [`crates/volicord-core/src/methods/status.rs`](../../../crates/volicord-core/src/methods/status.rs)
    implements `CoreService::status`, `status_task`, and
    `status_result_fields`.
@@ -193,9 +203,10 @@ Lifecycle:
 2. `call_tool_result_with_elicitation` extracts the tool name and arguments.
 3. `McpAdapter::call_tool` routes the call to the status branch.
 4. `prepare_mcp_arguments` selects an allowed project from the
-   `McpConnectionContext`, `generated_envelope` fills the trusted envelope
-   fields for the status operation category, and `call_core_request` produces
-   the Core `InvocationContext`.
+   `McpConnectionContext` and decodes the typed status arguments,
+   `generated_envelope` fills the adapter-generated envelope fields for the
+   status operation category, and `call_core_request` produces the Core
+   `InvocationContext` from local invocation facts.
 5. `CoreService::status` serializes the typed request to request JSON and calls
    `prepare_or_response` with `MethodPolicy::exact`,
    `TaskRequirement::Optional`, `ReplayPolicy::None`,
@@ -226,14 +237,12 @@ What does not happen:
 
 Representative tests:
 
-- `status_is_read_only_including_dry_run` in
-  [`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs)
-- `status_include_false_omits_optional_sections_without_effect` in
-  [`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs)
-- `adapter_and_direct_core_status_have_equivalent_response_meaning` in
+- `status_is_read_only_including_dry_run` and
+  `status_include_false_omits_optional_sections_without_effect` in
+  [`crates/volicord-core/src/methods/tests/status.rs`](../../../crates/volicord-core/src/methods/tests/status.rs)
+- `mcp_status_succeeds_with_readonly_storage` and
+  `mcp_status_does_not_advance_state_version` in
   [`crates/volicord-mcp/src/tests.rs`](../../../crates/volicord-mcp/src/tests.rs)
-- `mcp_and_direct_status_omit_same_excluded_projection_fields` in
-  [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs)
 - `status_projection_matches_public_close_check_and_stays_read_only` in
   [`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs)
 
@@ -258,8 +267,8 @@ Primary source path:
    `MethodOperationCategory` implementation that returns `OperationCategory::AgentWorkflow`.
 2. [`crates/volicord-mcp/src/adapter.rs`](../../../crates/volicord-mcp/src/adapter.rs)
    routes `"volicord.intake"` in `McpAdapter::call_tool`, prepares typed
-   intake arguments, builds the trusted envelope, derives `InvocationContext`,
-   and calls `CoreService::intake`.
+   intake arguments, builds the adapter-generated envelope, derives local
+   invocation facts and `InvocationContext`, and calls `CoreService::intake`.
 3. [`crates/volicord-core/src/methods/intake.rs`](../../../crates/volicord-core/src/methods/intake.rs)
    implements `CoreService::intake` and `plan_intake`.
 4. [`crates/volicord-core/src/methods/mod.rs`](../../../crates/volicord-core/src/methods/mod.rs)
@@ -276,8 +285,9 @@ Primary source path:
 Lifecycle:
 
 1. The MCP host sends `tools/call` with `name="volicord.intake"`.
-2. `McpAdapter::call_tool` prepares typed intake arguments, builds the trusted
-   envelope, derives `InvocationContext`, and calls `CoreService::intake`.
+2. `McpAdapter::call_tool` prepares typed intake arguments, builds the
+   adapter-generated envelope, derives local invocation facts and
+   `InvocationContext`, and calls `CoreService::intake`.
 3. `CoreService::intake` selects `mutation_method_policy` with
    `TaskRequirement::None`. For dry run, the policy uses
    `MethodEffectPolicy::DryRunPreview` and `ReplayPolicy::None`. For committed
@@ -321,11 +331,10 @@ What changes by branch:
 
 Representative tests:
 
-- `intake_commits_once_and_replays_without_effect` in
-  [`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs)
-- `intake_dry_run_has_no_storage_effect` in
-  [`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs)
-- `adapter_and_direct_core_intake_dry_run_have_equivalent_response_meaning` in
+- `intake_commits_once_and_replays_without_effect` and
+  `intake_dry_run_has_no_storage_effect` in
+  [`crates/volicord-core/src/methods/tests/intake.rs`](../../../crates/volicord-core/src/methods/tests/intake.rs)
+- `adapter_auto_selects_single_project_and_injects_connection_invocation` in
   [`crates/volicord-mcp/src/tests.rs`](../../../crates/volicord-mcp/src/tests.rs)
 - `connection_invocation_is_injected_and_single_project_is_auto_selected` in
   [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs)
@@ -356,8 +365,9 @@ Primary source path:
    `OperationCategory::AgentWorkflow`.
 2. [`crates/volicord-mcp/src/adapter.rs`](../../../crates/volicord-mcp/src/adapter.rs)
    routes `"volicord.prepare_write"` in `McpAdapter::call_tool`, prepares typed
-   prepare-write arguments, builds the trusted envelope, derives
-   `InvocationContext`, and calls `CoreService::prepare_write`.
+   prepare-write arguments, builds the adapter-generated envelope, derives
+   local invocation facts and `InvocationContext`, and calls
+   `CoreService::prepare_write`.
 3. [`crates/volicord-core/src/methods/prepare_write.rs`](../../../crates/volicord-core/src/methods/prepare_write.rs)
    implements `CoreService::prepare_write`, `prepare_write_policy`, and
    `plan_prepare_write`.
@@ -376,8 +386,8 @@ Lifecycle:
 
 1. The MCP host sends `tools/call` with `name="volicord.prepare_write"`.
 2. `McpAdapter::call_tool` prepares typed prepare-write arguments, builds the
-   trusted envelope, derives `InvocationContext`, and calls
-   `CoreService::prepare_write`.
+   adapter-generated envelope, derives local invocation facts and
+   `InvocationContext`, and calls `CoreService::prepare_write`.
 3. `CoreService::prepare_write` first checks that `envelope.task_id`, when
    present, matches `PrepareWriteRequest.task_id`.
 4. `prepare_write_policy` selects `TaskRequirement::Exact` when the request or
@@ -427,14 +437,11 @@ What changes by branch:
 
 Representative tests:
 
-- `prepare_write_allowed_issues_one_write_ticket_with_post_commit_basis` in
-  [`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs)
-- `prepare_write_blocked_path_issues_no_write_ticket` in
-  [`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs)
-- `prepare_write_dry_run_has_no_write_ticket_effect` in
-  [`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs)
-- `prepare_write_user_only_category_is_invocation_context_rejection` in
-  [`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs)
+- `prepare_write_allowed_issues_one_write_ticket_with_post_commit_basis`,
+  `prepare_write_blocked_path_issues_no_write_ticket`,
+  `prepare_write_dry_run_has_no_write_ticket_effect`, and
+  `prepare_write_user_only_category_is_invocation_context_rejection` in
+  [`crates/volicord-core/src/methods/tests/prepare_write.rs`](../../../crates/volicord-core/src/methods/tests/prepare_write.rs)
 - `read_only_mode_rejects_agent_workflow_methods_before_core` in
   [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs)
 - `committed_non_allow_prepare_write_audit_and_replay_are_exact` and

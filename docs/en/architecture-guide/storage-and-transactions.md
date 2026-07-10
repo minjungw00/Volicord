@@ -92,12 +92,13 @@ or close readiness by display alone.
 Administrative setup uses Store bootstrap and inspection paths before public
 method execution is available:
 
-1. `volicord-cli` plans administrative setup through
+1. `volicord-cli` plans connection provisioning through
    [`crates/volicord-cli/src/connection_command.rs`](../../../crates/volicord-cli/src/connection_command.rs)
-   and registration metadata helpers in
-   [`crates/volicord-cli/src/registration.rs`](../../../crates/volicord-cli/src/registration.rs).
-2. Store bootstrap initializes Runtime Home metadata and registers projects and
-   Agent Connections through `initialize_runtime_home`, `register_project`, and connection registration helpers.
+   and
+   [`crates/volicord-cli/src/connection_command/service.rs`](../../../crates/volicord-cli/src/connection_command/service.rs).
+2. Store bootstrap initializes Runtime Home metadata and registers projects,
+   while Agent Connection Store helpers create connection records and
+   Connection Project memberships.
 3. Empty registry/project state databases are initialized from canonical SQL,
    and existing state is opened only after SQLite helpers validate the current
    schema shape and storage profile.
@@ -218,9 +219,10 @@ such as `record_run`, when the applicable owner-defined behavior allows it.
 
 Relevant tests include
 `stage_artifact_creates_transient_handle_without_core_commit`,
-`stage_artifact_dry_run_creates_no_handle_or_storage`, and
+`stage_artifact_dry_run_creates_no_handle_or_storage` in
+[`crates/volicord-core/src/methods/tests/stage_artifact.rs`](../../../crates/volicord-core/src/methods/tests/stage_artifact.rs),
 `record_run_promotes_staged_artifact_and_updates_evidence` in
-[`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs),
+[`crates/volicord-core/src/methods/tests/record_run.rs`](../../../crates/volicord-core/src/methods/tests/record_run.rs),
 and `artifact_lifecycle_promotes_valid_handles_and_rolls_back_invalid_ones`
 in [`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs).
 

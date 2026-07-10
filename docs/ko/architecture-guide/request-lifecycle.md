@@ -25,13 +25,13 @@ Store 트랜잭션 순서, dry-run 저장소 경계, 아티팩트 스테이징, 
 `volicord-store` 코드 영역이 담당하고, 제품 동작의 정확성은 연결된 참조 담당 문서에
 남습니다.
 
-일반 MCP 경로에서 `volicord mcp --stdio`는 먼저 Runtime Home과 Agent Connection
-프로세스 맥락을 해석하고, 시작 검사는 stdio가 시작되기 전에 필요한 Runtime Home,
-연결 상태, 모드, 프로젝트 멤버십, registry 데이터를 검증합니다. JSON-RPC가
-활성화된 뒤에는 어댑터가 `initialize`, `ping`, `tools/list`, `tools/call`
-디스패치를 담당합니다. 공개 `tools/call`은 허용된 프로젝트를 선택하고, 어댑터가
-관리하는 요청 사실을 채우고, 타입 지정 요청을 디코딩하고, Core 호출 맥락을 파생한
-뒤 해당 `CoreService` 메서드를 호출합니다.
+stdio MCP 경로에서 `volicord mcp --stdio`는 먼저 Runtime Home과 Agent Connection
+프로세스 맥락을 해석하고, 시작 검사는 stdio가 시작되기 전에 필요한 사실을
+검증합니다. 로컬 HTTP 경로는 `volicord serve --transport local-http`로 시작하며,
+묶인 연결 맥락을 해석하고 전송 계층의 프로젝트 허용 목록을 적용한 뒤 HTTP MCP
+요청을 같은 어댑터로 보냅니다. 전송 디스패치 이후 공개 `tools/call`은 허용된
+프로젝트를 선택하고, 타입 지정 요청을 디코딩하고, 어댑터가 생성한 요청 사실을
+채우고, 로컬 Core 호출 사실을 파생한 뒤 해당 `CoreService` 메서드를 호출합니다.
 
 ```mermaid
 sequenceDiagram
@@ -45,8 +45,8 @@ sequenceDiagram
   MCP->>MCP: call_tool_result_with_elicitation이 name과 arguments 추출
   MCP->>MCP: McpAdapter::call_tool이 도구 라우팅
   MCP->>MCP: prepare_mcp_arguments가 프로젝트 선택
-  MCP->>MCP: generated_envelope가 신뢰된 envelope 채움
   MCP->>MCP: decode_params가 타입 지정 요청 디코딩
+  MCP->>MCP: generated_envelope가 어댑터 생성 요청 래퍼 필드 채움
   MCP->>MCP: McpDerivedInvocationContext::core_invocation이 InvocationContext 파생
   MCP->>Core: CoreService method(request, invocation)
   Core->>Core: prepare_or_response -> CoreService::prepare_request
@@ -66,18 +66,24 @@ sequenceDiagram
   `tools/call`을 디스패치하며, `call_tool_result_with_elicitation`이
   `params.name`과 `params.arguments`를 추출하고 `McpAdapter`를 호출한 뒤
   `PipelineResponse.response_json`을 MCP 텍스트 content로 래핑합니다.
+- [`crates/volicord-mcp/src/local_http.rs`](../../../crates/volicord-mcp/src/local_http.rs):
+  `run_local_http_server`가 연결에 묶인 어댑터 맥락을 해석하고 전송 계층의
+  프로젝트 허용 목록을 적용한 뒤 로컬 HTTP 세션과 MCP 요청을
+  `McpAdapter`로 보냅니다.
 - [`crates/volicord-mcp/src/tool_registry.rs`](../../../crates/volicord-mcp/src/tool_registry.rs):
   `PUBLIC_METHOD_TOOL_NAMES`, `McpToolDefinition`, 도구 목록 메타데이터.
 - [`crates/volicord-mcp/src/adapter.rs`](../../../crates/volicord-mcp/src/adapter.rs):
   `McpAdapter::call_tool`이 도구 이름을 match하고, 메서드별 helper가 타입
   지정 Core 요청을 구성하며, `prepare_mcp_arguments<T>`가 내부 전용 필드를
   거부하고 허용된 프로젝트를 선택하고 `decode_params<T>`로 인자를
-  디코딩합니다. `generated_envelope`는 신뢰된 요청 래퍼 필드를 채우고,
-  `call_core_request`는 `CoreService`를 호출하기 전에 호출 맥락을 파생합니다.
+  디코딩합니다. `generated_envelope`는 어댑터가 생성하는 요청 래퍼 필드를
+  채우고, `call_core_request`는 `CoreService`를 호출하기 전에 로컬 호출
+  사실을 파생합니다.
 - [`crates/volicord-mcp/src/routing.rs`](../../../crates/volicord-mcp/src/routing.rs):
   시작 검사, `McpConnectionContext`, connection mode 파싱, 프로젝트 allowlist
   점검, 프로젝트 가용성 도우미.
-- 프로젝트 선택은 선택된 프로젝트, 묶인 Agent Connection, 행위자 출처, 요청
+- 프로젝트를 선택한 뒤 `call_core_request`는 `derive_invocation_context`를
+  사용해 선택된 프로젝트, 묶인 Agent Connection의 행위자 출처, 요청
   `operation_category`, 어댑터 바인딩 근거를 담은
   `McpDerivedInvocationContext`를 만듭니다.
 - `McpDerivedInvocationContext::core_invocation`은 Core `InvocationContext`를
@@ -85,10 +91,12 @@ sequenceDiagram
 
 시작과 세션 검증도 `volicord-mcp`에 있으며, 특히
 `McpConnectionStartupInspection::resolve`가 핵심입니다. 이 시작 경로는
-Runtime Home, Agent Connection 상태, Agent Connection 바인딩,
-역할, 멤버십, 메타데이터, 로컬 레지스트리 JSON 검사를 위해 Store를 직접
-읽습니다. 모든 호출에 쓸 프로젝트 하나를 시작 시점에 선택하지 않으며, 공개
-메서드 동작을 구현하는 다른 경로도 아닙니다. 공개 메서드 실행은
+Runtime Home 초기화, 설치 프로필, Agent Connection 식별자, 활성 상태,
+메타데이터 객체 형태, mode, Connection Project 멤버십, 프로젝트 가용성을
+검증하기 위해 Store를 직접 읽습니다. 시작 검사는 `actor_source`를 파생하거나
+모든 호출에 쓸 프로젝트 하나를 선택하지 않습니다. 요청 시점의 어댑터 코드가
+프로젝트 선택 뒤 묶인 Agent Connection에서 `actor_source`를 파생합니다. 시작
+검사는 공개 메서드 동작을 구현하는 다른 경로가 아니며, 공개 메서드 실행은
 `volicord-core`를 통과합니다.
 
 공유 Core 경로는 주로
@@ -171,7 +179,7 @@ API 오류는 rejected response로 남으며 닫기 차단 사유가 아닙니�
    `OperationCategory::Read`를 반환하는 `MethodOperationCategory` 구현을 정의합니다.
 2. [`crates/volicord-mcp/src/adapter.rs`](../../../crates/volicord-mcp/src/adapter.rs)는
    `McpAdapter::call_tool`에서 `"volicord.status"`를 라우팅하고, 타입 지정
-   status 인자를 준비하고, 신뢰된 요청 래퍼를 만들고,
+   status 인자를 준비하고, 어댑터 생성 요청 래퍼를 만들고, 로컬 호출 사실과
    `InvocationContext`를 파생한 뒤 `CoreService::status`를 호출합니다.
 3. [`crates/volicord-core/src/methods/status.rs`](../../../crates/volicord-core/src/methods/status.rs)는
    `CoreService::status`, `status_task`, `status_result_fields`를 구현합니다.
@@ -187,9 +195,9 @@ API 오류는 rejected response로 남으며 닫기 차단 사유가 아닙니�
 2. `call_tool_result_with_elicitation`이 도구 이름과 인자를 추출합니다.
 3. `McpAdapter::call_tool`이 호출을 status 분기로 라우팅합니다.
 4. `prepare_mcp_arguments`는 `McpConnectionContext`에서 허용된 프로젝트를
-   선택하고, `generated_envelope`는 status `operation_category`에 맞는 신뢰된
-   요청 래퍼 필드를 채우며, `call_core_request`는 Core
-   `InvocationContext`를 만듭니다.
+   선택하고 타입 지정 status 인자를 디코딩합니다. `generated_envelope`는
+   status `operation_category`에 맞는 어댑터 생성 요청 래퍼 필드를 채우며,
+   `call_core_request`는 로컬 호출 사실에서 Core `InvocationContext`를 만듭니다.
 5. `CoreService::status`는 타입 지정 요청을 요청 JSON으로 직렬화하고,
    `MethodPolicy::exact`, `TaskRequirement::Optional`, `ReplayPolicy::None`,
    `FreshnessPolicy::None`, `MethodEffectPolicy::ReadOnly`로
@@ -219,14 +227,12 @@ API 오류는 rejected response로 남으며 닫기 차단 사유가 아닙니�
 
 대표 테스트:
 
-- [`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs)의
-  `status_is_read_only_including_dry_run`
-- [`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs)의
+- [`crates/volicord-core/src/methods/tests/status.rs`](../../../crates/volicord-core/src/methods/tests/status.rs)의
+  `status_is_read_only_including_dry_run`,
   `status_include_false_omits_optional_sections_without_effect`
 - [`crates/volicord-mcp/src/tests.rs`](../../../crates/volicord-mcp/src/tests.rs)의
-  `adapter_and_direct_core_status_have_equivalent_response_meaning`
-- [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs)의
-  `mcp_and_direct_status_omit_same_excluded_projection_fields`
+  `mcp_status_succeeds_with_readonly_storage`,
+  `mcp_status_does_not_advance_state_version`
 - [`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs)의
   `status_projection_matches_public_close_check_and_stays_read_only`
 
@@ -251,7 +257,7 @@ API 오류는 rejected response로 남으며 닫기 차단 사유가 아닙니�
    `OperationCategory::AgentWorkflow`을 반환하는 `MethodOperationCategory` 구현을 정의합니다.
 2. [`crates/volicord-mcp/src/adapter.rs`](../../../crates/volicord-mcp/src/adapter.rs)는
    `McpAdapter::call_tool`에서 `"volicord.intake"`를 라우팅하고, 타입 지정
-   intake 인자를 준비하고, 신뢰된 요청 래퍼를 만들고,
+   intake 인자를 준비하고, 어댑터 생성 요청 래퍼를 만들고, 로컬 호출 사실과
    `InvocationContext`를 파생한 뒤 `CoreService::intake`를 호출합니다.
 3. [`crates/volicord-core/src/methods/intake.rs`](../../../crates/volicord-core/src/methods/intake.rs)는
    `CoreService::intake`와 `plan_intake`를 구현합니다.
@@ -269,8 +275,8 @@ API 오류는 rejected response로 남으며 닫기 차단 사유가 아닙니�
 생명주기:
 
 1. MCP 호스트가 `name="volicord.intake"`로 `tools/call`을 보냅니다.
-2. `McpAdapter::call_tool`이 타입 지정 intake 인자를 준비하고, 신뢰된 요청
-   래퍼를 만들고, `InvocationContext`를 파생한 뒤
+2. `McpAdapter::call_tool`이 타입 지정 intake 인자를 준비하고, 어댑터 생성
+   요청 래퍼를 만들고, 로컬 호출 사실과 `InvocationContext`를 파생한 뒤
    `CoreService::intake`를 호출합니다.
 3. `CoreService::intake`는 `TaskRequirement::None`과 함께
    `mutation_method_policy`를 고릅니다. Dry-run이면 정책은
@@ -313,12 +319,11 @@ API 오류는 rejected response로 남으며 닫기 차단 사유가 아닙니�
 
 대표 테스트:
 
-- [`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs)의
-  `intake_commits_once_and_replays_without_effect`
-- [`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs)의
+- [`crates/volicord-core/src/methods/tests/intake.rs`](../../../crates/volicord-core/src/methods/tests/intake.rs)의
+  `intake_commits_once_and_replays_without_effect`,
   `intake_dry_run_has_no_storage_effect`
 - [`crates/volicord-mcp/src/tests.rs`](../../../crates/volicord-mcp/src/tests.rs)의
-  `adapter_and_direct_core_intake_dry_run_have_equivalent_response_meaning`
+  `adapter_auto_selects_single_project_and_injects_connection_invocation`
 - [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs)의
   `connection_invocation_is_injected_and_single_project_is_auto_selected`
 - [`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs)의
@@ -347,8 +352,9 @@ API 오류는 rejected response로 남으며 닫기 차단 사유가 아닙니�
    정의합니다.
 2. [`crates/volicord-mcp/src/adapter.rs`](../../../crates/volicord-mcp/src/adapter.rs)는
    `McpAdapter::call_tool`에서 `"volicord.prepare_write"`를 라우팅하고, 타입
-   지정 prepare-write 인자를 준비하고, 신뢰된 요청 래퍼를 만들고,
-   `InvocationContext`를 파생한 뒤 `CoreService::prepare_write`를 호출합니다.
+   지정 prepare-write 인자를 준비하고, 어댑터 생성 요청 래퍼를 만들고, 로컬
+   호출 사실과 `InvocationContext`를 파생한 뒤 `CoreService::prepare_write`를
+   호출합니다.
 3. [`crates/volicord-core/src/methods/prepare_write.rs`](../../../crates/volicord-core/src/methods/prepare_write.rs)는
    `CoreService::prepare_write`, `prepare_write_policy`,
    `plan_prepare_write`를 구현합니다.
@@ -366,8 +372,8 @@ API 오류는 rejected response로 남으며 닫기 차단 사유가 아닙니�
 생명주기:
 
 1. MCP 호스트가 `name="volicord.prepare_write"`로 `tools/call`을 보냅니다.
-2. `McpAdapter::call_tool`이 타입 지정 prepare-write 인자를 준비하고, 신뢰된
-   요청 래퍼를 만들고, `InvocationContext`를 파생한 뒤
+2. `McpAdapter::call_tool`이 타입 지정 prepare-write 인자를 준비하고, 어댑터
+   생성 요청 래퍼를 만들고, 로컬 호출 사실과 `InvocationContext`를 파생한 뒤
    `CoreService::prepare_write`를 호출합니다.
 3. `CoreService::prepare_write`는 먼저 `envelope.task_id`가 있을 때
    `PrepareWriteRequest.task_id`와 일치하는지 확인합니다.
@@ -418,13 +424,10 @@ API 오류는 rejected response로 남으며 닫기 차단 사유가 아닙니�
 
 대표 테스트:
 
-- [`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs)의
-  `prepare_write_allowed_issues_one_write_ticket_with_post_commit_basis`
-- [`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs)의
-  `prepare_write_blocked_path_issues_no_write_ticket`
-- [`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs)의
-  `prepare_write_dry_run_has_no_write_ticket_effect`
-- [`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs)의
+- [`crates/volicord-core/src/methods/tests/prepare_write.rs`](../../../crates/volicord-core/src/methods/tests/prepare_write.rs)의
+  `prepare_write_allowed_issues_one_write_ticket_with_post_commit_basis`,
+  `prepare_write_blocked_path_issues_no_write_ticket`,
+  `prepare_write_dry_run_has_no_write_ticket_effect`,
   `prepare_write_user_only_category_is_invocation_context_rejection`
 - [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs)의
   `read_only_mode_rejects_agent_workflow_methods_before_core`

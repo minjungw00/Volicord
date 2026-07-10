@@ -96,12 +96,11 @@ flowchart LR
 
 1. `volicord-cli`는
    [`crates/volicord-cli/src/connection_command.rs`](../../../crates/volicord-cli/src/connection_command.rs)와
-   [`crates/volicord-cli/src/registration.rs`](../../../crates/volicord-cli/src/registration.rs)의
-   등록 메타데이터 도우미를 통해 관리 설정을 계획합니다.
-2. Store 부트스트랩과 Agent Connection 등록 도우미는
-   `initialize_runtime_home`, `register_project`, `ensure_agent_connection`,
-   `add_connection_project`로 Runtime Home 메타데이터를 초기화하고 프로젝트와
-   Agent Connection 관계를 등록합니다.
+   [`crates/volicord-cli/src/connection_command/service.rs`](../../../crates/volicord-cli/src/connection_command/service.rs)를
+   통해 연결 프로비저닝을 계획합니다.
+2. Store 부트스트랩은 Runtime Home 메타데이터를 초기화하고 프로젝트를
+   등록하며, Agent Connection Store 도우미는 연결 기록과 Connection Project
+   멤버십을 만듭니다.
 3. 빈 registry/project 상태 데이터베이스는 canonical SQL에서 초기화하고,
    기존 상태는 SQLite 도우미가 현재 스키마 형태와 저장소 프로필을 검증한 뒤에만 엽니다.
 4. 이후 공개 메서드 호출은 CLI 설정 코드를 거치지 않고
@@ -219,9 +218,10 @@ Core 파이프라인 테스트가 있습니다.
 메서드 계획 Core 변이를 통해 일어납니다.
 
 관련 테스트에는
-[`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs)의
+[`crates/volicord-core/src/methods/tests/stage_artifact.rs`](../../../crates/volicord-core/src/methods/tests/stage_artifact.rs)의
 `stage_artifact_creates_transient_handle_without_core_commit`,
 `stage_artifact_dry_run_creates_no_handle_or_storage`,
+[`crates/volicord-core/src/methods/tests/record_run.rs`](../../../crates/volicord-core/src/methods/tests/record_run.rs)의
 `record_run_promotes_staged_artifact_and_updates_evidence`, 그리고
 [`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs)의
 `artifact_lifecycle_promotes_valid_handles_and_rolls_back_invalid_ones`가 있습니다.

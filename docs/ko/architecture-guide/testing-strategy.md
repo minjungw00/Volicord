@@ -20,7 +20,7 @@
 |---|---|---|---|
 | 모듈 단위 테스트 | [`crates/volicord-types/src/lib.rs`](../../../crates/volicord-types/src/lib.rs), [`crates/volicord-core/src/pipeline.rs`](../../../crates/volicord-core/src/pipeline.rs), [`crates/volicord-store/src/core_pipeline.rs`](../../../crates/volicord-store/src/core_pipeline.rs), [`crates/volicord-store/src/sqlite.rs`](../../../crates/volicord-store/src/sqlite.rs), setup, connection, guard, host integration, MCP 모듈 같은 구현 모듈 안의 테스트. | 로컬 도우미 동작, 타입 지정 파싱, 정규 해시, 정책 도우미, Store 트랜잭션 경계, 스키마 검증, setup workflow 분기, connection selection/output 도우미, guard integration 계획/audit 도우미, 코드 가까이의 작은 분기 점검. | 계층 간 수락 테스트나 제품 계약 출처. |
 | 플랫폼 파일시스템 파사드 테스트 | `volicord-platform-fs` 패키지의 [`crates/volicord-platform-fs/src/lib.rs`](../../../crates/volicord-platform-fs/src/lib.rs)에 함께 있는 테스트. | 플랫폼 고유 이름 공간 연산을 둘러싼 안전한 결과 분류와 대상별 파사드 동작. | 관리 파일 소유권 정책, 호출자 복구 동작, 파일시스템 전체 이식성 주장, 보안 증명. |
-| Core 메서드 테스트 | `volicord-core` 패키지의 [`crates/volicord-core/src/methods/tests/mod.rs`](../../../crates/volicord-core/src/methods/tests/mod.rs). | 메서드 계획, `CoreService`를 통한 공유 사전 점검, dry-run/효과 없음/커밋 분기, 재실행, 상태 버전 효과, 아티팩트 스테이징 구분, 메서드에 보이는 Store 효과. | MCP 전송 범위나 전체 공개 동작 권위. |
+| Core 메서드 테스트 | `volicord-core` 패키지의 [`crates/volicord-core/src/methods/tests/`](../../../crates/volicord-core/src/methods/tests/). `status.rs`, `intake.rs`, `prepare_write.rs` 같은 메서드별 파일로 나뉩니다. | 메서드 계획, `CoreService`를 통한 공유 사전 점검, dry-run/효과 없음/커밋 분기, 재실행, 상태 버전 효과, 아티팩트 스테이징 구분, 메서드에 보이는 Store 효과. | MCP 전송 범위나 전체 공개 동작 권위. |
 | 저장소 DDL 계약 테스트 | `volicord-store` 패키지의 `storage_ddl_contract` 대상인 [`crates/volicord-store/tests/storage_ddl_contract.rs`](../../../crates/volicord-store/tests/storage_ddl_contract.rs). | Storage DDL 담당 문서와 구현 사이의 정합성, canonical SQL 원본, 스키마 초기화, 스키마 검증, 테이블, 컬럼, 제약, 인덱스, 유지되는 트리거. | 일반 저장 효과 동작이나 런타임 적합성. |
 | 관리 CLI 바이너리 테스트 | `volicord-cli` 패키지의 `binary_admin` 대상인 [`crates/volicord-cli/tests/binary_admin.rs`](../../../crates/volicord-cli/tests/binary_admin.rs). | `volicord` 바이너리, `volicord init`을 통한 Runtime Home setup, 바이너리를 통해 관찰해야 하는 setup workflow 효과, 프로젝트 감지, `volicord status`, `volicord connection add`, `volicord connection list`, `volicord connection status/verify/mode/remove`, connection output, `volicord inbox ...`, zero-write dry-run, 호스트 상태 검증, 연결 프로젝트 멤버십 생명주기, guarded init/status 사례를 통한 생성 guard output drift, 잔류 효과 보고, 호스트 설정 쓰기, 사전 점검 실패 처리, doctor diagnostics, 명령줄 오류 경로. | 공개 API 메서드 동작. |
 | Guard 명령 테스트 | `volicord-cli` 패키지의 `guard_command` 대상인 [`crates/volicord-cli/tests/guard_command.rs`](../../../crates/volicord-cli/tests/guard_command.rs). | session start, pre-tool, post-tool, prompt capture, stop의 guard hook lifecycle 동작, 기록된 관찰, expected-write matching, write-ticket coverage, host-native rendering, prompt-capture command 처리, guarded lifecycle fixture. | 보안 증명, human approval 기록, 제품 수락 기록, Core 메서드 테스트 대체물. |
@@ -50,9 +50,10 @@ guard lifecycle setup, JSON parsing, 재사용 단언을 위한 CLI 통합 도�
 
 ## 명시적으로 실행하는 실제 호스트 smoke 테스트
 
-`live_host_smoke`는 ignored 테스트 대상으로 등록되어 있으므로 일반 workspace 테스트
-실행은 실제 호스트 점검이 실행되지 않았음을 보고합니다. 호스트 실행 파일이 설치되어
-있고 해당 opt-in 변수를 설정한 환경에서 호스트 하나의 점검만 실행합니다.
+`live_host_smoke`는 일반 Cargo 테스트 대상이고 내부의 두 실제 호스트 점검에
+`#[ignore]`가 붙어 있습니다. 따라서 일반 workspace 테스트 실행은 이 점검들을
+ignored로 보고합니다. 호스트 실행 파일이 설치되어 있고 해당 opt-in 변수를 설정한
+환경에서 호스트 하나의 점검만 실행합니다.
 
 ```sh
 VOLICORD_RUN_CODEX_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_smoke_is_opt_in -- --ignored --nocapture
@@ -90,11 +91,11 @@ VOLICORD_RUN_CLAUDE_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke cl
 | 아키텍처 가이드, 문서 경로, 메타데이터, 링크, 용어 | `docs/en/`, `docs/ko/`, `docs/doc-index.yaml`, `docs/terminology-map.yaml`; 검증기 동작이 바뀌면 `xtask`. | `cargo run -p xtask -- docs-check`, 사람이 하는 의미 일치, 담당 경로, 용어 검토. | 결정적 docs-check 규칙을 추가하거나 바꾸면 `xtask` 테스트. |
 | 공개 스키마, 공유 요청/결과 타입, 값 집합, 식별자, 요청 해시 | `crates/volicord-types/src/`와 적용되는 참조 담당 문서. | `volicord-types` 단위 테스트. | 메서드 계획이 바뀌면 Core 메서드 테스트, 도구 스키마나 노출이 바뀌면 `public_contract_snapshots` 또는 MCP 통합 테스트, 유지 문서가 바뀌면 docs-check. |
 | 플랫폼 파일시스템 파사드 또는 어댑터 관리 조건부 파일 교체 | `crates/volicord-platform-fs/src/lib.rs`, `crates/volicord-cli/src/guard_integration/files.rs` 같은 호출 어댑터, 적용되는 CLI/런타임/시스템 담당 문서. | `volicord-platform-fs`와 호출 모듈 단위 테스트. | 운영체제 고유 코드가 바뀌면 대상별 컴파일 또는 테스트, 관리 결과가 바이너리에 보이면 `binary_admin`, 유지 담당 문서나 아키텍처 가이드가 바뀌면 `docs-check`. |
-| 공개 메서드 동작, Core 파이프라인 동작, 정책 도우미, 재실행, 효과 분기 | `crates/volicord-core/src/pipeline.rs`, `crates/volicord-core/src/methods/`, `crates/volicord-core/src/policy/`. | Core의 함께 있는 단위 테스트와 `crates/volicord-core/src/methods/tests/mod.rs`. | 교차 메서드 기준 시나리오는 `tests/conformance/baseline.rs`, 어댑터에 보이는 맥락이나 도구 노출은 `tests/integration/mcp_connection.rs`. |
+| 공개 메서드 동작, Core 파이프라인 동작, 정책 도우미, 재실행, 효과 분기 | `crates/volicord-core/src/pipeline.rs`, `crates/volicord-core/src/methods/`, `crates/volicord-core/src/policy/`. | Core의 함께 있는 단위 테스트와 `crates/volicord-core/src/methods/tests/` 아래의 메서드별 파일. | 교차 메서드 기준 시나리오는 `tests/conformance/baseline.rs`, 어댑터에 보이는 맥락이나 도구 노출은 `tests/integration/mcp_connection.rs`. |
 | Store DDL, canonical SQL, 지속성 도우미, 트랜잭션 경계, 저장 효과, 아티팩트 저장소 | `crates/volicord-store/src/`, [`crates/volicord-store/tests/storage_ddl_contract.rs`](../../../crates/volicord-store/tests/storage_ddl_contract.rs), 저장소 참조 담당 문서. | Store의 함께 있는 단위 테스트. Storage DDL, canonical SQL, 스키마 검증 변경에는 `cargo test -p volicord-store --test storage_ddl_contract`. | 공개 메서드에서 보이는 저장 동작이 바뀌면 Core 메서드, 적합성, MCP 통합 테스트. |
 | MCP 시작, stdio 또는 로컬 HTTP 전송, 도구 목록, `tools/call`, 프로젝트 선택, Agent Connection 호출 맥락 | `crates/volicord-mcp/src/`, `crates/volicord-cli/tests/mcp_transport.rs`, `crates/volicord-cli/tests/serve_transport.rs`, `tests/integration/mcp_connection.rs`. | `volicord-mcp` 단위 테스트와 바뀐 전송 경로에 맞는 `mcp_transport` 또는 `serve_transport`. | 생성 API 또는 MCP 도구 projection이 바뀌면 `public_contract_snapshots`, MCP를 통해 Core/Store 동작을 관찰해야 하면 `mcp_connection`, MCP 문서가 바뀌면 docs-check. |
 | Setup workflow 동작과 출력 | `crates/volicord-cli/src/setup_command.rs`, `setup_command/`, `doctor_command.rs`, `crates/volicord-cli/tests/binary_admin.rs`. | Workflow 분기와 렌더링은 setup 모듈 테스트. 바이너리를 통해 관찰해야 하는 setup 동작은 `binary_admin`. | 부트스트랩, registry, 검사, 스키마 초기화, installation-profile persistence가 바뀌면 Store 테스트, setup 문서가 바뀌면 docs-check. |
-| Connection provisioning, status, verification, output | `crates/volicord-cli/src/connection_command.rs`, `connection_command/`, `registration.rs`, `crates/volicord-cli/tests/binary_admin.rs`. | Connection command 모듈 테스트와 `binary_admin`. | 프로세스/preflight 동작이 바뀌면 `mcp_transport`, MCP/Core/Store 동작을 MCP로 관찰해야 하면 `tests/integration/mcp_connection.rs`, CLI 문서가 바뀌면 docs-check. |
+| Connection provisioning, status, verification, output | `crates/volicord-cli/src/connection_command.rs`, `connection_command/`, `crates/volicord-store/src/bootstrap.rs`, `agent_connections.rs`, `crates/volicord-cli/tests/binary_admin.rs`. | Connection command 모듈 테스트와 `binary_admin`. | 프로세스/preflight 동작이 바뀌면 `mcp_transport`, MCP/Core/Store 동작을 MCP로 관찰해야 하면 `tests/integration/mcp_connection.rs`, CLI 문서가 바뀌면 docs-check. |
 | Guard integration 파일, capability record, audit fact | `crates/volicord-cli/src/guard_integration/`, connection status/output 코드, `doctor_command.rs`, `binary_admin`의 guarded init/status 테스트. | Guard integration 모듈 테스트와 생성 guard output drift를 다루는 `binary_admin` guarded init/status 사례. | Lifecycle observation이 생성 capability fact를 소비하면 `guard_command`, guard CLI 문서가 바뀌면 docs-check. |
 | Guard hook lifecycle 동작과 host-native rendering | `crates/volicord-cli/src/guard_command.rs`, `guard_command/`, `crates/volicord-cli/tests/guard_command.rs`. | `guard_command` 테스트와 함께 있는 parsing/rendering 테스트. | Hook 경로가 담당 문서가 정의한 Core 또는 Store 동작에 의존하면 Core 메서드, 적합성, 저장소 테스트. |
 | 호스트 설정 어댑터 | `crates/volicord-cli/src/host_integration/`, 특히 `host_integration/codex/`, `host_integration/claude_code/`, `config_edit.rs`, `contracts.rs`, `generic.rs`, `verification.rs`. | 호스트 어댑터 모듈 테스트와 `binary_admin`. | Host-native hook output이 바뀌면 `guard_command`, launch 또는 preflight 동작이 바뀌면 `mcp_transport`. |
@@ -108,7 +109,7 @@ VOLICORD_RUN_CLAUDE_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke cl
 | 플랫폼 파일시스템 기본 연산 또는 어댑터 관리 조건부 파일 교체 | `volicord-platform-fs` 테스트와 호출 모듈 단위 테스트. | 운영체제 고유 코드에는 대상별 컴파일 또는 테스트를, 명령에 보이는 결과가 바뀌면 `binary_admin`을 추가합니다. |
 | Store 읽기 도우미, 변이 적용, 트랜잭션, 스키마 초기화, 아티팩트 저장소 동작 | 변경된 코드 가까이의 Store 모듈 테스트. | 공개 메서드 효과가 바뀌면 Core 메서드 테스트를, 계층 간 동작이 영향을 받으면 적합성 또는 MCP 통합 테스트를 추가합니다. |
 | Storage DDL 참조, canonical SQL, 스키마 검증 동작 | `cargo test -p volicord-store --test storage_ddl_contract`와 가까운 Store 테스트. | 유지되는 Storage DDL 문서가 바뀌면 docs-check를, 공개 메서드에서 보이는 저장 효과가 바뀌면 Core, 적합성, MCP 통합 테스트를 추가합니다. |
-| Core 메서드 동작 | `crates/volicord-core/src/methods/tests/mod.rs`. | 교차 메서드 기준 범위 시나리오는 `tests/conformance/baseline.rs`를, MCP 노출이나 operation category 파생이 중요하면 `tests/integration/mcp_connection.rs`를 추가합니다. |
+| Core 메서드 동작 | `crates/volicord-core/src/methods/tests/` 아래의 해당 메서드별 파일. | 교차 메서드 기준 범위 시나리오는 `tests/conformance/baseline.rs`를, MCP 노출이나 operation category 파생이 중요하면 `tests/integration/mcp_connection.rs`를 추가합니다. |
 | 공통 Core 사전 점검, 분기 처리, 재실행, 최신성, 접근 정책 | `crates/volicord-core/src/pipeline.rs` 단위 테스트와 메서드 테스트. | 어댑터가 파생한 호출 맥락이나 세션 바인딩이 관련되면 MCP 통합 테스트를 추가합니다. |
 | MCP 어댑터 시작, 도구 스키마, `tools/call`, stdio 전송, 로컬 HTTP 전송 | `crates/volicord-mcp/src/tests.rs` 테스트와 영향을 받는 프로세스 경로에 맞는 `mcp_transport` 또는 `serve_transport`. | 생성 API 또는 MCP 도구 projection이 바뀌면 `public_contract_snapshots`, MCP를 통과한 Core/Store 계층 간 동작은 `tests/integration/mcp_connection.rs`를 추가합니다. |
 | Setup workflow 동작과 출력 | `setup_command/` 가까이의 setup 모듈 테스트와 바이너리에 보이는 setup 흐름은 `binary_admin`. | 부트스트랩, 검사, registry, 스키마 초기화, installation-profile persistence가 바뀌면 Store 테스트를 추가합니다. |
@@ -175,12 +176,16 @@ CLI 명령 계약과 대조해야 하며,
 
 일부 테스트는 아키텍처 경계를 이해하는 데 특히 유용합니다.
 
-- `mcp_exposes_exactly_the_documented_public_methods`와
-  `stdio_tools_list_exposes_exactly_the_public_method_set`은 공개 메서드
-  집합의 MCP 노출을 보여 줍니다.
-- `adapter_and_direct_core_status_have_equivalent_response_meaning`와
-  `mcp_and_direct_status_omit_same_excluded_projection_fields`는 어댑터를
-  통과한 동작과 직접 Core 동작을 비교합니다.
+- `tool_sets_follow_connection_mode_and_exclude_user_only_recording`,
+  `volicord_mcp_subcommand_tools_list_respects_connection_mode_and_schema_boundary`,
+  `generated_mcp_workflow_tool_contract_snapshot_matches_sources`,
+  `generated_mcp_read_only_tool_contract_snapshot_matches_sources`는 각 계층에서
+  도구 집합 projection과 stdio `tools/list` 노출을 확인합니다.
+- `status_is_read_only_including_dry_run`과
+  `status_include_false_omits_optional_sections_without_effect`는 Core 상태
+  분기를 확인합니다. `mcp_status_succeeds_with_readonly_storage`와
+  `mcp_status_does_not_advance_state_version`은 전체 응답 동등성을 주장하지 않고
+  MCP에서 보이는 읽기 전용 속성을 확인합니다.
 - `rejected_branch_has_no_storage_effect`, `dry_run_branch_has_no_storage_effect`,
   `read_only_branch_has_no_storage_effect`는 커밋 없는 분기를 보호합니다.
 - `committed_mutation_increments_state_version_once`와 Store 트랜잭션 재실행

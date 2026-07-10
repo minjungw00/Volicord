@@ -33,10 +33,13 @@ to the repository root.
 
 ## Operational paths
 
-At the overview level, the implementation has three durable local path shapes:
+At the overview level, the implementation has four durable local path shapes:
 
 - MCP host -> `volicord mcp --stdio` -> `volicord-mcp` -> `volicord-core` ->
-  Store and artifact facilities under `Volicord Runtime Home`.
+  `volicord-store`, including artifact facilities, under `Volicord Runtime Home`.
+- Local MCP client -> `volicord serve --transport local-http` ->
+  `volicord-mcp` -> `volicord-core` -> `volicord-store` under
+  `Volicord Runtime Home`.
 - Operator -> `volicord` administrative CLI -> setup, registration, host, and
   diagnostic facilities -> `Volicord Runtime Home` and supported host
   configuration boundaries.
@@ -47,22 +50,23 @@ At the overview level, the implementation has three durable local path shapes:
 flowchart LR
   host["MCP host / Agent Connection"]
   mcp["volicord mcp --stdio"]
+  httpclient["local MCP client"]
+  localhttp["volicord serve --transport local-http<br/>volicord-mcp"]
   cli["volicord administrative CLI"]
   inbox["volicord inbox"]
   core["volicord-core"]
-  store["volicord-store"]
-  artifacts["artifact facilities"]
+  store["volicord-store<br/>(including artifact facilities)"]
   runtime["Volicord Runtime Home"]
   product["Product Repository"]
 
   host --> mcp --> core
+  httpclient --> localhttp --> core
   mcp -. startup and session validation .-> store
+  localhttp -. startup and session validation .-> store
   cli --> store
   inbox --> core
   core --> store
-  core --> artifacts
   store --> runtime
-  artifacts --> runtime
   product -. observed inputs and owner-defined paths .-> core
   host -. product-file tools outside public API .-> product
 ```
@@ -125,7 +129,7 @@ placement remains with the Source Map.
 | Core and adapters | Core owns adapter-independent public method handling. CLI and MCP adapters own process, setup, transport, routing, and rendering boundaries around Core. Core does not depend on either adapter layer. | [Request Lifecycle](request-lifecycle.md), [Implementation Design Patterns](design-patterns.md), [Core and adapter dependency boundary](decisions/core-adapter-boundary.md), [API Methods](../reference/api/methods.md), [MCP Transport](../reference/mcp-transport.md), and [Administrative CLI](../reference/admin-cli.md). |
 | Runtime Home and Product Repository | `Volicord Runtime Home` holds Volicord runtime records and artifact data as storage/runtime owners define them. `Product Repository` holds user product files and explicit integration files where owner documents allow them. | [Storage and Transactions](storage-and-transactions.md), [Runtime Home and Product Repository separation](decisions/runtime-home-and-product-repository.md), [Runtime Boundaries](../reference/runtime-boundaries.md), and [Security](../reference/security.md). |
 | Store commit boundary | Core method planners choose read-only, no-effect, dry-run, staging, or committed branches. Store applies normal committed Core mutations through its transaction boundary and keeps artifact staging separate from normal Core mutation commit. Core authority meaning stays with Core owners; exact storage records and effects stay with storage owners. | [Storage and Transactions](storage-and-transactions.md), [Request Lifecycle](request-lifecycle.md), [Core Model](../reference/core-model.md), [Storage](../reference/storage.md), and [Storage Effects](../reference/storage-effects.md). |
-| MCP adapter boundary | `volicord mcp --stdio` resolves Runtime Home and Agent Connection context, validates startup/session facts, exposes owner-defined tools by connection mode, selects permitted projects, decodes `tools/call`, derives adapter-managed invocation facts, calls Core, and wraps Core JSON as MCP content. | [Request Lifecycle](request-lifecycle.md), [Source Map](source-map.md), [MCP Transport](../reference/mcp-transport.md), and [Agent Connection](../reference/agent-connection.md). |
+| MCP adapter boundary | `volicord mcp --stdio` and `volicord serve --transport local-http` provide transport-specific entry paths. `volicord-mcp` resolves Runtime Home and Agent Connection context, validates startup/session facts, exposes owner-defined tools by connection mode, selects permitted projects, decodes `tools/call`, derives adapter-managed local invocation facts, calls Core, and wraps Core JSON as MCP content. | [Request Lifecycle](request-lifecycle.md), [Source Map](source-map.md), [MCP Transport](../reference/mcp-transport.md), and [Agent Connection](../reference/agent-connection.md). |
 | Administrative CLI and host adapters | The CLI orchestrates local setup, project registration, Agent Connection management, host integration, guard integration, diagnostics, and `User Channel` commands. These workflows are local administrative orchestration, not public Core methods or security proofs. | [CLI Workflows](cli-workflows.md), [Source Map](source-map.md), [Administrative CLI](../reference/admin-cli.md), and [Security](../reference/security.md). |
 | Platform filesystem facade | `volicord-platform-fs` isolates platform-native namespace primitives behind safe Rust results. It does not decide which files are managed, whether a replacement is authorized, whether a post-operation state is valid, or what recovery and diagnostics mean. Those responsibilities remain with the calling adapter and focused Reference owners. | [Source Map](source-map.md), [CLI Workflows](cli-workflows.md), [Administrative CLI](../reference/admin-cli.md), [Runtime Boundaries](../reference/runtime-boundaries.md), and [System Requirements](../reference/system-requirements.md). |
 | Tests and validation | Implementation tests verify owner-defined facts at the appropriate layer. Tests, fixtures, generated snapshots, and documentation checks do not become product contract owners. | [Testing Strategy](testing-strategy.md) and [Validation](../maintain/validation.md). |

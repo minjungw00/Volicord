@@ -21,8 +21,8 @@ separate location concepts:
 - Store code owns Runtime Home path handling, registry/project databases,
   project Store access, schema initialization and validation, inspection, and artifact data under Runtime
   Home.
-- CLI setup registers a Product Repository path with Runtime Home records but
-  does not turn that repository into runtime state.
+- CLI connection provisioning registers a Product Repository path with Runtime
+  Home records but does not turn that repository into runtime state.
 - CLI setup and MCP startup may refer to Volicord installation files, but
   the installation location does not become Runtime Home or Product Repository.
 - Core method code may normalize and reason about Product Repository paths when
@@ -55,23 +55,27 @@ separate location concepts:
 - [`crates/volicord-store/src/runtime_home.rs`](../../../../crates/volicord-store/src/runtime_home.rs):
   Runtime Home resolution.
 - [`crates/volicord-store/src/bootstrap.rs`](../../../../crates/volicord-store/src/bootstrap.rs):
-  Runtime Home initialization and project/Agent Connection registration.
+  Runtime Home initialization and project registration.
+- [`crates/volicord-store/src/agent_connections.rs`](../../../../crates/volicord-store/src/agent_connections.rs):
+  Agent Connection records and Connection Project memberships.
 - [`crates/volicord-store/src/core_pipeline.rs`](../../../../crates/volicord-store/src/core_pipeline.rs):
   `CoreProjectStore` project-local store access.
 - [`crates/volicord-store/src/artifacts.rs`](../../../../crates/volicord-store/src/artifacts.rs):
   Runtime Home artifact staging and persistent body verification.
-- [`crates/volicord-cli/src/connection_command.rs`](../../../../crates/volicord-cli/src/connection_command.rs):
-  agent setup orchestration and Runtime Home preparation.
-- [`crates/volicord-cli/src/registration.rs`](../../../../crates/volicord-cli/src/registration.rs):
-  registered connection capability and invocation metadata generation.
+- [`crates/volicord-cli/src/connection_command/service.rs`](../../../../crates/volicord-cli/src/connection_command/service.rs):
+  connection provisioning, Runtime Home preparation, project registration, and
+  Agent Connection membership orchestration.
 - [`crates/volicord-core/src/policy/path.rs`](../../../../crates/volicord-core/src/policy/path.rs):
   Product Repository path normalization helpers used by Core policy.
 
 ## Related Tests And Reference Owners
 
-- `volicord_binary_runs_administrative_initialization_and_registration` and
-  `volicord_binary_agent_dry_run_writes_nothing_and_rejects_invalid_scope` in
-  [`crates/volicord-cli/tests/binary_admin.rs`](../../../../crates/volicord-cli/tests/binary_admin.rs).
+- `init_dry_run_does_not_write_runtime_or_repo_files`,
+  `init_rejects_invalid_profile_without_artifacts`,
+  `init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently`, and
+  `project_commands_use_current_git_repository_without_user_ids` in
+  [`crates/volicord-cli/tests/binary_admin.rs`](../../../../crates/volicord-cli/tests/binary_admin.rs)
+  cover focused initialization, zero-write, and project-selection behavior.
 - `disposable_runtime_home_stays_under_system_temp` in
   [`crates/volicord-test-support/src/lib.rs`](../../../../crates/volicord-test-support/src/lib.rs).
 - `read_only_mode_rejects_agent_workflow_methods_before_core` in

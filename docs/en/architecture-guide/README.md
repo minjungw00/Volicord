@@ -105,11 +105,15 @@ with
 [`crates/volicord-cli/src/main.rs`](../../../crates/volicord-cli/src/main.rs),
 then
 [`crates/volicord-cli/src/connection_command.rs`](../../../crates/volicord-cli/src/connection_command.rs),
+[`crates/volicord-cli/src/connection_command/service.rs`](../../../crates/volicord-cli/src/connection_command/service.rs),
 [`crates/volicord-cli/src/host_integration/`](../../../crates/volicord-cli/src/host_integration/),
+[`crates/volicord-store/src/bootstrap.rs`](../../../crates/volicord-store/src/bootstrap.rs),
 and
-[`crates/volicord-cli/src/registration.rs`](../../../crates/volicord-cli/src/registration.rs).
+[`crates/volicord-store/src/agent_connections.rs`](../../../crates/volicord-store/src/agent_connections.rs).
 For local User Channel behavior, continue with
-[`crates/volicord-cli/src/user_command.rs`](../../../crates/volicord-cli/src/user_command.rs).
+[`crates/volicord-cli/src/user_command.rs`](../../../crates/volicord-cli/src/user_command.rs)
+and
+[`crates/volicord-core/src/methods/judgment.rs`](../../../crates/volicord-core/src/methods/judgment.rs).
 
 ## Boundary reminders
 

@@ -55,7 +55,7 @@
 |---|---|
 | `crates/volicord-store/src/lib.rs` | 저장소 기록, 스키마 초기화, 아티팩트 배관, Store 도우미의 공개 크레이트 표면. |
 | `crates/volicord-store/src/runtime_home.rs` | Runtime Home 경로 해석과 Runtime Home/Product Repository 위치 검증 도우미. |
-| `crates/volicord-store/src/bootstrap.rs` | Runtime Home 메타데이터 초기화, 프로젝트 등록, 현재 프로젝트 도우미, User Channel 등록. |
+| `crates/volicord-store/src/bootstrap.rs` | Runtime Home 메타데이터 초기화, 설치 프로필 저장, 프로젝트 등록, 현재 프로젝트 도우미. |
 | `crates/volicord-store/src/agent_connections.rs` | Agent Connection 행, natural key, Connection Projects 멤버십, mode/status 값, Agent Connection 조회와 갱신 도우미. |
 | `crates/volicord-store/src/schema.rs`와 `crates/volicord-store/src/schema/` | canonical registry와 project SQL 원본, 스키마 초기화와 검증 연결. |
 | `crates/volicord-store/src/sqlite.rs` | registry/project SQLite 경로 도우미, 열기와 검증 도우미, 트랜잭션 도우미. |
@@ -100,7 +100,7 @@
 | `crates/volicord-cli/src/main.rs` | `volicord` 프로세스 진입, 관리 명령 디스패치, `volicord mcp`와 local HTTP 프로세스 모드 인계, setup gate, 바이너리 종료 동작. |
 | `crates/volicord-cli/src/lib.rs` | 재사용 명령 모듈을 위한 공유 관리 CLI 크레이트 표면. |
 | `crates/volicord-cli/src/setup_command.rs`와 `crates/volicord-cli/src/setup_command/` | Setup 명령 진입, setup workflow 실행, 실행 파일 발견, command-link 계획, shell startup 계획, interactive 선택, setup 출력 렌더링. |
-| `crates/volicord-cli/src/connection_command.rs`와 `crates/volicord-cli/src/connection_command/` | `volicord init`, `volicord connection add`, `volicord connection list`, `volicord connection status/verify/mode/remove` 파싱, 프로비저닝, 선택, 검증, MCP process 점검, 출력 렌더링. |
+| `crates/volicord-cli/src/connection_command.rs`와 `crates/volicord-cli/src/connection_command/` | `volicord init`, `volicord connection add`, `volicord connection list`, `volicord connection status/verify/mode/remove` 파싱, 프로비저닝, 선택, 검증, MCP process 점검, 출력 렌더링. `connection_command/service.rs`는 Store의 부트스트랩과 Agent Connection 도우미를 통해 프로젝트와 Agent Connection 프로비저닝을 조율합니다. |
 | `crates/volicord-cli/src/guard_command.rs`와 `crates/volicord-cli/src/guard_command/` | Guard hook 명령 디스패치, 인수 파싱, host event 정규화, tool observation 추출, mutation 분류, phase 처리, prompt capture, prompt 안의 judgment 명령, 쓰기 티켓 점검, hook output 렌더링. |
 | `crates/volicord-cli/src/guard_integration/` | Guard integration 계획, 생성 guard 파일 적용, capability metadata, policy helper, 호스트별 guard hook 계획, connection status와 doctor diagnostics가 쓰는 사실 기반 audit helper. |
 | `crates/volicord-cli/src/guard_integration/plan.rs` | 호스트 capability, profile, project, runtime fact를 가로지르는 guard integration plan 조립. |
@@ -111,11 +111,11 @@
 | `crates/volicord-cli/src/guard_integration/hooks.rs`와 `crates/volicord-cli/src/guard_integration/hosts/` | Host hook command 계획과 호스트별 생성 파일 계획. |
 | `crates/volicord-cli/src/guard_integration/audit.rs` | 기록된 capability metadata, 생성 파일, wrapper script, hook command path, 관리 projection에 대한 사실 점검. 이 사실은 진단 관찰이지 보안 보장, 사용자 승인 기록, 정확성 증명이 아닙니다. |
 | `crates/volicord-cli/src/doctor_command.rs` | 진단 보고를 위한 installation, connection, host, guard fact 수집. |
-| `crates/volicord-cli/src/user_command.rs` | 로컬 User Channel 상태와 `volicord inbox` 명령 파싱 및 오케스트레이션. |
+| `crates/volicord-cli/src/user_command.rs` | 로컬 User Channel 상태와 `volicord inbox` 명령 파싱 및 오케스트레이션. 로컬 사용자 호출 사실을 Core의 판단 기록 경로에 전달합니다. |
 | `crates/volicord-cli/src/host_integration/` | 공유 host kind, scope, capability, lifecycle phase, config editing, integration contract, generic-host guidance, diagnostic status type. |
 | `crates/volicord-cli/src/host_integration/codex/` | Codex 어댑터 내부 구현. config 계획, 실행 파일 점검, managed identity, trust fact, 검증. |
 | `crates/volicord-cli/src/host_integration/claude_code/` | Claude Code 어댑터 내부 구현. CLI command 구성, config 계획, managed identity 점검, host-native output 파싱, 검증. |
-| `crates/volicord-cli/src/registration.rs` | Agent Connection, Connection Project, User Channel metadata 구성. |
+| `crates/volicord-cli/src/registration.rs` | Runtime Home 기록을 초기화할 때 쓰는 공유 관리 작업 생성자 메타데이터. |
 | `crates/volicord-cli/src/project_context.rs` | Product Repository root 감지와 `volicord project ...` 명령 오케스트레이션. |
 | `crates/volicord-cli/src/export_command.rs` | 권한 번들 export 명령 파싱과 렌더링. |
 | `crates/volicord-cli/src/changes_command.rs` | 로컬 change-reconciliation 명령 파싱과 오케스트레이션. |

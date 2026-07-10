@@ -101,8 +101,8 @@ Rust 값, 불투명 식별자, MCP 노출 도구 이름, 정규 요청 해시의
 
 로컬 MCP 호스트가 Core에 도달하는 경로를 보려면 `volicord-mcp`를 읽습니다.
 이 어댑터는 공개 도구를 등록하고, 시작/세션 맥락을 검증하고, `tools/call`
-인자를 디코딩하고, 로컬 Agent Connection에서 신뢰된 호출 맥락을 파생하고,
-Core를 호출한 뒤 Core JSON을 MCP `content`로 래핑합니다.
+인자를 디코딩하고, 묶인 로컬 Agent Connection에서 로컬 호출 사실을
+파생하고, Core를 호출한 뒤 Core JSON을 MCP `content`로 래핑합니다.
 
 크레이트 표면은 [`crates/volicord-mcp/src/lib.rs`](../../../crates/volicord-mcp/src/lib.rs)에서
 보고, 그다음 아래 경로를 따라갑니다.
@@ -116,6 +116,9 @@ Core를 호출한 뒤 Core JSON을 MCP `content`로 래핑합니다.
    `McpDerivedInvocationContext::core_invocation`.
 4. [`crates/volicord-mcp/src/stdio.rs`](../../../crates/volicord-mcp/src/stdio.rs):
    JSON-RPC stdio 디스패치, 사전 점검, 응답 래핑.
+5. [`crates/volicord-mcp/src/local_http.rs`](../../../crates/volicord-mcp/src/local_http.rs)와
+   [`crates/volicord-mcp/src/http.rs`](../../../crates/volicord-mcp/src/http.rs):
+   로컬 HTTP 수신기, 세션 라우팅, 공유 HTTP 파싱과 응답 도우미.
 
 경계를 분리해서 읽어야 합니다. MCP 시작과 라우팅 중 Store를 직접 읽는 것은 공개
 메서드 디스패치 전의 검증과 선택 작업입니다. 공개 메서드 의미는 계속
@@ -153,7 +156,7 @@ Core를 호출한 뒤 Core JSON을 MCP `content`로 래핑합니다.
 
 테스트는 분기와 사전 점검 경계를 다루는 `crates/volicord-core/src/pipeline.rs`에서
 시작한 뒤, 메서드 계획과 Store에 보이는 효과를 다루는
-`crates/volicord-core/src/methods/tests/mod.rs`로 이동합니다.
+`crates/volicord-core/src/methods/tests/` 아래의 메서드별 파일로 이동합니다.
 
 ## `crates/volicord-store`
 

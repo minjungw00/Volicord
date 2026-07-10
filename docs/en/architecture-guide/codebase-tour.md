@@ -108,7 +108,7 @@ requests planned.
 
 Read `volicord-mcp` when you want to see how a local MCP host reaches Core. The
 adapter registers public tools, validates startup/session context, decodes
-`tools/call` arguments, derives trusted invocation context from the local Agent
+`tools/call` arguments, derives local invocation facts from the bound Agent
 Connection, calls Core, and wraps Core JSON as MCP content.
 
 Open [`crates/volicord-mcp/src/lib.rs`](../../../crates/volicord-mcp/src/lib.rs)
@@ -124,6 +124,10 @@ for the crate surface, then follow this path:
    and `McpDerivedInvocationContext::core_invocation`.
 4. [`crates/volicord-mcp/src/stdio.rs`](../../../crates/volicord-mcp/src/stdio.rs)
    to see JSON-RPC stdio dispatch, preflight, and response wrapping.
+5. [`crates/volicord-mcp/src/local_http.rs`](../../../crates/volicord-mcp/src/local_http.rs)
+   and [`crates/volicord-mcp/src/http.rs`](../../../crates/volicord-mcp/src/http.rs)
+   to see the local HTTP listener, session routing, and shared HTTP parsing and
+   response helpers.
 
 Keep the boundary in mind: direct Store reads during MCP startup and routing are
 validation and selection work before public method dispatch. Public method
@@ -161,8 +165,9 @@ are worth reading after you understand one method. Use
 structures and [Request Lifecycle](request-lifecycle.md) for traced examples.
 
 For tests, start with `crates/volicord-core/src/pipeline.rs` for branch and
-preflight edges, then `crates/volicord-core/src/methods/tests/mod.rs` for method
-plans and Store-visible effects.
+preflight edges, then use the method-focused files under
+`crates/volicord-core/src/methods/tests/` for method plans and Store-visible
+effects.
 
 ## `crates/volicord-store`
 

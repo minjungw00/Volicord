@@ -19,8 +19,8 @@ Volicord 소스와 설치 파일은 별도의 구현 아티팩트 역할입니�
 - Store 코드는 Runtime Home 경로 처리, registry/project 데이터베이스,
   프로젝트 Store 접근, 스키마 초기화와 검증, 검사, Runtime Home 아래 아티팩트
   데이터를 맡습니다.
-- CLI 설정은 Product Repository 경로를 Runtime Home 기록에 등록하지만 그
-  저장소를 런타임 상태로 만들지 않습니다.
+- CLI 연결 프로비저닝은 Product Repository 경로를 Runtime Home 기록에
+  등록하지만 그 저장소를 런타임 상태로 만들지 않습니다.
 - CLI 설정과 MCP 시작은 Volicord 설치 파일을 참조할 수 있지만, 설치
   위치가 Runtime Home이나 Product Repository가 되지는 않습니다.
 - Core 메서드 코드는 메서드 담당 문서가 그런 입력을 정의할 때 Product
@@ -53,23 +53,27 @@ Volicord 소스와 설치 파일은 별도의 구현 아티팩트 역할입니�
 - [`crates/volicord-store/src/runtime_home.rs`](../../../../crates/volicord-store/src/runtime_home.rs):
   Runtime Home 해석.
 - [`crates/volicord-store/src/bootstrap.rs`](../../../../crates/volicord-store/src/bootstrap.rs):
-  Runtime Home 초기화와 프로젝트/Agent Connection 등록.
+  Runtime Home 초기화와 프로젝트 등록.
+- [`crates/volicord-store/src/agent_connections.rs`](../../../../crates/volicord-store/src/agent_connections.rs):
+  Agent Connection 기록과 Connection Project 멤버십.
 - [`crates/volicord-store/src/core_pipeline.rs`](../../../../crates/volicord-store/src/core_pipeline.rs):
   `CoreProjectStore` 프로젝트 로컬 Store 접근.
 - [`crates/volicord-store/src/artifacts.rs`](../../../../crates/volicord-store/src/artifacts.rs):
   Runtime Home 아티팩트 스테이징과 영구 본문 검증.
-- [`crates/volicord-cli/src/connection_command.rs`](../../../../crates/volicord-cli/src/connection_command.rs):
-  에이전트 설정 오케스트레이션과 Runtime Home 준비.
-- [`crates/volicord-cli/src/registration.rs`](../../../../crates/volicord-cli/src/registration.rs):
-  Agent Connection, Connection Project, 호출 출처 메타데이터 생성.
+- [`crates/volicord-cli/src/connection_command/service.rs`](../../../../crates/volicord-cli/src/connection_command/service.rs):
+  연결 프로비저닝, Runtime Home 준비, 프로젝트 등록, Agent Connection 멤버십
+  오케스트레이션.
 - [`crates/volicord-core/src/policy/path.rs`](../../../../crates/volicord-core/src/policy/path.rs):
   Core 정책에서 쓰는 Product Repository 경로 정규화 도우미.
 
 ## 관련 테스트와 참조 담당 문서
 
 - [`crates/volicord-cli/tests/binary_admin.rs`](../../../../crates/volicord-cli/tests/binary_admin.rs)의
-  `volicord_binary_runs_administrative_initialization_and_registration`,
-  `volicord_binary_agent_dry_run_writes_nothing_and_rejects_invalid_scope`.
+  `init_dry_run_does_not_write_runtime_or_repo_files`,
+  `init_rejects_invalid_profile_without_artifacts`,
+  `init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently`,
+  `project_commands_use_current_git_repository_without_user_ids`는 초기화,
+  쓰기 없는 실행, 프로젝트 선택 동작을 각각 확인합니다.
 - [`crates/volicord-test-support/src/lib.rs`](../../../../crates/volicord-test-support/src/lib.rs)의
   `disposable_runtime_home_stays_under_system_temp`.
 - 계층 간 호출 맥락 동작은

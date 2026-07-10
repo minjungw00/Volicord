@@ -58,7 +58,7 @@ All source and test paths are relative to the repository root.
 |---|---|
 | `crates/volicord-store/src/lib.rs` | Public crate surface for storage records, schema initialization, artifact plumbing, and Store helpers. |
 | `crates/volicord-store/src/runtime_home.rs` | Runtime Home path resolution and Runtime Home/Product Repository location validation helpers. |
-| `crates/volicord-store/src/bootstrap.rs` | Runtime Home metadata initialization, project registration, current-project helpers, and User Channel registration. |
+| `crates/volicord-store/src/bootstrap.rs` | Runtime Home metadata initialization, installation-profile persistence, project registration, and current-project helpers. |
 | `crates/volicord-store/src/agent_connections.rs` | Agent Connection rows, natural keys, Connection Projects membership, mode/status values, and Agent Connection lookup/update helpers. |
 | `crates/volicord-store/src/schema.rs` and `crates/volicord-store/src/schema/` | Canonical registry and project SQL sources plus schema initialization and validation wiring. |
 | `crates/volicord-store/src/sqlite.rs` | Registry/project SQLite path helpers, open/validation helpers, and transaction helpers. |
@@ -103,7 +103,7 @@ All source and test paths are relative to the repository root.
 | `crates/volicord-cli/src/main.rs` | `volicord` process entry, administrative command dispatch, `volicord mcp` and local HTTP process-mode handoff, setup gating, and binary exit behavior. |
 | `crates/volicord-cli/src/lib.rs` | Shared administrative CLI crate surface for reusable command modules. |
 | `crates/volicord-cli/src/setup_command.rs` and `crates/volicord-cli/src/setup_command/` | Setup command entry, setup workflow execution, executable discovery, command-link planning, shell startup planning, interactive choices, and setup output rendering. |
-| `crates/volicord-cli/src/connection_command.rs` and `crates/volicord-cli/src/connection_command/` | `volicord init`, `volicord connection add`, `volicord connection list`, and `volicord connection status/verify/mode/remove` parsing, provisioning, selection, verification, MCP process checks, and output rendering. |
+| `crates/volicord-cli/src/connection_command.rs` and `crates/volicord-cli/src/connection_command/` | `volicord init`, `volicord connection add`, `volicord connection list`, and `volicord connection status/verify/mode/remove` parsing, provisioning, selection, verification, MCP process checks, and output rendering. `connection_command/service.rs` coordinates project and Agent Connection provisioning through Store bootstrap and Agent Connection helpers. |
 | `crates/volicord-cli/src/guard_command.rs` and `crates/volicord-cli/src/guard_command/` | Guard hook command dispatch, argument parsing, host event normalization, tool observation extraction, mutation classification, phase handling, prompt capture, prompt-embedded judgment commands, write-ticket checks, and hook output rendering. |
 | `crates/volicord-cli/src/guard_integration/` | Guard integration planning, generated guard file application, capability metadata, policy helpers, host-specific guard hook planning, and factual audit helpers used by connection status and doctor diagnostics. |
 | `crates/volicord-cli/src/guard_integration/plan.rs` | Guard integration plan assembly across host capability, profile, project, and runtime facts. |
@@ -114,11 +114,11 @@ All source and test paths are relative to the repository root.
 | `crates/volicord-cli/src/guard_integration/hooks.rs` and `crates/volicord-cli/src/guard_integration/hosts/` | Host hook command planning and host-specific generated file planning. |
 | `crates/volicord-cli/src/guard_integration/audit.rs` | Factual checks over recorded capability metadata, generated files, wrapper scripts, hook command paths, and managed projections. These facts are diagnostic observations, not security guarantees, human approval records, or correctness proofs. |
 | `crates/volicord-cli/src/doctor_command.rs` | Installation, connection, host, and guard fact gathering for diagnostic reporting. |
-| `crates/volicord-cli/src/user_command.rs` | Local User Channel status and `volicord inbox` command parsing and orchestration. |
+| `crates/volicord-cli/src/user_command.rs` | Local User Channel status and `volicord inbox` command parsing and orchestration, including local-user invocation facts passed to Core judgment recording. |
 | `crates/volicord-cli/src/host_integration/` | Shared host kinds, scopes, capabilities, lifecycle phases, config editing, integration contracts, generic-host guidance, and diagnostic status types. |
 | `crates/volicord-cli/src/host_integration/codex/` | Codex adapter internals for config planning, executable checks, managed identity, trust facts, and verification. |
 | `crates/volicord-cli/src/host_integration/claude_code/` | Claude Code adapter internals for CLI command construction, config planning, managed identity checks, host-native output parsing, and verification. |
-| `crates/volicord-cli/src/registration.rs` | Agent Connection, Connection Project, and User Channel metadata construction. |
+| `crates/volicord-cli/src/registration.rs` | Shared administrative creator metadata used when initializing Runtime Home records. |
 | `crates/volicord-cli/src/project_context.rs` | Product Repository root detection and `volicord project ...` command orchestration. |
 | `crates/volicord-cli/src/export_command.rs` | Authority bundle export command parsing and rendering. |
 | `crates/volicord-cli/src/changes_command.rs` | Local change-reconciliation command parsing and orchestration. |

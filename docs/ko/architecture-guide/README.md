@@ -92,10 +92,13 @@ Core는 Volicord 상태를 위한 로컬 기준 기록입니다.
 [`crates/volicord-cli/src/main.rs`](../../../crates/volicord-cli/src/main.rs)에서
 시작한 뒤
 [`crates/volicord-cli/src/connection_command.rs`](../../../crates/volicord-cli/src/connection_command.rs),
+[`crates/volicord-cli/src/connection_command/service.rs`](../../../crates/volicord-cli/src/connection_command/service.rs),
 [`crates/volicord-cli/src/host_integration/`](../../../crates/volicord-cli/src/host_integration/),
-[`crates/volicord-cli/src/registration.rs`](../../../crates/volicord-cli/src/registration.rs)를
+[`crates/volicord-store/src/bootstrap.rs`](../../../crates/volicord-store/src/bootstrap.rs),
+[`crates/volicord-store/src/agent_connections.rs`](../../../crates/volicord-store/src/agent_connections.rs)를
 읽습니다. 로컬 User Channel 동작은 이어서
-[`crates/volicord-cli/src/user_command.rs`](../../../crates/volicord-cli/src/user_command.rs)를
+[`crates/volicord-cli/src/user_command.rs`](../../../crates/volicord-cli/src/user_command.rs)와
+[`crates/volicord-core/src/methods/judgment.rs`](../../../crates/volicord-core/src/methods/judgment.rs)를
 읽습니다.
 
 ## 경계 기억하기

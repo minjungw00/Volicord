@@ -27,10 +27,14 @@ Volicord는 AI 지원 제품 작업을 위한 로컬 작업 권한 기록입니�
 
 ## 운영 경로
 
-개요 수준에서 구현에는 오래 유지되는 세 가지 로컬 경로 형태가 있습니다.
+개요 수준에서 구현에는 오래 유지되는 네 가지 로컬 경로 형태가 있습니다.
 
 - MCP 호스트 -> `volicord mcp --stdio` -> `volicord-mcp` -> `volicord-core` ->
-  `Volicord Runtime Home` 아래의 Store와 아티팩트 기능.
+  `Volicord Runtime Home` 아래의 `volicord-store`. 아티팩트 기능도 이 Store에
+  포함됩니다.
+- 로컬 MCP 클라이언트 -> `volicord serve --transport local-http` ->
+  `volicord-mcp` -> `volicord-core` -> `Volicord Runtime Home` 아래의
+  `volicord-store`.
 - 운영자 -> `volicord` 관리 CLI -> setup, 등록, 호스트, 진단 기능 ->
   `Volicord Runtime Home`과 지원되는 호스트 설정 경계.
 - 로컬 사용자 -> `volicord inbox` CLI -> `volicord-core` -> `Volicord Runtime Home`
@@ -40,22 +44,23 @@ Volicord는 AI 지원 제품 작업을 위한 로컬 작업 권한 기록입니�
 flowchart LR
   host["MCP host / Agent Connection"]
   mcp["volicord mcp --stdio"]
+  httpclient["local MCP client"]
+  localhttp["volicord serve --transport local-http<br/>volicord-mcp"]
   cli["volicord administrative CLI"]
   inbox["volicord inbox"]
   core["volicord-core"]
-  store["volicord-store"]
-  artifacts["artifact facilities"]
+  store["volicord-store<br/>(including artifact facilities)"]
   runtime["Volicord Runtime Home"]
   product["Product Repository"]
 
   host --> mcp --> core
+  httpclient --> localhttp --> core
   mcp -. startup and session validation .-> store
+  localhttp -. startup and session validation .-> store
   cli --> store
   inbox --> core
   core --> store
-  core --> artifacts
   store --> runtime
-  artifacts --> runtime
   product -. observed inputs and owner-defined paths .-> core
   host -. product-file tools outside public API .-> product
 ```
@@ -115,7 +120,7 @@ flowchart LR
 | Core와 어댑터 | Core는 어댑터와 독립적인 공개 메서드 처리를 담당합니다. CLI와 MCP 어댑터는 Core 주변의 프로세스, setup, 전송, 라우팅, 렌더링 경계를 담당합니다. Core는 어느 어댑터 계층에도 의존하지 않습니다. | [요청 생명주기](request-lifecycle.md), [구현 설계 패턴](design-patterns.md), [Core와 어댑터 의존 경계](decisions/core-adapter-boundary.md), [API 메서드](../reference/api/methods.md), [MCP 전송](../reference/mcp-transport.md), [관리 CLI](../reference/admin-cli.md). |
 | Runtime Home과 Product Repository | `Volicord Runtime Home`은 저장소/런타임 담당 문서가 정의하는 Volicord 런타임 기록과 아티팩트 데이터를 담습니다. `Product Repository`는 사용자 제품 파일과 담당 문서가 허용하는 명시적 통합 파일을 담습니다. | [저장소와 트랜잭션](storage-and-transactions.md), [Runtime Home과 Product Repository 분리](decisions/runtime-home-and-product-repository.md), [런타임 경계](../reference/runtime-boundaries.md), [보안](../reference/security.md). |
 | Store 커밋 경계 | Core 메서드 계획 코드는 읽기 전용, 효과 없음, dry-run, 스테이징, 커밋 분기를 고릅니다. Store는 정상 커밋된 Core 변이를 트랜잭션 경계에서 적용하고, 아티팩트 스테이징을 정상 Core 변이 커밋과 분리합니다. Core 권한 의미는 Core 담당 문서에, 정확한 저장소 기록과 효과는 저장소 담당 문서에 남습니다. | [저장소와 트랜잭션](storage-and-transactions.md), [요청 생명주기](request-lifecycle.md), [Core 모델](../reference/core-model.md), [저장소](../reference/storage.md), [저장 효과](../reference/storage-effects.md). |
-| MCP 어댑터 경계 | `volicord mcp --stdio`는 Runtime Home과 Agent Connection 맥락을 해석하고, 시작/세션 사실을 검증하며, connection mode에 따라 담당 문서가 정의한 도구를 노출하고, 허용된 프로젝트를 선택하고, `tools/call`을 디코딩하고, 어댑터 관리 호출 사실을 도출하고, Core를 호출하고, Core JSON을 MCP content로 감쌉니다. | [요청 생명주기](request-lifecycle.md), [소스 지도](source-map.md), [MCP 전송](../reference/mcp-transport.md), [Agent Connection](../reference/agent-connection.md). |
+| MCP 어댑터 경계 | `volicord mcp --stdio`와 `volicord serve --transport local-http`는 전송별 진입 경로를 제공합니다. `volicord-mcp`는 Runtime Home과 Agent Connection 맥락을 해석하고, 시작/세션 사실을 검증하며, connection mode에 따라 담당 문서가 정의한 도구를 노출하고, 허용된 프로젝트를 선택하고, `tools/call`을 디코딩하고, 어댑터가 관리하는 로컬 호출 사실을 도출하고, Core를 호출하고, Core JSON을 MCP content로 감쌉니다. | [요청 생명주기](request-lifecycle.md), [소스 지도](source-map.md), [MCP 전송](../reference/mcp-transport.md), [Agent Connection](../reference/agent-connection.md). |
 | 관리 CLI와 호스트 어댑터 | CLI는 로컬 setup, 프로젝트 등록, Agent Connection 관리, 호스트 통합, guard integration, 진단, `User Channel` 명령을 오케스트레이션합니다. 이 작업 흐름은 로컬 관리 오케스트레이션이며 공개 Core 메서드나 보안 증명이 아닙니다. | [CLI 작업 흐름](cli-workflows.md), [소스 지도](source-map.md), [관리 CLI](../reference/admin-cli.md), [보안](../reference/security.md). |
 | 플랫폼 파일시스템 파사드 | `volicord-platform-fs`는 플랫폼 고유 이름 공간 기본 연산을 안전한 Rust 결과 뒤에 격리합니다. 어떤 파일을 관리하는지, 교체가 승인되었는지, 연산 후 상태가 유효한지, 복구와 진단이 무엇을 뜻하는지는 결정하지 않습니다. 그 책임은 호출하는 어댑터와 집중 참조 담당 문서에 남습니다. | [소스 지도](source-map.md), [CLI 작업 흐름](cli-workflows.md), [관리 CLI](../reference/admin-cli.md), [런타임 경계](../reference/runtime-boundaries.md), [시스템 요구사항](../reference/system-requirements.md). |
 | 테스트와 검증 | 구현 테스트는 담당 문서가 정의한 사실을 적절한 계층에서 검증합니다. 테스트, 픽스처, 생성 snapshot, 문서 점검은 제품 계약 담당 문서가 되지 않습니다. | [테스트 전략](testing-strategy.md), [검증](../maintain/validation.md). |

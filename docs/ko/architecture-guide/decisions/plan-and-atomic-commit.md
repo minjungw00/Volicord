@@ -59,7 +59,7 @@
 - [`crates/volicord-store/src/core_pipeline.rs`](../../../../crates/volicord-store/src/core_pipeline.rs)의
   `transaction_replay_returns_stored_response_before_stale_expected_state`,
   `transaction_replay_hash_conflict_rejects_without_effect`.
-- [`crates/volicord-core/src/methods/tests/mod.rs`](../../../../crates/volicord-core/src/methods/tests/mod.rs)의
+- [`crates/volicord-core/src/methods/tests/stage_artifact.rs`](../../../../crates/volicord-core/src/methods/tests/stage_artifact.rs)의
   `stage_artifact_creates_transient_handle_without_core_commit`.
 - [저장 효과](../../reference/storage-effects.md),
   [저장소 버전 관리](../../reference/storage-versioning.md),
