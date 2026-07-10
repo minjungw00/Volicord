@@ -188,6 +188,7 @@ pub(super) fn shell_path_command_for_selected_dirs(
     }
 }
 
+#[cfg(not(windows))]
 fn shell_path_expression(
     process: &impl SetupProcess,
     dir: &Path,
@@ -217,6 +218,7 @@ fn shell_path_expression(
     Ok(escape_double_quoted_shell(dir))
 }
 
+#[cfg(not(windows))]
 fn escape_double_quoted_shell(text: &str) -> String {
     let mut escaped = String::new();
     for ch in text.chars() {

@@ -19,6 +19,7 @@ pub(crate) enum ManagedBlockError {
     Duplicate { start_marker: &'static str },
 }
 
+#[cfg(any(unix, test))]
 pub(crate) fn path_export_block(path_expr: &str) -> String {
     format!("{START_MARKER}\nexport PATH=\"{path_expr}:$PATH\"\n{END_MARKER}\n")
 }

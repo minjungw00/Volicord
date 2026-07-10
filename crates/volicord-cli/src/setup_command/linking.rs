@@ -1,7 +1,10 @@
 use std::{
-    fs, io,
+    fs,
     path::{Path, PathBuf},
 };
+
+#[cfg(unix)]
+use std::io;
 
 use serde_json::json;
 
@@ -20,6 +23,7 @@ pub(super) fn prepare_link_bin(link_bin: &Path) -> Result<(), (&'static str, Str
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(not(unix), allow(dead_code))]
 pub(super) enum LinkInstallResult {
     Created(PathBuf),
     Existing(PathBuf),
