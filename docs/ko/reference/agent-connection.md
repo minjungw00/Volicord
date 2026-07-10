@@ -1,12 +1,8 @@
 # Agent Connection 참조
 
-이 문서는 로컬 MCP 호스트 통합을 위한 Agent Connection과 현재 연결 맥락의 경계를
-담당합니다. 요청이 Core에 들어가기 전에 Agent Connection, 연결 의도, 연결
-프로젝트, 연결 모드, `actor_source`, `operation_category`를 어떻게 해석하는지
-정의합니다.
-
-공개 API 스키마, 메서드 동작, 저장 효과, 보안 보장 의미, `volicord mcp --stdio` 와이어
-동작, Core 권한 의미는 이 문서가 정의하지 않습니다.
+이 문서는 로컬 MCP 호스트 통합에서 Agent Connection과 현재 연결 맥락의 경계를
+정의합니다. 요청이 Core에 들어가기 전에 Agent Connection, 연결 의도, 연결 프로젝트,
+연결 모드, `actor_source`, `operation_category`를 어떻게 해석하는지 설명합니다.
 
 ## 담당하는 것 / 담당하지 않는 것
 
@@ -16,7 +12,7 @@
 - 연결 의도 의미: `personal`, `shared`, `global`
 - MCP 호스트 호출의 현재 연결 맥락 경계
 - `actor_source`와 `operation_category` 출처 경계
-- 권한을 지니는 판단 해결에서 User Channel과 Agent Connection의 경계
+- 권한 효력이 있는 판단 해결에서 User Channel과 Agent Connection의 경계
 - Agent Connection 계층의 저장소 루트 프로젝트 선택과 프로젝트 가용성 경계
 - 담당 결과와 Agent Connection 사이의 에이전트 맥락 전달 규칙
 - 선택된 Agent Connection이나 현재 연결 맥락을 사용할 수 없거나, 맞지 않거나,
@@ -29,13 +25,26 @@
   문서, [API 값 집합](api/schema-value-sets.md)
 - `volicord mcp --stdio` 시작, 프로세스 환경, stdio 프레이밍, 시작 검증, 응답
   래핑, 종료: [MCP 전송](mcp-transport.md)
-- 관리 setup, 연결, 상태, 검증, 모드, 제거, 프로젝트, 권한 번들 내보내기 명령:
+- 초기 설정, 연결, 상태, 검증, 모드, 제거, 프로젝트, 권한 번들 내보내기 관리 명령:
   [관리 CLI](admin-cli.md)
 - 저장소 배치, 아티팩트 생명주기, 스테이징 핸들 검증: [참조 색인](README.md)에서
   고르는 저장소와 아티팩트 담당 문서
 - 보안 보장 의미나 접근 경계 표현: [보안](security.md)
 - 권한과 파생 표시의 구분 규칙: [상태 보기와 템플릿 표시 경계](projection-and-templates.md)
 - 렌더링 본문 문구, 공개 표시 라벨, 템플릿 표현: [템플릿 본문](template-bodies.md)
+
+<a id="surface-stability"></a>
+## 표면 안정성
+
+라벨은 [문서 정책](../maintain/documentation-policy.md#surface-stability-labels)의
+기준 어휘를 따릅니다.
+
+| 표면 | 안정성 | 비고 |
+|---|---|---|
+| Agent Connection 의미, 연결 의도, Connection Projects 멤버십, 연결 모드, 현재 연결 맥락 경계 | `stable` | 로컬 통합 계약입니다. OS 권한이나 사용자 권한이 아닙니다. |
+| 관리 호스트 생명주기와 검증 관찰 | `beta` | 지원되지만 호스트와 사용 가능한 기능에 따라 달라집니다. |
+| 저장된 식별 정보, 프로세스 바인딩 값, 호스트 설정 키, 파생 호출 메타데이터 | `internal` | 공개 MCP 입력에서 호출자 소유 권한처럼 노출하면 안 됩니다. |
+| 사람이 읽는 상태, 검증, 대체 안내, 지침 문구 | `diagnostic` | 집중 담당 문서가 명시한 필드만 안정적인 계약입니다. |
 
 ## Agent Connection
 
@@ -49,22 +58,10 @@ Agent Connection은 `Volicord Runtime Home` 아래에 `connection_internal_id`�
 파생된 `connection_id` 프로세스 바인딩 값이 들어갈 수 있습니다. 그 값은 사용자 권한
 토큰이 아니며 일반 명령 입력으로 필요하지 않습니다.
 
-저장되는 Agent Connection 필드는 아래를 포함합니다.
-
-- `connection_internal_id`
-- `host_kind`
-- `intent`
-- `host_scope`
-- 연결 대상이 프로젝트 범위일 때의 `project_internal_id`
-- `server_name`
-- `config_target`
-- `mode`
-- `enabled`
-- `managed_fingerprint`
-- `last_verification_status`
-- 생성 및 갱신 시각
-
-내부 호스트 설정 키 `server_name`의 기본값은 `volicord`입니다.
+레지스트리는 연결의 내부 식별 정보, 호스트와 의도, 설정 대상, 모드, 활성 상태,
+관리 지문, 검증 상태, 관련 메타데이터를 저장합니다. 정확한 기록 필드는
+[저장소 기록](storage-records.md)과 [저장소 DDL](storage-ddl.md)이 담당합니다. 내부
+호스트 설정 키 `server_name`의 기본값은 `volicord`입니다.
 
 <a id="lifecycle-and-state-boundaries"></a>
 ## 생명주기와 상태 경계
@@ -72,55 +69,70 @@ Agent Connection은 `Volicord Runtime Home` 아래에 `connection_internal_id`�
 Agent Connection 생명주기는 여러 상태 영역에 걸쳐 있습니다. 한 명령이 한 상태
 영역을 바꾸더라도 다른 영역은 그대로 둘 수 있습니다.
 
-| 영역 | 저장 또는 담당 위치 | 바꾸는 명령 | 경계 |
-|---|---|---|---|
-| 설치 프로필 | 선택된 Runtime Home 식별 정보와 MCP 명령 위치를 포함하는 Runtime Home registry 설치 기록입니다. | 필요하면 `volicord init`이 만들거나 재사용합니다. | 설치 프로필 상태는 필요한 로컬 설정입니다. 호스트 신뢰 결정, 사용자 판단, 공개 API 메서드가 아닙니다. |
-| Agent Connection 레지스트리 상태 | `Volicord Runtime Home` 아래의 `agent_connections` 기록입니다. `connection_internal_id`, 호스트 종류, 연결 의도, `server_name`, `config_target`, `connection.mode`, 활성 상태, 관리 지문, `last_verification_status`를 포함합니다. | `volicord init`은 일반 shared 기록을 만들거나 갱신하고, 낮은 수준의 `volicord connection add`는 선택된 기록을 만들거나 갱신하며, `volicord connection mode`가 모드를 바꾸고, `volicord connection verify`가 검증 상태를 갱신하고, `volicord connection remove`는 멤버십 제거 뒤 기록을 제거할 수 있습니다. | 레지스트리 상태는 관리 상태입니다. 호스트 설정 파일이 아니며, 외부 호스트가 MCP 서버를 로드, 신뢰, 승인, 노출했다는 증거가 아닙니다. |
-| Connection Projects 멤버십 | 같은 Runtime Home 아래의 `connection_projects` 기록입니다. | `volicord init`과 `volicord connection add`는 선택된 저장소 루트의 멤버십을 추가하거나 검증할 수 있고, 연결 제거 흐름은 멤버십을 제거할 수 있습니다. `volicord project use`는 프로젝트를 등록하거나 재사용하지만 Agent Connection에 추가하지는 않습니다. | 멤버십은 Agent Connection의 프로젝트 허용 목록을 제어합니다. 모든 Runtime Home 프로젝트를 등록하지 않으며 프로젝트 등록, 프로젝트 상태, Core 기록을 삭제하지 않습니다. |
-| 호스트 설정 | `config_target`이 가리키는 MCP 호스트 설정 위치 또는 사용자 관리 generic 호스트 설정입니다. | `volicord init`은 일반 관리 프로젝트 로컬 호스트 설정을 설치하거나 갱신하고, 낮은 수준의 `volicord connection add`는 선택된 의도의 관리 호스트 설정을 설치하거나 갱신합니다. `volicord connection remove`는 안전 점검이 허용할 때 일치하는 관리 내용만 제거합니다. | 호스트 설정은 `volicord mcp --stdio`를 시작하지만 외부 호스트 통합 표면으로 남습니다. 레지스트리 상태와 동일하지 않습니다. |
-| 검증 상태 | Agent Connection 레지스트리 기록의 `last_verification_status`와 [관리 CLI](admin-cli.md#agent-connection-result-states)가 담당하는 명령 출력입니다. | `volicord init`, `volicord connection add`, `volicord connection verify`가 관찰 가능한 호스트 설정, hook 경로 안전성, MCP 시작, MCP 초기화, `tools/list` 점검을 가능한 곳에서 실행합니다. | 검증은 Volicord 쪽 상태와 호스트/MCP 준비 상태를 모두 살펴볼 수 있습니다. Hook 경로 안전성, Codex 프로젝트 trust, CLI MCP 시작 검증, 직접 `tools/list` 점검은 관리 Codex lifecycle 관찰과 활성 session 도구 노출과 별개로 유지됩니다. |
-| 호출 가능 여부 | MCP 어댑터가 시작 시점과 공개 도구 호출마다 파생하는 현재 연결 맥락입니다. | `enabled`, 연결 프로젝트 가용성, `connection.mode`, 메서드의 `operation_category`가 영향을 줍니다. | 레지스트리나 프로젝트 상태가 바뀌면 호스트 설정을 다시 쓰지 않아도 호출이 불가능해질 수 있습니다. |
-| 제거 | 관리 호스트 내용, `connection_projects`, 그리고 경우에 따라 `agent_connections`입니다. | `volicord connection remove`. | 제거는 `Product Repository`, 프로젝트 등록, 프로젝트 상태, Core 기록, Runtime Home 자체, 아티팩트 저장소, 관련 없는 호스트 설정을 삭제하면 안 됩니다. |
+- 설치 프로필: Runtime Home 레지스트리 설치 기록은 선택된 Runtime Home 식별 정보와 MCP
+  명령 위치를 저장합니다. `volicord init`이 이 필수 로컬 설정을 만들거나 재사용합니다.
+  호스트 신뢰, 사용자 판단, 공개 API 메서드가 아닙니다.
+- Agent Connection 레지스트리 상태: `agent_connections`는 관리 상태를 저장합니다. Init과
+  연결 명령이 생성, 갱신, 검증, 모드 변경, 제거를 수행합니다. 레지스트리 상태는 호스트
+  설정이 아니며 외부 호스트가 MCP 서버를 불러오고, 신뢰하고, 승인하고, 노출했다는
+  증거도 아닙니다.
+- Connection Projects 멤버십: `connection_projects`는 명시적 프로젝트 허용 목록을
+  저장합니다. Init과 연결 추가가 멤버십을 추가하거나 검증하고, 제거가 이를 삭제할 수
+  있습니다. `volicord project use`는 프로젝트를 등록하지만 멤버십을 추가하지 않습니다.
+  멤버십 변경은 프로젝트나 Core 상태를 삭제하지 않습니다.
+- 호스트 설정: `config_target` 또는 사용자가 관리하는 일반 대상이 외부 호스트 표면을
+  가리킵니다. Init과 연결 추가는 관리 내용을 설치하고, 제거는 안전하게 일치하는 관리
+  내용만 삭제합니다. 이 설정은 `volicord mcp --stdio`를 시작하지만 레지스트리 상태는
+  아닙니다.
+- 검증 상태: `last_verification_status`와 [관리 CLI](admin-cli.md#agent-connection-result-states)가
+  담당하는 출력은 최근 점검을 기록합니다. 호스트 설정, 훅 안전성, MCP 시작, 초기화,
+  `tools/list` 점검은 관리 생명주기 관찰과 활성 세션 도구 노출과 구분합니다.
+- 호출 가능 여부: MCP 어댑터가 시작 시점과 공개 도구 호출마다 파생합니다. `enabled`,
+  프로젝트 가용성, `connection.mode`, `operation_category`가 영향을 줍니다. 레지스트리나
+  프로젝트 상태가 바뀌면 호스트 설정을 다시 쓰지 않아도 호출할 수 없게 될 수 있습니다.
+- 제거: `volicord connection remove`는 관리 호스트 내용, 멤버십, 경우에 따라 Agent
+  Connection을 제거합니다. Product Repository, 프로젝트 등록·상태, Core 기록, Runtime
+  Home, 아티팩트 저장소, 관련 없는 호스트 설정은 삭제하면 안 됩니다.
 
 Volicord 관리 호스트 설정은 Volicord가 특정 생성 호스트 설정 내용을 소유하고 지문으로
-확인한다는 뜻입니다. 이는 호스트 계약에 기록된 내부 host-hook 배포 상태와 같지 않습니다.
-그 상태는 hook 관련 구현 기록을 위한 검증된 출처를 설명하며, 공개 통합 모드나 보안 경계가
+확인한다는 뜻입니다. 이는 호스트 계약에 기록된 내부 호스트 훅 배포 상태와 같지 않습니다.
+그 상태는 훅 관련 구현 기록을 위한 검증된 출처를 설명하며, 공개 통합 모드나 보안 경계가
 아닙니다.
 
 Agent Connection 검증은 아래 계층을 분리해 유지합니다.
 
-- 호스트 관리 설정 identity: 선택된 연결에 필요한 관리 서버 이름, command, args,
-  environment, scope, fingerprint
-- 호스트 trust, approval, pending 상태: trust, 프로젝트 MCP approval, OAuth, pending
-  approval, rejection 같은 호스트 소유 gate
-- 호스트 policy overlay: 관리 identity가 계속 일치할 때 Volicord 설정 drift가 아니라
-  관리 설정 위에 얹힌 호스트 소유 approval 또는 permission 설정
-- CLI MCP preflight와 handshake: Volicord MCP 서버에 대한 터미널 쪽 시작과 프로토콜 점검
+- 호스트 관리 설정 식별 정보: 선택된 연결에 필요한 관리 서버 이름, 명령, 인자, 환경,
+  범위, 지문
+- 호스트 신뢰·승인·대기 상태: 신뢰, 프로젝트 MCP 승인, OAuth, 승인 대기, 거절 같은
+  호스트 소유 조건
+- 호스트 정책 추가 설정: 관리 식별 정보가 계속 일치할 때 Volicord 설정 불일치로
+  취급하지 않는 호스트 소유 승인 또는 권한 설정
+- CLI MCP 사전 점검과 핸드셰이크: Volicord MCP 서버에 대한 터미널 쪽 시작과 프로토콜 점검
 - 관리 호스트 시작: 선택된 연결에 대해 관리 호스트 프로세스가 Volicord MCP 서버를
-  시작했다는 lifecycle 증거
-- 관리 호스트 `tools/list`: 관리 호스트 프로세스가 MCP 도구 탐색에 도달했다는 lifecycle
+  시작했다는 생명주기 증거
+- 관리 호스트 `tools/list`: 관리 호스트 프로세스가 MCP 도구 탐색에 도달했다는 생명주기
   증거
-- 관리 호스트 도구 호출: 관리 호스트 프로세스가 Volicord 도구를 호출했다는 lifecycle 증거
-- 활성 도구 노출: 활성 호스트 session이 현재 호스트 도구 목록, 도구 검색, 또는 명시적으로
+- 관리 호스트 도구 호출: 관리 호스트 프로세스가 Volicord 도구를 호출했다는 생명주기 증거
+- 활성 도구 노출: 활성 호스트 세션이 현재 호스트 도구 목록, 도구 검색, 또는 명시적으로
   신뢰할 수 있는 다른 출처에서 Volicord 도구를 볼 수 있다는 증거
-- 저장소 capability: 선택된 프로세스 바인딩이 registry와 project state를 읽을 수 있는지,
-  workflow 도구에는 project state를 쓸 수 있는지
+- 저장소 기능: 선택된 프로세스 바인딩이 레지스트리와 프로젝트 상태를 읽을 수 있는지,
+  워크플로 도구에서 프로젝트 상태를 쓸 수 있는지
 
-CLI 쪽 MCP preflight, `volicord mcp --check`, 직접 MCP handshake는 프로세스 시작과
+CLI 쪽 MCP 사전 점검, `volicord mcp --check`, 직접 MCP 핸드셰이크는 프로세스 시작과
 프로토콜 진단입니다. 그 자체만으로 Codex, Claude Code 또는 다른 외부 호스트가 프로젝트
 설정을 로드, 신뢰, 승인, 초기화, 노출했다는 증명이 아닙니다.
 
-Codex 프로젝트 범위 MCP 설정에서 Volicord가 관리하는 `managed identity`는 `volicord`
-서버 이름, 선택된 연결과 프로젝트 바인딩을 담은 생성 command와 args, 그리고
+Codex 프로젝트 범위 MCP 설정에서 Volicord가 관리하는 식별 정보는 `volicord` 서버
+이름, 선택된 연결과 프로젝트 바인딩을 담은 생성 명령과 인자, 그리고
 `VOLICORD_MCP_LAUNCH=managed_host`, `VOLICORD_MCP_HOST=codex`,
 `VOLICORD_MCP_CONNECTION_ID=<connection_id>`, 프로젝트 바인딩이 있을 때의
 `VOLICORD_MCP_PROJECT_ID=<project_id>` 같은 Volicord 관리 환경 변수 마커로 이루어집니다.
-그 서버 항목 아래의 Codex 소유 도구 승인 하위 table은 `host policy overlay`이며,
-Volicord가 관리하는 identity가 아닙니다. 허용된 `tools.<tool>.approval_mode` overlay를
-보존해도 호스트 trust, 활성 도구 노출, 실행 중인 session의 승인, 정확성, 테스트 충분성,
-사람 검토 완료, sandboxing, 행위자 identity를 증명하지 않습니다. Volicord 관리 마커가
-없는 `volicord` 서버 항목은 비관리 항목입니다. command, args, 관리 마커 drift는 계속
-설정 drift입니다.
+그 서버 항목 아래의 Codex 소유 도구 승인 하위 테이블은 호스트 정책 추가 설정이며,
+Volicord 관리 식별 정보가 아닙니다. 허용된 `tools.<tool>.approval_mode` 설정을 보존해도
+호스트 신뢰, 활성 도구 노출, 실행 중인 세션의 승인, 정확성, 테스트 충분성, 사람 검토
+완료, 샌드박싱, 행위자 신원을 증명하지 않습니다. Volicord 관리 마커가 없는
+`volicord` 서버 항목은 비관리 항목입니다. 명령, 인자, 관리 마커의 차이는 계속 설정
+불일치입니다.
 
 규칙:
 
@@ -136,7 +148,7 @@ Volicord가 관리하는 identity가 아닙니다. 허용된 `tools.<tool>.appro
 - `connection.mode=read_only`는 읽기와 프로젝트 탐색 동작을 노출합니다. 워크플로 쓰기
   역량이 아닙니다.
 - `connection_internal_id`, `connection_id` 프로세스 바인딩, 연결 모드, 연결 의도,
-  호스트 설정, MCP 서버 지침은 OS 권한, 호스트 신뢰, 비밀 격리, 파일시스템 ACL,
+  호스트 설정, MCP 서버 지침은 OS 권한, 호스트 신뢰, 비밀값 격리, 파일시스템 ACL,
   네트워크 정책, 사용자 권한이 아닙니다.
 
 저장 기록 계열과 DDL은 [저장소 기록](storage-records.md)과 [저장소 DDL](storage-ddl.md)이
@@ -156,7 +168,7 @@ Volicord가 관리하는 identity가 아닙니다. 허용된 `tools.<tool>.appro
 
 기준 범위에서 직접 관리하는 호스트 종류는 `codex`와 `claude_code`입니다. 호스트 중립
 MCP 설정은 사용자 관리입니다. 사용자 관리 설정은 지원되는 Agent Connection이 이미
-있을 때만 `volicord mcp --stdio`를 시작하는 데 필요한 내부 registry 상태를 사용할 수
+있을 때만 `volicord mcp --stdio`를 시작하는 데 필요한 내부 레지스트리 상태를 사용할 수
 있지만, 직접 호스트 설치를 위한 일반 연결 의도는 아닙니다.
 
 ## Connection Projects
@@ -179,7 +191,7 @@ Connection Projects는 Agent Connection과 등록 프로젝트 사이의 명시�
   모드, 메서드 담당 호출 요구사항을 우회하지 않습니다.
 - 유효하지 않은 현재 프로젝트 등록은 연결 프로젝트 기록으로 반환하지 말고 Connection
   Projects 목록 조회와 접근 해석에서 거절해야 합니다.
-- inactive이거나 그 밖의 이유로 실행 부적격인 유효한 프로젝트는 멤버십이 있어도 실행
+- `inactive`이거나 그 밖의 이유로 실행 부적격인 유효한 프로젝트는 멤버십이 있어도 실행
   시점에 계속 사용할 수 없습니다.
 - Connection Project 제거 또는 Agent Connection 비활성화는 호스트 설정을 다시 쓰지
   않아도 효력을 가져야 합니다.
@@ -195,41 +207,40 @@ Connection Projects는 Agent Connection과 등록 프로젝트 사이의 명시�
 - 프로젝트가 연결되고 시작 또는 호출별 프로젝트 점검이 필요한 프로젝트 상태를 검증할 수
   있어야 Agent Connection을 다시 실행할 수 있습니다.
 
-## 호스트 설정 인벤토리
+## 호스트 설정 관리 현황
 
-저장된 Agent Connection은 Volicord가 관리하는 호스트 설정과 검증 상태를 위한 관리
-인벤토리입니다. 호스트 설정 파일은 외부 호스트의 운영상 원천으로 남습니다. 레지스트리
-기록은 관리 인벤토리와 마지막으로 알려진 검증 상태일 뿐이며 호스트 설정을 대신하지
-않습니다.
+저장된 Agent Connection은 Volicord가 관리하는 호스트 설정과 검증 상태를 추적합니다.
+호스트 설정 파일은 외부 호스트가 실제로 사용하는 원천입니다. 레지스트리 기록은 관리
+현황과 마지막으로 알려진 검증 상태일 뿐이며 호스트 설정을 대신하지 않습니다.
 
 규칙:
 
-- registry는 `host_kind`, `connection_intent`, 내부 서버 이름, 설정 대상, 모드, 활성
+- 레지스트리는 `host_kind`, `connection_intent`, 내부 서버 이름, 설정 대상, 모드, 활성
   상태, 관리 지문, 마지막 검증 상태를 저장합니다.
 - 호스트 신뢰, 프로젝트 신뢰, 프로젝트 MCP 승인, OAuth, 또는 그와 비슷한 호스트 통제
   승인은 Volicord가 우회할 수 없습니다.
 - 호스트 설정 쓰기는 파일 작업으로 성공했더라도 호스트가 아직 서버를 신뢰, 승인, 로드,
   초기화, 노출하지 않았다면 결과 상태가 `action_required`로 남을 수 있습니다.
-- Codex 프로젝트 범위 설정에서는 프로젝트 trust, host runtime 관찰, 활성 session의
-  Volicord 도구 노출, 호스트 MCP 명령 launch 가능성이 별도 진단으로 남습니다. Codex
-  프로젝트가 `trusted`여도 Volicord가 아직 `Codex host process`가 MCP 서버를 시작한 것을
+- Codex 프로젝트 범위 설정에서는 프로젝트 신뢰, 호스트 런타임 관찰, 활성 세션의
+  Volicord 도구 노출, 호스트 MCP 명령 실행 가능성이 별도 진단으로 남습니다. Codex
+  프로젝트가 `trusted`여도 Volicord가 아직 Codex 호스트 프로세스가 MCP 서버를 시작한 것을
   관찰하지 못했을 수 있으며, `volicord`처럼 `PATH`로 찾는 명령은 MCP 서버를 시작하는
   환경에서 실행 가능해야 합니다.
-- Codex가 MCP 서버 항목을 알거나 시작 완료를 기록하더라도 활성 session에는 캐시된 tool
-  snapshot이나 나열된 `volicord.*` 도구가 없을 수 있습니다. CLI 쪽 MCP preflight, 직접
-  handshake, 수동 또는 권한 상승 probe, 관리 시작 관찰, 관리 `tools/list` 관찰은 관리
+- Codex가 MCP 서버 항목을 알거나 시작 완료를 기록하더라도 활성 세션에는 캐시된 도구
+  스냅샷이나 나열된 `volicord.*` 도구가 없을 수 있습니다. CLI 쪽 MCP 사전 점검, 직접
+  핸드셰이크, 수동 또는 권한 상승 점검, 관리 시작 관찰, 관리 `tools/list` 관찰은 관리
   도구 호출 증거 또는 명시적으로 신뢰할 수 있는 다른 활성 도구 노출 출처를 대신하지
   않습니다.
-- Claude Code 관리 검증은 프로젝트 `.mcp.json` 항목과 `claude mcp get` 출력에서 command,
-  args, environment, scope가 일치하는지 점검하고 connected, pending approval, rejected,
-  missing, changed, unavailable, unknown 호스트 상태를 보고할 수 있습니다. 현재 Claude Code
-  verification만으로는 활성 Claude Code session의 도구 노출, 관리 lifecycle 시작, 관리
-  `tools/list`, 관리 도구 호출 증거, 실행 중인 Claude Code session 안의 저장소 capability가
-  증명되지 않습니다.
-- MCP 설정 변경 뒤 호스트 프로세스에는 full restart, reload, resume, 또는 새 session이
-  필요할 수 있습니다. 호스트를 시작한 터미널은 나중에 호스트 안에서 연 터미널과 다른
-  PATH나 설정 snapshot을 가질 수 있습니다.
-- 사람용 text status와 verification 출력은 대화형 사용자를 위한 진단 요약입니다.
+- Claude Code 관리 검증은 프로젝트 `.mcp.json` 항목과 `claude mcp get` 출력에서 명령,
+  인자, 환경, 범위가 일치하는지 점검합니다. `connected`, `pending approval`, `rejected`,
+  `missing`, `changed`, `unavailable`, `unknown` 호스트 상태를 보고할 수 있습니다. 현재
+  Claude Code 검증만으로는 활성 Claude Code 세션의 도구 노출, 관리 생명주기 시작, 관리
+  `tools/list`, 관리 도구 호출 증거, 실행 중인 Claude Code 세션의 저장소 기능을 증명하지
+  못합니다.
+- MCP 설정 변경 뒤 호스트 프로세스를 완전히 재시작하거나, 설정을 다시 불러오거나, 세션을
+  재개하거나 새로 시작해야 할 수 있습니다. 호스트를 시작한 터미널은 나중에 호스트 안에서
+  연 터미널과 다른 `PATH`나 설정 스냅샷을 가질 수 있습니다.
+- 사람이 읽는 상태와 검증 출력은 대화형 사용자를 위한 진단 요약입니다.
   `volicord connection status`와 `volicord connection verify`에서는 먼저 `Status`,
   `Checks`, `Next`, `Diagnostics`를 읽습니다. 자동화와 전체 진단 점검은
   [관리 CLI](admin-cli.md#setup-output)가 담당하는 `--json` 출력을 사용합니다.
@@ -237,9 +248,8 @@ Connection Projects는 Agent Connection과 등록 프로젝트 사이의 명시�
   담당하는 운영 게이트를 만족한 관리 검증 결과에 대해서만 저장할 수 있습니다. Volicord가
   직접 시작한 MCP handshake만으로는 충분하지 않습니다.
 - `last_verification_status=action_required`는 Volicord가 지원 호스트 설정을 관리할 수 있지만
-  호스트가 소유한 신뢰, 승인, OAuth, reload, restart, 명령 링크 복구, 설치 프로필
-  복구가
-  남아 있을 때의 예상 상태입니다.
+  호스트가 소유한 신뢰, 승인, OAuth, 설정 다시 불러오기, 재시작, 명령 링크 복구,
+  설치 프로필 복구가 남아 있을 때의 예상 상태입니다.
 - 거절됨, 없음, 변경됨, 사용할 수 없음, 알 수 없음 호스트 상태는 `complete` Agent
   Connection 상태가 아닙니다.
 - Volicord 관리 `AGENTS.md` 블록을 포함한 Product Repository 지침, 생성된 호스트 지침,
@@ -267,7 +277,7 @@ MCP 세션은 어댑터 시작 시 저장된 `connection_internal_id`를 가리�
 2. 연결이 호스트 제공 저장소 루트를 볼 수 있으면 그 루트를 연결된 등록 프로젝트 하나와
    대조합니다.
 3. 그 밖의 경우 호출을 모호하거나 사용할 수 없는 상태로 거절하고 상태를 고칠 저장소 루트
-   setup 또는 연결 명령을 이름 붙인 실행 가능한 텍스트를 반환합니다.
+   설정 또는 연결 명령을 이름 붙인 실행 가능한 텍스트를 반환합니다.
 
 명시적 선택이 필요할 때 MCP에 보이는 선택자는 호출자 소유 Core 래퍼 필드가 아니라
 `volicord.list_projects`가 반환한 `project_selector` 값입니다.
@@ -281,7 +291,7 @@ MCP 세션은 어댑터 시작 시 저장된 `connection_internal_id`를 가리�
 
 - Agent Connection이 존재하고 활성화되어 있습니다.
 - 선택된 프로젝트가 그 Agent Connection에 명시적으로 연결되어 있습니다.
-- 선택된 프로젝트가 active이고 실행 가능합니다.
+- 선택된 프로젝트가 `active`이고 실행 가능합니다.
 - 연결 모드가 메서드의 `operation_category`를 허용합니다.
 
 연결 모드와 동작 범주:
@@ -297,12 +307,12 @@ MCP 세션은 어댑터 시작 시 저장된 `connection_internal_id`를 가리�
 `read_only` 도구 탐색에 나타나면 안 됩니다.
 
 위 표는 모드 기준 허용 목록입니다. 실제 MCP `tools/list` 출력은 선택된 프로젝트 저장소를
-읽고 쓸 수 있는 capability에도 제약됩니다. 전송 수준 도구 탐색과 읽기 전용 저장소
+읽고 쓸 수 있는지에도 제약됩니다. 전송 수준 도구 탐색과 읽기 전용 저장소
 축소 노출 규칙은 [MCP 전송](mcp-transport.md#tool-discovery-and-toolscall-response-wrapping)이
 담당합니다.
 
 읽기 전용 연결 점검은 관리 검증과 활성 MCP 읽기 호출을 함께 사용합니다. 터미널에서는
-`volicord connection verify`를 실행하고, 활성 호스트 session에서는
+`volicord connection verify`를 실행하고, 활성 호스트 세션에서는
 `volicord.list_projects`와 `volicord.status`를 호출합니다. 이 경로는 설정, 프로젝트
 탐색, 활성 읽기 도구 노출, 읽을 수 있는 프로젝트 상태를 검증합니다. `Task` 생성을
 요구하면 안 됩니다.
@@ -330,7 +340,7 @@ InvocationContext:
 ```
 
 기준 `assurance_level`은 협력적 로컬 출처를 뜻하며 암호학적 인간 신원 증명이 아닙니다.
-권한을 지니는 사용자 판단 해결에는 `actor_source=local_user`, `operation_category=user_only`,
+권한 효력이 있는 사용자 판단을 해결하려면 `actor_source=local_user`, `operation_category=user_only`,
 호환 User Channel 출처, 메서드가 정의한 호환성이 필요합니다. Agent Connection은 복사된
 사용자 텍스트나 생성 지침을 제출해 사용자 권한을 얻을 수 없습니다.
 
@@ -388,25 +398,25 @@ Agent Connection은 에이전트 대상 연결입니다. 모델이 사용자의 
   명령군입니다.
 - 초기화된 MCP 클라이언트가 `capabilities.elicitation`을 선언하면
   `volicord mcp --stdio`는 `volicord.request_user_judgment`가 만든 대기 판단에 대해 서버
-  시작 elicitation을 User Channel 경로로 사용할 수 있습니다. 전송 동작은
+  시작 사용자 입력 요청을 User Channel 경로로 사용할 수 있습니다. 전송 동작은
   [MCP 전송](mcp-transport.md#user-judgment-elicitation)이 담당합니다.
 - 호스트 프롬프트 입력을 사용할 수 없으면 MCP 대체 안내 텍스트는 명령 캡처가
-  `configured`, `observed`, `active`일 때 prompt-submit hook 경로와 호환되는 채팅
+  `configured`, `observed`, `active`일 때 프롬프트 제출 훅 경로와 호환되는 채팅
   명령으로 사람 사용자를 안내할 수 있습니다.
 - 호스트 프롬프트 입력과 채팅 명령 캡처를 사용할 수 없으면 MCP 대체 안내 텍스트는
   사람 사용자를 [MCP 전송](mcp-transport.md#user-judgment-elicitation)이 담당하는
-  loopback 로컬 consent URL로 안내할 수 있습니다. 그 local web 답변은 여전히 `local_user`
-  User Channel 경로이지 Agent Connection 답변이 아닙니다. Consent page는 사용자에게 대기
+  루프백 로컬 consent URL로 안내할 수 있습니다. 이 웹 답변은 여전히 `local_user` User
+  Channel 경로이지 Agent Connection 답변이 아닙니다. 동의 페이지는 사용자에게 대기
   판단과 비보장을 식별해 보여 주며, Agent Connection이 판단에 답할 권한을 만들지
   않습니다.
 - 대체 안내 텍스트는 호스트 프롬프트 입력, 채팅 명령 캡처, 로컬 consent URL을 모두
   사용할 수 없을 때만 사용자를 `volicord inbox` CLI inbox 경로로 안내합니다.
-- 상태와 판단 inbox projection은 호스트 프롬프트 입력, 채팅 명령 캡처, 로컬 consent
-  URL, CLI inbox의 User Channel 사용 가능 상태를 함께 보여 줄 수 있습니다. 호스트
+- 상태 보기와 판단 받은편지함은 호스트 프롬프트 입력, 채팅 명령 캡처, 로컬 consent URL,
+  CLI 받은편지함의 User Channel 사용 가능 상태를 함께 보여 줄 수 있습니다. 호스트
   프롬프트 입력을 사용할 수 없다는 사실이 다른 사용 가능한 답변 경로를 숨기면 안 되며,
-  적용 가능한 경우 CLI inbox는 계속 보입니다. 이 projection은 사용자가 어디에서 답할 수
+  적용 가능한 경우 CLI 받은편지함은 계속 보입니다. 이 상태 보기는 사용자가 어디에서 답할 수
   있는지 알려 줄 뿐이며 Agent Connection이 판단을 기록할 수 있게 하지 않습니다.
-- 권한을 지니는 사용자 판단 해결에는 `actor_source=local_user`,
+- 권한 효력이 있는 사용자 판단을 해결하려면 `actor_source=local_user`,
   `operation_category=user_only`, 호환 User Channel 출처가 필요합니다.
 - `actor_source=agent_connection:<connection_id>`는 사용자의 텍스트를 전달해도
   `local_user` 출처가 될 수 없습니다.
@@ -419,7 +429,7 @@ Agent Connection은 에이전트 대상 연결입니다. 모델이 사용자의 
 
 에이전트가 하면 안 되는 것:
 
-- Agent Connection에서 권한을 지니는 사용자 결정을 기록하면 안 됩니다.
+- Agent Connection에서 권한 효력이 있는 사용자 결정을 기록하면 안 됩니다.
 - Agent Connection 도구 인자를 MCP elicitation 응답으로 취급하면 안 됩니다.
 - 자연어 승인, 채팅 답변, 생성된 Markdown 상태, 렌더링된 상태 보기를 User Channel
   출처로 취급하면 안 됩니다.

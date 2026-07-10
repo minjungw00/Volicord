@@ -1,16 +1,11 @@
 # Administrative CLI reference
 
-This document owns the local `volicord` administrative and bootstrap CLI
-contract. The CLI establishes the `Volicord Runtime Home`, registers projects
-from repository roots, manages Agent Connections without requiring users to
-handle internal identities, provides the local `User Channel` command path,
-and reports setup or connection diagnostics. Hidden internal hook commands exist
-only for generated host integration wrappers and are not normal user-facing
-commands. These commands are not public Volicord API methods.
-
-It does not define public API method behavior, API schemas, storage record
-layout, security guarantees, Core authority semantics, or MCP stdio transport
-behavior.
+This document defines the local `volicord` administrative and bootstrap CLI.
+The CLI prepares the `Volicord Runtime Home`, registers repository-root
+projects, manages Agent Connections, provides the local `User Channel` command
+path, and reports setup or connection diagnostics. Hidden hook commands exist
+only for generated host-integration wrappers. None of these commands are public
+Volicord API methods.
 
 ## Owns / does not own
 
@@ -48,7 +43,8 @@ This document does not own:
 <a id="surface-stability"></a>
 ## Surface Stability
 
-For canonical vocabulary, see [Documentation Policy](../maintain/documentation-policy.md#surface-stability-labels). In this section, `stable` means a documented compatibility surface; `beta` means supported, but details may change; `internal` means an implementation or generated-integration detail, not a normal user input surface; and `diagnostic` means a troubleshooting or status-reporting surface whose prose or diagnostic wording is not a stable API contract.
+Labels follow the canonical vocabulary in
+[Documentation Policy](../maintain/documentation-policy.md#surface-stability-labels).
 
 | Surface | Stability | Notes |
 |---|---|---|
@@ -125,15 +121,11 @@ Exit and stream behavior:
   represented as exit code `1`.
 - Errors remain stderr diagnostics under the CLI exit-code model.
 - `volicord serve --transport local-http` is an explicit long-running MCP
-  transport process. Native local runs accept only loopback listen addresses.
-  The explicit `--container-listen` mode is limited to Docker host-loopback
-  publishing. The MCP local HTTP endpoint requires bearer authentication,
-  prefers `--token-file PATH` over direct command-line token values, generates
-  a process-local token when no token is supplied, applies Origin checks to
-  browser-facing requests, and delegates HTTP wire behavior and
-  transport-bound authentication and Origin checks to
-  [MCP Transport](mcp-transport.md). It is local/Docker transport only, not a
-  public network API, SaaS endpoint, multi-user server, or security boundary.
+  transport process. Native runs accept only loopback addresses, and
+  `--container-listen` is limited to Docker host-loopback publishing. Bearer
+  authentication, Origin checks, and HTTP wire behavior belong to
+  [MCP Transport](mcp-transport.md). This command is not a public network API,
+  SaaS endpoint, multi-user server, or security boundary.
 
 Not supported:
 
@@ -151,56 +143,43 @@ Not supported:
   `connection_internal_id`, host config keys, protocol envelopes, or stored
   registry fields.
 
-Default text output for `volicord init` may be a compact onboarding summary
-rather than a raw state dump. The summary names the initialized host, profile,
-repository, repo file changes, stored Runtime Home path, `Next:` checklist,
-limits, and a JSON diagnostics command. The `action_required` result state can
-still appear in JSON or as the command result; the human init text does not have
-to expose the full diagnostic result model. Command actions in this compact init
-text use a label line followed by an indented command line, without trailing
-prose punctuation on the command line.
+### Output conventions
 
-Major status-like user-facing surfaces, including `volicord status`,
-`volicord doctor`, `volicord connection status`, `volicord connection verify`,
-`volicord changes reconcile`, and `volicord inbox`, use a compact summary card
-or compact sections before detailed diagnostics when the command can compute
-one. Text output uses public labels appropriate to the selected command. Status
-and User Channel views use labels such as `Task`, `Recording`, `Profile`,
-`Write Ticket`, `Evidence`, `User Judgment`, `Changes`, `Close Status`,
-`Transport`, `Next`, and `Guarantee`. Connection status and verification use the
-connection-specific section labels described below. `Next` must name the
-immediate next action when the command can know one, may include a follow-up
-verification command when that is how the user confirms the action, and uses
-`none` only when no next action is known for the selected view.
-Text-mode summary output must not expose internal IDs by default unless an ID is
-needed to perform the displayed next action. Matching JSON output exposes the
-same stable data as `summary_card`; JSON consumers must not parse text-only
-formatting.
-For `volicord connection status` and `volicord connection verify`, default text
-output is an interactive human summary with a title line and compact sections
-for `Status`, `Profile`, `Repository` or `Repositories`, `Checks`, `Next`,
-`Limits`, and `Diagnostics`. `volicord connection add` may also include compact
-host-configuration or repo-file-change sections. Detailed guard state, hook
-diagnostics, CLI MCP preflight and handshake details, and host observations
-belong in JSON diagnostics. Codex connection text may summarize separate check
-lines for `Codex project trust`, `Managed Codex MCP startup`, `Managed Codex
-tools/list`, `Managed Codex tool call`, `Active Codex tool exposure`, and `Host
-MCP command` while keeping the human output compact and section-based.
-When pending judgments are visible, `volicord status` and `volicord inbox` text
-output may include an `Available answer paths:` line that summarizes host
-prompt input, chat command capture, local consent URL, and CLI inbox
-availability. The line tells the user where to answer; it does not record a
-judgment or let an Agent Connection act as the user. JSON output carries the
-same facts in `user_channel_availability` or `answer_path_availability`.
-Non-connection diagnostic views that intentionally use the result-line layout
-include concise `Result`, `Why`, `Next`, and `Does not prove` lines when text
-output reports `action_required` or a degraded diagnostic state. Connection
-status and verification default text does not use that layout; users should read
-`Status`, `Checks`, `Next`, and `Diagnostics` first. In both layouts,
-`action_required` must not be presented as a fatal CLI error. `Next` names the
-immediate user action, such as reloading or restarting the host, approving host
-or project permission, repairing managed configuration, or using
-`volicord connection verify ...` after the host-side action has been completed.
+- `volicord init` may show a compact onboarding summary instead of a raw state
+  dump. It names the host, profile, repository, repository-file changes, Runtime
+  Home, `Next:` checklist, limits, and JSON diagnostics command. A command under
+  `Next:` appears on an indented line without prose punctuation.
+- Status-like commands show a compact summary card or short sections before
+  detailed diagnostics. These include `volicord status`, `volicord doctor`,
+  connection status and verification, change reconciliation, and the inbox.
+  Command-appropriate public labels include `Task`, `Recording`, `Profile`,
+  `Write Ticket`, `Evidence`, `User Judgment`, `Changes`, `Close Status`,
+  `Transport`, `Next`, and `Guarantee`.
+- `Next` names the immediate action when known and may include a follow-up
+  verification command. It uses `none` only when the selected view has no known
+  next action. Text summaries hide internal IDs unless the displayed action
+  needs one. JSON exposes the same stable summary data in `summary_card`;
+  automation must not parse text formatting.
+- Connection status and verification text starts with a title and compact
+  `Status`, `Profile`, `Repository` or `Repositories`, `Checks`, `Next`,
+  `Limits`, and `Diagnostics` sections. Connection add may also summarize host
+  configuration or repository-file changes. Detailed hook state, CLI MCP
+  preflight and handshake data, and host observations stay in JSON. Codex text
+  may show separate checks for project trust, managed startup, managed
+  `tools/list`, managed tool calls, active tool exposure, and the host MCP
+  command.
+- When judgments are pending, status and inbox text may show `Available answer
+  paths:` for host prompt input, chat command capture, a local consent URL, and
+  the CLI inbox. This line only routes the user; it does not record a judgment or
+  let an Agent Connection act as the user. JSON uses
+  `user_channel_availability` or `answer_path_availability` for the same facts.
+- Other diagnostic views may use concise `Result`, `Why`, `Next`, and `Does not
+  prove` lines for `action_required` or degraded states. Connection status and
+  verification use their section layout instead. In either layout,
+  `action_required` is not a fatal CLI error. `Next` gives a concrete action,
+  such as reloading or restarting the host, approving a host or project gate,
+  repairing managed configuration, or running the displayed verification
+  command afterward.
 
 <a id="runtime-home-selection"></a>
 ## Runtime Home Selection
@@ -243,30 +222,33 @@ Init effects that relate to Runtime Home and installation profile selection:
   setup path
 - does not create a public Volicord API method or record a user-owned judgment
 
-`volicord doctor` is the read-oriented diagnostic command for the installation
-profile. Its top-level status answers whether the current installation profile
-is usable. It verifies Runtime Home access, registry schema, installation
-profile presence, stored command readiness, command availability through
-`PATH`, and command-link or shim readiness when link metadata is present. When
-stored command paths are executable, doctor may report `complete` while
-reporting command-availability warnings and `actions_recommended` for future
-shells or agent hosts. PATH or command-link recommendations must say when
-existing agent hosts may need restart or reload. Doctor reports supported host
-detection as a connection-verification concern. When detective-profile
-installation records exist, doctor may also report detective host hook file
-installation, configuration health, runtime hook observation health, effective
-detective health, and host reload requirement as diagnostics. These diagnostics
-are local setup and observation checks; they are not proof of OS enforcement,
-sandboxing, write prevention, product correctness, or Close Status. Human
-doctor text may summarize profile and observation limits; exact
-`selected_profile`, `observation_summary`, and `control_surface` fields belong
-to JSON diagnostics. Runtime-only capabilities such as session watcher
-observation and local web consent are reported as unavailable unless the
-reporting process actually owns that runtime state. Doctor does not create
-projects, install host configuration, change connection mode, or answer user
-judgments.
-Text and JSON doctor output include a diagnostic disclosure and the compact
-`summary_card` for the diagnostic view. JSON output uses
+`volicord doctor` is the read-oriented installation-profile diagnostic. Its
+top-level status answers whether the current profile is usable.
+
+It checks:
+
+- Runtime Home access, registry schema, and installation-profile presence
+- stored command readiness and availability through `PATH`
+- command-link or shim readiness when link metadata exists
+- supported-host detection as a connection-verification concern
+- for Detective profile records, hook-file installation, configuration health,
+  runtime hook observations, effective detective health, and host reload needs
+
+When stored command paths are executable, doctor may report `complete` while
+also reporting availability warnings and `actions_recommended`. PATH or
+command-link recommendations say when an existing agent host may need restart
+or reload. Runtime-only capabilities such as session-watcher observation and
+local web consent appear unavailable unless the reporting process owns that
+runtime state.
+
+These checks do not prove OS enforcement, sandboxing, write prevention, product
+correctness, or Close Status. Doctor does not create projects, install host
+configuration, change connection mode, or answer user judgments. Human text may
+summarize profile and observation limits; exact `selected_profile`,
+`observation_summary`, and `control_surface` fields stay in JSON.
+
+Text and JSON output include a diagnostic disclosure and compact `summary_card`.
+JSON uses
 `disclosure.guarantee_class=detective_observation` and `non_guarantees` values
 such as `NotOsSandbox`, `NotNetworkIsolation`, `NotFullWritePrevention`,
 `NotActorAttributionProof`, `NotCorrectnessProof`, `NotTestSufficiencyProof`,
@@ -356,6 +338,8 @@ connected project. The host environment must resolve the command through
 `PATH`.
 
 <a id="agent-host-setup-and-init"></a>
+### Host setup profiles
+
 `volicord init --host codex --repo PATH --profile record` and
 `volicord init --host claude-code --repo PATH --profile record` are the primary
 first-run repository setup and host-connection examples for chat-first use when
@@ -518,15 +502,34 @@ intents. If more than one connection matches, the command reports an ambiguous
 selector and the caller must add the matching intent flag. The command derives
 or looks up the stored `connection_internal_id`.
 
-| Command | Runtime Home registry effect | Host configuration effect | Verification effect |
-|---|---|---|---|
-| `volicord init` | Initializes Runtime Home and installation profile if needed, registers or reuses the selected repository project, creates or updates the shared project-scoped Agent Connection, ensures Connection Projects membership, and records detective-profile hook observation status. | Installs or updates managed project-local MCP configuration, `AGENTS.md` guidance, `.volicord/policy.json`, supported host hook wrapper scripts, and host hook and rule files for `codex` or `claude-code`. | Runs host-config, MCP startup, initialization, and `tools/list` checks where observable, then reports any host reload, restart, trust, or approval action. |
-| `volicord connection add` | Registers or reuses the selected repository project, creates or updates the matching Agent Connection, records the connection intent and mode, and ensures the project is in Connection Projects. | Installs or updates managed host configuration for `codex` or `claude-code` according to the selected intent. | Runs host-config, MCP startup, initialization, and `tools/list` checks where observable. |
-| `volicord connection list` | Reads matching Agent Connections and connected projects. | Does not launch the host and does not rewrite host configuration. | Reports stored and diagnostic verification state without refreshing host checks. |
-| `volicord connection status` | Reads one selected Agent Connection. | Does not launch the host and does not rewrite host configuration. | Reports full stored verification status and required user actions. |
-| `volicord connection verify` | Reads the selected Agent Connection and updates last-known verification status. | Inspects the managed target when the host integration owns an observable target. | Runs the observable checks and stores the resulting verification state. |
-| `volicord connection mode` | Updates the selected connection mode. | Does not rewrite host configuration unless the host entry must be regenerated to reflect the mode. | Reports diagnostics after the mode change. |
-| `volicord connection remove` | Removes selected Connection Projects membership and removes the Agent Connection when no owned membership remains. | Removes only matching managed host configuration when ownership and safety checks permit removal. | Does not delete projects, Core state, Runtime Home, artifact storage, or unrelated host configuration. |
+- `volicord init`
+  - Registry: prepares Runtime Home and the installation profile, registers the
+    repository, creates or updates the shared project connection and membership,
+    and records Detective profile observation state.
+  - Host: installs managed project-local MCP configuration, guidance, policy,
+    wrappers, hooks, and rules for `codex` or `claude-code`.
+  - Verification: runs observable host-configuration, MCP startup,
+    initialization, and `tools/list` checks, then reports any host-controlled
+    action.
+- `volicord connection add`
+  - Registry: registers the repository, creates or updates the matching
+    connection, records intent and mode, and ensures project membership.
+  - Host: installs managed configuration for the selected host and intent.
+  - Verification: runs the observable host-configuration and MCP checks.
+- `volicord connection list` reads matching connections, projects, and stored
+  diagnostic verification state. It does not launch the host, rewrite
+  configuration, or refresh host checks.
+- `volicord connection status` reads one connection and reports its stored
+  verification status and required actions. It does not launch the host or
+  rewrite configuration.
+- `volicord connection verify` inspects the managed target when available, runs
+  observable checks, and stores the resulting verification state.
+- `volicord connection mode` updates the stored mode. It rewrites host
+  configuration only when regeneration is required and then reports diagnostics.
+- `volicord connection remove` removes selected membership and, when no owned
+  membership remains, the connection. It removes only matching managed host
+  configuration and never deletes projects, Core state, Runtime Home, artifact
+  storage, or unrelated host configuration.
 
 Rules:
 
@@ -560,8 +563,8 @@ Codex connection verification keeps these diagnostic concepts separate:
 
 | Diagnostic concept | Text output surface | JSON diagnostic surface | Meaning |
 |---|---|---|---|
-| MCP configuration match | `MCP configuration` or `Current MCP configuration` | host check details and managed configuration fields, including `managed_config` | The managed Codex MCP server entry matches the expected Volicord-generated command, args, and managed launch provenance environment markers. Accepted Codex tool approval policy overlays do not change this match. Entries that lack Volicord managed markers may report `managed_config=unmanaged`; command, args, or managed marker drift remains non-matching. |
-| Codex tool approval policy | `Codex tool approval policy` when present | `verification.host.host_policy_overlay` and a `checks[]` entry with `id=codex_tool_approval_policy` when present | Codex-owned `tools.<known Volicord tool>.approval_mode` subtables are reported as accepted host policy overlay with `kind=codex_tool_approval`; structured diagnostics include `entries[].tool` and `entries[].approval_mode`. This diagnostic does not prove host trust, active tool exposure, or approval by the running Codex session. |
+| MCP configuration match | `MCP configuration` or `Current MCP configuration` | host check details and managed configuration fields, including `managed_config` | The entry matches the expected command, args, and managed launch markers. Accepted tool-approval overlays do not change the match. Missing markers may report `managed_config=unmanaged`; command, arg, or marker drift remains non-matching. |
+| Codex tool approval policy | `Codex tool approval policy` when present | `verification.host.host_policy_overlay` and a `checks[]` entry with `id=codex_tool_approval_policy` when present | Codex-owned `tools.<known Volicord tool>.approval_mode` subtables appear as `kind=codex_tool_approval`. Diagnostics include `entries[].tool` and `entries[].approval_mode`. This does not prove host trust, active tool exposure, or running-session approval. |
 | CLI MCP preflight and handshake | `CLI MCP preflight`, `CLI MCP handshake`, `Last CLI MCP preflight`, or `Last CLI MCP handshake` | `checks[]` entries with `id=cli_mcp_preflight` and `id=cli_mcp_handshake`, plus verification report fields | The CLI verification path directly launched and talked to Volicord's MCP server. This validates the CLI-observable MCP process, not active Codex tool exposure. |
 | CLI MCP storage capability | `CLI MCP storage read`, `CLI MCP storage write`, and `CLI MCP effective tools` | `checks[]` entries with `id=cli_mcp_storage_read`, `id=cli_mcp_storage_write`, and `id=cli_mcp_effective_tools` when available | Storage capability observed through the CLI MCP verification process. This is separate from storage capability observed from a managed Codex host. |
 | Codex project trust | `Codex project trust` | `verification.project_trust` and a `checks[]` entry with `id=codex_project_trust` when available | Codex user configuration marks the project `trusted`, `untrusted`, `unknown`, or otherwise leaves trust unconfirmed. |
@@ -624,43 +627,29 @@ launches, and source-less legacy observations do not satisfy them. A managed
 `tools/list` event without a managed tool call leaves active tool exposure
 unconfirmed.
 
-Verification output must make checks and user actions first-class diagnostics.
-For connection status and verification, default text output uses compact
-sections for `Status`, `Checks`, `Next`, and `Diagnostics` instead of the
-result-line layout. It must show the overall status, each check that was
-attempted or blocked, and the next user action when one is required. For
-`action_required` and degraded detective diagnostics, text output keeps the next
-action concrete: reload or restart the host, approve host or project permission,
-repair managed configuration, or run the shown `volicord connection verify ...`
-command after the host-side action. JSON output must include top-level
-`status`, `checks`, `actions`, and `summary_card` fields for diagnostic
-consumers. When Codex verification can compute trust, runtime observation, or
-command-launch diagnostics, JSON output must expose those states separately
-instead of collapsing them into MCP handshake success.
-`action_required` means a host-owned or local follow-up remains; it is not
-automatically a fatal CLI error and exits under the successful administrative
-result rule described above.
-Connection status and verification output must keep detective host hook file installation,
-configuration health, runtime hook observation health, effective detective health,
-host reload requirement, prompt-capture availability, and last host-hook event when
-known as separate diagnostics. JSON diagnostics carry exact fields for
-`selected_profile`, `observation_summary`, cooperative pre-tool warning
-availability, cooperative pre-tool denial availability, post-tool correlation
-availability, unrecorded-change detection availability, prompt-capture
-availability, local web consent availability, hook path safety, hook command
-cwd independence, hook command subdirectory safety, watcher status, watcher
-baseline creation time, watcher coverage start time, watcher coverage basis,
-and any watcher partial-coverage warning. Human text may summarize these
-diagnostics in compact sections; it must not be described as the raw diagnostic
-field dump. Files installed or configured must not be reported as an active
-observed hook or as active host-hook observation before a matching observation
-exists. Incomplete session-watch coverage must not be reported as full
-unrecorded-change detection.
-Text and JSON Agent Connection outputs are diagnostic outputs. JSON output uses
-`disclosure.guarantee_class=detective_observation` with stable
-`non_guarantees` for OS sandboxing, network isolation, malware defense, full
-write prevention, actor attribution proof, correctness proof, test sufficiency
-proof, and human review replacement.
+### Verification output
+
+- Connection status and verification text uses compact `Status`, `Checks`,
+  `Next`, and `Diagnostics` sections. It shows the overall status, every
+  attempted or blocked check, and a concrete next action when needed.
+- For `action_required` or degraded Detective profile diagnostics, `Next` names
+  the host reload, restart, approval, configuration repair, or follow-up
+  `volicord connection verify ...` command. `action_required` remains a
+  successful administrative result, not a fatal CLI error.
+- JSON includes top-level `status`, `checks`, `actions`, and `summary_card`.
+  Codex trust, runtime observation, command launch, and MCP handshake states
+  remain separate.
+- Detective profile diagnostics keep file installation, configuration health,
+  runtime observation health, effective detective health, reload needs,
+  prompt-capture availability, and the last known hook event separate. The
+  exact JSON fields are listed under [Dry run and JSON output](#setup-output).
+- Installed or configured files are not active hook observations until a
+  matching event exists. Partial session-watch coverage is not full
+  unrecorded-change detection.
+- JSON uses `disclosure.guarantee_class=detective_observation` with stable
+  `non_guarantees` for OS sandboxing, network isolation, malware defense, full
+  write prevention, actor attribution proof, correctness proof, test
+  sufficiency proof, and human review replacement.
 
 A successful `volicord mcp --check` startup check, CLI MCP preflight, or direct
 MCP handshake alone must not be described as a `complete` Agent Connection. It
@@ -884,13 +873,32 @@ Lifecycle behavior:
 
 ## Change reconciliation command
 
-`volicord changes reconcile [--repo PATH] [--task active|ID] [--dry-run] [--json]` is the local recovery command for unresolved unrecorded Product Repository change findings.
+`volicord changes reconcile [--repo PATH] [--task active|ID] [--dry-run]
+[--json]` is the local recovery command for unresolved unrecorded Product
+Repository changes.
 
-The command resolves the selected project from `--repo PATH` or the current working directory and selects the active Task by default. It calls the public `volicord.reconcile_changes` Core method with `actor_source=local_user` and `operation_category=local_recovery`, prints the compact summary card plus the number of resolved findings, pending user judgments, and remaining unresolved findings, and exits under the normal CLI exit-code model. Rejected Core responses remain rejected CLI results rather than successful reconciliation summaries.
+Selection and dispatch:
 
-With `--dry-run`, the command returns the Core dry-run preview instead of committing reconciliation effects. Text and JSON output report planned automatic resolutions, changes needing user judgment, pending judgment requests that would be created, projected close blockers, next actions, and the disclosure that the preview is not actor proof, intent proof, or correctness proof. The dry-run command does not advance `project_state.state_version`, write mutation or replay records, resolve close blockers, create user judgments, stage artifacts, or attach artifacts.
+- `--repo PATH`, or the current directory when omitted, selects the project.
+- The active Task is the default; `--task` can select another Task.
+- The command calls `volicord.reconcile_changes` with
+  `actor_source=local_user` and `operation_category=local_recovery`.
+- Output includes the compact summary card and counts for resolved changes,
+  pending judgments, and unresolved changes. Rejected Core responses remain
+  rejected CLI results.
 
-The non-dry-run command may resolve deterministic findings or create pending user-owned judgments. It does not record a user answer, accept a change on the user's behalf, prove actor identity, prove intent, prove correctness, prove review or test sufficiency, or complete close readiness. When it creates pending judgments, the user answers them through the `Judgment Inbox`, then reruns `volicord changes reconcile`.
+With `--dry-run`, text and JSON show planned automatic resolutions, changes that
+need user judgment, judgment requests that would be created, projected close
+blockers, next actions, and the preview disclosure. The preview does not prove
+actor identity, intent, or correctness. It does not advance
+`project_state.state_version`, write mutation or replay records, resolve close
+blockers, create user judgments, stage artifacts, or attach artifacts.
+
+Without `--dry-run`, the command may resolve deterministic changes or create
+pending user-owned judgments. It does not answer a judgment, accept a change for
+the user, prove identity, intent, correctness, review or test sufficiency, or
+complete close readiness. When it creates a pending judgment, the user answers
+through the `Judgment Inbox` and reruns the command.
 
 ## User Channel commands
 

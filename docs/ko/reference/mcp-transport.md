@@ -1,13 +1,10 @@
 # MCP 전송 참조
 
-이 문서는 로컬 `volicord mcp --stdio` 프로세스 계약과 로컬/Docker
+이 문서는 로컬 `volicord mcp --stdio` 프로세스 계약과 로컬 및 Docker
 `volicord serve --transport local-http` 프로세스 경계 계약을 담당합니다. 여기에는
 프로세스 시작, 프로세스 환경, MCP 프로토콜 버전 협상, 초기화 수명주기, stdio 전송
 프레이밍, 로컬 HTTP MCP 요청 처리, JSON-RPC 메시지 검증, Agent Connection에 묶인 시작
 검증, MCP에 보이는 도구 탐색, MCP 응답 래핑, 종료와 재연결 동작이 포함됩니다.
-
-공개 Volicord API 메서드 동작, 공개 요청/응답 스키마, Agent Connection 의미, 저장소
-기록 배치, 보안 보장, Core 권한 의미는 이 문서가 정의하지 않습니다.
 
 ## 담당하는 것 / 담당하지 않는 것
 
@@ -15,13 +12,13 @@
 
 - `volicord mcp --stdio` 프로세스 시작과 종료 동작
 - `volicord serve --transport local-http` 시작, 로컬 리스너, 전송 경계 인증과 Origin 점검
-- 생성된 호스트 설정과 사용자 관리 generic 호스트 설정이 사용하는 프로세스 설정
+- 생성된 호스트 설정과 사용자가 관리하는 일반 호스트 설정의 프로세스 설정
 - MCP Runtime Home 경로 해석
 - MCP 프로토콜 버전 협상과 초기화 수명주기
 - stdio JSON-RPC 프레이밍, 메시지 검증, 지원되는 MCP 메서드
-- loopback 전용 serve 전송을 위한 로컬 HTTP JSON-RPC 요청 처리
-- stdio 전송 경계의 서버 시작 MCP elicitation
-- 대기 사용자 판단을 위한 로컬 loopback web consent fallback
+- 루프백 전용 로컬 HTTP 전송의 JSON-RPC 요청 처리
+- stdio 전송 경계에서 서버가 시작하는 MCP `elicitation`
+- 대기 중인 사용자 판단을 위한 로컬 consent URL 대체 경로
 - 하나의 내부 Agent Connection 바인딩에 대한 MCP 시작 검증
 - 전송 경계에서의 MCP `tools/list`와 `tools/call` 동작
 - 내부 래퍼와 호출 메타데이터를 숨기는 MCP 표시 도구 스키마 투영
@@ -34,43 +31,44 @@
 - 공개 Volicord 요청/응답 스키마: [API 코어 스키마](api/schema-core.md)
 - Agent Connection, Connection Projects, 프로젝트 선택 의미, 현재 연결 맥락, 행위자 출처:
   [Agent Connection](agent-connection.md)
-- 관리 Runtime Home setup, 연결, 프로젝트, export, 검증 명령: [관리 CLI](admin-cli.md)
-- 생성된 호스트 hook 명령 문법, hook 경로 안전성 진단, host-hook wrapper 복구:
+- Runtime Home 초기 설정, 연결, 프로젝트, 내보내기, 검증 관리 명령: [관리 CLI](admin-cli.md)
+- 생성된 호스트 훅 명령 문법, 훅 경로 안전성 진단, 호스트 훅 래퍼 복구:
   [관리 CLI](admin-cli.md#guard-hook-commands)
 - 저장소 배치, 스키마 초기화와 검증, 저장 효과: [저장소](storage.md)가 안내하는 저장소 담당 문서
 
 <a id="surface-stability"></a>
 ## 표면 안정성
 
-기준 어휘는 [문서 정책](../maintain/documentation-policy.md#surface-stability-labels)을 확인하세요. 이 섹션에서 `stable`은 문서화된 호환성 표면을 뜻합니다. `beta`는 지원되지만 세부사항이 바뀔 수 있음을 뜻합니다. `internal`은 구현 또는 생성된 통합 세부사항이며 일반 사용자 입력 표면이 아님을 뜻합니다. `diagnostic`은 문제 해결이나 상태 보고 표면이며 산문 또는 진단 문구가 안정적인 API 계약이 아님을 뜻합니다.
+라벨은 [문서 정책](../maintain/documentation-policy.md#surface-stability-labels)의
+기준 어휘를 따릅니다.
 
 | 표면 | 안정성 | 비고 |
 |---|---|---|
 | `volicord mcp --stdio`, stdio JSON-RPC 프레이밍, MCP 초기화, 지원되는 MCP 메서드, `tools/list`, `tools/call`, 응답 래핑 | `stable` | 지원되는 메서드 집합을 위한 로컬 프로세스와 MCP 전송 계약입니다. |
-| Local HTTP serve 전송, Docker host-loopback 노출 형태, local web consent fallback endpoint | `beta` | 담당 문서가 정한 제한 안에서 지원되는 로컬 표면입니다. 공개 네트워크 API 표면이나 전체 MCP Streamable HTTP 호환성이 아닙니다. |
-| 프로세스 바인딩 값, 생성된 호스트 설정 세부사항, 내부 연결/프로젝트 식별 정보, 숨겨진 호출 메타데이터 | `internal` | 이 세부사항은 로컬 프로세스와 생성 adapter를 묶습니다. 집중 담당 문서가 selector를 노출하지 않는 한 공개 MCP 도구 스키마는 이를 숨겨야 합니다. |
-| 시작 진단, `/healthz`, 구조화된 HTTP 오류 보고서, 사람이 읽는 전송 경고 | `diagnostic` | 문서화된 곳에서는 담당 문서가 정의한 코드와 disclosure를 보존해야 하지만, 산문 표현은 공개 API 스키마가 아닙니다. |
+| 로컬 HTTP 전송, Docker 호스트 루프백 노출 형태, 로컬 consent URL 대체 경로 | `beta` | 담당 문서가 정한 제한 안에서 지원됩니다. 공개 네트워크 API나 전체 MCP Streamable HTTP 호환성이 아닙니다. |
+| 프로세스 바인딩 값, 생성된 호스트 설정 세부사항, 내부 연결·프로젝트 식별 정보, 숨겨진 호출 메타데이터 | `internal` | 로컬 프로세스와 생성된 어댑터를 연결하는 세부사항입니다. 집중 담당 문서가 선택자를 노출하지 않는 한 공개 MCP 도구 스키마에서는 숨깁니다. |
+| 시작 진단, `/healthz`, 구조화된 HTTP 오류 보고서, 사람이 읽는 전송 경고 | `diagnostic` | 문서화된 코드와 고지 문구는 보존합니다. 산문 표현은 공개 API 스키마가 아닙니다. |
 
 ## 프로세스 모델
 
 `volicord mcp --stdio`는 설치된 `volicord` 실행 파일의 로컬 MCP stdio 프로세스
 모드입니다. MCP 호스트는 이를 자식 프로세스로 시작하고 stdin/stdout으로 통신합니다.
-MCP TCP 리스너, HTTP MCP 리스너, Unix-domain socket 리스너, 또는 그 밖의 MCP 네트워크
+MCP TCP 리스너, HTTP MCP 리스너, Unix 도메인 소켓 리스너, 또는 그 밖의 MCP 네트워크
 리스너가 아닙니다. 호스트 프롬프트 입력과 채팅 명령 캡처를 사용할 수 없을 때는 대기
-사용자 판단을 위해 별도의 loopback 전용 local consent 리스너를 시작할 수 있습니다.
+중인 사용자 판단을 위해 별도의 루프백 전용 consent 리스너를 시작할 수 있습니다.
 
-`volicord serve --transport local-http`는 Docker와 localhost MCP 사용을 위한 별도의
-명시적 프로세스 모드입니다. 네이티브 로컬 실행은 loopback 전용 HTTP 리스너를
-시작합니다. Docker 실행은 host-loopback 포트 노출과 함께 명시적 `--container-listen`
+`volicord serve --transport local-http`는 Docker와 `localhost` MCP 사용을 위한 별도의
+명시적 프로세스 모드입니다. 네이티브 로컬 실행은 루프백 전용 HTTP 리스너를
+시작합니다. Docker 실행은 호스트 루프백 포트 노출과 함께 명시적 `--container-listen`
 모드만 사용할 수 있습니다. 가능한 곳에서는 stdio와 같은 Agent Connection에 묶인 MCP
 어댑터 로직을 재사용합니다. 기본 MCP 전송이 아니며, Docker가 아닌 로컬 호스트 설정
 생성에서 사용하지 않고, 일반 Volicord 네트워크 서비스도 아닙니다. 로컬/Docker 전송일 뿐
-공개 네트워크 API, SaaS endpoint, 다중 사용자 서버, 보안 경계가 아닙니다. 이 프로세스를
-공개 호스트 인터페이스나 원격 HTTP 서비스로 바꾸는 serve 옵션은 없습니다.
+공개 네트워크 API, SaaS 엔드포인트, 다중 사용자 서버, 보안 경계가 아닙니다. 이 프로세스를
+공개 호스트 인터페이스나 원격 HTTP 서비스로 바꾸는 명령 옵션은 없습니다.
 
-현재 serve 전송은 인증을 요구하는 로컬 MCP-over-HTTP 부분 구현입니다. MCP 세션 헤더와
-bearer token 검사와 함께 HTTP `POST /mcp`로 JSON-RPC를 받고 JSON 응답을 반환합니다.
-server-sent event 스트림, HTTP elicitation, 전체 MCP Streamable HTTP 호환성은 구현하지
+현재 로컬 HTTP 전송은 인증을 요구하는 MCP-over-HTTP 부분 구현입니다. MCP 세션 헤더와
+베어러 토큰 검사와 함께 HTTP `POST /mcp`로 JSON-RPC를 받고 JSON 응답을 반환합니다.
+서버 전송 이벤트 스트림, HTTP `elicitation`, 전체 MCP Streamable HTTP 호환성은 구현하지
 않습니다. 문서와 시작 진단은 이 부분 구현만 설명하며 전체 프로토콜 호환성을 주장하지
 않습니다.
 시작 진단, `/healthz`, 구조화된 HTTP 오류 JSON은 `detective_observation` 공개를
@@ -78,7 +76,7 @@ server-sent event 스트림, HTTP elicitation, 전체 MCP Streamable HTTP 호환
 전체 쓰기 방지, 행위자 귀속 증명, 정확성 증명, 테스트 충분성 증명, 인간 검토 대체가
 아닙니다.
 
-생성된 호스트 설정과 사용자 관리 generic 호스트 설정은 내부 연결 바인딩으로 stdio
+생성된 호스트 설정과 사용자가 관리하는 일반 호스트 설정은 내부 연결 바인딩으로 stdio
 루프를 시작합니다. 설정 항목이 안전하게 프로젝트에 묶이면 선택된 내부 프로젝트
 바인딩도 함께 담습니다.
 
@@ -90,7 +88,7 @@ volicord mcp --stdio --connection <connection_id> [--project <project_id>]
 `VOLICORD_MCP_LAUNCH=managed_host`, `VOLICORD_MCP_HOST=codex`,
 `VOLICORD_MCP_CONNECTION_ID=<connection_id>`,
 `VOLICORD_MCP_PROJECT_ID=<project_id>`도 설정합니다. Codex 검증은 일치하는
-출처 마커 없이 command와 args만 있는 항목을 변경된 설정으로 취급하며, 그런 항목은
+출처 마커 없이 명령과 인자만 있는 항목을 변경된 설정으로 취급하며, 그런 항목은
 관리 설정 일치로 볼 수 있기 전에 다시 생성해야 합니다.
 
 `<connection_id>` 프로세스 바인딩 값은 `volicord init` 또는
@@ -117,54 +115,54 @@ volicord mcp --stdio --connection <connection_id> [--project <project_id>]
 - help와 version 처리는 Runtime Home이나 Agent Connection 조회보다 먼저 일어납니다.
 
 성공한 `--check` 출력은 진단 보고서입니다. 이 보고서는 설정 유효성, stdio 전송,
-Runtime Home, `connection_id`, `connection.mode`, 연결 활성 상태, registry 읽기 상태,
-선택된 project-state 읽기 상태, 선택된 project-state 쓰기 상태, 시작 관찰 상태,
-effective tool mode, `tools/list` 스키마 검증, 도구 이름 스타일, 프로젝트 사용 가능
+Runtime Home, `connection_id`, `connection.mode`, 연결 활성 상태, 레지스트리 읽기 상태,
+선택된 프로젝트 상태 읽기·쓰기 상태, 시작 관찰 상태, 유효 도구 모드,
+`tools/list` 스키마 검증, 도구 이름 스타일, 프로젝트 사용 가능
 상태, `verification_scope`를 보고합니다.
 `registry_read`와 `project_state_read`는 읽기 가능 여부를 보고합니다.
 `project_state_write` 진단은 지속 저장되지 않는 SQLite 쓰기 가능성 검사를 사용하며
 `passed`, `readonly`, `failed`, `skipped` 중 하나를 보고합니다. 이 검사는 Core 기록,
-지속 저장되는 진단 행, replay 행, session-watch 기록, tool-invocation 기록을 만들거나
+지속 저장되는 진단 행, 재실행 행, 세션 감시 기록, 도구 호출 기록을 만들거나
 `project_state.state_version`을 증가시키면 안 됩니다. `startup_observation`은 사용 가능한
 프로젝트가 하나인 일반 stdio 시작이 `recordable`인지, `best_effort_skipped_if_readonly`로
 건너뛰어질 것인지, 또는 `skipped_verification_probe`인지를 보고합니다.
 `effective_tool_mode`는 `workflow`, `read_only_degraded`, `read_only`, `unavailable` 중
 하나이며 같은 연결과 프로젝트 저장 가능성에서의 실제 `tools/list` 동작과 일치해야
-합니다. 쓰기 가능성 진단이 `passed`라고 해서 OS sandboxing, host identity, security
-isolation, 앞으로의 쓰기 성공, Product Repository 쓰기 권한이 증명되지는 않습니다.
+합니다. 쓰기 가능성 진단이 `passed`라고 해서 OS 샌드박싱, 호스트 신원, 보안 격리,
+앞으로의 쓰기 성공, Product Repository 쓰기 권한이 증명되지는 않습니다.
 
-Local HTTP serve 명령줄 동작:
+로컬 HTTP 전송 명령줄 동작:
 
-- `volicord serve --transport local-http`만 지원되는 serve 전송 표기입니다. 다른 전송
+- `volicord serve --transport local-http`만 지원되는 로컬 HTTP 전송 표기입니다. 다른 전송
   값은 사용법 오류입니다.
 - `--listen 127.0.0.1:<port>` 또는 `--listen [::1]:<port>`는 리스너를 선택합니다.
   생략하면 `127.0.0.1:8765`를 사용합니다.
-- 네이티브 `--listen`은 loopback 전용입니다. `--listen`으로 `0.0.0.0`, `::`, 공개
-  인터페이스, 컨테이너 전체 인터페이스, 또는 다른 non-loopback 주소에 바인딩하려 하면
+- 네이티브 `--listen`은 루프백 전용입니다. `--listen`으로 `0.0.0.0`, `::`, 공개
+  인터페이스, 컨테이너 전체 인터페이스, 또는 루프백이 아닌 주소에 바인딩하려 하면
   거절합니다.
 - `--container-listen 0.0.0.0:<port>` 또는 `--container-listen [::]:<port>`는 명시적
-  Docker host-loopback 노출 모드입니다. 고정된 0이 아닌 컨테이너 포트가 필요하며
-  `-p 127.0.0.1:8765:8765` 같은 host loopback 노출 규칙과 함께 사용해야 합니다.
+  Docker 호스트 루프백 노출 모드입니다. 고정된 0이 아닌 컨테이너 포트가 필요하며
+  `-p 127.0.0.1:8765:8765` 같은 호스트 루프백 노출 규칙과 함께 사용해야 합니다.
   네이티브 로컬 실행에는 유효하지 않으며 공개 호스트 인터페이스나 원격 제공 옵션이
   아닙니다.
 - `--listen`과 `--container-listen`은 함께 사용할 수 없습니다.
 - `--home PATH`는 프로세스의 Runtime Home을 선택합니다. `--home`이 없으면 공통
   `VOLICORD_HOME`과 플랫폼 기본 Runtime Home 해석을 사용합니다.
 - `--connection <connection_id>`는 서버를 저장된 Agent Connection 하나에 묶습니다. 이
-  옵션이 없으면 선택적 serve 프로젝트 허용 목록과 일치하고 연결 프로젝트가 있는 활성
+  옵션이 없으면 선택적 로컬 HTTP 프로젝트 허용 목록과 일치하고 연결 프로젝트가 있는 활성
   Agent Connection이 정확히 하나일 때만 시작이 성공합니다.
-- `--project PATH`는 반복할 수 있습니다. 각 경로는 등록된 저장소 루트로 해석되며 serve
+- `--project PATH`는 반복할 수 있습니다. 각 경로는 등록된 저장소 루트로 해석되며 로컬 HTTP
   프로세스를 해당 프로젝트 식별 정보들로 좁힙니다. 이렇게 좁힌 집합도 선택된 Agent
   Connection의 연결 프로젝트 허용 목록 안에 있어야 합니다.
-- `--token-file PATH`는 UTF-8 로컬 파일에서 bearer token을 읽습니다. 끝의 줄바꿈은
-  token에 포함하지 않습니다. 로컬 비밀값이 shell history나 serve 프로세스 인자에 직접
+- `--token-file PATH`는 UTF-8 로컬 파일에서 베어러 토큰을 읽습니다. 끝의 줄바꿈은
+  토큰에 포함하지 않습니다. 로컬 비밀값이 셸 기록이나 로컬 HTTP 프로세스 인자에 직접
   남지 않도록 `--token`보다 `--token-file`을 선호합니다.
-- `--token TOKEN`은 bearer token을 명령줄에 직접 제공합니다. 통제된 로컬 사용을 위해
+- `--token TOKEN`은 베어러 토큰을 명령줄에 직접 제공합니다. 통제된 로컬 사용을 위해
   지원하지만 문서에서 선호하는 형태는 아닙니다.
-- `--token-file`과 `--token`을 모두 생략하면 Volicord가 프로세스 로컬 token을 생성하고
-  시작 중 stderr에 씁니다. 생성 token 출력은 그 token이 로컬 비밀값이며 endpoint를
-  host loopback 또는 의도한 Docker host-loopback 경계에만 두어야 한다고 경고합니다.
-- `--generate-token`은 생성 token 경로를 명시적으로 선택하며 `--token-file` 또는
+- `--token-file`과 `--token`을 모두 생략하면 Volicord가 프로세스 로컬 토큰을 생성하고
+  시작 중 stderr에 씁니다. 생성 토큰 출력은 그 토큰이 로컬 비밀값이며 엔드포인트를
+  호스트 루프백 또는 의도한 Docker 호스트 루프백 경계에만 두어야 한다고 경고합니다.
+- `--generate-token`은 토큰 생성 경로를 명시적으로 선택하며 `--token-file` 또는
   `--token`과 함께 사용할 수 없습니다.
 - `--allow-origin ORIGIN`은 반복할 수 있으며 정확히 일치하는 Origin 값의 브라우저 가능
   요청을 허용합니다. 이 옵션이 없으면 `Origin` 헤더가 있는 요청은 거절되고 CORS 응답
@@ -175,81 +173,81 @@ Local HTTP serve 명령줄 동작:
 - stdin EOF로 정상 종료하면 stdout을 플러시하고 종료 코드 `0`으로 끝납니다.
 - 성공한 `--check`는 보고서를 stdout에 쓰고 종료 코드 `0`으로 끝납니다.
 - 시작 중 설정, JSON, 저장소 오류는 진단을 stderr에 쓰고 종료 코드 `1`로 끝납니다.
-- HTTP serve 시작 설정, 리스너, 인증 token, Origin, 프로젝트 허용 목록 오류는 진단을
+- 로컬 HTTP 시작 설정, 리스너, 인증 토큰, Origin, 프로젝트 허용 목록 오류는 진단을
   stderr에 쓰고 종료 코드 `1`로 끝납니다.
-- HTTP serve 시작 진단은 Local HTTP가 host loopback 또는 의도한 Docker host-loopback
+- 로컬 HTTP 시작 진단은 로컬 HTTP 전송이 호스트 루프백 또는 의도한 Docker 호스트 루프백
   노출에만 쓰인다고 경고합니다. `--container-listen`은 공개 인터페이스나 원격 호스트를
   위한 옵션이 아니라는 추가 경고를 냅니다.
 - stdio 루프가 실행 중일 때 잘못된 JSON과 지원하지 않는 JSON-RPC 요청은 응답을 쓸 수
   있으면 JSON-RPC 오류를 반환합니다.
 
-HTTP serve 요청 동작:
+로컬 HTTP 요청 동작:
 
-- MCP endpoint 경로는 `/mcp`입니다.
+- MCP 엔드포인트 경로는 `/mcp`입니다.
 - `POST /mcp`에는 `Authorization: Bearer <token>`, `Content-Type: application/json`,
   그리고 `application/json`과 `text/event-stream`을 모두 포함하는 `Accept` 헤더가
   필요합니다.
-- 성공한 `initialize`는 `Mcp-Session-Id`를 만듭니다. 이후 JSON-RPC 요청은 그 session ID를
+- 성공한 `initialize`는 `Mcp-Session-Id`를 만듭니다. 이후 JSON-RPC 요청은 그 세션 ID를
   제공해야 합니다.
-- `DELETE /mcp`는 bearer token과 session ID가 유효할 때 session을 삭제합니다.
-- `GET /mcp`는 `SSE_UNSUPPORTED`를 반환합니다. server-sent event 스트림은 이 local HTTP
-  endpoint에서 구현하지 않습니다.
-- `GET /healthz`는 최소 로컬 health endpoint이지만 같은 bearer token을 요구합니다.
-- `GET /consent`와 `POST /consent`는 local web consent를 사용할 수 있을 때만 열리는
-  endpoint입니다. MCP endpoint가 아니며 MCP bearer token을 사용하지 않습니다. 프로젝트,
-  연결, 대기 판단에 묶인 유효한 일회성 consent token이 필요한 loopback User Channel
-  capture 경로입니다.
-- 인증 없는 임의 resource endpoint는 없습니다.
-- 브라우저 대상 요청은 `Origin` header가 있는지로 식별합니다. `Origin`이 있는 MCP
-  endpoint 요청은 정확한 `--allow-origin` 값과 일치해야 하며, `Origin`이 있는 local web
-  consent form 제출은 consent endpoint 자신의 origin과 일치해야 합니다.
-- CORS preflight는 MCP endpoint에 대해서만, Origin 허용 목록 검증 뒤에만, 그리고 허용된
+- `DELETE /mcp`는 베어러 토큰과 세션 ID가 유효할 때 세션을 삭제합니다.
+- `GET /mcp`는 `SSE_UNSUPPORTED`를 반환합니다. 서버 전송 이벤트 스트림은 이 로컬 HTTP
+  엔드포인트에서 구현하지 않습니다.
+- `GET /healthz`는 최소 로컬 상태 확인 엔드포인트이지만 같은 베어러 토큰을 요구합니다.
+- `GET /consent`와 `POST /consent`는 로컬 consent URL을 사용할 수 있을 때만 열리는
+  엔드포인트입니다. MCP 엔드포인트가 아니며 MCP 베어러 토큰을 사용하지 않습니다.
+  프로젝트, 연결, 대기 판단에 묶인 유효한 일회성 consent 토큰이 필요한 루프백 User
+  Channel 입력 경로입니다.
+- 인증 없이 접근할 수 있는 임의 리소스 엔드포인트는 없습니다.
+- 브라우저 대상 요청은 `Origin` 헤더가 있는지로 식별합니다. `Origin`이 있는 MCP
+  엔드포인트 요청은 정확한 `--allow-origin` 값과 일치해야 합니다. `Origin`이 있는 로컬
+  consent 양식 제출은 consent 엔드포인트 자신의 Origin과 일치해야 합니다.
+- CORS 사전 요청은 MCP 엔드포인트에 대해서만, Origin 허용 목록 검증 뒤에만, 그리고 허용된
   Origin이 하나 이상 설정되어 있을 때만 받습니다.
 - Local HTTP 응답에는 `Cache-Control: no-store`와 `X-Content-Type-Options: nosniff`가
-  포함됩니다. Local web consent HTML 응답은 `Referrer-Policy: no-referrer`와 제한적인
+  포함됩니다. consent HTML 응답은 `Referrer-Policy: no-referrer`와 제한적인
   `Content-Security-Policy`도 포함합니다. CORS 응답 헤더는 명시적으로 허용된 Origin에
   대해서만 냅니다.
-- 요청 header는 16 KiB, 요청 body는 1 MiB로 제한됩니다. 더 큰 header는
-  `HTTP_HEADERS_TOO_LARGE`, 더 큰 body는 `HTTP_BODY_TOO_LARGE`로 실패합니다.
+- 요청 헤더는 16 KiB, 요청 본문은 1 MiB로 제한됩니다. 더 큰 헤더는
+  `HTTP_HEADERS_TOO_LARGE`, 더 큰 본문은 `HTTP_BODY_TOO_LARGE`로 실패합니다.
 - 구조화된 HTTP 오류는 인증, Origin, 프로젝트 허용 목록, 지원하지 않는 전송, 지원하지
-  않는 메서드, 지원하지 않는 content negotiation 실패에 안정적인 전송 오류 코드를
+  않는 메서드, 지원하지 않는 콘텐츠 협상 실패에 안정적인 전송 오류 코드를
   사용합니다.
 
 Docker 노출 동작:
 
-- 지원되는 Docker 노출 형태는 host loopback을 컨테이너 포트에 매핑합니다. 예:
+- 지원되는 Docker 노출 형태는 호스트 루프백을 컨테이너 포트에 매핑합니다. 예:
   `-p 127.0.0.1:8765:8765`.
-- 이 형태에서 컨테이너 프로세스는 Docker가 host-loopback으로 노출된 포트를 컨테이너로
+- 이 형태에서 컨테이너 프로세스는 Docker가 호스트 루프백으로 노출한 포트를 컨테이너로
   전달할 수 있도록 `--container-listen 0.0.0.0:8765`를 사용합니다.
 - 컨테이너 포트를 `0.0.0.0`, 공개 호스트 인터페이스, 원격 호스트에 노출하는 것은 Local
-  HTTP transport 계약 밖입니다.
-- Docker 노출은 위의 전송 경계 bearer token과 Origin 점검을 넘어서는 인증, 인가,
+  HTTP 전송 계약 밖입니다.
+- Docker 노출은 위의 전송 경계 베어러 토큰과 Origin 점검을 넘어서는 인증, 인가,
   다중 사용자 격리, 호스트 신뢰, 더 넓은 보안 경계를 추가하지 않습니다.
 
-Session-watch 시작 coverage:
+세션 감시 시작 범위:
 
 - stdio 시작이 `--project <project_id>` 또는 사용할 수 있는 허용 프로젝트가 정확히 하나인
   연결 맥락 때문에 프로젝트에 묶이면, 프로세스는 한정된 스냅샷 생성을 사용할 수 있을 때
-  도구 요청을 처리하기 전에 session-watch baseline을 만들거나 연결합니다. Coverage basis는
+  도구 요청을 처리하기 전에 세션 감시 기준선을 만들거나 연결합니다. 관찰 범위 근거는
   `mcp_start`입니다.
 - 관리 출처 마커가 검증된 생성 Codex 시작에서는 쓰기 가능한 저장소를 사용할 수 있을 때
-  stdio 프로세스가 같은 baseline에 `managed_host_startup`,
+  stdio 프로세스가 같은 기준선에 `managed_host_startup`,
   `managed_host_initialize_response`, `managed_host_tools_list`,
-  `managed_host_tool_call` 관찰에 대한 관리 lifecycle metadata도 추가합니다. 각
-  lifecycle event는 선택된 연결과 프로젝트, `host_kind=codex`,
-  `launch_origin=managed_host`, timestamp, 관찰된 저장 capability, 사용할 수 있을 때의
-  effective tool mode를 기록합니다.
-- HTTP serve 초기화가 `Mcp-Session-Id`를 만들고 선택된 serve 연결/프로젝트 맥락에 사용할
-  수 있는 허용 프로젝트가 정확히 하나이면, 서버는 그 session의 이후 도구 요청을 받기 전에
-  같은 `mcp_start` baseline을 만들거나 연결합니다.
-- session에 사용할 수 있는 프로젝트가 여전히 둘 이상이면 watcher coverage는
+  `managed_host_tool_call` 관찰에 대한 관리 생명주기 메타데이터도 추가합니다. 각
+  생명주기 이벤트는 선택된 연결과 프로젝트, `host_kind=codex`,
+  `launch_origin=managed_host`, 시각, 관찰된 저장 기능, 사용할 수 있을 때의 유효 도구
+  모드를 기록합니다.
+- 로컬 HTTP 초기화가 `Mcp-Session-Id`를 만들고 선택된 연결·프로젝트 맥락에 사용할 수
+  있는 허용 프로젝트가 정확히 하나이면, 서버는 그 세션의 이후 도구 요청을 받기 전에
+  같은 `mcp_start` 기준선을 만들거나 연결합니다.
+- 세션에 사용할 수 있는 프로젝트가 여전히 둘 이상이면 감시 범위는
   `pending_project_selection`입니다. 도구 요청이 명시적인 `project_selector`를 이름 붙이기
-  전에는 전체 detective coverage를 주장하지 않습니다.
-- 프로젝트가 선택된 메서드 요청이 첫 baseline을 만들면 basis는 명시적 selector에서는
-  `first_project_selection`, 단일 프로젝트 메서드 경계 fallback에서는 `method_boundary`입니다.
-  두 basis 모두 더 이른 Product Repository 변경이 watcher coverage 밖에 있으므로 부분
-  coverage를 보고합니다.
-- 이런 baseline 시도는 한정된 관찰입니다. 쓰기를 막거나, 파일을 바꾼 행위자를 식별하거나,
+  전에는 전체 탐지 범위를 주장하지 않습니다.
+- 프로젝트가 선택된 메서드 요청이 첫 기준선을 만들면 명시적 선택의 근거는
+  `first_project_selection`, 단일 프로젝트 메서드 경계 대체 경로의 근거는
+  `method_boundary`입니다. 두 경우 모두 더 이른 Product Repository 변경은 감시 범위
+  밖이므로 부분 범위를 보고합니다.
+- 이런 기준선 생성 시도는 한정된 관찰입니다. 쓰기를 막거나, 파일을 바꾼 행위자를 식별하거나,
   원시 파일 내용을 저장하거나, OS 수준 강제를 만들지 않습니다.
 
 <a id="process-environment"></a>
@@ -271,14 +269,14 @@ MCP 프로세스는 아래처럼 역할이 제한된 환경 입력을 해석합�
 사용합니다. help와 version 모드는 이를 사용하지 않습니다.
 
 `VOLICORD_LOCAL_WEB_CONSENT=0`, `false`, `off`, `disabled`는 stdio local web consent
-리스너를 끕니다. 다른 값은 리스너 주소나 token 정책을 바꾸지 않습니다.
+리스너를 끕니다. 다른 값은 리스너 주소나 토큰 정책을 바꾸지 않습니다.
 
 `VOLICORD_MCP_VERIFICATION=1`은 진단 전용 마커입니다. 관리 명령
 `volicord connection verify` 흐름은 자식 MCP handshake에 이 값을 자동으로 설정합니다.
 운영자가 직접 설정하는 지원 경로는 한정된
-[수동 stdio 수명주기 probe](#manual-stdio-lifecycle-probe)뿐입니다. 이 값은 일반 연결과
-프로젝트 시작 점검을 유지하지만 프로세스를 verification probe로 분류하므로, 프로세스가
-시작 session-watch baseline이나 관리 Codex runtime observation을 만들지 않습니다. 일반
+[수동 stdio 생명주기 점검](#manual-stdio-lifecycle-probe)뿐입니다. 이 값은 일반 연결과
+프로젝트 시작 점검을 유지하지만 프로세스를 검증 점검으로 분류하므로, 프로세스가
+시작 세션 감시 기준선이나 관리 Codex 런타임 관찰을 만들지 않습니다. 일반
 호스트 설정에 사용하는 값이 아닙니다.
 
 Volicord가 관리하는 Codex 설정은 다음과 같은 관리 시작 출처 마커를 담습니다.
@@ -288,15 +286,15 @@ Volicord가 관리하는 Codex 설정은 다음과 같은 관리 시작 출처 �
 - `VOLICORD_MCP_CONNECTION_ID=<connection_id>`
 - 명령에 프로젝트 바인딩이 있을 때의 `VOLICORD_MCP_PROJECT_ID=<project_id>`
 
-이 마커들은 Volicord 관리 설정 identity의 일부이며 일반 운영자 선택자가 아닙니다.
+이 마커들은 Volicord 관리 설정 식별 정보의 일부이며 일반 운영자 선택자가 아닙니다.
 사용자 관리 시작을 관리 시작처럼 보이게 만들려고 직접 추가하거나 바꾸지 말고,
 `volicord init` 또는 `volicord connection add`로 관리 설정을 다시 생성합니다. Connection과
 선택적 project 값은 대응하는 프로세스 인자와 일치해야 합니다. 관리 마커가 하나도 없는
 시작은 수동으로 분류됩니다. 일부만 있거나 값이 맞지 않는 마커 집합은 유효하지 않은 관리
-출처이며 관리 lifecycle observation을 만들지 않습니다. 이 마커는 프로젝트 접근, 호스트
+출처이며 관리 생명주기 관찰을 만들지 않습니다. 이 마커는 프로젝트 접근, 호스트
 신뢰, 더 넓은 권한을 부여하지 않습니다.
 
-연결 식별 정보는 생성된 호스트 설정이나 사용자 관리 generic 호스트 설정 안의
+연결 식별 정보는 생성된 호스트 설정이나 사용자가 관리하는 일반 호스트 설정 안의
 `--connection <connection_id>`로 제공합니다. 이것은 선택된 Agent Connection에 대한 내부
 프로세스 바인딩이며, 사용자가 보통 직접 고르거나 관리하는 값이 아닙니다. 묶인 Agent
 Connection과 Runtime Home 레지스트리 상태가 연결 모드, 연결 프로젝트, 어댑터가 파생하는
@@ -312,7 +310,7 @@ Connection의 연결 프로젝트와 저장소 루트 해석으로 제어됩니�
    디렉터리를 기준으로 해석합니다.
 4. `VOLICORD_HOME`이 없으면 플랫폼 홈 환경 변수에서 기본 사용자 홈을 구하고
    `.volicord`를 붙입니다. Windows가 아닌 플랫폼에서는 `HOME`, `USERPROFILE`,
-   `HOMEDRIVE`와 `HOMEPATH` 조합 순서로 시도합니다. Native Windows에서는
+   `HOMEDRIVE`와 `HOMEPATH` 조합 순서로 시도합니다. 네이티브 Windows에서는
    `USERPROFILE`, `HOMEDRIVE`와 `HOMEPATH` 조합, WSL 형식 mount 경로가 아닌 `HOME`
    순서로 시도합니다.
 5. 시작 검증 전에 정규화를 요구하지 않습니다.
@@ -421,13 +419,13 @@ project[0].repo_root: <path>
 - `connection_id`는 저장된 Agent Connection을 위한 프로세스 바인딩입니다.
 - `Does not prove`는 시작 진단의 비보장을 요약하며, 메서드 호출에 쓰이는 기계 판독 가능
   Core 응답 공개를 바꾸지 않습니다.
-- `registry_read`는 시작 검증에서 Runtime Home registry를 읽을 수 있었는지 보고합니다.
-- `project_state_read`는 선택된 project-state 집합의 읽기 접근을 요약합니다. 프로젝트별
+- `registry_read`는 시작 검증에서 Runtime Home 레지스트리를 읽을 수 있었는지 보고합니다.
+- `project_state_read`는 선택된 프로젝트 상태 집합의 읽기 접근을 요약합니다. 프로젝트별
   `state_read` 줄은 각 세부 블록의 같은 사실을 보고합니다.
-- `project_state_write`는 선택된 project-state 집합의 유효 쓰기 가능성을 요약합니다.
-  프로젝트별 `state_write` 줄은 각 세부 블록의 같은 capability를 보고합니다.
-- `startup_observation`은 일반 시작이 한정된 session-watch 관찰을 기록할 수 있는지,
-  읽기 전용 저장소에서는 그 관찰을 건너뛸 것인지, 또는 verification probe에 그치는지를
+- `project_state_write`는 선택된 프로젝트 상태 집합의 유효 쓰기 가능성을 요약합니다.
+  프로젝트별 `state_write` 줄은 각 세부 블록의 같은 기능을 보고합니다.
+- `startup_observation`은 일반 시작이 한정된 세션 감시 관찰을 기록할 수 있는지,
+  읽기 전용 저장소에서는 그 관찰을 건너뛸 것인지, 또는 검증 점검에 그치는지를
   보고합니다.
 - `effective_tool_mode`는 같은 연결과 프로젝트 저장 가능성에서 시작 점검이 예상하는
   `tools/list` 모드를 보고합니다.
@@ -436,19 +434,19 @@ project[0].repo_root: <path>
   검사를 통과했는지 보고합니다. 이것은 Volicord 쪽 진단이며 호스트가 도구를 등록하거나
   노출한다는 증명이 아닙니다.
 - `tool_naming_style: dotted_namespace`는 해당 Volicord 도구 이름이 `volicord.*`
-  dotted namespace를 사용한다는 것을 보고합니다. 이 줄은 점 없는 alias를 만들지
+  점 구분 이름 공간을 사용한다는 것을 보고합니다. 이 줄은 점 없는 별칭을 만들지
   않습니다.
 - `allowed_projects`는 Agent Connection 허용 목록 전체를 설명합니다.
 - 사용할 수 없는 프로젝트도 모든 프로젝트 세부 키를 출력합니다. `unavailable_reason`은
   사용할 수 없는 프로젝트에서 채워지고 사용할 수 있는 프로젝트에서는 비어 있습니다.
 - `verification_scope: startup_check_only`는 시작과 사전 점검에 대한 문장일 뿐이며 전체
   호스트 검증이 아닙니다.
-- `--check`는 session-watch baseline을 만들지 않습니다. `watcher_status:
-  pending_mcp_start`는 향후 프로젝트에 묶인 stdio 또는 HTTP session이 `mcp_start` basis로
-  coverage를 시작할 수 있음을 뜻하고, `pending_project_selection`은 향후 session이
-  coverage를 시작하기 전에 프로젝트를 선택해야 함을 뜻합니다.
+- `--check`는 세션 감시 기준선을 만들지 않습니다. `watcher_status:
+  pending_mcp_start`는 향후 프로젝트에 묶인 stdio 또는 HTTP 세션이 `mcp_start` 근거로
+  관찰을 시작할 수 있음을 뜻합니다. `pending_project_selection`은 향후 세션이 관찰을
+  시작하기 전에 프로젝트를 선택해야 함을 뜻합니다.
 - 빈 `watcher_baseline_created_at`, `watcher_coverage_start_at`,
-  `watcher_coverage_basis` 값은 이 사전 점검 명령이 baseline을 만들지 않았다는 뜻입니다.
+  `watcher_coverage_basis` 값은 이 사전 점검 명령이 기준선을 만들지 않았다는 뜻입니다.
 - `--check` 출력에는 연결 존재 여부, 연결 프로젝트 수, 프로젝트 표시 이름을 나타내는
   관리 상태 필드가 포함되지 않습니다.
 
@@ -479,12 +477,12 @@ MCP 초기화, 성공한 도구 탐색이 필요합니다.
 
 - 비어 있지 않은 각 stdin 줄은 UTF-8 JSON-RPC 메시지 객체 하나를 정확히 담습니다.
 - JSON 루트는 JSON-RPC 메시지 객체 하나여야 합니다. Volicord의 클라이언트-서버 기준
-  범위에서 지원되는 메시지 객체는 요청과 `notifications/initialized` notification입니다.
+  범위에서 지원되는 메시지 객체는 요청과 `notifications/initialized` 알림입니다.
   배열, 원시 JSON 루트, `null`은 유효하지 않은 MCP stdio 메시지입니다.
 - JSON-RPC 배치는 지원하지 않습니다. 배열 입력은 배열 요소마다 응답을 내지 않고 Invalid
   Request 응답 하나를 받습니다.
 - 메시지는 줄바꿈으로 구분되며 메시지 안에 줄바꿈을 포함하면 안 됩니다.
-- 각 출력 줄은 JSON-RPC 응답 객체 하나를 담습니다. 다만 elicitation을 사용할 수 있는
+- 각 출력 줄은 JSON-RPC 응답 객체 하나를 담습니다. 다만 사용자 입력 요청을 사용할 수 있는
   `tools/call`을 처리하는 동안에는 서버가 시작한 `elicitation/create` 요청이 출력될 수
   있습니다. `volicord mcp --stdio`는 `initialize` 전에 준비 완료 메시지를 쓰지 않습니다.
 - stdin EOF는 stdout을 플러시한 뒤 프로세스를 끝냅니다.
@@ -494,31 +492,31 @@ JSON-RPC 검증 규칙:
 - `jsonrpc`는 정확히 `"2.0"`이어야 합니다.
 - 요청 `method`는 문자열이어야 합니다.
 - 요청 ID는 문자열 또는 정수일 수 있으며 `null`이면 안 됩니다.
-- 분류 가능한 notification은 문자열 `method`를 갖고 `id`가 없으며 MCP 메서드 파라미터가
+- 분류 가능한 알림은 문자열 `method`를 갖고 `id`가 없으며 MCP 메서드 파라미터가
   잘못되었더라도 응답을 받지 않습니다.
-- `id`가 없는 객체가 자동으로 유효한 notification이 되는 것은 아닙니다. 그래도
-  notification 형태를 만족해야 합니다.
+- `id`가 없는 객체가 자동으로 유효한 알림이 되는 것은 아닙니다. 그래도 알림 형태를
+  만족해야 합니다.
 - 지원되는 MCP 요청의 메서드 `params`는 존재할 때 객체여야 합니다. 수명주기
-  notification에서는 `params`가 없거나 객체인 경우에만 수명주기에 영향을 줄 수 있습니다.
+  알림에서는 `params`가 없거나 객체인 경우에만 수명주기에 영향을 줄 수 있습니다.
 
-notification 분류는 MCP 메서드 파라미터 검증보다 먼저 JSON-RPC envelope를 기준으로
-이루어집니다. 메시지가 notification으로 분류될 수 있으면 잘못된 `params`가 있어도
+알림 분류는 MCP 메서드 파라미터 검증보다 먼저 JSON-RPC 래퍼를 기준으로
+이루어집니다. 메시지가 알림으로 분류될 수 있으면 잘못된 `params`가 있어도
 JSON-RPC 응답을 만들지 않습니다. 그러나 그런 `params`는 수명주기 목적에서는 유효하지
 않습니다. 잘못된 `notifications/initialized`는 연결을 준비 상태로 옮기지 않고,
-notification으로 받은 요청 전용 메서드는 무시되며 실행하면 안 됩니다.
+알림으로 받은 요청 전용 메서드는 무시되며 실행하면 안 됩니다.
 
 오류 분류:
 
 | 조건 | MCP 응답 |
 |---|---|
 | JSON 파싱 실패 | JSON-RPC `-32700` Parse error |
-| 배열, 원시 루트, 누락되었거나 잘못된 `jsonrpc`, 잘못된 요청 `id`, 누락되었거나 문자열이 아닌 요청 `method`, 잘못된 non-notification 객체를 포함한 유효하지 않은 JSON-RPC 메시지 구조 | JSON-RPC `-32600` Invalid Request |
+| 배열, 원시 루트, 누락되었거나 잘못된 `jsonrpc`, 잘못된 요청 `id`, 누락되었거나 문자열이 아닌 요청 `method`, 알림이 아닌 잘못된 객체를 포함한 유효하지 않은 JSON-RPC 메시지 구조 | JSON-RPC `-32600` Invalid Request |
 | `initialize` 전 요청, `notifications/initialized` 전 `tools/call`, 중복 `initialize`를 포함한 요청의 수명주기 위반 | JSON-RPC `-32600` Invalid Request |
 | 알 수 없는 요청 메서드 | JSON-RPC `-32601` Method not found |
 | 요청의 잘못된 메서드 파라미터 | JSON-RPC `-32602` Invalid params |
 | 구조적으로 유효한 `tools/call` 요청의 알 수 없는 도구 이름 | JSON-RPC `-32602` Invalid params |
 | 어댑터 또는 서버 내부 실패 | 적절한 JSON-RPC 내부 오류 응답 |
-| 분류 가능한 notification. 잘못된 메서드 파라미터가 있는 경우도 포함 | 응답 없음. 잘못된 파라미터는 수명주기 전환이나 요청 전용 동작을 일으키지 않습니다. |
+| 분류 가능한 알림. 잘못된 메서드 파라미터가 있는 경우도 포함 | 응답 없음. 잘못된 파라미터는 수명주기 전환이나 요청 전용 동작을 일으키지 않습니다. |
 
 ### 프로토콜 버전과 수명주기
 
@@ -530,7 +528,7 @@ notification으로 받은 요청 전용 메서드는 무시되며 실행하면 �
 - 문자열 `name`과 `version` 필드를 포함하는 객체 `clientInfo`
 
 `params.capabilities.elicitation`이 객체이면 어댑터는 MCP 클라이언트가 서버 시작
-elicitation을 사용할 수 있다고 봅니다. 다른 capability 항목은 그 자체로 Volicord 동작을
+사용자 입력 요청을 사용할 수 있다고 봅니다. 다른 기능 항목은 그 자체로 Volicord 동작을
 만들지 않습니다.
 
 예시는 위에 나열한 필드를 사용합니다. `volicord mcp --stdio`는 2025-11-25 스키마가
@@ -549,27 +547,27 @@ elicitation을 사용할 수 있다고 봅니다. 다른 capability 항목은 �
 | 연결 지점 | 유효한 클라이언트 메시지 | 결과 |
 |---|---|---|
 | 성공한 `initialize` 전 | `initialize` 요청 | 성공하면 서버는 `protocolVersion: "2025-11-25"`를 반환하고 `notifications/initialized`를 기다립니다. |
-| `notifications/initialized` 대기 중 | `notifications/initialized` notification, `ping` 요청, `tools/list` 요청 | `notifications/initialized`가 준비 상태 전환을 완료합니다. `ping`은 `initialize`가 성공한 뒤 사용할 수 있으며, 서버가 notification을 기다리는 동안에도 사용할 수 있습니다. `tools/list`는 성공한 `initialize` 응답 뒤 사용할 수 있는 읽기 전용 탐색입니다. |
+| `notifications/initialized` 대기 중 | `notifications/initialized` 알림, `ping` 요청, `tools/list` 요청 | `notifications/initialized`가 준비 상태 전환을 완료합니다. `ping`은 `initialize`가 성공한 뒤 사용할 수 있으며, 서버가 알림을 기다리는 동안에도 사용할 수 있습니다. `tools/list`는 성공한 `initialize` 응답 뒤 사용할 수 있는 읽기 전용 탐색입니다. |
 | 준비 상태 | `ping`, `tools/list`, `tools/call` | 일반 MCP 도구 탐색과 도구 실행을 사용할 수 있습니다. |
 
 `tools/list`는 성공한 `initialize` 응답 뒤 사용할 수 있으며, 서버가
 `notifications/initialized`를 기다리는 동안과 준비 상태 전환 뒤에도 계속 사용할 수
 있습니다. `tools/call`은 `notifications/initialized`가 준비 상태 전환을 완료한 뒤에만
 사용할 수 있습니다. 중복 `initialize` 요청은 유효하지 않습니다. 너무 이르거나 잘못된
-`notifications/initialized` notification은 연결을 준비 상태로 만들지 않습니다.
+`notifications/initialized` 알림은 연결을 준비 상태로 만들지 않습니다.
 
 <a id="manual-stdio-lifecycle-probe"></a>
-### 수동 stdio 수명주기 probe
+### 수동 stdio 생명주기 점검
 
-이 probe는 설정된 Agent Connection을 활성 Codex host process 밖에서 문제 해결할 때만
-사용합니다. `<repo>`, `<connection_id>`, `<project_id>`를 확인하려는 connection의 값으로
+이 점검은 설정된 Agent Connection을 활성 Codex 호스트 프로세스 밖에서 문제를 해결할
+때만 사용합니다. `<repo>`, `<connection_id>`, `<project_id>`를 확인하려는 연결의 값으로
 바꿉니다. 프로세스 환경이 이미 의도한 Runtime Home을 선택하지 않는다면 `<repo>`에서
-실행합니다. 수동 또는 권한 상승 probe는 그 시작 환경에서 MCP 서버가 실행될 수 있음을
-증명할 수 있지만, 활성 Codex session이 도구를 등록하거나 노출했다는 증명은 아닙니다.
-`VOLICORD_MCP_VERIFICATION=1`은 실행을 verification probe로 표시합니다. 일반 Agent
-Connection과 프로젝트 시작 점검은 유지하지만, 이 프로세스를 Codex host runtime 관찰로
-기록하거나 시작 session-watch baseline을 만들지는 않습니다. 관리 Codex 출처 마커 없이
-실행한 `volicord mcp --stdio`는 host-runtime 관찰 목적에서 수동 CLI 시작으로 분류됩니다.
+실행합니다. 수동 또는 권한 상승 점검은 그 시작 환경에서 MCP 서버가 실행될 수 있음을
+증명할 수 있지만, 활성 Codex 세션이 도구를 등록하거나 노출했다는 증명은 아닙니다.
+`VOLICORD_MCP_VERIFICATION=1`은 실행을 검증 점검으로 표시합니다. 일반 Agent Connection과
+프로젝트 시작 점검은 유지하지만, 이 프로세스를 Codex 호스트 런타임 관찰로 기록하거나
+시작 세션 감시 기준선을 만들지는 않습니다. 관리 Codex 출처 마커 없이 실행한
+`volicord mcp --stdio`는 호스트 런타임 관찰 목적에서 수동 CLI 시작으로 분류됩니다.
 
 프로세스 명령 형태는 아래와 같습니다.
 
@@ -600,7 +598,7 @@ printf '%s\n' \
 ```
 
 `notifications/initialized` 전에 `tools/call`을 보내면 JSON-RPC Invalid Request로 실패해야
-합니다. Initialized notification 전에는 도구 실행이 준비되지 않았기 때문입니다.
+합니다. 초기화 완료 알림 전에는 도구 실행이 준비되지 않았기 때문입니다.
 
 ```sh
 cd "<repo>"
@@ -611,8 +609,8 @@ printf '%s\n' \
 ```
 
 `notifications/initialized` 뒤에는 프로젝트 상태를 읽을 수 있을 때 읽기 전용
-`volicord.status` 호출이 성공할 수 있습니다. 유효 저장소가 읽기 전용이면 workflow
-mutation 호출은 `tools/list`에 없을 수 있습니다. 호스트 쪽 오래된 cache가 그래도 그
+`volicord.status` 호출이 성공할 수 있습니다. 유효 저장소가 읽기 전용이면 워크플로
+변경 호출은 `tools/list`에 없을 수 있습니다. 호스트 쪽 오래된 캐시가 그래도 그
 도구를 호출하면 MCP 결과는 쓰기 준비 상태를 증명하지 않고 Volicord `MCP_UNAVAILABLE`
 거절을 래핑합니다.
 
@@ -629,15 +627,15 @@ mutation 호출은 `tools/list`에 없을 수 있습니다. 호스트 쪽 오래
 도구가 아닙니다. 서버는 User Channel 기록을 시도하기 전에 그 서버 요청에 대한 클라이언트
 응답을 검증합니다.
 
-지원되는 수명주기 notification은 `notifications/initialized`입니다.
+지원되는 수명주기 알림은 `notifications/initialized`입니다.
 
 <a id="tool-discovery-and-toolscall-response-wrapping"></a>
 ## 도구 탐색과 `tools/call` 응답 래핑
 
 성공한 `initialize` 응답 뒤 `tools/list`는 현재 저장된 Agent Connection 모드와 선택된
-허용 프로젝트의 유효 저장소 읽기/쓰기 capability에 따라 도구를 노출합니다.
+허용 프로젝트의 유효 저장소 읽기·쓰기 가능 여부에 따라 도구를 노출합니다.
 
-| 모드와 저장소 읽기/쓰기 capability | MCP에 보이는 도구 |
+| 모드와 저장소 읽기·쓰기 가능 여부 | MCP에 보이는 도구 |
 |---|---|
 | 쓰기 가능한 프로젝트 상태의 `workflow` | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.prepare_write`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.reconcile_changes`, `volicord.check_close`, `volicord.close_task`, `volicord.list_projects` |
 | 읽을 수 있지만 쓸 수 없는 프로젝트 상태의 `workflow` | `volicord.status`, `volicord.check_close`, `volicord.list_projects` |
@@ -650,14 +648,21 @@ MCP 어댑터는 시작과 탐색 중 프로젝트 상태를 읽기 전용으로
 허용 프로젝트 상태를 하나도 읽을 수 없으면 호출자가 프로젝트 사용 가능성을 확인할 수
 있도록 `volicord.list_projects`만 보이게 유지합니다.
 
-유효 저장소가 읽기 전용이면 읽기 호환 공개 메서드 도구는 session-watch baseline,
+유효 저장소가 읽기 전용이면 읽기 호환 공개 메서드 도구는 세션 감시 기준선,
 `tool_invocations`, `task_events`, 새 `project_state.state_version`을 만들지 않고 실행됩니다.
-호스트 쪽 오래된 도구 cache가 선택된 프로젝트 상태를 쓸 수 없을 때도 공개 워크플로 변경
+호스트 쪽 오래된 도구 캐시가 선택된 프로젝트 상태를 쓸 수 없을 때도 공개 워크플로 변경
 도구를 호출하면, 어댑터는 Core 쓰기를 시도하지 않고 일반 Volicord 거절 응답을 반환합니다.
 이 응답은 `code=MCP_UNAVAILABLE`, `operation_category=agent_workflow`, 메시지
 `Volicord project state is not writable in the current MCP host environment.`를 담습니다.
 
-`workflow` 모드의 증거 경로는 이렇습니다. 바이트나 안전한 알림이 필요할 때만 `volicord.stage_artifact`로 증거 첨부 입력을 준비하고, 그다음 `volicord.record_run`으로 Run 또는 관찰, 주장별 증거 갱신, 증거 관찰 출처, 필요한 첨부 연결 또는 승격을 기록합니다. 스테이징 핸들만으로는 받아들여진 증거가 아니며 닫기 상태를 만족하지 않습니다.
+`workflow` 모드의 증거 경로는 다음과 같습니다.
+
+- 바이트나 안전한 알림이 필요할 때만 `volicord.stage_artifact`로 증거 첨부 입력을
+  준비합니다.
+- `volicord.record_run`으로 Run 또는 관찰, 주장별 증거 갱신, 관찰 출처, 필요한 첨부
+  연결 또는 승격을 기록합니다.
+
+스테이징 핸들만으로는 받아들여진 증거가 아니며 닫기 상태를 만족하지 않습니다.
 
 MCP에 보이는 도구는 공개 Volicord Core API 메서드 목록과 같은 것이 아닙니다.
 `volicord.check_close`는 닫기 준비 상태를 확인하는 일급 읽기 전용 Core 메서드에
@@ -691,19 +696,18 @@ Agent Connection MCP 도구로 노출되지 않습니다. 공개 메서드 담�
 이름, 현재 작업 디렉터리, MCP roots, 호스트 라벨, 저장소 라벨, 기억에서 프로젝트 식별
 정보를 추론하면 안 됩니다.
 
-`volicord.list_projects`는 선택된 연결 바인딩, mode, 프로젝트 selector, 프로젝트 사용
-가능성, 저장소 루트 표시 경로, 그리고 현재 MCP session의 session-watch coverage 필드를
-반환합니다. Coverage 필드는 `watcher_status`, `watcher_baseline_created_at`,
+`volicord.list_projects`는 선택된 연결 바인딩, 모드, 프로젝트 선택자, 프로젝트 사용
+가능성, 저장소 루트 표시 경로, 현재 MCP 세션의 세션 감시 범위 필드를 반환합니다. 범위
+필드는 `watcher_status`, `watcher_baseline_created_at`,
 `watcher_coverage_start_at`, `watcher_coverage_basis`,
 `watcher_partial_coverage_warning`입니다. 명시적 프로젝트 선택이 아직 없는 여러 프로젝트
-session에서는 `watcher_status=pending_project_selection`이고 coverage 시각과 basis는
-`null`이며, 경고는 coverage가 아직 시작되지 않았음을 말합니다. 명시적 프로젝트 선택으로
-baseline이 만들어진 뒤의 `volicord.list_projects` 출력은 저장된 coverage 시작과 basis를
-보고합니다.
+세션에서는 `watcher_status=pending_project_selection`이고 범위 시각과 근거는 `null`입니다.
+경고는 관찰이 아직 시작되지 않았음을 말합니다. 명시적 프로젝트 선택으로 기준선이 만들어진
+뒤의 `volicord.list_projects` 출력은 저장된 관찰 시작 시각과 근거를 보고합니다.
 
 MCP 어댑터는 Core에 넘기기 전에 Core 래퍼를 생성합니다. 어댑터는 `request_id`, 워크플로
-효과에 대한 `idempotency_key`, Core freshness가 요구하는 경우 선택된 프로젝트의 현재
-상태에서 얻은 `expected_state_version`, `dry_run=false`, 기본 locale, 선택된 내부
+효과에 대한 `idempotency_key`, Core가 최신 상태를 요구하는 경우 선택된 프로젝트의 현재
+상태에서 얻은 `expected_state_version`, `dry_run=false`, 기본 로캘, 선택된 내부
 프로젝트, 파생된 호출 맥락을 제공합니다. 공개 MCP 인자는 이 사실들을 덮어쓸 수 없습니다.
 
 `volicord.status`는 Core include 행렬을 노출하지 않고 간결한 공개 `detail` 인자를
@@ -711,7 +715,7 @@ MCP 어댑터는 Core에 넘기기 전에 Core 래퍼를 생성합니다. 어댑
 `workflow`입니다.
 
 알려진 공개 Volicord 메서드 도구에서 객체 `arguments`가 도구 입력 스키마를 통과하지
-못하면 `isError: true`와 실행 가능한 text content를 담은 `CallToolResult`를 반환합니다.
+못하면 `isError: true`와 실행 가능한 텍스트를 담은 `CallToolResult`를 반환합니다.
 이는 JSON-RPC 프로토콜 오류가 아니라 도구 실행 오류입니다.
 
 공개 Volicord 메서드 도구 호출에 대해 어댑터는 먼저
@@ -725,9 +729,9 @@ MCP 어댑터는 Core에 넘기기 전에 Core 래퍼를 생성합니다. 어댑
 아닙니다.
 
 <a id="user-judgment-elicitation"></a>
-### 사용자 판단 elicitation
+### 사용자 판단 입력 요청
 
-`volicord.request_user_judgment`는 Core에 집중된 대기 `UserJudgment` 생성을 요청하는
+`volicord.request_user_judgment`는 Core에 구체적인 대기 `UserJudgment` 생성을 요청하는
 유일한 Agent Connection 도구로 남습니다. MCP 어댑터는 `volicord.record_user_judgment`를
 Agent Connection 도구로 노출하지 않으며, 에이전트가 넣은 답변 필드를 사용자 입력의
 대체물로 받지 않습니다.
@@ -738,64 +742,65 @@ Agent Connection 도구로 노출하지 않으며, 에이전트가 넣은 답변
 - 초기화된 클라이언트가 `capabilities.elicitation`을 선언했다면 어댑터는 원래
   `tools/call` 응답을 반환하기 전에 `elicitation/create`를 보낼 수 있습니다. 요청
   스키마는 Core가 만든 선택지 ID에서 가져온 필수 `selected_option_id`와 선택적 `note`를
-  담은 평평한 객체입니다. 이 스키마는 secret, credential, token, private key 또는 그 밖의
-  비공개 secret 자료를 요청하지 않습니다.
-- elicitation 응답이 `action=accept`이면 어댑터는 `content.selected_option_id`를 대기
+  담은 평평한 객체입니다. 이 스키마는 비밀값, 자격 증명, 토큰, 개인 키 또는 그 밖의
+  비공개 비밀 자료를 요청하지 않습니다.
+- `elicitation` 응답이 `action=accept`이면 어댑터는 `content.selected_option_id`를 대기
   판단 선택지와 대조해 검증합니다. 유효한 응답은 Core의 User Channel 메서드를 통해
   `actor_source=local_user`, `operation_category=user_only`,
   `resolved_verification_basis=mcp_elicitation_user_channel`로 기록합니다. 반환되는
-  `tools/call` content에는 그 결과 Volicord 응답 JSON이 들어갑니다.
-- elicitation 응답이 `action=decline`이고 대기 판단에 Core reject 선택지가 있으면
-  어댑터는 같은 User Channel 경로로 그 reject 선택지를 기록합니다. reject 선택지가 없으면
+  `tools/call` 콘텐츠에는 그 결과 Volicord 응답 JSON이 들어갑니다.
+- `elicitation` 응답이 `action=decline`이고 대기 판단에 Core 거절 선택지가 있으면
+  어댑터는 같은 User Channel 경로로 그 거절 선택지를 기록합니다. 거절 선택지가 없으면
   판단은 대기 상태로 남습니다.
-- elicitation 응답이 `action=cancel`이거나, 유효하지 않거나, 형식이 잘못되었거나, 대기
+- `elicitation` 응답이 `action=cancel`이거나, 유효하지 않거나, 형식이 잘못되었거나, 대기
   판단과 맞출 수 없으면 어댑터는 답변을 기록하지 않으며 대기 판단은 대기 상태로 남습니다.
-- 클라이언트가 capability를 선언하지 않아 host prompt input을 사용할 수 없으면 어댑터는
-  답변을 기록하지 않고 대기 `RequestUserJudgmentResult`와 추가 text content를 반환합니다.
-  채팅 명령 capture 사용 가능 상태가 `configured`, `observed`, `active`이면 그 text에
-  prompt-submit hook 경로와 호환되고 현재 검증 코드를 포함한 정확한 채팅 명령이 들어갈 수
+- 클라이언트가 해당 기능을 선언하지 않아 호스트 프롬프트 입력을 사용할 수 없으면 어댑터는
+  답변을 기록하지 않고 대기 `RequestUserJudgmentResult`와 추가 텍스트를 반환합니다.
+  채팅 명령 캡처 사용 가능 상태가 `configured`, `observed`, `active`이면 그 텍스트에
+  프롬프트 제출 훅 경로와 호환되고 현재 검증 코드를 포함한 정확한 채팅 명령이 들어갈 수
   있습니다.
-- 채팅 명령 capture를 사용할 수 없고 로컬 동의 URL을 사용할 수 있으면 어댑터는 짧게
-  만료되는 일회성 token을 만들고 loopback consent URL과 구조화된 fallback JSON을
-  반환합니다. URL에는 프로젝트 selector와 token만 들어갑니다. Runtime Home 경로, 저장소
-  경로, prompt 본문, 답변, 임의 API 매개변수는 포함하지 않습니다.
-- 로컬 동의 URL 경로가 비활성화되었거나, 안전하게 bind할 수 없거나, token을 만들 수
-  없으면 fallback text는 `volicord inbox` CLI inbox 경로를 안내합니다.
+- 채팅 명령 캡처를 사용할 수 없고 로컬 consent URL을 사용할 수 있으면 어댑터는 짧게
+  만료되는 일회성 토큰을 만들고 루프백 consent URL과 구조화된 대체 JSON을 반환합니다.
+  URL에는 프로젝트 선택자와 토큰만 들어갑니다. Runtime Home 경로, 저장소 경로,
+  프롬프트 본문, 답변, 임의 API 매개변수는 포함하지 않습니다.
+- 로컬 consent URL 경로가 비활성화되었거나, 안전하게 바인딩할 수 없거나, 토큰을 만들 수
+  없으면 대체 안내는 `volicord inbox` CLI 받은편지함 경로를 가리킵니다.
 
 모든 분기에서 `result.content[0].text`는 Volicord 응답 JSON 문자열로 남습니다. 추가
-`content[]` text가 있으면 fallback 안내나 elicitation 취소/무효 설명 같은 어댑터
-안내입니다. 그 추가 text는 Core 권한, 공개 API 응답 필드, 사용자 판단 기록이 아닙니다.
+`content[]` 텍스트가 있으면 대체 안내나 `elicitation` 취소·무효 설명 같은 어댑터
+안내입니다. 그 추가 텍스트는 Core 권한, 공개 API 응답 필드, 사용자 판단 기록이 아닙니다.
 
 <a id="local-web-consent-fallback"></a>
-Local web consent 리스너는 기본적으로 `127.0.0.1`에 bind하며, 안전하게 bind할 수 없으면
-fail closed해야 합니다. stdio 모드에서는 임시 loopback port를 사용합니다.
-`volicord serve --transport local-http`에서는 같은 loopback 전용 local HTTP 리스너에서만
-consent route를 제공합니다.
+로컬 consent 리스너는 기본적으로 `127.0.0.1`에 바인딩합니다. 안전하게 바인딩할 수
+없으면 요청을 허용하지 않고 실패해야 합니다. stdio 모드에서는 임시 루프백 포트를
+사용합니다. `volicord serve --transport local-http`에서는 같은 루프백 전용 로컬 HTTP
+리스너에서만 consent 경로를 제공합니다.
 
-Local web consent endpoint 동작:
+로컬 consent 엔드포인트 동작:
 
-- `GET /consent?project=<project_id>&token=<token>`은 일회성 token을 현재 프로젝트와
-  연결에 대해 검증합니다. 만료됨, 소비됨, 유효하지 않음, wrong-project, wrong-connection
-  token은 안전한 HTML 오류 페이지로 거절하고, 그 밖에는 판단 text, 선택지, 검증 정보,
-  form을 담은 최소 HTML page를 렌더링합니다. page는 선택지와 그 의미, 프로젝트 이름 또는
-  식별자, 사용할 수 있을 때 등록된 저장소 경로, 연결 식별자, 판단 id, token 만료 시각,
-  fallback CLI 명령을 보여 줍니다. 또한 사용자가 사용자 소유 판단을 기록한다는 점, 에이전트가
-  사용자를 대신해 이를 기록할 수 없다는 점, 이 판단이 정확성, 테스트 충분성, 배포 성공,
+- `GET /consent?project=<project_id>&token=<token>`은 일회성 토큰을 현재 프로젝트와
+  연결에 대해 검증합니다. 만료되었거나, 사용되었거나, 유효하지 않거나, 프로젝트 또는
+  연결이 다른 토큰은 안전한 HTML 오류 페이지로 거절합니다. 유효한 요청에는 판단 문구,
+  선택지, 검증 정보, 양식이 있는 최소 HTML 페이지를 렌더링합니다. 페이지는 선택지와 그
+  의미, 프로젝트 이름 또는 식별자, 사용할 수 있을 때 등록된 저장소 경로, 연결 식별자,
+  판단 ID, 토큰 만료 시각, 대체 CLI 명령을 보여 줍니다. 또한 사용자가 사용자 소유 판단을
+  기록한다는 점과 에이전트가 사용자를 대신해 이를 기록할 수 없다는 점을 밝힙니다. 이
+  판단은 정확성, 테스트 충분성, 배포 성공,
   검토 완료, 보안 강제, 닫기 준비 상태를 증명하지 않는다는 점을 명시합니다.
-- `POST /consent`는 token, 선택한 Core option ID, 선택적 note가 들어 있는
-  `application/x-www-form-urlencoded` form 제출만 받습니다. `Origin` header가 있으면
-  consent endpoint origin과 일치해야 합니다. 알 수 없는 option ID를 포함한 검증 실패는
-  token을 소비하지 않습니다.
-- 성공한 post는 Core를 통해 `actor_source=local_user`, `operation_category=user_only`,
-  `resolved_verification_basis=local_user_local_web`으로 답변을 기록하고, 같은 project-state
-  트랜잭션 또는 동등한 원자적 작업 안에서 token을 `consumed`로 표시합니다.
-- 만료, wrong project, wrong connection, wrong judgment binding, 소비된 token 재사용은 다른
-  답변을 기록하기 전에 거절합니다. 성공한 post 뒤의 duplicate submit은 결정적으로 consumed-token
-  결과를 반환하며 기록된 판단을 바꾸지 않습니다. 판단 기록 중 write failure가 발생하면 대기
-  판단이 여전히 current인 동안 token은 만료 전까지 `pending`으로 남습니다.
-- Local web consent는 사람 사용자의 답변을 capture합니다. Agent Connection이 사용자 소유
+- `POST /consent`는 토큰, 선택한 Core 선택지 ID, 선택적 메모가 들어 있는
+  `application/x-www-form-urlencoded` 양식 제출만 받습니다. `Origin` 헤더가 있으면 동의
+  엔드포인트의 Origin 값과 일치해야 합니다. 알 수 없는 선택지 ID를 포함한 검증 실패는
+  토큰을 사용 처리하지 않습니다.
+- 성공한 제출은 Core를 통해 `actor_source=local_user`, `operation_category=user_only`,
+  `resolved_verification_basis=local_user_local_web`으로 답변을 기록하고, 같은 프로젝트 상태
+  트랜잭션 또는 동등한 원자적 작업 안에서 토큰을 `consumed`로 표시합니다.
+- 만료, 다른 프로젝트·연결·판단에 묶인 토큰, 사용된 토큰의 재사용은 다른 답변을 기록하기
+  전에 거절합니다. 성공한 제출 뒤 중복 제출은 이미 사용된 토큰 결과를 결정적으로 반환하며
+  기록된 판단을 바꾸지 않습니다. 판단 기록 중 쓰기 실패가 발생하면 대기 판단이 여전히
+  현재 상태인 동안 토큰은 만료 전까지 `pending`으로 남습니다.
+- 로컬 consent URL은 사람 사용자의 답변을 캡처합니다. Agent Connection이 사용자 소유
   판단에 답하도록 하는 경로로 사용하면 안 됩니다.
-- endpoint는 Runtime Home 파일, Product Repository 파일, 정적 asset, MCP 메서드, 임의
+- 엔드포인트는 Runtime Home 파일, Product Repository 파일, 정적 자산, MCP 메서드, 임의
   API를 제공하지 않습니다.
 
 Volicord까지 도달한 알려진 공개 Volicord 메서드 도구 호출에서 `tools/call`은 MCP 결과

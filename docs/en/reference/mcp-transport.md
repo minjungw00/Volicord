@@ -1,16 +1,12 @@
 # MCP transport reference
 
-This document owns the local `volicord mcp --stdio` process contract and the
+This document defines the local `volicord mcp --stdio` process contract and the
 local/Docker `volicord serve --transport local-http` process-boundary
 contract: process startup, process environment, MCP protocol-version
 negotiation, initialization lifecycle, stdio transport framing, local HTTP MCP
 request handling, JSON-RPC message validation, Agent-Connection-bound startup
 validation, MCP-visible tool discovery, MCP response wrapping, and
 shutdown/reconnection behavior.
-
-It does not define public Volicord API method behavior, public request or
-response schemas, Agent Connection meaning, storage record layout, security
-guarantees, or Core authority semantics.
 
 ## Owns / Does Not Own
 
@@ -53,7 +49,8 @@ This document does not own:
 <a id="surface-stability"></a>
 ## Surface Stability
 
-For canonical vocabulary, see [Documentation Policy](../maintain/documentation-policy.md#surface-stability-labels). In this section, `stable` means a documented compatibility surface; `beta` means supported, but details may change; `internal` means an implementation or generated-integration detail, not a normal user input surface; and `diagnostic` means a troubleshooting or status-reporting surface whose prose or diagnostic wording is not a stable API contract.
+Labels follow the canonical vocabulary in
+[Documentation Policy](../maintain/documentation-policy.md#surface-stability-labels).
 
 | Surface | Stability | Notes |
 |---|---|---|
@@ -737,7 +734,15 @@ writable, the adapter returns a normal Volicord rejection with
 `code=MCP_UNAVAILABLE`, `operation_category=agent_workflow`, and message
 `Volicord project state is not writable in the current MCP host environment.`
 
-In `workflow` mode, the Evidence path is: use `volicord.stage_artifact` only to prepare an Evidence attachment input when bytes or a safe notice are needed, then use `volicord.record_run` to record the Run or observation, claim-scoped evidence update, evidence observation provenance, and any attachment link or promotion. A staged handle alone is not accepted Evidence and does not satisfy Close Status.
+In `workflow` mode, the Evidence path is:
+
+- Use `volicord.stage_artifact` only to prepare an Evidence attachment input
+  when bytes or a safe notice are needed.
+- Use `volicord.record_run` to record the Run or observation, claim-scoped
+  evidence update, observation provenance, and any attachment link or promotion.
+
+A staged handle alone is not accepted Evidence and does not satisfy Close
+Status.
 
 The MCP-visible tools are not the same thing as the public Volicord Core API
 method list. `volicord.check_close` maps to the first-class read-only Core
