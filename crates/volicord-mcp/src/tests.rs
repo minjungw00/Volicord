@@ -360,6 +360,48 @@ fn record_run_invalid_kind_reports_allowed_values() -> Result<(), Box<dyn Error>
 }
 
 #[test]
+fn record_run_artifact_input_source_uses_public_value_set() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-record-run-artifact-input-source")?;
+    let adapter = adapter(&fixture)?;
+
+    for unsupported in ["captured_artifact", "native_artifact"] {
+        let before = fixture.counts()?;
+        let mut arguments = canonical_example_value(
+            RECORD_RUN_TOOL_NAME,
+            RECORD_RUN_NO_PRODUCT_FILE_CHANGE_EXAMPLE_ID,
+        )?;
+        arguments["artifact_inputs"] = json!([{
+            "artifact_input_id": "artifact_input_unsupported",
+            "source_kind": unsupported,
+            "staged_artifact_handle": null,
+            "existing_artifact_ref": null,
+            "relation_hint": null,
+            "claim": null,
+            "expected_sha256": null,
+            "expected_size_bytes": null,
+            "redaction_state": null
+        }]);
+
+        let error = adapter
+            .call_tool(RECORD_RUN_TOOL_NAME, arguments)
+            .expect_err("unsupported artifact input source should fail before Core");
+        let text = tool_error_text(&error);
+
+        assert!(text.contains("Invalid arguments for volicord.record_run"));
+        assert!(text.contains("unknown variant"));
+        assert!(text.contains(unsupported));
+        assert!(text.contains("staged_artifact"));
+        assert!(text.contains("existing_artifact"));
+        assert_eq!(
+            fixture.counts()?,
+            before,
+            "unsupported artifact input source should not create Core storage effects"
+        );
+    }
+    Ok(())
+}
+
+#[test]
 fn record_run_invalid_evidence_observation_reports_expected_shape() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-invalid-record-run-evidence-observation")?;
     let adapter = adapter(&fixture)?;
