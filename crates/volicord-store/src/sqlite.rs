@@ -2161,6 +2161,53 @@ mod tests {
     }
 
     #[test]
+    fn registry_schema_validation_rejects_extra_table() -> StoreResult<()> {
+        let runtime_home = TempRuntimeHome::new("registry-extra-table")?;
+        let conn = open_registry_database(runtime_home.registry_db_path())?;
+        conn.execute(
+            "CREATE TABLE runtime_extension (extension_id TEXT PRIMARY KEY)",
+            [],
+        )?;
+
+        let error = validate_registry_schema(&conn)
+            .expect_err("a table outside the canonical registry schema should be rejected");
+
+        assert_schema_invariant(error, REGISTRY_DATABASE_KIND);
+        Ok(())
+    }
+
+    #[test]
+    fn project_state_schema_validation_rejects_extra_non_tool_column() -> StoreResult<()> {
+        let runtime_home = TempRuntimeHome::new("project-extra-column")?;
+        let conn =
+            open_project_state_database(runtime_home.project_state_db_path("PRJ-extra-column"))?;
+        conn.execute("ALTER TABLE tasks ADD COLUMN extension_metadata TEXT", [])?;
+
+        let error = validate_project_state_schema(&conn)
+            .expect_err("a column outside the canonical project schema should be rejected");
+
+        assert_schema_invariant(error, PROJECT_STATE_DATABASE_KIND);
+        Ok(())
+    }
+
+    #[test]
+    fn project_state_schema_validation_rejects_extra_index() -> StoreResult<()> {
+        let runtime_home = TempRuntimeHome::new("project-extra-index")?;
+        let conn =
+            open_project_state_database(runtime_home.project_state_db_path("PRJ-extra-index"))?;
+        conn.execute(
+            "CREATE INDEX idx_tasks_extension_metadata ON tasks (metadata_json)",
+            [],
+        )?;
+
+        let error = validate_project_state_schema(&conn)
+            .expect_err("an index outside the canonical project schema should be rejected");
+
+        assert_schema_invariant(error, PROJECT_STATE_DATABASE_KIND);
+        Ok(())
+    }
+
+    #[test]
     fn immediate_transaction_serializes_writers() -> StoreResult<()> {
         let runtime_home = TempRuntimeHome::new("immediate-transaction")?;
         let path = runtime_home.project_state_db_path("PRJ-tx");
@@ -2280,6 +2327,18 @@ mod tests {
             params![idempotency_key, request_hash, committed_state_version],
         )?;
         Ok(())
+    }
+
+    fn assert_schema_invariant(error: StoreError, database_kind: &'static str) {
+        let classification = error.classification();
+
+        assert!(matches!(error, StoreError::SchemaInvariant { .. }));
+        assert!(matches!(
+            classification.route,
+            crate::StoreFailureRoute::OperationalUnavailable
+        ));
+        assert_eq!(classification.category, "schema_invariant");
+        assert_eq!(classification.database_kind, Some(database_kind));
     }
 
     fn assert_constraint_error(err: Error) {
