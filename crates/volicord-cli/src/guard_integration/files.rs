@@ -1579,9 +1579,7 @@ fn remove_claude_managed_handlers(
     let mut kept = Vec::new();
     let mut removed = 0usize;
     for handler in handlers {
-        if is_exact_claude_managed_handler(&handler, desired_handler)
-            || is_legacy_claude_managed_handler(phase, &handler)
-        {
+        if is_exact_claude_managed_handler(&handler, desired_handler) {
             removed += 1;
         } else if looks_like_conflicting_claude_managed_handler(phase, &handler, desired_handler) {
             return Err(GuardIntegrationError::runtime(format!(
@@ -1662,30 +1660,6 @@ fn is_exact_claude_managed_handler(handler: &Value, desired: &ClaudeHookHandlerS
                 .and_then(Value::as_str)
                 .is_some_and(|command| command == desired.command)
             && hook_handler_args(object) == desired.args
-    })
-}
-
-fn is_legacy_claude_managed_handler(phase: HostLifecyclePhase, handler: &Value) -> bool {
-    handler.as_object().is_some_and(|object| {
-        object.get("type").and_then(Value::as_str) == Some("command")
-            && object
-                .get("command")
-                .and_then(Value::as_str)
-                .is_some_and(|command| {
-                    let legacy_direct = command
-                        .contains(&format!("volicord _hook {}", phase.command_name()))
-                        && command.contains("--connection")
-                        && command.contains("--guard-installation")
-                        && (command.contains("--host claude-code")
-                            || command.contains("--host claude_code"))
-                        && (command.contains("--host-output claude-code")
-                            || command.contains("--host-output claude_code"));
-                    let legacy_wrapper = command.contains(&format!(
-                        ".claude/hooks/volicord-{}.sh",
-                        phase.command_name()
-                    ));
-                    legacy_direct || legacy_wrapper
-                })
     })
 }
 
