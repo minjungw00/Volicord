@@ -378,10 +378,10 @@ fn volicord_mcp_subcommand_stdio_without_elicitation_returns_cli_recovery_fallba
         ),
     ])?;
 
-    let output = run_child(
-        fixture.connection_command(["--stdio", "--connection", fixture.connection_id()]),
-        ChildStdin::WriteAndClose(messages),
-    )?;
+    let mut command =
+        fixture.connection_command(["--stdio", "--connection", fixture.connection_id()]);
+    command.env("VOLICORD_LOCAL_WEB_CONSENT", "disabled");
+    let output = run_child(command, ChildStdin::WriteAndClose(messages))?;
 
     assert_success_captured(&output);
     assert_eq!(captured_stderr(&output), "");
