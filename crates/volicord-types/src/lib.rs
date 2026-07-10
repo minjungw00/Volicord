@@ -1233,6 +1233,46 @@ mod tests {
     }
 
     #[test]
+    fn artifact_input_source_kind_schema_and_serde_match_baseline_values() {
+        for (kind, value) in [
+            (ArtifactInputSourceKind::StagedArtifact, "staged_artifact"),
+            (
+                ArtifactInputSourceKind::ExistingArtifact,
+                "existing_artifact",
+            ),
+        ] {
+            assert_eq!(
+                serde_json::to_value(kind).expect("artifact input source kind should serialize"),
+                json!(value)
+            );
+            assert_eq!(
+                serde_json::from_value::<ArtifactInputSourceKind>(json!(value))
+                    .expect("baseline artifact input source kind should deserialize"),
+                kind
+            );
+        }
+
+        let schema = serde_json::to_value(schema_for!(ArtifactInputSourceKind))
+            .expect("ArtifactInputSourceKind schema should serialize");
+        assert_eq!(
+            schema_enum_strings(schema.clone()),
+            BTreeSet::from(["existing_artifact".to_owned(), "staged_artifact".to_owned(),])
+        );
+
+        for unsupported in ["captured_artifact", "native_artifact"] {
+            let value = json!(unsupported);
+            assert!(
+                serde_json::from_value::<ArtifactInputSourceKind>(value.clone()).is_err(),
+                "unsupported artifact input source kind should fail serde: {unsupported}"
+            );
+            assert!(
+                validate_json_schema(&schema, &value).is_err(),
+                "unsupported artifact input source kind should fail schema validation: {unsupported}"
+            );
+        }
+    }
+
+    #[test]
     fn evidence_observation_round_trips_and_rejects_unknown_fields() {
         let observation = evidence_observation_json();
         let decoded: EvidenceObservation =
