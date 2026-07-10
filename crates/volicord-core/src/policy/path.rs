@@ -26,7 +26,10 @@ fn normalize_product_path(
     canonical_repo_root: &Path,
     raw_path: &str,
 ) -> Result<String, ProductPathError> {
-    if raw_path.trim().is_empty() || raw_path.contains('\\') {
+    if raw_path.trim().is_empty()
+        || raw_path.contains('\\')
+        || has_windows_drive_prefix(raw_path)
+    {
         return Err(ProductPathError::Invalid);
     }
     let path = Path::new(raw_path);
@@ -60,6 +63,11 @@ fn normalize_product_path(
     let normalized = parts.join("/");
     ensure_product_path_does_not_escape(repo_root, canonical_repo_root, &normalized)?;
     Ok(normalized)
+}
+
+fn has_windows_drive_prefix(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':'
 }
 
 fn ensure_product_path_does_not_escape(
