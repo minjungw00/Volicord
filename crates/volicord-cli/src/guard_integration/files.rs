@@ -70,8 +70,73 @@ pub(crate) struct ManagedRegularFileSnapshot {
     len: u64,
     #[cfg(unix)]
     mode: u32,
+    #[cfg(unix)]
+    uid: u32,
+    #[cfg(unix)]
+    gid: u32,
+    #[cfg(unix)]
+    extended_attributes: Vec<(OsString, Vec<u8>)>,
     #[cfg(not(unix))]
     readonly: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum RecoveryEntrySnapshot {
+    Missing,
+    Regular(RecoveryRegularFileSnapshot),
+    Other {
+        identity: ManagedFileIdentity,
+        kind: RecoveryEntryKind,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RecoveryRegularFileSnapshot {
+    bytes: Vec<u8>,
+    identity: ManagedFileIdentity,
+    len: u64,
+    #[cfg(unix)]
+    mode: u32,
+    #[cfg(unix)]
+    uid: u32,
+    #[cfg(unix)]
+    gid: u32,
+    #[cfg(unix)]
+    extended_attributes: Vec<(OsString, Vec<u8>)>,
+    #[cfg(not(unix))]
+    readonly: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RecoveryEntryKind {
+    Symlink,
+    Directory,
+    Other,
+}
+
+impl From<&ManagedTargetSnapshot> for RecoveryEntrySnapshot {
+    fn from(snapshot: &ManagedTargetSnapshot) -> Self {
+        match snapshot {
+            ManagedTargetSnapshot::Missing => Self::Missing,
+            ManagedTargetSnapshot::RegularFile(file) => {
+                Self::Regular(RecoveryRegularFileSnapshot {
+                    bytes: file.text.as_bytes().to_vec(),
+                    identity: file.identity,
+                    len: file.len,
+                    #[cfg(unix)]
+                    mode: file.mode,
+                    #[cfg(unix)]
+                    uid: file.uid,
+                    #[cfg(unix)]
+                    gid: file.gid,
+                    #[cfg(unix)]
+                    extended_attributes: file.extended_attributes.clone(),
+                    #[cfg(not(unix))]
+                    readonly: file.readonly,
+                })
+            }
+        }
+    }
 }
 
 impl ManagedTargetSnapshot {
@@ -155,7 +220,13 @@ pub(crate) fn write_managed_file_if_fresh(
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ManagedWritePhase {
+    TempReady,
     CommitReady,
+    #[cfg(windows)]
+    CommitReserved,
+    #[cfg(windows)]
+    NativeCommitReady,
+    CommitApplied,
     RollbackInspecting,
     RollbackReady,
 }
@@ -184,51 +255,80 @@ where
 
     let (temp_name, mut temp_file) = parent.create_temp_file()?;
     let temp_path = parent.absolute_entry_path(&temp_name);
-    let write_result = (|| -> io::Result<()> {
+    let write_result = (|| -> io::Result<TempPermissionPlan> {
+        let permissions = prepare_temp_permissions(&temp_file, &plan.target_snapshot, executable)?;
+        hook(ManagedWritePhase::TempReady)?;
         temp_file.write_all(content.as_bytes())?;
         temp_file.flush()?;
-        configure_temp_permissions(&temp_file, &plan.target_snapshot, executable)?;
-        temp_file.sync_all()
+        apply_final_temp_permissions(&temp_file, &permissions)?;
+        temp_file.sync_all()?;
+        Ok(permissions)
     })();
-    drop(temp_file);
-    if let Err(error) = write_result {
-        let _ = parent.dir().remove_file(&temp_name);
-        return Err(GuardIntegrationError::runtime(format!(
-            "failed to write temporary managed file {}: {error}",
-            temp_path.display()
-        )));
-    }
-
-    let staged_snapshot = match parent.read_entry_snapshot(&temp_name, &temp_path) {
-        Ok(snapshot @ ManagedTargetSnapshot::RegularFile(_)) => snapshot,
-        Ok(ManagedTargetSnapshot::Missing) => {
+    let permission_plan = match write_result {
+        Ok(permission_plan) => permission_plan,
+        Err(error) => {
+            cleanup_temp_from_open_handle(&parent, &temp_name, temp_file).map_err(
+                |cleanup_error| {
+                    GuardIntegrationError::runtime(format!(
+                        "temporary file preparation failed ({error}); cleanup also failed: {cleanup_error}"
+                    ))
+                },
+            )?;
             return Err(GuardIntegrationError::runtime(format!(
-                "temporary managed file disappeared before commit: {}",
+                "failed to write temporary managed file {}: {error}",
                 temp_path.display()
             )));
         }
-        Err(error) => {
-            let _ = parent.dir().remove_file(&temp_name);
-            return Err(error);
-        }
     };
 
-    ensure_expected_snapshot(&parent, &plan.target_snapshot).inspect_err(|_| {
-        let _ = parent.dir().remove_file(&temp_name);
-    })?;
-    run_write_hook(&mut hook, ManagedWritePhase::CommitReady, &plan.path).inspect_err(|_| {
-        let _ = parent.dir().remove_file(&temp_name);
-    })?;
-    parent.validate_attached().inspect_err(|_| {
-        let _ = parent.dir().remove_file(&temp_name);
-    })?;
-    atomic_commit_if_fresh(
+    let staged_snapshot = match read_open_managed_snapshot(&mut temp_file, &temp_path) {
+        Ok(snapshot) => snapshot,
+        Err(error) => {
+            drop(temp_file);
+            return Err(recovery_residual_error(
+                &parent,
+                &[&temp_name],
+                &format!("temporary entry could not be verified: {error}"),
+            ));
+        }
+    };
+    if staged_snapshot.text() != Some(content)
+        || !staged_metadata_matches_plan(&staged_snapshot, &permission_plan)
+    {
+        drop(temp_file);
+        return Err(recovery_residual_error(
+            &parent,
+            &[&temp_name],
+            "temporary content or metadata changed before commit",
+        ));
+    }
+    ensure_staged_entry(&parent, &temp_name, &staged_snapshot)?;
+
+    if let Err(error) = ensure_expected_snapshot(&parent, &plan.target_snapshot) {
+        cleanup_uncommitted_temp(&parent, &temp_name, &staged_snapshot)?;
+        return Err(error);
+    }
+    if let Err(error) = run_write_hook(&mut hook, ManagedWritePhase::CommitReady, &plan.path) {
+        cleanup_uncommitted_temp(&parent, &temp_name, &staged_snapshot)?;
+        return Err(error);
+    }
+    if let Err(error) = parent.validate_attached() {
+        cleanup_uncommitted_temp(&parent, &temp_name, &staged_snapshot)?;
+        return Err(error);
+    }
+    ensure_staged_entry(&parent, &temp_name, &staged_snapshot)?;
+    #[cfg(windows)]
+    drop(temp_file);
+    let result = atomic_commit_if_fresh(
         &parent,
         &temp_name,
         &plan.target_snapshot,
         &staged_snapshot,
         &mut hook,
-    )
+    );
+    #[cfg(not(windows))]
+    drop(temp_file);
+    result
 }
 
 fn read_managed_target_snapshot(
@@ -384,6 +484,13 @@ impl PinnedManagedParent {
                 "opened target is not a regular file",
             ));
         }
+        #[cfg(unix)]
+        let extended_attributes_before = read_extended_attributes(&file).map_err(|error| {
+            GuardIntegrationError::runtime(format!(
+                "failed to inspect extended attributes for managed file {}: {error}",
+                display_path.display()
+            ))
+        })?;
 
         let mut first = String::new();
         file.read_to_string(&mut first).map_err(|error| {
@@ -411,14 +518,26 @@ impl PinnedManagedParent {
                 display_path.display()
             ))
         })?;
+        #[cfg(unix)]
+        let extended_attributes_after = read_extended_attributes(&file).map_err(|error| {
+            GuardIntegrationError::runtime(format!(
+                "failed to re-inspect extended attributes for managed file {}: {error}",
+                display_path.display()
+            ))
+        })?;
         let named_after = self.dir().symlink_metadata(name).map_err(|error| {
             GuardIntegrationError::runtime(format!(
                 "failed to revalidate managed file {}: {error}",
                 display_path.display()
             ))
         })?;
+        #[cfg(unix)]
+        let extended_attributes_stable = extended_attributes_before == extended_attributes_after;
+        #[cfg(not(unix))]
+        let extended_attributes_stable = true;
         if first != second
             || !stable_file_metadata(&before, &after)
+            || !extended_attributes_stable
             || named_after.file_type().is_symlink()
             || !named_after.is_file()
             || ManagedFileIdentity::from_metadata(&named_after)
@@ -430,33 +549,174 @@ impl PinnedManagedParent {
             ));
         }
         Ok(ManagedTargetSnapshot::RegularFile(regular_file_snapshot(
-            second, &after,
+            second,
+            &after,
+            #[cfg(unix)]
+            extended_attributes_after,
+        )))
+    }
+
+    fn read_recovery_target_snapshot(
+        &self,
+    ) -> Result<RecoveryEntrySnapshot, GuardIntegrationError> {
+        self.read_recovery_entry_snapshot(&self.target_name, &self.target_path)
+    }
+
+    fn read_recovery_entry_snapshot(
+        &self,
+        name: &OsString,
+        display_path: &Path,
+    ) -> Result<RecoveryEntrySnapshot, GuardIntegrationError> {
+        for _ in 0..4 {
+            if let Some(snapshot) = self.try_read_recovery_entry_snapshot(name, display_path)? {
+                return Ok(snapshot);
+            }
+        }
+        Err(managed_path_conflict(
+            display_path,
+            "entry changed repeatedly while recovery state was inspected",
+        ))
+    }
+
+    fn try_read_recovery_entry_snapshot(
+        &self,
+        name: &OsString,
+        display_path: &Path,
+    ) -> Result<Option<RecoveryEntrySnapshot>, GuardIntegrationError> {
+        let named_metadata = match self.dir().symlink_metadata(name) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                return Ok(Some(RecoveryEntrySnapshot::Missing));
+            }
+            Err(error) => {
+                return Err(GuardIntegrationError::runtime(format!(
+                    "failed to inspect recovery entry {}: {error}",
+                    display_path.display()
+                )));
+            }
+        };
+        if !named_metadata.is_file() || named_metadata.file_type().is_symlink() {
+            return Ok(Some(recovery_other_snapshot(&named_metadata)));
+        }
+
+        let mut options = CapabilityOpenOptions::new();
+        options.read(true);
+        options.follow(FollowSymlinks::No);
+        let mut file = match self.dir().open_with(name, &options) {
+            Ok(file) => file,
+            Err(_) => return Ok(None),
+        };
+        let before = file.metadata().map_err(|error| {
+            GuardIntegrationError::runtime(format!(
+                "failed to inspect opened recovery entry {}: {error}",
+                display_path.display()
+            ))
+        })?;
+        #[cfg(unix)]
+        let extended_attributes_before = read_extended_attributes(&file).map_err(|error| {
+            GuardIntegrationError::runtime(format!(
+                "failed to inspect recovery entry metadata {}: {error}",
+                display_path.display()
+            ))
+        })?;
+        let mut first = Vec::new();
+        file.read_to_end(&mut first).map_err(|error| {
+            GuardIntegrationError::runtime(format!(
+                "failed to read recovery entry {}: {error}",
+                display_path.display()
+            ))
+        })?;
+        file.rewind().map_err(|error| {
+            GuardIntegrationError::runtime(format!(
+                "failed to rewind recovery entry {}: {error}",
+                display_path.display()
+            ))
+        })?;
+        let mut second = Vec::new();
+        file.read_to_end(&mut second).map_err(|error| {
+            GuardIntegrationError::runtime(format!(
+                "failed to re-read recovery entry {}: {error}",
+                display_path.display()
+            ))
+        })?;
+        let after = file.metadata().map_err(|error| {
+            GuardIntegrationError::runtime(format!(
+                "failed to re-inspect recovery entry {}: {error}",
+                display_path.display()
+            ))
+        })?;
+        #[cfg(unix)]
+        let extended_attributes_after = read_extended_attributes(&file).map_err(|error| {
+            GuardIntegrationError::runtime(format!(
+                "failed to re-inspect recovery entry metadata {}: {error}",
+                display_path.display()
+            ))
+        })?;
+        let named_after = match self.dir().symlink_metadata(name) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                return Ok(Some(RecoveryEntrySnapshot::Missing));
+            }
+            Err(error) => {
+                return Err(GuardIntegrationError::runtime(format!(
+                    "failed to re-inspect recovery entry {}: {error}",
+                    display_path.display()
+                )));
+            }
+        };
+        if !named_after.is_file() || named_after.file_type().is_symlink() {
+            return Ok(Some(recovery_other_snapshot(&named_after)));
+        }
+        #[cfg(unix)]
+        let extended_attributes_stable = extended_attributes_before == extended_attributes_after;
+        #[cfg(not(unix))]
+        let extended_attributes_stable = true;
+        if first != second
+            || !stable_file_metadata(&before, &after)
+            || !extended_attributes_stable
+            || ManagedFileIdentity::from_metadata(&named_after)
+                != ManagedFileIdentity::from_metadata(&after)
+        {
+            return Ok(None);
+        }
+        Ok(Some(RecoveryEntrySnapshot::Regular(
+            recovery_regular_file_snapshot(
+                second,
+                &after,
+                #[cfg(unix)]
+                extended_attributes_after,
+            ),
         )))
     }
 
     fn create_temp_file(&self) -> Result<(OsString, CapabilityFile), GuardIntegrationError> {
+        self.create_private_sibling_file("tmp")
+    }
+
+    fn create_private_sibling_file(
+        &self,
+        role: &str,
+    ) -> Result<(OsString, CapabilityFile), GuardIntegrationError> {
         let target_name = self.target_name.to_string_lossy();
-        for attempt in 0..1_000_u32 {
-            let name = OsString::from(format!(
-                ".{target_name}.volicord-tmp-{}-{attempt}",
-                std::process::id()
-            ));
+        for _ in 0..64 {
+            let token = random_file_token()?;
+            let name = OsString::from(format!(".{target_name}.volicord-{role}-{token}"));
             let mut options = CapabilityOpenOptions::new();
-            options.write(true).create_new(true);
+            options.read(true).write(true).create_new(true);
             options.follow(FollowSymlinks::No);
             match self.dir().open_with(&name, &options) {
                 Ok(file) => return Ok((name, file)),
                 Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
                 Err(error) => {
                     return Err(GuardIntegrationError::runtime(format!(
-                        "failed to create temporary managed file {}: {error}",
+                        "failed to create private managed-file {role} entry {}: {error}",
                         self.absolute_entry_path(&name).display()
                     )));
                 }
             }
         }
         Err(GuardIntegrationError::runtime(format!(
-            "failed to allocate a temporary managed file for {}",
+            "failed to allocate a private managed-file {role} entry for {}",
             self.target_path.display()
         )))
     }
@@ -670,14 +930,18 @@ fn managed_target_components(
 fn regular_file_snapshot(
     text: String,
     metadata: &CapabilityMetadata,
+    extended_attributes: Vec<(OsString, Vec<u8>)>,
 ) -> ManagedRegularFileSnapshot {
-    use cap_std::fs::PermissionsExt;
+    use cap_std::fs::{MetadataExt as UnixMetadataExt, PermissionsExt};
 
     ManagedRegularFileSnapshot {
         text,
         identity: ManagedFileIdentity::from_metadata(metadata),
         len: metadata.len(),
         mode: metadata.permissions().mode(),
+        uid: UnixMetadataExt::uid(metadata),
+        gid: UnixMetadataExt::gid(metadata),
+        extended_attributes,
     }
 }
 
@@ -695,12 +959,228 @@ fn regular_file_snapshot(
 }
 
 #[cfg(unix)]
+fn recovery_regular_file_snapshot(
+    bytes: Vec<u8>,
+    metadata: &CapabilityMetadata,
+    extended_attributes: Vec<(OsString, Vec<u8>)>,
+) -> RecoveryRegularFileSnapshot {
+    use cap_std::fs::{MetadataExt as UnixMetadataExt, PermissionsExt};
+
+    RecoveryRegularFileSnapshot {
+        bytes,
+        identity: ManagedFileIdentity::from_metadata(metadata),
+        len: metadata.len(),
+        mode: metadata.permissions().mode(),
+        uid: UnixMetadataExt::uid(metadata),
+        gid: UnixMetadataExt::gid(metadata),
+        extended_attributes,
+    }
+}
+
+#[cfg(not(unix))]
+fn recovery_regular_file_snapshot(
+    bytes: Vec<u8>,
+    metadata: &CapabilityMetadata,
+) -> RecoveryRegularFileSnapshot {
+    RecoveryRegularFileSnapshot {
+        bytes,
+        identity: ManagedFileIdentity::from_metadata(metadata),
+        len: metadata.len(),
+        readonly: metadata.permissions().readonly(),
+    }
+}
+
+fn recovery_other_snapshot(metadata: &CapabilityMetadata) -> RecoveryEntrySnapshot {
+    let file_type = metadata.file_type();
+    let kind = if file_type.is_symlink() {
+        RecoveryEntryKind::Symlink
+    } else if file_type.is_dir() {
+        RecoveryEntryKind::Directory
+    } else {
+        RecoveryEntryKind::Other
+    };
+    RecoveryEntrySnapshot::Other {
+        identity: ManagedFileIdentity::from_metadata(metadata),
+        kind,
+    }
+}
+
+fn read_open_managed_snapshot(
+    file: &mut CapabilityFile,
+    display_path: &Path,
+) -> Result<ManagedTargetSnapshot, GuardIntegrationError> {
+    file.rewind().map_err(|error| {
+        GuardIntegrationError::runtime(format!(
+            "failed to rewind temporary managed file {}: {error}",
+            display_path.display()
+        ))
+    })?;
+    let before = file.metadata().map_err(|error| {
+        GuardIntegrationError::runtime(format!(
+            "failed to inspect temporary managed file {}: {error}",
+            display_path.display()
+        ))
+    })?;
+    if !before.is_file() {
+        return Err(managed_path_conflict(
+            display_path,
+            "opened temporary entry is not a regular file",
+        ));
+    }
+    #[cfg(unix)]
+    let extended_attributes_before = read_extended_attributes(file).map_err(|error| {
+        GuardIntegrationError::runtime(format!(
+            "failed to inspect temporary managed file metadata {}: {error}",
+            display_path.display()
+        ))
+    })?;
+
+    let mut first = String::new();
+    file.read_to_string(&mut first).map_err(|error| {
+        GuardIntegrationError::runtime(format!(
+            "failed to read temporary managed file {}: {error}",
+            display_path.display()
+        ))
+    })?;
+    file.rewind().map_err(|error| {
+        GuardIntegrationError::runtime(format!(
+            "failed to rewind temporary managed file {}: {error}",
+            display_path.display()
+        ))
+    })?;
+    let mut second = String::new();
+    file.read_to_string(&mut second).map_err(|error| {
+        GuardIntegrationError::runtime(format!(
+            "failed to re-read temporary managed file {}: {error}",
+            display_path.display()
+        ))
+    })?;
+    let after = file.metadata().map_err(|error| {
+        GuardIntegrationError::runtime(format!(
+            "failed to re-inspect temporary managed file {}: {error}",
+            display_path.display()
+        ))
+    })?;
+    #[cfg(unix)]
+    let extended_attributes_after = read_extended_attributes(file).map_err(|error| {
+        GuardIntegrationError::runtime(format!(
+            "failed to re-inspect temporary managed file metadata {}: {error}",
+            display_path.display()
+        ))
+    })?;
+    #[cfg(unix)]
+    let extended_attributes_stable = extended_attributes_before == extended_attributes_after;
+    #[cfg(not(unix))]
+    let extended_attributes_stable = true;
+    if first != second || !stable_file_metadata(&before, &after) || !extended_attributes_stable {
+        return Err(managed_path_conflict(
+            display_path,
+            "temporary entry changed while it was inspected",
+        ));
+    }
+    Ok(ManagedTargetSnapshot::RegularFile(regular_file_snapshot(
+        second,
+        &after,
+        #[cfg(unix)]
+        extended_attributes_after,
+    )))
+}
+
+fn ensure_staged_entry(
+    parent: &PinnedManagedParent,
+    name: &OsString,
+    staged: &ManagedTargetSnapshot,
+) -> Result<(), GuardIntegrationError> {
+    let expected = RecoveryEntrySnapshot::from(staged);
+    let current = parent.read_recovery_entry_snapshot(name, &parent.absolute_entry_path(name))?;
+    if current == expected {
+        Ok(())
+    } else {
+        Err(recovery_residual_error(
+            parent,
+            &[name],
+            "the temporary entry changed before commit",
+        ))
+    }
+}
+
+fn cleanup_temp_from_open_handle(
+    parent: &PinnedManagedParent,
+    name: &OsString,
+    file: CapabilityFile,
+) -> Result<(), GuardIntegrationError> {
+    let open_identity = file
+        .metadata()
+        .ok()
+        .filter(|metadata| metadata.is_file())
+        .map(|metadata| ManagedFileIdentity::from_metadata(&metadata));
+    drop(file);
+    if parent
+        .dir()
+        .symlink_metadata(name)
+        .is_err_and(|error| error.kind() == io::ErrorKind::NotFound)
+    {
+        return Ok(());
+    }
+    let Some(open_identity) = open_identity else {
+        return Err(recovery_residual_error(
+            parent,
+            &[name],
+            "the temporary file handle could not be identified before cleanup",
+        ));
+    };
+    let quarantine = unused_sibling_name(parent, "cleanup")?;
+    rename_entry_no_replace(parent, name, &quarantine).map_err(|error| {
+        recovery_residual_error(
+            parent,
+            &[name, &quarantine],
+            &format!("the temporary entry could not be isolated for cleanup: {error}"),
+        )
+    })?;
+    let moved_identity = parent
+        .dir()
+        .symlink_metadata(&quarantine)
+        .ok()
+        .filter(|metadata| metadata.is_file() && !metadata.file_type().is_symlink())
+        .map(|metadata| ManagedFileIdentity::from_metadata(&metadata));
+    if moved_identity == Some(open_identity) {
+        parent.dir().remove_file(&quarantine).map_err(|error| {
+            GuardIntegrationError::runtime(format!(
+                "failed to remove isolated temporary managed file {}: {error}",
+                parent.absolute_entry_path(&quarantine).display()
+            ))
+        })
+    } else {
+        if parent
+            .dir()
+            .symlink_metadata(name)
+            .is_err_and(|error| error.kind() == io::ErrorKind::NotFound)
+        {
+            rename_entry_no_replace(parent, &quarantine, name).map_err(|error| {
+                recovery_residual_error(
+                    parent,
+                    &[name, &quarantine],
+                    &format!("the changed temporary entry could not be restored: {error}"),
+                )
+            })?;
+        }
+        Err(recovery_residual_error(
+            parent,
+            &[name, &quarantine],
+            "the temporary entry changed before cleanup",
+        ))
+    }
+}
+
+#[cfg(unix)]
 fn stable_file_metadata(before: &CapabilityMetadata, after: &CapabilityMetadata) -> bool {
-    use cap_std::fs::PermissionsExt;
+    use cap_std::fs::{MetadataExt as UnixMetadataExt, PermissionsExt};
 
     ManagedFileIdentity::from_metadata(before) == ManagedFileIdentity::from_metadata(after)
         && before.len() == after.len()
         && before.permissions().mode() == after.permissions().mode()
+        && UnixMetadataExt::uid(before) == UnixMetadataExt::uid(after)
+        && UnixMetadataExt::gid(before) == UnixMetadataExt::gid(after)
 }
 
 #[cfg(not(unix))]
@@ -711,35 +1191,457 @@ fn stable_file_metadata(before: &CapabilityMetadata, after: &CapabilityMetadata)
 }
 
 #[cfg(unix)]
-fn configure_temp_permissions(
+#[derive(Debug, Clone)]
+struct TempPermissionPlan {
+    final_mode: u32,
+    owner_group: Option<(u32, u32)>,
+    extended_attributes: Option<Vec<(OsString, Vec<u8>)>>,
+}
+
+#[cfg(unix)]
+fn prepare_temp_permissions(
     file: &CapabilityFile,
     snapshot: &ManagedTargetSnapshot,
     executable: bool,
-) -> io::Result<()> {
+) -> io::Result<TempPermissionPlan> {
     use cap_std::fs::PermissionsExt;
 
     let mut permissions = file.metadata()?.permissions();
-    if let ManagedTargetSnapshot::RegularFile(existing) = snapshot {
-        permissions.set_mode(existing.mode);
-    }
+    let mut final_mode = match snapshot {
+        ManagedTargetSnapshot::Missing => permissions.mode(),
+        ManagedTargetSnapshot::RegularFile(existing) => existing.mode,
+    };
     if executable {
-        permissions.set_mode(permissions.mode() | 0o755);
+        final_mode |= 0o755;
     }
-    file.set_permissions(permissions)
+    let (owner_group, extended_attributes) = match snapshot {
+        ManagedTargetSnapshot::Missing => (None, None),
+        ManagedTargetSnapshot::RegularFile(existing) => (
+            Some((existing.uid, existing.gid)),
+            Some(existing.extended_attributes.clone()),
+        ),
+    };
+    if let Some(attributes) = &extended_attributes {
+        reject_privileged_content_metadata(attributes)?;
+    }
+    permissions.set_mode(0o600);
+    file.set_permissions(permissions)?;
+    Ok(TempPermissionPlan {
+        final_mode,
+        owner_group,
+        extended_attributes,
+    })
+}
+
+#[cfg(unix)]
+fn apply_final_temp_permissions(
+    file: &CapabilityFile,
+    plan: &TempPermissionPlan,
+) -> io::Result<()> {
+    use cap_std::fs::{MetadataExt as UnixMetadataExt, PermissionsExt};
+    use rustix::fs::{fchown, Gid, Uid};
+
+    if let Some((uid, gid)) = plan.owner_group {
+        let metadata = file.metadata()?;
+        let owner = (UnixMetadataExt::uid(&metadata) != uid).then(|| Uid::from_raw(uid));
+        let group = (UnixMetadataExt::gid(&metadata) != gid).then(|| Gid::from_raw(gid));
+        if owner.is_some() || group.is_some() {
+            fchown(file, owner, group)?;
+        }
+    }
+
+    let mut permissions = file.metadata()?.permissions();
+    permissions.set_mode(plan.final_mode);
+    file.set_permissions(permissions)?;
+    if let Some(extended_attributes) = &plan.extended_attributes {
+        apply_extended_attributes(file, extended_attributes)?;
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn staged_metadata_matches_plan(
+    snapshot: &ManagedTargetSnapshot,
+    plan: &TempPermissionPlan,
+) -> bool {
+    let ManagedTargetSnapshot::RegularFile(file) = snapshot else {
+        return false;
+    };
+    file.mode == plan.final_mode
+        && plan
+            .owner_group
+            .is_none_or(|(uid, gid)| file.uid == uid && file.gid == gid)
+        && plan
+            .extended_attributes
+            .as_ref()
+            .is_none_or(|attributes| &file.extended_attributes == attributes)
+}
+
+#[cfg(unix)]
+fn read_extended_attributes(file: &CapabilityFile) -> io::Result<Vec<(OsString, Vec<u8>)>> {
+    use rustix::fs::{fgetxattr, flistxattr};
+    use std::os::unix::ffi::OsStrExt;
+
+    let mut names = Vec::new();
+    let required = flistxattr(file, &mut names)?;
+    if required == 0 {
+        return Ok(Vec::new());
+    }
+    names.resize(required, 0);
+    let length = flistxattr(file, &mut names)?;
+    names.truncate(length);
+
+    let mut attributes = Vec::new();
+    for name in names
+        .split(|byte| *byte == 0)
+        .filter(|name| !name.is_empty())
+    {
+        let name = std::ffi::OsStr::from_bytes(name);
+        let mut value = Vec::new();
+        let required = fgetxattr(file, name, &mut value)?;
+        value.resize(required, 0);
+        let length = fgetxattr(file, name, &mut value)?;
+        value.truncate(length);
+        attributes.push((name.to_os_string(), value));
+    }
+    attributes.sort_by(|left, right| left.0.cmp(&right.0));
+    Ok(attributes)
+}
+
+#[cfg(unix)]
+fn reject_privileged_content_metadata(attributes: &[(OsString, Vec<u8>)]) -> io::Result<()> {
+    use std::os::unix::ffi::OsStrExt;
+
+    const CONTENT_BOUND_ATTRIBUTES: &[&[u8]] =
+        &[b"security.capability", b"security.ima", b"security.evm"];
+    if let Some((name, _)) = attributes
+        .iter()
+        .find(|(name, _)| CONTENT_BOUND_ATTRIBUTES.contains(&name.as_os_str().as_bytes()))
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!(
+                "managed replacement refuses content-bound extended attribute {}",
+                name.to_string_lossy()
+            ),
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn apply_extended_attributes(
+    file: &CapabilityFile,
+    desired: &[(OsString, Vec<u8>)],
+) -> io::Result<()> {
+    use rustix::fs::{fremovexattr, fsetxattr, XattrFlags};
+
+    let current = read_extended_attributes(file)?;
+    for (name, _) in &current {
+        if !desired.iter().any(|(desired_name, _)| desired_name == name) {
+            fremovexattr(file, name)?;
+        }
+    }
+    for (name, value) in desired {
+        if current
+            .iter()
+            .find(|(current_name, _)| current_name == name)
+            .is_none_or(|(_, current_value)| current_value != value)
+        {
+            fsetxattr(file, name, value, XattrFlags::empty())?;
+        }
+    }
+    Ok(())
 }
 
 #[cfg(not(unix))]
-fn configure_temp_permissions(
+#[derive(Debug, Clone, Copy)]
+struct TempPermissionPlan {
+    final_readonly: Option<bool>,
+}
+
+#[cfg(not(unix))]
+fn prepare_temp_permissions(
     file: &CapabilityFile,
     snapshot: &ManagedTargetSnapshot,
     _executable: bool,
+) -> io::Result<TempPermissionPlan> {
+    let _ = file.metadata()?;
+    Ok(TempPermissionPlan {
+        final_readonly: match snapshot {
+            ManagedTargetSnapshot::Missing => None,
+            ManagedTargetSnapshot::RegularFile(existing) => Some(existing.readonly),
+        },
+    })
+}
+
+#[cfg(not(unix))]
+fn apply_final_temp_permissions(
+    file: &CapabilityFile,
+    plan: &TempPermissionPlan,
 ) -> io::Result<()> {
-    if let ManagedTargetSnapshot::RegularFile(existing) = snapshot {
+    if let Some(readonly) = plan.final_readonly {
         let mut permissions = file.metadata()?.permissions();
-        permissions.set_readonly(existing.readonly);
+        permissions.set_readonly(readonly);
         file.set_permissions(permissions)?;
     }
     Ok(())
+}
+
+#[cfg(not(unix))]
+fn staged_metadata_matches_plan(
+    snapshot: &ManagedTargetSnapshot,
+    plan: &TempPermissionPlan,
+) -> bool {
+    let ManagedTargetSnapshot::RegularFile(file) = snapshot else {
+        return false;
+    };
+    plan.final_readonly
+        .is_none_or(|readonly| file.readonly == readonly)
+}
+
+fn random_file_token() -> Result<String, GuardIntegrationError> {
+    let mut bytes = [0_u8; 16];
+    getrandom::fill(&mut bytes).map_err(|error| {
+        GuardIntegrationError::runtime(format!(
+            "failed to obtain randomness for a managed temporary file: {error}"
+        ))
+    })?;
+    Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
+}
+
+fn atomic_create_if_missing<F>(
+    parent: &PinnedManagedParent,
+    temp_name: &OsString,
+    staged: &ManagedTargetSnapshot,
+    hook: &mut F,
+) -> Result<(), GuardIntegrationError>
+where
+    F: FnMut(ManagedWritePhase) -> io::Result<()>,
+{
+    let staged = RecoveryEntrySnapshot::from(staged);
+    if let Err(error) = rename_entry_no_replace(parent, temp_name, &parent.target_name) {
+        cleanup_owned_entry(parent, temp_name, &staged)?;
+        return if error.kind() == io::ErrorKind::AlreadyExists {
+            Err(stale_managed_file_error(&parent.target_path))
+        } else {
+            Err(GuardIntegrationError::runtime(format!(
+                "failed to create managed file atomically at {}: {error}",
+                parent.target_path.display()
+            )))
+        };
+    }
+
+    let commit_hook_failed =
+        run_write_hook(hook, ManagedWritePhase::CommitApplied, &parent.target_path).is_err();
+    let installed = parent.read_recovery_target_snapshot()?;
+    if installed == staged && !commit_hook_failed {
+        parent.sync_directory();
+        return Ok(());
+    }
+
+    run_write_hook(
+        hook,
+        ManagedWritePhase::RollbackInspecting,
+        &parent.target_path,
+    )?;
+    ensure_recovery_pair_unchanged(
+        parent,
+        temp_name,
+        &installed,
+        &RecoveryEntrySnapshot::Missing,
+    )?;
+    run_write_hook(hook, ManagedWritePhase::RollbackReady, &parent.target_path)?;
+    ensure_recovery_pair_unchanged(
+        parent,
+        temp_name,
+        &installed,
+        &RecoveryEntrySnapshot::Missing,
+    )?;
+    if let Err(error) = rename_entry_no_replace(parent, &parent.target_name, temp_name) {
+        return Err(recovery_residual_error(
+            parent,
+            &[temp_name],
+            &format!("rejected create could not be rolled back: {error}"),
+        ));
+    }
+
+    let target = parent.read_recovery_target_snapshot()?;
+    let rejected =
+        parent.read_recovery_entry_snapshot(temp_name, &parent.absolute_entry_path(temp_name))?;
+    if target == RecoveryEntrySnapshot::Missing && rejected == installed {
+        if installed == staged {
+            remove_exact_entry(parent, temp_name, &rejected, "rejected create")?;
+        } else {
+            rename_entry_no_replace(parent, temp_name, &parent.target_name).map_err(|error| {
+                recovery_residual_error(
+                    parent,
+                    &[temp_name],
+                    &format!(
+                        "rejected create changed before commit and restoring it failed: {error}"
+                    ),
+                )
+            })?;
+            if parent.read_recovery_target_snapshot()? != rejected {
+                return Err(recovery_residual_error(
+                    parent,
+                    &[temp_name],
+                    "the rejected create changed while it was restored",
+                ));
+            }
+        }
+        parent.sync_directory();
+        Err(stale_managed_file_error(&parent.target_path))
+    } else {
+        if target == RecoveryEntrySnapshot::Missing && rejected != RecoveryEntrySnapshot::Missing {
+            rename_entry_no_replace(parent, temp_name, &parent.target_name).map_err(|error| {
+                recovery_residual_error(
+                    parent,
+                    &[temp_name],
+                    &format!(
+                        "create rollback observed a changed entry and restoring it failed: {error}"
+                    ),
+                )
+            })?;
+            if parent.read_recovery_target_snapshot()? != rejected {
+                return Err(recovery_residual_error(
+                    parent,
+                    &[temp_name],
+                    "the changed create entry could not be verified after restoration",
+                ));
+            }
+        }
+        parent.sync_directory();
+        Err(recovery_residual_error(
+            parent,
+            &[temp_name],
+            "a second writer changed the destination during create rollback",
+        ))
+    }
+}
+
+fn ensure_recovery_pair_unchanged(
+    parent: &PinnedManagedParent,
+    secondary_name: &OsString,
+    target: &RecoveryEntrySnapshot,
+    secondary: &RecoveryEntrySnapshot,
+) -> Result<(), GuardIntegrationError> {
+    let current_target = parent.read_recovery_target_snapshot()?;
+    let current_secondary = parent.read_recovery_entry_snapshot(
+        secondary_name,
+        &parent.absolute_entry_path(secondary_name),
+    )?;
+    if &current_target == target && &current_secondary == secondary {
+        Ok(())
+    } else {
+        Err(recovery_residual_error(
+            parent,
+            &[secondary_name],
+            "the destination or recovery entry changed before rollback",
+        ))
+    }
+}
+
+fn remove_exact_entry(
+    parent: &PinnedManagedParent,
+    name: &OsString,
+    expected: &RecoveryEntrySnapshot,
+    role: &str,
+) -> Result<(), GuardIntegrationError> {
+    let path = parent.absolute_entry_path(name);
+    let quarantine = unused_sibling_name(parent, "cleanup")?;
+    rename_entry_no_replace(parent, name, &quarantine).map_err(|error| {
+        recovery_residual_error(
+            parent,
+            &[name, &quarantine],
+            &format!("the {role} could not be isolated for cleanup: {error}"),
+        )
+    })?;
+    let quarantine_path = parent.absolute_entry_path(&quarantine);
+    let isolated = parent.read_recovery_entry_snapshot(&quarantine, &quarantine_path)?;
+    if &isolated != expected {
+        if parent.read_recovery_entry_snapshot(name, &path)? == RecoveryEntrySnapshot::Missing {
+            rename_entry_no_replace(parent, &quarantine, name).map_err(|error| {
+                recovery_residual_error(
+                    parent,
+                    &[name, &quarantine],
+                    &format!("the changed {role} could not be restored after inspection: {error}"),
+                )
+            })?;
+        }
+        return Err(recovery_residual_error(
+            parent,
+            &[name, &quarantine],
+            &format!("the {role} changed before cleanup"),
+        ));
+    }
+    parent.dir().remove_file(&quarantine).map_err(|error| {
+        GuardIntegrationError::runtime(format!(
+            "managed file operation completed but the {role} could not be removed at {}: {error}",
+            quarantine_path.display()
+        ))
+    })
+}
+
+fn cleanup_owned_entry(
+    parent: &PinnedManagedParent,
+    name: &OsString,
+    owner: &RecoveryEntrySnapshot,
+) -> Result<(), GuardIntegrationError> {
+    let path = parent.absolute_entry_path(name);
+    let current = parent.read_recovery_entry_snapshot(name, &path)?;
+    if current == RecoveryEntrySnapshot::Missing {
+        return Ok(());
+    }
+    if &current != owner {
+        return Err(recovery_residual_error(
+            parent,
+            &[name],
+            "the temporary entry changed before cleanup",
+        ));
+    }
+    remove_exact_entry(parent, name, owner, "temporary entry")
+}
+
+fn cleanup_uncommitted_temp(
+    parent: &PinnedManagedParent,
+    name: &OsString,
+    owner: &ManagedTargetSnapshot,
+) -> Result<(), GuardIntegrationError> {
+    let owner = RecoveryEntrySnapshot::from(owner);
+    cleanup_owned_entry(parent, name, &owner)
+}
+
+fn recovery_residual_error(
+    parent: &PinnedManagedParent,
+    candidate_names: &[&OsString],
+    detail: &str,
+) -> GuardIntegrationError {
+    let mut residuals = candidate_names
+        .iter()
+        .filter_map(|name| {
+            let path = parent.absolute_entry_path(name);
+            parent.dir().symlink_metadata(name).ok().map(|_| path)
+        })
+        .collect::<Vec<_>>();
+    residuals.sort();
+    residuals.dedup();
+    let suffix = if residuals.is_empty() {
+        "no recovery entry remained when the directory was inspected".to_owned()
+    } else {
+        format!(
+            "automatic recovery stopped to avoid overwriting a concurrent file; recovery entries present at inspection: {}",
+            residuals
+                .iter()
+                .map(|path| path.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    };
+    GuardIntegrationError::runtime(format!(
+        "managed file changed during conditional replacement at {}; {detail}; {suffix}",
+        parent.target_path.display()
+    ))
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -754,54 +1656,38 @@ where
     F: FnMut(ManagedWritePhase) -> io::Result<()>,
 {
     if matches!(expected, ManagedTargetSnapshot::Missing) {
-        return match rename_entry_no_replace(parent, temp_name, &parent.target_name) {
-            Ok(()) => {
-                parent.sync_directory();
-                Ok(())
-            }
-            Err(error) => {
-                let _ = parent.dir().remove_file(temp_name);
-                if error.kind() == io::ErrorKind::AlreadyExists {
-                    Err(stale_managed_file_error(&parent.target_path))
-                } else {
-                    Err(GuardIntegrationError::runtime(format!(
-                        "failed to create managed file atomically at {}: {error}",
-                        parent.target_path.display()
-                    )))
-                }
-            }
-        };
+        return atomic_create_if_missing(parent, temp_name, staged, hook);
     }
 
     if let Err(error) = exchange_entries(parent, temp_name, &parent.target_name) {
-        let _ = parent.dir().remove_file(temp_name);
+        cleanup_uncommitted_temp(parent, temp_name, staged)?;
         return Err(GuardIntegrationError::runtime(format!(
             "failed to exchange managed file atomically at {}: {error}",
             parent.target_path.display()
         )));
     }
-    let displaced = parent.read_entry_snapshot(temp_name, &parent.absolute_entry_path(temp_name));
-    if displaced
-        .as_ref()
-        .is_ok_and(|snapshot| snapshot == expected)
-    {
-        parent.dir().remove_file(temp_name).map_err(|error| {
-            GuardIntegrationError::runtime(format!(
-                "managed file was committed but its displaced predecessor could not be removed at {}: {error}",
-                parent.absolute_entry_path(temp_name).display()
-            ))
-        })?;
+    let commit_hook_failed =
+        run_write_hook(hook, ManagedWritePhase::CommitApplied, &parent.target_path).is_err();
+    let installed = parent.read_recovery_target_snapshot()?;
+    let displaced =
+        parent.read_recovery_entry_snapshot(temp_name, &parent.absolute_entry_path(temp_name))?;
+    let staged = RecoveryEntrySnapshot::from(staged);
+    let expected = RecoveryEntrySnapshot::from(expected);
+    if installed == staged && displaced == expected && !commit_hook_failed {
+        remove_exact_entry(parent, temp_name, &displaced, "displaced predecessor")?;
         parent.sync_directory();
         return Ok(());
     }
-    rollback_exchange_after_mismatch(parent, temp_name, staged, hook)
+    rollback_exchange_after_mismatch(parent, temp_name, &installed, &displaced, &staged, hook)
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 fn rollback_exchange_after_mismatch<F>(
     parent: &PinnedManagedParent,
     displaced_name: &OsString,
-    staged: &ManagedTargetSnapshot,
+    installed: &RecoveryEntrySnapshot,
+    displaced: &RecoveryEntrySnapshot,
+    owned_staged: &RecoveryEntrySnapshot,
     hook: &mut F,
 ) -> Result<(), GuardIntegrationError>
 where
@@ -812,44 +1698,44 @@ where
         ManagedWritePhase::RollbackInspecting,
         &parent.target_path,
     )?;
-    let current = parent.read_target_snapshot();
-    if !current.as_ref().is_ok_and(|snapshot| snapshot == staged) {
-        let preserved = preserve_entry(parent, displaced_name);
-        return Err(concurrent_rollback_error(
-            &parent.target_path,
-            &preserved,
-            "the destination changed before rollback",
-        ));
-    }
+    ensure_recovery_pair_unchanged(parent, displaced_name, installed, displaced)?;
     run_write_hook(hook, ManagedWritePhase::RollbackReady, &parent.target_path)?;
+    ensure_recovery_pair_unchanged(parent, displaced_name, installed, displaced)?;
     if let Err(error) = exchange_entries(parent, displaced_name, &parent.target_name) {
-        let preserved = preserve_entry(parent, displaced_name);
-        return Err(concurrent_rollback_error(
-            &parent.target_path,
-            &preserved,
+        return Err(recovery_residual_error(
+            parent,
+            &[displaced_name],
             &format!("rollback exchange failed: {error}"),
         ));
     }
-    let rollback_displaced =
-        parent.read_entry_snapshot(displaced_name, &parent.absolute_entry_path(displaced_name));
-    if rollback_displaced
-        .as_ref()
-        .is_ok_and(|snapshot| snapshot == staged)
-    {
-        parent.dir().remove_file(displaced_name).map_err(|error| {
-            GuardIntegrationError::runtime(format!(
-                "stale managed-file rollback succeeded but staged bytes could not be removed at {}: {error}",
-                parent.absolute_entry_path(displaced_name).display()
+    let rollback_displaced = parent.read_recovery_entry_snapshot(
+        displaced_name,
+        &parent.absolute_entry_path(displaced_name),
+    )?;
+    let restored = parent.read_recovery_target_snapshot()?;
+    if &restored == displaced && &rollback_displaced == installed {
+        if &rollback_displaced == owned_staged {
+            remove_exact_entry(
+                parent,
+                displaced_name,
+                &rollback_displaced,
+                "rejected replacement",
+            )?;
+            parent.sync_directory();
+            Err(stale_managed_file_error(&parent.target_path))
+        } else {
+            parent.sync_directory();
+            Err(recovery_residual_error(
+                parent,
+                &[displaced_name],
+                "the installed entry was not the Volicord-staged replacement",
             ))
-        })?;
-        parent.sync_directory();
-        Err(stale_managed_file_error(&parent.target_path))
+        }
     } else {
-        let preserved = preserve_entry(parent, displaced_name);
         parent.sync_directory();
-        Err(concurrent_rollback_error(
-            &parent.target_path,
-            &preserved,
+        Err(recovery_residual_error(
+            parent,
+            &[displaced_name],
             "a second writer changed the destination during rollback",
         ))
     }
@@ -879,58 +1765,401 @@ where
     F: FnMut(ManagedWritePhase) -> io::Result<()>,
 {
     if matches!(expected, ManagedTargetSnapshot::Missing) {
-        return match rename_entry_no_replace(parent, temp_name, &parent.target_name) {
-            Ok(()) => {
-                parent.sync_directory();
-                Ok(())
-            }
-            Err(error) => {
-                let _ = parent.dir().remove_file(temp_name);
-                if error.kind() == io::ErrorKind::AlreadyExists {
-                    Err(stale_managed_file_error(&parent.target_path))
-                } else {
-                    Err(GuardIntegrationError::runtime(format!(
-                        "failed to create managed file atomically at {}: {error}",
-                        parent.target_path.display()
-                    )))
-                }
-            }
-        };
+        return atomic_create_if_missing(parent, temp_name, staged, hook);
     }
 
-    let backup_name = unused_sibling_name(parent, "displaced")?;
-    if let Err(error) =
-        replace_file_with_backup(parent, temp_name, &parent.target_name, &backup_name)
+    let expected_recovery = RecoveryEntrySnapshot::from(expected);
+    let staged_recovery = RecoveryEntrySnapshot::from(staged);
+    let (backup_name, backup_file) = match parent.create_private_sibling_file("backup") {
+        Ok(reservation) => reservation,
+        Err(error) => {
+            cleanup_uncommitted_temp(parent, temp_name, staged)?;
+            return Err(error);
+        }
+    };
+    let backup_sentinel = match parent
+        .read_recovery_entry_snapshot(&backup_name, &parent.absolute_entry_path(&backup_name))
     {
-        let _ = parent.dir().remove_file(temp_name);
+        Ok(snapshot) => snapshot,
+        Err(error) => {
+            cleanup_windows_backup_and_temp(
+                parent,
+                temp_name,
+                &staged_recovery,
+                &backup_name,
+                backup_file,
+            )?;
+            return Err(error);
+        }
+    };
+    let predecessor_name = match reserve_windows_predecessor(parent, expected) {
+        Ok(name) => name,
+        Err(error) => {
+            if let Err(cleanup) = cleanup_windows_backup_and_temp(
+                parent,
+                temp_name,
+                &staged_recovery,
+                &backup_name,
+                backup_file,
+            ) {
+                return Err(GuardIntegrationError::runtime(format!(
+                    "Windows predecessor reservation failed ({error}); owned-entry cleanup also failed: {cleanup}"
+                )));
+            }
+            return Err(error);
+        }
+    };
+    let target_guard = match volicord_platform_fs::open_file_for_replace(&parent.target_path) {
+        Ok(file) => file,
+        Err(error) => {
+            let inspection = (|| {
+                Ok::<_, GuardIntegrationError>((
+                    parent.read_recovery_target_snapshot()?,
+                    parent.read_recovery_entry_snapshot(
+                        &backup_name,
+                        &parent.absolute_entry_path(&backup_name),
+                    )?,
+                    parent.read_recovery_entry_snapshot(
+                        &predecessor_name,
+                        &parent.absolute_entry_path(&predecessor_name),
+                    )?,
+                ))
+            })();
+            let Ok((target, backup, predecessor)) = inspection else {
+                drop(backup_file);
+                return Err(recovery_residual_error(
+                    parent,
+                    &[temp_name, &backup_name, &predecessor_name],
+                    &format!(
+                        "the Windows recovery entries could not be inspected after its write guard failed: {error}"
+                    ),
+                ));
+            };
+            if target == expected_recovery
+                && backup == backup_sentinel
+                && predecessor == expected_recovery
+            {
+                cleanup_windows_uncommitted_reservations(
+                    parent,
+                    temp_name,
+                    &staged_recovery,
+                    &backup_name,
+                    backup_file,
+                    &predecessor_name,
+                    &expected_recovery,
+                )?;
+                return Err(GuardIntegrationError::runtime(format!(
+                    "failed to pin managed file for conditional replacement at {}: {error}",
+                    parent.target_path.display()
+                )));
+            }
+            drop(backup_file);
+            return Err(recovery_residual_error(
+                parent,
+                &[temp_name, &backup_name, &predecessor_name],
+                &format!("the Windows target changed while its write guard was opened: {error}"),
+            ));
+        }
+    };
+    let initial_pin_matches = match windows_pinned_file_matches_expected(&target_guard, expected) {
+        Ok(matches) => matches,
+        Err(error) => {
+            drop(backup_file);
+            return Err(recovery_residual_error(
+                parent,
+                &[temp_name, &backup_name, &predecessor_name],
+                &format!("the pinned Windows predecessor could not be inspected: {error}"),
+            ));
+        }
+    };
+    if !initial_pin_matches {
+        drop(backup_file);
+        return Err(recovery_residual_error(
+            parent,
+            &[temp_name, &backup_name, &predecessor_name],
+            "the pinned Windows file did not match the planned predecessor",
+        ));
+    }
+    let hook_result = run_write_hook(hook, ManagedWritePhase::CommitReserved, &parent.target_path);
+    let inspection = (|| {
+        Ok::<_, GuardIntegrationError>((
+            parent.read_recovery_target_snapshot()?,
+            parent
+                .read_recovery_entry_snapshot(temp_name, &parent.absolute_entry_path(temp_name))?,
+            parent.read_recovery_entry_snapshot(
+                &backup_name,
+                &parent.absolute_entry_path(&backup_name),
+            )?,
+            parent.read_recovery_entry_snapshot(
+                &predecessor_name,
+                &parent.absolute_entry_path(&predecessor_name),
+            )?,
+        ))
+    })();
+    let Ok((target, replacement, backup, predecessor)) = inspection else {
+        drop(backup_file);
+        return Err(recovery_residual_error(
+            parent,
+            &[temp_name, &backup_name, &predecessor_name],
+            "the reserved Windows replacement inputs could not be inspected",
+        ));
+    };
+    let pin_matches = match windows_pinned_file_matches_expected(&target_guard, expected) {
+        Ok(matches) => matches,
+        Err(error) => {
+            drop(backup_file);
+            return Err(recovery_residual_error(
+                parent,
+                &[temp_name, &backup_name, &predecessor_name],
+                &format!("the pinned Windows predecessor could not be reinspected: {error}"),
+            ));
+        }
+    };
+    let parent_attached = parent.validate_attached().is_ok();
+    if hook_result.is_err()
+        || !pin_matches
+        || !parent_attached
+        || target != expected_recovery
+        || replacement != staged_recovery
+        || backup != backup_sentinel
+        || predecessor != expected_recovery
+    {
+        drop(backup_file);
+        return Err(recovery_residual_error(
+            parent,
+            &[temp_name, &backup_name, &predecessor_name],
+            "the Windows replacement inputs changed after their recovery names were reserved",
+        ));
+    }
+    drop(backup_file);
+    if run_write_hook(
+        hook,
+        ManagedWritePhase::NativeCommitReady,
+        &parent.target_path,
+    )
+    .is_err()
+    {
+        return Err(recovery_residual_error(
+            parent,
+            &[temp_name, &backup_name, &predecessor_name],
+            "the Windows native replacement hook failed after recovery names were reserved",
+        ));
+    }
+
+    if let Err(error) = volicord_platform_fs::replace_file_with_backup(
+        &parent.target_path,
+        &parent.absolute_entry_path(temp_name),
+        &parent.absolute_entry_path(&backup_name),
+    ) {
+        return recover_failed_windows_commit(
+            parent,
+            temp_name,
+            &backup_name,
+            &predecessor_name,
+            &backup_sentinel,
+            &expected_recovery,
+            &staged_recovery,
+            error,
+        );
+    }
+    let commit_hook_failed =
+        run_write_hook(hook, ManagedWritePhase::CommitApplied, &parent.target_path).is_err();
+    let inspection = (|| {
+        Ok::<_, GuardIntegrationError>((
+            parent.read_recovery_target_snapshot()?,
+            parent
+                .read_recovery_entry_snapshot(temp_name, &parent.absolute_entry_path(temp_name))?,
+            parent.read_recovery_entry_snapshot(
+                &backup_name,
+                &parent.absolute_entry_path(&backup_name),
+            )?,
+            parent.read_recovery_entry_snapshot(
+                &predecessor_name,
+                &parent.absolute_entry_path(&predecessor_name),
+            )?,
+        ))
+    })();
+    let Ok((installed, replacement, displaced, predecessor)) = inspection else {
+        return Err(recovery_residual_error(
+            parent,
+            &[temp_name, &backup_name, &predecessor_name],
+            "the Windows replacement result could not be inspected",
+        ));
+    };
+    if installed == staged_recovery
+        && replacement == RecoveryEntrySnapshot::Missing
+        && displaced == expected_recovery
+        && predecessor == expected_recovery
+        && !commit_hook_failed
+    {
+        remove_exact_entry(parent, &backup_name, &displaced, "displaced predecessor")?;
+        remove_exact_entry(
+            parent,
+            &predecessor_name,
+            &predecessor,
+            "preserved predecessor",
+        )?;
+        parent.sync_directory();
+        return Ok(());
+    }
+    if replacement != RecoveryEntrySnapshot::Missing {
+        return Err(recovery_residual_error(
+            parent,
+            &[temp_name, &backup_name, &predecessor_name],
+            "the Windows replacement name was recreated before commit verification",
+        ));
+    }
+    rollback_windows_after_mismatch(
+        parent,
+        &backup_name,
+        &predecessor_name,
+        &installed,
+        &displaced,
+        &predecessor,
+        &expected_recovery,
+        &staged_recovery,
+        hook,
+    )
+}
+
+#[cfg(windows)]
+fn recover_failed_windows_commit(
+    parent: &PinnedManagedParent,
+    temp_name: &OsString,
+    backup_name: &OsString,
+    predecessor_name: &OsString,
+    backup_sentinel: &RecoveryEntrySnapshot,
+    expected: &RecoveryEntrySnapshot,
+    staged: &RecoveryEntrySnapshot,
+    error: volicord_platform_fs::ReplaceFileError,
+) -> Result<(), GuardIntegrationError> {
+    let inspection = (|| {
+        Ok::<_, GuardIntegrationError>((
+            parent.read_recovery_target_snapshot()?,
+            parent
+                .read_recovery_entry_snapshot(temp_name, &parent.absolute_entry_path(temp_name))?,
+            parent.read_recovery_entry_snapshot(
+                backup_name,
+                &parent.absolute_entry_path(backup_name),
+            )?,
+            parent.read_recovery_entry_snapshot(
+                predecessor_name,
+                &parent.absolute_entry_path(predecessor_name),
+            )?,
+        ))
+    })();
+    let Ok((target, replacement, backup, predecessor)) = inspection else {
+        return Err(recovery_residual_error(
+            parent,
+            &[temp_name, backup_name, predecessor_name],
+            &format!("the Windows replacement failure state could not be inspected: {error}"),
+        ));
+    };
+
+    if target == *expected
+        && replacement == *staged
+        && predecessor == *expected
+        && (backup == *backup_sentinel || backup == RecoveryEntrySnapshot::Missing)
+    {
+        cleanup_owned_entry(parent, temp_name, staged)?;
+        if backup == *backup_sentinel {
+            cleanup_owned_entry(parent, backup_name, backup_sentinel)?;
+        }
+        cleanup_owned_entry(parent, predecessor_name, expected)?;
         return Err(GuardIntegrationError::runtime(format!(
             "failed to replace managed file atomically at {}: {error}",
             parent.target_path.display()
         )));
     }
-    let displaced =
-        parent.read_entry_snapshot(&backup_name, &parent.absolute_entry_path(&backup_name));
-    if displaced
-        .as_ref()
-        .is_ok_and(|snapshot| snapshot == expected)
-    {
-        parent.dir().remove_file(&backup_name).map_err(|error| {
-            GuardIntegrationError::runtime(format!(
-                "managed file was committed but its displaced predecessor could not be removed at {}: {error}",
-                parent.absolute_entry_path(&backup_name).display()
-            ))
-        })?;
-        parent.sync_directory();
-        return Ok(());
+
+    if predecessor != *expected {
+        return Err(recovery_residual_error(
+            parent,
+            &[temp_name, backup_name, predecessor_name],
+            &format!("the preserved Windows predecessor changed after replacement failed: {error}"),
+        ));
     }
-    rollback_windows_after_mismatch(parent, &backup_name, staged, hook)
+
+    if target == RecoveryEntrySnapshot::Missing {
+        rename_entry_no_replace(parent, predecessor_name, &parent.target_name).map_err(
+            |recovery| {
+                recovery_residual_error(
+                    parent,
+                    &[temp_name, backup_name, predecessor_name],
+                    &format!(
+                        "partial Windows replacement failed ({error}) and restoring its preserved predecessor failed: {recovery}"
+                    ),
+                )
+            },
+        )?;
+        let restored = parent
+            .read_recovery_target_snapshot()
+            .map_err(|inspection| {
+                recovery_residual_error(
+                    parent,
+                    &[temp_name, backup_name, predecessor_name],
+                    &format!(
+                        "the restored Windows predecessor could not be inspected: {inspection}"
+                    ),
+                )
+            })?;
+        if restored != *expected {
+            return Err(recovery_residual_error(
+                parent,
+                &[temp_name, backup_name, predecessor_name],
+                "the preserved Windows predecessor changed while it was restored",
+            ));
+        }
+        if replacement == *staged {
+            cleanup_owned_entry(parent, temp_name, staged)?;
+        }
+        if backup == *expected {
+            cleanup_owned_entry(parent, backup_name, expected)?;
+            parent.sync_directory();
+            return Err(stale_managed_file_error(&parent.target_path));
+        }
+        parent.sync_directory();
+        return Err(recovery_residual_error(
+            parent,
+            &[temp_name, backup_name, predecessor_name],
+            &format!(
+                "partial Windows replacement preserved an unexpected displaced entry: {error}"
+            ),
+        ));
+    }
+
+    if replacement == RecoveryEntrySnapshot::Missing {
+        let mut no_hook = |_| Ok(());
+        return rollback_windows_after_mismatch(
+            parent,
+            backup_name,
+            predecessor_name,
+            &target,
+            &backup,
+            &predecessor,
+            expected,
+            staged,
+            &mut no_hook,
+        );
+    }
+
+    Err(recovery_residual_error(
+        parent,
+        &[temp_name, backup_name, predecessor_name],
+        &format!("Windows replacement failed with changed participating entries: {error}"),
+    ))
 }
 
 #[cfg(windows)]
 fn rollback_windows_after_mismatch<F>(
     parent: &PinnedManagedParent,
     displaced_name: &OsString,
-    staged: &ManagedTargetSnapshot,
+    predecessor_name: &OsString,
+    installed: &RecoveryEntrySnapshot,
+    displaced: &RecoveryEntrySnapshot,
+    predecessor: &RecoveryEntrySnapshot,
+    expected: &RecoveryEntrySnapshot,
+    owned_staged: &RecoveryEntrySnapshot,
     hook: &mut F,
 ) -> Result<(), GuardIntegrationError>
 where
@@ -941,92 +2170,327 @@ where
         ManagedWritePhase::RollbackInspecting,
         &parent.target_path,
     )?;
-    let current = parent.read_target_snapshot();
-    if !current.as_ref().is_ok_and(|snapshot| snapshot == staged) {
-        let preserved = preserve_entry(parent, displaced_name);
-        return Err(concurrent_rollback_error(
-            &parent.target_path,
-            &preserved,
-            "the destination changed before rollback",
-        ));
-    }
-    run_write_hook(hook, ManagedWritePhase::RollbackReady, &parent.target_path)?;
-    let rollback_backup = unused_sibling_name(parent, "rollback")?;
-    if let Err(error) = replace_file_with_backup(
+    ensure_windows_recovery_state(
         parent,
         displaced_name,
-        &parent.target_name,
-        &rollback_backup,
-    ) {
-        let preserved = preserve_entry(parent, displaced_name);
-        return Err(concurrent_rollback_error(
-            &parent.target_path,
-            &preserved,
-            &format!("rollback replacement failed: {error}"),
+        predecessor_name,
+        installed,
+        displaced,
+        predecessor,
+    )?;
+    run_write_hook(hook, ManagedWritePhase::RollbackReady, &parent.target_path)?;
+    ensure_windows_recovery_state(
+        parent,
+        displaced_name,
+        predecessor_name,
+        installed,
+        displaced,
+        predecessor,
+    )?;
+    if predecessor != expected {
+        return Err(recovery_residual_error(
+            parent,
+            &[displaced_name, predecessor_name],
+            "the preserved Windows predecessor no longer matches the planned file",
         ));
     }
-    let rollback_displaced = parent.read_entry_snapshot(
-        &rollback_backup,
-        &parent.absolute_entry_path(&rollback_backup),
-    );
-    if rollback_displaced
-        .as_ref()
-        .is_ok_and(|snapshot| snapshot == staged)
-    {
-        parent.dir().remove_file(&rollback_backup).map_err(|error| {
-            GuardIntegrationError::runtime(format!(
-                "stale managed-file rollback succeeded but staged bytes could not be removed at {}: {error}",
-                parent.absolute_entry_path(&rollback_backup).display()
-            ))
-        })?;
+
+    if installed == &RecoveryEntrySnapshot::Missing {
+        rename_entry_no_replace(parent, predecessor_name, &parent.target_name).map_err(
+            |error| {
+                recovery_residual_error(
+                    parent,
+                    &[displaced_name, predecessor_name],
+                    &format!("the missing Windows destination could not be restored: {error}"),
+                )
+            },
+        )?;
+        let restored = parent
+            .read_recovery_target_snapshot()
+            .map_err(|inspection| {
+                recovery_residual_error(
+                    parent,
+                    &[displaced_name, predecessor_name],
+                    &format!(
+                        "the restored Windows destination could not be inspected: {inspection}"
+                    ),
+                )
+            })?;
+        if restored != *expected {
+            return Err(recovery_residual_error(
+                parent,
+                &[displaced_name, predecessor_name],
+                "the Windows predecessor changed while the missing destination was restored",
+            ));
+        }
+        if displaced == expected {
+            cleanup_owned_entry(parent, displaced_name, expected)?;
+        }
         parent.sync_directory();
+        return Err(if displaced == expected {
+            stale_managed_file_error(&parent.target_path)
+        } else {
+            recovery_residual_error(
+                parent,
+                &[displaced_name, predecessor_name],
+                "a concurrent displaced entry remains after the missing destination was restored",
+            )
+        });
+    }
+
+    let rollback_name = unused_sibling_name(parent, "rollback")?;
+    rename_entry_no_replace(parent, &parent.target_name, &rollback_name).map_err(|error| {
+        recovery_residual_error(
+            parent,
+            &[displaced_name, predecessor_name, &rollback_name],
+            &format!("the installed Windows entry could not be isolated for rollback: {error}"),
+        )
+    })?;
+    let inspection = (|| {
+        Ok::<_, GuardIntegrationError>((
+            parent.read_recovery_target_snapshot()?,
+            parent.read_recovery_entry_snapshot(
+                &rollback_name,
+                &parent.absolute_entry_path(&rollback_name),
+            )?,
+            parent.read_recovery_entry_snapshot(
+                displaced_name,
+                &parent.absolute_entry_path(displaced_name),
+            )?,
+            parent.read_recovery_entry_snapshot(
+                predecessor_name,
+                &parent.absolute_entry_path(predecessor_name),
+            )?,
+        ))
+    })();
+    let Ok((target_after_isolation, rejected, current_displaced, current_predecessor)) = inspection
+    else {
+        return Err(recovery_residual_error(
+            parent,
+            &[displaced_name, predecessor_name, &rollback_name],
+            "the isolated Windows rollback entries could not be inspected",
+        ));
+    };
+    if target_after_isolation != RecoveryEntrySnapshot::Missing || current_predecessor != *expected
+    {
+        return Err(recovery_residual_error(
+            parent,
+            &[displaced_name, predecessor_name, &rollback_name],
+            "the Windows rollback entries changed before predecessor restoration",
+        ));
+    }
+    rename_entry_no_replace(parent, predecessor_name, &parent.target_name).map_err(|error| {
+        recovery_residual_error(
+            parent,
+            &[displaced_name, predecessor_name, &rollback_name],
+            &format!("the preserved Windows predecessor could not be restored: {error}"),
+        )
+    })?;
+    let inspection = (|| {
+        Ok::<_, GuardIntegrationError>((
+            parent.read_recovery_target_snapshot()?,
+            parent.read_recovery_entry_snapshot(
+                &rollback_name,
+                &parent.absolute_entry_path(&rollback_name),
+            )?,
+            parent.read_recovery_entry_snapshot(
+                displaced_name,
+                &parent.absolute_entry_path(displaced_name),
+            )?,
+            parent.read_recovery_entry_snapshot(
+                predecessor_name,
+                &parent.absolute_entry_path(predecessor_name),
+            )?,
+        ))
+    })();
+    let Ok((restored, rejected_after, displaced_after, predecessor_after)) = inspection else {
+        return Err(recovery_residual_error(
+            parent,
+            &[displaced_name, predecessor_name, &rollback_name],
+            "the restored Windows rollback entries could not be inspected",
+        ));
+    };
+    if restored != *expected
+        || rejected_after != rejected
+        || displaced_after != current_displaced
+        || predecessor_after != RecoveryEntrySnapshot::Missing
+    {
+        return Err(recovery_residual_error(
+            parent,
+            &[displaced_name, predecessor_name, &rollback_name],
+            "a second writer changed the Windows entries during rollback",
+        ));
+    }
+
+    let clean_rollback = rejected == *installed && rejected == *owned_staged;
+    if clean_rollback {
+        cleanup_owned_entry(parent, &rollback_name, owned_staged)?;
+    }
+    let clean_displaced = current_displaced == *displaced && current_displaced == *expected;
+    if clean_displaced {
+        cleanup_owned_entry(parent, displaced_name, expected)?;
+    }
+    parent.sync_directory();
+    if clean_rollback && clean_displaced {
         Err(stale_managed_file_error(&parent.target_path))
     } else {
-        let preserved = preserve_entry(parent, &rollback_backup);
-        parent.sync_directory();
-        Err(concurrent_rollback_error(
-            &parent.target_path,
-            &preserved,
-            "a second writer changed the destination during rollback",
+        Err(recovery_residual_error(
+            parent,
+            &[displaced_name, predecessor_name, &rollback_name],
+            "concurrent Windows bytes were preserved after predecessor restoration",
         ))
     }
 }
 
 #[cfg(windows)]
-fn replace_file_with_backup(
+fn cleanup_windows_backup_and_temp(
     parent: &PinnedManagedParent,
-    replacement: &OsString,
-    replaced: &OsString,
-    backup: &OsString,
-) -> io::Result<()> {
-    use std::ptr;
-    use windows_sys::Win32::Storage::FileSystem::ReplaceFileW;
+    temp_name: &OsString,
+    staged: &RecoveryEntrySnapshot,
+    backup_name: &OsString,
+    backup_file: CapabilityFile,
+) -> Result<(), GuardIntegrationError> {
+    cleanup_temp_from_open_handle(parent, backup_name, backup_file)?;
+    cleanup_owned_entry(parent, temp_name, staged)
+}
 
-    let replaced = wide_path(&parent.absolute_entry_path(replaced));
-    let replacement = wide_path(&parent.absolute_entry_path(replacement));
-    let backup = wide_path(&parent.absolute_entry_path(backup));
-    let success = unsafe {
-        ReplaceFileW(
-            replaced.as_ptr(),
-            replacement.as_ptr(),
-            backup.as_ptr(),
-            0,
-            ptr::null(),
-            ptr::null(),
-        )
+#[cfg(windows)]
+fn cleanup_windows_uncommitted_reservations(
+    parent: &PinnedManagedParent,
+    temp_name: &OsString,
+    staged: &RecoveryEntrySnapshot,
+    backup_name: &OsString,
+    backup_file: CapabilityFile,
+    predecessor_name: &OsString,
+    expected: &RecoveryEntrySnapshot,
+) -> Result<(), GuardIntegrationError> {
+    cleanup_temp_from_open_handle(parent, backup_name, backup_file)?;
+    cleanup_owned_entry(parent, temp_name, staged)?;
+    cleanup_owned_entry(parent, predecessor_name, expected)
+}
+
+#[cfg(windows)]
+fn ensure_windows_recovery_state(
+    parent: &PinnedManagedParent,
+    displaced_name: &OsString,
+    predecessor_name: &OsString,
+    target: &RecoveryEntrySnapshot,
+    displaced: &RecoveryEntrySnapshot,
+    predecessor: &RecoveryEntrySnapshot,
+) -> Result<(), GuardIntegrationError> {
+    let inspection = (|| {
+        Ok::<_, GuardIntegrationError>((
+            parent.read_recovery_target_snapshot()?,
+            parent.read_recovery_entry_snapshot(
+                displaced_name,
+                &parent.absolute_entry_path(displaced_name),
+            )?,
+            parent.read_recovery_entry_snapshot(
+                predecessor_name,
+                &parent.absolute_entry_path(predecessor_name),
+            )?,
+        ))
+    })();
+    let Ok((current_target, current_displaced, current_predecessor)) = inspection else {
+        return Err(recovery_residual_error(
+            parent,
+            &[displaced_name, predecessor_name],
+            "the Windows destination or recovery entries could not be inspected before rollback",
+        ));
     };
-    if success == 0 {
-        Err(io::Error::last_os_error())
-    } else {
+    if &current_target == target
+        && &current_displaced == displaced
+        && &current_predecessor == predecessor
+    {
         Ok(())
+    } else {
+        Err(recovery_residual_error(
+            parent,
+            &[displaced_name, predecessor_name],
+            "the Windows destination or recovery entries changed before rollback",
+        ))
     }
 }
 
 #[cfg(windows)]
-fn wide_path(path: &Path) -> Vec<u16> {
-    use std::os::windows::ffi::OsStrExt;
+fn reserve_windows_predecessor(
+    parent: &PinnedManagedParent,
+    expected: &ManagedTargetSnapshot,
+) -> Result<OsString, GuardIntegrationError> {
+    let target_name = parent.target_name.to_string_lossy();
+    let expected = RecoveryEntrySnapshot::from(expected);
+    for _ in 0..64 {
+        let token = random_file_token()?;
+        let candidate = OsString::from(format!(".{target_name}.volicord-predecessor-{token}"));
+        match parent
+            .dir()
+            .hard_link(&parent.target_name, parent.dir(), &candidate)
+        {
+            Ok(()) => {
+                let inspection = (|| {
+                    Ok::<_, GuardIntegrationError>((
+                        parent.read_recovery_entry_snapshot(
+                            &candidate,
+                            &parent.absolute_entry_path(&candidate),
+                        )?,
+                        parent.read_recovery_target_snapshot()?,
+                    ))
+                })();
+                let Ok((predecessor, target)) = inspection else {
+                    return Err(recovery_residual_error(
+                        parent,
+                        &[&candidate],
+                        "the reserved Windows predecessor could not be inspected",
+                    ));
+                };
+                if predecessor == expected && target == expected {
+                    return Ok(candidate);
+                }
+                return Err(recovery_residual_error(
+                    parent,
+                    &[&candidate],
+                    "the Windows target changed while its predecessor hard link was reserved",
+                ));
+            }
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(error) => {
+                return Err(GuardIntegrationError::runtime(format!(
+                    "failed to preserve the Windows managed-file predecessor for {}: {error}",
+                    parent.target_path.display()
+                )));
+            }
+        }
+    }
+    Err(GuardIntegrationError::runtime(format!(
+        "failed to allocate a Windows predecessor entry for {}",
+        parent.target_path.display()
+    )))
+}
 
-    path.as_os_str().encode_wide().chain(Some(0)).collect()
+#[cfg(windows)]
+fn windows_pinned_file_matches_expected(
+    file: &std::fs::File,
+    expected: &ManagedTargetSnapshot,
+) -> io::Result<bool> {
+    let ManagedTargetSnapshot::RegularFile(expected) = expected else {
+        return Ok(false);
+    };
+    let capability_file = CapabilityFile::from_std(file.try_clone()?);
+    let before = capability_file.metadata()?;
+    let mut reader = file.try_clone()?;
+    reader.rewind()?;
+    let mut text = String::new();
+    reader.read_to_string(&mut text)?;
+    let after = capability_file.metadata()?;
+    Ok(before.is_file()
+        && after.is_file()
+        && ManagedFileIdentity::from_metadata(&before) == expected.identity
+        && ManagedFileIdentity::from_metadata(&after) == expected.identity
+        && before.len() == expected.len
+        && after.len() == expected.len
+        && before.permissions().readonly() == expected.readonly
+        && after.permissions().readonly() == expected.readonly
+        && text == expected.text)
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
@@ -1034,64 +2498,20 @@ fn atomic_commit_if_fresh<F>(
     parent: &PinnedManagedParent,
     temp_name: &OsString,
     expected: &ManagedTargetSnapshot,
-    _staged: &ManagedTargetSnapshot,
-    _hook: &mut F,
+    staged: &ManagedTargetSnapshot,
+    hook: &mut F,
 ) -> Result<(), GuardIntegrationError>
 where
     F: FnMut(ManagedWritePhase) -> io::Result<()>,
 {
     if matches!(expected, ManagedTargetSnapshot::Missing) {
-        let result = parent
-            .dir()
-            .hard_link(temp_name, parent.dir(), &parent.target_name);
-        return match result {
-            Ok(()) => {
-                parent.dir().remove_file(temp_name).map_err(|error| {
-                    GuardIntegrationError::runtime(format!(
-                        "managed file was created but its temporary link could not be removed at {}: {error}",
-                        parent.absolute_entry_path(temp_name).display()
-                    ))
-                })?;
-                parent.sync_directory();
-                Ok(())
-            }
-            Err(error) => {
-                let _ = parent.dir().remove_file(temp_name);
-                if error.kind() == io::ErrorKind::AlreadyExists {
-                    Err(stale_managed_file_error(&parent.target_path))
-                } else {
-                    Err(GuardIntegrationError::runtime(format!(
-                        "failed to create managed file atomically at {}: {error}",
-                        parent.target_path.display()
-                    )))
-                }
-            }
-        };
+        return atomic_create_if_missing(parent, temp_name, staged, hook);
     }
-    let _ = parent.dir().remove_file(temp_name);
+    cleanup_uncommitted_temp(parent, temp_name, staged)?;
     Err(GuardIntegrationError::runtime(format!(
         "atomic conditional managed-file replacement is unsupported on this platform: {}",
         parent.target_path.display()
     )))
-}
-
-fn preserve_entry(parent: &PinnedManagedParent, source: &OsString) -> PathBuf {
-    let target_name = parent.target_name.to_string_lossy();
-    for attempt in 0..1_000_u32 {
-        let preserved_name = OsString::from(format!(
-            ".{target_name}.volicord-preserved-{}-{attempt}",
-            std::process::id()
-        ));
-        match rename_entry_no_replace(parent, source, &preserved_name) {
-            Ok(()) => {
-                parent.sync_directory();
-                return parent.absolute_entry_path(&preserved_name);
-            }
-            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
-            Err(_) => break,
-        }
-    }
-    parent.absolute_entry_path(source)
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -1112,22 +2532,10 @@ fn rename_entry_no_replace(
     source: &OsString,
     destination: &OsString,
 ) -> io::Result<()> {
-    use windows_sys::Win32::Storage::FileSystem::{MoveFileExW, MOVEFILE_WRITE_THROUGH};
-
-    let source = wide_path(&parent.absolute_entry_path(source));
-    let destination = wide_path(&parent.absolute_entry_path(destination));
-    let success = unsafe {
-        MoveFileExW(
-            source.as_ptr(),
-            destination.as_ptr(),
-            MOVEFILE_WRITE_THROUGH,
-        )
-    };
-    if success == 0 {
-        Err(io::Error::last_os_error())
-    } else {
-        Ok(())
-    }
+    volicord_platform_fs::move_file_no_replace(
+        &parent.absolute_entry_path(source),
+        &parent.absolute_entry_path(destination),
+    )
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
@@ -1140,17 +2548,14 @@ fn rename_entry_no_replace(
     parent.dir().remove_file(source)
 }
 
-#[cfg(windows)]
 fn unused_sibling_name(
     parent: &PinnedManagedParent,
     role: &str,
 ) -> Result<OsString, GuardIntegrationError> {
     let target_name = parent.target_name.to_string_lossy();
-    for attempt in 0..1_000_u32 {
-        let candidate = OsString::from(format!(
-            ".{target_name}.volicord-{role}-{}-{attempt}",
-            std::process::id()
-        ));
+    for _ in 0..64 {
+        let token = random_file_token()?;
+        let candidate = OsString::from(format!(".{target_name}.volicord-{role}-{token}"));
         match parent.dir().symlink_metadata(&candidate) {
             Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(candidate),
             Ok(_) => continue,
@@ -1172,18 +2577,6 @@ fn stale_managed_file_error(path: &Path) -> GuardIntegrationError {
     GuardIntegrationError::runtime(format!(
         "managed file changed since planning: {}",
         path.display()
-    ))
-}
-
-fn concurrent_rollback_error(
-    target: &Path,
-    preserved: &Path,
-    detail: &str,
-) -> GuardIntegrationError {
-    GuardIntegrationError::runtime(format!(
-        "managed file changed during conditional replacement at {}; {detail}; concurrent bytes were preserved at {}",
-        target.display(),
-        preserved.display()
     ))
 }
 
@@ -1735,8 +3128,10 @@ mod tests {
                     let name = name.to_string_lossy();
                     name.contains(".volicord-tmp-")
                         || name.contains(".volicord-displaced-")
+                        || name.contains(".volicord-backup-")
+                        || name.contains(".volicord-predecessor-")
                         || name.contains(".volicord-rollback-")
-                        || name.contains(".volicord-preserved-")
+                        || name.contains(".volicord-cleanup-")
                 })
             })
             .collect::<Vec<_>>();
@@ -1911,7 +3306,376 @@ mod tests {
 
     #[cfg(any(target_os = "linux", target_os = "macos", windows))]
     #[test]
-    fn second_writer_during_rollback_is_preserved() -> Result<(), Box<dyn std::error::Error>> {
+    fn concurrent_change_after_create_publish_is_restored_as_target(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = TempRuntimeHome::new("guard-atomic-concurrent-published-create")?;
+        let repo = fixture.path().join("repo");
+        let managed_dir = repo.join(".volicord");
+        fs::create_dir_all(&repo)?;
+        let target = repo.join(VOLICORD_POLICY_FILE);
+        let plan = plan_policy_file(&repo, &target, &owned_policy("new"))?;
+
+        let error = write_managed_file_if_fresh_with_hook(&plan, &plan.content, false, |phase| {
+            if phase == ManagedWritePhase::CommitApplied {
+                fs::write(&target, "concurrent published bytes\n")?;
+            }
+            Ok(())
+        })
+        .expect_err("a change after no-replace publication must reject the staged create");
+
+        assert!(error.to_string().contains("changed since planning"));
+        assert_eq!(fs::read_to_string(&target)?, "concurrent published bytes\n");
+        assert!(managed_auxiliary_files(&managed_dir)?.is_empty());
+        Ok(())
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn concurrent_replacement_after_exchange_is_preserved_as_residual(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = TempRuntimeHome::new("guard-atomic-concurrent-post-exchange")?;
+        let repo = fixture.path().join("repo");
+        let managed_dir = repo.join(".volicord");
+        fs::create_dir_all(&managed_dir)?;
+        let target = repo.join(VOLICORD_POLICY_FILE);
+        let original = serde_json::to_string_pretty(&owned_policy("old"))? + "\n";
+        fs::write(&target, &original)?;
+        let plan = plan_policy_file(&repo, &target, &owned_policy("new"))?;
+
+        let error = write_managed_file_if_fresh_with_hook(&plan, &plan.content, false, |phase| {
+            if phase == ManagedWritePhase::CommitApplied {
+                fs::remove_file(&target)?;
+                fs::write(&target, "concurrent post-exchange bytes\n")?;
+            }
+            Ok(())
+        })
+        .expect_err("a replacement after exchange must stop cleanup of concurrent bytes");
+
+        assert!(error
+            .to_string()
+            .contains("recovery entries present at inspection"));
+        assert_eq!(fs::read_to_string(&target)?, original);
+        let auxiliary = managed_auxiliary_files(&managed_dir)?;
+        assert_eq!(auxiliary.len(), 1);
+        assert_eq!(
+            fs::read_to_string(&auxiliary[0])?,
+            "concurrent post-exchange bytes\n"
+        );
+        Ok(())
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn concurrent_windows_target_replacement_is_preserved_as_residual(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = TempRuntimeHome::new("guard-windows-concurrent-native-replace")?;
+        let repo = fixture.path().join("repo");
+        let managed_dir = repo.join(".volicord");
+        fs::create_dir_all(&managed_dir)?;
+        let target = repo.join(VOLICORD_POLICY_FILE);
+        let original = serde_json::to_string_pretty(&owned_policy("old"))? + "\n";
+        fs::write(&target, &original)?;
+        let plan = plan_policy_file(&repo, &target, &owned_policy("new"))?;
+
+        let error = write_managed_file_if_fresh_with_hook(&plan, &plan.content, false, |phase| {
+            if phase == ManagedWritePhase::NativeCommitReady {
+                fs::remove_file(&target)?;
+                fs::write(&target, "concurrent Windows target bytes\n")?;
+            }
+            Ok(())
+        })
+        .expect_err("a Windows target replacement must stop successful commit");
+
+        assert!(error
+            .to_string()
+            .contains("recovery entries present at inspection"));
+        assert_eq!(fs::read_to_string(&target)?, original);
+        let auxiliary = managed_auxiliary_files(&managed_dir)?;
+        assert_eq!(auxiliary.len(), 1);
+        assert_eq!(
+            fs::read_to_string(&auxiliary[0])?,
+            "concurrent Windows target bytes\n"
+        );
+        Ok(())
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn second_windows_writer_stops_automatic_rollback() -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = TempRuntimeHome::new("guard-windows-second-rollback-writer")?;
+        let repo = fixture.path().join("repo");
+        let managed_dir = repo.join(".volicord");
+        fs::create_dir_all(&managed_dir)?;
+        let target = repo.join(VOLICORD_POLICY_FILE);
+        let original = serde_json::to_string_pretty(&owned_policy("old"))? + "\n";
+        fs::write(&target, &original)?;
+        let plan = plan_policy_file(&repo, &target, &owned_policy("new"))?;
+
+        let error = write_managed_file_if_fresh_with_hook(&plan, &plan.content, false, |phase| {
+            if phase == ManagedWritePhase::NativeCommitReady {
+                fs::remove_file(&target)?;
+                fs::write(&target, "first Windows writer bytes\n")?;
+            }
+            if phase == ManagedWritePhase::RollbackReady {
+                fs::write(&target, "second Windows writer bytes\n")?;
+            }
+            Ok(())
+        })
+        .expect_err("a second Windows writer must stop automatic rollback");
+
+        assert!(error
+            .to_string()
+            .contains("recovery entries present at inspection"));
+        assert_eq!(
+            fs::read_to_string(&target)?,
+            "second Windows writer bytes\n"
+        );
+        let auxiliary = managed_auxiliary_files(&managed_dir)?;
+        assert_eq!(auxiliary.len(), 2);
+        let mut contents = auxiliary
+            .iter()
+            .map(fs::read_to_string)
+            .collect::<Result<Vec<_>, _>>()?;
+        contents.sort();
+        let mut expected = vec![original, "first Windows writer bytes\n".to_owned()];
+        expected.sort();
+        assert_eq!(contents, expected);
+        Ok(())
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos", windows))]
+    #[test]
+    fn changed_staged_file_is_rejected_without_deleting_concurrent_bytes(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = TempRuntimeHome::new("guard-atomic-staged-swap")?;
+        let repo = fixture.path().join("repo");
+        let managed_dir = repo.join(".volicord");
+        fs::create_dir_all(&managed_dir)?;
+        let target = repo.join(VOLICORD_POLICY_FILE);
+        let original = serde_json::to_string_pretty(&owned_policy("old"))? + "\n";
+        fs::write(&target, &original)?;
+        let plan = plan_policy_file(&repo, &target, &owned_policy("new"))?;
+
+        let error = write_managed_file_if_fresh_with_hook(&plan, &plan.content, false, |phase| {
+            if phase == ManagedWritePhase::CommitReady {
+                let auxiliary = managed_auxiliary_files(&managed_dir)?;
+                assert_eq!(auxiliary.len(), 1);
+                fs::write(&auxiliary[0], "changed staged bytes\n")?;
+            }
+            Ok(())
+        })
+        .expect_err("a changed staged file must fail pre-commit validation");
+
+        assert!(error
+            .to_string()
+            .contains("recovery entries present at inspection"));
+        assert_eq!(fs::read_to_string(&target)?, original);
+        let auxiliary = managed_auxiliary_files(&managed_dir)?;
+        assert_eq!(auxiliary.len(), 1);
+        assert_eq!(fs::read_to_string(&auxiliary[0])?, "changed staged bytes\n");
+        Ok(())
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos", windows))]
+    #[test]
+    fn changed_staged_create_is_rejected_without_deleting_concurrent_bytes(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = TempRuntimeHome::new("guard-atomic-staged-create-swap")?;
+        let repo = fixture.path().join("repo");
+        let managed_dir = repo.join(".volicord");
+        fs::create_dir_all(&repo)?;
+        let target = repo.join(VOLICORD_POLICY_FILE);
+        let plan = plan_policy_file(&repo, &target, &owned_policy("new"))?;
+
+        let error = write_managed_file_if_fresh_with_hook(&plan, &plan.content, false, |phase| {
+            if phase == ManagedWritePhase::CommitReady {
+                let auxiliary = managed_auxiliary_files(&managed_dir)?;
+                assert_eq!(auxiliary.len(), 1);
+                fs::write(&auxiliary[0], "changed staged bytes\n")?;
+            }
+            Ok(())
+        })
+        .expect_err("a changed staged create must fail pre-commit validation");
+
+        assert!(error
+            .to_string()
+            .contains("recovery entries present at inspection"));
+        assert!(!target.exists());
+        let auxiliary = managed_auxiliary_files(&managed_dir)?;
+        assert_eq!(auxiliary.len(), 1);
+        assert_eq!(fs::read_to_string(&auxiliary[0])?, "changed staged bytes\n");
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn replaced_temp_name_is_never_adopted_as_staged_content(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = TempRuntimeHome::new("guard-atomic-temp-name-replaced")?;
+        let repo = fixture.path().join("repo");
+        let managed_dir = repo.join(".volicord");
+        fs::create_dir_all(&managed_dir)?;
+        let target = repo.join(VOLICORD_POLICY_FILE);
+        let original = serde_json::to_string_pretty(&owned_policy("old"))? + "\n";
+        fs::write(&target, &original)?;
+        let plan = plan_policy_file(&repo, &target, &owned_policy("new"))?;
+
+        let error = write_managed_file_if_fresh_with_hook(&plan, &plan.content, false, |phase| {
+            if phase == ManagedWritePhase::TempReady {
+                let auxiliary = managed_auxiliary_files(&managed_dir)?;
+                assert_eq!(auxiliary.len(), 1);
+                fs::remove_file(&auxiliary[0])?;
+                fs::write(&auxiliary[0], "replacement entry bytes\n")?;
+            }
+            Ok(())
+        })
+        .expect_err("a replacement entry at the temporary name must never become staged content");
+
+        assert!(error
+            .to_string()
+            .contains("recovery entries present at inspection"));
+        assert_eq!(fs::read_to_string(&target)?, original);
+        let auxiliary = managed_auxiliary_files(&managed_dir)?;
+        assert_eq!(auxiliary.len(), 1);
+        assert_eq!(
+            fs::read_to_string(&auxiliary[0])?,
+            "replacement entry bytes\n"
+        );
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlink_at_temp_name_is_not_followed_or_deleted() -> Result<(), Box<dyn std::error::Error>> {
+        use std::os::unix::fs::symlink;
+
+        let fixture = TempRuntimeHome::new("guard-atomic-temp-name-symlink")?;
+        let repo = fixture.path().join("repo");
+        let managed_dir = repo.join(".volicord");
+        fs::create_dir_all(&managed_dir)?;
+        let target = repo.join(VOLICORD_POLICY_FILE);
+        let original = serde_json::to_string_pretty(&owned_policy("old"))? + "\n";
+        fs::write(&target, &original)?;
+        let external = fixture.path().join("external-bytes");
+        fs::write(&external, "external bytes\n")?;
+        let plan = plan_policy_file(&repo, &target, &owned_policy("new"))?;
+
+        let error = write_managed_file_if_fresh_with_hook(&plan, &plan.content, false, |phase| {
+            if phase == ManagedWritePhase::TempReady {
+                let auxiliary = managed_auxiliary_files(&managed_dir)?;
+                assert_eq!(auxiliary.len(), 1);
+                fs::remove_file(&auxiliary[0])?;
+                symlink(&external, &auxiliary[0])?;
+            }
+            Ok(())
+        })
+        .expect_err("a symbolic link at the temporary name must stop the commit");
+
+        assert!(error
+            .to_string()
+            .contains("recovery entries present at inspection"));
+        assert_eq!(fs::read_to_string(&target)?, original);
+        assert_eq!(fs::read_to_string(&external)?, "external bytes\n");
+        let auxiliary = managed_auxiliary_files(&managed_dir)?;
+        assert_eq!(auxiliary.len(), 1);
+        assert!(fs::symlink_metadata(&auxiliary[0])?
+            .file_type()
+            .is_symlink());
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn temporary_content_is_written_under_restrictive_permissions(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+
+        let fixture = TempRuntimeHome::new("guard-atomic-temp-permissions")?;
+        let repo = fixture.path().join("repo");
+        let managed_dir = repo.join(".volicord");
+        fs::create_dir_all(&managed_dir)?;
+        let target = repo.join(VOLICORD_POLICY_FILE);
+        fs::write(
+            &target,
+            serde_json::to_string_pretty(&owned_policy("old"))? + "\n",
+        )?;
+        fs::set_permissions(&target, fs::Permissions::from_mode(0o640))?;
+        let original = fs::metadata(&target)?;
+        let plan = plan_policy_file(&repo, &target, &owned_policy("new"))?;
+        let mut observed_restrictive_temp = false;
+
+        write_managed_file_if_fresh_with_hook(&plan, &plan.content, false, |phase| {
+            if phase == ManagedWritePhase::TempReady {
+                let auxiliary = managed_auxiliary_files(&managed_dir)?;
+                assert_eq!(auxiliary.len(), 1);
+                let metadata = fs::metadata(&auxiliary[0])?;
+                assert_eq!(metadata.mode() & 0o777, 0o600);
+                assert_eq!(metadata.len(), 0);
+                observed_restrictive_temp = true;
+            }
+            Ok(())
+        })?;
+
+        let committed = fs::metadata(&target)?;
+        assert!(observed_restrictive_temp);
+        assert_eq!(committed.mode() & 0o777, 0o640);
+        assert_eq!(committed.uid(), original.uid());
+        assert_eq!(committed.gid(), original.gid());
+        assert!(managed_auxiliary_files(&managed_dir)?.is_empty());
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn content_bound_extended_attributes_are_not_copied_to_new_bytes() {
+        let allowed = vec![(OsString::from("user.volicord-test"), b"value".to_vec())];
+        assert!(reject_privileged_content_metadata(&allowed).is_ok());
+
+        for name in ["security.capability", "security.ima", "security.evm"] {
+            let attributes = vec![(OsString::from(name), b"value".to_vec())];
+            let error = reject_privileged_content_metadata(&attributes)
+                .expect_err("content-bound security metadata must reject replacement");
+            assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+            assert!(error.to_string().contains(name));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn existing_extended_attributes_are_preserved() -> Result<(), Box<dyn std::error::Error>> {
+        use rustix::fs::{getxattr, setxattr, XattrFlags};
+
+        let fixture = TempRuntimeHome::new("guard-atomic-xattrs")?;
+        let repo = fixture.path().join("repo");
+        let managed_dir = repo.join(".volicord");
+        fs::create_dir_all(&managed_dir)?;
+        let target = repo.join(VOLICORD_POLICY_FILE);
+        fs::write(
+            &target,
+            serde_json::to_string_pretty(&owned_policy("old"))? + "\n",
+        )?;
+        setxattr(
+            &target,
+            "user.volicord-test",
+            b"managed metadata",
+            XattrFlags::empty(),
+        )?;
+        let plan = plan_policy_file(&repo, &target, &owned_policy("new"))?;
+
+        write_managed_file_if_fresh(&plan, &plan.content, false)?;
+
+        let mut value = vec![0_u8; 128];
+        let length = getxattr(&target, "user.volicord-test", &mut value)?;
+        value.truncate(length);
+        assert_eq!(value, b"managed metadata");
+        assert!(managed_auxiliary_files(&managed_dir)?.is_empty());
+        Ok(())
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn second_writer_during_rollback_is_not_overwritten() -> Result<(), Box<dyn std::error::Error>>
+    {
         let fixture = TempRuntimeHome::new("guard-atomic-rollback-writer")?;
         let repo = fixture.path().join("repo");
         let managed_dir = repo.join(".volicord");
@@ -1931,25 +3695,33 @@ mod tests {
                 ManagedWritePhase::RollbackReady => {
                     fs::write(&target, "second concurrent writer bytes\n")?;
                 }
-                ManagedWritePhase::RollbackInspecting => {}
+                ManagedWritePhase::TempReady
+                | ManagedWritePhase::CommitApplied
+                | ManagedWritePhase::RollbackInspecting => {}
+                #[cfg(windows)]
+                ManagedWritePhase::CommitReserved => {}
+                #[cfg(windows)]
+                ManagedWritePhase::NativeCommitReady => {}
             }
             Ok(())
         })
-        .expect_err("a second rollback writer must be preserved and reported");
+        .expect_err("a second rollback writer must stop automatic rollback");
 
-        assert!(error.to_string().contains("second writer"));
+        assert!(error
+            .to_string()
+            .contains("recovery entries present at inspection"));
         assert_eq!(
             fs::read_to_string(&target)?,
-            "first concurrent writer bytes\n"
+            "second concurrent writer bytes\n"
         );
         let auxiliary = managed_auxiliary_files(&managed_dir)?;
         assert_eq!(auxiliary.len(), 1);
         assert!(auxiliary[0]
             .file_name()
-            .is_some_and(|name| name.to_string_lossy().contains(".volicord-preserved-")));
+            .is_some_and(|name| name.to_string_lossy().contains(".volicord-tmp-")));
         assert_eq!(
             fs::read_to_string(&auxiliary[0])?,
-            "second concurrent writer bytes\n"
+            "first concurrent writer bytes\n"
         );
         Ok(())
     }
