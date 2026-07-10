@@ -1,4 +1,4 @@
-# Runtime boundaries reference
+# Runtime Boundaries
 
 This document owns the component and location boundaries among Volicord implementation, Agent Connections, `Product Repository`, `Volicord Runtime Home`, the `User Channel`, and external MCP host configuration. It defines location and connection authority assumptions for those boundaries and routes storage and security details to their owners.
 
@@ -16,7 +16,7 @@ Volicord implementation is the implementation set maintained by this repository.
 | Local access and location non-authority rules. | Projection authority, template bodies, or rendered display freshness. |
 | The rule that runtime location does not by itself prove Volicord authority, security authority, or isolation. | Product scope, close readiness, evidence sufficiency, or user-owned judgment meaning. |
 
-## Component and artifact model
+## Component model
 
 Volicord keeps product, implementation, executable-role, MCP host term, and authority-record concepts distinct.
 
@@ -47,18 +47,45 @@ Volicord keeps implementation files, product files, runtime data, and external h
 | `Volicord Runtime Home` | The runtime storage location for Volicord-owned records, local runtime metadata, and artifact data as storage/runtime owners define them. | It is not the `Product Repository`, not a Volicord installation location by default, not automatically a security boundary, and not isolation by default. |
 | External MCP host configuration | Configuration owned by the external MCP host that may name a `volicord mcp --stdio` command, process environment, or host-specific binding. | It is not Volicord runtime state, not `Volicord Runtime Home`, not the `Product Repository`, and not Volicord source repository or installation files by definition. |
 
-### Runtime and host responsibility table
+### Runtime and host responsibilities
 
-This table summarizes the boundary roles in the baseline local Rust implementation. Detailed record placement remains with [Storage Records](storage-records.md), artifact lifecycle remains with [Artifact Storage](storage-artifacts.md), administrative command behavior remains with [Administrative CLI](admin-cli.md), and MCP process behavior remains with [MCP Transport](mcp-transport.md).
+The following summary covers the baseline local Rust implementation. Detailed record placement belongs to [Storage Records](storage-records.md), artifact lifecycle to [Artifact Storage](storage-artifacts.md), administrative command behavior to [Administrative CLI](admin-cli.md), and MCP process behavior to [MCP Transport](mcp-transport.md).
 
-| Boundary or surface | What belongs there | Primary process path | Must not infer |
-|---|---|---|---|
-| `Volicord Runtime Home` | `registry.sqlite`; per-project `projects/{project_internal_id}/state.sqlite`; project artifact storage such as `projects/{project_internal_id}/artifacts/` when artifact storage is used. The registry stores Runtime Home identity and paths, installation profile records, repository-root-based project registrations, project aliases, Agent Connection records, Connection Projects membership, host-hook installation records, and `managed host configuration state` inventory such as host scope, configuration target, connection intent, managed fingerprint, verification summary status, verification report JSON, and user actions JSON. Project state can store tasks, change units, write tickets, evidence metadata, User Channel judgments, artifacts when used, and session-watch baselines or observations that include repository-relative paths, hashes, sizes, skip reasons, scan summaries, timestamps, and observation links. | `volicord init`, project, connection, inbox, changes, doctor, and hidden internal hook commands initialize, read, or update registry state through their owner-defined paths. `volicord doctor --privacy-footprint` reports Runtime Home storage categories and counts without printing stored row bodies. `volicord mcp --stdio`, Core, and Store read or use Runtime Home state for startup, project routing, Core state, and artifacts. | It is not a `Product Repository`, external host configuration, installation directory, OS sandbox, network isolation layer, malware scanner, secret scanner, proof of host trust, actor-attribution proof, write-prevention proof, tamper-proof audit, full filesystem monitor, correctness proof, test-sufficiency proof, review-completion proof, final-acceptance proof, or residual-risk acceptance proof. |
-| `Product Repository` | User product files and only explicitly requested integration files, such as project-scoped host configuration, detective host hook policy, or managed guidance. | User or host tools own ordinary product-file edits. Volicord may inspect product paths as inputs and may write explicit integration files only through owner-defined administrative paths. | It is not Runtime Home state, Core storage, artifact storage by default, or proof of Volicord authority. |
-| `managed host configuration state` in the Runtime Home registry | Volicord's registry inventory for a host target: `connection_internal_id`, host kind, connection intent, host scope, optional `project_internal_id`, internal server name, configuration target, mode, enabled state, managed fingerprint, verification summary status, verification report JSON, user actions JSON, host-hook installation status, and metadata. | `volicord init`, `volicord connection add`, `volicord connection list`, `volicord connection status`, `volicord connection verify`, `volicord connection mode`, `volicord connection remove`, and hidden internal hook flows create, update, list, verify, or remove the registry row, host-hook installation row, and Connection Projects membership. | It is not the external host configuration object itself and does not prove that the host trusted, approved, loaded, initialized, exposed `volicord mcp --stdio`, or ran detective host hooks. |
-| External MCP host configuration | Host-owned configuration or a user-managed configuration that can name `volicord mcp --stdio` with an internal Agent Connection binding and environment values such as `VOLICORD_HOME`. | `volicord` may write supported direct configuration when [Administrative CLI](admin-cli.md) defines that behavior; the external host owns loading and trust decisions. | It is not Runtime Home registry state, Core authority, or proof of Volicord authority. If it lives in a `Product Repository`, it is only an explicit integration file. |
-| `volicord` administrative CLI process | Local setup and registry/host-integration administration, including Runtime Home initialization, project registration from repository roots, Agent Connection and Connection Projects management, host configuration apply, status, verification, mode change, and safe removal where defined. | A local operator or user runs the process. | It is not a public Volicord API method path, OS security enforcement layer, host trust decision, or blanket Product Repository edit authority. |
-| `volicord mcp --stdio` MCP adapter process | A local stdio child process bound to one Agent Connection. It resolves Runtime Home, validates connection state, exposes tools by `connection.mode`, selects allowed projects by owner-defined repository-root rules, derives adapter-owned invocation facts, and routes public method calls through Core and Store. | An MCP host starts the process and communicates over stdin/stdout. | It does not itself grant arbitrary product-file edit authority, record authority-bearing user judgments, enforce host trust, provide sandboxing, or open an MCP network transport listener. Unless disabled, it may separately bind an ephemeral loopback-only HTTP listener for local User Channel consent; that listener is not the MCP transport. |
+**`Volicord Runtime Home`**
+
+- **Contains:** `registry.sqlite`; per-project `projects/{project_internal_id}/state.sqlite`; and project artifact storage such as `projects/{project_internal_id}/artifacts/` when artifact storage is used. The registry stores Runtime Home identity and paths, installation profiles, repository-root-based project registrations, project aliases, Agent Connections, Connection Projects membership, host-hook installations, and `managed host configuration state`. Project state can store tasks, change units, write tickets, evidence metadata, User Channel judgments, artifacts, and session-watch records.
+- **Used by:** `volicord init`, project, connection, inbox, changes, doctor, and hidden internal hook commands through their owner-defined paths. `volicord doctor --privacy-footprint` reports storage categories and counts without printing row bodies. `volicord mcp --stdio`, Core, and Store use Runtime Home state for startup, project routing, Core state, and artifacts.
+- **Boundary:** It is not a Product Repository, external host configuration, or installation directory. It does not provide or prove OS sandboxing, network isolation, scanning, host trust, actor attribution, write prevention, tamper-proof audit, full filesystem monitoring, correctness, test sufficiency, review completion, final acceptance, or residual-risk acceptance.
+
+**`Product Repository`**
+
+- **Contains:** User product files and only explicitly requested integration files, such as project-scoped host configuration, detective host-hook policy, or managed guidance.
+- **Used by:** User or host tools for ordinary product-file edits. Volicord may inspect product paths as inputs and may write explicit integration files only through owner-defined administrative paths.
+- **Boundary:** It is not Runtime Home state, Core storage, or default artifact storage. Its contents do not prove Volicord authority.
+
+**`managed host configuration state` in the Runtime Home registry**
+
+- **Contains:** `connection_internal_id`, host kind, connection intent, host scope, optional `project_internal_id`, internal server name, configuration target, mode, enabled state, managed fingerprint, verification summary status, verification report JSON, user actions JSON, host-hook installation status, and metadata.
+- **Used by:** `volicord init`, the `volicord connection` commands, and hidden internal hook flows to create, update, list, verify, or remove registry rows, host-hook installation rows, and Connection Projects membership.
+- **Boundary:** It is not the external host configuration object. It does not prove that the host trusted, approved, loaded, initialized, or exposed `volicord mcp --stdio`, or ran detective host hooks.
+
+**External MCP host configuration**
+
+- **Contains:** Host-owned or user-managed configuration that can name `volicord mcp --stdio`, an internal Agent Connection binding, and environment values such as `VOLICORD_HOME`.
+- **Used by:** The external host for loading and trust decisions. `volicord` may write supported direct configuration only when [Administrative CLI](admin-cli.md) defines that behavior.
+- **Boundary:** It is not Runtime Home registry state or Core authority, and it does not prove Volicord authority. When stored in a `Product Repository`, it is only an explicit integration file.
+
+**`volicord` administrative CLI process**
+
+- **Handles:** Runtime Home initialization, project registration, Agent Connection and Connection Projects management, host configuration, status, verification, mode changes, and owner-defined safe removal.
+- **Started by:** A local operator or user.
+- **Boundary:** It is not a public Volicord API method path, OS security enforcement layer, host trust decision, or blanket Product Repository edit authority.
+
+**`volicord mcp --stdio` MCP adapter process**
+
+- **Handles:** One Agent Connection in a local stdio child process. It resolves Runtime Home, validates connection state, exposes tools by `connection.mode`, selects allowed projects, derives adapter-owned invocation facts, and routes public method calls through Core and Store.
+- **Started by:** An MCP host, which communicates through stdin/stdout.
+- **Boundary:** It does not grant arbitrary product-file edit authority or authority to record user judgments. It does not enforce host trust, provide sandboxing, or open an MCP network transport listener. Unless disabled, the process may separately bind an ephemeral loopback-only HTTP listener for local User Channel consent; that listener is not the MCP transport.
 
 <a id="runtime-location-product-repository"></a>
 ### `Product Repository`
@@ -290,7 +317,7 @@ Runtime location is a boundary statement, not a storage layout or security mecha
 
 Storage owners define:
 - which Volicord records, metadata, artifact data, and operational diagnostics belong in `Volicord Runtime Home`
-- how those records are shaped, versioned, validated, migrated, and updated
+- how those records are shaped, initialized, versioned, validated, and updated
 - which method branches create storage effects
 
 Security owns:
@@ -301,34 +328,11 @@ Security owns:
 
 This document only keeps the locations and non-inference rules distinct.
 
-## What must not be inferred
-
-Do not infer Volicord authority, security authority, runtime state, or isolation from:
-
-- `Product Repository` text or project files.
-- The directory where Volicord is installed or started.
-- External MCP host configuration.
-- The directory selected as `Volicord Runtime Home`.
-- A copied `connection_id` process-binding value.
-- A displayed `ArtifactRef`.
-- A rendered `Projection`, status card, or template output.
-- Connector prose, chat text, or agent memory.
-
-Do not infer that:
-
-- `Product Repository` is `Volicord Runtime Home`.
-- Installation location and runtime data location are the same.
-- MCP host configuration is Volicord runtime state or Volicord authority.
-- `Volicord Runtime Home` is a security boundary.
-- Product files are Volicord records.
-- Generated displays replace source-record authority.
-
 ## Related owners
 
-- [Security](security.md): security claims, non-claims, trust boundaries, and guarantee levels.
 - [Storage Records](storage-records.md), [Storage Effects](storage-effects.md), [Artifact Storage](storage-artifacts.md), and [Storage Versioning](storage-versioning.md): storage record layout, effects, artifacts, schema initialization, versioning, and runtime data details.
 - [API Methods](api/methods.md) and method owner documents: method routing and method behavior.
 - [Core Model](core-model.md): Core authority, User Channel judgment boundaries, `actor_source`, write ticket, acceptance, and residual risk.
-- [Security](security.md): `operation_category`, security non-guarantees, and Agent Connection authority non-inference.
+- [Security](security.md): security claims, non-claims, trust boundaries, guarantee levels, `operation_category`, and Agent Connection authority non-inference.
 - [Projection Authority Reference](projection-and-templates.md): projection authority and freshness boundaries.
 - [Template Bodies](template-bodies.md): rendered template body contracts.

@@ -170,11 +170,29 @@ This preservation applies to `tasks`, `change_units`, `user_judgments`, `project
 
 ### Host-Observation Records
 
-Host-observation records preserve local authority facts about host integration state. They can help Core and Store code determine whether work can honestly proceed or close, but they are not OS-level sandboxing, filesystem ACLs, external policy enforcement, anti-forgery proof, actor identity proof, or proof that a write was prevented.
+Host-observation records preserve local authority facts about host integration state. They can help Core and Store decide whether work can honestly proceed or close. They do not provide OS sandboxing, filesystem ACLs, external policy enforcement, anti-forgery proof, actor identity proof, or proof that a write was prevented.
 
-`guard_installations` records setup lifecycle state, observed hook metadata, and host capability by Runtime Home, Agent Connection, and optional project scope. `configured` and `reload_required` mean files or metadata are installed but no matching host-hook observation has yet been recorded. `active` means Volicord observed a valid host hook for the recorded project, Agent Connection, host kind, integration profile, and policy hash; it does not prove OS-level enforcement or sandboxing. `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unrecorded_changes`, `session_watch_baselines`, and `session_watch_observations` are project-local rows and must not leak across project `state.sqlite` databases. A pending `expected_writes` row means detective pre-tool allowed a concrete expected write for bounded project, connection, session, time, path, task, Change Unit, and deterministic active write-ticket coordinates. A matched row means post-tool observation was correlated to that expected write; it is not proof of product correctness, actor identity, or OS-level write prevention. Unmatched, ambiguous, or ticket-out-of-scope Product Repository changes create unresolved `unrecorded_changes` rows. An unresolved `unrecorded_changes` row means an observed Product Repository change still needs owner-defined reconciliation. Resolving the row records the local resolution basis, actor source, capture basis, resolution timestamp, and optional linked user judgment while preserving the row.
+All `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unrecorded_changes`, `session_watch_baselines`, and `session_watch_observations` rows are project-local. They must not leak across project `state.sqlite` databases.
 
-`session_watch_baselines` and `session_watch_observations` support detective session-level Product Repository watching. They are not a sandbox, filesystem permission boundary, pre-write block, proof of who changed a file, or proof of why a file changed. A baseline stores watch availability, the registered repository root or watched path set, effective exclusions, and deterministic snapshot digest metadata. An observation stores changed product paths found by comparing a later safe snapshot with the baseline, plus optional expected-write, write-ticket, and unrecorded-change correlation refs. Linking an observation to an expected write or one active matching write ticket is deterministic correlation only. Linking an observation to an unrecorded-change row records local reconciliation context; it does not create close blockers by itself.
+`guard_installations` records setup lifecycle state, observed hook metadata, and host capability by Runtime Home, Agent Connection, and optional project scope:
+
+- `configured` and `reload_required` mean files or metadata are installed, but no matching host-hook observation has been recorded.
+- `active` means Volicord observed a valid host hook for the recorded project, Agent Connection, host kind, integration profile, and policy hash. It does not prove OS enforcement or sandboxing.
+
+`expected_writes` records deterministic write correlation:
+
+- A pending row means the detective pre-tool path allowed one expected write bounded by project, connection, session, time, path, Task, Change Unit, and active write-ticket coordinates.
+- A matched row means a post-tool observation was correlated with that expected write. It does not prove product correctness, actor identity, or OS-level write prevention.
+- An unmatched, ambiguous, or ticket-out-of-scope Product Repository change creates an unresolved `unrecorded_changes` row.
+
+An unresolved `unrecorded_changes` row means that an observed Product Repository change still needs owner-defined reconciliation. Resolving it preserves the row and records the local resolution basis, actor source, capture basis, resolution timestamp, and optional linked user judgment.
+
+`session_watch_baselines` and `session_watch_observations` support detective session-level Product Repository watching. They are not a sandbox, filesystem permission boundary, pre-write block, or proof of who changed a file or why it changed.
+
+- A baseline stores watch availability, the registered repository root or watched path set, effective exclusions, and deterministic snapshot-digest metadata.
+- An observation stores changed product paths found by comparing a later safe snapshot with the baseline. It may include expected-write, write-ticket, and unrecorded-change correlation refs.
+- Linking an observation to an expected write or one active matching write ticket is deterministic correlation only.
+- Linking an observation to an `unrecorded_changes` row records local reconciliation context. It does not create a close blocker by itself.
 
 ### Current Close Basis
 

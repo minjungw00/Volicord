@@ -1,6 +1,6 @@
 # 저장 효과
 
-이 문서는 기준 범위 원천 설계에서 메서드와 응답 분기가 어떤 저장 효과를 만들 수 있는지 담당합니다.
+이 문서는 기준 범위에서 메서드와 응답 분기가 만들 수 있는 저장 효과를 정의합니다.
 
 ## 담당하는 것 / 담당하지 않는 것
 
@@ -304,7 +304,7 @@ Core 상태 변경, 재실행 행, 권한 이벤트, 닫기 상태 변경,
 | `volicord.record_run` | 실행, 현재 닫기 근거, 증거, 증거 관찰 효과 기록 | [`volicord.record_run`](#volicordrecord_run) |
 | `volicord.request_user_judgment` | 대기 중인 판단 요청 생성 | [`volicord.request_user_judgment`](#volicordrequest_user_judgment) |
 | `volicord.record_user_judgment` | 사용자 판단 해결 | [`volicord.record_user_judgment`](#volicordrecord_user_judgment) |
-| `volicord.reconcile_changes` | 미기록 변경 찾기 해결, 대기 사용자 판단 생성, 선택적 세션 watch 진단 기록 | [`volicord.reconcile_changes`](#volicordreconcile_changes) |
+| `volicord.reconcile_changes` | 미기록 변경 해결, 대기 사용자 판단 생성, 선택적 세션 watch 진단 기록 | [`volicord.reconcile_changes`](#volicordreconcile_changes) |
 | `volicord.check_close` | 선택적 세션 watch 진단을 포함하는 닫기 준비 상태 점검 | [`volicord.check_close`](#volicordcheck_close) |
 | `volicord.close_task intent=complete` | 성공한 `complete` 종료 효과를 지속하고 차단된 시도는 효과 없는 결과를 반환 | [`volicord.close_task intent=complete`](#volicordclose_task-intentcomplete) |
 | `volicord.close_task intent=cancel` | 성공한 취소 종료 효과를 지속하고 차단된 시도는 효과 없는 결과를 반환 | [`volicord.close_task intent=cancel`](#volicordclose_task-intentcancel) |
@@ -614,7 +614,7 @@ watch 비교를 실행하거나, `session_watch_observations`를 만들거나,
 - 미해결 `unrecorded_changes` 행을 `status='resolved'`로 설정합니다.
 - resolution basis, capture basis, 해결 메서드, 선택적 연결 사용자 판단 참조를 이름 붙이는 resolution JSON을 저장합니다.
 - `resolved_at`과 `resolved_by_actor_source`를 저장합니다.
-- 사용자 수락이 필요한 찾기에 대해 대기 `user_judgments` 행을 만듭니다.
+- 사용자 수락이 필요한 미기록 변경에 대해 대기 `user_judgments` 행을 만듭니다.
 - 이벤트를 추가합니다.
 - idempotency key가 있으면 재실행 행을 생성합니다.
 - `project_state.state_version`을 한 번 증가시킵니다.
@@ -630,9 +630,9 @@ watch 비교를 실행하거나, `session_watch_observations`를 만들거나,
 - 거절된 시도
 - 유효한 `dry_run` 미리보기
 
-이 분기들은 찾기를 해결하거나, 대기 판단을 만들거나, 이벤트를 추가하거나, 재실행 행을 만들거나, `project_state.state_version`을 증가시키지 않습니다.
+이 분기들은 미기록 변경을 해결하거나, 대기 판단을 만들거나, 이벤트를 추가하거나, 재실행 행을 만들거나, `project_state.state_version`을 증가시키지 않습니다.
 
-조정 효과는 제품 정확성, 테스트 충분성, 리뷰 완료, 최종 수락, 잔여 위험 수락, 보안을 증명하지 않습니다. 미기록 변경 찾기가 더 이상 미해결이 아닌 이유를 기록하거나, 남은 수락을 위한 대기 사용자 소유 판단을 만들 뿐입니다.
+조정 효과는 제품 정확성, 테스트 충분성, 검토 완료, 최종 수락, 잔여 위험 수락, 보안을 증명하지 않습니다. 미기록 변경이 더 이상 미해결이 아닌 이유를 기록하거나, 남은 수락을 위한 대기 사용자 소유 판단을 만들 뿐입니다.
 
 담당 문서:
 

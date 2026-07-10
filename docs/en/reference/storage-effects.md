@@ -1,6 +1,6 @@
-# Storage effects
+# Storage Effects
 
-This document owns method-to-storage effect semantics for the baseline scope source design.
+This document defines baseline method-to-storage effect semantics.
 
 ## Owns / Does not own
 
@@ -306,7 +306,7 @@ This table summarizes persistence effects. Method behavior and response unions r
 | `volicord.record_run` | records run, current close-basis, evidence, and evidence-observation effects | See [`volicord.record_run`](#volicordrecord_run) |
 | `volicord.request_user_judgment` | creates pending judgment request | See [`volicord.request_user_judgment`](#volicordrequest_user_judgment) |
 | `volicord.record_user_judgment` | resolves user judgment | See [`volicord.record_user_judgment`](#volicordrecord_user_judgment) |
-| `volicord.reconcile_changes` | resolves unrecorded-change findings, creates pending user judgments, and may record session-watch diagnostics | See [`volicord.reconcile_changes`](#volicordreconcile_changes) |
+| `volicord.reconcile_changes` | resolves Unrecorded Changes, creates pending user judgments, and may record session-watch diagnostics | See [`volicord.reconcile_changes`](#volicordreconcile_changes) |
 | `volicord.check_close` | close-readiness check with optional session-watch diagnostics | See [`volicord.check_close`](#volicordcheck_close) |
 | `volicord.close_task intent=complete` | persists a successful `complete` terminal effect; blocked attempts return a no-effect result | See [`volicord.close_task intent=complete`](#volicordclose_task-intentcomplete) |
 | `volicord.close_task intent=cancel` | persists a successful cancellation terminal effect; blocked attempts return a no-effect result | See [`volicord.close_task intent=cancel`](#volicordclose_task-intentcancel) |
@@ -634,7 +634,7 @@ No-effect branches:
 
 These branches do not resolve findings, create pending judgments, append events, create replay rows, or increment `project_state.state_version`.
 
-Reconciliation effects do not prove product correctness, test sufficiency, review completion, final acceptance, residual-risk acceptance, or security. They only record why the unrecorded-change finding is no longer unresolved or create a pending user-owned judgment for remaining acceptance.
+Reconciliation effects do not prove product correctness, test sufficiency, review completion, final acceptance, residual-risk acceptance, or security. They only record why an Unrecorded Change is no longer unresolved or create a pending user-owned judgment for remaining acceptance.
 
 Owner links:
 

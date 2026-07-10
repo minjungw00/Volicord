@@ -1,6 +1,6 @@
 # 저장소 기록
 
-이 문서는 기준 범위의 영속 저장소 기록 계열, 배치, 관계 배치, 저장소 소유 값, 저장소 소유 JSON 배치를 담당합니다. 영속 기록은 나중에 `Volicord Runtime Home` 안에서 다시 읽을 수 있도록 커밋한 로컬 기록입니다.
+이 문서는 기준 범위의 영속 기록 계열과 위치, 관계 구조, 저장소 소유 값, 저장소 소유 JSON의 저장 위치를 담당합니다. 영속 기록은 나중에 `Volicord Runtime Home`에서 다시 읽을 수 있도록 커밋한 로컬 기록입니다.
 
 영속 기록은 Volicord 기록에 대한 로컬 Core 저장소 권한입니다. 보안 보장, 외부 감사 보장, 위조 방지 주장, `Product Repository` 파일 쓰기 권한은 각 담당 문서에 남습니다.
 
@@ -10,10 +10,10 @@
 
 - 기준 범위 영속 기록 계열
 - 그 기록 계열의 테이블, 파일, 아티팩트 저장소 위치
-- 저장 범주와 관계 배치
+- 저장 범주와 관계 구조
 - 저장소 소유 값 집합
-- 저장소 소유 SQLite JSON `TEXT` 배치
-- 커밋 전 기록 배치 검증 요구사항
+- 저장소 소유 SQLite JSON `TEXT`의 저장 위치
+- 커밋 전 기록 구조 검증 요구사항
 
 이 문서는 담당하지 않습니다.
 
@@ -23,7 +23,7 @@
 - `project_state.state_version`, 멱등성, 재실행, 이벤트, 잠금, 호환되지 않는 저장소 처리: [저장소 버전 관리](storage-versioning.md)
 - API 요청 또는 응답 형태: [API 코어 스키마](api/schema-core.md), [API 상태 스키마](api/schema-state.md), [API 아티팩트 스키마](api/schema-artifacts.md), [API 판단 스키마](api/schema-judgment.md), [API 값 집합](api/schema-value-sets.md)
 - API 메서드 동작: [API 메서드](api/methods.md)와 메서드 담당 문서
-- 런타임 위치와 저장소 경계: [런타임 경계](runtime-boundaries.md)
+- 런타임 위치와 리포지토리 경계: [런타임 경계](runtime-boundaries.md)
 - 보안 보장 수준과 보안 경계: [보안](security.md)
 
 ## 저장 위치
@@ -44,15 +44,15 @@ Volicord는 기준 범위 기록을 로컬 `Volicord Runtime Home` 하나와 등
 
 저장 위치:
 
-- `registry.sqlite`는 Runtime Home 식별 정보, 설치 프로필 기록, 프로젝트 등록 매핑, 프로젝트 alias, Agent Connection 기록, Connection Projects 멤버십, host-hook 설치 기록, registry 메타데이터를 저장합니다. 설치 프로필에는 선택된 `volicord` 명령, MCP 시작 명령, bin 디렉터리, 기본 연결 모드, 메타데이터, 타임스탬프가 포함됩니다. 프로젝트 등록에는 `project_internal_id`, 표시 이름, CLI 선택 alias, Runtime Home 관계, 등록된 `repo_root`, `project_home`, 프로젝트 `state.sqlite` 경로, 상태, 메타데이터, 타임스탬프가 포함됩니다.
+- `registry.sqlite`는 Runtime Home 식별 정보, 설치 프로필, 프로젝트 등록 매핑과 별칭, Agent Connection, Connection Projects 멤버십, 호스트 훅 설치, registry 메타데이터를 저장합니다. 설치 프로필에는 선택된 `volicord` 명령, MCP 시작 명령, 실행 파일 디렉터리, 기본 연결 모드, 메타데이터, 타임스탬프가 포함됩니다. 프로젝트 등록에는 `project_internal_id`, 표시 이름, CLI 선택 별칭, Runtime Home 관계, 등록된 `repo_root`, `project_home`, 프로젝트 `state.sqlite` 경로, 상태, 메타데이터, 타임스탬프가 포함됩니다.
 - `projects/{project_internal_id}/`는 등록된 프로젝트 하나에 대한 기본 Volicord 프로젝트 홈 형태입니다. `repo_root`와 같은 위치나 권한이 아닙니다.
-- `state.sqlite`는 등록된 프로젝트의 프로젝트별 로컬 Core 상태와 프로젝트 범위 host-observation 기록을 저장합니다.
+- `state.sqlite`는 등록된 프로젝트의 로컬 Core 상태와 프로젝트 범위 호스트 관찰 기록을 저장합니다.
 - `artifacts/`는 아티팩트 저장소를 사용할 때의 프로젝트 아티팩트 저장소이며, 아티팩트 저장소가 처음 필요할 때 늦게 만들어질 수 있습니다. `artifacts/tmp/`는 아티팩트 스테이징에 필요할 때 쓰는 임시 스테이징 공간이며 증거 권한이 아닙니다. 이 디렉터리도 스테이징이 일어날 때 늦게 만들어질 수 있습니다. 이 디렉터리들은 프로젝트 등록 직후에 반드시 존재할 필요가 없습니다.
 
 아티팩트 경로 기준:
 
 - `artifact_staging.tmp_path`는 `project_home` 기준 상대 경로로 저장합니다. 임시 스테이징 영역 아래의 스테이징 바이트 또는 알림은 `artifacts/tmp/<file>` 같은 형태를 사용합니다.
-- `artifacts.body_path`는 보통 `project_home/artifacts`인 아티팩트 저장소 루트 기준 상대 경로로 저장합니다. 지속 본문은 `tmp/<file>` 같은 형태를 사용하며 `artifact_store_root.join(body_path)`로 해석합니다.
+- `artifacts.body_path`는 보통 `project_home/artifacts`인 아티팩트 저장소 루트 기준 상대 경로로 저장합니다. 영속 본문은 `tmp/<file>` 같은 형태를 사용하며 `artifact_store_root.join(body_path)`로 해석합니다.
 
 운영 프로젝트 기록에서 `project_home`은 프로젝트별 로컬 런타임 상태 위치를 담당합니다. 실행 가능한 프로젝트 상태 데이터베이스 경로는 검증된 프로젝트 홈에서 `project_home/state.sqlite`로 파생합니다. 저장된 `state_db_path`는 영속성과 진단을 위해 `registry.sqlite`에 남지만, Store가 정상 `ProjectRecord`를 반환하거나, 프로젝트별 상태를 열거나, Agent Connection 프로젝트 접근을 해석하거나, Core 실행에 들어가거나, MCP 프로젝트 가용성을 보고하기 전에 이 파생 경로와 일치해야 합니다. 일치하지 않는 등록은 진단을 위한 원시 registry 내용으로 검사할 수 있지만, 운영 조회와 목록 조회는 그 행을 생략하거나 정상 프로젝트로 반환하지 말고 거절해야 합니다. 검사는 대체 `state_db_path`를 열거나, 만들거나, 초기화하거나, 복구하면 안 됩니다.
 
@@ -64,7 +64,7 @@ Runtime Home 식별은 파일시스템 경로에만 의존하면 안 됩니다. 
 
 ## API 스키마와 저장소 기록
 
-API 스키마 형태와 저장소 기록 배치는 서로 다른 담당 문서가 맡습니다.
+API 스키마 형태와 저장소 기록 구조는 서로 다른 담당 문서가 맡습니다.
 
 - API 스키마 담당 문서는 요청/응답 데이터 형태와 응답 분기를 정의합니다. 공개 API 값은 [API 값 집합](api/schema-value-sets.md)이 담당하고, 공개 `ErrorCode` 식별자와 의미는 [API 오류 코드](api/error-codes.md)가 담당합니다.
 - 이 문서는 기준 범위 저장소 계약이 영속하는 항목을 정의합니다. 포함되는 항목은 기록 계열, 위치, 저장 범주, 관계 배치, 저장소 소유 값, 저장소 소유 JSON `TEXT`입니다.
@@ -81,7 +81,7 @@ API 스키마 형태와 저장소 기록 배치는 서로 다른 담당 문서�
 | `registry.sqlite` | Runtime Home 식별 정보 | 런타임 식별 | 저장된 `runtime_home_id` 하나, Runtime Home 경로, registry 데이터베이스 경로, 스키마/저장 프로필, 메타데이터, 타임스탬프. |
 | `registry.sqlite` | 설치 프로필 | 실행 파일 프로필 | `volicord init`이 마련한 선택된 `volicord` 명령, MCP 시작 명령, bin 디렉터리, 기본 연결 모드, 메타데이터, 타임스탬프. |
 | `registry.sqlite` | 프로젝트 등록과 alias | 프로젝트 매핑 | `project_internal_id`, 표시 이름, CLI 선택 alias, Runtime Home 관계, 고유한 `repo_root`, 위치를 담당하는 `project_home`, 실행 시 `project_home/state.sqlite`와 일치해야 하는 저장된 `state_db_path`, 상태, 메타데이터, alias에서 내부 식별 정보로 가는 매핑. |
-| `registry.sqlite` | Agent Connection | MCP 호스트 연결 단위 | 지속되는 `connection_internal_id`, 호스트 종류, 연결 의도, 호스트 범위, 선택적 `project_internal_id`, 내부 서버 이름, 설정 대상, 모드, 활성 상태, 관리 fingerprint, 검증 요약 상태, 검증 보고서 JSON, 사용자 동작 JSON, 메타데이터, 타임스탬프. |
+| `registry.sqlite` | Agent Connection | MCP 호스트 연결 단위 | 영속 `connection_internal_id`, 호스트 종류, 연결 의도, 호스트 범위, 선택적 `project_internal_id`, 내부 서버 이름, 설정 대상, 모드, 활성 상태, 관리 지문, 검증 요약 상태, 검증 보고서 JSON, 사용자 동작 JSON, 메타데이터, 타임스탬프. |
 | `registry.sqlite` | Connection Projects | 연결 프로젝트 허용 목록 | `connection_internal_id`와 `project_internal_id`를 사용하는 Agent Connection과 등록된 프로젝트 사이의 명시적 다대다 멤버십. |
 | `registry.sqlite` | Host-hook installation | Host-hook 설정과 호스트 capability 기록 | Runtime Home, Agent Connection, 선택적 프로젝트 범위, 호스트 종류, 통합 모드, 호스트 capability JSON, 설치 생명주기 상태, 관찰된 hook 메타데이터, 타임스탬프, 메타데이터. |
 | `state.sqlite` | `project_state` | 프로젝트 상태 헤더 | 저장 프로필, `state_version`, 현재 적용 `Task` 포인터, 프로젝트 강제 프로필. |
@@ -103,7 +103,7 @@ API 스키마 형태와 저장소 기록 배치는 서로 다른 담당 문서�
 | `state.sqlite`와 아티팩트 저장소 | `artifacts` | 영속 아티팩트 기록 | 영속 아티팩트 메타데이터 또는 본문 위치, 콘텐츠 타입, SHA-256, 크기, 무결성 상태, 가림 처리, 보존, 생산자, 가용성 사실. |
 | `state.sqlite` | `artifact_links` | 아티팩트 소유 관계 | 아티팩트와 기준 범위 Core/API 기록 계열 사이의 소유 관계. |
 | `state.sqlite` | `evidence_summaries` | 증거 요약 | 간결한 증거 범위, 뒷받침 참조, 공백 참조. |
-| `state.sqlite` | `evidence_observations` | 증거 관찰 | 하나의 보고되었거나 관찰된 증거 주장에 대한 지속 출처 기록입니다. 출처 종류, 보장 수준, 관찰자 행위자 출처, 도구 메타데이터, 입력 참조, 출력 아티팩트 참조, 한계, 타임스탬프를 포함합니다. |
+| `state.sqlite` | `evidence_observations` | 증거 관찰 | 보고되거나 관찰된 증거 주장 하나에 대한 영속 출처 기록입니다. 출처 종류, 보장 수준, 관찰자 행위자 출처, 도구 메타데이터, 입력 참조, 출력 아티팩트 참조, 한계, 타임스탬프를 포함합니다. |
 | `state.sqlite` | `blockers` | 차단 사유 상태 | 다음 행동, 쓰기 호환성, 증거 공백, 닫기 준비 상태, 복구를 위한 구조화된 차단 사유 상태. |
 | `state.sqlite` | `authority_events` | 권한 이벤트 흐름 | 커밋된 Core 권한 변경의 추가 전용 순서와 로컬 감사 흐름. |
 | `state.sqlite` | `tool_invocations` | 재실행 행 | [저장 효과](storage-effects.md)가 재실행 생성을 정의한 경우의 커밋된 `dry_run=false` Core 메서드 결과 재실행 행. 행위자 출처와 작업 범주를 포함합니다. |
@@ -166,13 +166,31 @@ API 스키마 형태와 저장소 기록 배치는 서로 다른 담당 문서�
 
 이 보존 규칙은 `tasks`, `change_units`, `user_judgments`, `project_continuity_records`, `write_tickets`, `runs`, `artifacts`, `artifact_links`, `evidence_summaries`, `evidence_observations`, `blockers`, `authority_events`, `tool_invocations`, `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unrecorded_changes`, `session_watch_baselines`, `session_watch_observations`에 적용됩니다. 아티팩트별 임시/영속 보존 규칙은 [아티팩트 저장소](storage-artifacts.md)가 담당합니다.
 
-### Host-Observation 기록
+### 호스트 관찰 기록
 
-Host-observation 기록은 호스트 통합 상태에 대한 로컬 권한 사실을 보존합니다. 이 기록은 Core와 Store 코드가 작업을 정직하게 진행하거나 닫을 수 있는지 판단하는 데 도움이 될 수 있습니다. 그러나 OS 수준 sandboxing, 파일시스템 ACL, 외부 정책 집행, 위조 방지 증명, 행위자 identity 증명, 쓰기 방지 증명이 아닙니다.
+호스트 관찰 기록은 호스트 통합 상태에 대한 로컬 권한 사실을 보존합니다. Core와 Store는 이 기록을 근거로 작업을 계속하거나 닫을 수 있는지 판단할 수 있습니다. 그러나 이 기록은 OS 샌드박스, 파일시스템 ACL, 외부 정책 집행, 위조 방지, 행위자 신원, 쓰기 방지를 증명하지 않습니다.
 
-`guard_installations`는 Runtime Home, Agent Connection, 선택적 프로젝트 범위별 설정 생명주기 상태, 관찰된 hook 메타데이터, 호스트 capability를 기록합니다. `configured`와 `reload_required`는 파일 또는 메타데이터가 설치되었지만 일치하는 host-hook 관찰이 아직 기록되지 않았다는 뜻입니다. `active`는 기록된 프로젝트, Agent Connection, 호스트 종류, 통합 프로필, policy hash와 일치하는 유효한 host hook을 Volicord가 관찰했다는 뜻입니다. OS 수준 집행이나 sandboxing을 증명하지 않습니다. `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unrecorded_changes`, `session_watch_baselines`, `session_watch_observations`는 프로젝트별 로컬 행이며 프로젝트 `state.sqlite` 데이터베이스 사이로 새면 안 됩니다. 대기 중인 `expected_writes` 행은 detective pre-tool이 프로젝트, 연결, 세션, 시간, 경로, Task, Change Unit, 결정적 active 쓰기 티켓 좌표로 제한된 구체적 예상 쓰기를 허용했다는 뜻입니다. 매칭된 행은 post-tool 관찰이 그 예상 쓰기와 상관되었다는 뜻이며 제품 정확성, 행위자 identity, OS 수준 쓰기 방지 증명이 아닙니다. 매칭되지 않았거나, 모호하거나, 티켓 범위 밖인 Product Repository 변경은 해결되지 않은 `unrecorded_changes` 행을 만듭니다. 미해결 `unrecorded_changes` 행은 관찰된 Product Repository 변경이 아직 담당자가 정의한 조정을 필요로 한다는 뜻입니다. 그 행을 해결하면 로컬 resolution basis, 행위자 출처, capture basis, 해결 타임스탬프, 선택적 연결 사용자 판단을 기록하고 행은 보존됩니다.
+`agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unrecorded_changes`, `session_watch_baselines`, `session_watch_observations`는 모두 프로젝트 로컬 행입니다. 서로 다른 프로젝트의 `state.sqlite` 데이터베이스 사이로 새면 안 됩니다.
 
-`session_watch_baselines`와 `session_watch_observations`는 세션 수준 Product Repository watch의 detective fallback을 지원합니다. 이 기록은 sandbox, 파일시스템 권한 경계, 쓰기 전 차단, 누가 파일을 바꿨는지에 대한 증명, 왜 파일이 바뀌었는지에 대한 증명이 아닙니다. 기준선은 watch 가용성, 등록된 저장소 루트 또는 watched path set, 유효한 제외 항목, 결정적 스냅샷 digest 메타데이터를 저장합니다. 관찰은 이후의 안전한 스냅샷을 기준선과 비교해 찾은 변경 product path와 선택적 expected-write, 쓰기 티켓, unrecorded-change 상관 참조를 저장합니다. 관찰을 expected write 또는 하나의 active matching 쓰기 티켓에 연결하는 것은 결정적 상관 관계일 뿐입니다. 관찰을 unrecorded-change 행에 연결하면 로컬 조정 맥락을 기록하지만, 그 자체로 닫기 차단 사유를 만들지는 않습니다.
+`guard_installations`는 Runtime Home, Agent Connection, 선택적 프로젝트 범위별 설정 생명주기, 관찰된 훅 메타데이터, 호스트 역량을 기록합니다.
+
+- `configured`와 `reload_required`는 파일이나 메타데이터가 설치되었지만, 일치하는 호스트 훅 관찰은 아직 기록되지 않았다는 뜻입니다.
+- `active`는 기록된 프로젝트, Agent Connection, 호스트 종류, 통합 프로필, 정책 해시와 일치하는 유효한 호스트 훅을 Volicord가 관찰했다는 뜻입니다. OS 수준 집행이나 샌드박싱을 증명하지 않습니다.
+
+`expected_writes`는 쓰기 상관관계를 결정적으로 기록합니다.
+
+- 대기 행은 탐지형 도구 실행 전 경로가 프로젝트, 연결, 세션, 시간, 경로, `Task`, Change Unit, `active` 쓰기 티켓 좌표로 제한된 예상 쓰기 하나를 허용했다는 뜻입니다.
+- 매칭된 행은 도구 실행 후 관찰을 그 예상 쓰기와 연결했다는 뜻입니다. 제품 정확성, 행위자 신원, OS 수준 쓰기 방지를 증명하지 않습니다.
+- 매칭되지 않았거나 모호하거나 쓰기 티켓 범위를 벗어난 Product Repository 변경은 미해결 `unrecorded_changes` 행을 만듭니다.
+
+미해결 `unrecorded_changes` 행은 관찰된 Product Repository 변경에 담당 문서가 정의한 조정이 아직 필요하다는 뜻입니다. 행을 해결하면 그 행을 보존하면서 로컬 해결 근거, 행위자 출처, 캡처 근거, 해결 시각, 선택적으로 연결된 사용자 판단을 기록합니다.
+
+`session_watch_baselines`와 `session_watch_observations`는 탐지형 세션 단위 Product Repository 감시를 지원합니다. 샌드박스, 파일시스템 권한 경계, 쓰기 전 차단, 파일을 바꾼 주체나 이유에 대한 증명이 아닙니다.
+
+- 기준선은 감시 가용성, 등록된 저장소 루트 또는 감시 경로 집합, 적용된 제외 항목, 결정적 스냅샷 다이제스트 메타데이터를 저장합니다.
+- 관찰은 이후의 안전한 스냅샷을 기준선과 비교해 찾은 변경 제품 경로를 저장합니다. 예상 쓰기, 쓰기 티켓, 미기록 변경의 선택적 상관 참조도 포함할 수 있습니다.
+- 관찰을 예상 쓰기나 일치하는 `active` 쓰기 티켓 하나에 연결하는 것은 결정적 상관관계일 뿐입니다.
+- 관찰을 `unrecorded_changes` 행에 연결하면 로컬 조정 맥락을 기록합니다. 그 자체로 닫기 차단 사유를 만들지는 않습니다.
 
 ### 현재 닫기 근거
 

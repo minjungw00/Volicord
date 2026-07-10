@@ -1,6 +1,6 @@
-# Artifact storage
+# Artifact Storage
 
-This document owns the artifact storage lifecycle for the baseline scope source design.
+This document defines the baseline artifact storage lifecycle.
 
 ## Owns / Does not own
 
@@ -418,7 +418,7 @@ Rules:
 
 - New persistent artifacts must use `integrity_status=verified`.
 - `verified` requires a non-empty `content_type`, a valid lowercase hexadecimal SHA-256 string, and nonnegative `size_bytes`.
-- Authority-bearing artifact use also requires current-byte verification at use time: `artifacts.body_path` resolves from the artifact-store root, the body or safe notice exists inside the artifact-store boundary, no symlink or path escape is followed, the stored target is a regular file or owner-approved safe representation, `artifacts.status=available`, current byte size equals stored `size_bytes`, current SHA-256 equals stored `sha256`, and the stored content-type and integrity facts remain valid.
+- Authority-bearing artifact use also requires current-byte verification at use time. `artifacts.body_path` resolves from the artifact-store root. After symlinks are resolved, the body or safe notice must remain inside the artifact-store boundary. The resolved target must be a regular file or owner-approved safe representation, `artifacts.status` must be `available`, the current byte size and SHA-256 must match `size_bytes` and `sha256`, and the stored content-type and integrity facts must remain valid.
 - Missing facts must not be represented as an empty hash, zero-byte size, or invented content type.
 - Missing, unreadable, unavailable, or unusable backing bytes are represented through availability handling, not by changing `integrity_status`.
 - `corrupt`, deleted, missing, unavailable, or modified artifacts cannot satisfy evidence or close authority requirements.
@@ -455,8 +455,8 @@ Authority-bearing artifact use requires:
 - a registered persistent artifact record
 - a matching same-project Task and required `artifact_links` owner relation,
   checked by the consuming owner method
-- a safe artifact-store-relative `body_path` that resolves inside the artifact
-  store without following symlinks or path escapes
+- a safe artifact-store-relative `body_path` whose resolved target remains
+  inside the artifact store, including after resolving symlinks
 - a regular file whose current size and SHA-256 match the stored facts
 - compatible redaction, availability, integrity, and invocation state for the
   consuming owner method

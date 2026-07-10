@@ -1,4 +1,4 @@
-# Security reference
+# Security
 
 This document owns Volicord security guarantee wording, local connection assumptions, sensitive-action approval boundaries, `operation_category` security meaning, and explicit security non-guarantees.
 

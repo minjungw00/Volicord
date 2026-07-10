@@ -1,6 +1,6 @@
-# 보안 참조
+# 보안
 
-이 문서는 Volicord의 보안 보장 표현, 로컬 연결 가정, 민감 동작 승인 경계, `operation_category` 보안 의미, 명시적 보안 비주장을 담당합니다.
+이 문서는 Volicord의 보안 보장 표현, 로컬 연결 가정, 민감 동작 승인 경계, `operation_category`의 보안 의미, 명시적으로 보장하지 않는 범위를 담당합니다.
 
 ## 담당하는 것 / 담당하지 않는 것
 
@@ -8,12 +8,12 @@
 |---|---|
 | `cooperative`와 연결 관찰 기반 `detective` 표현의 지원 보장 의미. | API 메서드 요청/응답 스키마나 메서드별 동작. |
 | 기준 범위에 지원되는 예방형 보장이 없다는 경계. | 저장소 기록 배치, 아티팩트 생명주기 세부사항, 잠금, 해시, 스키마 초기화. |
-| 로컬 연결 가정, `operation_category` 비주장, 접근 경계 비주장. | 커넥터 구현이나 호스트별 운영 레시피. |
+| 로컬 연결 가정, `operation_category`로 추론할 수 없는 것, 접근 경계에서 보장하지 않는 것. | 커넥터 구현이나 호스트별 운영 절차. |
 | 보안과 맞닿아 있는 사용자 소유 판단으로서 민감 동작 승인 경계. | OS 권한, 배포 통제, 임의 도구 샌드박싱, 호스트 정책. |
 | 닫기 상태, 검토, 배포, QA, 위험에 대한 비보장. | Task 닫기 메서드 동작이나 상태 스키마 형태. |
-| 공개 네트워크, SaaS, 다중 사용자, 보안 경계 주장에 대한 Local HTTP transport 비보장. | HTTP 와이어 동작. 해당 동작은 [MCP 전송](mcp-transport.md)이 담당합니다. |
+| 공개 네트워크, SaaS, 다중 사용자, 보안 경계에 대한 Local HTTP transport 비보장. | HTTP 와이어 동작. 해당 동작은 [MCP 전송](mcp-transport.md)이 담당합니다. |
 | 로컬 파일, 생성된 표시, 복사된 식별자, 대화 텍스트, 에이전트 기억이 권한이 아니라는 규칙. | 런타임 위치 정의. 위치 정의는 [런타임 경계](runtime-boundaries.md)가 담당합니다. |
-| Agent Connection의 호스트 신뢰, 호스트 승인, 안내 비보장. | Codex 또는 Claude Code 호스트 설정 문법. 해당 문법은 [관리 CLI](admin-cli.md)가 담당합니다. |
+| Agent Connection이 호스트 신뢰, 호스트 승인, 안내 준수를 보장하지 않는다는 경계. | Codex 또는 Claude Code 호스트 설정 문법. 해당 문법은 [관리 CLI](admin-cli.md)가 담당합니다. |
 
 ## 경계 요약
 
@@ -25,7 +25,7 @@ Volicord 보안 표현은 문서화된 Volicord 경로 안의 기록과 정책 �
 | `Product Repository` | 제품 파일은 입력으로 검사될 수 있고, 호환되는 제품 파일 쓰기는 담당 문서가 정의한 Core, 사용자 판단, 쓰기 티켓 경로의 지배를 받을 수 있습니다. | 제품 파일은 Volicord 상태가 아니며, Volicord는 임의 제품 파일 편집 권한, 악성코드 검사, 비밀값 검사, 전역 파일시스템 가로채기를 제공하지 않습니다. |
 | Agent Connection과 호스트 설정 | 현재 호출이 등록된 연결과 맞을 때 Agent Connection은 문서화된 연결 맥락, `actor_source` 출처, 연결 의도, 모드, Connection Projects 허용 목록을 제공합니다. | 연결 설정은 OS 권한, 호스트 신뢰, 사용자 신원, 외부 호스트가 `volicord mcp --stdio`를 로드하거나 노출했다는 증거가 아닙니다. |
 | `volicord mcp --stdio` | 어댑터는 MCP 호출을 Agent Connection 점검, Runtime Home 상태, Core, Store를 통해 라우팅합니다. | 이 프로세스 자체는 임의 제품 파일 편집 권한을 부여하거나, 권한을 지니는 사용자 판단을 기록하거나, 호스트 신뢰를 강제하거나, 명령을 차단하거나, 네트워크를 차단하거나, 도구를 격리하지 않습니다. |
-| Local HTTP transport | `volicord serve --transport local-http`는 bearer token과 Origin 점검이 있는 문서화된 로컬 MCP-over-HTTP 부분 구현을 localhost와 Docker host-loopback 사용을 위해 노출할 수 있습니다. bearer token은 해당 serve 프로세스의 로컬 비밀값입니다. Local web consent 경로는 대기 판단 하나를 위한 일회성 token이 있는 loopback User Channel capture page를 노출할 수 있습니다. | Local HTTP transport와 local web consent는 공개 네트워크 API, SaaS endpoint, 다중 사용자 서버, 보안 경계, 공개 호스트 인터페이스 리스너, 원격 서비스, 인증 서비스, 인가 서비스, 전체 MCP Streamable HTTP 구현이 아닙니다. |
+| Local HTTP transport | `volicord serve --transport local-http`는 베어러 토큰과 Origin 검사가 있는 문서화된 로컬 MCP-over-HTTP 부분 구현을 localhost와 Docker 호스트 루프백에 노출할 수 있습니다. 베어러 토큰은 해당 serve 프로세스의 로컬 비밀값입니다. 로컬 웹 동의 경로는 대기 판단 하나를 위한 일회성 토큰이 있는 루프백 User Channel 입력 페이지를 노출할 수 있습니다. | Local HTTP transport와 로컬 웹 동의는 공개 네트워크 API, SaaS 엔드포인트, 다중 사용자 서버, 보안 경계, 공개 호스트 인터페이스 리스너, 원격 서비스, 인증·인가 서비스, 전체 MCP Streamable HTTP 구현이 아닙니다. |
 | `volicord` CLI | 관리 명령은 설정, registry 상태, 지원되는 호스트 통합 상태를 관리합니다. | CLI는 공개 API 보안 경계, 호스트 신뢰 제어기, OS 권한 메커니즘, 포괄적 쓰기 승인이 아닙니다. |
 
 ## 지원되는 보안 보장
@@ -33,7 +33,7 @@ Volicord 보안 표현은 문서화된 Volicord 경로 안의 기록과 정책 �
 <a id="honest-guarantee-display"></a>
 Volicord가 어떤 보장을 설명하려면 [범위](scope.md)와 이 보안 담당 문서가 모두 그 보장 수준을 지원해야 합니다. 보장 표시는 현재 `operation_category`, 관련되는 경우 현재 Agent Connection 또는 `User Channel` 출처, 기록된 관찰 사실, 지원되는 기준 범위에서 파생됩니다. 주장이 관찰된 연결 결과에 의존한다면 이름 붙은 연결 또는 증거 출처와 관찰 범위에 대해 관련 관찰이 기록되어 있어야 합니다.
 
-보장 표시는 그 표시를 정당화하는 연결, 작업, 증거 관찰에 묶여 있어야 합니다. 협력형 Run 보고나 협력적 `agent_report` 관찰은 별도 지원 관찰 또는 외부 결과가 기록되고 인용되지 않는 한 `detective`나 외부 관찰 사실이 아닙니다.
+보장 표시는 그 표시를 뒷받침하는 연결, 작업, 증거 관찰에 묶여 있어야 합니다. 협력형 `Run` 보고나 `agent_report` 관찰은 별도로 지원되는 관찰 또는 외부 결과가 기록되고 인용되지 않는 한 `detective`나 외부 관찰 사실이 아닙니다.
 
 지원되는 보장 표시 라벨은 `cooperative`와 `detective`입니다. 값 이름은 [API 값 집합](api/schema-value-sets.md)이 담당합니다.
 
@@ -75,13 +75,13 @@ Volicord가 어떤 보장을 설명하려면 [범위](scope.md)와 이 보안 �
 - 협력형 Run 보고, 협력적 `agent_report`, 검증되지 않은 주장이 지원 관찰 사실 없이 표시를 `cooperative`보다 높인다는 주장.
 - `detective` 표현이 예방, 샌드박싱, OS 권한 강제, 전체 모니터링, 변조 방지 저장소가 된다는 주장.
 
-Session watcher의 detective 표현은 기록된 coverage 시작 뒤의 한정된 `Product Repository`
-snapshot 비교로 제한됩니다. Watcher는 `.git/`, `.volicord/`, `target/`,
+세션 감시기의 `detective` 표현은 기록된 감시 범위 시작 뒤의 한정된 `Product Repository`
+스냅샷 비교로 제한됩니다. 감시기는 `.git/`, `.volicord/`, `target/`,
 `node_modules/`, `dist/`, `build/`, `coverage/`, `vendor/` 같은 기본 정책 경로를
-건너뛰고, Runtime Home/Product Repository 분리 규칙으로 선택된 `Volicord Runtime Home`을
-스캔되는 저장소 밖에 두며, 기본적으로 symlink를 따라가지 않습니다. 상태형 출력은 알 수
-있는 경우 파일 수 제한, 파일 크기 제한, 읽을 수 없는 경로, 정책상 건너뛴 경로,
-건너뛴 symlink 같은 skip 또는 degraded coverage reason을 드러내야 합니다. 이 사실은
+건너뜁니다. Runtime Home/Product Repository 분리 규칙에 따라 선택된 `Volicord Runtime Home`은
+스캔 대상 저장소 밖에 있으며, 감시기는 기본적으로 심볼릭 링크를 따라가지 않습니다. 상태형
+출력은 확인할 수 있는 파일 수 제한, 파일 크기 제한, 읽을 수 없는 경로, 정책상 건너뛴
+경로, 건너뛴 심볼릭 링크처럼 감시 범위를 건너뛰거나 저하한 이유를 보여 줘야 합니다. 이 사실은
 전체 파일시스템 감시, 행위자 귀속, 쓰기 방지, 변조 불가능 감사, OS 강제, 보안 격리가
 아닙니다.
 
@@ -134,7 +134,7 @@ Volicord 보안 주장은 로컬 행위자가 Volicord 상태, 기록, 아티팩
 - 호출자가 제공한 `verified` 플래그, 요청된 `operation_category`, 복사된 `actor_source`, 공개 요청 필드, 환경 변수가 Volicord 권한을 부여하거나 신뢰된 출처를 제공한다는 주장.
 - `actor_source=agent_connection:<connection_id>`가 인간 신원을 증명하거나 사용자 권한을 제공한다는 주장.
 - 호스트 설정 쓰기가 호스트가 MCP 서버를 신뢰, 승인, 로드, 초기화, 노출했다는 사실을 증명한다는 주장.
-- 저장소 안내, MCP 서버 instructions, 호스트 규칙 파일이 모델 동작을 강제하거나 에이전트가 Volicord 도구를 선택한다고 보장한다는 주장.
+- 저장소 안내, MCP 서버 지침, 호스트 규칙 파일이 모델 동작을 강제하거나 에이전트가 Volicord 도구를 선택한다고 보장한다는 주장.
 
 ## 권한 경계
 
@@ -167,16 +167,16 @@ Volicord 기록은 그 기록을 만들고, 검증하고, 갱신하는 담당 �
 
 주장할 수 있는 것:
 - 저장소/런타임 담당 문서는 어떤 Volicord 운영 데이터가 여기에 속하고 어떻게 검증되는지 정의합니다.
-- 관리 진단은 저장된 행 본문을 출력하지 않고 registry, 프로젝트 상태, artifact, User
-  Channel, guard, session-watch 메타데이터 같은 Runtime Home privacy footprint를 범주와
-  개수로 요약할 수 있습니다.
+- 관리 진단은 저장된 행 본문을 출력하지 않고 registry, 프로젝트 상태, 아티팩트,
+  User Channel, guard, 세션 감시 메타데이터 같은 Runtime Home 개인정보 저장 범위를
+  범주와 개수로 요약할 수 있습니다.
 
 주장하면 안 되는 것:
 - `Volicord Runtime Home`이 `Product Repository`라는 주장.
 - `Volicord Runtime Home`이 자동으로 보안 경계라는 주장.
 - 데이터를 `Volicord Runtime Home` 아래에 둔다는 사실이 보안 권한이나 격리를 증명한다는 주장.
 - Runtime Home 기록이 행위자 귀속, 쓰기 방지, 변조 불가능 감사, 전체 파일시스템 감시,
-  OS 강제, 정확성, 테스트 충분성, review 완료, 최종 수락, 잔여 위험 수락을 증명한다는
+  OS 강제, 정확성, 테스트 충분성, 검토 완료, 최종 수락, 잔여 위험 수락을 증명한다는
   주장.
 
 ### Agent Connection, User Channel, 작업 범주
@@ -185,7 +185,7 @@ Volicord 기록은 그 기록을 만들고, 검증하고, 갱신하는 담당 �
 
 주장할 수 있는 것:
 - `connection_internal_id`, 연결 의도, `connection.mode`, Connection Projects, `operation_category`, `actor_source`는 현재 호출이 문서화된 연결 맥락에 맞은 뒤 런타임, Core, 메서드, 보안 담당 문서에 따라 사용할 수 있습니다.
-- `actor_source`는 Core와 메서드 담당 문서가 현재 권한 해결 동작에 대해 그 값을 받아들일 때만 지속 출처를 제공할 수 있습니다.
+- `actor_source`는 Core와 메서드 담당 문서가 현재 권한 해결 동작에 대해 그 값을 받아들일 때만 영속 출처를 제공할 수 있습니다.
 - 권한을 지니는 사용자 판단에는 `User Channel`을 통한 `actor_source=local_user`가 필요합니다.
 
 주장하면 안 되는 것:
@@ -202,16 +202,16 @@ Volicord 기록은 그 기록을 만들고, 검증하고, 갱신하는 담당 �
 호스트 신뢰와 승인 결정은 외부 호스트와 사용자가 소유합니다. Volicord는 지원되는 설정을 설치하고 추가 사용자 동작이 필요한지 보고할 수 있지만, 호스트의 신뢰 결정을 통제하지 않습니다.
 
 주장할 수 있는 것:
-- 관리 CLI가 필요한 확인을 관찰할 수 있으면 managed host configuration state 검증은 `complete`를 `action_required`, `failed`와 구분할 수 있습니다.
-- `action_required`는 설치 프로필 복구, 명령 링크 복구, 호스트 신뢰, 승인, restart, reload, 또는 그와 비슷한 사용자 통제 동작이 남은 관찰 가능한 차단 사유일 때 그 동작을 이름 붙일 수 있습니다.
-- Hook 경로 안전성 진단은 생성된 호스트 hook 명령이 cwd-independent, subdirectory-safe이고 기대하는 Volicord 관리 wrapper를 가리키는지 보고할 수 있습니다.
-- MCP 서버 instructions와 선택적 저장소 안내는 에이전트가 프로젝트와 도구를 선택하는 방법을 설명할 수 있습니다.
+- 관리 CLI가 필요한 확인을 관찰할 수 있으면 `managed host configuration state` 검증은 `complete`를 `action_required`, `failed`와 구분할 수 있습니다.
+- `action_required`는 설치 프로필 복구, 명령 링크 복구, 호스트 신뢰, 승인, 재시작, 다시 로드처럼 사용자가 통제하는 동작이 남은 관찰 가능한 차단 사유일 때 그 동작을 이름 붙일 수 있습니다.
+- 훅 경로 안전성 진단은 생성된 호스트 훅 명령이 현재 작업 디렉터리와 무관하고 하위 디렉터리에서도 안전하며, 예상한 Volicord 관리 래퍼를 가리키는지 보고할 수 있습니다.
+- MCP 서버 지침과 선택적 저장소 안내는 에이전트가 프로젝트와 도구를 선택하는 방법을 설명할 수 있습니다.
 
 주장하면 안 되는 것:
 - Codex 또는 Claude Code 설정 설치가 프로젝트 신뢰, 프로젝트 MCP 승인, OAuth, 재시작, 다시 로드, 그 밖의 호스트 통제 동작을 우회한다는 주장.
 - 설정은 설치되었지만 호스트가 여전히 사용자 통제 신뢰나 승인을 요구하는 경우 `action_required`가 실패한 설치라는 주장.
-- Cwd-independent hook 경로, wrapper 검증, `hook_path_safety=ok`가 OS sandboxing, 전역 파일시스템 가로채기, 포괄적 명령 차단, 네트워크 차단, 비밀값 차단, 또는 구현된 호스트 hook 밖에서 쓰기가 일어나지 않는다는 증거라는 주장.
-- 에이전트 instructions, `AGENTS.md` 블록, `CLAUDE.md`, `.claude/rules/` 파일, MCP 서버 instructions가 접근 제어, 보안 강제, 사용자 판단, 쓰기 티켓, 또는 모델이 이를 따랐다는 증명이라는 주장.
+- 현재 작업 디렉터리와 무관한 훅 경로, 래퍼 검증, `hook_path_safety=ok`가 OS 샌드박싱, 전역 파일시스템 가로채기, 포괄적 명령 차단, 네트워크 차단, 비밀값 차단, 또는 구현된 호스트 훅 밖에서 쓰기가 일어나지 않는다는 증거라는 주장.
+- 에이전트 지침, `AGENTS.md` 블록, `CLAUDE.md`, `.claude/rules/` 파일, MCP 서버 지침이 접근 제어, 보안 강제, 사용자 판단, 쓰기 티켓, 또는 모델이 이를 따랐다는 증명이라는 주장.
 
 ### 생성된 표시와 텍스트
 
@@ -254,7 +254,7 @@ Volicord는 아래를 보장하지 않습니다.
 
 - 완전한 호스트 신뢰 강제.
 - 외부 호스트가 `volicord mcp --stdio`를 신뢰, 승인, 로드, 초기화, 노출했다는 것.
-- 호스트 instructions, 저장소 안내, MCP 서버 instructions가 모델 또는 도구 동작을 강제한다는 것.
+- 호스트 지침, 저장소 안내, MCP 서버 지침이 모델 또는 도구 동작을 강제한다는 것.
 
 ### 저장소와 아티팩트 권한
 
@@ -286,18 +286,18 @@ Volicord는 아래를 보장하지 않습니다.
 Volicord Local HTTP transport는 아래를 보장하지 않습니다.
 
 - 공개 네트워크 API.
-- SaaS endpoint.
+- SaaS 엔드포인트.
 - 다중 사용자 서버.
 - 보안 경계.
 - 인증 서비스 또는 인가 서비스.
 - 공개 호스트 인터페이스 리스너 또는 원격 서비스.
 - 전체 MCP Streamable HTTP 호환성.
-- 로컬 consent URL, page, 기록된 답변이 정확성, 테스트 충분성, 배포 성공, 검토 완료,
+- 로컬 동의 URL, 페이지, 기록된 답변이 정확성, 테스트 충분성, 배포 성공, 검토 완료,
   보안 강제, 닫기 준비 상태를 증명한다는 것.
 
-Bearer token과 Origin 점검은 로컬 HTTP 프로세스에 묶인 전송 점검입니다. 이 점검이
-endpoint를 공개 노출에 적합하게 만들지는 않습니다. endpoint는 host loopback 또는 의도한
-Docker host-loopback 노출 경계에 두어야 합니다.
+베어러 토큰과 Origin 검사는 로컬 HTTP 프로세스에 묶인 전송 검사입니다. 이 검사가
+엔드포인트를 공개 노출에 적합하게 만들지는 않습니다. 엔드포인트는 호스트 루프백 또는
+의도한 Docker 호스트 루프백 노출 경계에 두어야 합니다.
 
 ### 포괄적 권한 추론
 
