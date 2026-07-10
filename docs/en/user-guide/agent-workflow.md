@@ -1,362 +1,233 @@
 # Agent Guide
 
-<a id="purpose"></a>
-## Purpose
+Use this guide when operating or reviewing an agent in a Volicord-connected
+session. It explains a practical workflow. Exact API, schema, storage, security,
+and close contracts stay in the [Reference Index](../reference/README.md).
 
-Use this guide when writing or reviewing agent behavior for a Volicord-connected session.
+## Operating Loop
 
-A good Volicord-connected agent turns ordinary user requests into careful work, keeps context small, preserves user-owned judgment, checks before writes, records evidence after meaningful action, reports status for the user's next decision, and closes honestly.
+Use this loop for tracked work:
 
-In this guide, Volicord is the local work authority record for AI-assisted product work. For exact authority-record structure, see [Core Model](../reference/core-model.md); keep that Reference path separate from user-facing status, approvals, Evidence, and Close Status summaries.
+1. Turn the request into a visible goal, current scope, non-goals, and next safe
+   action.
+2. Inspect available files, documentation, tests, and Volicord state before
+   asking the user.
+3. Ask only for a user-owned decision that changes the next safe action.
+4. Refresh scope before a product-file write or sensitive action.
+5. Record meaningful execution and Evidence after acting.
+6. Report the primary blocker, what is known, what is missing, and one next
+   safe action.
+7. Before close, separate Evidence, final acceptance, residual risk, and
+   remaining blockers.
 
-This guide is workflow guidance. It is not a connector contract, API schema, template catalog, conformance fixture, storage contract, or security guarantee.
+Keep the process light for advice and tiny changes. Increase its weight when
+the work becomes ambiguous, spans several files, changes a public interface,
+introduces security or privacy risk, or depends on user-owned judgment.
 
-Guarantee limits stay with [Security](../reference/security.md). In this guide,
-Write Tickets are not OS permission, code review approval, final acceptance, or
-proof that a write occurred; Detective profile observations are signals, not
-OS-level blocking; and Close Status is decision support, not proof of
-correctness, test sufficiency, QA completion, deployment success, human review
-completion, or risk-free completion.
+## Keep Agent Work And User Judgment Separate
 
-Reference links:
+| Moment | Agent responsibility | User responsibility |
+|---|---|---|
+| Shape the work | Inspect context, propose a bounded scope, and name the next safe action. | Set the goal, non-goals, and limits in ordinary language. |
+| Request judgment | Show one focused question, the available options, consequences, and any bounded recommendation. | Answer, reject, defer, narrow the work, or ask for more evidence. |
+| Record judgment | Route the user to a supported User Channel and avoid depending on an unrecorded answer. | Record one shown option when the answer must become Volicord state. |
+| Continue or close | Refresh state, prepare writes, record Evidence, and surface blockers. | Decide final acceptance, residual-risk acceptance, cancellation, supersession, or the next blocker to address. |
 
-- Exact Agent Connection behavior: [Agent Connection Reference](../reference/agent-connection.md)
-- Host setup and multi-repository operation: [Agent Host Setup](agent-host-setup.md) and [Multi-Repository Agent Setup](multi-repository-agent-setup.md)
-- Exact API, schema, storage, security, and close contracts: [Reference Index](../reference/README.md)
+An Agent Connection must not record the user's decision for them. Chat text,
+generated Markdown, guidance, and status views can display a decision need, but
+they are not the recorded user answer. Exact authority meaning belongs to
+[Core Model](../reference/core-model.md), and exact connection boundaries belong
+to [Agent Connection](../reference/agent-connection.md).
 
-<a id="operating-loop"></a>
-## Operating loop
+## Infer Procedure Weight From The Work
 
-Use this loop unless the user has asked only for simple advice:
+Users do not need to say “Volicord” or name an API method before work begins.
+Choose the smallest workflow that preserves the relevant boundaries:
 
-1. Shape the request into a visible goal, scope, non-goals, and next safe action.
-2. Inspect what the agent can safely inspect before asking the user.
-3. Ask only for user-owned judgment that changes the next safe action.
-4. Refresh scope before writes or sensitive actions.
-5. Record meaningful execution and evidence after action.
-6. Report the primary blocker, what is known, what is missing, and one next safe action.
-7. Before close, separate evidence, final acceptance, residual risk, and remaining blockers.
+- **Advice or inspection:** inspect available sources, state uncertainty, and
+  avoid write or close ceremony.
+- **Small change:** confirm narrow scope, edit inside it, run a focused check,
+  and report briefly.
+- **Tracked work:** clarify scope, preserve user judgment, check writes, record
+  Evidence, and report Close Status.
 
-Keep the loop light for tiny changes. Increase procedure weight when the task becomes ambiguous, multi-file, public-interface-facing, sensitive, close-relevant, or dependent on a user-owned decision.
+Escalate a small change to tracked work when you find scope drift, a new public
+interface, a dependency or migration choice, destructive risk, security or
+privacy impact, an Evidence limit, final-acceptance need, residual risk, or
+another user-owned decision.
 
-### Agent/User authority loop
+## Select The Project Deliberately
 
-Use this table to keep agent workflow and user authority paths separate. For the exact authority model, see [Core Model](../reference/core-model.md); for MCP exposure boundaries, see [Agent Connection Reference](../reference/agent-connection.md).
+An Agent Connection can have more than one explicitly connected Product
+Repository. Never choose a project from memory, a folder label, or the current
+working directory alone.
 
-| Moment | Agent-side workflow | User-side authority path | Boundary to preserve |
-|---|---|---|---|
-| Shape and inspect | Use the Agent Connection to read status, inspect available context, and identify the next safe action. | State the goal, scope, non-goals, and any "ask me before..." limits in ordinary language. | Chat, generated Markdown, and guidance help orientation but are not the Volicord record. |
-| Request a judgment | When Volicord supports it, request or display a focused pending judgment and Volicord-provided options. | Review the pending question and decide whether to answer, reject, defer, narrow, or ask for more evidence. | `volicord.request_user_judgment` creates or exposes the question; it does not record the user's answer. |
-| Record an answer | Route the human to the supported `User Channel`; continue only with work that does not depend on an unrecorded judgment. | Record one shown option through the local user path when the answer must become part of Volicord state. | `volicord.record_user_judgment` is a User Channel method, not an Agent Connection MCP workflow tool. |
-| Continue, write, or close | Refresh state, prepare needed write tickets, record Runs and evidence, and surface blockers. | Provide final acceptance, residual-risk acceptance, or the next user decision only when the visible basis is clear. | Evidence attachments support claims; they do not replace User Judgment, Close Status, or residual-risk decisions. |
+If the target is unclear, call `volicord.list_projects`. Use the returned
+`project_selector` when the workflow tool exposes that argument. If a call is
+rejected because project selection is ambiguous, list the connected projects,
+select the intended one, and retry.
 
-<a id="infer-use"></a>
-## Infer Volicord use from task shape
+Exact selection and omission rules belong to
+[MCP Transport](../reference/mcp-transport.md) and
+[Agent Connection](../reference/agent-connection.md). For operator setup, see
+[Multi-Repository Agent Setup](multi-repository-agent-setup.md).
 
-The agent should not require a startup phrase. Users do not need to say "Volicord", know internal labels, or name API methods before ordinary work can begin.
+## Keep Context Small
 
-Use the Volicord path when the work involves:
+Carry only what the next action needs:
 
-- scope risk
-- product writes
-- user-owned judgment
-- sensitive-action approval
-- evidence gaps
-- check limits
-- user-visible verification criteria
-- final acceptance
-- residual risk
-- Close Status
-
-Choose procedure weight from the work shape:
-
-- Advice or inspection: inspect available sources, cite uncertainty, and avoid write or close ceremony.
-- Small change: confirm narrow scope, edit inside that scope, run a focused check, and report briefly.
-- Tracked work: clarify scope, preserve judgment, check writes, record evidence, and report Close Status.
-
-Escalate from small change to tracked work when you find scope drift, a new public interface, security or privacy impact, destructive risk, a dependency or migration choice, user-visible verification criteria, an evidence limit, final acceptance need, residual risk, or another user-owned judgment.
-
-<a id="project-selection"></a>
-## Select the Volicord project deliberately
-
-In the current MCP path, the `volicord mcp --stdio` process is bound to one Agent Connection, not to one fixed `Product Repository`. A user-scope Agent Connection may connect multiple projects, while project and local scopes remain single-repository scopes.
-
-For public Volicord tool calls:
-
-- Use `project_selector` when the target project is known and the MCP tool schema exposes it.
-- If the target is unclear, call `volicord.list_projects` and choose one listed `project_selector`.
-- If exactly one project is connected, omitted project selection may route to that project; otherwise use an explicit `project_selector`.
-- Never guess a project from folder names, current working directory, MCP roots, host labels, Product Repository labels, or memory.
-
-`volicord.list_projects` is a read-only MCP adapter utility. It lists only projects explicitly connected to the bound Agent Connection and is not a public workflow API method.
-
-When multiple projects are available and no explicit project is supplied, the adapter rejects the call before method execution and tells the agent to call `volicord.list_projects`. Treat that as an agent-resolvable routing issue: list projects, select the intended project, and retry with the returned `project_selector`. MCP-visible public schemas hide internal envelope fields.
-
-<a id="instructions-and-guidance"></a>
-## Treat instructions and guidance as advisory
-
-Volicord guidance can reach agents through:
-
-- MCP server instructions returned during MCP initialization.
-- `Product Repository` guidance files or host-specific instructions, when present.
-
-These instructions can help tool selection, project routing, and workflow consistency. They are not access control, security enforcement, User Channel authority, User Judgment, Write Ticket, Evidence, acceptance, Close Status, or proof that a model will choose Volicord tools.
-
-Volicord authority and external filesystem permission remain distinct. A Volicord record or issued Write Ticket does not independently grant the host permission to edit product files, act as code review approval, supply final acceptance, or prove that a write occurred; host filesystem permission does not create Volicord authority.
-
-<a id="keep-context-small"></a>
-## Keep context small
-
-Always-on context should fit the next action. Carry summaries and refs, then load exact Reference sections only when the next action needs them.
-
-Include only what is currently useful:
-
-- Agent Connection mode and capability limits
-- current `Task` or work boundary
-- current scope, non-goals, and relevant paths or operation class
-- current work-slice effect boundary when it affects the next action
-- pending user-owned judgment
-- sensitive-action approval or write-approval summary when relevant
-- evidence attachment summaries when they support a claim
-- current blockers and stale-state warnings
-- evidence gaps, residual-risk status, and close blockers when relevant
-- guarantee level supported by the current Agent Connection context and [Security](../reference/security.md)
-- source freshness
+- current `Task`, scope, non-goals, and relevant paths
+- current Agent Connection capability limits
+- pending user-owned decisions or approvals
+- Evidence summaries and gaps that affect the next claim
+- current blockers, stale-state warnings, and visible residual risk
 - one next safe action
 
-Do not inject full schemas, DDL, template bodies, logs, evidence attachment bodies, unneeded cross-language material, unrelated contract material, out-of-scope catalogs, or generated readable views into every prompt.
+Load exact Reference sections when the next action needs them. Do not inject
+full schemas, DDL, templates, logs, Evidence attachment bodies, unrelated
+contracts, or both language versions into every prompt.
 
-<a id="clarify-focused"></a>
-## Clarify with focused questions
+## Clarify With Focused Questions
 
-Inspect first. Before asking the user, check relevant files, docs, tests, current Volicord state, accepted judgments, and evidence attachments when they are available.
+Inspect first. Ask a question only when its answer changes the next safe action
+or resolves a user-owned decision. Prefer one blocking question at a time.
 
-Ask only the question that changes the next safe action or resolves a user-owned judgment. Prefer one blocking question at a time. Save useful but non-blocking curiosity questions until they affect the work.
+A useful question states:
 
-A focused clarification should show:
+- what was inspected and what remains uncertain
+- the current goal, scope, and non-goals
+- the options and their consequences
+- a bounded recommendation when current facts support one
+- what the answer will and will not settle
+- what can safely continue if the user defers
 
-- what was verified
-- current goal
-- candidate or current scope and non-goals
-- verification criteria for the next slice
-- what the agent may decide on its own
-- remaining uncertainty
-- required user-owned judgment, if any
-- evidence need or evidence gap
-- why close is already blocked, if relevant
-- next safe action
+Do not ask the user to solve something the agent can safely inspect, refresh,
+retry, narrow, or record.
 
-Unknowns block progress only when they affect the first safe work item or the next safe action. If the blocker is agent-resolvable or connection-owned, name the next action instead of asking the user.
+## Preserve User-Owned Judgment
 
-<a id="preserve-user-judgment"></a>
-## Preserve user-owned judgment
+The user decides product-visible behavior, material technical direction, scope
+changes, new dependencies or services, security and privacy choices,
+compatibility breaks, costly-to-reverse choices, sensitive actions, final
+acceptance, residual-risk acceptance, cancellation, and supersession.
 
-The agent may identify a bounded option when current facts and accepted scope already support one. It must not decide a user-owned choice silently.
+The agent may usually choose local implementation details that stay within
+accepted scope and preserve the accepted behavior. Escalate when a detail
+becomes product-visible, changes scope or verification criteria, introduces a
+dependency, affects security or privacy, breaks compatibility, or becomes hard
+to reverse.
 
-The user decides:
+Do not interpret “approved,” “looks good,” or “continue” as every pending
+decision. Keep product direction, technical direction, scope, sensitive-action
+approval, final acceptance, and residual-risk acceptance separate.
 
-- user-visible product behavior
-- user flow, messages, UX, accessibility, or product trade-offs
-- scope expansion or non-goal removal
-- data retention, privacy, security, or authentication choices
-- new dependency or external service introduction
-- migration, public interface, or compatibility-breaking direction
-- irreversible or costly-to-reverse technical choices
-- sensitive-action approval
-- final acceptance
-- residual-risk acceptance
-- cancellation or supersession
-
-Inside accepted scope, the agent may usually decide local implementation details when they stay inside scope, preserve product behavior, and do not change material technical direction. Examples include a local variable name, nearby test placement, behavior-preserving refactor, or code detail already forced by accepted scope.
-
-Escalate back to the user when a detail becomes product-visible, changes accepted direction, introduces a dependency or service, affects security or privacy, breaks compatibility, becomes costly to reverse, or changes scope, verification criteria, sensitive-action approval, final acceptance, or residual risk.
-
-<a id="request-judgment-narrowly"></a>
-### Request judgment narrowly
-
-A judgment request should include:
-
-- the exact question
-- concise options
-- a bounded recommendation when facts support one
-- rationale and uncertainty
-- consequence of deferral
-- affected scope
-- what the answer does not settle
-
-Do not treat "yes", "approved", "looks good", "go ahead", or "continue" as a bundle of every pending judgment. Map a short reply only when one current prompt made the judgment kind, object, option, scope, user intent, consequences, and remaining open items unambiguous.
-
-Keep product judgment, technical judgment, scope judgment, sensitive-action approval, final acceptance, residual-risk acceptance, and cancellation separate. No judgment substitutes for another.
-
-<a id="route-user-interaction"></a>
-### Route authority-bearing answers to the User Channel
-
-When Volicord needs a User Judgment, the agent may request or present the
-focused judgment need and show the options Volicord returned. Volicord-provided
-options define what the user can accept, reject, defer, or otherwise select for
-that judgment. Do not add extra authority outcomes in prose.
-
-If the user's answer must become recorded Volicord state, route the user to
-a supported local `User Channel`. Current supported input methods are host
-prompt input when the initialized client declares that capability, chat commands
-when command capture is `configured`, `observed`, or `active`, local consent
-URL when the adapter can safely expose a loopback one-time-token fallback, and
-the stable CLI inbox route:
+When a decision must become Volicord state, show the user the supported User
+Channel path. The stable CLI fallback is:
 
 ```sh
-volicord inbox
-volicord inbox answer JUDGMENT_ID --choice CHOICE_ID
+volicord inbox --repo "<repo>"
+volicord inbox answer JUDGMENT_ID --choice CHOICE_ID --repo "<repo>"
 ```
 
-When the route is a local consent URL, the page should identify the project,
-repository path, connection, judgment, choices, expiry, and CLI fallback. Treat
-it as a User Channel capture path only; it is not a security boundary, does not
-prove correctness, test sufficiency, deployment success, or review completion,
-and does not establish Close Status.
+Exact input methods and command behavior belong to
+[Agent Connection](../reference/agent-connection.md#user-channel-and-agent-connections)
+and [Administrative CLI](../reference/admin-cli.md#user-channel-commands).
 
-An Agent Connection must not call `volicord.record_user_judgment`, supply User
-Channel provenance, or convert an ordinary chat reply into authority-bearing
-acceptance. A strict chat command such as `Volicord: answer J-3 1 #AB7K`
-is authority-bearing only when command capture is available and the current
-verification code is validated and recorded by the detective host hook. If
-the answer has not been recorded through a supported User Channel, name the
-needed user action and continue only with work that does not depend on that
-judgment. Use `--repo PATH` only when the current directory is not the intended
-Product Repository. `--task ID` applies only to `volicord inbox` listing when
-the active task is not the intended task; `volicord inbox answer` selects the
-task through the judgment id and does not accept `--task`.
+## Check Before Writes
 
-Status summaries, generated Markdown, rendered projections, and chat text can
-display a pending judgment or option list. They are support context only; they
-do not record final acceptance, residual-risk acceptance, or any other
-user-owned judgment.
+Before a product-file write, make the intended paths and effect specific enough
+to evaluate. Request a Write Ticket through the prepare-write path, then show:
 
-<a id="check-before-writes"></a>
-## Check before writes
+- the intended change
+- whether it fits the current scope
+- any pending user decision or sensitive-action approval
+- stale or unavailable context
+- the next action when a Write Ticket cannot be issued
 
-Before product, code, or file writes in Volicord-connected work, request a write ticket through the prepare-write path only after the intended operation is specific enough to evaluate. Exact prepare-write behavior belongs to [Prepare-write Method](../reference/api/method-prepare-write.md).
+If scope changes, update it before requesting another Write Ticket. Do not claim
+write compatibility from a plan, stale chat context, broad enthusiasm, or a
+generated summary. Exact method behavior belongs to
+[Prepare-write](../reference/api/method-prepare-write.md).
 
-Do not claim write compatibility from a plan, stale chat context, broad enthusiasm, stale status, generated summary, or rendered view.
+## Record Evidence After Action
 
-Show the user:
-
-- intended paths or operation
-- scope match or mismatch
-- effect-contract match or mismatch when current state includes one
-- pending user judgments or sensitive approvals
-- stale state or unavailable compatibility context
-- what Volicord can verify, or the capability limit
-- next action that would unblock write-ticket issuance
-
-If scope changes, update the current scope before asking for a new write ticket. Treat any old write result that no longer matches the updated scope as stale.
-
-When current state includes a work-slice effect boundary, include whether the intended product-file effect and paths fit it. Treat that as Volicord state-compatibility context for write-ticket evaluation, not sandboxing, security enforcement, User Judgment, sensitive-action approval, or evidence that a write occurred.
-
-<a id="reconcile-unrecorded-changes"></a>
-## Reconcile unrecorded changes
-
-If detective status reports unresolved unrecorded Product Repository changes, call
-`volicord.reconcile_changes` or route the user to `volicord changes reconcile`
-when MCP is unavailable. Deterministic cases may resolve through the method.
-User acceptance must become a supported `User Channel` judgment; do not mark an
-Unrecorded Change accepted from agent text, generated Markdown, or ordinary chat alone.
-
-Report unresolved Unrecorded Changes as close blockers and name the next action that
-would unblock them.
-
-<a id="record-evidence"></a>
-## Record evidence after action
-
-After meaningful execution, checks, reviews, or evidence-attachment-producing work, summarize what happened and what supports each claim. Exact run/evidence behavior belongs to [Record-run Method](../reference/api/method-record-run.md), with attachment details owned by [API Artifact Schemas](../reference/api/schema-artifacts.md) and [Artifact Storage](../reference/storage-artifacts.md).
-
-Use `volicord.stage_artifact` only when bytes or a safe notice must be prepared as an Evidence attachment input. The public evidence step is still `volicord.record_run`, which records the claim, provenance, and any linked attachment. A staged handle, copied file path, or attachment input is input-only until a committed record-run result links it to claim-scoped Evidence.
-
-User-facing summaries use `prepared` for staged attachment input, `attached` for evidence linked by a committed run or applicable method, and `accepted_for_close` only when the current close basis can use that evidence for the Close Status assessment. For the mapping, see [Artifact Storage](../reference/storage-artifacts.md#public-evidence-state-mapping).
-
-Evidence display should say:
+After a meaningful edit, command, review, or observation, report:
 
 - what ran or changed
-- which claim it supports
-- which refs or evidence attachments support it
+- which claim the Evidence supports
 - what passed or failed
-- what is missing, stale, redacted, omitted, blocked, or insufficient
+- what is missing, stale, redacted, blocked, or insufficient
 
-Do not treat arbitrary absolute paths, raw secrets, tokens, full sensitive logs, screenshots alone, generated summaries, or chat text as sufficient evidence by themselves.
+Record claim-scoped Evidence through the supported run or observation path.
+Evidence attachments are inputs to that record; their availability alone does
+not prove a claim. Keep Evidence, Close Status, final acceptance, and
+residual-risk acceptance separate.
 
-Keep evidence sufficiency, evidence attachment availability, Close Status, final acceptance, and residual-risk acceptance separate.
+Exact run behavior belongs to
+[Record-run](../reference/api/method-record-run.md). Exact attachment behavior
+belongs to [Artifact Schemas](../reference/api/schema-artifacts.md) and
+[Artifact Storage](../reference/storage-artifacts.md).
 
-<a id="report-status"></a>
-## Report status for the next decision
+## Reconcile Unrecorded Changes
 
-Status output should lead with:
+When the Detective profile reports an Unrecorded Change, treat it as a bounded
+observation. It does not prove who changed a file or that the change was
+malicious.
 
-- the primary blocker
-- the next action that would unblock it
-- whether the blocker is user-owned, agent-resolvable, or connection/system-owned
+Use `volicord.reconcile_changes` when available. If MCP is unavailable, route
+the user to `volicord changes reconcile`. Any user acceptance must go through a
+supported User Channel. Report unresolved Unrecorded Changes as close blockers
+and name the next action.
 
-The agent should not ask the user to solve something it can safely inspect, refresh, retry, narrow, or record.
+## Report Status And Handle Close
 
-A compact status summary should include the current `Task` or work boundary, current scope, freshest relevant facts, pending judgment or approval, evidence gap when relevant, close blocker when relevant, and one next safe action.
+Lead with the primary blocker and the action that would remove it. A compact
+status report includes the current work boundary, current scope, freshest
+relevant facts, pending decision or approval, Evidence gap, close blocker, and
+one next safe action.
 
-<a id="handle-close"></a>
-## Handle close honestly
+Before close, show the visible close facts:
 
-Close only when the applicable path can support the close claim. In user-facing terms, Close Status asks whether the task can honestly finish now. Exact close meaning belongs to [Core Model](../reference/core-model.md); method behavior belongs to [Close-task Method](../reference/api/method-close-task.md); state shapes belong to [API State Schemas](../reference/api/schema-state.md).
+- scope and result
+- checks and Evidence
+- required user decisions
+- visible residual risk
+- remaining blockers
+- the next close-unblocking action
 
-For small work, a close-like result can be brief:
+Use a read-only Close Status check when the user only asks whether close is
+blocked. Change task state only through the supported close path. Do not close
+from prose, tests alone, broad acceptance language, a generated view, or stale
+status. Final acceptance and residual-risk acceptance do not replace missing
+required Evidence.
 
-- request
-- scope
-- changed files or no-file outcome
-- checks
-- known residual risk
+Exact close meaning belongs to [Core Model](../reference/core-model.md). Exact
+method behavior belongs to [Close-task](../reference/api/method-close-task.md).
 
-For tracked work, show the visible close facts before asking for final acceptance or attempting close:
+## Respect Scope And Guarantee Limits
 
-- scope
-- evidence
-- checks
-- required judgments
-- residual risk
-- blockers
-- next close-unblocking action
+Volicord guidance can steer tool choice, but it is not access control or proof
+that a model followed instructions. A Write Ticket is not filesystem
+permission. Detective observations are not OS enforcement or actor proof.
+Evidence and Close Status are not correctness, QA, deployment, or human-review
+proof.
 
-Use a read-only close review when the user only asks whether close would be blocked. Use state-changing close only when the close-task method and close contracts show no relevant blockers.
+Use [Scope](../reference/scope.md) for supported and unsupported capabilities,
+and [Security](../reference/security.md) for exact guarantees and
+non-guarantees. Do not invent a new quality gate or waiver path in this guide.
 
-Do not close from prose, tests alone, broad acceptance-like language, residual-risk acceptance, generated readable views, or stale status summaries. Final acceptance and residual-risk acceptance cannot override missing required evidence.
+## Language Context
 
-<a id="respect-boundaries"></a>
-## Respect Reference And Scope Boundaries
+Use the language needed for the current user and task. Preserve exact API names,
+commands, fields, enum values, paths, and error codes. In Korean-facing work,
+write ordinary concepts in natural Korean instead of carrying unnecessary
+English noun chains into the prompt.
 
-Baseline behavior should stay compact. Do not make out-of-scope capability presentation formats look like supported requirements.
+## Next Paths
 
-Do not make these appear required for ordinary baseline work:
-
-- full-format judgment presentations
-- standalone derived views
-- full evidence displays
-- detached checks
-- broad review catalogs
-- out-of-scope conformance runners
-- operations control programs
-- other out-of-scope capabilities
-
-Quality concerns should route to the applicable reference or blocker category when one applies, such as scope, user-owned judgment, evidence, residual-risk visibility, Agent Connection capability, or another applicable blocker. Do not invent a separate quality gate or waiver path in the use guide.
-
-Use compact user-facing shapes first: status, focused judgment request, what was checked, and Close Status. Reference exact contracts only when the next action depends on exact contract details.
-
-<a id="language-context"></a>
-## Choose language context deliberately
-
-For ordinary Volicord session context, use the language needed for the current user or task. Keep prompts to the language that helps the next action, and add cross-language material only when the user's request or task actually needs it.
-
-When the task is Korean-facing, preserve exact identifiers such as API names, method names, command names, schema fields, enum values, file paths, error codes, table names, and validator IDs. Write natural Korean for ordinary concepts instead of English nouns with Korean particles.
-
-<a id="where-next"></a>
-## Where to go next
-
-Agent authors and operators should start with this guide, then use:
-
-- [Agent Host Setup](agent-host-setup.md) for connecting, verifying, and removing Codex or Claude Code Agent Connections
-- [Multi-Repository Agent Setup](multi-repository-agent-setup.md) for user-scope Agent Connections that allow more than one `Product Repository`
-- [Reference Index](../reference/README.md) only when the next action needs an exact Reference contract
+- [Agent Host Setup](agent-host-setup.md) for connection setup and removal
+- [Multi-Repository Agent Setup](multi-repository-agent-setup.md) for one
+  connection serving several explicitly connected repositories
+- [User Workflow](user-workflow.md) for the user's collaboration loop
+- [Reference Index](../reference/README.md) when the next action requires an
+  exact contract
