@@ -80,7 +80,7 @@ RecordUserJudgmentRequest:
 
 로컬 User Channel 실패, 읽을 수 없는 판단 식별자, 부족한 호출 출처는 커밋 전에 거절됩니다.
 
-권한을 지니는 해결에는 `cli_direct_user_channel`, `mcp_elicitation_user_channel`,
+권한 효력이 있는 판단 해결에는 `cli_direct_user_channel`, `mcp_elicitation_user_channel`,
 `user_prompt_submit_hook`, `local_user_local_web` 같은 호환 User Channel
 `verification_basis`도 필요합니다. Agent Connection 호출, 생성된 지침 파일, 생성된
 Markdown, 상태 요약, 상태 보기는 사용자 답변을 주장하거나 전달하더라도 사용자 권한을
@@ -107,7 +107,7 @@ Markdown, 상태 요약, 상태 보기는 사용자 답변을 주장하거나 �
 - 잔여 위험 수락은 `AcceptedRiskInput`에 정확한 현재 `risk_id` 값을 포함해야 하며 현재 `close_basis_revision`과 일치해야 합니다.
 - 민감 승인은 현재 `scope_revision`, Change Unit, 동작, 정규화된 경로, 민감 범주, 기준선과 일치해야 합니다.
 - 나중의 범위 갱신에 쓰이는 범위 결정 권한은 `judgment_kind=scope_decision`, `status=resolved`, `machine_action=accept`, `resolution_outcome=accepted`, 현재 근거, 범위 갱신을 포함하는 `required_for`, `resolved_by_actor_source=local_user`, 호환되는 User Channel 출처, 호환되는 Task, Change Unit, `scope_revision`, 영향받는 참조가 필요합니다.
-- 권한을 지니는 판단은 권한 요구사항을 만족하려면 `resolved_by_actor_source=local_user`, 호환되는 User Channel 출처, `machine_action=accept`, `resolution_outcome=accepted`가 필요합니다.
+- 권한 효력이 있는 판단이 권한 요구사항을 만족하려면 `resolved_by_actor_source=local_user`, 호환되는 User Channel 출처, `machine_action=accept`, `resolution_outcome=accepted`가 필요합니다.
 - 거절되거나 연기된 권한 판단은 결정 기록으로 남지만 현재 전이를 허가할 수 없습니다. 오래됨, 대체됨, 만료됨, 유효하지 않은 근거, 출처 누락, 해결 정보 누락, 에이전트가 기록한 권한 판단은 현재 전이를 허가할 수 없습니다.
 - 범위 변경이나 실행 기록 변경은 이력 판단을 삭제하지 않습니다. 다만 호환되지 않는 판단은 현재 닫기, 쓰기, 범위 결정, 민감 승인 요구사항에 사용할 수 없게 됩니다.
 

@@ -674,7 +674,7 @@ ObservedChanges:
 - `EvidenceObservationInput`은 `volicord.record_run`이 받는 요청 측 형태입니다. Core는 커밋할 때 `observation_id`, 프로젝트와 `Task` 좌표, `run_ref`, `recorded_at`을 채웁니다.
 - `observed_by_actor_source`는 값이 있으면 `ActorSource` 값이어야 합니다. 관찰 입력에서 null이면 Core가 확인된 호출 맥락에서 값을 채울 수 있습니다.
 - `source_kind`와 `assurance_level`은 출처와 관찰 보장 수준을 설명합니다. 그 자체로 제품 정확성을 증명하거나, 사용자 권한을 부여하거나, 최종 수락을 만족하거나, 잔여 위험 수락을 만족하거나, `GuaranteeDisplay.level`을 높이지 않습니다.
-- `user_observation`은 사용자 귀속 관찰을 기록하지만 최종 수락이나 다른 권한을 지니는 사용자 판단이 아닙니다.
+- `user_observation`은 사용자 귀속 관찰을 기록하지만 최종 수락이나 그 밖의 권한 효력이 있는 사용자 판단이 아닙니다.
 - `external_tool`과 `external_tool_result`는 외부 도구 결과를 기록합니다. 관련 증거, 아티팩트, 닫기 준비 상태, 보안 담당 문서 없이는 제품 정확성 증명이 아닙니다.
 - `unverified_claim`과 `unverified`는 확인된 관찰 없는 주장을 보존하며 그 자체로 충분한 증거가 아닙니다.
 - `tool_metadata`는 설명용 메타데이터이며 권한, 승인, 저장 효과로 취급하면 안 됩니다.
@@ -771,7 +771,7 @@ GuaranteeDisclosure:
 - `CloseReadinessBlocker`는 닫기 차단 사유를 표현하는 데이터 형태입니다.
 - `CloseReadinessBlocker.category`는 제어 값 문자열입니다.
 - `CloseReadinessBlocker.code`는 담당 문서가 정의하는 차단 사유 코드입니다. 차단 사유 또는 메서드 담당 문서가 더 좁은 로컬 목록을 공개하지 않는 한 빠짐없는 전역 공개 enum이 아닙니다.
-- `CloseReadinessBlocker.control_surface`는 `guard_*` 연결 기능 차단 사유에 있을 수 있으며, 차단 사유를 계산한 시점의 관찰 요약을 보고합니다. `GuardHealthSummary`의 훅 상태에서 도출하지 않은 차단 사유에서는 생략됩니다.
+- `CloseReadinessBlocker.control_surface`는 `guard_*` 연결 역량 차단 사유에 있을 수 있으며, 차단 사유를 계산한 시점의 관찰 요약을 보고합니다. `GuardHealthSummary`의 훅 상태에서 도출하지 않은 차단 사유에서는 생략됩니다.
 - `can_resolve_in_chat`은 메서드 담당 문서가 그 경로를 알고 있을 때 차단 사유를 채팅으로 매개되는 사용자 경로에서 해소할 수 있는지를 보고합니다.
 - `terminal_action_required`는 다음 행동에 채팅 밖의 터미널, 호스트, 파일시스템, 설정 작업이 필요한지를 보고합니다.
 - `CloseReadinessBlocker.message`, `ValidatorResult.message`, `GuaranteeDisplay.basis`는 자유 형식 표시 문자열입니다.

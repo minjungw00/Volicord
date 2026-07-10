@@ -33,8 +33,8 @@
 - `task_id`, `change_unit_id`, `judgment_kind`, `presentation`, `question`, `context`, `affected_refs`, `required_for`, `expires_at`.
 - 서로 이해할 수 있는 `options`를 가진 초점이 분명한 `question`.
 - 사용자가 숨은 대화 상태에 기대지 않고 정확한 사안을 판단할 수 있는 충분한 `context`.
-- 권한을 지니지 않는 판단 종류에서는 전송 필드가 선택-null 허용이더라도 Core 검증상 `options`가 필요합니다. 호출자가 작성한 `UserJudgmentOptionInput[]`에는 선택지가 하나 이상 있어야 하며, 각 선택지는 `option_id`, `label`, `description`, `consequence`, `is_default`만 가집니다.
-- 권한을 지니는 판단 종류에서는 `options`를 생략하거나 `null` 또는 `[]`로 보낼 수 있습니다. 호출자가 작성한 선택지가 비어 있지 않으면 거절됩니다. Core가 기준 권한 선택지, 현지화된 라벨, 결과 설명, `machine_action`, `resolution_outcome`을 만듭니다.
+- 권한 효력이 없는 판단 종류에서는 전송 필드가 선택-null 허용이더라도 Core 검증상 `options`가 필요합니다. 호출자가 작성한 `UserJudgmentOptionInput[]`에는 선택지가 하나 이상 있어야 하며, 각 선택지는 `option_id`, `label`, `description`, `consequence`, `is_default`만 가집니다.
+- 권한 효력이 있는 판단 종류에서는 `options`를 생략하거나 `null` 또는 `[]`로 보낼 수 있습니다. 호출자가 작성한 선택지가 비어 있지 않으면 거절됩니다. Core가 기준 권한 선택지, 현지화된 라벨, 결과 설명, `machine_action`, `resolution_outcome`을 만듭니다.
 - `judgment_kind=sensitive_approval`에서는 `sensitive_action_scope`가 `null`이 아닌 `SensitiveActionScope`로 있어야 합니다. `product_decision`, `technical_decision`, `scope_decision`, `cancellation`에서는 `null`이 아닌 `sensitive_action_scope`가 거절됩니다. `final_acceptance`와 `residual_risk_acceptance`는 현재 닫기 근거에서 근거를 파생하며, `sensitive_action_scope`를 호출자 제출 권한으로 사용하지 않습니다.
 
 ## 요청 스키마
@@ -62,7 +62,7 @@ RequestUserJudgmentRequest:
 요청 필드 참고:
 - `options`와 `sensitive_action_scope`는 선택-null 허용 공개 요청 필드입니다. 생략과 명시적 `null`은 같은 의미입니다.
 - `basis`, `scope_revision`, `close_basis_revision`, 확인된 행위자 맥락, `machine_action`, `resolution_outcome`은 공개 요청 필드가 아닙니다.
-- 권한을 지니는 판단 종류는 `scope_decision`, `sensitive_approval`, `final_acceptance`, `residual_risk_acceptance`, `cancellation`입니다. Core는 이 판단 종류에 대해 기준 권한 선택지를 생성합니다.
+- 권한 효력이 있는 판단 종류는 `scope_decision`, `sensitive_approval`, `final_acceptance`, `residual_risk_acceptance`, `cancellation`입니다. Core는 이 판단 종류에 대해 기준 권한 선택지를 생성합니다.
 - 호출자가 작성한 선택지는 `product_decision`과 `technical_decision`에서만 허용됩니다.
 
 중첩 형태 담당 문서:
@@ -92,7 +92,7 @@ RequestUserJudgmentRequest:
 
 - 다른 메서드가 반환한 `UserJudgmentCandidate`는 `volicord.request_user_judgment`가 커밋하기 전까지 지속 판단이 아닙니다.
 - `judgment_kind=final_acceptance` 또는 `judgment_kind=residual_risk_acceptance`에서는 Core가 현재 닫기 근거를 판단 근거에 캡처합니다. 필요한 현재 닫기 근거 또는 현재 잔여 위험 ID를 사용할 수 없으면 요청은 커밋 전에 거절됩니다.
-- 권한을 지니는 판단 종류에서는 Core가 생성하는 선택지 집합에 `machine_action=accept`, `machine_action=reject`, `machine_action=defer`가 포함됩니다. 라벨과 설명 문구는 `machine_action`이나 `resolution_outcome`을 덮어쓰지 않습니다.
+- 권한 효력이 있는 판단 종류에서는 Core가 생성하는 선택지 집합에 `machine_action=accept`, `machine_action=reject`, `machine_action=defer`가 포함됩니다. 라벨과 설명 문구는 `machine_action`이나 `resolution_outcome`을 덮어쓰지 않습니다.
 - 잔여 위험 수락의 경우 요청 맥락의 보이는 위험은 정확한 현재 `risk_id` 값을 담아야 합니다.
 - `dry_run`과 거절은 대기 중인 판단, 차단 사유 갱신, 이벤트, 재실행 행, 상태 버전 증가를 만들지 않습니다.
 

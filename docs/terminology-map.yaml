@@ -30,6 +30,7 @@ canonical_for:
   - "Preferred verification criteria wording for user-visible criteria used to check work."
   - "Terminology routing for API error-code meanings, error precedence, API response branch routing, blocker routing, dry-run preview routing, public error as blocker wording, `ToolError.details`, and error detail helper values."
   - "Artifact and evidence terminology conventions for bilingual documentation."
+  - "Korean reference wording for authority-bearing judgments, persistent artifacts, connection capability, and canonical SQL."
   - "Terminology routing for evidence collection workflow wording, close-task behavior, and design-quality owner boundaries."
 does_not_own:
   - "Reader-facing glossary definitions, curated glossary subset selection, or full reference owner indexes."
@@ -372,6 +373,18 @@ avoid:
     - phrase: "inspection expectations"
       use: "verification criteria when the meaning is user-visible criteria for checking work."
   ko:
+    - phrase: "권한을 지니는"
+      use: "판단 문맥에서는 권한 효력이 있는 또는 권한 효력이 필요한, 사용 문맥에서는 권한 근거로 사용"
+    - phrase: "권한을 지니지 않는"
+      use: "권한 효력이 없는"
+    - phrase: "지속 아티팩트"
+      use: "영속 아티팩트"
+    - phrase: "canonical SQL"
+      use: "기준 SQL"
+    - phrase: "Canonical SQL"
+      use: "기준 SQL"
+    - phrase: "connection capability"
+      use: "연결 역량"
     - phrase: "활성 범위"
       use: "현재 적용 범위"
     - phrase: "활성 Change Unit"
@@ -1176,6 +1189,30 @@ terms:
         ko: "docs/ko/reference/api/schema-judgment.md"
     notes:
       - "Keep distinct from write ticket, write approval, sensitive-action approval, final acceptance, residual-risk acceptance, scope changes, evidence, and verification criteria."
+  authority_bearing_judgment:
+    category: "product_concept"
+    en: "authority-bearing judgment"
+    visibility: "architecture"
+    allowed_document_layers:
+      - "reference"
+      - "architecture_guide"
+      - "maintain"
+      - "api_schema"
+      - "storage"
+    ko_reference: "권한 효력이 있는 판단"
+    ko_user: "사용자 판단"
+    primary_owner:
+      en: "docs/en/reference/core-model.md"
+      ko: "docs/ko/reference/core-model.md"
+    related_references:
+      - en: "docs/en/reference/api/schema-judgment.md"
+        ko: "docs/ko/reference/api/schema-judgment.md"
+      - en: "docs/en/reference/agent-connection.md"
+        ko: "docs/ko/reference/agent-connection.md"
+    notes:
+      - "Use 권한 효력이 있는 판단 or 권한 효력이 필요한 판단 in Korean reference prose according to context."
+      - "Use 판단을 권한 근거로 사용 when the sentence describes use rather than a judgment kind."
+      - "Do not translate authority-bearing literally as 권한을 지니는."
   user_judgment_schema:
     category: "identifier"
     en: "UserJudgment"
@@ -1578,6 +1615,29 @@ terms:
       - "Use 아티팩트 in Korean reference/API prose when naming the artifact schema area."
       - "Preserve artifact schema identifiers exactly."
       - "Do not use artifact availability alone as evidence sufficiency."
+  persistent_artifact:
+    category: "storage_concept"
+    en: "persistent artifact"
+    visibility: "architecture"
+    allowed_document_layers:
+      - "reference"
+      - "architecture_guide"
+      - "maintain"
+      - "api_schema"
+      - "storage"
+    ko_reference: "영속 아티팩트"
+    ko_user: "영속 아티팩트"
+    primary_owner:
+      en: "docs/en/reference/storage-artifacts.md"
+      ko: "docs/ko/reference/storage-artifacts.md"
+    related_references:
+      - en: "docs/en/reference/api/schema-artifacts.md"
+        ko: "docs/ko/reference/api/schema-artifacts.md"
+      - en: "docs/en/reference/storage-records.md"
+        ko: "docs/ko/reference/storage-records.md"
+    notes:
+      - "Use 영속 아티팩트 in Korean for an artifact that has crossed the persistent storage boundary."
+      - "Keep distinct from a transient staged-artifact handle."
   evidence:
     category: "product_concept"
     en: "evidence"
@@ -2001,6 +2061,34 @@ terms:
       - "Do not use the discouraged active wording for this runtime-context meaning."
       - "Do not use current connection context as proof of user authority, OS permission, access, binding, or capability by itself."
       - "In Korean, use 현재 연결 맥락; preserve exact connection identifiers."
+  connection_capability:
+    category: "product_concept"
+    en: "connection capability"
+    visibility: "architecture"
+    allowed_document_layers:
+      - "reference"
+      - "architecture_guide"
+      - "maintain"
+      - "api_schema"
+      - "storage"
+    ko_reference: "연결 역량"
+    ko_user: "연결 역량"
+    preserve_as_identifier:
+      - "connection_capability"
+      - "CAPABILITY_INSUFFICIENT"
+    primary_owner:
+      en: "docs/en/reference/agent-connection.md"
+      ko: "docs/ko/reference/agent-connection.md"
+    related_references:
+      - en: "docs/en/reference/api/schema-state.md"
+        ko: "docs/ko/reference/api/schema-state.md"
+      - en: "docs/en/reference/design-quality.md"
+        ko: "docs/ko/reference/design-quality.md"
+      - en: "docs/en/reference/security.md"
+        ko: "docs/ko/reference/security.md"
+    notes:
+      - "Use 연결 역량 in Korean prose and preserve exact identifiers."
+      - "A declared connection capability is not proof of authority, user identity, host trust, or OS enforcement."
   invocation_context:
     category: "internal_concept"
     en: "invocation context"
@@ -2118,6 +2206,31 @@ terms:
     notes:
       - "Use only for detective/storage correlation records and exact identifiers."
       - "Use Write Ticket or observed write/change wording in user-facing docs, depending on meaning."
+  canonical_sql:
+    category: "internal_concept"
+    en: "canonical SQL"
+    visibility: "architecture"
+    allowed_document_layers:
+      - "reference"
+      - "architecture_guide"
+      - "maintain"
+      - "storage"
+    ko_reference: "기준 SQL"
+    ko_user: "기준 SQL"
+    preserve_as_identifier:
+      - "registry.sql"
+      - "project.sql"
+    primary_owner:
+      en: "docs/en/reference/storage-ddl.md"
+      ko: "docs/ko/reference/storage-ddl.md"
+    related_references:
+      - en: "docs/en/architecture-guide/testing-strategy.md"
+        ko: "docs/ko/architecture-guide/testing-strategy.md"
+      - en: "docs/en/maintain/validation.md"
+        ko: "docs/ko/maintain/validation.md"
+    notes:
+      - "Use 기준 SQL in Korean prose for the executable SQL sources owned by Storage DDL."
+      - "Preserve exact source filenames and canonical-storage-sql marker comments."
   connection_projects:
     category: "product_concept"
     en: "Connection Projects"

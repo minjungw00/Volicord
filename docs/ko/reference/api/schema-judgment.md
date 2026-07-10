@@ -236,7 +236,7 @@ UserJudgmentContext:
 `resolution_outcome=deferred`로 매핑됩니다. `blocked`는
 `JudgmentResolutionOutcome` 값이 아닙니다.
 
-권한을 지니는 판단 종류에서 호출자는 요청 입력에 보이는 라벨과 기계 결과 사이의 매핑을 작성하지 않습니다. Core가 권한 선택지의 동작, 결과, 현지화된 라벨, 결과 설명을 만듭니다. 선택지 라벨이나 설명 문구가 기계 판독 가능한 동작이나 결과를 뒤집으면 안 됩니다. 지속 선택지 상태는 명시적인 동작과 결과 필드가 있는 현재 구조화된 선택지 객체를 사용합니다.
+권한 효력이 있는 판단 종류에서 호출자는 요청 입력에 보이는 라벨과 기계 결과 사이의 매핑을 작성하지 않습니다. Core가 권한 선택지의 동작, 결과, 현지화된 라벨, 결과 설명을 만듭니다. 선택지 라벨이나 설명 문구가 기계 판독 가능한 동작이나 결과를 뒤집으면 안 됩니다. 지속 선택지 상태는 명시적인 동작과 결과 필드가 있는 현재 구조화된 선택지 객체를 사용합니다.
 
 <a id="resolution-and-answer-payload"></a>
 ## 판단 결과와 답변 요청 본문
@@ -288,7 +288,7 @@ JudgmentRationale:
 기록하려면 호환 User Channel 출처와 함께
 `resolved_by_actor_source=local_user`가 필요합니다.
 
-권한을 지니는 해결 규칙:
+권한 효력이 있는 판단 해결 규칙:
 - `judgment_kind=scope_decision`, `final_acceptance`, `residual_risk_acceptance`, `sensitive_approval`, `cancellation`은 현재 권한 요구사항을 만족하려면 선택된 Core 생성 권한 선택지, `machine_action=accept`, `resolution_outcome=accepted`, `resolved_by_actor_source=local_user`, 호환 User Channel 출처, 호환되는 현재 근거가 필요합니다.
 - `resolution_outcome=rejected` 또는 `deferred`는 지속되는 사용자 결정이지만 어떤 것도 승인, 수락, 권한 부여, 면제, 닫기를 만들지 않습니다. `blocked`는 판단 결과가 아니며 권한 요구사항을 만족할 수 없습니다.
 - 기계 판독 가능한 동작이나 결과 또는 필요한 User Channel 출처가 없는 결과 기록은 유효하지 않은 소유자 상태이며 현재 권한 요구사항을 만족할 수 없습니다.

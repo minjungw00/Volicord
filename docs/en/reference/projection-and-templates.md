@@ -1,6 +1,10 @@
 # Projection and template display boundaries
 
-This document owns the distinction between authoritative Volicord records and read-only projected, status, or template views. A `Projection` is a view or rendered state view; it does not create authority. Current rendered body guidance, display phrasing, and user-facing labels live in [Template Bodies](template-bodies.md).
+This document separates authoritative Volicord records from read-only
+projections, status views, and template output. A `Projection` is a read-only
+view derived from owner state; it does not create authority. Current rendered
+body guidance, display phrasing, and user-facing labels live in
+[Template Bodies](template-bodies.md).
 
 ## Owns / Does not own
 
@@ -22,9 +26,15 @@ This document does not own:
 
 ## Authority boundary
 
-Authority remains with owner records, not with rendered views. Authoritative records include Core-owned state, user-owned judgments, owner-recorded evidence and artifacts, acceptance decisions, residual-risk decisions, close-readiness state, and storage records owned by the storage documents.
+Authority remains with owner records, not with rendered views. These records
+include Core-owned state, user-owned judgments, owner-recorded evidence and
+artifacts, acceptance and residual-risk decisions, close-readiness state, and
+storage-owned records.
 
-Projected, status, and template views are read-only display. They may quote owner values, summarize owner records, or link to owner records. They are not a second state store, even when they are clear, manually edited, copied into a `Product Repository`, or injected into agent context.
+Projected, status, and template views are read-only display. They may quote,
+summarize, or link to owner records. They do not become a second state store
+when someone edits them, copies them into a `Product Repository`, or injects
+them into agent context.
 
 ## Views cannot create authority
 
@@ -39,11 +49,13 @@ A rendered label, status badge, Markdown section, projection, template body, cha
 - close a Task
 - mutate Core, storage, artifact, user-judgment, acceptance decisions, residual-risk decisions, or close-readiness state
 
-If an owner record exists for one of those outcomes, a view may show or link to it. The display text is not the reason the outcome exists.
+If an owner record exists for one of those outcomes, a view may show or link to
+it. The display text does not create the outcome.
 
-## Source state in display
+## Keep source state visible
 
-Derived display must keep the source boundary visible enough for a reader or agent to know what the display is based on.
+Derived display must show enough of the source boundary for a reader or agent
+to know what the display is based on.
 
 Display output must:
 
@@ -56,15 +68,13 @@ Display output must:
 
 ## Template and label boundary
 
-[Template Bodies](template-bodies.md) owns current rendered body guidance for status cards, judgment requests, run/evidence summaries, close results, agent context packets, and public-error display labels.
+[Template Bodies](template-bodies.md) owns current rendered body guidance for
+status cards, judgment requests, run/evidence summaries, close results, agent
+context packets, and public-error display labels.
 
-This document may say whether a view is authority or display. It must not define the exact wording, body sections, or localized labels for that view.
+This document may classify a view as authority or display. It does not define
+the view's exact wording, body sections, or localized labels.
 
-Rendered labels may refer to semantic owners to help readers understand owner records, but labels do not redefine those semantics or rename API values, storage fields, `ErrorCode` values, or blocker codes.
-
-## Owner links
-
-- [Template Bodies](template-bodies.md) owns current rendered body guidance, display phrasing, and user-facing labels.
-- [Core Model](core-model.md) owns Core authority, user-owned judgment, close readiness, final acceptance, and residual-risk boundaries.
-- [Reference Index](README.md) routes API, storage, artifact, and security owner questions.
-- [Agent Connection](agent-connection.md) owns Agent Connection registration, current connection context, and connection capability declarations.
+Rendered labels may link to semantic owners. They do not redefine owner
+semantics or rename API values, storage fields, `ErrorCode` values, or blocker
+codes.

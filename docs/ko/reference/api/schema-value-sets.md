@@ -153,7 +153,7 @@ no_effect
 |---|---|
 | `read` | 읽기 전용 API 작업 범주입니다. `read_only` Agent Connection은 이 범주를 실행할 수 있습니다. |
 | `agent_workflow` | 에이전트 작업 흐름용 API 작업 범주입니다. `workflow` Agent Connection은 이 범주와 `read`를 실행할 수 있습니다. |
-| `user_only` | 권한을 지니는 사용자 동작을 위한 User Channel 작업 범주입니다. Agent Connection은 이 범주를 실행하지 않습니다. |
+| `user_only` | 권한 효력이 있는 사용자 동작을 위한 User Channel 작업 범주입니다. Agent Connection은 이 범주를 실행하지 않습니다. |
 | `admin_local` | 로컬 관리 작업 범주입니다. Agent Connection은 이 범주를 실행하지 않습니다. |
 | `local_recovery` | `volicord.reconcile_changes` 같은 메서드별 복구 경로를 위한 로컬 사용자 복구 작업 범주입니다. Agent Connection은 이 범주를 실행하지 않습니다. |
 
@@ -672,7 +672,7 @@ unverified_claim
 - `agent_report`는 에이전트 행위자 맥락이 만든 보고를 기록합니다. 그 자체로 외부 도구 결과가 아닙니다.
 - `connection_observation`은 등록된 Agent Connection에 귀속된 관찰을 기록합니다. 그 자체로 증명이 아닙니다.
 - `external_tool`은 외부 도구의 출력이나 상태를 기록합니다. 그 자체로 제품 정확성 증명이 아닙니다.
-- `user_observation`은 사용자 귀속 관찰을 기록합니다. 그 자체로 최종 수락이나 다른 권한을 지니는 판단이 아닙니다.
+- `user_observation`은 사용자 귀속 관찰을 기록합니다. 그 자체로 최종 수락이나 그 밖의 권한 효력이 있는 판단이 아닙니다.
 - `reused_evidence`는 이전 증거나 아티팩트 재사용을 기록합니다. 그 자체로 새 관찰이 아닙니다.
 - `unverified_claim`은 확인된 관찰 없는 주장을 보존합니다. 그 자체로 충분한 증거가 아닙니다.
 
@@ -725,7 +725,7 @@ detective
 `cooperative`는 다른 근거가 없을 때 사용하는 기준 값입니다. `detective`는 보안 담당 문서가 그 주장을
 지원하고, 프로젝트 강제 사실, 확인된 Agent Connection 또는 User Channel 출처,
 활성화된 강제 메커니즘, 관찰 범위 사실이 이를 뒷받침할 때만 표시할 수 있습니다.
-선언된 연결 기능만으로 표시 보장을 높일 수 없습니다.
+선언된 연결 역량만으로 표시 보장을 높일 수 없습니다.
 
 `GuaranteeDisclosure.guarantee_class`는 아래 값을 사용합니다.
 
@@ -805,7 +805,7 @@ verified
 corrupt
 ```
 
-`verified`는 지속 아티팩트 사실이 무결성을 확인할 수 있을 만큼 완전하고 권한 사용 전에 현재 바이트 검증을 수행할 수 있다는 뜻입니다. `corrupt`는 저장된 바이트나 메타데이터가 지속 저장된 무결성 사실과 맞지 않는다고 알려져 있거나 저장된 `verified` 사실 관계가 유효하지 않다는 뜻입니다. 아티팩트를 증거나 닫기에 사용할 때 필요한 현재 바이트 확인은 [아티팩트 저장소](../storage-artifacts.md)가 담당합니다. 본문 바이트가 없거나, 읽을 수 없거나, 사용할 수 없거나, 사용에 부적합한 상태는 아티팩트 무결성 값이 아니라 아티팩트 가용성 값으로 표현합니다.
+`verified`는 영속 아티팩트의 무결성 사실이 충분하며, 권한 근거로 사용하기 전에 현재 바이트를 검증할 수 있다는 뜻입니다. `corrupt`는 저장된 바이트나 메타데이터가 저장된 무결성 사실과 맞지 않는다고 알려져 있거나, 저장된 `verified` 사실 관계가 유효하지 않다는 뜻입니다. 아티팩트를 증거나 닫기에 사용할 때 필요한 현재 바이트 확인은 [아티팩트 저장소](../storage-artifacts.md)가 담당합니다. 본문 바이트가 없거나, 읽을 수 없거나, 사용할 수 없거나, 사용에 부적합한 상태는 아티팩트 무결성 값이 아니라 아티팩트 가용성 값으로 표현합니다.
 
 아티팩트 저장소 생명주기와 본문 읽기 자격은 [아티팩트 저장소](../storage-artifacts.md)가 담당합니다.
 
@@ -881,7 +881,7 @@ superseded
 - `defer`는 메서드나 의미 담당 문서가 연기를 허용하는 곳에서만 `deferred`로 매핑됩니다.
 
 해결 결과 의미:
-- `accepted`는 판단 종류, 근거, 확인된 행위자 출처, 선택된 선택지, `machine_action=accept`가 모두 호환될 때 권한을 지니는 판단 요구사항을 만족할 수 있는 유일한 결과입니다.
+- `accepted`는 판단 종류, 근거, 확인된 행위자 출처, 선택된 선택지, `machine_action=accept`가 모두 호환될 때 권한 요구사항을 만족할 수 있는 유일한 결과입니다.
 - `rejected`와 `deferred`는 지속되는 사용자 결정이지만 어떤 것도 승인, 수락, 권한 부여, 면제, 닫기를 만들지 않습니다.
 - `blocked`는 제품의 다른 차단 결과와 차단 사유 값 집합에서 쓰이지만 `JudgmentResolutionOutcome` 값이 아니며 선택지 해결 결과로 저장할 수 없습니다.
 - 기계 판독 가능한 결과가 없으면 절대 `accepted`로 해석하면 안 됩니다.
