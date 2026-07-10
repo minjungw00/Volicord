@@ -1060,6 +1060,57 @@ fn prepare_write_rejects_escaping_product_path_without_effect() -> Result<(), Bo
 }
 
 #[test]
+fn prepare_write_rejects_portable_drive_prefixed_paths_without_effect() -> Result<(), Box<dyn Error>>
+{
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "prepare_drive_prefix")?;
+    let before = harness.counts()?;
+    let before_decision_events = write_decision_event_count(&harness)?;
+
+    for (request_id, idempotency_key, path) in [
+        (
+            "req_prepare_drive_absolute",
+            "idem_prepare_drive_absolute",
+            "C:/outside.rs",
+        ),
+        (
+            "req_prepare_drive_relative",
+            "idem_prepare_drive_relative",
+            "c:relative",
+        ),
+    ] {
+        let mut request = prepare_write_request(
+            request_id,
+            idempotency_key,
+            Some(2),
+            Some(&task_id),
+            Some(&change_unit_id),
+        );
+        request.intended_paths = vec![path.to_owned()];
+        let response = harness
+            .service
+            .prepare_write(request, invocation(OperationCategory::AgentWorkflow))?;
+
+        assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+        assert_eq!(
+            response.response_value["errors"][0]["code"],
+            "VALIDATION_FAILED"
+        );
+        assert!(response
+            .response_value
+            .get("write_decision_reasons")
+            .is_none());
+        assert_eq!(harness.counts()?, before);
+        assert_eq!(
+            write_decision_event_count(&harness)?,
+            before_decision_events
+        );
+    }
+
+    Ok(())
+}
+
+#[test]
 fn prepare_write_stale_state_rejects_without_effect() -> Result<(), Box<dyn Error>> {
     let mut harness = MethodHarness::new()?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "prepare_stale")?;
