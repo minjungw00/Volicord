@@ -86,6 +86,7 @@ the public method execution path.
 | `crates/volicord-store` | SQLite, Runtime Home, bootstrap, project Store, artifact storage, inspection, guard/session observation storage, local web consent storage, export snapshots, and storage-error implementation. |
 | `crates/volicord-core` | Adapter-independent Core service, shared request pipeline, method planning, policy checks, response construction, and Store coordination. |
 | `crates/volicord-cli` | Local `volicord` administrative binary and reusable command modules for setup, project registration, User Channel commands, Agent Connection setup, host adapters, guard workflows, and MCP process handoff. |
+| `crates/volicord-platform-fs` | Internal safe facade for the platform-native filesystem namespace operations used by local adapter code. It does not own managed-file policy or public product behavior. |
 | `crates/volicord-mcp` | MCP adapter library for startup validation, tool listing, `tools/call` decoding and dispatch, stdio framing, local HTTP transport, local web consent, and Core invocation. |
 | `crates/volicord-test-support` | Disposable Runtime Home, Product Repository, Store, Core, Agent Connection, and fixture helpers shared by implementation tests. |
 | `tests/conformance` | Baseline cross-method scenarios through Core-facing APIs and shared fixtures. |
@@ -105,6 +106,10 @@ The durable dependency direction is:
 - `volicord-cli` and `volicord-mcp` are adapter or local orchestration layers.
   They may depend on Core, Store, and shared types for their distinct setup,
   startup validation, routing, and invocation responsibilities.
+- `volicord-platform-fs` has no internal product-crate dependencies. Local
+  adapters may use its safe facade for platform-native filesystem namespace
+  operations; the calling adapter retains planning, ownership, verification,
+  recovery, and diagnostic responsibility.
 - Test-support and test packages compose implementation crates only for
   disposable fixtures and cross-layer verification.
 - `xtask` stays isolated as repository maintenance tooling and has no internal
@@ -122,6 +127,7 @@ placement remains with the Source Map.
 | Store commit boundary | Core method planners choose read-only, no-effect, dry-run, staging, or committed branches. Store applies normal committed Core mutations through its transaction boundary and keeps artifact staging separate from normal Core mutation commit. Core authority meaning stays with Core owners; exact storage records and effects stay with storage owners. | [Storage and Transactions](storage-and-transactions.md), [Request Lifecycle](request-lifecycle.md), [Core Model](../reference/core-model.md), [Storage](../reference/storage.md), and [Storage Effects](../reference/storage-effects.md). |
 | MCP adapter boundary | `volicord mcp --stdio` resolves Runtime Home and Agent Connection context, validates startup/session facts, exposes owner-defined tools by connection mode, selects permitted projects, decodes `tools/call`, derives adapter-managed invocation facts, calls Core, and wraps Core JSON as MCP content. | [Request Lifecycle](request-lifecycle.md), [Source Map](source-map.md), [MCP Transport](../reference/mcp-transport.md), and [Agent Connection](../reference/agent-connection.md). |
 | Administrative CLI and host adapters | The CLI orchestrates local setup, project registration, Agent Connection management, host integration, guard integration, diagnostics, and `User Channel` commands. These workflows are local administrative orchestration, not public Core methods or security proofs. | [CLI Workflows](cli-workflows.md), [Source Map](source-map.md), [Administrative CLI](../reference/admin-cli.md), and [Security](../reference/security.md). |
+| Platform filesystem facade | `volicord-platform-fs` isolates platform-native namespace primitives behind safe Rust results. It does not decide which files are managed, whether a replacement is authorized, whether a post-operation state is valid, or what recovery and diagnostics mean. Those responsibilities remain with the calling adapter and focused Reference owners. | [Source Map](source-map.md), [CLI Workflows](cli-workflows.md), [Administrative CLI](../reference/admin-cli.md), [Runtime Boundaries](../reference/runtime-boundaries.md), and [System Requirements](../reference/system-requirements.md). |
 | Tests and validation | Implementation tests verify owner-defined facts at the appropriate layer. Tests, fixtures, generated snapshots, and documentation checks do not become product contract owners. | [Testing Strategy](testing-strategy.md) and [Validation](../maintain/validation.md). |
 
 ## Detail routes

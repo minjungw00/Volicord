@@ -24,6 +24,7 @@
 | `crates/volicord-store` | `volicord-store` | SQLite, Runtime Home, 부트스트랩, 프로젝트 Store, 아티팩트 저장소, 검사, guard/session 관찰 저장, local web consent 저장, export snapshot, 저장소 오류 구현. |
 | `crates/volicord-core` | `volicord-core` | Core 서비스, 공유 요청 파이프라인, 메서드 계획, 정책 점검, 응답 구성, Store 조율. |
 | `crates/volicord-cli` | `volicord-cli` | 로컬 `volicord` 관리 바이너리, 재사용 명령 모듈, Runtime Home 설정, 프로젝트와 Agent Connection 등록, 호스트 어댑터, guard hook, User Channel 명령, 공개 `volicord mcp` 프로세스 디스패치. |
+| `crates/volicord-platform-fs` | `volicord-platform-fs` | 로컬 어댑터가 사용하는 플랫폼 고유 파일시스템 이름 공간 연산을 위한 내부 안전 파사드. |
 | `crates/volicord-mcp` | `volicord-mcp` | 시작 검증, 도구 목록, `tools/call` 디코딩과 디스패치, stdio 프레이밍, local HTTP 전송, Core 호출을 위한 로컬 MCP 어댑터 라이브러리. |
 | `crates/volicord-test-support` | `volicord-test-support` | 구현 테스트가 공유하는 폐기 가능한 Runtime Home, Product Repository, Store, Core, Agent Connection, 픽스처 도우미. |
 | `tests/conformance` | `volicord-conformance-tests` | 담당 문서가 정의한 동작을 Core 쪽 API와 공유 픽스처로 실행하는 기준 범위 교차 메서드 시나리오. |
@@ -41,6 +42,12 @@
 | `crates/volicord-types/src/values.rs` | 문서화된 값 이름을 위한 제어 Rust enum과 상수. |
 | `crates/volicord-types/src/ids.rs` | 불투명 식별자 래퍼와 durable ID 생성 도우미. |
 | `crates/volicord-types/src/canonical.rs` | 결정적 정규 JSON 직렬화와 요청 해시. |
+
+## 플랫폼 파일시스템 파사드
+
+| 소스 경로 | 책임 |
+|---|---|
+| `crates/volicord-platform-fs/src/lib.rs` | 로컬 어댑터에 필요한 좁은 플랫폼 고유 파일시스템 이름 공간 기본 연산을 위한 안전한 Rust 파사드. 운영체제 고유 연산 실패의 문서화된 이름 공간 효과를 보고하며, 대상 상태 검증, 정리, 복구, 제품 정책 결정은 호출자가 담당합니다. |
 
 ## Store
 
@@ -97,8 +104,8 @@
 | `crates/volicord-cli/src/guard_command.rs`와 `crates/volicord-cli/src/guard_command/` | Guard hook 명령 디스패치, 인수 파싱, host event 정규화, tool observation 추출, mutation 분류, phase 처리, prompt capture, prompt 안의 judgment 명령, 쓰기 티켓 점검, hook output 렌더링. |
 | `crates/volicord-cli/src/guard_integration/` | Guard integration 계획, 생성 guard 파일 적용, capability metadata, policy helper, 호스트별 guard hook 계획, connection status와 doctor diagnostics가 쓰는 사실 기반 audit helper. |
 | `crates/volicord-cli/src/guard_integration/plan.rs` | 호스트 capability, profile, project, runtime fact를 가로지르는 guard integration plan 조립. |
-| `crates/volicord-cli/src/guard_integration/files.rs` | 생성 guard 파일과 관리 policy 파일 계획. |
-| `crates/volicord-cli/src/guard_integration/apply.rs` | 생성 guard 파일과 관리 projection 적용. |
+| `crates/volicord-cli/src/guard_integration/files.rs` | 생성 guard 파일과 관리 policy 파일 계획, 고정된 Product Repository 경로 순회, 대상 스냅샷, 조건부 동일 디렉터리 교체, 연산 후 복구 검사. |
+| `crates/volicord-cli/src/guard_integration/apply.rs` | 계획된 생성 guard 파일과 관리 projection을 위한 렌더링과 적용 디스패치. |
 | `crates/volicord-cli/src/guard_integration/capability.rs` | Capability metadata와 기록된 guard installation metadata 도우미. |
 | `crates/volicord-cli/src/guard_integration/policy.rs` | Guard policy helper 값과 lifecycle phase 도우미. |
 | `crates/volicord-cli/src/guard_integration/hooks.rs`와 `crates/volicord-cli/src/guard_integration/hosts/` | Host hook command 계획과 호스트별 생성 파일 계획. |

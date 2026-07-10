@@ -23,10 +23,10 @@ Core는 Volicord 상태를 위한 로컬 기준 기록입니다.
 
 1. 요청된 변경을 분류합니다.
 
-   변경이 공유 타입, Store 동작, Core 메서드 동작, MCP 어댑터 동작, setup
-   workflow, connection provisioning, guard hook lifecycle, guard integration 파일,
-   호스트 어댑터, 테스트 픽스처, 아키텍처 가이드 전용 중 어디에 닿는지
-   정합니다. 둘 이상의 경계를 건너면 질문을 나누어 둡니다.
+   변경이 공유 타입, 플랫폼 파일시스템 기본 연산, Store 동작, Core 메서드 동작,
+   MCP 어댑터 동작, setup workflow, connection provisioning, guard hook lifecycle,
+   guard integration 파일, 호스트 어댑터, 테스트 픽스처, 아키텍처 가이드 전용 중
+   어디에 닿는지 정합니다. 둘 이상의 경계를 건너면 질문을 나누어 둡니다.
 
 2. 현재 구현 경로를 찾습니다.
 
@@ -83,6 +83,7 @@ Core는 Volicord 상태를 위한 로컬 기준 기록입니다.
 | 변경 유형 | 첫 구현 경로 | 첫 참조 담당 경로 | 유용한 테스트 계층 | 확인할 아키텍처 가이드 설명 |
 |---|---|---|---|---|
 | 공유 요청 또는 값 타입 | `crates/volicord-types/src/methods.rs`, `schema.rs`, `values.rs`, `ids.rs`, `canonical.rs` | API 스키마 담당 문서와 [값 집합](../reference/api/schema-value-sets.md), 메서드별 의미는 메서드 담당 문서 | `volicord-types` 단위 테스트. 형태가 메서드 계획이나 어댑터 노출에 영향을 주면 Core 또는 MCP 테스트 | [코드베이스 둘러보기](codebase-tour.md), [구현 설계 패턴](design-patterns.md), [테스트 전략](testing-strategy.md) |
+| 플랫폼 파일시스템 기본 연산 또는 어댑터 관리 조건부 파일 교체 | 안전한 플랫폼 파사드는 `crates/volicord-platform-fs/src/lib.rs`, 계획, 대상 검증, 정리, 복구, 진단은 `crates/volicord-cli/src/guard_integration/files.rs` 같은 호출 어댑터 | 정확한 명령 동작은 [관리 CLI](../reference/admin-cli.md), Product Repository 파일 배치는 [런타임 경계](../reference/runtime-boundaries.md), 환경 전제 조건은 [시스템 요구사항](../reference/system-requirements.md) | `volicord-platform-fs` 단위 테스트와 호출 모듈 테스트. 바이너리에 보이면 `binary_admin`, 운영체제 고유 경로가 바뀌면 대상별 컴파일 또는 테스트 | [구현 아키텍처](architecture.md), [소스 지도](source-map.md), [CLI 작업 흐름](cli-workflows.md), [테스트 전략](testing-strategy.md) |
 | Store 동작 | `crates/volicord-store/src/core_pipeline.rs`, `core_pipeline/mutation_apply.rs`, `schema.rs`, `schema/*.sql`, `sqlite.rs`, `bootstrap.rs`, `artifacts.rs` | [저장소](../reference/storage.md), [저장 효과](../reference/storage-effects.md), [저장소 기록](../reference/storage-records.md), [저장소 DDL](../reference/storage-ddl.md), [아티팩트 저장소](../reference/storage-artifacts.md), [저장소 버전 관리](../reference/storage-versioning.md) | Store 단위 테스트. 공개 효과는 Core 메서드 테스트, 계층 간 동작은 적합성 또는 MCP 통합 테스트 | [저장소와 트랜잭션](storage-and-transactions.md), [구현 아키텍처](architecture.md), 결정 기록 |
 | Core 메서드 동작 | `crates/volicord-core/src/methods/`, `pipeline.rs`, `policy/` | [API 메서드](../reference/api/methods.md)에서 연결된 메서드 담당 문서. 닿은 영역에 따라 스키마, 오류, 저장소, Core 모델, 보안 담당 문서 추가 | `crates/volicord-core/src/methods/tests/mod.rs`, 파이프라인 테스트, 교차 메서드 기준 범위 시나리오는 적합성 테스트 | [요청 생명주기](request-lifecycle.md), [구현 설계 패턴](design-patterns.md), [저장소와 트랜잭션](storage-and-transactions.md) |
 | MCP 어댑터 동작 | `crates/volicord-mcp/src/lib.rs`, `adapter.rs`, `routing.rs`, `tool_registry.rs`, `stdio.rs`, `local_http.rs`, `local_web_consent.rs`, `crates/volicord-cli/src/main.rs`의 `volicord mcp` 또는 `volicord serve` 디스패치 | [MCP 전송](../reference/mcp-transport.md), 검증된 연결 맥락은 [Agent Connection](../reference/agent-connection.md), 공개 도구 집합은 [API 메서드](../reference/api/methods.md) | `crates/volicord-mcp/src/tests.rs`, `mcp_transport`, `serve_transport`, `tests/integration/mcp_connection.rs`, 생성 API 또는 MCP 도구 projection이 바뀌면 `public_contract_snapshots` | [요청 생명주기](request-lifecycle.md), [아키텍처 결정](decisions/README.md), [테스트 전략](testing-strategy.md) |
@@ -108,6 +109,7 @@ Core는 Volicord 상태를 위한 로컬 기준 기록입니다.
 |---|---|---|
 | 아키텍처 가이드, 문서 경로, 링크, 메타데이터 | `cargo run -p xtask -- docs-check` | docs-check 동작이 바뀌면 `cargo test -p xtask`. |
 | 공유 타입, 공개 스키마, 값 집합, 식별자, 요청 해시, 생성 공개 API/MCP projection | `cargo test -p volicord-types`. Projection이나 snapshot이 영향을 받으면 `cargo test -p volicord-integration-tests --test public_contract_snapshots` | 메서드 계획이 바뀌면 Core 메서드 테스트, 어댑터에 보이는 동작이 바뀌면 MCP 통합 테스트, 유지 문서가 바뀌면 docs-check. |
+| 플랫폼 파일시스템 기본 연산 또는 어댑터 관리 조건부 파일 교체 | `cargo test -p volicord-platform-fs`. `cargo test -p volicord-cli --lib guard_integration` 같은 호출 모듈 테스트 | 운영체제 고유 코드가 바뀌면 대상별 `cargo check` 또는 테스트, 관리 결과가 바이너리에 보이면 `binary_admin`, 담당 문서나 아키텍처 가이드가 바뀌면 `docs-check`. |
 | Core 메서드 또는 공유 파이프라인 동작 | `cargo test -p volicord-core` | 교차 메서드 기준 범위 시나리오는 `cargo test -p volicord-conformance-tests --test baseline`, MCP에 보이는 맥락은 `cargo test -p volicord-integration-tests --test mcp_connection`. |
 | Store, Storage DDL, 트랜잭션, Runtime Home, 아티팩트 저장소 동작 | `cargo test -p volicord-store`. DDL 또는 canonical SQL 변경에는 `cargo test -p volicord-store --test storage_ddl_contract` | 공개 메서드에서 보이는 저장 효과가 바뀌면 Core, 적합성, MCP 통합 테스트. |
 | MCP stdio 또는 로컬 HTTP 전송, 도구 목록, 시작, 프로젝트 라우팅 | `cargo test -p volicord-mcp`. 영향을 받는 프로세스 경로에 따라 `cargo test -p volicord-cli --test mcp_transport` 또는 `cargo test -p volicord-cli --test serve_transport` | MCP를 통해 Core/Store 동작을 관찰해야 하면 `cargo test -p volicord-integration-tests --test mcp_connection`, 생성 도구 projection drift는 `cargo test -p volicord-integration-tests --test public_contract_snapshots`. |

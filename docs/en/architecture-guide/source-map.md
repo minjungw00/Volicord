@@ -27,6 +27,7 @@ All source and test paths are relative to the repository root.
 | `crates/volicord-store` | `volicord-store` | SQLite, Runtime Home, bootstrap, project Store, artifact storage, inspection, guard/session observation storage, local web consent storage, export snapshots, and storage-error implementation. |
 | `crates/volicord-core` | `volicord-core` | Core service, shared request pipeline, method planning, policy checks, response construction, and Store coordination. |
 | `crates/volicord-cli` | `volicord-cli` | Local `volicord` administrative binary, reusable command modules, Runtime Home setup, project and Agent Connection registration, host adapters, guard hooks, User Channel commands, and public `volicord mcp` process dispatch. |
+| `crates/volicord-platform-fs` | `volicord-platform-fs` | Internal safe facade for platform-native filesystem namespace operations used by local adapters. |
 | `crates/volicord-mcp` | `volicord-mcp` | Local MCP adapter library for startup validation, tool listing, `tools/call` decoding and dispatch, stdio framing, local HTTP transport, and Core invocation. |
 | `crates/volicord-test-support` | `volicord-test-support` | Disposable Runtime Home, Product Repository, Store, Core, Agent Connection, and fixture helpers shared by implementation tests. |
 | `tests/conformance` | `volicord-conformance-tests` | Baseline cross-method scenarios that exercise owner-defined behavior through Core-facing APIs and shared fixtures. |
@@ -44,6 +45,12 @@ All source and test paths are relative to the repository root.
 | `crates/volicord-types/src/values.rs` | Controlled Rust enums and constants for documented value names. |
 | `crates/volicord-types/src/ids.rs` | Opaque identifier wrappers and durable ID generation helpers. |
 | `crates/volicord-types/src/canonical.rs` | Deterministic canonical JSON serialization and request hashing. |
+
+## Platform filesystem facade
+
+| Source path | Responsibility |
+|---|---|
+| `crates/volicord-platform-fs/src/lib.rs` | Safe Rust facade for the narrow platform-native filesystem namespace primitives needed by local adapters. It reports documented namespace effects for native failures; callers retain target-state verification, cleanup, recovery, and product-policy decisions. |
 
 ## Store
 
@@ -100,8 +107,8 @@ All source and test paths are relative to the repository root.
 | `crates/volicord-cli/src/guard_command.rs` and `crates/volicord-cli/src/guard_command/` | Guard hook command dispatch, argument parsing, host event normalization, tool observation extraction, mutation classification, phase handling, prompt capture, prompt-embedded judgment commands, write-ticket checks, and hook output rendering. |
 | `crates/volicord-cli/src/guard_integration/` | Guard integration planning, generated guard file application, capability metadata, policy helpers, host-specific guard hook planning, and factual audit helpers used by connection status and doctor diagnostics. |
 | `crates/volicord-cli/src/guard_integration/plan.rs` | Guard integration plan assembly across host capability, profile, project, and runtime facts. |
-| `crates/volicord-cli/src/guard_integration/files.rs` | Generated guard file and managed policy file plans. |
-| `crates/volicord-cli/src/guard_integration/apply.rs` | Application of generated guard files and managed projections. |
+| `crates/volicord-cli/src/guard_integration/files.rs` | Generated guard file and managed policy file plans, pinned Product Repository path traversal, target snapshots, conditional same-directory replacement, and post-operation recovery inspection. |
+| `crates/volicord-cli/src/guard_integration/apply.rs` | Rendering and application dispatch for planned generated guard files and managed projections. |
 | `crates/volicord-cli/src/guard_integration/capability.rs` | Capability metadata and recorded guard installation metadata helpers. |
 | `crates/volicord-cli/src/guard_integration/policy.rs` | Guard policy helper values and lifecycle phase helpers. |
 | `crates/volicord-cli/src/guard_integration/hooks.rs` and `crates/volicord-cli/src/guard_integration/hosts/` | Host hook command planning and host-specific generated file planning. |

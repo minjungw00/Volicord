@@ -74,8 +74,9 @@ Dry-run이 아닌 프로비저닝은 Runtime Home 상태를 초기화하거나 �
 Repository 프로젝트를 등록하거나 재사용하며, Agent Connection 기록을 만들거나 갱신하고,
 선택된 프로젝트 membership 경계를 적용하며, Connection Projects membership을 추가하거나
 확인합니다. 그다음 CLI는 선택된 호스트 어댑터를 통해 host plan을 적용합니다. Init은
-프로젝트와 Agent Connection fact가 존재한 뒤 guard integration plan도 적용하고 guard
-installation metadata를 기록합니다.
+이 적용이 guard 대상과 부모 디렉터리를 만들거나 바꿀 수 있으므로 결과 파일시스템 상태를
+기준으로 guard 통합 계획을 다시 만든 뒤 적용합니다. 그다음 프로젝트와 Agent
+Connection 사실이 존재하는 상태에서 guard 설치 메타데이터를 기록합니다.
 
 검증은 host와 guard 적용 뒤 실행됩니다. 호스트 어댑터에서 관찰 가능한 host fact를
 요청하고, 해석된 Runtime Home과 Agent Connection 바인딩으로 CLI MCP preflight를
@@ -168,9 +169,13 @@ Agent Connection이 존재한 뒤 guidance를 보고할 수 있지만 임의 ext
 
 Guard integration은 detective-aware workflow를 위한 generated file, policy JSON, host hook
 command, capability metadata, prompt-capture availability, factual audit input을 계획합니다.
-Application은 계획된 managed file 또는 managed block만 씁니다. Audit은 기록된 metadata와
-generated file을 읽어 status, verification, doctor를 위한 missing, stale, broken, unsafe,
-unobserved fact를 분류합니다.
+Application은 계획된 managed file 또는 managed block만 씁니다. 관리 파일 적용은 Product
+Repository 부모 경로를 고정하고, 커밋 전에 계획된 대상 스냅샷을 비교하며, 같은
+디렉터리의 보조 항목에 스테이징합니다. 운영체제 고유 이름 공간 연산이 필요하면 플랫폼
+파일시스템 파사드를 사용하고, 연산 뒤 관련 항목을 검증합니다. 정리, 복구 검사, 진단
+구성은 CLI 호출자가 담당하며 플랫폼 파사드가 결정하지 않습니다. Audit은 기록된
+메타데이터와 생성 파일을 읽어 status, verification, doctor를 위한 missing, stale,
+broken, unsafe, unobserved 사실을 분류합니다.
 
 Guard integration fact는 진단과 workflow routing을 뒷받침할 수 있습니다. 보안 보장, host
 approval, 사용자 승인, 정확성 증명, 완전한 filesystem monitoring, 모델이 Product Repository

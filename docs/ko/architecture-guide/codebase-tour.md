@@ -59,6 +59,9 @@
   구현합니다.
 - `volicord-mcp`와 `volicord-cli`는 Core와 Store 주변의 어댑터이자 로컬
   관리 진입점입니다.
+- `volicord-platform-fs`는 로컬 어댑터에 좁은 범위의 안전한 플랫폼
+  파일시스템 기본 연산을 제공하는 내부 의존성 말단입니다. 제품 정책, 검증,
+  정리, 복구, 진단은 호출자가 계속 담당합니다.
 - `volicord-test-support`, `tests/integration`, `tests/conformance`는 폐기
   가능한 검증을 위해 크레이트를 조합합니다.
 - `xtask`는 저장소 유지보수 도구이며 제품 런타임 아키텍처와 분리됩니다.
@@ -184,6 +187,21 @@ Store는 Runtime Home 경로 처리, registry와 프로젝트 데이터베이스
 사용합니다. 그 문서는 계획과 변이의 분리, 원자적 커밋 경계, 재실행, 상태 버전,
 아티팩트, 실패 경계를 가이드 수준으로 설명합니다. 정확한 Store 하위 모듈 지도는
 [소스 지도](source-map.md)를 사용합니다.
+
+## `crates/volicord-platform-fs`
+
+로컬 어댑터가 플랫폼 고유 파일시스템 이름 공간 경계에 도달할 때만
+`volicord-platform-fs`를 읽습니다. 안전한 결과 타입과 좁은 운영체제 고유 연산
+파사드는
+[`crates/volicord-platform-fs/src/lib.rs`](../../../crates/volicord-platform-fs/src/lib.rs)에서
+확인합니다. 대상 스냅샷, 소유권 규칙, 연산 후 검증, 정리, 복구, 진단은 다시
+호출 어댑터에서 확인해야 합니다. 현재 guard 통합 경로의 호출자는
+[`crates/volicord-cli/src/guard_integration/files.rs`](../../../crates/volicord-cli/src/guard_integration/files.rs)입니다.
+
+플랫폼 파사드는 범용 파일시스템 추상화가 아니며 관리 동작을 담당하지 않습니다.
+정확한 관리 파일 계약과 전제 조건은 [관리 CLI](../reference/admin-cli.md),
+[런타임 경계](../reference/runtime-boundaries.md),
+[시스템 요구사항](../reference/system-requirements.md)을 사용합니다.
 
 ## `crates/volicord-cli`
 

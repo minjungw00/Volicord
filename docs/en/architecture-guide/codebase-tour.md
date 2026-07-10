@@ -63,6 +63,9 @@ The shortest dependency mental model is:
   method handling.
 - `volicord-mcp` and `volicord-cli` are adapters and local administrative
   entry points around Core and Store.
+- `volicord-platform-fs` is an internal dependency leaf that exposes narrow
+  safe platform filesystem primitives to local adapters; callers keep product
+  policy, verification, cleanup, recovery, and diagnostics.
 - `volicord-test-support`, `tests/integration`, and `tests/conformance` compose
   crates for disposable verification.
 - `xtask` is repository maintenance tooling, separate from product runtime
@@ -191,6 +194,23 @@ Use [Storage and Transactions](storage-and-transactions.md) while reading the
 commit path. That page explains the planning-to-mutation split, atomic commit
 boundary, replay, state-version, artifact, and failure boundaries at guide
 level. Use [Source Map](source-map.md) for the exact Store submodule map.
+
+## `crates/volicord-platform-fs`
+
+Read `volicord-platform-fs` only when a local adapter reaches a
+platform-native filesystem namespace boundary. Open
+[`crates/volicord-platform-fs/src/lib.rs`](../../../crates/volicord-platform-fs/src/lib.rs)
+to see the safe result types and narrow native-operation facade. Then return to
+the calling adapter for target snapshots, ownership rules, post-operation
+verification, cleanup, recovery, and diagnostics. In the current guard
+integration path, that caller is
+[`crates/volicord-cli/src/guard_integration/files.rs`](../../../crates/volicord-cli/src/guard_integration/files.rs).
+
+The platform facade is not a general filesystem abstraction and does not own
+administrative behavior. Use [Administrative CLI](../reference/admin-cli.md),
+[Runtime Boundaries](../reference/runtime-boundaries.md), and
+[System Requirements](../reference/system-requirements.md) for the exact
+managed-file contract and prerequisites.
 
 ## `crates/volicord-cli`
 

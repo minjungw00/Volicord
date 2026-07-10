@@ -205,6 +205,33 @@ Read access is required when Volicord validates or uses the registered project. 
 - Volicord-managed Claude Code hook wrapper scripts under `.claude/hooks/`
 - Volicord-managed Claude Code rule files under `.claude/rules/`
 
+Applying a generated guard-integration file from this list also requires the
+selected filesystem and process to support a conditional same-directory commit.
+This requirement applies to managed guidance, policy, hook, wrapper, and rule
+files; project-scoped MCP configuration is applied through its host adapter and
+does not inherit this guard-integration commit guarantee.
+
+- The resolved Product Repository path and target-parent chain must remain
+  directories that can be opened without following symbolic links. An existing
+  target must be a regular file, and the target directory must allow creation
+  and removal of private sibling staging entries.
+- On Linux and macOS, an existing-file update requires native same-directory
+  no-replace and exchange operations. The process must be able to read, reapply,
+  and verify the predecessor's POSIX mode, user ID, group ID, and all extended
+  attributes exposed by the platform interface.
+- On native Windows, creation requires the access needed for a `MoveFileExW`
+  no-replace move. Updating an existing file additionally requires a local NTFS
+  volume that supports same-volume hard links, the ability to deny new write
+  sharing on the predecessor, and access for `ReplaceFileW` replacement with a
+  pre-reserved backup entry. Windows supplies the native attribute and ACL merge
+  behavior. ReFS and network filesystems are not supported for this existing-file
+  update path; failure to create the preservation hard link fails the update.
+- A supported operating-system target does not imply that every network,
+  virtual, userspace, or mounted filesystem supplies these namespace and
+  metadata semantics. Such filesystems are unverified for managed-file update.
+  If the required operation or metadata reproduction is unavailable, the CLI
+  fails the write rather than reporting a successful managed update.
+
 Codex detective setup requires the selected Product Repository to be a Git
 work tree so generated hooks can resolve the project root without depending on
 the host session cwd. This Git-root requirement is for Codex detective host hook path
@@ -259,6 +286,10 @@ Stop before installation when any of these conditions apply:
 - The Runtime Home and Product Repository are the same path or one contains the other.
 - Native Windows setup uses a UNC path, a WSL UNC path, or WSL mount-style path for the Runtime Home or Product Repository.
 - The Product Repository is missing, is not a directory, or is not writable for a requested project-scoped configuration or guidance write.
+- A requested guard-integration managed-file write cannot safely traverse the
+  target without following symbolic links, cannot use the required
+  same-directory namespace operation, or cannot reproduce the required
+  existing-file metadata.
 - Shared-intent host configuration cannot start `volicord mcp --stdio` from the future host environment's `PATH`.
 - Codex or Claude Code is required for the selected host path but the administrative compatibility check cannot launch or interpret the host.
 - Native Windows setup requests `--profile detective`.

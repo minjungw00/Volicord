@@ -92,6 +92,18 @@ The only baseline exceptions are explicitly requested integration files:
 - Volicord-managed host rule files, such as Codex `.codex/rules/*.rules` or
   Claude Code files under `.claude/rules/`
 
+A requested guard-integration managed-file application may use
+implementation-private sibling entries in the target directory for staging,
+displacement, or rollback. Those entries are transient parts of the one
+requested integration-file write; they are not additional baseline
+integration-file types, Runtime Home data, managed host configuration, or
+durable recovery records. A successful application or a verified rollback must
+remove every sibling entry still owned by that attempt. When automatic recovery
+stops to avoid overwriting concurrently changed bytes, the command may leave
+only the entries it reports as present at inspection. Their names and retention
+are not stable interfaces. Inspect a reported entry before any manual deletion
+or replacement.
+
 The common Record-profile Codex setup files are `.codex/config.toml`,
 `.volicord/policy.json`, and a managed Volicord guidance block in `AGENTS.md`.
 These are repo-local integration files, not Runtime Home data. Whether to
@@ -106,6 +118,10 @@ Rules:
 - The write must use Volicord ownership markers or a managed fingerprint.
 - Existing unmanaged content must be reported as a conflict rather than overwritten.
 - Replacement may apply only to matching Volicord-managed content.
+- Guard-integration conditional creation or replacement must reject a changed
+  target or parent path instead of treating a stale plan as authority. Exact
+  commit, rollback, residual-entry reporting, and metadata behavior remain with
+  [Administrative CLI](admin-cli.md#agent-host-setup-and-init).
 - Safe removal may remove only matching Volicord-managed content and must leave unrelated project files intact.
 - These files are host configuration or guidance. They are not Volicord runtime state, Core authority, evidence, acceptance, close readiness, residual-risk acceptance, or a security guarantee.
 - Cwd-independent hook commands and managed wrapper path verification are host

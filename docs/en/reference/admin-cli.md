@@ -54,7 +54,7 @@ For canonical vocabulary, see [Documentation Policy](../maintain/documentation-p
 |---|---|---|
 | Supported administrative command names, options, stdout/stderr routing, process exit codes, dry-run behavior, and local User Channel command names | `stable` | These are local CLI contracts, not public Volicord API methods. |
 | `detective` profile setup, host-hook observation, session watcher observation, local consent availability reporting, and host-specific integration capability reporting | `beta` | These are supported cooperative observation surfaces with capability gates and owner-defined non-guarantees. |
-| Hidden hook lifecycle namespace, generated wrapper details, stored internal identities, host config keys, and process-binding values | `internal` | These details support generated host integrations and must not become normal user-facing command inputs. |
+| Hidden hook lifecycle namespace, generated wrapper details, conditional guard-integration staging and recovery sibling names, stored internal identities, host config keys, and process-binding values | `internal` | These details support generated host integrations and must not become normal user-facing command inputs or stable recovery-file names. |
 | Human-readable init onboarding summaries, status summaries, doctor reports, connection verification reports, compact summary cards, action text, and diagnostic disclosures | `diagnostic` | JSON field presence and stable IDs are contracts only where this page explicitly requires them; text formatting is not a public API schema. |
 
 ## Command model
@@ -454,6 +454,58 @@ managed blocks, policy files, host MCP entries, and detective installation recor
 without duplicating them. If an existing target contains unmanaged content where
 Volicord requires ownership markers or a managed fingerprint, init must report a
 conflict instead of overwriting it.
+
+Applying a planned guard-integration managed file during init is a conditional
+same-directory commit. This rule covers managed guidance, policy, hook, wrapper,
+and rule files; host-adapter application of project-scoped MCP configuration
+remains a separate boundary. Guard-integration planning captures a missing target
+or a stable regular-file snapshot. Application pins the `Product Repository` and
+each target-parent directory without following symbolic links, rejects a changed
+or non-regular target, writes a sibling staging file, and uses the platform's
+no-replace create or native replace/exchange operation. A create must not replace
+a concurrently created target. An update is successful only after the installed
+target matches the staged file, the displaced entry matches the planned
+predecessor, and the displaced entry has been removed.
+
+When a concurrent change or a native partial-failure state prevents that verified
+result, the CLI attempts rollback only while every participating entry still
+matches the state it inspected. A verified rollback removes its owned sibling
+entries and reports failure. If automatic recovery cannot continue without
+risking concurrent bytes, the CLI reports failure, names only recovery entries
+that actually exist when inspected, and stops automatic deletion or replacement.
+Internal sibling names have no stable naming or retention contract. Atomicity here
+means the supported platform's same-directory namespace transition; it does not
+make provisioning a transaction across multiple files or Runtime Home state, and
+it is not a power-loss durability guarantee.
+
+The conditional-write checks cover changes to the managed target and its parent
+path by ordinary concurrent writers. Implementation-private sibling names are
+reserved to the active CLI attempt. A same-authority local process that discovers
+and deliberately deletes or replaces those unpredictable names is outside this
+cooperative-write guarantee. The CLI revalidates every state it can observe, but
+these names are not an OS sandbox or an isolation boundary against another
+process that already has write and delete authority in the directory.
+
+Metadata handling for an existing guard-integration managed-file update is
+platform-specific:
+
+- On Linux and macOS, the sibling staging file remains at mode `0600` while its
+  content is written. The CLI then reapplies and verifies the predecessor's POSIX
+  mode, user ID, group ID, and all extended attributes exposed through the
+  selected platform interface before commit. If it cannot read, reproduce, or
+  verify that set, it rejects the update before reporting success. This covers an
+  ACL only when the operating system represents that ACL through those extended
+  attributes; it is not a guarantee for a separate metadata mechanism that the
+  interface does not expose.
+- On native Windows, the CLI denies new write sharing on the planned predecessor,
+  reserves the backup name with a private create-new entry, and preserves a
+  second hard link to the predecessor before using the default `ReplaceFileW`
+  attribute and ACL merge behavior. It re-inspects the target, replacement,
+  backup, and preserved predecessor after every native return. That native merge
+  is not a portable metadata-equivalence guarantee.
+- A newly created managed file receives the normal metadata of a new file in the
+  selected directory. No cross-platform owner, ACL, extended-attribute, timestamp,
+  alternate-stream, label, or other complete-metadata equivalence is implied.
 
 <a id="volicord-agent-install"></a>
 ## Agent Connection commands

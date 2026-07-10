@@ -82,9 +82,10 @@ Non-dry-run provisioning initializes or reuses Runtime Home state, registers or
 reuses the selected Product Repository project, creates or updates the Agent
 Connection record, enforces the selected project membership boundary, and adds
 or confirms Connection Projects membership. The CLI then applies the host plan
-through the selected host adapter. Init also applies the guard integration plan
-and records guard installation metadata after the project and Agent Connection
-facts exist.
+through the selected host adapter. Because that apply can create or change
+directories shared with guard targets, init rebuilds the guard integration plan
+against the resulting filesystem state before applying it. It then records
+guard installation metadata after the project and Agent Connection facts exist.
 
 Verification runs after host and guard application. It asks the host adapter for
 observable host facts, runs CLI MCP preflight using the resolved Runtime Home
@@ -190,9 +191,14 @@ host configuration.
 Guard integration plans generated files, policy JSON, host hook commands,
 capability metadata, prompt-capture availability, and factual audit inputs for
 detective-aware workflows. Application writes only the planned managed files or
-managed blocks. Audit reads recorded metadata and generated files to classify
-missing, stale, broken, unsafe, or unobserved facts for status, verification,
-and doctor.
+managed blocks. Managed-file application pins the Product Repository parent
+path, compares the planned target snapshot before commit, stages a sibling
+entry, uses the platform filesystem facade when a native namespace operation is
+needed, and verifies the participating entries after the operation. The CLI
+caller owns cleanup, recovery inspection, and diagnostic construction; the
+platform facade does not make those decisions. Audit reads recorded metadata
+and generated files to classify missing, stale, broken, unsafe, or unobserved
+facts for status, verification, and doctor.
 
 Guard integration facts can support diagnostics and workflow routing. They do
 not imply security guarantees, host approval, user approval, correctness proof,

@@ -199,6 +199,29 @@ Volicord가 등록된 프로젝트를 검증하거나 사용할 때는 읽기 �
 - `.claude/hooks/` 아래의 Volicord 관리 Claude Code hook wrapper script
 - `.claude/rules/` 아래의 Volicord 관리 Claude Code rule 파일
 
+이 목록의 생성된 guard 통합 파일을 적용하려면 선택한 파일시스템과 프로세스가 같은
+디렉터리의 조건부 커밋도 지원해야 합니다. 이 요구사항은 관리 지침, 정책, hook,
+wrapper, rule 파일에 적용됩니다. 프로젝트 범위 MCP 설정은 해당 호스트 어댑터를 통해
+적용되며 이 guard 통합 커밋 보장을 그대로 적용하지 않습니다.
+
+- 해석된 Product Repository 경로와 대상의 부모 경로 연결은 심볼릭 링크를 따라가지
+  않고 열 수 있는 디렉터리로 유지되어야 합니다. 기존 대상은 일반 파일이어야 하며,
+  대상 디렉터리에서 전용 스테이징 항목을 만들고 제거할 수 있어야 합니다.
+- Linux와 macOS에서 기존 파일을 갱신하려면 같은 디렉터리에서 기존 대상을 덮어쓰지
+  않는 생성 연산과 맞바꾸기 연산을 운영체제가 제공해야 합니다. 프로세스는 이전
+  파일의 POSIX 모드, 사용자 ID, 그룹 ID, 플랫폼 인터페이스가 노출하는 모든 확장
+  속성을 읽고, 다시 적용하고, 검증할 수 있어야 합니다.
+- 네이티브 Windows에서 생성에는 기존 대상을 덮어쓰지 않는 `MoveFileExW` 이동 권한이
+  필요합니다. 기존 파일 갱신에는 같은 volume의 hard link를 지원하는 로컬 NTFS volume,
+  이전 파일에 대한 새 쓰기 공유를 차단할 수 있는 권한, 미리 예약한 백업 항목을 사용하는
+  `ReplaceFileW` 교체 권한도 필요합니다. 속성과 ACL 병합은 Windows 고유 동작을
+  사용합니다. ReFS와 network filesystem은 이 기존 파일 갱신 경로에서 지원하지 않으며,
+  보존 hard link를 만들 수 없으면 갱신에 실패합니다.
+- 지원되는 운영체제 대상이라고 해서 모든 네트워크, 가상, 사용자 공간, 마운트
+  파일시스템이 이런 이름 공간과 메타데이터 의미를 제공하는 것은 아닙니다. 그런
+  파일시스템에서 관리 파일 갱신은 미검증입니다. 필요한 연산이나 메타데이터 재현을
+  사용할 수 없으면 CLI는 관리 갱신이 성공했다고 보고하지 않고 쓰기에 실패합니다.
+
 Codex detective 설정에는 선택된 Product Repository가 Git work tree여야 합니다.
 생성된 hook이 호스트 session cwd에 의존하지 않고 프로젝트 root를 해석하기 위해서입니다.
 이 Git-root 요구사항은 Codex detective host hook 경로 안전성에만 해당하며, 통합 파일을 Volicord
@@ -260,6 +283,9 @@ CLI](admin-cli.md)가 정의한 관리 결과 게이트가 필요합니다.
 - Native Windows 설정에서 Runtime Home 또는 Product Repository에 UNC 경로, WSL UNC 경로,
   WSL mount-style 경로를 사용합니다.
 - Product Repository가 없거나, 디렉터리가 아니거나, 요청한 프로젝트 범위 설정 또는 지침 쓰기에 필요한 쓰기가 불가능합니다.
+- 요청된 guard 통합 관리 파일 쓰기가 심볼릭 링크를 따라가지 않고 대상을 안전하게
+  순회할 수 없거나, 필요한 같은 디렉터리 이름 공간 연산을 사용할 수 없거나, 필요한
+  기존 파일 메타데이터를 재현할 수 없습니다.
 - shared-intent 호스트 설정이 미래의 호스트 환경의 `PATH`에서 `volicord mcp --stdio`를 시작할 수 없습니다.
 - 선택한 호스트 경로에 Codex 또는 Claude Code가 필요한데 관리 호환성 점검이 호스트를 시작하거나 해석할 수 없습니다.
 - Native Windows 설정에서 `--profile detective`를 요청합니다.
