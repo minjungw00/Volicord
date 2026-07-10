@@ -5,20 +5,21 @@ mod support;
 use std::{error::Error, fs};
 
 use serde_json::{json, Value};
+use support::{
+    assertions::{assert_success, json_stdout, stderr, stdout},
+    guard_fixture::*,
+};
 use volicord_store::guards::{
     expected_write, guard_event, guard_health_record, guard_installation,
     list_pending_expected_writes, list_unresolved_unrecorded_changes, prompt_capture,
     prompt_capture_availability, unrecorded_change,
 };
+
+#[cfg(unix)]
 use volicord_types::JudgmentKind;
 
-use support::{
-    assertions::{
-        assert_close_blocker, assert_no_close_blocker, assert_success, close_blocker_codes,
-        json_stdout, stderr, stdout,
-    },
-    guard_fixture::*,
-};
+#[cfg(unix)]
+use support::assertions::{assert_close_blocker, assert_no_close_blocker, close_blocker_codes};
 
 #[test]
 fn guard_session_start_injects_context_and_records_event() -> Result<(), Box<dyn Error>> {

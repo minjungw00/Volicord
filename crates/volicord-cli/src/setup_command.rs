@@ -271,13 +271,12 @@ mod tests {
     };
     use volicord_test_support::TempRuntimeHome;
 
-    use super::*;
-    use super::{
-        interactive::{
-            plan_interactive_menu_choices, InteractiveMenuChoice, InteractiveSetupChoice,
-        },
-        workflow::{OutputFormat, ParsedSetupOptions},
+    #[cfg(unix)]
+    use super::interactive::{
+        plan_interactive_menu_choices, InteractiveMenuChoice, InteractiveSetupChoice,
     };
+    use super::workflow::{OutputFormat, ParsedSetupOptions};
+    use super::*;
 
     #[derive(Debug)]
     struct FakeProcess {
@@ -298,6 +297,7 @@ mod tests {
     #[derive(Debug)]
     enum FakeTerminalInput {
         Line(String),
+        #[cfg(unix)]
         MenuChoiceContaining(String),
     }
 
@@ -306,6 +306,7 @@ mod tests {
             Self::Line(line.into())
         }
 
+        #[cfg(unix)]
         fn menu_choice_containing(label: impl Into<String>) -> Self {
             Self::MenuChoiceContaining(label.into())
         }
@@ -328,6 +329,7 @@ mod tests {
             }
         }
 
+        #[cfg(unix)]
         fn with_inputs(inputs: Vec<FakeTerminalInput>) -> Self {
             Self {
                 input: inputs.into(),
@@ -352,6 +354,7 @@ mod tests {
             };
             let line = match next_input {
                 FakeTerminalInput::Line(line) => line,
+                #[cfg(unix)]
                 FakeTerminalInput::MenuChoiceContaining(label) => {
                     menu_choice_number_containing(&self.output, &label)
                         .unwrap_or_else(|| panic!("menu choice containing {label:?} not found"))
@@ -364,6 +367,7 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
     fn menu_choice_number_containing(output: &str, label_fragment: &str) -> Option<usize> {
         output.lines().find_map(|line| {
             let trimmed = line.trim_start();
@@ -375,6 +379,7 @@ mod tests {
         })
     }
 
+    #[cfg(unix)]
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     enum InteractiveChoiceKind {
         LinkOnly,
@@ -384,6 +389,7 @@ mod tests {
         Cancelled,
     }
 
+    #[cfg(unix)]
     fn interactive_choice_kinds(choices: &[InteractiveMenuChoice]) -> Vec<InteractiveChoiceKind> {
         choices
             .iter()

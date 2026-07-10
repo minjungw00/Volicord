@@ -12,7 +12,7 @@ pub(crate) mod policy;
 pub(crate) use apply::apply_guard_integration;
 #[cfg(test)]
 pub(crate) use apply::set_script_executable;
-#[cfg(test)]
+#[cfg(all(test, unix))]
 pub(crate) use audit::CODEX_DISPATCH_WRAPPER;
 pub(crate) use audit::{HookWrapperResolutionStatus, ManagedJsonProjection, HOOK_WRAPPER_MARKER};
 #[cfg(test)]

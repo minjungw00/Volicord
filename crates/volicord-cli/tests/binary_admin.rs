@@ -7,24 +7,15 @@ use std::{collections::BTreeSet, error::Error, fs, io::Read, path::Path};
 #[cfg(unix)]
 use std::process::Output;
 
-use serde_json::{json, Value};
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 use volicord_core::{CoreService, InvocationContext};
 use volicord_store::agent_connections::{
-    add_connection_project, agent_connection_record, ensure_agent_connection,
-    list_connection_projects, update_agent_connection_verification_report,
-    AgentConnectionRegistration, ConnectionProjectRegistration, CONNECTION_MODE_READ_ONLY,
-    CONNECTION_MODE_WORKFLOW, HOST_KIND_CODEX, HOST_SCOPE_PROJECT, VERIFIED_STATUS_ACTION_REQUIRED,
+    add_connection_project, ensure_agent_connection, AgentConnectionRegistration,
+    ConnectionProjectRegistration, CONNECTION_MODE_WORKFLOW, HOST_KIND_CODEX, HOST_SCOPE_PROJECT,
     VERIFIED_STATUS_COMPLETE,
 };
-use volicord_store::guards::{
-    guard_event, insert_agent_session, insert_unrecorded_change, list_guard_installations,
-    AgentSessionInsert, UnrecordedChangeInsert,
-};
-use volicord_store::session_watch::{
-    create_watch_baseline, snapshot_product_repository, SessionWatchStatus, WatchBaselineCreate,
-    WatchSnapshotOptions,
-};
+use volicord_store::guards::{insert_unrecorded_change, UnrecordedChangeInsert};
 use volicord_store::{
     bootstrap::{
         initialize_runtime_home, list_projects, register_project, ProjectRegistration,
@@ -37,8 +28,7 @@ use volicord_types::{
     ActorSource, IdempotencyKey, InitialScope, JudgmentKind, JudgmentPresentation,
     JudgmentRequiredFor, OperationCategory, ProjectId, RequestId, RequestedMode, RequiredNullable,
     ResumePolicy, StateRecordKind, StateRecordRef, TaskId, ToolEnvelope, UserJudgmentContext,
-    UserJudgmentOptionId, UserJudgmentOptionInput, RECONCILE_CHANGES_TOOL_NAME,
-    VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+    UserJudgmentOptionId, UserJudgmentOptionInput, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
 
 use support::{
@@ -49,6 +39,26 @@ use support::{
     },
     json::record_id,
 };
+
+#[cfg(unix)]
+use serde_json::json;
+
+#[cfg(unix)]
+use volicord_store::{
+    agent_connections::{
+        agent_connection_record, list_connection_projects,
+        update_agent_connection_verification_report, CONNECTION_MODE_READ_ONLY,
+        VERIFIED_STATUS_ACTION_REQUIRED,
+    },
+    guards::{guard_event, insert_agent_session, list_guard_installations, AgentSessionInsert},
+    session_watch::{
+        create_watch_baseline, snapshot_product_repository, SessionWatchStatus,
+        WatchBaselineCreate, WatchSnapshotOptions,
+    },
+};
+
+#[cfg(unix)]
+use volicord_types::RECONCILE_CHANGES_TOOL_NAME;
 
 #[cfg(unix)]
 use support::{
@@ -5273,6 +5283,7 @@ fn expected_options(options: &[&str]) -> BTreeSet<String> {
     options.iter().map(|option| (*option).to_owned()).collect()
 }
 
+#[cfg(unix)]
 fn assert_init_text_omits_internal_diagnostics(text: &str) {
     for forbidden in [
         "Volicord init action_required",
@@ -5292,6 +5303,7 @@ fn assert_init_text_omits_internal_diagnostics(text: &str) {
     }
 }
 
+#[cfg(unix)]
 fn assert_connection_text_omits_diagnostic_dump_fields(text: &str) {
     for forbidden in [
         "Result:",
@@ -5562,6 +5574,7 @@ fn assert_text_renders_volicord_commands_as_standalone_lines(text: &str, command
     }
 }
 
+#[cfg(unix)]
 fn assert_order(text: &str, before: &str, after: &str) {
     let before_index = text
         .find(before)
@@ -5612,6 +5625,7 @@ fn channel_path<'a>(availability: &'a Value, kind: &str) -> &'a Value {
         .unwrap_or_else(|| panic!("expected user channel path {kind}, got {paths:?}"))
 }
 
+#[cfg(unix)]
 fn assert_diagnostic_disclosure(value: &Value) {
     let disclosure = value
         .get("disclosure")
@@ -5627,6 +5641,7 @@ fn assert_diagnostic_disclosure(value: &Value) {
     );
 }
 
+#[cfg(unix)]
 fn write_codex_project_trust(
     codex_home: &Path,
     repo_root: &Path,
@@ -5644,6 +5659,7 @@ fn write_codex_project_trust(
     Ok(())
 }
 
+#[cfg(unix)]
 fn session_watch_record_counts(
     runtime_home: &Path,
     project_id: &str,
@@ -5667,6 +5683,7 @@ fn session_watch_record_counts(
     Ok((agent_sessions, watch_baselines))
 }
 
+#[cfg(unix)]
 fn insert_test_watch_baseline(
     runtime_home: &Path,
     project: &volicord_store::agent_connections::ConnectionProjectRecord,
@@ -5710,6 +5727,7 @@ fn insert_test_watch_baseline(
     Ok(())
 }
 
+#[cfg(unix)]
 fn insert_managed_codex_tool_call_baseline(
     runtime_home: &Path,
     project: &volicord_store::agent_connections::ConnectionProjectRecord,
@@ -5790,6 +5808,7 @@ fn lowercase_hex_bytes(bytes: &[u8]) -> String {
     text
 }
 
+#[cfg(unix)]
 fn count_occurrences(text: &str, needle: &str) -> usize {
     text.matches(needle).count()
 }

@@ -36,6 +36,8 @@ use crate::guard_integration::audit::{
 };
 #[cfg(test)]
 use crate::guard_integration::audit::{guard_file_findings, script_is_executable, sha256_text};
+#[cfg(all(test, unix))]
+use crate::guard_integration::CODEX_DISPATCH_WRAPPER;
 use crate::guard_integration::{
     apply_guard_integration, guard_has_prompt_capture_commands, initial_guard_installation_status,
     lifecycle_phase_names, observe_hook_root_unsupported_message, plan_guard_integration,
@@ -45,8 +47,8 @@ use crate::guard_integration::{
 #[cfg(test)]
 use crate::guard_integration::{
     generated_files_json, host_hook_capability_json, set_script_executable, shell_word,
-    AGENTS_FILE, CODEX_DISPATCH_WRAPPER, GUIDANCE_END_MARKER, GUIDANCE_START_MARKER,
-    HOOK_WRAPPER_MARKER, VOLICORD_POLICY_FILE,
+    AGENTS_FILE, GUIDANCE_END_MARKER, GUIDANCE_START_MARKER, HOOK_WRAPPER_MARKER,
+    VOLICORD_POLICY_FILE,
 };
 #[cfg(test)]
 use crate::host_integration::REQUIRED_GUARD_PHASES;
@@ -2381,10 +2383,12 @@ fn path_text(path: &Path) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[cfg(unix)]
     use std::{
         ffi::OsString,
         process::{Command, Stdio},
-        time::{SystemTime, UNIX_EPOCH},
     };
 
     use super::*;

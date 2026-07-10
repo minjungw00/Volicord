@@ -10,43 +10,55 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use volicord_core::{CoreService, InvocationContext};
 use volicord_store::agent_connections::{
-    add_connection_project, agent_connection_record, ensure_agent_connection,
-    AgentConnectionRegistration, ConnectionProjectRegistration, CONNECTION_INTENT_SHARED,
-    CONNECTION_MODE_WORKFLOW, HOST_KIND_CODEX, HOST_SCOPE_PROJECT, VERIFIED_STATUS_COMPLETE,
+    add_connection_project, ensure_agent_connection, AgentConnectionRegistration,
+    ConnectionProjectRegistration, CONNECTION_INTENT_SHARED, CONNECTION_MODE_WORKFLOW,
+    HOST_KIND_CODEX, HOST_SCOPE_PROJECT, VERIFIED_STATUS_COMPLETE,
 };
-use volicord_store::guards::{
-    guard_installation, list_guard_installations, upsert_guard_installation,
-    GuardInstallationUpsert,
-};
-use volicord_store::{bootstrap::list_projects, core_pipeline::CoreProjectStore};
-pub(crate) use volicord_test_support::core_fixtures::DEFAULT_PRODUCT_PATH;
-use volicord_test_support::{
-    core_fixtures::{
-        answer_payload, supported_evidence_update, CoreFixture, UpdateScopeFixture,
-        UserJudgmentFixture, DEFAULT_BASELINE_REF,
-    },
-    TempRuntimeHome,
-};
+use volicord_store::guards::{upsert_guard_installation, GuardInstallationUpsert};
+use volicord_test_support::core_fixtures::{CoreFixture, UpdateScopeFixture, UserJudgmentFixture};
 use volicord_types::{
-    chat_judgment_verification_code, ActorSource, BaselineRef, ChangeUnitId, ChangeUnitOperation,
-    ChangeUnitUpdate, CheckCloseRequest, CloseAssessmentInput, CloseMutationIntent, CloseReason,
-    CloseTaskRequest, IdempotencyKey, InitialScope, IntakeRequest, JudgmentKind,
-    JudgmentPresentation, JudgmentRationale, JudgmentRequiredFor, ObservedChanges,
-    OperationCategory, PrepareWriteRequest, ProjectId, ReconcileChangesRequest, RecordId,
-    RecordRunRequest, RecordUserJudgmentRequest, RequestId, RequestUserJudgmentRequest,
-    RequestedMode, ResumePolicy, RunKind, ScopeUpdate, StateRecordKind, StateRecordRef, TaskId,
-    ToolEnvelope, UpdateScopeRequest, UserJudgmentContext, UserJudgmentOptionId, WriteTicketId,
-    VERIFICATION_BASIS_TEST_FIXTURE_BINDING, VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
+    chat_judgment_verification_code, ActorSource, ChangeUnitOperation, JudgmentKind,
+    OperationCategory, ProjectId, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+    VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
 };
 
 use super::{
-    assertions::{assert_non_guarantees, assert_success, json_stdout, stderr, stdout},
+    assertions::{assert_non_guarantees, stderr, stdout},
     binary_fixture::volicord_bin,
     json::record_id,
 };
 
 #[cfg(unix)]
+pub(crate) use volicord_test_support::core_fixtures::DEFAULT_PRODUCT_PATH;
+
+#[cfg(unix)]
+use volicord_store::{
+    agent_connections::agent_connection_record,
+    bootstrap::list_projects,
+    core_pipeline::CoreProjectStore,
+    guards::{guard_installation, list_guard_installations},
+};
+
+#[cfg(unix)]
+use volicord_test_support::{
+    core_fixtures::{answer_payload, supported_evidence_update, DEFAULT_BASELINE_REF},
+    TempRuntimeHome,
+};
+
+#[cfg(unix)]
+use volicord_types::{
+    BaselineRef, ChangeUnitId, ChangeUnitUpdate, CheckCloseRequest, CloseAssessmentInput,
+    CloseMutationIntent, CloseReason, CloseTaskRequest, IdempotencyKey, InitialScope,
+    IntakeRequest, JudgmentPresentation, JudgmentRationale, JudgmentRequiredFor, ObservedChanges,
+    PrepareWriteRequest, ReconcileChangesRequest, RecordId, RecordRunRequest,
+    RecordUserJudgmentRequest, RequestId, RequestUserJudgmentRequest, RequestedMode, ResumePolicy,
+    RunKind, ScopeUpdate, StateRecordKind, StateRecordRef, TaskId, ToolEnvelope,
+    UpdateScopeRequest, UserJudgmentContext, UserJudgmentOptionId, WriteTicketId,
+};
+
+#[cfg(unix)]
 use super::{
+    assertions::{assert_success, json_stdout},
     fake_hosts::{path_env, write_fake_codex},
     fake_mcp::write_basic_fake_mcp,
 };
