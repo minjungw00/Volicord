@@ -26,10 +26,7 @@ fn normalize_product_path(
     canonical_repo_root: &Path,
     raw_path: &str,
 ) -> Result<String, ProductPathError> {
-    if raw_path.trim().is_empty()
-        || raw_path.contains('\\')
-        || has_windows_drive_prefix(raw_path)
-    {
+    if raw_path.trim().is_empty() || raw_path.contains('\\') || has_windows_drive_prefix(raw_path) {
         return Err(ProductPathError::Invalid);
     }
     let path = Path::new(raw_path);
