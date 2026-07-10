@@ -298,10 +298,14 @@ Session-watch startup coverage:
 <a id="process-environment"></a>
 ## Process Environment
 
-Supported optional environment input:
+The MCP process interprets environment input in the bounded roles below.
+
+Supported operator and Runtime Home inputs:
 
 - `VOLICORD_HOME`
 - `VOLICORD_LOCAL_WEB_CONSENT`
+- standard platform home variables when `VOLICORD_HOME` is absent: `HOME`,
+  `USERPROFILE`, and the `HOMEDRIVE` plus `HOMEPATH` pair
 
 `VOLICORD_HOME` selects the Runtime Home for the process. It is normally written
 by generated host configuration when needed, not typed by the user in ordinary
@@ -314,6 +318,33 @@ version modes do not use it.
 stdio local web consent listener. Other values do not change the listener
 address or token policy.
 
+`VOLICORD_MCP_VERIFICATION=1` is a diagnostic-only marker. The administrative
+`volicord connection verify` flow sets it automatically for the child MCP
+handshake. An operator may set it manually only for the bounded
+[manual stdio lifecycle probe](#manual-stdio-lifecycle-probe). It preserves
+normal connection and project startup checks but classifies the process as a
+verification probe, so the process does not create a startup session-watch
+baseline or managed Codex runtime observations. It is not a normal host
+configuration setting.
+
+Volicord-managed Codex configuration carries these managed-launch provenance
+markers:
+
+- `VOLICORD_MCP_LAUNCH=managed_host`
+- `VOLICORD_MCP_HOST=codex`
+- `VOLICORD_MCP_CONNECTION_ID=<connection_id>`
+- `VOLICORD_MCP_PROJECT_ID=<project_id>` when the command has a project binding
+
+These markers are part of the Volicord-managed configuration identity, not
+general operator selectors. Do not hand-add or alter them to make a
+user-managed launch appear managed; regenerate managed configuration with
+`volicord init` or `volicord connection add`. Their connection and optional
+project values must match the corresponding process arguments. A launch with
+no managed markers is classified as manual. A partial or mismatched marker set
+is invalid managed provenance and does not create managed lifecycle
+observations. These markers do not grant project access, host trust, or broader
+authority.
+
 Connection process binding is supplied by `--connection <connection_id>` in
 generated host configuration or user-managed generic host configuration. It
 names the stored `connection_internal_id` for the selected Agent Connection and
@@ -321,7 +352,7 @@ is not a normal user-chosen value. The bound Agent Connection and Runtime Home r
 supply the connection mode, connected projects, and adapter-derived `actor_source` and
 `operation_category`. Project access is controlled by the selected Agent
 Connection's connected projects and repository-root resolution. No other
-process environment input is interpreted by the MCP process.
+Volicord-specific environment variable is a supported operator setting.
 
 Current MCP Runtime Home resolution:
 
@@ -329,8 +360,11 @@ Current MCP Runtime Home resolution:
 2. An absolute `VOLICORD_HOME` is used as supplied.
 3. A relative `VOLICORD_HOME` is resolved against the process current working
    directory without requiring the path to exist.
-4. When `VOLICORD_HOME` is absent, use the Runtime Home established by
-   `volicord init`, or the platform default local runtime location.
+4. When `VOLICORD_HOME` is absent, derive the default user home from the
+   platform home variables and append `.volicord`. Non-Windows platforms try
+   `HOME`, then `USERPROFILE`, then `HOMEDRIVE` plus `HOMEPATH`. Native Windows
+   tries `USERPROFILE`, then `HOMEDRIVE` plus `HOMEPATH`, then `HOME` when it is
+   not a WSL-style mount path.
 5. Do not require canonicalization before startup validation.
 
 ## Startup Validation
@@ -827,6 +861,7 @@ fallback instructions or an explanation that elicitation was cancelled or
 invalid. The additional text is not Core authority, not a public API response
 field, and not a user judgment record.
 
+<a id="local-web-consent-fallback"></a>
 The local web consent listener binds to `127.0.0.1` by default and must fail
 closed if it cannot bind safely. In stdio mode it uses an ephemeral loopback
 port. In `volicord serve --transport local-http`, the consent route is served

@@ -77,9 +77,9 @@ volicord init --host codex --repo "<repo>" --profile record
 volicord doctor
 ```
 
-If `volicord` is not available, rerun the release binary path in
-[Installation](../user-guide/installation.md). If you are intentionally
-working from a development source checkout:
+If `volicord` is not available, choose an executable preparation path in
+[Installation](../user-guide/installation.md). A release install requires a
+verified published asset set. From a source checkout:
 
 ```sh
 cargo build --workspace --bins
@@ -520,7 +520,7 @@ cannot be found, launched, or initialized.
 
 Bounded recovery:
 
-Rerun init with the installed release binary:
+Rerun init with the installed `volicord` command:
 
 ```sh
 volicord init --host codex --repo "<repo>" --profile record
@@ -559,35 +559,42 @@ Bounded recovery:
 ```sh
 volicord doctor
 volicord connection status codex --shared --repo "<repo>"
-volicord init --host codex --repo "<repo>"
+volicord init --host codex --repo "<repo>" --profile detective
 volicord connection verify codex --shared --repo "<repo>"
 ```
 
-Use the same host and intent selector as the affected connection. For Claude
-Code, replace `codex` with `claude-code` and include `--global` or `--shared`
-when that is the selected connection.
+Use the same host and repository as the affected connection, and use the same
+intent selector for connection status and verification. For Claude Code,
+replace `codex` with `claude-code` and include `--global` or `--shared` in those
+connection commands when that is the selected connection. Every instruction
+below to rerun init means
+`volicord init --host HOST --repo PATH --profile detective`. Omitting
+`--profile` selects the `record` profile and does not regenerate detective hook
+wrappers.
 
 Diagnostic meanings and repairs:
 
 - `relative_path_unsafe`: the host hook config uses a bare `.codex/hooks/...`,
   `./.codex/hooks/...`, `.claude/hooks/...`, or `./.claude/hooks/...` path that
-  depends on the host session cwd. Rerun `volicord init --host HOST --repo PATH`
-  instead of hand-editing the hook command.
+  depends on the host session cwd. Rerun
+  `volicord init --host HOST --repo PATH --profile detective` instead of
+  hand-editing the hook command.
 - `wrapper_missing` or `dispatch_missing`: a generated wrapper or Codex
-  dispatch wrapper is missing. Rerun init for the selected Product Repository.
+  dispatch wrapper is missing. Rerun detective init for the selected Product
+  Repository.
 - `wrapper_not_executable`: a generated wrapper is present but is not
-  executable on a supported Unix-like platform. Rerun init to restore the
-  managed wrapper and executable bit.
+  executable on a supported Unix-like platform. Rerun detective init to restore
+  the managed wrapper and executable bit.
 - `absolute_path_stale`: a generated command still points at an old project
-  root, often after moving the Product Repository. Rerun init with the current
-  `--repo PATH`, then reload or restart the host when required.
+  root, often after moving the Product Repository. Rerun detective init with
+  the current `--repo PATH`, then reload or restart the host when required.
 - `host_output_mismatch`, `policy_hash_mismatch`, or `authority_mismatch`: the
   generated wrapper metadata no longer matches the expected host-output mode,
-  policy hash, connection, or detective installation record. Rerun init so the
-  managed files and registry state agree.
+  policy hash, connection, or detective installation record. Rerun detective
+  init so the managed files and registry state agree.
 - `metadata_missing` or `placeholder_unsupported`: the generated configuration
-  is not in the currently verified shape. Rerun init and avoid replacing the
-  generated command with unsupported placeholders.
+  is not in the currently verified shape. Rerun detective init and avoid
+  replacing the generated command with unsupported placeholders.
 
 Codex detective host hook commands require the selected Product Repository to be a Git
 work tree. If the wrapper stderr says the Git root could not be resolved, or

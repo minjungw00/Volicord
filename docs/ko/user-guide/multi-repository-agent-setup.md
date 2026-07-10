@@ -118,15 +118,17 @@ MCP 결과는 묶인 Agent Connection에 연결된 프로젝트만 나열합니�
 {
   "name": "volicord.status",
   "arguments": {
-    "project_selector": "billing-api",
+    "project_selector": "<volicord.list_projects가 반환한 정확한 project_selector>",
     "detail": "workflow"
   }
 }
 ```
 
-에이전트는 폴더 이름, 현재 작업 디렉터리, MCP roots, 호스트 라벨, 기억에서
-프로젝트를 지어내면 안 됩니다. Product Repository 라벨에서도 프로젝트 식별 정보를 추론하면 안
-됩니다. `project_selector` 없는 호출이 모호하다고 거부되면 `volicord.list_projects`를
+Placeholder를 `volicord.list_projects` 결과에서 `/path/to/billing-api`에 해당하는 정확한
+`projects[].project_selector` 값으로 바꿉니다. 저장소 디렉터리 이름, 표시 이름, alias는
+그 반환값을 대신할 수 없습니다. 에이전트는 폴더 이름, 현재 작업 디렉터리, MCP roots,
+호스트 라벨, Product Repository 라벨, 기억에서 프로젝트를 지어내면 안 됩니다.
+`project_selector` 없는 호출이 모호하다고 거부되면 `volicord.list_projects`를
 호출하고 의도한 프로젝트를 고른 뒤 반환된 값으로 다시 시도합니다. 공개 MCP 도구 인자는
 `request_id`, `idempotency_key`, `expected_state_version`, `dry_run`, `locale` 같은 내부
 요청 메타데이터를 요구하거나 허용하지 않습니다.

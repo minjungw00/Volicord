@@ -66,8 +66,9 @@ volicord init --host codex --repo "<repo>" --profile record
 volicord doctor
 ```
 
-`volicord`를 사용할 수 없다면 [설치](../user-guide/installation.md)의 릴리스
-바이너리 경로를 다시 실행합니다. 의도적으로 개발용 소스 체크아웃에서 작업 중이라면:
+`volicord`를 사용할 수 없다면 [설치](../user-guide/installation.md)에서 실행 파일
+준비 경로를 고릅니다. 릴리스 설치에는 검증된 게시 자산 세트가 필요합니다. 소스
+체크아웃에서는 아래를 실행합니다.
 
 ```sh
 cargo build --workspace --bins
@@ -477,7 +478,7 @@ volicord doctor
 
 제한된 복구:
 
-설치된 릴리스 바이너리로 init을 다시 실행합니다.
+설치된 `volicord` 명령으로 init을 다시 실행합니다.
 
 ```sh
 volicord init --host codex --repo "<repo>" --profile record
@@ -516,33 +517,36 @@ Init은 관리 호스트 설정이 사용할 MCP 명령을 기록합니다. 일�
 ```sh
 volicord doctor
 volicord connection status codex --shared --repo "<repo>"
-volicord init --host codex --repo "<repo>"
+volicord init --host codex --repo "<repo>" --profile detective
 volicord connection verify codex --shared --repo "<repo>"
 ```
 
-영향받은 연결과 같은 호스트와 의도 선택자를 사용합니다. Claude Code에서는 `codex`를
-`claude-code`로 바꾸고, 선택된 연결이 그렇다면 `--global` 또는 `--shared`를 함께
-넣습니다.
+영향받은 연결과 같은 호스트와 저장소를 사용하고, 연결 status와 verification에는 같은
+의도 선택자를 사용합니다. Claude Code에서는 `codex`를 `claude-code`로 바꾸고, 선택된
+연결이 그렇다면 해당 연결 명령에 `--global` 또는 `--shared`를 함께 넣습니다. 아래에서
+init을 다시 실행하라는 지시는 모두
+`volicord init --host HOST --repo PATH --profile detective`를 뜻합니다. `--profile`을
+생략하면 `record` 프로필이 선택되며 detective hook wrapper를 다시 생성하지 않습니다.
 
 진단 의미와 복구:
 
 - `relative_path_unsafe`: 호스트 hook 설정이 호스트 session cwd에 의존하는 bare
   `.codex/hooks/...`, `./.codex/hooks/...`, `.claude/hooks/...`, 또는
   `./.claude/hooks/...` 경로를 사용합니다. Hook 명령을 손으로 고치지 말고
-  `volicord init --host HOST --repo PATH`를 다시 실행합니다.
+  `volicord init --host HOST --repo PATH --profile detective`를 다시 실행합니다.
 - `wrapper_missing` 또는 `dispatch_missing`: 생성된 wrapper 또는 Codex dispatch wrapper가
-  없습니다. 선택된 Product Repository에 대해 init을 다시 실행합니다.
+  없습니다. 선택된 Product Repository에 대해 detective init을 다시 실행합니다.
 - `wrapper_not_executable`: 생성된 wrapper는 있지만 지원되는 Unix 계열 플랫폼에서 실행
-  가능하지 않습니다. Init을 다시 실행해 관리 wrapper와 실행 비트를 복구합니다.
+  가능하지 않습니다. Detective init을 다시 실행해 관리 wrapper와 실행 비트를 복구합니다.
 - `absolute_path_stale`: 생성된 명령이 이전 프로젝트 root를 가리킵니다. Product
-  Repository를 옮긴 뒤 흔히 발생합니다. 현재 `--repo PATH`로 init을 다시 실행하고,
-  필요하면 호스트를 reload 또는 restart합니다.
+  Repository를 옮긴 뒤 흔히 발생합니다. 현재 `--repo PATH`로 detective init을 다시
+  실행하고, 필요하면 호스트를 reload 또는 restart합니다.
 - `host_output_mismatch`, `policy_hash_mismatch`, `authority_mismatch`: 생성된 wrapper
   메타데이터가 기대하는 host-output mode, policy hash, 연결, detective 설치와 맞지 않습니다.
-  관리 파일과 registry 상태가 일치하도록 init을 다시 실행합니다.
+  관리 파일과 registry 상태가 일치하도록 detective init을 다시 실행합니다.
 - `metadata_missing` 또는 `placeholder_unsupported`: 생성된 설정이 현재 검증되는 형태가
-  아닙니다. Init을 다시 실행하고 생성 명령을 지원되지 않는 placeholder로 바꾸지
-  않습니다.
+  아닙니다. Detective init을 다시 실행하고 생성 명령을 지원되지 않는 placeholder로
+  바꾸지 않습니다.
 
 Codex detective host hook 명령에는 선택된 Product Repository가 Git work tree여야 합니다. Wrapper
 stderr가 Git root를 해석할 수 없다고 말하거나, 호스트 session이 하위 디렉터리에서

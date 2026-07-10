@@ -124,15 +124,18 @@ one Product Repository must include an explicit `project_selector` returned by
 {
   "name": "volicord.status",
   "arguments": {
-    "project_selector": "billing-api",
+    "project_selector": "<exact project_selector returned for /path/to/billing-api>",
     "detail": "workflow"
   }
 }
 ```
 
-The agent must not invent a project from folder names, current working
-directory, MCP roots, host labels, Product Repository labels, or memory. If a call
-without `project_selector` is rejected as ambiguous, call
+Replace the placeholder with the exact `projects[].project_selector` value for
+`/path/to/billing-api` in the `volicord.list_projects` result. A repository
+directory name, display name, or alias is not a substitute for that returned
+value. The agent must not invent a project from folder names, current working
+directory, MCP roots, host labels, Product Repository labels, or memory. If a
+call without `project_selector` is rejected as ambiguous, call
 `volicord.list_projects`, choose the intended project, and retry with the
 returned value. Public MCP tool arguments do not require or accept internal request
 metadata such as `request_id`, `idempotency_key`, `expected_state_version`,

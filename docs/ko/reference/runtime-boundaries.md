@@ -58,7 +58,7 @@ Volicord는 구현 파일, 제품 파일, 런타임 데이터, 외부 호스트 
 | Runtime Home registry 안의 `managed host configuration state` | 호스트 대상에 대한 Volicord registry 인벤토리입니다. `connection_internal_id`, 호스트 종류, 연결 의도, 호스트 범위, 선택적 `project_internal_id`, 내부 서버 이름, 설정 대상, 모드, 활성 상태, 관리 fingerprint, 검증 요약 상태, 검증 보고서 JSON, 사용자 동작 JSON, host-hook 설치 상태, 메타데이터를 포함합니다. | `volicord init`, `volicord connection add`, `volicord connection list`, `volicord connection status`, `volicord connection verify`, `volicord connection mode`, `volicord connection remove`, 숨겨진 내부 hook 흐름은 registry 행, host-hook 설치 행, Connection Projects 멤버십을 만들고, 갱신하고, 목록 조회하고, 검증하고, 제거합니다. | 외부 호스트 설정 객체 자체가 아니며, 호스트가 `volicord mcp --stdio`를 신뢰, 승인, 로드, 초기화, 노출했거나 detective host hook을 실행했다는 증거가 아닙니다. |
 | 외부 MCP 호스트 설정 | 내부 Agent Connection 바인딩이 있는 `volicord mcp --stdio`와 `VOLICORD_HOME` 같은 환경 값을 지정할 수 있는 호스트 소유 설정 또는 사용자 관리 설정입니다. | [관리 CLI](admin-cli.md)가 그 동작을 정의할 때 `volicord`는 지원되는 직접 설정을 쓸 수 있습니다. 외부 호스트는 로딩과 신뢰 결정을 소유합니다. | Runtime Home registry 상태, Core 권한, Volicord 권한 증거가 아닙니다. `Product Repository`에 있다면 명시적 통합 파일일 뿐입니다. |
 | `volicord` 관리 CLI 프로세스 | Runtime Home 초기화, 저장소 루트에서의 프로젝트 등록, Agent Connection과 Connection Projects 관리, 호스트 설정 적용, 상태 조회, 검증, 모드 변경, 정의된 안전 제거 같은 로컬 설정과 registry/호스트 통합 관리. | 로컬 운영자 또는 사용자가 이 프로세스를 실행합니다. | 공개 Volicord API 메서드 경로, OS 보안 강제 계층, 호스트 신뢰 결정, 포괄적 Product Repository 편집 권한이 아닙니다. |
-| `volicord mcp --stdio` MCP 어댑터 프로세스 | 하나의 Agent Connection에 묶인 로컬 stdio 자식 프로세스입니다. Runtime Home을 해석하고, 연결 상태를 검증하고, `connection.mode`에 따라 도구를 노출하고, 담당자가 정의한 저장소 루트 규칙으로 허용된 프로젝트를 선택하고, 어댑터 소유 호출 사실을 파생하며, 공개 메서드 호출을 Core와 Store로 라우팅합니다. | MCP 호스트가 프로세스를 시작하고 stdin/stdout으로 통신합니다. | 그 자체로 임의 제품 파일 편집 권한을 부여하거나, 권한을 지니는 사용자 판단을 기록하거나, 호스트 신뢰를 강제하거나, 샌드박싱을 제공하거나, 네트워크 리스너를 열지 않습니다. |
+| `volicord mcp --stdio` MCP 어댑터 프로세스 | 하나의 Agent Connection에 묶인 로컬 stdio 자식 프로세스입니다. Runtime Home을 해석하고, 연결 상태를 검증하고, `connection.mode`에 따라 도구를 노출하고, 담당자가 정의한 저장소 루트 규칙으로 허용된 프로젝트를 선택하고, 어댑터 소유 호출 사실을 파생하며, 공개 메서드 호출을 Core와 Store로 라우팅합니다. | MCP 호스트가 프로세스를 시작하고 stdin/stdout으로 통신합니다. | 그 자체로 임의 제품 파일 편집 권한을 부여하거나, 권한을 지니는 사용자 판단을 기록하거나, 호스트 신뢰를 강제하거나, 샌드박싱을 제공하거나, MCP 네트워크 전송 리스너를 열지 않습니다. 비활성화하지 않으면 로컬 User Channel consent를 위한 별도의 임시 loopback 전용 HTTP 리스너를 열 수 있으며, 이 리스너는 MCP 전송이 아닙니다. |
 
 <a id="runtime-location-product-repository"></a>
 ### `Product Repository`
@@ -182,7 +182,7 @@ Volicord 구현은 이 저장소가 유지하는 구현 집합을 뜻합니다. 
 
 ### 기준 로컬 MCP 프로세스
 
-현재 로컬 Rust MCP 어댑터는 Volicord 구현 안의 실행 파일 역할인 `volicord mcp --stdio` stdio 프로세스입니다. MCP 호스트는 프로토콜이나 호스트 설정 맥락에서 설정된 항목을 MCP 서버라고 부를 수 있습니다. 그 라벨은 Volicord를 서버 제품으로 만들거나 Volicord 구현을 네트워크 서버로 만들지 않습니다. MCP 호스트는 `volicord mcp --stdio`를 자식 프로세스로 시작하고, 프로세스 환경으로 설정을 전달하며, stdin/stdout을 통해 줄 단위 JSON-RPC를 주고받습니다. 기준 프로세스는 TCP, HTTP, Unix-domain socket, 또는 그 밖의 네트워크 리스너를 열지 않습니다.
+현재 로컬 Rust MCP 어댑터는 Volicord 구현 안의 실행 파일 역할인 `volicord mcp --stdio` stdio 프로세스입니다. MCP 호스트는 프로토콜이나 호스트 설정 맥락에서 설정된 항목을 MCP 서버라고 부를 수 있습니다. 그 라벨은 Volicord를 서버 제품으로 만들거나 Volicord 구현을 네트워크 서버로 만들지 않습니다. MCP 호스트는 `volicord mcp --stdio`를 자식 프로세스로 시작하고, 프로세스 환경으로 설정을 전달하며, stdin/stdout을 통해 줄 단위 JSON-RPC를 주고받습니다. MCP 전송 자체는 TCP, HTTP, Unix-domain socket, 또는 그 밖의 네트워크 전송 리스너를 열지 않습니다. 다만 `VOLICORD_LOCAL_WEB_CONSENT`로 비활성화하지 않으면 같은 프로세스가 로컬 User Channel consent를 위한 임시 loopback 전용 HTTP 리스너를 열려고 시도합니다. 이 선택적 리스너를 시작하지 못해도 stdio 시작은 계속됩니다. Consent 리스너는 MCP 전송이 아니며, 정확한 동작은 [MCP 전송](mcp-transport.md#local-web-consent-fallback)이 담당합니다.
 
 별도 `volicord serve --transport local-http` 모드는 로컬/Docker 사용을 위한 Local HTTP
 transport입니다. 기준 stdio 프로세스가 아니며 공개 네트워크 API, SaaS endpoint, 다중

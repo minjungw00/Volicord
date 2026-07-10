@@ -255,10 +255,14 @@ Session-watch 시작 coverage:
 <a id="process-environment"></a>
 ## 프로세스 환경
 
-지원되는 선택 환경 입력:
+MCP 프로세스는 아래처럼 역할이 제한된 환경 입력을 해석합니다.
+
+지원되는 운영자 및 Runtime Home 입력:
 
 - `VOLICORD_HOME`
 - `VOLICORD_LOCAL_WEB_CONSENT`
+- `VOLICORD_HOME`이 없을 때 사용하는 표준 플랫폼 홈 환경 변수인 `HOME`,
+  `USERPROFILE`, `HOMEDRIVE`와 `HOMEPATH` 조합
 
 `VOLICORD_HOME`은 프로세스의 Runtime Home을 선택합니다. 일반 흐름에서 사용자가 직접
 입력하는 값이 아니라, 필요할 때 생성된 호스트 설정이 보통 기록하는 값입니다. 이 값은
@@ -269,13 +273,36 @@ Session-watch 시작 coverage:
 `VOLICORD_LOCAL_WEB_CONSENT=0`, `false`, `off`, `disabled`는 stdio local web consent
 리스너를 끕니다. 다른 값은 리스너 주소나 token 정책을 바꾸지 않습니다.
 
+`VOLICORD_MCP_VERIFICATION=1`은 진단 전용 마커입니다. 관리 명령
+`volicord connection verify` 흐름은 자식 MCP handshake에 이 값을 자동으로 설정합니다.
+운영자가 직접 설정하는 지원 경로는 한정된
+[수동 stdio 수명주기 probe](#manual-stdio-lifecycle-probe)뿐입니다. 이 값은 일반 연결과
+프로젝트 시작 점검을 유지하지만 프로세스를 verification probe로 분류하므로, 프로세스가
+시작 session-watch baseline이나 관리 Codex runtime observation을 만들지 않습니다. 일반
+호스트 설정에 사용하는 값이 아닙니다.
+
+Volicord가 관리하는 Codex 설정은 다음과 같은 관리 시작 출처 마커를 담습니다.
+
+- `VOLICORD_MCP_LAUNCH=managed_host`
+- `VOLICORD_MCP_HOST=codex`
+- `VOLICORD_MCP_CONNECTION_ID=<connection_id>`
+- 명령에 프로젝트 바인딩이 있을 때의 `VOLICORD_MCP_PROJECT_ID=<project_id>`
+
+이 마커들은 Volicord 관리 설정 identity의 일부이며 일반 운영자 선택자가 아닙니다.
+사용자 관리 시작을 관리 시작처럼 보이게 만들려고 직접 추가하거나 바꾸지 말고,
+`volicord init` 또는 `volicord connection add`로 관리 설정을 다시 생성합니다. Connection과
+선택적 project 값은 대응하는 프로세스 인자와 일치해야 합니다. 관리 마커가 하나도 없는
+시작은 수동으로 분류됩니다. 일부만 있거나 값이 맞지 않는 마커 집합은 유효하지 않은 관리
+출처이며 관리 lifecycle observation을 만들지 않습니다. 이 마커는 프로젝트 접근, 호스트
+신뢰, 더 넓은 권한을 부여하지 않습니다.
+
 연결 식별 정보는 생성된 호스트 설정이나 사용자 관리 generic 호스트 설정 안의
 `--connection <connection_id>`로 제공합니다. 이것은 선택된 Agent Connection에 대한 내부
 프로세스 바인딩이며, 사용자가 보통 직접 고르거나 관리하는 값이 아닙니다. 묶인 Agent
 Connection과 Runtime Home 레지스트리 상태가 연결 모드, 연결 프로젝트, 어댑터가 파생하는
 `actor_source`와 `operation_category`를 제공합니다. 프로젝트 접근은 선택된 Agent
-Connection의 연결 프로젝트와 저장소 루트 해석으로 제어됩니다. MCP 프로세스는 그 밖의
-프로세스 환경 입력을 해석하지 않습니다.
+Connection의 연결 프로젝트와 저장소 루트 해석으로 제어됩니다. 그 밖의 Volicord 전용
+환경 변수는 지원되는 운영자 설정이 아닙니다.
 
 현재 MCP Runtime Home 경로 해석:
 
@@ -283,8 +310,11 @@ Connection의 연결 프로젝트와 저장소 루트 해석으로 제어됩니�
 2. 절대 경로 `VOLICORD_HOME`은 제공된 그대로 사용합니다.
 3. 상대 경로 `VOLICORD_HOME`은 그 경로가 존재하지 않아도 프로세스의 현재 작업
    디렉터리를 기준으로 해석합니다.
-4. `VOLICORD_HOME`이 없으면 `volicord init`이 마련한 Runtime Home 또는 플랫폼 기본
-   로컬 런타임 위치를 사용합니다.
+4. `VOLICORD_HOME`이 없으면 플랫폼 홈 환경 변수에서 기본 사용자 홈을 구하고
+   `.volicord`를 붙입니다. Windows가 아닌 플랫폼에서는 `HOME`, `USERPROFILE`,
+   `HOMEDRIVE`와 `HOMEPATH` 조합 순서로 시도합니다. Native Windows에서는
+   `USERPROFILE`, `HOMEDRIVE`와 `HOMEPATH` 조합, WSL 형식 mount 경로가 아닌 `HOME`
+   순서로 시도합니다.
 5. 시작 검증 전에 정규화를 요구하지 않습니다.
 
 ## 시작 검증
@@ -736,6 +766,7 @@ Agent Connection 도구로 노출하지 않으며, 에이전트가 넣은 답변
 `content[]` text가 있으면 fallback 안내나 elicitation 취소/무효 설명 같은 어댑터
 안내입니다. 그 추가 text는 Core 권한, 공개 API 응답 필드, 사용자 판단 기록이 아닙니다.
 
+<a id="local-web-consent-fallback"></a>
 Local web consent 리스너는 기본적으로 `127.0.0.1`에 bind하며, 안전하게 bind할 수 없으면
 fail closed해야 합니다. stdio 모드에서는 임시 loopback port를 사용합니다.
 `volicord serve --transport local-http`에서는 같은 loopback 전용 local HTTP 리스너에서만
