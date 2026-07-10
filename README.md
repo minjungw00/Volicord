@@ -267,7 +267,7 @@ volicord inbox answer JUDGMENT_ID --choice CHOICE_ID --repo /path/to/your-produc
 Agents cannot silently dismiss pending User Judgment or record
 authority-bearing answers as if they were the user.
 
-### Check Close Blockers Or Close Readiness
+### Check Close Blockers Or Close Status
 
 Before treating work as finished, ask the agent to show the current Close Status
 and `volicord.check_close` results. The answer should name pending User
@@ -297,7 +297,7 @@ In ordinary chat, the agent can use Volicord to:
 - check Close Status before the agent claims completion
 
 The important habit is simple: ask the agent to keep Volicord state current
-when scope, evidence, user decisions, writes, or close readiness matter. You
+when scope, evidence, user decisions, writes, or Close Status matter. You
 stay in the normal agent conversation, and Volicord keeps the local workflow
 facts visible.
 
@@ -476,9 +476,9 @@ Supported User Channel input methods:
 
 The local consent page identifies the project, repository path, connection,
 judgment, available choices, token expiry, and CLI fallback. It records only the
-shown user-owned judgment; it is not proof of correctness, test sufficiency,
-deployment success, review completion, security enforcement, or close
-readiness.
+shown user-owned judgment; it does not prove correctness, test sufficiency,
+deployment success, review completion, or security enforcement, and it does
+not establish Close Status.
 
 CLI inbox example:
 

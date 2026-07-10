@@ -275,8 +275,8 @@ volicord inbox answer JUDGMENT_ID --choice CHOICE_ID
 
 경로가 local consent URL이라면 page는 프로젝트, 저장소 경로, 연결, 판단, 선택지, 만료
 시각, CLI fallback을 식별해 보여 주어야 합니다. 이를 User Channel capture 경로로만
-취급합니다. 보안 경계나 정확성, 테스트 충분성, 배포 성공, 검토 완료, 닫기 준비 상태의
-증거로 취급하면 안 됩니다.
+취급합니다. 보안 경계가 아니며 정확성, 테스트 충분성, 배포 성공, 검토 완료를 증명하거나
+닫기 상태를 확정하지 않습니다.
 
 Agent Connection은 `volicord.record_user_judgment`를 호출하거나, User Channel
 출처를 제공하거나, 일반 채팅 답변을 권한을 지니는 수락으로 바꾸면 안 됩니다.
@@ -343,7 +343,7 @@ Markdown, 일반 채팅만으로 미기록 변경을 수락됨으로 표시하�
 
 바이트나 안전한 알림을 증거 첨부 입력으로 준비해야 할 때만 `volicord.stage_artifact`를 사용합니다. 공개 증거 단계는 여전히 `volicord.record_run`입니다. 이 메서드가 주장, 출처, 연결된 첨부를 기록합니다. 스테이징 핸들, 복사된 파일 경로, 첨부 입력은 커밋된 실행 기록 결과가 주장별 증거에 연결하기 전까지 입력 전용입니다.
 
-사용자에게 보이는 요약은 스테이징된 첨부 입력에 `prepared`, 커밋된 Run이나 적용되는 메서드가 연결한 증거에 `attached`, 현재 닫기 근거가 닫기 준비 상태 계산에 사용할 수 있는 증거에만 `accepted_for_close`를 사용합니다. 매핑은 [아티팩트 저장소](../reference/storage-artifacts.md#public-evidence-state-mapping)를 보세요.
+사용자에게 보이는 요약은 스테이징된 첨부 입력에 `prepared`, 커밋된 Run이나 적용되는 메서드가 연결한 증거에 `attached`, 현재 닫기 근거가 닫기 상태 판단에 사용할 수 있는 증거에만 `accepted_for_close`를 사용합니다. 매핑은 [아티팩트 저장소](../reference/storage-artifacts.md#public-evidence-state-mapping)를 보세요.
 
 증거 표시는 아래를 말해야 합니다.
 

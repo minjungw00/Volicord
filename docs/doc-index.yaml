@@ -280,8 +280,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: onboarding
   created_on: '2026-04-23'
-  last_updated_on: '2026-07-07'
-  last_verified_on: '2026-07-07'
+  last_updated_on: '2026-07-11'
+  last_verified_on: '2026-07-11'
   applies_to:
   - volicord_workspace_0_1
   primary_audience:
@@ -471,8 +471,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: user_workflow
   created_on: '2026-05-22'
-  last_updated_on: '2026-07-03'
-  last_verified_on: '2026-07-03'
+  last_updated_on: '2026-07-11'
+  last_verified_on: '2026-07-11'
   applies_to:
   - volicord_workspace_0_1
   primary_audience:

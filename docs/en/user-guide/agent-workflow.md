@@ -210,9 +210,9 @@ volicord inbox answer JUDGMENT_ID --choice CHOICE_ID
 
 When the route is a local consent URL, the page should identify the project,
 repository path, connection, judgment, choices, expiry, and CLI fallback. Treat
-it as a User Channel capture path only; it is not a security boundary or proof
-of correctness, test sufficiency, deployment success, review completion, or
-close readiness.
+it as a User Channel capture path only; it is not a security boundary, does not
+prove correctness, test sufficiency, deployment success, or review completion,
+and does not establish Close Status.
 
 An Agent Connection must not call `volicord.record_user_judgment`, supply User
 Channel provenance, or convert an ordinary chat reply into authority-bearing
@@ -270,7 +270,7 @@ After meaningful execution, checks, reviews, or evidence-attachment-producing wo
 
 Use `volicord.stage_artifact` only when bytes or a safe notice must be prepared as an Evidence attachment input. The public evidence step is still `volicord.record_run`, which records the claim, provenance, and any linked attachment. A staged handle, copied file path, or attachment input is input-only until a committed record-run result links it to claim-scoped Evidence.
 
-User-facing summaries use `prepared` for staged attachment input, `attached` for evidence linked by a committed run or applicable method, and `accepted_for_close` only when the current close basis can use that evidence for close-readiness calculation. For the mapping, see [Artifact Storage](../reference/storage-artifacts.md#public-evidence-state-mapping).
+User-facing summaries use `prepared` for staged attachment input, `attached` for evidence linked by a committed run or applicable method, and `accepted_for_close` only when the current close basis can use that evidence for the Close Status assessment. For the mapping, see [Artifact Storage](../reference/storage-artifacts.md#public-evidence-state-mapping).
 
 Evidence display should say:
 
