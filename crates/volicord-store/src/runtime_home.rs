@@ -6,7 +6,7 @@ use std::{
 };
 
 #[cfg(windows)]
-use std::path::Prefix;
+use std::path::{Prefix, PrefixComponent};
 
 const VOLICORD_HOME: &str = "VOLICORD_HOME";
 const HOME: &str = "HOME";
@@ -594,9 +594,7 @@ fn path_starts_with_for_boundary(path: &Path, base: &Path) -> bool {
 #[cfg(windows)]
 fn windows_components_equal(left: Component<'_>, right: Component<'_>) -> bool {
     match (left, right) {
-        (Component::Prefix(left), Component::Prefix(right)) => {
-            windows_prefixes_equal(left.kind(), right.kind())
-        }
+        (Component::Prefix(left), Component::Prefix(right)) => windows_prefixes_equal(left, right),
         (Component::RootDir, Component::RootDir) => true,
         (Component::CurDir, Component::CurDir) => true,
         (Component::ParentDir, Component::ParentDir) => true,
@@ -608,8 +606,8 @@ fn windows_components_equal(left: Component<'_>, right: Component<'_>) -> bool {
 }
 
 #[cfg(windows)]
-fn windows_prefixes_equal(left: Prefix<'_>, right: Prefix<'_>) -> bool {
-    match (left, right) {
+fn windows_prefixes_equal(left: PrefixComponent<'_>, right: PrefixComponent<'_>) -> bool {
+    match (left.kind(), right.kind()) {
         (Prefix::Disk(left), Prefix::Disk(right))
         | (Prefix::Disk(left), Prefix::VerbatimDisk(right))
         | (Prefix::VerbatimDisk(left), Prefix::Disk(right))
@@ -915,6 +913,31 @@ mod tests {
             super::runtime_product_path_relation(runtime_home, repo_root),
             RuntimeProductPathRelation::ProductRepositoryContainsRuntimeHome
         );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_prefix_comparison_preserves_drive_unc_and_wsl_namespaces() {
+        fn first_component(path: &Path) -> std::path::Component<'_> {
+            path.components().next().expect("path has a prefix")
+        }
+
+        assert!(super::windows_components_equal(
+            first_component(Path::new(r"C:\Product")),
+            first_component(Path::new(r"\\?\c:\product")),
+        ));
+        assert!(super::windows_components_equal(
+            first_component(Path::new(r"\\Server\Share\Product")),
+            first_component(Path::new(r"\\server\share\product")),
+        ));
+        assert!(super::windows_components_equal(
+            first_component(Path::new(r"\\wsl$\Ubuntu\home")),
+            first_component(Path::new(r"\\WSL$\ubuntu\home")),
+        ));
+        assert!(!super::windows_components_equal(
+            first_component(Path::new(r"\\server\share\product")),
+            first_component(Path::new(r"\\wsl$\Ubuntu\home")),
+        ));
     }
 
     #[cfg(windows)]
