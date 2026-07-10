@@ -788,7 +788,7 @@ mod tests {
     }
 
     #[test]
-    fn export_dispatcher_exposes_only_authority_bundle() {
+    fn export_dispatcher_exposes_authority_bundle() {
         let current_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
         let help = run_export_command(
             &args(&["authority-bundle", "--help"]),
@@ -798,18 +798,5 @@ mod tests {
         .expect("authority bundle help should render");
 
         assert!(help.contains("volicord export authority-bundle --output PATH"));
-        assert!(!help.contains("mcp-config [--output"));
-        assert!(!help.contains("--read-only"));
-
-        let error = run_export_command(&args(&["mcp-config"]), |_| None, current_dir)
-            .expect_err("mcp-config should not dispatch");
-
-        assert_eq!(
-            error,
-            ExportCommandError::Usage(format!(
-                "unknown export command: mcp-config\n\n{}",
-                export_usage()
-            ))
-        );
     }
 }

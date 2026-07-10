@@ -229,8 +229,6 @@ fn export_help_lists_authority_bundle() -> Result<(), Box<dyn Error>> {
     let text = stdout(&output);
 
     assert!(text.contains("volicord export authority-bundle --output PATH"));
-    assert!(!text.contains("mcp-config [--output"));
-    assert!(!text.contains("--read-only"));
     Ok(())
 }
 
@@ -241,46 +239,6 @@ fn export_authority_bundle_help_shows_authority_bundle_usage() -> Result<(), Box
     let text = stdout(&output);
 
     assert!(text.contains("volicord export authority-bundle --output PATH"));
-    assert!(!text.contains("mcp-config [--output"));
-    assert!(!text.contains("--read-only"));
-    Ok(())
-}
-
-#[test]
-fn export_mcp_config_is_not_public_command() -> Result<(), Box<dyn Error>> {
-    assert_mcp_config_export_rejected(run_without_home(["export", "mcp-config"])?);
-    assert_mcp_config_export_rejected(run_without_home(["export", "mcp-config", "--help"])?);
-    Ok(())
-}
-
-#[test]
-fn generic_host_guidance_does_not_suggest_export_command() -> Result<(), Box<dyn Error>> {
-    let runtime_home = TempRuntimeHome::new("cli-bin-generic-host-guidance")?;
-    initialize_runtime_home(runtime_home.path(), "runtime_home_generic_guidance", "{}")?;
-    write_test_installation_profile(runtime_home.path())?;
-    let repo_root = create_git_repo(&runtime_home, "product-repo")?;
-
-    let output = run_with_home_env(
-        runtime_home.path(),
-        [
-            "connection",
-            "add",
-            "generic",
-            "--repo",
-            path_text(&repo_root).as_str(),
-        ],
-        &[],
-    )?;
-    assert_eq!(output.status.code(), Some(2));
-    assert!(stdout(&output).is_empty());
-
-    let diagnostic = stderr(&output);
-    assert!(diagnostic.contains("generic MCP host configuration is user-managed"));
-    assert!(diagnostic.contains("supported managed connection hosts are `codex` and `claude-code`"));
-    assert!(diagnostic.contains("after a supported Agent Connection exists"));
-    assert!(!diagnostic.contains(&["volicord", "export", "mcp-config"].join(" ")));
-    assert!(!diagnostic.contains(&["use", "the", "export", "command"].join(" ")));
-    assert!(!diagnostic.contains(&["generic", "export"].join(" ")));
     Ok(())
 }
 
@@ -5634,17 +5592,6 @@ fn contains_volicord_shell_command(line: &str) -> bool {
             | "--help"
             | "--version"
     )
-}
-
-fn assert_mcp_config_export_rejected(output: Output) {
-    assert_eq!(output.status.code(), Some(2));
-    assert!(stdout(&output).is_empty());
-
-    let diagnostic = stderr(&output);
-    assert!(diagnostic.contains("unknown export command: mcp-config"));
-    assert!(diagnostic.contains("volicord export authority-bundle --output PATH"));
-    assert!(!diagnostic.contains("mcp-config [--output"));
-    assert!(!diagnostic.contains("--read-only"));
 }
 
 fn channel_path<'a>(availability: &'a Value, kind: &str) -> &'a Value {

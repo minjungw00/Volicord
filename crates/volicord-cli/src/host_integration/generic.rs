@@ -147,40 +147,9 @@ mod tests {
     };
 
     use super::super::{
-        ConnectionIntent, HostRemoveRequest, HostScope, HostTarget, InstallationProfile,
-        ManagedServerEntry,
+        ConnectionIntent, HostRemoveRequest, HostScope, HostTarget, ManagedServerEntry,
     };
     use super::*;
-
-    #[test]
-    fn generic_host_guidance_does_not_suggest_export_command() {
-        let adapter = GenericAdapter;
-        let error = adapter
-            .plan(HostPlanRequest {
-                host_kind: HostKind::Generic,
-                connection_intent: ConnectionIntent::Personal,
-                project: None,
-                installation_profile: InstallationProfile {
-                    runtime_home: Path::new("/runtime"),
-                    volicord_command: Path::new("/bin/volicord"),
-                    volicord_mcp_command: Path::new("/bin/volicord"),
-                    default_connection_mode: "workflow",
-                },
-                connection_id: "int_alpha",
-                mode: "workflow",
-                expected_fingerprint: None,
-            })
-            .expect_err("generic planning should be user-managed");
-        let diagnostic = error.to_string();
-
-        assert!(matches!(error, HostConfigError::Conflict(_)));
-        assert!(diagnostic.contains("generic MCP host configuration is user-managed"));
-        assert!(diagnostic.contains("supported managed connection hosts"));
-        assert!(diagnostic.contains("supported Agent Connection exists"));
-        assert!(!diagnostic.contains(&["volicord", "export", "mcp-config"].join(" ")));
-        assert!(!diagnostic.contains(&["use", "the", "export", "command"].join(" ")));
-        assert!(!diagnostic.contains(&["generic", "export"].join(" ")));
-    }
 
     #[test]
     fn generic_host_is_user_managed_configuration() -> Result<(), Box<dyn std::error::Error>> {

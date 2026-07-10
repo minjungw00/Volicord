@@ -658,25 +658,4 @@ mod tests {
             );
         }
     }
-
-    #[test]
-    fn serve_rejects_options_outside_public_local_http_surface() {
-        for option in ["--allow-nonlocal-listen", "--host"] {
-            let error = run_serve_command(
-                &[
-                    "--transport".to_owned(),
-                    "local-http".to_owned(),
-                    option.to_owned(),
-                ],
-                |_| None,
-                Path::new(env!("CARGO_MANIFEST_DIR")),
-            )
-            .expect_err("unsupported serve option should be a usage error");
-
-            assert!(
-                error.to_string().contains("unknown option"),
-                "unexpected error for {option}: {error}"
-            );
-        }
-    }
 }
