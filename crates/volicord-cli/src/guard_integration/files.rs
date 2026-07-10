@@ -1752,6 +1752,88 @@ mod tests {
         })
     }
 
+    fn claude_settings_projection() -> Result<Value, GuardIntegrationError> {
+        let mut hooks = serde_json::Map::new();
+        for phase in REQUIRED_GUARD_PHASES {
+            hooks.insert(
+                claude_event_name(phase)?.to_owned(),
+                json!([{
+                    "hooks": [{
+                        "type": "command",
+                        "command": format!(
+                            "${{CLAUDE_PROJECT_DIR}}/.claude/hooks/volicord-{}.sh",
+                            phase.command_name()
+                        ),
+                        "args": []
+                    }]
+                }]),
+            );
+        }
+        Ok(json!({ "hooks": hooks }))
+    }
+
+    #[test]
+    fn claude_settings_merge_is_idempotent_for_exact_projection(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let desired = claude_settings_projection()?;
+
+        let merged = merge_claude_settings_hooks(&desired, &desired)?;
+
+        assert_eq!(merged, desired);
+        Ok(())
+    }
+
+    #[test]
+    fn claude_settings_merge_preserves_unmanaged_handlers() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let desired = claude_settings_projection()?;
+        let event_name = claude_event_name(HostLifecyclePhase::PreTool)?;
+        let current = json!({
+            "hooks": {
+                (event_name): [{
+                    "hooks": [{
+                        "type": "command",
+                        "command": "./user-owned-pre-tool.sh"
+                    }]
+                }]
+            }
+        });
+
+        let merged = merge_claude_settings_hooks(&current, &desired)?;
+        let groups = merged["hooks"][event_name]
+            .as_array()
+            .expect("merged hook event should contain groups");
+
+        assert_eq!(groups.len(), 2);
+        assert_eq!(groups[0]["hooks"][0]["command"], "./user-owned-pre-tool.sh");
+        Ok(())
+    }
+
+    #[test]
+    fn claude_settings_merge_rejects_conflicting_hook_shape(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let desired = claude_settings_projection()?;
+        let event_name = claude_event_name(HostLifecyclePhase::PreTool)?;
+        let current = json!({
+            "hooks": {
+                (event_name): [{
+                    "hooks": [{
+                        "type": "command",
+                        "command": "sh -c 'echo user-owned; .claude/hooks/volicord-pre-tool.sh'"
+                    }]
+                }]
+            }
+        });
+
+        let error = merge_claude_settings_hooks(&current, &desired)
+            .expect_err("a non-exact Volicord-like hook must be reported as a conflict");
+
+        assert!(error
+            .to_string()
+            .contains("conflicting Volicord-managed PreToolUse hook entry"));
+        Ok(())
+    }
+
     #[cfg(any(target_os = "linux", target_os = "macos", windows))]
     #[test]
     fn existing_managed_file_is_replaced_atomically() -> Result<(), Box<dyn std::error::Error>> {
