@@ -10,7 +10,7 @@ This document owns:
 - `StagedArtifactHandle` validation against stored staging records
 - promotion from a compatible staged handle to a persistent `ArtifactRef`
 - persistent `existing_artifact` linking eligibility
-- artifact body-read storage eligibility, availability, redaction, retention, and integrity boundaries
+- internal artifact-body verification, availability, redaction, retention, and integrity boundaries
 
 This document does not own:
 
@@ -24,7 +24,7 @@ This document does not own:
 <a id="lifecycle-boundary"></a>
 ## Lifecycle summary
 
-Artifact storage distinguishes staging, promotion, persistent linking, and body reads. `ArtifactRef` is the public API pointer to a registered persistent artifact. Storage implements persistent artifact authority through `artifacts` plus `artifact_links`. For record-family placement, see [Storage Records](storage-records.md). For response-branch persistence effects, see [Storage Effects](storage-effects.md).
+Artifact storage distinguishes staging, promotion, persistent linking, and internal body verification. `ArtifactRef` is the public API pointer to a registered persistent artifact. Storage implements persistent artifact authority through `artifacts` plus `artifact_links`. For record-family placement, see [Storage Records](storage-records.md). For response-branch persistence effects, see [Storage Effects](storage-effects.md).
 
 This lifecycle view shows when staged material becomes a durable artifact
 relation that can be evidence eligible. Solid arrows show storage lifecycle
@@ -56,7 +56,7 @@ Only a compatible owner method can move staged input into promotion. Existing ar
 | Staging | [Lifecycle: staging](#artifact-lifecycle-staging) |
 | Promotion | [Lifecycle: promotion](#artifact-lifecycle-promotion) |
 | Existing artifact link | [Lifecycle: existing artifact link](#artifact-lifecycle-existing-artifact-link) |
-| Artifact body read | [Lifecycle: artifact body read](#artifact-lifecycle-body-read) |
+| Internal artifact-body verification | [Lifecycle: internal artifact-body verification](#artifact-lifecycle-body-read) |
 
 <a id="public-evidence-state-mapping"></a>
 ## Public evidence state mapping
@@ -105,15 +105,19 @@ Evidence relationship:
 - The link is not new evidence unless the owner method records it as evidence.
 
 <a id="artifact-lifecycle-body-read"></a>
-**Lifecycle: artifact body read**
+**Lifecycle: internal artifact-body verification**
 
 Meaning:
 
-- A caller reads metadata or bytes for a registered `ArtifactRef`.
+- Storage reads a registered body or safe notice internally to verify current
+  bytes before an owner method relies on the artifact. The baseline has no
+  public API method that returns artifact body bytes.
 
 Conditions:
 
-- The read must pass `operation_category`, `connection.mode`, redaction, availability, and owner-relation checks.
+- Authority-bearing use combines this storage check with the consuming owner
+  method's project, Task, owner-relation, redaction, availability, and
+  invocation checks.
 
 Owner boundary:
 
@@ -177,7 +181,8 @@ Baseline staging defaults:
 - Default staging TTL is 24 hours. `expires_at` is set to 24 hours after staging creation.
 - The stored staged artifact body or safe notice must not exceed 10 MiB (10,485,760 bytes).
 - Safe body storage is limited to safe text, JSON, Markdown, XML, or equivalent textual media types.
-- Binary input is not stored as staged body bytes in the baseline. When binary material must be represented, staging stores only a safe textual notice unless a future owner defines a profile-gated safe binary body path.
+- Binary input is not stored as staged body bytes in the baseline. When binary
+  material must be represented, staging stores only a safe textual notice.
 - Raw secrets, tokens, credentials, and full sensitive logs must not be stored. Represent that material with a safe notice using `redaction_state=secret_omitted` or `redaction_state=blocked`, as applicable.
 - These defaults do not add baseline artifact scanning, malware detection, secret scanning, OS sandboxing, command blocking, or network blocking.
 
@@ -438,22 +443,29 @@ Owner links:
 
 - Security guarantee claims belong to [Security](security.md).
 
-## Body reads
+## Internal body verification
 
-Artifact body reads are separate from staged artifact promotion. Raw artifact path reads are not granted by default.
+The baseline does not expose a public API method that returns artifact body
+bytes. Storage reads a persistent body or safe notice internally only to verify
+current availability and integrity before an owner method relies on the
+artifact. This verification is separate from staged artifact promotion.
 
-Artifact metadata or content reads require:
+Authority-bearing artifact use requires:
 
-- a registered `ArtifactRef`
-- the matching same-project `task_id`
-- the required `artifact_links` owner relation
-- the redaction/availability state needed by the caller's operation category
-- the API/security owner requirements for `operation_category=read`
-- any documented Agent Connection or User Channel provenance boundary
+- a registered persistent artifact record
+- a matching same-project Task and required `artifact_links` owner relation,
+  checked by the consuming owner method
+- a safe artifact-store-relative `body_path` that resolves inside the artifact
+  store without following symlinks or path escapes
+- a regular file whose current size and SHA-256 match the stored facts
+- compatible redaction, availability, integrity, and invocation state for the
+  consuming owner method
 
 Not allowed:
 
-- Do not treat a local path under the artifact store, an artifact `uri`, a staged path, or a copied file as sufficient authority to read or rely on artifact bytes.
+- Do not treat a local path under the artifact store, an artifact `uri`, a
+  staged path, a copied file, or this internal verification routine as a public
+  artifact-body read capability.
 
 ## Validation and failures
 
@@ -529,7 +541,7 @@ Not allowed:
 ## Related owners
 
 - [API Artifact Schemas](api/schema-artifacts.md) for `ArtifactRef`, `ArtifactInput`, and `StagedArtifactHandle` shapes.
-- [Stage-artifact method](api/method-stage-artifact.md), [Record-run method](api/method-record-run.md), and [API Methods](api/methods.md) for `volicord.stage_artifact`, `volicord.record_run`, and artifact read behavior.
+- [Stage-artifact method](api/method-stage-artifact.md), [Record-run method](api/method-record-run.md), and [API Methods](api/methods.md) for the supported public artifact staging and linking methods.
 - [Storage Effects](storage-effects.md) for whether a response branch creates storage effects.
 - [Storage Records](storage-records.md) for `artifact_staging`, `artifacts`, and `artifact_links` table overview.
 - [Security](security.md) for access and guarantee non-claims.

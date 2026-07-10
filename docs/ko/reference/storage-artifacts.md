@@ -10,7 +10,7 @@
 - 저장된 스테이징 기록을 기준으로 한 `StagedArtifactHandle` 검증.
 - 호환되는 스테이징 핸들을 지속 `ArtifactRef`로 승격하는 저장소 경계.
 - 기존 지속 아티팩트를 새 담당 관계에 연결할 수 있는 조건.
-- 아티팩트 본문 읽기의 저장소 자격, 가용성, 가림 처리, 보존, 무결성 경계.
+- 내부 아티팩트 본문 검증, 가용성, 가림 처리, 보존, 무결성 경계.
 
 이 문서는 담당하지 않습니다.
 
@@ -24,7 +24,7 @@
 <a id="lifecycle-boundary"></a>
 ## 아티팩트 생명주기 요약
 
-아티팩트 저장은 스테이징, 승격, 지속 연결, 본문 읽기를 구분합니다. `ArtifactRef`는 등록된 지속 아티팩트를 가리키는 공개 API 포인터입니다. 저장소는 `artifacts`와 `artifact_links`를 사용해 지속 아티팩트 권한을 구현합니다. 기록 계열 배치는 [저장소 기록](storage-records.md)을 보고, 응답 분기별 지속 효과는 [저장 효과](storage-effects.md)를 봅니다.
+아티팩트 저장은 스테이징, 승격, 지속 연결, 내부 본문 검증을 구분합니다. `ArtifactRef`는 등록된 지속 아티팩트를 가리키는 공개 API 포인터입니다. 저장소는 `artifacts`와 `artifact_links`를 사용해 지속 아티팩트 권한을 구현합니다. 기록 계열 배치는 [저장소 기록](storage-records.md)을 보고, 응답 분기별 지속 효과는 [저장 효과](storage-effects.md)를 봅니다.
 
 이 생명주기 그림은 스테이징된 자료가 언제 증거 자격을 가질 수 있는 지속 아티팩트
 관계가 되는지 보여 줍니다. 실선 화살표는 저장 생명주기 전이 또는 지속 연결 경로를
@@ -55,7 +55,7 @@ flowchart LR
 | 스테이징 | [생명주기: 스테이징](#artifact-lifecycle-staging) |
 | 승격 | [생명주기: 승격](#artifact-lifecycle-promotion) |
 | 기존 아티팩트 연결 | [생명주기: 기존 아티팩트 연결](#artifact-lifecycle-existing-artifact-link) |
-| 아티팩트 본문 읽기 | [생명주기: 아티팩트 본문 읽기](#artifact-lifecycle-body-read) |
+| 내부 아티팩트 본문 검증 | [생명주기: 내부 아티팩트 본문 검증](#artifact-lifecycle-body-read) |
 
 <a id="public-evidence-state-mapping"></a>
 ## 공개 증거 상태 매핑
@@ -104,15 +104,18 @@ flowchart LR
 - 담당 메서드가 증거로 기록하지 않으면 새 증거를 뜻하지 않습니다.
 
 <a id="artifact-lifecycle-body-read"></a>
-**생명주기: 아티팩트 본문 읽기**
+**생명주기: 내부 아티팩트 본문 검증**
 
 의미:
 
-- 등록된 `ArtifactRef`의 메타데이터나 아티팩트 바이트를 읽는 단계입니다.
+- 저장소가 담당 메서드가 아티팩트에 의존하기 전에 등록된 본문 또는 안전 알림을
+  내부에서 읽어 현재 바이트를 검증하는 단계입니다. 기준 범위에는 아티팩트 본문
+  바이트를 반환하는 공개 API 메서드가 없습니다.
 
 조건:
 
-- `operation_category`, `connection.mode`, 가림 처리, 가용성, 담당 관계 검사를 통과해야 합니다.
+- 권한을 지니는 사용은 이 저장소 검사와 함께 소비하는 담당 메서드의 프로젝트,
+  `Task`, 담당 관계, 가림 처리, 가용성, 호출 검사를 통과해야 합니다.
 
 담당 경계:
 
@@ -176,7 +179,8 @@ Core는 성공한 `volicord.stage_artifact` 요청의 확인된 호출 맥락에
 - 기본 스테이징 TTL은 24시간입니다. `expires_at`은 스테이징 생성 시각에서 24시간 뒤로 설정합니다.
 - 저장되는 스테이징 아티팩트 본문 또는 안전한 알림은 10 MiB(10,485,760 bytes)를 넘으면 안 됩니다.
 - 안전한 본문 저장은 안전한 텍스트, JSON, Markdown, XML 또는 동등한 텍스트성 미디어 타입으로 제한됩니다.
-- 바이너리 입력은 기준 범위에서 스테이징 본문 바이트로 저장하지 않습니다. 바이너리 자료를 표현해야 할 때는 나중에 담당 문서가 프로필 조건부 안전 바이너리 본문 경로를 정의하기 전까지 안전한 텍스트 알림만 저장합니다.
+- 바이너리 입력은 기준 범위에서 스테이징 본문 바이트로 저장하지 않습니다. 바이너리
+  자료를 표현해야 할 때는 안전한 텍스트 알림만 저장합니다.
 - 원시 비밀값, 토큰, 자격 증명, 민감한 전체 로그는 저장하면 안 됩니다. 해당 자료는 적용 가능한 경우 `redaction_state=secret_omitted` 또는 `redaction_state=blocked`를 사용하는 안전한 알림으로 표현합니다.
 - 이 기본값은 아티팩트 스캔, 악성코드 탐지, 비밀값 스캔, OS 샌드박싱, 명령 차단, 네트워크 차단을 기준 동작으로 추가하지 않습니다.
 
@@ -437,22 +441,26 @@ expires_at: "<future-expiration-timestamp>"
 
 - 보안 보장 주장은 [보안](security.md)이 담당합니다.
 
-## 아티팩트 본문 읽기
+## 내부 본문 검증
 
-아티팩트 본문 읽기는 스테이징 핸들 승격과 별개입니다. 원시 아티팩트 경로 읽기는 기본으로 부여되지 않습니다.
+기준 범위에는 아티팩트 본문 바이트를 반환하는 공개 API 메서드가 없습니다. 저장소는
+담당 메서드가 아티팩트에 의존하기 전에 현재 가용성과 무결성을 확인하기 위해서만 지속
+본문 또는 안전 알림을 내부에서 읽습니다. 이 검증은 스테이징 핸들 승격과 별개입니다.
 
-아티팩트 메타데이터나 아티팩트 바이트를 읽으려면 아래 조건이 필요합니다.
+권한을 지니는 아티팩트 사용에는 아래 조건이 필요합니다.
 
-- 등록된 `ArtifactRef`.
-- 같은 프로젝트의 일치하는 `task_id`.
-- 필요한 `artifact_links` 담당 관계.
-- 호출자의 operation category에 필요한 가림 처리/가용성 상태.
-- `operation_category=read`에 대한 API/보안 담당 문서 요구사항.
-- 문서화된 Agent Connection 또는 User Channel 출처 경계.
+- 등록된 지속 아티팩트 기록.
+- 소비하는 담당 메서드가 확인하는 같은 프로젝트의 일치하는 `Task`와 필요한
+  `artifact_links` 담당 관계.
+- 심볼릭 링크나 경로 이탈을 따라가지 않고 아티팩트 저장소 안에서 해석되는 안전한
+  아티팩트 저장소 상대 `body_path`.
+- 현재 크기와 SHA-256이 저장된 사실과 일치하는 일반 파일.
+- 소비하는 담당 메서드에 맞는 가림 처리, 가용성, 무결성, 호출 상태.
 
 허용되지 않는 것:
 
-- 아티팩트 저장소 아래 로컬 경로, 아티팩트 `uri`, 스테이징 경로, 복사된 파일만으로 아티팩트 바이트를 읽거나 신뢰하기에 충분한 권한처럼 취급하면 안 됩니다.
+- 아티팩트 저장소 아래 로컬 경로, 아티팩트 `uri`, 스테이징 경로, 복사된 파일,
+  이 내부 검증 루틴을 공개 아티팩트 본문 읽기 기능처럼 취급하면 안 됩니다.
 
 ## 검증과 실패
 
@@ -528,7 +536,7 @@ expires_at: "<future-expiration-timestamp>"
 ## 관련 담당 문서
 
 - [API 아티팩트 스키마](api/schema-artifacts.md): `ArtifactRef`, `ArtifactInput`, `StagedArtifactHandle` 형태.
-- [아티팩트 스테이징 메서드](api/method-stage-artifact.md), [실행 기록 메서드](api/method-record-run.md), [API 메서드](api/methods.md): `volicord.stage_artifact`, `volicord.record_run`, 아티팩트 읽기 API 동작.
+- [아티팩트 스테이징 메서드](api/method-stage-artifact.md), [실행 기록 메서드](api/method-record-run.md), [API 메서드](api/methods.md): 지원되는 공개 아티팩트 스테이징 및 연결 메서드.
 - [저장 효과](storage-effects.md): 응답 분기가 저장 효과를 만드는지 여부.
 - [저장소 기록](storage-records.md): `artifact_staging`, `artifacts`, `artifact_links` 테이블 개요.
 - [보안](security.md): operation category, connection capability 경계, 보장 비주장.
