@@ -105,6 +105,7 @@ pub(crate) fn plan_guard_integration(
     let agents_path = repo_root.join(AGENTS_FILE);
     generated_files.push(plan_managed_block_file(
         HostIntegrationFileKind::AgentsManagedBlock,
+        repo_root,
         &agents_path,
         &agents_guidance_block(),
         GUIDANCE_START_MARKER,
@@ -112,7 +113,7 @@ pub(crate) fn plan_guard_integration(
         false,
     )?);
     let policy_path = repo_root.join(VOLICORD_POLICY_FILE);
-    generated_files.push(plan_policy_file(&policy_path, &policy)?);
+    generated_files.push(plan_policy_file(repo_root, &policy_path, &policy)?);
     generated_files.extend(plan_host_generated_files(
         host_kind,
         profile,

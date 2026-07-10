@@ -1,230 +1,105 @@
-use std::{fs, path::Path};
-
 use serde_json::Value;
+
+#[cfg(test)]
+use std::path::Path;
 
 use crate::{
     guard_integration::{
         files::{
-            managed_block_conflict, managed_json_projection_merge, plan_managed_exact_json_file,
-            plan_managed_script_file, plan_policy_file, FilePlanStatus, GeneratedFileWriteKind,
+            ensure_generated_file_plan_fresh, managed_block_conflict,
+            managed_json_projection_merge, write_managed_file_if_fresh, FilePlanStatus,
+            GeneratedFilePlan, GeneratedFileWriteKind,
         },
         GuardIntegrationError, GuardIntegrationPlan, ManagedJsonProjection,
     },
-    host_integration::HostIntegrationFileKind,
-    managed_block::{self, ManagedBlockWrite},
+    managed_block,
 };
 
 pub(crate) fn apply_guard_integration(
     mut plan: GuardIntegrationPlan,
 ) -> Result<GuardIntegrationPlan, GuardIntegrationError> {
     for file in &mut plan.generated_files {
-        file.status = match file.write_kind {
-            GeneratedFileWriteKind::Block {
-                start_marker,
-                end_marker,
-                require_existing_marker,
-            } => write_managed_markdown_file(
-                &file.path,
-                &file.content,
-                start_marker,
-                end_marker,
-                require_existing_marker,
-            )?,
-            GeneratedFileWriteKind::Json => {
-                write_managed_json_file(&file.path, &file.policy_value()?)?
-            }
-            GeneratedFileWriteKind::ExactJson => {
-                write_managed_exact_json_file(&file.path, &file.policy_value()?, file.kind)?
-            }
-            GeneratedFileWriteKind::JsonProjection { projection } => {
-                write_managed_json_projection_file(&file.path, &file.policy_value()?, projection)?
-            }
-            GeneratedFileWriteKind::Script => {
-                write_managed_script_file(&file.path, &file.content, file.kind)?
-            }
-        };
+        file.status = apply_generated_file(file)?;
     }
     Ok(plan)
 }
 
-pub(crate) fn write_managed_markdown_file(
-    path: &Path,
-    block: &str,
-    start_marker: &'static str,
-    end_marker: &'static str,
-    require_existing_marker: bool,
-) -> Result<FilePlanStatus, GuardIntegrationError> {
-    if require_existing_marker && path.exists() {
-        let existing = fs::read_to_string(path).map_err(|error| {
-            GuardIntegrationError::runtime(format!("failed to read {}: {error}", path.display()))
-        })?;
-        if !existing.contains(start_marker) {
-            return Err(GuardIntegrationError::runtime(format!(
-                "{} already exists without a Volicord-managed block",
-                path.display()
-            )));
-        }
-    }
-    match managed_block::write_managed_block_with_markers(path, block, start_marker, end_marker)
-        .map_err(|error| {
-            GuardIntegrationError::runtime(format!("failed to write {}: {error}", path.display()))
-        })? {
-        Ok(ManagedBlockWrite::Created(_)) => Ok(FilePlanStatus::Created),
-        Ok(ManagedBlockWrite::Updated(_)) => Ok(FilePlanStatus::Updated),
-        Ok(ManagedBlockWrite::Unchanged(_)) => Ok(FilePlanStatus::Unchanged),
-        Err(error) => Err(managed_block_conflict(error)),
-    }
-}
-
-pub(crate) fn write_managed_json_file(
-    path: &Path,
-    value: &Value,
-) -> Result<FilePlanStatus, GuardIntegrationError> {
-    let mut content = serde_json::to_string_pretty(value)
-        .map_err(|error| GuardIntegrationError::runtime(error.to_string()))?;
-    content.push('\n');
-    let planned = plan_policy_file(path, value)?;
-    if planned.status == FilePlanStatus::Unchanged {
+fn apply_generated_file(file: &GeneratedFilePlan) -> Result<FilePlanStatus, GuardIntegrationError> {
+    ensure_generated_file_plan_fresh(file)?;
+    if file.status == FilePlanStatus::Unchanged {
         return Ok(FilePlanStatus::Unchanged);
     }
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|error| {
-            GuardIntegrationError::runtime(format!(
-                "failed to create {}: {error}",
-                parent.display()
-            ))
-        })?;
-    }
-    fs::write(path, content).map_err(|error| {
-        GuardIntegrationError::runtime(format!("failed to write {}: {error}", path.display()))
-    })?;
-    Ok(match planned.status {
-        FilePlanStatus::PlannedCreate => FilePlanStatus::Created,
-        FilePlanStatus::PlannedUpdate => FilePlanStatus::Updated,
-        other => other,
-    })
-}
 
-pub(crate) fn write_managed_exact_json_file(
-    path: &Path,
-    value: &Value,
-    kind: HostIntegrationFileKind,
-) -> Result<FilePlanStatus, GuardIntegrationError> {
-    let mut content = serde_json::to_string_pretty(value)
-        .map_err(|error| GuardIntegrationError::runtime(error.to_string()))?;
-    content.push('\n');
-    let planned = plan_managed_exact_json_file(kind, path, value)?;
-    if planned.status == FilePlanStatus::Unchanged {
-        return Ok(FilePlanStatus::Unchanged);
-    }
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|error| {
-            GuardIntegrationError::runtime(format!(
-                "failed to create {}: {error}",
-                parent.display()
-            ))
-        })?;
-    }
-    fs::write(path, content).map_err(|error| {
-        GuardIntegrationError::runtime(format!("failed to write {}: {error}", path.display()))
-    })?;
-    Ok(match planned.status {
-        FilePlanStatus::PlannedCreate => FilePlanStatus::Created,
-        FilePlanStatus::PlannedUpdate => FilePlanStatus::Updated,
-        other => other,
-    })
-}
-
-pub(crate) fn write_managed_json_projection_file(
-    path: &Path,
-    value: &Value,
-    projection: ManagedJsonProjection,
-) -> Result<FilePlanStatus, GuardIntegrationError> {
-    let mut existed = true;
-    let existing = match fs::read_to_string(path) {
-        Ok(text) => {
-            let value = serde_json::from_str::<Value>(&text).map_err(|error| {
-                GuardIntegrationError::runtime(format!(
-                    "existing JSON configuration is not valid JSON: {} ({error})",
-                    path.display()
-                ))
-            })?;
-            Some(value)
+    let (content, executable) = match file.write_kind {
+        GeneratedFileWriteKind::Block {
+            start_marker,
+            end_marker,
+            require_existing_marker,
+        } => {
+            let existing = file.target_snapshot.text().unwrap_or("");
+            if require_existing_marker
+                && file.target_snapshot.text().is_some()
+                && !existing.contains(start_marker)
+            {
+                return Err(GuardIntegrationError::runtime(format!(
+                    "{} already exists without a Volicord-managed block",
+                    file.path.display()
+                )));
+            }
+            let content = managed_block::apply_managed_block_with_markers(
+                existing,
+                &file.content,
+                start_marker,
+                end_marker,
+            )
+            .map_err(managed_block_conflict)?;
+            (content, false)
         }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            existed = false;
-            None
+        GeneratedFileWriteKind::Json | GeneratedFileWriteKind::ExactJson => {
+            (file.content.clone(), false)
         }
-        Err(error) => {
-            return Err(GuardIntegrationError::runtime(format!(
-                "failed to read {}: {error}",
-                path.display()
-            )));
+        GeneratedFileWriteKind::JsonProjection { projection } => {
+            (render_json_projection(file, projection)?, false)
         }
+        GeneratedFileWriteKind::Script => (file.content.clone(), true),
     };
-    let current = existing.unwrap_or_else(|| Value::Object(serde_json::Map::new()));
-    let merged = managed_json_projection_merge(&current, value, projection)?;
-    if merged == current {
-        return Ok(FilePlanStatus::Unchanged);
-    }
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|error| {
+    write_managed_file_if_fresh(file, &content, executable)?;
+    Ok(match file.status {
+        FilePlanStatus::PlannedCreate => FilePlanStatus::Created,
+        FilePlanStatus::PlannedUpdate => FilePlanStatus::Updated,
+        other => {
+            return Err(GuardIntegrationError::runtime(format!(
+                "managed file has non-applicable plan status {}: {}",
+                other.as_str(),
+                file.path.display()
+            )));
+        }
+    })
+}
+
+fn render_json_projection(
+    file: &GeneratedFilePlan,
+    projection: ManagedJsonProjection,
+) -> Result<String, GuardIntegrationError> {
+    let current = match file.target_snapshot.text() {
+        Some(text) => serde_json::from_str::<Value>(text).map_err(|error| {
             GuardIntegrationError::runtime(format!(
-                "failed to create {}: {error}",
-                parent.display()
+                "existing JSON configuration is not valid JSON: {} ({error})",
+                file.path.display()
             ))
-        })?;
-    }
+        })?,
+        None => Value::Object(serde_json::Map::new()),
+    };
+    let merged = managed_json_projection_merge(&current, &file.policy_value()?, projection)?;
     let mut text = serde_json::to_string_pretty(&merged)
         .map_err(|error| GuardIntegrationError::runtime(error.to_string()))?;
     text.push('\n');
-    fs::write(path, text).map_err(|error| {
-        GuardIntegrationError::runtime(format!("failed to write {}: {error}", path.display()))
-    })?;
-    Ok(if existed {
-        FilePlanStatus::Updated
-    } else {
-        FilePlanStatus::Created
-    })
+    Ok(text)
 }
 
-pub(crate) fn write_managed_script_file(
-    path: &Path,
-    content: &str,
-    kind: HostIntegrationFileKind,
-) -> Result<FilePlanStatus, GuardIntegrationError> {
-    let planned = plan_managed_script_file(path, content, kind)?;
-    if planned.status != FilePlanStatus::Unchanged {
-        let existing_matches = fs::read_to_string(path)
-            .map(|existing| existing == content)
-            .unwrap_or(false);
-        if !existing_matches {
-            if let Some(parent) = path.parent() {
-                fs::create_dir_all(parent).map_err(|error| {
-                    GuardIntegrationError::runtime(format!(
-                        "failed to create {}: {error}",
-                        parent.display()
-                    ))
-                })?;
-            }
-            fs::write(path, content).map_err(|error| {
-                GuardIntegrationError::runtime(format!(
-                    "failed to write {}: {error}",
-                    path.display()
-                ))
-            })?;
-        }
-        set_script_executable(path)?;
-    }
-    Ok(match planned.status {
-        FilePlanStatus::PlannedCreate => FilePlanStatus::Created,
-        FilePlanStatus::PlannedUpdate => FilePlanStatus::Updated,
-        other => other,
-    })
-}
-
-#[cfg(unix)]
+#[cfg(all(test, unix))]
 pub(crate) fn set_script_executable(path: &Path) -> Result<(), GuardIntegrationError> {
+    use std::fs;
     use std::os::unix::fs::PermissionsExt;
 
     let mut permissions = fs::metadata(path)
@@ -248,7 +123,7 @@ pub(crate) fn set_script_executable(path: &Path) -> Result<(), GuardIntegrationE
     Ok(())
 }
 
-#[cfg(not(unix))]
+#[cfg(all(test, not(unix)))]
 pub(crate) fn set_script_executable(_path: &Path) -> Result<(), GuardIntegrationError> {
     Ok(())
 }

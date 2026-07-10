@@ -29,6 +29,7 @@ pub(crate) fn plan_claude_mcp_file(
     let value = claude_mcp_projection(server_name, entry);
     plan_managed_json_projection_file(
         HostIntegrationFileKind::HostMcpConfig,
+        repo_root,
         &repo_root.join(".mcp.json"),
         &value,
         ManagedJsonProjection::ClaudeCodeMcpEntry,
@@ -54,6 +55,7 @@ pub(crate) fn plan_claude_project_settings_file(
     })?;
     plan_managed_json_projection_file(
         HostIntegrationFileKind::HostHookConfig,
+        repo_root,
         &claude_code::project_settings_path(repo_root),
         &value,
         ManagedJsonProjection::ClaudeCodeSettingsHooks,
@@ -72,6 +74,7 @@ pub(crate) fn plan_claude_rule_file(
     ));
     plan_managed_block_file(
         HostIntegrationFileKind::HostRuleInstruction,
+        repo_root,
         &rule_path,
         &rule_block,
         GUIDANCE_START_MARKER,

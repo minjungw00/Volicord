@@ -78,6 +78,7 @@ pub(crate) fn plan_codex_hook_file(
     )?;
     plan_managed_exact_json_file(
         HostIntegrationFileKind::HostHookConfig,
+        repo_root,
         &codex::project_hooks_path(repo_root),
         &value,
     )
@@ -110,6 +111,7 @@ pub(crate) fn plan_codex_rule_file(
     let block = format!("{CODEX_RULE_START_MARKER}\n{body}{CODEX_RULE_END_MARKER}\n");
     plan_managed_block_file(
         HostIntegrationFileKind::HostRuleInstruction,
+        repo_root,
         &codex::project_rule_path(repo_root),
         &block,
         CODEX_RULE_START_MARKER,

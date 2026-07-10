@@ -11,10 +11,21 @@ volicord-mcp = { path = "../volicord-mcp" }
 volicord-store = { path = "../volicord-store" }
 volicord-types = { path = "../volicord-types" }
 chrono = { version = "0.4", default-features = false, features = ["std"] }
+cap-fs-ext = "3.4.4"
+cap-std = "3.4.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
 toml_edit = "0.22"
+
+[target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
+rustix = { version = "1", features = ["fs"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Storage_FileSystem",
+] }
 
 [dev-dependencies]
 volicord-store = { path = "../volicord-store", features = ["test-support"] }

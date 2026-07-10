@@ -127,7 +127,12 @@ pub(crate) fn plan_hook_wrapper_file(
     let relative_path = hook_wrapper_relative_path(host_kind, phase)?;
     let path = repo_root.join(&relative_path);
     let content = hook_wrapper_script_content(host_kind, phase, guard_command);
-    plan_managed_script_file(&path, &content, HostIntegrationFileKind::HostHookWrapper)
+    plan_managed_script_file(
+        repo_root,
+        &path,
+        &content,
+        HostIntegrationFileKind::HostHookWrapper,
+    )
 }
 
 pub(crate) fn plan_codex_dispatch_wrapper_file(
@@ -135,7 +140,12 @@ pub(crate) fn plan_codex_dispatch_wrapper_file(
 ) -> Result<GeneratedFilePlan, GuardIntegrationError> {
     let path = repo_root.join(codex_dispatch_wrapper_relative_path());
     let content = codex_dispatch_wrapper_script_content();
-    plan_managed_script_file(&path, &content, HostIntegrationFileKind::HostHookDispatch)
+    plan_managed_script_file(
+        repo_root,
+        &path,
+        &content,
+        HostIntegrationFileKind::HostHookDispatch,
+    )
 }
 
 pub(crate) fn host_hook_command_specs(

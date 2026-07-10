@@ -89,40 +89,6 @@ pub(crate) fn write_managed_block(target: &Path, block: &str) -> io::Result<Mana
     }
 }
 
-pub(crate) fn write_managed_block_with_markers(
-    target: &Path,
-    block: &str,
-    start_marker: &'static str,
-    end_marker: &'static str,
-) -> io::Result<Result<ManagedBlockWrite, ManagedBlockError>> {
-    let existing = match fs::read_to_string(target) {
-        Ok(text) => Some(text),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => None,
-        Err(error) => return Err(error),
-    };
-    let updated = match apply_managed_block_with_markers(
-        existing.as_deref().unwrap_or(""),
-        block,
-        start_marker,
-        end_marker,
-    ) {
-        Ok(updated) => updated,
-        Err(error) => return Ok(Err(error)),
-    };
-    if existing.as_deref() == Some(updated.as_str()) {
-        return Ok(Ok(ManagedBlockWrite::Unchanged(target.to_path_buf())));
-    }
-    if let Some(parent) = target.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    fs::write(target, updated)?;
-    if existing.is_some() {
-        Ok(Ok(ManagedBlockWrite::Updated(target.to_path_buf())))
-    } else {
-        Ok(Ok(ManagedBlockWrite::Created(target.to_path_buf())))
-    }
-}
-
 fn ensure_trailing_newline(text: &str) -> String {
     if text.ends_with('\n') {
         text.to_owned()

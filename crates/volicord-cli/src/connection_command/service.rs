@@ -257,7 +257,7 @@ fn apply_init_provisioning(
         process,
     )?;
     ensure_host_plan_has_no_conflict(&host_plan)?;
-    let integration = plan_guard_integration(
+    let _integration = plan_guard_integration(
         plan.host_kind,
         plan.init_mode.integration_profile(),
         &plan.runtime_home,
@@ -301,6 +301,15 @@ fn apply_init_provisioning(
         },
     )?;
     apply_host_plan(plan.host_kind, &host_plan, process)?;
+    let integration = plan_guard_integration(
+        plan.host_kind,
+        plan.init_mode.integration_profile(),
+        &plan.runtime_home,
+        &project.repo_root,
+        &plan.connection_id,
+        &plan.guard_installation_id,
+        &host_plan.entry,
+    )?;
     let integration = apply_guard_integration(integration)?;
     let integration_profile = plan.init_mode.integration_profile();
     let installation_status =
