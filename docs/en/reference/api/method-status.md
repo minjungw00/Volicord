@@ -21,7 +21,14 @@ This document does not own:
 
 ## Purpose
 
-`volicord.status` returns a current-position view over Core state. The view can include current Task summary, blockers, pending user judgments, User Channel answer-path availability, write-ticket summary, evidence summary, close state, close-readiness findings, `GuardHealthSummary` hook-state facts, `CoverageSummary` coverage facts, project continuity summaries, guarantee display, next safe actions, and the compact `summary_card`.
+`volicord.status` returns a current-position view over Core state. Callers can select:
+
+- the current Task and Change Unit
+- blockers, pending user judgments, available User Channel answer paths, and write-ticket state
+- evidence and close-readiness observations, including `GuardHealthSummary` and `CoverageSummary`
+- project continuity, guarantee display, and next safe actions
+
+Every successful result also includes the compact `summary_card`.
 
 ## Required inputs
 

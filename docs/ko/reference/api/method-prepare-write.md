@@ -132,7 +132,7 @@ PrepareWriteRequest:
 - `write_ticket_effect`는 새로 커밋된 `decision=allowed` 응답에서 `issued`입니다.
 - `write_ticket.path_patterns.allowed`와 최상위 `allowed_path_patterns`는 이 티켓에 허용된 정규화 저장소 상대 `intended_paths`를 담습니다.
 - `write_ticket.path_patterns.denied`와 최상위 `denied_path_patterns`는 허용 결과에서 `[]`입니다.
-- `write_ticket.observed_paths`는 기준 범위에서 `[]`입니다. Detective host hook과 watcher 관찰은 별도 host-observation 및 미기록 변경 기록을 사용합니다.
+- `write_ticket.observed_paths`는 기준 범위에서 `[]`입니다. `detective` 호스트 훅과 감시자 관찰은 별도의 호스트 관찰 및 미기록 변경 기록을 사용합니다.
 - `control_surface`와 `write_ticket.control_surface`는 기준 비집행 모델에서 `os_enforced=false`를 포함해 현재 Volicord 제어 표면을 공개합니다.
 - 멱등 재실행은 저장된 원래 커밋 `PrepareWriteResult`를 그대로 반환합니다. `write_ticket_effect`, `base.state_version`, `base.events`나 다른 응답 필드를 다시 계산하거나 재분류하지 않으며, 쓰기 티켓을 새로 만들거나 저장 효과를 반복하지 않습니다.
 - 쓰기 티켓은 정규화된 저장소 상대 `intended_paths`를 사용하는 `WriteTicketScope`에 묶입니다.
@@ -234,10 +234,10 @@ params:
     idempotency_key: idem_prepare_pref_001
     expected_state_version: 19
     dry_run: false
-    locale: en-US
+    locale: ko-KR
   task_id: task_pref_001
   change_unit_id: cu_pref_001
-  intended_operation: "update profile preference save flow"
+  intended_operation: "프로필 환경설정 저장 흐름 갱신"
   intended_paths:
     - src/preferences/profile-save.ts
     - src/preferences/profile-save.test.ts
@@ -282,13 +282,13 @@ state:
     close_reason: none
     result: none
     closed_at: null
-  goal_summary: "Update profile preference save flow."
-  scope_summary: "Profile preference save flow update."
+  goal_summary: "프로필 환경설정 저장 흐름을 갱신합니다."
+  scope_summary: "프로필 환경설정 저장 흐름 갱신."
   non_goals:
-    - "Changing account deletion."
+    - "계정 삭제 방식 변경."
   acceptance_criteria:
-    - "Profile preferences save successfully with related tests."
-  autonomy_boundary: "Stay within the profile preference save flow."
+    - "관련 테스트와 함께 프로필 환경설정이 정상적으로 저장됩니다."
+  autonomy_boundary: "프로필 환경설정 저장 흐름만 다룹니다."
   active_change_unit_ref:
     record_kind: change_unit
     record_id: cu_pref_001
@@ -313,14 +313,14 @@ state:
       - src/preferences/profile-save.test.ts
     guarantee_display:
       level: cooperative
-      basis: "Write ticket is a Volicord authority record, not OS permission."
+      basis: "쓰기 티켓은 OS 권한이 아니라 Volicord 권한 기록입니다."
       capability_refs: []
   evidence_summary: null
   close_state: null
   close_blockers: []
   guarantee_display:
     level: cooperative
-    basis: "Write ticket is a Volicord authority record, not OS permission."
+    basis: "쓰기 티켓은 OS 권한이 아니라 Volicord 권한 기록입니다."
     capability_refs: []
 write_ticket_id: wt_pref_001
 write_ticket_ref:
@@ -341,7 +341,7 @@ write_ticket:
   scope:
     task_id: task_pref_001
     change_unit_id: cu_pref_001
-    intended_operation: "update profile preference save flow"
+    intended_operation: "프로필 환경설정 저장 흐름 갱신"
     product_file_write_intended: true
     sensitive_categories:
       - account_preference_update
@@ -365,7 +365,7 @@ write_ticket:
     os_enforced: false
   guarantee_display:
     level: cooperative
-    basis: "Write ticket is a Volicord authority record, not OS permission."
+    basis: "쓰기 티켓은 OS 권한이 아니라 Volicord 권한 기록입니다."
     capability_refs: []
 write_ticket_effect: issued
 allowed_path_patterns:
@@ -391,7 +391,7 @@ write_decision_reasons: []
 user_judgment_candidate: null
 guarantee_display:
   level: cooperative
-  basis: "Write ticket is a Volicord authority record, not OS permission."
+  basis: "쓰기 티켓은 OS 권한이 아니라 Volicord 권한 기록입니다."
   capability_refs: []
 ```
 
@@ -429,13 +429,13 @@ control_surface:
 write_decision_reasons:
   - category: sensitive_approval
     code: sensitive_approval_missing
-    message: "Profile preference updates require separate sensitive-action approval before write ticket issuance."
+    message: "프로필 환경설정을 갱신하려면 쓰기 티켓 발급 전에 별도의 민감 동작 승인이 필요합니다."
     related_refs: []
 active_user_judgment_refs: []
 user_judgment_candidate: null
 guarantee_display:
   level: cooperative
-  basis: "Write ticket is a Volicord authority record, not OS permission."
+  basis: "쓰기 티켓은 OS 권한이 아니라 Volicord 권한 기록입니다."
   capability_refs: []
 ```
 
@@ -446,6 +446,6 @@ guarantee_display:
 - `SensitiveActionScope`와 사용자 소유 승인 형태: [API 판단 스키마](schema-judgment.md).
 - 쓰기 티켓, 쓰기 승인, 민감 동작 승인, 최종 수락, 잔여 위험 경계: [Core 모델](../core-model.md).
 - `Product Repository` 경로 정규화: [런타임 경계](../runtime-boundaries.md#product-repository-api-path-normalization).
-- 지원되는 값과 operation category: [API 값 집합](schema-value-sets.md#operation-category-values).
+- 지원되는 값과 작업 범주: [API 값 집합](schema-value-sets.md#operation-category-values).
 - 공개 오류, `STATE_VERSION_CONFLICT`, 분기 처리 경로, 차단/`dry_run` 동작: [API 오류 코드](error-codes.md), [API 오류 우선순위](error-precedence.md), [API 오류 처리 경로](error-routing.md).
 - 저장 효과와 상태 시계: [저장 효과](../storage-effects.md), [저장소 버전 관리](../storage-versioning.md).

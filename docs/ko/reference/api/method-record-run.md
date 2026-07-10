@@ -243,14 +243,14 @@ params:
     idempotency_key: idem_runprobe_001
     expected_state_version: 31
     dry_run: false
-    locale: en-US
+    locale: ko-KR
   task_id: task_runprobe_001
   change_unit_id: cu_runprobe_001
   kind: implementation
   run_id: null
   baseline_ref: baseline_runprobe_001
   write_ticket_id: null
-  summary: "Search-result count validation passed."
+  summary: "검색 결과 수 검증을 통과했습니다."
   observed_changes:
     changed_paths: []
     product_file_write_observed: false
@@ -272,12 +272,12 @@ params:
         consumed: false
       existing_artifact_ref: null
       relation_hint: "validation_report"
-      claim: "Search-result count validation passed."
+      claim: "검색 결과 수 검증을 통과했습니다."
       expected_sha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
       expected_size_bytes: 96
       redaction_state: none
   evidence_updates:
-    - claim: "Search-result count validation passed."
+    - claim: "검색 결과 수 검증을 통과했습니다."
       required_for_close: true
       coverage_state: supported
       supporting_refs: []
@@ -285,7 +285,7 @@ params:
       supporting_artifact_refs: []
       gap_refs: []
   evidence_observations:
-    - claim: "Search-result count validation passed."
+    - claim: "검색 결과 수 검증을 통과했습니다."
       source_kind: external_tool
       assurance_level: external_tool_result
       observed_by_actor_source: agent_connection:conn_run_probe
@@ -298,7 +298,7 @@ params:
       limitations: []
       observed_at: "<example-observed-at>"
   close_assessment:
-    result_summary: "Search-result count validation passed."
+    result_summary: "검색 결과 수 검증을 통과했습니다."
     result_refs: []
     residual_risks: []
     sensitive_categories: []
@@ -326,7 +326,7 @@ run_summary:
     task_id: task_runprobe_001
     state_version: 32
   kind: implementation
-  summary: "Search-result count validation passed."
+  summary: "검색 결과 수 검증을 통과했습니다."
   observed_changes:
     changed_paths: []
     product_file_write_observed: false
@@ -376,9 +376,9 @@ evidence_summary:
   completion_policy:
     evidence_required: true
     required_claims:
-      - "Search-result count validation passed."
+      - "검색 결과 수 검증을 통과했습니다."
   coverage_items:
-    - claim: "Search-result count validation passed."
+    - claim: "검색 결과 수 검증을 통과했습니다."
       required_for_close: true
       coverage_state: supported
       supporting_refs:
@@ -455,7 +455,7 @@ evidence_observations:
       project_id: proj_runprobe_001
       task_id: task_runprobe_001
       state_version: 32
-    claim: "Search-result count validation passed."
+    claim: "검색 결과 수 검증을 통과했습니다."
     source_kind: external_tool
     assurance_level: external_tool_result
     observed_by_actor_source: agent_connection:conn_run_probe
@@ -492,7 +492,7 @@ current_close_basis:
   task_id: task_runprobe_001
   change_unit_id: cu_runprobe_001
   baseline_ref: baseline_runprobe_001
-  result_summary: "Search-result count validation passed."
+  result_summary: "검색 결과 수 검증을 통과했습니다."
   result_refs:
     - record_kind: run
       record_id: run_runprobe_001
@@ -542,13 +542,13 @@ state:
     close_reason: none
     result: none
     closed_at: null
-  goal_summary: "Validate search-result count display."
-  scope_summary: "Search-result count validation."
+  goal_summary: "검색 결과 수 표시를 검증합니다."
+  scope_summary: "검색 결과 수 검증."
   non_goals:
-    - "Changing search ranking."
+    - "검색 순위 변경."
   acceptance_criteria:
-    - "Search results show the expected count."
-  autonomy_boundary: "Stay within validation recording for search-result counts."
+    - "검색 결과에 예상한 개수가 표시됩니다."
+  autonomy_boundary: "검색 결과 수 검증 기록만 다룹니다."
   active_change_unit_ref:
     record_kind: change_unit
     record_id: cu_runprobe_001

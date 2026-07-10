@@ -159,12 +159,12 @@ params:
     idempotency_key: null
     expected_state_version: null
     dry_run: false
-    locale: en-US
+    locale: ko-KR
   task_id: task_trace_001
   display_name: "diagnostic_trace.log"
   content_type: text/plain
   redaction_state: none
-  safe_bytes_or_notice: "Local trace sample captured for debugging."
+  safe_bytes_or_notice: "디버깅을 위해 캡처한 로컬 추적 샘플입니다."
   expected_sha256: null
   expected_size_bytes: null
   relation_hint: "diagnostic_log"
@@ -188,8 +188,8 @@ staged_artifact_handle:
   task_id: task_trace_001
   created_by_actor_source: agent_connection:conn_artifact
   content_type: text/plain
-  sha256: sha256:example-trace
-  size_bytes: 42
+  sha256: 485afabb4a860a4f824ec343ff556a8a85fee0ae1b5371507bb89a4af4f2782f
+  size_bytes: 60
   redaction_state: none
   expires_at: "<future-expiration-timestamp>"
   consumed: false

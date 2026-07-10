@@ -161,16 +161,16 @@ params:
     idempotency_key: idem_intake_onboard_001
     expected_state_version: 17
     dry_run: false
-    locale: en-US
-  plain_language_request: "Create a first-run checklist for new workspace setup."
+    locale: ko-KR
+  plain_language_request: "새 작업 공간 설정을 위한 첫 실행 체크리스트를 만드세요."
   requested_mode: work
   resume_policy: create_new
   initial_scope:
-    boundary: "First-run checklist for new workspace setup."
+    boundary: "새 작업 공간 설정용 첫 실행 체크리스트."
     non_goals:
-      - "Changing account creation."
+      - "계정 생성 방식 변경."
     acceptance_criteria:
-      - "New users see the checklist after opening a workspace."
+      - "새 사용자가 작업 공간을 열면 체크리스트를 볼 수 있습니다."
   initial_context_refs: []
 ```
 
@@ -209,12 +209,12 @@ state:
     close_reason: none
     result: none
     closed_at: null
-  goal_summary: "Create a first-run checklist for new workspace setup."
-  scope_summary: "First-run checklist for new workspace setup."
+  goal_summary: "새 작업 공간 설정을 위한 첫 실행 체크리스트를 만드세요."
+  scope_summary: "새 작업 공간 설정용 첫 실행 체크리스트."
   non_goals:
-    - "Changing account creation."
+    - "계정 생성 방식 변경."
   acceptance_criteria:
-    - "New users see the checklist after opening a workspace."
+    - "새 사용자가 작업 공간을 열면 체크리스트를 볼 수 있습니다."
   autonomy_boundary: null
   active_change_unit_ref: null
   baseline_ref: null
@@ -229,7 +229,7 @@ state:
 next_actions:
   - action_kind: update_scope
     owner_method: volicord.update_scope
-    label: "Create the first currently applied Change Unit before write-ticket preparation."
+    label: "쓰기 티켓을 준비하기 전에 첫 현재 적용 Change Unit을 만드세요."
     blocking_question: null
     required_refs:
       - record_kind: task

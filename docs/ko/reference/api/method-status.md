@@ -21,7 +21,14 @@
 
 ## 목적
 
-`volicord.status`는 Core 상태의 현재 위치 보기를 반환합니다. 현재 `Task` 요약, 차단 사유, 대기 중인 사용자 판단, User Channel 답변 경로 사용 가능 상태, 쓰기 티켓 요약, 증거 요약, 닫기 상태, 닫기 준비 상태 발견 사항, `GuardHealthSummary` hook-state 사실, `CoverageSummary` coverage 사실, 프로젝트 연속성 요약, 보장 표시, 다음 안전한 행동, 간결한 `summary_card`를 포함할 수 있습니다.
+`volicord.status`는 Core 상태의 현재 위치를 보여 줍니다. 호출자는 다음 항목을 선택할 수 있습니다.
+
+- 현재 `Task`와 Change Unit
+- 차단 사유, 대기 중인 사용자 판단, 사용할 수 있는 User Channel 답변 경로, 쓰기 티켓 상태
+- 증거와 닫기 준비 상태 관찰 정보(`GuardHealthSummary`, `CoverageSummary` 포함)
+- 프로젝트 연속성, 보장 표시, 다음 안전한 행동
+
+성공한 결과에는 항상 간결한 `summary_card`도 포함됩니다.
 
 ## 필수 입력
 
@@ -87,13 +94,13 @@ StatusRequest:
 - `include.write_ticket`는 활성, 만료, 오래됨, 소비됨 또는 그 밖의 관련 쓰기 티켓 상태를 `write_ticket_summary`로 반환합니다.
 - `write_ticket_summary`는 호환성 요약일 뿐이며 파일시스템 접근, 셸 승인, 최종 수락, 일반 쓰기 승인, 쓰기가 실제로 일어났다는 증명이 아닙니다.
 - `include.evidence`는 사용할 수 있을 때 현재 `EvidenceSummary`와 범위를 반환합니다.
-- `include.close`는 `CurrentCloseBasis | null`, 닫기 상태, 계산된 차단 사유, 위험 수락 범위, 사용할 수 있을 때 hook 경로 안전성을 포함한 `GuardHealthSummary` hook-state 사실, 도출된 `CoverageSummary`, 관련 다음 행동을 반환합니다. 차단 사유는 `volicord.check_close`와 같은 닫기 준비 상태 계산을 사용합니다.
+- `include.close`는 `CurrentCloseBasis | null`, 닫기 상태, 계산된 차단 사유, 위험 수락 범위, 호스트 훅 경로 안전성을 포함한 `GuardHealthSummary` 상태 정보, 도출된 `CoverageSummary`, 관련 다음 행동을 반환합니다. 차단 사유는 `volicord.check_close`와 같은 닫기 준비 상태 계산을 사용합니다.
 - 증거나 닫기 세부사항이 선택되면 `summary_card.evidence`는 공개 증거 표시 상태를 사용합니다. 스테이징만 된 첨부 입력은 `prepared`, Run에 연결된 증거는 `attached`로 나타날 수 있습니다. `accepted_for_close`는 닫기 세부사항이 선택되고 현재 닫기 근거가 선택된 증거를 참조할 때 나타납니다.
 - `include.guarantees`는 프로젝트 강제 프로필, 확인된 호출 맥락, 활성화된 강제 메커니즘, 지원되는 기준 범위에서 파생된 보장만 반환합니다.
 - `include.continuity`는 오래 유지하는 프로젝트 수준 맥락의 활성 `ProjectContinuitySummary[]` 항목을 반환합니다.
 - `summary_card`는 성공한 `StatusResult` 응답에서 항상 반환됩니다. 담당 문서가 선택한 보기를 공개 표시 용어와, 알 수 있을 때 선택된 다음 행동 하나인 `next`로 요약합니다. 요약하는 구조화 필드 너머의 권한을 추가하지 않습니다.
 - `include.evidence=false`는 증거 요약, 범위, 아티팩트 증거 참조, 증거 전용 다음 행동을 계산하지도 반환하지도 않는다는 뜻입니다.
-- `include.close=false`는 닫기 준비 상태를 계산하지 않고 `CurrentCloseBasis`, 닫기 상태, 닫기 차단 사유, `GuardHealthSummary` hook-state 사실, `CoverageSummary`, 잔여 위험 범위, 닫기 전용 다음 행동을 반환하지 않는다는 뜻입니다.
+- `include.close=false`는 닫기 준비 상태를 계산하지 않는다는 뜻입니다. `CurrentCloseBasis`, 닫기 상태, 닫기 차단 사유, `GuardHealthSummary` 상태 정보, `CoverageSummary`, 잔여 위험 범위, 닫기 전용 다음 행동도 반환하지 않습니다.
 - `include.guarantees=false`는 보장 표시를 파생하지도 반환하지도 않는다는 뜻입니다.
 - `include.continuity=false`는 프로젝트 연속성 요약을 읽거나 반환하지 않는다는 뜻입니다.
 
@@ -103,7 +110,7 @@ StatusRequest:
 - 호스트 지침, 연결 모드, 생성된 텍스트만으로는 보장이 생기지 않습니다. 협력형 전용 배포는 `detective`를 주장하면 안 됩니다.
 - `GuaranteeDisplay.capability_refs`는 해당 참조를 사용할 수 있을 때 호출 바인딩, Agent Connection, 관찰 사실을 식별해야 합니다.
 
-`include.close=true`와 [`volicord.check_close`](method-close-task.md#volicordcheck_close)는 같은 닫기 준비 상태 계산을 사용합니다. `volicord.status`는 replay 행, event, Core 상태 변경, 닫기 변경, 상태 버전 증가를 만들지 않습니다. Session에 묶인 Agent Connection으로 호출되면 런타임은 이후 메서드 경계 확인에서 Product Repository 스냅샷을 비교할 수 있도록 session-watch 진단 기록을 초기화할 수 있습니다.
+`include.close=true`와 [`volicord.check_close`](method-close-task.md#volicordcheck_close)는 같은 닫기 준비 상태 계산을 사용합니다. `volicord.status`는 재실행 행, 이벤트, Core 상태 변경, 닫기 변경, 상태 버전 증가를 만들지 않습니다. 세션에 묶인 Agent Connection으로 호출되면 런타임은 이후 메서드 경계 확인에서 Product Repository 스냅샷을 비교할 수 있도록 `session-watch` 진단 기록을 초기화할 수 있습니다.
 
 ## 메서드 결과 필드
 
@@ -127,7 +134,7 @@ StatusRequest:
 | `risk_acceptance_coverage` | 닫기 상태 조회 보기에서 현재 잔여 위험 수락 범위를 나타내는 `RiskAcceptanceCoverage[]`입니다. 형태는 [API 상태 스키마](schema-state.md#close-readiness-and-validation-shapes)가 담당합니다. |
 | `close_blockers` | 현재 보기에 대한 읽기 전용 `CloseReadinessBlocker[]` 관찰입니다. 저장된 `close_task` 결과가 아닙니다. |
 | `guard_health` | 닫기 상태 조회 보기에 선택된 `GuardHealthSummary | null`입니다. 형태는 [API 상태 스키마](schema-state.md#guard-health-summary)가 담당합니다. |
-| `coverage_summary` | 닫기 상태 조회 보기에 선택된 `CoverageSummary | null`입니다. 형태와 값 의미는 [API 상태 스키마](schema-state.md#guard-health-summary)가 담당합니다. record 권한과 detective 관찰을 구분하고 coverage 비보장을 보고합니다. |
+| `coverage_summary` | 닫기 상태 조회 보기에 선택된 `CoverageSummary | null`입니다. 형태와 값 의미는 [API 상태 스키마](schema-state.md#guard-health-summary)가 담당합니다. `record` 권한 기록과 `detective` 관찰을 구분하고 관찰 범위의 비보장을 보고합니다. |
 | `guarantee_display` | 현재 상태 조회 보기에 대한 `GuaranteeDisplay | null`입니다. |
 | `continuity_summary` | `include.continuity=true`일 때의 `ProjectContinuitySummary[]`입니다. 이 상태 보기를 선택하지 않으면 생략합니다. 형태는 [API 상태 스키마](schema-state.md#project-continuity-shapes)가 담당합니다. |
 
@@ -162,7 +169,7 @@ StatusRequest:
 
 ## 저장 효과
 
-이 메서드는 Core 상태 변경, event, replay 행, 닫기 변경, 상태 버전 증가를 지속 저장하지 않습니다. Session에 묶인 Agent Connection으로 호출되면 위에서 설명한 것처럼 런타임 session-watch 진단 기록이 초기화될 수 있습니다. 정확한 지속 저장 의미는 아래 저장 담당 문서가 담당합니다.
+이 메서드는 Core 상태 변경, 이벤트, 재실행 행, 닫기 변경, 상태 버전 증가를 저장하지 않습니다. 세션에 묶인 Agent Connection으로 호출되면 위에서 설명한 것처럼 런타임이 `session-watch` 진단 기록을 초기화할 수 있습니다. 정확한 저장 의미는 아래 저장 담당 문서가 담당합니다.
 
 아래 예시는 메서드 안에서만 성립하도록 짧게 구성했습니다. 대표 응답은 상태 조회 결과 분기, 관찰된 참조, 상태 버전, 현재 적용 범위, 현재 적용 Change Unit, 닫기 상태, 다음 행동을 보여 주는 데 필요한 필드로 축약했습니다.
 
@@ -180,7 +187,7 @@ params:
     idempotency_key: null
     expected_state_version: null
     dry_run: false
-    locale: en-US
+    locale: ko-KR
   include:
     task: true
     pending_user_judgments: true
@@ -217,13 +224,13 @@ active_task:
     close_reason: none
     result: none
     closed_at: null
-  goal_summary: "Add CSV summary export for dashboard totals."
-  scope_summary: "CSV export column order and summary totals."
+  goal_summary: "대시보드 합계의 CSV 요약 내보내기를 추가합니다."
+  scope_summary: "CSV 내보내기 열 순서와 요약 합계."
   non_goals:
-    - "Changing dashboard chart rendering."
+    - "대시보드 차트 렌더링 변경."
   acceptance_criteria:
-    - "CSV exports include the selected columns in the specified order."
-  autonomy_boundary: "Stay within CSV summary export behavior."
+    - "CSV 내보내기에 선택한 열이 지정된 순서로 포함됩니다."
+  autonomy_boundary: "CSV 요약 내보내기 동작만 다룹니다."
   active_change_unit_ref:
     record_kind: change_unit
     record_id: cu_export_001
@@ -245,7 +252,7 @@ active_task:
   close_blockers:
     - category: pending_user_judgment
       code: pending_user_judgment
-      message: "User-owned product decision about CSV column order is still pending."
+      message: "CSV 열 순서에 대한 사용자 소유 제품 결정이 아직 대기 중입니다."
       can_resolve_in_chat: false
       terminal_action_required: false
       related_refs:
@@ -257,8 +264,8 @@ active_task:
       next_actions:
         - action_kind: record_user_judgment
           owner_method: volicord.record_user_judgment
-          label: "Record the user's answer for the pending CSV column decision."
-          blocking_question: "What is the user's answer for the pending CSV column decision?"
+          label: "대기 중인 CSV 열 순서 결정에 사용자의 답변을 기록하세요."
+          blocking_question: "대기 중인 CSV 열 순서 결정에 사용자가 어떻게 답했습니까?"
           required_refs:
             - record_kind: user_judgment
               record_id: uj_export_columns_001
@@ -267,14 +274,14 @@ active_task:
               state_version: 42
   guarantee_display:
     level: cooperative
-    basis: "No stronger local guarantee is currently applied."
+    basis: "현재 적용된 더 강한 로컬 보장은 없습니다."
     capability_refs: []
-status_summary: "Close readiness is blocked by pending_user_judgment."
+status_summary: "닫기 준비 상태가 pending_user_judgment 때문에 차단되었습니다."
 next_actions:
   - action_kind: record_user_judgment
     owner_method: volicord.record_user_judgment
-    label: "Record the user's answer for the pending CSV column decision."
-    blocking_question: "What is the user's answer for the pending CSV column decision?"
+    label: "대기 중인 CSV 열 순서 결정에 사용자의 답변을 기록하세요."
+    blocking_question: "대기 중인 CSV 열 순서 결정에 사용자가 어떻게 답했습니까?"
     required_refs:
       - record_kind: user_judgment
         record_id: uj_export_columns_001
@@ -290,32 +297,32 @@ pending_user_judgments:
 user_channel_availability: &user_channel_availability_example
   paths:
     - kind: mcp_elicitation
-      label: "Host prompt input"
+      label: "호스트 프롬프트 입력"
       available: false
       status: unavailable
       capture_basis: mcp_elicitation_user_channel
-      detail: "Host prompt input is unavailable for this invocation."
+      detail: "이 호출에서는 호스트 프롬프트 입력을 사용할 수 없습니다."
     - kind: prompt_capture
-      label: "Chat command capture"
+      label: "채팅 명령 캡처"
       available: false
       status: unavailable
       capture_basis: user_prompt_submit_hook
-      detail: "Chat command capture is not currently available for this connection."
+      detail: "현재 이 연결에서는 채팅 명령 캡처를 사용할 수 없습니다."
     - kind: local_web_consent
-      label: "Local consent URL"
+      label: "로컬 consent URL"
       available: false
       status: unavailable
       capture_basis: local_user_local_web
-      detail: "No local consent URL is available for this invocation."
+      detail: "이 호출에서 사용할 수 있는 로컬 consent URL이 없습니다."
     - kind: cli
       label: "CLI inbox"
       available: true
       status: available
       capture_basis: cli_direct_user_channel
-      detail: "Answer from the local terminal as the user."
+      detail: "로컬 터미널에서 사용자로 답변합니다."
   recommended_path_kind: cli
   recommended_path_label: "CLI inbox"
-  recommendation: "Use CLI inbox to answer pending judgments."
+  recommendation: "대기 중인 판단에는 CLI inbox로 답하세요."
 pending_judgment_inbox_items:
   - judgment_id: uj_export_columns_001
     question: "어떤 CSV 열 순서를 사용할까요?"
@@ -336,7 +343,7 @@ risk_acceptance_coverage: []
 close_blockers:
   - category: pending_user_judgment
     code: pending_user_judgment
-    message: "User-owned product decision about CSV column order is still pending."
+    message: "CSV 열 순서에 대한 사용자 소유 제품 결정이 아직 대기 중입니다."
     can_resolve_in_chat: false
     terminal_action_required: false
     related_refs:
@@ -348,8 +355,8 @@ close_blockers:
     next_actions:
       - action_kind: record_user_judgment
         owner_method: volicord.record_user_judgment
-        label: "Record the user's answer for the pending CSV column decision."
-        blocking_question: "What is the user's answer for the pending CSV column decision?"
+        label: "대기 중인 CSV 열 순서 결정에 사용자의 답변을 기록하세요."
+        blocking_question: "대기 중인 CSV 열 순서 결정에 사용자가 어떻게 답했습니까?"
         required_refs:
           - record_kind: user_judgment
             record_id: uj_export_columns_001
@@ -358,7 +365,7 @@ close_blockers:
             state_version: 42
 guarantee_display:
   level: cooperative
-  basis: "No stronger local guarantee is currently applied."
+  basis: "현재 적용된 더 강한 로컬 보장은 없습니다."
   capability_refs: []
 ```
 

@@ -188,7 +188,7 @@ staged_artifact_handle:
   task_id: task_trace_001
   created_by_actor_source: agent_connection:conn_artifact
   content_type: text/plain
-  sha256: sha256:example-trace
+  sha256: 9cbd7078784d5f11d663cae33dfdaa8594b9e04626a6e95ee1769c9632ec18e3
   size_bytes: 42
   redaction_state: none
   expires_at: "<future-expiration-timestamp>"

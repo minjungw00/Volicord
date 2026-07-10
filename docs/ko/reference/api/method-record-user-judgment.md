@@ -83,7 +83,7 @@ RecordUserJudgmentRequest:
 권한을 지니는 해결에는 `cli_direct_user_channel`, `mcp_elicitation_user_channel`,
 `user_prompt_submit_hook`, `local_user_local_web` 같은 호환 User Channel
 `verification_basis`도 필요합니다. Agent Connection 호출, 생성된 지침 파일, 생성된
-Markdown, 상태 요약, projection은 사용자 답변을 주장하거나 전달하더라도 사용자 권한을
+Markdown, 상태 요약, 상태 보기는 사용자 답변을 주장하거나 전달하더라도 사용자 권한을
 만족할 수 없습니다.
 
 ## 상태 버전 동작
@@ -106,7 +106,7 @@ Markdown, 상태 요약, projection은 사용자 답변을 주장하거나 전�
 - 최종 수락은 판단 근거에 캡처된 현재 `Task`, Change Unit, `scope_revision`, `close_basis_revision`, 기준선, 결과 참조와 일치해야 합니다.
 - 잔여 위험 수락은 `AcceptedRiskInput`에 정확한 현재 `risk_id` 값을 포함해야 하며 현재 `close_basis_revision`과 일치해야 합니다.
 - 민감 승인은 현재 `scope_revision`, Change Unit, 동작, 정규화된 경로, 민감 범주, 기준선과 일치해야 합니다.
-- 나중의 범위 갱신에 쓰이는 범위 결정 권한은 `judgment_kind=scope_decision`, `status=resolved`, `machine_action=accept`, `resolution_outcome=accepted`, 현재 근거, scope update를 포함하는 `required_for`, `resolved_by_actor_source=local_user`, 호환되는 User Channel 출처, 호환되는 Task, Change Unit, `scope_revision`, 영향받는 참조가 필요합니다.
+- 나중의 범위 갱신에 쓰이는 범위 결정 권한은 `judgment_kind=scope_decision`, `status=resolved`, `machine_action=accept`, `resolution_outcome=accepted`, 현재 근거, 범위 갱신을 포함하는 `required_for`, `resolved_by_actor_source=local_user`, 호환되는 User Channel 출처, 호환되는 Task, Change Unit, `scope_revision`, 영향받는 참조가 필요합니다.
 - 권한을 지니는 판단은 권한 요구사항을 만족하려면 `resolved_by_actor_source=local_user`, 호환되는 User Channel 출처, `machine_action=accept`, `resolution_outcome=accepted`가 필요합니다.
 - 거절되거나 연기된 권한 판단은 결정 기록으로 남지만 현재 전이를 허가할 수 없습니다. 오래됨, 대체됨, 만료됨, 유효하지 않은 근거, 출처 누락, 해결 정보 누락, 에이전트가 기록한 권한 판단은 현재 전이를 허가할 수 없습니다.
 - 범위 변경이나 실행 기록 변경은 이력 판단을 삭제하지 않습니다. 다만 호환되지 않는 판단은 현재 닫기, 쓰기, 범위 결정, 민감 승인 요구사항에 사용할 수 없게 됩니다.
@@ -193,7 +193,7 @@ params:
     idempotency_key: idem_empty_answer_001
     expected_state_version: 62
     dry_run: false
-    locale: en-US
+    locale: ko-KR
   user_judgment_id: uj_empty_001
   judgment_kind: product_decision
   selected_option_id: keep
@@ -362,13 +362,13 @@ state:
     close_reason: none
     result: none
     closed_at: null
-  goal_summary: "Decide empty-state illustration."
-  scope_summary: "Empty-state illustration decision."
+  goal_summary: "빈 상태 일러스트를 결정합니다."
+  scope_summary: "빈 상태 일러스트 결정."
   non_goals:
-    - "Changing empty-state copy."
+    - "빈 상태 문구 변경."
   acceptance_criteria:
-    - "The empty-state illustration follows the user's product decision."
-  autonomy_boundary: "Stay within empty-state illustration choice."
+    - "빈 상태 일러스트가 사용자의 제품 결정을 따릅니다."
+  autonomy_boundary: "빈 상태 일러스트 선택만 다룹니다."
   active_change_unit_ref:
     record_kind: change_unit
     record_id: cu_empty_001
@@ -387,7 +387,7 @@ state:
 next_actions:
   - action_kind: close_task
     owner_method: volicord.close_task
-    label: "Evaluate close readiness after recording the user's product decision."
+    label: "사용자의 제품 결정을 기록한 뒤 닫기 준비 상태를 평가하세요."
     blocking_question: null
     required_refs:
       - record_kind: user_judgment

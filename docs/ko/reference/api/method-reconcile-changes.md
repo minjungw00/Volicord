@@ -2,40 +2,46 @@
 
 # `volicord.reconcile_changes` 참조
 
-## 이 문서가 담당하는 것
+## 담당하는 것
 
 이 문서는 기준 범위의 `volicord.reconcile_changes` 메서드 동작을 담당합니다.
 
 - 메서드별 필수 입력, 접근 요구사항, 상태 버전 동작, 결과 분기, `dry_run` 동작
-- 현재 프로젝트와 `Task`의 미해결 미기록 Product Repository 변경 찾기 나열
-- Core가 결정적으로 검증할 수 있는 찾기 해결
-- 사용자 수락이 필요한 찾기에 대해 대기 중인 사용자 소유 판단 생성
-- 미해결 Product Repository 변경 찾기에 대한 에이전트 단독 묵살 거부
+- 현재 프로젝트와 `Task`의 미해결 미기록 변경 나열
+- Core가 결정적으로 검증할 수 있는 미기록 변경 해결
+- 사용자 수락이 필요한 미기록 변경에 대해 대기 중인 사용자 소유 판단 생성
+- 미해결 미기록 변경에 대한 에이전트 단독 묵살 거부
 
-## 이 문서가 담당하지 않는 것
+## 담당하지 않는 것
 
 이 문서는 아래 항목을 담당하지 않습니다.
 
-- 공통 요청 래퍼, 응답 분기, dry-run, 거절 응답 스키마 본문
+- 공통 요청 래퍼, 응답 분기, `dry_run`, 거절 응답 스키마 본문
 - `UserJudgment`, `StateRecordRef`, `CloseReadinessBlocker`, `GuardHealthSummary`, `NextActionSummary` 필드 정의
 - 저장소 테이블 배치, SQLite 제약, 공개 오류 코드 의미, 공개 오류 우선순위, 공통 응답 분기 처리
 - 정확성 증명, 테스트 충분성, 리뷰 완료, 최종 수락, 잔여 위험 수락, 보안 보장
 
 ## 목적
 
-`volicord.reconcile_changes`는 detective host hook 및 session-watch 생성 미기록 Product Repository 변경 찾기를 복구하는 공개 경로입니다.
+`volicord.reconcile_changes`는 `detective` 호스트 훅이나 `session-watch`가 만든 미기록 변경을 복구하는 공개 경로입니다.
 
-이 메서드는 선택된 `Task`의 미해결 찾기를 나열하고, Core가 저장된 Core, host-hook, expected-write, 또는 session-watch 기록에서 검증할 수 있는 찾기를 해결하며, 남은 찾기에 사용자 소유 수락 판단이 필요하면 일반 대기 `UserJudgment` 행을 만듭니다. 우회 찾기를 조용히 묵살하면 안 됩니다. Agent Connection이 호환되는 해결된 User Channel 판단 없이 미기록 Product Repository 변경을 수락으로 표시하게 하면 안 됩니다.
+선택한 `Task`에 대해 이 메서드는 다음 작업을 합니다.
 
-미기록 변경 찾기를 해결하면 해당 찾기는 미해결 host-hook 상태 수와 `unresolved_unrecorded_changes` 닫기 차단 계산에서 빠집니다. 이는 변경된 제품 파일이 정확하거나, 리뷰되었거나, 테스트되었거나, 닫기에 최종 수락되었거나, 잔여 위험으로 수락 가능하다는 증명이 아닙니다.
+- 미해결 미기록 변경을 나열합니다.
+- 저장된 Core, 호스트 훅, 예상 쓰기, `session-watch` 기록으로 검증할 수 있는 변경을 해결합니다.
+- 남은 변경에 사용자 수락이 필요하면 대기 중인 `UserJudgment`를 만듭니다.
+
+이 메서드는 우회를 조용히 묵살하지 않습니다. 호환되는 User Channel 판단이 해결되지 않았다면 Agent Connection은 미기록 변경을 수락된 것으로 표시할 수 없습니다.
+
+미기록 변경을 해결하면 미해결 호스트 훅 상태 수와 `unresolved_unrecorded_changes` 닫기 차단 사유 계산에서 빠집니다. 해결됐다는 사실만으로 제품 파일이 정확하거나, 검토 또는 테스트되었거나, 닫기에 최종 수락되었거나, 잔여 위험으로 수락 가능하다는 뜻은 아닙니다.
 
 ## 필수 입력
 
-- 유효한 `ToolEnvelope`. 상태를 변경하는 커밋된 non-dry-run 요청은 null이 아닌 `idempotency_key`와 현재 `expected_state_version`을 요구합니다.
-- 미해결 찾기를 조정할 `Task`의 `task_id`.
+- 유효한 `ToolEnvelope`. 상태를 변경하는 커밋된 `dry_run`이 아닌 요청에는 `null`이 아닌 `idempotency_key`와 현재 `expected_state_version`이 필요합니다.
+- 미해결 미기록 변경을 조정할 `Task`의 `task_id`.
 - `accepted_by_user`에 대해 해결된 사용자 판단을 Core에 가리키려는 경우 선택적 `resolution_requests` 항목.
 
-Core는 현재 프로젝트와 `Task`의 미해결 찾기도 함께 스캔합니다. 호출자는 관찰 경로, detection 사실, 행위자 출처, 결정적 증명, 닫기 차단 상태를 제출하지 않습니다.
+Core는 현재 프로젝트와 `Task`의 미해결 미기록 변경도 함께 확인합니다. 호출자는 관찰 경로, 탐지 사실, 행위자 출처, 결정적 증명, 닫기 차단 상태를 제출하지 않습니다.
 
 ## 요청 스키마
 
@@ -45,24 +51,25 @@ Core는 현재 프로젝트와 `Task`의 미해결 찾기도 함께 스캔합니
 ReconcileChangesRequest:
   envelope: ToolEnvelope
   task_id: string
-  resolution_requests: UnrecordedChangeResolutionRequest[]
+  resolution_requests?: UnrecordedChangeResolutionRequest[]
 
 UnrecordedChangeResolutionRequest:
   unrecorded_change_id: string
   basis: string
-  user_judgment_id: string | null
+  user_judgment_id?: string | null
 ```
 
 요청 필드 참고:
 
-- `resolution_requests`의 기본값은 `[]`입니다.
+- `resolution_requests`는 생략할 수 있으며 기본값은 `[]`입니다.
+- `user_judgment_id`는 생략하거나 `null`로 보낼 수 있습니다. 둘 다 해당 항목에 사용자 판단을 제공하지 않았다는 뜻입니다.
 - `basis=accepted_by_user`는 미기록 변경 참조에 연결된 기존 해결 판단을 `user_judgment_id`로 요구합니다. 그 판단은 같은 `Task`의 현재 `product_decision`이어야 하고, 호환 User Channel에서 `actor_source=local_user`, `machine_action=accept`, `resolution_outcome=accepted`로 기록되어야 합니다.
-- 호출자가 제공한 `reverted`, `covered_by_write_ticket`, `recorded_as_expected_write`, `not_product_change`, `superseded_by_new_observation`, `invalid_observation` 요청은 에이전트가 제공한 시스템 해결 basis로 거부됩니다. Core가 결정적으로 검증할 수 있으면 같은 basis를 Core가 직접 적용할 수는 있습니다.
+- 호출자가 제공한 `reverted`, `covered_by_write_ticket`, `recorded_as_expected_write`, `not_product_change`, `superseded_by_new_observation`, `invalid_observation` 요청은 에이전트가 제공한 시스템 해결 근거로 거부됩니다. Core가 결정적으로 검증할 수 있으면 같은 근거를 직접 적용할 수는 있습니다.
 
 중첩 담당 문서:
 
 - `UnrecordedChangeFinding`과 `UnrecordedChangeResolutionSummary` 형태: [API 상태 스키마](schema-state.md#unrecorded-change-reconciliation-shapes).
-- 해결 basis 값: [API 값 집합](schema-value-sets.md#unrecorded-change-resolution-basis-values).
+- 해결 근거 값: [API 값 집합](schema-value-sets.md#unrecorded-change-resolution-basis-values).
 - 사용자 소유 판단 형태: [API 판단 스키마](schema-judgment.md).
 
 ## 접근 요구사항
@@ -71,32 +78,32 @@ UnrecordedChangeResolutionRequest:
 
 - Agent Connection 워크플로 호출에는 `operation_category=agent_workflow`, 로컬 사용자 복구 호출에는 `operation_category=local_recovery`인 검증된 호출 맥락
 - `task_id`가 선택한 같은 프로젝트의 호환 `Task`
-- MCP를 통해 호출할 때 workflow를 허용하는 Agent Connection
+- MCP를 통해 호출할 때 워크플로를 지원하는 Agent Connection
 
-로컬 관리 복구 명령은 `actor_source=local_user`, `operation_category=local_recovery`로 같은 Core 메서드를 호출할 수 있습니다. 이 CLI 경로는 MCP Agent Connection 경로가 아니며 CLI가 사용자 판단을 가장하게 하지 않습니다. 사용자 소유 수락은 `accepted_by_user`가 찾기를 해결하기 전에 여전히 호환되는 해결된 User Channel 판단을 요구합니다.
+로컬 관리 복구 명령은 `actor_source=local_user`, `operation_category=local_recovery`로 같은 Core 메서드를 호출할 수 있습니다. 이 CLI 경로는 MCP Agent Connection 경로가 아니며 CLI가 사용자 판단을 가장하게 하지 않습니다. `accepted_by_user`로 미기록 변경을 해결하려면 호환되는 User Channel 판단이 해결되어 있어야 합니다.
 
 ## 상태 버전 동작
 
-저장 효과가 계획된 커밋 non-dry-run 결과는 아래 효과를 냅니다.
+저장 효과가 계획된 커밋된 `dry_run`이 아닌 결과는 다음 작업을 합니다.
 
 - `project_state.state_version`을 정확히 한 번 증가시킵니다.
-- 하나 이상의 `unrecorded_changes` 행을 해결하고 resolution basis, capture basis, 행위자 출처, 타임스탬프, 선택적 연결 사용자 판단 참조를 저장합니다.
-- 그리고/또는 사용자 수락이 필요한 남은 찾기에 대해 대기 중인 `user_judgments` 행을 만듭니다.
-- `authority_events` 행 하나를 추가하고, idempotency key가 있으면 replay 행을 만듭니다.
-- 해결된 찾기가 더 이상 미해결로 계산되지 않도록 닫기 준비 상태 보기를 갱신합니다.
+- 하나 이상의 `unrecorded_changes` 행을 해결하고 해결 근거, 포착 근거, 행위자 출처, 타임스탬프, 선택적 사용자 판단 참조를 저장합니다.
+- 사용자 수락이 필요한 남은 미기록 변경에 대해 대기 중인 `user_judgments` 행을 만들 수 있습니다.
+- `authority_events` 행 하나를 추가하고, 멱등 키가 있으면 재실행 행을 만듭니다.
+- 해결된 미기록 변경이 더 이상 미해결로 계산되지 않도록 닫기 준비 상태 보기를 갱신합니다.
 
-저장 변경이 없는 유효한 호출은 읽기 전용 결과를 반환하며 replay 행, event, 상태 버전 증가를 만들지 않습니다.
+저장 변경이 없는 유효한 호출은 읽기 전용 결과를 반환합니다. 재실행 행, 이벤트, 상태 버전 증가는 만들지 않습니다.
 
-Session에 묶인 메서드 경계에서는 조정 계획 전에 런타임이 한정된 session-watch 확인을 실행할 수 있습니다. 이 진단 확인은 관찰을 하나의 결정적 expected-write 또는 active 쓰기 티켓 매칭에 연결할 수 있습니다. Product Repository 스냅샷 변경이 매칭되지 않았거나, 티켓 범위 밖이거나, 모호하면 새로운 해결되지 않은 미기록 변경 찾기를 만듭니다.
+세션에 묶인 메서드 경계에서는 조정 계획 전에 런타임이 제한된 `session-watch` 확인을 실행할 수 있습니다. 이 진단 확인은 관찰을 하나의 결정적 예상 쓰기 또는 `active` 쓰기 티켓과 연결할 수 있습니다. Product Repository 스냅샷 변경이 일치하지 않거나, 티켓 범위 밖이거나, 모호하면 새 미해결 미기록 변경을 만듭니다.
 
-Dry run은 계획된 해결이나 대기 판단을 미리 보여 줄 뿐 ref, event, replay 행, 사용자 판단, 해결 행을 만들지 않습니다. 거절된 시도는 효과를 만들지 않습니다.
+`dry_run`은 계획된 해결이나 대기 판단을 미리 보여 줄 뿐 참조, 이벤트, 재실행 행, 사용자 판단, 해결 행을 만들지 않습니다. 거절된 시도도 효과를 만들지 않습니다.
 
 ## 성공 결과
 
 `ReconcileChangesResult`를 반환합니다.
 
 - `base.response_kind=result`
-- 찾기가 해결되거나 판단이 생성되면 `base.effect_kind=core_committed`
+- 미기록 변경이 해결되거나 판단이 생성되면 `base.effect_kind=core_committed`
 - 저장 변경이 필요 없으면 `base.effect_kind=read_only`
 - `summary_card`
 - `task_ref`
@@ -116,36 +123,43 @@ Dry run은 계획된 해결이나 대기 판단을 미리 보여 줄 뿐 ref, ev
 | `base` | 공통 결과 메타데이터입니다. `disclosure`를 포함한 `ToolResultBase` 형태는 [API 코어 스키마](schema-core.md#common-response)가 담당합니다. `ReconcileChangesResult`는 `base.disclosure.guarantee_class=authority_record`를 사용합니다. |
 | `summary_card` | 선택된 조정 결과에 대한 `SummaryCard`입니다. 기록, 변경, 대기 판단, 닫기 상태, 전송, 선택된 다음 행동 하나, 보장 줄을 요약하며 구조화된 결과 필드 너머의 권한을 추가하지 않습니다. 형태는 [API 상태 스키마](schema-state.md#current-position-display-shapes)가 담당합니다. |
 | `task_ref` | 조정한 `Task`의 `StateRecordRef`입니다. |
-| `unresolved_changes` | 이 호출이 선택한 결정적 해결과 사용자 수락 해결을 적용한 뒤에도 남은 미해결 찾기입니다. |
-| `resolved_changes` | 이 호출이 해결한 찾기입니다. basis, 행위자 출처, capture basis, 타임스탬프, 선택적 연결 사용자 판단을 포함합니다. |
-| `pending_user_judgment_refs` | 이 호출이 미해결 찾기를 위해 만든 판단을 포함해 호출 뒤 `Task`와 관련된 대기 `UserJudgment` 참조입니다. |
+| `unresolved_changes` | 이 호출이 선택한 결정적 해결과 사용자 수락 해결을 적용한 뒤에도 남은 미해결 `UnrecordedChangeFinding` 기록입니다. |
+| `resolved_changes` | 이 호출이 해결한 미기록 변경입니다. 해결 근거, 행위자 출처, 포착 근거, 타임스탬프, 선택적 사용자 판단 참조를 포함합니다. |
+| `pending_user_judgment_refs` | 이 호출이 미해결 미기록 변경을 위해 만든 판단을 포함해 호출 뒤 `Task`와 관련된 대기 중인 `UserJudgment` 참조입니다. |
 | `rejected_resolution_requests` | Core가 거부한 호출자 제공 해결 요청입니다. 이는 성공한 메서드 결과 안의 구조화된 거부이며 공개 `ToolRejectedResponse` 오류가 아닙니다. |
 | `state` | 조정 보기 또는 커밋 뒤의 현재 `StateSummary`입니다. |
 | `close_blockers` | 계획된 조정 효과 뒤의 닫기 차단 사유 보기입니다. |
-| `guard_health` | 검증된 연결에 대해 사용할 수 있을 때의 `GuardHealthSummary` hook-state 사실 보기입니다. |
+| `guard_health` | 검증된 연결에서 사용할 수 있을 때의 `GuardHealthSummary` 호스트 훅 상태 보기입니다. |
 | `next_actions` | 만들어진 사용자 소유 판단을 기록하거나 조정을 다시 실행하는 등 다음 안전 단계입니다. |
 
 결과 공개는 정확성 증명, 테스트 충분성 증명, 인간 검토 대체, OS 샌드박싱, 네트워크 격리, 악성 코드 방어, 전체 쓰기 방지, 행위자 귀속 증명이 아닙니다.
 
 ## 해결 동작
 
-Core 소유 결정적 basis:
+Core가 결정하는 해결 근거(`basis`):
 
 - `invalid_observation`: 저장된 관찰 데이터를 Product Repository 경로로 해석할 수 없습니다.
 - `not_product_change`: 저장된 관찰 데이터에 조정할 Product Repository 경로가 없습니다.
-- `recorded_as_expected_write`: 같은 `Task`의 기록된 Run이 관찰된 Product Repository 경로를 이미 덮거나, 같은 `Task`의 결정적 expected-write 상관관계가 watcher가 관찰한 Product Repository 경로를 덮습니다.
-- `covered_by_write_ticket`: 같은 `Task`의 호환되는 소비된 쓰기 티켓 하나 또는 현재 active이고 만료되지 않은 쓰기 티켓 하나가 관찰된 Product Repository 경로를 결정적으로 덮습니다.
-- `reverted`: watcher가 만든 찾기가 session-watch 관찰에 연결되어 있고 현재 Product Repository 스냅샷이 저장된 watch baseline과 다시 일치합니다.
+- `recorded_as_expected_write`: 같은 `Task`의 기록된 Run이 관찰된 Product Repository 경로를 이미 포함하거나, 같은 `Task`의 결정적 예상 쓰기 상관관계가 감시자가 관찰한 Product Repository 경로를 포함합니다.
+- `covered_by_write_ticket`: 같은 `Task`의 호환되는 소비된 쓰기 티켓 하나 또는 현재 `active`이고 만료되지 않은 쓰기 티켓 하나가 관찰된 Product Repository 경로를 결정적으로 포함합니다.
+- `reverted`: 감시자가 만든 미기록 변경이 `session-watch` 관찰에 연결되어 있고 현재 Product Repository 스냅샷이 저장된 감시 기준선과 다시 일치합니다.
 
-사용자 소유 basis:
+사용자가 결정하는 해결 근거:
 
-- `accepted_by_user`: 찾기에 연결된 호환 해결 `product_decision` 판단이 로컬 사용자가 해당 관찰 변경을 이 `Task`에서 의도된 변경으로 수락했음을 기록합니다.
+- `accepted_by_user`: 미기록 변경에 연결된 호환되는 해결된 `product_decision` 판단이 로컬 사용자가 해당 관찰 변경을 이 `Task`에서 의도된 변경으로 수락했음을 기록합니다.
 
-`superseded_by_new_observation`은 예약 값이며 기준 메서드가 생성하지 않습니다. 호출자는 Core 소유 basis를 에이전트 묵살 사유로 선택할 수 없습니다. 이 메서드는 해결 basis를 만들어 내기 위해 파일시스템을 되돌리거나 추가 파일시스템 탐색을 수행하지 않습니다.
+`superseded_by_new_observation`은 예약 값이며 기준 메서드가 생성하지 않습니다. 호출자는 Core가 결정하는 해결 근거를 에이전트 묵살 사유로 선택할 수 없습니다. 이 메서드는 해결 근거를 만들기 위해 파일시스템을 되돌리거나 추가로 탐색하지 않습니다.
 
-아직 수락이 필요한 미기록 변경에 대해 Core는 이를 수락하지 않고 대기 `UserJudgment` 행을 만듭니다. 기존 User Channel 입력 방법은 이 판단에 답할 수 있습니다. 여기에는 초기화된 클라이언트가 지원하는 경우 호스트 프롬프트 입력, 명령 캡처가 `configured`, `observed`, `active`일 때의 채팅 명령 캡처, adapter가 안전하게 노출할 수 있을 때의 loopback 로컬 consent URL, CLI inbox 경로인 로컬 `volicord inbox` 명령이 포함됩니다. 사용자 소유 판단이 해결된 뒤 `volicord.reconcile_changes`는 연결된 미기록 변경을 `accepted_by_user`로 해결할 수 있습니다.
+아직 수락이 필요한 미기록 변경은 Core가 임의로 수락하지 않습니다. 대신 대기 중인 `UserJudgment` 행을 만듭니다. 사용자는 다음 User Channel 입력 방법으로 답할 수 있습니다.
 
-Core는 모호하거나 허가되지 않은 Product Repository 변경을 에이전트만의 dismissal로 해결하지 않습니다. 둘 이상의 active 쓰기 티켓이 경로를 덮을 수 있거나, active 티켓이 경로를 덮지 않거나, 경로가 티켓 범위 밖이거나, 저장된 찾기에 사용자 수락이 필요하면 조정은 찾기를 미해결로 남기거나 대기 사용자 소유 판단을 만듭니다.
+- 초기화된 클라이언트가 지원하는 호스트 프롬프트 입력
+- 명령 캡처 상태가 `configured`, `observed`, `active`일 때의 채팅 명령 캡처
+- 어댑터가 안전하게 노출할 수 있을 때의 루프백 로컬 consent URL
+- CLI inbox 경로인 로컬 `volicord inbox` 명령
+
+사용자 소유 판단이 해결되면 `volicord.reconcile_changes`가 연결된 미기록 변경을 `accepted_by_user`로 해결할 수 있습니다.
+
+Core는 모호하거나 허가되지 않은 Product Repository 변경을 에이전트 단독 묵살로 해결하지 않습니다. 둘 이상의 `active` 쓰기 티켓이 경로를 포함할 수 있거나, 어떤 `active` 티켓도 경로를 포함하지 않거나, 경로가 티켓 범위 밖이거나, 저장된 미기록 변경에 사용자 수락이 필요하면 해당 변경을 미해결로 남기거나 대기 중인 사용자 소유 판단을 만듭니다.
 
 ## 거절 결과
 
@@ -153,15 +167,15 @@ Core는 모호하거나 허가되지 않은 Product Repository 변경을 에이�
 
 - 잘못된 요청 형태
 - 누락되었거나 호환되지 않는 `Task` 식별 정보
-- 행위자 출처 또는 operation category 불일치
+- 행위자 출처 또는 작업 범주 불일치
 - 지원하지 않는 호출 맥락
 - 오래된 `expected_state_version`
-- idempotency 요청 해시 충돌
-- 읽을 수 없는 owner state
+- 멱등 요청 해시 충돌
+- 담당 상태를 읽을 수 없음
 
-개별 찾기에 대한 에이전트 단독 묵살 시도는 보통 전체 메서드 호출을 거절하지 않습니다. 해당 시도는 `rejected_resolution_requests`에 나타나며 찾기는 미해결로 남습니다.
+개별 미기록 변경에 대한 에이전트 단독 묵살 시도는 보통 전체 메서드 호출을 거절하지 않습니다. 해당 시도는 `rejected_resolution_requests`에 나타나며 변경은 미해결로 남습니다.
 
-## Dry-run 동작
+## `dry_run` 동작
 
 `dry_run=true`에서 유효한 미리보기는 `DryRunSummary`를 담은 `ToolDryRunResponse`를 반환합니다. 미리보기는 커밋 경로와 같은 분류 로직을 사용하며 아래를 보고합니다.
 
@@ -172,7 +186,7 @@ Core는 모호하거나 허가되지 않은 Product Repository 변경을 에이�
 - 계획된 조정 뒤에도 남을 예상 닫기 차단 사유
 - 행위자 증명, 의도 증명, 정확성 증명이 아니라는 비보장
 
-Dry run은 찾기를 해결하지 않고, 대기 판단을 만들지 않으며, event나 replay 행을 추가하지 않고, 아티팩트를 스테이징하거나 연결하지 않으며, `project_state.state_version`을 증가시키지 않습니다.
+`dry_run`은 미기록 변경을 해결하거나 대기 판단을 만들지 않습니다. 이벤트나 재실행 행을 추가하지 않고, 아티팩트를 스테이징하거나 연결하지 않으며, `project_state.state_version`을 증가시키지 않습니다.
 
 ## 저장 효과
 

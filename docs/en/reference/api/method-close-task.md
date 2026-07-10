@@ -188,7 +188,7 @@ Implementations evaluate `volicord.close_task` in this order:
 
 | Case | State-version effect |
 |---|---|
-| `volicord.check_close` | Never increments `project_state.state_version`, including when `dry_run=true`. For `dry_run=false`, a session-bound watcher may record bounded diagnostic session-watch observations or watcher-created unrecorded-change findings before returning the readiness observation. |
+| `volicord.check_close` | Never increments `project_state.state_version`, including when `dry_run=true`. For `dry_run=false`, a session-bound watcher may record bounded diagnostic session-watch observations or watcher-created Unrecorded Changes before returning the readiness observation. |
 | Successful terminal mutation | Increments `project_state.state_version` exactly once. |
 | Blocked result for a mutating intent | Never increments `project_state.state_version`; it returns `base.effect_kind=no_effect` without a terminal mutation, event, or replay row. |
 | Preflight rejection or valid `dry_run` preview | Increments nothing. |
@@ -298,7 +298,7 @@ Method-specific blocker branches:
 | Branch | Production rule |
 |---|---|
 | `volicord.check_close` | Returns current close readiness blockers as response observation data. |
-| `intent=complete` | Produces close readiness blockers when the completion path reaches close readiness evaluation and owner-defined close requirements remain unresolved. This includes open or expired unresolved write tickets, unresolved unrecorded-change findings, host-hook health, session-watch, and host-hook-detected write-ticket blockers. For `detective`, an inactive, degraded, unavailable, disabled, or partially covered watcher produces `session_watch_unavailable`. For `record`, absence of watcher coverage is reported as non-coverage and is not a close blocker by itself. |
+| `intent=complete` | Produces close readiness blockers when the completion path reaches close readiness evaluation and owner-defined close requirements remain unresolved. This includes open or expired unresolved write tickets, unresolved Unrecorded Changes, host-hook health, session-watch, and host-hook-detected write-ticket blockers. For `detective`, an inactive, degraded, unavailable, disabled, or partially covered watcher produces `session_watch_unavailable`. For `record`, absence of watcher coverage is reported as non-coverage and is not a close blocker by itself. |
 | `intent=cancel` | Produces blockers only for cancellation-specific terminal constraints, including missing or incompatible cancellation authority. Completion-only evidence, final acceptance, or residual-risk gaps do not block cancellation by themselves. |
 | `intent=supersede` | Produces blockers only for supersession-specific terminal constraints. Completion-only evidence, final acceptance, or residual-risk gaps do not block supersession by themselves. |
 

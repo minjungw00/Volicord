@@ -1,17 +1,17 @@
 # API methods
 
-Use this method-family router to find the focused Reference owner for public Volicord API method behavior. Exact method contracts live in the linked method owner pages.
+Use this page to find the Reference owner for each public Volicord API method. The linked pages define the exact method contracts.
 
 This page does not define method behavior, request or response bodies, shared schemas, storage effects, error semantics, security guarantees, or Core authority semantics.
 
 <a id="surface-stability"></a>
 ## Surface Stability
 
-For canonical vocabulary, see [Documentation Policy](../../maintain/documentation-policy.md#surface-stability-labels). In this section, `stable` means a documented compatibility surface; `beta` means supported, but details may change; `internal` means an implementation or generated-integration detail, not a normal user input surface; and `diagnostic` means a troubleshooting or status-reporting surface whose prose or diagnostic wording is not a stable API contract.
+The labels below use the vocabulary in [Documentation Policy](../../maintain/documentation-policy.md#surface-stability-labels).
 
 | Surface | Stability | Notes |
 |---|---|---|
-| Supported public method names in the table below | `stable` | These Core authority methods are the public API method set. |
+| Supported public method names in the table below | `stable` | These names make up the supported public API method set. |
 | Linked method owner documents | `stable` | Each linked owner defines the method behavior, request and response shape, and effects it owns unless that owner labels a narrower nested surface differently. |
 
 <a id="method-owner-routing-table"></a>

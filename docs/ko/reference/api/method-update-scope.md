@@ -42,7 +42,7 @@
 - 현재 적용 Change Unit을 만들거나 교체할 때 선택적으로 쓰는 `change_unit.effect_contract`. 값이 있으면 `ChangeUnitEffectContract`를 사용합니다. 생략하면 그 Change Unit에는 추가 효과 계약이 없습니다.
 - 해결된 `judgment_kind=scope_decision`을 적용한다면 `related_scope_decision_refs`.
 
-범위 갱신이 `scope_decision`을 적용할 때, 각 참조 판단은 `judgment_kind=scope_decision`, `status=resolved`, `machine_action=accept`, `resolution_outcome=accepted`, `resolved_by_actor_source=local_user`, 호환 User Channel 출처, `basis.compatibility_status=current`, scope update를 포함하는 `required_for`, 현재 Task, Change Unit, `scope_revision`, 영향받는 참조와 호환되는 근거가 필요합니다. 거절, 연기, 오래됨, 대체됨, 만료됨, 유효하지 않은 근거, 해결 권한 정보 누락, 에이전트가 기록한 범위 결정은 범위 전이를 허가하지 않습니다.
+범위 갱신이 `scope_decision`을 적용할 때, 각 참조 판단은 `judgment_kind=scope_decision`, `status=resolved`, `machine_action=accept`, `resolution_outcome=accepted`, `resolved_by_actor_source=local_user`, 호환 User Channel 출처, `basis.compatibility_status=current`, 범위 갱신을 포함하는 `required_for`, 현재 Task, Change Unit, `scope_revision`, 영향받는 참조와 호환되는 근거가 필요합니다. 거절, 연기, 오래됨, 대체됨, 만료됨, 유효하지 않은 근거, 해결 권한 정보 누락, 에이전트가 기록한 범위 결정은 범위 전이를 허가하지 않습니다.
 
 ## 요청 스키마
 
@@ -188,34 +188,34 @@ params:
     idempotency_key: idem_scope_filter_001
     expected_state_version: 18
     dry_run: false
-    locale: en-US
+    locale: ko-KR
   task_id: task_filter_001
-  goal_summary: "Limit saved search filters to owner and label fields."
+  goal_summary: "저장된 검색 필터를 담당자와 라벨 필드로 제한합니다."
   scope_update:
     include:
-      - "Constrain saved-filter edits to owner and label fields."
-      - "Update saved-filter validation tests."
+      - "저장 필터 편집을 담당자와 라벨 필드로 제한합니다."
+      - "저장 필터 검증 테스트를 갱신합니다."
     exclude:
-      - "Search indexing behavior."
-  scope_boundary: "Saved-filter owner and label edits plus related tests."
+      - "검색 색인 동작."
+  scope_boundary: "저장 필터의 담당자·라벨 편집과 관련 테스트."
   non_goals:
-    - "Search indexing behavior."
+    - "검색 색인 동작."
   acceptance_criteria:
-    - "Saved filters reject changes outside owner and label fields."
-  autonomy_boundary: "Stay within saved-filter edit validation and related tests."
+    - "저장 필터는 담당자와 라벨 이외의 필드 변경을 거부합니다."
+  autonomy_boundary: "저장 필터 편집 검증과 관련 테스트만 다룹니다."
   baseline_ref: baseline_filter_001
   change_unit:
     operation: create_current
-    scope_summary: "Saved-filter owner and label edit validation."
+    scope_summary: "저장 필터의 담당자·라벨 편집 검증."
     affected_areas:
-      - "Saved-filter edit form"
-      - "Saved-filter validation tests"
+      - "저장 필터 편집 화면"
+      - "저장 필터 검증 테스트"
     affected_paths:
       - src/search/saved-filter.ts
       - src/search/filter-form.ts
       - tests/saved-filter.test.ts
     constraints:
-      - "Leave search indexing behavior out of scope."
+      - "검색 색인 동작은 범위에서 제외합니다."
   related_scope_decision_refs: []
 ```
 
@@ -262,13 +262,13 @@ state:
     close_reason: none
     result: none
     closed_at: null
-  goal_summary: "Limit saved search filters to owner and label fields."
-  scope_summary: "Saved-filter owner and label edit validation."
+  goal_summary: "저장된 검색 필터를 담당자와 라벨 필드로 제한합니다."
+  scope_summary: "저장 필터의 담당자·라벨 편집 검증."
   non_goals:
-    - "Search indexing behavior."
+    - "검색 색인 동작."
   acceptance_criteria:
-    - "Saved filters reject changes outside owner and label fields."
-  autonomy_boundary: "Stay within saved-filter edit validation and related tests."
+    - "저장 필터는 담당자와 라벨 이외의 필드 변경을 거부합니다."
+  autonomy_boundary: "저장 필터 편집 검증과 관련 테스트만 다룹니다."
   active_change_unit_ref:
     record_kind: change_unit
     record_id: cu_filter_001
@@ -287,7 +287,7 @@ state:
 next_actions:
   - action_kind: prepare_write
     owner_method: volicord.prepare_write
-    label: "Check the saved-filter change against current scope."
+    label: "저장 필터 변경이 현재 적용 범위에 맞는지 확인하세요."
     blocking_question: null
     required_refs:
       - record_kind: task
