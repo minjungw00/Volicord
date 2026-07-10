@@ -50,7 +50,7 @@ CLI 출력에 태그라인을 넣지 않습니다.
 ## 제품과 구성 요소 표현
 
 - Volicord는 제품/시스템 브랜드입니다.
-- Core는 계속 제품 개념이자 기준 기록 역할입니다. Core 이름을 바꾸거나 Core의 정확한
+- Core는 계속 제품 개념이자 권한 기록 역할입니다. Core 이름을 바꾸거나 Core의 정확한
   상태 권한 역할을 공개 Volicord 제품 정체성으로 합치지 않습니다.
 - `volicord`는 관리 CLI 식별자입니다. 정확한 CLI 동작은 [관리 CLI](../reference/admin-cli.md)가
   담당합니다.
@@ -58,9 +58,8 @@ CLI 출력에 태그라인을 넣지 않습니다.
   응답 래핑 동작은 [MCP 전송](../reference/mcp-transport.md)이 담당합니다.
 - `Volicord Runtime Home`은 제품 라벨입니다. 정확한 런타임 위치와 저장소 경계
   동작은 [런타임 경계](../reference/runtime-boundaries.md)가 담당합니다.
-- `Task`, Change Unit, 쓰기 티켓, 최종 수락, 잔여 위험 수락, 닫기
-  준비 상태 같은 도메인 개념에는 Volicord에서 파생한 장식적 이름을 붙이지
-  않습니다.
+- `Task`, 쓰기 티켓, 사용자 판단, 증거, 닫기 상태, 최종 수락, 잔여 위험 수락
+  같은 도메인 개념에는 Volicord에서 파생한 장식적 이름을 붙이지 않습니다.
 
 참조 담당 문서가 정확한 식별자나 제품 라벨을 사용할 때는 그 담당 문서가 정의한
 문자열을 사용 지점에서 보존합니다. 브랜드 표현은 API 메서드, 바이너리, 저장소
@@ -136,7 +135,7 @@ Volicord 권한 기록을 OS 수준 강제, 샌드박스, 에이전트가 지시
 | 제품 범위와 지원되는 기준 경계 | [범위](../reference/scope.md) |
 | 작업 권한, 사용자 판단, 증거, 쓰기 티켓, 수락, 잔여 위험, 닫기 상태 | [Core 모델](../reference/core-model.md) |
 | 런타임 위치, 제품 저장소 경계, Runtime Home 경계, 구성 요소/위치 분리 | [런타임 경계](../reference/runtime-boundaries.md) |
-| 보안 표현, 보장 수준, 로컬 파일 접근 가정, 명시적 비보장 | [보안](../reference/security.md) |
+| 보안 표현, 보장 수준, 호출 맥락 가정, 명시적 비보장 | [보안](../reference/security.md) |
 | 관리 CLI 명령, 인자, 출력, 호스트 설정, 명령/API 경계 | [관리 CLI](../reference/admin-cli.md) |
 | 로컬 MCP 어댑터 프로세스 시작, stdio 전송, 프로토콜 처리, 응답 래핑 | [MCP 전송](../reference/mcp-transport.md) |
 | 문서 담당 경로와 메타데이터 | [문서 정책](documentation-policy.md), [doc-index.yaml](../../doc-index.yaml) |
