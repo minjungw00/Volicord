@@ -12,9 +12,9 @@ close-readiness state, or residual-risk decisions.
 
 ## Purpose
 
-Every diagram must have one reader job. Choose the diagram category before
-drawing arrows, and make that reader job clear in the surrounding prose or
-caption. Diagram categories and any role metadata are authoring and review
+Every diagram must answer one reader question. Choose the diagram category
+before drawing arrows, and make that question clear in the surrounding prose
+or caption. Diagram categories and any role metadata are authoring and review
 aids; they help maintainers decide placement, caption scope, and validation
 expectations. They are not required reader-facing labels. If one picture needs
 to show workflow order, component responsibility, authority, runtime calls, and
@@ -109,7 +109,7 @@ structure changes in a way that affects an Architecture Guide diagram.
 
 Before keeping or adding a diagram, confirm:
 
-- the category and reader job are clear
+- the category and reader question are clear
 - the caption names arrow semantics and omissions when needed
 - the diagram is located in a document allowed to own that level of detail
 - exact behavior routes to the focused Reference owner instead of being defined

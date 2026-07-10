@@ -117,9 +117,9 @@ Document: [Quickstart](../user-guide/quickstart.md)
   successful supported agent-host setup.
 - Intended reader: New users, operators, and agent integrators who want a first
   working connection.
-- Should own: A focused happy path, minimal commands, setup prompt or
-  action-required handoff at first-run depth, expected success checks, and the
-  next document when the happy path stops.
+- Should own: A focused success path, minimal commands, setup prompt or
+  action-required handoff at first-run depth, expected success checks, and a
+  clear route to the next guide if setup fails.
 - Should not own: Full host matrices, all setup and removal variants, complete
   CLI flag behavior, complete troubleshooting catalogs, MCP transport
   contracts, or API method references.

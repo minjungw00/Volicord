@@ -138,7 +138,7 @@ API와 참조 예시는 필요할 때 메서드 안의 정합성, 요청과 응�
 
 - CLI 도움말은 해당 명령의 현재 공개 옵션 허용 목록만 노출합니다.
 - 유지되는 셸 예시는 지원되는 `volicord` 명령과 옵션을 사용합니다.
-- 저장소 스키마 점검은 현재 canonical SQL, 테이블, 컬럼, 인덱스, 제약, 초기화,
+- 저장소 스키마 점검은 현재 기준 SQL, 테이블, 컬럼, 인덱스, 제약, 초기화,
   검증 동작을 확인합니다.
 - MCP 사전 점검과 전송/스키마 점검은 현재 시작 동작, 공개 도구 노출, 공개 스키마
   형태를 검증합니다. 공개 MCP 스키마는 내부 envelope와 호출 필드를 숨기는
@@ -248,7 +248,7 @@ Rust 구현을 편집한 뒤에는 워크스페이스나 변경된 크레이트�
 - `cargo run -p xtask -- docs-check`는 유지 문서 구조, 생성 또는 원본 파생 문서
   표면, 실행 가능한 `volicord` 명령 예시, 용어 메타데이터 담당 경로와 역할, 그리고
   `crates/volicord-store/src/schema/registry.sql` 및
-  `crates/volicord-store/src/schema/project.sql`에 대한 canonical Storage DDL SQL
+  `crates/volicord-store/src/schema/project.sql`에 대한 기준 Storage DDL SQL
   블록을 점검합니다.
 - `cargo test -p volicord-integration-tests --test public_contract_snapshots`는 API 요청
   스키마 투영과 MCP `workflow`/`read_only` 도구 투영의 생성 공개 계약 스냅샷이
@@ -265,19 +265,19 @@ Rust 구현을 편집한 뒤에는 워크스페이스나 변경된 크레이트�
 
 ## 저장소 DDL 계약 점검
 
-저장소 DDL, `volicord-store` canonical SQL, 스키마 검증 코드를 편집했다면 담당
+저장소 DDL, `volicord-store` 기준 SQL, 스키마 검증 코드를 편집했다면 담당
 문서와 구현 사이의 정합성을 확인하는 집중 점검을 실행합니다.
 
 ```sh
 cargo test -p volicord-store --test storage_ddl_contract
 ```
 
-이 점검은 권위 있는 영어와 한국어 저장소 DDL SQL을 canonical registry/project SQL에서
+이 점검은 권위 있는 영어와 한국어 저장소 DDL SQL을 기준 registry/project SQL에서
 초기화한 인메모리 SQLite 데이터베이스의 스키마와 비교합니다. Markdown 산문이나 SQL
 서식을 비교하지 않고 테이블, 열, 기본값, 제약, 외래 키, 인덱스, 부분 인덱스, 유지되는
 트리거 같은 스키마 의미를 확인합니다.
 
-저장소 문서 점검은 영어와 한국어 저장소 DDL의 표시된 canonical SQL 블록이 canonical
+저장소 문서 점검은 영어와 한국어 저장소 DDL의 표시된 기준 SQL 블록이 기준
 registry/project SQL 원본 파일과 일치하는지도 확인합니다.
 
 이 점검은 저장소 유지보수와 구현 정합성 점검입니다. 일반 문서 구조 검증, 공개
