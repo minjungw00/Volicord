@@ -6,7 +6,7 @@ mod unix {
         env,
         error::Error,
         ffi::OsString,
-        fs,
+        fs, io,
         os::unix::fs::PermissionsExt,
         path::{Path, PathBuf},
         process::{Command, ExitStatus, Output, Stdio},
@@ -22,15 +22,17 @@ mod unix {
     const COMMAND_TIMEOUT: Duration = Duration::from_secs(20);
 
     #[test]
+    #[ignore = "requires an installed live Codex host and VOLICORD_RUN_CODEX_SMOKE=1"]
     fn codex_live_smoke_is_opt_in() -> Result<(), Box<dyn Error>> {
         if !smoke_enabled(CODEX_SMOKE_ENV) {
-            smoke_skip("codex", format!("{CODEX_SMOKE_ENV}=1 was not set"));
-            return Ok(());
+            return Err(io::Error::other(format!(
+                "set {CODEX_SMOKE_ENV}=1 before running the ignored Codex smoke test"
+            ))
+            .into());
         }
-        let Some(codex) = find_executable("codex") else {
-            smoke_skip("codex", "`codex` was not found on PATH");
-            return Ok(());
-        };
+        let codex = find_executable("codex").ok_or_else(|| {
+            io::Error::new(io::ErrorKind::NotFound, "`codex` was not found on PATH")
+        })?;
 
         let fixture = LiveSmokeFixture::new("codex")?;
         let version = fixture.run_host_command(&codex, ["--version"])?;
@@ -115,15 +117,17 @@ mod unix {
     }
 
     #[test]
+    #[ignore = "requires an installed live Claude Code host and VOLICORD_RUN_CLAUDE_SMOKE=1"]
     fn claude_code_live_smoke_is_opt_in() -> Result<(), Box<dyn Error>> {
         if !smoke_enabled(CLAUDE_SMOKE_ENV) {
-            smoke_skip("claude-code", format!("{CLAUDE_SMOKE_ENV}=1 was not set"));
-            return Ok(());
+            return Err(io::Error::other(format!(
+                "set {CLAUDE_SMOKE_ENV}=1 before running the ignored Claude Code smoke test"
+            ))
+            .into());
         }
-        let Some(claude) = find_executable("claude") else {
-            smoke_skip("claude-code", "`claude` was not found on PATH");
-            return Ok(());
-        };
+        let claude = find_executable("claude").ok_or_else(|| {
+            io::Error::new(io::ErrorKind::NotFound, "`claude` was not found on PATH")
+        })?;
 
         let fixture = LiveSmokeFixture::new("claude-code")?;
         let version = fixture.run_host_command(&claude, ["--version"])?;
@@ -317,10 +321,6 @@ mod unix {
 
     fn smoke_enabled(name: &str) -> bool {
         env::var(name).is_ok_and(|value| value == "1")
-    }
-
-    fn smoke_skip(host: &str, reason: impl AsRef<str>) {
-        println!("live {host} smoke skipped: {}", reason.as_ref());
     }
 
     fn smoke_note(host: &str, note: impl AsRef<str>) {
