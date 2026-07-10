@@ -375,6 +375,7 @@ InvocationContext:
 - `volicord mcp --stdio` 시작, 연결 바인딩, 환경 변수, stdio 프레이밍, 시작 검증, 응답 래핑,
   종료는 [MCP 전송](mcp-transport.md)이 담당합니다.
 
+<a id="user-channel-and-agent-connections"></a>
 ## User Channel과 Agent Connection
 
 Agent Connection은 에이전트 대상 연결입니다. 모델이 사용자의 말을 전달하고 있더라도

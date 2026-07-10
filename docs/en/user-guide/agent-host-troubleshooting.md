@@ -226,6 +226,7 @@ answer command or the URL already shown by the MCP Judgment Inbox item. If the
 selector is ambiguous or the wrong repository is selected, rerun with
 `--repo PATH` and the matching intent flag such as `--shared` or `--global`.
 
+<a id="read-only-host-storage"></a>
 ## Read-Only Host Storage
 
 Observable symptom: the MCP host environment can read Volicord configuration or
@@ -262,6 +263,7 @@ while the normal host sandbox fails, treat that as a storage-capability
 diagnostic, not as proof that the active host session has loaded or exposed the
 same tools.
 
+<a id="claude-code-configuration-exists-but-tools-are-not-exposed"></a>
 ## Claude Code Configuration Exists But Tools Are Not Exposed
 
 Observable symptom: `volicord connection status claude-code` or

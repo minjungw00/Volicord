@@ -186,10 +186,10 @@ volicord init --help
 `volicord init --host HOST --repo PATH --profile record`로 이어갑니다. `volicord init`은
 선택한 Product Repository를 연결하고, 프로젝트 범위 MCP 설정을 쓰며, 통합 상태를
 기록하는 동안 Runtime Home과 설치 프로필을 초기화할 수 있습니다. Detective 설정에는
-[관리 CLI 참조](../reference/admin-cli.md#agent-host-setup-and-init)에 설명된 검증된 host
-hook 및 session watcher 요구사항이 적용됩니다.
-Native Windows에서는 `--profile record`를 사용합니다. Windows host hook과 watcher
-동작을 사용할 수 없으므로 `--profile detective`는 unsupported-platform 진단으로
+[관리 CLI 참조](../reference/admin-cli.md#agent-host-setup-and-init)에 설명된 검증된 호스트
+훅과 세션 감시기 요구사항이 적용됩니다.
+Windows 네이티브 환경에서는 `--profile record`를 사용합니다. Windows 호스트 훅과
+감시기 동작을 사용할 수 없으므로 `--profile detective`는 `unsupported-platform` 진단으로
 실패합니다.
 
 `volicord init`은 선택된 `Volicord Runtime Home`을 만들거나 검증하고 설치 프로필을
@@ -202,7 +202,7 @@ setup에 이름 붙은 사용자 또는 호스트 동작이 아직 필요한지�
 
 호스트 설정을 실행하기 전에 설치된 `volicord` 바이너리가 `PATH`에 있어야 합니다.
 셸 시작 파일 변경은 암시적으로 이루어지지 않습니다. 셸 시작 파일을 통해 `PATH`를
-갱신했다면, 새 셸을 열거나 기존 에이전트 호스트 프로세스를 restart 또는 reload한 뒤
+갱신했다면 새 셸을 열거나 기존 에이전트 호스트 프로세스를 재시작하거나 다시 불러온 뒤
 명령을 찾을 수 있다고 기대해야 합니다.
 
 자동화나 결정적인 로컬 배치가 필요할 때는 명시적 init 옵션을 사용합니다.
@@ -264,7 +264,7 @@ docker run --rm -it \
   volicord:local init --host codex --repo /workspace --profile record
 ```
 
-같은 마운트로 Docker 설치 프로필을 점검하고 선택한 Agent Connection을 검증합니다.
+같은 마운트로 Docker 설치 프로필을 점검하고 선택한 에이전트 연결을 검증합니다.
 
 ```sh
 docker run --rm -it \
@@ -278,10 +278,10 @@ docker run --rm -it \
   volicord:local connection verify codex --repo /workspace
 ```
 
-Detective Docker 설정에는 컨테이너를 쓰지 않을 때와 같은 검증된 host hook 및 session
-watcher 요구사항이 적용됩니다. Runtime Home에 serve할 프로젝트 등록과 Agent Connection이
-들어간 뒤, 예를 들어 그와 일치하는 `init` 실행이나 낮은 수준의 `connection add` 실행 뒤,
-운영자가 제공한 token 파일로 로컬 HTTP MCP endpoint를 시작합니다.
+Docker에서 탐지 프로필을 설정할 때도 컨테이너 외부와 같은 검증된 호스트 훅과 세션
+감시기 요구사항이 적용됩니다. 런타임 홈에 제공할 프로젝트 등록과 에이전트 연결을
+만든 뒤, 예를 들어 일치하는 `init`이나 낮은 수준의 `connection add`를 실행한 뒤,
+운영자가 제공한 토큰 파일로 로컬 HTTP MCP 엔드포인트를 시작합니다.
 
 ```sh
 umask 077
@@ -325,8 +325,8 @@ volicord init --host codex --repo /path/to/your-product-repo --profile record
 ```
 
 `/path/to/your-product-repo`는 에이전트에게 작업을 요청할 Product Repository의 경로
-예시입니다. 선택한 호스트, 플랫폼, 저장소 설정이 검증된 detective 전제조건을 만족할 때만
-`--profile detective`를 사용합니다. Native Windows에서는 `detective` 프로필이 지원되지
+예시입니다. 선택한 호스트, 플랫폼, 저장소 설정이 검증된 탐지 프로필 전제 조건을 만족할 때만
+`--profile detective`를 사용합니다. Windows 네이티브 환경에서는 `detective` 프로필이 지원되지
 않으므로 `--profile record`를 사용합니다.
 
 전체 첫 실행 경로는 [빠른 시작](quickstart.md)을 계속 읽습니다. 호스트별

@@ -37,9 +37,9 @@ flowchart LR
 ```
 
 One host entry starts one `volicord mcp --stdio` process for one Agent
-Connection. That connection can route only to Product Repositories explicitly connected to it.
-Adding one Product Repository does not grant access to every project registered
-in the Runtime Home.
+Connection. That connection can route only to Product Repositories explicitly
+connected to it. Adding one Product Repository does not grant access to every
+project registered in the Runtime Home.
 
 This topology fits host-level configuration:
 
@@ -90,8 +90,8 @@ volicord connection status codex
 ```
 
 For the same host-level target, Volicord reuses the matching Agent Connection
-and adds the selected Product Repository to Connection Projects. It does not require the
-operator to handle the internal connection identity.
+and adds the selected Product Repository to Connection Projects. The operator
+does not need to handle the internal connection identity.
 
 ## Inspect The Connection
 
@@ -109,37 +109,19 @@ verification. For symptom-specific recovery, use
 
 ## What The Agent Should Do
 
-When a user asks which Product Repositories are available, the agent calls:
+When a user asks which Product Repositories are available, the agent calls
+`volicord.list_projects`. The result lists only projects connected to the bound
+Agent Connection.
 
-```json
-{"name":"volicord.list_projects","arguments":{}}
-```
+When more than one project is available, the agent uses the exact
+`project_selector` returned for the intended repository. It must not invent a
+selector from a directory name, display name, current working directory, MCP
+root, host label, or memory. If a call is rejected because project selection is
+ambiguous, the agent lists projects, chooses the intended repository, and
+retries with the returned selector.
 
-The MCP result lists only projects connected to the bound Agent Connection. Once
-more than one project is connected, a public Volicord method call that targets
-one Product Repository must include an explicit `project_selector` returned by
-`volicord.list_projects`:
-
-```json
-{
-  "name": "volicord.status",
-  "arguments": {
-    "project_selector": "<exact project_selector returned for /path/to/billing-api>",
-    "detail": "workflow"
-  }
-}
-```
-
-Replace the placeholder with the exact `projects[].project_selector` value for
-`/path/to/billing-api` in the `volicord.list_projects` result. A repository
-directory name, display name, or alias is not a substitute for that returned
-value. The agent must not invent a project from folder names, current working
-directory, MCP roots, host labels, Product Repository labels, or memory. If a
-call without `project_selector` is rejected as ambiguous, call
-`volicord.list_projects`, choose the intended project, and retry with the
-returned value. Public MCP tool arguments do not require or accept internal request
-metadata such as `request_id`, `idempotency_key`, `expected_state_version`,
-`dry_run`, or `locale`.
+Exact MCP argument and omission rules belong to
+[MCP Transport](../reference/mcp-transport.md).
 
 ## Remove One Product Repository
 
@@ -159,11 +141,12 @@ volicord connection remove codex --repo /path/to/billing-api
 ```
 
 Removing one Product Repository removes that Product Repository's Connection
-Projects membership. It does not delete the `Product Repository`, project registration,
-project state, Volicord task/evidence/run records, evidence attachment storage, or unrelated host
-configuration. If other connected Product Repositories remain, the host entry
-remains. If none remain, Volicord removes the matching managed host
-configuration when ownership and safety checks permit it.
+Projects membership. It does not delete the `Product Repository`, project
+registration, project state, Volicord Task, Evidence, or Run records, Evidence
+attachment storage, or unrelated host configuration. If other connected
+Product Repositories remain, the host entry remains. If none remain, Volicord
+removes the matching managed host configuration when ownership and safety
+checks permit it.
 
 ## Boundaries
 
@@ -172,8 +155,8 @@ configuration when ownership and safety checks permit it.
   in public MCP tool calls unless the call is `volicord.list_projects`.
 - A `Product Repository` is a product-file boundary and may contain selected
   shared host configuration, but it is not Volicord authority.
-- A Write Ticket records a Volicord work-authority decision for a proposed
-  product-file write. It is not OS permission, code review approval, final
-  acceptance, or proof that a write occurred.
+- A Write Ticket records that one proposed product-file write was checked
+  against the current work boundary. It is not OS permission, code review
+  approval, final acceptance, or proof that a write occurred.
 - Security limits and non-guarantees are owned by
   [Security](../reference/security.md).
