@@ -9,7 +9,7 @@
 | 필요 | 담당 문서 |
 |---|---|
 | 기록과 저장소 소유 값 | [저장소 기록](storage-records.md) |
-| 기준 SQLite 테이블 형태, 인덱스, 외래 키, 제약, canonical SQL 원본 | [저장소 DDL](storage-ddl.md) |
+| 기준 SQLite 테이블 형태, 인덱스, 외래 키, 제약, 기준 SQL 원본 | [저장소 DDL](storage-ddl.md) |
 | 메서드나 분기별 저장 효과 | [저장 효과](storage-effects.md) |
 | 아티팩트 저장소 생명주기 | [아티팩트 저장소](storage-artifacts.md) |
 | 상태 버전 시계, 재실행, 잠금, 호환되지 않는 저장소 처리 | [저장소 버전 관리](storage-versioning.md) |

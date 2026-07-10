@@ -17,14 +17,14 @@
 - API 아티팩트 스키마; [API 아티팩트 스키마](api/schema-artifacts.md)를 봅니다.
 - API 메서드 동작; [API 메서드](api/methods.md), [아티팩트 스테이징 메서드](api/method-stage-artifact.md), [실행 기록 메서드](api/method-record-run.md)를 봅니다.
 - 기록 계열 개요: [저장소 기록](storage-records.md)을 봅니다.
-- 기준 SQLite DDL, 제약, 인덱스, 외래 키, canonical SQL 원본: [저장소 DDL](storage-ddl.md)을 봅니다.
+- 기준 SQLite DDL, 제약, 인덱스, 외래 키, 기준 SQL 원본: [저장소 DDL](storage-ddl.md)을 봅니다.
 - 일반 메서드 저장 효과; [저장 효과](storage-effects.md)를 봅니다.
 - 로컬 파일 접근 보안 주장; [보안](security.md)과 [런타임 경계](runtime-boundaries.md)를 봅니다.
 
 <a id="lifecycle-boundary"></a>
 ## 아티팩트 생명주기 요약
 
-아티팩트 저장은 스테이징, 승격, 영속 연결, 내부 본문 검증을 구분합니다. `ArtifactRef`는 등록된 영속 아티팩트를 가리키는 공개 API 포인터입니다. 저장소는 `artifacts`와 `artifact_links`를 사용해 영속 아티팩트 권한을 구현합니다. 기록 계열 배치는 [저장소 기록](storage-records.md)을 보고, 응답 분기별 영속 효과는 [저장 효과](storage-effects.md)를 봅니다.
+아티팩트 저장은 스테이징, 승격, 영속 연결, 내부 본문 검증을 구분합니다. `ArtifactRef`는 등록된 영속 아티팩트를 가리키는 공개 API 참조입니다. 저장소는 `artifacts`와 `artifact_links`를 사용해 영속 아티팩트 권한을 구현합니다. 기록 계열 배치는 [저장소 기록](storage-records.md)을 보고, 응답 분기별 영속 효과는 [저장 효과](storage-effects.md)를 봅니다.
 
 이 생명주기 그림은 스테이징된 자료가 언제 증거 자격을 가질 수 있는 영속 아티팩트
 관계가 되는지 보여 줍니다. 실선 화살표는 저장 생명주기 전이 또는 영속 연결 경로를
@@ -60,12 +60,12 @@ flowchart LR
 <a id="public-evidence-state-mapping"></a>
 ## 공개 증거 상태 매핑
 
-사용자에게 보이는 요약은 작은 증거 상태 어휘를 표시용으로 사용하지만, 내부 아티팩트, Run, 관찰, 닫기 근거 기록은 그대로 유지합니다.
+사용자에게 보이는 요약은 작은 증거 상태 어휘를 표시용으로 사용하지만, 내부 아티팩트, `Run`, 관찰, 닫기 근거 기록은 그대로 유지합니다.
 
 | 공개 상태 | 내부 근거 | 사용자에게 보이는 의미 |
 |---|---|---|
 | `prepared` | `volicord.stage_artifact`가 만든 만료되지 않은 임시 `artifact_staging` 행과 반환된 `StagedArtifactHandle`. | 나중에 담당 메서드가 쓸 첨부 입력이 준비된 상태입니다. `accepted_for_close` 상태가 아니고, `EvidenceSummary`를 만들지 않으며, 그 자체로 닫기 준비 상태를 뒷받침할 수 없습니다. |
-| `attached` | 보통 `volicord.record_run` 같은 커밋된 담당 메서드가 증거 관찰 또는 아티팩트 참조를 주장별 증거에 연결한 상태. | 증거가 기록된 Run 또는 주장에 첨부된 상태입니다. 그래도 닫기에 대해 부족하거나, 오래됐거나, 막혔거나, 가려졌거나, 사용할 수 없을 수 있습니다. |
+| `attached` | 보통 `volicord.record_run` 같은 커밋된 담당 메서드가 증거 관찰 또는 아티팩트 참조를 주장별 증거에 연결한 상태. | 증거가 기록된 `Run` 또는 주장에 첨부된 상태입니다. 그래도 닫기에 대해 부족하거나, 오래됐거나, 막혔거나, 가려졌거나, 사용할 수 없을 수 있습니다. |
 | `accepted_for_close` | 현재 닫기 근거가 현재 `EvidenceSummary` 또는 관련 닫기 근거 증거 참조를 가리키는 상태. | 증거가 현재 닫기 근거의 닫기 준비 상태 계산에 사용될 수 있습니다. 이는 정확성 증명, 테스트 충분성 증명, QA 결과, 최종 수락, 잔여 위험 수락이 아닙니다. |
 
 이 값들은 표시 상태입니다. 증거 충분성은 계속 `EvidenceSummary.status`에 남고, 아티팩트 본문 사용 가능성은 아티팩트 가용성과 무결성 점검에 남으며, 닫기 준비 상태는 닫기 준비 상태 담당 문서에 남습니다.
@@ -114,7 +114,7 @@ flowchart LR
 
 조건:
 
-- 권한을 지니는 사용은 이 저장소 검사와 함께 소비하는 담당 메서드의 프로젝트,
+- 아티팩트를 권한 근거로 사용하려면 이 저장소 검사와 함께 소비하는 담당 메서드의 프로젝트,
   `Task`, 담당 관계, 가림 처리, 가용성, 호출 검사를 통과해야 합니다.
 
 담당 경계:
@@ -176,8 +176,8 @@ Core는 성공한 `volicord.stage_artifact` 요청의 확인된 호출 맥락에
 
 기준 스테이징 기본값:
 
-- 기본 스테이징 TTL은 24시간입니다. `expires_at`은 스테이징 생성 시각에서 24시간 뒤로 설정합니다.
-- 저장되는 스테이징 아티팩트 본문 또는 안전한 알림은 10 MiB(10,485,760 bytes)를 넘으면 안 됩니다.
+- 기본 스테이징 보존 시간(TTL)은 24시간입니다. `expires_at`은 스테이징 생성 시각에서 24시간 뒤로 설정합니다.
+- 저장되는 스테이징 아티팩트 본문 또는 안전한 알림은 10 MiB(10,485,760바이트)를 넘으면 안 됩니다.
 - 안전한 본문 저장은 안전한 텍스트, JSON, Markdown, XML 또는 동등한 텍스트성 미디어 타입으로 제한됩니다.
 - 바이너리 입력은 기준 범위에서 스테이징 본문 바이트로 저장하지 않습니다. 바이너리
   자료를 표현해야 할 때는 안전한 텍스트 알림만 저장합니다.
@@ -264,7 +264,7 @@ expires_at: "<future-expiration-timestamp>"
 
 허용되지 않는 것:
 
-- actor source가 다른 스테이징 핸들 전달을 기준 범위에서 지원되는 동작으로 취급하면 안 됩니다.
+- 행위자 출처가 다른 스테이징 핸들 전달을 기준 범위에서 지원되는 동작으로 취급하면 안 됩니다.
 - `StagedArtifactHandle`을 어떤 로컬 호출자든 사용할 수 있는 베어러 토큰으로 취급하면 안 됩니다.
 
 소비 트랜잭션은 아래 항목을 검증해야 합니다.
@@ -402,7 +402,7 @@ expires_at: "<future-expiration-timestamp>"
 
 | 값 | 의미 |
 |---|---|
-| `verified` | 영속 아티팩트 사실이 완전하며 권한 사용 전에 현재 바이트의 무결성을 확인할 수 있습니다. |
+| `verified` | 영속 아티팩트 사실이 완전하며 권한 근거로 사용하기 전에 현재 바이트의 무결성을 확인할 수 있습니다. |
 | `corrupt` | 저장된 바이트나 메타데이터가 영속 저장된 무결성 사실과 맞지 않거나 저장된 `verified` 사실 관계가 유효하지 않습니다. |
 
 영속 아티팩트 사실:
@@ -416,11 +416,11 @@ expires_at: "<future-expiration-timestamp>"
 
 - 새 영속 아티팩트는 `integrity_status=verified`를 사용해야 합니다.
 - `verified`는 비어 있지 않은 `content_type`, 유효한 소문자 16진수 SHA-256 문자열, 음수가 아닌 `size_bytes`를 요구합니다.
-- 권한을 지니는 아티팩트는 사용할 때 현재 바이트도 검증해야 합니다. `artifacts.body_path`는 아티팩트 저장소 루트에서 해석합니다. 심볼릭 링크를 해석한 뒤에도 본문이나 안전 알림이 아티팩트 저장소 경계 안에 있어야 합니다. 해석된 대상은 일반 파일 또는 담당 문서가 승인한 안전 표현이어야 합니다. 또한 `artifacts.status`는 `available`이어야 하고, 현재 바이트 크기와 SHA-256은 저장된 `size_bytes` 및 `sha256`과 일치해야 하며, 콘텐츠 타입과 무결성 사실도 계속 유효해야 합니다.
+- 아티팩트를 권한 근거로 사용할 때는 현재 바이트도 검증해야 합니다. `artifacts.body_path`는 아티팩트 저장소 루트에서 해석합니다. 심볼릭 링크를 해석한 뒤에도 본문이나 안전 알림이 아티팩트 저장소 경계 안에 있어야 합니다. 해석된 대상은 일반 파일 또는 담당 문서가 승인한 안전 표현이어야 합니다. 또한 `artifacts.status`는 `available`이어야 하고, 현재 바이트 크기와 SHA-256은 저장된 `size_bytes` 및 `sha256`과 일치해야 하며, 콘텐츠 타입과 무결성 사실도 계속 유효해야 합니다.
 - 빠진 사실을 빈 해시, 0바이트 크기, 만들어 낸 콘텐츠 타입으로 표현하면 안 됩니다.
 - 본문 바이트가 없거나, 읽을 수 없거나, 사용할 수 없거나, 사용에 부적합한 상태는 `integrity_status`를 바꾸는 대신 가용성 처리로 표현합니다.
 - `corrupt`, 삭제됨, 없음, 사용 불가, 수정된 아티팩트는 증거 또는 닫기 권한 요구사항을 만족할 수 없습니다.
-- 읽기 전용 상태 조회와 닫기 경로는 저장된 아티팩트 생명주기 상태를 변경하지 않고 응답용으로 유효한 missing 또는 integrity-failed 결과를 계산할 수 있습니다.
+- 읽기 전용 상태 조회와 닫기 경로는 저장된 아티팩트 생명주기 상태를 변경하지 않고 응답용으로 유효한 `missing` 또는 `integrity_failed` 결과를 계산할 수 있습니다.
 - 상태 표시는 사실을 만들어 내지 않고 아티팩트 사실을 사용할 수 없거나 손상되었음을 보여 줄 수 있습니다.
 
 허용되는 것:
@@ -447,7 +447,7 @@ expires_at: "<future-expiration-timestamp>"
 담당 메서드가 아티팩트에 의존하기 전에 현재 가용성과 무결성을 확인하기 위해서만 영속
 본문 또는 안전 알림을 내부에서 읽습니다. 이 검증은 스테이징 핸들 승격과 별개입니다.
 
-권한을 지니는 아티팩트 사용에는 아래 조건이 필요합니다.
+아티팩트를 권한 근거로 사용하려면 아래 조건을 충족해야 합니다.
 
 - 등록된 영속 아티팩트 기록.
 - 소비하는 담당 메서드가 확인하는 같은 프로젝트의 일치하는 `Task`와 필요한
@@ -470,7 +470,7 @@ expires_at: "<future-expiration-timestamp>"
 |---|---|
 | 존재 또는 생명주기 문제 | [존재 또는 생명주기 문제](#staged-handle-failure-existence-lifecycle) |
 | 범위 불일치 | [범위 불일치](#staged-handle-failure-scope) |
-| actor-source 불일치 | [actor-source 불일치](#staged-handle-failure-actor-source) |
+| 행위자 출처 불일치 | [행위자 출처 불일치](#staged-handle-failure-actor-source) |
 | 무결성 불일치 | [무결성 불일치](#staged-handle-failure-integrity) |
 
 <a id="staged-handle-failure-existence-lifecycle"></a>
@@ -493,11 +493,11 @@ expires_at: "<future-expiration-timestamp>"
 - 프로젝트가 다름.
 
 <a id="staged-handle-failure-actor-source"></a>
-**actor-source 불일치**
+**행위자 출처 불일치**
 
 예:
 
-- actor source가 다름.
+- 행위자 출처가 다름.
 - `created_by_actor_source` 불일치.
 
 <a id="staged-handle-failure-integrity"></a>
@@ -539,4 +539,4 @@ expires_at: "<future-expiration-timestamp>"
 - [아티팩트 스테이징 메서드](api/method-stage-artifact.md), [실행 기록 메서드](api/method-record-run.md), [API 메서드](api/methods.md): 지원되는 공개 아티팩트 스테이징 및 연결 메서드.
 - [저장 효과](storage-effects.md): 응답 분기가 저장 효과를 만드는지 여부.
 - [저장소 기록](storage-records.md): `artifact_staging`, `artifacts`, `artifact_links` 테이블 개요.
-- [보안](security.md): operation category, connection capability 경계, 보장 비주장.
+- [보안](security.md): 작업 범주, 연결 역량 경계, 보장 비주장.
