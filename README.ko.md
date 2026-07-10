@@ -308,7 +308,7 @@ flowchart TD
   inbox["Judgment Inbox / User Channel<br/>사용자 답변 기록"]
   write{"제품 파일<br/>쓰기 필요?"}
   ticket["Volicord가 쓰기 티켓<br/>결과 기록"]
-  run["record_run이 실행 또는<br/>관찰의 증거 기록"]
+  run["에이전트가 실행 또는<br/>관찰을 증거로 기록"]
   evidence["증거와 닫기 상태를<br/>보이게 유지"]
   close{"닫기 차단 사유가<br/>남아 있음?"}
   status["상태가 차단 사유,<br/>대기 중인 사용자 판단, 다음 행동 표시"]
@@ -327,152 +327,57 @@ flowchart TD
 ## 통합 프로필
 
 `volicord init`의 기본값은 `--profile record`입니다. `--profile`을 생략하면 일반 첫
-사용자 설정이 됩니다.
-
-Record profile(`--profile record`)은 host lifecycle hook이나 session watcher에 의존하지
-않고 호스트가 MCP를 통한 협력적 Volicord 워크플로 기록을 지원하게 할 때 선택합니다.
-에이전트가 Volicord를 통해 `Task`와 범위를 기록하고, 제안된 제품 파일 변경을 위한 쓰기
-티켓을 준비하며, 실행 또는 관찰을 통해 증거를 기록하고 사용자 판단을 요청하게 하려는 첫
-경로입니다.
+사용자 설정이 됩니다. Record profile은 host lifecycle hook이나 session watcher를
+요구하지 않고 MCP를 통한 협력적 작업 흐름 기록을 지원합니다.
 
 Detective profile(`--profile detective`)은 선택한 호스트, 플랫폼, Product Repository가 추가
 관찰 표면을 지원할 때만 사용합니다. Record profile 모델은 그대로 유지하면서 지원되는
-host hook과 session watcher를 더합니다. 이 hook은 협력형 host warning 또는 denial
-decision 신호를 제공할 수 있고, watcher는 coverage가 시작된 뒤 미기록 Product Repository
-변경을 탐지할 수 있습니다.
+host hook과 session watcher를 더합니다. 이는 협력형·탐지형 신호이며 OS 수준 강제나
+파일을 바꾼 행위자의 증명이 아닙니다.
 
-기본 사람용 status 출력은 프로필 한계를 간결하게 보여 줍니다. 정확한 선택 프로필,
-host-hook 상태, session-watcher 상태, Codex lifecycle 관찰, host policy overlay,
-guard 또는 hook 진단, 저장소 capability 세부사항이 필요하면 JSON 진단을 사용합니다. 이
-진단은 운영 상태 공개이지 보안 증명이 아닙니다.
-
-`detective` 프로필은 모든 쓰기를 막거나, 파일을 바꾼 사람이 누구인지 식별하거나, 모든
-파일을 감시하거나, 네트워크를 격리하거나, 도구를 샌드박스하거나, 모델이 지침을 따랐다는 것을
-증명하지 않습니다. 필요한 관찰이 실제로 활성일 때 Volicord가 닫기 상태와 조정
-워크플로에서 보여 주거나 사용할 수 있는 협력형 및 탐지형 신호를 더합니다.
-
-`volicord init` 뒤나 호스트가 요구한 승인 또는 reload 단계를 마친 뒤에는 현재 설정을
-검증합니다.
-
-```sh
-volicord connection verify codex --shared --repo /path/to/your-product-repo
-```
-
-저장된 설정 상태, 필요한 사용자 동작, 현재 관찰 사실을 확인해야 하면
-`volicord connection status HOST --repo PATH`와 `volicord doctor`를 사용합니다. 설치된
-파일, 생성된 프로젝트 지침, 로컬 설정 파일만으로 호스트가 detective 전용 구성 요소를
-로드하거나 실행했다는 것이 증명되지는 않습니다.
-
-호스트별 파일 배치, hook matcher, wrapper 출력 방식, 경로 안전성 진단, 호스트 approval
-또는 reload 세부사항은 [에이전트 호스트 설정](docs/ko/user-guide/agent-host-setup.md)과
+설정 뒤에는 빠른 시작의 검증 명령을 사용하고, 이름 붙은 `action_required` 단계가 있으면
+따릅니다. 현재 역량과 진단 세부사항은 [에이전트 호스트 설정](docs/ko/user-guide/agent-host-setup.md)과
 [에이전트 호스트 문제 해결](docs/ko/user-guide/agent-host-troubleshooting.md)을 보세요.
 정확한 명령 동작은 [관리 CLI 참조](docs/ko/reference/admin-cli.md)를 보세요.
 
 ## 미기록 변경과 닫기 차단 사유
 
-Detective profile의 host hook과 활성 session watcher는 제품 파일 변경이 대응되는 쓰기
-티켓이나 기록된 실행과 맞지 않을 때 미기록 Product Repository 변경을 보고할 수 있습니다.
-Session watcher 관찰은 선택된 session에 대한 한정된 제품 파일 메타데이터 비교에서
-나옵니다. 변경된 경로를 감지하지만, 전체 파일 내용을 저장하거나, 누가 파일을 바꿨는지
-증명하거나, 의도를 증명하거나, 쓰기를 막지 않습니다. 이런 미기록 변경은 조정될 때까지
-미해결 상태로 남으며, 미해결 미기록 변경은 닫기를 막습니다.
-
-조정은 호환되는 쓰기 티켓이나 기록된 실행이 이미 다루는 변경처럼 결정적으로 해결할 수
-있는 경우를 해결할 수 있습니다. 수락이 필요하면 Volicord는 초점이 맞춰진 사용자 소유
-판단을 만듭니다. 사용자는 MCP elicitation, 엄격한 채팅 명령, 로컬 consent URL, CLI
-inbox를 User Channel 입력 방법으로 사용해 답합니다. 에이전트는 미기록 변경을 조용히
-무시하거나 사용자를 대신해 수락한 것으로 표시할 수 없습니다.
+Detective 관찰이 활성화되어 있으면 Volicord는 기록된 작업과 맞지 않는 제품 파일 변경을
+미기록 변경으로 보고할 수 있습니다. 이 관찰은 한정된 신호이며 파일을 바꾼 행위자나
+의도를 증명하거나 쓰기를 막지 않습니다. 해결되지 않은 미기록 변경은 닫기를 막습니다.
 
 채팅에서는 에이전트에게 `volicord.reconcile_changes` 결과와 다음 행동을 보여 달라고
-요청합니다. CLI 복구 경로는 `volicord changes reconcile`입니다.
+요청합니다. CLI 복구 경로는 `volicord changes reconcile`입니다. 작업 흐름 안내는
+[에이전트 가이드](docs/ko/user-guide/agent-workflow.md)를, 정확한 메서드 동작은
+[`volicord.reconcile_changes` 참조](docs/ko/reference/api/method-reconcile-changes.md)를
+보세요.
 
 ## 사용자 판단 캡처
 
 사용자 판단은 사용자에게 남습니다. Agent Connection은 판단을 요청할 수 있지만,
 권한을 지니는 사용자 답변을 사용자처럼 기록하면 안 됩니다.
 
-지원되는 User Channel 입력 방법은 아래와 같습니다.
-
-| 방법 | 쓰이는 때 |
-|---|---|
-| 호스트 프롬프트 | 초기화된 MCP client가 `capabilities.elicitation`을 선언하면 Volicord는 초점이 맞춰진 대기 판단에 대해 `elicitation/create` 요청을 보낼 수 있습니다. 유효한 응답은 사용자 출처로 로컬 `User Channel`을 통해 기록됩니다. |
-| 채팅 명령 | 호스트 프롬프트 입력을 사용할 수 없고 채팅 명령 캡처가 `configured`, `observed`, `active`이면 Volicord는 `Volicord: answer J-3 1 #AB7K`, `Volicord: answer J-3 reject #AB7K`, `Volicord: answer J-3 defer #AB7K`, `Volicord: note J-3 "text" #AB7K` 같은 정확한 채팅 명령을 반환합니다. 호스트 hook은 현재 검증 코드가 있는 엄격하게 유효한 명령만 기록합니다. |
-| 로컬 consent URL | 호스트 프롬프트 입력과 채팅 명령 캡처를 사용할 수 없고 adapter가 fallback을 안전하게 노출할 수 있으면 Volicord는 loopback 전용 consent URL을 반환합니다. URL은 프로젝트, 연결, 대기 판단에 묶인 짧게 만료되는 일회성 token을 사용하며, 유효한 답변은 로컬 사용자 출처로 `User Channel`을 통해 기록됩니다. |
-| CLI inbox | 다른 User Channel 입력 방법을 사용할 수 없거나 비활성화, 저하 상태이거나 수동 점검이 필요하면 Product Repository에서 `volicord inbox`를 사용합니다. |
-
-로컬 consent page는 프로젝트, 저장소 경로, 연결, 판단, 사용 가능한 선택지, token 만료 시각,
-CLI fallback을 식별해 보여 줍니다. 이 page는 표시된 사용자 소유 판단 하나만 기록하며,
-정확성, 테스트 충분성, 배포 성공, 검토 완료, 보안 강제를 증명하거나 닫기 상태를
-확정하지 않습니다.
-
-CLI inbox 예시:
-
-```sh
-volicord inbox
-volicord inbox answer JUDGMENT_ID --choice CHOICE_ID
-```
-
-로컬 consent URL은 호스트 프롬프트 입력과 별개입니다. Local HTTP transport는 여전히
-HTTP 호스트 프롬프트를 구현하지 않으며, 로컬 consent는 유효한 consent token이 있는
-loopback endpoint에서만 사용할 수 있습니다.
+활성 Agent Connection에 따라 Volicord는 호스트 프롬프트, 정확한 검증 채팅 명령,
+loopback 로컬 consent URL, 빠른 시작에서 본 CLI inbox 경로 중 하나를 보여 줄 수
+있습니다. 그 대기 판단에 대해 Volicord가 제시한 경로를 사용합니다. 실무 협업 흐름은
+[사용자 작업 흐름](docs/ko/user-guide/user-workflow.md)을, 정확한 입력 방법과 권한 경계는
+[Agent Connection 참조](docs/ko/reference/agent-connection.md)를 보세요.
 
 ## Docker Local HTTP transport
 
-위 설치 또는 실행 경로 선택 섹션에서 Docker 이미지를 준비하는 방법을 보여 줍니다. 이
-섹션은 기본 `volicord mcp --stdio` 호스트 설정 대신 Docker/localhost Local HTTP MCP
-transport를 의도적으로 사용할 때 사용합니다.
-
-```sh
-VOLICORD_IMAGE=volicord:local
-```
-
-serve에 사용할 것과 같은 Runtime Home 볼륨 및 Product Repository mount로 초기화합니다.
-
-```sh
-docker run --rm -it \
-  -v volicord-home:/var/lib/volicord \
-  -v /path/to/your-product-repo:/workspace \
-  "$VOLICORD_IMAGE" init --host codex --repo /workspace --profile record
-```
-
-호스트 loopback 전용 포트 노출과 token 파일로 Local HTTP를 제공합니다.
-
-```sh
-umask 077
-VOLICORD_HTTP_TOKEN_FILE="$(mktemp)"
-openssl rand -hex 32 > "$VOLICORD_HTTP_TOKEN_FILE"
-
-docker run --rm \
-  -p 127.0.0.1:8765:8765 \
-  -v "$VOLICORD_HTTP_TOKEN_FILE:/tmp/volicord-http-token:ro" \
-  -v volicord-home:/var/lib/volicord \
-  -v /path/to/your-product-repo:/workspace \
-  "$VOLICORD_IMAGE" serve --transport local-http \
-    --container-listen 0.0.0.0:8765 \
-    --token-file /tmp/volicord-http-token \
-    --project /workspace
-```
-
-`-p 127.0.0.1:8765:8765`는 컨테이너 포트를 호스트 loopback에만 노출합니다.
-`--container-listen 0.0.0.0:8765`는 이 Docker host-loopback 노출 형태를 위한
-옵션입니다. 컨테이너 port를 `0.0.0.0`, 공개 host interface, 원격 host에 노출하지
-마세요. Local HTTP는 공개 네트워크 API, SaaS endpoint, 다중 사용자 서버, 보안 경계가
-아닙니다.
-
-자세한 Docker와 HTTP 경계는 [설치](docs/ko/user-guide/installation.md)와
-[MCP 전송](docs/ko/reference/mcp-transport.md)을 사용합니다.
+Local HTTP는 고급 로컬/Docker MCP 전송이며 기본 에이전트 호스트 설정, 공개 네트워크
+API, 보안 경계가 아닙니다. 완전한 host-loopback Docker 절차는
+[설치](docs/ko/user-guide/installation.md)에, 정확한 전송 동작은
+[MCP 전송](docs/ko/reference/mcp-transport.md)에 있습니다.
 
 ## 문제 해결
 
-| 증상 | 할 일 |
-|---|---|
-| `volicord`를 찾지 못함 | 설치 디렉터리를 `PATH`에 넣거나 이미 `PATH`에 있는 디렉터리에 설치한 뒤 버전을 다시 확인합니다. 미래의 에이전트 호스트도 `volicord`를 시작할 수 있어야 합니다. Codex에서는 `Codex host process`가 보는 PATH를 뜻합니다. |
-| `init`이 `action_required`를 보고함 | 먼저 `Next:` 체크리스트를 따릅니다. 호스트 restart 또는 reload, 프로젝트 trust, MCP approval, OAuth, 명령 링크 복구, 설치 프로필 복구처럼 이름 붙은 동작을 완료한 뒤 일반 init 경로에서는 setup 섹션의 검증 명령을 사용합니다. |
-| Detective 전용 점검이 활성화되지 않음 | 같은 호스트, 의도, 저장소 선택자로 검증하고, 이름 붙은 사용자 동작을 완료한 뒤, hook 또는 watcher 진단은 [에이전트 호스트 문제 해결](docs/ko/user-guide/agent-host-troubleshooting.md)을 사용합니다. |
-| 호스트가 MCP를 시작하지 못함 | 같은 명령 경로로 호스트가 `volicord mcp --help`를 시작할 수 있는지 확인합니다. 설치 프로필 상태는 `volicord doctor`로 확인합니다. |
-| Product Repository가 감지되지 않음 | `--repo /path/to/your-product-repo`를 넘기고, 그 경로가 Runtime Home과 분리된 기존 로컬 저장소인지 확인합니다. |
-| 판단이 대기 중임 | 가능하면 호스트 프롬프트나 정확한 채팅 명령을 우선 사용합니다. CLI inbox 경로로 `volicord inbox`와 `volicord inbox answer`를 사용합니다. |
-| 닫기 차단 사유가 있음 | 에이전트에게 `volicord.check_close` 결과, 대기 중인 사용자 판단, 빠진 증거, 미해결 미기록 변경, 잔여 위험을 보여 달라고 합니다. 요약으로 닫지 말고 이름 붙은 차단 사유를 처리합니다. |
+먼저 이름 붙은 `action_required` 단계와 빠른 시작의 검증 명령을 사용합니다. 실행 파일을
+사용할 수 없거나 `PATH` 문제가 있으면 [설치](docs/ko/user-guide/installation.md)를
+보세요. 호스트 신뢰, 승인, hook, watcher, 프로젝트 선택, MCP 시작 문제는
+[에이전트 호스트 문제 해결](docs/ko/user-guide/agent-host-troubleshooting.md)을
+사용합니다. 정확한 진단 상태와 복구 명령은 이 랜딩 문서에 반복하지 않고 해당 담당
+문서에 둡니다.
 
 ## 더 읽을 문서
 

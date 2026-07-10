@@ -327,7 +327,7 @@ flowchart TD
   inbox["Judgment Inbox / User Channel<br/>records the user's answer"]
   write{"Product-file<br/>write needed?"}
   ticket["Volicord records a<br/>Write Ticket result"]
-  run["record_run records<br/>Evidence for a run or observation"]
+  run["Agent records a run or<br/>observation as Evidence"]
   evidence["Evidence and Close Status<br/>stay visible"]
   close{"Close blockers<br/>remain?"}
   status["Status shows blockers,<br/>pending User Judgment, and next action"]
@@ -346,49 +346,18 @@ flowchart TD
 ## Integration Profiles
 
 `volicord init` defaults to `--profile record`. Omitting `--profile` gives the
-normal first-user setup.
-
-Use the Record profile (`--profile record`) when you want the host to support
-cooperative Volicord workflow recording through MCP without depending on host
-lifecycle hooks or a session watcher. This is the profile to start with when you
-want the agent to record a `Task` and scope, prepare write tickets for proposed
-product-file changes, record Evidence through runs or observations, and request
-User Judgment through Volicord.
+normal first-user setup. The Record profile supports cooperative workflow
+recording through MCP without requiring host lifecycle hooks or a session
+watcher.
 
 Use the Detective profile (`--profile detective`) only when the selected host,
 platform, and Product Repository support the extra observation surfaces. It
 keeps the Record profile model and adds supported host hooks plus a session
-watcher. Those hooks may provide cooperative host warning or denial decision
-signals, and the watcher may detect unrecorded Product Repository changes after
-its coverage starts.
+watcher. These are cooperative and detective signals, not OS-level enforcement
+or proof of who changed a file.
 
-Default human status output keeps profile limits compact. Use JSON diagnostics
-when you need the exact selected profile, host-hook state, session-watcher
-state, Codex lifecycle observations, host policy overlay, guard or hook
-diagnostics, or storage capability details. Treat those diagnostics as
-operational disclosure, not a security proof.
-
-The `detective` profile does not prevent all writes, identify who changed a
-file, monitor all files, isolate the network, sandbox tools, or prove that a
-model followed instructions. It adds cooperative and detective signals that
-Volicord can show or use in Close Status and reconciliation workflows when the
-required observations are actually active.
-
-After `volicord init`, or after any host-required approval or reload step,
-verify the current setup:
-
-```sh
-volicord connection verify codex --shared --repo /path/to/your-product-repo
-```
-
-Use `volicord connection status HOST --repo PATH` and `volicord doctor` when
-you need to inspect stored setup state, required user actions, and the current
-observation facts. Installed files, generated project guidance, and local setup
-files alone do not prove that the host loaded or ran the detective-specific
-pieces.
-
-Host-specific file layouts, hook matchers, wrapper output modes, path-safety
-diagnostics, and host approval or reload details live in
+After setup, use the verification commands from the Quick Start and follow any
+named `action_required` step. Current capability and diagnostic details live in
 [Agent Host Setup](docs/en/user-guide/agent-host-setup.md) and
 [Agent Host Troubleshooting](docs/en/user-guide/agent-host-troubleshooting.md).
 Exact command behavior lives in the
@@ -396,114 +365,48 @@ Exact command behavior lives in the
 
 ## Unrecorded Changes And Close Blockers
 
-The Detective profile's host hooks and an active session watcher can report
-Unrecorded Changes when a product file changes without a matching write ticket
-or recorded run. Session watcher observations come from bounded product-file
-metadata comparison for the selected session. They detect changed paths; they
-do not store full file contents, prove who changed a file, prove intent, or
-prevent writes. Those Unrecorded Changes remain unresolved until reconciled,
-and unresolved Unrecorded Changes block close.
-
-Reconciliation can resolve deterministic cases, such as a change already
-covered by a compatible write ticket or recorded run. If acceptance is needed,
-Volicord creates a focused user-owned judgment. The user answers through MCP
-elicitation, a strict chat command, local consent URL, or CLI inbox as User
-Channel input methods. Agents cannot silently dismiss Unrecorded Changes or
-mark them accepted for the user.
+When Detective observations are active, Volicord can report Unrecorded Changes
+for product-file changes that do not match recorded work. These observations
+are bounded signals: they do not prove who changed a file, prove intent, or
+prevent writes. Unresolved Unrecorded Changes block close.
 
 In chat, ask the agent to show `volicord.reconcile_changes` results and next
 actions. CLI recovery is available through `volicord changes reconcile`.
+Workflow guidance lives in the
+[Agent Guide](docs/en/user-guide/agent-workflow.md); exact method behavior lives
+in the
+[`volicord.reconcile_changes` Reference](docs/en/reference/api/method-reconcile-changes.md).
 
 ## User Judgment Capture
 
 User judgment stays user-owned. An Agent Connection may request a judgment, but
 it must not record authority-bearing user answers as if it were the user.
 
-Supported User Channel input methods:
-
-| Method | When it is used |
-|---|---|
-| Host prompt | If the initialized MCP client declares `capabilities.elicitation`, Volicord can send an `elicitation/create` request for a focused pending judgment. A valid response is recorded through the local `User Channel` with user provenance. |
-| Chat command | If host prompt input is unavailable and chat command capture is `configured`, `observed`, or `active`, Volicord returns exact chat commands such as `Volicord: answer J-3 1 #AB7K`, `Volicord: answer J-3 reject #AB7K`, `Volicord: answer J-3 defer #AB7K`, or `Volicord: note J-3 "text" #AB7K`. The host hook records only strict valid commands with the current verification code. |
-| Local consent URL | If host prompt input and chat command capture are unavailable and the adapter can safely expose the fallback, Volicord returns a loopback-only consent URL. The URL uses a short-lived one-time token tied to the project, connection, and pending judgment; a valid answer is recorded through the `User Channel` with local user provenance. |
-| CLI inbox | If the other User Channel input methods are unavailable, disabled, degraded, or need inspection, use `volicord inbox` from the Product Repository. |
-
-The local consent page identifies the project, repository path, connection,
-judgment, available choices, token expiry, and CLI fallback. It records only the
-shown user-owned judgment; it does not prove correctness, test sufficiency,
-deployment success, review completion, or security enforcement, and it does
-not establish Close Status.
-
-CLI inbox example:
-
-```sh
-volicord inbox
-volicord inbox answer JUDGMENT_ID --choice CHOICE_ID
-```
-
-The local consent URL is separate from host prompt input. The Local HTTP
-transport still does not implement HTTP host prompts, and local consent is
-available only on loopback endpoints with a valid consent token.
+Depending on the active Agent Connection, Volicord may show a host prompt, an
+exact verified chat command, a loopback local consent URL, or the CLI inbox
+path already shown in the Quick Start. Use the path Volicord presents for that
+pending judgment. The practical collaboration flow is in
+[User Workflow](docs/en/user-guide/user-workflow.md); exact input-method and
+authority boundaries are in the
+[Agent Connection Reference](docs/en/reference/agent-connection.md).
 
 ## Docker Local HTTP Transport
 
-The install/run section above shows how to obtain a Docker image. Use this
-section when you intentionally want Docker/localhost Local HTTP MCP transport
-instead of the default `volicord mcp --stdio` host setup.
-
-```sh
-VOLICORD_IMAGE=volicord:local
-```
-
-Initialize with the same Runtime Home volume and Product Repository mount you
-will use for serving:
-
-```sh
-docker run --rm -it \
-  -v volicord-home:/var/lib/volicord \
-  -v /path/to/your-product-repo:/workspace \
-  "$VOLICORD_IMAGE" init --host codex --repo /workspace --profile record
-```
-
-Serve Local HTTP with host-loopback-only port publishing and a token file:
-
-```sh
-umask 077
-VOLICORD_HTTP_TOKEN_FILE="$(mktemp)"
-openssl rand -hex 32 > "$VOLICORD_HTTP_TOKEN_FILE"
-
-docker run --rm \
-  -p 127.0.0.1:8765:8765 \
-  -v "$VOLICORD_HTTP_TOKEN_FILE:/tmp/volicord-http-token:ro" \
-  -v volicord-home:/var/lib/volicord \
-  -v /path/to/your-product-repo:/workspace \
-  "$VOLICORD_IMAGE" serve --transport local-http \
-    --container-listen 0.0.0.0:8765 \
-    --token-file /tmp/volicord-http-token \
-    --project /workspace
-```
-
-`-p 127.0.0.1:8765:8765` publishes the container port only on host loopback.
-`--container-listen 0.0.0.0:8765` is for this Docker host-loopback publishing
-shape. Do not publish the container port on `0.0.0.0`, a public host
-interface, or a remote host. Local HTTP is not a public network API, SaaS
-endpoint, multi-user server, or security boundary.
-
-Use [Installation](docs/en/user-guide/installation.md) and
-[MCP Transport](docs/en/reference/mcp-transport.md) for the detailed Docker and
-HTTP boundaries.
+Local HTTP is an advanced local/Docker MCP transport, not the default agent-host
+setup and not a public network API or security boundary. The complete
+host-loopback Docker procedure is maintained in
+[Installation](docs/en/user-guide/installation.md); exact transport behavior
+is maintained in [MCP Transport](docs/en/reference/mcp-transport.md).
 
 ## Troubleshooting
 
-| Symptom | What to do |
-|---|---|
-| `volicord` is not found | Put the install directory on `PATH`, or install to a directory already on `PATH`, then check the version again. Future agent hosts must also be able to start `volicord`; for Codex, that means the PATH seen by the Codex host process. |
-| `init` reports `action_required` | Follow the `Next:` checklist first. Complete the named action, such as host restart or reload, project trust, MCP approval, OAuth, command-link repair, or installation-profile repair, then use the verification command from the setup section for the ordinary init path. |
-| Detective-specific checks are inactive | Verify with the same host, intent, and repository selector, complete the named user action, and use [Agent Host Troubleshooting](docs/en/user-guide/agent-host-troubleshooting.md) for hook or watcher diagnostics. |
-| Host cannot start MCP | Confirm the host can start `volicord mcp --help` through the same command path. Use `volicord doctor` for installation-profile health. |
-| Product Repository is not detected | Pass `--repo /path/to/your-product-repo` and make sure the path is an existing local repository separate from the Runtime Home. |
-| A judgment is pending | Prefer the host prompt or exact chat command when available. Use `volicord inbox` and `volicord inbox answer` as the CLI inbox path. |
-| Close has blockers | Ask the agent to show `volicord.check_close` results, pending User Judgment, missing evidence, unresolved unrecorded changes, and residual risks. Address the named blocker instead of closing from a summary. |
+Start with the named `action_required` step and the verification commands in
+the Quick Start. Use [Installation](docs/en/user-guide/installation.md) for an
+unavailable executable or `PATH` problem, and use
+[Agent Host Troubleshooting](docs/en/user-guide/agent-host-troubleshooting.md)
+for host trust, approval, hook, watcher, project-selection, or MCP startup
+problems. Exact diagnostic states and recovery commands remain in those owner
+documents rather than this landing page.
 
 ## Deeper Docs
 
