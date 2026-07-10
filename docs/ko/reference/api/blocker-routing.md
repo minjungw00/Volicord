@@ -71,7 +71,7 @@
 
 ## 닫기 메서드 경로
 
-메서드별 닫기 동작은 [`volicord.check_close`와 `volicord.close_task`](method-close-task.md)가 담당합니다. 읽기 전용 닫기 준비 상태 검증, `intent` 처리, 종료 상태 변경, 상태 버전 동작, 커밋된 차단 결과는 그 메서드 담당 문서로 보냅니다.
+메서드별 닫기 동작은 [`volicord.check_close`와 `volicord.close_task`](method-close-task.md)가 담당합니다. 읽기 전용 닫기 준비 상태 검증, `intent` 처리, 종료 상태 변경, 상태 버전 동작, 응답 전용 차단 결과는 그 메서드 담당 문서로 보냅니다.
 
 이 문서는 두 메서드가 반환하는 닫기 차단 사유 데이터와 이웃 API 오류, 스키마, 값 집합, Core, 저장소, 표시 담당 문서 사이의 경계만 정의합니다.
 

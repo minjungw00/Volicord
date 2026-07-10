@@ -45,7 +45,7 @@
 - `volicord.check_close`의 요청 검증
 - `volicord.close_task`의 요청 검증과 `intent` 필드 조합
 - 이 메서드들이 읽기 전용 확인, 상태 변경, 차단, 거절, `dry_run` 분기에 도달하는 순서
-- 유효한 상태 변경 분기가 종료 결과나 커밋된 차단 결과를 커밋할 수 있는지 여부
+- 유효한 상태 변경 분기가 종료 결과를 커밋하는지, 응답 전용 차단 결과를 반환하는지 여부
 - `CloseTaskResult.blockers`에서 생성할 수 있는 메서드별 차단 사유 코드
 
 Core 담당 블록:
@@ -190,7 +190,7 @@ CloseTaskRequest:
 |---|---|
 | `volicord.check_close` | `dry_run=true`여도 `project_state.state_version`을 증가시키지 않습니다. `dry_run=false`이면 Session에 묶인 watcher가 준비 상태 관찰을 반환하기 전에 한정된 진단용 session-watch 관찰이나 watcher가 만든 미기록 변경 찾기를 기록할 수 있습니다. |
 | 성공한 종료 상태 변경 | `project_state.state_version`을 정확히 한 번 증가시킵니다. |
-| 상태 변경 `intent`의 커밋된 차단 결과 | 이 메서드와 저장 효과 담당 문서가 그 커밋된 차단 결과를 허용할 때 `project_state.state_version`을 정확히 한 번 증가시킵니다. |
+| 상태 변경 `intent`의 차단 결과 | `project_state.state_version`을 증가시키지 않습니다. 종료 상태 변경, 이벤트, 재실행 행 없이 `base.effect_kind=no_effect`를 반환합니다. |
 | 사전 확인 거절 또는 유효한 `dry_run` 미리보기 | 아무것도 증가시키지 않습니다. |
 
 사전 확인 거절에는 오래된 `expected_state_version`, 오래된 닫기 관련 `WriteTicket.basis_state_version`, 멱등 요청 해시 충돌이 포함됩니다. 이런 충돌은 오류 담당 문서로 처리되며 닫기 차단 사유가 아닙니다.
@@ -214,10 +214,10 @@ CloseTaskRequest:
 
 | 필드 | 결과 필드 의미 |
 |---|---|
-| `base` | 공통 결과 메타데이터입니다. `disclosure`와 `events`를 포함한 `ToolResultBase` 형태는 [API 코어 스키마](schema-core.md#common-response)가 담당합니다. 유효한 `CloseTaskResult` 분기는 `base.response_kind=result`와 `base.disclosure.guarantee_class=authority_record`를 사용합니다. 이 문서는 `volicord.check_close`에는 `base.effect_kind=read_only`를, 커밋된 종료 결과 또는 담당 문서가 허용한 커밋된 차단 결과에는 `base.effect_kind=core_committed`를 선택합니다. |
+| `base` | 공통 결과 메타데이터입니다. `disclosure`와 `events`를 포함한 `ToolResultBase` 형태는 [API 코어 스키마](schema-core.md#common-response)가 담당합니다. 유효한 `CloseTaskResult` 분기는 `base.response_kind=result`와 `base.disclosure.guarantee_class=authority_record`를 사용합니다. 이 문서는 `volicord.check_close`에는 `base.effect_kind=read_only`를, 성공한 종료 상태 변경에는 `base.effect_kind=core_committed`를, 차단 사유가 있는 상태 변경 `intent`에는 `base.effect_kind=no_effect`를 선택합니다. |
 | `summary_card` | 선택된 닫기 또는 닫기 확인 결과에 대한 `SummaryCard`입니다. 닫기 상태, 증거, 대기 판단, 변경, 전송, 선택된 다음 행동 하나, 보장 줄을 요약하며 구조화된 결과 필드 너머의 권한을 추가하지 않습니다. 증거 표시는 `prepared`, `attached`, `accepted_for_close`를 보여 줄 수 있습니다. `accepted_for_close`는 이 닫기 준비 상태 계산에 사용할 수 있다는 뜻이며 증명이나 최종 수락이 아닙니다. 형태는 [API 상태 스키마](schema-state.md#current-position-display-shapes)가 담당합니다. |
 | `close_state` | 요청한 경로에 대한 메서드 결과 닫기 상태입니다. 지원 값은 [API 값 집합](schema-value-sets.md#task-lifecycle-values)이 담당합니다. `close_state=blocked`는 유효한 닫기 또는 종료 경로 평가 뒤의 메서드 결과이지 `ToolRejectedResponse`가 아닙니다. |
-| `state` | 확인, 종료 상태 변경, 또는 담당 문서가 허용한 차단 결과 뒤 선택된 Task의 `StateSummary`입니다. `close_blockers`를 포함한 중첩 상태 필드는 [API 상태 스키마](schema-state.md)가 담당합니다. |
+| `state` | 확인, 종료 상태 변경, 또는 응답 전용 차단 평가 뒤 선택된 Task의 `StateSummary`입니다. `close_blockers`를 포함한 중첩 상태 필드는 [API 상태 스키마](schema-state.md)가 담당합니다. |
 | `current_close_basis` | 결과에 선택된 닫기 준비 상태에 사용한 `CurrentCloseBasis | null`입니다. `null`은 이 결과에 사용할 현재 닫기 근거가 없다는 뜻입니다. 형태는 [API 상태 스키마](schema-state.md#close-readiness-and-validation-shapes)가 담당합니다. |
 | `risk_acceptance_coverage` | 닫기 준비 상태 결과에서 현재 잔여 위험 수락 범위를 나타내는 `RiskAcceptanceCoverage[]`입니다. 형태는 [API 상태 스키마](schema-state.md#close-readiness-and-validation-shapes)가 담당합니다. |
 | `continuity_summary` | 이 닫기 결과로 관련성이 생긴 프로젝트 연속성 기록의 `ProjectContinuitySummary[]`입니다. 성공한 `intent=complete`에서는 잔여 위험 수락이 필요하지 않은 닫기 근거의 알려진 한계를 Core가 이어 가는 연속성 기록이 여기에 포함됩니다. 빈 배열은 이 결과에 대해 계산이 실행됐고 이어 갈 기록이 없었다는 뜻입니다. 형태는 [API 상태 스키마](schema-state.md#project-continuity-shapes)가 담당합니다. |
@@ -290,7 +290,8 @@ CloseTaskRequest:
 - `volicord.check_close`는 차단 사유를 응답 관찰 데이터로 반환하며 차단 사유 행을 만들지
   않습니다. 세션 watch 진단 저장 효과가 있는 경우, 그 효과는 차단 사유 행 지속과
   별개이며 [저장 효과](../storage-effects.md)가 담당합니다.
-- `dry_run=false`인 상태 변경 `intent`는 이 메서드와 [저장 효과](../storage-effects.md)가 그 효과를 허용할 때만 차단 결과를 커밋할 수 있습니다.
+- `dry_run=false`인 상태 변경 `intent`에 차단 사유가 있으면 `base.effect_kind=no_effect`인 응답 전용 결과를 반환합니다. 닫기 차단 사유 행, 권한 이벤트, 재실행 행, 종료 상태 변경을 저장하지 않고 `project_state.state_version`을 증가시키지 않습니다.
+- `intent=complete`에서 닫기 준비 상태 평가 전에 만든 제한된 세션 watch 진단 기록은 차단된 닫기 결과와 별개이며 [저장 효과](../storage-effects.md)가 계속 담당합니다.
 
 메서드별 차단 사유 분기:
 
@@ -364,7 +365,7 @@ CloseTaskRequest:
 설명하는 제한된 세션 watch 진단 기록을 만들거나 갱신할 수 있습니다. 그 기록은
 닫기 차단 사유 지속 저장 및 Core 권한 상태 변경과 별개입니다.
 
-커밋되는 `dry_run=false` 상태 변경 `intent`는 메서드 결과에 따라 종료 결과나 차단 결과를 지속 저장할 수 있습니다. 성공한 종료 닫기는 닫기 전 준비 상태에 사용한 현재 닫기 근거와 별개인 종료 닫기 요약을 지속 저장할 수 있습니다. 성공한 `intent=complete`는 현재 닫기 근거의 잔여 위험 중 보이지만 잔여 위험 수락이 필요하지 않은 항목에 대해 `kind=known_limit` 프로젝트 연속성 기록도 지속 저장할 수 있습니다. 정확한 저장 효과, 재실행 행, 이벤트, 상태 버전 증가, 프로젝트 연속성 지속 저장, 차단 사유 지속 저장 규칙은 [저장 효과](../storage-effects.md)와 [저장소 버전 관리](../storage-versioning.md)가 담당합니다.
+커밋되는 `dry_run=false` 상태 변경 `intent`는 성공한 종료 결과만 지속 저장합니다. 차단 사유가 있는 상태 변경 `intent`는 응답 전용 `base.effect_kind=no_effect` 결과를 반환하고 종료 상태를 변경하지 않습니다. 성공한 종료 닫기는 닫기 전 준비 상태에 사용한 현재 닫기 근거와 별개인 종료 닫기 요약을 지속 저장할 수 있습니다. 성공한 `intent=complete`는 현재 닫기 근거의 잔여 위험 중 보이지만 잔여 위험 수락이 필요하지 않은 항목에 대해 `kind=known_limit` 프로젝트 연속성 기록도 지속 저장할 수 있습니다. 정확한 저장 효과, 재실행 행, 이벤트, 상태 버전 증가, 프로젝트 연속성 지속 저장, 별도 세션 watch 진단 경계는 [저장 효과](../storage-effects.md)와 [저장소 버전 관리](../storage-versioning.md)가 담당합니다.
 
 거절 응답과 유효한 상태 변경 `intent`의 `ToolDryRunResponse` 미리보기에는 저장 효과가 없습니다.
 

@@ -247,7 +247,6 @@ Core 상태 변경, 재실행 행, 권한 이벤트, 닫기 상태 변경,
 
 담당 문서:
 - [쓰기 준비 메서드](api/method-prepare-write.md)
-- [Task 닫기 메서드](api/method-close-task.md)
 
 <a id="volicordprepare_write-committed-non-allow-decision"></a>
 ### `volicord.prepare_write`의 커밋된 비허용 판단
@@ -290,30 +289,6 @@ Core 상태 변경, 재실행 행, 권한 이벤트, 닫기 상태 변경,
 - `CloseReadinessBlocker[]`.
 - 닫기 차단 사유 기록.
 
-<a id="volicordclose_task-committed-blocked-result"></a>
-### `volicord.close_task`의 커밋된 차단 결과
-
-조건:
-
-- 닫기 준비 상태 평가가 실행되었습니다.
-- `volicord.close_task` 메서드 계약이 차단 결과 커밋을 허용합니다.
-
-허용될 수 있는 효과:
-
-- 차단 사유 상태.
-- `authority_events`.
-- 재실행 행.
-- `project_state.state_version` 증가.
-
-이 결과에서도 `Task`는 열린 상태로 남습니다.
-
-허용되지 않는 사용:
-
-- 이 분기를 `STATE_VERSION_CONFLICT`에 사용
-- `STATE_VERSION_CONFLICT`를 재실행으로 저장
-
-`STATE_VERSION_CONFLICT`는 사전 확인의 `ToolRejectedResponse` 분기에 속합니다.
-
 <a id="method-effects"></a>
 ## 메서드 저장 효과 요약
 
@@ -331,9 +306,9 @@ Core 상태 변경, 재실행 행, 권한 이벤트, 닫기 상태 변경,
 | `volicord.record_user_judgment` | 사용자 판단 해결 | [`volicord.record_user_judgment`](#volicordrecord_user_judgment) |
 | `volicord.reconcile_changes` | 미기록 변경 찾기 해결, 대기 사용자 판단 생성, 선택적 세션 watch 진단 기록 | [`volicord.reconcile_changes`](#volicordreconcile_changes) |
 | `volicord.check_close` | 선택적 세션 watch 진단을 포함하는 닫기 준비 상태 점검 | [`volicord.check_close`](#volicordcheck_close) |
-| `volicord.close_task intent=complete` | 메서드가 선택한 `complete` 종료 또는 차단 효과 지속 | [`volicord.close_task intent=complete`](#volicordclose_task-intentcomplete) |
-| `volicord.close_task intent=cancel` | 메서드가 선택한 취소 종료 또는 차단 효과 지속 | [`volicord.close_task intent=cancel`](#volicordclose_task-intentcancel) |
-| `volicord.close_task intent=supersede` | 메서드가 선택한 대체 종료 또는 차단 효과 지속 | [`volicord.close_task intent=supersede`](#volicordclose_task-intentsupersede) |
+| `volicord.close_task intent=complete` | 성공한 `complete` 종료 효과를 지속하고 차단된 시도는 효과 없는 결과를 반환 | [`volicord.close_task intent=complete`](#volicordclose_task-intentcomplete) |
+| `volicord.close_task intent=cancel` | 성공한 취소 종료 효과를 지속하고 차단된 시도는 효과 없는 결과를 반환 | [`volicord.close_task intent=cancel`](#volicordclose_task-intentcancel) |
+| `volicord.close_task intent=supersede` | 성공한 대체 종료 효과를 지속하고 차단된 시도는 효과 없는 결과를 반환 | [`volicord.close_task intent=supersede`](#volicordclose_task-intentsupersede) |
 
 <a id="volicordintake"></a>
 ### `volicord.intake`
@@ -710,17 +685,19 @@ watch 점검을 먼저 실행하고 Product Repository 변경이 expected-write 
 - 메서드가 선택한 완료 종료 효과를 지속합니다.
 - 메서드가 선택한 완료 효과가 성공하면 `tasks.close_basis_json`과 별개인 종료 닫기 요약을 지속할 수 있습니다.
 - 메서드가 선택한 완료 효과가 성공하면 보이지만 잔여 위험 수락이 필요하지 않은 현재 닫기 근거 잔여 위험에 대해 `kind='known_limit'`인 `project_continuity_records`를 생성합니다.
-- `Task`를 열린 상태로 둔 채 담당 문서가 허용한 `complete` 차단 효과를 지속합니다.
 - 이벤트를 추가합니다.
 - 재실행 행을 생성합니다.
 - `project_state.state_version`을 한 번 증가시킵니다.
 
 효과가 없는 분기:
 
+- 응답 전용으로 차단된 `complete` 결과
 - 유효한 `dry_run=true`
 - 사전 확인 실패
 
 유효한 `dry_run=true`는 `ToolDryRunResponse`를 반환합니다. 사전 확인 실패는 효과가 없는 `ToolRejectedResponse`입니다.
+
+응답 전용으로 차단된 `complete` 결과는 `base.effect_kind=no_effect`를 사용하고 닫기 차단 사유 행, 권한 이벤트, 재실행 행, 종료 상태 변경, 상태 버전 증가를 지속하지 않습니다. 닫기 준비 상태 평가 전에 만든 세션 watch 진단 기록은 차단된 닫기 결과와 별개입니다.
 
 담당 문서:
 
@@ -733,19 +710,19 @@ watch 점검을 먼저 실행하고 Product Repository 변경이 expected-write 
 커밋되는 `dry_run=false` 호출은 다음을 수행할 수 있습니다.
 
 - 메서드가 선택한 취소 효과를 지속합니다.
-- `Task`를 열린 상태로 둔 채 담당 문서가 허용한 취소 차단 효과를 지속합니다.
 - 이벤트를 추가합니다.
 - 재실행 행을 생성합니다.
 - `project_state.state_version`을 한 번 증가시킵니다.
 
 효과가 없는 분기:
 
+- 응답 전용으로 차단된 취소 결과
 - 유효한 `dry_run=true`
 - 사전 확인 실패
 
 유효한 `dry_run=true`는 `ToolDryRunResponse`를 반환합니다.
 
-취소 효과에는 `machine_action=accept`, `resolution_outcome=accepted`, 호환되는 근거, `resolved_by_actor_source=local_user`, 호환 User Channel 출처를 가진 메서드 담당 현재 취소 판단이 필요합니다. 취소 권한이 없거나 호환되지 않으면 담당 문서가 허용한 차단된 취소 효과를 만들 수 있지만, 수락이나 완료 전용 닫기 증거를 만들어 내면 안 됩니다.
+취소 효과에는 `machine_action=accept`, `resolution_outcome=accepted`, 호환되는 근거, `resolved_by_actor_source=local_user`, 호환 User Channel 출처를 가진 메서드 담당 현재 취소 판단이 필요합니다. 취소 권한이 없거나 호환되지 않으면 응답 전용 차단 결과를 반환하며, 수락이나 완료 전용 닫기 증거를 만들어 내면 안 됩니다.
 
 담당 문서:
 
@@ -759,13 +736,13 @@ watch 점검을 먼저 실행하고 Product Repository 변경이 expected-write 
 
 - 메서드가 선택한 대체 효과를 지속합니다.
 - 메서드가 선택한 효과에 필요하면 같은 변경에서 `project_state.active_task_id`를 갱신합니다.
-- 담당 문서가 허용한 대체 차단 효과를 지속합니다.
 - 이벤트를 추가합니다.
 - 재실행 행을 생성합니다.
 - `project_state.state_version`을 한 번 증가시킵니다.
 
 효과가 없는 분기:
 
+- 응답 전용으로 차단된 대체 결과
 - 유효한 `dry_run=true`
 - 사전 확인 실패
 

@@ -1613,8 +1613,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-11'
-  last_updated_on: '2026-07-03'
-  last_verified_on: '2026-07-03'
+  last_updated_on: '2026-07-11'
+  last_verified_on: '2026-07-11'
   applies_to:
   - volicord_workspace_0_1
   primary_audience:
@@ -1669,7 +1669,7 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-04'
+  last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
   - volicord_workspace_0_1
@@ -1878,7 +1878,7 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-13'
-  last_updated_on: '2026-07-03'
+  last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
   - volicord_workspace_0_1
@@ -2010,8 +2010,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-03'
-  last_verified_on: '2026-07-03'
+  last_updated_on: '2026-07-11'
+  last_verified_on: '2026-07-11'
   applies_to:
   - volicord_workspace_0_1
   - storage_baseline_sqlite_v3

@@ -782,7 +782,7 @@ Owner links:
 - Close-readiness meaning and non-substitution rules: [Core Model close readiness](../core-model.md#close_task)
 - Current close basis creation: [`volicord.record_run`](method-record-run.md)
 - Judgment compatibility and accepted-risk input: [API Judgment Schemas](schema-judgment.md)
-- Response branch behavior, close-readiness evaluation order, and committed blocked outcomes: [`volicord.check_close` and `volicord.close_task`](method-close-task.md)
+- Response branch behavior, close-readiness evaluation order, and response-only blocked outcomes: [`volicord.check_close` and `volicord.close_task`](method-close-task.md)
 - Close-readiness blocker/API response routing semantics: [API blocker routing](blocker-routing.md)
 - Supported `CloseReadinessBlocker.category`, `ValidatorResult.status`, `ValidatorResult.severity`, and `GuaranteeDisplay.level` values: [API Value Sets](schema-value-sets.md#state-and-blocker-values)
 - Security guarantee meaning: [Security](../security.md)

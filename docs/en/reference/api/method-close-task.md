@@ -45,7 +45,7 @@ Method-owned block:
 - request validation for `volicord.check_close`
 - request validation and intent-field combinations for `volicord.close_task`
 - the order in which these methods reach read-only check, mutation, blocked, rejected, and dry-run branches
-- whether a valid mutating branch may commit a terminal result or committed blocked result
+- whether a valid mutating branch commits a terminal result or returns a response-only blocked result
 - which method-specific blocker codes may be produced in `CloseTaskResult.blockers`
 
 Core-owned block:
@@ -190,7 +190,7 @@ Implementations evaluate `volicord.close_task` in this order:
 |---|---|
 | `volicord.check_close` | Never increments `project_state.state_version`, including when `dry_run=true`. For `dry_run=false`, a session-bound watcher may record bounded diagnostic session-watch observations or watcher-created unrecorded-change findings before returning the readiness observation. |
 | Successful terminal mutation | Increments `project_state.state_version` exactly once. |
-| Committed blocked result for a mutating intent | Increments `project_state.state_version` exactly once when this method and the storage-effect owner allow the committed blocked result. |
+| Blocked result for a mutating intent | Never increments `project_state.state_version`; it returns `base.effect_kind=no_effect` without a terminal mutation, event, or replay row. |
 | Preflight rejection or valid `dry_run` preview | Increments nothing. |
 
 Preflight rejection includes stale `expected_state_version`, stale close-relevant `WriteTicket.basis_state_version`, and idempotency request-hash conflict. These conflicts route to the error owners; they are not close blockers.
@@ -214,10 +214,10 @@ Returns `CloseTaskResult` with `base.response_kind=result`.
 
 | Field | Result-field meaning |
 |---|---|
-| `base` | Common result metadata. The `ToolResultBase` shape, including `disclosure` and `events`, is owned by [API Schema Core](schema-core.md#common-response). Valid `CloseTaskResult` branches use `base.response_kind=result` and `base.disclosure.guarantee_class=authority_record`; this document selects `base.effect_kind=read_only` for `volicord.check_close` and `base.effect_kind=core_committed` for committed terminal or owner-allowed committed blocked outcomes. |
+| `base` | Common result metadata. The `ToolResultBase` shape, including `disclosure` and `events`, is owned by [API Schema Core](schema-core.md#common-response). Valid `CloseTaskResult` branches use `base.response_kind=result` and `base.disclosure.guarantee_class=authority_record`; this document selects `base.effect_kind=read_only` for `volicord.check_close`, `base.effect_kind=core_committed` for a successful terminal mutation, and `base.effect_kind=no_effect` for a blocked mutating intent. |
 | `summary_card` | `SummaryCard` for the selected close or check-close result. It summarizes close status, evidence, pending judgment, changes, transport, one selected next action, and the guarantee line without adding authority beyond the structured result fields. Its evidence display can show `prepared`, `attached`, or `accepted_for_close`; `accepted_for_close` means available to this close-readiness calculation, not proof or final acceptance. Shape is owned by [API State Schemas](schema-state.md#current-position-display-shapes). |
 | `close_state` | Method result close state for the requested path. Supported values are owned by [API Value Sets](schema-value-sets.md#task-lifecycle-values). `close_state=blocked` is a method result after valid close or terminal-path evaluation, not `ToolRejectedResponse`. |
-| `state` | `StateSummary` for the selected Task after the check, terminal mutation, or owner-allowed blocked outcome. Nested state fields, including `close_blockers`, are owned by [API State Schemas](schema-state.md). |
+| `state` | `StateSummary` for the selected Task after the check, terminal mutation, or response-only blocked evaluation. Nested state fields, including `close_blockers`, are owned by [API State Schemas](schema-state.md). |
 | `current_close_basis` | `CurrentCloseBasis | null` used for close readiness when selected into the result. `null` means no current close basis is available for this result. Shape is owned by [API State Schemas](schema-state.md#close-readiness-and-validation-shapes). |
 | `risk_acceptance_coverage` | `RiskAcceptanceCoverage[]` for current residual-risk acceptance coverage in the close-readiness result. Shape is owned by [API State Schemas](schema-state.md#close-readiness-and-validation-shapes). |
 | `continuity_summary` | `ProjectContinuitySummary[]` for project continuity records made relevant by this close result. For successful `intent=complete`, this includes continuity records Core carries forward for close-basis known limits that do not require residual-risk acceptance. Empty means the computation ran and found no carry-forward records for this result. Shape is owned by [API State Schemas](schema-state.md#project-continuity-shapes). |
@@ -290,7 +290,8 @@ Result:
 - `volicord.check_close` returns blockers as response observation data and never creates blocker rows.
   Session-watch diagnostic storage effects, when present, are separate from
   blocker-row persistence and are owned by [Storage Effects](../storage-effects.md).
-- `dry_run=false` mutating intents may commit a blocked result only when this method and [Storage Effects](../storage-effects.md) allow that effect.
+- A `dry_run=false` mutating intent with blockers returns a response-only result with `base.effect_kind=no_effect`. It does not persist close blocker rows, append an authority event, create a replay row, mutate terminal state, or increment `project_state.state_version`.
+- For `intent=complete`, bounded session-watch diagnostic records created before close-readiness evaluation are separate from the blocked close result and remain governed by [Storage Effects](../storage-effects.md).
 
 Method-specific blocker branches:
 
@@ -364,7 +365,7 @@ records as described by [Storage Effects](../storage-effects.md#volicordcheck_cl
 Those records are separate from close blocker persistence and Core
 authority-state mutation.
 
-Committed `dry_run=false` mutating intents may persist terminal or blocked outcomes according to the method result. A successful terminal close may persist a terminal close summary, distinct from the current close basis used for pre-close readiness. Successful `intent=complete` may also persist project continuity records with `kind=known_limit` for current close-basis residual risks that are visible but do not require residual-risk acceptance. Exact storage effects, replay rows, events, state-version increments, project continuity persistence, and blocker persistence rules are owned by [Storage Effects](../storage-effects.md) and [Storage Versioning](../storage-versioning.md).
+Committed `dry_run=false` mutating intents persist only successful terminal outcomes. A blocked mutating intent returns a response-only `base.effect_kind=no_effect` result and leaves terminal state unchanged. A successful terminal close may persist a terminal close summary, distinct from the current close basis used for pre-close readiness. Successful `intent=complete` may also persist project continuity records with `kind=known_limit` for current close-basis residual risks that are visible but do not require residual-risk acceptance. Exact storage effects, replay rows, events, state-version increments, project continuity persistence, and the separate session-watch diagnostic boundary are owned by [Storage Effects](../storage-effects.md) and [Storage Versioning](../storage-versioning.md).
 
 Rejected responses and valid mutating-intent `ToolDryRunResponse` previews have no storage effect.
 

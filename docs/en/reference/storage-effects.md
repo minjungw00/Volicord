@@ -249,7 +249,6 @@ when the relevant method owner selects a committed branch for that outcome.
 
 Owner links:
 - [Prepare-write method](api/method-prepare-write.md)
-- [Close-task method](api/method-close-task.md)
 
 <a id="volicordprepare_write-committed-non-allow-decision"></a>
 ### `volicord.prepare_write` committed non-allow decision
@@ -292,30 +291,6 @@ Those stored reasons are not:
 - `CloseReadinessBlocker[]`
 - close-readiness blocker records
 
-<a id="volicordclose_task-committed-blocked-result"></a>
-### `volicord.close_task` committed blocked result
-
-Conditions:
-
-- Close readiness evaluation has run.
-- The `volicord.close_task` method contract permits committing the blocked result.
-
-Allowed effects:
-
-- blocker state
-- `authority_events`
-- replay row
-- `project_state.state_version`
-
-The Task remains open.
-
-Disallowed uses:
-
-- using this branch for `STATE_VERSION_CONFLICT`
-- storing `STATE_VERSION_CONFLICT` as replay
-
-`STATE_VERSION_CONFLICT` belongs to the preflight `ToolRejectedResponse` branch.
-
 <a id="method-effects"></a>
 ## Method effect summary
 
@@ -333,9 +308,9 @@ This table summarizes persistence effects. Method behavior and response unions r
 | `volicord.record_user_judgment` | resolves user judgment | See [`volicord.record_user_judgment`](#volicordrecord_user_judgment) |
 | `volicord.reconcile_changes` | resolves unrecorded-change findings, creates pending user judgments, and may record session-watch diagnostics | See [`volicord.reconcile_changes`](#volicordreconcile_changes) |
 | `volicord.check_close` | close-readiness check with optional session-watch diagnostics | See [`volicord.check_close`](#volicordcheck_close) |
-| `volicord.close_task intent=complete` | persists method-selected `complete` terminal or blocked effect | See [`volicord.close_task intent=complete`](#volicordclose_task-intentcomplete) |
-| `volicord.close_task intent=cancel` | persists method-selected cancellation terminal or blocked effect | See [`volicord.close_task intent=cancel`](#volicordclose_task-intentcancel) |
-| `volicord.close_task intent=supersede` | persists method-selected supersession terminal or blocked effect | See [`volicord.close_task intent=supersede`](#volicordclose_task-intentsupersede) |
+| `volicord.close_task intent=complete` | persists a successful `complete` terminal effect; blocked attempts return a no-effect result | See [`volicord.close_task intent=complete`](#volicordclose_task-intentcomplete) |
+| `volicord.close_task intent=cancel` | persists a successful cancellation terminal effect; blocked attempts return a no-effect result | See [`volicord.close_task intent=cancel`](#volicordclose_task-intentcancel) |
+| `volicord.close_task intent=supersede` | persists a successful supersession terminal effect; blocked attempts return a no-effect result | See [`volicord.close_task intent=supersede`](#volicordclose_task-intentsupersede) |
 
 <a id="volicordintake"></a>
 ### `volicord.intake`
@@ -713,17 +688,19 @@ Committed `dry_run=false` may:
 - persist the method-selected terminal completion effect
 - persist a terminal close summary distinct from `tasks.close_basis_json` when the method-selected completion effect succeeds
 - create `project_continuity_records` with `kind='known_limit'` for current close-basis residual risks that are visible and do not require residual-risk acceptance when the method-selected completion effect succeeds
-- persist an owner-allowed blocked `complete` effect while the Task remains open
 - append events
 - create a replay row
 - increment `project_state.state_version` once
 
 No-effect branches:
 
+- response-only blocked `complete` result
 - valid `dry_run=true`
 - preflight failures
 
 Valid `dry_run=true` returns `ToolDryRunResponse`. Preflight failures are no-effect `ToolRejectedResponse`.
+
+A response-only blocked `complete` result uses `base.effect_kind=no_effect` and does not persist close blocker rows, an authority event, a replay row, a terminal mutation, or a state-version increment. Session-watch diagnostic records created before close-readiness evaluation remain separate from the blocked close result.
 
 Owner links:
 
@@ -736,19 +713,19 @@ Owner links:
 Committed `dry_run=false` may:
 
 - persist the method-selected cancellation effect
-- persist an owner-allowed blocked cancellation effect while the Task remains open
 - append events
 - create a replay row
 - increment `project_state.state_version` once
 
 No-effect branches:
 
+- response-only blocked cancellation result
 - valid `dry_run=true`
 - preflight failures
 
 Valid `dry_run=true` returns `ToolDryRunResponse`.
 
-Cancellation effects require the method-owned current cancellation judgment with `machine_action=accept`, `resolution_outcome=accepted`, compatible basis, `resolved_by_actor_source=local_user`, and compatible User Channel provenance. Missing or incompatible cancellation authority may produce an owner-allowed blocked cancellation effect, but must not fabricate acceptance or completion-only close evidence.
+Cancellation effects require the method-owned current cancellation judgment with `machine_action=accept`, `resolution_outcome=accepted`, compatible basis, `resolved_by_actor_source=local_user`, and compatible User Channel provenance. Missing or incompatible cancellation authority returns a response-only blocked result and must not fabricate acceptance or completion-only close evidence.
 
 Owner links:
 
@@ -762,13 +739,13 @@ Committed `dry_run=false` may:
 
 - persist the method-selected supersession effect
 - update `project_state.active_task_id` in the same mutation when the method-selected effect requires it
-- persist an owner-allowed blocked supersession effect
 - append events
 - create a replay row
 - increment `project_state.state_version` once
 
 No-effect branches:
 
+- response-only blocked supersession result
 - valid `dry_run=true`
 - preflight failures
 
