@@ -11,14 +11,44 @@
 
 ## 전제 조건
 
-- [시스템 요구사항](../reference/system-requirements.md)에 적힌 지원 릴리스 바이너리
-  환경, 또는 아래 Docker 경로를 사용할 때의 Docker.
-- Linux, WSL2, macOS에서는 `curl` 또는 `wget`, `tar`, 쓰기 가능한 설치 디렉터리를 사용할 수 있는 POSIX 스타일 셸. Native Windows에서는 PowerShell.
+- 소스 빌드 경로에는 Cargo가 포함된 Rust 1.85 이상, 릴리스 설치 경로에는 완전한
+  게시 릴리스 자산 세트, 로컬 컨테이너 경로에는 Docker가 필요합니다. 자세한 내용은
+  [시스템 요구사항](../reference/system-requirements.md)을 보세요.
+- 게시 릴리스를 설치할 때 Linux, WSL2, macOS에서는 `curl` 또는 `wget`, `tar`, 쓰기
+  가능한 설치 디렉터리를 사용할 수 있는 POSIX 스타일 셸이 필요합니다. Native
+  Windows에서는 PowerShell이 필요합니다.
 - 호스트를 연결할 준비가 되었을 때 Product Repository로 사용할 Git 저장소.
 
-## 릴리스 바이너리 설치하기
+## 소스에서 빌드하기
 
-기본 사용자 경로는 릴리스 바이너리입니다. POSIX 설치 스크립트는 Linux, WSL2, macOS를
+이 체크아웃에서 직접 재현할 수 있는 네이티브 경로는 소스 빌드입니다.
+
+```sh
+cargo build --locked --release -p volicord-cli --bin volicord
+./target/release/volicord --version
+```
+
+빌드한 실행 파일을 사용자 명령 디렉터리에 설치합니다. 필요하면
+`$HOME/.local/bin`을 이미 `PATH`에 있는 다른 디렉터리로 바꿉니다.
+
+```sh
+mkdir -p "$HOME/.local/bin"
+install -m 0755 target/release/volicord "$HOME/.local/bin/volicord"
+volicord --version
+```
+
+이 경로에는 [시스템 요구사항](../reference/system-requirements.md#toolchain-requirements)에
+적힌 Rust 도구 체인이 필요합니다. 게시 릴리스 호스트에는 의존하지 않습니다.
+
+## 게시된 릴리스 자산 설치하기
+
+릴리스 배포처가 서로 맞는 설치 스크립트, target archive, checksum 세트를 알려진 base
+URL에서 제공할 때만 이 경로를 사용합니다. 체크인된 스크립트와 패키징 워크플로는 그
+자산의 동작을 정의하지만, 소스 트리에 있다는 사실만으로 특정 저장소, 태그, mirror가
+자산을 게시했다는 뜻은 아닙니다. 검증한 자산 출처가 없다면 위 소스 빌드 경로를
+사용합니다.
+
+POSIX 설치 스크립트는 Linux, WSL2, macOS를
 감지하고 맞는 릴리스 tarball을 선택하며, 대응 `.sha256` 파일을 내려받을 수 있으면
 검증한 뒤 `volicord` 실행 파일 하나만 설치합니다. Native Windows PowerShell 설치
 스크립트는 `x86_64-pc-windows-msvc` zip archive를 선택하고, 대응 `.sha256` 파일을
@@ -203,29 +233,13 @@ volicord doctor
 volicord doctor
 ```
 
-실행 파일을 릴리스로 설치했든, 개발용 소스 빌드에서 가져왔든, 다른 설치 명령
+실행 파일을 릴리스로 설치했든, 소스 빌드에서 가져왔든, 다른 설치 명령
 디렉터리에서 가져왔든 init은 같은 설치 프로필 계약을 사용합니다. 생성된 호스트
 설정이 다른 `volicord` 명령 경로로 MCP를 시작해야 할 때만
 `volicord init --mcp-command PATH ...`를 사용합니다. Init이 `action_required`를
 보고하면 새 터미널이나 에이전트 호스트를 시작하기 전에 이름 붙은 로컬 또는 호스트
 동작을 완료합니다. 일반 `volicord init`과 `volicord connection add` 명령은 저장된
 설치 프로필을 사용합니다.
-
-## 개발용 소스 빌드
-
-소스 빌드는 구현자와 로컬 개발자를 위한 경로이며 기본 사용자 설치 경로가 아닙니다.
-Volicord 소스 저장소에서 실행합니다.
-
-```sh
-cargo build --workspace --bins
-./target/debug/volicord --version
-./target/debug/volicord init --host codex --repo /path/to/your-product-repo --profile record
-```
-
-이 경로는 로컬 개발 실행 파일 `./target/debug/volicord`를 빌드하고 실행합니다. 호스트가
-개발 실행 파일을 사용하려면 선택한 `volicord` 명령을 호스트 프로세스에서 찾을 수 있게
-하거나, 일반 호스트 설정에는 설치된 릴리스 바이너리를 사용합니다. 이 경로의 Rust 도구 체인 요구사항은
-[시스템 요구사항](../reference/system-requirements.md#toolchain-requirements)에 있습니다.
 
 ## Docker 이미지
 

@@ -12,17 +12,47 @@ repository separation belong to [Runtime Boundaries](../reference/runtime-bounda
 
 ## Prerequisites
 
-- A supported release-binary environment from
-  [System Requirements](../reference/system-requirements.md), or Docker when
-  using the Docker path below.
-- A POSIX-style shell with `curl` or `wget`, `tar`, and a writable install
-  directory for Linux, WSL2, or macOS; or PowerShell for native Windows.
+- Rust 1.85 or newer with Cargo for the source-build path, a complete published
+  release-asset set for the release-installer path, or Docker for the local
+  container path. See [System Requirements](../reference/system-requirements.md).
+- For published release installation, a POSIX-style shell with `curl` or
+  `wget`, `tar`, and a writable install directory on Linux, WSL2, or macOS; or
+  PowerShell on native Windows.
 - A Git repository to use as the Product Repository when you are ready to
   connect a host.
 
-## Install A Release Binary
+## Build From Source
 
-The primary user path is a release binary. The POSIX install script detects
+The source build is the directly reproducible native path from this checkout:
+
+```sh
+cargo build --locked --release -p volicord-cli --bin volicord
+./target/release/volicord --version
+```
+
+To install the built executable in a user command directory, replace
+`$HOME/.local/bin` with another directory already on `PATH` if needed:
+
+```sh
+mkdir -p "$HOME/.local/bin"
+install -m 0755 target/release/volicord "$HOME/.local/bin/volicord"
+volicord --version
+```
+
+This path requires the Rust toolchain named in
+[System Requirements](../reference/system-requirements.md#toolchain-requirements).
+It does not depend on a published release host.
+
+## Install Published Release Assets
+
+Use this path only when a release distributor provides a matching installer,
+target archive, and checksum set at a known base URL. The checked-in scripts
+and packaging workflow define how those assets work; source-tree availability
+does not establish that a particular repository, tag, or mirror has published
+them. If you do not have a verified asset source, use the source-build path
+above.
+
+The POSIX install script detects
 Linux, WSL2, or macOS, selects the matching release tarball, verifies the
 matching `.sha256` file when it can download one, and installs only the
 `volicord` executable. The native Windows PowerShell install script selects the
@@ -215,30 +245,12 @@ volicord doctor
 ```
 
 Init uses the same installation-profile contract whether the executable came
-from a release install, a development source build, or another installed command
+from a release install, a source build, or another installed command
 directory. Use `volicord init --mcp-command PATH ...` only when generated host
 configuration should start MCP through a different `volicord` command path. If
 init reports `action_required`, complete the named local or host action before
 starting new terminals or agent hosts. Ordinary `volicord init` and `volicord
 connection add` commands use the saved installation profile.
-
-## Development Source Build
-
-Source builds are for implementers and local development, not the primary user
-install path. From the Volicord source repository:
-
-```sh
-cargo build --workspace --bins
-./target/debug/volicord --version
-./target/debug/volicord init --host codex --repo /path/to/your-product-repo --profile record
-```
-
-This builds and runs the local development executable at
-`./target/debug/volicord`. For a host to use the development executable, make
-the selected `volicord` command available to the host process or use an
-installed release binary for normal host setup. Rust toolchain requirements for
-this path are listed in
-[System Requirements](../reference/system-requirements.md#toolchain-requirements).
 
 ## Docker Image
 

@@ -19,19 +19,19 @@ Rust 이식성만으로 지원을 추론하지 마세요. 어떤 Rust 크레이�
 
 | 영역 | 상태 | 저장소 증거 | 계속하기 전에 |
 |---|---|---|---|
-| 릴리스 바이너리 설치 | 이 표가 이름 붙인 target triple에 대해 지원되고 검증되었습니다. | `.github/workflows/release.yml`은 target 이름의 릴리스 archive를 빌드하고, 각 빌드 바이너리에 smoke test를 실행하며, `.sha256` 파일을 생성합니다. POSIX target은 `volicord` 하나만 담은 `.tar.gz` archive이고, native Windows는 `volicord.exe` 하나만 담은 `.zip` archive입니다. 내려받은 `install.sh` 릴리스 자산은 POSIX target 이름을 선택하고, 내려받은 `install.ps1` 릴리스 자산은 native Windows target 이름을 선택합니다. | 운영체제와 CPU 아키텍처가 지원 target과 일치하면 첫 설치에는 릴리스 바이너리 경로를 사용합니다. |
-| Linux x86_64 | `x86_64-unknown-linux-gnu`로 지원되고 릴리스 패키징됩니다. | 릴리스 워크플로는 `ubuntu-24.04`에서 빌드하고 `volicord-x86_64-unknown-linux-gnu.tar.gz`를 패키징합니다. | Linux x86_64 환경에서 POSIX 스타일 셸과 아래 설치 스크립트 도구를 사용합니다. |
-| Linux aarch64 | `aarch64-unknown-linux-gnu`로 지원되고 릴리스 패키징됩니다. | 릴리스 워크플로는 native `ubuntu-24.04-arm` runner에서 빌드하고 `volicord-aarch64-unknown-linux-gnu.tar.gz`를 패키징합니다. | Linux aarch64 환경에서 POSIX 스타일 셸과 아래 설치 스크립트 도구를 사용합니다. |
-| WSL2 | WSL2가 `uname`에서 `Linux`를 보고하고 `x86_64` 또는 `aarch64`를 사용할 때, 대응 Linux 릴리스 바이너리로 지원됩니다. | POSIX 설치 스크립트는 관찰되는 플랫폼이 Linux userspace이므로 WSL2를 Linux로 처리합니다. Native Windows 지원은 별도 PowerShell 설치 스크립트와 Windows artifact를 사용합니다. | WSL2와 대응 Linux 아키텍처를 사용합니다. WSL 경로를 native Windows Volicord 프로세스에 전달하지 않습니다. |
-| macOS arm64 | `aarch64-apple-darwin`으로 지원되고 릴리스 패키징됩니다. | 릴리스 워크플로는 macOS arm64 runner에서 빌드하고 `volicord-aarch64-apple-darwin.tar.gz`를 패키징합니다. | macOS arm64 환경에서 POSIX 스타일 셸과 아래 설치 스크립트 도구를 사용합니다. |
-| macOS x86_64 | `x86_64-apple-darwin`으로 지원되고 릴리스 패키징됩니다. | 릴리스 워크플로는 macOS Intel runner에서 빌드하고 `volicord-x86_64-apple-darwin.tar.gz`를 패키징합니다. | macOS x86_64 환경에서 POSIX 스타일 셸과 아래 설치 스크립트 도구를 사용합니다. |
-| Docker | 체크인된 `Dockerfile`을 사용할 때 로컬 런타임 선택지로 지원됩니다. 외부 image registry는 주장하지 않습니다. | 체크인된 `Dockerfile`은 릴리스 CLI를 Debian runtime image에 빌드합니다. 릴리스 워크플로는 image를 빌드하고 `volicord --help`와 `volicord serve --help` smoke test를 실행합니다. 설치 문서는 로컬 `docker build`와 host-loopback `docker run` 사용을 설명합니다. | 이 저장소 또는 신뢰하는 소스 사본에서 image를 빌드합니다. 저장소 아티팩트가 추가되기 전에는 게시된 registry image가 있다고 가정하지 않습니다. |
-| Native Windows x86_64 record 프로필 | `record` 프로필에 대해 `x86_64-pc-windows-msvc`로 지원되고 릴리스 패키징됩니다. | 릴리스 워크플로는 `windows-2022`에서 빌드하고, `target/x86_64-pc-windows-msvc/release/volicord.exe`를 smoke test하며, `volicord-x86_64-pc-windows-msvc.zip`을 패키징하고 `.sha256`을 생성합니다. 또한 native Windows `cargo test --workspace --all-targets --all-features` job을 실행합니다. 내려받은 `install.ps1` 릴리스 자산은 기본적으로 사용자 로컬 디렉터리 아래에 릴리스 바이너리를 설치합니다. | Native Windows x86_64에서 PowerShell을 사용합니다. `volicord init --host HOST --repo PATH --profile record`를 사용합니다. |
-| Native Windows detective 프로필 | Windows host-hook wrapper와 watcher 동작이 구현되고 테스트되기 전까지 지원 범위 밖입니다. | Detective 설정은 현재 검증된 adapter에 대해 POSIX `sh` hook wrapper를 씁니다. CLI는 native Windows에서 `volicord init --profile detective`를 `DETECTIVE_WINDOWS_UNSUPPORTED`로 거부합니다. | Native Windows에서는 `--profile record`를 사용하거나, 선택한 host hook 계약이 지원되는 WSL2, Linux, macOS에서 Volicord를 실행합니다. |
-| 개발용 소스 빌드 도구 체인 | 개발 경로로서 Cargo가 포함된 Rust 1.85 이상은 지원되고 검증되었습니다. | 워크스페이스 루트 `Cargo.toml`이 `rust-version = "1.85"`를 설정하고 모든 워크스페이스 패키지가 이 값을 상속합니다. 설치 문서는 Cargo 명령을 개발용 소스 빌드 경로 아래에만 둡니다. | 개발용 소스 빌드 경로를 사용할 때만 Cargo가 포함된 Rust 1.85 이상을 설치하거나 선택합니다. |
+| 릴리스 바이너리 패키징과 설치 | 이 표가 이름 붙인 target triple에 대한 패키징과 설치 스크립트 동작은 지원되고 검증되었습니다. 실제 설치에는 서로 맞는 게시 자산 세트가 추가로 필요합니다. | `.github/workflows/release.yml`은 target 이름의 릴리스 archive를 빌드하고, 각 빌드 바이너리에 smoke test를 실행하며, `.sha256` 파일을 생성합니다. POSIX target은 `volicord` 하나만 담은 `.tar.gz` archive이고, native Windows는 `volicord.exe` 하나만 담은 `.zip` archive입니다. 내려받은 `install.sh`와 `install.ps1` 자산은 이 target 이름을 선택합니다. | 선택한 릴리스 저장소, 태그, mirror가 설치 스크립트, target archive, checksum을 제공하는지 확인합니다. 그렇지 않으면 소스 빌드, 로컬 Docker 빌드, 기존 설치 실행 파일을 사용합니다. |
+| Linux x86_64 | 릴리스 패키징 target `x86_64-unknown-linux-gnu`로 지원됩니다. | 릴리스 워크플로는 `ubuntu-24.04`에서 빌드하고 `volicord-x86_64-unknown-linux-gnu.tar.gz`를 패키징합니다. | Linux x86_64 환경에서 POSIX 스타일 셸과 아래 설치 스크립트 도구를 사용합니다. |
+| Linux aarch64 | 릴리스 패키징 target `aarch64-unknown-linux-gnu`로 지원됩니다. | 릴리스 워크플로는 native `ubuntu-24.04-arm` runner에서 빌드하고 `volicord-aarch64-unknown-linux-gnu.tar.gz`를 패키징합니다. | Linux aarch64 환경에서 POSIX 스타일 셸과 아래 설치 스크립트 도구를 사용합니다. |
+| WSL2 | WSL2가 `uname`에서 `Linux`를 보고하고 `x86_64` 또는 `aarch64`를 사용할 때 Linux 환경으로 지원됩니다. | POSIX 설치 스크립트는 관찰되는 플랫폼이 Linux userspace이므로 WSL2를 Linux로 처리합니다. Native Windows는 별도 PowerShell 설치 스크립트와 Windows target을 사용합니다. | WSL2와 대응 Linux 아키텍처를 사용합니다. WSL 경로를 native Windows Volicord 프로세스에 전달하지 않습니다. |
+| macOS arm64 | 릴리스 패키징 target `aarch64-apple-darwin`으로 지원됩니다. | 릴리스 워크플로는 macOS arm64 runner에서 빌드하고 `volicord-aarch64-apple-darwin.tar.gz`를 패키징합니다. | macOS arm64 환경에서 POSIX 스타일 셸과 아래 설치 스크립트 도구를 사용합니다. |
+| macOS x86_64 | 릴리스 패키징 target `x86_64-apple-darwin`으로 지원됩니다. | 릴리스 워크플로는 macOS Intel runner에서 빌드하고 `volicord-x86_64-apple-darwin.tar.gz`를 패키징합니다. | macOS x86_64 환경에서 POSIX 스타일 셸과 아래 설치 스크립트 도구를 사용합니다. |
+| Docker | 체크인된 `Dockerfile`을 사용할 때 로컬 런타임 선택지로 지원됩니다. 외부 image registry는 주장하지 않습니다. | 체크인된 `Dockerfile`은 릴리스 CLI를 Debian runtime image에 빌드합니다. 릴리스 워크플로는 image를 빌드하고 `volicord --help`와 `volicord serve --help` smoke test를 실행합니다. 설치 문서는 로컬 `docker build`와 host-loopback `docker run` 사용을 설명합니다. | 이 저장소 또는 신뢰하는 소스 사본에서 image를 빌드합니다. 유지되는 기준 범위에는 registry image가 없습니다. |
+| Native Windows x86_64 record 프로필 | `record` 프로필과 릴리스 패키징 target `x86_64-pc-windows-msvc`가 지원됩니다. | 릴리스 워크플로는 `windows-2022`에서 빌드하고, `target/x86_64-pc-windows-msvc/release/volicord.exe`를 smoke test하며, `volicord-x86_64-pc-windows-msvc.zip`을 패키징하고 `.sha256`을 생성합니다. 또한 native Windows `cargo test --workspace --all-targets --all-features` job을 실행합니다. 내려받은 `install.ps1` 자산은 기본적으로 맞는 바이너리를 사용자 로컬 디렉터리 아래에 설치합니다. | Native Windows x86_64에서 PowerShell을 사용합니다. `volicord init --host HOST --repo PATH --profile record`를 사용합니다. |
+| Native Windows detective 프로필 | 지원 범위 밖입니다. | Detective 설정은 현재 검증된 adapter에 대해 POSIX `sh` hook wrapper를 씁니다. CLI는 native Windows에서 `volicord init --profile detective`를 `DETECTIVE_WINDOWS_UNSUPPORTED`로 거부합니다. | Native Windows에서는 `--profile record`를 사용하거나, 선택한 host hook 계약이 지원되는 WSL2, Linux, macOS에서 Volicord를 실행합니다. |
+| 소스 빌드 도구 체인 | Cargo가 포함된 Rust 1.85 이상은 지원되고 검증되었습니다. | 워크스페이스 루트 `Cargo.toml`이 `rust-version = "1.85"`를 설정하고 모든 워크스페이스 패키지가 이 값을 상속합니다. 설치 문서는 소스 빌드 경로를 설명합니다. | 소스 빌드 경로를 사용할 때 Cargo가 포함된 Rust 1.85 이상을 설치하거나 선택합니다. |
 | 셸 문법 | Linux, WSL2, macOS의 유지되는 POSIX 스타일 예시와 native Windows의 유지되는 PowerShell 예시에 대해 지원됩니다. 다른 셸은 이 예시에 대해 미검증입니다. | POSIX 설치 예시는 `sh` 호환 환경 변수 지정, 임시 설치 스크립트 경로, `~/.local/bin`을 사용합니다. Native Windows 설치 예시는 내려받은 `install.ps1` 릴리스 자산, PowerShell 매개변수 또는 환경 변수, `%LOCALAPPDATA%\Volicord\bin`을 사용합니다. CLI 통합 테스트는 `#[cfg(unix)]` 아래에서 `#!/bin/sh` 가짜 실행 파일을 만들며, 릴리스 워크플로는 Windows에서 PowerShell smoke test를 실행합니다. | 선택한 운영 환경에 맞는 셸 문법을 사용하고, 설치된 명령을 확인한 뒤 계속합니다. |
 | 실행 파일 역할 이름 | 지원되고 검증되었습니다. | 참조 담당 문서는 `volicord`를 관리 CLI 명령과 로컬 MCP stdio 어댑터가 사용하는 `mcp` 하위 명령을 제공하는 설치 실행 파일로 정의합니다. | `volicord`를 빌드하거나 설치합니다. 호스트 설정은 MCP를 `volicord mcp --stdio ...`로 시작해야 합니다. |
-| 패키지 관리자 설치 | 맞는 저장소 아티팩트가 추가되기 전까지 지원 범위 밖입니다. | 이 저장소는 Homebrew tap, Homebrew formula, Linux 패키지 관리자 패키지, 외부 패키지 registry를 주장하지 않습니다. 지원되는 첫 실행 경로는 내려받은 릴리스 설치 스크립트 자산과 릴리스 archive입니다. | 릴리스 바이너리 설치 경로, Docker, 기존 `volicord` 실행 파일, 또는 개발용 소스 빌드 경로를 사용합니다. |
+| 패키지 관리자 설치 | 유지되는 기준 범위에서 지원 범위 밖입니다. | 이 저장소는 Homebrew tap, Homebrew formula, Linux 패키지 관리자 패키지, 외부 패키지 registry를 주장하지 않습니다. | 소스 빌드, 로컬 Docker 빌드, 기존 `volicord` 실행 파일, 또는 검증된 게시 자산 세트가 뒷받침하는 릴리스 설치 스크립트를 사용합니다. |
 | Codex와 Claude Code 호스트 최소 버전 | 안정적인 호스트 최소 버전은 정의되어 있지 않습니다. 호스트 호환성은 문서화된 버전 하한이 아니라 운영 점검으로 확인합니다. | Codex 검증은 `PATH`에서 `codex`를 찾고 `codex --version`을 실행합니다. Claude Code 검증은 `claude mcp get <server_name>`으로 호스트 상태를 조사합니다. 관리 검증은 최종 결과 상태를 담당합니다. | 설치 후 `volicord connection verify HOST [--repo PATH] [--shared|--global]`을 사용합니다. 문서화되지 않은 Codex 또는 Claude Code 최소 버전에 의존하지 않습니다. |
 | Codex detective host hook root 해석 | 로컬 Git work tree에 대해 지원됩니다. | 생성된 Codex detective host hook 명령은 Volicord 관리 wrapper로 dispatch하기 전에 `git rev-parse --show-toplevel`로 Git work-tree root를 해석하며, 초기화는 그 root 전략을 지원할 수 없으면 detective 설정을 거부합니다. | Codex detective 프로필에는 `.git` work-tree root가 있는 Product Repository를 사용하고, 미래의 Codex hook 환경이 저장소 하위 디렉터리에서 `git`을 실행할 수 있게 합니다. 이 전제조건이 없으면 `--profile record`를 사용합니다. |
 
@@ -39,17 +39,17 @@ Rust 이식성만으로 지원을 추론하지 마세요. 어떤 Rust 크레이�
 
 ## 도구 체인 요구사항
 
-릴리스 바이너리 설치에는 Rust나 Cargo가 필요하지 않습니다.
+게시된 자산에서 릴리스를 설치할 때는 Rust나 Cargo가 필요하지 않습니다.
 
-개발용 소스 빌드 경로에는 아래가 필요합니다.
+소스 빌드 경로에는 아래가 필요합니다.
 
 - Rust 1.85 이상
 - 선택한 Rust 도구 체인의 Cargo
 - 이 저장소의 로컬 체크아웃
 - Cargo가 워크스페이스 의존성을 해석할 수 있게 하는 네트워크 또는 로컬 의존성 가용성
 
-Rust 1.85는 이 워크스페이스의 컴파일러 요구사항입니다. 릴리스 바이너리 설치에는
-필요하지 않으며 운영체제 지원 주장이 아닙니다.
+Rust 1.85는 이 워크스페이스의 컴파일러 요구사항입니다. 게시된 릴리스 자산에서
+설치할 때는 필요하지 않으며 운영체제 지원 주장이 아닙니다.
 
 이 요구사항을 읽거나 사용하는 것만으로 Rust 구현 검증이 필요한 것은 아닙니다. Rust 소스, Cargo 매니페스트, 테스트, 픽스처, 빌드 설정을 편집하는 유지보수자는 저장소 작업 규칙의 Rust 검증 정책을 따릅니다.
 
@@ -116,7 +116,7 @@ Native Windows 릴리스 zip archive는 아래 하나만 담아야 합니다.
 
 - `volicord.exe`
 
-설치 스크립트는 그 실행 파일 하나만 설치합니다. 개발용 소스 빌드에서는 디버그 실행
+설치 스크립트는 그 실행 파일 하나만 설치합니다. 소스 빌드에서는 디버그 실행
 파일이 `target/debug` 아래에, 릴리스 실행 파일이 `target/release` 아래에 있어야 합니다.
 별도로 설치된 실행 파일을 사용할 때는 명시적 setup 옵션이나 `PATH`로 setup이
 `volicord`를 찾을 수 있는 설치 배치를 선택합니다.
@@ -135,12 +135,13 @@ volicord inbox --help
 volicord serve --help
 ```
 
-개발용 소스 빌드에서 첫 연결을 하기 전에는 같은 셸에서 빌드된 실행 파일을 확인합니다.
+설치 가이드가 설명하는 릴리스 모드 소스 빌드에서 첫 연결을 하기 전에는 같은 셸에서
+빌드된 실행 파일을 확인합니다.
 
 ```sh
-./target/debug/volicord --version
-./target/debug/volicord --help
-./target/debug/volicord mcp --help
+./target/release/volicord --version
+./target/release/volicord --help
+./target/release/volicord mcp --help
 ```
 
 `init` 또는 프로필 복구 안내로 명령이 보이게 된 뒤에는 일반 명령 찾기를 확인합니다.
@@ -273,7 +274,8 @@ CLI](admin-cli.md)가 정의한 관리 결과 게이트가 필요합니다.
 아래 조건 중 하나라도 해당하면 설치 전에 멈춥니다.
 
 - 소스 빌드 경로를 사용하는데 Cargo가 포함된 Rust 1.85 이상을 사용할 수 없습니다.
-- 운영체제와 CPU 아키텍처에 맞는 지원 릴리스 바이너리 target이 없습니다.
+- 선택한 릴리스 출처가 문서화된 릴리스 경로에 필요한 설치 스크립트, 맞는 target archive, checksum을 제공하지 않습니다.
+- 게시된 릴리스 자산을 사용하는데 운영체제와 CPU 아키텍처에 맞는 지원 target이 없습니다.
 - 설치 스크립트가 지원되지 않는 플랫폼 또는 지원되지 않는 CPU 아키텍처를 보고합니다.
 - 로컬에서 checksum 검증을 요구하지만 checksum 파일을 내려받거나 검증할 수 없습니다.
 - 선택한 환경에 맞는 유지되는 셸 예시를 실행하거나 안정적으로 옮길 수 없습니다.
@@ -290,6 +292,6 @@ CLI](admin-cli.md)가 정의한 관리 결과 게이트가 필요합니다.
 - 선택한 호스트 경로에 Codex 또는 Claude Code가 필요한데 관리 호환성 점검이 호스트를 시작하거나 해석할 수 없습니다.
 - Native Windows 설정에서 `--profile detective`를 요청합니다.
 - 필요한 호스트 신뢰, 프로젝트 신뢰, 프로젝트 MCP 승인, OAuth, reload, restart, 또는 비슷한 호스트 소유 동작이 남아 있고 운영자가 이를 완료할 수 없습니다.
-- 계획한 환경이 이 저장소가 문서화하지 않는 패키지 관리자, Homebrew tap, 게시된 Docker registry image, 원격 호스트, 네트워크 리스너, 호스트 버전 약속에 의존합니다.
+- 선택한 환경이 이 저장소가 문서화하지 않는 패키지 관리자, Homebrew tap, 게시된 Docker registry image, 원격 호스트, 네트워크 리스너, 호스트 버전 약속에 의존합니다.
 
 저장소 증거가 충분하지 않다면 그 환경을 미검증으로 분류하고, 그 환경에 의존하기 전에 담당 문서가 정의한 검증 명령을 사용합니다.

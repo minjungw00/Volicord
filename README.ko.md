@@ -44,61 +44,40 @@ Product Repository에 잘 맞습니다.
 
 ## 빠른 시작
 
-기본 호스트 설정의 일반 경로는 설치된 `volicord` 실행 파일 하나를 준비한 뒤, 에이전트가
-작업할 Product Repository에서 `volicord init`을 실행하는 것입니다. Docker 경로는
-컨테이너에서 같은 `init` 형태를 사용하며, 같은 Runtime Home 볼륨과 Product Repository
-mount를 유지해야 합니다. 선택한 호스트, 플랫폼, 저장소가 Detective profile의 추가 관찰
-표면을 지원한다는 것을 이미 알고 있는 경우가 아니라면 `--profile record`로 시작합니다.
+기본 호스트 설정에서는 `volicord` 실행 파일 하나를 준비한 뒤, 에이전트가 작업할
+Product Repository에서 `volicord init`을 실행합니다. 이 체크아웃이 직접 지원하는
+경로는 네이티브 소스 빌드와 로컬 Docker 이미지 빌드입니다. 릴리스 설치 스크립트는
+서로 맞는 게시 설치 스크립트, archive, checksum 세트가 있어야 합니다. 소스 트리에
+스크립트가 있다는 사실만으로 특정 릴리스 호스트에서 그 자산을 사용할 수 있는 것은
+아닙니다. 선택한 호스트, 플랫폼, 저장소가 Detective profile의 추가 관찰 표면을
+지원한다는 것을 이미 알고 있는 경우가 아니라면 `--profile record`로 시작합니다.
 
 ### 설치 또는 실행 경로 선택
 
-저장소 clone 없이 쓰는 릴리스 자산, 저장소 clone 없이 쓰는 Docker 이미지, 이 저장소에서
-수행하는 로컬 빌드 중 필요한 경로를 선택합니다.
+네이티브 소스 빌드나 로컬 Docker 빌드 중 하나를 선택합니다. 배포처가 완전한 Volicord
+릴리스 자산 세트를 제공한다면 [설치 가이드](docs/ko/user-guide/installation.md)의
+조건부 릴리스 설치 경로를 사용할 수 있습니다.
 
-#### 릴리스 바이너리 설치 (예정)
+#### 소스에서 네이티브 바이너리 빌드
 
-이 경로는 `https://github.com/minjungw00/Volicord`의 GitHub Release 자산에 설치
-스크립트, target archive, checksum 파일이 게시된 뒤 저장소를 clone하지 않고 사용할 수
-있습니다. 저장소 clone이 필요하지 않습니다.
-
-Linux, WSL2, macOS:
+현재 소스 트리에서 네이티브 실행 파일을 빌드할 때 이 경로를 사용합니다.
 
 ```sh
-tmp="$(mktemp "${TMPDIR:-/tmp}/install-volicord.XXXXXX")"
-curl -fsSL https://github.com/minjungw00/Volicord/releases/latest/download/install.sh -o "$tmp"
-VOLICORD_REQUIRE_CHECKSUM=1 sh "$tmp"
+git clone https://github.com/minjungw00/Volicord.git
+cd Volicord
+
+cargo build --locked --release -p volicord-cli --bin volicord
+./target/release/volicord --version
+```
+
+로컬에서 빌드한 바이너리를 사용자 `PATH`에 설치하려면 아래처럼 실행합니다.
+필요하면 `$HOME/.local/bin`을 이미 `PATH`에 있는 다른 디렉터리로 바꿉니다.
+
+```sh
+mkdir -p "$HOME/.local/bin"
+install -m 0755 target/release/volicord "$HOME/.local/bin/volicord"
 
 volicord --version
-```
-
-Native Windows x86_64에서는 PowerShell을 사용합니다.
-
-```powershell
-$tmp = Join-Path $env:TEMP "install-volicord.ps1"
-Invoke-WebRequest "https://github.com/minjungw00/Volicord/releases/latest/download/install.ps1" -OutFile $tmp
-& $tmp -RequireChecksum
-
-volicord --version
-```
-
-사용자 지정 설치 디렉터리, dry-run, target 확인, mirror, 자동화용 버전 고정은
-[설치 가이드](docs/ko/user-guide/installation.md)를 보세요.
-
-#### 게시된 Docker 이미지 (예정)
-
-이 Docker 경로는 공개 Volicord 이미지가 GHCR에 게시된 뒤 저장소를 clone하지 않고
-사용할 수 있습니다. 저장소 clone이 필요하지 않습니다.
-
-```sh
-docker pull ghcr.io/minjungw00/volicord:latest
-docker run --rm ghcr.io/minjungw00/volicord:latest --version
-```
-
-고정된 릴리스에는 릴리스 태그를 사용합니다.
-
-```sh
-docker pull ghcr.io/minjungw00/volicord:vX.Y.Z
-docker run --rm ghcr.io/minjungw00/volicord:vX.Y.Z --version
 ```
 
 #### 이 저장소에서 Docker 이미지 빌드 및 실행
@@ -125,30 +104,6 @@ docker run --rm -it \
 `/path/to/your-product-repo`는 에이전트가 작업할 Product Repository입니다. 반드시
 Volicord 소스 저장소일 필요는 없습니다. 이후 Docker 명령은 같은 Runtime Home 볼륨과
 Product Repository mount를 재사용해야 합니다.
-
-#### 소스에서 네이티브 바이너리 빌드
-
-릴리스 바이너리를 사용할 수 있기 전의 개발, 로컬 검토, 네이티브 빌드에는 이 경로를
-사용합니다. 릴리스 바이너리가 나온 뒤에는 릴리스 자산만 원하는 사용자의 기본 경로가
-아닙니다.
-
-```sh
-git clone https://github.com/minjungw00/Volicord.git
-cd Volicord
-
-cargo build --locked --release -p volicord-cli --bin volicord
-./target/release/volicord --version
-```
-
-로컬에서 빌드한 바이너리를 사용자 `PATH`에 설치하려면 아래처럼 실행합니다.
-필요하면 `$HOME/.local/bin`을 이미 `PATH`에 있는 다른 디렉터리로 바꿉니다.
-
-```sh
-mkdir -p "$HOME/.local/bin"
-install -m 0755 target/release/volicord "$HOME/.local/bin/volicord"
-
-volicord --version
-```
 
 ### Product Repository 초기화 또는 연결
 
@@ -469,8 +424,6 @@ transport를 의도적으로 사용할 때 사용합니다.
 
 ```sh
 VOLICORD_IMAGE=volicord:local
-# 또는 공개 이미지가 게시된 뒤:
-# VOLICORD_IMAGE=ghcr.io/minjungw00/volicord:latest
 ```
 
 serve에 사용할 것과 같은 Runtime Home 볼륨 및 Product Repository mount로 초기화합니다.

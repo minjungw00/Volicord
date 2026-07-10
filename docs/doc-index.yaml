@@ -397,13 +397,13 @@ documents:
   path_en: docs/en/user-guide/installation.md
   path_ko: docs/ko/user-guide/installation.md
   kind: tutorial
-  summary: Release binary installation, development source build, executable discovery, and installation
-    verification tutorial.
+  summary: Source build, conditional published-release installation, local Docker build, executable discovery,
+    and installation verification tutorial.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: onboarding
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-05'
+  last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
   - volicord_workspace_0_1

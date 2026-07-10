@@ -46,64 +46,42 @@ Volicord is not a good fit when you need:
 
 ## Quick Start
 
-For default host setup, the normal path is one installed `volicord` executable,
-then `volicord init` in the Product Repository where the agent will work.
-Docker paths use the same `init` shape from a container and must keep the same
-Runtime Home volume and Product Repository mount. Start with `--profile record`
-unless you already know the selected host, platform, and repository support the
-extra Detective profile observation surfaces.
+For default host setup, prepare one `volicord` executable, then run
+`volicord init` in the Product Repository where the agent will work. This
+checkout directly supports a native source build and a locally built Docker
+image. The release installer scripts require a matching published installer,
+archive, and checksum set; their presence in the source tree does not mean
+those assets are available from a particular release host. Start with
+`--profile record` unless you already know the selected host, platform, and
+repository support the extra Detective profile observation surfaces.
 
 ### Choose An Install Or Run Path
 
-Choose the path that matches whether you want clone-free release artifacts, a
-clone-free Docker image, or a local build from this repository.
+Choose a native source build or a local Docker build. If a distributor provides
+a complete Volicord release-asset set, the
+[Installation guide](docs/en/user-guide/installation.md) explains the
+conditional release-installer path.
 
-#### Release Binary Install (planned)
+#### Build Native Binary From Source
 
-This clone-free path becomes available after GitHub Release assets publish
-installer scripts, target archives, and checksum files for
-`https://github.com/minjungw00/Volicord`. It does not require cloning the
-repository.
-
-On Linux, WSL2, or macOS:
+Use this path for a native executable built from the current source tree.
 
 ```sh
-tmp="$(mktemp "${TMPDIR:-/tmp}/install-volicord.XXXXXX")"
-curl -fsSL https://github.com/minjungw00/Volicord/releases/latest/download/install.sh -o "$tmp"
-VOLICORD_REQUIRE_CHECKSUM=1 sh "$tmp"
+git clone https://github.com/minjungw00/Volicord.git
+cd Volicord
+
+cargo build --locked --release -p volicord-cli --bin volicord
+./target/release/volicord --version
+```
+
+To install that locally built binary on your user `PATH`, replace
+`$HOME/.local/bin` with another directory already on `PATH` if needed:
+
+```sh
+mkdir -p "$HOME/.local/bin"
+install -m 0755 target/release/volicord "$HOME/.local/bin/volicord"
 
 volicord --version
-```
-
-On native Windows x86_64, use PowerShell:
-
-```powershell
-$tmp = Join-Path $env:TEMP "install-volicord.ps1"
-Invoke-WebRequest "https://github.com/minjungw00/Volicord/releases/latest/download/install.ps1" -OutFile $tmp
-& $tmp -RequireChecksum
-
-volicord --version
-```
-
-For custom install directories, dry runs, target inspection, mirrors, and
-pinned automation flows, see the
-[Installation guide](docs/en/user-guide/installation.md).
-
-#### Published Docker Image (planned)
-
-This clone-free Docker path becomes available after a public Volicord image is
-published to GHCR. It does not require cloning the repository.
-
-```sh
-docker pull ghcr.io/minjungw00/volicord:latest
-docker run --rm ghcr.io/minjungw00/volicord:latest --version
-```
-
-For a pinned release, use a release tag:
-
-```sh
-docker pull ghcr.io/minjungw00/volicord:vX.Y.Z
-docker run --rm ghcr.io/minjungw00/volicord:vX.Y.Z --version
 ```
 
 #### Build And Run Docker Image From This Repository
@@ -131,30 +109,6 @@ docker run --rm -it \
 `/path/to/your-product-repo` is the Product Repository where the agent will
 work, not necessarily the Volicord source repository. Later Docker commands
 should reuse the same Runtime Home volume and Product Repository mount.
-
-#### Build Native Binary From Source
-
-Use this path for development, local review, or native builds before release
-binaries are available. After release binaries exist, this is not the primary
-path for users who only want release artifacts.
-
-```sh
-git clone https://github.com/minjungw00/Volicord.git
-cd Volicord
-
-cargo build --locked --release -p volicord-cli --bin volicord
-./target/release/volicord --version
-```
-
-To install that locally built binary on your user `PATH`, replace
-`$HOME/.local/bin` with another directory already on `PATH` if needed:
-
-```sh
-mkdir -p "$HOME/.local/bin"
-install -m 0755 target/release/volicord "$HOME/.local/bin/volicord"
-
-volicord --version
-```
 
 ### Initialize Or Connect The Product Repository
 
@@ -499,8 +453,6 @@ instead of the default `volicord mcp --stdio` host setup.
 
 ```sh
 VOLICORD_IMAGE=volicord:local
-# or, after a public image is published:
-# VOLICORD_IMAGE=ghcr.io/minjungw00/volicord:latest
 ```
 
 Initialize with the same Runtime Home volume and Product Repository mount you

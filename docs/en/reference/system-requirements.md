@@ -19,27 +19,27 @@ Do not infer support from Rust portability alone. A Rust crate being portable in
 
 | Area | Status | Repository evidence | Before continuing |
 |---|---|---|---|
-| Release binary installation | Supported and verified for the target triples named in this table. | `.github/workflows/release.yml` builds target-named release archives, runs smoke tests against each built binary, and generates `.sha256` files. POSIX targets are `.tar.gz` archives containing only `volicord`; native Windows is a `.zip` archive containing only `volicord.exe`. The downloaded `install.sh` release asset selects the POSIX target names, and the downloaded `install.ps1` release asset selects the native Windows target name. | Use the release binary path for first-run installation when your operating system and CPU architecture match a supported target. |
-| Linux x86_64 | Supported and release-packaged as `x86_64-unknown-linux-gnu`. | The release workflow builds on `ubuntu-24.04` and packages `volicord-x86_64-unknown-linux-gnu.tar.gz`. | Use a Linux x86_64 environment with a POSIX-style shell and the install-script tools listed below. |
-| Linux aarch64 | Supported and release-packaged as `aarch64-unknown-linux-gnu`. | The release workflow builds on the native `ubuntu-24.04-arm` runner and packages `volicord-aarch64-unknown-linux-gnu.tar.gz`. | Use a Linux aarch64 environment with a POSIX-style shell and the install-script tools listed below. |
-| WSL2 | Supported through the matching Linux release binary when WSL2 reports `Linux` through `uname` and uses `x86_64` or `aarch64`. | The POSIX install script treats WSL2 as Linux because the observable platform is the Linux userspace. Native Windows support uses the separate PowerShell installer and Windows artifact. | Use WSL2 with the matching Linux architecture. Do not pass WSL paths to a native Windows Volicord process. |
-| macOS arm64 | Supported and release-packaged as `aarch64-apple-darwin`. | The release workflow builds on a macOS arm64 runner and packages `volicord-aarch64-apple-darwin.tar.gz`. | Use a macOS arm64 environment with a POSIX-style shell and the install-script tools listed below. |
-| macOS x86_64 | Supported and release-packaged as `x86_64-apple-darwin`. | The release workflow builds on a macOS Intel runner and packages `volicord-x86_64-apple-darwin.tar.gz`. | Use a macOS x86_64 environment with a POSIX-style shell and the install-script tools listed below. |
-| Docker | Supported as a local runtime option when using the checked-in `Dockerfile`. No external image registry is claimed. | The checked-in `Dockerfile` builds the release CLI into a Debian runtime image. The release workflow builds the image and smoke-tests `volicord --help` and `volicord serve --help`. The Installation page documents local `docker build` and host-loopback `docker run` usage. | Build the image from this repository or from a trusted source copy. Do not assume a published registry image exists unless a repository artifact adds it. |
-| Native Windows x86_64 record profile | Supported and release-packaged as `x86_64-pc-windows-msvc` for the `record` profile. | The release workflow builds on `windows-2022`, smoke-tests `target/x86_64-pc-windows-msvc/release/volicord.exe`, packages `volicord-x86_64-pc-windows-msvc.zip`, generates `.sha256`, and runs a native Windows `cargo test --workspace --all-targets --all-features` job. The downloaded `install.ps1` release asset installs the release binary under a user-local directory by default. | Use PowerShell on native Windows x86_64. Use `volicord init --host HOST --repo PATH --profile record`. |
-| Native Windows detective profile | Out of scope until Windows host-hook wrappers and watcher behavior are implemented and tested. | Detective setup writes POSIX `sh` hook wrappers for the currently verified adapters. The CLI rejects `volicord init --profile detective` on native Windows with `DETECTIVE_WINDOWS_UNSUPPORTED`. | Use `--profile record` on native Windows, or run Volicord in WSL2, Linux, or macOS where the selected host hook contract is supported. |
-| Development source build toolchain | Supported and verified for Rust 1.85 or newer with Cargo, as a development path. | The workspace root `Cargo.toml` sets `rust-version = "1.85"` and all workspace packages inherit that value. The Installation page keeps Cargo commands under the development source-build path. | Install or select Rust 1.85+ with Cargo only when using the development source-build path. |
+| Release binary packaging and installation | The packaging and installer behavior is supported and verified for the target triples named in this table. A concrete installation additionally requires a published matching asset set. | `.github/workflows/release.yml` builds target-named release archives, runs smoke tests against each built binary, and generates `.sha256` files. POSIX targets are `.tar.gz` archives containing only `volicord`; native Windows is a `.zip` archive containing only `volicord.exe`. The downloaded `install.sh` and `install.ps1` assets select those target names. | Confirm that the selected release repository, tag, or mirror provides the installer, target archive, and checksum before using this path. Otherwise use a source build, local Docker build, or an existing installed executable. |
+| Linux x86_64 | Supported as release packaging target `x86_64-unknown-linux-gnu`. | The release workflow builds on `ubuntu-24.04` and packages `volicord-x86_64-unknown-linux-gnu.tar.gz`. | Use a Linux x86_64 environment with a POSIX-style shell and the install-script tools listed below. |
+| Linux aarch64 | Supported as release packaging target `aarch64-unknown-linux-gnu`. | The release workflow builds on the native `ubuntu-24.04-arm` runner and packages `volicord-aarch64-unknown-linux-gnu.tar.gz`. | Use a Linux aarch64 environment with a POSIX-style shell and the install-script tools listed below. |
+| WSL2 | Supported as a Linux environment when WSL2 reports `Linux` through `uname` and uses `x86_64` or `aarch64`. | The POSIX installer treats WSL2 as Linux because the observable platform is the Linux userspace. Native Windows uses the separate PowerShell installer and Windows target. | Use WSL2 with the matching Linux architecture. Do not pass WSL paths to a native Windows Volicord process. |
+| macOS arm64 | Supported as release packaging target `aarch64-apple-darwin`. | The release workflow builds on a macOS arm64 runner and packages `volicord-aarch64-apple-darwin.tar.gz`. | Use a macOS arm64 environment with a POSIX-style shell and the install-script tools listed below. |
+| macOS x86_64 | Supported as release packaging target `x86_64-apple-darwin`. | The release workflow builds on a macOS Intel runner and packages `volicord-x86_64-apple-darwin.tar.gz`. | Use a macOS x86_64 environment with a POSIX-style shell and the install-script tools listed below. |
+| Docker | Supported as a local runtime option when using the checked-in `Dockerfile`. No external image registry is claimed. | The checked-in `Dockerfile` builds the release CLI into a Debian runtime image. The release workflow builds the image and smoke-tests `volicord --help` and `volicord serve --help`. The Installation page documents local `docker build` and host-loopback `docker run` usage. | Build the image from this repository or from a trusted source copy. The maintained baseline does not include a registry image. |
+| Native Windows x86_64 record profile | The `record` profile and release packaging target `x86_64-pc-windows-msvc` are supported. | The release workflow builds on `windows-2022`, smoke-tests `target/x86_64-pc-windows-msvc/release/volicord.exe`, packages `volicord-x86_64-pc-windows-msvc.zip`, generates `.sha256`, and runs a native Windows `cargo test --workspace --all-targets --all-features` job. The downloaded `install.ps1` asset installs the matching binary under a user-local directory by default. | Use PowerShell on native Windows x86_64. Use `volicord init --host HOST --repo PATH --profile record`. |
+| Native Windows detective profile | Out of scope. | Detective setup writes POSIX `sh` hook wrappers for the currently verified adapters. The CLI rejects `volicord init --profile detective` on native Windows with `DETECTIVE_WINDOWS_UNSUPPORTED`. | Use `--profile record` on native Windows, or run Volicord in WSL2, Linux, or macOS where the selected host hook contract is supported. |
+| Source build toolchain | Supported and verified for Rust 1.85 or newer with Cargo. | The workspace root `Cargo.toml` sets `rust-version = "1.85"` and all workspace packages inherit that value. The Installation page documents the source-build path. | Install or select Rust 1.85+ with Cargo when using the source-build path. |
 | Shell syntax | Supported for maintained POSIX-style examples on Linux, WSL2, and macOS, and for maintained PowerShell examples on native Windows. Other shells are unverified for these examples. | POSIX installation examples use `sh`-compatible environment assignments, temporary installer paths, and `~/.local/bin`. Native Windows installation examples use a downloaded `install.ps1` release asset, PowerShell parameters or environment variables, and `%LOCALAPPDATA%\Volicord\bin`. CLI integration tests create `#!/bin/sh` fake executables behind `#[cfg(unix)]`; the release workflow runs the PowerShell smoke test on Windows. | Use the shell syntax for the selected operating environment and verify the installed command before continuing. |
 | Executable role names | Supported and verified. | Reference owners define `volicord` as the installed executable for administrative CLI commands and the `mcp` subcommand used by the local MCP stdio adapter. | Build or install `volicord`; host configuration should start MCP with `volicord mcp --stdio ...`. |
-| Package-manager installation | Out of scope unless a matching repository artifact is added. | No Homebrew tap, Homebrew formula, Linux package-manager package, or external package registry is claimed by this repository. The supported first-run path is the downloaded release installer asset plus release archive. | Use the release binary installer path, Docker, an existing `volicord` executable, or the development source-build path. |
+| Package-manager installation | Out of scope in the maintained baseline. | No Homebrew tap, Homebrew formula, Linux package-manager package, or external package registry is claimed by this repository. | Use a source build, local Docker build, an existing `volicord` executable, or a release installer backed by a verified published asset set. |
 | Host version minimums for Codex and Claude Code | No stable minimum host version is defined. Host compatibility is checked operationally, not by a documented version floor. | Codex verification looks for `codex` on `PATH` and runs `codex --version`. Claude Code verification inspects host state through `claude mcp get <server_name>`. Administrative verification owns the final result states. | Use `volicord connection verify HOST [--repo PATH] [--shared|--global]` after installation. Do not rely on an undocumented Codex or Claude Code minimum version. |
 | Codex detective host hook root resolution | Supported for local Git work trees. | Generated Codex detective host hook commands resolve the Git work-tree root with `git rev-parse --show-toplevel` before dispatching to Volicord-managed wrappers, and initialization rejects detective setup when that root strategy cannot be supported. | For Codex detective profile, use a Product Repository with a `.git` work-tree root and ensure the future Codex hook environment can run `git` from repository subdirectories. Use `--profile record` when this prerequisite is not available. |
 
 ## Toolchain Requirements
 
-Release binary installation does not require Rust or Cargo.
+A release installation from published assets does not require Rust or Cargo.
 
-The development source-build path requires:
+The source-build path requires:
 
 - Rust 1.85 or newer.
 - Cargo from the selected Rust toolchain.
@@ -47,7 +47,8 @@ The development source-build path requires:
 - Network or local dependency availability sufficient for Cargo to resolve the workspace dependencies.
 
 Rust 1.85 is a compiler requirement for this workspace. It is not required for
-release binary installation and is not an operating-system support claim.
+installation from published release assets and is not an operating-system
+support claim.
 
 Rust implementation validation is not required just to read or use these requirements. Maintainers who edit Rust source, Cargo manifests, tests, fixtures, or build configuration should follow the Rust validation policy in the repository working rules.
 
@@ -115,7 +116,7 @@ Native Windows release zip archives are expected to contain only:
 
 - `volicord.exe`
 
-The install scripts install only that executable. For development source
+The install scripts install only that executable. For source
 builds, the debug executable is expected under `target/debug` and the release
 executable under `target/release`. For separately installed executables, select
 an installation layout where setup can find `volicord` through an explicit
@@ -135,13 +136,13 @@ volicord inbox --help
 volicord serve --help
 ```
 
-Before first connection from a development source build, verify the built
-executable from the same shell:
+Before first connection from the release-mode source build documented by the
+Installation guide, verify the built executable from the same shell:
 
 ```sh
-./target/debug/volicord --version
-./target/debug/volicord --help
-./target/debug/volicord mcp --help
+./target/release/volicord --version
+./target/release/volicord --help
+./target/release/volicord mcp --help
 ```
 
 After `init` or profile-repair guidance has made the command visible, verify
@@ -277,7 +278,8 @@ The host process environment must provide:
 Stop before installation when any of these conditions apply:
 
 - Rust 1.85+ with Cargo is unavailable and you are using the source build path.
-- No supported release binary target matches the operating system and CPU architecture.
+- The selected release source does not provide the installer, matching target archive, and checksum required by the documented release path.
+- When using published release assets, no supported target matches the operating system and CPU architecture.
 - The install script reports an unsupported platform or unsupported CPU architecture.
 - Checksum verification is required locally but the checksum file cannot be downloaded or verified.
 - You cannot run or reliably translate the maintained shell examples for the selected environment.
@@ -294,6 +296,6 @@ Stop before installation when any of these conditions apply:
 - Codex or Claude Code is required for the selected host path but the administrative compatibility check cannot launch or interpret the host.
 - Native Windows setup requests `--profile detective`.
 - A required host trust, project trust, project MCP approval, OAuth, reload, restart, or comparable host-owned action remains and the operator cannot complete it.
-- The planned environment depends on a package manager, a Homebrew tap, a published Docker registry image, a remote host, a network listener, or a host-version promise that this repository does not document.
+- The selected environment depends on a package manager, a Homebrew tap, a published Docker registry image, a remote host, a network listener, or a host-version promise that this repository does not document.
 
 When repository evidence is insufficient, classify the environment as unverified and use the owner-defined verification commands before relying on it.
