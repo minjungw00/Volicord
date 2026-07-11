@@ -128,16 +128,22 @@ Runtime Home 데이터, 관리 호스트 설정, 오래 유지되는 복구 기�
 인터페이스가 아닙니다. 수동으로 삭제하거나 교체하기 전에 보고된 항목을 검사해야
 합니다.
 
-일반 Record profile Codex 설정 파일은 `.codex/config.toml`, `.volicord/policy.json`,
-`AGENTS.md` 안의 Volicord 관리 안내 블록입니다. 이 파일들은 저장소 로컬 통합 파일이지
-Runtime Home 데이터가 아닙니다. 커밋할지는 `Product Repository` 정책 결정입니다. 공유
-Volicord/Codex 설정을 저장소와 함께 전달해야 하면 커밋하고, 사용자별 설정이면 로컬에
-둡니다.
+Record profile init에서 기본 개인 Codex 연결은 Codex 사용자 설정 대상을 사용하고,
+명시적 `--shared`는 프로젝트 범위 `.codex/config.toml` 대상을 추가합니다. 두 의도
+모두 저장소 로컬 `.volicord/policy.json`과 `AGENTS.md` 안의 Volicord 관리 안내
+블록을 적용합니다. Claude Code 개인 init은 로컬 CLI 대상을 사용하지만 현재 init 통합
+파일 구성은 저장소 `.mcp.json` 상태 보기도 함께 관리합니다. 공유 init은 그 프로젝트
+파일을 주 호스트 대상으로 선택합니다. 이 파일들은 저장소 로컬 통합 파일이지 Runtime
+Home 데이터가 아닙니다. 커밋할지는 `Product Repository` 정책 결정입니다. 공유 설정을
+저장소와 함께 전달해야 하면 커밋하고, 사용자별 통합 파일이면 로컬에 둡니다.
 
 규칙:
 
 - 관리 명령은 쓰기를 적용하기 전에 정확한 대상 경로와 내용을 미리 보여 줘야 합니다.
-- 비대화식 실행은 [관리 CLI](admin-cli.md#noninteractive-approval-behavior)가 정의한 명시적 `shared` 연결 의도 명령 경로와 충돌 동작을 사용해야 합니다.
+- 프로젝트 범위 호스트 MCP 설정은 명시적 `shared` 연결 의도 명령 경로를 사용해야
+  합니다. 다른 init 소유 저장소 통합 파일은
+  [관리 CLI](admin-cli.md#noninteractive-approval-behavior)가 정의한 명시적 init
+  명령과 충돌 동작을 사용합니다.
 - 쓰기는 Volicord 소유 마커 또는 관리 지문을 사용해야 합니다.
 - 기존 비관리 내용은 덮어쓰지 말고 충돌로 보고해야 합니다.
 - 교체는 일치하는 Volicord 관리 내용에만 적용할 수 있습니다.

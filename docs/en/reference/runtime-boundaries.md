@@ -131,17 +131,24 @@ only the entries it reports as present at inspection. Their names and retention
 are not stable interfaces. Inspect a reported entry before any manual deletion
 or replacement.
 
-The common Record-profile Codex setup files are `.codex/config.toml`,
-`.volicord/policy.json`, and a managed Volicord guidance block in `AGENTS.md`.
-These are repo-local integration files, not Runtime Home data. Whether to
-commit them is a `Product Repository` policy decision: commit them when shared
-Volicord/Codex setup should travel with the repository, and leave them local
-when the setup is user-specific.
+For Record-profile init, the default personal Codex connection uses the Codex
+user configuration target; explicit `--shared` adds the project-scoped
+`.codex/config.toml` target. Both intents still apply the repository-local
+`.volicord/policy.json` and managed Volicord guidance block in `AGENTS.md`.
+Claude Code personal init uses the local CLI target while the current init
+integration inventory also maintains the repository `.mcp.json` projection;
+shared init selects that project file as the primary host target. These are
+repo-local integration files, not Runtime Home data. Whether to commit them is
+a `Product Repository` policy decision: commit them when shared setup should
+travel with the repository, and leave user-specific integration files local.
 
 Rules:
 
 - The administrative command must preview the exact target path and content before applying the write.
-- Noninteractive execution must use the explicit shared-intent command path and conflict behavior defined by [Administrative CLI](admin-cli.md#noninteractive-approval-behavior).
+- Project-scoped host MCP configuration must use the explicit shared-intent
+  command path. Other init-owned repository integration files use the explicit
+  init command and conflict behavior defined by
+  [Administrative CLI](admin-cli.md#noninteractive-approval-behavior).
 - The write must use Volicord ownership markers or a managed fingerprint.
 - Existing unmanaged content must be reported as a conflict rather than overwritten.
 - Replacement may apply only to matching Volicord-managed content.

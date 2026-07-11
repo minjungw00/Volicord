@@ -506,6 +506,7 @@ impl GuardedLifecycleFixture {
 
         let mut args = vec![
             "init",
+            "--shared",
             "--host",
             "codex",
             "--repo",

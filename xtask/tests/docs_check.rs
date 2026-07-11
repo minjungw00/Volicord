@@ -1334,7 +1334,7 @@ volicord serve --transport local-http
 volicord serve --transport local-http --listen 127.0.0.1:8765 --generate-token
 volicord serve --transport local-http --listen [::1]:8765 --token TOKEN --project /path/to/repo --project /path/to/other-repo --allow-origin https://app.example --allow-origin http://127.0.0.1:3000
 volicord init --host codex --repo /path/to/repo --profile record
-volicord init --host claude-code --repo /path/to/repo --profile detective
+volicord init --host claude-code --repo /path/to/repo --shared --profile detective
 ./target/debug/volicord init --host codex --repo /path/to/repo --dry-run
 volicord status --repo /path/to/repo
 volicord status --task active

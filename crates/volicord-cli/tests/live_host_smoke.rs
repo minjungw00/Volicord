@@ -40,6 +40,7 @@ mod unix {
 
         let init = fixture.run_volicord([
             "init",
+            "--shared",
             "--host",
             "codex",
             "--repo",
@@ -135,6 +136,7 @@ mod unix {
 
         let init = fixture.run_volicord([
             "init",
+            "--shared",
             "--host",
             "claude-code",
             "--repo",

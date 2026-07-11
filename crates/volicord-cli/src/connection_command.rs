@@ -195,6 +195,8 @@ pub fn run_init_command(
         status: outcome.status,
         host_kind: outcome.host_kind,
         init_mode: outcome.init_mode,
+        intent: outcome.intent,
+        host_scope: outcome.host_scope,
         runtime_home: &outcome.runtime_home,
         repo_root: &outcome.repo_root,
         connection_id: &outcome.connection_id,

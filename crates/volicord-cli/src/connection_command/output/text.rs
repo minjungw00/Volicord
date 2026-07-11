@@ -855,9 +855,11 @@ pub(super) fn render_init_text_output(
         "Repo file changes"
     };
     let mut output = format!(
-        "{}\n\nProfile:\n  {}\n\nRepository:\n  {}\n\n{}:\n",
+        "{}\n\nProfile:\n  {}\n\nConnection:\n  intent: {}\n  host scope: {}\n\nRepository:\n  {}\n\n{}:\n",
         init_text_title(data.status, data.host_kind),
         data.init_mode.profile_value(),
+        data.intent.as_str(),
+        data.host_scope.as_str(),
         data.repo_root.display(),
         file_section_label,
     );
@@ -916,7 +918,7 @@ enum InitNextStep {
 
 fn init_next_steps(data: &InitOutput<'_>, actions: &[UserAction]) -> Vec<InitNextStep> {
     let host = public_host_display_name(data.host_kind);
-    let verify_command = init_verify_command(data.host_kind, data.repo_root);
+    let verify_command = init_verify_command(data.host_kind, data.intent, data.repo_root);
     if data.status == AgentResultStatus::DryRun {
         let mut steps = vec![
             InitNextStep::Text(
@@ -973,18 +975,20 @@ fn init_actions_include_trust_or_approval(actions: &[UserAction]) -> bool {
     })
 }
 
-fn init_verify_command(host_kind: HostKind, repo_root: &Path) -> String {
+fn init_verify_command(host_kind: HostKind, intent: ConnectionIntent, repo_root: &Path) -> String {
     format!(
-        "volicord connection verify {} --shared --repo {}",
+        "volicord connection verify {}{} --repo {}",
         public_host_label(host_kind),
+        intent_flag_suffix(intent),
         repo_root.display()
     )
 }
 
-fn init_status_command(host_kind: HostKind, repo_root: &Path) -> String {
+fn init_status_command(host_kind: HostKind, intent: ConnectionIntent, repo_root: &Path) -> String {
     format!(
-        "volicord connection status {} --shared --repo {} --json",
+        "volicord connection status {}{} --repo {} --json",
         public_host_label(host_kind),
+        intent_flag_suffix(intent),
         repo_root.display()
     )
 }
@@ -992,13 +996,14 @@ fn init_status_command(host_kind: HostKind, repo_root: &Path) -> String {
 fn init_diagnostics_command(data: &InitOutput<'_>) -> String {
     if data.status == AgentResultStatus::DryRun {
         return format!(
-            "volicord init --host {} --repo {} --profile {} --dry-run --json",
+            "volicord init --host {}{} --repo {} --profile {} --dry-run --json",
             public_host_label(data.host_kind),
+            intent_flag_suffix(data.intent),
             data.repo_root.display(),
             data.init_mode.profile_value()
         );
     }
-    init_status_command(data.host_kind, data.repo_root)
+    init_status_command(data.host_kind, data.intent, data.repo_root)
 }
 
 fn init_limits_text(init_mode: InitMode) -> &'static str {

@@ -67,7 +67,7 @@ Supported baseline commands:
 ```text
 volicord --help
 volicord --version
-volicord init --host codex|claude-code --repo PATH [--profile record|detective] [--home PATH] [--mcp-command PATH] [--dry-run] [--json]
+volicord init --host codex|claude-code --repo PATH [--shared] [--profile record|detective] [--home PATH] [--mcp-command PATH] [--dry-run] [--json]
 volicord status [--repo PATH] [--task active|ID] [--json]
 volicord doctor [--json] [--privacy-footprint]
 volicord connection add [HOST] [--repo PATH] [--shared|--global] [--read-only] [--dry-run] [--json]
@@ -146,9 +146,10 @@ Not supported:
 ### Output conventions
 
 - `volicord init` may show a compact onboarding summary instead of a raw state
-  dump. It names the host, profile, repository, repository-file changes, Runtime
-  Home, `Next:` checklist, limits, and JSON diagnostics command. A command under
-  `Next:` appears on an indented line without prose punctuation.
+  dump. It names the host, profile, connection intent, host scope, repository,
+  repository-file changes, Runtime Home, `Next:` checklist, limits, and JSON
+  diagnostics command. A command under `Next:` appears on an indented line
+  without prose punctuation.
 - Status-like commands show a compact summary card or short sections before
   detailed diagnostics. These include `volicord status`, `volicord doctor`,
   connection status and verification, change reconciliation, and the inbox.
@@ -322,8 +323,11 @@ scope names:
 | `shared` | `--shared` | Project-owned or project-shared host configuration stored as an explicit integration file in the selected `Product Repository`. |
 | `global` | `--global` | User-wide host configuration for the selected host, with project access still constrained by registered repository roots and Connection Projects. |
 
-`--shared` and `--global` are mutually exclusive. When neither is present, the
-intent is `personal`.
+`volicord init` defaults to `personal` and accepts `--shared` for an
+explicit shared connection; it does not accept `--global`. Other connection
+commands accept the intent options shown in their command syntax.
+`--shared` and `--global` are mutually exclusive where both are supported.
+When no intent flag is present, the intent is `personal`.
 
 Connection modes:
 
@@ -359,10 +363,21 @@ connected project. The host environment must resolve the command through
 `volicord init --host codex --repo PATH --profile record` and
 `volicord init --host claude-code --repo PATH --profile record` are the primary
 first-run repository setup and host-connection examples for chat-first use when
-host hook and session watcher observation is not being installed. Init uses the
-shared, project-scoped host layout so generated host MCP configuration starts
+host hook and session watcher observation is not being installed. Without an
+intent flag, init creates a `personal` connection: Codex uses its user
+configuration target, while Claude Code uses its repository-local CLI scope.
+Adding `--shared` selects the project-scoped host layout in
+`.codex/config.toml` or `.mcp.json`; that generated entry starts
 `volicord mcp --stdio --connection <connection_id> --project <project_id>`
 through `PATH` and does not embed a personal Runtime Home path.
+
+Connection intent selects the managed Agent Connection target. Init separately
+keeps its current repository integration inventory for both `personal` and
+`shared`: the managed `AGENTS.md` block and
+`.volicord/policy.json` are repository-local, Claude Code init also maintains
+the repository `.mcp.json` projection, and the Detective profile adds the
+supported repository-local hook, wrapper, and rule files. Those integration
+files do not change the stored connection intent or its primary host scope.
 
 `--profile` selects the public integration profile:
 
@@ -420,8 +435,10 @@ a detective installation record `active` merely because files were written.
 
 `--home PATH` selects the Runtime Home for this initialization. `--mcp-command
 PATH` stores the exact command path in the installation profile when init must
-create or update that profile; project-scoped host MCP configuration still uses
-`volicord` from `PATH`.
+create or update that profile. Personal host configuration uses the saved
+profile path and Runtime Home as required by the host adapter. Project-scoped
+host MCP configuration selected by `--shared` still uses `volicord` from
+`PATH`.
 
 Non-dry-run `volicord init`:
 
@@ -430,9 +447,13 @@ Non-dry-run `volicord init`:
 - registers or reuses the selected `Product Repository`
 - creates or updates the matching Agent Connection and Connection Projects
   membership
-- writes project-scoped Codex `.codex/config.toml` or Claude Code `.mcp.json`
-  with `volicord mcp --stdio --connection <connection_id> --project
-  <project_id>` and, for Codex, managed launch provenance environment markers
+- installs the primary managed host connection at the intent-selected target:
+  the Codex user target or Claude Code local CLI target for `personal`, and
+  project-scoped Codex `.codex/config.toml` or Claude Code `.mcp.json` for
+  explicit `--shared`
+- for an explicit shared connection, writes
+  `volicord mcp --stdio --connection <connection_id> --project <project_id>`
+  and, for Codex, managed launch provenance environment markers
 - writes or updates only the Volicord-managed block in `AGENTS.md`
 - writes `.volicord/policy.json` with detective host hook commands that invoke
   the hidden internal hook namespace
@@ -454,7 +475,9 @@ Re-running init is idempotent for matching Volicord-managed content. It updates
 managed blocks, policy files, host MCP entries, and detective installation records
 without duplicating them. If an existing target contains unmanaged content where
 Volicord requires ownership markers or a managed fingerprint, init must report a
-conflict instead of overwriting it.
+conflict instead of overwriting it. Follow-up status and verification commands,
+dry-run diagnostics, and repair commands preserve the selected intent: they
+include `--shared` only for a shared init result.
 
 Applying a planned guard-integration managed file during init is a conditional
 same-directory commit. This rule covers managed guidance, policy, hook, wrapper,
@@ -520,10 +543,11 @@ or looks up the stored `connection_internal_id`.
 
 - `volicord init`
   - Registry: prepares Runtime Home and the installation profile, registers the
-    repository, creates or updates the shared project connection and membership,
-    and records Detective profile observation state.
-  - Host: installs managed project-local MCP configuration, guidance, policy,
-    wrappers, hooks, and rules for `codex` or `claude-code`.
+    repository, creates or updates the default personal or explicit shared
+    connection and membership, and records Detective profile observation state.
+  - Host: installs the intent-selected managed MCP target plus the
+    repository-local guidance, policy, and profile-dependent integration files
+    for `codex` or `claude-code`.
   - Verification: runs observable host-configuration, MCP startup,
     initialization, and `tools/list` checks, then reports any host-controlled
     action.
@@ -1026,6 +1050,9 @@ Required diagnostic JSON values:
   and optional details
 - `actions[]`: required or suggested user actions, each with a stable action id
   and human-readable command or instruction when one is available
+- init JSON reports the selected `connection.connection_intent` and
+  `connection.host_scope`; dry-run and applied output use the same resolved
+  values
 - `summary_card`: stable compact summary data for status-like diagnostic or
   user-channel outputs that compute a summary card
 - connection status and verification JSON can expose separate Codex diagnostics
@@ -1089,9 +1116,11 @@ code `1`.
 
 Rules:
 
-- Shared-intent Product Repository writes are authorized by the explicit
-  `--shared` command path and are limited to the managed integration files that
-  command previews.
+- Project-scoped host MCP configuration requires the explicit `--shared`
+  command path. Init's separate repository-local guidance, policy, and
+  profile-dependent integration files are authorized by the explicit init
+  command for both supported init intents and remain limited to the managed
+  files that command previews.
 - Existing unmanaged content is a conflict. The CLI must not silently replace
   unrelated host configuration or product files.
 - A broad shell approval, write approval, host trust decision, sensitive-action

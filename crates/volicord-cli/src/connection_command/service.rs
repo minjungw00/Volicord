@@ -11,6 +11,8 @@ pub(super) struct InitProvisioningOutcome {
     pub(super) status: AgentResultStatus,
     pub(super) host_kind: HostKind,
     pub(super) init_mode: InitMode,
+    pub(super) intent: ConnectionIntent,
+    pub(super) host_scope: HostScope,
     pub(super) runtime_home: PathBuf,
     pub(super) repo_root: PathBuf,
     pub(super) connection_id: String,
@@ -59,6 +61,8 @@ pub(super) struct ConnectionProvisioningResult {
 struct InitProvisioningPlan {
     host_kind: HostKind,
     init_mode: InitMode,
+    intent: ConnectionIntent,
+    host_scope: HostScope,
     runtime_home: PathBuf,
     repo_root: PathBuf,
     connection_id: String,
@@ -83,6 +87,8 @@ pub(super) fn provision_init(
             status: AgentResultStatus::DryRun,
             host_kind: plan.host_kind,
             init_mode: plan.init_mode,
+            intent: plan.intent,
+            host_scope: plan.host_scope,
             runtime_home: plan.runtime_home,
             repo_root: plan.repo_root,
             connection_id: plan.connection_id,
@@ -119,7 +125,11 @@ fn plan_init_provisioning(
     let existing_profile = installation_profile(&runtime_home)?;
     let profile_plan =
         init_profile_plan(parsed, &runtime_home, existing_profile.as_ref(), process)?;
-    let intent = ConnectionIntent::Shared;
+    let intent = if parsed.shared {
+        ConnectionIntent::Shared
+    } else {
+        ConnectionIntent::Personal
+    };
     let host_scope = host_scope_for_intent(host_kind, intent)?;
     let mode = CONNECTION_MODE_WORKFLOW;
     let server_name = DEFAULT_SERVER_NAME.to_owned();
@@ -195,6 +205,8 @@ fn plan_init_provisioning(
     Ok(InitProvisioningPlan {
         host_kind,
         init_mode: parsed.mode,
+        intent,
+        host_scope,
         runtime_home,
         repo_root,
         connection_id,
@@ -228,14 +240,12 @@ fn apply_init_provisioning(
             metadata_json: metadata_json_base()?,
         },
     )?;
-    let intent = ConnectionIntent::Shared;
-    let host_scope = host_scope_for_intent(plan.host_kind, intent)?;
     let mode = CONNECTION_MODE_WORKFLOW;
     let existing = connection_for_host_target(
         &plan.runtime_home,
         plan.host_kind,
-        intent,
-        host_scope,
+        plan.intent,
+        plan.host_scope,
         &plan.target_hint,
         &plan.server_name,
     )?;
@@ -245,7 +255,7 @@ fn apply_init_provisioning(
     let host_plan = build_host_plan(
         BuildHostPlanRequest {
             host_kind: plan.host_kind,
-            connection_intent: intent,
+            connection_intent: plan.intent,
             connection_id: &plan.connection_id,
             repo_root: Some(&project.repo_root),
             project_id: Some(&project.project_id),
@@ -273,8 +283,8 @@ fn apply_init_provisioning(
         AgentConnectionRegistration {
             connection_internal_id: plan.connection_id.clone(),
             host_kind: plan.host_kind.as_str().to_owned(),
-            intent: intent.as_str().to_owned(),
-            host_scope: host_scope.as_str().to_owned(),
+            intent: plan.intent.as_str().to_owned(),
+            host_scope: plan.host_scope.as_str().to_owned(),
             server_name: host_plan.server_name.clone(),
             config_target: host_target_text(&host_plan.target),
             mode: mode.to_owned(),
@@ -358,6 +368,8 @@ fn apply_init_provisioning(
         status,
         host_kind: plan.host_kind,
         init_mode: plan.init_mode,
+        intent: plan.intent,
+        host_scope: plan.host_scope,
         runtime_home: plan.runtime_home,
         repo_root: project.repo_root,
         connection_id: plan.connection_id,

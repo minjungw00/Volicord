@@ -303,7 +303,12 @@ fn selector_repair_command(selector: &ConnectionSelector) -> String {
             intent_flag_suffix(intent),
             selector.repo_root.display()
         ),
-        Some(ConnectionIntent::Shared) | None => format!(
+        Some(ConnectionIntent::Shared) => format!(
+            "volicord init --host {} --shared --repo {}",
+            public_host_label(selector.host_kind),
+            selector.repo_root.display()
+        ),
+        None => format!(
             "volicord init --host {} --repo {}",
             public_host_label(selector.host_kind),
             selector.repo_root.display()

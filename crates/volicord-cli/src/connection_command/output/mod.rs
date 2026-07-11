@@ -60,6 +60,8 @@ pub(super) struct InitOutput<'a> {
     pub(super) status: AgentResultStatus,
     pub(super) host_kind: HostKind,
     pub(super) init_mode: InitMode,
+    pub(super) intent: ConnectionIntent,
+    pub(super) host_scope: HostScope,
     pub(super) runtime_home: &'a Path,
     pub(super) repo_root: &'a Path,
     pub(super) connection_id: &'a str,
@@ -370,7 +372,7 @@ pub(super) fn render_init_output(data: InitOutput<'_>) -> Result<String, Connect
     let mut primary_next_action =
         primary_connection_action(&actions, data.verification, None, &guard_state, None, &[]);
     if let Some(action) = primary_next_action.as_mut() {
-        attach_init_verify_command(action, data.host_kind, data.repo_root);
+        attach_init_verify_command(action, data.host_kind, data.intent, data.repo_root);
     }
     let repo_file_changes = init_repo_file_changes(&data);
     match data.format {
@@ -398,8 +400,8 @@ pub(super) fn render_init_output(data: InitOutput<'_>) -> Result<String, Connect
                 "connection": {
                     "connection_id": data.connection_id,
                     "host_kind": data.host_kind.as_str(),
-                    "connection_intent": ConnectionIntent::Shared.as_str(),
-                    "host_scope": HostScope::Project.as_str(),
+                    "connection_intent": data.intent.as_str(),
+                    "host_scope": data.host_scope.as_str(),
                     "mode": CONNECTION_MODE_WORKFLOW,
                     "project_id": data.project_id,
                     "config_target": target,
@@ -845,14 +847,16 @@ fn attach_connection_verify_command(
 fn attach_init_verify_command(
     action: &mut PrimaryNextAction,
     host_kind: HostKind,
+    intent: ConnectionIntent,
     repo_root: &Path,
 ) {
     if !next_action_should_verify(&action.id) {
         return;
     }
     let command = format!(
-        "volicord connection verify {} --shared --repo {}",
+        "volicord connection verify {}{} --repo {}",
         public_host_label(host_kind),
+        intent_flag_suffix(intent),
         repo_root.display()
     );
     set_verify_command(action, command);
@@ -907,9 +911,11 @@ fn guard_degraded_action(
         );
     };
     let host = public_host_name_text(&connection.host_kind);
+    let intent = parse_connection_intent(&connection.intent).unwrap_or(ConnectionIntent::Personal);
     let command = format!(
-        "volicord init --host {} --repo {}",
+        "volicord init --host {}{} --repo {}",
         host,
+        intent_flag_suffix(intent),
         project.project.repo_root.display()
     );
     PrimaryNextAction::new(
@@ -934,7 +940,7 @@ fn connection_repair_action(
     let host = public_host_name_text(&connection.host_kind);
     let command = if connection.intent == ConnectionIntent::Shared.as_str() {
         format!(
-            "volicord init --host {} --repo {}",
+            "volicord init --host {} --shared --repo {}",
             host,
             project.project.repo_root.display()
         )

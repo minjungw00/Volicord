@@ -264,7 +264,7 @@ jobs:
               mkdir -p /tmp/bin
               printf "%s\n" "#!/bin/sh" "if [ \"\$1\" = \"--version\" ]; then printf \"codex 1.2.3-test\\n\"; exit 0; fi" "printf \"unexpected codex invocation\\n\" >&2" "exit 2" > /tmp/bin/codex
               chmod 0755 /tmp/bin/codex
-              PATH="/tmp/bin:/usr/local/bin:$PATH" VOLICORD_HOME=/var/lib/volicord volicord init --host codex --repo /workspace/repo --profile record --json >/tmp/init.json'
+              PATH="/tmp/bin:/usr/local/bin:$PATH" VOLICORD_HOME=/var/lib/volicord volicord init --host codex --repo /workspace/repo --shared --profile record --json >/tmp/init.json'
 
           token="volicord-docker-smoke-token"
           printf "%s\n" "$token" > "$tmp/serve.token"

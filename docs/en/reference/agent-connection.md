@@ -193,8 +193,15 @@ is not a security level and not an authority grant.
 | Intent | Meaning | Must not infer |
 |---|---|---|
 | `personal` | User-owned host configuration for the current user's ordinary local flow. | It does not prove host trust, user identity, or access to every local project. |
-| `shared` | Project-owned or project-shared host configuration stored only as an explicit integration file in a selected `Product Repository`. | It is not Volicord runtime state, and it does not authorize arbitrary product-file edits. |
+| `shared` | Project-owned or project-shared primary host configuration stored as an explicit integration file in a selected `Product Repository`. | It is not Volicord runtime state, and it does not authorize arbitrary product-file edits. |
 | `global` | User-wide host configuration for a supported host, with project access still constrained by repository-root registration and Connection Projects. | It does not connect every repository and does not bypass project or host trust. |
+
+For `volicord init`, `personal` is the default and `--shared` explicitly
+selects `shared`; init does not create a `global` connection. Connection
+intent classifies the primary managed host target. Repository-local guidance,
+policy, and profile-dependent hook integration files applied by init remain a
+separate administrative integration surface and do not change the stored
+connection intent or host scope.
 
 The baseline directly managed host kinds are `codex` and `claude_code`.
 Host-neutral MCP configuration is user-managed. User-managed configuration can

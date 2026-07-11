@@ -61,12 +61,13 @@ pub(super) struct ParsedInitOptions {
     pub(super) runtime_home: Option<PathBuf>,
     pub(super) mcp_command: Option<PathBuf>,
     pub(super) mode: InitMode,
+    pub(super) shared: bool,
     pub(super) dry_run: bool,
     pub(super) json: bool,
 }
 
 pub fn init_usage() -> String {
-    "volicord init --host codex|claude-code --repo PATH [--profile record|detective] [--home PATH] [--mcp-command PATH] [--dry-run] [--json]\n"
+    "volicord init --host codex|claude-code --repo PATH [--shared] [--profile record|detective] [--home PATH] [--mcp-command PATH] [--dry-run] [--json]\n"
         .to_owned()
 }
 
@@ -214,7 +215,7 @@ pub(super) fn parse_init_options(
         let without_prefix = &token[2..];
         let (name, value) = if let Some((name, value)) = without_prefix.split_once('=') {
             (name.to_owned(), Some(value.to_owned()))
-        } else if matches!(without_prefix, "dry-run" | "json") {
+        } else if matches!(without_prefix, "shared" | "dry-run" | "json") {
             (without_prefix.to_owned(), None)
         } else {
             index += 1;
@@ -227,7 +228,7 @@ pub(super) fn parse_init_options(
         };
         if !matches!(
             name.as_str(),
-            "host" | "repo" | "profile" | "home" | "mcp-command" | "dry-run" | "json"
+            "host" | "repo" | "shared" | "profile" | "home" | "mcp-command" | "dry-run" | "json"
         ) {
             return Err(ConnectionCommandError::usage(format!(
                 "unknown option: --{name}"
@@ -263,6 +264,10 @@ pub(super) fn parse_init_options(
                     current_dir,
                     value_path(&name, value.as_deref())?,
                 ));
+            }
+            "shared" => {
+                reject_boolean_value(&name, value.as_deref())?;
+                parsed.shared = true;
             }
             "dry-run" => {
                 reject_boolean_value(&name, value.as_deref())?;
@@ -399,5 +404,48 @@ pub(super) fn absolute_path(current_dir: &Path, path: PathBuf) -> PathBuf {
         path
     } else {
         current_dir.join(path)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn init_shared_flag_is_explicit_and_personal_is_the_default() {
+        let current_dir = Path::new("/product");
+        let personal = parse_init_options(
+            &[
+                "--host".to_owned(),
+                "codex".to_owned(),
+                "--repo".to_owned(),
+                ".".to_owned(),
+            ],
+            current_dir,
+        )
+        .expect("default init options should parse");
+        assert!(!personal.shared);
+
+        let shared = parse_init_options(
+            &[
+                "--host".to_owned(),
+                "claude-code".to_owned(),
+                "--repo".to_owned(),
+                ".".to_owned(),
+                "--shared".to_owned(),
+            ],
+            current_dir,
+        )
+        .expect("explicit shared init options should parse");
+        assert!(shared.shared);
+    }
+
+    #[test]
+    fn init_shared_flag_rejects_a_value() {
+        let error = parse_init_options(&["--shared=true".to_owned()], Path::new("/product"))
+            .expect_err("--shared must remain a boolean flag");
+        assert!(error
+            .to_string()
+            .contains("--shared does not accept a value"));
     }
 }

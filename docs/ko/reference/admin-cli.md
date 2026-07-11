@@ -62,7 +62,7 @@ MCP 전송 프로세스로 제한됩니다. `volicord inbox` 명령군은 사용
 ```text
 volicord --help
 volicord --version
-volicord init --host codex|claude-code --repo PATH [--profile record|detective] [--home PATH] [--mcp-command PATH] [--dry-run] [--json]
+volicord init --host codex|claude-code --repo PATH [--shared] [--profile record|detective] [--home PATH] [--mcp-command PATH] [--dry-run] [--json]
 volicord status [--repo PATH] [--task active|ID] [--json]
 volicord doctor [--json] [--privacy-footprint]
 volicord connection add [HOST] [--repo PATH] [--shared|--global] [--read-only] [--dry-run] [--json]
@@ -138,9 +138,9 @@ volicord inbox open <judgment-id> [--repo PATH] [--json]
 ### 출력 규칙
 
 - `volicord init`은 원시 상태 목록 대신 간결한 온보딩 요약을 표시할 수 있습니다. 이
-  요약에는 호스트, 프로필, 저장소, 저장소 파일 변경, Runtime Home, `Next:` 체크리스트,
-  한계, JSON 진단 명령이 들어갑니다. `Next:` 아래의 명령은 들여쓴 별도 줄에 표시하며
-  산문 구두점을 붙이지 않습니다.
+  요약에는 호스트, 프로필, 연결 의도, 호스트 범위, 저장소, 저장소 파일 변경,
+  Runtime Home, `Next:` 체크리스트, 한계, JSON 진단 명령이 들어갑니다.
+  `Next:` 아래의 명령은 들여쓴 별도 줄에 표시하며 산문 구두점을 붙이지 않습니다.
 - 상태형 명령은 세부 진단보다 먼저 간결한 요약 카드나 짧은 섹션을 보여 줍니다. 여기에는
   `volicord status`, `volicord doctor`, 연결 상태와 검증, 변경 조정, 받은편지함이
   포함됩니다. 명령이 공통 요약 카드 텍스트 렌더러를 사용할 때 라벨은
@@ -296,8 +296,11 @@ Agent Connection 설정은 낮은 수준의 호스트 설정 범위 이름 대�
 | `shared` | `--shared` | 선택된 `Product Repository` 안의 명시적 통합 파일로 저장되는 프로젝트 소유 또는 프로젝트 공유 호스트 설정입니다. |
 | `global` | `--global` | 선택된 호스트의 사용자 전역 호스트 설정입니다. 프로젝트 접근은 계속 등록된 저장소 루트와 Connection Projects로 제한됩니다. |
 
-`--shared`와 `--global`은 함께 사용할 수 없습니다. 둘 다 없으면 의도는
-`personal`입니다.
+`volicord init`은 기본적으로 `personal`을 사용하고, 명시적 공유 연결에는
+`--shared`를 받습니다. `--global`은 받지 않습니다. 다른 연결 명령은 각 명령
+구문에 표시된 의도 옵션을 받습니다. 두 옵션을 모두 지원하는 명령에서
+`--shared`와 `--global`은 함께 사용할 수 없습니다. 의도 플래그가 없으면
+의도는 `personal`입니다.
 
 연결 모드:
 
@@ -330,9 +333,19 @@ Agent Connection 설정은 낮은 수준의 호스트 설정 범위 이름 대�
 `volicord init --host codex --repo PATH --profile record`와
 `volicord init --host claude-code --repo PATH --profile record`는 호스트 훅과 세션 감시기
 관찰을 설치하지 않는 대화 중심 사용을 위한 첫 실행 저장소 설정 및 호스트 연결
-예시입니다. Init은 `shared` 프로젝트 범위 호스트 배치를 사용하므로 생성된 호스트 MCP 설정은 `PATH`를 통해
+예시입니다. 의도 플래그가 없으면 init은 `personal` 연결을 만듭니다. Codex는 사용자
+설정 대상을 사용하고 Claude Code는 저장소 로컬 CLI 범위를 사용합니다. `--shared`를
+추가하면 `.codex/config.toml` 또는 `.mcp.json`의 프로젝트 범위 호스트 배치를
+선택합니다. 이 생성 항목은 `PATH`를 통해
 `volicord mcp --stdio --connection <connection_id> --project <project_id>`를 시작하고
 개인 Runtime Home 경로를 포함하지 않습니다.
+
+연결 의도는 관리 Agent Connection 대상을 선택합니다. 이와 별도로 init은
+`personal`과 `shared` 모두에서 현재 저장소 통합 파일 구성을 유지합니다.
+`AGENTS.md`의 관리 블록과 `.volicord/policy.json`은 저장소 로컬 파일이고,
+Claude Code init은 저장소의 `.mcp.json` 상태 보기도 함께 관리합니다. Detective
+profile은 지원되는 저장소 로컬 훅, 래퍼, 규칙 파일을 추가합니다. 이런 통합 파일은
+저장된 연결 의도나 주 호스트 범위를 바꾸지 않습니다.
 
 `--profile`은 공개 통합 프로필을 선택합니다.
 
@@ -384,7 +397,9 @@ Codex `detective` 초기화에서는 선택된 Product Repository가 Git 작업 
 
 `--home PATH`는 이 초기화에 사용할 Runtime Home을 선택합니다. `--mcp-command PATH`는
 init이 설치 프로필을 만들거나 갱신해야 할 때 정확한 명령 경로를 설치 프로필에
-저장합니다. 프로젝트 범위 호스트 MCP 설정은 그래도 `PATH`의 `volicord`를 사용합니다.
+저장합니다. 개인 호스트 설정은 호스트 어댑터가 요구하는 대로 저장된 프로필 경로와
+Runtime Home을 사용합니다. `--shared`가 선택한 프로젝트 범위 호스트 MCP 설정은
+그래도 `PATH`의 `volicord`를 사용합니다.
 
 미리보기가 아닌 `volicord init`은 다음을 수행합니다.
 
@@ -392,8 +407,11 @@ init이 설치 프로필을 만들거나 갱신해야 할 때 정확한 명령 �
 - 필요하면 설치 프로필을 만들거나 갱신합니다.
 - 선택한 `Product Repository`를 등록하거나 재사용합니다.
 - 일치하는 Agent Connection과 Connection Projects 멤버십을 만들거나 갱신합니다.
-- `volicord mcp --stdio --connection <connection_id> --project <project_id>`를 사용하는
-  프로젝트 범위 Codex `.codex/config.toml` 또는 Claude Code `.mcp.json`을 쓰며,
+- 의도에 따라 주 관리 호스트 연결 대상을 설치합니다. `personal`은 Codex 사용자
+  대상 또는 Claude Code 로컬 CLI 대상을 사용하고, 명시적 `--shared`는 프로젝트 범위
+  Codex `.codex/config.toml` 또는 Claude Code `.mcp.json`을 사용합니다.
+- 명시적 공유 연결에는
+  `volicord mcp --stdio --connection <connection_id> --project <project_id>`를 쓰며,
   Codex에는 관리 시작 출처 환경 변수 마커도 넣습니다.
 - `AGENTS.md` 안의 Volicord 관리 블록만 쓰거나 갱신합니다.
 - 숨겨진 내부 훅 명령군을 호출하는 탐지용 호스트 훅 명령을 담은
@@ -415,7 +433,8 @@ init이 설치 프로필을 만들거나 갱신해야 할 때 정확한 명령 �
 init 재실행은 일치하는 Volicord 관리 내용에 대해 멱등입니다. 관리 블록, 정책 파일,
 호스트 MCP 항목, 탐지 프로필 설치 기록을 중복 없이 갱신합니다. 기존 대상에 Volicord가
 소유 마커나 관리 지문을 요구하는 위치의 비관리 내용이 있으면 init은 이를 덮어쓰지
-않고 충돌로 보고해야 합니다.
+않고 충돌로 보고해야 합니다. 후속 상태 조회와 검증 명령, dry-run 진단, 복구 명령은
+선택한 의도를 보존하며 공유 init 결과일 때만 `--shared`를 포함합니다.
 
 init에서 계획된 관찰 훅 통합 관리 파일은 같은 디렉터리의 조건부 커밋으로 적용합니다.
 이 규칙은 관리 지침, 정책, 훅, 래퍼, 규칙 파일에 적용됩니다. 프로젝트 범위 MCP 설정을
@@ -471,10 +490,11 @@ CLI는 모든 관련 항목이 검사한 상태와 계속 일치할 때만 되�
 내부 연결 식별자를 파생하거나 조회합니다.
 
 - `volicord init`
-  - 레지스트리: Runtime Home과 설치 프로필을 준비하고, 저장소를 등록하며, `shared`
-    프로젝트 연결과 멤버십을 만들거나 갱신하고, 탐지 프로필 관찰 상태를 기록합니다.
-  - 호스트: `codex` 또는 `claude-code`용 프로젝트 로컬 MCP 설정, 지침, 정책, 래퍼,
-    훅, 규칙을 설치합니다.
+  - 레지스트리: Runtime Home과 설치 프로필을 준비하고, 저장소를 등록하며, 기본 개인
+    연결 또는 명시적 공유 연결과 멤버십을 만들거나 갱신하고, 탐지 프로필 관찰 상태를
+    기록합니다.
+  - 호스트: 의도에 맞는 관리 MCP 대상과 `codex` 또는 `claude-code`용 저장소 로컬
+    지침, 정책, 프로필별 통합 파일을 설치합니다.
   - 검증: 관찰 가능한 호스트 설정, MCP 시작, 초기화, `tools/list`를 점검하고 필요한
     호스트 통제 동작을 보고합니다.
 - `volicord connection add`
@@ -922,6 +942,9 @@ JSON 출력은 관리 CLI 출력이지 공개 Volicord API 응답 스키마가 �
 - `checks[]`: 안정적인 점검 ID, 상태, 요약, 선택 세부사항이 있는 순서 있는 진단 점검
 - `actions[]`: 필요하거나 제안되는 사용자 동작. 사용할 수 있을 때 안정적인 동작 ID와
   사람이 읽을 수 있는 명령 또는 안내를 포함합니다.
+- init JSON은 선택된 `connection.connection_intent`와
+  `connection.host_scope`를 보고합니다. dry-run과 적용 출력은 같은 해석 값을
+  사용합니다.
 - `summary_card`: 요약 카드를 계산하는 상태형 진단 또는 User Channel 출력을 위한
   안정적인 간결 요약 데이터
 - 연결 상태와 검증 JSON은 CLI MCP 사전 점검과 핸드셰이크, `project_trust`,
@@ -976,8 +999,10 @@ JSON 출력은 관리 CLI 출력이지 공개 Volicord API 응답 스키마가 �
 
 규칙:
 
-- `shared` 의도 `Product Repository` 쓰기는 명시적 `--shared` 명령 경로로 승인되며, 그
-  명령이 미리 보여 주는 관리 통합 파일로 제한됩니다.
+- 프로젝트 범위 호스트 MCP 설정에는 명시적 `--shared` 명령 경로가 필요합니다.
+  이와 별개인 init의 저장소 로컬 지침, 정책, 프로필별 통합 파일은 지원되는 두 init
+  의도 모두에서 명시적 init 명령으로 승인되며, 그 명령이 미리 보여 준 관리 파일로
+  제한됩니다.
 - 기존 비관리 내용은 충돌입니다. CLI는 관련 없는 호스트 설정이나 제품 파일을 조용히
   교체하면 안 됩니다.
 - 포괄적 셸 승인, 쓰기 승인, 호스트 신뢰 결정, 민감 동작 승인, 쓰기 티켓은 이

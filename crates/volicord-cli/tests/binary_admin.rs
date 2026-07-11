@@ -97,6 +97,7 @@ fn binary_help_uses_agent_connection_model() -> Result<(), Box<dyn Error>> {
     assert_success(&init_help);
     let init_text = stdout(&init_help);
     assert!(init_text.contains("volicord init --host codex|claude-code --repo PATH"));
+    assert!(init_text.contains("--shared"));
     assert!(init_text.contains("--profile record|detective"));
     assert!(init_text.contains("--home PATH"));
     assert!(init_text.contains("--mcp-command PATH"));
@@ -188,6 +189,7 @@ fn binary_help_options_match_supported_contracts() -> Result<(), Box<dyn Error>>
         &[
             "--host",
             "--repo",
+            "--shared",
             "--profile",
             "--home",
             "--mcp-command",
@@ -370,6 +372,138 @@ fn doctor_privacy_footprint_reports_runtime_home_scope() -> Result<(), Box<dyn E
 
 #[cfg(unix)]
 #[test]
+fn init_defaults_to_personal_codex_connection() -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-init-personal-codex")?;
+    let repo_root = create_git_repo(&runtime_home, "product-repo")?;
+    let bin_dir = runtime_home.path().join("bin");
+    let codex_home = runtime_home.path().join("codex-home");
+    write_fake_codex(&bin_dir)?;
+    let mcp_command = write_fake_mcp(&bin_dir)?;
+    let env = [
+        ("PATH", path_env(&[bin_dir.as_path()])),
+        ("CODEX_HOME", path_text(&codex_home)),
+        ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
+    ];
+
+    let text_output = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--host",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--profile",
+            "record",
+            "--mcp-command",
+            path_text(&mcp_command).as_str(),
+        ],
+        &env,
+    )?;
+    assert_success(&text_output);
+    let text = stdout(&text_output);
+    assert!(text.contains("Connection:\n  intent: personal\n  host scope: user"));
+    assert!(text.contains(&format!(
+        "volicord connection verify codex --repo {}",
+        repo_root.display()
+    )));
+    assert!(text.contains(&format!(
+        "volicord connection status codex --repo {} --json",
+        repo_root.display()
+    )));
+    assert!(!text.contains("connection verify codex --shared"));
+    assert!(!text.contains("connection status codex --shared"));
+
+    let output = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--host",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--profile",
+            "record",
+            "--json",
+        ],
+        &env,
+    )?;
+    assert_success(&output);
+    let value = json_stdout(&output)?;
+    assert_eq!(value["connection"]["connection_intent"], "personal");
+    assert_eq!(value["connection"]["host_scope"], "user");
+    assert_eq!(
+        value["connection"]["config_target"],
+        path_text(&codex_home.join("config.toml"))
+    );
+    assert!(codex_home.join("config.toml").exists());
+    assert!(!repo_root.join(".codex/config.toml").exists());
+    assert!(repo_root.join("AGENTS.md").exists());
+    assert!(repo_root.join(".volicord/policy.json").exists());
+    assert_eq!(
+        value["primary_next_action"]["command"],
+        format!(
+            "volicord connection verify codex --repo {}",
+            repo_root.display()
+        )
+    );
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn init_defaults_to_personal_claude_code_connection() -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-init-personal-claude")?;
+    let repo_root = create_git_repo(&runtime_home, "product-repo")?;
+    let bin_dir = runtime_home.path().join("bin");
+    let claude = write_fake_claude_code(&bin_dir)?;
+    let mcp_command = write_fake_mcp(&bin_dir)?;
+
+    let output = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--host",
+            "claude-code",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--profile",
+            "record",
+            "--mcp-command",
+            path_text(&mcp_command).as_str(),
+            "--json",
+        ],
+        &[
+            ("PATH", path_env(&[bin_dir.as_path()])),
+            ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
+        ],
+    )?;
+    assert_success(&output);
+    let value = json_stdout(&output)?;
+    assert_eq!(value["connection"]["connection_intent"], "personal");
+    assert_eq!(value["connection"]["host_scope"], "local");
+    assert_eq!(
+        value["connection"]["config_target"],
+        format!("claude cwd={}", repo_root.display())
+    );
+    assert!(repo_root.join(".mcp.json").exists());
+    assert!(repo_root.join("AGENTS.md").exists());
+    assert!(repo_root.join(".volicord/policy.json").exists());
+    let host_state = fs::read_to_string(claude.with_extension("state"))?;
+    assert!(host_state.contains("Scope: local"));
+    assert!(host_state.contains(&format!("Command: {}", mcp_command.display())));
+    assert_eq!(
+        value["primary_next_action"]["command"],
+        format!(
+            "volicord connection verify claude-code --repo {}",
+            repo_root.display()
+        )
+    );
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
 fn init_codex_guarded_without_degraded_opt_in_generates_hooks() -> Result<(), Box<dyn Error>> {
     let runtime_home = TempRuntimeHome::new("cli-bin-init-guarded-hooks")?;
     let repo_root = create_git_repo(&runtime_home, "product-repo")?;
@@ -381,6 +515,7 @@ fn init_codex_guarded_without_degraded_opt_in_generates_hooks() -> Result<(), Bo
         runtime_home.path(),
         [
             "init",
+            "--shared",
             "--host",
             "codex",
             "--repo",
@@ -395,6 +530,8 @@ fn init_codex_guarded_without_degraded_opt_in_generates_hooks() -> Result<(), Bo
     assert_success(&output);
     let value = json_stdout(&output)?;
     assert_eq!(value["host"], "codex");
+    assert_eq!(value["connection"]["connection_intent"], "shared");
+    assert_eq!(value["connection"]["host_scope"], "project");
     assert_eq!(value["states"]["hook_config"], "created");
     assert_eq!(value["states"]["required_hook_phases"], "configured");
     assert_eq!(value["states"]["guard_installation"], "reload_required");
@@ -450,6 +587,7 @@ fn init_claude_code_guarded_without_degraded_opt_in_generates_hooks() -> Result<
         runtime_home.path(),
         [
             "init",
+            "--shared",
             "--host",
             "claude-code",
             "--repo",
@@ -464,6 +602,8 @@ fn init_claude_code_guarded_without_degraded_opt_in_generates_hooks() -> Result<
     assert_success(&output);
     let value = json_stdout(&output)?;
     assert_eq!(value["host"], "claude-code");
+    assert_eq!(value["connection"]["connection_intent"], "shared");
+    assert_eq!(value["connection"]["host_scope"], "project");
     assert_eq!(value["states"]["hook_config"], "created");
     assert_eq!(value["states"]["guard_installation"], "reload_required");
     assert_eq!(value["states"]["prompt_capture"], "reload_required");
@@ -514,6 +654,7 @@ fn init_codex_guarded_hook_command_runs_from_subdirectory_with_spaces() -> Resul
         runtime_home.path(),
         [
             "init",
+            "--shared",
             "--host",
             "codex",
             "--repo",
@@ -589,6 +730,7 @@ fn init_claude_code_guarded_hook_command_runs_from_subdirectory_with_spaces(
         runtime_home.path(),
         [
             "init",
+            "--shared",
             "--host",
             "claude-code",
             "--repo",
@@ -677,6 +819,7 @@ fn connection_status_downgrades_relative_codex_hook_command() -> Result<(), Box<
         runtime_home.path(),
         [
             "init",
+            "--shared",
             "--host",
             "codex",
             "--repo",
@@ -775,7 +918,7 @@ fn connection_status_downgrades_relative_codex_hook_command() -> Result<(), Box<
     assert!(!value["summary_card"]["next"]
         .as_str()
         .expect("summary next should be text")
-        .contains("volicord init --host codex --repo"));
+        .contains("volicord init --host codex"));
     assert!(value["host_hook"]["stale_files"]
         .as_array()
         .expect("stale_files should be an array")
@@ -803,6 +946,7 @@ fn init_codex_record_profile_skips_host_hooks() -> Result<(), Box<dyn Error>> {
         runtime_home.path(),
         [
             "init",
+            "--shared",
             "--host",
             "codex",
             "--repo",
@@ -819,6 +963,7 @@ fn init_codex_record_profile_skips_host_hooks() -> Result<(), Box<dyn Error>> {
     let init_text = stdout(&text_output);
     assert!(init_text.contains("Volicord initialized for Codex"));
     assert!(init_text.contains("Profile:\n  record"));
+    assert!(init_text.contains("Connection:\n  intent: shared\n  host scope: project"));
     assert!(init_text.contains(&format!("Repository:\n  {}", repo_root.display())));
     assert!(init_text.contains("Repo file changes:"));
     assert!(init_text.contains("created .codex/config.toml"));
@@ -861,6 +1006,7 @@ fn init_codex_record_profile_skips_host_hooks() -> Result<(), Box<dyn Error>> {
         runtime_home.path(),
         [
             "init",
+            "--shared",
             "--host",
             "codex",
             "--repo",
@@ -878,6 +1024,8 @@ fn init_codex_record_profile_skips_host_hooks() -> Result<(), Box<dyn Error>> {
     let value = json_stdout(&output)?;
     assert_eq!(value["selected_profile"], "record");
     assert_eq!(value["states"]["selected_profile"], "record");
+    assert_eq!(value["connection"]["connection_intent"], "shared");
+    assert_eq!(value["connection"]["host_scope"], "project");
     assert_eq!(
         value["changed_repo_files"]
             .as_array()
@@ -970,6 +1118,7 @@ fn init_codex_record_profile_skips_host_hooks() -> Result<(), Box<dyn Error>> {
         runtime_home.path(),
         [
             "init",
+            "--shared",
             "--host",
             "codex",
             "--repo",
@@ -1006,6 +1155,7 @@ fn init_codex_record_profile_succeeds_without_host_hooks_or_watcher() -> Result<
         runtime_home.path(),
         [
             "init",
+            "--shared",
             "--host",
             "codex",
             "--repo",
@@ -1052,6 +1202,7 @@ fn connection_verify_cli_handshake_without_managed_host_remains_action_required(
         runtime_home.path(),
         [
             "init",
+            "--shared",
             "--host",
             "codex",
             "--repo",
@@ -1322,6 +1473,7 @@ fn connection_status_trusted_project_mentions_storage_diagnostics() -> Result<()
         runtime_home.path(),
         [
             "init",
+            "--shared",
             "--host",
             "codex",
             "--repo",
@@ -1483,6 +1635,7 @@ fn connection_verify_untrusted_project_keeps_trust_guidance() -> Result<(), Box<
         runtime_home.path(),
         [
             "init",
+            "--shared",
             "--host",
             "codex",
             "--repo",
@@ -1588,6 +1741,7 @@ fn connection_verify_record_profile_does_not_offer_detective_hook_repair(
         runtime_home.path(),
         [
             "init",
+            "--shared",
             "--host",
             "codex",
             "--repo",
@@ -1707,6 +1861,7 @@ fn init_codex_detective_profile_fails_without_observe_prerequisites() -> Result<
         runtime_home.path(),
         [
             "init",
+            "--shared",
             "--host",
             "codex",
             "--repo",
@@ -1745,6 +1900,7 @@ fn init_rejects_invalid_profile_without_artifacts() -> Result<(), Box<dyn Error>
         runtime_home.path(),
         [
             "init",
+            "--shared",
             "--host",
             "codex",
             "--repo",
@@ -1778,6 +1934,7 @@ fn init_dry_run_does_not_write_runtime_or_repo_files() -> Result<(), Box<dyn Err
         runtime_home.path(),
         [
             "init",
+            "--shared",
             "--host",
             "codex",
             "--repo",
@@ -1796,6 +1953,8 @@ fn init_dry_run_does_not_write_runtime_or_repo_files() -> Result<(), Box<dyn Err
     assert_eq!(value["status"], "dry_run");
     assert_eq!(value["host"], "codex");
     assert_eq!(value["selected_profile"], "detective");
+    assert_eq!(value["connection"]["connection_intent"], "shared");
+    assert_eq!(value["connection"]["host_scope"], "project");
     assert_eq!(value["profile"]["status"], "planned");
     assert_eq!(value["mcp"]["command"], "volicord");
     assert_eq!(value["mcp"]["args"][0], "mcp");
@@ -1840,6 +1999,29 @@ fn init_dry_run_does_not_write_runtime_or_repo_files() -> Result<(), Box<dyn Err
     assert!(!repo_root.join(".codex/rules/volicord.rules").exists());
     assert!(!repo_root.join("AGENTS.md").exists());
     assert!(!repo_root.join(".volicord/policy.json").exists());
+
+    let text_output = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--shared",
+            "--host",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--profile",
+            "detective",
+            "--dry-run",
+        ],
+        &[("PATH", path_env(&[bin_dir.as_path()]))],
+    )?;
+    assert_success(&text_output);
+    let text = stdout(&text_output);
+    assert!(text.contains("Connection:\n  intent: shared\n  host scope: project"));
+    assert!(text.contains(&format!(
+        "volicord init --host codex --shared --repo {} --profile detective --dry-run --json",
+        repo_root.display()
+    )));
     Ok(())
 }
 
@@ -1862,6 +2044,7 @@ fn init_codex_guarded_rejects_unmanaged_hook_config() -> Result<(), Box<dyn Erro
         runtime_home.path(),
         [
             "init",
+            "--shared",
             "--host",
             "codex",
             "--repo",
@@ -1905,6 +2088,7 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
         runtime_home.path(),
         [
             "init",
+            "--shared",
             "--host",
             "codex",
             "--repo",
@@ -2002,6 +2186,7 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
         runtime_home.path(),
         [
             "init",
+            "--shared",
             "--host",
             "codex",
             "--repo",
@@ -2354,6 +2539,7 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
         runtime_home.path(),
         [
             "init",
+            "--shared",
             "--host",
             "codex",
             "--repo",
@@ -2406,6 +2592,7 @@ fn init_claude_code_guarded_writes_project_mcp_policy_and_rule() -> Result<(), B
         runtime_home.path(),
         [
             "init",
+            "--shared",
             "--host",
             "claude-code",
             "--repo",
@@ -3353,6 +3540,7 @@ fn connection_status_complete_when_managed_codex_tool_call_is_observed(
         runtime_home.path(),
         [
             "init",
+            "--shared",
             "--host",
             "codex",
             "--repo",
@@ -3429,6 +3617,7 @@ fn connection_status_does_not_report_complete_from_legacy_observation() -> Resul
         runtime_home.path(),
         [
             "init",
+            "--shared",
             "--host",
             "codex",
             "--repo",
@@ -3674,6 +3863,7 @@ fn connection_verify_reports_missing_mcp_config_as_primary_action() -> Result<()
         runtime_home.path(),
         [
             "init",
+            "--shared",
             "--host",
             "codex",
             "--repo",
@@ -3718,7 +3908,7 @@ fn connection_verify_reports_missing_mcp_config_as_primary_action() -> Result<()
     assert_eq!(
         value["primary_next_action"]["command"],
         format!(
-            "volicord init --host codex --repo {}",
+            "volicord init --host codex --shared --repo {}",
             path_text(&repo_root)
         )
     );
@@ -3802,7 +3992,7 @@ fn connection_status_and_verify_report_codex_config_without_managed_launch_marke
     assert_eq!(
         status_json["primary_next_action"]["command"],
         format!(
-            "volicord init --host codex --repo {}",
+            "volicord init --host codex --shared --repo {}",
             path_text(&repo_root)
         )
     );
@@ -3856,6 +4046,7 @@ fn connection_status_and_verify_report_codex_command_drift_as_changed() -> Resul
         runtime_home.path(),
         [
             "init",
+            "--shared",
             "--host",
             "codex",
             "--repo",
@@ -3897,7 +4088,7 @@ fn connection_status_and_verify_report_codex_command_drift_as_changed() -> Resul
     assert_eq!(
         status_json["primary_next_action"]["command"],
         format!(
-            "volicord init --host codex --repo {}",
+            "volicord init --host codex --shared --repo {}",
             path_text(&repo_root)
         )
     );
@@ -3947,6 +4138,7 @@ fn codex_tool_approval_overlay_is_match_and_preserved_by_init() -> Result<(), Bo
         runtime_home.path(),
         [
             "init",
+            "--shared",
             "--host",
             "codex",
             "--repo",
@@ -4006,7 +4198,7 @@ fn codex_tool_approval_overlay_is_match_and_preserved_by_init() -> Result<(), Bo
             && check["details"]["kind"] == "codex_tool_approval"
             && check["details"]["entries"][0]["tool"] == "volicord.intake"
             && check["details"]["entries"][0]["approval_mode"] == "approve"));
-    assert!(!stdout(&status).contains("volicord init --host codex --repo"));
+    assert!(!stdout(&status).contains("volicord init --host codex"));
 
     let status_text = run_with_home_env(
         runtime_home.path(),
@@ -4028,6 +4220,7 @@ fn codex_tool_approval_overlay_is_match_and_preserved_by_init() -> Result<(), Bo
         runtime_home.path(),
         [
             "init",
+            "--shared",
             "--host",
             "codex",
             "--repo",
@@ -4136,7 +4329,7 @@ fn codex_tool_approval_overlay_is_match_and_preserved_by_init() -> Result<(), Bo
         "mcp_config_changed"
     );
     assert_eq!(verify_json["primary_next_action"], Value::Null);
-    assert!(!stdout(&verify).contains("volicord init --host codex --repo"));
+    assert!(!stdout(&verify).contains("volicord init --host codex"));
 
     let complete_status = run_with_home_env(
         runtime_home.path(),
@@ -4155,7 +4348,7 @@ fn codex_tool_approval_overlay_is_match_and_preserved_by_init() -> Result<(), Bo
     let complete_status_json = json_stdout(&complete_status)?;
     assert_complete_codex_connection_json(&complete_status_json);
     assert_eq!(complete_status_json["states"]["mcp_config"], "match");
-    assert!(!stdout(&complete_status).contains("volicord init --host codex --repo"));
+    assert!(!stdout(&complete_status).contains("volicord init --host codex"));
     Ok(())
 }
 
@@ -4173,6 +4366,7 @@ fn connection_verify_fails_when_workflow_reconcile_changes_tool_is_missing(
         runtime_home.path(),
         [
             "init",
+            "--shared",
             "--host",
             "codex",
             "--repo",
@@ -4242,6 +4436,7 @@ fn connection_status_reports_missing_guard_files_as_primary_action() -> Result<(
         runtime_home.path(),
         [
             "init",
+            "--shared",
             "--host",
             "codex",
             "--repo",
@@ -4306,6 +4501,7 @@ fn connection_status_reports_stale_guard_files_as_primary_action() -> Result<(),
         runtime_home.path(),
         [
             "init",
+            "--shared",
             "--host",
             "codex",
             "--repo",
@@ -4372,7 +4568,10 @@ fn connection_status_reports_stale_guard_files_as_primary_action() -> Result<(),
     assert!(text.contains("Profile:\n  detective"));
     assert!(text.contains("  Host follow-up: action required"));
     assert!(text.contains("Refresh stale detective host-hook files."));
-    let repair_command = format!("volicord init --host codex --repo {}", repo_root.display());
+    let repair_command = format!(
+        "volicord init --host codex --shared --repo {}",
+        repo_root.display()
+    );
     let diagnostics_command = format!(
         "volicord connection status codex --shared --repo {} --json",
         repo_root.display()

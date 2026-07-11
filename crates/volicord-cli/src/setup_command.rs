@@ -168,7 +168,7 @@ where
 }
 
 pub fn setup_usage() -> String {
-    "volicord init --host HOST --repo PATH [--profile record|detective] [--home PATH] [--mcp-command PATH] [--dry-run] [--json]\nvolicord doctor [--json] [--privacy-footprint]\n".to_owned()
+    "volicord init --host HOST --repo PATH [--shared] [--profile record|detective] [--home PATH] [--mcp-command PATH] [--dry-run] [--json]\nvolicord doctor [--json] [--privacy-footprint]\n".to_owned()
 }
 
 pub fn run_setup_command(
