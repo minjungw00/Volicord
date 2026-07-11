@@ -442,8 +442,10 @@ SummaryCard:
   guarantee: string
 
 NextActionSummary:
+  presentation_role: string
   action_kind: string
   owner_method: string | null
+  allowed_operation_categories: string[]
   label: string
   blocking_question: string | null
   required_refs: StateRecordRef[]
@@ -500,10 +502,13 @@ WriteDecisionReason:
 Meaning:
 - `SummaryCard` is the stable compact summary shape for major user-facing status views. It uses public display strings for Task, Recording, Profile, Write Ticket, Evidence, User Judgment, Changes, Close Status, Transport, one Next action, and a concise Guarantee line.
 - When selected evidence has a public evidence state, `SummaryCard.evidence` uses the display states owned by [API Value Sets](schema-value-sets.md#state-and-blocker-values). It may show `prepared` for staged-only attachment input; that value is not evidence accepted for close.
-- `SummaryCard.next` is the single display next action selected for the summary. Use `none` only when the owner-selected view knows no next action. `SummaryCard.next_action` may carry the matching structured `NextActionSummary` and may be omitted when no structured action applies.
+- `SummaryCard.next` is the single display next action selected for the summary. Use `none` only when the owner-selected view knows no next action. `SummaryCard.next_action` may carry the matching structured `NextActionSummary` and may be omitted when no structured action applies. When a structured action applies, the summary selects the action whose `presentation_role=primary`; array position is not a selection contract.
 - `SummaryCard` is a summary of other owner-selected state fields, not a second authority record. It must not add internal identifiers unless an identifier is needed for the displayed next action.
 - `SummaryCard.guarantee` is concise display wording for the summarized view. It must not claim correctness proof, test sufficiency proof, review completion, or OS-level enforcement unless another owner explicitly provides that guarantee.
-- `NextActionSummary` is the canonical next-action display shape. Its valid fields are `action_kind`, `owner_method`, `label`, `blocking_question`, and `required_refs`.
+- `NextActionSummary` is the canonical next-action display shape. Its valid fields are `presentation_role`, `action_kind`, `owner_method`, `allowed_operation_categories`, `label`, `blocking_question`, and `required_refs`.
+- Every non-empty top-level `next_actions` collection has exactly one `presentation_role=primary`. Remaining entries use `additional`. Close readiness is the explicit nested exception: `blockers[*].next_actions` flattened across one close-readiness result is one projection unit with exactly one primary, so an individual later blocker list can contain only additional actions. A singular `next_action` uses `primary`.
+- `additional` is a presentation role, not an optionality claim. An additional action can still be required to clear another blocker.
+- `allowed_operation_categories` names the owner-supported invocation categories for the action. It does not prove that the current connection can dispatch the action, does not grant user authority, and is empty when no supported API method invocation is identified.
 - A `next_actions` entry that uses stale `action` or `reason` fields is not a valid `NextActionSummary`.
 - `WriteTicketStateSummary.status` is a controlled value string.
 - `WriteTicketStateSummary.consumed_by_run_ref` is non-null only when the summarized write ticket has been consumed by a recorded Run.
@@ -521,8 +526,10 @@ Meaning:
 
 | Field | Classification | Rule |
 |---|---|---|
+| `presentation_role` | Controlled presentation-role value. | Uses `primary` or `additional` from the [next-action values](schema-value-sets.md#next-action-values). It does not describe optionality. |
 | `action_kind` | Controlled action category. | Uses the [next-action values](schema-value-sets.md#next-action-values). It is not a method-name value. |
 | `owner_method` | Method-name value or `null`. | Names the API method that owns the next action when one supported public method applies. Use `null` when no single owner method applies. |
+| `allowed_operation_categories` | Controlled operation-category values. | Lists the owner-supported invocation categories for this action. Uses `[]` when `owner_method=null` or no supported API invocation path is identified. |
 | `label` | Free-form display string. | Human- and agent-facing display text, not a canonical value. |
 | `blocking_question` | Free-form display string or `null`. | The question to resolve before the action can proceed, or `null` when no blocking question is needed. |
 | `required_refs` | `StateRecordRef[]`. | Records required for the next action. Use `[]` when there are no required refs. |
@@ -730,7 +737,7 @@ CloseReadinessBlocker:
   message: string
   control_surface: ControlSurfaceSummary | null
   can_resolve_in_chat: boolean
-  terminal_action_required: boolean
+  outside_chat_action_required: boolean
   related_refs: StateRecordRef[]
   next_actions: NextActionSummary[]
 
@@ -766,7 +773,8 @@ Meaning:
 - `CloseReadinessBlocker.code` is an owner-defined blocker code. It is not an exhaustive global public enum unless the blocker or method owner publishes a narrower local list.
 - `CloseReadinessBlocker.control_surface` may be present on `guard_*` connection-capability blockers to report the observation summary at the time the blocker was computed. It is absent for blockers that do not derive from `GuardHealthSummary` hook-state facts.
 - `can_resolve_in_chat` reports whether the blocker can be resolved through a chat-mediated user path when the method owner knows that path.
-- `terminal_action_required` reports whether the next action requires a terminal, host, filesystem, or setup action outside chat.
+- `outside_chat_action_required` reports whether the owner knows that the next action requires a terminal, host, filesystem, or setup action outside chat.
+- `can_resolve_in_chat` and `outside_chat_action_required` are independent disclosures, not logical complements. `false` for both means that neither path claim was established; it does not mean that no action is required.
 - `CloseReadinessBlocker.message`, `ValidatorResult.message`, and `GuaranteeDisplay.basis` are free-form display strings.
 - `ValidatorResult.validator_id` is a reporting label unless the value-set owner publishes a supported stable value.
 - `ValidatorResult.status`, `ValidatorResult.severity`, and `GuaranteeDisplay.level` are controlled value strings.

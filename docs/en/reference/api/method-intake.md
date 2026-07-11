@@ -227,8 +227,10 @@ state:
   close_blockers: []
   guarantee_display: null
 next_actions:
-  - action_kind: update_scope
+  - presentation_role: primary
+    action_kind: update_scope
     owner_method: volicord.update_scope
+    allowed_operation_categories: [agent_workflow]
     label: "Create the first currently applied Change Unit before write-ticket preparation."
     blocking_question: null
     required_refs:

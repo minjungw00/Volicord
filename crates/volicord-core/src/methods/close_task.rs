@@ -476,6 +476,7 @@ pub(super) fn plan_close_task_with_context(
         )?);
         blockers.extend(guard_close_blockers(project_state, &request, &context));
     }
+    normalize_close_blocker_action_projection(&mut blockers);
 
     let committed_terminal = request.intent != CloseIntent::Check && blockers.is_empty();
     let response_state_version = if committed_terminal {
@@ -665,7 +666,7 @@ pub(super) fn plan_close_task_with_context(
         close_status: close_state_text(close_state).to_owned(),
         verified_invocation: verified_invocation
             .expect("close task result planning requires verified invocation context"),
-        next_action: first_next_action(no_next_actions, &blockers),
+        next_action: primary_next_action(no_next_actions, &blockers),
     });
     let result = CloseTaskResult {
         base: placeholder_base(),
@@ -2338,8 +2339,13 @@ fn guard_close_blockers(
                 !can_resolve_in_chat,
                 vec![task_ref.clone()],
                 vec![NextActionSummary {
+                    presentation_role: NextActionPresentationRole::Primary,
                     action_kind: NextActionKind::ReconcileChanges,
                     owner_method: Some(MethodName::ReconcileChanges),
+                    allowed_operation_categories: vec![
+                        OperationCategory::AgentWorkflow,
+                        OperationCategory::LocalRecovery,
+                    ],
                     label:
                         "Run reconciliation for observed Product Repository changes before close."
                             .to_owned(),
@@ -2364,14 +2370,18 @@ fn guard_close_blockers(
         } else {
             "Detective profile requires an active Product Repository session watch."
         };
-        blockers.push(close_blocker(
+        blockers.push(close_blocker_with_resolution(
             CloseReadinessBlockerCategory::ConnectionCapability,
             "session_watch_unavailable",
             message,
+            false,
+            true,
             vec![task_ref.clone()],
             vec![NextActionSummary {
+                presentation_role: NextActionPresentationRole::Primary,
                 action_kind: NextActionKind::CloseTask,
                 owner_method: None,
+                allowed_operation_categories: Vec::new(),
                 label: "Repair or retry session watch before completing the Task.".to_owned(),
                 blocking_question: None,
                 required_refs: vec![task_ref.clone()],
@@ -2387,8 +2397,10 @@ fn guard_close_blockers(
             true,
             vec![task_ref.clone()],
             vec![NextActionSummary {
+                presentation_role: NextActionPresentationRole::Primary,
                 action_kind: NextActionKind::CloseTask,
                 owner_method: None,
+                allowed_operation_categories: Vec::new(),
                 label: "Repair Agent Connection health before completing the Task.".to_owned(),
                 blocking_question: None,
                 required_refs: vec![task_ref.clone()],
@@ -2405,8 +2417,13 @@ fn guard_close_blockers(
             !can_resolve_in_chat,
             vec![task_ref.clone()],
             vec![NextActionSummary {
+                presentation_role: NextActionPresentationRole::Primary,
                 action_kind: NextActionKind::ReconcileChanges,
                 owner_method: Some(MethodName::ReconcileChanges),
+                allowed_operation_categories: vec![
+                    OperationCategory::AgentWorkflow,
+                    OperationCategory::LocalRecovery,
+                ],
                 label: "Run reconciliation for observed Product Repository changes before close."
                     .to_owned(),
                 blocking_question: Some(
@@ -2424,8 +2441,10 @@ fn guard_close_blockers(
             "Host hook events detected a missing or stale write ticket.",
             vec![task_ref.clone()],
             vec![NextActionSummary {
+                presentation_role: NextActionPresentationRole::Primary,
                 action_kind: NextActionKind::PrepareWrite,
                 owner_method: Some(MethodName::PrepareWrite),
+                allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
                 label: "Refresh the write ticket before completing the Task.".to_owned(),
                 blocking_question: None,
                 required_refs: vec![task_ref.clone()],
@@ -2439,8 +2458,13 @@ fn guard_close_blockers(
             "Host hook events observed a Product Repository path outside the active write ticket scope.",
             vec![task_ref.clone()],
             vec![NextActionSummary {
+                presentation_role: NextActionPresentationRole::Primary,
                 action_kind: NextActionKind::ReconcileChanges,
                 owner_method: Some(MethodName::ReconcileChanges),
+                allowed_operation_categories: vec![
+                    OperationCategory::AgentWorkflow,
+                    OperationCategory::LocalRecovery,
+                ],
                 label: "Reconcile the out-of-scope observed Product Repository change before completing the Task."
                     .to_owned(),
                 blocking_question: Some(
@@ -2557,8 +2581,10 @@ fn guard_installation_close_blocker(
         true,
         vec![task_ref.clone()],
         vec![NextActionSummary {
+            presentation_role: NextActionPresentationRole::Primary,
             action_kind: NextActionKind::CloseTask,
             owner_method: None,
+            allowed_operation_categories: Vec::new(),
             label,
             blocking_question: None,
             required_refs: vec![task_ref.clone()],
@@ -2676,8 +2702,10 @@ fn terminal_close_blockers(
                     "A user-owned judgment required before superseding this Task is still pending.",
                     pending_refs.clone(),
                     vec![NextActionSummary {
+                        presentation_role: NextActionPresentationRole::Primary,
                         action_kind: NextActionKind::RecordUserJudgment,
                         owner_method: Some(MethodName::RecordUserJudgment),
+                        allowed_operation_categories: vec![OperationCategory::UserOnly],
                         label: "Resolve pending user-owned judgments through the User Channel."
                             .to_owned(),
                         blocking_question: Some(user_channel_pending_judgment_instruction(
@@ -2729,8 +2757,13 @@ fn unresolved_write_ticket_close_blockers(
                 "An expired write ticket remains unresolved for this Task.",
                 vec![write_ticket_ref(&record, project_state.state_version)],
                 vec![NextActionSummary {
+                    presentation_role: NextActionPresentationRole::Primary,
                     action_kind: NextActionKind::ReconcileChanges,
                     owner_method: Some(MethodName::ReconcileChanges),
+                    allowed_operation_categories: vec![
+                        OperationCategory::AgentWorkflow,
+                        OperationCategory::LocalRecovery,
+                    ],
                     label: "Reconcile observed changes for the expired write ticket before close."
                         .to_owned(),
                     blocking_question: Some(
@@ -2756,8 +2789,10 @@ pub(super) fn open_write_ticket_close_blocker(
         "An open write ticket remains unresolved for this Task.",
         vec![write_ticket_ref],
         vec![NextActionSummary {
+            presentation_role: NextActionPresentationRole::Primary,
             action_kind: NextActionKind::RecordRun,
             owner_method: Some(MethodName::RecordRun),
+            allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
             label: "Record the ticket-backed run or reconcile observed changes before close."
                 .to_owned(),
             blocking_question: None,
@@ -3015,8 +3050,10 @@ fn cancellation_authority_blocker(
         message,
         related_refs,
         vec![NextActionSummary {
+            presentation_role: NextActionPresentationRole::Primary,
             action_kind: NextActionKind::RequestUserJudgment,
             owner_method: Some(MethodName::RequestUserJudgment),
+            allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
             label: "Request current user cancellation authority.".to_owned(),
             blocking_question: None,
             required_refs: vec![task_ref],
@@ -3055,8 +3092,10 @@ fn completion_close_blockers(
             "Completion requires a current active Change Unit.",
             vec![task_ref.clone()],
             vec![NextActionSummary {
+                presentation_role: NextActionPresentationRole::Primary,
                 action_kind: NextActionKind::UpdateScope,
                 owner_method: Some(MethodName::UpdateScope),
+                allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
                 label: "Create or restore the current active Change Unit.".to_owned(),
                 blocking_question: None,
                 required_refs: vec![task_ref.clone()],
@@ -3083,8 +3122,10 @@ fn completion_close_blockers(
             "A user-owned judgment required before close is still pending.",
             close_complete_pending_refs.clone(),
             vec![NextActionSummary {
+                presentation_role: NextActionPresentationRole::Primary,
                 action_kind: NextActionKind::RecordUserJudgment,
                 owner_method: Some(MethodName::RecordUserJudgment),
+                allowed_operation_categories: vec![OperationCategory::UserOnly],
                 label: "Resolve pending user-owned judgments through the User Channel.".to_owned(),
                 blocking_question: Some(user_channel_pending_judgment_instruction(
                     context.guard_health.as_ref(),
@@ -3112,8 +3153,10 @@ fn completion_close_blockers(
             "A documented sensitive-action approval required for close is missing.",
             related_refs,
             vec![NextActionSummary {
+                presentation_role: NextActionPresentationRole::Primary,
                 action_kind: NextActionKind::RequestUserJudgment,
                 owner_method: Some(MethodName::RequestUserJudgment),
+                allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
                 label: "Request the user-owned sensitive-action approval.".to_owned(),
                 blocking_question: None,
                 required_refs: vec![task_ref.clone()],
@@ -3140,8 +3183,10 @@ fn completion_close_blockers(
             "An active write ticket is stale against the current state version.",
             vec![write_ticket_ref(record, project_state.state_version)],
             vec![NextActionSummary {
+                presentation_role: NextActionPresentationRole::Primary,
                 action_kind: NextActionKind::PrepareWrite,
                 owner_method: Some(MethodName::PrepareWrite),
+                allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
                 label: "Refresh the write ticket before completing the Task.".to_owned(),
                 blocking_question: None,
                 required_refs: vec![task_ref.clone()],
@@ -3156,8 +3201,10 @@ fn completion_close_blockers(
             "The current close basis is stale against the current baseline.",
             change_unit_ref.clone().into_iter().collect(),
             vec![NextActionSummary {
+                presentation_role: NextActionPresentationRole::Primary,
                 action_kind: NextActionKind::UpdateScope,
                 owner_method: Some(MethodName::UpdateScope),
+                allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
                 label: "Refresh the current scope or close basis before completing the Task."
                     .to_owned(),
                 blocking_question: None,
@@ -3198,8 +3245,10 @@ fn completion_close_blockers(
             "A required close artifact is missing, unavailable, or incompatible with storage.",
             unavailable_artifacts,
             vec![NextActionSummary {
+                presentation_role: NextActionPresentationRole::Primary,
                 action_kind: NextActionKind::RecordRun,
                 owner_method: Some(MethodName::RecordRun),
+                allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
                 label: "Record or repair the artifact supporting close evidence.".to_owned(),
                 blocking_question: None,
                 required_refs: vec![task_ref.clone()],
@@ -3219,8 +3268,10 @@ fn completion_close_blockers(
             "Residual risk exists but is not visible in the close basis.",
             vec![task_ref.clone()],
             vec![NextActionSummary {
+                presentation_role: NextActionPresentationRole::Primary,
                 action_kind: NextActionKind::RequestUserJudgment,
                 owner_method: Some(MethodName::RequestUserJudgment),
+                allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
                 label: "Make residual risk visible before requesting acceptance.".to_owned(),
                 blocking_question: None,
                 required_refs: vec![task_ref.clone()],
@@ -3257,8 +3308,10 @@ fn completion_close_blockers(
             message,
             related_refs,
             vec![NextActionSummary {
+                presentation_role: NextActionPresentationRole::Primary,
                 action_kind: NextActionKind::RequestUserJudgment,
                 owner_method: Some(MethodName::RequestUserJudgment),
+                allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
                 label: "Request current residual-risk acceptance from the user.".to_owned(),
                 blocking_question: None,
                 required_refs: vec![task_ref],
@@ -3473,8 +3526,10 @@ fn current_close_basis_blocker(
             "Completion requires a current close basis recorded by volicord.record_run.",
             vec![task_ref.clone()],
             vec![NextActionSummary {
+                presentation_role: NextActionPresentationRole::Primary,
                 action_kind: NextActionKind::RecordRun,
                 owner_method: Some(MethodName::RecordRun),
+                allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
                 label: "Record the current result and close basis.".to_owned(),
                 blocking_question: None,
                 required_refs: vec![task_ref],
@@ -3500,8 +3555,10 @@ fn current_close_basis_blocker(
             "The current close basis is stale against current Task scope.",
             vec![task_ref.clone()],
             vec![NextActionSummary {
+                presentation_role: NextActionPresentationRole::Primary,
                 action_kind: NextActionKind::RecordRun,
                 owner_method: Some(MethodName::RecordRun),
+                allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
                 label: "Record a fresh close basis for the current scope.".to_owned(),
                 blocking_question: None,
                 required_refs: vec![task_ref],
@@ -3577,8 +3634,10 @@ fn incompatible_close_basis_run_refs_blocker(
             "The current close basis contains Run refs that are not current for the Task scope.",
             incompatible_refs,
             vec![NextActionSummary {
+                presentation_role: NextActionPresentationRole::Primary,
                 action_kind: NextActionKind::RecordRun,
                 owner_method: Some(MethodName::RecordRun),
+                allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
                 label: "Record a fresh close basis for the current Run context.".to_owned(),
                 blocking_question: None,
                 required_refs: vec![task_ref],
@@ -3686,8 +3745,10 @@ fn close_evidence_blockers(
             message,
             unique_state_record_refs(related_refs),
             vec![NextActionSummary {
+                presentation_role: NextActionPresentationRole::Primary,
                 action_kind: NextActionKind::RecordRun,
                 owner_method: Some(MethodName::RecordRun),
+                allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
                 label: "Record evidence that supports the required close claims.".to_owned(),
                 blocking_question: None,
                 required_refs: required_refs.clone(),
@@ -3978,10 +4039,17 @@ fn final_acceptance_blocker(
             "Final acceptance is required before completing the Task.",
             vec![task_ref.clone()],
             vec![NextActionSummary {
+                presentation_role: NextActionPresentationRole::Primary,
                 action_kind: NextActionKind::RequestUserJudgment,
                 owner_method: Some(MethodName::RequestUserJudgment),
-                label: "Request final acceptance from the user.".to_owned(),
-                blocking_question: None,
+                allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
+                label:
+                    "The Agent Connection must create a current final-acceptance request for the user."
+                        .to_owned(),
+                blocking_question: Some(
+                    "Does the user accept the current Task result and close basis as complete?"
+                        .to_owned(),
+                ),
                 required_refs: vec![task_ref],
             }],
         )));
@@ -4026,10 +4094,17 @@ fn final_acceptance_blocker(
         message,
         related_refs,
         vec![NextActionSummary {
+            presentation_role: NextActionPresentationRole::Primary,
             action_kind: NextActionKind::RequestUserJudgment,
             owner_method: Some(MethodName::RequestUserJudgment),
-            label: "Request current final acceptance from the user.".to_owned(),
-            blocking_question: None,
+            allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
+            label:
+                "The Agent Connection must create a current final-acceptance request for the user."
+                    .to_owned(),
+            blocking_question: Some(
+                "Does the user accept the current Task result and close basis as complete?"
+                    .to_owned(),
+            ),
             required_refs: vec![task_ref],
         }],
     )))

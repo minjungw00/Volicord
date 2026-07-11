@@ -434,13 +434,14 @@ fn plan_reconcile_changes(
         .iter()
         .map(|resolution| resolution_summary(resolution, &request, planned_state_version))
         .collect::<Vec<_>>();
-    let result_next_actions = reconcile_next_actions(
+    let mut result_next_actions = reconcile_next_actions(
         &request,
         &unresolved_findings,
         &planned_judgments,
         user_channel_guard_health.as_ref(),
         request.envelope.dry_run,
     );
+    normalize_next_action_collection(&mut result_next_actions);
     let summary_card = summary_card_for_core(SummaryCardBuild {
         task: Some(&task),
         recording: if storage_mutations.is_empty() {
@@ -458,7 +459,7 @@ fn plan_reconcile_changes(
         changes: changes_summary_text(true, unresolved_findings.len() as u64),
         close_status: close_state_text(close_plan.close_state).to_owned(),
         verified_invocation,
-        next_action: first_next_action(&result_next_actions, &close_plan.blockers),
+        next_action: primary_next_action(&result_next_actions, &close_plan.blockers),
     });
     let result = ReconcileChangesResult {
         base: placeholder_base(),
@@ -1045,9 +1046,15 @@ fn unrecorded_finding(
         )?,
         can_resolve_in_chat,
         next_action: NextActionSummary {
+            presentation_role: NextActionPresentationRole::Primary,
             action_kind: NextActionKind::ReconcileChanges,
             owner_method: Some(MethodName::ReconcileChanges),
-            label: "Run reconciliation and answer any created user-owned judgment.".to_owned(),
+            allowed_operation_categories: vec![
+                OperationCategory::AgentWorkflow,
+                OperationCategory::LocalRecovery,
+            ],
+            label: "Run reconciliation; the user must answer any created judgment through a User Channel."
+                .to_owned(),
             blocking_question: Some(
                 "Does the user accept this observed Product Repository change as intentional?"
                     .to_owned(),
@@ -1104,8 +1111,13 @@ fn reconcile_next_actions(
     if !planned_judgments.is_empty() {
         if dry_run {
             return vec![NextActionSummary {
+                presentation_role: NextActionPresentationRole::Primary,
                 action_kind: NextActionKind::ReconcileChanges,
                 owner_method: Some(MethodName::ReconcileChanges),
+                allowed_operation_categories: vec![
+                    OperationCategory::AgentWorkflow,
+                    OperationCategory::LocalRecovery,
+                ],
                 label:
                     "Run reconciliation without dry-run to create pending user-owned judgment requests."
                         .to_owned(),
@@ -1120,9 +1132,14 @@ fn reconcile_next_actions(
             }];
         }
         return vec![NextActionSummary {
+            presentation_role: NextActionPresentationRole::Primary,
             action_kind: NextActionKind::RecordUserJudgment,
             owner_method: Some(MethodName::RecordUserJudgment),
-            label: close_task::user_channel_pending_judgment_instruction(guard_health),
+            allowed_operation_categories: vec![OperationCategory::UserOnly],
+            label: format!(
+                "The user must answer through the User Channel. {}",
+                close_task::user_channel_pending_judgment_instruction(guard_health)
+            ),
             blocking_question: Some(
                 "Does the user accept the observed Product Repository change as intentional?"
                     .to_owned(),
@@ -1143,8 +1160,13 @@ fn reconcile_next_actions(
         }];
     }
     vec![NextActionSummary {
+        presentation_role: NextActionPresentationRole::Primary,
         action_kind: NextActionKind::ReconcileChanges,
         owner_method: Some(MethodName::ReconcileChanges),
+        allowed_operation_categories: vec![
+            OperationCategory::AgentWorkflow,
+            OperationCategory::LocalRecovery,
+        ],
         label: "Run reconciliation again after user-owned judgments are answered.".to_owned(),
         blocking_question: None,
         required_refs: unresolved_findings

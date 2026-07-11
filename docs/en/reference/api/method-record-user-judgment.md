@@ -143,7 +143,7 @@ The result updates only covered blockers, judgment-dependent summaries, and meth
 | `state` | Current `StateSummary` after the judgment answer is recorded. Nested state fields are owned by [API State Schemas](schema-state.md). |
 | `next_actions` | `NextActionSummary[]` describing next safe API steps. The canonical shape is owned by [API State Schemas](schema-state.md#current-position-display-shapes). |
 
-`RecordUserJudgmentPayload` stays inside `user_judgment.resolution.answer` and uses the shape owned by [API Judgment Schemas](schema-judgment.md#resolution-and-answer-payload). `JudgmentRationale` stays inside `user_judgment.resolution.rationale` and does not change authority. `next_actions` entries use `action_kind`, `owner_method`, `label`, `blocking_question`, and `required_refs`; stale `action` or `reason` fields are not part of `NextActionSummary`.
+`RecordUserJudgmentPayload` stays inside `user_judgment.resolution.answer` and uses the shape owned by [API Judgment Schemas](schema-judgment.md#resolution-and-answer-payload). `JudgmentRationale` stays inside `user_judgment.resolution.rationale` and does not change authority. `next_actions` entries use `presentation_role`, `action_kind`, `owner_method`, `allowed_operation_categories`, `label`, `blocking_question`, and `required_refs`; stale `action` or `reason` fields are not part of `NextActionSummary`.
 
 ## Blocked result
 
@@ -388,8 +388,10 @@ state:
   close_blockers: []
   guarantee_display: null
 next_actions:
-  - action_kind: close_task
+  - presentation_role: primary
+    action_kind: close_task
     owner_method: volicord.close_task
+    allowed_operation_categories: [agent_workflow]
     label: "Evaluate close readiness after recording the user's product decision."
     blocking_question: null
     required_refs:

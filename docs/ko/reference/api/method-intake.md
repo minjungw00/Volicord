@@ -227,8 +227,10 @@ state:
   close_blockers: []
   guarantee_display: null
 next_actions:
-  - action_kind: update_scope
+  - presentation_role: primary
+    action_kind: update_scope
     owner_method: volicord.update_scope
+    allowed_operation_categories: [agent_workflow]
     label: "쓰기 티켓을 준비하기 전에 첫 현재 적용 Change Unit을 만드세요."
     blocking_question: null
     required_refs:

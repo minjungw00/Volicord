@@ -231,7 +231,7 @@ For successful `intent=complete`, both the returned `state.lifecycle.result` and
 | `evidence_summary` | `EvidenceSummary | null` for the close basis visible in the result, or `null` when no evidence summary is selected into the result. When the current close basis references the selected summary, `evidence_summary.evidence_state` is `accepted_for_close`. Shape is owned by [API State Schemas](schema-state.md#evidence-and-run-snapshot-shapes). |
 | `artifact_refs` | `ArtifactRef[]` for close-relevant artifacts selected into the result. `ArtifactRef` shape is owned by [API Artifact Schemas](schema-artifacts.md#artifactref). |
 
-`CloseTaskResult` does not have a top-level `next_actions` list. `summary_card.next` is the single display next action selected for the result summary. Next actions for close blockers remain inside `CloseReadinessBlocker.next_actions` and use the canonical `NextActionSummary` shape from [API State Schemas](schema-state.md#current-position-display-shapes).
+`CloseTaskResult` does not have a top-level `next_actions` list. `summary_card.next` is the single display next action selected from the `presentation_role=primary` blocker action; array position is not the selection contract. Next actions for close blockers remain inside `CloseReadinessBlocker.next_actions` and use the canonical `NextActionSummary` shape from [API State Schemas](schema-state.md#current-position-display-shapes). Across `blockers[*].next_actions` in one result, exactly one action is primary; later blocker-local lists can contain only additional actions.
 
 Pending judgments for another operation and informational-only pending
 judgments may remain visible through the broader
@@ -262,10 +262,10 @@ The production meanings below apply only after the method reaches close-readines
 | `guard_not_observed` | `connection_capability` | A detective close path has configured detective host-hook files, but no matching host-hook observation is recorded. |
 | `guard_stale` | `connection_capability` | A detective close path has an internal host-hook installation record whose status is `stale`. |
 | `guard_broken` | `connection_capability` | A detective close path has an internal host-hook installation record whose status is `broken`. |
-| `guard_required_hooks_missing` | `connection_capability` | A detective close path has an internal host-hook installation record with missing required host-hook phases. The blocker reports the missing phases, host kind, `terminal_action_required`, `can_resolve_in_chat`, and `next_actions`. |
+| `guard_required_hooks_missing` | `connection_capability` | A detective close path has an internal host-hook installation record with missing required host-hook phases. The blocker reports the missing phases, host kind, `outside_chat_action_required`, `can_resolve_in_chat`, and `next_actions`. |
 | `guard_degraded` | `connection_capability` | A detective close path has degraded host-hook configuration or observation-state health not covered by a more specific `guard_*` blocker, and the current detective host hook-health policy blocks close on degraded health. |
 | `guard_connection_unhealthy` | `connection_capability` | A detective close path has an Agent Connection health fact that is not healthy. |
-| `session_watch_unavailable` | `connection_capability` | A detective close path requires Product Repository session-watch coverage, but the selected watcher state is `disabled`, `degraded`, `unavailable`, or active with a partial-coverage warning. |
+| `session_watch_unavailable` | `connection_capability` | A detective close path requires Product Repository session-watch coverage, but the selected watcher state is `disabled`, `degraded`, `unavailable`, or active with a partial-coverage warning. Repair or retry requires action outside chat, so `outside_chat_action_required=true`. |
 | `unresolved_unrecorded_changes` | `connection_capability` | Detective control-surface health reports unresolved unrecorded Product Repository changes that must be reconciled before close. The blocker includes `next_actions` with `owner_method=volicord.reconcile_changes`, and `can_resolve_in_chat` reports whether the current path can proceed through a chat-mediated user path. |
 | `guard_write_ticket_missing_or_stale` | `write_compatibility` | Host-hook events detected missing, indeterminate, ambiguous, or stale write-ticket readiness for the close path. |
 | `guard_write_ticket_path_scope_violation` | `write_compatibility` | Host-hook events observed a Product Repository path outside the active write-ticket scope. |
@@ -275,8 +275,8 @@ The production meanings below apply only after the method reaches close-readines
 | `evidence_provenance_stale` | `evidence_provenance` | Evidence observation provenance exists but is stale for the current Task scope, Change Unit, source Run, or close-basis evidence summary. |
 | `evidence_agent_report_only` | `evidence_provenance` | Required close evidence is supported only by cooperative agent reports when stronger provenance is required. |
 | `artifact_unavailable` | `artifact_availability` | A close-relevant artifact is missing, unavailable, unusable, or integrity-failed. |
-| `missing_final_acceptance` | `final_acceptance` | Required final acceptance is absent for the current close basis. |
-| `stale_final_acceptance` | `final_acceptance` | A final acceptance exists but is stale or incompatible with the current Task, Change Unit, `scope_revision`, `close_basis_revision`, baseline, or result refs. |
+| `missing_final_acceptance` | `final_acceptance` | Required final acceptance is absent for the current close basis. The surfaced action identifies the Agent Connection `volicord.request_user_judgment` procedure and the final-acceptance question. |
+| `stale_final_acceptance` | `final_acceptance` | A final acceptance exists but is stale or incompatible with the current Task, Change Unit, `scope_revision`, `close_basis_revision`, baseline, or result refs. The surfaced action requests a judgment bound to the current basis. |
 | `residual_risk_not_visible` | `residual_risk_visibility` | Close-relevant residual risk has not been made visible. |
 | `missing_residual_risk_acceptance` | `residual_risk_acceptance` | Required residual-risk acceptance is absent for the current residual-risk requirements. |
 | `stale_residual_risk_acceptance` | `residual_risk_acceptance` | Residual-risk acceptance exists but does not match the current `close_basis_revision` and exact residual-risk `risk_id` values. |
@@ -285,6 +285,8 @@ The production meanings below apply only after the method reaches close-readines
 These codes are method-local `CloseReadinessBlocker.code` values. They are not public `ErrorCode` values, not `WriteDecisionReason.code` values, and not global value-set entries.
 
 For `pending_user_judgment`, blocker next actions may point to available User Channel input methods, and `pending_judgment_inbox_items` carries the actionable inbox item shape. Capture paths can include host prompt input, chat command capture, local consent URL, or the CLI inbox command `volicord inbox answer <judgment-id> --choice <choice>` when those paths are available. The blocker does not authorize an Agent Connection to answer the user-owned judgment.
+
+`missing_final_acceptance` with no pending final-acceptance judgment is a supported two-step state, not an authority shortcut. A read-only check or a blocked close attempt does not create a judgment record. Its `request_user_judgment` action has `allowed_operation_categories=[agent_workflow]`; the Agent Connection creates the current request using the displayed question. After that commit, `pending_user_judgment` exposes a `record_user_judgment` action with `allowed_operation_categories=[user_only]` and the available User Channel paths. The Agent Connection must not perform the second action.
 
 ## Blocked result
 
@@ -449,13 +451,15 @@ state:
       code: missing_final_acceptance
       message: "Final acceptance is still required before this Task can close."
       can_resolve_in_chat: false
-      terminal_action_required: false
+      outside_chat_action_required: false
       related_refs: []
       next_actions:
-        - action_kind: request_user_judgment
+        - presentation_role: primary
+          action_kind: request_user_judgment
           owner_method: volicord.request_user_judgment
-          label: "Request final acceptance from the user."
-          blocking_question: "Has the user given final acceptance for the completed Task?"
+          allowed_operation_categories: [agent_workflow]
+          label: "The Agent Connection must create a current final-acceptance request for the user."
+          blocking_question: "Does the user accept the current Task result and close basis as complete?"
           required_refs:
             - record_kind: task
               record_id: task_close_001
@@ -468,13 +472,15 @@ blockers:
     code: missing_final_acceptance
     message: "Final acceptance is still required before this Task can close."
     can_resolve_in_chat: false
-    terminal_action_required: false
+    outside_chat_action_required: false
     related_refs: []
     next_actions:
-      - action_kind: request_user_judgment
+      - presentation_role: primary
+        action_kind: request_user_judgment
         owner_method: volicord.request_user_judgment
-        label: "Request final acceptance from the user."
-        blocking_question: "Has the user given final acceptance for the completed Task?"
+        allowed_operation_categories: [agent_workflow]
+        label: "The Agent Connection must create a current final-acceptance request for the user."
+        blocking_question: "Does the user accept the current Task result and close basis as complete?"
         required_refs:
           - record_kind: task
             record_id: task_close_001

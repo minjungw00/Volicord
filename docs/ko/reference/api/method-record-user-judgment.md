@@ -142,7 +142,7 @@ Markdown, 상태 요약, 상태 보기는 사용자 답변을 주장하거나 �
 | `state` | 판단 답변이 기록된 뒤의 현재 `StateSummary`입니다. 중첩 상태 필드는 [API 상태 스키마](schema-state.md)가 담당합니다. |
 | `next_actions` | 다음에 안전하게 수행할 API 단계를 설명하는 `NextActionSummary[]`입니다. 기준 형태는 [API 상태 스키마](schema-state.md#current-position-display-shapes)가 담당합니다. |
 
-`RecordUserJudgmentPayload`는 `user_judgment.resolution.answer` 안에 남으며, [API 판단 스키마](schema-judgment.md#resolution-and-answer-payload)가 담당하는 형태를 사용합니다. `JudgmentRationale`은 `user_judgment.resolution.rationale` 안에 남으며 권한을 바꾸지 않습니다. `next_actions` 항목은 `action_kind`, `owner_method`, `label`, `blocking_question`, `required_refs`를 사용합니다. 오래된 `action` 또는 `reason` 필드는 `NextActionSummary`의 일부가 아닙니다.
+`RecordUserJudgmentPayload`는 `user_judgment.resolution.answer` 안에 남으며, [API 판단 스키마](schema-judgment.md#resolution-and-answer-payload)가 담당하는 형태를 사용합니다. `JudgmentRationale`은 `user_judgment.resolution.rationale` 안에 남으며 권한을 바꾸지 않습니다. `next_actions` 항목은 `presentation_role`, `action_kind`, `owner_method`, `allowed_operation_categories`, `label`, `blocking_question`, `required_refs`를 사용합니다. 오래된 `action` 또는 `reason` 필드는 `NextActionSummary`의 일부가 아닙니다.
 
 ## 차단 결과
 
@@ -387,8 +387,10 @@ state:
   close_blockers: []
   guarantee_display: null
 next_actions:
-  - action_kind: close_task
+  - presentation_role: primary
+    action_kind: close_task
     owner_method: volicord.close_task
+    allowed_operation_categories: [agent_workflow]
     label: "사용자의 제품 결정을 기록한 뒤 닫기 준비 상태를 평가하세요."
     blocking_question: null
     required_refs:

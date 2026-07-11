@@ -122,7 +122,7 @@ Truthful projection rules:
 | `summary_card` | `SummaryCard` for the selected status view. Its evidence display uses public evidence states when evidence or close details are selected, with `accepted_for_close` limited to close-readiness output. Shape is owned by [API State Schemas](schema-state.md#current-position-display-shapes). |
 | `active_task` | `StateSummary | null` for the currently selected Task summary. |
 | `status_summary` | Free-form display string summarizing the current status view. When close-readiness is selected, it may summarize the current close-readiness state or the first close blocker code; the structured authority facts remain in the other result fields. |
-| `next_actions` | `NextActionSummary[]` describing the next safe API steps. |
+| `next_actions` | `NextActionSummary[]` describing the next safe API steps. A non-empty list has exactly one `presentation_role=primary`; `summary_card.next_action` selects that action rather than relying on array position. |
 | `pending_user_judgments` | `StateRecordRef[]` for pending user-judgment records selected into the status view. |
 | `pending_judgment_inbox_items` | `JudgmentInboxItem[]` for pending judgments needing user action when `include.pending_user_judgments=true`. Shape is owned by [API Judgment Schemas](schema-judgment.md#judgmentinboxitem). |
 | `user_channel_availability` | `UserChannelAvailability` for supported answer paths when `include.pending_user_judgments=true` and a Task-scoped judgment view is available. It may report unavailable host prompt input while still reporting available chat capture, local consent, or CLI inbox paths. Shape is owned by [API Judgment Schemas](schema-judgment.md#judgmentinboxitem). |
@@ -254,7 +254,7 @@ active_task:
       code: pending_user_judgment
       message: "User-owned product decision about CSV column order is still pending."
       can_resolve_in_chat: false
-      terminal_action_required: false
+      outside_chat_action_required: false
       related_refs:
         - record_kind: user_judgment
           record_id: uj_export_columns_001
@@ -262,9 +262,11 @@ active_task:
           task_id: task_export_001
           state_version: 42
       next_actions:
-        - action_kind: record_user_judgment
+        - presentation_role: primary
+          action_kind: record_user_judgment
           owner_method: volicord.record_user_judgment
-          label: "Record the user's answer for the pending CSV column decision."
+          allowed_operation_categories: [user_only]
+          label: "The user must answer the pending CSV column decision through the User Channel."
           blocking_question: "What is the user's answer for the pending CSV column decision?"
           required_refs:
             - record_kind: user_judgment
@@ -278,9 +280,11 @@ active_task:
     capability_refs: []
 status_summary: "Close readiness is blocked by pending_user_judgment."
 next_actions:
-  - action_kind: record_user_judgment
+  - presentation_role: primary
+    action_kind: record_user_judgment
     owner_method: volicord.record_user_judgment
-    label: "Record the user's answer for the pending CSV column decision."
+    allowed_operation_categories: [user_only]
+    label: "The user must answer the pending CSV column decision through the User Channel."
     blocking_question: "What is the user's answer for the pending CSV column decision?"
     required_refs:
       - record_kind: user_judgment
@@ -345,7 +349,7 @@ close_blockers:
     code: pending_user_judgment
     message: "User-owned product decision about CSV column order is still pending."
     can_resolve_in_chat: false
-    terminal_action_required: false
+    outside_chat_action_required: false
     related_refs:
       - record_kind: user_judgment
         record_id: uj_export_columns_001
@@ -353,9 +357,11 @@ close_blockers:
         task_id: task_export_001
         state_version: 42
     next_actions:
-      - action_kind: record_user_judgment
+      - presentation_role: primary
+        action_kind: record_user_judgment
         owner_method: volicord.record_user_judgment
-        label: "Record the user's answer for the pending CSV column decision."
+        allowed_operation_categories: [user_only]
+        label: "The user must answer the pending CSV column decision through the User Channel."
         blocking_question: "What is the user's answer for the pending CSV column decision?"
         required_refs:
           - record_kind: user_judgment

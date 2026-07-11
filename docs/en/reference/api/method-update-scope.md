@@ -285,8 +285,10 @@ state:
   close_blockers: []
   guarantee_display: null
 next_actions:
-  - action_kind: prepare_write
+  - presentation_role: primary
+    action_kind: prepare_write
     owner_method: volicord.prepare_write
+    allowed_operation_categories: [agent_workflow]
     label: "Check the saved-filter change against current scope."
     blocking_question: null
     required_refs:

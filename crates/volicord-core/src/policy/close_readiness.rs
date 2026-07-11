@@ -5,10 +5,11 @@ use volicord_store::core_pipeline::RunRecord;
 use volicord_types::{
     ActorSource, BaselineRef, ChangeUnitId, CloseReadinessBlocker, CloseReadinessBlockerCategory,
     CurrentCloseBasis, JsonObject, JudgmentBasis, JudgmentBasisCompatibilityStatus, JudgmentKind,
-    JudgmentRequiredFor, JudgmentResolutionOutcome, MethodName, NextActionKind, NextActionSummary,
-    ProjectId, RecordUserJudgmentPayload, RequiredNullable, RiskAcceptanceCoverage, RiskId,
-    StateRecordKind, StateRecordRef, TaskId, UserJudgmentOptionAction, UserJudgmentResolution,
-    UserJudgmentStatus, UtcTimestamp,
+    JudgmentRequiredFor, JudgmentResolutionOutcome, MethodName, NextActionKind,
+    NextActionPresentationRole, NextActionSummary, OperationCategory, ProjectId,
+    RecordUserJudgmentPayload, RequiredNullable, RiskAcceptanceCoverage, RiskId, StateRecordKind,
+    StateRecordRef, TaskId, UserJudgmentOptionAction, UserJudgmentResolution, UserJudgmentStatus,
+    UtcTimestamp,
 };
 
 pub(crate) fn is_terminal_lifecycle(value: &str) -> bool {
@@ -38,7 +39,7 @@ pub(crate) fn close_blocker_with_resolution(
     code: &'static str,
     message: impl Into<String>,
     can_resolve_in_chat: bool,
-    terminal_action_required: bool,
+    outside_chat_action_required: bool,
     related_refs: Vec<StateRecordRef>,
     next_actions: Vec<NextActionSummary>,
 ) -> CloseReadinessBlocker {
@@ -48,7 +49,7 @@ pub(crate) fn close_blocker_with_resolution(
         message: message.into(),
         control_surface: None,
         can_resolve_in_chat,
-        terminal_action_required,
+        outside_chat_action_required,
         related_refs,
         next_actions,
     }
@@ -59,8 +60,10 @@ pub(crate) fn close_next_action(
     required_refs: Vec<StateRecordRef>,
 ) -> NextActionSummary {
     NextActionSummary {
+        presentation_role: NextActionPresentationRole::Primary,
         action_kind: NextActionKind::CloseTask,
         owner_method: Some(MethodName::CloseTask),
+        allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
         label: label.to_owned(),
         blocking_question: None,
         required_refs,

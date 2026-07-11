@@ -122,7 +122,7 @@ StatusRequest:
 | `summary_card` | 선택된 상태 조회 보기에 대한 `SummaryCard`입니다. 증거나 닫기 세부사항이 선택되면 증거 표시는 공개 증거 상태를 사용하며, `accepted_for_close`는 닫기 준비 상태 출력에만 사용됩니다. 형태는 [API 상태 스키마](schema-state.md#current-position-display-shapes)가 담당합니다. |
 | `active_task` | 현재 선택된 `Task` 요약의 `StateSummary | null`입니다. |
 | `status_summary` | 현재 상태 조회 보기를 요약하는 자유 형식 표시 문자열입니다. 닫기 준비 상태 보기가 선택되면 현재 닫기 준비 상태나 첫 번째 닫기 차단 사유 코드를 요약할 수 있습니다. 구조화된 권한 사실은 다른 결과 필드에 남습니다. |
-| `next_actions` | 다음 안전한 API 단계를 설명하는 `NextActionSummary[]`입니다. |
+| `next_actions` | 다음 안전한 API 단계를 설명하는 `NextActionSummary[]`입니다. 비어 있지 않은 목록에는 `presentation_role=primary`인 항목이 정확히 하나 있으며 `summary_card.next_action`은 배열 위치가 아니라 그 행동을 선택합니다. |
 | `pending_user_judgments` | 상태 조회 보기에 선택된 대기 중 사용자 판단 기록의 `StateRecordRef[]`입니다. |
 | `pending_judgment_inbox_items` | `include.pending_user_judgments=true`일 때 사용자 행동이 필요한 대기 판단의 `JudgmentInboxItem[]`입니다. 형태는 [API 판단 스키마](schema-judgment.md#judgmentinboxitem)가 담당합니다. |
 | `user_channel_availability` | `include.pending_user_judgments=true`이고 작업 범위 판단 보기를 사용할 수 있을 때 지원되는 답변 경로를 나타내는 `UserChannelAvailability`입니다. 호스트 프롬프트 입력을 사용할 수 없다고 보고하면서도 사용할 수 있는 채팅 캡처, 로컬 consent, CLI inbox 경로를 함께 보고할 수 있습니다. 형태는 [API 판단 스키마](schema-judgment.md#judgmentinboxitem)가 담당합니다. |
@@ -254,7 +254,7 @@ active_task:
       code: pending_user_judgment
       message: "CSV 열 순서에 대한 사용자 소유 제품 결정이 아직 대기 중입니다."
       can_resolve_in_chat: false
-      terminal_action_required: false
+      outside_chat_action_required: false
       related_refs:
         - record_kind: user_judgment
           record_id: uj_export_columns_001
@@ -262,9 +262,11 @@ active_task:
           task_id: task_export_001
           state_version: 42
       next_actions:
-        - action_kind: record_user_judgment
+        - presentation_role: primary
+          action_kind: record_user_judgment
           owner_method: volicord.record_user_judgment
-          label: "대기 중인 CSV 열 순서 결정에 사용자의 답변을 기록하세요."
+          allowed_operation_categories: [user_only]
+          label: "사용자가 User Channel을 통해 대기 중인 CSV 열 순서 결정에 답해야 합니다."
           blocking_question: "대기 중인 CSV 열 순서 결정에 사용자가 어떻게 답했습니까?"
           required_refs:
             - record_kind: user_judgment
@@ -278,9 +280,11 @@ active_task:
     capability_refs: []
 status_summary: "닫기 준비 상태가 pending_user_judgment 때문에 차단되었습니다."
 next_actions:
-  - action_kind: record_user_judgment
+  - presentation_role: primary
+    action_kind: record_user_judgment
     owner_method: volicord.record_user_judgment
-    label: "대기 중인 CSV 열 순서 결정에 사용자의 답변을 기록하세요."
+    allowed_operation_categories: [user_only]
+    label: "사용자가 User Channel을 통해 대기 중인 CSV 열 순서 결정에 답해야 합니다."
     blocking_question: "대기 중인 CSV 열 순서 결정에 사용자가 어떻게 답했습니까?"
     required_refs:
       - record_kind: user_judgment
@@ -345,7 +349,7 @@ close_blockers:
     code: pending_user_judgment
     message: "CSV 열 순서에 대한 사용자 소유 제품 결정이 아직 대기 중입니다."
     can_resolve_in_chat: false
-    terminal_action_required: false
+    outside_chat_action_required: false
     related_refs:
       - record_kind: user_judgment
         record_id: uj_export_columns_001
@@ -353,9 +357,11 @@ close_blockers:
         task_id: task_export_001
         state_version: 42
     next_actions:
-      - action_kind: record_user_judgment
+      - presentation_role: primary
+        action_kind: record_user_judgment
         owner_method: volicord.record_user_judgment
-        label: "대기 중인 CSV 열 순서 결정에 사용자의 답변을 기록하세요."
+        allowed_operation_categories: [user_only]
+        label: "사용자가 User Channel을 통해 대기 중인 CSV 열 순서 결정에 답해야 합니다."
         blocking_question: "대기 중인 CSV 열 순서 결정에 사용자가 어떻게 답했습니까?"
         required_refs:
           - record_kind: user_judgment

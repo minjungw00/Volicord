@@ -89,8 +89,10 @@
           "McpToolIssueCode",
           "MethodName",
           "NextActionKind",
+          "NextActionPresentationRole",
           "NextActionSummary",
           "NonGuarantee",
+          "OperationCategory",
           "PlannedBlocker",
           "PlannedBlockerSourceKind",
           "PlannedEffect",
@@ -132,7 +134,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:22ddbe6b99f4ab66dab3ecee6a31850701eccac294ab6c7e969ac0fd32b5dbc4"
+        "sha256": "sha256:f8150366fa9f12319eda0dc34bfffd027013d74c2417bd7208b4e02d31ac51f3"
       }
     },
     {
@@ -208,8 +210,10 @@
           "McpToolIssueCode",
           "MethodName",
           "NextActionKind",
+          "NextActionPresentationRole",
           "NextActionSummary",
           "NonGuarantee",
+          "OperationCategory",
           "PlannedBlocker",
           "PlannedBlockerSourceKind",
           "PlannedEffect",
@@ -249,7 +253,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:26740e6d9327d44d14ab974199b16dbdccd8ba2600939bf106d8cde0c1ccdb01"
+        "sha256": "sha256:90f190804b8271f31efb7489ff40c9ab75cc9b61bb1aaa1e321b0162b44a13e6"
       }
     },
     {

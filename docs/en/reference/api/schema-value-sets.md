@@ -90,20 +90,27 @@ These values classify derived invocation or persisted actor provenance. They do 
 <a id="next-action-values"></a>
 ## Next-action values
 
-`NextActionSummary.action_kind` is a controlled action-category value. It uses only these supported values:
+`NextActionSummary.presentation_role` uses exactly these controlled values:
 
-| `action_kind` value | `owner_method` when one method owns the next step |
+| Value | Meaning |
 |---|---|
-| `update_scope` | `volicord.update_scope` |
-| `prepare_write` | `volicord.prepare_write` |
-| `stage_artifact` | `volicord.stage_artifact` |
-| `record_run` | `volicord.record_run` |
-| `request_user_judgment` | `volicord.request_user_judgment` |
-| `record_user_judgment` | `volicord.record_user_judgment` |
-| `reconcile_changes` | `volicord.reconcile_changes` |
-| `close_task` | `volicord.close_task` |
+| `primary` | The single action selected as the main next action in the owner-composed action collection. |
+| `additional` | Another surfaced action in the same collection. It can still be required and does not mean optional. |
 
-`action_kind` is not a method-name value. `NextActionSummary.owner_method` uses the [method-name value set](#method-name-values) when one supported public method owns the next step, and it is `null` when no single owner method applies. Method behavior for the next step stays with the method owner document routed from [API Methods](methods.md). The full `NextActionSummary` shape is owned by [API State Schemas](schema-state.md#current-position-display-shapes).
+`NextActionSummary.action_kind` is a controlled action-category value. It uses only these supported values and owner-supported invocation categories:
+
+| `action_kind` value | `owner_method` when one method owns the next step | `allowed_operation_categories` |
+|---|---|---|
+| `update_scope` | `volicord.update_scope` | `agent_workflow` |
+| `prepare_write` | `volicord.prepare_write` | `agent_workflow` |
+| `stage_artifact` | `volicord.stage_artifact` | `agent_workflow` |
+| `record_run` | `volicord.record_run` | `agent_workflow` |
+| `request_user_judgment` | `volicord.request_user_judgment` | `agent_workflow` |
+| `record_user_judgment` | `volicord.record_user_judgment` | `user_only` |
+| `reconcile_changes` | `volicord.reconcile_changes` | `agent_workflow`, `local_recovery` |
+| `close_task` | `volicord.close_task` | `agent_workflow` |
+
+`action_kind` is not a method-name value. `NextActionSummary.owner_method` uses the [method-name value set](#method-name-values) when one supported public method owns the next step, and it is `null` when no single owner method applies. An action with `owner_method=null` uses `allowed_operation_categories=[]`; its label and the containing owner identify any required host, terminal, filesystem, or setup work. The operation-category list describes owner-supported invocation paths, not current connection availability or granted authority. Method behavior for the next step stays with the method owner document routed from [API Methods](methods.md). The full `NextActionSummary` shape is owned by [API State Schemas](schema-state.md#current-position-display-shapes).
 
 <a id="response-and-effect-values"></a>
 ## Response and effect values

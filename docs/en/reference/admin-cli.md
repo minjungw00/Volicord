@@ -169,9 +169,10 @@ Not supported:
   may include a follow-up verification command. It uses `none` only when the
   selected view has no known next action. Status and change-reconciliation text
   also shows the complete top-level `close_blockers` and `next_actions` counts,
-  so the card action is not presented as the only action. Array order does not
-  define public primary or additional authority roles. Stable blocker and action
-  codes remain distinct from human sentences.
+  so the card action is not presented as the only action. `presentation_role`
+  defines the public primary or additional display role; array order does not,
+  and neither role grants authority. Stable blocker and action codes remain
+  distinct from human sentences.
 - Text summaries hide internal IDs unless the displayed action needs one. JSON
   retains the existing field names and stable values in `summary_card` and the
   top-level response; automation must not parse text formatting.
@@ -913,8 +914,9 @@ Selection and dispatch:
   `actor_source=local_user` and `operation_category=local_recovery`.
 - Output includes the compact summary card and counts for resolved changes,
   pending judgments, unresolved changes, all top-level close blockers, and all
-  top-level next actions. The counts do not assign authority roles based on
-  array order. Rejected Core responses remain rejected CLI results.
+  top-level next actions. The counts and array order do not assign presentation
+  roles; the structured `presentation_role` field does. Rejected Core responses
+  remain rejected CLI results.
 
 With `--dry-run`, text and JSON show planned automatic resolutions, changes that
 need user judgment, judgment requests that would be created, projected close

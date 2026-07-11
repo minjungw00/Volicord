@@ -258,6 +258,42 @@ fn status_close_include_matches_check_close_blockers() -> Result<(), Box<dyn Err
         check.response_value["blockers"]
     );
     assert_close_blocker(&status.response_value, "missing_final_acceptance");
+    let next_actions = status.response_value["next_actions"]
+        .as_array()
+        .expect("status next_actions should be an array");
+    let primary_actions = next_actions
+        .iter()
+        .filter(|action| action["presentation_role"] == "primary")
+        .collect::<Vec<_>>();
+    assert_eq!(primary_actions.len(), 1);
+    assert!(
+        next_actions
+            .iter()
+            .filter(|action| action["presentation_role"] == "additional")
+            .count()
+            >= 1
+    );
+    assert_eq!(
+        status.response_value["summary_card"]["next_action"],
+        *primary_actions[0]
+    );
+    let blocker_actions = status.response_value["close_blockers"]
+        .as_array()
+        .expect("close blockers should be an array")
+        .iter()
+        .flat_map(|blocker| {
+            blocker["next_actions"]
+                .as_array()
+                .expect("blocker next_actions should be an array")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        blocker_actions
+            .iter()
+            .filter(|action| action["presentation_role"] == "primary")
+            .count(),
+        1
+    );
     assert_eq!(
         status.response_value["guarantee_display"]["level"],
         "cooperative"
@@ -268,6 +304,62 @@ fn status_close_include_matches_check_close_blockers() -> Result<(), Box<dyn Err
     );
     assert_eq!(harness.counts()?, before);
     Ok(())
+}
+
+#[test]
+fn next_action_dedup_ignores_presentation_role_and_selection_uses_primary_role() {
+    for owner_method in [
+        MethodName::UpdateScope,
+        MethodName::PrepareWrite,
+        MethodName::StageArtifact,
+        MethodName::RecordRun,
+        MethodName::RequestUserJudgment,
+        MethodName::CloseTask,
+    ] {
+        assert_eq!(
+            allowed_operation_categories(Some(owner_method)),
+            vec![OperationCategory::AgentWorkflow]
+        );
+    }
+    assert_eq!(
+        allowed_operation_categories(Some(MethodName::RecordUserJudgment)),
+        vec![OperationCategory::UserOnly]
+    );
+    assert_eq!(
+        allowed_operation_categories(Some(MethodName::ReconcileChanges)),
+        vec![
+            OperationCategory::AgentWorkflow,
+            OperationCategory::LocalRecovery
+        ]
+    );
+    assert!(allowed_operation_categories(None).is_empty());
+
+    let primary = NextActionSummary {
+        presentation_role: NextActionPresentationRole::Primary,
+        action_kind: NextActionKind::RecordRun,
+        owner_method: Some(MethodName::RecordRun),
+        allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
+        label: "Record the current result.".to_owned(),
+        blocking_question: None,
+        required_refs: Vec::new(),
+    };
+    let mut additional_duplicate = primary.clone();
+    additional_duplicate.presentation_role = NextActionPresentationRole::Additional;
+
+    let deduplicated = super::super::status::unique_next_actions(vec![
+        additional_duplicate.clone(),
+        primary.clone(),
+    ]);
+    assert_eq!(deduplicated.len(), 1);
+
+    let distinct_additional = NextActionSummary {
+        label: "Additional action.".to_owned(),
+        ..additional_duplicate
+    };
+    let reordered = [distinct_additional, primary.clone()];
+    let selected =
+        primary_next_action(&reordered, &[]).expect("primary action should be selected by role");
+    assert_eq!(selected, &primary);
 }
 
 #[test]

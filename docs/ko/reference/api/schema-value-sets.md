@@ -94,20 +94,27 @@ Channel 출처와 함께 `resolved_by_actor_source=local_user`가 필요합니�
 <a id="next-action-values"></a>
 ## 다음 행동 값
 
-`NextActionSummary.action_kind`는 제어되는 행동 범주 값입니다. 지원되는 값은 아래 값 집합뿐입니다.
+`NextActionSummary.presentation_role`은 아래의 제어 값만 사용합니다.
 
-| `action_kind` 값 | 메서드 하나가 다음 단계를 담당할 때의 `owner_method` |
+| 값 | 의미 |
 |---|---|
-| `update_scope` | `volicord.update_scope` |
-| `prepare_write` | `volicord.prepare_write` |
-| `stage_artifact` | `volicord.stage_artifact` |
-| `record_run` | `volicord.record_run` |
-| `request_user_judgment` | `volicord.request_user_judgment` |
-| `record_user_judgment` | `volicord.record_user_judgment` |
-| `reconcile_changes` | `volicord.reconcile_changes` |
-| `close_task` | `volicord.close_task` |
+| `primary` | 담당 문서가 구성한 행동 모음에서 주된 다음 행동으로 선택된 단일 행동입니다. |
+| `additional` | 같은 모음에 함께 표시되는 다른 행동입니다. 여전히 필수일 수 있으며 선택 사항이라는 뜻이 아닙니다. |
 
-`action_kind`는 메서드 이름 값이 아닙니다. 지원되는 공개 메서드 하나가 다음 단계를 담당할 때 `NextActionSummary.owner_method`는 [메서드 이름 값 집합](#method-name-values)을 사용하고, 단일 담당 메서드가 없으면 `null`입니다. 다음 단계의 메서드 동작은 [API 메서드](methods.md)가 안내하는 메서드 담당 문서에 둡니다. 전체 `NextActionSummary` 형태는 [API 상태 스키마](schema-state.md#current-position-display-shapes)가 담당합니다.
+`NextActionSummary.action_kind`는 제어되는 행동 범주 값입니다. 지원되는 값과 담당 문서가 지원하는 호출 범주는 아래와 같습니다.
+
+| `action_kind` 값 | 메서드 하나가 다음 단계를 담당할 때의 `owner_method` | `allowed_operation_categories` |
+|---|---|---|
+| `update_scope` | `volicord.update_scope` | `agent_workflow` |
+| `prepare_write` | `volicord.prepare_write` | `agent_workflow` |
+| `stage_artifact` | `volicord.stage_artifact` | `agent_workflow` |
+| `record_run` | `volicord.record_run` | `agent_workflow` |
+| `request_user_judgment` | `volicord.request_user_judgment` | `agent_workflow` |
+| `record_user_judgment` | `volicord.record_user_judgment` | `user_only` |
+| `reconcile_changes` | `volicord.reconcile_changes` | `agent_workflow`, `local_recovery` |
+| `close_task` | `volicord.close_task` | `agent_workflow` |
+
+`action_kind`는 메서드 이름 값이 아닙니다. 지원되는 공개 메서드 하나가 다음 단계를 담당할 때 `NextActionSummary.owner_method`는 [메서드 이름 값 집합](#method-name-values)을 사용하고, 단일 담당 메서드가 없으면 `null`입니다. `owner_method=null`인 행동은 `allowed_operation_categories=[]`를 사용하며, 라벨과 포함하는 담당 문서가 필요한 호스트, 터미널, 파일시스템, 설정 작업을 식별합니다. 작업 범주 목록은 담당 문서가 지원하는 호출 경로를 설명할 뿐 현재 연결에서 사용할 수 있거나 권한이 부여됐음을 뜻하지 않습니다. 다음 단계의 메서드 동작은 [API 메서드](methods.md)가 안내하는 메서드 담당 문서에 둡니다. 전체 `NextActionSummary` 형태는 [API 상태 스키마](schema-state.md#current-position-display-shapes)가 담당합니다.
 
 <a id="response-and-effect-values"></a>
 ## 응답과 효과 값

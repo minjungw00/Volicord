@@ -285,8 +285,10 @@ state:
   close_blockers: []
   guarantee_display: null
 next_actions:
-  - action_kind: prepare_write
+  - presentation_role: primary
+    action_kind: prepare_write
     owner_method: volicord.prepare_write
+    allowed_operation_categories: [agent_workflow]
     label: "저장 필터 변경이 현재 적용 범위에 맞는지 확인하세요."
     blocking_question: null
     required_refs:

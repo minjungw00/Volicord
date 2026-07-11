@@ -19,13 +19,14 @@ use crate::values::{
     EvidenceSourceKind, EvidenceStatus, GuaranteeClass, GuaranteeLevel, GuardConfigurationStatus,
     GuardDecision, GuardEffectiveStatus, GuardInstallationStatus, GuardObservationStatus, HostKind,
     IntegrationProfile, JudgmentBasisCompatibilityStatus, JudgmentKind, JudgmentPresentation,
-    JudgmentRequiredFor, JudgmentResolutionOutcome, MethodName, NextActionKind, NonGuarantee,
-    PlannedBlockerSourceKind, ProjectContinuityKind, ProjectContinuityStatus,
-    ProjectEnforcementProfileSource, ProjectEnforcementProfileStatus, PromptCaptureStatus,
-    RedactionState, ResponseKind, RunKind, SessionWatchCoverageBasis, SessionWatchStatus,
-    StateRecordKind, TaskLifecyclePhase, TaskMode, TaskResult, UnrecordedChangeResolutionBasis,
-    UnrecordedChangeStatus, UserJudgmentOptionAction, UserJudgmentStatus, UtcTimestamp,
-    ValidatorSeverity, ValidatorStatus, WriteDecisionCategory, WriteTicketState, WriteTicketStatus,
+    JudgmentRequiredFor, JudgmentResolutionOutcome, MethodName, NextActionKind,
+    NextActionPresentationRole, NonGuarantee, OperationCategory, PlannedBlockerSourceKind,
+    ProjectContinuityKind, ProjectContinuityStatus, ProjectEnforcementProfileSource,
+    ProjectEnforcementProfileStatus, PromptCaptureStatus, RedactionState, ResponseKind, RunKind,
+    SessionWatchCoverageBasis, SessionWatchStatus, StateRecordKind, TaskLifecyclePhase, TaskMode,
+    TaskResult, UnrecordedChangeResolutionBasis, UnrecordedChangeStatus, UserJudgmentOptionAction,
+    UserJudgmentStatus, UtcTimestamp, ValidatorSeverity, ValidatorStatus, WriteDecisionCategory,
+    WriteTicketState, WriteTicketStatus,
 };
 
 /// JSON object used where an owner document defines a field as `object`.
@@ -724,8 +725,10 @@ pub struct ShapingGap {
 /// Canonical next-action display shape.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct NextActionSummary {
+    pub presentation_role: NextActionPresentationRole,
     pub action_kind: NextActionKind,
     pub owner_method: Option<MethodName>,
+    pub allowed_operation_categories: Vec<OperationCategory>,
     pub label: String,
     pub blocking_question: Option<String>,
     pub required_refs: Vec<StateRecordRef>,
@@ -1019,7 +1022,7 @@ pub struct CloseReadinessBlocker {
     #[serde(default)]
     pub can_resolve_in_chat: bool,
     #[serde(default)]
-    pub terminal_action_required: bool,
+    pub outside_chat_action_required: bool,
     pub related_refs: Vec<StateRecordRef>,
     pub next_actions: Vec<NextActionSummary>,
 }

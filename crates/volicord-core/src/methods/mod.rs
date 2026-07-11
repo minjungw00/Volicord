@@ -43,16 +43,17 @@ use volicord_types::{
     JudgmentAnswerConstraints, JudgmentBasis, JudgmentBasisCompatibilityStatus,
     JudgmentCapturePath, JudgmentInboxChoice, JudgmentInboxItem, JudgmentKind,
     JudgmentPresentation, JudgmentRationale, JudgmentRequiredFor, JudgmentResolutionOutcome,
-    MethodName, MethodOperationCategory, NextActionKind, NextActionSummary, NonGuarantee,
-    ObservedChanges, OperationCategory, PersistedEvidenceMetadata, PersistedJudgmentBasis,
-    PersistedUserJudgmentOptions, PersistedUserJudgmentRequest, PersistedUserJudgmentResolution,
-    PlannedBlocker, PlannedBlockerSourceKind, PlannedEffect, PrepareWriteRequest,
-    PrepareWriteResult, ProjectContinuityKind, ProjectContinuityRecord, ProjectContinuityRecordId,
-    ProjectContinuityStatus, ProjectContinuitySummary, ProjectEnforcementProfile, ProjectId,
-    ReconcileChangesRequest, ReconcileChangesResult, RecordId, RecordRunRequest, RecordRunResult,
-    RecordUserJudgmentPayload, RecordUserJudgmentRequest, RedactionState, RequestedMode,
-    RequiredNullable, ResidualRisk, ResumePolicy, RiskAcceptanceCoverage, RiskId, RunId, RunKind,
-    RunSummary, SensitiveActionRequirement, SessionWatchCoverageBasis, SessionWatchScanSummary,
+    MethodName, MethodOperationCategory, NextActionKind, NextActionPresentationRole,
+    NextActionSummary, NonGuarantee, ObservedChanges, OperationCategory, PersistedEvidenceMetadata,
+    PersistedJudgmentBasis, PersistedUserJudgmentOptions, PersistedUserJudgmentRequest,
+    PersistedUserJudgmentResolution, PlannedBlocker, PlannedBlockerSourceKind, PlannedEffect,
+    PrepareWriteRequest, PrepareWriteResult, ProjectContinuityKind, ProjectContinuityRecord,
+    ProjectContinuityRecordId, ProjectContinuityStatus, ProjectContinuitySummary,
+    ProjectEnforcementProfile, ProjectId, ReconcileChangesRequest, ReconcileChangesResult,
+    RecordId, RecordRunRequest, RecordRunResult, RecordUserJudgmentPayload,
+    RecordUserJudgmentRequest, RedactionState, RequestedMode, RequiredNullable, ResidualRisk,
+    ResumePolicy, RiskAcceptanceCoverage, RiskId, RunId, RunKind, RunSummary,
+    SensitiveActionRequirement, SessionWatchCoverageBasis, SessionWatchScanSummary,
     SessionWatchStatus, StageArtifactRequest, StageArtifactResult, StagedArtifactHandle,
     StagedArtifactHandleId, StateRecordKind, StateRecordRef, StatusCloseState, StatusInclude,
     StatusRequest, StorageRef, SummaryCard, TaskId, TaskLifecyclePhase, TaskLifecycleState,
@@ -2653,22 +2654,28 @@ fn next_actions_for_state(
 ) -> Vec<NextActionSummary> {
     match (task_mode, change_unit_ref) {
         (TaskMode::Advisor, Some(change_unit_ref)) => vec![NextActionSummary {
+            presentation_role: NextActionPresentationRole::Primary,
             action_kind: NextActionKind::RecordRun,
             owner_method: Some(MethodName::RecordRun),
+            allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
             label: "Record an advisory shaping update for the current Change Unit.".to_owned(),
             blocking_question: None,
             required_refs: vec![task_ref.clone(), change_unit_ref.clone()],
         }],
         (_, Some(change_unit_ref)) => vec![NextActionSummary {
+            presentation_role: NextActionPresentationRole::Primary,
             action_kind: NextActionKind::PrepareWrite,
             owner_method: Some(MethodName::PrepareWrite),
+            allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
             label: "Check the current change against current scope.".to_owned(),
             blocking_question: None,
             required_refs: vec![task_ref.clone(), change_unit_ref.clone()],
         }],
         (TaskMode::Advisor, None) => vec![NextActionSummary {
+            presentation_role: NextActionPresentationRole::Primary,
             action_kind: NextActionKind::UpdateScope,
             owner_method: Some(MethodName::UpdateScope),
+            allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
             label:
                 "Create the first currently applied Change Unit before recording advisory shaping."
                     .to_owned(),
@@ -2676,8 +2683,10 @@ fn next_actions_for_state(
             required_refs: vec![task_ref.clone()],
         }],
         (_, None) => vec![NextActionSummary {
+            presentation_role: NextActionPresentationRole::Primary,
             action_kind: NextActionKind::UpdateScope,
             owner_method: Some(MethodName::UpdateScope),
+            allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
             label:
                 "Create the first currently applied Change Unit before write-ticket preparation."
                     .to_owned(),
@@ -2922,16 +2931,64 @@ fn next_action_label(action: &NextActionSummary) -> String {
     }
 }
 
-fn first_next_action<'a>(
+fn normalize_next_action_collection(actions: &mut [NextActionSummary]) {
+    for (index, action) in actions.iter_mut().enumerate() {
+        action.presentation_role = if index == 0 {
+            NextActionPresentationRole::Primary
+        } else {
+            NextActionPresentationRole::Additional
+        };
+        action.allowed_operation_categories = allowed_operation_categories(action.owner_method);
+    }
+}
+
+fn normalize_close_blocker_action_projection(blockers: &mut [CloseReadinessBlocker]) {
+    for (action_index, action) in blockers
+        .iter_mut()
+        .flat_map(|blocker| blocker.next_actions.iter_mut())
+        .enumerate()
+    {
+        action.presentation_role = if action_index == 0 {
+            NextActionPresentationRole::Primary
+        } else {
+            NextActionPresentationRole::Additional
+        };
+        action.allowed_operation_categories = allowed_operation_categories(action.owner_method);
+    }
+}
+
+fn allowed_operation_categories(owner_method: Option<MethodName>) -> Vec<OperationCategory> {
+    match owner_method {
+        Some(MethodName::RecordUserJudgment) => vec![OperationCategory::UserOnly],
+        Some(MethodName::ReconcileChanges) => vec![
+            OperationCategory::AgentWorkflow,
+            OperationCategory::LocalRecovery,
+        ],
+        Some(
+            MethodName::UpdateScope
+            | MethodName::PrepareWrite
+            | MethodName::StageArtifact
+            | MethodName::RecordRun
+            | MethodName::RequestUserJudgment
+            | MethodName::CloseTask,
+        ) => vec![OperationCategory::AgentWorkflow],
+        Some(MethodName::Intake | MethodName::Status | MethodName::CheckClose) | None => Vec::new(),
+    }
+}
+
+fn primary_next_action<'a>(
     next_actions: &'a [NextActionSummary],
     close_blockers: &'a [CloseReadinessBlocker],
 ) -> Option<&'a NextActionSummary> {
-    next_actions.first().or_else(|| {
-        close_blockers
-            .iter()
-            .flat_map(|blocker| blocker.next_actions.iter())
-            .next()
-    })
+    next_actions
+        .iter()
+        .find(|action| action.presentation_role == NextActionPresentationRole::Primary)
+        .or_else(|| {
+            close_blockers
+                .iter()
+                .flat_map(|blocker| blocker.next_actions.iter())
+                .find(|action| action.presentation_role == NextActionPresentationRole::Primary)
+        })
 }
 
 fn transport_summary(verified_invocation: &VerifiedInvocationContext) -> String {

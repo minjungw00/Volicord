@@ -448,8 +448,10 @@ SummaryCard:
   guarantee: string
 
 NextActionSummary:
+  presentation_role: string
   action_kind: string
   owner_method: string | null
+  allowed_operation_categories: string[]
   label: string
   blocking_question: string | null
   required_refs: StateRecordRef[]
@@ -506,10 +508,13 @@ WriteDecisionReason:
 의미:
 - `SummaryCard`는 주요 사용자 대상 상태 보기에 쓰는 안정적인 간결 요약 형태입니다. `Task`, `Recording`, `Profile`, `Write Ticket`, `Evidence`, `User Judgment`, `Changes`, `Close Status`, `Transport`, 다음 행동 하나, 짧은 `Guarantee` 줄에 공개 표시 문자열을 사용합니다.
 - 선택된 증거에 공개 증거 상태가 있으면 `SummaryCard.evidence`는 [API 값 집합](schema-value-sets.md#state-and-blocker-values)이 담당하는 표시 상태를 사용합니다. 스테이징만 된 첨부 입력에는 `prepared`를 표시할 수 있으며, 이 값은 닫기에 수락된 증거가 아닙니다.
-- `SummaryCard.next`는 요약을 위해 선택된 단일 표시 다음 행동입니다. 담당 문서가 선택한 보기에서 알 수 있는 다음 행동이 없을 때만 `none`을 사용합니다. `SummaryCard.next_action`은 대응하는 구조화된 `NextActionSummary`를 담을 수 있으며 구조화된 행동이 적용되지 않으면 생략될 수 있습니다.
+- `SummaryCard.next`는 요약을 위해 선택된 단일 표시 다음 행동입니다. 담당 문서가 선택한 보기에서 알 수 있는 다음 행동이 없을 때만 `none`을 사용합니다. `SummaryCard.next_action`은 대응하는 구조화된 `NextActionSummary`를 담을 수 있으며 구조화된 행동이 적용되지 않으면 생략될 수 있습니다. 구조화된 행동이 적용되면 요약은 `presentation_role=primary`인 행동을 선택하며 배열 위치는 선택 계약이 아닙니다.
 - `SummaryCard`는 담당 문서가 선택한 다른 상태 필드의 요약이지 두 번째 권한 기록이 아닙니다. 표시된 다음 행동에 식별자가 필요하지 않은 한 내부 식별자를 추가하면 안 됩니다.
 - `SummaryCard.guarantee`는 요약된 보기에 대한 짧은 표시 문구입니다. 다른 담당 문서가 명시적으로 그런 보장을 제공하지 않는 한 정확성 증명, 테스트 충분성 증명, 검토 완료, OS 수준 집행을 주장하면 안 됩니다.
-- `NextActionSummary`는 기준 다음 행동 표시 형태입니다. 유효한 필드는 `action_kind`, `owner_method`, `label`, `blocking_question`, `required_refs`입니다.
+- `NextActionSummary`는 기준 다음 행동 표시 형태입니다. 유효한 필드는 `presentation_role`, `action_kind`, `owner_method`, `allowed_operation_categories`, `label`, `blocking_question`, `required_refs`입니다.
+- 비어 있지 않은 각 최상위 `next_actions` 모음에는 `presentation_role=primary`인 항목이 정확히 하나 있습니다. 나머지 항목은 `additional`을 사용합니다. 닫기 준비 상태는 명시적인 중첩 예외입니다. 닫기 준비 상태 결과 하나의 `blockers[*].next_actions`를 평탄화한 전체가 primary 하나를 갖는 투영 단위이므로 뒤쪽의 개별 차단 사유 목록에는 additional 행동만 있을 수 있습니다. 단일 `next_action`은 `primary`를 사용합니다.
+- `additional`은 표시 역할이지 선택 사항이라는 뜻이 아닙니다. 다른 차단 사유를 해소하려면 보조 행동도 필수일 수 있습니다.
+- `allowed_operation_categories`는 행동에 대해 담당 문서가 지원하는 호출 범주를 이름 붙입니다. 현재 연결이 행동을 실행할 수 있음을 증명하거나 사용자 권한을 부여하지 않으며, 지원되는 API 메서드 호출이 식별되지 않으면 비어 있습니다.
 - 오래된 `action` 또는 `reason` 필드를 쓰는 `next_actions` 항목은 유효한 `NextActionSummary`가 아닙니다.
 - `WriteTicketStateSummary.status`는 제어 값 문자열입니다.
 - `WriteTicketStateSummary.consumed_by_run_ref`는 요약된 쓰기 티켓이 기록된 Run에 의해 소비되었을 때만 `null`이 아닙니다.
@@ -527,8 +532,10 @@ WriteDecisionReason:
 
 | 필드 | 분류 | 규칙 |
 |---|---|---|
+| `presentation_role` | 제어되는 표시 역할 값. | [다음 행동 값](schema-value-sets.md#next-action-values)의 `primary` 또는 `additional`을 사용합니다. 선택 사항 여부를 나타내지 않습니다. |
 | `action_kind` | 제어되는 행동 범주 값. | [다음 행동 값](schema-value-sets.md#next-action-values)의 값 집합을 사용합니다. 메서드 이름 값이 아닙니다. |
 | `owner_method` | 담당 메서드 이름 또는 `null`. | 지원되는 공개 메서드 하나가 다음 행동을 담당할 때 그 API 메서드를 이름 붙입니다. 단일 담당 메서드가 없으면 `null`을 사용합니다. |
+| `allowed_operation_categories` | 제어되는 작업 범주 값. | 이 행동에 대해 담당 문서가 지원하는 호출 범주를 나열합니다. `owner_method=null`이거나 지원되는 API 호출 경로가 식별되지 않으면 `[]`를 사용합니다. |
 | `label` | 자유 형식 표시 문자열. | 사람과 에이전트가 읽는 표시 문자열이며 기준 값이 아닙니다. |
 | `blocking_question` | 자유 형식 표시 문자열 또는 `null`. | 행동을 진행하기 전에 풀어야 하는 질문입니다. 필요한 질문이 없으면 `null`을 사용합니다. |
 | `required_refs` | `StateRecordRef[]`. | 다음 행동에 필요한 기록입니다. 필요한 참조가 없으면 `[]`를 사용합니다. |
@@ -737,7 +744,7 @@ CloseReadinessBlocker:
   message: string
   control_surface: ControlSurfaceSummary | null
   can_resolve_in_chat: boolean
-  terminal_action_required: boolean
+  outside_chat_action_required: boolean
   related_refs: StateRecordRef[]
   next_actions: NextActionSummary[]
 
@@ -773,7 +780,8 @@ GuaranteeDisclosure:
 - `CloseReadinessBlocker.code`는 담당 문서가 정의하는 차단 사유 코드입니다. 차단 사유 또는 메서드 담당 문서가 더 좁은 로컬 목록을 공개하지 않는 한 빠짐없는 전역 공개 enum이 아닙니다.
 - `CloseReadinessBlocker.control_surface`는 `guard_*` 연결 역량 차단 사유에 있을 수 있으며, 차단 사유를 계산한 시점의 관찰 요약을 보고합니다. `GuardHealthSummary`의 훅 상태에서 도출하지 않은 차단 사유에서는 생략됩니다.
 - `can_resolve_in_chat`은 메서드 담당 문서가 그 경로를 알고 있을 때 차단 사유를 채팅으로 매개되는 사용자 경로에서 해소할 수 있는지를 보고합니다.
-- `terminal_action_required`는 다음 행동에 채팅 밖의 터미널, 호스트, 파일시스템, 설정 작업이 필요한지를 보고합니다.
+- `outside_chat_action_required`는 다음 행동에 채팅 밖의 터미널, 호스트, 파일시스템, 설정 작업이 필요하다는 사실을 담당 문서가 알고 있는지를 보고합니다.
+- `can_resolve_in_chat`과 `outside_chat_action_required`는 서로 독립된 공개 정보이며 논리적 보수가 아닙니다. 둘 다 `false`이면 어느 경로 주장도 확정되지 않았다는 뜻이며 행동이 필요 없다는 뜻이 아닙니다.
 - `CloseReadinessBlocker.message`, `ValidatorResult.message`, `GuaranteeDisplay.basis`는 자유 형식 표시 문자열입니다.
 - `ValidatorResult.validator_id`는 값 집합 담당 문서가 지원되는 안정 값을 공개하기 전까지 보고용 라벨입니다.
 - `ValidatorResult.status`, `ValidatorResult.severity`, `GuaranteeDisplay.level`은 제어 값 문자열입니다.

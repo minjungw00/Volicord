@@ -231,7 +231,7 @@ CloseTaskRequest:
 | `evidence_summary` | 결과에 선택된 닫기 근거의 `EvidenceSummary | null`입니다. 결과에 증거 요약이 선택되지 않으면 `null`입니다. 현재 닫기 근거가 선택된 요약을 참조하면 `evidence_summary.evidence_state`는 `accepted_for_close`입니다. 형태는 [API 상태 스키마](schema-state.md#evidence-and-run-snapshot-shapes)가 담당합니다. |
 | `artifact_refs` | 결과에 선택된 닫기 관련 아티팩트의 `ArtifactRef[]`입니다. `ArtifactRef` 형태는 [API 아티팩트 스키마](schema-artifacts.md#artifactref)가 담당합니다. |
 
-`CloseTaskResult`에는 최상위 `next_actions` 목록이 없습니다. `summary_card.next`는 결과 요약을 위해 선택된 단일 표시 다음 행동입니다. 닫기 차단 사유의 다음 동작은 계속 `CloseReadinessBlocker.next_actions` 안에 나타나며 [API 상태 스키마](schema-state.md#current-position-display-shapes)의 기준 `NextActionSummary` 형태를 사용합니다.
+`CloseTaskResult`에는 최상위 `next_actions` 목록이 없습니다. `summary_card.next`는 `presentation_role=primary`인 차단 사유 행동에서 선택된 단일 표시 다음 행동이며 배열 위치는 선택 계약이 아닙니다. 닫기 차단 사유의 다음 동작은 계속 `CloseReadinessBlocker.next_actions` 안에 나타나며 [API 상태 스키마](schema-state.md#current-position-display-shapes)의 기준 `NextActionSummary` 형태를 사용합니다. 결과 하나의 `blockers[*].next_actions` 전체에는 primary가 정확히 하나 있으며 뒤쪽의 차단 사유 목록에는 additional 행동만 있을 수 있습니다.
 
 다른 작업을 위한 대기 판단과 정보성 전용 대기 판단은 더 넓은
 `state.pending_user_judgment_refs` 상태 보기에 계속 나타날 수 있습니다. 요청한
@@ -261,10 +261,10 @@ CloseTaskRequest:
 | `guard_not_observed` | `connection_capability` | `detective` 닫기 경로에 호스트 훅 파일은 설정되어 있지만 일치하는 호스트 훅 관찰이 기록되어 있지 않습니다. |
 | `guard_stale` | `connection_capability` | `detective` 닫기 경로에 기록 상태가 `stale`인 내부 호스트 훅 설치 기록이 있습니다. |
 | `guard_broken` | `connection_capability` | `detective` 닫기 경로에 기록 상태가 `broken`인 내부 호스트 훅 설치 기록이 있습니다. |
-| `guard_required_hooks_missing` | `connection_capability` | `detective` 닫기 경로에 필요한 훅 단계가 빠진 내부 호스트 훅 설치 기록이 있습니다. 이 차단 사유는 누락 단계, 호스트 종류, `terminal_action_required`, `can_resolve_in_chat`, `next_actions`를 보고합니다. |
+| `guard_required_hooks_missing` | `connection_capability` | `detective` 닫기 경로에 필요한 훅 단계가 빠진 내부 호스트 훅 설치 기록이 있습니다. 이 차단 사유는 누락 단계, 호스트 종류, `outside_chat_action_required`, `can_resolve_in_chat`, `next_actions`를 보고합니다. |
 | `guard_degraded` | `connection_capability` | `detective` 닫기 경로의 호스트 훅 설정이나 관찰 상태가 저하되었고 더 구체적인 `guard_*` 차단 사유가 적용되지 않습니다. 현재 호스트 훅 상태 정책이 이 저하 상태에서 닫기를 차단합니다. |
 | `guard_connection_unhealthy` | `connection_capability` | `detective` 닫기 경로에 정상 상태가 아닌 Agent Connection 정보가 있습니다. |
-| `session_watch_unavailable` | `connection_capability` | `detective` 닫기 경로에 Product Repository의 `session-watch` 관찰이 필요하지만 감시자 상태가 `disabled`, `degraded`, `unavailable`이거나 일부만 관찰한다는 경고가 있습니다. |
+| `session_watch_unavailable` | `connection_capability` | `detective` 닫기 경로에 Product Repository의 `session-watch` 관찰이 필요하지만 감시자 상태가 `disabled`, `degraded`, `unavailable`이거나 일부만 관찰한다는 경고가 있습니다. 복구나 재시도에는 채팅 밖의 행동이 필요하므로 `outside_chat_action_required=true`입니다. |
 | `unresolved_unrecorded_changes` | `connection_capability` | `detective` 관찰 상태가 닫기 전에 조정해야 하는 미해결 미기록 변경을 보고합니다. 이 차단 사유는 `owner_method=volicord.reconcile_changes`인 `next_actions`를 포함합니다. `can_resolve_in_chat`은 현재 경로가 채팅을 통한 사용자 경로로 진행할 수 있는지를 나타냅니다. |
 | `guard_write_ticket_missing_or_stale` | `write_compatibility` | 호스트 훅 이벤트가 누락되었거나, 판별할 수 없거나, 모호하거나, 오래된 쓰기 티켓 준비 상태를 닫기 경로에서 감지했습니다. |
 | `guard_write_ticket_path_scope_violation` | `write_compatibility` | 호스트 훅 이벤트가 `active` 쓰기 티켓 범위 밖의 Product Repository 경로를 관찰했습니다. |
@@ -274,8 +274,8 @@ CloseTaskRequest:
 | `evidence_provenance_stale` | `evidence_provenance` | 증거 관찰 출처가 있지만 현재 Task 범위, Change Unit, 출처 실행 기록, 닫기 근거 증거 요약에 대해 오래되었습니다. |
 | `evidence_agent_report_only` | `evidence_provenance` | 더 강한 출처가 필요한데 필요한 닫기 증거가 협력적 에이전트 보고만으로 뒷받침됩니다. |
 | `artifact_unavailable` | `artifact_availability` | 닫기 관련 아티팩트가 없거나, 사용할 수 없거나, 사용에 부적합하거나, 무결성에 실패했습니다. |
-| `missing_final_acceptance` | `final_acceptance` | 현재 닫기 근거에 필요한 최종 수락이 없습니다. |
-| `stale_final_acceptance` | `final_acceptance` | 최종 수락은 있지만 현재 `Task`, Change Unit, `scope_revision`, `close_basis_revision`, 기준선, 결과 참조와 호환되지 않거나 오래되었습니다. |
+| `missing_final_acceptance` | `final_acceptance` | 현재 닫기 근거에 필요한 최종 수락이 없습니다. 표시되는 행동은 Agent Connection의 `volicord.request_user_judgment` 절차와 최종 수락 질문을 식별합니다. |
+| `stale_final_acceptance` | `final_acceptance` | 최종 수락은 있지만 현재 `Task`, Change Unit, `scope_revision`, `close_basis_revision`, 기준선, 결과 참조와 호환되지 않거나 오래되었습니다. 표시되는 행동은 현재 근거에 묶인 판단을 요청합니다. |
 | `residual_risk_not_visible` | `residual_risk_visibility` | 닫기 관련 잔여 위험이 보이지 않게 남아 있습니다. |
 | `missing_residual_risk_acceptance` | `residual_risk_acceptance` | 현재 잔여 위험 요구사항에 필요한 잔여 위험 수락이 없습니다. |
 | `stale_residual_risk_acceptance` | `residual_risk_acceptance` | 잔여 위험 수락은 있지만 현재 `close_basis_revision`과 정확한 잔여 위험 `risk_id` 값에 일치하지 않습니다. |
@@ -284,6 +284,8 @@ CloseTaskRequest:
 이 코드는 메서드 로컬 `CloseReadinessBlocker.code` 값입니다. 공개 `ErrorCode` 값, `WriteDecisionReason.code` 값, 전역 값 집합 항목이 아닙니다.
 
 `pending_user_judgment`의 경우 차단 사유의 다음 행동은 사용할 수 있는 User Channel 입력 방법을 가리킬 수 있습니다. `pending_judgment_inbox_items`는 사용자가 행동할 수 있는 수신함 항목을 담습니다. 답변 경로에는 사용할 수 있을 때 호스트 프롬프트 입력, 채팅 명령 캡처, 로컬 consent URL, CLI inbox 명령 `volicord inbox answer <judgment-id> --choice <choice>`가 포함될 수 있습니다. 이 차단 사유는 Agent Connection이 사용자 소유 판단에 답하도록 권한을 부여하지 않습니다.
+
+대기 중인 최종 수락 판단 없이 `missing_final_acceptance`가 있는 상태는 지원되는 2단계 상태이며 권한 우회가 아닙니다. 읽기 전용 점검이나 차단된 닫기 시도는 판단 기록을 만들지 않습니다. 이 상태의 `request_user_judgment` 행동은 `allowed_operation_categories=[agent_workflow]`이며 Agent Connection이 표시된 질문으로 현재 요청을 만듭니다. 그 커밋 뒤에는 `pending_user_judgment`가 `allowed_operation_categories=[user_only]`인 `record_user_judgment` 행동과 사용할 수 있는 User Channel 경로를 보여 줍니다. Agent Connection은 두 번째 행동을 수행하면 안 됩니다.
 
 ## 차단 결과
 
@@ -448,13 +450,15 @@ state:
       code: missing_final_acceptance
       message: "이 Task를 닫으려면 최종 수락이 필요합니다."
       can_resolve_in_chat: false
-      terminal_action_required: false
+      outside_chat_action_required: false
       related_refs: []
       next_actions:
-        - action_kind: request_user_judgment
+        - presentation_role: primary
+          action_kind: request_user_judgment
           owner_method: volicord.request_user_judgment
-          label: "사용자에게 최종 수락을 요청하세요."
-          blocking_question: "사용자가 완료된 Task를 최종 수락했습니까?"
+          allowed_operation_categories: [agent_workflow]
+          label: "Agent Connection이 사용자에게 현재 최종 수락 요청을 만들어야 합니다."
+          blocking_question: "사용자가 현재 Task 결과와 닫기 근거를 완료된 것으로 수락합니까?"
           required_refs:
             - record_kind: task
               record_id: task_close_001
@@ -467,13 +471,15 @@ blockers:
     code: missing_final_acceptance
     message: "이 Task를 닫으려면 최종 수락이 필요합니다."
     can_resolve_in_chat: false
-    terminal_action_required: false
+    outside_chat_action_required: false
     related_refs: []
     next_actions:
-      - action_kind: request_user_judgment
+      - presentation_role: primary
+        action_kind: request_user_judgment
         owner_method: volicord.request_user_judgment
-        label: "사용자에게 최종 수락을 요청하세요."
-        blocking_question: "사용자가 완료된 Task를 최종 수락했습니까?"
+        allowed_operation_categories: [agent_workflow]
+        label: "Agent Connection이 사용자에게 현재 최종 수락 요청을 만들어야 합니다."
+        blocking_question: "사용자가 현재 Task 결과와 닫기 근거를 완료된 것으로 수락합니까?"
         required_refs:
           - record_kind: task
             record_id: task_close_001

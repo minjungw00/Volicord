@@ -1415,6 +1415,35 @@ fn close_task_complete_blocks_missing_final_acceptance() -> Result<(), Box<dyn E
     assert_eq!(response.response_value["base"]["effect_kind"], "no_effect");
     assert_eq!(response.response_value["close_state"], "blocked");
     assert_close_blocker(&response.response_value, "missing_final_acceptance");
+    let blocker = close_blocker_by_code(&response.response_value, "missing_final_acceptance");
+    let action = &blocker["next_actions"][0];
+    assert_eq!(action["presentation_role"], "primary");
+    assert_eq!(action["action_kind"], "request_user_judgment");
+    assert_eq!(action["owner_method"], "volicord.request_user_judgment");
+    assert_eq!(
+        action["allowed_operation_categories"],
+        json!(["agent_workflow"])
+    );
+    assert_eq!(
+        action["blocking_question"],
+        "Does the user accept the current Task result and close basis as complete?"
+    );
+    assert!(action["label"]
+        .as_str()
+        .expect("final-acceptance action label should be text")
+        .contains("Agent Connection"));
+    assert_eq!(
+        response.response_value["state"]["pending_user_judgment_refs"],
+        json!([])
+    );
+    assert_eq!(
+        response.response_value["pending_judgment_inbox_items"],
+        json!([])
+    );
+    assert_eq!(
+        response.response_value["summary_card"]["next_action"],
+        action.clone()
+    );
     assert_eq!(harness.counts()?, before);
     Ok(())
 }
@@ -4274,6 +4303,12 @@ fn guarded_hook_missing_write_is_detected_by_watcher() -> Result<(), Box<dyn Err
 
     assert_eq!(response.response_value["close_state"], "blocked");
     assert_close_blocker(&response.response_value, "session_watch_unavailable");
+    assert_close_blocker_resolution(
+        &response.response_value,
+        "session_watch_unavailable",
+        false,
+        true,
+    );
     assert_close_blocker(&response.response_value, "unresolved_unrecorded_changes");
     assert_eq!(
         response.response_value["guard_health"]["selected_profile"],

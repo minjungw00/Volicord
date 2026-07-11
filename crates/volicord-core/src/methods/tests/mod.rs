@@ -2177,13 +2177,13 @@ fn assert_close_blocker_resolution(
     response_value: &Value,
     code: &str,
     can_resolve_in_chat: bool,
-    terminal_action_required: bool,
+    outside_chat_action_required: bool,
 ) {
     let blocker = close_blocker_by_code(response_value, code);
     assert_eq!(blocker["can_resolve_in_chat"], can_resolve_in_chat);
     assert_eq!(
-        blocker["terminal_action_required"],
-        terminal_action_required
+        blocker["outside_chat_action_required"],
+        outside_chat_action_required
     );
     assert!(
         !blocker["next_actions"]

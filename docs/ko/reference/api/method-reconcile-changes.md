@@ -130,7 +130,7 @@ UnrecordedChangeResolutionRequest:
 | `state` | 조정 보기 또는 커밋 뒤의 현재 `StateSummary`입니다. |
 | `close_blockers` | 계획된 조정 효과 뒤의 닫기 차단 사유 보기입니다. |
 | `guard_health` | 검증된 연결에서 사용할 수 있을 때의 `GuardHealthSummary` 호스트 훅 상태 보기입니다. |
-| `next_actions` | 만들어진 사용자 소유 판단을 기록하거나 조정을 다시 실행하는 등 다음 안전 단계입니다. |
+| `next_actions` | 사용자가 생성된 판단을 기록하는 `user_only` 행동이나 조정을 다시 실행하는 `agent_workflow`/`local_recovery` 행동 같은 다음 안전 단계입니다. 비어 있지 않은 목록에는 primary 표시 행동이 정확히 하나 있습니다. |
 
 결과 공개는 정확성 증명, 테스트 충분성 증명, 인간 검토 대체, OS 샌드박싱, 네트워크 격리, 악성 코드 방어, 전체 쓰기 방지, 행위자 귀속 증명이 아닙니다.
 

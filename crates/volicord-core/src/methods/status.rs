@@ -251,6 +251,7 @@ fn status_result_fields(
         )?);
     }
     next_actions = unique_next_actions(next_actions);
+    normalize_next_action_collection(&mut next_actions);
 
     let close_blockers_slice = close_blockers.as_deref().unwrap_or(&[]);
     let summary_card = summary_card_for_core(SummaryCardBuild {
@@ -276,7 +277,7 @@ fn status_result_fields(
         ),
         close_status: close_state_summary_text(include.close, close_state),
         verified_invocation,
-        next_action: first_next_action(&next_actions, close_blockers_slice),
+        next_action: primary_next_action(&next_actions, close_blockers_slice),
     });
 
     let result = volicord_types::StatusResult {
@@ -363,12 +364,14 @@ fn close_next_actions(blockers: &[CloseReadinessBlocker]) -> Vec<NextActionSumma
         .collect()
 }
 
-fn unique_next_actions(actions: Vec<NextActionSummary>) -> Vec<NextActionSummary> {
+pub(super) fn unique_next_actions(actions: Vec<NextActionSummary>) -> Vec<NextActionSummary> {
     let mut seen = BTreeSet::new();
     actions
         .into_iter()
         .filter(|action| {
-            seen.insert(serde_json::to_string(action).unwrap_or_else(|_| String::new()))
+            let mut key = (*action).clone();
+            key.presentation_role = NextActionPresentationRole::Primary;
+            seen.insert(serde_json::to_string(&key).unwrap_or_else(|_| String::new()))
         })
         .collect()
 }

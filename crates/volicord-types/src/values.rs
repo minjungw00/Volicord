@@ -275,6 +275,14 @@ pub enum NextActionKind {
     CloseTask,
 }
 
+/// Controlled presentation role for an owner-composed next action.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum NextActionPresentationRole {
+    Primary,
+    Additional,
+}
+
 /// Common API response branch metadata.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]

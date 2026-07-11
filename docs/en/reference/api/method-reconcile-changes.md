@@ -130,7 +130,7 @@ Returns `ReconcileChangesResult` with:
 | `state` | Current `StateSummary` after the reconciliation projection or commit. |
 | `close_blockers` | Projected close blockers after planned reconciliation effects. |
 | `guard_health` | Projected `GuardHealthSummary` hook-state facts when available for the verified connection. |
-| `next_actions` | Next safe steps, such as recording the created user-owned judgment or rerunning reconciliation. |
+| `next_actions` | Next safe steps, such as a `user_only` action for the user to record the created judgment or an `agent_workflow`/`local_recovery` action to rerun reconciliation. A non-empty list has exactly one primary presentation action. |
 
 The result disclosure is not correctness proof, test sufficiency proof, human review replacement, OS sandboxing, network isolation, malware defense, full write prevention, or actor attribution proof.
 

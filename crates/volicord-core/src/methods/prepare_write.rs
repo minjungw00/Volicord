@@ -479,6 +479,7 @@ fn plan_prepare_write(
             close_state = CloseState::Blocked;
         }
     }
+    normalize_close_blocker_action_projection(&mut close_blockers);
     let control_surface = close_plan
         .guard_health
         .as_ref()
