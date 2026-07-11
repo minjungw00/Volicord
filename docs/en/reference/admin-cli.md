@@ -152,14 +152,29 @@ Not supported:
 - Status-like commands show a compact summary card or short sections before
   detailed diagnostics. These include `volicord status`, `volicord doctor`,
   connection status and verification, change reconciliation, and the inbox.
-  Command-appropriate public labels include `Task`, `Recording`, `Profile`,
-  `Write Ticket`, `Evidence`, `User Judgment`, `Changes`, `Close Status`,
-  `Transport`, `Next`, and `Guarantee`.
-- `Next` names the immediate action when known and may include a follow-up
-  verification command. It uses `none` only when the selected view has no known
-  next action. Text summaries hide internal IDs unless the displayed action
-  needs one. JSON exposes the same stable summary data in `summary_card`;
-  automation must not parse text formatting.
+  When a command uses the common summary-card text renderer, its labels are
+  `Task lifecycle`, `Volicord record effect for this command`, `Profile`,
+  `Write Ticket`, `Evidence`, `Pending user judgments`, `Unrecorded Product
+  Repository changes`, `Close readiness`, `Transport`, and `Primary next
+  action`.
+- `Volicord record effect for this command` describes only whether the current
+  command made a Core authority-state mutation. Human text renders the JSON
+  value `read_only` as `none`, meaning `this command made no Core
+  authority-state mutation`, and renders a committed record effect as
+  `recorded`. The parenthetical explicitly says this does not describe
+  product-file writes or Runtime Home write capability. Human text likewise
+  renders `not_selected` as `not shown in this view` and a zero
+  pending-judgment count as `pending (0)`.
+- `Primary next action` names the compact card's immediate action when known and
+  may include a follow-up verification command. It uses `none` only when the
+  selected view has no known next action. Status and change-reconciliation text
+  also shows the complete top-level `close_blockers` and `next_actions` counts,
+  so the card action is not presented as the only action. Array order does not
+  define public primary or additional authority roles. Stable blocker and action
+  codes remain distinct from human sentences.
+- Text summaries hide internal IDs unless the displayed action needs one. JSON
+  retains the existing field names and stable values in `summary_card` and the
+  top-level response; automation must not parse text formatting.
 - Connection status and verification text starts with a title and compact
   `Status`, `Profile`, `Repository` or `Repositories`, `Checks`, `Next`,
   `Limits`, and `Diagnostics` sections. Connection add may also summarize host
@@ -897,8 +912,9 @@ Selection and dispatch:
 - The command calls `volicord.reconcile_changes` with
   `actor_source=local_user` and `operation_category=local_recovery`.
 - Output includes the compact summary card and counts for resolved changes,
-  pending judgments, and unresolved changes. Rejected Core responses remain
-  rejected CLI results.
+  pending judgments, unresolved changes, all top-level close blockers, and all
+  top-level next actions. The counts do not assign authority roles based on
+  array order. Rejected Core responses remain rejected CLI results.
 
 With `--dry-run`, text and JSON show planned automatic resolutions, changes that
 need user judgment, judgment requests that would be created, projected close

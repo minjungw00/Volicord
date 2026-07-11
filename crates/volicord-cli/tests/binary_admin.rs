@@ -294,6 +294,15 @@ fn doctor_without_setup_reports_action_required() -> Result<(), Box<dyn Error>> 
     assert_success(&doctor_text);
     let text = stdout(&doctor_text);
     assert!(text.contains("Volicord doctor action_required"));
+    assert!(text.contains("Task lifecycle: not shown in this view"));
+    assert!(
+        text.contains("Volicord record effect for this command: local diagnostic observation only")
+    );
+    assert!(text.contains("Pending user judgments: not shown in this view"));
+    assert!(text.contains("Close readiness: not shown in this view"));
+    assert!(text.contains(
+        "Primary next action: Initialize the primary host connection from the Product Repository"
+    ));
     assert!(text.contains("Status:\n  Installation profile: local init or profile repair is required before Volicord workflows are usable"));
     assert!(text.contains("Runtime Home: ready"));
     assert!(text.contains("Installation profile: missing or invalid"));
@@ -4876,12 +4885,15 @@ fn user_channel_records_pending_judgment_with_local_user_provenance() -> Result<
     assert_success(&status);
     let status_text = stdout(&status);
     assert!(status_text.contains("User Channel status"));
-    assert!(status_text.contains("Close Status: blocked"));
-    assert!(status_text.contains("User Judgment: pending (1)"));
+    assert!(status_text.contains("Close readiness: blocked"));
+    assert!(status_text.contains("Pending user judgments: pending (1)"));
+    assert!(status_text.contains(
+        "Volicord record effect for this command: none (does not describe product-file writes or Runtime Home write capability)"
+    ));
     assert!(status_text.contains(
         "Available answer paths: host prompt unavailable; chat capture unavailable; local consent unavailable; CLI inbox available"
     ));
-    assert!(status_text.contains("Next:"));
+    assert!(status_text.contains("Primary next action:"));
     assert!(status_text.contains("Does not prove:"));
     assert!(status_text.contains("risk-free outcome"));
 
@@ -4891,6 +4903,20 @@ fn user_channel_records_pending_judgment_with_local_user_provenance() -> Result<
     let status_value = json_stdout(&status_json)?;
     assert_eq!(status_value["summary_card"]["close_status"], "blocked");
     assert_eq!(status_value["summary_card"]["user_judgment"], "pending (1)");
+    let close_blocker_count = status_value["close_blockers"]
+        .as_array()
+        .expect("close_blockers should be an array")
+        .len();
+    let next_action_count = status_value["next_actions"]
+        .as_array()
+        .expect("next_actions should be an array")
+        .len();
+    assert!(status_text.contains(&format!(
+        "Close readiness blockers (total): {close_blocker_count}"
+    )));
+    assert!(status_text.contains(&format!(
+        "Top-level next actions (total): {next_action_count}"
+    )));
     assert_eq!(
         channel_path(&status_value["user_channel_availability"], "cli")["available"],
         true
@@ -4907,6 +4933,8 @@ fn user_channel_records_pending_judgment_with_local_user_provenance() -> Result<
     assert_success(&list);
     let list_text = stdout(&list);
     assert!(list_text.contains("Judgment Inbox"));
+    assert!(list_text.contains("Pending user judgments: pending (1)"));
+    assert!(list_text.contains("Profile: not shown in this view"));
     assert!(list_text.contains("1. Should the focused CLI user-channel choice be accepted?"));
     assert!(list_text.contains("id: "));
     assert!(list_text.contains("accept: Accept focused choice"));
@@ -5026,6 +5054,19 @@ fn user_channel_records_pending_judgment_with_local_user_provenance() -> Result<
             .expect("resolution_json should be stored"),
     )?;
     assert_eq!(resolution_json["note"], record_note);
+
+    let empty_list = run_with_home_env_in_dir(runtime_home.path(), ["inbox"], &[], &repo_root)?;
+    assert_success(&empty_list);
+    let empty_list_text = stdout(&empty_list);
+    assert!(empty_list_text.contains("Pending user judgments: pending (0)"));
+    assert!(empty_list_text.contains("No pending judgments."));
+    assert!(!empty_list_text.contains("not_selected"));
+
+    let empty_list_json =
+        run_with_home_env_in_dir(runtime_home.path(), ["inbox", "--json"], &[], &repo_root)?;
+    assert_success(&empty_list_json);
+    let empty_list_value = json_stdout(&empty_list_json)?;
+    assert_eq!(empty_list_value["summary_card"]["user_judgment"], "none");
     Ok(())
 }
 
@@ -5139,6 +5180,8 @@ fn changes_reconcile_runs_as_local_recovery() -> Result<(), Box<dyn Error>> {
     assert_success(&dry_text_output);
     let dry_text = stdout(&dry_text_output);
     assert!(dry_text.contains("Changes reconciliation (dry run)"));
+    assert!(dry_text.contains("Close readiness blockers that would remain (total):"));
+    assert!(dry_text.contains("Projected next actions (total):"));
     assert!(dry_text.contains("automatically_reconcilable_changes=1"));
     assert!(dry_text.contains("Does not prove:"));
     assert!(dry_text.contains("intent proof"));
@@ -5207,8 +5250,13 @@ fn changes_reconcile_runs_as_local_recovery() -> Result<(), Box<dyn Error>> {
     assert_success(&text_output);
     let text = stdout(&text_output);
     assert!(text.contains("Changes reconciliation"));
-    assert!(text.contains("Changes: none"));
-    assert!(text.contains("Next:"));
+    assert!(text.contains("Unrecorded Product Repository changes: none"));
+    assert!(text.contains(
+        "Volicord record effect for this command: recorded (does not describe product-file writes or Runtime Home write capability)"
+    ));
+    assert!(text.contains("Primary next action:"));
+    assert!(text.contains("Close readiness blockers (total):"));
+    assert!(text.contains("Top-level next actions (total):"));
     assert!(text.contains("Does not prove:"));
     assert!(text.contains("product-file write occurred"));
     assert!(!text.contains("reconciled changes:"));

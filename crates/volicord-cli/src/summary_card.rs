@@ -14,28 +14,58 @@ pub(crate) const USER_CHANNEL_SUMMARY_GUARANTEE: &str =
 
 pub(crate) fn render_summary_card_text(card: &SummaryCard) -> String {
     let mut output = format!(
-        "Task: {}\nRecording: {}\nProfile: {}\nWrite Ticket: {}\nEvidence: {}\nUser Judgment: {}\nChanges: {}\nClose Status: {}\nTransport: {}\n",
-        card.task,
-        card.recording,
-        card.profile,
-        card.write_ticket,
-        card.evidence,
-        card.user_judgment,
-        card.changes,
-        card.close_status,
-        card.transport,
+        "Task lifecycle: {}\nVolicord record effect for this command: {}\nProfile: {}\nWrite Ticket: {}\nEvidence: {}\nPending user judgments: {}\nUnrecorded Product Repository changes: {}\nClose readiness: {}\nTransport: {}\n",
+        summary_value_text(&card.task),
+        authority_record_effect_text(&card.recording),
+        summary_value_text(&card.profile),
+        summary_value_text(&card.write_ticket),
+        summary_value_text(&card.evidence),
+        pending_user_judgments_text(&card.user_judgment),
+        summary_value_text(&card.changes),
+        summary_value_text(&card.close_status),
+        summary_value_text(&card.transport),
     );
     append_summary_next(&mut output, &card.next);
     output.push_str(&does_not_prove_line(summary_card_non_guarantees(card)));
     output
 }
 
+fn summary_value_text(value: &str) -> &str {
+    match value {
+        "not_selected" => "not shown in this view",
+        value => value,
+    }
+}
+
+fn authority_record_effect_text(value: &str) -> String {
+    let effect = match value {
+        "read_only" => "none",
+        "core_committed" => "recorded",
+        "diagnostic_observation" => "local diagnostic observation only",
+        "not_selected" => return "not shown in this view".to_owned(),
+        value => return format!("status code `{value}`"),
+    };
+    format!("{effect} (does not describe product-file writes or Runtime Home write capability)")
+}
+
+fn pending_user_judgments_text(value: &str) -> &str {
+    match value {
+        "none" => "pending (0)",
+        value => summary_value_text(value),
+    }
+}
+
 fn append_summary_next(output: &mut String, next: &str) {
     let Some((label, command)) = backticked_volicord_command(next) else {
-        output.push_str(&format!("Next: {next}\n"));
+        output.push_str(&format!(
+            "Primary next action: {}\n",
+            summary_value_text(next)
+        ));
         return;
     };
-    output.push_str(&format!("Next: {label}\n  Run:\n    {command}\n"));
+    output.push_str(&format!(
+        "Primary next action: {label}\n  Run:\n    {command}\n"
+    ));
 }
 
 fn backticked_volicord_command(next: &str) -> Option<(String, String)> {
@@ -65,6 +95,22 @@ fn summary_card_non_guarantees(card: &SummaryCard) -> &'static str {
 
 pub(crate) fn summary_card_from_response(value: &Value) -> Option<SummaryCard> {
     serde_json::from_value(value.get("summary_card")?.clone()).ok()
+}
+
+pub(crate) fn render_close_and_next_action_totals_text(value: &Value) -> String {
+    format!(
+        "Close readiness blockers (total): {}\nTop-level next actions (total): {}\n",
+        top_level_array_count_text(value, "close_blockers"),
+        top_level_array_count_text(value, "next_actions"),
+    )
+}
+
+fn top_level_array_count_text(value: &Value, field: &str) -> String {
+    value
+        .get(field)
+        .and_then(Value::as_array)
+        .map(|values| values.len().to_string())
+        .unwrap_or_else(|| "not shown in this view".to_owned())
 }
 
 pub(crate) fn render_coverage_summary_text(value: &Value) -> Option<String> {
@@ -242,9 +288,61 @@ mod tests {
 
         let text = render_summary_card_text(&card);
 
-        assert!(text
-            .contains("Next: Use the CLI inbox to list and answer pending user-owned judgments."));
+        assert!(text.contains("Task lifecycle: selected"));
+        assert!(text.contains(
+            "Volicord record effect for this command: none (does not describe product-file writes or Runtime Home write capability)"
+        ));
+        assert!(text.contains("Pending user judgments: pending (1)"));
+        assert!(text.contains("Unrecorded Product Repository changes: none"));
+        assert!(text.contains("Close readiness: blocked"));
+        assert!(text.contains(
+            "Primary next action: Use the CLI inbox to list and answer pending user-owned judgments."
+        ));
         assert!(text.contains("  Run:\n    volicord inbox\n"));
-        assert!(!text.contains("Next: Use `volicord inbox`"));
+        assert!(!text.contains("Primary next action: Use `volicord inbox`"));
+        assert!(!text.contains("Recording: read_only"));
+    }
+
+    #[test]
+    fn summary_card_text_humanizes_unselected_values_and_zero_pending_count() {
+        let card = SummaryCard {
+            task: "not_selected".to_owned(),
+            recording: "diagnostic_observation".to_owned(),
+            profile: "not_selected".to_owned(),
+            write_ticket: "not_selected".to_owned(),
+            evidence: "not_selected".to_owned(),
+            user_judgment: "none".to_owned(),
+            changes: "not_selected".to_owned(),
+            close_status: "not_selected".to_owned(),
+            transport: "local CLI".to_owned(),
+            next: "none".to_owned(),
+            next_action: None,
+            guarantee: DIAGNOSTIC_SUMMARY_GUARANTEE.to_owned(),
+        };
+
+        let text = render_summary_card_text(&card);
+
+        assert!(text.contains("Task lifecycle: not shown in this view"));
+        assert!(text.contains(
+            "Volicord record effect for this command: local diagnostic observation only (does not describe product-file writes or Runtime Home write capability)"
+        ));
+        assert!(text.contains("Profile: not shown in this view"));
+        assert!(text.contains("Pending user judgments: pending (0)"));
+        assert!(text.contains("Close readiness: not shown in this view"));
+        assert!(text.contains("Primary next action: none"));
+        assert!(!text.contains("not_selected"));
+    }
+
+    #[test]
+    fn close_and_next_action_totals_count_complete_top_level_arrays() {
+        let value = json!({
+            "close_blockers": [{"code": "ONE"}, {"code": "TWO"}],
+            "next_actions": [{"label": "one"}, {"label": "two"}, {"label": "three"}]
+        });
+
+        assert_eq!(
+            render_close_and_next_action_totals_text(&value),
+            "Close readiness blockers (total): 2\nTop-level next actions (total): 3\n"
+        );
     }
 }

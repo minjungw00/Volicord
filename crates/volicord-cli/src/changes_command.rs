@@ -21,7 +21,9 @@ use crate::disclosure::does_not_prove_line;
 use crate::project_context::{
     registered_project_for_repo, resolve_repository_root, ProjectCommandError,
 };
-use crate::summary_card::{render_summary_card_text, summary_card_from_response};
+use crate::summary_card::{
+    render_close_and_next_action_totals_text, render_summary_card_text, summary_card_from_response,
+};
 
 type RawOptions = BTreeMap<String, Vec<String>>;
 
@@ -288,6 +290,9 @@ fn render_reconcile_response(
     if let Some(card) = summary_card_from_response(&response.response_value) {
         output.push_str(&render_summary_card_text(&card));
     }
+    output.push_str(&render_close_and_next_action_totals_text(
+        &response.response_value,
+    ));
     Ok(output)
 }
 
@@ -312,15 +317,19 @@ fn render_reconcile_dry_run_text(value: &serde_json::Value) -> String {
         .as_array()
         .map(|values| values.as_slice())
         .unwrap_or(&[]);
-    if blockers.is_empty() {
-        output.push_str("Close blockers that would remain: none\n");
-    } else {
+    output.push_str(&format!(
+        "Close readiness blockers that would remain (total): {}\n",
+        blockers.len()
+    ));
+    if !blockers.is_empty() {
         let codes = blockers
             .iter()
             .map(|blocker| text_value(blocker.get("code")))
             .collect::<Vec<_>>()
             .join(", ");
-        output.push_str(&format!("Close blockers that would remain: {codes}\n"));
+        output.push_str(&format!(
+            "Close readiness blocker codes that would remain: {codes}\n"
+        ));
     }
     for diagnostic in summary["diagnostics"]
         .as_array()
@@ -331,13 +340,20 @@ fn render_reconcile_dry_run_text(value: &serde_json::Value) -> String {
     {
         output.push_str(&format!("Diagnostic: {diagnostic}\n"));
     }
-    let next = summary["next_actions"]
+    let next_actions = summary["next_actions"]
         .as_array()
-        .and_then(|values| values.first())
-        .and_then(|action| action.get("label"))
-        .and_then(serde_json::Value::as_str)
-        .unwrap_or("none");
-    output.push_str(&format!("Next: {next}\n"));
+        .map(|values| values.as_slice())
+        .unwrap_or(&[]);
+    output.push_str(&format!(
+        "Projected next actions (total): {}\n",
+        next_actions.len()
+    ));
+    for action in next_actions {
+        output.push_str(&format!(
+            "Projected next action: {}\n",
+            text_value(action.get("label"))
+        ));
+    }
     output.push_str(&does_not_prove_line(
         "actor identity proof, intent proof, correctness proof, test sufficiency proof, human review completion, or that a product-file write occurred",
     ));

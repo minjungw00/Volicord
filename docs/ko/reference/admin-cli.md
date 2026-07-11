@@ -143,13 +143,25 @@ volicord inbox open <judgment-id> [--repo PATH] [--json]
   산문 구두점을 붙이지 않습니다.
 - 상태형 명령은 세부 진단보다 먼저 간결한 요약 카드나 짧은 섹션을 보여 줍니다. 여기에는
   `volicord status`, `volicord doctor`, 연결 상태와 검증, 변경 조정, 받은편지함이
-  포함됩니다. 명령에 맞는 공개 라벨은 `Task`, `Recording`, `Profile`, `Write Ticket`,
-  `Evidence`, `User Judgment`, `Changes`, `Close Status`, `Transport`, `Next`,
-  `Guarantee`입니다.
-- `Next`는 알 수 있는 즉시 수행할 행동을 표시하고, 필요하면 후속 검증 명령을 포함합니다.
-  다음 행동을 알 수 없을 때만 `none`을 사용합니다. 텍스트 요약은 표시된 행동에 필요한
-  경우가 아니면 내부 ID를 숨깁니다. JSON은 같은 안정 요약 데이터를 `summary_card`에
-  담습니다. 자동화는 텍스트 서식을 파싱하면 안 됩니다.
+  포함됩니다. 명령이 공통 요약 카드 텍스트 렌더러를 사용할 때 라벨은
+  `Task lifecycle`, `Volicord record effect for this command`, `Profile`, `Write Ticket`,
+  `Evidence`, `Pending user judgments`, `Unrecorded Product Repository changes`,
+  `Close readiness`, `Transport`, `Primary next action`입니다.
+- `Volicord record effect for this command`는 현재 명령이 Core 권한 상태를 변경했는지만
+  나타냅니다. 사람용 텍스트는 JSON 값 `read_only`를 `none`으로 표시하며, 이는
+  `this command made no Core authority-state mutation`을 뜻합니다. 커밋된 기록 효과는
+  `recorded`로 표시합니다. 같은 줄의 괄호는 이 값이 Product Repository 파일 쓰기나
+  Runtime Home 쓰기 능력을 나타내지 않는다고 명시합니다. 마찬가지로 `not_selected`는
+  `not shown in this view`로, 대기 판단 수가 0이면 `pending (0)`으로 표시합니다.
+- `Primary next action`은 알 수 있는 경우 간결한 카드가 제시하는 즉시 수행할 행동을
+  표시하며, 필요하면 후속 검증 명령을 포함합니다. 다음 행동을 알 수 없을 때만 `none`을
+  사용합니다. 상태와 변경 조정 텍스트는 카드의 행동이 유일한 행동처럼 보이지 않도록
+  최상위 `close_blockers`와 `next_actions` 전체 개수도 표시합니다. 배열 순서는 공개된
+  주 행동이나 추가 행동의 권한 역할을 정의하지 않습니다. 안정적인 차단 사유 코드와
+  행동 코드는 사람용 문장과 구분합니다.
+- 텍스트 요약은 표시된 행동에 필요한 경우가 아니면 내부 ID를 숨깁니다. JSON은
+  `summary_card`와 최상위 응답의 기존 필드 이름과 안정 값을 그대로 유지합니다. 자동화는
+  텍스트 서식을 파싱하면 안 됩니다.
 - 연결 상태와 검증의 텍스트 출력은 제목과 `Status`, `Profile`, `Repository` 또는
   `Repositories`, `Checks`, `Next`, `Limits`, `Diagnostics` 섹션으로 시작합니다. 연결
   추가는 호스트 설정이나 저장소 파일 변경도 요약할 수 있습니다. 자세한 훅 상태, CLI MCP
@@ -807,8 +819,9 @@ Volicord는 관찰 메타데이터를 기록합니다. 필요한 훅 설정이 �
 - 기본값은 현재 작업입니다. `--task`로 다른 작업을 선택할 수 있습니다.
 - 명령은 `actor_source=local_user`, `operation_category=local_recovery`로
   `volicord.reconcile_changes`를 호출합니다.
-- 출력에는 간결한 요약 카드와 해결된 변경, 대기 판단, 미해결 변경 수가 들어갑니다.
-  거절된 Core 응답은 거절된 CLI 결과로 유지합니다.
+- 출력에는 간결한 요약 카드와 해결된 변경, 대기 판단, 미해결 변경, 최상위 닫기 차단
+  사유 전체, 최상위 다음 행동 전체의 개수가 들어갑니다. 이 개수는 배열 순서에 권한
+  역할을 부여하지 않습니다. 거절된 Core 응답은 거절된 CLI 결과로 유지합니다.
 
 `--dry-run`을 사용하면 텍스트와 JSON은 계획된 자동 해결, 사용자 판단이 필요한 변경,
 만들어질 판단 요청, 예상 닫기 차단 사유, 다음 행동, 미리보기 고지를 보여 줍니다.
