@@ -100,7 +100,7 @@ ResidualRiskInput:
 - 담당 문서가 명시적으로 추가하지 않는 한 이 메서드는 호출자가 제공한 `project_state`, `write_ticket`, `user_judgment`, `blocker`, `task_event`, `task` 참조를 닫기 근거에서 거절하거나 제외합니다.
 - 받아들인 모든 참조는 존재해야 하고 같은 프로젝트와 `Task`에 속해야 합니다. 아티팩트 참조는 `Task`에 연결되어 있고 `integrity_status=verified`로 현재 바이트 검증을 통과해야 합니다. 증거 참조는 현재 `Task` 증거 요약을 식별해야 합니다. 현재 닫기 근거 결과 참조로 쓰이는 실행 기록 참조는 현재 `Task`, 현재 적용 Change Unit, 현재 범위 리비전, 호환되는 기준선, 기록된 상태와 호환되는 기록된 현재 실행 기록을 식별해야 합니다.
 - 이력 실행 기록 참조는 이 새 현재 실행 기록이 이력의 `verified` 아티팩트나 증거를 명시적으로 재사용하고 그 재사용을 커밋된 증거나 닫기 평가에 기록하지 않는 한 닫기 근거 용도에서는 감사 기록입니다.
-- Core는 `CurrentCloseBasis`에 기준 참조를 저장하며 호출자가 보낸 `state_version` 메타데이터를 권한으로 보존하지 않습니다.
+- Core는 `CurrentCloseBasis`에 기준 참조를 저장하며 호출자가 보낸 `produced_at_state_version` 메타데이터를 권한이나 동시성 입력으로 취급하지 않습니다.
 - Core는 기준 닫기 근거를 만들면서 현재 실행 기록, 현재 Change Unit, 현재 EvidenceSummary 참조를 추가할 수 있습니다.
 
 증거 갱신 출처 규칙:
@@ -338,7 +338,7 @@ run_summary:
     record_id: run_runprobe_001
     project_id: proj_runprobe_001
     task_id: task_runprobe_001
-    state_version: 32
+    produced_at_state_version: 32
   kind: implementation
   summary: "검색 결과 수 검증을 통과했습니다."
   observed_changes:
@@ -362,7 +362,7 @@ run_summary:
         record_id: run_runprobe_001
         project_id: proj_runprobe_001
         task_id: task_runprobe_001
-        state_version: 32
+        produced_at_state_version: 32
       created_by_actor_source: agent_connection:conn_run_probe
       storage_ref: "artifact-storage://search-result-count-validation"
 registered_artifacts:
@@ -381,7 +381,7 @@ registered_artifacts:
       record_id: run_runprobe_001
       project_id: proj_runprobe_001
       task_id: task_runprobe_001
-      state_version: 32
+      produced_at_state_version: 32
     created_by_actor_source: agent_connection:conn_run_probe
     storage_ref: "artifact-storage://search-result-count-validation"
 evidence_summary:
@@ -400,13 +400,13 @@ evidence_summary:
           record_id: run_runprobe_001
           project_id: proj_runprobe_001
           task_id: task_runprobe_001
-          state_version: 32
+          produced_at_state_version: 32
       observation_refs:
         - record_kind: evidence_observation
           record_id: evidence_observation_runprobe_001
           project_id: proj_runprobe_001
           task_id: task_runprobe_001
-          state_version: 32
+          produced_at_state_version: 32
       supporting_artifact_refs:
         - artifact_id: artifact_runprobe_report_001
           project_id: proj_runprobe_001
@@ -423,7 +423,7 @@ evidence_summary:
             record_id: run_runprobe_001
             project_id: proj_runprobe_001
             task_id: task_runprobe_001
-            state_version: 32
+            produced_at_state_version: 32
           created_by_actor_source: agent_connection:conn_run_probe
           storage_ref: "artifact-storage://search-result-count-validation"
       gap_refs: []
@@ -443,7 +443,7 @@ evidence_summary:
         record_id: run_runprobe_001
         project_id: proj_runprobe_001
         task_id: task_runprobe_001
-        state_version: 32
+        produced_at_state_version: 32
       created_by_actor_source: agent_connection:conn_run_probe
       storage_ref: "artifact-storage://search-result-count-validation"
   observation_refs:
@@ -451,13 +451,13 @@ evidence_summary:
       record_id: evidence_observation_runprobe_001
       project_id: proj_runprobe_001
       task_id: task_runprobe_001
-      state_version: 32
+      produced_at_state_version: 32
   updated_by_run_ref:
     record_kind: run
     record_id: run_runprobe_001
     project_id: proj_runprobe_001
     task_id: task_runprobe_001
-    state_version: 32
+    produced_at_state_version: 32
 evidence_observations:
   - observation_id: evidence_observation_runprobe_001
     project_id: proj_runprobe_001
@@ -468,7 +468,7 @@ evidence_observations:
       record_id: run_runprobe_001
       project_id: proj_runprobe_001
       task_id: task_runprobe_001
-      state_version: 32
+      produced_at_state_version: 32
     claim: "검색 결과 수 검증을 통과했습니다."
     source_kind: external_tool
     assurance_level: external_tool_result
@@ -494,7 +494,7 @@ evidence_observations:
           record_id: run_runprobe_001
           project_id: proj_runprobe_001
           task_id: task_runprobe_001
-          state_version: 32
+          produced_at_state_version: 32
         created_by_actor_source: agent_connection:conn_run_probe
         storage_ref: "artifact-storage://search-result-count-validation"
     limitations: []
@@ -512,23 +512,23 @@ current_close_basis:
       record_id: run_runprobe_001
       project_id: proj_runprobe_001
       task_id: task_runprobe_001
-      state_version: 32
+      produced_at_state_version: 32
     - record_kind: change_unit
       record_id: cu_runprobe_001
       project_id: proj_runprobe_001
       task_id: task_runprobe_001
-      state_version: 32
+      produced_at_state_version: 32
     - record_kind: evidence_summary
       record_id: evidence_summary_runprobe_001
       project_id: proj_runprobe_001
       task_id: task_runprobe_001
-      state_version: 32
+      produced_at_state_version: 32
   evidence_summary_ref:
     record_kind: evidence_summary
     record_id: evidence_summary_runprobe_001
     project_id: proj_runprobe_001
     task_id: task_runprobe_001
-    state_version: 32
+    produced_at_state_version: 32
   residual_risks: []
   sensitive_categories: []
   sensitive_action_requirements: []
@@ -538,7 +538,7 @@ current_close_basis:
     record_id: run_runprobe_001
     project_id: proj_runprobe_001
     task_id: task_runprobe_001
-    state_version: 32
+    produced_at_state_version: 32
   updated_at: "<example-updated-at>"
 blocker_refs: []
 state:
@@ -549,7 +549,7 @@ state:
     record_id: task_runprobe_001
     project_id: proj_runprobe_001
     task_id: task_runprobe_001
-    state_version: 32
+    produced_at_state_version: 32
   mode: work
   lifecycle:
     lifecycle_phase: ready
@@ -568,7 +568,7 @@ state:
     record_id: cu_runprobe_001
     project_id: proj_runprobe_001
     task_id: task_runprobe_001
-    state_version: 31
+    produced_at_state_version: 32
   baseline_ref: baseline_runprobe_001
   shaping_readiness: null
   pending_user_judgment_refs: []

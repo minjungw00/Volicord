@@ -97,7 +97,8 @@ use crate::policy::{
     evidence::{
         evidence_assurance_matches_source, evidence_item_has_no_support,
         evidence_item_related_refs, evidence_provenance_class, evidence_status_for_items,
-        unique_artifact_refs, unique_state_record_refs, EvidenceProvenanceClass,
+        state_record_ref_identity_key, unique_artifact_refs, unique_state_record_refs,
+        EvidenceProvenanceClass,
     },
     judgment_answer::{
         answer_branch_matches_kind, answer_outcome_agreement, is_authority_bearing_judgment,
@@ -1740,7 +1741,7 @@ fn unique_state_refs(values: Vec<StateRecordRef>) -> Vec<StateRecordRef> {
     let mut seen = BTreeSet::new();
     let mut unique = Vec::new();
     for value in values {
-        let key = serde_json::to_string(&value).unwrap_or_else(|_| String::new());
+        let key = state_record_ref_identity_key(&value);
         if seen.insert(key) {
             unique.push(value);
         }
@@ -2669,6 +2670,7 @@ fn next_actions_for_state(
     task_mode: TaskMode,
     task_ref: &StateRecordRef,
     change_unit_ref: Option<&StateRecordRef>,
+    expected_state_version: u64,
 ) -> Vec<NextActionSummary> {
     match (task_mode, change_unit_ref) {
         (TaskMode::Advisor, Some(change_unit_ref)) => vec![NextActionSummary {
@@ -2678,6 +2680,7 @@ fn next_actions_for_state(
             allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
             label: "Record an advisory shaping update for the current Change Unit.".to_owned(),
             blocking_question: None,
+            expected_state_version: RequiredNullable::some(expected_state_version),
             required_refs: vec![task_ref.clone(), change_unit_ref.clone()],
         }],
         (_, Some(change_unit_ref)) => vec![NextActionSummary {
@@ -2687,6 +2690,7 @@ fn next_actions_for_state(
             allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
             label: "Check the current change against current scope.".to_owned(),
             blocking_question: None,
+            expected_state_version: RequiredNullable::some(expected_state_version),
             required_refs: vec![task_ref.clone(), change_unit_ref.clone()],
         }],
         (TaskMode::Advisor, None) => vec![NextActionSummary {
@@ -2698,6 +2702,7 @@ fn next_actions_for_state(
                 "Create the first currently applied Change Unit before recording advisory shaping."
                     .to_owned(),
             blocking_question: None,
+            expected_state_version: RequiredNullable::some(expected_state_version),
             required_refs: vec![task_ref.clone()],
         }],
         (_, None) => vec![NextActionSummary {
@@ -2709,6 +2714,7 @@ fn next_actions_for_state(
                 "Create the first currently applied Change Unit before write-ticket preparation."
                     .to_owned(),
             blocking_question: None,
+            expected_state_version: RequiredNullable::some(expected_state_version),
             required_refs: vec![task_ref.clone()],
         }],
     }
@@ -2949,7 +2955,10 @@ fn next_action_label(action: &NextActionSummary) -> String {
     }
 }
 
-fn normalize_next_action_collection(actions: &mut [NextActionSummary]) {
+fn normalize_next_action_collection(
+    actions: &mut [NextActionSummary],
+    expected_state_version: u64,
+) {
     for (index, action) in actions.iter_mut().enumerate() {
         action.presentation_role = if index == 0 {
             NextActionPresentationRole::Primary
@@ -2957,10 +2966,17 @@ fn normalize_next_action_collection(actions: &mut [NextActionSummary]) {
             NextActionPresentationRole::Additional
         };
         action.allowed_operation_categories = allowed_operation_categories(action.owner_method);
+        action.expected_state_version = next_action_expected_state_version(
+            &action.allowed_operation_categories,
+            expected_state_version,
+        );
     }
 }
 
-fn normalize_close_blocker_action_projection(blockers: &mut [CloseReadinessBlocker]) {
+fn normalize_close_blocker_action_projection(
+    blockers: &mut [CloseReadinessBlocker],
+    expected_state_version: u64,
+) {
     for (action_index, action) in blockers
         .iter_mut()
         .flat_map(|blocker| blocker.next_actions.iter_mut())
@@ -2972,6 +2988,21 @@ fn normalize_close_blocker_action_projection(blockers: &mut [CloseReadinessBlock
             NextActionPresentationRole::Additional
         };
         action.allowed_operation_categories = allowed_operation_categories(action.owner_method);
+        action.expected_state_version = next_action_expected_state_version(
+            &action.allowed_operation_categories,
+            expected_state_version,
+        );
+    }
+}
+
+fn next_action_expected_state_version(
+    allowed_operation_categories: &[OperationCategory],
+    expected_state_version: u64,
+) -> RequiredNullable<u64> {
+    if allowed_operation_categories.contains(&OperationCategory::AgentWorkflow) {
+        RequiredNullable::some(expected_state_version)
+    } else {
+        RequiredNullable::null()
     }
 }
 
@@ -3048,7 +3079,7 @@ fn state_ref(
         record_id: RecordId::new(record_id),
         project_id: project_id.clone(),
         task_id: task_id.cloned().into(),
-        state_version: state_version.into(),
+        produced_at_state_version: state_version.into(),
     }
 }
 
@@ -3209,7 +3240,7 @@ fn state_ref_from_stored(record: StoredRecordRef) -> StateRecordRef {
         record_id: RecordId::new(record.record_id),
         project_id: ProjectId::new(record.project_id),
         task_id: record.task_id.map(TaskId::new).into(),
-        state_version: record.state_version.into(),
+        produced_at_state_version: record.state_version.into(),
     }
 }
 

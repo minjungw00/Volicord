@@ -3029,19 +3029,19 @@ fn canonical_close_refs_and_artifact_integrity_remain_truthful() -> Result<(), B
     assert!(result_refs.iter().any(|record_ref| {
         record_ref["record_kind"] == "run"
             && record_ref["record_id"] == "run_canonical_dedup"
-            && record_ref["state_version"] == 3
+            && record_ref["produced_at_state_version"] == 3
     }));
     assert!(result_refs.iter().any(|record_ref| {
         record_ref["record_kind"] == "change_unit"
             && record_ref["record_id"] == change_unit_id
-            && record_ref["state_version"] == 3
+            && record_ref["produced_at_state_version"] == 3
     }));
     assert!(result_refs
         .iter()
         .any(|record_ref| record_ref["record_kind"] == "evidence_summary"
-            && record_ref["state_version"] == 3));
+            && record_ref["produced_at_state_version"] == 3));
     assert_eq!(
-        basis["residual_risks"][0]["source_refs"][0]["state_version"],
+        basis["residual_risks"][0]["source_refs"][0]["produced_at_state_version"],
         3
     );
 
@@ -4471,7 +4471,7 @@ fn artifact_state_ref(
         record_id: volicord_types::RecordId::new(artifact_id),
         project_id: volicord_types::ProjectId::new(fixture.project_id()),
         task_id: Some(volicord_types::TaskId::new(task_id)).into(),
-        state_version: Some(state_version).into(),
+        produced_at_state_version: Some(state_version).into(),
     }
 }
 
@@ -4505,7 +4505,7 @@ fn state_record_ref_with_project(
         record_id: volicord_types::RecordId::new(record_id),
         project_id: volicord_types::ProjectId::new(project_id),
         task_id: Some(volicord_types::TaskId::new(task_id)).into(),
-        state_version: state_version.into(),
+        produced_at_state_version: state_version.into(),
     }
 }
 

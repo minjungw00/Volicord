@@ -74,6 +74,14 @@ fn update_scope_commits_once_and_creates_one_current_change_unit() -> Result<(),
         .as_str()
         .expect("task ref should be present")
         .to_owned();
+    let next_action_state_version = intake.response_value["next_actions"][0]
+        ["expected_state_version"]
+        .as_u64()
+        .expect("the projected mutation action should carry a concurrency token");
+    assert_eq!(
+        next_action_state_version,
+        intake.response_value["base"]["state_version"]
+    );
     let before = harness.counts()?;
 
     let response = harness.service.update_scope(
@@ -81,7 +89,7 @@ fn update_scope_commits_once_and_creates_one_current_change_unit() -> Result<(),
             "req_scope_create",
             "idem_scope_create",
             false,
-            Some(1),
+            Some(next_action_state_version),
             &task_id,
             ChangeUnitOperation::CreateCurrent,
             "Create current export scope.",

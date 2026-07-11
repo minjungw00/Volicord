@@ -12,6 +12,8 @@ use volicord_types::{
     UtcTimestamp,
 };
 
+use super::evidence::state_record_ref_identity_key;
+
 pub(crate) fn is_terminal_lifecycle(value: &str) -> bool {
     matches!(value, "completed" | "cancelled" | "superseded")
 }
@@ -66,6 +68,7 @@ pub(crate) fn close_next_action(
         allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
         label: label.to_owned(),
         blocking_question: None,
+        expected_state_version: RequiredNullable::null(),
         required_refs,
     }
 }
@@ -255,7 +258,7 @@ pub(crate) fn current_residual_risk_acceptance_coverage(
                         record_id: volicord_types::RecordId::new(judgment.judgment_id.clone()),
                         project_id: project_id.clone(),
                         task_id: Some(task_id.clone()).into(),
-                        state_version: Some(state_version).into(),
+                        produced_at_state_version: Some(state_version).into(),
                     })
                     .collect::<Vec<_>>()
             } else {
@@ -452,23 +455,17 @@ fn risk_id_set(ids: &[RiskId]) -> BTreeSet<RiskId> {
 }
 
 fn state_refs_match(left: &[StateRecordRef], right: &[StateRecordRef]) -> bool {
-    let mut left_keys = left.iter().map(state_ref_identity_key).collect::<Vec<_>>();
-    let mut right_keys = right.iter().map(state_ref_identity_key).collect::<Vec<_>>();
+    let mut left_keys = left
+        .iter()
+        .map(state_record_ref_identity_key)
+        .collect::<Vec<_>>();
+    let mut right_keys = right
+        .iter()
+        .map(state_record_ref_identity_key)
+        .collect::<Vec<_>>();
     left_keys.sort();
     right_keys.sort();
     left_keys == right_keys
-}
-
-fn state_ref_identity_key(record_ref: &StateRecordRef) -> (String, String, String, Option<String>) {
-    (
-        serde_json::to_string(&record_ref.record_kind).unwrap_or_default(),
-        record_ref.record_id.as_str().to_owned(),
-        record_ref.project_id.as_str().to_owned(),
-        record_ref
-            .task_id
-            .as_ref()
-            .map(|task_id| task_id.as_str().to_owned()),
-    )
 }
 
 fn scope_decision_refs_are_compatible(

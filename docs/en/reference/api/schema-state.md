@@ -49,6 +49,10 @@ Meaning:
 - `StateRecordRef` is the common public reference shape for Core-owned records that appear in API responses.
 - `record_kind` is a controlled value string.
 - `record_id`, `project_id`, and `task_id` are opaque identifiers.
+- Record identity is exactly the tuple (`project_id`, `record_kind`, `record_id`). `task_id` is nullable Task context and is not part of record identity.
+- `produced_at_state_version` is the nullable `project_state.state_version` of the aggregate projection that produced the reference. It is a projection-freshness cue, not record identity, a record revision, a close-basis revision, authority, or an optimistic-concurrency token. The same logical record can therefore appear with different `produced_at_state_version` values without becoming a different record.
+- When a method response emits a ref from its current projection, non-null `produced_at_state_version` matches the `project_state.state_version` used for that response projection, even when the referenced record last changed earlier. Exact replay retains the originally stored response and its original projection-freshness values.
+- A `StateRecordRef` never supplies concurrency input. A caller that invokes a mutation uses the current project clock in `ToolEnvelope.expected_state_version` when the method owner requires it.
 
 It is a public reference, not an embedded storage row.
 
@@ -58,11 +62,13 @@ StateRecordRef:
   record_id: string
   project_id: string
   task_id: string | null
-  state_version: integer | null
+  produced_at_state_version: integer | null
 ```
 
 Owner links:
 - `record_kind` values: [record and reference values](schema-value-sets.md#record-and-reference-values)
+- request-level optimistic concurrency: [`ToolEnvelope`](schema-core.md#tool-envelope)
+- project state clock: [Storage Versioning](../storage-versioning.md)
 - storage record families and values: [Storage Records](../storage-records.md)
 - storage table names and DDL: [Storage DDL](../storage-ddl.md)
 
@@ -448,6 +454,7 @@ NextActionSummary:
   allowed_operation_categories: string[]
   label: string
   blocking_question: string | null
+  expected_state_version: integer | null
   required_refs: StateRecordRef[]
 
 WriteTicketStateSummary:
@@ -505,10 +512,12 @@ Meaning:
 - `SummaryCard.next` is the single display next action selected for the summary. Use `none` only when the owner-selected view knows no next action. `SummaryCard.next_action` may carry the matching structured `NextActionSummary` and may be omitted when no structured action applies. When a structured action applies, the summary selects the action whose `presentation_role=primary`; array position is not a selection contract.
 - `SummaryCard` is a summary of other owner-selected state fields, not a second authority record. It must not add internal identifiers unless an identifier is needed for the displayed next action.
 - `SummaryCard.guarantee` is concise display wording for the summarized view. It must not claim correctness proof, test sufficiency proof, review completion, or OS-level enforcement unless another owner explicitly provides that guarantee.
-- `NextActionSummary` is the canonical next-action display shape. Its valid fields are `presentation_role`, `action_kind`, `owner_method`, `allowed_operation_categories`, `label`, `blocking_question`, and `required_refs`.
+- `NextActionSummary` is the canonical next-action display shape. Its valid fields are `presentation_role`, `action_kind`, `owner_method`, `allowed_operation_categories`, `label`, `blocking_question`, `expected_state_version`, and `required_refs`.
 - Every non-empty top-level `next_actions` collection has exactly one `presentation_role=primary`. Remaining entries use `additional`. Close readiness is the explicit nested exception: `blockers[*].next_actions` flattened across one close-readiness result is one projection unit with exactly one primary, so an individual later blocker list can contain only additional actions. A singular `next_action` uses `primary`.
 - `additional` is a presentation role, not an optionality claim. An additional action can still be required to clear another blocker.
 - `allowed_operation_categories` names the owner-supported invocation categories for the action. It does not prove that the current connection can dispatch the action, does not grant user authority, and is empty when no supported API method invocation is identified.
+- `expected_state_version` is always present and nullable. For an API mutation action that consumes optimistic concurrency, it contains the current `project_state.state_version` from the projection that produced the action and maps directly to `ToolEnvelope.expected_state_version` for that invocation. It is `null` for read actions, `user_only` actions, actions without a single owner method, and owner-method actions that do not consume optimistic concurrency.
+- `expected_state_version` is a retryable concurrency input, not identity or authority. It can become stale after another committed mutation; callers refresh current state after `STATE_VERSION_CONFLICT`. Neither `required_refs` nor any ref's `produced_at_state_version` supplies or overrides this token.
 - A `next_actions` entry that uses stale `action` or `reason` fields is not a valid `NextActionSummary`.
 - `WriteTicketStateSummary.status` is a controlled value string.
 - `WriteTicketStateSummary.consumed_by_run_ref` is non-null only when the summarized write ticket has been consumed by a recorded Run.
@@ -532,7 +541,8 @@ Meaning:
 | `allowed_operation_categories` | Controlled operation-category values. | Lists the owner-supported invocation categories for this action. Uses `[]` when `owner_method=null` or no supported API invocation path is identified. |
 | `label` | Free-form display string. | Human- and agent-facing display text, not a canonical value. |
 | `blocking_question` | Free-form display string or `null`. | The question to resolve before the action can proceed, or `null` when no blocking question is needed. |
-| `required_refs` | `StateRecordRef[]`. | Records required for the next action. Use `[]` when there are no required refs. |
+| `expected_state_version` | Project state clock value or `null`. | Maps to `ToolEnvelope.expected_state_version` for a mutation action that consumes optimistic concurrency. Uses `null` for read, `user_only`, or no-concurrency actions. |
+| `required_refs` | `StateRecordRef[]`. | Records required for the next action. Use `[]` when there are no required refs. Refs identify records and context; they never supply the concurrency token. |
 
 `WriteTicketAttemptScope` field classifications:
 
@@ -787,7 +797,7 @@ These shapes do not define close-readiness meaning, response routing, or persist
 Close-basis reference rules:
 - Caller-supplied close-assessment refs accepted into `CurrentCloseBasis.result_refs` or `ResidualRisk.source_refs` are limited to result/evidence record kinds `run`, `artifact`, `evidence_summary`, and `change_unit` unless an owner document explicitly adds another kind.
 - `project_state`, `write_ticket`, `user_judgment`, `blocker`, `task_event`, and `task` are not caller-supplied result refs for a close basis unless an owner document explicitly adds them.
-- Every accepted ref must exist, belong to the same project and Task, and be canonicalized by Core. Core never preserves caller-supplied `state_version` metadata as authority.
+- Every accepted ref must exist, belong to the same project and Task, and be canonicalized by Core. Core never treats caller-supplied `produced_at_state_version` metadata as authority or concurrency input.
 - Artifact refs used for close evidence must be linked to the Task and have `integrity_status=verified` plus current-byte verification at use time under [Artifact Storage](../storage-artifacts.md).
 - Evidence refs must identify the current Task evidence summary. Run refs used as current close-basis result refs must identify a recorded current Run compatible with the current Task, current Change Unit, current scope revision, compatible baseline, and recorded status. Historical Runs are audit records unless a current Run explicitly reuses their verified artifacts or evidence and records that reuse.
 - Core may add the current Run, current Change Unit, and current EvidenceSummary refs when constructing the canonical close basis.

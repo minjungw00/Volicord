@@ -348,7 +348,7 @@ fn test_state_record_ref(
         record_id: RecordId::new(record_id),
         project_id: ProjectId::new(project_id),
         task_id: Some(TaskId::new(task_id)).into(),
-        state_version: state_version.into(),
+        produced_at_state_version: state_version.into(),
     }
 }
 
@@ -2608,7 +2608,7 @@ fn user_judgment_request(
             record_id: RecordId::new(task_id),
             project_id: ProjectId::new(PROJECT_ID),
             task_id: Some(TaskId::new(task_id)).into(),
-            state_version: expected_state_version.into(),
+            produced_at_state_version: expected_state_version.into(),
         }],
         sensitive_action_scope: sensitive_action_scope_for_kind(judgment_kind).into(),
         required_for: required_for_for_kind(judgment_kind),

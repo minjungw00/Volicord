@@ -1923,12 +1923,12 @@ fn state_record_ref_fields() -> &'static [&'static str] {
         "record_id",
         "project_id",
         "task_id",
-        "state_version",
+        "produced_at_state_version",
     ]
 }
 
 fn state_record_ref_skeleton() -> &'static str {
-    r#"{"record_kind":"task","record_id":"task_001","project_id":"proj_001","task_id":"task_001","state_version":1}"#
+    r#"{"record_kind":"task","record_id":"task_001","project_id":"proj_001","task_id":"task_001","produced_at_state_version":1}"#
 }
 
 fn startup_observation_storage_is_readonly(error: &McpAdapterError) -> bool {

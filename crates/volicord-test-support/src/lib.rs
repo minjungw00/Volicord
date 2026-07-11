@@ -631,7 +631,7 @@ pub mod core_fixtures {
                 record_id: RecordId::new(task_id),
                 project_id: ProjectId::new(&self.project_id),
                 task_id: Some(TaskId::new(task_id)).into(),
-                state_version: state_version.into(),
+                produced_at_state_version: state_version.into(),
             }
         }
 

@@ -213,6 +213,7 @@ fn plan_intake(
         parse_task_mode(&task_record.mode)?,
         &task_ref,
         change_unit_ref.as_ref(),
+        planned_state_version,
     );
     let evidence_summary = if create_new {
         None

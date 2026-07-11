@@ -1690,7 +1690,7 @@ mod tests {
             "record_id": record_id,
             "project_id": "proj_empty_001",
             "task_id": task_id,
-            "state_version": 11
+            "produced_at_state_version": 11
         })
     }
 

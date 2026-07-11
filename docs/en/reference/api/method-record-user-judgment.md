@@ -143,7 +143,7 @@ The result updates only covered blockers, judgment-dependent summaries, and meth
 | `state` | Current `StateSummary` after the judgment answer is recorded. Nested state fields are owned by [API State Schemas](schema-state.md). |
 | `next_actions` | `NextActionSummary[]` describing next safe API steps. The canonical shape is owned by [API State Schemas](schema-state.md#current-position-display-shapes). |
 
-`RecordUserJudgmentPayload` stays inside `user_judgment.resolution.answer` and uses the shape owned by [API Judgment Schemas](schema-judgment.md#resolution-and-answer-payload). `JudgmentRationale` stays inside `user_judgment.resolution.rationale` and does not change authority. `next_actions` entries use `presentation_role`, `action_kind`, `owner_method`, `allowed_operation_categories`, `label`, `blocking_question`, and `required_refs`; stale `action` or `reason` fields are not part of `NextActionSummary`.
+`RecordUserJudgmentPayload` stays inside `user_judgment.resolution.answer` and uses the shape owned by [API Judgment Schemas](schema-judgment.md#resolution-and-answer-payload). `JudgmentRationale` stays inside `user_judgment.resolution.rationale` and does not change authority. `next_actions` entries use `presentation_role`, `action_kind`, `owner_method`, `allowed_operation_categories`, `label`, `blocking_question`, `expected_state_version`, and `required_refs`; stale `action` or `reason` fields are not part of `NextActionSummary`.
 
 ## Blocked result
 
@@ -249,7 +249,7 @@ user_judgment_ref:
   record_id: uj_empty_001
   project_id: proj_empty_001
   task_id: task_empty_001
-  state_version: 63
+  produced_at_state_version: 63
 user_judgment:
   judgment_id: uj_empty_001
   project_id: proj_empty_001
@@ -286,7 +286,7 @@ user_judgment:
       record_id: task_empty_001
       project_id: proj_empty_001
       task_id: task_empty_001
-      state_version: 62
+      produced_at_state_version: 63
   basis:
     task_id: task_empty_001
     change_unit_id: cu_empty_001
@@ -344,12 +344,12 @@ updated_refs:
     record_id: uj_empty_001
     project_id: proj_empty_001
     task_id: task_empty_001
-    state_version: 63
+    produced_at_state_version: 63
   - record_kind: project_continuity_record
     record_id: continuity_empty_decision_001
     project_id: proj_empty_001
     task_id: task_empty_001
-    state_version: 63
+    produced_at_state_version: 63
 state:
   project_id: proj_empty_001
   state_version: 63
@@ -358,7 +358,7 @@ state:
     record_id: task_empty_001
     project_id: proj_empty_001
     task_id: task_empty_001
-    state_version: 62
+    produced_at_state_version: 63
   mode: work
   lifecycle:
     lifecycle_phase: ready
@@ -377,7 +377,7 @@ state:
     record_id: cu_empty_001
     project_id: proj_empty_001
     task_id: task_empty_001
-    state_version: 62
+    produced_at_state_version: 63
   baseline_ref: baseline_empty_001
   shaping_readiness: null
   pending_user_judgment_refs: []
@@ -394,12 +394,13 @@ next_actions:
     allowed_operation_categories: [agent_workflow]
     label: "Evaluate close readiness after recording the user's product decision."
     blocking_question: null
+    expected_state_version: 63
     required_refs:
       - record_kind: user_judgment
         record_id: uj_empty_001
         project_id: proj_empty_001
         task_id: task_empty_001
-        state_version: 63
+        produced_at_state_version: 63
 ```
 
 ## Owner links

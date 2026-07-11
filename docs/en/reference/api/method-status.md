@@ -217,7 +217,7 @@ active_task:
     record_id: task_export_001
     project_id: proj_export_001
     task_id: task_export_001
-    state_version: 42
+    produced_at_state_version: 42
   mode: work
   lifecycle:
     lifecycle_phase: ready
@@ -236,7 +236,7 @@ active_task:
     record_id: cu_export_001
     project_id: proj_export_001
     task_id: task_export_001
-    state_version: 41
+    produced_at_state_version: 42
   baseline_ref: baseline_export_001
   shaping_readiness: null
   pending_user_judgment_refs:
@@ -244,7 +244,7 @@ active_task:
       record_id: uj_export_columns_001
       project_id: proj_export_001
       task_id: task_export_001
-      state_version: 42
+      produced_at_state_version: 42
   blocker_refs: []
   write_ticket_summary: null
   evidence_summary: null
@@ -260,7 +260,7 @@ active_task:
           record_id: uj_export_columns_001
           project_id: proj_export_001
           task_id: task_export_001
-          state_version: 42
+          produced_at_state_version: 42
       next_actions:
         - presentation_role: primary
           action_kind: record_user_judgment
@@ -268,12 +268,13 @@ active_task:
           allowed_operation_categories: [user_only]
           label: "The user must answer the pending CSV column decision through the User Channel."
           blocking_question: "What is the user's answer for the pending CSV column decision?"
+          expected_state_version: null
           required_refs:
             - record_kind: user_judgment
               record_id: uj_export_columns_001
               project_id: proj_export_001
               task_id: task_export_001
-              state_version: 42
+              produced_at_state_version: 42
   guarantee_display:
     level: cooperative
     basis: "No stronger local guarantee is currently applied."
@@ -286,18 +287,19 @@ next_actions:
     allowed_operation_categories: [user_only]
     label: "The user must answer the pending CSV column decision through the User Channel."
     blocking_question: "What is the user's answer for the pending CSV column decision?"
+    expected_state_version: null
     required_refs:
       - record_kind: user_judgment
         record_id: uj_export_columns_001
         project_id: proj_export_001
         task_id: task_export_001
-        state_version: 42
+        produced_at_state_version: 42
 pending_user_judgments:
   - record_kind: user_judgment
     record_id: uj_export_columns_001
     project_id: proj_export_001
     task_id: task_export_001
-    state_version: 42
+    produced_at_state_version: 42
 user_channel_availability: &user_channel_availability_example
   paths:
     - kind: mcp_elicitation
@@ -355,7 +357,7 @@ close_blockers:
         record_id: uj_export_columns_001
         project_id: proj_export_001
         task_id: task_export_001
-        state_version: 42
+        produced_at_state_version: 42
     next_actions:
       - presentation_role: primary
         action_kind: record_user_judgment
@@ -363,12 +365,13 @@ close_blockers:
         allowed_operation_categories: [user_only]
         label: "The user must answer the pending CSV column decision through the User Channel."
         blocking_question: "What is the user's answer for the pending CSV column decision?"
+        expected_state_version: null
         required_refs:
           - record_kind: user_judgment
             record_id: uj_export_columns_001
             project_id: proj_export_001
             task_id: task_export_001
-            state_version: 42
+            produced_at_state_version: 42
 guarantee_display:
   level: cooperative
   basis: "No stronger local guarantee is currently applied."

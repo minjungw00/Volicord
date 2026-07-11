@@ -332,12 +332,12 @@ fn current_compatible_run_ref_can_enter_close_basis() -> Result<(), Box<dyn Erro
     assert!(basis.result_refs.iter().any(|record_ref| {
         record_ref.record_kind == StateRecordKind::Run
             && record_ref.record_id.as_str() == "run_current_ref_first"
-            && record_ref.state_version.as_ref() == Some(&4)
+            && record_ref.produced_at_state_version.as_ref() == Some(&4)
     }));
     assert!(basis.result_refs.iter().any(|record_ref| {
         record_ref.record_kind == StateRecordKind::Run
             && record_ref.record_id.as_str() == "run_current_ref_second"
-            && record_ref.state_version.as_ref() == Some(&4)
+            && record_ref.produced_at_state_version.as_ref() == Some(&4)
     }));
     Ok(())
 }
@@ -1170,28 +1170,28 @@ fn record_run_canonicalizes_deduplicates_and_adds_current_close_basis_refs(
     assert!(basis.result_refs.iter().any(|record_ref| {
         record_ref.record_kind == StateRecordKind::Run
             && record_ref.record_id.as_str() == "run_canonical_refs"
-            && record_ref.state_version.as_ref() == Some(&3)
+            && record_ref.produced_at_state_version.as_ref() == Some(&3)
     }));
     assert!(basis.result_refs.iter().any(|record_ref| {
         record_ref.record_kind == StateRecordKind::ChangeUnit
             && record_ref.record_id.as_str() == change_unit_id
-            && record_ref.state_version.as_ref() == Some(&3)
+            && record_ref.produced_at_state_version.as_ref() == Some(&3)
     }));
     assert!(basis.result_refs.iter().any(|record_ref| {
         record_ref.record_kind == StateRecordKind::EvidenceSummary
-            && record_ref.state_version.as_ref() == Some(&3)
+            && record_ref.produced_at_state_version.as_ref() == Some(&3)
     }));
     assert_eq!(
         basis
             .evidence_summary_ref
             .as_ref()
-            .and_then(|record_ref| record_ref.state_version.as_ref().copied()),
+            .and_then(|record_ref| record_ref.produced_at_state_version.as_ref().copied()),
         Some(3)
     );
     assert_eq!(basis.residual_risks[0].source_refs.len(), 1);
     assert_eq!(
         basis.residual_risks[0].source_refs[0]
-            .state_version
+            .produced_at_state_version
             .as_ref(),
         Some(&3)
     );
@@ -1232,10 +1232,9 @@ fn final_acceptance_judgment_basis_uses_canonical_close_basis_refs() -> Result<(
         response.response_value["user_judgment"]["basis"]["result_refs"],
         serde_json::to_value(&close_basis.result_refs)?
     );
-    assert!(close_basis
-        .result_refs
-        .iter()
-        .all(|record_ref| record_ref.state_version.as_ref() == Some(&state_version)));
+    assert!(close_basis.result_refs.iter().all(|record_ref| {
+        record_ref.produced_at_state_version.as_ref() == Some(&state_version)
+    }));
     Ok(())
 }
 

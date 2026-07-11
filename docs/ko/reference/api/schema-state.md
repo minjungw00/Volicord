@@ -49,6 +49,10 @@
 - `StateRecordRef`는 API 응답에 나타나는 Core가 소유하는 기록의 공통 공개 참조 형태입니다.
 - `record_kind`는 제어 값 문자열입니다.
 - `record_id`, `project_id`, `task_id`는 불투명 식별자입니다.
+- 기록의 동일성은 정확히 (`project_id`, `record_kind`, `record_id`) 튜플로 결정됩니다. `task_id`는 null 허용 `Task` 맥락이며 기록의 동일성을 결정하는 값이 아닙니다.
+- `produced_at_state_version`은 이 참조를 만든 상태 보기에서 관찰한 null 허용 `project_state.state_version` 값입니다. 상태 보기 최신성의 단서일 뿐 기록의 동일성, 기록 자체의 개정값, 닫기 근거 개정값, 권한, 낙관적 동시성 토큰이 아닙니다. 따라서 같은 논리 기록이 서로 다른 `produced_at_state_version`으로 나타나도 다른 기록이 되지 않습니다.
+- 메서드 응답이 현재 상태 보기에서 참조를 내보낼 때 null이 아닌 `produced_at_state_version`은 참조된 기록이 더 일찍 바뀌었더라도 그 응답 상태 보기에 사용한 `project_state.state_version`과 같습니다. 그대로 재실행한 응답은 처음 저장된 응답과 그 응답의 상태 보기 최신성 값을 유지합니다.
+- `StateRecordRef`는 동시성 입력을 제공하지 않습니다. 호출자가 변경 메서드를 실행할 때 메서드 담당 문서가 요구하면 현재 프로젝트 시계를 `ToolEnvelope.expected_state_version`에 사용합니다.
 
 이는 공개 참조 형태이며 저장소 행을 그대로 넣은 것이 아닙니다.
 
@@ -58,11 +62,13 @@ StateRecordRef:
   record_id: string
   project_id: string
   task_id: string | null
-  state_version: integer | null
+  produced_at_state_version: integer | null
 ```
 
 담당 문서 링크:
 - `record_kind` 값: [기록과 참조 값](schema-value-sets.md#record-and-reference-values)
+- 요청 수준 낙관적 동시성: [`ToolEnvelope`](schema-core.md#tool-envelope)
+- 프로젝트 상태 시계: [저장소 버전 관리](../storage-versioning.md)
 - 저장소 기록 계열과 값: [저장소 기록](../storage-records.md)
 - 저장소 테이블 이름과 DDL: [저장소 DDL](../storage-ddl.md)
 
@@ -454,6 +460,7 @@ NextActionSummary:
   allowed_operation_categories: string[]
   label: string
   blocking_question: string | null
+  expected_state_version: integer | null
   required_refs: StateRecordRef[]
 
 WriteTicketStateSummary:
@@ -511,10 +518,12 @@ WriteDecisionReason:
 - `SummaryCard.next`는 요약을 위해 선택된 단일 표시 다음 행동입니다. 담당 문서가 선택한 보기에서 알 수 있는 다음 행동이 없을 때만 `none`을 사용합니다. `SummaryCard.next_action`은 대응하는 구조화된 `NextActionSummary`를 담을 수 있으며 구조화된 행동이 적용되지 않으면 생략될 수 있습니다. 구조화된 행동이 적용되면 요약은 `presentation_role=primary`인 행동을 선택하며 배열 위치는 선택 계약이 아닙니다.
 - `SummaryCard`는 담당 문서가 선택한 다른 상태 필드의 요약이지 두 번째 권한 기록이 아닙니다. 표시된 다음 행동에 식별자가 필요하지 않은 한 내부 식별자를 추가하면 안 됩니다.
 - `SummaryCard.guarantee`는 요약된 보기에 대한 짧은 표시 문구입니다. 다른 담당 문서가 명시적으로 그런 보장을 제공하지 않는 한 정확성 증명, 테스트 충분성 증명, 검토 완료, OS 수준 집행을 주장하면 안 됩니다.
-- `NextActionSummary`는 기준 다음 행동 표시 형태입니다. 유효한 필드는 `presentation_role`, `action_kind`, `owner_method`, `allowed_operation_categories`, `label`, `blocking_question`, `required_refs`입니다.
+- `NextActionSummary`는 기준 다음 행동 표시 형태입니다. 유효한 필드는 `presentation_role`, `action_kind`, `owner_method`, `allowed_operation_categories`, `label`, `blocking_question`, `expected_state_version`, `required_refs`입니다.
 - 비어 있지 않은 각 최상위 `next_actions` 모음에는 `presentation_role=primary`인 항목이 정확히 하나 있습니다. 나머지 항목은 `additional`을 사용합니다. 닫기 준비 상태는 명시적인 중첩 예외입니다. 닫기 준비 상태 결과 하나의 `blockers[*].next_actions`를 평탄화한 전체가 primary 하나를 갖는 투영 단위이므로 뒤쪽의 개별 차단 사유 목록에는 additional 행동만 있을 수 있습니다. 단일 `next_action`은 `primary`를 사용합니다.
 - `additional`은 표시 역할이지 선택 사항이라는 뜻이 아닙니다. 다른 차단 사유를 해소하려면 보조 행동도 필수일 수 있습니다.
 - `allowed_operation_categories`는 행동에 대해 담당 문서가 지원하는 호출 범주를 이름 붙입니다. 현재 연결이 행동을 실행할 수 있음을 증명하거나 사용자 권한을 부여하지 않으며, 지원되는 API 메서드 호출이 식별되지 않으면 비어 있습니다.
+- `expected_state_version`은 항상 존재하는 null 허용 필드입니다. 낙관적 동시성을 사용하는 API 변경 행동에는 그 행동을 만든 상태 보기의 현재 `project_state.state_version`을 담으며, 해당 호출의 `ToolEnvelope.expected_state_version`으로 직접 매핑됩니다. 읽기 행동, `user_only` 행동, 단일 담당 메서드가 없는 행동, 낙관적 동시성을 사용하지 않는 담당 메서드 행동에는 `null`을 사용합니다.
+- `expected_state_version`은 재시도 가능한 동시성 입력이며 신원이나 권한이 아닙니다. 다른 변경이 커밋되면 오래될 수 있으므로 호출자는 `STATE_VERSION_CONFLICT` 뒤 현재 상태를 새로 읽습니다. `required_refs`와 참조의 `produced_at_state_version`은 이 토큰을 제공하거나 덮어쓰지 않습니다.
 - 오래된 `action` 또는 `reason` 필드를 쓰는 `next_actions` 항목은 유효한 `NextActionSummary`가 아닙니다.
 - `WriteTicketStateSummary.status`는 제어 값 문자열입니다.
 - `WriteTicketStateSummary.consumed_by_run_ref`는 요약된 쓰기 티켓이 기록된 Run에 의해 소비되었을 때만 `null`이 아닙니다.
@@ -538,7 +547,8 @@ WriteDecisionReason:
 | `allowed_operation_categories` | 제어되는 작업 범주 값. | 이 행동에 대해 담당 문서가 지원하는 호출 범주를 나열합니다. `owner_method=null`이거나 지원되는 API 호출 경로가 식별되지 않으면 `[]`를 사용합니다. |
 | `label` | 자유 형식 표시 문자열. | 사람과 에이전트가 읽는 표시 문자열이며 기준 값이 아닙니다. |
 | `blocking_question` | 자유 형식 표시 문자열 또는 `null`. | 행동을 진행하기 전에 풀어야 하는 질문입니다. 필요한 질문이 없으면 `null`을 사용합니다. |
-| `required_refs` | `StateRecordRef[]`. | 다음 행동에 필요한 기록입니다. 필요한 참조가 없으면 `[]`를 사용합니다. |
+| `expected_state_version` | 프로젝트 상태 시계 값 또는 `null`. | 낙관적 동시성을 사용하는 변경 행동에서는 `ToolEnvelope.expected_state_version`으로 매핑합니다. 읽기, `user_only`, 동시성을 사용하지 않는 행동에는 `null`을 사용합니다. |
+| `required_refs` | `StateRecordRef[]`. | 다음 행동에 필요한 기록입니다. 필요한 참조가 없으면 `[]`를 사용합니다. 참조는 기록과 맥락을 식별할 뿐 동시성 토큰을 제공하지 않습니다. |
 
 `WriteTicketAttemptScope` 필드 분류:
 
@@ -794,7 +804,7 @@ GuaranteeDisclosure:
 닫기 근거 참조 규칙:
 - `CurrentCloseBasis.result_refs`나 `ResidualRisk.source_refs`로 받아들일 수 있는 호출자 제공 닫기 평가 참조는 담당 문서가 다른 종류를 명시적으로 추가하지 않는 한 결과/증거 기록 종류인 `run`, `artifact`, `evidence_summary`, `change_unit`으로 제한됩니다.
 - 담당 문서가 명시적으로 추가하지 않는 한 `project_state`, `write_ticket`, `user_judgment`, `blocker`, `task_event`, `task`는 호출자 제공 결과 참조가 아닙니다.
-- 받아들인 모든 참조는 존재해야 하고 같은 프로젝트와 `Task`에 속해야 하며 Core가 정규화해야 합니다. Core는 호출자가 보낸 `state_version` 메타데이터를 권한으로 보존하지 않습니다.
+- 받아들인 모든 참조는 존재해야 하고 같은 프로젝트와 `Task`에 속해야 하며 Core가 정규화해야 합니다. Core는 호출자가 보낸 `produced_at_state_version` 메타데이터를 권한이나 동시성 입력으로 취급하지 않습니다.
 - 닫기 증거에 쓰이는 아티팩트 참조는 `Task`에 연결되어 있고 `integrity_status=verified`여야 하며 [아티팩트 저장소](../storage-artifacts.md)에 따라 사용 시점의 현재 바이트 검증을 통과해야 합니다.
 - 증거 참조는 현재 `Task` 증거 요약을 식별해야 합니다. 현재 닫기 근거 결과 참조로 쓰이는 실행 기록 참조는 현재 `Task`, 현재 적용 Change Unit, 현재 범위 리비전, 호환되는 기준선, 기록된 상태와 호환되는 기록된 현재 실행 기록을 식별해야 합니다. 이력 실행 기록은 현재 실행 기록이 그 `verified` 아티팩트나 증거를 명시적으로 재사용하고 그 재사용을 기록하지 않는 한 감사 기록입니다.
 - Core는 기준 닫기 근거를 구성하면서 현재 실행 기록, 현재 Change Unit, 현재 EvidenceSummary 참조를 추가할 수 있습니다.

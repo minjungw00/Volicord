@@ -237,13 +237,13 @@ task_ref:
   record_id: task_filter_001
   project_id: proj_filter_001
   task_id: task_filter_001
-  state_version: 19
+  produced_at_state_version: 19
 change_unit_ref:
   record_kind: change_unit
   record_id: cu_filter_001
   project_id: proj_filter_001
   task_id: task_filter_001
-  state_version: 19
+  produced_at_state_version: 19
 linked_scope_decision_refs: []
 stale_write_ticket_refs: []
 blocker_refs: []
@@ -255,7 +255,7 @@ state:
     record_id: task_filter_001
     project_id: proj_filter_001
     task_id: task_filter_001
-    state_version: 19
+    produced_at_state_version: 19
   mode: work
   lifecycle:
     lifecycle_phase: ready
@@ -274,7 +274,7 @@ state:
     record_id: cu_filter_001
     project_id: proj_filter_001
     task_id: task_filter_001
-    state_version: 19
+    produced_at_state_version: 19
   baseline_ref: baseline_filter_001
   shaping_readiness: null
   pending_user_judgment_refs: []
@@ -291,17 +291,18 @@ next_actions:
     allowed_operation_categories: [agent_workflow]
     label: "저장 필터 변경이 현재 적용 범위에 맞는지 확인하세요."
     blocking_question: null
+    expected_state_version: 19
     required_refs:
       - record_kind: task
         record_id: task_filter_001
         project_id: proj_filter_001
         task_id: task_filter_001
-        state_version: 19
+        produced_at_state_version: 19
       - record_kind: change_unit
         record_id: cu_filter_001
         project_id: proj_filter_001
         task_id: task_filter_001
-        state_version: 19
+        produced_at_state_version: 19
 ```
 
 ## 담당 문서 링크

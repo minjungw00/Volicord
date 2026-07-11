@@ -142,7 +142,7 @@ Markdown, 상태 요약, 상태 보기는 사용자 답변을 주장하거나 �
 | `state` | 판단 답변이 기록된 뒤의 현재 `StateSummary`입니다. 중첩 상태 필드는 [API 상태 스키마](schema-state.md)가 담당합니다. |
 | `next_actions` | 다음에 안전하게 수행할 API 단계를 설명하는 `NextActionSummary[]`입니다. 기준 형태는 [API 상태 스키마](schema-state.md#current-position-display-shapes)가 담당합니다. |
 
-`RecordUserJudgmentPayload`는 `user_judgment.resolution.answer` 안에 남으며, [API 판단 스키마](schema-judgment.md#resolution-and-answer-payload)가 담당하는 형태를 사용합니다. `JudgmentRationale`은 `user_judgment.resolution.rationale` 안에 남으며 권한을 바꾸지 않습니다. `next_actions` 항목은 `presentation_role`, `action_kind`, `owner_method`, `allowed_operation_categories`, `label`, `blocking_question`, `required_refs`를 사용합니다. 오래된 `action` 또는 `reason` 필드는 `NextActionSummary`의 일부가 아닙니다.
+`RecordUserJudgmentPayload`는 `user_judgment.resolution.answer` 안에 남으며, [API 판단 스키마](schema-judgment.md#resolution-and-answer-payload)가 담당하는 형태를 사용합니다. `JudgmentRationale`은 `user_judgment.resolution.rationale` 안에 남으며 권한을 바꾸지 않습니다. `next_actions` 항목은 `presentation_role`, `action_kind`, `owner_method`, `allowed_operation_categories`, `label`, `blocking_question`, `expected_state_version`, `required_refs`를 사용합니다. 오래된 `action` 또는 `reason` 필드는 `NextActionSummary`의 일부가 아닙니다.
 
 ## 차단 결과
 
@@ -248,7 +248,7 @@ user_judgment_ref:
   record_id: uj_empty_001
   project_id: proj_empty_001
   task_id: task_empty_001
-  state_version: 63
+  produced_at_state_version: 63
 user_judgment:
   judgment_id: uj_empty_001
   project_id: proj_empty_001
@@ -285,7 +285,7 @@ user_judgment:
       record_id: task_empty_001
       project_id: proj_empty_001
       task_id: task_empty_001
-      state_version: 62
+      produced_at_state_version: 63
   basis:
     task_id: task_empty_001
     change_unit_id: cu_empty_001
@@ -343,12 +343,12 @@ updated_refs:
     record_id: uj_empty_001
     project_id: proj_empty_001
     task_id: task_empty_001
-    state_version: 63
+    produced_at_state_version: 63
   - record_kind: project_continuity_record
     record_id: continuity_empty_decision_001
     project_id: proj_empty_001
     task_id: task_empty_001
-    state_version: 63
+    produced_at_state_version: 63
 state:
   project_id: proj_empty_001
   state_version: 63
@@ -357,7 +357,7 @@ state:
     record_id: task_empty_001
     project_id: proj_empty_001
     task_id: task_empty_001
-    state_version: 62
+    produced_at_state_version: 63
   mode: work
   lifecycle:
     lifecycle_phase: ready
@@ -376,7 +376,7 @@ state:
     record_id: cu_empty_001
     project_id: proj_empty_001
     task_id: task_empty_001
-    state_version: 62
+    produced_at_state_version: 63
   baseline_ref: baseline_empty_001
   shaping_readiness: null
   pending_user_judgment_refs: []
@@ -393,12 +393,13 @@ next_actions:
     allowed_operation_categories: [agent_workflow]
     label: "사용자의 제품 결정을 기록한 뒤 닫기 준비 상태를 평가하세요."
     blocking_question: null
+    expected_state_version: 63
     required_refs:
       - record_kind: user_judgment
         record_id: uj_empty_001
         project_id: proj_empty_001
         task_id: task_empty_001
-        state_version: 63
+        produced_at_state_version: 63
 ```
 
 ## 담당 문서 링크

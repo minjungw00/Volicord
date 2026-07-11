@@ -1449,7 +1449,7 @@ fn sensitive_action_requirement_from_write_ticket(
         source_write_ticket_ref: write_ticket_ref(
             record,
             run_ref
-                .state_version
+                .produced_at_state_version
                 .as_ref()
                 .copied()
                 .unwrap_or(record.basis_state_version),
@@ -1528,19 +1528,7 @@ fn canonicalize_close_basis_refs(
     for record_ref in refs {
         let normalized_ref = resolve_close_basis_ref(&context, record_ref)?;
         let key = close_basis_ref_identity_key(&normalized_ref);
-        if let Some(previous) = normalized.get(&key) {
-            if previous != &normalized_ref {
-                validation_plan_error(
-                    context.request.envelope.dry_run,
-                    Some(context.project_state.state_version),
-                    context.field,
-                    "duplicate close assessment refs must resolve to the same canonical record",
-                )?;
-                unreachable!("validation_plan_error always returns Err");
-            }
-        } else {
-            normalized.insert(key, normalized_ref);
-        }
+        normalized.entry(key).or_insert(normalized_ref);
     }
     Ok(normalized.into_values().collect())
 }
@@ -1861,17 +1849,8 @@ fn canonical_close_basis_ref(
     )
 }
 
-fn close_basis_ref_identity_key(record_ref: &StateRecordRef) -> (String, String, String, String) {
-    (
-        storage_value(record_ref.record_kind).unwrap_or_else(|_| "unknown".to_owned()),
-        record_ref.record_id.as_str().to_owned(),
-        record_ref.project_id.as_str().to_owned(),
-        record_ref
-            .task_id
-            .as_ref()
-            .map(|task_id| task_id.as_str().to_owned())
-            .unwrap_or_default(),
-    )
+fn close_basis_ref_identity_key(record_ref: &StateRecordRef) -> (String, String, String) {
+    state_record_ref_identity_key(record_ref)
 }
 
 fn normalize_display_text(value: &str) -> String {
@@ -2557,8 +2536,7 @@ fn build_record_run_evidence_summary(
         item.claim = normalize_display_text(&item.claim);
         item.provenance = None;
         if !item.supporting_refs.iter().any(|record_ref| {
-            record_ref.record_kind == StateRecordKind::Run
-                && record_ref.record_id == run_ref.record_id
+            state_record_ref_identity_key(record_ref) == state_record_ref_identity_key(run_ref)
         }) {
             item.supporting_refs.push(run_ref.clone());
         }
@@ -2576,8 +2554,8 @@ fn build_record_run_evidence_summary(
         if let Some(observation_refs) = observation_refs_by_claim.get(item.claim.as_str()) {
             for observation_ref in observation_refs {
                 if !item.observation_refs.iter().any(|existing| {
-                    existing.record_kind == observation_ref.record_kind
-                        && existing.record_id == observation_ref.record_id
+                    state_record_ref_identity_key(existing)
+                        == state_record_ref_identity_key(observation_ref)
                 }) {
                     item.observation_refs.push(observation_ref.clone());
                 }

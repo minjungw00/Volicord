@@ -424,7 +424,7 @@ state:
     record_id: task_close_001
     project_id: proj_close_001
     task_id: task_close_001
-    state_version: 72
+    produced_at_state_version: 72
   mode: work
   lifecycle:
     lifecycle_phase: ready
@@ -460,12 +460,13 @@ state:
           allowed_operation_categories: [agent_workflow]
           label: "The Agent Connection must create a current final-acceptance request for the user."
           blocking_question: "Does the user accept the current Task result and close basis as complete?"
+          expected_state_version: 72
           required_refs:
             - record_kind: task
               record_id: task_close_001
               project_id: proj_close_001
               task_id: task_close_001
-              state_version: 72
+              produced_at_state_version: 72
   guarantee_display: null
 blockers:
   - category: final_acceptance
@@ -481,12 +482,13 @@ blockers:
         allowed_operation_categories: [agent_workflow]
         label: "The Agent Connection must create a current final-acceptance request for the user."
         blocking_question: "Does the user accept the current Task result and close basis as complete?"
+        expected_state_version: 72
         required_refs:
           - record_kind: task
             record_id: task_close_001
             project_id: proj_close_001
             task_id: task_close_001
-            state_version: 72
+            produced_at_state_version: 72
 evidence_summary: null
 artifact_refs: []
 ```

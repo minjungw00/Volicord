@@ -4093,7 +4093,7 @@ mod tests {
             record_id: RecordId::new(record_id),
             project_id: ProjectId::new(PROJECT_ID),
             task_id: RequiredNullable::some(TaskId::new(task_id)),
-            state_version: RequiredNullable::some(state_version),
+            produced_at_state_version: RequiredNullable::some(state_version),
         }
     }
 

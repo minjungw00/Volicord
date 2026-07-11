@@ -83,9 +83,11 @@ ToolEnvelope:
 
 Meaning:
 - `task_id` is a nullable request-level Task selector; the field is present and the value may be null.
-- `expected_state_version` is the request-level field for a project-wide state clock value.
+- `expected_state_version` is the request-level optimistic-concurrency field for a `project_state.state_version` value.
 - `idempotency_key` is a nullable opaque identifier; method owners define when a non-null value is required.
 - `expected_state_version` is nullable; method and storage owners define when a non-null value is required.
+- When a projected `NextActionSummary.expected_state_version` is non-null, it maps directly to this field for that action's owner-method invocation. A null next-action value does not waive a non-null token requirement that the method owner otherwise imposes.
+- `StateRecordRef.produced_at_state_version` is projection-freshness metadata and never substitutes for `ToolEnvelope.expected_state_version`.
 - `project_id`, `task_id`, `request_id`, and `idempotency_key` are opaque identifiers when non-null.
 - `locale` is a nullable locale tag string, not a Volicord-controlled value set.
 - Actor provenance and operation category are derived by adapter/Core logic described by [Agent Connection](../agent-connection.md), not by public request fields.
@@ -95,6 +97,7 @@ Does not imply:
 
 Owner links:
 - actor-source values: [actor source values](schema-value-sets.md#actor-source-values)
+- projected next-action tokens and state-reference freshness: [API State Schemas](schema-state.md#state-references) and [current-position display shapes](schema-state.md#current-position-display-shapes)
 - method-specific request behavior: method owner documents routed from [API Methods](methods.md)
 - conflict behavior: [state version conflict](error-precedence.md#state-conflict-behavior)
 - storage version behavior: [Storage Versioning](../storage-versioning.md)

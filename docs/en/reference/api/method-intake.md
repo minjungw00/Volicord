@@ -192,7 +192,7 @@ task_ref:
   record_id: task_onboard_001
   project_id: proj_onboard_001
   task_id: task_onboard_001
-  state_version: 18
+  produced_at_state_version: 18
 change_unit_ref: null
 state:
   project_id: proj_onboard_001
@@ -202,7 +202,7 @@ state:
     record_id: task_onboard_001
     project_id: proj_onboard_001
     task_id: task_onboard_001
-    state_version: 18
+    produced_at_state_version: 18
   mode: work
   lifecycle:
     lifecycle_phase: shaping
@@ -233,12 +233,13 @@ next_actions:
     allowed_operation_categories: [agent_workflow]
     label: "Create the first currently applied Change Unit before write-ticket preparation."
     blocking_question: null
+    expected_state_version: 18
     required_refs:
       - record_kind: task
         record_id: task_onboard_001
         project_id: proj_onboard_001
         task_id: task_onboard_001
-        state_version: 18
+        produced_at_state_version: 18
 ```
 
 ## Owner links

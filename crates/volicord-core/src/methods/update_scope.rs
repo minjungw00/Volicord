@@ -351,6 +351,7 @@ fn plan_update_scope(
         parse_task_mode(&synthetic_task.mode)?,
         &task_ref,
         change_unit_ref.as_ref(),
+        planned_state_version,
     );
     let guarantee_display =
         guarantee_display_for_invocation(store, verified_invocation, planned_state_version)?;

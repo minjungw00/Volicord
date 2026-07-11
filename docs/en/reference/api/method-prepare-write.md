@@ -281,7 +281,7 @@ state:
     record_id: task_pref_001
     project_id: proj_pref_001
     task_id: task_pref_001
-    state_version: 20
+    produced_at_state_version: 20
   mode: work
   lifecycle:
     lifecycle_phase: ready
@@ -300,7 +300,7 @@ state:
     record_id: cu_pref_001
     project_id: proj_pref_001
     task_id: task_pref_001
-    state_version: 19
+    produced_at_state_version: 20
   baseline_ref: baseline_pref_001
   shaping_readiness: null
   pending_user_judgment_refs: []
@@ -312,7 +312,7 @@ state:
       record_id: wt_pref_001
       project_id: proj_pref_001
       task_id: task_pref_001
-      state_version: 20
+      produced_at_state_version: 20
     basis_state_version: 20
     intended_paths:
       - src/preferences/profile-save.ts
@@ -334,7 +334,7 @@ write_ticket_ref:
   record_id: wt_pref_001
   project_id: proj_pref_001
   task_id: task_pref_001
-  state_version: 20
+  produced_at_state_version: 20
 write_ticket:
   write_ticket_id: wt_pref_001
   write_ticket_ref:
@@ -342,7 +342,7 @@ write_ticket:
     record_id: wt_pref_001
     project_id: proj_pref_001
     task_id: task_pref_001
-    state_version: 20
+    produced_at_state_version: 20
   state: open
   scope:
     task_id: task_pref_001
@@ -392,7 +392,7 @@ active_user_judgment_refs:
     record_id: uj_sensitive_pref_001
     project_id: proj_pref_001
     task_id: task_pref_001
-    state_version: 19
+    produced_at_state_version: 20
 write_decision_reasons: []
 user_judgment_candidate: null
 guarantee_display:

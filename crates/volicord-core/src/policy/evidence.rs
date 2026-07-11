@@ -132,26 +132,22 @@ pub(crate) fn evidence_item_related_refs(item: &EvidenceCoverageItem) -> Vec<Sta
             record_id: RecordId::new(artifact_ref.artifact_id.as_str()),
             project_id: artifact_ref.project_id.clone(),
             task_id: Some(artifact_ref.task_id.clone()).into(),
-            state_version: artifact_ref
+            produced_at_state_version: artifact_ref
                 .created_by_run_ref
                 .as_ref()
-                .and_then(|record_ref| record_ref.state_version.as_ref().copied())
+                .and_then(|record_ref| record_ref.produced_at_state_version.as_ref().copied())
                 .into(),
         }
     }));
     refs
 }
 
-fn state_record_ref_identity_key(
+pub(crate) fn state_record_ref_identity_key(
     record_ref: &StateRecordRef,
-) -> (String, String, String, Option<String>) {
+) -> (String, String, String) {
     (
+        record_ref.project_id.as_str().to_owned(),
         serde_json::to_string(&record_ref.record_kind).unwrap_or_default(),
         record_ref.record_id.as_str().to_owned(),
-        record_ref.project_id.as_str().to_owned(),
-        record_ref
-            .task_id
-            .as_ref()
-            .map(|task_id| task_id.as_str().to_owned()),
     )
 }

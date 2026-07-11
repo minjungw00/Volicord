@@ -1150,7 +1150,7 @@ fn artifact_provenance_missing_source_ref_rejects_close_without_effect(
         record_id: RecordId::new(&artifact_id),
         project_id: ProjectId::new(PROJECT_ID),
         task_id: Some(TaskId::new(&task_id)).into(),
-        state_version: Some(state_version).into(),
+        produced_at_state_version: Some(state_version).into(),
     };
     let mut basis_request = record_run_request(
         "req_basis_bad_provenance",
@@ -2062,7 +2062,7 @@ fn stale_evidence_provenance_is_not_current_close_evidence() -> Result<(), Box<d
         |row| row.get(0),
     )?;
     let mut coverage: Value = serde_json::from_str(&coverage_json)?;
-    coverage[0]["observation_refs"][0]["state_version"] = json!(after_evidence - 1);
+    coverage[0]["observation_refs"][0]["produced_at_state_version"] = json!(after_evidence - 1);
     set_evidence_summary_owner_json(
         &harness,
         &evidence_summary_id,
@@ -3696,6 +3696,11 @@ fn guarded_pending_judgment_displays_user_answer_paths() -> Result<(), Box<dyn E
         .iter()
         .find(|blocker| blocker["code"] == "pending_user_judgment")
         .expect("pending judgment blocker should be present");
+    assert_eq!(
+        pending["next_actions"][0]["owner_method"],
+        "volicord.record_user_judgment"
+    );
+    assert!(pending["next_actions"][0]["expected_state_version"].is_null());
     let guidance = pending["next_actions"][0]["blocking_question"]
         .as_str()
         .expect("pending blocker should include answer-path guidance");

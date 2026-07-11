@@ -703,7 +703,7 @@ fn request_user_judgment_arguments(
                 "record_id": task_id,
                 "project_id": fixture.project_id(),
                 "task_id": task_id,
-                "state_version": state_version
+                "produced_at_state_version": state_version
             }
         ],
         "required_for": ["close_complete"],

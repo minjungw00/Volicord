@@ -1148,7 +1148,7 @@ impl GuardedLifecycleFixture {
             record_id: RecordId::new(record_id),
             project_id: ProjectId::new(&self.project_id),
             task_id: task_id.map(TaskId::new).into(),
-            state_version: state_version.into(),
+            produced_at_state_version: state_version.into(),
         }
     }
 }

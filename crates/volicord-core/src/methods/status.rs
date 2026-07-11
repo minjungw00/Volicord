@@ -238,6 +238,7 @@ fn status_result_fields(
                     parse_task_mode(&task.mode)?,
                     task_ref,
                     state.active_change_unit_ref.as_ref(),
+                    state_version,
                 ));
             }
             active_task = Some(status_state_summary_value(state, include)?);
@@ -251,7 +252,7 @@ fn status_result_fields(
         )?);
     }
     next_actions = unique_next_actions(next_actions);
-    normalize_next_action_collection(&mut next_actions);
+    normalize_next_action_collection(&mut next_actions, state_version);
 
     let close_blockers_slice = close_blockers.as_deref().unwrap_or(&[]);
     let summary_card = summary_card_for_core(SummaryCardBuild {
@@ -368,10 +369,24 @@ pub(super) fn unique_next_actions(actions: Vec<NextActionSummary>) -> Vec<NextAc
     let mut seen = BTreeSet::new();
     actions
         .into_iter()
-        .filter(|action| {
-            let mut key = (*action).clone();
-            key.presentation_role = NextActionPresentationRole::Primary;
-            seen.insert(serde_json::to_string(&key).unwrap_or_else(|_| String::new()))
+        .filter_map(|mut action| {
+            action.required_refs = unique_state_record_refs(action.required_refs);
+            let mut required_ref_keys = action
+                .required_refs
+                .iter()
+                .map(state_record_ref_identity_key)
+                .collect::<Vec<_>>();
+            required_ref_keys.sort();
+            let key = serde_json::to_string(&(
+                &action.action_kind,
+                &action.owner_method,
+                &action.allowed_operation_categories,
+                &action.label,
+                &action.blocking_question,
+                required_ref_keys,
+            ))
+            .unwrap_or_default();
+            seen.insert(key).then_some(action)
         })
         .collect()
 }

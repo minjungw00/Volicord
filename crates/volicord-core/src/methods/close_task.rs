@@ -476,7 +476,7 @@ pub(super) fn plan_close_task_with_context(
         )?);
         blockers.extend(guard_close_blockers(project_state, &request, &context));
     }
-    normalize_close_blocker_action_projection(&mut blockers);
+    normalize_close_blocker_action_projection(&mut blockers, project_state.state_version);
 
     let committed_terminal = request.intent != CloseIntent::Check && blockers.is_empty();
     let response_state_version = if committed_terminal {
@@ -2356,6 +2356,7 @@ fn guard_close_blockers(
                         "Does the user accept any remaining observed Product Repository change as intentional?"
                             .to_owned(),
                     ),
+                    expected_state_version: RequiredNullable::null(),
                     required_refs: vec![task_ref],
                 }],
             ));
@@ -2387,6 +2388,7 @@ fn guard_close_blockers(
                 allowed_operation_categories: Vec::new(),
                 label: "Repair or retry session watch before completing the Task.".to_owned(),
                 blocking_question: None,
+                expected_state_version: RequiredNullable::null(),
                 required_refs: vec![task_ref.clone()],
             }],
         ));
@@ -2406,6 +2408,7 @@ fn guard_close_blockers(
                 allowed_operation_categories: Vec::new(),
                 label: "Repair Agent Connection health before completing the Task.".to_owned(),
                 blocking_question: None,
+                expected_state_version: RequiredNullable::null(),
                 required_refs: vec![task_ref.clone()],
             }],
         ));
@@ -2433,6 +2436,7 @@ fn guard_close_blockers(
                     "Does the user accept any remaining observed Product Repository change as intentional?"
                         .to_owned(),
                 ),
+                expected_state_version: RequiredNullable::null(),
                 required_refs: vec![task_ref.clone()],
             }],
         ));
@@ -2450,6 +2454,7 @@ fn guard_close_blockers(
                 allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
                 label: "Refresh the write ticket before completing the Task.".to_owned(),
                 blocking_question: None,
+                expected_state_version: RequiredNullable::null(),
                 required_refs: vec![task_ref.clone()],
             }],
         ));
@@ -2474,6 +2479,7 @@ fn guard_close_blockers(
                     "Does the user accept the out-of-scope observed Product Repository change as intentional?"
                         .to_owned(),
                 ),
+                expected_state_version: RequiredNullable::null(),
                 required_refs: vec![task_ref],
             }],
         ));
@@ -2590,6 +2596,7 @@ fn guard_installation_close_blocker(
             allowed_operation_categories: Vec::new(),
             label,
             blocking_question: None,
+            expected_state_version: RequiredNullable::null(),
             required_refs: vec![task_ref.clone()],
         }],
     ))
@@ -2714,6 +2721,7 @@ fn terminal_close_blockers(
                         blocking_question: Some(user_channel_pending_judgment_instruction(
                             context.guard_health.as_ref(),
                         )),
+                        expected_state_version: RequiredNullable::null(),
                         required_refs: pending_refs,
                     }],
                 ));
@@ -2773,6 +2781,7 @@ fn unresolved_write_ticket_close_blockers(
                         "Does the user accept any observed Product Repository change after the expired write ticket?"
                             .to_owned(),
                     ),
+                    expected_state_version: RequiredNullable::null(),
                     required_refs: vec![task_ref.clone()],
                 }],
             )),
@@ -2799,6 +2808,7 @@ pub(super) fn open_write_ticket_close_blocker(
             label: "Record the ticket-backed run or reconcile observed changes before close."
                 .to_owned(),
             blocking_question: None,
+            expected_state_version: RequiredNullable::null(),
             required_refs: vec![task_ref],
         }],
     )
@@ -3059,6 +3069,7 @@ fn cancellation_authority_blocker(
             allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
             label: "Request current user cancellation authority.".to_owned(),
             blocking_question: None,
+            expected_state_version: RequiredNullable::null(),
             required_refs: vec![task_ref],
         }],
     )))
@@ -3101,6 +3112,7 @@ fn completion_close_blockers(
                 allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
                 label: "Create or restore the current active Change Unit.".to_owned(),
                 blocking_question: None,
+                expected_state_version: RequiredNullable::null(),
                 required_refs: vec![task_ref.clone()],
             }],
         ));
@@ -3133,6 +3145,7 @@ fn completion_close_blockers(
                 blocking_question: Some(user_channel_pending_judgment_instruction(
                     context.guard_health.as_ref(),
                 )),
+                expected_state_version: RequiredNullable::null(),
                 required_refs: close_complete_pending_refs,
             }],
         ));
@@ -3162,6 +3175,7 @@ fn completion_close_blockers(
                 allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
                 label: "Request the user-owned sensitive-action approval.".to_owned(),
                 blocking_question: None,
+                expected_state_version: RequiredNullable::null(),
                 required_refs: vec![task_ref.clone()],
             }],
         ));
@@ -3192,6 +3206,7 @@ fn completion_close_blockers(
                 allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
                 label: "Refresh the write ticket before completing the Task.".to_owned(),
                 blocking_question: None,
+                expected_state_version: RequiredNullable::null(),
                 required_refs: vec![task_ref.clone()],
             }],
         ));
@@ -3211,6 +3226,7 @@ fn completion_close_blockers(
                 label: "Refresh the current scope or close basis before completing the Task."
                     .to_owned(),
                 blocking_question: None,
+                expected_state_version: RequiredNullable::null(),
                 required_refs: vec![task_ref.clone()],
             }],
         ));
@@ -3254,6 +3270,7 @@ fn completion_close_blockers(
                 allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
                 label: "Record or repair the artifact supporting close evidence.".to_owned(),
                 blocking_question: None,
+                expected_state_version: RequiredNullable::null(),
                 required_refs: vec![task_ref.clone()],
             }],
         ));
@@ -3277,6 +3294,7 @@ fn completion_close_blockers(
                 allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
                 label: "Make residual risk visible before requesting acceptance.".to_owned(),
                 blocking_question: None,
+                expected_state_version: RequiredNullable::null(),
                 required_refs: vec![task_ref.clone()],
             }],
         ));
@@ -3317,6 +3335,7 @@ fn completion_close_blockers(
                 allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
                 label: "Request current residual-risk acceptance from the user.".to_owned(),
                 blocking_question: None,
+                expected_state_version: RequiredNullable::null(),
                 required_refs: vec![task_ref],
             }],
         ));
@@ -3535,6 +3554,7 @@ fn current_close_basis_blocker(
                 allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
                 label: "Record the current result and close basis.".to_owned(),
                 blocking_question: None,
+                expected_state_version: RequiredNullable::null(),
                 required_refs: vec![task_ref],
             }],
         )));
@@ -3564,6 +3584,7 @@ fn current_close_basis_blocker(
                 allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
                 label: "Record a fresh close basis for the current scope.".to_owned(),
                 blocking_question: None,
+                expected_state_version: RequiredNullable::null(),
                 required_refs: vec![task_ref],
             }],
         )))
@@ -3597,7 +3618,7 @@ fn incompatible_close_basis_run_refs_blocker(
     let mut incompatible_refs = Vec::new();
     for record_ref in close_basis_run_refs(basis) {
         let record_id = record_ref.record_id.as_str();
-        if !seen.insert(record_id.to_owned()) {
+        if !seen.insert(state_record_ref_identity_key(record_ref)) {
             continue;
         }
         if record_ref.project_id != request.envelope.project_id
@@ -3606,11 +3627,10 @@ fn incompatible_close_basis_run_refs_blocker(
             incompatible_refs.push(record_ref.clone());
             continue;
         }
-        if context
-            .projected_run_refs
-            .iter()
-            .any(|projected_ref| projected_ref == record_ref)
-        {
+        if context.projected_run_refs.iter().any(|projected_ref| {
+            state_record_ref_identity_key(projected_ref)
+                == state_record_ref_identity_key(record_ref)
+        }) {
             continue;
         }
         let record = store.run_record(record_id).map_err(|error| {
@@ -3650,6 +3670,7 @@ fn incompatible_close_basis_run_refs_blocker(
                 allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
                 label: "Record a fresh close basis for the current Run context.".to_owned(),
                 blocking_question: None,
+                expected_state_version: RequiredNullable::null(),
                 required_refs: vec![task_ref],
             }],
         )))
@@ -3761,6 +3782,7 @@ fn close_evidence_blockers(
                 allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
                 label: "Record evidence that supports the required close claims.".to_owned(),
                 blocking_question: None,
+                expected_state_version: RequiredNullable::null(),
                 required_refs: required_refs.clone(),
             }],
         ));
@@ -3811,7 +3833,7 @@ fn close_evidence_issue_for_item(
     let evidence_state_version = basis
         .evidence_summary_ref
         .as_ref()
-        .and_then(|record_ref| record_ref.state_version.as_ref().copied());
+        .and_then(|record_ref| record_ref.produced_at_state_version.as_ref().copied());
     for observation_ref in &item.observation_refs {
         if observation_ref.record_kind != StateRecordKind::EvidenceObservation
             || observation_ref.project_id != request.envelope.project_id
@@ -3821,7 +3843,7 @@ fn close_evidence_issue_for_item(
             continue;
         }
         if evidence_state_version.is_some_and(|state_version| {
-            observation_ref.state_version.as_ref() != Some(&state_version)
+            observation_ref.produced_at_state_version.as_ref() != Some(&state_version)
         }) {
             has_stale = true;
             continue;
@@ -3957,9 +3979,6 @@ fn unavailable_close_artifact_refs(
             .filter(|item| item.required_for_close)
             .flat_map(|item| item.supporting_artifact_refs.iter())
         {
-            if !seen.insert(artifact_ref.artifact_id.as_str().to_owned()) {
-                continue;
-            }
             let state_ref = state_ref(
                 StateRecordKind::Artifact,
                 artifact_ref.artifact_id.as_str(),
@@ -3967,6 +3986,9 @@ fn unavailable_close_artifact_refs(
                 Some(&request.task_id),
                 Some(project_state.state_version),
             );
+            if !seen.insert(state_record_ref_identity_key(&state_ref)) {
+                continue;
+            }
             if artifact_ref.availability != ArtifactAvailability::Available {
                 unavailable.push(state_ref);
                 continue;
@@ -4036,7 +4058,7 @@ fn unavailable_close_artifact_refs(
             )
             .filter(|record_ref| record_ref.record_kind == StateRecordKind::Artifact)
         {
-            if !seen.insert(record_ref.record_id.as_str().to_owned()) {
+            if !seen.insert(state_record_ref_identity_key(record_ref)) {
                 continue;
             }
             if close_basis_artifact_ref_unavailable(
@@ -4129,6 +4151,7 @@ fn final_acceptance_blocker(
                     "Does the user accept the current Task result and close basis as complete?"
                         .to_owned(),
                 ),
+                expected_state_version: RequiredNullable::null(),
                 required_refs: vec![task_ref],
             }],
         )));
@@ -4184,6 +4207,7 @@ fn final_acceptance_blocker(
                 "Does the user accept the current Task result and close basis as complete?"
                     .to_owned(),
             ),
+            expected_state_version: RequiredNullable::null(),
             required_refs: vec![task_ref],
         }],
     )))

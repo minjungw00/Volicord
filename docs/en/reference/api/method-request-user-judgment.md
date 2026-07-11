@@ -206,7 +206,7 @@ params:
       record_id: task_banner_001
       project_id: proj_banner_001
       task_id: task_banner_001
-      state_version: 51
+      produced_at_state_version: 51
   required_for:
     - close_complete
   expires_at: null
@@ -245,7 +245,7 @@ params:
       record_id: task_scope_001
       project_id: proj_scope_001
       task_id: task_scope_001
-      state_version: 17
+      produced_at_state_version: 17
   required_for:
     - scope_update
   expires_at: null
@@ -298,7 +298,7 @@ params:
       record_id: cu_export_001
       project_id: proj_export_001
       task_id: task_export_001
-      state_version: 28
+      produced_at_state_version: 28
   required_for:
     - prepare_write
   expires_at: null
@@ -322,7 +322,7 @@ user_judgment_ref:
   record_id: uj_banner_001
   project_id: proj_banner_001
   task_id: task_banner_001
-  state_version: 52
+  produced_at_state_version: 52
 user_judgment:
   judgment_id: uj_banner_001
   project_id: proj_banner_001
@@ -359,7 +359,7 @@ user_judgment:
       record_id: task_banner_001
       project_id: proj_banner_001
       task_id: task_banner_001
-      state_version: 51
+      produced_at_state_version: 52
   basis:
     task_id: task_banner_001
     change_unit_id: cu_banner_001
@@ -406,7 +406,7 @@ state:
     record_id: task_banner_001
     project_id: proj_banner_001
     task_id: task_banner_001
-    state_version: 51
+    produced_at_state_version: 52
   mode: work
   lifecycle:
     lifecycle_phase: ready
@@ -425,7 +425,7 @@ state:
     record_id: cu_banner_001
     project_id: proj_banner_001
     task_id: task_banner_001
-    state_version: 51
+    produced_at_state_version: 52
   baseline_ref: baseline_banner_001
   shaping_readiness: null
   pending_user_judgment_refs:
@@ -433,7 +433,7 @@ state:
       record_id: uj_banner_001
       project_id: proj_banner_001
       task_id: task_banner_001
-      state_version: 52
+      produced_at_state_version: 52
   blocker_refs: []
   write_ticket_summary: null
   evidence_summary: null

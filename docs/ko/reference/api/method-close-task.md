@@ -423,7 +423,7 @@ state:
     record_id: task_close_001
     project_id: proj_close_001
     task_id: task_close_001
-    state_version: 72
+    produced_at_state_version: 72
   mode: work
   lifecycle:
     lifecycle_phase: ready
@@ -459,12 +459,13 @@ state:
           allowed_operation_categories: [agent_workflow]
           label: "Agent Connection이 사용자에게 현재 최종 수락 요청을 만들어야 합니다."
           blocking_question: "사용자가 현재 Task 결과와 닫기 근거를 완료된 것으로 수락합니까?"
+          expected_state_version: 72
           required_refs:
             - record_kind: task
               record_id: task_close_001
               project_id: proj_close_001
               task_id: task_close_001
-              state_version: 72
+              produced_at_state_version: 72
   guarantee_display: null
 blockers:
   - category: final_acceptance
@@ -480,12 +481,13 @@ blockers:
         allowed_operation_categories: [agent_workflow]
         label: "Agent Connection이 사용자에게 현재 최종 수락 요청을 만들어야 합니다."
         blocking_question: "사용자가 현재 Task 결과와 닫기 근거를 완료된 것으로 수락합니까?"
+        expected_state_version: 72
         required_refs:
           - record_kind: task
             record_id: task_close_001
             project_id: proj_close_001
             task_id: task_close_001
-            state_version: 72
+            produced_at_state_version: 72
 evidence_summary: null
 artifact_refs: []
 ```

@@ -100,7 +100,7 @@ Close-assessment ref rules:
 - The method rejects or excludes caller-supplied `project_state`, `write_ticket`, `user_judgment`, `blocker`, `task_event`, and `task` refs from the close basis unless an owner explicitly adds them.
 - Every accepted ref must exist and belong to the same project and Task. Artifact refs must be linked to the Task and pass current-byte verification with `integrity_status=verified`; evidence refs must identify the current Task evidence summary; Run refs used as current close-basis result refs must identify a recorded current Run compatible with the current Task, current Change Unit, current scope revision, compatible baseline, and recorded status.
 - Historical Run refs are audit records for close-basis purposes unless this new current Run explicitly reuses verified artifacts or evidence from history and records that reuse in its committed evidence or close assessment.
-- Core stores canonical refs in `CurrentCloseBasis` and never preserves caller-supplied `state_version` metadata as authority.
+- Core stores canonical refs in `CurrentCloseBasis` and never treats caller-supplied `produced_at_state_version` metadata as authority or concurrency input.
 - Core may add the current Run, current Change Unit, and current EvidenceSummary refs while constructing the canonical close basis.
 
 Evidence update provenance rules:
@@ -338,7 +338,7 @@ run_summary:
     record_id: run_runprobe_001
     project_id: proj_runprobe_001
     task_id: task_runprobe_001
-    state_version: 32
+    produced_at_state_version: 32
   kind: implementation
   summary: "Search-result count validation passed."
   observed_changes:
@@ -362,7 +362,7 @@ run_summary:
         record_id: run_runprobe_001
         project_id: proj_runprobe_001
         task_id: task_runprobe_001
-        state_version: 32
+        produced_at_state_version: 32
       created_by_actor_source: agent_connection:conn_run_probe
       storage_ref: "artifact-storage://search-result-count-validation"
 registered_artifacts:
@@ -381,7 +381,7 @@ registered_artifacts:
       record_id: run_runprobe_001
       project_id: proj_runprobe_001
       task_id: task_runprobe_001
-      state_version: 32
+      produced_at_state_version: 32
     created_by_actor_source: agent_connection:conn_run_probe
     storage_ref: "artifact-storage://search-result-count-validation"
 evidence_summary:
@@ -400,13 +400,13 @@ evidence_summary:
           record_id: run_runprobe_001
           project_id: proj_runprobe_001
           task_id: task_runprobe_001
-          state_version: 32
+          produced_at_state_version: 32
       observation_refs:
         - record_kind: evidence_observation
           record_id: evidence_observation_runprobe_001
           project_id: proj_runprobe_001
           task_id: task_runprobe_001
-          state_version: 32
+          produced_at_state_version: 32
       supporting_artifact_refs:
         - artifact_id: artifact_runprobe_report_001
           project_id: proj_runprobe_001
@@ -423,7 +423,7 @@ evidence_summary:
             record_id: run_runprobe_001
             project_id: proj_runprobe_001
             task_id: task_runprobe_001
-            state_version: 32
+            produced_at_state_version: 32
           created_by_actor_source: agent_connection:conn_run_probe
           storage_ref: "artifact-storage://search-result-count-validation"
       gap_refs: []
@@ -443,7 +443,7 @@ evidence_summary:
         record_id: run_runprobe_001
         project_id: proj_runprobe_001
         task_id: task_runprobe_001
-        state_version: 32
+        produced_at_state_version: 32
       created_by_actor_source: agent_connection:conn_run_probe
       storage_ref: "artifact-storage://search-result-count-validation"
   observation_refs:
@@ -451,13 +451,13 @@ evidence_summary:
       record_id: evidence_observation_runprobe_001
       project_id: proj_runprobe_001
       task_id: task_runprobe_001
-      state_version: 32
+      produced_at_state_version: 32
   updated_by_run_ref:
     record_kind: run
     record_id: run_runprobe_001
     project_id: proj_runprobe_001
     task_id: task_runprobe_001
-    state_version: 32
+    produced_at_state_version: 32
 evidence_observations:
   - observation_id: evidence_observation_runprobe_001
     project_id: proj_runprobe_001
@@ -468,7 +468,7 @@ evidence_observations:
       record_id: run_runprobe_001
       project_id: proj_runprobe_001
       task_id: task_runprobe_001
-      state_version: 32
+      produced_at_state_version: 32
     claim: "Search-result count validation passed."
     source_kind: external_tool
     assurance_level: external_tool_result
@@ -494,7 +494,7 @@ evidence_observations:
           record_id: run_runprobe_001
           project_id: proj_runprobe_001
           task_id: task_runprobe_001
-          state_version: 32
+          produced_at_state_version: 32
         created_by_actor_source: agent_connection:conn_run_probe
         storage_ref: "artifact-storage://search-result-count-validation"
     limitations: []
@@ -512,23 +512,23 @@ current_close_basis:
       record_id: run_runprobe_001
       project_id: proj_runprobe_001
       task_id: task_runprobe_001
-      state_version: 32
+      produced_at_state_version: 32
     - record_kind: change_unit
       record_id: cu_runprobe_001
       project_id: proj_runprobe_001
       task_id: task_runprobe_001
-      state_version: 32
+      produced_at_state_version: 32
     - record_kind: evidence_summary
       record_id: evidence_summary_runprobe_001
       project_id: proj_runprobe_001
       task_id: task_runprobe_001
-      state_version: 32
+      produced_at_state_version: 32
   evidence_summary_ref:
     record_kind: evidence_summary
     record_id: evidence_summary_runprobe_001
     project_id: proj_runprobe_001
     task_id: task_runprobe_001
-    state_version: 32
+    produced_at_state_version: 32
   residual_risks: []
   sensitive_categories: []
   sensitive_action_requirements: []
@@ -538,7 +538,7 @@ current_close_basis:
     record_id: run_runprobe_001
     project_id: proj_runprobe_001
     task_id: task_runprobe_001
-    state_version: 32
+    produced_at_state_version: 32
   updated_at: "<example-updated-at>"
 blocker_refs: []
 state:
@@ -549,7 +549,7 @@ state:
     record_id: task_runprobe_001
     project_id: proj_runprobe_001
     task_id: task_runprobe_001
-    state_version: 32
+    produced_at_state_version: 32
   mode: work
   lifecycle:
     lifecycle_phase: ready
@@ -568,7 +568,7 @@ state:
     record_id: cu_runprobe_001
     project_id: proj_runprobe_001
     task_id: task_runprobe_001
-    state_version: 31
+    produced_at_state_version: 32
   baseline_ref: baseline_runprobe_001
   shaping_readiness: null
   pending_user_judgment_refs: []

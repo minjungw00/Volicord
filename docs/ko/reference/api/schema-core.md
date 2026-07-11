@@ -83,9 +83,11 @@ ToolEnvelope:
 
 의미:
 - `task_id`는 null 허용 요청 수준 `Task` 선택자입니다. 필드는 존재하며 값은 null일 수 있습니다.
-- `expected_state_version`은 프로젝트 전체 상태 시계 값을 담는 요청 수준 필드입니다.
+- `expected_state_version`은 `project_state.state_version` 값을 담는 요청 수준 낙관적 동시성 필드입니다.
 - `idempotency_key`는 null 허용 불투명 식별자입니다. 메서드 담당 문서가 null이 아닌 값이 필요한 때를 정의합니다.
 - `expected_state_version`은 null 허용입니다. 메서드와 저장소 담당 문서가 null이 아닌 값이 필요한 때를 정의합니다.
+- 상태 보기가 제공한 `NextActionSummary.expected_state_version`이 null이 아니면 해당 행동의 담당 메서드 호출에서 이 필드로 직접 매핑합니다. 다음 행동의 값이 null이어도 메서드 담당 문서가 별도로 요구하는 null이 아닌 토큰 요건이 면제되지는 않습니다.
+- `StateRecordRef.produced_at_state_version`은 상태 보기의 최신성 메타데이터이며 `ToolEnvelope.expected_state_version`을 대신하지 않습니다.
 - `project_id`, `task_id`, `request_id`, `idempotency_key`는 null이 아닐 때 불투명 식별자입니다.
 - `locale`은 null 허용 로캘 태그 문자열이며 Volicord가 제어하는 값 집합이 아닙니다.
 - 행위자 출처와 작업 범주는 공개 요청 필드가 아니라 [Agent Connection](../agent-connection.md)이 설명하는 어댑터/Core 로직에서 파생됩니다.
@@ -95,6 +97,7 @@ ToolEnvelope:
 
 담당 문서 링크:
 - 행위자 출처 값: [행위자 출처 값](schema-value-sets.md#actor-source-values)
+- 상태 보기가 제공하는 다음 행동 토큰과 상태 참조 최신성: [API 상태 스키마의 상태 참조](schema-state.md#state-references), [현재 위치 표시 형태](schema-state.md#current-position-display-shapes)
 - 메서드별 요청 동작: [API 메서드](methods.md)가 안내하는 메서드 담당 문서
 - 충돌 동작: [상태 버전 충돌](error-precedence.md#state-conflict-behavior)
 - 저장소 버전 동작: [저장소 버전 관리](../storage-versioning.md)

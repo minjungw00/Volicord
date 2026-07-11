@@ -6272,7 +6272,7 @@ fn request_user_judgment_request(
             record_id: volicord_types::RecordId::new(task_id),
             project_id: ProjectId::new("project_user_channel"),
             task_id: Some(TaskId::new(task_id)).into(),
-            state_version: expected_state_version.into(),
+            produced_at_state_version: expected_state_version.into(),
         }],
         required_for: vec![JudgmentRequiredFor::Informational],
         expires_at: RequiredNullable::null(),

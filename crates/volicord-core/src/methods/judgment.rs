@@ -460,6 +460,7 @@ fn plan_request_user_judgment(
         parse_task_mode(&task.mode)?,
         &task_ref,
         change_unit_ref.as_ref(),
+        planned_state_version,
     );
     let guarantee_display =
         guarantee_display_for_invocation(store, verified_invocation, planned_state_version)?;
@@ -1359,6 +1360,7 @@ fn plan_record_user_judgment(
         parse_task_mode(&task.mode)?,
         &task_ref,
         change_unit_ref.as_ref(),
+        planned_state_version,
     );
     let guarantee_display =
         guarantee_display_for_invocation(store, verified_invocation, planned_state_version)?;

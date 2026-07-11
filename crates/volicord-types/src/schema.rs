@@ -362,7 +362,7 @@ pub struct StateRecordRef {
     pub record_id: RecordId,
     pub project_id: ProjectId,
     pub task_id: RequiredNullable<TaskId>,
-    pub state_version: RequiredNullable<u64>,
+    pub produced_at_state_version: RequiredNullable<u64>,
 }
 
 /// Registry-scoped host-hook installation and host capability record.
@@ -731,6 +731,7 @@ pub struct NextActionSummary {
     pub allowed_operation_categories: Vec<OperationCategory>,
     pub label: String,
     pub blocking_question: Option<String>,
+    pub expected_state_version: RequiredNullable<u64>,
     pub required_refs: Vec<StateRecordRef>,
 }
 

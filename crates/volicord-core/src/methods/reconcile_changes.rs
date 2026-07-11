@@ -351,6 +351,12 @@ fn plan_reconcile_changes(
     } else {
         project_state.state_version + 1
     };
+    for finding in &mut unresolved_findings {
+        normalize_next_action_collection(
+            std::slice::from_mut(&mut finding.next_action),
+            planned_state_version,
+        );
+    }
     let projected_pending_refs = projected_pending_refs(
         store,
         project_state,
@@ -441,7 +447,7 @@ fn plan_reconcile_changes(
         user_channel_guard_health.as_ref(),
         request.envelope.dry_run,
     );
-    normalize_next_action_collection(&mut result_next_actions);
+    normalize_next_action_collection(&mut result_next_actions, planned_state_version);
     let summary_card = summary_card_for_core(SummaryCardBuild {
         task: Some(&task),
         recording: if storage_mutations.is_empty() {
@@ -691,7 +697,7 @@ fn accepted_resolution_candidate(
                 &authority.judgment_id,
                 &unrecorded_ref.project_id,
                 Some(task_id),
-                unrecorded_ref.state_version.as_ref().copied(),
+                unrecorded_ref.produced_at_state_version.as_ref().copied(),
             )),
         })
 }
@@ -1059,6 +1065,7 @@ fn unrecorded_finding(
                 "Does the user accept this observed Product Repository change as intentional?"
                     .to_owned(),
             ),
+            expected_state_version: RequiredNullable::null(),
             required_refs: vec![unrecorded_change_ref(record, request, state_version)],
         },
     })
@@ -1125,6 +1132,7 @@ fn reconcile_next_actions(
                     "Does the user accept the observed Product Repository change as intentional?"
                         .to_owned(),
                 ),
+                expected_state_version: RequiredNullable::null(),
                 required_refs: planned_judgments
                     .iter()
                     .map(|judgment| judgment.unrecorded_change_ref.clone())
@@ -1144,6 +1152,7 @@ fn reconcile_next_actions(
                 "Does the user accept the observed Product Repository change as intentional?"
                     .to_owned(),
             ),
+            expected_state_version: RequiredNullable::null(),
             required_refs: planned_judgments
                 .iter()
                 .filter_map(|judgment| judgment.user_judgment.as_ref())
@@ -1169,6 +1178,7 @@ fn reconcile_next_actions(
         ],
         label: "Run reconciliation again after user-owned judgments are answered.".to_owned(),
         blocking_question: None,
+        expected_state_version: RequiredNullable::null(),
         required_refs: unresolved_findings
             .iter()
             .map(|finding| finding.unrecorded_change_ref.clone())
