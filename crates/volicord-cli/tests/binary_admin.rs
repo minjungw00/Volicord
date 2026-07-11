@@ -6257,6 +6257,7 @@ fn intake_request(
             acceptance_criteria: vec!["The pending judgment can be recorded locally.".to_owned()],
         },
         initial_context_refs: Vec::new(),
+        initial_source_refs: Vec::new(),
     }
 }
 

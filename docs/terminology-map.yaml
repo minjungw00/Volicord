@@ -209,6 +209,8 @@ identifier_preservation:
     - "staged_artifact_handle"
     - "EvidenceSummary"
     - "EvidenceCoverageItem"
+    - "SourceRef"
+    - "source_refs"
     - "evidence_summary"
     - "evidence_updates"
     - "evidence_summaries"
@@ -1719,6 +1721,34 @@ terms:
     notes:
       - "Use Evidence input or Evidence attachment in user-facing prose."
       - "Preserve `ArtifactRef` only as an exact schema identifier."
+  source_ref:
+    category: "identifier"
+    en: "SourceRef"
+    visibility: "internal"
+    allowed_document_layers:
+      - "reference"
+      - "api_schema"
+      - "storage"
+      - "architecture_guide"
+    preserve_identifier: true
+    ko_reference: "`SourceRef`"
+    ko_user: "출처 참조"
+    ko_explanation: "권한 효력이 없는 출처 참조 스키마"
+    preserve_as_identifier:
+      - "SourceRef"
+      - "source_refs"
+      - "initial_source_refs"
+    primary_owner:
+      en: "docs/en/reference/api/schema-state.md"
+      ko: "docs/ko/reference/api/schema-state.md"
+    related_references:
+      - en: "docs/en/reference/core-model.md"
+        ko: "docs/ko/reference/core-model.md"
+      - en: "docs/en/reference/runtime-boundaries.md"
+        ko: "docs/ko/reference/runtime-boundaries.md"
+    notes:
+      - "Preserve `SourceRef` only as an exact schema identifier."
+      - "A source ref records non-authoritative context or provenance and is not a `StateRecordRef`."
   artifact_input:
     category: "identifier"
     en: "ArtifactInput"

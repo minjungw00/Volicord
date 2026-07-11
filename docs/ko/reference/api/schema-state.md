@@ -72,6 +72,60 @@ StateRecordRef:
 - 저장소 기록 계열과 값: [저장소 기록](../storage-records.md)
 - 저장소 테이블 이름과 DDL: [저장소 DDL](../storage-ddl.md)
 
+<a id="non-authoritative-source-references"></a>
+
+### 권한 효력이 없는 출처 참조
+
+`SourceRef`는 Core 소유 상태 기록 참조가 아닌 호출자 제공 맥락 또는 출처를
+기록합니다. `source_kind` 태그는 아래 `source` 본문 중 정확히 하나를
+선택합니다.
+
+```yaml
+SourceRef:
+  source_kind: repository_file | git_commit | git_diff | command | external_uri | user_context
+  source: RepositoryFileSource | GitCommitSource | GitDiffSource | CommandSource | ExternalUriSource | UserContextSource
+
+RepositoryFileSource:
+  repository_path: string
+  baseline_commit_sha: string
+  content_sha256: string
+  line_range: SourceLineRange | null
+
+SourceLineRange:
+  start_line: integer
+  end_line: integer
+
+GitCommitSource:
+  commit_sha: string
+
+GitDiffSource:
+  base_commit_sha: string
+  head_commit_sha: string
+  diff_artifact_ref: ArtifactRef | null
+
+CommandSource:
+  invocation_id: string
+  command_summary: string
+  exit_code: integer
+  output_artifact_ref: ArtifactRef | null
+
+ExternalUriSource:
+  uri: string
+  retrieved_at: string
+  content_sha256: string
+
+UserContextSource:
+  context_id: string
+```
+
+검증과 권한 경계:
+- `repository_path`는 Product Repository 상대 출처 위치입니다. Core는 절대 경로, Windows 드라이브 접두사, 역슬래시, 어휘적으로 저장소 밖으로 벗어나는 `..` 세그먼트를 거부하고 파일시스템이나 심볼릭 링크를 해석하지 않은 채 `.`과 저장소 밖으로 벗어나지 않는 `..` 세그먼트를 제거합니다. 줄 범위는 1부터 시작하는 양끝 포함 범위이며 `1` 이상에서 시작하고 끝이 시작보다 앞설 수 없습니다.
+- Git 객체 ID는 정확히 `40`자 또는 `64`자인 소문자 16진수 전체 SHA-1 또는 SHA-256 ID입니다. 콘텐츠 해시는 소문자 16진수 SHA-256 `64`자 문자열입니다.
+- `command_summary`는 비어 있지 않은 삭제 처리된 표시 요약이며 실행 가능한 입력이 아닙니다. 아티팩트 참조가 있으면 메서드 담당 문서가 선택한 같은 프로젝트와 같은 Task의 기준 참조입니다.
+- `external_uri`는 사용자 정보가 없는 절대 `http` 또는 `https` URI이며 `retrieved_at`은 RFC 3339입니다. `user_context.context_id`는 비어 있지 않은 불투명 상관 ID이며 메시지 본문, 행위자 신원, User Channel 출처가 아닙니다.
+- `SourceRef`는 맥락 또는 출처일 뿐입니다. 기록 identity, 범위, 기준선 선택, 사용자 소유 판단, 승인, 쓰기 티켓, 증거 충분성, 최종 수락, 잔여 위험 수락, 닫기 준비 상태, 보장, 동시성 토큰이 아닙니다.
+- Core는 제출된 형태를 검증하고 저장합니다. 참조 파일을 읽거나 해시하지 않고, Git 객체를 해석하지 않고, 명령을 실행하지 않고, URI를 가져오지 않고, 메시지 본문을 해석하지 않습니다. 제출된 해시, 객체 ID, 타임스탬프, 종료 코드, 요약, 맥락 ID는 보고된 사실로 남습니다. 검증된 본문은 계속 `ArtifactRef`와 아티팩트 저장소를 따릅니다.
+
 ## `StateSummary`
 
 `StateSummary`는 지원되는 메서드가 현재 `Task` 경로를 보여 줘야 할 때 반환하는 간결한 현재 위치 상태입니다.
@@ -633,6 +687,7 @@ EvidenceUpdateProvenance:
   tool_name: string | null
   tool_invocation_id: string | null
   tool_metadata: object
+  source_refs: SourceRef[]
   limitations: string[]
 
 EvidenceObservation:
@@ -649,6 +704,7 @@ EvidenceObservation:
   tool_invocation_id: string | null
   tool_metadata: object
   input_refs: StateRecordRef[]
+  source_refs: SourceRef[]
   output_artifact_refs: ArtifactRef[]
   limitations: string[]
   observed_at: string
@@ -663,6 +719,7 @@ EvidenceObservationInput:
   tool_invocation_id: string | null
   tool_metadata: object
   input_refs: StateRecordRef[]
+  source_refs: SourceRef[]
   output_artifact_refs: ArtifactRef[]
   limitations: string[]
   observed_at: string
@@ -687,7 +744,8 @@ ObservedChanges:
 - `CompletionPolicy.required_claims`, `EvidenceCoverageItem.claim`, `EvidenceObservation.claim`, `EvidenceObservationInput.claim`, `RunSummary.summary`는 자유 형식 주장 또는 표시 문자열입니다.
 - `EvidenceCoverageItem.provenance`는 요청 입력에서 선택적으로 사용할 수 있으며, Core가 해당 `EvidenceObservation`을 만들거나 연결한 뒤 커밋된 증거 요약에서는 생략됩니다. 닫기와 관련된 주장을 `supported`로 갱신하려면 같은 주장에 대한 관찰 입력, 사용할 수 있는 관찰 참조, 또는 Core가 관찰을 만들 수 있게 하는 이 출처 객체가 필요합니다.
 - `EvidenceSummary.observation_refs`와 `EvidenceCoverageItem.observation_refs`는 Core가 요약이나 주장과 관련지은 커밋된 증거 관찰에 대한 `StateRecordRef` 값을 나열합니다.
-- `EvidenceObservation`은 하나의 보고되었거나 관찰된 증거 주장에 대한 지속 출처 기록입니다. 출처, 보장 수준, 관찰자 행위자 출처, 선택적 도구 메타데이터, 입력 참조, 출력 아티팩트 참조, 한계, 관찰 타임스탬프를 기록합니다.
+- `EvidenceObservation`은 하나의 보고되었거나 관찰된 증거 주장에 대한 영속 출처 기록입니다. 출처, 보장 수준, 관찰자 행위자 출처, 선택적 도구 메타데이터, Core 기록 입력 참조, 권한 효력이 없는 출처 참조, 출력 아티팩트 참조, 한계, 관찰 타임스탬프를 기록합니다.
+- `source_refs`는 `SourceRef`를 사용합니다. `input_refs`는 별도 `StateRecordRef[]`로 유지되며 출처 참조는 Core 상태 참조나 닫기 근거 결과 참조가 되지 않습니다.
 - `EvidenceObservationInput`은 `volicord.record_run`이 받는 요청 측 형태입니다. Core는 커밋할 때 `observation_id`, 프로젝트와 `Task` 좌표, `run_ref`, `recorded_at`을 채웁니다.
 - `observed_by_actor_source`는 값이 있으면 `ActorSource` 값이어야 합니다. 관찰 입력에서 null이면 Core가 확인된 호출 맥락에서 값을 채울 수 있습니다.
 - `source_kind`와 `assurance_level`은 출처와 관찰 보장 수준을 설명합니다. 그 자체로 제품 정확성을 증명하거나, 사용자 권한을 부여하거나, 최종 수락을 만족하거나, 잔여 위험 수락을 만족하거나, `GuaranteeDisplay.level`을 높이지 않습니다.

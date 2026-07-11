@@ -893,6 +893,10 @@ impl ProjectMutation<'_> {
             "evidence_observations.input_refs_json",
             &input.input_refs_json,
         )?;
+        validate_source_refs_json(
+            "evidence_observations.source_refs_json",
+            &input.source_refs_json,
+        )?;
         validate_artifact_refs_json(
             "evidence_observations.output_artifact_refs_json",
             &input.output_artifact_refs_json,
@@ -923,6 +927,7 @@ impl ProjectMutation<'_> {
                 tool_invocation_id,
                 tool_metadata_json,
                 input_refs_json,
+                source_refs_json,
                 output_artifact_refs_json,
                 limitations_json,
                 observed_at,
@@ -947,7 +952,8 @@ impl ProjectMutation<'_> {
                 ?15,
                 ?16,
                 ?17,
-                ?18
+                ?18,
+                ?19
             )",
             params![
                 self.project_id,
@@ -963,6 +969,7 @@ impl ProjectMutation<'_> {
                 input.tool_invocation_id,
                 input.tool_metadata_json,
                 input.input_refs_json,
+                input.source_refs_json,
                 input.output_artifact_refs_json,
                 input.limitations_json,
                 input.observed_at,

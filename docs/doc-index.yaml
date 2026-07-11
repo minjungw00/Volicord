@@ -1684,6 +1684,7 @@ documents:
   - operate
   canonical_for:
   - state schemas
+  - non-authoritative `SourceRef` shape and field semantics
   - close-readiness state shapes
   - '`CloseReadinessBlocker` shape'
   - '`CloseReadinessBlocker` fields and nesting'
@@ -1955,8 +1956,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-11'
-  last_verified_on: '2026-07-11'
+  last_updated_on: '2026-07-12'
+  last_verified_on: '2026-07-12'
   applies_to:
   - volicord_workspace_0_2
   - storage_baseline_sqlite_v3
@@ -1983,8 +1984,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-17'
-  last_updated_on: '2026-07-11'
-  last_verified_on: '2026-07-11'
+  last_updated_on: '2026-07-12'
+  last_verified_on: '2026-07-12'
   applies_to:
   - volicord_workspace_0_2
   - storage_baseline_sqlite_v3
@@ -2012,8 +2013,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-11'
-  last_verified_on: '2026-07-11'
+  last_updated_on: '2026-07-12'
+  last_verified_on: '2026-07-12'
   applies_to:
   - volicord_workspace_0_2
   - storage_baseline_sqlite_v3

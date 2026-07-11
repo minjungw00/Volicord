@@ -13,8 +13,8 @@ use crate::schema::{
     EvidenceUpdateProvenance, GuaranteeDisplay, GuardHealthSummary, JsonObject, JudgmentInboxItem,
     JudgmentRationale, NextActionSummary, ObservedChanges, ProjectContinuitySummary,
     RecordUserJudgmentPayload, RequiredNullable, RiskAcceptanceCoverage, RunSummary,
-    SensitiveActionScope, StagedArtifactHandle, StateRecordRef, StateSummary, SummaryCard,
-    ToolEnvelope, ToolResponse, ToolResultBase, UnrecordedChangeFinding,
+    SensitiveActionScope, SourceRef, StagedArtifactHandle, StateRecordRef, StateSummary,
+    SummaryCard, ToolEnvelope, ToolResponse, ToolResultBase, UnrecordedChangeFinding,
     UnrecordedChangeResolutionSummary, UserChannelAvailability, UserJudgment,
     UserJudgmentCandidate, UserJudgmentContext, UserJudgmentOptionInput, WriteDecisionReason,
     WriteTicket, WriteTicketStateSummary,
@@ -164,6 +164,7 @@ pub struct IntakeRequest {
     pub resume_policy: ResumePolicy,
     pub initial_scope: InitialScope,
     pub initial_context_refs: Vec<StateRecordRef>,
+    pub initial_source_refs: Vec<SourceRef>,
 }
 
 impl MethodOperationCategory for IntakeRequest {
@@ -188,6 +189,8 @@ pub struct McpIntakeArguments {
     pub initial_scope: InitialScope,
     #[serde(default)]
     pub initial_context_refs: Vec<StateRecordRef>,
+    #[serde(default)]
+    pub initial_source_refs: Vec<SourceRef>,
 }
 
 /// Intake initial scope object.
@@ -626,6 +629,8 @@ pub struct McpEvidenceObservationInput {
     #[serde(default)]
     pub input_refs: Vec<StateRecordRef>,
     #[serde(default)]
+    pub source_refs: Vec<SourceRef>,
+    #[serde(default)]
     pub output_artifact_refs: Vec<ArtifactRef>,
     #[serde(default)]
     pub limitations: Vec<String>,
@@ -643,6 +648,7 @@ impl From<McpEvidenceObservationInput> for EvidenceObservationInput {
             tool_invocation_id: value.tool_invocation_id,
             tool_metadata: value.tool_metadata,
             input_refs: value.input_refs,
+            source_refs: value.source_refs,
             output_artifact_refs: value.output_artifact_refs,
             limitations: value.limitations,
             observed_at: value.observed_at,

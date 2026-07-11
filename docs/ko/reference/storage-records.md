@@ -103,7 +103,7 @@ API 스키마 형태와 저장소 기록 구조는 서로 다른 담당 문서�
 | `state.sqlite`와 아티팩트 저장소 | `artifacts` | 영속 아티팩트 기록 | 영속 아티팩트 메타데이터 또는 본문 위치, 콘텐츠 타입, SHA-256, 크기, 무결성 상태, 가림 처리, 보존, 생산자, 가용성 사실. |
 | `state.sqlite` | `artifact_links` | 아티팩트 소유 관계 | 아티팩트와 기준 범위 Core/API 기록 계열 사이의 소유 관계. |
 | `state.sqlite` | `evidence_summaries` | 증거 요약 | 간결한 증거 범위, 뒷받침 참조, 공백 참조. |
-| `state.sqlite` | `evidence_observations` | 증거 관찰 | 보고되거나 관찰된 증거 주장 하나에 대한 영속 출처 기록입니다. 출처 종류, 보장 수준, 관찰자 행위자 출처, 도구 메타데이터, 입력 참조, 출력 아티팩트 참조, 한계, 타임스탬프를 포함합니다. |
+| `state.sqlite` | `evidence_observations` | 증거 관찰 | 보고되거나 관찰된 증거 주장 하나에 대한 영속 출처 기록입니다. 출처 종류, 보장 수준, 관찰자 행위자 출처, 도구 메타데이터, Core 기록 입력 참조, 권한 효력이 없는 출처 참조, 출력 아티팩트 참조, 한계, 타임스탬프를 포함합니다. |
 | `state.sqlite` | `blockers` | 차단 사유 상태 | 다음 행동, 쓰기 호환성, 증거 공백, 닫기 준비 상태, 복구를 위한 구조화된 차단 사유 상태. |
 | `state.sqlite` | `authority_events` | 권한 이벤트 흐름 | 커밋된 Core 권한 변경의 추가 전용 순서와 로컬 감사 흐름. |
 | `state.sqlite` | `tool_invocations` | 재실행 행 | [저장 효과](storage-effects.md)가 재실행 생성을 정의한 경우의 커밋된 `dry_run=false` Core 메서드 결과 재실행 행. 행위자 출처와 작업 범주를 포함합니다. |
@@ -291,7 +291,7 @@ JSON을 저장하는 SQLite `TEXT` 열은 저장 표현 선택일 뿐이며 임�
 | `artifacts` | 보존, 생산자, 비권한 메타데이터. |
 | `artifact_links` | 비권한 메타데이터. |
 | `evidence_summaries` | 증거 범위, 뒷받침 참조, 공백 참조, 비권한 메타데이터. |
-| `evidence_observations` | 하나의 증거 관찰에 대한 도구 메타데이터, 입력 참조, 출력 아티팩트 참조, 한계, 비권한 메타데이터. |
+| `evidence_observations` | 증거 관찰 하나의 도구 메타데이터, Core 기록 입력 참조, 권한 효력이 없는 `SourceRef` JSON, 출력 아티팩트 참조, 한계, 권한 효력이 없는 메타데이터입니다. `source_refs_json`은 별도 출처 기록 계열이나 권한 행을 만들지 않습니다. |
 | `blockers` | 차단 사유 소유 참조, 관련 참조, 세부 정보, 비권한 메타데이터. |
 | `authority_events` | 커밋된 Core 권한 변경의 이벤트 페이로드. |
 | `tool_invocations` | 커밋된 재실행 응답. |

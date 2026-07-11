@@ -109,6 +109,19 @@ fn plan_intake(
         )
     };
 
+    let initial_source_refs = if create_new {
+        normalize_source_refs(
+            store,
+            project_state,
+            &request.envelope,
+            &task_id,
+            "initial_source_refs",
+            &request.initial_source_refs,
+        )?
+    } else {
+        Vec::new()
+    };
+
     let mut storage_mutations = Vec::new();
     if request.resume_policy == ResumePolicy::SupersedeActive {
         if let Some(active) = &active_task {
@@ -119,7 +132,7 @@ fn plan_intake(
     }
 
     let task_record = if create_new {
-        let shaping_summary = task_shaping_json(
+        let mut shaping_summary = task_shaping_json(
             Some(request.plain_language_request.clone()),
             Some(request.initial_scope.boundary.clone()),
             request.initial_scope.non_goals.clone(),
@@ -128,6 +141,7 @@ fn plan_intake(
             None,
             Some(serde_json::to_value(&request.initial_context_refs)?),
         );
+        shaping_summary["initial_source_refs"] = serde_json::to_value(&initial_source_refs)?;
         let task = TaskRecord {
             project_id: request.envelope.project_id.as_str().to_owned(),
             task_id: task_id.as_str().to_owned(),
@@ -138,7 +152,8 @@ fn plan_intake(
             summary: Some(request.plain_language_request.clone()),
             shaping_summary_json: serde_json::to_string(&shaping_summary)?,
             bounded_context_json: serde_json::to_string(&json!({
-                "initial_context_refs": request.initial_context_refs
+                "initial_context_refs": request.initial_context_refs,
+                "initial_source_refs": initial_source_refs
             }))?,
             autonomy_boundary_json: serde_json::to_string(&json!({
                 "autonomy_boundary": Value::Null

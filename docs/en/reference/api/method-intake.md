@@ -54,10 +54,12 @@ IntakeRequest:
   resume_policy: string
   initial_scope: object
   initial_context_refs: StateRecordRef[]
+  initial_source_refs: SourceRef[]
 ```
 
 Nested owner links:
 - `initial_context_refs` uses `StateRecordRef[]`; the nested shape is owned by [API State Schemas](schema-state.md#state-references).
+- `initial_source_refs` uses the non-authoritative `SourceRef[]` shape owned by [API State Schemas](schema-state.md#non-authoritative-source-references). Core structurally validates and stores these refs as Task context; it does not inspect their content or use them to expand scope, select a baseline, establish evidence, or create authority.
 - `requested_mode` and `resume_policy` values are owned by [API Value Sets](schema-value-sets.md#task-lifecycle-values) and [method-local values](schema-value-sets.md#method-local-values).
 
 ## Access requirements
@@ -172,6 +174,7 @@ params:
     acceptance_criteria:
       - "New users see the checklist after opening a workspace."
   initial_context_refs: []
+  initial_source_refs: []
 ```
 
 ## Representative response

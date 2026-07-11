@@ -449,6 +449,7 @@ Evidence authority:
 - Close evidence support requires claim-scoped observation provenance that remains current for the close basis when the close owner requires evidence. Coverage without current observation provenance is not sufficient by itself.
 - `unverified_claim` and cooperative agent reports can be retained as evidence records, but they do not satisfy required close evidence when stronger provenance is required.
 - A user observation is evidence provenance, not final acceptance or another user-owned judgment.
+- A `SourceRef` can preserve reported file, Git, command, external-resource, or user-context provenance inside a Task or evidence observation. It is not a Core state ref and does not establish scope, approval, evidence sufficiency, final acceptance, residual-risk acceptance, close readiness, or a guarantee. Core does not resolve or execute the referenced source when recording it.
 - Evidence cannot establish unrecorded behavior, broad correctness, final acceptance, residual-risk acceptance, or a no-risk result.
 
 `ArtifactRef` authority:

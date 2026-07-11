@@ -103,7 +103,7 @@ Baseline storage persists only the record families defined by this baseline stor
 | `state.sqlite` plus artifact store | `artifacts` | Persistent artifact record | Durable artifact metadata or body location, content type, SHA-256, size, integrity status, redaction, retention, producer, and availability facts. |
 | `state.sqlite` | `artifact_links` | Artifact owner relation | Owner relation between an artifact and a baseline Core/API record family. |
 | `state.sqlite` | `evidence_summaries` | Evidence summary | Compact evidence coverage, supporting references, and gap references. |
-| `state.sqlite` | `evidence_observations` | Evidence observation | Durable provenance record for one reported or observed evidence claim, including source kind, assurance level, observer actor source, tool metadata, input refs, output artifact refs, limitations, and timestamps. |
+| `state.sqlite` | `evidence_observations` | Evidence observation | Durable provenance record for one reported or observed evidence claim, including source kind, assurance level, observer actor source, tool metadata, Core-record input refs, non-authoritative source refs, output artifact refs, limitations, and timestamps. |
 | `state.sqlite` | `blockers` | Blocker state | Structured blocker state for next action, write compatibility, evidence gaps, close readiness, or recovery. |
 | `state.sqlite` | `authority_events` | Authority event trail | Append-only ordering and local audit trail for committed Core authority mutations. |
 | `state.sqlite` | `tool_invocations` | Replay row | Replay rows for committed non-dry-run Core method results when [Storage Effects](storage-effects.md) says replay is created, including actor source and operation category. |
@@ -293,7 +293,7 @@ Rules:
 | `artifacts` | Retention, producer, and non-authority metadata. |
 | `artifact_links` | Non-authority metadata. |
 | `evidence_summaries` | Evidence coverage, supporting refs, gap refs, and non-authority metadata. |
-| `evidence_observations` | Tool metadata, input refs, output artifact refs, limitations, and non-authority metadata for one evidence observation. |
+| `evidence_observations` | Tool metadata, Core-record input refs, non-authoritative `SourceRef` JSON, output artifact refs, limitations, and non-authority metadata for one evidence observation. `source_refs_json` does not create a separate source-record family or authority row. |
 | `blockers` | Blocker owner references, related references, details, and non-authority metadata. |
 | `authority_events` | Event payloads for committed Core authority mutations. |
 | `tool_invocations` | Committed replay responses. |

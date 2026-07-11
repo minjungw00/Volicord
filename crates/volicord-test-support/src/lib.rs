@@ -363,6 +363,7 @@ pub mod core_fixtures {
                     acceptance_criteria: vec!["The test export flow is represented.".to_owned()],
                 },
                 initial_context_refs: Vec::new(),
+                initial_source_refs: Vec::new(),
             }
         }
 
@@ -1473,6 +1474,7 @@ pub mod core_fixtures {
                 tool_name: Some("fixture-evidence-check".to_owned()).into(),
                 tool_invocation_id: None.into(),
                 tool_metadata: JsonObject::new(),
+                source_refs: Vec::new(),
                 limitations: Vec::new(),
             }),
             supporting_refs: Vec::new(),

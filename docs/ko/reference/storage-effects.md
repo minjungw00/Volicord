@@ -316,6 +316,7 @@ Core 상태 변경, 재실행 행, 권한 이벤트, 닫기 상태 변경,
 커밋되는 `dry_run=false` 호출은 다음을 수행할 수 있습니다.
 
 - `Task`를 생성합니다.
+- 검증된 `initial_source_refs`를 Task 소유자 JSON의 비권위적 Task 맥락으로 보존합니다.
 - 선택적 Change Unit을 생성합니다.
 - 구체화 기록을 생성합니다.
 - 이벤트를 추가합니다.
@@ -478,7 +479,7 @@ Core 상태 변경, 재실행 행, 권한 이벤트, 닫기 상태 변경,
 - 호환되는 `write_tickets` 행을 소비합니다.
 - 사용할 수 있는 `artifact_staging`을 소비합니다.
 - `artifacts`를 승격하거나 연결합니다.
-- `evidence_summaries`를 갱신하거나, `evidence_observations`를 생성하거나, 허용된 `blockers`를 갱신합니다.
+- `evidence_summaries`를 갱신하거나, Core 기록 입력 참조와 권한 효력이 없는 출처 참조를 분리해 저장하는 `evidence_observations`를 생성하거나, 허용된 `blockers`를 갱신합니다.
 - `close_assessment`에 따라 `tasks.close_basis_revision`과 `tasks.close_basis_json`을 갱신합니다.
 - 이벤트를 추가합니다.
 - 재실행 행을 생성합니다.

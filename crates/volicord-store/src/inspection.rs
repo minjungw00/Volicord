@@ -568,6 +568,7 @@ fn validate_project_state_required_schema(conn: &Connection) -> Result<(), Inspe
             "tool_invocation_id",
             "tool_metadata_json",
             "input_refs_json",
+            "source_refs_json",
             "output_artifact_refs_json",
             "limitations_json",
             "observed_at",

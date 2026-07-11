@@ -777,6 +777,7 @@ impl GuardedLifecycleFixture {
                     ],
                 },
                 initial_context_refs: Vec::new(),
+                initial_source_refs: Vec::new(),
             },
             self.invocation(OperationCategory::AgentWorkflow),
         )?;

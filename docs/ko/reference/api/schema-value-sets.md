@@ -721,6 +721,23 @@ unverified
 
 이 값들은 증거 관찰 출처를 분류합니다. 사용자 권한을 부여하거나, 최종 수락 또는 잔여 위험 수락을 만족하거나, 제품 정확성을 증명하거나, `GuaranteeDisplay.level`을 바꾸지 않습니다.
 
+<a id="source-ref-values"></a>
+### 출처 참조 값
+
+`SourceRef.source_kind`는 아래 값을 사용합니다.
+
+```text
+repository_file
+git_commit
+git_diff
+command
+external_uri
+user_context
+```
+
+이 값들은 구조가 서로 다른 권한 효력이 없는 출처 본문 하나를 선택합니다. 맥락이나
+출처만 분류하며 증거 보장 수준, 사용자 권한, 범위, 닫기 권한을 선택하지 않습니다.
+
 `ValidatorResult.status`는 아래 값을 사용합니다.
 
 ```text

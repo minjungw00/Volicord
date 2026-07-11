@@ -49,6 +49,7 @@
           "CloseReadinessBlockerCategory",
           "CloseReason",
           "CloseState",
+          "CommandSource",
           "CompletionPolicy",
           "ControlSurfaceSummary",
           "CoverageHostHookState",
@@ -67,6 +68,9 @@
           "EvidenceStatus",
           "EvidenceSummary",
           "EvidenceUpdateProvenance",
+          "ExternalUriSource",
+          "GitCommitSource",
+          "GitDiffSource",
           "GuaranteeClass",
           "GuaranteeDisclosure",
           "GuaranteeDisplay",
@@ -101,6 +105,7 @@
           "ProjectContinuitySummary",
           "PromptCaptureStatus",
           "RedactionState",
+          "RepositoryFileSource",
           "ResidualRisk",
           "ResponseKind",
           "RiskAcceptanceCoverage",
@@ -110,6 +115,8 @@
           "SessionWatchStatus",
           "ShapingGap",
           "ShapingReadiness",
+          "SourceLineRange",
+          "SourceRef",
           "StateRecordKind",
           "StateRecordRef",
           "StateSummary",
@@ -127,6 +134,7 @@
           "ToolResultBase",
           "UserChannelAvailability",
           "UserChannelPathAvailability",
+          "UserContextSource",
           "UserJudgmentStatus",
           "UtcTimestamp",
           "WriteTicketStateSummary",
@@ -134,7 +142,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:4d55758201485e50e831a5cf2c86277ef3a81b8362f70d4a22dce75fd621d8a0"
+        "sha256": "sha256:fa46225453ab3ede8459cb9325addd647db17576cad37c714258747acc51609f"
       }
     },
     {
@@ -170,6 +178,7 @@
           "CloseReason",
           "CloseState",
           "CloseTaskResult",
+          "CommandSource",
           "CompletionPolicy",
           "ControlSurfaceSummary",
           "CoverageHostHookState",
@@ -188,6 +197,9 @@
           "EvidenceStatus",
           "EvidenceSummary",
           "EvidenceUpdateProvenance",
+          "ExternalUriSource",
+          "GitCommitSource",
+          "GitDiffSource",
           "GuaranteeClass",
           "GuaranteeDisclosure",
           "GuaranteeDisplay",
@@ -222,6 +234,7 @@
           "ProjectContinuitySummary",
           "PromptCaptureStatus",
           "RedactionState",
+          "RepositoryFileSource",
           "ResidualRisk",
           "ResponseKind",
           "RiskAcceptanceCoverage",
@@ -231,6 +244,8 @@
           "SessionWatchStatus",
           "ShapingGap",
           "ShapingReadiness",
+          "SourceLineRange",
+          "SourceRef",
           "StateRecordKind",
           "StateRecordRef",
           "StateSummary",
@@ -246,6 +261,7 @@
           "ToolResultBase",
           "UserChannelAvailability",
           "UserChannelPathAvailability",
+          "UserContextSource",
           "UserJudgmentStatus",
           "UtcTimestamp",
           "WriteTicketStateSummary",
@@ -253,7 +269,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:e59eab2276ec596a38e80575672d4ec2c0f78cd2be57ccac0feb14a0758f9dfd"
+        "sha256": "sha256:c4c5013af9d978cf998ed487ff406edd057bcc0422d0c603443274c0b9879af2"
       }
     },
     {

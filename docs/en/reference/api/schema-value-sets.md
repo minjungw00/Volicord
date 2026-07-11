@@ -705,6 +705,24 @@ Assurance-level meanings:
 
 These values classify evidence observation provenance. They do not grant user authority, satisfy final acceptance or residual-risk acceptance, prove product correctness, or change `GuaranteeDisplay.level`.
 
+<a id="source-ref-values"></a>
+### Source reference values
+
+`SourceRef.source_kind` uses:
+
+```text
+repository_file
+git_commit
+git_diff
+command
+external_uri
+user_context
+```
+
+These values select one structurally distinct, non-authoritative source body.
+They classify context or provenance only and never select an evidence assurance
+level, user authority, scope, or close authority.
+
 `ValidatorResult.status` uses:
 
 ```text

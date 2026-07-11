@@ -318,6 +318,7 @@ This table summarizes persistence effects. Method behavior and response unions r
 Committed `dry_run=false` may:
 
 - create the Task
+- preserve validated `initial_source_refs` as non-authoritative Task context in the Task owner JSON
 - create an optional Change Unit
 - create shaping records
 - append events
@@ -480,7 +481,7 @@ Committed `dry_run=false` may:
 - consume a compatible `write_tickets` row
 - consume eligible `artifact_staging`
 - promote or link `artifacts`
-- update `evidence_summaries`, create `evidence_observations`, or update allowed blockers
+- update `evidence_summaries`, create `evidence_observations` with separately stored Core-record input refs and non-authoritative source refs, or update allowed blockers
 - update `tasks.close_basis_revision` and `tasks.close_basis_json` according to `close_assessment`
 - append events
 - create a replay row

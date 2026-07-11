@@ -777,7 +777,7 @@ The MCP argument projection applies omission defaults only where omission has
 exactly the same meaning as the previously accepted explicit `null` or empty
 array:
 
-- `volicord.intake`: `initial_context_refs=[]`
+- `volicord.intake`: `initial_context_refs=[]` and `initial_source_refs=[]`
 - `volicord.update_scope`: `goal_summary=null`, `scope_update=null`,
   `scope_boundary=null`, `non_goals=null`, `acceptance_criteria=null`,
   `autonomy_boundary=null`, `baseline_ref=null`, and
@@ -793,7 +793,8 @@ array:
   `supporting_artifact_refs=[]`, and `gap_refs=[]`; inside each
   `evidence_observations` item, `observed_by_actor_source=null`,
   `tool_name=null`, `tool_invocation_id=null`, `tool_metadata={}`,
-  `input_refs=[]`, `output_artifact_refs=[]`, and `limitations=[]`
+  `input_refs=[]`, `source_refs=[]`, `output_artifact_refs=[]`, and
+  `limitations=[]`
 - `volicord.request_user_judgment`: `change_unit_id=null`,
   `sensitive_action_scope=null`, `options=null`, `affected_refs=[]`, and
   `expires_at=null`

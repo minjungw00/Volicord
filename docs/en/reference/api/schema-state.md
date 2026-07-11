@@ -72,6 +72,58 @@ Owner links:
 - storage record families and values: [Storage Records](../storage-records.md)
 - storage table names and DDL: [Storage DDL](../storage-ddl.md)
 
+### Non-authoritative source references
+
+`SourceRef` records caller-supplied context or provenance that is not a
+Core-owned state-record reference. Its `source_kind` tag selects exactly one
+`source` body:
+
+```yaml
+SourceRef:
+  source_kind: repository_file | git_commit | git_diff | command | external_uri | user_context
+  source: RepositoryFileSource | GitCommitSource | GitDiffSource | CommandSource | ExternalUriSource | UserContextSource
+
+RepositoryFileSource:
+  repository_path: string
+  baseline_commit_sha: string
+  content_sha256: string
+  line_range: SourceLineRange | null
+
+SourceLineRange:
+  start_line: integer
+  end_line: integer
+
+GitCommitSource:
+  commit_sha: string
+
+GitDiffSource:
+  base_commit_sha: string
+  head_commit_sha: string
+  diff_artifact_ref: ArtifactRef | null
+
+CommandSource:
+  invocation_id: string
+  command_summary: string
+  exit_code: integer
+  output_artifact_ref: ArtifactRef | null
+
+ExternalUriSource:
+  uri: string
+  retrieved_at: string
+  content_sha256: string
+
+UserContextSource:
+  context_id: string
+```
+
+Validation and authority boundary:
+- `repository_path` is a Product Repository-relative source locator. Core rejects absolute paths, Windows drive prefixes, backslashes, and lexically escaping `..` segments, then removes `.` and non-escaping `..` segments without filesystem or symlink resolution. A line range is one-based and inclusive, starts at `1` or later, and does not end before it starts.
+- Git object ids are full lowercase hexadecimal SHA-1 or SHA-256 ids of exactly `40` or `64` characters. Content hashes are lowercase `64`-character SHA-256 hexadecimal strings.
+- `command_summary` is a non-empty redacted display summary, not executable input. Artifact refs, when present, are canonical same-project, same-Task refs selected by the method owner.
+- `external_uri` is an absolute `http` or `https` URI without user information, and `retrieved_at` is RFC 3339. `user_context.context_id` is a non-empty opaque correlation id, not message content, actor identity, or User Channel provenance.
+- `SourceRef` is context or provenance only. It is not record identity, scope, baseline selection, a user-owned judgment, approval, a write ticket, evidence sufficiency, final acceptance, residual-risk acceptance, close readiness, a guarantee, or a concurrency token.
+- Core validates and stores the submitted shape. It does not read or hash a referenced file, resolve Git objects, execute a command, fetch a URI, or resolve message content. Submitted hashes, object ids, timestamps, exit codes, summaries, and context ids remain reported facts. Verified bytes continue to use `ArtifactRef` and Artifact Storage.
+
 ## `StateSummary`
 
 `StateSummary` is the compact current-position state returned by supported methods that need to show the current Task path.
@@ -626,6 +678,7 @@ EvidenceUpdateProvenance:
   tool_name: string | null
   tool_invocation_id: string | null
   tool_metadata: object
+  source_refs: SourceRef[]
   limitations: string[]
 
 EvidenceObservation:
@@ -642,6 +695,7 @@ EvidenceObservation:
   tool_invocation_id: string | null
   tool_metadata: object
   input_refs: StateRecordRef[]
+  source_refs: SourceRef[]
   output_artifact_refs: ArtifactRef[]
   limitations: string[]
   observed_at: string
@@ -656,6 +710,7 @@ EvidenceObservationInput:
   tool_invocation_id: string | null
   tool_metadata: object
   input_refs: StateRecordRef[]
+  source_refs: SourceRef[]
   output_artifact_refs: ArtifactRef[]
   limitations: string[]
   observed_at: string
@@ -680,7 +735,8 @@ Meaning:
 - `CompletionPolicy.required_claims`, `EvidenceCoverageItem.claim`, `EvidenceObservation.claim`, `EvidenceObservationInput.claim`, and `RunSummary.summary` are free-form claim or display strings.
 - `EvidenceCoverageItem.provenance` is optional on request input and is omitted from committed evidence summaries after Core creates or links the corresponding `EvidenceObservation`. A supported evidence update for a close-relevant claim must have a matching observation input, a usable observation ref, or this provenance object so Core can create an observation.
 - `EvidenceSummary.observation_refs` and `EvidenceCoverageItem.observation_refs` list `StateRecordRef` values for committed evidence observations that Core relates to the summary or claim.
-- `EvidenceObservation` is a durable provenance record for one reported or observed evidence claim. It records source, assurance, observer actor source, optional tool metadata, input refs, output artifact refs, limitations, and observation timestamps.
+- `EvidenceObservation` is a durable provenance record for one reported or observed evidence claim. It records source, assurance, observer actor source, optional tool metadata, Core-record input refs, non-authoritative source refs, output artifact refs, limitations, and observation timestamps.
+- `source_refs` uses `SourceRef`. `input_refs` remains a separate `StateRecordRef[]`; a source ref never becomes a Core state ref or close-basis result ref.
 - `EvidenceObservationInput` is the request-side shape accepted by `volicord.record_run`; Core fills `observation_id`, project and Task coordinates, `run_ref`, and `recorded_at` when it commits.
 - `observed_by_actor_source`, when present, must be an `ActorSource` value. When it is null in an observation input, Core may fill it from the verified invocation context.
 - `source_kind` and `assurance_level` describe provenance and observation assurance. They do not by themselves prove product correctness, grant user authority, satisfy final acceptance, satisfy residual-risk acceptance, or raise `GuaranteeDisplay.level`.

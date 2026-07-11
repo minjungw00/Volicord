@@ -66,17 +66,32 @@
     },
     "volicord.intake": {
       "definitions": [
+        "ActorSource",
+        "ArtifactAvailability",
+        "ArtifactIntegrityStatus",
+        "ArtifactRef",
+        "CommandSource",
+        "ExternalUriSource",
+        "GitCommitSource",
+        "GitDiffSource",
         "InitialScope",
+        "RedactionState",
+        "RepositoryFileSource",
         "RequestedMode",
         "ResumePolicy",
+        "SourceLineRange",
+        "SourceRef",
         "StateRecordKind",
         "StateRecordRef",
-        "ToolEnvelope"
+        "ToolEnvelope",
+        "UserContextSource",
+        "UtcTimestamp"
       ],
       "root_properties": [
         "envelope",
         "initial_context_refs",
         "initial_scope",
+        "initial_source_refs",
         "plain_language_request",
         "requested_mode",
         "resume_policy"
@@ -85,11 +100,12 @@
         "envelope",
         "initial_context_refs",
         "initial_scope",
+        "initial_source_refs",
         "plain_language_request",
         "requested_mode",
         "resume_policy"
       ],
-      "sha256": "sha256:73ff4a6d1992d1e85b9c482d2fff50b62848d31658d5c56ad58d8648f5118141"
+      "sha256": "sha256:ac37d593b7149479bd791592ea117df7dab62e02dd96f0e6041de0a429c3609e"
     },
     "volicord.prepare_write": {
       "definitions": [
@@ -143,20 +159,28 @@
         "ArtifactIntegrityStatus",
         "ArtifactRef",
         "CloseAssessmentInput",
+        "CommandSource",
         "EvidenceAssuranceLevel",
         "EvidenceCoverageItem",
         "EvidenceCoverageState",
         "EvidenceObservationInput",
         "EvidenceSourceKind",
         "EvidenceUpdateProvenance",
+        "ExternalUriSource",
+        "GitCommitSource",
+        "GitDiffSource",
         "ObservedChanges",
         "RedactionState",
+        "RepositoryFileSource",
         "ResidualRiskInput",
         "RunKind",
+        "SourceLineRange",
+        "SourceRef",
         "StagedArtifactHandle",
         "StateRecordKind",
         "StateRecordRef",
         "ToolEnvelope",
+        "UserContextSource",
         "UtcTimestamp"
       ],
       "root_properties": [
@@ -189,7 +213,7 @@
         "task_id",
         "write_ticket_id"
       ],
-      "sha256": "sha256:0b1a79cc126fad8c41169435e14959a92ecfad57f22163b8cd09478923cd88bd"
+      "sha256": "sha256:aca29228be1aebe5fb9151a8aad77fb983a20114833c003a6effb3f6e708bcad"
     },
     "volicord.record_user_judgment": {
       "definitions": [

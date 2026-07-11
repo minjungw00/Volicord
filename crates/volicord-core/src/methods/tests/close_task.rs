@@ -1664,17 +1664,27 @@ fn unverified_claim_alone_cannot_satisfy_close_readiness() -> Result<(), Box<dyn
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) =
         create_task_with_change_unit(&harness, "close_unverified_claim")?;
+    let mut update = supported_evidence_update_with_provenance(
+        "Close claim supported.",
+        EvidenceSourceKind::UnverifiedClaim,
+        EvidenceAssuranceLevel::Unverified,
+    );
+    let provenance = update
+        .provenance
+        .as_mut()
+        .expect("test update has provenance");
+    provenance.source_refs = vec![volicord_types::SourceRef::UserContext(
+        volicord_types::UserContextSource {
+            context_id: "message_unverified_claim".to_owned(),
+        },
+    )];
     let after_evidence = record_close_evidence_with_updates(
         &harness,
         &task_id,
         &change_unit_id,
         2,
         "unverified_claim",
-        vec![supported_evidence_update_with_provenance(
-            "Close claim supported.",
-            EvidenceSourceKind::UnverifiedClaim,
-            EvidenceAssuranceLevel::Unverified,
-        )],
+        vec![update],
         "Close claim supported.",
     )?;
     let after_final = record_final_acceptance(

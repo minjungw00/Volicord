@@ -12,7 +12,7 @@ use volicord_types::{
     PersistedArtifactProvenanceMetadata, PersistedEvidenceMetadata, PersistedJudgmentBasis,
     PersistedUserJudgmentOptions, PersistedUserJudgmentRequest, PersistedUserJudgmentResolution,
     ProjectContinuityKind, ProjectContinuityStatus, ProjectEnforcementProfile,
-    ProjectEnforcementProfileSource, ProjectEnforcementProfileStatus, StateRecordRef,
+    ProjectEnforcementProfileSource, ProjectEnforcementProfileStatus, SourceRef, StateRecordRef,
     UserJudgmentOptionAction, UtcTimestamp, BASELINE_COOPERATIVE_ENFORCEMENT_PROFILE_ID,
 };
 
@@ -359,6 +359,13 @@ pub(super) fn validate_state_refs_json(field: &'static str, text: &str) -> Store
     Ok(())
 }
 
+pub(super) fn validate_source_refs_json(field: &'static str, text: &str) -> StoreResult<()> {
+    serde_json::from_str::<Vec<SourceRef>>(text).map_err(|error| StoreError::InvalidInput {
+        detail: format!("{field} must be persisted SourceRef array JSON: {error}"),
+    })?;
+    Ok(())
+}
+
 pub(super) fn validate_artifact_refs_json(field: &'static str, text: &str) -> StoreResult<()> {
     serde_json::from_str::<Vec<ArtifactRef>>(text).map_err(|error| StoreError::InvalidInput {
         detail: format!("{field} must be persisted ArtifactRef array JSON: {error}"),
@@ -502,4 +509,23 @@ pub(super) fn u64_to_i64(field: &'static str, value: u64) -> StoreResult<i64> {
     i64::try_from(value).map_err(|_| StoreError::InvalidInput {
         detail: format!("{field} does not fit in SQLite integer"),
     })
+}
+
+#[cfg(test)]
+mod source_ref_tests {
+    use super::*;
+
+    #[test]
+    fn persisted_source_refs_require_a_strict_tagged_shape() {
+        assert!(validate_source_refs_json(
+            "source_refs_json",
+            r#"[{"source_kind":"user_context","source":{"context_id":"message_1"}}]"#,
+        )
+        .is_ok());
+        assert!(validate_source_refs_json(
+            "source_refs_json",
+            r#"[{"source_kind":"user_context","source":{"context_id":"message_1","uri":"https://example.invalid"}}]"#,
+        )
+        .is_err());
+    }
 }

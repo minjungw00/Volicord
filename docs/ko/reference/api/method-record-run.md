@@ -94,6 +94,7 @@ ResidualRiskInput:
 - `observed_changes.changed_paths` 항목은 `Product Repository` API 제품 경로입니다. `Product Repository` 경로 정규화는 [런타임 경계](../runtime-boundaries.md#product-repository-api-path-normalization)가 담당합니다.
 - `ArtifactInput[]`와 스테이징 핸들은 두 번째 요청 수준 작업 범주나 행위자 출처를 만들지 않습니다. 호출은 확인된 호출 맥락의 값으로 유지됩니다.
 - `ArtifactInput[]` 멤버는 증거 첨부 입력입니다. 이 메서드가 그 입력을 기록된 주장별 증거나 관찰에 연결할 때만 증거를 뒷받침합니다. 요청 안에 있다는 사실만으로 증거가 충분해지지는 않습니다.
+- `EvidenceObservationInput.source_refs`와 `EvidenceUpdateProvenance.source_refs`는 구조가 검증된 권한 효력이 없는 출처를 보존합니다. Core는 이 참조를 위해 파일을 읽거나, Git 객체를 해석하거나, 명령을 실행하거나, URI를 가져오거나, 메시지를 조회하지 않습니다. 선택적인 명령 또는 Git diff 아티팩트 참조는 이 프로젝트와 Task가 소유하는 기존 기준 아티팩트와 일치해야 합니다. 출처 참조는 증거 충분성이나 닫기 권한을 만들지 않습니다.
 
 닫기 평가 참조 규칙:
 - 호출자가 제공한 `close_assessment.result_refs`와 `ResidualRiskInput.source_refs`는 담당 문서가 다른 종류를 명시적으로 추가하지 않는 한 `record_kind=run`, `artifact`, `evidence_summary`, `change_unit`으로 제한됩니다.
@@ -347,6 +348,7 @@ params:
       tool_metadata:
         validator: "search-count"
       input_refs: []
+      source_refs: []
       output_artifact_refs: []
       limitations: []
       observed_at: "<example-observed-at>"
@@ -517,6 +519,7 @@ evidence_observations:
     tool_metadata:
       validator: "search-count"
     input_refs: []
+    source_refs: []
     output_artifact_refs:
       - artifact_id: artifact_runprobe_report_001
         project_id: proj_runprobe_001

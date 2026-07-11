@@ -59,3 +59,73 @@ fn intake_dry_run_has_no_storage_effect() -> Result<(), Box<dyn Error>> {
     assert_eq!(harness.counts()?, before);
     Ok(())
 }
+
+#[test]
+fn intake_persists_normalized_non_authoritative_source_context() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let mut request = intake_request(
+        "req_intake_source",
+        "idem_intake_source",
+        false,
+        Some(0),
+        RequestedMode::Advisor,
+    );
+    request.initial_source_refs = vec![volicord_types::SourceRef::RepositoryFile(
+        volicord_types::RepositoryFileSource {
+            repository_path: "notes/./source.md".to_owned(),
+            baseline_commit_sha: "a".repeat(40),
+            content_sha256: "b".repeat(64),
+            line_range: Some(volicord_types::SourceLineRange {
+                start_line: 2,
+                end_line: 4,
+            })
+            .into(),
+        },
+    )];
+
+    let response = harness
+        .service
+        .intake(request, invocation(OperationCategory::AgentWorkflow))?;
+    let task_id = response.response_value["task_ref"]["record_id"]
+        .as_str()
+        .expect("task id should be present");
+    let bounded_context: String = harness.conn()?.query_row(
+        "SELECT bounded_context_json FROM tasks WHERE project_id = ?1 AND task_id = ?2",
+        rusqlite::params![PROJECT_ID, task_id],
+        |row| row.get(0),
+    )?;
+    let bounded_context: serde_json::Value = serde_json::from_str(&bounded_context)?;
+    assert_eq!(
+        bounded_context["initial_source_refs"][0]["source"]["repository_path"],
+        "notes/source.md"
+    );
+    assert_eq!(bounded_context["initial_context_refs"], json!([]));
+    Ok(())
+}
+
+#[test]
+fn intake_rejects_structurally_invalid_source_without_effect() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let before = harness.counts()?;
+    let mut request = intake_request(
+        "req_intake_bad_source",
+        "idem_intake_bad_source",
+        false,
+        Some(0),
+        RequestedMode::Advisor,
+    );
+    request.initial_source_refs = vec![volicord_types::SourceRef::ExternalUri(
+        volicord_types::ExternalUriSource {
+            uri: "https://user@example.invalid/spec".to_owned(),
+            retrieved_at: volicord_types::UtcTimestamp::parse("2026-07-12T00:00:00Z")?,
+            content_sha256: "c".repeat(64),
+        },
+    )];
+
+    let response = harness
+        .service
+        .intake(request, invocation(OperationCategory::AgentWorkflow))?;
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}

@@ -869,6 +869,7 @@ fn intake_request(
             acceptance_criteria: vec!["The test export flow is represented.".to_owned()],
         },
         initial_context_refs: Vec::new(),
+        initial_source_refs: Vec::new(),
     }
 }
 
@@ -2085,6 +2086,7 @@ fn evidence_update_provenance(
         tool_name: Some("fixture-evidence-check".to_owned()).into(),
         tool_invocation_id: None.into(),
         tool_metadata: JsonObject::new(),
+        source_refs: Vec::new(),
         limitations: Vec::new(),
     }
 }

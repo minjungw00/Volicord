@@ -693,7 +693,7 @@ Agent Connection MCP 도구로 노출되지 않습니다. 공개 메서드 담�
 MCP 인자 투영은 생략이 기존에 허용하던 명시적 `null` 또는 빈 배열과 정확히 같은 의미인
 경우에만 다음 생략 기본값을 적용합니다.
 
-- `volicord.intake`: `initial_context_refs=[]`
+- `volicord.intake`: `initial_context_refs=[]`, `initial_source_refs=[]`
 - `volicord.update_scope`: `goal_summary=null`, `scope_update=null`,
   `scope_boundary=null`, `non_goals=null`, `acceptance_criteria=null`,
   `autonomy_boundary=null`, `baseline_ref=null`,
@@ -709,7 +709,7 @@ MCP 인자 투영은 생략이 기존에 허용하던 명시적 `null` 또는 �
   `supporting_artifact_refs=[]`, `gap_refs=[]`; 각 `evidence_observations`
   항목 안에서는 `observed_by_actor_source=null`, `tool_name=null`,
   `tool_invocation_id=null`, `tool_metadata={}`, `input_refs=[]`,
-  `output_artifact_refs=[]`, `limitations=[]`
+  `source_refs=[]`, `output_artifact_refs=[]`, `limitations=[]`
 - `volicord.request_user_judgment`: `change_unit_id=null`,
   `sensitive_action_scope=null`, `options=null`, `affected_refs=[]`,
   `expires_at=null`

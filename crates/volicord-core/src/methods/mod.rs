@@ -1,6 +1,6 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
-    path::Path,
+    path::{Component, Path},
 };
 
 use chrono::{DateTime, Duration, Utc};
@@ -54,7 +54,7 @@ use volicord_types::{
     RecordUserJudgmentRequest, RedactionState, RequestedMode, RequiredNullable, ResidualRisk,
     ResumePolicy, RiskAcceptanceCoverage, RiskId, RunId, RunKind, RunSummary,
     SensitiveActionRequirement, SessionWatchCoverageBasis, SessionWatchScanSummary,
-    SessionWatchStatus, StageArtifactRequest, StageArtifactResult, StagedArtifactHandle,
+    SessionWatchStatus, SourceRef, StageArtifactRequest, StageArtifactResult, StagedArtifactHandle,
     StagedArtifactHandleId, StateRecordKind, StateRecordRef, StatusCloseState, StatusInclude,
     StatusRequest, StorageRef, SummaryCard, TaskId, TaskLifecyclePhase, TaskLifecycleState,
     TaskMode, TaskResult, ToolEnvelope, ToolResultBase, UnrecordedChangeFinding,
@@ -652,6 +652,343 @@ fn artifact_sha256_is_lowercase_hex(value: &str) -> bool {
         && value
             .bytes()
             .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+}
+
+fn normalize_source_refs(
+    store: &CoreProjectStore,
+    project_state: &ProjectStateHeader,
+    envelope: &ToolEnvelope,
+    task_id: &TaskId,
+    field: &'static str,
+    refs: &[SourceRef],
+) -> Result<Vec<SourceRef>, PlanError> {
+    refs.iter()
+        .cloned()
+        .map(|source_ref| {
+            normalize_source_ref(store, project_state, envelope, task_id, field, source_ref)
+        })
+        .collect()
+}
+
+fn normalize_source_ref(
+    store: &CoreProjectStore,
+    project_state: &ProjectStateHeader,
+    envelope: &ToolEnvelope,
+    task_id: &TaskId,
+    field: &'static str,
+    source_ref: SourceRef,
+) -> Result<SourceRef, PlanError> {
+    match source_ref {
+        SourceRef::RepositoryFile(mut source) => {
+            source.repository_path = match normalize_source_repository_path(&source.repository_path)
+            {
+                Some(path) => path,
+                None => {
+                    return source_ref_error(
+                        envelope,
+                        project_state,
+                        field,
+                        "repository_path must be a normalized Product Repository relative path",
+                    )
+                }
+            };
+            if !git_object_id_is_valid(&source.baseline_commit_sha) {
+                return source_ref_error(
+                    envelope,
+                    project_state,
+                    field,
+                    "Git object ids must be full lowercase hexadecimal SHA-1 or SHA-256 ids",
+                );
+            }
+            if !artifact_sha256_is_lowercase_hex(&source.content_sha256) {
+                return source_ref_error(
+                    envelope,
+                    project_state,
+                    field,
+                    "content_sha256 must be a lowercase 64-character SHA-256 hex string",
+                );
+            }
+            if source
+                .line_range
+                .as_ref()
+                .is_some_and(|range| range.start_line == 0 || range.end_line < range.start_line)
+            {
+                return source_ref_error(
+                    envelope,
+                    project_state,
+                    field,
+                    "line_range must be one-based, inclusive, and ordered",
+                );
+            }
+            Ok(SourceRef::RepositoryFile(source))
+        }
+        SourceRef::GitCommit(source) => {
+            if !git_object_id_is_valid(&source.commit_sha) {
+                return source_ref_error(
+                    envelope,
+                    project_state,
+                    field,
+                    "Git object ids must be full lowercase hexadecimal SHA-1 or SHA-256 ids",
+                );
+            }
+            Ok(SourceRef::GitCommit(source))
+        }
+        SourceRef::GitDiff(mut source) => {
+            if !git_object_id_is_valid(&source.base_commit_sha)
+                || !git_object_id_is_valid(&source.head_commit_sha)
+            {
+                return source_ref_error(
+                    envelope,
+                    project_state,
+                    field,
+                    "Git object ids must be full lowercase hexadecimal SHA-1 or SHA-256 ids",
+                );
+            }
+            if let Some(artifact_ref) = source.diff_artifact_ref.as_ref() {
+                source.diff_artifact_ref = Some(canonical_source_artifact_ref(
+                    store,
+                    project_state,
+                    envelope,
+                    task_id,
+                    field,
+                    artifact_ref,
+                )?)
+                .into();
+            }
+            Ok(SourceRef::GitDiff(source))
+        }
+        SourceRef::Command(mut source) => {
+            if source.invocation_id.trim().is_empty() || source.command_summary.trim().is_empty() {
+                return source_ref_error(
+                    envelope,
+                    project_state,
+                    field,
+                    "command source identifiers and summaries must not be empty",
+                );
+            }
+            source.command_summary = source
+                .command_summary
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
+            if let Some(artifact_ref) = source.output_artifact_ref.as_ref() {
+                source.output_artifact_ref = Some(canonical_source_artifact_ref(
+                    store,
+                    project_state,
+                    envelope,
+                    task_id,
+                    field,
+                    artifact_ref,
+                )?)
+                .into();
+            }
+            Ok(SourceRef::Command(source))
+        }
+        SourceRef::ExternalUri(source) => {
+            if !external_source_uri_is_valid(&source.uri) {
+                return source_ref_error(
+                    envelope,
+                    project_state,
+                    field,
+                    "external_uri must be an absolute http or https URI without user information",
+                );
+            }
+            if !artifact_sha256_is_lowercase_hex(&source.content_sha256) {
+                return source_ref_error(
+                    envelope,
+                    project_state,
+                    field,
+                    "content_sha256 must be a lowercase 64-character SHA-256 hex string",
+                );
+            }
+            Ok(SourceRef::ExternalUri(source))
+        }
+        SourceRef::UserContext(source) => {
+            if source.context_id.trim().is_empty() {
+                return source_ref_error(
+                    envelope,
+                    project_state,
+                    field,
+                    "user context ids must not be empty",
+                );
+            }
+            Ok(SourceRef::UserContext(source))
+        }
+    }
+}
+
+fn source_ref_error<T>(
+    envelope: &ToolEnvelope,
+    project_state: &ProjectStateHeader,
+    field: &'static str,
+    message: &'static str,
+) -> Result<T, PlanError> {
+    let response = validation_rejected(
+        envelope.dry_run,
+        Some(project_state.state_version),
+        field,
+        message,
+    )
+    .map_err(PlanError::Core)?;
+    Err(PlanError::Response(Box::new(response)))
+}
+
+fn normalize_source_repository_path(raw: &str) -> Option<String> {
+    if raw.trim().is_empty() || raw.contains('\\') || has_windows_drive_prefix(raw) {
+        return None;
+    }
+    let path = Path::new(raw);
+    if path.is_absolute() {
+        return None;
+    }
+    let mut parts = Vec::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                parts.pop()?;
+            }
+            Component::Normal(value) => parts.push(value.to_str()?.to_owned()),
+            Component::RootDir | Component::Prefix(_) => return None,
+        }
+    }
+    (!parts.is_empty()).then(|| parts.join("/"))
+}
+
+fn has_windows_drive_prefix(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':'
+}
+
+fn git_object_id_is_valid(value: &str) -> bool {
+    matches!(value.len(), 40 | 64)
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+}
+
+fn external_source_uri_is_valid(value: &str) -> bool {
+    if value
+        .bytes()
+        .any(|byte| byte.is_ascii_whitespace() || byte.is_ascii_control())
+    {
+        return false;
+    }
+    let Some(rest) = value
+        .strip_prefix("https://")
+        .or_else(|| value.strip_prefix("http://"))
+    else {
+        return false;
+    };
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    !authority.is_empty() && !authority.contains('@')
+}
+
+fn canonical_source_artifact_ref(
+    store: &CoreProjectStore,
+    project_state: &ProjectStateHeader,
+    envelope: &ToolEnvelope,
+    task_id: &TaskId,
+    field: &'static str,
+    submitted: &ArtifactRef,
+) -> Result<ArtifactRef, PlanError> {
+    if submitted.project_id != envelope.project_id || submitted.task_id != *task_id {
+        return source_ref_error(
+            envelope,
+            project_state,
+            field,
+            "source artifact refs must belong to the request project and Task",
+        );
+    }
+    let record = store
+        .artifact_record(submitted.artifact_id.as_str())
+        .map_err(|error| {
+            PlanError::Response(Box::new(store_error_response(
+                envelope,
+                project_state,
+                error,
+            )))
+        })?;
+    let Some(record) = record else {
+        return source_ref_error(
+            envelope,
+            project_state,
+            field,
+            "source artifact refs must identify an existing artifact",
+        );
+    };
+    let owner_link = store
+        .artifact_has_task_owner_link(submitted.artifact_id.as_str(), task_id.as_str())
+        .map_err(|error| {
+            PlanError::Response(Box::new(store_error_response(
+                envelope,
+                project_state,
+                error,
+            )))
+        })?;
+    if record.project_id != envelope.project_id.as_str()
+        || record.task_id != task_id.as_str()
+        || !owner_link
+    {
+        return source_ref_error(
+            envelope,
+            project_state,
+            field,
+            "source artifact refs must identify an artifact owned by the request project and Task",
+        );
+    }
+    let integrity_status = parse_owner_storage_value(
+        "artifacts",
+        record.artifact_id.clone(),
+        "integrity_status",
+        &record.integrity_status,
+    )?;
+    let availability = match record.status.as_str() {
+        "available" => ArtifactAvailability::Available,
+        "missing" => ArtifactAvailability::Missing,
+        "integrity_failed" => ArtifactAvailability::IntegrityFailed,
+        "unavailable" => ArtifactAvailability::Unavailable,
+        _ => {
+            return Err(PlanError::Core(CorePipelineError::Store(
+                StoreError::corrupt_owner_state_value(
+                    "artifacts",
+                    record.artifact_id.clone(),
+                    "status",
+                ),
+            )))
+        }
+    };
+    Ok(ArtifactRef {
+        artifact_id: ArtifactId::new(record.artifact_id.clone()),
+        project_id: envelope.project_id.clone(),
+        task_id: task_id.clone(),
+        display_name: record
+            .producer
+            .display_name
+            .clone()
+            .unwrap_or_else(|| record.artifact_id.clone()),
+        content_type: record.content_type.clone().into(),
+        sha256: record.sha256.clone().into(),
+        size_bytes: record.size_bytes.into(),
+        integrity_status,
+        redaction_state: parse_owner_storage_value(
+            "artifacts",
+            record.artifact_id.clone(),
+            "redaction_state",
+            &record.redaction_state,
+        )?,
+        availability,
+        created_by_run_ref: Some(state_ref(
+            StateRecordKind::Run,
+            record.provenance.producer_run_id.as_str(),
+            &envelope.project_id,
+            Some(task_id),
+            Some(project_state.state_version),
+        ))
+        .into(),
+        created_by_actor_source: Some(record.producer.created_by_actor_source.clone()).into(),
+        storage_ref: Some(StorageRef::new(record.uri)).into(),
+    })
 }
 
 fn decode_required_json<T>(
@@ -1968,6 +2305,8 @@ struct PersistedTaskShaping {
     autonomy_boundary: Option<String>,
     #[serde(default)]
     initial_context_refs: Option<Value>,
+    #[serde(default)]
+    initial_source_refs: Option<Value>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

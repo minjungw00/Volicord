@@ -720,6 +720,7 @@ impl McpAdapter {
                 resume_policy: args.resume_policy,
                 initial_scope: args.initial_scope,
                 initial_context_refs: args.initial_context_refs,
+                initial_source_refs: args.initial_source_refs,
             },
             CoreService::intake,
             session_id,

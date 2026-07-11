@@ -94,6 +94,7 @@ Path and access notes:
 - `observed_changes.changed_paths` entries are `Product Repository` API product paths. Product Repository path normalization is owned by [Runtime Boundaries](../runtime-boundaries.md#product-repository-api-path-normalization).
 - `ArtifactInput[]` and staged handles do not create a second request-level operation category or actor source; the invocation remains the one in the verified invocation context.
 - `ArtifactInput[]` members are Evidence attachment inputs. They support Evidence only when this method links them to recorded claim-scoped evidence or observations; their presence in the request is not evidence sufficiency.
+- `EvidenceObservationInput.source_refs` and `EvidenceUpdateProvenance.source_refs` preserve structurally validated, non-authoritative provenance. Core performs no file read, Git resolution, command execution, URI fetch, or message lookup for these refs. Optional command or Git-diff artifact refs must canonicalize to an existing artifact owned by this project and Task. Source refs never establish evidence sufficiency or close authority.
 
 Close-assessment ref rules:
 - Caller-supplied `close_assessment.result_refs` and `ResidualRiskInput.source_refs` are restricted to `record_kind=run`, `artifact`, `evidence_summary`, or `change_unit` unless an owner explicitly adds another kind.
@@ -348,6 +349,7 @@ params:
       tool_metadata:
         validator: "search-count"
       input_refs: []
+      source_refs: []
       output_artifact_refs: []
       limitations: []
       observed_at: "<example-observed-at>"
@@ -518,6 +520,7 @@ evidence_observations:
     tool_metadata:
       validator: "search-count"
     input_refs: []
+    source_refs: []
     output_artifact_refs:
       - artifact_id: artifact_runprobe_report_001
         project_id: proj_runprobe_001

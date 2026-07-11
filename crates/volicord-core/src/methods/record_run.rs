@@ -848,6 +848,14 @@ fn plan_record_run_observation(
         "evidence_observations[].input_refs",
         &input.input_refs,
     )?;
+    let source_refs = normalize_source_refs(
+        context.store,
+        context.project_state,
+        &context.request.envelope,
+        &context.request.task_id,
+        "evidence_observations[].source_refs",
+        &input.source_refs,
+    )?;
     validate_evidence_observation_artifact_refs(context, &input.output_artifact_refs)?;
     if input
         .tool_name
@@ -908,6 +916,7 @@ fn plan_record_run_observation(
         tool_invocation_id: input.tool_invocation_id.clone(),
         tool_metadata: input.tool_metadata.clone(),
         input_refs: input.input_refs.clone(),
+        source_refs,
         output_artifact_refs,
         limitations,
         observed_at: input.observed_at.clone(),
@@ -932,6 +941,7 @@ fn plan_record_run_observation(
         tool_invocation_id: observation.tool_invocation_id.as_ref().cloned(),
         tool_metadata_json: serde_json::to_string(&observation.tool_metadata)?,
         input_refs_json: serde_json::to_string(&observation.input_refs)?,
+        source_refs_json: serde_json::to_string(&observation.source_refs)?,
         output_artifact_refs_json: serde_json::to_string(&observation.output_artifact_refs)?,
         limitations_json: serde_json::to_string(&observation.limitations)?,
         observed_at: observation.observed_at.to_canonical_string(),
@@ -990,6 +1000,14 @@ fn validate_record_run_evidence_update(
             )?;
             unreachable!("validation_plan_error always returns Err");
         }
+        normalize_source_refs(
+            context.store,
+            context.project_state,
+            &context.request.envelope,
+            &context.request.task_id,
+            "evidence_updates[].provenance.source_refs",
+            &provenance.source_refs,
+        )?;
         if provenance
             .tool_invocation_id
             .as_ref()
@@ -1034,6 +1052,7 @@ fn observation_input_from_evidence_update(
         tool_invocation_id: provenance.tool_invocation_id.clone(),
         tool_metadata: provenance.tool_metadata.clone(),
         input_refs: update.supporting_refs.clone(),
+        source_refs: provenance.source_refs.clone(),
         output_artifact_refs: update.supporting_artifact_refs.clone(),
         limitations: provenance.limitations.clone(),
         observed_at: provenance

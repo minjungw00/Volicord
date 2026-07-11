@@ -646,6 +646,7 @@ CREATE TABLE evidence_observations (
   tool_invocation_id TEXT,
   tool_metadata_json TEXT NOT NULL DEFAULT '{}',
   input_refs_json TEXT NOT NULL DEFAULT '[]',
+  source_refs_json TEXT NOT NULL DEFAULT '[]',
   output_artifact_refs_json TEXT NOT NULL DEFAULT '[]',
   limitations_json TEXT NOT NULL DEFAULT '[]',
   observed_at TEXT NOT NULL,

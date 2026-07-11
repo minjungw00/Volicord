@@ -79,6 +79,72 @@ mod tests {
     }
 
     #[test]
+    fn source_ref_tagged_variants_round_trip_strictly() {
+        let values = [
+            json!({
+                "source_kind": "repository_file",
+                "source": {
+                    "repository_path": "README.md",
+                    "baseline_commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "content_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                    "line_range": {"start_line": 1, "end_line": 3}
+                }
+            }),
+            json!({
+                "source_kind": "git_commit",
+                "source": {"commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+            }),
+            json!({
+                "source_kind": "git_diff",
+                "source": {
+                    "base_commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "head_commit_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                    "diff_artifact_ref": null
+                }
+            }),
+            json!({
+                "source_kind": "command",
+                "source": {
+                    "invocation_id": "invocation_001",
+                    "command_summary": "cargo test",
+                    "exit_code": 0,
+                    "output_artifact_ref": null
+                }
+            }),
+            json!({
+                "source_kind": "external_uri",
+                "source": {
+                    "uri": "https://example.invalid/spec",
+                    "retrieved_at": "2026-07-12T00:00:00Z",
+                    "content_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+                }
+            }),
+            json!({
+                "source_kind": "user_context",
+                "source": {"context_id": "message_001"}
+            }),
+        ];
+        for value in values {
+            let parsed: SourceRef = serde_json::from_value(value.clone()).expect("source parses");
+            assert_eq!(
+                serde_json::to_value(parsed).expect("source serializes"),
+                value
+            );
+        }
+        assert!(serde_json::from_value::<SourceRef>(json!({
+            "source_kind": "user_context",
+            "source": {"context_id": "message_001", "uri": "https://example.invalid"}
+        }))
+        .is_err());
+        assert!(serde_json::from_value::<SourceRef>(json!({
+            "source_kind": "user_context",
+            "source": {"context_id": "message_001"},
+            "unexpected": true
+        }))
+        .is_err());
+    }
+
+    #[test]
     fn integration_profile_values_serialize_stable_names() {
         assert_eq!(
             serde_json::to_value(IntegrationProfile::Record).expect("profile serializes"),
@@ -905,6 +971,7 @@ mod tests {
                 "tool_invocation_id",
                 "tool_metadata",
                 "input_refs",
+                "source_refs",
                 "output_artifact_refs",
                 "limitations",
                 "observed_at",
@@ -985,6 +1052,7 @@ mod tests {
                 "tool_invocation_id": null,
                 "tool_metadata": {},
                 "input_refs": [],
+                "source_refs": [],
                 "output_artifact_refs": [],
                 "limitations": [],
                 "observed_at": "2026-07-12T00:00:00Z"
@@ -2083,6 +2151,7 @@ mod tests {
                 "resume_policy",
                 "initial_scope",
                 "initial_context_refs",
+                "initial_source_refs",
             ],
             "volicord.update_scope" => &[
                 "envelope",
@@ -2224,7 +2293,8 @@ mod tests {
                 "non_goals": ["Changing account creation."],
                 "acceptance_criteria": ["Checklist appears for new workspaces."]
             },
-            "initial_context_refs": []
+            "initial_context_refs": [],
+            "initial_source_refs": []
         })
     }
 
@@ -2328,6 +2398,7 @@ mod tests {
                 "exit_code": 0
             },
             "input_refs": [state_ref_json("run", "run_input_001", "task_empty_001")],
+            "source_refs": [],
             "output_artifact_refs": [artifact_ref_json(
                 "verified",
                 json!("text/plain"),

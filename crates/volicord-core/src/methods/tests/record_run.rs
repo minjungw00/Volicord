@@ -2029,6 +2029,16 @@ fn record_run_promotes_staged_artifact_and_updates_evidence() -> Result<(), Box<
         tool_invocation_id: None.into(),
         tool_metadata: Map::from_iter([("validator".to_owned(), json!("search-count"))]),
         input_refs: Vec::new(),
+        source_refs: vec![
+            volicord_types::SourceRef::ExternalUri(volicord_types::ExternalUriSource {
+                uri: "https://example.invalid/search-spec".to_owned(),
+                retrieved_at: volicord_types::UtcTimestamp::parse("2026-06-17T23:59:00Z")?,
+                content_sha256: "d".repeat(64),
+            }),
+            volicord_types::SourceRef::UserContext(volicord_types::UserContextSource {
+                context_id: "message_search_requirement".to_owned(),
+            }),
+        ],
         output_artifact_refs: Vec::new(),
         limitations: vec!["External tool output is not product correctness proof.".to_owned()],
         observed_at: volicord_types::UtcTimestamp::parse("2026-06-18T00:00:00Z")?,
@@ -2103,6 +2113,8 @@ fn record_run_promotes_staged_artifact_and_updates_evidence() -> Result<(), Box<
     assert_eq!(observation["assurance_level"], "external_tool_result");
     assert_eq!(observation["observed_by_actor_source"], AGENT_ACTOR_SOURCE);
     assert_eq!(observation["tool_metadata"]["validator"], "search-count");
+    assert_eq!(observation["source_refs"][0]["source_kind"], "external_uri");
+    assert_eq!(observation["source_refs"][1]["source_kind"], "user_context");
     assert_eq!(
         observation["output_artifact_refs"][0]["artifact_id"],
         artifact_id
@@ -2135,6 +2147,13 @@ fn record_run_promotes_staged_artifact_and_updates_evidence() -> Result<(), Box<
         before.evidence_observations + 1
     );
     assert_eq!(artifact_staging_status(&harness, &handle_id)?, "consumed");
+    let stored_source_refs: String = harness.conn()?.query_row(
+        "SELECT source_refs_json FROM evidence_observations WHERE project_id = ?1 AND evidence_observation_id = ?2",
+        rusqlite::params![PROJECT_ID, observation_id],
+        |row| row.get(0),
+    )?;
+    let stored_source_refs: serde_json::Value = serde_json::from_str(&stored_source_refs)?;
+    assert_eq!(stored_source_refs, observation["source_refs"]);
     assert!(artifact_owner_link_exists(&harness, &artifact_id, "run")?);
     assert!(artifact_owner_link_exists(
         &harness,
@@ -2218,6 +2237,7 @@ fn record_run_observations_preserve_provenance_classification() -> Result<(), Bo
                 tool_invocation_id: None.into(),
                 tool_metadata: JsonObject::new(),
                 input_refs: Vec::new(),
+                source_refs: Vec::new(),
                 output_artifact_refs: Vec::new(),
                 limitations: Vec::new(),
                 observed_at: volicord_types::UtcTimestamp::parse("2026-06-18T00:00:00Z")

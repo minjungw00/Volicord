@@ -413,6 +413,7 @@ pub struct EvidenceObservationInsert {
     pub tool_invocation_id: Option<String>,
     pub tool_metadata_json: String,
     pub input_refs_json: String,
+    pub source_refs_json: String,
     pub output_artifact_refs_json: String,
     pub limitations_json: String,
     pub observed_at: String,
@@ -436,6 +437,7 @@ pub struct EvidenceObservationRecord {
     pub tool_invocation_id: Option<String>,
     pub tool_metadata_json: String,
     pub input_refs_json: String,
+    pub source_refs_json: String,
     pub output_artifact_refs_json: String,
     pub limitations_json: String,
     pub observed_at: String,
@@ -1998,6 +2000,7 @@ fn evidence_observation_record(
             tool_invocation_id,
             tool_metadata_json,
             input_refs_json,
+            source_refs_json,
             output_artifact_refs_json,
             limitations_json,
             observed_at,
@@ -2030,11 +2033,12 @@ fn evidence_observation_record_from_row(
         tool_invocation_id: row.get(10)?,
         tool_metadata_json: row.get(11)?,
         input_refs_json: row.get(12)?,
-        output_artifact_refs_json: row.get(13)?,
-        limitations_json: row.get(14)?,
-        observed_at: row.get(15)?,
-        recorded_at: row.get(16)?,
-        metadata_json: row.get(17)?,
+        source_refs_json: row.get(13)?,
+        output_artifact_refs_json: row.get(14)?,
+        limitations_json: row.get(15)?,
+        observed_at: row.get(16)?,
+        recorded_at: row.get(17)?,
+        metadata_json: row.get(18)?,
     })
 }
 
@@ -3065,6 +3069,11 @@ mod tests {
                         tool_invocation_id: Some("tool_invocation_001".to_owned()),
                         tool_metadata_json: json!({"exit_code": 0}).to_string(),
                         input_refs_json: "[]".to_owned(),
+                        source_refs_json: json!([{
+                            "source_kind": "user_context",
+                            "source": {"context_id": "message_store_evidence"}
+                        }])
+                        .to_string(),
                         output_artifact_refs_json: "[]".to_owned(),
                         limitations_json: json!(["External tool result is not a proof."])
                             .to_string(),
@@ -3087,6 +3096,13 @@ mod tests {
         assert_eq!(record.run_id.as_deref(), Some(run_id));
         assert_eq!(record.source_kind, "external_tool");
         assert_eq!(record.assurance_level, "external_tool_result");
+        assert_eq!(
+            serde_json::from_str::<Value>(&record.source_refs_json)?,
+            json!([{
+                "source_kind": "user_context",
+                "source": {"context_id": "message_store_evidence"}
+            }])
+        );
         assert_eq!(
             serde_json::from_str::<Vec<String>>(&record.limitations_json)?,
             vec!["External tool result is not a proof."]

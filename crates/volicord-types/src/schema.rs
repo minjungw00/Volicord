@@ -365,6 +365,83 @@ pub struct StateRecordRef {
     pub produced_at_state_version: RequiredNullable<u64>,
 }
 
+/// One-based inclusive line range within a repository-file source.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SourceLineRange {
+    pub start_line: u64,
+    pub end_line: u64,
+}
+
+/// Non-authoritative Product Repository file source metadata.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RepositoryFileSource {
+    pub repository_path: String,
+    pub baseline_commit_sha: String,
+    pub content_sha256: String,
+    pub line_range: RequiredNullable<SourceLineRange>,
+}
+
+/// Non-authoritative Git commit source metadata.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GitCommitSource {
+    pub commit_sha: String,
+}
+
+/// Non-authoritative Git diff source metadata.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GitDiffSource {
+    pub base_commit_sha: String,
+    pub head_commit_sha: String,
+    pub diff_artifact_ref: RequiredNullable<ArtifactRef>,
+}
+
+/// Non-authoritative command-invocation source metadata.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CommandSource {
+    pub invocation_id: String,
+    pub command_summary: String,
+    pub exit_code: i32,
+    pub output_artifact_ref: RequiredNullable<ArtifactRef>,
+}
+
+/// Non-authoritative external HTTP source metadata.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ExternalUriSource {
+    pub uri: String,
+    pub retrieved_at: UtcTimestamp,
+    pub content_sha256: String,
+}
+
+/// Non-authoritative host or user-context correlation metadata.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct UserContextSource {
+    pub context_id: String,
+}
+
+/// Caller-supplied context or provenance that never grants Core authority.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(
+    tag = "source_kind",
+    content = "source",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
+pub enum SourceRef {
+    RepositoryFile(RepositoryFileSource),
+    GitCommit(GitCommitSource),
+    GitDiff(GitDiffSource),
+    Command(CommandSource),
+    ExternalUri(ExternalUriSource),
+    UserContext(UserContextSource),
+}
+
 /// Registry-scoped host-hook installation and host capability record.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -867,6 +944,7 @@ pub struct EvidenceUpdateProvenance {
     pub tool_name: RequiredNullable<String>,
     pub tool_invocation_id: RequiredNullable<String>,
     pub tool_metadata: JsonObject,
+    pub source_refs: Vec<SourceRef>,
     pub limitations: Vec<String>,
 }
 
@@ -887,6 +965,7 @@ pub struct EvidenceObservation {
     pub tool_invocation_id: RequiredNullable<String>,
     pub tool_metadata: JsonObject,
     pub input_refs: Vec<StateRecordRef>,
+    pub source_refs: Vec<SourceRef>,
     pub output_artifact_refs: Vec<ArtifactRef>,
     pub limitations: Vec<String>,
     pub observed_at: UtcTimestamp,
@@ -905,6 +984,7 @@ pub struct EvidenceObservationInput {
     pub tool_invocation_id: RequiredNullable<String>,
     pub tool_metadata: JsonObject,
     pub input_refs: Vec<StateRecordRef>,
+    pub source_refs: Vec<SourceRef>,
     pub output_artifact_refs: Vec<ArtifactRef>,
     pub limitations: Vec<String>,
     pub observed_at: UtcTimestamp,

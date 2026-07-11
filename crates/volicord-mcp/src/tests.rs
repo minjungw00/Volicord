@@ -255,7 +255,10 @@ fn common_mcp_omissions_advertise_and_decode_exact_defaults() -> Result<(), Box<
         (
             INTAKE_TOOL_NAME,
             "create_new",
-            vec![("initial_context_refs", json!([]))],
+            vec![
+                ("initial_context_refs", json!([])),
+                ("initial_source_refs", json!([])),
+            ],
         ),
         (
             UPDATE_SCOPE_TOOL_NAME,
@@ -356,7 +359,10 @@ fn common_mcp_omissions_advertise_and_decode_exact_defaults() -> Result<(), Box<
 #[test]
 fn mcp_omission_defaults_do_not_change_core_request_required_members() {
     let cases = [
-        (INTAKE_TOOL_NAME, &["initial_context_refs"][..]),
+        (
+            INTAKE_TOOL_NAME,
+            &["initial_context_refs", "initial_source_refs"][..],
+        ),
         (
             UPDATE_SCOPE_TOOL_NAME,
             &[
@@ -658,6 +664,7 @@ fn record_run_evidence_example_expands_nested_omission_defaults() -> Result<(), 
     assert!(observation["tool_invocation_id"].is_null());
     assert_eq!(observation["tool_metadata"], json!({}));
     assert_eq!(observation["input_refs"], json!([]));
+    assert_eq!(observation["source_refs"], json!([]));
     assert_eq!(observation["output_artifact_refs"], json!([]));
     assert_eq!(observation["limitations"], json!([]));
     Ok(())
