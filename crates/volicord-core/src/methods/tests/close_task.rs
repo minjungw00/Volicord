@@ -1474,11 +1474,27 @@ fn close_complete_blocks_only_relevant_pending_judgments() -> Result<(), Box<dyn
         .as_array()
         .expect("fallbacks should be an array")
         .is_empty());
+    let mut prepare_write_request = user_judgment_request(
+        "req_close_prepare_write_pending",
+        "idem_close_prepare_write_pending",
+        false,
+        Some(after_evidence + 1),
+        &task_id,
+        Some(&change_unit_id),
+        JudgmentKind::TechnicalDecision,
+    );
+    prepare_write_request.required_for = vec![volicord_types::JudgmentRequiredFor::PrepareWrite];
+    let prepare_write_requested = harness.service.request_user_judgment(
+        prepare_write_request,
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let prepare_write_judgment_id =
+        response_record_id(&prepare_write_requested.response_value, "user_judgment_ref");
     let after_final = record_final_acceptance(
         &harness,
         &task_id,
         &change_unit_id,
-        after_evidence + 1,
+        after_evidence + 2,
         "pending_kind",
     )?;
     let before = harness.counts()?;
@@ -1503,6 +1519,24 @@ fn close_complete_blocks_only_relevant_pending_judgments() -> Result<(), Box<dyn
         &response.response_value,
         "pending_user_judgment",
         "pending_user_judgment",
+    );
+    let close_inbox = response.response_value["pending_judgment_inbox_items"]
+        .as_array()
+        .expect("close pending judgment inbox should be an array");
+    assert_eq!(close_inbox.len(), 1);
+    assert_eq!(close_inbox[0]["judgment_id"], requested_judgment_id);
+    assert!(
+        close_inbox
+            .iter()
+            .all(|item| item["judgment_id"] != prepare_write_judgment_id),
+        "prepare-write-only judgments must not enter the close inbox: {close_inbox:?}"
+    );
+    assert_eq!(
+        response.response_value["state"]["pending_user_judgment_refs"]
+            .as_array()
+            .expect("state pending judgment refs should be an array")
+            .len(),
+        2
     );
     assert_eq!(harness.counts()?, before);
     Ok(())

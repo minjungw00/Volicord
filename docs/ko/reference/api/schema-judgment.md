@@ -139,6 +139,14 @@ UserChannelPathAvailability:
   detail: string | null
 ```
 
+`required=true`와 `requirement_status=required`는 `required_for`에
+`informational`이 아닌 작업 대상이 하나 이상 있다는 뜻입니다.
+`informational`만 있는 항목은 `required=false`와
+`requirement_status=optional`을 사용합니다. 이 항목이 대기 상태이거나 현재
+호환되는 근거를 가졌다는 사실만으로 필수 항목 또는 작업 차단 항목이 되지는
+않습니다. `required_for`에 `informational`과 정보성 외 작업 대상이 함께 있으면
+그 작업 대상에 필요한 항목입니다.
+
 `choices`는 사용자에게 보이는 선택지 식별자와 라벨을 노출하며 내부 `machine_action`이나 `resolution_outcome` 필드는 노출하지 않습니다. 기계 동작과 결과는 지속되는 `UserJudgmentOption`과 기록된 해결에 남습니다.
 
 `answer_path_availability`는 이 대기 판단에 대해 지원되는 User Channel 경로의 현재

@@ -610,7 +610,14 @@ pub(super) fn plan_close_task_with_context(
         .guard_health
         .as_ref()
         .map(coverage_summary_from_guard_health);
-    let result_pending_judgment_inbox_items = pending_judgment_inbox_items(
+    let current_close_pending_judgment_ids = blockers
+        .iter()
+        .filter(|blocker| blocker.code == "pending_user_judgment")
+        .flat_map(|blocker| blocker.related_refs.iter())
+        .filter(|record_ref| record_ref.record_kind == StateRecordKind::UserJudgment)
+        .map(|record_ref| record_ref.record_id.as_str())
+        .collect::<BTreeSet<_>>();
+    let mut result_pending_judgment_inbox_items = pending_judgment_inbox_items(
         store,
         project_state,
         &request.envelope,
@@ -626,6 +633,8 @@ pub(super) fn plan_close_task_with_context(
                 .unwrap_or(false),
         },
     )?;
+    result_pending_judgment_inbox_items
+        .retain(|item| current_close_pending_judgment_ids.contains(item.judgment_id.as_str()));
     let no_next_actions: &[NextActionSummary] = &[];
     let summary_card = summary_card_for_core(SummaryCardBuild {
         task: Some(&synthetic_task),

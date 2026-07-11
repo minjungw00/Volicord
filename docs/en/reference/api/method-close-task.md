@@ -225,13 +225,20 @@ For successful `intent=complete`, both the returned `state.lifecycle.result` and
 | `risk_acceptance_coverage` | `RiskAcceptanceCoverage[]` for current residual-risk acceptance coverage in the close-readiness result. Shape is owned by [API State Schemas](schema-state.md#close-readiness-and-validation-shapes). |
 | `continuity_summary` | `ProjectContinuitySummary[]` for project continuity records made relevant by this close result. For successful `intent=complete`, this includes continuity records Core carries forward for close-basis known limits that do not require residual-risk acceptance. Empty means the computation ran and found no carry-forward records for this result. Shape is owned by [API State Schemas](schema-state.md#project-continuity-shapes). |
 | `blockers` | `CloseReadinessBlocker[]` returned when the requested path has close or terminal blockers. Shape and nesting are owned by [API State Schemas](schema-state.md#close-readiness-and-validation-shapes); `category` values are owned by [API Value Sets](schema-value-sets.md#state-and-blocker-values). |
-| `pending_judgment_inbox_items` | `JudgmentInboxItem[]` for required unanswered pending judgments that need user action in the current close-readiness result. Shape is owned by [API Judgment Schemas](schema-judgment.md#judgmentinboxitem). |
+| `pending_judgment_inbox_items` | `JudgmentInboxItem[]` for the exact required unanswered pending judgments selected by current `pending_user_judgment` blockers in this close-readiness result. Shape is owned by [API Judgment Schemas](schema-judgment.md#judgmentinboxitem). |
 | `guard_health` | `GuardHealthSummary | null` for hook-state facts selected into the close-readiness result. Shape is owned by [API State Schemas](schema-state.md#guard-health-summary). |
 | `coverage_summary` | `CoverageSummary | null` for the derived active profile, host-hook coverage state, session-watcher coverage state, tracked timestamps, unresolved unrecorded-change count, and coverage non-guarantees. Shape is owned by [API State Schemas](schema-state.md#guard-health-summary). |
 | `evidence_summary` | `EvidenceSummary | null` for the close basis visible in the result, or `null` when no evidence summary is selected into the result. When the current close basis references the selected summary, `evidence_summary.evidence_state` is `accepted_for_close`. Shape is owned by [API State Schemas](schema-state.md#evidence-and-run-snapshot-shapes). |
 | `artifact_refs` | `ArtifactRef[]` for close-relevant artifacts selected into the result. `ArtifactRef` shape is owned by [API Artifact Schemas](schema-artifacts.md#artifactref). |
 
 `CloseTaskResult` does not have a top-level `next_actions` list. `summary_card.next` is the single display next action selected for the result summary. Next actions for close blockers remain inside `CloseReadinessBlocker.next_actions` and use the canonical `NextActionSummary` shape from [API State Schemas](schema-state.md#current-position-display-shapes).
+
+Pending judgments for another operation and informational-only pending
+judgments may remain visible through the broader
+`state.pending_user_judgment_refs` projection. They do not enter the top-level
+`pending_judgment_inbox_items` list unless a current
+`pending_user_judgment` blocker selects their exact `UserJudgment` ref for the
+requested close path.
 
 This method owns the method-scoped `CloseReadinessBlocker.code` values it produces. Those codes are not public `ErrorCode` values and are not global value-set entries.
 

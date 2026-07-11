@@ -232,12 +232,50 @@ fn informational_and_deferred_judgments_do_not_keep_waiting() -> Result<(), Box<
         invocation(OperationCategory::AgentWorkflow),
     )?;
     assert_eq!(
+        informational.response_value["inbox_item"]["required"],
+        false
+    );
+    assert_eq!(
+        informational.response_value["inbox_item"]["requirement_status"],
+        "optional"
+    );
+    assert_eq!(
         informational.response_value["state"]["lifecycle"]["lifecycle_phase"],
         "ready"
     );
     assert_eq!(
         task_terminal_fields(&informational_harness, &informational_task_id)?.lifecycle_phase,
         "ready"
+    );
+    let informational_status = informational_harness.service.status(
+        StatusRequest {
+            envelope: envelope(
+                "req_status_judgment_informational_lifecycle",
+                None,
+                false,
+                None,
+                Some(&informational_task_id),
+            ),
+            include: StatusInclude {
+                task: false,
+                pending_user_judgments: true,
+                write_ticket: false,
+                evidence: false,
+                close: false,
+                guarantees: false,
+                continuity: false,
+            },
+        },
+        invocation(OperationCategory::Read),
+    )?;
+    assert_eq!(
+        informational_status.response_value["pending_judgment_inbox_items"][0]["required"],
+        false
+    );
+    assert_eq!(
+        informational_status.response_value["pending_judgment_inbox_items"][0]
+            ["requirement_status"],
+        "optional"
     );
 
     let deferred_harness = MethodHarness::new()?;

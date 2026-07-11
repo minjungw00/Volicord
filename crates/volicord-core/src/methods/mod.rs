@@ -1149,6 +1149,10 @@ fn judgment_inbox_item_from_judgment(
     state_version: u64,
     user_channel: UserChannelContext<'_>,
 ) -> CoreResult<JudgmentInboxItem> {
+    let required = judgment
+        .required_for
+        .iter()
+        .any(|target| *target != JudgmentRequiredFor::Informational);
     let answer_path_availability = user_channel_availability(user_channel);
     let (preferred_capture_path, fallbacks) =
         judgment_capture_paths(&judgment.judgment_id, &answer_path_availability);
@@ -1182,11 +1186,11 @@ fn judgment_inbox_item_from_judgment(
             note_allowed: true,
             note_max_chars: 4000,
         },
-        required: !judgment.required_for.is_empty(),
-        requirement_status: if judgment.required_for.is_empty() {
-            "optional".to_owned()
-        } else {
+        required,
+        requirement_status: if required {
             "required".to_owned()
+        } else {
+            "optional".to_owned()
         },
         required_for: judgment.required_for.clone(),
         status: judgment.status,
