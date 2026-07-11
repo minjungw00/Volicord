@@ -14,8 +14,11 @@ use volicord_store::agent_connections::{
     ConnectionProjectRegistration, CONNECTION_INTENT_SHARED, CONNECTION_MODE_WORKFLOW,
     HOST_KIND_CODEX, HOST_SCOPE_PROJECT, VERIFIED_STATUS_COMPLETE,
 };
+use volicord_store::core_pipeline::StorageEffectCounts;
 use volicord_store::guards::{upsert_guard_installation, GuardInstallationUpsert};
-use volicord_test_support::core_fixtures::{CoreFixture, UpdateScopeFixture, UserJudgmentFixture};
+use volicord_test_support::core_fixtures::{
+    CoreFixture, TaskOwnerJsonColumn, UpdateScopeFixture, UserJudgmentFixture,
+};
 use volicord_types::{
     chat_judgment_verification_code, ActorSource, ChangeUnitOperation, JudgmentKind,
     OperationCategory, ProjectId, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
@@ -134,6 +137,23 @@ impl GuardCliFixture {
 
     pub(crate) fn connection_id(&self) -> &str {
         self.inner.connection_id()
+    }
+
+    pub(crate) fn core_effect_counts(&self) -> Result<StorageEffectCounts, Box<dyn Error>> {
+        Ok(self.inner.counts()?)
+    }
+
+    pub(crate) fn corrupt_current_close_basis(
+        &self,
+        task_id: &str,
+        raw_json: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        self.inner.set_task_owner_json_raw(
+            task_id,
+            TaskOwnerJsonColumn::CurrentCloseBasis,
+            raw_json,
+        )?;
+        Ok(())
     }
 
     pub(crate) fn guard_installation_id(&self) -> String {

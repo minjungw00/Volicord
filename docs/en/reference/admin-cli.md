@@ -866,7 +866,20 @@ Lifecycle behavior:
   omits the full prompt text from prompt-capture storage, and returns
   model-visible recorded-context output instead of treating the command as
   ordinary agent instruction.
-- `stop` checks whether the active task can safely be treated as complete. It
+- `stop` checks whether the active task can safely be treated as complete.
+  Before it can return `allow` for an active task, it obtains a current Core
+  status response with close data. Only a response with
+  `base.response_kind=result` is authoritative for this decision. A non-result
+  response, or a response whose required status fields are missing or
+  malformed, returns `deny` with reason code `authoritative_refresh_failed`.
+  For that denial,
+  `result.close_status.authoritative_refresh` contains only the recognized
+  `response_kind` value, or `null` when it is missing or malformed, and an
+  `error_codes` list containing valid public `ErrorCode` values. It must not
+  copy Core error messages, error details, or request or response bodies. A
+  failure to call Core remains an internal hook-command failure on the existing
+  error path. The refresh is read-only and a refresh-failure denial creates no
+  Core state effect beyond ordinary hook-observation recording. A valid result
   returns `deny` when close-readiness blockers remain, user-owned judgments are
   pending, or unresolved unrecorded changes remain; otherwise it returns
   `allow`.

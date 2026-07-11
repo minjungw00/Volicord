@@ -2250,6 +2250,56 @@ fn guard_stop_denies_false_completion_when_close_readiness_blocks() -> Result<()
 }
 
 #[test]
+fn guard_stop_denies_when_authoritative_status_refresh_is_rejected() -> Result<(), Box<dyn Error>> {
+    const CORRUPT_OWNER_VALUE: &str =
+        "{\"private_refresh_body\":\"must-not-appear-in-stop-output\"";
+    let fixture = GuardCliFixture::new("guard-stop-rejected-refresh")?;
+    let task_id = fixture.create_active_task()?;
+    fixture.corrupt_current_close_basis(&task_id, CORRUPT_OWNER_VALUE)?;
+    let before = fixture.core_effect_counts()?;
+    let event = json!({
+        "event_id": "guard_stop_rejected_refresh",
+        "session_id": "guard_session_stop_rejected_refresh",
+        "connection_id": fixture.connection_id(),
+        "host_kind": "codex",
+        "message": "All done."
+    });
+
+    let output = run_guard(
+        fixture.runtime_home(),
+        fixture.repo_root(),
+        ["_hook", "stop", "--repo", fixture.repo_arg()],
+        &event,
+    )?;
+    assert_eq!(output.status.code(), Some(1));
+    let value = json_stdout(&output)?;
+    assert_eq!(value["decision"], "deny");
+    assert_eq!(value["allowed"], false);
+    assert_reason(&value, "authoritative_refresh_failed");
+    assert_eq!(
+        value["result"]["close_status"]["authoritative_refresh"],
+        json!({
+            "response_kind": "rejected",
+            "error_codes": ["MCP_UNAVAILABLE"]
+        })
+    );
+    assert!(value["result"]["close_status"]
+        .get("status_summary")
+        .is_none());
+    assert!(value["result"]["close_status"].get("close_state").is_none());
+    assert!(value["result"]["close_status"]
+        .get("close_blockers")
+        .is_none());
+    let rendered = serde_json::to_string(&value)?;
+    assert!(!rendered.contains(CORRUPT_OWNER_VALUE));
+    assert!(!rendered.contains("private_refresh_body"));
+    assert!(!rendered.contains("Core storage is unavailable"));
+    assert!(!rendered.contains("owner_state_error"));
+    assert_eq!(fixture.core_effect_counts()?, before);
+    Ok(())
+}
+
+#[test]
 fn guard_stop_host_output_blocks_and_allows_continue() -> Result<(), Box<dyn Error>> {
     let blocked = GuardCliFixture::new("guard-host-stop-block")?;
     blocked.create_active_task()?;

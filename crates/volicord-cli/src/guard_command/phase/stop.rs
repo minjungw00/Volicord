@@ -4,8 +4,9 @@ use serde_json::{json, Value};
 use volicord_core::{CoreService, InvocationContext};
 use volicord_store::bootstrap::ProjectRecord;
 use volicord_types::{
-    ActorSource, GuardDecision, OperationCategory, ProjectId, RequestId, StatusInclude,
-    StatusRequest, TaskId, ToolEnvelope, VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
+    ActorSource, EffectKind, ErrorCode, GuardDecision, OperationCategory, ProjectId, RequestId,
+    ResponseKind, StatusInclude, StatusRequest, StatusResult, TaskId, ToolEnvelope,
+    VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
 };
 
 use super::GuardPhaseResult;
@@ -83,20 +84,7 @@ fn stop_decision(
             VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
         ),
     )?;
-    let close_blockers = response
-        .response_value
-        .get("close_blockers")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
     let mut reasons = Vec::new();
-    if !close_blockers.is_empty() {
-        reasons.push(GuardReason {
-            code: "close_readiness_blocked",
-            message: "Close readiness has blockers for the active task.".to_owned(),
-            severity: "deny",
-        });
-    }
     if summary.pending_user_judgment_count > 0 {
         reasons.push(GuardReason {
             code: "pending_user_judgments",
@@ -111,6 +99,43 @@ fn stop_decision(
             severity: "deny",
         });
     }
+    let response_kind = recognized_response_kind(&response.response_value);
+    let Some(status_result) = authoritative_status_result(&response.response_value) else {
+        reasons.insert(
+            0,
+            GuardReason {
+                code: "authoritative_refresh_failed",
+                message:
+                    "Volicord could not confirm current authoritative status for the active task."
+                        .to_owned(),
+                severity: "deny",
+            },
+        );
+        return Ok((
+            GuardDecision::Deny,
+            reasons,
+            json!({
+                "active_task": task_id,
+                "authoritative_refresh": {
+                    "response_kind": response_kind.map(response_kind_label),
+                    "error_codes": public_error_codes(&response.response_value)
+                }
+            }),
+        ));
+    };
+    let close_blockers = status_result
+        .close_blockers
+        .expect("authoritative status requires close blockers");
+    if !close_blockers.is_empty() {
+        reasons.insert(
+            0,
+            GuardReason {
+                code: "close_readiness_blocked",
+                message: "Close readiness has blockers for the active task.".to_owned(),
+                severity: "deny",
+            },
+        );
+    }
     let decision = if reasons.iter().any(|reason| reason.severity == "deny") {
         GuardDecision::Deny
     } else {
@@ -121,9 +146,86 @@ fn stop_decision(
         reasons,
         json!({
             "active_task": task_id,
-            "status_summary": response.response_value.get("status_summary").cloned().unwrap_or(Value::Null),
-            "close_state": response.response_value.get("close_state").cloned().unwrap_or(Value::Null),
+            "status_summary": status_result.status_summary,
+            "close_state": status_result.close_state,
             "close_blockers": close_blockers
         }),
     ))
+}
+
+fn authoritative_status_result(response: &Value) -> Option<StatusResult> {
+    let result = serde_json::from_value::<StatusResult>(response.clone()).ok()?;
+    if result.base.response_kind != ResponseKind::Result
+        || result.base.effect_kind != EffectKind::ReadOnly
+        || result.base.dry_run
+        || result.close_state.is_none()
+        || result.close_blockers.is_none()
+    {
+        return None;
+    }
+    Some(result)
+}
+
+fn recognized_response_kind(response: &Value) -> Option<ResponseKind> {
+    serde_json::from_value(response.pointer("/base/response_kind")?.clone()).ok()
+}
+
+fn response_kind_label(response_kind: ResponseKind) -> &'static str {
+    match response_kind {
+        ResponseKind::Result => "result",
+        ResponseKind::Rejected => "rejected",
+        ResponseKind::DryRun => "dry_run",
+    }
+}
+
+fn public_error_codes(response: &Value) -> Vec<String> {
+    response
+        .get("errors")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|error| error.get("code"))
+        .filter_map(|value| {
+            serde_json::from_value::<ErrorCode>(value.clone())
+                .ok()
+                .and_then(|_| value.as_str().map(str::to_owned))
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn malformed_refresh_is_not_authoritative_and_diagnostics_are_allowlisted() {
+        let malformed = json!({
+            "base": {"response_kind": "unexpected-secret-kind"},
+            "errors": [
+                {
+                    "code": "MCP_UNAVAILABLE",
+                    "message": "sensitive Core message",
+                    "details": {"response_body": "sensitive body"}
+                },
+                {"code": "PRIVATE_INTERNAL_CODE"}
+            ]
+        });
+
+        assert!(authoritative_status_result(&malformed).is_none());
+        assert_eq!(recognized_response_kind(&malformed), None);
+        assert_eq!(public_error_codes(&malformed), ["MCP_UNAVAILABLE"]);
+    }
+
+    #[test]
+    fn incomplete_result_refresh_is_not_authoritative() {
+        let incomplete = json!({
+            "base": {"response_kind": "result"}
+        });
+
+        assert!(authoritative_status_result(&incomplete).is_none());
+        assert_eq!(
+            recognized_response_kind(&incomplete),
+            Some(ResponseKind::Result)
+        );
+    }
 }
