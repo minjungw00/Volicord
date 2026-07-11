@@ -881,6 +881,36 @@ mod tests {
             ],
             "ArtifactInput",
         );
+        assert_required(
+            definition(&record, "EvidenceCoverageItem"),
+            &[
+                "claim",
+                "required_for_close",
+                "coverage_state",
+                "supporting_refs",
+                "observation_refs",
+                "supporting_artifact_refs",
+                "gap_refs",
+            ],
+            "EvidenceCoverageItem",
+        );
+        assert_required(
+            definition(&record, "EvidenceObservationInput"),
+            &[
+                "claim",
+                "source_kind",
+                "assurance_level",
+                "observed_by_actor_source",
+                "tool_name",
+                "tool_invocation_id",
+                "tool_metadata",
+                "input_refs",
+                "output_artifact_refs",
+                "limitations",
+                "observed_at",
+            ],
+            "EvidenceObservationInput",
+        );
 
         let judgment =
             public_request_schema("volicord.record_user_judgment").expect("judgment schema");
@@ -897,6 +927,77 @@ mod tests {
             ],
             "RecordUserJudgmentPayload",
         );
+    }
+
+    #[test]
+    fn mcp_record_run_evidence_defaults_expand_to_the_complete_core_shape() {
+        let mcp = mcp_request_schema("volicord.record_run").expect("record_run MCP schema");
+        assert_required(
+            definition(&mcp, "McpEvidenceCoverageItem"),
+            &["claim", "required_for_close", "coverage_state"],
+            "McpEvidenceCoverageItem",
+        );
+        assert_required(
+            definition(&mcp, "McpEvidenceObservationInput"),
+            &["claim", "source_kind", "assurance_level", "observed_at"],
+            "McpEvidenceObservationInput",
+        );
+
+        let coverage_value = json!({
+            "claim": "Saved-filter validation passed.",
+            "required_for_close": true,
+            "coverage_state": "supported"
+        });
+        let coverage: McpEvidenceCoverageItem =
+            serde_json::from_value(coverage_value.clone()).expect("minimal MCP coverage item");
+        let core_coverage: EvidenceCoverageItem = coverage.into();
+        assert_eq!(
+            serde_json::to_value(core_coverage).expect("Core coverage item serializes"),
+            json!({
+                "claim": "Saved-filter validation passed.",
+                "required_for_close": true,
+                "coverage_state": "supported",
+                "supporting_refs": [],
+                "observation_refs": [],
+                "supporting_artifact_refs": [],
+                "gap_refs": []
+            })
+        );
+
+        let observation_value = json!({
+            "claim": "Saved-filter validation passed.",
+            "source_kind": "external_tool",
+            "assurance_level": "external_tool_result",
+            "observed_at": "2026-07-12T00:00:00Z"
+        });
+        let observation: McpEvidenceObservationInput =
+            serde_json::from_value(observation_value.clone())
+                .expect("minimal MCP evidence observation");
+        let core_observation: EvidenceObservationInput = observation.into();
+        assert_eq!(
+            serde_json::to_value(core_observation).expect("Core evidence observation serializes"),
+            json!({
+                "claim": "Saved-filter validation passed.",
+                "source_kind": "external_tool",
+                "assurance_level": "external_tool_result",
+                "observed_by_actor_source": null,
+                "tool_name": null,
+                "tool_invocation_id": null,
+                "tool_metadata": {},
+                "input_refs": [],
+                "output_artifact_refs": [],
+                "limitations": [],
+                "observed_at": "2026-07-12T00:00:00Z"
+            })
+        );
+
+        let mut unknown_coverage = coverage_value;
+        unknown_coverage["unsupported_ref"] = json!("not accepted");
+        assert_unknown::<McpEvidenceCoverageItem>(unknown_coverage, "unsupported_ref");
+
+        let mut unknown_observation = observation_value;
+        unknown_observation["unsupported_metadata"] = json!(true);
+        assert_unknown::<McpEvidenceObservationInput>(unknown_observation, "unsupported_metadata");
     }
 
     #[test]

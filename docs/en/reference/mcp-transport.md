@@ -788,7 +788,12 @@ array:
   `expected_size_bytes=null`, and `relation_hint=null`
 - `volicord.record_run`: `run_id=null`, `write_ticket_id=null`,
   `artifact_inputs=[]`, `evidence_updates=[]`, `evidence_observations=[]`, and
-  `close_assessment=null`
+  `close_assessment=null`; inside each `evidence_updates` item,
+  `supporting_refs=[]`, `observation_refs=[]`,
+  `supporting_artifact_refs=[]`, and `gap_refs=[]`; inside each
+  `evidence_observations` item, `observed_by_actor_source=null`,
+  `tool_name=null`, `tool_invocation_id=null`, `tool_metadata={}`,
+  `input_refs=[]`, `output_artifact_refs=[]`, and `limitations=[]`
 - `volicord.request_user_judgment`: `change_unit_id=null`,
   `sensitive_action_scope=null`, `options=null`, `affected_refs=[]`, and
   `expires_at=null`
@@ -798,8 +803,12 @@ adapter constructs the complete Core request shape. They do not change the
 public Core API present-member contract owned by the focused method references.
 For `volicord.request_user_judgment`, `task_id`, `judgment_kind`,
 `presentation`, `question`, `context`, and `required_for` remain required MCP
-arguments. This rule supplies no implicit value for any other field; the exact
-advertised `required` array remains authoritative.
+arguments. For `volicord.record_run`, `claim`, `required_for_close`, and
+`coverage_state` remain required inside each `evidence_updates` item, while
+`claim`, `source_kind`, `assurance_level`, and `observed_at` remain required
+inside each `evidence_observations` item. This rule supplies no implicit value
+for any other field; the exact advertised `required` array remains
+authoritative.
 
 Tool descriptions contain only a short purpose and key boundary. Frequently
 used argument-shape examples are advertised as values in

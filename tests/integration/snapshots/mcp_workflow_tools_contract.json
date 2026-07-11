@@ -586,11 +586,11 @@
           "ArtifactRef",
           "CloseAssessmentInput",
           "EvidenceAssuranceLevel",
-          "EvidenceCoverageItem",
           "EvidenceCoverageState",
-          "EvidenceObservationInput",
           "EvidenceSourceKind",
           "EvidenceUpdateProvenance",
+          "McpEvidenceCoverageItem",
+          "McpEvidenceObservationInput",
           "ObservedChanges",
           "RedactionState",
           "ResidualRiskInput",
@@ -623,7 +623,7 @@
           "summary",
           "task_id"
         ],
-        "sha256": "sha256:1d4599997abcf9c9b7d557423d9eee402f5e287d8785a7768107c4dd0edb72bb"
+        "sha256": "sha256:8a7dcac2a258d96632927f524d862d3ffd397729c090b841c058ff2bc3f1bd82"
       },
       "name": "volicord.record_run",
       "output_schema": {

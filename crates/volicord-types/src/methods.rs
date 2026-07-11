@@ -10,16 +10,18 @@ use crate::schema::{
     AcceptedRiskInput, ArtifactInput, ArtifactRef, ChangeUnitEffectContract, CloseAssessmentInput,
     CloseReadinessBlocker, ControlSurfaceSummary, CoverageSummary, CurrentCloseBasis,
     EvidenceCoverageItem, EvidenceObservation, EvidenceObservationInput, EvidenceSummary,
-    GuaranteeDisplay, GuardHealthSummary, JsonObject, JudgmentInboxItem, JudgmentRationale,
-    NextActionSummary, ObservedChanges, ProjectContinuitySummary, RecordUserJudgmentPayload,
-    RequiredNullable, RiskAcceptanceCoverage, RunSummary, SensitiveActionScope,
-    StagedArtifactHandle, StateRecordRef, StateSummary, SummaryCard, ToolEnvelope, ToolResponse,
-    ToolResultBase, UnrecordedChangeFinding, UnrecordedChangeResolutionSummary,
-    UserChannelAvailability, UserJudgment, UserJudgmentCandidate, UserJudgmentContext,
-    UserJudgmentOptionInput, WriteDecisionReason, WriteTicket, WriteTicketStateSummary,
+    EvidenceUpdateProvenance, GuaranteeDisplay, GuardHealthSummary, JsonObject, JudgmentInboxItem,
+    JudgmentRationale, NextActionSummary, ObservedChanges, ProjectContinuitySummary,
+    RecordUserJudgmentPayload, RequiredNullable, RiskAcceptanceCoverage, RunSummary,
+    SensitiveActionScope, StagedArtifactHandle, StateRecordRef, StateSummary, SummaryCard,
+    ToolEnvelope, ToolResponse, ToolResultBase, UnrecordedChangeFinding,
+    UnrecordedChangeResolutionSummary, UserChannelAvailability, UserJudgment,
+    UserJudgmentCandidate, UserJudgmentContext, UserJudgmentOptionInput, WriteDecisionReason,
+    WriteTicket, WriteTicketStateSummary,
 };
 use crate::values::{
-    ChangeUnitOperation, CloseMutationIntent, CloseReason, CloseState, EvidenceDisplayState,
+    ActorSource, ChangeUnitOperation, CloseMutationIntent, CloseReason, CloseState,
+    EvidenceAssuranceLevel, EvidenceCoverageState, EvidenceDisplayState, EvidenceSourceKind,
     JudgmentKind, JudgmentPresentation, JudgmentRequiredFor, MethodName, OperationCategory,
     PrepareWriteDecision, RedactionState, RequestedMode, ResumePolicy, RunKind, StatusCloseState,
     StatusDetailLevel, UnrecordedChangeResolutionBasis, UtcTimestamp, WriteTicketEffect,
@@ -547,11 +549,87 @@ pub struct McpRecordRunArguments {
     #[serde(default)]
     pub artifact_inputs: Vec<ArtifactInput>,
     #[serde(default)]
-    pub evidence_updates: Vec<EvidenceCoverageItem>,
+    pub evidence_updates: Vec<McpEvidenceCoverageItem>,
     #[serde(default)]
-    pub evidence_observations: Vec<EvidenceObservationInput>,
+    pub evidence_observations: Vec<McpEvidenceObservationInput>,
     #[serde(default)]
     pub close_assessment: RequiredNullable<CloseAssessmentInput>,
+}
+
+/// MCP-visible evidence coverage input with omission-equivalent collection defaults.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpEvidenceCoverageItem {
+    pub claim: String,
+    pub required_for_close: bool,
+    pub coverage_state: EvidenceCoverageState,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provenance: Option<EvidenceUpdateProvenance>,
+    #[serde(default)]
+    pub supporting_refs: Vec<StateRecordRef>,
+    #[serde(default)]
+    pub observation_refs: Vec<StateRecordRef>,
+    #[serde(default)]
+    pub supporting_artifact_refs: Vec<ArtifactRef>,
+    #[serde(default)]
+    pub gap_refs: Vec<StateRecordRef>,
+}
+
+impl From<McpEvidenceCoverageItem> for EvidenceCoverageItem {
+    fn from(value: McpEvidenceCoverageItem) -> Self {
+        Self {
+            claim: value.claim,
+            required_for_close: value.required_for_close,
+            coverage_state: value.coverage_state,
+            provenance: value.provenance,
+            supporting_refs: value.supporting_refs,
+            observation_refs: value.observation_refs,
+            supporting_artifact_refs: value.supporting_artifact_refs,
+            gap_refs: value.gap_refs,
+        }
+    }
+}
+
+/// MCP-visible evidence observation input with omission-equivalent null and collection defaults.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpEvidenceObservationInput {
+    pub claim: String,
+    pub source_kind: EvidenceSourceKind,
+    pub assurance_level: EvidenceAssuranceLevel,
+    #[serde(default)]
+    pub observed_by_actor_source: RequiredNullable<ActorSource>,
+    #[serde(default)]
+    pub tool_name: RequiredNullable<String>,
+    #[serde(default)]
+    pub tool_invocation_id: RequiredNullable<String>,
+    #[serde(default)]
+    pub tool_metadata: JsonObject,
+    #[serde(default)]
+    pub input_refs: Vec<StateRecordRef>,
+    #[serde(default)]
+    pub output_artifact_refs: Vec<ArtifactRef>,
+    #[serde(default)]
+    pub limitations: Vec<String>,
+    pub observed_at: UtcTimestamp,
+}
+
+impl From<McpEvidenceObservationInput> for EvidenceObservationInput {
+    fn from(value: McpEvidenceObservationInput) -> Self {
+        Self {
+            claim: value.claim,
+            source_kind: value.source_kind,
+            assurance_level: value.assurance_level,
+            observed_by_actor_source: value.observed_by_actor_source,
+            tool_name: value.tool_name,
+            tool_invocation_id: value.tool_invocation_id,
+            tool_metadata: value.tool_metadata,
+            input_refs: value.input_refs,
+            output_artifact_refs: value.output_artifact_refs,
+            limitations: value.limitations,
+            observed_at: value.observed_at,
+        }
+    }
 }
 
 /// `volicord.record_run` method result branch.

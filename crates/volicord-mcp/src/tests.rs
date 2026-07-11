@@ -572,18 +572,69 @@ fn record_run_invalid_evidence_observation_reports_expected_shape() -> Result<()
         .call_tool(RECORD_RUN_TOOL_NAME, arguments)
         .expect_err("invalid evidence observation should fail before Core");
     let response = structured_tool_error(RECORD_RUN_TOOL_NAME, &error);
-    for field in [
-        "source_kind",
-        "assurance_level",
-        "input_refs",
-        "output_artifact_refs",
-    ] {
+    for field in ["source_kind", "assurance_level", "observed_at"] {
         tool_error_issue(
             &response,
             &format!("/evidence_observations/0/{field}"),
             "MCP_ARGUMENT_REQUIRED",
         );
     }
+    Ok(())
+}
+
+#[test]
+fn record_run_evidence_example_expands_nested_omission_defaults() -> Result<(), Box<dyn Error>> {
+    let arguments = canonical_example_value(RECORD_RUN_TOOL_NAME, "evidence_bearing_record_run")?;
+    crate::schema_validation::validate_mcp_tool_arguments(RECORD_RUN_TOOL_NAME, &arguments)?;
+    let decoded = decode_mcp_arguments_to_value(RECORD_RUN_TOOL_NAME, arguments)?;
+
+    let coverage = &decoded["evidence_updates"][0];
+    assert_eq!(coverage["supporting_refs"], json!([]));
+    assert_eq!(coverage["observation_refs"], json!([]));
+    assert_eq!(coverage["supporting_artifact_refs"], json!([]));
+    assert_eq!(coverage["gap_refs"], json!([]));
+    assert!(coverage.get("provenance").is_none());
+
+    let observation = &decoded["evidence_observations"][0];
+    assert!(observation["observed_by_actor_source"].is_null());
+    assert!(observation["tool_name"].is_null());
+    assert!(observation["tool_invocation_id"].is_null());
+    assert_eq!(observation["tool_metadata"], json!({}));
+    assert_eq!(observation["input_refs"], json!([]));
+    assert_eq!(observation["output_artifact_refs"], json!([]));
+    assert_eq!(observation["limitations"], json!([]));
+    Ok(())
+}
+
+#[test]
+fn record_run_nested_evidence_unknown_fields_fail_before_core() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-invalid-record-run-nested-evidence-field")?;
+    let adapter = adapter(&fixture)?;
+    let before = fixture.counts()?;
+    let mut arguments =
+        canonical_example_value(RECORD_RUN_TOOL_NAME, "evidence_bearing_record_run")?;
+    arguments["evidence_updates"][0]["unsupported_ref"] = json!("not accepted");
+    arguments["evidence_observations"][0]["unsupported_metadata"] = json!(true);
+
+    let error = adapter
+        .call_tool(RECORD_RUN_TOOL_NAME, arguments)
+        .expect_err("unknown nested evidence fields should fail before Core");
+    let response = structured_tool_error(RECORD_RUN_TOOL_NAME, &error);
+    tool_error_issue(
+        &response,
+        "/evidence_updates/0/unsupported_ref",
+        "MCP_ARGUMENT_UNKNOWN",
+    );
+    tool_error_issue(
+        &response,
+        "/evidence_observations/0/unsupported_metadata",
+        "MCP_ARGUMENT_UNKNOWN",
+    );
+    assert_eq!(
+        fixture.counts()?,
+        before,
+        "nested evidence validation failure should not create Core storage effects"
+    );
     Ok(())
 }
 

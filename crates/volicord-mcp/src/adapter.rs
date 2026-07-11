@@ -895,8 +895,12 @@ impl McpAdapter {
                 summary: args.summary,
                 observed_changes: args.observed_changes,
                 artifact_inputs: args.artifact_inputs,
-                evidence_updates: args.evidence_updates,
-                evidence_observations: args.evidence_observations,
+                evidence_updates: args.evidence_updates.into_iter().map(Into::into).collect(),
+                evidence_observations: args
+                    .evidence_observations
+                    .into_iter()
+                    .map(Into::into)
+                    .collect(),
                 close_assessment: args.close_assessment,
             },
             CoreService::record_run,
