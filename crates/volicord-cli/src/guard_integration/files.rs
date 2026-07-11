@@ -36,8 +36,8 @@ use super::GuardIntegrationError;
 pub(crate) const VOLICORD_POLICY_SCHEMA: &str = "volicord-policy-v1";
 pub(crate) const VOLICORD_POLICY_FILE: &str = ".volicord/policy.json";
 pub(crate) const AGENTS_FILE: &str = "AGENTS.md";
-pub(crate) const GUIDANCE_START_MARKER: &str = "<!-- BEGIN VOLICORD MANAGED GUIDANCE v1 -->";
-pub(crate) const GUIDANCE_END_MARKER: &str = "<!-- END VOLICORD MANAGED GUIDANCE v1 -->";
+pub(crate) const GUIDANCE_START_MARKER: &str = "<!-- BEGIN VOLICORD MANAGED GUIDANCE -->";
+pub(crate) const GUIDANCE_END_MARKER: &str = "<!-- END VOLICORD MANAGED GUIDANCE -->";
 
 #[derive(Debug, Clone)]
 pub(crate) struct GeneratedFilePlan {

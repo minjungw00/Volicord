@@ -246,8 +246,8 @@ shared_documents:
   normative_level: maintenance
   owner_area: documentation_maintenance
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-11'
-  last_verified_on: '2026-07-11'
+  last_updated_on: '2026-07-12'
+  last_verified_on: '2026-07-12'
   applies_to:
   - volicord_workspace_0_1
   - terminology_map_v1

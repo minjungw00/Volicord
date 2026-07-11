@@ -282,9 +282,8 @@ identifier_preservation:
     - "volicord-<connection>"
     - "volicord-<connection>.mcp.json"
     - "volicord-host-entry-v1"
-    - "volicord-repository-guidance-v1"
-    - "<!-- BEGIN VOLICORD MANAGED GUIDANCE v1 -->"
-    - "<!-- END VOLICORD MANAGED GUIDANCE v1 -->"
+    - "<!-- BEGIN VOLICORD MANAGED GUIDANCE -->"
+    - "<!-- END VOLICORD MANAGED GUIDANCE -->"
     - ".volicord/policy.json"
     - ".claude/rules/volicord.md"
   product_labels:

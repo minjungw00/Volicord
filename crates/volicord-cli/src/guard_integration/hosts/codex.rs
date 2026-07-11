@@ -17,8 +17,8 @@ use crate::{
     },
 };
 
-const CODEX_RULE_START_MARKER: &str = "# BEGIN VOLICORD MANAGED CODEX RULES v1";
-const CODEX_RULE_END_MARKER: &str = "# END VOLICORD MANAGED CODEX RULES v1";
+const CODEX_RULE_START_MARKER: &str = "# BEGIN VOLICORD MANAGED CODEX RULES";
+const CODEX_RULE_END_MARKER: &str = "# END VOLICORD MANAGED CODEX RULES";
 
 pub(crate) fn plan_codex_hook_file(
     repo_root: &Path,

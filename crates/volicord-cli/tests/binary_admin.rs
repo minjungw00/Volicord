@@ -1879,8 +1879,8 @@ fn init_codex_guarded_rejects_unmanaged_hook_config() -> Result<(), Box<dyn Erro
 #[test]
 fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Result<(), Box<dyn Error>>
 {
-    const START_MARKER: &str = "<!-- BEGIN VOLICORD MANAGED GUIDANCE v1 -->";
-    const END_MARKER: &str = "<!-- END VOLICORD MANAGED GUIDANCE v1 -->";
+    const START_MARKER: &str = "<!-- BEGIN VOLICORD MANAGED GUIDANCE -->";
+    const END_MARKER: &str = "<!-- END VOLICORD MANAGED GUIDANCE -->";
 
     let runtime_home = TempRuntimeHome::new("cli-bin-init-codex")?;
     let repo_root = create_git_repo(&runtime_home, "product-repo")?;
@@ -2160,7 +2160,7 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
         "Bash|apply_patch|Edit|Write|mcp__.*__(write|edit|create|update|delete|remove|move|patch).*"
     ));
     let rules = fs::read_to_string(repo_root.join(".codex/rules/volicord.rules"))?;
-    assert!(rules.contains("# BEGIN VOLICORD MANAGED CODEX RULES v1"));
+    assert!(rules.contains("# BEGIN VOLICORD MANAGED CODEX RULES"));
     assert!(rules.contains("prefix_rule("));
     assert!(rules.contains("git rev-parse --show-toplevel"));
     assert!(rules.contains(".codex/hooks/volicord-dispatch.sh"));

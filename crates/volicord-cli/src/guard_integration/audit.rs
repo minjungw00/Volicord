@@ -21,7 +21,7 @@ use crate::host_integration::{
 
 use super::policy::required_guard_phase_names;
 
-pub(crate) const HOOK_WRAPPER_MARKER: &str = "VOLICORD_MANAGED_HOOK_WRAPPER v1";
+pub(crate) const HOOK_WRAPPER_MARKER: &str = "VOLICORD_MANAGED_HOOK_WRAPPER";
 pub(crate) const CODEX_DISPATCH_WRAPPER: &str = ".codex/hooks/volicord-dispatch.sh";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

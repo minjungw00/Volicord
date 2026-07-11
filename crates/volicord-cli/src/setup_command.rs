@@ -875,7 +875,7 @@ mod tests {
         assert_eq!(fs::canonicalize(link_bin.join(mcp_binary_name()))?, mcp);
         let zshrc = home.join(".zshrc");
         let first_text = fs::read_to_string(&zshrc)?;
-        assert!(first_text.contains("# BEGIN VOLICORD MANAGED PATH v1"));
+        assert!(first_text.contains("# BEGIN VOLICORD MANAGED PATH"));
         assert!(first_text.contains("export PATH=\"$HOME/.local/bin:$PATH\""));
 
         let mut second_terminal = FakeTerminal::with_inputs(vec![
@@ -891,7 +891,7 @@ mod tests {
         let second_text = fs::read_to_string(&zshrc)?;
         assert_eq!(
             second_text
-                .matches("# BEGIN VOLICORD MANAGED PATH v1")
+                .matches("# BEGIN VOLICORD MANAGED PATH")
                 .count(),
             1
         );

@@ -3,8 +3,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
-pub(crate) const START_MARKER: &str = "# BEGIN VOLICORD MANAGED PATH v1";
-pub(crate) const END_MARKER: &str = "# END VOLICORD MANAGED PATH v1";
+pub(crate) const START_MARKER: &str = "# BEGIN VOLICORD MANAGED PATH";
+pub(crate) const END_MARKER: &str = "# END VOLICORD MANAGED PATH";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ManagedBlockWrite {

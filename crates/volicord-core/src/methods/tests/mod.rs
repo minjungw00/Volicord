@@ -1162,7 +1162,7 @@ fn complete_guard_capability_value(harness: &MethodHarness) -> Result<Value, Box
     let dispatch_path = hooks_dir.join("volicord-dispatch.sh");
     let dispatch_text = concat!(
         "#!/bin/sh\n",
-        "# VOLICORD_MANAGED_HOOK_WRAPPER v1\n",
+        "# VOLICORD_MANAGED_HOOK_WRAPPER\n",
         "# host_kind=codex\n",
         "# phase=dispatch\n",
         "# script_role=codex_dispatch\n",
@@ -1203,7 +1203,7 @@ fn complete_guard_capability_value(harness: &MethodHarness) -> Result<Value, Box
             path_text(&repo_root),
         );
         let wrapper_text = format!(
-            "#!/bin/sh\n# VOLICORD_MANAGED_HOOK_WRAPPER v1\n# host_kind=codex\n# phase={policy_key}\n# connection_id={CONNECTION_ID}\n# guard_installation_id=guard_installation\n# policy_hash=sha256:guardedfixture\n# host_output=codex\nexec {wrapper_command}\n"
+            "#!/bin/sh\n# VOLICORD_MANAGED_HOOK_WRAPPER\n# host_kind=codex\n# phase={policy_key}\n# connection_id={CONNECTION_ID}\n# guard_installation_id=guard_installation\n# policy_hash=sha256:guardedfixture\n# host_output=codex\nexec {wrapper_command}\n"
         );
         fs::write(&wrapper_path, &wrapper_text)?;
         set_test_executable(&wrapper_path)?;
@@ -1212,7 +1212,7 @@ fn complete_guard_capability_value(harness: &MethodHarness) -> Result<Value, Box
             "path": path_text(&wrapper_path),
             "content_hash": sha256_text(&wrapper_text),
             "ownership": "managed_script",
-            "managed_marker": "VOLICORD_MANAGED_HOOK_WRAPPER v1",
+            "managed_marker": "VOLICORD_MANAGED_HOOK_WRAPPER",
             "executable_required": true,
             "managed_script_command": wrapper_command,
             "host_kind": "codex",
@@ -1260,7 +1260,7 @@ fn complete_guard_capability_value(harness: &MethodHarness) -> Result<Value, Box
             "path": path_text(&dispatch_path),
             "content_hash": sha256_text(dispatch_text),
             "ownership": "managed_script",
-            "managed_marker": "VOLICORD_MANAGED_HOOK_WRAPPER v1",
+            "managed_marker": "VOLICORD_MANAGED_HOOK_WRAPPER",
             "executable_required": true,
             "managed_script_role": "codex_dispatch",
             "host_kind": "codex",
