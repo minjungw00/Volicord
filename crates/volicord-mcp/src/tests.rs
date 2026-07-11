@@ -200,6 +200,11 @@ fn mcp_tools_publish_root_output_schemas_and_conservative_annotations() {
             "{} output schema should have an object root",
             tool.name
         );
+        assert!(
+            schema_has_definition(&tool.output_schema, "McpToolErrorResponse"),
+            "{} output schema should cover structured adapter failures",
+            tool.name
+        );
 
         let read_only = READ_ONLY_METHOD_TOOL_NAMES.contains(&tool.name)
             || tool.name == LIST_PROJECTS_TOOL_NAME;
@@ -361,12 +366,11 @@ fn record_run_invalid_observed_changes_reports_expected_shape() -> Result<(), Bo
     let error = adapter
         .call_tool(RECORD_RUN_TOOL_NAME, arguments)
         .expect_err("invalid observed_changes should fail before Core");
-    let text = tool_error_text(&error);
-
-    assert!(text.contains("Invalid arguments for volicord.record_run at observed_changes"));
-    assert!(text.contains("changed_paths"));
-    assert!(text.contains("product_file_write_observed"));
-    assert!(text.contains("baseline_ref"));
+    let response = structured_tool_error(RECORD_RUN_TOOL_NAME, &error);
+    let issue = tool_error_issue(&response, "/observed_changes", "MCP_ARGUMENT_TYPE_MISMATCH");
+    assert!(issue["message"]
+        .as_str()
+        .is_some_and(|message| { message.contains("object") && message.contains("array") }));
     Ok(())
 }
 
@@ -383,12 +387,12 @@ fn record_run_invalid_kind_reports_allowed_values() -> Result<(), Box<dyn Error>
     let error = adapter
         .call_tool(RECORD_RUN_TOOL_NAME, arguments)
         .expect_err("invalid kind should fail before Core");
-    let text = tool_error_text(&error);
-
-    assert!(text.contains("Invalid arguments for volicord.record_run at kind"));
-    assert!(text.contains("shaping_update"));
-    assert!(text.contains("implementation"));
-    assert!(text.contains("direct"));
+    let response = structured_tool_error(RECORD_RUN_TOOL_NAME, &error);
+    let issue = tool_error_issue(&response, "/kind", "MCP_ARGUMENT_ENUM_VALUE");
+    let message = issue["message"].as_str().expect("enum issue message");
+    assert!(message.contains("shaping_update"));
+    assert!(message.contains("implementation"));
+    assert!(message.contains("direct"));
     Ok(())
 }
 
@@ -418,13 +422,16 @@ fn record_run_artifact_input_source_uses_public_value_set() -> Result<(), Box<dy
         let error = adapter
             .call_tool(RECORD_RUN_TOOL_NAME, arguments)
             .expect_err("unsupported artifact input source should fail before Core");
-        let text = tool_error_text(&error);
-
-        assert!(text.contains("Invalid arguments for volicord.record_run"));
-        assert!(text.contains("unknown variant"));
-        assert!(text.contains(unsupported));
-        assert!(text.contains("staged_artifact"));
-        assert!(text.contains("existing_artifact"));
+        let response = structured_tool_error(RECORD_RUN_TOOL_NAME, &error);
+        let issue = tool_error_issue(
+            &response,
+            "/artifact_inputs/0/source_kind",
+            "MCP_ARGUMENT_ENUM_VALUE",
+        );
+        let message = issue["message"].as_str().expect("enum issue message");
+        assert!(message.contains(unsupported));
+        assert!(message.contains("staged_artifact"));
+        assert!(message.contains("existing_artifact"));
         assert_eq!(
             fixture.counts()?,
             before,
@@ -451,13 +458,19 @@ fn record_run_invalid_evidence_observation_reports_expected_shape() -> Result<()
     let error = adapter
         .call_tool(RECORD_RUN_TOOL_NAME, arguments)
         .expect_err("invalid evidence observation should fail before Core");
-    let text = tool_error_text(&error);
-
-    assert!(text.contains("Invalid arguments for volicord.record_run at evidence_observations[0]"));
-    assert!(text.contains("source_kind"));
-    assert!(text.contains("assurance_level"));
-    assert!(text.contains("input_refs"));
-    assert!(text.contains("output_artifact_refs"));
+    let response = structured_tool_error(RECORD_RUN_TOOL_NAME, &error);
+    for field in [
+        "source_kind",
+        "assurance_level",
+        "input_refs",
+        "output_artifact_refs",
+    ] {
+        tool_error_issue(
+            &response,
+            &format!("/evidence_observations/0/{field}"),
+            "MCP_ARGUMENT_REQUIRED",
+        );
+    }
     Ok(())
 }
 
@@ -474,12 +487,8 @@ fn record_run_unknown_root_field_reports_expected_arguments() -> Result<(), Box<
     let error = adapter
         .call_tool(RECORD_RUN_TOOL_NAME, arguments)
         .expect_err("unknown root field should fail before Core");
-    let text = tool_error_text(&error);
-
-    assert!(text.contains("Invalid arguments for volicord.record_run at arguments"));
-    assert!(text.contains("unknown unexpected"));
-    assert!(text.contains("task_id"));
-    assert!(text.contains("observed_changes"));
+    let response = structured_tool_error(RECORD_RUN_TOOL_NAME, &error);
+    tool_error_issue(&response, "/unexpected", "MCP_ARGUMENT_UNKNOWN");
     Ok(())
 }
 
@@ -505,11 +514,9 @@ fn request_user_judgment_invalid_options_report_option_id_shape() -> Result<(), 
     let error = adapter
         .call_tool(REQUEST_USER_JUDGMENT_TOOL_NAME, arguments)
         .expect_err("invalid options should fail before Core");
-    let text = tool_error_text(&error);
-
-    assert!(text.contains("Invalid arguments for volicord.request_user_judgment at options[0]"));
-    assert!(text.contains("expected option_id, not id"));
-    assert!(text.contains("label, description, consequence, is_default"));
+    let response = structured_tool_error(REQUEST_USER_JUDGMENT_TOOL_NAME, &error);
+    tool_error_issue(&response, "/options/0/option_id", "MCP_ARGUMENT_REQUIRED");
+    tool_error_issue(&response, "/options/0/id", "MCP_ARGUMENT_UNKNOWN");
     Ok(())
 }
 
@@ -527,14 +534,144 @@ fn request_user_judgment_invalid_visible_risk_reports_expected_shape() -> Result
     let error = adapter
         .call_tool(REQUEST_USER_JUDGMENT_TOOL_NAME, arguments)
         .expect_err("invalid visible risk should fail before Core");
-    let text = tool_error_text(&error);
+    let response = structured_tool_error(REQUEST_USER_JUDGMENT_TOOL_NAME, &error);
+    tool_error_issue(
+        &response,
+        "/context/visible_risks/0",
+        "MCP_ARGUMENT_TYPE_MISMATCH",
+    );
+    Ok(())
+}
 
-    assert!(text.contains(
-        "Invalid arguments for volicord.request_user_judgment at context.visible_risks[0]"
-    ));
-    assert!(text.contains("risk_id"));
-    assert!(text.contains("consequence"));
-    assert!(text.contains("accepted_for_close"));
+#[test]
+fn known_tool_validation_aggregates_independent_issues_without_core_effects(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-aggregated-validation")?;
+    let adapter = adapter(&fixture)?;
+    let before = fixture.counts()?;
+    let arguments = json!({
+        "kind": "unsupported",
+        "observed_changes": {
+            "changed_paths": "not-an-array"
+        },
+        "unexpected": true
+    });
+
+    let error = adapter
+        .call_tool(RECORD_RUN_TOOL_NAME, arguments)
+        .expect_err("independent argument failures should be rejected together");
+    let response = structured_tool_error(RECORD_RUN_TOOL_NAME, &error);
+
+    for field in ["task_id", "change_unit_id", "run_id", "summary"] {
+        tool_error_issue(&response, &format!("/{field}"), "MCP_ARGUMENT_REQUIRED");
+    }
+    tool_error_issue(&response, "/unexpected", "MCP_ARGUMENT_UNKNOWN");
+    tool_error_issue(&response, "/kind", "MCP_ARGUMENT_ENUM_VALUE");
+    tool_error_issue(
+        &response,
+        "/observed_changes/changed_paths",
+        "MCP_ARGUMENT_TYPE_MISMATCH",
+    );
+    for field in [
+        "product_file_write_observed",
+        "sensitive_categories",
+        "baseline_ref",
+    ] {
+        tool_error_issue(
+            &response,
+            &format!("/observed_changes/{field}"),
+            "MCP_ARGUMENT_REQUIRED",
+        );
+    }
+    assert!(response["issues"]
+        .as_array()
+        .is_some_and(|issues| issues.len() > 8));
+    assert_eq!(fixture.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn nullable_object_union_prefers_matching_branch_and_keeps_nested_issues(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-nullable-object-validation")?;
+    let adapter = adapter(&fixture)?;
+    let mut arguments = canonical_example_value(
+        RECORD_RUN_TOOL_NAME,
+        RECORD_RUN_NO_PRODUCT_FILE_CHANGE_EXAMPLE_ID,
+    )?;
+    arguments["close_assessment"] = json!({});
+
+    let error = adapter
+        .call_tool(RECORD_RUN_TOOL_NAME, arguments)
+        .expect_err("empty close assessment should expose its nested missing fields");
+    let response = structured_tool_error(RECORD_RUN_TOOL_NAME, &error);
+
+    for field in [
+        "result_summary",
+        "result_refs",
+        "residual_risks",
+        "sensitive_categories",
+        "recovery_constraints",
+    ] {
+        tool_error_issue(
+            &response,
+            &format!("/close_assessment/{field}"),
+            "MCP_ARGUMENT_REQUIRED",
+        );
+    }
+    assert!(response["issues"]
+        .as_array()
+        .expect("issues")
+        .iter()
+        .all(|issue| issue["path"] != "/close_assessment"
+            || issue["code"] != "MCP_ARGUMENT_TYPE_MISMATCH"));
+    Ok(())
+}
+
+#[test]
+fn decoder_only_failure_is_one_structured_issue_without_core_effects() -> Result<(), Box<dyn Error>>
+{
+    let fixture = CoreFixture::new("mcp-decoder-only-validation")?;
+    let adapter = adapter(&fixture)?;
+    let before = fixture.counts()?;
+    let mut arguments = canonical_example_value(
+        REQUEST_USER_JUDGMENT_TOOL_NAME,
+        REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_EXAMPLE_ID,
+    )?;
+    arguments["expires_at"] = json!("not-a-timestamp");
+
+    let error = adapter
+        .call_tool(REQUEST_USER_JUDGMENT_TOOL_NAME, arguments)
+        .expect_err("invalid timestamp format should fail typed decoding");
+    let response = structured_tool_error(REQUEST_USER_JUDGMENT_TOOL_NAME, &error);
+
+    assert_eq!(response["issues"].as_array().map(Vec::len), Some(1));
+    tool_error_issue(&response, "", "MCP_ARGUMENT_DECODE_FAILED");
+    assert_eq!(fixture.counts()?, before);
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn decoder_failure_precedes_readonly_storage_rejection() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-decoder-before-readonly-precondition")?;
+    let adapter = adapter(&fixture)?;
+    let _guard = make_project_state_readonly(&fixture)?;
+    let before = fixture.counts()?;
+    let mut arguments = canonical_example_value(
+        REQUEST_USER_JUDGMENT_TOOL_NAME,
+        REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_EXAMPLE_ID,
+    )?;
+    arguments["expires_at"] = json!("not-a-timestamp");
+
+    let error = adapter
+        .call_tool(REQUEST_USER_JUDGMENT_TOOL_NAME, arguments)
+        .expect_err("typed argument decoding should precede storage preconditions");
+    let response = structured_tool_error(REQUEST_USER_JUDGMENT_TOOL_NAME, &error);
+
+    assert_eq!(response["code"], "MCP_INVALID_ARGUMENTS");
+    tool_error_issue(&response, "", "MCP_ARGUMENT_DECODE_FAILED");
+    assert_eq!(fixture.counts()?, before);
     Ok(())
 }
 
@@ -1545,6 +1682,71 @@ fn mcp_tools_call_requires_initialized_notification() -> Result<(), Box<dyn Erro
 }
 
 #[test]
+fn stdio_aggregated_validation_error_is_structured_and_has_no_core_effects(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-stdio-aggregated-validation")?;
+    let before = fixture.counts()?;
+    let adapter = adapter(&fixture)?;
+    let input = Cursor::new(json_lines(&[
+        initialize_request(1, json!({})),
+        initialized_notification(),
+        tools_call(
+            2,
+            RECORD_RUN_TOOL_NAME,
+            json!({
+                "kind": "unsupported",
+                "observed_changes": {},
+                "unexpected": true
+            }),
+        ),
+    ])?);
+    let mut output = Vec::new();
+
+    run_stdio(adapter, BufReader::new(input), &mut output)?;
+
+    let responses = stdio_responses(&output)?;
+    let error = structured_error_result(&responses[1]["result"]);
+    assert_eq!(error["code"], "MCP_INVALID_ARGUMENTS");
+    assert_eq!(error["tool_name"], RECORD_RUN_TOOL_NAME);
+    assert_eq!(error["retryable"], true);
+    tool_error_issue(&error, "/task_id", "MCP_ARGUMENT_REQUIRED");
+    tool_error_issue(&error, "/unexpected", "MCP_ARGUMENT_UNKNOWN");
+    tool_error_issue(&error, "/kind", "MCP_ARGUMENT_ENUM_VALUE");
+    assert_eq!(fixture.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn stdio_adapter_precondition_error_uses_requested_tool_and_structured_flags(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-stdio-adapter-precondition")?;
+    add_allowed_project(&fixture, "project_stdio_precondition_other")?;
+    let before = fixture.counts()?;
+    let adapter = adapter(&fixture)?;
+    let input = Cursor::new(json_lines(&[
+        initialize_request(1, json!({})),
+        initialized_notification(),
+        tools_call(2, STATUS_TOOL_NAME, json!({})),
+    ])?);
+    let mut output = Vec::new();
+
+    run_stdio(adapter, BufReader::new(input), &mut output)?;
+
+    let responses = stdio_responses(&output)?;
+    let error = structured_error_result(&responses[1]["result"]);
+    assert_eq!(error["code"], "MCP_ADAPTER_PRECONDITION_FAILED");
+    assert_eq!(error["tool_name"], STATUS_TOOL_NAME);
+    assert_eq!(error["retryable"], false);
+    tool_error_issue(
+        &error,
+        "/project_selector",
+        "MCP_ADAPTER_PRECONDITION_FAILED",
+    );
+    assert_eq!(fixture.counts()?, before);
+    Ok(())
+}
+
+#[test]
 fn stdio_elicitation_accept_records_user_judgment() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-elicitation-accept")?;
     let setup_adapter = adapter(&fixture)?;
@@ -2440,12 +2642,18 @@ fn local_http_project_allowlist_narrows_connection_projects() -> Result<(), Box<
         ),
     )?);
     assert_eq!(rejected.status, 200);
-    assert_eq!(http_json(&rejected)["result"]["isError"], true);
-    let error_text = http_json(&rejected)["result"]["content"][0]["text"]
+    let rejected_json = http_json(&rejected);
+    let error = structured_error_result(&rejected_json["result"]);
+    assert_eq!(error["code"], "MCP_ADAPTER_PRECONDITION_FAILED");
+    assert_eq!(error["tool_name"], STATUS_TOOL_NAME);
+    let issue = tool_error_issue(
+        &error,
+        "/project_selector",
+        "MCP_ADAPTER_PRECONDITION_FAILED",
+    );
+    assert!(issue["message"]
         .as_str()
-        .expect("tool error should be text")
-        .to_owned();
-    assert!(error_text.contains("outside this HTTP serve project allowlist"));
+        .is_some_and(|message| message.contains("outside this HTTP serve project allowlist")));
     Ok(())
 }
 
@@ -3173,12 +3381,47 @@ fn canonical_example_value(tool_name: &str, example_id: &str) -> Result<Value, B
     )?)
 }
 
-fn tool_error_text(error: &McpAdapterError) -> String {
-    let result = tool_execution_error_result(error);
-    result["content"][0]["text"]
-        .as_str()
-        .expect("tool error text")
-        .to_owned()
+fn structured_tool_error(tool_name: &str, error: &McpAdapterError) -> Value {
+    let result = tool_execution_error_result(tool_name, error);
+    let parsed = structured_error_result(&result);
+    assert_eq!(parsed["tool_name"], tool_name);
+    match error {
+        McpAdapterError::InvalidParams { .. } => {
+            assert_eq!(parsed["code"], "MCP_INVALID_ARGUMENTS");
+            assert_eq!(parsed["retryable"], true);
+        }
+        McpAdapterError::ToolExecution { .. } => {
+            assert_eq!(parsed["code"], "MCP_ADAPTER_PRECONDITION_FAILED");
+            assert_eq!(parsed["retryable"], false);
+        }
+        _ => {}
+    }
+    parsed
+}
+
+fn structured_error_result(result: &Value) -> Value {
+    assert_eq!(result["isError"], true);
+    let parsed: Value = serde_json::from_str(
+        result["content"][0]["text"]
+            .as_str()
+            .expect("tool error compatibility text"),
+    )
+    .expect("tool error compatibility text should be JSON");
+    assert_eq!(result["structuredContent"], parsed);
+    serde_json::from_value::<McpToolErrorResponse>(parsed.clone())
+        .expect("structured tool error should match its advertised response type");
+    assert_eq!(parsed["reached_core"], false);
+    assert_eq!(parsed["committed"], false);
+    parsed
+}
+
+fn tool_error_issue<'a>(response: &'a Value, path: &str, code: &str) -> &'a Value {
+    response["issues"]
+        .as_array()
+        .expect("tool error issues should be an array")
+        .iter()
+        .find(|issue| issue["path"] == path && issue["code"] == code)
+        .unwrap_or_else(|| panic!("missing issue {code} at {path}: {response}"))
 }
 
 fn tool_names_from_list_response(response: &Value) -> Vec<&str> {

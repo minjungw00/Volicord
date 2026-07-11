@@ -79,6 +79,61 @@ pub enum McpRequestUserJudgmentResponse {
     Recorded(Box<RecordUserJudgmentResponse>),
 }
 
+/// Stable top-level error code for a known MCP tool failure before Core entry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub enum McpToolErrorCode {
+    #[serde(rename = "MCP_INVALID_ARGUMENTS")]
+    InvalidArguments,
+    #[serde(rename = "MCP_ADAPTER_PRECONDITION_FAILED")]
+    AdapterPreconditionFailed,
+}
+
+/// Stable issue code within a known MCP tool error.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub enum McpToolIssueCode {
+    #[serde(rename = "MCP_ARGUMENT_REQUIRED")]
+    ArgumentRequired,
+    #[serde(rename = "MCP_ARGUMENT_UNKNOWN")]
+    ArgumentUnknown,
+    #[serde(rename = "MCP_ARGUMENT_TYPE_MISMATCH")]
+    ArgumentTypeMismatch,
+    #[serde(rename = "MCP_ARGUMENT_ENUM_VALUE")]
+    ArgumentEnumValue,
+    #[serde(rename = "MCP_ARGUMENT_DECODE_FAILED")]
+    ArgumentDecodeFailed,
+    #[serde(rename = "MCP_ADAPTER_PRECONDITION_FAILED")]
+    AdapterPreconditionFailed,
+}
+
+/// One independently discoverable MCP tool error issue.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpToolErrorIssue {
+    pub path: String,
+    pub code: McpToolIssueCode,
+    pub message: String,
+}
+
+/// Structured known-tool failure returned before Core method entry.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpToolErrorResponse {
+    pub code: McpToolErrorCode,
+    pub tool_name: String,
+    pub retryable: bool,
+    pub reached_core: bool,
+    pub committed: bool,
+    pub issues: Vec<McpToolErrorIssue>,
+}
+
+/// Structured MCP result advertised by each known tool.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum McpToolStructuredContent<T> {
+    Response(Box<T>),
+    AdapterError(McpToolErrorResponse),
+}
+
 /// `volicord.intake` request params.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -799,18 +854,32 @@ pub fn mcp_request_schema(tool_name: &str) -> Option<Value> {
 /// Returns the generated JSON Schema for one MCP-visible public method result.
 pub fn mcp_response_schema(tool_name: &str) -> Option<Value> {
     match tool_name {
-        "volicord.request_user_judgment" => {
-            Some(response_schema::<McpRequestUserJudgmentResponse>())
+        "volicord.request_user_judgment" => Some(response_schema::<
+            McpToolStructuredContent<McpRequestUserJudgmentResponse>,
+        >()),
+        "volicord.intake" => Some(response_schema::<McpToolStructuredContent<IntakeResponse>>()),
+        "volicord.update_scope" => Some(response_schema::<
+            McpToolStructuredContent<UpdateScopeResponse>,
+        >()),
+        "volicord.status" => Some(response_schema::<McpToolStructuredContent<StatusResponse>>()),
+        "volicord.prepare_write" => Some(response_schema::<
+            McpToolStructuredContent<PrepareWriteResponse>,
+        >()),
+        "volicord.stage_artifact" => Some(response_schema::<
+            McpToolStructuredContent<StageArtifactResponse>,
+        >()),
+        "volicord.record_run" => {
+            Some(response_schema::<McpToolStructuredContent<RecordRunResponse>>())
         }
-        "volicord.intake"
-        | "volicord.update_scope"
-        | "volicord.status"
-        | "volicord.prepare_write"
-        | "volicord.stage_artifact"
-        | "volicord.record_run"
-        | "volicord.reconcile_changes"
-        | "volicord.check_close"
-        | "volicord.close_task" => public_response_schema(tool_name),
+        "volicord.reconcile_changes" => Some(response_schema::<
+            McpToolStructuredContent<ReconcileChangesResponse>,
+        >()),
+        "volicord.check_close" => Some(response_schema::<
+            McpToolStructuredContent<CheckCloseResponse>,
+        >()),
+        "volicord.close_task" => {
+            Some(response_schema::<McpToolStructuredContent<CloseTaskResponse>>())
+        }
         _ => None,
     }
 }

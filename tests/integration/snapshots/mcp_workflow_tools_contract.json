@@ -88,6 +88,10 @@
           "HostKind",
           "IntakeResult",
           "IntegrationProfile",
+          "McpToolErrorCode",
+          "McpToolErrorIssue",
+          "McpToolErrorResponse",
+          "McpToolIssueCode",
           "MethodName",
           "NextActionKind",
           "NextActionSummary",
@@ -113,6 +117,7 @@
           "ToolDryRunResponse",
           "ToolError",
           "ToolRejectedResponse",
+          "ToolResponse_for_IntakeResult",
           "ToolResultBase",
           "UtcTimestamp",
           "WriteTicketStateSummary",
@@ -120,7 +125,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:0ab8095c3a0c1861531c5ed6b127b33b7a3339fb8ce62f911853f1664369028c"
+        "sha256": "sha256:ee723e4bd3cccdc08cbc4bff4834c3f9e70bff4cff47d8e5672e1a151fa656f4"
       }
     },
     {
@@ -206,6 +211,10 @@
           "GuardObservationStatus",
           "HostKind",
           "IntegrationProfile",
+          "McpToolErrorCode",
+          "McpToolErrorIssue",
+          "McpToolErrorResponse",
+          "McpToolIssueCode",
           "MethodName",
           "NextActionKind",
           "NextActionSummary",
@@ -231,6 +240,7 @@
           "ToolDryRunResponse",
           "ToolError",
           "ToolRejectedResponse",
+          "ToolResponse_for_UpdateScopeResult",
           "ToolResultBase",
           "UpdateScopeResult",
           "UtcTimestamp",
@@ -239,7 +249,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:08215d3ea8b1fd4648b74298fc41bb76909701e30c424c5a5c34410fcc8c487c"
+        "sha256": "sha256:93468d459d1bce380b41e42c5c235988a20e09d660494f48faba5ece42acdd63"
       }
     },
     {
@@ -309,6 +319,10 @@
           "JudgmentInboxChoice",
           "JudgmentInboxItem",
           "JudgmentRequiredFor",
+          "McpToolErrorCode",
+          "McpToolErrorIssue",
+          "McpToolErrorResponse",
+          "McpToolIssueCode",
           "MethodName",
           "NextActionKind",
           "NextActionSummary",
@@ -343,6 +357,7 @@
           "ToolDryRunResponse",
           "ToolError",
           "ToolRejectedResponse",
+          "ToolResponse_for_StatusResult",
           "ToolResultBase",
           "UserChannelAvailability",
           "UserChannelPathAvailability",
@@ -353,7 +368,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:19269180500e8e5f31a1a9d200888e5b45291587c428715f813777f0be461517"
+        "sha256": "sha256:22ddbe6b99f4ab66dab3ecee6a31850701eccac294ab6c7e969ac0fd32b5dbc4"
       }
     },
     {
@@ -430,6 +445,10 @@
           "JudgmentPresentation",
           "JudgmentRequiredFor",
           "JudgmentResolutionOutcome",
+          "McpToolErrorCode",
+          "McpToolErrorIssue",
+          "McpToolErrorResponse",
+          "McpToolIssueCode",
           "MethodName",
           "NextActionKind",
           "NextActionSummary",
@@ -457,6 +476,7 @@
           "ToolDryRunResponse",
           "ToolError",
           "ToolRejectedResponse",
+          "ToolResponse_for_PrepareWriteResult",
           "ToolResultBase",
           "UserJudgmentCandidate",
           "UserJudgmentContext",
@@ -475,7 +495,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:8662ef70561bcad66470a57cb7f180355943bff10aebff7a458cfdeaca01aa83"
+        "sha256": "sha256:6fa95613b070fd45d3fb253a0ad5407898e0c102db1d02e30282b0bf51444274"
       }
     },
     {
@@ -524,6 +544,10 @@
           "EvidenceDisplayState",
           "GuaranteeClass",
           "GuaranteeDisclosure",
+          "McpToolErrorCode",
+          "McpToolErrorIssue",
+          "McpToolErrorResponse",
+          "McpToolIssueCode",
           "MethodName",
           "NextActionKind",
           "NextActionSummary",
@@ -540,12 +564,13 @@
           "ToolDryRunResponse",
           "ToolError",
           "ToolRejectedResponse",
+          "ToolResponse_for_StageArtifactResult",
           "ToolResultBase",
           "UtcTimestamp"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:b246d45ca6540fd6cd279cd69198b20731c6c05c34fb618755242bf8a14aea30"
+        "sha256": "sha256:eb43a24c35455464e3966ecf34b158186b3971ffb2d9e6eacb9a679df4db1617"
       }
     },
     {
@@ -651,6 +676,10 @@
           "GuardObservationStatus",
           "HostKind",
           "IntegrationProfile",
+          "McpToolErrorCode",
+          "McpToolErrorIssue",
+          "McpToolErrorResponse",
+          "McpToolIssueCode",
           "MethodName",
           "NextActionKind",
           "NextActionSummary",
@@ -682,6 +711,7 @@
           "ToolDryRunResponse",
           "ToolError",
           "ToolRejectedResponse",
+          "ToolResponse_for_RecordRunResult",
           "ToolResultBase",
           "UtcTimestamp",
           "WriteTicketStateSummary",
@@ -689,7 +719,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:9ac3bc9f7c212e4800959d837b875076c0f0e2f03019369abc2a925d05a7410f"
+        "sha256": "sha256:08a6c46cef99aae4a15385f03399f85072f638d019e6ba2e5f8435ee65999cbc"
       }
     },
     {
@@ -795,6 +825,11 @@
           "JudgmentRationale",
           "JudgmentRequiredFor",
           "JudgmentResolutionOutcome",
+          "McpRequestUserJudgmentResponse",
+          "McpToolErrorCode",
+          "McpToolErrorIssue",
+          "McpToolErrorResponse",
+          "McpToolIssueCode",
           "MethodName",
           "NextActionKind",
           "NextActionSummary",
@@ -841,7 +876,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:d9649fc72ee2d7504aa28712a65ba99a6cafb18ab5fe63b95b9301cb1dfe6838"
+        "sha256": "sha256:9f71d8d96aeb21826da89df9b9fb05b9f171be42c57af6a6cdc1161e3a4aa7c2"
       }
     },
     {
@@ -905,6 +940,10 @@
           "GuardObservationStatus",
           "HostKind",
           "IntegrationProfile",
+          "McpToolErrorCode",
+          "McpToolErrorIssue",
+          "McpToolErrorResponse",
+          "McpToolIssueCode",
           "MethodName",
           "NextActionKind",
           "NextActionSummary",
@@ -932,6 +971,7 @@
           "ToolDryRunResponse",
           "ToolError",
           "ToolRejectedResponse",
+          "ToolResponse_for_ReconcileChangesResult",
           "ToolResultBase",
           "UnrecordedChangeFinding",
           "UnrecordedChangeRejection",
@@ -944,7 +984,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:eb527b87c4196a5dc790c77710a3d81055adeb49fb752fe27c2f5f72d60f2f84"
+        "sha256": "sha256:3e073d6455bc43e01bed87fc9eac0801b8a8cfec147d67883cd4dcb9cd09d539"
       }
     },
     {
@@ -1014,6 +1054,10 @@
           "JudgmentInboxChoice",
           "JudgmentInboxItem",
           "JudgmentRequiredFor",
+          "McpToolErrorCode",
+          "McpToolErrorIssue",
+          "McpToolErrorResponse",
+          "McpToolIssueCode",
           "MethodName",
           "NextActionKind",
           "NextActionSummary",
@@ -1046,6 +1090,7 @@
           "ToolDryRunResponse",
           "ToolError",
           "ToolRejectedResponse",
+          "ToolResponse_for_CloseTaskResult",
           "ToolResultBase",
           "UserChannelAvailability",
           "UserChannelPathAvailability",
@@ -1056,7 +1101,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:d00be073196fe8fac19b584c0f2fd784e4c5c12cbe79598640aa0c48188d62cc"
+        "sha256": "sha256:26740e6d9327d44d14ab974199b16dbdccd8ba2600939bf106d8cde0c1ccdb01"
       }
     },
     {
@@ -1134,6 +1179,10 @@
           "JudgmentInboxChoice",
           "JudgmentInboxItem",
           "JudgmentRequiredFor",
+          "McpToolErrorCode",
+          "McpToolErrorIssue",
+          "McpToolErrorResponse",
+          "McpToolIssueCode",
           "MethodName",
           "NextActionKind",
           "NextActionSummary",
@@ -1166,6 +1215,7 @@
           "ToolDryRunResponse",
           "ToolError",
           "ToolRejectedResponse",
+          "ToolResponse_for_CloseTaskResult",
           "ToolResultBase",
           "UserChannelAvailability",
           "UserChannelPathAvailability",
@@ -1176,7 +1226,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:d00be073196fe8fac19b584c0f2fd784e4c5c12cbe79598640aa0c48188d62cc"
+        "sha256": "sha256:26740e6d9327d44d14ab974199b16dbdccd8ba2600939bf106d8cde0c1ccdb01"
       }
     },
     {
@@ -1198,26 +1248,17 @@
         "definitions": [
           "AgentConnectionMode",
           "ListProjectItem",
+          "ListProjectsResult",
+          "McpToolErrorCode",
+          "McpToolErrorIssue",
+          "McpToolErrorResponse",
+          "McpToolIssueCode",
           "SessionWatchCoverageBasis",
           "SessionWatchStatus"
         ],
-        "root_properties": [
-          "connection_id",
-          "mode",
-          "projects",
-          "watcher_baseline_created_at",
-          "watcher_coverage_basis",
-          "watcher_coverage_start_at",
-          "watcher_partial_coverage_warning",
-          "watcher_status"
-        ],
-        "root_required": [
-          "connection_id",
-          "mode",
-          "projects",
-          "watcher_status"
-        ],
-        "sha256": "sha256:7abc7439908e1bef4ff2b5f590a90410affbf190b67f512cf7518cabac549a2b"
+        "root_properties": [],
+        "root_required": [],
+        "sha256": "sha256:ebe0bf0655aaaa095d29c2ec98c5c90fa2d0f9c5ffdaf3b0e465ffac15b2c761"
       }
     }
   ]

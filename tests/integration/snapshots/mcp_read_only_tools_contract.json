@@ -83,6 +83,10 @@
           "JudgmentInboxChoice",
           "JudgmentInboxItem",
           "JudgmentRequiredFor",
+          "McpToolErrorCode",
+          "McpToolErrorIssue",
+          "McpToolErrorResponse",
+          "McpToolIssueCode",
           "MethodName",
           "NextActionKind",
           "NextActionSummary",
@@ -117,6 +121,7 @@
           "ToolDryRunResponse",
           "ToolError",
           "ToolRejectedResponse",
+          "ToolResponse_for_StatusResult",
           "ToolResultBase",
           "UserChannelAvailability",
           "UserChannelPathAvailability",
@@ -127,7 +132,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:19269180500e8e5f31a1a9d200888e5b45291587c428715f813777f0be461517"
+        "sha256": "sha256:22ddbe6b99f4ab66dab3ecee6a31850701eccac294ab6c7e969ac0fd32b5dbc4"
       }
     },
     {
@@ -197,6 +202,10 @@
           "JudgmentInboxChoice",
           "JudgmentInboxItem",
           "JudgmentRequiredFor",
+          "McpToolErrorCode",
+          "McpToolErrorIssue",
+          "McpToolErrorResponse",
+          "McpToolIssueCode",
           "MethodName",
           "NextActionKind",
           "NextActionSummary",
@@ -229,6 +238,7 @@
           "ToolDryRunResponse",
           "ToolError",
           "ToolRejectedResponse",
+          "ToolResponse_for_CloseTaskResult",
           "ToolResultBase",
           "UserChannelAvailability",
           "UserChannelPathAvailability",
@@ -239,7 +249,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:d00be073196fe8fac19b584c0f2fd784e4c5c12cbe79598640aa0c48188d62cc"
+        "sha256": "sha256:26740e6d9327d44d14ab974199b16dbdccd8ba2600939bf106d8cde0c1ccdb01"
       }
     },
     {
@@ -261,26 +271,17 @@
         "definitions": [
           "AgentConnectionMode",
           "ListProjectItem",
+          "ListProjectsResult",
+          "McpToolErrorCode",
+          "McpToolErrorIssue",
+          "McpToolErrorResponse",
+          "McpToolIssueCode",
           "SessionWatchCoverageBasis",
           "SessionWatchStatus"
         ],
-        "root_properties": [
-          "connection_id",
-          "mode",
-          "projects",
-          "watcher_baseline_created_at",
-          "watcher_coverage_basis",
-          "watcher_coverage_start_at",
-          "watcher_partial_coverage_warning",
-          "watcher_status"
-        ],
-        "root_required": [
-          "connection_id",
-          "mode",
-          "projects",
-          "watcher_status"
-        ],
-        "sha256": "sha256:7abc7439908e1bef4ff2b5f590a90410affbf190b67f512cf7518cabac549a2b"
+        "root_properties": [],
+        "root_required": [],
+        "sha256": "sha256:ebe0bf0655aaaa095d29c2ec98c5c90fa2d0f9c5ffdaf3b0e465ffac15b2c761"
       }
     }
   ]

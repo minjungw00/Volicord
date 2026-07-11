@@ -25,9 +25,9 @@ This document owns:
 - local loopback web consent fallback for pending user judgments
 - MCP startup validation for one internal Agent Connection binding
 - MCP `tools/list` and `tools/call` behavior at the transport boundary
-- MCP-visible tool-schema projection that hides internal envelopes and
-  invocation metadata
-- MCP `tools/call` response wrapping
+- MCP-visible input/output tool-schema projection that hides internal envelopes
+  and invocation metadata
+- MCP `tools/call` response wrapping and adapter error shape
 - process shutdown and reconnection behavior
 
 This document does not own:
@@ -822,16 +822,50 @@ derived invocation context. Public MCP arguments cannot override those facts.
 the Core include matrix. Supported values are `summary`, `workflow`, and
 `full`; omitted `detail` defaults to `workflow`.
 
-For a known public Volicord method tool, object `arguments` that fail the tool
-input schema return a `CallToolResult` with `isError: true` and actionable text
-content. They are tool execution errors, not JSON-RPC protocol errors.
+For a known tool, the adapter validates object `arguments` against the exact
+advertised `inputSchema` before project selection, session-watch setup, generated
+Core-envelope creation, or Core method entry. The bounded prevalidator collects
+all independently discoverable failures for supported structural keywords:
+local `$ref`, `type`, `enum`, `required`, `properties`, `additionalProperties`,
+array `items`, and `allOf`/`anyOf`/`oneOf` branches. It reports multiple missing
+root or nested fields, unknown fields, type mismatches, enum mismatches, and
+array-item failures in one result when those failures can be evaluated
+independently. Unsupported JSON Schema keywords are left to the typed decoder or
+later owner and must not cause the prevalidator to reject an otherwise valid
+input. A residual typed-decoder failure becomes one structured decode issue.
 
-For a public Volicord method-tool call, the adapter first performs deterministic
-repository-root project selection and per-project validation owned by
+Input validation precedes adapter preconditions. After valid input decoding, a
+public method-tool call performs deterministic repository-root project selection
+and per-project validation owned by
 [Agent Connection](agent-connection.md#current-connection-context). Ambiguous or
-unavailable project selection is rejected before Core execution and the
-actionable text must name the `volicord project use` or `volicord connection add`
-command needed to repair the state.
+unavailable project selection is rejected before Core execution and its message
+must name the `volicord project use` or `volicord connection add` command needed
+to repair the state when applicable.
+
+Known-tool input and adapter-precondition failures return a `CallToolResult` with
+`isError: true`. `result.structuredContent` is an object with:
+
+- `code`: `MCP_INVALID_ARGUMENTS` or `MCP_ADAPTER_PRECONDITION_FAILED`
+- `tool_name`: the requested MCP tool name
+- `retryable`: `true` for corrected arguments and `false` for an adapter
+  precondition that requires connection, project, mode, or environment repair
+- `reached_core: false`
+- `committed: false`
+- non-empty `issues`, where every item has RFC 6901 JSON Pointer `path`, stable
+  `code`, and human-readable `message`
+
+The stable issue codes are `MCP_ARGUMENT_REQUIRED`, `MCP_ARGUMENT_UNKNOWN`,
+`MCP_ARGUMENT_TYPE_MISMATCH`, `MCP_ARGUMENT_ENUM_VALUE`,
+`MCP_ARGUMENT_DECODE_FAILED`, and `MCP_ADAPTER_PRECONDITION_FAILED`. The root
+pointer is the empty string. `result.content[0].text` is a JSON serialization of
+the same object and must parse equal to `result.structuredContent`.
+
+These failures do not enter a Core method, commit Core method state, advance the
+project aggregate state version, or create Core method events. Transport-owned
+diagnostic lifecycle observations remain a separate boundary. Malformed
+JSON-RPC request envelopes, non-object `tools/call.arguments`, and unknown tool
+names keep their JSON-RPC error behavior. Core/domain rejected responses keep
+their normal Volicord response shape and `isError: false` transport meaning.
 
 `volicord mcp --stdio` does not advertise or implement MCP task-augmented tool
 execution. A `tools/call` request does not return `CreateTaskResult`, and a

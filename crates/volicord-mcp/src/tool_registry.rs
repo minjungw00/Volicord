@@ -181,11 +181,8 @@ pub fn adapter_utility_tools() -> Vec<McpToolDefinition> {
         .map(|name| McpToolDefinition {
             name,
             description: tool_description(name),
-            input_schema: json!({
-                "type": "object",
-                "properties": {},
-                "additionalProperties": false
-            }),
+            input_schema: mcp_tool_input_schema(name)
+                .expect("adapter utility tool input schema should exist"),
             output_schema: list_projects_output_schema(),
             annotations: McpToolAnnotations::read_only(),
         })
@@ -312,12 +309,23 @@ pub(crate) fn method_tools<const N: usize>(names: [&'static str; N]) -> Vec<McpT
         .map(|name| McpToolDefinition {
             name,
             description: tool_description(name),
-            input_schema: mcp_request_schema(name).expect("MCP tool schema should exist"),
+            input_schema: mcp_tool_input_schema(name).expect("MCP tool schema should exist"),
             output_schema: mcp_response_schema(name)
                 .expect("MCP tool response schema should exist"),
             annotations: tool_annotations(name),
         })
         .collect()
+}
+
+pub(crate) fn mcp_tool_input_schema(name: &str) -> Option<Value> {
+    if name == LIST_PROJECTS_TOOL_NAME {
+        return Some(json!({
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+        }));
+    }
+    mcp_request_schema(name)
 }
 
 fn tool_annotations(name: &str) -> McpToolAnnotations {

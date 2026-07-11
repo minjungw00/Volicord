@@ -759,7 +759,7 @@ where
             Ok(response) => ToolCallOutput::success(response.response_json)?,
             Err(error @ McpAdapterError::InvalidParams { .. })
             | Err(error @ McpAdapterError::ToolExecution { .. }) => {
-                return Ok(Ok(tool_execution_error_result(&error)));
+                return Ok(Ok(tool_execution_error_result(tool_name, &error)));
             }
             Err(error) => return Ok(Err(json_rpc_error_for_adapter(id.clone(), error))),
         }
@@ -768,7 +768,7 @@ where
             Ok(response) => response,
             Err(error @ McpAdapterError::InvalidParams { .. })
             | Err(error @ McpAdapterError::ToolExecution { .. }) => {
-                return Ok(Ok(tool_execution_error_result(&error)));
+                return Ok(Ok(tool_execution_error_result(tool_name, &error)));
             }
             Err(error) => return Ok(Err(json_rpc_error_for_adapter(id.clone(), error))),
         };
@@ -1679,28 +1679,63 @@ pub(crate) fn is_known_mcp_tool(tool_name: &str) -> bool {
     PUBLIC_METHOD_TOOL_NAMES.contains(&tool_name) || ADAPTER_UTILITY_TOOL_NAMES.contains(&tool_name)
 }
 
-pub(crate) fn tool_execution_error_result(error: &McpAdapterError) -> Value {
-    let text = match error {
-        McpAdapterError::InvalidParams {
-            tool_name,
-            source,
-            guidance,
-        } => match guidance {
-            Some(guidance) => {
-                format!("Invalid arguments for {tool_name} {guidance}. Decoder detail: {source}.")
-            }
-            None => {
-                format!("Invalid arguments for {tool_name}: {source}. Check the tool input schema and retry.")
-            }
+pub(crate) fn tool_execution_error_result(
+    requested_tool_name: &str,
+    error: &McpAdapterError,
+) -> Value {
+    let structured = match error {
+        McpAdapterError::InvalidParams { issues, .. } => McpToolErrorResponse {
+            code: McpToolErrorCode::InvalidArguments,
+            tool_name: requested_tool_name.to_owned(),
+            retryable: true,
+            reached_core: false,
+            committed: false,
+            issues: issues.clone(),
         },
-        McpAdapterError::ToolExecution { tool_name, message } if tool_name == "project routing" => {
-            format!("{message}. Use volicord.list_projects when project selection is unclear.")
-        }
         McpAdapterError::ToolExecution { tool_name, message } => {
-            format!("{tool_name} failed before reaching Core: {message}")
+            let (path, message) = if tool_name == "project routing" {
+                (
+                    "/project_selector".to_owned(),
+                    format!(
+                        "{message}. Use volicord.list_projects when project selection is unclear."
+                    ),
+                )
+            } else {
+                (
+                    String::new(),
+                    format!("{tool_name} failed before reaching Core: {message}"),
+                )
+            };
+            McpToolErrorResponse {
+                code: McpToolErrorCode::AdapterPreconditionFailed,
+                tool_name: requested_tool_name.to_owned(),
+                retryable: false,
+                reached_core: false,
+                committed: false,
+                issues: vec![McpToolErrorIssue {
+                    path,
+                    code: McpToolIssueCode::AdapterPreconditionFailed,
+                    message,
+                }],
+            }
         }
-        _ => "Tool execution failed before reaching Core.".to_owned(),
+        _ => McpToolErrorResponse {
+            code: McpToolErrorCode::AdapterPreconditionFailed,
+            tool_name: requested_tool_name.to_owned(),
+            retryable: false,
+            reached_core: false,
+            committed: false,
+            issues: vec![McpToolErrorIssue {
+                path: String::new(),
+                code: McpToolIssueCode::AdapterPreconditionFailed,
+                message: "Tool execution failed before reaching Core.".to_owned(),
+            }],
+        },
     };
+    let structured_content =
+        serde_json::to_value(structured).expect("MCP tool error should serialize");
+    let text = serde_json::to_string(&structured_content)
+        .expect("MCP tool error compatibility text should serialize");
 
     json!({
         "content": [
@@ -1709,6 +1744,7 @@ pub(crate) fn tool_execution_error_result(error: &McpAdapterError) -> Value {
                 "text": text
             }
         ],
+        "structuredContent": structured_content,
         "isError": true
     })
 }

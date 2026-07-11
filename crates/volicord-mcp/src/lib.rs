@@ -15,6 +15,7 @@ mod local_http;
 mod local_web_consent;
 mod prelude;
 mod routing;
+mod schema_validation;
 mod stdio;
 #[cfg(test)]
 mod tests;

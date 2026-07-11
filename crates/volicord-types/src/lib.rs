@@ -930,6 +930,56 @@ mod tests {
     }
 
     #[test]
+    fn generated_mcp_response_schema_includes_stable_adapter_error_shape() {
+        let schema = mcp_response_schema("volicord.status").expect("status MCP response schema");
+        assert_eq!(schema["type"], "object");
+
+        let error = definition(&schema, "McpToolErrorResponse");
+        assert_required(
+            error,
+            &[
+                "code",
+                "tool_name",
+                "retryable",
+                "reached_core",
+                "committed",
+                "issues",
+            ],
+            "McpToolErrorResponse",
+        );
+        assert_eq!(error["additionalProperties"], false);
+        assert_eq!(
+            schema_enum_strings(definition(&schema, "McpToolErrorCode").clone()),
+            BTreeSet::from([
+                "MCP_ADAPTER_PRECONDITION_FAILED".to_owned(),
+                "MCP_INVALID_ARGUMENTS".to_owned(),
+            ])
+        );
+        assert_eq!(
+            schema_enum_strings(definition(&schema, "McpToolIssueCode").clone()),
+            BTreeSet::from([
+                "MCP_ADAPTER_PRECONDITION_FAILED".to_owned(),
+                "MCP_ARGUMENT_DECODE_FAILED".to_owned(),
+                "MCP_ARGUMENT_ENUM_VALUE".to_owned(),
+                "MCP_ARGUMENT_REQUIRED".to_owned(),
+                "MCP_ARGUMENT_TYPE_MISMATCH".to_owned(),
+                "MCP_ARGUMENT_UNKNOWN".to_owned(),
+            ])
+        );
+
+        assert_eq!(
+            serde_json::to_value(McpToolErrorCode::InvalidArguments)
+                .expect("error code should serialize"),
+            "MCP_INVALID_ARGUMENTS"
+        );
+        assert_eq!(
+            serde_json::to_value(McpToolIssueCode::ArgumentDecodeFailed)
+                .expect("issue code should serialize"),
+            "MCP_ARGUMENT_DECODE_FAILED"
+        );
+    }
+
+    #[test]
     fn close_method_family_schema_separates_read_check_from_mutation_request() {
         let check = public_request_schema("volicord.check_close").expect("check_close schema");
         assert_required(&check, &["envelope", "task_id"], "CheckCloseRequest");

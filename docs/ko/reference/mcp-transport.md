@@ -21,8 +21,8 @@
 - 대기 중인 사용자 판단을 위한 로컬 consent URL 대체 경로
 - 하나의 내부 Agent Connection 바인딩에 대한 MCP 시작 검증
 - 전송 경계에서의 MCP `tools/list`와 `tools/call` 동작
-- 내부 래퍼와 호출 메타데이터를 숨기는 MCP 표시 도구 스키마 투영
-- MCP `tools/call` 응답 래핑
+- 내부 래퍼와 호출 메타데이터를 숨기는 MCP 표시 입력·출력 도구 스키마 투영
+- MCP `tools/call` 응답 래핑과 어댑터 오류 형태
 - 프로세스 종료와 재연결 동작
 
 이 문서는 담당하지 않습니다.
@@ -733,15 +733,45 @@ MCP 어댑터는 Core에 넘기기 전에 Core 래퍼를 생성합니다. 어댑
 사용합니다. 지원 값은 `summary`, `workflow`, `full`이며 `detail`을 생략하면 기본값은
 `workflow`입니다.
 
-알려진 공개 Volicord 메서드 도구에서 객체 `arguments`가 도구 입력 스키마를 통과하지
-못하면 `isError: true`와 실행 가능한 텍스트를 담은 `CallToolResult`를 반환합니다.
-이는 JSON-RPC 프로토콜 오류가 아니라 도구 실행 오류입니다.
+알려진 도구에서 어댑터는 프로젝트 선택, 세션 감시 설정, 생성 Core 래퍼 작성, Core 메서드
+진입보다 먼저 객체 `arguments`를 정확히 광고한 `inputSchema`로 검증합니다. 경계가 정해진
+사전 검증기는 지원하는 구조 키워드인 로컬 `$ref`, `type`, `enum`, `required`,
+`properties`, `additionalProperties`, 배열 `items`, `allOf`/`anyOf`/`oneOf` 분기를
+검사합니다. 서로 독립적으로 평가할 수 있으면 여러 루트·중첩 필드 누락, 알 수 없는 필드,
+타입 불일치, enum 불일치, 배열 항목 오류를 한 결과에 함께 담습니다. 지원하지 않는 JSON
+Schema 키워드는 타입 디코더나 이후 담당 계층에 맡기며, 사전 검증기가 이를 이유로 유효한
+입력을 거절하면 안 됩니다. 타입 디코더에서만 발견되는 나머지 실패는 구조화된 디코드 issue
+하나로 변환합니다.
 
-공개 Volicord 메서드 도구 호출에 대해 어댑터는 먼저
-[Agent Connection](agent-connection.md#current-connection-context)이 담당하는 결정적 저장소
-루트 프로젝트 선택과 프로젝트별 검증을 수행합니다. 모호하거나 사용할 수 없는 프로젝트
-선택은 Core 실행 전에 거절하고, 실행 가능한 텍스트는 상태를 고칠
+입력 검증은 어댑터 전제조건 검사보다 먼저 수행합니다. 유효한 입력을 디코딩한 다음 공개
+메서드 도구 호출은 [Agent Connection](agent-connection.md#current-connection-context)이
+담당하는 결정적 저장소 루트 프로젝트 선택과 프로젝트별 검증을 수행합니다. 모호하거나
+사용할 수 없는 프로젝트 선택은 Core 실행 전에 거절하며, 해당될 때 메시지는 상태를 고칠
 `volicord project use` 또는 `volicord connection add` 명령을 이름 붙여야 합니다.
+
+알려진 도구의 입력과 어댑터 전제조건 실패는 `isError: true`인 `CallToolResult`를
+반환합니다. `result.structuredContent`는 다음 필드를 가진 객체입니다.
+
+- `code`: `MCP_INVALID_ARGUMENTS` 또는 `MCP_ADAPTER_PRECONDITION_FAILED`
+- `tool_name`: 요청한 MCP 도구 이름
+- `retryable`: 인자를 고쳐 다시 호출할 수 있으면 `true`, 연결·프로젝트·모드·환경 수리가
+  필요한 어댑터 전제조건이면 `false`
+- `reached_core: false`
+- `committed: false`
+- 비어 있지 않은 `issues`: 각 항목은 RFC 6901 JSON Pointer `path`, 안정적인 `code`, 사람이
+  읽는 `message`를 가집니다.
+
+안정적인 issue 코드는 `MCP_ARGUMENT_REQUIRED`, `MCP_ARGUMENT_UNKNOWN`,
+`MCP_ARGUMENT_TYPE_MISMATCH`, `MCP_ARGUMENT_ENUM_VALUE`,
+`MCP_ARGUMENT_DECODE_FAILED`, `MCP_ADAPTER_PRECONDITION_FAILED`입니다. 루트 포인터는 빈
+문자열입니다. `result.content[0].text`는 같은 객체를 JSON으로 직렬화한 값이며 이를 파싱한
+결과는 `result.structuredContent`와 같아야 합니다.
+
+이 실패는 Core 메서드에 진입하거나 Core 메서드 상태를 커밋하거나 프로젝트 aggregate
+state version을 올리거나 Core 메서드 이벤트를 만들지 않습니다. 전송 소유 진단 수명주기
+관찰은 별도 경계입니다. 잘못된 JSON-RPC 요청 래퍼, 객체가 아닌 `tools/call.arguments`, 알
+수 없는 도구 이름은 기존 JSON-RPC 오류 동작을 유지합니다. Core/도메인 거절 응답도 일반
+Volicord 응답 형태와 전송 의미 `isError: false`를 유지합니다.
 
 `volicord mcp --stdio`는 MCP 태스크 보강 도구 실행을 광고하거나 구현하지 않습니다. `tools/call`
 요청은 `CreateTaskResult`를 반환하지 않으며, `task` 파라미터는 지원되는 기준 기능이

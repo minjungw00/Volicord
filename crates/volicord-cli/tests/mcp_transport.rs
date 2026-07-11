@@ -257,18 +257,25 @@ fn volicord_mcp_subcommand_stdio_uses_line_delimited_json_and_reconnects_state(
         .expect("intake response should include a task ref")
         .to_owned();
 
-    assert_eq!(responses[&6]["result"]["isError"], json!(true));
-    let connection_rejection = responses[&6]["result"]["content"][0]["text"]
-        .as_str()
-        .expect("connection rejection should be text");
-    assert!(connection_rejection.contains("connection_id"));
-
-    assert!(responses[&7].get("error").is_none());
-    assert_eq!(responses[&7]["result"]["isError"], json!(true));
-    let tool_error = responses[&7]["result"]["content"][0]["text"]
-        .as_str()
-        .expect("invalid known-tool arguments should return text content");
-    assert!(tool_error.contains("unknown field"));
+    for (id, path) in [(6, "/connection_id"), (7, "/unexpected")] {
+        assert!(responses[&id].get("error").is_none());
+        assert_eq!(responses[&id]["result"]["isError"], json!(true));
+        let structured = &responses[&id]["result"]["structuredContent"];
+        let text = responses[&id]["result"]["content"][0]["text"]
+            .as_str()
+            .expect("invalid known-tool arguments should return JSON text content");
+        assert_eq!(serde_json::from_str::<Value>(text)?, *structured);
+        assert_eq!(structured["code"], "MCP_INVALID_ARGUMENTS");
+        assert_eq!(structured["tool_name"], "volicord.status");
+        assert_eq!(structured["retryable"], true);
+        assert_eq!(structured["reached_core"], false);
+        assert_eq!(structured["committed"], false);
+        assert!(structured["issues"]
+            .as_array()
+            .expect("structured error should include issues")
+            .iter()
+            .any(|issue| issue["path"] == path && issue["code"] == "MCP_ARGUMENT_UNKNOWN"));
+    }
 
     let reconnect_before_handshake = run_child(
         fixture.connection_command(["--stdio", "--connection", fixture.connection_id()]),

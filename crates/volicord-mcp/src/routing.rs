@@ -340,8 +340,15 @@ pub(crate) struct ListProjectItem {
 }
 
 pub(crate) fn list_projects_output_schema() -> Value {
-    serde_json::to_value(schema_for!(ListProjectsResult))
-        .expect("list-projects output schema should serialize")
+    let mut schema = serde_json::to_value(schema_for!(
+        volicord_types::McpToolStructuredContent<ListProjectsResult>
+    ))
+    .expect("list-projects output schema should serialize");
+    schema
+        .as_object_mut()
+        .expect("list-projects output schema should be an object")
+        .insert("type".to_owned(), Value::String("object".to_owned()));
+    schema
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

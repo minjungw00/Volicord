@@ -31,8 +31,8 @@ pub enum McpAdapterError {
     UnknownTool(String),
     InvalidParams {
         tool_name: String,
-        source: serde_json::Error,
-        guidance: Option<String>,
+        issues: Vec<McpToolErrorIssue>,
+        source: Option<serde_json::Error>,
     },
     ToolExecution {
         tool_name: String,
@@ -52,12 +52,19 @@ impl fmt::Display for McpAdapterError {
             Self::UnknownTool(tool_name) => write!(formatter, "unknown MCP tool: {tool_name}"),
             Self::InvalidParams {
                 tool_name,
+                issues,
                 source,
-                guidance,
             } => {
-                write!(formatter, "invalid params for {tool_name}: {source}")?;
-                if let Some(guidance) = guidance {
-                    write!(formatter, "; {guidance}")?;
+                write!(formatter, "invalid params for {tool_name}")?;
+                for issue in issues {
+                    write!(
+                        formatter,
+                        "; {:?} at {}: {}",
+                        issue.code, issue.path, issue.message
+                    )?;
+                }
+                if let Some(source) = source {
+                    write!(formatter, "; decoder source: {source}")?;
                 }
                 Ok(())
             }
@@ -76,12 +83,16 @@ impl fmt::Display for McpAdapterError {
 impl Error for McpAdapterError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            Self::InvalidParams { source, .. } => Some(source),
+            Self::InvalidParams {
+                source: Some(source),
+                ..
+            } => Some(source),
             Self::Core(error) => Some(error),
             Self::Store(error) => Some(error),
             Self::Io(error) => Some(error),
             Self::Json(error) => Some(error),
             Self::UnknownTool(_)
+            | Self::InvalidParams { source: None, .. }
             | Self::ToolExecution { .. }
             | Self::Protocol(_)
             | Self::Environment(_) => None,

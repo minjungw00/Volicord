@@ -1286,6 +1286,7 @@ documents:
   - per-call MCP project selection and validation
   - MCP public tool input and output schema surfaces without internal protocol envelope fields
   - MCP tool behavior annotations
+  - MCP known-tool argument and adapter-precondition error shapes
   - line-delimited JSON-RPC over stdio
   - MCP supported request method set
   - '`tools/call` Volicord structured-content and compatibility-text response wrapping'

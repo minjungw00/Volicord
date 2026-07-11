@@ -1,6 +1,7 @@
 use crate::errors::McpAdapterError;
 use crate::prelude::*;
 use crate::routing::*;
+use crate::schema_validation::validate_mcp_tool_arguments;
 use crate::tool_registry::*;
 use crate::util::*;
 
@@ -652,9 +653,7 @@ impl McpAdapter {
         session_id: Option<&str>,
         host_elicitation_available: bool,
     ) -> Result<PipelineResponse, McpAdapterError> {
-        if let Some(response) = self.readonly_storage_rejection_for_tool(tool_name)? {
-            return Ok(response);
-        }
+        validate_mcp_tool_arguments(tool_name, &params)?;
         match tool_name {
             INTAKE_TOOL_NAME => {
                 self.call_intake(tool_name, params, session_id, host_elicitation_available)
@@ -1099,6 +1098,9 @@ impl McpAdapter {
             InvocationContext,
         ) -> Result<PipelineResponse, CorePipelineError>,
     {
+        if let Some(response) = self.readonly_storage_rejection_for_tool(tool_name)? {
+            return Ok(response);
+        }
         let operation_category = request.operation_category();
         self.ensure_mode_allows(tool_name, operation_category)?;
         let invocation = self.derive_invocation_context(
@@ -1116,6 +1118,7 @@ impl McpAdapter {
         params: Value,
         session_id: Option<&str>,
     ) -> Result<Value, McpAdapterError> {
+        validate_mcp_tool_arguments(tool_name, &params)?;
         match tool_name {
             LIST_PROJECTS_TOOL_NAME => {
                 let object = params
@@ -1194,6 +1197,7 @@ impl McpAdapter {
         reject_internal_mcp_argument_fields(object, tool_name)?;
         let requested_project_selector =
             optional_string_field(object, "project_selector", tool_name)?;
+        let arguments = self.decode_params(tool_name, params)?;
         let selected_project_id = self.select_project(requested_project_selector.as_deref())?;
         if let Some(session_id) = session_id {
             if self.storage_capability_for_project(&selected_project_id)?
@@ -1212,7 +1216,6 @@ impl McpAdapter {
                 )?;
             }
         }
-        let arguments = self.decode_params(tool_name, params)?;
         Ok(PreparedMcpArguments {
             arguments,
             project_id: selected_project_id,
@@ -1396,10 +1399,25 @@ impl McpAdapter {
         T: serde::de::DeserializeOwned,
     {
         let diagnostic_params = params.clone();
-        serde_json::from_value(params).map_err(|source| McpAdapterError::InvalidParams {
-            tool_name: tool_name.to_owned(),
-            guidance: invalid_argument_guidance(tool_name, &diagnostic_params, &source),
-            source,
+        serde_json::from_value(params).map_err(|source| {
+            let guidance = invalid_argument_guidance(tool_name, &diagnostic_params, &source);
+            let message = match guidance {
+                Some(guidance) => format!(
+                    "Invalid arguments for {tool_name} {guidance}. Decoder detail: {source}."
+                ),
+                None => format!(
+                    "Invalid arguments for {tool_name}: {source}. Check the tool input schema and retry."
+                ),
+            };
+            McpAdapterError::InvalidParams {
+                tool_name: tool_name.to_owned(),
+                issues: vec![McpToolErrorIssue {
+                    path: String::new(),
+                    code: McpToolIssueCode::ArgumentDecodeFailed,
+                    message,
+                }],
+                source: Some(source),
+            }
         })
     }
 }
