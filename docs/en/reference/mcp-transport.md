@@ -883,6 +883,18 @@ independently. Unsupported JSON Schema keywords are left to the typed decoder or
 later owner and must not cause the prevalidator to reject an otherwise valid
 input. A residual typed-decoder failure becomes one structured decode issue.
 
+The fixed `MAX_VALIDATION_ISSUES` value is `32`. Validation stops traversing an
+invalid aggregate when continuing would exceed that issue budget. Each union
+branch receives an independent bounded evaluation: reaching the budget in an
+earlier invalid `anyOf` or `oneOf` branch must not prevent evaluation of later
+branches, and a later valid branch still makes the union acceptable. Returned
+issue paths and messages are limited to `256` and `512` UTF-8 bytes,
+respectively. Path shortening preserves RFC 6901 JSON Pointer syntax, and enum
+and received-value previews are bounded before they enter a message. After JSON
+escaping and compatibility-text wrapping, the compact JSON serialization of the
+entire known-tool error `CallToolResult` is at most `65536` bytes. The adapter
+may omit otherwise reportable issues to satisfy that final byte limit.
+
 Input validation precedes adapter preconditions. After valid input decoding, a
 public method-tool call performs deterministic repository-root project selection
 and per-project validation owned by
@@ -900,6 +912,10 @@ Known-tool input and adapter-precondition failures return a `CallToolResult` wit
   precondition that requires connection, project, mode, or environment repair
 - `reached_core: false`
 - `committed: false`
+- `reported_issue_count`: exactly the length of the returned `issues` array
+- `truncated`: `true` exactly when further validation traversal or otherwise
+  returnable path, message, or issue detail was suppressed by an issue, field,
+  or whole-result bound; otherwise `false`
 - non-empty `issues`, where every item has RFC 6901 JSON Pointer `path`, stable
   `code`, and human-readable `message`
 
@@ -908,6 +924,8 @@ The stable issue codes are `MCP_ARGUMENT_REQUIRED`, `MCP_ARGUMENT_UNKNOWN`,
 `MCP_ARGUMENT_DECODE_FAILED`, and `MCP_ADAPTER_PRECONDITION_FAILED`. The root
 pointer is the empty string. `result.content[0].text` is a JSON serialization of
 the same object and must parse equal to `result.structuredContent`.
+Adapter-precondition and residual typed-decoder errors use the same
+`reported_issue_count`, `truncated`, field-size, and whole-result rules.
 
 These failures do not enter a Core method, commit Core method state, advance the
 project aggregate state version, or create Core method events. Transport-owned

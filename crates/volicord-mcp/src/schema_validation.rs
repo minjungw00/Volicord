@@ -1,9 +1,39 @@
-use crate::errors::McpAdapterError;
+use crate::errors::{bound_mcp_tool_error_issue, McpAdapterError};
 use crate::prelude::*;
 use crate::tool_registry::mcp_tool_input_schema;
 use std::sync::OnceLock;
 
 const MAX_SCHEMA_DEPTH: usize = 64;
+
+#[derive(Debug, Default)]
+struct ValidationIssues {
+    issues: Vec<McpToolErrorIssue>,
+    truncated: bool,
+}
+
+impl ValidationIssues {
+    fn can_continue(&mut self) -> bool {
+        if self.issues.len() < MAX_VALIDATION_ISSUES {
+            true
+        } else {
+            self.truncated = true;
+            false
+        }
+    }
+
+    fn push(&mut self, issue: McpToolErrorIssue) {
+        let (issue, issue_truncated) = bound_mcp_tool_error_issue(issue);
+        self.truncated |= issue_truncated;
+        if self.issues.contains(&issue) {
+            return;
+        }
+        if self.issues.len() < MAX_VALIDATION_ISSUES {
+            self.issues.push(issue);
+        } else {
+            self.truncated = true;
+        }
+    }
+}
 
 pub(crate) fn validate_mcp_tool_arguments(
     tool_name: &str,
@@ -12,14 +42,15 @@ pub(crate) fn validate_mcp_tool_arguments(
     let schema = cached_tool_input_schemas()
         .get(tool_name)
         .ok_or_else(|| McpAdapterError::UnknownTool(tool_name.to_owned()))?;
-    let mut issues = Vec::new();
-    validate_schema_instance(schema, schema, arguments, "", 0, &mut issues);
-    if issues.is_empty() {
+    let mut validation = ValidationIssues::default();
+    validate_schema_instance(schema, schema, arguments, "", 0, &mut validation);
+    if validation.issues.is_empty() {
         Ok(())
     } else {
         Err(McpAdapterError::InvalidParams {
             tool_name: tool_name.to_owned(),
-            issues,
+            issues: validation.issues,
+            truncated: validation.truncated,
             source: None,
         })
     }
@@ -49,9 +80,13 @@ fn validate_schema_instance(
     instance: &Value,
     path: &str,
     depth: usize,
-    issues: &mut Vec<McpToolErrorIssue>,
+    issues: &mut ValidationIssues,
 ) {
+    if !issues.can_continue() {
+        return;
+    }
     if depth >= MAX_SCHEMA_DEPTH {
+        issues.truncated = true;
         return;
     }
     let Some(object) = schema.as_object() else {
@@ -67,11 +102,17 @@ fn validate_schema_instance(
 
     if let Some(branches) = object.get("allOf").and_then(Value::as_array) {
         for branch in branches {
+            if !issues.can_continue() {
+                break;
+            }
             validate_schema_instance(root_schema, branch, instance, path, depth + 1, issues);
         }
     }
     for keyword in ["anyOf", "oneOf"] {
         if let Some(branches) = object.get(keyword).and_then(Value::as_array) {
+            if !issues.can_continue() {
+                break;
+            }
             validate_union(root_schema, branches, instance, path, depth + 1, issues);
         }
     }
@@ -81,40 +122,29 @@ fn validate_schema_instance(
             .iter()
             .any(|expected| instance_matches_type(instance, expected))
         {
-            push_issue(
-                issues,
-                McpToolErrorIssue {
-                    path: path.to_owned(),
-                    code: McpToolIssueCode::ArgumentTypeMismatch,
-                    message: format!(
-                        "Expected {}, but received {}.",
-                        expected_types.join(" or "),
-                        instance_type_name(instance)
-                    ),
-                },
-            );
+            issues.push(McpToolErrorIssue {
+                path: path.to_owned(),
+                code: McpToolIssueCode::ArgumentTypeMismatch,
+                message: format!(
+                    "Expected {}, but received {}.",
+                    expected_types.join(" or "),
+                    instance_type_name(instance)
+                ),
+            });
             return;
         }
     }
 
     if let Some(allowed) = object.get("enum").and_then(Value::as_array) {
         if !allowed.contains(instance) {
-            let allowed = allowed
-                .iter()
-                .map(compact_json)
-                .collect::<Vec<_>>()
-                .join(", ");
-            push_issue(
-                issues,
-                McpToolErrorIssue {
-                    path: path.to_owned(),
-                    code: McpToolIssueCode::ArgumentEnumValue,
-                    message: format!(
-                        "Expected one of [{allowed}], but received {}.",
-                        compact_json(instance)
-                    ),
-                },
-            );
+            let (allowed, allowed_truncated) = compact_enum_values(allowed);
+            let (received, received_truncated) = compact_json_preview(instance);
+            issues.truncated |= allowed_truncated || received_truncated;
+            issues.push(McpToolErrorIssue {
+                path: path.to_owned(),
+                code: McpToolIssueCode::ArgumentEnumValue,
+                message: format!("Expected one of [{allowed}], but received {}.", received),
+            });
             return;
         }
     }
@@ -132,6 +162,9 @@ fn validate_schema_instance(
     if let Some(instance_array) = instance.as_array() {
         if let Some(item_schema) = object.get("items").filter(|items| items.is_object()) {
             for (index, item) in instance_array.iter().enumerate() {
+                if !issues.can_continue() {
+                    break;
+                }
                 validate_schema_instance(
                     root_schema,
                     item_schema,
@@ -151,11 +184,13 @@ fn validate_union(
     instance: &Value,
     path: &str,
     depth: usize,
-    issues: &mut Vec<McpToolErrorIssue>,
+    issues: &mut ValidationIssues,
 ) {
-    let mut best: Option<(u8, Vec<McpToolErrorIssue>)> = None;
+    let mut best: Option<(u8, ValidationIssues)> = None;
     for branch in branches {
-        let mut branch_issues = Vec::new();
+        // Each branch receives its own issue budget. Reaching the cap in an
+        // invalid branch must not prevent a later valid branch from matching.
+        let mut branch_issues = ValidationIssues::default();
         validate_schema_instance(
             root_schema,
             branch,
@@ -164,7 +199,7 @@ fn validate_union(
             depth,
             &mut branch_issues,
         );
-        if branch_issues.is_empty() {
+        if branch_issues.issues.is_empty() {
             return;
         }
         let compatibility = schema_instance_compatibility(root_schema, branch, instance, depth);
@@ -173,15 +208,19 @@ fn validate_union(
             .is_none_or(|(current_compatibility, current)| {
                 compatibility > *current_compatibility
                     || (compatibility == *current_compatibility
-                        && branch_issues.len() < current.len())
+                        && branch_issues.issues.len() < current.issues.len())
             })
         {
             best = Some((compatibility, branch_issues));
         }
     }
     if let Some((_, best)) = best {
-        for issue in best {
-            push_issue(issues, issue);
+        issues.truncated |= best.truncated;
+        for issue in best.issues {
+            if !issues.can_continue() {
+                break;
+            }
+            issues.push(issue);
         }
     }
 }
@@ -239,26 +278,29 @@ fn validate_object(
     instance: &Map<String, Value>,
     path: &str,
     depth: usize,
-    issues: &mut Vec<McpToolErrorIssue>,
+    issues: &mut ValidationIssues,
 ) {
     let properties = schema.get("properties").and_then(Value::as_object);
 
     if let Some(required) = schema.get("required").and_then(Value::as_array) {
         for field in required.iter().filter_map(Value::as_str) {
+            if !issues.can_continue() {
+                break;
+            }
             if !instance.contains_key(field) {
-                push_issue(
-                    issues,
-                    McpToolErrorIssue {
-                        path: pointer_child(path, field),
-                        code: McpToolIssueCode::ArgumentRequired,
-                        message: format!("Required argument `{field}` is missing."),
-                    },
-                );
+                issues.push(McpToolErrorIssue {
+                    path: pointer_child(path, field),
+                    code: McpToolIssueCode::ArgumentRequired,
+                    message: format!("Required argument `{field}` is missing."),
+                });
             }
         }
     }
 
     for (field, value) in instance {
+        if !issues.can_continue() {
+            break;
+        }
         if let Some(property_schema) = properties.and_then(|properties| properties.get(field)) {
             validate_schema_instance(
                 root_schema,
@@ -272,14 +314,15 @@ fn validate_object(
         }
 
         match schema.get("additionalProperties") {
-            Some(Value::Bool(false)) => push_issue(
-                issues,
-                McpToolErrorIssue {
+            Some(Value::Bool(false)) => {
+                let (field_preview, field_truncated) = text_preview(field, 128);
+                issues.truncated |= field_truncated;
+                issues.push(McpToolErrorIssue {
                     path: pointer_child(path, field),
                     code: McpToolIssueCode::ArgumentUnknown,
-                    message: format!("Unknown argument `{field}` is not allowed."),
-                },
-            ),
+                    message: format!("Unknown argument `{}` is not allowed.", field_preview),
+                })
+            }
             Some(additional_schema) if additional_schema.is_object() => validate_schema_instance(
                 root_schema,
                 additional_schema,
@@ -340,14 +383,52 @@ fn pointer_child(path: &str, segment: &str) -> String {
     format!("{path}/{escaped}")
 }
 
-fn compact_json(value: &Value) -> String {
-    serde_json::to_string(value).unwrap_or_else(|_| "<unserializable>".to_owned())
+fn compact_enum_values(values: &[Value]) -> (String, bool) {
+    let mut preview = String::new();
+    let mut truncated = false;
+    for value in values {
+        let (value, value_truncated) = compact_json_preview(value);
+        truncated |= value_truncated;
+        let separator = if preview.is_empty() { "" } else { ", " };
+        if preview.len() + separator.len() + value.len() > 256 {
+            preview.push_str(", ...");
+            truncated = true;
+            break;
+        }
+        preview.push_str(separator);
+        preview.push_str(&value);
+    }
+    (preview, truncated)
 }
 
-fn push_issue(issues: &mut Vec<McpToolErrorIssue>, issue: McpToolErrorIssue) {
-    if !issues.contains(&issue) {
-        issues.push(issue);
+fn compact_json_preview(value: &Value) -> (String, bool) {
+    match value {
+        Value::String(value) => {
+            let (preview, truncated) = text_preview(value, 128);
+            (
+                serde_json::to_string(&preview)
+                    .unwrap_or_else(|_| "\"<unserializable>\"".to_owned()),
+                truncated,
+            )
+        }
+        Value::Array(values) => (format!("<array with {} items>", values.len()), true),
+        Value::Object(values) => (format!("<object with {} fields>", values.len()), true),
+        _ => (
+            serde_json::to_string(value).unwrap_or_else(|_| "<unserializable>".to_owned()),
+            false,
+        ),
     }
+}
+
+fn text_preview(value: &str, max_bytes: usize) -> (String, bool) {
+    if value.len() <= max_bytes {
+        return (value.to_owned(), false);
+    }
+    let mut end = max_bytes.saturating_sub(3);
+    while !value.is_char_boundary(end) {
+        end = end.saturating_sub(1);
+    }
+    (format!("{}...", &value[..end]), true)
 }
 
 #[cfg(test)]
@@ -368,7 +449,7 @@ mod tests {
             "required": ["value"],
             "additionalProperties": false
         });
-        let mut issues = Vec::new();
+        let mut issues = ValidationIssues::default();
 
         validate_schema_instance(
             &schema,
@@ -379,6 +460,67 @@ mod tests {
             &mut issues,
         );
 
-        assert!(issues.is_empty());
+        assert!(issues.issues.is_empty());
+        assert!(!issues.truncated);
+    }
+
+    #[test]
+    fn aggregate_validation_stops_at_the_reported_issue_cap() {
+        let schema = json!({
+            "type": "array",
+            "items": { "type": "string" }
+        });
+        let instance = Value::Array(
+            (0..(MAX_VALIDATION_ISSUES + 20))
+                .map(|value| json!(value))
+                .collect(),
+        );
+        let mut issues = ValidationIssues::default();
+
+        validate_schema_instance(&schema, &schema, &instance, "", 0, &mut issues);
+
+        assert_eq!(issues.issues.len(), MAX_VALIDATION_ISSUES);
+        assert!(issues.truncated);
+        assert_eq!(
+            issues.issues.last().map(|issue| issue.path.as_str()),
+            Some("/31")
+        );
+    }
+
+    #[test]
+    fn capped_invalid_union_branch_does_not_hide_a_later_valid_branch() {
+        let required = (0..(MAX_VALIDATION_ISSUES + 10))
+            .map(|index| Value::String(format!("missing_{index}")))
+            .collect::<Vec<_>>();
+        let schema = json!({
+            "anyOf": [
+                {
+                    "type": "object",
+                    "required": required,
+                    "additionalProperties": true
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "accepted": { "type": "boolean" }
+                    },
+                    "required": ["accepted"],
+                    "additionalProperties": false
+                }
+            ]
+        });
+        let mut issues = ValidationIssues::default();
+
+        validate_schema_instance(
+            &schema,
+            &schema,
+            &json!({ "accepted": true }),
+            "",
+            0,
+            &mut issues,
+        );
+
+        assert!(issues.issues.is_empty());
+        assert!(!issues.truncated);
     }
 }

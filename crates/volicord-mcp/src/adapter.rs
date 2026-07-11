@@ -1420,6 +1420,7 @@ impl McpAdapter {
                     code: McpToolIssueCode::ArgumentDecodeFailed,
                     message,
                 }],
+                truncated: false,
                 source: Some(source),
             }
         })

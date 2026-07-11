@@ -1044,11 +1044,33 @@ mod tests {
                 "retryable",
                 "reached_core",
                 "committed",
+                "reported_issue_count",
+                "truncated",
                 "issues",
             ],
             "McpToolErrorResponse",
         );
         assert_eq!(error["additionalProperties"], false);
+        assert_eq!(error["properties"]["reported_issue_count"]["minimum"], 1.0);
+        assert_eq!(
+            error["properties"]["reported_issue_count"]["maximum"],
+            MAX_VALIDATION_ISSUES as f64
+        );
+        assert_eq!(error["properties"]["issues"]["minItems"], 1);
+        assert_eq!(
+            error["properties"]["issues"]["maxItems"],
+            MAX_VALIDATION_ISSUES
+        );
+        let issue = definition(&schema, "McpToolErrorIssue");
+        assert_eq!(
+            issue["properties"]["path"]["maxLength"],
+            MAX_MCP_TOOL_ISSUE_PATH_BYTES
+        );
+        assert_eq!(issue["properties"]["message"]["minLength"], 1);
+        assert_eq!(
+            issue["properties"]["message"]["maxLength"],
+            MAX_MCP_TOOL_ISSUE_MESSAGE_BYTES
+        );
         assert_eq!(
             schema_enum_strings(definition(&schema, "McpToolErrorCode").clone()),
             BTreeSet::from([

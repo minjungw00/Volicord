@@ -32,6 +32,7 @@ pub enum McpAdapterError {
     InvalidParams {
         tool_name: String,
         issues: Vec<McpToolErrorIssue>,
+        truncated: bool,
         source: Option<serde_json::Error>,
     },
     ToolExecution {
@@ -53,6 +54,7 @@ impl fmt::Display for McpAdapterError {
             Self::InvalidParams {
                 tool_name,
                 issues,
+                truncated,
                 source,
             } => {
                 write!(formatter, "invalid params for {tool_name}")?;
@@ -62,6 +64,9 @@ impl fmt::Display for McpAdapterError {
                         "; {:?} at {}: {}",
                         issue.code, issue.path, issue.message
                     )?;
+                }
+                if *truncated {
+                    formatter.write_str("; additional validation detail was truncated")?;
                 }
                 if let Some(source) = source {
                     write!(formatter, "; decoder source: {source}")?;
@@ -104,4 +109,45 @@ impl From<RuntimeHomeResolutionError> for McpAdapterError {
     fn from(error: RuntimeHomeResolutionError) -> Self {
         Self::Environment(error.to_string())
     }
+}
+
+pub(crate) fn bound_mcp_tool_error_issue(
+    mut issue: McpToolErrorIssue,
+) -> (McpToolErrorIssue, bool) {
+    let (path, path_truncated) = truncate_json_pointer(&issue.path, MAX_MCP_TOOL_ISSUE_PATH_BYTES);
+    let (message, message_truncated) =
+        truncate_utf8_with_suffix(&issue.message, MAX_MCP_TOOL_ISSUE_MESSAGE_BYTES);
+    issue.path = path;
+    issue.message = if message.is_empty() {
+        "Validation failed.".to_owned()
+    } else {
+        message
+    };
+    (issue, path_truncated || message_truncated)
+}
+
+fn truncate_json_pointer(value: &str, max_bytes: usize) -> (String, bool) {
+    let (mut truncated, was_truncated) = truncate_utf8_with_suffix(value, max_bytes);
+    if was_truncated {
+        let suffix_start = truncated.len().saturating_sub(3);
+        if truncated[..suffix_start].ends_with('~') {
+            truncated.remove(suffix_start - 1);
+        }
+    }
+    (truncated, was_truncated)
+}
+
+fn truncate_utf8_with_suffix(value: &str, max_bytes: usize) -> (String, bool) {
+    if value.len() <= max_bytes {
+        return (value.to_owned(), false);
+    }
+
+    const SUFFIX: &str = "...";
+    let mut end = max_bytes.saturating_sub(SUFFIX.len());
+    while !value.is_char_boundary(end) {
+        end = end.saturating_sub(1);
+    }
+    let mut truncated = value[..end].to_owned();
+    truncated.push_str(SUFFIX);
+    (truncated, true)
 }

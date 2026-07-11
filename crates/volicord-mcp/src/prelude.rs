@@ -64,6 +64,8 @@ pub(crate) use volicord_types::{
     SessionWatchCoverageBasis, SessionWatchScanSummary, SessionWatchStatus, StageArtifactRequest,
     StateRecordRef, StatusRequest, ToolEnvelope, UpdateScopeRequest, UserJudgment,
     UserJudgmentContext, UserJudgmentOption, UserJudgmentOptionAction, UserJudgmentStatus,
+    MAX_MCP_TOOL_ERROR_RESULT_BYTES, MAX_MCP_TOOL_ISSUE_MESSAGE_BYTES,
+    MAX_MCP_TOOL_ISSUE_PATH_BYTES, MAX_VALIDATION_ISSUES,
     VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL, VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB,
     VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
     VERIFICATION_BASIS_MCP_LOCAL_HTTP_CONNECTION_BINDING,

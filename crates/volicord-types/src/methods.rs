@@ -90,6 +90,18 @@ pub enum McpToolErrorCode {
     AdapterPreconditionFailed,
 }
 
+/// Maximum number of independently discoverable issues returned for one known MCP tool call.
+pub const MAX_VALIDATION_ISSUES: usize = 32;
+
+/// Maximum UTF-8 byte length of one returned MCP tool issue JSON Pointer.
+pub const MAX_MCP_TOOL_ISSUE_PATH_BYTES: usize = 256;
+
+/// Maximum UTF-8 byte length of one returned MCP tool issue message.
+pub const MAX_MCP_TOOL_ISSUE_MESSAGE_BYTES: usize = 512;
+
+/// Maximum compact-JSON byte length of one known-tool MCP `CallToolResult` error.
+pub const MAX_MCP_TOOL_ERROR_RESULT_BYTES: usize = 64 * 1024;
+
 /// Stable issue code within a known MCP tool error.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum McpToolIssueCode {
@@ -111,8 +123,10 @@ pub enum McpToolIssueCode {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct McpToolErrorIssue {
+    #[schemars(length(max = "MAX_MCP_TOOL_ISSUE_PATH_BYTES"))]
     pub path: String,
     pub code: McpToolIssueCode,
+    #[schemars(length(min = 1, max = "MAX_MCP_TOOL_ISSUE_MESSAGE_BYTES"))]
     pub message: String,
 }
 
@@ -125,6 +139,10 @@ pub struct McpToolErrorResponse {
     pub retryable: bool,
     pub reached_core: bool,
     pub committed: bool,
+    #[schemars(range(min = 1, max = "MAX_VALIDATION_ISSUES"))]
+    pub reported_issue_count: usize,
+    pub truncated: bool,
+    #[schemars(length(min = 1, max = "MAX_VALIDATION_ISSUES"))]
     pub issues: Vec<McpToolErrorIssue>,
 }
 

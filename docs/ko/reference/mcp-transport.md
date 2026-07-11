@@ -787,6 +787,16 @@ Schema 키워드는 타입 디코더나 이후 담당 계층에 맡기며, 사�
 입력을 거절하면 안 됩니다. 타입 디코더에서만 발견되는 나머지 실패는 구조화된 디코드 issue
 하나로 변환합니다.
 
+고정된 `MAX_VALIDATION_ISSUES` 값은 `32`입니다. 유효하지 않은 집계 입력을 더 탐색하면
+이 오류 항목 허용량을 넘게 되는 시점에 검증 탐색을 중단합니다. 각 조합 분기는 독립된 상한
+안에서 평가합니다. 앞선 유효하지 않은 `anyOf` 또는 `oneOf` 분기가 상한에 도달해도 뒤의 분기
+평가를 막으면 안 되며, 뒤의 유효한 분기가 조합을 계속 허용할 수 있어야 합니다. 반환하는
+`issues` 항목의 경로와 메시지는 각각 UTF-8 기준 `256`바이트와 `512`바이트 이하입니다. 경로를
+줄여도 RFC 6901 JSON Pointer 문법을 유지하며, enum과 수신 값 미리보기는 메시지에 넣기 전에
+길이를 제한합니다. JSON 이스케이프와 호환 텍스트 래핑을 적용한 뒤 알려진 도구 오류
+`CallToolResult` 전체를 공백 없는 JSON으로 직렬화한 크기는 `65536`바이트 이하입니다. 이 최종
+바이트 상한을 지키기 위해 원래 보고할 수 있던 `issues` 항목을 생략할 수 있습니다.
+
 입력 검증은 어댑터 전제조건 검사보다 먼저 수행합니다. 유효한 입력을 디코딩한 다음 공개
 메서드 도구 호출은 [Agent Connection](agent-connection.md#current-connection-context)이
 담당하는 결정적 저장소 루트 프로젝트 선택과 프로젝트별 검증을 수행합니다. 모호하거나
@@ -802,6 +812,9 @@ Schema 키워드는 타입 디코더나 이후 담당 계층에 맡기며, 사�
   필요한 어댑터 전제조건이면 `false`
 - `reached_core: false`
 - `committed: false`
+- `reported_issue_count`: 반환된 `issues` 배열의 길이와 정확히 같은 값
+- `truncated`: 오류 항목, 필드, 전체 결과 상한 때문에 추가 검증 탐색이나 원래 반환할 수 있던
+  경로, 메시지, `issues` 세부사항을 줄였으면 정확히 `true`, 그렇지 않으면 `false`
 - 비어 있지 않은 `issues`: 각 항목은 RFC 6901 JSON Pointer `path`, 안정적인 `code`, 사람이
   읽는 `message`를 가집니다.
 
@@ -810,6 +823,8 @@ Schema 키워드는 타입 디코더나 이후 담당 계층에 맡기며, 사�
 `MCP_ARGUMENT_DECODE_FAILED`, `MCP_ADAPTER_PRECONDITION_FAILED`입니다. 루트 포인터는 빈
 문자열입니다. `result.content[0].text`는 같은 객체를 JSON으로 직렬화한 값이며 이를 파싱한
 결과는 `result.structuredContent`와 같아야 합니다.
+어댑터 전제조건 오류와 타입 디코더에서만 발견된 나머지 오류에도 같은
+`reported_issue_count`, `truncated`, 필드 크기, 전체 결과 규칙을 적용합니다.
 
 이 실패는 Core 메서드에 진입하거나 Core 메서드 상태를 커밋하거나 프로젝트 aggregate
 state version을 올리거나 Core 메서드 이벤트를 만들지 않습니다. 전송 소유 진단 수명주기

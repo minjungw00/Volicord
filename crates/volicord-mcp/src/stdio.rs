@@ -1,5 +1,5 @@
 use crate::adapter::*;
-use crate::errors::McpAdapterError;
+use crate::errors::{bound_mcp_tool_error_issue, McpAdapterError};
 use crate::local_http::generate_bearer_token;
 use crate::local_web_consent::start_stdio_local_web_consent_listener;
 use crate::prelude::*;
@@ -1684,12 +1684,16 @@ pub(crate) fn tool_execution_error_result(
     error: &McpAdapterError,
 ) -> Value {
     let structured = match error {
-        McpAdapterError::InvalidParams { issues, .. } => McpToolErrorResponse {
+        McpAdapterError::InvalidParams {
+            issues, truncated, ..
+        } => McpToolErrorResponse {
             code: McpToolErrorCode::InvalidArguments,
             tool_name: requested_tool_name.to_owned(),
             retryable: true,
             reached_core: false,
             committed: false,
+            reported_issue_count: issues.len(),
+            truncated: *truncated,
             issues: issues.clone(),
         },
         McpAdapterError::ToolExecution { tool_name, message } => {
@@ -1712,6 +1716,8 @@ pub(crate) fn tool_execution_error_result(
                 retryable: false,
                 reached_core: false,
                 committed: false,
+                reported_issue_count: 1,
+                truncated: false,
                 issues: vec![McpToolErrorIssue {
                     path,
                     code: McpToolIssueCode::AdapterPreconditionFailed,
@@ -1725,6 +1731,8 @@ pub(crate) fn tool_execution_error_result(
             retryable: false,
             reached_core: false,
             committed: false,
+            reported_issue_count: 1,
+            truncated: false,
             issues: vec![McpToolErrorIssue {
                 path: String::new(),
                 code: McpToolIssueCode::AdapterPreconditionFailed,
@@ -1732,6 +1740,68 @@ pub(crate) fn tool_execution_error_result(
             }],
         },
     };
+    bounded_tool_error_result(structured)
+}
+
+fn bounded_tool_error_result(mut structured: McpToolErrorResponse) -> Value {
+    let mut truncated = structured.truncated;
+    if structured.issues.len() > MAX_VALIDATION_ISSUES {
+        structured.issues.truncate(MAX_VALIDATION_ISSUES);
+        truncated = true;
+    }
+    structured.issues = structured
+        .issues
+        .into_iter()
+        .map(|issue| {
+            let (issue, issue_truncated) = bound_mcp_tool_error_issue(issue);
+            truncated |= issue_truncated;
+            issue
+        })
+        .collect();
+    if structured.issues.is_empty() {
+        structured.issues.push(McpToolErrorIssue {
+            path: String::new(),
+            code: McpToolIssueCode::AdapterPreconditionFailed,
+            message: "Tool execution failed before reaching Core.".to_owned(),
+        });
+        truncated = true;
+    }
+
+    loop {
+        structured.reported_issue_count = structured.issues.len();
+        structured.truncated = truncated;
+        let result = serialize_tool_error_result(&structured);
+        let result_bytes = serde_json::to_vec(&result)
+            .expect("MCP tool error result should serialize")
+            .len();
+        if result_bytes <= MAX_MCP_TOOL_ERROR_RESULT_BYTES {
+            return result;
+        }
+        if structured.issues.len() > 1 {
+            structured.issues.pop();
+            truncated = true;
+            continue;
+        }
+
+        // Individual field limits and known tool names make this fallback
+        // unreachable in normal operation, but keep the byte contract closed
+        // if surrounding JSON overhead changes later.
+        structured.issues[0].path.clear();
+        structured.issues[0].message = "Validation failed before reaching Core.".to_owned();
+        structured.truncated = true;
+        let fallback = serialize_tool_error_result(&structured);
+        assert!(
+            serde_json::to_vec(&fallback)
+                .expect("fallback MCP tool error result should serialize")
+                .len()
+                <= MAX_MCP_TOOL_ERROR_RESULT_BYTES,
+            "known-tool MCP error fallback exceeded its response byte limit"
+        );
+        return fallback;
+    }
+}
+
+fn serialize_tool_error_result(structured: &McpToolErrorResponse) -> Value {
     let structured_content =
         serde_json::to_value(structured).expect("MCP tool error should serialize");
     let text = serde_json::to_string(&structured_content)

@@ -810,6 +810,8 @@ fn decoder_only_failure_is_one_structured_issue_without_core_effects() -> Result
     let response = structured_tool_error(REQUEST_USER_JUDGMENT_TOOL_NAME, &error);
 
     assert_eq!(response["issues"].as_array().map(Vec::len), Some(1));
+    assert_eq!(response["reported_issue_count"], 1);
+    assert_eq!(response["truncated"], false);
     tool_error_issue(&response, "", "MCP_ARGUMENT_DECODE_FAILED");
     assert_eq!(fixture.counts()?, before);
     Ok(())
@@ -1881,6 +1883,50 @@ fn stdio_aggregated_validation_error_is_structured_and_has_no_core_effects(
 }
 
 #[test]
+fn known_tool_validation_error_bounds_issue_fields_and_complete_result(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-bounded-aggregate-validation")?;
+    let before = fixture.counts()?;
+    let adapter = adapter(&fixture)?;
+    let mut arguments = Map::new();
+    arguments.insert("kind".to_owned(), Value::String("x".repeat(16 * 1024)));
+    for index in 0..(MAX_VALIDATION_ISSUES * 3) {
+        arguments.insert(
+            format!("unexpected_{index}_{}", "\0".repeat(1024)),
+            Value::Bool(true),
+        );
+    }
+
+    let error = adapter
+        .call_tool(RECORD_RUN_TOOL_NAME, Value::Object(arguments))
+        .expect_err("pathological invalid arguments should be rejected");
+    let result = tool_execution_error_result(RECORD_RUN_TOOL_NAME, &error);
+    let response = structured_error_result(&result);
+    let issues = response["issues"].as_array().expect("issues");
+
+    assert!(!issues.is_empty());
+    assert!(
+        issues.len() < MAX_VALIDATION_ISSUES,
+        "escape-heavy issues should exercise the whole-result byte cap"
+    );
+    assert_eq!(response["reported_issue_count"], issues.len());
+    assert_eq!(response["truncated"], true);
+    for issue in issues {
+        assert!(issue["path"].as_str().expect("issue path").len() <= MAX_MCP_TOOL_ISSUE_PATH_BYTES);
+        assert!(
+            issue["message"].as_str().expect("issue message").len()
+                <= MAX_MCP_TOOL_ISSUE_MESSAGE_BYTES
+        );
+    }
+    assert!(
+        serde_json::to_vec(&result)?.len() <= MAX_MCP_TOOL_ERROR_RESULT_BYTES,
+        "complete CallToolResult should honor the compact JSON byte limit"
+    );
+    assert_eq!(fixture.counts()?, before);
+    Ok(())
+}
+
+#[test]
 fn stdio_adapter_precondition_error_uses_requested_tool_and_structured_flags(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-stdio-adapter-precondition")?;
@@ -1901,6 +1947,8 @@ fn stdio_adapter_precondition_error_uses_requested_tool_and_structured_flags(
     assert_eq!(error["code"], "MCP_ADAPTER_PRECONDITION_FAILED");
     assert_eq!(error["tool_name"], STATUS_TOOL_NAME);
     assert_eq!(error["retryable"], false);
+    assert_eq!(error["reported_issue_count"], 1);
+    assert_eq!(error["truncated"], false);
     tool_error_issue(
         &error,
         "/project_selector",
@@ -3604,6 +3652,12 @@ fn structured_tool_error(tool_name: &str, error: &McpAdapterError) -> Value {
 
 fn structured_error_result(result: &Value) -> Value {
     assert_eq!(result["isError"], true);
+    assert!(
+        serde_json::to_vec(result)
+            .expect("tool error result should serialize")
+            .len()
+            <= MAX_MCP_TOOL_ERROR_RESULT_BYTES
+    );
     let parsed: Value = serde_json::from_str(
         result["content"][0]["text"]
             .as_str()
@@ -3615,6 +3669,13 @@ fn structured_error_result(result: &Value) -> Value {
         .expect("structured tool error should match its advertised response type");
     assert_eq!(parsed["reached_core"], false);
     assert_eq!(parsed["committed"], false);
+    assert_eq!(
+        parsed["reported_issue_count"].as_u64(),
+        parsed["issues"]
+            .as_array()
+            .map(|issues| issues.len() as u64)
+    );
+    assert!(parsed["truncated"].is_boolean());
     parsed
 }
 
