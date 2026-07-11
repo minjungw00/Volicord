@@ -301,6 +301,15 @@ fn plan_update_scope(
                 judgment_kinds: Vec::new(),
             },
         ));
+        if let Some(lifecycle_phase) = projected_judgment_lifecycle_phase(
+            project_state,
+            &task,
+            synthetic_change_unit.as_ref(),
+            &[],
+        ) {
+            synthetic_task.lifecycle_phase = lifecycle_phase.to_owned();
+            storage_mutations.push(task_lifecycle_mutation(&request.task_id, lifecycle_phase));
+        }
     }
 
     let pending_refs = if scope_changed {
@@ -362,24 +371,30 @@ fn plan_update_scope(
             .clone()
             .or_else(|| Some(request.task_id.as_str().to_owned())),
     );
+    let close_context = close_context_from_projection(
+        synthetic_task.clone(),
+        synthetic_change_unit.clone(),
+        if scope_changed {
+            None
+        } else {
+            projected_close_basis(store, &request.task_id)?
+        },
+        pending_refs.clone(),
+        blocker_refs.clone(),
+        evidence_summary.clone(),
+    );
+    let close_context = if scope_changed {
+        close_context_with_pending_authorities(close_context, Vec::new())
+    } else {
+        close_context
+    };
     let close_plan = projected_close_check(
         store,
         &projected_project_state,
         verified_invocation,
         &request.envelope,
         &request.task_id,
-        close_context_from_projection(
-            synthetic_task.clone(),
-            synthetic_change_unit.clone(),
-            if scope_changed {
-                None
-            } else {
-                projected_close_basis(store, &request.task_id)?
-            },
-            pending_refs.clone(),
-            blocker_refs.clone(),
-            evidence_summary.clone(),
-        ),
+        close_context,
         *plan_now.as_datetime(),
     )?;
     let state = build_state_summary(SummaryBuild {

@@ -86,6 +86,7 @@ RequestUserJudgmentRequest:
 - `project_state.state_version`을 정확히 한 번 올립니다.
 - 대기 중인 `UserJudgment` 하나를 만듭니다.
 - `basis.compatibility_status=current`인 Core 파생 `JudgmentBasis`를 저장합니다.
+- 지정된 `Task`가 현재 종료되지 않은 `Task`이고 새 대기 판단에 현재 호환되는 근거와 사용자 답변이 필요한 정보성 외 `required_for` 대상이 하나 이상 있으면, 같은 커밋에서 그 `Task`를 `lifecycle_phase=waiting_user`로 갱신합니다.
 - 저장 효과 담당 문서가 허용하는 경우에만 영향받은 차단 사유 상태를 갱신할 수 있습니다.
 
 비주장:
@@ -94,6 +95,8 @@ RequestUserJudgmentRequest:
 - `judgment_kind=final_acceptance` 또는 `judgment_kind=residual_risk_acceptance`에서는 Core가 현재 닫기 근거를 판단 근거에 캡처합니다. 필요한 현재 닫기 근거 또는 현재 잔여 위험 ID를 사용할 수 없으면 요청은 커밋 전에 거절됩니다.
 - 권한 효력이 있는 판단 종류에서는 Core가 생성하는 선택지 집합에 `machine_action=accept`, `machine_action=reject`, `machine_action=defer`가 포함됩니다. 라벨과 설명 문구는 `machine_action`이나 `resolution_outcome`을 덮어쓰지 않습니다.
 - 잔여 위험 수락의 경우 요청 맥락의 보이는 위험은 정확한 현재 `risk_id` 값을 담아야 합니다.
+- 이 생명주기 규칙은 권한 선택지 분류와 별개입니다. `product_decision`과 `technical_decision`도 현재 호환되는 근거와 정보성 외 `required_for` 대상이 있으면 `waiting_user`를 만듭니다.
+- 정보성 요청, 오래되거나 대체된 근거 상태, 현재가 아닌 `Task`, 종료 `Task`는 `waiting_user` 전이를 만들지 않습니다.
 - `dry_run`과 거절은 대기 중인 판단, 차단 사유 갱신, 이벤트, 재실행 행, 상태 버전 증가를 만들지 않습니다.
 
 ## 성공 결과
@@ -121,7 +124,7 @@ RequestUserJudgmentRequest:
 | `blocker_refs` | 대기 판단 요청의 영향을 받았거나 계속 관련 있는 차단 사유 기록의 `StateRecordRef[]`입니다. |
 | `state` | 대기 판단이 생성된 뒤의 현재 `StateSummary`입니다. 중첩 상태 필드는 [API 상태 스키마](schema-state.md)가 담당합니다. |
 
-커밋된 `user_judgment`가 대기 상태이고 `resolution`이 `null`이며 `inbox_item.judgment_id`가 같은 대기 판단을 식별한다는 점은 이 메서드가 담당합니다. 판단 필드 본문 전체와 판단 값 집합은 [API 판단 스키마](schema-judgment.md)와 [API 값 집합](schema-value-sets.md#judgment-values)에 남습니다.
+커밋된 `user_judgment`가 대기 상태이고 `resolution`이 `null`이며 `inbox_item.judgment_id`가 같은 대기 판단을 식별한다는 점은 이 메서드가 담당합니다. 판단이 현재 `Task`를 `waiting_user`로 바꾸면 반환된 `state.lifecycle.lifecycle_phase`는 같은 커밋 뒤 저장된 생명주기를 보고합니다. 판단 필드 본문 전체와 판단 값 집합은 [API 판단 스키마](schema-judgment.md)와 [API 값 집합](schema-value-sets.md#judgment-values)에 남습니다.
 
 ## 차단 결과
 

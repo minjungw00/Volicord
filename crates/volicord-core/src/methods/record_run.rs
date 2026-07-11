@@ -423,6 +423,30 @@ fn plan_record_run(
         &request,
         planned_state_version,
     )?;
+    let pending_authorities = pending_judgment_authorities_for_plan(
+        store,
+        project_state,
+        &request.envelope,
+        &request.task_id,
+    )?
+    .into_iter()
+    .filter(|authority| {
+        !matches!(
+            authority.judgment_kind,
+            JudgmentKind::FinalAcceptance | JudgmentKind::ResidualRiskAcceptance
+        )
+    })
+    .collect::<Vec<_>>();
+    let lifecycle_phase = projected_judgment_lifecycle_phase(
+        project_state,
+        &task,
+        Some(&change_unit),
+        &pending_authorities,
+    );
+    let mut projected_task = task.clone();
+    if let Some(lifecycle_phase) = lifecycle_phase {
+        projected_task.lifecycle_phase = lifecycle_phase.to_owned();
+    }
     let guarantee_display =
         guarantee_display_for_invocation(store, verified_invocation, planned_state_version)?;
     let write_ticket_summary = if let Some((record, _scope)) = &write_ticket_scope {
@@ -465,20 +489,23 @@ fn plan_record_run(
         verified_invocation,
         &request.envelope,
         &request.task_id,
-        close_context_from_projection(
-            task.clone(),
-            Some(change_unit.clone()),
-            current_close_basis.clone(),
-            pending_user_judgment_refs.clone(),
-            blocker_refs.clone(),
-            evidence_summary.clone(),
+        close_context_with_pending_authorities(
+            close_context_from_projection(
+                projected_task.clone(),
+                Some(change_unit.clone()),
+                current_close_basis.clone(),
+                pending_user_judgment_refs.clone(),
+                blocker_refs.clone(),
+                evidence_summary.clone(),
+            ),
+            pending_authorities,
         ),
         *plan_now.as_datetime(),
     )?;
     let state = build_state_summary(SummaryBuild {
         project_id: &request.envelope.project_id,
         state_version: planned_state_version,
-        task: &task,
+        task: &projected_task,
         current_change_unit: Some(&change_unit),
         pending_user_judgment_refs,
         blocker_refs: blocker_refs.clone(),
@@ -549,6 +576,9 @@ fn plan_record_run(
             ],
         },
     ));
+    if let Some(lifecycle_phase) = lifecycle_phase {
+        storage_mutations.push(task_lifecycle_mutation(&request.task_id, lifecycle_phase));
+    }
     if let Some((record, _scope)) = &write_ticket_scope {
         storage_mutations.push(CoreStorageMutation::ConsumeWriteTicket(
             WriteTicketConsumption {

@@ -93,6 +93,7 @@ Markdown, 상태 요약, 상태 보기는 사용자 답변을 주장하거나 �
 - `project_state.state_version`을 정확히 한 번 올립니다.
 - 지정된 `user_judgments` 행을 갱신합니다.
 - `scope_revision`이나 `close_basis_revision`을 증가시키지 않습니다.
+- 같은 커밋에서 현재 종료되지 않은 `Task`의 생명주기를 다시 계산합니다. 정보성이 아닌 `required_for` 대상과 현재 호환되는 근거를 가지고 아직 답변이 필요한 다른 대기 사용자 판단이 있으면 `lifecycle_phase=waiting_user`를 유지합니다. 그런 판단이 없으면 대기 중이던 `Task`는 현재 적용 Change Unit이 있을 때 `ready`로, 없을 때 `shaping`으로 돌아갑니다.
 - 이 메서드가 선택할 때 수락된 결정이나 수락된 잔여 위험에 대한 `project_continuity_records`를 만들 수 있습니다.
 - 저장 효과 담당 문서가 허용하는 경우에만 종속 차단 사유 또는 요약 상태를 갱신할 수 있습니다.
 
@@ -110,6 +111,7 @@ Markdown, 상태 요약, 상태 보기는 사용자 답변을 주장하거나 �
 - 권한 효력이 있는 판단이 권한 요구사항을 만족하려면 `resolved_by_actor_source=local_user`, 호환되는 User Channel 출처, `machine_action=accept`, `resolution_outcome=accepted`가 필요합니다.
 - 거절되거나 연기된 권한 판단은 결정 기록으로 남지만 현재 전이를 허가할 수 없습니다. 오래됨, 대체됨, 만료됨, 유효하지 않은 근거, 출처 누락, 해결 정보 누락, 에이전트가 기록한 권한 판단은 현재 전이를 허가할 수 없습니다.
 - 범위 변경이나 실행 기록 변경은 이력 판단을 삭제하지 않습니다. 다만 호환되지 않는 판단은 현재 닫기, 쓰기, 범위 결정, 민감 승인 요구사항에 사용할 수 없게 됩니다.
+- 거절되거나 연기된 결과를 포함해 해결된 판단은 더 이상 `Task`를 `waiting_user`로 유지하지 않습니다. 정보성, 오래됨, 대체됨 상태의 대기 판단도 대기를 유지하지 않습니다. 종료되었거나 현재가 아닌 `Task`는 이 생명주기 유지 작업으로 다시 열리거나 달리 바뀌지 않습니다.
 
 ## 성공 결과
 
@@ -123,7 +125,7 @@ Markdown, 상태 요약, 상태 보기는 사용자 답변을 주장하거나 �
 - 현재 `state`
 - `next_actions`
 
-답변이 성공적으로 기록되면 이 메서드는 지정된 판단을 `status=resolved`로 커밋합니다. 기록된 `machine_action`과 `resolution_outcome`은 선택된 선택지에서 복사되며 선택지의 동작/결과 매핑과 일치해야 합니다. 기록된 `rationale`은 설명 메타데이터로 `user_judgment.resolution` 안에 반환됩니다.
+답변이 성공적으로 기록되면 이 메서드는 지정된 판단을 `status=resolved`로 커밋합니다. 기록된 `machine_action`과 `resolution_outcome`은 선택된 선택지에서 복사되며 선택지의 동작/결과 매핑과 일치해야 합니다. 기록된 `rationale`은 설명 메타데이터로 `user_judgment.resolution` 안에 반환됩니다. 반환된 `state.lifecycle.lifecycle_phase`는 남아 있는 관련 대기 판단을 고려한 뒤 같은 커밋에 저장된 생명주기와 일치합니다.
 
 결과는 포함된 차단 사유, 판단에 의존하는 요약, 메서드가 선택한 프로젝트 연속성 기록만 갱신합니다. `accepted`이고 호환되는 권한 판단 자체를 넘어 관련 없는 승인, 증거, 범위 갱신, 쓰기 티켓, 닫기 상태, 최종 수락, 잔여 위험 수락, 민감 승인, 취소 권한을 만들지 않습니다.
 

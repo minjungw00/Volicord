@@ -94,6 +94,7 @@ A committed non-dry-run result:
 - increments `project_state.state_version` exactly once
 - updates the addressed `user_judgments` row
 - does not increment `scope_revision` or `close_basis_revision`
+- recalculates the current non-terminal Task lifecycle in the same commit: another current compatible pending user judgment with a non-informational `required_for` target that still needs an answer keeps `lifecycle_phase=waiting_user`; otherwise a Task that was waiting returns to `ready` when it has a current Change Unit and to `shaping` when it does not
 - may create `project_continuity_records` for accepted decisions or accepted residual risks when selected by this method
 - may update dependent blocker or summary state only as allowed by the storage-effect owner
 
@@ -111,6 +112,7 @@ Compatibility requirements:
 - Authority-bearing judgments require `resolved_by_actor_source=local_user`, compatible User Channel provenance, `machine_action=accept`, and `resolution_outcome=accepted` to satisfy the authority requirement.
 - Rejected or deferred authority-bearing judgments remain decision records but cannot authorize a current transition. Stale, superseded, expired, invalid-basis, provenance-missing, resolution-incomplete, or agent-recorded authority-bearing judgments cannot authorize a current transition.
 - Scope or Run changes do not delete historical judgments; they make incompatible judgments ineligible for current close, write, scope-decision, or sensitive-approval requirements.
+- A resolved judgment, including a rejected or deferred result, no longer keeps the Task in `waiting_user`. Informational, stale, or superseded pending judgments also do not keep it waiting. Terminal and non-current Tasks are not reopened or otherwise changed by this lifecycle maintenance.
 
 ## Success result
 
@@ -124,7 +126,7 @@ Returns `RecordUserJudgmentResult` with:
 - current `state`
 - `next_actions`
 
-The method commits the addressed judgment as `status=resolved` when an answer is recorded successfully. The recorded `machine_action` and `resolution_outcome` are copied from the selected option and must match the option's action/outcome mapping. The recorded `rationale` is returned inside `user_judgment.resolution` as descriptive metadata.
+The method commits the addressed judgment as `status=resolved` when an answer is recorded successfully. The recorded `machine_action` and `resolution_outcome` are copied from the selected option and must match the option's action/outcome mapping. The recorded `rationale` is returned inside `user_judgment.resolution` as descriptive metadata. The returned `state.lifecycle.lifecycle_phase` matches the lifecycle stored by the same commit after remaining relevant pending judgments are considered.
 
 The result updates only covered blockers, judgment-dependent summaries, and method-selected project continuity records. It does not create unrelated approvals, evidence, scope updates, write ticket, close state, final acceptance, residual-risk acceptance, sensitive approval, or cancellation authority beyond an accepted, compatible authority-bearing judgment itself.
 

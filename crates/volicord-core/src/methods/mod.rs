@@ -103,8 +103,8 @@ use crate::policy::{
         populated_answer_branch_count, AnswerOutcomeAgreement,
     },
     judgment_relevance::{
-        judgment_blocks_operation, judgment_required_for, JudgmentOperation,
-        JudgmentOperationContext,
+        judgment_blocks_operation, judgment_keeps_task_waiting, judgment_required_for,
+        JudgmentOperation, JudgmentOperationContext,
     },
     path::{normalize_product_paths, path_is_within, paths_are_authorized, ProductPathError},
     rationale::validate_judgment_rationale,
@@ -2664,6 +2664,59 @@ fn next_actions_for_state(
             required_refs: vec![task_ref.clone()],
         }],
     }
+}
+
+fn projected_judgment_lifecycle_phase(
+    project_state: &ProjectStateHeader,
+    task: &TaskRecord,
+    current_change_unit: Option<&ChangeUnitRecord>,
+    pending_authorities: &[JudgmentAuthority],
+) -> Option<&'static str> {
+    if project_state.active_task_id.as_deref() != Some(task.task_id.as_str())
+        || is_terminal_lifecycle(&task.lifecycle_phase)
+    {
+        return None;
+    }
+
+    let task_id = TaskId::new(task.task_id.clone());
+    let current_change_unit_id =
+        current_change_unit.map(|record| ChangeUnitId::new(record.change_unit_id.clone()));
+    let waits_for_user = pending_authorities.iter().any(|authority| {
+        judgment_keeps_task_waiting(
+            authority,
+            &task_id,
+            current_change_unit_id.as_ref(),
+            task.scope_revision,
+        )
+    });
+    let next_phase = if waits_for_user {
+        "waiting_user"
+    } else if task.lifecycle_phase == "waiting_user" {
+        if current_change_unit.is_some() {
+            "ready"
+        } else {
+            "shaping"
+        }
+    } else {
+        return None;
+    };
+
+    (task.lifecycle_phase != next_phase).then_some(next_phase)
+}
+
+fn task_lifecycle_mutation(task_id: &TaskId, lifecycle_phase: &str) -> CoreStorageMutation {
+    CoreStorageMutation::UpdateTaskScope(TaskScopeUpdate {
+        task_id: task_id.as_str().to_owned(),
+        lifecycle_phase: Some(lifecycle_phase.to_owned()),
+        result: None,
+        title: None,
+        summary: None,
+        shaping_summary_json: None,
+        bounded_context_json: None,
+        autonomy_boundary_json: None,
+        close_summary_json: None,
+        completion_policy_json: None,
+    })
 }
 
 fn summary_card_for_core(input: SummaryCardBuild<'_>) -> SummaryCard {

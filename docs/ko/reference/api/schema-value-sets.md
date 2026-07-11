@@ -236,6 +236,13 @@ cancelled
 superseded
 ```
 
+사용자 소유 판단 대기의 생명주기 의미:
+
+- `waiting_user`는 현재 종료되지 않은 `Task`에 현재 호환되는 근거 상태와 정보성이 아닌 작업 대상을 가진 대기 사용자 판단이 하나 이상 있고 사용자 답변이 아직 필요하다는 뜻입니다. 여기에는 `product_decision`과 `technical_decision`도 포함되며 Core가 만든 권한 선택지를 사용하는 판단 종류로 한정되지 않습니다.
+- 정보성 판단과 근거 상태가 오래됐거나 대체된 대기 판단은 `waiting_user`를 만들거나 유지하지 않습니다.
+- 마지막 해당 대기 판단을 해결하면 현재 적용 Change Unit이 있을 때 `ready`로, 없을 때 `shaping`으로 돌아갑니다. 여러 해당 판단 중 하나만 해결하면 `waiting_user`를 유지합니다.
+- `completed`, `cancelled`, `superseded`는 종료 상태이며 판단 생명주기 유지 작업으로 바뀌지 않습니다.
+
 `CloseTaskResult.close_state`는 아래 값을 사용합니다.
 
 ```text

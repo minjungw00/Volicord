@@ -45,6 +45,301 @@ fn request_user_judgment_creates_pending_record() -> Result<(), Box<dyn Error>> 
 }
 
 #[test]
+fn authority_request_waits_and_last_resolution_restores_ready() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "lifecycle_ready")?;
+    let pending = harness.service.request_user_judgment(
+        user_judgment_request(
+            "req_judgment_lifecycle_ready",
+            "idem_judgment_lifecycle_ready",
+            false,
+            Some(2),
+            &task_id,
+            Some(&change_unit_id),
+            JudgmentKind::ScopeDecision,
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let judgment_id = response_record_id(&pending.response_value, "user_judgment_ref");
+
+    assert_eq!(
+        pending.response_value["state"]["lifecycle"]["lifecycle_phase"],
+        "waiting_user"
+    );
+    assert_eq!(
+        task_terminal_fields(&harness, &task_id)?.lifecycle_phase,
+        "waiting_user"
+    );
+
+    let resolved = harness.service.record_user_judgment(
+        record_judgment_request(
+            "req_record_lifecycle_ready",
+            "idem_record_lifecycle_ready",
+            Some(3),
+            &task_id,
+            &judgment_id,
+            JudgmentKind::ScopeDecision,
+            answer_payload(JudgmentKind::ScopeDecision),
+        ),
+        invocation(OperationCategory::UserOnly),
+    )?;
+
+    assert_eq!(
+        resolved.response_value["state"]["lifecycle"]["lifecycle_phase"],
+        "ready"
+    );
+    assert_eq!(
+        task_terminal_fields(&harness, &task_id)?.lifecycle_phase,
+        "ready"
+    );
+    Ok(())
+}
+
+#[test]
+fn last_authority_resolution_without_change_unit_restores_shaping() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let intake = harness.service.intake(
+        intake_request(
+            "req_judgment_lifecycle_shaping_task",
+            "idem_judgment_lifecycle_shaping_task",
+            false,
+            Some(0),
+            RequestedMode::Work,
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let task_id = response_record_id(&intake.response_value, "task_ref");
+    let pending = harness.service.request_user_judgment(
+        user_judgment_request(
+            "req_judgment_lifecycle_shaping",
+            "idem_judgment_lifecycle_shaping",
+            false,
+            Some(1),
+            &task_id,
+            None,
+            JudgmentKind::ScopeDecision,
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let judgment_id = response_record_id(&pending.response_value, "user_judgment_ref");
+    assert_eq!(
+        pending.response_value["state"]["lifecycle"]["lifecycle_phase"],
+        "waiting_user"
+    );
+
+    let resolved = harness.service.record_user_judgment(
+        record_judgment_request(
+            "req_record_lifecycle_shaping",
+            "idem_record_lifecycle_shaping",
+            Some(2),
+            &task_id,
+            &judgment_id,
+            JudgmentKind::ScopeDecision,
+            answer_payload(JudgmentKind::ScopeDecision),
+        ),
+        invocation(OperationCategory::UserOnly),
+    )?;
+
+    assert_eq!(
+        resolved.response_value["state"]["lifecycle"]["lifecycle_phase"],
+        "shaping"
+    );
+    assert_eq!(
+        task_terminal_fields(&harness, &task_id)?.lifecycle_phase,
+        "shaping"
+    );
+    Ok(())
+}
+
+#[test]
+fn resolving_one_of_multiple_authority_judgments_keeps_waiting() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "multiple_waiting")?;
+    let first = harness.service.request_user_judgment(
+        user_judgment_request(
+            "req_judgment_multiple_first",
+            "idem_judgment_multiple_first",
+            false,
+            Some(2),
+            &task_id,
+            Some(&change_unit_id),
+            JudgmentKind::ScopeDecision,
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let first_id = response_record_id(&first.response_value, "user_judgment_ref");
+    harness.service.request_user_judgment(
+        user_judgment_request(
+            "req_judgment_multiple_second",
+            "idem_judgment_multiple_second",
+            false,
+            Some(3),
+            &task_id,
+            Some(&change_unit_id),
+            JudgmentKind::ScopeDecision,
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+
+    let resolved = harness.service.record_user_judgment(
+        record_judgment_request(
+            "req_record_multiple_first",
+            "idem_record_multiple_first",
+            Some(4),
+            &task_id,
+            &first_id,
+            JudgmentKind::ScopeDecision,
+            answer_payload(JudgmentKind::ScopeDecision),
+        ),
+        invocation(OperationCategory::UserOnly),
+    )?;
+
+    assert_eq!(
+        resolved.response_value["state"]["lifecycle"]["lifecycle_phase"],
+        "waiting_user"
+    );
+    assert_eq!(
+        resolved.response_value["state"]["pending_user_judgment_refs"]
+            .as_array()
+            .expect("pending refs should be an array")
+            .len(),
+        1
+    );
+    assert_eq!(
+        task_terminal_fields(&harness, &task_id)?.lifecycle_phase,
+        "waiting_user"
+    );
+    Ok(())
+}
+
+#[test]
+fn informational_and_deferred_judgments_do_not_keep_waiting() -> Result<(), Box<dyn Error>> {
+    let informational_harness = MethodHarness::new()?;
+    let (informational_task_id, informational_change_unit_id) =
+        create_task_with_change_unit(&informational_harness, "informational_lifecycle")?;
+    let mut informational_request = user_judgment_request(
+        "req_judgment_informational_lifecycle",
+        "idem_judgment_informational_lifecycle",
+        false,
+        Some(2),
+        &informational_task_id,
+        Some(&informational_change_unit_id),
+        JudgmentKind::ScopeDecision,
+    );
+    informational_request.required_for = vec![JudgmentRequiredFor::Informational];
+    let informational = informational_harness.service.request_user_judgment(
+        informational_request,
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    assert_eq!(
+        informational.response_value["state"]["lifecycle"]["lifecycle_phase"],
+        "ready"
+    );
+    assert_eq!(
+        task_terminal_fields(&informational_harness, &informational_task_id)?.lifecycle_phase,
+        "ready"
+    );
+
+    let deferred_harness = MethodHarness::new()?;
+    let (deferred_task_id, deferred_change_unit_id) =
+        create_task_with_change_unit(&deferred_harness, "deferred_lifecycle")?;
+    let pending = deferred_harness.service.request_user_judgment(
+        user_judgment_request(
+            "req_judgment_deferred_lifecycle",
+            "idem_judgment_deferred_lifecycle",
+            false,
+            Some(2),
+            &deferred_task_id,
+            Some(&deferred_change_unit_id),
+            JudgmentKind::ScopeDecision,
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let pending_id = response_record_id(&pending.response_value, "user_judgment_ref");
+    let mut deferred_request = record_judgment_request(
+        "req_record_deferred_lifecycle",
+        "idem_record_deferred_lifecycle",
+        Some(3),
+        &deferred_task_id,
+        &pending_id,
+        JudgmentKind::ScopeDecision,
+        scope_decision_payload("deferred"),
+    );
+    deferred_request.selected_option_id = UserJudgmentOptionId::new("defer");
+    let deferred = deferred_harness
+        .service
+        .record_user_judgment(deferred_request, invocation(OperationCategory::UserOnly))?;
+    assert_eq!(
+        deferred.response_value["user_judgment"]["resolution"]["resolution_outcome"],
+        "deferred"
+    );
+    assert_eq!(
+        deferred.response_value["state"]["lifecycle"]["lifecycle_phase"],
+        "ready"
+    );
+    assert_eq!(
+        task_terminal_fields(&deferred_harness, &deferred_task_id)?.lifecycle_phase,
+        "ready"
+    );
+    Ok(())
+}
+
+#[test]
+fn judgment_commits_do_not_reopen_terminal_task() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "terminal_lifecycle")?;
+    harness.conn()?.execute(
+        "UPDATE tasks
+            SET lifecycle_phase = 'completed',
+                result = 'completed',
+                closed_at = '2026-07-12T00:00:00Z'
+          WHERE project_id = ?1
+            AND task_id = ?2",
+        rusqlite::params![PROJECT_ID, task_id],
+    )?;
+
+    let pending = harness.service.request_user_judgment(
+        user_judgment_request(
+            "req_judgment_terminal_lifecycle",
+            "idem_judgment_terminal_lifecycle",
+            false,
+            Some(2),
+            &task_id,
+            Some(&change_unit_id),
+            JudgmentKind::ScopeDecision,
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let pending_id = response_record_id(&pending.response_value, "user_judgment_ref");
+    assert_eq!(
+        pending.response_value["state"]["lifecycle"]["lifecycle_phase"],
+        "completed"
+    );
+
+    let resolved = harness.service.record_user_judgment(
+        record_judgment_request(
+            "req_record_terminal_lifecycle",
+            "idem_record_terminal_lifecycle",
+            Some(3),
+            &task_id,
+            &pending_id,
+            JudgmentKind::ScopeDecision,
+            answer_payload(JudgmentKind::ScopeDecision),
+        ),
+        invocation(OperationCategory::UserOnly),
+    )?;
+    assert_eq!(
+        resolved.response_value["state"]["lifecycle"]["lifecycle_phase"],
+        "completed"
+    );
+    assert_eq!(
+        task_terminal_fields(&harness, &task_id)?.lifecycle_phase,
+        "completed"
+    );
+    Ok(())
+}
+
+#[test]
 fn authority_bearing_judgment_generates_canonical_options() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "canonical_options")?;
@@ -204,6 +499,10 @@ fn record_user_judgment_resolves_pending_record() -> Result<(), Box<dyn Error>> 
     )?;
     let pending_judgment_id =
         response_record_id(&pending_judgment.response_value, "user_judgment_ref");
+    assert_eq!(
+        pending_judgment.response_value["state"]["lifecycle"]["lifecycle_phase"],
+        "waiting_user"
+    );
     let before = harness.counts()?;
 
     let response = harness.service.record_user_judgment(
@@ -2829,6 +3128,10 @@ fn scope_change_supersedes_pending_judgment_and_stale_pending_answer_has_no_effe
     let pending_judgment_id =
         response_record_id(&pending_judgment.response_value, "user_judgment_ref");
     assert_eq!(
+        pending_judgment.response_value["state"]["lifecycle"]["lifecycle_phase"],
+        "waiting_user"
+    );
+    assert_eq!(
         user_judgment_basis_status(&harness, &pending_judgment_id)?,
         "current"
     );
@@ -2854,7 +3157,14 @@ fn scope_change_supersedes_pending_judgment_and_stale_pending_answer_has_no_effe
         scope_response.response_value["state"]["pending_user_judgment_refs"],
         json!([])
     );
-
+    assert_eq!(
+        scope_response.response_value["state"]["lifecycle"]["lifecycle_phase"],
+        "ready"
+    );
+    assert_eq!(
+        task_terminal_fields(&harness, &task_id)?.lifecycle_phase,
+        "ready"
+    );
     assert_eq!(
         user_judgment_status(&harness, &pending_judgment_id)?,
         "superseded"
@@ -2883,6 +3193,64 @@ fn scope_change_supersedes_pending_judgment_and_stale_pending_answer_has_no_effe
         "DECISION_UNRESOLVED"
     );
     assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn new_run_invalidates_final_acceptance_wait_and_restores_ready() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_invalidates_wait")?;
+    let after_basis = record_close_evidence(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        2,
+        "run_invalidates_wait",
+        true,
+    )?;
+    let pending = harness.service.request_user_judgment(
+        user_judgment_request(
+            "req_final_wait_before_new_run",
+            "idem_final_wait_before_new_run",
+            false,
+            Some(after_basis),
+            &task_id,
+            Some(&change_unit_id),
+            JudgmentKind::FinalAcceptance,
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let judgment_id = response_record_id(&pending.response_value, "user_judgment_ref");
+    assert_eq!(
+        pending.response_value["state"]["lifecycle"]["lifecycle_phase"],
+        "waiting_user"
+    );
+
+    let recorded = harness.service.record_run(
+        record_run_request(
+            "req_run_invalidates_final_wait",
+            "idem_run_invalidates_final_wait",
+            false,
+            Some(after_basis + 1),
+            &task_id,
+            &change_unit_id,
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+
+    assert_eq!(
+        recorded.response_value["state"]["pending_user_judgment_refs"],
+        json!([])
+    );
+    assert_eq!(
+        recorded.response_value["state"]["lifecycle"]["lifecycle_phase"],
+        "ready"
+    );
+    assert_eq!(
+        task_terminal_fields(&harness, &task_id)?.lifecycle_phase,
+        "ready"
+    );
+    assert_eq!(user_judgment_status(&harness, &judgment_id)?, "superseded");
     Ok(())
 }
 

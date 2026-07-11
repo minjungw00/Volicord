@@ -86,6 +86,7 @@ A committed non-dry-run result:
 - increments `project_state.state_version` exactly once
 - creates one pending `UserJudgment`
 - stores a Core-derived `JudgmentBasis` with `basis.compatibility_status=current`
+- when the addressed Task is the current non-terminal Task and the new pending judgment has a current compatible basis and at least one non-informational `required_for` target that needs a user answer, updates that Task to `lifecycle_phase=waiting_user` in the same commit
 - may update affected blocker state only as allowed by the storage-effect owner
 
 Non-claims:
@@ -94,6 +95,8 @@ Non-claims:
 - For `judgment_kind=final_acceptance` or `judgment_kind=residual_risk_acceptance`, Core captures the current close basis in the judgment basis. If the required current close basis or current residual-risk IDs are unavailable, the request rejects before commit.
 - For authority-bearing judgment kinds, the Core-created option set includes `machine_action=accept`, `machine_action=reject`, and `machine_action=defer`. Labels and explanatory text do not override `machine_action` or `resolution_outcome`.
 - For residual-risk acceptance, visible risks in the request context must carry exact current `risk_id` values.
+- This lifecycle rule is independent of the authority-option classification: `product_decision` and `technical_decision` also cause `waiting_user` when they have a current compatible basis and a non-informational `required_for` target.
+- Informational requests, stale or superseded basis state, non-current Tasks, and terminal Tasks do not cause a `waiting_user` transition.
 - Dry run and rejection create no pending judgment, blocker update, event, replay row, or state-version increment.
 
 ## Success result
@@ -121,7 +124,7 @@ Returns `RequestUserJudgmentResult` with:
 | `blocker_refs` | `StateRecordRef[]` for blocker records affected by or still relevant to the pending judgment request. |
 | `state` | Current `StateSummary` after the pending judgment is created. Nested state fields are owned by [API State Schemas](schema-state.md). |
 
-The method owns that the committed `user_judgment` is pending, that `resolution` is `null`, and that `inbox_item.judgment_id` identifies the same pending judgment. The full judgment field body and judgment value sets stay with [API Judgment Schemas](schema-judgment.md) and [API Value Sets](schema-value-sets.md#judgment-values).
+The method owns that the committed `user_judgment` is pending, that `resolution` is `null`, and that `inbox_item.judgment_id` identifies the same pending judgment. When the judgment causes the current Task to enter `waiting_user`, the returned `state.lifecycle.lifecycle_phase` reports that same post-commit stored lifecycle. The full judgment field body and judgment value sets stay with [API Judgment Schemas](schema-judgment.md) and [API Value Sets](schema-value-sets.md#judgment-values).
 
 ## Blocked result
 

@@ -479,6 +479,16 @@ fn plan_request_user_judgment(
         &request.task_id,
     )?;
     pending_authorities.push(user_judgment_authority_from_state(&user_judgment, None));
+    let lifecycle_phase = projected_judgment_lifecycle_phase(
+        project_state,
+        &task,
+        current_change_unit.as_ref(),
+        &pending_authorities,
+    );
+    let mut projected_task = task.clone();
+    if let Some(lifecycle_phase) = lifecycle_phase {
+        projected_task.lifecycle_phase = lifecycle_phase.to_owned();
+    }
     let projected_project_state = project_state_projection(
         project_state,
         planned_state_version,
@@ -495,7 +505,7 @@ fn plan_request_user_judgment(
         &request.task_id,
         close_context_with_pending_authorities(
             close_context_from_projection(
-                task.clone(),
+                projected_task.clone(),
                 current_change_unit.clone(),
                 projected_close_basis(store, &request.task_id)?,
                 pending_refs.clone(),
@@ -518,7 +528,7 @@ fn plan_request_user_judgment(
     let state = build_state_summary(SummaryBuild {
         project_id: &request.envelope.project_id,
         state_version: planned_state_version,
-        task: &task,
+        task: &projected_task,
         current_change_unit: current_change_unit.as_ref(),
         pending_user_judgment_refs: pending_refs,
         blocker_refs: blocker_refs.clone(),
@@ -537,7 +547,7 @@ fn plan_request_user_judgment(
         blocker_refs,
         state,
     };
-    let storage_mutations = vec![CoreStorageMutation::InsertUserJudgment(
+    let mut storage_mutations = vec![CoreStorageMutation::InsertUserJudgment(
         UserJudgmentInsert {
             judgment_id: judgment_id.as_str().to_owned(),
             task_id: request.task_id.as_str().to_owned(),
@@ -565,6 +575,9 @@ fn plan_request_user_judgment(
             metadata_json: serde_json::to_string(&json!({}))?,
         },
     )];
+    if let Some(lifecycle_phase) = lifecycle_phase {
+        storage_mutations.push(task_lifecycle_mutation(&request.task_id, lifecycle_phase));
+    }
     let event_payload = object_from_value(json!({
         "task_id": request.task_id,
         "change_unit_id": request.change_unit_id,
@@ -1359,6 +1372,16 @@ fn plan_record_user_judgment(
             .into_iter()
             .filter(|authority| authority.judgment_id != request.user_judgment_id.as_str())
             .collect::<Vec<_>>();
+    let lifecycle_phase = projected_judgment_lifecycle_phase(
+        project_state,
+        &task,
+        current_change_unit.as_ref(),
+        &pending_authorities,
+    );
+    let mut projected_task = task.clone();
+    if let Some(lifecycle_phase) = lifecycle_phase {
+        projected_task.lifecycle_phase = lifecycle_phase.to_owned();
+    }
     let mut resolved_authorities = resolved_judgment_authorities_for_all_kinds(
         store,
         project_state,
@@ -1386,7 +1409,7 @@ fn plan_record_user_judgment(
         close_context_with_resolved_authorities(
             close_context_with_pending_authorities(
                 close_context_from_projection(
-                    task.clone(),
+                    projected_task.clone(),
                     current_change_unit.clone(),
                     projected_close_basis(store, &task_id)?,
                     pending_refs.clone(),
@@ -1402,7 +1425,7 @@ fn plan_record_user_judgment(
     let state = build_state_summary(SummaryBuild {
         project_id: &request.envelope.project_id,
         state_version: planned_state_version,
-        task: &task,
+        task: &projected_task,
         current_change_unit: current_change_unit.as_ref(),
         pending_user_judgment_refs: pending_refs,
         blocker_refs,
@@ -1468,6 +1491,9 @@ fn plan_record_user_judgment(
             resolved_at: now.to_string(),
         },
     )];
+    if let Some(lifecycle_phase) = lifecycle_phase {
+        storage_mutations.push(task_lifecycle_mutation(&task_id, lifecycle_phase));
+    }
     storage_mutations.extend(continuity_plans.into_iter().map(|plan| plan.mutation));
     let event_payload = object_from_value(json!({
         "task_id": task_id,

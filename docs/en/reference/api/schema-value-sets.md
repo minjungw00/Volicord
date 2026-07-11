@@ -227,6 +227,13 @@ cancelled
 superseded
 ```
 
+Lifecycle meaning for user-owned judgment waiting:
+
+- `waiting_user` means the current non-terminal Task has at least one pending user judgment with current compatible basis state and a non-informational operation target that still requires a user answer. This includes `product_decision` and `technical_decision`; it is not limited to judgment kinds that use Core-created authority options.
+- Informational judgments and pending judgments with stale or superseded basis state do not create or preserve `waiting_user`.
+- Resolving the last such pending judgment restores `ready` when a current Change Unit exists and `shaping` otherwise. Resolving one of several such judgments preserves `waiting_user`.
+- `completed`, `cancelled`, and `superseded` are terminal and are never replaced by judgment lifecycle maintenance.
+
 `CloseTaskResult.close_state` uses:
 
 ```text

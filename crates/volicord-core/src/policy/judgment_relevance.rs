@@ -89,6 +89,29 @@ pub(crate) fn judgment_required_for(
     judgment.required_for.contains(&target)
 }
 
+pub(crate) fn judgment_keeps_task_waiting(
+    judgment: &JudgmentAuthority,
+    task_id: &TaskId,
+    current_change_unit_id: Option<&ChangeUnitId>,
+    scope_revision: u64,
+) -> bool {
+    if judgment.status != UserJudgmentStatus::Pending
+        || !judgment_has_current_basis(judgment)
+        || judgment.task_id != *task_id
+        || !judgment
+            .required_for
+            .iter()
+            .any(|target| *target != JudgmentRequiredFor::Informational)
+    {
+        return false;
+    }
+    judgment.basis.as_ref().is_some_and(|basis| {
+        basis.task_id == *task_id
+            && basis.scope_revision == scope_revision
+            && basis.change_unit_id.as_ref() == current_change_unit_id
+    })
+}
+
 fn judgment_kind_relevant_to_operation(
     judgment_kind: JudgmentKind,
     operation: JudgmentOperation,

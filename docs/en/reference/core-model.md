@@ -293,6 +293,10 @@ Pending-judgment relevance:
 - A pending judgment blocks an operation only when it is current and pending, its `required_for` operation target includes that operation, its judgment kind is relevant to that operation, and its `Task`, Change Unit, affected refs, and basis are compatible.
 - Sensitive approval questions block only when they overlap the current sensitive action requirement.
 - Informational judgments do not block write, Run recording, or close by themselves.
+- A current non-terminal `Task` uses the `waiting_user` lifecycle phase while it has a pending user judgment with a current compatible basis and at least one non-informational `required_for` target that still needs a user answer. A non-current `Task` is not moved to `waiting_user` by this rule.
+- This waiting rule is separate from the authority-option classification above: `product_decision` and `technical_decision` also keep the `Task` waiting when their pending judgment has a current compatible basis and a non-informational `required_for` target.
+- Informational judgments and judgments with stale or superseded basis state do not put or keep a `Task` in `waiting_user`. Once a judgment is resolved, including with a rejected or deferred outcome, it no longer keeps the `Task` waiting; any other current compatible pending user judgments that meet this waiting rule still do.
+- When the last judgment that keeps the current `Task` waiting is resolved or made non-current, the lifecycle returns to `ready` when a current Change Unit exists and to `shaping` otherwise. Terminal lifecycle phases take precedence and are never reopened by judgment lifecycle maintenance.
 
 Agent latitude:
 
@@ -350,7 +354,7 @@ The lifecycle here is conceptual authority meaning, not an API state table.
 | Intake and shaping | User intent becomes a concrete goal, scope boundary, non-goals, acceptance criteria, Autonomy Boundary, and first safe Change Unit when the relevant owners define support. |
 | Scope update | Accepted scope or Change Unit changes become currently applied only through the scope owner-defined transition. A judgment record alone does not mutate current scope. |
 | Execution and observation | Runs record actions and observations. Product-file writes must be compatible with current scope and a write ticket; read-only work does not create compatibility for subsequent writes. |
-| Waiting or blocked | If required owner-defined authority data is missing, stale, incompatible, or unsafe to bypass, Core exposes the blocker and the next required step instead of hiding the gap. |
+| Waiting or blocked | A current non-terminal `Task` is `waiting_user` while a current compatible pending user judgment with a non-informational operation target requires a user answer. When the last such judgment is resolved or made non-current, the `Task` returns to `ready` if it has a current Change Unit and to `shaping` otherwise. Other missing, stale, incompatible, or unsafe-to-bypass authority data remains visible through owner-defined blocker state rather than being hidden. |
 | Close attempt | Core evaluates whether the current state can close honestly. A final chat summary or generated report is not enough by itself. |
 | Terminal outcome | Completion, cancellation, or supersession ends the `Task` path. Cancellation and supersession are terminal, but they are not successful completion and do not satisfy completion evidence, acceptance, or risk requirements. |
 
