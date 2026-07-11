@@ -36,6 +36,8 @@
 
 확인이 허용되면 열린 쓰기 티켓 하나를 발급합니다. 이 티켓은 현재 `Task`와 Change Unit 안에서 권한 있는 쓰기 의도를 나타내는 Volicord 권한 기록입니다. 파일시스템 집행, OS 권한, 셸 권한, 쓰기가 실제로 일어났다는 증명이 아닙니다. 확인이 허용되지 않으면 쓰기 티켓 경로를 거부하거나 미룹니다.
 
+`Task.mode=advisor`는 Product Repository 파일 효과에 대해 읽기 전용인 자문 작업입니다. `volicord.prepare_write`는 결정 평가 전에 이 Task 모드를 거절하고, advisor Task의 일반 다음 행동으로 이 메서드를 추천하지 않으며, advisor 쓰기 티켓을 발급하지 않습니다. 이는 호환되는 advisor `record_run` 호출이 Core Run이나 증거 상태를 커밋하는 것을 막지 않습니다.
+
 보안 비주장은 [보안](../security.md)이 담당합니다.
 
 ## 필수 입력
@@ -71,6 +73,7 @@ PrepareWriteRequest:
 요구사항:
 
 - `operation_category=agent_workflow`인 확인된 호출 맥락
+- 모드가 `direct` 또는 `work`인 현재 Task. `advisor`는 쓰기 준비와 호환되지 않습니다.
 - 호환되는 현재 적용 범위
 - 기록된 경우 제품 파일 쓰기에 대해 호환되는 현재 적용 Change Unit 효과 계약
 - 호환되는 기준선
@@ -191,6 +194,7 @@ PrepareWriteRequest:
 
 `decision` 평가나 커밋 전에 실패가 있으면 `ToolRejectedResponse`를 반환합니다. 예시는 아래와 같습니다.
 
+- `Task.mode=advisor`
 - 오래된 `expected_state_version`
 - 멱등 요청 해시 충돌
 - 요청 검증 실패
@@ -204,6 +208,8 @@ PrepareWriteRequest:
 비주장: `STATE_VERSION_CONFLICT`는 항상 거절 응답 오류이며 메서드 로컬 쓰기 결정 이유가 아닙니다.
 
 공개 오류 코드 의미, 우선순위, 거절 응답 처리 경로는 아래 오류 담당 문서가 담당합니다.
+
+advisor 모드 거절은 쓰기 결정, 쓰기 티켓, 이벤트, 재실행 행, 상태 버전 증가를 만들지 않습니다.
 
 ## `dry_run` 동작
 

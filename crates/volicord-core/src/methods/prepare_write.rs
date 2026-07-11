@@ -153,6 +153,15 @@ fn plan_prepare_write(
     let planned_state_version = project_state.state_version + 1;
     let plan_now = utc_timestamp(service.now());
     let (task_id, task, mut reasons) = resolve_prepare_write_task(store, project_state, &request)?;
+    if parse_task_mode(&task.mode)? == TaskMode::Advisor {
+        validation_plan_error(
+            request.envelope.dry_run,
+            Some(project_state.state_version),
+            "task_id",
+            "advisor Task mode does not support write preparation",
+        )?;
+        unreachable!("validation_plan_error always returns Err");
+    }
     let current_change_unit = store.current_change_unit(&task_id).map_err(|error| {
         PlanError::Response(Box::new(store_error_response(
             &request.envelope,

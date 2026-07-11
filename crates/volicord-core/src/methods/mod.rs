@@ -51,7 +51,7 @@ use volicord_types::{
     ProjectContinuityStatus, ProjectContinuitySummary, ProjectEnforcementProfile, ProjectId,
     ReconcileChangesRequest, ReconcileChangesResult, RecordId, RecordRunRequest, RecordRunResult,
     RecordUserJudgmentPayload, RecordUserJudgmentRequest, RedactionState, RequestedMode,
-    RequiredNullable, ResidualRisk, ResumePolicy, RiskAcceptanceCoverage, RiskId, RunId,
+    RequiredNullable, ResidualRisk, ResumePolicy, RiskAcceptanceCoverage, RiskId, RunId, RunKind,
     RunSummary, SensitiveActionRequirement, SessionWatchCoverageBasis, SessionWatchScanSummary,
     SessionWatchStatus, StageArtifactRequest, StageArtifactResult, StagedArtifactHandle,
     StagedArtifactHandleId, StateRecordKind, StateRecordRef, StatusCloseState, StatusInclude,
@@ -2224,7 +2224,7 @@ fn build_state_summary(input: SummaryBuild<'_>) -> CoreResult<volicord_types::St
         project_id: project_id.clone(),
         state_version,
         task_ref: Some(task_ref),
-        mode: parse_task_mode(&task.mode)?,
+        mode: Some(parse_task_mode(&task.mode)?),
         lifecycle: Some(TaskLifecycleState {
             lifecycle_phase: parse_lifecycle_phase(&task.lifecycle_phase)?,
             close_reason: parse_close_reason(task)?,
@@ -2643,18 +2643,35 @@ fn task_shaping_json(
 }
 
 fn next_actions_for_state(
+    task_mode: TaskMode,
     task_ref: &StateRecordRef,
     change_unit_ref: Option<&StateRecordRef>,
 ) -> Vec<NextActionSummary> {
-    match change_unit_ref {
-        Some(change_unit_ref) => vec![NextActionSummary {
+    match (task_mode, change_unit_ref) {
+        (TaskMode::Advisor, Some(change_unit_ref)) => vec![NextActionSummary {
+            action_kind: NextActionKind::RecordRun,
+            owner_method: Some(MethodName::RecordRun),
+            label: "Record an advisory shaping update for the current Change Unit.".to_owned(),
+            blocking_question: None,
+            required_refs: vec![task_ref.clone(), change_unit_ref.clone()],
+        }],
+        (_, Some(change_unit_ref)) => vec![NextActionSummary {
             action_kind: NextActionKind::PrepareWrite,
             owner_method: Some(MethodName::PrepareWrite),
             label: "Check the current change against current scope.".to_owned(),
             blocking_question: None,
             required_refs: vec![task_ref.clone(), change_unit_ref.clone()],
         }],
-        None => vec![NextActionSummary {
+        (TaskMode::Advisor, None) => vec![NextActionSummary {
+            action_kind: NextActionKind::UpdateScope,
+            owner_method: Some(MethodName::UpdateScope),
+            label:
+                "Create the first currently applied Change Unit before recording advisory shaping."
+                    .to_owned(),
+            blocking_question: None,
+            required_refs: vec![task_ref.clone()],
+        }],
+        (_, None) => vec![NextActionSummary {
             action_kind: NextActionKind::UpdateScope,
             owner_method: Some(MethodName::UpdateScope),
             label:
@@ -3260,11 +3277,11 @@ fn task_mode_storage(mode: TaskMode) -> &'static str {
     }
 }
 
-fn parse_task_mode(value: &str) -> CoreResult<Option<TaskMode>> {
+fn parse_task_mode(value: &str) -> CoreResult<TaskMode> {
     match value {
-        "advisor" => Ok(Some(TaskMode::Advisor)),
-        "direct" => Ok(Some(TaskMode::Direct)),
-        "work" => Ok(Some(TaskMode::Work)),
+        "advisor" => Ok(TaskMode::Advisor),
+        "direct" => Ok(TaskMode::Direct),
+        "work" => Ok(TaskMode::Work),
         _ => invalid_storage("tasks.mode"),
     }
 }

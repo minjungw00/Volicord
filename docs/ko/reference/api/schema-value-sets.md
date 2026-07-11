@@ -223,6 +223,16 @@ work
 
 `volicord.intake`의 `requested_mode`는 입력 전용 값으로 `auto`도 받습니다. 출력 `Task.mode` 필드는 `advisor`, `direct`, `work`를 사용합니다. 접수 확정 동작은 [접수 메서드](method-intake.md)가 담당합니다.
 
+모드는 실행 기록 종류 호환성과 종료 완료 결과를 제한합니다.
+
+| `Task.mode` | 허용되는 `RunKind` 값 | 성공한 `intent=complete` 결과 |
+|---|---|---|
+| `advisor` | `shaping_update` | `advice_only` |
+| `direct` | `direct` | `completed` |
+| `work` | `shaping_update`, `implementation` | `completed` |
+
+`advisor`는 Product Repository 파일 효과에 대해 읽기 전용인 자문 작업입니다. `prepare_write`나 쓰기 티켓을 사용하지 않으며, 호환되는 실행 기록은 `product_file_write_observed=false`, 빈 `changed_paths` 목록, `write_ticket_id=null`을 가집니다. 호환되는 `shaping_update`는 `record_run`이 Run과 메서드 소유 Core 증거 상태를 커밋하는 것을 허용합니다.
+
 `Task.lifecycle_phase`는 아래 값을 사용합니다.
 
 ```text
@@ -376,6 +386,8 @@ shaping_update
 implementation
 direct
 ```
+
+위 Task 모드 호환성 행렬은 완전한 목록입니다. 이 값에는 호환 별칭이 없으며, 호환되지 않는 모드와 종류 조합은 기록되지 않습니다.
 
 <a id="state-and-blocker-values"></a>
 ## 상태와 차단 사유 값

@@ -154,6 +154,18 @@ User-owned judgment is the boundary where the user owns the decision. Core may r
 
 User-owned judgment can concern product direction, technical direction, scope, a sensitive step, final acceptance, residual-risk acceptance, or cancellation. Exact judgment schema fields and value names belong to API schema and value-set owners.
 
+### Task mode and Run compatibility
+
+The concrete `Task.mode` limits which Run kinds can represent work for that Task:
+
+| `Task.mode` | Compatible Run kinds |
+|---|---|
+| `advisor` | `shaping_update` |
+| `direct` | `direct` |
+| `work` | `shaping_update`, `implementation` |
+
+`advisor` is read-only with respect to Product Repository file effects. It does not authorize product-file writes or write-ticket issuance, while a compatible `shaping_update` call to `record_run` still commits the Run and any method-owned Core evidence state. A successful `intent=complete` terminal transition records `Task.result=advice_only` for `advisor`; the same successful completion path records `Task.result=completed` for `direct` and `work`. Mode compatibility does not by itself satisfy or waive evidence, final-acceptance, residual-risk, or other close-readiness requirements.
+
 ### Run
 
 A Run records an execution or observation with the available context and references.

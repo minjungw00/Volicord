@@ -525,7 +525,7 @@ pub(super) fn plan_close_task_with_context(
     };
 
     if let Some(closed_at) = &closed_at {
-        let terminal = close_terminal_storage(request.intent);
+        let terminal = close_terminal_storage(request.intent, parse_task_mode(&context.task.mode)?);
         let close_summary_json = terminal_close_summary_json(&context.task, &request, closed_at)?;
         synthetic_task.lifecycle_phase = terminal.lifecycle_phase.to_owned();
         synthetic_task.result = Some(terminal.result.to_owned());
@@ -776,11 +776,15 @@ struct CloseTerminalStorage {
     event_kind: &'static str,
 }
 
-fn close_terminal_storage(intent: CloseIntent) -> CloseTerminalStorage {
+fn close_terminal_storage(intent: CloseIntent, task_mode: TaskMode) -> CloseTerminalStorage {
     match intent {
         CloseIntent::Complete => CloseTerminalStorage {
             lifecycle_phase: "completed",
-            result: "completed",
+            result: if task_mode == TaskMode::Advisor {
+                "advice_only"
+            } else {
+                "completed"
+            },
             event_kind: "task_completed",
         },
         CloseIntent::Cancel => CloseTerminalStorage {
@@ -2404,7 +2408,7 @@ fn guard_close_blockers(
             }],
         ));
     }
-    if summary.missing_or_stale_write_ticket {
+    if summary.missing_or_stale_write_ticket && context.task.mode != "advisor" {
         blockers.push(close_blocker(
             CloseReadinessBlockerCategory::WriteCompatibility,
             "guard_write_ticket_missing_or_stale",
@@ -3118,6 +3122,7 @@ fn completion_close_blockers(
             )))
         })?
         .iter()
+        .filter(|_| context.task.mode != "advisor")
         .filter(|record| record.basis_state_version != project_state.state_version)
     {
         blockers.push(close_blocker(

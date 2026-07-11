@@ -214,6 +214,16 @@ work
 
 `requested_mode` for `volicord.intake` also accepts `auto` as an input-only value. Output `Task.mode` fields use `advisor`, `direct`, or `work`; intake resolution behavior is owned by [Intake method](method-intake.md).
 
+Mode constrains Run-kind compatibility and terminal completion result:
+
+| `Task.mode` | Allowed `RunKind` values | Successful `intent=complete` result |
+|---|---|---|
+| `advisor` | `shaping_update` | `advice_only` |
+| `direct` | `direct` | `completed` |
+| `work` | `shaping_update`, `implementation` | `completed` |
+
+`advisor` is read-only with respect to Product Repository file effects. It does not use `prepare_write` or a write ticket, and its compatible Run has `product_file_write_observed=false`, an empty `changed_paths` list, and `write_ticket_id=null`. A compatible `shaping_update` still allows `record_run` to commit Run and method-owned Core evidence state.
+
 `Task.lifecycle_phase` uses:
 
 ```text
@@ -367,6 +377,8 @@ shaping_update
 implementation
 direct
 ```
+
+The Task-mode compatibility matrix above is exhaustive. These values have no compatibility aliases, and an incompatible mode/kind pair is not recorded.
 
 <a id="state-and-blocker-values"></a>
 ## State and blocker values

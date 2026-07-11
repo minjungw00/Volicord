@@ -156,6 +156,18 @@ Autonomy Boundary는 현재 적용 Change Unit 안에서 에이전트가 가질 
 
 사용자 소유 판단은 제품 방향, 기술 방향, 범위, 민감 단계, 최종 수락, 잔여 위험 수락, 취소에 관한 것일 수 있습니다. 정확한 판단 스키마 필드와 값 이름은 API 스키마와 값 집합 담당 문서가 맡습니다.
 
+### Task 모드와 실행 기록 호환성
+
+확정된 `Task.mode`는 해당 Task의 작업을 나타낼 수 있는 실행 기록 종류를 제한합니다.
+
+| `Task.mode` | 호환되는 실행 기록 종류 |
+|---|---|
+| `advisor` | `shaping_update` |
+| `direct` | `direct` |
+| `work` | `shaping_update`, `implementation` |
+
+`advisor`는 Product Repository 파일 효과에 대해 읽기 전용인 자문 작업입니다. 제품 파일 쓰기나 쓰기 티켓 발급 권한을 만들지 않지만, 호환되는 `shaping_update`의 `record_run` 호출은 Run과 메서드 소유 Core 증거 상태를 정상 커밋합니다. 성공한 `intent=complete` 종료 전이는 `advisor`에서 `Task.result=advice_only`를 기록하고, 같은 성공 완료 경로는 `direct`와 `work`에서 `Task.result=completed`를 기록합니다. 모드 호환성 자체는 증거, 최종 수락, 잔여 위험 또는 다른 닫기 준비 상태 요구사항을 만족하거나 면제하지 않습니다.
+
 ### 실행 기록
 
 실행 기록은 사용 가능한 맥락과 참조와 함께 실행이나 관찰을 기록합니다.

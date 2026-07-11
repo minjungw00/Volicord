@@ -235,6 +235,7 @@ fn status_result_fields(
             })?;
             if let Some(task_ref) = &state.task_ref {
                 next_actions.extend(next_actions_for_state(
+                    parse_task_mode(&task.mode)?,
                     task_ref,
                     state.active_change_unit_ref.as_ref(),
                 ));

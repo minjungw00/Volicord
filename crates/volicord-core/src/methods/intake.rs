@@ -209,7 +209,11 @@ fn plan_intake(
     } else {
         projected_blocker_refs(store, &task_id, planned_state_version)?
     };
-    let next_actions = next_actions_for_state(&task_ref, change_unit_ref.as_ref());
+    let next_actions = next_actions_for_state(
+        parse_task_mode(&task_record.mode)?,
+        &task_ref,
+        change_unit_ref.as_ref(),
+    );
     let evidence_summary = if create_new {
         None
     } else {

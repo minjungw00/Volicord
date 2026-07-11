@@ -29,6 +29,67 @@ fn check_close_is_read_only() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
+fn advisor_check_close_never_recommends_prepare_write() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, _) = create_task_with_mode_and_change_unit(
+        &harness,
+        "advisor_check_close",
+        RequestedMode::Advisor,
+    )?;
+
+    let response = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
+            request_id: "req_advisor_check_close",
+            idempotency_key: None,
+            dry_run: false,
+            expected_state_version: None,
+            task_id: &task_id,
+            intent: CloseIntent::Check,
+            close_reason: None,
+            superseding_task_id: None,
+        }),
+        invocation(OperationCategory::Read),
+    )?;
+
+    let blockers = response.response_value["blockers"]
+        .as_array()
+        .expect("blockers should be an array");
+    assert!(blockers
+        .iter()
+        .all(|blocker| blocker["category"] != "write_compatibility"));
+    assert!(blockers.iter().any(|blocker| {
+        blocker["next_actions"].as_array().is_some_and(|actions| {
+            actions
+                .iter()
+                .any(|action| action["action_kind"] == "record_run")
+        })
+    }));
+    for blocker_group in [
+        &response.response_value["blockers"],
+        &response.response_value["state"]["close_blockers"],
+    ] {
+        for blocker in blocker_group
+            .as_array()
+            .expect("close blockers should be an array")
+        {
+            assert!(blocker["next_actions"]
+                .as_array()
+                .expect("next_actions should be an array")
+                .iter()
+                .all(|action| {
+                    action["action_kind"] != "prepare_write"
+                        && action["owner_method"] != "volicord.prepare_write"
+                }));
+        }
+    }
+    assert_ne!(
+        response.response_value["summary_card"]["next_action"]["action_kind"],
+        "prepare_write"
+    );
+    Ok(())
+}
+
+#[test]
 fn check_close_dry_run_is_read_only() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, _) = create_task_with_change_unit(&harness, "close_check_dry")?;
@@ -2019,6 +2080,71 @@ fn close_task_complete_success() -> Result<(), Box<dyn Error>> {
     assert_eq!(after.state_version, before.state_version + 1);
     assert_eq!(after.task_events, before.task_events + 1);
     assert_eq!(after.tool_invocations, before.tool_invocations + 1);
+    Ok(())
+}
+
+#[test]
+fn advisor_close_complete_persists_and_projects_advice_only() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) =
+        create_task_with_mode_and_change_unit(&harness, "advisor_close", RequestedMode::Advisor)?;
+    let mut run = record_run_request(
+        "req_advisor_close_run",
+        "idem_advisor_close_run",
+        false,
+        Some(2),
+        &task_id,
+        &change_unit_id,
+    );
+    run.kind = RunKind::ShapingUpdate;
+    run.evidence_updates = vec![supported_evidence_update("Close claim supported.")];
+    run.close_assessment = Some(close_assessment_with_risks(
+        "Close claim supported.",
+        Vec::new(),
+    ))
+    .into();
+    let run_response = harness
+        .service
+        .record_run(run, invocation(OperationCategory::AgentWorkflow))?;
+    let after_evidence = run_response.response_value["base"]["state_version"]
+        .as_u64()
+        .expect("state_version should be present");
+    let after_final = record_final_acceptance(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        after_evidence,
+        "advisor_close",
+    )?;
+
+    let response = harness.service.close_task(
+        close_task_request(CloseTaskFixture {
+            request_id: "req_advisor_close_complete",
+            idempotency_key: Some("idem_advisor_close_complete"),
+            dry_run: false,
+            expected_state_version: Some(after_final),
+            task_id: &task_id,
+            intent: CloseIntent::Complete,
+            close_reason: Some(CloseReason::CompletedSelfChecked),
+            superseding_task_id: None,
+        }),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let stored = task_terminal_fields(&harness, &task_id)?;
+
+    assert_eq!(response.response_value["close_state"], "closed");
+    assert_eq!(response.response_value["state"]["mode"], "advisor");
+    assert_eq!(
+        response.response_value["state"]["lifecycle"]["lifecycle_phase"],
+        "completed"
+    );
+    assert_eq!(
+        response.response_value["state"]["lifecycle"]["result"],
+        "advice_only"
+    );
+    assert_eq!(stored.lifecycle_phase, "completed");
+    assert_eq!(stored.result.as_deref(), Some("advice_only"));
     Ok(())
 }
 

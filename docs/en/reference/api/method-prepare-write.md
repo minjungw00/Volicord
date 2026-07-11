@@ -36,6 +36,8 @@ This document does not own:
 
 When the check is allowed, the method issues one open write ticket. The ticket is a Volicord authority record for authorized write intent within the current Task and Change Unit. It is not filesystem enforcement, OS permission, shell permission, or proof that a write occurred. When the check is not allowed, the method denies or defers the ticket path.
 
+`Task.mode=advisor` is read-only with respect to Product Repository file effects. `volicord.prepare_write` rejects that Task mode before decision evaluation, does not recommend this method as the generic next action for an advisor Task, and never issues an advisor write ticket. This does not prevent a compatible advisor `record_run` call from committing Core Run or evidence state.
+
 Security non-claims belong to [Security](../security.md).
 
 ## Required inputs
@@ -71,6 +73,7 @@ Field notes:
 Requires:
 
 - verified invocation context with `operation_category=agent_workflow`
+- a current Task whose mode is `direct` or `work`; `advisor` is incompatible with write preparation
 - compatible current scope
 - compatible current Change Unit effect contract for product-file writes, when one is recorded
 - compatible baseline
@@ -191,6 +194,7 @@ Non-claims:
 
 Returns `ToolRejectedResponse` for failures before decision evaluation or commit, including:
 
+- `Task.mode=advisor`
 - stale `expected_state_version`
 - idempotency request-hash conflict
 - request validation failure
@@ -204,6 +208,8 @@ Returns `ToolRejectedResponse` for failures before decision evaluation or commit
 Non-claim: `STATE_VERSION_CONFLICT` is always a rejected response error, never a method-local write decision reason.
 
 Public error code meaning, precedence, and rejected-response routing are owned by the error documents linked below.
+
+Advisor-mode rejection creates no write decision, write ticket, event, replay row, or state-version increment.
 
 ## Dry-run behavior
 

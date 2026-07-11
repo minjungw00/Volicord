@@ -2257,6 +2257,14 @@ fn create_task_with_change_unit(
     harness: &MethodHarness,
     prefix: &str,
 ) -> Result<(String, String), Box<dyn Error>> {
+    create_task_with_mode_and_change_unit(harness, prefix, RequestedMode::Work)
+}
+
+fn create_task_with_mode_and_change_unit(
+    harness: &MethodHarness,
+    prefix: &str,
+    requested_mode: RequestedMode,
+) -> Result<(String, String), Box<dyn Error>> {
     let intake_request_id = format!("req_{prefix}_task");
     let intake_idempotency_key = format!("idem_{prefix}_task");
     let intake = harness.service.intake(
@@ -2265,7 +2273,7 @@ fn create_task_with_change_unit(
             &intake_idempotency_key,
             false,
             Some(0),
-            RequestedMode::Work,
+            requested_mode,
         ),
         invocation(OperationCategory::AgentWorkflow),
     )?;
@@ -3356,6 +3364,17 @@ fn run_scope_revision(harness: &MethodHarness, run_id: &str) -> Result<u64, Box<
         |row| row.get(0),
     )?;
     Ok(u64::try_from(scope_revision)?)
+}
+
+fn stored_run_kind(harness: &MethodHarness, run_id: &str) -> Result<String, Box<dyn Error>> {
+    Ok(harness.conn()?.query_row(
+        "SELECT kind
+               FROM runs
+              WHERE project_id = ?1
+                AND run_id = ?2",
+        rusqlite::params![PROJECT_ID, run_id],
+        |row| row.get(0),
+    )?)
 }
 
 fn set_run_observed_baseline(

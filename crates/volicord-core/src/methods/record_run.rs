@@ -101,6 +101,14 @@ struct RecordRunArtifactContext<'a> {
     now: &'a UtcTimestamp,
 }
 
+fn task_mode_allows_run_kind(task_mode: TaskMode, run_kind: RunKind) -> bool {
+    match task_mode {
+        TaskMode::Advisor => run_kind == RunKind::ShapingUpdate,
+        TaskMode::Direct => run_kind == RunKind::Direct,
+        TaskMode::Work => matches!(run_kind, RunKind::ShapingUpdate | RunKind::Implementation),
+    }
+}
+
 fn plan_record_run(
     service: &CoreService,
     store: &CoreProjectStore,
@@ -209,6 +217,37 @@ fn plan_record_run(
                 project_state,
             )))
         })?;
+    let task_mode = parse_task_mode(&task.mode)?;
+    if !task_mode_allows_run_kind(task_mode, request.kind) {
+        validation_plan_error(
+            request.envelope.dry_run,
+            Some(project_state.state_version),
+            "kind",
+            "kind is not compatible with the current Task mode",
+        )?;
+        unreachable!("validation_plan_error always returns Err");
+    }
+    if task_mode == TaskMode::Advisor
+        && (request.observed_changes.product_file_write_observed
+            || !normalized_changed_paths.is_empty())
+    {
+        validation_plan_error(
+            request.envelope.dry_run,
+            Some(project_state.state_version),
+            "observed_changes",
+            "advisor Task runs cannot report Product Repository file changes",
+        )?;
+        unreachable!("validation_plan_error always returns Err");
+    }
+    if task_mode == TaskMode::Advisor && request.write_ticket_id.is_some() {
+        validation_plan_error(
+            request.envelope.dry_run,
+            Some(project_state.state_version),
+            "write_ticket_id",
+            "advisor Task runs cannot consume a write ticket",
+        )?;
+        unreachable!("validation_plan_error always returns Err");
+    }
     let change_unit = store
         .change_unit_record(&request.task_id, request.change_unit_id.as_str())
         .map_err(|error| {

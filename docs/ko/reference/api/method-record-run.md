@@ -27,6 +27,16 @@
 - 직접 응답 또는 결과
 - 구현 작업
 
+현재 저장된 `Task.mode`와 요청한 `kind`는 아래 완전한 행렬과 일치해야 합니다.
+
+| 현재 `Task.mode` | 허용되는 `RecordRunRequest.kind` |
+|---|---|
+| `advisor` | `shaping_update` |
+| `direct` | `direct` |
+| `work` | `shaping_update`, `implementation` |
+
+Core는 호환되지 않는 조합을 커밋 전에 거절합니다. `advisor` 실행 기록은 Product Repository 파일 효과에 대해 읽기 전용이며 추가로 `observed_changes.product_file_write_observed=false`, `observed_changes.changed_paths=[]`, `write_ticket_id=null`을 요구합니다. 호환되는 `shaping_update`는 Run과 메서드 소유 증거 상태를 기록하는 Core 상태 변경으로 커밋됩니다.
+
 이 메서드는 현재 닫기 근거와 주장별 간결한 증거 범위를 갱신하고, 보고되었거나 관찰된 주장에 대한 증거 관찰을 기록하고, 제품 쓰기를 기록할 때 호환되는 쓰기 티켓을 소비하며, 기존 증거 첨부를 연결하고, 허용되는 경우 적격 스테이징 첨부 입력을 지속 `ArtifactRef`로 승격할 수도 있습니다. 입력 전용 또는 스테이징 전용 항목은 받아들여진 증거가 아니며, 이 메서드가 아래 증거 규칙에 따라 주장, 출처, 첨부 연결 또는 승격을 기록하기 전에는 닫기 준비 상태를 만들지 않습니다.
 
 ## 필수 입력
@@ -193,6 +203,8 @@ ResidualRiskInput:
 
 아래 경우는 `ToolRejectedResponse`를 반환합니다.
 
+- 현재 저장된 `Task.mode`와 호환되지 않는 `kind`
+- 제품 파일 쓰기, 비어 있지 않은 변경 경로, 또는 `null`이 아닌 쓰기 티켓을 보고하는 `advisor` 요청
 - 오래된 `expected_state_version`
 - 오래된 쓰기 티켓 기준
 - 제품 쓰기에 필요한 쓰기 티켓 누락 또는 무효
@@ -215,6 +227,8 @@ ResidualRiskInput:
 오래된 쓰기 티켓 근거에서는 소비 전에 거절되며 Run, 증거 갱신, 증거 관찰, 아티팩트 연결, 아티팩트 승격, 이벤트, 재실행 행, `project_state.state_version` 증가를 만들지 않습니다.
 
 만료된 쓰기 티켓에서는 소비 전에 거절되며 Run, 이벤트, 재실행 행, 아티팩트 승격, 증거 갱신, 증거 관찰, 쓰기 티켓 소비, `project_state.state_version` 증가를 만들지 않습니다.
+
+Task 모드 또는 advisor 읽기 전용 검증 거절도 Run, 닫기 근거 리비전, 증거 갱신, 증거 관찰, 아티팩트 연결이나 승격, 이벤트, 재실행 행, 쓰기 티켓 효과, 상태 버전 증가를 만들지 않습니다.
 
 ## `dry_run` 동작
 

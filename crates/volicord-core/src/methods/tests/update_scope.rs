@@ -1,6 +1,63 @@
 use super::*;
 
 #[test]
+fn advisor_current_change_unit_next_action_is_record_run() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let intake = harness.service.intake(
+        intake_request(
+            "req_advisor_next_task",
+            "idem_advisor_next_task",
+            false,
+            Some(0),
+            RequestedMode::Advisor,
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let task_id = response_record_id(&intake.response_value, "task_ref");
+
+    let response = harness.service.update_scope(
+        update_scope_request(
+            "req_advisor_next_scope",
+            "idem_advisor_next_scope",
+            false,
+            Some(1),
+            &task_id,
+            ChangeUnitOperation::CreateCurrent,
+            "Create an advisory Change Unit.",
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+
+    let next_actions = response.response_value["next_actions"]
+        .as_array()
+        .expect("next_actions should be an array");
+    assert_eq!(next_actions.len(), 1);
+    assert_eq!(next_actions[0]["action_kind"], "record_run");
+    assert_eq!(next_actions[0]["owner_method"], "volicord.record_run");
+
+    let status = harness.service.status(
+        StatusRequest {
+            envelope: envelope("req_advisor_next_status", None, false, None, Some(&task_id)),
+            include: StatusInclude {
+                task: true,
+                ..status_include()
+            },
+        },
+        invocation(OperationCategory::Read),
+    )?;
+    let status_actions = status.response_value["next_actions"]
+        .as_array()
+        .expect("status next_actions should be an array");
+    assert!(status_actions.iter().any(|action| {
+        action["action_kind"] == "record_run" && action["owner_method"] == "volicord.record_run"
+    }));
+    assert!(status_actions
+        .iter()
+        .all(|action| action["action_kind"] != "prepare_write"));
+    Ok(())
+}
+
+#[test]
 fn update_scope_commits_once_and_creates_one_current_change_unit() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let intake = harness.service.intake(

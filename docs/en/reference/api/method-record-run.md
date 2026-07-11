@@ -27,6 +27,16 @@ This document does not own:
 - a direct answer or result
 - implementation work
 
+The current persisted `Task.mode` and requested `kind` must match this exhaustive matrix:
+
+| Current `Task.mode` | Allowed `RecordRunRequest.kind` |
+|---|---|
+| `advisor` | `shaping_update` |
+| `direct` | `direct` |
+| `work` | `shaping_update`, `implementation` |
+
+Core rejects an incompatible pair before commit. An `advisor` Run is read-only with respect to Product Repository file effects and additionally requires `observed_changes.product_file_write_observed=false`, `observed_changes.changed_paths=[]`, and `write_ticket_id=null`. A compatible `shaping_update` remains a committed Core mutation that records the Run and any method-owned evidence state.
+
 The method may also update the current close basis, update compact claim-scoped evidence coverage, record evidence observations for reported or observed claims, consume a compatible write ticket when recording a product write, link existing Evidence attachments, and promote eligible staged attachment inputs to persistent `ArtifactRef` records where allowed. Input-only or staged-only items are not accepted Evidence and do not establish close readiness until this method records the claim, provenance, and any attachment link or promotion according to the evidence rules below.
 
 ## Required inputs
@@ -193,6 +203,8 @@ Those failures are rejected before commit.
 
 Returns `ToolRejectedResponse` for:
 
+- a `kind` incompatible with the current persisted `Task.mode`
+- an `advisor` request that reports a product-file write, non-empty changed paths, or a non-null write ticket
 - stale `expected_state_version`
 - stale write-ticket basis
 - missing or invalid write ticket for product writes
@@ -215,6 +227,8 @@ Public error code meaning, precedence, details, and rejected-response routing ar
 For a stale write-ticket basis, rejection happens before consumption and creates no Run, evidence update, evidence observation, artifact link, artifact promotion, event, replay row, or `project_state.state_version` increment.
 
 For an expired write ticket, rejection happens before consumption and creates no Run, event, replay row, artifact promotion, evidence update, evidence observation, write-ticket consumption, or `project_state.state_version` increment.
+
+Task-mode or advisor read-only validation rejection likewise creates no Run, close-basis revision, evidence update, evidence observation, artifact link or promotion, event, replay row, write-ticket effect, or state-version increment.
 
 ## Dry-run behavior
 

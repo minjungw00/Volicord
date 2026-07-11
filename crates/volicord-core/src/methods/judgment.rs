@@ -456,7 +456,11 @@ fn plan_request_user_judgment(
             Some(record.basis_state_version.unwrap_or(planned_state_version)),
         )
     });
-    let next_actions = next_actions_for_state(&task_ref, change_unit_ref.as_ref());
+    let next_actions = next_actions_for_state(
+        parse_task_mode(&task.mode)?,
+        &task_ref,
+        change_unit_ref.as_ref(),
+    );
     let guarantee_display =
         guarantee_display_for_invocation(store, verified_invocation, planned_state_version)?;
     let write_ticket_summary = projected_write_ticket_summary(
@@ -1351,7 +1355,11 @@ fn plan_record_user_judgment(
             Some(record.basis_state_version.unwrap_or(planned_state_version)),
         )
     });
-    let next_actions = next_actions_for_state(&task_ref, change_unit_ref.as_ref());
+    let next_actions = next_actions_for_state(
+        parse_task_mode(&task.mode)?,
+        &task_ref,
+        change_unit_ref.as_ref(),
+    );
     let guarantee_display =
         guarantee_display_for_invocation(store, verified_invocation, planned_state_version)?;
     let write_ticket_summary = projected_write_ticket_summary(
