@@ -21,7 +21,8 @@
 - 대기 중인 사용자 판단을 위한 로컬 consent URL 대체 경로
 - 하나의 내부 Agent Connection 바인딩에 대한 MCP 시작 검증
 - 전송 경계에서의 MCP `tools/list`와 `tools/call` 동작
-- 내부 래퍼와 호출 메타데이터를 숨기는 MCP 표시 입력·출력 도구 스키마 투영
+- 내부 래퍼와 호출 메타데이터를 숨기는 MCP 표시 입력·출력 도구 스키마 투영(MCP 전용
+  생략 기본값과 입력 예시 포함)
 - MCP `tools/call` 응답 래핑과 어댑터 오류 형태
 - 프로세스 종료와 재연결 동작
 
@@ -688,6 +689,41 @@ Agent Connection MCP 도구로 노출되지 않습니다. 공개 메서드 담�
 `locale`, `actor_source`, `operation_category`, 검증 근거 필드를 숨겨야 합니다. 숨겨진
 필드는 공개 MCP 도구 인자로 필요하지도 허용되지도 않습니다. 원시 공개 메서드 도구
 인자가 이런 필드를 포함하면 어댑터는 Core 실행 전에 호출을 거절합니다.
+
+MCP 인자 투영은 생략이 기존에 허용하던 명시적 `null` 또는 빈 배열과 정확히 같은 의미인
+경우에만 다음 생략 기본값을 적용합니다.
+
+- `volicord.intake`: `initial_context_refs=[]`
+- `volicord.update_scope`: `goal_summary=null`, `scope_update=null`,
+  `scope_boundary=null`, `non_goals=null`, `acceptance_criteria=null`,
+  `autonomy_boundary=null`, `baseline_ref=null`,
+  `related_scope_decision_refs=[]`
+- `volicord.prepare_write`: `task_id=null`, `change_unit_id=null`,
+  `sensitive_categories=[]`
+- `volicord.stage_artifact`: `expected_sha256=null`,
+  `expected_size_bytes=null`, `relation_hint=null`
+- `volicord.record_run`: `run_id=null`, `write_ticket_id=null`,
+  `artifact_inputs=[]`, `evidence_updates=[]`, `evidence_observations=[]`,
+  `close_assessment=null`
+- `volicord.request_user_judgment`: `change_unit_id=null`,
+  `sensitive_action_scope=null`, `options=null`, `affected_refs=[]`,
+  `expires_at=null`
+
+이 기본값은 MCP 표시 인자 DTO에만 속합니다. 디코딩 뒤 어댑터는 모든 멤버를 갖춘 Core
+요청 형태를 구성합니다. 따라서 각 메서드 참조가 담당하는 공개 Core API의 멤버 존재
+계약은 바뀌지 않습니다. `volicord.request_user_judgment`의 `task_id`,
+`judgment_kind`, `presentation`, `question`, `context`, `required_for`는 계속 필수 MCP
+인자입니다. 이 규칙은 그 밖의 필드에 암묵적 값을 만들지 않으며, 정확히 광고한
+`required` 배열이 기준입니다.
+
+도구 description에는 짧은 목적과 핵심 경계만 둡니다. 자주 쓰는 인자 형태 예시는
+`inputSchema.examples` 값으로 광고합니다. 여기에는 intake의 생성·재개·대체·활성 Task
+거절, update-scope의 유지·생성·교체, status의 세 detail 수준, prepare-write,
+stage-artifact, 쓰기 없는 record-run과 증거를 포함한 record-run, request-judgment,
+reconcile, check-close, close의 완료·취소·대체 분기가 포함됩니다. 광고한 각 예시는 호출에
+쓰는 동일한 `inputSchema`와 MCP 인자 DTO를 따릅니다. 예시는 지원하는 인자 분기를 보여
+줄 뿐이며, 일치하는 프로젝트 상태나 권한, 전제조건, 성공적인 Core 결과를 주장하지
+않습니다.
 
 나열되는 모든 Volicord 도구는 루트 타입이 `object`인 MCP 2025-11-25
 `outputSchema`도 노출합니다. 공개 메서드 도구는 공개 메서드 응답 분기에서 이 스키마를

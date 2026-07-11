@@ -26,7 +26,8 @@ This document owns:
 - MCP startup validation for one internal Agent Connection binding
 - MCP `tools/list` and `tools/call` behavior at the transport boundary
 - MCP-visible input/output tool-schema projection that hides internal envelopes
-  and invocation metadata
+  and invocation metadata, including MCP-only omission defaults and input
+  examples
 - MCP `tools/call` response wrapping and adapter error shape
 - process shutdown and reconnection behavior
 
@@ -771,6 +772,45 @@ request envelopes, protocol metadata, `project_id`, `connection_id`,
 hidden fields are not required or accepted public MCP tool arguments. If raw
 public method-tool arguments include them, the adapter rejects the call before
 Core execution.
+
+The MCP argument projection applies omission defaults only where omission has
+exactly the same meaning as the previously accepted explicit `null` or empty
+array:
+
+- `volicord.intake`: `initial_context_refs=[]`
+- `volicord.update_scope`: `goal_summary=null`, `scope_update=null`,
+  `scope_boundary=null`, `non_goals=null`, `acceptance_criteria=null`,
+  `autonomy_boundary=null`, `baseline_ref=null`, and
+  `related_scope_decision_refs=[]`
+- `volicord.prepare_write`: `task_id=null`, `change_unit_id=null`, and
+  `sensitive_categories=[]`
+- `volicord.stage_artifact`: `expected_sha256=null`,
+  `expected_size_bytes=null`, and `relation_hint=null`
+- `volicord.record_run`: `run_id=null`, `write_ticket_id=null`,
+  `artifact_inputs=[]`, `evidence_updates=[]`, `evidence_observations=[]`, and
+  `close_assessment=null`
+- `volicord.request_user_judgment`: `change_unit_id=null`,
+  `sensitive_action_scope=null`, `options=null`, `affected_refs=[]`, and
+  `expires_at=null`
+
+These defaults belong only to the MCP-visible argument DTO. After decoding, the
+adapter constructs the complete Core request shape. They do not change the
+public Core API present-member contract owned by the focused method references.
+For `volicord.request_user_judgment`, `task_id`, `judgment_kind`,
+`presentation`, `question`, `context`, and `required_for` remain required MCP
+arguments. This rule supplies no implicit value for any other field; the exact
+advertised `required` array remains authoritative.
+
+Tool descriptions contain only a short purpose and key boundary. Frequently
+used argument-shape examples are advertised as values in
+`inputSchema.examples`, including intake create/resume/supersede/reject,
+update-scope keep/create/replace, all three status detail levels, prepare-write,
+stage-artifact, no-write and evidence-bearing record-run, request-judgment,
+reconcile, check-close, and close complete/cancel/supersede branches. Each
+advertised example conforms to the same `inputSchema` and MCP argument DTO used
+for calls. Examples illustrate supported argument branches only; they do not
+assert matching project state, authority, preconditions, or a successful Core
+result.
 
 Every listed Volicord tool also exposes an MCP 2025-11-25 `outputSchema` whose
 root type is `object`. Public method tools derive that schema from their public

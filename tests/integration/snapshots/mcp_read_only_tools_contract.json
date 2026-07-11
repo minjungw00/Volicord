@@ -23,7 +23,7 @@
         "openWorldHint": false,
         "readOnlyHint": true
       },
-      "description": "Read the current Core status view. Read-only MCP call; arguments are optional project_selector, optional-null task_id, and detail summary|workflow|full. No idempotency_key, expected_state_version, request_id, envelope, actor_source, or operation_category fields are accepted. Example read-only status: {\"task_id\":\"task_status_001\",\"detail\":\"workflow\"}",
+      "description": "Read the current Core status view without creating Core authority state.",
       "input_schema": {
         "definitions": [
           "StatusDetailLevel"
@@ -34,7 +34,7 @@
           "task_id"
         ],
         "root_required": [],
-        "sha256": "sha256:edb7cc6bcc5b45f91d26194a047cda755f2840b19703bb7e8b03fa5fdc494c1d"
+        "sha256": "sha256:08f4a479ec598824063010b750a2a046904e4d0c25897890b21e05bee34aa6af"
       },
       "name": "volicord.status",
       "output_schema": {
@@ -142,7 +142,7 @@
         "openWorldHint": false,
         "readOnlyHint": true
       },
-      "description": "Check Close Status for a selected Task. Read-only MCP call; only task_id and optional project_selector are accepted. A missing final acceptance appears in the response as blockers[].code=missing_final_acceptance; it is not a request field. Example check-close request: {\"task_id\":\"task_close_001\"}",
+      "description": "Read current close readiness without requesting a terminal mutation.",
       "input_schema": {
         "definitions": [],
         "root_properties": [
@@ -152,7 +152,7 @@
         "root_required": [
           "task_id"
         ],
-        "sha256": "sha256:d851799cc1f08d047d4527a12279640e489c48f81abfd2b270a369452aa35916"
+        "sha256": "sha256:22b43009c43ecffe17dc055bdbc361203b7d033829e3ebd42b3902fac56b12c7"
       },
       "name": "volicord.check_close",
       "output_schema": {

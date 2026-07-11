@@ -166,6 +166,7 @@ pub struct McpIntakeArguments {
     pub requested_mode: RequestedMode,
     pub resume_policy: ResumePolicy,
     pub initial_scope: InitialScope,
+    #[serde(default)]
     pub initial_context_refs: Vec<StateRecordRef>,
 }
 
@@ -222,14 +223,22 @@ pub struct McpUpdateScopeArguments {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project_selector: Option<String>,
     pub task_id: TaskId,
+    #[serde(default)]
     pub goal_summary: RequiredNullable<String>,
+    #[serde(default)]
     pub scope_update: RequiredNullable<ScopeUpdate>,
+    #[serde(default)]
     pub scope_boundary: RequiredNullable<String>,
+    #[serde(default)]
     pub non_goals: RequiredNullable<Vec<String>>,
+    #[serde(default)]
     pub acceptance_criteria: RequiredNullable<Vec<String>>,
+    #[serde(default)]
     pub autonomy_boundary: RequiredNullable<String>,
+    #[serde(default)]
     pub baseline_ref: RequiredNullable<BaselineRef>,
     pub change_unit: ChangeUnitUpdate,
+    #[serde(default)]
     pub related_scope_decision_refs: Vec<StateRecordRef>,
 }
 
@@ -406,11 +415,14 @@ impl MethodOperationCategory for PrepareWriteRequest {
 pub struct McpPrepareWriteArguments {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project_selector: Option<String>,
+    #[serde(default)]
     pub task_id: RequiredNullable<TaskId>,
+    #[serde(default)]
     pub change_unit_id: RequiredNullable<ChangeUnitId>,
     pub intended_operation: String,
     pub intended_paths: Vec<String>,
     pub product_file_write_intended: bool,
+    #[serde(default)]
     pub sensitive_categories: Vec<String>,
     pub baseline_ref: BaselineRef,
 }
@@ -470,8 +482,11 @@ pub struct McpStageArtifactArguments {
     pub content_type: String,
     pub redaction_state: RedactionState,
     pub safe_bytes_or_notice: String,
+    #[serde(default)]
     pub expected_sha256: RequiredNullable<String>,
+    #[serde(default)]
     pub expected_size_bytes: RequiredNullable<u64>,
+    #[serde(default)]
     pub relation_hint: RequiredNullable<String>,
 }
 
@@ -522,14 +537,20 @@ pub struct McpRecordRunArguments {
     pub task_id: TaskId,
     pub change_unit_id: ChangeUnitId,
     pub kind: RunKind,
+    #[serde(default)]
     pub run_id: RequiredNullable<RunId>,
     pub baseline_ref: BaselineRef,
+    #[serde(default)]
     pub write_ticket_id: RequiredNullable<WriteTicketId>,
     pub summary: String,
     pub observed_changes: ObservedChanges,
+    #[serde(default)]
     pub artifact_inputs: Vec<ArtifactInput>,
+    #[serde(default)]
     pub evidence_updates: Vec<EvidenceCoverageItem>,
+    #[serde(default)]
     pub evidence_observations: Vec<EvidenceObservationInput>,
+    #[serde(default)]
     pub close_assessment: RequiredNullable<CloseAssessmentInput>,
 }
 
@@ -583,6 +604,7 @@ pub struct McpRequestUserJudgmentArguments {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project_selector: Option<String>,
     pub task_id: TaskId,
+    #[serde(default)]
     pub change_unit_id: RequiredNullable<ChangeUnitId>,
     #[serde(default)]
     pub sensitive_action_scope: RequiredNullable<SensitiveActionScope>,
@@ -592,8 +614,10 @@ pub struct McpRequestUserJudgmentArguments {
     #[serde(default)]
     pub options: RequiredNullable<Vec<UserJudgmentOptionInput>>,
     pub context: UserJudgmentContext,
+    #[serde(default)]
     pub affected_refs: Vec<StateRecordRef>,
     pub required_for: Vec<JudgmentRequiredFor>,
+    #[serde(default)]
     pub expires_at: RequiredNullable<UtcTimestamp>,
 }
 

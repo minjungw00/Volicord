@@ -41,13 +41,12 @@
           "resume_policy"
         ],
         "root_required": [
-          "initial_context_refs",
           "initial_scope",
           "plain_language_request",
           "requested_mode",
           "resume_policy"
         ],
-        "sha256": "sha256:d22b5e200da845f0ea861b6e72d9e51b4f9d6a49fc2564c70bfca410389f0db4"
+        "sha256": "sha256:0b06385a99804186f9e3433ccc50065d413c53f5c540d2a8aef97068569a4cb2"
       },
       "name": "volicord.intake",
       "output_schema": {
@@ -135,7 +134,7 @@
         "openWorldHint": false,
         "readOnlyHint": false
       },
-      "description": "Update current Task scope and Change Unit state. MCP arguments exclude envelope fields; the adapter injects project_id, request_id, idempotency_key, expected_state_version, dry_run=false, and locale. Required root fields: task_id, goal_summary, scope_update, scope_boundary, non_goals, acceptance_criteria, autonomy_boundary, baseline_ref, change_unit, related_scope_decision_refs. Use null to leave nullable scope fields unchanged. change_unit.operation is keep_current, create_current, or replace_current. Example keep-current Change Unit: {\"task_id\":\"task_filter_001\",\"goal_summary\":\"Limit saved search filters.\",\"scope_update\":{\"include\":[\"Saved-filter owner and label edits.\"],\"exclude\":[]},\"scope_boundary\":\"Saved-filter owner and label edits.\",\"non_goals\":[],\"acceptance_criteria\":[\"Saved filters reject out-of-scope edits.\"],\"autonomy_boundary\":\"Stay within saved-filter validation.\",\"baseline_ref\":\"baseline_filter_001\",\"change_unit\":{\"operation\":\"keep_current\"},\"related_scope_decision_refs\":[]}",
+      "description": "Update the current Task scope and keep, create, or replace its current Change Unit.",
       "input_schema": {
         "definitions": [
           "ChangeUnitEffectContract",
@@ -160,18 +159,10 @@
           "task_id"
         ],
         "root_required": [
-          "acceptance_criteria",
-          "autonomy_boundary",
-          "baseline_ref",
           "change_unit",
-          "goal_summary",
-          "non_goals",
-          "related_scope_decision_refs",
-          "scope_boundary",
-          "scope_update",
           "task_id"
         ],
-        "sha256": "sha256:66238cc115a959216c1a806b4a15518fc01f041205628b3880d10bc2dad3152f"
+        "sha256": "sha256:159997e1363c59b37a187f8a1c99981843cbcf23b7d54c039f714b9937193136"
       },
       "name": "volicord.update_scope",
       "output_schema": {
@@ -259,7 +250,7 @@
         "openWorldHint": false,
         "readOnlyHint": true
       },
-      "description": "Read the current Core status view. Read-only MCP call; arguments are optional project_selector, optional-null task_id, and detail summary|workflow|full. No idempotency_key, expected_state_version, request_id, envelope, actor_source, or operation_category fields are accepted. Example read-only status: {\"task_id\":\"task_status_001\",\"detail\":\"workflow\"}",
+      "description": "Read the current Core status view without creating Core authority state.",
       "input_schema": {
         "definitions": [
           "StatusDetailLevel"
@@ -270,7 +261,7 @@
           "task_id"
         ],
         "root_required": [],
-        "sha256": "sha256:edb7cc6bcc5b45f91d26194a047cda755f2840b19703bb7e8b03fa5fdc494c1d"
+        "sha256": "sha256:08f4a479ec598824063010b750a2a046904e4d0c25897890b21e05bee34aa6af"
       },
       "name": "volicord.status",
       "output_schema": {
@@ -378,7 +369,7 @@
         "openWorldHint": false,
         "readOnlyHint": false
       },
-      "description": "Check one proposed product-file write against Core state. MCP arguments exclude envelope fields; the adapter injects request metadata. Required root fields: task_id, change_unit_id, intended_operation, intended_paths, product_file_write_intended, sensitive_categories, baseline_ref. Use task_id:null or change_unit_id:null only when Core can resolve the current Task or Change Unit. Example: {\"task_id\":\"task_pref_001\",\"change_unit_id\":\"cu_pref_001\",\"intended_operation\":\"update profile preference save flow\",\"intended_paths\":[\"src/preferences/profile-save.ts\"],\"product_file_write_intended\":true,\"sensitive_categories\":[],\"baseline_ref\":\"baseline_pref_001\"}",
+      "description": "Check one proposed Product Repository write against current Core scope, authority, and freshness.",
       "input_schema": {
         "definitions": [],
         "root_properties": [
@@ -393,14 +384,11 @@
         ],
         "root_required": [
           "baseline_ref",
-          "change_unit_id",
           "intended_operation",
           "intended_paths",
-          "product_file_write_intended",
-          "sensitive_categories",
-          "task_id"
+          "product_file_write_intended"
         ],
-        "sha256": "sha256:4443d975c5101d6660a9438a294027502b56ff12b4f2c0791160d630a3827baf"
+        "sha256": "sha256:b9688b8b87b2f55e34aae393eea7bf820a7b5f55330b32aee44a8a2d4aaad00c"
       },
       "name": "volicord.prepare_write",
       "output_schema": {
@@ -524,14 +512,11 @@
         "root_required": [
           "content_type",
           "display_name",
-          "expected_sha256",
-          "expected_size_bytes",
           "redaction_state",
-          "relation_hint",
           "safe_bytes_or_notice",
           "task_id"
         ],
-        "sha256": "sha256:3169725cedaa0069c1aac5e0ce8db301f4ae0bd481a9f2ac3bbb8c94b5a09af1"
+        "sha256": "sha256:9007fdbe6dbc9e01ce86a4c3c475fbb03c459bcebdccd5ffdd00ffc359845aef"
       },
       "name": "volicord.stage_artifact",
       "output_schema": {
@@ -580,7 +565,7 @@
         "openWorldHint": false,
         "readOnlyHint": false
       },
-      "description": "Record Evidence for a run, observation, or result, linking attachments when supplied. MCP arguments exclude envelope fields; the adapter injects request metadata. Required root fields: task_id, change_unit_id, kind, run_id, baseline_ref, write_ticket_id, summary, observed_changes, artifact_inputs, evidence_updates, evidence_observations, close_assessment. For no Product Repository file writes, set write_ticket_id:null and observed_changes to {\"changed_paths\":[],\"product_file_write_observed\":false,\"sensitive_categories\":[],\"baseline_ref\":\"<baseline>\"}. kind is shaping_update, implementation, or direct. Example no-product-file-change run: {\"task_id\":\"task_run_001\",\"change_unit_id\":\"cu_run_001\",\"kind\":\"implementation\",\"run_id\":null,\"baseline_ref\":\"baseline_run_001\",\"write_ticket_id\":null,\"summary\":\"No product files changed.\",\"observed_changes\":{\"changed_paths\":[],\"product_file_write_observed\":false,\"sensitive_categories\":[],\"baseline_ref\":\"baseline_run_001\"},\"artifact_inputs\":[],\"evidence_updates\":[],\"evidence_observations\":[],\"close_assessment\":null}",
+      "description": "Record a Run, its observed changes, claim-scoped evidence, attachments, and optional close assessment.",
       "input_schema": {
         "definitions": [
           "ActorSource",
@@ -621,20 +606,14 @@
           "write_ticket_id"
         ],
         "root_required": [
-          "artifact_inputs",
           "baseline_ref",
           "change_unit_id",
-          "close_assessment",
-          "evidence_observations",
-          "evidence_updates",
           "kind",
           "observed_changes",
-          "run_id",
           "summary",
-          "task_id",
-          "write_ticket_id"
+          "task_id"
         ],
-        "sha256": "sha256:8a8167e74ffa81837177b3ebae97188edf1cf95a00410781d1872e616f549e09"
+        "sha256": "sha256:1d4599997abcf9c9b7d557423d9eee402f5e287d8785a7768107c4dd0edb72bb"
       },
       "name": "volicord.record_run",
       "output_schema": {
@@ -729,7 +708,7 @@
         "openWorldHint": false,
         "readOnlyHint": false
       },
-      "description": "Create one pending focused user-owned judgment. MCP arguments exclude envelope fields; the adapter injects request metadata. Required root fields: task_id, change_unit_id, judgment_kind, presentation, question, context, affected_refs, required_for, expires_at. Options use option_id, label, description, consequence, is_default; use options:null for authority-bearing kinds such as final_acceptance because Core supplies authority options. context.visible_risks items use risk_id, summary, consequence, related_refs, accepted_for_close. Example final-acceptance request: {\"task_id\":\"task_close_001\",\"change_unit_id\":\"cu_close_001\",\"judgment_kind\":\"final_acceptance\",\"presentation\":\"short\",\"question\":\"Do you accept this result as complete?\",\"options\":null,\"context\":{\"summary\":\"Review the current close basis and decide final acceptance.\",\"related_refs\":[],\"artifact_refs\":[],\"visible_risks\":[],\"constraints\":[\"Only final acceptance for the current close basis is in scope.\"]},\"affected_refs\":[],\"required_for\":[\"close_complete\"],\"expires_at\":null}",
+      "description": "Create one focused user-owned judgment; authority-bearing choices remain Core-owned.",
       "input_schema": {
         "definitions": [
           "AcceptedRiskInput",
@@ -763,17 +742,14 @@
           "task_id"
         ],
         "root_required": [
-          "affected_refs",
-          "change_unit_id",
           "context",
-          "expires_at",
           "judgment_kind",
           "presentation",
           "question",
           "required_for",
           "task_id"
         ],
-        "sha256": "sha256:4f8e7d294075f4ee4361c7c235376ab55bb4a673f986f2942f22a166d778dc9a"
+        "sha256": "sha256:daa15ad47c026de4ec15b5718cd6fcddfce99a84193158074f902a9722c09268"
       },
       "name": "volicord.request_user_judgment",
       "output_schema": {
@@ -886,7 +862,7 @@
         "openWorldHint": false,
         "readOnlyHint": false
       },
-      "description": "Reconcile unresolved unrecorded Product Repository changes.",
+      "description": "Reconcile unresolved Product Repository changes without agent-only dismissal.",
       "input_schema": {
         "definitions": [
           "UnrecordedChangeResolutionBasis",
@@ -900,7 +876,7 @@
         "root_required": [
           "task_id"
         ],
-        "sha256": "sha256:b71102846b25f93fb6a7a1b97371eaddbb1bd8feef2d4f4f06baf1ffe064cce4"
+        "sha256": "sha256:e0808826e87136b1bd1f56353548dc08c79002d056dcf34106e28dec5b696627"
       },
       "name": "volicord.reconcile_changes",
       "output_schema": {
@@ -994,7 +970,7 @@
         "openWorldHint": false,
         "readOnlyHint": true
       },
-      "description": "Check Close Status for a selected Task. Read-only MCP call; only task_id and optional project_selector are accepted. A missing final acceptance appears in the response as blockers[].code=missing_final_acceptance; it is not a request field. Example check-close request: {\"task_id\":\"task_close_001\"}",
+      "description": "Read current close readiness without requesting a terminal mutation.",
       "input_schema": {
         "definitions": [],
         "root_properties": [
@@ -1004,7 +980,7 @@
         "root_required": [
           "task_id"
         ],
-        "sha256": "sha256:d851799cc1f08d047d4527a12279640e489c48f81abfd2b270a369452aa35916"
+        "sha256": "sha256:22b43009c43ecffe17dc055bdbc361203b7d033829e3ebd42b3902fac56b12c7"
       },
       "name": "volicord.check_close",
       "output_schema": {
@@ -1111,7 +1087,7 @@
         "openWorldHint": false,
         "readOnlyHint": false
       },
-      "description": "Perform a selected Task close path.",
+      "description": "Request the complete, cancel, or supersede terminal path for one Task.",
       "input_schema": {
         "definitions": [
           "CloseMutationIntent",
@@ -1129,7 +1105,7 @@
           "intent",
           "task_id"
         ],
-        "sha256": "sha256:d2bb032dbe56817be2b6b6dd5b701df40deb23f71f96106aa41932c1e625d157"
+        "sha256": "sha256:3f553ac427e23f1ec3cb1f15fb36e69a36f44af9dc70b5fdb76dc1c3ee774a87"
       },
       "name": "volicord.close_task",
       "output_schema": {

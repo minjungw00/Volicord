@@ -44,7 +44,6 @@ pub struct McpToolDefinition {
     pub annotations: McpToolAnnotations,
 }
 
-#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct McpToolExample {
     pub id: &'static str,
@@ -52,120 +51,181 @@ pub(crate) struct McpToolExample {
     pub arguments_json: &'static str,
 }
 
-macro_rules! update_scope_keep_current_example {
-    () => {
-        r#"{"task_id":"task_filter_001","goal_summary":"Limit saved search filters.","scope_update":{"include":["Saved-filter owner and label edits."],"exclude":[]},"scope_boundary":"Saved-filter owner and label edits.","non_goals":[],"acceptance_criteria":["Saved filters reject out-of-scope edits."],"autonomy_boundary":"Stay within saved-filter validation.","baseline_ref":"baseline_filter_001","change_unit":{"operation":"keep_current"},"related_scope_decision_refs":[]}"#
-    };
-}
+const INTAKE_CREATE_NEW_ARGUMENTS_JSON: &str = r#"{"plain_language_request":"Create an onboarding checklist.","requested_mode":"work","resume_policy":"create_new","initial_scope":{"boundary":"Onboarding checklist setup.","non_goals":[],"acceptance_criteria":["The checklist is available to new workspace users."]}}"#;
+const INTAKE_RESUME_ACTIVE_ARGUMENTS_JSON: &str = r#"{"plain_language_request":"Continue the active onboarding checklist work.","requested_mode":"auto","resume_policy":"resume_active","initial_scope":{"boundary":"Continue the current onboarding checklist scope.","non_goals":[],"acceptance_criteria":[]}}"#;
+const INTAKE_SUPERSEDE_ACTIVE_ARGUMENTS_JSON: &str = r#"{"plain_language_request":"Replace the active onboarding work with the revised checklist.","requested_mode":"work","resume_policy":"supersede_active","initial_scope":{"boundary":"Revised onboarding checklist setup.","non_goals":["Changing account creation."],"acceptance_criteria":["The revised checklist replaces the active work."]}}"#;
+const INTAKE_REJECT_IF_ACTIVE_ARGUMENTS_JSON: &str = r#"{"plain_language_request":"Start an onboarding checklist only when no Task is active.","requested_mode":"advisor","resume_policy":"reject_if_active","initial_scope":{"boundary":"Onboarding checklist guidance.","non_goals":[],"acceptance_criteria":[]}}"#;
 
-macro_rules! status_read_only_example {
-    () => {
-        r#"{"task_id":"task_status_001","detail":"workflow"}"#
-    };
-}
-
-macro_rules! prepare_write_simple_example {
-    () => {
-        r#"{"task_id":"task_pref_001","change_unit_id":"cu_pref_001","intended_operation":"update profile preference save flow","intended_paths":["src/preferences/profile-save.ts"],"product_file_write_intended":true,"sensitive_categories":[],"baseline_ref":"baseline_pref_001"}"#
-    };
-}
-
-macro_rules! record_run_no_product_file_change_example {
-    () => {
-        r#"{"task_id":"task_run_001","change_unit_id":"cu_run_001","kind":"implementation","run_id":null,"baseline_ref":"baseline_run_001","write_ticket_id":null,"summary":"No product files changed.","observed_changes":{"changed_paths":[],"product_file_write_observed":false,"sensitive_categories":[],"baseline_ref":"baseline_run_001"},"artifact_inputs":[],"evidence_updates":[],"evidence_observations":[],"close_assessment":null}"#
-    };
-}
-
-macro_rules! request_user_judgment_final_acceptance_example {
-    () => {
-        r#"{"task_id":"task_close_001","change_unit_id":"cu_close_001","judgment_kind":"final_acceptance","presentation":"short","question":"Do you accept this result as complete?","options":null,"context":{"summary":"Review the current close basis and decide final acceptance.","related_refs":[],"artifact_refs":[],"visible_risks":[],"constraints":["Only final acceptance for the current close basis is in scope."]},"affected_refs":[],"required_for":["close_complete"],"expires_at":null}"#
-    };
-}
-
-macro_rules! check_close_missing_final_acceptance_example {
-    () => {
-        r#"{"task_id":"task_close_001"}"#
-    };
-}
-
-#[cfg(test)]
 pub(crate) const UPDATE_SCOPE_KEEP_CURRENT_EXAMPLE_ID: &str = "keep_current_change_unit";
-#[cfg(test)]
+pub(crate) const UPDATE_SCOPE_KEEP_CURRENT_ARGUMENTS_JSON: &str =
+    r#"{"task_id":"task_filter_001","change_unit":{"operation":"keep_current"}}"#;
+const UPDATE_SCOPE_CREATE_CURRENT_ARGUMENTS_JSON: &str = r#"{"task_id":"task_filter_002","goal_summary":"Limit saved search filters.","scope_update":{"include":["Saved-filter owner and label edits."],"exclude":[]},"scope_boundary":"Saved-filter owner and label edits.","acceptance_criteria":["Saved filters reject out-of-scope edits."],"baseline_ref":"baseline_filter_002","change_unit":{"operation":"create_current","scope_summary":"Saved-filter validation.","affected_paths":["src/search/saved-filters.ts"]}}"#;
+const UPDATE_SCOPE_REPLACE_CURRENT_ARGUMENTS_JSON: &str = r#"{"task_id":"task_filter_003","scope_boundary":"Saved-filter owner, label, and visibility edits.","baseline_ref":"baseline_filter_003","change_unit":{"operation":"replace_current","scope_summary":"Expanded saved-filter validation.","affected_paths":["src/search/saved-filters.ts"]}}"#;
+
 pub(crate) const STATUS_READ_ONLY_EXAMPLE_ID: &str = "read_only_status";
-#[cfg(test)]
+const STATUS_SUMMARY_ARGUMENTS_JSON: &str = r#"{"detail":"summary"}"#;
+pub(crate) const STATUS_READ_ONLY_ARGUMENTS_JSON: &str = r#"{"detail":"workflow"}"#;
+const STATUS_FULL_ARGUMENTS_JSON: &str = r#"{"detail":"full"}"#;
+
 pub(crate) const PREPARE_WRITE_SIMPLE_EXAMPLE_ID: &str = "simple_prepare_write";
-#[cfg(test)]
+pub(crate) const PREPARE_WRITE_SIMPLE_ARGUMENTS_JSON: &str = r#"{"intended_operation":"Update the profile preference save flow.","intended_paths":["src/preferences/profile-save.ts"],"product_file_write_intended":true,"baseline_ref":"baseline_pref_001"}"#;
+
+const STAGE_ARTIFACT_SAFE_TEXT_ARGUMENTS_JSON: &str = r#"{"task_id":"task_trace_001","display_name":"diagnostic_trace.log","content_type":"text/plain","redaction_state":"none","safe_bytes_or_notice":"Local trace sample captured for debugging."}"#;
+
 pub(crate) const RECORD_RUN_NO_PRODUCT_FILE_CHANGE_EXAMPLE_ID: &str =
     "no_product_file_change_record_run";
-#[cfg(test)]
+pub(crate) const RECORD_RUN_NO_PRODUCT_FILE_CHANGE_ARGUMENTS_JSON: &str = r#"{"task_id":"task_run_001","change_unit_id":"cu_run_001","kind":"implementation","baseline_ref":"baseline_run_001","summary":"No product files changed.","observed_changes":{"changed_paths":[],"product_file_write_observed":false,"sensitive_categories":[],"baseline_ref":"baseline_run_001"}}"#;
+const RECORD_RUN_EVIDENCE_BEARING_ARGUMENTS_JSON: &str = r#"{"task_id":"task_run_002","change_unit_id":"cu_run_002","kind":"implementation","baseline_ref":"baseline_run_002","summary":"Saved-filter validation passed.","observed_changes":{"changed_paths":[],"product_file_write_observed":false,"sensitive_categories":[],"baseline_ref":"baseline_run_002"},"evidence_updates":[{"claim":"Saved-filter validation passed.","required_for_close":true,"coverage_state":"supported","supporting_refs":[],"observation_refs":[],"supporting_artifact_refs":[],"gap_refs":[]}],"evidence_observations":[{"claim":"Saved-filter validation passed.","source_kind":"external_tool","assurance_level":"external_tool_result","observed_by_actor_source":"agent_connection:conn_example","tool_name":"cargo-test","tool_invocation_id":null,"tool_metadata":{"command":"cargo test"},"input_refs":[],"output_artifact_refs":[],"limitations":[],"observed_at":"2026-07-12T00:00:00Z"}],"close_assessment":{"result_summary":"Saved-filter validation passed.","result_refs":[],"residual_risks":[],"sensitive_categories":[],"recovery_constraints":[]}}"#;
+
 pub(crate) const REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_EXAMPLE_ID: &str =
     "final_acceptance_request";
-#[cfg(test)]
+pub(crate) const REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_ARGUMENTS_JSON: &str = r#"{"task_id":"task_close_001","judgment_kind":"final_acceptance","presentation":"short","question":"Do you accept this result as complete?","context":{"summary":"Review the current close basis and decide final acceptance.","related_refs":[],"artifact_refs":[],"visible_risks":[],"constraints":["Only final acceptance for the current close basis is in scope."]},"required_for":["close_complete"]}"#;
+
+const RECONCILE_CHANGES_ARGUMENTS_JSON: &str = r#"{"task_id":"task_reconcile_001"}"#;
+
 pub(crate) const CHECK_CLOSE_MISSING_FINAL_ACCEPTANCE_EXAMPLE_ID: &str =
     "check_close_missing_final_acceptance";
-
-pub(crate) const UPDATE_SCOPE_KEEP_CURRENT_ARGUMENTS_JSON: &str =
-    update_scope_keep_current_example!();
-pub(crate) const STATUS_READ_ONLY_ARGUMENTS_JSON: &str = status_read_only_example!();
-pub(crate) const PREPARE_WRITE_SIMPLE_ARGUMENTS_JSON: &str = prepare_write_simple_example!();
-pub(crate) const RECORD_RUN_NO_PRODUCT_FILE_CHANGE_ARGUMENTS_JSON: &str =
-    record_run_no_product_file_change_example!();
-pub(crate) const REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_ARGUMENTS_JSON: &str =
-    request_user_judgment_final_acceptance_example!();
 pub(crate) const CHECK_CLOSE_MISSING_FINAL_ACCEPTANCE_ARGUMENTS_JSON: &str =
-    check_close_missing_final_acceptance_example!();
+    r#"{"task_id":"task_close_001"}"#;
 
-#[cfg(test)]
-const UPDATE_SCOPE_EXAMPLES: [McpToolExample; 1] = [McpToolExample {
-    id: UPDATE_SCOPE_KEEP_CURRENT_EXAMPLE_ID,
-    description: "Use an existing current Change Unit while updating selected scope fields.",
-    arguments_json: UPDATE_SCOPE_KEEP_CURRENT_ARGUMENTS_JSON,
-}];
+const CLOSE_TASK_COMPLETE_ARGUMENTS_JSON: &str =
+    r#"{"task_id":"task_close_001","intent":"complete","close_reason":"completed_self_checked"}"#;
+const CLOSE_TASK_CANCEL_ARGUMENTS_JSON: &str =
+    r#"{"task_id":"task_cancel_001","intent":"cancel","close_reason":"cancelled"}"#;
+const CLOSE_TASK_SUPERSEDE_ARGUMENTS_JSON: &str = r#"{"task_id":"task_supersede_001","intent":"supersede","close_reason":"superseded","superseding_task_id":"task_replacement_001"}"#;
 
-#[cfg(test)]
-const STATUS_EXAMPLES: [McpToolExample; 1] = [McpToolExample {
-    id: STATUS_READ_ONLY_EXAMPLE_ID,
-    description: "Read workflow status without creating Core state.",
-    arguments_json: STATUS_READ_ONLY_ARGUMENTS_JSON,
-}];
+const INTAKE_EXAMPLES: [McpToolExample; 4] = [
+    McpToolExample {
+        id: "create_new",
+        description: "Create a new Task when no active Task should be resumed.",
+        arguments_json: INTAKE_CREATE_NEW_ARGUMENTS_JSON,
+    },
+    McpToolExample {
+        id: "resume_active",
+        description: "Resume the active Task.",
+        arguments_json: INTAKE_RESUME_ACTIVE_ARGUMENTS_JSON,
+    },
+    McpToolExample {
+        id: "supersede_active",
+        description: "Supersede the active Task with revised work.",
+        arguments_json: INTAKE_SUPERSEDE_ACTIVE_ARGUMENTS_JSON,
+    },
+    McpToolExample {
+        id: "reject_if_active",
+        description: "Reject intake when a Task is already active.",
+        arguments_json: INTAKE_REJECT_IF_ACTIVE_ARGUMENTS_JSON,
+    },
+];
 
-#[cfg(test)]
+const UPDATE_SCOPE_EXAMPLES: [McpToolExample; 3] = [
+    McpToolExample {
+        id: UPDATE_SCOPE_KEEP_CURRENT_EXAMPLE_ID,
+        description: "Keep the current Change Unit and leave omitted scope fields unchanged.",
+        arguments_json: UPDATE_SCOPE_KEEP_CURRENT_ARGUMENTS_JSON,
+    },
+    McpToolExample {
+        id: "create_current_change_unit",
+        description: "Create a current Change Unit for the updated scope.",
+        arguments_json: UPDATE_SCOPE_CREATE_CURRENT_ARGUMENTS_JSON,
+    },
+    McpToolExample {
+        id: "replace_current_change_unit",
+        description: "Replace the current Change Unit for revised scope.",
+        arguments_json: UPDATE_SCOPE_REPLACE_CURRENT_ARGUMENTS_JSON,
+    },
+];
+
+const STATUS_EXAMPLES: [McpToolExample; 3] = [
+    McpToolExample {
+        id: "summary_status",
+        description: "Read the compact status summary.",
+        arguments_json: STATUS_SUMMARY_ARGUMENTS_JSON,
+    },
+    McpToolExample {
+        id: STATUS_READ_ONLY_EXAMPLE_ID,
+        description: "Read the normal workflow status view.",
+        arguments_json: STATUS_READ_ONLY_ARGUMENTS_JSON,
+    },
+    McpToolExample {
+        id: "full_status",
+        description: "Read the full status view including continuity detail.",
+        arguments_json: STATUS_FULL_ARGUMENTS_JSON,
+    },
+];
+
 const PREPARE_WRITE_EXAMPLES: [McpToolExample; 1] = [McpToolExample {
     id: PREPARE_WRITE_SIMPLE_EXAMPLE_ID,
-    description: "Check one product-file write intent for one Change Unit.",
+    description: "Check one Product Repository write intent.",
     arguments_json: PREPARE_WRITE_SIMPLE_ARGUMENTS_JSON,
 }];
 
-#[cfg(test)]
-const RECORD_RUN_EXAMPLES: [McpToolExample; 1] = [McpToolExample {
-    id: RECORD_RUN_NO_PRODUCT_FILE_CHANGE_EXAMPLE_ID,
-    description: "Record a run with no observed Product Repository file writes.",
-    arguments_json: RECORD_RUN_NO_PRODUCT_FILE_CHANGE_ARGUMENTS_JSON,
+const STAGE_ARTIFACT_EXAMPLES: [McpToolExample; 1] = [McpToolExample {
+    id: "stage_safe_text",
+    description: "Stage a text attachment input.",
+    arguments_json: STAGE_ARTIFACT_SAFE_TEXT_ARGUMENTS_JSON,
 }];
 
-#[cfg(test)]
+const RECORD_RUN_EXAMPLES: [McpToolExample; 2] = [
+    McpToolExample {
+        id: RECORD_RUN_NO_PRODUCT_FILE_CHANGE_EXAMPLE_ID,
+        description: "Record a Run with no Product Repository writes or evidence inputs.",
+        arguments_json: RECORD_RUN_NO_PRODUCT_FILE_CHANGE_ARGUMENTS_JSON,
+    },
+    McpToolExample {
+        id: "evidence_bearing_record_run",
+        description: "Record claim-scoped evidence and a close assessment.",
+        arguments_json: RECORD_RUN_EVIDENCE_BEARING_ARGUMENTS_JSON,
+    },
+];
+
 const REQUEST_USER_JUDGMENT_EXAMPLES: [McpToolExample; 1] = [McpToolExample {
     id: REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_EXAMPLE_ID,
-    description: "Request final acceptance; Core supplies authority options.",
+    description: "Request final acceptance with Core-owned authority options.",
     arguments_json: REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_ARGUMENTS_JSON,
 }];
 
-#[cfg(test)]
+const RECONCILE_CHANGES_EXAMPLES: [McpToolExample; 1] = [McpToolExample {
+    id: "reconcile_current_task",
+    description: "Reconcile the current Task without an agent-supplied resolution request.",
+    arguments_json: RECONCILE_CHANGES_ARGUMENTS_JSON,
+}];
+
 const CHECK_CLOSE_EXAMPLES: [McpToolExample; 1] = [McpToolExample {
     id: CHECK_CLOSE_MISSING_FINAL_ACCEPTANCE_EXAMPLE_ID,
-    description: "Check close readiness; missing final acceptance is a response blocker.",
+    description: "Read current close readiness for one Task.",
     arguments_json: CHECK_CLOSE_MISSING_FINAL_ACCEPTANCE_ARGUMENTS_JSON,
 }];
 
-#[cfg(test)]
+const CLOSE_TASK_EXAMPLES: [McpToolExample; 3] = [
+    McpToolExample {
+        id: "close_complete",
+        description: "Request the completion close path.",
+        arguments_json: CLOSE_TASK_COMPLETE_ARGUMENTS_JSON,
+    },
+    McpToolExample {
+        id: "close_cancel",
+        description: "Request the cancellation close path.",
+        arguments_json: CLOSE_TASK_CANCEL_ARGUMENTS_JSON,
+    },
+    McpToolExample {
+        id: "close_supersede",
+        description: "Request the supersession close path.",
+        arguments_json: CLOSE_TASK_SUPERSEDE_ARGUMENTS_JSON,
+    },
+];
+
 pub(crate) fn canonical_tool_examples(tool_name: &str) -> &'static [McpToolExample] {
     match tool_name {
+        INTAKE_TOOL_NAME => &INTAKE_EXAMPLES,
         UPDATE_SCOPE_TOOL_NAME => &UPDATE_SCOPE_EXAMPLES,
         STATUS_TOOL_NAME => &STATUS_EXAMPLES,
         PREPARE_WRITE_TOOL_NAME => &PREPARE_WRITE_EXAMPLES,
+        STAGE_ARTIFACT_TOOL_NAME => &STAGE_ARTIFACT_EXAMPLES,
         RECORD_RUN_TOOL_NAME => &RECORD_RUN_EXAMPLES,
         REQUEST_USER_JUDGMENT_TOOL_NAME => &REQUEST_USER_JUDGMENT_EXAMPLES,
+        RECONCILE_CHANGES_TOOL_NAME => &RECONCILE_CHANGES_EXAMPLES,
         CHECK_CLOSE_TOOL_NAME => &CHECK_CLOSE_EXAMPLES,
+        CLOSE_TASK_TOOL_NAME => &CLOSE_TASK_EXAMPLES,
         _ => &[],
     }
 }
@@ -318,14 +378,29 @@ pub(crate) fn method_tools<const N: usize>(names: [&'static str; N]) -> Vec<McpT
 }
 
 pub(crate) fn mcp_tool_input_schema(name: &str) -> Option<Value> {
-    if name == LIST_PROJECTS_TOOL_NAME {
-        return Some(json!({
+    let mut schema = if name == LIST_PROJECTS_TOOL_NAME {
+        json!({
             "type": "object",
             "properties": {},
             "additionalProperties": false
-        }));
+        })
+    } else {
+        mcp_request_schema(name)?
+    };
+    let examples = canonical_tool_examples(name)
+        .iter()
+        .map(|example| {
+            serde_json::from_str(example.arguments_json)
+                .expect("canonical MCP tool example should be valid JSON")
+        })
+        .collect::<Vec<Value>>();
+    if !examples.is_empty() {
+        schema
+            .as_object_mut()
+            .expect("MCP tool input schema should be an object")
+            .insert("examples".to_owned(), Value::Array(examples));
     }
-    mcp_request_schema(name)
+    Some(schema)
 }
 
 fn tool_annotations(name: &str) -> McpToolAnnotations {
@@ -339,49 +414,31 @@ fn tool_annotations(name: &str) -> McpToolAnnotations {
 pub(crate) fn tool_description(name: &str) -> &'static str {
     match name {
         INTAKE_TOOL_NAME => "Start, resume, supersede, or reject an ordinary user work loop.",
-        UPDATE_SCOPE_TOOL_NAME => concat!(
-            "Update current Task scope and Change Unit state. MCP arguments exclude envelope fields; the adapter injects project_id, request_id, idempotency_key, expected_state_version, dry_run=false, and locale. ",
-            "Required root fields: task_id, goal_summary, scope_update, scope_boundary, non_goals, acceptance_criteria, autonomy_boundary, baseline_ref, change_unit, related_scope_decision_refs. ",
-            "Use null to leave nullable scope fields unchanged. change_unit.operation is keep_current, create_current, or replace_current. Example keep-current Change Unit: ",
-            update_scope_keep_current_example!()
-        ),
-        STATUS_TOOL_NAME => concat!(
-            "Read the current Core status view. Read-only MCP call; arguments are optional project_selector, optional-null task_id, and detail summary|workflow|full. ",
-            "No idempotency_key, expected_state_version, request_id, envelope, actor_source, or operation_category fields are accepted. Example read-only status: ",
-            status_read_only_example!()
-        ),
-        PREPARE_WRITE_TOOL_NAME => concat!(
-            "Check one proposed product-file write against Core state. MCP arguments exclude envelope fields; the adapter injects request metadata. ",
-            "Required root fields: task_id, change_unit_id, intended_operation, intended_paths, product_file_write_intended, sensitive_categories, baseline_ref. ",
-            "Use task_id:null or change_unit_id:null only when Core can resolve the current Task or Change Unit. Example: ",
-            prepare_write_simple_example!()
-        ),
+        UPDATE_SCOPE_TOOL_NAME => {
+            "Update the current Task scope and keep, create, or replace its current Change Unit."
+        }
+        STATUS_TOOL_NAME => "Read the current Core status view without creating Core authority state.",
+        PREPARE_WRITE_TOOL_NAME => {
+            "Check one proposed Product Repository write against current Core scope, authority, and freshness."
+        }
         STAGE_ARTIFACT_TOOL_NAME => {
             "Prepare an Evidence attachment input; staging alone is not recorded Evidence."
         }
-        RECORD_RUN_TOOL_NAME => concat!(
-            "Record Evidence for a run, observation, or result, linking attachments when supplied. MCP arguments exclude envelope fields; the adapter injects request metadata. ",
-            "Required root fields: task_id, change_unit_id, kind, run_id, baseline_ref, write_ticket_id, summary, observed_changes, artifact_inputs, evidence_updates, evidence_observations, close_assessment. ",
-            "For no Product Repository file writes, set write_ticket_id:null and observed_changes to {\"changed_paths\":[],\"product_file_write_observed\":false,\"sensitive_categories\":[],\"baseline_ref\":\"<baseline>\"}. ",
-            "kind is shaping_update, implementation, or direct. Example no-product-file-change run: ",
-            record_run_no_product_file_change_example!()
-        ),
-        REQUEST_USER_JUDGMENT_TOOL_NAME => concat!(
-            "Create one pending focused user-owned judgment. MCP arguments exclude envelope fields; the adapter injects request metadata. ",
-            "Required root fields: task_id, change_unit_id, judgment_kind, presentation, question, context, affected_refs, required_for, expires_at. ",
-            "Options use option_id, label, description, consequence, is_default; use options:null for authority-bearing kinds such as final_acceptance because Core supplies authority options. ",
-            "context.visible_risks items use risk_id, summary, consequence, related_refs, accepted_for_close. Example final-acceptance request: ",
-            request_user_judgment_final_acceptance_example!()
-        ),
-        RECONCILE_CHANGES_TOOL_NAME => {
-            "Reconcile unresolved unrecorded Product Repository changes."
+        RECORD_RUN_TOOL_NAME => {
+            "Record a Run, its observed changes, claim-scoped evidence, attachments, and optional close assessment."
         }
-        CHECK_CLOSE_TOOL_NAME => concat!(
-            "Check Close Status for a selected Task. Read-only MCP call; only task_id and optional project_selector are accepted. ",
-            "A missing final acceptance appears in the response as blockers[].code=missing_final_acceptance; it is not a request field. Example check-close request: ",
-            check_close_missing_final_acceptance_example!()
-        ),
-        CLOSE_TASK_TOOL_NAME => "Perform a selected Task close path.",
+        REQUEST_USER_JUDGMENT_TOOL_NAME => {
+            "Create one focused user-owned judgment; authority-bearing choices remain Core-owned."
+        }
+        RECONCILE_CHANGES_TOOL_NAME => {
+            "Reconcile unresolved Product Repository changes without agent-only dismissal."
+        }
+        CHECK_CLOSE_TOOL_NAME => {
+            "Read current close readiness without requesting a terminal mutation."
+        }
+        CLOSE_TASK_TOOL_NAME => {
+            "Request the complete, cancel, or supersede terminal path for one Task."
+        }
         LIST_PROJECTS_TOOL_NAME => "List projects explicitly allowed for this MCP connection.",
         _ => "Unsupported Volicord method.",
     }

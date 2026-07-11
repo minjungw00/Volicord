@@ -26,9 +26,7 @@ use crate::{
         canonical_tool_examples, mcp_tool_naming_style, mcp_tools_for_mode_and_storage,
         validate_tools_list_json_compatibility, validate_tools_list_schema_compatibility,
         CHECK_CLOSE_MISSING_FINAL_ACCEPTANCE_EXAMPLE_ID, PREPARE_WRITE_SIMPLE_EXAMPLE_ID,
-        RECORD_RUN_NO_PRODUCT_FILE_CHANGE_ARGUMENTS_JSON,
         RECORD_RUN_NO_PRODUCT_FILE_CHANGE_EXAMPLE_ID,
-        REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_ARGUMENTS_JSON,
         REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_EXAMPLE_ID, STATUS_READ_ONLY_EXAMPLE_ID,
         UPDATE_SCOPE_KEEP_CURRENT_EXAMPLE_ID,
     },
@@ -228,128 +226,243 @@ fn request_user_judgment_output_schema_covers_elicited_recording_response() {
 }
 
 #[test]
-fn record_run_schema_includes_minimal_no_write_example() {
-    let tool = tool_definition(RECORD_RUN_TOOL_NAME);
-
-    assert!(tool
-        .description
-        .contains("Example no-product-file-change run"));
-    assert!(tool
-        .description
-        .contains(RECORD_RUN_NO_PRODUCT_FILE_CHANGE_ARGUMENTS_JSON));
-    let example = canonical_example(
-        RECORD_RUN_TOOL_NAME,
-        RECORD_RUN_NO_PRODUCT_FILE_CHANGE_EXAMPLE_ID,
-    );
-    assert_eq!(
-        example.arguments_json,
-        RECORD_RUN_NO_PRODUCT_FILE_CHANGE_ARGUMENTS_JSON
-    );
-}
-
-#[test]
-fn request_user_judgment_schema_includes_final_acceptance_example() {
-    let tool = tool_definition(REQUEST_USER_JUDGMENT_TOOL_NAME);
-
-    assert!(tool
-        .description
-        .contains("Example final-acceptance request"));
-    assert!(tool
-        .description
-        .contains(REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_ARGUMENTS_JSON));
-    let example = canonical_example(
-        REQUEST_USER_JUDGMENT_TOOL_NAME,
-        REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_EXAMPLE_ID,
-    );
-    assert_eq!(
-        example.arguments_json,
-        REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_ARGUMENTS_JSON
-    );
-}
-
-#[test]
-fn workflow_tool_descriptions_include_status_check_close_and_scope_examples() {
-    for (tool_name, example_id, marker) in [
+fn common_mcp_omissions_advertise_and_decode_exact_defaults() -> Result<(), Box<dyn Error>> {
+    let cases = [
         (
-            STATUS_TOOL_NAME,
-            STATUS_READ_ONLY_EXAMPLE_ID,
-            "Example read-only status",
-        ),
-        (
-            CHECK_CLOSE_TOOL_NAME,
-            CHECK_CLOSE_MISSING_FINAL_ACCEPTANCE_EXAMPLE_ID,
-            "missing final acceptance",
+            INTAKE_TOOL_NAME,
+            "create_new",
+            vec![("initial_context_refs", json!([]))],
         ),
         (
             UPDATE_SCOPE_TOOL_NAME,
             UPDATE_SCOPE_KEEP_CURRENT_EXAMPLE_ID,
-            "Example keep-current Change Unit",
+            vec![
+                ("goal_summary", Value::Null),
+                ("scope_update", Value::Null),
+                ("scope_boundary", Value::Null),
+                ("non_goals", Value::Null),
+                ("acceptance_criteria", Value::Null),
+                ("autonomy_boundary", Value::Null),
+                ("baseline_ref", Value::Null),
+                ("related_scope_decision_refs", json!([])),
+            ],
         ),
         (
             PREPARE_WRITE_TOOL_NAME,
             PREPARE_WRITE_SIMPLE_EXAMPLE_ID,
-            "Example",
+            vec![
+                ("task_id", Value::Null),
+                ("change_unit_id", Value::Null),
+                ("sensitive_categories", json!([])),
+            ],
         ),
-    ] {
+        (
+            STAGE_ARTIFACT_TOOL_NAME,
+            "stage_safe_text",
+            vec![
+                ("expected_sha256", Value::Null),
+                ("expected_size_bytes", Value::Null),
+                ("relation_hint", Value::Null),
+            ],
+        ),
+        (
+            RECORD_RUN_TOOL_NAME,
+            RECORD_RUN_NO_PRODUCT_FILE_CHANGE_EXAMPLE_ID,
+            vec![
+                ("run_id", Value::Null),
+                ("write_ticket_id", Value::Null),
+                ("artifact_inputs", json!([])),
+                ("evidence_updates", json!([])),
+                ("evidence_observations", json!([])),
+                ("close_assessment", Value::Null),
+            ],
+        ),
+        (
+            REQUEST_USER_JUDGMENT_TOOL_NAME,
+            REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_EXAMPLE_ID,
+            vec![
+                ("change_unit_id", Value::Null),
+                ("sensitive_action_scope", Value::Null),
+                ("options", Value::Null),
+                ("affected_refs", json!([])),
+                ("expires_at", Value::Null),
+            ],
+        ),
+    ];
+
+    for (tool_name, example_id, defaults) in cases {
         let tool = tool_definition(tool_name);
-        let example = canonical_example(tool_name, example_id);
-        assert!(
-            tool.description.contains(marker),
-            "{tool_name} description should contain marker `{marker}`"
-        );
-        assert!(
-            tool.description.contains(example.arguments_json),
-            "{tool_name} description should contain canonical example {}",
-            example.id
-        );
-        assert!(
-            !example.description.is_empty(),
-            "{tool_name} canonical example should describe its purpose"
-        );
+        let required = root_required_fields(&tool.input_schema);
+        let decoded = decode_mcp_arguments_to_value(
+            tool_name,
+            canonical_example_value(tool_name, example_id)?,
+        )?;
+        for (field, expected) in defaults {
+            assert!(
+                !required.iter().any(|required| required == field),
+                "{tool_name}.{field} should be omittable"
+            );
+            assert_eq!(
+                tool.input_schema["properties"][field]["default"], expected,
+                "{tool_name}.{field} should advertise its exact omission default"
+            );
+            assert_eq!(
+                decoded[field], expected,
+                "{tool_name}.{field} omission should decode to the advertised default"
+            );
+        }
+    }
+
+    assert_eq!(
+        root_required_fields(&tool_definition(REQUEST_USER_JUDGMENT_TOOL_NAME).input_schema)
+            .into_iter()
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from([
+            "context".to_owned(),
+            "judgment_kind".to_owned(),
+            "presentation".to_owned(),
+            "question".to_owned(),
+            "required_for".to_owned(),
+            "task_id".to_owned(),
+        ])
+    );
+    Ok(())
+}
+
+#[test]
+fn mcp_omission_defaults_do_not_change_core_request_required_members() {
+    let cases = [
+        (INTAKE_TOOL_NAME, &["initial_context_refs"][..]),
+        (
+            UPDATE_SCOPE_TOOL_NAME,
+            &[
+                "goal_summary",
+                "scope_update",
+                "scope_boundary",
+                "non_goals",
+                "acceptance_criteria",
+                "autonomy_boundary",
+                "baseline_ref",
+                "related_scope_decision_refs",
+            ][..],
+        ),
+        (
+            PREPARE_WRITE_TOOL_NAME,
+            &["task_id", "change_unit_id", "sensitive_categories"][..],
+        ),
+        (
+            STAGE_ARTIFACT_TOOL_NAME,
+            &["expected_sha256", "expected_size_bytes", "relation_hint"][..],
+        ),
+        (
+            RECORD_RUN_TOOL_NAME,
+            &[
+                "run_id",
+                "write_ticket_id",
+                "artifact_inputs",
+                "evidence_updates",
+                "evidence_observations",
+                "close_assessment",
+            ][..],
+        ),
+        (
+            REQUEST_USER_JUDGMENT_TOOL_NAME,
+            &["change_unit_id", "affected_refs", "expires_at"][..],
+        ),
+    ];
+
+    for (method_name, fields) in cases {
+        let schema = volicord_types::public_request_schema(method_name)
+            .expect("public Core request schema should exist");
+        let required = root_required_fields(&schema);
+        for field in fields {
+            assert!(
+                required.iter().any(|required| required == field),
+                "{method_name}.{field} should remain a required Core request member"
+            );
+        }
     }
 }
 
 #[test]
-fn canonical_no_product_file_change_record_run_example_validates() -> Result<(), Box<dyn Error>> {
-    let value = canonical_example_value(
-        RECORD_RUN_TOOL_NAME,
-        RECORD_RUN_NO_PRODUCT_FILE_CHANGE_EXAMPLE_ID,
-    )?;
+fn advertised_mcp_examples_cover_supported_branches_and_validate() -> Result<(), Box<dyn Error>> {
+    let expected_branches: &[(&str, &[&str])] = &[
+        (
+            INTAKE_TOOL_NAME,
+            &[
+                "create_new",
+                "resume_active",
+                "supersede_active",
+                "reject_if_active",
+            ],
+        ),
+        (
+            UPDATE_SCOPE_TOOL_NAME,
+            &[
+                UPDATE_SCOPE_KEEP_CURRENT_EXAMPLE_ID,
+                "create_current_change_unit",
+                "replace_current_change_unit",
+            ],
+        ),
+        (
+            STATUS_TOOL_NAME,
+            &["summary_status", STATUS_READ_ONLY_EXAMPLE_ID, "full_status"],
+        ),
+        (PREPARE_WRITE_TOOL_NAME, &[PREPARE_WRITE_SIMPLE_EXAMPLE_ID]),
+        (STAGE_ARTIFACT_TOOL_NAME, &["stage_safe_text"]),
+        (
+            RECORD_RUN_TOOL_NAME,
+            &[
+                RECORD_RUN_NO_PRODUCT_FILE_CHANGE_EXAMPLE_ID,
+                "evidence_bearing_record_run",
+            ],
+        ),
+        (
+            REQUEST_USER_JUDGMENT_TOOL_NAME,
+            &[REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_EXAMPLE_ID],
+        ),
+        (RECONCILE_CHANGES_TOOL_NAME, &["reconcile_current_task"]),
+        (
+            CHECK_CLOSE_TOOL_NAME,
+            &[CHECK_CLOSE_MISSING_FINAL_ACCEPTANCE_EXAMPLE_ID],
+        ),
+        (
+            CLOSE_TASK_TOOL_NAME,
+            &["close_complete", "close_cancel", "close_supersede"],
+        ),
+    ];
 
-    serde_json::from_value::<McpRecordRunArguments>(value)?;
-    Ok(())
-}
+    for (tool_name, expected_ids) in expected_branches {
+        let tool = tool_definition(tool_name);
+        let canonical = canonical_tool_examples(tool_name);
+        assert_eq!(
+            canonical
+                .iter()
+                .map(|example| example.id)
+                .collect::<Vec<_>>(),
+            *expected_ids,
+            "{tool_name} should advertise exactly the supported example branches"
+        );
+        assert!(tool.description.len() <= 160);
+        assert!(!tool.description.contains("Required root fields"));
+        assert!(!tool.description.contains("{\""));
 
-#[test]
-fn canonical_final_acceptance_request_user_judgment_example_validates() -> Result<(), Box<dyn Error>>
-{
-    let value = canonical_example_value(
-        REQUEST_USER_JUDGMENT_TOOL_NAME,
-        REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_EXAMPLE_ID,
-    )?;
-
-    serde_json::from_value::<McpRequestUserJudgmentArguments>(value)?;
-    Ok(())
-}
-
-#[test]
-fn canonical_mcp_guidance_examples_validate() -> Result<(), Box<dyn Error>> {
-    serde_json::from_value::<McpUpdateScopeArguments>(canonical_example_value(
-        UPDATE_SCOPE_TOOL_NAME,
-        UPDATE_SCOPE_KEEP_CURRENT_EXAMPLE_ID,
-    )?)?;
-    serde_json::from_value::<McpStatusArguments>(canonical_example_value(
-        STATUS_TOOL_NAME,
-        STATUS_READ_ONLY_EXAMPLE_ID,
-    )?)?;
-    serde_json::from_value::<McpPrepareWriteArguments>(canonical_example_value(
-        PREPARE_WRITE_TOOL_NAME,
-        PREPARE_WRITE_SIMPLE_EXAMPLE_ID,
-    )?)?;
-    serde_json::from_value::<McpCheckCloseArguments>(canonical_example_value(
-        CHECK_CLOSE_TOOL_NAME,
-        CHECK_CLOSE_MISSING_FINAL_ACCEPTANCE_EXAMPLE_ID,
-    )?)?;
+        let advertised = tool.input_schema["examples"]
+            .as_array()
+            .unwrap_or_else(|| panic!("{tool_name} should advertise inputSchema.examples"));
+        assert_eq!(advertised.len(), canonical.len());
+        for (value, example) in advertised.iter().zip(canonical) {
+            assert!(!example.description.is_empty());
+            assert_eq!(
+                value,
+                &serde_json::from_str::<Value>(example.arguments_json)?,
+                "{} should use its canonical example value",
+                example.id
+            );
+            crate::schema_validation::validate_mcp_tool_arguments(tool_name, value)?;
+            decode_mcp_arguments_to_value(tool_name, value.clone())?;
+        }
+    }
     Ok(())
 }
 
@@ -562,7 +675,7 @@ fn known_tool_validation_aggregates_independent_issues_without_core_effects(
         .expect_err("independent argument failures should be rejected together");
     let response = structured_tool_error(RECORD_RUN_TOOL_NAME, &error);
 
-    for field in ["task_id", "change_unit_id", "run_id", "summary"] {
+    for field in ["task_id", "change_unit_id", "baseline_ref", "summary"] {
         tool_error_issue(&response, &format!("/{field}"), "MCP_ARGUMENT_REQUIRED");
     }
     tool_error_issue(&response, "/unexpected", "MCP_ARGUMENT_UNKNOWN");
@@ -3379,6 +3492,45 @@ fn canonical_example_value(tool_name: &str, example_id: &str) -> Result<Value, B
     Ok(serde_json::from_str(
         canonical_example(tool_name, example_id).arguments_json,
     )?)
+}
+
+fn decode_mcp_arguments_to_value(
+    tool_name: &str,
+    value: Value,
+) -> Result<Value, serde_json::Error> {
+    match tool_name {
+        INTAKE_TOOL_NAME => {
+            serde_json::to_value(serde_json::from_value::<McpIntakeArguments>(value)?)
+        }
+        UPDATE_SCOPE_TOOL_NAME => {
+            serde_json::to_value(serde_json::from_value::<McpUpdateScopeArguments>(value)?)
+        }
+        STATUS_TOOL_NAME => {
+            serde_json::to_value(serde_json::from_value::<McpStatusArguments>(value)?)
+        }
+        PREPARE_WRITE_TOOL_NAME => {
+            serde_json::to_value(serde_json::from_value::<McpPrepareWriteArguments>(value)?)
+        }
+        STAGE_ARTIFACT_TOOL_NAME => {
+            serde_json::to_value(serde_json::from_value::<McpStageArtifactArguments>(value)?)
+        }
+        RECORD_RUN_TOOL_NAME => {
+            serde_json::to_value(serde_json::from_value::<McpRecordRunArguments>(value)?)
+        }
+        REQUEST_USER_JUDGMENT_TOOL_NAME => serde_json::to_value(serde_json::from_value::<
+            McpRequestUserJudgmentArguments,
+        >(value)?),
+        RECONCILE_CHANGES_TOOL_NAME => serde_json::to_value(serde_json::from_value::<
+            McpReconcileChangesArguments,
+        >(value)?),
+        CHECK_CLOSE_TOOL_NAME => {
+            serde_json::to_value(serde_json::from_value::<McpCheckCloseArguments>(value)?)
+        }
+        CLOSE_TASK_TOOL_NAME => {
+            serde_json::to_value(serde_json::from_value::<McpCloseTaskArguments>(value)?)
+        }
+        other => panic!("unsupported MCP tool example decoder: {other}"),
+    }
 }
 
 fn structured_tool_error(tool_name: &str, error: &McpAdapterError) -> Value {
