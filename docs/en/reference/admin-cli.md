@@ -374,10 +374,26 @@ through `PATH` and does not embed a personal Runtime Home path.
 Connection intent selects the managed Agent Connection target. Init separately
 keeps its current repository integration inventory for both `personal` and
 `shared`: the managed `AGENTS.md` block and
-`.volicord/policy.json` are repository-local, Claude Code init also maintains
-the repository `.mcp.json` projection, and the Detective profile adds the
-supported repository-local hook, wrapper, and rule files. Those integration
-files do not change the stored connection intent or its primary host scope.
+`.volicord/policy.json` are repository-local. Shared Claude Code init also
+maintains the repository `.mcp.json` projection; personal Claude Code init uses
+only the host's local CLI target for MCP registration. The Detective profile
+adds the supported repository-local hook, wrapper, and rule files. Personal
+Claude Code detective settings use `.claude/settings.local.json`; shared
+detective settings use `.claude/settings.json`. Those integration files do not
+change the stored connection intent or its primary host scope.
+
+For a `personal` init, Volicord also maintains a block in the selected work
+tree's effective Git `info/exclude`. It resolves a normal `.git` directory, a
+`.git` gitdir file, and a linked worktree `commondir` to the actual common Git
+directory. The block excludes `/.volicord/`, dedicated Volicord hook wrapper
+and rule paths, and the exact personal hook configuration files
+`/.codex/hooks.json` and `/.claude/settings.local.json`. It does not exclude all
+of `.codex/` or `.claude/`, and it does not exclude multi-owner or shared
+projection files such as `AGENTS.md`, `.mcp.json`, or
+`.claude/settings.json`. Init does not write or change the tracked
+`.gitignore`. A `shared` init does not add this
+personal-local exclude block and does not remove a block left by a prior
+personal init.
 
 `--profile` selects the public integration profile:
 
@@ -457,6 +473,8 @@ Non-dry-run `volicord init`:
 - writes or updates only the Volicord-managed block in `AGENTS.md`
 - writes `.volicord/policy.json` with detective host hook commands that invoke
   the hidden internal hook namespace
+- for `personal`, writes or updates the Volicord-managed local-path block in
+  the effective Git `info/exclude`; explicit `--shared` does not add that block
 - writes Volicord-managed hook wrapper scripts under `.codex/hooks/` or
   `.claude/hooks/` for required detective lifecycle phases
 - writes supported host hook files such as `.codex/hooks.json` or
@@ -479,10 +497,20 @@ conflict instead of overwriting it. Follow-up status and verification commands,
 dry-run diagnostics, and repair commands preserve the selected intent: they
 include `--shared` only for a shared init result.
 
+On Unix, a newly created `.volicord/policy.json` uses user-only mode `0600`.
+When a regular existing policy carries Volicord ownership metadata, a matching
+init rerun repairs group or other permission bits by replacing it through the
+same conditional managed-file path. An unmanaged policy file remains a
+conflict. Before policy JSON is serialized, the MCP environment map accepts
+only `VOLICORD_HOME`, `VOLICORD_MCP_LAUNCH`, `VOLICORD_MCP_HOST`,
+`VOLICORD_MCP_CONNECTION_ID`, and `VOLICORD_MCP_PROJECT_ID`; secret-like and
+all other environment keys are rejected without including their values in the
+diagnostic. This allowlist is not a general secret-content scanner.
+
 Applying a planned guard-integration managed file during init is a conditional
 same-directory commit. This rule covers managed guidance, policy, hook, wrapper,
-and rule files; host-adapter application of project-scoped MCP configuration
-remains a separate boundary. Guard-integration planning captures a missing target
+rule, and Git exclude files; host-adapter application of project-scoped MCP
+configuration remains a separate boundary. Guard-integration planning captures a missing target
 or a stable regular-file snapshot. Application pins the `Product Repository` and
 each target-parent directory without following symbolic links, rejects a changed
 or non-regular target, writes a sibling staging file, and uses the platform's
@@ -502,6 +530,13 @@ means the supported platform's same-directory namespace transition; it does not
 make provisioning a transaction across multiple files or Runtime Home state, and
 it is not a power-loss durability guarantee.
 
+Git exclude planning rejects a symbolic-link `.git` marker, a malformed or
+oversized gitdir/commondir control file, a non-directory Git target, or a Git
+directory path that resolves through a symbolic link or non-canonical
+component. For linked worktrees the pinned write root is the resolved common
+Git directory rather than the Product Repository. The same no-follow parent,
+stale-plan, conditional replacement, and recovery rules apply there.
+
 The conditional-write checks cover changes to the managed target and its parent
 path by ordinary concurrent writers. Implementation-private sibling names are
 reserved to the active CLI attempt. A same-authority local process that discovers
@@ -516,7 +551,9 @@ platform-specific:
 - On Linux and macOS, the sibling staging file remains at mode `0600` while its
   content is written. The CLI then reapplies and verifies the predecessor's POSIX
   mode, user ID, group ID, and all extended attributes exposed through the
-  selected platform interface before commit. If it cannot read, reproduce, or
+  selected platform interface before commit, except that a Volicord-owned
+  policy file uses mode `0600` as described above while retaining its user ID,
+  group ID, and supported extended attributes. If it cannot read, reproduce, or
   verify that set, it rejects the update before reporting success. This covers an
   ACL only when the operating system represents that ACL through those extended
   attributes; it is not a guarantee for a separate metadata mechanism that the

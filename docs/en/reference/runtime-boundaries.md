@@ -113,11 +113,14 @@ The only baseline exceptions are explicitly requested integration files:
 - a Volicord-managed block in `AGENTS.md`
 - a repository-local Volicord detective host hook policy file at `.volicord/policy.json`
 - host hook configuration, such as Codex `.codex/hooks.json` or Claude Code
-  `.claude/settings.json`
+  `.claude/settings.local.json` for personal init and `.claude/settings.json`
+  for shared init
 - Volicord-managed hook wrapper scripts under Codex `.codex/hooks/` or Claude
   Code `.claude/hooks/`
 - Volicord-managed host rule files, such as Codex `.codex/rules/*.rules` or
   Claude Code files under `.claude/rules/`
+- for personal init, a Volicord-managed block in the worktree's effective Git
+  `info/exclude`; this is untracked Git metadata, not a Product Repository file
 
 A requested guard-integration managed-file application may use
 implementation-private sibling entries in the target directory for staging,
@@ -135,12 +138,15 @@ For Record-profile init, the default personal Codex connection uses the Codex
 user configuration target; explicit `--shared` adds the project-scoped
 `.codex/config.toml` target. Both intents still apply the repository-local
 `.volicord/policy.json` and managed Volicord guidance block in `AGENTS.md`.
-Claude Code personal init uses the local CLI target while the current init
-integration inventory also maintains the repository `.mcp.json` projection;
-shared init selects that project file as the primary host target. These are
-repo-local integration files, not Runtime Home data. Whether to commit them is
-a `Product Repository` policy decision: commit them when shared setup should
-travel with the repository, and leave user-specific integration files local.
+Claude Code personal init uses only the local CLI target for MCP registration;
+shared init selects the repository `.mcp.json` project file as the primary host
+target. Personal Claude Code detective hooks use
+`.claude/settings.local.json`, while shared detective hooks use
+`.claude/settings.json`. Personal init keeps `/.volicord/` and the exact
+Volicord-owned local hook paths untracked through Git `info/exclude` without
+changing `.gitignore`; shared init does not add that block. These are local
+integration files, not Runtime Home data. Whether to commit shared integration
+files is a `Product Repository` policy decision.
 
 Rules:
 

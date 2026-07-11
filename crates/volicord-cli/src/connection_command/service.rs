@@ -200,6 +200,7 @@ fn plan_init_provisioning(
         &connection_id,
         &guard_installation_id,
         &host_plan.entry,
+        intent,
     )?;
 
     Ok(InitProvisioningPlan {
@@ -275,6 +276,7 @@ fn apply_init_provisioning(
         &plan.connection_id,
         &plan.guard_installation_id,
         &host_plan.entry,
+        plan.intent,
     )?;
     let mcp_command = PathBuf::from(&host_plan.entry.command);
     let metadata_json = connection_metadata_json(&host_plan, &mcp_command, &plan.runtime_home)?;
@@ -319,6 +321,7 @@ fn apply_init_provisioning(
         &plan.connection_id,
         &plan.guard_installation_id,
         &host_plan.entry,
+        plan.intent,
     )?;
     let integration = apply_guard_integration(integration)?;
     let integration_profile = plan.init_mode.integration_profile();

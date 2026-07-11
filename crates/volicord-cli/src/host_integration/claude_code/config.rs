@@ -15,6 +15,10 @@ pub(crate) fn project_settings_path(repo_root: &Path) -> PathBuf {
     repo_root.join(".claude").join("settings.json")
 }
 
+pub(crate) fn project_local_settings_path(repo_root: &Path) -> PathBuf {
+    repo_root.join(".claude").join("settings.local.json")
+}
+
 pub(crate) fn project_rule_path(repo_root: &Path) -> PathBuf {
     repo_root.join(".claude").join("rules").join("volicord.md")
 }

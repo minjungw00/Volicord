@@ -2405,6 +2405,26 @@ mod tests {
         guard_installation_id: &str,
         mcp_entry: &ManagedServerEntry,
     ) -> Result<GuardIntegrationPlan, ConnectionCommandError> {
+        plan_guard_integration_for_intent_test(
+            host_kind,
+            init_mode,
+            ConnectionIntent::Shared,
+            repo_root,
+            connection_id,
+            guard_installation_id,
+            mcp_entry,
+        )
+    }
+
+    fn plan_guard_integration_for_intent_test(
+        host_kind: HostKind,
+        init_mode: InitMode,
+        intent: ConnectionIntent,
+        repo_root: &Path,
+        connection_id: &str,
+        guard_installation_id: &str,
+        mcp_entry: &ManagedServerEntry,
+    ) -> Result<GuardIntegrationPlan, ConnectionCommandError> {
         let runtime_home = repo_root.with_file_name(format!(
             "{}-runtime-home",
             repo_root
@@ -2420,6 +2440,7 @@ mod tests {
             connection_id,
             guard_installation_id,
             mcp_entry,
+            intent,
         )?)
     }
 
@@ -2729,6 +2750,40 @@ mod tests {
         ));
         assert!(pre_tool_wrapper.contains("--host-output codex"));
         assert!(script_is_executable(&pre_tool_wrapper_path));
+        Ok(())
+    }
+
+    #[test]
+    fn personal_claude_detective_uses_only_local_repository_targets(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let repo = temp_dir("personal-claude-local-targets")?;
+        fs::create_dir_all(repo.join(".git"))?;
+        let entry = ManagedServerEntry::new(
+            "conn_alpha",
+            Path::new("volicord"),
+            Some(Path::new("/personal/runtime-home")),
+        );
+
+        let plan = plan_guard_integration_for_intent_test(
+            HostKind::ClaudeCode,
+            InitMode::Detective,
+            ConnectionIntent::Personal,
+            &repo,
+            "conn_alpha",
+            "guard_installation_alpha",
+            &entry,
+        )?;
+
+        let paths = plan
+            .generated_files
+            .iter()
+            .map(|file| file.path.clone())
+            .collect::<std::collections::BTreeSet<_>>();
+        assert!(paths.contains(&repo.join(".claude/settings.local.json")));
+        assert!(!paths.contains(&repo.join(".claude/settings.json")));
+        assert!(!paths.contains(&repo.join(".mcp.json")));
+        assert!(paths.contains(&repo.join(".volicord/policy.json")));
+        assert!(paths.contains(&repo.join(".git/info/exclude")));
         Ok(())
     }
 

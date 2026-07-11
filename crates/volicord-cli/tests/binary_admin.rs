@@ -5,7 +5,7 @@ mod support;
 use std::{collections::BTreeSet, error::Error, fs, io::Read, path::Path};
 
 #[cfg(unix)]
-use std::process::Output;
+use std::{os::unix::fs::PermissionsExt, process::Output};
 
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -413,6 +413,10 @@ fn init_defaults_to_personal_codex_connection() -> Result<(), Box<dyn Error>> {
     )));
     assert!(!text.contains("connection verify codex --shared"));
     assert!(!text.contains("connection status codex --shared"));
+    fs::set_permissions(
+        repo_root.join(".volicord/policy.json"),
+        fs::Permissions::from_mode(0o644),
+    )?;
 
     let output = run_with_home_env(
         runtime_home.path(),
@@ -440,6 +444,24 @@ fn init_defaults_to_personal_codex_connection() -> Result<(), Box<dyn Error>> {
     assert!(!repo_root.join(".codex/config.toml").exists());
     assert!(repo_root.join("AGENTS.md").exists());
     assert!(repo_root.join(".volicord/policy.json").exists());
+    let exclude = fs::read_to_string(repo_root.join(".git/info/exclude"))?;
+    assert_eq!(
+        exclude
+            .matches("# BEGIN VOLICORD MANAGED LOCAL EXCLUDES")
+            .count(),
+        1
+    );
+    assert!(exclude.contains("/.volicord/"));
+    assert!(exclude.contains("/.codex/hooks/volicord-pre-tool.sh"));
+    assert!(!exclude.contains("/.codex/\n"));
+    assert!(!exclude.contains("/.gitignore"));
+    assert_eq!(
+        fs::metadata(repo_root.join(".volicord/policy.json"))?
+            .permissions()
+            .mode()
+            & 0o777,
+        0o600
+    );
     assert_eq!(
         value["primary_next_action"]["command"],
         format!(
@@ -486,9 +508,13 @@ fn init_defaults_to_personal_claude_code_connection() -> Result<(), Box<dyn Erro
         value["connection"]["config_target"],
         format!("claude cwd={}", repo_root.display())
     );
-    assert!(repo_root.join(".mcp.json").exists());
+    assert!(!repo_root.join(".mcp.json").exists());
     assert!(repo_root.join("AGENTS.md").exists());
     assert!(repo_root.join(".volicord/policy.json").exists());
+    let exclude = fs::read_to_string(repo_root.join(".git/info/exclude"))?;
+    assert!(exclude.contains("/.volicord/"));
+    assert!(exclude.contains("/.claude/rules/volicord.md"));
+    assert!(!exclude.contains("/.mcp.json"));
     let host_state = fs::read_to_string(claude.with_extension("state"))?;
     assert!(host_state.contains("Scope: local"));
     assert!(host_state.contains(&format!("Command: {}", mcp_command.display())));
@@ -615,6 +641,7 @@ fn init_claude_code_guarded_without_degraded_opt_in_generates_hooks() -> Result<
     assert!(repo_root.join(".mcp.json").exists());
     assert!(repo_root.join("AGENTS.md").exists());
     assert!(repo_root.join(".volicord/policy.json").exists());
+    assert!(!repo_root.join(".git/info/exclude").exists());
     let settings = fs::read_to_string(repo_root.join(".claude/settings.json"))?;
     assert!(settings.contains("${CLAUDE_PROJECT_DIR}/.claude/hooks/volicord-session-start.sh"));
     assert!(settings.contains("${CLAUDE_PROJECT_DIR}/.claude/hooks/volicord-pre-tool.sh"));

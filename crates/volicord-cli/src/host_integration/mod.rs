@@ -209,6 +209,7 @@ pub const REQUIRED_GUARD_PHASES: [HostLifecyclePhase; 5] = [
 #[serde(rename_all = "snake_case")]
 pub enum HostIntegrationFileKind {
     VolicordPolicy,
+    GitInfoExclude,
     HostMcpConfig,
     HostHookConfig,
     HostHookDispatch,
@@ -221,6 +222,7 @@ impl HostIntegrationFileKind {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::VolicordPolicy => "volicord_policy",
+            Self::GitInfoExclude => "git_info_exclude",
             Self::HostMcpConfig => "host_mcp_config",
             Self::HostHookConfig => "host_hook_config",
             Self::HostHookDispatch => "host_hook_dispatch",

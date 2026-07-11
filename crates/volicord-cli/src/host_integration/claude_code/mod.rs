@@ -22,4 +22,6 @@ pub fn capabilities() -> HostCapabilities {
     }
 }
 
-pub(crate) use config::{project_rule_block, project_rule_path, project_settings_path};
+pub(crate) use config::{
+    project_local_settings_path, project_rule_block, project_rule_path, project_settings_path,
+};

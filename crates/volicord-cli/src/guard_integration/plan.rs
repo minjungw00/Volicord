@@ -11,14 +11,15 @@ use crate::{
             plan_managed_block_file, plan_policy_file, GeneratedFilePlan, AGENTS_FILE,
             GUIDANCE_END_MARKER, GUIDANCE_START_MARKER, VOLICORD_POLICY_FILE,
         },
+        git_exclude::plan_personal_git_excludes,
         hooks::{guard_command_specs, host_hook_command_specs, HostHookCommand},
         hosts::plan_host_generated_files,
         policy::{lifecycle_phase_names, policy_json},
         public_host_label, GuardIntegrationError,
     },
     host_integration::{
-        host_capabilities, HostCapabilities, HostIntegrationFileKind, HostKind, HostLifecyclePhase,
-        ManagedServerEntry,
+        host_capabilities, ConnectionIntent, HostCapabilities, HostIntegrationFileKind, HostKind,
+        HostLifecyclePhase, ManagedServerEntry,
     },
 };
 
@@ -49,6 +50,7 @@ pub(crate) fn plan_guard_integration(
     connection_id: &str,
     guard_installation_id: &str,
     mcp_entry: &ManagedServerEntry,
+    connection_intent: ConnectionIntent,
 ) -> Result<GuardIntegrationPlan, GuardIntegrationError> {
     if profile != IntegrationProfile::Record {
         ensure_observe_profile_supported_on_platform(host_kind)?;
@@ -83,7 +85,7 @@ pub(crate) fn plan_guard_integration(
         guard_installation_id,
         mcp_entry,
         &policy_guard_commands,
-    );
+    )?;
     let policy_hash =
         policy_hash(&policy).map_err(|error| GuardIntegrationError::runtime(error.to_string()))?;
     let guard_commands = guard_command_specs(
@@ -102,6 +104,9 @@ pub(crate) fn plan_guard_integration(
         BTreeMap::new()
     };
     let mut generated_files = Vec::new();
+    if connection_intent == ConnectionIntent::Personal {
+        generated_files.push(plan_personal_git_excludes(repo_root)?);
+    }
     let agents_path = repo_root.join(AGENTS_FILE);
     generated_files.push(plan_managed_block_file(
         HostIntegrationFileKind::AgentsManagedBlock,
@@ -117,6 +122,7 @@ pub(crate) fn plan_guard_integration(
     generated_files.extend(plan_host_generated_files(
         host_kind,
         profile,
+        connection_intent,
         repo_root,
         mcp_entry,
         &guard_commands,

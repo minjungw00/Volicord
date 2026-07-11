@@ -4,6 +4,7 @@ pub(crate) mod apply;
 pub(crate) mod audit;
 pub(crate) mod capability;
 pub(crate) mod files;
+pub(crate) mod git_exclude;
 pub(crate) mod hooks;
 pub(crate) mod hosts;
 pub(crate) mod plan;

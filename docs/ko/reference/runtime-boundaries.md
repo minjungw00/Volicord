@@ -112,11 +112,14 @@ Volicord 런타임 상태, SQLite 데이터베이스, 생성 기록, 런타임 �
 - Codex `.codex/config.toml` 또는 Claude Code `.mcp.json` 같은 프로젝트 범위 호스트 설정
 - `AGENTS.md` 안의 Volicord 관리 블록
 - `.volicord/policy.json`에 있는 저장소 로컬 Volicord 탐지형 호스트 훅 정책 파일
-- Codex `.codex/hooks.json` 또는 Claude Code `.claude/settings.json` 같은 호스트 훅 설정
+- Codex `.codex/hooks.json`, 개인 Claude Code `.claude/settings.local.json`, 공유
+  Claude Code `.claude/settings.json` 같은 호스트 훅 설정
 - Codex `.codex/hooks/` 또는 Claude Code `.claude/hooks/` 아래의 Volicord 관리 호스트 훅
   래퍼 스크립트
 - Codex `.codex/rules/*.rules` 또는 `.claude/rules/` 아래의 Claude Code 파일 같은
   Volicord 관리 호스트 규칙 파일
+- 개인 init에서 작업 트리에 실제로 적용되는 Git `info/exclude`의 Volicord 관리
+  블록. 이는 추적되지 않는 Git 메타데이터이며 Product Repository 파일이 아닙니다.
 
 요청된 `guard` 통합 관리 파일을 적용하는 동안 대상 디렉터리에 스테이징, 이전 파일
 밀어 두기, 되돌리기를 위한 구현 전용 보조 항목을 사용할 수 있습니다. 이 항목들은
@@ -131,11 +134,14 @@ Runtime Home 데이터, 관리 호스트 설정, 오래 유지되는 복구 기�
 Record profile init에서 기본 개인 Codex 연결은 Codex 사용자 설정 대상을 사용하고,
 명시적 `--shared`는 프로젝트 범위 `.codex/config.toml` 대상을 추가합니다. 두 의도
 모두 저장소 로컬 `.volicord/policy.json`과 `AGENTS.md` 안의 Volicord 관리 안내
-블록을 적용합니다. Claude Code 개인 init은 로컬 CLI 대상을 사용하지만 현재 init 통합
-파일 구성은 저장소 `.mcp.json` 상태 보기도 함께 관리합니다. 공유 init은 그 프로젝트
-파일을 주 호스트 대상으로 선택합니다. 이 파일들은 저장소 로컬 통합 파일이지 Runtime
-Home 데이터가 아닙니다. 커밋할지는 `Product Repository` 정책 결정입니다. 공유 설정을
-저장소와 함께 전달해야 하면 커밋하고, 사용자별 통합 파일이면 로컬에 둡니다.
+블록을 적용합니다. Claude Code 개인 init은 MCP 등록에 로컬 CLI 대상만 사용합니다.
+공유 init은 저장소 `.mcp.json` 프로젝트
+파일을 주 호스트 대상으로 선택합니다. 개인 Claude Code 탐지 훅은
+`.claude/settings.local.json`을 사용하고 공유 탐지 훅은 `.claude/settings.json`을
+사용합니다. 개인 init은 `.gitignore`를 바꾸지 않고 Git `info/exclude`를 통해
+`/.volicord/`와 정확한 Volicord 소유 로컬 훅 경로를 추적 대상에서 제외합니다. 공유
+init은 이 블록을 추가하지 않습니다. 이 파일들은 로컬 통합 파일이지 Runtime Home
+데이터가 아닙니다. 공유 통합 파일을 커밋할지는 `Product Repository` 정책 결정입니다.
 
 규칙:
 

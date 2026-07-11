@@ -11,7 +11,7 @@ use crate::{
         },
         GuardIntegrationError,
     },
-    host_integration::{HostKind, ManagedServerEntry, DEFAULT_SERVER_NAME},
+    host_integration::{ConnectionIntent, HostKind, ManagedServerEntry, DEFAULT_SERVER_NAME},
 };
 
 pub(crate) mod claude_code;
@@ -20,6 +20,7 @@ pub(crate) mod codex;
 pub(crate) fn plan_host_generated_files(
     host_kind: HostKind,
     profile: IntegrationProfile,
+    connection_intent: ConnectionIntent,
     repo_root: &Path,
     mcp_entry: &ManagedServerEntry,
     guard_commands: &BTreeMap<String, GuardCommandSpec>,
@@ -38,11 +39,13 @@ pub(crate) fn plan_host_generated_files(
             files.push(codex::plan_codex_rule_file(repo_root, host_hook_commands)?);
         }
         HostKind::ClaudeCode => {
-            files.push(claude_code::plan_claude_mcp_file(
-                repo_root,
-                DEFAULT_SERVER_NAME,
-                mcp_entry,
-            )?);
+            if connection_intent == ConnectionIntent::Shared {
+                files.push(claude_code::plan_claude_mcp_file(
+                    repo_root,
+                    DEFAULT_SERVER_NAME,
+                    mcp_entry,
+                )?);
+            }
             if profile == IntegrationProfile::Detective {
                 files.extend(plan_hook_wrapper_files(
                     repo_root,
@@ -52,6 +55,7 @@ pub(crate) fn plan_host_generated_files(
                 files.push(claude_code::plan_claude_project_settings_file(
                     repo_root,
                     host_hook_commands,
+                    connection_intent,
                 )?);
                 files.push(claude_code::plan_claude_rule_file(
                     repo_root,

@@ -16,8 +16,8 @@ use crate::{
         contracts::{
             contract_for, hook_event_for_phase, validate_contract_config, HostContractConfigKind,
         },
-        HostIntegrationFileKind, HostKind, HostLifecyclePhase, ManagedServerEntry,
-        REQUIRED_GUARD_PHASES,
+        ConnectionIntent, HostIntegrationFileKind, HostKind, HostLifecyclePhase,
+        ManagedServerEntry, REQUIRED_GUARD_PHASES,
     },
 };
 
@@ -39,6 +39,7 @@ pub(crate) fn plan_claude_mcp_file(
 pub(crate) fn plan_claude_project_settings_file(
     repo_root: &Path,
     hook_commands: &BTreeMap<String, HostHookCommand>,
+    connection_intent: ConnectionIntent,
 ) -> Result<GeneratedFilePlan, GuardIntegrationError> {
     let value = claude_settings_hooks_projection(hook_commands)?;
     let text = serde_json::to_string_pretty(&value)
@@ -53,10 +54,15 @@ pub(crate) fn plan_claude_project_settings_file(
             "generated Claude Code settings hooks do not match the verified contract: {error}"
         ))
     })?;
+    let settings_path = if connection_intent == ConnectionIntent::Personal {
+        claude_code::project_local_settings_path(repo_root)
+    } else {
+        claude_code::project_settings_path(repo_root)
+    };
     plan_managed_json_projection_file(
         HostIntegrationFileKind::HostHookConfig,
         repo_root,
-        &claude_code::project_settings_path(repo_root),
+        &settings_path,
         &value,
         ManagedJsonProjection::ClaudeCodeSettingsHooks,
     )

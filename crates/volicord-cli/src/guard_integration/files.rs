@@ -256,7 +256,12 @@ where
     let (temp_name, mut temp_file) = parent.create_temp_file()?;
     let temp_path = parent.absolute_entry_path(&temp_name);
     let write_result = (|| -> io::Result<TempPermissionPlan> {
-        let permissions = prepare_temp_permissions(&temp_file, &plan.target_snapshot, executable)?;
+        let permissions = prepare_temp_permissions(
+            &temp_file,
+            &plan.target_snapshot,
+            executable,
+            plan.kind == HostIntegrationFileKind::VolicordPolicy,
+        )?;
         hook(ManagedWritePhase::TempReady)?;
         temp_file.write_all(content.as_bytes())?;
         temp_file.flush()?;
@@ -1203,6 +1208,7 @@ fn prepare_temp_permissions(
     file: &CapabilityFile,
     snapshot: &ManagedTargetSnapshot,
     executable: bool,
+    user_only: bool,
 ) -> io::Result<TempPermissionPlan> {
     use cap_std::fs::PermissionsExt;
 
@@ -1213,6 +1219,9 @@ fn prepare_temp_permissions(
     };
     if executable {
         final_mode |= 0o755;
+    }
+    if user_only {
+        final_mode = (final_mode & !0o777) | 0o600;
     }
     let (owner_group, extended_attributes) = match snapshot {
         ManagedTargetSnapshot::Missing => (None, None),
@@ -1365,6 +1374,7 @@ fn prepare_temp_permissions(
     file: &CapabilityFile,
     snapshot: &ManagedTargetSnapshot,
     _executable: bool,
+    _user_only: bool,
 ) -> io::Result<TempPermissionPlan> {
     let _ = file.metadata()?;
     Ok(TempPermissionPlan {
@@ -2660,7 +2670,7 @@ pub(crate) fn plan_policy_file(
                     path.display()
                 )));
             }
-            if existing == content {
+            if existing == content && !policy_permissions_need_repair(&target_snapshot) {
                 FilePlanStatus::Unchanged
             } else {
                 FilePlanStatus::PlannedUpdate
@@ -2677,6 +2687,28 @@ pub(crate) fn plan_policy_file(
         write_kind: GeneratedFileWriteKind::Json,
         target_snapshot,
     })
+}
+
+#[cfg(unix)]
+fn policy_permissions_need_repair(snapshot: &ManagedTargetSnapshot) -> bool {
+    matches!(
+        snapshot,
+        ManagedTargetSnapshot::RegularFile(existing) if existing.mode & 0o077 != 0
+    )
+}
+
+#[cfg(not(unix))]
+fn policy_permissions_need_repair(_snapshot: &ManagedTargetSnapshot) -> bool {
+    false
+}
+
+pub(crate) fn read_managed_text(
+    anchor_root: &Path,
+    path: &Path,
+) -> Result<Option<String>, GuardIntegrationError> {
+    Ok(read_managed_target_snapshot(anchor_root, path)?
+        .text()
+        .map(str::to_owned))
 }
 
 pub(crate) fn plan_managed_exact_json_file(

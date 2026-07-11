@@ -1595,6 +1595,7 @@ fn claude_event_name(phase: HostLifecyclePhase) -> Result<&'static str, ()> {
 fn host_integration_file_kind_from_str(value: &str) -> Option<HostIntegrationFileKind> {
     match value {
         "volicord_policy" => Some(HostIntegrationFileKind::VolicordPolicy),
+        "git_info_exclude" => Some(HostIntegrationFileKind::GitInfoExclude),
         "host_mcp_config" => Some(HostIntegrationFileKind::HostMcpConfig),
         "host_hook_config" => Some(HostIntegrationFileKind::HostHookConfig),
         "host_hook_dispatch" => Some(HostIntegrationFileKind::HostHookDispatch),
