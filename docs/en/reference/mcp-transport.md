@@ -838,7 +838,23 @@ uses its exact adapter-utility result schema. A server result that includes
 | Tool class | `readOnlyHint` | `destructiveHint` | `idempotentHint` | `openWorldHint` |
 |---|---:|---:|---:|---:|
 | `volicord.status`, `volicord.check_close`, `volicord.list_projects` | `true` | `false` | `true` | `false` |
-| Agent-workflow mutation tools | `false` | `true` | `false` | `false` |
+| `volicord.prepare_write`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment` | `false` | `false` | `false` | `false` |
+| `volicord.intake`, `volicord.update_scope`, `volicord.reconcile_changes`, `volicord.close_task` | `false` | `true` | `false` | `false` |
+
+For the non-destructive mutation row, `destructiveHint=false` classifies the
+tool's primary preparation or recording purpose for MCP clients. It does not
+mean that the call is read-only, append-only, replay-safe, or free of durable
+replacement and consumption effects. In particular, a committed
+`volicord.record_run` may consume a compatible write ticket or staged input,
+update evidence and blockers, increment `close_basis_revision`, and replace the
+current close basis or leave a previous basis stale, exactly as the method and
+storage-effect owners define. Those effects are why its `readOnlyHint` and
+`idempotentHint` remain `false`.
+
+All mutation tools have `idempotentHint=false` because each distinct
+MCP-visible call receives fresh adapter-managed request identity. Core replay
+handling for one generated identity does not promise that a later visible MCP
+call has the same result or no additional effects.
 
 These values are client hints, not trusted authorization facts. They do not
 grant Agent Connection authority, bypass host trust or approval, suppress a

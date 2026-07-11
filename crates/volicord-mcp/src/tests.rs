@@ -188,7 +188,7 @@ fn mcp_workflow_tools_have_valid_schemas() {
 }
 
 #[test]
-fn mcp_tools_publish_root_output_schemas_and_conservative_annotations() {
+fn mcp_tools_publish_root_output_schemas_and_effect_specific_annotations() {
     for tool in mcp_tools_for_mode_and_storage(
         AgentConnectionMode::Workflow,
         McpStorageCapability::ReadWrite,
@@ -204,16 +204,40 @@ fn mcp_tools_publish_root_output_schemas_and_conservative_annotations() {
             tool.name
         );
 
-        let read_only = READ_ONLY_METHOD_TOOL_NAMES.contains(&tool.name)
-            || tool.name == LIST_PROJECTS_TOOL_NAME;
+        let expected_annotations = match tool.name {
+            STATUS_TOOL_NAME | CHECK_CLOSE_TOOL_NAME | LIST_PROJECTS_TOOL_NAME => {
+                McpToolAnnotations {
+                    read_only_hint: true,
+                    destructive_hint: false,
+                    idempotent_hint: true,
+                    open_world_hint: false,
+                }
+            }
+            PREPARE_WRITE_TOOL_NAME
+            | STAGE_ARTIFACT_TOOL_NAME
+            | RECORD_RUN_TOOL_NAME
+            | REQUEST_USER_JUDGMENT_TOOL_NAME => McpToolAnnotations {
+                read_only_hint: false,
+                destructive_hint: false,
+                idempotent_hint: false,
+                open_world_hint: false,
+            },
+            INTAKE_TOOL_NAME
+            | UPDATE_SCOPE_TOOL_NAME
+            | RECONCILE_CHANGES_TOOL_NAME
+            | CLOSE_TASK_TOOL_NAME => McpToolAnnotations {
+                read_only_hint: false,
+                destructive_hint: true,
+                idempotent_hint: false,
+                open_world_hint: false,
+            },
+            _ => panic!("missing expected MCP annotations for {}", tool.name),
+        };
         assert_eq!(
-            tool.annotations.read_only_hint, read_only,
-            "{} readOnlyHint should match its effect boundary",
+            tool.annotations, expected_annotations,
+            "{} annotations should match its effect boundary",
             tool.name
         );
-        assert_eq!(tool.annotations.destructive_hint, !read_only);
-        assert_eq!(tool.annotations.idempotent_hint, read_only);
-        assert!(!tool.annotations.open_world_hint);
     }
 }
 

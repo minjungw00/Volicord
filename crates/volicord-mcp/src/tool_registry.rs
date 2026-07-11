@@ -23,7 +23,16 @@ impl McpToolAnnotations {
         }
     }
 
-    const fn mutation() -> Self {
+    const fn non_destructive_mutation() -> Self {
+        Self {
+            read_only_hint: false,
+            destructive_hint: false,
+            idempotent_hint: false,
+            open_world_hint: false,
+        }
+    }
+
+    const fn destructive_mutation() -> Self {
         Self {
             read_only_hint: false,
             destructive_hint: true,
@@ -404,10 +413,17 @@ pub(crate) fn mcp_tool_input_schema(name: &str) -> Option<Value> {
 }
 
 fn tool_annotations(name: &str) -> McpToolAnnotations {
-    if READ_ONLY_METHOD_TOOL_NAMES.contains(&name) {
-        McpToolAnnotations::read_only()
-    } else {
-        McpToolAnnotations::mutation()
+    match name {
+        STATUS_TOOL_NAME | CHECK_CLOSE_TOOL_NAME => McpToolAnnotations::read_only(),
+        PREPARE_WRITE_TOOL_NAME
+        | STAGE_ARTIFACT_TOOL_NAME
+        | RECORD_RUN_TOOL_NAME
+        | REQUEST_USER_JUDGMENT_TOOL_NAME => McpToolAnnotations::non_destructive_mutation(),
+        INTAKE_TOOL_NAME
+        | UPDATE_SCOPE_TOOL_NAME
+        | RECONCILE_CHANGES_TOOL_NAME
+        | CLOSE_TASK_TOOL_NAME => McpToolAnnotations::destructive_mutation(),
+        _ => panic!("missing MCP annotation policy for tool `{name}`"),
     }
 }
 
