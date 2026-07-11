@@ -16,6 +16,8 @@ on:
       - "Cargo.lock"
       - "Dockerfile"
       - "crates/**"
+      - "tests/**/Cargo.toml"
+      - "xtask/**"
 
 permissions:
   contents: read
@@ -24,8 +26,30 @@ env:
   RUST_VERSION: "1.85.0"
 
 jobs:
+  version-alignment:
+    name: Release version alignment
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install "$RUST_VERSION" --profile minimal
+          rustup default "$RUST_VERSION"
+
+      - name: Verify workspace and release tag version alignment
+        run: |
+          set -eu
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            cargo run --locked -p xtask -- release-version-check --tag "$GITHUB_REF_NAME"
+          else
+            cargo run --locked -p xtask -- release-version-check
+          fi
+
   binary:
     name: Binary (${{ matrix.target }})
+    needs: version-alignment
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -180,6 +204,7 @@ jobs:
 
   windows-test:
     name: Windows cargo test
+    needs: version-alignment
     runs-on: windows-2022
     steps:
       - name: Check out repository
@@ -196,6 +221,7 @@ jobs:
 
   docker-image:
     name: Docker image
+    needs: version-alignment
     runs-on: ubuntu-24.04
     steps:
       - name: Check out repository

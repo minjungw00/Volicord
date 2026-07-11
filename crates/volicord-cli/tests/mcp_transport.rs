@@ -48,7 +48,10 @@ fn volicord_mcp_subcommand_reports_help_version_and_preflight() -> Result<(), Bo
 
     let version = run_without_binding(["--version"])?;
     assert_success(&version);
-    assert!(stdout(&version).starts_with("volicord "));
+    assert_eq!(
+        stdout(&version),
+        format!("volicord {}\n", env!("CARGO_PKG_VERSION"))
+    );
 
     let no_args = run_without_binding([])?;
     assert_eq!(no_args.status.code(), Some(2));
@@ -201,6 +204,10 @@ fn volicord_mcp_subcommand_stdio_uses_line_delimited_json_and_reconnects_state(
     assert_eq!(
         responses[&1]["result"]["serverInfo"]["name"],
         json!("volicord-mcp")
+    );
+    assert_eq!(
+        responses[&1]["result"]["serverInfo"]["version"],
+        json!(env!("CARGO_PKG_VERSION"))
     );
     assert_eq!(
         responses[&1]["result"]["protocolVersion"],

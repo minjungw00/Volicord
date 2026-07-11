@@ -63,7 +63,21 @@ Core는 Volicord 상태를 위한 로컬 기준 기록입니다.
    담당 경로, 검증 명령 경로가 바뀌면 이 가이드를 갱신합니다. 정확한 제품
    계약은 참조 담당 문서에 둡니다.
 
-7. 검증을 실행합니다.
+7. 완료된 공개 변경 묶음마다 릴리스 버전을 한 번 평가합니다.
+
+   서로 관련된 한 묶음의 변경이 지원되는 공개 계약이나 배포 동작을 바꾸면, 완료된
+   변경 묶음 전체의 SemVer 영향을 한 번 평가하고 루트 `Cargo.toml`의
+   `[workspace.package].version`을 그 묶음에 대해 한 번 갱신합니다. 묶음 안의 커밋마다
+   버전을 올리지 않습니다. 모든 워크스페이스 패키지는 이 하나의 버전을 계속
+   상속합니다. 태그를 만들기 전에는
+   `cargo run --locked -p xtask -- release-version-check --tag vX.Y.Z`를 실행합니다.
+   태그 없이 워크스페이스 상속만 점검할 때는
+   `cargo run --locked -p xtask -- release-version-check`를 사용합니다. 기존
+   `volicord --version`과 MCP initialize의 `serverInfo.version`은 상속된 패키지 버전에서
+   값을 가져옵니다. 이 작업 흐름을 위해 별도 커밋 SHA나 빌드 메타데이터 필드를 추가하지
+   않습니다.
+
+8. 검증을 실행합니다.
 
    Rust 구현을 편집했으면 기본적으로 `cargo fmt`,
    `cargo clippy --all-targets --all-features`,
@@ -71,7 +85,7 @@ Core는 Volicord 상태를 위한 로컬 기준 기록입니다.
    구조, 링크/색인, 언어 일치, 용어에 맞는 Maintain 점검을 실행합니다.
    실행하지 않은 명령은 이유를 보고합니다.
 
-8. 동작을 새로 만들지 말고 담당 문서 공백을 보고합니다.
+9. 동작을 새로 만들지 말고 담당 문서 공백을 보고합니다.
 
    구현에 필요한 동작을 어떤 담당 문서도 정의하지 않는다면 제품 의미
    변경을 멈추고 담당 문서 공백을 보고하거나 적절한 참조 담당 문서를 먼저
@@ -108,6 +122,7 @@ Core는 Volicord 상태를 위한 로컬 기준 기록입니다.
 | 변경 영역 | 첫 명령 경로 | 추가할 때 |
 |---|---|---|
 | 아키텍처 가이드, 문서 경로, 링크, 메타데이터 | `cargo run -p xtask -- docs-check` | docs-check 동작이 바뀌면 `cargo test -p xtask`. |
+| 릴리스 버전 또는 태그 릴리스 작업 흐름 | `cargo run --locked -p xtask -- release-version-check`. 제안된 릴리스 태그에는 `--tag vX.Y.Z`를 추가합니다. | 점검기가 바뀌면 `cargo test -p xtask --test release_version_check`를 추가하고, 태그 게이트나 작업 의존성이 바뀌면 `.github/workflows/release.yml`을 검토합니다. |
 | 공유 타입, 공개 스키마, 값 집합, 식별자, 요청 해시, 생성 공개 API/MCP 스키마 | `cargo test -p volicord-types`. 생성 스키마나 스냅샷이 영향을 받으면 `cargo test -p volicord-integration-tests --test public_contract_snapshots` | 메서드 계획이 바뀌면 Core 메서드 테스트, 어댑터에 보이는 동작이 바뀌면 MCP 통합 테스트, 유지 문서가 바뀌면 docs-check. |
 | 플랫폼 파일시스템 기본 연산 또는 어댑터 관리 조건부 파일 교체 | `cargo test -p volicord-platform-fs`. `cargo test -p volicord-cli --lib guard_integration` 같은 호출 모듈 테스트 | 운영체제 고유 코드가 바뀌면 대상별 `cargo check` 또는 테스트, 관리 결과가 바이너리에 보이면 `binary_admin`, 담당 문서나 아키텍처 가이드가 바뀌면 `docs-check`. |
 | Core 메서드 또는 공유 파이프라인 동작 | `cargo test -p volicord-core` | 교차 메서드 기준 범위 시나리오는 `cargo test -p volicord-conformance-tests --test baseline`, MCP에 보이는 맥락은 `cargo test -p volicord-integration-tests --test mcp_connection`. |
@@ -141,6 +156,8 @@ Core는 Volicord 상태를 위한 로컬 기준 기록입니다.
 - 변경된 각 동작에 집중 담당 문서가 있거나 담당 문서 공백 보고가 있습니다.
 - 편집 전에 구현 경로와 경계를 식별했습니다.
 - 변경된 계층에 맞는 테스트를 골랐습니다.
+- 완료된 공개 계약 또는 배포 변경 묶음에 대해 SemVer 영향을 한 번 평가했고, 필요하면
+  공유 워크스페이스 버전을 한 번 갱신했습니다.
 - 오래 유지될 소스 구조, 실행 흐름, 저장소 경계, 테스트 전략, 변경 작업
   흐름이 바뀌었을 때 관련 아키텍처 가이드 담당 문서를 갱신했습니다.
 - 유지되는 문서가 바뀌었을 때 영어와 한국어 문서가 의미상 맞게 남았습니다.

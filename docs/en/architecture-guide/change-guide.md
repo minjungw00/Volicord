@@ -69,7 +69,21 @@ work. Core is the local authority record for Volicord state.
    validation-command routing changed, update this guide. Keep exact product
    contracts in Reference owners.
 
-7. Run validation.
+7. Assess the release version once per completed public-change batch.
+
+   When one related batch changes supported public contracts or deployment
+   behavior, assess the SemVer impact of the completed batch as a whole and
+   update `[workspace.package].version` in the root `Cargo.toml` once for that
+   batch. Do not increment the version for every commit in the batch. All
+   workspace packages continue to inherit that one version. Before tagging,
+   run `cargo run --locked -p xtask -- release-version-check --tag vX.Y.Z`;
+   without a tag, use `cargo run --locked -p xtask -- release-version-check`
+   to check workspace inheritance. The existing `volicord --version` and MCP
+   initialize `serverInfo.version` surfaces derive from the inherited package
+   version; do not add separate commit-SHA or build-metadata fields for this
+   workflow.
+
+8. Run validation.
 
    For Rust implementation edits, default to `cargo fmt`,
    `cargo clippy --all-targets --all-features`, and
@@ -77,7 +91,7 @@ work. Core is the local authority record for Volicord state.
    applicable Maintain checks for structure, links/indexes, language parity,
    and terminology. Report any skipped command with a reason.
 
-8. Report owner gaps instead of inventing behavior.
+9. Report owner gaps instead of inventing behavior.
 
    If the implementation needs behavior that no owner defines, stop the product
    meaning change and report the owner gap or update the proper Reference owner
@@ -115,6 +129,7 @@ edits, the workspace default remains `cargo fmt`,
 | Change area | First command route | Add when |
 |---|---|---|
 | Architecture Guide, documentation routes, links, or metadata | `cargo run -p xtask -- docs-check` | `cargo test -p xtask` when docs-check behavior changes. |
+| Release version or tag-release workflow | `cargo run --locked -p xtask -- release-version-check`; add `--tag vX.Y.Z` for a proposed release tag | `cargo test -p xtask --test release_version_check` when the checker changes; review `.github/workflows/release.yml` when tag gating or job dependencies change. |
 | Shared types, public schemas, value sets, identifiers, request hashing, or generated public API/MCP projections | `cargo test -p volicord-types`; `cargo test -p volicord-integration-tests --test public_contract_snapshots` when projections or snapshots are affected | Core method tests when planning changes; MCP integration when adapter-visible behavior changes; docs-check when maintained docs change. |
 | Platform filesystem primitives or adapter-managed conditional file replacement | `cargo test -p volicord-platform-fs`; caller-module tests such as `cargo test -p volicord-cli --lib guard_integration` | A target-specific `cargo check` or test when native code changes; `binary_admin` when the administrative result is binary-visible; docs-check when owner or Architecture Guide documents change. |
 | Core method or shared pipeline behavior | `cargo test -p volicord-core` | `cargo test -p volicord-conformance-tests --test baseline` for cross-method baseline scenarios; `cargo test -p volicord-integration-tests --test mcp_connection` for MCP-visible context. |
@@ -150,6 +165,8 @@ security proof, or residual-risk acceptance.
 - Each changed behavior has a focused owner or an owner-gap report.
 - The implementation path and boundary were identified before editing.
 - Tests were selected for the changed layer.
+- A completed public-contract or deployment batch received one SemVer impact
+  assessment, and the shared workspace version was updated once when required.
 - The relevant Architecture Guide owner was updated when durable source
   structure, execution flow, storage boundary, test strategy, or change
   workflow changed.
