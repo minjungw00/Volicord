@@ -49,8 +49,8 @@ owner_areas:
   documentation_maintenance:
     description: Documentation metadata, terminology, translation, validation, and route-index maintenance.
 applicability:
-  volicord_workspace_0_1:
-    description: Volicord workspace package version 0.1.0, as declared by the workspace `Cargo.toml`.
+  volicord_workspace_0_2:
+    description: Volicord workspace package version 0.2.0, as declared by the workspace `Cargo.toml`.
   rust_workspace_1_85:
     description: Repository Rust workspace requiring Rust 1.85 or newer, as declared by the workspace
       `Cargo.toml`.
@@ -133,7 +133,7 @@ shared_documents:
   last_updated_on: '2026-07-03'
   last_verified_on: '2026-07-03'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   - doc_index_schema_v3
   primary_audience:
   - agents
@@ -160,7 +160,7 @@ shared_documents:
   last_updated_on: '2026-07-03'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   - doc_index_schema_v3
   primary_audience:
   - agents
@@ -186,7 +186,7 @@ shared_documents:
   last_updated_on: '2026-07-03'
   last_verified_on: '2026-07-03'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   primary_audience:
   - agents
   - implementers
@@ -210,7 +210,7 @@ shared_documents:
   last_updated_on: '2026-07-05'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   primary_audience:
   - all readers
   journeys:
@@ -227,7 +227,7 @@ shared_documents:
   last_updated_on: '2026-07-12'
   last_verified_on: '2026-07-12'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   - doc_index_schema_v3
   primary_audience:
   - agents
@@ -249,7 +249,7 @@ shared_documents:
   last_updated_on: '2026-07-12'
   last_verified_on: '2026-07-12'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   - terminology_map_v1
   primary_audience:
   - maintainers
@@ -283,7 +283,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   primary_audience:
   - new users
   - operators
@@ -321,7 +321,7 @@ documents:
   last_updated_on: '2026-07-05'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   primary_audience:
   - all readers
   journeys:
@@ -344,7 +344,7 @@ documents:
   last_updated_on: '2026-07-05'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   - mcp_protocol_2025_11_25
   primary_audience:
   - new users
@@ -381,7 +381,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   primary_audience:
   - new users
   - agents
@@ -403,10 +403,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: onboarding
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-11'
-  last_verified_on: '2026-07-11'
+  last_updated_on: '2026-07-12'
+  last_verified_on: '2026-07-12'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   - rust_workspace_1_85
   primary_audience:
   - new users
@@ -430,7 +430,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   - mcp_protocol_2025_11_25
   primary_audience:
   - new users
@@ -456,7 +456,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   primary_audience:
   - users
   - agents
@@ -474,7 +474,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   primary_audience:
   - agents
   - agent operators
@@ -492,7 +492,7 @@ documents:
   last_updated_on: '2026-07-05'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   primary_audience:
   - users
   - agents
@@ -512,7 +512,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   - mcp_protocol_2025_11_25
   primary_audience:
   - operators
@@ -541,7 +541,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   - mcp_protocol_2025_11_25
   primary_audience:
   - operators
@@ -571,7 +571,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   - mcp_protocol_2025_11_25
   primary_audience:
   - operators
@@ -598,7 +598,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   - rust_workspace_1_85
   primary_audience:
   - implementers
@@ -632,7 +632,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   - rust_workspace_1_85
   - doc_index_schema_v3
   primary_audience:
@@ -666,7 +666,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   - rust_workspace_1_85
   primary_audience:
   - implementers
@@ -694,7 +694,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   - rust_workspace_1_85
   - mcp_protocol_2025_11_25
   primary_audience:
@@ -725,7 +725,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   - rust_workspace_1_85
   primary_audience:
   - implementers
@@ -755,7 +755,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   - rust_workspace_1_85
   primary_audience:
   - implementers
@@ -785,7 +785,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   - rust_workspace_1_85
   - storage_baseline_sqlite_v3
   primary_audience:
@@ -820,7 +820,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   - rust_workspace_1_85
   primary_audience:
   - implementers
@@ -849,7 +849,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   - rust_workspace_1_85
   primary_audience:
   - implementers
@@ -878,7 +878,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   - rust_workspace_1_85
   primary_audience:
   - implementers
@@ -905,7 +905,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   - rust_workspace_1_85
   primary_audience:
   - implementers
@@ -932,7 +932,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   - rust_workspace_1_85
   primary_audience:
   - implementers
@@ -961,7 +961,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   - rust_workspace_1_85
   - mcp_protocol_2025_11_25
   primary_audience:
@@ -995,7 +995,7 @@ documents:
   last_updated_on: '2026-07-12'
   last_verified_on: '2026-07-12'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   - rust_workspace_1_85
   primary_audience:
   - implementers
@@ -1027,7 +1027,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   - rust_workspace_1_85
   primary_audience:
   - implementers
@@ -1067,7 +1067,7 @@ documents:
   last_updated_on: '2026-07-05'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   - doc_index_schema_v3
   primary_audience:
   - agents
@@ -1093,7 +1093,7 @@ documents:
   last_updated_on: '2026-07-12'
   last_verified_on: '2026-07-12'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   - rust_workspace_1_85
   primary_audience:
   - new users
@@ -1130,7 +1130,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   primary_audience:
   - agents
   - implementers
@@ -1158,7 +1158,7 @@ documents:
   last_updated_on: '2026-07-12'
   last_verified_on: '2026-07-12'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   primary_audience:
   - agents
   - implementers
@@ -1189,7 +1189,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   primary_audience:
   - agents
   - implementers
@@ -1219,7 +1219,7 @@ documents:
   last_updated_on: '2026-07-12'
   last_verified_on: '2026-07-12'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   - mcp_protocol_2025_11_25
   - storage_baseline_sqlite_v3
   primary_audience:
@@ -1265,7 +1265,7 @@ documents:
   last_updated_on: '2026-07-12'
   last_verified_on: '2026-07-12'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   - mcp_protocol_2025_11_25
   primary_audience:
   - agent integrators
@@ -1310,7 +1310,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   primary_audience:
   - agents
   - implementers
@@ -1338,7 +1338,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   - terminology_map_v1
   primary_audience:
   - readers
@@ -1365,7 +1365,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   primary_audience:
   - API implementers
   - agent integrators
@@ -1389,7 +1389,7 @@ documents:
   last_updated_on: '2026-07-12'
   last_verified_on: '2026-07-12'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   primary_audience:
   - API implementers
   - agent integrators
@@ -1413,7 +1413,7 @@ documents:
   last_updated_on: '2026-07-12'
   last_verified_on: '2026-07-12'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   primary_audience:
   - API implementers
   - agent integrators
@@ -1437,7 +1437,7 @@ documents:
   last_updated_on: '2026-07-12'
   last_verified_on: '2026-07-12'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   primary_audience:
   - API implementers
   - agent integrators
@@ -1462,7 +1462,7 @@ documents:
   last_updated_on: '2026-07-12'
   last_verified_on: '2026-07-12'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   primary_audience:
   - API implementers
   - agent integrators
@@ -1487,7 +1487,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   primary_audience:
   - API implementers
   - agent integrators
@@ -1511,7 +1511,7 @@ documents:
   last_updated_on: '2026-07-12'
   last_verified_on: '2026-07-12'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   primary_audience:
   - API implementers
   - agent integrators
@@ -1536,7 +1536,7 @@ documents:
   last_updated_on: '2026-07-12'
   last_verified_on: '2026-07-12'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   primary_audience:
   - API implementers
   - agent integrators
@@ -1560,7 +1560,7 @@ documents:
   last_updated_on: '2026-07-12'
   last_verified_on: '2026-07-12'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   primary_audience:
   - API implementers
   - agent integrators
@@ -1584,7 +1584,7 @@ documents:
   last_updated_on: '2026-07-12'
   last_verified_on: '2026-07-12'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   primary_audience:
   - API implementers
   - agent integrators
@@ -1618,7 +1618,7 @@ documents:
   last_updated_on: '2026-07-12'
   last_verified_on: '2026-07-12'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   primary_audience:
   - API implementers
   - agent integrators
@@ -1649,7 +1649,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   primary_audience:
   - API implementers
   - agent integrators
@@ -1674,7 +1674,7 @@ documents:
   last_updated_on: '2026-07-12'
   last_verified_on: '2026-07-12'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   primary_audience:
   - API implementers
   - agent integrators
@@ -1699,7 +1699,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   primary_audience:
   - API implementers
   - agent integrators
@@ -1723,7 +1723,7 @@ documents:
   last_updated_on: '2026-07-12'
   last_verified_on: '2026-07-12'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   primary_audience:
   - API implementers
   - agent integrators
@@ -1748,7 +1748,7 @@ documents:
   last_updated_on: '2026-07-12'
   last_verified_on: '2026-07-12'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   primary_audience:
   - API implementers
   - agent integrators
@@ -1775,7 +1775,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   primary_audience:
   - API implementers
   - agent integrators
@@ -1809,7 +1809,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   primary_audience:
   - API implementers
   - agent integrators
@@ -1831,7 +1831,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   primary_audience:
   - API implementers
   - agent integrators
@@ -1858,7 +1858,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   primary_audience:
   - API implementers
   - agent integrators
@@ -1883,7 +1883,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   primary_audience:
   - API implementers
   - agent integrators
@@ -1909,7 +1909,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   primary_audience:
   - API implementers
   - agent integrators
@@ -1934,7 +1934,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   - storage_baseline_sqlite_v3
   primary_audience:
   - implementers
@@ -1958,7 +1958,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   - storage_baseline_sqlite_v3
   primary_audience:
   - storage implementers
@@ -1986,7 +1986,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   - storage_baseline_sqlite_v3
   primary_audience:
   - storage implementers
@@ -2015,7 +2015,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   - storage_baseline_sqlite_v3
   primary_audience:
   - storage implementers
@@ -2040,7 +2040,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   - storage_baseline_sqlite_v3
   primary_audience:
   - storage implementers
@@ -2066,7 +2066,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   - storage_baseline_sqlite_v3
   primary_audience:
   - storage implementers
@@ -2093,7 +2093,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   - mcp_protocol_2025_11_25
   primary_audience:
   - agent integrators
@@ -2126,7 +2126,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   primary_audience:
   - implementers
   - agent integrators
@@ -2151,7 +2151,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   primary_audience:
   - implementers
   - maintainers
@@ -2178,7 +2178,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   primary_audience:
   - implementers
   - reviewers
@@ -2202,7 +2202,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   primary_audience:
   - agents
   - reviewers
@@ -2228,7 +2228,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   - doc_index_schema_v3
   primary_audience:
   - agents
@@ -2260,7 +2260,7 @@ documents:
   last_updated_on: '2026-07-03'
   last_verified_on: '2026-07-03'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   - doc_index_schema_v3
   - terminology_map_v1
   primary_audience:
@@ -2306,7 +2306,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   - doc_index_schema_v3
   primary_audience:
   - agents
@@ -2342,7 +2342,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   - doc_index_schema_v3
   primary_audience:
   - agents
@@ -2381,7 +2381,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   - doc_index_schema_v3
   - terminology_map_v1
   primary_audience:
@@ -2420,7 +2420,7 @@ documents:
   last_updated_on: '2026-07-03'
   last_verified_on: '2026-07-03'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   - doc_index_schema_v3
   - terminology_map_v1
   primary_audience:
@@ -2450,7 +2450,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_1
+  - volicord_workspace_0_2
   - doc_index_schema_v3
   primary_audience:
   - agents
