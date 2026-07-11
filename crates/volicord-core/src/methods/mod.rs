@@ -173,6 +173,9 @@ struct CloseTaskContext {
     blocker_refs: Vec<StateRecordRef>,
     evidence_summary: Option<EvidenceSummary>,
     artifact_refs: Vec<ArtifactRef>,
+    projected_run_refs: Vec<StateRecordRef>,
+    projected_evidence_observations: Vec<EvidenceObservation>,
+    projected_artifacts: Vec<ArtifactRef>,
     pending_judgment_authorities: Option<Vec<JudgmentAuthority>>,
     resolved_judgment_authorities: Option<Vec<JudgmentAuthority>>,
 }
@@ -2531,9 +2534,24 @@ fn close_context_from_projection(
         blocker_refs,
         evidence_summary,
         artifact_refs,
+        projected_run_refs: Vec::new(),
+        projected_evidence_observations: Vec::new(),
+        projected_artifacts: Vec::new(),
         pending_judgment_authorities: None,
         resolved_judgment_authorities: None,
     }
+}
+
+fn close_context_with_record_run_projection(
+    mut context: CloseTaskContext,
+    run_ref: StateRecordRef,
+    evidence_observations: Vec<EvidenceObservation>,
+    registered_artifacts: Vec<ArtifactRef>,
+) -> CloseTaskContext {
+    context.projected_run_refs.push(run_ref);
+    context.projected_evidence_observations = evidence_observations;
+    context.projected_artifacts = registered_artifacts;
+    context
 }
 
 fn close_context_with_pending_authorities(

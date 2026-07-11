@@ -612,7 +612,8 @@ fn historical_verified_artifact_reuse_requires_new_current_run() -> Result<(), B
 }
 
 #[test]
-fn record_run_state_includes_current_evidence_and_close_state() -> Result<(), Box<dyn Error>> {
+fn record_run_post_commit_close_projection_matches_immediate_status() -> Result<(), Box<dyn Error>>
+{
     let harness = MethodHarness::new()?;
     enable_record_run_capabilities(&harness)?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_state_projection")?;
@@ -637,6 +638,19 @@ fn record_run_state_includes_current_evidence_and_close_state() -> Result<(), Bo
     let response = harness
         .service
         .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+    let status = harness.service.status(
+        StatusRequest {
+            envelope: envelope(
+                "req_run_state_projection_status",
+                None,
+                false,
+                None,
+                Some(&task_id),
+            ),
+            include: status_include(),
+        },
+        invocation(OperationCategory::Read),
+    )?;
 
     assert_eq!(
         response.response_value["evidence_summary"]["status"],
@@ -654,7 +668,115 @@ fn record_run_state_includes_current_evidence_and_close_state() -> Result<(), Bo
     assert!(response.response_value["state"]["close_blockers"]
         .as_array()
         .is_some_and(|blockers| !blockers.is_empty()));
+    assert_record_run_close_projection_matches_status(
+        &response.response_value,
+        &status.response_value,
+    );
     Ok(())
+}
+
+#[test]
+fn record_run_promoted_artifact_close_projection_matches_immediate_status(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "run_artifact_projection")?;
+    let handle = stage_artifact_for_record_run(&harness, &task_id, "run_artifact_projection", 2)?;
+    let claim = "The staged validation report supports close.";
+    let mut request = record_run_request(
+        "req_run_artifact_projection",
+        "idem_run_artifact_projection",
+        false,
+        Some(2),
+        &task_id,
+        &change_unit_id,
+    );
+    request.artifact_inputs = vec![artifact_input_for_handle(
+        "artifact_input_close_projection",
+        handle,
+        Some("validation_report"),
+        Some(claim),
+    )];
+    request.evidence_updates = vec![supported_evidence_update(claim)];
+    request.close_assessment = Some(volicord_types::CloseAssessmentInput {
+        result_summary: claim.to_owned(),
+        result_refs: Vec::new(),
+        residual_risks: Vec::new(),
+        sensitive_categories: Vec::new(),
+        recovery_constraints: Vec::new(),
+    })
+    .into();
+
+    let response = harness
+        .service
+        .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+    let status = harness.service.status(
+        StatusRequest {
+            envelope: envelope(
+                "req_run_artifact_projection_status",
+                None,
+                false,
+                None,
+                Some(&task_id),
+            ),
+            include: status_include(),
+        },
+        invocation(OperationCategory::Read),
+    )?;
+
+    assert_eq!(
+        response.response_value["registered_artifacts"][0],
+        response.response_value["evidence_summary"]["coverage_items"][0]
+            ["supporting_artifact_refs"][0]
+    );
+    assert_eq!(
+        response.response_value["registered_artifacts"][0]["availability"],
+        "available"
+    );
+    assert_eq!(
+        response.response_value["registered_artifacts"][0]["integrity_status"],
+        "verified"
+    );
+    assert_no_close_blocker(&response.response_value["state"], "artifact_unavailable");
+    assert_record_run_close_projection_matches_status(
+        &response.response_value,
+        &status.response_value,
+    );
+    Ok(())
+}
+
+fn assert_record_run_close_projection_matches_status(response: &Value, status: &Value) {
+    assert_eq!(
+        response["current_close_basis"],
+        status["current_close_basis"]
+    );
+    assert_eq!(response["state"]["close_state"], status["close_state"]);
+    assert_eq!(
+        response["state"]["close_blockers"],
+        status["close_blockers"]
+    );
+    assert!(!response["state"]["close_blockers"]
+        .as_array()
+        .expect("record_run close blockers should be an array")
+        .iter()
+        .any(|blocker| blocker["code"] == "stale_current_close_basis"));
+    let primary_next_actions = response["state"]["close_blockers"]
+        .as_array()
+        .expect("record_run close blockers should be an array")
+        .iter()
+        .flat_map(|blocker| {
+            blocker["next_actions"]
+                .as_array()
+                .expect("close blocker next_actions should be an array")
+        })
+        .filter(|action| action["presentation_role"] == "primary")
+        .collect::<Vec<_>>();
+    assert_eq!(primary_next_actions.len(), 1);
+    assert_eq!(
+        primary_next_actions[0],
+        &status["summary_card"]["next_action"]
+    );
 }
 
 #[test]

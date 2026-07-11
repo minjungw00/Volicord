@@ -483,6 +483,7 @@ fn plan_record_run(
         &pending_authorities,
     );
     let mut projected_task = task.clone();
+    projected_task.close_basis_revision = close_basis_revision;
     if let Some(lifecycle_phase) = lifecycle_phase {
         projected_task.lifecycle_phase = lifecycle_phase.to_owned();
     }
@@ -529,13 +530,18 @@ fn plan_record_run(
         &request.envelope,
         &request.task_id,
         close_context_with_pending_authorities(
-            close_context_from_projection(
-                projected_task.clone(),
-                Some(change_unit.clone()),
-                current_close_basis.clone(),
-                pending_user_judgment_refs.clone(),
-                blocker_refs.clone(),
-                evidence_summary.clone(),
+            close_context_with_record_run_projection(
+                close_context_from_projection(
+                    projected_task.clone(),
+                    Some(change_unit.clone()),
+                    current_close_basis.clone(),
+                    pending_user_judgment_refs.clone(),
+                    blocker_refs.clone(),
+                    evidence_summary.clone(),
+                ),
+                run_ref.clone(),
+                evidence_observations.clone(),
+                registered_artifacts.clone(),
             ),
             pending_authorities,
         ),

@@ -964,6 +964,9 @@ fn load_close_task_context(
         blocker_refs,
         evidence_summary,
         artifact_refs,
+        projected_run_refs: Vec::new(),
+        projected_evidence_observations: Vec::new(),
+        projected_artifacts: Vec::new(),
         pending_judgment_authorities: None,
         resolved_judgment_authorities: None,
     })
@@ -3603,6 +3606,13 @@ fn incompatible_close_basis_run_refs_blocker(
             incompatible_refs.push(record_ref.clone());
             continue;
         }
+        if context
+            .projected_run_refs
+            .iter()
+            .any(|projected_ref| projected_ref == record_ref)
+        {
+            continue;
+        }
         let record = store.run_record(record_id).map_err(|error| {
             PlanError::Response(Box::new(store_error_response(
                 &request.envelope,
@@ -3816,6 +3826,34 @@ fn close_evidence_issue_for_item(
             has_stale = true;
             continue;
         }
+        if let Some(observation) =
+            context
+                .projected_evidence_observations
+                .iter()
+                .find(|observation| {
+                    observation.observation_id.as_str() == observation_ref.record_id.as_str()
+                })
+        {
+            if projected_evidence_observation_is_stale_for_close_basis(
+                observation,
+                request,
+                basis,
+                item,
+            ) {
+                has_stale = true;
+                continue;
+            }
+            match evidence_provenance_class(observation.source_kind, observation.assurance_level) {
+                EvidenceProvenanceClass::Strong => return Ok(None),
+                EvidenceProvenanceClass::CooperativeAgentReport => {
+                    has_current_cooperative_agent_report = true;
+                }
+                EvidenceProvenanceClass::Weak => {
+                    has_current_weak = true;
+                }
+            }
+            continue;
+        }
         let record = store
             .evidence_observation_record(observation_ref.record_id.as_str())
             .map_err(|error| {
@@ -3855,6 +3893,22 @@ fn close_evidence_issue_for_item(
         kind,
         related_refs: evidence_item_related_refs(item),
     }))
+}
+
+fn projected_evidence_observation_is_stale_for_close_basis(
+    observation: &EvidenceObservation,
+    request: &CloseTaskPlanRequest,
+    basis: &CurrentCloseBasis,
+    item: &EvidenceCoverageItem,
+) -> bool {
+    observation.project_id != request.envelope.project_id
+        || observation.task_id != request.task_id
+        || observation.change_unit_id.as_ref() != Some(&basis.change_unit_id)
+        || observation
+            .run_ref
+            .as_ref()
+            .is_none_or(|run_ref| run_ref.record_id != basis.source_run_ref.record_id)
+        || observation.claim.trim() != item.claim
 }
 
 fn evidence_observation_is_stale_for_close_basis(
@@ -3915,6 +3969,12 @@ fn unavailable_close_artifact_refs(
             );
             if artifact_ref.availability != ArtifactAvailability::Available {
                 unavailable.push(state_ref);
+                continue;
+            }
+            if context.projected_artifacts.iter().any(|projected| {
+                projected == artifact_ref
+                    && projected.integrity_status == ArtifactIntegrityStatus::Verified
+            }) {
                 continue;
             }
             let stored = store
@@ -3979,7 +4039,13 @@ fn unavailable_close_artifact_refs(
             if !seen.insert(record_ref.record_id.as_str().to_owned()) {
                 continue;
             }
-            if close_basis_artifact_ref_unavailable(store, request, record_ref, project_state)? {
+            if close_basis_artifact_ref_unavailable(
+                store,
+                request,
+                record_ref,
+                project_state,
+                context,
+            )? {
                 unavailable.push(record_ref.clone());
             }
         }
@@ -3992,7 +4058,20 @@ fn close_basis_artifact_ref_unavailable(
     request: &CloseTaskPlanRequest,
     record_ref: &StateRecordRef,
     project_state: &ProjectStateHeader,
+    context: &CloseTaskContext,
 ) -> Result<bool, PlanError> {
+    if let Some(artifact_ref) = context
+        .projected_artifacts
+        .iter()
+        .find(|artifact_ref| artifact_ref.artifact_id.as_str() == record_ref.record_id.as_str())
+    {
+        return Ok(record_ref.project_id != request.envelope.project_id
+            || record_ref.task_id.as_ref() != Some(&request.task_id)
+            || artifact_ref.project_id != request.envelope.project_id
+            || artifact_ref.task_id != request.task_id
+            || artifact_ref.availability != ArtifactAvailability::Available
+            || artifact_ref.integrity_status != ArtifactIntegrityStatus::Verified);
+    }
     let stored = store
         .artifact_record(record_ref.record_id.as_str())
         .map_err(|error| {
