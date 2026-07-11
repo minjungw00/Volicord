@@ -756,7 +756,7 @@ where
                     writer,
                 )?
             }
-            Ok(response) => ToolCallOutput::success(response.response_json),
+            Ok(response) => ToolCallOutput::success(response.response_json)?,
             Err(error @ McpAdapterError::InvalidParams { .. })
             | Err(error @ McpAdapterError::ToolExecution { .. }) => {
                 return Ok(Ok(tool_execution_error_result(&error)));
@@ -776,7 +776,7 @@ where
             .map_err(McpAdapterError::Json)
             .map_err(|error| json_rpc_error_for_adapter(id.clone(), error));
         match text {
-            Ok(text) => ToolCallOutput::success(text),
+            Ok(text) => ToolCallOutput::success(text)?,
             Err(error) => return Ok(Err(error)),
         }
     };
@@ -793,17 +793,26 @@ where
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ToolCallOutput {
     primary_text: String,
+    structured_content: Value,
     extra_texts: Vec<String>,
     is_error: bool,
 }
 
 impl ToolCallOutput {
-    fn success(primary_text: String) -> Self {
-        Self {
+    fn success(primary_text: String) -> Result<Self, McpAdapterError> {
+        let structured_content: Value =
+            serde_json::from_str(&primary_text).map_err(McpAdapterError::Json)?;
+        if !structured_content.is_object() {
+            return Err(McpAdapterError::Protocol(
+                "successful MCP tool output must be a JSON object".to_owned(),
+            ));
+        }
+        Ok(Self {
             primary_text,
+            structured_content,
             extra_texts: Vec::new(),
             is_error: false,
-        }
+        })
     }
 
     fn with_extra(mut self, text: impl Into<String>) -> Self {
@@ -831,6 +840,7 @@ pub(crate) fn tool_call_result_from_output(output: ToolCallOutput) -> Value {
 
     json!({
         "content": content,
+        "structuredContent": output.structured_content,
         "isError": output.is_error
     })
 }
@@ -848,7 +858,7 @@ where
     W: Write,
 {
     let Some(pending) = pending_judgment_from_response(&pending_response) else {
-        return Ok(ToolCallOutput::success(pending_response.response_json));
+        return ToolCallOutput::success(pending_response.response_json);
     };
 
     if !client_supports_elicitation {
@@ -856,7 +866,7 @@ where
         return Ok(ToolCallOutput::success(response_json_with_inbox_capture(
             &pending_response,
             &fallback,
-        )?)
+        )?)?
         .with_extras(fallback.texts));
     }
 
@@ -865,7 +875,7 @@ where
         return Ok(ToolCallOutput::success(response_json_with_inbox_capture(
             &pending_response,
             &fallback,
-        )?)
+        )?)?
             .with_extra(format!(
                 "Volicord did not open host prompt input for pending judgment `{}` because the prompt text appears to request or expose sensitive secret material ({reason}). Do not ask the user to enter secrets, credentials, tokens, or private keys through host prompt input.",
                 pending.judgment_id.as_str()
@@ -885,7 +895,7 @@ where
         } => match record_elicited_judgment(adapter, &pending, &selected_option_id, note)? {
             ElicitedRecordOutcome::Recorded(recorded) => Ok(ToolCallOutput::success(
                 recorded.response_json,
-            )
+            )?
             .with_extra(format!(
                 "Volicord recorded pending judgment `{}` through host prompt input with User Channel basis `{}`.",
                 pending.judgment_id.as_str(),
@@ -893,7 +903,7 @@ where
             ))),
             ElicitedRecordOutcome::InvalidSelection(message) => Ok(ToolCallOutput::success(
                 pending_response.response_json,
-            )
+            )?
             .with_extra(format!(
                 "{message} The pending judgment remains unresolved."
             ))),
@@ -902,7 +912,7 @@ where
             Some(option_id) => match record_elicited_judgment(adapter, &pending, option_id, None)? {
                 ElicitedRecordOutcome::Recorded(recorded) => Ok(ToolCallOutput::success(
                     recorded.response_json,
-                )
+                )?
                 .with_extra(format!(
                     "Volicord recorded pending judgment `{}` as rejected through host prompt input with User Channel basis `{}`.",
                     pending.judgment_id.as_str(),
@@ -910,23 +920,23 @@ where
                 ))),
                 ElicitedRecordOutcome::InvalidSelection(message) => Ok(ToolCallOutput::success(
                     pending_response.response_json,
-                )
+                )?
                 .with_extra(format!(
                     "{message} The pending judgment remains unresolved."
                 ))),
             },
-            None => Ok(ToolCallOutput::success(pending_response.response_json).with_extra(
+            None => Ok(ToolCallOutput::success(pending_response.response_json)?.with_extra(
                 "The MCP client declined the host prompt request, but this judgment has no reject option to record. The pending judgment remains unresolved.",
             )),
         },
-        ElicitationReply::Cancelled => Ok(ToolCallOutput::success(pending_response.response_json)
+        ElicitationReply::Cancelled => Ok(ToolCallOutput::success(pending_response.response_json)?
             .with_extra(format!(
                 "The MCP client cancelled or dismissed host prompt input for pending judgment `{}`. Volicord did not record an answer; the judgment remains pending.",
                 pending.judgment_id.as_str()
             ))),
         ElicitationReply::Invalid(message) => Ok(ToolCallOutput::success(
             pending_response.response_json,
-        )
+        )?
         .with_extra(format!(
             "Volicord rejected the host prompt response: {message}. The pending judgment remains unresolved."
         ))),
@@ -935,7 +945,7 @@ where
             Ok(ToolCallOutput::success(response_json_with_inbox_capture(
                 &pending_response,
                 &fallback,
-            )?)
+            )?)?
             .with_extra(format!(
                 "Host prompt input was unavailable after the client advertised support: {message}."
             ))

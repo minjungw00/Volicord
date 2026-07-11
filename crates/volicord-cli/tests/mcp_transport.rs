@@ -734,6 +734,17 @@ fn assert_public_tool_schemas_hide_internal_fields(tools: &[Value]) {
     let expected_public = public_method_tool_set();
     for tool in tools {
         let name = tool["name"].as_str().expect("tool name");
+        assert_eq!(
+            tool["outputSchema"]["type"], "object",
+            "{name} output schema should have an object root"
+        );
+        let read_only = READ_ONLY_METHOD_TOOL_NAMES.contains(&name)
+            || ADAPTER_UTILITY_TOOL_NAMES.contains(&name);
+        assert_eq!(tool["annotations"]["readOnlyHint"], read_only);
+        assert_eq!(tool["annotations"]["destructiveHint"], !read_only);
+        assert_eq!(tool["annotations"]["idempotentHint"], read_only);
+        assert_eq!(tool["annotations"]["openWorldHint"], false);
+
         if !expected_public.contains(name) {
             continue;
         }

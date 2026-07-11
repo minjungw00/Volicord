@@ -67,6 +67,18 @@ pub type ReconcileChangesResponse = ToolResponse<ReconcileChangesResult>;
 /// Response branch type for `volicord.close_task`.
 pub type CloseTaskResponse = ToolResponse<CloseTaskResult>;
 
+/// MCP response branches for `volicord.request_user_judgment`.
+///
+/// Host elicitation may resolve the newly pending judgment before the original
+/// MCP tool call returns, so the tool surface can return either public method
+/// response without weakening either public API method's own response type.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum McpRequestUserJudgmentResponse {
+    Pending(Box<RequestUserJudgmentResponse>),
+    Recorded(Box<RecordUserJudgmentResponse>),
+}
+
 /// `volicord.intake` request params.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -744,6 +756,27 @@ pub fn public_request_schema(method_name: &str) -> Option<Value> {
     }
 }
 
+/// Returns the generated JSON Schema for one public method response shape.
+///
+/// Public responses are object values even when their generated schema uses
+/// branch combinators for result, rejected, and dry-run variants.
+pub fn public_response_schema(method_name: &str) -> Option<Value> {
+    match method_name {
+        "volicord.intake" => Some(response_schema::<IntakeResponse>()),
+        "volicord.update_scope" => Some(response_schema::<UpdateScopeResponse>()),
+        "volicord.status" => Some(response_schema::<StatusResponse>()),
+        "volicord.check_close" => Some(response_schema::<CheckCloseResponse>()),
+        "volicord.prepare_write" => Some(response_schema::<PrepareWriteResponse>()),
+        "volicord.stage_artifact" => Some(response_schema::<StageArtifactResponse>()),
+        "volicord.record_run" => Some(response_schema::<RecordRunResponse>()),
+        "volicord.request_user_judgment" => Some(response_schema::<RequestUserJudgmentResponse>()),
+        "volicord.record_user_judgment" => Some(response_schema::<RecordUserJudgmentResponse>()),
+        "volicord.reconcile_changes" => Some(response_schema::<ReconcileChangesResponse>()),
+        "volicord.close_task" => Some(response_schema::<CloseTaskResponse>()),
+        _ => None,
+    }
+}
+
 /// Returns the generated JSON Schema for one MCP-visible tool argument shape.
 pub fn mcp_request_schema(tool_name: &str) -> Option<Value> {
     match tool_name {
@@ -763,6 +796,35 @@ pub fn mcp_request_schema(tool_name: &str) -> Option<Value> {
     }
 }
 
+/// Returns the generated JSON Schema for one MCP-visible public method result.
+pub fn mcp_response_schema(tool_name: &str) -> Option<Value> {
+    match tool_name {
+        "volicord.request_user_judgment" => {
+            Some(response_schema::<McpRequestUserJudgmentResponse>())
+        }
+        "volicord.intake"
+        | "volicord.update_scope"
+        | "volicord.status"
+        | "volicord.prepare_write"
+        | "volicord.stage_artifact"
+        | "volicord.record_run"
+        | "volicord.reconcile_changes"
+        | "volicord.check_close"
+        | "volicord.close_task" => public_response_schema(tool_name),
+        _ => None,
+    }
+}
+
 fn request_schema<T: JsonSchema>() -> Value {
     serde_json::to_value(schema_for!(T)).expect("request schema should serialize")
+}
+
+fn response_schema<T: JsonSchema>() -> Value {
+    let mut schema =
+        serde_json::to_value(schema_for!(T)).expect("response schema should serialize");
+    schema
+        .as_object_mut()
+        .expect("generated response schema should be an object")
+        .insert("type".to_owned(), Value::String("object".to_owned()));
+    schema
 }

@@ -900,6 +900,36 @@ mod tests {
     }
 
     #[test]
+    fn generated_public_response_schemas_are_root_objects() {
+        for method_name in [
+            "volicord.intake",
+            "volicord.update_scope",
+            "volicord.status",
+            "volicord.check_close",
+            "volicord.prepare_write",
+            "volicord.stage_artifact",
+            "volicord.record_run",
+            "volicord.request_user_judgment",
+            "volicord.record_user_judgment",
+            "volicord.reconcile_changes",
+            "volicord.close_task",
+        ] {
+            let schema = public_response_schema(method_name)
+                .unwrap_or_else(|| panic!("missing public response schema for {method_name}"));
+            assert_eq!(
+                schema["type"], "object",
+                "{method_name} response schema must have an object root"
+            );
+            assert!(
+                schema["anyOf"].is_array(),
+                "{method_name} response schema should expose public response branches"
+            );
+        }
+
+        assert!(public_response_schema("volicord.unknown").is_none());
+    }
+
+    #[test]
     fn close_method_family_schema_separates_read_check_from_mutation_request() {
         let check = public_request_schema("volicord.check_close").expect("check_close schema");
         assert_required(&check, &["envelope", "task_id"], "CheckCloseRequest");

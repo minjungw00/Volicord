@@ -57,6 +57,7 @@ fn generated_mcp_workflow_tool_contract_snapshot_matches_sources() {
                 "crates/volicord-types/src/schema.rs",
                 "crates/volicord-types/src/tool_names.rs",
                 "crates/volicord-types/src/values.rs",
+                "crates/volicord-mcp/src/routing.rs",
                 "crates/volicord-mcp/src/tool_registry.rs",
             ],
         ),
@@ -77,6 +78,7 @@ fn generated_mcp_read_only_tool_contract_snapshot_matches_sources() {
                 "crates/volicord-types/src/schema.rs",
                 "crates/volicord-types/src/tool_names.rs",
                 "crates/volicord-types/src/values.rs",
+                "crates/volicord-mcp/src/routing.rs",
                 "crates/volicord-mcp/src/tool_registry.rs",
             ],
         ),
@@ -140,7 +142,9 @@ fn tool_projection(tool: &McpToolDefinition) -> Value {
     json!({
         "name": tool.name,
         "description": tool.description,
-        "input_schema": schema_projection(&tool.input_schema)
+        "input_schema": schema_projection(&tool.input_schema),
+        "output_schema": schema_projection(&tool.output_schema),
+        "annotations": tool.annotations
     })
 }
 

@@ -190,6 +190,39 @@ fn mcp_workflow_tools_have_valid_schemas() {
 }
 
 #[test]
+fn mcp_tools_publish_root_output_schemas_and_conservative_annotations() {
+    for tool in mcp_tools_for_mode_and_storage(
+        AgentConnectionMode::Workflow,
+        McpStorageCapability::ReadWrite,
+    ) {
+        assert_eq!(
+            tool.output_schema["type"], "object",
+            "{} output schema should have an object root",
+            tool.name
+        );
+
+        let read_only = READ_ONLY_METHOD_TOOL_NAMES.contains(&tool.name)
+            || tool.name == LIST_PROJECTS_TOOL_NAME;
+        assert_eq!(
+            tool.annotations.read_only_hint, read_only,
+            "{} readOnlyHint should match its effect boundary",
+            tool.name
+        );
+        assert_eq!(tool.annotations.destructive_hint, !read_only);
+        assert_eq!(tool.annotations.idempotent_hint, read_only);
+        assert!(!tool.annotations.open_world_hint);
+    }
+}
+
+#[test]
+fn request_user_judgment_output_schema_covers_elicited_recording_response() {
+    let schema = tool_definition(REQUEST_USER_JUDGMENT_TOOL_NAME).output_schema;
+
+    assert!(schema_has_definition(&schema, "RequestUserJudgmentResult"));
+    assert!(schema_has_definition(&schema, "RecordUserJudgmentResult"));
+}
+
+#[test]
 fn record_run_schema_includes_minimal_no_write_example() {
     let tool = tool_definition(RECORD_RUN_TOOL_NAME);
 
@@ -515,6 +548,20 @@ fn mcp_minimal_smoke_tool_lists_hello() {
             "properties": {},
             "additionalProperties": false
         }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "message": { "type": "string" }
+            },
+            "required": ["message"],
+            "additionalProperties": false
+        }),
+        annotations: McpToolAnnotations {
+            read_only_hint: true,
+            destructive_hint: false,
+            idempotent_hint: true,
+            open_world_hint: false,
+        },
     }];
 
     assert_eq!(tool_names(&tools), vec!["hello"]);
@@ -3047,7 +3094,12 @@ fn volicord_response_from_tool(response: &Value) -> Result<Value, Box<dyn Error>
     let text = response["result"]["content"][0]["text"]
         .as_str()
         .ok_or("tools/call response should include text content")?;
-    Ok(serde_json::from_str(text)?)
+    let parsed: Value = serde_json::from_str(text)?;
+    assert_eq!(
+        response["result"]["structuredContent"], parsed,
+        "structuredContent should equal the compatibility JSON text"
+    );
+    Ok(parsed)
 }
 
 fn channel_path<'a>(availability: &'a Value, kind: &str) -> &'a Value {

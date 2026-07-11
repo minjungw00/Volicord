@@ -117,7 +117,9 @@ pub(crate) fn volicord_response(response: &Value) -> Result<Value, Box<dyn Error
     let text = response["result"]["content"][0]["text"]
         .as_str()
         .ok_or("tools/call response should contain text content")?;
-    Ok(serde_json::from_str(text)?)
+    let parsed: Value = serde_json::from_str(text)?;
+    assert_eq!(response["result"]["structuredContent"], parsed);
+    Ok(parsed)
 }
 
 pub(crate) fn adapter_tool_response(response: &Value) -> Result<Value, Box<dyn Error>> {
@@ -125,7 +127,9 @@ pub(crate) fn adapter_tool_response(response: &Value) -> Result<Value, Box<dyn E
     let text = response["result"]["content"][0]["text"]
         .as_str()
         .ok_or("adapter tools/call response should contain text content")?;
-    Ok(serde_json::from_str(text)?)
+    let parsed: Value = serde_json::from_str(text)?;
+    assert_eq!(response["result"]["structuredContent"], parsed);
+    Ok(parsed)
 }
 
 pub(crate) fn record_id(value: &Value) -> Result<String, Box<dyn Error>> {

@@ -772,6 +772,27 @@ hidden fields are not required or accepted public MCP tool arguments. If raw
 public method-tool arguments include them, the adapter rejects the call before
 Core execution.
 
+Every listed Volicord tool also exposes an MCP 2025-11-25 `outputSchema` whose
+root type is `object`. Public method tools derive that schema from their public
+method response branches. The `volicord.request_user_judgment` output schema
+also covers the User Channel response returned when host elicitation records the
+pending judgment before the original tool call completes. `volicord.list_projects`
+uses its exact adapter-utility result schema. A server result that includes
+`structuredContent` must conform to the advertised schema.
+
+`tools/list` supplies the following conservative MCP `annotations`:
+
+| Tool class | `readOnlyHint` | `destructiveHint` | `idempotentHint` | `openWorldHint` |
+|---|---:|---:|---:|---:|
+| `volicord.status`, `volicord.check_close`, `volicord.list_projects` | `true` | `false` | `true` | `false` |
+| Agent-workflow mutation tools | `false` | `true` | `false` | `false` |
+
+These values are client hints, not trusted authorization facts. They do not
+grant Agent Connection authority, bypass host trust or approval, suppress a
+host safety review, prove idempotent storage behavior outside the advertised
+surface, or broaden access beyond the selected connection and project. A host
+must continue to apply its own trust, approval, and sandbox policy.
+
 Project selection is resolved from the Agent Connection context. When exactly
 one allowed project is connected, public method tools may omit project
 selection. Multi-project connections require the `project_selector` value
@@ -838,7 +859,8 @@ commits a pending judgment:
   response is recorded through Core's User Channel method with
   `actor_source=local_user`, `operation_category=user_only`, and
   `resolved_verification_basis=mcp_elicitation_user_channel`. The returned
-  `tools/call` content contains the resulting Volicord response JSON.
+  `tools/call` result contains the resulting Volicord response as both
+  `structuredContent` and JSON text.
 - If the elicitation response is `action=decline` and the pending judgment has
   a Core reject option, the adapter records that reject option through the same
   User Channel path. If no reject option exists, the judgment remains pending.
@@ -860,11 +882,13 @@ commits a pending judgment:
   create a token, the fallback text points to the `volicord inbox` CLI inbox
   path.
 
-For all branches, `result.content[0].text` remains the Volicord response JSON
-string. Additional `content[]` text, when present, is adapter guidance such as
-fallback instructions or an explanation that elicitation was cancelled or
-invalid. The additional text is not Core authority, not a public API response
-field, and not a user judgment record.
+For all branches, `result.structuredContent` is the Volicord response object and
+`result.content[0].text` remains a JSON serialization of that same object for
+backwards compatibility. Additional `content[]` text, when present, is adapter
+guidance such as fallback instructions or an explanation that elicitation was
+cancelled or invalid. The additional text is not part of `structuredContent`,
+not Core authority, not a public API response field, and not a user judgment
+record.
 
 <a id="local-web-consent-fallback"></a>
 The local web consent listener binds to `127.0.0.1` by default and must fail
@@ -909,9 +933,12 @@ Local web consent endpoint behavior:
 For known public Volicord method-tool calls that reach Volicord, `tools/call`
 wraps the Volicord response JSON inside the MCP result:
 
-- Volicord response JSON is serialized as the string in
-  `result.content[0].text`.
-- Clients must parse that string as JSON to inspect the Volicord response.
+- The Volicord response object is returned in `result.structuredContent`.
+- The same object is serialized as JSON in `result.content[0].text` for clients
+  that do not consume structured tool results. Parsing that text must produce a
+  value equal to `result.structuredContent`.
+- Clients may validate `structuredContent` against the tool's advertised
+  `outputSchema`.
 - Successful MCP transport returns `isError: false`, including Volicord
   domain-level rejected responses.
 - Volicord domain success or rejection is determined from the parsed Volicord

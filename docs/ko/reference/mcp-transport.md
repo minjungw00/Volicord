@@ -689,6 +689,25 @@ Agent Connection MCP 도구로 노출되지 않습니다. 공개 메서드 담�
 필드는 공개 MCP 도구 인자로 필요하지도 허용되지도 않습니다. 원시 공개 메서드 도구
 인자가 이런 필드를 포함하면 어댑터는 Core 실행 전에 호출을 거절합니다.
 
+나열되는 모든 Volicord 도구는 루트 타입이 `object`인 MCP 2025-11-25
+`outputSchema`도 노출합니다. 공개 메서드 도구는 공개 메서드 응답 분기에서 이 스키마를
+생성합니다. `volicord.request_user_judgment` 출력 스키마는 원래 도구 호출이 끝나기 전에
+호스트 elicitation이 대기 판단을 기록했을 때 반환되는 User Channel 응답도 포함합니다.
+`volicord.list_projects`는 정확한 어댑터 유틸리티 결과 스키마를 사용합니다.
+`structuredContent`를 포함하는 서버 결과는 광고한 스키마를 따라야 합니다.
+
+`tools/list`는 다음과 같이 보수적인 MCP `annotations`를 제공합니다.
+
+| 도구 종류 | `readOnlyHint` | `destructiveHint` | `idempotentHint` | `openWorldHint` |
+|---|---:|---:|---:|---:|
+| `volicord.status`, `volicord.check_close`, `volicord.list_projects` | `true` | `false` | `true` | `false` |
+| Agent-workflow 변경 도구 | `false` | `true` | `false` | `false` |
+
+이 값은 클라이언트 힌트이며 신뢰할 수 있는 권한 부여 사실이 아닙니다. Agent Connection
+권한을 부여하거나, 호스트 신뢰·승인을 우회하거나, 호스트 안전 검토를 생략하거나, 광고한
+표면 밖의 멱등 저장 동작을 증명하거나, 선택된 연결과 프로젝트보다 접근 범위를 넓히지
+않습니다. 호스트는 자체 신뢰, 승인, 샌드박스 정책을 계속 적용해야 합니다.
+
 프로젝트 선택은 Agent Connection 맥락에서 해석합니다. 사용 가능한 연결 프로젝트가
 정확히 하나이면 공개 메서드 도구의 프로젝트 선택을 생략할 수 있습니다. 여러 프로젝트가
 연결된 경우에는 `volicord.list_projects`가 반환한 `project_selector` 값이 필요합니다.
@@ -748,7 +767,8 @@ Agent Connection 도구로 노출하지 않으며, 에이전트가 넣은 답변
   판단 선택지와 대조해 검증합니다. 유효한 응답은 Core의 User Channel 메서드를 통해
   `actor_source=local_user`, `operation_category=user_only`,
   `resolved_verification_basis=mcp_elicitation_user_channel`로 기록합니다. 반환되는
-  `tools/call` 콘텐츠에는 그 결과 Volicord 응답 JSON이 들어갑니다.
+  `tools/call` 결과에는 그 결과 Volicord 응답이 `structuredContent`와 JSON 텍스트로 모두
+  들어갑니다.
 - `elicitation` 응답이 `action=decline`이고 대기 판단에 Core 거절 선택지가 있으면
   어댑터는 같은 User Channel 경로로 그 거절 선택지를 기록합니다. 거절 선택지가 없으면
   판단은 대기 상태로 남습니다.
@@ -766,9 +786,11 @@ Agent Connection 도구로 노출하지 않으며, 에이전트가 넣은 답변
 - 로컬 consent URL 경로가 비활성화되었거나, 안전하게 바인딩할 수 없거나, 토큰을 만들 수
   없으면 대체 안내는 `volicord inbox` CLI 받은편지함 경로를 가리킵니다.
 
-모든 분기에서 `result.content[0].text`는 Volicord 응답 JSON 문자열로 남습니다. 추가
-`content[]` 텍스트가 있으면 대체 안내나 `elicitation` 취소·무효 설명 같은 어댑터
-안내입니다. 그 추가 텍스트는 Core 권한, 공개 API 응답 필드, 사용자 판단 기록이 아닙니다.
+모든 분기에서 `result.structuredContent`는 Volicord 응답 객체이고
+`result.content[0].text`는 하위 호환성을 위해 같은 객체를 JSON으로 직렬화한 문자열로
+남습니다. 추가 `content[]` 텍스트가 있으면 대체 안내나 `elicitation` 취소·무효 설명 같은
+어댑터 안내입니다. 그 추가 텍스트는 `structuredContent`의 일부가 아니며 Core 권한, 공개
+API 응답 필드, 사용자 판단 기록도 아닙니다.
 
 <a id="local-web-consent-fallback"></a>
 로컬 consent 리스너는 기본적으로 `127.0.0.1`에 바인딩합니다. 안전하게 바인딩할 수
@@ -806,8 +828,11 @@ Agent Connection 도구로 노출하지 않으며, 에이전트가 넣은 답변
 Volicord까지 도달한 알려진 공개 Volicord 메서드 도구 호출에서 `tools/call`은 MCP 결과
 안에 Volicord 응답 JSON을 래핑합니다.
 
-- Volicord 응답 JSON은 `result.content[0].text`의 문자열로 직렬화됩니다.
-- 클라이언트는 Volicord 응답을 검사하려면 그 문자열을 JSON으로 파싱해야 합니다.
+- Volicord 응답 객체는 `result.structuredContent`로 반환됩니다.
+- 같은 객체는 구조화 도구 결과를 소비하지 않는 클라이언트를 위해
+  `result.content[0].text`에 JSON으로 직렬화됩니다. 이 텍스트를 파싱한 값은
+  `result.structuredContent`와 같아야 합니다.
+- 클라이언트는 `structuredContent`를 도구가 광고한 `outputSchema`로 검증할 수 있습니다.
 - 성공한 MCP 전송은 Volicord 도메인 수준 거절 응답을 포함해 `isError: false`를
   반환합니다.
 - Volicord 도메인 성공 또는 거절은 파싱한 Volicord 응답, 특히 `base.response_kind`와

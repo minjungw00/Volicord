@@ -1,6 +1,7 @@
 use crate::errors::McpAdapterError;
 use crate::prelude::*;
 use crate::util::*;
+use schemars::{schema_for, JsonSchema};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct McpConnectionContext {
@@ -318,7 +319,7 @@ fn project_state_write_status(storage_capability: McpStorageCapability) -> &'sta
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
 pub(crate) struct ListProjectsResult {
     pub(crate) connection_id: String,
     pub(crate) mode: AgentConnectionMode,
@@ -330,12 +331,17 @@ pub(crate) struct ListProjectsResult {
     pub(crate) projects: Vec<ListProjectItem>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
 pub(crate) struct ListProjectItem {
     pub(crate) project_selector: String,
     pub(crate) available: bool,
     pub(crate) unavailable_reason: Option<String>,
     pub(crate) repo_root: String,
+}
+
+pub(crate) fn list_projects_output_schema() -> Value {
+    serde_json::to_value(schema_for!(ListProjectsResult))
+        .expect("list-projects output schema should serialize")
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

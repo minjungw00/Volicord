@@ -39,7 +39,8 @@ pub use stdio::{
     run_preflight_check_from_env, run_stdio, run_stdio_from_env,
 };
 pub use tool_registry::{
-    adapter_utility_tools, mcp_tools, mcp_tools_for_mode, public_method_tools, McpToolDefinition,
+    adapter_utility_tools, mcp_tools, mcp_tools_for_mode, public_method_tools, McpToolAnnotations,
+    McpToolDefinition,
 };
 
 #[cfg(test)]

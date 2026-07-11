@@ -1,7 +1,37 @@
 use crate::prelude::*;
 use crate::routing::{
-    effective_tool_mode_for_mode_and_storage, McpEffectiveToolMode, McpStorageCapability,
+    effective_tool_mode_for_mode_and_storage, list_projects_output_schema, McpEffectiveToolMode,
+    McpStorageCapability,
 };
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpToolAnnotations {
+    pub read_only_hint: bool,
+    pub destructive_hint: bool,
+    pub idempotent_hint: bool,
+    pub open_world_hint: bool,
+}
+
+impl McpToolAnnotations {
+    const fn read_only() -> Self {
+        Self {
+            read_only_hint: true,
+            destructive_hint: false,
+            idempotent_hint: true,
+            open_world_hint: false,
+        }
+    }
+
+    const fn mutation() -> Self {
+        Self {
+            read_only_hint: false,
+            destructive_hint: true,
+            idempotent_hint: false,
+            open_world_hint: false,
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct McpToolDefinition {
@@ -9,6 +39,9 @@ pub struct McpToolDefinition {
     pub description: &'static str,
     #[serde(rename = "inputSchema")]
     pub input_schema: Value,
+    #[serde(rename = "outputSchema")]
+    pub output_schema: Value,
+    pub annotations: McpToolAnnotations,
 }
 
 #[cfg(test)]
@@ -153,6 +186,8 @@ pub fn adapter_utility_tools() -> Vec<McpToolDefinition> {
                 "properties": {},
                 "additionalProperties": false
             }),
+            output_schema: list_projects_output_schema(),
+            annotations: McpToolAnnotations::read_only(),
         })
         .collect()
 }
@@ -246,11 +281,22 @@ pub(crate) fn validate_tools_list_json_compatibility(tools: &[Value]) -> Result<
             errors.push(format!("tool `{name}` description is missing or empty"));
         }
 
-        let Some(input_schema) = object.get("inputSchema") else {
-            errors.push(format!("tool `{name}` is missing inputSchema"));
-            continue;
-        };
-        validate_input_schema(name, input_schema, &mut errors);
+        match object.get("inputSchema") {
+            Some(input_schema) => {
+                validate_root_object_schema(name, "inputSchema", input_schema, &mut errors)
+            }
+            None => errors.push(format!("tool `{name}` is missing inputSchema")),
+        }
+        match object.get("outputSchema") {
+            Some(output_schema) => {
+                validate_root_object_schema(name, "outputSchema", output_schema, &mut errors)
+            }
+            None => errors.push(format!("tool `{name}` is missing outputSchema")),
+        }
+        match object.get("annotations") {
+            Some(annotations) => validate_annotations(name, annotations, &mut errors),
+            None => errors.push(format!("tool `{name}` is missing annotations")),
+        }
     }
 
     if errors.is_empty() {
@@ -267,8 +313,19 @@ pub(crate) fn method_tools<const N: usize>(names: [&'static str; N]) -> Vec<McpT
             name,
             description: tool_description(name),
             input_schema: mcp_request_schema(name).expect("MCP tool schema should exist"),
+            output_schema: mcp_response_schema(name)
+                .expect("MCP tool response schema should exist"),
+            annotations: tool_annotations(name),
         })
         .collect()
+}
+
+fn tool_annotations(name: &str) -> McpToolAnnotations {
+    if READ_ONLY_METHOD_TOOL_NAMES.contains(&name) {
+        McpToolAnnotations::read_only()
+    } else {
+        McpToolAnnotations::mutation()
+    }
 }
 
 pub(crate) fn tool_description(name: &str) -> &'static str {
@@ -330,23 +387,57 @@ fn valid_mcp_tool_name(name: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.'))
 }
 
-fn validate_input_schema(tool_name: &str, schema: &Value, errors: &mut Vec<String>) {
+fn validate_root_object_schema(
+    tool_name: &str,
+    schema_name: &str,
+    schema: &Value,
+    errors: &mut Vec<String>,
+) {
     let Some(object) = schema.as_object() else {
-        errors.push(format!("tool `{tool_name}` inputSchema is not an object"));
+        errors.push(format!("tool `{tool_name}` {schema_name} is not an object"));
         return;
     };
 
     match object.get("type") {
         Some(Value::String(schema_type)) if schema_type == "object" => {}
         Some(_) => errors.push(format!(
-            "tool `{tool_name}` inputSchema root type is not object"
+            "tool `{tool_name}` {schema_name} root type is not object"
         )),
         None => errors.push(format!(
-            "tool `{tool_name}` inputSchema root type is missing"
+            "tool `{tool_name}` {schema_name} root type is missing"
         )),
     }
 
-    validate_schema_fragment(tool_name, "inputSchema", schema, errors);
+    validate_schema_fragment(tool_name, schema_name, schema, errors);
+}
+
+fn validate_annotations(tool_name: &str, annotations: &Value, errors: &mut Vec<String>) {
+    let Some(object) = annotations.as_object() else {
+        errors.push(format!("tool `{tool_name}` annotations is not an object"));
+        return;
+    };
+    for field in [
+        "readOnlyHint",
+        "destructiveHint",
+        "idempotentHint",
+        "openWorldHint",
+    ] {
+        if object.get(field).is_none_or(|value| !value.is_boolean()) {
+            errors.push(format!(
+                "tool `{tool_name}` annotations.{field} is not a boolean"
+            ));
+        }
+    }
+    for field in object.keys() {
+        if !matches!(
+            field.as_str(),
+            "readOnlyHint" | "destructiveHint" | "idempotentHint" | "openWorldHint"
+        ) {
+            errors.push(format!(
+                "tool `{tool_name}` annotations contains unsupported field `{field}`"
+            ));
+        }
+    }
 }
 
 fn validate_schema_fragment(tool_name: &str, path: &str, schema: &Value, errors: &mut Vec<String>) {
@@ -410,10 +501,41 @@ fn validate_schema_fragment(tool_name: &str, path: &str, schema: &Value, errors:
     if let Some(additional_properties) = object.get("additionalProperties") {
         validate_additional_properties(tool_name, path, additional_properties, errors);
     }
+    for combinator in ["allOf", "anyOf", "oneOf"] {
+        if let Some(branches) = object.get(combinator) {
+            validate_schema_branches(tool_name, path, combinator, branches, errors);
+        }
+    }
     for definitions_key in ["definitions", "$defs"] {
         if let Some(definitions) = object.get(definitions_key) {
             validate_definitions(tool_name, path, definitions_key, definitions, errors);
         }
+    }
+}
+
+fn validate_schema_branches(
+    tool_name: &str,
+    path: &str,
+    combinator: &str,
+    branches: &Value,
+    errors: &mut Vec<String>,
+) {
+    let Some(branches) = branches.as_array() else {
+        errors.push(format!(
+            "tool `{tool_name}` {path}.{combinator} is not an array"
+        ));
+        return;
+    };
+    if branches.is_empty() {
+        errors.push(format!("tool `{tool_name}` {path}.{combinator} is empty"));
+    }
+    for (index, branch) in branches.iter().enumerate() {
+        validate_schema_fragment(
+            tool_name,
+            &format!("{path}.{combinator}[{index}]"),
+            branch,
+            errors,
+        );
     }
 }
 
