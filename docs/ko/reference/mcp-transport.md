@@ -724,14 +724,17 @@ MCP 인자 투영은 생략이 기존에 허용하던 명시적 `null` 또는 �
 `observed_at`도 계속 필수입니다. 이 규칙은 그 밖의 필드에 암묵적 값을 만들지
 않으며, 정확히 광고한 `required` 배열이 기준입니다.
 
-도구 description에는 짧은 목적과 핵심 경계만 둡니다. 자주 쓰는 인자 형태 예시는
-`inputSchema.examples` 값으로 광고합니다. 여기에는 intake의 생성·재개·대체·활성 Task
-거절, update-scope의 유지·생성·교체, status의 세 detail 수준, prepare-write,
-stage-artifact, 쓰기 없는 record-run과 증거를 포함한 record-run, request-judgment,
-reconcile, check-close, close의 완료·취소·대체 분기가 포함됩니다. 광고한 각 예시는 호출에
-쓰는 동일한 `inputSchema`와 MCP 인자 DTO를 따릅니다. 예시는 지원하는 인자 분기를 보여
-줄 뿐이며, 일치하는 프로젝트 상태나 권한, 전제조건, 성공적인 Core 결과를 주장하지
-않습니다.
+도구 description에는 짧은 목적과 핵심 경계만 둡니다. `volicord.record_run.kind`의
+호환성은 MCP에 보이는 다른 인자가 아니라 현재 저장된 Task에 따라 달라지므로, 이 도구의
+description은 완전한 모드와 실행 종류 호환 행렬을 포함합니다. `advisor`는 `shaping_update`,
+`direct`는 `direct`, `work`는 `shaping_update` 또는 `implementation`을 사용합니다.
+자주 쓰는 인자 형태 예시는 `inputSchema.examples` 값으로 광고합니다. 여기에는 intake의
+생성·재개·대체·활성 Task 거절, update-scope의 유지·생성·교체, status의 세 detail 수준,
+prepare-write, stage-artifact, Product Repository 파일 쓰기가 없는 `advisor`의 `shaping_update`,
+증거를 포함한 work `implementation`, request-judgment, reconcile, check-close, close의
+완료·취소·대체 분기가 포함됩니다. 광고한 각 예시는 호출에 쓰는 동일한 `inputSchema`와
+MCP 인자 DTO를 따릅니다. 예시는 지원하는 인자 분기를 보여 줄 뿐이며, 일치하는 프로젝트
+상태나 권한, 전제조건, 성공적인 Core 결과를 주장하지 않습니다.
 
 나열되는 모든 Volicord 도구는 루트 타입이 `object`인 MCP 2025-11-25
 `outputSchema`도 노출합니다. 공개 메서드 도구는 공개 메서드 응답 분기에서 이 스키마를

@@ -26,7 +26,7 @@ use crate::{
         canonical_tool_examples, mcp_tool_naming_style, mcp_tools_for_mode_and_storage,
         validate_tools_list_json_compatibility, validate_tools_list_schema_compatibility,
         CHECK_CLOSE_MISSING_FINAL_ACCEPTANCE_EXAMPLE_ID, PREPARE_WRITE_SIMPLE_EXAMPLE_ID,
-        RECORD_RUN_NO_PRODUCT_FILE_CHANGE_EXAMPLE_ID,
+        RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_EXAMPLE_ID,
         REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_EXAMPLE_ID, STATUS_READ_ONLY_EXAMPLE_ID,
         UPDATE_SCOPE_KEEP_CURRENT_EXAMPLE_ID,
     },
@@ -267,7 +267,7 @@ fn common_mcp_omissions_advertise_and_decode_exact_defaults() -> Result<(), Box<
         ),
         (
             RECORD_RUN_TOOL_NAME,
-            RECORD_RUN_NO_PRODUCT_FILE_CHANGE_EXAMPLE_ID,
+            RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_EXAMPLE_ID,
             vec![
                 ("run_id", Value::Null),
                 ("write_ticket_id", Value::Null),
@@ -413,7 +413,7 @@ fn advertised_mcp_examples_cover_supported_branches_and_validate() -> Result<(),
         (
             RECORD_RUN_TOOL_NAME,
             &[
-                RECORD_RUN_NO_PRODUCT_FILE_CHANGE_EXAMPLE_ID,
+                RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_EXAMPLE_ID,
                 "evidence_bearing_record_run",
             ],
         ),
@@ -467,12 +467,45 @@ fn advertised_mcp_examples_cover_supported_branches_and_validate() -> Result<(),
 }
 
 #[test]
+fn record_run_discovery_exposes_advisor_no_write_compatibility() -> Result<(), Box<dyn Error>> {
+    let tool = tool_definition(RECORD_RUN_TOOL_NAME);
+    for compatibility in [
+        "advisor/shaping_update",
+        "direct/direct",
+        "work/shaping_update or implementation",
+    ] {
+        assert!(
+            tool.description.contains(compatibility),
+            "record_run description should expose {compatibility}"
+        );
+    }
+
+    let arguments = canonical_example_value(
+        RECORD_RUN_TOOL_NAME,
+        RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_EXAMPLE_ID,
+    )?;
+    assert_eq!(arguments["kind"], "shaping_update");
+    assert!(arguments["task_id"]
+        .as_str()
+        .is_some_and(|task_id| task_id.contains("advisor")));
+    assert_eq!(
+        arguments["observed_changes"]["product_file_write_observed"],
+        false
+    );
+    assert_eq!(arguments["observed_changes"]["changed_paths"], json!([]));
+
+    let decoded = decode_mcp_arguments_to_value(RECORD_RUN_TOOL_NAME, arguments)?;
+    assert!(decoded["write_ticket_id"].is_null());
+    Ok(())
+}
+
+#[test]
 fn record_run_invalid_observed_changes_reports_expected_shape() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-invalid-record-run-observed-changes")?;
     let adapter = adapter(&fixture)?;
     let mut arguments = canonical_example_value(
         RECORD_RUN_TOOL_NAME,
-        RECORD_RUN_NO_PRODUCT_FILE_CHANGE_EXAMPLE_ID,
+        RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_EXAMPLE_ID,
     )?;
     arguments["observed_changes"] = json!([]);
 
@@ -493,7 +526,7 @@ fn record_run_invalid_kind_reports_allowed_values() -> Result<(), Box<dyn Error>
     let adapter = adapter(&fixture)?;
     let mut arguments = canonical_example_value(
         RECORD_RUN_TOOL_NAME,
-        RECORD_RUN_NO_PRODUCT_FILE_CHANGE_EXAMPLE_ID,
+        RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_EXAMPLE_ID,
     )?;
     arguments["kind"] = json!("test");
 
@@ -518,7 +551,7 @@ fn record_run_artifact_input_source_uses_public_value_set() -> Result<(), Box<dy
         let before = fixture.counts()?;
         let mut arguments = canonical_example_value(
             RECORD_RUN_TOOL_NAME,
-            RECORD_RUN_NO_PRODUCT_FILE_CHANGE_EXAMPLE_ID,
+            RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_EXAMPLE_ID,
         )?;
         arguments["artifact_inputs"] = json!([{
             "artifact_input_id": "artifact_input_unsupported",
@@ -560,7 +593,7 @@ fn record_run_invalid_evidence_observation_reports_expected_shape() -> Result<()
     let adapter = adapter(&fixture)?;
     let mut arguments = canonical_example_value(
         RECORD_RUN_TOOL_NAME,
-        RECORD_RUN_NO_PRODUCT_FILE_CHANGE_EXAMPLE_ID,
+        RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_EXAMPLE_ID,
     )?;
     arguments["evidence_observations"] = json!([
         {
@@ -644,7 +677,7 @@ fn record_run_unknown_root_field_reports_expected_arguments() -> Result<(), Box<
     let adapter = adapter(&fixture)?;
     let mut arguments = canonical_example_value(
         RECORD_RUN_TOOL_NAME,
-        RECORD_RUN_NO_PRODUCT_FILE_CHANGE_EXAMPLE_ID,
+        RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_EXAMPLE_ID,
     )?;
     arguments["unexpected"] = json!("not accepted");
 
@@ -761,7 +794,7 @@ fn nullable_object_union_prefers_matching_branch_and_keeps_nested_issues(
     let adapter = adapter(&fixture)?;
     let mut arguments = canonical_example_value(
         RECORD_RUN_TOOL_NAME,
-        RECORD_RUN_NO_PRODUCT_FILE_CHANGE_EXAMPLE_ID,
+        RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_EXAMPLE_ID,
     )?;
     arguments["close_assessment"] = json!({});
 

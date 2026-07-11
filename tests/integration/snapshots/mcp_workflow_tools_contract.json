@@ -575,7 +575,7 @@
         "openWorldHint": false,
         "readOnlyHint": false
       },
-      "description": "Record a Run, its observed changes, claim-scoped evidence, attachments, and optional close assessment.",
+      "description": "Record a Run and evidence. Mode/kind: advisor/shaping_update; direct/direct; work/shaping_update or implementation. Advisor has no Product Repository writes.",
       "input_schema": {
         "definitions": [
           "ActorSource",
@@ -623,7 +623,7 @@
           "summary",
           "task_id"
         ],
-        "sha256": "sha256:52f388fc9fc3bdfd77f84aa8657c43796275a7af6b7f15da8e27d5a6ba029ac2"
+        "sha256": "sha256:1e1b01a7b89a264125da8ee885f2f8865a680dfb52c4ffe0a8d72ba2348e692d"
       },
       "name": "volicord.record_run",
       "output_schema": {

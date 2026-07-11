@@ -810,16 +810,20 @@ inside each `evidence_observations` item. This rule supplies no implicit value
 for any other field; the exact advertised `required` array remains
 authoritative.
 
-Tool descriptions contain only a short purpose and key boundary. Frequently
-used argument-shape examples are advertised as values in
-`inputSchema.examples`, including intake create/resume/supersede/reject,
-update-scope keep/create/replace, all three status detail levels, prepare-write,
-stage-artifact, no-write and evidence-bearing record-run, request-judgment,
-reconcile, check-close, and close complete/cancel/supersede branches. Each
-advertised example conforms to the same `inputSchema` and MCP argument DTO used
-for calls. Examples illustrate supported argument branches only; they do not
-assert matching project state, authority, preconditions, or a successful Core
-result.
+Tool descriptions contain only a short purpose and key boundary. Because
+`volicord.record_run.kind` compatibility depends on the current persisted Task
+rather than another visible MCP argument, that tool's description includes the
+exhaustive mode-to-kind matrix: `advisor` uses `shaping_update`, `direct` uses
+`direct`, and `work` uses `shaping_update` or `implementation`. Frequently used
+argument-shape examples are advertised as values in `inputSchema.examples`,
+including intake create/resume/supersede/reject, update-scope
+keep/create/replace, all three status detail levels, prepare-write,
+stage-artifact, an advisor `shaping_update` with no Product Repository write, an
+evidence-bearing work `implementation`, request-judgment, reconcile,
+check-close, and close complete/cancel/supersede branches. Each advertised
+example conforms to the same `inputSchema` and MCP argument DTO used for calls.
+Examples illustrate supported argument branches only; they do not assert
+matching project state, authority, preconditions, or a successful Core result.
 
 Every listed Volicord tool also exposes an MCP 2025-11-25 `outputSchema` whose
 root type is `object`. Public method tools derive that schema from their public

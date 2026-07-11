@@ -243,6 +243,45 @@ Task 모드 또는 advisor 읽기 전용 검증 거절도 Run, 닫기 근거 리
 
 아래 예시는 메서드 안에서만 성립하도록 짧게 구성했습니다. 대표 응답은 커밋된 실행, 승격된 아티팩트 참조, 갱신된 증거 요약, 증거 관찰, 차단 사유 참조, 상태 버전, 현재 상태 스냅샷을 보여 주는 데 필요한 필드로 축약했습니다.
 
+## 제품 파일을 쓰지 않는 `advisor` 요청
+
+이 예시는 기존 `advisor` Task에서 저장소를 읽기 전용으로 분석한 결과를 기록합니다.
+메서드 안의 전제: `task_advisor_review_001`은 `Task.mode=advisor`인 현재 Task이고,
+`cu_advisor_review_001`은 현재 Change Unit이며, `baseline_advisor_review_001`은 그
+범위와 호환되고, 현재 프로젝트 상태 버전은 `7`입니다. 요청은 `advisor`와 호환되는
+`kind=shaping_update`를 사용하며 Product Repository 파일 쓰기가 없었다고 보고합니다.
+쓰기 티켓도 사용하지 않습니다. 호출이 성공하면 Run과 Core 소유 상태는 커밋되지만
+제품 파일 효과를 뜻하지는 않습니다.
+
+```yaml
+method: volicord.record_run
+params:
+  envelope:
+    project_id: proj_advisor_review_001
+    task_id: task_advisor_review_001
+    request_id: req_advisor_review_001
+    idempotency_key: idem_advisor_review_001
+    expected_state_version: 7
+    dry_run: false
+    locale: ko-KR
+  task_id: task_advisor_review_001
+  change_unit_id: cu_advisor_review_001
+  kind: shaping_update
+  run_id: null
+  baseline_ref: baseline_advisor_review_001
+  write_ticket_id: null
+  summary: "Product Repository 파일을 쓰지 않고 읽기 전용 저장소 분석을 마쳤습니다."
+  observed_changes:
+    changed_paths: []
+    product_file_write_observed: false
+    sensitive_categories: []
+    baseline_ref: baseline_advisor_review_001
+  artifact_inputs: []
+  evidence_updates: []
+  evidence_observations: []
+  close_assessment: null
+```
+
 ## 최소 유효 요청
 
 이 예시는 이 메서드 문서 안에서 전제로 둔 스테이징된 핸들의 검증 출력을 기록합니다. 메서드 안의 전제: `staged_runprobe_001`은 만료되지 않았고 소비되지 않았으며 `proj_runprobe_001` / `task_runprobe_001`에 속합니다. 스테이징 시점에 캡처된 기록된 행위자 출처는 `agent_connection:conn_run_probe`입니다. 이 전제는 이 문서의 예시 안에서만 성립하며 다른 메서드 예시를 재사용하지 않습니다.

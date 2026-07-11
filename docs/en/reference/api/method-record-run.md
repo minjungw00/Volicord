@@ -243,6 +243,46 @@ On commit, the method may persist run, current close-basis, evidence summary, ev
 
 The examples are intentionally compact and method-local. The representative response is abbreviated to the fields needed to show the committed run, promoted artifact ref, updated evidence summary, evidence observation, blocker refs, state version, and current state snapshot.
 
+## Advisor no-product-write request
+
+This example records a read-only repository analysis for an existing advisor
+Task. Method-local precondition: `task_advisor_review_001` is the current Task
+with `Task.mode=advisor`, `cu_advisor_review_001` is its current Change Unit,
+`baseline_advisor_review_001` is compatible with that scope, and the current
+project state version is `7`. The request uses the advisor-compatible
+`kind=shaping_update` and reports no Product Repository file write. It does not
+use a write ticket. A successful call still commits the Run and advances
+Core-owned state; no product-file effect is implied.
+
+```yaml
+method: volicord.record_run
+params:
+  envelope:
+    project_id: proj_advisor_review_001
+    task_id: task_advisor_review_001
+    request_id: req_advisor_review_001
+    idempotency_key: idem_advisor_review_001
+    expected_state_version: 7
+    dry_run: false
+    locale: en-US
+  task_id: task_advisor_review_001
+  change_unit_id: cu_advisor_review_001
+  kind: shaping_update
+  run_id: null
+  baseline_ref: baseline_advisor_review_001
+  write_ticket_id: null
+  summary: "Read-only repository analysis completed without Product Repository file writes."
+  observed_changes:
+    changed_paths: []
+    product_file_write_observed: false
+    sensitive_categories: []
+    baseline_ref: baseline_advisor_review_001
+  artifact_inputs: []
+  evidence_updates: []
+  evidence_observations: []
+  close_assessment: null
+```
+
 ## Minimal valid request
 
 This example records validation output from a method-local staged handle. Method-local precondition: `staged_runprobe_001` is unexpired, unconsumed, and belongs to `proj_runprobe_001` / `task_runprobe_001`; its recorded actor provenance, captured at staging time, is `agent_connection:conn_run_probe`. The precondition is local to this document and does not reuse any other method example.

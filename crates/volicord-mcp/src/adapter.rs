@@ -1503,7 +1503,7 @@ fn record_run_invalid_argument_guidance(params: &Value, source: &str) -> Option<
             &["shaping_update", "implementation", "direct"],
         )
     })
-    .or_else(|| root_shape_guidance_for_source(params, source, record_run_root_fields(), crate::tool_registry::RECORD_RUN_NO_PRODUCT_FILE_CHANGE_ARGUMENTS_JSON))
+    .or_else(|| root_shape_guidance_for_source(params, source, record_run_root_fields(), crate::tool_registry::RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_ARGUMENTS_JSON))
 }
 
 fn request_user_judgment_invalid_argument_guidance(params: &Value, source: &str) -> Option<String> {

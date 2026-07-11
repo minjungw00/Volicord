@@ -72,9 +72,9 @@ pub(crate) const PREPARE_WRITE_SIMPLE_ARGUMENTS_JSON: &str = r#"{"intended_opera
 
 const STAGE_ARTIFACT_SAFE_TEXT_ARGUMENTS_JSON: &str = r#"{"task_id":"task_trace_001","display_name":"diagnostic_trace.log","content_type":"text/plain","redaction_state":"none","safe_bytes_or_notice":"Local trace sample captured for debugging."}"#;
 
-pub(crate) const RECORD_RUN_NO_PRODUCT_FILE_CHANGE_EXAMPLE_ID: &str =
-    "no_product_file_change_record_run";
-pub(crate) const RECORD_RUN_NO_PRODUCT_FILE_CHANGE_ARGUMENTS_JSON: &str = r#"{"task_id":"task_run_001","change_unit_id":"cu_run_001","kind":"implementation","baseline_ref":"baseline_run_001","summary":"No product files changed.","observed_changes":{"changed_paths":[],"product_file_write_observed":false,"sensitive_categories":[],"baseline_ref":"baseline_run_001"}}"#;
+pub(crate) const RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_EXAMPLE_ID: &str =
+    "advisor_no_product_write_record_run";
+pub(crate) const RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_ARGUMENTS_JSON: &str = r#"{"task_id":"task_advisor_analysis_001","change_unit_id":"cu_advisor_analysis_001","kind":"shaping_update","baseline_ref":"baseline_advisor_analysis_001","summary":"Advisor analysis completed without Product Repository file writes.","observed_changes":{"changed_paths":[],"product_file_write_observed":false,"sensitive_categories":[],"baseline_ref":"baseline_advisor_analysis_001"}}"#;
 const RECORD_RUN_EVIDENCE_BEARING_ARGUMENTS_JSON: &str = r#"{"task_id":"task_run_002","change_unit_id":"cu_run_002","kind":"implementation","baseline_ref":"baseline_run_002","summary":"Saved-filter validation passed.","observed_changes":{"changed_paths":[],"product_file_write_observed":false,"sensitive_categories":[],"baseline_ref":"baseline_run_002"},"evidence_updates":[{"claim":"Saved-filter validation passed.","required_for_close":true,"coverage_state":"supported"}],"evidence_observations":[{"claim":"Saved-filter validation passed.","source_kind":"external_tool","assurance_level":"external_tool_result","observed_at":"2026-07-12T00:00:00Z"}],"close_assessment":{"result_summary":"Saved-filter validation passed.","result_refs":[],"residual_risks":[],"sensitive_categories":[],"recovery_constraints":[]}}"#;
 
 pub(crate) const REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_EXAMPLE_ID: &str =
@@ -167,9 +167,9 @@ const STAGE_ARTIFACT_EXAMPLES: [McpToolExample; 1] = [McpToolExample {
 
 const RECORD_RUN_EXAMPLES: [McpToolExample; 2] = [
     McpToolExample {
-        id: RECORD_RUN_NO_PRODUCT_FILE_CHANGE_EXAMPLE_ID,
-        description: "Record a Run with no Product Repository writes or evidence inputs.",
-        arguments_json: RECORD_RUN_NO_PRODUCT_FILE_CHANGE_ARGUMENTS_JSON,
+        id: RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_EXAMPLE_ID,
+        description: "Record an advisor shaping update with no Product Repository write.",
+        arguments_json: RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_ARGUMENTS_JSON,
     },
     McpToolExample {
         id: "evidence_bearing_record_run",
@@ -425,7 +425,7 @@ pub(crate) fn tool_description(name: &str) -> &'static str {
             "Prepare an Evidence attachment input; staging alone is not recorded Evidence."
         }
         RECORD_RUN_TOOL_NAME => {
-            "Record a Run, its observed changes, claim-scoped evidence, attachments, and optional close assessment."
+            "Record a Run and evidence. Mode/kind: advisor/shaping_update; direct/direct; work/shaping_update or implementation. Advisor has no Product Repository writes."
         }
         REQUEST_USER_JUDGMENT_TOOL_NAME => {
             "Create one focused user-owned judgment; authority-bearing choices remain Core-owned."
