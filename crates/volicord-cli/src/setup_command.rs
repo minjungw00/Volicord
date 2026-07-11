@@ -890,9 +890,7 @@ mod tests {
         )?;
         let second_text = fs::read_to_string(&zshrc)?;
         assert_eq!(
-            second_text
-                .matches("# BEGIN VOLICORD MANAGED PATH")
-                .count(),
+            second_text.matches("# BEGIN VOLICORD MANAGED PATH").count(),
             1
         );
         Ok(())
