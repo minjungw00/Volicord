@@ -11,6 +11,7 @@ pub mod agent_connections;
 pub mod artifacts;
 pub mod bootstrap;
 pub mod core_pipeline;
+pub mod diagnostics;
 pub mod error;
 pub mod export;
 pub mod guards;
