@@ -3618,7 +3618,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn temporary_content_is_written_under_restrictive_permissions(
+    fn policy_content_is_committed_with_user_only_permissions(
     ) -> Result<(), Box<dyn std::error::Error>> {
         use std::os::unix::fs::{MetadataExt, PermissionsExt};
 
@@ -3650,7 +3650,7 @@ mod tests {
 
         let committed = fs::metadata(&target)?;
         assert!(observed_restrictive_temp);
-        assert_eq!(committed.mode() & 0o777, 0o640);
+        assert_eq!(committed.mode() & 0o777, 0o600);
         assert_eq!(committed.uid(), original.uid());
         assert_eq!(committed.gid(), original.gid());
         assert!(managed_auxiliary_files(&managed_dir)?.is_empty());
