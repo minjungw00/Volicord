@@ -114,11 +114,16 @@ pub(crate) fn responses_by_id(output: &[u8]) -> Result<BTreeMap<u64, Value>, Box
 
 pub(crate) fn volicord_response(response: &Value) -> Result<Value, Box<dyn Error>> {
     assert_eq!(response["result"]["isError"], json!(false));
-    response["result"]
+    let structured = response["result"]
         .get("structuredContent")
         .filter(|value| value.is_object())
         .cloned()
-        .ok_or_else(|| "tools/call response should contain structured content".into())
+        .ok_or("tools/call response should contain structured content")?;
+    Ok(structured
+        .get("method_result")
+        .filter(|method_result| method_result["base"].is_object())
+        .cloned()
+        .unwrap_or(structured))
 }
 
 pub(crate) fn adapter_tool_response(response: &Value) -> Result<Value, Box<dyn Error>> {

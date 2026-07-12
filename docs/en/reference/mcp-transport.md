@@ -895,8 +895,10 @@ matching project state, authority, preconditions, or a successful Core result.
 Every listed Volicord tool also exposes an MCP 2025-11-25 `outputSchema` whose
 root type is `object`. Read-only public method tools derive that schema from
 their public method response branches. Mutation tools additionally advertise
-the compact `AuthorityReceipt`, workflow receipt, fail-closed refresh branch,
-and response-budget branch alongside the full public response. The
+summary and workflow wrappers that pair a fresh `AuthorityReceipt` with the
+method result needed for the next step, a full wrapper that pairs the same
+fresh receipt with the exact public method response, and bounded post-effect
+recovery branches. The
 `volicord.request_user_judgment` full branch also covers the User Channel
 response returned when host elicitation records the pending judgment before the
 original tool call completes. `volicord.list_projects` uses its exact
@@ -965,18 +967,24 @@ derived invocation context. Public MCP arguments cannot override those facts.
 the Core include matrix. Supported values are `summary`, `workflow`, and
 `full`; omitted `detail` defaults to `workflow`.
 
-Mutation `detail` has the same three values but a different default and effect:
-`summary` returns the refreshed Core-owned `AuthorityReceipt` object,
-`workflow` returns that receipt plus current `next_actions`, and `full` returns
-the existing public method response object. A Core/domain rejected branch keeps
-its existing response object for every detail value. The adapter validates the
-argument before Core entry.
+Mutation `detail` has the same three values but a different default and effect.
+`summary`, the default, returns `authority_receipt` and a compact
+`method_result`. `workflow` returns those fields plus current `next_actions`.
+`full` returns `authority_receipt` and the exact public response under
+`method_result`. A Core/domain rejected branch keeps its existing response
+object for every detail value. The adapter validates the argument before Core
+entry.
 
-Receipt projections intentionally do not reproduce method-specific payloads.
-Callers that need a `PrepareWriteResult` write-ticket payload, a
-`StageArtifactResult.staged_artifact_handle`, or per-finding
-`ReconcileChangesResult` data must request `detail=full`. The advertised
-examples for those tools select `full` for that reason.
+The compact `method_result` always preserves effect kind, resulting state
+version, and committed event refs. It additionally preserves the issued write
+ticket and decision for `volicord.prepare_write`, the staged handle and expiry
+for `volicord.stage_artifact`, per-finding results for
+`volicord.reconcile_changes`, and the pending or resolved outcome for
+`volicord.request_user_judgment`. A resolved compact Judgment outcome contains
+the Judgment ref, status, selected option ID and label, and resolution outcome;
+it omits the free-form user note. `detail=full` is for callers that need fields
+beyond those next-step results, not for recovering a required handle, ticket,
+finding result, or host-native selection.
 
 For a known tool, the adapter validates object `arguments` against the exact
 advertised `inputSchema` before project selection, session-watch setup, generated
@@ -1058,38 +1066,82 @@ the method owner's effect; this refresh creates no second mutation.
 
 For an accepted refresh:
 
-- `detail=summary` returns the normalized `AuthorityReceipt` itself in
+- `detail=summary` returns `authority_receipt` and the compact
+  `method_result` in `result.structuredContent`.
+- `detail=workflow` returns those fields plus `next_actions` in
   `result.structuredContent`.
-- `detail=workflow` returns exactly `authority_receipt` and `next_actions` in
-  `result.structuredContent`.
-- `detail=full` returns the existing public method response object in
-  `result.structuredContent`.
+- `detail=full` returns `authority_receipt` and the exact public method response
+  under `method_result` in `result.structuredContent`. If state changed after
+  the method response was built and before refresh, `authority_receipt` is the
+  fresh authority view; method-owned state inside `method_result` remains the
+  result of that method invocation.
 - `result.content[0].text` is a short compatibility summary of at most 512
   UTF-8 bytes. It is not a second JSON serialization of `structuredContent`.
 - A compact `summary` or `workflow` `CallToolResult` is at most 65,536 bytes.
   If the refreshed projection cannot fit that bound without changing the
   Core-owned receipt, the adapter omits that projection rather than truncating
   authority data.
+- A `full` `CallToolResult` is larger but still bounded at 262,144 bytes. It
+  uses the same omission branch rather than returning an unbounded or truncated
+  method response.
 
-An oversized fresh projection returns a separate bounded `isError=true`
-branch. Its `structuredContent` contains
+An oversized fresh projection returns a separate bounded post-effect recovery
+branch with `isError=false`, so an MCP host does not classify an already-applied
+operation as a failed mutation and automatically retry it. Its
+`structuredContent` contains
 `code=MCP_RESPONSE_BUDGET_EXCEEDED`, the method `tool_name`, the
-`requested_detail`, `reached_core`, `committed`,
+`requested_detail`, `retryable=false`, `reached_core`, `committed`, nullable
+`effect_kind`, `effect_applied`, nullable stable `operation_token`,
+nullable compact `method_result` used by the requested tool,
 `authoritative_refresh_succeeded=true`, `response_projection_omitted=true`,
-and `completion_claim_withheld=true`. `committed` continues to report whether
-the original call committed its Core mutation. This branch does not claim
-`MCP_UNAVAILABLE`, is not counted as an authoritative-refresh failure, and
-does not return a partial receipt or oversized status body. The caller must
-read current status before acting.
+`status_read_required=true`, and `completion_claim_withheld=true`. `committed`
+reports a new Core commit, while `effect_kind` and `effect_applied` also report
+non-Core effects such as a created staging handle and replayed applied effects.
+The recovery `method_result` is not truncated: in particular, a successful
+`volicord.stage_artifact` recovery retains its staging handle and expiry even
+though the oversized authority receipt is omitted. If that compact method
+result itself cannot fit the fixed recovery budget, the field is `null`; the
+effect facts and operation token remain, and the caller must read status rather
+than retrying the mutation.
+The operation token is anchored to the first committed authority event, staged
+handle, or resulting state effect. This branch does not claim `MCP_UNAVAILABLE`,
+is not counted as an authoritative-refresh failure, and does not return a
+partial receipt or oversized status body. The caller must not submit a new
+mutation as a retry; it must read current status before acting.
+
+If Core has already returned an applied result and later adapter work cannot
+produce the normal wrapper, the adapter first performs the same validated
+authority refresh and returns another `isError=false`, `retryable=false`
+post-effect branch. `code=MCP_POST_EFFECT_ADAPTER_FAILED` identifies a failed
+host User Channel adapter after the pending judgment was created;
+`code=MCP_RESPONSE_PROJECTION_FAILED` identifies a failure while building the
+normal response projection. Both branches include the method `tool_name`,
+`requested_detail`, effect and operation-token facts, nullable
+`authority_receipt`, nullable `method_result`,
+`authoritative_refresh_succeeded=true`, `response_projection_omitted`,
+`status_read_required=true`, and
+`completion_claim_withheld=true`. A projection failure preserves the exact
+method result when it can be represented; a host-adapter failure may leave it
+`null`. The fresh receipt is present when the recovery fits the compact budget;
+otherwise the adapter sets it to `null` and
+`response_projection_omitted=true`. Neither branch authorizes replay of the
+mutation.
 
 If the refresh call fails, returns a rejected or malformed branch, lacks a
-receipt, or fails any freshness comparison, the adapter returns
-`isError=true`. Its bounded `structuredContent` contains
-`code=MCP_UNAVAILABLE`, the method `tool_name`, `reached_core`, `committed`, and
-`completion_claim_withheld=true`. It does not return the original success or
-completion body, a stale receipt, or a private refresh error body. The caller
-must read current status before acting. Local session diagnostics count this as
-an authoritative-refresh failure without storing the error body.
+receipt, or fails any freshness comparison, the adapter returns the same
+success-class `isError=false` recovery boundary. Its bounded
+`structuredContent` contains `code=MCP_UNAVAILABLE`, the method `tool_name`,
+`retryable=false`, `reached_core`, `committed`, nullable `effect_kind`,
+`effect_applied`, nullable stable `operation_token`,
+nullable compact `method_result`, `status_read_required=true`, and
+`completion_claim_withheld=true`. The compact result preserves tool-specific
+next-step data such as a write ticket, staging handle, per-finding reconcile
+outcomes, or selected Judgment outcome. It is never truncated; if that compact
+result itself cannot fit the fixed recovery budget, the field is `null`. The
+branch does not return the exact original success or completion body, a stale
+receipt, or a private refresh error body. The caller must not resubmit the
+mutation and must read current status before acting. Local session diagnostics
+count this as an authoritative-refresh failure without storing the error body.
 
 Core/domain rejected mutation responses do not enter this success-projection
 path. They retain the existing public response object and `isError=false`, with
@@ -1140,10 +1192,13 @@ commits a pending judgment:
   path.
 
 For all successful branches, `result.structuredContent` follows the selected
-mutation `detail` projection. `detail=full` preserves the pending or recorded
-public response object; the default `summary` returns the fresh authority
-receipt. `result.content[0].text` remains a short compatibility summary, not a
-JSON duplicate. Additional `content[]` text, when present, is adapter guidance
+mutation `detail` projection. `detail=full` pairs the pending or recorded public
+response object with the fresh authority receipt. The default `summary` pairs
+that receipt with a compact Judgment result containing the Judgment ref,
+status, and, after resolution, the selected option ID and label plus resolution
+outcome. The compact result does not include the free-form note.
+`result.content[0].text` remains a short compatibility summary, not a JSON
+duplicate. Additional `content[]` text, when present, is adapter guidance
 such as fallback instructions or an explanation that elicitation was cancelled
 or invalid. The additional text is not part of `structuredContent`, not Core
 authority, not a public API response field, and not a user judgment record.

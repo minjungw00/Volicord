@@ -795,8 +795,9 @@ MCP 인자 DTO를 따릅니다. 예시는 지원하는 인자 분기를 보여 �
 
 나열되는 모든 Volicord 도구는 루트 타입이 `object`인 MCP 2025-11-25
 `outputSchema`도 노출합니다. 읽기 전용 공개 메서드 도구는 공개 메서드 응답 분기에서 이
-스키마를 생성합니다. 변경 도구는 전체 공개 응답과 함께 간결한 `AuthorityReceipt`,
-workflow receipt, 갱신 실패 폐쇄 분기, 응답 바이트 상한 분기도 광고합니다.
+스키마를 생성합니다. 변경 도구는 새 `AuthorityReceipt`와 다음 단계에 필요한 메서드 결과를
+결합한 summary·workflow 래퍼, 같은 새 receipt와 정확한 공개 메서드 응답을 결합한 full
+래퍼, 크기가 제한된 효과 적용 후 복구 분기를 광고합니다.
 `volicord.request_user_judgment`의
 full 분기는 원래 도구 호출이 끝나기 전에 호스트 elicitation이 대기 판단을 기록했을 때
 반환되는 User Channel 응답도 포함합니다. `volicord.list_projects`는 정확한 어댑터
@@ -857,16 +858,20 @@ MCP 어댑터는 Core에 넘기기 전에 Core 래퍼를 생성합니다. 어댑
 사용합니다. 지원 값은 `summary`, `workflow`, `full`이며 `detail`을 생략하면 기본값은
 `workflow`입니다.
 
-변경 도구의 `detail`은 같은 세 값을 쓰지만 기본값과 효과가 다릅니다. `summary`는 새로
-읽은 Core 소유 `AuthorityReceipt` 객체를 반환하고, `workflow`는 그 receipt와 현재
-`next_actions`를 반환하며, `full`은 기존 공개 메서드 응답 객체를 반환합니다. Core/도메인
-거절 분기는 모든 detail 값에서 기존 응답 객체를 유지합니다. 어댑터는 Core 진입 전에 이
-인자를 검증합니다.
+변경 도구의 `detail`은 같은 세 값을 쓰지만 기본값과 효과가 다릅니다. 기본값인
+`summary`는 `authority_receipt`와 간결한 `method_result`를 반환합니다. `workflow`는 두
+필드에 현재 `next_actions`를 추가합니다. `full`은 `authority_receipt`와 정확한 공개 응답을
+`method_result` 아래에 반환합니다. Core/도메인 거절 분기는 모든 detail 값에서 기존 응답
+객체를 유지합니다. 어댑터는 Core 진입 전에 이 인자를 검증합니다.
 
-Receipt 상태 보기는 메서드별 payload를 반복하지 않습니다. `PrepareWriteResult`의 쓰기
-티켓 payload, `StageArtifactResult.staged_artifact_handle`, 찾은 항목별
-`ReconcileChangesResult` 데이터가 필요한 호출자는 `detail=full`을 요청해야 합니다. 이
-때문에 해당 도구의 광고 예시는 `full`을 선택합니다.
+간결한 `method_result`는 항상 효과 종류, 결과 state version, 커밋된 event ref를
+보존합니다. 또한 `volicord.prepare_write`에서는 발급된 쓰기 티켓과 결정을,
+`volicord.stage_artifact`에서는 스테이징된 handle과 만료 시각을,
+`volicord.reconcile_changes`에서는 찾은 항목별 결과를,
+`volicord.request_user_judgment`에서는 대기 또는 해결 결과를 보존합니다. 해결된 간결한
+Judgment 결과는 Judgment ref, 상태, 선택한 option ID와 label, resolution outcome을
+포함하고 자유 형식 사용자 note는 제외합니다. `detail=full`은 이러한 다음 단계 필수 결과가
+아닌 추가 필드가 필요한 호출자를 위한 값입니다.
 
 알려진 도구에서 어댑터는 프로젝트 선택, 세션 감시 설정, 생성 Core 래퍼 작성, Core 메서드
 진입보다 먼저 객체 `arguments`를 정확히 광고한 `inputSchema`로 검증합니다. 경계가 정해진
@@ -939,33 +944,68 @@ Volicord 응답 형태와 전송 의미 `isError: false`를 유지합니다.
 
 받아들인 갱신은 다음과 같이 반환합니다.
 
-- `detail=summary`는 정규화된 `AuthorityReceipt` 자체를
+- `detail=summary`는 `authority_receipt`와 간결한 `method_result`를
   `result.structuredContent`에 반환합니다.
-- `detail=workflow`는 `result.structuredContent`에 정확히 `authority_receipt`와
-  `next_actions`를 반환합니다.
-- `detail=full`은 기존 공개 메서드 응답 객체를 `result.structuredContent`에 반환합니다.
+- `detail=workflow`는 두 필드에 `next_actions`를 추가해 반환합니다.
+- `detail=full`은 `authority_receipt`와 정확한 공개 메서드 응답을 `method_result` 아래에
+  반환합니다. 메서드 응답을 만든 뒤 갱신하기 전에 상태가 바뀌었다면
+  `authority_receipt`가 새 권한 보기이고, `method_result` 안의 메서드 소유 상태는 해당
+  메서드 호출 결과로 남습니다.
 - `result.content[0].text`는 UTF-8 기준 최대 512바이트인 짧은 호환 요약입니다.
   `structuredContent`를 다시 JSON으로 직렬화한 복사본이 아닙니다.
 - 간결한 `summary` 또는 `workflow` `CallToolResult`는 최대 65,536바이트입니다. 새로 읽은
   상태 보기가 Core 소유 receipt를 바꾸지 않고 이 상한에 들어갈 수 없으면 어댑터는 권한
   데이터를 잘라 내지 않고 해당 상태 보기를 생략합니다.
+- `full` `CallToolResult`는 더 크지만 최대 262,144바이트로 제한됩니다. 상한을 넘으면
+  크기 제한이 없거나 잘린 메서드 응답을 반환하지 않고 같은 생략 분기를 사용합니다.
 
-새로 읽은 상태 보기가 바이트 상한을 넘으면 별도의 크기 제한 `isError=true` 분기를
-반환합니다. `structuredContent`에는 `code=MCP_RESPONSE_BUDGET_EXCEEDED`, 메서드
-`tool_name`, `requested_detail`, `reached_core`, `committed`,
+새로 읽은 상태 보기가 바이트 상한을 넘으면 크기가 제한된 효과 적용 후 복구 분기를
+`isError=false`로 반환합니다. MCP host가 이미 적용된 동작을 실패한 mutation으로 분류해
+자동으로 다시 호출하지 않도록 하기 위함입니다. `structuredContent`에는
+`code=MCP_RESPONSE_BUDGET_EXCEEDED`, 메서드 `tool_name`, `requested_detail`,
+`retryable=false`, `reached_core`, `committed`, null일 수 있는 `effect_kind`,
+`effect_applied`, null일 수 있는 안정적인 `operation_token`,
+null일 수 있는 요청 도구의 간결한 `method_result`,
 `authoritative_refresh_succeeded=true`, `response_projection_omitted=true`,
-`completion_claim_withheld=true`를 담습니다. `committed`는 원래 호출이 Core 변경을
-커밋했는지를 계속 정확히 보고합니다. 이 분기는 `MCP_UNAVAILABLE`을 주장하지 않고 권한
-상태 새로 고침 실패로 집계되지 않으며, 일부만 남긴 receipt나 바이트 상한을 넘는 상태
-본문을 반환하지 않습니다. 호출자는 행동하기 전에 현재 상태를 읽어야 합니다.
+`status_read_required=true`, `completion_claim_withheld=true`를 담습니다. `committed`는 새
+Core 커밋을 보고하고, `effect_kind`와 `effect_applied`는 생성된 staging handle이나 replay된
+적용 효과 같은 Core 밖 효과도 보고합니다. 복구 `method_result`는 잘라 내지 않습니다. 특히
+성공한 `volicord.stage_artifact` 복구는 크기가 큰 authority receipt를 생략하더라도 staging
+handle과 만료 시각을 유지합니다. 간결한 메서드 결과 자체도 고정 복구 예산에 들어가지 않으면
+이 필드는 `null`입니다. 효과 사실과 operation token은 남으며, 호출자는 mutation을 다시
+실행하지 말고 status를 읽어야 합니다. Operation token은 첫 커밋 authority event,
+staged handle 또는 결과 state effect에 고정됩니다. 이 분기는 `MCP_UNAVAILABLE`을 주장하지
+않고 권한 상태 새로 고침 실패로 집계되지 않으며, 일부만 남긴 receipt나 바이트 상한을 넘는
+상태 본문을 반환하지 않습니다. 호출자는 새 mutation으로 다시 호출하지 말고 행동하기 전에
+현재 상태를 읽어야 합니다.
+
+Core가 적용된 결과를 이미 반환한 뒤 후속 어댑터 작업이 정상 래퍼를 만들지 못하면,
+어댑터는 같은 검증된 권한 상태 새로 고침을 먼저 수행하고 또 다른 `isError=false`,
+`retryable=false` 효과 적용 후 분기를 반환합니다. 대기 판단을 만든 뒤 호스트 User Channel
+어댑터가 실패하면 `code=MCP_POST_EFFECT_ADAPTER_FAILED`, 정상 응답 상태 보기를 만드는 중
+실패하면 `code=MCP_RESPONSE_PROJECTION_FAILED`입니다. 두 분기 모두 메서드 `tool_name`,
+`requested_detail`, 효과와 operation token 사실, null일 수 있는 `authority_receipt`, null일
+수 있는 `method_result`, `authoritative_refresh_succeeded=true`,
+`response_projection_omitted`, `status_read_required=true`,
+`completion_claim_withheld=true`를 담습니다. 상태 보기 실패 분기는 표현할 수 있을 때 정확한
+메서드 결과를 보존하고, 호스트 어댑터 실패 분기는 이를 `null`로 둘 수 있습니다. 복구가
+간결한 예산에 들어가면 새 receipt를 반환하고, 그렇지 않으면 receipt를 `null`로 두고
+`response_projection_omitted=true`로 표시합니다. 어느 분기도 mutation 재실행을 허용하지
+않습니다.
 
 갱신 호출이 실패하거나, 거절 또는 잘못된 형식의 분기를 반환하거나, receipt가 없거나,
-최신성 비교가 하나라도 실패하면 어댑터는 `isError=true`를 반환합니다. 크기가 제한된
-`structuredContent`에는 `code=MCP_UNAVAILABLE`, 메서드 `tool_name`, `reached_core`,
-`committed`, `completion_claim_withheld=true`만 담습니다. 원래 성공·완료 본문, 오래된
-receipt, 비공개 갱신 오류 본문은 반환하지 않습니다. 호출자는 행동하기 전에 현재 상태를
-읽어야 합니다. 로컬 세션 진단은 오류 본문을 저장하지 않고 이를 권한 상태 새로 고침
-실패로 집계합니다.
+최신성 비교가 하나라도 실패하면 같은 성공 계열 `isError=false` 복구 경계를 반환합니다.
+크기가 제한된 `structuredContent`에는 `code=MCP_UNAVAILABLE`, 메서드 `tool_name`,
+`retryable=false`, `reached_core`, `committed`, null일 수 있는 `effect_kind`,
+`effect_applied`, null일 수 있는 안정적인 `operation_token`,
+null일 수 있는 간결한 `method_result`, `status_read_required=true`,
+`completion_claim_withheld=true`를 담습니다. 간결한 결과는 write ticket, staging handle,
+finding별 reconcile 결과, 선택된 Judgment 결과처럼 다음 단계에 필요한 도구별 데이터를
+보존합니다. 이 결과를 잘라 내지는 않으며, 간결한 결과 자체가 고정 복구 예산에 들어가지
+않으면 필드는 `null`입니다. 이 분기는 원래의 정확한 성공·완료 본문, 오래된 receipt, 비공개
+갱신 오류 본문을 반환하지 않습니다. 호출자는 mutation을 다시 제출하지 말고 행동하기 전에
+현재 상태를 읽어야 합니다. 로컬 세션 진단은 오류 본문을 저장하지 않고 이를 권한 상태 새로
+고침 실패로 집계합니다.
 
 Core/도메인 거절 변경 응답은 이 성공 상태 보기 경로에 들어가지 않습니다. 기존 공개 응답
 객체와 `isError=false`를 유지하고, 짧은 호환 텍스트로 클라이언트가
@@ -1010,9 +1050,11 @@ Agent Connection 도구로 노출하지 않으며, 에이전트가 넣은 답변
   없으면 대체 안내는 `volicord inbox` CLI 받은편지함 경로를 가리킵니다.
 
 모든 성공 분기에서 `result.structuredContent`는 선택한 변경 `detail` 상태 보기를
-따릅니다. `detail=full`은 대기 또는 기록된 공개 응답 객체를 유지하고, 기본값인
-`summary`는 새 권한 receipt를 반환합니다. `result.content[0].text`는 JSON 복사본이 아니라
-짧은 호환 요약으로 남습니다. 추가 `content[]` 텍스트가 있으면 대체 안내나
+따릅니다. `detail=full`은 대기 또는 기록된 공개 응답 객체와 새 권한 receipt를 결합합니다.
+기본값인 `summary`는 해당 receipt와 간결한 Judgment 결과를 결합합니다. 간결한 결과는
+Judgment ref와 상태를 포함하고, 해결 뒤에는 선택한 option ID와 label, resolution outcome을
+포함하지만 자유 형식 note는 포함하지 않습니다. `result.content[0].text`는 JSON 복사본이
+아니라 짧은 호환 요약으로 남습니다. 추가 `content[]` 텍스트가 있으면 대체 안내나
 `elicitation` 취소·무효 설명 같은 어댑터 안내입니다. 그 추가 텍스트는
 `structuredContent`의 일부가 아니며 Core 권한, 공개 API 응답 필드, 사용자 판단 기록도
 아닙니다.

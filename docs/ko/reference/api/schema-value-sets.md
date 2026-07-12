@@ -362,9 +362,10 @@ workflow
 full
 ```
 
-기본값 `summary`는 compact authority receipt이고 `workflow`는 정규 다음 행동을
-추가하며 `full`은 전체 메서드 결과를 반환합니다. Transport는 호환 text member를
-유지하지만 전체 JSON을 중복한 문서가 아니라 크기가 제한된 요약을 사용합니다.
+기본값 `summary`는 새 authority receipt와 간결한 메서드 결과를 결합한 래퍼이고,
+`workflow`는 정규 다음 행동을 추가하며, `full`은 새 receipt와 크기가 제한된 정확한 메서드
+결과를 결합합니다. Transport는 호환 text member를 유지하지만 전체 JSON을 중복한 문서가
+아니라 크기가 제한된 요약을 사용합니다.
 
 `volicord.intake`의 `resume_policy`는 아래 값을 사용합니다.
 

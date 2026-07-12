@@ -437,19 +437,19 @@ pub(crate) fn tool_description(name: &str) -> &'static str {
         }
         STATUS_TOOL_NAME => "Read the current Core status view without creating Core authority state.",
         PREPARE_WRITE_TOOL_NAME => {
-            "Check one proposed Product Repository write against current Core scope, authority, and freshness. Use detail=full when the write-ticket payload is needed."
+            "Check a proposed Product Repository write against current Core scope. The default result includes the decision and any issued write ticket."
         }
         STAGE_ARTIFACT_TOOL_NAME => {
-            "Prepare an Evidence attachment input; staging alone is not recorded Evidence. Use detail=full to receive the staged handle."
+            "Prepare an Evidence attachment input; staging alone is not recorded Evidence. The default compact result includes the staged handle and expiry."
         }
         RECORD_RUN_TOOL_NAME => {
             "Record a Run and evidence. Mode/kind: advisor/shaping_update; direct/direct; work/shaping_update or implementation. Advisor has no Product Repository writes."
         }
         REQUEST_USER_JUDGMENT_TOOL_NAME => {
-            "Create one focused user-owned judgment; authority-bearing choices remain Core-owned."
+            "Create one focused user-owned judgment. The default result reports the pending or selected outcome without the user's free-form note."
         }
         RECONCILE_CHANGES_TOOL_NAME => {
-            "Reconcile unresolved Product Repository changes without agent-only dismissal. Use detail=full when per-finding results are needed."
+            "Reconcile unresolved Product Repository changes without agent-only dismissal. The default result includes per-finding outcomes."
         }
         CHECK_CLOSE_TOOL_NAME => {
             "Read current close readiness without requesting a terminal mutation."

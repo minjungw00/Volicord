@@ -352,10 +352,11 @@ workflow
 full
 ```
 
-`summary` is the default compact authority receipt, `workflow` adds normalized
-next actions, and `full` returns the full method result. The transport still
-uses its compatibility text member, but the text is a bounded summary rather
-than a duplicate full JSON document.
+`summary` is the default wrapper over a fresh authority receipt and compact
+method result, `workflow` adds normalized next actions, and `full` pairs the
+fresh receipt with the exact bounded method result. The transport still uses
+its compatibility text member, but the text is a bounded summary rather than a
+duplicate full JSON document.
 
 `resume_policy` for `volicord.intake` uses:
 

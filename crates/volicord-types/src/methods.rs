@@ -9,25 +9,26 @@ use crate::ids::{
 use crate::schema::{
     AcceptanceCriterionInput, AcceptanceCriterionReplacement, AcceptedRiskInput, ArtifactInput,
     ArtifactRef, AuthorityReceipt, ChangeUnitEffectContract, CloseAssessmentInput,
-    CloseReadinessBlocker, ControlSurfaceSummary, CoverageSummary, CurrentCloseBasis,
+    CloseReadinessBlocker, ControlSurfaceSummary, CoverageSummary, CurrentCloseBasis, EventRef,
     EvidenceCoverageUpdate, EvidenceGateSummary, EvidenceObservation, EvidenceObservationInput,
     EvidenceSummary, EvidenceTarget, EvidenceUpdateProvenance, GuaranteeDisplay,
     GuardHealthSummary, JsonObject, JudgmentInboxItem, JudgmentRationale, NextActionSummary,
     ObservedChanges, ProjectContinuitySummary, RecordUserJudgmentPayload, RequiredNullable,
     RiskAcceptanceCoverage, RunSummary, SensitiveActionScope, SourceRef, StagedArtifactHandle,
-    StateRecordRef, StateSummary, SummaryCard, TaskFlowItem, TaskLineageInput, ToolEnvelope,
-    ToolResponse, ToolResultBase, UnrecordedChangeFinding, UnrecordedChangeResolutionSummary,
-    UserChannelAvailability, UserEvidenceObservation, UserJudgment, UserJudgmentCandidate,
-    UserJudgmentContext, UserJudgmentOptionInput, WriteDecisionReason, WriteTicket,
-    WriteTicketStateSummary,
+    StateRecordRef, StateSummary, SummaryCard, TaskFlowItem, TaskLineageInput, ToolDryRunResponse,
+    ToolEnvelope, ToolRejectedResponse, ToolResponse, ToolResultBase, UnrecordedChangeFinding,
+    UnrecordedChangeResolutionSummary, UserChannelAvailability, UserEvidenceObservation,
+    UserJudgment, UserJudgmentCandidate, UserJudgmentContext, UserJudgmentOptionInput,
+    WriteDecisionReason, WriteTicket, WriteTicketStateSummary,
 };
 use crate::values::{
     AcceptancePolicy, ActorSource, ChangeUnitOperation, CloseMutationIntent, CloseReason,
-    CloseState, ErrorCode, EvidenceAssuranceLevel, EvidenceCoverageUpdateState,
+    CloseState, EffectKind, ErrorCode, EvidenceAssuranceLevel, EvidenceCoverageUpdateState,
     EvidenceDisplayState, EvidenceRelevanceStatus, EvidenceSourceKind, JudgmentKind,
-    JudgmentPresentation, JudgmentRequiredFor, MethodName, MutationDetailLevel, OperationCategory,
-    PrepareWriteDecision, RedactionState, RequestedMode, ResumePolicy, RunKind, StatusCloseState,
-    StatusDetailLevel, UnrecordedChangeResolutionBasis, UtcTimestamp, WriteTicketEffect,
+    JudgmentPresentation, JudgmentRequiredFor, JudgmentResolutionOutcome, MethodName,
+    MutationDetailLevel, OperationCategory, PrepareWriteDecision, RedactionState, RequestedMode,
+    ResumePolicy, RunKind, StatusCloseState, StatusDetailLevel, UnrecordedChangeResolutionBasis,
+    UserJudgmentStatus, UtcTimestamp, WriteTicketEffect,
 };
 
 /// Shared typed mapping from a public request to its operation category.
@@ -160,22 +161,103 @@ pub enum McpToolStructuredContent<T> {
     AdapterError(McpToolErrorResponse),
 }
 
+/// Compact method-effect facts preserved beside a fresh authority receipt.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpMutationEffectSummary {
+    pub effect_kind: EffectKind,
+    pub state_version: Option<u64>,
+    pub events: Vec<EventRef>,
+}
+
+/// Compact `volicord.prepare_write` outcome needed by the next write step.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpPrepareWriteCompactResult {
+    pub effect: McpMutationEffectSummary,
+    pub decision: PrepareWriteDecision,
+    pub write_ticket_id: Option<WriteTicketId>,
+    pub write_ticket_ref: Option<StateRecordRef>,
+    pub write_ticket: Option<WriteTicket>,
+    pub write_ticket_effect: WriteTicketEffect,
+    pub allowed_path_patterns: Vec<String>,
+    pub denied_path_patterns: Vec<String>,
+    pub write_decision_reasons: Vec<WriteDecisionReason>,
+    pub user_judgment_candidate: Option<UserJudgmentCandidate>,
+}
+
+/// Compact `volicord.stage_artifact` outcome needed to consume the staged input.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpStageArtifactCompactResult {
+    pub effect: McpMutationEffectSummary,
+    pub evidence_state: EvidenceDisplayState,
+    pub staged_artifact_handle: StagedArtifactHandle,
+    pub expires_at: UtcTimestamp,
+}
+
+/// Compact host-native Judgment outcome safe for ordinary agent consumption.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpRequestUserJudgmentCompactResult {
+    pub effect: McpMutationEffectSummary,
+    pub judgment_ref: StateRecordRef,
+    pub status: UserJudgmentStatus,
+    pub selected_option_id: RequiredNullable<UserJudgmentOptionId>,
+    pub selected_option_label: RequiredNullable<String>,
+    pub resolution_outcome: RequiredNullable<JudgmentResolutionOutcome>,
+}
+
+/// Compact per-finding `volicord.reconcile_changes` outcome.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpReconcileChangesCompactResult {
+    pub effect: McpMutationEffectSummary,
+    pub unresolved_changes: Vec<UnrecordedChangeFinding>,
+    pub resolved_changes: Vec<UnrecordedChangeResolutionSummary>,
+    pub pending_user_judgment_refs: Vec<StateRecordRef>,
+    pub rejected_resolution_requests: Vec<UnrecordedChangeRejection>,
+}
+
+/// Summary-detail MCP mutation branch over one fresh authority receipt.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpMutationSummaryResponse<T> {
+    pub authority_receipt: AuthorityReceipt,
+    pub method_result: T,
+}
+
 /// Workflow-detail MCP mutation branch over one fresh authority receipt.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct McpMutationWorkflowResponse {
+pub struct McpMutationWorkflowResponse<T> {
     pub authority_receipt: AuthorityReceipt,
+    pub method_result: T,
     pub next_actions: Vec<NextActionSummary>,
 }
 
-/// Fail-closed MCP branch used when post-mutation authoritative refresh fails.
+/// Full-detail MCP mutation branch pairing fresh authority with the exact method result.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct McpAuthoritativeRefreshFailure {
+pub struct McpMutationFullResponse<T> {
+    pub authority_receipt: AuthorityReceipt,
+    pub method_result: T,
+}
+
+/// Bounded non-retryable MCP recovery branch used when authoritative refresh fails.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpAuthoritativeRefreshFailure<T> {
     pub code: ErrorCode,
     pub tool_name: MethodName,
+    pub retryable: bool,
     pub reached_core: bool,
     pub committed: bool,
+    pub effect_kind: RequiredNullable<EffectKind>,
+    pub effect_applied: bool,
+    pub operation_token: RequiredNullable<String>,
+    pub method_result: RequiredNullable<T>,
+    pub status_read_required: bool,
     pub completion_claim_withheld: bool,
 }
 
@@ -186,29 +268,68 @@ pub enum McpMutationProjectionErrorCode {
     McpResponseBudgetExceeded,
 }
 
-/// Bounded MCP branch used when a fresh mutation projection exceeds its budget.
+/// Stable MCP adapter code for a failure after a mutation effect was observed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum McpPostEffectFailureCode {
+    McpResponseProjectionFailed,
+    McpPostEffectAdapterFailed,
+}
+
+/// Bounded success-class recovery when post-effect adapter work cannot safely
+/// project a normal mutation response.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct McpMutationResponseBudgetExceeded {
+pub struct McpMutationPostEffectFailure {
+    pub code: McpPostEffectFailureCode,
+    pub tool_name: MethodName,
+    pub requested_detail: MutationDetailLevel,
+    pub retryable: bool,
+    pub reached_core: bool,
+    pub committed: bool,
+    pub effect_kind: RequiredNullable<EffectKind>,
+    pub effect_applied: bool,
+    pub operation_token: RequiredNullable<String>,
+    pub authority_receipt: RequiredNullable<AuthorityReceipt>,
+    pub method_result: RequiredNullable<JsonObject>,
+    pub authoritative_refresh_succeeded: bool,
+    pub response_projection_omitted: bool,
+    pub status_read_required: bool,
+    pub completion_claim_withheld: bool,
+}
+
+/// Bounded non-retryable MCP recovery branch used when a projection exceeds its budget.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpMutationResponseBudgetExceeded<T> {
     pub code: McpMutationProjectionErrorCode,
     pub tool_name: MethodName,
     pub requested_detail: MutationDetailLevel,
+    pub retryable: bool,
     pub reached_core: bool,
     pub committed: bool,
+    pub effect_kind: RequiredNullable<EffectKind>,
+    pub effect_applied: bool,
+    pub operation_token: RequiredNullable<String>,
+    pub method_result: RequiredNullable<T>,
     pub authoritative_refresh_succeeded: bool,
     pub response_projection_omitted: bool,
+    pub status_read_required: bool,
     pub completion_claim_withheld: bool,
 }
 
 /// Structured MCP output advertised by mutation tools.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
-pub enum McpMutationStructuredContent<T> {
-    Full(Box<T>),
-    Summary(AuthorityReceipt),
-    Workflow(McpMutationWorkflowResponse),
-    RefreshFailure(McpAuthoritativeRefreshFailure),
-    ResponseBudgetExceeded(McpMutationResponseBudgetExceeded),
+pub enum McpMutationStructuredContent<T, C> {
+    Rejected(ToolRejectedResponse),
+    DryRun(ToolDryRunResponse),
+    Full(McpMutationFullResponse<Box<T>>),
+    Summary(McpMutationSummaryResponse<C>),
+    Workflow(McpMutationWorkflowResponse<C>),
+    RefreshFailure(McpAuthoritativeRefreshFailure<C>),
+    ResponseBudgetExceeded(McpMutationResponseBudgetExceeded<C>),
+    PostEffectFailure(McpMutationPostEffectFailure),
     AdapterError(McpToolErrorResponse),
 }
 
@@ -1101,32 +1222,38 @@ pub fn mcp_request_schema(tool_name: &str) -> Option<Value> {
 pub fn mcp_response_schema(tool_name: &str) -> Option<Value> {
     match tool_name {
         "volicord.request_user_judgment" => Some(response_schema::<
-            McpMutationStructuredContent<McpRequestUserJudgmentResponse>,
+            McpMutationStructuredContent<
+                McpRequestUserJudgmentResponse,
+                McpRequestUserJudgmentCompactResult,
+            >,
         >()),
         "volicord.intake" => Some(response_schema::<
-            McpMutationStructuredContent<IntakeResponse>,
+            McpMutationStructuredContent<IntakeResponse, McpMutationEffectSummary>,
         >()),
         "volicord.update_scope" => Some(response_schema::<
-            McpMutationStructuredContent<UpdateScopeResponse>,
+            McpMutationStructuredContent<UpdateScopeResponse, McpMutationEffectSummary>,
         >()),
         "volicord.status" => Some(response_schema::<McpToolStructuredContent<StatusResponse>>()),
         "volicord.prepare_write" => Some(response_schema::<
-            McpMutationStructuredContent<PrepareWriteResponse>,
+            McpMutationStructuredContent<PrepareWriteResponse, McpPrepareWriteCompactResult>,
         >()),
         "volicord.stage_artifact" => Some(response_schema::<
-            McpMutationStructuredContent<StageArtifactResponse>,
+            McpMutationStructuredContent<StageArtifactResponse, McpStageArtifactCompactResult>,
         >()),
         "volicord.record_run" => Some(response_schema::<
-            McpMutationStructuredContent<RecordRunResponse>,
+            McpMutationStructuredContent<RecordRunResponse, McpMutationEffectSummary>,
         >()),
         "volicord.reconcile_changes" => Some(response_schema::<
-            McpMutationStructuredContent<ReconcileChangesResponse>,
+            McpMutationStructuredContent<
+                ReconcileChangesResponse,
+                McpReconcileChangesCompactResult,
+            >,
         >()),
         "volicord.check_close" => Some(response_schema::<
             McpToolStructuredContent<CheckCloseResponse>,
         >()),
         "volicord.close_task" => Some(response_schema::<
-            McpMutationStructuredContent<CloseTaskResponse>,
+            McpMutationStructuredContent<CloseTaskResponse, McpMutationEffectSummary>,
         >()),
         _ => None,
     }

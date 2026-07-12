@@ -121,10 +121,15 @@
           "HostKind",
           "IntakeResult",
           "IntegrationProfile",
-          "McpAuthoritativeRefreshFailure",
+          "McpAuthoritativeRefreshFailure_for_McpMutationEffectSummary",
+          "McpMutationEffectSummary",
+          "McpMutationFullResponse_for_ToolResponse_for_IntakeResult",
+          "McpMutationPostEffectFailure",
           "McpMutationProjectionErrorCode",
-          "McpMutationResponseBudgetExceeded",
-          "McpMutationWorkflowResponse",
+          "McpMutationResponseBudgetExceeded_for_McpMutationEffectSummary",
+          "McpMutationSummaryResponse_for_McpMutationEffectSummary",
+          "McpMutationWorkflowResponse_for_McpMutationEffectSummary",
+          "McpPostEffectFailureCode",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
@@ -171,7 +176,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:a781701a6dae26f2af1891968f120d38c95da0f99d5632cd18a07cafc003b4a6"
+        "sha256": "sha256:1091d6d5b3fcd43677c2e1479e604d90f291c17b1d9aefedbf7b002a9934a6fc"
       }
     },
     {
@@ -260,10 +265,15 @@
           "GuardObservationStatus",
           "HostKind",
           "IntegrationProfile",
-          "McpAuthoritativeRefreshFailure",
+          "McpAuthoritativeRefreshFailure_for_McpMutationEffectSummary",
+          "McpMutationEffectSummary",
+          "McpMutationFullResponse_for_ToolResponse_for_UpdateScopeResult",
+          "McpMutationPostEffectFailure",
           "McpMutationProjectionErrorCode",
-          "McpMutationResponseBudgetExceeded",
-          "McpMutationWorkflowResponse",
+          "McpMutationResponseBudgetExceeded_for_McpMutationEffectSummary",
+          "McpMutationSummaryResponse_for_McpMutationEffectSummary",
+          "McpMutationWorkflowResponse_for_McpMutationEffectSummary",
+          "McpPostEffectFailureCode",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
@@ -311,7 +321,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:4204dfda729617d9a94c16d8d798accb904f05618cbac517048bdf6b6e7a4ed2"
+        "sha256": "sha256:9533878aee9450ea251e6b45105a94e65f7619ca022788cac12b299b2ce461ce"
       }
     },
     {
@@ -455,7 +465,7 @@
         "openWorldHint": false,
         "readOnlyHint": false
       },
-      "description": "Check one proposed Product Repository write against current Core scope, authority, and freshness. Use detail=full when the write-ticket payload is needed.",
+      "description": "Check a proposed Product Repository write against current Core scope. The default result includes the decision and any issued write ticket.",
       "input_schema": {
         "definitions": [
           "MutationDetailLevel"
@@ -529,10 +539,16 @@
           "JudgmentPresentation",
           "JudgmentRequiredFor",
           "JudgmentResolutionOutcome",
-          "McpAuthoritativeRefreshFailure",
+          "McpAuthoritativeRefreshFailure_for_McpPrepareWriteCompactResult",
+          "McpMutationEffectSummary",
+          "McpMutationFullResponse_for_ToolResponse_for_PrepareWriteResult",
+          "McpMutationPostEffectFailure",
           "McpMutationProjectionErrorCode",
-          "McpMutationResponseBudgetExceeded",
-          "McpMutationWorkflowResponse",
+          "McpMutationResponseBudgetExceeded_for_McpPrepareWriteCompactResult",
+          "McpMutationSummaryResponse_for_McpPrepareWriteCompactResult",
+          "McpMutationWorkflowResponse_for_McpPrepareWriteCompactResult",
+          "McpPostEffectFailureCode",
+          "McpPrepareWriteCompactResult",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
@@ -592,7 +608,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:1179a1fd3194344989292877edf77b185c21d972fb7c658be3b2dc57eac42dc5"
+        "sha256": "sha256:4d555463bddd60e6a72de97ccf22d2184224e50f367db1d364f1b80bad2f2062"
       }
     },
     {
@@ -602,7 +618,7 @@
         "openWorldHint": false,
         "readOnlyHint": false
       },
-      "description": "Prepare an Evidence attachment input; staging alone is not recorded Evidence. Use detail=full to receive the staged handle.",
+      "description": "Prepare an Evidence attachment input; staging alone is not recorded Evidence. The default compact result includes the staged handle and expiry.",
       "input_schema": {
         "definitions": [
           "MutationDetailLevel",
@@ -648,10 +664,16 @@
           "GuaranteeClass",
           "GuaranteeDisclosure",
           "IntegrationProfile",
-          "McpAuthoritativeRefreshFailure",
+          "McpAuthoritativeRefreshFailure_for_McpStageArtifactCompactResult",
+          "McpMutationEffectSummary",
+          "McpMutationFullResponse_for_ToolResponse_for_StageArtifactResult",
+          "McpMutationPostEffectFailure",
           "McpMutationProjectionErrorCode",
-          "McpMutationResponseBudgetExceeded",
-          "McpMutationWorkflowResponse",
+          "McpMutationResponseBudgetExceeded_for_McpStageArtifactCompactResult",
+          "McpMutationSummaryResponse_for_McpStageArtifactCompactResult",
+          "McpMutationWorkflowResponse_for_McpStageArtifactCompactResult",
+          "McpPostEffectFailureCode",
+          "McpStageArtifactCompactResult",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
@@ -682,7 +704,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:0f3cbb868f11edafc366720fe268302646fed63413664c37b89219aa796e1d88"
+        "sha256": "sha256:e17603df944886291a9c6f33410edec92d5bfde3bd23af6eb13410824a198866"
       }
     },
     {
@@ -810,10 +832,15 @@
           "GuardObservationStatus",
           "HostKind",
           "IntegrationProfile",
-          "McpAuthoritativeRefreshFailure",
+          "McpAuthoritativeRefreshFailure_for_McpMutationEffectSummary",
+          "McpMutationEffectSummary",
+          "McpMutationFullResponse_for_ToolResponse_for_RecordRunResult",
+          "McpMutationPostEffectFailure",
           "McpMutationProjectionErrorCode",
-          "McpMutationResponseBudgetExceeded",
-          "McpMutationWorkflowResponse",
+          "McpMutationResponseBudgetExceeded_for_McpMutationEffectSummary",
+          "McpMutationSummaryResponse_for_McpMutationEffectSummary",
+          "McpMutationWorkflowResponse_for_McpMutationEffectSummary",
+          "McpPostEffectFailureCode",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
@@ -870,7 +897,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:e5581775d81e288bc73faddb71572de41252763cb44754da9c765b73d8f30031"
+        "sha256": "sha256:0e220778a2ab04a2128f48f81bbc2c4a8f5efa0fe6f5396bcf57b611b004a465"
       }
     },
     {
@@ -880,7 +907,7 @@
         "openWorldHint": false,
         "readOnlyHint": false
       },
-      "description": "Create one focused user-owned judgment; authority-bearing choices remain Core-owned.",
+      "description": "Create one focused user-owned judgment. The default result reports the pending or selected outcome without the user's free-form note.",
       "input_schema": {
         "definitions": [
           "AcceptedRiskInput",
@@ -982,10 +1009,16 @@
           "JudgmentRationale",
           "JudgmentRequiredFor",
           "JudgmentResolutionOutcome",
-          "McpAuthoritativeRefreshFailure",
+          "McpAuthoritativeRefreshFailure_for_McpRequestUserJudgmentCompactResult",
+          "McpMutationEffectSummary",
+          "McpMutationFullResponse_for_McpRequestUserJudgmentResponse",
+          "McpMutationPostEffectFailure",
           "McpMutationProjectionErrorCode",
-          "McpMutationResponseBudgetExceeded",
-          "McpMutationWorkflowResponse",
+          "McpMutationResponseBudgetExceeded_for_McpRequestUserJudgmentCompactResult",
+          "McpMutationSummaryResponse_for_McpRequestUserJudgmentCompactResult",
+          "McpMutationWorkflowResponse_for_McpRequestUserJudgmentCompactResult",
+          "McpPostEffectFailureCode",
+          "McpRequestUserJudgmentCompactResult",
           "McpRequestUserJudgmentResponse",
           "McpToolErrorCode",
           "McpToolErrorIssue",
@@ -1046,7 +1079,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:a8078bb9df72c1a2d91478614a8473ad4416e85181ad0d93e5580c656e037ac9"
+        "sha256": "sha256:6ea8ffbd9b14f304ebc3eee0a4bc5dd6b68e5a2369d8c2420b309cfd0ade015b"
       }
     },
     {
@@ -1056,7 +1089,7 @@
         "openWorldHint": false,
         "readOnlyHint": false
       },
-      "description": "Reconcile unresolved Product Repository changes without agent-only dismissal. Use detail=full when per-finding results are needed.",
+      "description": "Reconcile unresolved Product Repository changes without agent-only dismissal. The default result includes per-finding outcomes.",
       "input_schema": {
         "definitions": [
           "MutationDetailLevel",
@@ -1119,10 +1152,16 @@
           "GuardObservationStatus",
           "HostKind",
           "IntegrationProfile",
-          "McpAuthoritativeRefreshFailure",
+          "McpAuthoritativeRefreshFailure_for_McpReconcileChangesCompactResult",
+          "McpMutationEffectSummary",
+          "McpMutationFullResponse_for_ToolResponse_for_ReconcileChangesResult",
+          "McpMutationPostEffectFailure",
           "McpMutationProjectionErrorCode",
-          "McpMutationResponseBudgetExceeded",
-          "McpMutationWorkflowResponse",
+          "McpMutationResponseBudgetExceeded_for_McpReconcileChangesCompactResult",
+          "McpMutationSummaryResponse_for_McpReconcileChangesCompactResult",
+          "McpMutationWorkflowResponse_for_McpReconcileChangesCompactResult",
+          "McpPostEffectFailureCode",
+          "McpReconcileChangesCompactResult",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
@@ -1176,7 +1215,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:bd575691e6f07f7f99fd7cf4680d0523074e9686c9b8ca4d7c2c855adb9c7ed3"
+        "sha256": "sha256:e7849e5c12cf7cf47dd07528831eaae01c65fff3745b345e8881b54ee712e1c4"
       }
     },
     {
@@ -1392,10 +1431,15 @@
           "JudgmentInboxChoice",
           "JudgmentInboxItem",
           "JudgmentRequiredFor",
-          "McpAuthoritativeRefreshFailure",
+          "McpAuthoritativeRefreshFailure_for_McpMutationEffectSummary",
+          "McpMutationEffectSummary",
+          "McpMutationFullResponse_for_ToolResponse_for_CloseTaskResult",
+          "McpMutationPostEffectFailure",
           "McpMutationProjectionErrorCode",
-          "McpMutationResponseBudgetExceeded",
-          "McpMutationWorkflowResponse",
+          "McpMutationResponseBudgetExceeded_for_McpMutationEffectSummary",
+          "McpMutationSummaryResponse_for_McpMutationEffectSummary",
+          "McpMutationWorkflowResponse_for_McpMutationEffectSummary",
+          "McpPostEffectFailureCode",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
@@ -1452,7 +1496,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:1768165f5fbbdfdc87ca80db47f3588539d84d8f3aba4952eebf8be30a549f0f"
+        "sha256": "sha256:ad681524366efeaec8ca98b06fa7fd0e31176a83bdb0496ef5c6436b36754cdf"
       }
     },
     {

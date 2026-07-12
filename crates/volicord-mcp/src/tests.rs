@@ -3,7 +3,7 @@ use std::{
     error::Error,
     ffi::OsString,
     fs,
-    io::{BufReader, Cursor},
+    io::{self, BufReader, Cursor, Write},
 };
 
 #[cfg(unix)]
@@ -19,7 +19,8 @@ use crate::prelude::*;
 use crate::stdio::{
     classify_launch_origin, pending_judgment_from_response, percent_encode_query,
     run_stdio_with_env_marker, tool_execution_error_result, McpLaunchOrigin,
-    MAX_MCP_COMPACT_MUTATION_RESULT_BYTES, MAX_MCP_MUTATION_COMPATIBILITY_TEXT_BYTES,
+    MAX_MCP_COMPACT_MUTATION_RESULT_BYTES, MAX_MCP_FULL_MUTATION_RESULT_BYTES,
+    MAX_MCP_MUTATION_COMPATIBILITY_TEXT_BYTES,
 };
 use crate::{
     routing::McpStorageCapability,
@@ -214,6 +215,11 @@ fn mcp_tools_publish_root_output_schemas_and_effect_specific_annotations() {
                 "{} output schema should cover compact response-budget failures",
                 tool.name
             );
+            assert!(
+                schema_has_definition(&tool.output_schema, "McpMutationPostEffectFailure"),
+                "{} output schema should cover post-effect adapter failures",
+                tool.name
+            );
         }
 
         let expected_annotations = match tool.name {
@@ -259,6 +265,12 @@ fn request_user_judgment_output_schema_covers_elicited_recording_response() {
     assert!(schema_has_definition(&schema, "RequestUserJudgmentResult"));
     assert!(schema_has_definition(&schema, "RecordUserJudgmentResult"));
     assert!(schema_has_definition(&schema, "AuthorityReceipt"));
+    assert!(schema_has_definition(
+        &schema,
+        "McpRequestUserJudgmentCompactResult"
+    ));
+    assert!(schema_has_definition(&schema, "McpMutationFullResponse"));
+    assert!(schema_has_definition(&schema, "McpMutationSummaryResponse"));
     assert!(schema_has_definition(
         &schema,
         "McpMutationWorkflowResponse"
@@ -2124,21 +2136,13 @@ fn mutation_detail_shapes_compact_receipt_workflow_and_full_without_json_text_du
         .collect::<BTreeSet<_>>();
     assert_eq!(
         summary_keys,
-        BTreeSet::from([
-            "change_unit_ref",
-            "close_blockers",
-            "close_state",
-            "evidence_gate",
-            "latest_run_ref",
-            "next_action",
-            "next_actor",
-            "product_file_write_observed",
-            "project_id",
-            "scope_revision",
-            "state_version",
-            "task_ref",
-        ])
+        BTreeSet::from(["authority_receipt", "method_result"])
     );
+    assert_eq!(
+        summary["structuredContent"]["method_result"]["effect_kind"],
+        "core_committed"
+    );
+    assert!(summary["structuredContent"]["authority_receipt"]["state_version"].is_u64());
     let summary_text = summary["content"][0]["text"]
         .as_str()
         .expect("summary compatibility text");
@@ -2156,19 +2160,125 @@ fn mutation_detail_shapes_compact_receipt_workflow_and_full_without_json_text_du
         .collect::<BTreeSet<_>>();
     assert_eq!(
         workflow_keys,
-        BTreeSet::from(["authority_receipt", "next_actions"])
+        BTreeSet::from(["authority_receipt", "method_result", "next_actions"])
     );
     assert!(workflow["structuredContent"]["next_actions"].is_array());
     assert!(serde_json::to_vec(&workflow)?.len() <= MAX_MCP_COMPACT_MUTATION_RESULT_BYTES);
 
     let full = intake_result("mcp-mutation-full", Some("full"))?;
-    assert_eq!(full["structuredContent"]["base"]["response_kind"], "result");
-    assert!(full["structuredContent"]["state"].is_object());
+    assert_eq!(
+        full["structuredContent"]["method_result"]["base"]["response_kind"],
+        "result"
+    );
+    assert!(full["structuredContent"]["method_result"]["state"].is_object());
+    assert!(full["structuredContent"]["authority_receipt"]["state_version"].is_u64());
     let full_text = full["content"][0]["text"]
         .as_str()
         .expect("full compatibility text");
     assert!(full_text.len() <= MAX_MCP_MUTATION_COMPATIBILITY_TEXT_BYTES);
     assert!(serde_json::from_str::<Value>(full_text).is_err());
+    assert!(serde_json::to_vec(&full)?.len() <= MAX_MCP_FULL_MUTATION_RESULT_BYTES);
+    Ok(())
+}
+
+#[test]
+fn default_compact_mutations_preserve_tool_essential_method_results() -> Result<(), Box<dyn Error>>
+{
+    fn call_default(
+        fixture: &CoreFixture,
+        tool_name: &str,
+        arguments: Value,
+    ) -> Result<Value, Box<dyn Error>> {
+        let input = Cursor::new(json_lines(&[
+            initialize_request(1, json!({})),
+            initialized_notification(),
+            tools_call(2, tool_name, arguments),
+        ])?);
+        let mut output = Vec::new();
+        run_stdio(adapter(fixture)?, BufReader::new(input), &mut output)?;
+        let responses = stdio_responses(&output)?;
+        assert_eq!(responses.len(), 2);
+        assert_eq!(responses[1]["result"]["isError"], false);
+        Ok(responses[1]["result"]["structuredContent"].clone())
+    }
+
+    let stage_fixture = CoreFixture::new("mcp-default-compact-stage")?;
+    let (stage_task_id, _) = create_task(&adapter(&stage_fixture)?)?;
+    let staged = call_default(
+        &stage_fixture,
+        STAGE_ARTIFACT_TOOL_NAME,
+        json!({
+            "task_id": stage_task_id,
+            "display_name": "default-stage.log",
+            "content_type": "text/plain",
+            "redaction_state": "none",
+            "safe_bytes_or_notice": "Default compact staging result."
+        }),
+    )?;
+    assert_eq!(
+        staged["method_result"]["effect"]["effect_kind"],
+        "staging_created"
+    );
+    assert!(staged["method_result"]["staged_artifact_handle"]["handle_id"].is_string());
+    assert!(staged["method_result"]["expires_at"].is_string());
+
+    let prepare_fixture = CoreFixture::new("mcp-default-compact-prepare")?;
+    let prepare_adapter = adapter(&prepare_fixture)?;
+    let (prepare_task_id, _) = create_task(&prepare_adapter)?;
+    let scope = prepare_adapter.call_tool(
+        UPDATE_SCOPE_TOOL_NAME,
+        json!({
+            "task_id": prepare_task_id,
+            "goal_summary": null,
+            "scope_update": null,
+            "scope_boundary": null,
+            "non_goals": null,
+            "acceptance_criteria": null,
+            "autonomy_boundary": null,
+            "baseline_ref": "baseline_fixture",
+            "change_unit": {
+                "operation": "create_current",
+                "scope_summary": "Default compact write ticket.",
+                "affected_paths": ["src/export.rs"]
+            },
+            "related_scope_decision_refs": []
+        }),
+    )?;
+    assert_eq!(scope.response_value["base"]["response_kind"], "result");
+    let prepared = call_default(
+        &prepare_fixture,
+        PREPARE_WRITE_TOOL_NAME,
+        json!({
+            "task_id": prepare_task_id,
+            "change_unit_id": null,
+            "intended_operation": "Update the export flow.",
+            "intended_paths": ["src/export.rs"],
+            "product_file_write_intended": true,
+            "sensitive_categories": [],
+            "baseline_ref": "baseline_fixture"
+        }),
+    )?;
+    assert_eq!(
+        prepared["method_result"]["decision"], "allowed",
+        "unexpected prepare-write result: {prepared:#}"
+    );
+    assert_eq!(prepared["method_result"]["write_ticket_effect"], "issued");
+    assert!(prepared["method_result"]["write_ticket_id"].is_string());
+    assert_eq!(
+        prepared["method_result"]["write_ticket"]["path_patterns"]["allowed"],
+        json!(["src/export.rs"])
+    );
+
+    let reconcile_fixture = CoreFixture::new("mcp-default-compact-reconcile")?;
+    let (reconcile_task_id, _) = create_task(&adapter(&reconcile_fixture)?)?;
+    let reconciled = call_default(
+        &reconcile_fixture,
+        RECONCILE_CHANGES_TOOL_NAME,
+        json!({"task_id": reconcile_task_id}),
+    )?;
+    assert!(reconciled["method_result"]["unresolved_changes"].is_array());
+    assert!(reconciled["method_result"]["resolved_changes"].is_array());
+    assert!(reconciled["method_result"]["rejected_resolution_requests"].is_array());
     Ok(())
 }
 
@@ -2201,14 +2311,19 @@ fn compact_close_mutation_receipt_refreshes_the_current_blocked_state() -> Resul
     let responses = stdio_responses(&output)?;
     let result = &responses[1]["result"];
     assert_eq!(result["isError"], false);
-    assert_eq!(result["structuredContent"]["close_state"], "blocked");
     assert_eq!(
-        result["structuredContent"]["task_ref"]["record_id"],
+        result["structuredContent"]["authority_receipt"]["close_state"],
+        "blocked"
+    );
+    assert_eq!(
+        result["structuredContent"]["authority_receipt"]["task_ref"]["record_id"],
         task_id
     );
-    assert!(result["structuredContent"]["state_version"]
-        .as_u64()
-        .is_some_and(|version| version >= 1));
+    assert!(
+        result["structuredContent"]["authority_receipt"]["state_version"]
+            .as_u64()
+            .is_some_and(|version| version >= 1)
+    );
     assert!(serde_json::from_str::<Value>(
         result["content"][0]["text"]
             .as_str()
@@ -2230,7 +2345,7 @@ fn stdio_elicitation_accept_records_user_judgment() -> Result<(), Box<dyn Error>
         tools_call(
             2,
             "volicord.request_user_judgment",
-            product_judgment_args(&fixture, &task_id, state_version),
+            default_product_judgment_args(&fixture, &task_id, state_version),
         ),
         elicitation_accept("keep", Some("diagnostic-private-note-must-not-be-stored")),
     ])?);
@@ -2247,15 +2362,14 @@ fn stdio_elicitation_accept_records_user_judgment() -> Result<(), Box<dyn Error>
         "keep"
     );
     let response = volicord_response_from_tool(&values[2])?;
-    assert_eq!(response["base"]["response_kind"], "result");
-    assert_eq!(response["user_judgment"]["status"], "resolved");
-    assert_eq!(
-        response["user_judgment"]["resolution"]["resolved_by_actor_source"],
-        "local_user"
-    );
-    assert_eq!(
-        response["user_judgment"]["resolution"]["selected_option_id"],
-        "keep"
+    assert_eq!(response["effect"]["effect_kind"], "core_committed");
+    assert_eq!(response["status"], "resolved");
+    assert_eq!(response["selected_option_id"], "keep");
+    assert_eq!(response["selected_option_label"], "Keep focused behavior");
+    assert_eq!(response["resolution_outcome"], "accepted");
+    assert!(response.get("note").is_none());
+    assert!(
+        !serde_json::to_string(&response)?.contains("diagnostic-private-note-must-not-be-stored")
     );
     assert_eq!(
         stored_resolution_basis(&fixture, &task_id, &response)?,
@@ -2271,6 +2385,52 @@ fn stdio_elicitation_accept_records_user_judgment() -> Result<(), Box<dyn Error>
     let diagnostics_bytes = fs::read(diagnostics_db_path(fixture.runtime_home_path()))?;
     assert!(!String::from_utf8_lossy(&diagnostics_bytes)
         .contains("diagnostic-private-note-must-not-be-stored"));
+    Ok(())
+}
+
+#[test]
+fn elicitation_write_failure_returns_nonretryable_post_effect_result() -> Result<(), Box<dyn Error>>
+{
+    let fixture = CoreFixture::new("mcp-elicitation-write-post-effect")?;
+    let setup_adapter = adapter(&fixture)?;
+    let (task_id, state_version) = create_task(&setup_adapter)?;
+    let input = Cursor::new(json_lines(&[
+        initialize_request(1, json!({ "elicitation": {} })),
+        initialized_notification(),
+        tools_call(
+            2,
+            REQUEST_USER_JUDGMENT_TOOL_NAME,
+            default_product_judgment_args(&fixture, &task_id, state_version),
+        ),
+        elicitation_accept("keep", None),
+    ])?);
+    let mut writer = FailElicitationRequestWriter::default();
+
+    run_stdio(adapter(&fixture)?, BufReader::new(input), &mut writer)?;
+
+    assert!(writer.failed_elicitation);
+    let values = stdio_responses(&writer.output)?;
+    let response = values
+        .iter()
+        .find(|value| value["id"] == 2)
+        .ok_or("tools/call response should remain available after elicitation write failure")?;
+    let structured = &response["result"]["structuredContent"];
+    assert_eq!(response["result"]["isError"], false);
+    assert_eq!(structured["code"], "MCP_POST_EFFECT_ADAPTER_FAILED");
+    assert_eq!(structured["retryable"], false);
+    assert_eq!(structured["reached_core"], true);
+    assert_eq!(structured["committed"], true);
+    assert_eq!(structured["effect_kind"], "core_committed");
+    assert_eq!(structured["effect_applied"], true);
+    assert_eq!(structured["method_result"], Value::Null);
+    assert_eq!(
+        structured["authority_receipt"]["task_ref"]["record_id"],
+        task_id
+    );
+    assert_eq!(structured["authoritative_refresh_succeeded"], true);
+    assert_eq!(structured["response_projection_omitted"], false);
+    assert_eq!(structured["status_read_required"], true);
+    assert_eq!(structured["completion_claim_withheld"], true);
     Ok(())
 }
 
@@ -3812,6 +3972,56 @@ fn product_judgment_args(fixture: &CoreFixture, task_id: &str, state_version: u6
     )
 }
 
+fn default_product_judgment_args(
+    fixture: &CoreFixture,
+    task_id: &str,
+    state_version: u64,
+) -> Value {
+    let mut arguments = product_judgment_args(fixture, task_id, state_version);
+    arguments
+        .as_object_mut()
+        .expect("judgment arguments should be an object")
+        .remove("detail");
+    arguments
+}
+
+#[derive(Default)]
+struct FailElicitationRequestWriter {
+    output: Vec<u8>,
+    pending_line: Vec<u8>,
+    failed_elicitation: bool,
+}
+
+impl Write for FailElicitationRequestWriter {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        if bytes == b"\n" {
+            let is_elicitation = self
+                .pending_line
+                .windows(b"elicitation/create".len())
+                .any(|window| window == b"elicitation/create");
+            if is_elicitation && !self.failed_elicitation {
+                self.failed_elicitation = true;
+                self.pending_line.clear();
+                return Err(io::Error::other(
+                    "fixture rejected the elicitation server request",
+                ));
+            }
+            self.output.append(&mut self.pending_line);
+            self.output.push(b'\n');
+            return Ok(1);
+        }
+        self.pending_line.extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        if !self.pending_line.is_empty() {
+            self.output.append(&mut self.pending_line);
+        }
+        Ok(())
+    }
+}
+
 fn authority_judgment_args(fixture: &CoreFixture, task_id: &str, state_version: u64) -> Value {
     judgment_args(
         fixture,
@@ -3898,11 +4108,16 @@ fn json_lines(messages: &[Value]) -> Result<Vec<u8>, serde_json::Error> {
 
 fn volicord_response_from_tool(response: &Value) -> Result<Value, Box<dyn Error>> {
     assert_eq!(response["result"]["isError"], json!(false));
-    response["result"]
+    let structured = response["result"]
         .get("structuredContent")
         .filter(|value| value.is_object())
         .cloned()
-        .ok_or_else(|| "tools/call response should include structured content".into())
+        .ok_or("tools/call response should include structured content")?;
+    Ok(structured
+        .get("method_result")
+        .filter(|value| value.is_object())
+        .cloned()
+        .unwrap_or(structured))
 }
 
 fn channel_path<'a>(availability: &'a Value, kind: &str) -> &'a Value {
@@ -3931,8 +4146,10 @@ fn stored_judgment_record(
     task_id: &str,
     response: &Value,
 ) -> Result<volicord_store::core_pipeline::UserJudgmentRecord, Box<dyn Error>> {
-    let judgment_id = response["user_judgment_ref"]["record_id"]
-        .as_str()
+    let judgment_id = response
+        .pointer("/user_judgment_ref/record_id")
+        .or_else(|| response.pointer("/judgment_ref/record_id"))
+        .and_then(Value::as_str)
         .ok_or("response should include user_judgment_ref.record_id")?;
     let store = CoreProjectStore::open(
         fixture.runtime_home_path(),
@@ -4195,7 +4412,11 @@ fn schema_has_definition(schema: &Value, name: &str) -> bool {
     schema
         .get("definitions")
         .and_then(Value::as_object)
-        .is_some_and(|definitions| definitions.contains_key(name))
+        .is_some_and(|definitions| {
+            definitions.keys().any(|definition| {
+                definition == name || definition.starts_with(&format!("{name}_for_"))
+            })
+        })
 }
 
 fn stdio_responses(output: &[u8]) -> Result<Vec<Value>, Box<dyn Error>> {

@@ -392,7 +392,7 @@ fn volicord_mcp_subcommand_stdio_records_judgment_with_elicitation() -> Result<(
         tools_call(
             2,
             "volicord.request_user_judgment",
-            request_user_judgment_arguments(&fixture, &task_id, state_version),
+            default_request_user_judgment_arguments(&fixture, &task_id, state_version),
         ),
         json!({
             "jsonrpc": "2.0",
@@ -417,17 +417,18 @@ fn volicord_mcp_subcommand_stdio_records_judgment_with_elicitation() -> Result<(
     assert_eq!(values.len(), 3);
     assert_eq!(values[1]["method"], "elicitation/create");
     assert_eq!(values[1]["id"], "elicit_user_judgment_1");
-    let response = volicord_response(&values[2])?;
-    assert_eq!(response["user_judgment"]["status"], "resolved");
+    let projection = volicord_response(&values[2])?;
+    let response = &projection["method_result"];
+    assert_eq!(response["status"], "resolved");
+    assert_eq!(response["selected_option_id"], "keep");
+    assert_eq!(response["selected_option_label"], "Keep focused behavior");
+    assert_eq!(response["resolution_outcome"], "accepted");
+    assert!(response.get("note").is_none());
+    let record = fixture.stored_judgment(&task_id, response)?;
     assert_eq!(
-        response["user_judgment"]["resolution"]["resolved_by_actor_source"],
-        "local_user"
+        record.resolved_by_actor_source.as_deref(),
+        Some("local_user")
     );
-    assert_eq!(
-        response["user_judgment"]["resolution"]["selected_option_id"],
-        "keep"
-    );
-    let record = fixture.stored_judgment(&task_id, &response)?;
     assert_eq!(
         record.resolved_verification_basis.as_deref(),
         Some(VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL)
@@ -672,8 +673,10 @@ impl McpFixture {
         task_id: &str,
         response: &Value,
     ) -> Result<volicord_store::core_pipeline::UserJudgmentRecord, Box<dyn Error>> {
-        let judgment_id = response["user_judgment_ref"]["record_id"]
-            .as_str()
+        let judgment_id = response
+            .pointer("/user_judgment_ref/record_id")
+            .or_else(|| response.pointer("/judgment_ref/record_id"))
+            .and_then(Value::as_str)
             .ok_or("response should include user_judgment_ref.record_id")?;
         let store = volicord_store::core_pipeline::CoreProjectStore::open(
             self.runtime_home_path(),
@@ -778,6 +781,19 @@ fn request_user_judgment_arguments(
         "required_for": ["close_complete"],
         "expires_at": null
     })
+}
+
+fn default_request_user_judgment_arguments(
+    fixture: &McpFixture,
+    task_id: &str,
+    state_version: u64,
+) -> Value {
+    let mut arguments = request_user_judgment_arguments(fixture, task_id, state_version);
+    arguments
+        .as_object_mut()
+        .expect("judgment arguments should be an object")
+        .remove("detail");
+    arguments
 }
 
 fn tools_from_response(response: &Value) -> &[Value] {

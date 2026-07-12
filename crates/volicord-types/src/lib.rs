@@ -1193,6 +1193,170 @@ mod tests {
     }
 
     #[test]
+    fn generated_mutation_response_schemas_cover_fresh_wrappers_and_recovery_facts() {
+        let judgment = mcp_response_schema("volicord.request_user_judgment")
+            .expect("judgment MCP response schema");
+        assert_required(
+            definition(&judgment, "McpMutationFullResponse"),
+            &["authority_receipt", "method_result"],
+            "McpMutationFullResponse",
+        );
+        assert_required(
+            definition(&judgment, "McpMutationSummaryResponse"),
+            &["authority_receipt", "method_result"],
+            "McpMutationSummaryResponse",
+        );
+        assert_required(
+            definition(&judgment, "McpMutationWorkflowResponse"),
+            &["authority_receipt", "method_result", "next_actions"],
+            "McpMutationWorkflowResponse",
+        );
+        assert_required(
+            definition(&judgment, "McpRequestUserJudgmentCompactResult"),
+            &[
+                "effect",
+                "judgment_ref",
+                "status",
+                "selected_option_id",
+                "selected_option_label",
+                "resolution_outcome",
+            ],
+            "McpRequestUserJudgmentCompactResult",
+        );
+
+        let refresh = definition(&judgment, "McpAuthoritativeRefreshFailure");
+        assert_required(
+            refresh,
+            &[
+                "code",
+                "tool_name",
+                "retryable",
+                "reached_core",
+                "committed",
+                "effect_kind",
+                "effect_applied",
+                "operation_token",
+                "method_result",
+                "status_read_required",
+                "completion_claim_withheld",
+            ],
+            "McpAuthoritativeRefreshFailure",
+        );
+        let budget = definition(&judgment, "McpMutationResponseBudgetExceeded");
+        assert_required(
+            budget,
+            &[
+                "code",
+                "tool_name",
+                "requested_detail",
+                "retryable",
+                "reached_core",
+                "committed",
+                "effect_kind",
+                "effect_applied",
+                "operation_token",
+                "method_result",
+                "authoritative_refresh_succeeded",
+                "response_projection_omitted",
+                "status_read_required",
+                "completion_claim_withheld",
+            ],
+            "McpMutationResponseBudgetExceeded",
+        );
+        assert_required(
+            definition(&judgment, "McpMutationPostEffectFailure"),
+            &[
+                "code",
+                "tool_name",
+                "requested_detail",
+                "retryable",
+                "reached_core",
+                "committed",
+                "effect_kind",
+                "effect_applied",
+                "operation_token",
+                "authority_receipt",
+                "method_result",
+                "authoritative_refresh_succeeded",
+                "response_projection_omitted",
+                "status_read_required",
+                "completion_claim_withheld",
+            ],
+            "McpMutationPostEffectFailure",
+        );
+
+        for (tool_name, compact_name) in [
+            ("volicord.prepare_write", "McpPrepareWriteCompactResult"),
+            ("volicord.stage_artifact", "McpStageArtifactCompactResult"),
+            (
+                "volicord.reconcile_changes",
+                "McpReconcileChangesCompactResult",
+            ),
+        ] {
+            let schema = mcp_response_schema(tool_name).expect("mutation MCP response schema");
+            assert!(
+                definition(&schema, compact_name)["properties"].is_object(),
+                "{tool_name} should advertise {compact_name}"
+            );
+        }
+    }
+
+    #[test]
+    fn generated_mutation_response_schemas_accept_bare_non_result_branches() {
+        let rejected = serde_json::to_value(ToolRejectedResponse {
+            base: ToolResultBase {
+                response_kind: ResponseKind::Rejected,
+                effect_kind: EffectKind::NoEffect,
+                dry_run: false,
+                state_version: Some(3),
+                disclosure: GuaranteeDisclosure::authority_record(),
+                events: Vec::new(),
+            },
+            errors: Vec::new(),
+        })
+        .expect("rejected response should serialize");
+        let dry_run = serde_json::to_value(ToolDryRunResponse {
+            base: ToolResultBase {
+                response_kind: ResponseKind::DryRun,
+                effect_kind: EffectKind::NoEffect,
+                dry_run: true,
+                state_version: Some(3),
+                disclosure: GuaranteeDisclosure::authority_record(),
+                events: Vec::new(),
+            },
+            dry_run_summary: DryRunSummary {
+                planned_effects: Vec::new(),
+                would_blockers: Vec::new(),
+                would_errors: Vec::new(),
+                next_actions: Vec::new(),
+                diagnostics: Vec::new(),
+            },
+        })
+        .expect("dry-run response should serialize");
+
+        for tool_name in [
+            "volicord.intake",
+            "volicord.update_scope",
+            "volicord.prepare_write",
+            "volicord.stage_artifact",
+            "volicord.record_run",
+            "volicord.request_user_judgment",
+            "volicord.reconcile_changes",
+            "volicord.close_task",
+        ] {
+            let schema = mcp_response_schema(tool_name).expect("mutation MCP response schema");
+            assert!(
+                validate_json_schema(&schema, &rejected).is_ok(),
+                "{tool_name} output schema should accept the runtime rejected branch"
+            );
+            assert!(
+                validate_json_schema(&schema, &dry_run).is_ok(),
+                "{tool_name} output schema should accept the runtime dry-run branch"
+            );
+        }
+    }
+
+    #[test]
     fn close_method_family_schema_separates_read_check_from_mutation_request() {
         let check = public_request_schema("volicord.check_close").expect("check_close schema");
         assert_required(&check, &["envelope", "task_id"], "CheckCloseRequest");
@@ -2022,7 +2186,20 @@ mod tests {
     fn definition<'a>(schema: &'a Value, name: &str) -> &'a Value {
         schema
             .pointer(&format!("/definitions/{name}"))
-            .unwrap_or_else(|| panic!("missing schema definition {name}"))
+            .unwrap_or_else(|| {
+                schema["definitions"]
+                    .as_object()
+                    .and_then(|definitions| {
+                        definitions
+                            .iter()
+                            .find_map(|(definition_name, definition)| {
+                                definition_name
+                                    .starts_with(&format!("{name}_for_"))
+                                    .then_some(definition)
+                            })
+                    })
+                    .unwrap_or_else(|| panic!("missing schema definition {name}"))
+            })
     }
 
     fn assert_required(schema: &Value, expected: &[&str], label: &str) {
