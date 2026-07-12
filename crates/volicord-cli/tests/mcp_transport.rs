@@ -20,8 +20,8 @@ use volicord_test_support::core_fixtures::CoreFixture;
 use volicord_types::{
     ActorSource, OperationCategory, ProjectId, CLOSE_TASK_TOOL_NAME, INTAKE_TOOL_NAME,
     PREPARE_WRITE_TOOL_NAME, RECONCILE_CHANGES_TOOL_NAME, RECORD_USER_JUDGMENT_TOOL_NAME,
-    REQUEST_USER_JUDGMENT_TOOL_NAME, VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
-    VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+    REQUEST_USER_JUDGMENT_TOOL_NAME, UPDATE_SCOPE_TOOL_NAME,
+    VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
 
 use support::{
@@ -789,8 +789,15 @@ fn assert_public_tool_schemas_hide_internal_fields(tools: &[Value]) {
         );
         let read_only = READ_ONLY_METHOD_TOOL_NAMES.contains(&name)
             || ADAPTER_UTILITY_TOOL_NAMES.contains(&name);
+        let destructive = matches!(
+            name,
+            INTAKE_TOOL_NAME
+                | UPDATE_SCOPE_TOOL_NAME
+                | RECONCILE_CHANGES_TOOL_NAME
+                | CLOSE_TASK_TOOL_NAME
+        );
         assert_eq!(tool["annotations"]["readOnlyHint"], read_only);
-        assert_eq!(tool["annotations"]["destructiveHint"], !read_only);
+        assert_eq!(tool["annotations"]["destructiveHint"], destructive);
         assert_eq!(tool["annotations"]["idempotentHint"], read_only);
         assert_eq!(tool["annotations"]["openWorldHint"], false);
 
