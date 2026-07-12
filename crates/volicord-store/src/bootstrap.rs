@@ -619,8 +619,30 @@ pub fn project_record_by_repo_root(
     if !registry_path.exists() {
         return Ok(None);
     }
-    let repo_root_text = path_to_text("repo_root", &path_validation.repo_root)?;
     let conn = open_registry_database(registry_path)?;
+    project_record_by_repo_root_from_conn(&conn, path_validation)
+}
+
+/// Reads a registered project by canonical repository root without writing registry state.
+pub fn project_record_by_repo_root_read_only(
+    runtime_home: impl AsRef<Path>,
+    repo_root: impl AsRef<Path>,
+) -> StoreResult<Option<ProjectRecord>> {
+    let path_validation = validate_runtime_home_product_repository(runtime_home, repo_root)
+        .map_err(path_boundary_input)?;
+    let registry_path = registry_db_path(&path_validation.runtime_home);
+    if !registry_path.exists() {
+        return Ok(None);
+    }
+    let conn = open_registry_database_read_only(registry_path)?;
+    project_record_by_repo_root_from_conn(&conn, path_validation)
+}
+
+fn project_record_by_repo_root_from_conn(
+    conn: &Connection,
+    path_validation: crate::runtime_home::RuntimeProductPathValidation,
+) -> StoreResult<Option<ProjectRecord>> {
+    let repo_root_text = path_to_text("repo_root", &path_validation.repo_root)?;
     let project = conn
         .query_row(
             "SELECT

@@ -1,6 +1,7 @@
 use std::{collections::BTreeMap, path::Path};
 
 use toml_edit::{Item, Table};
+use volicord_mcp::RepositoryDiscoveryHost;
 use volicord_types::{
     ADAPTER_UTILITY_TOOL_NAMES, READ_ONLY_METHOD_TOOL_NAMES, WORKFLOW_METHOD_TOOL_NAMES,
 };
@@ -39,11 +40,15 @@ pub(crate) struct CodexManagedIdentityEvaluation {
 }
 
 pub(super) fn codex_managed_server_entry(
+    scope: HostScope,
     connection_id: impl Into<String>,
     project_id: Option<&str>,
     mcp_command: &Path,
     runtime_home: Option<&Path>,
 ) -> ManagedServerEntry {
+    if scope == HostScope::Project {
+        return ManagedServerEntry::new_repository_discovery(RepositoryDiscoveryHost::Codex);
+    }
     let connection_id = connection_id.into();
     let mut entry = ManagedServerEntry::new_project_bound(
         connection_id.clone(),
@@ -173,11 +178,14 @@ pub(super) fn codex_managed_identity_fingerprint(
 }
 
 fn has_codex_managed_identity_markers(entry: &ManagedServerEntry) -> bool {
-    entry.env.contains_key(VOLICORD_MCP_LAUNCH)
-        && entry.env.contains_key(VOLICORD_MCP_HOST)
-        && entry.env.contains_key(VOLICORD_MCP_CONNECTION_ID)
-        && (!entry.args.iter().any(|arg| arg == "--project")
-            || entry.env.contains_key(VOLICORD_MCP_PROJECT_ID))
+    entry
+        .validate_repository_discovery(RepositoryDiscoveryHost::Codex)
+        .is_ok()
+        || entry.env.contains_key(VOLICORD_MCP_LAUNCH)
+            && entry.env.contains_key(VOLICORD_MCP_HOST)
+            && entry.env.contains_key(VOLICORD_MCP_CONNECTION_ID)
+            && (!entry.args.iter().any(|arg| arg == "--project")
+                || entry.env.contains_key(VOLICORD_MCP_PROJECT_ID))
 }
 
 pub(super) fn accepted_codex_tool_approval_overlay_item(item: &Item) -> Option<Item> {

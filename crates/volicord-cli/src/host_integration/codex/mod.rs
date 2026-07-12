@@ -57,10 +57,11 @@ mod tests {
 
     use crate::host_integration::{
         claude_code::{CommandInvocation, CommandOutput, CommandRunner},
+        managed_fingerprint,
         verification::{HostExecutableStatus, ManagedConfigStatus, ProjectTrustStatus},
         ConnectionIntent, HostAdapter, HostConfigError, HostConflictKind, HostKind,
         HostPlanRequest, HostRemoveRequest, HostScope, HostTarget, InstallationProfile,
-        PlannedChange, ProjectContext,
+        ManagedServerEntry, PlannedChange, ProjectContext, DEFAULT_SERVER_NAME,
     };
 
     use super::*;
@@ -366,8 +367,8 @@ mod tests {
     }
 
     #[test]
-    fn project_config_includes_managed_launch_env_markers() -> Result<(), Box<dyn std::error::Error>>
-    {
+    fn project_config_uses_portable_discovery_without_local_binding_fields(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let repo = temp_dir("codex-project-env")?;
         let mut adapter = CodexAdapter::new(CodexEnvironment::default());
 
@@ -380,32 +381,17 @@ mod tests {
         let text = fs::read_to_string(repo.join(".codex/config.toml"))?;
 
         assert_eq!(
-            plan.entry.env.get(VOLICORD_MCP_LAUNCH).map(String::as_str),
-            Some(MANAGED_HOST_LAUNCH_VALUE)
+            plan.entry.args,
+            ["mcp", "--stdio", "--discover-repository", "--host", "codex"]
         );
-        assert_eq!(
-            plan.entry.env.get(VOLICORD_MCP_HOST).map(String::as_str),
-            Some(CODEX_HOST_VALUE)
-        );
-        assert_eq!(
-            plan.entry
-                .env
-                .get(VOLICORD_MCP_CONNECTION_ID)
-                .map(String::as_str),
-            Some("int_alpha")
-        );
-        assert_eq!(
-            plan.entry
-                .env
-                .get(VOLICORD_MCP_PROJECT_ID)
-                .map(String::as_str),
-            Some("project_alpha")
-        );
-        assert!(text.contains("[mcp_servers.volicord.env]"));
-        assert!(text.contains("VOLICORD_MCP_LAUNCH = \"managed_host\""));
-        assert!(text.contains("VOLICORD_MCP_HOST = \"codex\""));
-        assert!(text.contains("VOLICORD_MCP_CONNECTION_ID = \"int_alpha\""));
-        assert!(text.contains("VOLICORD_MCP_PROJECT_ID = \"project_alpha\""));
+        assert!(plan.entry.env.is_empty());
+        assert!(text.contains(
+            "args = [\"mcp\", \"--stdio\", \"--discover-repository\", \"--host\", \"codex\"]"
+        ));
+        assert!(!text.contains("[mcp_servers.volicord.env]"));
+        assert!(!text.contains("int_alpha"));
+        assert!(!text.contains("project_alpha"));
+        assert!(!text.contains("/runtime"));
         Ok(())
     }
 
@@ -479,7 +465,8 @@ mod tests {
     }
 
     #[test]
-    fn wrong_command_with_managed_markers_is_changed() -> Result<(), Box<dyn std::error::Error>> {
+    fn project_config_with_nonportable_command_is_unmanaged(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let repo = temp_dir("codex-command-changed")?;
         let mut adapter = CodexAdapter::new(CodexEnvironment::default());
         let plan = adapter.plan(request(
@@ -496,12 +483,12 @@ mod tests {
 
         let status = managed_identity_evaluation_for_plan(&plan)?.status;
 
-        assert_eq!(status, ManagedConfigStatus::Changed);
+        assert_eq!(status, ManagedConfigStatus::Unmanaged);
         Ok(())
     }
 
     #[test]
-    fn wrong_connection_id_with_managed_markers_is_changed(
+    fn project_config_with_wrong_discovery_host_is_unmanaged(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let repo = temp_dir("codex-connection-changed")?;
         let mut adapter = CodexAdapter::new(CodexEnvironment::default());
@@ -514,23 +501,18 @@ mod tests {
         let target = repo.join(".codex/config.toml");
         fs::write(
             &target,
-            fs::read_to_string(&target)?
-                .replace("\"int_alpha\"", "\"int_beta\"")
-                .replace(
-                    "VOLICORD_MCP_CONNECTION_ID = \"int_beta\"",
-                    "VOLICORD_MCP_CONNECTION_ID = \"int_alpha\"",
-                ),
+            fs::read_to_string(&target)?.replace("\"codex\"", "\"claude-code\""),
         )?;
 
         let status = managed_identity_evaluation_for_plan(&plan)?.status;
 
-        assert_eq!(status, ManagedConfigStatus::Changed);
+        assert_eq!(status, ManagedConfigStatus::Unmanaged);
         Ok(())
     }
 
     #[test]
-    fn wrong_project_id_with_managed_markers_is_changed() -> Result<(), Box<dyn std::error::Error>>
-    {
+    fn project_config_with_injected_local_ids_is_unmanaged(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let repo = temp_dir("codex-project-changed")?;
         let mut adapter = CodexAdapter::new(CodexEnvironment::default());
         let plan = adapter.plan(request(
@@ -542,17 +524,15 @@ mod tests {
         let target = repo.join(".codex/config.toml");
         fs::write(
             &target,
-            fs::read_to_string(&target)?
-                .replace("\"project_alpha\"", "\"project_beta\"")
-                .replace(
-                    "VOLICORD_MCP_PROJECT_ID = \"project_beta\"",
-                    "VOLICORD_MCP_PROJECT_ID = \"project_alpha\"",
-                ),
+            fs::read_to_string(&target)?.replace(
+                "\"codex\"]",
+                "\"codex\", \"--connection\", \"int_alpha\", \"--project\", \"project_alpha\"]",
+            ),
         )?;
 
         let status = managed_identity_evaluation_for_plan(&plan)?.status;
 
-        assert_eq!(status, ManagedConfigStatus::Changed);
+        assert_eq!(status, ManagedConfigStatus::Unmanaged);
         Ok(())
     }
 
@@ -587,6 +567,63 @@ mod tests {
             ..request(HostScope::User, None, Path::new("/bin/volicord"))
         })?;
         assert_eq!(third.change, PlannedChange::Noop);
+        Ok(())
+    }
+
+    #[test]
+    fn stored_shared_binding_migrates_once_to_portable_discovery(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let repo = temp_dir("codex-legacy-shared-migration")?;
+        fs::create_dir_all(repo.join(".codex"))?;
+        let mut legacy = ManagedServerEntry::new_project_bound(
+            "int_alpha",
+            Some("project_alpha"),
+            Path::new("volicord"),
+            None,
+        );
+        legacy.env.insert(
+            VOLICORD_MCP_LAUNCH.to_owned(),
+            MANAGED_HOST_LAUNCH_VALUE.to_owned(),
+        );
+        legacy
+            .env
+            .insert(VOLICORD_MCP_HOST.to_owned(), CODEX_HOST_VALUE.to_owned());
+        legacy.env.insert(
+            VOLICORD_MCP_CONNECTION_ID.to_owned(),
+            "int_alpha".to_owned(),
+        );
+        legacy.env.insert(
+            VOLICORD_MCP_PROJECT_ID.to_owned(),
+            "project_alpha".to_owned(),
+        );
+        let legacy_fingerprint = managed_fingerprint(
+            HostKind::Codex,
+            HostScope::Project,
+            DEFAULT_SERVER_NAME,
+            &legacy,
+        );
+        fs::write(
+            repo.join(".codex/config.toml"),
+            "[mcp_servers.volicord]\ncommand = \"volicord\"\nargs = [\"mcp\", \"--stdio\", \"--connection\", \"int_alpha\", \"--project\", \"project_alpha\"]\n\n[mcp_servers.volicord.env]\nVOLICORD_MCP_LAUNCH = \"managed_host\"\nVOLICORD_MCP_HOST = \"codex\"\nVOLICORD_MCP_CONNECTION_ID = \"int_alpha\"\nVOLICORD_MCP_PROJECT_ID = \"project_alpha\"\n",
+        )?;
+        let mut adapter = CodexAdapter::new(CodexEnvironment::default());
+
+        let migration = adapter.plan(HostPlanRequest {
+            expected_fingerprint: Some(&legacy_fingerprint),
+            ..request(HostScope::Project, Some(&repo), Path::new("ignored"))
+        })?;
+        assert_eq!(migration.change, PlannedChange::Update);
+        adapter.apply(&migration)?;
+
+        let migrated = fs::read_to_string(repo.join(".codex/config.toml"))?;
+        assert!(migrated.contains("--discover-repository"));
+        assert!(!migrated.contains("--connection"));
+        assert!(!migrated.contains("[mcp_servers.volicord.env]"));
+        let again = adapter.plan(HostPlanRequest {
+            expected_fingerprint: Some(&migration.fingerprint),
+            ..request(HostScope::Project, Some(&repo), Path::new("ignored"))
+        })?;
+        assert_eq!(again.change, PlannedChange::Noop);
         Ok(())
     }
 
@@ -673,7 +710,13 @@ mod tests {
         ))?;
 
         assert_eq!(plan.entry.command, "volicord");
+        assert_eq!(
+            plan.entry.args,
+            ["mcp", "--stdio", "--discover-repository", "--host", "codex"]
+        );
         assert!(!plan.entry.env.contains_key("VOLICORD_HOME"));
+        assert!(plan.entry.env.is_empty());
+        assert!(!plan.entry.args.iter().any(|arg| arg == "int_alpha"));
         Ok(())
     }
 
@@ -965,7 +1008,7 @@ mod tests {
     }
 
     #[test]
-    fn verify_treats_managed_launch_marker_mismatch_as_changed(
+    fn verify_treats_repository_discovery_env_injection_as_unmanaged(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let repo = temp_dir("codex-launch-marker-mismatch")?;
         fs::create_dir_all(repo.join(".codex"))?;
@@ -979,15 +1022,15 @@ mod tests {
         let target = repo.join(".codex/config.toml");
         fs::write(
             &target,
-            fs::read_to_string(&target)?.replace(
-                "VOLICORD_MCP_PROJECT_ID = \"project_alpha\"",
-                "VOLICORD_MCP_PROJECT_ID = \"project_beta\"",
+            format!(
+                "{}\n[mcp_servers.volicord.env]\nSECRET_TOKEN = \"local-only\"\n",
+                fs::read_to_string(&target)?
             ),
         )?;
 
         let status = managed_identity_evaluation_for_plan(&plan)?.status;
 
-        assert_eq!(status, ManagedConfigStatus::Changed);
+        assert_eq!(status, ManagedConfigStatus::Unmanaged);
         Ok(())
     }
 

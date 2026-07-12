@@ -32,7 +32,7 @@ pub(crate) use hooks::shell_word;
 pub(crate) use hooks::{
     observe_hook_root_unsupported_message, HostHookCommand, HostHookCommandShape,
 };
-pub(crate) use plan::{plan_guard_integration, GuardIntegrationPlan};
+pub(crate) use plan::{plan_guard_integration, GuardIntegrationPlan, GuardIntegrationPlanRequest};
 pub(crate) use policy::{guard_has_prompt_capture_commands, lifecycle_phase_names};
 
 #[derive(Debug, Clone, PartialEq, Eq)]

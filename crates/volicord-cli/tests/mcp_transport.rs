@@ -2,7 +2,7 @@
 
 mod support;
 
-use std::{collections::BTreeSet, error::Error, process::Command};
+use std::{collections::BTreeSet, error::Error, fs, path::PathBuf, process::Command};
 
 use serde_json::{json, Value};
 use volicord_core::{CoreService, InvocationContext};
@@ -45,6 +45,7 @@ fn volicord_mcp_subcommand_reports_help_version_and_preflight() -> Result<(), Bo
     let help = run_without_binding(["--help"])?;
     assert_success(&help);
     assert!(stdout(&help).contains("mcp --stdio --connection <connection_id>"));
+    assert!(stdout(&help).contains("mcp --stdio --discover-repository --host codex|claude-code"));
 
     let version = run_without_binding(["--version"])?;
     assert_success(&version);
@@ -168,6 +169,28 @@ fn volicord_mcp_subcommand_reports_help_version_and_preflight() -> Result<(), Bo
     assert_eq!(unknown.status.code(), Some(2));
     assert!(stderr(&unknown).contains("unknown option"));
 
+    Ok(())
+}
+
+#[test]
+fn repository_discovery_stdio_resolves_the_clone_local_binding() -> Result<(), Box<dyn Error>> {
+    let fixture = McpFixture::new("mcp-bin-repository-discovery")?;
+    let repo_root = fixture.repo_root();
+    fs::create_dir(repo_root.join(".git"))?;
+    let mut command =
+        fixture.connection_command(["--stdio", "--discover-repository", "--host", "codex"]);
+    command.current_dir(&repo_root);
+
+    let output = run_child(
+        command,
+        ChildStdin::WriteAndClose(tools_list_messages(1, 2)?),
+    )?;
+
+    assert_success_captured(&output);
+    assert_eq!(captured_stderr(&output), "");
+    let responses = responses_by_id(&output.stdout)?;
+    assert!(responses[&1]["result"]["serverInfo"]["name"].is_string());
+    assert!(responses[&2]["result"]["tools"].is_array());
     Ok(())
 }
 
@@ -575,6 +598,10 @@ impl McpFixture {
         self.fixture.project_id()
     }
 
+    fn repo_root(&self) -> PathBuf {
+        self.fixture.product_repo_path()
+    }
+
     fn connection_id(&self) -> &str {
         self.fixture.connection_id()
     }
@@ -673,9 +700,12 @@ fn status_arguments(project_selector: Option<&str>) -> Value {
 
 fn intake_arguments(project_selector: Option<&str>) -> Value {
     let mut arguments = json!({
+        "detail": "full",
         "plain_language_request": "Exercise the compiled MCP stdio binary.",
         "requested_mode": "work",
         "resume_policy": "create_new",
+        "acceptance_policy": null,
+        "lineage": null,
         "initial_scope": {
             "boundary": "Compiled MCP stdio process behavior.",
             "non_goals": ["Changing Core method semantics."],
@@ -707,6 +737,7 @@ fn request_user_judgment_arguments(
     state_version: u64,
 ) -> Value {
     json!({
+        "detail": "full",
         "task_id": task_id,
         "change_unit_id": null,
         "judgment_kind": "product_decision",

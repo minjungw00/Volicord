@@ -1,7 +1,8 @@
-use std::{fmt, path::Path, str::FromStr};
+use std::{collections::BTreeMap, fmt, path::Path, str::FromStr};
 
 use serde_json::Value;
 use toml_edit::{DocumentMut, Item, Table};
+use volicord_mcp::{RepositoryDiscoveryDescriptor, RepositoryDiscoveryHost};
 
 use super::{HostKind, HostLifecyclePhase, HostScope, REQUIRED_GUARD_PHASES};
 
@@ -671,6 +672,46 @@ fn validate_codex_project_config(text: &str) -> Result<(), HostContractValidatio
             HostContractValidationError::new(format!("Codex MCP server {name} must be a table"))
         })?;
         validate_toml_mcp_server_table("Codex", name, table)?;
+        if name == "volicord" {
+            if let Some(field) = ["connection_id", "project_id", "runtime_home"]
+                .into_iter()
+                .find(|field| table.contains_key(field))
+            {
+                return Err(HostContractValidationError::new(format!(
+                    "repository-visible Codex Volicord MCP config must not define local field {field}"
+                )));
+            }
+            let command = table.get("command").and_then(Item::as_str).unwrap_or("");
+            let args = table
+                .get("args")
+                .and_then(Item::as_array)
+                .map(|args| {
+                    args.iter()
+                        .filter_map(|arg| arg.as_str().map(str::to_owned))
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            let env = table
+                .get("env")
+                .and_then(Item::as_table)
+                .map(|env| {
+                    env.iter()
+                        .filter_map(|(key, value)| {
+                            value
+                                .as_str()
+                                .map(|value| (key.to_owned(), value.to_owned()))
+                        })
+                        .collect::<BTreeMap<_, _>>()
+                })
+                .unwrap_or_default();
+            validate_repository_discovery_contract(
+                RepositoryDiscoveryHost::Codex,
+                command,
+                &args,
+                &env,
+                table.get("url").is_some(),
+            )?;
+        }
     }
     Ok(())
 }
@@ -752,8 +793,74 @@ fn validate_claude_mcp_config(text: &str) -> Result<(), HostContractValidationEr
     }
     for (name, server) in servers {
         validate_json_mcp_server("Claude Code", name, server)?;
+        if name == "volicord" {
+            let object = server
+                .as_object()
+                .expect("validated Claude MCP server must be an object");
+            if let Some(field) = ["connection_id", "project_id", "runtime_home"]
+                .into_iter()
+                .find(|field| object.contains_key(*field))
+            {
+                return Err(HostContractValidationError::new(format!(
+                    "repository-visible Claude Code Volicord MCP config must not define local field {field}"
+                )));
+            }
+            let command = object.get("command").and_then(Value::as_str).unwrap_or("");
+            let args = object
+                .get("args")
+                .and_then(Value::as_array)
+                .map(|args| {
+                    args.iter()
+                        .filter_map(|arg| arg.as_str().map(str::to_owned))
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            let env = object
+                .get("env")
+                .and_then(Value::as_object)
+                .map(|env| {
+                    env.iter()
+                        .filter_map(|(key, value)| {
+                            value
+                                .as_str()
+                                .map(|value| (key.to_owned(), value.to_owned()))
+                        })
+                        .collect::<BTreeMap<_, _>>()
+                })
+                .unwrap_or_default();
+            validate_repository_discovery_contract(
+                RepositoryDiscoveryHost::ClaudeCode,
+                command,
+                &args,
+                &env,
+                object.contains_key("url"),
+            )?;
+        }
     }
     Ok(())
+}
+
+fn validate_repository_discovery_contract(
+    host: RepositoryDiscoveryHost,
+    command: &str,
+    args: &[String],
+    env: &BTreeMap<String, String>,
+    has_url: bool,
+) -> Result<(), HostContractValidationError> {
+    if has_url {
+        return Err(HostContractValidationError::new(format!(
+            "repository-visible {} Volicord MCP config must not define url",
+            host.as_str()
+        )));
+    }
+    RepositoryDiscoveryDescriptor::new(host)
+        .validate_entry(command, args, env)
+        .map_err(|error| {
+            HostContractValidationError::new(format!(
+                "repository-visible {} Volicord MCP config must use the portable repository-discovery descriptor: {error}",
+                host.as_str()
+            ))
+        })
 }
 
 fn validate_json_mcp_server(
@@ -1503,7 +1610,7 @@ unknown_root = "preserved"
 
 [mcp_servers.volicord]
 command = "volicord"
-args = ["mcp", "--stdio"]
+args = ["mcp", "--stdio", "--discover-repository", "--host", "codex"]
 unknown_server_field = "preserved"
 "#;
         validate_contract_config(
@@ -1529,7 +1636,7 @@ command = ["volicord"]
             "mcpServers": {
                 "volicord": {
                     "command": "volicord",
-                    "args": ["mcp", "--stdio"],
+                    "args": ["mcp", "--stdio", "--discover-repository", "--host", "claude-code"],
                     "volicordUnknown": true
                 }
             },
@@ -1557,6 +1664,53 @@ command = ["volicord"]
         )
         .expect_err("managed args field type conflict should fail");
         assert!(error.message().contains("args must be an array"));
+    }
+
+    #[test]
+    fn repository_visible_mcp_contract_rejects_local_binding_fields() {
+        for forbidden in [
+            CODEX_PROJECT_CONFIG.replace("\"codex\"]", "\"codex\", \"--connection\", \"local\"]"),
+            CODEX_PROJECT_CONFIG.replace("command = \"volicord\"", "command = \"/local/bin/volicord\""),
+            format!(
+                "{CODEX_PROJECT_CONFIG}\n[mcp_servers.volicord.env]\nVOLICORD_HOME = \"/local/home\"\n"
+            ),
+            CODEX_PROJECT_CONFIG.replace(
+                "enabled = true",
+                "enabled = true\nproject_id = \"project_local\"",
+            ),
+        ] {
+            let error = validate_contract_config(
+                HostKind::Codex,
+                HostContractConfigKind::ProjectConfig,
+                &forbidden,
+            )
+            .expect_err("repository-visible Codex config must reject local binding fields");
+            assert!(
+                error.message().contains("portable repository-discovery")
+                    || error.message().contains("must not define local field")
+            );
+        }
+
+        let base: Value = serde_json::from_str(CLAUDE_MCP).expect("fixture should be JSON");
+        for (field, value) in [
+            ("command", json!("/local/bin/volicord")),
+            ("env", json!({"SECRET_TOKEN": "local-only"})),
+            ("args", json!(["mcp", "--stdio", "--connection", "local"])),
+            ("connection_id", json!("connection_local")),
+        ] {
+            let mut forbidden = base.clone();
+            forbidden["mcpServers"]["volicord"][field] = value;
+            let error = validate_contract_config(
+                HostKind::ClaudeCode,
+                HostContractConfigKind::McpConfig,
+                &forbidden.to_string(),
+            )
+            .expect_err("repository-visible Claude Code config must reject local binding fields");
+            assert!(
+                error.message().contains("portable repository-discovery")
+                    || error.message().contains("must not define local field")
+            );
+        }
     }
 
     #[test]

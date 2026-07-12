@@ -55,16 +55,30 @@ pub(crate) struct GuardIntegrationPlan {
     pub(crate) missing_required_hooks: Vec<HostLifecyclePhase>,
 }
 
+pub(crate) struct GuardIntegrationPlanRequest<'a> {
+    pub(crate) host_kind: HostKind,
+    pub(crate) profile: IntegrationProfile,
+    pub(crate) runtime_home: &'a Path,
+    pub(crate) repo_root: &'a Path,
+    pub(crate) connection_id: &'a str,
+    pub(crate) guard_installation_id: &'a str,
+    pub(crate) mcp_entry: &'a ManagedServerEntry,
+    pub(crate) connection_intent: ConnectionIntent,
+}
+
 pub(crate) fn plan_guard_integration(
-    host_kind: HostKind,
-    profile: IntegrationProfile,
-    runtime_home: &Path,
-    repo_root: &Path,
-    connection_id: &str,
-    guard_installation_id: &str,
-    mcp_entry: &ManagedServerEntry,
-    connection_intent: ConnectionIntent,
+    request: GuardIntegrationPlanRequest<'_>,
 ) -> Result<GuardIntegrationPlan, GuardIntegrationError> {
+    let GuardIntegrationPlanRequest {
+        host_kind,
+        profile,
+        runtime_home,
+        repo_root,
+        connection_id,
+        guard_installation_id,
+        mcp_entry,
+        connection_intent,
+    } = request;
     if profile != IntegrationProfile::Record {
         ensure_observe_profile_supported_on_platform(host_kind)?;
     }
@@ -157,9 +171,9 @@ pub(crate) fn plan_guard_integration(
     )?;
     let retain_personal_paths = connection_intent == ConnectionIntent::Personal
         || prior_policy.as_ref().is_some_and(|prior| {
-            prior.host == public_host_label(host_kind)
-                && prior.connection_intent == ConnectionIntent::Personal
-                && (prior.connection_intent != connection_intent
+            prior.connection_intent == ConnectionIntent::Personal
+                && (prior.host != public_host_label(host_kind)
+                    || prior.connection_intent != connection_intent
                     || prior.selected_profile != profile)
         });
     let migration_protection = plan_git_excludes_with_personal_protection(
@@ -207,8 +221,9 @@ fn plan_retired_files(
     let Some(prior) = prior_policy else {
         return Ok(Vec::new());
     };
-    if prior.host != public_host_label(host_kind)
-        || (prior.connection_intent == connection_intent && prior.selected_profile == profile)
+    if prior.host == public_host_label(host_kind)
+        && prior.connection_intent == connection_intent
+        && prior.selected_profile == profile
     {
         return Ok(Vec::new());
     }
@@ -219,7 +234,7 @@ fn plan_retired_files(
         .map_err(|error| GuardIntegrationError::runtime(error.to_string()))?
         .ok_or_else(|| {
             GuardIntegrationError::runtime(format!(
-                "INTEGRATION_MIGRATION_INVENTORY_MISSING: prior detective integration {} has no ownership inventory; restore or remove it explicitly before changing intent or profile",
+                "INTEGRATION_MIGRATION_INVENTORY_MISSING: prior detective integration {} has no ownership inventory; restore or remove it explicitly before changing host, intent, or profile",
                 prior.guard_installation_id
             ))
         })?;

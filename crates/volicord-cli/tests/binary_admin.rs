@@ -50,7 +50,7 @@ use serde_json::json;
 #[cfg(unix)]
 use volicord_store::{
     agent_connections::{
-        agent_connection_record, list_connection_projects,
+        agent_connection_record, list_agent_connections, list_connection_projects,
         update_agent_connection_verification_report, CONNECTION_MODE_READ_ONLY,
         VERIFIED_STATUS_ACTION_REQUIRED,
     },
@@ -142,6 +142,7 @@ fn binary_help_options_match_supported_contracts() -> Result<(), Box<dyn Error>>
             "--note",
             "--stdio",
             "--check",
+            "--discover-repository",
             "--connection",
             "--project",
             "--output",
@@ -155,11 +156,24 @@ fn binary_help_options_match_supported_contracts() -> Result<(), Box<dyn Error>>
             "--host",
             "--profile",
             "--privacy-footprint",
+            "--session",
+            "--criterion",
+            "--claim",
+            "--artifact",
+            "--summary",
+            "--contradicted",
         ],
     )?;
     assert_help_options(
         ["mcp", "--help"],
-        &["--stdio", "--check", "--connection", "--project"],
+        &[
+            "--stdio",
+            "--check",
+            "--discover-repository",
+            "--host",
+            "--connection",
+            "--project",
+        ],
     )?;
     assert_help_options(
         ["serve", "--help"],
@@ -177,6 +191,7 @@ fn binary_help_options_match_supported_contracts() -> Result<(), Box<dyn Error>>
         ],
     )?;
     assert_help_options(["status", "--help"], &["--repo", "--task", "--json"])?;
+    assert_help_options(["diagnostics", "--help"], &["--session", "--json"])?;
     assert_help_options(["doctor", "--help"], &["--json", "--privacy-footprint"])?;
     assert_help_options(
         ["connection", "add", "--help"],
@@ -242,7 +257,18 @@ fn binary_help_options_match_supported_contracts() -> Result<(), Box<dyn Error>>
     assert_help_options(["project", "--help"], &["--repo", "--json"])?;
     assert_help_options(
         ["inbox", "--help"],
-        &["--repo", "--task", "--choice", "--note", "--json"],
+        &[
+            "--repo",
+            "--task",
+            "--choice",
+            "--note",
+            "--criterion",
+            "--claim",
+            "--artifact",
+            "--summary",
+            "--contradicted",
+            "--json",
+        ],
     )?;
     Ok(())
 }
@@ -700,15 +726,16 @@ fn doctor_uses_effective_local_policy_intent_after_personal_to_shared_transition
         .iter()
         .find(|check| check["id"] == "personal_local_git_tracking")
         .expect("local Git tracking check");
-    assert_eq!(protected_check["status"], "passed");
+    assert_eq!(protected_check["status"], "warning");
     assert_eq!(
         protected_check["details"]["effective_personal_project_count"],
         0
     );
-    assert_eq!(
-        protected_check["details"]["unignored_existing_paths"],
-        json!([])
-    );
+    assert!(protected_check["details"]["unignored_existing_paths"]
+        .as_array()
+        .expect("unignored paths")
+        .iter()
+        .any(|finding| finding["path"] == "/.codex/hooks.json"));
 
     fs::write(&exclude_path, "")?;
     let unprotected = run_with_home_env(runtime_home.path(), ["doctor", "--json"], &env)?;
@@ -727,9 +754,576 @@ fn doctor_uses_effective_local_policy_intent_after_personal_to_shared_transition
     assert!(unignored_paths
         .iter()
         .any(|finding| finding["path"] == "/.volicord/"));
-    assert!(!unignored_paths
+    assert!(unignored_paths
         .iter()
         .any(|finding| finding["path"] == "/.codex/hooks.json"));
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn claude_detective_personal_to_shared_retires_only_owned_projection_and_converges(
+) -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-claude-personal-shared-migration")?;
+    let repo_root = create_real_git_repo(&runtime_home, "product-repo")?;
+    let bin_dir = runtime_home.path().join("bin");
+    write_fake_claude_code(&bin_dir)?;
+    let mcp_command = write_fake_mcp(&bin_dir)?;
+    let env = [
+        ("PATH", path_env_with_existing(&[bin_dir.as_path()])?),
+        ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
+    ];
+
+    let personal = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--host",
+            "claude-code",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--profile",
+            "detective",
+            "--mcp-command",
+            path_text(&mcp_command).as_str(),
+            "--json",
+        ],
+        &env,
+    )?;
+    assert_success(&personal);
+    let local_settings_path = repo_root.join(".claude/settings.local.json");
+    let mut local_settings: Value =
+        serde_json::from_str(&fs::read_to_string(&local_settings_path)?)?;
+    local_settings["theme"] = Value::String("user-owned-dark".to_owned());
+    fs::write(
+        &local_settings_path,
+        serde_json::to_string_pretty(&local_settings)? + "\n",
+    )?;
+
+    let shared = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--shared",
+            "--host",
+            "claude-code",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--profile",
+            "detective",
+            "--json",
+        ],
+        &env,
+    )?;
+    assert_success(&shared);
+    let shared_output = json_stdout(&shared)?;
+    assert!(shared_output["retired_files"]
+        .as_array()
+        .expect("retired files")
+        .iter()
+        .any(|file| {
+            file["path"] == path_text(&local_settings_path) && file["status"] == "updated"
+        }));
+    let preserved: Value = serde_json::from_str(&fs::read_to_string(&local_settings_path)?)?;
+    assert_eq!(preserved["theme"], "user-owned-dark");
+    assert!(preserved.get("hooks").is_none());
+    assert!(repo_root.join(".claude/settings.json").exists());
+    assert!(repo_root.join(".mcp.json").exists());
+    let policy: Value = serde_json::from_str(&fs::read_to_string(
+        repo_root.join(".volicord/policy.json"),
+    )?)?;
+    assert_eq!(policy["connection_intent"], "shared");
+    let excludes = fs::read_to_string(repo_root.join(".git/info/exclude"))?;
+    assert!(!excludes.contains("/.claude/settings.local.json"));
+
+    let rerun = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--shared",
+            "--host",
+            "claude-code",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--profile",
+            "detective",
+            "--json",
+        ],
+        &env,
+    )?;
+    assert_success(&rerun);
+    let preserved_again: Value = serde_json::from_str(&fs::read_to_string(&local_settings_path)?)?;
+    assert_eq!(preserved_again, preserved);
+
+    let doctor = run_with_home_env(runtime_home.path(), ["doctor", "--json"], &env)?;
+    assert_success(&doctor);
+    let doctor = json_stdout(&doctor)?;
+    let intent_check = doctor["checks"]
+        .as_array()
+        .expect("checks")
+        .iter()
+        .find(|check| check["id"] == "integration_intent_drift")
+        .expect("intent drift check");
+    assert_eq!(intent_check["status"], "passed", "{intent_check:#}");
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn claude_personal_to_codex_shared_retires_prior_host_and_converges() -> Result<(), Box<dyn Error>>
+{
+    let runtime_home = TempRuntimeHome::new("cli-bin-cross-host-migration")?;
+    let repo_root = create_real_git_repo(&runtime_home, "product-repo")?;
+    let bin_dir = runtime_home.path().join("bin");
+    let claude = write_fake_claude_code(&bin_dir)?;
+    write_fake_codex(&bin_dir)?;
+    let mcp_command = write_fake_mcp(&bin_dir)?;
+    let codex_home = runtime_home.path().join("codex-home");
+    let env = [
+        ("PATH", path_env_with_existing(&[bin_dir.as_path()])?),
+        ("CODEX_HOME", path_text(&codex_home)),
+        ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
+    ];
+
+    let personal = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--host",
+            "claude-code",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--profile",
+            "detective",
+            "--mcp-command",
+            path_text(&mcp_command).as_str(),
+            "--json",
+        ],
+        &env,
+    )?;
+    assert_success(&personal);
+    let personal = json_stdout(&personal)?;
+    let prior_connection_id = personal["connection"]["connection_id"]
+        .as_str()
+        .expect("prior connection id")
+        .to_owned();
+    let local_settings_path = repo_root.join(".claude/settings.local.json");
+    let mut local_settings: Value =
+        serde_json::from_str(&fs::read_to_string(&local_settings_path)?)?;
+    local_settings["theme"] = Value::String("user-owned-dark".to_owned());
+    fs::write(
+        &local_settings_path,
+        serde_json::to_string_pretty(&local_settings)? + "\n",
+    )?;
+    assert!(claude.with_extension("state").exists());
+    assert!(repo_root.join(".claude/rules/volicord.md").exists());
+    assert!(fs::read_to_string(repo_root.join(".git/info/exclude"))?
+        .contains("/.claude/settings.local.json"));
+
+    let shared = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--shared",
+            "--host",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--profile",
+            "detective",
+            "--json",
+        ],
+        &env,
+    )?;
+    assert_success(&shared);
+    let shared = json_stdout(&shared)?;
+    assert_ne!(shared["connection"]["connection_id"], prior_connection_id);
+    assert!(shared["retired_files"]
+        .as_array()
+        .expect("retired files")
+        .iter()
+        .any(|file| {
+            file["path"] == path_text(&local_settings_path) && file["status"] == "updated"
+        }));
+
+    let preserved: Value = serde_json::from_str(&fs::read_to_string(&local_settings_path)?)?;
+    assert_eq!(preserved["theme"], "user-owned-dark");
+    assert!(preserved.get("hooks").is_none());
+    assert!(!repo_root.join(".claude/rules/volicord.md").exists());
+    assert!(!repo_root
+        .join(".claude/hooks/volicord-pre-tool.sh")
+        .exists());
+    assert!(!claude.with_extension("state").exists());
+    assert!(repo_root.join(".codex/config.toml").exists());
+    assert!(repo_root.join(".codex/hooks.json").exists());
+    assert!(repo_root.join(".codex/rules/volicord.rules").exists());
+
+    let policy: Value = serde_json::from_str(&fs::read_to_string(
+        repo_root.join(".volicord/policy.json"),
+    )?)?;
+    assert_eq!(policy["host"], "codex");
+    assert_eq!(policy["connection_intent"], "shared");
+    assert_eq!(policy["selected_profile"], "detective");
+    let excludes = fs::read_to_string(repo_root.join(".git/info/exclude"))?;
+    assert!(!excludes.contains("/.claude/settings.local.json"));
+    assert!(!excludes.contains("/.codex/hooks.json"));
+
+    let prior_connection = agent_connection_record(runtime_home.path(), &prior_connection_id)?
+        .expect("prior connection remains as disabled history");
+    assert!(!prior_connection.enabled);
+    assert!(list_connection_projects(runtime_home.path(), &prior_connection_id)?.is_empty());
+
+    let rerun = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--shared",
+            "--host",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--profile",
+            "detective",
+            "--json",
+        ],
+        &env,
+    )?;
+    assert_success(&rerun);
+    let preserved_again: Value = serde_json::from_str(&fs::read_to_string(&local_settings_path)?)?;
+    assert_eq!(preserved_again, preserved);
+    assert!(!claude.with_extension("state").exists());
+
+    let doctor = run_with_home_env(runtime_home.path(), ["doctor", "--json"], &env)?;
+    assert_success(&doctor);
+    let doctor = json_stdout(&doctor)?;
+    let intent_check = doctor["checks"]
+        .as_array()
+        .expect("checks")
+        .iter()
+        .find(|check| check["id"] == "integration_intent_drift")
+        .expect("intent drift check");
+    assert_eq!(intent_check["status"], "passed", "{intent_check:#}");
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn interrupted_cross_host_migration_keeps_personal_protection_and_converges(
+) -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-cross-host-migration-fail-safe")?;
+    let repo_root = create_real_git_repo(&runtime_home, "product-repo")?;
+    let bin_dir = runtime_home.path().join("bin");
+    let claude = write_fake_claude_code(&bin_dir)?;
+    write_fake_codex(&bin_dir)?;
+    let mcp_command = write_fake_mcp(&bin_dir)?;
+    let codex_home = runtime_home.path().join("codex-home");
+    let env = [
+        ("PATH", path_env_with_existing(&[bin_dir.as_path()])?),
+        ("CODEX_HOME", path_text(&codex_home)),
+        ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
+    ];
+    let personal = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--host",
+            "claude-code",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--profile",
+            "detective",
+            "--mcp-command",
+            path_text(&mcp_command).as_str(),
+            "--json",
+        ],
+        &env,
+    )?;
+    assert_success(&personal);
+    let personal = json_stdout(&personal)?;
+    let prior_connection_id = personal["connection"]["connection_id"]
+        .as_str()
+        .expect("prior connection id")
+        .to_owned();
+
+    let local_settings_path = repo_root.join(".claude/settings.local.json");
+    let local_settings: Value = serde_json::from_str(&fs::read_to_string(&local_settings_path)?)?;
+    let claude_state_path = claude.with_extension("state");
+    let original_claude_state = fs::read_to_string(&claude_state_path)?;
+    let changed_claude_state = original_claude_state.replace(
+        &format!("Command: {}", mcp_command.display()),
+        "Command: user-managed-command",
+    );
+    assert_ne!(changed_claude_state, original_claude_state);
+    fs::write(&claude_state_path, &changed_claude_state)?;
+
+    let shared = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--shared",
+            "--host",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--profile",
+            "detective",
+            "--json",
+        ],
+        &env,
+    )?;
+    assert!(!shared.status.success(), "migration unexpectedly succeeded");
+    assert!(stderr(&shared).contains("Claude Code MCP entry changed"));
+    assert!(repo_root.join(".codex/config.toml").exists());
+    assert!(!repo_root.join(".codex/hooks.json").exists());
+    assert_eq!(
+        fs::read_to_string(&claude_state_path)?,
+        changed_claude_state
+    );
+    assert_eq!(
+        serde_json::from_str::<Value>(&fs::read_to_string(&local_settings_path)?)?,
+        local_settings
+    );
+    let policy: Value = serde_json::from_str(&fs::read_to_string(
+        repo_root.join(".volicord/policy.json"),
+    )?)?;
+    assert_eq!(policy["host"], "claude-code");
+    assert_eq!(policy["connection_intent"], "personal");
+    assert!(fs::read_to_string(repo_root.join(".git/info/exclude"))?
+        .contains("/.claude/settings.local.json"));
+    let connections = list_agent_connections(runtime_home.path())?;
+    assert_eq!(connections.len(), 2);
+    assert_eq!(
+        connections
+            .iter()
+            .filter(|connection| connection.enabled)
+            .count(),
+        2
+    );
+
+    let doctor = run_with_home_env(runtime_home.path(), ["doctor", "--json"], &env)?;
+    assert_success(&doctor);
+    let doctor = json_stdout(&doctor)?;
+    let intent_check = doctor["checks"]
+        .as_array()
+        .expect("checks")
+        .iter()
+        .find(|check| check["id"] == "integration_intent_drift")
+        .expect("intent drift check");
+    assert_eq!(intent_check["status"], "warning", "{intent_check:#}");
+    assert!(intent_check["details"]["findings"]
+        .as_array()
+        .expect("intent drift findings")
+        .iter()
+        .any(|finding| finding["kind"] == "additional_active_host_projection"));
+
+    fs::write(&claude_state_path, original_claude_state)?;
+    let recovered = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--shared",
+            "--host",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--profile",
+            "detective",
+            "--json",
+        ],
+        &env,
+    )?;
+    assert_success(&recovered);
+    assert!(!claude_state_path.exists());
+    assert!(!local_settings_path.exists());
+    let recovered_policy: Value = serde_json::from_str(&fs::read_to_string(
+        repo_root.join(".volicord/policy.json"),
+    )?)?;
+    assert_eq!(recovered_policy["host"], "codex");
+    assert_eq!(recovered_policy["connection_intent"], "shared");
+    assert!(!fs::read_to_string(repo_root.join(".git/info/exclude"))?
+        .contains("/.claude/settings.local.json"));
+    let prior_connection = agent_connection_record(runtime_home.path(), &prior_connection_id)?
+        .expect("prior connection remains as disabled history");
+    assert!(!prior_connection.enabled);
+    assert!(list_connection_projects(runtime_home.path(), &prior_connection_id)?.is_empty());
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn claude_detective_shared_to_personal_preserves_mixed_json_and_converges(
+) -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-claude-shared-personal-migration")?;
+    let repo_root = create_real_git_repo(&runtime_home, "product-repo")?;
+    let bin_dir = runtime_home.path().join("bin");
+    write_fake_claude_code(&bin_dir)?;
+    let mcp_command = write_fake_mcp(&bin_dir)?;
+    let env = [
+        ("PATH", path_env_with_existing(&[bin_dir.as_path()])?),
+        ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
+    ];
+
+    let shared = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--shared",
+            "--host",
+            "claude-code",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--profile",
+            "detective",
+            "--mcp-command",
+            path_text(&mcp_command).as_str(),
+            "--json",
+        ],
+        &env,
+    )?;
+    assert_success(&shared);
+    let shared_settings_path = repo_root.join(".claude/settings.json");
+    let mut shared_settings: Value =
+        serde_json::from_str(&fs::read_to_string(&shared_settings_path)?)?;
+    shared_settings["theme"] = Value::String("user-owned-light".to_owned());
+    fs::write(
+        &shared_settings_path,
+        serde_json::to_string_pretty(&shared_settings)? + "\n",
+    )?;
+    let mcp_path = repo_root.join(".mcp.json");
+    let mut mcp: Value = serde_json::from_str(&fs::read_to_string(&mcp_path)?)?;
+    mcp["mcpServers"]["other"] = json!({ "command": "other-mcp", "args": [] });
+    fs::write(&mcp_path, serde_json::to_string_pretty(&mcp)? + "\n")?;
+
+    let personal = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--host",
+            "claude-code",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--profile",
+            "detective",
+            "--mcp-command",
+            path_text(&mcp_command).as_str(),
+            "--json",
+        ],
+        &env,
+    )?;
+    assert_success(&personal);
+    let preserved: Value = serde_json::from_str(&fs::read_to_string(&shared_settings_path)?)?;
+    assert_eq!(preserved["theme"], "user-owned-light");
+    assert!(preserved.get("hooks").is_none());
+    assert!(repo_root.join(".claude/settings.local.json").exists());
+    let preserved_mcp: Value = serde_json::from_str(&fs::read_to_string(&mcp_path)?)?;
+    assert!(preserved_mcp["mcpServers"].get("volicord").is_none());
+    assert_eq!(preserved_mcp["mcpServers"]["other"]["command"], "other-mcp");
+    let policy: Value = serde_json::from_str(&fs::read_to_string(
+        repo_root.join(".volicord/policy.json"),
+    )?)?;
+    assert_eq!(policy["connection_intent"], "personal");
+    let excludes = fs::read_to_string(repo_root.join(".git/info/exclude"))?;
+    assert!(excludes.contains("/.claude/settings.local.json"));
+
+    let rerun = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--host",
+            "claude-code",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--profile",
+            "detective",
+            "--mcp-command",
+            path_text(&mcp_command).as_str(),
+            "--json",
+        ],
+        &env,
+    )?;
+    assert_success(&rerun);
+    let preserved_again: Value = serde_json::from_str(&fs::read_to_string(&shared_settings_path)?)?;
+    assert_eq!(preserved_again, preserved);
+
+    let doctor = run_with_home_env(runtime_home.path(), ["doctor", "--json"], &env)?;
+    assert_success(&doctor);
+    let doctor = json_stdout(&doctor)?;
+    let intent_check = doctor["checks"]
+        .as_array()
+        .expect("checks")
+        .iter()
+        .find(|check| check["id"] == "integration_intent_drift")
+        .expect("intent drift check");
+    assert_eq!(intent_check["status"], "passed", "{intent_check:#}");
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn intent_migration_fails_closed_and_keeps_personal_excludes_on_owned_projection_drift(
+) -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-claude-migration-fail-safe")?;
+    let repo_root = create_real_git_repo(&runtime_home, "product-repo")?;
+    let bin_dir = runtime_home.path().join("bin");
+    write_fake_claude_code(&bin_dir)?;
+    let mcp_command = write_fake_mcp(&bin_dir)?;
+    let env = [
+        ("PATH", path_env_with_existing(&[bin_dir.as_path()])?),
+        ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
+    ];
+    let personal = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--host",
+            "claude-code",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--profile",
+            "detective",
+            "--mcp-command",
+            path_text(&mcp_command).as_str(),
+            "--json",
+        ],
+        &env,
+    )?;
+    assert_success(&personal);
+    let local_settings_path = repo_root.join(".claude/settings.local.json");
+    let mut changed: Value = serde_json::from_str(&fs::read_to_string(&local_settings_path)?)?;
+    changed["hooks"]["PreToolUse"][0]["hooks"][0]["timeout"] = json!(99);
+    fs::write(
+        &local_settings_path,
+        serde_json::to_string_pretty(&changed)? + "\n",
+    )?;
+
+    let shared = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--shared",
+            "--host",
+            "claude-code",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--profile",
+            "detective",
+            "--json",
+        ],
+        &env,
+    )?;
+    assert!(!shared.status.success(), "migration unexpectedly succeeded");
+    assert!(stderr(&shared).contains("no longer matches Volicord ownership"));
+    let policy: Value = serde_json::from_str(&fs::read_to_string(
+        repo_root.join(".volicord/policy.json"),
+    )?)?;
+    assert_eq!(policy["connection_intent"], "personal");
+    let excludes = fs::read_to_string(repo_root.join(".git/info/exclude"))?;
+    assert!(excludes.contains("/.claude/settings.local.json"));
+    assert_eq!(
+        serde_json::from_str::<Value>(&fs::read_to_string(&local_settings_path)?)?,
+        changed
+    );
+    assert!(!repo_root.join(".mcp.json").exists());
     Ok(())
 }
 
@@ -2253,8 +2847,11 @@ fn init_dry_run_does_not_write_runtime_or_repo_files() -> Result<(), Box<dyn Err
     assert_eq!(value["connection"]["host_scope"], "project");
     assert_eq!(value["profile"]["status"], "planned");
     assert_eq!(value["mcp"]["command"], "volicord");
-    assert_eq!(value["mcp"]["args"][0], "mcp");
-    assert_eq!(value["mcp"]["args"][1], "--stdio");
+    assert_eq!(
+        value["mcp"]["args"],
+        serde_json::json!(["mcp", "--stdio", "--discover-repository", "--host", "codex"])
+    );
+    assert_eq!(value["mcp"]["env"], serde_json::json!({}));
     assert_eq!(value["generated_files"][0]["kind"], "git_info_exclude");
     assert_eq!(value["generated_files"][0]["status"], "planned_create");
     assert_eq!(value["generated_files"][1]["kind"], "agents_managed_block");
@@ -2466,15 +3063,16 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
         .expect("project_id should be present");
     assert_eq!(
         value["mcp"]["args"],
-        serde_json::json!([
-            "mcp",
-            "--stdio",
-            "--connection",
-            connection_id,
-            "--project",
-            project_id
-        ])
+        serde_json::json!(["mcp", "--stdio", "--discover-repository", "--host", "codex"])
     );
+    assert_eq!(value["mcp"]["env"], serde_json::json!({}));
+    let mcp_config = fs::read_to_string(repo_root.join(".codex/config.toml"))?;
+    assert!(mcp_config.contains(
+        "args = [\"mcp\", \"--stdio\", \"--discover-repository\", \"--host\", \"codex\"]"
+    ));
+    assert!(!mcp_config.contains(&connection_id));
+    assert!(!mcp_config.contains(project_id));
+    assert!(!mcp_config.contains(path_text(runtime_home.path()).as_str()));
     assert!(value["actions"]
         .as_array()
         .expect("actions should be an array")
@@ -2626,14 +3224,13 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     assert_connection_text_omits_diagnostic_dump_fields(&status_text);
 
     let config = fs::read_to_string(repo_root.join(".codex/config.toml"))?;
-    assert!(config.contains(&format!(
-        "args = [\"mcp\", \"--stdio\", \"--connection\", \"{connection_id}\", \"--project\", \"{project_id}\"]"
-    )));
-    assert!(config.contains("[mcp_servers.volicord.env]"));
-    assert!(config.contains("VOLICORD_MCP_LAUNCH = \"managed_host\""));
-    assert!(config.contains("VOLICORD_MCP_HOST = \"codex\""));
-    assert!(config.contains(&format!("VOLICORD_MCP_CONNECTION_ID = \"{connection_id}\"")));
-    assert!(config.contains(&format!("VOLICORD_MCP_PROJECT_ID = \"{project_id}\"")));
+    assert!(config.contains(
+        "args = [\"mcp\", \"--stdio\", \"--discover-repository\", \"--host\", \"codex\"]"
+    ));
+    assert!(!config.contains("[mcp_servers.volicord.env]"));
+    assert!(!config.contains(&connection_id));
+    assert!(!config.contains(project_id));
+    assert!(!config.contains("VOLICORD_HOME"));
     let hooks = fs::read_to_string(repo_root.join(".codex/hooks.json"))?;
     assert!(hooks.contains("SessionStart"));
     assert!(hooks.contains("PreToolUse"));
@@ -2683,14 +3280,7 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     assert_eq!(policy["mcp"]["command"], "volicord");
     assert_eq!(
         policy["mcp"]["args"],
-        serde_json::json!([
-            "mcp",
-            "--stdio",
-            "--connection",
-            connection_id,
-            "--project",
-            project_id
-        ])
+        serde_json::json!(["mcp", "--stdio", "--discover-repository", "--host", "codex"])
     );
     assert_eq!(policy["host_hook"]["enabled"], true);
     assert_guard_policy_invokes_required_phases(&policy, &connection_id);
@@ -2933,12 +3523,16 @@ fn init_claude_code_guarded_writes_project_mcp_policy_and_rule() -> Result<(), B
         serde_json::json!([
             "mcp",
             "--stdio",
-            "--connection",
-            connection_id,
-            "--project",
-            project_id
+            "--discover-repository",
+            "--host",
+            "claude-code"
         ])
     );
+    assert!(server.get("env").is_none());
+    let mcp_text = fs::read_to_string(repo_root.join(".mcp.json"))?;
+    assert!(!mcp_text.contains(connection_id));
+    assert!(!mcp_text.contains(project_id));
+    assert!(!mcp_text.contains(path_text(runtime_home.path()).as_str()));
 
     let policy: Value = serde_json::from_str(&fs::read_to_string(
         repo_root.join(".volicord/policy.json"),
@@ -3454,18 +4048,12 @@ fn connect_respects_explicit_read_only_and_uses_same_dry_run_plan() -> Result<()
     assert_eq!(projects[0].project.repo_root, repo_root);
 
     let config = fs::read_to_string(repo_root.join(".codex").join("config.toml"))?;
-    assert!(config.contains(&format!(
-        "args = [\"mcp\", \"--stdio\", \"--connection\", \"{connection_id}\", \"--project\", \"{}\"]",
-        projects[0].project_id
-    )));
-    assert!(config.contains("[mcp_servers.volicord.env]"));
-    assert!(config.contains("VOLICORD_MCP_LAUNCH = \"managed_host\""));
-    assert!(config.contains("VOLICORD_MCP_HOST = \"codex\""));
-    assert!(config.contains(&format!("VOLICORD_MCP_CONNECTION_ID = \"{connection_id}\"")));
-    assert!(config.contains(&format!(
-        "VOLICORD_MCP_PROJECT_ID = \"{}\"",
-        projects[0].project_id
-    )));
+    assert!(config.contains(
+        "args = [\"mcp\", \"--stdio\", \"--discover-repository\", \"--host\", \"codex\"]"
+    ));
+    assert!(!config.contains("[mcp_servers.volicord.env]"));
+    assert!(!config.contains(connection_id));
+    assert!(!config.contains(&projects[0].project_id));
     Ok(())
 }
 
@@ -4227,7 +4815,7 @@ fn connection_verify_reports_missing_mcp_config_as_primary_action() -> Result<()
 
 #[cfg(unix)]
 #[test]
-fn connection_status_and_verify_report_codex_config_without_managed_launch_markers_as_unmanaged(
+fn connection_status_and_verify_reject_nonportable_shared_codex_binding(
 ) -> Result<(), Box<dyn Error>> {
     let runtime_home = TempRuntimeHome::new("cli-bin-connection-stale-mcp-env")?;
     let repo_root = create_git_repo(&runtime_home, "product-repo")?;
@@ -4264,12 +4852,13 @@ fn connection_status_and_verify_report_codex_config_without_managed_launch_marke
         .to_owned();
     let config_path = repo_root.join(".codex/config.toml");
     let config = fs::read_to_string(&config_path)?;
-    let legacy_config = config
-        .split("\n[mcp_servers.volicord.env]\n")
-        .next()
-        .expect("generated config should contain a server table")
-        .to_owned();
-    fs::write(&config_path, legacy_config)?;
+    let nonportable_config = config.replace(
+        "args = [\"mcp\", \"--stdio\", \"--discover-repository\", \"--host\", \"codex\"]",
+        &format!(
+            "args = [\"mcp\", \"--stdio\", \"--connection\", \"{connection_id}\", \"--project\", \"{project_id}\"]"
+        ),
+    );
+    fs::write(&config_path, nonportable_config)?;
 
     let status = run_with_home_env(
         runtime_home.path(),
@@ -4336,8 +4925,8 @@ fn connection_status_and_verify_report_codex_config_without_managed_launch_marke
 
 #[cfg(unix)]
 #[test]
-fn connection_status_and_verify_report_codex_command_drift_as_changed() -> Result<(), Box<dyn Error>>
-{
+fn connection_status_and_verify_reject_nonportable_shared_codex_command(
+) -> Result<(), Box<dyn Error>> {
     let runtime_home = TempRuntimeHome::new("cli-bin-connection-command-drift")?;
     let repo_root = create_git_repo(&runtime_home, "product-repo")?;
     let bin_dir = runtime_home.path().join("bin");
@@ -4382,7 +4971,7 @@ fn connection_status_and_verify_report_codex_command_drift_as_changed() -> Resul
     )?;
     assert_success(&status);
     let status_json = json_stdout(&status)?;
-    assert_eq!(status_json["states"]["mcp_config"], "changed");
+    assert_eq!(status_json["states"]["mcp_config"], "unmanaged");
     assert_eq!(
         status_json["primary_next_action"]["id"],
         "mcp_config_changed"
@@ -4413,10 +5002,10 @@ fn connection_status_and_verify_report_codex_command_drift_as_changed() -> Resul
     )?;
     assert_success(&verify);
     let verify_json = json_stdout(&verify)?;
-    assert_eq!(verify_json["states"]["mcp_config"], "changed");
+    assert_eq!(verify_json["states"]["mcp_config"], "unmanaged");
     assert_eq!(
         verify_json["verification"]["host"]["managed_config"],
-        "changed"
+        "unmanaged"
     );
     assert_eq!(
         verify_json["primary_next_action"]["id"],
@@ -6526,6 +7115,8 @@ fn intake_request(
         plain_language_request: "Create a focused CLI user-channel test task.".to_owned(),
         requested_mode: RequestedMode::Work,
         resume_policy: ResumePolicy::CreateNew,
+        acceptance_policy: volicord_types::RequiredNullable::null(),
+        lineage: volicord_types::RequiredNullable::null(),
         initial_scope: InitialScope {
             boundary: "Exercise the local User Channel.".to_owned(),
             non_goals: vec!["Changing unrelated CLI behavior.".to_owned()],

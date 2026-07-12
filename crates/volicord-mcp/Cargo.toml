@@ -7,6 +7,7 @@ publish = false
 
 [dependencies]
 volicord-core = { path = "../volicord-core" }
+volicord-platform-fs = { path = "../volicord-platform-fs" }
 volicord-store = { path = "../volicord-store" }
 volicord-types = { path = "../volicord-types" }
 getrandom = "0.4"

@@ -76,7 +76,7 @@ struct InitProvisioningPlan {
     server_name: String,
 }
 
-struct OppositeIntegration {
+struct SupersededIntegration {
     connection: AgentConnectionRecord,
     selected_project: ConnectionProjectRecord,
     host_plan: Option<HostPlan>,
@@ -198,16 +198,16 @@ fn plan_init_provisioning(
         "guard_installation",
         &[&connection_id, &repo_root_key, parsed.mode.guard_value()],
     );
-    let integration = plan_guard_integration(
+    let integration = plan_guard_integration(GuardIntegrationPlanRequest {
         host_kind,
-        parsed.mode.integration_profile(),
-        &runtime_home,
-        &repo_root,
-        &connection_id,
-        &guard_installation_id,
-        &host_plan.entry,
-        intent,
-    )?;
+        profile: parsed.mode.integration_profile(),
+        runtime_home: &runtime_home,
+        repo_root: &repo_root,
+        connection_id: &connection_id,
+        guard_installation_id: &guard_installation_id,
+        mcp_entry: &host_plan.entry,
+        connection_intent: intent,
+    })?;
 
     Ok(InitProvisioningPlan {
         host_kind,
@@ -274,18 +274,18 @@ fn apply_init_provisioning(
         process,
     )?;
     ensure_host_plan_has_no_conflict(&host_plan)?;
-    let mut integration = plan_guard_integration(
-        plan.host_kind,
-        plan.init_mode.integration_profile(),
-        &plan.runtime_home,
-        &project.repo_root,
-        &plan.connection_id,
-        &plan.guard_installation_id,
-        &host_plan.entry,
-        plan.intent,
-    )?;
+    let mut integration = plan_guard_integration(GuardIntegrationPlanRequest {
+        host_kind: plan.host_kind,
+        profile: plan.init_mode.integration_profile(),
+        runtime_home: &plan.runtime_home,
+        repo_root: &project.repo_root,
+        connection_id: &plan.connection_id,
+        guard_installation_id: &plan.guard_installation_id,
+        mcp_entry: &host_plan.entry,
+        connection_intent: plan.intent,
+    })?;
     apply_guard_migration_protection(&mut integration)?;
-    let opposite_integrations = opposite_integrations_for_project(
+    let superseded_integrations = superseded_integrations_for_project(
         &plan.runtime_home,
         plan.host_kind,
         plan.intent,
@@ -327,24 +327,24 @@ fn apply_init_provisioning(
         },
     )?;
     apply_host_plan(plan.host_kind, &host_plan, process)?;
-    retire_opposite_host_configuration(&opposite_integrations, process)?;
+    retire_superseded_host_configuration(&superseded_integrations, process)?;
     // Host setup may create repository-local parent directories. Replan after
     // those mutations so every managed-file snapshot is anchored to the
     // current filesystem state. The protective union exclude was already
     // applied above and remains in force while the migration completes.
-    let mut integration = plan_guard_integration(
-        plan.host_kind,
-        plan.init_mode.integration_profile(),
-        &plan.runtime_home,
-        &project.repo_root,
-        &plan.connection_id,
-        &plan.guard_installation_id,
-        &host_plan.entry,
-        plan.intent,
-    )?;
+    let mut integration = plan_guard_integration(GuardIntegrationPlanRequest {
+        host_kind: plan.host_kind,
+        profile: plan.init_mode.integration_profile(),
+        runtime_home: &plan.runtime_home,
+        repo_root: &project.repo_root,
+        connection_id: &plan.connection_id,
+        guard_installation_id: &plan.guard_installation_id,
+        mcp_entry: &host_plan.entry,
+        connection_intent: plan.intent,
+    })?;
     integration.migration_protection_applied = true;
     let integration = apply_guard_integration(integration)?;
-    retire_opposite_connection_inventory(&plan.runtime_home, &opposite_integrations)?;
+    retire_superseded_connection_inventory(&plan.runtime_home, &superseded_integrations)?;
     let integration_profile = plan.init_mode.integration_profile();
     let installation_status =
         initial_guard_installation_status(integration_profile, &host_plan, &integration);
@@ -410,18 +410,19 @@ fn apply_init_provisioning(
     })
 }
 
-fn opposite_integrations_for_project(
+fn superseded_integrations_for_project(
     runtime_home: &Path,
     host_kind: HostKind,
     requested_intent: ConnectionIntent,
     repo_root: &Path,
     process: &impl ConnectionProcess,
-) -> Result<Vec<OppositeIntegration>, ConnectionCommandError> {
+) -> Result<Vec<SupersededIntegration>, ConnectionCommandError> {
     let mut integrations = Vec::new();
     for connection in list_agent_connections(runtime_home)? {
-        if connection.host_kind != host_kind.as_str()
-            || connection.intent == requested_intent.as_str()
+        if !matches!(connection.host_kind.as_str(), "codex" | "claude_code")
             || !matches!(connection.intent.as_str(), "personal" | "shared")
+            || (connection.host_kind == host_kind.as_str()
+                && connection.intent == requested_intent.as_str())
         {
             continue;
         }
@@ -443,7 +444,7 @@ fn opposite_integrations_for_project(
         } else {
             None
         };
-        integrations.push(OppositeIntegration {
+        integrations.push(SupersededIntegration {
             connection,
             selected_project,
             host_plan,
@@ -452,8 +453,8 @@ fn opposite_integrations_for_project(
     Ok(integrations)
 }
 
-fn retire_opposite_host_configuration(
-    integrations: &[OppositeIntegration],
+fn retire_superseded_host_configuration(
+    integrations: &[SupersededIntegration],
     process: &impl ConnectionProcess,
 ) -> Result<(), ConnectionCommandError> {
     for integration in integrations {
@@ -464,9 +465,9 @@ fn retire_opposite_host_configuration(
     Ok(())
 }
 
-fn retire_opposite_connection_inventory(
+fn retire_superseded_connection_inventory(
     runtime_home: &Path,
-    integrations: &[OppositeIntegration],
+    integrations: &[SupersededIntegration],
 ) -> Result<(), ConnectionCommandError> {
     for integration in integrations {
         remove_connection_project(

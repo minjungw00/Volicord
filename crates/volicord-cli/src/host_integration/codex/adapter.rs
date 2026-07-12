@@ -12,10 +12,11 @@ use crate::host_integration::verification::{
 use crate::host_integration::{
     claude_code::{CommandRunner, ProductionCommandRunner},
     config_edit::{read_text_snapshot, write_if_fresh},
-    format_supported_connection_intents, validated_server_name, ConnectionIntent, HostAdapter,
-    HostConfigError, HostConflict, HostConflictKind, HostDetection, HostEffect, HostKind, HostPlan,
-    HostPlanRequest, HostRemoveRequest, HostScope, HostTarget, InstallationProfile, PlannedChange,
-    ProjectContext, UserAction, UserActionKind, DEFAULT_MCP_COMMAND,
+    format_supported_connection_intents, validate_managed_server_entry_schema,
+    validated_server_name, ConnectionIntent, HostAdapter, HostConfigError, HostConflict,
+    HostConflictKind, HostDetection, HostEffect, HostKind, HostPlan, HostPlanRequest,
+    HostRemoveRequest, HostScope, HostTarget, InstallationProfile, PlannedChange, ProjectContext,
+    UserAction, UserActionKind, DEFAULT_MCP_COMMAND,
 };
 
 use super::{
@@ -78,11 +79,13 @@ impl<R: CommandRunner> CodexAdapter<R> {
             .then(|| request.project.map(|project| project.project_id))
             .flatten();
         let entry = codex_managed_server_entry(
+            scope,
             request.connection_id,
             project_id,
             mcp_command,
             runtime_home,
         );
+        validate_managed_server_entry_schema(HostKind::Codex, scope, &entry)?;
         let fingerprint = crate::host_integration::managed_fingerprint(
             HostKind::Codex,
             scope,
@@ -156,11 +159,13 @@ impl<R: CommandRunner> CodexAdapter<R> {
             .then_some(request.project_id)
             .flatten();
         let entry = codex_managed_server_entry(
+            request.scope,
             request.connection_id,
             project_id,
             request.mcp_command,
             request.runtime_home,
         );
+        validate_managed_server_entry_schema(HostKind::Codex, request.scope, &entry)?;
         let fingerprint = crate::host_integration::managed_fingerprint(
             HostKind::Codex,
             request.scope,

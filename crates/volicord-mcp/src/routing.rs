@@ -1,7 +1,9 @@
 use crate::errors::McpAdapterError;
 use crate::prelude::*;
+use crate::repository_discovery::RepositoryDiscoveryHost;
 use crate::util::*;
 use schemars::{schema_for, JsonSchema};
+use volicord_platform_fs::resolve_git_worktree_layout;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct McpConnectionContext {
@@ -43,6 +45,145 @@ impl McpConnectionContext {
             .as_ref()
             .is_none_or(|project_ids| project_ids.iter().any(|id| id.as_str() == project_id))
     }
+}
+
+/// Local binding selected from a clone-portable repository descriptor.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RepositoryDiscoveryResolution {
+    pub runtime_home: PathBuf,
+    pub repository_root: PathBuf,
+    pub host: RepositoryDiscoveryHost,
+    pub connection_internal_id: AgentConnectionId,
+    pub project_id: ProjectId,
+    pub context: McpConnectionContext,
+}
+
+impl RepositoryDiscoveryResolution {
+    /// Resolves exactly one enabled shared connection for the current repository.
+    pub fn resolve(
+        runtime_home: impl AsRef<Path>,
+        current_dir: &Path,
+        host: RepositoryDiscoveryHost,
+    ) -> Result<Self, McpAdapterError> {
+        let runtime_home = runtime_home.as_ref().to_path_buf();
+        let repository_root = repository_root_from_current_dir(current_dir)?;
+        let project = project_record_by_repo_root_read_only(&runtime_home, &repository_root)
+            .map_err(McpAdapterError::Store)?
+            .ok_or_else(|| {
+                McpAdapterError::Environment(format!(
+                    "REPOSITORY_DISCOVERY_PROJECT_NOT_REGISTERED: repository {} is not registered in Runtime Home {}; run `volicord init --shared --host {} --repo {}` from this clone",
+                    repository_root.display(),
+                    runtime_home.display(),
+                    host.as_str(),
+                    repository_root.display(),
+                ))
+            })?;
+        let mut candidates = Vec::new();
+        for connection in list_agent_connections_read_only(&runtime_home)
+            .map_err(McpAdapterError::Store)?
+            .into_iter()
+            .filter(|connection| {
+                connection.enabled
+                    && connection.host_kind == host.registry_host_kind()
+                    && connection.intent == CONNECTION_INTENT_SHARED
+                    && connection.host_scope == HOST_SCOPE_PROJECT
+            })
+        {
+            let projects = list_connection_projects_read_only(
+                &runtime_home,
+                &connection.connection_internal_id,
+            )
+            .map_err(McpAdapterError::Store)?;
+            if projects
+                .iter()
+                .any(|candidate| candidate.project_internal_id == project.project_internal_id)
+            {
+                candidates.push(connection);
+            }
+        }
+
+        let connection = match candidates.as_slice() {
+            [connection] => connection,
+            [] => {
+                return Err(McpAdapterError::Environment(format!(
+                    "REPOSITORY_DISCOVERY_CONNECTION_NOT_FOUND: repository {} has no enabled shared {} Agent Connection in Runtime Home {}; run `volicord init --shared --host {} --repo {}` and then `volicord connection verify {} --shared --repo {}`",
+                    repository_root.display(),
+                    host.as_str(),
+                    runtime_home.display(),
+                    host.as_str(),
+                    repository_root.display(),
+                    host.as_str(),
+                    repository_root.display(),
+                )))
+            }
+            _ => {
+                return Err(McpAdapterError::Environment(format!(
+                    "REPOSITORY_DISCOVERY_CONNECTION_AMBIGUOUS: repository {} has {} enabled shared {} Agent Connections in Runtime Home {}; run `volicord connection list --repo {}` and remove duplicate shared connections before retrying",
+                    repository_root.display(),
+                    candidates.len(),
+                    host.as_str(),
+                    runtime_home.display(),
+                    repository_root.display(),
+                )))
+            }
+        };
+        let project_id = ProjectId::new(project.project_id.clone());
+        validate_mcp_project_allowlist(
+            &runtime_home,
+            &connection.connection_internal_id,
+            std::slice::from_ref(&project_id),
+        )?;
+        let context = McpConnectionContext::resolve(
+            &runtime_home,
+            connection.connection_internal_id.clone(),
+        )?
+        .with_project_allowlist(vec![project_id.clone()]);
+        Ok(Self {
+            runtime_home,
+            repository_root,
+            host,
+            connection_internal_id: context.connection_internal_id.clone(),
+            project_id,
+            context,
+        })
+    }
+}
+
+fn repository_root_from_current_dir(current_dir: &Path) -> Result<PathBuf, McpAdapterError> {
+    let mut cursor = std::fs::canonicalize(current_dir).map_err(|error| {
+        McpAdapterError::Environment(format!(
+            "REPOSITORY_DISCOVERY_CWD_UNAVAILABLE: current directory {} is not accessible: {error}",
+            current_dir.display()
+        ))
+    })?;
+    if !std::fs::metadata(&cursor)
+        .map_err(McpAdapterError::Io)?
+        .is_dir()
+    {
+        return Err(McpAdapterError::Environment(format!(
+            "REPOSITORY_DISCOVERY_CWD_UNAVAILABLE: current path {} is not a directory",
+            cursor.display()
+        )));
+    }
+    loop {
+        match resolve_git_worktree_layout(&cursor) {
+            Ok(Some(layout)) => return Ok(layout.repository_root),
+            Ok(None) => {}
+            Err(error) => {
+                return Err(McpAdapterError::Environment(format!(
+                    "REPOSITORY_DISCOVERY_GIT_INVALID: failed to inspect Git repository marker at {}: {error}",
+                    cursor.display()
+                )))
+            }
+        }
+        if !cursor.pop() {
+            break;
+        }
+    }
+    Err(McpAdapterError::Environment(format!(
+        "REPOSITORY_DISCOVERY_NOT_GIT_REPOSITORY: no Git repository root was found from {}; open the host inside a registered Git clone and rerun `volicord init --shared --host <host> --repo <path>` if needed",
+        current_dir.display()
+    )))
 }
 
 /// Effective storage capability observed for an MCP session or project.
@@ -692,4 +833,179 @@ pub(crate) fn unique_project_ids(project_ids: Vec<ProjectId>) -> Vec<ProjectId> 
         }
     }
     unique
+}
+
+#[cfg(test)]
+mod repository_discovery_tests {
+    use std::{error::Error, fs, path::PathBuf};
+
+    use volicord_store::{
+        agent_connections::{
+            add_connection_project, ensure_agent_connection, AgentConnectionRegistration,
+            ConnectionProjectRegistration, CONNECTION_INTENT_SHARED, CONNECTION_MODE_WORKFLOW,
+            HOST_KIND_CODEX, HOST_SCOPE_PROJECT, VERIFIED_STATUS_NOT_VERIFIED,
+        },
+        bootstrap::{
+            initialize_runtime_home, register_project, write_installation_profile,
+            InstallationProfileRegistration, ProjectRegistration, ACTIVE_PROJECT_STATUS,
+        },
+    };
+    use volicord_test_support::TempRuntimeHome;
+
+    use crate::{RepositoryDiscoveryDescriptor, RepositoryDiscoveryHost};
+
+    use super::RepositoryDiscoveryResolution;
+
+    struct DiscoveryFixture {
+        _runtime: TempRuntimeHome,
+        runtime_home: PathBuf,
+        repo_root: PathBuf,
+    }
+
+    fn discovery_fixture(
+        label: &str,
+        project_id: &str,
+        connection_ids: &[&str],
+    ) -> Result<DiscoveryFixture, Box<dyn Error>> {
+        let runtime = TempRuntimeHome::new(label)?;
+        let repo_root = runtime.create_product_repo("clone")?;
+        fs::create_dir(repo_root.join(".git"))?;
+        initialize_runtime_home(runtime.path(), &format!("runtime_{label}"), "{}")?;
+        write_installation_profile(
+            runtime.path(),
+            InstallationProfileRegistration {
+                installation_id: "default".to_owned(),
+                volicord_command: "volicord".to_owned(),
+                volicord_mcp_command: "volicord".to_owned(),
+                bin_dir: runtime.path().join("bin"),
+                default_connection_mode: CONNECTION_MODE_WORKFLOW.to_owned(),
+                metadata_json: "{}".to_owned(),
+            },
+        )?;
+        register_project(
+            runtime.path(),
+            ProjectRegistration {
+                project_id: project_id.to_owned(),
+                repo_root: repo_root.clone(),
+                project_home: None,
+                status: ACTIVE_PROJECT_STATUS.to_owned(),
+                metadata_json: "{}".to_owned(),
+            },
+        )?;
+        for (index, connection_id) in connection_ids.iter().enumerate() {
+            ensure_agent_connection(
+                runtime.path(),
+                AgentConnectionRegistration {
+                    connection_internal_id: (*connection_id).to_owned(),
+                    host_kind: HOST_KIND_CODEX.to_owned(),
+                    intent: CONNECTION_INTENT_SHARED.to_owned(),
+                    host_scope: HOST_SCOPE_PROJECT.to_owned(),
+                    server_name: format!("volicord-{index}"),
+                    config_target: repo_root
+                        .join(format!(".codex/config-{index}.toml"))
+                        .display()
+                        .to_string(),
+                    mode: CONNECTION_MODE_WORKFLOW.to_owned(),
+                    enabled: true,
+                    managed_fingerprint: format!("fingerprint-{index}"),
+                    last_verification_status: VERIFIED_STATUS_NOT_VERIFIED.to_owned(),
+                    last_verification_report_json: "{}".to_owned(),
+                    last_user_actions_json: "[]".to_owned(),
+                    metadata_json: "{}".to_owned(),
+                },
+            )?;
+            add_connection_project(
+                runtime.path(),
+                ConnectionProjectRegistration {
+                    connection_internal_id: (*connection_id).to_owned(),
+                    project_id: project_id.to_owned(),
+                },
+            )?;
+        }
+        Ok(DiscoveryFixture {
+            runtime_home: runtime.path().to_path_buf(),
+            repo_root,
+            _runtime: runtime,
+        })
+    }
+
+    #[test]
+    fn one_portable_descriptor_resolves_clone_local_ids_in_two_runtime_homes(
+    ) -> Result<(), Box<dyn Error>> {
+        let first = discovery_fixture("discovery-clone-a", "project_clone_a", &["connection_a"])?;
+        let second = discovery_fixture("discovery-clone-b", "project_clone_b", &["connection_b"])?;
+        let descriptor = RepositoryDiscoveryDescriptor::new(RepositoryDiscoveryHost::Codex);
+        assert_eq!(
+            descriptor.args(),
+            ["mcp", "--stdio", "--discover-repository", "--host", "codex"]
+        );
+
+        let first_resolution = RepositoryDiscoveryResolution::resolve(
+            &first.runtime_home,
+            &first.repo_root,
+            descriptor.host(),
+        )?;
+        let second_resolution = RepositoryDiscoveryResolution::resolve(
+            &second.runtime_home,
+            &second.repo_root,
+            descriptor.host(),
+        )?;
+
+        assert_eq!(
+            first_resolution.connection_internal_id.as_str(),
+            "connection_a"
+        );
+        assert_eq!(first_resolution.project_id.as_str(), "project_clone_a");
+        assert_eq!(
+            second_resolution.connection_internal_id.as_str(),
+            "connection_b"
+        );
+        assert_eq!(second_resolution.project_id.as_str(), "project_clone_b");
+        assert_eq!(
+            first_resolution.context.project_allowlist,
+            Some(vec![first_resolution.project_id.clone()])
+        );
+        assert_eq!(
+            second_resolution.context.project_allowlist,
+            Some(vec![second_resolution.project_id.clone()])
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn repository_discovery_fails_closed_for_unregistered_and_ambiguous_local_state(
+    ) -> Result<(), Box<dyn Error>> {
+        let unregistered_runtime = TempRuntimeHome::new("discovery-unregistered")?;
+        let unregistered_repo = unregistered_runtime.create_product_repo("clone")?;
+        fs::create_dir(unregistered_repo.join(".git"))?;
+        let unregistered = RepositoryDiscoveryResolution::resolve(
+            unregistered_runtime.path(),
+            &unregistered_repo,
+            RepositoryDiscoveryHost::Codex,
+        )
+        .expect_err("unregistered clone must fail closed");
+        assert!(unregistered
+            .to_string()
+            .contains("REPOSITORY_DISCOVERY_PROJECT_NOT_REGISTERED"));
+        assert!(unregistered.to_string().contains("volicord init --shared"));
+
+        let ambiguous = discovery_fixture(
+            "discovery-ambiguous",
+            "project_ambiguous",
+            &["connection_one", "connection_two"],
+        )?;
+        let ambiguous_error = RepositoryDiscoveryResolution::resolve(
+            &ambiguous.runtime_home,
+            &ambiguous.repo_root,
+            RepositoryDiscoveryHost::Codex,
+        )
+        .expect_err("duplicate shared connections must fail closed");
+        assert!(ambiguous_error
+            .to_string()
+            .contains("REPOSITORY_DISCOVERY_CONNECTION_AMBIGUOUS"));
+        assert!(ambiguous_error
+            .to_string()
+            .contains("volicord connection list"));
+        Ok(())
+    }
 }

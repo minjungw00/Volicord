@@ -2,10 +2,7 @@
   "mcpServers": {
     "volicord": {
       "command": "volicord",
-      "args": ["mcp", "--stdio", "--connection", "conn_claude_project"],
-      "env": {
-        "VOLICORD_HOME": "/tmp/volicord-fixture-home"
-      }
+      "args": ["mcp", "--stdio", "--discover-repository", "--host", "claude-code"]
     }
   }
 }

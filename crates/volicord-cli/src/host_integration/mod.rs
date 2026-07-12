@@ -7,6 +7,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+use volicord_mcp::{RepositoryDiscoveryDescriptor, RepositoryDiscoveryHost};
 
 pub mod claude_code;
 pub mod codex;
@@ -299,6 +300,29 @@ impl ManagedServerEntry {
         }
     }
 
+    pub fn new_repository_discovery(host: RepositoryDiscoveryHost) -> Self {
+        let descriptor = RepositoryDiscoveryDescriptor::new(host);
+        Self {
+            command: RepositoryDiscoveryDescriptor::COMMAND.to_owned(),
+            args: descriptor.args(),
+            env: BTreeMap::new(),
+        }
+    }
+
+    pub fn validate_repository_discovery(
+        &self,
+        host: RepositoryDiscoveryHost,
+    ) -> Result<(), HostConfigError> {
+        RepositoryDiscoveryDescriptor::new(host)
+            .validate_entry(&self.command, &self.args, &self.env)
+            .map_err(|error| {
+                HostConfigError::Conflict(HostConflict::new(
+                    HostConflictKind::InvalidCommand,
+                    error.to_string(),
+                ))
+            })
+    }
+
     pub fn to_json_value(&self) -> Value {
         let mut entry = serde_json::Map::new();
         entry.insert("command".to_owned(), Value::String(self.command.clone()));
@@ -319,6 +343,45 @@ impl ManagedServerEntry {
         }
         Value::Object(entry)
     }
+}
+
+pub(crate) fn validate_managed_server_entry_schema(
+    host_kind: HostKind,
+    host_scope: HostScope,
+    entry: &ManagedServerEntry,
+) -> Result<(), HostConfigError> {
+    let discovery_host = match host_kind {
+        HostKind::Codex => RepositoryDiscoveryHost::Codex,
+        HostKind::ClaudeCode => RepositoryDiscoveryHost::ClaudeCode,
+        HostKind::Generic => {
+            return Err(HostConfigError::Conflict(HostConflict::new(
+                HostConflictKind::InvalidCommand,
+                "generic host entries cannot use repository discovery",
+            )))
+        }
+    };
+    if host_scope == HostScope::Project {
+        return entry.validate_repository_discovery(discovery_host);
+    }
+    if entry
+        .validate_repository_discovery(RepositoryDiscoveryHost::Codex)
+        .is_ok()
+        || entry
+            .validate_repository_discovery(RepositoryDiscoveryHost::ClaudeCode)
+            .is_ok()
+    {
+        return Err(HostConfigError::Conflict(HostConflict::new(
+            HostConflictKind::InvalidCommand,
+            "local host configuration must use an explicit local connection binding",
+        )));
+    }
+    if !is_volicord_managed_entry(entry) {
+        return Err(HostConfigError::Conflict(HostConflict::new(
+            HostConflictKind::InvalidCommand,
+            "local host configuration requires a connection-bound Volicord MCP command",
+        )));
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -600,6 +663,15 @@ pub(crate) fn managed_entry_from_json(value: &Value) -> Option<ManagedServerEntr
 }
 
 pub(crate) fn is_volicord_managed_entry(entry: &ManagedServerEntry) -> bool {
+    if [
+        RepositoryDiscoveryHost::Codex,
+        RepositoryDiscoveryHost::ClaudeCode,
+    ]
+    .into_iter()
+    .any(|host| entry.validate_repository_discovery(host).is_ok())
+    {
+        return true;
+    }
     if !(entry.args.len() == 4 || entry.args.len() == 6)
         || entry.args[0] != "mcp"
         || entry.args[1] != "--stdio"
@@ -619,6 +691,7 @@ pub(crate) fn is_volicord_managed_entry(entry: &ManagedServerEntry) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use volicord_mcp::RepositoryDiscoveryHost;
 
     #[test]
     fn default_server_name_is_internal_host_key() {
@@ -629,6 +702,52 @@ mod tests {
         assert_eq!(first, second);
         assert_eq!(first, other);
         assert_eq!(first, DEFAULT_SERVER_NAME);
+    }
+
+    #[test]
+    fn repository_visible_schema_is_portable_and_local_schema_is_connection_bound() {
+        let mut shared =
+            ManagedServerEntry::new_repository_discovery(RepositoryDiscoveryHost::Codex);
+        validate_managed_server_entry_schema(HostKind::Codex, HostScope::Project, &shared)
+            .expect("portable shared descriptor");
+        assert_eq!(shared.command, "volicord");
+        assert_eq!(
+            shared.args,
+            ["mcp", "--stdio", "--discover-repository", "--host", "codex"]
+        );
+        assert!(shared.env.is_empty());
+
+        shared
+            .args
+            .extend(["--connection".to_owned(), "connection_local".to_owned()]);
+        assert!(
+            validate_managed_server_entry_schema(HostKind::Codex, HostScope::Project, &shared)
+                .is_err()
+        );
+        shared.args.truncate(5);
+        shared
+            .env
+            .insert("SECRET_TOKEN".to_owned(), "not-stored".to_owned());
+        assert!(
+            validate_managed_server_entry_schema(HostKind::Codex, HostScope::Project, &shared)
+                .is_err()
+        );
+
+        let local = ManagedServerEntry::new(
+            "connection_local",
+            Path::new("/local/bin/volicord"),
+            Some(Path::new("/local/runtime-home")),
+        );
+        validate_managed_server_entry_schema(HostKind::Codex, HostScope::User, &local)
+            .expect("local binding");
+        assert!(local.args.contains(&"connection_local".to_owned()));
+        assert_eq!(local.env["VOLICORD_HOME"], "/local/runtime-home");
+        assert!(validate_managed_server_entry_schema(
+            HostKind::Codex,
+            HostScope::User,
+            &ManagedServerEntry::new_repository_discovery(RepositoryDiscoveryHost::Codex),
+        )
+        .is_err());
     }
 
     #[test]

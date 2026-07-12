@@ -1,11 +1,5 @@
 [mcp_servers.volicord]
 command = "volicord"
-args = ["mcp", "--stdio", "--connection", "conn_codex_project", "--project", "project_codex_project"]
+args = ["mcp", "--stdio", "--discover-repository", "--host", "codex"]
 enabled = true
 startup_timeout_sec = 10
-
-[mcp_servers.volicord.env]
-VOLICORD_MCP_CONNECTION_ID = "conn_codex_project"
-VOLICORD_MCP_HOST = "codex"
-VOLICORD_MCP_LAUNCH = "managed_host"
-VOLICORD_MCP_PROJECT_ID = "project_codex_project"

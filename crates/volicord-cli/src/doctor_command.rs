@@ -31,6 +31,8 @@ use crate::{
     },
     guard_integration::git_exclude::{always_local_paths, git_exclude_path, personal_only_paths},
     guard_integration::policy::validate_policy_schema,
+    guard_integration::HOOK_WRAPPER_MARKER,
+    host_integration::{is_volicord_managed_entry, managed_entry_from_json, ManagedServerEntry},
     setup_command::{path_text, CommandOutcome, CommandStatus},
     shell_path::{
         detect_command_on_path, is_executable_file, mcp_binary_name, path_directory_is_on_path,
@@ -851,7 +853,7 @@ fn inspect_integration_intent_drift(
             .iter()
             .filter(|connection| {
                 connection.enabled
-                    && connection.host_kind == registry_host_kind
+                    && matches!(connection.host_kind.as_str(), "codex" | "claude_code")
                     && matches!(connection.intent.as_str(), "personal" | "shared")
                     && connection_is_attached_to_project(snapshot, connection, project)
             })
@@ -859,8 +861,8 @@ fn inspect_integration_intent_drift(
         let expected = attached
             .iter()
             .find(|connection| connection.connection_internal_id == policy.connection_id);
-        if expected.is_none() {
-            push_bounded_intent_finding(
+        match expected {
+            None => push_bounded_intent_finding(
                 &mut findings,
                 json!({
                     "project_id": project.project_id,
@@ -869,38 +871,64 @@ fn inspect_integration_intent_drift(
                     "policy_connection_id": policy.connection_id,
                     "policy_intent": policy.connection_intent,
                     "host": policy.host,
+                    "policy_host": policy.host,
                 }),
                 &mut truncated,
-            );
-        } else if expected.is_some_and(|connection| connection.intent != policy.connection_intent) {
-            push_bounded_intent_finding(
-                &mut findings,
-                json!({
-                    "project_id": project.project_id,
-                    "repo_root": path_text(&project.repo_root),
-                    "kind": "policy_connection_intent_mismatch",
-                    "policy_intent": policy.connection_intent,
-                    "recorded_intent": expected.map(|connection| connection.intent.as_str()),
-                    "host": policy.host,
-                }),
-                &mut truncated,
-            );
+            ),
+            Some(connection) if connection.host_kind != registry_host_kind => {
+                push_bounded_intent_finding(
+                    &mut findings,
+                    json!({
+                        "project_id": project.project_id,
+                        "repo_root": path_text(&project.repo_root),
+                        "kind": "policy_connection_host_mismatch",
+                        "policy_connection_id": policy.connection_id,
+                        "policy_host": policy.host,
+                        "recorded_host": public_connection_host(&connection.host_kind),
+                    }),
+                    &mut truncated,
+                );
+            }
+            Some(connection) if connection.intent != policy.connection_intent => {
+                push_bounded_intent_finding(
+                    &mut findings,
+                    json!({
+                        "project_id": project.project_id,
+                        "repo_root": path_text(&project.repo_root),
+                        "kind": "policy_connection_intent_mismatch",
+                        "policy_intent": policy.connection_intent,
+                        "recorded_intent": connection.intent,
+                        "host": policy.host,
+                        "policy_host": policy.host,
+                    }),
+                    &mut truncated,
+                );
+            }
+            Some(_) => {}
         }
         for connection in attached.iter().filter(|connection| {
             connection.connection_internal_id != policy.connection_id
+                || connection.host_kind != registry_host_kind
                 || connection.intent != policy.connection_intent
         }) {
+            let opposite_host = connection.host_kind != registry_host_kind;
             push_bounded_intent_finding(
                 &mut findings,
                 json!({
                     "project_id": project.project_id,
                     "repo_root": path_text(&project.repo_root),
-                    "kind": "additional_active_intent_projection",
+                    "kind": if opposite_host {
+                        "additional_active_host_projection"
+                    } else {
+                        "additional_active_intent_projection"
+                    },
                     "policy_connection_id": policy.connection_id,
                     "connection_id": connection.connection_internal_id,
                     "policy_intent": policy.connection_intent,
                     "recorded_intent": connection.intent,
                     "host": policy.host,
+                    "policy_host": policy.host,
+                    "recorded_host": public_connection_host(&connection.host_kind),
                 }),
                 &mut truncated,
             );
@@ -930,17 +958,24 @@ fn inspect_integration_intent_drift(
 
         match stale_opposite_projection_paths(&project.repo_root, &policy) {
             Ok(paths) => {
-                for path in paths {
+                for projection in paths {
+                    let opposite_host = projection.host != policy.host;
                     push_bounded_intent_finding(
                         &mut findings,
                         json!({
                             "project_id": project.project_id,
                             "repo_root": path_text(&project.repo_root),
-                            "kind": "opposite_intent_projection_present",
-                            "path": path,
+                            "kind": if opposite_host {
+                                "opposite_host_projection_present"
+                            } else {
+                                "opposite_intent_projection_present"
+                            },
+                            "path": projection.path,
+                            "projection_host": projection.host,
                             "policy_intent": policy.connection_intent,
                             "selected_profile": policy.selected_profile,
                             "host": policy.host,
+                            "policy_host": policy.host,
                         }),
                         &mut truncated,
                     );
@@ -973,7 +1008,7 @@ fn inspect_integration_intent_drift(
             actions,
             DiagnosticAction {
                 id: "repair_integration_intent_drift".to_owned(),
-                instruction: "Rerun init with the policy-selected host, intent, and profile so Volicord can safely retire only its owned opposite-intent projection."
+                instruction: "Rerun init with the policy-selected host, intent, and profile so Volicord can safely retire only its owned stale host or intent projection."
                     .to_owned(),
                 command: first_repair_command,
             },
@@ -981,7 +1016,7 @@ fn inspect_integration_intent_drift(
         checks.push(
             DiagnosticCheck::warning(
                 "integration_intent_drift",
-                "one or more repository integrations have intent or profile drift",
+                "one or more repository integrations have host, intent, or profile drift",
             )
             .with_details(details),
         );
@@ -1025,6 +1060,13 @@ fn connection_is_attached_to_project(
         })
 }
 
+fn public_connection_host(host_kind: &str) -> &str {
+    match host_kind {
+        "claude_code" => "claude-code",
+        other => other,
+    }
+}
+
 fn active_guard_installations(
     snapshot: &RegistryInspectionSnapshot,
 ) -> Vec<volicord_store::inspection::GuardInstallationInspectionRecord> {
@@ -1053,10 +1095,41 @@ fn active_guard_installations(
         .collect()
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct StaleProjectionPath {
+    path: String,
+    host: &'static str,
+}
+
+impl StaleProjectionPath {
+    fn new(path: impl Into<String>, host: &'static str) -> Self {
+        Self {
+            path: path.into(),
+            host,
+        }
+    }
+}
+
+const CODEX_MANAGED_WRAPPER_PATHS: &[&str] = &[
+    ".codex/hooks/volicord-dispatch.sh",
+    ".codex/hooks/volicord-session-start.sh",
+    ".codex/hooks/volicord-pre-tool.sh",
+    ".codex/hooks/volicord-post-tool.sh",
+    ".codex/hooks/volicord-prompt-capture.sh",
+    ".codex/hooks/volicord-stop.sh",
+];
+const CLAUDE_MANAGED_WRAPPER_PATHS: &[&str] = &[
+    ".claude/hooks/volicord-session-start.sh",
+    ".claude/hooks/volicord-pre-tool.sh",
+    ".claude/hooks/volicord-post-tool.sh",
+    ".claude/hooks/volicord-prompt-capture.sh",
+    ".claude/hooks/volicord-stop.sh",
+];
+
 fn stale_opposite_projection_paths(
     repo_root: &Path,
     policy: &LocalPolicyAudit,
-) -> Result<Vec<String>, String> {
+) -> Result<Vec<StaleProjectionPath>, String> {
     let mut paths = Vec::new();
     match policy.host.as_str() {
         "claude-code" => {
@@ -1069,15 +1142,17 @@ fn stale_opposite_projection_paths(
                 policy.connection_intent.as_str(),
             ) {
                 ("detective", "personal") if shared_has_hooks => {
-                    paths.push(shared_settings.to_owned())
+                    paths.push(StaleProjectionPath::new(shared_settings, "claude-code"))
                 }
-                ("detective", "shared") if local_has_hooks => paths.push(local_settings.to_owned()),
+                ("detective", "shared") if local_has_hooks => {
+                    paths.push(StaleProjectionPath::new(local_settings, "claude-code"))
+                }
                 ("record", _) => {
                     if local_has_hooks {
-                        paths.push(local_settings.to_owned());
+                        paths.push(StaleProjectionPath::new(local_settings, "claude-code"));
                     }
                     if shared_has_hooks {
-                        paths.push(shared_settings.to_owned());
+                        paths.push(StaleProjectionPath::new(shared_settings, "claude-code"));
                     }
                 }
                 _ => {}
@@ -1085,25 +1160,99 @@ fn stale_opposite_projection_paths(
             if policy.connection_intent == "personal"
                 && managed_mcp_projection_present(repo_root, ".mcp.json")?
             {
-                paths.push(".mcp.json".to_owned());
+                paths.push(StaleProjectionPath::new(".mcp.json", "claude-code"));
             }
             if policy.selected_profile == "record"
                 && managed_marker_present(repo_root, ".claude/rules/volicord.md")?
             {
-                paths.push(".claude/rules/volicord.md".to_owned());
+                paths.push(StaleProjectionPath::new(
+                    ".claude/rules/volicord.md",
+                    "claude-code",
+                ));
             }
+            append_stale_codex_projection_paths(repo_root, &mut paths)?;
         }
-        "codex" if policy.selected_profile == "record" => {
-            if managed_hooks_present(repo_root, ".codex/hooks.json")? {
-                paths.push(".codex/hooks.json".to_owned());
+        "codex" => {
+            if policy.connection_intent == "personal"
+                && managed_codex_mcp_projection_present(repo_root, ".codex/config.toml")?
+            {
+                paths.push(StaleProjectionPath::new(".codex/config.toml", "codex"));
             }
-            if managed_marker_present(repo_root, ".codex/rules/volicord.rules")? {
-                paths.push(".codex/rules/volicord.rules".to_owned());
+            if policy.selected_profile == "record" {
+                if managed_hooks_present(repo_root, ".codex/hooks.json")? {
+                    paths.push(StaleProjectionPath::new(".codex/hooks.json", "codex"));
+                }
+                if managed_marker_present(repo_root, ".codex/rules/volicord.rules")? {
+                    paths.push(StaleProjectionPath::new(
+                        ".codex/rules/volicord.rules",
+                        "codex",
+                    ));
+                }
             }
+            append_stale_claude_projection_paths(repo_root, &mut paths)?;
         }
         _ => {}
     }
     Ok(paths)
+}
+
+fn append_stale_codex_projection_paths(
+    repo_root: &Path,
+    paths: &mut Vec<StaleProjectionPath>,
+) -> Result<(), String> {
+    if managed_codex_mcp_projection_present(repo_root, ".codex/config.toml")? {
+        paths.push(StaleProjectionPath::new(".codex/config.toml", "codex"));
+    }
+    if managed_hooks_present(repo_root, ".codex/hooks.json")? {
+        paths.push(StaleProjectionPath::new(".codex/hooks.json", "codex"));
+    }
+    if managed_marker_present(repo_root, ".codex/rules/volicord.rules")? {
+        paths.push(StaleProjectionPath::new(
+            ".codex/rules/volicord.rules",
+            "codex",
+        ));
+    }
+    append_stale_managed_wrappers(repo_root, CODEX_MANAGED_WRAPPER_PATHS, "codex", paths)
+}
+
+fn append_stale_claude_projection_paths(
+    repo_root: &Path,
+    paths: &mut Vec<StaleProjectionPath>,
+) -> Result<(), String> {
+    if managed_mcp_projection_present(repo_root, ".mcp.json")? {
+        paths.push(StaleProjectionPath::new(".mcp.json", "claude-code"));
+    }
+    for settings in [".claude/settings.local.json", ".claude/settings.json"] {
+        if managed_hooks_present(repo_root, settings)? {
+            paths.push(StaleProjectionPath::new(settings, "claude-code"));
+        }
+    }
+    if managed_marker_present(repo_root, ".claude/rules/volicord.md")? {
+        paths.push(StaleProjectionPath::new(
+            ".claude/rules/volicord.md",
+            "claude-code",
+        ));
+    }
+    append_stale_managed_wrappers(
+        repo_root,
+        CLAUDE_MANAGED_WRAPPER_PATHS,
+        "claude-code",
+        paths,
+    )
+}
+
+fn append_stale_managed_wrappers(
+    repo_root: &Path,
+    wrapper_paths: &[&str],
+    host: &'static str,
+    paths: &mut Vec<StaleProjectionPath>,
+) -> Result<(), String> {
+    for path in wrapper_paths {
+        if managed_hook_wrapper_present(repo_root, path)? {
+            paths.push(StaleProjectionPath::new(*path, host));
+        }
+    }
+    Ok(())
 }
 
 fn managed_hooks_present(repo_root: &Path, relative_path: &str) -> Result<bool, String> {
@@ -1124,7 +1273,60 @@ fn managed_mcp_projection_present(repo_root: &Path, relative_path: &str) -> Resu
     Ok(value
         .get("mcpServers")
         .and_then(Value::as_object)
-        .is_some_and(|servers| servers.contains_key("volicord")))
+        .and_then(|servers| servers.get("volicord"))
+        .and_then(managed_entry_from_json)
+        .is_some_and(|entry| is_volicord_managed_entry(&entry)))
+}
+
+fn managed_codex_mcp_projection_present(
+    repo_root: &Path,
+    relative_path: &str,
+) -> Result<bool, String> {
+    let Some(text) = read_bounded_repo_text(repo_root, relative_path)? else {
+        return Ok(false);
+    };
+    let document = text
+        .parse::<toml_edit::DocumentMut>()
+        .map_err(|error| format!("{relative_path} is not valid TOML: {error}"))?;
+    Ok(document
+        .get("mcp_servers")
+        .and_then(toml_edit::Item::as_table)
+        .and_then(|servers| servers.get("volicord"))
+        .and_then(managed_entry_from_codex_item)
+        .is_some_and(|entry| is_volicord_managed_entry(&entry)))
+}
+
+fn managed_entry_from_codex_item(item: &toml_edit::Item) -> Option<ManagedServerEntry> {
+    let table = item.as_table()?;
+    let command = table.get("command")?.as_str()?.to_owned();
+    let args = table
+        .get("args")
+        .and_then(toml_edit::Item::as_array)
+        .map(|args| {
+            args.iter()
+                .map(|arg| arg.as_str().map(str::to_owned))
+                .collect::<Option<Vec<_>>>()
+        })
+        .unwrap_or_else(|| Some(Vec::new()))?;
+    let env = table
+        .get("env")
+        .and_then(toml_edit::Item::as_table)
+        .map(|env| {
+            env.iter()
+                .map(|(key, value)| {
+                    value
+                        .as_str()
+                        .map(|value| (key.to_owned(), value.to_owned()))
+                })
+                .collect::<Option<BTreeMap<_, _>>>()
+        })
+        .unwrap_or_else(|| Some(BTreeMap::new()))?;
+    Some(ManagedServerEntry { command, args, env })
+}
+
+fn managed_hook_wrapper_present(repo_root: &Path, relative_path: &str) -> Result<bool, String> {
+    Ok(read_bounded_repo_text(repo_root, relative_path)?
+        .is_some_and(|text| text.contains(HOOK_WRAPPER_MARKER)))
 }
 
 fn managed_marker_present(repo_root: &Path, relative_path: &str) -> Result<bool, String> {
@@ -3040,4 +3242,279 @@ fn is_help_request(args: &[String]) -> bool {
         args.first().map(String::as_str),
         Some("-h" | "--help" | "help")
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    use volicord_store::inspection::{
+        AgentConnectionInspectionRecord, DatabaseInspection, GuardInstallationInspectionRecord,
+        InspectionSchemaState, ProjectInspectionRecord, RegistryInspectionSnapshot,
+        RuntimeHomeInspectionRecord,
+    };
+
+    use super::*;
+
+    static NEXT_TEST_DIRECTORY: AtomicU64 = AtomicU64::new(1);
+
+    struct TestDirectory {
+        path: PathBuf,
+    }
+
+    impl TestDirectory {
+        fn new(label: &str) -> Result<Self, Box<dyn std::error::Error>> {
+            let sequence = NEXT_TEST_DIRECTORY.fetch_add(1, Ordering::Relaxed);
+            let path = std::env::temp_dir().join(format!(
+                "volicord-doctor-{label}-{}-{sequence}",
+                std::process::id()
+            ));
+            fs::create_dir_all(&path)?;
+            Ok(Self { path })
+        }
+    }
+
+    impl Drop for TestDirectory {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
+
+    #[test]
+    fn intent_drift_reports_enabled_and_projected_opposite_host(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let repo = TestDirectory::new("cross-host-drift")?;
+        write_record_policy(&repo.path, "codex", "shared", "conn-codex", "guard-codex")?;
+        fs::write(
+            repo.path.join(".mcp.json"),
+            serde_json::to_string_pretty(&json!({
+                "mcpServers": {
+                    "volicord": {
+                        "command": "volicord",
+                        "args": [
+                            "mcp",
+                            "--stdio",
+                            "--discover-repository",
+                            "--host",
+                            "claude-code"
+                        ]
+                    }
+                }
+            }))? + "\n",
+        )?;
+        let wrapper_path = repo.path.join(".claude/hooks/volicord-pre-tool.sh");
+        fs::create_dir_all(wrapper_path.parent().expect("wrapper parent"))?;
+        fs::write(
+            &wrapper_path,
+            format!("#!/bin/sh\n# {HOOK_WRAPPER_MARKER}\n"),
+        )?;
+
+        let snapshot = cross_host_snapshot(&repo.path);
+        let mut checks = Vec::new();
+        let mut actions = Vec::new();
+        inspect_integration_intent_drift(&snapshot, &mut checks, &mut actions);
+
+        let check = checks
+            .iter()
+            .find(|check| check.id == "integration_intent_drift")
+            .expect("intent drift check");
+        assert_eq!(check.status, "warning");
+        let findings = check
+            .details
+            .as_ref()
+            .and_then(|details| details.get("findings"))
+            .and_then(Value::as_array)
+            .expect("intent drift findings");
+        assert!(findings.iter().any(|finding| {
+            finding["kind"] == "additional_active_host_projection"
+                && finding["recorded_host"] == "claude-code"
+                && finding["connection_id"] == "conn-claude"
+        }));
+        assert!(findings.iter().any(|finding| {
+            finding["kind"] == "opposite_host_projection_present"
+                && finding["projection_host"] == "claude-code"
+                && finding["path"] == ".mcp.json"
+        }));
+        assert!(findings.iter().any(|finding| {
+            finding["kind"] == "opposite_host_projection_present"
+                && finding["projection_host"] == "claude-code"
+                && finding["path"] == ".claude/hooks/volicord-pre-tool.sh"
+        }));
+        assert!(actions
+            .iter()
+            .any(|action| action.id == "repair_integration_intent_drift"));
+        Ok(())
+    }
+
+    #[test]
+    fn opposite_host_scan_recognizes_portable_codex_project_projection(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let repo = TestDirectory::new("stale-codex-projection")?;
+        let config_path = repo.path.join(".codex/config.toml");
+        fs::create_dir_all(config_path.parent().expect("config parent"))?;
+        fs::write(
+            &config_path,
+            "[mcp_servers.volicord]\ncommand = \"volicord\"\nargs = [\"mcp\", \"--stdio\", \"--discover-repository\", \"--host\", \"codex\"]\n",
+        )?;
+        let policy = LocalPolicyAudit {
+            host: "claude-code".to_owned(),
+            connection_intent: "shared".to_owned(),
+            selected_profile: "record".to_owned(),
+            connection_id: "conn-claude".to_owned(),
+            guard_installation_id: "guard-claude".to_owned(),
+        };
+
+        let stale = stale_opposite_projection_paths(&repo.path, &policy)?;
+
+        assert!(stale.iter().any(|projection| {
+            projection.host == "codex" && projection.path == ".codex/config.toml"
+        }));
+        Ok(())
+    }
+
+    fn write_record_policy(
+        repo_root: &Path,
+        host: &str,
+        intent: &str,
+        connection_id: &str,
+        guard_installation_id: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let commands = [
+            "session_start",
+            "pre_tool",
+            "post_tool",
+            "prompt_capture",
+            "stop",
+        ]
+        .into_iter()
+        .map(|phase| {
+            (
+                phase.to_owned(),
+                json!({ "command": "volicord", "args": ["_hook", phase] }),
+            )
+        })
+        .collect::<serde_json::Map<_, _>>();
+        let policy = json!({
+            "schema": "volicord-policy-v1",
+            "managed_by": "volicord",
+            "storage_scope": "local_overlay",
+            "connection_intent": intent,
+            "host": host,
+            "repo_root": path_text(repo_root),
+            "connection_id": connection_id,
+            "guard_installation_id": guard_installation_id,
+            "selected_profile": "record",
+            "mcp": {
+                "command": "volicord",
+                "args": ["mcp", "--stdio", "--discover-repository", "--host", host],
+                "env": {},
+            },
+            "host_hook": {
+                "enabled": false,
+                "commands": commands,
+            },
+        });
+        let policy_dir = repo_root.join(".volicord");
+        fs::create_dir_all(&policy_dir)?;
+        fs::write(
+            policy_dir.join("policy.json"),
+            serde_json::to_string_pretty(&policy)? + "\n",
+        )?;
+        Ok(())
+    }
+
+    fn cross_host_snapshot(repo_root: &Path) -> RegistryInspectionSnapshot {
+        let project_internal_id = "project-internal";
+        RegistryInspectionSnapshot {
+            path: repo_root.join("registry.sqlite"),
+            schema: InspectionSchemaState::Current,
+            runtime_home: RuntimeHomeInspectionRecord {
+                runtime_home_id: "runtime-home".to_owned(),
+                runtime_home_path: repo_root.join("runtime-home"),
+                registry_db_path: repo_root.join("registry.sqlite"),
+                storage_profile: "sqlite".to_owned(),
+                created_at: "2026-01-01T00:00:00Z".to_owned(),
+                updated_at: "2026-01-01T00:00:00Z".to_owned(),
+                metadata_json: "{}".to_owned(),
+            },
+            installation_profile: None,
+            projects: vec![ProjectInspectionRecord {
+                project_internal_id: project_internal_id.to_owned(),
+                project_id: "project-public".to_owned(),
+                project_name: "Project".to_owned(),
+                project_alias: "project".to_owned(),
+                runtime_home_id: "runtime-home".to_owned(),
+                repo_root: repo_root.to_path_buf(),
+                project_home: repo_root.join("project-home"),
+                state_db_path: repo_root.join("state.sqlite"),
+                status: "active".to_owned(),
+                metadata_json: "{}".to_owned(),
+                project_state: DatabaseInspection::Missing {
+                    path: repo_root.join("state.sqlite"),
+                },
+            }],
+            agent_connections: vec![
+                inspection_connection("conn-codex", "codex", "shared", project_internal_id),
+                inspection_connection(
+                    "conn-claude",
+                    "claude_code",
+                    "personal",
+                    project_internal_id,
+                ),
+            ],
+            connection_projects: Vec::new(),
+            guard_installations: vec![GuardInstallationInspectionRecord {
+                guard_installation_id: "guard-codex".to_owned(),
+                connection_internal_id: "conn-codex".to_owned(),
+                project_internal_id: Some(project_internal_id.to_owned()),
+                project_id: Some("project-public".to_owned()),
+                host_kind: "codex".to_owned(),
+                guard_mode: "record".to_owned(),
+                host_capability_json: "{}".to_owned(),
+                installation_status: "installed".to_owned(),
+                installed_at: Some("2026-01-01T00:00:00Z".to_owned()),
+                last_checked_at: "2026-01-01T00:00:00Z".to_owned(),
+                first_seen_at: None,
+                last_seen_at: None,
+                last_seen_phase: None,
+                observed_host_kind: None,
+                observed_policy_hash: None,
+                observed_binary_version: None,
+                metadata_json: "{}".to_owned(),
+                created_at: "2026-01-01T00:00:00Z".to_owned(),
+                updated_at: "2026-01-01T00:00:00Z".to_owned(),
+            }],
+        }
+    }
+
+    fn inspection_connection(
+        connection_id: &str,
+        host_kind: &str,
+        intent: &str,
+        project_internal_id: &str,
+    ) -> AgentConnectionInspectionRecord {
+        AgentConnectionInspectionRecord {
+            connection_internal_id: connection_id.to_owned(),
+            host_kind: host_kind.to_owned(),
+            intent: intent.to_owned(),
+            host_scope: if intent == "shared" {
+                "project"
+            } else {
+                "local"
+            }
+            .to_owned(),
+            project_internal_id: Some(project_internal_id.to_owned()),
+            server_name: "volicord".to_owned(),
+            config_target: "test".to_owned(),
+            mode: "workflow".to_owned(),
+            enabled: true,
+            managed_fingerprint: format!("fingerprint-{connection_id}"),
+            last_verification_status: "complete".to_owned(),
+            last_verification_report_json: "{}".to_owned(),
+            last_user_actions_json: "[]".to_owned(),
+            created_at: "2026-01-01T00:00:00Z".to_owned(),
+            updated_at: "2026-01-01T00:00:00Z".to_owned(),
+            metadata_json: "{}".to_owned(),
+        }
+    }
 }

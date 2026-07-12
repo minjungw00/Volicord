@@ -1,16 +1,18 @@
 use std::path::Path;
 
 use serde_json::Value;
+use volicord_mcp::RepositoryDiscoveryHost;
 
 use crate::host_integration::verification::{
     HostConfigurationStatus, ManagedConfigStatus, Verification,
 };
 use crate::host_integration::{
     config_edit::{read_json_object, write_json_object_if_fresh},
-    managed_fingerprint, validated_server_name, ConnectionIntent, HostAdapter, HostCapabilities,
-    HostConfigError, HostConflict, HostConflictKind, HostDetection, HostEffect, HostKind, HostPlan,
-    HostPlanRequest, HostRemoveRequest, HostScope, HostTarget, InstallationProfile,
-    ManagedServerEntry, PlannedChange, UserAction, UserActionKind, DEFAULT_MCP_COMMAND,
+    managed_fingerprint, validate_managed_server_entry_schema, validated_server_name,
+    ConnectionIntent, HostAdapter, HostCapabilities, HostConfigError, HostConflict,
+    HostConflictKind, HostDetection, HostEffect, HostKind, HostPlan, HostPlanRequest,
+    HostRemoveRequest, HostScope, HostTarget, InstallationProfile, ManagedServerEntry,
+    PlannedChange, UserAction, UserActionKind, DEFAULT_MCP_COMMAND,
 };
 
 use super::{
@@ -66,12 +68,17 @@ impl<R: CommandRunner> ClaudeCodeAdapter<R> {
                 "Claude Code reserves the MCP server name `workspace`",
             )));
         }
-        let entry = ManagedServerEntry::new_project_bound(
-            request.connection_id,
-            request.project.map(|project| project.project_id),
-            mcp_command,
-            runtime_home,
-        );
+        let entry = if scope == HostScope::Project {
+            ManagedServerEntry::new_repository_discovery(RepositoryDiscoveryHost::ClaudeCode)
+        } else {
+            ManagedServerEntry::new_project_bound(
+                request.connection_id,
+                request.project.map(|project| project.project_id),
+                mcp_command,
+                runtime_home,
+            )
+        };
+        validate_managed_server_entry_schema(HostKind::ClaudeCode, scope, &entry)?;
         let fingerprint = managed_fingerprint(HostKind::ClaudeCode, scope, &server_name, &entry);
         match scope {
             HostScope::Project => self.plan_project_file(request, server_name, entry, fingerprint),
@@ -503,13 +510,14 @@ mod tests {
     };
 
     use crate::host_integration::{
+        managed_fingerprint,
         verification::{
             ActiveToolExposureStatus, HostApprovalState, HostConfigState, HostPolicyOverlayState,
             ManagedConfigStatus, StorageCapability,
         },
         ConnectionIntent, HostAdapter, HostConfigError, HostConflictKind, HostKind,
         HostPlanRequest, HostRemoveRequest, HostScope, HostTarget, InstallationProfile,
-        ManagedServerEntry, PlannedChange, ProjectContext, UserActionKind,
+        ManagedServerEntry, PlannedChange, ProjectContext, UserActionKind, DEFAULT_SERVER_NAME,
     };
 
     use super::super::{
@@ -834,13 +842,15 @@ mod tests {
             Some(&serde_json::json!([
                 "mcp",
                 "--stdio",
-                "--connection",
-                "int_alpha",
-                "--project",
-                "project_alpha"
+                "--discover-repository",
+                "--host",
+                "claude-code"
             ]))
         );
         assert!(server.get("env").is_none());
+        assert!(!text.contains("int_alpha"));
+        assert!(!text.contains("project_alpha"));
+        assert!(!text.contains("/runtime"));
         assert!(!text.contains("VOLICORD_MCP_LAUNCH"));
         assert!(!text.contains("VOLICORD_MCP_HOST"));
         assert!(!text.contains("VOLICORD_MCP_CONNECTION_ID"));
@@ -958,6 +968,51 @@ mod tests {
     }
 
     #[test]
+    fn stored_shared_binding_migrates_once_to_portable_discovery(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let repo = temp_dir("claude-legacy-shared-migration")?;
+        let legacy = ManagedServerEntry::new_project_bound(
+            "int_alpha",
+            Some("project_alpha"),
+            Path::new("volicord"),
+            None,
+        );
+        let legacy_fingerprint = managed_fingerprint(
+            HostKind::ClaudeCode,
+            HostScope::Project,
+            DEFAULT_SERVER_NAME,
+            &legacy,
+        );
+        fs::write(
+            repo.join(".mcp.json"),
+            serde_json::to_string_pretty(&serde_json::json!({
+                "mcpServers": {
+                    "volicord": legacy.to_json_value()
+                }
+            }))? + "\n",
+        )?;
+        let mut adapter = ClaudeCodeAdapter::new(FakeRunner::new(Vec::new()));
+
+        let migration = adapter.plan(HostPlanRequest {
+            expected_fingerprint: Some(&legacy_fingerprint),
+            ..request(HostScope::Project, Some(&repo), Path::new("ignored"))
+        })?;
+        assert_eq!(migration.change, PlannedChange::Update);
+        adapter.apply(&migration)?;
+
+        let migrated = fs::read_to_string(repo.join(".mcp.json"))?;
+        assert!(migrated.contains("--discover-repository"));
+        assert!(!migrated.contains("--connection"));
+        assert!(!migrated.contains("int_alpha"));
+        let again = adapter.plan(HostPlanRequest {
+            expected_fingerprint: Some(&migration.fingerprint),
+            ..request(HostScope::Project, Some(&repo), Path::new("ignored"))
+        })?;
+        assert_eq!(again.change, PlannedChange::Noop);
+        Ok(())
+    }
+
+    #[test]
     fn project_safe_remove_only_owned_entry() -> Result<(), Box<dyn std::error::Error>> {
         let repo = temp_dir("claude-remove")?;
         let mut adapter = ClaudeCodeAdapter::new(FakeRunner::new(Vec::new()));
@@ -1035,7 +1090,19 @@ mod tests {
         ))?;
 
         assert_eq!(plan.entry.command, "volicord");
+        assert_eq!(
+            plan.entry.args,
+            [
+                "mcp",
+                "--stdio",
+                "--discover-repository",
+                "--host",
+                "claude-code"
+            ]
+        );
         assert!(!plan.entry.env.contains_key("VOLICORD_HOME"));
+        assert!(plan.entry.env.is_empty());
+        assert!(!plan.entry.args.iter().any(|arg| arg == "int_alpha"));
         Ok(())
     }
 

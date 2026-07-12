@@ -43,7 +43,7 @@ use crate::guard_integration::{
     initial_guard_installation_status, lifecycle_phase_names,
     observe_hook_root_unsupported_message, plan_guard_integration, record_guard_installation,
     FilePlanStatus, GeneratedFilePlan, GuardIntegrationError, GuardIntegrationPlan,
-    HookWrapperResolutionStatus,
+    GuardIntegrationPlanRequest, HookWrapperResolutionStatus,
 };
 #[cfg(test)]
 use crate::guard_integration::{
@@ -2433,16 +2433,16 @@ mod tests {
                 .and_then(|name| name.to_str())
                 .unwrap_or("volicord-test")
         ));
-        Ok(plan_guard_integration(
+        Ok(plan_guard_integration(GuardIntegrationPlanRequest {
             host_kind,
-            init_mode.integration_profile(),
-            &runtime_home,
+            profile: init_mode.integration_profile(),
+            runtime_home: &runtime_home,
             repo_root,
             connection_id,
             guard_installation_id,
             mcp_entry,
-            intent,
-        )?)
+            connection_intent: intent,
+        })?)
     }
 
     #[test]
@@ -2549,7 +2549,9 @@ mod tests {
     fn detective_integration_plan_rejects_missing_generic_hooks(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let repo = temp_dir("guard-capabilities-reject")?;
-        let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
+        let entry = ManagedServerEntry::new_repository_discovery(
+            volicord_mcp::RepositoryDiscoveryHost::ClaudeCode,
+        );
         let error = plan_guard_integration_for_test(
             HostKind::Generic,
             InitMode::Detective,
@@ -2855,7 +2857,9 @@ mod tests {
     fn claude_guarded_integration_generates_hooks_mcp_and_rules(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let repo = temp_dir("claude-guarded")?;
-        let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
+        let entry = ManagedServerEntry::new_repository_discovery(
+            volicord_mcp::RepositoryDiscoveryHost::ClaudeCode,
+        );
         let plan = plan_guard_integration_for_test(
             HostKind::ClaudeCode,
             InitMode::Detective,
@@ -2930,7 +2934,9 @@ mod tests {
         assert!(mcp_text.contains("\"volicord\""));
         assert!(mcp_text.contains("\"mcp\""));
         assert!(mcp_text.contains("\"--stdio\""));
-        assert!(mcp_text.contains("\"--connection\""));
+        assert!(mcp_text.contains("\"--discover-repository\""));
+        assert!(mcp_text.contains("\"claude-code\""));
+        assert!(!mcp_text.contains("\"--connection\""));
         let settings_text = fs::read_to_string(repo.join(".claude/settings.json"))?;
         for command in [
             "${CLAUDE_PROJECT_DIR}/.claude/hooks/volicord-session-start.sh",
@@ -3028,7 +3034,9 @@ mod tests {
 }
 "#,
         )?;
-        let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
+        let entry = ManagedServerEntry::new_repository_discovery(
+            volicord_mcp::RepositoryDiscoveryHost::ClaudeCode,
+        );
         let applied = apply_guard_integration(plan_guard_integration_for_test(
             HostKind::ClaudeCode,
             InitMode::Detective,
@@ -3090,7 +3098,9 @@ mod tests {
 }
 "#,
         )?;
-        let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
+        let entry = ManagedServerEntry::new_repository_discovery(
+            volicord_mcp::RepositoryDiscoveryHost::ClaudeCode,
+        );
         let error = plan_guard_integration_for_test(
             HostKind::ClaudeCode,
             InitMode::Detective,
@@ -3229,7 +3239,9 @@ mod tests {
 }
 "#,
         )?;
-        let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
+        let entry = ManagedServerEntry::new_repository_discovery(
+            volicord_mcp::RepositoryDiscoveryHost::ClaudeCode,
+        );
         let error = plan_guard_integration_for_test(
             HostKind::ClaudeCode,
             InitMode::Detective,
@@ -3250,7 +3262,9 @@ mod tests {
     fn claude_guard_file_verification_ignores_unmanaged_settings_changes(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let repo = temp_dir("claude-guard-file-verify")?;
-        let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
+        let entry = ManagedServerEntry::new_repository_discovery(
+            volicord_mcp::RepositoryDiscoveryHost::ClaudeCode,
+        );
         let applied = apply_guard_integration(plan_guard_integration_for_test(
             HostKind::ClaudeCode,
             InitMode::Detective,
@@ -3449,7 +3463,9 @@ mod tests {
                 metadata_json: "{}".to_owned(),
             },
         )?;
-        let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
+        let entry = ManagedServerEntry::new_repository_discovery(
+            volicord_mcp::RepositoryDiscoveryHost::ClaudeCode,
+        );
         let integration = apply_guard_integration(plan_guard_integration_for_test(
             HostKind::ClaudeCode,
             InitMode::Detective,

@@ -443,6 +443,22 @@ pub fn list_agent_connections(
     }
 
     let conn = open_registry_database(registry_path)?;
+    list_agent_connections_from_conn(&conn)
+}
+
+/// Lists Agent Connections without creating, migrating, or writing registry state.
+pub fn list_agent_connections_read_only(
+    runtime_home: impl AsRef<Path>,
+) -> StoreResult<Vec<AgentConnectionRecord>> {
+    let registry_path = registry_db_path(runtime_home);
+    if !registry_path.exists() {
+        return Ok(Vec::new());
+    }
+    let conn = open_registry_database_read_only(registry_path)?;
+    list_agent_connections_from_conn(&conn)
+}
+
+fn list_agent_connections_from_conn(conn: &Connection) -> StoreResult<Vec<AgentConnectionRecord>> {
     let mut stmt = conn.prepare(
         "SELECT
             connection_internal_id,
