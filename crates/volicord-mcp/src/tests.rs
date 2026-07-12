@@ -2585,7 +2585,14 @@ fn elicitation_write_failure_returns_nonretryable_post_effect_result() -> Result
     assert!(structured["effect_anchor"]
         .as_str()
         .is_some_and(|anchor| anchor.starts_with("authority_event:")));
-    assert_eq!(structured["method_result"], Value::Null);
+    assert_eq!(
+        structured["method_result"]["user_judgment_ref"]["record_id"],
+        structured["method_result"]["user_judgment"]["judgment_id"]
+    );
+    assert_eq!(
+        structured["method_result"]["user_judgment"]["status"],
+        "pending"
+    );
     assert_eq!(
         structured["authority_receipt"]["task_ref"]["record_id"],
         task_id

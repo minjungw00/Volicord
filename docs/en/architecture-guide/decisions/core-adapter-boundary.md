@@ -7,6 +7,12 @@ letting the adapter define method semantics. The Rust workspace also has a
 local administrative CLI that prepares Runtime Home and host configuration, but
 those commands are not public Volicord API methods.
 
+MCP mutation wrapping also needs one adapter-owned outcome after Core returns.
+Previously, normal detail rendering, response-budget recovery, post-effect
+recovery, and refresh-failure recovery built adjacent projections through
+separate ladders. Those ladders could preserve different subsets of the same
+method result and fresh authority receipt.
+
 ## Decision
 
 Core-facing behavior lives in `volicord-core` and depends on shared types and
@@ -23,6 +29,20 @@ lower layers for their own responsibilities:
 This resembles a ports-and-adapters dependency direction, but this page names
 only the structure visible in the repository.
 
+### Canonical MCP mutation outcome
+
+After Core returns a mutation result, the MCP adapter forms one internal
+canonical outcome containing the exact method result, its compact derivative,
+effect facts, the validated fresh receipt when available, and current next
+actions. Normal detail rendering and every bounded recovery path consume that
+outcome. The exact wire fields, preservation priority, byte budgets, and
+non-retryable recovery behavior remain owned by [MCP Transport](../../reference/mcp-transport.md#mutation-authority-receipt-projection).
+
+This outcome is an adapter projection object. It is not a second Core result,
+Store record, authority source, or replacement for the exact public method
+response. Core and Store therefore remain independent of MCP byte budgets and
+host response-shaping policy.
+
 ## Consequences
 
 - `CoreService` can be tested directly without starting an MCP transport.
@@ -32,6 +52,12 @@ only the structure visible in the repository.
   alternate public method behavior.
 - Public method additions or behavior changes must update Core and Reference
   owners, not only adapter dispatch.
+- Adjacent MCP response branches cannot choose independent compact-result
+  derivations or preservation orders.
+- A new recovery combination that is already representable by nullable public
+  fields is a compatible behavioral correction. It requires no storage
+  migration; release version impact is assessed with the surrounding public
+  contract batch.
 
 ## Non-goals
 
@@ -40,6 +66,18 @@ only the structure visible in the repository.
 - It does not define MCP transport contracts or security guarantees.
 - It does not prevent adapters from doing their own startup, binding, or config
   validation.
+- It does not persist MCP projection outcomes or make an effect-correlation
+  anchor an exact-result lookup credential.
+
+## Rejected alternatives
+
+- Keeping separate branch-local ladders was rejected because their preservation
+  priorities can drift while every branch still passes its own tests.
+- Moving response budgets or compact-result selection into Core was rejected
+  because those are MCP transport concerns and would reverse the adapter
+  dependency boundary.
+- Truncating the receipt or method result was rejected because a partial
+  authority object or partial actionable result changes its meaning.
 
 ## Relevant implementation
 
@@ -55,8 +93,8 @@ only the structure visible in the repository.
   adapter-generated envelope fields, local invocation-fact derivation, and Core
   dispatch.
 - [`crates/volicord-mcp/src/stdio.rs`](../../../../crates/volicord-mcp/src/stdio.rs):
-  JSON-RPC stdio dispatch, `tools/call` result wrapping, and elicitation
-  handling.
+  JSON-RPC stdio dispatch, canonical mutation-outcome projection,
+  `tools/call` result wrapping, and elicitation handling.
 - [`crates/volicord-mcp/src/local_http.rs`](../../../../crates/volicord-mcp/src/local_http.rs):
   local HTTP listener setup, connection context, session handling, and MCP
   request routing.

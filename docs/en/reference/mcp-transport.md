@@ -1070,6 +1070,13 @@ matches the refreshed `base.state_version`, project, Task, Task reference
 version, and current status projection. The mutation's own Core effect remains
 the method owner's effect; this refresh creates no second mutation.
 
+For one applied or replayed mutation result, the adapter derives the exact
+method result, compact method result, effect facts, fresh receipt, and current
+next actions once as one canonical mutation outcome. Normal `detail`
+projections, response-budget recovery, post-effect recovery, and authoritative
+refresh recovery select from that same outcome. A recovery branch must not
+recompute a different compact result or use a branch-local preservation order.
+
 For an accepted refresh:
 
 - `detail=summary` returns `authority_receipt` and the compact
@@ -1132,10 +1139,12 @@ normal response projection. Both branches include the method `tool_name`,
 `status_read_required=true`, and
 `completion_claim_withheld=true`. A projection failure preserves the exact
 method result when it can be represented; a host-adapter failure may leave it
-`null`. The bounded recovery attempts, in order when each value is available,
-the fresh receipt with that result, the fresh receipt alone, the compact method
-result alone, and effect facts alone. Neither branch authorizes replay of the
-mutation.
+`null` when the canonical outcome has no method result or neither available
+result representation fits the recovery budget. The bounded recovery attempts,
+in order when each value is available, the fresh receipt with the exact result,
+the fresh receipt with the compact method result, the fresh receipt alone, the
+compact method result alone, and effect facts alone. Neither branch authorizes
+replay of the mutation.
 
 If the refresh call fails, returns a rejected or malformed branch, lacks a
 receipt, or fails any freshness comparison, the adapter returns the same
