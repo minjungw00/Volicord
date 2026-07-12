@@ -256,6 +256,9 @@ It checks:
   builder-supplied profile and complete compilation dimensions passes this
   check
 - Runtime Home access, registry schema, and installation-profile presence
+- for repositories linked to a `personal` connection, whether Volicord's exact
+  local-only paths are already in the Git index or exist without an effective
+  ignore rule; this check reads path/index metadata only, never file contents
 - stored command readiness and availability through `PATH`
 - command-link or shim readiness when link metadata exists
 - supported-host detection as a connection-verification concern
@@ -411,6 +414,14 @@ projection files such as `AGENTS.md`, `.mcp.json`, or
 `.gitignore`. A `shared` init does not add this
 personal-local exclude block and does not remove a block left by a prior
 personal init.
+
+`volicord doctor` reports this boundary as
+`checks[].id=personal_local_git_tracking`. A tracked local-only path or an
+existing local-only path that is not ignored is a warning with bounded
+`tracked_paths` and `unignored_existing_paths` details. Doctor does not change
+the index: it recommends rerunning personal init to restore the exclude block
+and removing tracked local-only paths from the index without deleting their
+working-tree files.
 
 `--profile` selects the public integration profile:
 

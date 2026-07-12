@@ -5,7 +5,10 @@ mod support;
 use std::{collections::BTreeSet, error::Error, fs, io::Read, path::Path};
 
 #[cfg(unix)]
-use std::{os::unix::fs::PermissionsExt, process::Output};
+use std::{
+    os::unix::fs::PermissionsExt,
+    process::{Command, Output},
+};
 
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -64,7 +67,8 @@ use volicord_types::RECONCILE_CHANGES_TOOL_NAME;
 use support::{
     binary_fixture::{create_real_git_repo, prepare_runtime_home, volicord_bin},
     fake_hosts::{
-        hook_execution_path_env, is_executable, path_env, write_fake_claude_code, write_fake_codex,
+        hook_execution_path_env, is_executable, path_env, path_env_with_existing,
+        write_fake_claude_code, write_fake_codex,
     },
     fake_mcp::{write_fake_mcp, write_fake_mcp_missing_workflow_reconcile},
     guard_fixture::{
@@ -500,6 +504,114 @@ fn init_defaults_to_personal_codex_connection() -> Result<(), Box<dyn Error>> {
             repo_root.display()
         )
     );
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn doctor_warns_when_personal_local_files_are_unignored_or_tracked() -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-doctor-personal-git-index")?;
+    let repo_root = create_real_git_repo(&runtime_home, "product-repo")?;
+    let bin_dir = runtime_home.path().join("bin");
+    let codex_home = runtime_home.path().join("codex-home");
+    write_fake_codex(&bin_dir)?;
+    let mcp_command = write_fake_mcp(&bin_dir)?;
+    let test_path = path_env_with_existing(&[bin_dir.as_path()])?;
+    let env = [
+        ("PATH", test_path),
+        ("CODEX_HOME", path_text(&codex_home)),
+        ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
+    ];
+
+    let init = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--host",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--profile",
+            "record",
+            "--mcp-command",
+            path_text(&mcp_command).as_str(),
+            "--json",
+        ],
+        &env,
+    )?;
+    assert_success(&init);
+
+    let protected = run_with_home_env(runtime_home.path(), ["doctor", "--json"], &env)?;
+    assert_success(&protected);
+    let protected = json_stdout(&protected)?;
+    let protected_check = protected["checks"]
+        .as_array()
+        .expect("checks should be an array")
+        .iter()
+        .find(|check| check["id"] == "personal_local_git_tracking")
+        .expect("personal Git tracking check");
+    assert_eq!(
+        protected_check["status"], "passed",
+        "unexpected protected-path diagnostic: {protected_check:#}"
+    );
+    assert_eq!(protected_check["details"]["tracked_paths"], json!([]));
+    assert_eq!(
+        protected_check["details"]["unignored_existing_paths"],
+        json!([])
+    );
+
+    let exclude_path = repo_root.join(".git/info/exclude");
+    let managed_excludes = fs::read_to_string(&exclude_path)?;
+    fs::write(&exclude_path, "")?;
+    let unignored = run_with_home_env(runtime_home.path(), ["doctor", "--json"], &env)?;
+    assert_success(&unignored);
+    let unignored = json_stdout(&unignored)?;
+    let unignored_check = unignored["checks"]
+        .as_array()
+        .expect("checks should be an array")
+        .iter()
+        .find(|check| check["id"] == "personal_local_git_tracking")
+        .expect("personal Git tracking check");
+    assert_eq!(unignored_check["status"], "warning");
+    assert!(unignored_check["details"]["unignored_existing_paths"]
+        .as_array()
+        .expect("unignored paths")
+        .iter()
+        .any(|finding| finding["path"] == "/.volicord/"));
+    fs::write(&exclude_path, managed_excludes)?;
+
+    let add = Command::new("git")
+        .args(["add", "-f", "--", ".volicord/policy.json"])
+        .current_dir(&repo_root)
+        .output()?;
+    assert!(
+        add.status.success(),
+        "git add failed\nstdout:\n{}\nstderr:\n{}",
+        stdout(&add),
+        stderr(&add)
+    );
+
+    let doctor = run_with_home_env(runtime_home.path(), ["doctor", "--json"], &env)?;
+    assert_success(&doctor);
+    let value = json_stdout(&doctor)?;
+    let check = value["checks"]
+        .as_array()
+        .expect("checks should be an array")
+        .iter()
+        .find(|check| check["id"] == "personal_local_git_tracking")
+        .expect("personal Git tracking check");
+    assert_eq!(check["status"], "warning");
+    assert!(check["details"]["tracked_paths"]
+        .as_array()
+        .expect("tracked paths")
+        .iter()
+        .any(|finding| finding["path"] == "/.volicord/"));
+    assert_eq!(check["details"]["does_not_read_file_contents"], true);
+    assert!(value["actions"]
+        .as_array()
+        .expect("actions")
+        .iter()
+        .any(|action| action["id"] == "protect_personal_local_files"));
     Ok(())
 }
 

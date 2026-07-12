@@ -3,12 +3,15 @@ use std::{
     ffi::OsStr,
     fs,
     path::{Path, PathBuf},
+    process::{Command, Stdio},
 };
 
 use serde::Serialize;
 use serde_json::{json, Value};
 use volicord_store::{
-    agent_connections::{CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW},
+    agent_connections::{
+        CONNECTION_INTENT_PERSONAL, CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW,
+    },
     inspection::{
         inspect_runtime_home, DatabaseInspection, InspectionSchemaState,
         InstallationProfileInspectionRecord, RegistryInspectionSnapshot, RuntimeHomeInspection,
@@ -28,6 +31,7 @@ use crate::{
         all_recorded_values_true, guard_file_findings_for_inspection,
         missing_required_hooks_from_capability_json, GuardFileFindings,
     },
+    guard_integration::git_exclude::{personal_git_exclude_path, personal_local_paths},
     setup_command::{path_text, CommandOutcome, CommandStatus},
     shell_path::{
         detect_command_on_path, is_executable_file, mcp_binary_name, path_directory_is_on_path,
@@ -182,6 +186,7 @@ where
             connection_count = Some(snapshot.agent_connections.len());
             guard_installation_count = Some(snapshot.guard_installations.len());
             inspect_guard_installations(snapshot, &mut checks, &mut actions);
+            inspect_personal_local_git_tracking(snapshot, &mut checks, &mut actions);
             inspect_session_watch_baselines(&runtime_home, snapshot, &mut checks);
         }
         DatabaseInspection::Unsupported { path, detail } => {
@@ -498,6 +503,258 @@ fn inspect_registry_snapshot(
                     "storage_profile": snapshot.runtime_home.storage_profile,
                 })),
         ),
+    }
+}
+
+const MAX_PERSONAL_GIT_PROJECTS: usize = 32;
+const MAX_PERSONAL_GIT_FINDINGS: usize = 64;
+
+fn inspect_personal_local_git_tracking(
+    snapshot: &RegistryInspectionSnapshot,
+    checks: &mut Vec<DiagnosticCheck>,
+    actions: &mut Vec<DiagnosticAction>,
+) {
+    let personal_connections = snapshot
+        .agent_connections
+        .iter()
+        .filter(|connection| connection.intent == CONNECTION_INTENT_PERSONAL)
+        .map(|connection| connection.connection_internal_id.as_str())
+        .collect::<BTreeSet<_>>();
+    let mut project_internal_ids = snapshot
+        .connection_projects
+        .iter()
+        .filter(|membership| {
+            personal_connections.contains(membership.connection_internal_id.as_str())
+        })
+        .map(|membership| membership.project_internal_id.as_str())
+        .collect::<BTreeSet<_>>();
+    project_internal_ids.extend(
+        snapshot
+            .agent_connections
+            .iter()
+            .filter(|connection| connection.intent == CONNECTION_INTENT_PERSONAL)
+            .filter_map(|connection| connection.project_internal_id.as_deref()),
+    );
+
+    let mut projects = snapshot
+        .projects
+        .iter()
+        .filter(|project| project_internal_ids.contains(project.project_internal_id.as_str()))
+        .collect::<Vec<_>>();
+    projects.sort_by(|left, right| left.project_id.cmp(&right.project_id));
+    if projects.is_empty() {
+        checks.push(DiagnosticCheck::skipped(
+            "personal_local_git_tracking",
+            "no personal repository connection is recorded",
+        ));
+        return;
+    }
+
+    let project_count = projects.len();
+    let mut truncated = project_count > MAX_PERSONAL_GIT_PROJECTS;
+    projects.truncate(MAX_PERSONAL_GIT_PROJECTS);
+    let mut tracked_paths = Vec::new();
+    let mut unignored_paths = Vec::new();
+    let mut audit_errors = Vec::new();
+
+    'projects: for project in &projects {
+        let exclude_path = match personal_git_exclude_path(&project.repo_root) {
+            Ok(path) => path,
+            Err(error) => {
+                push_bounded_git_finding(
+                    &mut audit_errors,
+                    json!({
+                        "project_id": project.project_id,
+                        "repo_root": path_text(&project.repo_root),
+                        "detail": error.to_string(),
+                    }),
+                    &mut truncated,
+                );
+                continue;
+            }
+        };
+        for local_path in personal_local_paths() {
+            if tracked_paths.len() + unignored_paths.len() + audit_errors.len()
+                >= MAX_PERSONAL_GIT_FINDINGS
+            {
+                truncated = true;
+                break 'projects;
+            }
+            let pathspec = local_path.trim_start_matches('/').trim_end_matches('/');
+            let ignore_probe = if local_path.ends_with('/') {
+                format!("{pathspec}/policy.json")
+            } else {
+                pathspec.to_owned()
+            };
+            let tracked = match git_path_predicate(
+                &project.repo_root,
+                true,
+                &["ls-files", "--error-unmatch", "--", pathspec],
+            ) {
+                Ok(value) => value,
+                Err(detail) => {
+                    push_bounded_git_finding(
+                        &mut audit_errors,
+                        json!({
+                            "project_id": project.project_id,
+                            "repo_root": path_text(&project.repo_root),
+                            "detail": detail,
+                        }),
+                        &mut truncated,
+                    );
+                    continue 'projects;
+                }
+            };
+            if tracked {
+                push_bounded_git_finding(
+                    &mut tracked_paths,
+                    json!({
+                        "project_id": project.project_id,
+                        "repo_root": path_text(&project.repo_root),
+                        "path": local_path,
+                        "exclude_path": path_text(&exclude_path),
+                    }),
+                    &mut truncated,
+                );
+                continue;
+            }
+            match fs::symlink_metadata(project.repo_root.join(pathspec)) {
+                Ok(_) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => {
+                    push_bounded_git_finding(
+                        &mut audit_errors,
+                        json!({
+                            "project_id": project.project_id,
+                            "repo_root": path_text(&project.repo_root),
+                            "path": local_path,
+                            "detail": format!("failed to inspect the local path: {error}"),
+                        }),
+                        &mut truncated,
+                    );
+                    continue;
+                }
+            }
+            let ignored = match git_path_predicate(
+                &project.repo_root,
+                false,
+                &["check-ignore", "--quiet", "--no-index", "--", &ignore_probe],
+            ) {
+                Ok(value) => value,
+                Err(detail) => {
+                    push_bounded_git_finding(
+                        &mut audit_errors,
+                        json!({
+                            "project_id": project.project_id,
+                            "repo_root": path_text(&project.repo_root),
+                            "path": local_path,
+                            "detail": detail,
+                        }),
+                        &mut truncated,
+                    );
+                    continue 'projects;
+                }
+            };
+            if !ignored {
+                push_bounded_git_finding(
+                    &mut unignored_paths,
+                    json!({
+                        "project_id": project.project_id,
+                        "repo_root": path_text(&project.repo_root),
+                        "path": local_path,
+                        "exclude_path": path_text(&exclude_path),
+                    }),
+                    &mut truncated,
+                );
+            }
+        }
+    }
+
+    let details = json!({
+        "personal_project_count": project_count,
+        "audited_project_count": projects.len(),
+        "tracked_paths": tracked_paths,
+        "unignored_existing_paths": unignored_paths,
+        "audit_errors": audit_errors,
+        "truncated": truncated,
+        "does_not_read_file_contents": true,
+    });
+    let has_warning = details["tracked_paths"]
+        .as_array()
+        .is_some_and(|values| !values.is_empty())
+        || details["unignored_existing_paths"]
+            .as_array()
+            .is_some_and(|values| !values.is_empty())
+        || details["audit_errors"]
+            .as_array()
+            .is_some_and(|values| !values.is_empty())
+        || truncated;
+    let check = if has_warning {
+        push_unique_diagnostic_action(
+            actions,
+            DiagnosticAction {
+                id: "protect_personal_local_files".to_owned(),
+                instruction: "Review the listed personal repositories, rerun personal init to restore repository-local excludes, and remove any listed local-only paths from the Git index without deleting their working-tree files."
+                    .to_owned(),
+                command: None,
+            },
+        );
+        DiagnosticCheck::warning(
+            "personal_local_git_tracking",
+            "personal local-only files need Git tracking follow-up",
+        )
+    } else {
+        DiagnosticCheck::passed(
+            "personal_local_git_tracking",
+            "personal local-only files are outside the Git index and ignored",
+        )
+    };
+    checks.push(check.with_details(details));
+}
+
+fn push_bounded_git_finding(values: &mut Vec<Value>, value: Value, truncated: &mut bool) {
+    if values.len() < MAX_PERSONAL_GIT_FINDINGS {
+        values.push(value);
+    } else {
+        *truncated = true;
+    }
+}
+
+fn git_path_predicate(
+    repo_root: &Path,
+    literal_pathspecs: bool,
+    args: &[&str],
+) -> Result<bool, String> {
+    let mut command = Command::new("git");
+    if literal_pathspecs {
+        command.arg("--literal-pathspecs");
+    }
+    command
+        .args(args)
+        .current_dir(repo_root)
+        .env("GIT_OPTIONAL_LOCKS", "0")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    for name in [
+        "GIT_COMMON_DIR",
+        "GIT_DIR",
+        "GIT_INDEX_FILE",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_WORK_TREE",
+    ] {
+        command.env_remove(name);
+    }
+    let status = command
+        .status()
+        .map_err(|error| format!("failed to run the local Git tracking check: {error}"))?;
+    match status.code() {
+        Some(0) => Ok(true),
+        Some(1) => Ok(false),
+        code => Err(format!(
+            "the local Git tracking check exited with status {}",
+            code.map_or_else(|| "signal".to_owned(), |value| value.to_string())
+        )),
     }
 }
 
