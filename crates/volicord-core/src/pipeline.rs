@@ -9,6 +9,7 @@ use std::{
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
+use sha2::{Digest, Sha256};
 use volicord_store::{
     core_pipeline::{
         commit_input, CommitMutationInput, CommittedEventRef, CoreProjectStore,
@@ -19,9 +20,10 @@ use volicord_store::{
 use volicord_types::{
     canonical_request_hash, ActorSource, ChangeUnitId, DryRunSummary, DurableIdError,
     DurableIdGenerator, DurableIdKind, EffectKind, ErrorCode, EventId, EventRef,
-    GuaranteeDisclosure, IdempotencyKey, JsonObject, MethodName, OperationCategory, ProjectId,
-    RandomDurableIdGenerator, RequestHash, ResponseKind, TaskId, ToolDryRunResponse, ToolEnvelope,
-    ToolError, ToolRejectedResponse, ToolResultBase, DURABLE_ID_RETRY_LIMIT,
+    GuaranteeDisclosure, IdempotencyKey, JsonObject, MethodName, OperationCategory,
+    OperationResultRef, ProjectId, RandomDurableIdGenerator, RequestHash, ResponseKind, TaskId,
+    ToolDryRunResponse, ToolEnvelope, ToolError, ToolRejectedResponse, ToolResultBase,
+    DURABLE_ID_RETRY_LIMIT,
 };
 
 use crate::policy::{
@@ -375,6 +377,7 @@ pub(crate) enum PipelinePreflightOutcome {
 pub struct PipelineResponse {
     pub response_json: String,
     pub response_value: Value,
+    pub operation_result_ref: Option<OperationResultRef>,
     pub verified_invocation: Option<VerifiedInvocationContext>,
     pub resolved_task_id: Option<TaskId>,
     pub replayed: bool,
@@ -1013,8 +1016,17 @@ fn replay_preflight_response(
     if record.request_hash == request_hash.as_str() {
         let resolved_task_id =
             replay_resolved_task_id(&record.response_json, request, project_state)?;
-        return Ok(Some(response_from_json_string(
+        let operation_result_ref = operation_result_ref(
+            &record.response_json,
+            &request.envelope.project_id,
+            request.method_name,
+            Some(idempotency_key),
+            record.committed_state_version,
+            verified_invocation,
+        );
+        return Ok(Some(response_from_json_string_with_operation_result(
             record.response_json,
+            operation_result_ref,
             Some(verified_invocation.clone()),
             resolved_task_id,
             true,
@@ -1200,12 +1212,27 @@ fn commit_mutation(
     )?;
 
     match outcome {
-        MutationCommitOutcome::Replayed { response_json, .. } => response_from_json_string(
+        MutationCommitOutcome::Replayed {
             response_json,
-            Some(verified_invocation),
-            Some(task_id.clone()),
-            true,
-        ),
+            committed_state_version,
+            ..
+        } => {
+            let operation_result_ref = operation_result_ref(
+                &response_json,
+                &envelope.project_id,
+                method_name,
+                envelope.idempotency_key.as_ref(),
+                committed_state_version,
+                &verified_invocation,
+            );
+            response_from_json_string_with_operation_result(
+                response_json,
+                operation_result_ref,
+                Some(verified_invocation),
+                Some(task_id.clone()),
+                true,
+            )
+        }
         MutationCommitOutcome::ReplayContextMismatch {
             current_state_version,
             ..
@@ -1252,13 +1279,54 @@ fn commit_mutation(
             Some(verified_invocation),
             Some(task_id.clone()),
         ),
-        MutationCommitOutcome::Committed { response_json, .. } => response_from_json_string(
+        MutationCommitOutcome::Committed {
             response_json,
-            Some(verified_invocation),
-            Some(task_id.clone()),
-            false,
-        ),
+            committed_state_version,
+            ..
+        } => {
+            let operation_result_ref = operation_result_ref(
+                &response_json,
+                &envelope.project_id,
+                method_name,
+                envelope.idempotency_key.as_ref(),
+                committed_state_version,
+                &verified_invocation,
+            );
+            response_from_json_string_with_operation_result(
+                response_json,
+                operation_result_ref,
+                Some(verified_invocation),
+                Some(task_id.clone()),
+                false,
+            )
+        }
     }
+}
+
+fn operation_result_ref(
+    response_json: &str,
+    project_id: &ProjectId,
+    source_method: MethodName,
+    source_idempotency_key: Option<&IdempotencyKey>,
+    committed_state_version: u64,
+    verified_invocation: &VerifiedInvocationContext,
+) -> Option<OperationResultRef> {
+    if !matches!(
+        verified_invocation.actor_source,
+        ActorSource::AgentConnection(_)
+    ) || verified_invocation.operation_category != OperationCategory::AgentWorkflow
+    {
+        return None;
+    }
+    let source_idempotency_key = source_idempotency_key?.clone();
+    Some(OperationResultRef {
+        project_id: project_id.clone(),
+        source_method,
+        source_idempotency_key,
+        committed_state_version,
+        response_sha256: format!("sha256:{:x}", Sha256::digest(response_json.as_bytes())),
+        response_size_bytes: response_json.len() as u64,
+    })
 }
 
 fn committed_response_json(
@@ -1328,14 +1396,16 @@ fn response_from_value(
     Ok(PipelineResponse {
         response_json,
         response_value,
+        operation_result_ref: None,
         verified_invocation,
         resolved_task_id,
         replayed,
     })
 }
 
-fn response_from_json_string(
+fn response_from_json_string_with_operation_result(
     response_json: String,
+    operation_result_ref: Option<OperationResultRef>,
     verified_invocation: Option<VerifiedInvocationContext>,
     resolved_task_id: Option<TaskId>,
     replayed: bool,
@@ -1344,6 +1414,7 @@ fn response_from_json_string(
     Ok(PipelineResponse {
         response_json,
         response_value,
+        operation_result_ref,
         verified_invocation,
         resolved_task_id,
         replayed,
@@ -1529,6 +1600,7 @@ fn error_precedence(code: ErrorCode) -> u8 {
         ErrorCode::ProjectionStale => 22,
         ErrorCode::ArtifactMissing => 23,
         ErrorCode::ValidatorFailed => 24,
+        ErrorCode::OperationResultUnavailable => 25,
     }
 }
 
@@ -1568,6 +1640,42 @@ mod tests {
     const PROJECT_ID: &str = "project_a";
     const TASK_ID: &str = "task_a";
     const CONNECTION_ID: &str = "connection_main";
+
+    #[test]
+    fn operation_result_unavailable_uses_public_error_precedence() {
+        let response = rejected_response(
+            false,
+            Some(7),
+            vec![
+                tool_error(
+                    ErrorCode::OperationResultUnavailable,
+                    "stored operation result is unavailable",
+                    false,
+                    None,
+                ),
+                tool_error(ErrorCode::ValidatorFailed, "validator failed", false, None),
+                tool_error(
+                    ErrorCode::ValidationFailed,
+                    "request validation failed",
+                    false,
+                    None,
+                ),
+            ],
+        );
+
+        assert_eq!(
+            response
+                .errors
+                .iter()
+                .map(|error| error.code)
+                .collect::<Vec<_>>(),
+            vec![
+                ErrorCode::ValidationFailed,
+                ErrorCode::ValidatorFailed,
+                ErrorCode::OperationResultUnavailable,
+            ]
+        );
+    }
 
     struct PipelineHarness {
         _runtime_home: TempRuntimeHome,

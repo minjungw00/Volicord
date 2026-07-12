@@ -690,9 +690,9 @@ printf '%s\n' \
 
 | 모드와 저장소 읽기·쓰기 가능 여부 | MCP에 보이는 도구 |
 |---|---|
-| 쓰기 가능한 프로젝트 상태의 `workflow` | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.prepare_write`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.reconcile_changes`, `volicord.check_close`, `volicord.close_task`, `volicord.list_projects` |
-| 읽을 수 있지만 쓸 수 없는 프로젝트 상태의 `workflow` | `volicord.status`, `volicord.check_close`, `volicord.list_projects` |
-| 읽을 수 있는 프로젝트 상태의 `read_only` | `volicord.status`, `volicord.check_close`, `volicord.list_projects` |
+| 쓰기 가능한 프로젝트 상태의 `workflow` | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.get_operation_result`, `volicord.prepare_write`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.reconcile_changes`, `volicord.check_close`, `volicord.close_task`, `volicord.list_projects` |
+| 읽을 수 있지만 쓸 수 없는 프로젝트 상태의 `workflow` | `volicord.status`, `volicord.get_operation_result`, `volicord.check_close`, `volicord.list_projects` |
+| 읽을 수 있는 프로젝트 상태의 `read_only` | `volicord.status`, `volicord.get_operation_result`, `volicord.check_close`, `volicord.list_projects` |
 | 읽을 수 있는 허용 프로젝트 상태가 없음 | `volicord.list_projects` |
 
 MCP 어댑터는 시작과 탐색 중 프로젝트 상태를 읽기 전용으로 살펴볼 수 있습니다. 현재 MCP
@@ -721,6 +721,9 @@ MCP에 보이는 도구는 공개 Volicord Core API 메서드 목록과 같은 �
 `volicord.check_close`는 닫기 준비 상태를 확인하는 일급 읽기 전용 Core 메서드에
 매핑됩니다. `volicord.close_task`는 워크플로 전용 Core 변경 메서드에 매핑되며
 `read_only` 연결에는 나열되지 않습니다.
+`volicord.get_operation_result`는 정확한 과거 변경 응답 하나를 크기가 제한된 page로
+조회하는 읽기 전용 Core 메서드에 매핑되며 프로젝트 상태를 읽을 수 있을 때 두 연결 모드에
+모두 나열됩니다.
 `volicord.record_user_judgment`와 `volicord.record_user_observation`은 User
 Channel 경로를 위한 공개 Core API 메서드이지만 둘 다 Agent Connection MCP 도구로
 노출되지 않습니다. 공개 메서드 담당 표는 [API
@@ -751,6 +754,7 @@ MCP 인자 투영은 생략이 기존에 허용하던 명시적 `null` 또는 �
   `scope_boundary=null`, `non_goals=null`, `acceptance_criteria=null`,
   `autonomy_boundary=null`, `baseline_ref=null`,
   `related_scope_decision_refs=[]`
+- `volicord.get_operation_result`: `cursor=null`
 - `volicord.prepare_write`: `task_id=null`, `change_unit_id=null`,
   `sensitive_categories=[]`
 - `volicord.stage_artifact`: `expected_sha256=null`,
@@ -787,7 +791,8 @@ description은 완전한 모드와 실행 종류 호환 행렬을 포함합니�
 `direct`는 `direct`, `work`는 `shaping_update` 또는 `implementation`을 사용합니다.
 자주 쓰는 인자 형태 예시는 `inputSchema.examples` 값으로 광고합니다. 여기에는 intake의
 생성·재개·대체·활성 Task 거절, update-scope의 유지·생성·교체, status의 세 detail 수준,
-prepare-write, stage-artifact, Product Repository 파일 쓰기가 없는 `advisor`의 `shaping_update`,
+첫 operation-result page 조회, prepare-write, stage-artifact, Product Repository 파일 쓰기가
+없는 `advisor`의 `shaping_update`,
 증거를 포함한 work `implementation`, request-judgment, reconcile, check-close, close의
 완료·취소·대체 분기가 포함됩니다. 광고한 각 예시는 호출에 쓰는 동일한 `inputSchema`와
 MCP 인자 DTO를 따릅니다. 예시는 지원하는 인자 분기를 보여 줄 뿐이며, 일치하는 프로젝트
@@ -808,7 +813,7 @@ full 분기는 원래 도구 호출이 끝나기 전에 호스트 elicitation이
 
 | 도구 종류 | `readOnlyHint` | `destructiveHint` | `idempotentHint` | `openWorldHint` |
 |---|---:|---:|---:|---:|
-| `volicord.status`, `volicord.check_close`, `volicord.list_projects` | `true` | `false` | `true` | `false` |
+| `volicord.status`, `volicord.get_operation_result`, `volicord.check_close`, `volicord.list_projects` | `true` | `false` | `true` | `false` |
 | `volicord.prepare_write`, `volicord.stage_artifact` | `false` | `false` | `false` | `false` |
 | `volicord.intake`, `volicord.update_scope`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.reconcile_changes`, `volicord.close_task` | `false` | `true` | `false` | `false` |
 
@@ -948,17 +953,22 @@ Volicord 응답 형태와 전송 의미 `isError: false`를 유지합니다.
 두 번째 변경을 만들지 않습니다.
 
 적용되었거나 replay된 변경 결과 하나에 대해 어댑터는 정확한 메서드 결과, 간결한 메서드
-결과, 효과 사실, 새 receipt, 현재 다음 행동을 한 번만 파생하여 하나의 기준 변경 결과로
+결과, 효과 사실, null일 수 있는 `operation_result_ref`, 새 receipt, 현재 다음 행동을
+한 번만 파생하여 하나의 기준 변경 결과로
 구성합니다. 정상 `detail` 상태 보기, 응답 바이트 상한 복구, 효과 적용 후 복구, 권한 상태
 새로 고침 복구는 모두 이 같은 결과에서 선택합니다. 복구 분기가 서로 다른 간결한 결과를
 다시 계산하거나 분기별 보존 순서를 사용하면 안 됩니다.
+조회 대상인 커밋 또는 replay agent-workflow Core 변경에서는 ref가 존재하고 모든 정상·복구
+상태 보기에 같은 값으로 들어갑니다. Ref는 receipt/result 보존 순서와 독립적이며 다른 후보를
+넣기 위해 제거할 수 없습니다. Core 밖 staging과 조회 가능한 영속 행이 없는 결과는
+`operation_result_ref=null`을 사용합니다.
 
 받아들인 갱신은 다음과 같이 반환합니다.
 
-- `detail=summary`는 `authority_receipt`와 간결한 `method_result`를
+- `detail=summary`는 `operation_result_ref`, `authority_receipt`, 간결한 `method_result`를
   `result.structuredContent`에 반환합니다.
 - `detail=workflow`는 두 필드에 `next_actions`를 추가해 반환합니다.
-- `detail=full`은 `authority_receipt`와 정확한 공개 메서드 응답을 `method_result` 아래에
+- `detail=full`은 `operation_result_ref`, `authority_receipt`, 정확한 공개 메서드 응답을 `method_result` 아래에
   반환합니다. 메서드 응답을 만든 뒤 갱신하기 전에 상태가 바뀌었다면
   `authority_receipt`가 새 권한 보기이고, `method_result` 안의 메서드 소유 상태는 해당
   메서드 호출 결과로 남습니다.
@@ -976,7 +986,8 @@ Volicord 응답 형태와 전송 의미 `isError: false`를 유지합니다.
 `code=MCP_RESPONSE_BUDGET_EXCEEDED`, 메서드 `tool_name`, `requested_detail`,
 `retryable=false`, `reached_core`, `committed`, null일 수 있는 `effect_kind`,
 `effect_applied`, null일 수 있는 안정적인 `effect_anchor`, null일 수 있는
-`authority_receipt`, null일 수 있는 요청 도구의 간결한 `method_result`,
+`operation_result_ref`, null일 수 있는 `authority_receipt`, null일 수 있는 요청 도구의
+간결한 `method_result`,
 `authoritative_refresh_succeeded=true`, `response_projection_omitted=true`,
 `status_read_required=true`, `completion_claim_withheld=true`를 담습니다. `committed`는 새
 Core 커밋을 보고하고, `effect_kind`와 `effect_applied`는 생성된 staging handle이나 replay된
@@ -986,10 +997,16 @@ Core 커밋을 보고하고, `effect_kind`와 `effect_applied`는 생성된 stag
 제외한 단계에서 들어가면 staging handle과 만료 시각을 보존합니다. 각 보존 단계에서 들어가지
 않는 필드는 `null`입니다.
 
+조회 대상인 영속 `operation_result_ref`는 receipt만, 간결한 결과만, 효과 사실만 남는
+단계를 포함해 모든 보존 단계에 계속 존재합니다. 정확한 결과가 생략된 호출자는
+`volicord.get_operation_result`로 page를 읽어 chunk를 이어 붙인 뒤 현재 권한을
+`volicord.status`로 읽습니다. 변경을 다시 제출하면 안 됩니다.
+
 `effect_anchor`는 첫 커밋 authority event, staged handle 또는 결과 state effect를
 식별합니다. 이는 효과를 연관 짓는 anchor이지 동작 결과 조회 credential이 아닙니다. 기준
-범위에는 이 값을 받는 조회 메서드가 없고 `volicord.status`는 정확한 메서드 결과를 복원할 수
-없습니다. 이 분기는 `MCP_UNAVAILABLE`을 주장하지 않고 권한 상태 새로 고침 실패로 집계되지
+범위에서 `volicord.get_operation_result`가 받는 값은 `operation_result_ref`뿐이며,
+`volicord.status`는 정확한 메서드 결과를 복원할 수 없습니다. 이 분기는
+`MCP_UNAVAILABLE`을 주장하지 않고 권한 상태 새로 고침 실패로 집계되지
 않으며, 일부만 남긴 receipt나 바이트 상한을 넘는 상태 본문을 반환하지 않습니다. 호출자는 새
 mutation으로 다시 호출하지 말고, 보존된 모든 필드를 사용한 뒤 행동하기 전에 현재 상태를
 읽어야 합니다.
@@ -1000,7 +1017,7 @@ Core가 적용된 결과를 이미 반환한 뒤 후속 어댑터 작업이 정�
 어댑터가 실패하면 `code=MCP_POST_EFFECT_ADAPTER_FAILED`, 정상 응답 상태 보기를 만드는 중
 실패하면 `code=MCP_RESPONSE_PROJECTION_FAILED`입니다. 두 분기 모두 메서드 `tool_name`,
 `requested_detail`, 효과 사실, null일 수 있는 `effect_anchor`, null일 수 있는
-`authority_receipt`, null일 수 있는 `method_result`,
+`operation_result_ref`, null일 수 있는 `authority_receipt`, null일 수 있는 `method_result`,
 `authoritative_refresh_succeeded=true`, `response_projection_omitted=true`,
 `status_read_required=true`,
 `completion_claim_withheld=true`를 담습니다. 상태 보기 실패 분기는 표현할 수 있을 때 정확한
@@ -1014,14 +1031,15 @@ Core가 적용된 결과를 이미 반환한 뒤 후속 어댑터 작업이 정�
 최신성 비교가 하나라도 실패하면 같은 성공 계열 `isError=false` 복구 경계를 반환합니다.
 크기가 제한된 `structuredContent`에는 `code=MCP_UNAVAILABLE`, 메서드 `tool_name`,
 `retryable=false`, `reached_core`, `committed`, null일 수 있는 `effect_kind`,
-`effect_applied`, null일 수 있는 안정적인 `effect_anchor`,
-null일 수 있는 간결한 `method_result`, `status_read_required=true`,
+`effect_applied`, null일 수 있는 안정적인 `effect_anchor`, null일 수 있는
+`operation_result_ref`, null일 수 있는 간결한 `method_result`, `status_read_required=true`,
 `completion_claim_withheld=true`를 담습니다. 간결한 결과는 write ticket, staging handle,
 finding별 reconcile 결과, 선택된 Judgment 결과처럼 다음 단계에 필요한 도구별 데이터를
 보존합니다. 이 결과를 잘라 내지는 않으며, 간결한 결과 자체가 고정 복구 예산에 들어가지
 않으면 필드는 `null`입니다. 이 분기는 원래의 정확한 성공·완료 본문, 오래된 receipt, 비공개
-갱신 오류 본문을 반환하지 않습니다. 호출자는 mutation을 다시 제출하지 말고 행동하기 전에
-현재 상태를 읽어야 합니다. `effect_anchor`는 위와 같은 연관 확인 용도로만 쓰이며 status는
+갱신 오류 본문을 반환하지 않습니다. 호출자는 mutation을 다시 제출하면 안 됩니다.
+`operation_result_ref`가 null이 아니면 생략된 정확한 과거 결과를 조회하며, 행동하기 전에
+현재 상태도 읽어야 합니다. `effect_anchor`는 위와 같은 연관 확인 용도로만 쓰이며 status는
 생략된 정확한 메서드 결과를 복원하지 않습니다. 로컬 세션 진단은 오류 본문을 저장하지 않고
 이를 권한 상태 새로 고침 실패로 집계합니다.
 
@@ -1068,8 +1086,13 @@ Agent Connection 도구로 노출하지 않으며, 에이전트가 넣은 답변
   없으면 대체 안내는 `volicord inbox` CLI 받은편지함 경로를 가리킵니다.
 
 모든 성공 분기에서 `result.structuredContent`는 선택한 변경 `detail` 상태 보기를
-따릅니다. `detail=full`은 대기 또는 기록된 공개 응답 객체와 새 권한 receipt를 결합합니다.
-기본값인 `summary`는 해당 receipt와 간결한 Judgment 결과를 결합합니다. 간결한 결과는
+따릅니다. Host elicitation이 판단을 해결하면 모든 상태 보기는 최초 agent 소유
+`volicord.request_user_judgment`의 `operation_result_ref`를 유지하며 user-only 기록
+작업의 ref로 바꾸지 않습니다. `detail=full`은 agent에게 안전한 기록 응답 상태 보기와 새
+권한 receipt를 결합합니다. 이 상태 보기는 선택 결과를 유지하되 자유 형식 사용자 note를
+null로 두거나 유지합니다. 정확한 user-only 응답은 담당자를 위해 저장되지만 Agent
+Connection으로 조회할 수 없습니다. 기본값인 `summary`는 해당 receipt와 간결한 Judgment
+결과를 결합합니다. 간결한 결과는
 Judgment ref와 상태를 포함하고, 해결 뒤에는 선택한 option ID와 label, resolution outcome을
 포함하지만 자유 형식 note는 포함하지 않습니다. `result.content[0].text`는 JSON 복사본이
 아니라 짧은 호환 요약으로 남습니다. 추가 `content[]` 텍스트가 있으면 대체 안내나
@@ -1114,7 +1137,11 @@ Volicord까지 도달한 알려진 공개 Volicord 메서드 도구 호출에서
 안에 Volicord 응답 JSON을 래핑합니다.
 
 - 읽기 전용 메서드 결과는 Volicord 응답 객체를 `result.structuredContent`로 반환합니다.
-  해당 호환 JSON 텍스트를 파싱한 값은 계속 그 객체와 같아야 합니다.
+  해당 호환 JSON 텍스트를 파싱한 값은 계속 그 객체와 같아야 합니다. 단,
+  `volicord.get_operation_result`는 page offset과 완료 여부를 알려 주는 UTF-8 기준 최대
+  512 byte의 JSON이 아닌 요약을 사용합니다. `chunk_utf8`를 호환 텍스트에 복제하지
+  않습니다. 각 page는 원본 UTF-8 byte를 최대 16,384개 담고 완전한 직렬화
+  `CallToolResult`는 최대 65,536 byte입니다.
 - 성공한 변경 결과는 위에서 정의한 선택 receipt 상태 보기를 사용합니다.
   `result.content[0].text`는 크기가 제한된 짧은 요약이며 JSON으로 파싱될 필요가 없습니다.
 - Core/도메인 거절 변경 결과는 공개 응답 객체를 `result.structuredContent`에 유지하고

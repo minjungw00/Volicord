@@ -371,8 +371,8 @@ MCP 세션은 어댑터 시작 시 저장된 `connection_internal_id`를 가리�
 
 | Agent Connection 모드 | MCP를 통해 허용되는 동작 범주 | MCP에 보이는 공개 메서드 도구 |
 |---|---|---|
-| `workflow` | `read`, `agent_workflow` | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.prepare_write`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.reconcile_changes`, `volicord.check_close`, `volicord.close_task` |
-| `read_only` | `read` | `volicord.status`, `volicord.check_close` |
+| `workflow` | `read`, `agent_workflow` | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.get_operation_result`, `volicord.prepare_write`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.reconcile_changes`, `volicord.check_close`, `volicord.close_task` |
+| `read_only` | `read` | `volicord.status`, `volicord.get_operation_result`, `volicord.check_close` |
 
 어댑터 소유 `volicord.list_projects` 유틸리티는 `workflow`와 `read_only` 모드 모두에
 보입니다. `volicord.check_close`는 일급 Core 읽기 메서드에 매핑되는 읽기 전용 MCP
@@ -382,6 +382,20 @@ MCP 세션은 어댑터 시작 시 저장된 `connection_internal_id`를 가리�
 위 표는 모드 기준 허용 목록입니다. 실제 MCP `tools/list` 출력은 선택된 프로젝트 저장소를
 읽고 쓸 수 있는지에도 제약됩니다. 전송 수준 도구 탐색과 읽기 전용 저장소
 축소 노출 규칙은 [MCP 전송](mcp-transport.md#tool-discovery-and-toolscall-response-wrapping)이
+담당합니다.
+
+<a id="operation-result-retrieval"></a>
+
+`volicord.get_operation_result`는 선택한 허용 프로젝트를 읽을 수 있을 때 두 연결 모드에
+모두 보이는 읽기 전용 MCP 도구입니다. `OperationResultRef`가 지정한 변경 불가능한 과거
+Core 변경 응답을 page로 나누어 읽으며 변경을 replay하거나 현재 권한을 새로 고치지
+않습니다. 어댑터와 Core는 page마다 활성 연결, Connection Projects membership, 선택한
+프로젝트, 저장된 `actor_source`를 다시 확인합니다. Ref와 cursor는 bearer가 아닌
+locator이며 연결 접근 범위를 넓히지 않습니다. Agent Connection은 정확한
+`volicord.record_user_judgment` 응답이나 비공개 사용자 note를 포함한 `user_only`
+결과를 이 도구로 읽을 수 없습니다. 호출자는 과거 사실을 현재 값으로 다루기 전에
+`volicord.status`를 별도로 읽어야 합니다. 정확한 메서드와 응답 계약은
+[`volicord.get_operation_result`](api/method-get-operation-result.md#volicordget_operation_result)가
 담당합니다.
 
 읽기 전용 연결 점검은 관리 검증과 활성 MCP 읽기 호출을 함께 사용합니다. 터미널에서는

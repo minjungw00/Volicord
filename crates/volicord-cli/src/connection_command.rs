@@ -2540,6 +2540,7 @@ mod tests {
 
         let stale_read_only_tools = vec![
             "volicord.status".to_owned(),
+            "volicord.get_operation_result".to_owned(),
             "volicord.close_task".to_owned(),
             "volicord.list_projects".to_owned(),
         ];

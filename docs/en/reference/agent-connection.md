@@ -437,8 +437,8 @@ Connection modes and operation categories:
 
 | Agent Connection mode | Allowed operation categories through MCP | MCP-visible public method tools |
 |---|---|---|
-| `workflow` | `read`, `agent_workflow` | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.prepare_write`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.reconcile_changes`, `volicord.check_close`, `volicord.close_task` |
-| `read_only` | `read` | `volicord.status`, `volicord.check_close` |
+| `workflow` | `read`, `agent_workflow` | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.get_operation_result`, `volicord.prepare_write`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.reconcile_changes`, `volicord.check_close`, `volicord.close_task` |
+| `read_only` | `read` | `volicord.status`, `volicord.get_operation_result`, `volicord.check_close` |
 
 The adapter-owned `volicord.list_projects` utility is visible in both
 `workflow` and `read_only` modes. `volicord.check_close` is the read-only MCP
@@ -450,6 +450,21 @@ The table above is the mode-based allowlist. Actual MCP `tools/list` output is
 also constrained by the selected projects' readable and writable storage
 capability; [MCP Transport](mcp-transport.md#tool-discovery-and-toolscall-response-wrapping)
 owns the transport-level discovery and read-only-storage degradation rules.
+
+<a id="operation-result-retrieval"></a>
+
+`volicord.get_operation_result` is a read-only MCP tool in both connection
+modes when the selected allowed project is readable. It pages the immutable
+historical Core mutation response named by an `OperationResultRef`; it does not
+replay the mutation or refresh current authority. The adapter and Core recheck
+the enabled connection, Connection Projects membership, selected project, and
+stored `actor_source` on every page. References and cursors are non-bearer
+locators and never broaden connection access. Agent Connections cannot use the
+tool to retrieve `user_only` results, including an exact
+`volicord.record_user_judgment` response or a private user note. Callers must
+read `volicord.status` separately before treating historical facts as current.
+The exact method and response contract is owned by
+[`volicord.get_operation_result`](api/method-get-operation-result.md#volicordget_operation_result).
 
 A read-only connectivity check combines administrative verification with
 active MCP read calls: `volicord connection verify` from the terminal, then

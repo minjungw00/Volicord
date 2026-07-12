@@ -16,6 +16,7 @@
 - `ToolDryRunResponse`
 - `ToolError`
 - `EventRef`
+- `OperationResultRef`
 - 공통 `response_kind`와 `effect_kind` 필드
 
 이 문서는 담당하지 않습니다.
@@ -206,6 +207,14 @@ ToolError:
 EventRef:
   event_id: string
   event_kind: string
+
+OperationResultRef:
+  project_id: string
+  source_method: string
+  source_idempotency_key: string
+  committed_state_version: integer
+  response_sha256: string
+  response_size_bytes: integer
 ```
 
 의미:
@@ -215,8 +224,27 @@ EventRef:
 - `EventRef.event_id`는 불투명 이벤트 식별자입니다.
 - `EventRef.event_kind`는 불투명 이벤트 분류 문자열입니다. 전달하고 경로를 안내할 만큼 안정적이지만, 이 문서는 빠짐없는 공개 `event_kind` 값 집합을 공개하지 않습니다.
 
+<a id="operation-result-retrieval"></a>
+
+`OperationResultRef` 의미:
+
+- `source_method`는 커밋 replay 행에 응답을 저장한 공개 변경 메서드의 정확한
+  이름입니다.
+- `source_idempotency_key`는 그 커밋 호출의 불투명 idempotency 식별자이며 새 변경의
+  idempotency key로 사용할 수 없습니다.
+- `response_sha256`은 정확한 저장 UTF-8 응답 byte의 SHA-256에 리터럴 `sha256:`
+  접두사와 소문자 16진수 64자리를 붙인 값입니다.
+- `response_size_bytes`는 같은 UTF-8 byte의 정확한 길이입니다.
+- 전체 형태는 bearer가 아닌 조회 locator입니다. 접근은
+  [`volicord.get_operation_result`](method-get-operation-result.md#volicordget_operation_result)가
+  page마다 다시 확인합니다.
+- `OperationResultRef`는 `StateRecordRef`, authority receipt, 쓰기 티켓,
+  artifact나 Evidence ref, 재시도 credential, 권한 token이 아닙니다. 과거 응답이나
+  state version이 현재 값이라고 주장하지 않습니다.
+
 담당 문서 링크:
 - 공개 오류 코드 집합: [API 오류 코드](error-codes.md)
 - 오류 세부사항 의미: [API 오류 세부사항](error-details.md)
 - 주 오류 우선순위: [API 오류 우선순위](error-precedence.md)
 - `EventRef.event_kind`의 불투명 경계: [불투명 문자열과 메서드 범위 문자열 필드](schema-value-sets.md#opaque-and-method-scoped-string-fields)
+- `OperationResultRef` 저장 불변성과 정확한 byte 출처: [저장 버전 관리](../storage-versioning.md#exact-operation-result-retrieval)

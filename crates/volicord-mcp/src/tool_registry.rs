@@ -76,6 +76,9 @@ const STATUS_SUMMARY_ARGUMENTS_JSON: &str = r#"{"detail":"summary"}"#;
 pub(crate) const STATUS_READ_ONLY_ARGUMENTS_JSON: &str = r#"{"detail":"workflow"}"#;
 const STATUS_FULL_ARGUMENTS_JSON: &str = r#"{"detail":"full"}"#;
 
+pub(crate) const GET_OPERATION_RESULT_FIRST_PAGE_EXAMPLE_ID: &str = "first_operation_result_page";
+const GET_OPERATION_RESULT_FIRST_PAGE_ARGUMENTS_JSON: &str = r#"{"operation_result_ref":{"project_id":"proj_history_001","source_method":"volicord.record_run","source_idempotency_key":"idem_run_history_001","committed_state_version":42,"response_sha256":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","response_size_bytes":32768}}"#;
+
 pub(crate) const PREPARE_WRITE_SIMPLE_EXAMPLE_ID: &str = "simple_prepare_write";
 pub(crate) const PREPARE_WRITE_SIMPLE_ARGUMENTS_JSON: &str = r#"{"detail":"full","intended_operation":"Update the profile preference save flow.","intended_paths":["src/preferences/profile-save.ts"],"product_file_write_intended":true,"baseline_ref":"baseline_pref_001"}"#;
 
@@ -163,6 +166,12 @@ const STATUS_EXAMPLES: [McpToolExample; 3] = [
     },
 ];
 
+const GET_OPERATION_RESULT_EXAMPLES: [McpToolExample; 1] = [McpToolExample {
+    id: GET_OPERATION_RESULT_FIRST_PAGE_EXAMPLE_ID,
+    description: "Read the first bounded page of one immutable historical mutation response.",
+    arguments_json: GET_OPERATION_RESULT_FIRST_PAGE_ARGUMENTS_JSON,
+}];
+
 const PREPARE_WRITE_EXAMPLES: [McpToolExample; 1] = [McpToolExample {
     id: PREPARE_WRITE_SIMPLE_EXAMPLE_ID,
     description: "Check one Product Repository write intent.",
@@ -229,6 +238,7 @@ pub(crate) fn canonical_tool_examples(tool_name: &str) -> &'static [McpToolExamp
         INTAKE_TOOL_NAME => &INTAKE_EXAMPLES,
         UPDATE_SCOPE_TOOL_NAME => &UPDATE_SCOPE_EXAMPLES,
         STATUS_TOOL_NAME => &STATUS_EXAMPLES,
+        GET_OPERATION_RESULT_TOOL_NAME => &GET_OPERATION_RESULT_EXAMPLES,
         PREPARE_WRITE_TOOL_NAME => &PREPARE_WRITE_EXAMPLES,
         STAGE_ARTIFACT_TOOL_NAME => &STAGE_ARTIFACT_EXAMPLES,
         RECORD_RUN_TOOL_NAME => &RECORD_RUN_EXAMPLES,
@@ -415,7 +425,9 @@ pub(crate) fn mcp_tool_input_schema(name: &str) -> Option<Value> {
 
 fn tool_annotations(name: &str) -> McpToolAnnotations {
     match name {
-        STATUS_TOOL_NAME | CHECK_CLOSE_TOOL_NAME => McpToolAnnotations::read_only(),
+        STATUS_TOOL_NAME | GET_OPERATION_RESULT_TOOL_NAME | CHECK_CLOSE_TOOL_NAME => {
+            McpToolAnnotations::read_only()
+        }
         PREPARE_WRITE_TOOL_NAME | STAGE_ARTIFACT_TOOL_NAME => {
             McpToolAnnotations::non_destructive_mutation()
         }
@@ -436,6 +448,9 @@ pub(crate) fn tool_description(name: &str) -> &'static str {
             "Update the current Task scope and keep, create, or replace its current Change Unit."
         }
         STATUS_TOOL_NAME => "Read the current Core status view without creating Core authority state.",
+        GET_OPERATION_RESULT_TOOL_NAME => {
+            "Read one bounded page of an immutable historical mutation response; read current status separately."
+        }
         PREPARE_WRITE_TOOL_NAME => {
             "Check a proposed Product Repository write against current Core scope. The default result includes the decision and any issued write ticket."
         }

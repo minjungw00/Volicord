@@ -16,6 +16,7 @@
     "volicord.intake",
     "volicord.update_scope",
     "volicord.status",
+    "volicord.get_operation_result",
     "volicord.check_close",
     "volicord.prepare_write",
     "volicord.stage_artifact",
@@ -64,6 +65,24 @@
         "user_note"
       ],
       "sha256": "sha256:f74a10db3729a6f5d2f4b9954900e44391fa2fc2fb4ef101325378959efddf5f"
+    },
+    "volicord.get_operation_result": {
+      "definitions": [
+        "MethodName",
+        "OperationResultRef",
+        "ToolEnvelope"
+      ],
+      "root_properties": [
+        "cursor",
+        "envelope",
+        "operation_result_ref"
+      ],
+      "root_required": [
+        "cursor",
+        "envelope",
+        "operation_result_ref"
+      ],
+      "sha256": "sha256:a151429ddff56e70ab75e48290bfd723d3dc937dc30964a721037c86053e2c9b"
     },
     "volicord.intake": {
       "definitions": [

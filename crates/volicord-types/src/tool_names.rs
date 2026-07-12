@@ -9,6 +9,9 @@ pub const UPDATE_SCOPE_TOOL_NAME: &str = MethodName::UpdateScope.as_str();
 /// MCP-visible tool name for `volicord.status`.
 pub const STATUS_TOOL_NAME: &str = MethodName::Status.as_str();
 
+/// MCP-visible tool name for `volicord.get_operation_result`.
+pub const GET_OPERATION_RESULT_TOOL_NAME: &str = MethodName::GetOperationResult.as_str();
+
 /// MCP-visible tool name for `volicord.prepare_write`.
 pub const PREPARE_WRITE_TOOL_NAME: &str = MethodName::PrepareWrite.as_str();
 
@@ -37,10 +40,11 @@ pub const CLOSE_TASK_TOOL_NAME: &str = MethodName::CloseTask.as_str();
 pub const LIST_PROJECTS_TOOL_NAME: &str = "volicord.list_projects";
 
 /// MCP-visible method tools exposed through workflow connections.
-pub const WORKFLOW_METHOD_TOOL_NAMES: [&str; 10] = [
+pub const WORKFLOW_METHOD_TOOL_NAMES: [&str; 11] = [
     INTAKE_TOOL_NAME,
     UPDATE_SCOPE_TOOL_NAME,
     STATUS_TOOL_NAME,
+    GET_OPERATION_RESULT_TOOL_NAME,
     PREPARE_WRITE_TOOL_NAME,
     STAGE_ARTIFACT_TOOL_NAME,
     RECORD_RUN_TOOL_NAME,
@@ -51,7 +55,11 @@ pub const WORKFLOW_METHOD_TOOL_NAMES: [&str; 10] = [
 ];
 
 /// MCP-visible method tools exposed through read-only connections.
-pub const READ_ONLY_METHOD_TOOL_NAMES: [&str; 2] = [STATUS_TOOL_NAME, CHECK_CLOSE_TOOL_NAME];
+pub const READ_ONLY_METHOD_TOOL_NAMES: [&str; 3] = [
+    STATUS_TOOL_NAME,
+    GET_OPERATION_RESULT_TOOL_NAME,
+    CHECK_CLOSE_TOOL_NAME,
+];
 
 /// Adapter-owned MCP utility tools that are not public Core methods.
 pub const ADAPTER_UTILITY_TOOL_NAMES: [&str; 1] = [LIST_PROJECTS_TOOL_NAME];

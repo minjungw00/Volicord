@@ -147,7 +147,68 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:bc47e24067be1ce0843742931624ec65f780b6bd8ec8677e1bf93ea14c444b34"
+        "sha256": "sha256:fa9940a32e848c96f68b4cc09eccb1e472051b77b7e1942e5769b835166283ad"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Read one bounded page of an immutable historical mutation response; read current status separately.",
+      "input_schema": {
+        "definitions": [
+          "MethodName",
+          "OperationResultRef"
+        ],
+        "root_properties": [
+          "cursor",
+          "operation_result_ref",
+          "project_selector"
+        ],
+        "root_required": [
+          "operation_result_ref"
+        ],
+        "sha256": "sha256:d3ce1e34e6795d66d5418a455c4f18bc83d0f9fd9ddcdb57c74153ef7b2a49c1"
+      },
+      "name": "volicord.get_operation_result",
+      "output_schema": {
+        "definitions": [
+          "DryRunSummary",
+          "EffectKind",
+          "ErrorCode",
+          "EventRef",
+          "GetOperationResultResult",
+          "GuaranteeClass",
+          "GuaranteeDisclosure",
+          "McpToolErrorCode",
+          "McpToolErrorIssue",
+          "McpToolErrorResponse",
+          "McpToolIssueCode",
+          "MethodName",
+          "NextActionKind",
+          "NextActionPresentationRole",
+          "NextActionSummary",
+          "NonGuarantee",
+          "OperationCategory",
+          "OperationResultRef",
+          "PlannedBlocker",
+          "PlannedBlockerSourceKind",
+          "PlannedEffect",
+          "ResponseKind",
+          "StateRecordKind",
+          "StateRecordRef",
+          "ToolDryRunResponse",
+          "ToolError",
+          "ToolRejectedResponse",
+          "ToolResponse_for_GetOperationResultResult",
+          "ToolResultBase"
+        ],
+        "root_properties": [],
+        "root_required": [],
+        "sha256": "sha256:ecad1d2f02ec1fda04fe414bd7c2d3216ac9167afb383d0b4b8e528b22c33e36"
       }
     },
     {
@@ -276,7 +337,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:5d9f062cf615bd5b3b2aa16b5ca28f8dba96f8263fa2b343d5611efe43700ce0"
+        "sha256": "sha256:4218f8d3f395754f6aac7eb6452a201418401712803a803143b9a4879eed4ffc"
       }
     },
     {

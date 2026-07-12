@@ -66,6 +66,20 @@ pub struct ToolInvocationRecord {
     pub response_json: String,
 }
 
+/// Immutable replay response facts used by exact historical result retrieval.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredOperationResult {
+    pub project_id: String,
+    pub source_method: String,
+    pub source_idempotency_key: String,
+    pub committed_state_version: u64,
+    pub actor_source: String,
+    pub operation_category: String,
+    pub response_sha256: String,
+    pub response_size_bytes: u64,
+    pub response_json: String,
+}
+
 /// Verified replay identity derived from current invocation context.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VerifiedReplayContext {
@@ -3028,6 +3042,7 @@ mod tests {
     use std::{error::Error, path::PathBuf};
 
     use serde_json::{json, Value};
+    use sha2::{Digest, Sha256};
     use volicord_test_support::TempRuntimeHome;
     use volicord_types::{
         BaselineRef, ChangeUnitId, IdempotencyKey, JudgmentBasisCompatibilityStatus, MethodName,
@@ -3305,6 +3320,55 @@ mod tests {
             } if response_json == stored_response
         ));
         assert_eq!(store.effect_counts()?, before_replay);
+        Ok(())
+    }
+
+    #[test]
+    fn operation_result_reuses_exact_replay_bytes_and_metadata() -> Result<(), Box<dyn Error>> {
+        let harness = StoreHarness::new()?;
+        let mut store = harness.store()?;
+        let idempotency_key = IdempotencyKey::new("idem_store_operation_result");
+        let input = commit_input(
+            &ProjectId::new(PROJECT_ID),
+            MethodName::UpdateScope,
+            Some(&idempotency_key),
+            &RequestHash::new("sha256:operation-result"),
+            Some(replay_context(CONNECTION_ID, "agent_workflow")),
+            Some(0),
+            vec![pending_event("operation_result")],
+        );
+        let committed = store.commit_mutation(
+            input,
+            |mutation, facts| {
+                CoreStorageMutation::InsertTask(task_insert("task_operation_result"))
+                    .apply(mutation, facts.committed_state_version)
+            },
+            |facts| {
+                Ok(format!(
+                    "{{\"base\":{{\"state_version\":{}}},\"unicode\":\"결과🙂\"}}",
+                    facts.committed_state_version
+                ))
+            },
+        )?;
+        let MutationCommitOutcome::Committed { response_json, .. } = committed else {
+            panic!("operation-result fixture should commit");
+        };
+
+        let stored = store
+            .operation_result(MethodName::UpdateScope, &idempotency_key)?
+            .expect("committed replay response should be retrievable");
+        assert_eq!(stored.project_id, PROJECT_ID);
+        assert_eq!(stored.source_method, MethodName::UpdateScope.as_str());
+        assert_eq!(stored.source_idempotency_key, idempotency_key.as_str());
+        assert_eq!(stored.committed_state_version, 1);
+        assert_eq!(stored.actor_source, ACTOR_SOURCE);
+        assert_eq!(stored.operation_category, "agent_workflow");
+        assert_eq!(stored.response_json, response_json);
+        assert_eq!(stored.response_size_bytes, response_json.len() as u64);
+        assert_eq!(
+            stored.response_sha256,
+            format!("sha256:{:x}", Sha256::digest(response_json.as_bytes()))
+        );
         Ok(())
     }
 

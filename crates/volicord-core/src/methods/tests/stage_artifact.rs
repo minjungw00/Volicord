@@ -1,5 +1,54 @@
 use super::*;
 
+const STAGE_RESULT_BOUNDARY_CLOCK: &str = "2026-06-18T00:00:00Z";
+const STAGE_RESULT_BOUNDARY_EXPIRES_AT: &str = "2026-06-19T00:00:00Z";
+
+fn content_type_for_serialized_stage_result_size(
+    task_id: &str,
+    handle_suffix: &str,
+    target_bytes: usize,
+) -> Result<String, Box<dyn Error>> {
+    let content_type_prefix = "text/plain;";
+    let result = StageArtifactResult {
+        base: method_result_base(EffectKind::StagingCreated, false, Some(2), Vec::new()),
+        evidence_state: EvidenceDisplayState::Prepared,
+        staged_artifact_handle: StagedArtifactHandle {
+            handle_id: StagedArtifactHandleId::new(prefixed_durable_id(
+                DurableIdKind::StagedArtifact,
+                handle_suffix,
+            )),
+            project_id: ProjectId::new(PROJECT_ID),
+            task_id: TaskId::new(task_id),
+            created_by_actor_source: AGENT_ACTOR_SOURCE.parse()?,
+            content_type: content_type_prefix.to_owned(),
+            sha256: "0".repeat(64),
+            size_bytes: "staging sample".len() as u64,
+            redaction_state: RedactionState::None,
+            expires_at: UtcTimestamp::parse(STAGE_RESULT_BOUNDARY_EXPIRES_AT)?,
+            consumed: false,
+        },
+        expires_at: UtcTimestamp::parse(STAGE_RESULT_BOUNDARY_EXPIRES_AT)?,
+    };
+    let base_bytes = serde_json::to_vec(&result)?.len();
+    assert!(
+        base_bytes <= target_bytes,
+        "target must fit the fixed StageArtifactResult fields"
+    );
+    Ok(format!(
+        "{content_type_prefix}{}",
+        "a".repeat(target_bytes - base_bytes)
+    ))
+}
+
+fn stage_artifact_tmp_dir(harness: &MethodHarness) -> PathBuf {
+    harness
+        .runtime_home_path
+        .join("projects")
+        .join(PROJECT_ID)
+        .join("artifacts")
+        .join("tmp")
+}
+
 #[test]
 fn stage_artifact_creates_transient_handle_without_core_commit() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
@@ -328,6 +377,91 @@ fn stage_artifact_rejects_oversized_input_without_effect() -> Result<(), Box<dyn
         "VALIDATION_FAILED"
     );
     assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn stage_artifact_accepts_complete_result_at_serialized_boundary() -> Result<(), Box<dyn Error>> {
+    let mut harness = MethodHarness::new()?;
+    enable_stage_artifact_capability(&harness)?;
+    let (task_id, _) = create_task_with_change_unit(&harness, "stage_result_boundary")?;
+    let handle_suffix = "stage-result-boundary";
+    harness.use_generator_and_clock(
+        CountingDurableIdGenerator::new([handle_suffix]),
+        ManualClock::at(STAGE_RESULT_BOUNDARY_CLOCK),
+    );
+    let before = harness.counts()?;
+    let mut request =
+        stage_artifact_request("req_stage_result_boundary", None, false, Some(2), &task_id);
+    request.content_type = content_type_for_serialized_stage_result_size(
+        &task_id,
+        handle_suffix,
+        crate::methods::stage_artifact::MAX_STAGE_ARTIFACT_RESULT_BYTES,
+    )?;
+
+    let response = harness
+        .service
+        .stage_artifact(request, invocation(OperationCategory::AgentWorkflow))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "result");
+    assert_eq!(
+        response.response_json.len(),
+        crate::methods::stage_artifact::MAX_STAGE_ARTIFACT_RESULT_BYTES
+    );
+    assert!(response.response_value["staged_artifact_handle"]["handle_id"].is_string());
+    assert!(response.response_value["staged_artifact_handle"]["expires_at"].is_string());
+    assert_eq!(
+        response.response_value["expires_at"],
+        response.response_value["staged_artifact_handle"]["expires_at"]
+    );
+    let after = harness.counts()?;
+    assert_eq!(after.state_version, before.state_version);
+    assert_eq!(after.artifact_staging, before.artifact_staging + 1);
+    assert_eq!(after.tool_invocations, before.tool_invocations);
+    assert!(stage_artifact_tmp_dir(&harness).is_dir());
+    Ok(())
+}
+
+#[test]
+fn stage_artifact_rejects_oversized_complete_result_before_staging_effect(
+) -> Result<(), Box<dyn Error>> {
+    let mut harness = MethodHarness::new()?;
+    enable_stage_artifact_capability(&harness)?;
+    let (task_id, _) = create_task_with_change_unit(&harness, "stage_result_oversized")?;
+    let handle_suffix = "stage-result-oversized";
+    harness.use_generator_and_clock(
+        CountingDurableIdGenerator::new([handle_suffix]),
+        ManualClock::at(STAGE_RESULT_BOUNDARY_CLOCK),
+    );
+    let tmp_dir = stage_artifact_tmp_dir(&harness);
+    assert!(!tmp_dir.exists());
+    let before = harness.counts()?;
+    let mut request =
+        stage_artifact_request("req_stage_result_oversized", None, false, Some(2), &task_id);
+    request.content_type = content_type_for_serialized_stage_result_size(
+        &task_id,
+        handle_suffix,
+        crate::methods::stage_artifact::MAX_STAGE_ARTIFACT_RESULT_BYTES + 1,
+    )?;
+
+    let response = harness
+        .service
+        .stage_artifact(request, invocation(OperationCategory::AgentWorkflow))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["code"],
+        "VALIDATION_FAILED"
+    );
+    assert_eq!(
+        response.response_value["errors"][0]["details"]["field"],
+        "content_type"
+    );
+    assert!(response
+        .response_json
+        .contains("24 KiB staging result limit"));
+    assert_eq!(harness.counts()?, before);
+    assert!(!tmp_dir.exists());
     Ok(())
 }
 

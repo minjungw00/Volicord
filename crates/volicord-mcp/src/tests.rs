@@ -27,7 +27,8 @@ use crate::{
     tool_registry::{
         canonical_tool_examples, mcp_tool_naming_style, mcp_tools_for_mode_and_storage,
         validate_tools_list_json_compatibility, validate_tools_list_schema_compatibility,
-        CHECK_CLOSE_MISSING_FINAL_ACCEPTANCE_EXAMPLE_ID, PREPARE_WRITE_SIMPLE_EXAMPLE_ID,
+        CHECK_CLOSE_MISSING_FINAL_ACCEPTANCE_EXAMPLE_ID,
+        GET_OPERATION_RESULT_FIRST_PAGE_EXAMPLE_ID, PREPARE_WRITE_SIMPLE_EXAMPLE_ID,
         RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_EXAMPLE_ID,
         REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_EXAMPLE_ID, STATUS_READ_ONLY_EXAMPLE_ID,
         UPDATE_SCOPE_KEEP_CURRENT_EXAMPLE_ID,
@@ -36,7 +37,8 @@ use crate::{
 use volicord_core::CoreBoundary;
 use volicord_store::agent_connections::{
     add_connection_project, agent_connection_record, ensure_agent_connection,
-    AgentConnectionRegistration, ConnectionProjectRegistration, CONNECTION_MODE_READ_ONLY,
+    set_connection_enabled, AgentConnectionRegistration, ConnectionProjectRegistration,
+    CONNECTION_MODE_READ_ONLY,
 };
 use volicord_store::bootstrap::{register_project, ProjectRegistration, ACTIVE_PROJECT_STATUS};
 use volicord_store::diagnostics::{diagnostics_db_path, read_diagnostic_session};
@@ -85,6 +87,7 @@ fn tool_sets_follow_connection_mode_and_exclude_user_only_recording() {
         read_only_names,
         vec![
             "volicord.status",
+            GET_OPERATION_RESULT_TOOL_NAME,
             CHECK_CLOSE_TOOL_NAME,
             LIST_PROJECTS_TOOL_NAME
         ]
@@ -168,6 +171,7 @@ fn mcp_readonly_degraded_tools_have_valid_schemas() {
         tool_names(&tools),
         vec![
             STATUS_TOOL_NAME,
+            GET_OPERATION_RESULT_TOOL_NAME,
             CHECK_CLOSE_TOOL_NAME,
             LIST_PROJECTS_TOOL_NAME
         ]
@@ -208,7 +212,10 @@ fn mcp_tools_publish_root_output_schemas_and_effect_specific_annotations() {
         );
         if !matches!(
             tool.name,
-            STATUS_TOOL_NAME | CHECK_CLOSE_TOOL_NAME | LIST_PROJECTS_TOOL_NAME
+            STATUS_TOOL_NAME
+                | GET_OPERATION_RESULT_TOOL_NAME
+                | CHECK_CLOSE_TOOL_NAME
+                | LIST_PROJECTS_TOOL_NAME
         ) {
             assert!(
                 schema_has_definition(&tool.output_schema, "McpMutationResponseBudgetExceeded"),
@@ -223,14 +230,15 @@ fn mcp_tools_publish_root_output_schemas_and_effect_specific_annotations() {
         }
 
         let expected_annotations = match tool.name {
-            STATUS_TOOL_NAME | CHECK_CLOSE_TOOL_NAME | LIST_PROJECTS_TOOL_NAME => {
-                McpToolAnnotations {
-                    read_only_hint: true,
-                    destructive_hint: false,
-                    idempotent_hint: true,
-                    open_world_hint: false,
-                }
-            }
+            STATUS_TOOL_NAME
+            | GET_OPERATION_RESULT_TOOL_NAME
+            | CHECK_CLOSE_TOOL_NAME
+            | LIST_PROJECTS_TOOL_NAME => McpToolAnnotations {
+                read_only_hint: true,
+                destructive_hint: false,
+                idempotent_hint: true,
+                open_world_hint: false,
+            },
             PREPARE_WRITE_TOOL_NAME | STAGE_ARTIFACT_TOOL_NAME => McpToolAnnotations {
                 read_only_hint: false,
                 destructive_hint: false,
@@ -509,6 +517,10 @@ fn advertised_mcp_examples_cover_supported_branches_and_validate() -> Result<(),
         (
             STATUS_TOOL_NAME,
             &["summary_status", STATUS_READ_ONLY_EXAMPLE_ID, "full_status"],
+        ),
+        (
+            GET_OPERATION_RESULT_TOOL_NAME,
+            &[GET_OPERATION_RESULT_FIRST_PAGE_EXAMPLE_ID],
         ),
         (PREPARE_WRITE_TOOL_NAME, &[PREPARE_WRITE_SIMPLE_EXAMPLE_ID]),
         (STAGE_ARTIFACT_TOOL_NAME, &["stage_safe_text"]),
@@ -1204,6 +1216,7 @@ fn mcp_check_reports_readonly_degraded_tool_mode() -> Result<(), Box<dyn Error>>
 
     assert_report_line(&report, "effective_tool_mode: read_only_degraded");
     assert!(names.contains(&STATUS_TOOL_NAME));
+    assert!(names.contains(&GET_OPERATION_RESULT_TOOL_NAME));
     assert!(names.contains(&CHECK_CLOSE_TOOL_NAME));
     assert!(names.contains(&LIST_PROJECTS_TOOL_NAME));
     assert!(!names.contains(&INTAKE_TOOL_NAME));
@@ -1514,6 +1527,7 @@ fn mcp_workflow_connection_degrades_tool_list_when_storage_readonly() -> Result<
         names,
         vec![
             STATUS_TOOL_NAME,
+            GET_OPERATION_RESULT_TOOL_NAME,
             CHECK_CLOSE_TOOL_NAME,
             LIST_PROJECTS_TOOL_NAME
         ]
@@ -1532,6 +1546,7 @@ fn mcp_readonly_storage_exposes_status_and_list_projects() -> Result<(), Box<dyn
     let names = tool_names(&adapter.tools()?);
 
     assert!(names.contains(&STATUS_TOOL_NAME));
+    assert!(names.contains(&GET_OPERATION_RESULT_TOOL_NAME));
     assert!(names.contains(&LIST_PROJECTS_TOOL_NAME));
     assert!(names.contains(&CHECK_CLOSE_TOOL_NAME));
     assert!(!names.contains(&INTAKE_TOOL_NAME));
@@ -1604,6 +1619,70 @@ fn mcp_status_does_not_advance_state_version() -> Result<(), Box<dyn Error>> {
     assert_eq!(
         read_only_table_count(&fixture, "tool_invocations")?,
         before_invocations
+    );
+    Ok(())
+}
+
+#[test]
+fn stdio_operation_result_retrieval_is_exact_bounded_and_read_only_visible(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-operation-result-exact-page")?;
+    let setup_adapter = adapter(&fixture)?;
+    let committed = setup_adapter.call_tool(INTAKE_TOOL_NAME, intake_args(None))?;
+    let operation_result_ref = committed
+        .operation_result_ref
+        .clone()
+        .ok_or("committed agent-workflow result should expose a lookup ref")?;
+    set_mode(&fixture, CONNECTION_MODE_READ_ONLY)?;
+    let read_only_adapter = adapter(&fixture)?;
+    assert!(tool_names(&read_only_adapter.tools()?).contains(&GET_OPERATION_RESULT_TOOL_NAME));
+    let input = Cursor::new(json_lines(&[
+        initialize_request(1, json!({})),
+        initialized_notification(),
+        tools_call(
+            2,
+            GET_OPERATION_RESULT_TOOL_NAME,
+            json!({ "operation_result_ref": operation_result_ref.clone() }),
+        ),
+    ])?);
+    let mut output = Vec::new();
+
+    run_stdio(read_only_adapter, BufReader::new(input), &mut output)?;
+
+    let responses = stdio_responses(&output)?;
+    let result = &responses[1]["result"];
+    let structured = &result["structuredContent"];
+    assert_eq!(result["isError"], false);
+    assert_eq!(structured["base"]["response_kind"], "result");
+    assert_eq!(structured["start_offset_bytes"], 0);
+    assert_eq!(structured["complete"], true);
+    assert!(structured["next_cursor"].is_null());
+    assert_eq!(structured["chunk_utf8"], committed.response_json);
+    assert_eq!(structured["historical"], true);
+    assert_eq!(structured["current_authority_refresh_required"], true);
+    let primary_text = result["content"][0]["text"]
+        .as_str()
+        .ok_or("operation-result compatibility text should be present")?;
+    assert!(primary_text.len() <= MAX_MCP_MUTATION_COMPATIBILITY_TEXT_BYTES);
+    assert!(serde_json::from_str::<Value>(primary_text).is_err());
+    assert!(!primary_text.contains(
+        structured["chunk_utf8"]
+            .as_str()
+            .ok_or("chunk_utf8 should be a string")?
+    ));
+    assert!(serde_json::to_vec(result)?.len() <= MAX_MCP_COMPACT_MUTATION_RESULT_BYTES);
+
+    let stale_adapter = adapter(&fixture)?;
+    set_connection_enabled(fixture.runtime_home_path(), fixture.connection_id(), false)?;
+    let disabled = stale_adapter
+        .call_tool(
+            GET_OPERATION_RESULT_TOOL_NAME,
+            json!({ "operation_result_ref": operation_result_ref }),
+        )
+        .expect_err("every result page should recheck current connection access");
+    assert!(
+        disabled.to_string().contains("disabled"),
+        "unexpected disabled-connection error: {disabled}"
     );
     Ok(())
 }
@@ -1956,6 +2035,7 @@ fn mcp_tools_list_remains_available_after_initialized_notification() -> Result<(
         names,
         vec![
             "volicord.status",
+            GET_OPERATION_RESULT_TOOL_NAME,
             CHECK_CLOSE_TOOL_NAME,
             LIST_PROJECTS_TOOL_NAME
         ]
@@ -2136,8 +2216,9 @@ fn mutation_detail_shapes_compact_receipt_workflow_and_full_without_json_text_du
         .collect::<BTreeSet<_>>();
     assert_eq!(
         summary_keys,
-        BTreeSet::from(["authority_receipt", "method_result"])
+        BTreeSet::from(["authority_receipt", "method_result", "operation_result_ref",])
     );
+    assert!(summary["structuredContent"]["operation_result_ref"].is_object());
     assert_eq!(
         summary["structuredContent"]["method_result"]["effect_kind"],
         "core_committed"
@@ -2160,7 +2241,12 @@ fn mutation_detail_shapes_compact_receipt_workflow_and_full_without_json_text_du
         .collect::<BTreeSet<_>>();
     assert_eq!(
         workflow_keys,
-        BTreeSet::from(["authority_receipt", "method_result", "next_actions"])
+        BTreeSet::from([
+            "authority_receipt",
+            "method_result",
+            "next_actions",
+            "operation_result_ref",
+        ])
     );
     assert!(workflow["structuredContent"]["next_actions"].is_array());
     assert!(serde_json::to_vec(&workflow)?.len() <= MAX_MCP_COMPACT_MUTATION_RESULT_BYTES);
@@ -2549,6 +2635,53 @@ fn stdio_elicitation_accept_records_user_judgment() -> Result<(), Box<dyn Error>
 }
 
 #[test]
+fn stdio_full_elicitation_result_does_not_expose_private_user_note() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-elicitation-full-private-note")?;
+    let setup_adapter = adapter(&fixture)?;
+    let (task_id, state_version) = create_task(&setup_adapter)?;
+    let mut arguments = default_product_judgment_args(&fixture, &task_id, state_version);
+    arguments["detail"] = json!("full");
+    let private_note = "private-user-note-must-not-enter-agent-connection-output";
+    let input = Cursor::new(json_lines(&[
+        initialize_request(1, json!({ "elicitation": {} })),
+        initialized_notification(),
+        tools_call(2, REQUEST_USER_JUDGMENT_TOOL_NAME, arguments),
+        elicitation_accept("keep", Some(private_note)),
+    ])?);
+    let mut output = Vec::new();
+
+    run_stdio(adapter(&fixture)?, BufReader::new(input), &mut output)?;
+
+    let values = stdio_responses(&output)?;
+    let response = values
+        .iter()
+        .find(|value| value["id"] == 2)
+        .ok_or("tools/call response should be present")?;
+    assert_eq!(response["result"]["isError"], false);
+    assert!(!serde_json::to_string(response)?.contains(private_note));
+    let structured = &response["result"]["structuredContent"];
+    assert_eq!(
+        structured["operation_result_ref"]["source_method"],
+        REQUEST_USER_JUDGMENT_TOOL_NAME
+    );
+    assert!(structured["method_result"]["user_judgment"]["resolution"]["note"].is_null());
+
+    let pending_page = adapter(&fixture)?.call_tool(
+        GET_OPERATION_RESULT_TOOL_NAME,
+        json!({
+            "operation_result_ref": structured["operation_result_ref"].clone()
+        }),
+    )?;
+    let pending_exact = pending_page.response_value["chunk_utf8"]
+        .as_str()
+        .ok_or("retrieved pending response should include chunk_utf8")?;
+    assert!(!pending_exact.contains(private_note));
+    let pending_value: Value = serde_json::from_str(pending_exact)?;
+    assert_eq!(pending_value["user_judgment"]["status"], "pending");
+    Ok(())
+}
+
+#[test]
 fn elicitation_write_failure_returns_nonretryable_post_effect_result() -> Result<(), Box<dyn Error>>
 {
     let fixture = CoreFixture::new("mcp-elicitation-write-post-effect")?;
@@ -2585,6 +2718,10 @@ fn elicitation_write_failure_returns_nonretryable_post_effect_result() -> Result
     assert!(structured["effect_anchor"]
         .as_str()
         .is_some_and(|anchor| anchor.starts_with("authority_event:")));
+    assert_eq!(
+        structured["operation_result_ref"]["source_method"],
+        REQUEST_USER_JUDGMENT_TOOL_NAME
+    );
     assert_eq!(
         structured["method_result"]["user_judgment_ref"]["record_id"],
         structured["method_result"]["user_judgment"]["judgment_id"]
@@ -2771,10 +2908,15 @@ fn stdio_elicitation_accept_can_record_deferred_judgment() -> Result<(), Box<dyn
         response["user_judgment"]["resolution"]["resolution_outcome"],
         "deferred"
     );
-    assert_eq!(
-        response["user_judgment"]["resolution"]["note"],
-        "Not enough context yet."
-    );
+    assert!(response["user_judgment"]["resolution"]["note"].is_null());
+    let stored = stored_judgment_record(&fixture, &task_id, &response)?;
+    let stored_resolution: Value = serde_json::from_str(
+        stored
+            .resolution_json
+            .as_deref()
+            .ok_or("stored deferred judgment should include resolution JSON")?,
+    )?;
+    assert_eq!(stored_resolution["note"], "Not enough context yet.");
     Ok(())
 }
 
@@ -2865,6 +3007,10 @@ fn stdio_without_elicitation_capability_returns_cli_recovery_when_prompt_capture
 
     let values = stdio_responses(&output)?;
     assert_eq!(values.len(), 2);
+    assert_eq!(
+        values[1]["result"]["structuredContent"]["operation_result_ref"]["source_method"],
+        REQUEST_USER_JUDGMENT_TOOL_NAME
+    );
     let response = volicord_response_from_tool(&values[1])?;
     assert_eq!(response["user_judgment"]["status"], "pending");
     assert_eq!(
@@ -2921,6 +3067,10 @@ fn stdio_without_elicitation_capability_returns_chat_capture_when_configured(
 
     let values = stdio_responses(&output)?;
     assert_eq!(values.len(), 2);
+    assert_eq!(
+        values[1]["result"]["structuredContent"]["operation_result_ref"]["source_method"],
+        REQUEST_USER_JUDGMENT_TOOL_NAME
+    );
     let response = volicord_response_from_tool(&values[1])?;
     assert_eq!(response["user_judgment"]["status"], "pending");
     assert_eq!(
@@ -2971,6 +3121,10 @@ fn stdio_without_elicitation_uses_local_web_consent_when_prompt_capture_unavaila
 
     let values = stdio_responses(&output)?;
     assert_eq!(values.len(), 2);
+    assert_eq!(
+        values[1]["result"]["structuredContent"]["operation_result_ref"]["source_method"],
+        REQUEST_USER_JUDGMENT_TOOL_NAME
+    );
     let response = volicord_response_from_tool(&values[1])?;
     assert_eq!(response["user_judgment"]["status"], "pending");
     assert_eq!(
@@ -4377,6 +4531,9 @@ fn decode_mcp_arguments_to_value(
         STATUS_TOOL_NAME => {
             serde_json::to_value(serde_json::from_value::<McpStatusArguments>(value)?)
         }
+        GET_OPERATION_RESULT_TOOL_NAME => serde_json::to_value(serde_json::from_value::<
+            McpGetOperationResultArguments,
+        >(value)?),
         PREPARE_WRITE_TOOL_NAME => {
             serde_json::to_value(serde_json::from_value::<McpPrepareWriteArguments>(value)?)
         }

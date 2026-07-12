@@ -686,6 +686,12 @@ impl McpAdapter {
             STATUS_TOOL_NAME => {
                 self.call_status(tool_name, params, session_id, host_elicitation_available)
             }
+            GET_OPERATION_RESULT_TOOL_NAME => self.call_get_operation_result(
+                tool_name,
+                params,
+                session_id,
+                host_elicitation_available,
+            ),
             PREPARE_WRITE_TOOL_NAME => {
                 self.call_prepare_write(tool_name, params, session_id, host_elicitation_available)
             }
@@ -814,6 +820,35 @@ impl McpAdapter {
                 include: args.detail.include(),
             },
             CoreService::status,
+            session_id,
+            host_elicitation_available,
+        )
+    }
+
+    fn call_get_operation_result(
+        &self,
+        tool_name: &str,
+        params: Value,
+        session_id: Option<&str>,
+        host_elicitation_available: bool,
+    ) -> Result<PipelineResponse, McpAdapterError> {
+        let prepared: PreparedMcpArguments<McpGetOperationResultArguments> =
+            self.prepare_mcp_arguments(tool_name, params, session_id)?;
+        let envelope = self.generated_envelope(
+            tool_name,
+            &prepared.project_id,
+            None,
+            OperationCategory::Read,
+        )?;
+        let args = prepared.arguments;
+        self.call_core_request(
+            tool_name,
+            GetOperationResultRequest {
+                envelope,
+                operation_result_ref: args.operation_result_ref,
+                cursor: args.cursor,
+            },
+            CoreService::get_operation_result,
             session_id,
             host_elicitation_available,
         )
@@ -1130,6 +1165,7 @@ impl McpAdapter {
         Ok(Some(PipelineResponse {
             response_json,
             response_value,
+            operation_result_ref: None,
             verified_invocation: None,
             resolved_task_id: None,
             replayed: false,
@@ -2028,6 +2064,7 @@ impl_has_envelope!(
     IntakeRequest,
     UpdateScopeRequest,
     StatusRequest,
+    GetOperationResultRequest,
     PrepareWriteRequest,
     StageArtifactRequest,
     RecordRunRequest,
@@ -2043,7 +2080,9 @@ fn request_envelope<T: HasEnvelope>(request: &T) -> &ToolEnvelope {
 
 fn public_tool_operation_category(tool_name: &str) -> Option<OperationCategory> {
     match tool_name {
-        STATUS_TOOL_NAME | CHECK_CLOSE_TOOL_NAME => Some(OperationCategory::Read),
+        STATUS_TOOL_NAME | GET_OPERATION_RESULT_TOOL_NAME | CHECK_CLOSE_TOOL_NAME => {
+            Some(OperationCategory::Read)
+        }
         INTAKE_TOOL_NAME
         | UPDATE_SCOPE_TOOL_NAME
         | PREPARE_WRITE_TOOL_NAME

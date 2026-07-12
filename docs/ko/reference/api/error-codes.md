@@ -32,6 +32,7 @@
 | `STATE_VERSION_CONFLICT` | [`STATE_VERSION_CONFLICT`](#errorcode-state-version-conflict) |
 | `MCP_UNAVAILABLE` | [`MCP_UNAVAILABLE`](#errorcode-mcp-unavailable) |
 | `INVOCATION_CONTEXT_MISMATCH` | [`INVOCATION_CONTEXT_MISMATCH`](#errorcode-invocation-context-mismatch) |
+| `OPERATION_RESULT_UNAVAILABLE` | [`OPERATION_RESULT_UNAVAILABLE`](#errorcode-operation-result-unavailable) |
 | `NO_ACTIVE_TASK` | [`NO_ACTIVE_TASK`](#errorcode-no-active-task) |
 | `NO_ACTIVE_CHANGE_UNIT` | [`NO_ACTIVE_CHANGE_UNIT`](#errorcode-no-active-change-unit) |
 | `BASELINE_STALE` | [`BASELINE_STALE`](#errorcode-baseline-stale) |
@@ -99,6 +100,22 @@
 
 조건:
 - 호출 맥락이 요청한 메서드, 재실행 기록, `actor_source`, `operation_category` 또는 어댑터가 파생한 실행 맥락과 호환되지 않습니다.
+
+<a id="errorcode-operation-result-unavailable"></a>
+### `OPERATION_RESULT_UNAVAILABLE`
+
+사용 위치:
+- `ToolRejectedResponse.errors[]`
+
+조건:
+- 그 밖에는 유효한 `OperationResultRef`와 cursor가 선택한 정확한 과거 작업 결과가
+  없거나, 조회 대상이 아니거나, ref 또는 저장 byte 무결성 확인에 실패했거나, 크기가
+  제한된 조회에 사용할 수 없습니다.
+
+참고:
+- 접근 맥락 비호환은 계속 `INVOCATION_CONTEXT_MISMATCH`이며 이 코드보다 먼저
+  선택합니다. 따라서 결과 없음 분기는 접근을 허용하거나 접근 정보를 설명하지 않습니다.
+- Store 접근 불가나 손상된 타입 지정 담당 상태는 계속 `MCP_UNAVAILABLE`입니다.
 
 <a id="errorcode-no-active-task"></a>
 ### `NO_ACTIVE_TASK`

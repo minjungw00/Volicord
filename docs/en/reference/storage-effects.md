@@ -301,6 +301,7 @@ This table summarizes persistence effects. Method behavior and response unions r
 | `volicord.intake` | creates task and shaping records | See [`volicord.intake`](#volicordintake) |
 | `volicord.update_scope` | updates current scope records | See [`volicord.update_scope`](#volicordupdate_scope) |
 | `volicord.status` | read-style response with optional session-watch initialization | See [`volicord.status`](#volicordstatus) |
+| `volicord.get_operation_result` | reads immutable historical replay bytes without storage effects | See [`volicord.get_operation_result`](#volicordget_operation_result) |
 | `volicord.prepare_write` | records write decision effects | See [`volicord.prepare_write`](#volicordprepare_write) |
 | `volicord.stage_artifact` | creates transient staging only | See [`volicord.stage_artifact`](#volicordstage_artifact) |
 | `volicord.record_run` | records run, current close-basis, evidence, and evidence-observation effects | See [`volicord.record_run`](#volicordrecord_run) |
@@ -406,6 +407,31 @@ Owner links:
 
 - [`volicord.status` method](api/method-status.md)
 
+<a id="volicordget_operation_result"></a>
+### `volicord.get_operation_result`
+
+Successful calls read one eligible immutable `tool_invocations.response_json`
+value in bounded UTF-8 pages. The read does not replay the original mutation,
+recompute its response, or turn the historical result into current authority.
+
+The method is response-only and must not create or change:
+
+- replay rows or `tool_invocations.response_json`
+- `authority_events` or Core current rows
+- Task, Change Unit, judgment, blocker, or continuity state
+- staging, artifact, evidence, or write-ticket state
+- session-watch diagnostic rows
+- `project_state.state_version`
+
+Rejected access, invalid cursors, unavailable rows, and integrity failures have
+the same no-effect boundary and return no partial historical bytes.
+
+Owner links:
+
+- [`volicord.get_operation_result` method](api/method-get-operation-result.md)
+- [Storage Records](storage-records.md#exact-operation-result-storage)
+- [Storage Versioning](storage-versioning.md#exact-operation-result-retrieval)
+
 <a id="volicordprepare_write"></a>
 ### `volicord.prepare_write`
 
@@ -454,6 +480,12 @@ Successful staging may:
 - store transient safe bytes or notices under `artifacts/tmp/`
 
 This branch creates only transient storage-owned staging. It is not the regular Core committed mutation branch, and temporary staging directories may be created when staging occurs rather than during project registration.
+
+Because this branch has no replay row or `OperationResultRef`, Core must prove
+that the complete serialized `StageArtifactResult` fits the supported staging
+result bound before creating a staging record, staged handle, temporary
+directory, bytes, or notice. A prospectively oversized result is rejected with
+no staging effect; the size check must not be deferred until after staging.
 
 It does not create:
 
@@ -608,6 +640,10 @@ Valid dry-run previews do not create:
 Recording a user judgment does not increment `tasks.scope_revision` or `tasks.close_basis_revision`.
 
 `status='resolved'` records that an answer was recorded; it is not acceptance by itself. Current resolved rows require complete basis, selected action, `resolution_outcome`, resolution payload, resolution timestamp, User Channel actor source, verification basis, assurance level, and required actor provenance. Missing required resolution authority is invalid stored state, not a readable historical audit judgment.
+
+The replay row remains user-only. Its exact response and any free-form private
+note are not eligible for Agent Connection retrieval through
+`volicord.get_operation_result`.
 
 Owner links:
 

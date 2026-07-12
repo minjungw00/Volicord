@@ -197,6 +197,33 @@ Volicord 기록은 그 기록을 만들고, 검증하고, 갱신하는 담당 �
 - 텍스트에서 복사한 `actor_source`가 호출자 권한 토큰이라는 주장.
 - 환경으로 제어되는 라벨, 공개 요청 필드, 임의 호출자 텍스트가 신뢰된 권한, 감사 사실, 검증 근거 입력이라는 주장.
 
+<a id="historical-operation-result-access"></a>
+### 과거 동작 결과 접근
+
+`OperationResultRef`는 조회할 수 있는 변경 불가능한 과거 Core 변경 응답을
+가리키는 조회 식별자이며, 소지만으로 권한을 주는 베어러 자격 증명이 아닙니다.
+참조나 페이지 커서를 가지고 있거나 복사했다는 사실만으로 조회가 허용되거나
+변경이 재실행되거나 현재 권한이 생기지 않습니다.
+
+`volicord.get_operation_result`의 모든 페이지는 현재 활성화된 Agent Connection,
+선택 프로젝트에 대한 현재 Connection Projects 멤버십, 원래
+`operation_category=agent_workflow` 호출에 저장된 행위자와 정확히 일치하는
+검증된 `actor_source`를 요구합니다. 각 페이지마다 이 조건을 다시 확인합니다.
+비활성 연결, 제거된 프로젝트 멤버십, 다른 프로젝트, 다른 행위자에게 과거 응답
+바이트를 노출하면 안 됩니다.
+
+`operation_category=user_only` 결과는 이 Agent Connection 조회 경로에서
+제외합니다. 특히 정확한 `volicord.record_user_judgment` 응답과 사용자의 자유
+형식 `note`를 `volicord.get_operation_result`로 반환하면 안 됩니다. 호스트가
+중개한 Judgment 흐름은 에이전트 소유 요청에 대해 MCP 전송 담당 문서가 정의한
+에이전트용 상태 보기만 노출할 수 있습니다. 간결한 형태는 note를 생략하고 full
+형태는 note를 null로 유지하며, 어느 형태도 user-only 작업 ref나 정확한 응답
+본문을 노출하지 않습니다.
+
+조회한 바이트는 과거 결과를 설명합니다. `AuthorityReceipt`, 현재 상태, 증거,
+쓰기 티켓이 아니며 과거 상태가 여전히 현재라는 증명도 아닙니다. 현재 권한을
+주장하기 전에는 `volicord.status`를 별도로 읽어야 합니다.
+
 ### 호스트 신뢰와 안내
 
 호스트 신뢰와 승인 결정은 외부 호스트와 사용자가 소유합니다. Volicord는 지원되는 설정을 설치하고 추가 사용자 동작이 필요한지 보고할 수 있지만, 호스트의 신뢰 결정을 통제하지 않습니다.

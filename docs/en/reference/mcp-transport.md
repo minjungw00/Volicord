@@ -772,9 +772,9 @@ capability of the selected allowed projects:
 
 | Mode and storage capability | MCP-visible tools |
 |---|---|
-| `workflow` with writable project state | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.prepare_write`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.reconcile_changes`, `volicord.check_close`, `volicord.close_task`, `volicord.list_projects` |
-| `workflow` with readable but non-writable project state | `volicord.status`, `volicord.check_close`, `volicord.list_projects` |
-| `read_only` with readable project state | `volicord.status`, `volicord.check_close`, `volicord.list_projects` |
+| `workflow` with writable project state | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.get_operation_result`, `volicord.prepare_write`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.reconcile_changes`, `volicord.check_close`, `volicord.close_task`, `volicord.list_projects` |
+| `workflow` with readable but non-writable project state | `volicord.status`, `volicord.get_operation_result`, `volicord.check_close`, `volicord.list_projects` |
+| `read_only` with readable project state | `volicord.status`, `volicord.get_operation_result`, `volicord.check_close`, `volicord.list_projects` |
 | No readable allowed project state | `volicord.list_projects` |
 
 The MCP adapter may inspect project state read-only during startup and
@@ -807,6 +807,9 @@ The MCP-visible tools are not the same thing as the public Volicord Core API
 method list. `volicord.check_close` maps to the first-class read-only Core
 method for close readiness. `volicord.close_task` maps to the workflow-only
 Core mutation method and is not listed for `read_only` connections.
+`volicord.get_operation_result` maps to the read-only Core method for bounded
+retrieval of one exact historical mutation response and is listed for both
+connection modes when project state is readable.
 `volicord.record_user_judgment` and `volicord.record_user_observation` are
 public Core API methods for User Channel paths, but neither is exposed as an
 Agent Connection MCP tool; see
@@ -841,6 +844,7 @@ array:
   `scope_boundary=null`, `non_goals=null`, `acceptance_criteria=null`,
   `autonomy_boundary=null`, `baseline_ref=null`, and
   `related_scope_decision_refs=[]`
+- `volicord.get_operation_result`: `cursor=null`
 - `volicord.prepare_write`: `task_id=null`, `change_unit_id=null`, and
   `sensitive_categories=[]`
 - `volicord.stage_artifact`: `expected_sha256=null`,
@@ -884,7 +888,8 @@ exhaustive mode-to-kind matrix: `advisor` uses `shaping_update`, `direct` uses
 `direct`, and `work` uses `shaping_update` or `implementation`. Frequently used
 argument-shape examples are advertised as values in `inputSchema.examples`,
 including intake create/resume/supersede/reject, update-scope
-keep/create/replace, all three status detail levels, prepare-write,
+keep/create/replace, all three status detail levels, first-page operation-result
+retrieval, prepare-write,
 stage-artifact, an advisor `shaping_update` with no Product Repository write, an
 evidence-bearing work `implementation`, request-judgment, reconcile,
 check-close, and close complete/cancel/supersede branches. Each advertised
@@ -909,7 +914,7 @@ adapter-utility result schema. A server result that includes
 
 | Tool class | `readOnlyHint` | `destructiveHint` | `idempotentHint` | `openWorldHint` |
 |---|---:|---:|---:|---:|
-| `volicord.status`, `volicord.check_close`, `volicord.list_projects` | `true` | `false` | `true` | `false` |
+| `volicord.status`, `volicord.get_operation_result`, `volicord.check_close`, `volicord.list_projects` | `true` | `false` | `true` | `false` |
 | `volicord.prepare_write`, `volicord.stage_artifact` | `false` | `false` | `false` | `false` |
 | `volicord.intake`, `volicord.update_scope`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.reconcile_changes`, `volicord.close_task` | `false` | `true` | `false` | `false` |
 
@@ -1071,19 +1076,25 @@ version, and current status projection. The mutation's own Core effect remains
 the method owner's effect; this refresh creates no second mutation.
 
 For one applied or replayed mutation result, the adapter derives the exact
-method result, compact method result, effect facts, fresh receipt, and current
-next actions once as one canonical mutation outcome. Normal `detail`
+method result, compact method result, effect facts, nullable
+`operation_result_ref`, fresh receipt, and current next actions once as one
+canonical mutation outcome. Normal `detail`
 projections, response-budget recovery, post-effect recovery, and authoritative
 refresh recovery select from that same outcome. A recovery branch must not
 recompute a different compact result or use a branch-local preservation order.
+For an eligible committed or replayed agent-workflow Core mutation, the ref is
+present and identical in every normal or recovery projection. It is independent
+of the receipt/result preservation ladder and cannot be dropped to make another
+candidate fit. Non-Core staging and results without an eligible durable row use
+`operation_result_ref=null`.
 
 For an accepted refresh:
 
-- `detail=summary` returns `authority_receipt` and the compact
+- `detail=summary` returns `operation_result_ref`, `authority_receipt`, and the compact
   `method_result` in `result.structuredContent`.
 - `detail=workflow` returns those fields plus `next_actions` in
   `result.structuredContent`.
-- `detail=full` returns `authority_receipt` and the exact public method response
+- `detail=full` returns `operation_result_ref`, `authority_receipt`, and the exact public method response
   under `method_result` in `result.structuredContent`. If state changed after
   the method response was built and before refresh, `authority_receipt` is the
   fresh authority view; method-owned state inside `method_result` remains the
@@ -1105,7 +1116,8 @@ operation as a failed mutation and automatically retry it. Its
 `code=MCP_RESPONSE_BUDGET_EXCEEDED`, the method `tool_name`, the
 `requested_detail`, `retryable=false`, `reached_core`, `committed`, nullable
 `effect_kind`, `effect_applied`, nullable stable `effect_anchor`, nullable
-`authority_receipt`, nullable compact `method_result` used by the requested tool,
+`operation_result_ref`, nullable `authority_receipt`, nullable compact
+`method_result` used by the requested tool,
 `authoritative_refresh_succeeded=true`, `response_projection_omitted=true`,
 `status_read_required=true`, and `completion_claim_withheld=true`. `committed`
 reports a new Core commit, while `effect_kind` and `effect_applied` also report
@@ -1117,10 +1129,18 @@ particular, when a successful `volicord.stage_artifact` compact result fits afte
 the receipt does not, the recovery retains its staging handle and expiry. A
 field that cannot fit at its preservation step is `null`.
 
+An eligible durable `operation_result_ref` remains present at every preservation
+step, including receipt-only, compact-only, and effect-facts-only recovery. A
+caller whose exact result was omitted reads it with
+`volicord.get_operation_result`, concatenates the returned chunks, and then
+reads `volicord.status` for current authority. A caller must not resubmit the
+mutation.
+
 `effect_anchor` identifies the first committed authority event, staged handle,
 or resulting state effect. It is an effect-correlation anchor, not an operation
-result lookup credential. The baseline exposes no lookup method that accepts
-this value, and `volicord.status` cannot reconstruct the exact method result.
+result lookup credential. Only `operation_result_ref` is accepted by
+`volicord.get_operation_result`; `volicord.status` cannot reconstruct the exact
+method result.
 This branch does not claim `MCP_UNAVAILABLE`, is not counted as an
 authoritative-refresh failure, and does not return a partial receipt or
 oversized status body. The caller must not submit a new mutation as a retry; it
@@ -1134,7 +1154,7 @@ host User Channel adapter after the pending judgment was created;
 `code=MCP_RESPONSE_PROJECTION_FAILED` identifies a failure while building the
 normal response projection. Both branches include the method `tool_name`,
 `requested_detail`, effect facts, nullable `effect_anchor`, nullable
-`authority_receipt`, nullable `method_result`,
+`operation_result_ref`, nullable `authority_receipt`, nullable `method_result`,
 `authoritative_refresh_succeeded=true`, `response_projection_omitted=true`,
 `status_read_required=true`, and
 `completion_claim_withheld=true`. A projection failure preserves the exact
@@ -1151,17 +1171,20 @@ receipt, or fails any freshness comparison, the adapter returns the same
 success-class `isError=false` recovery boundary. Its bounded
 `structuredContent` contains `code=MCP_UNAVAILABLE`, the method `tool_name`,
 `retryable=false`, `reached_core`, `committed`, nullable `effect_kind`,
-`effect_applied`, nullable stable `effect_anchor`,
-nullable compact `method_result`, `status_read_required=true`, and
+`effect_applied`, nullable stable `effect_anchor`, nullable
+`operation_result_ref`, nullable compact `method_result`,
+`status_read_required=true`, and
 `completion_claim_withheld=true`. The compact result preserves tool-specific
 next-step data such as a write ticket, staging handle, per-finding reconcile
 outcomes, or selected Judgment outcome. It is never truncated; if that compact
 result itself cannot fit the fixed recovery budget, the field is `null`. The
 branch does not return the exact original success or completion body, a stale
 receipt, or a private refresh error body. The caller must not resubmit the
-mutation and must read current status before acting. The `effect_anchor` has the
-same correlation-only meaning described above; status does not recover the
-omitted exact method result. Local session diagnostics count this as an
+mutation. When `operation_result_ref` is non-null, it retrieves the omitted
+exact historical result; the caller must also read current status before
+acting. The `effect_anchor` has the same correlation-only meaning described
+above; status does not recover the omitted exact method result. Local session
+diagnostics count this as an
 authoritative-refresh failure without storing the error body.
 
 Core/domain rejected mutation responses do not enter this success-projection
@@ -1213,9 +1236,15 @@ commits a pending judgment:
   path.
 
 For all successful branches, `result.structuredContent` follows the selected
-mutation `detail` projection. `detail=full` pairs the pending or recorded public
-response object with the fresh authority receipt. The default `summary` pairs
-that receipt with a compact Judgment result containing the Judgment ref,
+mutation `detail` projection. When host elicitation resolves the judgment, every
+projection preserves the original agent-owned
+`volicord.request_user_judgment` `operation_result_ref`; it never substitutes a
+reference to the user-only recording operation. `detail=full` pairs an
+agent-safe recorded public response projection with the fresh authority
+receipt. The projection retains the selected outcome but sets or keeps the
+free-form user note null. The exact user-only response remains stored for its
+owner and is not retrievable through the Agent Connection. The default
+`summary` pairs that receipt with a compact Judgment result containing the Judgment ref,
 status, and, after resolution, the selected option ID and label plus resolution
 outcome. The compact result does not include the free-form note.
 `result.content[0].text` remains a short compatibility summary, not a JSON
@@ -1269,7 +1298,11 @@ wraps the Volicord response JSON inside the MCP result:
 
 - Read-only method results return the Volicord response object in
   `result.structuredContent`. Their compatibility JSON text continues to parse
-  equal to that object.
+  equal to that object, except that `volicord.get_operation_result` uses a
+  non-JSON summary of at most 512 UTF-8 bytes naming page offsets and completion.
+  It never duplicates `chunk_utf8` into compatibility text. Each page contains
+  at most 16,384 source UTF-8 bytes and its complete serialized
+  `CallToolResult` is at most 65,536 bytes.
 - Successful mutation results use the selected receipt projection described
   above. Their `result.content[0].text` is a bounded short summary and is not
   required to parse as JSON.

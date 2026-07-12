@@ -65,6 +65,36 @@ Replay eligibility:
 
 Replay uses the stored response body. It does not recompute or reclassify `write_ticket_effect`, `base.state_version`, `base.events`, or any other response field. Replay does not append events, promote or link artifacts, issue or consume write tickets, create another replay row, or change state again.
 
+<a id="exact-operation-result-retrieval"></a>
+### Exact operation-result retrieval
+
+Every eligible `operation_category=agent_workflow` Core commit and exact replay
+exposes an `OperationResultRef` for the immutable
+`tool_invocations.response_json` already stored by the original commit.
+`volicord.get_operation_result` reads that value in contiguous UTF-8-safe pages.
+Concatenating the pages in cursor order must
+reproduce the stored response byte-for-byte; retrieval must not recompute,
+normalize, reserialize, or reclassify any field.
+
+Before returning any page, Store loads the exact stored bytes and computes their
+byte length and SHA-256; Core compares those facts with the reference. The
+current verified actor and project access are checked separately under the
+security and method owners; the reference is not a bearer credential.
+`operation_category=user_only` rows, including
+`volicord.record_user_judgment`, are not eligible for Agent Connection
+retrieval. The retrieved response is historical and does not replace a current
+`volicord.status` read.
+
+This path reuses the existing replay row and immutable `response_json`. It adds
+no table, column, replay form, schema ledger, storage profile, or migration.
+Retrieval itself is read-only and creates no replay row, event, lock-visible
+state transition, or `project_state.state_version` increment.
+
+`volicord.stage_artifact` remains outside the Core replay transaction: it creates
+no replay row and exposes no `OperationResultRef`. Its complete serialized result
+must satisfy the supported prospective size bound before any staging side effect
+occurs.
+
 ## Failure And Retry
 
 Pre-commit failures have no storage effect. Transaction failures must leave no partial state-version increment, event, replay row, write-ticket change, artifact effect, evidence update, judgment effect, close effect, lifecycle effect, or staged-handle consumption.

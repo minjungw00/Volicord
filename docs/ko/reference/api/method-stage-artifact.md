@@ -86,6 +86,18 @@ StageArtifactRequest:
 
 거절과 `dry_run` 요청은 저장 효과가 없습니다.
 
+## 전체 결과 크기 상한
+
+Core는 staging 행, handle, 임시 디렉터리, staged byte 또는 알림을 만들기 전에 예상되는
+전체 `StageArtifactResult`를 만들고 직렬화합니다. 직렬화한 UTF-8 결과는 최대
+24,576 byte(24 KiB)여야 합니다. 다른 모든 staging 요구사항을 통과하면 정확히
+24,576 byte인 결과는 허용합니다. 24,577 byte 이상이면 handle에 보존되는 호출자 제어
+필드인 `content_type`에 결과 상한 검증을 연결한 `VALIDATION_FAILED`를 반환합니다. 이
+거절은 staging 효과나 Core 효과를 만들지 않습니다.
+
+크기 확인을 통과한 뒤에는 같은 전체 결과를 staging 성공 응답에 재사용합니다. 성공 결과를
+자르거나 간결하게 바꾸거나 다른 값으로 다시 계산하지 않습니다.
+
 ## 메서드 결과 필드
 
 `StageArtifactResult`는 성공한 스테이징 작업에 대한 메서드별 결과 분기입니다. 이 결과는 `base: ToolResultBase`와 아래 메서드 소유 최상위 필드를 담습니다.
@@ -125,6 +137,7 @@ StageArtifactRequest:
 
 - 유효하지 않은 요청 형태
 - 체크섬 또는 크기 불일치
+- 직렬화한 전체 `StageArtifactResult`가 UTF-8 기준 24,576 byte를 넘는 경우
 - 안전하지 않은 아티팩트 입력
 - 지원하지 않는 가림 처리 상태
 - Core 또는 호출 맥락 사용 불가

@@ -358,6 +358,14 @@ mod tests {
             OperationCategory::Read
         );
         assert_eq!(
+            serde_json::from_value::<GetOperationResultRequest>(
+                get_operation_result_request_json(),
+            )
+            .expect("operation-result request")
+            .operation_category(),
+            OperationCategory::Read
+        );
+        assert_eq!(
             serde_json::from_value::<IntakeRequest>(intake_request_json())
                 .expect("intake request")
                 .operation_category(),
@@ -1095,6 +1103,7 @@ mod tests {
             "volicord.intake",
             "volicord.update_scope",
             "volicord.status",
+            "volicord.get_operation_result",
             "volicord.check_close",
             "volicord.prepare_write",
             "volicord.stage_artifact",
@@ -1118,6 +1127,60 @@ mod tests {
         }
 
         assert!(public_response_schema("volicord.unknown").is_none());
+    }
+
+    #[test]
+    fn operation_result_contract_is_strict_paged_and_mcp_cursor_defaults_to_first_page() {
+        let request = public_request_schema("volicord.get_operation_result")
+            .expect("operation-result request schema");
+        assert_required(
+            &request,
+            &["envelope", "operation_result_ref", "cursor"],
+            "GetOperationResultRequest",
+        );
+        assert_eq!(request["additionalProperties"], false);
+        assert_required(
+            definition(&request, "OperationResultRef"),
+            &[
+                "project_id",
+                "source_method",
+                "source_idempotency_key",
+                "committed_state_version",
+                "response_sha256",
+                "response_size_bytes",
+            ],
+            "OperationResultRef",
+        );
+
+        let response = public_response_schema("volicord.get_operation_result")
+            .expect("operation-result response schema");
+        assert_required(
+            definition(&response, "GetOperationResultResult"),
+            &[
+                "base",
+                "operation_result_ref",
+                "start_offset_bytes",
+                "end_offset_bytes",
+                "chunk_utf8",
+                "next_cursor",
+                "complete",
+                "historical",
+                "current_authority_refresh_required",
+            ],
+            "GetOperationResultResult",
+        );
+
+        let decoded: McpGetOperationResultArguments = serde_json::from_value(json!({
+            "operation_result_ref": operation_result_ref_json()
+        }))
+        .expect("omitted MCP cursor should select the first page");
+        assert!(decoded.cursor.as_ref().is_none());
+        assert_eq!(MAX_OPERATION_RESULT_PAGE_BYTES, 16_384);
+        assert_eq!(
+            serde_json::to_value(ErrorCode::OperationResultUnavailable)
+                .expect("operation-result error code should serialize"),
+            json!("OPERATION_RESULT_UNAVAILABLE")
+        );
     }
 
     #[test]
@@ -1198,17 +1261,22 @@ mod tests {
             .expect("judgment MCP response schema");
         assert_required(
             definition(&judgment, "McpMutationFullResponse"),
-            &["authority_receipt", "method_result"],
+            &["operation_result_ref", "authority_receipt", "method_result"],
             "McpMutationFullResponse",
         );
         assert_required(
             definition(&judgment, "McpMutationSummaryResponse"),
-            &["authority_receipt", "method_result"],
+            &["operation_result_ref", "authority_receipt", "method_result"],
             "McpMutationSummaryResponse",
         );
         assert_required(
             definition(&judgment, "McpMutationWorkflowResponse"),
-            &["authority_receipt", "method_result", "next_actions"],
+            &[
+                "operation_result_ref",
+                "authority_receipt",
+                "method_result",
+                "next_actions",
+            ],
             "McpMutationWorkflowResponse",
         );
         assert_required(
@@ -1236,6 +1304,7 @@ mod tests {
                 "effect_kind",
                 "effect_applied",
                 "effect_anchor",
+                "operation_result_ref",
                 "method_result",
                 "status_read_required",
                 "completion_claim_withheld",
@@ -1255,6 +1324,7 @@ mod tests {
                 "effect_kind",
                 "effect_applied",
                 "effect_anchor",
+                "operation_result_ref",
                 "authority_receipt",
                 "method_result",
                 "authoritative_refresh_succeeded",
@@ -1276,6 +1346,7 @@ mod tests {
                 "effect_kind",
                 "effect_applied",
                 "effect_anchor",
+                "operation_result_ref",
                 "authority_receipt",
                 "method_result",
                 "authoritative_refresh_succeeded",
@@ -1999,6 +2070,10 @@ mod tests {
             ("volicord.intake", intake_request_json()),
             ("volicord.update_scope", update_scope_request_json()),
             ("volicord.status", status_request_json()),
+            (
+                "volicord.get_operation_result",
+                get_operation_result_request_json(),
+            ),
             ("volicord.check_close", check_close_request_json()),
             ("volicord.prepare_write", prepare_write_request_json()),
             ("volicord.stage_artifact", stage_artifact_request_json()),
@@ -2278,6 +2353,7 @@ mod tests {
     fn required_nullable_request_paths() -> Vec<(&'static str, &'static [&'static str])> {
         vec![
             ("volicord.update_scope", &["goal_summary"]),
+            ("volicord.get_operation_result", &["cursor"]),
             ("volicord.prepare_write", &["task_id"]),
             ("volicord.prepare_write", &["change_unit_id"]),
             ("volicord.stage_artifact", &["expected_sha256"]),
@@ -2355,6 +2431,10 @@ mod tests {
             "volicord.status" => canonical_request_hash(
                 &serde_json::from_value::<StatusRequest>(value).expect("status request"),
             ),
+            "volicord.get_operation_result" => canonical_request_hash(
+                &serde_json::from_value::<GetOperationResultRequest>(value)
+                    .expect("operation-result request"),
+            ),
             "volicord.check_close" => canonical_request_hash(
                 &serde_json::from_value::<CheckCloseRequest>(value).expect("check request"),
             ),
@@ -2422,6 +2502,7 @@ mod tests {
                 "related_scope_decision_refs",
             ],
             "volicord.status" => &["envelope", "include"],
+            "volicord.get_operation_result" => &["envelope", "operation_result_ref", "cursor"],
             "volicord.check_close" => &["envelope", "task_id"],
             "volicord.prepare_write" => &[
                 "envelope",
@@ -2514,6 +2595,9 @@ mod tests {
                 serde_json::from_value::<UpdateScopeRequest>(value).map(drop)
             }
             "volicord.status" => serde_json::from_value::<StatusRequest>(value).map(drop),
+            "volicord.get_operation_result" => {
+                serde_json::from_value::<GetOperationResultRequest>(value).map(drop)
+            }
             "volicord.check_close" => serde_json::from_value::<CheckCloseRequest>(value).map(drop),
             "volicord.prepare_write" => {
                 serde_json::from_value::<PrepareWriteRequest>(value).map(drop)
@@ -2610,6 +2694,29 @@ mod tests {
                 "guarantees": true,
                 "continuity": false
             }
+        })
+    }
+
+    fn operation_result_ref_json() -> Value {
+        json!({
+            "project_id": "proj_empty_001",
+            "source_method": "volicord.record_run",
+            "source_idempotency_key": "idem_run_history_001",
+            "committed_state_version": 61,
+            "response_sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "response_size_bytes": 32768
+        })
+    }
+
+    fn get_operation_result_request_json() -> Value {
+        let mut envelope = envelope_json();
+        envelope["task_id"] = Value::Null;
+        envelope["idempotency_key"] = Value::Null;
+        envelope["expected_state_version"] = Value::Null;
+        json!({
+            "envelope": envelope,
+            "operation_result_ref": operation_result_ref_json(),
+            "cursor": null
         })
     }
 

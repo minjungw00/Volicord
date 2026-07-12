@@ -299,6 +299,7 @@ Core 상태 변경, 재실행 행, 권한 이벤트, 닫기 상태 변경,
 | `volicord.intake` | `Task`와 구체화 기록 생성 | [`volicord.intake`](#volicordintake) |
 | `volicord.update_scope` | 현재 적용 범위 기록 갱신 | [`volicord.update_scope`](#volicordupdate_scope) |
 | `volicord.status` | 선택적 세션 감시 초기화를 포함하는 읽기형 응답 | [`volicord.status`](#volicordstatus) |
+| `volicord.get_operation_result` | 저장 효과 없이 변경 불가능한 과거 재실행 바이트 조회 | [`volicord.get_operation_result`](#volicordget_operation_result) |
 | `volicord.prepare_write` | 쓰기 판단 효과 기록 | [`volicord.prepare_write`](#volicordprepare_write) |
 | `volicord.stage_artifact` | 임시 스테이징만 생성 | [`volicord.stage_artifact`](#volicordstage_artifact) |
 | `volicord.record_run` | 실행, 현재 닫기 근거, 증거, 증거 관찰 효과 기록 | [`volicord.record_run`](#volicordrecord_run) |
@@ -404,6 +405,31 @@ Core 상태 변경, 재실행 행, 권한 이벤트, 닫기 상태 변경,
 
 - [`volicord.status` 메서드](api/method-status.md)
 
+<a id="volicordget_operation_result"></a>
+### `volicord.get_operation_result`
+
+성공한 호출은 조회할 수 있는 변경 불가능한 `tool_invocations.response_json` 값
+하나를 크기가 제한된 UTF-8 페이지로 읽습니다. 이 읽기는 원래 변경을 재실행하거나
+응답을 다시 계산하거나 과거 결과를 현재 권한으로 만들지 않습니다.
+
+이 메서드는 응답 전용이며 아래 항목을 만들거나 변경하면 안 됩니다.
+
+- 재실행 행 또는 `tool_invocations.response_json`
+- `authority_events` 또는 Core 현재 행
+- Task, Change Unit, 판단, 차단 사유, 연속성 상태
+- 스테이징, 아티팩트, 증거, 쓰기 티켓 상태
+- 세션 감시 진단 행
+- `project_state.state_version`
+
+접근 거절, 잘못된 `cursor`, 사용할 수 없는 행, 무결성 실패에도 같은 무효과
+경계를 적용하며 과거 바이트 일부를 반환하면 안 됩니다.
+
+담당 문서:
+
+- [`volicord.get_operation_result` 메서드](api/method-get-operation-result.md)
+- [저장소 기록](storage-records.md#exact-operation-result-storage)
+- [저장소 버전 관리](storage-versioning.md#exact-operation-result-retrieval)
+
 <a id="volicordprepare_write"></a>
 ### `volicord.prepare_write`
 
@@ -452,6 +478,12 @@ Core 상태 변경, 재실행 행, 권한 이벤트, 닫기 상태 변경,
 - `artifacts/tmp/` 아래에 임시 안전 바이트 또는 알림을 둡니다.
 
 이 분기는 저장소 소유 임시 스테이징만 생성합니다. 일반 Core 커밋 변이 분기가 아니며, 임시 스테이징 디렉터리는 프로젝트 등록 시점이 아니라 스테이징이 일어날 때 만들어질 수 있습니다.
+
+이 분기에는 재실행 행이나 `OperationResultRef`가 없으므로 Core는 스테이징
+기록, 스테이징 핸들, 임시 디렉터리, 바이트, 알림을 만들기 전에 전체 직렬화
+`StageArtifactResult`가 지원되는 스테이징 결과 상한 안에 들어가는지 증명해야
+합니다. 결과가 상한을 넘을 것으로 판단되면 스테이징 효과 없이 거절합니다.
+크기 확인을 스테이징 뒤로 미루면 안 됩니다.
 
 아래 항목은 만들지 않습니다.
 
@@ -606,6 +638,10 @@ Core 상태 변경, 재실행 행, 권한 이벤트, 닫기 상태 변경,
 사용자 판단 기록은 `tasks.scope_revision`이나 `tasks.close_basis_revision`을 증가시키지 않습니다.
 
 `status='resolved'`는 답변이 기록되었다는 뜻이며 그 자체로 수락이 아닙니다. 현재 해결 행에는 완전한 근거, 선택된 동작, `resolution_outcome`, 해결 요청 본문, 해결 타임스탬프, User Channel 행위자 출처, 검증 근거, 보증 수준, 필요한 행위자 출처가 있어야 합니다. 필요한 해결 권한 정보가 빠진 행은 읽을 수 있는 이력 감사 판단이 아니라 유효하지 않은 저장 상태입니다.
+
+재실행 행은 계속 `operation_category=user_only`입니다. 그 정확한 응답과 자유
+형식 비공개 `note`는 `volicord.get_operation_result`를 통한 Agent Connection
+조회 대상이 아닙니다.
 
 담당 문서:
 

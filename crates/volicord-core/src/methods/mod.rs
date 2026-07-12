@@ -44,14 +44,15 @@ use volicord_types::{
     EvidenceGateSummary, EvidenceObservation, EvidenceObservationId, EvidenceObservationInput,
     EvidenceProducerAnchor, EvidenceProducerKind, EvidenceRelevanceAssessment,
     EvidenceRelevanceStatus, EvidenceRequirement, EvidenceSourceKind, EvidenceStatus,
-    EvidenceSummary, EvidenceTarget, EvidenceUpdateProvenance, GuaranteeDisplay, GuaranteeLevel,
-    GuardConfigurationStatus, GuardEffectiveStatus, GuardHealthSummary, GuardInstallationId,
-    GuardInstallationStatus, GuardObservationStatus, IntegrationProfile, JsonObject,
-    JudgmentAnswerConstraints, JudgmentBasis, JudgmentBasisCompatibilityStatus,
-    JudgmentCapturePath, JudgmentInboxChoice, JudgmentInboxItem, JudgmentKind,
-    JudgmentPresentation, JudgmentRationale, JudgmentRequiredFor, JudgmentResolutionOutcome,
-    MethodName, MethodOperationCategory, NextActionKind, NextActionPresentationRole,
-    NextActionSummary, NonGuarantee, ObservedChanges, OperationCategory, PersistedEvidenceMetadata,
+    EvidenceSummary, EvidenceTarget, EvidenceUpdateProvenance, GetOperationResultRequest,
+    GetOperationResultResult, GuaranteeDisplay, GuaranteeLevel, GuardConfigurationStatus,
+    GuardEffectiveStatus, GuardHealthSummary, GuardInstallationId, GuardInstallationStatus,
+    GuardObservationStatus, IntegrationProfile, JsonObject, JudgmentAnswerConstraints,
+    JudgmentBasis, JudgmentBasisCompatibilityStatus, JudgmentCapturePath, JudgmentInboxChoice,
+    JudgmentInboxItem, JudgmentKind, JudgmentPresentation, JudgmentRationale, JudgmentRequiredFor,
+    JudgmentResolutionOutcome, MethodName, MethodOperationCategory, NextActionKind,
+    NextActionPresentationRole, NextActionSummary, NonGuarantee, ObservedChanges,
+    OperationCategory, OperationResultRef, PersistedEvidenceMetadata,
     PersistedEvidenceObservationAuthority, PersistedJudgmentBasis, PersistedUserJudgmentOptions,
     PersistedUserJudgmentRequest, PersistedUserJudgmentResolution, PlannedBlocker,
     PlannedBlockerSourceKind, PlannedEffect, PrepareWriteRequest, PrepareWriteResult,
@@ -75,9 +76,9 @@ use volicord_types::{
     UserJudgmentResolution, UserJudgmentStatus, UtcTimestamp, WorkPhase, WorkspaceContext,
     WorkspaceVcs, WriteDecisionCategory, WriteDecisionReason, WriteTicket, WriteTicketAttemptScope,
     WriteTicketEffect, WriteTicketId, WriteTicketPathPatterns, WriteTicketScope, WriteTicketState,
-    WriteTicketStateSummary, WriteTicketStatus, VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
-    VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB, VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
-    VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
+    WriteTicketStateSummary, WriteTicketStatus, MAX_OPERATION_RESULT_PAGE_BYTES,
+    VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL, VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB,
+    VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL, VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
 };
 
 use crate::pipeline::{
@@ -131,6 +132,7 @@ use crate::LocalWebConsentJudgmentRequest;
 mod close_task;
 mod intake;
 mod judgment;
+mod operation_result;
 mod prepare_write;
 mod reconcile_changes;
 mod record_run;
@@ -3757,7 +3759,13 @@ fn allowed_operation_categories(owner_method: Option<MethodName>) -> Vec<Operati
             | MethodName::RequestUserJudgment
             | MethodName::CloseTask,
         ) => vec![OperationCategory::AgentWorkflow],
-        Some(MethodName::Intake | MethodName::Status | MethodName::CheckClose) | None => Vec::new(),
+        Some(
+            MethodName::Intake
+            | MethodName::Status
+            | MethodName::GetOperationResult
+            | MethodName::CheckClose,
+        )
+        | None => Vec::new(),
     }
 }
 
@@ -4034,6 +4042,7 @@ fn rejected_pipeline_response(
     Ok(PipelineResponse {
         response_json,
         response_value,
+        operation_result_ref: None,
         verified_invocation: None,
         resolved_task_id: None,
         replayed: false,

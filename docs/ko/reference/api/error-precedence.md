@@ -78,6 +78,11 @@ MCP `tools/call`에서 MCP 전송이 성공하면 Volicord 도메인 수준 `Too
 | <a id="precedence-projection-stale"></a>22 | `PROJECTION_STALE` | [`PROJECTION_STALE`](error-codes.md#errorcode-projection-stale) |
 | <a id="precedence-artifact-missing"></a>23 | `ARTIFACT_MISSING` | [`ARTIFACT_MISSING`](error-codes.md#errorcode-artifact-missing) |
 | <a id="precedence-validator-failed"></a>24 | `VALIDATOR_FAILED` | [`VALIDATOR_FAILED`](error-codes.md#errorcode-validator-failed) |
+| <a id="precedence-operation-result-unavailable"></a>25 | `OPERATION_RESULT_UNAVAILABLE` | [`OPERATION_RESULT_UNAVAILABLE`](error-codes.md#errorcode-operation-result-unavailable) |
+
+`volicord.get_operation_result`에서는 접근 맥락 불일치가 메서드 범위 결과 없음 분기보다
+먼저 `INVOCATION_CONTEXT_MISMATCH`를 선택합니다. 그 밖에 적용되는 전역 순서는
+바뀌지 않습니다.
 
 <a id="state-version-conflict-precedence-exclusion"></a>
 ### `STATE_VERSION_CONFLICT` 선택 경계

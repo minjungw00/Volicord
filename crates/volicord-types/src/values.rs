@@ -118,6 +118,8 @@ pub enum MethodName {
     UpdateScope,
     #[serde(rename = "volicord.status")]
     Status,
+    #[serde(rename = "volicord.get_operation_result")]
+    GetOperationResult,
     #[serde(rename = "volicord.check_close")]
     CheckClose,
     #[serde(rename = "volicord.prepare_write")]
@@ -145,6 +147,7 @@ impl MethodName {
             Self::Intake => "volicord.intake",
             Self::UpdateScope => "volicord.update_scope",
             Self::Status => "volicord.status",
+            Self::GetOperationResult => "volicord.get_operation_result",
             Self::CheckClose => "volicord.check_close",
             Self::PrepareWrite => "volicord.prepare_write",
             Self::StageArtifact => "volicord.stage_artifact",
@@ -1538,4 +1541,5 @@ pub enum ErrorCode {
     ProjectionStale,
     ArtifactMissing,
     ValidatorFailed,
+    OperationResultUnavailable,
 }

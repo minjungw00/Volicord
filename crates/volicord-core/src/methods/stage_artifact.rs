@@ -1,5 +1,7 @@
 use super::*;
 
+pub(super) const MAX_STAGE_ARTIFACT_RESULT_BYTES: usize = 24 * 1024;
+
 impl CoreService {
     /// Executes `volicord.stage_artifact` as storage-owned transient staging.
     pub fn stage_artifact(
@@ -69,6 +71,7 @@ impl CoreService {
             return Ok(PipelineResponse {
                 response_json,
                 response_value,
+                operation_result_ref: None,
                 verified_invocation: Some(verified_invocation),
                 resolved_task_id: Some(request.task_id),
                 replayed: false,
@@ -87,7 +90,43 @@ impl CoreService {
         };
         let created_at = utc_timestamp(self.now());
         let expires_at = utc_timestamp(*created_at.as_datetime() + Duration::hours(24));
-        let staging_record = match prepared
+        let resolved_task_id = request.task_id.clone();
+        let result = StageArtifactResult {
+            base: method_result_base(
+                EffectKind::StagingCreated,
+                false,
+                Some(project_state.state_version),
+                Vec::new(),
+            ),
+            evidence_state: EvidenceDisplayState::Prepared,
+            staged_artifact_handle: StagedArtifactHandle {
+                handle_id: handle_id.clone(),
+                project_id: request.envelope.project_id.clone(),
+                task_id: resolved_task_id.clone(),
+                created_by_actor_source: verified_invocation.actor_source.clone(),
+                content_type: request.content_type.clone(),
+                sha256: stage_input.sha256.clone(),
+                size_bytes: stage_input.size_bytes,
+                redaction_state: request.redaction_state,
+                expires_at: expires_at.clone(),
+                consumed: false,
+            },
+            expires_at: expires_at.clone(),
+        };
+        let response_value = serde_json::to_value(result)?;
+        let response_json = serde_json::to_string(&response_value)?;
+        if response_json.len() > MAX_STAGE_ARTIFACT_RESULT_BYTES {
+            return rejected_pipeline_response(
+                request.envelope.dry_run,
+                Some(project_state.state_version),
+                vec![stage_validation_error(
+                    "content_type",
+                    "serialized StageArtifactResult exceeds the 24 KiB staging result limit",
+                )],
+            );
+        }
+
+        if let Err(error) = prepared
             .store
             .create_artifact_staging(ArtifactStagingInsert {
                 handle_id: handle_id.into_inner(),
@@ -103,71 +142,18 @@ impl CoreService {
                 safe_bytes_or_notice: stage_input.safe_bytes,
                 created_at: created_at.to_string(),
                 expires_at: expires_at.to_string(),
-            }) {
-            Ok(record) => record,
-            Err(error) => {
-                return rejected_pipeline_response(
-                    request.envelope.dry_run,
-                    Some(project_state.state_version),
-                    vec![store_failure_error(error)],
-                )
-            }
-        };
-        let staged_expires_at: UtcTimestamp = match parse_owner_storage_value(
-            "artifact_staging",
-            staging_record.handle_id.clone(),
-            "expires_at",
-            &staging_record.expires_at,
-        ) {
-            Ok(expires_at) => expires_at,
-            Err(error) => {
-                return core_error_response(
-                    &request.envelope,
-                    Some(project_state.state_version),
-                    error,
-                )
-            }
-        };
-
-        let resolved_task_id = TaskId::new(staging_record.task_id.clone());
-        let staged_handle_id = staging_record.handle_id.clone();
-        let handle = StagedArtifactHandle {
-            handle_id: StagedArtifactHandleId::new(staged_handle_id.clone()),
-            project_id: request.envelope.project_id.clone(),
-            task_id: resolved_task_id.clone(),
-            created_by_actor_source: staging_record
-                .created_by_actor_source
-                .parse::<ActorSource>()
-                .map_err(|_| {
-                    CorePipelineError::Store(StoreError::corrupt_owner_state_value(
-                        "artifact_staging",
-                        staged_handle_id.clone(),
-                        "created_by_actor_source",
-                    ))
-                })?,
-            content_type: staging_record.content_type,
-            sha256: staging_record.sha256,
-            size_bytes: staging_record.size_bytes,
-            redaction_state: request.redaction_state,
-            expires_at: staged_expires_at.clone(),
-            consumed: false,
-        };
-        let result = StageArtifactResult {
-            base: method_result_base(
-                EffectKind::StagingCreated,
-                false,
+            })
+        {
+            return rejected_pipeline_response(
+                request.envelope.dry_run,
                 Some(project_state.state_version),
-                Vec::new(),
-            ),
-            evidence_state: EvidenceDisplayState::Prepared,
-            staged_artifact_handle: handle,
-            expires_at: staged_expires_at,
-        };
-        let response_value = serde_json::to_value(result)?;
-        let response_json = serde_json::to_string(&response_value)?;
+                vec![store_failure_error(error)],
+            );
+        }
         Ok(PipelineResponse {
             response_json,
             response_value,
+            operation_result_ref: None,
             verified_invocation: Some(verified_invocation),
             resolved_task_id: Some(resolved_task_id),
             replayed: false,

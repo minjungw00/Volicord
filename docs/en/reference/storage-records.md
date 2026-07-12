@@ -113,7 +113,7 @@ Baseline storage persists only the record families defined by this baseline stor
 | `state.sqlite` | `user_evidence_observations` | User Channel evidence observation | Local-user-owned target relevance record bound to one current Task/Change Unit/scope/baseline and exact canonical artifact outputs. |
 | `state.sqlite` | `blockers` | Blocker state | Structured blocker state for next action, write compatibility, evidence gaps, close readiness, or recovery. |
 | `state.sqlite` | `authority_events` | Authority event trail | Append-only ordering and local audit trail for committed Core authority mutations. |
-| `state.sqlite` | `tool_invocations` | Replay row | Replay rows for committed non-dry-run Core method results when [Storage Effects](storage-effects.md) says replay is created, including actor source, operation category, and the optional canonical Git workspace context captured from the verified invocation. |
+| `state.sqlite` | `tool_invocations` | Replay and exact operation-result row | Replay rows for committed non-dry-run Core method results when [Storage Effects](storage-effects.md) says replay is created, including immutable `response_json`, actor source, operation category, and the optional canonical Git workspace context captured from the verified invocation. Eligible `operation_category=agent_workflow` rows are also the storage source addressed by `OperationResultRef`. |
 
 ## Record Layout Rules
 
@@ -147,6 +147,28 @@ Baseline records use opaque stable ids as primary keys or equivalent unique keys
 ### Current, Event, And Replay Rows
 
 Current record families hold the current Core state for ordinary reads. `authority_events` is an append-only ordering and local audit trail for committed Core authority mutations. Each authority event row stores `event_id`, `project_id`, resulting `state_version`, `event_type`, `actor_source`, `operation_category`, `payload_json`, `request_hash`, `previous_event_hash`, `event_hash`, and `created_at`. The event hashes are local integrity and export-correlation fields; local SQLite storage is not a tamper-proof audit log. `tool_invocations` stores committed replay rows only where [Storage Effects](storage-effects.md) says replay is created.
+
+<a id="exact-operation-result-storage"></a>
+#### Exact operation-result storage
+
+For an eligible `operation_category=agent_workflow` Core commit,
+`tool_invocations.response_json` is the immutable exact serialized method result
+used both for idempotent replay and for read-only
+`volicord.get_operation_result` paging. `OperationResultRef`
+addresses that existing row; it does not create another record family or copy
+the response into page records. Pages read contiguous UTF-8-safe portions of the
+stored bytes without rewriting, truncating, or recomputing the response.
+
+The stored actor and project remain part of the row's ownership boundary.
+Retrieval does not broaden that boundary, and historical response bytes are not
+current Core authority. `operation_category=user_only` rows, including the exact
+`volicord.record_user_judgment` response and its private `note`, are not
+eligible for Agent Connection result retrieval. `volicord.stage_artifact` has
+no replay row and therefore no `OperationResultRef`.
+
+This retrieval capability reuses the current `tool_invocations` row and
+`response_json`; it adds no table, column, durable page record, record family,
+or storage migration.
 
 State-version behavior, idempotency, event meaning, replay conflict handling, locks, and migration contracts belong to [Storage Versioning](storage-versioning.md).
 
@@ -371,7 +393,7 @@ Rules:
 | `user_evidence_observations` | Current basis coordinates, target identity, relevance, exact artifact refs, local-user actor, verification basis, summary, and timestamps. |
 | `blockers` | Blocker owner references, related references, details, and non-authority metadata. |
 | `authority_events` | Event payloads for committed Core authority mutations. |
-| `tool_invocations` | Committed replay responses and optional canonical Git workspace-context JSON used for replay compatibility. |
+| `tool_invocations` | Immutable committed replay responses used for replay and eligible exact operation-result paging, plus optional canonical Git workspace-context JSON used for replay compatibility. |
 
 Task and Change Unit shaping JSON stores compact summaries and bounded lists only. It does not create an additional persisted record family.
 

@@ -3,8 +3,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::ids::{
-    ArtifactId, BaselineRef, ChangeUnitId, RunId, TaskId, UnrecordedChangeId, UserJudgmentId,
-    UserJudgmentOptionId, WriteTicketId,
+    ArtifactId, BaselineRef, ChangeUnitId, IdempotencyKey, ProjectId, RunId, TaskId,
+    UnrecordedChangeId, UserJudgmentId, UserJudgmentOptionId, WriteTicketId,
 };
 use crate::schema::{
     AcceptanceCriterionInput, AcceptanceCriterionReplacement, AcceptedRiskInput, ArtifactInput,
@@ -48,6 +48,9 @@ pub type UpdateScopeResponse = ToolResponse<UpdateScopeResult>;
 
 /// Response branch type for `volicord.status`.
 pub type StatusResponse = ToolResponse<StatusResult>;
+
+/// Response branch type for `volicord.get_operation_result`.
+pub type GetOperationResultResponse = ToolResponse<GetOperationResultResult>;
 
 /// Response branch type for `volicord.check_close`.
 pub type CheckCloseResponse = ToolResponse<CloseTaskResult>;
@@ -108,6 +111,24 @@ pub const MAX_MCP_TOOL_ISSUE_MESSAGE_BYTES: usize = 512;
 
 /// Maximum compact-JSON byte length of one known-tool MCP `CallToolResult` error.
 pub const MAX_MCP_TOOL_ERROR_RESULT_BYTES: usize = 64 * 1024;
+
+/// Maximum number of source UTF-8 bytes returned in one operation-result page.
+pub const MAX_OPERATION_RESULT_PAGE_BYTES: usize = 16_384;
+
+/// Immutable lookup coordinates for one exact committed mutation response.
+///
+/// This value is sidecar metadata over the stored response bytes. It must not
+/// be inserted into the exact response JSON whose digest and size it carries.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct OperationResultRef {
+    pub project_id: ProjectId,
+    pub source_method: MethodName,
+    pub source_idempotency_key: IdempotencyKey,
+    pub committed_state_version: u64,
+    pub response_sha256: String,
+    pub response_size_bytes: u64,
+}
 
 /// Stable issue code within a known MCP tool error.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -244,6 +265,7 @@ pub struct McpReconcileChangesCompactResult {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct McpMutationSummaryResponse<T> {
+    pub operation_result_ref: RequiredNullable<OperationResultRef>,
     pub authority_receipt: AuthorityReceipt,
     pub method_result: T,
 }
@@ -252,6 +274,7 @@ pub struct McpMutationSummaryResponse<T> {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct McpMutationWorkflowResponse<T> {
+    pub operation_result_ref: RequiredNullable<OperationResultRef>,
     pub authority_receipt: AuthorityReceipt,
     pub method_result: T,
     pub next_actions: Vec<NextActionSummary>,
@@ -261,6 +284,7 @@ pub struct McpMutationWorkflowResponse<T> {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct McpMutationFullResponse<T> {
+    pub operation_result_ref: RequiredNullable<OperationResultRef>,
     pub authority_receipt: AuthorityReceipt,
     pub method_result: T,
 }
@@ -278,6 +302,7 @@ pub struct McpAuthoritativeRefreshFailure<T> {
     pub effect_applied: bool,
     /// Correlates the applied effect; it is not an exact-result lookup credential.
     pub effect_anchor: RequiredNullable<String>,
+    pub operation_result_ref: RequiredNullable<OperationResultRef>,
     pub method_result: RequiredNullable<T>,
     pub status_read_required: bool,
     pub completion_claim_withheld: bool,
@@ -313,6 +338,7 @@ pub struct McpMutationPostEffectFailure {
     pub effect_applied: bool,
     /// Correlates the applied effect; it is not an exact-result lookup credential.
     pub effect_anchor: RequiredNullable<String>,
+    pub operation_result_ref: RequiredNullable<OperationResultRef>,
     pub authority_receipt: RequiredNullable<AuthorityReceipt>,
     pub method_result: RequiredNullable<JsonObject>,
     pub authoritative_refresh_succeeded: bool,
@@ -335,6 +361,7 @@ pub struct McpMutationResponseBudgetExceeded<T> {
     pub effect_applied: bool,
     /// Correlates the applied effect; it is not an exact-result lookup credential.
     pub effect_anchor: RequiredNullable<String>,
+    pub operation_result_ref: RequiredNullable<OperationResultRef>,
     pub authority_receipt: RequiredNullable<AuthorityReceipt>,
     pub method_result: RequiredNullable<T>,
     pub authoritative_refresh_succeeded: bool,
@@ -623,6 +650,51 @@ pub struct StatusResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub task_flow: Option<Vec<TaskFlowItem>>,
     pub authority_receipt: Option<AuthorityReceipt>,
+}
+
+/// `volicord.get_operation_result` request params.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GetOperationResultRequest {
+    pub envelope: ToolEnvelope,
+    pub operation_result_ref: OperationResultRef,
+    pub cursor: RequiredNullable<String>,
+}
+
+impl MethodOperationCategory for GetOperationResultRequest {
+    fn method_name(&self) -> MethodName {
+        MethodName::GetOperationResult
+    }
+
+    fn operation_category(&self) -> OperationCategory {
+        OperationCategory::Read
+    }
+}
+
+/// MCP-visible `volicord.get_operation_result` arguments.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpGetOperationResultArguments {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_selector: Option<String>,
+    pub operation_result_ref: OperationResultRef,
+    #[serde(default)]
+    pub cursor: RequiredNullable<String>,
+}
+
+/// One bounded page of an immutable historical mutation response.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GetOperationResultResult {
+    pub base: ToolResultBase,
+    pub operation_result_ref: OperationResultRef,
+    pub start_offset_bytes: u64,
+    pub end_offset_bytes: u64,
+    pub chunk_utf8: String,
+    pub next_cursor: RequiredNullable<String>,
+    pub complete: bool,
+    pub historical: bool,
+    pub current_authority_refresh_required: bool,
 }
 
 /// `volicord.prepare_write` request params.
@@ -1185,6 +1257,7 @@ pub fn public_request_schema(method_name: &str) -> Option<Value> {
         "volicord.intake" => Some(request_schema::<IntakeRequest>()),
         "volicord.update_scope" => Some(request_schema::<UpdateScopeRequest>()),
         "volicord.status" => Some(request_schema::<StatusRequest>()),
+        "volicord.get_operation_result" => Some(request_schema::<GetOperationResultRequest>()),
         "volicord.check_close" => Some(request_schema::<CheckCloseRequest>()),
         "volicord.prepare_write" => Some(request_schema::<PrepareWriteRequest>()),
         "volicord.stage_artifact" => Some(request_schema::<StageArtifactRequest>()),
@@ -1209,6 +1282,7 @@ pub fn public_response_schema(method_name: &str) -> Option<Value> {
         "volicord.intake" => Some(response_schema::<IntakeResponse>()),
         "volicord.update_scope" => Some(response_schema::<UpdateScopeResponse>()),
         "volicord.status" => Some(response_schema::<StatusResponse>()),
+        "volicord.get_operation_result" => Some(response_schema::<GetOperationResultResponse>()),
         "volicord.check_close" => Some(response_schema::<CheckCloseResponse>()),
         "volicord.prepare_write" => Some(response_schema::<PrepareWriteResponse>()),
         "volicord.stage_artifact" => Some(response_schema::<StageArtifactResponse>()),
@@ -1230,6 +1304,7 @@ pub fn mcp_request_schema(tool_name: &str) -> Option<Value> {
         "volicord.intake" => Some(request_schema::<McpIntakeArguments>()),
         "volicord.update_scope" => Some(request_schema::<McpUpdateScopeArguments>()),
         "volicord.status" => Some(request_schema::<McpStatusArguments>()),
+        "volicord.get_operation_result" => Some(request_schema::<McpGetOperationResultArguments>()),
         "volicord.prepare_write" => Some(request_schema::<McpPrepareWriteArguments>()),
         "volicord.stage_artifact" => Some(request_schema::<McpStageArtifactArguments>()),
         "volicord.record_run" => Some(request_schema::<McpRecordRunArguments>()),
@@ -1259,6 +1334,9 @@ pub fn mcp_response_schema(tool_name: &str) -> Option<Value> {
             McpMutationStructuredContent<UpdateScopeResponse, McpMutationEffectSummary>,
         >()),
         "volicord.status" => Some(response_schema::<McpToolStructuredContent<StatusResponse>>()),
+        "volicord.get_operation_result" => Some(response_schema::<
+            McpToolStructuredContent<GetOperationResultResponse>,
+        >()),
         "volicord.prepare_write" => Some(response_schema::<
             McpMutationStructuredContent<PrepareWriteResponse, McpPrepareWriteCompactResult>,
         >()),

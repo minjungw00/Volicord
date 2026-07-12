@@ -113,7 +113,7 @@ API 스키마 형태와 저장소 기록 구조는 서로 다른 담당 문서�
 | `state.sqlite` | `user_evidence_observations` | User Channel 증거 관찰 | 현재 Task/Change Unit/scope/baseline 하나와 정확한 정규 아티팩트 출력에 결합된 로컬 사용자 소유 대상 relevance 레코드입니다. |
 | `state.sqlite` | `blockers` | 차단 사유 상태 | 다음 행동, 쓰기 호환성, 증거 공백, 닫기 준비 상태, 복구를 위한 구조화된 차단 사유 상태. |
 | `state.sqlite` | `authority_events` | 권한 이벤트 흐름 | 커밋된 Core 권한 변경의 추가 전용 순서와 로컬 감사 흐름. |
-| `state.sqlite` | `tool_invocations` | 재실행 행 | [저장 효과](storage-effects.md)가 재실행 생성을 정의한 경우의 커밋된 `dry_run=false` Core 메서드 결과 재실행 행입니다. 행위자 출처, 작업 범주, 검증된 호출에서 포착한 선택적 정규 Git 작업 공간 맥락을 포함합니다. |
+| `state.sqlite` | `tool_invocations` | 재실행 및 정확한 동작 결과 행 | [저장 효과](storage-effects.md)가 재실행 생성을 정의한 경우의 커밋된 `dry_run=false` Core 메서드 결과 재실행 행입니다. 변경 불가능한 `response_json`, 행위자 출처, 작업 범주, 검증된 호출에서 포착한 선택적 정규 Git 작업 공간 맥락을 포함합니다. 조회할 수 있는 `operation_category=agent_workflow` 행은 `OperationResultRef`가 가리키는 저장 원본이기도 합니다. |
 
 ## 기록 배치 규칙
 
@@ -147,6 +147,27 @@ API 스키마 형태와 저장소 기록 구조는 서로 다른 담당 문서�
 ### 현재 행, 이벤트 행, 재실행 행
 
 현재 기록 계열은 일반 읽기에 쓰는 현재 Core 상태를 담습니다. `authority_events`는 커밋된 Core 권한 변경의 추가 전용 순서와 로컬 감사 흐름입니다. 각 권한 이벤트 행은 `event_id`, `project_id`, 결과 `state_version`, `event_type`, `actor_source`, `operation_category`, `payload_json`, `request_hash`, `previous_event_hash`, `event_hash`, `created_at`을 저장합니다. 이벤트 해시는 로컬 무결성 점검과 내보내기 상관을 위한 필드이며, 로컬 SQLite 저장소는 조작 방지 감사 로그가 아닙니다. `tool_invocations`는 [저장 효과](storage-effects.md)가 재실행 생성을 정의한 경우에만 커밋된 재실행 행을 저장합니다.
+
+<a id="exact-operation-result-storage"></a>
+#### 정확한 동작 결과 저장
+
+조회할 수 있는 `operation_category=agent_workflow` Core 커밋에서
+`tool_invocations.response_json`은 멱등 재실행과 읽기 전용
+`volicord.get_operation_result` 페이지 조회에 함께 쓰는
+변경 불가능한 정확한 직렬화 메서드 결과입니다. `OperationResultRef`는 이 기존
+행을 가리키며 별도 기록 계열을 만들거나 응답을 페이지 기록으로 복사하지
+않습니다. 페이지는 저장 바이트를 다시 쓰거나 자르거나 다시 계산하지 않고 UTF-8
+경계에 맞는 연속 부분을 읽습니다.
+
+저장된 행위자와 프로젝트는 계속 그 행의 소유 경계에 속합니다. 조회가 그 경계를
+넓히지 않으며 과거 응답 바이트는 현재 Core 권한이 아닙니다. 정확한
+`volicord.record_user_judgment` 응답과 그 비공개 `note`를 포함한
+`operation_category=user_only` 행은 Agent Connection 결과 조회 대상이 아닙니다.
+`volicord.stage_artifact`에는 재실행 행이 없으므로 `OperationResultRef`도
+없습니다.
+
+이 조회 기능은 현재 `tool_invocations` 행과 `response_json`을 재사용합니다. 새
+테이블, 열, 영속 페이지 기록, 기록 계열, 저장소 마이그레이션을 추가하지 않습니다.
 
 상태 버전 동작, 멱등성, 이벤트 의미, 재실행 충돌 처리, 잠금, 마이그레이션 계약은 [저장소 버전 관리](storage-versioning.md)가 담당합니다.
 
@@ -360,7 +381,7 @@ JSON을 저장하는 SQLite `TEXT` 열은 저장 표현 선택일 뿐이며 임�
 | `user_evidence_observations` | 현재 근거 좌표, 대상 identity, relevance, 정확한 아티팩트 ref, 로컬 사용자 actor, 검증 근거, 요약, 타임스탬프입니다. |
 | `blockers` | 차단 사유 소유 참조, 관련 참조, 세부 정보, 비권한 메타데이터. |
 | `authority_events` | 커밋된 Core 권한 변경의 이벤트 페이로드. |
-| `tool_invocations` | 커밋된 재실행 응답과 재실행 호환성에 사용하는 선택적 정규 Git 작업 공간 맥락 JSON. |
+| `tool_invocations` | 재실행과 조회할 수 있는 정확한 동작 결과 페이지에 쓰는 변경 불가능한 커밋 응답, 그리고 재실행 호환성에 사용하는 선택적 정규 Git 작업 공간 맥락 JSON. |
 
 `Task`와 Change Unit 구체화 JSON은 간결한 요약과 제한된 목록만 저장합니다. 추가 영속 기록 계열을 만들지 않습니다.
 

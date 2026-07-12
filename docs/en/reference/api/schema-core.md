@@ -16,6 +16,7 @@ This document owns:
 - `ToolDryRunResponse`
 - `ToolError`
 - `EventRef`
+- `OperationResultRef`
 - the common `response_kind` and `effect_kind` fields
 
 This document does not own:
@@ -206,6 +207,14 @@ ToolError:
 EventRef:
   event_id: string
   event_kind: string
+
+OperationResultRef:
+  project_id: string
+  source_method: string
+  source_idempotency_key: string
+  committed_state_version: integer
+  response_sha256: string
+  response_size_bytes: integer
 ```
 
 Meaning:
@@ -215,8 +224,28 @@ Meaning:
 - `EventRef.event_id` is an opaque event identifier.
 - `EventRef.event_kind` is an opaque event classification string. It is stable enough to carry and route, but this document does not publish an exhaustive public event-kind value set.
 
+<a id="operation-result-retrieval"></a>
+
+`OperationResultRef` meaning:
+
+- `source_method` is the exact public mutation method name whose committed
+  replay row stores the response.
+- `source_idempotency_key` is the opaque idempotency identity of that committed
+  invocation; it is not accepted as the idempotency key of a new mutation.
+- `response_sha256` uses the literal `sha256:` prefix followed by 64 lowercase
+  hexadecimal digits over the exact stored UTF-8 response bytes.
+- `response_size_bytes` is the exact byte length of those same UTF-8 bytes.
+- The complete shape is a non-bearer lookup locator. Access is rechecked for
+  every page by
+  [`volicord.get_operation_result`](method-get-operation-result.md#volicordget_operation_result).
+- An `OperationResultRef` is not a `StateRecordRef`, authority receipt, write
+  ticket, artifact or evidence reference, retry credential, or authorization
+  token. It does not claim that its historical response or state version is
+  current.
+
 Owner links:
 - public error code set: [API error codes](error-codes.md)
 - error details semantics: [API error details](error-details.md)
 - primary-error precedence: [API error precedence](error-precedence.md)
 - `EventRef.event_kind` opaque boundary: [opaque and method-scoped string fields](schema-value-sets.md#opaque-and-method-scoped-string-fields)
+- `OperationResultRef` storage immutability and exact-byte source: [Storage Versioning](../storage-versioning.md#exact-operation-result-retrieval)

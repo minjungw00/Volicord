@@ -233,6 +233,7 @@ fn tool_listing_and_dispatch_use_current_connection_mode() -> Result<(), Box<dyn
         names,
         vec![
             "volicord.status",
+            "volicord.get_operation_result",
             "volicord.check_close",
             "volicord.list_projects"
         ]

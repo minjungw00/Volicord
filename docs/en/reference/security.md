@@ -201,6 +201,35 @@ Must not claim:
 - `actor_source` copied from text is a caller authority token.
 - Environment-controlled labels, public request fields, or arbitrary caller text are trusted authority, audit facts, or verification-basis inputs.
 
+<a id="historical-operation-result-access"></a>
+### Historical operation-result access
+
+`OperationResultRef` is a non-bearer lookup locator for an eligible immutable
+historical Core mutation response. Possessing or copying a reference or page
+cursor does not authorize retrieval, replay the mutation, or confer current
+authority.
+
+Every `volicord.get_operation_result` page requires a currently enabled Agent
+Connection, current Connection Projects membership for the selected project,
+and a verified `actor_source` that exactly matches the actor stored with the
+original `operation_category=agent_workflow` invocation. These checks are
+repeated for every page;
+a disabled connection, removed project membership, different project, or
+different actor must not expose historical response bytes.
+
+`operation_category=user_only` results are outside this Agent Connection
+retrieval path. In particular, the exact `volicord.record_user_judgment`
+response and any free-form user `note` must not be returned through
+`volicord.get_operation_result`. A host-mediated Judgment flow may expose only
+the MCP-transport-owned agent projection for the agent-owned request. Its
+compact form omits the note, its full form keeps the note null, and neither form
+exposes the user-only operation reference or exact response body.
+
+Retrieved bytes describe a historical result. They are not an
+`AuthorityReceipt`, current status, evidence, a write ticket, or proof that the
+historical state remains current. The caller must read `volicord.status`
+separately before making a current-authority claim.
+
 ### Host trust and guidance
 
 Host trust and approval decisions belong to the external host and the user. Volicord can install supported configuration and report whether further user action appears required, but it does not control the host trust decision.

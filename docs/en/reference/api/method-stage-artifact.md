@@ -86,6 +86,20 @@ A successful staging result:
 
 Rejected and dry-run requests have no storage effect.
 
+## Complete result bound
+
+Before creating a staging row, handle, temporary directory, staged bytes, or
+notice, Core builds and serializes the complete prospective
+`StageArtifactResult`. The serialized UTF-8 result must be at most 24,576 bytes
+(24 KiB). A result of exactly 24,576 bytes is admitted when every other staging
+requirement passes. A result of 24,577 bytes or more returns
+`VALIDATION_FAILED` with the result-bound validation attributed to
+`content_type`, because that caller-controlled field is preserved in the
+handle. This rejection creates no staging or Core effect.
+
+The size check reuses the same complete result after staging succeeds; it does
+not truncate, compact, or recompute a different successful result.
+
 ## Method result fields
 
 `StageArtifactResult` is the method-specific result branch for a successful staging operation. It carries `base: ToolResultBase` and these method-owned top-level fields:
@@ -125,6 +139,7 @@ Returns `ToolRejectedResponse` for:
 
 - invalid request shape
 - checksum or size mismatch
+- complete serialized `StageArtifactResult` larger than 24,576 UTF-8 bytes
 - unsafe artifact input
 - unsupported redaction state
 - unavailable Core or invocation context

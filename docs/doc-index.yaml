@@ -50,7 +50,7 @@ owner_areas:
     description: Documentation metadata, terminology, translation, validation, and route-index maintenance.
 applicability:
   volicord_workspace_0_2:
-    description: Volicord workspace package version 0.5.1, as declared by the workspace `Cargo.toml`.
+    description: Volicord workspace package version 0.6.0, as declared by the workspace `Cargo.toml`.
   rust_workspace_1_85:
     description: Repository Rust workspace requiring Rust 1.85 or newer, as declared by the workspace
       `Cargo.toml`.
@@ -846,8 +846,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-11'
-  last_verified_on: '2026-07-11'
+  last_updated_on: '2026-07-13'
+  last_verified_on: '2026-07-13'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -860,6 +860,7 @@ documents:
   depends_on:
   - architecture-guide.decision.agent-connection-routing
   - architecture-guide.decision.core-adapter-boundary
+  - architecture-guide.decision.operation-result-retrieval
   - architecture-guide.decision.plan-and-atomic-commit
   - architecture-guide.decision.runtime-home-and-product-repository
   - architecture-guide.architecture
@@ -893,6 +894,37 @@ documents:
   - reference.mcp-transport
   - reference.admin-cli
   - reference.agent-connection
+- doc_id: architecture-guide.decision.operation-result-retrieval
+  path_en: docs/en/architecture-guide/decisions/operation-result-retrieval.md
+  path_ko: docs/ko/architecture-guide/decisions/operation-result-retrieval.md
+  kind: explanation
+  summary: Architecture decision explaining bounded exact operation-result retrieval from immutable replay rows.
+  normative_level: guide
+  translation_policy: semantic_parity
+  owner_area: architecture_guide
+  created_on: '2026-07-13'
+  last_updated_on: '2026-07-13'
+  last_verified_on: '2026-07-13'
+  applies_to:
+  - volicord_workspace_0_2
+  - rust_workspace_1_85
+  primary_audience:
+  - implementers
+  - reviewers
+  journeys:
+  - learn
+  - implement
+  depends_on:
+  - architecture-guide.decision.core-adapter-boundary
+  - architecture-guide.decision.plan-and-atomic-commit
+  - reference.api.method-get-operation-result
+  - reference.api.schema-core
+  - reference.mcp-transport
+  - reference.agent-connection
+  - reference.security
+  - reference.storage-records
+  - reference.storage-effects
+  - reference.storage-versioning
 - doc_id: architecture-guide.decision.plan-and-atomic-commit
   path_en: docs/en/architecture-guide/decisions/plan-and-atomic-commit.md
   path_ko: docs/ko/architecture-guide/decisions/plan-and-atomic-commit.md
@@ -1127,8 +1159,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-11'
-  last_verified_on: '2026-07-11'
+  last_updated_on: '2026-07-13'
+  last_verified_on: '2026-07-13'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -1307,8 +1339,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: runtime_security
   created_on: '2026-05-28'
-  last_updated_on: '2026-07-11'
-  last_verified_on: '2026-07-11'
+  last_updated_on: '2026-07-13'
+  last_verified_on: '2026-07-13'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -1362,8 +1394,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-04'
-  last_updated_on: '2026-07-11'
-  last_verified_on: '2026-07-11'
+  last_updated_on: '2026-07-13'
+  last_verified_on: '2026-07-13'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -1450,6 +1482,44 @@ documents:
   - '`StatusResult` branch behavior'
   - status read-only behavior
   - status examples
+- doc_id: reference.api.method-get-operation-result
+  path_en: docs/en/reference/api/method-get-operation-result.md
+  path_ko: docs/ko/reference/api/method-get-operation-result.md
+  kind: reference
+  summary: Reference contract for `volicord.get_operation_result` behavior.
+  normative_level: contract
+  translation_policy: semantic_parity
+  owner_area: core_api
+  created_on: '2026-07-13'
+  last_updated_on: '2026-07-13'
+  last_verified_on: '2026-07-13'
+  applies_to:
+  - volicord_workspace_0_2
+  primary_audience:
+  - API implementers
+  - agent integrators
+  - maintainers
+  journeys:
+  - implement
+  - operate
+  canonical_for:
+  - '`volicord.get_operation_result` behavior'
+  - '`GetOperationResultResult` branch behavior'
+  - exact historical operation-result paging behavior
+  - operation-result access and no-partial-body behavior
+  depends_on:
+  - reference.api.methods
+  - reference.api.schema-core
+  - reference.api.schema-value-sets
+  - reference.api.error-codes
+  - reference.api.error-precedence
+  - reference.api.error-details
+  - reference.mcp-transport
+  - reference.agent-connection
+  - reference.security
+  - reference.storage-records
+  - reference.storage-effects
+  - reference.storage-versioning
 - doc_id: reference.api.method-prepare-write
   path_en: docs/en/reference/api/method-prepare-write.md
   path_ko: docs/ko/reference/api/method-prepare-write.md
@@ -1484,8 +1554,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-11'
-  last_updated_on: '2026-07-11'
-  last_verified_on: '2026-07-11'
+  last_updated_on: '2026-07-13'
+  last_verified_on: '2026-07-13'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -1670,8 +1740,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-04'
-  last_updated_on: '2026-07-11'
-  last_verified_on: '2026-07-11'
+  last_updated_on: '2026-07-13'
+  last_verified_on: '2026-07-13'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -1831,8 +1901,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-13'
-  last_updated_on: '2026-07-11'
-  last_verified_on: '2026-07-11'
+  last_updated_on: '2026-07-13'
+  last_verified_on: '2026-07-13'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -1853,8 +1923,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-13'
-  last_updated_on: '2026-07-11'
-  last_verified_on: '2026-07-11'
+  last_updated_on: '2026-07-13'
+  last_verified_on: '2026-07-13'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -2037,8 +2107,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-12'
-  last_verified_on: '2026-07-12'
+  last_updated_on: '2026-07-13'
+  last_verified_on: '2026-07-13'
   applies_to:
   - volicord_workspace_0_2
   - storage_baseline_sqlite_v3
@@ -2088,8 +2158,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-12'
-  last_verified_on: '2026-07-12'
+  last_updated_on: '2026-07-13'
+  last_verified_on: '2026-07-13'
   applies_to:
   - volicord_workspace_0_2
   - storage_baseline_sqlite_v3

@@ -65,6 +65,34 @@
 
 재실행은 저장된 응답 본문을 사용합니다. `write_ticket_effect`, `base.state_version`, `base.events`나 다른 응답 필드를 다시 계산하거나 분류하지 않습니다. 이벤트나 재실행 행을 추가하지 않고, 아티팩트를 승격하거나 연결하지 않으며, 쓰기 티켓을 발급하거나 소비하지 않고, 상태를 다시 변경하지 않습니다.
 
+<a id="exact-operation-result-retrieval"></a>
+### 정확한 동작 결과 조회
+
+조회할 수 있는 모든 `operation_category=agent_workflow` Core 커밋과 정확한
+재실행은 원래 커밋이 이미 저장한 변경 불가능한
+`tool_invocations.response_json`을 가리키는 `OperationResultRef`를 노출합니다.
+`volicord.get_operation_result`는 그 값을 연속된 UTF-8 안전 페이지로 읽습니다.
+`cursor` 순서대로 페이지를 이어 붙이면 저장 응답과 바이트 단위로 정확히 같아야
+하며, 조회 중 어떤 필드도 다시 계산, 정규화,
+재직렬화, 재분류하면 안 됩니다.
+
+페이지를 하나라도 반환하기 전에 Store는 정확한 저장 byte를 읽고 byte 길이와
+SHA-256을 계산하며, Core는 그 사실을 `OperationResultRef`와 대조합니다. 현재 검증된
+행위자와 프로젝트 접근은 보안 및 메서드 담당
+문서에 따라 별도로 확인하며 참조는 베어러 자격 증명이 아닙니다.
+`volicord.record_user_judgment`를 포함한 `operation_category=user_only` 행은
+Agent Connection 조회 대상이 아닙니다. 조회한 응답은 과거 결과이며 현재
+`volicord.status` 조회를 대신하지 않습니다.
+
+이 경로는 기존 재실행 행과 변경 불가능한 `response_json`을 재사용합니다. 새
+테이블, 열, 재실행 형태, 스키마 이력, 저장소 프로필, 마이그레이션을 추가하지
+않습니다. 조회 자체는 읽기 전용이며 재실행 행, 이벤트, 잠금에서 보이는 상태
+전이, `project_state.state_version` 증가를 만들지 않습니다.
+
+`volicord.stage_artifact`는 계속 Core 재실행 트랜잭션 밖에 있습니다. 재실행
+행이나 `OperationResultRef`를 만들지 않으며, 스테이징 효과가 일어나기 전에 전체
+직렬화 결과가 지원되는 예상 크기 상한을 만족해야 합니다.
+
 ## 실패와 재시도
 
 커밋 전 실패에는 저장 효과가 없습니다. 트랜잭션 실패는 상태 버전 증가, 이벤트, 재실행 행, 쓰기 티켓 변경, 아티팩트 효과, 증거 갱신, 판단 효과, 닫기 효과, 생명주기 효과, 스테이징 핸들 소비 중 일부만 남기면 안 됩니다.

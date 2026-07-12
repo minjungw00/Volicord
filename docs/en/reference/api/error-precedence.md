@@ -75,6 +75,11 @@ When an error-bearing branch has non-empty `errors`, `errors[0]` is the primary 
 | <a id="precedence-projection-stale"></a>22 | `PROJECTION_STALE` | [`PROJECTION_STALE`](error-codes.md#errorcode-projection-stale) |
 | <a id="precedence-artifact-missing"></a>23 | `ARTIFACT_MISSING` | [`ARTIFACT_MISSING`](error-codes.md#errorcode-artifact-missing) |
 | <a id="precedence-validator-failed"></a>24 | `VALIDATOR_FAILED` | [`VALIDATOR_FAILED`](error-codes.md#errorcode-validator-failed) |
+| <a id="precedence-operation-result-unavailable"></a>25 | `OPERATION_RESULT_UNAVAILABLE` | [`OPERATION_RESULT_UNAVAILABLE`](error-codes.md#errorcode-operation-result-unavailable) |
+
+For `volicord.get_operation_result`, an access-context mismatch selects
+`INVOCATION_CONTEXT_MISMATCH` before the method-local unavailable-result branch.
+The otherwise applicable global order is unchanged.
 
 <a id="state-version-conflict-precedence-exclusion"></a>
 ### `STATE_VERSION_CONFLICT` selection boundary

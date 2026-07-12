@@ -141,6 +141,7 @@
           "NextActionSummary",
           "NonGuarantee",
           "OperationCategory",
+          "OperationResultRef",
           "PlannedBlocker",
           "PlannedBlockerSourceKind",
           "PlannedEffect",
@@ -176,7 +177,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:1fdd36a88d042eefa90a3231f35d11b08f68b8e88c16f6855819f47dd4189691"
+        "sha256": "sha256:6c721666e648c45f74ca8ef179d95f2fe866be78bb66d66cf3ef92cb23fa1f2a"
       }
     },
     {
@@ -285,6 +286,7 @@
           "NextActionSummary",
           "NonGuarantee",
           "OperationCategory",
+          "OperationResultRef",
           "PlannedBlocker",
           "PlannedBlockerSourceKind",
           "PlannedEffect",
@@ -321,7 +323,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:8f638e1774e04d1443fc52635b579115b2b6e99e5674a1cc7e90b70748a171f6"
+        "sha256": "sha256:56db163e219a572a9dc7aff0666ea043642c1532298178e58205d14843bd66ff"
       }
     },
     {
@@ -455,7 +457,68 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:bc47e24067be1ce0843742931624ec65f780b6bd8ec8677e1bf93ea14c444b34"
+        "sha256": "sha256:fa9940a32e848c96f68b4cc09eccb1e472051b77b7e1942e5769b835166283ad"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Read one bounded page of an immutable historical mutation response; read current status separately.",
+      "input_schema": {
+        "definitions": [
+          "MethodName",
+          "OperationResultRef"
+        ],
+        "root_properties": [
+          "cursor",
+          "operation_result_ref",
+          "project_selector"
+        ],
+        "root_required": [
+          "operation_result_ref"
+        ],
+        "sha256": "sha256:d3ce1e34e6795d66d5418a455c4f18bc83d0f9fd9ddcdb57c74153ef7b2a49c1"
+      },
+      "name": "volicord.get_operation_result",
+      "output_schema": {
+        "definitions": [
+          "DryRunSummary",
+          "EffectKind",
+          "ErrorCode",
+          "EventRef",
+          "GetOperationResultResult",
+          "GuaranteeClass",
+          "GuaranteeDisclosure",
+          "McpToolErrorCode",
+          "McpToolErrorIssue",
+          "McpToolErrorResponse",
+          "McpToolIssueCode",
+          "MethodName",
+          "NextActionKind",
+          "NextActionPresentationRole",
+          "NextActionSummary",
+          "NonGuarantee",
+          "OperationCategory",
+          "OperationResultRef",
+          "PlannedBlocker",
+          "PlannedBlockerSourceKind",
+          "PlannedEffect",
+          "ResponseKind",
+          "StateRecordKind",
+          "StateRecordRef",
+          "ToolDryRunResponse",
+          "ToolError",
+          "ToolRejectedResponse",
+          "ToolResponse_for_GetOperationResultResult",
+          "ToolResultBase"
+        ],
+        "root_properties": [],
+        "root_required": [],
+        "sha256": "sha256:ecad1d2f02ec1fda04fe414bd7c2d3216ac9167afb383d0b4b8e528b22c33e36"
       }
     },
     {
@@ -560,6 +623,7 @@
           "NextActionSummary",
           "NonGuarantee",
           "OperationCategory",
+          "OperationResultRef",
           "PlannedBlocker",
           "PlannedBlockerSourceKind",
           "PlannedEffect",
@@ -608,7 +672,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:ddfd6ce068ab4bc17a3beb4cbf7d83e8756337f919758e73f5b51053954211c0"
+        "sha256": "sha256:acc368494b73c0ae1852c0e022590cd6bf3d0d26f279d0b5b4912c0616b05fa0"
       }
     },
     {
@@ -685,6 +749,7 @@
           "NextActionSummary",
           "NonGuarantee",
           "OperationCategory",
+          "OperationResultRef",
           "PlannedBlocker",
           "PlannedBlockerSourceKind",
           "PlannedEffect",
@@ -704,7 +769,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:9335f01a09f2b94391434e46d2cae41bf1bc5e259c6b4392f2dc13b5cd675a96"
+        "sha256": "sha256:771bc54ac6333de1d69debff6d1b68cde49d9f1a1dca8859dfcef7cc89e95959"
       }
     },
     {
@@ -855,6 +920,7 @@
           "NonGuarantee",
           "ObservedChanges",
           "OperationCategory",
+          "OperationResultRef",
           "PlannedBlocker",
           "PlannedBlockerSourceKind",
           "PlannedEffect",
@@ -899,7 +965,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:9395f591f19b55084183bb7e4b8cc6d04d14eabb0c77f93db7d2b0ff0cda8c61"
+        "sha256": "sha256:55424c3ab484b49a7b79002ed502ef88e9b66ac6e91115a3066f71ee247bfc0e"
       }
     },
     {
@@ -1033,6 +1099,7 @@
           "NextActionSummary",
           "NonGuarantee",
           "OperationCategory",
+          "OperationResultRef",
           "PlannedBlocker",
           "PlannedBlockerSourceKind",
           "PlannedEffect",
@@ -1081,7 +1148,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:b13d0b15bbabfe6dfcd5c8c4fed3ee98f1ccd16e2c40c26cbaec21fe825ab806"
+        "sha256": "sha256:7e95ccf3ba45307c81731c54902492a64c2a8deda62696160cab8a34f539062d"
       }
     },
     {
@@ -1175,6 +1242,7 @@
           "NextActionSummary",
           "NonGuarantee",
           "OperationCategory",
+          "OperationResultRef",
           "PlannedBlocker",
           "PlannedBlockerSourceKind",
           "PlannedEffect",
@@ -1217,7 +1285,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:c1537b304dc4c87b974ff8d0e27d0d6426d3889a2a16f7fd61f9264110236a8c"
+        "sha256": "sha256:94cdc9e731b49c77ef3c6eac94a449fc250d518230a165c450c91668b8381374"
       }
     },
     {
@@ -1346,7 +1414,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:5d9f062cf615bd5b3b2aa16b5ca28f8dba96f8263fa2b343d5611efe43700ce0"
+        "sha256": "sha256:4218f8d3f395754f6aac7eb6452a201418401712803a803143b9a4879eed4ffc"
       }
     },
     {
@@ -1453,6 +1521,7 @@
           "NextActionSummary",
           "NonGuarantee",
           "OperationCategory",
+          "OperationResultRef",
           "PlannedBlocker",
           "PlannedBlockerSourceKind",
           "PlannedEffect",
@@ -1498,7 +1567,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:4a5d00a91bc8c167d9bfcdb1867a5c5953e90776a04fc5e2510ed97a62bc4c44"
+        "sha256": "sha256:19f925a46fe38856ee4db1353aa8f938d7e2cd86f9148ec9d9d13ba28f2a04ae"
       }
     },
     {

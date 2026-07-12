@@ -57,6 +57,7 @@
 | 자연어 접수와 `Task` 생성 | 지원되는 접수 경로로 사용자의 자연어 의도에서 로컬 `Task`를 시작할 수 있습니다. | [접수 메서드](api/method-intake.md), [Core 모델](core-model.md) |
 | 범위 업데이트 | 지원되는 범위 업데이트 경로로 `Task`와 Change Unit 범위를 갱신할 수 있습니다. | [범위 업데이트 메서드](api/method-update-scope.md), [Core 모델](core-model.md) |
 | 상태와 닫기 준비 상태 확인 | 지원되는 읽기 경로로 상태, 증거 충분성, 알려진 차단 사유, 닫기 준비 상태를 읽을 수 있습니다. | [상태 메서드](api/method-status.md), [닫기 메서드](api/method-close-task.md), [API 상태 스키마](api/schema-state.md), [Core 모델](core-model.md) |
+| 정확한 과거 동작 결과 조회 | `volicord.get_operation_result`는 조회할 수 있는 변경 불가능한 `operation_category=agent_workflow` Core 변경 응답을 크기가 제한된 UTF-8 페이지로 읽을 수 있습니다. 접근하려면 원래 호출을 수행한 Agent Connection이 현재 활성 상태이고 선택 프로젝트가 허용되어 있으며 현재 행위자가 저장된 행위자와 같아야 합니다. 결과는 현재 권한이 아닌 과거 기록이며 `operation_category=user_only` 판단 응답은 제외합니다. | [동작 결과 조회 메서드](api/method-get-operation-result.md), [보안](security.md#historical-operation-result-access), [저장소 버전 관리](storage-versioning.md#exact-operation-result-retrieval) |
 | 쓰기 티켓 | `volicord.prepare_write`는 호환되는 제안 제품 파일 변경 하나에 쓰기 티켓을 발급할 수 있습니다. | [쓰기 준비 메서드](api/method-prepare-write.md), [저장 효과](storage-effects.md), [보안](security.md) |
 | Agent Connection 맥락 | 등록된 Agent Connection은 범위 확인에 쓸 기록된 출처, 모드, 명시적인 프로젝트 허용 목록을 제공합니다. | [Agent Connection 참조](agent-connection.md), [보안](security.md) |
 | 아티팩트 스테이징과 호환되는 아티팩트 연결 | 새 아티팩트 바이트는 지원되는 스테이징 경로로 기준 범위에 들어올 수 있고, 호환되는 영속 아티팩트 참조는 아티팩트 담당 문서가 허용할 때 연결할 수 있습니다. | [아티팩트 스테이징 담당 문서](#artifact-staging-owners)를 봅니다. |

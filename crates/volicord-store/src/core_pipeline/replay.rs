@@ -1,9 +1,10 @@
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
+use sha2::{Digest, Sha256};
 use volicord_types::{IdempotencyKey, MethodName};
 
 use super::{
     validation::{nonnegative_i64_to_u64, validate_stored_git_workspace_context_json},
-    CoreProjectStore, ToolInvocationRecord, VerifiedReplayContext,
+    CoreProjectStore, StoredOperationResult, ToolInvocationRecord, VerifiedReplayContext,
 };
 use crate::{StoreError, StoreResult};
 
@@ -30,6 +31,49 @@ impl CoreProjectStore {
             idempotency_key.as_str(),
         )
     }
+
+    /// Reads immutable response bytes and their integrity metadata without effects.
+    pub fn operation_result(
+        &self,
+        source_method: MethodName,
+        source_idempotency_key: &IdempotencyKey,
+    ) -> StoreResult<Option<StoredOperationResult>> {
+        self.tool_invocation(source_method, source_idempotency_key)?
+            .map(stored_operation_result)
+            .transpose()
+    }
+}
+
+fn stored_operation_result(record: ToolInvocationRecord) -> StoreResult<StoredOperationResult> {
+    if !matches!(
+        serde_json::from_str::<serde_json::Value>(&record.response_json),
+        Ok(serde_json::Value::Object(_))
+    ) {
+        return Err(StoreError::corrupt_stored_json(
+            "project_state",
+            "tool_invocations.response_json",
+        ));
+    }
+    let response_size_bytes =
+        u64::try_from(record.response_json.len()).map_err(|_| StoreError::SchemaInvariant {
+            database_kind: "project_state",
+            detail: "tool_invocations.response_json byte length does not fit u64".to_owned(),
+        })?;
+    let response_sha256 = format!(
+        "sha256:{:x}",
+        Sha256::digest(record.response_json.as_bytes())
+    );
+    Ok(StoredOperationResult {
+        project_id: record.project_id,
+        source_method: record.tool_name,
+        source_idempotency_key: record.idempotency_key,
+        committed_state_version: record.committed_state_version,
+        actor_source: record.actor_source,
+        operation_category: record.operation_category,
+        response_sha256,
+        response_size_bytes,
+        response_json: record.response_json,
+    })
 }
 
 pub(super) fn tool_invocation_tx(

@@ -402,6 +402,7 @@ mod tests {
         let response = PipelineResponse {
             response_json: response_value.to_string(),
             response_value,
+            operation_result_ref: None,
             verified_invocation: None,
             resolved_task_id: None,
             replayed: false,

@@ -33,6 +33,7 @@ Adjacent owners:
 | `STATE_VERSION_CONFLICT` | [`STATE_VERSION_CONFLICT`](#errorcode-state-version-conflict) |
 | `MCP_UNAVAILABLE` | [`MCP_UNAVAILABLE`](#errorcode-mcp-unavailable) |
 | `INVOCATION_CONTEXT_MISMATCH` | [`INVOCATION_CONTEXT_MISMATCH`](#errorcode-invocation-context-mismatch) |
+| `OPERATION_RESULT_UNAVAILABLE` | [`OPERATION_RESULT_UNAVAILABLE`](#errorcode-operation-result-unavailable) |
 | `NO_ACTIVE_TASK` | [`NO_ACTIVE_TASK`](#errorcode-no-active-task) |
 | `NO_ACTIVE_CHANGE_UNIT` | [`NO_ACTIVE_CHANGE_UNIT`](#errorcode-no-active-change-unit) |
 | `BASELINE_STALE` | [`BASELINE_STALE`](#errorcode-baseline-stale) |
@@ -100,6 +101,24 @@ Used in:
 
 Condition:
 - The invocation context is incompatible with the requested method, replay record, `actor_source`, `operation_category`, or adapter-derived execution context.
+
+<a id="errorcode-operation-result-unavailable"></a>
+### `OPERATION_RESULT_UNAVAILABLE`
+
+Used in:
+- `ToolRejectedResponse.errors[]`
+
+Condition:
+- The exact historical operation result selected by an otherwise valid
+  `OperationResultRef` and cursor is missing, ineligible, fails reference or
+  stored-byte integrity validation, or is otherwise unavailable for bounded
+  retrieval.
+
+Notes:
+- Access-context incompatibility remains `INVOCATION_CONTEXT_MISMATCH` and is
+  selected before this code so the unavailable-result branch does not grant or
+  describe access.
+- Store reachability or corrupt typed owner state remains `MCP_UNAVAILABLE`.
 
 <a id="errorcode-no-active-task"></a>
 ### `NO_ACTIVE_TASK`
