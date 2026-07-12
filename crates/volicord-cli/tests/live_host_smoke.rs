@@ -14,11 +14,19 @@ mod unix {
         time::{Duration, Instant},
     };
 
+    use rusqlite::OptionalExtension;
     use serde_json::Value;
+    use volicord_store::{
+        agent_connections::list_agent_connections, bootstrap::list_projects,
+        diagnostics::diagnostics_db_path, sqlite::open_project_state_database_read_only,
+    };
     use volicord_test_support::TempRuntimeHome;
+    use volicord_types::VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL;
 
     const CODEX_SMOKE_ENV: &str = "VOLICORD_RUN_CODEX_SMOKE";
     const CLAUDE_SMOKE_ENV: &str = "VOLICORD_RUN_CLAUDE_SMOKE";
+    const CODEX_JUDGMENT_SMOKE_ENV: &str = "VOLICORD_RUN_CODEX_JUDGMENT_SMOKE";
+    const CLAUDE_JUDGMENT_SMOKE_ENV: &str = "VOLICORD_RUN_CLAUDE_JUDGMENT_SMOKE";
     const COMMAND_TIMEOUT: Duration = Duration::from_secs(20);
 
     #[test]
@@ -62,12 +70,12 @@ mod unix {
         )?;
         assert_file_contains(
             &fixture.repo_root.join(".codex/config.toml"),
-            "[mcp_servers.volicord.env]",
+            "args = [\"mcp\", \"--stdio\", \"--discover-repository\", \"--host\", \"codex\"]",
         )?;
-        assert_file_contains(
-            &fixture.repo_root.join(".codex/config.toml"),
-            "VOLICORD_MCP_LAUNCH = \"managed_host\"",
-        )?;
+        let codex_mcp = fs::read_to_string(fixture.repo_root.join(".codex/config.toml"))?;
+        assert!(!codex_mcp.contains("[mcp_servers.volicord.env]"));
+        assert!(!codex_mcp.contains("--connection"));
+        assert!(!codex_mcp.contains(fixture.runtime_home_arg()));
         assert_file_contains(&fixture.repo_root.join(".codex/hooks.json"), "PreToolUse")?;
         assert!(fixture
             .repo_root
@@ -158,7 +166,12 @@ mod unix {
             "project_approval_required",
         );
         assert_eq!(init_json["states"]["hook_config"], "created");
-        assert_file_contains(&fixture.repo_root.join(".mcp.json"), "\"volicord\"")?;
+        let claude_mcp = fs::read_to_string(fixture.repo_root.join(".mcp.json"))?;
+        assert!(claude_mcp.contains("\"volicord\""));
+        assert!(claude_mcp.contains("\"--discover-repository\""));
+        assert!(claude_mcp.contains("\"claude-code\""));
+        assert!(!claude_mcp.contains("\"--connection\""));
+        assert!(!claude_mcp.contains(fixture.runtime_home_arg()));
         assert_file_contains(
             &fixture.repo_root.join(".claude/settings.json"),
             "PreToolUse",
@@ -186,6 +199,343 @@ mod unix {
         smoke_note(
             "claude-code",
             "live deny/block interpretation was not run because no hook-only non-interactive host runner was detected",
+        );
+        Ok(())
+    }
+
+    #[test]
+    #[ignore = "requires an authenticated interactive Codex host and VOLICORD_RUN_CODEX_JUDGMENT_SMOKE=1"]
+    fn codex_live_judgment_round_trip_is_opt_in() -> Result<(), Box<dyn Error>> {
+        live_judgment_round_trip(
+            "codex",
+            "codex",
+            CODEX_JUDGMENT_SMOKE_ENV,
+            "host_trust_required",
+        )
+    }
+
+    #[test]
+    #[ignore = "requires an authenticated interactive Claude Code host and VOLICORD_RUN_CLAUDE_JUDGMENT_SMOKE=1"]
+    fn claude_code_live_judgment_round_trip_is_opt_in() -> Result<(), Box<dyn Error>> {
+        live_judgment_round_trip(
+            "claude-code",
+            "claude",
+            CLAUDE_JUDGMENT_SMOKE_ENV,
+            "project_approval_required",
+        )
+    }
+
+    fn live_judgment_round_trip(
+        host: &str,
+        executable_name: &str,
+        selector_env: &str,
+        expected_host_action: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        if !smoke_enabled(selector_env) {
+            return Err(io::Error::other(format!(
+                "set {selector_env}=1 before running the ignored {host} Judgment smoke test"
+            ))
+            .into());
+        }
+        let executable = find_executable(executable_name).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("`{executable_name}` was not found on PATH"),
+            )
+        })?;
+        let fixture = LiveSmokeFixture::new(&format!("{host}-judgment"))?;
+        let init = fixture.run_volicord([
+            "init",
+            "--shared",
+            "--host",
+            host,
+            "--repo",
+            fixture.repo_arg(),
+            "--profile",
+            "detective",
+            "--home",
+            fixture.runtime_home_arg(),
+            "--json",
+        ])?;
+        assert_success("volicord init for live Judgment smoke", &init);
+        let init_json = json_stdout(&init)?;
+        assert_guarded_init_reported_action_required(&init_json, host, expected_host_action);
+
+        let marker = format!(
+            "VOLICORD_LIVE_HOST_JUDGMENT_ROUND_TRIP_{}",
+            host.replace('-', "_").to_ascii_uppercase()
+        );
+        let prompt = live_judgment_prompt(&marker);
+        println!(
+            "\n=== Volicord live {host} Judgment smoke ===\nThe host will receive this initial instruction and may ask you to trust the repository or approve its MCP server. When the host-native Judgment selector appears, choose one option yourself. Do not type credentials or secrets. Exit the host after it reports the final Volicord status.\n\n{prompt}\n=== end instruction ===\n"
+        );
+        let status = fixture.run_authenticated_interactive_host(&executable, &prompt)?;
+        smoke_note(
+            host,
+            format!("interactive host exited with {}", status_text(status)),
+        );
+
+        let observation = inspect_live_judgment(&fixture, &marker)?;
+        let Some(observation) = observation else {
+            return Err(io::Error::other(format!(
+                "the live host did not create the marker Task `{marker}`; rerun the smoke, approve the generated Volicord MCP connection, and let the host complete the instructed intake call"
+            ))
+            .into());
+        };
+        if observation.judgment_id.is_none() {
+            return Err(io::Error::other(format!(
+                "Task `{}` was created but no product-decision Judgment was created; rerun the smoke and let the host complete `volicord.request_user_judgment`",
+                observation.task_id
+            ))
+            .into());
+        }
+        if observation.judgment_status.as_deref() != Some("resolved") {
+            assert_actionable_inbox_fallback(&fixture, &observation)?;
+            return Err(io::Error::other(format!(
+                "host-native MCP elicitation was unavailable, so Judgment `{}` remains pending; the actionable CLI inbox fallback above was verified",
+                observation.judgment_id.as_deref().unwrap_or("unknown")
+            ))
+            .into());
+        }
+
+        assert_eq!(
+            observation.resolved_by_actor_source.as_deref(),
+            Some("local_user"),
+            "resolved Judgment must be owned by the local user"
+        );
+        assert_eq!(
+            observation.resolved_verification_basis.as_deref(),
+            Some(VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL),
+            "the live round trip must use the host-native MCP User Channel"
+        );
+        assert!(
+            observation.state_version >= 3,
+            "intake, Judgment creation, and User Channel recording must advance Task state"
+        );
+        assert_ne!(
+            observation.lifecycle_phase, "waiting_user",
+            "a resolved sole Judgment must leave the Task out of waiting_user"
+        );
+        assert!(observation
+            .authority_event_kinds
+            .iter()
+            .any(|kind| kind == "user_judgment_requested"));
+        assert!(observation
+            .authority_event_kinds
+            .iter()
+            .any(|kind| kind == "user_judgment_recorded"));
+        assert_native_channel_diagnostic(&fixture)?;
+
+        let status_output = fixture.run_volicord([
+            "status",
+            "--repo",
+            fixture.repo_arg(),
+            "--task",
+            &observation.task_id,
+            "--json",
+        ])?;
+        assert_success("volicord status after live Judgment", &status_output);
+        let status_json = json_stdout(&status_output)?;
+        assert_eq!(
+            status_json["active_task"]["task_ref"]["record_id"], observation.task_id,
+            "CLI status must expose the updated Task"
+        );
+        smoke_note(
+            host,
+            format!(
+                "verified Judgment {}, User Channel basis {}, Task phase {}, state_version {}",
+                observation.judgment_id.as_deref().unwrap_or("unknown"),
+                VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
+                observation.lifecycle_phase,
+                observation.state_version
+            ),
+        );
+        Ok(())
+    }
+
+    fn live_judgment_prompt(marker: &str) -> String {
+        format!(
+            concat!(
+                "Run a human-in-the-loop Volicord connection smoke using the MCP server named `volicord`. ",
+                "Do not edit files, run shell commands, prepare a write, or answer on the user's behalf.\n\n",
+                "1. Call `volicord.intake` in work mode with create-new resume behavior. The plain-language request must be exactly `{}`. Use a narrow no-write initial scope and one `not_required` acceptance criterion.\n",
+                "2. For the returned Task, call `volicord.request_user_judgment` for a `product_decision`. Ask whether to keep the smoke Task, provide one accept option and one reject option, and make it required for close completion.\n",
+                "3. Wait for the host's native MCP elicitation/User Channel UI. The human running this smoke will choose the answer. Never infer, fabricate, or submit that answer yourself.\n",
+                "4. After Volicord reports the Judgment resolved, call `volicord.status` for the Task and report its lifecycle phase and state version. Then stop.\n\n",
+                "If a native prompt does not appear and Volicord returns a pending inbox item, do not simulate an answer. Report the exact fallback and stop so the harness can verify `volicord inbox` and `volicord inbox answer`."
+            ),
+            marker
+        )
+    }
+
+    #[derive(Debug)]
+    struct LiveJudgmentObservation {
+        task_id: String,
+        lifecycle_phase: String,
+        state_version: u64,
+        judgment_id: Option<String>,
+        judgment_status: Option<String>,
+        resolved_by_actor_source: Option<String>,
+        resolved_verification_basis: Option<String>,
+        option_ids: Vec<String>,
+        authority_event_kinds: Vec<String>,
+    }
+
+    fn inspect_live_judgment(
+        fixture: &LiveSmokeFixture,
+        marker: &str,
+    ) -> Result<Option<LiveJudgmentObservation>, Box<dyn Error>> {
+        let projects = list_projects(&fixture.runtime_home_path)?;
+        let project = projects
+            .iter()
+            .find(|project| project.repo_root == fixture.repo_root)
+            .ok_or_else(|| io::Error::other("live smoke project registration is missing"))?;
+        let conn = open_project_state_database_read_only(&project.state_db_path)?;
+        let row = conn
+            .query_row(
+                "SELECT t.task_id, t.lifecycle_phase, ps.state_version,
+                        j.judgment_id, j.status, j.resolved_by_actor_source,
+                        j.resolved_verification_basis, j.options_json
+                   FROM tasks t
+                   JOIN project_state ps ON ps.project_id = t.project_id
+              LEFT JOIN user_judgments j
+                     ON j.project_id = t.project_id
+                    AND j.task_id = t.task_id
+                    AND j.judgment_kind = 'product_decision'
+                  WHERE t.project_id = ?1 AND t.summary = ?2
+                  ORDER BY j.requested_at DESC
+                  LIMIT 1",
+                rusqlite::params![project.project_id, marker],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, u64>(2)?,
+                        row.get::<_, Option<String>>(3)?,
+                        row.get::<_, Option<String>>(4)?,
+                        row.get::<_, Option<String>>(5)?,
+                        row.get::<_, Option<String>>(6)?,
+                        row.get::<_, Option<String>>(7)?,
+                    ))
+                },
+            )
+            .optional()?;
+        let Some((
+            task_id,
+            lifecycle_phase,
+            state_version,
+            judgment_id,
+            judgment_status,
+            resolved_by_actor_source,
+            resolved_verification_basis,
+            options_json,
+        )) = row
+        else {
+            return Ok(None);
+        };
+        let option_ids = options_json
+            .as_deref()
+            .and_then(|text| serde_json::from_str::<Value>(text).ok())
+            .and_then(|value| value.get("options").and_then(Value::as_array).cloned())
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|option| option.get("option_id").and_then(Value::as_str))
+            .map(str::to_owned)
+            .collect::<Vec<_>>();
+        let mut statement = conn.prepare(
+            "SELECT event_type
+               FROM authority_events
+              WHERE project_id = ?1 AND task_id = ?2
+              ORDER BY event_seq",
+        )?;
+        let authority_event_kinds = statement
+            .query_map(rusqlite::params![project.project_id, task_id], |row| {
+                row.get::<_, String>(0)
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Some(LiveJudgmentObservation {
+            task_id,
+            lifecycle_phase,
+            state_version,
+            judgment_id,
+            judgment_status,
+            resolved_by_actor_source,
+            resolved_verification_basis,
+            option_ids,
+            authority_event_kinds,
+        }))
+    }
+
+    fn assert_actionable_inbox_fallback(
+        fixture: &LiveSmokeFixture,
+        observation: &LiveJudgmentObservation,
+    ) -> Result<(), Box<dyn Error>> {
+        let judgment_id = observation
+            .judgment_id
+            .as_deref()
+            .ok_or_else(|| io::Error::other("pending Judgment id is missing"))?;
+        let choice = observation
+            .option_ids
+            .first()
+            .map(String::as_str)
+            .unwrap_or("<choice>");
+        let inbox = fixture.run_volicord([
+            "inbox",
+            "--repo",
+            fixture.repo_arg(),
+            "--task",
+            &observation.task_id,
+            "--json",
+        ])?;
+        assert_success("volicord inbox live fallback", &inbox);
+        let inbox_text = stdout(&inbox);
+        assert!(
+            inbox_text.contains(judgment_id),
+            "CLI inbox did not include pending Judgment {judgment_id}: {inbox_text}"
+        );
+        println!(
+            concat!(
+                "\nVerified actionable CLI inbox fallback:\n",
+                "  volicord inbox --repo {} --task {} --json\n",
+                "  volicord inbox answer {} --choice {} --repo {} --json\n"
+            ),
+            shell_quote(&fixture.repo_root),
+            observation.task_id,
+            judgment_id,
+            choice,
+            shell_quote(&fixture.repo_root),
+        );
+        Ok(())
+    }
+
+    fn assert_native_channel_diagnostic(fixture: &LiveSmokeFixture) -> Result<(), Box<dyn Error>> {
+        let connections = list_agent_connections(&fixture.runtime_home_path)?;
+        let connection_ids = connections
+            .iter()
+            .map(|connection| connection.connection_internal_id.as_str())
+            .collect::<Vec<_>>();
+        let conn = rusqlite::Connection::open_with_flags(
+            diagnostics_db_path(&fixture.runtime_home_path),
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+        )?;
+        let observed = connection_ids
+            .iter()
+            .try_fold(0_u64, |total, connection_id| {
+                conn.query_row(
+                    "SELECT COUNT(*)
+                   FROM diagnostic_events e
+                   JOIN diagnostic_sessions s ON s.session_id = e.session_id
+                  WHERE s.connection_id = ?1
+                    AND e.tool_name = 'volicord.request_user_judgment'
+                    AND e.user_channel_kind = 'mcp_elicitation'",
+                    [connection_id],
+                    |row| row.get::<_, u64>(0),
+                )
+                .map(|count| total + count)
+            })?;
+        assert!(
+            observed >= 1,
+            "session diagnostics did not observe the verified native User Channel round trip"
         );
         Ok(())
     }
@@ -270,6 +620,23 @@ mod unix {
             command.args(args).current_dir(&self.repo_root);
             self.apply_isolated_env(&mut command);
             run_with_timeout(command, COMMAND_TIMEOUT).map_err(Into::into)
+        }
+
+        fn run_authenticated_interactive_host(
+            &self,
+            program: &Path,
+            prompt: &str,
+        ) -> Result<ExitStatus, Box<dyn Error>> {
+            let mut command = Command::new(program);
+            command
+                .arg(prompt)
+                .current_dir(&self.repo_root)
+                .env("VOLICORD_HOME", &self.runtime_home_path)
+                .env("PATH", &self.env_path)
+                .stdin(Stdio::inherit())
+                .stdout(Stdio::inherit())
+                .stderr(Stdio::inherit());
+            Ok(command.status()?)
         }
 
         fn apply_isolated_env(&self, command: &mut Command) {
@@ -406,21 +773,22 @@ mod unix {
             .and_then(Value::as_str)
             .unwrap_or_default();
         assert_eq!(command, "volicord", "unexpected Codex MCP entry: {value}");
-        let args = value
-            .get("args")
-            .and_then(Value::as_array)
-            .expect("Codex MCP entry args should be an array");
-        assert!(
-            args.iter().any(|arg| arg == "mcp"),
-            "Codex MCP args should include mcp: {value}"
+        assert_eq!(
+            value.get("args"),
+            Some(&serde_json::json!([
+                "mcp",
+                "--stdio",
+                "--discover-repository",
+                "--host",
+                "codex"
+            ])),
+            "Codex MCP args should use portable repository discovery: {value}"
         );
         assert!(
-            args.iter().any(|arg| arg == "--stdio"),
-            "Codex MCP args should include --stdio: {value}"
-        );
-        assert!(
-            args.iter().any(|arg| arg == "--connection"),
-            "Codex MCP args should include --connection: {value}"
+            value
+                .get("env")
+                .is_none_or(|env| env.as_object().is_some_and(serde_json::Map::is_empty)),
+            "Codex repository-visible MCP entry must not carry local env: {value}"
         );
     }
 
