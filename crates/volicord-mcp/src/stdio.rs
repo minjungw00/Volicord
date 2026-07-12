@@ -1058,7 +1058,7 @@ struct ToolDiagnosticFacts {
     replayed: bool,
     effect_kind: Option<EffectKind>,
     effect_applied: bool,
-    operation_token: Option<String>,
+    effect_anchor: Option<String>,
     user_channel_kind: Option<DiagnosticUserChannelKind>,
     fallback_kind: Option<DiagnosticFallbackKind>,
     product_file_write_count: u64,
@@ -1120,7 +1120,7 @@ impl ToolCallOutput {
             self.diagnostic_facts.effect_kind,
             Some(EffectKind::CoreCommitted | EffectKind::StagingCreated)
         );
-        self.diagnostic_facts.operation_token = mutation_operation_token(response);
+        self.diagnostic_facts.effect_anchor = mutation_effect_anchor(response);
         self.diagnostic_facts.replayed = response.replayed;
         self.diagnostic_facts.product_file_write_count = response
             .response_value
@@ -1161,7 +1161,7 @@ impl ToolCallOutput {
     }
 }
 
-fn mutation_operation_token(response: &PipelineResponse) -> Option<String> {
+fn mutation_effect_anchor(response: &PipelineResponse) -> Option<String> {
     if let Some(event_id) = response
         .response_value
         .pointer("/base/events/0/event_id")
@@ -1361,6 +1361,7 @@ where
             tool_name,
             detail,
             output.diagnostic_facts,
+            receipt,
             compact_recovery_method_result,
         );
     }
@@ -1401,6 +1402,38 @@ fn compact_mutation_method_result(
             })
             .map_err(McpAdapterError::Json)
         }
+        RECORD_RUN_TOOL_NAME => {
+            let result: RecordRunResult =
+                serde_json::from_value(method_result.clone()).map_err(McpAdapterError::Json)?;
+            let evidence_observation_refs = result
+                .evidence_observations
+                .iter()
+                .map(|observation| StateRecordRef {
+                    record_kind: StateRecordKind::EvidenceObservation,
+                    record_id: RecordId::new(observation.observation_id.as_str()),
+                    project_id: observation.project_id.clone(),
+                    task_id: Some(observation.task_id.clone()).into(),
+                    produced_at_state_version: effect.state_version.into(),
+                })
+                .collect();
+            let close_basis_anchor =
+                result
+                    .current_close_basis
+                    .map(|basis| McpRecordRunCloseBasisAnchor {
+                        close_basis_revision: basis.close_basis_revision,
+                        scope_revision: basis.scope_revision,
+                        source_run_ref: basis.source_run_ref,
+                        evidence_summary_ref: basis.evidence_summary_ref,
+                    });
+            serde_json::to_value(McpRecordRunCompactResult {
+                effect,
+                run_ref: result.run_summary.run_ref,
+                registered_artifact_refs: result.registered_artifacts,
+                evidence_observation_refs,
+                close_basis_anchor: close_basis_anchor.into(),
+            })
+            .map_err(McpAdapterError::Json)
+        }
         REQUEST_USER_JUDGMENT_TOOL_NAME => {
             compact_request_user_judgment_result(effect, method_result)
         }
@@ -1416,7 +1449,7 @@ fn compact_mutation_method_result(
             })
             .map_err(McpAdapterError::Json)
         }
-        INTAKE_TOOL_NAME | UPDATE_SCOPE_TOOL_NAME | RECORD_RUN_TOOL_NAME | CLOSE_TASK_TOOL_NAME => {
+        INTAKE_TOOL_NAME | UPDATE_SCOPE_TOOL_NAME | CLOSE_TASK_TOOL_NAME => {
             serde_json::to_value(effect).map_err(McpAdapterError::Json)
         }
         _ => Err(McpAdapterError::Protocol(format!(
@@ -1566,6 +1599,7 @@ fn mutation_response_budget_exceeded_output(
     tool_name: &str,
     requested_detail: MutationDetailLevel,
     mut facts: ToolDiagnosticFacts,
+    authority_receipt: AuthorityReceipt,
     method_result: Value,
 ) -> Result<ToolCallOutput, McpAdapterError> {
     let method_name = method_name_for_tool(tool_name).ok_or_else(|| {
@@ -1579,7 +1613,10 @@ fn mutation_response_budget_exceeded_output(
         MutationDetailLevel::Full => "full",
     };
     facts.authoritative_refresh_failure = false;
-    let build_output = |method_result: Option<Value>| -> Result<ToolCallOutput, McpAdapterError> {
+    let build_output = |authority_receipt: Option<AuthorityReceipt>,
+                        method_result: Option<Value>|
+     -> Result<ToolCallOutput, McpAdapterError> {
+        let receipt_preserved = authority_receipt.is_some();
         let method_result_preserved = method_result.is_some();
         let structured_content = serde_json::to_value(McpMutationResponseBudgetExceeded::<Value> {
             code: McpMutationProjectionErrorCode::McpResponseBudgetExceeded,
@@ -1590,7 +1627,8 @@ fn mutation_response_budget_exceeded_output(
             committed: facts.core_committed,
             effect_kind: facts.effect_kind.into(),
             effect_applied: facts.effect_applied,
-            operation_token: facts.operation_token.clone().into(),
+            effect_anchor: facts.effect_anchor.clone().into(),
+            authority_receipt: authority_receipt.into(),
             method_result: RequiredNullable::new(method_result),
             authoritative_refresh_succeeded: true,
             response_projection_omitted: true,
@@ -1598,14 +1636,23 @@ fn mutation_response_budget_exceeded_output(
             completion_claim_withheld: true,
         })
         .map_err(McpAdapterError::Json)?;
-        let method_result_guidance = if method_result_preserved {
-            "The compact method_result is preserved; use it and read volicord.status"
-        } else {
-            "The compact method_result also exceeded the recovery budget; read volicord.status"
+        let preserved_guidance = match (receipt_preserved, method_result_preserved) {
+            (true, true) => {
+                "The fresh authority receipt and compact method_result are preserved; use them and read volicord.status"
+            }
+            (true, false) => {
+                "The fresh authority receipt is preserved; the compact method_result exceeded the recovery budget, so read volicord.status"
+            }
+            (false, true) => {
+                "The compact method_result is preserved; the fresh authority receipt exceeded the recovery budget, so read volicord.status"
+            }
+            (false, false) => {
+                "The fresh authority receipt and compact method_result exceeded the recovery budget; read volicord.status"
+            }
         };
         Ok(ToolCallOutput {
             primary_text: bounded_mutation_compatibility_text(format!(
-                "Volicord {tool_name} reached Core (effect_applied={}, committed={}) and refreshed current authority, but the requested {requested_detail_label} projection exceeded the MCP response budget. {method_result_guidance} before making an authority claim. Do not retry this mutation.",
+                "Volicord {tool_name} reached Core (effect_applied={}, committed={}) and refreshed current authority, but the requested {requested_detail_label} projection exceeded the MCP response budget. {preserved_guidance} before making an authority claim. Do not retry this mutation.",
                 facts.effect_applied, facts.core_committed
             )),
             structured_content,
@@ -1616,11 +1663,19 @@ fn mutation_response_budget_exceeded_output(
             post_effect_failure: None,
         })
     };
-    let output = build_output(Some(method_result))?;
+    let output = build_output(Some(authority_receipt.clone()), Some(method_result.clone()))?;
     if rendered_tool_call_output_size(&output)? <= MAX_MCP_COMPACT_MUTATION_RESULT_BYTES {
         return Ok(output);
     }
-    let output = build_output(None)?;
+    let output = build_output(Some(authority_receipt), None)?;
+    if rendered_tool_call_output_size(&output)? <= MAX_MCP_COMPACT_MUTATION_RESULT_BYTES {
+        return Ok(output);
+    }
+    let output = build_output(None, Some(method_result))?;
+    if rendered_tool_call_output_size(&output)? <= MAX_MCP_COMPACT_MUTATION_RESULT_BYTES {
+        return Ok(output);
+    }
+    let output = build_output(None, None)?;
     if rendered_tool_call_output_size(&output)? <= MAX_MCP_COMPACT_MUTATION_RESULT_BYTES {
         Ok(output)
     } else {
@@ -1644,6 +1699,10 @@ fn mutation_post_effect_failure_output(
         ))
     })?;
     facts.authoritative_refresh_failure = false;
+    let compact_method_result = method_result
+        .as_ref()
+        .and_then(|value| compact_mutation_method_result(tool_name, value).ok())
+        .and_then(|value| value.as_object().cloned());
     let method_result = method_result
         .map(|method_result| {
             method_result.as_object().cloned().ok_or_else(|| {
@@ -1654,8 +1713,7 @@ fn mutation_post_effect_failure_output(
         })
         .transpose()?;
     let build_output = |authority_receipt: Option<AuthorityReceipt>,
-                        method_result: Option<JsonObject>,
-                        response_projection_omitted: bool|
+                        method_result: Option<JsonObject>|
      -> Result<ToolCallOutput, McpAdapterError> {
         let structured_content = serde_json::to_value(McpMutationPostEffectFailure {
             code,
@@ -1666,11 +1724,11 @@ fn mutation_post_effect_failure_output(
             committed: facts.core_committed,
             effect_kind: facts.effect_kind.into(),
             effect_applied: facts.effect_applied,
-            operation_token: facts.operation_token.clone().into(),
+            effect_anchor: facts.effect_anchor.clone().into(),
             authority_receipt: authority_receipt.into(),
             method_result: method_result.into(),
             authoritative_refresh_succeeded: true,
-            response_projection_omitted,
+            response_projection_omitted: true,
             status_read_required: true,
             completion_claim_withheld: true,
         })
@@ -1687,15 +1745,23 @@ fn mutation_post_effect_failure_output(
             post_effect_failure: None,
         })
     };
-    let output = build_output(Some(authority_receipt), method_result.clone(), false)?;
+    if let Some(method_result) = method_result {
+        let output = build_output(Some(authority_receipt.clone()), Some(method_result))?;
+        if rendered_tool_call_output_size(&output)? <= MAX_MCP_COMPACT_MUTATION_RESULT_BYTES {
+            return Ok(output);
+        }
+    }
+    let output = build_output(Some(authority_receipt), None)?;
     if rendered_tool_call_output_size(&output)? <= MAX_MCP_COMPACT_MUTATION_RESULT_BYTES {
         return Ok(output);
     }
-    let output = build_output(None, method_result, true)?;
-    if rendered_tool_call_output_size(&output)? <= MAX_MCP_COMPACT_MUTATION_RESULT_BYTES {
-        return Ok(output);
+    if let Some(compact_method_result) = compact_method_result {
+        let output = build_output(None, Some(compact_method_result))?;
+        if rendered_tool_call_output_size(&output)? <= MAX_MCP_COMPACT_MUTATION_RESULT_BYTES {
+            return Ok(output);
+        }
     }
-    let output = build_output(None, None, true)?;
+    let output = build_output(None, None)?;
     if rendered_tool_call_output_size(&output)? <= MAX_MCP_COMPACT_MUTATION_RESULT_BYTES {
         Ok(output)
     } else {
@@ -1732,7 +1798,7 @@ fn authoritative_refresh_failure_output(
             committed: facts.core_committed,
             effect_kind: facts.effect_kind.into(),
             effect_applied: facts.effect_applied,
-            operation_token: facts.operation_token.clone().into(),
+            effect_anchor: facts.effect_anchor.clone().into(),
             method_result: RequiredNullable::new(method_result),
             status_read_required: true,
             completion_claim_withheld: true,
@@ -2972,6 +3038,84 @@ mod mutation_output_tests {
     };
     use volicord_types::ChangeUnitOperation;
 
+    fn committed_intake_with_receipt(
+        prefix: &str,
+    ) -> Result<(CoreFixture, PipelineResponse, AuthorityReceipt), Box<dyn Error>> {
+        let fixture = CoreFixture::new(prefix)?;
+        let core = CoreService::new(fixture.runtime_home_path());
+        let invocation = || {
+            InvocationContext::new(
+                ProjectId::new(fixture.project_id()),
+                ActorSource::agent_connection(fixture.connection_id()),
+                OperationCategory::AgentWorkflow,
+                VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+            )
+        };
+        let committed = core.intake(
+            fixture.intake_request(
+                "req_mcp_recovery_order",
+                "idem_mcp_recovery_order",
+                false,
+                Some(0),
+            ),
+            invocation(),
+        )?;
+        let task_id = committed
+            .resolved_task_id
+            .as_ref()
+            .expect("committed intake resolves a Task");
+        let status = core.status(
+            fixture.status_request("req_mcp_recovery_order_status", Some(task_id.as_str())),
+            InvocationContext::new(
+                ProjectId::new(fixture.project_id()),
+                ActorSource::agent_connection(fixture.connection_id()),
+                OperationCategory::Read,
+                VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+            ),
+        )?;
+        let receipt = serde_json::from_value(status.response_value["authority_receipt"].clone())?;
+        Ok((fixture, committed, receipt))
+    }
+
+    fn receipt_with_message_padding(
+        receipt: &AuthorityReceipt,
+        padding_bytes: usize,
+    ) -> AuthorityReceipt {
+        let mut value = serde_json::to_value(receipt).expect("receipt should serialize");
+        value["close_blockers"][0]["message"] = Value::String("x".repeat(padding_bytes));
+        serde_json::from_value(value).expect("padded receipt should remain valid")
+    }
+
+    fn recovery_facts() -> ToolDiagnosticFacts {
+        ToolDiagnosticFacts {
+            core_reached: true,
+            core_committed: true,
+            effect_kind: Some(EffectKind::CoreCommitted),
+            effect_applied: true,
+            effect_anchor: Some("authority_event:event_recovery_order".to_owned()),
+            ..ToolDiagnosticFacts::default()
+        }
+    }
+
+    fn assert_compact_budget(output: ToolCallOutput) -> Result<(), Box<dyn Error>> {
+        assert!(!output.is_error);
+        assert_eq!(output.structured_content["retryable"], false);
+        assert_eq!(output.structured_content["effect_applied"], true);
+        assert_eq!(
+            output.structured_content["effect_anchor"],
+            "authority_event:event_recovery_order"
+        );
+        assert_eq!(
+            output.structured_content["response_projection_omitted"],
+            true
+        );
+        assert!(
+            serde_json::to_vec(&tool_call_result_from_output(output))?.len()
+                <= MAX_MCP_COMPACT_MUTATION_RESULT_BYTES
+        );
+        Ok(())
+    }
+
     #[test]
     fn idempotent_mutation_replay_default_summary_returns_refreshed_authority_receipt(
     ) -> Result<(), Box<dyn Error>> {
@@ -3143,7 +3287,7 @@ mod mutation_output_tests {
         output.diagnostic_facts.core_committed = true;
         output.diagnostic_facts.effect_kind = Some(EffectKind::CoreCommitted);
         output.diagnostic_facts.effect_applied = true;
-        output.diagnostic_facts.operation_token =
+        output.diagnostic_facts.effect_anchor =
             Some("authority_event:event_refresh_failure".to_owned());
         output.mutation_refresh_context = Some(MutationRefreshContext {
             project_id: ProjectId::new("project_refresh_failure"),
@@ -3166,7 +3310,7 @@ mod mutation_output_tests {
         assert_eq!(output.structured_content["effect_kind"], "core_committed");
         assert_eq!(output.structured_content["effect_applied"], true);
         assert_eq!(
-            output.structured_content["operation_token"],
+            output.structured_content["effect_anchor"],
             "authority_event:event_refresh_failure"
         );
         assert_eq!(output.structured_content["status_read_required"], true);
@@ -3245,7 +3389,7 @@ mod mutation_output_tests {
         );
         assert_eq!(
             output.structured_content["response_projection_omitted"],
-            false
+            true
         );
         assert_eq!(output.structured_content["status_read_required"], true);
         assert_eq!(output.structured_content["completion_claim_withheld"], true);
@@ -3362,7 +3506,7 @@ mod mutation_output_tests {
         assert_eq!(output.structured_content["retryable"], false);
         assert_eq!(output.structured_content["committed"], true);
         assert_eq!(output.structured_content["effect_kind"], "core_committed");
-        assert!(output.structured_content["operation_token"]
+        assert!(output.structured_content["effect_anchor"]
             .as_str()
             .is_some_and(|token| token.starts_with("authority_event:")));
         assert_eq!(
@@ -3440,7 +3584,7 @@ mod mutation_output_tests {
         );
         assert_eq!(
             output.structured_content["response_projection_omitted"],
-            false
+            true
         );
         assert_eq!(output.structured_content["completion_claim_withheld"], true);
         Ok(())
@@ -3497,10 +3641,10 @@ mod mutation_output_tests {
         );
         assert!(output.diagnostic_facts.effect_applied);
         assert!(!output.diagnostic_facts.core_committed);
-        let operation_token = format!("staged_artifact:{handle_id}");
+        let effect_anchor = format!("staged_artifact:{handle_id}");
         assert_eq!(
-            output.diagnostic_facts.operation_token.as_deref(),
-            Some(operation_token.as_str())
+            output.diagnostic_facts.effect_anchor.as_deref(),
+            Some(effect_anchor.as_str())
         );
 
         let output = finalize_mutation_output_with_refresh(
@@ -3519,10 +3663,7 @@ mod mutation_output_tests {
         assert_eq!(output.structured_content["committed"], false);
         assert_eq!(output.structured_content["effect_kind"], "staging_created");
         assert_eq!(output.structured_content["effect_applied"], true);
-        assert_eq!(
-            output.structured_content["operation_token"],
-            operation_token
-        );
+        assert_eq!(output.structured_content["effect_anchor"], effect_anchor);
         assert_eq!(
             output.structured_content["method_result"]["staged_artifact_handle"]["handle_id"],
             handle_id
@@ -3614,7 +3755,7 @@ mod mutation_output_tests {
             assert_eq!(output.structured_content["committed"], true);
             assert_eq!(output.structured_content["effect_kind"], "core_committed");
             assert_eq!(output.structured_content["effect_applied"], true);
-            assert!(output.structured_content["operation_token"]
+            assert!(output.structured_content["effect_anchor"]
                 .as_str()
                 .is_some_and(|token| token.starts_with("authority_event:")));
             assert_eq!(
@@ -3663,41 +3804,168 @@ mod mutation_output_tests {
     }
 
     #[test]
-    fn oversized_compact_method_result_is_omitted_from_fixed_budget_recoveries(
+    fn post_effect_recovery_preserves_receipt_then_compact_result_then_effect_facts(
     ) -> Result<(), Box<dyn Error>> {
-        let facts = ToolDiagnosticFacts {
-            core_reached: true,
-            core_committed: true,
-            effect_kind: Some(EffectKind::CoreCommitted),
-            effect_applied: true,
-            operation_token: Some("authority_event:event_oversized_compact".to_owned()),
-            ..ToolDiagnosticFacts::default()
-        };
+        let (_fixture, committed, receipt) =
+            committed_intake_with_receipt("mcp-post-effect-recovery-order")?;
+
+        let both = mutation_post_effect_failure_output(
+            INTAKE_TOOL_NAME,
+            MutationDetailLevel::Summary,
+            McpPostEffectFailureCode::McpResponseProjectionFailed,
+            recovery_facts(),
+            receipt.clone(),
+            Some(committed.response_value.clone()),
+        )?;
+        assert!(both.structured_content["authority_receipt"].is_object());
+        assert!(both.structured_content["method_result"].is_object());
+        assert_compact_budget(both)?;
+
+        let mut oversized_exact_result = committed.response_value.clone();
+        oversized_exact_result["adapter_test_padding"] =
+            Value::String("x".repeat(MAX_MCP_COMPACT_MUTATION_RESULT_BYTES));
+        let receipt_only = mutation_post_effect_failure_output(
+            INTAKE_TOOL_NAME,
+            MutationDetailLevel::Summary,
+            McpPostEffectFailureCode::McpResponseProjectionFailed,
+            recovery_facts(),
+            receipt.clone(),
+            Some(oversized_exact_result.clone()),
+        )?;
+        assert!(receipt_only.structured_content["authority_receipt"].is_object());
+        assert_eq!(
+            receipt_only.structured_content["method_result"],
+            Value::Null
+        );
+        assert_compact_budget(receipt_only)?;
+
+        let compact_only = mutation_post_effect_failure_output(
+            INTAKE_TOOL_NAME,
+            MutationDetailLevel::Summary,
+            McpPostEffectFailureCode::McpResponseProjectionFailed,
+            recovery_facts(),
+            receipt_with_message_padding(&receipt, MAX_MCP_COMPACT_MUTATION_RESULT_BYTES),
+            Some(oversized_exact_result),
+        )?;
+        assert_eq!(
+            compact_only.structured_content["authority_receipt"],
+            Value::Null
+        );
+        assert_eq!(
+            compact_only.structured_content["method_result"]["effect_kind"],
+            "core_committed"
+        );
+        assert_compact_budget(compact_only)?;
+
+        let mut unprojectable_result = committed.response_value;
+        unprojectable_result["base"] = Value::String("invalid".to_owned());
+        unprojectable_result["adapter_test_padding"] =
+            Value::String("x".repeat(MAX_MCP_COMPACT_MUTATION_RESULT_BYTES));
+        let effect_facts_only = mutation_post_effect_failure_output(
+            INTAKE_TOOL_NAME,
+            MutationDetailLevel::Summary,
+            McpPostEffectFailureCode::McpResponseProjectionFailed,
+            recovery_facts(),
+            receipt_with_message_padding(&receipt, MAX_MCP_COMPACT_MUTATION_RESULT_BYTES),
+            Some(unprojectable_result),
+        )?;
+        assert_eq!(
+            effect_facts_only.structured_content["authority_receipt"],
+            Value::Null
+        );
+        assert_eq!(
+            effect_facts_only.structured_content["method_result"],
+            Value::Null
+        );
+        assert_compact_budget(effect_facts_only)?;
+        Ok(())
+    }
+
+    #[test]
+    fn response_budget_recovery_preserves_receipt_then_compact_result_then_effect_facts(
+    ) -> Result<(), Box<dyn Error>> {
+        let (_fixture, _committed, receipt) =
+            committed_intake_with_receipt("mcp-response-budget-recovery-order")?;
+        let small_result = json!({"effect_kind": "core_committed"});
+
+        let both = mutation_response_budget_exceeded_output(
+            INTAKE_TOOL_NAME,
+            MutationDetailLevel::Full,
+            recovery_facts(),
+            receipt.clone(),
+            small_result.clone(),
+        )?;
+        assert!(both.structured_content["authority_receipt"].is_object());
+        assert_eq!(
+            both.structured_content["method_result"]["effect_kind"],
+            "core_committed"
+        );
+        assert_compact_budget(both)?;
+
+        let receipt_only = mutation_response_budget_exceeded_output(
+            INTAKE_TOOL_NAME,
+            MutationDetailLevel::Summary,
+            recovery_facts(),
+            receipt_with_message_padding(&receipt, 36 * 1024),
+            json!({
+                "effect_kind": "core_committed",
+                "padding": "x".repeat(36 * 1024),
+            }),
+        )?;
+        assert!(receipt_only.structured_content["authority_receipt"].is_object());
+        assert_eq!(
+            receipt_only.structured_content["method_result"],
+            Value::Null
+        );
+        assert_compact_budget(receipt_only)?;
+
+        let compact_only = mutation_response_budget_exceeded_output(
+            INTAKE_TOOL_NAME,
+            MutationDetailLevel::Summary,
+            recovery_facts(),
+            receipt_with_message_padding(&receipt, MAX_MCP_COMPACT_MUTATION_RESULT_BYTES),
+            small_result,
+        )?;
+        assert_eq!(
+            compact_only.structured_content["authority_receipt"],
+            Value::Null
+        );
+        assert_eq!(
+            compact_only.structured_content["method_result"]["effect_kind"],
+            "core_committed"
+        );
+        assert_compact_budget(compact_only)?;
+
+        let effect_facts_only = mutation_response_budget_exceeded_output(
+            INTAKE_TOOL_NAME,
+            MutationDetailLevel::Summary,
+            recovery_facts(),
+            receipt_with_message_padding(&receipt, MAX_MCP_COMPACT_MUTATION_RESULT_BYTES),
+            json!({
+                "effect_kind": "core_committed",
+                "padding": "x".repeat(MAX_MCP_COMPACT_MUTATION_RESULT_BYTES),
+            }),
+        )?;
+        assert_eq!(
+            effect_facts_only.structured_content["authority_receipt"],
+            Value::Null
+        );
+        assert_eq!(
+            effect_facts_only.structured_content["method_result"],
+            Value::Null
+        );
+        assert_compact_budget(effect_facts_only)?;
+        Ok(())
+    }
+
+    #[test]
+    fn oversized_compact_method_result_is_omitted_from_authoritative_refresh_failure(
+    ) -> Result<(), Box<dyn Error>> {
+        let facts = recovery_facts();
         let oversized_method_result = json!({
             "effect_kind": "core_committed",
             "oversized": "x".repeat(MAX_MCP_COMPACT_MUTATION_RESULT_BYTES * 2),
         });
-        let output = mutation_response_budget_exceeded_output(
-            INTAKE_TOOL_NAME,
-            MutationDetailLevel::Summary,
-            facts.clone(),
-            oversized_method_result.clone(),
-        )?;
-
-        assert_eq!(
-            output.structured_content["code"],
-            "MCP_RESPONSE_BUDGET_EXCEEDED"
-        );
-        assert_eq!(output.structured_content["method_result"], Value::Null);
-        assert_eq!(
-            output.structured_content["response_projection_omitted"],
-            true
-        );
-        assert!(
-            serde_json::to_vec(&tool_call_result_from_output(output))?.len()
-                <= MAX_MCP_COMPACT_MUTATION_RESULT_BYTES
-        );
-
         let output = authoritative_refresh_failure_output(
             INTAKE_TOOL_NAME,
             facts,

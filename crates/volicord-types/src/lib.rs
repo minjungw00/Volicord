@@ -1235,7 +1235,7 @@ mod tests {
                 "committed",
                 "effect_kind",
                 "effect_applied",
-                "operation_token",
+                "effect_anchor",
                 "method_result",
                 "status_read_required",
                 "completion_claim_withheld",
@@ -1254,7 +1254,8 @@ mod tests {
                 "committed",
                 "effect_kind",
                 "effect_applied",
-                "operation_token",
+                "effect_anchor",
+                "authority_receipt",
                 "method_result",
                 "authoritative_refresh_succeeded",
                 "response_projection_omitted",
@@ -1274,7 +1275,7 @@ mod tests {
                 "committed",
                 "effect_kind",
                 "effect_applied",
-                "operation_token",
+                "effect_anchor",
                 "authority_receipt",
                 "method_result",
                 "authoritative_refresh_succeeded",
@@ -1288,6 +1289,7 @@ mod tests {
         for (tool_name, compact_name) in [
             ("volicord.prepare_write", "McpPrepareWriteCompactResult"),
             ("volicord.stage_artifact", "McpStageArtifactCompactResult"),
+            ("volicord.record_run", "McpRecordRunCompactResult"),
             (
                 "volicord.reconcile_changes",
                 "McpReconcileChangesCompactResult",
@@ -1299,6 +1301,30 @@ mod tests {
                 "{tool_name} should advertise {compact_name}"
             );
         }
+
+        let record_run =
+            mcp_response_schema("volicord.record_run").expect("record-run MCP response schema");
+        assert_required(
+            definition(&record_run, "McpRecordRunCompactResult"),
+            &[
+                "effect",
+                "run_ref",
+                "registered_artifact_refs",
+                "evidence_observation_refs",
+                "close_basis_anchor",
+            ],
+            "McpRecordRunCompactResult",
+        );
+        assert_required(
+            definition(&record_run, "McpRecordRunCloseBasisAnchor"),
+            &[
+                "close_basis_revision",
+                "scope_revision",
+                "source_run_ref",
+                "evidence_summary_ref",
+            ],
+            "McpRecordRunCloseBasisAnchor",
+        );
     }
 
     #[test]

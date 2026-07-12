@@ -2222,6 +2222,166 @@ fn default_compact_mutations_preserve_tool_essential_method_results() -> Result<
     assert!(staged["method_result"]["staged_artifact_handle"]["handle_id"].is_string());
     assert!(staged["method_result"]["expires_at"].is_string());
 
+    let record_fixture = CoreFixture::new("mcp-default-compact-record-run")?;
+    let record_adapter = adapter(&record_fixture)?;
+    let (record_task_id, _) = create_task(&record_adapter)?;
+    let scope = record_adapter.call_tool(
+        UPDATE_SCOPE_TOOL_NAME,
+        json!({
+            "task_id": record_task_id,
+            "goal_summary": null,
+            "scope_update": null,
+            "scope_boundary": null,
+            "non_goals": null,
+            "acceptance_criteria": null,
+            "autonomy_boundary": null,
+            "baseline_ref": "baseline_record_compact",
+            "change_unit": {
+                "operation": "create_current",
+                "scope_summary": "Record compact Run references.",
+                "affected_paths": []
+            },
+            "related_scope_decision_refs": []
+        }),
+    )?;
+    let change_unit_id = scope.response_value["state"]["active_change_unit_ref"]["record_id"]
+        .as_str()
+        .ok_or("scope response should expose the current Change Unit")?;
+    let criterion_id = scope.response_value["state"]["acceptance_criteria"][0]
+        ["acceptance_criterion_id"]
+        .as_str()
+        .ok_or("scope response should expose the acceptance criterion")?;
+    let staged_for_run = record_adapter.call_tool(
+        STAGE_ARTIFACT_TOOL_NAME,
+        json!({
+            "task_id": record_task_id,
+            "display_name": "record-compact.log",
+            "content_type": "text/plain",
+            "redaction_state": "none",
+            "safe_bytes_or_notice": "Evidence attachment for compact record_run refs."
+        }),
+    )?;
+    let staged_handle = staged_for_run.response_value["staged_artifact_handle"].clone();
+    let target = json!({
+        "target_kind": "acceptance_criterion",
+        "acceptance_criterion_id": criterion_id,
+    });
+    let recorded = call_default(
+        &record_fixture,
+        RECORD_RUN_TOOL_NAME,
+        json!({
+            "task_id": record_task_id,
+            "change_unit_id": change_unit_id,
+            "kind": "implementation",
+            "baseline_ref": "baseline_record_compact",
+            "summary": "Recorded compact follow-up references.",
+            "observed_changes": {
+                "changed_paths": [],
+                "product_file_write_observed": false,
+                "sensitive_categories": [],
+                "baseline_ref": "baseline_record_compact"
+            },
+            "artifact_inputs": [{
+                "artifact_input_id": "artifact_input_record_compact",
+                "source_kind": "staged_artifact",
+                "staged_artifact_handle": staged_handle,
+                "existing_artifact_ref": null,
+                "relation_hint": null,
+                "evidence_target": target.clone(),
+                "expected_sha256": null,
+                "expected_size_bytes": null,
+                "redaction_state": "none"
+            }],
+            "evidence_updates": [{
+                "target": target.clone(),
+                "coverage_state": "supported"
+            }],
+            "evidence_observations": [{
+                "target": target,
+                "source_kind": "agent_report",
+                "assurance_level": "cooperative_report",
+                "observed_at": "2026-07-13T00:00:00Z"
+            }],
+            "close_assessment": {
+                "result_summary": "Recorded compact follow-up references.",
+                "result_refs": [],
+                "residual_risks": [],
+                "sensitive_categories": [],
+                "recovery_constraints": []
+            }
+        }),
+    )?;
+    let record_result = &recorded["method_result"];
+    assert_eq!(
+        record_result["effect"]["effect_kind"], "core_committed",
+        "unexpected compact record_run result: {recorded:#}"
+    );
+    assert_eq!(record_result["run_ref"]["record_kind"], "run");
+    assert!(record_result["run_ref"]["record_id"].is_string());
+    assert_eq!(
+        record_result["run_ref"]["project_id"],
+        record_fixture.project_id()
+    );
+    assert_eq!(record_result["run_ref"]["task_id"], record_task_id);
+    assert_eq!(
+        record_result["run_ref"]["produced_at_state_version"],
+        record_result["effect"]["state_version"]
+    );
+    assert_eq!(
+        record_result["registered_artifact_refs"]
+            .as_array()
+            .map(Vec::len),
+        Some(1)
+    );
+    assert_eq!(
+        record_result["evidence_observation_refs"]
+            .as_array()
+            .map(Vec::len),
+        Some(1)
+    );
+    assert_eq!(
+        record_result["evidence_observation_refs"][0]["record_kind"],
+        "evidence_observation"
+    );
+    assert_eq!(
+        record_result["evidence_observation_refs"][0]["project_id"],
+        record_fixture.project_id()
+    );
+    assert_eq!(
+        record_result["evidence_observation_refs"][0]["task_id"],
+        record_task_id
+    );
+    assert_eq!(
+        record_result["evidence_observation_refs"][0]["produced_at_state_version"],
+        record_result["effect"]["state_version"]
+    );
+    assert_eq!(
+        record_result["registered_artifact_refs"][0]["created_by_run_ref"],
+        record_result["run_ref"]
+    );
+    assert!(record_result["close_basis_anchor"]["close_basis_revision"].is_u64());
+    assert!(record_result["close_basis_anchor"]["scope_revision"].is_u64());
+    assert_eq!(
+        record_result["close_basis_anchor"]["source_run_ref"],
+        record_result["run_ref"]
+    );
+    assert_eq!(
+        record_result["close_basis_anchor"]["evidence_summary_ref"]["record_kind"],
+        "evidence_summary"
+    );
+    assert_eq!(
+        record_result["close_basis_anchor"]["evidence_summary_ref"]["project_id"],
+        record_fixture.project_id()
+    );
+    assert_eq!(
+        record_result["close_basis_anchor"]["evidence_summary_ref"]["task_id"],
+        record_task_id
+    );
+    assert_eq!(
+        record_result["close_basis_anchor"]["evidence_summary_ref"]["produced_at_state_version"],
+        record_result["effect"]["state_version"]
+    );
+
     let prepare_fixture = CoreFixture::new("mcp-default-compact-prepare")?;
     let prepare_adapter = adapter(&prepare_fixture)?;
     let (prepare_task_id, _) = create_task(&prepare_adapter)?;
@@ -2422,13 +2582,16 @@ fn elicitation_write_failure_returns_nonretryable_post_effect_result() -> Result
     assert_eq!(structured["committed"], true);
     assert_eq!(structured["effect_kind"], "core_committed");
     assert_eq!(structured["effect_applied"], true);
+    assert!(structured["effect_anchor"]
+        .as_str()
+        .is_some_and(|anchor| anchor.starts_with("authority_event:")));
     assert_eq!(structured["method_result"], Value::Null);
     assert_eq!(
         structured["authority_receipt"]["task_ref"]["record_id"],
         task_id
     );
     assert_eq!(structured["authoritative_refresh_succeeded"], true);
-    assert_eq!(structured["response_projection_omitted"], false);
+    assert_eq!(structured["response_projection_omitted"], true);
     assert_eq!(structured["status_read_required"], true);
     assert_eq!(structured["completion_claim_withheld"], true);
     Ok(())

@@ -161,7 +161,7 @@ pub enum McpToolStructuredContent<T> {
     AdapterError(McpToolErrorResponse),
 }
 
-/// Compact method-effect facts preserved beside a fresh authority receipt.
+/// Compact method-effect facts preserved by mutation projections and recoveries.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct McpMutationEffectSummary {
@@ -194,6 +194,27 @@ pub struct McpStageArtifactCompactResult {
     pub evidence_state: EvidenceDisplayState,
     pub staged_artifact_handle: StagedArtifactHandle,
     pub expires_at: UtcTimestamp,
+}
+
+/// Task-owned close-basis coordinates created by one compact `volicord.record_run` result.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpRecordRunCloseBasisAnchor {
+    pub close_basis_revision: u64,
+    pub scope_revision: u64,
+    pub source_run_ref: StateRecordRef,
+    pub evidence_summary_ref: RequiredNullable<StateRecordRef>,
+}
+
+/// Compact `volicord.record_run` outcome needed by evidence and close follow-up work.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpRecordRunCompactResult {
+    pub effect: McpMutationEffectSummary,
+    pub run_ref: StateRecordRef,
+    pub registered_artifact_refs: Vec<ArtifactRef>,
+    pub evidence_observation_refs: Vec<StateRecordRef>,
+    pub close_basis_anchor: RequiredNullable<McpRecordRunCloseBasisAnchor>,
 }
 
 /// Compact host-native Judgment outcome safe for ordinary agent consumption.
@@ -255,7 +276,8 @@ pub struct McpAuthoritativeRefreshFailure<T> {
     pub committed: bool,
     pub effect_kind: RequiredNullable<EffectKind>,
     pub effect_applied: bool,
-    pub operation_token: RequiredNullable<String>,
+    /// Correlates the applied effect; it is not an exact-result lookup credential.
+    pub effect_anchor: RequiredNullable<String>,
     pub method_result: RequiredNullable<T>,
     pub status_read_required: bool,
     pub completion_claim_withheld: bool,
@@ -289,7 +311,8 @@ pub struct McpMutationPostEffectFailure {
     pub committed: bool,
     pub effect_kind: RequiredNullable<EffectKind>,
     pub effect_applied: bool,
-    pub operation_token: RequiredNullable<String>,
+    /// Correlates the applied effect; it is not an exact-result lookup credential.
+    pub effect_anchor: RequiredNullable<String>,
     pub authority_receipt: RequiredNullable<AuthorityReceipt>,
     pub method_result: RequiredNullable<JsonObject>,
     pub authoritative_refresh_succeeded: bool,
@@ -310,7 +333,9 @@ pub struct McpMutationResponseBudgetExceeded<T> {
     pub committed: bool,
     pub effect_kind: RequiredNullable<EffectKind>,
     pub effect_applied: bool,
-    pub operation_token: RequiredNullable<String>,
+    /// Correlates the applied effect; it is not an exact-result lookup credential.
+    pub effect_anchor: RequiredNullable<String>,
+    pub authority_receipt: RequiredNullable<AuthorityReceipt>,
     pub method_result: RequiredNullable<T>,
     pub authoritative_refresh_succeeded: bool,
     pub response_projection_omitted: bool,
@@ -1241,7 +1266,7 @@ pub fn mcp_response_schema(tool_name: &str) -> Option<Value> {
             McpMutationStructuredContent<StageArtifactResponse, McpStageArtifactCompactResult>,
         >()),
         "volicord.record_run" => Some(response_schema::<
-            McpMutationStructuredContent<RecordRunResponse, McpMutationEffectSummary>,
+            McpMutationStructuredContent<RecordRunResponse, McpRecordRunCompactResult>,
         >()),
         "volicord.reconcile_changes" => Some(response_schema::<
             McpMutationStructuredContent<

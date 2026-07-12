@@ -978,13 +978,19 @@ entry.
 The compact `method_result` always preserves effect kind, resulting state
 version, and committed event refs. It additionally preserves the issued write
 ticket and decision for `volicord.prepare_write`, the staged handle and expiry
-for `volicord.stage_artifact`, per-finding results for
+for `volicord.stage_artifact`, the exact Run ref, registered `ArtifactRef`
+values, newly recorded evidence-observation refs, and nullable
+`close_basis_anchor` for `volicord.record_run`, per-finding results for
 `volicord.reconcile_changes`, and the pending or resolved outcome for
-`volicord.request_user_judgment`. A resolved compact Judgment outcome contains
-the Judgment ref, status, selected option ID and label, and resolution outcome;
-it omits the free-form user note. `detail=full` is for callers that need fields
-beyond those next-step results, not for recovering a required handle, ticket,
-finding result, or host-native selection.
+`volicord.request_user_judgment`. `close_basis_anchor` contains
+`close_basis_revision`, `scope_revision`, `source_run_ref`, and nullable
+`evidence_summary_ref`. It is a typed coordinate for the close basis stored on
+the Task, not a `StateRecordRef` and not a separate close-basis record. A
+resolved compact Judgment outcome contains the Judgment ref, status, selected
+option ID and label, and resolution outcome; it omits the free-form user note.
+`detail=full` is for callers that need fields beyond those next-step results,
+not for recovering a required handle, ticket, Run or evidence ref, finding
+result, or host-native selection.
 
 For a known tool, the adapter validates object `arguments` against the exact
 advertised `inputSchema` before project selection, session-watch setup, generated
@@ -1091,23 +1097,27 @@ operation as a failed mutation and automatically retry it. Its
 `structuredContent` contains
 `code=MCP_RESPONSE_BUDGET_EXCEEDED`, the method `tool_name`, the
 `requested_detail`, `retryable=false`, `reached_core`, `committed`, nullable
-`effect_kind`, `effect_applied`, nullable stable `operation_token`,
-nullable compact `method_result` used by the requested tool,
+`effect_kind`, `effect_applied`, nullable stable `effect_anchor`, nullable
+`authority_receipt`, nullable compact `method_result` used by the requested tool,
 `authoritative_refresh_succeeded=true`, `response_projection_omitted=true`,
 `status_read_required=true`, and `completion_claim_withheld=true`. `committed`
 reports a new Core commit, while `effect_kind` and `effect_applied` also report
 non-Core effects such as a created staging handle and replayed applied effects.
-The recovery `method_result` is not truncated: in particular, a successful
-`volicord.stage_artifact` recovery retains its staging handle and expiry even
-though the oversized authority receipt is omitted. If that compact method
-result itself cannot fit the fixed recovery budget, the field is `null`; the
-effect facts and operation token remain, and the caller must read status rather
-than retrying the mutation.
-The operation token is anchored to the first committed authority event, staged
-handle, or resulting state effect. This branch does not claim `MCP_UNAVAILABLE`,
-is not counted as an authoritative-refresh failure, and does not return a
-partial receipt or oversized status body. The caller must not submit a new
-mutation as a retry; it must read current status before acting.
+The bounded recovery attempts, in order, the fresh receipt with the compact
+method result, the fresh receipt alone, the compact method result alone, and
+effect facts alone. Neither the receipt nor method result is truncated. In
+particular, when a successful `volicord.stage_artifact` compact result fits after
+the receipt does not, the recovery retains its staging handle and expiry. A
+field that cannot fit at its preservation step is `null`.
+
+`effect_anchor` identifies the first committed authority event, staged handle,
+or resulting state effect. It is an effect-correlation anchor, not an operation
+result lookup credential. The baseline exposes no lookup method that accepts
+this value, and `volicord.status` cannot reconstruct the exact method result.
+This branch does not claim `MCP_UNAVAILABLE`, is not counted as an
+authoritative-refresh failure, and does not return a partial receipt or
+oversized status body. The caller must not submit a new mutation as a retry; it
+must use every preserved field and read current status before acting.
 
 If Core has already returned an applied result and later adapter work cannot
 produce the normal wrapper, the adapter first performs the same validated
@@ -1116,15 +1126,15 @@ post-effect branch. `code=MCP_POST_EFFECT_ADAPTER_FAILED` identifies a failed
 host User Channel adapter after the pending judgment was created;
 `code=MCP_RESPONSE_PROJECTION_FAILED` identifies a failure while building the
 normal response projection. Both branches include the method `tool_name`,
-`requested_detail`, effect and operation-token facts, nullable
+`requested_detail`, effect facts, nullable `effect_anchor`, nullable
 `authority_receipt`, nullable `method_result`,
-`authoritative_refresh_succeeded=true`, `response_projection_omitted`,
+`authoritative_refresh_succeeded=true`, `response_projection_omitted=true`,
 `status_read_required=true`, and
 `completion_claim_withheld=true`. A projection failure preserves the exact
 method result when it can be represented; a host-adapter failure may leave it
-`null`. The fresh receipt is present when the recovery fits the compact budget;
-otherwise the adapter sets it to `null` and
-`response_projection_omitted=true`. Neither branch authorizes replay of the
+`null`. The bounded recovery attempts, in order when each value is available,
+the fresh receipt with that result, the fresh receipt alone, the compact method
+result alone, and effect facts alone. Neither branch authorizes replay of the
 mutation.
 
 If the refresh call fails, returns a rejected or malformed branch, lacks a
@@ -1132,7 +1142,7 @@ receipt, or fails any freshness comparison, the adapter returns the same
 success-class `isError=false` recovery boundary. Its bounded
 `structuredContent` contains `code=MCP_UNAVAILABLE`, the method `tool_name`,
 `retryable=false`, `reached_core`, `committed`, nullable `effect_kind`,
-`effect_applied`, nullable stable `operation_token`,
+`effect_applied`, nullable stable `effect_anchor`,
 nullable compact `method_result`, `status_read_required=true`, and
 `completion_claim_withheld=true`. The compact result preserves tool-specific
 next-step data such as a write ticket, staging handle, per-finding reconcile
@@ -1140,8 +1150,10 @@ outcomes, or selected Judgment outcome. It is never truncated; if that compact
 result itself cannot fit the fixed recovery budget, the field is `null`. The
 branch does not return the exact original success or completion body, a stale
 receipt, or a private refresh error body. The caller must not resubmit the
-mutation and must read current status before acting. Local session diagnostics
-count this as an authoritative-refresh failure without storing the error body.
+mutation and must read current status before acting. The `effect_anchor` has the
+same correlation-only meaning described above; status does not recover the
+omitted exact method result. Local session diagnostics count this as an
+authoritative-refresh failure without storing the error body.
 
 Core/domain rejected mutation responses do not enter this success-projection
 path. They retain the existing public response object and `isError=false`, with

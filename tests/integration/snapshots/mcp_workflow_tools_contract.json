@@ -176,7 +176,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:1091d6d5b3fcd43677c2e1479e604d90f291c17b1d9aefedbf7b002a9934a6fc"
+        "sha256": "sha256:1fdd36a88d042eefa90a3231f35d11b08f68b8e88c16f6855819f47dd4189691"
       }
     },
     {
@@ -321,7 +321,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:9533878aee9450ea251e6b45105a94e65f7619ca022788cac12b299b2ce461ce"
+        "sha256": "sha256:8f638e1774e04d1443fc52635b579115b2b6e99e5674a1cc7e90b70748a171f6"
       }
     },
     {
@@ -608,7 +608,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:4d555463bddd60e6a72de97ccf22d2184224e50f367db1d364f1b80bad2f2062"
+        "sha256": "sha256:ddfd6ce068ab4bc17a3beb4cbf7d83e8756337f919758e73f5b51053954211c0"
       }
     },
     {
@@ -704,7 +704,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:e17603df944886291a9c6f33410edec92d5bfde3bd23af6eb13410824a198866"
+        "sha256": "sha256:9335f01a09f2b94391434e46d2cae41bf1bc5e259c6b4392f2dc13b5cd675a96"
       }
     },
     {
@@ -832,15 +832,17 @@
           "GuardObservationStatus",
           "HostKind",
           "IntegrationProfile",
-          "McpAuthoritativeRefreshFailure_for_McpMutationEffectSummary",
+          "McpAuthoritativeRefreshFailure_for_McpRecordRunCompactResult",
           "McpMutationEffectSummary",
           "McpMutationFullResponse_for_ToolResponse_for_RecordRunResult",
           "McpMutationPostEffectFailure",
           "McpMutationProjectionErrorCode",
-          "McpMutationResponseBudgetExceeded_for_McpMutationEffectSummary",
-          "McpMutationSummaryResponse_for_McpMutationEffectSummary",
-          "McpMutationWorkflowResponse_for_McpMutationEffectSummary",
+          "McpMutationResponseBudgetExceeded_for_McpRecordRunCompactResult",
+          "McpMutationSummaryResponse_for_McpRecordRunCompactResult",
+          "McpMutationWorkflowResponse_for_McpRecordRunCompactResult",
           "McpPostEffectFailureCode",
+          "McpRecordRunCloseBasisAnchor",
+          "McpRecordRunCompactResult",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
@@ -897,7 +899,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:0e220778a2ab04a2128f48f81bbc2c4a8f5efa0fe6f5396bcf57b611b004a465"
+        "sha256": "sha256:9395f591f19b55084183bb7e4b8cc6d04d14eabb0c77f93db7d2b0ff0cda8c61"
       }
     },
     {
@@ -1079,7 +1081,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:6ea8ffbd9b14f304ebc3eee0a4bc5dd6b68e5a2369d8c2420b309cfd0ade015b"
+        "sha256": "sha256:b13d0b15bbabfe6dfcd5c8c4fed3ee98f1ccd16e2c40c26cbaec21fe825ab806"
       }
     },
     {
@@ -1215,7 +1217,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:e7849e5c12cf7cf47dd07528831eaae01c65fff3745b345e8881b54ee712e1c4"
+        "sha256": "sha256:c1537b304dc4c87b974ff8d0e27d0d6426d3889a2a16f7fd61f9264110236a8c"
       }
     },
     {
@@ -1496,7 +1498,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:ad681524366efeaec8ca98b06fa7fd0e31176a83bdb0496ef5c6436b36754cdf"
+        "sha256": "sha256:4a5d00a91bc8c167d9bfcdb1867a5c5953e90776a04fc5e2510ed97a62bc4c44"
       }
     },
     {

@@ -867,11 +867,16 @@ MCP 어댑터는 Core에 넘기기 전에 Core 래퍼를 생성합니다. 어댑
 간결한 `method_result`는 항상 효과 종류, 결과 state version, 커밋된 event ref를
 보존합니다. 또한 `volicord.prepare_write`에서는 발급된 쓰기 티켓과 결정을,
 `volicord.stage_artifact`에서는 스테이징된 handle과 만료 시각을,
-`volicord.reconcile_changes`에서는 찾은 항목별 결과를,
-`volicord.request_user_judgment`에서는 대기 또는 해결 결과를 보존합니다. 해결된 간결한
-Judgment 결과는 Judgment ref, 상태, 선택한 option ID와 label, resolution outcome을
-포함하고 자유 형식 사용자 note는 제외합니다. `detail=full`은 이러한 다음 단계 필수 결과가
-아닌 추가 필드가 필요한 호출자를 위한 값입니다.
+`volicord.record_run`에서는 정확한 Run ref, 등록된 `ArtifactRef` 값, 새로 기록된 증거
+관찰 ref, null일 수 있는 `close_basis_anchor`를, `volicord.reconcile_changes`에서는
+찾은 항목별 결과를, `volicord.request_user_judgment`에서는 대기 또는 해결 결과를
+보존합니다. `close_basis_anchor`는 `close_basis_revision`, `scope_revision`,
+`source_run_ref`, null일 수 있는 `evidence_summary_ref`를 담습니다. 이는 Task에 저장된
+닫기 근거를 가리키는 타입이 지정된 좌표이며 `StateRecordRef`나 별도 닫기 근거 기록이
+아닙니다. 해결된 간결한 Judgment 결과는 Judgment ref, 상태, 선택한 option ID와 label,
+resolution outcome을 포함하고 자유 형식 사용자 note는 제외합니다. `detail=full`은 이러한
+다음 단계 필수 handle, ticket, Run·증거 ref, 찾은 항목별 결과, 호스트 고유 선택이 아닌
+추가 필드가 필요한 호출자를 위한 값입니다.
 
 알려진 도구에서 어댑터는 프로젝트 선택, 세션 감시 설정, 생성 Core 래퍼 작성, Core 메서드
 진입보다 먼저 객체 `arguments`를 정확히 광고한 `inputSchema`로 검증합니다. 경계가 정해진
@@ -964,48 +969,53 @@ Volicord 응답 형태와 전송 의미 `isError: false`를 유지합니다.
 자동으로 다시 호출하지 않도록 하기 위함입니다. `structuredContent`에는
 `code=MCP_RESPONSE_BUDGET_EXCEEDED`, 메서드 `tool_name`, `requested_detail`,
 `retryable=false`, `reached_core`, `committed`, null일 수 있는 `effect_kind`,
-`effect_applied`, null일 수 있는 안정적인 `operation_token`,
-null일 수 있는 요청 도구의 간결한 `method_result`,
+`effect_applied`, null일 수 있는 안정적인 `effect_anchor`, null일 수 있는
+`authority_receipt`, null일 수 있는 요청 도구의 간결한 `method_result`,
 `authoritative_refresh_succeeded=true`, `response_projection_omitted=true`,
 `status_read_required=true`, `completion_claim_withheld=true`를 담습니다. `committed`는 새
 Core 커밋을 보고하고, `effect_kind`와 `effect_applied`는 생성된 staging handle이나 replay된
-적용 효과 같은 Core 밖 효과도 보고합니다. 복구 `method_result`는 잘라 내지 않습니다. 특히
-성공한 `volicord.stage_artifact` 복구는 크기가 큰 authority receipt를 생략하더라도 staging
-handle과 만료 시각을 유지합니다. 간결한 메서드 결과 자체도 고정 복구 예산에 들어가지 않으면
-이 필드는 `null`입니다. 효과 사실과 operation token은 남으며, 호출자는 mutation을 다시
-실행하지 말고 status를 읽어야 합니다. Operation token은 첫 커밋 authority event,
-staged handle 또는 결과 state effect에 고정됩니다. 이 분기는 `MCP_UNAVAILABLE`을 주장하지
-않고 권한 상태 새로 고침 실패로 집계되지 않으며, 일부만 남긴 receipt나 바이트 상한을 넘는
-상태 본문을 반환하지 않습니다. 호출자는 새 mutation으로 다시 호출하지 말고 행동하기 전에
-현재 상태를 읽어야 합니다.
+적용 효과 같은 Core 밖 효과도 보고합니다. 크기가 제한된 복구는 새 receipt와 간결한 메서드
+결과, 새 receipt만, 간결한 메서드 결과만, 효과 사실만의 순서로 시도합니다. receipt와 메서드
+결과는 잘라 내지 않습니다. 특히 성공한 `volicord.stage_artifact`의 간결한 결과가 receipt를
+제외한 단계에서 들어가면 staging handle과 만료 시각을 보존합니다. 각 보존 단계에서 들어가지
+않는 필드는 `null`입니다.
+
+`effect_anchor`는 첫 커밋 authority event, staged handle 또는 결과 state effect를
+식별합니다. 이는 효과를 연관 짓는 anchor이지 동작 결과 조회 credential이 아닙니다. 기준
+범위에는 이 값을 받는 조회 메서드가 없고 `volicord.status`는 정확한 메서드 결과를 복원할 수
+없습니다. 이 분기는 `MCP_UNAVAILABLE`을 주장하지 않고 권한 상태 새로 고침 실패로 집계되지
+않으며, 일부만 남긴 receipt나 바이트 상한을 넘는 상태 본문을 반환하지 않습니다. 호출자는 새
+mutation으로 다시 호출하지 말고, 보존된 모든 필드를 사용한 뒤 행동하기 전에 현재 상태를
+읽어야 합니다.
 
 Core가 적용된 결과를 이미 반환한 뒤 후속 어댑터 작업이 정상 래퍼를 만들지 못하면,
 어댑터는 같은 검증된 권한 상태 새로 고침을 먼저 수행하고 또 다른 `isError=false`,
 `retryable=false` 효과 적용 후 분기를 반환합니다. 대기 판단을 만든 뒤 호스트 User Channel
 어댑터가 실패하면 `code=MCP_POST_EFFECT_ADAPTER_FAILED`, 정상 응답 상태 보기를 만드는 중
 실패하면 `code=MCP_RESPONSE_PROJECTION_FAILED`입니다. 두 분기 모두 메서드 `tool_name`,
-`requested_detail`, 효과와 operation token 사실, null일 수 있는 `authority_receipt`, null일
-수 있는 `method_result`, `authoritative_refresh_succeeded=true`,
-`response_projection_omitted`, `status_read_required=true`,
+`requested_detail`, 효과 사실, null일 수 있는 `effect_anchor`, null일 수 있는
+`authority_receipt`, null일 수 있는 `method_result`,
+`authoritative_refresh_succeeded=true`, `response_projection_omitted=true`,
+`status_read_required=true`,
 `completion_claim_withheld=true`를 담습니다. 상태 보기 실패 분기는 표현할 수 있을 때 정확한
-메서드 결과를 보존하고, 호스트 어댑터 실패 분기는 이를 `null`로 둘 수 있습니다. 복구가
-간결한 예산에 들어가면 새 receipt를 반환하고, 그렇지 않으면 receipt를 `null`로 두고
-`response_projection_omitted=true`로 표시합니다. 어느 분기도 mutation 재실행을 허용하지
-않습니다.
+메서드 결과를 보존하고, 호스트 어댑터 실패 분기는 이를 `null`로 둘 수 있습니다. 크기가
+제한된 복구는 각 값이 있을 때 새 receipt와 해당 결과, 새 receipt만, 간결한 메서드 결과만,
+효과 사실만의 순서로 시도합니다. 어느 분기도 mutation 재실행을 허용하지 않습니다.
 
 갱신 호출이 실패하거나, 거절 또는 잘못된 형식의 분기를 반환하거나, receipt가 없거나,
 최신성 비교가 하나라도 실패하면 같은 성공 계열 `isError=false` 복구 경계를 반환합니다.
 크기가 제한된 `structuredContent`에는 `code=MCP_UNAVAILABLE`, 메서드 `tool_name`,
 `retryable=false`, `reached_core`, `committed`, null일 수 있는 `effect_kind`,
-`effect_applied`, null일 수 있는 안정적인 `operation_token`,
+`effect_applied`, null일 수 있는 안정적인 `effect_anchor`,
 null일 수 있는 간결한 `method_result`, `status_read_required=true`,
 `completion_claim_withheld=true`를 담습니다. 간결한 결과는 write ticket, staging handle,
 finding별 reconcile 결과, 선택된 Judgment 결과처럼 다음 단계에 필요한 도구별 데이터를
 보존합니다. 이 결과를 잘라 내지는 않으며, 간결한 결과 자체가 고정 복구 예산에 들어가지
 않으면 필드는 `null`입니다. 이 분기는 원래의 정확한 성공·완료 본문, 오래된 receipt, 비공개
 갱신 오류 본문을 반환하지 않습니다. 호출자는 mutation을 다시 제출하지 말고 행동하기 전에
-현재 상태를 읽어야 합니다. 로컬 세션 진단은 오류 본문을 저장하지 않고 이를 권한 상태 새로
-고침 실패로 집계합니다.
+현재 상태를 읽어야 합니다. `effect_anchor`는 위와 같은 연관 확인 용도로만 쓰이며 status는
+생략된 정확한 메서드 결과를 복원하지 않습니다. 로컬 세션 진단은 오류 본문을 저장하지 않고
+이를 권한 상태 새로 고침 실패로 집계합니다.
 
 Core/도메인 거절 변경 응답은 이 성공 상태 보기 경로에 들어가지 않습니다. 기존 공개 응답
 객체와 `isError=false`를 유지하고, 짧은 호환 텍스트로 클라이언트가
