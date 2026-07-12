@@ -1,5 +1,5 @@
 use serde_json::{json, Value};
-use volicord_types::GuardDecision;
+use volicord_types::{canonical_json_string, AuthorityReceipt, GuardDecision};
 
 use crate::disclosure::{
     cooperative_host_decision_disclosure_json, COOPERATIVE_DECISION_DISCLOSURE_TEXT,
@@ -15,6 +15,9 @@ use super::{
     write_ticket::WriteTicketCoverage,
     GuardCommandError,
 };
+
+const MAX_HOST_AUTHORITY_SYSTEM_MESSAGE_BYTES: usize = 8 * 1024;
+const AUTHORITY_RECEIPT_SYSTEM_MESSAGE_PREFIX: &str = "Volicord fresh AuthorityReceipt: ";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct RenderedGuardOutput {
@@ -162,15 +165,7 @@ pub(super) fn render_host_native_output(
                 .filter(|message| !message.trim().is_empty())
                 .and_then(|message| context_output(event_name, Some(message))),
         },
-        GuardPhase::Stop => match decision {
-            GuardDecision::Deny => Some(json!({
-                "decision": "block",
-                "reason": blocking_reason(phase, &result)
-            })),
-            GuardDecision::Allow | GuardDecision::Warn | GuardDecision::InjectContext => {
-                Some(json!({ "continue": true }))
-            }
-        },
+        GuardPhase::Stop => Some(stop_output(decision, &result)),
     };
     let stdout = match value {
         Some(value) => format!("{}\n", serde_json::to_string(&value).map_err(json_error)?),
@@ -181,6 +176,84 @@ pub(super) fn render_host_native_output(
         stderr: String::new(),
         exit_code: host_success_exit_code(host),
     })
+}
+
+fn stop_output(decision: GuardDecision, result: &Value) -> Value {
+    let mut output = match decision {
+        GuardDecision::Deny => json!({
+            "decision": "block",
+            "reason": blocking_reason(GuardPhase::Stop, result)
+        }),
+        GuardDecision::Allow | GuardDecision::Warn | GuardDecision::InjectContext => {
+            json!({ "continue": true })
+        }
+    };
+    if let Some(system_message) = stop_authority_system_message(result) {
+        output
+            .as_object_mut()
+            .expect("Stop host output must be a JSON object")
+            .insert("systemMessage".to_owned(), Value::String(system_message));
+    }
+    output
+}
+
+fn stop_authority_system_message(result: &Value) -> Option<String> {
+    let active_task = result
+        .pointer("/close_status/active_task")
+        .and_then(Value::as_str)?;
+    let receipt = result
+        .pointer("/close_status/authority_receipt")
+        .cloned()
+        .and_then(|value| serde_json::from_value::<AuthorityReceipt>(value).ok());
+
+    if let Some(receipt) = receipt.as_ref() {
+        if let Ok(canonical_receipt) = canonical_json_string(receipt) {
+            let message = format!("{AUTHORITY_RECEIPT_SYSTEM_MESSAGE_PREFIX}{canonical_receipt}");
+            if message.len() <= MAX_HOST_AUTHORITY_SYSTEM_MESSAGE_BYTES {
+                return Some(message);
+            }
+        }
+        return Some(stop_authority_fallback_message(
+            "Volicord refreshed AuthorityReceipt exceeds the host UI byte budget; no partial receipt JSON is shown.",
+            receipt.project_id.as_str(),
+            receipt.task_ref.record_id.as_str(),
+            Some(receipt.state_version),
+        ));
+    }
+
+    let project_id = result
+        .pointer("/context/project_id")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    let state_version = result
+        .pointer("/context/state_version")
+        .and_then(Value::as_u64);
+    Some(stop_authority_fallback_message(
+        "Volicord could not display a fresh AuthorityReceipt from this Stop status refresh.",
+        project_id,
+        active_task,
+        state_version,
+    ))
+}
+
+fn stop_authority_fallback_message(
+    notice: &str,
+    project_id: &str,
+    task_id: &str,
+    state_version: Option<u64>,
+) -> String {
+    let state_version = state_version
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "unknown".to_owned());
+    let message = format!(
+        "{notice} project_id={project_id}; task_id={task_id}; state_version={state_version}. Inspect current authority with `volicord status --task {task_id} --json`."
+    );
+    if message.len() <= MAX_HOST_AUTHORITY_SYSTEM_MESSAGE_BYTES {
+        return message;
+    }
+    format!(
+        "{notice} project_id=<omitted: host UI byte budget>; task_id=<omitted: host UI byte budget>; state_version={state_version}. Inspect current authority with `volicord status --task active --json`."
+    )
 }
 
 fn host_success_exit_code(_host: HostOutputMode) -> i32 {
@@ -451,4 +524,149 @@ pub(super) fn reasons_json(reasons: &[GuardReason]) -> Vec<Value> {
             })
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn authority_receipt(blocker_message: Option<String>) -> Value {
+        let close_blockers = blocker_message
+            .map(|message| {
+                vec![json!({
+                    "category": "task",
+                    "code": "test_blocker",
+                    "message": message,
+                    "related_refs": [],
+                    "next_actions": []
+                })]
+            })
+            .unwrap_or_default();
+        json!({
+            "project_id": "project_render",
+            "state_version": 7,
+            "task_ref": {
+                "record_kind": "task",
+                "record_id": "task_render",
+                "project_id": "project_render",
+                "task_id": "task_render",
+                "produced_at_state_version": 7
+            },
+            "change_unit_ref": null,
+            "scope_revision": 1,
+            "latest_run_ref": null,
+            "product_file_write_observed": false,
+            "evidence_gate": null,
+            "close_state": "blocked",
+            "close_blockers": close_blockers,
+            "next_actor": "agent",
+            "next_action": null
+        })
+    }
+
+    fn stop_result(receipt: Option<Value>) -> Value {
+        json!({
+            "reasons": [{
+                "code": "close_readiness_blocked",
+                "message": "Close readiness has blockers for the active task."
+            }],
+            "close_status": {
+                "active_task": "task_render",
+                "authority_receipt": receipt
+            },
+            "context": {
+                "project_id": "project_render",
+                "state_version": 7
+            }
+        })
+    }
+
+    fn rendered_stop_value(host: HostOutputMode, decision: GuardDecision, result: Value) -> Value {
+        let rendered = render_host_native_output(host, GuardPhase::Stop, decision, result)
+            .expect("Stop host output should render");
+        serde_json::from_str(rendered.stdout.trim()).expect("Stop host output should be JSON")
+    }
+
+    #[test]
+    fn stop_output_renders_complete_receipt_for_allow_and_deny() {
+        let receipt = authority_receipt(None);
+        for host in [HostOutputMode::Codex, HostOutputMode::ClaudeCode] {
+            for decision in [GuardDecision::Allow, GuardDecision::Deny] {
+                let value = rendered_stop_value(host, decision, stop_result(Some(receipt.clone())));
+                match decision {
+                    GuardDecision::Allow => assert_eq!(value["continue"], true),
+                    GuardDecision::Deny => assert_eq!(value["decision"], "block"),
+                    GuardDecision::Warn | GuardDecision::InjectContext => unreachable!(),
+                }
+                let message = value["systemMessage"]
+                    .as_str()
+                    .expect("fresh receipt should use the host system message");
+                let rendered_receipt = message
+                    .strip_prefix(AUTHORITY_RECEIPT_SYSTEM_MESSAGE_PREFIX)
+                    .expect("system message should identify the fresh receipt");
+                assert_eq!(
+                    serde_json::from_str::<Value>(rendered_receipt)
+                        .expect("complete receipt should remain valid JSON"),
+                    receipt
+                );
+                assert!(message.len() <= MAX_HOST_AUTHORITY_SYSTEM_MESSAGE_BYTES);
+            }
+        }
+    }
+
+    #[test]
+    fn stop_output_uses_bounded_fallback_for_oversized_receipt() {
+        let receipt = authority_receipt(Some(
+            "oversized_receipt_marker".repeat(MAX_HOST_AUTHORITY_SYSTEM_MESSAGE_BYTES),
+        ));
+        let value = rendered_stop_value(
+            HostOutputMode::Codex,
+            GuardDecision::Deny,
+            stop_result(Some(receipt)),
+        );
+        let message = value["systemMessage"]
+            .as_str()
+            .expect("oversized receipt should use a status fallback");
+
+        assert!(message.contains("no partial receipt JSON is shown"));
+        assert!(message.contains("project_id=project_render"));
+        assert!(message.contains("task_id=task_render"));
+        assert!(message.contains("state_version=7"));
+        assert!(message.contains("volicord status --task task_render --json"));
+        assert!(!message.contains("oversized_receipt_marker"));
+        assert!(!message.contains("\"close_blockers\""));
+        assert!(message.len() <= MAX_HOST_AUTHORITY_SYSTEM_MESSAGE_BYTES);
+    }
+
+    #[test]
+    fn stop_output_uses_status_fallback_when_fresh_receipt_is_unavailable() {
+        let result = json!({
+            "reasons": [{
+                "code": "authoritative_refresh_failed",
+                "message": "Volicord could not confirm current authoritative status."
+            }],
+            "close_status": {
+                "active_task": "task_render",
+                "authoritative_refresh": {
+                    "response_kind": "rejected",
+                    "error_codes": ["MCP_UNAVAILABLE"]
+                }
+            },
+            "context": {
+                "project_id": "project_render",
+                "state_version": 7
+            }
+        });
+        let value = rendered_stop_value(HostOutputMode::ClaudeCode, GuardDecision::Deny, result);
+        let message = value["systemMessage"]
+            .as_str()
+            .expect("refresh failure should use a status fallback");
+
+        assert!(message.contains("could not display a fresh AuthorityReceipt"));
+        assert!(message.contains("project_id=project_render"));
+        assert!(message.contains("task_id=task_render"));
+        assert!(message.contains("state_version=7"));
+        assert!(message.contains("volicord status --task task_render --json"));
+        assert!(message.len() <= MAX_HOST_AUTHORITY_SYSTEM_MESSAGE_BYTES);
+    }
 }

@@ -1040,6 +1040,22 @@ Volicord는 관찰 메타데이터를 기록합니다. 필요한 훅 설정이 �
   사용자 소유 판단이 대기 중이거나, 미해결 미기록 변경이 남아 있으면 `deny`를 반환하고,
   그렇지 않으면 `allow`를 반환합니다.
 
+생성된 Codex 및 Claude Code Stop 훅에서 탐지 프로필이 `active`이면, 호스트 고유 Stop
+JSON은 검증한 최신 `AuthorityReceipt`를 최상위 `systemMessage` 사용자 인터페이스
+표면에도 넣습니다. 전체 메시지가 고정 8 KiB 바이트 예산 안에 들어오면, 공백이 없고
+결정적인 기준 JSON으로 receipt 전체를 담습니다. 렌더러는 receipt JSON 객체를 자르거나
+일부분만 출력하지 않습니다. 전체 receipt가 예산에 맞지 않으면 프로젝트, Task,
+`state_version` 좌표와 정확한 `volicord status --task TASK_ID --json` 대체 확인 명령만
+표시합니다. receipt가 없는 갱신 실패 거절도 같은 제한된 status 대체 확인 경로를
+표시합니다.
+
+`systemMessage`는 별도의 호스트 UI 경고 표면입니다. 모델 맥락이 아니며, 모델의 최종
+산문에 텍스트를 주입하지 않고, 여러 호스트에 걸친 최종 답변 계약을 만들지도 않습니다.
+기록 프로필, `generic` 또는 그 밖의 사용자 관리·미지원 호스트, 비활성·저하·누락 Stop
+훅에는 이 지원되는 Stop 훅 receipt 표면이 없습니다. 그런 경로에서는
+`volicord status --task active --json`으로 기준 receipt를 직접 확인하거나 `active`를
+표시된 Task ID로 바꿉니다.
+
 ## 변경 조정 명령
 
 `volicord changes reconcile [--repo PATH] [--task active|ID] [--dry-run]

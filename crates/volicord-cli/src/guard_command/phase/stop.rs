@@ -5,8 +5,9 @@ use volicord_core::{CoreService, InvocationContext};
 use volicord_store::bootstrap::ProjectRecord;
 use volicord_types::{
     ActorSource, AuthorityReceipt, EffectKind, ErrorCode, GuardDecision, OperationCategory,
-    ProjectId, RequestId, ResponseKind, StatusInclude, StatusRequest, StatusResult, TaskId,
-    ToolEnvelope, VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
+    ProjectId, RequestId, ResponseKind, StateRecordKind, StateRecordRef, StatusInclude,
+    StatusRequest, StatusResult, TaskId, ToolEnvelope,
+    VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
 };
 
 use super::GuardPhaseResult;
@@ -203,10 +204,6 @@ fn authority_receipt_matches_fresh_status(
     let Some(active_task_ref) = active_task.task_ref.as_ref() else {
         return false;
     };
-    let receipt_change_unit_id = receipt
-        .change_unit_ref
-        .as_ref()
-        .map(|record| record.record_id.as_str());
     receipt.project_id.as_str() == project.project_id
         && receipt.task_ref.project_id.as_str() == project.project_id
         && receipt.task_ref.record_id.as_str() == task_id
@@ -215,14 +212,22 @@ fn authority_receipt_matches_fresh_status(
         && receipt.state_version == state_version
         && summary.state_version == state_version
         && summary.active_task_id.as_deref() == Some(task_id)
-        && summary.active_change_unit_id.as_deref() == receipt_change_unit_id
+        && summary.active_change_unit_id.as_deref()
+            == receipt
+                .change_unit_ref
+                .as_ref()
+                .map(|record| record.record_id.as_str())
         && summary.pending_user_judgment_count == result.pending_user_judgments.len()
         && summary.active_blocker_count == result.blocker_refs.len()
         && active_task.project_id.as_str() == project.project_id
         && active_task.state_version == state_version
         && active_task_ref == &receipt.task_ref
         && active_task.scope_revision == receipt.scope_revision
-        && active_task.active_change_unit_ref == receipt.change_unit_ref
+        && change_unit_receipt_matches_current_status(
+            active_task.active_change_unit_ref.as_ref(),
+            receipt.change_unit_ref.as_ref(),
+            state_version,
+        )
         && result.close_state == Some(receipt.close_state)
         && result.close_blockers.as_ref() == Some(&receipt.close_blockers)
         && result.evidence_gate.as_ref().and_then(|gate| gate.as_ref())
@@ -231,6 +236,25 @@ fn authority_receipt_matches_fresh_status(
             .next_action
             .as_ref()
             .is_none_or(|action| result.next_actions.contains(action))
+}
+
+fn change_unit_receipt_matches_current_status(
+    active_change_unit_ref: Option<&StateRecordRef>,
+    receipt_change_unit_ref: Option<&StateRecordRef>,
+    state_version: u64,
+) -> bool {
+    match (active_change_unit_ref, receipt_change_unit_ref) {
+        (None, None) => true,
+        (Some(active), Some(receipt)) => {
+            receipt.record_kind == StateRecordKind::ChangeUnit
+                && active.record_kind == receipt.record_kind
+                && active.record_id == receipt.record_id
+                && active.project_id == receipt.project_id
+                && active.task_id == receipt.task_id
+                && receipt.produced_at_state_version.as_ref() == Some(&state_version)
+        }
+        (None, Some(_)) | (Some(_), None) => false,
+    }
 }
 
 fn recognized_response_kind(response: &Value) -> Option<ResponseKind> {
@@ -294,5 +318,47 @@ mod tests {
             recognized_response_kind(&incomplete),
             Some(ResponseKind::Result)
         );
+    }
+
+    #[test]
+    fn current_change_unit_receipt_accepts_historical_active_ref_only_by_identity() {
+        let active: StateRecordRef = serde_json::from_value(json!({
+            "record_kind": "change_unit",
+            "record_id": "cu_ready",
+            "project_id": "project_ready",
+            "task_id": "task_ready",
+            "produced_at_state_version": 2
+        }))
+        .expect("active Change Unit ref fixture");
+        let receipt: StateRecordRef = serde_json::from_value(json!({
+            "record_kind": "change_unit",
+            "record_id": "cu_ready",
+            "project_id": "project_ready",
+            "task_id": "task_ready",
+            "produced_at_state_version": 3
+        }))
+        .expect("receipt Change Unit ref fixture");
+
+        assert!(change_unit_receipt_matches_current_status(
+            Some(&active),
+            Some(&receipt),
+            3,
+        ));
+
+        let mut wrong_identity = receipt.clone();
+        wrong_identity.record_id = volicord_types::RecordId::new("cu_other");
+        assert!(!change_unit_receipt_matches_current_status(
+            Some(&active),
+            Some(&wrong_identity),
+            3,
+        ));
+
+        let mut stale_receipt = receipt;
+        stale_receipt.produced_at_state_version = Some(2).into();
+        assert!(!change_unit_receipt_matches_current_status(
+            Some(&active),
+            Some(&stale_receipt),
+            3,
+        ));
     }
 }

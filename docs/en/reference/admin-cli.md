@@ -1168,6 +1168,26 @@ Lifecycle behavior:
   pending, or unresolved unrecorded changes remain; otherwise it returns
   `allow`.
 
+For generated Codex and Claude Code Stop hooks in an `active` Detective
+profile, host-native Stop JSON also places the validated fresh
+`AuthorityReceipt` in the top-level `systemMessage` user-interface surface.
+When the complete message fits the fixed 8 KiB byte budget, it contains the
+whole receipt as deterministic whitespace-free canonical JSON. The renderer
+never truncates or emits a partial receipt JSON object. If the complete receipt
+does not fit, the message instead reports the project, Task, and `state_version`
+coordinates and gives the exact `volicord status --task TASK_ID --json`
+fallback. A refresh-failure denial with no receipt gives the same bounded status
+fallback.
+
+`systemMessage` is a separate host UI warning surface. It is not model context,
+does not inject text into the model's final prose, and does not establish a
+cross-host final-answer contract. Record profiles, `generic` or other
+user-managed and unsupported hosts, and inactive, degraded, or missing Stop
+hooks do not have this supported Stop-hook receipt surface. On those paths,
+inspect the canonical receipt directly with
+`volicord status --task active --json`, or replace `active` with the displayed
+Task ID.
+
 ## Change reconciliation command
 
 `volicord changes reconcile [--repo PATH] [--task active|ID] [--dry-run]

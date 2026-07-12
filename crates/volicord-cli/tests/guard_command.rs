@@ -2356,7 +2356,7 @@ fn guard_stop_denies_when_authoritative_status_refresh_is_rejected() -> Result<(
 #[test]
 fn guard_stop_host_output_blocks_and_allows_continue() -> Result<(), Box<dyn Error>> {
     let blocked = GuardCliFixture::new("guard-host-stop-block")?;
-    blocked.create_active_task()?;
+    let blocked_task_id = blocked.create_active_task()?;
     let blocked_event = json!({
         "event_id": "guard_host_stop_block",
         "session_id": "guard_host_stop_block_session",
@@ -2384,6 +2384,20 @@ fn guard_stop_host_output_blocks_and_allows_continue() -> Result<(), Box<dyn Err
         .as_str()
         .expect("stop block reason should be a string")
         .contains("close_readiness_blocked"));
+    let receipt_message = blocked_value["systemMessage"]
+        .as_str()
+        .expect("active Stop output should display the fresh authority receipt");
+    let receipt_json = receipt_message
+        .strip_prefix("Volicord fresh AuthorityReceipt: ")
+        .expect("fresh authority receipt should use the dedicated UI prefix");
+    let receipt: Value = serde_json::from_str(receipt_json)?;
+    assert_eq!(receipt["project_id"], blocked.project_id());
+    assert_eq!(receipt["task_ref"]["record_id"], blocked_task_id);
+    assert_eq!(
+        receipt["task_ref"]["produced_at_state_version"],
+        receipt["state_version"]
+    );
+    assert!(receipt_message.len() <= 8 * 1024);
 
     let allowed = GuardCliFixture::new("guard-host-stop-allow")?;
     let allowed_event = json!({
@@ -2407,8 +2421,60 @@ fn guard_stop_host_output_blocks_and_allows_continue() -> Result<(), Box<dyn Err
         &allowed_event,
     )?;
     assert_success(&allowed_output);
-    assert_eq!(json_stdout(&allowed_output)?["continue"], true);
+    let allowed_value = json_stdout(&allowed_output)?;
+    assert_eq!(allowed_value["continue"], true);
+    assert!(allowed_value.get("systemMessage").is_none());
     assert!(stderr(&allowed_output).is_empty());
+    Ok(())
+}
+
+#[test]
+fn guard_stop_host_output_reports_status_fallback_when_refresh_fails() -> Result<(), Box<dyn Error>>
+{
+    const CORRUPT_OWNER_VALUE: &str =
+        "{\"private_refresh_body\":\"must-not-appear-in-host-stop-output\"";
+    let fixture = GuardCliFixture::new("guard-host-stop-refresh-fallback")?;
+    let task_id = fixture.create_active_task()?;
+    fixture.corrupt_current_close_basis(&task_id, CORRUPT_OWNER_VALUE)?;
+    let event = json!({
+        "event_id": "guard_host_stop_refresh_fallback",
+        "session_id": "guard_host_stop_refresh_fallback_session",
+        "connection_id": fixture.connection_id(),
+        "host_kind": "claude_code",
+        "message": "All done."
+    });
+
+    let output = run_guard(
+        fixture.runtime_home(),
+        fixture.repo_root(),
+        [
+            "_hook",
+            "stop",
+            "--repo",
+            fixture.repo_arg(),
+            "--host-output",
+            "claude-code",
+        ],
+        &event,
+    )?;
+    assert_success(&output);
+    let value = json_stdout(&output)?;
+    assert_eq!(value["decision"], "block");
+    assert!(value["reason"]
+        .as_str()
+        .expect("refresh failure should preserve the Stop block reason")
+        .contains("authoritative_refresh_failed"));
+    let message = value["systemMessage"]
+        .as_str()
+        .expect("refresh failure should display the status fallback");
+    assert!(message.contains(&format!("project_id={}", fixture.project_id())));
+    assert!(message.contains(&format!("task_id={task_id}")));
+    assert!(message.contains("state_version="));
+    assert!(message.contains(&format!("volicord status --task {task_id} --json")));
+    assert!(!message.contains("AuthorityReceipt: {"));
+    assert!(!message.contains(CORRUPT_OWNER_VALUE));
+    assert!(!message.contains("private_refresh_body"));
+    assert!(message.len() <= 8 * 1024);
     Ok(())
 }
 
