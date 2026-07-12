@@ -1,4 +1,4 @@
-use std::{ffi::OsString, fmt, fs, path::Path};
+use std::{ffi::OsString, fmt, fs, path::Path, time::Instant};
 
 use chrono::{DateTime, SecondsFormat, Utc};
 use serde_json::{json, Map, Value};
@@ -6,6 +6,11 @@ use sha2::{Digest, Sha256};
 use volicord_core::CorePipelineError;
 use volicord_store::{
     bootstrap::{project_record_for_execution, ProjectRecord},
+    diagnostics::{
+        record_diagnostic_event, start_diagnostic_session, DiagnosticEvent, DiagnosticEventKind,
+        DiagnosticHostKind, DiagnosticOutcome, DiagnosticSessionStart, DiagnosticTransport,
+        DiagnosticUserChannelKind,
+    },
     guards::{
         agent_session, guard_event, insert_agent_session, insert_guard_event,
         observe_guard_installation, AgentSessionInsert, GuardEventInsert,
@@ -136,6 +141,7 @@ where
             )))
         }
     };
+    let diagnostic_started = Instant::now();
     let options = parse_guard_options(&args[1..])?;
     let runtime_home = resolve_runtime_home(env_var, current_dir)?;
     let input = read_guard_input(options.event_file.as_deref())?;
@@ -176,6 +182,15 @@ where
     if let Some(expected_write) = phase_result.expected_write {
         persist_expected_write(&runtime_home, &project, expected_write)?;
     }
+    record_guard_diagnostic_best_effort(
+        &runtime_home,
+        &project,
+        &envelope,
+        phase,
+        diagnostic_started,
+        input.raw_text.len() as u64,
+        &phase_result.result,
+    );
     let rendered = render_guard_output(
         phase,
         phase_result.decision,
@@ -188,6 +203,101 @@ where
         stderr: rendered.stderr,
         exit_code: rendered.exit_code,
     })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn record_guard_diagnostic_best_effort(
+    runtime_home: &Path,
+    project: &ProjectRecord,
+    envelope: &GuardEnvelope,
+    phase: GuardPhase,
+    started: Instant,
+    request_bytes: u64,
+    result: &Value,
+) {
+    let Some(session_id) = envelope.session_id.as_deref() else {
+        return;
+    };
+    let authoritative_refresh_failure = result
+        .get("reasons")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .any(|reason| {
+            reason.get("code").and_then(Value::as_str) == Some("authoritative_refresh_failed")
+        });
+    let prompt_capture_recorded = phase == GuardPhase::PromptCapture
+        && result
+            .get("recognized_judgment_command")
+            .is_some_and(|value| !value.is_null());
+    let prompt_capture_replayed = prompt_capture_recorded
+        && result
+            .pointer("/recognized_judgment_command/replayed")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+    let product_file_write_count = (phase == GuardPhase::PostTool
+        && result
+            .pointer("/tool/changed_paths")
+            .and_then(Value::as_array)
+            .is_some_and(|paths| {
+                paths
+                    .iter()
+                    .any(|path| path.get("inside_repo").and_then(Value::as_bool) == Some(true))
+            })) as u64;
+    let core_reached = prompt_capture_recorded
+        || (phase == GuardPhase::Stop
+            && result
+                .pointer("/close_status/active_task")
+                .is_some_and(|value| !value.is_null()));
+    let core_committed = prompt_capture_recorded && !prompt_capture_replayed;
+    let response_bytes = serde_json::to_vec(result)
+        .map(|bytes| bytes.len() as u64)
+        .unwrap_or(0);
+    let elapsed = started.elapsed().as_micros().min(u128::from(u64::MAX)) as u64;
+    let outcome = if authoritative_refresh_failure {
+        DiagnosticOutcome::Unavailable
+    } else if result.get("allowed").and_then(Value::as_bool) == Some(false) {
+        DiagnosticOutcome::Rejected
+    } else {
+        DiagnosticOutcome::Success
+    };
+    let build = volicord_mcp::build_info();
+    let host_kind = Some(DiagnosticHostKind::from_connection_host_kind(
+        &envelope.host_kind,
+    ));
+    let _ = start_diagnostic_session(
+        runtime_home,
+        DiagnosticSessionStart {
+            session_id,
+            connection_id: Some(&envelope.connection_id),
+            project_id: Some(&project.project_id),
+            transport: DiagnosticTransport::GuardHook,
+            host_kind,
+            package_version: build.package_version,
+            build_id: &build.build_id,
+        },
+    );
+    let _ = record_diagnostic_event(
+        runtime_home,
+        DiagnosticEvent {
+            session_id,
+            event_kind: DiagnosticEventKind::GuardHook,
+            tool_name: None,
+            latency_micros: elapsed,
+            request_bytes,
+            response_bytes,
+            validation_failure: false,
+            core_reached,
+            core_committed,
+            replayed: prompt_capture_replayed,
+            user_channel_kind: prompt_capture_recorded
+                .then_some(DiagnosticUserChannelKind::PromptCapture),
+            fallback_kind: None,
+            product_file_write_count,
+            authoritative_refresh_failure,
+            outcome,
+        },
+    );
 }
 
 fn attach_guard_disclosure(result: &mut Value) {

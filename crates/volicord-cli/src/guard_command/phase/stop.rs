@@ -4,9 +4,9 @@ use serde_json::{json, Value};
 use volicord_core::{CoreService, InvocationContext};
 use volicord_store::bootstrap::ProjectRecord;
 use volicord_types::{
-    ActorSource, EffectKind, ErrorCode, GuardDecision, OperationCategory, ProjectId, RequestId,
-    ResponseKind, StatusInclude, StatusRequest, StatusResult, TaskId, ToolEnvelope,
-    VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
+    ActorSource, AuthorityReceipt, EffectKind, ErrorCode, GuardDecision, OperationCategory,
+    ProjectId, RequestId, ResponseKind, StatusInclude, StatusRequest, StatusResult, TaskId,
+    ToolEnvelope, VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
 };
 
 use super::GuardPhaseResult;
@@ -100,7 +100,9 @@ fn stop_decision(
         });
     }
     let response_kind = recognized_response_kind(&response.response_value);
-    let Some(status_result) = authoritative_status_result(&response.response_value) else {
+    let Some(status_result) =
+        authoritative_status_result(&response.response_value, project, task_id, summary)
+    else {
         reasons.insert(
             0,
             GuardReason {
@@ -123,6 +125,10 @@ fn stop_decision(
             }),
         ));
     };
+    let authority_receipt = status_result
+        .authority_receipt
+        .clone()
+        .expect("validated authoritative status requires a receipt");
     let close_blockers = status_result
         .close_blockers
         .expect("authoritative status requires close blockers");
@@ -148,12 +154,27 @@ fn stop_decision(
             "active_task": task_id,
             "status_summary": status_result.status_summary,
             "close_state": status_result.close_state,
-            "close_blockers": close_blockers
+            "close_blockers": close_blockers,
+            "authority_receipt": authority_receipt
         }),
     ))
 }
 
-fn authoritative_status_result(response: &Value) -> Option<StatusResult> {
+fn authoritative_status_result(
+    response: &Value,
+    project: &ProjectRecord,
+    task_id: &str,
+    summary: &GuardStateSummary,
+) -> Option<StatusResult> {
+    let result = parse_authoritative_status_result(response)?;
+    let receipt = result.authority_receipt.as_ref()?;
+    if !authority_receipt_matches_fresh_status(receipt, &result, project, task_id, summary) {
+        return None;
+    }
+    Some(result)
+}
+
+fn parse_authoritative_status_result(response: &Value) -> Option<StatusResult> {
     let result = serde_json::from_value::<StatusResult>(response.clone()).ok()?;
     if result.base.response_kind != ResponseKind::Result
         || result.base.effect_kind != EffectKind::ReadOnly
@@ -164,6 +185,52 @@ fn authoritative_status_result(response: &Value) -> Option<StatusResult> {
         return None;
     }
     Some(result)
+}
+
+fn authority_receipt_matches_fresh_status(
+    receipt: &AuthorityReceipt,
+    result: &StatusResult,
+    project: &ProjectRecord,
+    task_id: &str,
+    summary: &GuardStateSummary,
+) -> bool {
+    let Some(state_version) = result.base.state_version else {
+        return false;
+    };
+    let Some(active_task) = result.active_task.as_ref() else {
+        return false;
+    };
+    let Some(active_task_ref) = active_task.task_ref.as_ref() else {
+        return false;
+    };
+    let receipt_change_unit_id = receipt
+        .change_unit_ref
+        .as_ref()
+        .map(|record| record.record_id.as_str());
+    receipt.project_id.as_str() == project.project_id
+        && receipt.task_ref.project_id.as_str() == project.project_id
+        && receipt.task_ref.record_id.as_str() == task_id
+        && receipt.task_ref.task_id.as_ref().map(TaskId::as_str) == Some(task_id)
+        && receipt.task_ref.produced_at_state_version.as_ref() == Some(&state_version)
+        && receipt.state_version == state_version
+        && summary.state_version == state_version
+        && summary.active_task_id.as_deref() == Some(task_id)
+        && summary.active_change_unit_id.as_deref() == receipt_change_unit_id
+        && summary.pending_user_judgment_count == result.pending_user_judgments.len()
+        && summary.active_blocker_count == result.blocker_refs.len()
+        && active_task.project_id.as_str() == project.project_id
+        && active_task.state_version == state_version
+        && active_task_ref == &receipt.task_ref
+        && active_task.scope_revision == receipt.scope_revision
+        && active_task.active_change_unit_ref == receipt.change_unit_ref
+        && result.close_state == Some(receipt.close_state)
+        && result.close_blockers.as_ref() == Some(&receipt.close_blockers)
+        && result.evidence_gate.as_ref().and_then(|gate| gate.as_ref())
+            == receipt.evidence_gate.as_ref()
+        && receipt
+            .next_action
+            .as_ref()
+            .is_none_or(|action| result.next_actions.contains(action))
 }
 
 fn recognized_response_kind(response: &Value) -> Option<ResponseKind> {
@@ -211,7 +278,7 @@ mod tests {
             ]
         });
 
-        assert!(authoritative_status_result(&malformed).is_none());
+        assert!(parse_authoritative_status_result(&malformed).is_none());
         assert_eq!(recognized_response_kind(&malformed), None);
         assert_eq!(public_error_codes(&malformed), ["MCP_UNAVAILABLE"]);
     }
@@ -222,7 +289,7 @@ mod tests {
             "base": {"response_kind": "result"}
         });
 
-        assert!(authoritative_status_result(&incomplete).is_none());
+        assert!(parse_authoritative_status_result(&incomplete).is_none());
         assert_eq!(
             recognized_response_kind(&incomplete),
             Some(ResponseKind::Result)

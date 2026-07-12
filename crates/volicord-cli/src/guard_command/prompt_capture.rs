@@ -273,7 +273,8 @@ pub(super) fn handle_prompt_capture(
                             "selected_option_id": recorded.selected_option_id,
                             "machine_action": recorded.machine_action,
                             "resolution_outcome": recorded.resolution_outcome,
-                            "note_text_omitted": recorded.note_text_omitted
+                            "note_text_omitted": recorded.note_text_omitted,
+                            "replayed": recorded.replayed
                         },
                         "model_context": recorded.model_context,
                         "enforcement_level": "cooperative_detective"
@@ -386,6 +387,7 @@ fn record_prompt_judgment_command(
         machine_action: machine_action_value(selected_option.machine_action).to_owned(),
         resolution_outcome: resolution_outcome.clone(),
         note_text_omitted: matches!(command, PromptJudgmentCommand::Note { .. }),
+        replayed: response.replayed,
         model_context: format!(
             "Volicord recorded the user-owned judgment for {chat_id} as {resolution_outcome} through the local User Channel. Treat this as recorded context, not as an agent-authored judgment."
         ),

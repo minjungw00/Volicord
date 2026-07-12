@@ -60,6 +60,7 @@ pub(super) struct RecordedPromptJudgment {
     pub(super) machine_action: String,
     pub(super) resolution_outcome: String,
     pub(super) note_text_omitted: bool,
+    pub(super) replayed: bool,
     pub(super) model_context: String,
 }
 

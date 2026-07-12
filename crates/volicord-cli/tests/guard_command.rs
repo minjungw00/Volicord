@@ -9,6 +9,7 @@ use support::{
     assertions::{assert_success, json_stdout, stderr, stdout},
     guard_fixture::*,
 };
+use volicord_store::diagnostics::{diagnostics_db_path, read_diagnostic_session};
 use volicord_store::guards::{
     expected_write, guard_event, guard_health_record, guard_installation,
     list_pending_expected_writes, list_unresolved_unrecorded_changes, prompt_capture,
@@ -876,6 +877,9 @@ fn guard_post_tool_records_unrecorded_product_file_changes() -> Result<(), Box<d
     .expect("post-tool host-hook event should be stored");
     assert_eq!(stored.decision, "warn");
     assert_eq!(stored.event_kind, "post_tool");
+    let diagnostics = read_diagnostic_session(fixture.runtime_home(), Some("guard_session_post"))?
+        .expect("post-tool diagnostics");
+    assert_eq!(diagnostics.totals.product_file_write_count, 1);
     Ok(())
 }
 
@@ -1615,6 +1619,37 @@ fn guard_prompt_capture_records_answer_command() -> Result<(), Box<dyn Error>> {
         "active"
     );
     fixture.assert_recorded_prompt_judgment(&judgment_id, "accepted", "accept")?;
+    let diagnostics = read_diagnostic_session(fixture.runtime_home(), Some("guard_session_chat"))?
+        .expect("prompt hook diagnostics");
+    assert_eq!(diagnostics.user_channel_counts["prompt_capture"], 1);
+    assert_eq!(diagnostics.totals.core_reached_count, 1);
+    assert_eq!(diagnostics.totals.core_committed_count, 1);
+    assert_eq!(diagnostics.totals.replayed_count, 0);
+
+    let replay_event = prompt_event(
+        &fixture,
+        "guard_prompt_answer_replay",
+        "guard_prompt_capture_answer_replay",
+        &message,
+    );
+    let replay_output = run_guard(
+        fixture.runtime_home(),
+        fixture.repo_root(),
+        ["_hook", "prompt-capture", "--repo", fixture.repo_arg()],
+        &replay_event,
+    )?;
+    assert_success(&replay_output);
+    let replay_value = json_stdout(&replay_output)?;
+    assert_eq!(
+        replay_value["result"]["recognized_judgment_command"]["replayed"],
+        true
+    );
+    let diagnostics = read_diagnostic_session(fixture.runtime_home(), Some("guard_session_chat"))?
+        .expect("prompt hook replay diagnostics");
+    assert_eq!(diagnostics.user_channel_counts["prompt_capture"], 2);
+    assert_eq!(diagnostics.totals.core_reached_count, 2);
+    assert_eq!(diagnostics.totals.core_committed_count, 1);
+    assert_eq!(diagnostics.totals.replayed_count, 1);
     Ok(())
 }
 
@@ -2246,6 +2281,14 @@ fn guard_stop_denies_false_completion_when_close_readiness_blocks() -> Result<()
         .expect("close blockers should be an array")
         .iter()
         .any(|blocker| blocker["code"] == "missing_current_close_basis"));
+    assert_eq!(
+        value["result"]["close_status"]["authority_receipt"]["state_version"],
+        value["result"]["context"]["state_version"]
+    );
+    assert_eq!(
+        value["result"]["close_status"]["authority_receipt"]["task_ref"]["record_id"],
+        value["result"]["close_status"]["active_task"]
+    );
     Ok(())
 }
 
@@ -2296,6 +2339,17 @@ fn guard_stop_denies_when_authoritative_status_refresh_is_rejected() -> Result<(
     assert!(!rendered.contains("Core storage is unavailable"));
     assert!(!rendered.contains("owner_state_error"));
     assert_eq!(fixture.core_effect_counts()?, before);
+    let diagnostics = read_diagnostic_session(
+        fixture.runtime_home(),
+        Some("guard_session_stop_rejected_refresh"),
+    )?
+    .expect("stop-hook diagnostics");
+    assert_eq!(diagnostics.totals.authoritative_refresh_failures, 1);
+    assert_eq!(diagnostics.totals.core_reached_count, 1);
+    let diagnostics_bytes = fs::read(diagnostics_db_path(fixture.runtime_home()))?;
+    let diagnostics_text = String::from_utf8_lossy(&diagnostics_bytes);
+    assert!(!diagnostics_text.contains(CORRUPT_OWNER_VALUE));
+    assert!(!diagnostics_text.contains("private_refresh_body"));
     Ok(())
 }
 
@@ -2360,7 +2414,8 @@ fn guard_stop_host_output_blocks_and_allows_continue() -> Result<(), Box<dyn Err
 
 #[cfg(unix)]
 #[test]
-fn guarded_init_hook_write_prompt_lifecycle_closes() -> Result<(), Box<dyn Error>> {
+fn guarded_init_hook_write_prompt_lifecycle_fails_closed_without_producer_evidence(
+) -> Result<(), Box<dyn Error>> {
     let fixture = GuardedLifecycleFixture::init("guarded-lifecycle-close", "detective")?;
     assert_guard_init_state_is_installed_or_degraded(&fixture.init_output);
     fixture.mark_required_hooks_supported()?;
@@ -2431,33 +2486,22 @@ fn guarded_init_hook_write_prompt_lifecycle_closes() -> Result<(), Box<dyn Error
     )?;
 
     let check = fixture.check_close(&task_id)?;
+    assert_eq!(check.response_value["close_state"], "blocked");
+    assert_close_blocker(&check.response_value, "evidence_agent_report_only");
     assert_eq!(
-        check.response_value["close_state"], "ready",
-        "{}",
-        check.response_value
-    );
-    assert!(
-        close_blocker_codes(&check.response_value).is_empty(),
-        "expected ready close, got blockers {:?}",
-        check.response_value["blockers"]
-    );
-
-    let close = fixture.close_task(&task_id, "happy")?;
-    assert_eq!(close.response_value["close_state"], "closed");
-    assert_eq!(
-        close.response_value["guard_health"]["selected_profile"],
+        check.response_value["guard_health"]["selected_profile"],
         "detective"
     );
     assert_eq!(
-        close.response_value["guard_health"]["unresolved_unrecorded_change_count"],
+        check.response_value["guard_health"]["unresolved_unrecorded_change_count"],
         0
     );
     assert_eq!(
-        close.response_value["guard_health"]["session_watch_coverage_basis"],
+        check.response_value["guard_health"]["session_watch_coverage_basis"],
         "mcp_start"
     );
     assert_eq!(
-        close.response_value["guard_health"]["session_watch_partial_coverage_warning"],
+        check.response_value["guard_health"]["session_watch_partial_coverage_warning"],
         Value::Null
     );
     Ok(())

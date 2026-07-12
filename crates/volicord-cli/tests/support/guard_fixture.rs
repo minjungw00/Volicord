@@ -771,6 +771,8 @@ impl GuardedLifecycleFixture {
                 plain_language_request: "Create a guarded lifecycle fixture task.".to_owned(),
                 requested_mode: RequestedMode::Work,
                 resume_policy: ResumePolicy::CreateNew,
+                acceptance_policy: volicord_types::RequiredNullable::null(),
+                lineage: volicord_types::RequiredNullable::null(),
                 initial_scope: InitialScope {
                     boundary: "Exercise guarded lifecycle behavior in a temp repository."
                         .to_owned(),
